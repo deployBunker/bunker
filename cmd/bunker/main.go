@@ -43,6 +43,7 @@ and control ephemeral development environments — all from the CLI.`,
 
 	root.AddCommand(cli.NewConnectCommand())
 	root.AddCommand(cli.NewSpawnCommand())
+	root.AddCommand(cli.NewListCommand())
 
 	return root.Execute()
 }
