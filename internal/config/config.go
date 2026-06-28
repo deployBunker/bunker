@@ -19,6 +19,7 @@ type Config struct {
 	Agent       AgentConfig       `mapstructure:"agent"`
 	Tunnel      TunnelConfig      `mapstructure:"tunnel"`
 	NamedTunnel NamedTunnelConfig `mapstructure:"named_tunnel"`
+	Tailscale   TailscaleConfig   `mapstructure:"tailscale"`
 }
 
 // ServerConfig holds gRPC and REST listener addresses.
@@ -72,6 +73,14 @@ type NamedTunnelConfig struct {
 	Domain          string `mapstructure:"domain"`
 }
 
+// TailscaleConfig holds Tailscale mesh networking settings for per-agent tailnet IPs.
+type TailscaleConfig struct {
+	Enabled        bool          `mapstructure:"enabled"`
+	BinaryPath     string        `mapstructure:"binary_path"`
+	AuthKey        string        `mapstructure:"authkey"`
+	StartupTimeout time.Duration `mapstructure:"startup_timeout"`
+}
+
 // DefaultConfig returns a Config with sensible defaults.
 func DefaultConfig() *Config {
 	return &Config{
@@ -104,6 +113,11 @@ func DefaultConfig() *Config {
 		},
 		NamedTunnel: NamedTunnelConfig{
 			Enabled: false,
+		},
+		Tailscale: TailscaleConfig{
+			Enabled:        false,
+			BinaryPath:     "tailscale",
+			StartupTimeout: 30 * time.Second,
 		},
 	}
 }
@@ -150,6 +164,10 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("named_tunnel.name")
 	v.BindEnv("named_tunnel.credentials_file")
 	v.BindEnv("named_tunnel.domain")
+	v.BindEnv("tailscale.enabled")
+	v.BindEnv("tailscale.binary_path")
+	v.BindEnv("tailscale.authkey")
+	v.BindEnv("tailscale.startup_timeout")
 
 	// Read config file if it exists
 	if _, err := os.Stat(path); err == nil {
