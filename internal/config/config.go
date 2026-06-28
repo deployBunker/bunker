@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -16,6 +17,7 @@ type Config struct {
 	TLS    TLSConfig    `mapstructure:"tls"`
 	Auth   AuthConfig   `mapstructure:"auth"`
 	Agent  AgentConfig  `mapstructure:"agent"`
+	Tunnel TunnelConfig `mapstructure:"tunnel"`
 }
 
 // ServerConfig holds gRPC and REST listener addresses.
@@ -52,6 +54,15 @@ type AgentConfig struct {
 	DefaultMemoryBytes uint64  `mapstructure:"default_memory_bytes"`
 }
 
+// TunnelConfig holds Cloudflare TryCloudflare tunnel settings.
+type TunnelConfig struct {
+	Enabled        bool          `mapstructure:"enabled"`
+	BinaryPath     string        `mapstructure:"binary_path"`
+	TunnelPort     uint32        `mapstructure:"tunnel_port"`
+	NoAutoupdate   bool          `mapstructure:"no_autoupdate"`
+	StartupTimeout time.Duration `mapstructure:"startup_timeout"`
+}
+
 // DefaultConfig returns a Config with sensible defaults.
 func DefaultConfig() *Config {
 	return &Config{
@@ -74,6 +85,13 @@ func DefaultConfig() *Config {
 			MaxAgents:          100,
 			DefaultCPUQuota:    2.0,
 			DefaultMemoryBytes: 4 * 1024 * 1024 * 1024, // 4 GiB
+		},
+		Tunnel: TunnelConfig{
+			Enabled:        true,
+			BinaryPath:     "cloudflared",
+			TunnelPort:     8080,
+			NoAutoupdate:   true,
+			StartupTimeout: 30 * time.Second,
 		},
 	}
 }
@@ -111,6 +129,11 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("agent.max_agents")
 	v.BindEnv("agent.default_cpu_quota")
 	v.BindEnv("agent.default_memory_bytes")
+	v.BindEnv("tunnel.enabled")
+	v.BindEnv("tunnel.binary_path")
+	v.BindEnv("tunnel.tunnel_port")
+	v.BindEnv("tunnel.no_autoupdate")
+	v.BindEnv("tunnel.startup_timeout")
 
 	// Read config file if it exists
 	if _, err := os.Stat(path); err == nil {

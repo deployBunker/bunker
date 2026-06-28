@@ -17,6 +17,7 @@ import (
 
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/resource"
+	"github.com/deployBunker/bunker/internal/tunnel"
 )
 
 // validAgentID matches agent IDs: lowercase, digits, hyphens, 1-63 chars.
@@ -24,14 +25,15 @@ var validAgentID = regexp.MustCompile(`^[a-z0-9-]{1,63}$`)
 
 // AgentManager handles the agent spawn lifecycle.
 type AgentManager struct {
-	cfg       *config.Config
-	logger    *slog.Logger
-	tracker   *resource.Tracker
-	portAlloc *resource.PortAllocator
+	cfg        *config.Config
+	logger     *slog.Logger
+	tracker    *resource.Tracker
+	portAlloc  *resource.PortAllocator
+	tunnelMgr  *tunnel.TunnelManager
 }
 
 // NewAgentManager creates a new AgentManager.
-func NewAgentManager(cfg *config.Config, logger *slog.Logger, tracker *resource.Tracker) *AgentManager {
+func NewAgentManager(cfg *config.Config, logger *slog.Logger, tracker *resource.Tracker, tunnelMgr *tunnel.TunnelManager) *AgentManager {
 	pa, err := resource.NewPortAllocator(
 		cfg.Agent.PortRangeStart,
 		cfg.Agent.PortRangeEnd,
@@ -46,7 +48,7 @@ func NewAgentManager(cfg *config.Config, logger *slog.Logger, tracker *resource.
 		)
 		// Port allocator is nil when disabled; spawn will use the full range as fallback.
 	}
-	return &AgentManager{cfg: cfg, logger: logger, tracker: tracker, portAlloc: pa}
+	return &AgentManager{cfg: cfg, logger: logger, tracker: tracker, portAlloc: pa, tunnelMgr: tunnelMgr}
 }
 
 // generateUUIDv4 creates a version-4 UUID using crypto/rand.
@@ -307,6 +309,17 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		hostname = "localhost"
 	}
 
+	var publicURL string
+	if m.tunnelMgr != nil && req.GetNetwork() != nil && req.GetNetwork().GetTrycloudflare() {
+		url, err := m.tunnelMgr.Start(ctx, agentID, portStart)
+		if err != nil {
+			m.logger.Warn("tunnel start failed, continuing without public URL", "agent_id", agentID, "error", err)
+		} else {
+			publicURL = url
+			rec.PublicURL = publicURL
+		}
+	}
+
 	resp := &v1.SpawnAgentResponse{
 		AgentId:        agentID,
 		DockerHostSsh:  fmt.Sprintf("DOCKER_HOST=ssh://%s@%s", username, hostname),
@@ -315,6 +328,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		PortRangeStart: portStart,
 		PortRangeEnd:   portEnd,
 		ExpiresAt:      time.Now().Add(6 * time.Hour).Format(time.RFC3339),
+		PublicUrl:      publicURL,
 	}
 
 	m.logger.Info("agent spawned successfully", "agent_id", agentID)
@@ -370,6 +384,12 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	sshKeyPath := filepath.Join(m.cfg.Agent.SSHDir, agentID)
 	if err := os.Remove(sshKeyPath); err != nil && !os.IsNotExist(err) {
 		m.logger.Warn("failed to remove ssh key", "path", sshKeyPath, "error", err)
+	}
+
+	if m.tunnelMgr != nil {
+		if err := m.tunnelMgr.Stop(agentID); err != nil {
+			m.logger.Warn("tunnel stop failed", "agent_id", agentID, "error", err)
+		}
 	}
 
 	m.tracker.Unregister(agentID)

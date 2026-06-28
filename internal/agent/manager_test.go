@@ -17,7 +17,7 @@ func newTestManager(t *testing.T) *AgentManager {
 	cfg := config.DefaultConfig()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	tracker := resource.NewTracker(cfg.Agent.MaxAgents, logger)
-	return NewAgentManager(cfg, logger, tracker)
+	return NewAgentManager(cfg, logger, tracker, nil)
 }
 
 // ── Unit tests on helper functions (no root needed) ──────────────
