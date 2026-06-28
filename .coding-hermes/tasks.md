@@ -4,8 +4,8 @@
 
 ### Phase 1: Core bunkerd daemon
 - [x] **WI-001**: Protobuf code generation — `buf generate` for gRPC + REST gateway
-- [ ] **WI-002**: bunkerd server skeleton — gRPC server on :9090 with TLS + token auth
-- [ ] **WI-003**: Agent spawn lifecycle — `useradd` → generate SSH keypair → start dockerd via systemd-run
+- [x] **WI-002**: bunkerd server skeleton — gRPC server on :9090 with TLS + token auth
+- [~] **WI-003**: Agent spawn lifecycle — `useradd` → generate SSH keypair → start dockerd via systemd-run
 - [ ] **WI-004**: Agent destroy lifecycle — stop dockerd → `userdel -r` → free port range
 - [ ] **WI-005**: Resource tracking — capacity management, cgroup CPU/memory limits
 - [ ] **WI-006**: Port range allocator — assign/free per-agent port ranges
@@ -44,6 +44,12 @@
 - **CLI**: cobra (v1.10) + viper (v1.21)
 - **Config**: YAML at /etc/bunkerd/config.yaml
 - **TryCloudflare**: shell out to cloudflared binary
+
+## Quality Gates (run EVERY commit)
+- **GitReins Tier 1**: `gitreins guard run` — secrets, lint, tests, format
+- **GitReins Tier 2**: `gitreins judge evaluate <id>` — LLM code review per task
+- **Hilo**: `hilo classify` + `hilo graph` — auto-classify files, dependency analysis, metadata woven into codebase
+- **Build**: `go build ./... && go vet ./...` before every commit
 
 ## Task States
 - `[ ]` — pending

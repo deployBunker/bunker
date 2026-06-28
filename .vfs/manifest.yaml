@@ -1,0 +1,104 @@
+version: 2
+project:
+  name: bunker
+  description: ''
+interfaces:
+  fuse:
+    enabled: true
+    mount_point: /mnt/vfs/project
+    allow_other: false
+    direct_io: false
+    auto_unmount: true
+  ninep:
+    enabled: false
+    listen: 0.0.0.0:5640
+  cli:
+    enabled: true
+  mcp:
+    enabled: true
+    transport: stdio
+    port: 8766
+  golib:
+    enabled: false
+repos: []
+backends:
+  s3: []
+  remote: []
+  local: []
+metadata:
+  namespaces: []
+  auto:
+    hash: true
+    last_modified: true
+    complexity: true
+graph:
+  edges: ''
+  blob_index: ''
+  duckdb_cache: ''
+  auto_discover:
+    enabled: true
+    languages:
+    - go
+    - python
+    - typescript
+    - rust
+    - javascript
+    - java
+    - c
+    - cpp
+    - ruby
+    on_first_read: true
+    on_write: true
+    on_mount: false
+  impact:
+    enabled: true
+    max_depth: 5
+    parallel: true
+  cross_repo: true
+  max_edges_per_file: 100000
+  deduplicate: true
+  extensions: []
+permissions:
+  rules: []
+  default_mode: '0644'
+  backends: []
+triggers: []
+rules: []
+plugins: []
+discovery:
+  feature_inference:
+    enabled: true
+    strategy: directory
+    override_file: null
+  test_association:
+    enabled: true
+    patterns:
+    - '*_test.go'
+    - test_*.py
+    - '*.test.ts'
+    - '*.spec.ts'
+  generated_detection:
+    enabled: true
+    markers: []
+sandbox:
+  enabled: false
+  engine: null
+  isolate_network: false
+  isolate_pid: false
+  read_only_root: false
+  writable_paths: []
+performance:
+  cache:
+    path: .vfs/cache/
+    max_size: 1GB
+  fuse:
+    attr_timeout: 1.0
+    entry_timeout: 1.0
+    max_read: 131072
+    max_write: 131072
+  duckdb:
+    threads: 4
+    memory_limit: 512MB
+  triggers:
+    debounce_default: 500ms
+    max_concurrent: 8
