@@ -11,7 +11,7 @@
 - [x] **WI-006**: Port range allocator — assign/free per-agent port ranges
 
 ### Phase 2: Networking
-- [ ] **WI-007**: SSH transport — `DOCKER_HOST=ssh://` support with per-agent SSH keys
+- [x] **WI-007**: SSH transport — `DOCKER_HOST=ssh://` support with per-agent SSH keys
 - [ ] **WI-008**: TryCloudflare anonymous tunnels — per-agent public URL
 - [ ] **WI-009**: Cloudflare named tunnel support — custom domain routing
 - [ ] **WI-010**: Tailscale integration — per-agent tailnet IP
