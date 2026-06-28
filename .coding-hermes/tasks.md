@@ -3,7 +3,7 @@
 ## Active Sprint: MVP
 
 ### Phase 1: Core bunkerd daemon
-- [ ] **WI-001**: Protobuf code generation — `buf generate` for gRPC + REST gateway
+- [x] **WI-001**: Protobuf code generation — `buf generate` for gRPC + REST gateway
 - [ ] **WI-002**: bunkerd server skeleton — gRPC server on :9090 with TLS + token auth
 - [ ] **WI-003**: Agent spawn lifecycle — `useradd` → generate SSH keypair → start dockerd via systemd-run
 - [ ] **WI-004**: Agent destroy lifecycle — stop dockerd → `userdel -r` → free port range
