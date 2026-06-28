@@ -1,4 +1,4 @@
-module github.com/wojons/bunker
+module github.com/deployBunker/bunker
 
 go 1.25.0
 

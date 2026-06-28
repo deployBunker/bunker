@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package bunker.v1;
 
-option go_package = "github.com/wojons/bunker/proto/bunker/v1;bunkerv1";
+option go_package = "github.com/deployBunker/bunker/proto/bunker/v1;bunkerv1";
 
 // ── Bunkerd — Server Daemon API ───────────────────────────────
 
