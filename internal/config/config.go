@@ -46,6 +46,7 @@ type AgentConfig struct {
 	SSHDir             string  `mapstructure:"ssh_dir"`
 	PortRangeStart     uint32  `mapstructure:"port_range_start"`
 	PortRangeEnd       uint32  `mapstructure:"port_range_end"`
+	PortRangePerAgent  uint32  `mapstructure:"port_range_per_agent"`
 	MaxAgents          uint32  `mapstructure:"max_agents"`
 	DefaultCPUQuota    float64 `mapstructure:"default_cpu_quota"`
 	DefaultMemoryBytes uint64  `mapstructure:"default_memory_bytes"`
@@ -69,6 +70,7 @@ func DefaultConfig() *Config {
 			SSHDir:             "/etc/bunkerd/ssh",
 			PortRangeStart:     10000,
 			PortRangeEnd:       10100,
+			PortRangePerAgent:  10,
 			MaxAgents:          100,
 			DefaultCPUQuota:    2.0,
 			DefaultMemoryBytes: 4 * 1024 * 1024 * 1024, // 4 GiB
@@ -105,6 +107,7 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("agent.ssh_dir")
 	v.BindEnv("agent.port_range_start")
 	v.BindEnv("agent.port_range_end")
+	v.BindEnv("agent.port_range_per_agent")
 	v.BindEnv("agent.max_agents")
 	v.BindEnv("agent.default_cpu_quota")
 	v.BindEnv("agent.default_memory_bytes")

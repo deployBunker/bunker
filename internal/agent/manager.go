@@ -24,14 +24,29 @@ var validAgentID = regexp.MustCompile(`^[a-z0-9-]{1,63}$`)
 
 // AgentManager handles the agent spawn lifecycle.
 type AgentManager struct {
-	cfg     *config.Config
-	logger  *slog.Logger
-	tracker *resource.Tracker
+	cfg        *config.Config
+	logger     *slog.Logger
+	tracker    *resource.Tracker
+	portAlloc  *resource.PortAllocator
 }
 
 // NewAgentManager creates a new AgentManager.
 func NewAgentManager(cfg *config.Config, logger *slog.Logger, tracker *resource.Tracker) *AgentManager {
-	return &AgentManager{cfg: cfg, logger: logger, tracker: tracker}
+	pa, err := resource.NewPortAllocator(
+		cfg.Agent.PortRangeStart,
+		cfg.Agent.PortRangeEnd,
+		cfg.Agent.PortRangePerAgent,
+	)
+	if err != nil {
+		logger.Warn("port allocator disabled — invalid port range config",
+			"start", cfg.Agent.PortRangeStart,
+			"end", cfg.Agent.PortRangeEnd,
+			"per_agent", cfg.Agent.PortRangePerAgent,
+			"error", err,
+		)
+		// Port allocator is nil when disabled; spawn will use the full range as fallback.
+	}
+	return &AgentManager{cfg: cfg, logger: logger, tracker: tracker, portAlloc: pa}
 }
 
 // generateUUIDv4 creates a version-4 UUID using crypto/rand.
@@ -66,7 +81,22 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		agentID = strings.SplitN(uuid, "-", 2)[0]
 	}
 
-	// ── Step 1.5: Check capacity ─────────────────────────────────
+	// ── Step 1.5: Allocate port range ────────────────────────────
+	var portStart, portEnd uint32
+	if m.portAlloc != nil {
+		var allocErr error
+		portStart, portEnd, allocErr = m.portAlloc.Allocate(agentID)
+		if allocErr != nil {
+			return nil, fmt.Errorf("port range allocation: %w", allocErr)
+		}
+	} else {
+		// Port allocator disabled — use full configured range as fallback.
+		portStart = m.cfg.Agent.PortRangeStart
+		portEnd = m.cfg.Agent.PortRangeEnd
+	}
+	m.logger.Info("allocated port range", "agent_id", agentID, "range", fmt.Sprintf("%d-%d", portStart, portEnd))
+
+	// ── Step 1.6: Check capacity ─────────────────────────────────
 	if !m.tracker.HasCapacity(1) {
 		return nil, fmt.Errorf("capacity full: %d/%d agents", m.tracker.Count(), m.tracker.MaxAgents())
 	}
@@ -220,8 +250,8 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		Limits:         effectiveLimits,
 		CreatedAt:      time.Now(),
 		ExpiresAt:      time.Now().Add(6 * time.Hour),
-		PortRangeStart: m.cfg.Agent.PortRangeStart,
-		PortRangeEnd:   m.cfg.Agent.PortRangeEnd,
+		PortRangeStart: portStart,
+		PortRangeEnd:   portEnd,
 	}
 	if err := m.tracker.Register(rec); err != nil {
 		// This shouldn't happen (we checked capacity above), but handle gracefully
@@ -239,8 +269,8 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		DockerHostSsh:  fmt.Sprintf("DOCKER_HOST=ssh://%s@%s", username, hostname),
 		SshPrivateKey:  string(privKeyBytes),
 		Limits:         effectiveLimits,
-		PortRangeStart: m.cfg.Agent.PortRangeStart,
-		PortRangeEnd:   m.cfg.Agent.PortRangeEnd,
+		PortRangeStart: portStart,
+		PortRangeEnd:   portEnd,
 		ExpiresAt:      time.Now().Add(6 * time.Hour).Format(time.RFC3339),
 	}
 
@@ -294,6 +324,11 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	}
 
 	m.tracker.Unregister(agentID)
+
+	if m.portAlloc != nil {
+		m.portAlloc.Free(agentID)
+		m.logger.Info("freed port range", "agent_id", agentID)
+	}
 
 	m.logger.Info("agent destroyed", "agent_id", agentID)
 	return &v1.DestroyAgentResponse{AgentId: agentID, Status: "destroyed"}, nil
