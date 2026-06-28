@@ -14,7 +14,7 @@
 - [x] **WI-007**: SSH transport — `DOCKER_HOST=ssh://` support with per-agent SSH keys
 - [x] **WI-008**: TryCloudflare anonymous tunnels — per-agent public URL
 - [x] **WI-009**: Cloudflare named tunnel support — custom domain routing
-- [ ] **WI-010**: Tailscale integration — per-agent tailnet IP
+- [x] **WI-010**: Tailscale integration — per-agent tailnet IP
 
 ### Phase 3: CLI
 - [ ] **WI-011**: `bunker connect` — register a bunkerd server
