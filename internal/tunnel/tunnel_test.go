@@ -315,3 +315,243 @@ func TestShutdown(t *testing.T) {
 		}
 	}
 }
+
+// --- Named Tunnel Tests ---
+
+// newTestManagerWithNamed creates a TunnelManager with named tunnel support for testing.
+func newTestManagerWithNamed(t *testing.T, binaryPath string, namedEnabled bool, namedDomain string, credsFile string) *TunnelManager {
+	t.Helper()
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	cfg := &config.TunnelConfig{
+		Enabled:        true,
+		BinaryPath:     binaryPath,
+		TunnelPort:     0,
+		NoAutoupdate:   false,
+		StartupTimeout: 5 * time.Second,
+	}
+	namedCfg := &config.NamedTunnelConfig{
+		Enabled:         namedEnabled,
+		Name:            "test-tunnel",
+		CredentialsFile: credsFile,
+		Domain:          namedDomain,
+	}
+	return NewTunnelManagerWithNamed(cfg, namedCfg, logger)
+}
+
+// writeMockCloudflaredNamed writes a shell script that mimics cloudflared named tunnel output.
+// For named tunnels, cloudflared writes log lines but not a trycloudflare.com URL.
+func writeMockCloudflaredNamed(t *testing.T, dir, name string, sleepDuration time.Duration) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+
+	content := "#!/bin/sh\n"
+	content += "cat <<'EOF'\n"
+	content += "2026-06-28T00:00:00Z INF Starting cloudflared version 2024.6.1\n"
+	content += "2026-06-28T00:00:00Z INF Registered tunnel connection\n"
+	content += "2026-06-28T00:00:00Z INF Updated configuration for tunnel test-tunnel\n"
+	content += "EOF\n"
+
+	if sleepDuration > 0 {
+		content += fmt.Sprintf("sleep %d\n", int(sleepDuration.Seconds()))
+	} else {
+		content += "sleep 999999\n" // hang until killed
+	}
+
+	if err := os.WriteFile(path, []byte(content), 0755); err != nil {
+		t.Fatalf("write mock cloudflared named: %v", err)
+	}
+	return path
+}
+
+// TestStartNamedStop tests basic named tunnel start/stop lifecycle.
+func TestStartNamedStop(t *testing.T) {
+	dir := t.TempDir()
+	credsFile := filepath.Join(dir, "creds.json")
+	if err := os.WriteFile(credsFile, []byte(`{"AccountTag":"test","TunnelID":"test-uuid","TunnelSecret":"dGVzdA=="}`), 0644); err != nil {
+		t.Fatalf("write creds: %v", err)
+	}
+
+	binaryPath := writeMockCloudflaredNamed(t, dir, "cloudflared", 0)
+	mgr := newTestManagerWithNamed(t, binaryPath, true, "agent.example.com", credsFile)
+
+	domain, err := mgr.StartNamed(t.Context(), "agent-named-001", 8080)
+	if err != nil {
+		t.Fatalf("StartNamed failed: %v", err)
+	}
+	if domain != "agent.example.com" {
+		t.Errorf("domain = %q, want %q", domain, "agent.example.com")
+	}
+
+	// Verify the domain is cached via GetURL
+	cached := mgr.GetURL("agent-named-001")
+	if cached != "agent.example.com" {
+		t.Errorf("GetURL = %q, want %q", cached, "agent.example.com")
+	}
+
+	// Stop the tunnel
+	if err := mgr.Stop("agent-named-001"); err != nil {
+		t.Errorf("Stop failed: %v", err)
+	}
+
+	// URL should be gone
+	cached = mgr.GetURL("agent-named-001")
+	if cached != "" {
+		t.Errorf("GetURL after stop = %q, want empty", cached)
+	}
+}
+
+// TestStartNamedDisabled tests that StartNamed returns empty when disabled.
+func TestStartNamedDisabled(t *testing.T) {
+	dir := t.TempDir()
+	binaryPath := writeMockCloudflaredNamed(t, dir, "cloudflared", 0)
+	mgr := newTestManagerWithNamed(t, binaryPath, false, "", "")
+
+	domain, err := mgr.StartNamed(t.Context(), "agent-001", 8080)
+	if err != nil {
+		t.Fatalf("StartNamed should not error when disabled: %v", err)
+	}
+	if domain != "" {
+		t.Errorf("domain = %q, want empty when disabled", domain)
+	}
+}
+
+// TestStartNamedDuplicateAgent tests that starting a named tunnel for an existing agent fails.
+func TestStartNamedDuplicateAgent(t *testing.T) {
+	dir := t.TempDir()
+	credsFile := filepath.Join(dir, "creds.json")
+	os.WriteFile(credsFile, []byte(`{"AccountTag":"test","TunnelID":"test-uuid","TunnelSecret":"dGVzdA=="}`), 0644)
+
+	binaryPath := writeMockCloudflaredNamed(t, dir, "cloudflared", 0)
+	mgr := newTestManagerWithNamed(t, binaryPath, true, "dup.example.com", credsFile)
+
+	_, err := mgr.StartNamed(t.Context(), "agent-dup", 8080)
+	if err != nil {
+		t.Fatalf("first StartNamed failed: %v", err)
+	}
+	defer mgr.Stop("agent-dup")
+
+	_, err = mgr.StartNamed(t.Context(), "agent-dup", 8080)
+	if err == nil {
+		t.Error("expected error for duplicate agent, got nil")
+	}
+}
+
+// TestStartNamedMissingCredentialsFile tests error when credentials file is missing.
+func TestStartNamedMissingCredentialsFile(t *testing.T) {
+	dir := t.TempDir()
+	binaryPath := writeMockCloudflaredNamed(t, dir, "cloudflared", 0)
+	mgr := newTestManagerWithNamed(t, binaryPath, true, "example.com", "/nonexistent/creds.json")
+
+	_, err := mgr.StartNamed(t.Context(), "agent-001", 8080)
+	if err == nil {
+		t.Error("expected error for missing credentials file, got nil")
+	}
+}
+
+// TestNamedGetURLNonexistent tests GetURL for nonexistent named agent.
+func TestNamedGetURLNonexistent(t *testing.T) {
+	dir := t.TempDir()
+	binaryPath := writeMockCloudflaredNamed(t, dir, "cloudflared", 0)
+	mgr := newTestManagerWithNamed(t, binaryPath, true, "example.com", filepath.Join(dir, "creds.json"))
+
+	url := mgr.GetURL("nonexistent")
+	if url != "" {
+		t.Errorf("GetURL for nonexistent = %q, want empty", url)
+	}
+}
+
+// TestStartNamedContextCancel tests that StartNamed respects context cancellation.
+func TestStartNamedContextCancel(t *testing.T) {
+	dir := t.TempDir()
+	credsFile := filepath.Join(dir, "creds.json")
+	os.WriteFile(credsFile, []byte(`{"AccountTag":"test","TunnelID":"test-uuid","TunnelSecret":"dGVzdA=="}`), 0644)
+
+	// Script that hangs forever
+	binaryPath := writeMockCloudflaredNamed(t, dir, "cloudflared", 0)
+	mgr := newTestManagerWithNamed(t, binaryPath, true, "example.com", credsFile)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel() // cancel immediately
+
+	_, err := mgr.StartNamed(ctx, "agent-cancel", 8080)
+	if err == nil {
+		t.Error("expected context cancellation error, got nil")
+	}
+}
+
+// TestStartNamedTimeout tests timeout when cloudflared doesn't print the ready line.
+// Named tunnels succeed after the startup timeout (process is still running).
+func TestStartNamedTimeout(t *testing.T) {
+	dir := t.TempDir()
+	credsFile := filepath.Join(dir, "creds.json")
+	os.WriteFile(credsFile, []byte(`{"AccountTag":"test","TunnelID":"test-uuid","TunnelSecret":"dGVzdA=="}`), 0644)
+
+	// Script that hangs forever (no exit, no URL)
+	binaryPath := writeMockCloudflaredNamed(t, dir, "cloudflared", 0)
+	mgr := newTestManagerWithNamed(t, binaryPath, true, "mydomain.example.com", credsFile)
+	mgr.cfg.StartupTimeout = 200 * time.Millisecond // short timeout
+
+	domain, err := mgr.StartNamed(t.Context(), "agent-timeout", 8080)
+	if err != nil {
+		t.Fatalf("StartNamed should succeed after timeout (process still running): %v", err)
+	}
+	if domain != "mydomain.example.com" {
+		t.Errorf("domain = %q, want %q", domain, "mydomain.example.com")
+	}
+
+	// Clean up
+	mgr.Stop("agent-timeout")
+}
+
+// TestShutdownNamed tests that Shutdown stops named tunnels.
+func TestShutdownNamed(t *testing.T) {
+	dir := t.TempDir()
+	credsFile := filepath.Join(dir, "creds.json")
+	os.WriteFile(credsFile, []byte(`{"AccountTag":"test","TunnelID":"test-uuid","TunnelSecret":"dGVzdA=="}`), 0644)
+
+	namedBinary := writeMockCloudflaredNamed(t, dir, "cloudflared-named", 0)
+
+	namedMgr := newTestManagerWithNamed(t, namedBinary, true, "custom.example.com", credsFile)
+
+	_, err := namedMgr.StartNamed(t.Context(), "agent-a", 8080)
+	if err != nil {
+		t.Fatalf("StartNamed failed: %v", err)
+	}
+	_, err = namedMgr.StartNamed(t.Context(), "agent-b", 8081)
+	if err != nil {
+		t.Fatalf("StartNamed failed: %v", err)
+	}
+
+	namedMgr.Shutdown(t.Context())
+
+	if url := namedMgr.GetURL("agent-a"); url != "" {
+		t.Errorf("GetURL(agent-a) after shutdown = %q, want empty", url)
+	}
+	if url := namedMgr.GetURL("agent-b"); url != "" {
+		t.Errorf("GetURL(agent-b) after shutdown = %q, want empty", url)
+	}
+}
+
+// TestHasNamedTunnel tests the HasNamedTunnel helper.
+func TestHasNamedTunnel(t *testing.T) {
+	dir := t.TempDir()
+	binaryPath := writeMockCloudflaredNamed(t, dir, "cloudflared", 0)
+
+	// Without named config
+	mgr := newTestManager(t, binaryPath, true)
+	if mgr.HasNamedTunnel() {
+		t.Error("HasNamedTunnel should be false without named config")
+	}
+
+	// With named config enabled
+	mgrWithNamed := newTestManagerWithNamed(t, binaryPath, true, "example.com", filepath.Join(dir, "creds.json"))
+	if !mgrWithNamed.HasNamedTunnel() {
+		t.Error("HasNamedTunnel should be true with named config enabled")
+	}
+
+	// With named config disabled
+	mgrDisabled := newTestManagerWithNamed(t, binaryPath, false, "example.com", filepath.Join(dir, "creds.json"))
+	if mgrDisabled.HasNamedTunnel() {
+		t.Error("HasNamedTunnel should be false when disabled")
+	}
+}
