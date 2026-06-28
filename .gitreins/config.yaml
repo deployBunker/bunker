@@ -1,0 +1,27 @@
+# GitReins Configuration — Bunker
+# Tier 1: Static guards (run on every commit)
+# Tier 2: LLM evaluation (run on task completion)
+
+tier1:
+  secrets:
+    enabled: true
+    config: .gitleaks.toml
+  lint:
+    enabled: true
+    commands:
+      - "golangci-lint run ./..."
+      - "go vet ./..."
+  tests:
+    enabled: true
+    commands:
+      - "go test ./... -count=1 -timeout 120s"
+  format:
+    enabled: true
+    commands:
+      - "test -z \"$(gofmt -l .)\""
+
+tier2:
+  enabled: true
+  evaluator: glm-5.2
+  max_iterations: 5
+  max_time: 10m
