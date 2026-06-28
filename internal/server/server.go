@@ -15,9 +15,9 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/caddyserver/certmagic"
+	"github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect"
 
 	"github.com/deployBunker/bunker/internal/agent"
 	"github.com/deployBunker/bunker/internal/auth"

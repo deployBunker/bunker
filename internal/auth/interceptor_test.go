@@ -209,5 +209,5 @@ func TestExtractBearerToken_InvalidFormat(t *testing.T) {
 type dummyMsg struct{}
 
 func (d *dummyMsg) ProtoReflect() protoreflect.Message { return nil }
-func (d *dummyMsg) Reset()                              {}
-func (d *dummyMsg) String() string                      { return "dummy" }
+func (d *dummyMsg) Reset()                             {}
+func (d *dummyMsg) String() string                     { return "dummy" }
