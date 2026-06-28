@@ -14,14 +14,16 @@ import (
 	"github.com/deployBunker/bunker/internal/agent"
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/resource"
+	"github.com/deployBunker/bunker/internal/tunnel"
 )
 
 // bunkerdService implements bunkerv1connect.BunkerdHandler.
 type bunkerdService struct {
-	cfg      *config.Config
-	logger   *slog.Logger
-	agentMgr *agent.AgentManager
-	tracker  *resource.Tracker
+	cfg        *config.Config
+	logger     *slog.Logger
+	agentMgr   *agent.AgentManager
+	tracker    *resource.Tracker
+	tunnelMgr  *tunnel.TunnelManager
 }
 
 // ServerInfo returns information about the bunkerd server.
