@@ -54,8 +54,16 @@ func (s *bunkerdService) SpawnAgent(ctx context.Context, req *connect.Request[v1
 
 // DestroyAgent tears down an agent environment.
 func (s *bunkerdService) DestroyAgent(ctx context.Context, req *connect.Request[v1.DestroyAgentRequest]) (*connect.Response[v1.DestroyAgentResponse], error) {
-	// TODO: WI-004 — Agent destroy lifecycle
-	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+	resp, err := s.agentMgr.Destroy(ctx, req.Msg.AgentId, req.Msg.Force)
+	if err != nil {
+		s.logger.Error("destroy agent failed", "agent_id", req.Msg.AgentId, "error", err)
+		// Map "not_found" to NotFound, other errors to Internal
+		if resp != nil && resp.Status == "not_found" {
+			return nil, connect.NewError(connect.CodeNotFound, err)
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(resp), nil
 }
 
 // ListAgents returns all agents.

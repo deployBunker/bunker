@@ -195,3 +195,52 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	m.logger.Info("agent spawned successfully", "agent_id", agentID)
 	return resp, nil
 }
+
+// Destroy tears down an agent: stops the dockerd systemd user unit,
+// removes the Linux user with -r, cleans up /run/bunker/<id>/.
+// Returns a DestroyAgentResponse with status "destroyed", "not_found", or "error".
+func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) (*v1.DestroyAgentResponse, error) {
+	// Step 0: validate agent_id
+	if agentID == "" || !validAgentID.MatchString(agentID) {
+		return &v1.DestroyAgentResponse{AgentId: agentID, Status: "error"},
+			fmt.Errorf("invalid agent_id %q", agentID)
+	}
+
+	m.logger.Info("destroying agent", "agent_id", agentID)
+
+	// Step 1: Stop the dockerd systemd user unit
+	unitName := "bunker-docker-" + agentID
+	cmd := exec.CommandContext(ctx, "systemctl", "--user", "stop", unitName)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		m.logger.Warn("systemctl stop failed (may not exist)", "unit", unitName, "error", err, "output", string(out))
+		// Non-fatal — the unit may not exist if agent was partially created or already destroyed
+	}
+
+	// Step 2: Disable the unit (prevent auto-restart)
+	cmd = exec.CommandContext(ctx, "systemctl", "--user", "disable", unitName)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		m.logger.Warn("systemctl disable failed", "unit", unitName, "error", err, "output", string(out))
+	}
+
+	// Step 3: Remove the Linux user
+	username := "bunker-" + agentID
+	cmd = exec.CommandContext(ctx, "userdel", "-r", username)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		// Check if user doesn't exist (already destroyed)
+		if !force {
+			return &v1.DestroyAgentResponse{AgentId: agentID, Status: "not_found"},
+				fmt.Errorf("userdel %s failed: %w (output: %s)", username, err, string(out))
+		}
+		// Force mode: log and continue even if userdel fails
+		m.logger.Warn("userdel failed in force mode", "username", username, "error", err, "output", string(out))
+	}
+
+	// Step 4: Clean up /run/bunker/<id>/ directory
+	runDir := fmt.Sprintf("/run/bunker/%s", agentID)
+	if err := os.RemoveAll(runDir); err != nil && !os.IsNotExist(err) {
+		m.logger.Warn("failed to remove run dir", "dir", runDir, "error", err)
+	}
+
+	m.logger.Info("agent destroyed", "agent_id", agentID)
+	return &v1.DestroyAgentResponse{AgentId: agentID, Status: "destroyed"}, nil
+}

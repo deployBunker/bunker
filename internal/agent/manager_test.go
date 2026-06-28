@@ -241,3 +241,52 @@ func TestSpawn_Response(t *testing.T) {
 		t.Errorf("DockerHostSsh: unexpected format: %q", resp.DockerHostSsh)
 	}
 }
+
+// ── Destroy validation tests (no root needed) ─────────────────
+
+func TestDestroy_InvalidAgentID(t *testing.T) {
+	m := newTestManager(t)
+	resp, err := m.Destroy(t.Context(), "INVALID!", false)
+	if err == nil {
+		t.Fatal("expected error for invalid agent_id")
+	}
+	if resp.Status != "error" {
+		t.Errorf("expected status 'error', got %q", resp.Status)
+	}
+}
+
+func TestDestroy_EmptyAgentID(t *testing.T) {
+	m := newTestManager(t)
+	resp, err := m.Destroy(t.Context(), "", false)
+	if err == nil {
+		t.Fatal("expected error for empty agent_id")
+	}
+	if resp.Status != "error" {
+		t.Errorf("expected status 'error', got %q", resp.Status)
+	}
+}
+
+func TestDestroy_ValidatesAgentID(t *testing.T) {
+	tests := []struct {
+		name    string
+		agentID string
+		wantErr bool
+	}{
+		{"valid", "test-agent", true},   // user doesn't exist, so userdel fails
+		{"uppercase", "TestAgent", true},
+		{"empty", "", true},
+		{"too long", strings.Repeat("a", 64), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := newTestManager(t)
+			_, err := m.Destroy(t.Context(), tt.agentID, false)
+			if tt.wantErr && err == nil {
+				t.Errorf("expected error for %q", tt.agentID)
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("unexpected error for %q: %v", tt.agentID, err)
+			}
+		})
+	}
+}
