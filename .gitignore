@@ -20,3 +20,6 @@ proto/**/*.pb.gw.go
 # Build
 /tmp/
 /dist/
+
+# Coding Hermes prompts
+.coding-hermes/prompt-*.txt
