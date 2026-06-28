@@ -13,7 +13,7 @@
 ### Phase 2: Networking
 - [x] **WI-007**: SSH transport — `DOCKER_HOST=ssh://` support with per-agent SSH keys
 - [x] **WI-008**: TryCloudflare anonymous tunnels — per-agent public URL
-- [ ] **WI-009**: Cloudflare named tunnel support — custom domain routing
+- [x] **WI-009**: Cloudflare named tunnel support — custom domain routing
 - [ ] **WI-010**: Tailscale integration — per-agent tailnet IP
 
 ### Phase 3: CLI
