@@ -42,10 +42,13 @@ type AuthConfig struct {
 
 // AgentConfig holds agent lifecycle settings.
 type AgentConfig struct {
-	BaseDataDir    string `mapstructure:"base_data_dir"`
-	SSHDir         string `mapstructure:"ssh_dir"`
-	PortRangeStart uint32 `mapstructure:"port_range_start"`
-	PortRangeEnd   uint32 `mapstructure:"port_range_end"`
+	BaseDataDir        string  `mapstructure:"base_data_dir"`
+	SSHDir             string  `mapstructure:"ssh_dir"`
+	PortRangeStart     uint32  `mapstructure:"port_range_start"`
+	PortRangeEnd       uint32  `mapstructure:"port_range_end"`
+	MaxAgents          uint32  `mapstructure:"max_agents"`
+	DefaultCPUQuota    float64 `mapstructure:"default_cpu_quota"`
+	DefaultMemoryBytes uint64  `mapstructure:"default_memory_bytes"`
 }
 
 // DefaultConfig returns a Config with sensible defaults.
@@ -62,10 +65,13 @@ func DefaultConfig() *Config {
 			Enabled: false,
 		},
 		Agent: AgentConfig{
-			BaseDataDir:    "/var/lib/bunkerd",
-			SSHDir:         "/etc/bunkerd/ssh",
-			PortRangeStart: 10000,
-			PortRangeEnd:   10100,
+			BaseDataDir:        "/var/lib/bunkerd",
+			SSHDir:             "/etc/bunkerd/ssh",
+			PortRangeStart:     10000,
+			PortRangeEnd:       10100,
+			MaxAgents:          100,
+			DefaultCPUQuota:    2.0,
+			DefaultMemoryBytes: 4 * 1024 * 1024 * 1024, // 4 GiB
 		},
 	}
 }
@@ -99,6 +105,9 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("agent.ssh_dir")
 	v.BindEnv("agent.port_range_start")
 	v.BindEnv("agent.port_range_end")
+	v.BindEnv("agent.max_agents")
+	v.BindEnv("agent.default_cpu_quota")
+	v.BindEnv("agent.default_memory_bytes")
 
 	// Read config file if it exists
 	if _, err := os.Stat(path); err == nil {

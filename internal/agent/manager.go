@@ -16,6 +16,7 @@ import (
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 
 	"github.com/deployBunker/bunker/internal/config"
+	"github.com/deployBunker/bunker/internal/resource"
 )
 
 // validAgentID matches agent IDs: lowercase, digits, hyphens, 1-63 chars.
@@ -23,13 +24,14 @@ var validAgentID = regexp.MustCompile(`^[a-z0-9-]{1,63}$`)
 
 // AgentManager handles the agent spawn lifecycle.
 type AgentManager struct {
-	cfg    *config.Config
-	logger *slog.Logger
+	cfg     *config.Config
+	logger  *slog.Logger
+	tracker *resource.Tracker
 }
 
 // NewAgentManager creates a new AgentManager.
-func NewAgentManager(cfg *config.Config, logger *slog.Logger) *AgentManager {
-	return &AgentManager{cfg: cfg, logger: logger}
+func NewAgentManager(cfg *config.Config, logger *slog.Logger, tracker *resource.Tracker) *AgentManager {
+	return &AgentManager{cfg: cfg, logger: logger, tracker: tracker}
 }
 
 // generateUUIDv4 creates a version-4 UUID using crypto/rand.
@@ -62,6 +64,11 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		}
 		// Use first segment of UUID as short ID.
 		agentID = strings.SplitN(uuid, "-", 2)[0]
+	}
+
+	// ── Step 1.5: Check capacity ─────────────────────────────────
+	if !m.tracker.HasCapacity(1) {
+		return nil, fmt.Errorf("capacity full: %d/%d agents", m.tracker.Count(), m.tracker.MaxAgents())
 	}
 
 	m.logger.Info("spawning agent", "agent_id", agentID)
@@ -161,12 +168,33 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		return nil, fmt.Errorf("create docker sock dir %s: %w", sockDir, err)
 	}
 
-	cmd = exec.CommandContext(ctx, "systemd-run",
+	// Determine resource limits: use request limits or server defaults
+	cpuQuota := m.cfg.Agent.DefaultCPUQuota
+	memMax := m.cfg.Agent.DefaultMemoryBytes
+	if req.GetLimits() != nil {
+		if req.GetLimits().GetCpuQuota() > 0 {
+			cpuQuota = req.GetLimits().GetCpuQuota()
+		}
+		if req.GetLimits().GetMemoryMaxBytes() > 0 {
+			memMax = req.GetLimits().GetMemoryMaxBytes()
+		}
+	}
+
+	// Build systemd-run args with cgroup resource limits
+	systemdArgs := []string{
 		"--user",
-		"--unit="+unitName,
-		"dockerd",
-		"--host=unix://"+dockerSockPath,
-	)
+		"--unit=" + unitName,
+	}
+	if cpuQuota > 0 {
+		// CPUQuota is a percentage of one CPU: 100%=1 core, 200%=2 cores
+		systemdArgs = append(systemdArgs, fmt.Sprintf("--property=CPUQuota=%d%%", int(cpuQuota*100)))
+	}
+	if memMax > 0 {
+		systemdArgs = append(systemdArgs, fmt.Sprintf("--property=MemoryMax=%d", memMax))
+	}
+	systemdArgs = append(systemdArgs, "dockerd", "--host=unix://"+dockerSockPath)
+
+	cmd = exec.CommandContext(ctx, "systemd-run", systemdArgs...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		cleanup()
 		return nil, fmt.Errorf("systemd-run dockerd failed: %w (output: %s)", err, string(out))
@@ -175,6 +203,30 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// ── Clean up temporary key files (keys are in memory + authorized_keys) ──
 	os.Remove(keyFile)
 	os.Remove(pubKeyFile)
+
+	// ── Register with tracker ────────────────────────────────────
+	effectiveLimits := &v1.ResourceLimits{
+		CpuQuota:       cpuQuota,
+		MemoryMaxBytes: memMax,
+	}
+	if req.GetLimits() != nil {
+		effectiveLimits.DiskMaxBytes = req.GetLimits().GetDiskMaxBytes()
+		effectiveLimits.MaxDockerContainers = req.GetLimits().GetMaxDockerContainers()
+	}
+
+	rec := &resource.AgentRecord{
+		AgentID:        agentID,
+		Status:         "running",
+		Limits:         effectiveLimits,
+		CreatedAt:      time.Now(),
+		ExpiresAt:      time.Now().Add(6 * time.Hour),
+		PortRangeStart: m.cfg.Agent.PortRangeStart,
+		PortRangeEnd:   m.cfg.Agent.PortRangeEnd,
+	}
+	if err := m.tracker.Register(rec); err != nil {
+		// This shouldn't happen (we checked capacity above), but handle gracefully
+		m.logger.Error("tracker register failed", "agent_id", agentID, "error", err)
+	}
 
 	// ── Build response ─────────────────────────────────────────────
 	hostname, _ := os.Hostname()
@@ -186,7 +238,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		AgentId:        agentID,
 		DockerHostSsh:  fmt.Sprintf("DOCKER_HOST=ssh://%s@%s", username, hostname),
 		SshPrivateKey:  string(privKeyBytes),
-		Limits:         req.GetLimits(),
+		Limits:         effectiveLimits,
 		PortRangeStart: m.cfg.Agent.PortRangeStart,
 		PortRangeEnd:   m.cfg.Agent.PortRangeEnd,
 		ExpiresAt:      time.Now().Add(6 * time.Hour).Format(time.RFC3339),
@@ -240,6 +292,8 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	if err := os.RemoveAll(runDir); err != nil && !os.IsNotExist(err) {
 		m.logger.Warn("failed to remove run dir", "dir", runDir, "error", err)
 	}
+
+	m.tracker.Unregister(agentID)
 
 	m.logger.Info("agent destroyed", "agent_id", agentID)
 	return &v1.DestroyAgentResponse{AgentId: agentID, Status: "destroyed"}, nil

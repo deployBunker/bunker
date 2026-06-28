@@ -19,9 +19,10 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect"
 
-	"github.com/deployBunker/bunker/internal/auth"
 	"github.com/deployBunker/bunker/internal/agent"
+	"github.com/deployBunker/bunker/internal/auth"
 	"github.com/deployBunker/bunker/internal/config"
+	"github.com/deployBunker/bunker/internal/resource"
 )
 
 // BunkerdServer is the main bunkerd daemon server.
@@ -61,8 +62,9 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 
 	// Build the Bunkerd service handler with auth interceptor
 	authInterceptor := auth.NewAuthInterceptor(s.cfg.Auth.Token, s.cfg.Auth.Enabled)
-	agentMgr := agent.NewAgentManager(s.cfg, s.logger)
-	bunkerdSvc := &bunkerdService{cfg: s.cfg, logger: s.logger, agentMgr: agentMgr}
+	tracker := resource.NewTracker(s.cfg.Agent.MaxAgents, s.logger)
+	agentMgr := agent.NewAgentManager(s.cfg, s.logger, tracker)
+	bunkerdSvc := &bunkerdService{cfg: s.cfg, logger: s.logger, agentMgr: agentMgr, tracker: tracker}
 	bunkerdPath, bunkerdHandler := bunkerv1connect.NewBunkerdHandler(
 		bunkerdSvc,
 		connect.WithInterceptors(authInterceptor),
@@ -70,7 +72,7 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	r.Mount(bunkerdPath, bunkerdHandler)
 
 	// Also mount the Agent service
-	agentSvc := &agentService{logger: s.logger}
+	agentSvc := &agentService{logger: s.logger, tracker: tracker}
 	agentPath, agentHandler := bunkerv1connect.NewAgentHandler(
 		agentSvc,
 		connect.WithInterceptors(authInterceptor),
