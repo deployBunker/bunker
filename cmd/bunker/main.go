@@ -1,9 +1,10 @@
 // bunker — CLI for managing Bunker agent hosts
 //
 // Three-tier CLI:
-//   bunker infra ...    — manage servers, deploy bunkerd instances
-//   bunker host ...     — manage agents on a connected server
-//   bunker agent ...    — scoped to single agent (customer-facing)
+//
+//	bunker infra ...    — manage servers, deploy bunkerd instances
+//	bunker host ...     — manage agents on a connected server
+//	bunker agent ...    — scoped to single agent (customer-facing)
 package main
 
 import (

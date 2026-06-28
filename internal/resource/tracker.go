@@ -11,14 +11,15 @@ import (
 
 // AgentRecord holds the tracked state for a spawned agent.
 type AgentRecord struct {
-	AgentID        string
-	Status         string // "running", "stopped", "failed"
-	Limits         *v1.ResourceLimits
-	CreatedAt      time.Time
-	ExpiresAt      time.Time
-	PortRangeStart uint32
-	PortRangeEnd   uint32
-	PublicURL      string
+	AgentID           string
+	Status            string // "running", "stopped", "failed"
+	Limits            *v1.ResourceLimits
+	CreatedAt         time.Time
+	ExpiresAt         time.Time
+	PortRangeStart    uint32
+	PortRangeEnd      uint32
+	PublicURL         string
+	SshPrivateKeyPath string // path to persisted SSH private key
 }
 
 // Tracker manages agent state, capacity, and resource allocation.

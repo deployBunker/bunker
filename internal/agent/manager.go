@@ -24,10 +24,10 @@ var validAgentID = regexp.MustCompile(`^[a-z0-9-]{1,63}$`)
 
 // AgentManager handles the agent spawn lifecycle.
 type AgentManager struct {
-	cfg        *config.Config
-	logger     *slog.Logger
-	tracker    *resource.Tracker
-	portAlloc  *resource.PortAllocator
+	cfg       *config.Config
+	logger    *slog.Logger
+	tracker   *resource.Tracker
+	portAlloc *resource.PortAllocator
 }
 
 // NewAgentManager creates a new AgentManager.
@@ -123,6 +123,9 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 			os.Remove(keyFile)
 			os.Remove(keyFile + ".pub")
 		}
+		// Remove persisted SSH key from config dir
+		sshKeyPath := filepath.Join(m.cfg.Agent.SSHDir, agentID)
+		os.Remove(sshKeyPath)
 	}
 
 	// ── Step 2: Create Linux user ──────────────────────────────────
@@ -162,10 +165,11 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		return nil, fmt.Errorf("read public key %s: %w", pubKeyFile, err)
 	}
 
-	// ── Step 4: Set up .ssh/authorized_keys ────────────────────────
+	// ── Step 4: Set up .ssh/authorized_keys with DOCKER_HOST env ──
 	userHome := "/home/" + username
 	sshDir := filepath.Join(userHome, ".ssh")
 	authKeysFile := filepath.Join(sshDir, "authorized_keys")
+	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
 
 	m.logger.Info("setting up authorized_keys", "user", username)
 	if err := os.MkdirAll(sshDir, 0700); err != nil {
@@ -177,7 +181,15 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		cleanup()
 		return nil, fmt.Errorf("chown .ssh dir: %w (output: %s)", err, string(out))
 	}
-	if err := os.WriteFile(authKeysFile, pubKeyBytes, 0600); err != nil {
+
+	// Prepend environment= to the public key line so Docker's SSH transport
+	// finds the right socket (requires PermitUserEnvironment=yes in sshd_config).
+	// The pubKeyBytes end with a newline from ssh-keygen; strip and re-append.
+	pubKeyLine := strings.TrimSpace(string(pubKeyBytes))
+	envPrefix := fmt.Sprintf(`environment="DOCKER_HOST=unix://%s"`, dockerSockPath)
+	authKeysContent := envPrefix + " " + pubKeyLine + "\n"
+
+	if err := os.WriteFile(authKeysFile, []byte(authKeysContent), 0600); err != nil {
 		cleanup()
 		return nil, fmt.Errorf("write authorized_keys: %w", err)
 	}
@@ -186,8 +198,32 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		return nil, fmt.Errorf("chown authorized_keys: %w (output: %s)", err, string(out))
 	}
 
+	// ── Step 4b: Set up .profile with DOCKER_HOST (interactive sessions) ──
+	profilePath := filepath.Join(userHome, ".profile")
+	profileContent := fmt.Sprintf("# bunker: per-agent Docker socket\nexport DOCKER_HOST=unix://%s\n", dockerSockPath)
+	if err := os.WriteFile(profilePath, []byte(profileContent), 0644); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("write .profile: %w", err)
+	}
+	if out, err := exec.CommandContext(ctx, "chown", username, profilePath).CombinedOutput(); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("chown .profile: %w (output: %s)", err, string(out))
+	}
+
+	// ── Step 4c: Persist private key to the server's SSH directory ──
+	sshKeyPath := filepath.Join(m.cfg.Agent.SSHDir, agentID)
+	if err := os.MkdirAll(m.cfg.Agent.SSHDir, 0700); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("create ssh dir %s: %w", m.cfg.Agent.SSHDir, err)
+	}
+	if err := os.WriteFile(sshKeyPath, privKeyBytes, 0600); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("write ssh private key to %s: %w", sshKeyPath, err)
+	}
+	m.logger.Info("persisted SSH private key", "path", sshKeyPath)
+
 	// ── Step 5: Start dockerd via systemd-run ──────────────────────
-	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
+	dockerSockPath = fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
 	unitName := "bunker-docker-" + agentID
 	m.logger.Info("starting dockerd", "unit", unitName, "sock", dockerSockPath)
 
@@ -196,6 +232,12 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	if err := os.MkdirAll(sockDir, 0755); err != nil {
 		cleanup()
 		return nil, fmt.Errorf("create docker sock dir %s: %w", sockDir, err)
+	}
+	// Chown the socket directory to the agent user so dockerd can create the socket
+	// and the SSH transport can access it.
+	if out, err := exec.CommandContext(ctx, "chown", username, sockDir).CombinedOutput(); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("chown socket dir: %w (output: %s)", err, string(out))
 	}
 
 	// Determine resource limits: use request limits or server defaults
@@ -245,13 +287,14 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	}
 
 	rec := &resource.AgentRecord{
-		AgentID:        agentID,
-		Status:         "running",
-		Limits:         effectiveLimits,
-		CreatedAt:      time.Now(),
-		ExpiresAt:      time.Now().Add(6 * time.Hour),
-		PortRangeStart: portStart,
-		PortRangeEnd:   portEnd,
+		AgentID:           agentID,
+		Status:            "running",
+		Limits:            effectiveLimits,
+		CreatedAt:         time.Now(),
+		ExpiresAt:         time.Now().Add(6 * time.Hour),
+		PortRangeStart:    portStart,
+		PortRangeEnd:      portEnd,
+		SshPrivateKeyPath: sshKeyPath,
 	}
 	if err := m.tracker.Register(rec); err != nil {
 		// This shouldn't happen (we checked capacity above), but handle gracefully
@@ -321,6 +364,12 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	runDir := fmt.Sprintf("/run/bunker/%s", agentID)
 	if err := os.RemoveAll(runDir); err != nil && !os.IsNotExist(err) {
 		m.logger.Warn("failed to remove run dir", "dir", runDir, "error", err)
+	}
+
+	// Step 4.5: Clean up persisted SSH key
+	sshKeyPath := filepath.Join(m.cfg.Agent.SSHDir, agentID)
+	if err := os.Remove(sshKeyPath); err != nil && !os.IsNotExist(err) {
+		m.logger.Warn("failed to remove ssh key", "path", sshKeyPath, "error", err)
 	}
 
 	m.tracker.Unregister(agentID)

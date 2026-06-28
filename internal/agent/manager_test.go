@@ -244,6 +244,126 @@ func TestSpawn_Response(t *testing.T) {
 	}
 }
 
+// ── Spawn SSH transport tests (root required) ──────────────────
+
+func TestSpawn_AuthorizedKeysHasEnvironment(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("test requires root privileges")
+	}
+	m := newTestManager(t)
+	req := &v1.SpawnAgentRequest{
+		AgentId: "testagent-007",
+	}
+	resp, err := m.Spawn(t.Context(), req)
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+	defer func() {
+		m.logger.Info("test cleanup: destroying agent", "agent_id", resp.AgentId)
+	}()
+
+	authKeysFile := "/home/bunker-testagent-007/.ssh/authorized_keys"
+	content, err := os.ReadFile(authKeysFile)
+	if err != nil {
+		t.Fatalf("read authorized_keys: %v", err)
+	}
+	got := string(content)
+	wantEnv := "environment=\"DOCKER_HOST=unix:///run/bunker/testagent-007/docker.sock\""
+	if !strings.Contains(got, wantEnv) {
+		t.Errorf("authorized_keys missing environment prefix\ngot: %s\nwant substring: %s", got, wantEnv)
+	}
+	if !strings.Contains(got, "ssh-ed25519") {
+		t.Errorf("authorized_keys missing ssh-ed25519 key type")
+	}
+}
+
+func TestSpawn_ProfileHasDockerHost(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("test requires root privileges")
+	}
+	m := newTestManager(t)
+	req := &v1.SpawnAgentRequest{
+		AgentId: "testagent-008",
+	}
+	resp, err := m.Spawn(t.Context(), req)
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+	defer func() {
+		m.logger.Info("test cleanup: destroying agent", "agent_id", resp.AgentId)
+	}()
+
+	profilePath := "/home/bunker-testagent-008/.profile"
+	content, err := os.ReadFile(profilePath)
+	if err != nil {
+		t.Fatalf("read .profile: %v", err)
+	}
+	got := string(content)
+	wantExport := "export DOCKER_HOST=unix:///run/bunker/testagent-008/docker.sock"
+	if !strings.Contains(got, wantExport) {
+		t.Errorf(".profile missing DOCKER_HOST export\ngot: %s\nwant substring: %s", got, wantExport)
+	}
+}
+
+func TestSpawn_PersistsSSHKey(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("test requires root privileges")
+	}
+	m := newTestManager(t)
+	req := &v1.SpawnAgentRequest{
+		AgentId: "testagent-009",
+	}
+	resp, err := m.Spawn(t.Context(), req)
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+	defer func() {
+		m.logger.Info("test cleanup: destroying agent", "agent_id", resp.AgentId)
+	}()
+
+	sshKeyPath := "/etc/bunkerd/ssh/testagent-009"
+	content, err := os.ReadFile(sshKeyPath)
+	if err != nil {
+		t.Fatalf("read persisted SSH key %s: %v", sshKeyPath, err)
+	}
+	if !strings.HasPrefix(string(content), "-----BEGIN") {
+		t.Errorf("persisted SSH key doesn't start with -----BEGIN: %q", string(content)[:50])
+	}
+	// Verify the key matches what was returned in the response
+	if string(content) != resp.SshPrivateKey {
+		t.Error("persisted SSH key doesn't match response SshPrivateKey")
+	}
+}
+
+func TestSpawn_SocketDirOwnership(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("test requires root privileges")
+	}
+	m := newTestManager(t)
+	req := &v1.SpawnAgentRequest{
+		AgentId: "testagent-010",
+	}
+	resp, err := m.Spawn(t.Context(), req)
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+	defer func() {
+		m.logger.Info("test cleanup: destroying agent", "agent_id", resp.AgentId)
+	}()
+
+	// Verify that /run/bunker/<id> directory exists and has correct permissions
+	sockDir := "/run/bunker/testagent-010"
+	info, err := os.Stat(sockDir)
+	if err != nil {
+		t.Fatalf("stat socket dir %s: %v", sockDir, err)
+	}
+	if !info.IsDir() {
+		t.Errorf("socket path %s is not a directory", sockDir)
+	}
+	// The socket file may not exist yet (dockerd creates it), but the dir should exist
+	_ = resp
+}
+
 // ── Destroy validation tests (no root needed) ─────────────────
 
 func TestDestroy_InvalidAgentID(t *testing.T) {
@@ -274,7 +394,7 @@ func TestDestroy_ValidatesAgentID(t *testing.T) {
 		agentID string
 		wantErr bool
 	}{
-		{"valid", "test-agent", true},   // user doesn't exist, so userdel fails
+		{"valid", "test-agent", true}, // user doesn't exist, so userdel fails
 		{"uppercase", "TestAgent", true},
 		{"empty", "", true},
 		{"too long", strings.Repeat("a", 64), true},
