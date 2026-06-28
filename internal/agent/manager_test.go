@@ -9,13 +9,15 @@ import (
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 
 	"github.com/deployBunker/bunker/internal/config"
+	"github.com/deployBunker/bunker/internal/resource"
 )
 
 func newTestManager(t *testing.T) *AgentManager {
 	t.Helper()
 	cfg := config.DefaultConfig()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	return NewAgentManager(cfg, logger)
+	tracker := resource.NewTracker(cfg.Agent.MaxAgents, logger)
+	return NewAgentManager(cfg, logger, tracker)
 }
 
 // ── Unit tests on helper functions (no root needed) ──────────────
