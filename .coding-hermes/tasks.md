@@ -18,7 +18,7 @@
 
 ### Phase 3: CLI
 - [x] **WI-011**: `bunker connect` — register a bunkerd server
-- [ ] **WI-012**: `bunker spawn` — create agent, return connection bundle
+- [x] **WI-012**: `bunker spawn` — create agent, return connection bundle
 - [ ] **WI-013**: `bunker list` — list all agents across servers
 - [ ] **WI-014**: `bunker destroy` — cleanup agent
 - [ ] **WI-015**: `bunker metrics` — live agent resource usage
