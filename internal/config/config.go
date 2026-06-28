@@ -13,11 +13,12 @@ import (
 
 // Config is the top-level bunkerd configuration.
 type Config struct {
-	Server ServerConfig `mapstructure:"server"`
-	TLS    TLSConfig    `mapstructure:"tls"`
-	Auth   AuthConfig   `mapstructure:"auth"`
-	Agent  AgentConfig  `mapstructure:"agent"`
-	Tunnel TunnelConfig `mapstructure:"tunnel"`
+	Server      ServerConfig      `mapstructure:"server"`
+	TLS         TLSConfig         `mapstructure:"tls"`
+	Auth        AuthConfig        `mapstructure:"auth"`
+	Agent       AgentConfig       `mapstructure:"agent"`
+	Tunnel      TunnelConfig      `mapstructure:"tunnel"`
+	NamedTunnel NamedTunnelConfig `mapstructure:"named_tunnel"`
 }
 
 // ServerConfig holds gRPC and REST listener addresses.
@@ -63,6 +64,14 @@ type TunnelConfig struct {
 	StartupTimeout time.Duration `mapstructure:"startup_timeout"`
 }
 
+// NamedTunnelConfig holds Cloudflare named tunnel settings for custom domain routing.
+type NamedTunnelConfig struct {
+	Enabled         bool   `mapstructure:"enabled"`
+	Name            string `mapstructure:"name"`
+	CredentialsFile string `mapstructure:"credentials_file"`
+	Domain          string `mapstructure:"domain"`
+}
+
 // DefaultConfig returns a Config with sensible defaults.
 func DefaultConfig() *Config {
 	return &Config{
@@ -92,6 +101,9 @@ func DefaultConfig() *Config {
 			TunnelPort:     8080,
 			NoAutoupdate:   true,
 			StartupTimeout: 30 * time.Second,
+		},
+		NamedTunnel: NamedTunnelConfig{
+			Enabled: false,
 		},
 	}
 }
@@ -134,6 +146,10 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("tunnel.tunnel_port")
 	v.BindEnv("tunnel.no_autoupdate")
 	v.BindEnv("tunnel.startup_timeout")
+	v.BindEnv("named_tunnel.enabled")
+	v.BindEnv("named_tunnel.name")
+	v.BindEnv("named_tunnel.credentials_file")
+	v.BindEnv("named_tunnel.domain")
 
 	// Read config file if it exists
 	if _, err := os.Stat(path); err == nil {
