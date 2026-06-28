@@ -36,6 +36,15 @@
 
 ---
 
+## Tech Stack (researched & locked)
+- **gRPC+REST**: connect-go (v1.20) — single binary, net/http native
+- **Router**: chi (v5) — stdlib-compatible
+- **Auth**: golang-jwt (v5.3) — HS256/RS256/Ed25519
+- **TLS**: certmagic (v0.25) — auto Let's Encrypt, self-signed, mTLS
+- **CLI**: cobra (v1.10) + viper (v1.21)
+- **Config**: YAML at /etc/bunkerd/config.yaml
+- **TryCloudflare**: shell out to cloudflared binary
+
 ## Task States
 - `[ ]` — pending
 - `[~]` — in progress
