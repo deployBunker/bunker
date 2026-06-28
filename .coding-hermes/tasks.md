@@ -8,7 +8,7 @@
 - [x] **WI-003**: Agent spawn lifecycle — `useradd` → generate SSH keypair → start dockerd via systemd-run
 - [x] **WI-004**: Agent destroy lifecycle — stop dockerd → `userdel -r` → free port range
 - [x] **WI-005**: Resource tracking — capacity management, cgroup CPU/memory limits
-- [ ] **WI-006**: Port range allocator — assign/free per-agent port ranges
+- [x] **WI-006**: Port range allocator — assign/free per-agent port ranges
 
 ### Phase 2: Networking
 - [ ] **WI-007**: SSH transport — `DOCKER_HOST=ssh://` support with per-agent SSH keys
