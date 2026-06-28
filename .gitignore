@@ -1,0 +1,22 @@
+# Built binaries (root only)
+/bunkerd
+/bunker
+
+# Proto generated
+proto/**/*.pb.go
+proto/**/*.pb.gw.go
+
+# Secrets
+*.token
+*.pem
+*.key
+!id_ed25519_bunker.pub
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Build
+/tmp/
+/dist/

@@ -1,0 +1,199 @@
+syntax = "proto3";
+
+package bunker.v1;
+
+option go_package = "github.com/wojons/bunker/proto/bunker/v1;bunkerv1";
+
+// ── Bunkerd — Server Daemon API ───────────────────────────────
+
+service Bunkerd {
+  // Server management
+  rpc ServerInfo(ServerInfoRequest) returns (ServerInfoResponse);
+  rpc ServerMetrics(ServerMetricsRequest) returns (ServerMetricsResponse);
+
+  // Agent lifecycle
+  rpc SpawnAgent(SpawnAgentRequest) returns (SpawnAgentResponse);
+  rpc DestroyAgent(DestroyAgentRequest) returns (DestroyAgentResponse);
+  rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
+  rpc GetAgent(GetAgentRequest) returns (GetAgentResponse);
+
+  // Agent actions
+  rpc AgentMetrics(AgentMetricsRequest) returns (AgentMetricsResponse);
+  rpc ExecAgent(ExecAgentRequest) returns (stream ExecAgentResponse);
+  rpc HeartbeatAgent(HeartbeatAgentRequest) returns (HeartbeatAgentResponse);
+}
+
+// ── Agent Service (scoped sub-key access) ─────────────────────
+
+service Agent {
+  rpc GetInfo(GetInfoRequest) returns (GetInfoResponse);
+  rpc Metrics(AgentMetricsRequest) returns (AgentMetricsResponse);
+  rpc Heartbeat(HeartbeatAgentRequest) returns (HeartbeatAgentResponse);
+}
+
+// ── Resource limits ───────────────────────────────────────────
+
+message ResourceLimits {
+  double cpu_quota = 1;        // CPU quota (cores), e.g. 2.0
+  uint64 memory_max_bytes = 2;  // Memory limit in bytes
+  uint64 disk_max_bytes = 3;    // Disk quota in bytes
+  uint32 max_docker_containers = 4; // Max concurrent Docker containers
+}
+
+// ── Network configuration ─────────────────────────────────────
+
+message NetworkConfig {
+  enum Mode {
+    MODE_UNSPECIFIED = 0;
+    MODE_CLOUDFLARE_TUNNEL = 1;  // Cloudflare Tunnel (named or TryCloudflare)
+    MODE_TAILSCALE = 2;          // Tailscale mesh
+    MODE_DIRECT = 3;             // Direct port (behind load balancer)
+  }
+  Mode mode = 1;
+  string domain = 2;              // Optional: custom domain for Cloudflare
+  bool trycloudflare = 3;         // Use anonymous TryCloudflare tunnel
+  uint32 port_range_start = 4;    // Start of per-agent port range
+  uint32 port_range_end = 5;      // End of per-agent port range
+}
+
+// ── Server info ───────────────────────────────────────────────
+
+message ServerInfoRequest {}
+
+message ServerInfoResponse {
+  string hostname = 1;
+  string version = 2;
+  uint64 uptime_seconds = 3;
+  uint32 agent_count = 4;
+  uint32 max_agents = 5;
+  ResourceLimits total_resources = 6;
+  ResourceLimits available_resources = 7;
+}
+
+message ServerMetricsRequest {}
+
+message ServerMetricsResponse {
+  double cpu_usage_percent = 1;
+  uint64 memory_used_bytes = 2;
+  uint64 memory_total_bytes = 3;
+  uint64 disk_used_bytes = 4;
+  uint64 disk_total_bytes = 5;
+  uint32 docker_containers_total = 6;
+  repeated AgentSummary agents = 7;
+}
+
+// ── Agent ─────────────────────────────────────────────────────
+
+message AgentSummary {
+  string agent_id = 1;
+  string status = 2;             // pending, starting, running, stopping, stopped, failed
+  ResourceLimits limits = 3;
+  string created_at = 4;
+  string expires_at = 5;
+  string public_url = 6;
+  uint32 port_range_start = 7;
+  uint32 port_range_end = 8;
+}
+
+message SpawnAgentRequest {
+  string agent_id = 1;           // Optional: auto-generated if empty
+  ResourceLimits limits = 2;     // Optional: uses server defaults if empty
+  NetworkConfig network = 3;     // Optional: uses server defaults if empty
+  string ttl = 4;                // e.g. "6h", "24h", "7d"
+  bytes ssh_public_key = 5;      // Optional: push existing key
+  map<string, string> labels = 6;
+}
+
+message SpawnAgentResponse {
+  string agent_id = 1;
+  string docker_host_ssh = 2;    // DOCKER_HOST=ssh://agent-N@host
+  string docker_host_tunnel = 3; // ssh -L 2376:... command
+  string sshfs_mount = 4;        // sshfs mount command
+  string public_url = 5;         // https://agent-N.trycloudflare.com
+  uint32 port_range_start = 6;
+  uint32 port_range_end = 7;
+  string ssh_private_key = 8;    // Generated key (if not pushed)
+  ResourceLimits limits = 9;
+  string expires_at = 10;
+}
+
+message DestroyAgentRequest {
+  string agent_id = 1;
+  bool force = 2;                // Force destroy even if running
+}
+
+message DestroyAgentResponse {
+  string agent_id = 1;
+  string status = 2;             // destroyed, not_found, error
+}
+
+message ListAgentsRequest {
+  string status_filter = 1;      // Optional: running, stopped, all
+  uint32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListAgentsResponse {
+  repeated AgentSummary agents = 1;
+  string next_page_token = 2;
+  uint32 total_count = 3;
+}
+
+message GetAgentRequest {
+  string agent_id = 1;
+}
+
+message GetAgentResponse {
+  AgentSummary agent = 1;
+}
+
+message AgentMetricsRequest {
+  string agent_id = 1;
+}
+
+message AgentMetricsResponse {
+  string agent_id = 1;
+  string status = 2;
+  double cpu_usage_percent = 3;
+  uint64 memory_used_bytes = 4;
+  uint64 memory_limit_bytes = 5;
+  uint64 disk_used_bytes = 6;
+  uint64 disk_limit_bytes = 7;
+  uint32 docker_containers = 8;
+  string uptime = 9;
+}
+
+message HeartbeatAgentRequest {
+  string agent_id = 1;
+}
+
+message HeartbeatAgentResponse {
+  string agent_id = 1;
+  string expires_at = 2;
+  bool acknowledged = 3;
+}
+
+message ExecAgentRequest {
+  string agent_id = 1;
+  string command = 2;
+  repeated string args = 3;
+  uint32 timeout_seconds = 4;
+}
+
+message ExecAgentResponse {
+  oneof output {
+    bytes stdout = 1;
+    bytes stderr = 2;
+  }
+  int32 exit_code = 3;
+}
+
+message GetInfoRequest {}
+message GetInfoResponse {
+  string agent_id = 1;
+  string status = 2;
+  string docker_host = 3;
+  string public_url = 4;
+  ResourceLimits limits = 5;
+  string expires_at = 6;
+}
