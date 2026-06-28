@@ -10,6 +10,11 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+
+	"github.com/deployBunker/bunker/internal/cli"
 )
 
 func main() {
@@ -20,7 +25,23 @@ func main() {
 }
 
 func run() error {
-	fmt.Println("bunker v0.1.0 — CLI")
-	// TODO: WI-011 through WI-016 — full CLI surface
-	return nil
+	// Bind BUNKER_TOKEN env var early so it is available to subcommands.
+	viper.SetEnvPrefix("BUNKER")
+	viper.AutomaticEnv()
+	_ = viper.BindEnv("token") // BUNKER_TOKEN
+
+	root := &cobra.Command{
+		Use:   "bunker",
+		Short: "CLI for managing Bunker agent hosts",
+		Long: `bunker is the command-line tool for managing Bunker agent hosts.
+
+Manage servers, deploy bunkerd instances, connect to remote hosts,
+and control ephemeral development environments — all from the CLI.`,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+
+	root.AddCommand(cli.NewConnectCommand())
+
+	return root.Execute()
 }
