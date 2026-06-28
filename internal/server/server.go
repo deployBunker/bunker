@@ -23,6 +23,7 @@ import (
 	"github.com/deployBunker/bunker/internal/auth"
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/resource"
+	"github.com/deployBunker/bunker/internal/tailscale"
 	"github.com/deployBunker/bunker/internal/tunnel"
 )
 
@@ -65,8 +66,9 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	authInterceptor := auth.NewAuthInterceptor(s.cfg.Auth.Token, s.cfg.Auth.Enabled)
 	tracker := resource.NewTracker(s.cfg.Agent.MaxAgents, s.logger)
 	tunnelMgr := tunnel.NewTunnelManager(&s.cfg.Tunnel, s.logger)
-	agentMgr := agent.NewAgentManager(s.cfg, s.logger, tracker, tunnelMgr)
-	bunkerdSvc := &bunkerdService{cfg: s.cfg, logger: s.logger, agentMgr: agentMgr, tracker: tracker, tunnelMgr: tunnelMgr}
+	tailscaleMgr := tailscale.NewTailscaleManager(&s.cfg.Tailscale, s.logger)
+	agentMgr := agent.NewAgentManager(s.cfg, s.logger, tracker, tunnelMgr, tailscaleMgr)
+	bunkerdSvc := &bunkerdService{cfg: s.cfg, logger: s.logger, agentMgr: agentMgr, tracker: tracker, tunnelMgr: tunnelMgr, tailscaleMgr: tailscaleMgr}
 	bunkerdPath, bunkerdHandler := bunkerv1connect.NewBunkerdHandler(
 		bunkerdSvc,
 		connect.WithInterceptors(authInterceptor),

@@ -20,6 +20,7 @@ type AgentRecord struct {
 	PortRangeEnd      uint32
 	PublicURL         string
 	SshPrivateKeyPath string // path to persisted SSH private key
+	TailnetIP         string // tailscale tailnet IP
 }
 
 // Tracker manages agent state, capacity, and resource allocation.
@@ -119,5 +120,6 @@ func (r *AgentRecord) ToAgentSummary() *v1.AgentSummary {
 		PublicUrl:      r.PublicURL,
 		PortRangeStart: r.PortRangeStart,
 		PortRangeEnd:   r.PortRangeEnd,
+		TailnetIp:      r.TailnetIP,
 	}
 }

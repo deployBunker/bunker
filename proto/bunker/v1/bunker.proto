@@ -93,6 +93,7 @@ message AgentSummary {
   string public_url = 6;
   uint32 port_range_start = 7;
   uint32 port_range_end = 8;
+  string tailnet_ip = 9;
 }
 
 message SpawnAgentRequest {
@@ -115,6 +116,7 @@ message SpawnAgentResponse {
   string ssh_private_key = 8;    // Generated key (if not pushed)
   ResourceLimits limits = 9;
   string expires_at = 10;
+  string tailnet_ip = 11;
 }
 
 message DestroyAgentRequest {

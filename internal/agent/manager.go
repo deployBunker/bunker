@@ -17,6 +17,7 @@ import (
 
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/resource"
+	"github.com/deployBunker/bunker/internal/tailscale"
 	"github.com/deployBunker/bunker/internal/tunnel"
 )
 
@@ -25,15 +26,16 @@ var validAgentID = regexp.MustCompile(`^[a-z0-9-]{1,63}$`)
 
 // AgentManager handles the agent spawn lifecycle.
 type AgentManager struct {
-	cfg        *config.Config
-	logger     *slog.Logger
-	tracker    *resource.Tracker
-	portAlloc  *resource.PortAllocator
-	tunnelMgr  *tunnel.TunnelManager
+	cfg         *config.Config
+	logger      *slog.Logger
+	tracker     *resource.Tracker
+	portAlloc   *resource.PortAllocator
+	tunnelMgr   *tunnel.TunnelManager
+	tailscaleMgr *tailscale.TailscaleManager
 }
 
 // NewAgentManager creates a new AgentManager.
-func NewAgentManager(cfg *config.Config, logger *slog.Logger, tracker *resource.Tracker, tunnelMgr *tunnel.TunnelManager) *AgentManager {
+func NewAgentManager(cfg *config.Config, logger *slog.Logger, tracker *resource.Tracker, tunnelMgr *tunnel.TunnelManager, tailscaleMgr *tailscale.TailscaleManager) *AgentManager {
 	pa, err := resource.NewPortAllocator(
 		cfg.Agent.PortRangeStart,
 		cfg.Agent.PortRangeEnd,
@@ -48,7 +50,7 @@ func NewAgentManager(cfg *config.Config, logger *slog.Logger, tracker *resource.
 		)
 		// Port allocator is nil when disabled; spawn will use the full range as fallback.
 	}
-	return &AgentManager{cfg: cfg, logger: logger, tracker: tracker, portAlloc: pa, tunnelMgr: tunnelMgr}
+	return &AgentManager{cfg: cfg, logger: logger, tracker: tracker, portAlloc: pa, tunnelMgr: tunnelMgr, tailscaleMgr: tailscaleMgr}
 }
 
 // generateUUIDv4 creates a version-4 UUID using crypto/rand.
@@ -320,6 +322,18 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		}
 	}
 
+	// ── Start tailscale if network mode requests it ─────────────
+	var tailnetIP string
+	if m.tailscaleMgr != nil && req.GetNetwork() != nil && req.GetNetwork().GetMode() == v1.NetworkConfig_MODE_TAILSCALE {
+		ip, err := m.tailscaleMgr.Start(ctx, agentID)
+		if err != nil {
+			m.logger.Warn("tailscale start failed, continuing without tailnet IP", "agent_id", agentID, "error", err)
+		} else {
+			tailnetIP = ip
+			rec.TailnetIP = tailnetIP
+		}
+	}
+
 	resp := &v1.SpawnAgentResponse{
 		AgentId:        agentID,
 		DockerHostSsh:  fmt.Sprintf("DOCKER_HOST=ssh://%s@%s", username, hostname),
@@ -329,6 +343,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		PortRangeEnd:   portEnd,
 		ExpiresAt:      time.Now().Add(6 * time.Hour).Format(time.RFC3339),
 		PublicUrl:      publicURL,
+		TailnetIp:      tailnetIP,
 	}
 
 	m.logger.Info("agent spawned successfully", "agent_id", agentID)
@@ -389,6 +404,12 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	if m.tunnelMgr != nil {
 		if err := m.tunnelMgr.Stop(agentID); err != nil {
 			m.logger.Warn("tunnel stop failed", "agent_id", agentID, "error", err)
+		}
+	}
+
+	if m.tailscaleMgr != nil {
+		if err := m.tailscaleMgr.Stop(agentID); err != nil {
+			m.logger.Warn("tailscale stop failed", "agent_id", agentID, "error", err)
 		}
 	}
 
