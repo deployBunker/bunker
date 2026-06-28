@@ -17,7 +17,7 @@
 - [x] **WI-010**: Tailscale integration — per-agent tailnet IP
 
 ### Phase 3: CLI
-- [ ] **WI-011**: `bunker connect` — register a bunkerd server
+- [x] **WI-011**: `bunker connect` — register a bunkerd server
 - [ ] **WI-012**: `bunker spawn` — create agent, return connection bundle
 - [ ] **WI-013**: `bunker list` — list all agents across servers
 - [ ] **WI-014**: `bunker destroy` — cleanup agent
