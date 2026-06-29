@@ -32,6 +32,7 @@ type AgentManager struct {
 	portAlloc    *resource.PortAllocator
 	tunnelMgr    *tunnel.TunnelManager
 	tailscaleMgr *tailscale.TailscaleManager
+	ttlStop      chan struct{}
 }
 
 // NewAgentManager creates a new AgentManager.
@@ -50,7 +51,46 @@ func NewAgentManager(cfg *config.Config, logger *slog.Logger, tracker *resource.
 		)
 		// Port allocator is nil when disabled; spawn will use the full range as fallback.
 	}
-	return &AgentManager{cfg: cfg, logger: logger, tracker: tracker, portAlloc: pa, tunnelMgr: tunnelMgr, tailscaleMgr: tailscaleMgr}
+	am := &AgentManager{cfg: cfg, logger: logger, tracker: tracker, portAlloc: pa, tunnelMgr: tunnelMgr, tailscaleMgr: tailscaleMgr, ttlStop: make(chan struct{})}
+	am.startTTLReaper()
+	return am
+}
+
+// Stop signals the TTL reaper goroutine to exit. It should be called before
+// discarding the AgentManager.
+func (m *AgentManager) Stop() {
+	close(m.ttlStop)
+}
+
+// startTTLReaper starts a background goroutine that periodically scans for
+// expired agents and destroys them. The reaper exits when ttlStop is closed.
+func (m *AgentManager) startTTLReaper() {
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				m.reapExpiredAgents()
+			case <-m.ttlStop:
+				return
+			}
+		}
+	}()
+}
+
+// reapExpiredAgents destroys all agents whose ExpiresAt is in the past.
+func (m *AgentManager) reapExpiredAgents() {
+	now := time.Now()
+	for _, rec := range m.tracker.List() {
+		if rec.ExpiresAt.IsZero() || rec.ExpiresAt.After(now) {
+			continue
+		}
+		m.logger.Info("TTL expired, destroying agent", "agent_id", rec.AgentID, "expires_at", rec.ExpiresAt)
+		if _, err := m.Destroy(context.Background(), rec.AgentID, false); err != nil {
+			m.logger.Error("TTL reaper failed to destroy agent", "agent_id", rec.AgentID, "error", err)
+		}
+	}
 }
 
 // generateUUIDv4 creates a version-4 UUID using crypto/rand.
@@ -301,12 +341,25 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		effectiveLimits.MaxDockerContainers = req.GetLimits().GetMaxDockerContainers()
 	}
 
+	// Determine effective TTL: request > server default.
+	ttl := m.cfg.Agent.DefaultTTL
+	if ttl <= 0 {
+		ttl = 6 * time.Hour
+	}
+	if req.GetTtl() != "" {
+		if parsed, err := time.ParseDuration(req.GetTtl()); err == nil && parsed > 0 {
+			ttl = parsed
+		} else if err != nil {
+			m.logger.Warn("invalid ttl in spawn request, using default", "agent_id", agentID, "ttl", req.GetTtl(), "error", err)
+		}
+	}
+
 	rec := &resource.AgentRecord{
 		AgentID:           agentID,
 		Status:            "running",
 		Limits:            effectiveLimits,
 		CreatedAt:         time.Now(),
-		ExpiresAt:         time.Now().Add(6 * time.Hour),
+		ExpiresAt:         time.Now().Add(ttl),
 		PortRangeStart:    portStart,
 		PortRangeEnd:      portEnd,
 		SshPrivateKeyPath: sshKeyPath,
@@ -352,7 +405,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		Limits:         effectiveLimits,
 		PortRangeStart: portStart,
 		PortRangeEnd:   portEnd,
-		ExpiresAt:      time.Now().Add(6 * time.Hour).Format(time.RFC3339),
+		ExpiresAt:      time.Now().Add(ttl).Format(time.RFC3339),
 		PublicUrl:      publicURL,
 		TailnetIp:      tailnetIP,
 	}
@@ -454,6 +507,7 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	if out, err := cmd.CombinedOutput(); err != nil {
 		// Check if user doesn't exist (already destroyed)
 		if !force {
+			m.tracker.Unregister(agentID)
 			return &v1.DestroyAgentResponse{AgentId: agentID, Status: "not_found"},
 				fmt.Errorf("userdel %s failed: %w (output: %s)", username, err, string(out))
 		}

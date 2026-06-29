@@ -24,6 +24,9 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Auth.JWTTTL != 6*time.Hour {
 		t.Errorf("expected jwt_ttl 6h, got %v", cfg.Auth.JWTTTL)
 	}
+	if cfg.Agent.DefaultTTL != 6*time.Hour {
+		t.Errorf("expected agent default_ttl 6h, got %v", cfg.Agent.DefaultTTL)
+	}
 }
 
 func TestLoad_Defaults(t *testing.T) {
@@ -51,6 +54,8 @@ tls:
 auth:
   enabled: true
   token: "test-token"
+agent:
+  default_ttl: "30m"
 `
 	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -74,6 +79,9 @@ auth:
 	}
 	if cfg.Auth.Token != "test-token" {
 		t.Errorf("expected test-token, got %q", cfg.Auth.Token)
+	}
+	if cfg.Agent.DefaultTTL != 30*time.Minute {
+		t.Errorf("expected default_ttl 30m, got %v", cfg.Agent.DefaultTTL)
 	}
 }
 
