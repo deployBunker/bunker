@@ -48,6 +48,15 @@
 - [x] **WI-033**: coding-hermes full integration test — added internal/hermes/integration_test.go with 5 safe CI integration tests covering skill lifecycle, task queue format, core skills, tracker integration, and cleanup idempotency. (2026-06-29)
 - [x] **WI-034**: Regression suite CI — wire regression-tests.sh into GitHub Actions or cron, run on every push to main.
 
+### Phase 7: E2E hardening (2026-06-29 findings)
+- [ ] **WI-035**: Rootless Docker for agents — WI-003's dockerd start never actually worked for unprivileged users. dockerd requires root; agents run as non-root. Fix: update `manager.go` spawn to use `dockerd-rootless-setuptool.sh` (download from get.docker.com/rootless), configure subuid/subgid per user, add AppArmor profile for rootlesskit on Ubuntu 24.04 (`/etc/apparmor.d/home.bunker-<id>.bin.rootlesskit`). Verify with `docker run hello-world` via `bunker exec`. Server deps: rootlesskit + uidmap already installed on bunker-mvp.
+- [ ] **WI-036**: JWT auth end-to-end — enable JWT in config, generate scoped sub-key for agent, verify rejected without token, verify accepted with valid sub-key. (Code exists from WI-029, needs live config toggle + test.)
+- [ ] **WI-037**: TLS/mTLS end-to-end — enable TLS in config, generate self-signed cert via certmagic, connect CLI with `--tls-insecure`, verify encrypted transport. (Code exists from WI-030, needs live config + domain or self-signed.)
+- [ ] **WI-038**: TTL expiry end-to-end — spawn agent with `--ttl 30s`, verify auto-destroy after 30s, verify heartbeat extends TTL. (Code exists from WI-031, needs timed test.)
+- [ ] **WI-039**: Cloudflare tunnel end-to-end — install `cloudflared` on server, spawn agent with `--trycloudflare`, verify public URL reachable via curl. (Code exists from WI-028, needs server-side binary.)
+
+> ⚠ **WI-003 post-mortem**: Spawn was marked complete but dockerd never ran under unprivileged users. Root cause: no rootless docker config in spawn code, and no E2E test that actually ran `docker run` inside an agent. WI-035 is the fix; WI-033 (integration test) should also be extended to include a `docker run` smoke assertion once rootless docker works.
+
 ---
 
 ## Tech Stack (researched & locked)
