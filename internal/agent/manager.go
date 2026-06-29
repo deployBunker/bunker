@@ -357,6 +357,57 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 // Destroy tears down an agent: stops the dockerd systemd user unit,
 // removes the Linux user with -r, cleans up /run/bunker/<id>/.
 // Returns a DestroyAgentResponse with status "destroyed", "not_found", or "error".
+// stopDockerdDirect finds the dockerd process running under the given user
+// and sends it SIGTERM, then SIGKILL after a grace period. This avoids the
+// systemctl --user session mismatch because the dockerd was started via
+// systemd-run --user under the agent's user session, not the root session.
+func stopDockerdDirect(ctx context.Context, username, unitName string, logger *slog.Logger) error {
+	// Try pgrep first: find dockerd processes owned by the agent user.
+	cmd := exec.CommandContext(ctx, "pgrep", "-u", username, "-f", "dockerd")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("pgrep dockerd for user %s: %w (output: %s)", username, err, string(out))
+	}
+	pids := strings.Fields(string(out))
+	if len(pids) == 0 {
+		return fmt.Errorf("no dockerd process found for user %s", username)
+	}
+
+	for _, pidStr := range pids {
+		pid := strings.TrimSpace(pidStr)
+		if pid == "" {
+			continue
+		}
+		logger.Info("sending SIGTERM to dockerd", "pid", pid, "user", username)
+		if err := exec.CommandContext(ctx, "kill", "-TERM", pid).Run(); err != nil {
+			logger.Warn("SIGTERM dockerd failed", "pid", pid, "error", err)
+		}
+	}
+
+	// Wait up to 5s for processes to exit, then SIGKILL.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		cmd = exec.CommandContext(ctx, "pgrep", "-u", username, "-f", "dockerd")
+		out, err = cmd.CombinedOutput()
+		if err != nil || len(strings.Fields(string(out))) == 0 {
+			logger.Info("dockerd exited after SIGTERM", "user", username)
+			return nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	// SIGKILL remaining processes
+	for _, pidStr := range pids {
+		pid := strings.TrimSpace(pidStr)
+		if pid == "" {
+			continue
+		}
+		logger.Info("sending SIGKILL to dockerd", "pid", pid, "user", username)
+		_ = exec.CommandContext(ctx, "kill", "-KILL", pid).Run()
+	}
+	return nil
+}
+
 func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) (*v1.DestroyAgentResponse, error) {
 	// Step 0: validate agent_id
 	if agentID == "" || !validAgentID.MatchString(agentID) {
@@ -368,20 +419,30 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 
 	// Step 1: Stop the dockerd systemd user unit
 	unitName := "bunker-docker-" + agentID
-	cmd := exec.CommandContext(ctx, "systemctl", "--user", "stop", unitName)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		m.logger.Warn("systemctl stop failed (may not exist)", "unit", unitName, "error", err, "output", string(out))
-		// Non-fatal — the unit may not exist if agent was partially created or already destroyed
+	username := "bunker-" + agentID
+
+	// The dockerd unit was started via systemd-run --user, so it runs under
+	// the agent's user session. systemctl --user from the root foreman session
+	// targets the wrong user manager. We must either:
+	//   (a) use systemctl --user --machine=<user>@.host, or
+	//   (b) find the dockerd PID and kill it directly.
+	// Option (b) is simpler and avoids DBus/machined dependencies.
+	if err := stopDockerdDirect(ctx, username, unitName, m.logger); err != nil {
+		m.logger.Warn("direct dockerd stop failed", "unit", unitName, "error", err)
+		// Fallback: try systemctl --user (may work if user linger is enabled)
+		cmd := exec.CommandContext(ctx, "systemctl", "--user", "stop", unitName)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			m.logger.Warn("systemctl stop failed (may not exist)", "unit", unitName, "error", err, "output", string(out))
+		}
 	}
 
 	// Step 2: Disable the unit (prevent auto-restart)
-	cmd = exec.CommandContext(ctx, "systemctl", "--user", "disable", unitName)
+	cmd := exec.CommandContext(ctx, "systemctl", "--user", "disable", unitName)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		m.logger.Warn("systemctl disable failed", "unit", unitName, "error", err, "output", string(out))
 	}
 
 	// Step 3: Remove the Linux user
-	username := "bunker-" + agentID
 	cmd = exec.CommandContext(ctx, "userdel", "-r", username)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		// Check if user doesn't exist (already destroyed)
