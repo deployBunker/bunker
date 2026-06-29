@@ -415,3 +415,14 @@ func TestDestroy_ValidatesAgentID(t *testing.T) {
 		})
 	}
 }
+
+func TestStopDockerdDirect_NoProcess(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	err := stopDockerdDirect(t.Context(), "nonexistent-user-12345", "bunker-docker-test", logger)
+	if err == nil {
+		t.Fatal("expected error when no dockerd process exists")
+	}
+	if !strings.Contains(err.Error(), "no dockerd process found") && !strings.Contains(err.Error(), "pgrep") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
