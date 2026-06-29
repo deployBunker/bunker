@@ -20,7 +20,7 @@
 - [x] **WI-011**: `bunker connect` — register a bunkerd server
 - [x] **WI-012**: `bunker spawn` — create agent, return connection bundle
 - [x] **WI-013**: `bunker list` — list all agents across servers
-- [ ] **WI-014**: `bunker destroy` — cleanup agent
+- [x] **WI-014**: `bunker destroy` — cleanup agent
 - [ ] **WI-015**: `bunker metrics` — live agent resource usage
 - [ ] **WI-016**: `bunker exec` — execute command in agent context
 
