@@ -22,7 +22,7 @@
 - [x] **WI-013**: `bunker list` — list all agents across servers
 - [x] **WI-014**: `bunker destroy` — cleanup agent
 - [x] **WI-015**: `bunker metrics` — live agent resource usage (2026-06-28)
-- [ ] **WI-016**: `bunker exec` — execute command in agent context
+- [x] **WI-016**: `bunker exec` — execute command in agent context
 
 ### Phase 4: REST API
 - [ ] **WI-017**: REST gateway — gRPC-Gateway or connect-go HTTP handlers
