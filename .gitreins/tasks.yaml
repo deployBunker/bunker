@@ -136,3 +136,29 @@ tasks:
   status: complete
   created_at: '2026-06-29T13:47:43.802974+00:00'
   completed_at: '2026-06-29T13:47:53.681232+00:00'
+- id: wi-026
+  title: Multi-agent concurrency test
+  criteria:
+  - internal/agent/concurrency_test.go exists and compiles
+  - TestConcurrency_SpawnFiveAgents spawns 5 agents in parallel and verifies unique
+    users, port ranges, home dirs, authorized_keys, and socket dirs
+  - TestConcurrency_PortAllocatorIsolation proves disjoint port ranges under concurrent
+    allocation
+  - TestConcurrency_TrackerCapacity proves concurrent registrations respect maxAgents
+  - go test ./internal/agent/... passes
+  - go vet ./... is clean
+  status: complete
+  created_at: '2026-06-29T15:24:51.273004+00:00'
+  completed_at: '2026-06-29T15:24:56.627483+00:00'
+- id: wi-027
+  title: cgroup enforcement test
+  criteria:
+  - Agent spawn accepts CPU and memory cgroup limits (0.5 CPU / 256MB memory)
+  - Spawned agent cgroup slice includes cpu.max and memory.max settings
+  - Stress test inside agent container is killed by OOM or throttled within limit
+  - Test runs without requiring real dockerd by mocking cgroup filesystem or exec
+    path
+  - go test ./internal/agent/... passes
+  - go vet ./... is clean
+  status: in_progress
+  created_at: '2026-06-29T15:56:25.605320+00:00'
