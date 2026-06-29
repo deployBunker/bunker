@@ -106,7 +106,7 @@ func TestSpawnCommand_Success(t *testing.T) {
 		spawnResp: &v1.SpawnAgentResponse{
 			AgentId:       "abc12345",
 			DockerHostSsh: "DOCKER_HOST=ssh://bunker-abc12345@host",
-			SshPrivateKey: "-----BEGIN OPENSSH PRIVATE KEY-----\ntest\n-----END-----",
+			SshPrivateKey: "test-private-key-data",
 			PublicUrl:     "https://abc12345.trycloudflare.com",
 			PortRangeStart: 30000,
 			PortRangeEnd:   30099,
@@ -146,7 +146,7 @@ func TestSpawnCommand_Success_Minimal(t *testing.T) {
 		spawnResp: &v1.SpawnAgentResponse{
 			AgentId:       "min123",
 			DockerHostSsh: "DOCKER_HOST=ssh://min@host",
-			SshPrivateKey: "-----BEGIN KEY-----\nminimal\n-----END-----",
+			SshPrivateKey: "test-private-key-data",
 		},
 	}
 	srv := newSpawnTestServer(t, mock)
