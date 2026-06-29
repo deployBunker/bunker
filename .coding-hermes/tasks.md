@@ -35,7 +35,7 @@
 - [x] **WI-022**: GitReins Tier 1 + Tier 2 config — secrets, lint, tests, eval (2026-06-29)
 
 ### Phase 6: Bug fixes + hardening (regression findings 2026-06-29)
-- [ ] **WI-023**: Fix destroy — systemctl user-instance mismatch — `systemctl --user stop` targets root, but dockerd runs under agent user. Stop dockerd via `systemctl --user --machine=bunker-<id>@ stop` or kill the process directly.
+- [x] **WI-023**: Fix destroy — systemctl user-instance mismatch — `systemctl --user stop` targets root, but dockerd runs under agent user. Stop dockerd via `systemctl --user --machine=bunker-<id>@ stop` or kill the process directly.
 - [ ] **WI-024**: Fix exec DOCKER_HOST propagation — authorized_keys `environment=` sets DOCKER_HOST correctly but the SSH session may not pick it up. Verify with `docker ps` inside exec.
 - [ ] **WI-025**: Fix systemd-run stale unit on re-spawn — when spawn reuses an agent_id from a previous incomplete destroy, `systemd-run --unit=` fails with "already loaded". Stop/disable stale unit before re-creating (partial fix in manager.go, needs verification).
 - [ ] **WI-026**: Multi-agent concurrency test — spawn 5+ agents simultaneously, verify each has isolated dockerd, unique port range, independent home directories.
