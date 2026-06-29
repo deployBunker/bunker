@@ -181,12 +181,12 @@ func (sm *SkillManager) UpdateAgentTasks(agentID string, content string) error {
 
 // AgentSkillInfo returns metadata about an agent's skill setup.
 type AgentSkillInfo struct {
-	AgentID        string    `json:"agent_id"`
-	SkillsDir      string    `json:"skills_dir"`
-	TasksExist     bool      `json:"tasks_exist"`
-	Version        string    `json:"version"`
-	CoreSkills     []string  `json:"core_skills"`
-	InitializedAt  time.Time `json:"initialized_at"`
+	AgentID       string    `json:"agent_id"`
+	SkillsDir     string    `json:"skills_dir"`
+	TasksExist    bool      `json:"tasks_exist"`
+	Version       string    `json:"version"`
+	CoreSkills    []string  `json:"core_skills"`
+	InitializedAt time.Time `json:"initialized_at"`
 }
 
 // GetAgentSkillInfo returns information about the agent's skill workspace.

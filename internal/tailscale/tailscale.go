@@ -19,9 +19,9 @@ const defaultTimeout = 30 * time.Second
 
 // runningTailscale tracks an active tailscale connection for a single agent.
 type runningTailscale struct {
-	AgentID  string
+	AgentID   string
 	TailnetIP string
-	cancel   context.CancelFunc
+	cancel    context.CancelFunc
 }
 
 // TailscaleManager manages Tailscale per-agent connections.
@@ -127,9 +127,9 @@ func (m *TailscaleManager) Start(ctx context.Context, agentID string) (string, e
 	}
 
 	rt := &runningTailscale{
-		AgentID:  agentID,
+		AgentID:   agentID,
 		TailnetIP: tailnetIP,
-		cancel:   cancel,
+		cancel:    cancel,
 	}
 
 	m.mu.Lock()

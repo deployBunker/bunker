@@ -104,13 +104,13 @@ func TestSpawnCommand_Success(t *testing.T) {
 			},
 		},
 		spawnResp: &v1.SpawnAgentResponse{
-			AgentId:       "abc12345",
-			DockerHostSsh: "DOCKER_HOST=ssh://bunker-abc12345@host",
-			SshPrivateKey: "test-private-key-data",
-			PublicUrl:     "https://abc12345.trycloudflare.com",
+			AgentId:        "abc12345",
+			DockerHostSsh:  "DOCKER_HOST=ssh://bunker-abc12345@host",
+			SshPrivateKey:  "test-private-key-data",
+			PublicUrl:      "https://abc12345.trycloudflare.com",
 			PortRangeStart: 30000,
 			PortRangeEnd:   30099,
-			ExpiresAt:     "2026-06-29T00:00:00Z",
+			ExpiresAt:      "2026-06-29T00:00:00Z",
 		},
 	}
 	srv := newSpawnTestServer(t, mock)

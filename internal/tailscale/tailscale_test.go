@@ -60,7 +60,7 @@ func TestStart_AlreadyConnected(t *testing.T) {
 	// Manually inject a running connection to simulate already-connected.
 	m.mu.Lock()
 	m.nodes["test-agent-002"] = &runningTailscale{
-		AgentID:  "test-agent-002",
+		AgentID:   "test-agent-002",
 		TailnetIP: "100.64.0.1",
 	}
 	m.mu.Unlock()

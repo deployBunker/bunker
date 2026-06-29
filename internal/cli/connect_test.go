@@ -11,9 +11,9 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
-	"github.com/go-chi/chi/v5"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 	bunkerv1connect "github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect"
+	"github.com/go-chi/chi/v5"
 	"github.com/spf13/cobra"
 )
 

@@ -118,10 +118,10 @@ func (g *Graph) Stats() GraphStats {
 	}
 
 	return GraphStats{
-		TotalEdges:      len(g.edges),
-		UniqueFiles:     len(uniqueFiles),
-		UniqueDeps:      len(uniqueDeps),
-		FilesWithEdges:  len(g.byFrom),
+		TotalEdges:     len(g.edges),
+		UniqueFiles:    len(uniqueFiles),
+		UniqueDeps:     len(uniqueDeps),
+		FilesWithEdges: len(g.byFrom),
 	}
 }
 

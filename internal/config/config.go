@@ -30,14 +30,14 @@ type ServerConfig struct {
 
 // TLSConfig holds TLS settings.
 type TLSConfig struct {
-	Enabled    bool   `mapstructure:"enabled"`
-	CertFile   string `mapstructure:"cert_file"`
-	KeyFile    string `mapstructure:"key_file"`
-	AutoTLS    bool   `mapstructure:"auto_tls"`
-	Domain     string `mapstructure:"domain"`
-	MTLS       bool   `mapstructure:"mtls"`
-	CAFile     string `mapstructure:"ca_file"`
-	VerifyCN   string `mapstructure:"verify_cn"`
+	Enabled  bool   `mapstructure:"enabled"`
+	CertFile string `mapstructure:"cert_file"`
+	KeyFile  string `mapstructure:"key_file"`
+	AutoTLS  bool   `mapstructure:"auto_tls"`
+	Domain   string `mapstructure:"domain"`
+	MTLS     bool   `mapstructure:"mtls"`
+	CAFile   string `mapstructure:"ca_file"`
+	VerifyCN string `mapstructure:"verify_cn"`
 }
 
 // APIKey holds a generated API key with metadata.
