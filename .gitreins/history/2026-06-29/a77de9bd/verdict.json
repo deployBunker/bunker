@@ -1,0 +1,47 @@
+{
+  "task_id": "wi-021",
+  "task_title": "Hilo test harness \u2014 end-to-end tests exercising Hilo",
+  "task_criteria": [
+    "internal/hilo/hilo.go exists with Graph, Edge, GraphStats types and NewGraph, Related, Impact, Stats, BlastRadius, Reload methods",
+    "internal/hilo/hilo_test.go has 13 tests covering graph load, missing file, reload, related, impact, blast radius, stats, external/internal classification, concurrent access, edge structure, project dir resolution",
+    "Hilo is wired into internal/server/server.go with /graph/stats, /graph/related, /graph/impact HTTP endpoints",
+    "go build ./... passes clean",
+    "go test ./internal/hilo/... passes all 13 tests",
+    "go vet ./... is clean"
+  ],
+  "passed": true,
+  "items": [
+    {
+      "criterion": "internal/hilo/hilo.go exists with Graph, Edge, GraphStats types and NewGraph, Related, Impact, Stats, BlastRadius, Reload methods",
+      "status": "PASS",
+      "detail": "File exists at internal/hilo/hilo.go with Graph type (line 20), Edge type (line 13), GraphStats type, NewGraph (line 29), Related (line 89), Impact (line 96), Stats (line 103), BlastRadius (line ~130), Reload (line 79)"
+    },
+    {
+      "criterion": "internal/hilo/hilo_test.go has 13 tests covering graph load, missing file, reload, related, impact, blast radius, stats, external/internal classification, concurrent access, edge structure, project dir resolution",
+      "status": "PASS",
+      "detail": "13 tests confirmed: TestNewGraph, TestNewGraph_MissingFile, TestGraph_Reload, TestGraph_Related, TestGraph_Impact, TestGraph_BlastRadius, TestGraph_BlastRadius_MaxDepth, TestGraph_Stats, TestIsExternal, TestIsInternal, TestGraph_ConcurrentAccess, TestGraph_EdgeStructure, TestGraph_ProjectDirResolution \u2014 all PASS"
+    },
+    {
+      "criterion": "Hilo is wired into internal/server/server.go with /graph/stats, /graph/related, /graph/impact HTTP endpoints",
+      "status": "PASS",
+      "detail": "internal/server/server.go line 71: r.Get(\"/graph/stats\",...), line 78: r.Get(\"/graph/related\",...), line 97: r.Get(\"/graph/impact\",...) \u2014 all wired via hiloGraph variable"
+    },
+    {
+      "criterion": "go build ./... passes clean",
+      "status": "PASS",
+      "detail": "go build ./... exits 0 with no errors"
+    },
+    {
+      "criterion": "go test ./internal/hilo/... passes all 13 tests",
+      "status": "PASS",
+      "detail": "go test ./internal/hilo/... -v shows all 13 tests PASS (ok)"
+    },
+    {
+      "criterion": "go vet ./... is clean",
+      "status": "PASS",
+      "detail": "go vet ./... exits 0 with no output"
+    }
+  ],
+  "summary": "Judge Result: wi-021\n\nTier 2 (Agentic Evaluator): COMPLETE\n  \u2713 internal/hilo/hilo.go exists with Graph, Edge, GraphStats types and NewGraph, Related, Impact, Stats, BlastRadius, Reload methods: File exists at internal/hilo/hilo.go with Graph type (line 20), Edge type (line 13), GraphStats type, NewGraph (line 29), Related (line 89), Impact (line 96), Stats (line 103), BlastRadius (line ~130), Reload (line 79)\n  \u2713 internal/hilo/hilo_test.go has 13 tests covering graph load, missing file, reload, related, impact, blast radius, stats, external/internal classification, concurrent access, edge structure, project dir resolution: 13 tests confirmed: TestNewGraph, TestNewGraph_MissingFile, TestGraph_Reload, TestGraph_Related, TestGraph_Impact, TestGraph_BlastRadius, TestGraph_BlastRadius_MaxDepth, TestGraph_Stats, TestIsExternal, TestIsInternal, TestGraph_ConcurrentAccess, TestGraph_EdgeStructure, TestGraph_ProjectDirResolution \u2014 all PASS\n  \u2713 Hilo is wired into internal/server/server.go with /graph/stats, /graph/related, /graph/impact HTTP endpoints: internal/server/server.go line 71: r.Get(\"/graph/stats\",...), line 78: r.Get(\"/graph/related\",...), line 97: r.Get(\"/graph/impact\",...) \u2014 all wired via hiloGraph variable\n  \u2713 go build ./... passes clean: go build ./... exits 0 with no errors\n  \u2713 go test ./internal/hilo/... passes all 13 tests: go test ./internal/hilo/... -v shows all 13 tests PASS (ok)\n  \u2713 go vet ./... is clean: go vet ./... exits 0 with no output\n\nOverall: PASS \u2713",
+  "evaluated_at": "2026-06-29T09:21:53.426211"
+}
