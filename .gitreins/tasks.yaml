@@ -1,0 +1,14 @@
+tasks:
+- id: WI-014
+  title: "bunker destroy command \u2014 cleanup agent lifecycle"
+  criteria:
+  - DestroyAgent RPC is called with correct agent_id and force parameters
+  - Command handles missing active server error
+  - Command handles server not found in config error
+  - Command prints destroyed status on success
+  - Command prints not_found status without error
+  - HTTP client respects TLSInsecure flag
+  - Auth token is sent via Authorization header
+  status: complete
+  created_at: '2026-06-29T00:44:13.121189+00:00'
+  completed_at: '2026-06-29T00:45:45.107294+00:00'
