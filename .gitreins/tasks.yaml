@@ -232,3 +232,18 @@ tasks:
   - go build ./... and go test ./... pass
   status: in_progress
   created_at: '2026-06-29T21:19:15.342291+00:00'
+- id: wi-033
+  title: coding-hermes full integration test
+  criteria:
+  - internal/hermes/integration_test.go exists and contains TestIntegration_* tests
+  - 'Tests verify skill lifecycle: init, read/update tasks.md, cleanup'
+  - Tests verify tasks.md contains Quality Gates (GitReins Tier 1/2, Hilo, Build)
+    and Task States sections
+  - 'Tests verify GetAgentSkillInfo returns 4 core skills: coding-hermes, coding-hermes-cron,
+    hilo-usage, gitreins'
+  - Tests verify skill workspace integrates with resource.Tracker and cleanup is idempotent
+  - All tests pass with go test ./internal/hermes/... -count=1
+  - No production code outside internal/hermes/ was modified
+  status: complete
+  created_at: '2026-06-29T22:58:15.621366+00:00'
+  completed_at: '2026-06-29T22:58:23.776320+00:00'
