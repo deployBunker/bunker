@@ -268,9 +268,19 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 
 // HeartbeatAgent acknowledges an agent heartbeat.
 func (s *bunkerdService) HeartbeatAgent(ctx context.Context, req *connect.Request[v1.HeartbeatAgentRequest]) (*connect.Response[v1.HeartbeatAgentResponse], error) {
+	rec := s.tracker.Get(req.Msg.AgentId)
+	if rec == nil {
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("agent %q not found", req.Msg.AgentId))
+	}
+	// Extend TTL on heartbeat unless the agent has a zero TTL.
+	ttl := 6 * time.Hour
+	if s.cfg.Agent.DefaultTTL > 0 {
+		ttl = s.cfg.Agent.DefaultTTL
+	}
+	rec.ExpiresAt = time.Now().Add(ttl)
 	return connect.NewResponse(&v1.HeartbeatAgentResponse{
 		AgentId:      req.Msg.AgentId,
-		ExpiresAt:    time.Now().Add(6 * time.Hour).Format(time.RFC3339),
+		ExpiresAt:    rec.ExpiresAt.Format(time.RFC3339),
 		Acknowledged: true,
 	}), nil
 }
@@ -304,9 +314,15 @@ func (s *agentService) Metrics(ctx context.Context, req *connect.Request[v1.Agen
 
 // Heartbeat sends a heartbeat from the authenticated agent.
 func (s *agentService) Heartbeat(ctx context.Context, req *connect.Request[v1.HeartbeatAgentRequest]) (*connect.Response[v1.HeartbeatAgentResponse], error) {
+	rec := s.tracker.Get(req.Msg.AgentId)
+	if rec == nil {
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("agent %q not found", req.Msg.AgentId))
+	}
+	// Extend TTL on heartbeat.
+	rec.ExpiresAt = time.Now().Add(6 * time.Hour)
 	return connect.NewResponse(&v1.HeartbeatAgentResponse{
 		AgentId:      req.Msg.AgentId,
-		ExpiresAt:    time.Now().Add(6 * time.Hour).Format(time.RFC3339),
+		ExpiresAt:    rec.ExpiresAt.Format(time.RFC3339),
 		Acknowledged: true,
 	}), nil
 }

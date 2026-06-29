@@ -213,5 +213,6 @@ tasks:
   - Tests cover file TLS config build, certmagic AutoTLS config build, mTLS config
     build, and mTLS auth success/failure/CN mismatch
   - go build ./... && go vet ./... && go test ./... pass clean
-  status: in_progress
+  status: complete
   created_at: '2026-06-29T19:24:28.033322+00:00'
+  completed_at: '2026-06-29T19:30:45.227259+00:00'
