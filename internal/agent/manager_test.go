@@ -290,6 +290,17 @@ func TestSpawn_AuthorizedKeysHasEnvironment(t *testing.T) {
 	if !strings.Contains(got, "ssh-ed25519") {
 		t.Errorf("authorized_keys missing ssh-ed25519 key type")
 	}
+
+	// Verify the agent's .profile also exports DOCKER_HOST for interactive shells.
+	profilePath := fmt.Sprintf("/home/bunker-%s/.profile", agentID)
+	profileContent, err := os.ReadFile(profilePath)
+	if err != nil {
+		t.Fatalf("read .profile: %v", err)
+	}
+	wantProfile := fmt.Sprintf("export DOCKER_HOST=unix:///run/bunker/%s/docker.sock", agentID)
+	if !strings.Contains(string(profileContent), wantProfile) {
+		t.Errorf(".profile missing DOCKER_HOST export\ngot: %s\nwant substring: %s", string(profileContent), wantProfile)
+	}
 }
 
 func TestSpawn_ProfileHasDockerHost(t *testing.T) {
