@@ -38,3 +38,19 @@ tasks:
   status: complete
   created_at: '2026-06-29T03:00:57.262486+00:00'
   completed_at: '2026-06-29T03:01:12.198463+00:00'
+- id: wi-017
+  title: "REST gateway \u2014 connect-go HTTP handlers"
+  criteria:
+  - connect-go handlers mounted on chi router at /bunker.v1.Bunkerd/ and /bunker.v1.Agent/
+  - BunkerdHandler and AgentHandler implement all RPC methods defined in bunker.proto
+  - Server supports gRPC, Connect, and gRPC-Web protocols with binary Protobuf and
+    JSON codecs
+  - gzip compression enabled by default on connect-go handlers
+  - Health check endpoint /healthz returns JSON status
+  - Optional separate RESTAddr listener when RESTAddr != GRPCAddr
+  - TLS support via certmagic (auto Let's Encrypt) or file-based certs on both listeners
+  - Auth interceptor applied to both Bunkerd and Agent handlers
+  - 'Build passes: go build ./... && go vet ./... && go test ./...'
+  status: complete
+  created_at: '2026-06-29T04:00:15.628269+00:00'
+  completed_at: '2026-06-29T04:02:48.592362+00:00'

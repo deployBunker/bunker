@@ -37,6 +37,15 @@ type TLSConfig struct {
 	Domain   string `mapstructure:"domain"`
 }
 
+// APIKey holds a generated API key with metadata.
+type APIKey struct {
+	KeyID     string    `mapstructure:"key_id"`
+	TokenHash string    `mapstructure:"token_hash"`
+	AgentID   string    `mapstructure:"agent_id"`
+	CreatedAt time.Time `mapstructure:"created_at"`
+	ExpiresAt time.Time `mapstructure:"expires_at"`
+}
+
 // AuthConfig holds authentication settings.
 type AuthConfig struct {
 	Enabled   bool   `mapstructure:"enabled"`
@@ -93,6 +102,7 @@ func DefaultConfig() *Config {
 		},
 		Auth: AuthConfig{
 			Enabled: false,
+			Token:   "",
 		},
 		Agent: AgentConfig{
 			BaseDataDir:        "/var/lib/bunkerd",
