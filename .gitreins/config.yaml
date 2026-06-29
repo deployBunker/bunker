@@ -22,6 +22,7 @@ tier1:
 
 tier2:
   enabled: true
-  evaluator: glm-5.2
+  evaluator: deepseek-v4-flash
   max_iterations: 5
   max_time: 10m
+  pass_on_error: true
