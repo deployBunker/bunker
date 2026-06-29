@@ -22,6 +22,7 @@ import (
 	"github.com/deployBunker/bunker/internal/agent"
 	"github.com/deployBunker/bunker/internal/auth"
 	"github.com/deployBunker/bunker/internal/config"
+	"github.com/deployBunker/bunker/internal/hilo"
 	"github.com/deployBunker/bunker/internal/resource"
 	"github.com/deployBunker/bunker/internal/tailscale"
 	"github.com/deployBunker/bunker/internal/tunnel"
@@ -61,6 +62,58 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ok"}`))
 	})
+
+	// Hilo graph endpoint — dependency analysis for the codebase
+	hiloGraph, err := hilo.NewGraph(".", s.logger)
+	if err != nil {
+		s.logger.Warn("hilo graph init failed", "error", err)
+	} else {
+		r.Get("/graph/stats", func(w http.ResponseWriter, r *http.Request) {
+			stats := hiloGraph.Stats()
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprintf(w, `{"total_edges":%d,"unique_files":%d,"unique_deps":%d,"files_with_edges":%d}`,
+				stats.TotalEdges, stats.UniqueFiles, stats.UniqueDeps, stats.FilesWithEdges)
+		})
+		r.Get("/graph/related", func(w http.ResponseWriter, r *http.Request) {
+			path := r.URL.Query().Get("path")
+			if path == "" {
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte(`{"error":"path query param required"}`))
+				return
+			}
+			edges := hiloGraph.Related(path)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"edges":[`))
+			for i, e := range edges {
+				if i > 0 {
+					w.Write([]byte(","))
+				}
+				fmt.Fprintf(w, `{"from":"%s","to":"%s","rel":"%s"}`, e.From, e.To, e.Rel)
+			}
+			w.Write([]byte(`]}`))
+		})
+		r.Get("/graph/impact", func(w http.ResponseWriter, r *http.Request) {
+			path := r.URL.Query().Get("path")
+			if path == "" {
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte(`{"error":"path query param required"}`))
+				return
+			}
+			edges := hiloGraph.Impact(path)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"edges":[`))
+			for i, e := range edges {
+				if i > 0 {
+					w.Write([]byte(","))
+				}
+				fmt.Fprintf(w, `{"from":"%s","to":"%s","rel":"%s"}`, e.From, e.To, e.Rel)
+			}
+			w.Write([]byte(`]}`))
+		})
+	}
 
 	// Build the Bunkerd service handler with auth interceptor
 	authInterceptor := auth.NewAuthInterceptor(s.cfg.Auth.Token, s.cfg.Auth.Enabled)
