@@ -26,7 +26,7 @@
 
 ### Phase 4: REST API
 - [x] **WI-017**: REST gateway — connect-go HTTP handlers (single port, same handlers, JSON+Protobuf codecs)
-- [ ] **WI-018**: API key management — top-level static key + per-agent sub-keys
+- [x] **WI-018**: API key management — top-level static key + per-agent sub-keys
 - [ ] **WI-019**: mTLS support — certificate-based auth
 
 ### Phase 5: Integration
