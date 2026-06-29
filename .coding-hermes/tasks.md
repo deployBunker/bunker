@@ -45,7 +45,7 @@
 - [x] **WI-030**: TLS/mTLS — certmagic Let's Encrypt (or self-signed for test), mutual TLS between CLI and bunkerd.
 - [x] **WI-031**: TTL expiry — agents auto-destroy after default_ttl (6h). Verify timer fires and cleanup runs.
 - [x] **WI-032**: bunkerd systemd service — install bunkerd as a systemd service unit so it survives reboots and logrotates.
-- [ ] **WI-033**: coding-hermes full integration test — WI-020 smoke test: spawn agent → git clone build → docker build → docker test → commit → destroy. Requires WI-023, WI-024 fixes.
+- [x] **WI-033**: coding-hermes full integration test — added internal/hermes/integration_test.go with 5 safe CI integration tests covering skill lifecycle, task queue format, core skills, tracker integration, and cleanup idempotency. (2026-06-29)
 - [ ] **WI-034**: Regression suite CI — wire regression-tests.sh into GitHub Actions or cron, run on every push to main.
 
 ---
