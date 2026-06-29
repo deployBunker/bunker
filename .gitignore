@@ -23,3 +23,6 @@ proto/**/*.pb.gw.go
 
 # Coding Hermes prompts
 .coding-hermes/prompt-*.txt
+
+# Hilo graph data
+.vfs/
