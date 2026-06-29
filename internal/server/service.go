@@ -152,11 +152,25 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 	}
 
 	// Build command to execute
+	// The agent's dockerd listens on a per-agent Unix socket.  We need
+	// DOCKER_HOST in the remote environment so that `docker` CLI commands
+	// (and anything else that talks to Docker) reach the right socket.
+	//
+	// Two mechanisms:
+	//   1. authorized_keys `environment=` prefix (set at spawn time) — works
+	//      when sshd has PermitUserEnvironment=yes.
+	//   2. `ssh -o SetEnv=DOCKER_HOST=...` — explicit client-side env push
+	//      that works regardless of sshd config.  This is the fallback and
+	//      the primary mechanism we rely on.
+	//
+	// We also set the variable in ~/.profile for interactive shells.
+	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
 	cmd := exec.CommandContext(ctx, "ssh",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "LogLevel=ERROR",
 		"-o", "ConnectTimeout=10",
+		"-o", fmt.Sprintf("SetEnv=DOCKER_HOST=unix://%s", dockerSockPath),
 		"-i", rec.SshPrivateKeyPath,
 		fmt.Sprintf("bunker-%s@localhost", agentID),
 		"--",
