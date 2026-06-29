@@ -156,10 +156,20 @@ func (s *BunkerdServer) buildTLSConfig() (*tls.Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("certmagic: %w", err)
 		}
+		if s.cfg.TLS.MTLS {
+			return nil, fmt.Errorf("mtls is not supported with auto_tls")
+		}
 		return tlsCfg, nil
 	}
 
-	// Use file-based certificates
+	if s.cfg.TLS.MTLS {
+		if s.cfg.TLS.CAFile == "" {
+			return nil, fmt.Errorf("tls.ca_file is required for mtls")
+		}
+		return auth.BuildMTLSConfigWithCert(s.cfg.TLS.CAFile, s.cfg.TLS.CertFile, s.cfg.TLS.KeyFile)
+	}
+
+	// Use file-based certificates (standard TLS)
 	cert, err := tls.LoadX509KeyPair(s.cfg.TLS.CertFile, s.cfg.TLS.KeyFile)
 	if err != nil {
 		return nil, fmt.Errorf("load cert/key: %w", err)
