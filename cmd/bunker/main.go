@@ -45,6 +45,7 @@ and control ephemeral development environments — all from the CLI.`,
 	root.AddCommand(cli.NewSpawnCommand())
 	root.AddCommand(cli.NewListCommand())
 	root.AddCommand(cli.NewDestroyCommand())
+	root.AddCommand(cli.NewMetricsCommand())
 
 	return root.Execute()
 }
