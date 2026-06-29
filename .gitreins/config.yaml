@@ -2,6 +2,27 @@
 # Tier 1: Static guards (run on every commit)
 # Tier 2: LLM evaluation (run on task completion)
 
+# ── Global defaults (model + token budgets) ────────────────────
+defaults:
+  model: deepseek-v4-flash
+  max_iterations: 50
+  max_time: "15m"
+  max_input_tokens: "10M"
+  max_output_tokens: "384k"
+  tool_call_weight: 0.1
+
+# ── Static guards (Tier 1) ─────────────────────────────────────
+guards:
+  secrets: true
+  lint: false
+  tests: false
+  go:
+    build: true
+    lint: true
+    tests: true
+  test_mode: full
+
+# ── Tier 1 command specifics ───────────────────────────────────
 tier1:
   secrets:
     enabled: true
@@ -20,9 +41,11 @@ tier1:
     commands:
       - "test -z \"$(gofmt -l .)\""
 
-tier2:
-  enabled: true
-  evaluator: deepseek-v4-flash
-  max_iterations: 5
-  max_time: 10m
-  pass_on_error: true
+# ── Evaluator caps (Tier 2) ─────────────────────────────────────
+evaluator:
+  max_iterations: 50
+  cap: "50/15m/10M/384k"
+
+# ── Force legacy evaluator path (avoid default pipeline) ────────
+pipeline:
+  stages: []
