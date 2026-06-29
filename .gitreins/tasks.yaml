@@ -180,3 +180,38 @@ tasks:
   - go build ./... && go vet ./... && go test ./... pass clean
   status: in_progress
   created_at: '2026-06-29T16:46:31.549983+00:00'
+- id: wi-029
+  title: JWT auth + agent-scoped sub-keys
+  criteria:
+  - internal/auth/jwt.go exists and implements HS256 JWT issuance/validation with
+    agent-scoped claims
+  - JWT auth rejects missing/invalid/expired tokens with CodeUnauthenticated
+  - Opaque per-agent sub-keys validate through apikey.Manager fallback
+  - Server uses NewJWTAuthInterceptor and falls back to static token auth when jwt_secret
+    is empty
+  - go test ./... and go vet ./... pass clean
+  status: complete
+  created_at: '2026-06-29T17:55:58.486882+00:00'
+  completed_at: '2026-06-29T17:56:07.266362+00:00'
+- id: wi-030
+  title: "TLS/mTLS \u2014 certmagic Let's Encrypt (or self-signed for test), mutual\
+    \ TLS between CLI and bunkerd"
+  criteria:
+  - TLS can be enabled in server config (tls.enabled) with either file-based certs
+    (cert_file/key_file), auto Let's Encrypt via certmagic (auto_tls + domain), or
+    mTLS (mtls + ca_file)
+  - 'Server buildTLSConfig supports all three modes: file certs, certmagic AutoTLS,
+    and mTLS with client cert verification'
+  - CLI connect supports --tls-insecure for self-signed/dev certs and stores TLSInsecure
+    per server entry
+  - CLI commands (spawn/list/destroy/exec/metrics) respect TLSInsecure when building
+    connect HTTP clients
+  - mTLS auth interceptor (internal/auth/mtls.go) validates client certificates and
+    optional CommonName
+  - Config validation requires cert_file/key_file for file TLS, domain for AutoTLS,
+    and ca_file for mTLS
+  - Tests cover file TLS config build, certmagic AutoTLS config build, mTLS config
+    build, and mTLS auth success/failure/CN mismatch
+  - go build ./... && go vet ./... && go test ./... pass clean
+  status: in_progress
+  created_at: '2026-06-29T19:24:28.033322+00:00'

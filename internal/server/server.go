@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -206,10 +207,25 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 }
 
 func (s *BunkerdServer) buildTLSConfig() (*tls.Config, error) {
+	if !s.cfg.TLS.Enabled {
+		return nil, nil
+	}
+
 	if s.cfg.TLS.AutoTLS {
 		// Use certmagic for automatic Let's Encrypt certificates
 		certmagic.DefaultACME.Agreed = true
-		certmagic.DefaultACME.Email = s.cfg.TLS.Domain // using domain as email for now
+		email := s.cfg.TLS.Domain
+		if email == "" {
+			return nil, fmt.Errorf("tls.domain is required when auto_tls is enabled")
+		}
+		// Ensure the contact email looks like a valid email address. certmagic
+		// uses this as the ACME account contact; a bare domain is rejected by
+		// Let's Encrypt with invalidContact.
+		if !strings.Contains(email, "@") {
+			certmagic.DefaultACME.Email = "admin@" + email
+		} else {
+			certmagic.DefaultACME.Email = email
+		}
 
 		tlsCfg, err := certmagic.TLS([]string{s.cfg.TLS.Domain})
 		if err != nil {
@@ -229,6 +245,12 @@ func (s *BunkerdServer) buildTLSConfig() (*tls.Config, error) {
 	}
 
 	// Use file-based certificates (standard TLS)
+	if s.cfg.TLS.CertFile == "" {
+		return nil, fmt.Errorf("tls.cert_file is required when TLS is enabled without auto_tls")
+	}
+	if s.cfg.TLS.KeyFile == "" {
+		return nil, fmt.Errorf("tls.key_file is required when TLS is enabled without auto_tls")
+	}
 	cert, err := tls.LoadX509KeyPair(s.cfg.TLS.CertFile, s.cfg.TLS.KeyFile)
 	if err != nil {
 		return nil, fmt.Errorf("load cert/key: %w", err)

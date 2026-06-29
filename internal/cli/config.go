@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"github.com/spf13/viper"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 	bunkerv1connect "github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect"
+	"github.com/spf13/viper"
 )
 
 // CLIConfig is the on-disk configuration for the bunker CLI.

@@ -26,11 +26,11 @@ var validAgentID = regexp.MustCompile(`^[a-z0-9-]{1,63}$`)
 
 // AgentManager handles the agent spawn lifecycle.
 type AgentManager struct {
-	cfg         *config.Config
-	logger      *slog.Logger
-	tracker     *resource.Tracker
-	portAlloc   *resource.PortAllocator
-	tunnelMgr   *tunnel.TunnelManager
+	cfg          *config.Config
+	logger       *slog.Logger
+	tracker      *resource.Tracker
+	portAlloc    *resource.PortAllocator
+	tunnelMgr    *tunnel.TunnelManager
 	tailscaleMgr *tailscale.TailscaleManager
 }
 
