@@ -100,3 +100,13 @@ tasks:
   status: complete
   created_at: '2026-06-29T10:42:18.728348+00:00'
   completed_at: '2026-06-29T10:44:41.517906+00:00'
+- id: wi-023
+  title: Fix destroy systemctl user-instance mismatch
+  criteria:
+  - Destroy stops dockerd via systemd-run --user; direct kill targets correct user
+    session
+  - systemctl --user fallback preserved for linger-enabled sessions
+  - Test covers missing process error path
+  status: complete
+  created_at: '2026-06-29T12:29:48.593973+00:00'
+  completed_at: '2026-06-29T12:30:15.822154+00:00'
