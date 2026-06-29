@@ -68,3 +68,19 @@ tasks:
   status: complete
   created_at: '2026-06-29T08:22:07.185423+00:00'
   completed_at: '2026-06-29T08:22:16.364475+00:00'
+- id: wi-021
+  title: "Hilo test harness \u2014 end-to-end tests exercising Hilo"
+  criteria:
+  - internal/hilo/hilo.go exists with Graph, Edge, GraphStats types and NewGraph,
+    Related, Impact, Stats, BlastRadius, Reload methods
+  - internal/hilo/hilo_test.go has 13 tests covering graph load, missing file, reload,
+    related, impact, blast radius, stats, external/internal classification, concurrent
+    access, edge structure, project dir resolution
+  - Hilo is wired into internal/server/server.go with /graph/stats, /graph/related,
+    /graph/impact HTTP endpoints
+  - go build ./... passes clean
+  - go test ./internal/hilo/... passes all 13 tests
+  - go vet ./... is clean
+  status: complete
+  created_at: '2026-06-29T09:21:06.324767+00:00'
+  completed_at: '2026-06-29T09:21:23.774359+00:00'
