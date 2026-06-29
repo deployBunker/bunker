@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestDefaultConfig(t *testing.T) {
@@ -19,6 +20,9 @@ func TestDefaultConfig(t *testing.T) {
 	}
 	if cfg.Auth.Enabled {
 		t.Error("auth should be disabled by default")
+	}
+	if cfg.Auth.JWTTTL != 6*time.Hour {
+		t.Errorf("expected jwt_ttl 6h, got %v", cfg.Auth.JWTTTL)
 	}
 }
 

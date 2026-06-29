@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"connectrpc.com/connect"
+
+	"github.com/deployBunker/bunker/internal/apikey"
 )
 
 // TokenAuth validates incoming requests against a static bearer token.
@@ -90,6 +92,21 @@ func NewAuthInterceptor(token string, enabled bool) connect.Interceptor {
 		return NoAuth{}
 	}
 	return NewTokenAuth(token)
+}
+
+// NewJWTAuthInterceptor returns a JWT-based interceptor when a JWT secret is configured.
+// Falls back to static token auth if jwtSecret is empty but static token is enabled.
+func NewJWTAuthInterceptor(jwtSecret string, keyMgr *apikey.Manager, staticToken string, enabled bool) connect.Interceptor {
+	if !enabled {
+		return NoAuth{}
+	}
+	if jwtSecret != "" {
+		return NewJWTAuth(jwtSecret, keyMgr)
+	}
+	if staticToken != "" {
+		return NewTokenAuth(staticToken)
+	}
+	return NoAuth{}
 }
 
 // Ensure our types satisfy the interface at compile time.
