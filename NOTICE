@@ -1,0 +1,60 @@
+Bunker — Multi-Agent Coding Platform
+Copyright 2026 Bunker Contributors
+
+This product includes software developed by the Bunker project
+(https://github.com/deployBunker/bunker).
+
+========================================================================
+Third-Party Software
+========================================================================
+
+This product includes the following third-party software, used under
+the terms of the licenses indicated below. Any notices required by
+those licenses are reproduced here.
+
+---
+
+connect-go (github.com/connectrpc/connect-go)
+  Copyright 2022–2025 Buf Technologies, Inc.
+  Licensed under the Apache License, Version 2.0.
+  https://github.com/connectrpc/connect-go
+
+cobra (github.com/spf13/cobra)
+  Copyright 2013–2024 Steve Francia
+  Licensed under the Apache License, Version 2.0.
+  https://github.com/spf13/cobra
+
+certmagic (github.com/caddyserver/certmagic)
+  Copyright 2015 Matthew Holt
+  Licensed under the Apache License, Version 2.0.
+  https://github.com/caddyserver/certmagic
+
+viper (github.com/spf13/viper)
+  Copyright 2014–2024 Steve Francia
+  Licensed under the MIT License.
+  https://github.com/spf13/viper
+
+chi (github.com/go-chi/chi)
+  Copyright 2015–2023 Peter Kieltyka
+  Licensed under the MIT License.
+  https://github.com/go-chi/chi
+
+golang-jwt (github.com/golang-jwt/jwt)
+  Copyright 2012 Dave Grijalva
+  Licensed under the MIT License.
+  https://github.com/golang-jwt/jwt
+
+gRPC-Go (google.golang.org/grpc)
+  Copyright 2014–2024 gRPC Authors
+  Licensed under the Apache License, Version 2.0.
+  https://github.com/grpc/grpc-go
+
+Protocol Buffers (google.golang.org/protobuf)
+  Copyright 2018–2024 The Go Authors
+  Licensed under the BSD 3-Clause License.
+  https://github.com/protocolbuffers/protobuf-go
+
+Go standard library
+  Copyright 2009–2024 The Go Authors
+  Licensed under the BSD 3-Clause License.
+  https://go.dev
