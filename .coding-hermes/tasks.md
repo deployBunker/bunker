@@ -25,7 +25,7 @@
 - [x] **WI-016**: `bunker exec` — execute command in agent context
 
 ### Phase 4: REST API
-- [ ] **WI-017**: REST gateway — gRPC-Gateway or connect-go HTTP handlers
+- [x] **WI-017**: REST gateway — connect-go HTTP handlers (single port, same handlers, JSON+Protobuf codecs)
 - [ ] **WI-018**: API key management — top-level static key + per-agent sub-keys
 - [ ] **WI-019**: mTLS support — certificate-based auth
 

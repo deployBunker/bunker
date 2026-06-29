@@ -12,3 +12,29 @@ tasks:
   status: complete
   created_at: '2026-06-29T00:44:13.121189+00:00'
   completed_at: '2026-06-29T00:45:45.107294+00:00'
+- id: wi-015
+  title: bunker metrics command
+  criteria:
+  - bunker metrics command exists in internal/cli/metrics.go
+  - bunker metrics is wired into cmd/bunker/main.go
+  - Server metrics mode shows CPU, memory, disk, docker containers, agent list
+  - Agent metrics mode shows per-agent CPU, memory, disk, uptime
+  - humanBytes helper converts bytes to human-readable format
+  - 7 tests in metrics_test.go cover help, no-server, server-metrics, agent-metrics,
+    errors, human-bytes
+  status: complete
+  created_at: '2026-06-29T01:51:59.198615+00:00'
+  completed_at: '2026-06-29T02:49:47.658654+00:00'
+- id: wi-016
+  title: bunker exec command
+  criteria:
+  - bunker exec command exists in internal/cli/exec.go with agent-id, command, and
+    optional args
+  - bunker exec is wired into cmd/bunker/main.go
+  - ExecAgent RPC is implemented in internal/server/service.go via SSH to agent user
+  - Server streams stdout/stderr concurrently and returns exit code
+  - 9 tests in exec_test.go cover help, no-server, success, exit-code, server-error,
+    agent-not-found, stderr-output, timeout-flag, missing-args
+  status: complete
+  created_at: '2026-06-29T03:00:57.262486+00:00'
+  completed_at: '2026-06-29T03:01:12.198463+00:00'
