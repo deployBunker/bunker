@@ -270,9 +270,16 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	}
 	systemdArgs = append(systemdArgs, "dockerd", "--host=unix://"+dockerSockPath)
 
-	// If a stale unit exists (from a previous incomplete destroy), stop and disable it first
-	exec.CommandContext(ctx, "systemctl", "--user", "stop", unitName).Run()
-	exec.CommandContext(ctx, "systemctl", "--user", "disable", unitName).Run()
+	// If a stale unit exists (from a previous incomplete destroy), stop and disable it
+	// under the agent's user session.  systemctl --user from the root foreman targets
+	// the root user manager, not the agent's.  Use --machine to reach the right session.
+	stopCmd := exec.CommandContext(ctx, "systemctl", "--user", "--machine="+username+"@", "stop", unitName)
+	stopCmd.Run() // ignore error — unit may not exist
+	stopCmd = exec.CommandContext(ctx, "systemctl", "--user", "--machine="+username+"@", "disable", unitName)
+	stopCmd.Run() // ignore error — unit may not exist
+
+	// Also kill any orphaned dockerd process directly (belt-and-suspenders).
+	_ = stopDockerdDirect(ctx, username, unitName, m.logger)
 
 	cmd = exec.CommandContext(ctx, "systemd-run", systemdArgs...)
 	if out, err := cmd.CombinedOutput(); err != nil {
