@@ -40,7 +40,7 @@
 - [x] **WI-025**: Fix systemd-run stale unit on re-spawn — when spawn reuses an agent_id from a previous incomplete destroy, `systemd-run --unit=` fails with "already loaded". Stop/disable stale unit before re-creating (partial fix in manager.go, needs verification).
 - [x] **WI-026**: Multi-agent concurrency test — spawn 5+ agents simultaneously, verify each has isolated dockerd, unique port range, independent home directories.
 - [x] **WI-027**: cgroup enforcement test — verify CPU/memory limits constrain dockerd. Spawn agent with 0.5 CPU / 256MB, run stress test, verify killed by OOM or throttled.
-- [ ] **WI-028**: Cloudflare TryCloudflare tunnels — per-agent public URL via cloudflared. Install cloudflared on server, test public URL reachability.
+- [x] **WI-028**: Cloudflare TryCloudflare tunnels — per-agent public URL via cloudflared. Install cloudflared on server, test public URL reachability.
 - [ ] **WI-029**: JWT auth + agent-scoped sub-keys — replace static token with JWT (HS256), generate per-agent sub-keys, test auth rejection.
 - [ ] **WI-030**: TLS/mTLS — certmagic Let's Encrypt (or self-signed for test), mutual TLS between CLI and bunkerd.
 - [ ] **WI-031**: TTL expiry — agents auto-destroy after default_ttl (6h). Verify timer fires and cleanup runs.
