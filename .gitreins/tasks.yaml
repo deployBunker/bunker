@@ -125,3 +125,14 @@ tasks:
   status: complete
   created_at: '2026-06-29T12:49:09.494226+00:00'
   completed_at: '2026-06-29T12:54:12.069528+00:00'
+- id: wi-025
+  title: Fix systemd-run stale unit on re-spawn
+  criteria:
+  - systemctl --user --machine=$user@ stop bunker-docker-$agentID runs before systemd-run
+  - systemctl --user --machine=$user@ disable bunker-docker-$agentID runs before systemd-run
+  - stopDockerdDirect() called as fallback before systemd-run
+  - go build ./... passes
+  - go test ./internal/agent/... passes
+  status: complete
+  created_at: '2026-06-29T13:47:43.802974+00:00'
+  completed_at: '2026-06-29T13:47:53.681232+00:00'
