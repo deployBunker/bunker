@@ -27,7 +27,7 @@
 ### Phase 4: REST API
 - [x] **WI-017**: REST gateway — connect-go HTTP handlers (single port, same handlers, JSON+Protobuf codecs)
 - [x] **WI-018**: API key management — top-level static key + per-agent sub-keys
-- [ ] **WI-019**: mTLS support — certificate-based auth
+- [x] **WI-019**: mTLS support — certificate-based auth
 
 ### Phase 5: Integration
 - [ ] **WI-020**: Coding-Hermes skill integration — spawn/destroy in agent lifecycle
