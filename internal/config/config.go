@@ -30,11 +30,14 @@ type ServerConfig struct {
 
 // TLSConfig holds TLS settings.
 type TLSConfig struct {
-	Enabled  bool   `mapstructure:"enabled"`
-	CertFile string `mapstructure:"cert_file"`
-	KeyFile  string `mapstructure:"key_file"`
-	AutoTLS  bool   `mapstructure:"auto_tls"`
-	Domain   string `mapstructure:"domain"`
+	Enabled    bool   `mapstructure:"enabled"`
+	CertFile   string `mapstructure:"cert_file"`
+	KeyFile    string `mapstructure:"key_file"`
+	AutoTLS    bool   `mapstructure:"auto_tls"`
+	Domain     string `mapstructure:"domain"`
+	MTLS       bool   `mapstructure:"mtls"`
+	CAFile     string `mapstructure:"ca_file"`
+	VerifyCN   string `mapstructure:"verify_cn"`
 }
 
 // APIKey holds a generated API key with metadata.
@@ -98,7 +101,10 @@ func DefaultConfig() *Config {
 			RESTAddr: ":8080",
 		},
 		TLS: TLSConfig{
-			Enabled: false,
+			Enabled:  false,
+			MTLS:     false,
+			CAFile:   "",
+			VerifyCN: "",
 		},
 		Auth: AuthConfig{
 			Enabled: false,
@@ -154,6 +160,9 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("tls.key_file")
 	v.BindEnv("tls.auto_tls")
 	v.BindEnv("tls.domain")
+	v.BindEnv("tls.mtls")
+	v.BindEnv("tls.ca_file")
+	v.BindEnv("tls.verify_cn")
 	v.BindEnv("auth.enabled")
 	v.BindEnv("auth.token")
 	v.BindEnv("auth.jwt_secret")
@@ -209,6 +218,9 @@ func (c *Config) Validate() error {
 		}
 		if c.TLS.AutoTLS && c.TLS.Domain == "" {
 			return fmt.Errorf("tls.domain is required when auto_tls is enabled")
+		}
+		if c.TLS.MTLS && c.TLS.CAFile == "" {
+			return fmt.Errorf("tls.ca_file is required when mtls is enabled")
 		}
 	}
 	return nil
