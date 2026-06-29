@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Unit tests
+        run: go test -count=1 -short ./... -timeout 120s
+
+  regression:
+    runs-on: [self-hosted, linux, bunker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Build binaries
+        run: |
+          go build -o /usr/local/bin/bunkerd ./cmd/bunkerd
+          go build -o /usr/local/bin/bunker ./cmd/bunker
+
+      - name: Run regression suite
+        run: bash regression-tests.sh
+        timeout-minutes: 10
