@@ -14,6 +14,8 @@ import (
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 
 	"github.com/deployBunker/bunker/internal/agent"
+	"github.com/deployBunker/bunker/internal/apikey"
+	"github.com/deployBunker/bunker/internal/auth"
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/resource"
 	"github.com/deployBunker/bunker/internal/tailscale"
@@ -28,6 +30,8 @@ type bunkerdService struct {
 	tracker      *resource.Tracker
 	tunnelMgr    *tunnel.TunnelManager
 	tailscaleMgr *tailscale.TailscaleManager
+	keyMgr       *apikey.Manager
+	jwtAuth      *auth.JWTAuth
 }
 
 // ServerInfo returns information about the bunkerd server.

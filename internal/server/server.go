@@ -20,6 +20,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/deployBunker/bunker/internal/agent"
+	"github.com/deployBunker/bunker/internal/apikey"
 	"github.com/deployBunker/bunker/internal/auth"
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/hilo"
@@ -30,8 +31,10 @@ import (
 
 // BunkerdServer is the main bunkerd daemon server.
 type BunkerdServer struct {
-	cfg    *config.Config
-	logger *slog.Logger
+	cfg     *config.Config
+	logger  *slog.Logger
+	keyMgr  *apikey.Manager
+	jwtAuth *auth.JWTAuth
 }
 
 // New creates a new BunkerdServer with the given configuration.
@@ -116,12 +119,15 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	}
 
 	// Build the Bunkerd service handler with auth interceptor
-	authInterceptor := auth.NewAuthInterceptor(s.cfg.Auth.Token, s.cfg.Auth.Enabled)
+	// Prefer JWT auth when a secret is configured; fall back to static token.
+	s.keyMgr = apikey.NewManager(s.cfg.Auth.JWTSecret)
+	s.jwtAuth = auth.NewJWTAuth(s.cfg.Auth.JWTSecret, s.keyMgr)
+	authInterceptor := auth.NewJWTAuthInterceptor(s.cfg.Auth.JWTSecret, s.keyMgr, s.cfg.Auth.Token, s.cfg.Auth.Enabled)
 	tracker := resource.NewTracker(s.cfg.Agent.MaxAgents, s.logger)
 	tunnelMgr := tunnel.NewTunnelManager(&s.cfg.Tunnel, s.logger)
 	tailscaleMgr := tailscale.NewTailscaleManager(&s.cfg.Tailscale, s.logger)
 	agentMgr := agent.NewAgentManager(s.cfg, s.logger, tracker, tunnelMgr, tailscaleMgr)
-	bunkerdSvc := &bunkerdService{cfg: s.cfg, logger: s.logger, agentMgr: agentMgr, tracker: tracker, tunnelMgr: tunnelMgr, tailscaleMgr: tailscaleMgr}
+	bunkerdSvc := &bunkerdService{cfg: s.cfg, logger: s.logger, agentMgr: agentMgr, tracker: tracker, tunnelMgr: tunnelMgr, tailscaleMgr: tailscaleMgr, keyMgr: s.keyMgr, jwtAuth: s.jwtAuth}
 	bunkerdPath, bunkerdHandler := bunkerv1connect.NewBunkerdHandler(
 		bunkerdSvc,
 		connect.WithInterceptors(authInterceptor),

@@ -51,9 +51,10 @@ type APIKey struct {
 
 // AuthConfig holds authentication settings.
 type AuthConfig struct {
-	Enabled   bool   `mapstructure:"enabled"`
-	Token     string `mapstructure:"token"`
-	JWTSecret string `mapstructure:"jwt_secret"`
+	Enabled   bool          `mapstructure:"enabled"`
+	Token     string        `mapstructure:"token"`
+	JWTSecret string        `mapstructure:"jwt_secret"`
+	JWTTTL    time.Duration `mapstructure:"jwt_ttl"`
 }
 
 // AgentConfig holds agent lifecycle settings.
@@ -107,8 +108,10 @@ func DefaultConfig() *Config {
 			VerifyCN: "",
 		},
 		Auth: AuthConfig{
-			Enabled: false,
-			Token:   "",
+			Enabled:   false,
+			Token:     "",
+			JWTSecret: "",
+			JWTTTL:    6 * time.Hour,
 		},
 		Agent: AgentConfig{
 			BaseDataDir:        "/var/lib/bunkerd",
@@ -166,6 +169,7 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("auth.enabled")
 	v.BindEnv("auth.token")
 	v.BindEnv("auth.jwt_secret")
+	v.BindEnv("auth.jwt_ttl")
 	v.BindEnv("agent.base_data_dir")
 	v.BindEnv("agent.ssh_dir")
 	v.BindEnv("agent.port_range_start")
