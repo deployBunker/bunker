@@ -1,0 +1,29 @@
+title = "Bunker Gitleaks Config"
+
+[allowlist]
+paths = [
+  # Proto generated files
+  'proto\/.*',
+  # Test files (test tokens are not real secrets)
+  '.*_test\.go$',
+  # GitReins config and history
+  '\.gitreins\/.*',
+  # Documentation
+  'docs\/.*',
+  'README\.md',
+  'CHANGELOG\.md',
+  # Vendored / generated
+  'vendor\/.*',
+  'node_modules\/.*',
+]
+regexes = [
+  # Test tokens (not real secrets)
+  'test-token',
+  'secret-token',
+  'correct-token',
+  'wrong-token',
+  'my-token',
+  # Config field names (not values)
+  'TokenHash',
+  'JWTSecret',
+]
