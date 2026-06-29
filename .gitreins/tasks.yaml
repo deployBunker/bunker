@@ -216,3 +216,19 @@ tasks:
   status: complete
   created_at: '2026-06-29T19:24:28.033322+00:00'
   completed_at: '2026-06-29T19:30:45.227259+00:00'
+- id: wi-032
+  title: bunkerd systemd service
+  criteria:
+  - A new internal/systemd package provides InstallService, UninstallService, and
+    IsInstalled helpers
+  - The service unit template uses the installed bunkerd binary path, loads /etc/bunkerd/config.yaml,
+    runs as root, and restarts on failure
+  - Log output is written to /var/log/bunkerd.log and rotated via a logrotate.d snippet
+    installed by the package
+  - CLI gains a hidden/systemd subcommand group or install-service flag that calls
+    InstallService
+  - Unit tests verify the generated unit file and logrotate config contents without
+    requiring systemd
+  - go build ./... and go test ./... pass
+  status: in_progress
+  created_at: '2026-06-29T21:19:15.342291+00:00'
