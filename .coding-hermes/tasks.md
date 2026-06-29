@@ -32,7 +32,7 @@
 ### Phase 5: Integration
 - [x] **WI-020**: Coding-Hermes skill integration — spawn/destroy in agent lifecycle
 - [x] **WI-021**: Hilo test harness — end-to-end tests exercising Hilo
-- [ ] **WI-022**: GitReins Tier 1 + Tier 2 config — secrets, lint, tests, eval
+- [x] **WI-022**: GitReins Tier 1 + Tier 2 config — secrets, lint, tests, eval (2026-06-29)
 
 ---
 
