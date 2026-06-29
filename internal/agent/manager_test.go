@@ -1,10 +1,12 @@
 package agent
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 
@@ -18,6 +20,24 @@ func newTestManager(t *testing.T) *AgentManager {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	tracker := resource.NewTracker(cfg.Agent.MaxAgents, logger)
 	return NewAgentManager(cfg, logger, tracker, nil, nil)
+}
+
+// uniqueAgentID returns a test-unique short agent ID to avoid username length limits (useradd ≤32 chars).
+func uniqueAgentID(prefix string) string {
+	return fmt.Sprintf("%s-%d", prefix, time.Now().UnixNano()%100000)
+}
+
+// cleanupAgent destroys an agent if it was spawned successfully.
+func cleanupAgent(t *testing.T, m *AgentManager, agentID string) {
+	t.Helper()
+	if agentID == "" {
+		return
+	}
+	m.logger.Info("test cleanup: destroying agent", "agent_id", agentID)
+	_, err := m.Destroy(t.Context(), agentID, true)
+	if err != nil {
+		t.Logf("cleanup: destroy %s: %v", agentID, err)
+	}
 }
 
 // ── Unit tests on helper functions (no root needed) ──────────────
@@ -80,6 +100,8 @@ func TestSpawn_GeneratesAgentID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
+	defer cleanupAgent(t, m, resp.AgentId)
+
 	if resp.AgentId == "" {
 		t.Error("expected non-empty generated agent_id")
 	}
@@ -93,15 +115,16 @@ func TestSpawn_WithProvidedAgentID(t *testing.T) {
 		t.Skip("test requires root privileges")
 	}
 	m := newTestManager(t)
-	req := &v1.SpawnAgentRequest{
-		AgentId: "test-agent",
-	}
+	agentID := uniqueAgentID("test-agent")
+	req := &v1.SpawnAgentRequest{AgentId: agentID}
 	resp, err := m.Spawn(t.Context(), req)
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
-	if resp.AgentId != "test-agent" {
-		t.Errorf("expected agent_id 'test-agent', got %q", resp.AgentId)
+	defer cleanupAgent(t, m, resp.AgentId)
+
+	if resp.AgentId != agentID {
+		t.Errorf("expected agent_id %q, got %q", agentID, resp.AgentId)
 	}
 }
 
@@ -128,13 +151,11 @@ func TestSpawn_InvalidAgentID(t *testing.T) {
 				if err != nil && strings.Contains(err.Error(), "invalid agent_id") {
 					t.Errorf("empty agent_id should be valid, got validation error: %v", err)
 				}
-				// If we got a response (unlikely without root), agent_id should be set.
 				if resp != nil && resp.AgentId == "" {
 					t.Error("expected generated agent_id when empty")
 				}
 				return
 			}
-			// For invalid IDs, we should get a validation error before any system calls.
 			if err == nil {
 				t.Errorf("expected error for invalid agent_id %q", tt.agentID)
 				return
@@ -151,20 +172,16 @@ func TestSpawn_CreatesUser(t *testing.T) {
 		t.Skip("test requires root privileges")
 	}
 	m := newTestManager(t)
-	req := &v1.SpawnAgentRequest{
-		AgentId: "testagent-001",
-	}
+	agentID := uniqueAgentID("testagent")
+	req := &v1.SpawnAgentRequest{AgentId: agentID}
 	resp, err := m.Spawn(t.Context(), req)
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
-	defer func() {
-		// Best-effort cleanup.
-		m.logger.Info("test cleanup: removing user", "agent_id", resp.AgentId)
-	}()
+	defer cleanupAgent(t, m, resp.AgentId)
 
-	if resp.AgentId != "testagent-001" {
-		t.Errorf("expected testagent-001, got %q", resp.AgentId)
+	if resp.AgentId != agentID {
+		t.Errorf("expected %q, got %q", agentID, resp.AgentId)
 	}
 
 	// Verify user was created by checking /etc/passwd.
@@ -172,8 +189,9 @@ func TestSpawn_CreatesUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read /etc/passwd: %v", err)
 	}
-	if !strings.Contains(string(passwd), "bunker-testagent-001") {
-		t.Error("user 'bunker-testagent-001' not found in /etc/passwd")
+	expectedUser := "bunker-" + agentID
+	if !strings.Contains(string(passwd), expectedUser) {
+		t.Errorf("user %q not found in /etc/passwd", expectedUser)
 	}
 }
 
@@ -182,13 +200,13 @@ func TestSpawn_GeneratesSSHKeys(t *testing.T) {
 		t.Skip("test requires root privileges for useradd")
 	}
 	m := newTestManager(t)
-	req := &v1.SpawnAgentRequest{
-		AgentId: "testagent-002",
-	}
+	agentID := uniqueAgentID("testagent")
+	req := &v1.SpawnAgentRequest{AgentId: agentID}
 	resp, err := m.Spawn(t.Context(), req)
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
+	defer cleanupAgent(t, m, resp.AgentId)
 
 	if resp.SshPrivateKey == "" {
 		t.Error("expected non-empty SSH private key")
@@ -207,13 +225,13 @@ func TestSpawn_Response(t *testing.T) {
 		t.Skip("test requires root privileges")
 	}
 	m := newTestManager(t)
-	req := &v1.SpawnAgentRequest{
-		AgentId: "testagent-003",
-	}
+	agentID := uniqueAgentID("testagent")
+	req := &v1.SpawnAgentRequest{AgentId: agentID}
 	resp, err := m.Spawn(t.Context(), req)
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
+	defer cleanupAgent(t, m, resp.AgentId)
 
 	checks := []struct {
 		field string
@@ -230,8 +248,8 @@ func TestSpawn_Response(t *testing.T) {
 		}
 	}
 
-	if resp.AgentId != "testagent-003" {
-		t.Errorf("AgentId: got %q, want 'testagent-003'", resp.AgentId)
+	if resp.AgentId != agentID {
+		t.Errorf("AgentId: got %q, want %q", resp.AgentId, agentID)
 	}
 	if resp.PortRangeStart == 0 {
 		t.Error("PortRangeStart is 0, want non-zero default")
@@ -251,24 +269,21 @@ func TestSpawn_AuthorizedKeysHasEnvironment(t *testing.T) {
 		t.Skip("test requires root privileges")
 	}
 	m := newTestManager(t)
-	req := &v1.SpawnAgentRequest{
-		AgentId: "testagent-007",
-	}
+	agentID := uniqueAgentID("testagent")
+	req := &v1.SpawnAgentRequest{AgentId: agentID}
 	resp, err := m.Spawn(t.Context(), req)
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
-	defer func() {
-		m.logger.Info("test cleanup: destroying agent", "agent_id", resp.AgentId)
-	}()
+	defer cleanupAgent(t, m, resp.AgentId)
 
-	authKeysFile := "/home/bunker-testagent-007/.ssh/authorized_keys"
+	authKeysFile := fmt.Sprintf("/home/bunker-%s/.ssh/authorized_keys", agentID)
 	content, err := os.ReadFile(authKeysFile)
 	if err != nil {
 		t.Fatalf("read authorized_keys: %v", err)
 	}
 	got := string(content)
-	wantEnv := "environment=\"DOCKER_HOST=unix:///run/bunker/testagent-007/docker.sock\""
+	wantEnv := fmt.Sprintf("environment=\"DOCKER_HOST=unix:///run/bunker/%s/docker.sock\"", agentID)
 	if !strings.Contains(got, wantEnv) {
 		t.Errorf("authorized_keys missing environment prefix\ngot: %s\nwant substring: %s", got, wantEnv)
 	}
@@ -282,24 +297,21 @@ func TestSpawn_ProfileHasDockerHost(t *testing.T) {
 		t.Skip("test requires root privileges")
 	}
 	m := newTestManager(t)
-	req := &v1.SpawnAgentRequest{
-		AgentId: "testagent-008",
-	}
+	agentID := uniqueAgentID("testagent")
+	req := &v1.SpawnAgentRequest{AgentId: agentID}
 	resp, err := m.Spawn(t.Context(), req)
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
-	defer func() {
-		m.logger.Info("test cleanup: destroying agent", "agent_id", resp.AgentId)
-	}()
+	defer cleanupAgent(t, m, resp.AgentId)
 
-	profilePath := "/home/bunker-testagent-008/.profile"
+	profilePath := fmt.Sprintf("/home/bunker-%s/.profile", agentID)
 	content, err := os.ReadFile(profilePath)
 	if err != nil {
 		t.Fatalf("read .profile: %v", err)
 	}
 	got := string(content)
-	wantExport := "export DOCKER_HOST=unix:///run/bunker/testagent-008/docker.sock"
+	wantExport := fmt.Sprintf("export DOCKER_HOST=unix:///run/bunker/%s/docker.sock", agentID)
 	if !strings.Contains(got, wantExport) {
 		t.Errorf(".profile missing DOCKER_HOST export\ngot: %s\nwant substring: %s", got, wantExport)
 	}
@@ -310,18 +322,15 @@ func TestSpawn_PersistsSSHKey(t *testing.T) {
 		t.Skip("test requires root privileges")
 	}
 	m := newTestManager(t)
-	req := &v1.SpawnAgentRequest{
-		AgentId: "testagent-009",
-	}
+	agentID := uniqueAgentID("testagent")
+	req := &v1.SpawnAgentRequest{AgentId: agentID}
 	resp, err := m.Spawn(t.Context(), req)
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
-	defer func() {
-		m.logger.Info("test cleanup: destroying agent", "agent_id", resp.AgentId)
-	}()
+	defer cleanupAgent(t, m, resp.AgentId)
 
-	sshKeyPath := "/etc/bunkerd/ssh/testagent-009"
+	sshKeyPath := fmt.Sprintf("/etc/bunkerd/ssh/%s", agentID)
 	content, err := os.ReadFile(sshKeyPath)
 	if err != nil {
 		t.Fatalf("read persisted SSH key %s: %v", sshKeyPath, err)
@@ -329,7 +338,6 @@ func TestSpawn_PersistsSSHKey(t *testing.T) {
 	if !strings.HasPrefix(string(content), "-----BEGIN") {
 		t.Errorf("persisted SSH key doesn't start with -----BEGIN: %q", string(content)[:50])
 	}
-	// Verify the key matches what was returned in the response
 	if string(content) != resp.SshPrivateKey {
 		t.Error("persisted SSH key doesn't match response SshPrivateKey")
 	}
@@ -340,19 +348,15 @@ func TestSpawn_SocketDirOwnership(t *testing.T) {
 		t.Skip("test requires root privileges")
 	}
 	m := newTestManager(t)
-	req := &v1.SpawnAgentRequest{
-		AgentId: "testagent-010",
-	}
+	agentID := uniqueAgentID("testagent")
+	req := &v1.SpawnAgentRequest{AgentId: agentID}
 	resp, err := m.Spawn(t.Context(), req)
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
-	defer func() {
-		m.logger.Info("test cleanup: destroying agent", "agent_id", resp.AgentId)
-	}()
+	defer cleanupAgent(t, m, resp.AgentId)
 
-	// Verify that /run/bunker/<id> directory exists and has correct permissions
-	sockDir := "/run/bunker/testagent-010"
+	sockDir := fmt.Sprintf("/run/bunker/%s", agentID)
 	info, err := os.Stat(sockDir)
 	if err != nil {
 		t.Fatalf("stat socket dir %s: %v", sockDir, err)
@@ -360,7 +364,6 @@ func TestSpawn_SocketDirOwnership(t *testing.T) {
 	if !info.IsDir() {
 		t.Errorf("socket path %s is not a directory", sockDir)
 	}
-	// The socket file may not exist yet (dockerd creates it), but the dir should exist
 	_ = resp
 }
 

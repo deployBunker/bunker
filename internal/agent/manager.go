@@ -270,6 +270,10 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	}
 	systemdArgs = append(systemdArgs, "dockerd", "--host=unix://"+dockerSockPath)
 
+	// If a stale unit exists (from a previous incomplete destroy), stop and disable it first
+	exec.CommandContext(ctx, "systemctl", "--user", "stop", unitName).Run()
+	exec.CommandContext(ctx, "systemctl", "--user", "disable", unitName).Run()
+
 	cmd = exec.CommandContext(ctx, "systemd-run", systemdArgs...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		cleanup()
