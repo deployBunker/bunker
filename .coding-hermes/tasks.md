@@ -34,6 +34,20 @@
 - [x] **WI-021**: Hilo test harness — end-to-end tests exercising Hilo
 - [x] **WI-022**: GitReins Tier 1 + Tier 2 config — secrets, lint, tests, eval (2026-06-29)
 
+### Phase 6: Bug fixes + hardening (regression findings 2026-06-29)
+- [ ] **WI-023**: Fix destroy — systemctl user-instance mismatch — `systemctl --user stop` targets root, but dockerd runs under agent user. Stop dockerd via `systemctl --user --machine=bunker-<id>@ stop` or kill the process directly.
+- [ ] **WI-024**: Fix exec DOCKER_HOST propagation — authorized_keys `environment=` sets DOCKER_HOST correctly but the SSH session may not pick it up. Verify with `docker ps` inside exec.
+- [ ] **WI-025**: Fix systemd-run stale unit on re-spawn — when spawn reuses an agent_id from a previous incomplete destroy, `systemd-run --unit=` fails with "already loaded". Stop/disable stale unit before re-creating (partial fix in manager.go, needs verification).
+- [ ] **WI-026**: Multi-agent concurrency test — spawn 5+ agents simultaneously, verify each has isolated dockerd, unique port range, independent home directories.
+- [ ] **WI-027**: cgroup enforcement test — verify CPU/memory limits constrain dockerd. Spawn agent with 0.5 CPU / 256MB, run stress test, verify killed by OOM or throttled.
+- [ ] **WI-028**: Cloudflare TryCloudflare tunnels — per-agent public URL via cloudflared. Install cloudflared on server, test public URL reachability.
+- [ ] **WI-029**: JWT auth + agent-scoped sub-keys — replace static token with JWT (HS256), generate per-agent sub-keys, test auth rejection.
+- [ ] **WI-030**: TLS/mTLS — certmagic Let's Encrypt (or self-signed for test), mutual TLS between CLI and bunkerd.
+- [ ] **WI-031**: TTL expiry — agents auto-destroy after default_ttl (6h). Verify timer fires and cleanup runs.
+- [ ] **WI-032**: bunkerd systemd service — install bunkerd as a systemd service unit so it survives reboots and logrotates.
+- [ ] **WI-033**: coding-hermes full integration test — WI-020 smoke test: spawn agent → git clone build → docker build → docker test → commit → destroy. Requires WI-023, WI-024 fixes.
+- [ ] **WI-034**: Regression suite CI — wire regression-tests.sh into GitHub Actions or cron, run on every push to main.
+
 ---
 
 ## Tech Stack (researched & locked)
