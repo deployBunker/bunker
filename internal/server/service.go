@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
@@ -136,10 +138,114 @@ func (s *bunkerdService) AgentMetrics(ctx context.Context, req *connect.Request[
 	return connect.NewResponse(resp), nil
 }
 
-// ExecAgent executes a command in the agent's environment.
+// ExecAgent executes a command in the agent's environment via SSH.
 func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.ExecAgentRequest], stream *connect.ServerStream[v1.ExecAgentResponse]) error {
-	// TODO: WI-016 — bunker exec
-	return connect.NewError(connect.CodeUnimplemented, nil)
+	agentID := req.Msg.AgentId
+	if agentID == "" {
+		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("agent_id is required"))
+	}
+
+	// Look up agent record
+	rec := s.tracker.Get(agentID)
+	if rec == nil {
+		return connect.NewError(connect.CodeNotFound, fmt.Errorf("agent %q not found", agentID))
+	}
+
+	// Build command to execute
+	cmd := exec.CommandContext(ctx, "ssh",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "LogLevel=ERROR",
+		"-o", "ConnectTimeout=10",
+		"-i", rec.SshPrivateKeyPath,
+		fmt.Sprintf("bunker-%s@localhost", agentID),
+		"--",
+		req.Msg.Command,
+	)
+	if len(req.Msg.Args) > 0 {
+		cmd.Args = append(cmd.Args, req.Msg.Args...)
+	}
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("stdout pipe: %w", err))
+	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("stderr pipe: %w", err))
+	}
+
+	if err := cmd.Start(); err != nil {
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("start ssh: %w", err))
+	}
+
+	// Stream stdout and stderr concurrently
+	var wg sync.WaitGroup
+	stdoutDone := make(chan struct{})
+	stderrDone := make(chan struct{})
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		defer close(stdoutDone)
+		buf := make([]byte, 4096)
+		for {
+			n, err := stdoutPipe.Read(buf)
+			if n > 0 {
+				if err := stream.Send(&v1.ExecAgentResponse{
+					Output: &v1.ExecAgentResponse_Stdout{Stdout: buf[:n]},
+				}); err != nil {
+					s.logger.Warn("send stdout", "error", err)
+					return
+				}
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		defer close(stderrDone)
+		buf := make([]byte, 4096)
+		for {
+			n, err := stderrPipe.Read(buf)
+			if n > 0 {
+				if err := stream.Send(&v1.ExecAgentResponse{
+					Output: &v1.ExecAgentResponse_Stderr{Stderr: buf[:n]},
+				}); err != nil {
+					s.logger.Warn("send stderr", "error", err)
+					return
+				}
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	// Wait for command completion
+	exitCode := int32(0)
+	if err := cmd.Wait(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = int32(exitErr.ExitCode())
+		} else {
+			return connect.NewError(connect.CodeInternal, fmt.Errorf("ssh wait: %w", err))
+		}
+	}
+
+	// Wait for streamers to finish
+	wg.Wait()
+
+	// Send final exit code
+	if err := stream.Send(&v1.ExecAgentResponse{
+		ExitCode: exitCode,
+	}); err != nil {
+		s.logger.Warn("send exit code", "error", err)
+	}
+
+	return nil
 }
 
 // HeartbeatAgent acknowledges an agent heartbeat.
