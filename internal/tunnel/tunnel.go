@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -89,7 +90,10 @@ func (m *TunnelManager) Start(ctx context.Context, agentID string, localPort uin
 		args = append(args, "--no-autoupdate")
 	}
 
-	cmdCtx, cancel := context.WithCancel(ctx)
+	// The cloudflared process must outlive the SpawnAgent RPC request, so we
+	// run it under a background context. The caller's context is only used to
+	// bound the startup scan for the public URL.
+	cmdCtx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(cmdCtx, m.cfg.BinaryPath, args...)
 
 	stdout, err := cmd.StdoutPipe()
@@ -151,6 +155,11 @@ func (m *TunnelManager) Start(ctx context.Context, agentID string, localPort uin
 		cmd.Wait() //nolint:errcheck
 		return "", ctx.Err()
 	}
+
+	// Keep draining stdout so cloudflared never blocks on a full pipe buffer.
+	go func() {
+		_, _ = io.Copy(io.Discard, stdout)
+	}()
 
 	rt := &runningTunnel{
 		AgentID:   agentID,

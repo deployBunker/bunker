@@ -225,6 +225,45 @@ func TestStartContextCancel(t *testing.T) {
 	}
 }
 
+// TestStartProcessOutlivesCallerContext verifies that the cloudflared process
+// keeps running after the caller's RPC context is cancelled. This is the
+// regression test for WI-039 where tunnels died immediately after SpawnAgent
+// returned because Start used the request context as the process lifetime.
+func TestStartProcessOutlivesCallerContext(t *testing.T) {
+	dir := t.TempDir()
+	url := "https://context-agent.trycloudflare.com"
+
+	// Mock that prints the URL, then sleeps for a while so we can inspect
+	// whether it got killed when the caller context is cancelled.
+	binaryPath := writeMockCloudflared(t, dir, "cloudflared", url, 10*time.Second)
+
+	mgr := newTestManager(t, binaryPath, true)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	publicURL, err := mgr.Start(ctx, "agent-context", 8080)
+	if err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	if publicURL != url {
+		t.Errorf("publicURL = %q, want %q", publicURL, url)
+	}
+
+	// Cancel the caller context after Start returns. The tunnel process must
+	// survive this cancellation.
+	cancel()
+	time.Sleep(200 * time.Millisecond)
+
+	// The tunnel should still be registered and the mock process still running.
+	if mgr.GetURL("agent-context") == "" {
+		t.Error("tunnel disappeared after caller context cancellation")
+	}
+
+	// Stop should succeed and clean up.
+	if err := mgr.Stop("agent-context"); err != nil {
+		t.Errorf("Stop failed: %v", err)
+	}
+}
+
 // TestConcurrentStartStop tests concurrent tunnel creation/destruction.
 func TestConcurrentStartStop(t *testing.T) {
 	dir := t.TempDir()
