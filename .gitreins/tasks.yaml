@@ -340,3 +340,41 @@ tasks:
   status: complete
   created_at: '2026-06-30T17:22:02.413619+00:00'
   completed_at: '2026-06-30T17:23:03.722869+00:00'
+- id: wi-042
+  title: Verify and fix cgroup enforcement through rootlesskit
+  criteria:
+  - Spawn code documents the correct cgroup verification path for rootless Docker
+    agents
+  - Agent metrics can read per-agent cgroup limits from the actual rootless systemd
+    user unit path
+  - A unit test verifies cgroup path resolution for rootless systemd units without
+    requiring root
+  - Build, vet, and short tests pass
+  - E2E battery on bunker-mvp passes (or regressions are documented)
+  status: complete
+  created_at: '2026-06-30T19:04:33.958661+00:00'
+  completed_at: '2026-06-30T19:19:29.311782+00:00'
+- id: wi-043
+  title: PID namespace isolation for rootless Docker agents
+  criteria:
+  - Rootless dockerd spawn sets DOCKERD_ROOTLESS_ROOTLESSKIT_FLAGS=--pidns in internal/agent/manager.go
+  - The --pidns flag is passed through rootlessEnv to the systemd-run invocation
+  - A unit test in internal/agent/pidns_test.go verifies the --pidns flag is present
+    in manager.go
+  - 'Build, vet, and short tests pass: go build ./... && go vet ./... && go test -count=1
+    -short ./... -timeout 120s'
+  - E2E battery on bunker-mvp passes (or regressions are documented)
+  status: complete
+  created_at: '2026-06-30T21:21:28.271115+00:00'
+  completed_at: '2026-06-30T21:27:57.284563+00:00'
+- id: wi-045
+  title: 'Fix CI: internal/hilo unit tests use synthetic graph fixture'
+  criteria:
+  - internal/hilo/hilo_test.go no longer depends on NewGraph("../.."); tests build
+    a synthetic .vfs/graph/edges.jsonl fixture in a temp directory
+  - go test ./internal/hilo/... passes when the real .vfs/ directory is absent and
+    the hilo CLI is unavailable
+  - TestGraph_BlastRadius, TestGraph_BlastRadius_MaxDepth, TestGraph_Stats, and TestGraph_ProjectDirResolution
+    all pass
+  status: in_progress
+  created_at: '2026-06-30T22:37:21.359416+00:00'
