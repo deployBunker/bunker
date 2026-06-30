@@ -28,9 +28,10 @@ type Claims struct {
 // JWTAuth validates incoming requests against JWT tokens (HS256).
 // Supports a top-level master token and per-agent scoped sub-keys.
 type JWTAuth struct {
-	secret    []byte
-	keyMgr    *apikey.Manager
-	masterKey string
+	secret       []byte
+	keyMgr       *apikey.Manager
+	masterKey    string
+	staticToken  string // optional fallback static bearer token
 }
 
 // NewJWTAuth creates a JWTAuth using the given HS256 secret.
@@ -42,6 +43,15 @@ func NewJWTAuth(secret string, keyMgr *apikey.Manager) *JWTAuth {
 		keyMgr:    keyMgr,
 		masterKey: secret,
 	}
+}
+
+// NewJWTAuthWithStaticFallback creates a JWTAuth that also accepts a static
+// bearer token as a fallback. This is useful for rolling JWT auth out without
+// breaking existing static-token clients.
+func NewJWTAuthWithStaticFallback(secret, staticToken string, keyMgr *apikey.Manager) *JWTAuth {
+	a := NewJWTAuth(secret, keyMgr)
+	a.staticToken = staticToken
+	return a
 }
 
 // GenerateSecret creates a new random HS256 secret of the given byte length.
@@ -117,6 +127,15 @@ func (a *JWTAuth) authenticate(header http.Header) (*Claims, error) {
 	token, err := ExtractBearerTokenFromHeader(header.Get("Authorization"))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+
+	// Optional static-token fallback for migration/compat.
+	if a.staticToken != "" && subtle.ConstantTimeCompare([]byte(token), []byte(a.staticToken)) == 1 {
+		return &Claims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Subject: "static-token",
+			},
+		}, nil
 	}
 
 	// First try JWT validation.

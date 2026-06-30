@@ -117,6 +117,7 @@ message SpawnAgentResponse {
   ResourceLimits limits = 9;
   string expires_at = 10;
   string tailnet_ip = 11;
+  string api_key = 12;             // Agent-scoped opaque API sub-key (if auth enabled)
 }
 
 message DestroyAgentRequest {

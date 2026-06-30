@@ -310,6 +310,15 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		return nil, fmt.Errorf("configure subuid/subgid for %s: %w", username, err)
 	}
 
+	// Ensure an AppArmor profile exists for rootlesskit on Ubuntu 24.04+
+	// where unprivileged user namespaces are restricted by AppArmor. This must
+	// happen BEFORE running the rootless docker installer, otherwise the
+	// installer fails with permission denied.
+	if err := ensureRootlesskitAppArmor(ctx, username, m.logger); err != nil {
+		m.logger.Warn("could not ensure rootlesskit AppArmor profile; rootless docker may fail",
+			"agent_id", agentID, "error", err)
+	}
+
 	// Install the rootless Docker tooling into the agent's home directory.
 	// This downloads the official docker-ce-rootless-extras installer when the
 	// tools are not already present on the server.
@@ -321,6 +330,8 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 
 	// Ensure an AppArmor profile exists for rootlesskit on Ubuntu 24.04+
 	// where unprivileged user namespaces are restricted by AppArmor.
+	// (Already ensured above before installRootlessDocker; kept here as a
+	// defensive re-check in case the first call failed transiently.)
 	if err := ensureRootlesskitAppArmor(ctx, username, m.logger); err != nil {
 		m.logger.Warn("could not ensure rootlesskit AppArmor profile; rootless docker may fail",
 			"agent_id", agentID, "error", err)

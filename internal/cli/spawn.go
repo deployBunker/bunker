@@ -150,6 +150,9 @@ Examples:
 			if r.ExpiresAt != "" {
 				fmt.Printf("  Expires:      %s\n", r.ExpiresAt)
 			}
+			if r.ApiKey != "" {
+				fmt.Printf("  API Key:      %s\n", r.ApiKey)
+			}
 			fmt.Println()
 			fmt.Println("═ Use `bunker exec` to run commands in this agent ═")
 

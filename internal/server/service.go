@@ -13,7 +13,6 @@ import (
 	"connectrpc.com/connect"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 
-	"github.com/deployBunker/bunker/internal/agent"
 	"github.com/deployBunker/bunker/internal/apikey"
 	"github.com/deployBunker/bunker/internal/auth"
 	"github.com/deployBunker/bunker/internal/config"
@@ -26,12 +25,20 @@ import (
 type bunkerdService struct {
 	cfg          *config.Config
 	logger       *slog.Logger
-	agentMgr     *agent.AgentManager
+	agentMgr     agentManager
 	tracker      *resource.Tracker
 	tunnelMgr    *tunnel.TunnelManager
 	tailscaleMgr *tailscale.TailscaleManager
 	keyMgr       *apikey.Manager
 	jwtAuth      *auth.JWTAuth
+}
+
+// agentManager is the subset of *agent.AgentManager used by bunkerdService.
+// It exists primarily to make service-layer tests not require root.
+type agentManager interface {
+	Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v1.SpawnAgentResponse, error)
+	Destroy(ctx context.Context, agentID string, force bool) (*v1.DestroyAgentResponse, error)
+	Stop()
 }
 
 // ServerInfo returns information about the bunkerd server.
@@ -76,6 +83,27 @@ func (s *bunkerdService) SpawnAgent(ctx context.Context, req *connect.Request[v1
 		s.logger.Error("spawn agent failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
+
+	// Generate an agent-scoped opaque API sub-key when JWT auth is enabled.
+	// The key is stored in the apikey manager and can be used by the agent
+	// (or its owner) to call the Agent service scoped to this agent_id.
+	if s.cfg.Auth.Enabled && s.cfg.Auth.JWTSecret != "" && s.keyMgr != nil {
+		ttl := s.cfg.Agent.DefaultTTL
+		if ttl <= 0 {
+			ttl = 6 * time.Hour
+		}
+		if req.Msg.GetTtl() != "" {
+			if parsed, err := time.ParseDuration(req.Msg.GetTtl()); err == nil && parsed > 0 {
+				ttl = parsed
+			}
+		}
+		if apiToken, _, err := s.keyMgr.Generate(resp.AgentId, ttl); err == nil {
+			resp.ApiKey = apiToken
+		} else {
+			s.logger.Warn("failed to generate agent api key", "agent_id", resp.AgentId, "error", err)
+		}
+	}
+
 	return connect.NewResponse(resp), nil
 }
 
