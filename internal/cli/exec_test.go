@@ -29,6 +29,7 @@ type mockExecServer struct {
 	mockBunkerdServer
 	execResponses []*v1.ExecAgentResponse
 	execErr       error
+	captureReq    func(*v1.ExecAgentRequest)
 }
 
 func (m *mockExecServer) ExecAgent(
@@ -36,6 +37,9 @@ func (m *mockExecServer) ExecAgent(
 	req *connect.Request[v1.ExecAgentRequest],
 	stream *connect.ServerStream[v1.ExecAgentResponse],
 ) error {
+	if m.captureReq != nil {
+		m.captureReq(req.Msg)
+	}
 	if m.execErr != nil {
 		return m.execErr
 	}
@@ -73,7 +77,9 @@ func TestExecCommand_Help(t *testing.T) {
 	cmd := NewExecCommand()
 	output := captureStdout(t, func() {
 		cmd.SetArgs([]string{"--help"})
-		cmd.Execute()
+		if err := cmd.Execute(); err != nil {
+			t.Logf("help Execute returned: %v", err)
+		}
 	})
 
 	if !strings.Contains(output, "Execute a command") {
@@ -226,5 +232,84 @@ func TestExecCommand_MissingArgs(t *testing.T) {
 	cmd.SetArgs([]string{"abc123"}) // missing command
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected error for missing command argument")
+	}
+}
+
+func TestExecCommand_DockerFlagPassthrough(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	var got *v1.ExecAgentRequest
+	server := newExecTestServer(t, &mockExecServer{
+		execResponses: []*v1.ExecAgentResponse{
+			{Output: &v1.ExecAgentResponse_Stdout{Stdout: []byte("hello")}},
+			{ExitCode: 0},
+		},
+		captureReq: func(req *v1.ExecAgentRequest) {
+			got = req
+		},
+	})
+	defer server.Close()
+	writeExecTestConfig(t, tmpDir, server.URL)
+
+	cmd := NewExecCommand()
+	cmd.SetArgs([]string{"abc123", "--", "docker", "run", "--rm", "hello-world"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("exec command failed: %v", err)
+	}
+	if got == nil {
+		t.Fatal("request not captured")
+	}
+	if got.Command != "docker" {
+		t.Errorf("command = %q, want docker", got.Command)
+	}
+	wantArgs := []string{"run", "--rm", "hello-world"}
+	if len(got.Args) != len(wantArgs) {
+		t.Errorf("args = %v, want %v", got.Args, wantArgs)
+	}
+	for i, want := range wantArgs {
+		if got.Args[i] != want {
+			t.Errorf("args[%d] = %q, want %q", i, got.Args[i], want)
+		}
+	}
+}
+
+func TestExecCommand_DockerFlagsWithoutDoubleDash(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	server := newExecTestServer(t, &mockExecServer{
+		execResponses: []*v1.ExecAgentResponse{
+			{Output: &v1.ExecAgentResponse_Stdout{Stdout: []byte("hello")}},
+			{ExitCode: 0},
+		},
+	})
+	defer server.Close()
+	writeExecTestConfig(t, tmpDir, server.URL)
+
+	cmd := NewExecCommand()
+	cmd.SetArgs([]string{"abc123", "docker", "run", "--rm", "hello-world"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("exec command failed: %v", err)
+	}
+}
+
+func TestExecCommand_FlagTimeoutBeforeCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	server := newExecTestServer(t, &mockExecServer{
+		execResponses: []*v1.ExecAgentResponse{
+			{Output: &v1.ExecAgentResponse_Stdout{Stdout: []byte("ok")}},
+			{ExitCode: 0},
+		},
+	})
+	defer server.Close()
+	writeExecTestConfig(t, tmpDir, server.URL)
+
+	cmd := NewExecCommand()
+	cmd.SetArgs([]string{"--timeout", "60", "abc123", "--", "docker", "ps"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("exec command with timeout flag failed: %v", err)
 	}
 }
