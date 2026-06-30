@@ -427,6 +427,22 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		}
 	}
 
+	// Persist the assigned port range to the agent's home directory so tools
+	// and tests can discover it without querying the tracker.
+	bunkerMetaDir := filepath.Join(userHome, ".bunker")
+	if err := os.MkdirAll(bunkerMetaDir, 0755); err != nil {
+		m.logger.Warn("failed to create .bunker meta dir", "agent_id", agentID, "error", err)
+	} else {
+		portFile := filepath.Join(bunkerMetaDir, "ports")
+		portContent := fmt.Sprintf("%d-%d\n", portStart, portEnd)
+		if err := os.WriteFile(portFile, []byte(portContent), 0644); err != nil {
+			m.logger.Warn("failed to write port range file", "agent_id", agentID, "error", err)
+		}
+		if out, err := exec.CommandContext(ctx, "chown", username, bunkerMetaDir).CombinedOutput(); err != nil {
+			m.logger.Warn("failed to chown .bunker meta dir", "agent_id", agentID, "error", err, "output", string(out))
+		}
+	}
+
 	rec := &resource.AgentRecord{
 		AgentID:           agentID,
 		Status:            "running",

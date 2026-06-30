@@ -231,7 +231,9 @@ fi
 
 UNIQUE_PORTS=$(for u in e2e-main e2e-agent-{2..5}; do
     PORT_FILE="/home/bunker-$u/.bunker/ports"
-    [ -f "$PORT_FILE" ] && cat "$PORT_FILE" | tr '-' '\n' | head -1
+    if [ -f "$PORT_FILE" ]; then
+        head -1 "$PORT_FILE" | tr '-' '\n' | head -1
+    fi
 done | sort -u | wc -l)
 if [ "$UNIQUE_PORTS" -ge 5 ]; then
     assert "all 5 port ranges unique"
