@@ -56,7 +56,7 @@ EOF
 
 # Start temporary bunkerd in the background.
 echo "=== Starting temporary bunkerd with JWT enabled ==="
-BUNKERD_CONFIG="$TMP_CONFIG" /usr/local/bin/bunkerd > /tmp/bunkerd-jwt.log 2>&1 &
+DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/0/bus" BUNKERD_CONFIG="$TMP_CONFIG" /usr/local/bin/bunkerd > /tmp/bunkerd-jwt.log 2>&1 &
 BUNKERD_PID=$!
 sleep 3
 
