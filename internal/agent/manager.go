@@ -293,6 +293,8 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// Determine resource limits: use request limits or server defaults
 	cpuQuota := m.cfg.Agent.DefaultCPUQuota
 	memMax := m.cfg.Agent.DefaultMemoryBytes
+	maxProcs := m.cfg.Agent.DefaultMaxProcesses
+	maxFiles := m.cfg.Agent.DefaultMaxOpenFiles
 	if req.GetLimits() != nil {
 		if req.GetLimits().GetCpuQuota() > 0 {
 			cpuQuota = req.GetLimits().GetCpuQuota()
@@ -365,6 +367,12 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	}
 	if memMax > 0 {
 		systemdArgs = append(systemdArgs, fmt.Sprintf("--property=MemoryMax=%d", memMax))
+	}
+	if maxProcs > 0 {
+		systemdArgs = append(systemdArgs, fmt.Sprintf("--property=TasksMax=%d", maxProcs))
+	}
+	if maxFiles > 0 {
+		systemdArgs = append(systemdArgs, fmt.Sprintf("--property=LimitNOFILE=%d:%d", maxFiles, maxFiles))
 	}
 
 	// Rootless dockerd script. DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns

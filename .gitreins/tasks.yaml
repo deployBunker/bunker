@@ -318,3 +318,25 @@ tasks:
   status: complete
   created_at: '2026-06-30T14:06:08.783628+00:00'
   completed_at: '2026-06-30T14:07:50.892115+00:00'
+- id: wi-040
+  title: Fix bunker exec flag parsing for docker flags
+  criteria:
+  - exec command supports -- separator
+  - Docker flags like --rm pass through to remote command
+  - Unit tests cover -- passthrough and flag forwarding
+  status: complete
+  created_at: '2026-06-30T15:15:59.637518+00:00'
+  completed_at: '2026-06-30T15:17:19.220375+00:00'
+- id: wi-041
+  title: Wire ulimit controls into agent spawn
+  criteria:
+  - systemd-run args include --property=TasksMax=<default_max_processes> in manager.go
+  - systemd-run args include --property=LimitNOFILE=<soft>:<hard> in manager.go
+  - AgentConfig has DefaultMaxProcesses and DefaultMaxOpenFiles fields with defaults
+    4096 and 65536
+  - Tests verify systemd unit has TasksMax and LimitNOFILE properties
+  - go build ./... && go vet ./... && go test -count=1 -short ./... -timeout 120s
+    passes
+  status: complete
+  created_at: '2026-06-30T17:22:02.413619+00:00'
+  completed_at: '2026-06-30T17:23:03.722869+00:00'
