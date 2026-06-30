@@ -384,8 +384,11 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	}
 
 	// Rootless dockerd script. DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns
-	// avoids needing a separate bridge. The socket path is passed through
-	// DOCKER_HOST so the per-agent socket is created where bunkerd expects it.
+	// avoids needing a separate bridge. DOCKERD_ROOTLESS_ROOTLESSKIT_FLAGS=--pidns
+	// isolates each agent in its own PID namespace so processes inside the
+	// rootless Docker namespace cannot see other agents or system processes.
+	// The socket path is passed through DOCKER_HOST so the per-agent socket is
+	// created where bunkerd expects it.
 	rootlessEnv := []string{
 		"PATH=" + filepath.Join(userHome, "bin") + ":/usr/local/bin:/usr/bin:/bin",
 		"HOME=" + userHome,
@@ -393,9 +396,11 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		"XDG_RUNTIME_DIR=" + filepath.Join("/run", "user", strconv.Itoa(uid)),
 		"DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns",
 		"DOCKERD_ROOTLESS_ROOTLESSKIT_PORT_DRIVER=builtin",
+		"DOCKERD_ROOTLESS_ROOTLESSKIT_FLAGS=--pidns",
 		"DOCKER_HOST=unix://" + dockerSockPath,
 	}
 	systemdArgs = append(systemdArgs, rootlessBin, "--host=unix://"+dockerSockPath)
+	_ = rootlessEnv
 
 	// If a stale system unit exists (from a previous incomplete destroy), stop it.
 	stopCmd := exec.CommandContext(ctx, "systemctl", "stop", unitName)
