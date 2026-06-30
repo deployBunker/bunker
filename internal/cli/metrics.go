@@ -2,14 +2,11 @@ package cli
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
-	"net/http"
 	"time"
 
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 	bunkerv1connect "github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect"
@@ -54,24 +51,13 @@ Examples:
 				return fmt.Errorf("server %q not found in config", serverName)
 			}
 
-			// 3. Build HTTP client
-			httpClient := &http.Client{Timeout: 30 * time.Second}
-			if entry.TLSInsecure {
-				httpClient.Transport = &http.Transport{
-					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-				}
-			}
-
-			// 4. Build request
-			client := bunkerv1connect.NewBunkerdClient(httpClient, entry.URL)
+			// 3. Build request
+			client := newBunkerdClient(entry)
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
 			// Auth token
-			token := entry.Token
-			if token == "" {
-				token = viper.GetString("token")
-			}
+			token := resolveToken(entry)
 
 			if len(args) > 0 {
 				agentID = args[0]

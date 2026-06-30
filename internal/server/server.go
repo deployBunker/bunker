@@ -27,6 +27,7 @@ import (
 	"github.com/deployBunker/bunker/internal/hilo"
 	"github.com/deployBunker/bunker/internal/resource"
 	"github.com/deployBunker/bunker/internal/tailscale"
+	"github.com/deployBunker/bunker/internal/tlsutil"
 	"github.com/deployBunker/bunker/internal/tunnel"
 )
 
@@ -233,6 +234,26 @@ func (s *BunkerdServer) buildTLSConfig() (*tls.Config, error) {
 		}
 		if s.cfg.TLS.MTLS {
 			return nil, fmt.Errorf("mtls is not supported with auto_tls")
+		}
+		return tlsCfg, nil
+	}
+
+	if s.cfg.TLS.SelfSigned {
+		hosts := s.cfg.TLS.Hosts
+		if len(hosts) == 0 {
+			hosts = []string{"localhost"}
+		}
+		tlsCfg, err := tlsutil.LoadOrGenerateSelfSigned(s.cfg.TLS.CertFile, s.cfg.TLS.KeyFile, hosts)
+		if err != nil {
+			return nil, fmt.Errorf("self-signed cert: %w", err)
+		}
+		if s.cfg.TLS.MTLS {
+			mtlsCfg, err := auth.BuildMTLSConfig(s.cfg.TLS.CAFile)
+			if err != nil {
+				return nil, fmt.Errorf("mtls: %w", err)
+			}
+			tlsCfg.ClientCAs = mtlsCfg.ClientCAs
+			tlsCfg.ClientAuth = mtlsCfg.ClientAuth
 		}
 		return tlsCfg, nil
 	}

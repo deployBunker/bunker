@@ -30,14 +30,16 @@ type ServerConfig struct {
 
 // TLSConfig holds TLS settings.
 type TLSConfig struct {
-	Enabled  bool   `mapstructure:"enabled"`
-	CertFile string `mapstructure:"cert_file"`
-	KeyFile  string `mapstructure:"key_file"`
-	AutoTLS  bool   `mapstructure:"auto_tls"`
-	Domain   string `mapstructure:"domain"`
-	MTLS     bool   `mapstructure:"mtls"`
-	CAFile   string `mapstructure:"ca_file"`
-	VerifyCN string `mapstructure:"verify_cn"`
+	Enabled    bool     `mapstructure:"enabled"`
+	CertFile   string   `mapstructure:"cert_file"`
+	KeyFile    string   `mapstructure:"key_file"`
+	AutoTLS    bool     `mapstructure:"auto_tls"`
+	SelfSigned bool     `mapstructure:"self_signed"`
+	Domain     string   `mapstructure:"domain"`
+	MTLS       bool     `mapstructure:"mtls"`
+	CAFile     string   `mapstructure:"ca_file"`
+	VerifyCN   string   `mapstructure:"verify_cn"`
+	Hosts      []string `mapstructure:"hosts"`
 }
 
 // APIKey holds a generated API key with metadata.
@@ -103,10 +105,12 @@ func DefaultConfig() *Config {
 			RESTAddr: ":8080",
 		},
 		TLS: TLSConfig{
-			Enabled:  false,
-			MTLS:     false,
-			CAFile:   "",
-			VerifyCN: "",
+			Enabled:    false,
+			SelfSigned: false,
+			MTLS:       false,
+			CAFile:     "",
+			VerifyCN:   "",
+			Hosts:      []string{"localhost"},
 		},
 		Auth: AuthConfig{
 			Enabled:   false,
@@ -164,6 +168,7 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("tls.cert_file")
 	v.BindEnv("tls.key_file")
 	v.BindEnv("tls.auto_tls")
+	v.BindEnv("tls.self_signed")
 	v.BindEnv("tls.domain")
 	v.BindEnv("tls.mtls")
 	v.BindEnv("tls.ca_file")
@@ -215,16 +220,24 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("server.grpc_addr is required")
 	}
 	if c.TLS.Enabled {
-		if !c.TLS.AutoTLS {
+		if c.TLS.AutoTLS {
+			if c.TLS.Domain == "" {
+				return fmt.Errorf("tls.domain is required when auto_tls is enabled")
+			}
+		} else if c.TLS.SelfSigned {
 			if c.TLS.CertFile == "" {
-				return fmt.Errorf("tls.cert_file is required when TLS is enabled without auto_tls")
+				c.TLS.CertFile = "/etc/bunkerd/tls/cert.pem"
 			}
 			if c.TLS.KeyFile == "" {
-				return fmt.Errorf("tls.key_file is required when TLS is enabled without auto_tls")
+				c.TLS.KeyFile = "/etc/bunkerd/tls/key.pem"
 			}
-		}
-		if c.TLS.AutoTLS && c.TLS.Domain == "" {
-			return fmt.Errorf("tls.domain is required when auto_tls is enabled")
+		} else {
+			if c.TLS.CertFile == "" {
+				return fmt.Errorf("tls.cert_file is required when TLS is enabled without auto_tls or self_signed")
+			}
+			if c.TLS.KeyFile == "" {
+				return fmt.Errorf("tls.key_file is required when TLS is enabled without auto_tls or self_signed")
+			}
 		}
 		if c.TLS.MTLS && c.TLS.CAFile == "" {
 			return fmt.Errorf("tls.ca_file is required when mtls is enabled")
