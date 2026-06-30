@@ -62,10 +62,11 @@
 - [x] **WI-042**: Verify + fix cgroup enforcement through rootlesskit — rootless docker creates cgroups under `/sys/fs/cgroup/user.slice/user-<UID>.slice/`, not the standard systemd unit path. Current CPU/memory limits set via systemd-run properties may not propagate correctly through rootlesskit. Fix: verify `cpu.max` and `memory.max` in the correct cgroup path, add cgroup readback test in `rootless_test.go`, document the cgroup verification command in agent metrics. Verify with actual stress test inside agent: `bunker exec <agent> -- sh -c 'stress --cpu 4 --timeout 5s &'` then check cgroup stats.
 - [x] **WI-043**: PID namespace isolation — all agents see the same system-wide process list (16 processes visible). Rootlesskit supports `--pidns` for PID namespace isolation. Fix: add `--pidns` flag to rootlesskit launch in `rootless.go`, verify each agent sees only their own processes. Verify with `bunker exec <agent> -- ps aux | wc -l` showing only the agent's own processes (~5), not system-wide (~200). (2026-06-30)
 
-## [ ] WI-045: Fix CI: Unit tests — 4 hilo graph tests failing
+## [x] WI-045: Fix CI: Unit tests — 4 hilo graph tests failing
 - **Priority:** high
 - **CI Run:** https://github.com/deployBunker/bunker/actions/runs/28455593259
 - **Error:** `internal/hilo` package: TestGraph_BlastRadius, TestGraph_BlastRadius_MaxDepth, TestGraph_Stats, TestGraph_ProjectDirResolution fail. Needs hilo binary in CI or environment fix.
+- **Fix:** Rewrote `internal/hilo/hilo_test.go` to create a synthetic `.vfs/graph/edges.jsonl` fixture in a temp directory via `newTestGraph`, removing the dependency on the real Hilo CLI or `.vfs/` directory. All graph tests now pass when `.vfs/` is absent. Verified with `.vfs` renamed, full suite passed, and E2E battery passed on bunker-mvp (28 pass, 0 fail, 4 documented notes).
 
 > ⚠ **WI-003 post-mortem**: Spawn was marked complete but dockerd never ran under unprivileged users. Root cause: no rootless docker config in spawn code, and no E2E test that actually ran `docker run` inside an agent. WI-035 is the fix; WI-033 (integration test) should also be extended to include a `docker run` smoke assertion once rootless docker works.
 
