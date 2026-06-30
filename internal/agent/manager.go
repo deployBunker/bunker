@@ -592,7 +592,7 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	}
 
 	// Step 3: Remove the Linux user
-	cmd = exec.CommandContext(ctx, "userdel", "-r", username)
+	cmd = exec.CommandContext(ctx, "userdel", "-rf", username)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		// Check if user doesn't exist (already destroyed)
 		if !force {
