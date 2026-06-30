@@ -286,6 +286,50 @@ func TestExtractBearerTokenFromHeader(t *testing.T) {
 	}
 }
 
+func TestJWTAuth_StaticTokenFallback(t *testing.T) {
+	keyMgr := apikey.NewManager("master-secret")
+	auth := NewJWTAuthWithStaticFallback("super-secret-32-bytes-long-key", "static-test-token", keyMgr)
+
+	var gotClaims *Claims
+	handler := func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		gotClaims, _ = ClaimsFromContext(ctx)
+		return connect.NewResponse(&dummyMsg{}), nil
+	}
+	wrapped := auth.WrapUnary(handler)
+
+	req := connect.NewRequest(&dummyMsg{})
+	req.Header().Set("Authorization", "Bearer static-test-token")
+	_, err := wrapped(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error for static fallback: %v", err)
+	}
+	if gotClaims == nil || gotClaims.Subject != "static-token" {
+		t.Fatalf("expected static-token subject, got %+v", gotClaims)
+	}
+}
+
+func TestJWTAuth_StaticTokenFallbackRejectsWrongToken(t *testing.T) {
+	keyMgr := apikey.NewManager("master-secret")
+	auth := NewJWTAuthWithStaticFallback("super-secret-32-bytes-long-key", "static-test-token", keyMgr)
+
+	called := false
+	handler := func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		called = true
+		return nil, nil
+	}
+	wrapped := auth.WrapUnary(handler)
+
+	req := connect.NewRequest(&dummyMsg{})
+	req.Header().Set("Authorization", "Bearer wrong-static-token")
+	_, err := wrapped(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error for wrong static token")
+	}
+	if called {
+		t.Error("handler should not be called on wrong static token")
+	}
+}
+
 func TestConstantTimeCompare(t *testing.T) {
 	if !ConstantTimeCompare("abc", "abc") {
 		t.Error("expected equal strings to compare true")

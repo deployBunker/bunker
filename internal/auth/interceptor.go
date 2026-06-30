@@ -96,12 +96,14 @@ func NewAuthInterceptor(token string, enabled bool) connect.Interceptor {
 
 // NewJWTAuthInterceptor returns a JWT-based interceptor when a JWT secret is configured.
 // Falls back to static token auth if jwtSecret is empty but static token is enabled.
+// When both jwtSecret and staticToken are set, the JWT interceptor also accepts the
+// static token as a fallback so existing clients keep working during JWT rollout.
 func NewJWTAuthInterceptor(jwtSecret string, keyMgr *apikey.Manager, staticToken string, enabled bool) connect.Interceptor {
 	if !enabled {
 		return NoAuth{}
 	}
 	if jwtSecret != "" {
-		return NewJWTAuth(jwtSecret, keyMgr)
+		return NewJWTAuthWithStaticFallback(jwtSecret, staticToken, keyMgr)
 	}
 	if staticToken != "" {
 		return NewTokenAuth(staticToken)

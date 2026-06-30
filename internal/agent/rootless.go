@@ -77,6 +77,11 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 	if err := os.MkdirAll(binDir, 0755); err != nil {
 		return fmt.Errorf("create bin dir: %w", err)
 	}
+	// The bin directory must be owned by the agent user because the installer
+	// runs as that user and writes binaries into it.
+	if out, err := exec.CommandContext(ctx, "chown", "-R", username, binDir).CombinedOutput(); err != nil {
+		return fmt.Errorf("chown bin dir: %w (output: %s)", err, string(out))
+	}
 
 	rootlessScript := filepath.Join(binDir, "dockerd-rootless.sh")
 	if _, err := os.Stat(rootlessScript); err == nil {
@@ -114,9 +119,10 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 	return nil
 }
 
-// ensureRootlesskitAppArmor writes a permissive AppArmor profile for
-// rootlesskit on Ubuntu 24.04+ where unprivileged user namespaces are blocked
-// by AppArmor. The profile is scoped to the agent user's home directory binary.
+// ensureRootlesskitAppArmor writes an AppArmor profile for rootlesskit on
+// Ubuntu 24.04+ where unprivileged user namespaces are restricted by
+// AppArmor. The profile format matches the one emitted by Docker's own
+// rootless installer when it fails on apparmor_restrict_unprivileged_userns.
 func ensureRootlesskitAppArmor(ctx context.Context, username string, logger *slog.Logger) error {
 	u, err := user.Lookup(username)
 	if err != nil {
@@ -136,24 +142,17 @@ func ensureRootlesskitAppArmor(ctx context.Context, username string, logger *slo
 		return fmt.Errorf("apparmor_parser not found: %w", err)
 	}
 
-	profile := fmt.Sprintf(`#include <tunables/global>
+	profile := fmt.Sprintf(`# ref: https://ubuntu.com/blog/ubuntu-23-10-restricted-unprivileged-user-namespaces
+abi <abi/4.0>,
+include <tunables/global>
 
 %s flags=(unconfined) {
-  #include <abstractions/base>
-  capability,
-  network,
-  mount,
-  umount,
-  pivot_root,
-  change_profile -> *,
-  unix,
-  @{PROC}/** r,
-  /sys/** r,
-  /dev/** rw,
-  %s/** rwk,
-  /run/user/%s/** rwk,
+  userns,
+
+  # Site-specific additions and overrides. See local/README for details.
+  include if exists <local/%s>
 }
-`, rootlesskitBin, u.HomeDir, u.Uid)
+`, rootlesskitBin, profileName)
 
 	if err := os.WriteFile(profilePath, []byte(profile), 0644); err != nil {
 		return fmt.Errorf("write apparmor profile %s: %w", profilePath, err)
