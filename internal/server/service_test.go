@@ -15,25 +15,21 @@ import (
 	"github.com/deployBunker/bunker/internal/resource"
 )
 
-// TestExecAgent_SSHCommandIncludesSetEnv verifies that the SSH command built
-// by ExecAgent pushes DOCKER_HOST explicitly via -o SetEnv.  This works even
-// when sshd does not have PermitUserEnvironment=yes.
-func TestExecAgent_SSHCommandIncludesSetEnv(t *testing.T) {
+// TestExecAgent_SSHCommandIncludesDockerHost verifies that the SSH command built
+// by ExecAgent ensures DOCKER_HOST reaches the remote command.  We now wrap the
+// remote command with `env DOCKER_HOST=unix://...` so it works even when sshd
+// does not accept SetEnv or PermitUserEnvironment.
+func TestExecAgent_SSHCommandIncludesDockerHost(t *testing.T) {
 	if _, err := exec.LookPath("ssh"); err != nil {
 		t.Skip("ssh binary not available")
 	}
 
-	// We verify the fix by inspecting the actual source code of ExecAgent.
-	// The SSH command must include -o SetEnv=DOCKER_HOST=unix://... before
-	// the target host argument.
-	//
-	// Read the service.go source and grep for the SetEnv option.
 	src, err := os.ReadFile("service.go")
 	if err != nil {
 		t.Fatalf("read service.go: %v", err)
 	}
 
-	want := `SetEnv=DOCKER_HOST=unix://`
+	want := `env DOCKER_HOST=unix://`
 	if !strings.Contains(string(src), want) {
 		t.Fatalf("ExecAgent SSH command missing %q in service.go", want)
 	}
@@ -45,32 +41,25 @@ func TestExecAgent_SSHCommandIncludesSetEnv(t *testing.T) {
 }
 
 // TestExecAgent_DockerHostPropagatedToCommand verifies that the exec command
-// itself receives DOCKER_HOST in its environment when the SSH transport is
-// configured with SetEnv.
+// itself receives DOCKER_HOST in its environment.  We no longer rely on
+// OpenSSH SetEnv because server sshd configs often restrict AcceptEnv; instead
+// we prefix the remote command with env(1).
 func TestExecAgent_DockerHostPropagatedToCommand(t *testing.T) {
-	// This is a design-level test: we assert that the SSH command includes
-	// the SetEnv option, which OpenSSH sends as an environment variable to
-	// the remote session.  The remote sshd must have AcceptEnv=DOCKER_HOST
-	// (or a wildcard) for it to be accepted, but that's a server-side config
-	// concern, not something we can test here.
-	//
-	// Instead, we verify that the *client* side always sends it.
 	src, err := os.ReadFile("service.go")
 	if err != nil {
 		t.Fatalf("read service.go: %v", err)
 	}
 
-	// The ssh command must have -o SetEnv=DOCKER_HOST=...
 	lines := strings.Split(string(src), "\n")
 	found := false
 	for _, line := range lines {
-		if strings.Contains(line, `SetEnv=DOCKER_HOST`) {
+		if strings.Contains(line, `env DOCKER_HOST=unix://`) {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatal("service.go: ExecAgent ssh command missing SetEnv=DOCKER_HOST option")
+		t.Fatal("service.go: ExecAgent ssh command missing env DOCKER_HOST=unix://... wrapper")
 	}
 }
 
