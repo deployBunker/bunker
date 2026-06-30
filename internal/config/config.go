@@ -61,15 +61,17 @@ type AuthConfig struct {
 
 // AgentConfig holds agent lifecycle settings.
 type AgentConfig struct {
-	BaseDataDir        string        `mapstructure:"base_data_dir"`
-	SSHDir             string        `mapstructure:"ssh_dir"`
-	PortRangeStart     uint32        `mapstructure:"port_range_start"`
-	PortRangeEnd       uint32        `mapstructure:"port_range_end"`
-	PortRangePerAgent  uint32        `mapstructure:"port_range_per_agent"`
-	MaxAgents          uint32        `mapstructure:"max_agents"`
-	DefaultCPUQuota    float64       `mapstructure:"default_cpu_quota"`
-	DefaultMemoryBytes uint64        `mapstructure:"default_memory_bytes"`
-	DefaultTTL         time.Duration `mapstructure:"default_ttl"`
+	BaseDataDir         string        `mapstructure:"base_data_dir"`
+	SSHDir              string        `mapstructure:"ssh_dir"`
+	PortRangeStart      uint32        `mapstructure:"port_range_start"`
+	PortRangeEnd        uint32        `mapstructure:"port_range_end"`
+	PortRangePerAgent   uint32        `mapstructure:"port_range_per_agent"`
+	MaxAgents           uint32        `mapstructure:"max_agents"`
+	DefaultCPUQuota     float64       `mapstructure:"default_cpu_quota"`
+	DefaultMemoryBytes  uint64        `mapstructure:"default_memory_bytes"`
+	DefaultMaxProcesses uint64        `mapstructure:"default_max_processes"`
+	DefaultMaxOpenFiles uint64        `mapstructure:"default_max_open_files"`
+	DefaultTTL          time.Duration `mapstructure:"default_ttl"`
 }
 
 // TunnelConfig holds Cloudflare TryCloudflare tunnel settings.
@@ -119,15 +121,17 @@ func DefaultConfig() *Config {
 			JWTTTL:    6 * time.Hour,
 		},
 		Agent: AgentConfig{
-			BaseDataDir:        "/var/lib/bunkerd",
-			SSHDir:             "/etc/bunkerd/ssh",
-			PortRangeStart:     10000,
-			PortRangeEnd:       10100,
-			PortRangePerAgent:  10,
-			MaxAgents:          100,
-			DefaultCPUQuota:    2.0,
-			DefaultMemoryBytes: 4 * 1024 * 1024 * 1024, // 4 GiB
-			DefaultTTL:         6 * time.Hour,
+			BaseDataDir:         "/var/lib/bunkerd",
+			SSHDir:              "/etc/bunkerd/ssh",
+			PortRangeStart:      10000,
+			PortRangeEnd:        10100,
+			PortRangePerAgent:   10,
+			MaxAgents:           100,
+			DefaultCPUQuota:     2.0,
+			DefaultMemoryBytes:  4 * 1024 * 1024 * 1024, // 4 GiB
+			DefaultMaxProcesses: 4096,
+			DefaultMaxOpenFiles: 65536,
+			DefaultTTL:          6 * time.Hour,
 		},
 		Tunnel: TunnelConfig{
 			Enabled:        true,
@@ -185,6 +189,8 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("agent.max_agents")
 	v.BindEnv("agent.default_cpu_quota")
 	v.BindEnv("agent.default_memory_bytes")
+	v.BindEnv("agent.default_max_processes")
+	v.BindEnv("agent.default_max_open_files")
 	v.BindEnv("agent.default_ttl")
 	v.BindEnv("tunnel.enabled")
 	v.BindEnv("tunnel.binary_path")

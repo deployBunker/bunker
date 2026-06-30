@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -435,5 +436,53 @@ func TestStopDockerdDirect_NoProcess(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no dockerd process found") && !strings.Contains(err.Error(), "pgrep") {
 		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestSpawn_SystemdUnitHasUlimits(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("test requires root privileges")
+	}
+	m := newTestManager(t)
+	agentID := uniqueAgentID("ulimit-agent")
+	req := &v1.SpawnAgentRequest{AgentId: agentID}
+	resp, err := m.Spawn(t.Context(), req)
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+	defer cleanupAgent(t, m, resp.AgentId)
+
+	unitName := "bunker-docker-" + resp.AgentId
+	// Wait briefly for systemd to load the unit and apply properties.
+	time.Sleep(500 * time.Millisecond)
+
+	out, err := exec.CommandContext(t.Context(), "systemctl", "show", unitName, "--property=TasksMax", "--property=LimitNOFILE").CombinedOutput()
+	if err != nil {
+		t.Logf("systemctl show output: %s", string(out))
+		// systemd-run --system transient units may not be visible to systemctl show immediately.
+		t.Skip("could not query systemd unit properties")
+	}
+	output := string(out)
+
+	wantTasksMax := fmt.Sprintf("TasksMax=%d", m.cfg.Agent.DefaultMaxProcesses)
+	if !strings.Contains(output, wantTasksMax) {
+		t.Errorf("systemd unit missing TasksMax\ngot:\n%s\nwant substring: %s", output, wantTasksMax)
+	}
+	wantLimitNOFILE := fmt.Sprintf("LimitNOFILE=%d %d", m.cfg.Agent.DefaultMaxOpenFiles, m.cfg.Agent.DefaultMaxOpenFiles)
+	if !strings.Contains(output, wantLimitNOFILE) {
+		t.Errorf("systemd unit missing LimitNOFILE\ngot:\n%s\nwant substring: %s", output, wantLimitNOFILE)
+	}
+}
+
+func TestConfig_DefaultUlimits(t *testing.T) {
+	cfg := config.DefaultConfig()
+	if cfg.Agent.DefaultMaxProcesses == 0 {
+		t.Error("DefaultMaxProcesses should be non-zero")
+	}
+	if cfg.Agent.DefaultMaxOpenFiles == 0 {
+		t.Error("DefaultMaxOpenFiles should be non-zero")
+	}
+	if cfg.Agent.DefaultMaxProcesses > cfg.Agent.DefaultMaxOpenFiles {
+		t.Errorf("DefaultMaxProcesses (%d) should not exceed DefaultMaxOpenFiles (%d)", cfg.Agent.DefaultMaxProcesses, cfg.Agent.DefaultMaxOpenFiles)
 	}
 }
