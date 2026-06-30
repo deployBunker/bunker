@@ -16,6 +16,13 @@ jobs:
         with:
           go-version: "1.22"
 
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          version: "1.50.0"
+
+      - name: Generate protobuf code
+        run: buf generate
+
       - name: Build
         run: go build ./...
 
@@ -35,6 +42,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
+
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          version: "1.50.0"
+
+      - name: Generate protobuf code
+        run: buf generate
 
       - name: Build binaries
         run: |
