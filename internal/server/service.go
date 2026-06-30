@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -201,7 +202,11 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 	// instead of relying on SSH env propagation we explicitly prefix the remote
 	// command with env(1) to set DOCKER_HOST. This makes `bunker exec <agent>
 	// docker ...` work regardless of sshd configuration.
-	wrappedCmd := fmt.Sprintf("env DOCKER_HOST=unix://%s %s", dockerSockPath, req.Msg.Command)
+	remoteCmd := req.Msg.Command
+	if len(req.Msg.Args) > 0 {
+		remoteCmd += " " + strings.Join(req.Msg.Args, " ")
+	}
+	wrappedCmd := fmt.Sprintf("env DOCKER_HOST=unix://%s %s", dockerSockPath, remoteCmd)
 	cmd := exec.CommandContext(ctx, "ssh",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
@@ -212,9 +217,6 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 		"--",
 		"sh", "-c", wrappedCmd,
 	)
-	if len(req.Msg.Args) > 0 {
-		cmd.Args = append(cmd.Args, req.Msg.Args...)
-	}
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
