@@ -372,6 +372,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		"HOME=" + userHome,
 		"USER=" + username,
 		"XDG_RUNTIME_DIR=" + filepath.Join("/run", "user", strconv.Itoa(uid)),
+		"DBUS_SESSION_BUS_ADDRESS=unix:path=" + filepath.Join("/run", "user", strconv.Itoa(uid), "bus"),
 		"DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns",
 		"DOCKERD_ROOTLESS_ROOTLESSKIT_PORT_DRIVER=builtin",
 		"DOCKER_HOST=unix://" + dockerSockPath,
