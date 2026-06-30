@@ -386,6 +386,9 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	stopCmd.Run() // ignore error — unit may not exist
 	stopCmd = exec.CommandContext(ctx, "systemctl", "disable", unitName)
 	stopCmd.Run() // ignore error — unit may not exist
+	// Remove a loaded/failed transient unit so systemd-run can recreate it.
+	stopCmd = exec.CommandContext(ctx, "systemctl", "reset-failed", unitName)
+	stopCmd.Run() // ignore error — unit may not be loaded
 
 	// Also kill any orphaned dockerd process directly (belt-and-suspenders).
 	_ = stopDockerdDirect(ctx, username, unitName, m.logger)
