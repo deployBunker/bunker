@@ -2,17 +2,13 @@ package cli
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
-	"net/http"
 	"time"
 
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
-	bunkerv1connect "github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect"
 )
 
 // NewDestroyCommand returns the `bunker destroy` cobra command.
@@ -54,16 +50,8 @@ Examples:
 				return fmt.Errorf("server %q not found in config", serverName)
 			}
 
-			// 3. Build HTTP client
-			httpClient := &http.Client{Timeout: 30 * time.Second}
-			if entry.TLSInsecure {
-				httpClient.Transport = &http.Transport{
-					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-				}
-			}
-
-			// 4. Build request
-			client := bunkerv1connect.NewBunkerdClient(httpClient, entry.URL)
+			// 3. Build request
+			client := newBunkerdClient(entry)
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
@@ -73,21 +61,18 @@ Examples:
 			})
 
 			// Auth token
-			token := entry.Token
-			if token == "" {
-				token = viper.GetString("token")
-			}
+			token := resolveToken(entry)
 			if token != "" {
 				req.Header().Set("Authorization", "Bearer "+token)
 			}
 
-			// 5. Call RPC
+			// 4. Call RPC
 			resp, err := client.DestroyAgent(ctx, req)
 			if err != nil {
 				return fmt.Errorf("destroy agent: %w", err)
 			}
 
-			// 6. Print result
+			// 5. Print result
 			if resp.Msg.Status == "not_found" {
 				fmt.Printf("Agent %s not found.\n", agentID)
 				return nil

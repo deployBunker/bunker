@@ -273,3 +273,15 @@ tasks:
   status: complete
   created_at: '2026-06-30T02:09:23.596540+00:00'
   completed_at: '2026-06-30T02:28:34.626597+00:00'
+- id: wi-037
+  title: TLS/mTLS end-to-end
+  criteria:
+  - Server starts with TLS enabled and a self-signed certificate
+  - CLI can connect with --tls-insecure and register the server
+  - Traffic between CLI and bunkerd is encrypted (verified via TLS handshake)
+  - 'mTLS path: server configured with ca_file/cert_file/key_file and mtls=true rejects
+    client without cert'
+  - 'mTLS path: client presenting a valid client cert signed by the configured CA
+    is accepted'
+  status: in_progress
+  created_at: '2026-06-30T03:40:42.628404+00:00'
