@@ -338,21 +338,9 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	}
 
 	// Build systemd-run args with cgroup resource limits.
-	// Rootless dockerd runs inside a user namespace; systemd --user can apply
-	// CPUQuota/MemoryMax to the rootlesskit/dockerd process tree.
-	systemdArgs := []string{
-		"--user",
-		"--unit=" + unitName,
-	}
-	if cpuQuota > 0 {
-		// CPUQuota is a percentage of one CPU: 100%=1 core, 200%=2 cores
-		systemdArgs = append(systemdArgs, fmt.Sprintf("--property=CPUQuota=%d%%", int(cpuQuota*100)))
-	}
-	if memMax > 0 {
-		systemdArgs = append(systemdArgs, fmt.Sprintf("--property=MemoryMax=%d", memMax))
-	}
-
-	// Resolve the agent user's UID for XDG_RUNTIME_DIR.
+	// Use --system (system-wide unit) with --uid/--gid so the unit runs as the
+	// agent user without requiring a running systemd --user manager / D-Bus bus
+	// for a freshly-created user. This also lets us apply CPUQuota/MemoryMax.
 	u, err := user.Lookup(username)
 	if err != nil {
 		cleanup()
@@ -364,6 +352,21 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		return nil, fmt.Errorf("parse uid %s: %w", u.Uid, err)
 	}
 
+	systemdArgs := []string{
+		"--system",
+		"--unit=" + unitName,
+		"--uid=" + u.Uid,
+		"--gid=" + u.Gid,
+		"--property=PAMName=login",
+	}
+	if cpuQuota > 0 {
+		// CPUQuota is a percentage of one CPU: 100%=1 core, 200%=2 cores
+		systemdArgs = append(systemdArgs, fmt.Sprintf("--property=CPUQuota=%d%%", int(cpuQuota*100)))
+	}
+	if memMax > 0 {
+		systemdArgs = append(systemdArgs, fmt.Sprintf("--property=MemoryMax=%d", memMax))
+	}
+
 	// Rootless dockerd script. DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns
 	// avoids needing a separate bridge. The socket path is passed through
 	// DOCKER_HOST so the per-agent socket is created where bunkerd expects it.
@@ -372,19 +375,16 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		"HOME=" + userHome,
 		"USER=" + username,
 		"XDG_RUNTIME_DIR=" + filepath.Join("/run", "user", strconv.Itoa(uid)),
-		"DBUS_SESSION_BUS_ADDRESS=unix:path=" + filepath.Join("/run", "user", strconv.Itoa(uid), "bus"),
 		"DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns",
 		"DOCKERD_ROOTLESS_ROOTLESSKIT_PORT_DRIVER=builtin",
 		"DOCKER_HOST=unix://" + dockerSockPath,
 	}
 	systemdArgs = append(systemdArgs, rootlessBin, "--host=unix://"+dockerSockPath)
 
-	// If a stale unit exists (from a previous incomplete destroy), stop and disable it
-	// under the agent's user session.  systemctl --user from the root foreman targets
-	// the root user manager, not the agent's.  Use --machine to reach the right session.
-	stopCmd := exec.CommandContext(ctx, "systemctl", "--user", "--machine="+username+"@", "stop", unitName)
+	// If a stale system unit exists (from a previous incomplete destroy), stop it.
+	stopCmd := exec.CommandContext(ctx, "systemctl", "stop", unitName)
 	stopCmd.Run() // ignore error — unit may not exist
-	stopCmd = exec.CommandContext(ctx, "systemctl", "--user", "--machine="+username+"@", "disable", unitName)
+	stopCmd = exec.CommandContext(ctx, "systemctl", "disable", unitName)
 	stopCmd.Run() // ignore error — unit may not exist
 
 	// Also kill any orphaned dockerd process directly (belt-and-suspenders).
