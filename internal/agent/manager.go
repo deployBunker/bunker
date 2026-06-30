@@ -8,8 +8,10 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -266,10 +268,14 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	}
 	m.logger.Info("persisted SSH private key", "path", sshKeyPath)
 
-	// ── Step 5: Start dockerd via systemd-run ──────────────────────
+	// ── Step 5: Start rootless dockerd via systemd-run ─────────────
+	// Agents are unprivileged Linux users. A privileged dockerd cannot run as
+	// a non-root user, so we use Docker's rootless mode. The setup installs
+	// rootlesskit, slirp4netns/vpnkit, and configures subuid/subgid for the
+	// user, then starts dockerd-rootless.sh as a systemd user unit.
 	dockerSockPath = fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
 	unitName := "bunker-docker-" + agentID
-	m.logger.Info("starting dockerd", "unit", unitName, "sock", dockerSockPath)
+	m.logger.Info("starting rootless dockerd", "unit", unitName, "sock", dockerSockPath)
 
 	// Create the socket directory.
 	sockDir := filepath.Dir(dockerSockPath)
@@ -296,7 +302,33 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		}
 	}
 
-	// Build systemd-run args with cgroup resource limits
+	// Configure subuid/subgid so rootless Docker can map container root to the
+	// agent user. We allocate a contiguous 65,536 UID/GID range starting from
+	// the user's own UID. This is the standard rootless Docker mapping.
+	if err := configureSubIDs(ctx, username); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("configure subuid/subgid for %s: %w", username, err)
+	}
+
+	// Install the rootless Docker tooling into the agent's home directory.
+	// This downloads the official docker-ce-rootless-extras installer when the
+	// tools are not already present on the server.
+	rootlessBin := filepath.Join(userHome, "bin", "dockerd-rootless.sh")
+	if err := installRootlessDocker(ctx, username, userHome, m.logger); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("install rootless docker for %s: %w", username, err)
+	}
+
+	// Ensure an AppArmor profile exists for rootlesskit on Ubuntu 24.04+
+	// where unprivileged user namespaces are restricted by AppArmor.
+	if err := ensureRootlesskitAppArmor(ctx, username, m.logger); err != nil {
+		m.logger.Warn("could not ensure rootlesskit AppArmor profile; rootless docker may fail",
+			"agent_id", agentID, "error", err)
+	}
+
+	// Build systemd-run args with cgroup resource limits.
+	// Rootless dockerd runs inside a user namespace; systemd --user can apply
+	// CPUQuota/MemoryMax to the rootlesskit/dockerd process tree.
 	systemdArgs := []string{
 		"--user",
 		"--unit=" + unitName,
@@ -308,7 +340,32 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	if memMax > 0 {
 		systemdArgs = append(systemdArgs, fmt.Sprintf("--property=MemoryMax=%d", memMax))
 	}
-	systemdArgs = append(systemdArgs, "dockerd", "--host=unix://"+dockerSockPath)
+
+	// Resolve the agent user's UID for XDG_RUNTIME_DIR.
+	u, err := user.Lookup(username)
+	if err != nil {
+		cleanup()
+		return nil, fmt.Errorf("lookup user %s: %w", username, err)
+	}
+	uid, err := strconv.Atoi(u.Uid)
+	if err != nil {
+		cleanup()
+		return nil, fmt.Errorf("parse uid %s: %w", u.Uid, err)
+	}
+
+	// Rootless dockerd script. DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns
+	// avoids needing a separate bridge. The socket path is passed through
+	// DOCKER_HOST so the per-agent socket is created where bunkerd expects it.
+	rootlessEnv := []string{
+		"PATH=" + filepath.Join(userHome, "bin") + ":/usr/local/bin:/usr/bin:/bin",
+		"HOME=" + userHome,
+		"USER=" + username,
+		"XDG_RUNTIME_DIR=" + filepath.Join("/run", "user", strconv.Itoa(uid)),
+		"DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns",
+		"DOCKERD_ROOTLESS_ROOTLESSKIT_PORT_DRIVER=builtin",
+		"DOCKER_HOST=unix://" + dockerSockPath,
+	}
+	systemdArgs = append(systemdArgs, rootlessBin, "--host=unix://"+dockerSockPath)
 
 	// If a stale unit exists (from a previous incomplete destroy), stop and disable it
 	// under the agent's user session.  systemctl --user from the root foreman targets
@@ -322,9 +379,10 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	_ = stopDockerdDirect(ctx, username, unitName, m.logger)
 
 	cmd = exec.CommandContext(ctx, "systemd-run", systemdArgs...)
+	cmd.Env = append(os.Environ(), rootlessEnv...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		cleanup()
-		return nil, fmt.Errorf("systemd-run dockerd failed: %w (output: %s)", err, string(out))
+		return nil, fmt.Errorf("systemd-run rootless dockerd failed: %w (output: %s)", err, string(out))
 	}
 
 	// ── Clean up temporary key files (keys are in memory + authorized_keys) ──
