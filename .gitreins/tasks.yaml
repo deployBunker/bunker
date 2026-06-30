@@ -295,3 +295,26 @@ tasks:
     extends TTL
   status: in_progress
   created_at: '2026-06-30T05:50:29.443719+00:00'
+- id: wi-039
+  title: "Cloudflare tunnel end-to-end \u2014 install cloudflared on server, spawn\
+    \ agent with --trycloudflare, verify public URL reachable via curl"
+  criteria:
+  - cloudflared binary is installed on bunker-mvp and available on PATH
+  - bunkerd config has tunnel.enabled=true
+  - bunker spawn --agent-id e2e-tunnel --network cloudflare --trycloudflare returns
+    a public URL
+  - curl -s -o /dev/null -w '%{http_code}' on the public URL returns HTTP 200
+  - agent is destroyed and tunnel stopped cleanly
+  status: complete
+  created_at: '2026-06-30T08:43:51.805212+00:00'
+  completed_at: '2026-06-30T09:54:39.444096+00:00'
+- id: wi-044
+  title: 'Fix CI: proto package not found'
+  criteria:
+  - Add bufbuild/buf-setup-action@v1 to .github/workflows/ci.yml
+  - Add 'buf generate' step before go build in both build-and-test and regression
+    jobs
+  - CI build no longer fails with missing proto package github.com/deployBunker/bunker/proto/bunker/v1
+  status: complete
+  created_at: '2026-06-30T14:06:08.783628+00:00'
+  completed_at: '2026-06-30T14:07:50.892115+00:00'
