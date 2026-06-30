@@ -29,7 +29,7 @@ func TestExecAgent_SSHCommandIncludesDockerHost(t *testing.T) {
 		t.Fatalf("read service.go: %v", err)
 	}
 
-	want := `env DOCKER_HOST=unix://`
+	want := `DOCKER_HOST=unix://`
 	if !strings.Contains(string(src), want) {
 		t.Fatalf("ExecAgent SSH command missing %q in service.go", want)
 	}
@@ -53,13 +53,13 @@ func TestExecAgent_DockerHostPropagatedToCommand(t *testing.T) {
 	lines := strings.Split(string(src), "\n")
 	found := false
 	for _, line := range lines {
-		if strings.Contains(line, `env DOCKER_HOST=unix://`) {
+		if strings.Contains(line, `DOCKER_HOST=unix://`) {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatal("service.go: ExecAgent ssh command missing env DOCKER_HOST=unix://... wrapper")
+		t.Fatal("service.go: ExecAgent ssh command missing DOCKER_HOST=unix://... wrapper")
 	}
 }
 
