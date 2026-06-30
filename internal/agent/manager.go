@@ -438,7 +438,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		if err := os.WriteFile(portFile, []byte(portContent), 0644); err != nil {
 			m.logger.Warn("failed to write port range file", "agent_id", agentID, "error", err)
 		}
-		if out, err := exec.CommandContext(ctx, "chown", username, bunkerMetaDir).CombinedOutput(); err != nil {
+		if out, err := exec.CommandContext(ctx, "chown", "-R", username+":", bunkerMetaDir).CombinedOutput(); err != nil {
 			m.logger.Warn("failed to chown .bunker meta dir", "agent_id", agentID, "error", err, "output", string(out))
 		}
 	}
