@@ -116,6 +116,14 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 	if _, err := os.Stat(rootlessScript); err != nil {
 		return fmt.Errorf("rootless install completed but %s is missing: %w", rootlessScript, err)
 	}
+
+	// The installer may have created files (config, install script, etc.) as
+	// root. Chown the entire home directory to the agent user so userdel -r
+	// can clean up cleanly during destroy.
+	if out, err := exec.CommandContext(ctx, "chown", "-R", username+":", userHome).CombinedOutput(); err != nil {
+		logger.Warn("failed to chown agent home after rootless install", "user", username, "error", err, "output", string(out))
+	}
+
 	return nil
 }
 
