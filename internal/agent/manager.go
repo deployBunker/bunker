@@ -343,6 +343,13 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// Use --system (system-wide unit) with --uid/--gid so the unit runs as the
 	// agent user without requiring a running systemd --user manager / D-Bus bus
 	// for a freshly-created user. This also lets us apply CPUQuota/MemoryMax.
+	//
+	// Because the unit is a *user* unit created by systemd-run as the agent
+	// user, the cgroup v2 controller files will live under:
+	//   /sys/fs/cgroup/user.slice/user-<uid>.slice/user@<uid>.service/bunker-docker-<agentID>.service
+	// Limits are enforced by systemd through CPUQuota/MemoryMax, not by writing
+	// cgroup files directly. Read-back helpers in internal/resource use this
+	// path for metrics verification.
 	u, err := user.Lookup(username)
 	if err != nil {
 		cleanup()
@@ -362,7 +369,8 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		"--property=PAMName=login",
 	}
 	if cpuQuota > 0 {
-		// CPUQuota is a percentage of one CPU: 100%=1 core, 200%=2 cores
+		// CPUQuota is a percentage of one CPU: 100%=1 core, 200%=2 cores.
+		// This maps to cgroup v2 cpu.max as quota_us = CPUQuota%/100 * period_us.
 		systemdArgs = append(systemdArgs, fmt.Sprintf("--property=CPUQuota=%d%%", int(cpuQuota*100)))
 	}
 	if memMax > 0 {
