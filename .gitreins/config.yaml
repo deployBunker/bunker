@@ -43,8 +43,8 @@ tier1:
 
 # ── Evaluator caps (Tier 2) ─────────────────────────────────────
 evaluator:
-  max_iterations: 50
-  cap: "50/15m/10M/384k"
+  max_iterations: 100
+  cap: "100/15m/10M/384k"
 
 # ── Force legacy evaluator path (avoid default pipeline) ────────
 pipeline:
