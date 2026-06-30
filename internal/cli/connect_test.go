@@ -72,7 +72,7 @@ func (m *mockBunkerdServer) HeartbeatAgent(ctx context.Context, req *connect.Req
 }
 
 // newTestServer starts an httptest server with a chi router mounting the connect handler.
-func newTestServer(t *testing.T, mock *mockBunkerdServer) *httptest.Server {
+func newTestServer(t *testing.T, mock bunkerv1connect.BunkerdHandler) *httptest.Server {
 	t.Helper()
 	r := chi.NewRouter()
 	path, handler := bunkerv1connect.NewBunkerdHandler(mock)

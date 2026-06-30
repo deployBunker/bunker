@@ -285,3 +285,13 @@ tasks:
     is accepted'
   status: in_progress
   created_at: '2026-06-30T03:40:42.628404+00:00'
+- id: wi-038
+  title: TTL expiry end-to-end
+  criteria:
+  - CLI has a heartbeat command that calls HeartbeatAgent
+  - HeartbeatAgent extends ExpiresAt by configured default TTL
+  - Unit tests cover heartbeat command and service TTL extension
+  - E2E test verifies spawn with 30s TTL, agent destroyed after expiry, heartbeat
+    extends TTL
+  status: in_progress
+  created_at: '2026-06-30T05:50:29.443719+00:00'
