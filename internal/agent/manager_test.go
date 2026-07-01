@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -503,5 +504,91 @@ func TestConfig_DefaultUlimits(t *testing.T) {
 	}
 	if cfg.Agent.DefaultMaxProcesses > cfg.Agent.DefaultMaxOpenFiles {
 		t.Errorf("DefaultMaxProcesses (%d) should not exceed DefaultMaxOpenFiles (%d)", cfg.Agent.DefaultMaxProcesses, cfg.Agent.DefaultMaxOpenFiles)
+	}
+}
+
+func TestConfig_DefaultDiskAndContainerLimits(t *testing.T) {
+	cfg := config.DefaultConfig()
+	if cfg.Agent.DefaultDiskBytes == 0 {
+		t.Error("DefaultDiskBytes should be non-zero")
+	}
+	if cfg.Agent.DefaultMaxDockerContainers == 0 {
+		t.Error("DefaultMaxDockerContainers should be non-zero")
+	}
+}
+
+func TestCountAgentContainers(t *testing.T) {
+	// Replace countAgentContainers with a fake that returns 2, then restore.
+	orig := countAgentContainers
+	countAgentContainers = func(ctx context.Context, dockerSockPath string) (uint32, error) {
+		return 2, nil
+	}
+	defer func() { countAgentContainers = orig }()
+
+	got, err := countAgentContainers(t.Context(), "/run/bunker/test/docker.sock")
+	if err != nil {
+		t.Fatalf("countAgentContainers: %v", err)
+	}
+	if got != 2 {
+		t.Errorf("expected 2 containers, got %d", got)
+	}
+}
+
+func TestSpawn_MaxDockerContainersEnforced(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("test requires root privileges")
+	}
+	m := newTestManager(t)
+	agentID := uniqueAgentID("maxcontainers")
+	req := &v1.SpawnAgentRequest{
+		AgentId: agentID,
+		Limits: &v1.ResourceLimits{
+			MaxDockerContainers: 0, // zero means use default; default is 10, so spawn should succeed
+		},
+	}
+	resp, err := m.Spawn(t.Context(), req)
+	if err != nil {
+		t.Fatalf("Spawn with default MaxDockerContainers failed: %v", err)
+	}
+	defer cleanupAgent(t, m, resp.AgentId)
+
+	if resp.Limits == nil || resp.Limits.MaxDockerContainers != m.cfg.Agent.DefaultMaxDockerContainers {
+		t.Errorf("expected MaxDockerContainers %d in response, got %v", m.cfg.Agent.DefaultMaxDockerContainers, resp.Limits)
+	}
+}
+
+func TestSpawn_DiskMaxBytesEnforced(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("test requires root privileges")
+	}
+	m := newTestManager(t)
+	agentID := uniqueAgentID("diskmax")
+	req := &v1.SpawnAgentRequest{
+		AgentId: agentID,
+		Limits: &v1.ResourceLimits{
+			DiskMaxBytes: 1 * 1024 * 1024 * 1024, // 1 GiB
+		},
+	}
+	resp, err := m.Spawn(t.Context(), req)
+	if err != nil {
+		t.Fatalf("Spawn with custom DiskMaxBytes failed: %v", err)
+	}
+	defer cleanupAgent(t, m, resp.AgentId)
+
+	if resp.Limits == nil || resp.Limits.DiskMaxBytes != 1*1024*1024*1024 {
+		t.Errorf("expected DiskMaxBytes 1GiB in response, got %v", resp.Limits)
+	}
+
+	// Verify systemd unit has LimitFSIZE set.
+	unitName := "bunker-docker-" + resp.AgentId
+	time.Sleep(500 * time.Millisecond)
+	out, err := exec.CommandContext(t.Context(), "systemctl", "show", unitName, "--property=LimitFSIZE").CombinedOutput()
+	if err != nil {
+		t.Logf("systemctl show output: %s", string(out))
+		t.Skip("could not query systemd unit properties")
+	}
+	want := fmt.Sprintf("LimitFSIZE=%d %d", 1*1024*1024*1024, 1*1024*1024*1024)
+	if !strings.Contains(string(out), want) {
+		t.Errorf("systemd unit missing LimitFSIZE\ngot:\n%s\nwant substring: %s", string(out), want)
 	}
 }

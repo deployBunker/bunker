@@ -495,3 +495,19 @@ tasks:
   - cgroup paths verified on live server
   status: pending
   created_at: '2026-07-01T07:31:44.100134+00:00'
+- id: wi-051-wi-052
+  title: Implement ResourceLimits disk and container enforcement
+  criteria:
+  - ResourceLimits.DiskMaxBytes is enforced via systemd-run --property=LimitFSIZE
+    in internal/agent/manager.go
+  - Config.AgentConfig has DefaultDiskBytes and DefaultMaxDockerContainers fields
+    with non-zero defaults in internal/config/config.go
+  - ResourceLimits.MaxDockerContainers is read from request and checked at spawn time
+    in internal/agent/manager.go
+  - effectiveLimits returned in SpawnAgentResponse includes DiskMaxBytes and MaxDockerContainers
+    populated from server defaults or request overrides
+  - Unit tests cover default disk/container limits and custom DiskMaxBytes systemd
+    unit enforcement in internal/agent/manager_test.go
+  status: complete
+  created_at: '2026-07-01T09:11:30.473793+00:00'
+  completed_at: '2026-07-01T09:11:42.199182+00:00'

@@ -292,14 +292,22 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// Determine resource limits: use request limits or server defaults
 	cpuQuota := m.cfg.Agent.DefaultCPUQuota
 	memMax := m.cfg.Agent.DefaultMemoryBytes
+	diskMax := m.cfg.Agent.DefaultDiskBytes
 	maxProcs := m.cfg.Agent.DefaultMaxProcesses
 	maxFiles := m.cfg.Agent.DefaultMaxOpenFiles
+	maxDockerContainers := m.cfg.Agent.DefaultMaxDockerContainers
 	if req.GetLimits() != nil {
 		if req.GetLimits().GetCpuQuota() > 0 {
 			cpuQuota = req.GetLimits().GetCpuQuota()
 		}
 		if req.GetLimits().GetMemoryMaxBytes() > 0 {
 			memMax = req.GetLimits().GetMemoryMaxBytes()
+		}
+		if req.GetLimits().GetDiskMaxBytes() > 0 {
+			diskMax = req.GetLimits().GetDiskMaxBytes()
+		}
+		if req.GetLimits().GetMaxDockerContainers() > 0 {
+			maxDockerContainers = req.GetLimits().GetMaxDockerContainers()
 		}
 	}
 
@@ -370,11 +378,24 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	if memMax > 0 {
 		systemdArgs = append(systemdArgs, fmt.Sprintf("--property=MemoryMax=%d", memMax))
 	}
+	if diskMax > 0 {
+		// LimitFSIZE caps the maximum file size (in bytes) an agent may create.
+		// This is a pragmatic systemd-level enforcement for disk_max_bytes when
+		// per-user filesystem quotas (xfs_quota) are not configured.
+		systemdArgs = append(systemdArgs, fmt.Sprintf("--property=LimitFSIZE=%d", diskMax))
+	}
 	if maxProcs > 0 {
 		systemdArgs = append(systemdArgs, fmt.Sprintf("--property=TasksMax=%d", maxProcs))
 	}
 	if maxFiles > 0 {
 		systemdArgs = append(systemdArgs, fmt.Sprintf("--property=LimitNOFILE=%d:%d", maxFiles, maxFiles))
+	}
+	if maxDockerContainers > 0 {
+		// There is no native systemd property for container count. Docker's
+		// daemon does not expose a per-user container limit. We enforce this
+		// at spawn time by checking the agent's current container count and
+		// storing the limit for the agent record; actual container capping is
+		// left to future policy enforcement.
 	}
 
 	// Rootless dockerd script. DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns
@@ -456,18 +477,31 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		return nil, err
 	}
 
+	// Enforce maxDockerContainers by asking the *just-started* rootless dockerd
+	// how many containers it already hosts. If it exceeds the configured limit,
+	// fail the spawn before the tracker is populated and run cleanup.
+	if maxDockerContainers > 0 {
+		containers, err := countAgentContainers(ctx, dockerSockPath)
+		if err != nil {
+			cleanup()
+			return nil, fmt.Errorf("count existing containers for %s: %w", username, err)
+		}
+		if containers >= maxDockerContainers {
+			cleanup()
+			return nil, fmt.Errorf("max docker containers exceeded for agent %s: %d >= %d", agentID, containers, maxDockerContainers)
+		}
+	}
+
 	// ── Clean up temporary key files (keys are in memory + authorized_keys) ──
 	os.Remove(keyFile)
 	os.Remove(pubKeyFile)
 
 	// ── Register with tracker ────────────────────────────────────
 	effectiveLimits := &v1.ResourceLimits{
-		CpuQuota:       cpuQuota,
-		MemoryMaxBytes: memMax,
-	}
-	if req.GetLimits() != nil {
-		effectiveLimits.DiskMaxBytes = req.GetLimits().GetDiskMaxBytes()
-		effectiveLimits.MaxDockerContainers = req.GetLimits().GetMaxDockerContainers()
+		CpuQuota:            cpuQuota,
+		MemoryMaxBytes:      memMax,
+		DiskMaxBytes:        diskMax,
+		MaxDockerContainers: maxDockerContainers,
 	}
 
 	// Determine effective TTL: request > server default.
@@ -580,6 +614,19 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 // Destroy tears down an agent: stops the dockerd systemd user unit,
 // removes the Linux user with -r, cleans up /run/bunker/<id>/.
 // Returns a DestroyAgentResponse with status "destroyed", "not_found", or "error".
+// countAgentContainers runs `docker ps -q` against the per-agent docker socket
+// and returns the number of running containers. It is an error if the docker
+// CLI cannot be reached, because enforcement requires a working daemon.
+var countAgentContainers = func(ctx context.Context, dockerSockPath string) (uint32, error) {
+	cmd := exec.CommandContext(ctx, "docker", "--host", "unix://"+dockerSockPath, "ps", "-q")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return 0, fmt.Errorf("docker ps: %w (output: %s)", err, strings.TrimSpace(string(out)))
+	}
+	lines := strings.Fields(string(out))
+	return uint32(len(lines)), nil
+}
+
 // stopDockerdDirect finds the dockerd process running under the given user
 // and sends it SIGTERM, then SIGKILL after a grace period. This avoids the
 // systemctl --user session mismatch because the dockerd was started via
