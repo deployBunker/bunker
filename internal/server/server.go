@@ -120,11 +120,14 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 		})
 	}
 
-	// Build the Bunkerd service handler with auth interceptor
-	// Prefer JWT auth when a secret is configured; fall back to static token.
+	// Build the Bunkerd service handler with master-only auth interceptor
+	// The Bunkerd service handles server-level RPCs (spawn, destroy, etc.) and
+	// must NOT accept agent-scoped sub-keys — only master tokens are allowed.
+	// Agent-scoped keys are handled by the separate Agent service below.
 	s.keyMgr = apikey.NewManager(s.cfg.Auth.JWTSecret)
 	s.jwtAuth = auth.NewJWTAuth(s.cfg.Auth.JWTSecret, s.keyMgr)
-	authInterceptor := auth.NewJWTAuthInterceptor(s.cfg.Auth.JWTSecret, s.keyMgr, s.cfg.Auth.Token, s.cfg.Auth.Enabled)
+	bunkerdAuthInterceptor := auth.NewMasterOnlyAuthInterceptor(s.cfg.Auth.JWTSecret, s.keyMgr, s.cfg.Auth.Token, s.cfg.Auth.Enabled)
+	agentAuthInterceptor := auth.NewJWTAuthInterceptor(s.cfg.Auth.JWTSecret, s.keyMgr, s.cfg.Auth.Token, s.cfg.Auth.Enabled)
 	tracker := resource.NewTracker(s.cfg.Agent.MaxAgents, s.logger)
 	tunnelMgr := tunnel.NewTunnelManager(&s.cfg.Tunnel, s.logger)
 	tailscaleMgr := tailscale.NewTailscaleManager(&s.cfg.Tailscale, s.logger)
@@ -132,15 +135,16 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	bunkerdSvc := &bunkerdService{cfg: s.cfg, logger: s.logger, agentMgr: agentMgr, tracker: tracker, tunnelMgr: tunnelMgr, tailscaleMgr: tailscaleMgr, keyMgr: s.keyMgr, jwtAuth: s.jwtAuth}
 	bunkerdPath, bunkerdHandler := bunkerv1connect.NewBunkerdHandler(
 		bunkerdSvc,
-		connect.WithInterceptors(authInterceptor),
+		connect.WithInterceptors(bunkerdAuthInterceptor),
 	)
 	r.Mount(bunkerdPath, bunkerdHandler)
 
-	// Also mount the Agent service
+	// Also mount the Agent service with a permissive auth interceptor
+	// that accepts both master tokens and agent-scoped sub-keys.
 	agentSvc := &agentService{logger: s.logger, tracker: tracker}
 	agentPath, agentHandler := bunkerv1connect.NewAgentHandler(
 		agentSvc,
-		connect.WithInterceptors(authInterceptor),
+		connect.WithInterceptors(agentAuthInterceptor),
 	)
 	r.Mount(agentPath, agentHandler)
 

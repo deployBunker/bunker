@@ -357,10 +357,32 @@ type agentService struct {
 
 // GetInfo returns info about the authenticated agent.
 func (s *agentService) GetInfo(ctx context.Context, req *connect.Request[v1.GetInfoRequest]) (*connect.Response[v1.GetInfoResponse], error) {
-	// TODO: WI-003 — Agent context from auth
-	return connect.NewResponse(&v1.GetInfoResponse{
+	// Extract agent_id from the auth context (JWT claims or scoped sub-key).
+	agentID := ""
+	if claims, ok := auth.ClaimsFromContext(ctx); ok && claims.AgentID != "" {
+		agentID = claims.AgentID
+	}
+
+	resp := &v1.GetInfoResponse{
 		Status: "running",
-	}), nil
+	}
+	if agentID != "" {
+		resp.AgentId = agentID
+		// If we have a tracker record, populate more fields
+		if rec := s.tracker.Get(agentID); rec != nil {
+			status := rec.Status
+			if status == "" {
+				status = "running"
+			}
+			resp.Status = status
+			resp.PublicUrl = rec.PublicURL
+			resp.ExpiresAt = rec.ExpiresAt.Format(time.RFC3339)
+			if rec.Limits != nil {
+				resp.Limits = rec.Limits
+			}
+		}
+	}
+	return connect.NewResponse(resp), nil
 }
 
 // Metrics returns resource usage for the authenticated agent.

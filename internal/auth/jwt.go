@@ -28,10 +28,11 @@ type Claims struct {
 // JWTAuth validates incoming requests against JWT tokens (HS256).
 // Supports a top-level master token and per-agent scoped sub-keys.
 type JWTAuth struct {
-	secret       []byte
-	keyMgr       *apikey.Manager
-	masterKey    string
-	staticToken  string // optional fallback static bearer token
+	secret        []byte
+	keyMgr        *apikey.Manager
+	masterKey     string
+	staticToken   string // optional fallback static bearer token
+	masterKeyOnly bool   // when true, reject agent-scoped tokens
 }
 
 // NewJWTAuth creates a JWTAuth using the given HS256 secret.
@@ -45,11 +46,30 @@ func NewJWTAuth(secret string, keyMgr *apikey.Manager) *JWTAuth {
 	}
 }
 
+// NewMasterOnlyJWTAuth creates a JWTAuth that rejects agent-scoped tokens.
+// Only master tokens (with no agent_id claim) are accepted.
+func NewMasterOnlyJWTAuth(secret string, keyMgr *apikey.Manager) *JWTAuth {
+	return &JWTAuth{
+		secret:        []byte(secret),
+		keyMgr:        keyMgr,
+		masterKey:     secret,
+		masterKeyOnly: true,
+	}
+}
+
 // NewJWTAuthWithStaticFallback creates a JWTAuth that also accepts a static
 // bearer token as a fallback. This is useful for rolling JWT auth out without
 // breaking existing static-token clients.
 func NewJWTAuthWithStaticFallback(secret, staticToken string, keyMgr *apikey.Manager) *JWTAuth {
 	a := NewJWTAuth(secret, keyMgr)
+	a.staticToken = staticToken
+	return a
+}
+
+// NewMasterOnlyJWTAuthWithStaticFallback creates a master-only JWTAuth with
+// static token fallback. Agent-scoped tokens are rejected.
+func NewMasterOnlyJWTAuthWithStaticFallback(secret, staticToken string, keyMgr *apikey.Manager) *JWTAuth {
+	a := NewMasterOnlyJWTAuth(secret, keyMgr)
 	a.staticToken = staticToken
 	return a
 }
@@ -141,12 +161,18 @@ func (a *JWTAuth) authenticate(header http.Header) (*Claims, error) {
 	// First try JWT validation.
 	claims, jwtErr := a.parseToken(token)
 	if jwtErr == nil {
+		if a.masterKeyOnly && claims.AgentID != "" {
+			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("agent-scoped tokens are not allowed for this endpoint"))
+		}
 		return claims, nil
 	}
 
 	// If a key manager is configured, try opaque sub-key validation.
 	if a.keyMgr != nil {
 		if key, err := a.keyMgr.Validate(token); err == nil {
+			if a.masterKeyOnly && key.AgentID != "" {
+				return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("agent-scoped tokens are not allowed for this endpoint"))
+			}
 			return &Claims{
 				RegisteredClaims: jwt.RegisteredClaims{
 					Subject: key.KeyID,

@@ -111,6 +111,22 @@ func NewJWTAuthInterceptor(jwtSecret string, keyMgr *apikey.Manager, staticToken
 	return NoAuth{}
 }
 
+// NewMasterOnlyAuthInterceptor returns a JWT interceptor that rejects agent-scoped
+// tokens. Only master tokens and static tokens are accepted.
+// This should be used for Bunkerd-level RPCs where scoped sub-keys must not be allowed.
+func NewMasterOnlyAuthInterceptor(jwtSecret string, keyMgr *apikey.Manager, staticToken string, enabled bool) connect.Interceptor {
+	if !enabled {
+		return NoAuth{}
+	}
+	if jwtSecret != "" {
+		return NewMasterOnlyJWTAuthWithStaticFallback(jwtSecret, staticToken, keyMgr)
+	}
+	if staticToken != "" {
+		return NewTokenAuth(staticToken)
+	}
+	return NoAuth{}
+}
+
 // Ensure our types satisfy the interface at compile time.
 var (
 	_ connect.Interceptor = (*TokenAuth)(nil)
