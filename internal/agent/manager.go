@@ -421,6 +421,17 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		return nil, fmt.Errorf("systemd-run rootless dockerd failed: %w (output: %s)", err, string(out))
 	}
 
+	// ── Step 5b: Verify dockerd actually started ─────────────────────
+	// systemd-run can return success while the unit fails immediately (missing
+	// AppArmor profile, bad subuid mapping, etc.). Wait briefly, then check for
+	// a dockerd process and the socket. If not present, capture unit status and
+	// fail the spawn so the caller knows what went wrong.
+	if err := waitForDockerd(ctx, username, dockerSockPath, unitName, m.logger); err != nil {
+		m.logger.Error("dockerd failed to start; cleaning up agent", "agent_id", agentID, "error", err)
+		cleanup()
+		return nil, err
+	}
+
 	// ── Clean up temporary key files (keys are in memory + authorized_keys) ──
 	os.Remove(keyFile)
 	os.Remove(pubKeyFile)
@@ -576,6 +587,59 @@ func stopDockerdDirect(ctx context.Context, username, unitName string, logger *s
 		_ = exec.CommandContext(ctx, "kill", "-KILL", pid).Run()
 	}
 	return nil
+}
+
+// waitForDockerd polls briefly for a dockerd process owned by the agent user and
+// for the Docker socket to exist. It also captures systemd unit status on failure
+// so callers get actionable error messages instead of "spawn succeeded".
+func waitForDockerd(ctx context.Context, username, dockerSockPath, unitName string, logger *slog.Logger) error {
+	poll := 200 * time.Millisecond
+	deadline := time.Now().Add(5 * time.Second)
+
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// Check for a dockerd process owned by this user.
+		running, _ := dockerdProcessChecker(ctx, username)
+		if running {
+			// Process is up; now wait for the socket to appear.
+			if _, statErr := os.Stat(dockerSockPath); statErr == nil {
+				logger.Info("dockerd ready", "user", username, "sock", dockerSockPath)
+				return nil
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(poll):
+		}
+	}
+
+	// Deadline exceeded — capture unit status and recent journal output for diagnostics.
+	statusOut, _ := exec.CommandContext(ctx, "systemctl", "status", unitName, "--no-pager", "-l", "-n", "20").CombinedOutput()
+	journalOut, _ := exec.CommandContext(ctx, "journalctl", "-u", unitName, "--no-pager", "-n", "20").CombinedOutput()
+	logger.Error("dockerd did not start within deadline",
+		"user", username,
+		"unit", unitName,
+		"sock", dockerSockPath,
+		"systemctl_status", string(statusOut),
+		"journal", string(journalOut),
+	)
+	return fmt.Errorf("dockerd did not start for user %s (unit %s, socket %s)", username, unitName, dockerSockPath)
+}
+
+// dockerdProcessChecker abstracts the pgrep check so tests can substitute a
+// fake process table without requiring a real dockerd process.
+var dockerdProcessChecker = func(ctx context.Context, username string) (bool, error) {
+	out, err := exec.CommandContext(ctx, "pgrep", "-u", username, "-f", "dockerd").CombinedOutput()
+	if err != nil {
+		return false, nil // pgrep exits non-zero when no process matches
+	}
+	return len(strings.Fields(string(out))) > 0, nil
 }
 
 func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) (*v1.DestroyAgentResponse, error) {
