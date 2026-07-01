@@ -185,6 +185,35 @@ fi
 echo ""
 
 # =============================================
+# 6a. DOCKER TUNNEL
+# =============================================
+echo "=== 6a. Docker Tunnel ==="
+TUNNEL_PID=""
+TUNNEL_LOG=/tmp/bunker-tunnel-e2e-main.log
+nohup "$BUNKER" tunnel e2e-main > "$TUNNEL_LOG" 2>&1 &
+TUNNEL_PID=$!
+sleep 3
+
+TUNNEL_OK=0
+if kill -0 "$TUNNEL_PID" 2>/dev/null; then
+    TUNNEL_DOCKER=$(DOCKER_HOST=tcp://localhost:2376 docker version 2>&1 || true)
+    if echo "$TUNNEL_DOCKER" | grep -q "Version"; then
+        assert "docker version through SSH tunnel"
+        TUNNEL_OK=1
+    else
+        fail "docker version through SSH tunnel — $TUNNEL_DOCKER"
+    fi
+    kill "$TUNNEL_PID" 2>/dev/null || true
+    wait "$TUNNEL_PID" 2>/dev/null || true
+else
+    fail "tunnel process exited early (log: $TUNNEL_LOG)"
+fi
+if [ "$TUNNEL_OK" -eq 0 ]; then
+    echo "  tunnel log: $(cat "$TUNNEL_LOG" 2>/dev/null | head -5)"
+fi
+echo ""
+
+# =============================================
 # 7. METRICS
 # =============================================
 echo "=== 7. Metrics ==="
