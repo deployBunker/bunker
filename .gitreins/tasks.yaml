@@ -383,3 +383,33 @@ tasks:
   status: complete
   created_at: '2026-06-30T22:37:21.359416+00:00'
   completed_at: '2026-06-30T22:41:09.253353+00:00'
+- id: wi-046
+  title: Fix bunker exec returning SSH env vars instead of docker output
+  criteria:
+  - bunker exec <agent> -- docker version outputs actual docker version info, not
+    SSH environment variables
+  - bunker exec <agent> -- docker run --rm alpine:latest echo VERIFY-PASS prints VERIFY-PASS
+  - ExecAgent SSH wrapper in internal/server/service.go executes the remote command,
+    not just dumps env
+  - internal/server/service_test.go includes a regression test that asserts the command
+    is passed to the wrapped shell
+  - E2E battery passes exec test
+  status: complete
+  created_at: '2026-07-01T02:00:32.996598+00:00'
+  completed_at: '2026-07-01T02:11:58.240513+00:00'
+- id: wi-047
+  title: Agent dockerd startup verification
+  criteria:
+  - After systemd-run returns success, waitForDockerd polls for a dockerd process
+    owned by the agent user and for /run/bunker/<id>/docker.sock to exist
+  - If dockerd does not start within 5 seconds, systemctl status and journalctl logs
+    for unit bunker-docker-<id> are captured and the spawn returns an error with diagnostic
+    context
+  - The cleanup rollback (userdel, key removal) runs when waitForDockerd fails so
+    partially-created agents are not leaked
+  - A unit test exercises waitForDockerd against a temp dir and a fake subprocess
+    or it is covered by the existing Spawn_ unit tests that verify dockerd/socket
+    readiness
+  status: complete
+  created_at: '2026-07-01T03:35:17.753273+00:00'
+  completed_at: '2026-07-01T03:51:43.896644+00:00'
