@@ -378,14 +378,17 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	}
 
 	// Rootless dockerd script. DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns
-	// avoids needing a separate bridge. DOCKERD_ROOTLESS_ROOTLESSKIT_FLAGS=--pidns
-	// isolates each agent in its own PID namespace so processes inside the
-	// rootless Docker namespace cannot see other agents or system processes.
-	// The socket path is passed through DOCKER_HOST so the per-agent socket is
-	// created where bunkerd expects it.
+	// avoids needing a separate bridge. The socket path is passed through
+	// DOCKER_HOST so the per-agent socket is created where bunkerd expects it.
+	//
 	// rootlesskit checks that XDG_RUNTIME_DIR is set and writable. On systems
 	// where systemd has not created /run/user/<uid>, point it at a per-agent
 	// runtime directory under /run/bunker so dockerd-rootless.sh can start.
+	//
+	// Note: DOCKERD_ROOTLESS_ROOTLESSKIT_FLAGS=--pidns is intentionally omitted;
+	// rootlesskit v1.1.1 on the server does not support --detach-netns, so the
+	// flag string causes immediate exit. PID namespace isolation will be
+	// revisited when the installed rootlesskit supports it.
 	rootlessRuntimeDir := filepath.Join("/run", "bunker", agentID, "run")
 	if err := os.MkdirAll(rootlessRuntimeDir, 0700); err != nil {
 		cleanup()
@@ -407,7 +410,6 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		"XDG_RUNTIME_DIR=" + rootlessRuntimeDir,
 		"DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns",
 		"DOCKERD_ROOTLESS_ROOTLESSKIT_PORT_DRIVER=builtin",
-		"DOCKERD_ROOTLESS_ROOTLESSKIT_FLAGS=--pidns",
 		"DOCKER_HOST=unix://" + dockerSockPath,
 	}
 	for _, env := range rootlessEnv {
