@@ -491,8 +491,14 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	}
 	sshfsMount := fmt.Sprintf("sshfs -o IdentityFile=%s -o idmap=user -o allow_other %s@%s:%s %s",
 		sshKeyPath, username, host, userHome, filepath.Join("/mnt", "bunker", agentID))
-	dockerHostTunnel := fmt.Sprintf("ssh -o StrictHostKeyChecking=no -i %s -L 2376:%s %s@%s -N",
-		sshKeyPath, dockerSockPath, username, host)
+	// Build the SSH tunnel command that forwards a local TCP port to the
+	// agent's remote Docker socket.  Port 2376 is the conventional Docker TLS
+	// port; on the rare occasion two agents are tunnelled from the same client
+	// the user can pick a different local port with `bunker tunnel <id> <port>`.
+	dockerHostTunnel := fmt.Sprintf(
+		"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -i %s -L 2376:%s %s@%s -N",
+		sshKeyPath, dockerSockPath, username, host,
+	)
 
 	// Persist the assigned port range to the agent's home directory so tools
 	// and tests can discover it without querying the tracker.

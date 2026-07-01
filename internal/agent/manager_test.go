@@ -261,6 +261,25 @@ func TestSpawn_Response(t *testing.T) {
 	if !strings.Contains(resp.DockerHostSsh, "DOCKER_HOST=ssh://") {
 		t.Errorf("DockerHostSsh: unexpected format: %q", resp.DockerHostSsh)
 	}
+	if resp.DockerHostTunnel == "" {
+		t.Error("DockerHostTunnel is empty")
+	} else {
+		wantParts := []string{
+			"ssh",
+			"-o StrictHostKeyChecking=no",
+			"-o UserKnownHostsFile=/dev/null",
+			"-o LogLevel=ERROR",
+			"-i /etc/bunkerd/ssh/" + agentID,
+			"-L 2376:/run/bunker/" + agentID + "/docker.sock",
+			"bunker-" + agentID + "@",
+			"-N",
+		}
+		for _, want := range wantParts {
+			if !strings.Contains(resp.DockerHostTunnel, want) {
+				t.Errorf("DockerHostTunnel missing %q: got %q", want, resp.DockerHostTunnel)
+			}
+		}
+	}
 }
 
 // ── Spawn SSH transport tests (root required) ──────────────────
