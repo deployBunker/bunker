@@ -437,40 +437,45 @@ tasks:
   - disk_max_bytes honored in spawn
   - agent cannot exceed disk quota
   - config default + per-spawn override work
-  status: pending
+  status: complete
   created_at: '2026-07-01T07:31:36.739696+00:00'
+  completed_at: '2026-07-01T09:54:17.485182+00:00'
 - id: wi-052-max-containers
   title: 'WI-052: ResourceLimits.max_docker_containers implementation'
   criteria:
   - max_docker_containers honored in spawn
   - agent cannot exceed container limit
   - config default + per-spawn override work
-  status: pending
+  status: complete
   created_at: '2026-07-01T07:31:37.834529+00:00'
+  completed_at: '2026-07-01T09:55:55.817511+00:00'
 - id: wi-053-server-metrics
   title: 'WI-053: ServerMetrics RPC verification'
   criteria:
   - ServerMetrics returns CPU/memory/disk/container data
   - bunker metrics --server CLI works
   - 'E2E: metrics data is non-zero and accurate'
-  status: pending
+  status: complete
   created_at: '2026-07-01T07:31:38.882281+00:00'
+  completed_at: '2026-07-01T09:57:29.886658+00:00'
 - id: wi-054-get-agent
   title: 'WI-054: GetAgent RPC verification + CLI'
   criteria:
   - GetAgent returns correct agent data
   - bunker info <agent-id> CLI works
   - 'E2E: info matches spawn response'
-  status: in_progress
+  status: complete
   created_at: '2026-07-01T07:31:39.926646+00:00'
+  completed_at: '2026-07-01T09:49:01.392169+00:00'
 - id: wi-055-agent-service
   title: 'WI-055: Agent scoped sub-key API E2E verification'
   criteria:
   - Agent service GetInfo works with scoped key
   - Metrics + Heartbeat work with scoped key
   - scoped key is rejected for Bunkerd-level RPCs
-  status: pending
+  status: complete
   created_at: '2026-07-01T07:31:40.963044+00:00'
+  completed_at: '2026-07-01T09:00:00.000000+00:00'
 - id: wi-056-multi-server
   title: 'WI-056: Multi-server CLI verification'
   criteria:
