@@ -180,3 +180,52 @@ func TestBuildExecSSHCommand(t *testing.T) {
 		}
 	}
 }
+
+// TestServerMetrics verifies that ServerMetrics returns all expected fields.
+func TestServerMetrics(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	tracker := resource.NewTracker(10, logger)
+
+	svc := &bunkerdService{
+		cfg:     config.DefaultConfig(),
+		logger:  logger,
+		tracker: tracker,
+	}
+
+	req := connect.NewRequest(&v1.ServerMetricsRequest{})
+	resp, err := svc.ServerMetrics(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ServerMetrics() error: %v", err)
+	}
+
+	msg := resp.Msg
+	if msg == nil {
+		t.Fatal("ServerMetrics() returned nil response")
+	}
+
+	// ServerMetrics should always return at least agent summaries (even if empty).
+	if msg.Agents == nil {
+		t.Error("ServerMetrics().Agents is nil, expected empty slice")
+	}
+
+	// disk stats should always be populated on any Linux system.
+	if msg.DiskTotalBytes == 0 {
+		t.Error("ServerMetrics().DiskTotalBytes is 0, expected root filesystem total")
+	}
+	if msg.DiskUsedBytes == 0 {
+		t.Error("ServerMetrics().DiskUsedBytes is 0, expected root filesystem usage")
+	}
+	if msg.DiskUsedBytes > msg.DiskTotalBytes {
+		t.Errorf("ServerMetrics().DiskUsedBytes (%d) > DiskTotalBytes (%d)", msg.DiskUsedBytes, msg.DiskTotalBytes)
+	}
+
+	// DockerContainersTotal should be 0 in test contexts (no real docker sockets).
+	// We just verify it's a reasonable value (non-negative).
+	if int32(msg.DockerContainersTotal) < 0 {
+		t.Errorf("ServerMetrics().DockerContainersTotal is negative: %d", msg.DockerContainersTotal)
+	}
+
+	t.Logf("ServerMetrics: CPU=%.1f%%, Memory=%d/%d, Disk=%d/%d, Docker=%d, Agents=%d",
+		msg.CpuUsagePercent, msg.MemoryUsedBytes, msg.MemoryTotalBytes,
+		msg.DiskUsedBytes, msg.DiskTotalBytes, msg.DockerContainersTotal, len(msg.Agents))
+}

@@ -216,12 +216,25 @@ echo ""
 # =============================================
 # 7. METRICS
 # =============================================
-echo "=== 7. Metrics ==="
+echo "=== 7. Server Metrics ==="
+SERVER_METRICS_OUT=$($BUNKER metrics 2>&1 || true)
+if echo "$SERVER_METRICS_OUT" | grep -q "Disk Used"; then
+    assert "server metrics show disk usage"
+else
+    note "server metrics — $SERVER_METRICS_OUT"
+fi
+if echo "$SERVER_METRICS_OUT" | grep -q "Agents"; then
+    assert "server metrics show agent summary"
+else
+    note "server metrics — no agent summary"
+fi
+
+echo "=== 7a. Agent Metrics ==="
 METRICS_OUT=$($BUNKER metrics e2e-main 2>&1 || true)
 if [ -n "$METRICS_OUT" ]; then
-    assert "metrics returns data"
+    assert "agent metrics returns data"
 else
-    note "metrics returned empty (may be expected)"
+    note "agent metrics returned empty (may be expected)"
 fi
 echo ""
 
