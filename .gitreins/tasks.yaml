@@ -475,7 +475,7 @@ tasks:
   - scoped key is rejected for Bunkerd-level RPCs
   status: complete
   created_at: '2026-07-01T07:31:40.963044+00:00'
-  completed_at: '2026-07-01T13:47:32.841625+00:00'
+  completed_at: '2026-07-01T13:58:16.079443+00:00'
 - id: wi-056-multi-server
   title: 'WI-056: Multi-server CLI verification'
   criteria:
@@ -484,7 +484,7 @@ tasks:
   - spawn/list/exec/destroy work on both servers
   status: complete
   created_at: '2026-07-01T07:31:42.010093+00:00'
-  completed_at: '2026-07-01T10:00:00.000000+00:00'
+  completed_at: '2026-07-01T14:00:05.728387+00:00'
 - id: wi-057-tailscale
   title: 'WI-057: Tailscale integration E2E verification'
   criteria:
