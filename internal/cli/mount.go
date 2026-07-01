@@ -94,8 +94,18 @@ Examples:
 			}
 			parts[len(parts)-1] = mountPoint
 
-			// 5. Run sshfs.
-			sshfsCmd := exec.CommandContext(ctx, parts[0], parts[1:]...)
+			// 5. Run sshfs with extra SSH options that are not encoded in the
+			// stored command so the connection succeeds without host-key prompts.
+			sshfsArgs := []string{
+				"-o", "StrictHostKeyChecking=no",
+				"-o", "UserKnownHostsFile=/dev/null",
+			}
+			// Append everything except the leading `sshfs` and trailing mount
+			// point, then the mount point last.
+			sshfsArgs = append(sshfsArgs, parts[1:len(parts)-1]...)
+			sshfsArgs = append(sshfsArgs, parts[len(parts)-1])
+
+			sshfsCmd := exec.CommandContext(ctx, parts[0], sshfsArgs...)
 			sshfsCmd.Stdout = os.Stdout
 			sshfsCmd.Stderr = os.Stderr
 			if err := sshfsCmd.Run(); err != nil {
