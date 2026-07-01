@@ -11,7 +11,6 @@ import (
 	"os/user"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -355,11 +354,6 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		cleanup()
 		return nil, fmt.Errorf("lookup user %s: %w", username, err)
 	}
-	uid, err := strconv.Atoi(u.Uid)
-	if err != nil {
-		cleanup()
-		return nil, fmt.Errorf("parse uid %s: %w", u.Uid, err)
-	}
 
 	systemdArgs := []string{
 		"--system",
@@ -389,18 +383,37 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// rootless Docker namespace cannot see other agents or system processes.
 	// The socket path is passed through DOCKER_HOST so the per-agent socket is
 	// created where bunkerd expects it.
+	// rootlesskit checks that XDG_RUNTIME_DIR is set and writable. On systems
+	// where systemd has not created /run/user/<uid>, point it at a per-agent
+	// runtime directory under /run/bunker so dockerd-rootless.sh can start.
+	rootlessRuntimeDir := filepath.Join("/run", "bunker", agentID, "run")
+	if err := os.MkdirAll(rootlessRuntimeDir, 0700); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("create rootless runtime dir %s: %w", rootlessRuntimeDir, err)
+	}
+	if out, err := exec.CommandContext(ctx, "chown", username, rootlessRuntimeDir).CombinedOutput(); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("chown rootless runtime dir: %w (output: %s)", err, string(out))
+	}
+
+	// systemd-run --system with --uid does not inherit the caller's environment.
+	// Pass each needed variable as --setenv so the transient unit actually has
+	// them in its process environment. rootlesskit checks XDG_RUNTIME_DIR, HOME,
+	// and USER, while dockerd-rootless.sh uses the other *_ROOTLESS_* variables.
 	rootlessEnv := []string{
 		"PATH=" + filepath.Join(userHome, "bin") + ":/usr/local/bin:/usr/bin:/bin",
 		"HOME=" + userHome,
 		"USER=" + username,
-		"XDG_RUNTIME_DIR=" + filepath.Join("/run", "user", strconv.Itoa(uid)),
+		"XDG_RUNTIME_DIR=" + rootlessRuntimeDir,
 		"DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns",
 		"DOCKERD_ROOTLESS_ROOTLESSKIT_PORT_DRIVER=builtin",
 		"DOCKERD_ROOTLESS_ROOTLESSKIT_FLAGS=--pidns",
 		"DOCKER_HOST=unix://" + dockerSockPath,
 	}
+	for _, env := range rootlessEnv {
+		systemdArgs = append(systemdArgs, "--setenv="+env)
+	}
 	systemdArgs = append(systemdArgs, rootlessBin, "--host=unix://"+dockerSockPath)
-	_ = rootlessEnv
 
 	// If a stale system unit exists (from a previous incomplete destroy), stop it.
 	stopCmd := exec.CommandContext(ctx, "systemctl", "stop", unitName)
