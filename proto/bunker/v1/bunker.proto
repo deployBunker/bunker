@@ -90,10 +90,12 @@ message AgentSummary {
   ResourceLimits limits = 3;
   string created_at = 4;
   string expires_at = 5;
-  string public_url = 6;
-  uint32 port_range_start = 7;
-  uint32 port_range_end = 8;
-  string tailnet_ip = 9;
+  string sshfs_mount = 6;        // sshfs mount command
+  string docker_host_tunnel = 7; // ssh -L tunnel command
+  string public_url = 8;
+  uint32 port_range_start = 9;
+  uint32 port_range_end = 10;
+  string tailnet_ip = 11;
 }
 
 message SpawnAgentRequest {

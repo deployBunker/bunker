@@ -138,6 +138,12 @@ Examples:
 			if r.ApiKey != "" {
 				fmt.Printf("  API Key:      %s\n", r.ApiKey)
 			}
+			if r.SshfsMount != "" {
+				fmt.Printf("  SSHFS Mount:  %s\n", r.SshfsMount)
+			}
+			if r.DockerHostTunnel != "" {
+				fmt.Printf("  Docker Tunnel: %s\n", r.DockerHostTunnel)
+			}
 			fmt.Println()
 			fmt.Println("═ Use `bunker exec` to run commands in this agent ═")
 

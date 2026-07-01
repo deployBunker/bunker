@@ -21,6 +21,8 @@ type AgentRecord struct {
 	PublicURL         string
 	SshPrivateKeyPath string // path to persisted SSH private key
 	TailnetIP         string // tailscale tailnet IP
+	SshfsMount        string // sshfs mount command
+	DockerHostTunnel  string // ssh -L tunnel command
 }
 
 // Tracker manages agent state, capacity, and resource allocation.
@@ -112,14 +114,16 @@ func (t *Tracker) HasCapacity(n uint32) bool {
 // ToAgentSummary converts an AgentRecord to the proto AgentSummary.
 func (r *AgentRecord) ToAgentSummary() *v1.AgentSummary {
 	return &v1.AgentSummary{
-		AgentId:        r.AgentID,
-		Status:         r.Status,
-		Limits:         r.Limits,
-		CreatedAt:      r.CreatedAt.Format(time.RFC3339),
-		ExpiresAt:      r.ExpiresAt.Format(time.RFC3339),
-		PublicUrl:      r.PublicURL,
-		PortRangeStart: r.PortRangeStart,
-		PortRangeEnd:   r.PortRangeEnd,
-		TailnetIp:      r.TailnetIP,
+		AgentId:          r.AgentID,
+		Status:           r.Status,
+		Limits:           r.Limits,
+		CreatedAt:        r.CreatedAt.Format(time.RFC3339),
+		ExpiresAt:        r.ExpiresAt.Format(time.RFC3339),
+		PublicUrl:        r.PublicURL,
+		PortRangeStart:   r.PortRangeStart,
+		PortRangeEnd:     r.PortRangeEnd,
+		TailnetIp:        r.TailnetIP,
+		SshfsMount:       r.SshfsMount,
+		DockerHostTunnel: r.DockerHostTunnel,
 	}
 }

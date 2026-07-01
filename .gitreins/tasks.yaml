@@ -419,7 +419,7 @@ tasks:
   - sshfs_mount field populated in SpawnAgentResponse
   - bunker mount <agent-id> CLI command works
   - 'E2E: file written through mount is readable inside agent'
-  status: pending
+  status: in_progress
   created_at: '2026-07-01T07:31:34.672677+00:00'
 - id: wi-050-docker-tunnel
   title: 'WI-050: Docker tunnel command in spawn response'
