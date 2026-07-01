@@ -413,3 +413,83 @@ tasks:
   status: complete
   created_at: '2026-07-01T03:35:17.753273+00:00'
   completed_at: '2026-07-01T04:04:06.136025+00:00'
+- id: wi-049-sshfs
+  title: 'WI-049: SSHFS mount command in spawn response + CLI'
+  criteria:
+  - sshfs_mount field populated in SpawnAgentResponse
+  - bunker mount <agent-id> CLI command works
+  - 'E2E: file written through mount is readable inside agent'
+  status: pending
+  created_at: '2026-07-01T07:31:34.672677+00:00'
+- id: wi-050-docker-tunnel
+  title: 'WI-050: Docker tunnel command in spawn response'
+  criteria:
+  - docker_host_tunnel field populated in SpawnAgentResponse
+  - tunnel command is correct ssh -L syntax
+  - docker CLI works through tunnel
+  status: pending
+  created_at: '2026-07-01T07:31:35.703306+00:00'
+- id: wi-051-disk-quota
+  title: 'WI-051: ResourceLimits.disk_max_bytes implementation'
+  criteria:
+  - disk_max_bytes honored in spawn
+  - agent cannot exceed disk quota
+  - config default + per-spawn override work
+  status: pending
+  created_at: '2026-07-01T07:31:36.739696+00:00'
+- id: wi-052-max-containers
+  title: 'WI-052: ResourceLimits.max_docker_containers implementation'
+  criteria:
+  - max_docker_containers honored in spawn
+  - agent cannot exceed container limit
+  - config default + per-spawn override work
+  status: pending
+  created_at: '2026-07-01T07:31:37.834529+00:00'
+- id: wi-053-server-metrics
+  title: 'WI-053: ServerMetrics RPC verification'
+  criteria:
+  - ServerMetrics returns CPU/memory/disk/container data
+  - bunker metrics --server CLI works
+  - 'E2E: metrics data is non-zero and accurate'
+  status: pending
+  created_at: '2026-07-01T07:31:38.882281+00:00'
+- id: wi-054-get-agent
+  title: 'WI-054: GetAgent RPC verification + CLI'
+  criteria:
+  - GetAgent returns correct agent data
+  - bunker info <agent-id> CLI works
+  - 'E2E: info matches spawn response'
+  status: pending
+  created_at: '2026-07-01T07:31:39.926646+00:00'
+- id: wi-055-agent-service
+  title: 'WI-055: Agent scoped sub-key API E2E verification'
+  criteria:
+  - Agent service GetInfo works with scoped key
+  - Metrics + Heartbeat work with scoped key
+  - scoped key is rejected for Bunkerd-level RPCs
+  status: pending
+  created_at: '2026-07-01T07:31:40.963044+00:00'
+- id: wi-056-multi-server
+  title: 'WI-056: Multi-server CLI verification'
+  criteria:
+  - Two bunkerd instances run simultaneously
+  - bunker --server <name> switches between them
+  - spawn/list/exec/destroy work on both servers
+  status: pending
+  created_at: '2026-07-01T07:31:42.010093+00:00'
+- id: wi-057-tailscale
+  title: 'WI-057: Tailscale integration E2E verification'
+  criteria:
+  - tailnet_ip populated in spawn response
+  - agent reachable via Tailscale IP
+  - tailscale integration config toggle works
+  status: pending
+  created_at: '2026-07-01T07:31:43.056012+00:00'
+- id: wi-058-resource-enforcement
+  title: 'WI-058: Resource enforcement live verification'
+  criteria:
+  - CPU limit enforced (stress test shows throttling)
+  - Memory limit enforced (OOM kill on exceed)
+  - cgroup paths verified on live server
+  status: pending
+  created_at: '2026-07-01T07:31:44.100134+00:00'
