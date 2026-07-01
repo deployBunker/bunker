@@ -109,3 +109,74 @@ func TestExecAgent_AgentIDRequired(t *testing.T) {
 	_ = req
 	_ = svc
 }
+
+// TestBuildAgentExecCommand verifies the env prefix and command are built.
+func TestBuildAgentExecCommand(t *testing.T) {
+	got := buildAgentExecCommand("abc123", "/home/bunker-abc123", "docker", []string{"version"})
+	wantParts := []string{
+		"env PATH=/home/bunker-abc123/bin:$PATH",
+		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
+		"docker version",
+	}
+	for _, want := range wantParts {
+		if !strings.Contains(got, want) {
+			t.Errorf("buildAgentExecCommand() = %q, missing %q", got, want)
+		}
+	}
+}
+
+// TestShellQuoteSingle verifies single-quoting and escaping.
+func TestShellQuoteSingle(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"hello", "'hello'"},
+		{"a'b", "'a'\\''b'"},
+		{"", "''"},
+	}
+	for _, c := range cases {
+		got := shellQuoteSingle(c.in)
+		if got != c.want {
+			t.Errorf("shellQuoteSingle(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestBuildExecSSHCommand verifies the ssh command is built as a single remote
+// command string with sh -c '...' so the inner command is not misparsed.
+func TestBuildExecSSHCommand(t *testing.T) {
+	ctx := context.Background()
+	cmd := buildExecSSHCommand(ctx, "abc123", "/keys/abc123", "/home/bunker-abc123", "docker", []string{"version"})
+	if cmd.Path != "ssh" && !strings.HasSuffix(cmd.Path, "ssh") {
+		t.Fatalf("want ssh command, got %q", cmd.Path)
+	}
+	wantHost := "bunker-abc123@localhost"
+	foundHost := false
+	for _, arg := range cmd.Args {
+		if arg == wantHost {
+			foundHost = true
+		}
+	}
+	if !foundHost {
+		t.Errorf("ssh args missing host %q: %v", wantHost, cmd.Args)
+	}
+
+	// The post-host argument must be a single sh -c '...' string containing the
+	// env prefix and the docker command.
+	last := cmd.Args[len(cmd.Args)-1]
+	if !strings.HasPrefix(last, "sh -c '") {
+		t.Errorf("last ssh arg should be sh -c '...', got %q", last)
+	}
+	if !strings.Contains(last, "env PATH=/home/bunker-abc123/bin:$PATH") {
+		t.Errorf("ssh remote command missing PATH prefix: %q", last)
+	}
+	if !strings.Contains(last, "docker version") {
+		t.Errorf("ssh remote command missing 'docker version': %q", last)
+	}
+	// Ensure we don't accidentally split sh -c into separate arguments anymore.
+	for i, arg := range cmd.Args {
+		if arg == "--" {
+			t.Errorf("ssh args still contain unsupported -- separator at index %d", i)
+		}
+	}
+}
