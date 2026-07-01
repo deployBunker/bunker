@@ -12,9 +12,13 @@ import (
 )
 
 func testConfig() *config.Config {
+	return testConfigDir(filepath.Join(os.TempDir(), "bunker-test"))
+}
+
+func testConfigDir(baseDir string) *config.Config {
 	return &config.Config{
 		Agent: config.AgentConfig{
-			BaseDataDir: "/tmp/bunker-test",
+			BaseDataDir: baseDir,
 		},
 	}
 }
