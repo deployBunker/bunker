@@ -489,8 +489,8 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	if host == "" {
 		host = "localhost"
 	}
-	sshfsMount := fmt.Sprintf("sshfs -o IdentityFile=%s -o User=%s %s@%s:%s %s",
-		sshKeyPath, username, username, host, userHome, filepath.Join("/mnt", "bunker", agentID))
+	sshfsMount := fmt.Sprintf("sshfs -o IdentityFile=%s -o idmap=user -o allow_other %s@%s:%s %s",
+		sshKeyPath, username, host, userHome, filepath.Join("/mnt", "bunker", agentID))
 	dockerHostTunnel := fmt.Sprintf("ssh -o StrictHostKeyChecking=no -i %s -L 2376:%s %s@%s -N",
 		sshKeyPath, dockerSockPath, username, host)
 
