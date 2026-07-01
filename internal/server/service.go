@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"connectrpc.com/connect"
@@ -74,6 +75,15 @@ func (s *bunkerdService) ServerMetrics(ctx context.Context, req *connect.Request
 		resp.MemoryUsedBytes = metrics.MemoryUsedBytes
 		resp.MemoryTotalBytes = metrics.MemoryLimitBytes
 	}
+
+	// Try to read filesystem disk stats
+	if used, total, err := readDiskStats(); err == nil {
+		resp.DiskUsedBytes = used
+		resp.DiskTotalBytes = total
+	}
+
+	// Count docker sockets (proxy for running docker daemons)
+	resp.DockerContainersTotal = countDockerSockets()
 
 	return connect.NewResponse(resp), nil
 }
@@ -379,4 +389,35 @@ func (s *agentService) Heartbeat(ctx context.Context, req *connect.Request[v1.He
 		ExpiresAt:    rec.ExpiresAt.Format(time.RFC3339),
 		Acknowledged: true,
 	}), nil
+}
+
+// readDiskStats returns used and total bytes for the root filesystem.
+func readDiskStats() (used, total uint64, err error) {
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs("/", &stat); err != nil {
+		return 0, 0, err
+	}
+	total = stat.Blocks * uint64(stat.Bsize)
+	free := stat.Bfree * uint64(stat.Bsize)
+	used = total - free
+	return used, total, nil
+}
+
+// countDockerSockets counts the number of docker socket files in /run/bunker/*/docker.sock.
+// This is a proxy for the number of running dockerd instances.
+func countDockerSockets() uint32 {
+	entries, err := os.ReadDir("/run/bunker")
+	if err != nil {
+		return 0
+	}
+	var count uint32
+	for _, entry := range entries {
+		if entry.IsDir() {
+			sockPath := filepath.Join("/run/bunker", entry.Name(), "docker.sock")
+			if info, statErr := os.Stat(sockPath); statErr == nil && info.Mode()&os.ModeSocket != 0 {
+				count++
+			}
+		}
+	}
+	return count
 }
