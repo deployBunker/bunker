@@ -198,28 +198,8 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 	//      the primary mechanism we rely on.
 	//
 	// We also set the variable in ~/.profile for interactive shells.
-	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
-	// sshd on the server may not accept SetEnv or PermitUserEnvironment, so
-	// instead of relying on SSH env propagation we explicitly prefix the remote
-	// command with env(1) to set DOCKER_HOST and PATH. This makes `bunker exec
-	// <agent> docker ...` work regardless of sshd configuration.
-	remoteCmd := req.Msg.Command
-	if len(req.Msg.Args) > 0 {
-		remoteCmd += " " + strings.Join(req.Msg.Args, " ")
-	}
 	userHome := "/home/bunker-" + agentID
-	agentBinPath := filepath.Join(userHome, "bin")
-	wrappedCmd := fmt.Sprintf("env PATH=%s:$PATH DOCKER_HOST=unix://%s %s", agentBinPath, dockerSockPath, remoteCmd)
-	cmd := exec.CommandContext(ctx, "ssh",
-		"-o", "StrictHostKeyChecking=no",
-		"-o", "UserKnownHostsFile=/dev/null",
-		"-o", "LogLevel=ERROR",
-		"-o", "ConnectTimeout=10",
-		"-i", rec.SshPrivateKeyPath,
-		fmt.Sprintf("bunker-%s@localhost", agentID),
-		"--",
-		"sh", "-c", wrappedCmd,
-	)
+	cmd := buildExecSSHCommand(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args)
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -320,6 +300,43 @@ func (s *bunkerdService) HeartbeatAgent(ctx context.Context, req *connect.Reques
 		ExpiresAt:    rec.ExpiresAt.Format(time.RFC3339),
 		Acknowledged: true,
 	}), nil
+}
+
+// buildAgentExecCommand constructs the shell command that runs inside the agent
+// via SSH.  It prefixes the user command with env(1) so PATH and DOCKER_HOST are
+// set regardless of sshd PermitUserEnvironment/AcceptEnv settings.
+func buildAgentExecCommand(agentID, userHome, command string, args []string) string {
+	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
+	agentBinPath := filepath.Join(userHome, "bin")
+	remoteCmd := command
+	if len(args) > 0 {
+		remoteCmd += " " + strings.Join(args, " ")
+	}
+	return fmt.Sprintf("env PATH=%s:$PATH DOCKER_HOST=unix://%s %s", agentBinPath, dockerSockPath, remoteCmd)
+}
+
+// shellQuoteSingle returns s wrapped in single quotes, with embedded single
+// quotes escaped for POSIX sh.  Example: hello'world -> 'hello'\”world'.
+func shellQuoteSingle(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
+
+// buildExecSSHCommand returns an exec.Cmd that runs buildAgentExecCommand
+// inside the agent via ssh.  The remote script is passed as a single quoted
+// "sh -c '...'" argument to OpenSSH so that multi-token commands such as
+// "docker version" are not misparsed by the inner shell.
+func buildExecSSHCommand(ctx context.Context, agentID, sshKeyPath, userHome, command string, args []string) *exec.Cmd {
+	wrappedCmd := buildAgentExecCommand(agentID, userHome, command, args)
+	sshRemoteCmd := fmt.Sprintf("sh -c %s", shellQuoteSingle(wrappedCmd))
+	return exec.CommandContext(ctx, "ssh",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "LogLevel=ERROR",
+		"-o", "ConnectTimeout=10",
+		"-i", sshKeyPath,
+		fmt.Sprintf("bunker-%s@localhost", agentID),
+		sshRemoteCmd,
+	)
 }
 
 // agentService implements bunkerv1connect.AgentHandler.
