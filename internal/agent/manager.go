@@ -385,10 +385,15 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// where systemd has not created /run/user/<uid>, point it at a per-agent
 	// runtime directory under /run/bunker so dockerd-rootless.sh can start.
 	//
-	// Note: DOCKERD_ROOTLESS_ROOTLESSKIT_FLAGS=--pidns is intentionally omitted;
-	// rootlesskit v1.1.1 on the server does not support --detach-netns, so the
-	// flag string causes immediate exit. PID namespace isolation will be
-	// revisited when the installed rootlesskit supports it.
+	// Note: PID namespace isolation via --pidns is intentionally omitted for now;
+	// rootlesskit v1.1.1 on the server does not support --detach-netns, so mixing
+	// the two flags causes immediate exit. PID namespace isolation will be revisited
+	// when the installed rootlesskit supports it.
+	//
+	// Also: rootlesskit v1.1.1 uses --copy-up=/etc and --copy-up=/run by default,
+	// which requires a writable XDG_RUNTIME_DIR. We provide one under /run/bunker.
+	// The socket directory (/run/bunker/<id>) is also chowned to the agent so
+	// dockerd can create the socket there.
 	rootlessRuntimeDir := filepath.Join("/run", "bunker", agentID, "run")
 	if err := os.MkdirAll(rootlessRuntimeDir, 0700); err != nil {
 		cleanup()
@@ -410,6 +415,10 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		"XDG_RUNTIME_DIR=" + rootlessRuntimeDir,
 		"DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns",
 		"DOCKERD_ROOTLESS_ROOTLESSKIT_PORT_DRIVER=builtin",
+		// rootlesskit v1.1.1 does not support --detach-netns; the dockerd-rootless.sh
+		// shipped with the installer defaults to "true" and appends --detach-netns to
+		// ROOTLESSKIT_FLAGS, which makes rootlesskit exit immediately. Force it off.
+		"DOCKERD_ROOTLESS_ROOTLESSKIT_DETACH_NETNS=false",
 		"DOCKER_HOST=unix://" + dockerSockPath,
 	}
 	for _, env := range rootlessEnv {
