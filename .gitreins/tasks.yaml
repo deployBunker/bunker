@@ -422,6 +422,15 @@ tasks:
   status: complete
   created_at: '2026-07-01T07:31:34.672677+00:00'
   completed_at: '2026-07-01T08:07:39.307465+00:00'
+- id: wi-050-docker-tunnel
+  title: 'WI-050: Docker tunnel command in spawn response'
+  criteria:
+  - docker_host_tunnel field populated in SpawnAgentResponse
+  - tunnel command is correct ssh -L syntax
+  - docker CLI works through tunnel
+  status: complete
+  created_at: '2026-07-01T07:31:35.703306+00:00'
+  completed_at: '2026-07-01T08:51:20.508272+00:00'
 - id: wi-051-disk-quota
   title: 'WI-051: ResourceLimits.disk_max_bytes implementation'
   criteria:
