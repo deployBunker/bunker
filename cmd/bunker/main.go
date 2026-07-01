@@ -49,6 +49,7 @@ and control ephemeral development environments — all from the CLI.`,
 	root.AddCommand(cli.NewExecCommand())
 	root.AddCommand(cli.NewHeartbeatCommand())
 	root.AddCommand(cli.NewSystemdCommand())
+	root.AddCommand(cli.NewMountCommand())
 
 	return root.Execute()
 }

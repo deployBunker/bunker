@@ -483,6 +483,17 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		}
 	}
 
+	// Build the SSHFS mount command and the Docker SSH tunnel command once
+	// we know the user, home directory, and hostname.
+	host, _ := os.Hostname()
+	if host == "" {
+		host = "localhost"
+	}
+	sshfsMount := fmt.Sprintf("sshfs -o IdentityFile=%s -o User=%s %s@%s:%s %s",
+		sshKeyPath, username, username, host, userHome, filepath.Join("/mnt", "bunker", agentID))
+	dockerHostTunnel := fmt.Sprintf("ssh -o StrictHostKeyChecking=no -i %s -L 2376:%s %s@%s -N",
+		sshKeyPath, dockerSockPath, username, host)
+
 	// Persist the assigned port range to the agent's home directory so tools
 	// and tests can discover it without querying the tracker.
 	bunkerMetaDir := filepath.Join(userHome, ".bunker")
@@ -508,6 +519,8 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		PortRangeStart:    portStart,
 		PortRangeEnd:      portEnd,
 		SshPrivateKeyPath: sshKeyPath,
+		SshfsMount:        sshfsMount,
+		DockerHostTunnel:  dockerHostTunnel,
 	}
 	if err := m.tracker.Register(rec); err != nil {
 		// This shouldn't happen (we checked capacity above), but handle gracefully
@@ -515,10 +528,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	}
 
 	// ── Build response ─────────────────────────────────────────────
-	hostname, _ := os.Hostname()
-	if hostname == "" {
-		hostname = "localhost"
-	}
+	// hostname is already determined above for SSHFS/tunnel commands.
 
 	var publicURL string
 	if m.tunnelMgr != nil && req.GetNetwork() != nil && req.GetNetwork().GetTrycloudflare() {
@@ -544,15 +554,17 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	}
 
 	resp := &v1.SpawnAgentResponse{
-		AgentId:        agentID,
-		DockerHostSsh:  fmt.Sprintf("DOCKER_HOST=ssh://%s@%s", username, hostname),
-		SshPrivateKey:  string(privKeyBytes),
-		Limits:         effectiveLimits,
-		PortRangeStart: portStart,
-		PortRangeEnd:   portEnd,
-		ExpiresAt:      time.Now().Add(ttl).Format(time.RFC3339),
-		PublicUrl:      publicURL,
-		TailnetIp:      tailnetIP,
+		AgentId:          agentID,
+		DockerHostSsh:    fmt.Sprintf("DOCKER_HOST=ssh://%s@%s", username, host),
+		DockerHostTunnel: dockerHostTunnel,
+		SshfsMount:       sshfsMount,
+		SshPrivateKey:    string(privKeyBytes),
+		Limits:           effectiveLimits,
+		PortRangeStart:   portStart,
+		PortRangeEnd:     portEnd,
+		ExpiresAt:        time.Now().Add(ttl).Format(time.RFC3339),
+		PublicUrl:        publicURL,
+		TailnetIp:        tailnetIP,
 	}
 
 	m.logger.Info("agent spawned successfully", "agent_id", agentID)
