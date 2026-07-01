@@ -85,8 +85,9 @@
 |- [x] **WI-057**: Tailscale integration — Code verified: `tailscaleMgr.Start()` called during spawn when `NetworkConfig.Mode == MODE_TAILSCALE`, `tailnet_ip` populated in `SpawnAgentResponse`. 12 unit tests pass. E2E requires tailscale binary + auth key on server (not currently installed on bunker-mvp). Marked complete with infrastructure caveat.
 |- [x] **WI-058**: Resource enforcement verification — Verified E2E on bunker-mvp: agent spawned with `--cpu 1.0 --memory 1073741824` (1 CPU / 1 GB). Systemd cgroup paths confirmed: `cpu.max=100000 100000`, `memory.max=1073741824`. Docker container with `--cpus=0.5 --memory=256m` confirmed: `cgroup cpu.max=50000 100000`, `memory.max=268435456`. CPU burn test ran successfully inside limited container. Proof: agent enforce-test was OOM-killed at 256 bytes confirming cgroup memory enforcement at systemd level. (E2E: VERIFY-RESOURCE-ENFORCEMENT-PASS)
 
-> ⚠ **WI-003 post-mortem**: Spawn was marked complete but dockerd never ran under unprivileged users. Root cause: no rootless docker config in spawn code, and no E2E test that actually ran `docker run` inside an agent. WI-035 is the fix; WI-033 (integration test) should also be extended to include a `docker run` smoke assertion once rootless docker works.
-
+|> ⚠ **WI-003 post-mortem**: Spawn was marked complete but dockerd never ran under unprivileged users. Root cause: no rootless docker config in spawn code, and no E2E test that actually ran `docker run` inside an agent. WI-035 is the fix; WI-033 (integration test) should also be extended to include a `docker run` smoke assertion once rootless docker works.
+|- [x] **WI-059**: Fix /tmp disk quota in hermes skills tests — testConfig() hardcoded path bypasses TMPDIR env var. Changed to `os.TempDir()` pattern so tests work when /tmp is full. (commit 5289328)
+|
 ---
 
 ## Tech Stack (researched & locked)
