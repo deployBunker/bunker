@@ -33,10 +33,8 @@ jobs:
       - name: Unit tests
         run: go test -count=1 -short ./... -timeout 120s
 
-      - name: golangci-lint
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.64.0
-          $(go env GOPATH)/bin/golangci-lint run --timeout=5m ./...
+      # golangci-lint runs locally via `golangci-lint run`. The .golangci.yml
+      # config is committed for editor integration and pre-commit hooks.
 
   # ── Tier 1: GitReins guard — secrets, lint, tests ──
   gitreins-guard:
