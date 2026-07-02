@@ -7,6 +7,7 @@ on:
     branches: [main]
 
 jobs:
+  # ── Tier 0: fast gate — build + vet + unit tests on every push ──
   build-and-test:
     runs-on: ubuntu-latest
     steps:
@@ -14,7 +15,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "1.24"
 
       - uses: bufbuild/buf-setup-action@v1
         with:
@@ -32,16 +33,50 @@ jobs:
       - name: Unit tests
         run: go test -count=1 -short ./... -timeout 120s
 
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
+
+  # ── Tier 1: GitReins guard — secrets, lint, tests ──
+  gitreins-guard:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install GitReins
+        run: pip install gitreins
+
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          version: "1.50.0"
+
+      - name: Generate protobuf code
+        run: buf generate
+
+      - name: GitReins Tier 1 guard
+        run: gitreins guard
+
+  # ── Regression + E2E (self-hosted runner only — requires Linux host) ──
+  # This job runs ONLY when a self-hosted runner with the 'bunker' label is
+  # connected.  CI remains green even without it thanks to continue-on-error.
   regression:
     runs-on: [self-hosted, linux, bunker]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: build-and-test
+    continue-on-error: true
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "1.24"
 
       - uses: bufbuild/buf-setup-action@v1
         with:
@@ -51,10 +86,12 @@ jobs:
         run: buf generate
 
       - name: Build binaries
-        run: |
-          go build -o /usr/local/bin/bunkerd ./cmd/bunkerd
-          go build -o /usr/local/bin/bunker ./cmd/bunker
+        run: go build -o bunkerd ./cmd/bunkerd && go build -o bunker ./cmd/bunker
 
-      - name: Run regression suite
+      - name: Regression suite
         run: bash regression-tests.sh
         timeout-minutes: 10
+
+      - name: E2E battery
+        run: bash e2e-full-battery.sh
+        timeout-minutes: 15
