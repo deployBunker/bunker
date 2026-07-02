@@ -33,9 +33,8 @@ func captureStdout(t *testing.T, fn func()) string {
 
 // mockBunkerdServer is a test implementation of BunkerdHandler.
 type mockBunkerdServer struct {
-	info      *v1.ServerInfoResponse
-	err       error
-	errStatus int // if > 0, return a plain HTTP error
+	info *v1.ServerInfoResponse
+	err  error
 }
 
 func (m *mockBunkerdServer) ServerInfo(ctx context.Context, req *connect.Request[v1.ServerInfoRequest]) (*connect.Response[v1.ServerInfoResponse], error) {

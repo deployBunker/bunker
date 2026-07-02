@@ -118,9 +118,9 @@ Examples:
 				// Save private key
 				keyDir, _ := configFilePath()
 				keyDir = filepath.Join(filepath.Dir(keyDir), "keys")
-				os.MkdirAll(keyDir, 0700)
+				_ = os.MkdirAll(keyDir, 0700)
 				keyPath := filepath.Join(keyDir, r.AgentId)
-				os.WriteFile(keyPath, []byte(r.SshPrivateKey), 0600)
+				_ = os.WriteFile(keyPath, []byte(r.SshPrivateKey), 0600)
 				fmt.Printf("                %s\n", keyPath)
 			}
 			if r.PublicUrl != "" {

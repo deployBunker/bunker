@@ -400,6 +400,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		// at spawn time by checking the agent's current container count and
 		// storing the limit for the agent record; actual container capping is
 		// left to future policy enforcement.
+		_ = maxDockerContainers // used above via tracker — silence staticcheck
 	}
 
 	// Rootless dockerd script. DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns
@@ -453,12 +454,12 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 
 	// If a stale system unit exists (from a previous incomplete destroy), stop it.
 	stopCmd := exec.CommandContext(ctx, "systemctl", "stop", unitName)
-	stopCmd.Run() // ignore error — unit may not exist
+	_ = stopCmd.Run() // ignore error — unit may not exist
 	stopCmd = exec.CommandContext(ctx, "systemctl", "disable", unitName)
-	stopCmd.Run() // ignore error — unit may not exist
+	_ = stopCmd.Run() // ignore error — unit may not exist
 	// Remove a loaded/failed transient unit so systemd-run can recreate it.
 	stopCmd = exec.CommandContext(ctx, "systemctl", "reset-failed", unitName)
-	stopCmd.Run() // ignore error — unit may not be loaded
+	_ = stopCmd.Run() // ignore error — unit may not be loaded
 
 	// Also kill any orphaned dockerd process directly (belt-and-suspenders).
 	_ = stopDockerdDirect(ctx, username, unitName, m.logger)
@@ -813,7 +814,7 @@ func removeUserSliceLimits(ctx context.Context, agentID string, logger *slog.Log
 		logger.Info("removed user slice drop-in", "slice", sliceName)
 	}
 	cmd := exec.CommandContext(ctx, "systemctl", "daemon-reload")
-	cmd.Run() // best-effort
+	_ = cmd.Run() // best-effort
 }
 
 func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) (*v1.DestroyAgentResponse, error) {
