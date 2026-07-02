@@ -27,3 +27,4 @@ proto/**/*.pb.gw.go
 # Hilo graph data
 .vfs/
 .gitreins/history/
+bin/
