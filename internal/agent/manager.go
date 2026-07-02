@@ -150,9 +150,13 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 
 	// Track what we've created for cleanup on failure.
 	var createdUser bool
+	var createdUserSlice bool
 	var keyFile string
 
 	cleanup := func() {
+		if createdUserSlice {
+			removeUserSliceLimits(ctx, agentID, m.logger)
+		}
 		if createdUser {
 			m.logger.Warn("rolling back: removing user", "username", "bunker-"+agentID)
 			cmd := exec.CommandContext(ctx, "userdel", "-r", "bunker-"+agentID)
@@ -492,6 +496,22 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		}
 	}
 
+	// ── Step 5c: Apply cgroup limits to the user slice ─────────────
+	// The systemd unit above (bunker-docker-<id>) only constrains the dockerd
+	// process.  Non-docker commands (bunker exec <id> -- stress, dd, etc.) run
+	// directly as the agent user with no cgroup limits.  To close this gap we
+	// create a drop-in snippet for user.slice/user-<uid>.slice that applies the
+	// same CPU, memory, disk, process-count, and file-descriptor limits to
+	// *every* process owned by the agent user — containers and direct commands
+	// alike.
+	createdUserSlice = false
+	if err := applyUserSliceLimits(ctx, u, cpuQuota, memMax, diskMax, maxProcs, maxFiles, m.logger); err != nil {
+		m.logger.Warn("failed to apply user slice limits; agent user is unconstrained except for dockerd",
+			"agent_id", agentID, "error", err)
+	} else {
+		createdUserSlice = true
+	}
+
 	// ── Clean up temporary key files (keys are in memory + authorized_keys) ──
 	os.Remove(keyFile)
 	os.Remove(pubKeyFile)
@@ -731,6 +751,71 @@ var dockerdProcessChecker = func(ctx context.Context, username string) (bool, er
 	return len(strings.Fields(string(out))) > 0, nil
 }
 
+// applyUserSliceLimits creates a systemd drop-in for user.slice/user-<uid>.slice
+// so that *all* processes owned by the agent user inherit the configured cgroup
+// limits — not just the dockerd unit.  The drop-in is written to
+// /etc/systemd/system/user-<UID>.slice.d/50-bunker.conf.
+func applyUserSliceLimits(ctx context.Context, u *user.User, cpuQuota float64, memMax, diskMax, maxProcs, maxFiles uint64, logger *slog.Logger) error {
+	sliceName := fmt.Sprintf("user-%s.slice", u.Uid)
+	dropinDir := filepath.Join("/etc/systemd/system", sliceName+".d")
+	if err := os.MkdirAll(dropinDir, 0755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", dropinDir, err)
+	}
+
+	var parts []string
+	parts = append(parts, "[Slice]")
+	if cpuQuota > 0 {
+		parts = append(parts, fmt.Sprintf("CPUQuota=%d%%", int(cpuQuota*100)))
+	}
+	if memMax > 0 {
+		parts = append(parts, fmt.Sprintf("MemoryMax=%d", memMax))
+	}
+	if maxProcs > 0 {
+		parts = append(parts, fmt.Sprintf("TasksMax=%d", maxProcs))
+	}
+	if maxFiles > 0 {
+		parts = append(parts, fmt.Sprintf("LimitNOFILE=%d:%d", maxFiles, maxFiles))
+	}
+	if diskMax > 0 {
+		parts = append(parts, fmt.Sprintf("LimitFSIZE=%d", diskMax))
+	}
+	content := strings.Join(parts, "\n") + "\n"
+
+	confPath := filepath.Join(dropinDir, "50-bunker.conf")
+	if err := os.WriteFile(confPath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("write %s: %w", confPath, err)
+	}
+	logger.Info("wrote user slice drop-in", "slice", sliceName, "path", confPath)
+
+	// Reload systemd so the slice picks up the new limits immediately.
+	cmd := exec.CommandContext(ctx, "systemctl", "daemon-reload")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("daemon-reload: %w (output: %s)", err, string(out))
+	}
+	return nil
+}
+
+// removeUserSliceLimits removes the drop-in directory for the given agent's
+// slice and reloads systemd.  It is called during agent destroy to prevent
+// stale slice config from accumulating.
+func removeUserSliceLimits(ctx context.Context, agentID string, logger *slog.Logger) {
+	username := "bunker-" + agentID
+	u, err := user.Lookup(username)
+	if err != nil {
+		logger.Warn("cannot lookup user for slice cleanup", "username", username, "error", err)
+		return
+	}
+	sliceName := fmt.Sprintf("user-%s.slice", u.Uid)
+	dropinDir := filepath.Join("/etc/systemd/system", sliceName+".d")
+	if err := os.RemoveAll(dropinDir); err != nil && !os.IsNotExist(err) {
+		logger.Warn("failed to remove user slice drop-in", "slice", sliceName, "error", err)
+	} else {
+		logger.Info("removed user slice drop-in", "slice", sliceName)
+	}
+	cmd := exec.CommandContext(ctx, "systemctl", "daemon-reload")
+	cmd.Run() // best-effort
+}
+
 func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) (*v1.DestroyAgentResponse, error) {
 	// Step 0: validate agent_id
 	if agentID == "" || !validAgentID.MatchString(agentID) {
@@ -739,6 +824,10 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	}
 
 	m.logger.Info("destroying agent", "agent_id", agentID)
+
+	// Step 0.5: Remove user slice cgroup drop-in so stale limits don't
+	// accumulate after the agent is destroyed.
+	removeUserSliceLimits(ctx, agentID, m.logger)
 
 	// Step 1: Stop the dockerd systemd user unit
 	unitName := "bunker-docker-" + agentID
