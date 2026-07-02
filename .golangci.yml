@@ -1,0 +1,35 @@
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+  disable-all: true
+
+issues:
+  exclude-rules:
+    # Test files: intentionally skip error checks for test setup/teardown
+    - path: _test\.go
+      linters:
+        - errcheck
+    # Known-safe: v.BindEnv returns an error only for malformed keys
+    - path: internal/config/config\.go
+      text: "Error return value of .v.BindEnv. is not checked"
+      linters:
+        - errcheck
+    # Known-safe: explicit "ignore error" comments — intentional
+    - path: internal/agent/manager\.go
+      text: "ignore error"
+      linters:
+        - errcheck
+    # Known-safe: w.Write on health-check JSON (best-effort)
+    - path: internal/server/server\.go
+      text: "Error return value of .w.Write. is not checked"
+      linters:
+        - errcheck
+
+linters-settings:
+  staticcheck:
+    checks: ["all"]

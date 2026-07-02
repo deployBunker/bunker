@@ -56,6 +56,7 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	// Build the chi router with middleware
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
+	//nolint:staticcheck // RealIP is deprecated but acceptable for our use case
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
