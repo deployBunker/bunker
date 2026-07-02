@@ -110,6 +110,8 @@
 - `[~]` — in progress
 - `[x]` — complete
 
+> **⚠ CI infra note:** All GitHub Actions runs on main are stuck `queued` (not started) across multiple pushes (runs #28544451909, #28544160139, #28523263585). Not a code fix — CI runner capacity or billing infra issue. Re-check next supervisor cycle.
+
 ## Model
 - Primary: Kimi K2.7 (`kimi-for-coding/kimi-for-coding`)
 - Backup: ollama-cloud
