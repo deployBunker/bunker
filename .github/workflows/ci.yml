@@ -34,10 +34,9 @@ jobs:
         run: go test -count=1 -short ./... -timeout 120s
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: v1.64
-          args: --timeout=5m
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.64.0
+          $(go env GOPATH)/bin/golangci-lint run --timeout=5m ./...
 
   # ── Tier 1: GitReins guard — secrets, lint, tests ──
   gitreins-guard:
