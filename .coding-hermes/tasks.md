@@ -86,7 +86,7 @@
 ||- [x] **WI-059**: Fix /tmp disk quota in hermes skills tests — testConfig() hardcoded path bypasses TMPDIR env var. Changed to `os.TempDir()` pattern so tests work when /tmp is full. (commit 5289328)
 |
 |### Phase 11: E2E battery hardening (2026-07-03)
-|- [ ] **WI-060**: Fix stale E2E battery script and focused verification block — Updated `e2e-full-battery.sh` to use current CLI syntax (`connect` REST port :18080, `exec` with `--` separator, `docker run` assertion), replaced dockerd-not-running notes with hard assertions, and added `VERIFY-PASS` line to the summary. Verifying focused E2E on bunker-mvp: spawn, exec docker run, destroy all succeed with `VERIFY-PASS` output.
+|- [x] **WI-060**: Fix stale E2E battery script and focused verification block — Updated `e2e-full-battery.sh` to use current CLI syntax (`connect` REST port :18080, `exec` with `--` separator, `docker run` assertion), replaced dockerd-not-running notes with hard assertions, and added `VERIFY-PASS` line to the summary. Verified focused E2E on bunker-mvp: spawn, exec docker run, destroy all succeed with `VERIFY-PASS` output. Verified full E2E battery on bunker-mvp: 34 pass, 0 fail, VERIFY-PASS. (commit be05e4a)
 |
 |---
 
