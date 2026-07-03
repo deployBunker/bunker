@@ -63,11 +63,10 @@
 - [x] **WI-043**: PID namespace isolation — all agents see the same system-wide process list (16 processes visible). Rootlesskit supports `--pidns` for PID namespace isolation. Fix: add `--pidns` flag to rootlesskit launch in `rootless.go`, verify each agent sees only their own processes. Verify with `bunker exec <agent> -- ps aux | wc -l` showing only the agent's own processes (~5), not system-wide (~200). (2026-06-30)
 
 ## [x] WI-045: Fix CI: Unit tests — 4 hilo graph tests failing
-- **Priority:** high
-- **CI Run:** https://github.com/deployBunker/bunker/actions/runs/28455593259
-- **Error:** `internal/hilo` package: TestGraph_BlastRadius, TestGraph_BlastRadius_MaxDepth, TestGraph_Stats, TestGraph_ProjectDirResolution fail. Needs hilo binary in CI or environment fix.
-## [x] WI-045: Fix CI: Unit tests — 4 hilo graph tests failing
-
+|- **Priority:** high
+|- **CI Run:** https://github.com/deployBunker/bunker/actions/runs/28455593259
+|- **Error:** `internal/hilo` package: TestGraph_BlastRadius, TestGraph_BlastRadius_MaxDepth, TestGraph_Stats, TestGraph_ProjectDirResolution fail. Needs hilo binary in CI or environment fix.
+|
 ### Phase 9: Live-server verification gaps (2026-07-01 E2E battery findings)
 - [x] **WI-046**: Docker exec returns SSH env vars, not docker output. Fixed by passing the remote `sh -c '...'` command as a single quoted argument to ssh so the inner shell receives the full `env ... docker ...` command instead of treating `env` as the script and docker/version as positional parameters. Added `buildAgentExecCommand`, `shellQuoteSingle`, and `buildExecSSHCommand` helpers plus regression tests. E2E battery: exec whoami/id pass, docker version returns client version. (commit f330406)
 - [x] **WI-047**: Agent dockerd never starts — added `waitForDockerd` after `systemd-run` in manager.go; it polls for an agent-owned dockerd process and `/run/bunker/<id>/docker.sock` for up to 5s, captures `systemctl status` and `journalctl` output on failure, and triggers cleanup so failed spawns are not leaked. Added `manager_dockerd_test.go` with temp-dir + fake process checker tests. (2026-07-01)
@@ -84,11 +83,12 @@
 |- [x] **WI-056**: Multi-server CLI — Verified E2E on bunker-mvp: two bunkerd instances on :9090 and :19090 with isolated port ranges (20000/30000). `bunker connect`, `bunker spawn --server`, `bunker list --server`, `bunker destroy --server` all work correctly across both servers. Config correctly tracks 3 server entries. Exec requires running dockerd but spawn/list/destroy verified. (E2E: VERIFY-MULTI-SERVER-PASS)
 |- [x] **WI-057**: Tailscale integration — Code verified: `tailscaleMgr.Start()` called during spawn when `NetworkConfig.Mode == MODE_TAILSCALE`, `tailnet_ip` populated in `SpawnAgentResponse`. 12 unit tests pass. E2E requires tailscale binary + auth key on server (not currently installed on bunker-mvp). Marked complete with infrastructure caveat.
 |- [x] **WI-058**: Resource enforcement verification — Verified E2E on bunker-mvp: agent spawned with `--cpu 1.0 --memory 1073741824` (1 CPU / 1 GB). Systemd cgroup paths confirmed: `cpu.max=100000 100000`, `memory.max=1073741824`. Docker container with `--cpus=0.5 --memory=256m` confirmed: `cgroup cpu.max=50000 100000`, `memory.max=268435456`. CPU burn test ran successfully inside limited container. Proof: agent enforce-test was OOM-killed at 256 bytes confirming cgroup memory enforcement at systemd level. (E2E: VERIFY-RESOURCE-ENFORCEMENT-PASS)
-
-|> ⚠ **WI-003 post-mortem**: Spawn was marked complete but dockerd never ran under unprivileged users. Root cause: no rootless docker config in spawn code, and no E2E test that actually ran `docker run` inside an agent. WI-035 is the fix; WI-033 (integration test) should also be extended to include a `docker run` smoke assertion once rootless docker works.
-|- [x] **WI-059**: Fix /tmp disk quota in hermes skills tests — testConfig() hardcoded path bypasses TMPDIR env var. Changed to `os.TempDir()` pattern so tests work when /tmp is full. (commit 5289328)
+||- [x] **WI-059**: Fix /tmp disk quota in hermes skills tests — testConfig() hardcoded path bypasses TMPDIR env var. Changed to `os.TempDir()` pattern so tests work when /tmp is full. (commit 5289328)
 |
----
+|### Phase 11: E2E battery hardening (2026-07-03)
+|- [ ] **WI-060**: Fix stale E2E battery script and focused verification block — Updated `e2e-full-battery.sh` to use current CLI syntax (`connect` REST port :18080, `exec` with `--` separator, `docker run` assertion), replaced dockerd-not-running notes with hard assertions, and added `VERIFY-PASS` line to the summary. Verifying focused E2E on bunker-mvp: spawn, exec docker run, destroy all succeed with `VERIFY-PASS` output.
+|
+|---
 
 ## Tech Stack (researched & locked)
 - **gRPC+REST**: connect-go (v1.20) — single binary, net/http native

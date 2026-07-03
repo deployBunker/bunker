@@ -519,3 +519,15 @@ tasks:
   status: complete
   created_at: '2026-07-01T09:11:30.473793+00:00'
   completed_at: '2026-07-01T09:11:42.199182+00:00'
+- id: wi-060
+  title: Fix stale E2E battery script and focused verification block
+  criteria:
+  - e2e-full-battery.sh connects to bunkerd REST port :18080 (not :19090)
+  - Battery spawns an agent with valid resource limits and asserts dockerd/docker
+    socket are present
+  - Battery asserts docker run inside agent works via `bunker exec <agent> -- docker
+    run ...`
+  - Battery summary prints VERIFY-PASS when all core assertions pass
+  - Focused E2E on bunker-mvp outputs VERIFY-PASS for spawn/exec/destroy cycle
+  status: in_progress
+  created_at: '2026-07-03T18:34:43.954637+00:00'

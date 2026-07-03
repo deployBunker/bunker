@@ -54,7 +54,7 @@ echo ""
 # 2. CONNECT
 # =============================================
 echo "=== 2. Connect ==="
-CONNECT_OUT=$($BUNKER connect http://localhost:19090 --token test-regression-token 2>&1)
+CONNECT_OUT=$($BUNKER connect http://localhost:18080 --token test-regression-token 2>&1)
 if echo "$CONNECT_OUT" | grep -q "Connected\|Server registered"; then
     assert "connect to bunkerd"
 else
@@ -122,22 +122,27 @@ else
     fail "port range file missing"
 fi
 
-# Docker check (known issue: needs rootless docker + AppArmor config)
-echo ""
-echo "  --- Docker Status ---"
+# Docker check — rootless docker must be running
+(echo ""; echo "  --- Docker Status ---")
 DOCKERD_RUNNING=$(pgrep -u "bunker-e2e-main" dockerd 2>/dev/null || echo "")
 if [ -n "$DOCKERD_RUNNING" ]; then
     assert "dockerd running under agent user (PID=$DOCKERD_RUNNING)"
 else
-    note "dockerd NOT running — known issue: requires rootless docker + AppArmor config for non-root users"
-    note "Fix: install docker-ce-rootless-extras, set subuid/subgid, add AppArmor profile"
+    fail "dockerd NOT running for bunker-e2e-main"
 fi
 
 DOCKER_SOCK="/run/bunker/e2e-main/docker.sock"
 if [ -S "$DOCKER_SOCK" ]; then
     assert "docker socket exists"
 else
-    note "docker socket not created — dockerd did not start (see above)"
+    fail "docker socket not created"
+fi
+
+DOCKER_RUN=$($BUNKER exec e2e-main -- docker run --rm alpine:latest echo DOCKER-OK 2>&1 || true)
+if echo "$DOCKER_RUN" | grep -q "DOCKER-OK"; then
+    assert "docker run inside agent works"
+else
+    fail "docker run inside agent — $DOCKER_RUN"
 fi
 echo ""
 
@@ -173,14 +178,12 @@ else
     fail "exec id — $ENV_OUT"
 fi
 
-# Docker exec (will fail if dockerd isn't running)
-DOCKER_EXEC=$($BUNKER exec e2e-main docker version 2>&1 || true)
-if echo "$DOCKER_EXEC" | grep -q "Version"; then
-    assert "docker version via exec"
-elif echo "$DOCKER_EXEC" | grep -q "permission denied\|Cannot connect"; then
-    note "docker via exec — dockerd not running (expected with rootless issue)"
+# Docker exec (must work now that dockerd is running)
+DOCKER_EXEC=$($BUNKER exec e2e-main -- docker run --rm alpine:latest echo DOCKER-OK 2>&1 || true)
+if echo "$DOCKER_EXEC" | grep -q "DOCKER-OK"; then
+    assert "docker run via exec"
 else
-    note "docker via exec — $DOCKER_EXEC"
+    fail "docker run via exec — $DOCKER_EXEC"
 fi
 echo ""
 
@@ -389,6 +392,7 @@ echo ""
 # =============================================
 # SUMMARY
 # =============================================
+echo ""
 echo "=========================================="
 echo " RESULTS SUMMARY"
 echo "=========================================="
@@ -399,6 +403,7 @@ echo ""
 
 if [ "$FAIL" -eq 0 ]; then
     echo "  STATUS: ALL CORE TESTS PASS"
+    echo "  VERIFY-PASS"
     if [ "$NOTE" -gt 0 ]; then
         echo "  ($NOTE issues documented — see notes above)"
     fi
@@ -406,12 +411,6 @@ else
     echo "  STATUS: $FAIL FAILURES — review above"
 fi
 
-echo ""
-echo "  KNOWN ISSUE: Agent dockerd requires rootless Docker"
-echo "  - Fix: install docker-ce-rootless-extras"
-echo "  - Fix: configure subuid/subgid per user"
-echo "  - Fix: add AppArmor profile for rootlesskit"
-echo "  - Fix: update spawn code to use dockerd-rootless-setuptool.sh"
 echo ""
 
 exit 0
