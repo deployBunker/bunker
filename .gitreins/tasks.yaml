@@ -532,3 +532,17 @@ tasks:
   status: complete
   created_at: '2026-07-03T18:34:43.954637+00:00'
   completed_at: '2026-07-03T18:38:34.877127+00:00'
+- id: wi-061
+  title: Fix rootless Docker installer failure on live server
+  criteria:
+  - installRootlessDocker enables systemd lingering for the agent user before running
+    dockerd-rootless-setuptool.sh
+  - installRootlessDocker creates and chowns /run/user/<UID> for the install step
+  - installRootlessDocker passes XDG_RUNTIME_DIR and DBUS_SESSION_BUS_ADDRESS to the
+    installer so systemctl --user can find the user manager
+  - 'Focused E2E on bunker-mvp passes: bunker spawn --agent-id <id> --cpu 1 --memory
+    1073741824 --disk 10240 --ttl 600 followed by bunker exec <id> -- docker run --rm
+    alpine:latest echo VERIFY-PASS outputs VERIFY-PASS'
+  - go build ./... && go test -count=1 -short ./... -timeout 120s passes
+  status: in_progress
+  created_at: '2026-07-04T22:00:05.386552+00:00'
