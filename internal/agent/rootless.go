@@ -91,8 +91,36 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 
 	logger.Info("installing rootless docker", "user", username)
 
-	// Download the installer into the agent's home as the agent user so file
-	// ownership is correct from the start.
+	// Enable systemd lingering so the user manager is available for the
+	// installer to run `systemctl --user start docker.service`. This must be done
+	// as root before dropping to the target user.
+	if out, err := exec.CommandContext(ctx, "loginctl", "enable-linger", username).CombinedOutput(); err != nil {
+		return fmt.Errorf("enable linger for %s: %w (output: %s)", username, err, string(out))
+	}
+
+	u, err := user.Lookup(username)
+	if err != nil {
+		return fmt.Errorf("lookup user %s: %w", username, err)
+	}
+	uid, err := strconv.Atoi(u.Uid)
+	if err != nil {
+		return fmt.Errorf("parse uid %q: %w", u.Uid, err)
+	}
+
+	// The installer uses systemctl --user, which requires a writable runtime
+	// directory and the systemd user manager bus. Use the standard systemd user
+	// runtime path for the install step; the actual daemon runtime is set to
+	// /run/bunker/<id>/run when dockerd is started by the manager.
+	stdRuntimeDir := filepath.Join("/run", "user", strconv.Itoa(uid))
+	if err := os.MkdirAll(stdRuntimeDir, 0700); err != nil {
+		return fmt.Errorf("create runtime dir %s: %w", stdRuntimeDir, err)
+	}
+	if out, err := exec.CommandContext(ctx, "chown", "-R", username+":", stdRuntimeDir).CombinedOutput(); err != nil {
+		return fmt.Errorf("chown runtime dir %s: %w (output: %s)", stdRuntimeDir, err, string(out))
+	}
+
+	// Download the installer into the agent's home as root (the installer will
+	// be executed by the target user, and we need a reliable download path).
 	installerPath := filepath.Join(userHome, "rootless-install.sh")
 	curl := exec.CommandContext(ctx, "curl", "-fsSL", "-o", installerPath, rootlessInstallURL)
 	if out, err := curl.CombinedOutput(); err != nil {
@@ -101,13 +129,19 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 	if err := os.Chmod(installerPath, 0755); err != nil {
 		return fmt.Errorf("chmod installer: %w", err)
 	}
+	if out, err := exec.CommandContext(ctx, "chown", username, installerPath).CombinedOutput(); err != nil {
+		return fmt.Errorf("chown installer: %w (output: %s)", err, string(out))
+	}
 
 	// Run the installer as the target user. It installs binaries into ~/bin.
-	// USERNAME is required by the installer to know which home directory to use.
+	// The standard systemd runtime directory and D-Bus bus address are provided
+	// so systemctl --user can communicate with the user manager.
 	cmd := exec.CommandContext(ctx, "su", "-", username, "-c", installerPath)
 	cmd.Env = append(os.Environ(),
 		"FORCE_ROOTLESS_INSTALL=1",
 		"SKIP_IPTABLES=1",
+		"XDG_RUNTIME_DIR="+stdRuntimeDir,
+		"DBUS_SESSION_BUS_ADDRESS=unix:path="+filepath.Join(stdRuntimeDir, "bus"),
 	)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("run rootless installer as %s: %w (output: %s)", username, err, string(out))
