@@ -435,7 +435,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// them in its process environment. rootlesskit checks XDG_RUNTIME_DIR, HOME,
 	// and USER, while dockerd-rootless.sh uses the other *_ROOTLESS_* variables.
 	rootlessEnv := []string{
-		"PATH=" + filepath.Join(userHome, "bin") + ":/usr/local/bin:/usr/bin:/bin",
+		"PATH=" + filepath.Join(userHome, "bin") + ":/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
 		"HOME=" + userHome,
 		"USER=" + username,
 		"XDG_RUNTIME_DIR=" + rootlessRuntimeDir,
