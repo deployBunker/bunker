@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // rootlessInstallURL is the official Docker rootless extras installer.
@@ -91,13 +92,6 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 
 	logger.Info("installing rootless docker", "user", username)
 
-	// Enable systemd lingering so the user manager is available for the
-	// installer to run `systemctl --user start docker.service`. This must be done
-	// as root before dropping to the target user.
-	if out, err := exec.CommandContext(ctx, "loginctl", "enable-linger", username).CombinedOutput(); err != nil {
-		return fmt.Errorf("enable linger for %s: %w (output: %s)", username, err, string(out))
-	}
-
 	u, err := user.Lookup(username)
 	if err != nil {
 		return fmt.Errorf("lookup user %s: %w", username, err)
@@ -106,12 +100,36 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 	if err != nil {
 		return fmt.Errorf("parse uid %q: %w", u.Uid, err)
 	}
+	stdRuntimeDir := filepath.Join("/run", "user", strconv.Itoa(uid))
+
+	// UIDs can be reused after userdel. A stale runtime directory from a previous
+	// user breaks systemctl --user (it may be owned by a different user or have
+	// an old user manager socket). Stop any existing user manager and remove the
+	// stale directory before enabling lingering for this user.
+	logger.Info("resetting user manager runtime", "user", username, "uid", uid, "runtime_dir", stdRuntimeDir)
+	_ = exec.CommandContext(ctx, "systemctl", "stop", fmt.Sprintf("user@%d.service", uid)).Run()
+	_ = exec.CommandContext(ctx, "loginctl", "terminate-user", strconv.Itoa(uid)).Run()
+	if info, err := os.Stat(stdRuntimeDir); err == nil && info.IsDir() {
+		if out, err := exec.CommandContext(ctx, "rm", "-rf", stdRuntimeDir).CombinedOutput(); err != nil {
+			logger.Warn("failed to remove stale runtime dir", "dir", stdRuntimeDir, "error", err, "output", string(out))
+		}
+	}
+
+	// Enable systemd lingering so the user manager is available for the
+	// installer to run `systemctl --user start docker.service`. This must be done
+	// as root before dropping to the target user. After enabling linger, wait for
+	// the user manager to create the runtime directory.
+	if out, err := exec.CommandContext(ctx, "loginctl", "enable-linger", username).CombinedOutput(); err != nil {
+		return fmt.Errorf("enable linger for %s: %w (output: %s)", username, err, string(out))
+	}
+	if err := waitForUserManager(ctx, stdRuntimeDir); err != nil {
+		return fmt.Errorf("user manager did not start for %s: %w", username, err)
+	}
 
 	// The installer uses systemctl --user, which requires a writable runtime
 	// directory and the systemd user manager bus. Use the standard systemd user
 	// runtime path for the install step; the actual daemon runtime is set to
 	// /run/bunker/<id>/run when dockerd is started by the manager.
-	stdRuntimeDir := filepath.Join("/run", "user", strconv.Itoa(uid))
 	if err := os.MkdirAll(stdRuntimeDir, 0700); err != nil {
 		return fmt.Errorf("create runtime dir %s: %w", stdRuntimeDir, err)
 	}
@@ -206,4 +224,30 @@ include <tunables/global>
 	}
 	logger.Info("installed rootlesskit apparmor profile", "profile", profileName)
 	return nil
+}
+
+// waitForUserManager polls for the systemd user manager to create the runtime
+// directory. Enabling linger starts the user manager asynchronously, so we
+// wait until the bus socket is present before running systemctl --user.
+func waitForUserManager(ctx context.Context, runtimeDir string) error {
+	busPath := filepath.Join(runtimeDir, "bus")
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		deadline = time.Now().Add(5 * time.Second)
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if _, err := os.Stat(busPath); err == nil {
+				return nil
+			}
+			if time.Now().After(deadline) {
+				return fmt.Errorf("timeout waiting for %s", busPath)
+			}
+		}
+	}
 }
