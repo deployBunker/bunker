@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 	"github.com/deployBunker/bunker/internal/resource"
+	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 )
 
 // TestTTLReaper_ExpiresAgent verifies that the TTL reaper destroys an agent
