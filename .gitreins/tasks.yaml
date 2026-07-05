@@ -12,7 +12,7 @@ tasks:
   status: complete
   created_at: '2026-06-29T00:44:13.121189+00:00'
   completed_at: '2026-06-29T00:45:45.107294+00:00'
-- id: wi-015
+- id: WI-015
   title: bunker metrics command
   criteria:
   - bunker metrics command exists in internal/cli/metrics.go
@@ -25,7 +25,7 @@ tasks:
   status: complete
   created_at: '2026-06-29T01:51:59.198615+00:00'
   completed_at: '2026-06-29T02:49:47.658654+00:00'
-- id: wi-016
+- id: WI-016
   title: bunker exec command
   criteria:
   - bunker exec command exists in internal/cli/exec.go with agent-id, command, and
@@ -38,7 +38,7 @@ tasks:
   status: complete
   created_at: '2026-06-29T03:00:57.262486+00:00'
   completed_at: '2026-06-29T03:01:12.198463+00:00'
-- id: wi-017
+- id: WI-017
   title: "REST gateway \u2014 connect-go HTTP handlers"
   criteria:
   - connect-go handlers mounted on chi router at /bunker.v1.Bunkerd/ and /bunker.v1.Agent/
@@ -54,7 +54,7 @@ tasks:
   status: complete
   created_at: '2026-06-29T04:00:15.628269+00:00'
   completed_at: '2026-06-29T04:02:48.592362+00:00'
-- id: wi-020
+- id: WI-020
   title: Coding-Hermes skill integration
   criteria:
   - internal/hermes/skills.go exists with SkillManager, InitAgentSkills, CleanupAgentSkills,
@@ -68,7 +68,7 @@ tasks:
   status: complete
   created_at: '2026-06-29T08:22:07.185423+00:00'
   completed_at: '2026-06-29T08:22:16.364475+00:00'
-- id: wi-021
+- id: WI-021
   title: "Hilo test harness \u2014 end-to-end tests exercising Hilo"
   criteria:
   - internal/hilo/hilo.go exists with Graph, Edge, GraphStats types and NewGraph,
@@ -84,7 +84,7 @@ tasks:
   status: complete
   created_at: '2026-06-29T09:21:06.324767+00:00'
   completed_at: '2026-06-29T09:21:23.774359+00:00'
-- id: wi-022
+- id: WI-022
   title: "GitReins Tier 1 + Tier 2 config \u2014 secrets, lint, tests, eval"
   criteria:
   - GitReins config (.gitreins/config.yaml) has secrets, go_build, go_lint, go_tests,
@@ -100,7 +100,7 @@ tasks:
   status: complete
   created_at: '2026-06-29T10:42:18.728348+00:00'
   completed_at: '2026-06-29T10:44:41.517906+00:00'
-- id: wi-023
+- id: WI-023
   title: Fix destroy systemctl user-instance mismatch
   criteria:
   - Destroy stops dockerd via systemd-run --user; direct kill targets correct user
@@ -110,7 +110,7 @@ tasks:
   status: complete
   created_at: '2026-06-29T12:29:48.593973+00:00'
   completed_at: '2026-06-29T12:30:15.822154+00:00'
-- id: wi-024
+- id: WI-024
   title: Fix exec DOCKER_HOST propagation
   criteria:
   - authorized_keys environment= sets DOCKER_HOST but SSH client must propagate it
@@ -125,7 +125,7 @@ tasks:
   status: complete
   created_at: '2026-06-29T12:49:09.494226+00:00'
   completed_at: '2026-06-29T12:54:12.069528+00:00'
-- id: wi-025
+- id: WI-025
   title: Fix systemd-run stale unit on re-spawn
   criteria:
   - systemctl --user --machine=$user@ stop bunker-docker-$agentID runs before systemd-run
@@ -136,7 +136,7 @@ tasks:
   status: complete
   created_at: '2026-06-29T13:47:43.802974+00:00'
   completed_at: '2026-06-29T13:47:53.681232+00:00'
-- id: wi-026
+- id: WI-026
   title: Multi-agent concurrency test
   criteria:
   - internal/agent/concurrency_test.go exists and compiles
@@ -150,7 +150,7 @@ tasks:
   status: complete
   created_at: '2026-06-29T15:24:51.273004+00:00'
   completed_at: '2026-06-29T15:24:56.627483+00:00'
-- id: wi-027
+- id: WI-027
   title: cgroup enforcement test
   criteria:
   - Agent spawn accepts CPU and memory cgroup limits (0.5 CPU / 256MB memory)
@@ -163,7 +163,7 @@ tasks:
   status: complete
   created_at: '2026-06-29T15:56:25.605320+00:00'
   completed_at: '2026-06-29T16:00:10.555620+00:00'
-- id: wi-028
+- id: WI-028
   title: "Cloudflare TryCloudflare tunnels \u2014 per-agent public URL via cloudflared"
   criteria:
   - cloudflared binary is installed and reachable at /usr/local/bin/cloudflared on
@@ -181,7 +181,7 @@ tasks:
   status: complete
   created_at: '2026-06-29T16:46:31.549983+00:00'
   completed_at: '2026-06-30T23:56:52.768333+00:00'
-- id: wi-029
+- id: WI-029
   title: JWT auth + agent-scoped sub-keys
   criteria:
   - internal/auth/jwt.go exists and implements HS256 JWT issuance/validation with
@@ -194,7 +194,7 @@ tasks:
   status: complete
   created_at: '2026-06-29T17:55:58.486882+00:00'
   completed_at: '2026-06-29T17:56:07.266362+00:00'
-- id: wi-030
+- id: WI-030
   title: "TLS/mTLS \u2014 certmagic Let's Encrypt (or self-signed for test), mutual\
     \ TLS between CLI and bunkerd"
   criteria:
@@ -217,7 +217,7 @@ tasks:
   status: complete
   created_at: '2026-06-29T19:24:28.033322+00:00'
   completed_at: '2026-06-29T19:30:45.227259+00:00'
-- id: wi-032
+- id: WI-032
   title: bunkerd systemd service
   criteria:
   - A new internal/systemd package provides InstallService, UninstallService, and
@@ -234,7 +234,7 @@ tasks:
   status: complete
   created_at: '2026-06-29T21:19:15.342291+00:00'
   completed_at: '2026-06-30T23:59:37.516832+00:00'
-- id: wi-033
+- id: WI-033
   title: coding-hermes full integration test
   criteria:
   - internal/hermes/integration_test.go exists and contains TestIntegration_* tests
@@ -249,7 +249,7 @@ tasks:
   status: complete
   created_at: '2026-06-29T22:58:15.621366+00:00'
   completed_at: '2026-06-29T22:58:23.776320+00:00'
-- id: wi-035
+- id: WI-035
   title: Rootless Docker for agents
   criteria:
   - Spawn code installs rootless Docker tooling for unprivileged agent users
@@ -261,7 +261,7 @@ tasks:
   status: complete
   created_at: '2026-06-30T00:08:23.693622+00:00'
   completed_at: '2026-06-30T00:08:32.770412+00:00'
-- id: wi-036
+- id: WI-036
   title: JWT auth end-to-end
   criteria:
   - SpawnAgent returns an agent-scoped opaque API sub-key (ApiKey) when auth.enabled
@@ -275,7 +275,7 @@ tasks:
   status: complete
   created_at: '2026-06-30T02:09:23.596540+00:00'
   completed_at: '2026-06-30T02:28:34.626597+00:00'
-- id: wi-037
+- id: WI-037
   title: TLS/mTLS end-to-end
   criteria:
   - Server starts with TLS enabled and a self-signed certificate
@@ -288,7 +288,7 @@ tasks:
   status: complete
   created_at: '2026-06-30T03:40:42.628404+00:00'
   completed_at: '2026-07-01T00:01:02.533425+00:00'
-- id: wi-038
+- id: WI-038
   title: TTL expiry end-to-end
   criteria:
   - CLI has a heartbeat command that calls HeartbeatAgent
@@ -299,7 +299,7 @@ tasks:
   status: complete
   created_at: '2026-06-30T05:50:29.443719+00:00'
   completed_at: '2026-07-01T00:02:53.409107+00:00'
-- id: wi-039
+- id: WI-039
   title: "Cloudflare tunnel end-to-end \u2014 install cloudflared on server, spawn\
     \ agent with --trycloudflare, verify public URL reachable via curl"
   criteria:
@@ -312,7 +312,7 @@ tasks:
   status: complete
   created_at: '2026-06-30T08:43:51.805212+00:00'
   completed_at: '2026-06-30T09:54:39.444096+00:00'
-- id: wi-044
+- id: WI-044
   title: 'Fix CI: proto package not found'
   criteria:
   - Add bufbuild/buf-setup-action@v1 to .github/workflows/ci.yml
@@ -322,7 +322,7 @@ tasks:
   status: complete
   created_at: '2026-06-30T14:06:08.783628+00:00'
   completed_at: '2026-06-30T14:07:50.892115+00:00'
-- id: wi-040
+- id: WI-040
   title: Fix bunker exec flag parsing for docker flags
   criteria:
   - exec command supports -- separator
@@ -331,7 +331,7 @@ tasks:
   status: complete
   created_at: '2026-06-30T15:15:59.637518+00:00'
   completed_at: '2026-06-30T15:17:19.220375+00:00'
-- id: wi-041
+- id: WI-041
   title: Wire ulimit controls into agent spawn
   criteria:
   - systemd-run args include --property=TasksMax=<default_max_processes> in manager.go
@@ -344,7 +344,7 @@ tasks:
   status: complete
   created_at: '2026-06-30T17:22:02.413619+00:00'
   completed_at: '2026-06-30T17:23:03.722869+00:00'
-- id: wi-042
+- id: WI-042
   title: Verify and fix cgroup enforcement through rootlesskit
   criteria:
   - Spawn code documents the correct cgroup verification path for rootless Docker
@@ -358,7 +358,7 @@ tasks:
   status: complete
   created_at: '2026-06-30T19:04:33.958661+00:00'
   completed_at: '2026-06-30T19:19:29.311782+00:00'
-- id: wi-043
+- id: WI-043
   title: PID namespace isolation for rootless Docker agents
   criteria:
   - Rootless dockerd spawn sets DOCKERD_ROOTLESS_ROOTLESSKIT_FLAGS=--pidns in internal/agent/manager.go
@@ -371,7 +371,7 @@ tasks:
   status: complete
   created_at: '2026-06-30T21:21:28.271115+00:00'
   completed_at: '2026-06-30T21:27:57.284563+00:00'
-- id: wi-045
+- id: WI-045
   title: 'Fix CI: internal/hilo unit tests use synthetic graph fixture'
   criteria:
   - internal/hilo/hilo_test.go no longer depends on NewGraph("../.."); tests build
@@ -383,7 +383,7 @@ tasks:
   status: complete
   created_at: '2026-06-30T22:37:21.359416+00:00'
   completed_at: '2026-06-30T22:41:09.253353+00:00'
-- id: wi-046
+- id: WI-046
   title: Fix bunker exec returning SSH env vars instead of docker output
   criteria:
   - bunker exec <agent> -- docker version outputs actual docker version info, not
@@ -397,7 +397,7 @@ tasks:
   status: complete
   created_at: '2026-07-01T02:00:32.996598+00:00'
   completed_at: '2026-07-01T02:11:58.240513+00:00'
-- id: wi-047
+- id: WI-047
   title: Agent dockerd startup verification
   criteria:
   - After systemd-run returns success, waitForDockerd polls for a dockerd process
@@ -413,8 +413,8 @@ tasks:
   status: complete
   created_at: '2026-07-01T03:35:17.753273+00:00'
   completed_at: '2026-07-01T04:04:06.136025+00:00'
-- id: wi-049-sshfs
-  title: 'WI-049: SSHFS mount command in spawn response + CLI'
+- id: WI-049
+  title: SSHFS mount command in spawn response + CLI
   criteria:
   - sshfs_mount field populated in SpawnAgentResponse
   - bunker mount <agent-id> CLI command works
@@ -422,8 +422,8 @@ tasks:
   status: complete
   created_at: '2026-07-01T07:31:34.672677+00:00'
   completed_at: '2026-07-01T08:07:39.307465+00:00'
-- id: wi-050-docker-tunnel
-  title: 'WI-050: Docker tunnel command in spawn response'
+- id: WI-050
+  title: Docker tunnel command in spawn response
   criteria:
   - docker_host_tunnel field populated in SpawnAgentResponse
   - tunnel command is correct ssh -L syntax
@@ -431,8 +431,8 @@ tasks:
   status: complete
   created_at: '2026-07-01T07:31:35.703306+00:00'
   completed_at: '2026-07-01T08:55:43.926341+00:00'
-- id: wi-051-disk-quota
-  title: 'WI-051: ResourceLimits.disk_max_bytes implementation'
+- id: WI-051
+  title: ResourceLimits.disk_max_bytes implementation
   criteria:
   - disk_max_bytes honored in spawn
   - agent cannot exceed disk quota
@@ -440,8 +440,8 @@ tasks:
   status: complete
   created_at: '2026-07-01T07:31:36.739696+00:00'
   completed_at: '2026-07-01T09:54:17.485182+00:00'
-- id: wi-052-max-containers
-  title: 'WI-052: ResourceLimits.max_docker_containers implementation'
+- id: WI-052
+  title: ResourceLimits.max_docker_containers implementation
   criteria:
   - max_docker_containers honored in spawn
   - agent cannot exceed container limit
@@ -449,8 +449,8 @@ tasks:
   status: complete
   created_at: '2026-07-01T07:31:37.834529+00:00'
   completed_at: '2026-07-01T09:55:55.817511+00:00'
-- id: wi-053-server-metrics
-  title: 'WI-053: ServerMetrics RPC verification'
+- id: WI-053
+  title: ServerMetrics RPC verification
   criteria:
   - ServerMetrics returns CPU/memory/disk/container data
   - bunker metrics --server CLI works
@@ -458,8 +458,8 @@ tasks:
   status: complete
   created_at: '2026-07-01T07:31:38.882281+00:00'
   completed_at: '2026-07-01T09:57:29.886658+00:00'
-- id: wi-054-get-agent
-  title: 'WI-054: GetAgent RPC verification + CLI'
+- id: WI-054
+  title: GetAgent RPC verification + CLI
   criteria:
   - GetAgent returns correct agent data
   - bunker info <agent-id> CLI works
@@ -467,8 +467,8 @@ tasks:
   status: complete
   created_at: '2026-07-01T07:31:39.926646+00:00'
   completed_at: '2026-07-01T09:49:01.392169+00:00'
-- id: wi-055-agent-service
-  title: 'WI-055: Agent scoped sub-key API E2E verification'
+- id: WI-055
+  title: Agent scoped sub-key API E2E verification
   criteria:
   - Agent service GetInfo works with scoped key
   - Metrics + Heartbeat work with scoped key
@@ -476,8 +476,8 @@ tasks:
   status: complete
   created_at: '2026-07-01T07:31:40.963044+00:00'
   completed_at: '2026-07-01T13:58:16.079443+00:00'
-- id: wi-056-multi-server
-  title: 'WI-056: Multi-server CLI verification'
+- id: WI-056
+  title: Multi-server CLI verification
   criteria:
   - Two bunkerd instances run simultaneously
   - bunker --server <name> switches between them
@@ -485,8 +485,8 @@ tasks:
   status: complete
   created_at: '2026-07-01T07:31:42.010093+00:00'
   completed_at: '2026-07-01T14:00:05.728387+00:00'
-- id: wi-057-tailscale
-  title: 'WI-057: Tailscale integration E2E verification'
+- id: WI-057
+  title: Tailscale integration E2E verification
   criteria:
   - tailnet_ip populated in spawn response
   - agent reachable via Tailscale IP
@@ -494,8 +494,8 @@ tasks:
   status: complete
   created_at: '2026-07-01T07:31:43.056012+00:00'
   completed_at: '2026-07-01T10:00:00.000000+00:00'
-- id: wi-058-resource-enforcement
-  title: 'WI-058: Resource enforcement live verification'
+- id: WI-058
+  title: Resource enforcement live verification
   criteria:
   - CPU limit enforced (stress test shows throttling)
   - Memory limit enforced (OOM kill on exceed)
@@ -503,23 +503,7 @@ tasks:
   status: complete
   created_at: '2026-07-01T07:31:44.100134+00:00'
   completed_at: '2026-07-01T10:00:00.000000+00:00'
-- id: wi-051-wi-052
-  title: Implement ResourceLimits disk and container enforcement
-  criteria:
-  - ResourceLimits.DiskMaxBytes is enforced via systemd-run --property=LimitFSIZE
-    in internal/agent/manager.go
-  - Config.AgentConfig has DefaultDiskBytes and DefaultMaxDockerContainers fields
-    with non-zero defaults in internal/config/config.go
-  - ResourceLimits.MaxDockerContainers is read from request and checked at spawn time
-    in internal/agent/manager.go
-  - effectiveLimits returned in SpawnAgentResponse includes DiskMaxBytes and MaxDockerContainers
-    populated from server defaults or request overrides
-  - Unit tests cover default disk/container limits and custom DiskMaxBytes systemd
-    unit enforcement in internal/agent/manager_test.go
-  status: complete
-  created_at: '2026-07-01T09:11:30.473793+00:00'
-  completed_at: '2026-07-01T09:11:42.199182+00:00'
-- id: wi-060
+- id: WI-060
   title: Fix stale E2E battery script and focused verification block
   criteria:
   - e2e-full-battery.sh connects to bunkerd REST port :18080 (not :19090)
@@ -532,7 +516,7 @@ tasks:
   status: complete
   created_at: '2026-07-03T18:34:43.954637+00:00'
   completed_at: '2026-07-03T18:38:34.877127+00:00'
-- id: wi-061
+- id: WI-061
   title: Fix rootless Docker installer failure on live server
   criteria:
   - installRootlessDocker enables systemd lingering for the agent user before running
@@ -547,3 +531,34 @@ tasks:
   status: complete
   created_at: '2026-07-04T22:00:05.386552+00:00'
   completed_at: '2026-07-04T23:58:47.387505+00:00'
+- id: sweep-generate-skill
+  title: Generate missing SKILL.md for Vercel skills compatibility
+  criteria:
+  - SKILL.md exists at repo root with project overview, build/test commands, and tech
+    stack
+  status: complete
+  created_at: '2026-07-05T16:40:01.588402+00:00'
+  completed_at: '2026-07-05T16:40:24.919227+00:00'
+- id: sweep-generate-agents
+  title: Generate missing AGENTS.md for coding agents
+  criteria:
+  - AGENTS.md exists at repo root with build/test conventions, E2E gate, and quality
+    gate instructions
+  status: complete
+  created_at: '2026-07-05T16:40:02.624173+00:00'
+  completed_at: '2026-07-05T16:40:43.063848+00:00'
+- id: sweep-sync-tasks
+  title: Sync GitReins task IDs with Coding Hermes board
+  criteria:
+  - .gitreins/tasks.yaml IDs align with .coding-hermes/tasks.md (WI-001 through WI-061)
+    where possible
+  status: complete
+  created_at: '2026-07-05T16:40:03.661603+00:00'
+  completed_at: '2026-07-05T16:43:58.789916+00:00'
+- id: sweep-e2e-battery
+  title: Run full E2E battery on bunker-mvp
+  criteria:
+  - e2e-full-battery.sh on bunker-mvp outputs VERIFY-PASS with 34 pass / 0 fail
+  status: complete
+  created_at: '2026-07-05T16:40:04.705351+00:00'
+  completed_at: '2026-07-05T16:48:14.095567+00:00'
