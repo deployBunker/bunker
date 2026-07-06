@@ -92,10 +92,9 @@
 ||- [x] **WI-061**: Fix rootless Docker installer failure on live server — `dockerd-rootless-setuptool.sh install` fails with `Unit docker.service not found` because the systemd user manager is not available for freshly-created agent users. Fix: enable lingering with `loginctl enable-linger <user>` before running the installer, create/chown `/run/user/<UID>` for the install step, and pass `XDG_RUNTIME_DIR` + `DBUS_SESSION_BUS_ADDRESS` to the installer. Verify with focused E2E on bunker-mvp: `bunker spawn --agent-id <id> --cpu 1 --memory 1073741824 --disk 10240 --ttl 600` followed by `bunker exec <id> -- docker run --rm alpine:latest echo VERIFY-PASS`. Verified: focused E2E outputs VERIFY-PASS and full battery is 34 pass / 0 fail / VERIFY-PASS (commit 7d13e1b).
 |||
 ### Phase 13: Per-package SKILL.md (2026-07-04)
-||||- [x] **WI-062**: Create per-package `SKILL.md` files for every `internal/*/` package — Added 8 SKILL.md files covering `internal/agent`, `internal/auth`, `internal/cli`, `internal/config`, `internal/server`, `internal/systemd`, `internal/tunnel`, and `proto/bunker/v1`. Each has Public API, Conventions, Dependencies, Test Patterns, and Pitfalls (≥3). Build, tests, and GitReins Tier 1 pass; Hilo classified.
-|||
-|---
-||
+||- [x] **WI-062**: Create per-package `SKILL.md` files for every `internal/*/` package — Added 8 SKILL.md files covering `internal/agent`, `internal/auth`, `internal/cli`, `internal/config`, `internal/server`, `internal/systemd`, `internal/tunnel`, and `proto/bunker/v1`. Each has Public API, Conventions, Dependencies, Test Patterns, and Pitfalls (≥3). Build, tests, and GitReins Tier 1 pass; Hilo classified.
+|
+---
 ## Tech Stack (researched & locked)
 |- **gRPC+REST**: connect-go (v1.20) — single binary, net/http native
 |- **Router**: chi (v5) — stdlib-compatible
