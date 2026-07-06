@@ -183,6 +183,8 @@ message ExecAgentRequest {
   string command = 2;
   repeated string args = 3;
   uint32 timeout_seconds = 4;
+  bool raw = 5;                   // Bypass shell interpretation; exec directly
+  string script_content = 6;      // Optional: upload and execute this script
 }
 
 message ExecAgentResponse {
