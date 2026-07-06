@@ -562,3 +562,19 @@ tasks:
   status: complete
   created_at: '2026-07-05T16:40:04.705351+00:00'
   completed_at: '2026-07-05T17:41:34.732695+00:00'
+- id: WI-062
+  title: Create per-package SKILL.md files for every internal package and proto
+  criteria:
+  - internal/agent/SKILL.md exists with Public API, Conventions, Dependencies, Test
+    Patterns, and Pitfalls (>=3)
+  - internal/auth/SKILL.md exists with all 5 sections and >=3 pitfalls
+  - internal/cli/SKILL.md exists with all 5 sections and >=3 pitfalls
+  - internal/config/SKILL.md exists with all 5 sections and >=3 pitfalls
+  - internal/server/SKILL.md exists with all 5 sections and >=3 pitfalls
+  - internal/systemd/SKILL.md exists with all 5 sections and >=3 pitfalls
+  - internal/tunnel/SKILL.md exists with all 5 sections and >=3 pitfalls
+  - proto/bunker/v1/SKILL.md exists with all 5 sections and >=3 pitfalls
+  - go build ./... and go test ./... -short still pass after all files are added
+  - find internal/ proto/ -name SKILL.md | wc -l shows >=8 files
+  status: in_progress
+  created_at: '2026-07-06T10:46:47.042030+00:00'
