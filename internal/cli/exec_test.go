@@ -3,6 +3,8 @@ package cli
 import (
 	"context"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -311,5 +313,106 @@ func TestExecCommand_FlagTimeoutBeforeCommand(t *testing.T) {
 	cmd.SetArgs([]string{"--timeout", "60", "abc123", "--", "docker", "ps"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("exec command with timeout flag failed: %v", err)
+	}
+}
+
+func TestExecCommand_RawFlag(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	var got *v1.ExecAgentRequest
+	server := newExecTestServer(t, &mockExecServer{
+		execResponses: []*v1.ExecAgentResponse{
+			{Output: &v1.ExecAgentResponse_Stdout{Stdout: []byte("ok")}},
+			{ExitCode: 0},
+		},
+		captureReq: func(req *v1.ExecAgentRequest) {
+			got = req
+		},
+	})
+	defer server.Close()
+	writeExecTestConfig(t, tmpDir, server.URL)
+
+	cmd := NewExecCommand()
+	cmd.SetArgs([]string{"abc123", "--", "--raw", "docker", "ps", "--format", "{{.Names}}"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("exec command failed: %v", err)
+	}
+	if got == nil {
+		t.Fatal("request not captured")
+	}
+	if !got.Raw {
+		t.Errorf("Raw = %v, want true", got.Raw)
+	}
+	if got.Command != "docker" {
+		t.Errorf("command = %q, want docker", got.Command)
+	}
+	wantArgs := []string{"ps", "--format", "{{.Names}}"}
+	if len(got.Args) != len(wantArgs) {
+		t.Errorf("args = %v, want %v", got.Args, wantArgs)
+	}
+	for i, want := range wantArgs {
+		if got.Args[i] != want {
+			t.Errorf("args[%d] = %q, want %q", i, got.Args[i], want)
+		}
+	}
+}
+
+func TestExecCommand_ScriptFlag(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	scriptFile := filepath.Join(tmpDir, "script.sh")
+	scriptBody := "#!/bin/sh\necho hello-from-script"
+	if err := os.WriteFile(scriptFile, []byte(scriptBody), 0o644); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+
+	var got *v1.ExecAgentRequest
+	server := newExecTestServer(t, &mockExecServer{
+		execResponses: []*v1.ExecAgentResponse{
+			{Output: &v1.ExecAgentResponse_Stdout{Stdout: []byte("hello-from-script")}},
+			{ExitCode: 0},
+		},
+		captureReq: func(req *v1.ExecAgentRequest) {
+			got = req
+		},
+	})
+	defer server.Close()
+	writeExecTestConfig(t, tmpDir, server.URL)
+
+	cmd := NewExecCommand()
+	cmd.SetArgs([]string{"abc123", "--script", scriptFile})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("exec command failed: %v", err)
+	}
+	if got == nil {
+		t.Fatal("request not captured")
+	}
+	if got.ScriptContent != scriptBody {
+		t.Errorf("ScriptContent = %q, want %q", got.ScriptContent, scriptBody)
+	}
+	if got.Raw {
+		t.Error("Raw = true, want false when using script mode")
+	}
+}
+
+func TestExecCommand_ScriptFlag_MissingFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	server := newExecTestServer(t, &mockExecServer{
+		execResponses: []*v1.ExecAgentResponse{
+			{Output: &v1.ExecAgentResponse_Stdout{Stdout: []byte("ok")}},
+			{ExitCode: 0},
+		},
+	})
+	defer server.Close()
+	writeExecTestConfig(t, tmpDir, server.URL)
+
+	cmd := NewExecCommand()
+	cmd.SetArgs([]string{"abc123", "--script", "/does/not/exist.sh"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected error for missing script file")
 	}
 }

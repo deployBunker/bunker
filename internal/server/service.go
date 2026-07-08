@@ -209,7 +209,17 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 	//
 	// We also set the variable in ~/.profile for interactive shells.
 	userHome := "/home/bunker-" + agentID
-	cmd := buildExecSSHCommand(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args)
+
+	// Determine execution mode: raw (no shell) or shell-wrapped. Scripts are
+	// uploaded and executed by the shell wrapper, so they share the same path.
+	var cmd *exec.Cmd
+	if req.Msg.GetRaw() {
+		cmd = buildExecSSHRawCommand(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args)
+	} else if req.Msg.GetScriptContent() != "" {
+		cmd = buildExecSSHScriptCommand(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.GetScriptContent())
+	} else {
+		cmd = buildExecSSHCommand(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args)
+	}
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -326,9 +336,42 @@ func buildAgentExecCommand(agentID, userHome, command string, args []string) str
 }
 
 // shellQuoteSingle returns s wrapped in single quotes, with embedded single
-// quotes escaped for POSIX sh.  Example: hello'world -> 'hello'\”world'.
+// quotes escaped for POSIX sh.  Example: hello'world -> 'hello'\\”world'.
 func shellQuoteSingle(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
+
+// buildAgentRawExecCommand constructs the remote argv for raw mode. The command
+// is executed directly by the SSH server without an intermediate shell, so args
+// are passed as-is and shell injection/metacharacters are not interpreted.
+func buildAgentRawExecCommand(agentID, userHome, command string, args []string) []string {
+	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
+	agentBinPath := filepath.Join(userHome, "bin")
+	// sshd's ForceCommand or default shell may still receive a string, but
+	// passing a command with args and using ssh's internal exec channel (when
+	// the remote shell is not forced) will execve directly. We keep a tiny
+	// wrapper here: env(1) so we can set DOCKER_HOST before the real binary.
+	return append([]string{
+		"env",
+		"PATH=" + agentBinPath + ":$PATH",
+		"DOCKER_HOST=unix://" + dockerSockPath,
+		command,
+	}, args...)
+}
+
+// buildAgentScriptCommand writes scriptContent to a remote file and returns the
+// shell command that executes it. The file is written via ssh heredoc.
+func buildAgentScriptCommand(agentID, userHome, scriptContent string) string {
+	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
+	agentBinPath := filepath.Join(userHome, "bin")
+	scriptPath := filepath.Join(userHome, ".bunker", "exec-script.sh")
+	// Use POSIX heredoc to create + chmod + execute the script in one SSH call.
+	// We quote the EOF delimiter to prevent expansion of the script body.
+	escaped := strings.ReplaceAll(scriptContent, "'", "'\\''")
+	return fmt.Sprintf(
+		"mkdir -p %q && cat > %q <<'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %q && env PATH=%s:$PATH DOCKER_HOST=unix://%s %q",
+		filepath.Dir(scriptPath), scriptPath, escaped, scriptPath, agentBinPath, dockerSockPath, scriptPath,
+	)
 }
 
 // buildExecSSHCommand returns an exec.Cmd that runs buildAgentExecCommand
@@ -338,15 +381,37 @@ func shellQuoteSingle(s string) string {
 func buildExecSSHCommand(ctx context.Context, agentID, sshKeyPath, userHome, command string, args []string) *exec.Cmd {
 	wrappedCmd := buildAgentExecCommand(agentID, userHome, command, args)
 	sshRemoteCmd := fmt.Sprintf("sh -c %s", shellQuoteSingle(wrappedCmd))
-	return exec.CommandContext(ctx, "ssh",
+	return buildSSHBaseCommand(ctx, agentID, sshKeyPath, sshRemoteCmd)
+}
+
+// buildExecSSHRawCommand returns an exec.Cmd that runs command+args directly
+// without a shell wrapper. Each arg is passed as a separate ssh argument; sshd
+// will attempt to exec the requested program directly.
+func buildExecSSHRawCommand(ctx context.Context, agentID, sshKeyPath, userHome, command string, args []string) *exec.Cmd {
+	remoteArgv := buildAgentRawExecCommand(agentID, userHome, command, args)
+	return buildSSHBaseCommand(ctx, agentID, sshKeyPath, remoteArgv...)
+}
+
+// buildExecSSHScriptCommand returns an exec.Cmd that uploads scriptContent via
+// heredoc and executes it on the agent.
+func buildExecSSHScriptCommand(ctx context.Context, agentID, sshKeyPath, userHome, scriptContent string) *exec.Cmd {
+	wrappedCmd := buildAgentScriptCommand(agentID, userHome, scriptContent)
+	sshRemoteCmd := fmt.Sprintf("sh -c %s", shellQuoteSingle(wrappedCmd))
+	return buildSSHBaseCommand(ctx, agentID, sshKeyPath, sshRemoteCmd)
+}
+
+// buildSSHBaseCommand builds the common ssh command with the given remote args.
+func buildSSHBaseCommand(ctx context.Context, agentID, sshKeyPath string, remoteArgs ...string) *exec.Cmd {
+	args := []string{
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "LogLevel=ERROR",
 		"-o", "ConnectTimeout=10",
 		"-i", sshKeyPath,
 		fmt.Sprintf("bunker-%s@localhost", agentID),
-		sshRemoteCmd,
-	)
+	}
+	args = append(args, remoteArgs...)
+	return exec.CommandContext(ctx, "ssh", args...)
 }
 
 // agentService implements bunkerv1connect.AgentHandler.

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"io"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -87,6 +88,8 @@ func TestTunnelCommand_NoActiveServer(t *testing.T) {
 	t.Setenv("HOME", tmpDir)
 
 	cmd := NewTunnelCommand()
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
 	cmd.SetArgs([]string{"abc123"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected error when no active server")
@@ -104,6 +107,8 @@ func TestTunnelCommand_AgentNotFound(t *testing.T) {
 	writeTunnelTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewTunnelCommand()
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
 	cmd.SetArgs([]string{"missing"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected error for not found agent")
@@ -123,6 +128,8 @@ func TestTunnelCommand_NoTunnelCommand(t *testing.T) {
 	writeTunnelTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewTunnelCommand()
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
 	cmd.SetArgs([]string{"abc123"})
 	err := cmd.Execute()
 	if err == nil {
