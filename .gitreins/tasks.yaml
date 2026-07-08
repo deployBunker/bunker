@@ -579,3 +579,16 @@ tasks:
   status: complete
   created_at: '2026-07-06T10:46:47.042030+00:00'
   completed_at: '2026-07-06T10:51:13.523618+00:00'
+- id: WI-063
+  title: bunker exec --raw / --script
+  criteria:
+  - bunker exec --raw flag passes command+args without shell interpretation
+  - bunker exec --script <file> uploads and executes script content
+  - proto ExecAgentRequest has raw and script_content fields
+  - internal/cli/exec.go parses --raw and --script manually
+  - internal/server/service.go dispatches raw/script modes in ExecAgent
+  - unit tests cover --raw, --script, and missing script file
+  - go build ./... && go vet ./... && go test ./... pass
+  - E2E on bunker-mvp outputs VERIFY-PASS
+  status: in_progress
+  created_at: '2026-07-08T00:08:32.979984+00:00'
