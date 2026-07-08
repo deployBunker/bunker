@@ -590,5 +590,21 @@ tasks:
   - unit tests cover --raw, --script, and missing script file
   - go build ./... && go vet ./... && go test ./... pass
   - E2E on bunker-mvp outputs VERIFY-PASS
-  status: in_progress
+  status: complete
   created_at: '2026-07-08T00:08:32.979984+00:00'
+  completed_at: '2026-07-08T00:12:08.005646+00:00'
+- id: release-v0.1.0
+  title: Bunker v0.1.0 open-source release
+  criteria:
+  - CONTRIBUTING.md exists with dev setup, quality gates, PR process, and code conventions
+  - CODE_OF_CONDUCT.md exists with Contributor Covenant v2.1
+  - SECURITY.md exists with vulnerability reporting process, security model, and response
+    SLA
+  - CHANGELOG.md exists with v0.1.0 release notes covering all features
+  - v0.1.0 git tag exists and is pushed to origin
+  - Apache 2.0 LICENSE is committed
+  - NOTICE file exists with dependency attributions
+  - CLA.md exists with re-licensing clause Section 4
+  - README.md exists with hero image, architecture, CLI reference
+  status: in_progress
+  created_at: '2026-07-08T00:09:11.009549+00:00'
