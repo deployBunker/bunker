@@ -65,7 +65,7 @@ jobs:
   # This job runs ONLY when a self-hosted runner with the 'bunker' label is
   # connected.  CI remains green even without it thanks to continue-on-error.
   regression:
-    runs-on: [self-hosted, linux, bunker]
+    runs-on: [self-hosted, Linux, bunker]
     needs: build-and-test
     continue-on-error: true
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
