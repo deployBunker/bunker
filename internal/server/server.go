@@ -12,7 +12,6 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
 	"connectrpc.com/connect"
 	"github.com/caddyserver/certmagic"
@@ -60,7 +59,7 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(60 * time.Second))
+	r.Use(middleware.Timeout(s.cfg.Server.RequestTimeout))
 
 	// Health check
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {

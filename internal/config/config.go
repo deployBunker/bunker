@@ -22,10 +22,11 @@ type Config struct {
 	Tailscale   TailscaleConfig   `mapstructure:"tailscale"`
 }
 
-// ServerConfig holds gRPC and REST listener addresses.
+// ServerConfig holds gRPC and REST listener addresses and timeouts.
 type ServerConfig struct {
-	GRPCAddr string `mapstructure:"grpc_addr"`
-	RESTAddr string `mapstructure:"rest_addr"`
+	GRPCAddr       string        `mapstructure:"grpc_addr"`
+	RESTAddr       string        `mapstructure:"rest_addr"`
+	RequestTimeout time.Duration `mapstructure:"request_timeout"`
 }
 
 // TLSConfig holds TLS settings.
@@ -105,8 +106,9 @@ type TailscaleConfig struct {
 func DefaultConfig() *Config {
 	return &Config{
 		Server: ServerConfig{
-			GRPCAddr: ":9090",
-			RESTAddr: ":8080",
+			GRPCAddr:       ":9090",
+			RESTAddr:       ":8080",
+			RequestTimeout: 300 * time.Second,
 		},
 		TLS: TLSConfig{
 			Enabled:    false,
@@ -172,6 +174,7 @@ func Load(path string) (*Config, error) {
 	// Bind specific env vars to config keys
 	v.BindEnv("server.grpc_addr")
 	v.BindEnv("server.rest_addr")
+	v.BindEnv("server.request_timeout")
 	v.BindEnv("tls.enabled")
 	v.BindEnv("tls.cert_file")
 	v.BindEnv("tls.key_file")
