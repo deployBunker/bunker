@@ -96,6 +96,7 @@
 
 ### Phase 14: Repository hygiene (2026-07-09)
 - [x] **WI-064**: Remove cross-repo contamination files — deleted `dexdat_watchdog.py`, `__pycache__/dexdat_watchdog.cpython-311.pyc`, and `opencode.jsonc`; added Python artifact ignores to `.gitignore`. Verified `go build ./...`, `go test ./...`, and GitReins Tier 1 pass.
+- [x] **WI-065**: Untrack GitReins history verdicts — removed `.gitreins/history/*` from the git index while keeping local files, so verdict history is treated as local state per GitReins convention. Verified `git ls-files .gitreins/history/` is empty and build/tests pass.
 
 ---
 ## Tech Stack (researched & locked)
