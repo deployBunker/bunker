@@ -28,3 +28,8 @@ proto/**/*.pb.gw.go
 .vfs/
 .gitreins/history/
 bin/
+
+# Python artifacts (cross-repo contamination guard)
+*.py
+*.pyc
+__pycache__/
