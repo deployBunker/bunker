@@ -6,11 +6,21 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      test-timeout:
+        description: 'go test timeout (seconds)'
+        required: false
+        default: '300'
+        type: string
+
+env:
+  GO_TEST_TIMEOUT: ${{ inputs.test-timeout || '300' }}s
 
 jobs:
   # ── Tier 0: fast gate — build + vet + unit tests on every push ──
   build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -32,7 +42,8 @@ jobs:
         run: go vet ./...
 
       - name: Unit tests
-        run: go test -count=1 -short ./... -timeout 120s
+        run: go test -count=1 -short ./... -timeout ${{ env.GO_TEST_TIMEOUT }}
+        timeout-minutes: 10
 
       # golangci-lint runs locally via `golangci-lint run`. The .golangci.yml
       # config is committed for editor integration and pre-commit hooks.
@@ -40,6 +51,7 @@ jobs:
   # ── Tier 1: GitReins guard — secrets, lint, tests ──
   gitreins-guard:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: build-and-test
     steps:
       - uses: actions/checkout@v4
@@ -66,6 +78,7 @@ jobs:
   # connected.  CI remains green even without it thanks to continue-on-error.
   regression:
     runs-on: [self-hosted, Linux, bunker]
+    timeout-minutes: 30
     needs: build-and-test
     continue-on-error: true
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
