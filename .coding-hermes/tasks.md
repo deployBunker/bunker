@@ -63,13 +63,13 @@
 - [x] **WI-043**: PID namespace isolation — all agents see the same system-wide process list (16 processes visible). Rootlesskit supports `--pidns` for PID namespace isolation. Fix: add `--pidns` flag to rootlesskit launch in `rootless.go`, verify each agent sees only their own processes. Verify with `bunker exec <agent> -- ps aux | wc -l` showing only the agent's own processes (~5), not system-wide (~200). (2026-06-30)
 
 ## [x] WI-045: Fix CI: Unit tests — 4 hilo graph tests failing
-||- **Priority:** high
-||- **CI Run:** https://github.com/deployBunker/bunker/actions/runs/28455593259
-||- **Error:** `internal/hilo` package: TestGraph_BlastRadius, TestGraph_BlastRadius_MaxDepth, TestGraph_Stats, TestGraph_ProjectDirResolution fail. Needs hilo binary in CI or environment fix.
-||
+- **Priority:** high
+- **CI Run:** https://github.com/deployBunker/bunker/actions/runs/28455593259
+- **Error:** `internal/hilo` package: TestGraph_BlastRadius, TestGraph_BlastRadius_MaxDepth, TestGraph_Stats, TestGraph_ProjectDirResolution fail. Needs hilo binary in CI or environment fix.
+
 ### Phase 9: Live-server verification gaps (2026-07-01 E2E battery findings)
 - [x] **WI-046**: Docker exec returns SSH env vars, not docker output. Fixed by passing the remote `sh -c '...'` command as a single quoted argument to ssh so the inner shell receives the full `env ... docker ...` command instead of treating `env` as the script and docker/version as positional parameters. Added `buildAgentExecCommand`, `shellQuoteSingle`, and `buildExecSSHCommand` helpers plus regression tests. E2E battery: exec whoami/id pass, docker version returns client version. (commit f330406)
-- [x] **WI-047**: Agent dockerd never starts — added `waitForDockerd` after `systemd-run` in manager.go; it polls for an agent-owned dockerd process and `/run/bunker/<id>/docker.sock` for up to 5s, captures `systemctl status` and `journalctl` output on failure, and triggers cleanup so failed spawns are not leaked. Added `manager_dockerd_test.go` with temp-dir + fake process checker tests. (2026-07-01)
+- [x] **WI-047**: Agent dockerd never starts — added `waitForDockerd` after `systemd-run` in manager.go; it polls for an agent-owned dockerd process and `/run/bunker/<id>/docker.sock` to exist for up to 5 seconds, captures `systemctl status` and `journalctl` logs on failure, and triggers cleanup so failed spawns are not leaked. Added `manager_dockerd_test.go` with temp-dir + fake process checker tests. (2026-07-01)
 - [x] **WI-048**: Docker socket not created — `/run/bunker/<id>/docker.sock` never appears because dockerd-rootless.sh defaults `DOCKERD_ROOTLESS_ROOTLESSKIT_DETACH_NETNS=true`, and rootlesskit v1.1.1 on the server does not support `--detach-netns`, causing the daemon to exit immediately. Fixed by setting `DOCKERD_ROOTLESS_ROOTLESSKIT_DETACH_NETNS=false` in the systemd-run environment. Verified: `bunker exec verify -- docker run --rm alpine:latest echo VERIFY-PASS` returns `VERIFY-PASS`. (commit 31966ee, 2026-07-01)
 
 ### Phase 10: Spec compliance — proto contract gaps (2026-07-01 audit)
@@ -77,47 +77,50 @@
 - [x] **WI-050**: Docker tunnel command — `SpawnAgentResponse.docker_host_tunnel` (proto field 3) now populated with `ssh -L 2376:/run/bunker/<id>/docker.sock bunker-<id>@<host> -N`, including `UserKnownHostsFile=/dev/null` and `LogLevel=ERROR`. Added `bunker tunnel <agent-id> [local-port]` CLI command and E2E tunnel test in `e2e-full-battery.sh`. Verified `DOCKER_HOST=tcp://localhost:2376 docker version` through the tunnel.
 - [x] **WI-051**: `ResourceLimits.disk_max_bytes` — proto field defined but never implemented in spawn or enforced. Fixed: added `Config.AgentConfig.DefaultDiskBytes` with 20 GiB default, read disk limit from request or default, enforce via `systemd-run --property=LimitFSIZE=`, and verify unit property in tests. (commit c9e4099)
 - [x] **WI-052**: `ResourceLimits.max_docker_containers` — proto field defined but never implemented. Fixed: added `Config.AgentConfig.DefaultMaxDockerContainers` with default 10, read from request or default, enforce at spawn time by counting existing containers on the per-agent docker socket, and verify in tests. (commit c9e4099)
-||- [x] **WI-053**: `ServerMetrics` RPC — defined in proto (returns CPU, memory, disk, container totals + per-agent summaries) but unverified. Verified implementation: populated `disk_used_bytes`/`disk_total_bytes` via `syscall.Statfs` on root filesystem, added `docker_containers_total` count via `/run/bunker/*/docker.sock` scan, added `TestServerMetrics` unit test verifying all fields, added server metrics section to E2E battery. (2026-07-01)
-||- [x] **WI-054**: `GetAgent` RPC — defined in proto, unverified. Verified implementation: server-side GetAgent returns agent record from tracker (service.go:150-158). Added `bunker info <agent-id>` CLI command (info.go) with 6 unit tests covering success, missing args, no-server, agent-not-found, server-error, and minimal-agent. Wired into cmd/bunker/main.go. (2026-07-01)
-||- [x] **WI-055**: `Agent` service (scoped sub-key API) — Implemented scope enforcement: `MasterOnlyJWTAuth` rejects agent-scoped tokens (JWT + opaque sub-keys) for Bunkerd-level RPCs; regular `JWTAuth` accepts scoped keys for Agent service (GetInfo, Metrics, Heartbeat). Improved `agentService.GetInfo` to extract agent_id from auth claims and populate full response. Added `NewMasterOnlyJWTAuth`, `NewMasterOnlyAuthInterceptor` factories. 8 new auth scope tests. `go build ./... && go test -short ./...`: all pass. GitReins Tier 1: PASS.
-||- [x] **WI-056**: Multi-server CLI — Verified E2E on bunker-mvp: two bunkerd instances on :9090 and :19090 with isolated port ranges (20000/30000). `bunker connect`, `bunker spawn --server`, `bunker list --server`, `bunker destroy --server` all work correctly across both servers. Config correctly tracks 3 server entries. Exec requires running dockerd but spawn/list/destroy verified. (E2E: VERIFY-MULTI-SERVER-PASS)
-||- [x] **WI-057**: Tailscale integration — Code verified: `tailscaleMgr.Start()` called during spawn when `NetworkConfig.Mode == MODE_TAILSCALE`, `tailnet_ip` populated in `SpawnAgentResponse`. 12 unit tests pass. E2E requires tailscale binary + auth key on server (not currently installed on bunker-mvp). Marked complete with infrastructure caveat.
-||- [x] **WI-058**: Resource enforcement verification — Verified E2E on bunker-mvp: agent spawned with `--cpu 1.0 --memory 1073741824` (1 CPU / 1 GB). Systemd cgroup paths confirmed: `cpu.max=100000 100000`, `memory.max=1073741824`. Docker container with `--cpus=0.5 --memory=256m` confirmed: `cgroup cpu.max=50000 100000`, `memory.max=268435456`. CPU burn test ran successfully inside limited container. Proof: agent enforce-test was OOM-killed at 256 bytes confirming cgroup memory enforcement at systemd level. (E2E: VERIFY-RESOURCE-ENFORCEMENT-PASS)
-||| - [x] **WI-059**: Fix /tmp disk quota in hermes skills tests — testConfig() hardcoded path bypasses TMPDIR env var. Changed to `os.TempDir()` pattern so tests work when /tmp is full. (commit 5289328)
-||
-||### Phase 11: E2E battery hardening (2026-07-03)
-||- [x] **WI-060**: Fix stale E2E battery script and focused verification block — Updated `e2e-full-battery.sh` to use current CLI syntax (`connect` REST port :18080, `exec` with `--` separator, `docker run` assertion), replaced dockerd-not-running notes with hard assertions, and added `VERIFY-PASS` line to the summary. Verified focused E2E on bunker-mvp: spawn, exec docker run, destroy all succeed with `VERIFY-PASS` output. Verified full E2E battery on bunker-mvp: 34 pass, 0 fail, VERIFY-PASS. (commit be05e4a)
-||
-||### Phase 12: Live-server rootless install regression (2026-07-04 all-clear sweep)
-||- [x] **WI-061**: Fix rootless Docker installer failure on live server — `dockerd-rootless-setuptool.sh install` fails with `Unit docker.service not found` because the systemd user manager is not available for freshly-created agent users. Fix: enable lingering with `loginctl enable-linger <user>` before running the installer, create/chown `/run/user/<UID>` for the install step, and pass `XDG_RUNTIME_DIR` + `DBUS_SESSION_BUS_ADDRESS` to the installer. Verify with focused E2E on bunker-mvp: `bunker spawn --agent-id <id> --cpu 1 --memory 1073741824 --disk 10240 --ttl 600` followed by `bunker exec <id> -- docker run --rm alpine:latest echo VERIFY-PASS`. Verified: focused E2E outputs VERIFY-PASS and full battery is 34 pass / 0 fail / VERIFY-PASS (commit 7d13e1b).
-|||
+- [x] **WI-053**: `ServerMetrics` RPC — defined in proto (returns CPU, memory, disk, container totals + per-agent summaries) but unverified. Verified implementation: populated `disk_used_bytes`/`disk_total_bytes` via `syscall.Statfs` on root filesystem, added `docker_containers_total` count via `/run/bunker/*/docker.sock` scan, added `TestServerMetrics` unit test verifying all fields, added server metrics section to E2E battery. (2026-07-01)
+- [x] **WI-054**: `GetAgent` RPC — defined in proto, unverified. Verified implementation: server-side GetAgent returns agent record from tracker (service.go:150-158). Added `bunker info <agent-id>` CLI command (info.go) with 6 unit tests covering success, missing args, no-server, agent-not-found, server-error, and minimal-agent. Wired into cmd/bunker/main.go. (2026-07-01)
+- [x] **WI-055**: `Agent` service (scoped sub-key API) — Implemented scope enforcement: `MasterOnlyJWTAuth` rejects agent-scoped tokens (JWT + opaque sub-keys) for Bunkerd-level RPCs; regular `JWTAuth` accepts scoped keys for Agent service (GetInfo, Metrics, Heartbeat). Improved `agentService.GetInfo` to extract agent_id from auth claims and populate full response. Added `NewMasterOnlyJWTAuth`, `NewMasterOnlyAuthInterceptor` factories. 8 new auth scope tests. `go build ./... && go test -short ./...`: all pass. GitReins Tier 1: PASS.
+- [x] **WI-056**: Multi-server CLI — Verified E2E on bunker-mvp: two bunkerd instances on :9090 and :19090 with isolated port ranges (20000/30000). `bunker connect`, `bunker spawn --server`, `bunker list --server`, `bunker destroy --server` all work correctly across both servers. Config correctly tracks 3 server entries. Exec requires running dockerd but spawn/list/destroy verified. (E2E: VERIFY-MULTI-SERVER-PASS)
+- [x] **WI-057**: Tailscale integration — Code verified: `tailscaleMgr.Start()` called during spawn when `NetworkConfig.Mode == MODE_TAILSCALE`, `tailnet_ip` populated in `SpawnAgentResponse`. 12 unit tests pass. E2E requires tailscale binary + auth key on server (not currently installed on bunker-mvp). Marked complete with infrastructure caveat.
+- [x] **WI-058**: Resource enforcement verification — Verified E2E on bunker-mvp: agent spawned with `--cpu 1.0 --memory 1073741824` (1 CPU / 1 GB). Systemd cgroup paths confirmed: `cpu.max=100000 100000`, `memory.max=1073741824`. Docker container with `--cpus=0.5 --memory=256m` confirmed: `cgroup cpu.max=50000 100000`, `memory.max=268435456`. CPU burn test ran successfully inside limited container. Proof: agent enforce-test was OOM-killed at 256 bytes confirming cgroup memory enforcement at systemd level. (E2E: VERIFY-RESOURCE-ENFORCEMENT-PASS)
+- [x] **WI-059**: Fix /tmp disk quota in hermes skills tests — testConfig() hardcoded path bypasses TMPDIR env var. Changed to `os.TempDir()` pattern so tests work when /tmp is full. (commit 5289328)
+
+### Phase 11: E2E battery hardening (2026-07-03)
+- [x] **WI-060**: Fix stale E2E battery script and focused verification block — Updated `e2e-full-battery.sh` to use current CLI syntax (`connect` REST port :18080, `exec` with `--` separator, `docker run` assertion), replaced dockerd-not-running notes with hard assertions, and added `VERIFY-PASS` line to the summary. Verified focused E2E on bunker-mvp: spawn, exec docker run, destroy all succeed with `VERIFY-PASS` output. Verified full E2E battery on bunker-mvp: 34 pass, 0 fail, VERIFY-PASS. (commit be05e4a)
+
+### Phase 12: Live-server rootless install regression (2026-07-04 all-clear sweep)
+- [x] **WI-061**: Fix rootless Docker installer failure on live server — `dockerd-rootless-setuptool.sh install` fails with `Unit docker.service not found` because the systemd user manager is not available for freshly-created agent users. Fix: enable lingering with `loginctl enable-linger <user>` before running the installer, create/chown `/run/user/<UID>` for the install step, and pass `XDG_RUNTIME_DIR` + `DBUS_SESSION_BUS_ADDRESS` to the installer. Verify with focused E2E on bunker-mvp: `bunker spawn --agent-id <id> --cpu 1 --memory 1073741824 --disk 10240 --ttl 600` followed by `bunker exec <id> -- docker run --rm alpine:latest echo VERIFY-PASS`. Verified: focused E2E outputs VERIFY-PASS and full battery is 34 pass / 0 fail / VERIFY-PASS (commit 7d13e1b).
+
 ### Phase 13: Per-package SKILL.md (2026-07-04)
-||- [x] **WI-062**: Create per-package `SKILL.md` files for every `internal/*/` package — Added 8 SKILL.md files covering `internal/agent`, `internal/auth`, `internal/cli`, `internal/config`, `internal/server`, `internal/systemd`, `internal/tunnel`, and `proto/bunker/v1`. Each has Public API, Conventions, Dependencies, Test Patterns, and Pitfalls (≥3). Build, tests, and GitReins Tier 1 pass; Hilo classified.
-|
+- [x] **WI-062**: Create per-package `SKILL.md` files for every `internal/*/` package — Added 8 SKILL.md files covering `internal/agent`, `internal/auth`, `internal/cli`, `internal/config`, `internal/server`, `internal/systemd`, `internal/tunnel`, and `proto/bunker/v1`. Each has Public API, Conventions, Dependencies, Test Patterns, and Pitfalls (≥3). Build, tests, and GitReins Tier 1 pass; Hilo classified.
+
+### Phase 14: Repository hygiene (2026-07-09)
+- [x] **WI-064**: Remove cross-repo contamination files — deleted `dexdat_watchdog.py`, `__pycache__/dexdat_watchdog.cpython-311.pyc`, and `opencode.jsonc`; added Python artifact ignores to `.gitignore`. Verified `go build ./...`, `go test ./...`, and GitReins Tier 1 pass.
+
 ---
 ## Tech Stack (researched & locked)
-|- **gRPC+REST**: connect-go (v1.20) — single binary, net/http native
-|- **Router**: chi (v5) — stdlib-compatible
-|- **Auth**: golang-jwt (v5.3) — HS256/RS256/Ed25519
-|- **TLS**: certmagic (v0.25) — auto Let's Encrypt, self-signed, mTLS
-|- **CLI**: cobra (v1.10) + viper (v1.21)
-|- **Config**: YAML at /etc/bunker/bunkerd.yaml
-|- **TryCloudflare**: shell out to cloudflared binary
-|
-|## Quality Gates (run EVERY commit)
-|- **GitReins Tier 1**: `gitreins guard run` — secrets, lint, tests, format
-|- **GitReins Tier 2**: `gitreins judge evaluate <id>` — LLM code review per task
-|- **Hilo**: `hilo classify` + `hilo graph` — auto-classify files, dependency analysis, metadata woven into codebase
-|- **Build**: `go build ./... && go vet ./...` before every commit
-|
-|## Task States
-|- `[ ]` — pending
-|- `[~]` — in progress
-|- `[x]` — complete
-|
-|> **⚠ CI infra note:** All GitHub Actions runs on main are stuck `queued` (not started) across multiple pushes (runs #28544451909, #28544160139, #28523263585). Not a code fix — CI runner capacity or billing infra issue. Re-check next supervisor cycle.
-|
-|## Model
-|- Primary: Kimi K2.7 (`kimi-for-coding/kimi-for-coding`)
-|- Backup: ollama-cloud
-|- Orchestrator: DeepSeek V4 Pro (Hermes)
+- **gRPC+REST**: connect-go (v1.20) — single binary, net/http native
+- **Router**: chi (v5) — stdlib-compatible
+- **Auth**: golang-jwt (v5.3) — HS256/RS256/Ed25519
+- **TLS**: certmagic (v0.25) — auto Let's Encrypt, self-signed, mTLS
+- **CLI**: cobra (v1.10) + viper (v1.21)
+- **Config**: YAML at /etc/bunker/bunkerd.yaml
+- **TryCloudflare**: shell out to cloudflared binary
+
+## Quality Gates (run EVERY commit)
+- **GitReins Tier 1**: `gitreins guard run` — secrets, lint, tests, format
+- **GitReins Tier 2**: `gitreins judge evaluate <id>` — LLM code review per task
+- **Hilo**: `hilo classify` + `hilo graph` — auto-classify files, dependency analysis, metadata woven into codebase
+- **Build**: `go build ./... && go vet ./...` before every commit
+
+## Task States
+- `[ ]` — pending
+- `[~]` — in progress
+- `[x]` — complete
+
+> **⚠ CI infra note:** All GitHub Actions runs on main are stuck `queued` (not started) across multiple pushes (runs #28544451909, #28544160139, #28523263585). Not a code fix — CI runner capacity or billing infra issue. Re-check next supervisor cycle.
+
+## Model
+- Primary: Kimi K2.7 (`kimi-for-coding/kimi-for-coding`)
+- Backup: ollama-cloud
+- Orchestrator: DeepSeek V4 Pro (Hermes)
