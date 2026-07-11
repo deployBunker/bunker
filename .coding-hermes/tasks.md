@@ -98,6 +98,9 @@
 - [x] **WI-064**: Remove cross-repo contamination files — deleted `dexdat_watchdog.py`, `__pycache__/dexdat_watchdog.cpython-311.pyc`, and `opencode.jsonc`; added Python artifact ignores to `.gitignore`. Verified `go build ./...`, `go test ./...`, and GitReins Tier 1 pass.
 - [x] **WI-065**: Untrack GitReins history verdicts — removed `.gitreins/history/*` from the git index while keeping local files, so verdict history is treated as local state per GitReins convention. Verified `git ls-files .gitreins/history/` is empty and build/tests pass.
 
+### Phase 15: Live-server regression findings (2026-07-11)
+- [ ] **WI-066**: Fix rootless dockerd socket path mismatch on live server — `waitForDockerd` expects `/run/bunker/<id>/docker.sock`, but dockerd-rootless.sh creates the socket at `/run/user/<uid>/docker.sock` because systemd-run --system --uid starts a user manager under `/run/user/<uid>`. Spawn fails with "dockerd did not start" even though dockerd is running. Fix: reconcile the socket path (symlink, update DOCKER_HOST, or force XDG_RUNTIME_DIR to the bunker path). Verify with focused E2E on bunker-mvp: `bunker spawn --agent-id <id> --cpu 1 --memory 1073741824 --disk 10240 --ttl 600` followed by `bunker exec <id> -- docker run --rm alpine:latest echo VERIFY-PASS` must output `VERIFY-PASS`.
+
 ---
 ## Tech Stack (researched & locked)
 - **gRPC+REST**: connect-go (v1.20) — single binary, net/http native
