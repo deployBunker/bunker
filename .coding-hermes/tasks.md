@@ -104,7 +104,7 @@
 ### Phase 16: Production UX — DexDat Memory feedback (2026-07-11)
 
 - [x] **WI-063**: `bunker exec --raw` and `--script <file>` — bypass shell interpretation. Proto already has `raw`/`script_content` fields. Wire them through the CLI and server. Acceptance: `bunker exec abcd --raw 'SELECT count(*)'` returns the count, not a shell parse error. `bunker exec abcd --script ./setup.sh` runs the script file directly.
-- [~] **WI-067**: `/tmp` permission isolation — root-owned `/tmp` files from cron processes collide with agent user. Give each agent a private TMPDIR (`/run/bunker/<id>/tmp`) bind-mounted or set via PAM/environment. Acceptance: agent user and root processes can write to `/tmp` without collisions.
+- [x] **WI-067**: `/tmp` permission isolation — root-owned `/tmp` files from cron processes collide with agent user. Give each agent a private TMPDIR (`/run/bunker/<id>/tmp`) bind-mounted or set via PAM/environment. Acceptance: agent user and root processes can write to `/tmp` without collisions.
 - [ ] **WI-068**: `bunker run --detach` — persistent background processes. Replace fragile `nohup` with a systemd transient unit (`bunkerd run <agent> <cmd>` that creates a oneshot/exec unit). Acceptance: `bunker run abcd --detach -- docker compose up` survives the exec session ending.
 - [ ] **WI-069**: `bunker env set` — environment variable injection. `bunker env set <agent> KEY=VALUE` writes to an env file sourced by exec and docker compose. Acceptance: `bunker env set abcd DATABASE_URL=postgres://...` → `bunker exec abcd -- env | grep DATABASE_URL` shows the value.
 
