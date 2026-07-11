@@ -367,6 +367,14 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		return nil, fmt.Errorf("lookup user %s: %w", username, err)
 	}
 
+	// Rootless dockerd started via systemd-run --system --uid creates its Unix
+	// socket under the systemd user runtime directory (/run/user/<uid>), not at
+	// the custom XDG_RUNTIME_DIR we set. We keep the logical Bunker socket path
+	// (/run/bunker/<id>/docker.sock) for authorized_keys, .profile, and the
+	// docker tunnel command, and reconcile the two paths with a symlink once
+	// dockerd is running.
+	actualDockerSockPath := fmt.Sprintf("/run/user/%s/docker.sock", u.Uid)
+
 	systemdArgs := []string{
 		"--system",
 		"--unit=" + unitName,
@@ -476,7 +484,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// AppArmor profile, bad subuid mapping, etc.). Wait briefly, then check for
 	// a dockerd process and the socket. If not present, capture unit status and
 	// fail the spawn so the caller knows what went wrong.
-	if err := waitForDockerd(ctx, username, dockerSockPath, unitName, m.logger); err != nil {
+	if err := waitForDockerd(ctx, username, dockerSockPath, actualDockerSockPath, unitName, m.logger); err != nil {
 		m.logger.Error("dockerd failed to start; cleaning up agent", "agent_id", agentID, "error", err)
 		cleanup()
 		return nil, err
@@ -702,7 +710,7 @@ func stopDockerdDirect(ctx context.Context, username, unitName string, logger *s
 // waitForDockerd polls briefly for a dockerd process owned by the agent user and
 // for the Docker socket to exist. It also captures systemd unit status on failure
 // so callers get actionable error messages instead of "spawn succeeded".
-func waitForDockerd(ctx context.Context, username, dockerSockPath, unitName string, logger *slog.Logger) error {
+func waitForDockerd(ctx context.Context, username, dockerSockPath, actualDockerSockPath, unitName string, logger *slog.Logger) error {
 	poll := 200 * time.Millisecond
 	deadline := time.Now().Add(5 * time.Second)
 
@@ -716,9 +724,24 @@ func waitForDockerd(ctx context.Context, username, dockerSockPath, unitName stri
 		// Check for a dockerd process owned by this user.
 		running, _ := dockerdProcessChecker(ctx, username)
 		if running {
-			// Process is up; now wait for the socket to appear.
+			// Process is up; now wait for the socket to appear. Rootless dockerd
+			// may create the socket at the configured Bunker path or under the
+			// systemd user runtime directory (/run/user/<uid>). When the real
+			// socket is under /run/user/<uid>, create a symlink from the Bunker
+			// path so authorized_keys, .profile, and docker tunnels keep working.
 			if _, statErr := os.Stat(dockerSockPath); statErr == nil {
 				logger.Info("dockerd ready", "user", username, "sock", dockerSockPath)
+				return nil
+			}
+			if _, statErr := os.Stat(actualDockerSockPath); statErr == nil {
+				if err := os.Remove(dockerSockPath); err != nil && !os.IsNotExist(err) {
+					logger.Warn("failed to remove stale socket path before symlink", "path", dockerSockPath, "error", err)
+				}
+				if err := os.Symlink(actualDockerSockPath, dockerSockPath); err != nil {
+					logger.Error("dockerd socket under /run/user but symlink failed", "expected", dockerSockPath, "actual", actualDockerSockPath, "error", err)
+					return fmt.Errorf("dockerd socket at %s but could not symlink to %s: %w", actualDockerSockPath, dockerSockPath, err)
+				}
+				logger.Info("dockerd ready", "user", username, "expected_sock", dockerSockPath, "actual_sock", actualDockerSockPath)
 				return nil
 			}
 		}
@@ -834,6 +857,15 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	unitName := "bunker-docker-" + agentID
 	username := "bunker-" + agentID
 
+	// Look up the UID before userdel so we can clean up the actual rootless socket
+	// created under /run/user/<uid>.
+	var uid string
+	if u, err := user.Lookup(username); err == nil {
+		uid = u.Uid
+	} else {
+		m.logger.Warn("cannot lookup user before destroy", "username", username, "error", err)
+	}
+
 	// The dockerd unit was started via systemd-run --user, so it runs under
 	// the agent's user session. systemctl --user from the root foreman session
 	// targets the wrong user manager. We must either:
@@ -872,6 +904,15 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	runDir := fmt.Sprintf("/run/bunker/%s", agentID)
 	if err := os.RemoveAll(runDir); err != nil && !os.IsNotExist(err) {
 		m.logger.Warn("failed to remove run dir", "dir", runDir, "error", err)
+	}
+
+	// Step 4a: Clean up the actual rootless socket under /run/user/<uid>. A stale
+	// socket here would prevent the next agent that reuses this UID from binding.
+	if uid != "" {
+		actualSock := fmt.Sprintf("/run/user/%s/docker.sock", uid)
+		if err := os.Remove(actualSock); err != nil && !os.IsNotExist(err) {
+			m.logger.Warn("failed to remove actual docker socket", "path", actualSock, "error", err)
+		}
 	}
 
 	// Step 4.5: Clean up persisted SSH key

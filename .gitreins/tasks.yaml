@@ -632,3 +632,20 @@ tasks:
   status: complete
   created_at: '2026-07-09T15:04:15.527984+00:00'
   completed_at: '2026-07-09T15:05:36.187186+00:00'
+- id: WI-066
+  title: Fix rootless dockerd socket path mismatch on live server
+  criteria:
+  - 'Root cause documented: dockerd-rootless.sh creates socket at /run/user/<uid>/docker.sock
+    when started via systemd-run --system --uid, not at /run/bunker/<id>/docker.sock'
+  - waitForDockerd or socket path resolution updated so spawn does not fail when dockerd
+    is healthy
+  - DOCKER_HOST in authorized_keys, .profile, and spawn response points at the actual
+    socket path
+  - Unit tests updated or added to cover the socket path resolution without requiring
+    a real dockerd
+  - 'Focused E2E on bunker-mvp outputs VERIFY-PASS: bunker spawn --agent-id <id> --cpu
+    1 --memory 1073741824 --disk 10240 --ttl 600 && bunker exec <id> -- docker run
+    --rm alpine:latest echo VERIFY-PASS'
+  status: complete
+  created_at: '2026-07-11T20:59:19.461543+00:00'
+  completed_at: '2026-07-11T22:15:00.000000+00:00'

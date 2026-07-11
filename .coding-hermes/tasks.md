@@ -99,7 +99,7 @@
 - [x] **WI-065**: Untrack GitReins history verdicts — removed `.gitreins/history/*` from the git index while keeping local files, so verdict history is treated as local state per GitReins convention. Verified `git ls-files .gitreins/history/` is empty and build/tests pass.
 
 ### Phase 15: Live-server regression findings (2026-07-11)
-- [ ] **WI-066**: Fix rootless dockerd socket path mismatch on live server — `waitForDockerd` expects `/run/bunker/<id>/docker.sock`, but dockerd-rootless.sh creates the socket at `/run/user/<uid>/docker.sock` because systemd-run --system --uid starts a user manager under `/run/user/<uid>`. Spawn fails with "dockerd did not start" even though dockerd is running. Fix: reconcile the socket path (symlink, update DOCKER_HOST, or force XDG_RUNTIME_DIR to the bunker path). Verify with focused E2E on bunker-mvp: `bunker spawn --agent-id <id> --cpu 1 --memory 1073741824 --disk 10240 --ttl 600` followed by `bunker exec <id> -- docker run --rm alpine:latest echo VERIFY-PASS` must output `VERIFY-PASS`.
+- [x] **WI-066**: Fix rootless dockerd socket path mismatch on live server — `waitForDockerd` now reconciles the socket path by creating a symlink from `/run/bunker/<id>/docker.sock` to the actual rootless socket under `/run/user/<uid>/docker.sock`, and `Destroy` removes the actual socket to prevent UID-reuse conflicts. E2E on bunker-mvp outputs VERIFY-PASS (2026-07-11).
 
 ---
 ## Tech Stack (researched & locked)
