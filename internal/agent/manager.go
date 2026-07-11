@@ -219,6 +219,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	sshDir := filepath.Join(userHome, ".ssh")
 	authKeysFile := filepath.Join(sshDir, "authorized_keys")
 	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
+	tmpDir := filepath.Join("/run", "bunker", agentID, "tmp")
 
 	m.logger.Info("setting up authorized_keys", "user", username)
 	if err := os.MkdirAll(sshDir, 0700); err != nil {
@@ -234,8 +235,9 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// Prepend environment= to the public key line so Docker's SSH transport
 	// finds the right socket (requires PermitUserEnvironment=yes in sshd_config).
 	// The pubKeyBytes end with a newline from ssh-keygen; strip and re-append.
+	// Also pin TMPDIR so SSH exec avoids root-owned /tmp collisions.
 	pubKeyLine := strings.TrimSpace(string(pubKeyBytes))
-	envPrefix := fmt.Sprintf(`environment="DOCKER_HOST=unix://%s"`, dockerSockPath)
+	envPrefix := fmt.Sprintf(`environment="DOCKER_HOST=unix://%s TMPDIR=%s"`, dockerSockPath, tmpDir)
 	authKeysContent := envPrefix + " " + pubKeyLine + "\n"
 
 	if err := os.WriteFile(authKeysFile, []byte(authKeysContent), 0600); err != nil {
@@ -247,9 +249,9 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		return nil, fmt.Errorf("chown authorized_keys: %w (output: %s)", err, string(out))
 	}
 
-	// ── Step 4b: Set up .profile with DOCKER_HOST (interactive sessions) ──
+	// ── Step 4b: Set up .profile with DOCKER_HOST + TMPDIR (interactive sessions) ──
 	profilePath := filepath.Join(userHome, ".profile")
-	profileContent := fmt.Sprintf("# bunker: per-agent Docker socket\nexport DOCKER_HOST=unix://%s\n", dockerSockPath)
+	profileContent := fmt.Sprintf("# bunker: per-agent Docker socket and private tmp\nexport DOCKER_HOST=unix://%s\nexport TMPDIR=%s\n", dockerSockPath, tmpDir)
 	if err := os.WriteFile(profilePath, []byte(profileContent), 0644); err != nil {
 		cleanup()
 		return nil, fmt.Errorf("write .profile: %w", err)
@@ -291,6 +293,17 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	if out, err := exec.CommandContext(ctx, "chown", username, sockDir).CombinedOutput(); err != nil {
 		cleanup()
 		return nil, fmt.Errorf("chown socket dir: %w (output: %s)", err, string(out))
+	}
+
+	// Private TMPDIR under /run/bunker/<id>/tmp so agent processes do not collide
+	// with root-owned files in the shared /tmp.
+	if err := os.MkdirAll(tmpDir, 0700); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("create tmp dir %s: %w", tmpDir, err)
+	}
+	if out, err := exec.CommandContext(ctx, "chown", username, tmpDir).CombinedOutput(); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("chown tmp dir: %w (output: %s)", err, string(out))
 	}
 
 	// Determine resource limits: use request limits or server defaults
@@ -454,6 +467,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		// ROOTLESSKIT_FLAGS, which makes rootlesskit exit immediately. Force it off.
 		"DOCKERD_ROOTLESS_ROOTLESSKIT_DETACH_NETNS=false",
 		"DOCKER_HOST=unix://" + dockerSockPath,
+		"TMPDIR=" + tmpDir,
 	}
 	for _, env := range rootlessEnv {
 		systemdArgs = append(systemdArgs, "--setenv="+env)

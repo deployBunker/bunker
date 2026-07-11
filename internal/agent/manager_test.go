@@ -304,15 +304,18 @@ func TestSpawn_AuthorizedKeysHasEnvironment(t *testing.T) {
 		t.Fatalf("read authorized_keys: %v", err)
 	}
 	got := string(content)
-	wantEnv := fmt.Sprintf("environment=\"DOCKER_HOST=unix:///run/bunker/%s/docker.sock\"", agentID)
+	wantEnv := fmt.Sprintf(`environment="DOCKER_HOST=unix:///run/bunker/%s/docker.sock TMPDIR=/run/bunker/%s/tmp"`, agentID, agentID)
 	if !strings.Contains(got, wantEnv) {
 		t.Errorf("authorized_keys missing environment prefix\ngot: %s\nwant substring: %s", got, wantEnv)
+	}
+	if !strings.Contains(got, "TMPDIR=") {
+		t.Errorf("authorized_keys missing TMPDIR: %s", got)
 	}
 	if !strings.Contains(got, "ssh-ed25519") {
 		t.Errorf("authorized_keys missing ssh-ed25519 key type")
 	}
 
-	// Verify the agent's .profile also exports DOCKER_HOST for interactive shells.
+	// Verify the agent's .profile also exports DOCKER_HOST and TMPDIR for interactive shells.
 	profilePath := fmt.Sprintf("/home/bunker-%s/.profile", agentID)
 	profileContent, err := os.ReadFile(profilePath)
 	if err != nil {
@@ -321,6 +324,10 @@ func TestSpawn_AuthorizedKeysHasEnvironment(t *testing.T) {
 	wantProfile := fmt.Sprintf("export DOCKER_HOST=unix:///run/bunker/%s/docker.sock", agentID)
 	if !strings.Contains(string(profileContent), wantProfile) {
 		t.Errorf(".profile missing DOCKER_HOST export\ngot: %s\nwant substring: %s", string(profileContent), wantProfile)
+	}
+	wantTmpdirExport := fmt.Sprintf("export TMPDIR=/run/bunker/%s/tmp", agentID)
+	if !strings.Contains(string(profileContent), wantTmpdirExport) {
+		t.Errorf(".profile missing TMPDIR export\ngot: %s\nwant substring: %s", string(profileContent), wantTmpdirExport)
 	}
 }
 
@@ -346,6 +353,10 @@ func TestSpawn_ProfileHasDockerHost(t *testing.T) {
 	wantExport := fmt.Sprintf("export DOCKER_HOST=unix:///run/bunker/%s/docker.sock", agentID)
 	if !strings.Contains(got, wantExport) {
 		t.Errorf(".profile missing DOCKER_HOST export\ngot: %s\nwant substring: %s", got, wantExport)
+	}
+	wantTmpdir := fmt.Sprintf("export TMPDIR=/run/bunker/%s/tmp", agentID)
+	if !strings.Contains(got, wantTmpdir) {
+		t.Errorf(".profile missing TMPDIR export\ngot: %s\nwant substring: %s", got, wantTmpdir)
 	}
 }
 
@@ -397,6 +408,61 @@ func TestSpawn_SocketDirOwnership(t *testing.T) {
 		t.Errorf("socket path %s is not a directory", sockDir)
 	}
 	_ = resp
+}
+
+func TestSpawn_TmpDirExists(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("test requires root privileges")
+	}
+	m := newTestManager(t)
+	agentID := uniqueAgentID("tmpdir-agent")
+	req := &v1.SpawnAgentRequest{AgentId: agentID}
+	resp, err := m.Spawn(t.Context(), req)
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+	defer cleanupAgent(t, m, resp.AgentId)
+
+	tmpDir := fmt.Sprintf("/run/bunker/%s/tmp", agentID)
+	info, err := os.Stat(tmpDir)
+	if err != nil {
+		t.Fatalf("stat tmp dir %s: %v", tmpDir, err)
+	}
+	if !info.IsDir() {
+		t.Errorf("tmp path %s is not a directory", tmpDir)
+	}
+	// Mode should be 0700 (owner rwx only). Ignore sticky/setuid bits if any.
+	if perm := info.Mode().Perm(); perm != 0700 {
+		t.Errorf("tmp dir mode = %o, want 0700", perm)
+	}
+}
+
+func TestSpawn_RootlessEnvHasTMPDIR(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("test requires root privileges")
+	}
+	m := newTestManager(t)
+	agentID := uniqueAgentID("tmpdir-env")
+	req := &v1.SpawnAgentRequest{AgentId: agentID}
+	resp, err := m.Spawn(t.Context(), req)
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+	defer cleanupAgent(t, m, resp.AgentId)
+
+	unitName := "bunker-docker-" + resp.AgentId
+	time.Sleep(500 * time.Millisecond)
+
+	out, err := exec.CommandContext(t.Context(), "systemctl", "show", unitName, "--property=Environment").CombinedOutput()
+	if err != nil {
+		t.Logf("systemctl show output: %s", string(out))
+		t.Skip("could not query systemd unit Environment")
+	}
+	output := string(out)
+	want := fmt.Sprintf("TMPDIR=/run/bunker/%s/tmp", agentID)
+	if !strings.Contains(output, want) {
+		t.Errorf("systemd unit Environment missing TMPDIR\ngot:\n%s\nwant substring: %s", output, want)
+	}
 }
 
 // ── Destroy validation tests (no root needed) ─────────────────

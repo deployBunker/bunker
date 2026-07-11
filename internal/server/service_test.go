@@ -116,11 +116,57 @@ func TestBuildAgentExecCommand(t *testing.T) {
 	wantParts := []string{
 		"env PATH=/home/bunker-abc123/bin:$PATH",
 		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
+		"TMPDIR=/run/bunker/abc123/tmp",
 		"docker version",
 	}
 	for _, want := range wantParts {
 		if !strings.Contains(got, want) {
 			t.Errorf("buildAgentExecCommand() = %q, missing %q", got, want)
+		}
+	}
+}
+
+// TestBuildAgentRawExecCommand verifies TMPDIR is present in the raw argv.
+func TestBuildAgentRawExecCommand(t *testing.T) {
+	got := buildAgentRawExecCommand("abc123", "/home/bunker-abc123", "echo", []string{"hi"})
+	joined := strings.Join(got, " ")
+	wantParts := []string{
+		"env",
+		"PATH=/home/bunker-abc123/bin:$PATH",
+		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
+		"TMPDIR=/run/bunker/abc123/tmp",
+		"echo",
+		"hi",
+	}
+	for _, want := range wantParts {
+		if !strings.Contains(joined, want) {
+			t.Errorf("buildAgentRawExecCommand() = %v, missing %q", got, want)
+		}
+	}
+	// Ensure TMPDIR is its own argv element (raw mode must not shell-split).
+	found := false
+	for _, arg := range got {
+		if arg == "TMPDIR=/run/bunker/abc123/tmp" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("buildAgentRawExecCommand() missing dedicated TMPDIR argv element: %v", got)
+	}
+}
+
+// TestBuildAgentScriptCommand verifies TMPDIR is set for script execution.
+func TestBuildAgentScriptCommand(t *testing.T) {
+	got := buildAgentScriptCommand("abc123", "/home/bunker-abc123", "#!/bin/sh\necho hi\n")
+	wantParts := []string{
+		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
+		"TMPDIR=/run/bunker/abc123/tmp",
+		"env PATH=/home/bunker-abc123/bin:$PATH",
+	}
+	for _, want := range wantParts {
+		if !strings.Contains(got, want) {
+			t.Errorf("buildAgentScriptCommand() = %q, missing %q", got, want)
 		}
 	}
 }
