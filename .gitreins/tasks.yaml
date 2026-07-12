@@ -649,3 +649,19 @@ tasks:
   status: complete
   created_at: '2026-07-11T20:59:19.461543+00:00'
   completed_at: '2026-07-11T22:20:11.555112+00:00'
+- id: wi-067
+  title: 'WI-067: /tmp permission isolation'
+  criteria:
+  - TMPDIR=/run/bunker/<id>/tmp is created and chowned in manager.go Spawn
+  - rootlessEnv includes TMPDIR variable for systemd-run --setenv
+  - authorized_keys environment prefix includes TMPDIR
+  - .profile exports TMPDIR for interactive sessions
+  - buildAgentExecCommand prefixes env with TMPDIR
+  - buildAgentRawExecCommand includes TMPDIR in argv
+  - buildAgentScriptCommand prefixes env with TMPDIR
+  - 'Tests: TestSpawn_TmpDirExists, TestSpawn_RootlessEnvHasTMPDIR, TestBuildAgentRawExecCommand,
+    TestBuildAgentScriptCommand'
+  - go test -short ./internal/agent/ ./internal/server/ passes
+  status: complete
+  created_at: '2026-07-11T23:07:25.584287+00:00'
+  completed_at: '2026-07-11T23:07:29.128131+00:00'
