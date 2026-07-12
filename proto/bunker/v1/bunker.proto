@@ -20,6 +20,7 @@ service Bunkerd {
   // Agent actions
   rpc AgentMetrics(AgentMetricsRequest) returns (AgentMetricsResponse);
   rpc ExecAgent(ExecAgentRequest) returns (stream ExecAgentResponse);
+  rpc RunAgent(RunAgentRequest) returns (RunAgentResponse);
   rpc HeartbeatAgent(HeartbeatAgentRequest) returns (HeartbeatAgentResponse);
 }
 
@@ -193,6 +194,23 @@ message ExecAgentResponse {
     bytes stderr = 2;
   }
   int32 exit_code = 3;
+}
+
+message RunAgentRequest {
+  string agent_id = 1;
+  string command = 2;
+  repeated string args = 3;
+  map<string, string> env = 4;
+  bool detach = 5;                  // Start as persistent background unit
+  uint32 timeout_seconds = 6;
+  string name = 7;                  // Optional name suffix for the unit
+}
+
+message RunAgentResponse {
+  string run_id = 1;
+  string status = 2;                // "running", "completed", "failed"
+  int32 exit_code = 3;              // -1 for detached (still running)
+  string unit_name = 4;             // systemd unit name for detached runs
 }
 
 message GetInfoRequest {}

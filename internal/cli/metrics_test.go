@@ -51,6 +51,9 @@ func (m *metricsMockServer) AgentMetrics(ctx context.Context, req *connect.Reque
 func (m *metricsMockServer) ExecAgent(ctx context.Context, req *connect.Request[v1.ExecAgentRequest], stream *connect.ServerStream[v1.ExecAgentResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, nil)
 }
+func (m *metricsMockServer) RunAgent(ctx context.Context, req *connect.Request[v1.RunAgentRequest]) (*connect.Response[v1.RunAgentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
 func (m *metricsMockServer) HeartbeatAgent(ctx context.Context, req *connect.Request[v1.HeartbeatAgentRequest]) (*connect.Response[v1.HeartbeatAgentResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }

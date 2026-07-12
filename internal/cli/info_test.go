@@ -43,6 +43,9 @@ func (m *infoMockServer) AgentMetrics(ctx context.Context, req *connect.Request[
 func (m *infoMockServer) ExecAgent(ctx context.Context, req *connect.Request[v1.ExecAgentRequest], stream *connect.ServerStream[v1.ExecAgentResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, nil)
 }
+func (m *infoMockServer) RunAgent(ctx context.Context, req *connect.Request[v1.RunAgentRequest]) (*connect.Response[v1.RunAgentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
 func (m *infoMockServer) HeartbeatAgent(ctx context.Context, req *connect.Request[v1.HeartbeatAgentRequest]) (*connect.Response[v1.HeartbeatAgentResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }

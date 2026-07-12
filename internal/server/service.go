@@ -41,6 +41,7 @@ type bunkerdService struct {
 type agentManager interface {
 	Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v1.SpawnAgentResponse, error)
 	Destroy(ctx context.Context, agentID string, force bool) (*v1.DestroyAgentResponse, error)
+	RunAgent(ctx context.Context, req *v1.RunAgentRequest) (*v1.RunAgentResponse, error)
 	Stop()
 }
 
@@ -301,6 +302,30 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 	}
 
 	return nil
+}
+
+// RunAgent starts a command in the agent environment as a persistent systemd
+// transient unit. The unit survives the RPC session ending. Non-detached
+// (synchronous) runs are handled by the CLI via ExecAgent streaming.
+func (s *bunkerdService) RunAgent(ctx context.Context, req *connect.Request[v1.RunAgentRequest]) (*connect.Response[v1.RunAgentResponse], error) {
+	if req.Msg.GetAgentId() == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("agent_id is required"))
+	}
+	if req.Msg.GetCommand() == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("command is required"))
+	}
+	if !req.Msg.GetDetach() {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("non-detached runs are not supported by RunAgent; use ExecAgent"))
+	}
+	if rec := s.tracker.Get(req.Msg.GetAgentId()); rec == nil {
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("agent %q not found", req.Msg.GetAgentId()))
+	}
+	resp, err := s.agentMgr.RunAgent(ctx, req.Msg)
+	if err != nil {
+		s.logger.Error("run agent failed", "agent_id", req.Msg.GetAgentId(), "error", err)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(resp), nil
 }
 
 // HeartbeatAgent acknowledges an agent heartbeat.

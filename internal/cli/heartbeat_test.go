@@ -57,6 +57,10 @@ func (m *heartbeatMockServer) ExecAgent(ctx context.Context, req *connect.Reques
 	return connect.NewError(connect.CodeUnimplemented, nil)
 }
 
+func (m *heartbeatMockServer) RunAgent(ctx context.Context, req *connect.Request[v1.RunAgentRequest]) (*connect.Response[v1.RunAgentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
 func TestHeartbeatCommand_SendsAgentID(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
