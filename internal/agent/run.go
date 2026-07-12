@@ -66,11 +66,17 @@ func (m *AgentManager) RunAgent(ctx context.Context, req *v1.RunAgentRequest) (*
 // buildRunAgentArgs constructs the systemd-run argument list for a detached
 // agent run. It is a pure function so it can be unit-tested without an actual
 // system user or systemd.
+//
+// The supplied command is wrapped in `sh -c '. <envFile> 2>/dev/null && exec "$@"' --`
+// so that env vars injected via `bunker env set` are visible at exec time
+// (envFile is sourced inside the wrapper shell). The `--` separator prevents
+// subsequent args from being interpreted as $0 by the wrapper.
 func buildRunAgentArgs(agentID, uid, gid, unitName, command string, args []string, envOverrides map[string]string, limits *v1.ResourceLimits) []string {
 	userHome := "/home/bunker-" + agentID
 	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
 	tmpDir := filepath.Join("/run", "bunker", agentID, "tmp")
 	agentBinPath := filepath.Join(userHome, "bin")
+	envFile := fmt.Sprintf("/run/bunker/%s/env", agentID)
 
 	cmdArgs := []string{
 		"--system",
@@ -98,6 +104,7 @@ func buildRunAgentArgs(agentID, uid, gid, unitName, command string, args []strin
 		"USER=" + "bunker-" + agentID,
 		"DOCKER_HOST=unix://" + dockerSockPath,
 		"TMPDIR=" + tmpDir,
+		"BUNKER_ENV_FILE=" + envFile,
 	}
 	for k, v := range envOverrides {
 		prefix := k + "="
@@ -117,7 +124,10 @@ func buildRunAgentArgs(agentID, uid, gid, unitName, command string, args []strin
 		cmdArgs = append(cmdArgs, "--setenv="+e)
 	}
 
-	cmdArgs = append(cmdArgs, command)
+	// Wrap command in a shell that sources the env file (when present) and then
+	// execs the real command. `--` ends the wrapper's own argv so subsequent
+	// args are passed as $1, $2, ... to the inner exec.
+	cmdArgs = append(cmdArgs, "sh", "-c", fmt.Sprintf(". %s 2>/dev/null && exec \"$@\"", envFile), "--", command)
 	cmdArgs = append(cmdArgs, args...)
 	return cmdArgs
 }
