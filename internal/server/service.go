@@ -349,16 +349,20 @@ func (s *bunkerdService) HeartbeatAgent(ctx context.Context, req *connect.Reques
 
 // buildAgentExecCommand constructs the shell command that runs inside the agent
 // via SSH.  It prefixes the user command with env(1) so PATH, DOCKER_HOST, and
-// TMPDIR are set regardless of sshd PermitUserEnvironment/AcceptEnv settings.
+// TMPDIR are set regardless of sshd PermitUserEnvironment/AcceptEnv settings,
+// and sources /run/bunker/<id>/env so that `bunker env set` injections are
+// visible to the command.
 func buildAgentExecCommand(agentID, userHome, command string, args []string) string {
 	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
 	tmpDir := filepath.Join("/run", "bunker", agentID, "tmp")
 	agentBinPath := filepath.Join(userHome, "bin")
+	envFile := fmt.Sprintf("/run/bunker/%s/env", agentID)
 	remoteCmd := command
 	if len(args) > 0 {
 		remoteCmd += " " + strings.Join(args, " ")
 	}
-	return fmt.Sprintf("env PATH=%s:$PATH DOCKER_HOST=unix://%s TMPDIR=%s %s", agentBinPath, dockerSockPath, tmpDir, remoteCmd)
+	return fmt.Sprintf(". %s 2>/dev/null; env PATH=%s:$PATH DOCKER_HOST=unix://%s TMPDIR=%s %s",
+		envFile, agentBinPath, dockerSockPath, tmpDir, remoteCmd)
 }
 
 // shellQuoteSingle returns s wrapped in single quotes, with embedded single
@@ -370,6 +374,11 @@ func shellQuoteSingle(s string) string {
 // buildAgentRawExecCommand constructs the remote argv for raw mode. The command
 // is executed directly by the SSH server without an intermediate shell, so args
 // are passed as-is and shell injection/metacharacters are not interpreted.
+//
+// Raw mode intentionally does NOT source /run/bunker/<id>/env — the env file is
+// sourced by the *shell* at the top of buildAgentExecCommand / buildAgentScriptCommand,
+// and `bunker env set` is meant for shell-aware commands. Use plain `bunker exec`
+// (without --raw) or `bunker exec --script` to see env vars set via `bunker env set`.
 func buildAgentRawExecCommand(agentID, userHome, command string, args []string) []string {
 	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
 	tmpDir := filepath.Join("/run", "bunker", agentID, "tmp")
@@ -394,12 +403,13 @@ func buildAgentScriptCommand(agentID, userHome, scriptContent string) string {
 	tmpDir := filepath.Join("/run", "bunker", agentID, "tmp")
 	agentBinPath := filepath.Join(userHome, "bin")
 	scriptPath := filepath.Join(userHome, ".bunker", "exec-script.sh")
+	envFile := fmt.Sprintf("/run/bunker/%s/env", agentID)
 	// Use POSIX heredoc to create + chmod + execute the script in one SSH call.
 	// We quote the EOF delimiter to prevent expansion of the script body.
 	escaped := strings.ReplaceAll(scriptContent, "'", "'\\''")
 	return fmt.Sprintf(
-		"mkdir -p %q && cat > %q <<'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %q && env PATH=%s:$PATH DOCKER_HOST=unix://%s TMPDIR=%s %q",
-		filepath.Dir(scriptPath), scriptPath, escaped, scriptPath, agentBinPath, dockerSockPath, tmpDir, scriptPath,
+		"mkdir -p %q && cat > %q <<'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %q && . %s 2>/dev/null; env PATH=%s:$PATH DOCKER_HOST=unix://%s TMPDIR=%s %q",
+		filepath.Dir(scriptPath), scriptPath, escaped, scriptPath, envFile, agentBinPath, dockerSockPath, tmpDir, scriptPath,
 	)
 }
 

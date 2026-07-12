@@ -114,6 +114,10 @@ func TestExecAgent_AgentIDRequired(t *testing.T) {
 func TestBuildAgentExecCommand(t *testing.T) {
 	got := buildAgentExecCommand("abc123", "/home/bunker-abc123", "docker", []string{"version"})
 	wantParts := []string{
+		// Sourcing the per-agent env file so `bunker env set` injections are
+		// visible. stderr redirection makes the source tolerant of a missing
+		// file.
+		". /run/bunker/abc123/env",
 		"env PATH=/home/bunker-abc123/bin:$PATH",
 		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
 		"TMPDIR=/run/bunker/abc123/tmp",
@@ -123,6 +127,18 @@ func TestBuildAgentExecCommand(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("buildAgentExecCommand() = %q, missing %q", got, want)
 		}
+	}
+}
+
+// TestBuildAgentExecCommand_EnvFileSourcedBeforeCommand verifies the env file
+// source line appears before the env(1) + user command, so that vars set via
+// `bunker env set` take effect for the executed command.
+func TestBuildAgentExecCommand_EnvFileSourcedBeforeCommand(t *testing.T) {
+	got := buildAgentExecCommand("abc123", "/home/bunker-abc123", "docker", []string{"version"})
+	srcIdx := strings.Index(got, ". /run/bunker/abc123/env")
+	cmdIdx := strings.Index(got, "docker version")
+	if srcIdx < 0 || cmdIdx < 0 || srcIdx >= cmdIdx {
+		t.Fatalf("expected . /run/bunker/abc123/env to appear BEFORE 'docker version', got: %q", got)
 	}
 }
 
@@ -156,6 +172,20 @@ func TestBuildAgentRawExecCommand(t *testing.T) {
 	}
 }
 
+// TestBuildAgentRawExecCommand_NoEnvFileSourcing verifies that raw mode does
+// NOT include the env file source line. Raw mode bypasses the shell to avoid
+// metacharacter interpretation, so the env-file sourcing performed by the
+// other builders (shell-based) doesn't apply here. `bunker env set` vars are
+// therefore only visible to non-raw `bunker exec` / `bunker exec --script` /
+// `bunker run --detach`.
+func TestBuildAgentRawExecCommand_NoEnvFileSourcing(t *testing.T) {
+	got := buildAgentRawExecCommand("abc123", "/home/bunker-abc123", "echo", []string{"hi"})
+	joined := strings.Join(got, " ")
+	if strings.Contains(joined, "/run/bunker/abc123/env") {
+		t.Errorf("buildAgentRawExecCommand() should not reference env file (raw mode), got: %v", got)
+	}
+}
+
 // TestBuildAgentScriptCommand verifies TMPDIR is set for script execution.
 func TestBuildAgentScriptCommand(t *testing.T) {
 	got := buildAgentScriptCommand("abc123", "/home/bunker-abc123", "#!/bin/sh\necho hi\n")
@@ -163,6 +193,8 @@ func TestBuildAgentScriptCommand(t *testing.T) {
 		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
 		"TMPDIR=/run/bunker/abc123/tmp",
 		"env PATH=/home/bunker-abc123/bin:$PATH",
+		// Env file source line for `bunker env set` propagation.
+		". /run/bunker/abc123/env",
 	}
 	for _, want := range wantParts {
 		if !strings.Contains(got, want) {
