@@ -681,3 +681,22 @@ tasks:
   status: complete
   created_at: '2026-07-12T08:21:37.916651+00:00'
   completed_at: '2026-07-12T08:22:58.604646+00:00'
+- id: wi-069-env-set
+  title: "WI-069: bunker env set/get/list/unset \u2014 per-agent environment variable\
+    \ injection"
+  criteria:
+  - NewEnvCommand() is wired in cmd/bunker/main.go with root.AddCommand(cli.NewEnvCommand())
+  - env.go implements set, get, list, unset subcommands using ExecAgent RPC
+  - 'Set subcommand: validates KEY=VALUE format, writes to /run/bunker/<id>/env via
+    shell'
+  - 'Get subcommand: awk-based extraction, returns empty on missing key (exit 0)'
+  - 'List subcommand: cats /run/bunker/<id>/env'
+  - 'Unset subcommand: sed -i /^KEY=/d on the env file'
+  - buildAgentExecCommand in service.go prepends '. /run/bunker/<id>/env 2>/dev/null'
+  - buildRunAgentArgs in run.go wraps command in shell that sources env file before
+    exec
+  - Raw exec mode does NOT source env file (documented in comments)
+  - 'All tests pass: go test ./... -count=1 -short'
+  status: complete
+  created_at: '2026-07-12T18:04:00.542027+00:00'
+  completed_at: '2026-07-12T18:05:51.480740+00:00'
