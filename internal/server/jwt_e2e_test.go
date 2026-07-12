@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"testing"
@@ -203,6 +204,10 @@ func (m *stubAgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest)
 
 func (m *stubAgentManager) Destroy(ctx context.Context, agentID string, force bool) (*v1.DestroyAgentResponse, error) {
 	return &v1.DestroyAgentResponse{AgentId: agentID, Status: "destroyed"}, nil
+}
+
+func (m *stubAgentManager) RunAgent(ctx context.Context, req *v1.RunAgentRequest) (*v1.RunAgentResponse, error) {
+	return nil, fmt.Errorf("RunAgent not supported by stub")
 }
 
 func (m *stubAgentManager) Stop() {}

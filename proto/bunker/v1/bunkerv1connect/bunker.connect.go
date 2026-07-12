@@ -51,6 +51,8 @@ const (
 	BunkerdAgentMetricsProcedure = "/bunker.v1.Bunkerd/AgentMetrics"
 	// BunkerdExecAgentProcedure is the fully-qualified name of the Bunkerd's ExecAgent RPC.
 	BunkerdExecAgentProcedure = "/bunker.v1.Bunkerd/ExecAgent"
+	// BunkerdRunAgentProcedure is the fully-qualified name of the Bunkerd's RunAgent RPC.
+	BunkerdRunAgentProcedure = "/bunker.v1.Bunkerd/RunAgent"
 	// BunkerdHeartbeatAgentProcedure is the fully-qualified name of the Bunkerd's HeartbeatAgent RPC.
 	BunkerdHeartbeatAgentProcedure = "/bunker.v1.Bunkerd/HeartbeatAgent"
 	// AgentGetInfoProcedure is the fully-qualified name of the Agent's GetInfo RPC.
@@ -74,6 +76,7 @@ type BunkerdClient interface {
 	// Agent actions
 	AgentMetrics(context.Context, *connect.Request[v1.AgentMetricsRequest]) (*connect.Response[v1.AgentMetricsResponse], error)
 	ExecAgent(context.Context, *connect.Request[v1.ExecAgentRequest]) (*connect.ServerStreamForClient[v1.ExecAgentResponse], error)
+	RunAgent(context.Context, *connect.Request[v1.RunAgentRequest]) (*connect.Response[v1.RunAgentResponse], error)
 	HeartbeatAgent(context.Context, *connect.Request[v1.HeartbeatAgentRequest]) (*connect.Response[v1.HeartbeatAgentResponse], error)
 }
 
@@ -136,6 +139,12 @@ func NewBunkerdClient(httpClient connect.HTTPClient, baseURL string, opts ...con
 			connect.WithSchema(bunkerdMethods.ByName("ExecAgent")),
 			connect.WithClientOptions(opts...),
 		),
+		runAgent: connect.NewClient[v1.RunAgentRequest, v1.RunAgentResponse](
+			httpClient,
+			baseURL+BunkerdRunAgentProcedure,
+			connect.WithSchema(bunkerdMethods.ByName("RunAgent")),
+			connect.WithClientOptions(opts...),
+		),
 		heartbeatAgent: connect.NewClient[v1.HeartbeatAgentRequest, v1.HeartbeatAgentResponse](
 			httpClient,
 			baseURL+BunkerdHeartbeatAgentProcedure,
@@ -155,6 +164,7 @@ type bunkerdClient struct {
 	getAgent       *connect.Client[v1.GetAgentRequest, v1.GetAgentResponse]
 	agentMetrics   *connect.Client[v1.AgentMetricsRequest, v1.AgentMetricsResponse]
 	execAgent      *connect.Client[v1.ExecAgentRequest, v1.ExecAgentResponse]
+	runAgent       *connect.Client[v1.RunAgentRequest, v1.RunAgentResponse]
 	heartbeatAgent *connect.Client[v1.HeartbeatAgentRequest, v1.HeartbeatAgentResponse]
 }
 
@@ -198,6 +208,11 @@ func (c *bunkerdClient) ExecAgent(ctx context.Context, req *connect.Request[v1.E
 	return c.execAgent.CallServerStream(ctx, req)
 }
 
+// RunAgent calls bunker.v1.Bunkerd.RunAgent.
+func (c *bunkerdClient) RunAgent(ctx context.Context, req *connect.Request[v1.RunAgentRequest]) (*connect.Response[v1.RunAgentResponse], error) {
+	return c.runAgent.CallUnary(ctx, req)
+}
+
 // HeartbeatAgent calls bunker.v1.Bunkerd.HeartbeatAgent.
 func (c *bunkerdClient) HeartbeatAgent(ctx context.Context, req *connect.Request[v1.HeartbeatAgentRequest]) (*connect.Response[v1.HeartbeatAgentResponse], error) {
 	return c.heartbeatAgent.CallUnary(ctx, req)
@@ -216,6 +231,7 @@ type BunkerdHandler interface {
 	// Agent actions
 	AgentMetrics(context.Context, *connect.Request[v1.AgentMetricsRequest]) (*connect.Response[v1.AgentMetricsResponse], error)
 	ExecAgent(context.Context, *connect.Request[v1.ExecAgentRequest], *connect.ServerStream[v1.ExecAgentResponse]) error
+	RunAgent(context.Context, *connect.Request[v1.RunAgentRequest]) (*connect.Response[v1.RunAgentResponse], error)
 	HeartbeatAgent(context.Context, *connect.Request[v1.HeartbeatAgentRequest]) (*connect.Response[v1.HeartbeatAgentResponse], error)
 }
 
@@ -274,6 +290,12 @@ func NewBunkerdHandler(svc BunkerdHandler, opts ...connect.HandlerOption) (strin
 		connect.WithSchema(bunkerdMethods.ByName("ExecAgent")),
 		connect.WithHandlerOptions(opts...),
 	)
+	bunkerdRunAgentHandler := connect.NewUnaryHandler(
+		BunkerdRunAgentProcedure,
+		svc.RunAgent,
+		connect.WithSchema(bunkerdMethods.ByName("RunAgent")),
+		connect.WithHandlerOptions(opts...),
+	)
 	bunkerdHeartbeatAgentHandler := connect.NewUnaryHandler(
 		BunkerdHeartbeatAgentProcedure,
 		svc.HeartbeatAgent,
@@ -298,6 +320,8 @@ func NewBunkerdHandler(svc BunkerdHandler, opts ...connect.HandlerOption) (strin
 			bunkerdAgentMetricsHandler.ServeHTTP(w, r)
 		case BunkerdExecAgentProcedure:
 			bunkerdExecAgentHandler.ServeHTTP(w, r)
+		case BunkerdRunAgentProcedure:
+			bunkerdRunAgentHandler.ServeHTTP(w, r)
 		case BunkerdHeartbeatAgentProcedure:
 			bunkerdHeartbeatAgentHandler.ServeHTTP(w, r)
 		default:
@@ -339,6 +363,10 @@ func (UnimplementedBunkerdHandler) AgentMetrics(context.Context, *connect.Reques
 
 func (UnimplementedBunkerdHandler) ExecAgent(context.Context, *connect.Request[v1.ExecAgentRequest], *connect.ServerStream[v1.ExecAgentResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.ExecAgent is not implemented"))
+}
+
+func (UnimplementedBunkerdHandler) RunAgent(context.Context, *connect.Request[v1.RunAgentRequest]) (*connect.Response[v1.RunAgentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.RunAgent is not implemented"))
 }
 
 func (UnimplementedBunkerdHandler) HeartbeatAgent(context.Context, *connect.Request[v1.HeartbeatAgentRequest]) (*connect.Response[v1.HeartbeatAgentResponse], error) {

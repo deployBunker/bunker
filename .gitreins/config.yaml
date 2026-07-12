@@ -7,9 +7,11 @@ defaults:
   model: deepseek-v4-flash
   max_iterations: 50
   max_time: "15m"
-  max_input_tokens: "10M"
+  max_input_tokens: "1M"
   max_output_tokens: "384k"
   tool_call_weight: 0.1
+  code_context_budget: 0.40
+  compaction_threshold: 0.90
 
 # ── Static guards (Tier 1) ─────────────────────────────────────
 guards:
