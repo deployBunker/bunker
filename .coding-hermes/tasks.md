@@ -108,6 +108,10 @@
 - [x] **WI-068**: `bunker run --detach` — persistent background processes. Replace fragile `nohup` with a systemd transient unit (`bunkerd run <agent> <cmd>` that creates a oneshot/exec unit). Acceptance: `bunker run abcd --detach -- docker compose up` survives the exec session ending. (2026-07-12)
 - [x] **WI-069**: `bunker env set` — environment variable injection. `bunker env set <agent> KEY=VALUE` writes to an env file sourced by exec and docker compose. Acceptance: `bunker env set abcd DATABASE_URL=postgres://...` → `bunker exec abcd -- env | grep DATABASE_URL` shows the value. (2026-07-12)
 
+### Phase 17: Repository hygiene (2026-07-13)
+
+- [x] **WI-070**: Add project Makefile — README and quality gates reference `Makefile`, but the file does not exist. Create `Makefile` with `build`, `build-daemon`, `build-cli`, `test`, `test-short`, `vet`, `fmt`, `lint`, `proto`, `clean`, `e2e`, `install`, `ci` targets. Verify `make build`, `make vet`, `make test-short`, `make lint` all pass. (2026-07-13)
+
 ---
 ## Tech Stack (researched & locked)
 - **gRPC+REST**: connect-go (v1.20) — single binary, net/http native
