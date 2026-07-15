@@ -123,8 +123,8 @@
 - **TryCloudflare**: shell out to cloudflared binary
 
 ## Quality Gates (run EVERY commit)
-- **GitReins Tier 1**: `gitreins guard run` — secrets, lint, tests, format
-- **GitReins Tier 2**: `gitreins judge evaluate <id>` — LLM code review per task
+- **GitReins Tier 1**: `gitreins guard` — secrets, lint, tests, format
+- **GitReins Tier 2**: `gitreins judge <id>` — LLM code review per task
 - **Hilo**: `hilo classify` + `hilo graph` — auto-classify files, dependency analysis, metadata woven into codebase
 - **Build**: `go build ./... && go vet ./...` before every commit
 
@@ -132,8 +132,6 @@
 - `[ ]` — pending
 - `[~]` — in progress
 - `[x]` — complete
-
-> **⚠ CI infra note:** All GitHub Actions runs on main are stuck `queued` (not started) across multiple pushes (runs #28544451909, #28544160139, #28523263585). Not a code fix — CI runner capacity or billing infra issue. Re-check next supervisor cycle.
 
 ## Model
 - Primary: Kimi K2.7 (`kimi-for-coding/kimi-for-coding`)
