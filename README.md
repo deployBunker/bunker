@@ -186,7 +186,9 @@ bunker connect     Register a bunkerd server
 bunker spawn       Create a new agent
 bunker list        List agents
 bunker info        Show agent details
+bunker env         Manage agent environment variables
 bunker exec        Run a command inside an agent
+bunker run         Run a command in an agent's environment (with --detach for background)
 bunker mount       Mount agent filesystem via SSHFS
 bunker tunnel      Forward agent Docker socket
 bunker metrics     Show resource usage
