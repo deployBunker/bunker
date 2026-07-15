@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project Bunker — PRD / Spec Summary</title>
+<style>
+  :root {
+    --bg: #0a0e14;
+    --surface: #131a24;
+    --surface2: #1a2332;
+    --border: #253045;
+    --cyan: #39c5cf;
+    --green: #7ee83f;
+    --amber: #ffb454;
+    --text: #c8d0da;
+    --text2: #8090a0;
+    --text3: #556278;
+    --red: #f26b6b;
+    --radius: 8px;
+    --shadow: 0 2px 12px rgba(0,0,0,0.3);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 40px 24px 80px; }
+
+  /* Hero */
+  .hero {
+    text-align: center; padding: 60px 0 48px;
+    border-bottom: 1px solid var(--border); margin-bottom: 48px;
+  }
+  .hero-badge {
+    display: inline-block; background: rgba(57,197,207,0.1); color: var(--cyan);
+    border: 1px solid rgba(57,197,207,0.25); border-radius: 20px;
+    padding: 4px 16px; font-size: 13px; font-weight: 600; letter-spacing: 0.6px;
+    text-transform: uppercase; margin-bottom: 16px;
+  }
+  .hero h1 { font-size: 3em; font-weight: 800; letter-spacing: -1px; margin-bottom: 8px; }
+  .hero h1 .bunker { color: var(--green); }
+  .hero h1 .rest { color: #e0e6f0; }
+  .hero .tagline { font-size: 1.25em; color: var(--text2); max-width: 640px; margin: 12px auto 0; }
+  .hero .meta {
+    display: flex; gap: 24px; justify-content: center; flex-wrap: wrap;
+    margin-top: 28px; font-size: 14px; color: var(--text3);
+  }
+  .hero .meta span { display: flex; align-items: center; gap: 6px; }
+
+  /* Sections */
+  section { margin-bottom: 44px; }
+  h2 {
+    font-size: 1.5em; font-weight: 700; color: #e0e6f0;
+    margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border);
+    letter-spacing: -0.3px;
+  }
+  h3 { font-size: 1.1em; font-weight: 600; color: var(--cyan); margin: 24px 0 10px; }
+  h4 { font-size: 0.95em; font-weight: 600; color: var(--text2); margin: 16px 0 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  p { margin-bottom: 12px; }
+  p.lead { font-size: 1.1em; color: #d0d8e0; }
+
+  /* Cards */
+  .grid { display: grid; gap: 16px; }
+  .grid-2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .grid-3 { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow);
+  }
+  .card h4 { margin-top: 0; display: flex; align-items: center; gap: 8px; }
+  .card p, .card li { font-size: 14px; color: var(--text2); }
+  .card .icon { font-size: 1.3em; }
+  .card ul { list-style: none; padding: 0; }
+  .card li { padding: 3px 0; padding-left: 18px; position: relative; }
+  .card li::before { content: "›"; position: absolute; left: 2px; color: var(--green); font-weight: 700; }
+
+  /* Highlight card */
+  .card.highlight { border-color: rgba(126,232,63,0.3); background: linear-gradient(135deg, rgba(126,232,63,0.04), rgba(57,197,207,0.02)); }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+  thead th {
+    background: var(--surface2); text-align: left; padding: 10px 14px;
+    font-weight: 600; color: var(--text); border-bottom: 2px solid var(--border);
+  }
+  tbody td {
+    padding: 10px 14px; border-bottom: 1px solid var(--border);
+    color: var(--text2);
+  }
+  tbody tr:hover { background: rgba(57,197,207,0.03); }
+  td:first-child, th:first-child { padding-left: 18px; }
+  td:last-child, th:last-child { padding-right: 18px; }
+
+  /* Status tags */
+  .tag {
+    display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 10px;
+    border-radius: 12px; letter-spacing: 0.3px;
+  }
+  .tag-done { background: rgba(126,232,63,0.15); color: var(--green); }
+  .tag-ip { background: rgba(255,180,84,0.15); color: var(--amber); }
+
+  /* Proto code */
+  .code-block {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 18px 22px; overflow-x: auto;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 13px;
+    line-height: 1.6; color: #b0bec5; margin: 12px 0;
+  }
+  .code-block .kw { color: var(--cyan); }
+  .code-block .str { color: var(--green); }
+  .code-block .cmt { color: var(--text3); font-style: italic; }
+
+  /* Architecture diagram replacement */
+  .arch-block {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 28px 24px; text-align: center;
+    margin: 16px 0;
+  }
+  .arch-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; align-items: center; }
+  .arch-box {
+    background: var(--surface2); border: 1px solid var(--cyan); border-radius: 6px;
+    padding: 14px 20px; font-size: 13px; font-weight: 600; color: var(--cyan);
+    min-width: 110px; text-align: center;
+  }
+  .arch-box.green { border-color: var(--green); color: var(--green); }
+  .arch-box.dim { border-color: var(--border); color: var(--text2); }
+  .arch-arrow { color: var(--text3); font-size: 1.2em; }
+  .arch-stack { display: flex; flex-direction: column; gap: 8px; align-items: center; margin-top: 12px; }
+
+  /* Stat bar */
+  .stat-row { display: flex; gap: 16px; flex-wrap: wrap; margin: 20px 0; }
+  .stat {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 18px 22px; text-align: center; flex: 1; min-width: 120px;
+  }
+  .stat .value { font-size: 1.8em; font-weight: 800; color: var(--green); letter-spacing: -1px; }
+  .stat .label { font-size: 12px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+
+  /* Timeline */
+  .timeline { position: relative; padding-left: 24px; }
+  .timeline::before { content: ''; position: absolute; left: 7px; top: 4px; bottom: 4px; width: 2px; background: var(--border); }
+  .timeline-item { position: relative; margin-bottom: 16px; }
+  .timeline-item::before { content: ''; position: absolute; left: -21px; top: 6px; width: 10px; height: 10px; border-radius: 50%; background: var(--green); border: 2px solid var(--bg); }
+  .timeline-item .phase { font-weight: 700; color: var(--text); font-size: 14px; }
+  .timeline-item .desc { font-size: 13px; color: var(--text2); }
+
+  /* Footer */
+  .footer {
+    border-top: 1px solid var(--border); padding-top: 32px; margin-top: 48px;
+    text-align: center; font-size: 13px; color: var(--text3);
+  }
+  .footer a { color: var(--cyan); text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+
+  @media (max-width: 640px) {
+    .hero h1 { font-size: 2em; }
+    .container { padding: 24px 16px 60px; }
+    .card { padding: 16px; }
+  }
+
+  @media print {
+    body { background: #fff; color: #222; }
+    .card, .code-block, .arch-block, .stat { background: #f5f7fa; border-color: #ddd; }
+    h2, h3, h4, .hero h1 .rest, thead th { color: #111; }
+    .tag-done { background: #e8f5e9; }
+    .card p, .card li, tbody td { color: #555; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- ═══════════════════════════  HERO  ═══════════════════════════ -->
+<header class="hero">
+  <div class="hero-badge">Product Requirements Document · v1.0</div>
+  <h1><span class="rest">Project</span> <span class="bunker">Bunker</span></h1>
+  <p class="tagline">
+    Multi-agent compute isolation platform — spin up per-agent Linux environments with their own rootless Docker daemon, resource limits, and networking. One API call.
+  </p>
+  <div class="meta">
+    <span>🔗 <a href="https://github.com/deployBunker/bunker" style="color:var(--cyan)">github.com/deployBunker/bunker</a></span>
+    <span>📜 Apache 2.0</span>
+    <span>🟢 Go 1.25+</span>
+    <span>📡 Deployed on Hetzner</span>
+  </div>
+</header>
+
+<!-- ═══════════════════════════  EXECUTIVE SUMMARY  ═══════════════════════════ -->
+<section>
+  <h2>Executive Summary</h2>
+  <p class="lead">
+    <strong>Bunker</strong> is a multi-agent hosting platform that gives every AI agent its own isolated Linux environment — complete with a private rootless Docker daemon, CPU/memory/disk/process limits enforced via cgroups, SSH access, and optional public networking via Cloudflare tunnels or Tailscale.
+  </p>
+  <p>
+    Instead of one VM per agent (expensive, slow to provision, 80% idle), Bunker dense-packs <strong>50+ agent hosts onto a single bare-metal server</strong>. Each agent lives minutes to hours — spun up on demand, auto-destroyed on TTL expiry. Clean teardown: <code>userdel -r</code> and everything is gone.
+  </p>
+
+  <div class="stat-row">
+    <div class="stat"><div class="value">70+</div><div class="label">Work Items Complete</div></div>
+    <div class="stat"><div class="value">17</div><div class="label">Development Phases</div></div>
+    <div class="stat"><div class="value">50+</div><div class="label">Agents Per Host</div></div>
+    <div class="stat"><div class="value">~$80/mo</div><div class="label">Per Host (not per agent)</div></div>
+    <div class="stat"><div class="value">v0.1.0</div><div class="label">Current Release</div></div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════  PROBLEM & SOLUTION  ═══════════════════════════ -->
+<section>
+  <h2>Problem &amp; Solution</h2>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <h4><span class="icon">🔴</span> The Problem</h4>
+      <ul>
+        <li>AI coding agents need Docker to build, test, and run code</li>
+        <li>Sharing a single Docker daemon across agents is a security and isolation nightmare</li>
+        <li>One VM per agent costs $20–80/month each and leaves idle VMs accumulating</li>
+        <li>Docker-in-Docker requires <code>--privileged</code> and breaks isolation</li>
+        <li>Manual provisioning of agent environments is slow and error-prone</li>
+        <li>No standard way to limit agent resource usage (CPU, memory, disk)</li>
+      </ul>
+    </div>
+    <div class="card highlight">
+      <h4><span class="icon">🟢</span> Bunker's Solution</h4>
+      <ul>
+        <li>Per-agent Linux user with its <strong>own rootless Docker daemon</strong></li>
+        <li>cgroups v2 enforce CPU, memory, disk, process, and container limits</li>
+        <li>One <strong>$80/mo bare-metal server</strong> hosts 50+ concurrent agents</li>
+        <li>Single CLI call: <code>bunker spawn --cpu 2 --mem 4g --ttl 6h</code></li>
+        <li>Auto-destroy on TTL expiry — no forgotten VMs</li>
+        <li>gRPC + REST API with JWT auth, TLS/mTLS, per-agent scoped keys</li>
+        <li>Native SSHFS mount, Docker tunnel, Cloudflare tunnels, Tailscale mesh</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════  ARCHITECTURE  ═══════════════════════════ -->
+<section>
+  <h2>Architecture</h2>
+
+  <div class="arch-block">
+    <div class="arch-row">
+      <div class="arch-box green">bunker CLI<br><small style="color:var(--text3)">cobra + viper</small></div>
+      <span class="arch-arrow">── gRPC/REST ──►</span>
+      <div class="arch-box">bunkerd Daemon<br><small style="color:var(--text3)">connect-go</small></div>
+      <span class="arch-arrow">── manages ──►</span>
+    </div>
+    <div class="arch-stack">
+      <div class="arch-box dim">Agent Manager → systemd-run, useradd, cgroups</div>
+      <div class="arch-box dim">TTL Reaper → auto-destroy expired agents</div>
+      <div class="arch-box dim">Port Allocator → per-agent port ranges</div>
+      <div class="arch-box dim">Tunnel Manager → Cloudflare / Tailscale</div>
+      <div class="arch-box dim">Auth Interceptor → JWT + opaque sub-keys + mTLS</div>
+    </div>
+    <div style="margin-top: 16px;">
+      <span class="arch-arrow">┌─────── agent-a ───────┐ ┌─────── agent-b ───────┐ ┌─────── agent-c ───────┐</span><br>
+      <span style="color:var(--text2); font-size:13px;">│ Linux user · dockerd · │ │ Linux user · dockerd · │ │ Linux user · dockerd · │ ... 50+</span><br>
+      <span style="color:var(--text2); font-size:13px;">│ SSH key · cgroup · TTL │ │ SSH key · cgroup · TTL │ │ SSH key · cgroup · TTL │</span><br>
+      <span style="color:var(--text3); font-size:13px;">└────────────────────────┘ └────────────────────────┘ └────────────────────────┘</span>
+    </div>
+  </div>
+
+  <h3>Dual Protocol — gRPC + REST</h3>
+  <p>Single binary, single port. connect-go handles protocol negotiation. Clients speak gRPC, gRPC-Web, or Connect (JSON + Protobuf).</p>
+
+  <table>
+    <thead>
+      <tr><th>Service</th><th>RPCs</th><th>Auth</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>Bunkerd</strong></td><td>ServerInfo, ServerMetrics, SpawnAgent, DestroyAgent, ListAgents, GetAgent, ExecAgent, RunAgent, AgentMetrics, HeartbeatAgent</td><td>Master token or JWT</td></tr>
+      <tr><td><strong>Agent</strong> (scoped)</td><td>GetInfo, Metrics, Heartbeat</td><td>Agent-scoped sub-key</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════  KEY FEATURES  ═══════════════════════════ -->
+<section>
+  <h2>Key Features</h2>
+
+  <div class="grid grid-3">
+    <div class="card">
+      <h4><span class="icon">🐳</span> Agent Isolation</h4>
+      <p>Each agent is a dedicated Linux user with its own rootless Docker daemon. No Docker-in-Docker. No --privileged. Complete isolation via user namespaces + cgroups v2.</p>
+    </div>
+    <div class="card">
+      <h4><span class="icon">📊</span> Resource Limits</h4>
+      <p>CPU quota, memory max, disk quota, process count, open file limit, and Docker container limit — all enforced at the cgroup level via systemd user slices.</p>
+    </div>
+    <div class="card">
+      <h4><span class="icon">🔗</span> SSH Transport</h4>
+      <p>Primary Docker access via native <code>DOCKER_HOST=ssh://agent@host</code>. SSHFS for filesystem mounts. SSH tunnel fallback for tools requiring TCP Docker sockets.</p>
+    </div>
+    <div class="card">
+      <h4><span class="icon">🌐</span> Networking Stack</h4>
+      <p>Three modes: Cloudflare Tunnels (named or TryCloudflare), Tailscale mesh, or direct port ranges. Per-agent port ranges prevent collisions.</p>
+    </div>
+    <div class="card">
+      <h4><span class="icon">⏱️</span> TTL &amp; Heartbeat</h4>
+      <p>Agents auto-destroy on TTL expiry. Heartbeat extends TTL. No forgotten agents burning resources. Clean <code>userdel -r</code> teardown.</p>
+    </div>
+    <div class="card">
+      <h4><span class="icon">🔐</span> Security</h4>
+      <p>JWT auth (HS256/RS256/Ed25519), agent-scoped opaque sub-keys, TLS via certmagic (self-signed or Let's Encrypt), mTLS support, master-only RPC enforcement.</p>
+    </div>
+    <div class="card">
+      <h4><span class="icon">🖥️</span> CLI Surface</h4>
+      <p>Full cobra CLI: connect, spawn, list, info, exec, run (--detach), metrics, mount, tunnel, heartbeat, destroy, env (set/get/list/unset). Multi-server support.</p>
+    </div>
+    <div class="card">
+      <h4><span class="icon">🔧</span> Developer UX</h4>
+      <p><code>bunker exec --raw</code> for no-shell interpretation. <code>bunker exec --script</code> for file upload. <code>bunker run --detach</code> for persistent background processes via systemd transient units.</p>
+    </div>
+    <div class="card">
+      <h4><span class="icon">🔑</span> API Key Management</h4>
+      <p>Master tokens for admin. Agent-scoped sub-keys for CI/CD pipelines. Keys can only access their own agent's scoped RPCs.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════  RESOURCE LIMITS  ═══════════════════════════ -->
+<section>
+  <h2>Resource Limit Enforcement</h2>
+  <p>All limits enforced at <strong>two levels</strong>: systemd user slice (cgroups v2) and Docker unit properties.</p>
+
+  <table>
+    <thead>
+      <tr><th>Limit</th><th>Config Key</th><th>CLI Flag</th><th>Default</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>CPU</td><td><code>agent.default_cpu_quota</code></td><td><code>--cpu</code></td><td>2.0 cores</td></tr>
+      <tr><td>Memory</td><td><code>agent.default_memory_bytes</code></td><td><code>--memory</code></td><td>4 GB</td></tr>
+      <tr><td>Disk</td><td><code>agent.default_disk_bytes</code></td><td><code>--disk</code></td><td>20 GB</td></tr>
+      <tr><td>Processes</td><td><code>agent.default_max_processes</code></td><td>—</td><td>4096</td></tr>
+      <tr><td>Open Files</td><td><code>agent.default_max_open_files</code></td><td>—</td><td>65536</td></tr>
+      <tr><td>Docker Containers</td><td><code>agent.default_max_docker_containers</code></td><td>—</td><td>10</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════  CLI REFERENCE  ═══════════════════════════ -->
+<section>
+  <h2>CLI Reference</h2>
+
+  <table>
+    <thead>
+      <tr><th>Command</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>bunker connect &lt;url&gt; --token &lt;t&gt;</code></td><td>Register a bunkerd server</td></tr>
+      <tr><td><code>bunker spawn --cpu 2 --memory 4g --disk 20g --ttl 6h</code></td><td>Create a new agent</td></tr>
+      <tr><td><code>bunker list</code></td><td>List all agents with status</td></tr>
+      <tr><td><code>bunker info &lt;agent-id&gt;</code></td><td>Show agent details (limits, network, expiry)</td></tr>
+      <tr><td><code>bunker exec &lt;agent-id&gt; -- docker run alpine echo hi</code></td><td>Run command inside agent (supports <code>--raw</code>, <code>--script</code>)</td></tr>
+      <tr><td><code>bunker run &lt;agent-id&gt; --detach -- docker compose up</code></td><td>Persistent background process via systemd transient unit</td></tr>
+      <tr><td><code>bunker metrics [&lt;agent-id&gt;]</code></td><td>Live resource usage (CPU, memory, disk, containers)</td></tr>
+      <tr><td><code>bunker mount &lt;agent-id&gt; /mnt/agent</code></td><td>SSHFS mount agent filesystem locally</td></tr>
+      <tr><td><code>bunker tunnel &lt;agent-id&gt;</code></td><td>Forward agent Docker socket to localhost</td></tr>
+      <tr><td><code>bunker env set &lt;agent-id&gt; KEY=VALUE</code></td><td>Inject environment variables (get/list/unset also available)</td></tr>
+      <tr><td><code>bunker heartbeat &lt;agent-id&gt;</code></td><td>Extend agent TTL</td></tr>
+      <tr><td><code>bunker destroy &lt;agent-id&gt; [--force]</code></td><td>Tear down agent completely</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════  API — PROTO SAMPLE  ═══════════════════════════ -->
+<section>
+  <h2>API Contract (Protobuf)</h2>
+  <p>Full spec: <code>proto/bunker/v1/bunker.proto</code> (224 lines). Key messages:</p>
+
+  <div class="code-block">
+<span class="kw">service</span> Bunkerd {<br>
+&nbsp;&nbsp;<span class="kw">rpc</span> <span class="str">ServerInfo</span>(ServerInfoRequest) <span class="kw">returns</span> (ServerInfoResponse);<br>
+&nbsp;&nbsp;<span class="kw">rpc</span> <span class="str">ServerMetrics</span>(ServerMetricsRequest) <span class="kw">returns</span> (ServerMetricsResponse);<br>
+&nbsp;&nbsp;<span class="kw">rpc</span> <span class="str">SpawnAgent</span>(SpawnAgentRequest) <span class="kw">returns</span> (SpawnAgentResponse);<br>
+&nbsp;&nbsp;<span class="kw">rpc</span> <span class="str">DestroyAgent</span>(DestroyAgentRequest) <span class="kw">returns</span> (DestroyAgentResponse);<br>
+&nbsp;&nbsp;<span class="kw">rpc</span> <span class="str">ListAgents</span>(ListAgentsRequest) <span class="kw">returns</span> (ListAgentsResponse);<br>
+&nbsp;&nbsp;<span class="kw">rpc</span> <span class="str">GetAgent</span>(GetAgentRequest) <span class="kw">returns</span> (GetAgentResponse);<br>
+&nbsp;&nbsp;<span class="kw">rpc</span> <span class="str">ExecAgent</span>(ExecAgentRequest) <span class="kw">returns</span> (<span class="kw">stream</span> ExecAgentResponse);<br>
+&nbsp;&nbsp;<span class="kw">rpc</span> <span class="str">RunAgent</span>(RunAgentRequest) <span class="kw">returns</span> (RunAgentResponse);<br>
+&nbsp;&nbsp;<span class="kw">rpc</span> <span class="str">HeartbeatAgent</span>(HeartbeatAgentRequest) <span class="kw">returns</span> (HeartbeatAgentResponse);<br>
+}<br><br>
+<span class="cmt">// Agent service — scoped sub-key access only</span><br>
+<span class="kw">service</span> Agent {<br>
+&nbsp;&nbsp;<span class="kw">rpc</span> <span class="str">GetInfo</span>(GetInfoRequest) <span class="kw">returns</span> (GetInfoResponse);<br>
+&nbsp;&nbsp;<span class="kw">rpc</span> <span class="str">Metrics</span>(AgentMetricsRequest) <span class="kw">returns</span> (AgentMetricsResponse);<br>
+&nbsp;&nbsp;<span class="kw">rpc</span> <span class="str">Heartbeat</span>(HeartbeatAgentRequest) <span class="kw">returns</span> (HeartbeatAgentResponse);<br>
+}
+  </div>
+
+  <h4>SpawnAgent Response Fields</h4>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>agent_id</code></td><td>string</td><td>Unique agent identifier</td></tr>
+      <tr><td><code>docker_host_ssh</code></td><td>string</td><td><code>DOCKER_HOST=ssh://agent-N@host</code></td></tr>
+      <tr><td><code>docker_host_tunnel</code></td><td>string</td><td>SSH -L tunnel command for TCP socket access</td></tr>
+      <tr><td><code>sshfs_mount</code></td><td>string</td><td>sshfs command for local filesystem mount</td></tr>
+      <tr><td><code>public_url</code></td><td>string</td><td>Public URL (Cloudflare/Tailscale)</td></tr>
+      <tr><td><code>port_range_start/end</code></td><td>uint32</td><td>Per-agent port allocation</td></tr>
+      <tr><td><code>ssh_private_key</code></td><td>bytes</td><td>Generated SSH key (if not pushed)</td></tr>
+      <tr><td><code>limits</code></td><td>ResourceLimits</td><td>Enforced limits (CPU, memory, disk, containers)</td></tr>
+      <tr><td><code>expires_at</code></td><td>string</td><td>TTL expiry timestamp</td></tr>
+      <tr><td><code>api_key</code></td><td>string</td><td>Agent-scoped opaque sub-key</td></tr>
+      <tr><td><code>tailnet_ip</code></td><td>string</td><td>Tailscale mesh IP</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════  TECH STACK  ═══════════════════════════ -->
+<section>
+  <h2>Technology Stack</h2>
+
+  <table>
+    <thead><tr><th>Layer</th><th>Technology</th><th>Version</th></tr></thead>
+    <tbody>
+      <tr><td>Language</td><td>Go</td><td>1.25+</td></tr>
+      <tr><td>RPC Framework</td><td>connect-go</td><td>v1.20 — gRPC + REST, single binary</td></tr>
+      <tr><td>HTTP Router</td><td>chi</td><td>v5</td></tr>
+      <tr><td>CLI</td><td>cobra + viper</td><td>v1.10 / v1.21</td></tr>
+      <tr><td>Auth</td><td>golang-jwt</td><td>v5.3 — HS256/RS256/Ed25519</td></tr>
+      <tr><td>TLS</td><td>certmagic</td><td>v0.25 — auto Let's Encrypt, self-signed, mTLS</td></tr>
+      <tr><td>Config</td><td>YAML</td><td>/etc/bunkerd/config.yaml, viper-based</td></tr>
+      <tr><td>Container Runtime</td><td>Rootless Docker</td><td>dockerd-rootless-setuptool.sh</td></tr>
+      <tr><td>Isolation</td><td>Linux user namespaces, cgroups v2</td><td>systemd user slices</td></tr>
+      <tr><td>Networking</td><td>Cloudflare tunnels, Tailscale, SSH</td><td>—</td></tr>
+      <tr><td>CI</td><td>GitHub Actions</td><td>Self-hosted runner on Hetzner</td></tr>
+      <tr><td>Quality Gates</td><td>GitReins (Tier 1 + Tier 2), Hilo</td><td>Per-commit enforcement</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════  DEVELOPMENT HISTORY  ═══════════════════════════ -->
+<section>
+  <h2>Development History</h2>
+
+  <div class="timeline">
+    <div class="timeline-item">
+      <div class="phase">Phase 1 — Core bunkerd daemon</div>
+      <div class="desc">Protobuf code gen, gRPC server with TLS + token auth, agent spawn/destroy lifecycle, resource tracking, port allocation</div>
+    </div>
+    <div class="timeline-item">
+      <div class="phase">Phase 2 — Networking</div>
+      <div class="desc">SSH transport, TryCloudflare anonymous tunnels, Cloudflare named tunnels, Tailscale integration</div>
+    </div>
+    <div class="timeline-item">
+      <div class="phase">Phase 3 — CLI</div>
+      <div class="desc">connect, spawn, list, destroy, metrics, exec commands. Multi-server support.</div>
+    </div>
+    <div class="timeline-item">
+      <div class="phase">Phase 4 — REST API</div>
+      <div class="desc">connect-go HTTP handlers, API key management, mTLS support</div>
+    </div>
+    <div class="timeline-item">
+      <div class="phase">Phase 5 — Integration</div>
+      <div class="desc">Coding-Hermes skill integration, Hilo test harness, GitReins quality gates</div>
+    </div>
+    <div class="timeline-item">
+      <div class="phase">Phase 6 — Bug Fixes &amp; Hardening <span class="tag tag-done">28–29 Jun</span></div>
+      <div class="desc">destroy/userdel mismatch, DOCKER_HOST propagation, stale systemd units, concurrency tests, cgroup enforcement, JWT auth, TLS/mTLS E2E, TTL expiry, Cloudflare tunnel E2E, bunkerd systemd service, CI fix</div>
+    </div>
+    <div class="timeline-item">
+      <div class="phase">Phase 7 — E2E Hardening <span class="tag tag-done">29 Jun</span></div>
+      <div class="desc">Rootless Docker for agents, JWT auth end-to-end, TLS/mTLS end-to-end, TTL expiry end-to-end, Cloudflare tunnel end-to-end</div>
+    </div>
+    <div class="timeline-item">
+      <div class="phase">Phase 8 — Resource Isolation <span class="tag tag-done">30 Jun</span></div>
+      <div class="desc">exec flag parsing (-- separator), ulimit controls, cgroup enforcement through rootlesskit, PID namespace isolation</div>
+    </div>
+    <div class="timeline-item">
+      <div class="phase">Phase 9 — Live-Server Verification <span class="tag tag-done">1–3 Jul</span></div>
+      <div class="desc">exec SSH env fix, dockerd startup wait, rootless netns fix, E2E battery hardening</div>
+    </div>
+    <div class="timeline-item">
+      <div class="phase">Phase 10 — Spec Compliance <span class="tag tag-done">1 Jul</span></div>
+      <div class="desc">SSHFS mount, Docker tunnel, disk_max_bytes, max_docker_containers, ServerMetrics, GetAgent, Agent scoped API, Multi-server, Tailscale, Resource enforcement</div>
+    </div>
+    <div class="timeline-item">
+      <div class="phase">Phases 11–14 — Polish <span class="tag tag-done">4–9 Jul</span></div>
+      <div class="desc">Rootless install regression fix, per-package SKILL.md files, repo hygiene, v0.1.0 open-source release (LICENSE, CHANGELOG, CONTRIBUTING, SECURITY, CLA, CODE_OF_CONDUCT)</div>
+    </div>
+    <div class="timeline-item">
+      <div class="phase">Phases 15–17 — Production UX <span class="tag tag-done">11–13 Jul</span></div>
+      <div class="desc">Socket path fix, exec --raw/--script, /tmp isolation, bunker run --detach, bunker env set/get/list/unset, Makefile</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════  DEPLOYMENT  ═══════════════════════════ -->
+<section>
+  <h2>Current Deployment</h2>
+  <div class="card highlight">
+    <table>
+      <tbody>
+        <tr><td><strong>Server</strong></td><td>Hetzner cx43 — 8 vCPU / 16 GB / 160 GB SSD</td></tr>
+        <tr><td><strong>Location</strong></td><td>Falkenstein, Germany</td></tr>
+        <tr><td><strong>Cost</strong></td><td>€18.49/mo (hosts 50+ concurrent agents)</td></tr>
+        <tr><td><strong>Daemon</strong></td><td>bunkerd (systemd service, auto-restart)</td></tr>
+        <tr><td><strong>Ports</strong></td><td>gRPC :9090, REST :8080</td></tr>
+        <tr><td><strong>CI Runner</strong></td><td>GitHub Actions self-hosted, labels: <code>Linux</code></td></tr>
+        <tr><td><strong>E2E Battery</strong></td><td>34 pass / 0 fail — all VERIFY-PASS signals confirmed</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ═══════════════════════════  USE CASES  ═══════════════════════════ -->
+<section>
+  <h2>Use Cases</h2>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <h4><span class="icon">🤖</span> AI Coding Agents</h4>
+      <p>coding-hermes and similar autonomous coding agents need Docker to build, test, and run code. Bunker gives each agent its own clean Docker host — <code>bunker spawn --cpu 4 --mem 8g --ttl 6h</code> → <code>DOCKER_HOST=ssh://agent-7@srv1 docker build .</code> → destroy when done.</p>
+    </div>
+    <div class="card">
+      <h4><span class="icon">🔄</span> CI/CD Sandboxes</h4>
+      <p>Spin up ephemeral build environments per PR or branch. Agent-scoped API keys mean CI pipelines can only access their own agent. TTL ensures cleanup even if the pipeline crashes.</p>
+    </div>
+    <div class="card">
+      <h4><span class="icon">📦</span> Multi-Tenant SaaS</h4>
+      <p>Each tenant gets their own agent with resource limits and private Docker daemon. Cloudflare tunnels provide public URLs. Bunkerd manages the fleet.</p>
+    </div>
+    <div class="card">
+      <h4><span class="icon">🔬</span> Development Environments</h4>
+      <p>On-demand dev environments with <code>bunker spawn</code>. SSHFS mount for local IDE. Docker tunnel for container tooling. env set for configuration injection.</p>
+    </div>
+    <div class="card">
+      <h4><span class="icon">🏠</span> Homelab Agent Hosting</h4>
+      <p>Run on a home server behind NAT. Cloudflare tunnels handle public access. Tailscale for private mesh networking. One daemon manages all agents.</p>
+    </div>
+    <div class="card">
+      <h4><span class="icon">⚡</span> Serverless Containers</h4>
+      <p>Bunker as a lightweight alternative to Fargate/Cloud Run. Per-agent Docker daemon means no cold starts from image pulls. Persistent home directories between runs.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════  ROADMAP  ═══════════════════════════ -->
+<section>
+  <h2>Roadmap &amp; Next Steps</h2>
+
+  <table>
+    <thead><tr><th>Status</th><th>Item</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="tag tag-done">Done</span></td><td>v0.1.0 Release</td><td>Core platform: daemon, CLI, rootless Docker, cgroups, networking, auth, TLS, E2E verified</td></tr>
+      <tr><td><span class="tag tag-done">Done</span></td><td>Open-Source Readiness</td><td>Apache 2.0, CONTRIBUTING, SECURITY, CHANGELOG, CLA, CODE_OF_CONDUCT</td></tr>
+      <tr><td><span class="tag tag-done">Done</span></td><td>Quality Gates</td><td>GitReins Tier 1 + Tier 2, Hilo graph analysis, per-package SKILL.md docs</td></tr>
+      <tr><td><span class="tag tag-ip">Planned</span></td><td>Multi-Node Orchestration</td><td>Single bunker CLI managing agents across multiple bunkerd instances with load-aware spawn</td></tr>
+      <tr><td><span class="tag tag-ip">Planned</span></td><td>SDK Generation</td><td>Generate Go, Python, TypeScript, and Rust SDKs from the protobuf spec</td></tr>
+      <tr><td><span class="tag tag-ip">Planned</span></td><td>Web Dashboard</td><td>Real-time agent monitoring, metrics history, log streaming</td></tr>
+      <tr><td><span class="tag tag-ip">Planned</span></td><td>Image Pre-warming</td><td>Pre-load common Docker images into agent daemons for zero-latency cold starts</td></tr>
+      <tr><td><span class="tag tag-ip">Planned</span></td><td>Kubernetes Operator</td><td>Manage agents as CRDs, integrate with existing K8s tooling</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════  QUALITY  ═══════════════════════════ -->
+<section>
+  <h2>Quality Gates</h2>
+  <p>Every commit to the Bunker repository passes these gates:</p>
+  <table>
+    <thead><tr><th>Gate</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><strong>GitReins Tier 1</strong></td><td>Secrets scan (gitleaks), Go build, go vet, go lint (golangci-lint), go test (all packages), format check (gofmt)</td></tr>
+      <tr><td><strong>GitReins Tier 2</strong></td><td>LLM-based code review against task criteria (DeepSeek V4 Flash, 50 iterations, 15m cap)</td></tr>
+      <tr><td><strong>Hilo</strong></td><td>Dependency graph analysis, blast radius calculation on file changes, auto-classification of internal/external packages</td></tr>
+      <tr><td><strong>E2E Battery</strong></td><td>Full lifecycle test against live bunkerd (34 assertions, must output VERIFY-PASS)</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════  FOOTER  ═══════════════════════════ -->
+<footer class="footer">
+  <p>
+    <strong>Project Bunker</strong> — Multi-Agent Coding Platform<br>
+    <a href="https://github.com/deployBunker/bunker">github.com/deployBunker/bunker</a> ·
+    Apache 2.0 ·
+    Built by <a href="https://github.com/deployBunker">deployBunker</a>
+  </p>
+  <p style="margin-top: 8px;">PRD Spec Summary · Generated July 2026 · v1.0</p>
+</footer>
+
+</div>
+</body>
+</html>
