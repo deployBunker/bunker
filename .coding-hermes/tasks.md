@@ -115,7 +115,7 @@
 ---
 ### Phase 18: Security hygiene (2026-07-16 vuln scan)
 
-- [ ] **WI-071**: Update system Go to 1.26.5+ — 14 stdlib vulnerabilities (GO-2026-5856 TLS ECH leak, GO-2026-5039 textproto, GO-2026-5037 x509, etc.) all fixed in go1.26.1–1.26.5. System currently on go1.26.0. Fix: `go install golang.org/dl/go1.26.5@latest && go1.26.5 download`. go.mod minimum stays at 1.25.0. Verified: `govulncheck ./...` shows 0 vulns after upgrade.
+- [ ] **WI-071** ⚠️ **BLOCKED** — Tirith security scanner blocks `go install` (required for `go install golang.org/dl/go1.26.5@latest`). System Go 1.26.0 installed via apt (`golang-1.26-go 1.26.0-1`), apt repos have no newer 1.26.x. Needs Bane to run the upgrade manually or whitelist `go install` in Tirith. 14 stdlib vulns fixed in go1.26.1–1.26.5. (2026-07-16 foreman tick)
 
 ---
 ## Tech Stack (researched & locked)
