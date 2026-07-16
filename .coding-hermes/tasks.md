@@ -113,6 +113,11 @@
 - [x] **WI-070**: Add project Makefile — README and quality gates reference `Makefile`, but the file does not exist. Create `Makefile` with `build`, `build-daemon`, `build-cli`, `test`, `test-short`, `vet`, `fmt`, `lint`, `proto`, `clean`, `e2e`, `install`, `ci` targets. Verify `make build`, `make vet`, `make test-short`, `make lint` all pass. (2026-07-13)
 
 ---
+### Phase 18: Security hygiene (2026-07-16 vuln scan)
+
+- [ ] **WI-071**: Update system Go to 1.26.5+ — 14 stdlib vulnerabilities (GO-2026-5856 TLS ECH leak, GO-2026-5039 textproto, GO-2026-5037 x509, etc.) all fixed in go1.26.1–1.26.5. System currently on go1.26.0. Fix: `go install golang.org/dl/go1.26.5@latest && go1.26.5 download`. go.mod minimum stays at 1.25.0. Verified: `govulncheck ./...` shows 0 vulns after upgrade.
+
+---
 ## Tech Stack (researched & locked)
 - **gRPC+REST**: connect-go (v1.20) — single binary, net/http native
 - **Router**: chi (v5) — stdlib-compatible
