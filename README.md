@@ -4,7 +4,7 @@
 
 ![Bunker](bunker-hero.png)
 
-[![Go Version](https://img.shields.io/badge/Go-1.24%2B-00ADD8?logo=go)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![gRPC](https://img.shields.io/badge/gRPC-connect--go-4285F4)](https://connectrpc.com/)
 [![Docker](https://img.shields.io/badge/Docker-rootless-2496ED?logo=docker)](https://docs.docker.com/engine/security/rootless/)
@@ -200,7 +200,7 @@ bunker destroy     Tear down an agent
 
 | Layer | Technology |
 |-------|-----------|
-| Language | Go 1.24+ |
+| Language | Go 1.25+ |
 | RPC | [connect-go](https://connectrpc.com/) (gRPC + REST, single binary) |
 | HTTP router | [chi](https://github.com/go-chi/chi) |
 | CLI | [cobra](https://github.com/spf13/cobra) + [viper](https://github.com/spf13/viper) |
