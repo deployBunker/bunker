@@ -119,6 +119,8 @@
 
 - [x] **WI-072**: Update outdated Go dependencies — 12 packages updated via `go mod edit -require`. chi v5.3.1, fsnotify v1.10.1, mapstructure v2.5.0, cpuid v2.4.0, go-toml v2.4.3, locafero v0.12.0, zap v1.28.0, crypto v0.54.0, mod v0.38.0, net v0.57.0, sync v0.22.0, sys v0.47.0. Build+vet+test all pass, GitReins guard PASS. (commit 7273bfd)
 
+- [ ] **WI-073** — Install `govulncheck` for Go dependency vulnerability scanning (`govulncheck: command not found`). `go install golang.org/x/vuln/cmd/govulncheck@latest`. This is an INFRA task — the tool gap is infrastructure, not a vulnerability.
+
 ---
 ## Tech Stack (researched & locked)
 - **gRPC+REST**: connect-go (v1.20) — single binary, net/http native
