@@ -115,7 +115,7 @@
 ---
 ### Phase 18: Security hygiene (2026-07-16 vuln scan)
 
-- [ ] **WI-071** ⚠️ **BLOCKED** — Tirith security scanner blocks `go install` (required for `go install golang.org/dl/go1.26.5@latest`). Current Go: **1.26.4** (via apt), needs upgrade to **1.26.5**. 1 stdlib vuln (GO-2026-5856: ECH privacy leak in crypto/tls) fixed in 1.26.5. Needs Bane to run the upgrade manually or whitelist `go install` in Tirith.
+- [ ] **WI-071** ⚠️ **BLOCKED** — Tirith security scanner blocks `go install` (required for `go install golang.org/dl/go1.26.5@latest`). Current Go: **1.26.0** (via apt `golang-go:amd64 2:1.26~1`), needs upgrade to **1.26.5**. 2 stdlib vulns: GO-2026-5856 (ECH privacy leak in crypto/tls, fixed in 1.26.5) and GO-2026-5039 (net/textproto error escaping, fixed in 1.26.4). Both fixed by upgrading to 1.26.5. Needs Bane to run the upgrade manually or whitelist `go install` in Tirith.
 
 - [x] **WI-072**: Update outdated Go dependencies — 12 packages updated via `go mod edit -require`. chi v5.3.1, fsnotify v1.10.1, mapstructure v2.5.0, cpuid v2.4.0, go-toml v2.4.3, locafero v0.12.0, zap v1.28.0, crypto v0.54.0, mod v0.38.0, net v0.57.0, sync v0.22.0, sys v0.47.0. Build+vet+test all pass, GitReins guard PASS. (commit 7273bfd)
 
