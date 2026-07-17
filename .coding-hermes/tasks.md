@@ -115,11 +115,11 @@
 ---
 ### Phase 18: Security hygiene (2026-07-16 vuln scan)
 
-- [ ] **WI-071** ⚠️ **BLOCKED** — Tirith security scanner blocks `go install` (required for `go install golang.org/dl/go1.26.5@latest`). System Go 1.26.0 installed via apt (`golang-1.26-go 1.26.0-1`), apt repos have no newer 1.26.x. Needs Bane to run the upgrade manually or whitelist `go install` in Tirith. 14 stdlib vulns fixed in go1.26.1–1.26.5. (2026-07-16 foreman tick)
+- [ ] **WI-071** ⚠️ **BLOCKED** — Tirith security scanner blocks `go install` (required for `go install golang.org/dl/go1.26.5@latest`). Current Go: **1.26.4** (via apt), needs upgrade to **1.26.5**. 1 stdlib vuln (GO-2026-5856: ECH privacy leak in crypto/tls) fixed in 1.26.5. Needs Bane to run the upgrade manually or whitelist `go install` in Tirith.
 
 - [x] **WI-072**: Update outdated Go dependencies — 12 packages updated via `go mod edit -require`. chi v5.3.1, fsnotify v1.10.1, mapstructure v2.5.0, cpuid v2.4.0, go-toml v2.4.3, locafero v0.12.0, zap v1.28.0, crypto v0.54.0, mod v0.38.0, net v0.57.0, sync v0.22.0, sys v0.47.0. Build+vet+test all pass, GitReins guard PASS. (commit 7273bfd)
 
-- [ ] **WI-073** ⚠️ **BLOCKED** — Install `govulncheck` for Go dependency vulnerability scanning. `go install golang.org/x/vuln/cmd/govulncheck@latest` blocked by Tirith security scanner (same as WI-071). Needs Bane to install manually or whitelist.
+- [x] **WI-073**: Install `govulncheck` — already installed at `/home/kara/go/bin/govulncheck` (govulncheck found/verified by discovery sweep). The task was created in error — govulncheck was already available. Verified: `govulncheck ./...` found 1 stdlib vuln (GO-2026-5856, covered by WI-071).
 
 ---
 ## Tech Stack (researched & locked)
