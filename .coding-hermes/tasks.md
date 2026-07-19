@@ -152,3 +152,48 @@ Load coding-hermes-never-done skill. Run ALL 11 checks: spec alignment, doc cove
 - Orchestrator: DeepSeek V4 Pro (Hermes)
 
 ## [x] DEPS: upgrade Go deps — go-jose/go-jose/v4 v4.1.3→v4.1.4 ✅; go-md2man blocked by cobra v1.10.2 (pins v2.0.6); golang/protobuf no longer a dependency (removed). (2026-07-19, foreman direct)
+
+---
+
+## 11-Point Audit — idle tick #5 (2026-07-19 14:20)
+
+### Check 1: SPEC ALIGNMENT
+No specs/ directory. Proto definitions at proto/bunker/v1/ ARE the canonical spec for gRPC projects — no gap.
+
+### Check 2: DOC COVERAGE
+- [ ] **DOC-001**: go.mod `go` directive stale at 1.25.0 — actual toolchain is 1.26.5 (govulncheck 0 vulns after upgrade). Update to `go 1.26.5`.
+- [ ] **DOC-002**: README Go badge says `1.25+` — update to `1.26+` after Go upgrade confirmed. Also missing SKILL.md for 9 internal packages (apikey, hermes, hilo, resource, tailscale, tlsutil, proto/bunker/v1, proto/bunker/v1/bunkerv1connect).
+
+### Check 3: TEST GAPS
+- [ ] **TEST-001**: 4 source files have 0 test coverage: `internal/cli/client.go`, `internal/cli/mount.go`, `cmd/bunker/main.go`, `cmd/bunkerd/main.go`. cmd/main.go are acceptable (entrypoints), but client.go and mount.go need tests.
+- [ ] **TEST-002**: `internal/agent` coverage 28.2% — 4 functions at 0%: `applyUserSliceLimits`, `installRootlessDocker`, `ensureRootlesskitAppArmor`, `waitForUserManager`. These require live systemd/dockerd — add integration tests behind build tags.
+- [ ] **TEST-003**: `internal/server` coverage 44.0% — lowest among tested packages. Add handler tests for remaining RPCs.
+- [ ] **TEST-004**: `internal/auth/interceptor.go` — `WrapStreamingHandler` and `WrapStreamingClient` at 0%. Add streaming interceptor tests.
+
+### Check 4: PACKAGE UPGRADES
+- [ ] **DEPS-001**: Replace deprecated `github.com/golang/protobuf` v1.5.0 with `google.golang.org/protobuf`. 9 outdated deps: go-md2man v2.0.6→v2.0.7, pebble v2.10.0→v2.10.1, go-internal v1.9.0→v1.15.0, goldmark v1.4.13→v1.8.4, assert v1.1.0→v1.3.1, x/telemetry, x/tools v0.47.0→v0.48.0, check.v1.
+
+### Check 5: PITFALL HUNT
+No TODO/FIXME/HACK found. gitleaks.toml allowlist is scoped to proto + test files (not *.md or specs/). Clean.
+
+### Check 6: PERF AUDIT
+No benchmarks defined — expected for infra daemon. No N+1 queries, no unbounded collections found. Clean.
+
+### Check 7: ENDPOINT VERIFICATION
+bunkerd not running on dev box — expected. All connect-go handlers wired via chi router in server.go. N/A.
+
+### Check 8: CI/CD HEALTH
+All 5 recent CI runs passed (green). Latest: "fix: remove deprecated gosimple linter". Clean.
+
+### Check 9: DUCKBRAIN SYNC
+- [ ] **DUCK-001**: Idle tick counting broken — 4 DuckBrain records show counts 1, 1, 2, 1. This is tick #5 but prior tick claimed #1. Fix: use DuckBrain recall to find highest prior count, not hardcoded or inferred.
+
+### Check 10: CODE QUALITY
+- [ ] **QUAL-001**: `internal/agent/manager.go` at 959 lines — largest file. Consider splitting into spawn, destroy, resource sub-files.
+- [ ] **QUAL-002**: 9 internal packages lack SKILL.md (apikey, hermes, hilo, resource, tailscale, tlsutil, plus proto packages). WI-062 added 8, 9 remain.
+
+### Check 11: MIDDLE-OUT WIRING
+Both binaries build, config.Load called in bunkerd, viper in bunker CLI, all cobra commands registered, connect-go handlers wired via chi. No wiring gaps.
+
+### Summary
+11 checks → 10 gaps found → 10 tasks created (DOC-001/002, TEST-001/002/003/004, DEPS-001, DUCK-001, QUAL-001/002). No self-disable — cooldown escalated to 14400s (4h).
