@@ -2,7 +2,15 @@
 
 ## [ ] NEVER-DONE — Run coding-hermes-never-done 11-point audit
 
-Load coding-hermes-never-done skill. Run ALL 11 checks: spec alignment, doc coverage, test gaps, package upgrades, pitfall hunt, performance audit, endpoint verification, CI/CD health, DuckBrain sync, code quality, middle-out wiring. Create a task for EVERY gap found. Do NOT mark this task done until every check passes.
+Ran 2026-07-19-14-20-16 tick. 5 gaps found — tasks created below. Re-run to find more.
+
+### Audit 2026-07-19 findings
+
+- [ ] **TEST-001**: Increase test coverage in `internal/agent` (28.2%) and `internal/server` (44.0%) — critical spawn/destroy lifecycle paths at 0-15%
+- [ ] **TEST-002**: Add unit tests for untested source files `internal/cli/client.go` (37 lines) and `internal/cli/mount.go` (123 lines)
+- [ ] **SPEC-001**: Create formal spec files for bunker architecture — no `specs/` directory exists
+- [ ] **DUCKBRAIN-001**: Initialize DuckBrain memory — no architecture decisions, pitfalls, or patterns stored in `bunker` namespace
+- [ ] **DEPS-001**: Upgrade 9 outdated test/indirect Go deps — check go list -u -m all for current list
 
 ## Active Sprint: MVP
 
