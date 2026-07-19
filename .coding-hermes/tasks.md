@@ -1,5 +1,9 @@
 # Bunker — Coding Hermes Task Queue
 
+## [ ] NEVER-DONE — Run coding-hermes-never-done 11-point audit
+
+Load coding-hermes-never-done skill. Run ALL 11 checks: spec alignment, doc coverage, test gaps, package upgrades, pitfall hunt, performance audit, endpoint verification, CI/CD health, DuckBrain sync, code quality, middle-out wiring. Create a task for EVERY gap found. Do NOT mark this task done until every check passes.
+
 ## Active Sprint: MVP
 
 ### Phase 1: Core bunkerd daemon
