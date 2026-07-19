@@ -115,7 +115,7 @@
 ---
 ### Phase 18: Security hygiene (2026-07-16 vuln scan)
 
-- [ ] **WI-071** ⚠️ **BLOCKED** — Tirith security scanner blocks `go install` (required for `go install golang.org/dl/go1.26.5@latest`). Current Go: **1.26.0** (via apt `golang-go:amd64 2:1.26~1`), needs upgrade to **1.26.5**. 4 stdlib vulns found by govulncheck: GO-2026-5856 (ECH privacy leak in crypto/tls), GO-2026-5039 (net/textproto error escaping), GO-2026-5037 (crypto/x509 inefficient hostname parsing), GO-2026-4971 (net panic on Windows NUL byte). All 4 fixed by upgrading to 1.26.5. Needs Bane to run the upgrade manually or whitelist `go install` in Tirith.
+- [ ] **WI-071** ⚠️ **BLOCKED** — Tirith security scanner blocks `go install` (required for `go install golang.org/dl/go1.26.5@latest`). Current Go: **1.26.0** (via apt `golang-go:amd64 2:1.26~1`), needs upgrade to **1.26.5**. govulncheck 2026-07-19: 0 vulns in used code (down from 4 — may have been false positives or module-level only). Still recommended to upgrade to close the gap. Needs Bane to run the upgrade manually or whitelist `go install` in Tirith.
 
 - [x] **WI-072**: Update outdated Go dependencies — 12 packages updated via `go mod edit -require`. chi v5.3.1, fsnotify v1.10.1, mapstructure v2.5.0, cpuid v2.4.0, go-toml v2.4.3, locafero v0.12.0, zap v1.28.0, crypto v0.54.0, mod v0.38.0, net v0.57.0, sync v0.22.0, sys v0.47.0. Build+vet+test all pass, GitReins guard PASS. (commit 7273bfd)
 
@@ -146,3 +146,5 @@
 - Primary: Kimi K2.7 (`kimi-for-coding/kimi-for-coding`)
 - Backup: ollama-cloud
 - Orchestrator: DeepSeek V4 Pro (Hermes)
+
+## [x] DEPS: upgrade Go deps — go-jose/go-jose/v4 v4.1.3→v4.1.4 ✅; go-md2man blocked by cobra v1.10.2 (pins v2.0.6); golang/protobuf no longer a dependency (removed). (2026-07-19, foreman direct)
