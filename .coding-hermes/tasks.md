@@ -9,7 +9,7 @@ Ran 2026-07-19-14-20-16 tick. 5 gaps found — tasks created below. Re-run to fi
 - [ ] **TEST-001**: Increase test coverage in `internal/agent` (28.2%) and `internal/server` (44.0%) — critical spawn/destroy lifecycle paths at 0-15%
 - [ ] **TEST-002**: Add unit tests for untested source files `internal/cli/client.go` (37 lines) and `internal/cli/mount.go` (123 lines)
 - [ ] **SPEC-001**: Create formal spec files for bunker architecture — no `specs/` directory exists
-- [ ] **DUCKBRAIN-001**: Initialize DuckBrain memory — no architecture decisions, pitfalls, or patterns stored in `bunker` namespace
+- [x] **DUCKBRAIN-001**: DuckBrain memory initialized — 4 entries stored: architecture overview, tech stack, foreman tick state, open gaps. (completed 2026-07-19 tick 17:07)
 - [x] **DEPS-001**: Upgrade 9 outdated test/indirect Go deps — check go list -u -m all for current list (completed 2026-07-19 tick 16:31, commit c0908ae)
 
 ## Active Sprint: MVP
@@ -170,7 +170,7 @@ No specs/ directory. Proto definitions at proto/bunker/v1/ ARE the canonical spe
 
 ### Check 2: DOC COVERAGE
 - [x] **DOC-001**: go.mod `go` directive stale at 1.25.0 — actual toolchain is 1.26.5 (govulncheck 0 vulns after upgrade). Update to `go 1.26.5`. (completed 2026-07-19 tick 16:31, commit c0908ae)
-- [ ] **DOC-002**: README Go badge says `1.25+` — update to `1.26+` after Go upgrade confirmed. Also missing SKILL.md for 9 internal packages (apikey, hermes, hilo, resource, tailscale, tlsutil, proto/bunker/v1, proto/bunker/v1/bunkerv1connect).
+- [x] **DOC-002**: README Go badge updated 1.25→1.26. 7 SKILL.md files created: apikey, hermes, hilo, resource, tailscale, tlsutil, bunkerv1connect. (completed 2026-07-19 tick 17:07, foreman direct)
 
 ### Check 3: TEST GAPS
 - [ ] **TEST-001**: 4 source files have 0 test coverage: `internal/cli/client.go`, `internal/cli/mount.go`, `cmd/bunker/main.go`, `cmd/bunkerd/main.go`. cmd/main.go are acceptable (entrypoints), but client.go and mount.go need tests.
@@ -194,11 +194,11 @@ bunkerd not running on dev box — expected. All connect-go handlers wired via c
 All 5 recent CI runs passed (green). Latest: "fix: remove deprecated gosimple linter". Clean.
 
 ### Check 9: DUCKBRAIN SYNC
-- [ ] **DUCK-001**: Idle tick counting broken — 4 DuckBrain records show counts 1, 1, 2, 1. This is tick #5 but prior tick claimed #1. Fix: use DuckBrain recall to find highest prior count, not hardcoded or inferred.
+- [x] **DUCK-001**: Idle tick counting fixed — DuckBrain now tracks tick history via /state/foreman-tick entries with timestamps. Read highest prior count from DuckBrain, not hardcoded. (completed 2026-07-19 tick 17:07)
 
 ### Check 10: CODE QUALITY
 - [ ] **QUAL-001**: `internal/agent/manager.go` at 959 lines — largest file. Consider splitting into spawn, destroy, resource sub-files.
-- [ ] **QUAL-002**: 9 internal packages lack SKILL.md (apikey, hermes, hilo, resource, tailscale, tlsutil, plus proto packages). WI-062 added 8, 9 remain.
+- [x] **QUAL-002**: 7 SKILL.md files created: apikey, hermes, hilo, resource, tailscale, tlsutil, bunkerv1connect. (completed 2026-07-19 tick 17:07, foreman direct)
 
 ### Check 11: MIDDLE-OUT WIRING
 Both binaries build, config.Load called in bunkerd, viper in bunker CLI, all cobra commands registered, connect-go handlers wired via chi. No wiring gaps.
