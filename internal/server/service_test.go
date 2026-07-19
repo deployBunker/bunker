@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -256,6 +257,288 @@ func TestBuildExecSSHCommand(t *testing.T) {
 		if arg == "--" {
 			t.Errorf("ssh args still contain unsupported -- separator at index %d", i)
 		}
+	}
+}
+
+// TestServerInfo verifies ServerInfo returns hostname, version, and agent count.
+func TestServerInfo(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	tracker := resource.NewTracker(10, logger)
+
+	svc := &bunkerdService{
+		cfg:     config.DefaultConfig(),
+		logger:  logger,
+		tracker: tracker,
+	}
+
+	req := connect.NewRequest(&v1.ServerInfoRequest{})
+	resp, err := svc.ServerInfo(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ServerInfo() error: %v", err)
+	}
+	msg := resp.Msg
+	if msg == nil {
+		t.Fatal("ServerInfo() returned nil response")
+	}
+	if msg.Hostname == "" {
+		t.Error("ServerInfo().Hostname is empty")
+	}
+	if msg.Version == "" {
+		t.Error("ServerInfo().Version is empty")
+	}
+	if msg.AgentCount != 0 {
+		t.Errorf("ServerInfo().AgentCount = %d, want 0 (empty tracker)", msg.AgentCount)
+	}
+	if msg.MaxAgents != 10 {
+		t.Errorf("ServerInfo().MaxAgents = %d, want 10", msg.MaxAgents)
+	}
+}
+
+// fakeAgentManager implements agentManager for service-layer tests.
+type fakeAgentManager struct {
+	destroyResp   *v1.DestroyAgentResponse
+	destroyErr    error
+	destroyCalled bool
+}
+
+func (f *fakeAgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v1.SpawnAgentResponse, error) {
+	return nil, nil
+}
+
+func (f *fakeAgentManager) Destroy(ctx context.Context, agentID string, force bool) (*v1.DestroyAgentResponse, error) {
+	f.destroyCalled = true
+	if f.destroyErr != nil {
+		return f.destroyResp, f.destroyErr
+	}
+	return f.destroyResp, nil
+}
+
+func (f *fakeAgentManager) RunAgent(ctx context.Context, req *v1.RunAgentRequest) (*v1.RunAgentResponse, error) {
+	return nil, nil
+}
+
+func (f *fakeAgentManager) Stop() {}
+
+// TestDestroyAgent verifies successful agent destruction.
+func TestDestroyAgent(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	tracker := resource.NewTracker(10, logger)
+
+	mgr := &fakeAgentManager{
+		destroyResp: &v1.DestroyAgentResponse{AgentId: "agent-1", Status: "destroyed"},
+	}
+
+	svc := &bunkerdService{
+		cfg:      config.DefaultConfig(),
+		logger:   logger,
+		tracker:  tracker,
+		agentMgr: mgr,
+	}
+
+	req := connect.NewRequest(&v1.DestroyAgentRequest{AgentId: "agent-1"})
+	resp, err := svc.DestroyAgent(context.Background(), req)
+	if err != nil {
+		t.Fatalf("DestroyAgent() error: %v", err)
+	}
+	if !mgr.destroyCalled {
+		t.Error("DestroyAgent() did not call agentMgr.Destroy")
+	}
+	if resp.Msg.Status != "destroyed" {
+		t.Errorf("DestroyAgent().Status = %q, want destroyed", resp.Msg.Status)
+	}
+}
+
+// TestDestroyAgent_NotFound verifies the not-found error path.
+func TestDestroyAgent_NotFound(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	tracker := resource.NewTracker(10, logger)
+
+	mgr := &fakeAgentManager{
+		destroyResp: &v1.DestroyAgentResponse{AgentId: "missing", Status: "not_found"},
+		destroyErr:  fmt.Errorf("agent not found"),
+	}
+
+	svc := &bunkerdService{
+		cfg:      config.DefaultConfig(),
+		logger:   logger,
+		tracker:  tracker,
+		agentMgr: mgr,
+	}
+
+	req := connect.NewRequest(&v1.DestroyAgentRequest{AgentId: "missing"})
+	_, err := svc.DestroyAgent(context.Background(), req)
+	if err == nil {
+		t.Fatal("DestroyAgent() expected error, got nil")
+	}
+	connectErr, ok := err.(*connect.Error)
+	if !ok || connectErr.Code() != connect.CodeNotFound {
+		t.Errorf("DestroyAgent() error code = %v, want NotFound", connectErr.Code())
+	}
+}
+
+// TestListAgents verifies ListAgents returns agents registered in the tracker.
+func TestListAgents(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	tracker := resource.NewTracker(10, logger)
+
+	// Register two agents
+	tracker.Register(&resource.AgentRecord{AgentID: "agent-1", Status: "running"})
+	tracker.Register(&resource.AgentRecord{AgentID: "agent-2", Status: "idle"})
+
+	svc := &bunkerdService{
+		cfg:     config.DefaultConfig(),
+		logger:  logger,
+		tracker: tracker,
+	}
+
+	req := connect.NewRequest(&v1.ListAgentsRequest{})
+	resp, err := svc.ListAgents(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ListAgents() error: %v", err)
+	}
+	msg := resp.Msg
+	if msg.TotalCount != 2 {
+		t.Errorf("ListAgents().TotalCount = %d, want 2", msg.TotalCount)
+	}
+	if len(msg.Agents) != 2 {
+		t.Fatalf("ListAgents() returned %d agents, want 2", len(msg.Agents))
+	}
+	// Verify agent IDs are present
+	ids := make(map[string]bool)
+	for _, a := range msg.Agents {
+		ids[a.AgentId] = true
+	}
+	if !ids["agent-1"] || !ids["agent-2"] {
+		t.Errorf("ListAgents() missing expected agent IDs, got: %v", ids)
+	}
+}
+
+// TestListAgents_Empty verifies ListAgents returns empty list when tracker is empty.
+func TestListAgents_Empty(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	tracker := resource.NewTracker(10, logger)
+
+	svc := &bunkerdService{
+		cfg:     config.DefaultConfig(),
+		logger:  logger,
+		tracker: tracker,
+	}
+
+	req := connect.NewRequest(&v1.ListAgentsRequest{})
+	resp, err := svc.ListAgents(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ListAgents() error: %v", err)
+	}
+	if resp.Msg.TotalCount != 0 {
+		t.Errorf("ListAgents().TotalCount = %d, want 0", resp.Msg.TotalCount)
+	}
+}
+
+// TestGetAgent verifies GetAgent returns the correct agent.
+func TestGetAgent(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	tracker := resource.NewTracker(10, logger)
+	tracker.Register(&resource.AgentRecord{AgentID: "agent-1", Status: "running"})
+
+	svc := &bunkerdService{
+		cfg:     config.DefaultConfig(),
+		logger:  logger,
+		tracker: tracker,
+	}
+
+	req := connect.NewRequest(&v1.GetAgentRequest{AgentId: "agent-1"})
+	resp, err := svc.GetAgent(context.Background(), req)
+	if err != nil {
+		t.Fatalf("GetAgent() error: %v", err)
+	}
+	if resp.Msg.Agent == nil {
+		t.Fatal("GetAgent().Agent is nil")
+	}
+	if resp.Msg.Agent.AgentId != "agent-1" {
+		t.Errorf("GetAgent().Agent.AgentId = %q, want agent-1", resp.Msg.Agent.AgentId)
+	}
+}
+
+// TestGetAgent_NotFound verifies GetAgent returns NotFound for missing agent.
+func TestGetAgent_NotFound(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	tracker := resource.NewTracker(10, logger)
+
+	svc := &bunkerdService{
+		cfg:     config.DefaultConfig(),
+		logger:  logger,
+		tracker: tracker,
+	}
+
+	req := connect.NewRequest(&v1.GetAgentRequest{AgentId: "missing"})
+	_, err := svc.GetAgent(context.Background(), req)
+	if err == nil {
+		t.Fatal("GetAgent() expected error, got nil")
+	}
+	connectErr, ok := err.(*connect.Error)
+	if !ok || connectErr.Code() != connect.CodeNotFound {
+		t.Errorf("GetAgent() error code = %v, want NotFound", connectErr.Code())
+	}
+}
+
+// TestAgentMetrics verifies AgentMetrics returns resource info for a registered agent.
+func TestAgentMetrics(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	tracker := resource.NewTracker(10, logger)
+	tracker.Register(&resource.AgentRecord{
+		AgentID: "agent-1",
+		Status:  "running",
+		Limits: &v1.ResourceLimits{
+			MemoryMaxBytes: 512 * 1024 * 1024,
+			DiskMaxBytes:   10 * 1024 * 1024 * 1024,
+		},
+	})
+
+	svc := &bunkerdService{
+		cfg:     config.DefaultConfig(),
+		logger:  logger,
+		tracker: tracker,
+	}
+
+	req := connect.NewRequest(&v1.AgentMetricsRequest{AgentId: "agent-1"})
+	resp, err := svc.AgentMetrics(context.Background(), req)
+	if err != nil {
+		t.Fatalf("AgentMetrics() error: %v", err)
+	}
+	msg := resp.Msg
+	if msg.AgentId != "agent-1" {
+		t.Errorf("AgentMetrics().AgentId = %q, want agent-1", msg.AgentId)
+	}
+	if msg.Status != "running" {
+		t.Errorf("AgentMetrics().Status = %q, want running", msg.Status)
+	}
+	if msg.MemoryLimitBytes != 512*1024*1024 {
+		t.Errorf("AgentMetrics().MemoryLimitBytes = %d, want 512MB", msg.MemoryLimitBytes)
+	}
+	if msg.DiskLimitBytes != 10*1024*1024*1024 {
+		t.Errorf("AgentMetrics().DiskLimitBytes = %d, want 10GB", msg.DiskLimitBytes)
+	}
+}
+
+// TestAgentMetrics_NotFound verifies AgentMetrics returns NotFound for missing agent.
+func TestAgentMetrics_NotFound(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	tracker := resource.NewTracker(10, logger)
+
+	svc := &bunkerdService{
+		cfg:     config.DefaultConfig(),
+		logger:  logger,
+		tracker: tracker,
+	}
+
+	req := connect.NewRequest(&v1.AgentMetricsRequest{AgentId: "missing"})
+	_, err := svc.AgentMetrics(context.Background(), req)
+	if err == nil {
+		t.Fatal("AgentMetrics() expected error, got nil")
+	}
+	connectErr, ok := err.(*connect.Error)
+	if !ok || connectErr.Code() != connect.CodeNotFound {
+		t.Errorf("AgentMetrics() error code = %v, want NotFound", connectErr.Code())
 	}
 }
 
