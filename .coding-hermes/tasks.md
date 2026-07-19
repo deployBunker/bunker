@@ -10,7 +10,7 @@ Ran 2026-07-19-14-20-16 tick. 5 gaps found — tasks created below. Re-run to fi
 - [ ] **TEST-002**: Add unit tests for untested source files `internal/cli/client.go` (37 lines) and `internal/cli/mount.go` (123 lines)
 - [ ] **SPEC-001**: Create formal spec files for bunker architecture — no `specs/` directory exists
 - [ ] **DUCKBRAIN-001**: Initialize DuckBrain memory — no architecture decisions, pitfalls, or patterns stored in `bunker` namespace
-- [ ] **DEPS-001**: Upgrade 9 outdated test/indirect Go deps — check go list -u -m all for current list
+- [x] **DEPS-001**: Upgrade 9 outdated test/indirect Go deps — check go list -u -m all for current list (completed 2026-07-19 tick 16:31, commit c0908ae)
 
 ## Active Sprint: MVP
 
@@ -169,7 +169,7 @@ Ran 2026-07-19-14-20-16 tick. 5 gaps found — tasks created below. Re-run to fi
 No specs/ directory. Proto definitions at proto/bunker/v1/ ARE the canonical spec for gRPC projects — no gap.
 
 ### Check 2: DOC COVERAGE
-- [ ] **DOC-001**: go.mod `go` directive stale at 1.25.0 — actual toolchain is 1.26.5 (govulncheck 0 vulns after upgrade). Update to `go 1.26.5`.
+- [x] **DOC-001**: go.mod `go` directive stale at 1.25.0 — actual toolchain is 1.26.5 (govulncheck 0 vulns after upgrade). Update to `go 1.26.5`. (completed 2026-07-19 tick 16:31, commit c0908ae)
 - [ ] **DOC-002**: README Go badge says `1.25+` — update to `1.26+` after Go upgrade confirmed. Also missing SKILL.md for 9 internal packages (apikey, hermes, hilo, resource, tailscale, tlsutil, proto/bunker/v1, proto/bunker/v1/bunkerv1connect).
 
 ### Check 3: TEST GAPS
@@ -179,7 +179,7 @@ No specs/ directory. Proto definitions at proto/bunker/v1/ ARE the canonical spe
 - [ ] **TEST-004**: `internal/auth/interceptor.go` — `WrapStreamingHandler` and `WrapStreamingClient` at 0%. Add streaming interceptor tests.
 
 ### Check 4: PACKAGE UPGRADES
-- [ ] **DEPS-001**: Replace deprecated `github.com/golang/protobuf` v1.5.0 with `google.golang.org/protobuf`. 9 outdated deps: go-md2man v2.0.6→v2.0.7, pebble v2.10.0→v2.10.1, go-internal v1.9.0→v1.15.0, goldmark v1.4.13→v1.8.4, assert v1.1.0→v1.3.1, x/telemetry, x/tools v0.47.0→v0.48.0, check.v1.
+- [x] **DEPS-001**: Replace deprecated `github.com/golang/protobuf` v1.5.0 with `google.golang.org/protobuf`. 9 outdated deps upgraded: go-md2man v2.0.7, pebble v2.10.1, go-internal v1.15.0, goldmark v1.8.4, assert v1.3.1, x/telemetry, x/tools v0.48.0, check.v1. golang/protobuf v1.5.0→v1.5.4 (deprecated, but still required as indirect dep — cannot be fully removed). (completed 2026-07-19 tick 16:31, commit c0908ae)
 
 ### Check 5: PITFALL HUNT
 No TODO/FIXME/HACK found. gitleaks.toml allowlist is scoped to proto + test files (not *.md or specs/). Clean.
