@@ -8,7 +8,7 @@ Ran 2026-07-19-14-20-16 tick. 5 gaps found — tasks created below. Re-run to fi
 
 - [ ] **TEST-001**: Increase test coverage in `internal/agent` (28.2%) and `internal/server` (44.0%) — critical spawn/destroy lifecycle paths at 0-15%
 - [x] **TEST-002**: Add unit tests for internal/cli/client.go (37 lines) and internal/cli/mount.go (123 lines) — 16 tests passing (completed 2026-07-19, commit 200c424)
-- [ ] **SPEC-001**: Create formal spec files for bunker architecture — no `specs/` directory exists
+- [x] **SPEC-001**: Create formal spec files for bunker architecture — 3 spec files created: architecture, API, agent-lifecycle (completed 2026-07-19, commit SPEC-001)
 - [x] **DUCKBRAIN-001**: DuckBrain memory initialized — 4 entries stored: architecture overview, tech stack, foreman tick state, open gaps. (completed 2026-07-19 tick 17:07)
 - [x] **DEPS-001**: Upgrade 9 outdated test/indirect Go deps — check go list -u -m all for current list (completed 2026-07-19 tick 16:31, commit c0908ae)
 
