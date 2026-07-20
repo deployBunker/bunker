@@ -6,7 +6,7 @@ Ran 2026-07-19-14-20-16 tick. 5 gaps found — tasks created below. Re-run to fi
 
 ### Audit 2026-07-19 findings
 
-- [~] **TEST-001**: Raise internal/server coverage from 52.3% to >60%. 5/6 handler tests done (commit 33feda0). Remaining: ExecAgent, GetInfo (agentService), Metrics, Heartbeat, exec helpers. (merged: TEST-001 + TEST-003)
+- [x] **TEST-001**: Raise internal/server coverage from 52.3% to >60% — completed (commit c61b01d, 9 new tests, +242 lines, 60.9% coverage). ExecAgent, agentService handlers, and SSH helpers now tested.
 - [x] **TEST-005**: Add integration tests for agent rootless functions (applyUserSliceLimits, installRootlessDocker, ensureRootlesskitAppArmor, waitForUserManager) behind `//go:build integration` tag — completed (commit 0ec350b, 358 lines, 6 integration tests)
 - [x] **TEST-002**: Add unit tests for internal/cli/client.go (37 lines) and internal/cli/mount.go (123 lines) — 16 tests passing (completed 2026-07-19, commit 200c424)
 - [x] **SPEC-001**: Create formal spec files for bunker architecture — 3 spec files created: architecture, API, agent-lifecycle (completed 2026-07-19, commit SPEC-001)
@@ -176,7 +176,7 @@ No specs/ directory. Proto definitions at proto/bunker/v1/ ARE the canonical spe
 ### Check 3: TEST GAPS
 - [x] **TEST-001**: ~~4 source files have 0 test coverage~~ — client.go + mount.go tests added (commit 200c424), cmd/* are expected entrypoints. (resolved 2026-07-20)
 - [x] **TEST-002**: ~~internal/agent coverage 28.2%~~ — 4 rootless functions covered by integration tests (commit 0ec350b, TEST-005). Coverage at 28.2% is expected for system-level package behind build tags. (resolved 2026-07-20)
-- [~] **TEST-003**: `internal/server` coverage 52.3% — merged into TEST-001 (above). See top-level audit findings.
+- [x] **TEST-003**: `internal/server` coverage 52.3% — merged into TEST-001 (above). Completed via commit c61b01d (60.9% coverage, 9 new tests).
 - [ ] **TEST-004**: `internal/auth/interceptor.go` + `jwt.go` + `mtls.go` — `WrapStreamingHandler` and `WrapStreamingClient` at 0% across 3 auth modules. Add streaming interceptor tests.
 
 ### Check 4: PACKAGE UPGRADES
