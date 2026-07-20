@@ -177,7 +177,7 @@ No specs/ directory. Proto definitions at proto/bunker/v1/ ARE the canonical spe
 - [x] **TEST-001**: ~~4 source files have 0 test coverage~~ — client.go + mount.go tests added (commit 200c424), cmd/* are expected entrypoints. (resolved 2026-07-20)
 - [x] **TEST-002**: ~~internal/agent coverage 28.2%~~ — 4 rootless functions covered by integration tests (commit 0ec350b, TEST-005). Coverage at 28.2% is expected for system-level package behind build tags. (resolved 2026-07-20)
 - [x] **TEST-003**: `internal/server` coverage 52.3% — merged into TEST-001 (above). Completed via commit c61b01d (60.9% coverage, 9 new tests).
-- [ ] **TEST-004**: `internal/auth/interceptor.go` + `jwt.go` + `mtls.go` — `WrapStreamingHandler` and `WrapStreamingClient` at 0% across 3 auth modules. Add streaming interceptor tests.
+- [x] **TEST-004**: `internal/auth/interceptor.go` + `jwt.go` + `mtls.go` — `WrapStreamingHandler` and `WrapStreamingClient` at 0% across 3 auth modules. Added 14 streaming interceptor tests in streaming_test.go. Coverage: 79.9% → 89.7%. (completed 2026-07-20, commit 258dc9b)
 
 ### Check 4: PACKAGE UPGRADES
 - [x] **DEPS-001**: Replace deprecated `github.com/golang/protobuf` v1.5.0 with `google.golang.org/protobuf`. 9 outdated deps upgraded: go-md2man v2.0.7, pebble v2.10.1, go-internal v1.15.0, goldmark v1.8.4, assert v1.3.1, x/telemetry, x/tools v0.48.0, check.v1. golang/protobuf v1.5.0→v1.5.4 (deprecated, but still required as indirect dep — cannot be fully removed). (completed 2026-07-19 tick 16:31, commit c0908ae)
