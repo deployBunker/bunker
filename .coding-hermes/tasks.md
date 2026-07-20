@@ -198,7 +198,7 @@ All 5 recent CI runs passed (green). Latest: "fix: remove deprecated gosimple li
 - [x] **DUCK-001**: Idle tick counting fixed — DuckBrain now tracks tick history via /state/foreman-tick entries with timestamps. Read highest prior count from DuckBrain, not hardcoded. (completed 2026-07-19 tick 17:07)
 
 ### Check 10: CODE QUALITY
-- [ ] **QUAL-001**: `internal/agent/manager.go` at 959 lines — largest file. Consider splitting into spawn, destroy, resource sub-files.
+- [x] **QUAL-001**: `internal/agent/manager.go` at 959 lines — split into manager.go (struct+lifecycle, 93 lines), manager_spawn.go (Spawn+helpers, 744 lines), manager_destroy.go (Destroy, 103 lines). Completed 2026-07-20 tick 16:56, commit a60aa88.
 - [x] **QUAL-002**: 7 SKILL.md files created: apikey, hermes, hilo, resource, tailscale, tlsutil, bunkerv1connect. (completed 2026-07-19 tick 17:07, foreman direct)
 
 ### Check 11: MIDDLE-OUT WIRING
