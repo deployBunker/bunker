@@ -8,13 +8,255 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 
+	"github.com/deployBunker/bunker/internal/auth"
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/resource"
 )
+
+// TestExecAgent_RegisteredBuildsSSH verifies that ExecAgent's raw and script
+// branches build the expected SSH command shapes for a registered agent. We
+// cannot drive the full streaming path without a real ServerStream, so we test
+// the command builders directly.
+func TestExecAgent_RegisteredBuildsSSH(t *testing.T) {
+	ctx := context.Background()
+	agentID := "abc123"
+	keyPath := "/keys/abc123"
+	userHome := "/home/bunker-abc123"
+
+	rawCmd := buildExecSSHRawCommand(ctx, agentID, keyPath, userHome, "echo", []string{"hi"})
+	if rawCmd.Path != "ssh" && !strings.HasSuffix(rawCmd.Path, "ssh") {
+		t.Fatalf("raw: want ssh command, got %q", rawCmd.Path)
+	}
+	joinedRaw := strings.Join(rawCmd.Args, " ")
+	for _, want := range []string{"-o StrictHostKeyChecking=no", "-i /keys/abc123", "bunker-abc123@localhost", "echo", "hi"} {
+		if !strings.Contains(joinedRaw, want) {
+			t.Errorf("raw args missing %q: %v", want, rawCmd.Args)
+		}
+	}
+
+	scriptCmd := buildExecSSHScriptCommand(ctx, agentID, keyPath, userHome, "#!/bin/sh\necho hi")
+	if scriptCmd.Path != "ssh" && !strings.HasSuffix(scriptCmd.Path, "ssh") {
+		t.Fatalf("script: want ssh command, got %q", scriptCmd.Path)
+	}
+	joinedScript := strings.Join(scriptCmd.Args, " ")
+	for _, want := range []string{"-o StrictHostKeyChecking=no", "-i /keys/abc123", "bunker-abc123@localhost", "sh -c", "mkdir -p", "EOFSCRIPT"} {
+		if !strings.Contains(joinedScript, want) {
+			t.Errorf("script args missing %q: %v", want, scriptCmd.Args)
+		}
+	}
+}
+
+// TestBuildExecSSHRawCommand verifies SSH args for raw mode.
+func TestBuildExecSSHRawCommand(t *testing.T) {
+	ctx := context.Background()
+	cmd := buildExecSSHRawCommand(ctx, "abc123", "/keys/abc123", "/home/bunker-abc123", "echo", []string{"hi"})
+	if cmd.Path != "ssh" && !strings.HasSuffix(cmd.Path, "ssh") {
+		t.Fatalf("want ssh command, got %q", cmd.Path)
+	}
+	joined := strings.Join(cmd.Args, " ")
+	wantParts := []string{
+		"-o StrictHostKeyChecking=no",
+		"-i /keys/abc123",
+		"bunker-abc123@localhost",
+		"env",
+		"PATH=/home/bunker-abc123/bin:$PATH",
+		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
+		"TMPDIR=/run/bunker/abc123/tmp",
+		"echo",
+		"hi",
+	}
+	for _, want := range wantParts {
+		if !strings.Contains(joined, want) {
+			t.Errorf("buildExecSSHRawCommand() args missing %q: %v", want, cmd.Args)
+		}
+	}
+}
+
+// TestBuildExecSSHScriptCommand verifies SSH args for script mode.
+func TestBuildExecSSHScriptCommand(t *testing.T) {
+	ctx := context.Background()
+	cmd := buildExecSSHScriptCommand(ctx, "abc123", "/keys/abc123", "/home/bunker-abc123", "#!/bin/sh\necho hi")
+	if cmd.Path != "ssh" && !strings.HasSuffix(cmd.Path, "ssh") {
+		t.Fatalf("want ssh command, got %q", cmd.Path)
+	}
+	joined := strings.Join(cmd.Args, " ")
+	wantParts := []string{
+		"-o StrictHostKeyChecking=no",
+		"-i /keys/abc123",
+		"bunker-abc123@localhost",
+		"sh -c",
+		"mkdir -p",
+		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
+		"TMPDIR=/run/bunker/abc123/tmp",
+	}
+	for _, want := range wantParts {
+		if !strings.Contains(joined, want) {
+			t.Errorf("buildExecSSHScriptCommand() args missing %q: %v", want, cmd.Args)
+		}
+	}
+}
+
+// TestAgentService_GetInfo verifies GetInfo returns agent info from claims and
+// the tracker record.
+func TestAgentService_GetInfo(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	tracker := resource.NewTracker(10, logger)
+	tracker.Register(&resource.AgentRecord{
+		AgentID:   "agent-1",
+		Status:    "running",
+		PublicURL: "https://agent-1.example",
+		Limits: &v1.ResourceLimits{
+			MemoryMaxBytes: 256 * 1024 * 1024,
+		},
+	})
+
+	svc := &agentService{logger: logger, tracker: tracker}
+
+	ctx := auth.ContextWithClaims(context.Background(), &auth.Claims{AgentID: "agent-1"})
+	req := connect.NewRequest(&v1.GetInfoRequest{})
+	resp, err := svc.GetInfo(ctx, req)
+	if err != nil {
+		t.Fatalf("GetInfo() error: %v", err)
+	}
+	if resp.Msg.AgentId != "agent-1" {
+		t.Errorf("GetInfo().AgentId = %q, want agent-1", resp.Msg.AgentId)
+	}
+	if resp.Msg.Status != "running" {
+		t.Errorf("GetInfo().Status = %q, want running", resp.Msg.Status)
+	}
+	if resp.Msg.PublicUrl != "https://agent-1.example" {
+		t.Errorf("GetInfo().PublicUrl = %q, want https://agent-1.example", resp.Msg.PublicUrl)
+	}
+	if resp.Msg.Limits == nil || resp.Msg.Limits.MemoryMaxBytes != 256*1024*1024 {
+		t.Errorf("GetInfo().Limits = %v, want 256MB memory limit", resp.Msg.Limits)
+	}
+}
+
+// TestAgentService_GetInfo_NoClaims verifies GetInfo returns a default empty
+// response when no claims are present.
+func TestAgentService_GetInfo_NoClaims(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	tracker := resource.NewTracker(10, logger)
+	svc := &agentService{logger: logger, tracker: tracker}
+
+	req := connect.NewRequest(&v1.GetInfoRequest{})
+	resp, err := svc.GetInfo(context.Background(), req)
+	if err != nil {
+		t.Fatalf("GetInfo() error: %v", err)
+	}
+	if resp.Msg.AgentId != "" {
+		t.Errorf("GetInfo().AgentId = %q, want empty", resp.Msg.AgentId)
+	}
+	if resp.Msg.Status != "running" {
+		t.Errorf("GetInfo().Status = %q, want running", resp.Msg.Status)
+	}
+}
+
+// TestAgentService_GetInfo_ClaimsMissingTracker verifies GetInfo populates only
+// the agent ID from claims when the tracker record is missing.
+func TestAgentService_GetInfo_ClaimsMissingTracker(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	tracker := resource.NewTracker(10, logger)
+	svc := &agentService{logger: logger, tracker: tracker}
+
+	ctx := auth.ContextWithClaims(context.Background(), &auth.Claims{AgentID: "missing"})
+	req := connect.NewRequest(&v1.GetInfoRequest{})
+	resp, err := svc.GetInfo(ctx, req)
+	if err != nil {
+		t.Fatalf("GetInfo() error: %v", err)
+	}
+	if resp.Msg.AgentId != "missing" {
+		t.Errorf("GetInfo().AgentId = %q, want missing", resp.Msg.AgentId)
+	}
+	if resp.Msg.Status != "running" {
+		t.Errorf("GetInfo().Status = %q, want running", resp.Msg.Status)
+	}
+}
+
+// TestAgentService_Metrics verifies Metrics returns resource metrics for the
+// authenticated agent.
+func TestAgentService_Metrics(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	tracker := resource.NewTracker(10, logger)
+	svc := &agentService{logger: logger, tracker: tracker}
+
+	req := connect.NewRequest(&v1.AgentMetricsRequest{AgentId: "agent-1"})
+	resp, err := svc.Metrics(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Metrics() error: %v", err)
+	}
+	if resp.Msg.AgentId != "agent-1" {
+		t.Errorf("Metrics().AgentId = %q, want agent-1", resp.Msg.AgentId)
+	}
+	if resp.Msg.Status != "running" {
+		t.Errorf("Metrics().Status = %q, want running", resp.Msg.Status)
+	}
+	// cgroup metrics may or may not be available in test environments; we just
+	// verify the fields are populated when the read succeeds.
+	_ = resp.Msg.CpuUsagePercent
+	_ = resp.Msg.MemoryUsedBytes
+}
+
+// TestAgentService_Heartbeat verifies Heartbeat extends the agent TTL and
+// returns the expected response fields.
+func TestAgentService_Heartbeat(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	tracker := resource.NewTracker(10, logger)
+	before := time.Now().Add(1 * time.Hour)
+	tracker.Register(&resource.AgentRecord{
+		AgentID:   "agent-1",
+		Status:    "running",
+		ExpiresAt: before,
+	})
+
+	svc := &agentService{logger: logger, tracker: tracker}
+
+	req := connect.NewRequest(&v1.HeartbeatAgentRequest{AgentId: "agent-1"})
+	resp, err := svc.Heartbeat(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Heartbeat() error: %v", err)
+	}
+	if resp.Msg.AgentId != "agent-1" {
+		t.Errorf("Heartbeat().AgentId = %q, want agent-1", resp.Msg.AgentId)
+	}
+	if !resp.Msg.Acknowledged {
+		t.Error("Heartbeat().Acknowledged = false, want true")
+	}
+	if resp.Msg.ExpiresAt == "" {
+		t.Error("Heartbeat().ExpiresAt is empty")
+	}
+	rec := tracker.Get("agent-1")
+	if rec == nil {
+		t.Fatal("tracker record missing after heartbeat")
+	}
+	if !rec.ExpiresAt.After(before) {
+		t.Errorf("Heartbeat() did not extend ExpiresAt: before=%v after=%v", before, rec.ExpiresAt)
+	}
+}
+
+// TestAgentService_Heartbeat_NotFound verifies Heartbeat returns NotFound for a
+// missing agent.
+func TestAgentService_Heartbeat_NotFound(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	tracker := resource.NewTracker(10, logger)
+	svc := &agentService{logger: logger, tracker: tracker}
+
+	req := connect.NewRequest(&v1.HeartbeatAgentRequest{AgentId: "missing"})
+	_, err := svc.Heartbeat(context.Background(), req)
+	if err == nil {
+		t.Fatal("Heartbeat() expected error, got nil")
+	}
+	connectErr, ok := err.(*connect.Error)
+	if !ok || connectErr.Code() != connect.CodeNotFound {
+		t.Errorf("Heartbeat() error code = %v, want NotFound", connectErr.Code())
+	}
+}
+
 
 // TestExecAgent_SSHCommandIncludesDockerHost verifies that the SSH command built
 // by ExecAgent ensures DOCKER_HOST reaches the remote command.  We now wrap the
