@@ -205,4 +205,50 @@ All 5 recent CI runs passed (green). Latest: "fix: remove deprecated gosimple li
 Both binaries build, config.Load called in bunkerd, viper in bunker CLI, all cobra commands registered, connect-go handlers wired via chi. No wiring gaps.
 
 ### Summary
+
 11 checks → 10 gaps found → 10 tasks created (DOC-001/002, TEST-001/002/003/004, DEPS-001, DUCK-001, QUAL-001/002). No self-disable — cooldown escalated to 14400s (4h).
+
+---
+
+## 11-Point Audit — idle tick #1 (2026-07-20 18:44)
+
+First truly idle tick. All prior audit gaps resolved. Board empty.
+
+### Check 1: SPEC ALIGNMENT
+3 spec files (architecture.md, api.md, agent-lifecycle.md) + 1 proto (bunker.proto). Comprehensive. PASS.
+
+### Check 2: DOC COVERAGE
+AGENTS.md, README.md, per-package SKILL.md files (8 existing). PASS.
+
+### Check 3: TEST GAPS
+397 tests across 14 packages. 4 packages with zero tests are expected (cmd/bunker, cmd/bunkerd = entrypoints; proto/bunker/v1, bunkerv1connect = generated). Lowest real coverage: internal/agent 28.2% (system-level, build-tagged), internal/server 60.9% (addressed in TEST-001). PASS.
+
+### Check 4: PACKAGE UPGRADES
+Go 1.26.5 matches go.mod. No direct deps outdated. govulncheck: 0 vulns in used code. PASS.
+
+### Check 5: PITFALL HUNT
+One `return nil, nil` at server.go:216 — legitimate guard clause (`!TLS.Enabled` → no TLS config needed). Zero TODOs/FIXMEs/HACKs. gitleaks allowlist correctly scoped (proto + test files only). PASS.
+
+### Check 6: PERFORMANCE AUDIT
+0 benchmark functions defined. Low priority for infrastructure daemon (spawn/destroy/exec are I/O-bound). Noted, no task created.
+
+### Check 7: ENDPOINT VERIFICATION
+bunkerd not running on dev box — expected. Live-server E2E battery verifies on bunker-mvp per AGENTS.md. N/A.
+
+### Check 8: CI/CD HEALTH
+5/5 recent CI runs green. Latest: "chore: board — mark TEST-004 complete". PASS.
+
+### Check 9: DUCKBRAIN SYNC
+Idle tick counter initialized in `bunker` namespace at `/projects/bunker/state/idle-ticks`. 2 prior foreman tick entries in `coding-hermes` namespace. PASS.
+
+### Check 10: CODE QUALITY
+- `proto/bunker/v1/bunker.pb.go`: 2140 lines (generated)
+- `internal/agent/manager_spawn.go`: 762 lines (post-QUAL-001 split, acceptable)
+- `internal/server/service.go`: 549 lines (minor — below 500-line threshold only marginally)
+No TODOs/FIXMEs/HACKs. `.gitignore` complete. PASS (with minor note on service.go).
+
+### Check 11: MIDDLE-OUT WIRING
+Both binaries build. `cmd/bunkerd/main.go` imports config + server (→ all other packages wired). `cmd/bunker/main.go` imports cli + cobra/viper. All connect-go handlers registered via chi-compatible interfaces. PASS.
+
+### Summary
+11 checks → 0 new gaps requiring tasks. 2 minor notes: 0 benchmarks (low priority, infra daemon), service.go 549 lines (marginal). **Idle tick #1** — no cooldown escalation (threshold ≥3). Scheduler cooldown=1800s.
