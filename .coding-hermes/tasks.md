@@ -1,3 +1,4 @@
+/usr/bin/bash: fork: retry: Resource temporarily unavailable
 # Bunker — Coding Hermes Task Queue
 
 ## [ ] NEVER-DONE — Run coding-hermes-never-done 11-point audit
@@ -174,9 +175,9 @@ No specs/ directory. Proto definitions at proto/bunker/v1/ ARE the canonical spe
 - [x] **DOC-002**: README Go badge updated 1.25→1.26. 7 SKILL.md files created: apikey, hermes, hilo, resource, tailscale, tlsutil, bunkerv1connect. (completed 2026-07-19 tick 17:07, foreman direct)
 
 ### Check 3: TEST GAPS
-- [ ] **TEST-001**: 4 source files have 0 test coverage: `internal/cli/client.go`, `internal/cli/mount.go`, `cmd/bunker/main.go`, `cmd/bunkerd/main.go`. cmd/main.go are acceptable (entrypoints), but client.go and mount.go need tests.
-- [ ] **TEST-002**: `internal/agent` coverage 28.2% — 4 functions at 0%: `applyUserSliceLimits`, `installRootlessDocker`, `ensureRootlesskitAppArmor`, `waitForUserManager`. These require live systemd/dockerd — add integration tests behind build tags.
-- [ ] **TEST-003**: `internal/server` coverage 44.0% — lowest among tested packages. Add handler tests for remaining RPCs.
+- [x] **TEST-001**: ~~4 source files have 0 test coverage~~ — client.go + mount.go tests added (commit 200c424), cmd/* are expected entrypoints. (resolved 2026-07-20)
+- [x] **TEST-002**: ~~internal/agent coverage 28.2%~~ — 4 rootless functions covered by integration tests (commit 0ec350b, TEST-005). Coverage at 28.2% is expected for system-level package behind build tags. (resolved 2026-07-20)
+- [~] **TEST-003**: `internal/server` coverage 52.3% (+8.3% from commit 33feda0). 5/6 uncovered handlers now at 100%. Remaining gap: bring coverage above 60%.
 - [ ] **TEST-004**: `internal/auth/interceptor.go` — `WrapStreamingHandler` and `WrapStreamingClient` at 0%. Add streaming interceptor tests.
 
 ### Check 4: PACKAGE UPGRADES
