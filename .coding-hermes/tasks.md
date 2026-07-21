@@ -428,3 +428,45 @@ Both binaries build. chi router with connect-go handlers, config.Load + viper wi
 
 ### Summary
 11 checks → **0 gaps found**. 1 standing note: 0 benchmarks (low priority, infra daemon). **Idle tick #5** — cooldown escalated to 43200s (12h). Scheduler confirmed: CooldownS=43200, Enabled=True. Hilo=useful (87 files, 727 edges).
+
+---
+
+## 11-Point Audit — idle tick #6 (2026-07-21 00:46)
+
+Sixth consecutive idle tick. All prior gaps resolved. Board empty.
+
+### Check 1: SPEC ALIGNMENT
+3 spec files (architecture.md, api.md, agent-lifecycle.md — 933 lines total) + proto (bunker.proto, 13 rpc methods). PASS.
+
+### Check 2: DOC COVERAGE
+AGENTS.md (31 lines), README.md (246 lines), LICENSE (Apache 2.0), Makefile, 15 per-package SKILL.md files. PASS.
+
+### Check 3: TEST GAPS
+All 14 packages pass `go test -short -count=1 -timeout 60s ./...`. 4 packages with [no test files] expected (cmd/bunker, cmd/bunkerd = entrypoints; proto/bunker/v1, bunkerv1connect = generated). PASS.
+
+### Check 4: PACKAGE UPGRADES
+7 direct deps — all current (zero [brackets] in go list -u). Go 1.26.5 in go.mod. govulncheck: 0 vulns in used code. 5 indirect deps outdated but all transitive noise (go-md2man blocked by cobra, golang/protobuf still required as indirect, kr/pty, goldmark, x/telemetry — none in go.mod directly). PASS.
+
+### Check 5: PITFALL HUNT
+Zero TODOs/FIXMEs/HACKs in source. `return nil, nil` at server.go:216 is legitimate guard clause (`!TLS.Enabled` → no TLS config needed). gitleaks detect: no leaks found. PASS.
+
+### Check 6: PERFORMANCE AUDIT
+0 benchmark functions. Low priority for infrastructure daemon (spawn/destroy/exec are I/O-bound). Noted 6th consecutive tick. PASS.
+
+### Check 7: ENDPOINT VERIFICATION
+bunkerd not running on dev box — expected. Source audit confirms zero stubs. E2E battery exists on bunker-mvp. N/A.
+
+### Check 8: CI/CD HEALTH
+5/5 recent CI runs green. Latest: "idle tick #5". PASS.
+
+### Check 9: DUCKBRAIN SYNC
+17 keys in bunker namespace. Tick counter at 5 → 6. PASS.
+
+### Check 10: CODE QUALITY
+Zero TODOs/FIXMEs/HACKs. Zero untracked files (`git status` clean). Longest files: bunker.pb.go (2140 lines, generated), manager_spawn.go (762), service.go (549 — marginal). `.gitignore` complete. PASS.
+
+### Check 11: MIDDLE-OUT WIRING
+Both binaries build (`go build ./...` + `go vet ./...` clean). chi router with connect-go handlers, config.Load + viper wired, gRPC + REST listeners. PASS.
+
+### Summary
+11 checks → **0 gaps found**. 1 standing note: 0 benchmarks (low priority, infra daemon). **Idle tick #6** — cooldown at 43200s (12h), was reverted to 1800 by daemon restart → re-fixed via API PUT (1st reversion — warning). Hilo=useful (87 files, 727 edges).
