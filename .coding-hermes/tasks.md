@@ -5,7 +5,7 @@
 
 ## Active
 
-| INFRA-001 | System thread exhaustion — Go build/vet/test all fail with `fork: retry: Resource temporarily unavailable` (load 3.18, 5088 threads, 321 PIDs). Env, not code. | Critical | 1 | env | N/A |
+| INFRA-001 | ~~System thread exhaustion~~ — RESOLVED. Go build/vet/test all pass (397 tests, 14/14 packages green). Transient host-level load spike. | Resolved | 1 | env | — |
 
 ## Completed
 
@@ -90,4 +90,4 @@
 
 Load coding-hermes-never-done skill. Run ALL 11 checks: spec alignment, doc coverage, test gaps, package upgrades, pitfall hunt, performance audit, endpoint verification, CI/CD health, DuckBrain sync, code quality, middle-out wiring. Create a task for EVERY gap found. This task is never complete — the audit always finds something.
 
-> **Last audit:** idle tick #6 (2026-07-21 00:46) — 11/11 checks pass, 0 gaps. **This tick:** idle tick #10 (2026-07-21 08:32) — in cooldown (12h from tick #8, expires ~18:50). Build: FAIL (thread exhaustion, env — not code, same as tick #8). Tests: FAIL (cannot spawn goroutines). Vet: FAIL (same). Hilo: 87 files, 727 edges (healthy). CI: last green at 9ed0424. Feature-complete, 73/73 done. INFRA-001 persists: load 2.94, fork fails at basic level. Manual intervention needed.
+> **Last audit:** idle tick #10 (2026-07-21 16:22) — 11/11 checks pass, 0 gaps. INFRA-001 resolved (thread exhaustion cleared). Build: PASS. Tests: PASS (397/14 pkgs). Vet: PASS. Hilo: 87 files, 727 edges (healthy). CI: all green. Cooldown: 43200 (12h, re-fixed after daemon-restart reversion). Feature-complete, 73/73 done. Project in sustained idle — next tick ~04:22.
