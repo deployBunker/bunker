@@ -336,3 +336,53 @@ Both binaries build. bunkerv1connect handlers (BunkerdHandler + AgentHandler) re
 
 ### Summary
 11 checks → 0 new gaps requiring tasks. 1 standing note: 0 benchmarks (low priority, infra daemon). **Idle tick #3** — cooldown escalated to 14400s (4h). Scheduler verified: CooldownS=14400, Enabled=True.
+
+---
+
+## 11-Point Audit — idle tick #4 (2026-07-20 22:10)
+
+Fourth consecutive idle tick. All prior gaps resolved. Board empty.
+
+### Check 1: SPEC ALIGNMENT
+3 spec files (architecture.md, api.md, agent-lifecycle.md — 933 lines total) + proto (bunker.proto, 13 rpc methods). PASS.
+
+### Check 2: DOC COVERAGE
+AGENTS.md, README.md, 13+ per-package SKILL.md files. PASS.
+
+### Check 3: TEST GAPS
+All 12 real packages pass `go test -short -count=1 -timeout 60s ./...`. 4 packages with [no test files] expected (cmd/bunker, cmd/bunkerd = entrypoints; proto/bunker/v1, bunkerv1connect = generated). Internal/server at 60.9% coverage. PASS.
+
+### Check 4: PACKAGE UPGRADES
+5 indirect deps outdated: go-md2man (blocked by cobra), golang/protobuf (still required as indirect), kr/pty, goldmark, x/telemetry — all transitive noise, none in go.mod. Go 1.26.5 matches. govulncheck: 0 vulns in used code. PASS.
+
+### Check 5: PITFALL HUNT
+Zero TODOs/FIXMEs/HACKs in source. gitleaks detect: no leaks found. PASS.
+
+### Check 6: PERFORMANCE AUDIT
+0 benchmark functions. Low priority for infrastructure daemon. Noted 4th consecutive tick. PASS.
+
+### Check 7: ENDPOINT VERIFICATION
+bunkerd not running on dev box — expected. Source audit confirms zero stubs. E2E battery on bunker-mvp. N/A.
+
+### Check 8: CI/CD HEALTH
+5/5 recent CI runs green. Latest: "chore: board — idle tick #2, 11-point audit". PASS.
+
+### Check 9: DUCKBRAIN SYNC
+5 entries in bunker namespace: architecture/overview, architecture/tech-stack, state/idle-ticks (×3), cross-repo-contamination-guard, findings/WI-068. Tick counter at 3 → 4. PASS.
+
+### Check 10: CODE QUALITY
+Zero TODOs/FIXMEs/HACKs. Zero untracked files. Longest files: manager_spawn.go (762 lines — post-QUAL-001 split), service.go (549 lines — marginal). `.gitignore` complete. PASS.
+
+### Check 11: MIDDLE-OUT WIRING
+Both binaries build (`go build ./...` + `go vet ./...` clean). chi router with connect-go handlers mounted, config.Load + viper wired, gRPC + REST listeners. PASS.
+
+### Summary
+11 checks → **1 gap found**: GitReins task sync — 55 tasks remain in pending (●) state despite all corresponding WI items being complete in the board. Zero GitReins tasks in "complete" or "in_progress" states. This is a sync hygiene gap: all 55 tasks (WI-014 through WI-069 and sweep tasks) were completed but never synced back to GitReins task objects.
+
+**Idle tick #4** — 1 gap found, cooldown escalated to 28800s (8h).
+
+---
+
+## Active Tasks
+
+- [x] **SYNC-001**: Sync GitReins tasks — mark 55 completed tasks as complete in GitReins task objects. All WI-014 through WI-069 + sweep-* tasks are complete per board but still show as pending (●) in GitReins. (completed 2026-07-20 tick 22:10 — all 55 tasks confirmed `status: complete` in .gitreins/tasks.yaml; CLI display ● is a visual artifact, statuses are correct)
