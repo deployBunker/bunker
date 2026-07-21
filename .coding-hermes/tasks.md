@@ -5,7 +5,7 @@
 
 ## Active
 
-_No active tasks. All 73 work items complete across 18 phases._
+| INFRA-001 | System thread exhaustion — Go build/vet/test all fail with `fork: retry: Resource temporarily unavailable` (load 3.18, 5088 threads, 321 PIDs). Env, not code. | Critical | 1 | env | N/A |
 
 ## Completed
 
@@ -90,4 +90,4 @@ _No active tasks. All 73 work items complete across 18 phases._
 
 Load coding-hermes-never-done skill. Run ALL 11 checks: spec alignment, doc coverage, test gaps, package upgrades, pitfall hunt, performance audit, endpoint verification, CI/CD health, DuckBrain sync, code quality, middle-out wiring. Create a task for EVERY gap found. This task is never complete — the audit always finds something.
 
-> **Last audit:** idle tick #6 (2026-07-21 00:46) — 11/11 checks pass, 0 gaps. **This tick:** idle tick #9 (2026-07-21 07:26) — in cooldown (43200s, expires ~12:46). Build: FAIL (thread exhaustion, env — not code). Tests: FAIL (same). Hilo: 87 files, 727 edges. CI: last green at 9ed0424. Feature-complete, 73/73 done.
+> **Last audit:** idle tick #6 (2026-07-21 00:46) — 11/11 checks pass, 0 gaps. **This tick:** idle tick #9 (2026-07-21 07:26) — in cooldown (12h from tick #8, expires ~18:50). Build: FAIL (thread exhaustion, env — not code, same as tick #8). Tests: FAIL (cannot spawn goroutines). Vet: FAIL (same). Hilo: 87 files, 727 edges (healthy). CI: last green at 9ed0424. Feature-complete, 73/73 done. New: INFRA-001 created for thread exhaustion (system load 3.18, 5088 threads, swap 13GB/31GB used).
