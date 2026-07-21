@@ -90,4 +90,4 @@ _No active tasks. All 73 work items complete across 18 phases._
 
 Load coding-hermes-never-done skill. Run ALL 11 checks: spec alignment, doc coverage, test gaps, package upgrades, pitfall hunt, performance audit, endpoint verification, CI/CD health, DuckBrain sync, code quality, middle-out wiring. Create a task for EVERY gap found. This task is never complete — the audit always finds something.
 
-> **Last audit:** idle tick #6 (2026-07-21 00:46) — 11/11 checks pass, 0 gaps. **This tick:** idle tick #7 (2026-07-21 04:54) — in cooldown (43200s, expires ~12:46). SYNC-001 moved to Completed (done in ec0c54f). Build: OK (serial, parallel blocked by session cgroup fork limits — env issue, not code). 397 tests, 14 packages. CI 5/5 green. Hilo: 87 files, 727 edges.
+> **Last audit:** idle tick #6 (2026-07-21 00:46) — 11/11 checks pass, 0 gaps. **This tick:** idle tick #8 (2026-07-21 06:50) — in cooldown (43200s, expires ~12:46). Build: FAIL (thread exhaustion, env — not code). Tests: FAIL (same). Hilo: 87 files, 727 edges. CI: last green at 9ed0424. Feature-complete, 73/73 done.
