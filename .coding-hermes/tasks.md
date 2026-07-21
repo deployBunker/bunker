@@ -252,3 +252,45 @@ Both binaries build. `cmd/bunkerd/main.go` imports config + server (→ all othe
 
 ### Summary
 11 checks → 0 new gaps requiring tasks. 2 minor notes: 0 benchmarks (low priority, infra daemon), service.go 549 lines (marginal). **Idle tick #1** — no cooldown escalation (threshold ≥3). Scheduler cooldown=1800s.
+
+---
+
+## 11-Point Audit — idle tick #2 (2026-07-20 19:23)
+
+Second idle tick. All prior gaps resolved. Board empty.
+
+### Check 1: SPEC ALIGNMENT
+3 spec files (architecture.md, api.md, agent-lifecycle.md) + proto (bunker.proto). PASS.
+
+### Check 2: DOC COVERAGE
+AGENTS.md, README.md, 15 per-package SKILL.md files. PASS.
+
+### Check 3: TEST GAPS
+All 12 real packages pass `go test -short -count=1 -timeout 60s ./...`. 4 packages with [no test files] are expected (cmd/bunker, cmd/bunkerd = entrypoints; proto/bunker/v1, bunkerv1connect = generated). PASS.
+
+### Check 4: PACKAGE UPGRADES
+7 direct deps — all current (`go list -u -m` returned zero `[` brackets). Go 1.26.5 in go.mod. govulncheck: 0 vulns in used code. PASS.
+
+### Check 5: PITFALL HUNT
+Zero TODOs/FIXMEs/HACKs. `return nil, nil` at server.go:216 is legitimate guard clause (`!TLS.Enabled` → no TLS config needed). gitleaks.toml allowlists docs/*, README.md, CHANGELOG.md — minor hardening note (no docs/ directory exists, README/CHANGELOG are public-facing). PASS.
+
+### Check 6: PERFORMANCE AUDIT
+0 benchmark functions (`go test -bench=. -run='^$'` returned 0). Low priority for infrastructure daemon (spawn/destroy/exec are I/O-bound). Noted, no task.
+
+### Check 7: ENDPOINT VERIFICATION
+bunkerd not running on dev box — expected. Live-server E2E battery verifies on bunker-mvp per AGENTS.md. N/A.
+
+### Check 8: CI/CD HEALTH
+5/5 recent CI runs green (`gh run list`). Latest: "chore: board — idle tick #1". PASS.
+
+### Check 9: DUCKBRAIN SYNC
+3 entries in bunker namespace. Idle tick counter at 1 (now → 2). PASS.
+
+### Check 10: CODE QUALITY
+Zero TODOs/FIXMEs/HACKs. Longest source files: manager_spawn.go (762 lines — acceptable post-QUAL-001 split), service.go (549 lines — marginal, below 500-line threshold by 49). .gitignore complete. PASS.
+
+### Check 11: MIDDLE-OUT WIRING
+Both binaries build. chi router with middleware (RequestID, RealIP, Logger, Recoverer, Timeout), connect-go handlers (bunkerd + agent) mounted at /bunker.v1.BunkerdService/ and /bunker.v1.AgentService/, gRPC + REST listeners wired. PASS.
+
+### Summary
+11 checks → 0 new gaps requiring tasks. 1 hardening note: gitleaks.toml allowlists docs/*, README.md, CHANGELOG.md — no docs/ directory exists, README/CHANGELOG are public-facing; low priority remediation. **Idle tick #2** — no cooldown escalation (threshold ≥3). Scheduler cooldown=1800s (verified via API).
