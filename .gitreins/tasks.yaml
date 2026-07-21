@@ -11,7 +11,7 @@ tasks:
   - Auth token is sent via Authorization header
   status: complete
   created_at: '2026-06-29T00:44:13.121189+00:00'
-  completed_at: '2026-06-29T00:45:45.107294+00:00'
+  completed_at: '2026-07-21T03:12:52.897953+00:00'
 - id: WI-015
   title: bunker metrics command
   criteria:
@@ -24,7 +24,7 @@ tasks:
     errors, human-bytes
   status: complete
   created_at: '2026-06-29T01:51:59.198615+00:00'
-  completed_at: '2026-06-29T02:49:47.658654+00:00'
+  completed_at: '2026-07-21T03:13:08.150789+00:00'
 - id: WI-016
   title: bunker exec command
   criteria:
@@ -37,7 +37,7 @@ tasks:
     agent-not-found, stderr-output, timeout-flag, missing-args
   status: complete
   created_at: '2026-06-29T03:00:57.262486+00:00'
-  completed_at: '2026-06-29T03:01:12.198463+00:00'
+  completed_at: '2026-07-21T03:13:23.359048+00:00'
 - id: WI-017
   title: "REST gateway \u2014 connect-go HTTP handlers"
   criteria:
@@ -53,7 +53,7 @@ tasks:
   - 'Build passes: go build ./... && go vet ./... && go test ./...'
   status: complete
   created_at: '2026-06-29T04:00:15.628269+00:00'
-  completed_at: '2026-06-29T04:02:48.592362+00:00'
+  completed_at: '2026-07-21T03:13:38.611038+00:00'
 - id: WI-020
   title: Coding-Hermes skill integration
   criteria:
@@ -67,7 +67,7 @@ tasks:
   - go build ./... && go test ./internal/hermes/... pass
   status: complete
   created_at: '2026-06-29T08:22:07.185423+00:00'
-  completed_at: '2026-06-29T08:22:16.364475+00:00'
+  completed_at: '2026-07-21T03:13:53.740157+00:00'
 - id: WI-021
   title: "Hilo test harness \u2014 end-to-end tests exercising Hilo"
   criteria:
@@ -83,7 +83,7 @@ tasks:
   - go vet ./... is clean
   status: complete
   created_at: '2026-06-29T09:21:06.324767+00:00'
-  completed_at: '2026-06-29T09:21:23.774359+00:00'
+  completed_at: '2026-07-21T03:14:08.980930+00:00'
 - id: WI-022
   title: "GitReins Tier 1 + Tier 2 config \u2014 secrets, lint, tests, eval"
   criteria:
@@ -99,7 +99,7 @@ tasks:
     and test fixtures
   status: complete
   created_at: '2026-06-29T10:42:18.728348+00:00'
-  completed_at: '2026-06-29T10:44:41.517906+00:00'
+  completed_at: '2026-07-21T03:14:24.220227+00:00'
 - id: WI-023
   title: Fix destroy systemctl user-instance mismatch
   criteria:
@@ -109,7 +109,7 @@ tasks:
   - Test covers missing process error path
   status: complete
   created_at: '2026-06-29T12:29:48.593973+00:00'
-  completed_at: '2026-06-29T12:30:15.822154+00:00'
+  completed_at: '2026-07-21T03:14:39.475499+00:00'
 - id: WI-024
   title: Fix exec DOCKER_HOST propagation
   criteria:
@@ -124,7 +124,7 @@ tasks:
   - go build ./... && go vet ./... && go test ./... pass clean
   status: complete
   created_at: '2026-06-29T12:49:09.494226+00:00'
-  completed_at: '2026-06-29T12:54:12.069528+00:00'
+  completed_at: '2026-07-21T03:14:54.683460+00:00'
 - id: WI-025
   title: Fix systemd-run stale unit on re-spawn
   criteria:
@@ -135,7 +135,7 @@ tasks:
   - go test ./internal/agent/... passes
   status: complete
   created_at: '2026-06-29T13:47:43.802974+00:00'
-  completed_at: '2026-06-29T13:47:53.681232+00:00'
+  completed_at: '2026-07-21T03:15:10.201545+00:00'
 - id: WI-026
   title: Multi-agent concurrency test
   criteria:
@@ -149,7 +149,7 @@ tasks:
   - go vet ./... is clean
   status: complete
   created_at: '2026-06-29T15:24:51.273004+00:00'
-  completed_at: '2026-06-29T15:24:56.627483+00:00'
+  completed_at: '2026-07-21T03:15:25.207268+00:00'
 - id: WI-027
   title: cgroup enforcement test
   criteria:
@@ -162,7 +162,7 @@ tasks:
   - go vet ./... is clean
   status: complete
   created_at: '2026-06-29T15:56:25.605320+00:00'
-  completed_at: '2026-06-29T16:00:10.555620+00:00'
+  completed_at: '2026-07-21T03:15:40.438876+00:00'
 - id: WI-028
   title: "Cloudflare TryCloudflare tunnels \u2014 per-agent public URL via cloudflared"
   criteria:
@@ -180,7 +180,7 @@ tasks:
   - go build ./... && go vet ./... && go test ./... pass clean
   status: complete
   created_at: '2026-06-29T16:46:31.549983+00:00'
-  completed_at: '2026-06-30T23:56:52.768333+00:00'
+  completed_at: '2026-07-21T03:15:55.677380+00:00'
 - id: WI-029
   title: JWT auth + agent-scoped sub-keys
   criteria:
@@ -193,7 +193,7 @@ tasks:
   - go test ./... and go vet ./... pass clean
   status: complete
   created_at: '2026-06-29T17:55:58.486882+00:00'
-  completed_at: '2026-06-29T17:56:07.266362+00:00'
+  completed_at: '2026-07-21T03:16:10.918437+00:00'
 - id: WI-030
   title: "TLS/mTLS \u2014 certmagic Let's Encrypt (or self-signed for test), mutual\
     \ TLS between CLI and bunkerd"
@@ -216,7 +216,7 @@ tasks:
   - go build ./... && go vet ./... && go test ./... pass clean
   status: complete
   created_at: '2026-06-29T19:24:28.033322+00:00'
-  completed_at: '2026-06-29T19:30:45.227259+00:00'
+  completed_at: '2026-07-21T03:16:26.144264+00:00'
 - id: WI-032
   title: bunkerd systemd service
   criteria:
@@ -233,7 +233,7 @@ tasks:
   - go build ./... and go test ./... pass
   status: complete
   created_at: '2026-06-29T21:19:15.342291+00:00'
-  completed_at: '2026-06-30T23:59:37.516832+00:00'
+  completed_at: '2026-07-21T03:16:41.404529+00:00'
 - id: WI-033
   title: coding-hermes full integration test
   criteria:
@@ -248,7 +248,7 @@ tasks:
   - No production code outside internal/hermes/ was modified
   status: complete
   created_at: '2026-06-29T22:58:15.621366+00:00'
-  completed_at: '2026-06-29T22:58:23.776320+00:00'
+  completed_at: '2026-07-21T03:16:56.612084+00:00'
 - id: WI-035
   title: Rootless Docker for agents
   criteria:
@@ -260,7 +260,7 @@ tasks:
   - Unit tests cover subuid/subgid configuration helpers
   status: complete
   created_at: '2026-06-30T00:08:23.693622+00:00'
-  completed_at: '2026-06-30T00:08:32.770412+00:00'
+  completed_at: '2026-07-21T03:17:11.929383+00:00'
 - id: WI-036
   title: JWT auth end-to-end
   criteria:
@@ -274,7 +274,7 @@ tasks:
     passes
   status: complete
   created_at: '2026-06-30T02:09:23.596540+00:00'
-  completed_at: '2026-06-30T02:28:34.626597+00:00'
+  completed_at: '2026-07-21T03:17:27.078228+00:00'
 - id: WI-037
   title: TLS/mTLS end-to-end
   criteria:
@@ -287,7 +287,7 @@ tasks:
     is accepted'
   status: complete
   created_at: '2026-06-30T03:40:42.628404+00:00'
-  completed_at: '2026-07-01T00:01:02.533425+00:00'
+  completed_at: '2026-07-21T03:17:42.331932+00:00'
 - id: WI-038
   title: TTL expiry end-to-end
   criteria:
