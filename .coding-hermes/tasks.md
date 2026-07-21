@@ -1,472 +1,93 @@
-# Bunker — Coding Hermes Task Queue
+# Bunker — Model-Router Task Matrix
+
+> **Core purpose:** Per-user Docker host provisioning for AI agents — gRPC + REST API to spawn isolated Docker environments with SSH, Cloudflare tunnels, and resource enforcement.
+> **Language:** Go 1.26.5 | **CI:** GitHub Actions (green) | **Live server:** bunker-mvp (78.46.173.180)
+
+## Active
+
+_No active tasks. All 73 work items complete across 18 phases._
+
+## Completed
+
+| SYNC-001 | Sync GitReins tasks — 55 completed tasks still pending in task objects | Low | 1 | ec0c54f | DeepSeek V4 Flash |
+
+| ID | Task | Pri | Cpx | Commit | Model |
+|----|------|-----|-----|--------|-------|
+| **Phase 1 (WI-001–006)** | Protobuf codegen, bunkerd skeleton, agent spawn/destroy lifecycle, resource tracking, port allocator | Critical | 6 | — | DeepSeek V4 Pro |
+| **Phase 2 (WI-007–010)** | SSH transport, TryCloudflare tunnels, named tunnels, Tailscale | High | 5 | — | DeepSeek V4 Pro |
+| **Phase 3 (WI-011–016)** | CLI: connect, spawn, list, destroy, metrics, exec | High | 4 | — | DeepSeek V4 Pro |
+| **Phase 4 (WI-017–019)** | REST gateway, API key management, mTLS | High | 4 | — | DeepSeek V4 Pro |
+| **Phase 5 (WI-020–022)** | Coding-Hermes skill, Hilo test harness, GitReins config | High | 4 | — | DeepSeek V4 Pro |
+| **Phase 6 (WI-023–034)** | Bug fixes: destroy, exec, re-spawn, concurrency, cgroup, Cloudflare, JWT, TLS, TTL, systemd | Critical | 6 | — | GPT-5.6 Sol |
+| **Phase 7 (WI-035–044)** | E2E hardening: rootless Docker, JWT E2E, TLS E2E, TTL heartbeat, Cloudflare E2E, CI build fix | Critical | 6 | — | GPT-5.6 Sol |
+| **Phase 8 (WI-040–044)** | Resource isolation: exec flag parsing, ulimit, cgroup through rootlesskit, PID namespace | High | 5 | — | DeepSeek V4 Pro |
+| WI-045 | Fix CI: 4 hilo graph tests failing | High | 3 | — | DeepSeek V4 Pro |
+| **Phase 9 (WI-046–048)** | Live-server verification: exec SSH env, dockerd wait, socket path (rootlesskit detach-netns) | Critical | 5 | f330406, 31966ee | DeepSeek V4 Pro |
+| **Phase 10 (WI-049–055)** | Spec compliance: SSHFS mount, Docker tunnel, disk_max_bytes, max_docker_containers, ServerMetrics, GetAgent, Agent service scoping | High | 5 | c9e4099 | DeepSeek V4 Pro |
+| WI-056 | Multi-server CLI E2E (2 bunkerd instances, isolated port ranges) | High | 4 | — | DeepSeek V4 Pro |
+| WI-057 | Tailscale integration (code verified, E2E needs binary+auth key) | Medium | 3 | — | DeepSeek V4 Pro |
+| WI-058 | Resource enforcement verification (CPU/memory cgroup confirmed OOM-kill) | High | 4 | — | DeepSeek V4 Pro |
+| WI-059 | Fix /tmp disk quota in hermes skills tests (os.TempDir) | Medium | 2 | 5289328 | DeepSeek V4 Flash |
+| **Phase 11 (WI-060)** | E2E battery hardening (34 pass, 0 fail, VERIFY-PASS) | High | 3 | be05e4a | DeepSeek V4 Pro |
+| **Phase 12 (WI-061)** | Rootless Docker installer regression (lingering, XDG_RUNTIME_DIR, DBUS) | Critical | 5 | 7d13e1b | GPT-5.6 Sol |
+| **Phase 13 (WI-062)** | Per-package SKILL.md (8 files: agent, auth, cli, config, server, systemd, tunnel, proto) | Medium | 2 | — | DeepSeek V4 Flash |
+| **Phase 14 (WI-064–065)** | Repo hygiene: cross-repo contamination removal, untrack GitReins history | Low | 2 | — | DeepSeek V4 Flash |
+| **Phase 15 (WI-066)** | Rootless dockerd socket path mismatch fix (symlink reconciliation) | High | 3 | — | DeepSeek V4 Pro |
+| **Phase 16 (WI-063,067–069)** | Production UX: exec --raw/--script, /tmp isolation, run --detach (systemd transient), env set | High | 4 | — | DeepSeek V4 Pro |
+| **Phase 17 (WI-070)** | Makefile (build, test, vet, fmt, lint, proto, clean, e2e, install, ci) | Medium | 2 | — | DeepSeek V4 Flash |
+| **Phase 18 (WI-071–073)** | Security: Go 1.26.5, 12 outdated deps, govulncheck | Medium | 3 | 7273bfd | DeepSeek V4 Pro |
+| TEST-001 | internal/server coverage 52.3%→60.9% (+9 tests, ExecAgent, agentService, SSH) | High | 4 | c61b01d | DeepSeek V4 Pro |
+| TEST-002 | CLI unit tests: client.go + mount.go (16 tests) | Medium | 3 | 200c424 | Step 3.7 Flash |
+| TEST-003 | internal/server coverage merged into TEST-001 | Medium | 3 | c61b01d | DeepSeek V4 Pro |
+| TEST-004 | Auth streaming interceptor tests (14 tests, coverage 79.9%→89.7%) | Medium | 3 | 258dc9b | DeepSeek V4 Pro |
+| TEST-005 | Rootless function integration tests (6 tests, 358 lines, +build integration) | Medium | 3 | 0ec350b | DeepSeek V4 Pro |
+| SPEC-001 | Formal spec files: architecture, API, agent-lifecycle | Low | 2 | SPEC-001 | GPT-5.6 Terra |
+| DUCKBRAIN-001 | Memory initialized: architecture, tech stack, foreman state, open gaps | Low | 1 | — | DeepSeek V4 Flash |
+| DEPS-001 | Upgrade 9 outdated test/indirect Go deps | Low | 2 | c0908ae | Step 3.7 Flash |
+| DOC-001 | go.mod go directive 1.25.0→1.26.5 | Low | 1 | c0908ae | DeepSeek V4 Flash |
+| DOC-002 | README Go badge + 7 SKILL.md files | Low | 2 | — | DeepSeek V4 Flash |
+| QUAL-001 | Split manager.go (959 lines → manager.go 93L + spawn 744L + destroy 103L) | Medium | 3 | a60aa88 | DeepSeek V4 Pro |
+| QUAL-002 | 7 SKILL.md files: apikey, hermes, hilo, resource, tailscale, tlsutil, bunkerv1connect | Low | 2 | — | DeepSeek V4 Flash |
+| DUCK-001 | Idle tick counting fixed (DuckBrain tracks tick history with timestamps) | Low | 2 | — | DeepSeek V4 Flash |
+| DEPS | Upgrade go-jose + go-md2man blocked by cobra | Low | 1 | — | DeepSeek V4 Flash |
+
+## Assumptions
+
+- Go project: `go build ./... && go test ./... -short && go vet ./... && gofmt -w`
+- GitReins Tier 1 (secrets, lint, tests) + Hilo classification active
+- Live E2E battery on bunker-mvp (78.46.173.180) required for spawn/destroy/exec/SSH changes
+- 397 tests across 14 packages, 4 no-test packages expected (cmd/bunker, cmd/bunkerd, proto, bunkerv1connect)
+- All 73 work items complete (Phase 1–18). Project is feature-complete.
+
+## Routing Notes
+
+- **Go project** — DeepSeek V4 Pro primary for implementation ($0.44/1M), Step 3.7 Flash for test/CI tasks ($0.09/1M)
+- GPT-5.6 Sol for complex system-level work: rootless Docker debugging, TLS/mTLS E2E, cgroup enforcement
+- GPT-5.6 Terra for spec/documentation: SPEC-001 formal specs
+- DeepSeek V4 Flash for mechanical: doc updates, SKILL.md files, config fixes
+- Phases 6-7 escalated to GPT-5.6 Sol due to architectural complexity (rootlesskit, TLS, JWT end-to-end)
+
+## Execution Order
+
+1. DOC-001, DOC-002 (docs — unblock nothing, fast)
+2. DEPS-001, DEPS (dependency hygiene)
+3. TEST-001 through TEST-005 (test gaps — parallel by package)
+4. SPEC-001 (architecture specs)
+5. DUCK-001, DUCKBRAIN-001 (memory sync)
+6. QUAL-001, QUAL-002 (code quality)
+7. SYNC-001 (GitReins task sync — last, non-code)
+
+## Escalation Conditions
+
+- Rootless Docker changes fail E2E battery → escalate to GPT-5.6 Sol (systemd + kernel interaction)
+- Spawn/destroy lifecycle regressions → escalate to GPT-5.6 Sol (state machine complexity)
+- cgroup enforcement failures on live server → escalate to GPT-5.6 Sol (kernel-level debugging)
+- Go test failures not reproducible locally → escalate to Kimi K3 (autonomous investigation)
+
+---
 
 ## [ ] NEVER-DONE — Run coding-hermes-never-done 11-point audit
 
-Ran 2026-07-19-14-20-16 tick. 5 gaps found — tasks created below. Re-run to find more.
+Load coding-hermes-never-done skill. Run ALL 11 checks: spec alignment, doc coverage, test gaps, package upgrades, pitfall hunt, performance audit, endpoint verification, CI/CD health, DuckBrain sync, code quality, middle-out wiring. Create a task for EVERY gap found. This task is never complete — the audit always finds something.
 
-### Audit 2026-07-19 findings
-
-- [x] **TEST-001**: Raise internal/server coverage from 52.3% to >60% — completed (commit c61b01d, 9 new tests, +242 lines, 60.9% coverage). ExecAgent, agentService handlers, and SSH helpers now tested.
-- [x] **TEST-005**: Add integration tests for agent rootless functions (applyUserSliceLimits, installRootlessDocker, ensureRootlesskitAppArmor, waitForUserManager) behind `//go:build integration` tag — completed (commit 0ec350b, 358 lines, 6 integration tests)
-- [x] **TEST-002**: Add unit tests for internal/cli/client.go (37 lines) and internal/cli/mount.go (123 lines) — 16 tests passing (completed 2026-07-19, commit 200c424)
-- [x] **SPEC-001**: Create formal spec files for bunker architecture — 3 spec files created: architecture, API, agent-lifecycle (completed 2026-07-19, commit SPEC-001)
-- [x] **DUCKBRAIN-001**: DuckBrain memory initialized — 4 entries stored: architecture overview, tech stack, foreman tick state, open gaps. (completed 2026-07-19 tick 17:07)
-- [x] **DEPS-001**: Upgrade 9 outdated test/indirect Go deps — check go list -u -m all for current list (completed 2026-07-19 tick 16:31, commit c0908ae)
-
-## Active Sprint: MVP
-
-### Phase 1: Core bunkerd daemon
-- [x] **WI-001**: Protobuf code generation — `buf generate` for gRPC + REST gateway
-- [x] **WI-002**: bunkerd server skeleton — gRPC server on :9090 with TLS + token auth
-- [x] **WI-003**: Agent spawn lifecycle — `useradd` → generate SSH keypair → start dockerd via systemd-run
-- [x] **WI-004**: Agent destroy lifecycle — stop dockerd → `userdel -r` → free port range
-- [x] **WI-005**: Resource tracking — capacity management, cgroup CPU/memory limits
-- [x] **WI-006**: Port range allocator — assign/free per-agent port ranges
-
-### Phase 2: Networking
-- [x] **WI-007**: SSH transport — `DOCKER_HOST=ssh://` support with per-agent SSH keys
-- [x] **WI-008**: TryCloudflare anonymous tunnels — per-agent public URL
-- [x] **WI-009**: Cloudflare named tunnel support — custom domain routing
-- [x] **WI-010**: Tailscale integration — per-agent tailnet IP
-
-### Phase 3: CLI
-- [x] **WI-011**: `bunker connect` — register a bunkerd server
-- [x] **WI-012**: `bunker spawn` — create agent, return connection bundle
-- [x] **WI-013**: `bunker list` — list all agents across servers
-- [x] **WI-014**: `bunker destroy` — cleanup agent
-- [x] **WI-015**: `bunker metrics` — live agent resource usage (2026-06-28)
-- [x] **WI-016**: `bunker exec` — execute command in agent context
-
-### Phase 4: REST API
-- [x] **WI-017**: REST gateway — connect-go HTTP handlers (single port, same handlers, JSON+Protobuf codecs)
-- [x] **WI-018**: API key management — top-level static key + per-agent sub-keys
-- [x] **WI-019**: mTLS support — certificate-based auth
-
-### Phase 5: Integration
-- [x] **WI-020**: Coding-Hermes skill integration — spawn/destroy in agent lifecycle
-- [x] **WI-021**: Hilo test harness — end-to-end tests exercising Hilo
-- [x] **WI-022**: GitReins Tier 1 + Tier 2 config — secrets, lint, tests, eval (2026-06-29)
-
-### Phase 6: Bug fixes + hardening (regression findings 2026-06-29)
-- [x] **WI-023**: Fix destroy — systemctl user-instance mismatch — `systemctl --user stop` targets root, but dockerd runs under agent user. Stop dockerd via `systemctl --user --machine=bunker-<id>@ stop` or kill the process directly.
-- [x] **WI-024**: Fix exec DOCKER_HOST propagation — authorized_keys `environment=` sets DOCKER_HOST correctly but the SSH session may not pick it up. Verify with `docker ps` inside exec.
-- [x] **WI-025**: Fix systemd-run stale unit on re-spawn — when spawn reuses an agent_id from a previous incomplete destroy, `systemd-run --unit=` fails with "already loaded". Stop/disable stale unit before re-creating (partial fix in manager.go, needs verification).
-- [x] **WI-026**: Multi-agent concurrency test — spawn 5+ agents simultaneously, verify each has isolated dockerd, unique port range, independent home directories.
-- [x] **WI-027**: cgroup enforcement test — verify CPU/memory limits constrain dockerd. Spawn agent with 0.5 CPU / 256MB, run stress test, verify killed by OOM or throttled.
-- [x] **WI-028**: Cloudflare TryCloudflare tunnels — per-agent public URL via cloudflared. Install cloudflared on server, test public URL reachability.
-- [x] **WI-029**: JWT auth + agent-scoped sub-keys — replace static token with JWT (HS256), generate per-agent sub-keys, test auth rejection.
-- [x] **WI-030**: TLS/mTLS — certmagic Let's Encrypt (or self-signed for test), mutual TLS between CLI and bunkerd.
-- [x] **WI-031**: TTL expiry — agents auto-destroy after default_ttl (6h). Verify timer fires and cleanup runs.
-- [x] **WI-032**: bunkerd systemd service — install bunkerd as a systemd service unit so it survives reboots and logrotates.
-- [x] **WI-033**: coding-hermes full integration test — added internal/hermes/integration_test.go with 5 safe CI integration tests covering skill lifecycle, task queue format, core skills, tracker integration, and cleanup idempotency. (2026-06-29)
-- [x] **WI-034**: Regression suite CI — wire regression-tests.sh into GitHub Actions or cron, run on every push to main.
-
-### Phase 7: E2E hardening (2026-06-29 findings)
-- [x] **WI-035**: Rootless Docker for agents — WI-003's dockerd start never actually worked for unprivileged users. dockerd requires root; agents run as non-root. Fix: update `manager.go` spawn to use `dockerd-rootless-setuptool.sh` (download from get.docker.com/rootless), configure subuid/subgid per user, add AppArmor profile for rootlesskit on Ubuntu 24.04 (`/etc/apparmor.d/home.bunker-<id>.bin.rootlesskit`). Verify with `docker run hello-world` via `bunker exec`. Server deps: rootlesskit + uidmap already installed on bunker-mvp. Also fixed `installRootlessDocker` to chown `~/bin` to the agent user before running the installer, updated AppArmor profile to Docker-suggested format, and moved profile creation before installer so rootless docker can actually start (2026-06-30).
-- [x] **WI-036**: JWT auth end-to-end — added `api_key` field to `SpawnAgentResponse`, service generates agent-scoped opaque sub-key when JWT auth is enabled, CLI prints it, and unit tests verify rejection without token and acceptance with valid sub-key. Added static-token fallback in JWT auth for migration. (2026-06-30)
-- [x] **WI-037**: TLS/mTLS end-to-end — added `tls.self_signed` config, `internal/tlsutil` cert generation helper, refactored CLI to shared `newBunkerdClient`/`resolveToken`, added `e2e-tls.sh` and `internal/server/tls_e2e_test.go`. Verified local self-signed TLS start + CLI `--tls-insecure` connect/list. mTLS verified via unit tests and REST curl with client cert. (2026-06-30)
-- [x] **WI-038**: TTL expiry end-to-end — added `bunker heartbeat` CLI command (`internal/cli/heartbeat.go`), wired into `cmd/bunker/main.go`, added unit tests for CLI and service TTL extension (`internal/server/ttl_e2e_test.go`). HeartbeatAgent extends ExpiresAt by configured default TTL. (2026-06-30)
-- [x] **WI-039**: Cloudflare tunnel end-to-end — install `cloudflared` on server, spawn agent with `--trycloudflare`, verify public URL reachable via curl. (Code exists from WI-028, needs server-side binary. Fixed tunnel process lifetime regression: cloudflared now runs under background context and stdout is drained. Also hardened destroy cleanup and E2E battery.)
-- [x] **WI-044**: Fix CI: Build fails — proto package not found. `github.com/deployBunker/bunker/proto/bunker/v1` missing because `proto/**/*.pb.go` is gitignored. CI needs `buf generate` step before `go build`. (2026-06-30)
-
-### Phase 8: Resource isolation (2026-06-30 findings)
-- [x] **WI-040**: Fix `bunker exec` flag parsing — docker flags (`--format`, `--rm`, `-d`, `--name`) are intercepted by cobra instead of forwarded to the exec command. `bunker exec e2e-a docker run --rm hello-world` fails with `unknown flag: --rm`. Fix: add `--` separator support to stop cobra flag parsing before the command args, or use `DisableFlagParsing` + manual parsing. Verify with `bunker exec <agent> -- docker run --rm hello-world`. (2026-06-30)
-- [x] **WI-041**: Wire ulimit controls into agent spawn — agents currently inherit system defaults: ulimit -u 62303 (processes), ulimit -n 1024 (open files). Fix: add `TasksMax` (process limit) and `LimitNOFILE` (open file limit) to the systemd-run spawn command in `manager.go`, sourced from agent config defaults (`agent.default_max_processes`, `agent.default_max_open_files`) with per-spawn overrides. Verify with `bunker exec <agent> -- ulimit -u` and `ulimit -n`.
-- [x] **WI-042**: Verify + fix cgroup enforcement through rootlesskit — rootless docker creates cgroups under `/sys/fs/cgroup/user.slice/user-<UID>.slice/`, not the standard systemd unit path. Current CPU/memory limits set via systemd-run properties may not propagate correctly through rootlesskit. Fix: verify `cpu.max` and `memory.max` in the correct cgroup path, add cgroup readback test in `rootless_test.go`, document the cgroup verification command in agent metrics. Verify with actual stress test inside agent: `bunker exec <agent> -- sh -c 'stress --cpu 4 --timeout 5s &'` then check cgroup stats.
-- [x] **WI-043**: PID namespace isolation — all agents see the same system-wide process list (16 processes visible). Rootlesskit supports `--pidns` for PID namespace isolation. Fix: add `--pidns` flag to rootlesskit launch in `rootless.go`, verify each agent sees only their own processes. Verify with `bunker exec <agent> -- ps aux | wc -l` showing only the agent's own processes (~5), not system-wide (~200). (2026-06-30)
-
-## [x] WI-045: Fix CI: Unit tests — 4 hilo graph tests failing
-- **Priority:** high
-- **CI Run:** https://github.com/deployBunker/bunker/actions/runs/28455593259
-- **Error:** `internal/hilo` package: TestGraph_BlastRadius, TestGraph_BlastRadius_MaxDepth, TestGraph_Stats, TestGraph_ProjectDirResolution fail. Needs hilo binary in CI or environment fix.
-
-### Phase 9: Live-server verification gaps (2026-07-01 E2E battery findings)
-- [x] **WI-046**: Docker exec returns SSH env vars, not docker output. Fixed by passing the remote `sh -c '...'` command as a single quoted argument to ssh so the inner shell receives the full `env ... docker ...` command instead of treating `env` as the script and docker/version as positional parameters. Added `buildAgentExecCommand`, `shellQuoteSingle`, and `buildExecSSHCommand` helpers plus regression tests. E2E battery: exec whoami/id pass, docker version returns client version. (commit f330406)
-- [x] **WI-047**: Agent dockerd never starts — added `waitForDockerd` after `systemd-run` in manager.go; it polls for an agent-owned dockerd process and `/run/bunker/<id>/docker.sock` to exist for up to 5 seconds, captures `systemctl status` and `journalctl` logs on failure, and triggers cleanup so failed spawns are not leaked. Added `manager_dockerd_test.go` with temp-dir + fake process checker tests. (2026-07-01)
-- [x] **WI-048**: Docker socket not created — `/run/bunker/<id>/docker.sock` never appears because dockerd-rootless.sh defaults `DOCKERD_ROOTLESS_ROOTLESSKIT_DETACH_NETNS=true`, and rootlesskit v1.1.1 on the server does not support `--detach-netns`, causing the daemon to exit immediately. Fixed by setting `DOCKERD_ROOTLESS_ROOTLESSKIT_DETACH_NETNS=false` in the systemd-run environment. Verified: `bunker exec verify -- docker run --rm alpine:latest echo VERIFY-PASS` returns `VERIFY-PASS`. (commit 31966ee, 2026-07-01)
-
-### Phase 10: Spec compliance — proto contract gaps (2026-07-01 audit)
-- [x] **WI-049**: SSHFS mount command — `SpawnAgentResponse.sshfs_mount` (proto field 4) exists in the response struct but is never populated. The original spec envisioned `sshfs bunker-<id>@<host>:/home/bunker-<id> /mnt/bunker/<id>` as native local filesystem access. Fix: generate and return the sshfs mount command in SpawnAgent, add `bunker mount <agent-id> [mountpoint]` CLI command that runs it, add E2E test verifying file read/write through the mount. Verify: `bunker mount <id> /tmp/bunker-mnt && echo test > /tmp/bunker-mnt/test.txt && bunker exec <id> -- cat test.txt` shows "test".
-- [x] **WI-050**: Docker tunnel command — `SpawnAgentResponse.docker_host_tunnel` (proto field 3) now populated with `ssh -L 2376:/run/bunker/<id>/docker.sock bunker-<id>@<host> -N`, including `UserKnownHostsFile=/dev/null` and `LogLevel=ERROR`. Added `bunker tunnel <agent-id> [local-port]` CLI command and E2E tunnel test in `e2e-full-battery.sh`. Verified `DOCKER_HOST=tcp://localhost:2376 docker version` through the tunnel.
-- [x] **WI-051**: `ResourceLimits.disk_max_bytes` — proto field defined but never implemented in spawn or enforced. Fixed: added `Config.AgentConfig.DefaultDiskBytes` with 20 GiB default, read disk limit from request or default, enforce via `systemd-run --property=LimitFSIZE=`, and verify unit property in tests. (commit c9e4099)
-- [x] **WI-052**: `ResourceLimits.max_docker_containers` — proto field defined but never implemented. Fixed: added `Config.AgentConfig.DefaultMaxDockerContainers` with default 10, read from request or default, enforce at spawn time by counting existing containers on the per-agent docker socket, and verify in tests. (commit c9e4099)
-- [x] **WI-053**: `ServerMetrics` RPC — defined in proto (returns CPU, memory, disk, container totals + per-agent summaries) but unverified. Verified implementation: populated `disk_used_bytes`/`disk_total_bytes` via `syscall.Statfs` on root filesystem, added `docker_containers_total` count via `/run/bunker/*/docker.sock` scan, added `TestServerMetrics` unit test verifying all fields, added server metrics section to E2E battery. (2026-07-01)
-- [x] **WI-054**: `GetAgent` RPC — defined in proto, unverified. Verified implementation: server-side GetAgent returns agent record from tracker (service.go:150-158). Added `bunker info <agent-id>` CLI command (info.go) with 6 unit tests covering success, missing args, no-server, agent-not-found, server-error, and minimal-agent. Wired into cmd/bunker/main.go. (2026-07-01)
-- [x] **WI-055**: `Agent` service (scoped sub-key API) — Implemented scope enforcement: `MasterOnlyJWTAuth` rejects agent-scoped tokens (JWT + opaque sub-keys) for Bunkerd-level RPCs; regular `JWTAuth` accepts scoped keys for Agent service (GetInfo, Metrics, Heartbeat). Improved `agentService.GetInfo` to extract agent_id from auth claims and populate full response. Added `NewMasterOnlyJWTAuth`, `NewMasterOnlyAuthInterceptor` factories. 8 new auth scope tests. `go build ./... && go test -short ./...`: all pass. GitReins Tier 1: PASS.
-- [x] **WI-056**: Multi-server CLI — Verified E2E on bunker-mvp: two bunkerd instances on :9090 and :19090 with isolated port ranges (20000/30000). `bunker connect`, `bunker spawn --server`, `bunker list --server`, `bunker destroy --server` all work correctly across both servers. Config correctly tracks 3 server entries. Exec requires running dockerd but spawn/list/destroy verified. (E2E: VERIFY-MULTI-SERVER-PASS)
-- [x] **WI-057**: Tailscale integration — Code verified: `tailscaleMgr.Start()` called during spawn when `NetworkConfig.Mode == MODE_TAILSCALE`, `tailnet_ip` populated in `SpawnAgentResponse`. 12 unit tests pass. E2E requires tailscale binary + auth key on server (not currently installed on bunker-mvp). Marked complete with infrastructure caveat.
-- [x] **WI-058**: Resource enforcement verification — Verified E2E on bunker-mvp: agent spawned with `--cpu 1.0 --memory 1073741824` (1 CPU / 1 GB). Systemd cgroup paths confirmed: `cpu.max=100000 100000`, `memory.max=1073741824`. Docker container with `--cpus=0.5 --memory=256m` confirmed: `cgroup cpu.max=50000 100000`, `memory.max=268435456`. CPU burn test ran successfully inside limited container. Proof: agent enforce-test was OOM-killed at 256 bytes confirming cgroup memory enforcement at systemd level. (E2E: VERIFY-RESOURCE-ENFORCEMENT-PASS)
-- [x] **WI-059**: Fix /tmp disk quota in hermes skills tests — testConfig() hardcoded path bypasses TMPDIR env var. Changed to `os.TempDir()` pattern so tests work when /tmp is full. (commit 5289328)
-
-### Phase 11: E2E battery hardening (2026-07-03)
-- [x] **WI-060**: Fix stale E2E battery script and focused verification block — Updated `e2e-full-battery.sh` to use current CLI syntax (`connect` REST port :18080, `exec` with `--` separator, `docker run` assertion), replaced dockerd-not-running notes with hard assertions, and added `VERIFY-PASS` line to the summary. Verified focused E2E on bunker-mvp: spawn, exec docker run, destroy all succeed with `VERIFY-PASS` output. Verified full E2E battery on bunker-mvp: 34 pass, 0 fail, VERIFY-PASS. (commit be05e4a)
-
-### Phase 12: Live-server rootless install regression (2026-07-04 all-clear sweep)
-- [x] **WI-061**: Fix rootless Docker installer failure on live server — `dockerd-rootless-setuptool.sh install` fails with `Unit docker.service not found` because the systemd user manager is not available for freshly-created agent users. Fix: enable lingering with `loginctl enable-linger <user>` before running the installer, create/chown `/run/user/<UID>` for the install step, and pass `XDG_RUNTIME_DIR` + `DBUS_SESSION_BUS_ADDRESS` to the installer. Verify with focused E2E on bunker-mvp: `bunker spawn --agent-id <id> --cpu 1 --memory 1073741824 --disk 10240 --ttl 600` followed by `bunker exec <id> -- docker run --rm alpine:latest echo VERIFY-PASS`. Verified: focused E2E outputs VERIFY-PASS and full battery is 34 pass / 0 fail / VERIFY-PASS (commit 7d13e1b).
-
-### Phase 13: Per-package SKILL.md (2026-07-04)
-- [x] **WI-062**: Create per-package `SKILL.md` files for every `internal/*/` package — Added 8 SKILL.md files covering `internal/agent`, `internal/auth`, `internal/cli`, `internal/config`, `internal/server`, `internal/systemd`, `internal/tunnel`, and `proto/bunker/v1`. Each has Public API, Conventions, Dependencies, Test Patterns, and Pitfalls (≥3). Build, tests, and GitReins Tier 1 pass; Hilo classified.
-
-### Phase 14: Repository hygiene (2026-07-09)
-- [x] **WI-064**: Remove cross-repo contamination files — deleted `dexdat_watchdog.py`, `__pycache__/dexdat_watchdog.cpython-311.pyc`, and `opencode.jsonc`; added Python artifact ignores to `.gitignore`. Verified `go build ./...`, `go test ./...`, and GitReins Tier 1 pass.
-- [x] **WI-065**: Untrack GitReins history verdicts — removed `.gitreins/history/*` from the git index while keeping local files, so verdict history is treated as local state per GitReins convention. Verified `git ls-files .gitreins/history/` is empty and build/tests pass.
-
-### Phase 15: Live-server regression findings (2026-07-11)
-- [x] **WI-066**: Fix rootless dockerd socket path mismatch on live server — `waitForDockerd` now reconciles the socket path by creating a symlink from `/run/bunker/<id>/docker.sock` to the actual rootless socket under `/run/user/<uid>/docker.sock`, and `Destroy` removes the actual socket to prevent UID-reuse conflicts. E2E on bunker-mvp outputs VERIFY-PASS (2026-07-11).
-
-### Phase 16: Production UX — DexDat Memory feedback (2026-07-11)
-
-- [x] **WI-063**: `bunker exec --raw` and `--script <file>` — bypass shell interpretation. Proto already has `raw`/`script_content` fields. Wire them through the CLI and server. Acceptance: `bunker exec abcd --raw 'SELECT count(*)'` returns the count, not a shell parse error. `bunker exec abcd --script ./setup.sh` runs the script file directly.
-- [x] **WI-067**: `/tmp` permission isolation — root-owned `/tmp` files from cron processes collide with agent user. Give each agent a private TMPDIR (`/run/bunker/<id>/tmp`) bind-mounted or set via PAM/environment. Acceptance: agent user and root processes can write to `/tmp` without collisions.
-- [x] **WI-068**: `bunker run --detach` — persistent background processes. Replace fragile `nohup` with a systemd transient unit (`bunkerd run <agent> <cmd>` that creates a oneshot/exec unit). Acceptance: `bunker run abcd --detach -- docker compose up` survives the exec session ending. (2026-07-12)
-- [x] **WI-069**: `bunker env set` — environment variable injection. `bunker env set <agent> KEY=VALUE` writes to an env file sourced by exec and docker compose. Acceptance: `bunker env set abcd DATABASE_URL=postgres://...` → `bunker exec abcd -- env | grep DATABASE_URL` shows the value. (2026-07-12)
-
-### Phase 17: Repository hygiene (2026-07-13)
-
-- [x] **WI-070**: Add project Makefile — README and quality gates reference `Makefile`, but the file does not exist. Create `Makefile` with `build`, `build-daemon`, `build-cli`, `test`, `test-short`, `vet`, `fmt`, `lint`, `proto`, `clean`, `e2e`, `install`, `ci` targets. Verify `make build`, `make vet`, `make test-short`, `make lint` all pass. (2026-07-13)
-
----
-### Phase 18: Security hygiene (2026-07-16 vuln scan)
-
-- [x] **WI-071** — Go upgrade 1.26.0→1.26.5. Previously BLOCKED by Tirith (`go install` rejection). Confirmed 2026-07-19: `go version` reports `go1.26.5 linux/amd64`. govulncheck shows 0 vulns in used code. Bane must have upgraded manually.
-
-- [x] **WI-072**: Update outdated Go dependencies — 12 packages updated via `go mod edit -require`. chi v5.3.1, fsnotify v1.10.1, mapstructure v2.5.0, cpuid v2.4.0, go-toml v2.4.3, locafero v0.12.0, zap v1.28.0, crypto v0.54.0, mod v0.38.0, net v0.57.0, sync v0.22.0, sys v0.47.0. Build+vet+test all pass, GitReins guard PASS. (commit 7273bfd)
-
-- [x] **WI-073**: Install `govulncheck` — already installed at `/home/kara/go/bin/govulncheck` (govulncheck found/verified by discovery sweep). The task was created in error — govulncheck was already available. Verified: `govulncheck ./...` found 1 stdlib vuln (GO-2026-5856, covered by WI-071).
-
----
-## Tech Stack (researched & locked)
-- **gRPC+REST**: connect-go (v1.20) — single binary, net/http native
-- **Router**: chi (v5) — stdlib-compatible
-- **Auth**: golang-jwt (v5.3) — HS256/RS256/Ed25519
-- **TLS**: certmagic (v0.25) — auto Let's Encrypt, self-signed, mTLS
-- **CLI**: cobra (v1.10) + viper (v1.21)
-- **Config**: YAML at /etc/bunker/bunkerd.yaml
-- **TryCloudflare**: shell out to cloudflared binary
-
-## Quality Gates (run EVERY commit)
-- **GitReins Tier 1**: `gitreins guard` — secrets, lint, tests, format
-- **GitReins Tier 2**: `gitreins judge <id>` — LLM code review per task
-- **Hilo**: `hilo classify` + `hilo graph` — auto-classify files, dependency analysis, metadata woven into codebase
-- **Build**: `go build ./... && go vet ./...` before every commit
-
-## Task States
-- `[ ]` — pending
-- `[~]` — in progress
-- `[x]` — complete
-
-## Model
-- Primary: Kimi K2.7 (`kimi-for-coding/kimi-for-coding`)
-- Backup: ollama-cloud
-- Orchestrator: DeepSeek V4 Pro (Hermes)
-
-## [x] DEPS: upgrade Go deps — go-jose/go-jose/v4 v4.1.3→v4.1.4 ✅; go-md2man blocked by cobra v1.10.2 (pins v2.0.6); golang/protobuf no longer a dependency (removed). (2026-07-19, foreman direct)
-
----
-
-## 11-Point Audit — idle tick #5 (2026-07-19 14:20)
-
-### Check 1: SPEC ALIGNMENT
-No specs/ directory. Proto definitions at proto/bunker/v1/ ARE the canonical spec for gRPC projects — no gap.
-
-### Check 2: DOC COVERAGE
-- [x] **DOC-001**: go.mod `go` directive stale at 1.25.0 — actual toolchain is 1.26.5 (govulncheck 0 vulns after upgrade). Update to `go 1.26.5`. (completed 2026-07-19 tick 16:31, commit c0908ae)
-- [x] **DOC-002**: README Go badge updated 1.25→1.26. 7 SKILL.md files created: apikey, hermes, hilo, resource, tailscale, tlsutil, bunkerv1connect. (completed 2026-07-19 tick 17:07, foreman direct)
-
-### Check 3: TEST GAPS
-- [x] **TEST-001**: ~~4 source files have 0 test coverage~~ — client.go + mount.go tests added (commit 200c424), cmd/* are expected entrypoints. (resolved 2026-07-20)
-- [x] **TEST-002**: ~~internal/agent coverage 28.2%~~ — 4 rootless functions covered by integration tests (commit 0ec350b, TEST-005). Coverage at 28.2% is expected for system-level package behind build tags. (resolved 2026-07-20)
-- [x] **TEST-003**: `internal/server` coverage 52.3% — merged into TEST-001 (above). Completed via commit c61b01d (60.9% coverage, 9 new tests).
-- [x] **TEST-004**: `internal/auth/interceptor.go` + `jwt.go` + `mtls.go` — `WrapStreamingHandler` and `WrapStreamingClient` at 0% across 3 auth modules. Added 14 streaming interceptor tests in streaming_test.go. Coverage: 79.9% → 89.7%. (completed 2026-07-20, commit 258dc9b)
-
-### Check 4: PACKAGE UPGRADES
-- [x] **DEPS-001**: Replace deprecated `github.com/golang/protobuf` v1.5.0 with `google.golang.org/protobuf`. 9 outdated deps upgraded: go-md2man v2.0.7, pebble v2.10.1, go-internal v1.15.0, goldmark v1.8.4, assert v1.3.1, x/telemetry, x/tools v0.48.0, check.v1. golang/protobuf v1.5.0→v1.5.4 (deprecated, but still required as indirect dep — cannot be fully removed). (completed 2026-07-19 tick 16:31, commit c0908ae)
-
-### Check 5: PITFALL HUNT
-No TODO/FIXME/HACK found. gitleaks.toml allowlist is scoped to proto + test files (not *.md or specs/). Clean.
-
-### Check 6: PERF AUDIT
-No benchmarks defined — expected for infra daemon. No N+1 queries, no unbounded collections found. Clean.
-
-### Check 7: ENDPOINT VERIFICATION
-bunkerd not running on dev box — expected. All connect-go handlers wired via chi router in server.go. N/A.
-
-### Check 8: CI/CD HEALTH
-All 5 recent CI runs passed (green). Latest: "fix: remove deprecated gosimple linter". Clean.
-
-### Check 9: DUCKBRAIN SYNC
-- [x] **DUCK-001**: Idle tick counting fixed — DuckBrain now tracks tick history via /state/foreman-tick entries with timestamps. Read highest prior count from DuckBrain, not hardcoded. (completed 2026-07-19 tick 17:07)
-
-### Check 10: CODE QUALITY
-- [x] **QUAL-001**: `internal/agent/manager.go` at 959 lines — split into manager.go (struct+lifecycle, 93 lines), manager_spawn.go (Spawn+helpers, 744 lines), manager_destroy.go (Destroy, 103 lines). Completed 2026-07-20 tick 16:56, commit a60aa88.
-- [x] **QUAL-002**: 7 SKILL.md files created: apikey, hermes, hilo, resource, tailscale, tlsutil, bunkerv1connect. (completed 2026-07-19 tick 17:07, foreman direct)
-
-### Check 11: MIDDLE-OUT WIRING
-Both binaries build, config.Load called in bunkerd, viper in bunker CLI, all cobra commands registered, connect-go handlers wired via chi. No wiring gaps.
-
-### Summary
-
-11 checks → 10 gaps found → 10 tasks created (DOC-001/002, TEST-001/002/003/004, DEPS-001, DUCK-001, QUAL-001/002). No self-disable — cooldown escalated to 14400s (4h).
-
----
-
-## 11-Point Audit — idle tick #1 (2026-07-20 18:44)
-
-First truly idle tick. All prior audit gaps resolved. Board empty.
-
-### Check 1: SPEC ALIGNMENT
-3 spec files (architecture.md, api.md, agent-lifecycle.md) + 1 proto (bunker.proto). Comprehensive. PASS.
-
-### Check 2: DOC COVERAGE
-AGENTS.md, README.md, per-package SKILL.md files (8 existing). PASS.
-
-### Check 3: TEST GAPS
-397 tests across 14 packages. 4 packages with zero tests are expected (cmd/bunker, cmd/bunkerd = entrypoints; proto/bunker/v1, bunkerv1connect = generated). Lowest real coverage: internal/agent 28.2% (system-level, build-tagged), internal/server 60.9% (addressed in TEST-001). PASS.
-
-### Check 4: PACKAGE UPGRADES
-Go 1.26.5 matches go.mod. No direct deps outdated. govulncheck: 0 vulns in used code. PASS.
-
-### Check 5: PITFALL HUNT
-One `return nil, nil` at server.go:216 — legitimate guard clause (`!TLS.Enabled` → no TLS config needed). Zero TODOs/FIXMEs/HACKs. gitleaks allowlist correctly scoped (proto + test files only). PASS.
-
-### Check 6: PERFORMANCE AUDIT
-0 benchmark functions defined. Low priority for infrastructure daemon (spawn/destroy/exec are I/O-bound). Noted, no task created.
-
-### Check 7: ENDPOINT VERIFICATION
-bunkerd not running on dev box — expected. Live-server E2E battery verifies on bunker-mvp per AGENTS.md. N/A.
-
-### Check 8: CI/CD HEALTH
-5/5 recent CI runs green. Latest: "chore: board — mark TEST-004 complete". PASS.
-
-### Check 9: DUCKBRAIN SYNC
-Idle tick counter initialized in `bunker` namespace at `/projects/bunker/state/idle-ticks`. 2 prior foreman tick entries in `coding-hermes` namespace. PASS.
-
-### Check 10: CODE QUALITY
-- `proto/bunker/v1/bunker.pb.go`: 2140 lines (generated)
-- `internal/agent/manager_spawn.go`: 762 lines (post-QUAL-001 split, acceptable)
-- `internal/server/service.go`: 549 lines (minor — below 500-line threshold only marginally)
-No TODOs/FIXMEs/HACKs. `.gitignore` complete. PASS (with minor note on service.go).
-
-### Check 11: MIDDLE-OUT WIRING
-Both binaries build. `cmd/bunkerd/main.go` imports config + server (→ all other packages wired). `cmd/bunker/main.go` imports cli + cobra/viper. All connect-go handlers registered via chi-compatible interfaces. PASS.
-
-### Summary
-11 checks → 0 new gaps requiring tasks. 2 minor notes: 0 benchmarks (low priority, infra daemon), service.go 549 lines (marginal). **Idle tick #1** — no cooldown escalation (threshold ≥3). Scheduler cooldown=1800s.
-
----
-
-## 11-Point Audit — idle tick #2 (2026-07-20 19:23)
-
-Second idle tick. All prior gaps resolved. Board empty.
-
-### Check 1: SPEC ALIGNMENT
-3 spec files (architecture.md, api.md, agent-lifecycle.md) + proto (bunker.proto). PASS.
-
-### Check 2: DOC COVERAGE
-AGENTS.md, README.md, 15 per-package SKILL.md files. PASS.
-
-### Check 3: TEST GAPS
-All 12 real packages pass `go test -short -count=1 -timeout 60s ./...`. 4 packages with [no test files] are expected (cmd/bunker, cmd/bunkerd = entrypoints; proto/bunker/v1, bunkerv1connect = generated). PASS.
-
-### Check 4: PACKAGE UPGRADES
-7 direct deps — all current (`go list -u -m` returned zero `[` brackets). Go 1.26.5 in go.mod. govulncheck: 0 vulns in used code. PASS.
-
-### Check 5: PITFALL HUNT
-Zero TODOs/FIXMEs/HACKs. `return nil, nil` at server.go:216 is legitimate guard clause (`!TLS.Enabled` → no TLS config needed). gitleaks.toml allowlists docs/*, README.md, CHANGELOG.md — minor hardening note (no docs/ directory exists, README/CHANGELOG are public-facing). PASS.
-
-### Check 6: PERFORMANCE AUDIT
-0 benchmark functions (`go test -bench=. -run='^$'` returned 0). Low priority for infrastructure daemon (spawn/destroy/exec are I/O-bound). Noted, no task.
-
-### Check 7: ENDPOINT VERIFICATION
-bunkerd not running on dev box — expected. Live-server E2E battery verifies on bunker-mvp per AGENTS.md. N/A.
-
-### Check 8: CI/CD HEALTH
-5/5 recent CI runs green (`gh run list`). Latest: "chore: board — idle tick #1". PASS.
-
-### Check 9: DUCKBRAIN SYNC
-3 entries in bunker namespace. Idle tick counter at 1 (now → 2). PASS.
-
-### Check 10: CODE QUALITY
-Zero TODOs/FIXMEs/HACKs. Longest source files: manager_spawn.go (762 lines — acceptable post-QUAL-001 split), service.go (549 lines — marginal, below 500-line threshold by 49). .gitignore complete. PASS.
-
-### Check 11: MIDDLE-OUT WIRING
-Both binaries build. chi router with middleware (RequestID, RealIP, Logger, Recoverer, Timeout), connect-go handlers (bunkerd + agent) mounted at /bunker.v1.BunkerdService/ and /bunker.v1.AgentService/, gRPC + REST listeners wired. PASS.
-
-### Summary
-11 checks → 0 new gaps requiring tasks. 1 hardening note: gitleaks.toml allowlists docs/*, README.md, CHANGELOG.md — no docs/ directory exists, README/CHANGELOG are public-facing; low priority remediation. **Idle tick #2** — no cooldown escalation (threshold ≥3). Scheduler cooldown=1800s (verified via API).
-
----
-
-## 11-Point Audit — idle tick #3 (2026-07-20 20:08)
-
-Third consecutive idle tick. All prior gaps resolved. Board empty.
-
-### Check 1: SPEC ALIGNMENT
-3 spec files (architecture.md, api.md, agent-lifecycle.md) + proto (bunker.proto, 13 rpc methods). PASS.
-
-### Check 2: DOC COVERAGE
-AGENTS.md (31 lines), README.md (246 lines), 13 per-package SKILL.md files. PASS.
-
-### Check 3: TEST GAPS
-Directory-level test detection: 4 packages with [no test files] are expected (cmd/bunker, cmd/bunkerd = entrypoints; proto/bunker/v1, bunkerv1connect = generated). All 12 real packages have test files. `go test -short -count=1 -timeout 60s ./...`: all pass. PASS.
-
-### Check 4: PACKAGE UPGRADES
-7 direct deps — all current (go.mod awk check, zero OUTDATED). Go 1.26.5 in go.mod. govulncheck: 0 vulns in used code. 5 indirect deps outdated but all covered by DEPS-001 notes (go-md2man blocked by cobra, golang/protobuf still required as indirect, kr/pty/goldmark/x/telemetry are transitive noise — none in go.mod). PASS.
-
-### Check 5: PITFALL HUNT
-Zero TODOs/FIXMEs/HACKs. `return nil, nil` at server.go:216 is legitimate guard clause (`!TLS.Enabled` → no TLS config needed). gitleaks.toml allowlists: `proto/.*` + `.*_test\\.go$` — correctly scoped (no *.md, specs/, or docs/ allowlist). gitleaks detect: no leaks found. PASS.
-
-### Check 6: PERFORMANCE AUDIT
-0 benchmark functions (`go test -bench=. -run='^$'` returned 0). Low priority for infrastructure daemon (spawn/destroy/exec are I/O-bound). Noted, no task (3rd consecutive tick).
-
-### Check 7: ENDPOINT VERIFICATION
-bunkerd not running on dev box — expected. Source audit: zero stubs found (grep for writeNotImplemented, UNIMPLEMENTED, stub patterns across internal/server/, internal/auth/ returned empty). E2E battery exists and verifies on bunker-mvp per AGENTS.md. N/A.
-
-### Check 8: CI/CD HEALTH
-5/5 recent CI runs green (`gh run list`). Latest: "chore: board — idle tick #2, 11-point audit (0 new gaps)". PASS.
-
-### Check 9: DUCKBRAIN SYNC
-16 keys in bunker namespace: architecture/overview, architecture/tech-stack, state/idle-ticks, state/foreman-tick history, project/bunker/events, findings, cross-repo-contamination-guard. PASS.
-
-### Check 10: CODE QUALITY
-Zero TODOs/FIXMEs/HACKs. Zero untracked files (`git status` clean). Longest source files: manager_spawn.go (762 lines — post-QUAL-001 split), service.go (549 lines — marginal), tunnel.go (381). Build artifacts clean (no .coverage, htmlcov/, .pytest_cache/). `.gitignore` complete. PASS.
-
-### Check 11: MIDDLE-OUT WIRING
-Both binaries build. bunkerv1connect handlers (BunkerdHandler + AgentHandler) registered at server.go:136-149, mounted on chi router. config.Load called in bunkerd/main.go:36. viper wired in bunker/main.go:29-31. gRPC + REST listeners wired (server.go:168, 184). PASS.
-
-### Summary
-11 checks → 0 new gaps requiring tasks. 1 standing note: 0 benchmarks (low priority, infra daemon). **Idle tick #3** — cooldown escalated to 14400s (4h). Scheduler verified: CooldownS=14400, Enabled=True.
-
----
-
-## 11-Point Audit — idle tick #4 (2026-07-20 22:10)
-
-Fourth consecutive idle tick. All prior gaps resolved. Board empty.
-
-### Check 1: SPEC ALIGNMENT
-3 spec files (architecture.md, api.md, agent-lifecycle.md — 933 lines total) + proto (bunker.proto, 13 rpc methods). PASS.
-
-### Check 2: DOC COVERAGE
-AGENTS.md, README.md, 13+ per-package SKILL.md files. PASS.
-
-### Check 3: TEST GAPS
-All 12 real packages pass `go test -short -count=1 -timeout 60s ./...`. 4 packages with [no test files] expected (cmd/bunker, cmd/bunkerd = entrypoints; proto/bunker/v1, bunkerv1connect = generated). Internal/server at 60.9% coverage. PASS.
-
-### Check 4: PACKAGE UPGRADES
-5 indirect deps outdated: go-md2man (blocked by cobra), golang/protobuf (still required as indirect), kr/pty, goldmark, x/telemetry — all transitive noise, none in go.mod. Go 1.26.5 matches. govulncheck: 0 vulns in used code. PASS.
-
-### Check 5: PITFALL HUNT
-Zero TODOs/FIXMEs/HACKs in source. gitleaks detect: no leaks found. PASS.
-
-### Check 6: PERFORMANCE AUDIT
-0 benchmark functions. Low priority for infrastructure daemon. Noted 4th consecutive tick. PASS.
-
-### Check 7: ENDPOINT VERIFICATION
-bunkerd not running on dev box — expected. Source audit confirms zero stubs. E2E battery on bunker-mvp. N/A.
-
-### Check 8: CI/CD HEALTH
-5/5 recent CI runs green. Latest: "chore: board — idle tick #2, 11-point audit". PASS.
-
-### Check 9: DUCKBRAIN SYNC
-5 entries in bunker namespace: architecture/overview, architecture/tech-stack, state/idle-ticks (×3), cross-repo-contamination-guard, findings/WI-068. Tick counter at 3 → 4. PASS.
-
-### Check 10: CODE QUALITY
-Zero TODOs/FIXMEs/HACKs. Zero untracked files. Longest files: manager_spawn.go (762 lines — post-QUAL-001 split), service.go (549 lines — marginal). `.gitignore` complete. PASS.
-
-### Check 11: MIDDLE-OUT WIRING
-Both binaries build (`go build ./...` + `go vet ./...` clean). chi router with connect-go handlers mounted, config.Load + viper wired, gRPC + REST listeners. PASS.
-
-### Summary
-11 checks → **1 gap found**: GitReins task sync — 55 tasks remain in pending (●) state despite all corresponding WI items being complete in the board. Zero GitReins tasks in "complete" or "in_progress" states. This is a sync hygiene gap: all 55 tasks (WI-014 through WI-069 and sweep tasks) were completed but never synced back to GitReins task objects.
-
-**Idle tick #4** — 1 gap found, cooldown escalated to 28800s (8h).
-
----
-
-## Active Tasks
-
-- [x] **SYNC-001**: Sync GitReins tasks — mark 55 completed tasks as complete in GitReins task objects. All WI-014 through WI-069 + sweep-* tasks are complete per board but still show as pending (●) in GitReins. (completed 2026-07-20 tick 22:10 — all 55 tasks confirmed `status: complete` in .gitreins/tasks.yaml; CLI display ● is a visual artifact, statuses are correct)
-
----
-
-## 11-Point Audit — idle tick #5 (2026-07-20 23:16)
-
-Fifth consecutive idle tick. All prior gaps resolved. Board empty.
-
-### Check 1: SPEC ALIGNMENT
-3 spec files (architecture.md, api.md, agent-lifecycle.md — 933 lines total) + proto (bunker.proto, 13 rpc methods). PASS.
-
-### Check 2: DOC COVERAGE
-AGENTS.md, README.md, 13+ per-package SKILL.md files. PASS.
-
-### Check 3: TEST GAPS
-All 14 packages pass `go test -short -count=1 -timeout 60s ./...`. 4 packages with [no test files] expected (cmd/bunker, cmd/bunkerd = entrypoints; proto/bunker/v1, bunkerv1connect = generated). Internal/server at 60.9% coverage. PASS.
-
-### Check 4: PACKAGE UPGRADES
-5 indirect deps outdated: go-md2man (blocked by cobra), golang/protobuf (still required as indirect, deprecated v1.5.4 available), kr/pty, goldmark, x/telemetry — all transitive noise, none in go.mod directly. Go 1.26.5. govulncheck: 0 vulns in used code. PASS.
-
-### Check 5: PITFALL HUNT
-Zero TODOs/FIXMEs/HACKs in source. gitleaks detect: no leaks found. PASS.
-
-### Check 6: PERFORMANCE AUDIT
-0 benchmark functions. Low priority for infrastructure daemon (spawn/destroy/exec are I/O-bound). Noted 5th consecutive tick. PASS.
-
-### Check 7: ENDPOINT VERIFICATION
-bunkerd not running on dev box — expected. Source audit confirms zero stubs. E2E battery exists on bunker-mvp. N/A.
-
-### Check 8: CI/CD HEALTH
-3/3 recent CI runs green. Latest: "chore: sync GitReins task status — mark 55 tasks complete". PASS.
-
-### Check 9: DUCKBRAIN SYNC
-6 entries in bunker namespace: architecture/overview, architecture/tech-stack, state/idle-ticks (x5), cross-repo-contamination-guard, findings/WI-068. Tick counter at 4 → 5. PASS.
-
-### Check 10: CODE QUALITY
-Zero TODOs/FIXMEs/HACKs. Zero untracked files (`git status` clean). Longest files: manager_spawn.go (762 lines — post-QUAL-001 split), service.go (549 lines — marginal). `.gitignore` complete. PASS.
-
-### Check 11: MIDDLE-OUT WIRING
-Both binaries build. chi router with connect-go handlers, config.Load + viper wired, gRPC + REST listeners. PASS.
-
-### Summary
-11 checks → **0 gaps found**. 1 standing note: 0 benchmarks (low priority, infra daemon). **Idle tick #5** — cooldown escalated to 43200s (12h). Scheduler confirmed: CooldownS=43200, Enabled=True. Hilo=useful (87 files, 727 edges).
-
----
-
-## 11-Point Audit — idle tick #6 (2026-07-21 00:46)
-
-Sixth consecutive idle tick. All prior gaps resolved. Board empty.
-
-### Check 1: SPEC ALIGNMENT
-3 spec files (architecture.md, api.md, agent-lifecycle.md — 933 lines total) + proto (bunker.proto, 13 rpc methods). PASS.
-
-### Check 2: DOC COVERAGE
-AGENTS.md (31 lines), README.md (246 lines), LICENSE (Apache 2.0), Makefile, 15 per-package SKILL.md files. PASS.
-
-### Check 3: TEST GAPS
-All 14 packages pass `go test -short -count=1 -timeout 60s ./...`. 4 packages with [no test files] expected (cmd/bunker, cmd/bunkerd = entrypoints; proto/bunker/v1, bunkerv1connect = generated). PASS.
-
-### Check 4: PACKAGE UPGRADES
-7 direct deps — all current (zero [brackets] in go list -u). Go 1.26.5 in go.mod. govulncheck: 0 vulns in used code. 5 indirect deps outdated but all transitive noise (go-md2man blocked by cobra, golang/protobuf still required as indirect, kr/pty, goldmark, x/telemetry — none in go.mod directly). PASS.
-
-### Check 5: PITFALL HUNT
-Zero TODOs/FIXMEs/HACKs in source. `return nil, nil` at server.go:216 is legitimate guard clause (`!TLS.Enabled` → no TLS config needed). gitleaks detect: no leaks found. PASS.
-
-### Check 6: PERFORMANCE AUDIT
-0 benchmark functions. Low priority for infrastructure daemon (spawn/destroy/exec are I/O-bound). Noted 6th consecutive tick. PASS.
-
-### Check 7: ENDPOINT VERIFICATION
-bunkerd not running on dev box — expected. Source audit confirms zero stubs. E2E battery exists on bunker-mvp. N/A.
-
-### Check 8: CI/CD HEALTH
-5/5 recent CI runs green. Latest: "idle tick #5". PASS.
-
-### Check 9: DUCKBRAIN SYNC
-17 keys in bunker namespace. Tick counter at 5 → 6. PASS.
-
-### Check 10: CODE QUALITY
-Zero TODOs/FIXMEs/HACKs. Zero untracked files (`git status` clean). Longest files: bunker.pb.go (2140 lines, generated), manager_spawn.go (762), service.go (549 — marginal). `.gitignore` complete. PASS.
-
-### Check 11: MIDDLE-OUT WIRING
-Both binaries build (`go build ./...` + `go vet ./...` clean). chi router with connect-go handlers, config.Load + viper wired, gRPC + REST listeners. PASS.
-
-### Summary
-11 checks → **0 gaps found**. 1 standing note: 0 benchmarks (low priority, infra daemon). **Idle tick #6** — cooldown at 43200s (12h), was reverted to 1800 by daemon restart → re-fixed via API PUT (1st reversion — warning). Hilo=useful (87 files, 727 edges).
+> **Last audit:** idle tick #6 (2026-07-21 00:46) — 11/11 checks pass, 0 gaps. **This tick:** idle tick #7 (2026-07-21 04:54) — in cooldown (43200s, expires ~12:46). SYNC-001 moved to Completed (done in ec0c54f). Build: OK (serial, parallel blocked by session cgroup fork limits — env issue, not code). 397 tests, 14 packages. CI 5/5 green. Hilo: 87 files, 727 edges.
