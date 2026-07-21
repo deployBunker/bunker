@@ -294,3 +294,45 @@ Both binaries build. chi router with middleware (RequestID, RealIP, Logger, Reco
 
 ### Summary
 11 checks → 0 new gaps requiring tasks. 1 hardening note: gitleaks.toml allowlists docs/*, README.md, CHANGELOG.md — no docs/ directory exists, README/CHANGELOG are public-facing; low priority remediation. **Idle tick #2** — no cooldown escalation (threshold ≥3). Scheduler cooldown=1800s (verified via API).
+
+---
+
+## 11-Point Audit — idle tick #3 (2026-07-20 20:08)
+
+Third consecutive idle tick. All prior gaps resolved. Board empty.
+
+### Check 1: SPEC ALIGNMENT
+3 spec files (architecture.md, api.md, agent-lifecycle.md) + proto (bunker.proto, 13 rpc methods). PASS.
+
+### Check 2: DOC COVERAGE
+AGENTS.md (31 lines), README.md (246 lines), 13 per-package SKILL.md files. PASS.
+
+### Check 3: TEST GAPS
+Directory-level test detection: 4 packages with [no test files] are expected (cmd/bunker, cmd/bunkerd = entrypoints; proto/bunker/v1, bunkerv1connect = generated). All 12 real packages have test files. `go test -short -count=1 -timeout 60s ./...`: all pass. PASS.
+
+### Check 4: PACKAGE UPGRADES
+7 direct deps — all current (go.mod awk check, zero OUTDATED). Go 1.26.5 in go.mod. govulncheck: 0 vulns in used code. 5 indirect deps outdated but all covered by DEPS-001 notes (go-md2man blocked by cobra, golang/protobuf still required as indirect, kr/pty/goldmark/x/telemetry are transitive noise — none in go.mod). PASS.
+
+### Check 5: PITFALL HUNT
+Zero TODOs/FIXMEs/HACKs. `return nil, nil` at server.go:216 is legitimate guard clause (`!TLS.Enabled` → no TLS config needed). gitleaks.toml allowlists: `proto/.*` + `.*_test\\.go$` — correctly scoped (no *.md, specs/, or docs/ allowlist). gitleaks detect: no leaks found. PASS.
+
+### Check 6: PERFORMANCE AUDIT
+0 benchmark functions (`go test -bench=. -run='^$'` returned 0). Low priority for infrastructure daemon (spawn/destroy/exec are I/O-bound). Noted, no task (3rd consecutive tick).
+
+### Check 7: ENDPOINT VERIFICATION
+bunkerd not running on dev box — expected. Source audit: zero stubs found (grep for writeNotImplemented, UNIMPLEMENTED, stub patterns across internal/server/, internal/auth/ returned empty). E2E battery exists and verifies on bunker-mvp per AGENTS.md. N/A.
+
+### Check 8: CI/CD HEALTH
+5/5 recent CI runs green (`gh run list`). Latest: "chore: board — idle tick #2, 11-point audit (0 new gaps)". PASS.
+
+### Check 9: DUCKBRAIN SYNC
+16 keys in bunker namespace: architecture/overview, architecture/tech-stack, state/idle-ticks, state/foreman-tick history, project/bunker/events, findings, cross-repo-contamination-guard. PASS.
+
+### Check 10: CODE QUALITY
+Zero TODOs/FIXMEs/HACKs. Zero untracked files (`git status` clean). Longest source files: manager_spawn.go (762 lines — post-QUAL-001 split), service.go (549 lines — marginal), tunnel.go (381). Build artifacts clean (no .coverage, htmlcov/, .pytest_cache/). `.gitignore` complete. PASS.
+
+### Check 11: MIDDLE-OUT WIRING
+Both binaries build. bunkerv1connect handlers (BunkerdHandler + AgentHandler) registered at server.go:136-149, mounted on chi router. config.Load called in bunkerd/main.go:36. viper wired in bunker/main.go:29-31. gRPC + REST listeners wired (server.go:168, 184). PASS.
+
+### Summary
+11 checks → 0 new gaps requiring tasks. 1 standing note: 0 benchmarks (low priority, infra daemon). **Idle tick #3** — cooldown escalated to 14400s (4h). Scheduler verified: CooldownS=14400, Enabled=True.
