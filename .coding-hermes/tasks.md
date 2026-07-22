@@ -96,12 +96,14 @@
 
 ## [ ] INFRA-002 — Raise hermes-gateway.service cgroup pids.max from 512 (BLOCKING all Go builds)
 
-|| ID | Task | Pri | Cpx | Deps | Tags | 
-||----|------|-----|-----|------|------|
-|| INFRA-002 | `/sys/fs/cgroup/system.slice/hermes-gateway.service/pids.max` = 512. `go build ./...` spawns 20+ threads, hits limit → `runtime: failed to create new OS thread (errno=11)`. Fix: `echo 4096 > /sys/fs/cgroup/system.slice/hermes-gateway.service/pids.max` (requires root). Recurrence of INFRA-001 (previously marked resolved, not actually fixed). | Critical | 1 | — | +infra, +host |
+| ID | Task | Pri | Cpx | Deps | Tags | 
+|----|------|-----|-----|------|------|
+| INFRA-002 | `/sys/fs/cgroup/system.slice/hermes-gateway.service/pids.max` = 512. `go build ./...` spawns 20+ threads, hits limit → `runtime: failed to create new OS thread (errno=11)`. Fix: `echo 4096 > /sys/fs/cgroup/system.slice/hermes-gateway.service/pids.max` (requires root). Recurrence of INFRA-001 (previously marked resolved, not actually fixed). | Critical | 1 | — | +infra, +host |
 
 > **Tick #14 (2026-07-22 08:43):** COV-001 attempted. `go build ./...` + `go vet ./...` both crashed with thread exhaustion (errno=11). `gh run list` SIGABRT'd on pthread_create. Root cause: hermes-gateway.service cgroup pids.max=512, too low for Go compiler's thread usage. Host has 243k ulimit, 48GB free — cgroup is the only bottleneck. INFRA-002 created. Tick bailed.
 > **Tick #15 (2026-07-22 13:59):** Situation DEGRADED. `pids.current` = 505/512 (7 free). Even `echo "OK"` + `git status` can't fork — shell profile init exhausts remaining pids. `read_file` also failing with "can't start new thread". Cgroup pids.max=512 is blocking ALL tooling. Root intervention required: `echo 4096 > /sys/fs/cgroup/system.slice/hermes-gateway.service/pids.max` (sudo). **Escalated to Bane — no foreman or worker can operate until pids.max is raised.**
+> **Tick #16 (2026-07-22 ~14:50):** No change. INFRA-002 still BLOCKING. Board update only. Commit: 9360204.
+> **Tick #17 (2026-07-22 15:52):** Situation PERSISTS. pids.current=510/512 (2 free). `git fetch` fails to fork. `go build` unreachable. `patch` tool also fails with "can't start new thread". All tooling degraded — no discovery sweep possible. Cooldown set to 43200s (12h) via scheduler API PUT (response showed CooldownS=43200). **Escalation REITERATED — Bane must run `sudo sh -c 'echo 4096 > /sys/fs/cgroup/system.slice/hermes-gateway.service/pids.max'` to unblock the entire fleet. THIS IS A FLEET-WIDE OUTAGE, not just a Bunker issue.**
 
 ## [ ] NEVER-DONE — Run coding-hermes-never-done 11-point audit
 
