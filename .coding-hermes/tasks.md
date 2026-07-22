@@ -86,8 +86,16 @@
 
 ---
 
+## [x] U01 — Usability & coverage audit — ✅ Complete. Endpoints: all 13 wired (0 stubs). Error handling: proper connect codes. Edge cases: no TODOs/FIXMEs. Coverage gaps found → COV-001 created. Commit: <pending>
+
+## [ ] COV-001 — Boost internal/agent coverage from 28.7% → 60%+
+
+| ID | Task | Pri | Cpx | Deps | Tags | Model | Reasoning | Fallback |
+|----|------|-----|-----|------|------|-------|-----------|----------|
+| COV-001 | Boost internal/agent coverage from 28.7% → 60%+: Spawn (12.6%), Destroy (47.8%), RunAgent (28.6%), rootless Docker setup (0%), cgroup limits (0%), AppArmor (0%) | High | 4±1 | — | +++testing, ++go, +docker, +integration | GLM-5.2 | High | MiniMax-M3 |
+
 ## [ ] NEVER-DONE — Run coding-hermes-never-done 11-point audit
 
 Load coding-hermes-never-done skill. Run ALL 11 checks: spec alignment, doc coverage, test gaps, package upgrades, pitfall hunt, performance audit, endpoint verification, CI/CD health, DuckBrain sync, code quality, middle-out wiring. Create a task for EVERY gap found. This task is never complete — the audit always finds something.
 
-> **Last audit:** idle tick #12 (2026-07-22 00:24) — 11/11 checks pass, 0 new gaps. Build: PASS. Tests: PASS (397/14 pkgs). Vet: PASS. Govulncheck: 0 vulns. Hilo: 87 files, 727 edges (healthy). CI: all green (5 recent runs). DuckBrain: 5 keys. Cooldown: 43200 (12h, re-fixed via API PUT — 3rd REVERSION, escalated). Idle counter: 12/7 — escalated to Bane (3rd reversion). Feature-complete, 73/73 done. ⚠️ 3rd cooldown reversion — daemon restarts keep resetting 43200→1800. ⚠️ 55 GitReins tasks remain in_progress in MCP server memory (pre-existing, code complete).
+> **Last audit:** U01 tick #13 (2026-07-22 04:22) — 13/13 endpoints wired (0 stubs), all error paths covered with connect codes, no TODOs/FIXMEs. Coverage: 14/14 pkgs pass, agent@28.7% gap → COV-001 created. Build: PASS. Tests: PASS (397/14 pkgs). Vet: PASS. Govulncheck: 0 vulns. Hilo: 87 files, 727 edges (healthy). CI: all green (3 recent runs). DuckBrain: 5 keys. Cooldown: 43200 (12h, re-fixed via API PUT — 4th REVERSION, escalated). Idle counter: 13/7 — escalated to Bane (4th cooldown reversion). Feature-complete, 73/73 done. ⚠️ 4th cooldown reversion — daemon restarts keep resetting 43200→1800. ⚠️ 1 new task: COV-001.
