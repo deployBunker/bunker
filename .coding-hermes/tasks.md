@@ -86,7 +86,7 @@
 
 ---
 
-## [x] U01 — Usability & coverage audit — ✅ Complete. Endpoints: all 13 wired (0 stubs). Error handling: proper connect codes. Edge cases: no TODOs/FIXMEs. Coverage gaps found → COV-001 created. Commit: <pending>
+## [x] U01 — Usability & coverage audit — ✅ Complete. Endpoints: all 13 wired (0 stubs). Error handling: proper connect codes. Edge cases: no TODOs/FIXMEs. Coverage gaps found → COV-001 created. Commit: c4203f2
 
 ## [ ] COV-001 — Boost internal/agent coverage from 28.7% → 60%+
 
