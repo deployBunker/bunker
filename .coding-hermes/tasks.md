@@ -88,11 +88,19 @@
 
 ## [x] U01 — Usability & coverage audit — ✅ Complete. Endpoints: all 13 wired (0 stubs). Error handling: proper connect codes. Edge cases: no TODOs/FIXMEs. Coverage gaps found → COV-001 created. Commit: c4203f2
 
-## [ ] COV-001 — Boost internal/agent coverage from 28.7% → 60%+
+## [ ] COV-001 — Boost internal/agent coverage from 28.7% → 60%+ — ⚠️ BLOCKED by INFRA-002
 
 | ID | Task | Pri | Cpx | Deps | Tags | Model | Reasoning | Fallback |
 |----|------|-----|-----|------|------|-------|-----------|----------|
-| COV-001 | Boost internal/agent coverage from 28.7% → 60%+: Spawn (12.6%), Destroy (47.8%), RunAgent (28.6%), rootless Docker setup (0%), cgroup limits (0%), AppArmor (0%) | High | 4±1 | — | +++testing, ++go, +docker, +integration | GLM-5.2 | High | MiniMax-M3 |
+| COV-001 | Boost internal/agent coverage from 28.7% → 60%+: Spawn (12.6%), Destroy (47.8%), RunAgent (28.6%), rootless Docker setup (0%), cgroup limits (0%), AppArmor (0%) | High | 4±1 | INFRA-002 | +++testing, ++go, +docker, +integration | GLM-5.2 | High | MiniMax-M3 |
+
+## [ ] INFRA-002 — Raise hermes-gateway.service cgroup pids.max from 512 (BLOCKING all Go builds)
+
+| ID | Task | Pri | Cpx | Deps | Tags | 
+|----|------|-----|-----|------|------|
+| INFRA-002 | `/sys/fs/cgroup/system.slice/hermes-gateway.service/pids.max` = 512. `go build ./...` spawns 20+ threads, hits limit → `runtime: failed to create new OS thread (errno=11)`. Fix: `echo 4096 > /sys/fs/cgroup/system.slice/hermes-gateway.service/pids.max` (requires root). Recurrence of INFRA-001 (previously marked resolved, not actually fixed). | Critical | 1 | — | +infra, +host |
+
+> **Tick #14 (2026-07-22 08:43):** COV-001 attempted. `go build ./...` + `go vet ./...` both crashed with thread exhaustion (errno=11). `gh run list` SIGABRT'd on pthread_create. Root cause: hermes-gateway.service cgroup pids.max=512, too low for Go compiler's thread usage. Host has 243k ulimit, 48GB free — cgroup is the only bottleneck. INFRA-002 created. Tick bailed.
 
 ## [ ] NEVER-DONE — Run coding-hermes-never-done 11-point audit
 
