@@ -90,4 +90,4 @@
 
 Load coding-hermes-never-done skill. Run ALL 11 checks: spec alignment, doc coverage, test gaps, package upgrades, pitfall hunt, performance audit, endpoint verification, CI/CD health, DuckBrain sync, code quality, middle-out wiring. Create a task for EVERY gap found. This task is never complete — the audit always finds something.
 
-> **Last audit:** idle tick #10 (2026-07-21 16:22) — 11/11 checks pass, 0 gaps. INFRA-001 resolved (thread exhaustion cleared). Build: PASS. Tests: PASS (397/14 pkgs). Vet: PASS. Hilo: 87 files, 727 edges (healthy). CI: all green. Cooldown: 43200 (12h, re-fixed after daemon-restart reversion). Feature-complete, 73/73 done. Project in sustained idle — next tick ~04:22.
+> **Last audit:** idle tick #11 (2026-07-21 20:37) — 11/11 checks pass, 0 gaps. Build: PASS. Tests: PASS (397/14 pkgs). Vet: PASS. Govulncheck: 0 vulns. Hilo: 87 files, 727 edges (healthy). CI: all green (3 recent runs). DuckBrain: 4 keys. Cooldown: 43200 (12h, re-fixed after 2nd daemon-restart reversion). Idle counter: 11/7 — escalated to Bane. Feature-complete, 73/73 done. Next tick ~08:37. ⚠️ 2nd reversion — cooldown dropped from 43200→1800 after daemon restart.
