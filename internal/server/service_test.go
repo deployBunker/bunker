@@ -257,7 +257,6 @@ func TestAgentService_Heartbeat_NotFound(t *testing.T) {
 	}
 }
 
-
 // TestExecAgent_SSHCommandIncludesDockerHost verifies that the SSH command built
 // by ExecAgent ensures DOCKER_HOST reaches the remote command.  We now wrap the
 // remote command with `env DOCKER_HOST=unix://...` so it works even when sshd
