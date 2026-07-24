@@ -72,4 +72,6 @@
 | COV-001 | Boost internal/agent coverage 28.2%→37.5% | High | 4 | — | GLM-5.2 |
 | INFRA-002 | pids.max 512→2048 (system thread exhaustion fix) | Critical | 1 | — | Human (root) |
 
-> Tick #32 (2026-07-24): MULTI-002 completed. 14/14 pkgs green, 397 tests pass. Cooldown at 86400s (24h cap). Idle tick #13+ with zero gaps. Escalated to Bane for project disable.
+> Tick #32 (2026-07-24): MULTI-002 completed. 14/14 pkgs green, 397 tests pass. Cooldown set to 86400s (24h cap). Idle tick #13. Escalated to Bane for project disable.
+>
+> Tick #33 (2026-07-24): Idle tick #14. Cooldown reverted 86400→43200s (daemon restart/TOML reload), re-fixed to 86400s. Full NEVER-DONE 14-point audit: all checks pass. GitReins store: all tasks complete, matches board. Fixes: GitReins evaluator explicit max_time field added, test-config.yaml gitignored. 14/14 pkgs green, 740 Hilo edges, 397 tests pass. Zero gaps. Escalated to Bane for disable (2nd escalation). CooldownS=86400.

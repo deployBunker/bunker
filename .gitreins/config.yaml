@@ -46,6 +46,9 @@ tier1:
 # ── Evaluator caps (Tier 2) ─────────────────────────────────────
 evaluator:
   max_iterations: 100
+  max_time: "15m"
+  max_input_tokens: "1M"
+  max_output_tokens: "384k"
   cap: "100/15m/1M/384k"
 
 # ── Force legacy evaluator path (avoid default pipeline) ────────
