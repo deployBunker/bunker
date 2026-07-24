@@ -17,6 +17,7 @@
 
 | SYNC-001 | Sync GitReins tasks — 55 completed tasks still pending in task objects | Low | 1 | ec0c54f | DeepSeek V4 Flash |
 | MULTI-001 | `bunker use <server>` — switch active bunker host. 3 files (+252L). | High | 2 | 47772d0 | DeepSeek V4 Pro |
+| MULTI-002 | `bunker status --all-servers` — cross-host aggregated view. 3 files (+735L). | High | 3 | 9cd8498 | GLM-5.2 |
 
 | ID | Task | Pri | Cpx | Commit | Model |
 |----|------|-----|-----|--------|-------|
