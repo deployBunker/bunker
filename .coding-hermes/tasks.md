@@ -7,7 +7,6 @@
 
 | ID | Task | Pri | Cpx | Commit | Model |
 |----|------|-----|-----|--------|-------|
-| **MULTI-002** | `bunker status --all-servers` — aggregated view across all connected bunker hosts. One command to see `bunker status` (agents running, CPU/mem/disk per host, tunnel URLs) across every registered server. Acceptance: `bunker status --all` shows per-host sections, any unreachable host shows as OFFLINE. | High | 3 | — | GLM-5.2 |
 | **MULTI-003** | Cross-host multi-server E2E test — spawn agents on two bunker instances, verify isolation (different port ranges, different hosts), verify `bunker use` switching, verify destroy on correct host. Needs 2+ bunkerd instances running. | High | 4 | — | MiniMax-M3 |
 | **E2E-001** | Root-level integration test suite — 30 skipped tests in `internal/agent` all require root. Need a dedicated test binary run on `bunker-mvp` as root that exercises real spawn (useradd, systemd-run, rootless dockerd), real exec (SSH + DOCKER_HOST propagation), real destroy (systemctl disable, userdel). No mocks. Acceptance: >=25 of 30 previously-skipped tests pass on `bunker-mvp`. | Critical | 5 | — | MiniMax-M3 |
 
