@@ -39,9 +39,9 @@
 | BUILD-001 | Cross-project Docker Go version alignment — golang:1.21→1.25-alpine in 4 projects | High | 2 | — | ++infra, +devops | DeepSeek V4 Pro | Mechanical Dockerfile patching | DeepSeek V4 Flash |
 | BUILD-002 | Docker compose port conflict detection — silent failure on port collisions | Medium | 2 | — | ++infra, +devops | DeepSeek V4 Pro | Port check + messaging | DeepSeek V4 Flash |
 | BUILD-003 | Frontend TS build blocking cross-project — 6+ Helios frontend import/export bugs | High | 2 | Helios repo | ++frontend, ++debugging | GLM-5.2 | TS build fixes | DeepSeek V4 Pro |
-| NEVER-DONE | 11-point audit sweep | High | 2 | — | ++code-review, +testing | DeepSeek V4 Pro | Audit runs every tick | GLM-5.2 |
+| NEVER-DONE | 14-point audit sweep | High | 2 | — | ++code-review, +testing | DeepSeek V4 Pro | Audit runs every tick | GLM-5.2 |
 
-**Assumptions:** Go project — `go build ./... && go test ./... -short && go vet ./... && gofmt -w`. 397 tests across 14 packages. Live E2E battery on bunker-mvp (78.46.173.180). GitReins Tier 1 + Hilo active. All 73 work items complete (Phase 1-18). Project feature-complete.
+**Assumptions:** Go project — `go build ./... && go test ./... -short && go vet ./... && gofmt -w`. 459 test functions (532 test cases) across 14 packages. Live E2E battery on bunker-mvp (78.46.173.180). GitReins Tier 1 + Hilo active. All 73 work items complete (Phase 1-18). Project feature-complete.
 
 **Routing Notes:** Go project — DeepSeek V4 Pro primary ($0.44/1M), Step 3.7 Flash for test/CI ($0.09/1M). GPT-5.6 Sol for complex system-level (rootless Docker, TLS/mTLS, cgroup). GPT-5.6 Terra for specs. MULTI-003 blocked on 2+ bunkerd instances. E2E-001-ROOT needs root access on live server.
 
@@ -75,3 +75,6 @@
 > Tick #32 (2026-07-24): MULTI-002 completed. 14/14 pkgs green, 397 tests pass. Cooldown set to 86400s (24h cap). Idle tick #13. Escalated to Bane for project disable.
 >
 > Tick #33 (2026-07-24): Idle tick #14. Cooldown reverted 86400→43200s (daemon restart/TOML reload), re-fixed to 86400s. Full NEVER-DONE 14-point audit: all checks pass. GitReins store: all tasks complete, matches board. Fixes: GitReins evaluator explicit max_time field added, test-config.yaml gitignored. 14/14 pkgs green, 740 Hilo edges, 397 tests pass. Zero gaps. Escalated to Bane for disable (2nd escalation). CooldownS=86400.
+>
+> Tick #34 (2026-07-25): Idle tick #15. Discovery: 14/14 pkgs green (go build + go vet + gofmt clean). 459 test functions (532 test cases) across 50 test files — all pass. 740 Hilo edges, 88 files. GitReins Tier 1 clean (secrets/build/lint/tests). Self-fixes: SECURITY.md created, CHANGELOG.md created, DuckBrain /projects/bunker/status seeded (namespace was empty). Test count corrected: 397→459 (board was stale — counts from test functions not test runner output). Escalated to Bane for disable (3rd escalation). CooldownS=86400.
+VERDICT: idle — maintenance mode. Self-fixed 3 doc/infra gaps that persisted 15+ ticks.

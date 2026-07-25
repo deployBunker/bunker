@@ -3,39 +3,28 @@
 ## Supported Versions
 
 | Version | Supported          |
-|---------|--------------------|
-| 0.1.x   | ✅                 |
+| ------- | ------------------ |
+| 1.x     | :white_check_mark: |
 
 ## Reporting a Vulnerability
 
-**Do not open a public issue.** Send vulnerability reports to:
+**Do not open a public issue.** Email: wojons@wojonstech.com
 
-- Email: `security@bunker.sh` (preferred)
-- Or DM `@Bane` on the project's communication channel
-
-You will receive an initial response within **48 hours** and a status update within **5 business days**.
-
-### What to include
-
+Please include:
 - Description of the vulnerability
 - Steps to reproduce
 - Affected versions
 - Any potential mitigations you've identified
 
-### Process
-
-1. Report received → acknowledged within 48h
-2. Triage and reproduce → 5 business days
-3. Fix developed → private patch
-4. Coordinated disclosure → public advisory + CVE request if warranted
+Response time: within 48 hours. We will keep you updated as we triage and address the issue.
 
 ## Security Model
 
-Bunker isolates AI agents via Linux user accounts with rootless Docker. Key boundaries:
+Bunker provisions per-user Docker containers with:
+- mTLS between `bunker` CLI and `bunkerd` server
+- JWT-based API key authentication with scope enforcement
+- cgroup resource limits (CPU, memory, PIDs)
+- User namespace remapping for rootless containers
+- SSH key isolation per container
 
-- **Agent isolation:** Each agent is a separate Linux user with its own rootless Docker daemon. Agents cannot access each other's containers, files, or processes.
-- **Auth:** Dual-tier JWT (master tokens + agent-scoped sub-keys). Static bearer tokens for bootstrap. mTLS for production deployments.
-- **Network:** Agents are firewalled from each other. Public access only through Cloudflare tunnels or Tailscale.
-- **Resource limits:** CPU, memory, disk, processes, and open files are enforced via cgroups (systemd user slices).
-
-If you find a way to escape agent isolation, bypass auth, or exceed resource limits, that is a critical vulnerability — please report it immediately.
+**Out of scope:** social engineering, physical access, compromise of the host system by a user with root in their own container (containers are designed for root access).

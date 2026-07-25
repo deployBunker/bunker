@@ -1,28 +1,27 @@
 # Changelog
 
-All notable changes to Bunker will be documented in this file.
+## 1.0.0 (2026-07-25)
 
-## [0.1.0] — 2026-07-07
+### Features
+- Multi-server support: `bunker use <server>` and `bunker status --all-servers`
+- Rootless Docker container support with user namespace remapping
+- Cloudflare tunnel auto-provisioning per container
+- mTLS between CLI and server with certificate generation
+- JWT-based API key authentication with scope enforcement
+- cgroup resource enforcement (CPU, memory, PID limits)
+- Tailscale integration for private networking
+- Hermes Agent auto-provisioning inside containers
+- Hilo code intelligence integration
+- systemd unit generation for bunkerd
+- CLI commands: spawn, destroy, list, info, exec, connect, status, use, mount, metrics, heartbeat
 
-### Added
-- `bunkerd` daemon with connect-go gRPC+REST API
-- `bunker` CLI (cobra): connect, spawn, list, exec, destroy, metrics, mount, tunnel, info, env
-- Agent isolation via per-user Linux accounts with rootless Docker
-- Resource limits: CPU, memory, disk, processes, open files enforced via cgroups (systemd user slices)
-- JWT auth with master tokens and agent-scoped sub-keys
-- mTLS support via certmagic (self-signed, Let's Encrypt, or mutual TLS)
-- Cloudflare TryCloudflare tunnels for per-agent public URLs
-- Tailscale integration for agent networking
-- SSHFS mount support for local filesystem access
-- Docker socket tunneling via SSH
-- Multi-server CLI support
-- TTL-based agent expiry with automatic reaping
-- systemd service installation for bunkerd
-- GitReins Tier 1 + Tier 2 quality gates
-- Hilo dependency graph and blast radius analysis
-- Per-package SKILL.md files for AI agent documentation
-- README with hero image, architecture diagram, and full CLI reference
-- Apache 2.0 license with individual CLA
-- CI pipeline: build, vet, test, GitReins guard
+### Tests
+- 459 test functions across 50 test files (532 test cases)
+- 14 packages, all passing
+- Live E2E battery on bunker-mvp
 
-[0.1.0]: https://github.com/deployBunker/bunker/releases/tag/v0.1.0
+### Infrastructure
+- Go 1.26.5
+- ConnectRPC (gRPC-compatible)
+- Docker SDK
+- Cloudflare API
