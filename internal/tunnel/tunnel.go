@@ -95,6 +95,7 @@ func (m *TunnelManager) Start(ctx context.Context, agentID string, localPort uin
 	// bound the startup scan for the public URL.
 	cmdCtx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(cmdCtx, m.cfg.BinaryPath, args...)
+	configureTunnelCommand(cmd)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -141,18 +142,15 @@ func (m *TunnelManager) Start(ctx context.Context, agentID string, localPort uin
 	select {
 	case res := <-resultCh:
 		if res.err != nil {
-			cancel()
-			cmd.Wait() //nolint:errcheck
+			stopTunnelCommand(cmd, cancel) //nolint:errcheck
 			return "", res.err
 		}
 		publicURL = res.url
 	case <-time.After(timeout):
-		cancel()
-		cmd.Wait() //nolint:errcheck
+		stopTunnelCommand(cmd, cancel) //nolint:errcheck
 		return "", fmt.Errorf("timeout waiting for TryCloudflare URL after %v", timeout)
 	case <-ctx.Done():
-		cancel()
-		cmd.Wait() //nolint:errcheck
+		stopTunnelCommand(cmd, cancel) //nolint:errcheck
 		return "", ctx.Err()
 	}
 
@@ -219,6 +217,7 @@ func (m *TunnelManager) StartNamed(ctx context.Context, agentID string, localPor
 
 	cmdCtx, cancel := context.WithCancel(ctx)
 	cmd := exec.CommandContext(cmdCtx, m.cfg.BinaryPath, args...)
+	configureTunnelCommand(cmd)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -258,8 +257,7 @@ func (m *TunnelManager) StartNamed(ctx context.Context, agentID string, localPor
 
 	select {
 	case res := <-resultCh:
-		cancel()
-		cmd.Wait() //nolint:errcheck
+		stopTunnelCommand(cmd, cancel) //nolint:errcheck
 		return "", res.err
 	case <-time.After(timeout):
 		// Named tunnel doesn't print the URL — it uses the pre-configured domain.
@@ -286,8 +284,7 @@ func (m *TunnelManager) StartNamed(ctx context.Context, agentID string, localPor
 
 		return domain, nil
 	case <-ctx.Done():
-		cancel()
-		cmd.Wait() //nolint:errcheck
+		stopTunnelCommand(cmd, cancel) //nolint:errcheck
 		return "", ctx.Err()
 	}
 }
@@ -301,8 +298,7 @@ func (m *TunnelManager) Stop(agentID string) error {
 		delete(m.tunnels, agentID)
 		m.mu.Unlock()
 
-		rt.cancel()
-		err := rt.cmd.Wait()
+		err := stopTunnelCommand(rt.cmd, rt.cancel)
 		if err != nil {
 			m.logger.Debug("cloudflared exited", "agent_id", agentID, "error", err)
 		}
@@ -316,8 +312,7 @@ func (m *TunnelManager) Stop(agentID string) error {
 		delete(m.namedTunnels, agentID)
 		m.mu.Unlock()
 
-		nrt.cancel()
-		err := nrt.cmd.Wait()
+		err := stopTunnelCommand(nrt.cmd, nrt.cancel)
 		if err != nil {
 			m.logger.Debug("cloudflared named exited", "agent_id", agentID, "error", err)
 		}
