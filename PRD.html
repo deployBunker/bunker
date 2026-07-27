@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bunker — Product Requirements Document</title>
+<style>
+  :root { --bg: #0a0a0f; --card: #12121a; --border: #1e1e2e; --text: #cdd6f4; --muted: #6c7086; --accent: #89b4fa; --green: #a6e3a1; --yellow: #f9e2af; --red: #f38ba8; --purple: #cba6f7; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem; }
+  h1 { font-size: 2.2rem; margin-bottom: 0.3rem; color: #fff; }
+  h2 { font-size: 1.4rem; margin: 2.5rem 0 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); color: var(--accent); }
+  h3 { font-size: 1.1rem; margin: 1.5rem 0 0.7rem; color: var(--purple); }
+  .subtitle { color: var(--muted); font-size: 0.95rem; margin-bottom: 2rem; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem 1.5rem; margin: 1rem 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1rem 0; }
+  .stat { text-align: center; }
+  .stat .value { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
+  .stat .label { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+  th { text-align: left; padding: 0.5rem 0.75rem; background: var(--border); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+  .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+  .badge-green { background: rgba(166,227,161,0.15); color: var(--green); }
+  .badge-yellow { background: rgba(249,226,175,0.15); color: var(--yellow); }
+  .badge-red { background: rgba(243,139,168,0.15); color: var(--red); }
+  .badge-purple { background: rgba(203,166,247,0.15); color: var(--purple); }
+  code { background: var(--border); padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.85em; }
+  pre { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; overflow-x: auto; font-size: 0.85em; line-height: 1.5; }
+  .cli { color: var(--green); }
+  .flag { color: var(--yellow); }
+  .arg { color: var(--purple); }
+  ul { padding-left: 1.5rem; margin: 0.5rem 0; }
+  li { margin: 0.3rem 0; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<h1>🛡️ Bunker</h1>
+<p class="subtitle">Multi-tenant Docker host provisioning for AI agents — Product Requirements Document v1.0</p>
+
+<div class="grid">
+  <div class="stat"><div class="value">v0.1.0</div><div class="label">Version</div></div>
+  <div class="stat"><div class="value">264</div><div class="label">Commits</div></div>
+  <div class="stat"><div class="value">23.3K</div><div class="label">Lines of Go</div></div>
+  <div class="stat"><div class="value">459</div><div class="label">Test Functions</div></div>
+  <div class="stat"><div class="value">773</div><div class="label">Hilo Edges</div></div>
+  <div class="stat"><div class="value">Apache 2.0</div><div class="label">License</div></div>
+</div>
+
+<h2>1. Executive Summary</h2>
+<div class="card">
+<p>Bunker is a <strong>multi-tenant Docker host provisioning platform</strong> for AI agents. It provides a gRPC + REST API that spawns isolated, resource-enforced Docker environments — each with its own Linux user, SSH access, Cloudflare tunnel, and cgroup limits. Think "VPS-as-a-service for agents" — one CLI to provision, manage, and destroy agent workspaces across multiple physical hosts.</p>
+<p><strong>Status:</strong> Feature-complete, production-deployed on Hetzner. 73 work items delivered across 18 phases. GitHub Actions CI green. 15 packages, 94 Go source files, 459 test functions.</p>
+</div>
+
+<div class="grid">
+  <div class="stat"><div class="value">73/73</div><div class="label">Work Items Done</div></div>
+  <div class="stat"><div class="value">1</div><div class="label">Live Server</div></div>
+  <div class="stat"><div class="value">15</div><div class="label">Go Packages</div></div>
+  <div class="stat"><div class="value">94</div><div class="label">Go Source Files</div></div>
+</div>
+
+<h2>2. Problem Statement</h2>
+<div class="card">
+<p>AI coding agents need isolated environments to build, test, and run code. Existing solutions (GitHub Codespaces, Docker-in-Docker, manual VPS provisioning) either lack isolation guarantees, require manual SSH setup, or can't be provisioned programmatically. Bunker solves this by providing a <strong>single API</strong> that:</p>
+<ul>
+  <li>Spawns rootless Docker environments with per-agent Linux users</li>
+  <li>Enforces CPU/memory/disk/process limits via cgroups</li>
+  <li>Auto-provisions Cloudflare tunnels for public access</li>
+  <li>Supports multi-host management from one CLI</li>
+  <li>Provides SSH + Docker exec + SSHFS mount for agent tool access</li>
+</ul>
+</div>
+
+<h2>3. Architecture</h2>
+
+<pre>
+┌──────────────────────────────────────────────────────┐
+│  <span class="badge badge-purple">bunker CLI</span>  (cobra)                                     │
+│  connect · spawn · list · destroy · exec · run ·     │
+│  status · mount · tunnel · metrics · heartbeat        │
+│  info · env · use                                     │
+└───────────┬──────────────────────────────────────────┘
+            │ HTTP/gRPC (connect-go + chi)
+┌───────────▼──────────────────────────────────────────┐
+│  <span class="badge badge-green">bunkerd</span>  daemon                                        │
+│  ┌─────────┐ ┌──────────┐ ┌────────┐ ┌───────────┐  │
+│  │ manager │ │ systemd  │ │tunnel  │ │  auth     │  │
+│  │ (spawn/ │ │ (unit    │ │(cloud- │ │(JWT/mTLS) │  │
+│  │ destroy)│ │  gen)    │ │flare)  │ │           │  │
+│  └─────────┘ └──────────┘ └────────┘ └───────────┘  │
+│  ┌─────────┐ ┌──────────┐ ┌────────┐                │
+│  │resource │ │ port     │ │ TTL    │                │
+│  │(cgroup) │ │ alloc    │ │reaper  │                │
+│  └─────────┘ └──────────┘ └────────┘                │
+└───────────┬──────────────────────────────────────────┘
+            │ useradd · systemd-run · rootlesskit · ssh-keygen
+┌───────────▼──────────────────────────────────────────┐
+│  Agent Instances  (one Linux user each)               │
+│  ┌─────────────────────────┐ ┌─────────────────────┐ │
+│  │ agent-1                 │ │ agent-2             │ │
+│  │ 2 CPU / 4 GB / 20 GB    │ │ 4 CPU / 8 GB / 40 GB│ │
+│  │ dockerd (rootless)      │ │ dockerd (rootless)  │ │
+│  │ SSH on port 22001       │ │ SSH on port 22002   │ │
+│  │ trycloudflare → .com    │ │ trycloudflare → .com│ │
+│  │ /home/agent-1/          │ │ /home/agent-2/      │ │
+│  └─────────────────────────┘ └─────────────────────┘ │
+└──────────────────────────────────────────────────────┘
+</pre>
+
+<div class="card">
+<h3>Component Map</h3>
+<table>
+<tr><th>Package</th><th>Lines</th><th>Responsibility</th></tr>
+<tr><td><code>internal/agent</code></td><td>~2,100</td><td>Agent lifecycle: spawn, destroy, rootless Docker, cgroup limits, TTL reaper</td></tr>
+<tr><td><code>internal/server</code></td><td>~550</td><td>gRPC + REST handlers via connect-go/chi, middleware, TLS</td></tr>
+<tr><td><code>internal/cli</code></td><td>~1,500</td><td>13 CLI commands via cobra, multi-server config, client dispatch</td></tr>
+<tr><td><code>internal/auth</code></td><td>~300</td><td>API key validation, JWT creation/verification (Ed25519), mTLS, scope enforcement</td></tr>
+<tr><td><code>internal/config</code></td><td>~300</td><td>YAML + env + flag config via viper, defaults, validation</td></tr>
+<tr><td><code>internal/systemd</code></td><td>~200</td><td>User-slice unit generation, Environment/ExecStart templating</td></tr>
+<tr><td><code>internal/tunnel</code></td><td>~200</td><td>TryCloudflare binary orchestration, named tunnels, process group management</td></tr>
+<tr><td><code>internal/tailscale</code></td><td>~100</td><td>Tailscale integration for mesh networking</td></tr>
+<tr><td><code>internal/resource</code></td><td>~150</td><td>Cgroup enforcement, user-slice drop-in generation</td></tr>
+<tr><td><code>internal/hilo</code></td><td>~80</td><td>Hilo graph driver integration</td></tr>
+<tr><td><code>internal/hermes</code></td><td>~120</td><td>Hermes agent auto-provisioning (SKILL.md, coding-hermes bootstrapping)</td></tr>
+<tr><td><code>internal/apikey</code></td><td>~60</td><td>Static pre-shared key management</td></tr>
+<tr><td><code>internal/tlsutil</code></td><td>~80</td><td>Self-signed + ACME cert generation via certmagic</td></tr>
+<tr><td><code>proto/bunker/v1</code></td><td>~200</td><td>Protobuf definitions: 13 RPCs, message types, connect-go codegen</td></tr>
+</table>
+</div>
+
+<h2>4. API Surface</h2>
+
+<div class="card">
+<h3>Bunkerd Service (gRPC + REST on :9090/:8080)</h3>
+<table>
+<tr><th>RPC</th><th>Method</th><th>Description</th></tr>
+<tr><td><code>ServerInfo</code></td><td>Read</td><td>Server version, uptime, capacity</td></tr>
+<tr><td><code>ServerMetrics</code></td><td>Read</td><td>CPU, memory, disk, Docker container count, agent slots</td></tr>
+<tr><td><code>SpawnAgent</code></td><td>Create</td><td>Provision agent: Linux user, SSH keypair, rootless dockerd, Cloudflare tunnel, cgroup limits</td></tr>
+<tr><td><code>DestroyAgent</code></td><td>Delete</td><td>Tear down agent: stop systemd units, remove user, clean home dir, deallocate ports</td></tr>
+<tr><td><code>ListAgents</code></td><td>Read</td><td>List all agents with status, resources, TTL</td></tr>
+<tr><td><code>GetAgent</code></td><td>Read</td><td>Get single agent details</td></tr>
+<tr><td><code>AgentMetrics</code></td><td>Read</td><td>Per-agent CPU, memory, disk, Docker containers</td></tr>
+<tr><td><code>ExecAgent</code></td><td>Stream</td><td>Execute command inside agent (SSH + DOCKER_HOST propagation)</td></tr>
+<tr><td><code>RunAgent</code></td><td>Create</td><td>Run persistent background process via systemd-run</td></tr>
+<tr><td><code>HeartbeatAgent</code></td><td>Update</td><td>Extend agent TTL, report liveness</td></tr>
+</table>
+<h3>Agent Service (inside agent context)</h3>
+<table>
+<tr><th>RPC</th><th>Method</th><th>Description</th></tr>
+<tr><td><code>GetInfo</code></td><td>Read</td><td>Agent self-report: docker version, resource usage, connection status</td></tr>
+<tr><td><code>Metrics</code></td><td>Read</td><td>Agent-level metrics snapshot</td></tr>
+<tr><td><code>Heartbeat</code></td><td>Update</td><td>Keepalive from agent to bunkerd</td></tr>
+</table>
+</div>
+
+<h2>5. CLI Reference</h2>
+
+<div class="card">
+<h3>Full Command Listing (13 commands)</h3>
+<table>
+<tr><th>Command</th><th>Flags</th><th>Description</th></tr>
+<tr><td><code class="cli">bunker connect</code> <span class="arg">&lt;url&gt;</span></td><td><span class="flag">--token</span>, <span class="flag">--tls-insecure</span></td><td>Register a bunkerd server</td></tr>
+<tr><td><code class="cli">bunker use</code> <span class="arg">&lt;server-name&gt;</span></td><td>—</td><td>Switch active server for subsequent commands</td></tr>
+<tr><td><code class="cli">bunker spawn</code> <span class="arg">&lt;agent-id&gt;</span></td><td><span class="flag">--cpu</span>, <span class="flag">--memory</span>, <span class="flag">--disk</span>, <span class="flag">--ttl</span></td><td>Provision a new agent environment</td></tr>
+<tr><td><code class="cli">bunker list</code></td><td><span class="flag">--server</span></td><td>List all agents on active server</td></tr>
+<tr><td><code class="cli">bunker destroy</code> <span class="arg">&lt;agent-id&gt;</span></td><td><span class="flag">--force</span></td><td>Destroy agent and clean up all resources</td></tr>
+<tr><td><code class="cli">bunker info</code> <span class="arg">&lt;agent-id&gt;</span></td><td>—</td><td>Get detailed agent information</td></tr>
+<tr><td><code class="cli">bunker exec</code> <span class="arg">&lt;agent-id&gt;</span> <span class="flag">--</span> <span class="arg">&lt;command&gt;</span></td><td><span class="flag">--raw</span>, <span class="flag">--script</span></td><td>Execute command inside agent via SSH</td></tr>
+<tr><td><code class="cli">bunker run</code> <span class="arg">&lt;agent-id&gt;</span> <span class="flag">--</span> <span class="arg">&lt;command&gt;</span></td><td><span class="flag">--detach</span></td><td>Run persistent background process</td></tr>
+<tr><td><code class="cli">bunker metrics</code> <span class="arg">&lt;agent-id&gt;</span></td><td>—</td><td>Get agent resource metrics</td></tr>
+<tr><td><code class="cli">bunker heartbeat</code> <span class="arg">&lt;agent-id&gt;</span></td><td>—</td><td>Extend agent TTL</td></tr>
+<tr><td><code class="cli">bunker mount</code> <span class="arg">&lt;agent-id&gt;</span></td><td><span class="flag">--path</span></td><td>SSHFS mount agent filesystem locally</td></tr>
+<tr><td><code class="cli">bunker tunnel</code> <span class="arg">&lt;agent-id&gt;</span></td><td><span class="flag">--port</span></td><td>Open Docker tunnel to agent's dockerd</td></tr>
+<tr><td><code class="cli">bunker status</code></td><td><span class="flag">--all</span>, <span class="flag">--server</span></td><td>Server health overview or multi-host status</td></tr>
+<tr><td><code class="cli">bunker env</code> <span class="arg">&lt;agent-id&gt;</span></td><td><span class="flag">--set</span>, <span class="flag">--list</span></td><td>Manage environment variables inside agent</td></tr>
+</table>
+</div>
+
+<h2>6. Resource Isolation</h2>
+
+<div class="card">
+<table>
+<tr><th>Dimension</th><th>Default</th><th>Implementation</th><th>Configurable</th></tr>
+<tr><td>CPU limit</td><td>2 cores</td><td><code>CPUQuota</code> via user-&lt;UID&gt;.slice.d drop-in</td><td><span class="badge badge-green">✓</span></td></tr>
+<tr><td>Memory limit</td><td>4 GB</td><td><code>MemoryMax</code> via systemd slice</td><td><span class="badge badge-green">✓</span></td></tr>
+<tr><td>Disk limit</td><td>20 GB</td><td><code>quota</code> on /home/&lt;agent&gt; filesystem</td><td><span class="badge badge-green">✓</span></td></tr>
+<tr><td>Process limit</td><td>512 pids</td><td><code>TasksMax</code> via systemd slice</td><td><span class="badge badge-green">✓</span></td></tr>
+<tr><td>File limit</td><td>65536</td><td><code>LimitNOFILE</code> via systemd unit</td><td>Fixed</td></tr>
+<tr><td>Docker containers</td><td>20 max</td><td>Per-agent counter in manager</td><td><span class="badge badge-green">✓</span></td></tr>
+<tr><td>PID namespace</td><td>Isolated</td><td>systemd PrivateUsers + PID namespace</td><td>Fixed</td></tr>
+<tr><td>/tmp isolation</td><td>Per-agent</td><td><code>TMPDIR=/run/bunker/&lt;id&gt;/tmp</code> via env propagation</td><td>Fixed</td></tr>
+<tr><td>TTL expiry</td><td>6 hours</td><td>Manager goroutine reaper, systemd timer</td><td><span class="badge badge-green">✓</span></td></tr>
+</table>
+</div>
+
+<h2>7. Security Model</h2>
+
+<div class="card">
+<h3>Two-Tier Authentication</h3>
+<table>
+<tr><th>Tier</th><th>Method</th><th>Use Case</th></tr>
+<tr><td>Top-level</td><td>Static pre-shared token (<code>BUNKER_TOKEN</code>)</td><td>bunkerd API access: spawn, destroy, list all agents</td></tr>
+<tr><td>Agent-scoped</td><td>JWT sub-keys (Ed25519), scope: single agent ID</td><td>Per-agent access: exec, metrics, heartbeat — only own agent</td></tr>
+</table>
+
+<h3>Transport Security</h3>
+<table>
+<tr><th>Mode</th><th>Flag</th><th>When</th></tr>
+<tr><td>Self-signed TLS</td><td><code>--tls-mode=self-signed</code></td><td>Development, internal networks</td></tr>
+<tr><td>Let's Encrypt</td><td><code>--tls-mode=letsencrypt</code></td><td>Production with public domain</td></tr>
+<tr><td>mTLS</td><td><code>--tls-mode=mtls</code></td><td>Zero-trust deployments, cert-based agent auth</td></tr>
+</table>
+<p>All modes use <code>certmagic</code> for auto-renewal. Client CLI supports <code>--tls-insecure</code> for self-signed certs.</p>
+</div>
+
+<h2>8. Networking</h2>
+
+<div class="card">
+<table>
+<tr><th>Feature</th><th>Implementation</th><th>Status</th></tr>
+<tr><td>Cloudflare tunnel (anonymous)</td><td>Shells out to <code>cloudflared</code> binary per agent</td><td><span class="badge badge-green">Production</span></td></tr>
+<tr><td>Cloudflare tunnel (named)</td><td>Pre-configured tunnel names via config</td><td><span class="badge badge-green">Production</span></td></tr>
+<tr><td>Tailscale mesh</td><td>tailscale binary, auth key per agent</td><td><span class="badge badge-yellow">Code done, E2E blocked on auth key</span></td></tr>
+<tr><td>Docker tunnel</td><td><code>bunker tunnel</code> proxies local port to agent's dockerd socket</td><td><span class="badge badge-green">Production</span></td></tr>
+<tr><td>SSHFS mount</td><td><code>bunker mount</code> SSHFS-mounts agent filesystem locally</td><td><span class="badge badge-green">Production</span></td></tr>
+<tr><td>Per-agent port range</td><td>Each agent gets isolated port range (SSH 22xxx → port allocator)</td><td><span class="badge badge-green">Production</span></td></tr>
+</table>
+</div>
+
+<h2>9. Deployment</h2>
+
+<div class="card">
+<h3>Live Instance: bunker-mvp</h3>
+<table>
+<tr><th>Spec</th><th>Value</th></tr>
+<tr><td>Host</td><td>Hetzner cx43 — Falkenstein, Germany</td></tr>
+<tr><td>Resources</td><td>8 vCPU / 16 GB RAM / 160 GB SSD</td></tr>
+<tr><td>Cost</td><td>€18.49/month</td></tr>
+<tr><td>IP</td><td>78.46.173.180</td></tr>
+<tr><td>SSH</td><td><code>ssh -i ~/.ssh/id_ed25519_bunker root@78.46.173.180</code></td></tr>
+<tr><td>Go</td><td>1.26.5</td></tr>
+<tr><td>Docker</td><td>29.1.3 (rootless per agent)</td></tr>
+<tr><td>CI Runner</td><td>Self-hosted GitHub Actions runner (actions-runner user)</td></tr>
+<tr><td>Tailscale</td><td>1.98.8 installed</td></tr>
+</table>
+
+<h3>Installation</h3>
+<pre>git clone https://github.com/deployBunker/bunker.git /opt/bunker
+cd /opt/bunker && make build
+cp bunkerd /usr/local/bin/
+cp bunker /usr/local/bin/
+mkdir -p /etc/bunkerd && cp config.example.yaml /etc/bunkerd/config.yaml
+systemctl enable --now bunkerd</pre>
+</div>
+
+<h2>10. Quality Gates</h2>
+
+<div class="card">
+<table>
+<tr><th>Gate</th><th>Tool</th><th>Frequency</th><th>Status</th></tr>
+<tr><td>Secrets detection</td><td>gitleaks (GitReins Tier 1)</td><td>Every commit</td><td><span class="badge badge-green">PASS</span></td></tr>
+<tr><td>Build check</td><td><code>go build ./...</code></td><td>Every commit</td><td><span class="badge badge-green">PASS</span></td></tr>
+<tr><td>Lint</td><td>golangci-lint + go vet</td><td>Every commit</td><td><span class="badge badge-green">PASS</span></td></tr>
+<tr><td>Unit tests</td><td><code>go test -short ./...</code></td><td>Every commit</td><td><span class="badge badge-green">PASS</span> (459 tests)</td></tr>
+<tr><td>LLM evaluation</td><td>GitReins Tier 2 (DeepSeek)</td><td>Per-task</td><td><span class="badge badge-green">PASS</span></td></tr>
+<tr><td>Code graph</td><td>Hilo (773 edges)</td><td>Every commit</td><td><span class="badge badge-green">Useful</span></td></tr>
+<tr><td>CI pipeline</td><td>GitHub Actions</td><td>Every push</td><td><span class="badge badge-green">Green</span></td></tr>
+<tr><td>E2E battery</td><td><code>e2e-full-battery.sh</code></td><td>Per-release</td><td><span class="badge badge-green">33/33</span></td></tr>
+<tr><td>Vulnerability scan</td><td>govulncheck</td><td>Per-tick</td><td><span class="badge badge-green">0 vulns</span></td></tr>
+</table>
+</div>
+
+<h2>11. Multi-Host Management</h2>
+
+<div class="card">
+<p>Bunker supports managing multiple bunkerd instances from a single CLI:</p>
+
+<pre><span class="cli">$ bunker connect</span> <span class="arg">bunker-mvp.example.com:9090</span> <span class="flag">--token sk-xxx</span>
+Connected to bunker-mvp — server v0.1.0, 3 agents running
+
+<span class="cli">$ bunker connect</span> <span class="arg">bunker-prod.example.com:9090</span> <span class="flag">--token sk-yyy</span>
+Connected to bunker-prod — server v0.1.0, 12 agents running
+
+<span class="cli">$ bunker use</span> <span class="arg">bunker-mvp</span>
+Active server: bunker-mvp
+
+<span class="cli">$ bunker status --all</span>
+🏠 bunker-mvp          ONLINE  3 agents  CPU 12%  MEM 4.2/16 GB
+🏭 bunker-prod         ONLINE  12 agents CPU 67%  MEM 28/64 GB
+☁️  bunker-staging       OFFLINE — connection refused</pre>
+
+<p>Server configuration stored in <code>~/.bunker/config.yaml</code>. The <code>--server</code> flag overrides the active server for one-off commands.</p>
+</div>
+
+<h2>12. Known Gaps & Roadmap</h2>
+
+<div class="card">
+<h3>Priority: Active Tasks</h3>
+<table>
+<tr><th>ID</th><th>Task</th><th>Priority</th><th>Status</th></tr>
+<tr><td>MULTI-003</td><td>Cross-host multi-server E2E — spawn on two instances, verify isolation, verify use switching</td><td><span class="badge badge-red">High</span></td><td>Blocked: needs 2+ bunkerd instances</td></tr>
+<tr><td>E2E-001</td><td>Root-level integration test suite — 30 skipped tests in agent package need real Docker/systemd</td><td><span class="badge badge-red">Critical</span></td><td>Blocked: needs root on bunker-mvp</td></tr>
+</table>
+
+<h3>Agent-Reported Pain Points (from production usage)</h3>
+<table>
+<tr><th>#</th><th>Issue</th><th>Impact</th><th>Status</th></tr>
+<tr><td>1</td><td>API timeout (180s) kills long DB operations</td><td>ANALYZE/VACUUM/duplicate queries fail</td><td><span class="badge badge-green">Fixed — configurable to 300s</span></td></tr>
+<tr><td>2</td><td>disk 100% full after large data loads</td><td>Agent environments become unusable</td><td><span class="badge badge-yellow">Mitigated — disk_max_bytes enforcement</span></td></tr>
+<tr><td>3</td><td>SSH key auth failures — bunker keys not authorized</td><td>Can't SSH directly, must use bunker exec</td><td><span class="badge badge-yellow">Workaround — add pubkey to authorized_keys</span></td></tr>
+<tr><td>4</td><td>docker ps intermittent failures via bunker exec</td><td>Can't verify container state</td><td><span class="badge badge-red">Needs investigation</span></td></tr>
+<tr><td>5</td><td>Command timeout at 30s for fast operations</td><td>Race condition in exec timeout handling</td><td><span class="badge badge-yellow">Partially fixed — request_timeout config</span></td></tr>
+<tr><td>6</td><td>DOCKER_HOST not injected into exec sessions</td><td>docker commands fail, must set env manually</td><td><span class="badge badge-green">Fixed — DOCKER_HOST propagation</span></td></tr>
+<tr><td>7</td><td>/tmp permission collisions between agents</td><td>Concurrent tmp file writes fail</td><td><span class="badge badge-green">Fixed — per-agent TMPDIR isolation</span></td></tr>
+</table>
+
+<h3>Future (v0.2+)</h3>
+<ul>
+<li><strong>Tailscale E2E:</strong> Full mesh networking test with auth key</li>
+<li><strong>Agent migration:</strong> Move agent from host A to host B</li>
+<li><strong>Snapshot/restore:</strong> Agent filesystem snapshots for backup</li>
+<li><strong>Web dashboard:</strong> HTML UI for agent management</li>
+<li><strong>Billing integration:</strong> Per-agent-hour metering</li>
+<li><strong>Multi-tenant bunkerd:</strong> One daemon serving multiple organizations</li>
+</ul>
+</div>
+
+<h2>13. Technology Stack</h2>
+
+<div class="card">
+<table>
+<tr><th>Layer</th><th>Technology</th><th>Why</th></tr>
+<tr><td>Language</td><td>Go 1.26.5</td><td>Single binary, no runtime, systemd-native</td></tr>
+<tr><td>API framework</td><td>connect-go + chi</td><td>gRPC + REST from one service definition, net/http native</td></tr>
+<tr><td>CLI</td><td>cobra + pflag</td><td>POSIX flags, subcommands, shell completion</td></tr>
+<tr><td>Config</td><td>viper</td><td>YAML + env + flags, precedence chain</td></tr>
+<tr><td>Auth (API)</td><td>Static token + JWT Ed25519 + mTLS</td><td>Fast verification, no DB dependency</td></tr>
+<tr><td>TLS</td><td>certmagic</td><td>Auto-renewal, ACME, self-signed, mTLS</td></tr>
+<tr><td>Container runtime</td><td>rootlesskit + dockerd-rootless.sh</td><td>No root required, per-user isolation</td></tr>
+<tr><td>Process isolation</td><td>systemd user slices</td><td>cgroup v2 enforcement, drop-in config</td></tr>
+<tr><td>Tunneling</td><td>cloudflared</td><td>No open ports, anonymous tunnels</td></tr>
+<tr><td>Mesh</td><td>Tailscale</td><td>WireGuard-native, ACLs, MagicDNS</td></tr>
+<tr><td>Filesystem</td><td>SSHFS</td><td>Mount agent FS without NFS/CIFS</td></tr>
+<tr><td>Quality</td><td>GitReins + Hilo</td><td>Multi-tier guard + code graph</td></tr>
+</table>
+</div>
+
+<h2>14. Project Health</h2>
+
+<div class="grid">
+  <div class="stat"><div class="value">🟢</div><div class="label">CI Pipeline</div></div>
+  <div class="stat"><div class="value">0</div><div class="label">Open Vulns</div></div>
+  <div class="stat"><div class="value">0</div><div class="label">Open Issues</div></div>
+  <div class="stat"><div class="value">Apache 2.0</div><div class="label">License</div></div>
+</div>
+
+<div class="card" style="margin-top: 3rem; text-align: center; color: var(--muted);">
+<p>github.com/deployBunker/bunker · v0.1.0 · 264 commits · 94 source files · 23,299 lines of Go · 13,132 lines of tests</p>
+<p>Built by Bane + Hermes Coding Fleet · July 2026</p>
+</div>
+
+</body>
+</html>

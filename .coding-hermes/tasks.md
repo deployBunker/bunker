@@ -40,6 +40,12 @@
 | BUILD-002 | Docker compose port conflict detection — silent failure on port collisions | Medium | 2 | — | ++infra, +devops | DeepSeek V4 Pro | Port check + messaging | DeepSeek V4 Flash |
 | BUILD-003 | Frontend TS build blocking cross-project — 6+ Helios frontend import/export bugs | High | 2 | Helios repo | ++frontend, ++debugging | GLM-5.2 | TS build fixes | DeepSeek V4 Pro |
 | NEVER-DONE | 14-point audit sweep | High | 2 | — | ++code-review, +testing | DeepSeek V4 Pro | Audit runs every tick | GLM-5.2 |
+| **UX-005** | `bunker version` subcommand — currently "unknown command." Accept: semver, commit, Go version, build date | Medium | 1 | — | ++cli, ++ux | glm-5.2 @ zai-glm | 5-line cobra cmd, trivial | deepseek-v4-flash @ opencode-go |
+| **UX-006** | `bunkerd --help` starts daemon instead of showing help — wastes 180s/foreman-tick, 3 sessions confirmed | Medium | 2 | — | ++cli, ++ux, bug | glm-5.2 @ zai-glm | CLI arg parsing fix | MiniMax-M3 @ minimax |
+| **UX-007** | SSH key auto-provisioning — spawn writes keys to container not host. Agents waste 5-10 turns debugging "Permission denied (publickey)." Accept: spawn/setup auto-installs key into host authorized_keys | High | 3 | — | ++ssh, ++auth, ++ux | glm-5.2 @ zai-glm | #2 pain point, multi-session | MiniMax-M3 @ minimax |
+| **UX-008** | `bunker cp`/`bunker deploy` — file transfer needs 8-10 tool calls (scp+ssh+mv+chmod). Agents invented base64 workaround. Accept: `bunker cp local-file <agent>:/path` with correct ownership | High | 4 | UX-007 | ++cli, ++deploy, ++ux | MiniMax-M3 @ minimax | #3 productivity killer | glm-5.2 @ zai-glm |
+| **MONITOR-001** | Disk usage in `bunker status`/`bunker list` — agent hit 100% disk (2TB), no visibility. Accept: `bunker status` shows disk %/total per host, `bunker list` per-agent | High | 2 | — | ++monitoring, ++ux | glm-5.2 @ zai-glm | Production outage from disk full | deepseek-v4-flash @ opencode-go |
+| **MONITOR-002** | Disk >90% alert — `bunkerd` should warn on spawn when disk >90%. Accept: `bunker status` WARNING banner, spawn logs warning | Medium | 2 | MONITOR-001 | ++monitoring | glm-5.2 @ zai-glm | Prevent silent disk-full outages | deepseek-v4-flash @ opencode-go |
 
 **Assumptions:** Go project — `go build ./... && go test ./... -short && go vet ./... && gofmt -w`. 459 test functions (532 test cases) across 14 packages. Live E2E battery on bunker-mvp (78.46.173.180). GitReins Tier 1 + Hilo active. All 73 work items complete (Phase 1-18). Project feature-complete.
 
