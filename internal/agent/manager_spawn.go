@@ -156,6 +156,14 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		return nil, fmt.Errorf("chown authorized_keys: %w (output: %s)", err, string(out))
 	}
 
+	// ── Step 4a: Provision host SSH key so bunkerd can SSH into the agent ──
+	if err := provisionHostSSHKey(ctx, username, authKeysFile, m.logger); err != nil {
+		m.logger.Warn("failed to provision host SSH key; agent operations requiring host-to-agent SSH may fail",
+			"agent_id", agentID,
+			"error", err,
+		)
+	}
+
 	// ── Step 4b: Set up .profile with DOCKER_HOST + TMPDIR (interactive sessions) ──
 	profilePath := filepath.Join(userHome, ".profile")
 	profileContent := fmt.Sprintf("# bunker: per-agent Docker socket and private tmp\nexport DOCKER_HOST=unix://%s\nexport TMPDIR=%s\n", dockerSockPath, tmpDir)
