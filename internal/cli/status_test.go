@@ -203,13 +203,17 @@ func TestStatusCommand_SingleServer_Online(t *testing.T) {
 		"42.5%",
 		"4.0 GB",
 		"16.0 GB",
-		"Disk:     40% (80.0 GB/200.0 GB)",
+		"40% (80.0 GB/200.0 GB)",
 		"12 containers",
 	}
 	for _, want := range checks {
 		if !strings.Contains(output, want) {
 			t.Errorf("output missing %q, got:\n%s", want, output)
 		}
+	}
+	// 40% disk should NOT have a warning indicator
+	if strings.Contains(output, "Disk:     !") || strings.Contains(output, "Disk:     ⚠") {
+		t.Errorf("disk at 40%% should not have warning indicator, got:\n%s", output)
 	}
 }
 
@@ -467,6 +471,75 @@ func TestStatusCommand_WithServerFlag(t *testing.T) {
 
 	if !strings.Contains(output, "flagged") {
 		t.Errorf("output should show 'target' server info, got:\n%s", output)
+	}
+}
+
+func TestStatusCommand_HighDiskWarning(t *testing.T) {
+	tests := []struct {
+		name          string
+		diskUsed      uint64
+		diskTotal     uint64
+		wantIndicator string
+	}{
+		{
+			name:          "80% warn",
+			diskUsed:      80 * 1024 * 1024 * 1024,
+			diskTotal:     100 * 1024 * 1024 * 1024,
+			wantIndicator: "! ",
+		},
+		{
+			name:          "90% critical",
+			diskUsed:      900 * 1024 * 1024 * 1024,
+			diskTotal:     1000 * 1024 * 1024 * 1024,
+			wantIndicator: "⚠ ",
+		},
+		{
+			name:          "95% critical",
+			diskUsed:      95,
+			diskTotal:     100,
+			wantIndicator: "⚠ ",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+
+			mock := &statusMockServer{
+				info: &v1.ServerInfoResponse{
+					Hostname:  "disk-host",
+					Version:   "v1.0.0",
+					MaxAgents: 10,
+				},
+				metrics: &v1.ServerMetricsResponse{
+					DiskUsedBytes:  tt.diskUsed,
+					DiskTotalBytes: tt.diskTotal,
+				},
+			}
+			srv := newStatusTestServer(t, mock)
+			defer srv.Close()
+
+			cfg := &CLIConfig{
+				ActiveServer: "default",
+				Servers: map[string]ServerEntry{
+					"default": {Name: "default", URL: srv.URL},
+				},
+			}
+			if err := SaveCLIConfig(cfg); err != nil {
+				t.Fatalf("SaveCLIConfig: %v", err)
+			}
+
+			cmd := NewStatusCommand()
+			output := captureStdout(t, func() {
+				if err := cmd.Execute(); err != nil {
+					t.Fatalf("Execute: %v", err)
+				}
+			})
+
+			want := "Disk:     " + tt.wantIndicator
+			if !strings.Contains(output, want) {
+				t.Errorf("output missing indicator %q, got:\n%s", want, output)
+			}
+		})
 	}
 }
 

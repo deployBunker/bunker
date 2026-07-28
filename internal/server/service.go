@@ -182,6 +182,9 @@ func (s *bunkerdService) AgentMetrics(ctx context.Context, req *connect.Request[
 		resp.MemoryUsedBytes = metrics.MemoryUsedBytes
 	}
 
+	// Read per-agent disk usage (best-effort)
+	resp.DiskUsedBytes = agentDiskUsage(rec.AgentID)
+
 	return connect.NewResponse(resp), nil
 }
 

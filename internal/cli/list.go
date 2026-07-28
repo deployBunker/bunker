@@ -85,18 +85,19 @@ Examples:
 			fmt.Println()
 			fmt.Println("══════════ Agents ══════════")
 			fmt.Println()
-			fmt.Printf("  %-14s %-10s %-12s %-25s %s\n", "Agent ID", "Status", "Disk", "Created", "Public URL")
-			fmt.Printf("  %-14s %-10s %-12s %-25s %s\n", "────────", "──────", "────", "───────", "──────────")
+			fmt.Printf("  %-14s %-10s %-22s %-25s %s\n", "Agent ID", "Status", "Disk", "Created", "Public URL")
+			fmt.Printf("  %-14s %-10s %-22s %-25s %s\n", "────────", "──────", "────────────────────", "───────", "──────────")
 			for _, a := range agents {
 				publicURL := a.PublicUrl
 				if publicURL == "" {
 					publicURL = "(no URL)"
 				}
-				diskStr := "-"
-				if a.DiskUsedBytes > 0 {
-					diskStr = humanBytes(a.DiskUsedBytes)
+				diskLimit := uint64(0)
+				if a.GetLimits() != nil {
+					diskLimit = a.GetLimits().GetDiskMaxBytes()
 				}
-				fmt.Printf("  %-14s %-10s %-12s %-25s %s\n", a.AgentId, a.Status, diskStr, a.CreatedAt, publicURL)
+				diskStr := formatDisk(a.DiskUsedBytes, diskLimit)
+				fmt.Printf("  %-14s %-10s %-22s %-25s %s\n", a.AgentId, a.Status, diskStr, a.CreatedAt, publicURL)
 			}
 			fmt.Println()
 			fmt.Printf("Total: %d agents (server: %s)\n", resp.Msg.TotalCount, serverName)

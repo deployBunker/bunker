@@ -198,7 +198,11 @@ func formatServerStatus(st serverStatus) string {
 		m := st.metrics
 		b.WriteString(fmt.Sprintf("  CPU:      %.1f%%\n", m.GetCpuUsagePercent()))
 		b.WriteString(fmt.Sprintf("  Memory:   %s / %s\n", humanBytes(m.GetMemoryUsedBytes()), humanBytes(m.GetMemoryTotalBytes())))
-		b.WriteString(fmt.Sprintf("  Disk:     %s\n", formatDisk(m.GetDiskUsedBytes(), m.GetDiskTotalBytes())))
+		diskUsed := m.GetDiskUsedBytes()
+		diskTotal := m.GetDiskTotalBytes()
+		diskPct := diskUsagePercent(diskUsed, diskTotal)
+		diskWarn := diskWarning(diskPct)
+		b.WriteString(fmt.Sprintf("  Disk:     %s%s\n", diskWarn, formatDisk(diskUsed, diskTotal)))
 		if m.GetDockerContainersTotal() > 0 {
 			b.WriteString(fmt.Sprintf("  Docker:   %d containers\n", m.GetDockerContainersTotal()))
 		}

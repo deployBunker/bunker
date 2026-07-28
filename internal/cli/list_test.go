@@ -239,3 +239,60 @@ func TestListCommand_ServerError(t *testing.T) {
 		t.Error("expected error from server")
 	}
 }
+
+func TestListCommand_WithDiskUsage(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	mock := &mockListServer{
+		mockBunkerdServer: mockBunkerdServer{
+			info: &v1.ServerInfoResponse{
+				Hostname: "bunker-disk",
+				Version:  "v0.2.0",
+			},
+		},
+		listResp: &v1.ListAgentsResponse{
+			Agents: []*v1.AgentSummary{
+				{
+					AgentId:       "agent-abc",
+					Status:        "running",
+					DiskUsedBytes: 80 * 1024 * 1024 * 1024, // 80 GB
+					CreatedAt:     "2026-07-28T10:00:00Z",
+					Limits: &v1.ResourceLimits{
+						DiskMaxBytes: 200 * 1024 * 1024 * 1024, // 200 GB
+					},
+				},
+				{
+					AgentId:       "agent-nolimit",
+					Status:        "running",
+					DiskUsedBytes: 50 * 1024 * 1024 * 1024, // 50 GB
+					CreatedAt:     "2026-07-27T12:00:00Z",
+				},
+			},
+			TotalCount: 2,
+		},
+	}
+	srv := newListTestServer(t, mock)
+	defer srv.Close()
+
+	writeListTestConfig(t, tmpDir, srv.URL)
+
+	cmd := NewListCommand()
+	output := captureStdout(t, func() {
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+	})
+
+	// Agent with disk limit: should show "40% (80.0 GB/200.0 GB)"
+	if !strings.Contains(output, "40% (80.0 GB/200.0 GB)") {
+		t.Errorf("output missing disk with limit, got:\n%s", output)
+	}
+	// Agent without disk limit: should show "50.0 GB" (0% when limit=0, but used/total with total=0)
+	if !strings.Contains(output, "0% (50.0 GB/0 B)") {
+		t.Errorf("output missing disk without limit, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Total: 2 agents") {
+		t.Errorf("output missing total, got:\n%s", output)
+	}
+}

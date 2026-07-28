@@ -75,3 +75,29 @@ func TestFormatDiskContainsPercent(t *testing.T) {
 		t.Errorf("formatDisk output missing parens, got: %s", result)
 	}
 }
+
+func TestDiskWarning(t *testing.T) {
+	tests := []struct {
+		name string
+		pct  float64
+		want string
+	}{
+		{"normal", 45.0, ""},
+		{"warn threshold edge low", 79.99, ""},
+		{"warn threshold edge high", 80.0, "! "},
+		{"warn", 85.0, "! "},
+		{"critical threshold edge low", 89.99, "! "},
+		{"critical threshold edge high", 90.0, "⚠ "},
+		{"critical", 95.0, "⚠ "},
+		{"full", 100.0, "⚠ "},
+		{"zero", 0.0, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := diskWarning(tt.pct)
+			if got != tt.want {
+				t.Errorf("diskWarning(%.2f) = %q, want %q", tt.pct, got, tt.want)
+			}
+		})
+	}
+}

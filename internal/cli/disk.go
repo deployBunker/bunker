@@ -15,3 +15,16 @@ func formatDisk(used, total uint64) string {
 	pct := diskUsagePercent(used, total)
 	return fmt.Sprintf("%.0f%% (%s/%s)", pct, humanBytes(used), humanBytes(total))
 }
+
+// diskWarning returns a warning indicator for disk usage percentage.
+// Returns "⚠ " at ≥90%, "! " at ≥80%, empty string otherwise.
+func diskWarning(pct float64) string {
+	switch {
+	case pct >= 90:
+		return "⚠ "
+	case pct >= 80:
+		return "! "
+	default:
+		return ""
+	}
+}
