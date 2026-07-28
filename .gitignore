@@ -29,6 +29,11 @@ proto/**/*.pb.gw.go
 .gitreins/history/
 bin/
 
+# Environment files (secrets)
+.env
+.env.*
+!.env.example
+
 # Python artifacts (cross-repo contamination guard)
 *.py
 *.pyc
