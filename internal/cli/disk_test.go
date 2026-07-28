@@ -101,3 +101,29 @@ func TestDiskWarning(t *testing.T) {
 		})
 	}
 }
+
+func TestDiskAlert(t *testing.T) {
+	tests := []struct {
+		name string
+		pct  float64
+		want bool
+	}{
+		{"normal", 45.0, false},
+		{"warn threshold", 80.0, false},
+		{"below alert at 89%", 89.0, false},
+		{"exactly 90% - no alert (alert is >90)", 90.0, false},
+		{"just over 90%", 90.01, true},
+		{"91 percent", 91.0, true},
+		{"critical", 95.0, true},
+		{"full", 100.0, true},
+		{"zero", 0.0, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := diskAlert(tt.pct)
+			if got != tt.want {
+				t.Errorf("diskAlert(%.2f) = %v, want %v", tt.pct, got, tt.want)
+			}
+		})
+	}
+}

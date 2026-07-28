@@ -203,6 +203,13 @@ func formatServerStatus(st serverStatus) string {
 		diskPct := diskUsagePercent(diskUsed, diskTotal)
 		diskWarn := diskWarning(diskPct)
 		b.WriteString(fmt.Sprintf("  Disk:     %s%s\n", diskWarn, formatDisk(diskUsed, diskTotal)))
+		// Show a prominent WARNING banner when disk exceeds 90%.
+		if diskAlert(diskPct) {
+			b.WriteString(fmt.Sprintf("\n  ╔══════════════════════════════════════════════╗\n"))
+			b.WriteString(fmt.Sprintf("  ║  ⚠  WARNING: Disk usage at %.1f%% — critically high.  ║\n", diskPct))
+			b.WriteString(fmt.Sprintf("  ║  Agent spawns may fail due to disk space.          ║\n"))
+			b.WriteString(fmt.Sprintf("  ╚══════════════════════════════════════════════╝\n\n"))
+		}
 		if m.GetDockerContainersTotal() > 0 {
 			b.WriteString(fmt.Sprintf("  Docker:   %d containers\n", m.GetDockerContainersTotal()))
 		}

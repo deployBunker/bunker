@@ -91,6 +91,18 @@ func (s *bunkerdService) ServerMetrics(ctx context.Context, req *connect.Request
 
 // SpawnAgent creates a new isolated agent environment.
 func (s *bunkerdService) SpawnAgent(ctx context.Context, req *connect.Request[v1.SpawnAgentRequest]) (*connect.Response[v1.SpawnAgentResponse], error) {
+	// Check disk usage and warn if above 90% (spawns still proceed).
+	if used, total, err := readDiskStats(); err == nil && total > 0 {
+		pct := float64(used) / float64(total) * 100
+		if pct > 90 {
+			s.logger.Warn("disk usage above 90%, agent spawn may be affected",
+				"disk_used_pct", fmt.Sprintf("%.1f%%", pct),
+				"disk_used_bytes", used,
+				"disk_total_bytes", total,
+			)
+		}
+	}
+
 	resp, err := s.agentMgr.Spawn(ctx, req.Msg)
 	if err != nil {
 		s.logger.Error("spawn agent failed", "error", err)

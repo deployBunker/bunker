@@ -831,3 +831,67 @@ func TestServerMetrics(t *testing.T) {
 		msg.CpuUsagePercent, msg.MemoryUsedBytes, msg.MemoryTotalBytes,
 		msg.DiskUsedBytes, msg.DiskTotalBytes, msg.DockerContainersTotal, len(msg.Agents))
 }
+
+// TestSpawnAgent_DiskWarning verifies that SpawnAgent proceeds normally
+// (does not block) even when the disk check is wired in. The spawn still
+// completes via the fake agent manager. Real disk usage is read from the
+// host; on most systems this will be well below 90% so no warning is logged.
+// The test confirms the code path is exercised and does not panic.
+func TestSpawnAgent_DiskWarning(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	tracker := resource.NewTracker(10, logger)
+
+	spawnCalled := false
+	mgr := &spawnTrackingManager{
+		fakeAgentManager: fakeAgentManager{},
+		spawnCalled:      &spawnCalled,
+	}
+
+	svc := &bunkerdService{
+		cfg:      config.DefaultConfig(),
+		logger:   logger,
+		tracker:  tracker,
+		agentMgr: mgr,
+	}
+
+	req := connect.NewRequest(&v1.SpawnAgentRequest{})
+
+	// SpawnAgent first reads disk stats, then calls agentMgr.Spawn.
+	// When disk < 90% (normal), no warning is logged and spawn proceeds.
+	resp, err := svc.SpawnAgent(context.Background(), req)
+	if err != nil {
+		t.Fatalf("SpawnAgent() error: %v", err)
+	}
+	if !spawnCalled {
+		t.Error("SpawnAgent() did not call agentMgr.Spawn (disk check may have blocked it)")
+	}
+	if resp.Msg == nil {
+		t.Fatal("SpawnAgent() returned nil response")
+	}
+	if resp.Msg.AgentId != "agent-disk-test" {
+		t.Errorf("SpawnAgent().AgentId = %q, want agent-disk-test", resp.Msg.AgentId)
+	}
+
+	// Verify readDiskStats works on this machine (Linux).
+	used, total, err := readDiskStats()
+	if err != nil {
+		t.Logf("readDiskStats() returned error (non-Linux?): %v", err)
+	} else {
+		pct := float64(used) / float64(total) * 100
+		t.Logf("readDiskStats: used=%d, total=%d, pct=%.1f%%", used, total, pct)
+		if used == 0 || total == 0 {
+			t.Error("readDiskStats() returned zero used or total")
+		}
+	}
+}
+
+// spawnTrackingManager wraps fakeAgentManager to track whether Spawn was called.
+type spawnTrackingManager struct {
+	fakeAgentManager
+	spawnCalled *bool
+}
+
+func (m *spawnTrackingManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v1.SpawnAgentResponse, error) {
+	*m.spawnCalled = true
+	return &v1.SpawnAgentResponse{AgentId: "agent-disk-test"}, nil
+}

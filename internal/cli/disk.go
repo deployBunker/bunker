@@ -16,6 +16,12 @@ func formatDisk(used, total uint64) string {
 	return fmt.Sprintf("%.0f%% (%s/%s)", pct, humanBytes(used), humanBytes(total))
 }
 
+// diskAlert returns true when disk usage exceeds 90%, indicating a critical
+// storage condition that requires attention (spawn warnings, status banners, etc.).
+func diskAlert(pct float64) bool {
+	return pct > 90
+}
+
 // diskWarning returns a warning indicator for disk usage percentage.
 // Returns "⚠ " at ≥90%, "! " at ≥80%, empty string otherwise.
 func diskWarning(pct float64) string {
