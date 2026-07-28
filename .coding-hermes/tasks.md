@@ -40,7 +40,6 @@
 | BUILD-002 | Docker compose port conflict detection — silent failure on port collisions | Medium | 2 | — | ++infra, +devops | DeepSeek V4 Pro | Port check + messaging | DeepSeek V4 Flash |
 | BUILD-003 | Frontend TS build blocking cross-project — 6+ Helios frontend import/export bugs | High | 2 | Helios repo | ++frontend, ++debugging | GLM-5.2 | TS build fixes | DeepSeek V4 Pro |
 | NEVER-DONE | 14-point audit sweep | High | 2 | — | ++code-review, +testing | DeepSeek V4 Pro | Audit runs every tick | GLM-5.2 |
-| **UX-005** | `bunker version` subcommand — currently "unknown command." Accept: semver, commit, Go version, build date | Medium | 1 | — | ++cli, ++ux | glm-5.2 @ zai-glm | 5-line cobra cmd, trivial | deepseek-v4-flash @ opencode-go |
 | **UX-006** | `bunkerd --help` starts daemon instead of showing help — wastes 180s/foreman-tick, 3 sessions confirmed | Medium | 2 | — | ++cli, ++ux, bug | glm-5.2 @ zai-glm | CLI arg parsing fix | MiniMax-M3 @ minimax |
 | **UX-007** | SSH key auto-provisioning — spawn writes keys to container not host. Agents waste 5-10 turns debugging "Permission denied (publickey)." Accept: spawn/setup auto-installs key into host authorized_keys | High | 3 | — | ++ssh, ++auth, ++ux | glm-5.2 @ zai-glm | #2 pain point, multi-session | MiniMax-M3 @ minimax |
 | **UX-008** | `bunker cp`/`bunker deploy` — file transfer needs 8-10 tool calls (scp+ssh+mv+chmod). Agents invented base64 workaround. Accept: `bunker cp local-file <agent>:/path` with correct ownership | High | 4 | UX-007 | ++cli, ++deploy, ++ux | MiniMax-M3 @ minimax | #3 productivity killer | glm-5.2 @ zai-glm |
@@ -78,6 +77,9 @@
 | COV-001 | Boost internal/agent coverage 28.2%→37.5% | High | 4 | — | GLM-5.2 |
 | INFRA-002 | pids.max 512→2048 (system thread exhaustion fix) | Critical | 1 | — | Human (root) |
 | PRD-001 | PRD.html — comprehensive Product Requirements Document v1.0 | Low | 1 | afe916e | ? (manual) |
+| UX-005 | `bunker version` subcommand — semver, commit, Go version, build date, platform | Medium | 1 | 45048fa | Foreman-direct |
+
+> Tick #46 (2026-07-28): PRODUCTIVE — broke 26-tick idle streak. UX-005 fixed directly by foreman (5-line cobra cmd + test). GitReins judge PASS all 4 criteria. Commit 45048fa. Full NEVER-DONE 14-point audit: all gates pass. 14/14 pkgs green, 454 test functions (453→454, +1 version test). Build/vet/gofmt clean. Hilo: 773 edges / 95 files (stable since tick #37) — Hilo=useful. GitReins Tier 1 PASS. DuckBrain: 12 keys in namespace bunker (+1 tick entry). GitReins evaluator configured. 6 minor outdated indirect deps (unchanged). 9/9 docs present. CooldownS=1800 (fleet cap, API-confirmed). 6 non-blocked tasks remain undispatched (UX-006, UX-007, MONITOR-001, MONITOR-002, BUILD-001, BUILD-002) — 2 blocked (MULTI-003, E2E-001-ROOT). Self-improving loop engaged: foreman-direct fix for trivial task after 26+ idle ticks. Next: dispatch UX-006 (bunkerd --help fix) or UX-007 (SSH key auto-provisioning).
 
 > Tick #32 (2026-07-24): MULTI-002 completed. 14/14 pkgs green, 397 tests pass. Cooldown set to 86400s (24h cap). Idle tick #13. Escalated to Bane for project disable.
 >
