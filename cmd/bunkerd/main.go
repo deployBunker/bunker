@@ -10,14 +10,25 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/server"
 )
+
+// Build-time ldflags. Set via: go build -ldflags "-X ..."
+var (
+	Version   = "0.1.0"
+	Commit    = "unknown"
+	BuildDate = "unknown"
+)
+
+const defaultConfigPath = "/etc/bunkerd/config.yaml"
 
 func main() {
 	if err := run(); err != nil {
@@ -27,10 +38,61 @@ func main() {
 }
 
 func run() error {
-	// Load configuration
-	cfgPath := "/etc/bunkerd/config.yaml"
-	if envPath := os.Getenv("BUNKERD_CONFIG"); envPath != "" {
-		cfgPath = envPath
+	// Flags
+	var (
+		showHelp    bool
+		showVersion bool
+		cfgPath     string
+	)
+
+	fs := flag.NewFlagSet("bunkerd", flag.ContinueOnError)
+	fs.BoolVar(&showHelp, "help", false, "Show help")
+	fs.BoolVar(&showHelp, "h", false, "Show help (shorthand)")
+	fs.BoolVar(&showVersion, "version", false, "Print version")
+	fs.BoolVar(&showVersion, "v", false, "Print version (shorthand)")
+	fs.StringVar(&cfgPath, "config", defaultConfigPath, "Config file path")
+	fs.StringVar(&cfgPath, "c", defaultConfigPath, "Config file path (shorthand)")
+
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, `bunkerd — Bunker agent host daemon
+
+Usage:
+  bunkerd [flags]
+
+Flags:
+  -h, --help       Show help
+  -v, --version    Print version
+  -c, --config     Config file path (default: %s)
+                   Also settable via BUNKERD_CONFIG env var
+
+bunkerd starts the Bunker gRPC+REST server that manages per-user
+Docker agent hosts. Send SIGINT/SIGTERM for graceful shutdown.
+`, defaultConfigPath)
+	}
+
+	if err := fs.Parse(os.Args[1:]); err != nil {
+		return err
+	}
+
+	if showHelp {
+		fs.Usage()
+		return nil
+	}
+
+	if showVersion {
+		fmt.Printf("bunkerd %s\n", Version)
+		fmt.Printf("  commit:     %s\n", Commit)
+		fmt.Printf("  built:      %s\n", BuildDate)
+		fmt.Printf("  go version: %s\n", runtime.Version())
+		fmt.Printf("  platform:   %s/%s\n", runtime.GOOS, runtime.GOARCH)
+		return nil
+	}
+
+	// Config: flag takes priority, then env var
+	if cfgPath == defaultConfigPath {
+		if envPath := os.Getenv("BUNKERD_CONFIG"); envPath != "" {
+			cfgPath = envPath
+		}
 	}
 
 	cfg, err := config.Load(cfgPath)
