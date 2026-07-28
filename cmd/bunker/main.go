@@ -56,6 +56,8 @@ and control ephemeral development environments — all from the CLI.`,
 	root.AddCommand(cli.NewTunnelCommand())
 	root.AddCommand(cli.NewVersionCommand())
 	root.AddCommand(cli.NewUseCommand())
+	root.AddCommand(cli.NewCpCommand())
+	root.AddCommand(cli.NewDeployCommand())
 	root.AddCommand(cli.NewStatusCommand())
 
 	return root.Execute()

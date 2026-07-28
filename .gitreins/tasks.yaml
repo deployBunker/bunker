@@ -710,3 +710,15 @@ tasks:
   status: complete
   created_at: '2026-07-28T06:06:19.804961+00:00'
   completed_at: '2026-07-28T06:06:23.150675+00:00'
+- id: UX-008
+  title: "bunker cp / bunker deploy \u2014 file transfer to agent"
+  criteria:
+  - '`bunker cp <local-file> <agent-id>:/path` copies a file from local host to the
+    agent''s filesystem'
+  - Copied file has correct ownership (agent user, not root)
+  - 'Test covers: local file missing, agent not found, binary file transfer, directory
+    copy'
+  - go build ./... && go vet ./... && go test ./... pass
+  - CLI wired into cmd/bunker/main.go
+  status: pending
+  created_at: '2026-07-28T08:25:52.050623+00:00'
