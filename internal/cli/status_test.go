@@ -203,8 +203,7 @@ func TestStatusCommand_SingleServer_Online(t *testing.T) {
 		"42.5%",
 		"4.0 GB",
 		"16.0 GB",
-		"80.0 GB",
-		"200.0 GB",
+		"Disk:     40% (80.0 GB/200.0 GB)",
 		"12 containers",
 	}
 	for _, want := range checks {

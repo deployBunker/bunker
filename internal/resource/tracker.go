@@ -23,6 +23,7 @@ type AgentRecord struct {
 	TailnetIP         string // tailscale tailnet IP
 	SshfsMount        string // sshfs mount command
 	DockerHostTunnel  string // ssh -L tunnel command
+	DiskUsedBytes     uint64 // per-agent disk usage in bytes
 }
 
 // Tracker manages agent state, capacity, and resource allocation.
@@ -125,5 +126,6 @@ func (r *AgentRecord) ToAgentSummary() *v1.AgentSummary {
 		TailnetIp:        r.TailnetIP,
 		SshfsMount:       r.SshfsMount,
 		DockerHostTunnel: r.DockerHostTunnel,
+		DiskUsedBytes:    r.DiskUsedBytes,
 	}
 }

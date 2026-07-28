@@ -97,6 +97,7 @@ message AgentSummary {
   uint32 port_range_start = 9;
   uint32 port_range_end = 10;
   string tailnet_ip = 11;
+  uint64 disk_used_bytes = 12;   // per-agent disk usage in bytes
 }
 
 message SpawnAgentRequest {

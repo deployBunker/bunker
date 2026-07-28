@@ -139,6 +139,8 @@ func (s *bunkerdService) ListAgents(ctx context.Context, req *connect.Request[v1
 	records := s.tracker.List()
 	summaries := make([]*v1.AgentSummary, 0, len(records))
 	for _, rec := range records {
+		// Compute per-agent disk usage (best-effort, async-safe).
+		rec.DiskUsedBytes = agentDiskUsage(rec.AgentID)
 		summaries = append(summaries, rec.ToAgentSummary())
 	}
 	return connect.NewResponse(&v1.ListAgentsResponse{
@@ -527,6 +529,25 @@ func readDiskStats() (used, total uint64, err error) {
 	free := stat.Bfree * uint64(stat.Bsize)
 	used = total - free
 	return used, total, nil
+}
+
+// agentDiskUsage walks the agent's home directory and returns the total
+// bytes consumed. Returns 0 on error (best-effort).
+func agentDiskUsage(agentID string) uint64 {
+	homeDir := fmt.Sprintf("/home/bunker-%s", agentID)
+	var total uint64
+	filepath.WalkDir(homeDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil // best-effort: skip inaccessible paths
+		}
+		if !d.IsDir() {
+			if info, infoErr := d.Info(); infoErr == nil {
+				total += uint64(info.Size())
+			}
+		}
+		return nil
+	})
+	return total
 }
 
 // countDockerSockets counts the number of docker socket files in /run/bunker/*/docker.sock.
