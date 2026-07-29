@@ -45,6 +45,7 @@ tier1:
 
 # ── Evaluator caps (Tier 2) ─────────────────────────────────────
 evaluator:
+  model: deepseek-v4-flash
   max_iterations: 100
   max_time: "15m"
   max_input_tokens: "1M"
