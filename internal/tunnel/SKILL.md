@@ -11,6 +11,7 @@
 - `(*TunnelManager) GetURL(agentID) string` — returns the cached public URL or empty string.
 - `(*TunnelManager) Shutdown(ctx)` — stops all active tunnels.
 - `(*TunnelManager) HasNamedTunnel() bool` — reports whether named tunnel support is configured and enabled.
+- OS-specific process-group helpers (e647d09): `configureTunnelCommand(cmd)` sets `Setpgid=true` on Unix so cloudflared runs in its own process group; `stopTunnelCommand(cmd, cancel)` kills the whole group with a SIGTERM→SIGKILL cascade (Windows: no-op configure, simple cancel+wait).
 
 ## Conventions
 
@@ -40,5 +41,5 @@
 1. **cloudflared must be on PATH or `BinaryPath` must be absolute.** The default `BinaryPath` is `"cloudflared"`; if the binary is not installed, `Start` fails with `exec: "cloudflared": executable file not found`.
 2. **TryCloudflare URL extraction depends on stdout format.** If cloudflared changes its banner output, `tryCloudflareRe` will fail and `Start` will time out. The regex is intentionally narrow to avoid false positives.
 3. **Named tunnels may never print a URL.** The code waits for `StartupTimeout` and assumes success if the process is still running; if the process crashes immediately, the scanner goroutine reports an error and `Start` returns that error.
-4. **Leaked cloudflared processes after bunkerd restart.** `TunnelManager` tracks processes in memory; if bunkerd crashes, cloudflared processes may remain running. Server restart does not recover them; use `pkill cloudflared` or implement persistent tunnel tracking if this is a concern.
+4. **Leaked cloudflared processes after bunkerd restart.** `TunnelManager` tracks processes in memory; if bunkerd crashes, cloudflared processes may remain running. Server restart does not recover them; use `pkill cloudflared` or implement persistent tunnel tracking if this is a concern. The process-group helpers (Setpgid + SIGTERM→SIGKILL cascade) ensure `Stop` kills the whole child group so cloudflared's own subprocesses don't survive.
 5. **Draining stdout is a best-effort goroutine.** If the draining goroutine is slow and `Stop` is called immediately after `Start`, the process may be cancelled before the drain finishes, causing a harmless `io.Copy` error that is ignored.

@@ -37,6 +37,7 @@
 
 - Tests table-drive missing/invalid/expired tokens, successful master and agent claims, and CN mismatch for mTLS.
 - `jwt_scope_test.go` verifies that `NewMasterOnlyJWTAuth` rejects agent-scoped JWTs and opaque sub-keys while accepting master tokens.
+- `auth_streaming_test.go` (TEST-004) verifies streaming handler/client wrapping for `TokenAuth`, `NoAuth`, `JWTAuth`, and `MTLSAuth` (interceptor factory coverage).
 - mTLS tests construct a test CA, server cert, and client cert chain; `TLSConnectionStateFromContext` is tested by injecting an `http.Request` into a context.
 - Static-token fallback is tested by asserting that both a JWT and the static token pass through the same interceptor.
 - Use `connect.NewError(...)` assertions with `CodeUnauthenticated` / `CodePermissionDenied` / `CodeInternal`.

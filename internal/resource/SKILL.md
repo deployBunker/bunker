@@ -11,8 +11,9 @@
 - `AgentRecord` — tracked state: AgentID, Status, Limits, timestamps, port range, public URL, SSH key path, tailnet IP, tunnel commands.
 - `NewTracker(maxAgents, logger)` — creates a tracker with a hard capacity ceiling.
 - `(*Tracker) Register(rec)` / `Unregister(agentID)` — add/remove agents; enforces capacity.
+- `(*Tracker) UpdateStatus(agentID, status)` — changes an agent's status in place.
 - `(*Tracker) Get(agentID)` / `List()` / `Count()` / `MaxAgents()` / `HasCapacity(n)` — query methods.
-- `(*AgentRecord) ToAgentSummary()` — converts to the proto `AgentSummary`.
+- `(*AgentRecord) ToAgentSummary()` — converts to the proto `AgentSummary`; includes `DiskUsedBytes` (per-agent disk usage, MONITOR-001).
 - `CgroupManager` — applies CPU/memory cgroup limits to agent processes.
 
 ## Conventions

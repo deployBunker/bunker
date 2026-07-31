@@ -5,14 +5,22 @@
 - `NewConnectCommand()` — `bunker connect SERVER_URL` registers a bunkerd server and stores it in `~/.bunker/config.yaml`.
 - `NewSpawnCommand()` — `bunker spawn` creates an agent and prints a connection bundle.
 - `NewDestroyCommand()` — `bunker destroy <agent-id>` removes an agent.
-- `NewListCommand()` — `bunker list` lists agents across servers.
+- `NewListCommand()` — `bunker list` lists agents across servers, including a per-agent disk usage column.
+- `NewStatusCommand()` — `bunker status` shows the active server's status (disk usage, warning banner when disk >90%); `bunker status --all-servers` shows every registered server (MULTI-002).
+- `NewUseCommand()` — `bunker use <server-name>` switches the active server in the CLI config (MULTI-001).
 - `NewExecCommand()` — `bunker exec <agent-id> [--] <command> [args...]` executes commands via the server streaming RPC.
+- `NewRunCommand()` — `bunker run <agent-id> [--] <command> [args...]` runs a one-shot command in the agent (raw exec variant).
+- `NewCpCommand()` — `bunker cp <agent-id>:<path> <local-path>` copies a file OUT of an agent via scp (UX-008).
+- `NewDeployCommand()` — `bunker deploy <local-path> <agent-id>:<path>` copies a file INTO an agent and chowns it to the agent user (UX-008).
+- `NewEnvCommand()` — `bunker env <agent-id>` prints the agent's environment (DOCKER_HOST etc.).
+- `NewVersionCommand()` — `bunker version` prints semver, commit, Go version, build date, and platform (UX-005).
 - `NewMetricsCommand()` — `bunker metrics` shows server or per-agent metrics.
 - `NewHeartbeatCommand()` — `bunker heartbeat <agent-id>` extends an agent's TTL.
 - `NewInfoCommand()` — `bunker info <agent-id>` shows a single agent record.
 - `NewMountCommand()` — `bunker mount <agent-id> [mountpoint]` runs the SSHFS mount command from the spawn response.
 - `NewTunnelCommand()` — `bunker tunnel <agent-id> [local-port]` prints the SSH local-forward command.
 - `NewSystemdCommand()` — `bunker systemd install/uninstall/status` for the bunkerd service.
+- Disk helpers in `disk.go`: `diskWarning(pct)` returns `⚠`/`!` indicators, `formatDisk(used, total)` renders `45% (892GB/2.0TB)`, `diskUsagePercent(used, total)` computes the ratio, `diskAlert(pct)` returns true when >90% (MONITOR-001/002).
 - `LoadCLIConfig()` / `SaveCLIConfig(cfg)` — load/save the CLI config file in `~/.bunker/config.yaml`.
 - `newBunkerdClient(entry)` / `resolveToken(entry)` — shared HTTP client and token resolution helpers in `client.go`.
 - `ServerEntry` struct and `CLIConfig` struct are defined in `config.go`.
@@ -37,6 +45,8 @@
 ## Test Patterns
 
 - Each command has a `*_test.go` file with table-driven tests for: help output, missing args, no active server, server-not-found, success path, and server-error.
+- `disk_test.go` covers `diskWarning`, `formatDisk`, `diskUsagePercent`, `diskAlert` (table-driven, incl. >90% threshold).
+- `status_test.go` covers the disk column and the >90% WARNING banner; `use_test.go` covers server switching; `cp_test.go`/`deploy_test.go` cover scp arg construction and chown logic with mocked `exec.Command`.
 - `exec_test.go` verifies `--` passthrough and flag forwarding by inspecting the command-line arguments.
 - `connect_test.go` uses an `httptest.Server` for the `RegisterServer` happy path.
 - `client_test.go` verifies `resolveToken` precedence and `newBunkerdClient` TLSInsecure behavior.

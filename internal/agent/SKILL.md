@@ -7,6 +7,9 @@
 - `(*AgentManager) Spawn(ctx, *SpawnAgentRequest) (*SpawnAgentResponse, error)` — creates a Linux user, generates an SSH keypair, writes `authorized_keys` and `.profile`, installs rootless Docker, and starts dockerd via systemd-run with cgroup limits.
 - `(*AgentManager) Destroy(ctx, agentID, force) (*DestroyAgentResponse, error)` — stops dockerd, removes user slice limits, and removes the Linux user with `userdel -r`.
 - `(*AgentManager) Stop()` — signals the TTL reaper goroutine to exit.
+- SSH key auto-provisioning in `host_key.go` (UX-007):
+  - `provisionHostSSHKey(ctx, username, authKeysFile, logger)` — scans the host's `/root/.ssh/id_{ed25519,rsa}.pub` and appends the public key to the agent's `~/.ssh/authorized_keys` during spawn, so the host can SSH into agents without a manual key exchange.
+  - `findHostPublicKey()` — returns the first available host public key path and contents; no key → warning, not error.
 
 Rootless helpers in `rootless.go`:
 - `configureSubIDs(username)` — ensures `/etc/subuid` and `/etc/subgid` entries for rootless Docker.

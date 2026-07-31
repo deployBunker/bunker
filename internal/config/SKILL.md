@@ -3,7 +3,7 @@
 ## Public API
 
 - `Config` — top-level bunkerd configuration struct containing `Server`, `TLS`, `Auth`, `Agent`, `Tunnel`, `NamedTunnel`, and `Tailscale` sections.
-- `ServerConfig` — `GRPCAddr` and `RESTAddr` listeners.
+- `ServerConfig` — `GRPCAddr` and `RESTAddr` listeners, plus `RequestTimeout` (default 300s, was hardcoded 60s — the agent-timeout root cause).
 - `TLSConfig` — enabled, file certs, certmagic AutoTLS, self-signed, mTLS, CA file, CN verification, and hosts.
 - `AuthConfig` — enabled, static token, JWT secret, JWT TTL.
 - `AgentConfig` — base data dir, SSH dir, port ranges, max agents, default CPU/memory/disk/process/file/container limits, and TTL.
@@ -40,3 +40,4 @@
 3. **TLS self-signed mode fills in default cert/key paths.** If `cert_file` or `key_file` are empty and `self_signed` is true, `Validate` sets them to `/etc/bunkerd/tls/cert.pem` and `/etc/bunkerd/tls/key.pem`; callers must generate the files before enabling TLS.
 4. **`JWTSecret` is used as both signing key and apikey manager seed.** The `apikey.Manager` is initialized with `cfg.Auth.JWTSecret`; rotating the JWT secret invalidates all opaque agent sub-keys.
 5. **Port ranges are `uint32`, not `int`.** Negative values or values > 65535 cannot be represented, but zero values can accidentally disable allocation if `PortRangePerAgent` is 0.
+6. **Request timeout defaults to 300s but was historically hardcoded 60s.** `server.request_timeout` / `BUNKERD_SERVER_REQUEST_TIMEOUT` overrides it. Agent exec/timeout complaints on a deployed server are usually the old 60s binary — pull latest and rebuild.

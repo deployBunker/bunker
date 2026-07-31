@@ -5,10 +5,11 @@
 - `BunkerdServer` — the main HTTP/gRPC daemon.
 - `New(cfg) *BunkerdServer` — constructor.
 - `(*BunkerdServer) Run(ctx) error` — builds the chi router, mounts connect-go handlers, starts listeners, and blocks until shutdown.
-- `bunkerdService` — implements `bunkerv1connect.BunkerdHandler`: `ServerInfo`, `ServerMetrics`, `SpawnAgent`, `DestroyAgent`, `ListAgents`, `GetAgent`, `AgentMetrics`, `ExecAgent`, `HeartbeatAgent`.
+- `bunkerdService` — implements `bunkerv1connect.BunkerdHandler`: `ServerInfo`, `ServerMetrics`, `SpawnAgent`, `DestroyAgent`, `ListAgents`, `GetAgent`, `AgentMetrics`, `ExecAgent`, `RunAgent`, `HeartbeatAgent`.
 - `agentService` — implements `bunkerv1connect.AgentHandler`: `GetInfo`, `Metrics`, `Heartbeat` (scoped sub-key access).
 - `buildTLSConfig()` (method on `BunkerdServer`) — constructs file, self-signed, certmagic AutoTLS, or mTLS configs.
-- Helper functions: `readDiskStats`, `countDockerSockets`, `buildExecSSHCommand`, `shellQuoteSingle`, `buildAgentExecCommand`.
+- Helper functions: `readDiskStats`, `agentDiskUsage(agentID)`, `countDockerSockets`, `buildExecSSHCommand`, `buildExecSSHRawCommand`, `buildExecSSHScriptCommand`, `buildAgentExecCommand`, `buildAgentRawExecCommand`, `buildAgentScriptCommand`, `buildSSHBaseCommand`, `shellQuoteSingle`.
+- Disk monitoring (MONITOR-001/002): `SpawnAgent` warns in the server log when host disk usage exceeds 90% (`diskAlert`); `readDiskStats` reads host used/total; `agentDiskUsage` walks an agent's home directory for the per-agent figure exposed via `AgentSummary.DiskUsedBytes`.
 
 ## Conventions
 
