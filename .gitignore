@@ -41,3 +41,6 @@ bin/
 *.pyc
 __pycache__/
 test-config.yaml
+
+# Bunker E2E battery output (regenerated on each run)
+e2e-output/
