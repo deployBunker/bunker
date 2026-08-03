@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -235,10 +236,13 @@ func TestRunCommand_SyncExitCode(t *testing.T) {
 
 	cmd := NewRunCommand()
 	cmd.SetArgs([]string{"abc123", "--", "nonexistent-cmd"})
-	if err := cmd.Execute(); err == nil {
-		t.Fatal("expected error for non-zero exit code")
-	} else if !strings.Contains(err.Error(), "exit code 127") {
-		t.Fatalf("expected 'exit code 127' error, got: %v", err)
+	err := cmd.Execute()
+	var exitErr *ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *ExitError, got: %v", err)
+	}
+	if exitErr.Code != 127 {
+		t.Errorf("exit code = %d, want 127", exitErr.Code)
 	}
 }
 

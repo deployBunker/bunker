@@ -69,6 +69,13 @@ Examples:
 			// 4. Call RPC
 			resp, err := client.DestroyAgent(ctx, req)
 			if err != nil {
+				// A not-found agent is an idempotent success, not an error:
+				// print the same clean message and exit 0 as the in-band
+				// resp.Status == "not_found" branch below.
+				if connect.CodeOf(err) == connect.CodeNotFound {
+					fmt.Printf("Agent %s not found.\n", agentID)
+					return nil
+				}
 				return fmt.Errorf("destroy agent: %w", err)
 			}
 

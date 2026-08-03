@@ -65,8 +65,12 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 		// Check if user doesn't exist (already destroyed)
 		if !force {
 			m.tracker.Unregister(agentID)
+			// Raw userdel output stays in the server log for diagnostics;
+			// the user-facing error must stay clean so the CLI can present
+			// a tidy "agent not found" without leaking command output.
+			m.logger.Warn("userdel failed, treating agent as not found", "username", username, "error", err, "output", string(out))
 			return &v1.DestroyAgentResponse{AgentId: agentID, Status: "not_found"},
-				fmt.Errorf("userdel %s failed: %w (output: %s)", username, err, string(out))
+				fmt.Errorf("agent %q not found", agentID)
 		}
 		// Force mode: log and continue even if userdel fails
 		m.logger.Warn("userdel failed in force mode", "username", username, "error", err, "output", string(out))

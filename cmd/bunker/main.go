@@ -8,6 +8,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -19,9 +20,24 @@ import (
 
 func main() {
 	if err := run(); err != nil {
+		// Propagate a remote command's exit code (bunker exec / bunker run)
+		// silently, ssh-style — no "bunker: ..." noise for the exit-code path.
+		if code, ok := exitCodeFor(err); ok {
+			os.Exit(code)
+		}
 		fmt.Fprintf(os.Stderr, "bunker: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// exitCodeFor returns the exit code to propagate when err is (or wraps) an
+// *cli.ExitError, e.g. the remote command's exit code from exec/run.
+func exitCodeFor(err error) (int, bool) {
+	var exitErr *cli.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.Code, true
+	}
+	return 0, false
 }
 
 func run() error {

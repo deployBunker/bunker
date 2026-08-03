@@ -157,9 +157,10 @@ assert 'echo "$OUT" | grep -q "bunker-regr-alpha"' "exec whoami returns agent us
 OUT=$(bunker exec regr-alpha "docker version --format '{{.Client.Version}}'" 2>&1 || true)
 assert 'echo "$OUT" | grep -qE "[0-9]+\.[0-9]+"' "exec docker version returns version"
 
-# 6c. Command with exit code
+# 6c. Command with exit code (propagated silently, ssh-style: process exits
+# with the remote code and prints no "bunker: exit code N" noise)
 OUT=$(bunker exec regr-alpha "exit 42" 2>&1; echo "EXIT:$?")
-assert 'echo "$OUT" | grep -q "exit code 42"' "exec propagates exit code"
+assert 'echo "$OUT" | grep -q "EXIT:42"' "exec propagates exit code"
 
 echo ""
 

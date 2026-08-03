@@ -221,6 +221,46 @@ func TestDestroyCommand_ServerError(t *testing.T) {
 	}
 }
 
+// TestDestroyCommand_CodeNotFound verifies the connect-error not-found path:
+// the server maps a missing agent to connect.CodeNotFound, and the CLI must
+// print the same clean message and exit 0 (nil error) as the in-band
+// resp.Status == "not_found" branch.
+func TestDestroyCommand_CodeNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	mock := &mockDestroyServer{
+		mockBunkerdServer: mockBunkerdServer{
+			info: &v1.ServerInfoResponse{
+				Hostname: "bunker-nf",
+				Version:  "v0.2.0",
+			},
+		},
+		destroyErr: connect.NewError(connect.CodeNotFound, nil),
+	}
+	srv := newDestroyTestServer(t, mock)
+	defer srv.Close()
+
+	writeDestroyTestConfig(t, tmpDir, srv.URL)
+
+	cmd := NewDestroyCommand()
+	cmd.SetArgs([]string{"missing-id"})
+	output := captureStdout(t, func() {
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+	})
+
+	if !strings.Contains(output, "Agent missing-id not found.") {
+		t.Errorf("output missing 'Agent missing-id not found.', got:\n%s", output)
+	}
+	for _, leak := range []string{"userdel", "exit status", "destroy agent:"} {
+		if strings.Contains(output, leak) {
+			t.Errorf("output must not contain %q (raw leak/wrap), got:\n%s", leak, output)
+		}
+	}
+}
+
 func TestDestroyCommand_ServerNotFound(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)

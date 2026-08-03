@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -148,6 +149,33 @@ func TestExecCommand_ExitCode(t *testing.T) {
 		t.Fatal("expected error for non-zero exit code")
 	} else if !strings.Contains(err.Error(), "exit code 1") {
 		t.Fatalf("expected 'exit code 1' error, got: %v", err)
+	}
+}
+
+// TestExecCommand_ExitCode7 verifies that a remote exit code propagates as an
+// *ExitError carrying the exact code, so cmd/bunker/main.go can os.Exit(7)
+// instead of the default 1.
+func TestExecCommand_ExitCode7(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	server := newExecTestServer(t, &mockExecServer{
+		execResponses: []*v1.ExecAgentResponse{
+			{ExitCode: 7},
+		},
+	})
+	defer server.Close()
+	writeExecTestConfig(t, tmpDir, server.URL)
+
+	cmd := NewExecCommand()
+	cmd.SetArgs([]string{"abc123", "sh", "-c", "exit 7"})
+	err := cmd.Execute()
+	var exitErr *ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *ExitError, got: %v", err)
+	}
+	if exitErr.Code != 7 {
+		t.Errorf("exit code = %d, want 7", exitErr.Code)
 	}
 }
 

@@ -189,7 +189,7 @@ Examples:
 			}
 
 			if exitCode != 0 {
-				return fmt.Errorf("exit code %d", exitCode)
+				return &ExitError{Code: int(exitCode)}
 			}
 			return nil
 		},

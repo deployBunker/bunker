@@ -514,6 +514,27 @@ func TestDestroy_ValidatesAgentID(t *testing.T) {
 	}
 }
 
+// TestDestroy_UserdelFail_NotFound verifies that a userdel failure in
+// non-force mode maps to Status:"not_found" with a CLEAN error message:
+// no raw userdel CombinedOutput leaking to the caller (raw output may stay
+// in the server log only).
+func TestDestroy_UserdelFail_NotFound(t *testing.T) {
+	m := newTestManager(t)
+	resp, err := m.Destroy(t.Context(), "test-agent", false)
+	if err == nil {
+		t.Fatal("expected error for missing user (userdel fails)")
+	}
+	if resp == nil || resp.Status != "not_found" {
+		t.Errorf("Status = %v, want 'not_found'", resp)
+	}
+	if strings.Contains(err.Error(), "userdel") || strings.Contains(err.Error(), "output:") {
+		t.Errorf("error must not leak raw userdel output: %v", err)
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should be a clean not-found message, got: %v", err)
+	}
+}
+
 func TestStopDockerdDirect_NoProcess(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	err := stopDockerdDirect(t.Context(), "nonexistent-user-12345", "bunker-docker-test", logger)
