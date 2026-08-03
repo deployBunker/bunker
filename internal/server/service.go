@@ -376,7 +376,11 @@ func buildAgentExecCommand(agentID, userHome, command string, args []string) str
 	envFile := fmt.Sprintf("/run/bunker/%s/env", agentID)
 	remoteCmd := command
 	if len(args) > 0 {
-		remoteCmd += " " + strings.Join(args, " ")
+		quoted := make([]string, len(args))
+		for i, a := range args {
+			quoted[i] = shellQuoteSingle(a)
+		}
+		remoteCmd += " " + strings.Join(quoted, " ")
 	}
 	return fmt.Sprintf(". %s 2>/dev/null; env PATH=%s:$PATH DOCKER_HOST=unix://%s TMPDIR=%s %s",
 		envFile, agentBinPath, dockerSockPath, tmpDir, remoteCmd)
