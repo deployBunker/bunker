@@ -23,7 +23,20 @@ import (
 	"github.com/deployBunker/bunker/internal/resource"
 	"github.com/deployBunker/bunker/internal/tailscale"
 	"github.com/deployBunker/bunker/internal/tunnel"
+	"github.com/deployBunker/bunker/internal/version"
 )
+
+// serverStartTime records when the bunkerd process started. ServerInfo
+// reports uptime as time since this instant. It is a variable so tests can
+// inject a known start time.
+var serverStartTime = time.Now()
+
+// cpuSampler is the subset of *resource.CPUSampler used by bunkerdService.
+// It exists so service-layer tests can stub CPU percent without reading the
+// real host cgroup files (mirroring the agentManager pattern above).
+type cpuSampler interface {
+	Percent() float64
+}
 
 // bunkerdService implements bunkerv1connect.BunkerdHandler.
 type bunkerdService struct {
@@ -35,6 +48,7 @@ type bunkerdService struct {
 	tailscaleMgr *tailscale.TailscaleManager
 	keyMgr       *apikey.Manager
 	jwtAuth      *auth.JWTAuth
+	cpuSampler   cpuSampler
 }
 
 // agentManager is the subset of *agent.AgentManager used by bunkerdService.
@@ -51,8 +65,8 @@ func (s *bunkerdService) ServerInfo(ctx context.Context, req *connect.Request[v1
 	hostname, _ := os.Hostname()
 	resp := &v1.ServerInfoResponse{
 		Hostname:      hostname,
-		Version:       "0.1.0",
-		UptimeSeconds: 0,
+		Version:       version.Version,
+		UptimeSeconds: uint64(time.Since(serverStartTime).Seconds()),
 		AgentCount:    s.tracker.Count(),
 		MaxAgents:     s.tracker.MaxAgents(),
 	}
@@ -71,9 +85,15 @@ func (s *bunkerdService) ServerMetrics(ctx context.Context, req *connect.Request
 		Agents: summaries,
 	}
 
-	// Try to read cgroup metrics
+	// CPU percent comes from delta sampling across calls; the first call on a
+	// fresh sampler is a baseline and reports 0.
+	if s.cpuSampler != nil {
+		resp.CpuUsagePercent = s.cpuSampler.Percent()
+	}
+
+	// Memory from cgroup v2, falling back to /proc/meminfo when the cgroup
+	// memory files are absent (see resource.ReadCgroupMetrics).
 	if metrics, err := resource.ReadCgroupMetrics(); err == nil {
-		resp.CpuUsagePercent = metrics.CPUUsagePercent
 		resp.MemoryUsedBytes = metrics.MemoryUsedBytes
 		resp.MemoryTotalBytes = metrics.MemoryLimitBytes
 	}

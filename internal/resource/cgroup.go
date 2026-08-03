@@ -15,6 +15,13 @@ var agentCgroupBaseFn = func(uid int, agentID string) string {
 	return fmt.Sprintf("/sys/fs/cgroup/user.slice/user-%d.slice/user@%d.service/bunker-docker-%s.service", uid, uid, agentID)
 }
 
+// cgroupBaseDir and meminfoFile are variables (not constants) so tests can
+// point them at fixtures without touching the real host files.
+var (
+	cgroupBaseDir = "/sys/fs/cgroup"
+	meminfoFile   = "/proc/meminfo"
+)
+
 // CgroupMetrics holds resource usage for an agent.
 type CgroupMetrics struct {
 	CPUUsagePercent  float64
@@ -26,55 +33,110 @@ type CgroupMetrics struct {
 // ReadCgroupMetrics reads CPU and memory usage from cgroup v2.
 // For systemd user units, the path is /sys/fs/cgroup/user.slice/user-<uid>.slice/user@<uid>.service/...
 // We use a simplified approach: read host-level cgroup stats and scale by agent count.
+//
+// Memory: cgroup v2 files are primary; when they are unreadable (some hosts
+// do not expose memory.current/memory.max), fall back to /proc/meminfo
+// (MemTotal as the limit, MemTotal-MemAvailable as used).
+//
+// CPU: usage_usec is a monotonic counter, so a point-in-time snapshot cannot
+// express a percentage. CPUUsagePercent is left at 0 here; callers that want
+// a real percent must hold a CPUSampler and compute deltas across calls.
 func ReadCgroupMetrics() (*CgroupMetrics, error) {
 	m := &CgroupMetrics{}
 
+	memUsedOK := false
+	memLimitOK := false
+
 	// Read memory.current for used memory
-	memCurrent, err := os.ReadFile("/sys/fs/cgroup/memory.current")
+	memCurrent, err := os.ReadFile(filepath.Join(cgroupBaseDir, "memory.current"))
 	if err == nil {
 		val, parseErr := strconv.ParseUint(strings.TrimSpace(string(memCurrent)), 10, 64)
 		if parseErr == nil {
 			m.MemoryUsedBytes = val
+			memUsedOK = true
 		}
 	}
 
 	// Read memory.max for memory limit
-	memMax, err := os.ReadFile("/sys/fs/cgroup/memory.max")
+	memMax, err := os.ReadFile(filepath.Join(cgroupBaseDir, "memory.max"))
 	if err == nil {
 		maxStr := strings.TrimSpace(string(memMax))
 		if maxStr != "max" {
 			val, parseErr := strconv.ParseUint(maxStr, 10, 64)
 			if parseErr == nil {
 				m.MemoryLimitBytes = val
+				memLimitOK = true
 			}
 		}
 	}
 
-	// Read cpu.stat for usage_usec total
-	cpuStat, err := os.ReadFile("/sys/fs/cgroup/cpu.stat")
-	if err == nil {
-		m.CPUUsagePercent = parseCPUPercent(string(cpuStat))
+	// Fallback: /proc/meminfo when either cgroup memory file is unavailable.
+	if !memUsedOK || !memLimitOK {
+		if total, available, ok := readMeminfo(); ok {
+			if !memUsedOK {
+				m.MemoryUsedBytes = total - available
+			}
+			if !memLimitOK {
+				m.MemoryLimitBytes = total
+			}
+		}
 	}
 
 	return m, nil
 }
 
-// parseCPUPercent extracts usage from cpu.stat and returns a rough percentage.
-func parseCPUPercent(cpuStat string) float64 {
-	var usageUsec uint64
+// parseUsageUsec extracts the usage_usec counter from a cpu.stat string.
+// It returns ok=false when the field is absent or unparsable.
+func parseUsageUsec(cpuStat string) (uint64, bool) {
 	for _, line := range strings.Split(strings.TrimSpace(cpuStat), "\n") {
 		if strings.HasPrefix(line, "usage_usec ") {
 			val, err := strconv.ParseUint(strings.TrimSpace(strings.TrimPrefix(line, "usage_usec ")), 10, 64)
 			if err == nil {
-				usageUsec = val
+				return val, true
 			}
 		}
 	}
-	// usage_usec is total CPU time in microseconds since boot.
-	// This is a point-in-time reading; caller should track deltas for actual percent.
-	// For now, return 0 and document that proper percent requires delta tracking.
-	_ = usageUsec
-	return 0
+	return 0, false
+}
+
+// parseMeminfo parses MemTotal and MemAvailable from a /proc/meminfo sample.
+// Values are reported in kB by /proc/meminfo and converted to bytes.
+// A missing or malformed field parses as 0.
+func parseMeminfo(meminfo string) (totalBytes uint64, availableBytes uint64) {
+	for _, line := range strings.Split(meminfo, "\n") {
+		name, value, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		fields := strings.Fields(value)
+		if len(fields) == 0 {
+			continue
+		}
+		kb, err := strconv.ParseUint(fields[0], 10, 64)
+		if err != nil {
+			continue
+		}
+		switch strings.TrimSpace(name) {
+		case "MemTotal":
+			totalBytes = kb * 1024
+		case "MemAvailable":
+			availableBytes = kb * 1024
+		}
+	}
+	return totalBytes, availableBytes
+}
+
+// readMeminfo reads and parses /proc/meminfo. ok=false on read failure.
+func readMeminfo() (totalBytes, availableBytes uint64, ok bool) {
+	data, err := os.ReadFile(meminfoFile)
+	if err != nil {
+		return 0, 0, false
+	}
+	total, available := parseMeminfo(string(data))
+	if total == 0 {
+		return 0, 0, false
+	}
+	return total, available, true
 }
 
 // agentCgroupBase returns the systemd user unit cgroup path for a rootless

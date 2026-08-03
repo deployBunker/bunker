@@ -19,13 +19,7 @@ import (
 
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/server"
-)
-
-// Build-time ldflags. Set via: go build -ldflags "-X ..."
-var (
-	Version   = "0.1.0"
-	Commit    = "unknown"
-	BuildDate = "unknown"
+	"github.com/deployBunker/bunker/internal/version"
 )
 
 const defaultConfigPath = "/etc/bunkerd/config.yaml"
@@ -80,9 +74,9 @@ Docker agent hosts. Send SIGINT/SIGTERM for graceful shutdown.
 	}
 
 	if showVersion {
-		fmt.Printf("bunkerd %s\n", Version)
-		fmt.Printf("  commit:     %s\n", Commit)
-		fmt.Printf("  built:      %s\n", BuildDate)
+		fmt.Printf("bunkerd %s\n", version.Version)
+		fmt.Printf("  commit:     %s\n", version.Commit)
+		fmt.Printf("  built:      %s\n", version.BuildDate)
 		fmt.Printf("  go version: %s\n", runtime.Version())
 		fmt.Printf("  platform:   %s/%s\n", runtime.GOOS, runtime.GOARCH)
 		return nil

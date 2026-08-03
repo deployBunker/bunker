@@ -2,22 +2,31 @@ package resource
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
 func TestCgroupCPUSharesPath(t *testing.T) {
-	pct := parseCPUPercent("")
-	if pct != 0 {
-		t.Errorf("expected 0 for empty input, got %f", pct)
+	if usage, ok := parseUsageUsec(""); ok || usage != 0 {
+		t.Errorf("parseUsageUsec(\"\") = (%d, %v), want (0, false)", usage, ok)
 	}
 }
 
-func TestParseCPUPercent_Valid(t *testing.T) {
+func TestParseUsageUsec_Valid(t *testing.T) {
 	stat := "usage_usec 123456789\nuser_usec 100000000\nsystem_usec 23456789\n"
-	pct := parseCPUPercent(stat)
-	// Returns 0 because we don't compute a delta (documented behavior)
-	if pct != 0 {
-		t.Errorf("expected 0 (delta tracking not implemented yet), got %f", pct)
+	usage, ok := parseUsageUsec(stat)
+	if !ok {
+		t.Fatal("parseUsageUsec returned ok=false for valid cpu.stat")
+	}
+	if usage != 123456789 {
+		t.Errorf("parseUsageUsec = %d, want 123456789", usage)
+	}
+}
+
+func TestParseUsageUsec_Missing(t *testing.T) {
+	stat := "user_usec 100000000\nsystem_usec 23456789\n"
+	if usage, ok := parseUsageUsec(stat); ok || usage != 0 {
+		t.Errorf("parseUsageUsec without usage_usec = (%d, %v), want (0, false)", usage, ok)
 	}
 }
 
@@ -37,6 +46,97 @@ func TestReadCgroupMetrics_NoError(t *testing.T) {
 	_, err := ReadCgroupMetrics()
 	// Error is expected in test environments without cgroup v2, but shouldn't crash
 	_ = err
+}
+
+func TestParseMeminfo(t *testing.T) {
+	sample := "MemTotal:       16384000 kB\n" +
+		"MemFree:         1000000 kB\n" +
+		"MemAvailable:   15000000 kB\n" +
+		"Buffers:          200000 kB\n"
+	total, available := parseMeminfo(sample)
+	// Values in /proc/meminfo are kB; parser converts to bytes.
+	if total != 16384000*1024 {
+		t.Errorf("parseMeminfo MemTotal = %d, want %d", total, 16384000*1024)
+	}
+	if available != 15000000*1024 {
+		t.Errorf("parseMeminfo MemAvailable = %d, want %d", available, 15000000*1024)
+	}
+}
+
+func TestParseMeminfo_MissingFields(t *testing.T) {
+	total, available := parseMeminfo("MemFree: 100 kB\n")
+	if total != 0 || available != 0 {
+		t.Errorf("missing MemTotal/MemAvailable = (%d, %d), want (0, 0)", total, available)
+	}
+}
+
+func TestReadCgroupMetrics_MeminfoFallback(t *testing.T) {
+	// Point the cgroup and meminfo readers at fixtures: no memory.* files in
+	// the fake cgroup dir, so the /proc/meminfo fallback must kick in.
+	root := t.TempDir()
+	originalDir := cgroupBaseDir
+	originalMeminfo := meminfoFile
+	cgroupBaseDir = root
+	meminfoFile = writeFixture(t, "meminfo",
+		"MemTotal:       16384000 kB\nMemAvailable:   15000000 kB\n")
+	t.Cleanup(func() {
+		cgroupBaseDir = originalDir
+		meminfoFile = originalMeminfo
+	})
+
+	m, err := ReadCgroupMetrics()
+	if err != nil {
+		t.Fatalf("ReadCgroupMetrics() error: %v", err)
+	}
+	if want := uint64(16384000 * 1024); m.MemoryLimitBytes != want {
+		t.Errorf("MemoryLimitBytes = %d, want %d (MemTotal)", m.MemoryLimitBytes, want)
+	}
+	if want := uint64((16384000 - 15000000) * 1024); m.MemoryUsedBytes != want {
+		t.Errorf("MemoryUsedBytes = %d, want %d (MemTotal-MemAvailable)", m.MemoryUsedBytes, want)
+	}
+}
+
+func TestReadCgroupMetrics_CgroupPreferredOverMeminfo(t *testing.T) {
+	// When cgroup v2 memory files exist they must win over /proc/meminfo.
+	root := t.TempDir()
+	originalDir := cgroupBaseDir
+	originalMeminfo := meminfoFile
+	cgroupBaseDir = root
+	meminfoFile = writeFixture(t, "meminfo",
+		"MemTotal:       16384000 kB\nMemAvailable:   15000000 kB\n")
+	t.Cleanup(func() {
+		cgroupBaseDir = originalDir
+		meminfoFile = originalMeminfo
+	})
+
+	if err := os.WriteFile(filepath.Join(root, "memory.current"), []byte("1048576\n"), 0644); err != nil {
+		t.Fatalf("write memory.current: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "memory.max"), []byte("268435456\n"), 0644); err != nil {
+		t.Fatalf("write memory.max: %v", err)
+	}
+
+	m, err := ReadCgroupMetrics()
+	if err != nil {
+		t.Fatalf("ReadCgroupMetrics() error: %v", err)
+	}
+	if m.MemoryUsedBytes != 1048576 {
+		t.Errorf("MemoryUsedBytes = %d, want 1048576 (cgroup value)", m.MemoryUsedBytes)
+	}
+	if m.MemoryLimitBytes != 268435456 {
+		t.Errorf("MemoryLimitBytes = %d, want 268435456 (cgroup value)", m.MemoryLimitBytes)
+	}
+}
+
+// writeFixture writes content to a file inside the test's temp dir and
+// returns its path.
+func writeFixture(t *testing.T, name, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("write fixture %s: %v", name, err)
+	}
+	return path
 }
 
 func TestAgentCgroupBasePath(t *testing.T) {

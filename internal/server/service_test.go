@@ -16,6 +16,7 @@ import (
 	"github.com/deployBunker/bunker/internal/auth"
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/resource"
+	"github.com/deployBunker/bunker/internal/version"
 )
 
 // TestExecAgent_RegisteredBuildsSSH verifies that ExecAgent's raw and script
@@ -619,14 +620,72 @@ func TestServerInfo(t *testing.T) {
 	if msg.Hostname == "" {
 		t.Error("ServerInfo().Hostname is empty")
 	}
-	if msg.Version == "" {
-		t.Error("ServerInfo().Version is empty")
+	if msg.Version != version.Version {
+		t.Errorf("ServerInfo().Version = %q, want %q (shared internal/version)", msg.Version, version.Version)
+	}
+	if msg.UptimeSeconds == 0 {
+		t.Error("ServerInfo().UptimeSeconds is 0, want seconds since daemon start")
 	}
 	if msg.AgentCount != 0 {
 		t.Errorf("ServerInfo().AgentCount = %d, want 0 (empty tracker)", msg.AgentCount)
 	}
 	if msg.MaxAgents != 10 {
 		t.Errorf("ServerInfo().MaxAgents = %d, want 10", msg.MaxAgents)
+	}
+}
+
+// TestServerInfo_UptimeFromStartTime verifies uptime is computed from the
+// (injectable) daemon start time rather than hardcoded to 0.
+func TestServerInfo_UptimeFromStartTime(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	tracker := resource.NewTracker(10, logger)
+
+	original := serverStartTime
+	serverStartTime = time.Now().Add(-3661 * time.Second) // 1h 1m 1s ago
+	t.Cleanup(func() { serverStartTime = original })
+
+	svc := &bunkerdService{
+		cfg:     config.DefaultConfig(),
+		logger:  logger,
+		tracker: tracker,
+	}
+
+	req := connect.NewRequest(&v1.ServerInfoRequest{})
+	resp, err := svc.ServerInfo(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ServerInfo() error: %v", err)
+	}
+	got := resp.Msg.GetUptimeSeconds()
+	if got < 3660 || got > 3662 {
+		t.Errorf("UptimeSeconds = %d, want ~3661 (1h 1m 1s since injected start)", got)
+	}
+}
+
+// fakeCPUSampler stubs the resource CPU sampler for service tests.
+type fakeCPUSampler struct{ percent float64 }
+
+func (f fakeCPUSampler) Percent() float64 { return f.percent }
+
+// TestServerMetrics_CPUSamplerWired verifies ServerMetrics reports the CPU
+// percent from the daemon's sampler (delta-based, not hardcoded 0).
+func TestServerMetrics_CPUSamplerWired(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	tracker := resource.NewTracker(10, logger)
+
+	svc := &bunkerdService{
+		cfg:        config.DefaultConfig(),
+		logger:     logger,
+		tracker:    tracker,
+		cpuSampler: fakeCPUSampler{percent: 42.5},
+	}
+
+	req := connect.NewRequest(&v1.ServerMetricsRequest{})
+	resp, err := svc.ServerMetrics(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ServerMetrics() error: %v", err)
+	}
+	if got := resp.Msg.GetCpuUsagePercent(); got != 42.5 {
+		t.Errorf("ServerMetrics().CpuUsagePercent = %v, want 42.5 (sampler value)", got)
 	}
 }
 

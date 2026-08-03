@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/deployBunker/bunker/internal/version"
 )
 
 func TestVersionCommand(t *testing.T) {
@@ -42,5 +44,10 @@ func TestVersionCommand(t *testing.T) {
 	}
 	if !strings.Contains(out, "built:") {
 		t.Errorf("expected output to contain 'built:', got: %s", out)
+	}
+	// The command must read from the shared internal/version package so that
+	// ldflags-injected values surface in `bunker version`.
+	if !strings.Contains(out, version.Version) {
+		t.Errorf("expected output to contain shared version %q, got: %s", version.Version, out)
 	}
 }

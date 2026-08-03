@@ -9,21 +9,30 @@ BIN_DIR := .
 BUNKERD := $(BIN_DIR)/bunkerd
 BUNKER := $(BIN_DIR)/bunker
 
+# Build metadata injected via -ldflags into internal/version.
+# VERSION is overridable on the command line (make build VERSION=v0.2.0).
+VERSION ?= 0.1.0
+COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+BUILDDATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS := -X github.com/deployBunker/bunker/internal/version.Version=$(VERSION) \
+           -X github.com/deployBunker/bunker/internal/version.Commit=$(COMMIT) \
+           -X github.com/deployBunker/bunker/internal/version.BuildDate=$(BUILDDATE)
+
 # Build both CLI binaries
 .PHONY: build
 build:
-	go build -o $(BUNKERD) ./cmd/bunkerd
-	go build -o $(BUNKER) ./cmd/bunker
+	go build -ldflags "$(LDFLAGS)" -o $(BUNKERD) ./cmd/bunkerd
+	go build -ldflags "$(LDFLAGS)" -o $(BUNKER) ./cmd/bunker
 
 # Build only the daemon
 .PHONY: build-daemon
 build-daemon:
-	go build -o $(BUNKERD) ./cmd/bunkerd
+	go build -ldflags "$(LDFLAGS)" -o $(BUNKERD) ./cmd/bunkerd
 
 # Build only the CLI
 .PHONY: build-cli
 build-cli:
-	go build -o $(BUNKER) ./cmd/bunker
+	go build -ldflags "$(LDFLAGS)" -o $(BUNKER) ./cmd/bunker
 
 # Run all unit tests
 .PHONY: test
