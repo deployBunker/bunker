@@ -806,5 +806,41 @@ tasks:
     with a warning callout
   - README still renders correctly and the change is docs-only (no Go files modified)
   - go build ./... passes; gitreins guard Tier 1 PASS
-  status: pending
+  status: complete
   created_at: '2026-08-03T20:42:49.279210+00:00'
+  completed_at: '2026-08-03T20:43:07.101441+00:00'
+- id: dogfood-005
+  title: "Fix bunker destroy unknown-id UX + align CLI remote exit-code propagation\
+    \ (userdel leak \u2192 clean not_found; exit code N not 1)"
+  criteria:
+  - 'bunker destroy <unknown-id> returns clean not_found UX: prints "Agent <id> not
+    found." with NO raw userdel output (no ''userdel: user does not exist'', no ''exit
+    status 6'') and no ''bunker: destroy agent:'' wrap; process exit code 0 (idempotent
+    destroy, consistent with the existing in-band not_found branch which currently
+    can never fire)'
+  - "Server side: internal/agent/manager_destroy.go userdel failure in non-force mode\
+    \ returns DestroyAgentResponse{Status:'not_found'} with a CLEAN error message\
+    \ (no raw userdel CombinedOutput in the user-facing error \u2014 raw output may\
+    \ stay in the server log); internal/server/service.go CodeNotFound mapping preserved"
+  - 'CLI side: internal/cli/destroy.go maps connect.CodeNotFound to the clean ''Agent
+    <id> not found.'' message + exit 0 (both the connect-error path and the existing
+    in-band resp.Status==not_found path behave identically)'
+  - 'Remote exit-code propagation: bunker exec <agent> -- <cmd> and bunker run <agent>
+    -- <cmd> (sync mode) exit with the REMOTE command''s exit code, not always 1;
+    no misleading ''bunker: exit code N'' + exit 1 mismatch (mechanism: ExitError
+    type checked in cmd/bunker/main.go via errors.As, or equivalent)'
+  - "Unit tests: destroy_test.go covers the CodeNotFound connect-error path (clean\
+    \ message, exit 0); exec_test.go/run_test.go cover remote exit-code propagation\
+    \ (e.g. remote exit 7 \u2192 process exit 7); manager destroy test covers userdel-fail\
+    \ \u2192 not_found with clean error"
+  - 'go build ./... && go vet ./... && gofmt clean && go test ./... -short pass; gitreins
+    guard Tier 1 PASS; commit includes Co-authored-by: Alexis Okuwa <wojonstech@gmail.com>
+    trailer'
+  - "Live E2E on bunker-mvp (78.46.173.180) via the cron workaround recipe (git pull\
+    \ + buf generate + build + pkill bunkerd + nohup): destroy nonexistent id \u2192\
+    \ clean not_found; exec remote exit code propagates (e.g. sh -c 'exit 7' \u2192\
+    \ local exit 7); spawn\u2192exec\u2192destroy battery still VERIFY-PASS; server\
+    \ back to 0 agents; systemd service restored (stray nohup killed)"
+  status: complete
+  created_at: '2026-08-03T21:23:46.038066+00:00'
+  completed_at: '2026-08-03T21:44:38.314261+00:00'
