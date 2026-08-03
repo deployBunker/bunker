@@ -872,3 +872,15 @@ tasks:
   status: complete
   created_at: '2026-08-03T22:33:57.163595+00:00'
   completed_at: '2026-08-03T22:34:00.549540+00:00'
+- id: flake-001
+  title: Fix TestServerInfo sub-second uptime razor-edge flake (CI run 30859460657)
+  criteria:
+  - 'TestServerInfo tolerates sub-second process age: UptimeSeconds==0 only flagged
+    when time.Since(serverStartTime) >= 1s'
+  - TestServerInfo and TestServerInfo_UptimeFromStartTime pass in isolation
+  - go build ./... and go vet ./... pass
+  - go test -short ./... passes (all packages)
+  - gofmt clean on internal/server/service_test.go
+  status: complete
+  created_at: '2026-08-03T23:10:57.765918+00:00'
+  completed_at: '2026-08-03T23:11:14.983437+00:00'
