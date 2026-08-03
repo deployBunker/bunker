@@ -723,3 +723,18 @@ tasks:
   status: complete
   created_at: '2026-07-28T08:25:52.050623+00:00'
   completed_at: '2026-07-28T08:33:27.672891+00:00'
+- id: dogfood-001
+  title: Fix broken bunker env commands + compound exec snippets (arg quoting in buildAgentExecCommand)
+  criteria:
+  - buildAgentExecCommand quotes every arg with shellQuoteSingle when joining Command+Args
+  - 'Compound snippet exec works: buildAgentExecCommand(''sh'', [''-c'', ''if [ -f
+    /etc/hostname ]; then cat /etc/hostname; fi'']) keeps the snippet as ONE single-quoted
+    unit'
+  - Args with spaces and embedded single quotes are quoted correctly
+  - Empty/nil args produce no trailing junk after the command
+  - All existing tests updated to the quoted form and new table-driven tests added
+    for compound snippets
+  - gofmt clean, go build ./..., go vet ./... and go test ./... -short all pass
+  status: complete
+  created_at: '2026-08-03T17:52:13.025989+00:00'
+  completed_at: '2026-08-03T17:52:16.848270+00:00'
