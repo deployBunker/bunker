@@ -33,6 +33,22 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		agentID = strings.SplitN(uuid, "-", 2)[0]
 	}
 
+	// ── Step 1a: Validate TTL ─────────────────────────────────────
+	// Effective TTL: request > server default. Invalid TTLs are rejected
+	// here, before any side effects (user creation, dockerd start), per
+	// specs/api.md: TTL format \d+[hmd] (e.g. "6h", "24h", "7d").
+	ttl := m.cfg.Agent.DefaultTTL
+	if ttl <= 0 {
+		ttl = 6 * time.Hour
+	}
+	if req.GetTtl() != "" {
+		parsed, err := ParseAgentTTL(req.GetTtl())
+		if err != nil {
+			return nil, fmt.Errorf("invalid ttl %q: %w", req.GetTtl(), err)
+		}
+		ttl = parsed
+	}
+
 	// ── Step 1.5: Allocate port range ────────────────────────────
 	var portStart, portEnd uint32
 	if m.portAlloc != nil {
@@ -462,18 +478,8 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		MaxDockerContainers: maxDockerContainers,
 	}
 
-	// Determine effective TTL: request > server default.
-	ttl := m.cfg.Agent.DefaultTTL
-	if ttl <= 0 {
-		ttl = 6 * time.Hour
-	}
-	if req.GetTtl() != "" {
-		if parsed, err := time.ParseDuration(req.GetTtl()); err == nil && parsed > 0 {
-			ttl = parsed
-		} else if err != nil {
-			m.logger.Warn("invalid ttl in spawn request, using default", "agent_id", agentID, "ttl", req.GetTtl(), "error", err)
-		}
-	}
+	// Effective TTL was validated and resolved in Step 1a; `ttl` is used
+	// below for the agent record and response ExpiresAt.
 
 	// Build the SSHFS mount command and the Docker SSH tunnel command once
 	// we know the user, home directory, and hostname.

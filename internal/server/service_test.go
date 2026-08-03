@@ -990,3 +990,76 @@ func (m *spawnTrackingManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequ
 	*m.spawnCalled = true
 	return &v1.SpawnAgentResponse{AgentId: "agent-disk-test"}, nil
 }
+
+// TestSpawnAgent_InvalidTTL verifies that an invalid TTL is rejected with
+// CodeInvalidArgument before agentMgr.Spawn is called (specs/api.md:
+// "CodeInvalidArgument: Bad limits or TTL format").
+func TestSpawnAgent_InvalidTTL(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	tracker := resource.NewTracker(10, logger)
+
+	spawnCalled := false
+	mgr := &spawnTrackingManager{
+		fakeAgentManager: fakeAgentManager{},
+		spawnCalled:      &spawnCalled,
+	}
+
+	svc := &bunkerdService{
+		cfg:      config.DefaultConfig(),
+		logger:   logger,
+		tracker:  tracker,
+		agentMgr: mgr,
+	}
+
+	for _, ttl := range []string{"banana", "not-a-duration", "6H", "1.5h"} {
+		req := connect.NewRequest(&v1.SpawnAgentRequest{Ttl: ttl})
+		_, err := svc.SpawnAgent(context.Background(), req)
+		if err == nil {
+			t.Errorf("SpawnAgent(ttl=%q) expected error, got nil", ttl)
+			continue
+		}
+		connectErr, ok := err.(*connect.Error)
+		if !ok || connectErr.Code() != connect.CodeInvalidArgument {
+			t.Errorf("SpawnAgent(ttl=%q) error code = %v, want CodeInvalidArgument", ttl, connectErr.Code())
+		}
+		if spawnCalled {
+			t.Errorf("SpawnAgent(ttl=%q) called agentMgr.Spawn despite invalid TTL", ttl)
+		}
+	}
+}
+
+// TestSpawnAgent_ValidTTL verifies that spec-valid TTLs (including the day
+// unit "7d", which time.ParseDuration cannot parse) reach agentMgr.Spawn.
+func TestSpawnAgent_ValidTTL(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	tracker := resource.NewTracker(10, logger)
+
+	spawnCalled := false
+	mgr := &spawnTrackingManager{
+		fakeAgentManager: fakeAgentManager{},
+		spawnCalled:      &spawnCalled,
+	}
+
+	svc := &bunkerdService{
+		cfg:      config.DefaultConfig(),
+		logger:   logger,
+		tracker:  tracker,
+		agentMgr: mgr,
+	}
+
+	for _, ttl := range []string{"", "6h", "7d"} {
+		spawnCalled = false
+		req := connect.NewRequest(&v1.SpawnAgentRequest{Ttl: ttl})
+		resp, err := svc.SpawnAgent(context.Background(), req)
+		if err != nil {
+			t.Errorf("SpawnAgent(ttl=%q) unexpected error: %v", ttl, err)
+			continue
+		}
+		if !spawnCalled {
+			t.Errorf("SpawnAgent(ttl=%q) did not call agentMgr.Spawn", ttl)
+		}
+		if resp.Msg == nil || resp.Msg.AgentId != "agent-disk-test" {
+			t.Errorf("SpawnAgent(ttl=%q) AgentId = %v, want agent-disk-test", ttl, resp.Msg)
+		}
+	}
+}

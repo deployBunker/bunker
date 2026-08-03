@@ -16,6 +16,7 @@ import (
 	"connectrpc.com/connect"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 
+	"github.com/deployBunker/bunker/internal/agent"
 	"github.com/deployBunker/bunker/internal/apikey"
 	"github.com/deployBunker/bunker/internal/auth"
 	"github.com/deployBunker/bunker/internal/config"
@@ -103,6 +104,20 @@ func (s *bunkerdService) SpawnAgent(ctx context.Context, req *connect.Request[v1
 		}
 	}
 
+	// Validate TTL format up front so invalid values surface as
+	// CodeInvalidArgument (specs/api.md: "CodeInvalidArgument: Bad limits or
+	// TTL format") instead of being silently ignored. The parsed value is
+	// reused below for the agent-scoped API key TTL so both agree for day
+	// units. Empty TTL is allowed and falls back to the server default.
+	var reqTTL time.Duration
+	if req.Msg.GetTtl() != "" {
+		parsed, err := agent.ParseAgentTTL(req.Msg.GetTtl())
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid ttl %q: %w", req.Msg.GetTtl(), err))
+		}
+		reqTTL = parsed
+	}
+
 	resp, err := s.agentMgr.Spawn(ctx, req.Msg)
 	if err != nil {
 		s.logger.Error("spawn agent failed", "error", err)
@@ -113,13 +128,11 @@ func (s *bunkerdService) SpawnAgent(ctx context.Context, req *connect.Request[v1
 	// The key is stored in the apikey manager and can be used by the agent
 	// (or its owner) to call the Agent service scoped to this agent_id.
 	if s.cfg.Auth.Enabled && s.cfg.Auth.JWTSecret != "" && s.keyMgr != nil {
-		ttl := s.cfg.Agent.DefaultTTL
+		ttl := reqTTL
 		if ttl <= 0 {
-			ttl = 6 * time.Hour
-		}
-		if req.Msg.GetTtl() != "" {
-			if parsed, err := time.ParseDuration(req.Msg.GetTtl()); err == nil && parsed > 0 {
-				ttl = parsed
+			ttl = s.cfg.Agent.DefaultTTL
+			if ttl <= 0 {
+				ttl = 6 * time.Hour
 			}
 		}
 		if apiToken, _, err := s.keyMgr.Generate(resp.AgentId, ttl); err == nil {

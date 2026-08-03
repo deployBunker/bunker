@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/deployBunker/bunker/internal/resource"
-	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 )
 
 // TestTTLReaper_ExpiresAgent verifies that the TTL reaper destroys an agent
@@ -108,23 +107,83 @@ func TestSpawn_UsesRequestedTTL(t *testing.T) {
 	}
 }
 
-// TestSpawn_InvalidTTLFallsBackToDefault verifies that an invalid TTL string
-// falls back to the default TTL.
-func TestSpawn_InvalidTTLFallsBackToDefault(t *testing.T) {
-	m := newTestManager(t)
-	defer m.Stop()
+// TestParseAgentTTL covers the spec TTL format \d+[hmd] (specs/api.md,
+// specs/agent-lifecycle.md) for both accepted and rejected inputs.
+func TestParseAgentTTL(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      string
+		want    time.Duration
+		wantErr bool
+	}{
+		// Accepted: digits followed by a lowercase h/m/d unit.
+		{"hours", "6h", 6 * time.Hour, false},
+		{"minutes", "90m", 90 * time.Minute, false},
+		{"day", "7d", 168 * time.Hour, false},
+		{"single hour", "1h", time.Hour, false},
+		{"single minute", "1m", time.Minute, false},
+		{"single day", "1d", 24 * time.Hour, false},
+		{"large day", "30d", 720 * time.Hour, false},
+		{"multi-digit", "24h", 24 * time.Hour, false},
+		{"multi-digit minutes", "1440m", 24 * time.Hour, false},
 
-	req := &v1.SpawnAgentRequest{AgentId: "ttl-invalid-test", Ttl: "not-a-duration"}
-	// We don't call m.Spawn because it requires root; instead verify parse logic.
-	defaultTTL := m.cfg.Agent.DefaultTTL
-	if defaultTTL <= 0 {
-		defaultTTL = 6 * time.Hour
+		// Rejected: not a duration at all.
+		{"not-a-duration", "not-a-duration", 0, true},
+		{"banana", "banana", 0, true},
+		// Rejected: bare numbers (no unit).
+		{"bare zero", "0", 0, true},
+		{"bare number", "6", 0, true},
+		// Rejected: negative.
+		{"negative", "-1h", 0, true},
+		// Rejected: decimal.
+		{"decimal", "1.5h", 0, true},
+		// Rejected: empty.
+		{"empty", "", 0, true},
+		// Rejected: unit without digits.
+		{"unit only", "d", 0, true},
+		// Rejected: uppercase unit.
+		{"uppercase", "6H", 0, true},
+		// Rejected: zero duration (meaningless TTL).
+		{"zero hours", "0h", 0, true},
+		{"zero days", "0d", 0, true},
+		// Rejected: format violations.
+		{"unit first", "h6", 0, true},
+		{"double unit", "6hh", 0, true},
+		{"unknown unit", "6s", 0, true},
+		{"leading plus", "+6h", 0, true},
+		{"leading space", " 6h", 0, true},
+		{"trailing space", "6h ", 0, true},
+		// Rejected: overflow of time.Duration.
+		{"overflow", "999999999999999999999h", 0, true},
+		{"overflow days", "999999999999999999999d", 0, true},
 	}
 
-	parsed, err := time.ParseDuration(req.GetTtl())
-	if err == nil {
-		t.Fatalf("expected error parsing invalid TTL %q", req.GetTtl())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseAgentTTL(tt.in)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("ParseAgentTTL(%q) = %v, want error", tt.in, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ParseAgentTTL(%q) unexpected error: %v", tt.in, err)
+			}
+			if got != tt.want {
+				t.Errorf("ParseAgentTTL(%q) = %v, want %v", tt.in, got, tt.want)
+			}
+		})
 	}
-	_ = parsed
-	_ = defaultTTL
+}
+
+// TestParseAgentTTL_RejectsInvalid asserts that spec-invalid TTL strings
+// return an error instead of silently falling back to a default (the old
+// behavior enshrined by TestSpawn_InvalidTTLFallsBackToDefault).
+func TestParseAgentTTL_RejectsInvalid(t *testing.T) {
+	for _, s := range []string{"not-a-duration", "banana", "6H", "1.5h"} {
+		if d, err := ParseAgentTTL(s); err == nil {
+			t.Errorf("ParseAgentTTL(%q) = %v, want error (no silent fallback)", s, d)
+		}
+	}
 }
