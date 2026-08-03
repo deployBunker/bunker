@@ -382,8 +382,11 @@ func buildAgentExecCommand(agentID, userHome, command string, args []string) str
 		}
 		remoteCmd += " " + strings.Join(quoted, " ")
 	}
-	return fmt.Sprintf(". %s 2>/dev/null; env PATH=%s:$PATH DOCKER_HOST=unix://%s TMPDIR=%s %s",
-		envFile, agentBinPath, dockerSockPath, tmpDir, remoteCmd)
+	// Guard the source with [ -f ... ] so a fresh agent (no env file yet)
+	// doesn't make dash exit 2 on the failed dot-source (dash aborts a
+	// non-interactive shell when `.` can't open its file).
+	return fmt.Sprintf("[ -f %s ] && . %s 2>/dev/null; env PATH=%s:$PATH DOCKER_HOST=unix://%s TMPDIR=%s %s",
+		envFile, envFile, agentBinPath, dockerSockPath, tmpDir, remoteCmd)
 }
 
 // shellQuoteSingle returns s wrapped in single quotes, with embedded single
@@ -429,8 +432,8 @@ func buildAgentScriptCommand(agentID, userHome, scriptContent string) string {
 	// We quote the EOF delimiter to prevent expansion of the script body.
 	escaped := strings.ReplaceAll(scriptContent, "'", "'\\''")
 	return fmt.Sprintf(
-		"mkdir -p %q && cat > %q <<'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %q && . %s 2>/dev/null; env PATH=%s:$PATH DOCKER_HOST=unix://%s TMPDIR=%s %q",
-		filepath.Dir(scriptPath), scriptPath, escaped, scriptPath, envFile, agentBinPath, dockerSockPath, tmpDir, scriptPath,
+		"mkdir -p %q && cat > %q <<'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %q && [ -f %s ] && . %s 2>/dev/null; env PATH=%s:$PATH DOCKER_HOST=unix://%s TMPDIR=%s %q",
+		filepath.Dir(scriptPath), scriptPath, escaped, scriptPath, envFile, envFile, agentBinPath, dockerSockPath, tmpDir, scriptPath,
 	)
 }
 

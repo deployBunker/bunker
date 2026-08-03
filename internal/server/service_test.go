@@ -440,6 +440,31 @@ func TestBuildAgentExecCommand_ArgQuoting(t *testing.T) {
 	}
 }
 
+// TestBuildAgentExecCommand_EnvFileMissingShellSurvives verifies the built
+// command does NOT abort the remote shell when the agent's env file does not
+// exist yet (fresh agent). dash exits status 2 on a failed dot-source, so the
+// source must be guarded with `[ -f ... ] &&`. Executes the real command
+// through sh to prove it end-to-end.
+func TestBuildAgentExecCommand_EnvFileMissingShellSurvives(t *testing.T) {
+	// /run/bunker/abc123/env must not exist for this test — skip if it does.
+	if _, err := os.Stat("/run/bunker/abc123/env"); err == nil {
+		t.Skip("/run/bunker/abc123/env unexpectedly exists")
+	}
+	got := buildAgentExecCommand("abc123", "/home/bunker-abc123", "echo", []string{"still-alive"})
+	// The guard must be present: source only when the file exists.
+	if !strings.Contains(got, "[ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env 2>/dev/null") {
+		t.Fatalf("buildAgentExecCommand() missing [ -f ] guard for env file: %q", got)
+	}
+	// Run through sh exactly as the remote side would.
+	out, err := exec.Command("sh", "-c", got).CombinedOutput()
+	if err != nil {
+		t.Fatalf("sh -c %q failed (env file missing must not abort): %v, output: %s", got, err, out)
+	}
+	if !strings.Contains(string(out), "still-alive") {
+		t.Fatalf("sh -c %q output missing command result: %q", got, out)
+	}
+}
+
 // TestBuildAgentRawExecCommand verifies TMPDIR is present in the raw argv.
 func TestBuildAgentRawExecCommand(t *testing.T) {
 	got := buildAgentRawExecCommand("abc123", "/home/bunker-abc123", "echo", []string{"hi"})

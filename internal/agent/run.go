@@ -126,8 +126,9 @@ func buildRunAgentArgs(agentID, uid, gid, unitName, command string, args []strin
 
 	// Wrap command in a shell that sources the env file (when present) and then
 	// execs the real command. `--` ends the wrapper's own argv so subsequent
-	// args are passed as $1, $2, ... to the inner exec.
-	cmdArgs = append(cmdArgs, "sh", "-c", fmt.Sprintf(". %s 2>/dev/null && exec \"$@\"", envFile), "--", command)
+	// args are passed as $1, $2, ... to the inner exec. The [ -f ] guard keeps
+	// a fresh agent (no env file yet) from short-circuiting the exec.
+	cmdArgs = append(cmdArgs, "sh", "-c", fmt.Sprintf("[ -f %s ] && . %s 2>/dev/null; exec \"$@\"", envFile, envFile), "--", command)
 	cmdArgs = append(cmdArgs, args...)
 	return cmdArgs
 }

@@ -46,9 +46,10 @@ func TestBuildRunAgentArgs(t *testing.T) {
 		// BUNKER_ENV_FILE is exported so other tools (and tests) can locate it.
 		"--setenv=BUNKER_ENV_FILE=/run/bunker/test-agent/env",
 		"--setenv=DATABASE_URL=postgres://db",
-		// Shell wrapper that sources the env file before exec'ing the real
-		// command so `bunker env set` injections persist into detached runs.
-		". /run/bunker/test-agent/env 2>/dev/null && exec \"$@\"",
+		// Shell wrapper that sources the env file (when present) before
+		// exec'ing the real command so `bunker env set` injections persist
+		// into detached runs. The [ -f ] guard keeps fresh agents working.
+		"[ -f /run/bunker/test-agent/env ] && . /run/bunker/test-agent/env 2>/dev/null; exec \"$@\"",
 		"docker",
 		"compose",
 		"up",
