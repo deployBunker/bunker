@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -60,6 +61,23 @@ func writeTunnelTestConfig(t *testing.T, home, serverURL string) {
 	if err := SaveCLIConfig(cfg); err != nil {
 		t.Fatalf("SaveCLIConfig: %v", err)
 	}
+}
+
+// writeTunnelKey writes the client-local SSH key for an agent under
+// ~/.bunker/keys/<id> so the tunnel command passes its key-existence check.
+func writeTunnelKey(t *testing.T, home, agentID string) string {
+	t.Helper()
+	keyPath, err := defaultSSHKeyPath(agentID)
+	if err != nil {
+		t.Fatalf("defaultSSHKeyPath: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(keyPath), 0700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(keyPath, []byte("test-private-key"), 0600); err != nil {
+		t.Fatalf("WriteFile key: %v", err)
+	}
+	return keyPath
 }
 
 func TestTunnelCommand_Help(t *testing.T) {
@@ -148,12 +166,13 @@ func TestTunnelCommand_ExecutesStoredCommand(t *testing.T) {
 		getAgentResp: &v1.GetAgentResponse{
 			Agent: &v1.AgentSummary{
 				AgentId:          "abc123",
-				DockerHostTunnel: "ssh -o StrictHostKeyChecking=no -i /keys/abc123 -L 2376:/run/bunker/abc123/docker.sock bunker-abc123@localhost -N",
+				DockerHostTunnel: "ssh -o StrictHostKeyChecking=no -i /etc/bunkerd/ssh/abc123 -L 2376:/run/bunker/abc123/docker.sock bunker-abc123@bunker-mvp -N",
 			},
 		},
 	})
 	defer server.Close()
 	writeTunnelTestConfig(t, tmpDir, server.URL)
+	keyPath := writeTunnelKey(t, tmpDir, "abc123")
 
 	// Capture the command that the tunnel command would execute.
 	var capturedName string
@@ -180,13 +199,18 @@ func TestTunnelCommand_ExecutesStoredCommand(t *testing.T) {
 		"StrictHostKeyChecking=no",
 		"UserKnownHostsFile=/dev/null",
 		"LogLevel=ERROR",
-		"-i /keys/abc123",
+		"-i " + keyPath,
 		"-L 2376:/run/bunker/abc123/docker.sock",
-		"bunker-abc123@localhost",
+		"bunker-abc123@127.0.0.1",
 		"-N",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("captured args missing %q, got: %q", want, joined)
+		}
+	}
+	for _, absent := range []string{"/etc/bunkerd/ssh/", "@bunker-mvp"} {
+		if strings.Contains(joined, absent) {
+			t.Errorf("captured args must not contain %q, got: %q", absent, joined)
 		}
 	}
 }
@@ -199,12 +223,13 @@ func TestTunnelCommand_CustomPort(t *testing.T) {
 		getAgentResp: &v1.GetAgentResponse{
 			Agent: &v1.AgentSummary{
 				AgentId:          "abc123",
-				DockerHostTunnel: "ssh -o StrictHostKeyChecking=no -i /keys/abc123 -L 2376:/run/bunker/abc123/docker.sock bunker-abc123@localhost -N",
+				DockerHostTunnel: "ssh -o StrictHostKeyChecking=no -i /etc/bunkerd/ssh/abc123 -L 2376:/run/bunker/abc123/docker.sock bunker-abc123@bunker-mvp -N",
 			},
 		},
 	})
 	defer server.Close()
 	writeTunnelTestConfig(t, tmpDir, server.URL)
+	writeTunnelKey(t, tmpDir, "abc123")
 
 	var capturedArgs []string
 	oldExec := execCommandContext
@@ -223,6 +248,114 @@ func TestTunnelCommand_CustomPort(t *testing.T) {
 	joined := strings.Join(capturedArgs, " ")
 	if !strings.Contains(joined, "-L 2377:/run/bunker/abc123/docker.sock") {
 		t.Errorf("expected custom port 2377 in -L spec, got: %q", joined)
+	}
+}
+
+func TestTunnelCommand_MissingKey(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	server := newTunnelTestServer(t, &mockTunnelServer{
+		getAgentResp: &v1.GetAgentResponse{
+			Agent: &v1.AgentSummary{
+				AgentId:          "abc123",
+				DockerHostTunnel: "ssh -o StrictHostKeyChecking=no -i /etc/bunkerd/ssh/abc123 -L 2376:/run/bunker/abc123/docker.sock bunker-abc123@bunker-mvp -N",
+			},
+		},
+	})
+	defer server.Close()
+	writeTunnelTestConfig(t, tmpDir, server.URL)
+
+	cmd := NewTunnelCommand()
+	cmd.SetArgs([]string{"abc123"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when client-local SSH key is missing")
+	}
+	if !strings.Contains(err.Error(), "SSH key not found") {
+		t.Errorf("expected 'SSH key not found' error, got: %v", err)
+	}
+}
+
+func TestTunnelCommand_SshHostFlag(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	server := newTunnelTestServer(t, &mockTunnelServer{
+		getAgentResp: &v1.GetAgentResponse{
+			Agent: &v1.AgentSummary{
+				AgentId:          "abc123",
+				DockerHostTunnel: "ssh -o StrictHostKeyChecking=no -i /etc/bunkerd/ssh/abc123 -L 2376:/run/bunker/abc123/docker.sock bunker-abc123@bunker-mvp -N",
+			},
+		},
+	})
+	defer server.Close()
+	writeTunnelTestConfig(t, tmpDir, server.URL)
+	writeTunnelKey(t, tmpDir, "abc123")
+
+	var capturedArgs []string
+	oldExec := execCommandContext
+	execCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		capturedArgs = args
+		return exec.CommandContext(ctx, "echo", "mock tunnel")
+	}
+	defer func() { execCommandContext = oldExec }()
+
+	cmd := NewTunnelCommand()
+	cmd.SetArgs([]string{"abc123", "--ssh-host", "somehost.example"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	joined := strings.Join(capturedArgs, " ")
+	if !strings.Contains(joined, "bunker-abc123@somehost.example") {
+		t.Errorf("expected --ssh-host override in target, got: %q", joined)
+	}
+	if strings.Contains(joined, "@bunker-mvp") || strings.Contains(joined, "@127.0.0.1") {
+		t.Errorf("target host not overridden, got: %q", joined)
+	}
+}
+
+func TestTunnelCommand_SshKeyFlag(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	server := newTunnelTestServer(t, &mockTunnelServer{
+		getAgentResp: &v1.GetAgentResponse{
+			Agent: &v1.AgentSummary{
+				AgentId:          "abc123",
+				DockerHostTunnel: "ssh -o StrictHostKeyChecking=no -i /etc/bunkerd/ssh/abc123 -L 2376:/run/bunker/abc123/docker.sock bunker-abc123@bunker-mvp -N",
+			},
+		},
+	})
+	defer server.Close()
+	writeTunnelTestConfig(t, tmpDir, server.URL)
+
+	customKey := filepath.Join(tmpDir, "custom-key")
+	if err := os.WriteFile(customKey, []byte("custom-private-key"), 0600); err != nil {
+		t.Fatalf("write custom key: %v", err)
+	}
+
+	var capturedArgs []string
+	oldExec := execCommandContext
+	execCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		capturedArgs = args
+		return exec.CommandContext(ctx, "echo", "mock tunnel")
+	}
+	defer func() { execCommandContext = oldExec }()
+
+	cmd := NewTunnelCommand()
+	cmd.SetArgs([]string{"abc123", "--ssh-key", customKey})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	joined := strings.Join(capturedArgs, " ")
+	if !strings.Contains(joined, "-i "+customKey) {
+		t.Errorf("expected --ssh-key override in args, got: %q", joined)
+	}
+	if strings.Contains(joined, "/etc/bunkerd/ssh/") {
+		t.Errorf("args must not contain server-side key path, got: %q", joined)
 	}
 }
 

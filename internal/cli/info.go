@@ -70,6 +70,18 @@ Examples:
 				return fmt.Errorf("agent %q not found in response", agentID)
 			}
 
+			// Rewrite the SSH command strings for display so the host is the one
+			// the client can actually reach (server config URL hostname) and the
+			// key path is the client-local one. The raw strings stay in the API.
+			serverHost := sshHostFromMount(a.SshfsMount)
+			if serverHost == "" {
+				if _, h, ok := sshUserHostFromTunnel(a.DockerHostTunnel); ok {
+					serverHost = h
+				}
+			}
+			resolvedHost := resolveSSHHost(entry, serverHost, "")
+			keyPath, _ := defaultSSHKeyPath(a.AgentId)
+
 			fmt.Println()
 			fmt.Printf("══════════ Agent: %s ══════════\n", a.AgentId)
 			fmt.Println()
@@ -90,10 +102,10 @@ Examples:
 				fmt.Printf("  Port Range:       %d-%d\n", a.PortRangeStart, a.PortRangeEnd)
 			}
 			if a.DockerHostTunnel != "" {
-				fmt.Printf("  Docker Tunnel:    %s\n", a.DockerHostTunnel)
+				fmt.Printf("  Docker Tunnel:    %s\n", rewriteTunnelCommand(a.DockerHostTunnel, serverHost, resolvedHost, keyPath))
 			}
 			if a.SshfsMount != "" {
-				fmt.Printf("  SSHFS Mount:      %s\n", a.SshfsMount)
+				fmt.Printf("  SSHFS Mount:      %s\n", rewriteSSHFSMount(a.SshfsMount, serverHost, resolvedHost, keyPath))
 			}
 			if limits := a.Limits; limits != nil {
 				fmt.Println("  Limits:")

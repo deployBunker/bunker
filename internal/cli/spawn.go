@@ -25,6 +25,7 @@ func NewSpawnCommand() *cobra.Command {
 		networkMode   string // cloudflare, tailscale, direct
 		trycloudflare bool
 		domain        string
+		sshHost       string
 	)
 
 	cmd := &cobra.Command{
@@ -106,12 +107,34 @@ Examples:
 
 			// 5. Print connection bundle
 			r := resp.Msg
+
+			// Resolve the SSH host shown in the bundle: the client reached
+			// bunkerd via the server URL, so its hostname is the address a
+			// remote client can actually reach; fall back to the hostname the
+			// server embedded in the commands, with --ssh-host as an override.
+			serverHost := sshHostFromMount(r.SshfsMount)
+			if serverHost == "" {
+				if _, h, ok := sshUserHostFromTunnel(r.DockerHostTunnel); ok {
+					serverHost = h
+				}
+			}
+			resolvedHost := resolveSSHHost(entry, serverHost, sshHost)
+
+			// Client-local key path (same one saved below); empty when the
+			// server returned no private key.
+			keyPath := ""
+			if r.SshPrivateKey != "" {
+				if p, err := defaultSSHKeyPath(r.AgentId); err == nil {
+					keyPath = p
+				}
+			}
+
 			fmt.Println("Agent created:", r.AgentId)
 			fmt.Println()
 			fmt.Println("══════════ Connection Bundle ══════════")
 			fmt.Println()
 			if r.DockerHostSsh != "" {
-				fmt.Printf("  Docker SSH:   %s\n", r.DockerHostSsh)
+				fmt.Printf("  Docker SSH:   %s\n", rewriteDockerHostSsh(r.DockerHostSsh, serverHost, resolvedHost))
 			}
 			if r.SshPrivateKey != "" {
 				fmt.Println("  SSH Key:      (saved to ~/.bunker/keys/)")
@@ -139,10 +162,10 @@ Examples:
 				fmt.Printf("  API Key:      %s\n", r.ApiKey)
 			}
 			if r.SshfsMount != "" {
-				fmt.Printf("  SSHFS Mount:  %s\n", r.SshfsMount)
+				fmt.Printf("  SSHFS Mount:  %s\n", rewriteSSHFSMount(r.SshfsMount, serverHost, resolvedHost, keyPath))
 			}
 			if r.DockerHostTunnel != "" {
-				fmt.Printf("  Docker Tunnel: %s\n", r.DockerHostTunnel)
+				fmt.Printf("  Docker Tunnel: %s\n", rewriteTunnelCommand(r.DockerHostTunnel, serverHost, resolvedHost, keyPath))
 			}
 			fmt.Println()
 			fmt.Println("═ Use `bunker exec` to run commands in this agent ═")
@@ -160,6 +183,7 @@ Examples:
 	cmd.Flags().StringVar(&networkMode, "network", "", "Network mode: cloudflare, tailscale, direct")
 	cmd.Flags().BoolVar(&trycloudflare, "trycloudflare", false, "Use anonymous TryCloudflare tunnel")
 	cmd.Flags().StringVar(&domain, "domain", "", "Custom domain for Cloudflare tunnel")
+	cmd.Flags().StringVar(&sshHost, "ssh-host", "", "SSH host shown in the bundle (default: hostname from server config URL)")
 
 	return cmd
 }

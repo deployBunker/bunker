@@ -68,6 +68,9 @@ func TestDeployCommand_Help(t *testing.T) {
 	if !strings.Contains(output, "--ssh-port") {
 		t.Errorf("help output missing --ssh-port flag, got:\n%s", output)
 	}
+	if !strings.Contains(output, "--ssh-host") {
+		t.Errorf("help output missing --ssh-host flag, got:\n%s", output)
+	}
 }
 
 func TestDeployCommand_MissingArgs(t *testing.T) {

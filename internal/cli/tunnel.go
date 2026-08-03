@@ -23,6 +23,8 @@ var execCommandContext = exec.CommandContext
 func NewTunnelCommand() *cobra.Command {
 	var (
 		serverName string
+		sshHost    string
+		sshKey     string
 	)
 
 	cmd := &cobra.Command{
@@ -30,9 +32,15 @@ func NewTunnelCommand() *cobra.Command {
 		Short: "Open an SSH tunnel to an agent's Docker socket",
 		Long: `Open an SSH tunnel that forwards a local TCP port to the agent's remote Docker socket.
 
+The SSH host defaults to the hostname of the server config URL (the address
+the client used to reach bunkerd) and can be overridden with --ssh-host. The
+SSH key is read from ~/.bunker/keys/<agent-id> (saved at spawn time) unless
+overridden with --ssh-key.
+
 Examples:
   bunker tunnel abc12345
   bunker tunnel abc12345 2377
+  bunker tunnel abc12345 --ssh-host 203.0.113.10
 
 The tunnel runs in the foreground until interrupted. While it is running, the
 agent's Docker socket is available on the local port:
@@ -84,7 +92,33 @@ agent's Docker socket is available on the local port:
 				return fmt.Errorf("agent %s has no docker host tunnel command", agentID)
 			}
 
-			parts := strings.Fields(tunnelCmd)
+			// Resolve the SSH login target (user@host) embedded in the tunnel
+			// command. The server bakes its self-reported hostname in here;
+			// remote clients must use the host from their server config URL
+			// instead (overridable with --ssh-host).
+			_, serverHost, ok := sshUserHostFromTunnel(tunnelCmd)
+			if !ok {
+				return fmt.Errorf("cannot parse ssh target from tunnel command: %s", tunnelCmd)
+			}
+			resolvedHost := resolveSSHHost(entry, serverHost, sshHost)
+
+			// Resolve the client-local SSH key path. The server-side key path
+			// embedded in the tunnel command (/etc/bunkerd/ssh/<id>) is not
+			// readable from a remote client.
+			keyPath := sshKey
+			if keyPath == "" {
+				keyPath, err = defaultSSHKeyPath(agentID)
+				if err != nil {
+					return fmt.Errorf("resolve SSH key: %w", err)
+				}
+			}
+			if _, statErr := os.Stat(keyPath); statErr != nil {
+				return fmt.Errorf("SSH key not found at %q — spawn the agent first or use --ssh-key", keyPath)
+			}
+
+			// Rewrite the stored command: client-local key path + resolved
+			// host. The -L forward spec (server-side socket path) is kept.
+			parts := clientTunnelArgs(tunnelCmd, resolvedHost, keyPath)
 			if len(parts) < 2 {
 				return fmt.Errorf("invalid tunnel command: %s", tunnelCmd)
 			}
@@ -135,5 +169,7 @@ agent's Docker socket is available on the local port:
 	}
 
 	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (default: active server)")
+	cmd.Flags().StringVar(&sshHost, "ssh-host", "", "SSH host override (default: hostname from server config URL)")
+	cmd.Flags().StringVar(&sshKey, "ssh-key", "", "SSH private key path (default: ~/.bunker/keys/<agent-id>)")
 	return cmd
 }

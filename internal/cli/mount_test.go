@@ -63,6 +63,10 @@ func TestNewMountCommand_ServerFlag(t *testing.T) {
 }
 
 func TestNewMountCommand_RunE_NoActiveServer(t *testing.T) {
+	// Isolate from the real ~/.bunker/config.yaml: these tests rewrite the
+	// on-disk config and must never touch the user's actual one.
+	t.Setenv("HOME", t.TempDir())
+
 	// Clear any active server config.
 	cfg, err := LoadCLIConfig()
 	if err != nil {
@@ -89,6 +93,10 @@ func TestNewMountCommand_RunE_NoActiveServer(t *testing.T) {
 }
 
 func TestNewMountCommand_RunE_ServerNotFound(t *testing.T) {
+	// Isolate from the real ~/.bunker/config.yaml: these tests rewrite the
+	// on-disk config and must never touch the user's actual one.
+	t.Setenv("HOME", t.TempDir())
+
 	cfg, err := LoadCLIConfig()
 	if err != nil {
 		t.Skipf("cannot load config: %v", err)

@@ -160,6 +160,14 @@ func TestInfoCommand_Success(t *testing.T) {
 			t.Errorf("output missing %q, got:\n%s", check, output)
 		}
 	}
+	// SSH command lines must be rewritten to the client-reachable host
+	// (from the server config URL) instead of the server-provided one.
+	if !strings.Contains(output, "bunker-e2e-test-42@127.0.0.1") {
+		t.Errorf("output missing rewritten host in SSH lines, got:\n%s", output)
+	}
+	if strings.Contains(output, "bunker-e2e-test-42@host") {
+		t.Errorf("output still contains server-provided host, got:\n%s", output)
+	}
 }
 
 func TestInfoCommand_AgentNotFound(t *testing.T) {

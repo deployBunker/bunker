@@ -71,6 +71,9 @@ func TestCpCommand_Help(t *testing.T) {
 	if !strings.Contains(output, "--ssh-key") {
 		t.Errorf("help output missing --ssh-key flag, got:\n%s", output)
 	}
+	if !strings.Contains(output, "--ssh-host") {
+		t.Errorf("help output missing --ssh-host flag, got:\n%s", output)
+	}
 }
 
 func TestCpCommand_MissingArgs(t *testing.T) {

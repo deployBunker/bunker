@@ -27,6 +27,7 @@ func NewCpCommand() *cobra.Command {
 		serverName string
 		sshPort    uint32
 		sshKey     string
+		sshHost    string
 	)
 
 	cmd := &cobra.Command{
@@ -35,16 +36,19 @@ func NewCpCommand() *cobra.Command {
 		Long: `Copy a local file into an agent's container using SCP.
 
 The agent connection details (SSH user, host) are resolved from the bunkerd
-API. The SSH key is read from ~/.bunker/keys/<agent-id> (saved at spawn time)
-unless overridden with --ssh-key. After the copy, file ownership is set to the
-agent user.
+API. The SSH host defaults to the hostname of the server config URL (the
+address the client used to reach bunkerd) and can be overridden with
+--ssh-host. The SSH key is read from ~/.bunker/keys/<agent-id> (saved at
+spawn time) unless overridden with --ssh-key. After the copy, file ownership
+is set to the agent user.
 
 The destination format is <agent-id>:/path — the colon and path are required.
 
 Examples:
   bunker cp ./config.yaml abc12345:/home/bunker-abc12345/config.yaml
   bunker cp secret.env def67890:/app/.env --ssh-port 2222
-  bunker cp ./script.sh abc12345:/home/bunker-abc12345/bin/script.sh --ssh-key ~/.ssh/custom_key`,
+  bunker cp ./script.sh abc12345:/home/bunker-abc12345/bin/script.sh --ssh-key ~/.ssh/custom_key
+  bunker cp ./app.conf abc12345:/app.conf --ssh-host 203.0.113.10`,
 
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -115,7 +119,7 @@ Examples:
 			}
 
 			// Resolve SSH user and host from the sshfs_mount command.
-			userAtHost, err := parseSSHUserHost(agent.GetSshfsMount())
+			userAtHost, err := resolveUserAtHost(entry, agent.GetSshfsMount(), sshHost)
 			if err != nil {
 				return fmt.Errorf("resolve agent host: %w", err)
 			}
@@ -176,6 +180,7 @@ Examples:
 	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (default: active server)")
 	cmd.Flags().Uint32Var(&sshPort, "ssh-port", 0, "SSH port (default: 22)")
 	cmd.Flags().StringVar(&sshKey, "ssh-key", "", "SSH private key path (default: ~/.bunker/keys/<agent-id>)")
+	cmd.Flags().StringVar(&sshHost, "ssh-host", "", "SSH host override (default: hostname from server config URL)")
 
 	return cmd
 }
