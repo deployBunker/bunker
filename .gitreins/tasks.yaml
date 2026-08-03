@@ -772,3 +772,26 @@ tasks:
   status: complete
   created_at: '2026-08-03T19:09:08.201611+00:00'
   completed_at: '2026-08-03T19:09:11.369607+00:00'
+- id: dogfood-003
+  title: 'Fix bunker spawn --ttl: reject invalid TTL with CodeInvalidArgument (spec
+    \d+[hmd], incl. 7d days support)'
+  criteria:
+  - 'TTL parser helper supports spec format \d+[hmd]: ''6h'' -> 6h, ''24h'' -> 24h,
+    ''7d'' -> 168h, ''90m'' -> 90m; rejects ''banana'', ''0'', ''-1h'', ''1.5h'',
+    '''' (empty is handled as default by callers, not the parser)'
+  - bunker spawn --ttl <invalid> returns CodeInvalidArgument (connect error) and creates
+    NO agent; no silent fallback to default TTL in internal/agent/manager_spawn.go
+  - 'internal/server/service.go: TTL validated before agent spawn; invalid TTL mapped
+    to CodeInvalidArgument (not CodeInternal); the API-key TTL block uses the same
+    parser so agent TTL and API-key TTL agree for ''7d'' style values'
+  - 'internal/agent/ttl_test.go: TestSpawn_InvalidTTLFallsBackToDefault replaced with
+    tests asserting error return; new tests cover 7d->168h, invalid strings rejected,
+    empty -> default; all existing tests pass'
+  - go build ./..., go vet ./..., gofmt clean, go test ./... -short pass; gitreins
+    guard Tier 1 PASS
+  - 'live E2E on bunker-mvp: ''bunker spawn --ttl banana'' errors with invalid_argument
+    and leaves 0 agents; ''bunker spawn --ttl 7d'' succeeds with expires_at ~7d out;
+    destroy cleans up; battery VERIFY-PASS'
+  status: complete
+  created_at: '2026-08-03T19:51:31.723640+00:00'
+  completed_at: '2026-08-03T19:57:39.741864+00:00'
