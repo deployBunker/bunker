@@ -795,3 +795,16 @@ tasks:
   status: complete
   created_at: '2026-08-03T19:51:31.723640+00:00'
   completed_at: '2026-08-03T19:57:39.741864+00:00'
+- id: dogfood-004
+  title: 'Document bunkerd root requirement in README quick start (spawn fails non-root
+    with useradd: Permission denied)'
+  criteria:
+  - 'README quick start states bunkerd must run as root: Prerequisites section has
+    an explicit root-access bullet explaining spawn calls useradd/systemd-run and
+    fails with ''useradd: Permission denied'' under non-root'
+  - README 'Run the daemon' section shows the root requirement (sudo/systemd User=root)
+    with a warning callout
+  - README still renders correctly and the change is docs-only (no Go files modified)
+  - go build ./... passes; gitreins guard Tier 1 PASS
+  status: pending
+  created_at: '2026-08-03T20:42:49.279210+00:00'

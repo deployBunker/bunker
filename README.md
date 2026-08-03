@@ -51,6 +51,7 @@ Bunker is a **multi-agent hosting platform** — a daemon (`bunkerd`) that runs 
 ### Prerequisites
 
 - Linux host (Ubuntu 24.04+ recommended)
+- **Root access on the host** — `bunkerd` must run as root. Agent spawn creates Linux users (`useradd`) and systemd user slices (`systemd-run`) for cgroup resource limits; both require root privileges. A non-root daemon starts and serves read-only endpoints (list, version, health), but `bunker spawn` fails with `useradd: Permission denied`. The `bunker` CLI itself can run as any user — it talks to the daemon over gRPC/REST.
 - Go 1.24+
 - Docker CE (for rootless support)
 - `sshfs` (for mount command)
@@ -94,8 +95,10 @@ EOF
 
 ### Run the daemon
 
+> **⚠️ `bunkerd` must run as root** — agent spawn calls `useradd`/`systemd-run` and fails with `useradd: Permission denied` under a non-root user. Run it directly as root (or via `sudo`, or as a systemd service under `User=root`):
+
 ```bash
-./bunkerd --config /etc/bunkerd/config.yaml
+sudo ./bunkerd --config /etc/bunkerd/config.yaml
 ```
 
 ### Use the CLI
