@@ -382,11 +382,17 @@ func buildAgentExecCommand(agentID, userHome, command string, args []string) str
 		}
 		remoteCmd += " " + strings.Join(quoted, " ")
 	}
+	// The user command (command + quoted args) is wrapped in `sh -c '<joined>'`
+	// so that compound snippets passed as the COMMAND token (e.g.
+	// `bunker exec <id> -- "if ...; then ...; fi"` arrives with command=<snippet>,
+	// args=[]) are executed by a shell rather than misparsed by the outer
+	// wrapper as orphaned keywords. The joined string is single-quoted as one
+	// unit; embedded quotes are escaped for POSIX sh.
 	// Guard the source with [ -f ... ] so a fresh agent (no env file yet)
 	// doesn't make dash exit 2 on the failed dot-source (dash aborts a
 	// non-interactive shell when `.` can't open its file).
-	return fmt.Sprintf("[ -f %s ] && . %s 2>/dev/null; env PATH=%s:$PATH DOCKER_HOST=unix://%s TMPDIR=%s %s",
-		envFile, envFile, agentBinPath, dockerSockPath, tmpDir, remoteCmd)
+	return fmt.Sprintf("[ -f %s ] && . %s 2>/dev/null; env PATH=%s:$PATH DOCKER_HOST=unix://%s TMPDIR=%s sh -c %s",
+		envFile, envFile, agentBinPath, dockerSockPath, tmpDir, shellQuoteSingle(remoteCmd))
 }
 
 // shellQuoteSingle returns s wrapped in single quotes, with embedded single

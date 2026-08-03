@@ -358,12 +358,15 @@ func TestBuildAgentExecCommand(t *testing.T) {
 	wantParts := []string{
 		// Sourcing the per-agent env file so `bunker env set` injections are
 		// visible. stderr redirection makes the source tolerant of a missing
-		// file.
-		". /run/bunker/abc123/env",
+		// file, and the [ -f ] guard keeps a fresh agent (no env file yet)
+		// from aborting the shell.
+		"[ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env",
 		"env PATH=/home/bunker-abc123/bin:$PATH",
 		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
 		"TMPDIR=/run/bunker/abc123/tmp",
-		"docker 'version'",
+		// The user command is always wrapped in sh -c '<joined>' so compound
+		// snippets (command token or args) survive the outer wrapper.
+		"sh -c 'docker '\\''version'\\'''",
 	}
 	for _, want := range wantParts {
 		if !strings.Contains(got, want) {
@@ -378,65 +381,64 @@ func TestBuildAgentExecCommand(t *testing.T) {
 func TestBuildAgentExecCommand_EnvFileSourcedBeforeCommand(t *testing.T) {
 	got := buildAgentExecCommand("abc123", "/home/bunker-abc123", "docker", []string{"version"})
 	srcIdx := strings.Index(got, ". /run/bunker/abc123/env")
-	cmdIdx := strings.Index(got, "docker 'version'")
+	cmdIdx := strings.Index(got, "sh -c 'docker")
 	if srcIdx < 0 || cmdIdx < 0 || srcIdx >= cmdIdx {
-		t.Fatalf("expected . /run/bunker/abc123/env to appear BEFORE 'docker version', got: %q", got)
+		t.Fatalf("expected . /run/bunker/abc123/env to appear BEFORE 'sh -c docker', got: %q", got)
 	}
 }
 
-// TestBuildAgentExecCommand_ArgQuoting verifies every arg is single-quoted as
-// one unit so compound shell snippets (if/then, awk -F=, args with spaces or
-// embedded quotes) survive the outer `sh -c '...'` wrapper untouched, while
-// commands without args stay unchanged.
+// TestBuildAgentExecCommand_ArgQuoting verifies the built command executes
+// correctly end-to-end through sh (the same way the remote side runs it):
+// compound shell snippets (if/then), args with spaces or embedded single
+// quotes, and empty-args commands all round-trip through the sh -c wrapper.
 func TestBuildAgentExecCommand_ArgQuoting(t *testing.T) {
 	cases := []struct {
 		name    string
 		command string
 		args    []string
-		want    string
+		wantOut string // substring expected in the executed output
 	}{
 		{
-			name:    "compound shell snippet stays one unit",
+			name:    "compound snippet as args (env-style sh -c)",
 			command: "sh",
-			args:    []string{"-c", "if [ -f /etc/hostname ]; then cat /etc/hostname; fi"},
-			// Every arg is quoted uniformly; the outer shell strips the quotes
-			// around -c, so the inner sh -c still receives the snippet as one
-			// argument.
-			want: "sh '-c' 'if [ -f /etc/hostname ]; then cat /etc/hostname; fi'",
+			args:    []string{"-c", "if [ -f /etc/hostname ]; then echo HAS-HOSTNAME; else echo NO-HOSTNAME; fi"},
+			wantOut: "HOSTNAME",
+		},
+		{
+			name:    "compound snippet as command token (exec-style)",
+			command: "if [ -f /etc/hostname ]; then echo HAS-HOSTNAME; else echo NO-HOSTNAME; fi",
+			wantOut: "HOSTNAME",
 		},
 		{
 			name:    "arg with spaces",
 			command: "echo",
 			args:    []string{"hello world"},
-			want:    "echo 'hello world'",
+			wantOut: "hello world",
 		},
 		{
 			name:    "arg with embedded single quote",
 			command: "echo",
 			args:    []string{"it's"},
-			want:    "echo 'it'\\''s'",
-		},
-		{
-			name:    "empty args slice stays unchanged",
-			command: "docker",
-			args:    nil,
-			want:    "TMPDIR=/run/bunker/abc123/tmp docker",
+			wantOut: "it's",
 		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			got := buildAgentExecCommand("abc123", "/home/bunker-abc123", c.command, c.args)
-			if !strings.Contains(got, c.want) {
-				t.Errorf("buildAgentExecCommand(%q, %q, %q, %v) = %q, missing %q",
-					"abc123", "/home/bunker-abc123", c.command, c.args, got, c.want)
+			out, err := exec.Command("sh", "-c", got).CombinedOutput()
+			if err != nil {
+				t.Fatalf("sh -c %q failed: %v, output: %s", got, err, out)
 			}
-			// The command (with quoted args) must be the tail of the line with
-			// no trailing junk appended after it.
-			if !strings.HasSuffix(got, c.want) {
-				t.Errorf("buildAgentExecCommand(%q, %q, %q, %v) = %q, want suffix %q",
-					"abc123", "/home/bunker-abc123", c.command, c.args, got, c.want)
+			if !strings.Contains(string(out), c.wantOut) {
+				t.Errorf("sh -c %q output %q missing %q", got, out, c.wantOut)
 			}
 		})
+	}
+	// Empty/nil args: the command must be the sole wrapped token with no
+	// trailing junk after it.
+	got := buildAgentExecCommand("abc123", "/home/bunker-abc123", "docker", nil)
+	if !strings.HasSuffix(got, "sh -c 'docker'") {
+		t.Errorf("buildAgentExecCommand() empty args = %q, want suffix \"sh -c 'docker'\"", got)
 	}
 }
 
@@ -563,7 +565,7 @@ func TestBuildExecSSHCommand(t *testing.T) {
 	}
 
 	// The post-host argument must be a single sh -c '...' string containing the
-	// env prefix and the docker command.
+	// env prefix and the user command.
 	last := cmd.Args[len(cmd.Args)-1]
 	if !strings.HasPrefix(last, "sh -c '") {
 		t.Errorf("last ssh arg should be sh -c '...', got %q", last)
@@ -571,10 +573,19 @@ func TestBuildExecSSHCommand(t *testing.T) {
 	if !strings.Contains(last, "env PATH=/home/bunker-abc123/bin:$PATH") {
 		t.Errorf("ssh remote command missing PATH prefix: %q", last)
 	}
-	// The quoted args survive the outer shellQuoteSingle wrapper with the
-	// standard POSIX '\'' escaping, e.g. docker 'version' -> docker '\''version'\''.
-	if !strings.Contains(last, "docker '\\''version'\\''") {
-		t.Errorf("ssh remote command missing quoted 'docker version': %q", last)
+	// The ssh argument is the EXACT string the remote shell receives. Executing
+	// it through sh must round-trip the quoting layers and run the real
+	// command — this is the end-to-end proof that compound snippets and
+	// quoted args survive buildAgentExecCommand → shellQuoteSingle → ssh.
+	// (Use echo so the test needs no docker daemon.)
+	echoCmd := buildExecSSHCommand(ctx, "abc123", "/keys/abc123", "/home/bunker-abc123", "echo", []string{"round-trip-ok"})
+	echoLast := echoCmd.Args[len(echoCmd.Args)-1]
+	out, err := exec.Command("sh", "-c", echoLast).CombinedOutput()
+	if err != nil {
+		t.Fatalf("sh -c %q failed: %v, output: %s", echoLast, err, out)
+	}
+	if !strings.Contains(string(out), "round-trip-ok") {
+		t.Errorf("ssh remote command round-trip output %q missing round-trip-ok", out)
 	}
 	// Ensure we don't accidentally split sh -c into separate arguments anymore.
 	for i, arg := range cmd.Args {
