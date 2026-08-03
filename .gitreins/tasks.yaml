@@ -732,11 +732,43 @@ tasks:
     unit'
   - Args with spaces and embedded single quotes are quoted correctly
   - Empty/nil args produce no trailing junk after the command
-  - The joined user command is wrapped in `sh -c ''<joined>''` so compound snippets passed as the COMMAND token (exec-style) survive
-  - The env-file source is guarded with `[ -f ... ] &&` and wrapped in `set -a; ... ; set +a` so fresh agents (no env file) still exec and injected vars are exported to the child shell
-  - 'Live E2E on bunker-mvp: docker exec VERIFY-PASS, compound if/then snippet, env set/get/list/unset, env visible in exec (FOO=bar) all pass'
-  - All existing tests updated and round-trip tests added that execute the built command through sh
+  - The joined user command is wrapped in `sh -c ''<joined>''` so compound snippets
+    passed as the COMMAND token (exec-style) survive
+  - The env-file source is guarded with `[ -f ... ] &&` and wrapped in `set -a; ...
+    ; set +a` so fresh agents (no env file) still exec and injected vars are exported
+    to the child shell
+  - 'Live E2E on bunker-mvp: docker exec VERIFY-PASS, compound if/then snippet, env
+    set/get/list/unset, env visible in exec (FOO=bar) all pass'
+  - All existing tests updated and round-trip tests added that execute the built command
+    through sh
   - gofmt clean, go build ./..., go vet ./... and go test ./... -short all pass
   status: complete
   created_at: '2026-08-03T17:52:13.025989+00:00'
   completed_at: '2026-08-03T17:52:16.848270+00:00'
+- id: dogfood-002
+  title: "Fix bunker cp/deploy/tunnel for remote clients \u2014 resolve SSH host from\
+    \ client config URL + client-local key path"
+  criteria:
+  - 'resolveSSHHost precedence: --ssh-host flag > host from server entry URL > server-provided
+    hostname'
+  - "bunker cp and bunker deploy build scp/ssh targets as user@<client-resolved-host>\
+    \ \u2014 no unreachable server self-reported hostname in argv"
+  - 'bunker tunnel rewrites the stored command before exec: -i arg replaced with client-local
+    ~/.bunker/keys/<id> key, login target host replaced with client-resolved host;
+    -L spec preserved'
+  - bunker spawn connection bundle output shows SSHFS Mount / Docker Tunnel / Docker
+    SSH lines with client-resolved host and client-local key path (no /etc/bunkerd/ssh/)
+  - --ssh-host flag exists on bunker cp, bunker deploy, bunker tunnel and overrides
+    resolved host
+  - rewrite helpers are no-ops when resolved host equals server-provided host (server-local
+    use unchanged)
+  - unit tests cover host precedence, URL hostname parsing, tunnel command rewrite
+    (key path + host swap, -L preserved), cp/deploy target construction; existing
+    tests updated
+  - go build ./..., go vet ./..., gofmt clean, go test ./... -short pass; gitreins
+    guard Tier 1 PASS
+  - 'live E2E from remote client against bunker-mvp: spawn -> cp file -> deploy dir
+    -> tunnel (docker version via forwarded socket) -> destroy; server back to 0 agents'
+  status: complete
+  created_at: '2026-08-03T19:09:08.201611+00:00'
+  completed_at: '2026-08-03T19:09:11.369607+00:00'
