@@ -732,8 +732,10 @@ tasks:
     unit'
   - Args with spaces and embedded single quotes are quoted correctly
   - Empty/nil args produce no trailing junk after the command
-  - All existing tests updated to the quoted form and new table-driven tests added
-    for compound snippets
+  - The joined user command is wrapped in `sh -c ''<joined>''` so compound snippets passed as the COMMAND token (exec-style) survive
+  - The env-file source is guarded with `[ -f ... ] &&` and wrapped in `set -a; ... ; set +a` so fresh agents (no env file) still exec and injected vars are exported to the child shell
+  - 'Live E2E on bunker-mvp: docker exec VERIFY-PASS, compound if/then snippet, env set/get/list/unset, env visible in exec (FOO=bar) all pass'
+  - All existing tests updated and round-trip tests added that execute the built command through sh
   - gofmt clean, go build ./..., go vet ./... and go test ./... -short all pass
   status: complete
   created_at: '2026-08-03T17:52:13.025989+00:00'
