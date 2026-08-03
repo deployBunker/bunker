@@ -623,7 +623,12 @@ func TestServerInfo(t *testing.T) {
 	if msg.Version != version.Version {
 		t.Errorf("ServerInfo().Version = %q, want %q (shared internal/version)", msg.Version, version.Version)
 	}
-	if msg.UptimeSeconds == 0 {
+	// UptimeSeconds truncates to whole seconds (uint64(time.Since(...).Seconds())).
+	// A freshly-started test binary (<1s old) legitimately reports 0; only flag 0
+	// when the process is old enough that truncation cannot explain it. Tolerance
+	// band proving intent (hardcoded-0 regression) without a sub-second flake
+	// (CI: UHLP-145 razor-edge pattern; bunker FLAKE-001).
+	if msg.UptimeSeconds == 0 && time.Since(serverStartTime) >= time.Second {
 		t.Error("ServerInfo().UptimeSeconds is 0, want seconds since daemon start")
 	}
 	if msg.AgentCount != 0 {
