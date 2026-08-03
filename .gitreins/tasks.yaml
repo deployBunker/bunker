@@ -844,3 +844,31 @@ tasks:
   status: complete
   created_at: '2026-08-03T21:23:46.038066+00:00'
   completed_at: '2026-08-03T21:44:38.314261+00:00'
+- id: dogfood-006
+  title: 'DOGFOOD-006: wire real server metrics into bunker status + ldflags version
+    injection'
+  criteria:
+  - internal/version package exists with Version/Commit/BuildDate vars and is imported
+    by internal/cli/version.go, cmd/bunkerd/main.go, and internal/server/service.go
+  - Makefile build/build-daemon/build-cli targets pass -ldflags -X for Version, Commit
+    (git rev-parse --short HEAD), and BuildDate (UTC timestamp) to internal/version
+  - bunker version output format unchanged but commit and built show real values (not
+    'unknown') when built via Makefile
+  - bunkerd --version output format unchanged but commit and built show real values
+    when built via Makefile
+  - ServerInfo.Version reports the shared version.Version instead of a hardcoded literal
+  - ServerInfo.UptimeSeconds is computed from daemon process start time (not hardcoded
+    0)
+  - CPU usage percent is computed via delta sampling of cpu.stat usage_usec between
+    calls (CPUSampler in internal/resource), first call returns 0 baseline
+  - Memory metrics fall back to /proc/meminfo (MemTotal, MemAvailable) when /sys/fs/cgroup/memory.current
+    or memory.max are unreadable
+  - New unit tests cover CPU sampler delta math, meminfo fallback parsing, and version
+    wiring; all pre-existing tests still pass
+  - go build ./..., go vet ./..., gofmt clean, go test ./... -short all pass (15/15
+    packages)
+  - 'Live verification on bunker-mvp: bunker version shows real commit SHA, bunker
+    status shows real uptime/memory and non-zero CPU on second sample'
+  status: complete
+  created_at: '2026-08-03T22:33:57.163595+00:00'
+  completed_at: '2026-08-03T22:34:00.549540+00:00'
