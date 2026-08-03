@@ -359,9 +359,10 @@ func TestBuildAgentExecCommand(t *testing.T) {
 		// Sourcing the per-agent env file so `bunker env set` injections are
 		// visible. stderr redirection makes the source tolerant of a missing
 		// file, and the [ -f ] guard keeps a fresh agent (no env file yet)
-		// from aborting the shell.
-		"[ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env",
-		"env PATH=/home/bunker-abc123/bin:$PATH",
+		// from aborting the shell. set -a exports the injected vars to the
+		// child sh -c below.
+		"set -a; [ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env",
+		"set +a; env PATH=/home/bunker-abc123/bin:$PATH",
 		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
 		"TMPDIR=/run/bunker/abc123/tmp",
 		// The user command is always wrapped in sh -c '<joined>' so compound

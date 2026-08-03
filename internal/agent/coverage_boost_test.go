@@ -112,7 +112,7 @@ func TestBuildRunAgentArgs_OverridesAndPassthrough(t *testing.T) {
 		}
 	}
 
-	wantTail := []string{"sh", "-c", "[ -f /run/bunker/coverage/env ] && . /run/bunker/coverage/env 2>/dev/null; exec \"$@\"", "--", "command with spaces", "--flag", "value with spaces", ""}
+	wantTail := []string{"sh", "-c", "set -a; [ -f /run/bunker/coverage/env ] && . /run/bunker/coverage/env 2>/dev/null; set +a; exec \"$@\"", "--", "command with spaces", "--flag", "value with spaces", ""}
 	if len(args) < len(wantTail) {
 		t.Fatalf("args too short: %v", args)
 	}

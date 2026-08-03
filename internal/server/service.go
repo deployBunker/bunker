@@ -382,16 +382,12 @@ func buildAgentExecCommand(agentID, userHome, command string, args []string) str
 		}
 		remoteCmd += " " + strings.Join(quoted, " ")
 	}
-	// The user command (command + quoted args) is wrapped in `sh -c '<joined>'`
-	// so that compound snippets passed as the COMMAND token (e.g.
-	// `bunker exec <id> -- "if ...; then ...; fi"` arrives with command=<snippet>,
-	// args=[]) are executed by a shell rather than misparsed by the outer
-	// wrapper as orphaned keywords. The joined string is single-quoted as one
-	// unit; embedded quotes are escaped for POSIX sh.
-	// Guard the source with [ -f ... ] so a fresh agent (no env file yet)
-	// doesn't make dash exit 2 on the failed dot-source (dash aborts a
-	// non-interactive shell when `.` can't open its file).
-	return fmt.Sprintf("[ -f %s ] && . %s 2>/dev/null; env PATH=%s:$PATH DOCKER_HOST=unix://%s TMPDIR=%s sh -c %s",
+	// set -a (allexport) around the source so injected vars are exported to
+	// the child `sh -c` below — plain KEY=VALUE lines would otherwise only be
+	// shell variables, invisible to the wrapped command. The [ -f ] guard
+	// keeps a fresh agent (no env file yet) from making dash exit 2 on the
+	// failed dot-source.
+	return fmt.Sprintf("set -a; [ -f %s ] && . %s 2>/dev/null; set +a; env PATH=%s:$PATH DOCKER_HOST=unix://%s TMPDIR=%s sh -c %s",
 		envFile, envFile, agentBinPath, dockerSockPath, tmpDir, shellQuoteSingle(remoteCmd))
 }
 
@@ -438,7 +434,7 @@ func buildAgentScriptCommand(agentID, userHome, scriptContent string) string {
 	// We quote the EOF delimiter to prevent expansion of the script body.
 	escaped := strings.ReplaceAll(scriptContent, "'", "'\\''")
 	return fmt.Sprintf(
-		"mkdir -p %q && cat > %q <<'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %q && [ -f %s ] && . %s 2>/dev/null; env PATH=%s:$PATH DOCKER_HOST=unix://%s TMPDIR=%s %q",
+		"mkdir -p %q && cat > %q <<'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %q && set -a; [ -f %s ] && . %s 2>/dev/null; set +a; env PATH=%s:$PATH DOCKER_HOST=unix://%s TMPDIR=%s %q",
 		filepath.Dir(scriptPath), scriptPath, escaped, scriptPath, envFile, envFile, agentBinPath, dockerSockPath, tmpDir, scriptPath,
 	)
 }
