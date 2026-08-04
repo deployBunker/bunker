@@ -43,7 +43,10 @@ cleanup() {
     for d in $(ls /run/bunker 2>/dev/null); do
         grep -qx "$d" "$SNAP_RUN" && continue
         echo "$PROD_IDS" | grep -qx "$d" && continue
-        mv "/run/bunker/$d" "$QDIR/" 2>/dev/null || true
+        # Run dirs are ephemeral tmpfs (docker.sock + empty run/tmp) — delete
+        # outright. mv-quarantine left the source behind when a socket was
+        # briefly busy (observed 65fa62e1, GAP-006 audit).
+        rm -rf "/run/bunker/$d"
     done
     exit $rc
 }
