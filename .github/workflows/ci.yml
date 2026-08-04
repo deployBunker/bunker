@@ -99,6 +99,11 @@ jobs:
       - name: Generate protobuf code
         run: buf generate
 
+      # Runner runs as root; workspace checkout is owned by actions-runner —
+      # git refuses "dubious ownership" otherwise (exit 128 on go build VCS).
+      - name: Configure git safe.directory
+        run: git config --global --add safe.directory '*'
+
       - name: Build binaries
         run: go build -o bunkerd ./cmd/bunkerd && go build -o bunker ./cmd/bunker
 
@@ -108,4 +113,39 @@ jobs:
 
       - name: E2E battery
         run: bash e2e-full-battery.sh
+        timeout-minutes: 15
+
+  # ── Root-gated suite (spawn/cgroup/concurrency) — needs root ──
+  # Runs on the self-hosted bunker-mvp runner, which runs as root (the
+  # regression battery requires root by design). Prevents the 17 root-gated
+  # tests (TestSpawn*/TestCgroup*/TestConcurrency*) from being skipped in CI.
+  # Baseline evidence: docs/dogfood/2026-08-04-gap-001-root-e2e.md
+  root-suite:
+    runs-on: [self-hosted, Linux, bunker]
+    timeout-minutes: 30
+    needs: build-and-test
+    continue-on-error: true
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          version: "1.50.0"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate protobuf code
+        run: buf generate
+
+      # Runner runs as root; workspace checkout is owned by actions-runner —
+      # git refuses "dubious ownership" otherwise (exit 128 on go build VCS).
+      - name: Configure git safe.directory
+        run: git config --global --add safe.directory '*'
+
+      - name: Root-gated suite (TestSpawn|TestCgroup|TestConcurrency)
+        run: go test -count=1 -run 'TestSpawn|TestCgroup|TestConcurrency' ./... -timeout 300s
         timeout-minutes: 15
