@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
@@ -147,9 +148,21 @@ sys.exit(0)
 	if err == nil {
 		t.Fatalf("expected stress process to be killed, got exit 0: %s", string(out))
 	}
-	if !strings.Contains(string(out), "MemoryError") && cmd.ProcessState.ExitCode() != 137 {
+	// The OOM killer terminates the stressor with SIGKILL. Go's
+	// ProcessState.ExitCode() returns -1 for signal-terminated processes
+	// (shell-style 137 is NOT produced), so accept an explicit SIGKILL via
+	// WaitStatus in addition to a Python MemoryError.
+	oomKilled := false
+	if ws, ok := cmd.ProcessState.Sys().(syscall.WaitStatus); ok {
+		oomKilled = ws.Signaled() && ws.Signal() == syscall.SIGKILL
+	}
+	if !strings.Contains(string(out), "MemoryError") && cmd.ProcessState.ExitCode() != 137 && !oomKilled {
+		sig := "none"
+		if ws, ok := cmd.ProcessState.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+			sig = ws.Signal().String()
+		}
 		t.Logf("stress process output: %s", string(out))
-		t.Errorf("expected MemoryError or exit 137, got exit %d", cmd.ProcessState.ExitCode())
+		t.Errorf("expected OOM kill (MemoryError, exit 137, or SIGKILL), got exit %d (signal %s)", cmd.ProcessState.ExitCode(), sig)
 	}
 }
 

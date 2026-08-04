@@ -575,9 +575,23 @@ func TestSpawn_SystemdUnitHasUlimits(t *testing.T) {
 	if !strings.Contains(output, wantTasksMax) {
 		t.Errorf("systemd unit missing TasksMax\ngot:\n%s\nwant substring: %s", output, wantTasksMax)
 	}
-	wantLimitNOFILE := fmt.Sprintf("LimitNOFILE=%d %d", m.cfg.Agent.DefaultMaxOpenFiles, m.cfg.Agent.DefaultMaxOpenFiles)
-	if !strings.Contains(output, wantLimitNOFILE) {
-		t.Errorf("systemd unit missing LimitNOFILE\ngot:\n%s\nwant substring: %s", output, wantLimitNOFILE)
+	// The manager writes LimitNOFILE=<soft>:<hard> (manager_spawn.go); systemd
+	// collapses identical soft/hard values in `systemctl show` output to a
+	// single value. Accept single, space-separated, and colon forms.
+	soft := m.cfg.Agent.DefaultMaxOpenFiles
+	limitMatched := false
+	for _, w := range []string{
+		fmt.Sprintf("LimitNOFILE=%d", soft),
+		fmt.Sprintf("LimitNOFILE=%d %d", soft, soft),
+		fmt.Sprintf("LimitNOFILE=%d:%d", soft, soft),
+	} {
+		if strings.Contains(output, w) {
+			limitMatched = true
+			break
+		}
+	}
+	if !limitMatched {
+		t.Errorf("systemd unit missing LimitNOFILE=%d\ngot:\n%s", soft, output)
 	}
 }
 
@@ -674,8 +688,22 @@ func TestSpawn_DiskMaxBytesEnforced(t *testing.T) {
 		t.Logf("systemctl show output: %s", string(out))
 		t.Skip("could not query systemd unit properties")
 	}
-	want := fmt.Sprintf("LimitFSIZE=%d %d", 1*1024*1024*1024, 1*1024*1024*1024)
-	if !strings.Contains(string(out), want) {
-		t.Errorf("systemd unit missing LimitFSIZE\ngot:\n%s\nwant substring: %s", string(out), want)
+	// The manager writes LimitFSIZE=<bytes> (single value, manager_spawn.go);
+	// systemd may collapse or keep the form in `systemctl show` output. Accept
+	// single, space-separated, and colon forms.
+	fsize := 1 * 1024 * 1024 * 1024
+	fsizeMatched := false
+	for _, w := range []string{
+		fmt.Sprintf("LimitFSIZE=%d", fsize),
+		fmt.Sprintf("LimitFSIZE=%d %d", fsize, fsize),
+		fmt.Sprintf("LimitFSIZE=%d:%d", fsize, fsize),
+	} {
+		if strings.Contains(string(out), w) {
+			fsizeMatched = true
+			break
+		}
+	}
+	if !fsizeMatched {
+		t.Errorf("systemd unit missing LimitFSIZE=%d\ngot:\n%s", fsize, string(out))
 	}
 }
