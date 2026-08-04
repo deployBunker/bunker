@@ -444,3 +444,114 @@ func TestExecCommand_ScriptFlag_MissingFile(t *testing.T) {
 		t.Fatal("expected error for missing script file")
 	}
 }
+
+// TestExecCommand_FlagSeparator verifies that a "--" separator between bunker
+// flags and the remote command is stripped from the parsed request, and that
+// the command/args after it are sent verbatim. Regression test for GAP-002:
+// "bunker exec <id> --server srv -- docker ps" previously sent Command="--",
+// which made the remote shell die with "sh: 0: Illegal option --".
+func TestExecCommand_FlagSeparator(t *testing.T) {
+	tests := []struct {
+		name        string
+		args        []string
+		wantCommand string
+		wantArgs    []string
+		wantTimeout uint32
+		wantServer  string // server alias to register in the test config; "" = default only
+	}{
+		{
+			name:        "flags before separator",
+			args:        []string{"ms-a1", "--server", "srv", "--", "docker", "ps"},
+			wantCommand: "docker",
+			wantArgs:    []string{"ps"},
+			wantTimeout: 30, // --timeout flag default
+			wantServer:  "srv",
+		},
+		{
+			name:        "timeout flag before separator",
+			args:        []string{"abc", "--timeout", "60", "--", "docker", "build", "-t", "myapp", "."},
+			wantCommand: "docker",
+			wantArgs:    []string{"build", "-t", "myapp", "."},
+			wantTimeout: 60,
+		},
+		{
+			name:        "leading separator",
+			args:        []string{"abc", "--", "docker", "ps"},
+			wantCommand: "docker",
+			wantArgs:    []string{"ps"},
+			wantTimeout: 30, // --timeout flag default
+		},
+		{
+			name:        "no separator",
+			args:        []string{"abc", "docker", "ps"},
+			wantCommand: "docker",
+			wantArgs:    []string{"ps"},
+			wantTimeout: 30, // --timeout flag default
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			t.Setenv("HOME", tmpDir)
+
+			var got *v1.ExecAgentRequest
+			server := newExecTestServer(t, &mockExecServer{
+				execResponses: []*v1.ExecAgentResponse{
+					{Output: &v1.ExecAgentResponse_Stdout{Stdout: []byte("ok")}},
+					{ExitCode: 0},
+				},
+				captureReq: func(req *v1.ExecAgentRequest) {
+					got = req
+				},
+			})
+			defer server.Close()
+
+			if tt.wantServer != "" {
+				cfg := &CLIConfig{
+					Servers: map[string]ServerEntry{
+						"default": {
+							Name:        "default",
+							URL:         server.URL,
+							ConnectedAt: "2026-06-28T00:00:00Z",
+						},
+						tt.wantServer: {
+							Name:        tt.wantServer,
+							URL:         server.URL,
+							ConnectedAt: "2026-06-28T00:00:00Z",
+						},
+					},
+					ActiveServer: "default",
+				}
+				if err := SaveCLIConfig(cfg); err != nil {
+					t.Fatalf("SaveCLIConfig: %v", err)
+				}
+			} else {
+				writeExecTestConfig(t, tmpDir, server.URL)
+			}
+
+			cmd := NewExecCommand()
+			cmd.SetArgs(tt.args)
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("exec command failed: %v", err)
+			}
+			if got == nil {
+				t.Fatal("request not captured")
+			}
+			if got.Command != tt.wantCommand {
+				t.Errorf("command = %q, want %q", got.Command, tt.wantCommand)
+			}
+			if len(got.Args) != len(tt.wantArgs) {
+				t.Fatalf("args = %v, want %v", got.Args, tt.wantArgs)
+			}
+			for i, want := range tt.wantArgs {
+				if got.Args[i] != want {
+					t.Errorf("args[%d] = %q, want %q", i, got.Args[i], want)
+				}
+			}
+			if got.TimeoutSeconds != tt.wantTimeout {
+				t.Errorf("TimeoutSeconds = %d, want %d", got.TimeoutSeconds, tt.wantTimeout)
+			}
+		})
+	}
+}

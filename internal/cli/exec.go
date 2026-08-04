@@ -104,6 +104,11 @@ Examples:
 				}
 				break
 			}
+			// The flag loop stops at the first non-flag token. If that token
+			// is the "--" separator, skip it so it is not sent as the command.
+			if i < len(rest) && rest[i] == "--" {
+				i++
+			}
 			rest = rest[i:]
 			if len(rest) == 0 && scriptPath == "" {
 				return fmt.Errorf("command required after agent-id")
