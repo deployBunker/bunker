@@ -910,7 +910,13 @@ func TestSpawn_PortAllocationDisabled(t *testing.T) {
 	defer close(m.ttlStop)
 
 	req := &v1.SpawnAgentRequest{AgentId: "portalloc-test"}
-	_, err := m.Spawn(context.Background(), req)
+	resp, err := m.Spawn(context.Background(), req)
+	// Root-suite runs as root on the live host: a successful spawn creates a
+	// REAL user (bunker-portalloc-test) — never leave it behind (GAP-005 leak
+	// audit: this test leaked a user on every root-suite run).
+	if err == nil && resp != nil && resp.GetAgentId() != "" {
+		defer cleanupAgent(t, m, resp.GetAgentId())
+	}
 	if err != nil && strings.Contains(err.Error(), "port range allocation") {
 		t.Errorf("port allocation should succeed with fallback, got: %v", err)
 	}

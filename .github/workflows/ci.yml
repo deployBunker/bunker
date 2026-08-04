@@ -155,5 +155,7 @@ jobs:
         run: git config --global --add safe.directory '*'
 
       - name: Root-gated suite (TestSpawn|TestCgroup|TestConcurrency)
-        run: go test -count=1 -run 'TestSpawn|TestCgroup|TestConcurrency' ./... -timeout 300s
+        # Wrapper guarantees 0 leaked users/keys even when a test leaks or
+        # fails mid-way (GAP-007); see scripts/root-suite.sh.
+        run: bash scripts/root-suite.sh
         timeout-minutes: 15

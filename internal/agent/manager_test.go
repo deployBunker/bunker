@@ -43,18 +43,21 @@ func cleanupAgent(t *testing.T, m *AgentManager, agentID string) {
 	}
 	// Destroy(force=true) tolerates userdel failure by design — the agent's
 	// rootless dockerd may still be shutting down, so the user can linger in
-	// /etc/passwd while home/socket dirs are already removed. Retry the user
-	// removal so root-suite runs (live host!) never leave users behind.
-	// Observed: TestConcurrency_SpawnFiveAgents left 5 users in CI (2026-08-04).
+	// /etc/passwd while home/socket dirs are already removed. Kill any
+	// lingering agent processes first, then retry the user removal so
+	// root-suite runs (live host!) never leave users behind.
+	// Observed: TestConcurrency_SpawnFiveAgents left 5 users, and
+	// TestSpawn_RootlessEnvHasTMPDIR left tmpdir-env-* (2026-08-04, GAP-005).
 	username := "bunker-" + agentID
-	for i := 0; i < 10; i++ {
+	_ = exec.Command("pkill", "-u", username, "-9").Run()
+	for i := 0; i < 20; i++ {
 		if _, err := user.Lookup(username); err != nil {
 			return // user gone
 		}
 		time.Sleep(500 * time.Millisecond)
-		_ = exec.Command("userdel", "-r", username).Run()
+		_ = exec.Command("userdel", "-rf", username).Run()
 	}
-	t.Logf("cleanup: user %s still present after 5s of retries", username)
+	t.Logf("cleanup: user %s still present after 10s of retries", username)
 }
 
 // ── Unit tests on helper functions (no root needed) ──────────────

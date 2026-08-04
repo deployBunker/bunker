@@ -72,6 +72,12 @@ cleanup() {
         for u in $(awk -F: '/^bunker-e2e-/ {print $1}' /etc/passwd); do
             userdel -rf "$u" 2>/dev/null || true
         done
+        # Quarantine this battery's own ssh keys if destroy did not remove
+        # them (shared /etc/bunkerd/ssh — never touch production keys).
+        mkdir -p "/tmp/bunker-battery-key-quarantine-$$"
+        for k in $(ls /etc/bunkerd/ssh 2>/dev/null | grep '^e2e-'); do
+            mv "/etc/bunkerd/ssh/$k" "/tmp/bunker-battery-key-quarantine-$$/" 2>/dev/null || true
+        done
     fi
     # Stop the battery's own bunkerd (coexist mode only)
     if [ -n "$BUNKERD_PID" ]; then
@@ -321,10 +327,16 @@ echo ""
 # 8. MULTI-AGENT SPAWN
 # =============================================
 echo "=== 8. Multi-agent Spawn ==="
+# CRITICAL (GAP-005 hang): a bare `wait` would block on the battery's OWN
+# backgrounded bunkerd in coexist mode (it never exits) — the battery hung
+# here until the CI step timeout killed it, leaking all agents. Wait only for
+# the spawn CLIs.
+SPAWN_PIDS=()
 for i in 2 3 4 5; do
     $BUNKER spawn --agent-id "e2e-agent-$i" > /dev/null 2>&1 &
+    SPAWN_PIDS+=($!)
 done
-wait
+wait "${SPAWN_PIDS[@]}"
 sleep 3
 
 AGENT_COUNT=0
