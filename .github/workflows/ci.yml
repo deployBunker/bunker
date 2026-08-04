@@ -108,6 +108,10 @@ jobs:
         run: go build -o bunkerd ./cmd/bunkerd && go build -o bunker ./cmd/bunker
 
       - name: Regression suite
+        env:
+          BUNKERD_COEXIST: "1"
+          BUNKERD_GRPC_ADDR: ":29090"
+          BUNKERD_REST_ADDR: ":28080"
         run: bash regression-tests.sh
         timeout-minutes: 10
 

@@ -15,6 +15,32 @@ FAIL=0
 BUNKERD_PID=""
 AGENT_IDS=()
 
+# Coexistence mode (CI on bunker-mvp): the host runs a systemd-managed
+# production bunkerd on :19090/:18080. Use dedicated ports + a temp config and
+# NEVER pkill/wipe the live service. Standalone (default): full take-over like
+# the original design. In coexist mode the CLI config is isolated via HOME so
+# the battery's connect does not clobber the live host's /root/.bunker.
+BUNKERD_COEXIST="${BUNKERD_COEXIST:-}"
+BUNKERD_GRPC_ADDR="${BUNKERD_GRPC_ADDR:-:29090}"
+BUNKERD_REST_ADDR="${BUNKERD_REST_ADDR:-:28080}"
+if [ -n "$BUNKERD_COEXIST" ]; then
+    export HOME="$(mktemp -d /tmp/bunker-regression-home-XXXXXX)"
+    REGRESSION_CONFIG="$(mktemp /tmp/bunkerd-regression-XXXXXX.yaml)"
+    cat > "$REGRESSION_CONFIG" <<EOF
+server:
+  grpc_addr: "$BUNKERD_GRPC_ADDR"
+  rest_addr: "$BUNKERD_REST_ADDR"
+auth:
+  enabled: false
+agent:
+  ssh_dir: /etc/bunkerd/ssh
+  max_agents: 10
+  port_range_start: 20000
+  port_range_end: 20999
+  port_range_per_agent: 100
+EOF
+fi
+
 cleanup() {
     echo -e "\n${YELLOW}=== Cleanup ===${NC}"
     # Destroy any agents created during tests
@@ -30,8 +56,10 @@ cleanup() {
         kill "$BUNKERD_PID" 2>/dev/null || true
         wait "$BUNKERD_PID" 2>/dev/null || true
     fi
-    pkill bunkerd 2>/dev/null || true
-    rm -rf /run/bunker/* /etc/bunkerd/ssh/t* 2>/dev/null || true
+    if [ -z "$BUNKERD_COEXIST" ]; then
+        pkill bunkerd 2>/dev/null || true
+        rm -rf /run/bunker/* /etc/bunkerd/ssh/t* 2>/dev/null || true
+    fi
 }
 trap cleanup EXIT
 
@@ -47,20 +75,22 @@ echo ""
 # ── 1. Prerequisites ──────────────────────────────────────────
 echo "── 1. Prerequisites ──"
 
-# Clean slate
-pkill bunkerd 2>/dev/null || true
-sleep 1
-for u in $(grep '^bunker-' /etc/passwd 2>/dev/null | cut -d: -f1); do
-    userdel -r "$u" 2>/dev/null || true
-done
-# Clean stale systemd user units
-systemctl --user reset-failed 2>/dev/null || true
-for u in $(systemctl --user list-units --all 'bunker-docker-*' 2>/dev/null | grep bunker | awk '{print $1}'); do
-    systemctl --user stop "$u" 2>/dev/null || true
-    systemctl --user disable "$u" 2>/dev/null || true
-done
-rm -rf /root/.bunker /run/bunker/* /etc/bunkerd/ssh/* 2>/dev/null || true
-rm -rf /root/.config/systemd/user/bunker-docker-* 2>/dev/null || true
+# Clean slate (full take-over only — coexist mode never touches live state)
+if [ -z "$BUNKERD_COEXIST" ]; then
+    pkill bunkerd 2>/dev/null || true
+    sleep 1
+    for u in $(grep '^bunker-' /etc/passwd 2>/dev/null | cut -d: -f1); do
+        userdel -r "$u" 2>/dev/null || true
+    done
+    # Clean stale systemd user units
+    systemctl --user reset-failed 2>/dev/null || true
+    for u in $(systemctl --user list-units --all 'bunker-docker-*' 2>/dev/null | grep bunker | awk '{print $1}'); do
+        systemctl --user stop "$u" 2>/dev/null || true
+        systemctl --user disable "$u" 2>/dev/null || true
+    done
+    rm -rf /root/.bunker /run/bunker/* /etc/bunkerd/ssh/* 2>/dev/null || true
+    rm -rf /root/.config/systemd/user/bunker-docker-* 2>/dev/null || true
+fi
 mkdir -p /etc/bunkerd/ssh /run/bunker
 
 assert '[ -f /usr/local/bin/bunkerd ]' "bunkerd binary exists"
@@ -72,20 +102,43 @@ echo ""
 # ── 2. Server startup ─────────────────────────────────────────
 echo "── 2. Server startup ──"
 
-bunkerd --grpc-addr :19090 --token test-regression-token > /var/log/bunkerd-regression.log 2>&1 &
+if [ -n "$BUNKERD_COEXIST" ]; then
+    # Temp config on isolated ports — never touches the live daemon's ports.
+    bunkerd -c "$REGRESSION_CONFIG" > /var/log/bunkerd-regression.log 2>&1 &
+else
+    # Standalone: keep the historical defaults (config file replaces the
+    # removed --grpc-addr/--token flags).
+    REGRESSION_CONFIG="$(mktemp /tmp/bunkerd-regression-XXXXXX.yaml)"
+    cat > "$REGRESSION_CONFIG" <<EOF
+server:
+  grpc_addr: "$BUNKERD_GRPC_ADDR"
+  rest_addr: "$BUNKERD_REST_ADDR"
+auth:
+  enabled: false
+agent:
+  ssh_dir: /etc/bunkerd/ssh
+  max_agents: 10
+  port_range_start: 20000
+  port_range_end: 20999
+  port_range_per_agent: 100
+EOF
+    bunkerd -c "$REGRESSION_CONFIG" > /var/log/bunkerd-regression.log 2>&1 &
+fi
 BUNKERD_PID=$!
 sleep 2
 
+GRPC_PORT="${BUNKERD_GRPC_ADDR#:}"
+REST_PORT="${BUNKERD_REST_ADDR#:}"
 assert 'kill -0 $BUNKERD_PID 2>/dev/null' "bunkerd started (PID $BUNKERD_PID)"
-assert 'ss -tlnp | grep -q 19090' "gRPC listening on :19090"
-assert 'ss -tlnp | grep -q 8080' "REST listening on :8080"
+assert "ss -tlnp | grep -q $GRPC_PORT" "gRPC listening on :$GRPC_PORT"
+assert "ss -tlnp | grep -q $REST_PORT" "REST listening on :$REST_PORT"
 
 echo ""
 
 # ── 3. Connect ─────────────────────────────────────────────────
 echo "── 3. Connect ──"
 
-OUT=$(bunker connect http://127.0.0.1:19090 --token test-regression-token 2>&1)
+OUT=$(bunker connect "http://127.0.0.1:$GRPC_PORT" --token test-regression-token 2>&1)
 assert 'echo "$OUT" | grep -q "Connected"' "connect succeeds"
 assert 'echo "$OUT" | grep -q "Agents: 0/"' "initial agent count is 0"
 
