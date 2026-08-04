@@ -474,14 +474,23 @@ echo ""
 # 12. REGRESSION SUITE (quick)
 # =============================================
 echo "=== 12. Regression Suite ==="
-if [ -f "/opt/bunker/regression-tests.sh" ]; then
-    cd /opt/bunker
+# Prefer the repo-local copy (CI checkout), fall back to the deployed one.
+if [ -f "$(dirname "$0")/regression-tests.sh" ]; then
+    REGRESSION_SCRIPT="$(dirname "$0")/regression-tests.sh"
+elif [ -f "/opt/bunker/regression-tests.sh" ]; then
+    REGRESSION_SCRIPT="/opt/bunker/regression-tests.sh"
+else
+    REGRESSION_SCRIPT=""
+fi
+if [ -n "$REGRESSION_SCRIPT" ]; then
+    REGRESSION_DIR="$(dirname "$REGRESSION_SCRIPT")"
+    cd "$REGRESSION_DIR"
     if [ -n "$BUNKERD_COEXIST" ]; then
         # Coexist: nested regression suite gets its own ports so it does not
         # collide with this battery's own daemon (or the live production one).
-        REG_OUT=$(BUNKERD_GRPC_ADDR=":29092" BUNKERD_REST_ADDR=":28082" bash regression-tests.sh 2>&1 || true)
+        REG_OUT=$(BUNKERD_GRPC_ADDR=":29092" BUNKERD_REST_ADDR=":28082" bash "$REGRESSION_SCRIPT" 2>&1 || true)
     else
-        REG_OUT=$(bash regression-tests.sh 2>&1 || true)
+        REG_OUT=$(bash "$REGRESSION_SCRIPT" 2>&1 || true)
     fi
     REG_EXIT=$?
     # Count assertions

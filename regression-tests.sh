@@ -68,6 +68,13 @@ cleanup() {
         kill "$BUNKERD_PID" 2>/dev/null || true
         wait "$BUNKERD_PID" 2>/dev/null || true
     fi
+    # Quarantine this suite's own /run/bunker dirs (destroy may have failed
+    # silently — userdel removes the user, never /run/bunker/<id>; GAP-006
+    # leak audit: nested battery regression left an auto-ID dir on the host).
+    QDIR="$(mktemp -d /tmp/regression-run-quarantine-XXXXXX)"
+    for id in regr-alpha "${AUTO_ID:-}"; do
+        [ -n "$id" ] && [ -d "/run/bunker/$id" ] && mv "/run/bunker/$id" "$QDIR/" 2>/dev/null || true
+    done
     if [ -z "$BUNKERD_COEXIST" ]; then
         pkill bunkerd 2>/dev/null || true
         rm -rf /run/bunker/* /etc/bunkerd/ssh/t* 2>/dev/null || true
