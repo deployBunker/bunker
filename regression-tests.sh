@@ -47,10 +47,22 @@ cleanup() {
     for id in "${AGENT_IDS[@]}"; do
         bunker destroy "$id" --force 2>/dev/null || true
     done
-    # Kill leftover users
-    for u in $(grep '^bunker-t' /etc/passwd 2>/dev/null | cut -d: -f1); do
-        userdel -r "$u" 2>/dev/null || true
-    done
+    # Kill leftover users. Standalone: every bunker- user is fair game.
+    # Coexist: only this battery's own agents (regr-alpha + the auto ID) —
+    # NEVER touch production users.
+    if [ -z "$BUNKERD_COEXIST" ]; then
+        for u in $(grep '^bunker-' /etc/passwd 2>/dev/null | cut -d: -f1); do
+            userdel -r "$u" 2>/dev/null || true
+        done
+    else
+        PAT='^bunker-regr-alpha'
+        if [ -n "${AUTO_ID:-}" ] && [ "$AUTO_ID" != "regr-auto-fallback" ]; then
+            PAT="$PAT\|^bunker-$AUTO_ID"
+        fi
+        for u in $(grep "$PAT" /etc/passwd 2>/dev/null | cut -d: -f1); do
+            userdel -r "$u" 2>/dev/null || true
+        done
+    fi
     # Stop bunkerd
     if [ -n "$BUNKERD_PID" ]; then
         kill "$BUNKERD_PID" 2>/dev/null || true
