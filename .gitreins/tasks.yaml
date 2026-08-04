@@ -884,3 +884,21 @@ tasks:
   status: complete
   created_at: '2026-08-03T23:10:57.765918+00:00'
   completed_at: '2026-08-03T23:11:14.983437+00:00'
+- id: e2e-001-root
+  title: Execute the root-gated spawn/cgroup/concurrency suite (E2E-001-ROOT / GAP-001)
+    on bunker-mvp, fix what it reveals, commit evidence, add root CI job
+  criteria:
+  - "Root suite executes as root on bunker-mvp with `go test -run 'TestSpawn|TestCgroup|TestConcurrency'\
+    \ ./...` \u2014 0 FAIL, and the only SKIPs are the two intentional non-root-path\
+    \ tests (TestSpawn_ValidIDNonRoot_CleanupOnFailure, TestSpawn_RequestLimitsCapturedBeforeFailure)"
+  - 'Evidence committed to docs/dogfood/2026-08-04-gap-001-root-e2e.md with raw outputs
+    (before: 17 SKIPs non-root; first root run 3 FAILs + root causes; final root run
+    47 PASS / 0 FAIL / 2 intentional SKIPs)'
+  - Root CI job added to .github/workflows/ci.yml (root-suite job running the same
+    filter on the root self-hosted runner) so the suite stops being skipped
+  - 'Root-suite run leaves the live server clean: 0 leaked users, 0 /run/bunker dirs
+    (coverage_boost_test.go cleanup fix 4a412c5)'
+  - go build ./..., go vet ./..., go test ./... -short all pass; guard Tier 1 PASS
+  status: complete
+  created_at: '2026-08-04T08:00:35.734003+00:00'
+  completed_at: '2026-08-04T08:01:44.391063+00:00'
