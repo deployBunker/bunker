@@ -374,12 +374,14 @@ func TestSpawn_AutoGenerateAgentID_Coverage(t *testing.T) {
 
 	// Auto-generate path: empty AgentId triggers UUID generation (first 8 chars)
 	resp, err := m.Spawn(context.Background(), &v1.SpawnAgentRequest{})
-	// This will fail at user creation (not running as root), but we reach the
-	// auto-ID path which executes the UUID generation + split logic.
+	// When run as root the spawn SUCCEEDS (real user + rootless dockerd) — the
+	// non-root comment below only holds for unprivileged runs. Clean up any
+	// spawned agent so root-suite runs don't litter the host (GAP-001).
 	if err == nil && resp != nil {
 		if resp.GetAgentId() == "" {
 			t.Error("expected auto-generated agent_id")
 		}
+		defer cleanupAgent(t, m, resp.GetAgentId())
 	}
 	// Any error after ID validation is expected since we're not root
 }
@@ -398,9 +400,11 @@ func TestSpawn_PortAllocNilFallback_Coverage(t *testing.T) {
 
 	// Spawn with nil portAlloc should fallback to direct range.
 	resp, err := m.Spawn(context.Background(), &v1.SpawnAgentRequest{AgentId: "test-nil-pa"})
-	// Will fail at user creation (not root), but the port alloc nil path is reached
-	_ = resp
-	_ = err
+	// Non-root: fails at user creation, but the port alloc nil path is reached.
+	// Root: spawn succeeds — clean up so the root suite leaves no litter (GAP-001).
+	if err == nil && resp != nil && resp.GetAgentId() != "" {
+		defer cleanupAgent(t, m, resp.GetAgentId())
+	}
 	m.Stop()
 }
 
@@ -590,10 +594,14 @@ func TestSpawn_EmptyAgentID_NoValidationError(t *testing.T) {
 	m := newTestManager(t)
 	defer m.Stop()
 
-	_, err := m.Spawn(context.Background(), &v1.SpawnAgentRequest{AgentId: ""})
-	// Will fail at useradd (non-root), but should NOT fail with "invalid agent_id".
+	resp, err := m.Spawn(context.Background(), &v1.SpawnAgentRequest{AgentId: ""})
+	// Non-root: fails at useradd, but should NOT fail with "invalid agent_id".
+	// Root: spawn succeeds (auto-generated ID) — clean up to avoid litter (GAP-001).
 	if err != nil && strings.Contains(err.Error(), "invalid agent_id") {
 		t.Errorf("empty agent_id should auto-generate, not fail validation: %v", err)
+	}
+	if resp != nil && resp.GetAgentId() != "" {
+		defer cleanupAgent(t, m, resp.GetAgentId())
 	}
 }
 
