@@ -925,3 +925,28 @@ tasks:
   status: complete
   created_at: '2026-08-04T10:01:40.757621+00:00'
   completed_at: '2026-08-04T10:02:47.645480+00:00'
+- id: gap-005-battery-coexist
+  title: "GAP-005: e2e-full-battery.sh coexist mode \u2014 no live-daemon take-over\
+    \ in CI"
+  criteria:
+  - e2e-full-battery.sh defines BUNKERD_COEXIST/BUNKERD_GRPC_ADDR/BUNKERD_REST_ADDR
+    env vars (coexist defaults :29091/:28081) and in coexist mode writes a temp bunkerd
+    config with isolated ports + isolated port range (30000-30999)
+  - In coexist mode the battery starts its OWN bunkerd with the temp config (BUNKERD_PID
+    recorded) and kills it in a trap cleanup handler; it NEVER pkills or wipes the
+    live systemd bunkerd on :19090/:18080
+  - In coexist mode the user wipe is scoped to ^bunker-e2e- only (battery's own agents
+    e2e-main/e2e-agent-2..5); standalone mode (BUNKERD_COEXIST unset) keeps the original
+    full take-over wipe of all bunker- users byte-for-byte
+  - In coexist mode HOME is exported to a mktemp -d dir so the CLI connect config
+    never clobbers the live host's /root/.bunker; the final 'all agents cleaned up'
+    count checks only ^bunker-e2e- users in coexist mode
+  - Port assertions (ss gRPC/REST) and connect URL use the env-derived ports in coexist
+    mode (GRPC_PORT/REST_PORT derived from BUNKERD_*_ADDR, fallback 19090/18080 standalone)
+  - .github/workflows/ci.yml E2E battery step sets env BUNKERD_COEXIST=1 BUNKERD_GRPC_ADDR=:29091
+    BUNKERD_REST_ADDR=:28081 (mirroring the Regression suite step)
+  - bash -n e2e-full-battery.sh passes and gitreins Tier 1 guard PASS (secrets/build/lint/tests)
+  - 'Commit message references GAP-005 and carries Co-authored-by: Alexis Okuwa <wojonstech@gmail.com>'
+  status: complete
+  created_at: '2026-08-04T11:02:49.816745+00:00'
+  completed_at: '2026-08-04T11:04:17.657926+00:00'
