@@ -902,3 +902,26 @@ tasks:
   status: complete
   created_at: '2026-08-04T08:00:35.734003+00:00'
   completed_at: '2026-08-04T08:01:44.391063+00:00'
+- id: e2e-multi-server
+  title: "GAP-002/MULTI-003: multi-server E2E \u2014 two bunkerd instances, isolation,\
+    \ use/--server switching + exec flag-separator fix"
+  criteria:
+  - 'Two bunkerd instances run simultaneously on one host on disjoint ports (A: 19090/18080,
+    B: 19091/18081) and are both reachable from one CLI config'
+  - Agents spawned on both instances from a remote client; port ranges and agent users
+    are disjoint between instances
+  - 'Isolation verified: bunker list on each instance shows only its own agents; agents
+    on A not visible from B and vice versa'
+  - bunker use and --server switching work for status, list, spawn, destroy
+  - bunker exec produces VERIFY-MULTI-SERVER-PASS on agents of BOTH instances (rootless
+    docker through each daemon)
+  - 'exec flag-separator bug fixed: ''bunker exec <id> --server X -- <cmd>'' and ''bunker
+    exec <id> --timeout N -- <cmd>'' send the real command (not ''--''); regression
+    tests added in internal/cli/exec_test.go'
+  - All scratch agents destroyed after verification; instance B shut down; live daemon
+    healthy (active, healthz ok, 0 bunker- users)
+  - Evidence doc committed at docs/dogfood/2026-08-04-gap-002-multi-server-e2e.md
+    with both instances' spawn/exec output
+  status: complete
+  created_at: '2026-08-04T10:01:40.757621+00:00'
+  completed_at: '2026-08-04T10:02:47.645480+00:00'
