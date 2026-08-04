@@ -20,12 +20,88 @@ echo ""
 export BUNKER_TOKEN="test-regression-token"
 BUNKER="/usr/local/bin/bunker"
 
+# Coexistence mode (CI on bunker-mvp): the host runs a systemd-managed
+# production bunkerd on :19090/:18080. Use dedicated ports + a temp config and
+# NEVER wipe production users or touch the live service. Standalone (default):
+# full take-over like the original design. In coexist mode the CLI config is
+# isolated via HOME so the battery's connect does not clobber the live host's
+# /root/.bunker.
+BUNKERD_COEXIST="${BUNKERD_COEXIST:-}"
+BUNKERD_GRPC_ADDR="${BUNKERD_GRPC_ADDR:-:29091}"
+BUNKERD_REST_ADDR="${BUNKERD_REST_ADDR:-:28081}"
+BUNKERD_PID=""
+if [ -n "$BUNKERD_COEXIST" ]; then
+    export HOME="$(mktemp -d /tmp/bunker-battery-home-XXXXXX)"
+    BATTERY_CONFIG="$(mktemp /tmp/bunkerd-battery-XXXXXX.yaml)"
+    cat > "$BATTERY_CONFIG" <<EOF
+server:
+  grpc_addr: "$BUNKERD_GRPC_ADDR"
+  rest_addr: "$BUNKERD_REST_ADDR"
+auth:
+  enabled: false
+agent:
+  ssh_dir: /etc/bunkerd/ssh
+  max_agents: 10
+  port_range_start: 30000
+  port_range_end: 30999
+  port_range_per_agent: 100
+EOF
+fi
+
+if [ -n "$BUNKERD_COEXIST" ]; then
+    GRPC_PORT="${BUNKERD_GRPC_ADDR#:}"
+    REST_PORT="${BUNKERD_REST_ADDR#:}"
+else
+    GRPC_PORT="19090"
+    REST_PORT="18080"
+fi
+
+cleanup() {
+    # Destroy any agents created during tests
+    for agent in e2e-main e2e-agent-2 e2e-agent-3 e2e-agent-4 e2e-agent-5; do
+        $BUNKER destroy "$agent" --force > /dev/null 2>&1 || true
+    done
+    # Kill leftover users. Standalone: every bunker- user is fair game.
+    # Coexist: only this battery's own agents (bunker-e2e-*) — NEVER touch
+    # production users.
+    if [ -z "$BUNKERD_COEXIST" ]; then
+        for u in $(awk -F: '/^bunker-/ {print $1}' /etc/passwd); do
+            userdel -rf "$u" 2>/dev/null || true
+        done
+    else
+        for u in $(awk -F: '/^bunker-e2e-/ {print $1}' /etc/passwd); do
+            userdel -rf "$u" 2>/dev/null || true
+        done
+    fi
+    # Stop the battery's own bunkerd (coexist mode only)
+    if [ -n "$BUNKERD_PID" ]; then
+        kill "$BUNKERD_PID" 2>/dev/null || true
+        wait "$BUNKERD_PID" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
+
 # Clean up any leftover test agents
 echo "=== CLEANUP ==="
-for u in $(awk -F: '/^bunker-/ {print $1}' /etc/passwd); do
-    userdel -rf "$u" 2>/dev/null || true
-done
+if [ -n "$BUNKERD_COEXIST" ]; then
+    # Coexist: only this battery's own agents (bunker-e2e-*) — NEVER touch
+    # production users.
+    for u in $(awk -F: '/^bunker-e2e-/ {print $1}' /etc/passwd); do
+        userdel -rf "$u" 2>/dev/null || true
+    done
+else
+    for u in $(awk -F: '/^bunker-/ {print $1}' /etc/passwd); do
+        userdel -rf "$u" 2>/dev/null || true
+    done
+fi
 echo ""
+
+# Start the battery's own daemon in coexist mode (isolated ports, temp config)
+if [ -n "$BUNKERD_COEXIST" ]; then
+    /usr/local/bin/bunkerd -c "$BATTERY_CONFIG" > /var/log/bunkerd-battery.log 2>&1 &
+    BUNKERD_PID=$!
+    sleep 2
+fi
 
 # =============================================
 # 1. SERVER HEALTH
@@ -37,16 +113,16 @@ else
     fail "bunkerd not running"
 fi
 
-if ss -tlnp | grep -q ":19090"; then
-    assert "gRPC listening on :19090"
+if ss -tlnp | grep -q ":$GRPC_PORT"; then
+    assert "gRPC listening on :$GRPC_PORT"
 else
-    fail "gRPC port 19090 not listening"
+    fail "gRPC port $GRPC_PORT not listening"
 fi
 
-if ss -tlnp | grep -q ":18080"; then
-    assert "REST listening on :18080"
+if ss -tlnp | grep -q ":$REST_PORT"; then
+    assert "REST listening on :$REST_PORT"
 else
-    fail "REST port 18080 not listening"
+    fail "REST port $REST_PORT not listening"
 fi
 echo ""
 
@@ -54,7 +130,7 @@ echo ""
 # 2. CONNECT
 # =============================================
 echo "=== 2. Connect ==="
-CONNECT_OUT=$($BUNKER connect http://localhost:18080 --token test-regression-token 2>&1)
+CONNECT_OUT=$($BUNKER connect "http://localhost:${REST_PORT}" --token test-regression-token 2>&1)
 if echo "$CONNECT_OUT" | grep -q "Connected\|Server registered"; then
     assert "connect to bunkerd"
 else
@@ -330,7 +406,11 @@ for agent in e2e-main e2e-agent-2 e2e-agent-3 e2e-agent-4 e2e-agent-5; do
 done
 sleep 3
 
-REMAINING=$(awk -F: '/^bunker-/ {print $1}' /etc/passwd | wc -l)
+if [ -n "$BUNKERD_COEXIST" ]; then
+    REMAINING=$(grep -c '^bunker-e2e-' /etc/passwd 2>/dev/null || true)
+else
+    REMAINING=$(awk -F: '/^bunker-/ {print $1}' /etc/passwd | wc -l)
+fi
 if [ "$REMAINING" -eq 0 ]; then
     assert "all agents cleaned up"
 else
@@ -348,7 +428,7 @@ else
     fail "bunkerd config missing"
 fi
 
-if [ -f "/root/.bunker/config.yaml" ]; then
+if [ -f "${HOME}/.bunker/config.yaml" ]; then
     assert "CLI config exists"
 else
     note "CLI config not found"
@@ -373,7 +453,13 @@ echo ""
 echo "=== 12. Regression Suite ==="
 if [ -f "/opt/bunker/regression-tests.sh" ]; then
     cd /opt/bunker
-    REG_OUT=$(bash regression-tests.sh 2>&1 || true)
+    if [ -n "$BUNKERD_COEXIST" ]; then
+        # Coexist: nested regression suite gets its own ports so it does not
+        # collide with this battery's own daemon (or the live production one).
+        REG_OUT=$(BUNKERD_GRPC_ADDR=":29092" BUNKERD_REST_ADDR=":28082" bash regression-tests.sh 2>&1 || true)
+    else
+        REG_OUT=$(bash regression-tests.sh 2>&1 || true)
+    fi
     REG_EXIT=$?
     # Count assertions
     REG_PASS=$(echo "$REG_OUT" | grep -c "✓\|PASS" || echo "0")

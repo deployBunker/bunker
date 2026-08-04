@@ -116,6 +116,10 @@ jobs:
         timeout-minutes: 10
 
       - name: E2E battery
+        env:
+          BUNKERD_COEXIST: "1"
+          BUNKERD_GRPC_ADDR: ":29091"
+          BUNKERD_REST_ADDR: ":28081"
         run: bash e2e-full-battery.sh
         timeout-minutes: 15
 
