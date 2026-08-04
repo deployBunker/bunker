@@ -119,6 +119,17 @@ else
     fail "bunkerd not running"
 fi
 
+# Coexist mode: the battery MUST run against its OWN daemon. A stale daemon
+# squatting the battery ports (leftover repro/crash) would otherwise produce
+# a false pass — kill -0 on BUNKERD_PID fails fast instead (GAP-006 follow-up).
+if [ -n "$BUNKERD_COEXIST" ] && [ -n "$BUNKERD_PID" ]; then
+    if kill -0 "$BUNKERD_PID" 2>/dev/null; then
+        assert "battery's own bunkerd alive (PID=$BUNKERD_PID)"
+    else
+        fail "battery's own bunkerd (PID=$BUNKERD_PID) not running — ports may be squatted by a stale daemon"
+    fi
+fi
+
 if ss -tlnp | grep -q ":$GRPC_PORT"; then
     assert "gRPC listening on :$GRPC_PORT"
 else
