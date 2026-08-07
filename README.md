@@ -48,11 +48,26 @@ Bunker is a **multi-agent hosting platform** — a daemon (`bunkerd`) that runs 
 
 ## Quick Start
 
+### Live demo
+
+A public demo instance runs on **bunker-mvp** (`78.46.173.180`, gRPC :19090 / REST :18080) with auth enforced. Try the platform without standing up your own root daemon:
+
+```bash
+# Install the CLI (or: make build && ./bunker)
+go install github.com/deployBunker/bunker/cmd/bunker@latest
+
+bunker connect http://78.46.173.180:18080 --token <your-demo-token>
+bunker status
+bunker spawn --ttl 1h demo-agent
+```
+
+The demo is a shared, resource-limited sandbox (max 50 agents; per-agent CPU/memory/disk caps, default 1h TTL) — **do not run production workloads on it**. Auth is enforced: every request needs a bearer token (`bunker connect --token`), and unauthenticated clients receive `401`. Demo tokens are provisioned on request — ask the [deployBunker](https://github.com/deployBunker) maintainers. See [docs/integration.md](docs/integration.md) for the full client-server protocol.
+
 ### Prerequisites
 
 - Linux host (Ubuntu 24.04+ recommended)
 - **Root access on the host** — `bunkerd` must run as root. Agent spawn creates Linux users (`useradd`) and systemd user slices (`systemd-run`) for cgroup resource limits; both require root privileges. A non-root daemon starts and serves read-only endpoints (list, version, health), but `bunker spawn` fails with `useradd: Permission denied`. The `bunker` CLI itself can run as any user — it talks to the daemon over gRPC/REST.
-- Go 1.24+
+- Go 1.26+
 - Docker CE (for rootless support)
 - `sshfs` (for mount command)
 - `cloudflared` (optional, for tunnels)
@@ -212,7 +227,7 @@ bunker destroy     Tear down an agent
 
 | Layer | Technology |
 |-------|-----------|
-| Language | Go 1.25+ |
+| Language | Go (1.26+, per [go.mod](go.mod)) |
 | RPC | [connect-go](https://connectrpc.com/) (gRPC + REST, single binary) |
 | HTTP router | [chi](https://github.com/go-chi/chi) |
 | CLI | [cobra](https://github.com/spf13/cobra) + [viper](https://github.com/spf13/viper) |
@@ -226,8 +241,12 @@ bunker destroy     Tear down an agent
 ## Development
 
 ```bash
-# Build everything
-go build ./...
+# Build the CLI + daemon binaries (produces ./bunker and ./bunkerd in the repo root)
+go build -o bunker ./cmd/bunker
+go build -o bunkerd ./cmd/bunkerd
+
+# Or use make build — same binaries with Version/Commit/BuildDate baked in
+make build
 
 # Run tests
 go test ./... -short
