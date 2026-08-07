@@ -62,8 +62,8 @@ Bunker is a **multi-agent hosting platform** — a daemon (`bunkerd`) that runs 
 ```bash
 git clone https://github.com/deployBunker/bunker.git
 cd bunker
-go build -o bunkerd ./cmd/bunkerd
-go build -o bunker ./cmd/bunker
+# Builds ./bunkerd and ./bunker with version info baked in (ldflags)
+make build
 ```
 
 ### Configure

@@ -21,7 +21,7 @@ func NewConnectCommand() *cobra.Command {
 		Long: `Connect to a bunkerd server and register it in the local CLI config.
 
 The server URL should be the base URL for the connect or gRPC server,
-e.g. http://localhost:9090 or https://bunker.example.com.
+e.g. http://localhost:9090 (gRPC) or http://localhost:8080 (REST).
 
 On success the server is saved to ~/.bunker/config.yaml and becomes
 the active server for subsequent commands.`,

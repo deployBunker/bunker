@@ -119,7 +119,7 @@ func DefaultConfig() *Config {
 			Hosts:      []string{"localhost"},
 		},
 		Auth: AuthConfig{
-			Enabled:   false,
+			Enabled:   true,
 			Token:     "",
 			JWTSecret: "",
 			JWTTTL:    6 * time.Hour,
@@ -128,8 +128,8 @@ func DefaultConfig() *Config {
 			BaseDataDir:                "/var/lib/bunkerd",
 			SSHDir:                     "/etc/bunkerd/ssh",
 			PortRangeStart:             10000,
-			PortRangeEnd:               10100,
-			PortRangePerAgent:          10,
+			PortRangeEnd:               19999,
+			PortRangePerAgent:          100,
 			MaxAgents:                  100,
 			DefaultCPUQuota:            2.0,
 			DefaultMemoryBytes:         4 * 1024 * 1024 * 1024,  // 4 GiB
@@ -259,4 +259,19 @@ func (c *Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+// CheckAuth is the startup authentication gate. It returns a non-empty
+// warning when authentication is explicitly disabled, and an error when
+// authentication is enabled but no credential (static token or JWT secret)
+// is configured — the daemon must refuse to start rather than silently
+// run unauthenticated.
+func (c *Config) CheckAuth() (string, error) {
+	if !c.Auth.Enabled {
+		return "bunkerd: *** WARNING: AUTH DISABLED *** — running WITHOUT authentication; any client that can reach this server can spawn/destroy agents. Set auth.enabled: true and auth.token in the config file to enable authentication.", nil
+	}
+	if c.Auth.Token == "" && c.Auth.JWTSecret == "" {
+		return "", fmt.Errorf("auth.enabled is true but neither auth.token nor auth.jwt_secret is set — set one in the config file, or explicitly set auth.enabled: false to run without authentication")
+	}
+	return "", nil
 }

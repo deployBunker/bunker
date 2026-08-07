@@ -95,6 +95,14 @@ Docker agent hosts. Send SIGINT/SIGTERM for graceful shutdown.
 		return fmt.Errorf("load config: %w", err)
 	}
 
+	// Authentication gate: refuse to start when auth is enabled but no
+	// credential is configured; warn loudly when auth is explicitly disabled.
+	if warn, err := cfg.CheckAuth(); err != nil {
+		return fmt.Errorf("refusing to start: %w", err)
+	} else if warn != "" {
+		fmt.Fprintln(os.Stderr, warn)
+	}
+
 	// Create and run server
 	srv := server.New(cfg)
 

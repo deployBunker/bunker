@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -18,14 +19,73 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.TLS.Enabled {
 		t.Error("TLS should be disabled by default")
 	}
-	if cfg.Auth.Enabled {
-		t.Error("auth should be disabled by default")
+	if !cfg.Auth.Enabled {
+		t.Error("auth should be enabled by default (secure-by-default, GAP-011)")
 	}
 	if cfg.Auth.JWTTTL != 6*time.Hour {
 		t.Errorf("expected jwt_ttl 6h, got %v", cfg.Auth.JWTTTL)
 	}
+	if cfg.Agent.PortRangeEnd != 19999 {
+		t.Errorf("expected port_range_end 19999, got %d", cfg.Agent.PortRangeEnd)
+	}
+	if cfg.Agent.PortRangePerAgent != 100 {
+		t.Errorf("expected port_range_per_agent 100, got %d", cfg.Agent.PortRangePerAgent)
+	}
 	if cfg.Agent.DefaultTTL != 6*time.Hour {
 		t.Errorf("expected agent default_ttl 6h, got %v", cfg.Agent.DefaultTTL)
+	}
+}
+
+func TestCheckAuth_DefaultRefusesWithoutCredential(t *testing.T) {
+	cfg := DefaultConfig()
+	if !cfg.Auth.Enabled {
+		t.Fatal("default auth should be enabled")
+	}
+	warn, err := cfg.CheckAuth()
+	if err == nil {
+		t.Fatal("expected error for auth enabled without token/jwt_secret")
+	}
+	if !strings.Contains(err.Error(), "auth.token") {
+		t.Errorf("error should mention auth.token, got: %v", err)
+	}
+	if warn != "" {
+		t.Errorf("expected no warning when refusing, got %q", warn)
+	}
+}
+
+func TestCheckAuth_WithToken(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Auth.Token = "test-token"
+	warn, err := cfg.CheckAuth()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if warn != "" {
+		t.Errorf("expected no warning with token set, got %q", warn)
+	}
+}
+
+func TestCheckAuth_WithJWTSecret(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Auth.JWTSecret = "test-jwt-secret-must-be-at-least-32-bytes-long"
+	warn, err := cfg.CheckAuth()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if warn != "" {
+		t.Errorf("expected no warning with jwt_secret set, got %q", warn)
+	}
+}
+
+func TestCheckAuth_ExplicitDisabledWarns(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Auth.Enabled = false
+	warn, err := cfg.CheckAuth()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(warn, "AUTH DISABLED") {
+		t.Errorf("expected prominent AUTH DISABLED warning, got %q", warn)
 	}
 }
 
