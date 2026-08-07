@@ -25,6 +25,7 @@ proto/**/*.pb.gw.go
 .coding-hermes/prompt-*.txt
 .coding-hermes/board/board.db
 .coding-hermes/board/board.db.wal
+.coding-hermes/board/*.parquet
 
 # Hilo graph data
 .vfs/
