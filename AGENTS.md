@@ -14,7 +14,7 @@ Guidelines for AI agents working on this repo.
 1. Run `hilo graph impact <file>` before changing any file.
 2. Run `gitreins guard` before every commit (Tier 1: secrets, build, lint, tests).
 3. For tasks that change agent spawn, destroy, exec, docker, or SSH behavior, run the live-server E2E battery on `bunker-mvp` (`78.46.173.180`) and confirm `VERIFY-PASS`.
-4. Update `.gitreins/tasks.yaml` and `.coding-hermes/tasks.md` when completing work items.
+4. Update `.gitreins/tasks.yaml` and `.coding-hermes/board/tasks.jsonl` when completing work items.
 
 ## Code conventions
 
