@@ -58,6 +58,7 @@ Flags:
   -v, --version    Print version
   -c, --config     Config file path (default: %s)
                    Also settable via BUNKERD_CONFIG env var
+                   Example: cp config.example.yaml /etc/bunkerd/config.yaml
 
 bunkerd starts the Bunker gRPC+REST server that manages per-user
 Docker agent hosts. Send SIGINT/SIGTERM for graceful shutdown.

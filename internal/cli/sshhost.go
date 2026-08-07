@@ -116,6 +116,20 @@ func clientTunnelArgs(tunnelCmd, resolvedHost, clientKey string) []string {
 			parts[i] = user + "@" + resolvedHost
 		}
 	}
+	// IdentitiesOnly=yes: without it, a client with a loaded ssh-agent
+	// (multiple keys) offers all agent keys first and the server's
+	// MaxAuthTries kills the connection before the correct -i key is tried.
+	hasIdentitiesOnly := false
+	for i := 0; i < len(parts); i++ {
+		if parts[i] == "-o" && i+1 < len(parts) && parts[i+1] == "IdentitiesOnly=yes" {
+			hasIdentitiesOnly = true
+			break
+		}
+	}
+	if !hasIdentitiesOnly && len(parts) > 0 && parts[0] == "ssh" {
+		// Insert after "ssh" so later -o flags keep their order.
+		parts = append(parts[:1], append([]string{"-o", "IdentitiesOnly=yes"}, parts[1:]...)...)
+	}
 	return parts
 }
 

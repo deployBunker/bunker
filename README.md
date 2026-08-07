@@ -68,6 +68,15 @@ go build -o bunker ./cmd/bunker
 
 ### Configure
 
+A ready-made example lives at `config.example.yaml` in the repo root:
+
+```bash
+cp config.example.yaml /etc/bunkerd/config.yaml
+# edit /etc/bunkerd/config.yaml — set auth.token before first start
+```
+
+Or write the file directly:
+
 ```bash
 cat > /etc/bunkerd/config.yaml << EOF
 server:

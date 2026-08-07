@@ -135,4 +135,4 @@ bunker metrics ci-runner
 bunker destroy ci-runner --force
 ```
 
-**Do NOT use** until DOGFOOD-001/002 land: `bunker env *`, `bunker cp`, `bunker deploy`, `bunker tunnel` (from a remote client).
+**Status update (2026-08-06, GAP-009):** this "Do NOT use" warning is **resolved** — DOGFOOD-001/002 landed in ticks #192-193 (commits 9896c99..e6879ab, fd282b1) and were live-verified at the time; a fresh remote-client re-verification ran 2026-08-06 (tick #231): `bunker env set/list/get/unset`, `bunker cp`, `bunker deploy`, `bunker tunnel` (docker through forwarded socket) all PASS from kara against bunker-mvp. A follow-up client fix (IdentitiesOnly=yes for ssh/scp/sshfs/tunnel) closed the last remote-client gap found during that re-verification. `bunker env *`, `bunker cp`, `bunker deploy`, `bunker tunnel` ARE safe to use from a remote client.

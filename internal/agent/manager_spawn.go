@@ -494,7 +494,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// port; on the rare occasion two agents are tunnelled from the same client
 	// the user can pick a different local port with `bunker tunnel <id> <port>`.
 	dockerHostTunnel := fmt.Sprintf(
-		"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -i %s -L 2376:%s %s@%s -N",
+		"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o IdentitiesOnly=yes -i %s -L 2376:%s %s@%s -N",
 		sshKeyPath, dockerSockPath, username, host,
 	)
 

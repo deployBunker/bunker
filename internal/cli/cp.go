@@ -160,6 +160,7 @@ Examples:
 				"-o", "UserKnownHostsFile=/dev/null",
 				"-o", "LogLevel=ERROR",
 				"-o", "ConnectTimeout=10",
+				"-o", "IdentitiesOnly=yes",
 				"-i", keyPath,
 				"-p", fmt.Sprintf("%d", port),
 				userAtHost,
@@ -207,6 +208,7 @@ func buildSCPArgs(keyPath string, port uint32, localPath, userAtHost, remotePath
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "LogLevel=ERROR",
 		"-o", "ConnectTimeout=10",
+		"-o", "IdentitiesOnly=yes",
 		"-i", keyPath,
 		"-P", fmt.Sprintf("%d", port),
 	}

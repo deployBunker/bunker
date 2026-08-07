@@ -2,6 +2,8 @@
 
 This is the diagnostic trail for Bunker (a multi-agent hosting platform): how the system is put together, why, the errors encountered during real use (2026-08-03 dogfood run), and the right way to do things. Written so a future agent can answer "does this work / how do I use it" without re-deriving everything.
 
+> **STATUS (2026-08-06, verified live):** DOGFOOD-001, DOGFOOD-002, DOGFOOD-003 are **FIXED and live-verified** — see the per-section notes below for commits. A remote-client re-verification of the full env/cp/deploy/tunnel battery ran 2026-08-06 (GAP-009, tick #231): all PASS, including a follow-up fix (IdentitiesOnly=yes for client ssh/scp, `bunker env *`, `bunker cp`, `bunker deploy`, `bunker tunnel` all work from a remote client with a loaded ssh-agent). The sections below keep the original failure descriptions for history — the "landmine" wording describes the state BEFORE the fixes.
+
 ## 1. What Bunker is and how it's built
 
 **Architecture in one paragraph:** `bunkerd` (daemon, runs as root on a Linux host) exposes `Bunkerd`/`Agent` gRPC+REST services via connect-go on two ports (default REST :18080, gRPC :19090 on the live MVP; :8080/:9090 in docs — the README's ports don't match the deployed server, another small doc drift). `bunker` (cobra CLI) talks to it over HTTP/2. Each agent = a real Linux user (`bunker-<id>`) with its own home, SSH keypair, a rootless dockerd (via `dockerd-rootless-setuptool.sh`), a port range (e.g. 10000-10099), and cgroup limits enforced through a systemd user-slice drop-in (`/etc/systemd/system/user-<uid>.slice.d/50-bunker.conf`). `bunker exec` runs commands via SSH as that user; env vars live in `/run/bunker/<id>/env` and are sourced at the start of every exec.
@@ -24,18 +26,18 @@ bunker exec <id> -- <cmd> <args...>
   → ssh as bunker-<id>@host → dash parses → executes
 ```
 
-**THE known landmine (DOGFOOD-001):** `remoteCmd` is joined **without quoting**. If the CLI sends `Command:"sh", Args:["-c", "<snippet>"]` (which `bunker env *` does), the remote dash parses `... sh -c if [ -f '...' ]; then ...` — `if` becomes an argument to the inner `sh -c`, `then` is orphaned → `Syntax error: "then" unexpected`. Same mechanism produces `-f: 1: [: missing ]` (from `sh -c '['`), and the gawk usage error on `env get`. **The right way:** the server must quote the snippet when joining (`sh -c '<snippet>'` with proper escaping), or the CLI must stop self-wrapping and pass args through for the server to join (a plain `bunker exec <id> -- docker run --rm alpine echo hello` works because all words are separate args and the first is a real binary).
+**THE known landmine (DOGFOOD-001):** ~~`remoteCmd` is joined **without quoting**. If the CLI sends `Command:"sh", Args:["-c", "<snippet>"]` (which `bunker env *` does), the remote dash parses `... sh -c if [ -f '...' ]; then ...` — `if` becomes an argument to the inner `sh -c`, `then` is orphaned → `Syntax error: "then" unexpected`. Same mechanism produces `-f: 1: [: missing ]` (from `sh -c '['`), and the gawk usage error on `env get`.~~ **FIXED (tick #192, commits 9896c99 / 5151025 / b96f696 / 956d307 / e6879ab):** the server now (1) shellQuoteSingle-quotes every arg, (2) wraps the joined command in `sh -c '<joined>'`, (3) guards the env-file source with `[ -f ]`, (4) uses `set -a` so injected vars reach the child shell. Round-trip unit tests execute the built command through sh; live E2E on bunker-mvp passed 10/10 (env set/get/list/unset, compound snippets, if/then, awk, &&). Re-verified from a remote client 2026-08-06 (GAP-009).
 
 **How to test without a full server:** the failure reproduces with any compound snippet through exec:
 `bunker exec <id> -- "if [ -f /etc/hostname ]; then cat /etc/hostname; fi"` → fails. `"[ -f /etc/hostname ] && cat /etc/hostname"` → works.
 
 ## 3. The SSH-command landmine (DOGFOOD-002)
 
-`cp`/`deploy`/`tunnel`/printed-bundle commands all assume (a) the server's self-reported hostname resolves on the client, and (b) the server-side key path `/etc/bunkerd/ssh/<id>` exists on the client. On the server host itself both are true → the E2E battery passes. From any real client they fail with `Could not resolve hostname` / `Identity file ... not accessible`. **The right way:** derive the SSH host from the configured server URL (IP) with a `--ssh-host` override, and always use the client-side key `~/.bunker/keys/<id>` that spawn saves. This cluster is why "E2E on-server green" ≠ "works for users" — the battery's blind spot is the client side of the SSH features.
+~~`cp`/`deploy`/`tunnel`/printed-bundle commands all assume (a) the server's self-reported hostname resolves on the client, and (b) the server-side key path `/etc/bunkerd/ssh/<id>` exists on the client. On the server host itself both are true → the E2E battery passes. From any real client they fail with `Could not resolve hostname` / `Identity file ... not accessible`.~~ **FIXED in two parts:** (1) tick #193 (commit fd282b1) — the client now derives the SSH host from the configured server URL (IP) with a `--ssh-host` override, and uses the client-side key `~/.bunker/keys/<id>` that spawn saves (`internal/cli/sshhost.go`); (2) tick #231 (GAP-009 follow-up) — client ssh/scp/sshfs/tunnel commands now pass `-o IdentitiesOnly=yes` so a loaded ssh-agent (multiple keys) can't exhaust the server's MaxAuthTries before the correct `-i` key is offered (commits: buildSCPArgs + chown paths in `internal/cli/cp.go`/`deploy.go`, sshfs in `mount.go`, tunnel rewrite in `sshhost.go`, server bundle in `internal/agent/manager_spawn.go`). **Live remote-client verification 2026-08-06:** `bunker cp` + `bunker deploy` copied files onto the agent; `bunker tunnel` forwarded the agent's docker socket and `docker run --rm alpine echo TUNNEL-DOCKER-PASS` ran through it (GAP-009 evidence).
 
 ## 4. Validation gap (DOGFOOD-003)
 
-`SpawnAgent` TTL: invalid durations fall through to the default instead of `CodeInvalidArgument` (spec: specs/api.md says bad TTL → CodeInvalidArgument). TTL parsing lives server-side; `time.ParseDuration` should be called and errors mapped to `connect.CodeInvalidArgument`.
+~~`SpawnAgent` TTL: invalid durations fall through to the default instead of `CodeInvalidArgument` (spec: specs/api.md says bad TTL → CodeInvalidArgument). TTL parsing lives server-side; `time.ParseDuration` should be called and errors mapped to `connect.CodeInvalidArgument`.~~ **FIXED (tick #194, commit bf1e556):** new `internal/agent/ttl.go` parser accepts `\d+[hmd]` (incl. days), rejects garbage/zero/overflow with `CodeInvalidArgument` at Spawn step 1a; API-key TTL block reuses the parser so agent+key expiry agree. 28-case table test. Live E2E: `--ttl banana` → invalid_argument + 0 agents; `--ttl 7d` → expires exactly +7d.
 
 ## 5. What a failed spawn leaves behind (verified — it's clean)
 
@@ -52,8 +54,10 @@ Spawn order: allocate port range → create user → start dockerd → write key
 
 ## 7. How to validate a fix for the dogfood findings (the real-user way)
 
+All three are now FIXED and re-verified live 2026-08-06 (GAP-009, tick #231). The checklist below is the standing regression battery for future changes:
+
 1. **DOGFOOD-001:** from a client machine (NOT the server host): `bunker env set <id> A=B`, `env list`, `env get`, `env unset`, plus `bunker exec <id> -- "if true; then echo ok; fi"` → all must work.
-2. **DOGFOOD-002:** from a client machine: `bunker cp`, `bunker deploy`, `bunker tunnel` against the live server must connect via the configured URL host + client key.
+2. **DOGFOOD-002:** from a client machine: `bunker cp`, `bunker deploy`, `bunker tunnel` against the live server must connect via the configured URL host + client key (and must work even with a loaded ssh-agent — IdentitiesOnly fix, tick #231).
 3. **DOGFOOD-003:** `bunker spawn --ttl banana` must error with CodeInvalidArgument, not create an agent.
 4. Always destroy scratch agents afterwards (`bunker destroy <id> --force`) and confirm `bunker list` is back to 0/expected.
 

@@ -1,0 +1,69 @@
+# Bunker daemon configuration example.
+#
+# Copy to /etc/bunkerd/config.yaml and edit before first start:
+#   cp config.example.yaml /etc/bunkerd/config.yaml
+#
+# Every key below matches the README quick-start config and the daemon's
+# built-in defaults (internal/config/config.go). Unset keys fall back to
+# those defaults; env overrides use BUNKERD_<SECTION>_<KEY> (e.g.
+# BUNKERD_SERVER_GRPC_ADDR, BUNKERD_AUTH_TOKEN).
+
+server:
+  grpc_addr: ":9090"          # gRPC listen address
+  rest_addr: ":8080"          # REST (connect-go) listen address
+  request_timeout: 300s       # per-request timeout
+
+# TLS for the gRPC/REST listeners. Leave disabled for plaintext.
+# tls:
+#   enabled: false
+#   cert_file: ""
+#   key_file: ""
+#   auto_tls: false
+#   self_signed: false
+#   domain: ""
+#   mtls: false
+#   ca_file: ""
+#   verify_cn: ""
+#   hosts: ["localhost"]
+
+auth:
+  enabled: true               # require the master token on every request
+  token: "your-master-token-here"  # CHANGE ME — also used by `bunker connect`
+  # jwt_secret: ""            # optional; auto-generated when empty
+  # jwt_ttl: 6h
+
+agent:
+  ssh_dir: /etc/bunkerd/ssh   # server-side agent SSH key storage
+  max_agents: 50
+  default_cpu_quota: 2.0           # 2 CPU cores
+  default_memory_bytes: 4294967296  # 4 GB
+  default_disk_bytes: 21474836480   # 20 GB
+  default_max_processes: 4096
+  default_max_open_files: 65536
+  default_max_docker_containers: 10
+  port_range_start: 10000
+  port_range_end: 19999
+  port_range_per_agent: 100
+  # default_ttl: 6h           # default agent TTL (\\d+[hmd] format, e.g. 6h/90m/7d)
+
+# Cloudflare TryCloudflare quick tunnels for agents (optional).
+# tunnel:
+#   enabled: true
+#   binary_path: cloudflared
+#   tunnel_port: 8080
+#   no_autoupdate: true
+#   startup_timeout: 30s
+
+# Cloudflare named tunnel (custom domain routing, optional).
+# named_tunnel:
+#   enabled: false
+#   name: ""
+#   credentials_file: ""
+#   domain: ""
+
+# Tailscale per-agent mesh networking (optional).
+# tailscale:
+#   enabled: false
+#   binary_path: tailscale
+#   authkey: ""
+#   startup_timeout: 30s

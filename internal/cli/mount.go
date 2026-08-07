@@ -99,6 +99,7 @@ Examples:
 			sshfsArgs := []string{
 				"-o", "StrictHostKeyChecking=no",
 				"-o", "UserKnownHostsFile=/dev/null",
+				"-o", "IdentitiesOnly=yes",
 			}
 			// Append everything except the leading `sshfs` and trailing mount
 			// point, then the mount point last.

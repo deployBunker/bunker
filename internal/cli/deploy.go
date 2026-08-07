@@ -152,6 +152,7 @@ Examples:
 				"-o", "UserKnownHostsFile=/dev/null",
 				"-o", "LogLevel=ERROR",
 				"-o", "ConnectTimeout=10",
+				"-o", "IdentitiesOnly=yes",
 				"-i", keyPath,
 				"-p", fmt.Sprintf("%d", port),
 				userAtHost,

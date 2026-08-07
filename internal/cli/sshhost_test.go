@@ -254,7 +254,7 @@ func TestClientTunnelArgs(t *testing.T) {
 			resolvedHost: "78.46.173.180",
 			clientKey:    "/home/kara/.bunker/keys/abc",
 			wantParts: []string{
-				"ssh", "-o", "StrictHostKeyChecking=no",
+				"ssh", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=no",
 				"-i", "/home/kara/.bunker/keys/abc",
 				"-L", "2376:/run/bunker/abc/docker.sock",
 				"bunker-abc@78.46.173.180", "-N",
@@ -267,7 +267,7 @@ func TestClientTunnelArgs(t *testing.T) {
 			resolvedHost: "bunker-mvp",
 			clientKey:    "/home/kara/.bunker/keys/abc",
 			wantParts: []string{
-				"ssh", "-o", "StrictHostKeyChecking=no",
+				"ssh", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=no",
 				"-i", "/home/kara/.bunker/keys/abc",
 				"-L", "2376:/run/bunker/abc/docker.sock",
 				"bunker-abc@bunker-mvp", "-N",
@@ -280,8 +280,21 @@ func TestClientTunnelArgs(t *testing.T) {
 			resolvedHost: "203.0.113.10",
 			clientKey:    "/home/kara/.bunker/keys/abc",
 			wantParts: []string{
-				"ssh", "-L", "2376:/run/bunker/abc/docker.sock",
+				"ssh", "-o", "IdentitiesOnly=yes",
+				"-L", "2376:/run/bunker/abc/docker.sock",
 				"bunker-abc@203.0.113.10", "-N",
+			},
+		},
+		{
+			name:         "already has IdentitiesOnly=yes, not duplicated",
+			cmd:          "ssh -o IdentitiesOnly=yes -i /etc/bunkerd/ssh/abc -L 2376:/run/bunker/abc/docker.sock bunker-abc@bunker-mvp -N",
+			resolvedHost: "78.46.173.180",
+			clientKey:    "/home/kara/.bunker/keys/abc",
+			wantParts: []string{
+				"ssh", "-o", "IdentitiesOnly=yes",
+				"-i", "/home/kara/.bunker/keys/abc",
+				"-L", "2376:/run/bunker/abc/docker.sock",
+				"bunker-abc@78.46.173.180", "-N",
 			},
 		},
 	}
@@ -324,7 +337,7 @@ func TestRewriteTunnelCommand(t *testing.T) {
 			serverHost:   "bunker-mvp",
 			resolvedHost: "78.46.173.180",
 			clientKey:    "/home/kara/.bunker/keys/abc",
-			want:         "ssh -o StrictHostKeyChecking=no -i /home/kara/.bunker/keys/abc -L 2376:/run/bunker/abc/docker.sock bunker-abc@78.46.173.180 -N",
+			want:         "ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i /home/kara/.bunker/keys/abc -L 2376:/run/bunker/abc/docker.sock bunker-abc@78.46.173.180 -N",
 		},
 		{
 			name:         "unchanged when resolved equals server host",
