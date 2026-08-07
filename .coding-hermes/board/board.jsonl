@@ -1,16 +1,1 @@
-{
-  "project": "Bunker",
-  "namespace": "bunker",
-  "version": 2,
-  "last_tick": "2026-08-07 01:02:56.197520",
-  "ticks_total": 234,
-  "ticks_idle": 99,
-  "cooldown_s": 900,
-  "service_port": null,
-  "service_url": null,
-  "health_endpoint": null,
-  "git_branch": "main",
-  "git_remote": "origin",
-  "last_commit": "cb3f2c5",
-  "updated_at": "2026-08-07 01:02:56.197520"
-}
+{"project":"Bunker","namespace":"bunker","version":2,"last_tick":"2026-08-07 09:19:16.000000","ticks_total":235,"ticks_idle":100,"cooldown_s":900,"service_port":null,"service_url":null,"health_endpoint":null,"git_branch":"main","git_remote":"origin","last_commit":"ce6e979","updated_at":"2026-08-07 09:19:16.000000"}
