@@ -21,6 +21,7 @@ Rootless helpers in `rootless.go`:
 ## Conventions
 
 - Every agent runs as a dedicated `bunker-<agent-id>` Linux user.
+- The spawn bundle's docker-host tunnel command includes `-o IdentitiesOnly=yes` (GAP-009/c238df4) so clients with loaded ssh-agents can't exhaust the server's `MaxAuthTries` before the agent key is offered.
 - Agent IDs must match `^[a-z0-9-]{1,63}$`; empty IDs are replaced with a UUID short segment.
 - Private SSH keys are persisted under `cfg.Agent.SSHDir` (`/etc/bunkerd/ssh` by default) for server-side use; the public key is written to the agent's `~/.ssh/authorized_keys` with an `environment="DOCKER_HOST=..."` prefix.
 - Docker socket is created at `/run/bunker/<agent-id>/docker.sock` and chowned to the agent user.
