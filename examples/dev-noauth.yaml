@@ -1,0 +1,35 @@
+# Bunker example configuration — minimal no-auth local dev.
+#
+# For local development only: runs WITHOUT authentication so any client
+# that can reach the ports can spawn/destroy agents. Do NOT deploy this
+# to a host reachable from a network you don't trust.
+#
+# Run:
+#   cp examples/dev-noauth.yaml /tmp/bunkerd-dev.yaml
+#   bunkerd --config /tmp/bunkerd-dev.yaml
+#
+# The daemon prints a loud AUTH DISABLED warning on startup — expected.
+# Connect with:
+#   bunker connect http://127.0.0.1:9090
+#   bunker spawn
+
+server:
+  grpc_addr: "127.0.0.1:9090"   # loopback only
+  rest_addr: "127.0.0.1:8080"   # loopback only
+  request_timeout: 300s
+
+auth:
+  enabled: false                # NO AUTH — dev only
+
+agent:
+  ssh_dir: /tmp/bunkerd-ssh     # agent SSH keys land under /tmp
+  max_agents: 10
+  default_cpu_quota: 1.0
+  default_memory_bytes: 1073741824    # 1 GB
+  default_disk_bytes: 1073741824      # 1 GB
+  default_max_processes: 1024
+  default_max_open_files: 16384
+  default_max_docker_containers: 2
+  port_range_start: 10000
+  port_range_end: 10999
+  port_range_per_agent: 100

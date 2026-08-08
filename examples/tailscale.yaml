@@ -1,0 +1,41 @@
+# Bunker example configuration — Tailscale per-agent mesh networking.
+#
+# Requires the `tailscale` CLI on the bunkerd host and an auth key with
+# permission to create nodes (Tailscale admin console → Settings → Keys).
+# Each spawned agent gets a tailnet IP instead of a public tunnel.
+#
+# Run:
+#   cp examples/tailscale.yaml /etc/bunkerd/config.yaml
+#   # edit auth.token and tailscale.authkey, then:
+#   bunkerd --config /etc/bunkerd/config.yaml
+#
+# Spawn an agent on the tailnet:
+#   bunker spawn --network tailscale
+
+server:
+  grpc_addr: ":9090"
+  rest_addr: ":8080"
+  request_timeout: 300s
+
+auth:
+  enabled: true
+  token: "your-master-token-here"   # CHANGE ME
+
+agent:
+  ssh_dir: /etc/bunkerd/ssh
+  max_agents: 50
+  default_cpu_quota: 2.0
+  default_memory_bytes: 4294967296      # 4 GB
+  default_disk_bytes: 21474836480       # 20 GB
+  default_max_processes: 4096
+  default_max_open_files: 65536
+  default_max_docker_containers: 10
+  port_range_start: 10000
+  port_range_end: 19999
+  port_range_per_agent: 100
+
+tailscale:
+  enabled: true
+  binary_path: tailscale
+  authkey: "tskey-auth-XXXXXXXXXXXXXXX"   # CHANGE ME
+  startup_timeout: 30s

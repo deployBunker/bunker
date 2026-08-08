@@ -1,0 +1,42 @@
+# Bunker example configuration — TLS with self-signed certificates.
+#
+# self_signed: true makes bunkerd generate a self-signed cert/key pair at
+# the configured paths on first start (tlsutil.LoadOrGenerateSelfSigned),
+# so no external cert provisioning is needed for a private deployment.
+#
+# Run:
+#   mkdir -p /etc/bunkerd/tls
+#   cp examples/tls.yaml /etc/bunkerd/config.yaml
+#   bunkerd --config /etc/bunkerd/config.yaml
+#
+# Connect with TLS (client skips verification for the self-signed cert):
+#   bunker connect https://host.example:9443 --token your-master-token-here --tls-insecure
+
+server:
+  grpc_addr: ":9443"            # gRPC over TLS
+  rest_addr: ":8443"            # REST over TLS
+  request_timeout: 300s
+
+tls:
+  enabled: true
+  self_signed: true             # auto-generate a self-signed pair
+  cert_file: /etc/bunkerd/tls/cert.pem
+  key_file: /etc/bunkerd/tls/key.pem
+  hosts: ["localhost", "bunkerd.example.com"]   # SANs embedded in the generated cert
+
+auth:
+  enabled: true
+  token: "your-master-token-here"   # CHANGE ME
+
+agent:
+  ssh_dir: /etc/bunkerd/ssh
+  max_agents: 50
+  default_cpu_quota: 2.0
+  default_memory_bytes: 4294967296      # 4 GB
+  default_disk_bytes: 21474836480       # 20 GB
+  default_max_processes: 4096
+  default_max_open_files: 65536
+  default_max_docker_containers: 10
+  port_range_start: 10000
+  port_range_end: 19999
+  port_range_per_agent: 100
