@@ -950,3 +950,24 @@ tasks:
   status: complete
   created_at: '2026-08-04T11:02:49.816745+00:00'
   completed_at: '2026-08-04T11:04:17.657926+00:00'
+- id: GAP-019
+  title: Add examples/ reference configs and lifecycle script
+  criteria:
+  - examples/ directory exists with at least 3 files
+  - examples/dev-noauth.yaml loads via config.Load with auth disabled and loopback
+    addresses
+  - examples/tls.yaml loads via config.Load with TLS enabled and self_signed true
+  - examples/tailscale.yaml loads via config.Load with tailscale enabled
+  - examples/spawn-exec-destroy.sh is a valid bash script (bash -n passes)
+  status: complete
+  created_at: '2026-08-08T12:37:34.748432+00:00'
+  completed_at: '2026-08-08T12:37:38.652098+00:00'
+- id: GAP-020
+  title: Add cmd/bunkerd entrypoint tests
+  criteria:
+  - cmd/bunkerd/main_test.go exists with TestBunkerdFlags, TestConfigLoad, TestStartupShutdown
+  - go test ./cmd/bunkerd -short reports at least 3 tests passing
+  - TestStartupShutdown boots daemon on scratch port and exits cleanly on SIGTERM
+  status: complete
+  created_at: '2026-08-08T12:37:34.855152+00:00'
+  completed_at: '2026-08-08T12:38:18.860905+00:00'
