@@ -9,7 +9,7 @@ Last Updated: 2026-07-19
 Bunker uses Protocol Buffers with connect-go, providing both gRPC and REST (JSON+Protobuf codecs) on a single port.
 
 - gRPC: `:9090` (h2c or TLS)
-- REST: `:18080` (HTTP/1.1 + HTTP/2)
+- REST: `:8080` (HTTP/1.1 + HTTP/2) — the daemon's configured default (see config.example.yaml); the public demo instance (bunker-mvp, 78.46.173.180) exposes REST on `:18080` and gRPC on `:19090` — demo-instance ports, not defaults.
 
 Both transports serve the same handlers. Auth is transport-agnostic (JWT or static token in `Authorization` header).
 

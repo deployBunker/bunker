@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/go-chi/chi/v5"
@@ -284,6 +287,123 @@ func TestSpawnCommand_Success_Minimal(t *testing.T) {
 	// Public URL should not appear in minimal response.
 	if strings.Contains(output, "Public URL") {
 		t.Error("output unexpectedly contains Public URL")
+	}
+}
+
+// blockingSpawnServer blocks the SpawnAgent RPC until released, simulating
+// the ~20s server-side agent creation that GAP-023's progress line must
+// precede.
+type blockingSpawnServer struct {
+	mockSpawnServer
+	release chan struct{}
+}
+
+func (m *blockingSpawnServer) SpawnAgent(
+	ctx context.Context,
+	req *connect.Request[v1.SpawnAgentRequest],
+) (*connect.Response[v1.SpawnAgentResponse], error) {
+	<-m.release
+	if m.spawnErr != nil {
+		return nil, m.spawnErr
+	}
+	return connect.NewResponse(m.spawnResp), nil
+}
+
+// TestSpawnCommand_ProgressLineWithin2s verifies GAP-023: `bunker spawn`
+// prints a "Creating agent..." progress line within 2 seconds of invocation,
+// before the (slow) agent-creation RPC returns. The mock server blocks until
+// the test has observed the progress line, proving it is printed before the
+// RPC completes.
+func TestSpawnCommand_ProgressLineWithin2s(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	release := make(chan struct{})
+	mock := &blockingSpawnServer{
+		mockSpawnServer: mockSpawnServer{
+			mockBunkerdServer: mockBunkerdServer{
+				info: &v1.ServerInfoResponse{
+					Hostname: "bunker-progress",
+					Version:  "v0.2.0",
+				},
+			},
+			spawnResp: &v1.SpawnAgentResponse{
+				AgentId:       "prog123",
+				DockerHostSsh: "DOCKER_HOST=ssh://prog@host",
+			},
+		},
+		release: release,
+	}
+	srv := newSpawnTestServer(t, mock)
+	defer srv.Close()
+
+	writeSpawnTestConfig(t, tmpDir, srv.URL)
+
+	cmd := NewSpawnCommand()
+
+	// Capture stdout on a pipe and read it in a goroutine so we can observe
+	// the progress line BEFORE the RPC (still blocked) returns.
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	os.Stdout = w
+
+	var (
+		mu     sync.Mutex
+		output bytes.Buffer
+	)
+	readDone := make(chan struct{})
+	go func() {
+		defer close(readDone)
+		buf := make([]byte, 4096)
+		for {
+			n, rerr := r.Read(buf)
+			mu.Lock()
+			output.Write(buf[:n])
+			mu.Unlock()
+			if rerr != nil {
+				return
+			}
+		}
+	}()
+
+	execDone := make(chan error, 1)
+	go func() {
+		execDone <- cmd.Execute()
+	}()
+
+	// Wait up to 2s for the progress line while the RPC is still blocked.
+	progressSeen := false
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		progressSeen = strings.Contains(output.String(), "Creating agent...")
+		mu.Unlock()
+		if progressSeen {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	close(release) // release the RPC so Execute can finish
+
+	if !progressSeen {
+		t.Error("GAP-023: 'Creating agent...' progress line NOT printed within 2s of invocation")
+	}
+
+	if err := <-execDone; err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	w.Close()
+	<-readDone
+	os.Stdout = old
+
+	mu.Lock()
+	full := output.String()
+	mu.Unlock()
+	if !strings.Contains(full, "Agent created: prog123") {
+		t.Errorf("output missing agent result, got:\n%s", full)
 	}
 }
 

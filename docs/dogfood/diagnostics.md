@@ -45,11 +45,11 @@ Spawn order: allocate port range → create user → start dockerd → write key
 
 ## 6. Environment facts gathered during the run (for future runs)
 
-- Live MVP: 78.46.173.180, REST :18080, gRPC :19090, SSH :22, **auth disabled** (empty token works), hostname `bunker-mvp`, max 50 agents, disk ~6-8% used.
+- Live MVP: 78.46.173.180, REST :18080, gRPC :19090, SSH :22, **auth enforced** (Bearer token required — 401 without a token, per GAP-014/README), hostname `bunker-mvp`, max 50 agents, disk ~6-8% used.
 - Server-side E2E: `bash e2e-full-battery.sh` on the server (needs root; creates/destroys `bunker-e2e-*` users). Token in that script is the test token.
 - CLI config: `~/.bunker/config.yaml` (servers map, active_server). Keys in `~/.bunker/keys/<id>`.
 - cgroup limits are on `user.slice/user-<uid>.slice/` — read `memory.max`, `cpu.max`, `pids.max` there; the drop-in is `user-<uid>.slice.d/50-bunker.conf`.
-- `bunker status` metrics fields (CPU/Memory/Uptime) are not populated by the server's status path (DOGFOOD-006) — use `bunker metrics` for real numbers.
+- `bunker status` reports live CPU/Memory/Disk/Uptime (DOGFOOD-006 shipped real metrics, tick #197) — CPU% is a delta sample, so the first call shows the baseline and the second call shows the real figure; `bunker metrics` gives the detailed per-agent view.
 - Deployed server binary version is not verifiable (`bunker version` shows commit: unknown) — if behavior differs from HEAD, check the server's build timestamp via `ServerInfo` before assuming HEAD is broken.
 
 ## 7. How to validate a fix for the dogfood findings (the real-user way)

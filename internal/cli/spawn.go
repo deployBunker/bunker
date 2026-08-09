@@ -100,6 +100,10 @@ Examples:
 			}
 
 			// 4. Call RPC
+			// Agent creation can take ~20s server-side (useradd, dockerd start,
+			// key write); print a progress line immediately so the user doesn't
+			// see a silent wait and Ctrl-C into a half-created agent.
+			fmt.Println("Creating agent...")
 			resp, err := client.SpawnAgent(ctx, req)
 			if err != nil {
 				return fmt.Errorf("spawn agent: %w", err)
