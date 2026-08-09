@@ -3,7 +3,7 @@
 ## Public API
 
 - `NewConnectCommand()` — `bunker connect SERVER_URL` registers a bunkerd server and stores it in `~/.bunker/config.yaml`. Help documents both ports: `http://localhost:9090 (gRPC) or http://localhost:8080 (REST)` (GAP-013).
-- `NewSpawnCommand()` — `bunker spawn` creates an agent and prints a connection bundle.
+- `NewSpawnCommand()` — `bunker spawn` creates an agent and prints a connection bundle. Prints a `Creating agent...` progress line immediately before the SpawnAgent RPC (agent creation can take ~20s server-side: useradd, dockerd start, key write) so the user doesn't see a silent wait and Ctrl-C into a half-created agent (GAP-023).
 - `NewDestroyCommand()` — `bunker destroy <agent-id>` removes an agent. Maps `connect.CodeNotFound` → `Agent <id> not found.` + exit 0 (idempotent, DOGFOOD-005).
 - `NewListCommand()` — `bunker list` lists agents across servers, including a per-agent disk usage column.
 - `NewStatusCommand()` — `bunker status` shows the active server's status: disk usage (>90% warning banner), CPU %, Memory used/limit, and real uptime from `ServerInfo` (DOGFOOD-006); `bunker status --all-servers` shows every registered server (MULTI-002).
@@ -38,7 +38,7 @@
 - Every command loads `CLIConfig`, resolves the active server (or `--server`), and calls the connect-go client.
 - Auth token priority: flag `--token`, server entry token, viper `token`, `BUNKER_TOKEN` env var.
 - `exec` uses `DisableFlagParsing: true` so Docker flags (`--rm`, `--format`, etc.) pass through; it manually parses `--server` and `--timeout` before the command token, then skips exactly ONE `--` token (GAP-002/b35ad73) — otherwise `exec <id> --server X -- <cmd>` sends `--` AS the command (`sh: 0: Illegal option --`).
-- `spawn` saves the returned private key to `~/.bunker/keys/<agent-id>` with mode `0600`.
+- `spawn` prints `Creating agent...` to stdout BEFORE the SpawnAgent RPC (GAP-023) and saves the returned private key to `~/.bunker/keys/<agent-id>` with mode `0600`.
 - Every client-side ssh/scp/sshfs arg builder carries `-o IdentitiesOnly=yes` (GAP-009/c238df4): `buildSCPArgs` + cp/deploy ssh args, mount's sshfs args, `clientTunnelArgs` (inject-if-absent), and the spawn bundle's docker-host tunnel (`internal/agent/manager_spawn.go`). This pins the agent's `-i <key>` as the ONLY identity offered, defeating ssh-agent key-order races.
 - `connect` REST port is the gRPC/Connect port (e.g., `:9090`) unless TLS is enabled and gRPC/REST are split; the CLI stores the URL as provided.
 
@@ -55,6 +55,7 @@
 - Each command has a `*_test.go` file with table-driven tests for: help output, missing args, no active server, server-not-found, success path, and server-error.
 - `disk_test.go` covers `diskWarning`, `formatDisk`, `diskUsagePercent`, `diskAlert` (table-driven, incl. >90% threshold).
 - `status_test.go` covers the disk column and the >90% WARNING banner; `use_test.go` covers server switching; `cp_test.go`/`deploy_test.go` cover scp arg construction and chown logic with mocked `exec.Command`.
+- `TestSpawnCommand_ProgressLineWithin2s` (spawn_test.go, GAP-023) — blocking-mock server verifies `Creating agent...` is printed within 2s of invocation while the RPC is still blocked (the anti-silent-wait regression test).
 - `exec_test.go` verifies `--` passthrough and flag forwarding by inspecting the command-line arguments; `TestExecCommand_FlagSeparator` (x4) covers `--server X -- <cmd>` and `--timeout N -- <cmd>` (GAP-002).
 - `exit_error_test.go` / destroy tests cover `CodeNotFound` → `Agent <id> not found.` + exit 0 and `TestExecCommand_ExitCode7` style remote-code propagation (DOGFOOD-005).
 - `connect_test.go` uses an `httptest.Server` for the `RegisterServer` happy path.
