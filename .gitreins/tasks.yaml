@@ -971,3 +971,15 @@ tasks:
   status: complete
   created_at: '2026-08-08T12:37:34.855152+00:00'
   completed_at: '2026-08-08T12:38:18.860905+00:00'
+- id: GAP-023
+  title: Print progress line during bunker spawn
+  criteria:
+  - internal/cli/spawn.go prints 'Creating agent...' before calling client.SpawnAgent
+  - The progress line is printed before the SpawnAgent RPC returns (blocking-mock
+    test TestSpawnCommand_ProgressLineWithin2s passes)
+  - TestSpawnCommand_ProgressLineWithin2s exists in internal/cli/spawn_test.go and
+    passes with the RPC still blocked
+  - go test ./internal/cli/ -run TestSpawnCommand -count=1 passes
+  status: complete
+  created_at: '2026-08-09T00:57:46.305171+00:00'
+  completed_at: '2026-08-09T00:57:51.071690+00:00'
