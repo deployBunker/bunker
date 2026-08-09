@@ -135,6 +135,24 @@ func TestConfigLoad(t *testing.T) {
 		}
 	})
 
+	t.Run("config.example", func(t *testing.T) {
+		// GAP-026: the README quickstart template users copy to
+		// /etc/bunkerd/config.yaml must stay CI-validated against the schema.
+		cfg, err := loadConfigFrom(t, "../../config.example.yaml")
+		if err != nil {
+			t.Fatalf("load config.example.yaml: %v", err)
+		}
+		if cfg.Server.GRPCAddr != ":9090" {
+			t.Errorf("grpc_addr = %q, want :9090", cfg.Server.GRPCAddr)
+		}
+		if cfg.Server.RESTAddr != ":8080" {
+			t.Errorf("rest_addr = %q, want :8080", cfg.Server.RESTAddr)
+		}
+		if !cfg.Auth.Enabled {
+			t.Error("config.example should have auth enabled")
+		}
+	})
+
 	t.Run("synthetic", func(t *testing.T) {
 		cfgPath := writeTestConfig(t, `
 server:

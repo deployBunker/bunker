@@ -19,7 +19,7 @@ Bunker provisions isolated Docker environments ("agents") for AI coding agents. 
                        ▼
 ┌─────────────────────────────────────────────────────┐
 │                 bunkerd (daemon)                     │
-│  gRPC :9090  │  REST :18080                         │
+│  gRPC :9090  │  REST :8080                          │
 │                                                     │
 │  ┌──────────┐ ┌──────────┐ ┌───────────────────┐   │
 │  │  Agent   │ │  Auth    │ │  Network Ingress  │   │
@@ -58,7 +58,7 @@ Bunker provisions isolated Docker environments ("agents") for AI coding agents. 
   docker.sock → /run/user/<UID>/docker.sock   Symlink to actual socket
   tmp/                  Private TMPDIR
   env                   Environment variables (KEY=VALUE)
-/etc/bunker/bunkerd.yaml   Server configuration
+/etc/bunkerd/config.yaml   Server configuration
 ```
 
 ## Agent Lifecycle
@@ -214,7 +214,7 @@ Each agent gets a private TMPDIR at `/run/bunker/<id>/tmp/`, preventing `/tmp` c
 | Auth | golang-jwt | 5.3.x |
 | TLS | certmagic | 0.25.x |
 | CLI | cobra + viper | 1.10.x / 1.21.x |
-| Config | YAML | /etc/bunker/bunkerd.yaml |
+| Config | YAML | /etc/bunkerd/config.yaml |
 | Process Mgmt | systemd-run | transient units |
 | Container | rootless Docker | via dockerd-rootless-setuptool.sh |
 | Tunnels | cloudflared | TryCloudflare + named |
