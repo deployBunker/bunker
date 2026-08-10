@@ -19,6 +19,7 @@
 - `viper.AutomaticEnv()` and explicit `BindEnv` calls cover the same keys; explicit binds ensure consistent behavior even when nested defaults change.
 - Default addresses are `":9090"` (gRPC/Connect) and `":8080"` (REST). Bunker production deployments typically run the REST port on `:18080`.
 - Default agent port range is `10000-19999` with 100 ports per agent (100-agent capacity, matching MaxAgents 100 — GAP-010). Was `10000-10100`/10 before 4df96ec; docs and `TestDefaultConfig` both assert `19999`/`100`.
+- Default `max_agents` is 100, aligned across ALL three sources (code default, config.example.yaml, README inline config) since GAP-028 (5b3fe56) — before that the docs said 50 while code defaulted to 100, a silent cap discrepancy. `TestDefaultConfig` asserts `MaxAgents == 100`.
 - `config.example.yaml` at the repo root mirrors these defaults (README inline config + `DefaultConfig`) and is referenced by `bunkerd --help` (`cp config.example.yaml /etc/bunkerd/config.yaml`) and the README Configure section (GAP-008).
 - Default resource limits: 2.0 CPU cores, 4 GiB memory, 20 GiB disk, 4096 processes, 65536 open files, 10 Docker containers, 6-hour TTL.
 - TLS modes are mutually exclusive: `auto_tls`, `self_signed`, or file-based certs. `Validate` requires `domain` for AutoTLS, `cert_file`/`key_file` for file mode, and `ca_file` for mTLS.
@@ -32,6 +33,7 @@
 ## Test Patterns
 
 - `config_test.go` verifies defaults, env overrides, file loading, and validation error cases.
+- `TestDefaultConfig` asserts the full default surface: port range `19999`/`100` (GAP-010), `MaxAgents == 100` (GAP-028), auth enabled (GAP-011), 6h default TTL.
 - Tests use `t.Setenv` to exercise `BUNKERD_*` env var bindings without touching real files.
 - Validation tests cover all TLS modes: missing certs, AutoTLS without domain, mTLS without CA file, and valid combinations.
 - Tests assert default values are populated even when the config file is absent.

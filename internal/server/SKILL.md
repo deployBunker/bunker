@@ -4,7 +4,7 @@
 
 - `BunkerdServer` — the main HTTP/gRPC daemon.
 - `New(cfg) *BunkerdServer` — constructor.
-- `(*BunkerdServer) Run(ctx) error` — builds the chi router, mounts connect-go handlers, starts listeners, and blocks until shutdown.
+- `(*BunkerdServer) Run(ctx) error` — validates config, logs the effective config on startup, builds the chi router, mounts connect-go handlers, starts listeners, and blocks until shutdown. Since GAP-028 (5b3fe56) it emits `slog.Info("bunkerd config loaded", "max_agents", ...)` right after `cfg.Validate()` so the ACTIVE agent cap is always visible in the daemon log (README/config.example/code were misaligned at 50 vs 100 before the fix).
 - `bunkerdService` — implements `bunkerv1connect.BunkerdHandler`: `ServerInfo`, `ServerMetrics`, `SpawnAgent`, `DestroyAgent`, `ListAgents`, `GetAgent`, `AgentMetrics`, `ExecAgent`, `RunAgent`, `HeartbeatAgent`. `ServerInfo` reports real uptime (package `serverStartTime`, set at process start) and the real build version from `internal/version` — no more hardcoded `0.1.0`/`UptimeSeconds: 0` (DOGFOOD-006). `SpawnAgent` validates the TTL as step 1a (BEFORE port allocation/side effects) and maps invalid TTLs to `CodeInvalidArgument` via a service-level pre-check (DOGFOOD-003).
 - `agentService` — implements `bunkerv1connect.AgentHandler`: `GetInfo`, `Metrics`, `Heartbeat` (scoped sub-key access).
 - `buildTLSConfig()` (method on `BunkerdServer`) — constructs file, self-signed, certmagic AutoTLS, or mTLS configs.
