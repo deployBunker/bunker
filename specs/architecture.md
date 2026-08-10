@@ -40,7 +40,7 @@ Bunker provisions isolated Docker environments ("agents") for AI coding agents. 
 │  │  Agent: bunker-a │  │  Agent: bunker-b │  ...    │
 │  │  User: bunker-a  │  │  User: bunker-b  │         │
 │  │  dockerd (root)  │  │  dockerd (root)  │         │
-│  │  Ports: 20000+   │  │  Ports: 21000+   │         │
+│  │  Ports: 10000+   │  │  Ports: 10100+   │         │
 │  │  cgroup: 1 CPU   │  │  cgroup: 2 CPU   │         │
 │  │        1 GB RAM  │  │        4 GB RAM  │         │
 │  │  TMPDIR: /run/   │  │  TMPDIR: /run/   │         │
@@ -116,7 +116,7 @@ Agents have a `default_ttl` (6h default). The `HeartbeatAgent` RPC extends `Expi
 
 ### Per-Agent Port Isolation
 
-Each agent gets a dedicated port range (e.g., 20000–20099 for agent-a, 21000–21099 for agent-b). Ports are allocated from a pool and returned on destroy. Overlapping ranges are prevented.
+Each agent gets a dedicated port range (e.g., 10000–10099 for agent-a, 10100–10199 for agent-b). Ports are allocated from a pool and returned on destroy. Overlapping ranges are prevented.
 
 ### SSH Transport
 
