@@ -2,10 +2,6 @@
 /bunkerd
 /bunker
 
-# Proto generated
-proto/**/*.pb.go
-proto/**/*.pb.gw.go
-
 # Secrets
 *.token
 *.pem
