@@ -51,6 +51,7 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	if err := s.cfg.Validate(); err != nil {
 		return fmt.Errorf("invalid config: %w", err)
 	}
+	s.logger.Info("bunkerd config loaded", "max_agents", s.cfg.Agent.MaxAgents)
 
 	// Build the chi router with middleware
 	r := chi.NewRouter()

@@ -100,7 +100,7 @@ server:
 
 agent:
   ssh_dir: /etc/bunkerd/ssh
-  max_agents: 50
+  max_agents: 100
   default_cpu_quota: 2.0           # 2 CPU cores
   default_memory_bytes: 4294967296  # 4 GB
   default_disk_bytes: 21474836480   # 20 GB

@@ -31,6 +31,9 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Agent.PortRangePerAgent != 100 {
 		t.Errorf("expected port_range_per_agent 100, got %d", cfg.Agent.PortRangePerAgent)
 	}
+	if cfg.Agent.MaxAgents != 100 {
+		t.Errorf("expected max_agents 100, got %d", cfg.Agent.MaxAgents)
+	}
 	if cfg.Agent.DefaultTTL != 6*time.Hour {
 		t.Errorf("expected agent default_ttl 6h, got %v", cfg.Agent.DefaultTTL)
 	}
