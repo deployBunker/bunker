@@ -12,7 +12,7 @@ package version
 
 var (
 	// Version is the semantic version of the build.
-	Version = "0.1.0"
+	Version = "0.1.1"
 
 	// Commit is the git short SHA the binaries were built from.
 	// "unknown" when not injected via ldflags.

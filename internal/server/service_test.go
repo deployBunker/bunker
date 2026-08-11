@@ -65,7 +65,7 @@ func TestBuildExecSSHRawCommand(t *testing.T) {
 		"-i /keys/abc123",
 		"bunker-abc123@localhost",
 		"env",
-		"PATH=/home/bunker-abc123/bin:$PATH",
+		"PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
 		"TMPDIR=/run/bunker/abc123/tmp",
 		"echo",
@@ -363,7 +363,7 @@ func TestBuildAgentExecCommand(t *testing.T) {
 		// from aborting the shell. set -a exports the injected vars to the
 		// child sh -c below.
 		"set -a; [ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env",
-		"set +a; env PATH=/home/bunker-abc123/bin:$PATH",
+		"set +a; env PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
 		"TMPDIR=/run/bunker/abc123/tmp",
 		// The user command is always wrapped in sh -c '<joined>' so compound
@@ -475,7 +475,7 @@ func TestBuildAgentRawExecCommand(t *testing.T) {
 	joined := strings.Join(got, " ")
 	wantParts := []string{
 		"env",
-		"PATH=/home/bunker-abc123/bin:$PATH",
+		"PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
 		"TMPDIR=/run/bunker/abc123/tmp",
 		"echo",
@@ -519,7 +519,7 @@ func TestBuildAgentScriptCommand(t *testing.T) {
 	wantParts := []string{
 		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
 		"TMPDIR=/run/bunker/abc123/tmp",
-		"env PATH=/home/bunker-abc123/bin:$PATH",
+		"env PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		// Env file source line for `bunker env set` propagation.
 		". /run/bunker/abc123/env",
 	}
@@ -572,7 +572,7 @@ func TestBuildExecSSHCommand(t *testing.T) {
 	if !strings.HasPrefix(last, "sh -c '") {
 		t.Errorf("last ssh arg should be sh -c '...', got %q", last)
 	}
-	if !strings.Contains(last, "env PATH=/home/bunker-abc123/bin:$PATH") {
+	if !strings.Contains(last, "env PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin") {
 		t.Errorf("ssh remote command missing PATH prefix: %q", last)
 	}
 	// The ssh argument is the EXACT string the remote shell receives. Executing

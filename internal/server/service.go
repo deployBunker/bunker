@@ -397,6 +397,16 @@ func (s *bunkerdService) HeartbeatAgent(ctx context.Context, req *connect.Reques
 	}), nil
 }
 
+// agentExecBasePath is the deterministic PATH base used for agent execs (the
+// agent's own bin dir is prepended by each builder). It deliberately does NOT
+// inherit the daemon's ambient $PATH: a polluted or pathologically long
+// daemon PATH (e.g. scheduler shells accumulate hundreds of duplicate entries
+// into ~16KB values) would be embedded verbatim into every agent command, and
+// uutils env(1) fails to execvp such values (exit 126 "unknown error:
+// execvp failed" / 127 "No such file or directory"), breaking agent execs on
+// hosts where /usr/bin/env is uutils coreutils.
+const agentExecBasePath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
 // buildAgentExecCommand constructs the shell command that runs inside the agent
 // via SSH.  It prefixes the user command with env(1) so PATH, DOCKER_HOST, and
 // TMPDIR are set regardless of sshd PermitUserEnvironment/AcceptEnv settings,
@@ -406,6 +416,7 @@ func buildAgentExecCommand(agentID, userHome, command string, args []string) str
 	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
 	tmpDir := filepath.Join("/run", "bunker", agentID, "tmp")
 	agentBinPath := filepath.Join(userHome, "bin")
+	agentPath := agentBinPath + ":" + agentExecBasePath
 	envFile := fmt.Sprintf("/run/bunker/%s/env", agentID)
 	remoteCmd := command
 	if len(args) > 0 {
@@ -420,8 +431,8 @@ func buildAgentExecCommand(agentID, userHome, command string, args []string) str
 	// shell variables, invisible to the wrapped command. The [ -f ] guard
 	// keeps a fresh agent (no env file yet) from making dash exit 2 on the
 	// failed dot-source.
-	return fmt.Sprintf("set -a; [ -f %s ] && . %s 2>/dev/null; set +a; env PATH=%s:$PATH DOCKER_HOST=unix://%s TMPDIR=%s sh -c %s",
-		envFile, envFile, agentBinPath, dockerSockPath, tmpDir, shellQuoteSingle(remoteCmd))
+	return fmt.Sprintf("set -a; [ -f %s ] && . %s 2>/dev/null; set +a; env PATH=%s DOCKER_HOST=unix://%s TMPDIR=%s sh -c %s",
+		envFile, envFile, agentPath, dockerSockPath, tmpDir, shellQuoteSingle(remoteCmd))
 }
 
 // shellQuoteSingle returns s wrapped in single quotes, with embedded single
@@ -442,13 +453,14 @@ func buildAgentRawExecCommand(agentID, userHome, command string, args []string) 
 	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
 	tmpDir := filepath.Join("/run", "bunker", agentID, "tmp")
 	agentBinPath := filepath.Join(userHome, "bin")
+	agentPath := agentBinPath + ":" + agentExecBasePath
 	// sshd's ForceCommand or default shell may still receive a string, but
 	// passing a command with args and using ssh's internal exec channel (when
 	// the remote shell is not forced) will execve directly. We keep a tiny
 	// wrapper here: env(1) so we can set DOCKER_HOST and TMPDIR before the real binary.
 	return append([]string{
 		"env",
-		"PATH=" + agentBinPath + ":$PATH",
+		"PATH=" + agentPath,
 		"DOCKER_HOST=unix://" + dockerSockPath,
 		"TMPDIR=" + tmpDir,
 		command,
@@ -461,14 +473,15 @@ func buildAgentScriptCommand(agentID, userHome, scriptContent string) string {
 	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
 	tmpDir := filepath.Join("/run", "bunker", agentID, "tmp")
 	agentBinPath := filepath.Join(userHome, "bin")
+	agentPath := agentBinPath + ":" + agentExecBasePath
 	scriptPath := filepath.Join(userHome, ".bunker", "exec-script.sh")
 	envFile := fmt.Sprintf("/run/bunker/%s/env", agentID)
 	// Use POSIX heredoc to create + chmod + execute the script in one SSH call.
 	// We quote the EOF delimiter to prevent expansion of the script body.
 	escaped := strings.ReplaceAll(scriptContent, "'", "'\\''")
 	return fmt.Sprintf(
-		"mkdir -p %q && cat > %q <<'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %q && set -a; [ -f %s ] && . %s 2>/dev/null; set +a; env PATH=%s:$PATH DOCKER_HOST=unix://%s TMPDIR=%s %q",
-		filepath.Dir(scriptPath), scriptPath, escaped, scriptPath, envFile, envFile, agentBinPath, dockerSockPath, tmpDir, scriptPath,
+		"mkdir -p %q && cat > %q <<'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %q && set -a; [ -f %s ] && . %s 2>/dev/null; set +a; env PATH=%s DOCKER_HOST=unix://%s TMPDIR=%s %q",
+		filepath.Dir(scriptPath), scriptPath, escaped, scriptPath, envFile, envFile, agentPath, dockerSockPath, tmpDir, scriptPath,
 	)
 }
 
