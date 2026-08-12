@@ -81,6 +81,12 @@ cd bunker
 make build
 ```
 
+> **Build before use.** The repo does not ship prebuilt binaries — `bunker`,
+> `bunkerd`, and `bin/` are gitignored (GAP-036). Always run `make build`
+> after cloning; a stale or missing `./bunker` is not the CLI this README
+> documents. Check the build with `./bunker --version` (cobra auto-flag,
+> GAP-035) — `bunker version` prints the full commit/build metadata.
+
 ### Configure
 
 A ready-made example lives at `config.example.yaml` in the repo root:

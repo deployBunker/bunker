@@ -11,7 +11,7 @@ BUNKER := $(BIN_DIR)/bunker
 
 # Build metadata injected via -ldflags into internal/version.
 # VERSION is overridable on the command line (make build VERSION=v0.2.0).
-VERSION ?= 0.1.0
+VERSION ?= 0.1.1
 COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILDDATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -X github.com/deployBunker/bunker/internal/version.Version=$(VERSION) \

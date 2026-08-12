@@ -39,6 +39,15 @@ jobs:
       - name: Build
         run: go build ./...
 
+      # CLI surface smoke (GAP-035/GAP-036): a fresh build must expose
+      # --version and the ssh/systemd commands the README documents.
+      - name: CLI surface smoke
+        run: |
+          go build -o /tmp/bunker-smoke ./cmd/bunker
+          /tmp/bunker-smoke --version >/dev/null
+          /tmp/bunker-smoke --help | grep -q '^  ssh'
+          /tmp/bunker-smoke --help | grep -q '^  systemd'
+
       - name: Vet
         run: go vet ./...
 

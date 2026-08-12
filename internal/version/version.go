@@ -7,7 +7,7 @@
 //	                   -X github.com/deployBunker/bunker/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 //
 // The Makefile build targets apply these flags automatically (VERSION is
-// configurable via the VERSION variable, defaulting to 0.1.0).
+// configurable via the VERSION variable, defaulting to 0.1.1).
 package version
 
 var (

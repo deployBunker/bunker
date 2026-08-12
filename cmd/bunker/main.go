@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/deployBunker/bunker/internal/cli"
+	"github.com/deployBunker/bunker/internal/version"
 )
 
 func main() {
@@ -53,6 +54,9 @@ func run() error {
 
 Manage servers, deploy bunkerd instances, connect to remote hosts,
 and control ephemeral development environments — all from the CLI.`,
+		// Version auto-adds the --version flag (GAP-035); the value is the
+		// build-time metadata default, overridden by make build ldflags.
+		Version:       version.Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
