@@ -11,10 +11,9 @@ import (
 // NewSystemdCommand returns the `bunker systemd` cobra command group.
 func NewSystemdCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:    "systemd",
-		Short:  "Manage the bunkerd systemd service",
-		Long:   `Install or remove the bunkerd systemd service unit and logrotate config.`,
-		Hidden: true,
+		Use:   "systemd",
+		Short: "Manage the bunkerd systemd service",
+		Long:  `Install or remove the bunkerd systemd service unit and logrotate config.`,
 	}
 
 	cmd.AddCommand(newSystemdInstallCommand())

@@ -125,6 +125,14 @@ EOF
 sudo ./bunkerd --config /etc/bunkerd/config.yaml
 ```
 
+To run `bunkerd` as a managed systemd service instead (auto-start on boot, logrotate, status via systemd), use the built-in helper:
+
+```bash
+bunker systemd install --binary /usr/local/bin/bunkerd --config /etc/bunkerd/config.yaml --user root
+bunker systemd status
+# teardown: bunker systemd uninstall
+```
+
 ### Use the CLI
 
 ```bash
@@ -218,6 +226,10 @@ bunker exec        Run a command inside an agent
 bunker run         Run a command in an agent's environment (with --detach for background)
 bunker mount       Mount agent filesystem via SSHFS
 bunker tunnel      Forward agent Docker socket
+bunker ssh         Open an interactive SSH session into an agent
+bunker cp          Copy a file into an agent's environment
+bunker deploy      Deploy a directory into an agent's environment
+bunker systemd     Manage the bunkerd systemd service (install/uninstall/status)
 bunker metrics     Show resource usage
 bunker heartbeat   Extend agent TTL
 bunker destroy     Tear down an agent

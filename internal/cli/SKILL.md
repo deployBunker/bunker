@@ -11,6 +11,7 @@
 - `NewExecCommand()` — `bunker exec <agent-id> [--] <command> [args...]` executes commands via the server streaming RPC. Propagates the remote exit code: `bunker exec sh -c 'exit 7'` → CLI exits 7 (DOGFOOD-005).
 - `NewRunCommand()` — `bunker run <agent-id> [--] <command> [args...]` runs a one-shot command in the agent (raw exec variant).
 - `NewCpCommand()` — `bunker cp <agent-id>:<path> <local-path>` copies a file OUT of an agent via scp (UX-008, DOGFOOD-002).
+- `NewSSHCommand()` — `bunker ssh <agent-id> [command...]` opens an interactive SSH session into an agent (GAP-034). Resolves user@host via `resolveUserAtHost` from the sshfs mount, key via `defaultSSHKeyPath` (`~/.bunker/keys/<id>`), flags `--server/--ssh-port/--ssh-key/--ssh-host` matching cp. The GetAgent RPC has a 30s timeout but the session itself is context-free so it lives until the user exits; streams are attached via `cmd.InOrStdin/OutOrStdout/ErrOrStderr`.
 - `NewDeployCommand()` — `bunker deploy <local-path> <agent-id>:<path>` copies a file INTO an agent and chowns it to the agent user (UX-008, DOGFOOD-002).
 - `NewEnvCommand()` — `bunker env <agent-id>` prints the agent's environment (DOCKER_HOST etc.).
 - `NewVersionCommand()` — `bunker version` prints semver, commit, Go version, build date, and platform. Version/Commit/BuildDate come from the shared `internal/version` package, injected via Makefile LDFLAGS (`-X`) at build time — `commit: unknown` means the binary was built without ldflags (UX-005, DOGFOOD-006).
@@ -19,7 +20,7 @@
 - `NewInfoCommand()` — `bunker info <agent-id>` shows a single agent record.
 - `NewMountCommand()` — `bunker mount <agent-id> [mountpoint]` runs the SSHFS mount command from the spawn response (rewritten for client-local host/key, DOGFOOD-002).
 - `NewTunnelCommand()` — `bunker tunnel <agent-id> [local-port]` prints the SSH local-forward command (key path rewritten to `~/.bunker/keys/<id>`, DOGFOOD-002).
-- `NewSystemdCommand()` — `bunker systemd install/uninstall/status` for the bunkerd service.
+- `NewSystemdCommand()` — `bunker systemd install/uninstall/status` for the bunkerd service (visible in `--help` since GAP-033; was `Hidden: true`).
 - SSH host/key resolution in `sshhost.go` (DOGFOOD-002) — makes cp/deploy/tunnel work from REMOTE clients:
   - `resolveSSHHost(entry, serverProvidedHost, flagValue)` — precedence: `--ssh-host` flag > server-entry URL hostname > server-provided hostname (the server's self-reported hostname is often unresolvable off-host).
   - `resolveUserAtHost(entry, sshfsMount, flagHost)` / `sshHostFromMount` / `sshUserHostFromTunnel` — parse host/user from the spawn bundle.
@@ -60,6 +61,7 @@
 - `exit_error_test.go` / destroy tests cover `CodeNotFound` → `Agent <id> not found.` + exit 0 and `TestExecCommand_ExitCode7` style remote-code propagation (DOGFOOD-005).
 - `connect_test.go` uses an `httptest.Server` for the `RegisterServer` happy path.
 - `sshhost_test.go` covers host resolution precedence, bundle rewriting, and `TestClientTunnelArgs` (4 cases incl. inject-if-absent and no-duplicate — GAP-009).
+- `ssh_test.go` covers help, missing args, no server, agent-not-found, missing key, empty sshfs mount, `buildSSHArgs` (with and without remote command), and an end-to-end run with a fake `ssh` on PATH that records its args (GAP-034).
 - `client_test.go` verifies `resolveToken` precedence and `newBunkerdClient` TLSInsecure behavior.
 - **Any test that calls `SaveCLIConfig`/`LoadCLIConfig` MUST isolate HOME** (`t.Setenv("HOME", t.TempDir())`) — without it, tests CLOBBER the real `~/.bunker/config.yaml` (DOGFOOD-002, mount_test.go regression).
 - Use `cobra.Command.SetArgs`, `ExecuteC`, and `ExecuteContext` for non-streaming commands; streaming commands capture stdout/stderr with `os.Pipe` or by overriding `cmd.OutOrStdout`.
