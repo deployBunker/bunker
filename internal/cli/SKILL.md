@@ -6,7 +6,7 @@
 - `NewSpawnCommand()` — `bunker spawn` creates an agent and prints a connection bundle. Prints a `Creating agent...` progress line immediately before the SpawnAgent RPC (agent creation can take ~20s server-side: useradd, dockerd start, key write) so the user doesn't see a silent wait and Ctrl-C into a half-created agent (GAP-023).
 - `NewDestroyCommand()` — `bunker destroy <agent-id>` removes an agent. Maps `connect.CodeNotFound` → `Agent <id> not found.` + exit 0 (idempotent, DOGFOOD-005).
 - `NewListCommand()` — `bunker list` lists agents across servers, including a per-agent disk usage column.
-- `NewStatusCommand()` — `bunker status` shows the active server's status: disk usage (>90% warning banner), CPU %, Memory used/limit, and real uptime from `ServerInfo` (DOGFOOD-006); `bunker status --all-servers` shows every registered server (MULTI-002).
+- `NewStatusCommand()` — `bunker status` shows the active server's status: disk usage (>90% warning banner), CPU %, Memory used/limit, and real uptime from `ServerInfo` (DOGFOOD-006); `bunker status --all-servers` shows every registered server (MULTI-002). No-server error paths (both single and `--all-servers`) return `no servers configured; run 'bunker connect' first` → exit 1, matching list/spawn/info (GAP-037) — scripts/CI can rely on a non-zero exit in the unconfigured state.
 - `NewUseCommand()` — `bunker use <server-name>` switches the active server in the CLI config (MULTI-001).
 - `NewExecCommand()` — `bunker exec <agent-id> [--] <command> [args...]` executes commands via the server streaming RPC. Propagates the remote exit code: `bunker exec sh -c 'exit 7'` → CLI exits 7 (DOGFOOD-005).
 - `NewRunCommand()` — `bunker run <agent-id> [--] <command> [args...]` runs a one-shot command in the agent (raw exec variant).
@@ -55,10 +55,11 @@
 
 - Each command has a `*_test.go` file with table-driven tests for: help output, missing args, no active server, server-not-found, success path, and server-error.
 - `disk_test.go` covers `diskWarning`, `formatDisk`, `diskUsagePercent`, `diskAlert` (table-driven, incl. >90% threshold).
-- `status_test.go` covers the disk column and the >90% WARNING banner; `use_test.go` covers server switching; `cp_test.go`/`deploy_test.go` cover scp arg construction and chown logic with mocked `exec.Command`.
+- `status_test.go` covers the disk column and the >90% WARNING banner, plus `TestStatusCommand_NoServersConfigured` / `TestStatusCommand_NoServersConfigured_WithAll` (single + `--all-servers` no-server error paths, GAP-037); `use_test.go` covers server switching; `cp_test.go`/`deploy_test.go` cover scp arg construction and chown logic with mocked `exec.Command`.
 - `TestSpawnCommand_ProgressLineWithin2s` (spawn_test.go, GAP-023) — blocking-mock server verifies `Creating agent...` is printed within 2s of invocation while the RPC is still blocked (the anti-silent-wait regression test).
 - `exec_test.go` verifies `--` passthrough and flag forwarding by inspecting the command-line arguments; `TestExecCommand_FlagSeparator` (x4) covers `--server X -- <cmd>` and `--timeout N -- <cmd>` (GAP-002).
 - `exit_error_test.go` / destroy tests cover `CodeNotFound` → `Agent <id> not found.` + exit 0 and `TestExecCommand_ExitCode7` style remote-code propagation (DOGFOOD-005).
+- `TestExitCode_NoServersConfigured` (status_test.go, GAP-037) — table-driven exit-code guard over status/list/spawn/info asserting every command exits non-zero with the `bunker connect` hint under `HOME=/tmp/empty` (bare `info` fails ARG validation first, so the table passes it a positional agent id; the invariant is non-zero exit + connect hint).
 - `connect_test.go` uses an `httptest.Server` for the `RegisterServer` happy path.
 - `sshhost_test.go` covers host resolution precedence, bundle rewriting, and `TestClientTunnelArgs` (4 cases incl. inject-if-absent and no-duplicate — GAP-009).
 - `ssh_test.go` covers help, missing args, no server, agent-not-found, missing key, empty sshfs mount, `buildSSHArgs` (with and without remote command), and an end-to-end run with a fake `ssh` on PATH that records its args (GAP-034).
