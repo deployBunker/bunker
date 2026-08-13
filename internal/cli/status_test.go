@@ -8,6 +8,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/go-chi/chi/v5"
+	"github.com/spf13/cobra"
 
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 	bunkerv1connect "github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect"
@@ -126,14 +127,15 @@ func TestStatusCommand_NoServersConfigured(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
 	cmd := NewStatusCommand()
-	output := captureStdout(t, func() {
-		if err := cmd.Execute(); err != nil {
-			t.Fatalf("Execute: %v", err)
-		}
-	})
-
-	if !strings.Contains(output, "No servers configured") {
-		t.Errorf("output should contain 'No servers configured', got:\n%s", output)
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error (non-zero exit) when no servers are configured")
+	}
+	if !strings.Contains(err.Error(), "no servers configured") {
+		t.Errorf("error should contain 'no servers configured', got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "bunker connect") {
+		t.Errorf("error should hint at 'bunker connect', got: %v", err)
 	}
 }
 
@@ -142,14 +144,47 @@ func TestStatusCommand_NoServersConfigured_WithAll(t *testing.T) {
 
 	cmd := NewStatusCommand()
 	cmd.SetArgs([]string{"--all"})
-	output := captureStdout(t, func() {
-		if err := cmd.Execute(); err != nil {
-			t.Fatalf("Execute: %v", err)
-		}
-	})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error (non-zero exit) with --all and no servers configured")
+	}
+	if !strings.Contains(err.Error(), "no servers configured") {
+		t.Errorf("error should contain 'no servers configured', got: %v", err)
+	}
+}
 
-	if !strings.Contains(output, "No servers configured") {
-		t.Errorf("output should contain 'No servers configured', got:\n%s", output)
+// TestExitCode_NoServersConfigured is a table-driven exit-code guard (GAP-037):
+// every server-facing command must fail loudly (non-zero exit) when no servers
+// are configured. `bunker status` used to print a message and exit 0, which
+// made scripts/CI treat failure as success; list/spawn/info already exited 1.
+func TestExitCode_NoServersConfigured(t *testing.T) {
+	// info takes a positional agent ID; the other commands are flag-only.
+	// The invariant under test: every command errors (non-zero exit) — either
+	// on the no-server check or, for info, on arg validation — never a silent
+	// exit-0 success like status used to produce.
+	newCmds := map[string]struct {
+		newCmd func() *cobra.Command
+		args   []string
+	}{
+		"status": {NewStatusCommand, nil},
+		"list":   {NewListCommand, nil},
+		"spawn":  {NewSpawnCommand, nil},
+		"info":   {NewInfoCommand, []string{"demo-agent"}},
+	}
+	for name, tc := range newCmds {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+
+			cmd := tc.newCmd()
+			cmd.SetArgs(tc.args)
+			err := cmd.Execute()
+			if err == nil {
+				t.Fatalf("%s: expected non-zero exit (error) with no servers configured", name)
+			}
+			if !strings.Contains(err.Error(), "bunker connect") {
+				t.Errorf("%s: error should hint at 'bunker connect', got: %v", name, err)
+			}
+		})
 	}
 }
 

@@ -50,18 +50,26 @@ Bunker is a **multi-agent hosting platform** — a daemon (`bunkerd`) that runs 
 
 ### Live demo
 
-A public demo instance runs on **bunker-mvp** (`78.46.173.180`, gRPC :19090 / REST :18080) with auth enforced. Try the platform without standing up your own root daemon:
+> **⚠️ Request-access only — no self-serve signup.** Demo tokens are
+> provisioned on request by the [deployBunker](https://github.com/deployBunker)
+> maintainers (GitHub issue or email; a human replies, so expect latency).
+> If you need to try the platform immediately, skip to
+> [Prerequisites](#prerequisites) below and run your own instance instead.
+
+A public demo instance runs on **bunker-mvp** (`78.46.173.180`, gRPC :19090 / REST :18080) with auth enforced. Once you have a token, try the platform without standing up your own root daemon:
 
 ```bash
 # Install the CLI (or: make build && ./bunker)
 go install github.com/deployBunker/bunker/cmd/bunker@latest
 
+# 1. Request a demo token from the maintainers (request-access only, see above)
+# 2. Connect with your provisioned token:
 bunker connect http://78.46.173.180:18080 --token <your-demo-token>
 bunker status
 bunker spawn --ttl 1h demo-agent
 ```
 
-The demo is a shared, resource-limited sandbox (max 50 agents; per-agent CPU/memory/disk caps, default 1h TTL) — **do not run production workloads on it**. Auth is enforced: every request needs a bearer token (`bunker connect --token`), and unauthenticated clients receive `401`. Demo tokens are provisioned on request — ask the [deployBunker](https://github.com/deployBunker) maintainers. See [docs/integration.md](docs/integration.md) for the full client-server protocol.
+The demo is a shared, resource-limited sandbox (max 50 agents; per-agent CPU/memory/disk caps, default 1h TTL) — **do not run production workloads on it**. Auth is enforced: every request needs a bearer token (`bunker connect --token`), and unauthenticated clients receive `401`. See [docs/integration.md](docs/integration.md) for the full client-server protocol.
 
 ### Prerequisites
 

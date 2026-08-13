@@ -23,6 +23,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history so `git describe --tags` can resolve the nearest tag
+          # for the version-authority check (GAP-038).
+          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
@@ -47,6 +51,20 @@ jobs:
           /tmp/bunker-smoke --version >/dev/null
           /tmp/bunker-smoke --help | grep -q '^  ssh'
           /tmp/bunker-smoke --help | grep -q '^  systemd'
+
+      # Version-authority check (GAP-038): the latest git tag, `bunker
+      # version`, and the CHANGELOG top heading must all report the same
+      # semver — otherwise upgrade/breaking-change decisions have no ground
+      # truth. Needs fetch-depth: 0 (above) for git describe.
+      - name: Version authority check
+        run: |
+          set -euo pipefail
+          latest_tag=$(git describe --tags --abbrev=0)
+          cli_version=$(/tmp/bunker-smoke version | head -1 | awk '{print $2}')
+          changelog_top=$(grep -m1 '^## ' CHANGELOG.md | awk '{print $2}')
+          echo "latest tag: ${latest_tag} | bunker version: ${cli_version} | CHANGELOG: ${changelog_top}"
+          test "${latest_tag}" = "v${cli_version}"
+          test "${cli_version}" = "${changelog_top}"
 
       - name: Vet
         run: go vet ./...

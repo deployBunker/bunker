@@ -55,10 +55,11 @@ Examples:
 				serverName = cfg.ActiveServer
 			}
 
-			// No servers configured at all.
+			// No servers configured at all — fail loudly (non-zero exit) so
+			// scripts/CI don't treat failure as success (GAP-037). Matches
+			// list/spawn/info, which already exit 1 in the same state.
 			if len(cfg.Servers) == 0 {
-				fmt.Println("No servers configured.")
-				return nil
+				return fmt.Errorf("no servers configured; run 'bunker connect' first")
 			}
 
 			if serverName == "" {
@@ -134,8 +135,7 @@ func queryServer(entry ServerEntry) serverStatus {
 // a per-server status overview.
 func printAllServerStatus(cfg *CLIConfig) error {
 	if len(cfg.Servers) == 0 {
-		fmt.Println("No servers configured.")
-		return nil
+		return fmt.Errorf("no servers configured; run 'bunker connect' first")
 	}
 
 	// Collect sorted server names for deterministic output.

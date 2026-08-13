@@ -1,6 +1,23 @@
 # Changelog
 
-## 1.0.0 (2026-07-25)
+## 0.1.1 (2026-08-10)
+
+### Added
+- `bunker ssh <agent-id> [command...]` — interactive session into an agent (GAP-034)
+- `bunker --version` via cobra (GAP-035)
+- `bunker systemd` helpers no longer hidden in `--help` (GAP-033)
+- CI: CLI-surface smoke (`--version` + `ssh`/`systemd` in `--help`) and a version-authority check (latest git tag == `bunker version` == CHANGELOG top entry) on every push (GAP-036/GAP-038)
+
+### Fixed
+- `go install github.com/deployBunker/bunker/cmd/bunker@latest` works from a fresh checkout — generated protobuf code is now committed (GAP-027)
+- Deterministic agent PATH — exec builders no longer inherit the daemon's ambient `$PATH` (GAP-030)
+- Version defaults aligned across source, tags, and docs (GAP-031)
+- `bunker status` exits non-zero when no servers are configured, matching `list`/`spawn`/`info` (GAP-037)
+
+### Docs
+- Agent port range, `max_agents` default, and demo port corrections across docs (GAP-028/GAP-029/GAP-032)
+
+## 0.1.0 (2026-07-06)
 
 ### Features
 - Multi-server support: `bunker use <server>` and `bunker status --all-servers`
