@@ -10,6 +10,8 @@
 
 ### Fixed
 - `go install github.com/deployBunker/bunker/cmd/bunker@latest` works from a fresh checkout — generated protobuf code is now committed (GAP-027)
+- `go install @latest` ships the full CLI again — the v0.1.1 tag was re-cut at HEAD after being cut from a pre-bump commit that built a 0.1.0 binary without `ssh`/`systemd`; CI now builds from the tag itself (GAP-041)
+- `bunker version` reports a real commit and build time on `go install` builds — VCS metadata from the embedded build info (`debug.ReadBuildInfo`) is used when ldflags are absent, with the module version as a last-resort commit (GAP-042)
 - Deterministic agent PATH — exec builders no longer inherit the daemon's ambient `$PATH` (GAP-030)
 - Version defaults aligned across source, tags, and docs (GAP-031)
 - `bunker status` exits non-zero when no servers are configured, matching `list`/`spawn`/`info` (GAP-037)
