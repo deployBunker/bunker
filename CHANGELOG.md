@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.2 (2026-08-15)
+
+### Added
+- E2E VERIFY-PASS artifact for the release — `docs/dogfood/2026-08-15-gap-044-e2e.md` runs the full battery against the tagged tree on bunker-mvp in coexist mode (GAP-044)
+
+### Fixed
+- `go install github.com/deployBunker/bunker/cmd/bunker@latest` serves the current release again — v0.1.2 cut as a fresh version because the force-moved v0.1.1 tag left the module proxy permanently serving the stale pre-bump zip; the tag-build CI gate now derives the expected version from the tag name (GAP-043)
+- `bunker --version` prints the same 5-field block as `bunker version` — consistent UX-005 version contract (GAP-045)
+
 ## 0.1.1 (2026-08-10)
 
 ### Added

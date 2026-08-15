@@ -79,8 +79,12 @@ jobs:
           latest_tag=$(git describe --tags --abbrev=0)
           expected=$(echo "${latest_tag#v}")
           git show "${latest_tag}:internal/version/version.go" | grep -q "Version = \"${expected}\""
-          git ls-tree -r --name-only "${latest_tag}" | grep -q 'internal/cli/ssh.go'
-          git ls-tree -r --name-only "${latest_tag}" | grep -q 'internal/cli/systemd.go'
+          if ! git ls-tree -r --name-only "${latest_tag}" | grep 'internal/cli/ssh.go' >/dev/null; then
+            echo "tag tree missing internal/cli/ssh.go"; exit 1
+          fi
+          if ! git ls-tree -r --name-only "${latest_tag}" | grep 'internal/cli/systemd.go' >/dev/null; then
+            echo "tag tree missing internal/cli/systemd.go"; exit 1
+          fi
           tag_dir=$(mktemp -d)
           git archive "${latest_tag}" | tar -x -C "${tag_dir}"
           (cd "${tag_dir}" && go build -o /tmp/bunker-tag-bin ./cmd/bunker)
