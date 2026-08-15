@@ -7,12 +7,12 @@ import (
 
 // TestDefaults verifies the fallback values used when binaries are built
 // without -ldflags injection (e.g. `go build ./cmd/bunker` directly).
-// Version must track the latest tagged release (v0.1.1, GAP-031). Commit and
+// Version must track the latest tagged release (v0.1.2, GAP-031). Commit and
 // BuildDate must be non-empty: builds from a VCS checkout or a tagged module
 // install derive them from the embedded build info (GAP-042).
 func TestDefaults(t *testing.T) {
-	if Version != "0.1.1" {
-		t.Errorf("Version = %q, want 0.1.1", Version)
+	if Version != "0.1.2" {
+		t.Errorf("Version = %q, want 0.1.2", Version)
 	}
 	if Commit == "" {
 		t.Errorf("Commit = %q, want non-empty", Commit)
@@ -39,11 +39,11 @@ func TestBuildInfoFallback(t *testing.T) {
 }
 
 // TestModuleVersionFallback verifies the module-proxy install path: no VCS
-// settings, so the module version (v0.1.1) fills the commit field.
+// settings, so the module version (v0.1.2) fills the commit field.
 func TestModuleVersionFallback(t *testing.T) {
-	commit, buildDate := deriveFromBuildInfo(nil, "v0.1.1")
-	if commit != "v0.1.1" {
-		t.Errorf("commit = %q, want v0.1.1", commit)
+	commit, buildDate := deriveFromBuildInfo(nil, "v0.1.2")
+	if commit != "v0.1.2" {
+		t.Errorf("commit = %q, want v0.1.2", commit)
 	}
 	if buildDate != "" {
 		t.Errorf("buildDate = %q, want empty", buildDate)
