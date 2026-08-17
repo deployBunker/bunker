@@ -56,11 +56,15 @@ jobs:
       # version`, and the CHANGELOG top heading must all report the same
       # semver — otherwise upgrade/breaking-change decisions have no ground
       # truth. Needs fetch-depth: 0 (above) for git describe.
+      # INT-CI-001: cli_version extraction no longer pipes multi-line
+      # `bunker version` output through `head -1` — head closes the pipe
+      # early, the producer gets SIGPIPE, and `set -euo pipefail` turns that
+      # into exit 141 (flake class GAP-043). awk consumes the full stream.
       - name: Version authority check
         run: |
           set -euo pipefail
           latest_tag=$(git describe --tags --abbrev=0)
-          cli_version=$(/tmp/bunker-smoke version | head -1 | awk '{print $2}')
+          cli_version=$(/tmp/bunker-smoke version | awk 'NR==1 {print $2}')
           changelog_top=$(grep -m1 '^## ' CHANGELOG.md | awk '{print $2}')
           echo "latest tag: ${latest_tag} | bunker version: ${cli_version} | CHANGELOG: ${changelog_top}"
           test "${latest_tag}" = "v${cli_version}"
