@@ -983,3 +983,12 @@ tasks:
   status: complete
   created_at: '2026-08-09T00:57:46.305171+00:00'
   completed_at: '2026-08-09T00:57:51.071690+00:00'
+- id: INT-CI-001
+  title: Version authority check SIGPIPE flake in ci.yml
+  criteria:
+  - 'Version authority check step passes reliably (no exit 141): cli_version extraction
+    must not use head -1 on multi-line output; full stream consumed; gate passes on
+    clean tree'
+  status: complete
+  created_at: '2026-08-17T07:54:26.244458+00:00'
+  completed_at: '2026-08-17T07:54:48.149177+00:00'
