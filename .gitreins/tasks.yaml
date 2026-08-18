@@ -992,3 +992,17 @@ tasks:
   status: complete
   created_at: '2026-08-17T07:54:26.244458+00:00'
   completed_at: '2026-08-17T07:54:48.149177+00:00'
+- id: DOGFOOD-007
+  title: Rewrite stale skills/bunker-usage/SKILL.md (auth enforced, features fixed)
+  criteria:
+  - "Rewrite skills/bunker-usage/SKILL.md using docs/dogfood/2026-08-18-integration.md\
+    \ as source of truth: (1) remove false 'Auth is disabled (empty token works)'\
+    \ claim \u2014 auth REQUIRED via Bearer token since GAP-014; (2) convert Known-broken\
+    \ table to previously-broken-now-verified (env set/get/list, cp/deploy/tunnel,\
+    \ compound exec, TTL validation, destroy idempotent, status metrics); (3) update\
+    \ workflow to verified commands (env set <id> KEY=VALUE). PASS: grep -c 'Auth\
+    \ is disabled' skills/bunker-usage/SKILL.md = 0 AND no Go source changes AND gitreins\
+    \ guard passes."
+  status: complete
+  created_at: '2026-08-18T22:53:18.457113+00:00'
+  completed_at: '2026-08-18T22:56:29.124639+00:00'
