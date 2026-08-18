@@ -73,3 +73,53 @@ All three are now FIXED and re-verified live 2026-08-06 (GAP-009, tick #231). Th
 | TTL handling | `internal/agent/` (spawn) |
 | REST/gRPC handlers | `internal/server/service.go` |
 | Specs | `specs/api.md` (RPC contract), `specs/architecture.md`, `specs/agent-lifecycle.md` |
+
+## 9. Dogfood run 2026-08-18 — current-state snapshot (the right way, verified live)
+
+This section records what a 2026-08-18 real-use run proved, so future readers
+don't trust stale claims (including this file's own older sections and the
+stale `skills/bunker-usage/SKILL.md` — see DOGFOOD-007). Verified against the
+auth-enforced demo server (78.46.173.180) with a real token.
+
+### How the system actually works today
+
+- **Transport:** connect-go dual protocol. CLI talks gRPC to :19090 (demo) /
+  :9090 (default). REST is the SAME service at `POST /bunker.v1.Bunkerd/<Method>`
+  on :18080 (demo) / :8080 (default), `Content-Type: application/json`,
+  `Authorization: Bearer <master-token>`. **The service path prefix is
+  `bunker.v1` — guessing `bunkerd.v1` 404s.**
+- **Auth:** enforced by default (GAP-011/014). No config → bunkerd refuses to
+  start; explicit `auth.enabled: false` prints a warning. Missing/wrong token
+  → 401. Client tokens live in `~/.bunker/config.yaml` (server aliases), keys
+  in `~/.bunker/keys/<agent-id>`.
+- **Agent lifecycle:** spawn creates a Linux user `bunker-<id>`, SSH keypair,
+  rootless dockerd, cgroup limits (user slice drop-in), port range; bundle
+  printed by CLI. Exec runs `sh -c '<quoted args>'` server-side with the env
+  file sourced (`/run/bunker/<id>/env`). Destroy removes user + keys + run dir.
+- **Env:** `bunker env set <id> KEY=VALUE` (ONE argument), `env get <id> KEY`,
+  `env list <id>`, `env unset <id> KEY`. Persists across exec/run until unset
+  or destroy. (Was completely broken 2026-08-03; fixed tick #192.)
+- **Detached runs:** `bunker run <id> --detach -- <cmd>` → systemd transient
+  unit `bunker-run-<id>-<uuid>`; survives the SSH session.
+- **Errors:** connect codes — `invalid_argument` (bad TTL), `not_found`
+  (destroy unknown → CLI exits 0 with `Agent <id> not found.`), exec exit
+  codes propagate (exit 7 → CLI exit 7).
+
+### Errors hit this run and the right way
+
+1. REST 404 on `bunkerd.v1` → correct path is `bunker.v1.Bunkerd`. Read
+   docs/integration.md §3 before REST probing.
+2. `env set <id> KEY VALUE` → error; correct is `env set <id> KEY=VALUE`.
+3. `spawn --ttl 1h demo-agent` silently ignores the name → use `--agent-id`
+   (DOGFOOD-008).
+4. README env docs missing → DOGFOOD-009.
+5. Demo server v0.1.1 vs HEAD v0.1.2 → DOGFOOD-010.
+
+### The 2026-08-03 "known-broken" list is now ALL FIXED (verify, don't assume)
+
+env (DOGFOOD-001, tick #192), cp/deploy/tunnel (DOGFOOD-002, tick #193),
+TTL validation (DOGFOOD-003, tick #194), root docs (DOGFOOD-004), destroy UX
++ exit codes (DOGFOOD-005, tick #196), status metrics (DOGFOOD-006, tick #197),
+auth enforcement (GAP-014, tick #236), `go install @latest` (GAP-027, tick #254),
+`--version` parity (GAP-045). Anything in the repo claiming these are broken
+predates those ticks.

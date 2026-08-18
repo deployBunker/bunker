@@ -13,3 +13,15 @@
 - **Friction count:** 8 distinct (env family, cp, deploy, tunnel, bundle command strings, TTL validation, root docs, destroy error UX).
 - **Artifacts:** tasks DOGFOOD-001..006 on board, docs/dogfood/2026-08-03-integration.md, docs/dogfood/diagnostics.md, skills/bunker-usage/SKILL.md.
 - **Foreman:** active (900s cooldown, DecayRate 1, NamespaceID coding-hermes, tick #191 today) — no wake-up needed; picks up DOGFOOD tasks automatically.
+
+## 2026-08-18 run detail
+
+- **Verdict:** ✅ SHIPPABLE — full lifecycle verified live twice; 4 minor follow-ups.
+- **Promise statement:** "A user can spin up isolated, resource-limited Linux environments with rootless Docker on a remote host, driven entirely from a single CLI (or connect-go gRPC/REST): connect → spawn → exec/docker → env → cp → metrics → heartbeat → run --detach → destroy, with `go install @latest` or `make build` as install paths and a live demo at 78.46.173.180."
+- **Method:** Built CLI (make build, 1.08s) + `go install @latest` (GAP-027 verified: v0.1.2 installs/runs). Connected to auth-enforced demo server with stored token. Two full lifecycles on scratch agents c31d8ee8 + e8134667: spawn (10s) → info → exec (rootless docker run alpine REAL-USE-DOCKER-PASS) → env set/get/list (FOO=bar42 visible in exec) → cp round-trip → metrics (real values) → heartbeat (TTL extended) → run --detach (systemd transient unit, job completed) → destroy (1.9s). REST surface probed: `/bunker.v1.Bunkerd/ListAgents` + `ServerInfo` 200 with auth. All scratch agents destroyed; server back to exactly 1 pre-existing agent (dexdat-dogfood untouched); 0 leaked users/keys/run-dirs.
+- **Time-to-first-success:** 0.56s (`bunker status`); full working agent ~10s.
+- **Friction count:** 4 (stale usage SKILL.md teaching wrong reality; spawn positional name silently ignored; README lacks env examples — 2 usage errors; demo server version lag v0.1.1 vs v0.1.2). Plus 1 non-task: REST path `bunker.v1.Bunkerd` easy to guess wrong.
+- **Top 3 findings:** (1) DOGFOOD-007 P1 — skills/bunker-usage/SKILL.md 15 days stale, says auth disabled + env/cp/tunnel broken (all fixed and re-verified); (2) DOGFOOD-008 P2 — `bunker spawn --ttl 1h demo-agent` silently drops the name arg; (3) DOGFOOD-009 P2 — README documents env with no examples.
+- **Artifacts:** tasks DOGFOOD-007..010 on board (md + tasks.jsonl), docs/dogfood/2026-08-18-integration.md (current accurate usage reference), docs/dogfood/diagnostics.md §9 snapshot.
+- **Foreman:** active (3600s cooldown, Enabled true) — no wake-up needed; picks up DOGFOOD tasks automatically.
+- **Note:** tasks.md 2026-08-10 "Stand-In Gap Findings" section still shows GAP-027/028/029 without ✅ markers while tasks.jsonl marks them complete — cosmetic md/jsonl drift; validator counts those 3 rows, worth folding into a future board-hygiene pass.
