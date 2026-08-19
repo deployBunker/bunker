@@ -32,14 +32,16 @@ func newSpawnTestServer(t *testing.T, handler bunkerv1connect.BunkerdHandler) *h
 // ServerInfo and SpawnAgent responses. All other methods return Unimplemented.
 type mockSpawnServer struct {
 	mockBunkerdServer
-	spawnResp *v1.SpawnAgentResponse
-	spawnErr  error
+	spawnResp  *v1.SpawnAgentResponse
+	spawnErr   error
+	gotAgentID string // AgentId from the last SpawnAgent request (DOGFOOD-008)
 }
 
 func (m *mockSpawnServer) SpawnAgent(
 	ctx context.Context,
 	req *connect.Request[v1.SpawnAgentRequest],
 ) (*connect.Response[v1.SpawnAgentResponse], error) {
+	m.gotAgentID = req.Msg.AgentId
 	if m.spawnErr != nil {
 		return nil, m.spawnErr
 	}
@@ -83,6 +85,11 @@ func TestSpawnCommand_Help(t *testing.T) {
 	}
 	if !strings.Contains(output, "--memory") {
 		t.Errorf("help output missing --memory flag, got:\n%s", output)
+	}
+	// The positional [agent-id] alias must be documented in help
+	// (DOGFOOD-008).
+	if !strings.Contains(output, "[agent-id]") {
+		t.Errorf("help output missing positional [agent-id], got:\n%s", output)
 	}
 }
 
@@ -287,6 +294,91 @@ func TestSpawnCommand_Success_Minimal(t *testing.T) {
 	// Public URL should not appear in minimal response.
 	if strings.Contains(output, "Public URL") {
 		t.Error("output unexpectedly contains Public URL")
+	}
+}
+
+// TestSpawnCommand_PositionalAgentID covers DOGFOOD-008: `bunker spawn
+// demo-agent` must bind the positional argument to the agent ID (it was
+// previously silently ignored), a positional + --agent-id combination must
+// error, invalid IDs must be rejected locally against the [a-z0-9-]{1,64}
+// rule, and more than one positional must hit the cobra usage error.
+func TestSpawnCommand_PositionalAgentID(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantID  string // AgentId expected at the server (success rows only)
+		wantErr string // substring expected in the error (empty = success)
+	}{
+		{
+			name:   "positional id binds to agent-id",
+			args:   []string{"demo-agent"},
+			wantID: "demo-agent",
+		},
+		{
+			name:    "positional conflicts with --agent-id",
+			args:    []string{"--agent-id", "flag-agent", "pos-agent"},
+			wantErr: "use one or the other",
+		},
+		{
+			name:    "invalid positional id rejected before connect",
+			args:    []string{"Bad_Name!"},
+			wantErr: "[a-z0-9-]{1,64}",
+		},
+		{
+			name:    "invalid --agent-id rejected before connect",
+			args:    []string{"--agent-id", "UPPER"},
+			wantErr: "[a-z0-9-]{1,64}",
+		},
+		{
+			name:    "more than one positional rejected",
+			args:    []string{"one", "two"},
+			wantErr: "accepts at most 1 arg",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			t.Setenv("HOME", tmpDir)
+
+			// Error rows run with NO server configured: validation must
+			// fire locally, before config load or any RPC.
+			var mock *mockSpawnServer
+			if tt.wantErr == "" {
+				mock = &mockSpawnServer{
+					mockBunkerdServer: mockBunkerdServer{
+						info: &v1.ServerInfoResponse{
+							Hostname: "bunker-test",
+							Version:  "v0.2.0",
+						},
+					},
+					spawnResp: &v1.SpawnAgentResponse{AgentId: "resp-id"},
+				}
+				srv := newSpawnTestServer(t, mock)
+				defer srv.Close()
+				writeSpawnTestConfig(t, tmpDir, srv.URL)
+			}
+
+			cmd := NewSpawnCommand()
+			cmd.SetArgs(tt.args)
+			err := cmd.Execute()
+
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("error %q does not contain %q", err.Error(), tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+			if mock.gotAgentID != tt.wantID {
+				t.Errorf("server received AgentId %q, want %q", mock.gotAgentID, tt.wantID)
+			}
+		})
 	}
 }
 

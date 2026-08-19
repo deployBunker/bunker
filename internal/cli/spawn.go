@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	"connectrpc.com/connect"
@@ -12,6 +13,12 @@ import (
 
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 )
+
+// agentIDRe matches the CLI-side agent ID rule: lowercase letters, digits,
+// and hyphens, 1-64 characters. The server enforces its own (stricter, 1-63)
+// rule as a backstop; the CLI validates first so typos fail fast without a
+// round-trip (DOGFOOD-008).
+var agentIDRe = regexp.MustCompile(`^[a-z0-9-]{1,64}$`)
 
 // NewSpawnCommand returns the `bunker spawn` cobra command.
 func NewSpawnCommand() *cobra.Command {
@@ -29,17 +36,36 @@ func NewSpawnCommand() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "spawn",
+		Use:   "spawn [agent-id]",
 		Short: "Create a new agent",
 		Long: `Create a new agent on the active bunkerd server and return
 a connection bundle with SSH keys, Docker host, and networking details.
 
+The optional positional [agent-id] is an alias for --agent-id; it must
+match [a-z0-9-]{1,64} (lowercase letters, digits, hyphens only).
+
 Examples:
   bunker spawn
+  bunker spawn demo-agent --ttl 1h
   bunker spawn --cpu 2.0 --memory 4294967296
   bunker spawn --network cloudflare --trycloudflare
   bunker spawn --server staging --ttl 24h`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// 0. Bind + validate the agent ID locally, BEFORE any config
+			// load or network I/O: the positional [agent-id] is an alias
+			// for --agent-id (DOGFOOD-008). Validation must fire even when
+			// no server is configured or reachable.
+			if len(args) > 0 {
+				if agentID != "" {
+					return fmt.Errorf("agent id given both as positional argument %q and --agent-id %q; use one or the other", args[0], agentID)
+				}
+				agentID = args[0]
+			}
+			if agentID != "" && !agentIDRe.MatchString(agentID) {
+				return fmt.Errorf("invalid agent id %q: must match ^[a-z0-9-]{1,64}$ (lowercase letters, digits, hyphens only, 1-64 characters)", agentID)
+			}
+
 			// 1. Load CLI config
 			cfg, err := LoadCLIConfig()
 			if err != nil {
@@ -179,7 +205,7 @@ Examples:
 	}
 
 	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (default: active server)")
-	cmd.Flags().StringVar(&agentID, "agent-id", "", "Agent ID (auto-generated if empty)")
+	cmd.Flags().StringVar(&agentID, "agent-id", "", "Agent ID (auto-generated if empty; positional [agent-id] is an alias)")
 	cmd.Flags().Float64Var(&cpuQuota, "cpu", 0, "CPU quota in cores (e.g. 2.0)")
 	cmd.Flags().Uint64Var(&memoryMax, "memory", 0, "Memory limit in bytes")
 	cmd.Flags().Uint64Var(&diskMax, "disk", 0, "Disk limit in bytes")
