@@ -1015,3 +1015,13 @@ tasks:
   status: complete
   created_at: '2026-08-19T00:01:35.574711+00:00'
   completed_at: '2026-08-19T00:03:55.716260+00:00'
+- id: DOGFOOD-008
+  title: bunker spawn silently ignores positional name arg
+  criteria:
+  - "bunker spawn --ttl 1h demo-agent yields agent id demo-agent (positional bound\
+    \ to --agent-id with [a-z0-9-]{1,64} validation, clear usage error on invalid/multiple\
+    \ positionals) \u2014 go build ./..., go vet ./..., go test ./... pass; README\
+    \ quick start aligned"
+  status: complete
+  created_at: '2026-08-19T01:12:01.627336+00:00'
+  completed_at: '2026-08-19T01:20:46.053784+00:00'
