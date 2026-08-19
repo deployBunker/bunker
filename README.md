@@ -172,6 +172,10 @@ bunker tunnel abc12345
 # See agent details
 bunker info abc12345
 
+# Set / read agent environment variables (KEY=VALUE as one argument)
+bunker env set abc12345 KEY=VALUE
+bunker env get abc12345 KEY
+
 # Extend TTL
 bunker heartbeat abc12345
 
