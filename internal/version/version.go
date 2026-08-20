@@ -7,14 +7,14 @@
 //	                   -X github.com/deployBunker/bunker/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 //
 // The Makefile build targets apply these flags automatically (VERSION is
-// configurable via the VERSION variable, defaulting to 0.1.2).
+// configurable via the VERSION variable, defaulting to 0.1.3).
 //
 // When ldflags values are absent (e.g. `go install pkg@version`, the README's
 // primary install path, or a bare `go build ./cmd/bunker`), init() falls back
 // to the VCS metadata embedded by the Go toolchain (debug.ReadBuildInfo):
 // vcs.revision supplies Commit and vcs.time supplies BuildDate. For module
 // installs without VCS metadata (module-proxy zips), the module version
-// (e.g. v0.1.2) is used as the Commit fallback so the field is never a bare
+// (e.g. v0.1.3) is used as the Commit fallback so the field is never a bare
 // "unknown" for a tagged release (GAP-042).
 package version
 
@@ -22,7 +22,7 @@ import "runtime/debug"
 
 var (
 	// Version is the semantic version of the build.
-	Version = "0.1.2"
+	Version = "0.1.3"
 
 	// Commit is the git short SHA the binaries were built from.
 	// "unknown" when neither injected via ldflags nor derivable from
@@ -66,7 +66,7 @@ func deriveFromBuildInfo(settings []debug.BuildSetting, mainVersion string) (com
 		}
 	}
 	// Module installs from the module proxy have no VCS settings; the
-	// module version (v0.1.2) is the only provenance the binary carries.
+	// module version (v0.1.3) is the only provenance the binary carries.
 	if commit == "" && mainVersion != "" && mainVersion != "(devel)" {
 		commit = mainVersion
 	}

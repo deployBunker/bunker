@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3 (2026-08-20)
+
+### Fixed
+- `go install github.com/deployBunker/bunker/cmd/bunker@latest` serves HEAD again — v0.1.3 cut as a fresh version at HEAD (97 commits past v0.1.2) so fresh installs get the DOGFOOD-008 `spawn` positional agent-id binding and the README/SKILL.md-documented behavior; tag==version==CHANGELOG parity restored (GAP-046)
+
 ## 0.1.2 (2026-08-15)
 
 ### Added
