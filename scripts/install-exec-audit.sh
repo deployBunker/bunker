@@ -93,7 +93,7 @@ $marker
 # (the 1.x name %{cmd} was renamed upstream).
 
 [snoopy]
-message_format = "%{uid} %{euid} %{cwd} %{cmdline}"
+message_format = "uid=%{uid} euid=%{euid} cwd=%{cwd} cmd=%{cmdline}"
 EOF
     if ! grep -q '^message_format' "$ini"; then
         die "failed to write $ini (message_format missing after write)."
