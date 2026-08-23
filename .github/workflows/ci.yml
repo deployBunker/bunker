@@ -52,6 +52,24 @@ jobs:
           /tmp/bunker-smoke --help | grep -q '^  ssh'
           /tmp/bunker-smoke --help | grep -q '^  systemd'
 
+      # Binary freshness guard (GAP-051, GAP-036 regression): stale
+      # gitignored prebuilt binaries must never sit at the repo root — they
+      # re-materialized twice (0.1.2/5b759c4 vs HEAD) and silently served old
+      # behavior. Any binary that IS present fails the job, and a fresh build
+      # must report the HEAD commit (proves version injection is live).
+      - name: Binary freshness guard
+        run: |
+          set -euo pipefail
+          if [ -e bunker ] || [ -e bunkerd ]; then
+            echo "stale prebuilt binary at repo root (gitignored):" >&2
+            ls -la bunker bunkerd >&2
+            exit 1
+          fi
+          head_commit=$(git rev-parse --short HEAD)
+          bin_commit=$(/tmp/bunker-smoke version | awk 'NR==2 {print $2}')
+          echo "HEAD commit: ${head_commit} | built binary commit: ${bin_commit}"
+          test "${bin_commit}" = "${head_commit}"
+
       # Version-authority check (GAP-038): the latest git tag, `bunker
       # version`, and the CHANGELOG top heading must all report the same
       # semver — otherwise upgrade/breaking-change decisions have no ground
