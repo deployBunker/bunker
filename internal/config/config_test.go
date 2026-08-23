@@ -37,6 +37,12 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Agent.DefaultTTL != 6*time.Hour {
 		t.Errorf("expected agent default_ttl 6h, got %v", cfg.Agent.DefaultTTL)
 	}
+	if !cfg.Audit.Enabled {
+		t.Error("audit should be enabled by default")
+	}
+	if cfg.Audit.Path != "/var/log/bunkerd/audit.log" {
+		t.Errorf("expected audit path /var/log/bunkerd/audit.log, got %q", cfg.Audit.Path)
+	}
 }
 
 func TestCheckAuth_DefaultRefusesWithoutCredential(t *testing.T) {
@@ -119,6 +125,9 @@ auth:
   token: "test-token"
 agent:
   default_ttl: "30m"
+audit:
+  enabled: false
+  path: "/tmp/custom-audit.log"
 `
 	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -145,6 +154,30 @@ agent:
 	}
 	if cfg.Agent.DefaultTTL != 30*time.Minute {
 		t.Errorf("expected default_ttl 30m, got %v", cfg.Agent.DefaultTTL)
+	}
+	if cfg.Audit.Enabled {
+		t.Error("audit should be disabled by config file")
+	}
+	if cfg.Audit.Path != "/tmp/custom-audit.log" {
+		t.Errorf("expected audit path /tmp/custom-audit.log, got %q", cfg.Audit.Path)
+	}
+}
+
+func TestLoad_AuditEnvOverrides(t *testing.T) {
+	// Env overrides follow the BUNKERD_<SECTION>_<KEY> convention, the same
+	// mechanism as the other sections.
+	t.Setenv("BUNKERD_AUDIT_ENABLED", "false")
+	t.Setenv("BUNKERD_AUDIT_PATH", "/tmp/env-audit.log")
+
+	cfg, err := Load("/nonexistent/path/config.yaml")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Audit.Enabled {
+		t.Error("BUNKERD_AUDIT_ENABLED=false should disable audit")
+	}
+	if cfg.Audit.Path != "/tmp/env-audit.log" {
+		t.Errorf("expected audit path from env /tmp/env-audit.log, got %q", cfg.Audit.Path)
 	}
 }
 

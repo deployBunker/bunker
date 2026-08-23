@@ -21,6 +21,7 @@ import (
 
 	"github.com/deployBunker/bunker/internal/agent"
 	"github.com/deployBunker/bunker/internal/apikey"
+	"github.com/deployBunker/bunker/internal/audit"
 	"github.com/deployBunker/bunker/internal/auth"
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/hilo"
@@ -32,18 +33,32 @@ import (
 
 // BunkerdServer is the main bunkerd daemon server.
 type BunkerdServer struct {
-	cfg     *config.Config
-	logger  *slog.Logger
-	keyMgr  *apikey.Manager
-	jwtAuth *auth.JWTAuth
+	cfg      *config.Config
+	logger   *slog.Logger
+	keyMgr   *apikey.Manager
+	jwtAuth  *auth.JWTAuth
+	auditLog *audit.AuditLog
 }
 
 // New creates a new BunkerdServer with the given configuration.
 func New(cfg *config.Config) *BunkerdServer {
-	return &BunkerdServer{
+	s := &BunkerdServer{
 		cfg:    cfg,
 		logger: slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})),
 	}
+
+	// Open the daemon-side audit trail when enabled. Failure is non-fatal
+	// (warn + run without audit) so a missing/unwritable /var/log/bunkerd
+	// never blocks daemon startup on existing deployments.
+	if cfg.Audit.Enabled {
+		l, err := audit.New(cfg.Audit.Path)
+		if err != nil {
+			s.logger.Warn("audit logging disabled", "path", cfg.Audit.Path, "error", err)
+		} else {
+			s.auditLog = l
+		}
+	}
+	return s
 }
 
 // Run starts the bunkerd server and blocks until shutdown.
@@ -52,6 +67,11 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 		return fmt.Errorf("invalid config: %w", err)
 	}
 	s.logger.Info("bunkerd config loaded", "max_agents", s.cfg.Agent.MaxAgents)
+
+	// Close the audit trail when the daemon exits.
+	if s.auditLog != nil {
+		defer s.auditLog.Close()
+	}
 
 	// Build the chi router with middleware
 	r := chi.NewRouter()
@@ -134,9 +154,22 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	tailscaleMgr := tailscale.NewTailscaleManager(&s.cfg.Tailscale, s.logger)
 	agentMgr := agent.NewAgentManager(s.cfg, s.logger, tracker, tunnelMgr, tailscaleMgr)
 	bunkerdSvc := &bunkerdService{cfg: s.cfg, logger: s.logger, agentMgr: agentMgr, tracker: tracker, tunnelMgr: tunnelMgr, tailscaleMgr: tailscaleMgr, keyMgr: s.keyMgr, jwtAuth: s.jwtAuth, cpuSampler: resource.NewCPUSampler()}
+
+	// Audit interceptor: composed INSIDE the auth interceptor (auth listed
+	// first, so it runs outermost) so only authenticated requests reach it —
+	// failed-auth attempts never produce audit records. Caller identity comes
+	// from the Claims the auth interceptor placed in the context; the raw
+	// token is never written to the log.
+	bunkerdInterceptors := []connect.Interceptor{bunkerdAuthInterceptor}
+	agentInterceptors := []connect.Interceptor{agentAuthInterceptor}
+	if s.auditLog != nil {
+		auditInterceptor := audit.NewInterceptor(s.auditLog, s.logger)
+		bunkerdInterceptors = append(bunkerdInterceptors, auditInterceptor)
+		agentInterceptors = append(agentInterceptors, auditInterceptor)
+	}
 	bunkerdPath, bunkerdHandler := bunkerv1connect.NewBunkerdHandler(
 		bunkerdSvc,
-		connect.WithInterceptors(bunkerdAuthInterceptor),
+		connect.WithInterceptors(bunkerdInterceptors...),
 	)
 	r.Mount(bunkerdPath, bunkerdHandler)
 
@@ -145,7 +178,7 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	agentSvc := &agentService{logger: s.logger, tracker: tracker}
 	agentPath, agentHandler := bunkerv1connect.NewAgentHandler(
 		agentSvc,
-		connect.WithInterceptors(agentAuthInterceptor),
+		connect.WithInterceptors(agentInterceptors...),
 	)
 	r.Mount(agentPath, agentHandler)
 

@@ -91,8 +91,10 @@ func TestTokenAuth_CorrectToken(t *testing.T) {
 	auth := NewTokenAuth("secret-token")
 
 	called := false
+	var gotClaims *Claims
 	handler := func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
 		called = true
+		gotClaims, _ = ClaimsFromContext(ctx)
 		return connect.NewResponse(&dummyMsg{}), nil
 	}
 	wrapped := auth.WrapUnary(handler)
@@ -105,6 +107,17 @@ func TestTokenAuth_CorrectToken(t *testing.T) {
 	}
 	if !called {
 		t.Fatal("handler was not called")
+	}
+	// GAP-047: successful static-token auth must expose an identity downstream
+	// (audit trail) without ever exposing the raw token.
+	if gotClaims == nil {
+		t.Fatal("expected claims in context after successful static token auth")
+	}
+	if gotClaims.Subject != "static-token" {
+		t.Errorf("expected subject static-token, got %q", gotClaims.Subject)
+	}
+	if gotClaims.AgentID != "" {
+		t.Errorf("expected no agent scope for master token, got %q", gotClaims.AgentID)
 	}
 }
 

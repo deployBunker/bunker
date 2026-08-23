@@ -10,12 +10,17 @@ import (
 	"strings"
 
 	"connectrpc.com/connect"
+	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/deployBunker/bunker/internal/apikey"
 )
 
 // TokenAuth validates incoming requests against a static bearer token.
 // Implements connect.Interceptor so it can be used with connect.WithInterceptors.
+// On success it injects a Claims with Subject "static-token" into the context,
+// mirroring the static-token fallback inside JWTAuth, so downstream consumers
+// (e.g. the audit interceptor) can attribute the request to "master" without
+// ever seeing the raw token value.
 type TokenAuth struct {
 	token string
 }
@@ -31,7 +36,7 @@ func (a *TokenAuth) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		if err := a.authenticate(req.Header()); err != nil {
 			return nil, err
 		}
-		return next(ctx, req)
+		return next(ContextWithClaims(ctx, staticTokenClaims()), req)
 	}
 }
 
@@ -41,7 +46,7 @@ func (a *TokenAuth) WrapStreamingHandler(next connect.StreamingHandlerFunc) conn
 		if err := a.authenticate(conn.RequestHeader()); err != nil {
 			return err
 		}
-		return next(ctx, conn)
+		return next(ContextWithClaims(ctx, staticTokenClaims()), conn)
 	}
 }
 
@@ -125,6 +130,18 @@ func NewMasterOnlyAuthInterceptor(jwtSecret string, keyMgr *apikey.Manager, stat
 		return NewTokenAuth(staticToken)
 	}
 	return NoAuth{}
+}
+
+// staticTokenClaims returns the Claims attributed to a successful static
+// master token authentication. Subject "static-token" is the shared marker
+// used by both TokenAuth and the JWTAuth static fallback; audit consumers map
+// it to the "master" label.
+func staticTokenClaims() *Claims {
+	return &Claims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject: "static-token",
+		},
+	}
 }
 
 // Ensure our types satisfy the interface at compile time.

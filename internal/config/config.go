@@ -20,6 +20,7 @@ type Config struct {
 	Tunnel      TunnelConfig      `mapstructure:"tunnel"`
 	NamedTunnel NamedTunnelConfig `mapstructure:"named_tunnel"`
 	Tailscale   TailscaleConfig   `mapstructure:"tailscale"`
+	Audit       AuditConfig       `mapstructure:"audit"`
 }
 
 // ServerConfig holds gRPC and REST listener addresses and timeouts.
@@ -58,6 +59,14 @@ type AuthConfig struct {
 	Token     string        `mapstructure:"token"`
 	JWTSecret string        `mapstructure:"jwt_secret"`
 	JWTTTL    time.Duration `mapstructure:"jwt_ttl"`
+}
+
+// AuditConfig holds the daemon-side audit trail settings. When enabled, every
+// authenticated RPC appends one JSONL record to Path (mode 0600). The log
+// never contains token values.
+type AuditConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Path    string `mapstructure:"path"`
 }
 
 // AgentConfig holds agent lifecycle settings.
@@ -154,6 +163,10 @@ func DefaultConfig() *Config {
 			BinaryPath:     "tailscale",
 			StartupTimeout: 30 * time.Second,
 		},
+		Audit: AuditConfig{
+			Enabled: true,
+			Path:    "/var/log/bunkerd/audit.log",
+		},
 	}
 }
 
@@ -214,6 +227,8 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("tailscale.binary_path")
 	v.BindEnv("tailscale.authkey")
 	v.BindEnv("tailscale.startup_timeout")
+	v.BindEnv("audit.enabled")
+	v.BindEnv("audit.path")
 
 	// Read config file if it exists
 	if _, err := os.Stat(path); err == nil {
