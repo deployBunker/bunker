@@ -1068,3 +1068,14 @@ tasks:
   status: complete
   created_at: '2026-08-23T16:39:45.550357+00:00'
   completed_at: '2026-08-23T16:40:11.623603+00:00'
+- id: GAP-048
+  title: 'Exec-level audit via snoopy: install-exec-audit.sh + docs/exec-audit.md'
+  criteria:
+  - 'scripts/install-exec-audit.sh installs and configures snoopy on bunker hosts
+    (idempotent, re-run is a no-op, root); docs/exec-audit.md documents uid-to-agent-id
+    correlation and journalctl query patterns. PASS: script + docs committed; script
+    is idempotent (second run exits 0 with no changes); docs contain uid correlation
+    + journalctl examples.'
+  status: complete
+  created_at: '2026-08-23T23:06:16.321850+00:00'
+  completed_at: '2026-08-23T23:22:01.354717+00:00'
