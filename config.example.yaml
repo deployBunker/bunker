@@ -46,6 +46,12 @@ agent:
   port_range_per_agent: 100
   # default_ttl: 6h           # default agent TTL (\\d+[hmd] format, e.g. 6h/90m/7d)
 
+# Daemon-side audit trail: append-only JSONL log of every authenticated RPC
+# (file mode 0600; never contains token values).
+audit:
+  enabled: true                    # log every authenticated RPC
+  path: /var/log/bunkerd/audit.log  # append-only JSONL audit log
+
 # Cloudflare TryCloudflare quick tunnels for agents (optional).
 # tunnel:
 #   enabled: true

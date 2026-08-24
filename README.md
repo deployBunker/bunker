@@ -131,6 +131,13 @@ auth:
 EOF
 ```
 
+**Audit trail** — `bunkerd` writes an append-only JSONL audit log of every
+authenticated RPC (one record per request; file mode `0600`; token values are
+never written). It is on by default; configure it under `audit` in
+`config.yaml` — `audit.enabled` (default `true`) and `audit.path` (default
+`/var/log/bunkerd/audit.log`) — or via the `BUNKERD_AUDIT_ENABLED` /
+`BUNKERD_AUDIT_PATH` env overrides.
+
 ### Run the daemon
 
 > **⚠️ `bunkerd` must run as root** — agent spawn calls `useradd`/`systemd-run` and fails with `useradd: Permission denied` under a non-root user. Run it directly as root (or via `sudo`, or as a systemd service under `User=root`):

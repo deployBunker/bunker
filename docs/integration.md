@@ -91,6 +91,35 @@ curl -s http://78.46.173.180:18080/bunker.v1.Bunkerd/ServerInfo \
   -H 'Content-Type: application/json' -d '{}'
 ```
 
+#### Audit trail
+
+`bunkerd` records every **authenticated** RPC (master token or agent sub-key)
+in an append-only JSONL audit log: one JSON record per request, written
+atomically to a mode-`0600` file. Records capture caller identity (derived
+from the authenticated claims — **token values are never written**), the
+procedure, remote address, target agent, duration, and outcome; the record
+schema lives in `internal/audit` (`ts`, `caller`, `method`, `remote_addr`,
+`agent_id`, `duration_ms`, `outcome`, `summary`).
+
+Configuration is daemon-side, under the `audit` key in `config.yaml`:
+
+```yaml
+audit:
+  enabled: true                     # log every authenticated RPC (default: true)
+  path: /var/log/bunkerd/audit.log  # append-only JSONL audit log
+```
+
+| Key | Default | Env override |
+|-----|---------|--------------|
+| `audit.enabled` | `true` | `BUNKERD_AUDIT_ENABLED` |
+| `audit.path` | `/var/log/bunkerd/audit.log` | `BUNKERD_AUDIT_PATH` |
+
+The audit log is a server-side concern — clients need nothing special; when
+enabled, every authenticated request is recorded daemon-side. Rotate
+`audit.path` like any other daemon log. If the log cannot be opened (missing
+or unwritable path), the daemon logs a warning and continues **without**
+auditing — audit failure never blocks startup.
+
 ## 5. RPC surface (`proto/bunker/v1/bunker.proto`)
 
 ### `bunkerd.Bunkerd` — server management + agent lifecycle (master token)
