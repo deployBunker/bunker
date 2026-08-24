@@ -1103,3 +1103,12 @@ tasks:
   status: complete
   created_at: '2026-08-24T11:38:36.756147+00:00'
   completed_at: '2026-08-24T11:54:09.280017+00:00'
+- id: GAP-050
+  title: "bunker audit CLI \u2014 list/export/verify with remote daemon support"
+  criteria:
+  - bunker audit list --agent <id> against live daemon returns the agent's records;
+    bunker audit export produces valid JSON; --help lists the subcommands (list, export,
+    verify); docs committed; go build/vet/test pass
+  status: complete
+  created_at: '2026-08-24T18:10:06.986144+00:00'
+  completed_at: '2026-08-24T18:18:47.658409+00:00'
