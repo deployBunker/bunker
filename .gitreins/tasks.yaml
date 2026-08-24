@@ -1079,3 +1079,14 @@ tasks:
   status: complete
   created_at: '2026-08-23T23:06:16.321850+00:00'
   completed_at: '2026-08-23T23:22:01.354717+00:00'
+- id: GAP-052
+  title: 'GAP-052: document audit.enabled/audit.path config in README + integration.md
+    + config.example.yaml'
+  criteria:
+  - README.md contains >=1 'audit' mention; config.example.yaml has an 'audit:' section
+    with enabled and path keys; docs/integration.md documents the audit trail config.
+    grep -ci audit README.md >= 1 and grep -A3 'audit:' config.example.yaml shows
+    enabled/path
+  status: complete
+  created_at: '2026-08-24T05:28:52.249636+00:00'
+  completed_at: '2026-08-24T05:31:07.573368+00:00'
