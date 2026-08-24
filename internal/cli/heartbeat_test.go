@@ -53,6 +53,10 @@ func (m *heartbeatMockServer) HeartbeatAgent(ctx context.Context, req *connect.R
 	}), nil
 }
 
+func (m *heartbeatMockServer) QueryAudit(ctx context.Context, req *connect.Request[v1.QueryAuditRequest]) (*connect.Response[v1.QueryAuditResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
 func (m *heartbeatMockServer) ExecAgent(ctx context.Context, req *connect.Request[v1.ExecAgentRequest], stream *connect.ServerStream[v1.ExecAgentResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, nil)
 }

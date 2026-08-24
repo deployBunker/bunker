@@ -18,6 +18,7 @@ import (
 
 	"github.com/deployBunker/bunker/internal/agent"
 	"github.com/deployBunker/bunker/internal/apikey"
+	"github.com/deployBunker/bunker/internal/audit"
 	"github.com/deployBunker/bunker/internal/auth"
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/resource"
@@ -49,6 +50,11 @@ type bunkerdService struct {
 	keyMgr       *apikey.Manager
 	jwtAuth      *auth.JWTAuth
 	cpuSampler   cpuSampler
+	// auditLog is the daemon's audit trail writer (nil when audit logging
+	// is disabled). QueryAudit reads from it; the audit interceptor writes
+	// to it. It is only used for read access here — the interceptor owns
+	// the write path.
+	auditLog *audit.AuditLog
 }
 
 // agentManager is the subset of *agent.AgentManager used by bunkerdService.
@@ -395,6 +401,65 @@ func (s *bunkerdService) HeartbeatAgent(ctx context.Context, req *connect.Reques
 		ExpiresAt:    rec.ExpiresAt.Format(time.RFC3339),
 		Acknowledged: true,
 	}), nil
+}
+
+// QueryAudit returns audit trail records matching the request filters,
+// oldest first. The trail is read from the daemon's audit log (live file +
+// rotated backups) exactly as `bunker audit list/export --path` reads it
+// locally — this is the remote query surface for operators who cannot (or
+// must not) ssh in and grep raw files.
+//
+// The handler is read-only: it never writes records itself. (The record for
+// this very query is appended by the audit interceptor, like every other
+// authenticated RPC.)
+func (s *bunkerdService) QueryAudit(ctx context.Context, req *connect.Request[v1.QueryAuditRequest]) (*connect.Response[v1.QueryAuditResponse], error) {
+	if s.auditLog == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("audit logging is disabled on this server"))
+	}
+
+	f := audit.Filter{
+		AgentID: req.Msg.GetAgentId(),
+		Method:  req.Msg.GetMethod(),
+		Limit:   int(req.Msg.GetLimit()),
+	}
+	// Invalid timestamps are surfaced as CodeInvalidArgument so a typo in
+	// --since/--until cannot silently widen the query to "everything".
+	if since := req.Msg.GetSince(); since != "" {
+		ts, err := time.Parse(time.RFC3339, since)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid since %q: %w", since, err))
+		}
+		f.Since = &ts
+	}
+	if until := req.Msg.GetUntil(); until != "" {
+		ts, err := time.Parse(time.RFC3339, until)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid until %q: %w", until, err))
+		}
+		f.Until = &ts
+	}
+
+	records, err := audit.Query(s.auditLog.Path(), f)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("read audit trail: %w", err))
+	}
+
+	out := make([]*v1.AuditRecord, 0, len(records))
+	for _, r := range records {
+		out = append(out, &v1.AuditRecord{
+			Ts:         r.TS,
+			Caller:     r.Caller,
+			Method:     r.Method,
+			RemoteAddr: r.RemoteAddr,
+			AgentId:    r.AgentID,
+			DurationMs: r.DurationMS,
+			Outcome:    r.Outcome,
+			Summary:    r.Summary,
+			Hash:       r.Hash,
+			PrevHash:   r.PrevHash,
+		})
+	}
+	return connect.NewResponse(&v1.QueryAuditResponse{Records: out}), nil
 }
 
 // agentExecBasePath is the deterministic PATH base used for agent execs (the

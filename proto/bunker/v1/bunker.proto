@@ -22,6 +22,9 @@ service Bunkerd {
   rpc ExecAgent(ExecAgentRequest) returns (stream ExecAgentResponse);
   rpc RunAgent(RunAgentRequest) returns (RunAgentResponse);
   rpc HeartbeatAgent(HeartbeatAgentRequest) returns (HeartbeatAgentResponse);
+
+  // Audit trail
+  rpc QueryAudit(QueryAuditRequest) returns (QueryAuditResponse);
 }
 
 // ── Agent Service (scoped sub-key access) ─────────────────────
@@ -222,4 +225,38 @@ message GetInfoResponse {
   string public_url = 4;
   ResourceLimits limits = 5;
   string expires_at = 6;
+}
+
+// ── Audit trail ────────────────────────────────────────────────
+
+// QueryAuditRequest carries optional filters for the audit trail. All
+// filters are ANDed; empty filters match everything. since/until are
+// RFC3339 timestamps (RFC3339Nano accepted) compared against the record's
+// ts field.
+message QueryAuditRequest {
+  string agent_id = 1;  // exact match on agent_id ("" = all)
+  string method = 2;    // substring match on the procedure, e.g. "/bunker.v1.Bunkerd/SpawnAgent" ("" = all)
+  string since = 3;     // RFC3339 lower bound (inclusive)
+  string until = 4;     // RFC3339 upper bound (inclusive)
+  uint32 limit = 5;     // max records to return, most recent first (0 = no limit)
+}
+
+// AuditRecord is one audit log entry. Field names mirror the JSONL keys
+// written by the daemon (internal/audit Record), so a remote query and a
+// local export of the same log are byte-identical in content.
+message AuditRecord {
+  string ts = 1;          // RFC3339Nano UTC timestamp
+  string caller = 2;      // token/agent identity
+  string method = 3;      // full connect procedure, e.g. /bunker.v1.Bunkerd/SpawnAgent
+  string remote_addr = 4; // client address as seen by the server
+  string agent_id = 5;    // target agent of the request ("" when none)
+  int64 duration_ms = 6;  // wall time from request start to completion
+  string outcome = 7;     // "ok" or the connect error code, e.g. "not_found"
+  string summary = 8;     // human-readable request summary
+  string hash = 9;        // SHA-256 hex digest of the canonical record line
+  string prev_hash = 10;  // hash of the previous record in the chain
+}
+
+message QueryAuditResponse {
+  repeated AuditRecord records = 1;
 }

@@ -57,6 +57,9 @@ func (m *metricsMockServer) RunAgent(ctx context.Context, req *connect.Request[v
 func (m *metricsMockServer) HeartbeatAgent(ctx context.Context, req *connect.Request[v1.HeartbeatAgentRequest]) (*connect.Response[v1.HeartbeatAgentResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }
+func (m *metricsMockServer) QueryAudit(ctx context.Context, req *connect.Request[v1.QueryAuditRequest]) (*connect.Response[v1.QueryAuditResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
 
 func newMetricsTestServer(t *testing.T, mock *metricsMockServer) *httptest.Server {
 	t.Helper()

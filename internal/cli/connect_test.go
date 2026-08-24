@@ -35,6 +35,8 @@ func captureStdout(t *testing.T, fn func()) string {
 type mockBunkerdServer struct {
 	info *v1.ServerInfoResponse
 	err  error
+	// auditRecords, when set, is returned by QueryAudit.
+	auditRecords []*v1.AuditRecord
 }
 
 func (m *mockBunkerdServer) ServerInfo(ctx context.Context, req *connect.Request[v1.ServerInfoRequest]) (*connect.Response[v1.ServerInfoResponse], error) {
@@ -70,6 +72,15 @@ func (m *mockBunkerdServer) RunAgent(ctx context.Context, req *connect.Request[v
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }
 func (m *mockBunkerdServer) HeartbeatAgent(ctx context.Context, req *connect.Request[v1.HeartbeatAgentRequest]) (*connect.Response[v1.HeartbeatAgentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+func (m *mockBunkerdServer) QueryAudit(ctx context.Context, req *connect.Request[v1.QueryAuditRequest]) (*connect.Response[v1.QueryAuditResponse], error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	if m.auditRecords != nil {
+		return connect.NewResponse(&v1.QueryAuditResponse{Records: m.auditRecords}), nil
+	}
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }
 

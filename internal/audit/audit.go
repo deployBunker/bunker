@@ -171,6 +171,15 @@ func (l *AuditLog) rotateLocked() error {
 	return nil
 }
 
+// Path returns the log file path this AuditLog writes to. It exists so the
+// daemon's QueryAudit handler can re-read the trail from disk without
+// carrying the path around a second time.
+func (l *AuditLog) Path() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.path
+}
+
 // Close closes the underlying file. Safe for concurrent use; subsequent Log
 // calls return an error.
 func (l *AuditLog) Close() error {

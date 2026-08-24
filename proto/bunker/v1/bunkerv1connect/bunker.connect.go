@@ -55,6 +55,8 @@ const (
 	BunkerdRunAgentProcedure = "/bunker.v1.Bunkerd/RunAgent"
 	// BunkerdHeartbeatAgentProcedure is the fully-qualified name of the Bunkerd's HeartbeatAgent RPC.
 	BunkerdHeartbeatAgentProcedure = "/bunker.v1.Bunkerd/HeartbeatAgent"
+	// BunkerdQueryAuditProcedure is the fully-qualified name of the Bunkerd's QueryAudit RPC.
+	BunkerdQueryAuditProcedure = "/bunker.v1.Bunkerd/QueryAudit"
 	// AgentGetInfoProcedure is the fully-qualified name of the Agent's GetInfo RPC.
 	AgentGetInfoProcedure = "/bunker.v1.Agent/GetInfo"
 	// AgentMetricsProcedure is the fully-qualified name of the Agent's Metrics RPC.
@@ -78,6 +80,8 @@ type BunkerdClient interface {
 	ExecAgent(context.Context, *connect.Request[v1.ExecAgentRequest]) (*connect.ServerStreamForClient[v1.ExecAgentResponse], error)
 	RunAgent(context.Context, *connect.Request[v1.RunAgentRequest]) (*connect.Response[v1.RunAgentResponse], error)
 	HeartbeatAgent(context.Context, *connect.Request[v1.HeartbeatAgentRequest]) (*connect.Response[v1.HeartbeatAgentResponse], error)
+	// Audit trail
+	QueryAudit(context.Context, *connect.Request[v1.QueryAuditRequest]) (*connect.Response[v1.QueryAuditResponse], error)
 }
 
 // NewBunkerdClient constructs a client for the bunker.v1.Bunkerd service. By default, it uses the
@@ -151,6 +155,12 @@ func NewBunkerdClient(httpClient connect.HTTPClient, baseURL string, opts ...con
 			connect.WithSchema(bunkerdMethods.ByName("HeartbeatAgent")),
 			connect.WithClientOptions(opts...),
 		),
+		queryAudit: connect.NewClient[v1.QueryAuditRequest, v1.QueryAuditResponse](
+			httpClient,
+			baseURL+BunkerdQueryAuditProcedure,
+			connect.WithSchema(bunkerdMethods.ByName("QueryAudit")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -166,6 +176,7 @@ type bunkerdClient struct {
 	execAgent      *connect.Client[v1.ExecAgentRequest, v1.ExecAgentResponse]
 	runAgent       *connect.Client[v1.RunAgentRequest, v1.RunAgentResponse]
 	heartbeatAgent *connect.Client[v1.HeartbeatAgentRequest, v1.HeartbeatAgentResponse]
+	queryAudit     *connect.Client[v1.QueryAuditRequest, v1.QueryAuditResponse]
 }
 
 // ServerInfo calls bunker.v1.Bunkerd.ServerInfo.
@@ -218,6 +229,11 @@ func (c *bunkerdClient) HeartbeatAgent(ctx context.Context, req *connect.Request
 	return c.heartbeatAgent.CallUnary(ctx, req)
 }
 
+// QueryAudit calls bunker.v1.Bunkerd.QueryAudit.
+func (c *bunkerdClient) QueryAudit(ctx context.Context, req *connect.Request[v1.QueryAuditRequest]) (*connect.Response[v1.QueryAuditResponse], error) {
+	return c.queryAudit.CallUnary(ctx, req)
+}
+
 // BunkerdHandler is an implementation of the bunker.v1.Bunkerd service.
 type BunkerdHandler interface {
 	// Server management
@@ -233,6 +249,8 @@ type BunkerdHandler interface {
 	ExecAgent(context.Context, *connect.Request[v1.ExecAgentRequest], *connect.ServerStream[v1.ExecAgentResponse]) error
 	RunAgent(context.Context, *connect.Request[v1.RunAgentRequest]) (*connect.Response[v1.RunAgentResponse], error)
 	HeartbeatAgent(context.Context, *connect.Request[v1.HeartbeatAgentRequest]) (*connect.Response[v1.HeartbeatAgentResponse], error)
+	// Audit trail
+	QueryAudit(context.Context, *connect.Request[v1.QueryAuditRequest]) (*connect.Response[v1.QueryAuditResponse], error)
 }
 
 // NewBunkerdHandler builds an HTTP handler from the service implementation. It returns the path on
@@ -302,6 +320,12 @@ func NewBunkerdHandler(svc BunkerdHandler, opts ...connect.HandlerOption) (strin
 		connect.WithSchema(bunkerdMethods.ByName("HeartbeatAgent")),
 		connect.WithHandlerOptions(opts...),
 	)
+	bunkerdQueryAuditHandler := connect.NewUnaryHandler(
+		BunkerdQueryAuditProcedure,
+		svc.QueryAudit,
+		connect.WithSchema(bunkerdMethods.ByName("QueryAudit")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/bunker.v1.Bunkerd/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case BunkerdServerInfoProcedure:
@@ -324,6 +348,8 @@ func NewBunkerdHandler(svc BunkerdHandler, opts ...connect.HandlerOption) (strin
 			bunkerdRunAgentHandler.ServeHTTP(w, r)
 		case BunkerdHeartbeatAgentProcedure:
 			bunkerdHeartbeatAgentHandler.ServeHTTP(w, r)
+		case BunkerdQueryAuditProcedure:
+			bunkerdQueryAuditHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -371,6 +397,10 @@ func (UnimplementedBunkerdHandler) RunAgent(context.Context, *connect.Request[v1
 
 func (UnimplementedBunkerdHandler) HeartbeatAgent(context.Context, *connect.Request[v1.HeartbeatAgentRequest]) (*connect.Response[v1.HeartbeatAgentResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.HeartbeatAgent is not implemented"))
+}
+
+func (UnimplementedBunkerdHandler) QueryAudit(context.Context, *connect.Request[v1.QueryAuditRequest]) (*connect.Response[v1.QueryAuditResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.QueryAudit is not implemented"))
 }
 
 // AgentClient is a client for the bunker.v1.Agent service.

@@ -91,6 +91,9 @@ func (m *statusMockServer) HeartbeatAgent(
 ) (*connect.Response[v1.HeartbeatAgentResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }
+func (m *statusMockServer) QueryAudit(ctx context.Context, req *connect.Request[v1.QueryAuditRequest]) (*connect.Response[v1.QueryAuditResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
 
 // newStatusTestServer starts an httptest server mounting the given handler.
 func newStatusTestServer(t *testing.T, handler bunkerv1connect.BunkerdHandler) *httptest.Server {

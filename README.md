@@ -258,6 +258,7 @@ bunker systemd     Manage the bunkerd systemd service (install/uninstall/status)
 bunker metrics     Show resource usage
 bunker heartbeat   Extend agent TTL
 bunker destroy     Tear down an agent
+bunker audit       Inspect the audit trail (verify / list / export — see docs/audit.md)
 ```
 
 ## Tech Stack

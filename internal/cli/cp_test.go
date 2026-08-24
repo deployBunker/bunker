@@ -51,6 +51,9 @@ func (m *cpMockServer) RunAgent(ctx context.Context, req *connect.Request[v1.Run
 func (m *cpMockServer) HeartbeatAgent(ctx context.Context, req *connect.Request[v1.HeartbeatAgentRequest]) (*connect.Response[v1.HeartbeatAgentResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }
+func (m *cpMockServer) QueryAudit(ctx context.Context, req *connect.Request[v1.QueryAuditRequest]) (*connect.Response[v1.QueryAuditResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
 
 func TestCpCommand_Help(t *testing.T) {
 	tmpDir := t.TempDir()
