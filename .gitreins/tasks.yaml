@@ -1122,3 +1122,14 @@ tasks:
   status: complete
   created_at: '2026-08-25T00:23:24.888896+00:00'
   completed_at: '2026-08-25T00:23:47.746461+00:00'
+- id: GAP-054
+  title: Refresh SKILL.md docs for GAP-047 audit trail
+  criteria:
+  - 'Freshness probe shows no .go file newer than its SKILL.md in internal/server,
+    internal/config, internal/auth. The 3 SKILL.md files document the GAP-047 audit
+    trail: append-only JSONL audit log for authenticated RPCs (ts/caller/method/remote/agent/duration/outcome),
+    0600 root permissions, no token values, and audit.enabled/audit.path config. go
+    build ./... and go test -short ./... pass.'
+  status: complete
+  created_at: '2026-08-25T11:39:47.293952+00:00'
+  completed_at: '2026-08-25T11:43:57.567239+00:00'
