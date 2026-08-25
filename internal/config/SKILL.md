@@ -2,10 +2,11 @@
 
 ## Public API
 
-- `Config` — top-level bunkerd configuration struct containing `Server`, `TLS`, `Auth`, `Agent`, `Tunnel`, `NamedTunnel`, and `Tailscale` sections.
+- `Config` — top-level bunkerd configuration struct containing `Server`, `TLS`, `Auth`, `Agent`, `Tunnel`, `NamedTunnel`, `Tailscale`, and `Audit` sections.
 - `ServerConfig` — `GRPCAddr` and `RESTAddr` listeners, plus `RequestTimeout` (default 300s, was hardcoded 60s — the agent-timeout root cause).
 - `TLSConfig` — enabled, file certs, certmagic AutoTLS, self-signed, mTLS, CA file, CN verification, and hosts.
 - `AuthConfig` — enabled (defaults TRUE — secure-by-default, GAP-011), static token, JWT secret, JWT TTL.
+- `AuditConfig` — daemon-side audit trail settings (GAP-047, cc66105): `Enabled` (defaults TRUE — every authenticated RPC is logged) and `Path` (default `/var/log/bunkerd/audit.log`). The log is append-only JSONL, file mode 0600, and never contains token values.
 - `AgentConfig` — base data dir, SSH dir, port ranges, max agents, default CPU/memory/disk/process/file/container limits, and TTL.
 - `TunnelConfig` / `NamedTunnelConfig` / `TailscaleConfig` — networking settings.
 - `DefaultConfig()` — returns a fully populated default config.
@@ -16,11 +17,11 @@
 ## Conventions
 
 - Config keys map to env vars with the `BUNKERD_` prefix and underscores replacing nested dots: `BUNKERD_SERVER_GRPC_ADDR`, `BUNKERD_TLS_CERT_FILE`, etc.
-- `viper.AutomaticEnv()` and explicit `BindEnv` calls cover the same keys; explicit binds ensure consistent behavior even when nested defaults change.
+- `viper.AutomaticEnv()` and explicit `BindEnv` calls cover the same keys; explicit binds ensure consistent behavior even when nested defaults change. The audit keys are explicitly bound too: `BUNKERD_AUDIT_ENABLED` and `BUNKERD_AUDIT_PATH`.
 - Default addresses are `":9090"` (gRPC/Connect) and `":8080"` (REST). Bunker production deployments typically run the REST port on `:18080`.
 - Default agent port range is `10000-19999` with 100 ports per agent (100-agent capacity, matching MaxAgents 100 — GAP-010). Was `10000-10100`/10 before 4df96ec; docs and `TestDefaultConfig` both assert `19999`/`100`.
 - Default `max_agents` is 100, aligned across ALL three sources (code default, config.example.yaml, README inline config) since GAP-028 (5b3fe56) — before that the docs said 50 while code defaulted to 100, a silent cap discrepancy. `TestDefaultConfig` asserts `MaxAgents == 100`.
-- `config.example.yaml` at the repo root mirrors these defaults (README inline config + `DefaultConfig`) and is referenced by `bunkerd --help` (`cp config.example.yaml /etc/bunkerd/config.yaml`) and the README Configure section (GAP-008).
+- `config.example.yaml` at the repo root mirrors these defaults (README inline config + `DefaultConfig`) and is referenced by `bunkerd --help` (`cp config.example.yaml /etc/bunkerd/config.yaml`) and the README Configure section (GAP-008). It carries the audit section since GAP-047: `audit.enabled: true` / `audit.path: /var/log/bunkerd/audit.log`.
 - Default resource limits: 2.0 CPU cores, 4 GiB memory, 20 GiB disk, 4096 processes, 65536 open files, 10 Docker containers, 6-hour TTL.
 - TLS modes are mutually exclusive: `auto_tls`, `self_signed`, or file-based certs. `Validate` requires `domain` for AutoTLS, `cert_file`/`key_file` for file mode, and `ca_file` for mTLS.
 - Durations are `time.Duration` and parsed from YAML strings like `"6h"` or `"24h"`.
@@ -33,8 +34,8 @@
 ## Test Patterns
 
 - `config_test.go` verifies defaults, env overrides, file loading, and validation error cases.
-- `TestDefaultConfig` asserts the full default surface: port range `19999`/`100` (GAP-010), `MaxAgents == 100` (GAP-028), auth enabled (GAP-011), 6h default TTL.
-- Tests use `t.Setenv` to exercise `BUNKERD_*` env var bindings without touching real files.
+- `TestDefaultConfig` asserts the full default surface: port range `19999`/`100` (GAP-010), `MaxAgents == 100` (GAP-028), auth enabled (GAP-011), 6h default TTL, and audit enabled with default path `/var/log/bunkerd/audit.log` (GAP-047).
+- Tests use `t.Setenv` to exercise `BUNKERD_*` env var bindings without touching real files. `TestLoad_AuditEnvOverrides` covers `BUNKERD_AUDIT_ENABLED=false` + a custom `BUNKERD_AUDIT_PATH`; a config-file test covers an explicit `audit.enabled: false` and custom `audit.path` in YAML.
 - Validation tests cover all TLS modes: missing certs, AutoTLS without domain, mTLS without CA file, and valid combinations.
 - Tests assert default values are populated even when the config file is absent.
 
@@ -47,3 +48,4 @@
 5. **Port ranges are `uint32`, not `int`.** Negative values or values > 65535 cannot be represented, but zero values can accidentally disable allocation if `PortRangePerAgent` is 0.
 6. **Request timeout defaults to 300s but was historically hardcoded 60s.** `server.request_timeout` / `BUNKERD_SERVER_REQUEST_TIMEOUT` overrides it. Agent exec/timeout complaints on a deployed server are usually the old 60s binary — pull latest and rebuild.
 7. **Auth is enabled by default — a credential-less daemon refuses to start (GAP-011).** With no config file, `bunkerd` exits with `refusing to start: auth.enabled is true but neither auth.token nor auth.jwt_secret is set`. Batteries and test fixtures set `auth.enabled: false` explicitly; an explicit disable prints `*** WARNING: AUTH DISABLED ***` to stderr. A default config without credentials is a STARTUP ERROR, not a silent unauthenticated run.
+8. **Audit is enabled by default, but an unwritable `audit.path` does NOT block startup.** The server opens the audit log in `New` and only warns (`"audit logging disabled"`) on failure — the daemon keeps running without audit. Missing parent directories are created with mode 0700 and the log file itself with 0600, but a read-only filesystem or permission problem silently degrades to no audit trail. Check the daemon log if records are expected but absent.
