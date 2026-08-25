@@ -1112,3 +1112,13 @@ tasks:
   status: complete
   created_at: '2026-08-24T18:10:06.986144+00:00'
   completed_at: '2026-08-24T18:18:47.658409+00:00'
+- id: GAP-053
+  title: 'Board truthfulness: backfill commit evidence for MONITOR-001/002'
+  criteria:
+  - 'Every row in .coding-hermes/board/tasks.jsonl with status=complete has a non-null
+    commit_hash OR an evidence-citing foreman_note (python check over tasks.jsonl).
+    Specifically: MONITOR-001 gets commit ref 6b06801 (+863ef65 follow-up) with evidence
+    note; MONITOR-002 gets commit ref c2c05b5 with evidence note. No other rows regressed.'
+  status: complete
+  created_at: '2026-08-25T00:23:24.888896+00:00'
+  completed_at: '2026-08-25T00:23:47.746461+00:00'
