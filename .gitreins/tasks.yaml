@@ -1133,3 +1133,14 @@ tasks:
   status: complete
   created_at: '2026-08-25T11:39:47.293952+00:00'
   completed_at: '2026-08-25T11:43:57.567239+00:00'
+- id: GAP-055
+  title: "internal/cli/SKILL.md doc lag \u2014 audit list/export subcommands (GAP-050)\
+    \ undocumented"
+  criteria:
+  - 'PASS: freshness probe shows no .go file in internal/cli newer than internal/cli/SKILL.md,
+    AND internal/cli/SKILL.md documents the bunker audit command surface (audit list,
+    audit export, shared flags --server/--agent/--method/--since/--until/--limit/--path)
+    per commit 3d435e0'
+  status: complete
+  created_at: '2026-08-26T23:47:24.988769+00:00'
+  completed_at: '2026-08-26T23:49:27.691438+00:00'
