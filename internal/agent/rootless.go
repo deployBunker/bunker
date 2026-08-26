@@ -17,6 +17,35 @@ import (
 // rootlessInstallURL is the official Docker rootless extras installer.
 const rootlessInstallURL = "https://get.docker.com/rootless"
 
+// removeMountsUnder lazily unmounts any filesystems mounted under dir. On
+// desktop-flavoured hosts (Ubuntu with GNOME packages), the systemd user
+// manager starts gvfsd-fuse for the agent user, mounting a FUSE filesystem
+// at /run/user/<uid>/gvfs. That mount blocks rm -rf ("Device or resource
+// busy") and breaks recursive chown -R ("Permission denied" traversing the
+// FUSE mount). Lazy unmount (umount -l) detaches it even if busy.
+func removeMountsUnder(ctx context.Context, dir string, logger *slog.Logger) {
+	mounts, err := os.ReadFile("/proc/self/mounts")
+	if err != nil {
+		logger.Warn("cannot read /proc/self/mounts", "error", err)
+		return
+	}
+	prefix := dir + "/"
+	for _, line := range strings.Split(string(mounts), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		mountPoint := fields[1]
+		if mountPoint == dir || strings.HasPrefix(mountPoint, prefix) {
+			if out, err := exec.CommandContext(ctx, "umount", "-l", mountPoint).CombinedOutput(); err != nil {
+				logger.Warn("lazy umount failed", "mount", mountPoint, "error", err, "output", string(out))
+			} else {
+				logger.Info("lazily unmounted stale runtime mount", "mount", mountPoint)
+			}
+		}
+	}
+}
+
 // configureSubIDs ensures /etc/subuid and /etc/subgid contain a mapping for the
 // given username. Rootless Docker needs a contiguous 65,536 UID/GID range per
 // user. We map the range starting at the user's own UID/GID so every agent gets
@@ -109,6 +138,7 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 	logger.Info("resetting user manager runtime", "user", username, "uid", uid, "runtime_dir", stdRuntimeDir)
 	_ = exec.CommandContext(ctx, "systemctl", "stop", fmt.Sprintf("user@%d.service", uid)).Run()
 	_ = exec.CommandContext(ctx, "loginctl", "terminate-user", strconv.Itoa(uid)).Run()
+	removeMountsUnder(ctx, stdRuntimeDir, logger)
 	if info, err := os.Stat(stdRuntimeDir); err == nil && info.IsDir() {
 		if out, err := exec.CommandContext(ctx, "rm", "-rf", stdRuntimeDir).CombinedOutput(); err != nil {
 			logger.Warn("failed to remove stale runtime dir", "dir", stdRuntimeDir, "error", err, "output", string(out))
@@ -133,7 +163,13 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 	if err := os.MkdirAll(stdRuntimeDir, 0700); err != nil {
 		return fmt.Errorf("create runtime dir %s: %w", stdRuntimeDir, err)
 	}
-	if out, err := exec.CommandContext(ctx, "chown", "-R", username+":", stdRuntimeDir).CombinedOutput(); err != nil {
+	// The runtime dir is created by logind as the agent user, so ownership is
+	// already correct in the fresh path. Do NOT chown recursively: on
+	// desktop-flavoured hosts the user manager mounts gvfsd-fuse at
+	// /run/user/<uid>/gvfs, and a FUSE mount without allow_other denies even
+	// root (chown -R / find -xdev both fail with "Permission denied"). A
+	// non-recursive chown of the top-level dir never descends into the mount.
+	if out, err := exec.CommandContext(ctx, "chown", username+":", stdRuntimeDir).CombinedOutput(); err != nil {
 		return fmt.Errorf("chown runtime dir %s: %w (output: %s)", stdRuntimeDir, err, string(out))
 	}
 
