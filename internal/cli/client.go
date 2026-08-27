@@ -14,7 +14,10 @@ import (
 // newBunkerdClient creates a connect-go client for the given server entry.
 // It applies TLS settings (including --tls-insecure) from the entry.
 func newBunkerdClient(entry ServerEntry) bunkerv1connect.BunkerdClient {
-	httpClient := &http.Client{Timeout: 30 * time.Second}
+	// 300s: spawn installs rootless docker inside the agent (can take minutes).
+	// A 30s transport timeout made every slow spawn fail with deadline_exceeded
+	// even though the spawn context allows 300s (observed 2026-08-27 on las-03).
+	httpClient := &http.Client{Timeout: 300 * time.Second}
 	if entry.TLSInsecure {
 		httpClient.Transport = &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
