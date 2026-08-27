@@ -35,12 +35,18 @@ type mockSpawnServer struct {
 	spawnResp  *v1.SpawnAgentResponse
 	spawnErr   error
 	gotAgentID string // AgentId from the last SpawnAgent request (DOGFOOD-008)
+	// capturedDeadline/capturedDeadlineOK record the deadline of the context
+	// the CLI passed to SpawnAgent, so tests can assert the RPC timeout
+	// (SPAWN-TIMEOUT-001: must be ~300s, not the old 30s).
+	capturedDeadline   time.Time
+	capturedDeadlineOK bool
 }
 
 func (m *mockSpawnServer) SpawnAgent(
 	ctx context.Context,
 	req *connect.Request[v1.SpawnAgentRequest],
 ) (*connect.Response[v1.SpawnAgentResponse], error) {
+	m.capturedDeadline, m.capturedDeadlineOK = ctx.Deadline()
 	m.gotAgentID = req.Msg.AgentId
 	if m.spawnErr != nil {
 		return nil, m.spawnErr
@@ -149,6 +155,54 @@ func TestSpawnCommand_Success(t *testing.T) {
 	}
 	if strings.Contains(output, "@host") {
 		t.Errorf("output still contains server-provided host, got:\n%s", output)
+	}
+}
+
+// TestSpawnCommand_ContextDeadline300s guards SPAWN-TIMEOUT-001: the spawn
+// RPC context must carry a ~300s deadline (fresh-agent rootless-docker
+// installs download ~93MB and take 60-90s+; the old 30s hardcode killed
+// every fresh spawn mid-install with deadline_exceeded). A future refactor
+// silently reverting to 30s would leave <35s on the clock and fail here.
+func TestSpawnCommand_ContextDeadline300s(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	mock := &mockSpawnServer{
+		mockBunkerdServer: mockBunkerdServer{
+			info: &v1.ServerInfoResponse{
+				Hostname: "bunker-deadline",
+				Version:  "v0.2.0",
+			},
+		},
+		spawnResp: &v1.SpawnAgentResponse{
+			AgentId: "deadline300",
+		},
+	}
+	srv := newSpawnTestServer(t, mock)
+	defer srv.Close()
+
+	writeSpawnTestConfig(t, tmpDir, srv.URL)
+
+	cmd := NewSpawnCommand()
+	output := captureStdout(t, func() {
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+	})
+	if !strings.Contains(output, "deadline300") {
+		t.Errorf("output missing agent id, got:\n%s", output)
+	}
+
+	if !mock.capturedDeadlineOK {
+		t.Fatal("SpawnAgent ctx has no deadline; a hung server would block the CLI forever")
+	}
+	remaining := time.Until(mock.capturedDeadline)
+	if remaining < 280*time.Second || remaining > 310*time.Second {
+		t.Errorf("spawn context deadline is ~%v from now, want ~300s (280-310s window)", remaining)
+	}
+	// Explicit 30s-regression check: a 30s deadline would be ~30s from now.
+	if remaining < 35*time.Second {
+		t.Errorf("spawn context deadline is ~%v from now — looks like the old 30s hardcode (SPAWN-TIMEOUT-001 regression)", remaining)
 	}
 }
 
