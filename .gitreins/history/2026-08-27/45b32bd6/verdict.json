@@ -1,0 +1,17 @@
+{
+  "task_id": "SPAWN-TIMEOUT-001",
+  "task_title": "Spawn context 300s deadline regression test + cleanup hardening",
+  "task_criteria": [
+    "go test ./internal/cli -run TestSpawn -count=1 passes including a deadline assertion test; spawn.go uses 300*time.Second not 30*time.Second"
+  ],
+  "passed": true,
+  "items": [
+    {
+      "criterion": "go test ./internal/cli -run TestSpawn -count=1 passes including a deadline assertion test; spawn.go uses 300*time.Second not 30*time.Second",
+      "status": "PASS",
+      "detail": "spawn.go:94 uses `context.WithTimeout(context.Background(), 300*time.Second)` (comment explains the old 30s hardcode killed spawns mid-install). spawn_test.go:166 TestSpawnCommand_ContextDeadline300s asserts deadline is ~300s (280-310s window) and fails if remaining <35s (30s regression check). Ran `go test ./internal/cli -run TestSpawn -count=1 -v` -> exit 0, `PASS`, `ok github.com/deployBunker/bunker/internal/cli 0.066s`; `go test ./internal/cli -run TestSpawnCommand_ContextDeadline300s -count=1 -v` -> `--- PASS: TestSpawnCommand_ContextDeadline300s (0.03s)`."
+    }
+  ],
+  "summary": "Judge Result: SPAWN-TIMEOUT-001\n\nTier 2 (Agentic Evaluator): COMPLETE\n  \u2713 go test ./internal/cli -run TestSpawn -count=1 passes including a deadline assertion test; spawn.go uses 300*time.Second not 30*time.Second: spawn.go:94 uses `context.WithTimeout(context.Background(), 300*time.Second)` (comment explains the old 30s hardcode killed spawns mid-install). spawn_test.go:166 TestSpawnCommand_ContextDeadline300s asserts deadline is ~300s (280-310s window) and fails if remaining <35s (30s regression check). Ran `go test ./internal/cli -run TestSpawn -count=1 -v` -> exit 0, `PASS`, `ok github.com/deployBunker/bunker/internal/cli 0.066s`; `go test ./internal/cli -run TestSpawnCommand_ContextDeadline300s -count=1 -v` -> `--- PASS: TestSpawnCommand_ContextDeadline300s (0.03s)`.\n\nOverall: PASS \u2713",
+  "evaluated_at": "2026-08-27T11:11:21.288605"
+}
