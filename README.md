@@ -95,6 +95,11 @@ make build
 > documents. Check the build with `./bunker --version` (cobra auto-flag,
 > GAP-035) — `bunker version` prints the full commit/build metadata.
 
+> **Freshness check.** `go install ...@latest` serves the newest release
+> tag (v0.1.3), which may lag the repo HEAD. If `bunker --version`'s
+> `commit:` field doesn't match the repo's `git rev-parse HEAD`, the
+> binary is stale — rebuild from HEAD with `make build`.
+
 ### Configure
 
 A ready-made example lives at `config.example.yaml` in the repo root:
