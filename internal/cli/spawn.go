@@ -87,7 +87,11 @@ Examples:
 
 			// 3. Build request
 			client := newBunkerdClient(entry)
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			// 300s: fresh-agent rootless-docker install downloads ~93MB and takes
+			// 60-90s+; the old 30s hardcode killed every spawn mid-install
+			// (spawn agent: deadline_exceeded; server rolled back with userdel
+			// failure, leaving half-spawned users). Server request_timeout is 300s.
+			ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 			defer cancel()
 
 			req := connect.NewRequest(&v1.SpawnAgentRequest{
