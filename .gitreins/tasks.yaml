@@ -1144,3 +1144,12 @@ tasks:
   status: complete
   created_at: '2026-08-26T23:47:24.988769+00:00'
   completed_at: '2026-08-26T23:49:27.691438+00:00'
+- id: GAP-058
+  title: Stale ~/go/bin binaries + README freshness note
+  criteria:
+  - 'PASS: ~/go/bin/bunker --version shows commit >= c578969 (not b7d3bb6); ~/go/bin/bunkerd
+    --version prints the version block and exits 0 without binding; README quickstart
+    carries a binary-commit-vs-HEAD freshness note.'
+  status: complete
+  created_at: '2026-08-27T18:39:27.419867+00:00'
+  completed_at: '2026-08-27T18:40:43.654725+00:00'
