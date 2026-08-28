@@ -17,6 +17,7 @@ Rootless helpers in `rootless.go`:
 - `installRootlessDocker(ctx, username, userHome, logger)` — downloads and installs Docker's rootless extras into the agent home.
 - `ensureRootlesskitAppArmor(ctx, username, logger)` — writes an AppArmor profile for rootlesskit on Ubuntu 24.04+.
 - `waitForUserManager(ctx, runtimeDir)` — waits for the systemd user manager bus socket before running the installer.
+- `removeMountsUnder(ctx, dir, logger)` — lazily unmounts (`umount -l`) any filesystems mounted at/under dir, called before the stale `/run/user/<UID>` reset `rm -rf` in installRootlessDocker. On desktop-flavoured hosts (Ubuntu + GNOME) the systemd user manager mounts gvfsd-fuse at `/run/user/<uid>/gvfs`; without allow_other that FUSE mount blocks `rm -rf` ("Device or resource busy") and denies even root on recursive chown (2ed1054).
 
 ## Conventions
 
@@ -26,8 +27,9 @@ Rootless helpers in `rootless.go`:
 - Private SSH keys are persisted under `cfg.Agent.SSHDir` (`/etc/bunkerd/ssh` by default) for server-side use; the public key is written to the agent's `~/.ssh/authorized_keys` with an `environment="DOCKER_HOST=..."` prefix.
 - Docker socket is created at `/run/bunker/<agent-id>/docker.sock` and chowned to the agent user.
 - Resource limits come from `SpawnAgentRequest.Limits` or server defaults in `config.AgentConfig`.
-- systemd-run uses `--system --uid=<UID> --gid=<GID> --property=PAMName=login` plus `CPUQuota`, `MemoryMax`, `LimitFSIZE`, `TasksMax`, and `LimitNOFILE` properties.
+- systemd-run uses `--system --uid=<UID> --gid=<GID> --property=PAMName=login` plus `CPUQuota`, `MemoryMax`, `LimitFSIZE`, `TasksMax`, and `LimitNOFILE` properties (LimitFSIZE: set default_disk_bytes: 0 in config — a finite RLIMIT_FSIZE crash-loops .NET apps at first boot, 2ed1054).
 - The `XDG_RUNTIME_DIR` for rootlesskit is set to `/run/bunker/<agent-id>/run` so dockerd can start even when the standard `/run/user/<UID>` path is unavailable.
+- The standard runtime dir `/run/user/<UID>` is chowned NON-recursively (`chown user: dir`, no `-R`): logind already creates it as the agent user, and a recursive chown descends into a gvfsd-fuse mount and fails with "Permission denied" (FUSE without allow_other denies even root) (2ed1054).
 
 ## Dependencies
 
@@ -59,3 +61,5 @@ Rootless helpers in `rootless.go`:
 5. **systemd-run `--system --uid` does not inherit the caller's environment.** Every needed env var (`PATH`, `HOME`, `USER`, `XDG_RUNTIME_DIR`, `DOCKER_HOST`, etc.) must be passed explicitly via `--setenv=`; otherwise rootlesskit/dockerd exit with missing variables.
 6. **AppArmor profile must be loaded before running the installer.** `ensureRootlesskitAppArmor` is called before `installRootlessDocker` so unprivileged user namespaces are allowed on Ubuntu 24.04+.
 7. **`userdel` can race a slow dockerd shutdown.** `cleanupAgent` first `pkill -u -9`s lingering agent processes, then retries `userdel -rf` up to 20×500ms; force-destroy tolerates a final `userdel` failure so the teardown path itself never panics. Root-suite CI wraps runs with a `/etc/passwd` + `/etc/bunkerd/ssh` + `/run/bunker` snapshot to catch leaks (scripts/root-suite.sh).
+8. **gvfsd-fuse mounts under `/run/user/<UID>` break spawn reset on desktop Ubuntu.** The user manager mounts a FUSE fs at `/run/user/<uid>/gvfs` (observed karaHermes-mde-7840hs, Ubuntu 26.04/GNOME, 40+ zombie mounts from prior test agents); it blocks `rm -rf` ("Device or resource busy") and recursive chown ("Permission denied" — no allow_other denies even root). `removeMountsUnder()` lazy-unmounts before the reset; the runtime-dir chown is non-recursive so it never descends into the mount (2ed1054).
+9. **RLIMIT_FSIZE (config default_disk_bytes) crash-loops .NET apps.** Prowlarr/Radarr ftruncate a 2TiB sparse file at first boot -> EFBIG -> SIGXFSZ. Configs should set default_disk_bytes: 0 (2ed1054; documented in the bunker-agent-isolation skill).
