@@ -123,3 +123,95 @@ TTL validation (DOGFOOD-003, tick #194), root docs (DOGFOOD-004), destroy UX
 auth enforcement (GAP-014, tick #236), `go install @latest` (GAP-027, tick #254),
 `--version` parity (GAP-045). Anything in the repo claiming these are broken
 predates those ticks.
+
+## 10. Dogfood run 2026-08-29 — audit trail + metrics deep-dive (read this before touching metrics/audit)
+
+### How the audit trail works (GAP-047/049/050, all shipped since the 08-18 run)
+
+- `internal/audit/audit.go` — append-only JSONL (`O_APPEND`, mode 0600) with
+  per-record SHA-256 hash chaining (each record's `hash` = sha256 of its line
+  bytes, `prev_hash` = previous record's hash; chain spans rotated backups
+  `.1`–`.3`). Rotation: 5 MB × 3 backups.
+- `internal/audit/interceptor.go` — a connect interceptor composed INSIDE the
+  auth interceptor (auth outermost): unauthenticated requests are rejected
+  before audit sees them, guaranteeing "one record per authenticated RPC".
+  Caller identity comes from the Claims the auth interceptor injected into the
+  context — the raw token NEVER touches the audit log (verified: master token
+  grep = 0).
+- Records carry: ts (UTC RFC3339Nano), caller (master / agent:<id> / key:<id>),
+  method (full connect procedure path), agent_id (target), remote_addr
+  (peer), duration_ms, outcome (ok or connect code), summary, hash, prev_hash.
+- `bunker audit list/export` (GAP-050) query the trail LOCALLY (--path) or
+  REMOTELY (--server → QueryAudit RPC). Filters: --agent/--method/--since/
+  --until/--limit; ANDed. `list` = human table, `export` = raw JSONL.
+  Pitfall from SKILL.md: --limit returns newest-N matches but prints
+  oldest-first; unparseable ts rows are skipped only under time filters.
+
+### THE GAP (DOGFOOD-012): streaming RPCs are invisible to the interceptor
+
+`ExecAgent` is declared `rpc ExecAgent(ExecAgentRequest) returns (stream
+ExecAgentResponse)` (proto/bunker/v1/bunker.proto:22). connect-go interceptors
+CANNOT see the request message of a server-streaming RPC — the interceptor's
+`WrapStreamingHandler` receives `msg == nil`. `targetAgentID()` then falls
+back to `claims.AgentID`, which is EMPTY for master-token callers. Result,
+verified live on bunker-las-03:
+
+```
+{"ts":"...","caller":"master","method":"/bunker.v1.Bunkerd/ExecAgent",
+ "remote_addr":"","agent_id":"","duration_ms":184,"outcome":"ok",...}
+```
+
+`GetAgent`/`DestroyAgent`/`HeartbeatAgent`/`RunAgent` (all unary) carry
+agent_id fine; `SpawnAgent` carries none (expected — id assigned later) and
+`ServerInfo`/`ListAgents`/`QueryAudit` need none. But exec — the single most
+forensically valuable RPC — records with an empty agent_id AND empty
+remote_addr (the stream conn's peer is available; the interceptor just never
+reads it on the stream path). `bunker audit list --agent <id>` therefore
+misses every exec on that agent. The right fix: stamp agent_id into the
+context in the ExecAgent service handler (service layer sees req.Msg),
+read it back in the interceptor; also populate remote_addr in the stream
+wrapper. Regression: spawn → exec → destroy, then assert exec records carry
+agent_id + non-empty remote_addr.
+
+### THE OTHER GAP (DOGFOOD-011): `bunker metrics` reads the HOST cgroup
+
+- `internal/resource/cgroup.go` `ReadCgroupMetrics()` reads
+  `/sys/fs/cgroup/memory.current` + `memory.max` — the HOST ROOT cgroup (or
+  falls back to `/proc/meminfo`: MemTotal as limit, MemTotal−MemAvailable as
+  used). It never reads `user.slice/user-<uid>.slice/*` for a specific agent.
+- `internal/server/service.go:215` `AgentMetrics` fills
+  `MemoryUsedBytes` from that host-level read while `MemoryLimitBytes` comes
+  from the agent record (`rec.Limits`). Mixed sources → live evidence:
+  agent with `--memory 1073741824` reported "Memory Used: 2.4 GB / Memory
+  Limit: 1.0 GB" — used > limit, on a healthy idle agent; a 480 MB in-agent
+  allocation changed nothing. The CPU percent was 0 despite the load
+  (point-in-time cpu.stat can't express percent without deltas — known,
+  documented in cgroup.go).
+- Right way: per-agent cgroup path is `user.slice/user-<uid>.slice`
+  (confirm inside agent: `/proc/self/cgroup` → `0::/user.slice/user-1009.slice/
+  session-790.scope`); read `memory.current`/`memory.max` and `cpu.stat`
+  deltas there, keyed off the agent record's UID. Keep meminfo as last resort
+  only when per-agent files are unreadable.
+
+### Verified-clean list (things that DID work — don't re-litigate)
+
+- Named spawn (`--agent-id` and positional), 300s spawn deadline (49.8s fresh
+  spawn was comfortably under; the old 30s would have killed it —
+  SPAWN-TIMEOUT-001 was a real bug).
+- Rootless Docker 29.7.2 in-agent (`docker run alpine` real workload),
+  env visible in exec, cp byte round-trip, run --detach systemd transient
+  units, heartbeat TTL extension, destroy 1.96s + idempotent + not_found.
+- Audit writes for all unary RPCs with hash chain intact, 0600 mode, master
+  token never logged; remote list/export/query surfaces work.
+- REST: 401 no-auth / 404 wrong path / 200 auth — consistent across the fleet.
+
+### Errors hit this run (all user-side, all understood)
+
+1. `bunker audit verify --server X` → unknown flag (DOGFOOD-013; verify is
+   intentionally local-only — the group help over-promises).
+2. `expr $(cat)` inside docker alpine → "non-numeric argument" — my shell
+   quoting, not a product bug (used `$((6*7))` → 42 instead).
+3. `/sys/fs/cgroup/memory.current` does not exist inside the agent namespace
+   — confirms the daemon-side host-cgroup read in metrics is the real source
+   (and why DOGFOOD-011's fix must read the user slice from the daemon, not
+   inside the agent).
