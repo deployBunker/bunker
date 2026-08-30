@@ -246,6 +246,12 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("agent_id is required"))
 	}
 
+	// Stamp the target agent id into the streaming audit sink so the audit
+	// interceptor records agent_id=<aid> for this exec even for master tokens
+	// (DOGFOOD-012). Must happen before any early return so error paths are
+	// covered too.
+	audit.StampStreamAgentID(ctx, agentID)
+
 	// Look up agent record
 	rec := s.tracker.Get(agentID)
 	if rec == nil {

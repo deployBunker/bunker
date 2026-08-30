@@ -364,8 +364,9 @@ func TestStreamingHandlerRecorded(t *testing.T) {
 	if ms, ok := rec["duration_ms"].(float64); !ok || ms < 15 {
 		t.Errorf("duration_ms = %v, want >= 15", rec["duration_ms"])
 	}
-	// Stream request messages are invisible to interceptors: agent_id falls
-	// back to the caller's claims scope.
+	// No handler stamp here: agent_id falls back to the caller's claims
+	// scope. ExecAgent stamps the real target id via StampStreamAgentID
+	// (DOGFOOD-012), covered by TestStreamingHandlerExecAgentStampsAgentID.
 	if rec["agent_id"] != "agt-self" {
 		t.Errorf("agent_id = %v, want agt-self (claims fallback)", rec["agent_id"])
 	}
@@ -389,6 +390,107 @@ func TestStreamingHandlerSuccess(t *testing.T) {
 	records := parseRecords(t, readLog(t, path))
 	if len(records) != 1 || records[0]["outcome"] != "ok" {
 		t.Fatalf("expected 1 record with outcome ok, got %v", records)
+	}
+}
+
+// TestStreamingHandlerExecAgentStampsAgentID is the DOGFOOD-012 regression
+// proof: ExecAgent stamps the real target agent id into the streaming sink,
+// so even a master-token caller (empty claims scope) produces an audit record
+// with agent_id=<aid> — the primary forensics query ('what did the attacker
+// exec on which agent?') now finds exec records.
+func TestStreamingHandlerExecAgentStampsAgentID(t *testing.T) {
+	l, path := newTestLog(t)
+	interceptor := NewInterceptor(l, nil)
+
+	conn := &fakeStreamConn{
+		spec: connect.Spec{
+			Procedure: "/bunker.v1.Bunkerd/ExecAgent",
+		},
+		peer: connect.Peer{Addr: "10.0.0.7:5555", Protocol: "connect"},
+		hdrs: http.Header{"Authorization": []string{"Bearer DOGFOOD012-STREAM-SECRET-token"}},
+	}
+
+	next := func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		// Mirrors internal/server/service.go ExecAgent: the handler stamps
+		// the target agent id as soon as it knows it, before any early
+		// return.
+		StampStreamAgentID(ctx, "agt-exec-9")
+		return connect.NewError(connect.CodePermissionDenied, io.ErrClosedPipe)
+	}
+
+	// Master claims: empty AgentID scope — the pre-fix code produced
+	// agent_id:'' for exactly this case.
+	ctx := auth.ContextWithClaims(context.Background(), &auth.Claims{})
+	err := interceptor.WrapStreamingHandler(next)(ctx, conn)
+	if err == nil {
+		t.Fatal("expected error from stream handler")
+	}
+
+	logBytes := readLog(t, path)
+	if strings.Contains(string(logBytes), "DOGFOOD012-STREAM-SECRET-token") {
+		t.Fatal("audit log contains streaming token value (GAP047 parity broken)")
+	}
+
+	records := parseRecords(t, logBytes)
+	if len(records) != 1 {
+		t.Fatalf("expected exactly 1 record, got %d", len(records))
+	}
+	rec := records[0]
+	if rec["agent_id"] != "agt-exec-9" {
+		t.Errorf("agent_id = %v, want agt-exec-9 (handler-stamped, not claims fallback)", rec["agent_id"])
+	}
+	if rec["remote_addr"] != "10.0.0.7:5555" {
+		t.Errorf("remote_addr = %v, want 10.0.0.7:5555 (from conn.Peer())", rec["remote_addr"])
+	}
+	if rec["summary"] != "ExecAgent agent_id=agt-exec-9" {
+		t.Errorf("summary = %v, want 'ExecAgent agent_id=agt-exec-9'", rec["summary"])
+	}
+	if rec["caller"] != "master" {
+		t.Errorf("caller = %v, want master (empty claims -> master)", rec["caller"])
+	}
+	if rec["outcome"] != "permission_denied" {
+		t.Errorf("outcome = %v, want permission_denied", rec["outcome"])
+	}
+}
+
+// TestStreamingHandlerRemoteAddrFromPeer fixes the empty-remote_addr half of
+// DOGFOOD-012: the streaming interceptor reads the peer address from
+// conn.Peer() (populated before the interceptor chain runs), independent of
+// any handler stamp. It also proves the unstamped fallback is preserved:
+// without a StampStreamAgentID call, agent_id still falls back to claims.
+func TestStreamingHandlerRemoteAddrFromPeer(t *testing.T) {
+	l, path := newTestLog(t)
+	interceptor := NewInterceptor(l, nil)
+
+	conn := &fakeStreamConn{
+		spec: connect.Spec{
+			Procedure: "/bunker.v1.Bunkerd/ExecAgent",
+		},
+		peer: connect.Peer{Addr: "10.0.0.7:5555", Protocol: "connect"},
+		hdrs: http.Header{},
+	}
+
+	next := func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		// Deliberately no stamp: proves the remote_addr fix is independent
+		// of agent_id stamping.
+		return nil
+	}
+
+	ctx := auth.ContextWithClaims(context.Background(), &auth.Claims{AgentID: "agt-self"})
+	if err := interceptor.WrapStreamingHandler(next)(ctx, conn); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	records := parseRecords(t, readLog(t, path))
+	if len(records) != 1 {
+		t.Fatalf("expected exactly 1 record, got %d", len(records))
+	}
+	rec := records[0]
+	if rec["remote_addr"] != "10.0.0.7:5555" {
+		t.Errorf("remote_addr = %v, want 10.0.0.7:5555 (from conn.Peer())", rec["remote_addr"])
+	}
+	if rec["agent_id"] != "agt-self" {
+		t.Errorf("agent_id = %v, want agt-self (unstamped claims fallback preserved)", rec["agent_id"])
 	}
 }
 

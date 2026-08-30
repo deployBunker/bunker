@@ -41,14 +41,37 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	}
 }
 
+// streamSink is a per-request mutable slot shared between a streaming handler
+// and the streaming interceptor that wraps it. connect-go streaming
+// interceptors cannot see server-stream request messages, so the handler
+// stamps the real target agent id into the sink via StampStreamAgentID; the
+// interceptor reads it when recording the audit entry after the handler
+// returns. The sink is created inside WrapStreamingHandler, so it never
+// leaks across requests. remoteAddr is captured up front from conn.Peer(),
+// which connect-go populates before the interceptor chain runs (unlike
+// CallInfoForHandlerContext, which is only attached inside the handler
+// implementation).
+type streamSink struct {
+	agentID    string
+	remoteAddr string
+}
+
+// streamSinkKey is the context key for *streamSink.
+type streamSinkKey struct{}
+
 // WrapStreamingHandler records one entry per server stream, measuring duration
 // until the stream completes (the handler returns) and deriving the outcome
 // from the stream error. Note: the request message of a server stream is not
-// visible to interceptors, so agent_id falls back to the caller's claims scope
-// (empty for master callers).
+// visible to interceptors, so the handler stamps the target agent id into a
+// per-request context sink (see StampStreamAgentID); without a stamp, agent_id
+// falls back to the caller's claims scope (empty for master callers).
+// remote_addr comes from conn.Peer(), which is populated before the
+// interceptor chain runs.
 func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
 		start := time.Now()
+		sink := &streamSink{remoteAddr: conn.Peer().Addr}
+		ctx = context.WithValue(ctx, streamSinkKey{}, sink)
 		err := next(ctx, conn)
 		i.record(ctx, conn.Spec().Procedure, err, start, nil)
 		return err
@@ -62,18 +85,36 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 
 func (i *Interceptor) record(ctx context.Context, procedure string, err error, start time.Time, msg any) {
 	claims, _ := auth.ClaimsFromContext(ctx)
-	agentID := targetAgentID(msg, claims)
+
+	// Streaming handlers stamp the target agent id into the per-request sink;
+	// prefer it over the claims fallback (master tokens carry no agent scope).
+	agentID := ""
+	if sink, _ := ctx.Value(streamSinkKey{}).(*streamSink); sink != nil && sink.agentID != "" {
+		agentID = sink.agentID
+	} else {
+		agentID = targetAgentID(msg, claims)
+	}
 
 	outcome := "ok"
 	if err != nil {
 		outcome = connect.CodeOf(err).String()
 	}
 
+	// Streaming conns expose the peer address directly; unary calls rely on
+	// CallInfoForHandlerContext. The sink's remoteAddr is authoritative when
+	// present.
+	remote := ""
+	if sink, _ := ctx.Value(streamSinkKey{}).(*streamSink); sink != nil && sink.remoteAddr != "" {
+		remote = sink.remoteAddr
+	} else {
+		remote = remoteAddr(ctx)
+	}
+
 	rec := Record{
 		TS:         time.Now().UTC().Format(time.RFC3339Nano),
 		Caller:     callerFromClaims(claims),
 		Method:     procedure,
-		RemoteAddr: remoteAddr(ctx),
+		RemoteAddr: remote,
 		AgentID:    agentID,
 		DurationMS: time.Since(start).Milliseconds(),
 		Outcome:    outcome,
@@ -81,6 +122,17 @@ func (i *Interceptor) record(ctx context.Context, procedure string, err error, s
 	}
 	if err := i.log.Log(rec); err != nil && i.logger != nil {
 		i.logger.Warn("audit write failed", "error", err)
+	}
+}
+
+// StampStreamAgentID records the target agent id for the current streaming
+// request so the streaming audit interceptor can attach it to the record it
+// writes after the handler returns. It is a no-op when no streaming sink is
+// present in ctx (unary handlers and direct unit calls), so it is safe to
+// call from any handler.
+func StampStreamAgentID(ctx context.Context, agentID string) {
+	if sink, ok := ctx.Value(streamSinkKey{}).(*streamSink); ok {
+		sink.agentID = agentID
 	}
 }
 

@@ -283,6 +283,44 @@ func TestExecAgent_SSHCommandIncludesDockerHost(t *testing.T) {
 	}
 }
 
+// TestExecAgent_StampsAuditAgentID pins the DOGFOOD-012 wiring in the service
+// layer: ExecAgent must stamp the target agent id into the streaming audit
+// sink (audit.StampStreamAgentID) before the tracker lookup / command build,
+// so the streaming audit interceptor records agent_id=<aid> even for master
+// tokens. Behavioral proof of the full path lives in audit_test.go's
+// interceptor tests plus the live E2E probe; this source assertion protects
+// against the stamp being dropped or moved after the early returns.
+func TestExecAgent_StampsAuditAgentID(t *testing.T) {
+	src, err := os.ReadFile("service.go")
+	if err != nil {
+		t.Fatalf("read service.go: %v", err)
+	}
+
+	want := `audit.StampStreamAgentID(ctx, agentID)`
+	if !strings.Contains(string(src), want) {
+		t.Fatalf("ExecAgent missing %q in service.go (DOGFOOD-012 audit stamp)", want)
+	}
+
+	// The stamp must appear before the tracker lookup and SSH command build.
+	lines := strings.Split(string(src), "\n")
+	stampIdx := -1
+	lookupIdx := -1
+	for idx, line := range lines {
+		if strings.Contains(line, want) {
+			stampIdx = idx
+		}
+		if strings.Contains(line, "rec := s.tracker.Get(agentID)") && lookupIdx == -1 {
+			lookupIdx = idx
+		}
+	}
+	if stampIdx == -1 {
+		t.Fatal("audit stamp not found in ExecAgent")
+	}
+	if lookupIdx != -1 && stampIdx > lookupIdx {
+		t.Errorf("audit stamp at line %d must precede tracker lookup at line %d", stampIdx+1, lookupIdx+1)
+	}
+}
+
 // TestExecAgent_DockerHostPropagatedToCommand verifies that the exec command
 // itself receives DOCKER_HOST in its environment.  We no longer rely on
 // OpenSSH SetEnv because server sshd configs often restrict AcceptEnv; instead
