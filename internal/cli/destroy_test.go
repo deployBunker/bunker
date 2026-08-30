@@ -3,6 +3,8 @@ package cli
 import (
 	"context"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -78,6 +80,9 @@ func TestDestroyCommand_Help(t *testing.T) {
 	}
 	if !strings.Contains(output, "--server") {
 		t.Errorf("help output missing --server flag, got:\n%s", output)
+	}
+	if !strings.Contains(output, "--keep-key") {
+		t.Errorf("help output missing --keep-key flag, got:\n%s", output)
 	}
 }
 
@@ -302,5 +307,136 @@ func TestDestroyCommand_ServerNotFound(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("error should mention 'not found', got: %v", err)
+	}
+}
+
+// TestDestroyCommand_LocalSSHKeyCleanup verifies that a successful destroy
+// (including both idempotent not-found shapes) removes the client-local SSH
+// key saved at spawn time (~/.bunker/keys/<id>), while --keep-key and real
+// RPC errors leave it in place.
+func TestDestroyCommand_LocalSSHKeyCleanup(t *testing.T) {
+	tests := []struct {
+		name            string
+		agentID         string
+		destroyResp     *v1.DestroyAgentResponse
+		destroyErr      error
+		args            []string
+		seedKey         bool
+		wantKeyGone     bool
+		wantRemovalLine bool
+		wantErr         bool
+	}{
+		{
+			name:            "success removes local key",
+			agentID:         "abc12345",
+			destroyResp:     &v1.DestroyAgentResponse{AgentId: "abc12345", Status: "destroyed"},
+			seedKey:         true,
+			wantKeyGone:     true,
+			wantRemovalLine: true,
+		},
+		{
+			name:        "success with --keep-key leaves local key",
+			agentID:     "abc12345",
+			destroyResp: &v1.DestroyAgentResponse{AgentId: "abc12345", Status: "destroyed"},
+			args:        []string{"--keep-key"},
+			seedKey:     true,
+			wantKeyGone: false,
+		},
+		{
+			name:        "rpc error leaves local key",
+			agentID:     "abc12345",
+			destroyErr:  connect.NewError(connect.CodeInternal, nil),
+			seedKey:     true,
+			wantKeyGone: false,
+			wantErr:     true,
+		},
+		{
+			name:            "in-band not_found still removes local key",
+			agentID:         "missing-id",
+			destroyResp:     &v1.DestroyAgentResponse{AgentId: "missing-id", Status: "not_found"},
+			seedKey:         true,
+			wantKeyGone:     true,
+			wantRemovalLine: true,
+		},
+		{
+			name:            "connect CodeNotFound still removes local key",
+			agentID:         "missing-id",
+			destroyErr:      connect.NewError(connect.CodeNotFound, nil),
+			seedKey:         true,
+			wantKeyGone:     true,
+			wantRemovalLine: true,
+		},
+		{
+			name:        "already-absent key is not an error",
+			agentID:     "nokey",
+			destroyResp: &v1.DestroyAgentResponse{AgentId: "nokey", Status: "destroyed"},
+			seedKey:     false,
+			wantKeyGone: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			t.Setenv("HOME", tmpDir)
+
+			// Seed a dummy client-local key at the same path spawn writes.
+			keyPath, err := defaultSSHKeyPath(tt.agentID)
+			if err != nil {
+				t.Fatalf("defaultSSHKeyPath: %v", err)
+			}
+			if tt.seedKey {
+				if err := os.MkdirAll(filepath.Dir(keyPath), 0700); err != nil {
+					t.Fatalf("MkdirAll(%s): %v", filepath.Dir(keyPath), err)
+				}
+				if err := os.WriteFile(keyPath, []byte("dummy-private-key"), 0600); err != nil {
+					t.Fatalf("WriteFile(%s): %v", keyPath, err)
+				}
+			}
+
+			mock := &mockDestroyServer{
+				mockBunkerdServer: mockBunkerdServer{
+					info: &v1.ServerInfoResponse{
+						Hostname: "bunker-test",
+						Version:  "v0.2.0",
+					},
+				},
+				destroyResp: tt.destroyResp,
+				destroyErr:  tt.destroyErr,
+			}
+			srv := newDestroyTestServer(t, mock)
+			defer srv.Close()
+
+			writeDestroyTestConfig(t, tmpDir, srv.URL)
+
+			cmd := NewDestroyCommand()
+			cmd.SetArgs(append([]string{tt.agentID}, tt.args...))
+
+			var execErr error
+			output := captureStdout(t, func() {
+				execErr = cmd.Execute()
+			})
+			if tt.wantErr {
+				if execErr == nil {
+					t.Error("expected error from server")
+				}
+			} else if execErr != nil {
+				t.Errorf("Execute: %v", execErr)
+			}
+
+			_, statErr := os.Stat(keyPath)
+			if tt.wantKeyGone {
+				if !os.IsNotExist(statErr) {
+					t.Errorf("expected local key %s to be removed, stat err: %v", keyPath, statErr)
+				}
+			} else if statErr != nil {
+				t.Errorf("expected local key %s to remain, stat err: %v", keyPath, statErr)
+			}
+
+			if tt.wantRemovalLine {
+				if !strings.Contains(output, "Removed local SSH key "+keyPath) {
+					t.Errorf("output missing removal line, got:\n%s", output)
+				}
+			}
+		})
 	}
 }
