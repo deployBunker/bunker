@@ -105,10 +105,21 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	m.logger.Info("creating user", "username", username)
 	cmd := exec.CommandContext(ctx, "useradd", "-m", "-s", "/bin/bash", username)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("useradd %s failed: %w (output: %s)", username, err, string(out))
+		if strings.Contains(string(out), "already exists") {
+			// Idempotent re-registration: the agent user (home, rootless
+			// dockerd data, running containers) survived a bunkerd restart /
+			// registry wipe. Reuse it instead of failing — createdUser stays
+			// false so failure cleanup never userdels an existing user.
+			// The keypair + authorized_keys below are refreshed, so the
+			// spawn response carries a working key for the same agent id.
+			m.logger.Info("user already exists; reusing for re-registration", "username", username)
+		} else {
+			cleanup()
+			return nil, fmt.Errorf("useradd %s failed: %w (output: %s)", username, err, string(out))
+		}
+	} else {
+		createdUser = true
 	}
-	createdUser = true
 
 	// ── Step 3: Generate SSH keypair ───────────────────────────────
 	keyFile = filepath.Join(os.TempDir(), fmt.Sprintf("bunker-key-%s", agentID))
