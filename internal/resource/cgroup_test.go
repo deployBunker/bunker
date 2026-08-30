@@ -220,3 +220,128 @@ func TestReadAgentCgroupLimits_GracefulWhenMissing(t *testing.T) {
 		t.Errorf("MemoryLimitBytes = %v, want 0", m.MemoryLimitBytes)
 	}
 }
+
+// overrideAgentBase points agentCgroupBaseFn at a fixed directory and restores
+// it in t.Cleanup. Returns the base path used.
+func overrideAgentBase(t *testing.T, base string) {
+	t.Helper()
+	original := agentCgroupBaseFn
+	agentCgroupBaseFn = func(uid int, agentID string) string { return base }
+	t.Cleanup(func() { agentCgroupBaseFn = original })
+}
+
+// overrideHostReaders points cgroupBaseDir and meminfoFile at fixtures and
+// restores them in t.Cleanup.
+func overrideHostReaders(t *testing.T, cgroupDir, meminfo string) {
+	t.Helper()
+	originalDir := cgroupBaseDir
+	originalMeminfo := meminfoFile
+	cgroupBaseDir = cgroupDir
+	meminfoFile = meminfo
+	t.Cleanup(func() {
+		cgroupBaseDir = originalDir
+		meminfoFile = originalMeminfo
+	})
+}
+
+func TestReadAgentCgroupMetrics_AgentPathWins(t *testing.T) {
+	agentRoot := t.TempDir()
+	hostRoot := t.TempDir()
+	overrideAgentBase(t, agentRoot)
+	overrideHostReaders(t, hostRoot, writeFixture(t, "meminfo",
+		"MemTotal:       16384000 kB\nMemAvailable:   15000000 kB\n"))
+
+	// Agent-path values.
+	writeTestFile(t, filepath.Join(agentRoot, "memory.current"), "1048576\n")
+	writeTestFile(t, filepath.Join(agentRoot, "memory.max"), "268435456\n")
+	writeTestFile(t, filepath.Join(agentRoot, "cpu.max"), "50000 100000\n")
+	// Host values differ wildly — the agent path must win.
+	writeTestFile(t, filepath.Join(hostRoot, "memory.current"), "999999999\n")
+	writeTestFile(t, filepath.Join(hostRoot, "memory.max"), "888888888\n")
+
+	m, err := ReadAgentCgroupMetrics(12345, "agent-1")
+	if err != nil {
+		t.Fatalf("ReadAgentCgroupMetrics() error: %v", err)
+	}
+	if m.MemoryUsedBytes != 1048576 {
+		t.Errorf("MemoryUsedBytes = %d, want 1048576 (agent path)", m.MemoryUsedBytes)
+	}
+	if m.MemoryLimitBytes != 268435456 {
+		t.Errorf("MemoryLimitBytes = %d, want 268435456 (agent path)", m.MemoryLimitBytes)
+	}
+	if m.CPUQuota != 0.5 {
+		t.Errorf("CPUQuota = %v, want 0.5", m.CPUQuota)
+	}
+}
+
+func TestReadAgentCgroupMetrics_FallbackToHost(t *testing.T) {
+	// Agent cgroup absent (stopped/destroyed agent) → host values must be
+	// returned without error.
+	missingAgentBase := filepath.Join(t.TempDir(), "missing-agent-cgroup")
+	overrideAgentBase(t, missingAgentBase)
+
+	hostRoot := t.TempDir()
+	overrideHostReaders(t, hostRoot, writeFixture(t, "meminfo",
+		"MemTotal:       16384000 kB\nMemAvailable:   15000000 kB\n"))
+	writeTestFile(t, filepath.Join(hostRoot, "memory.current"), "2097152\n")
+	writeTestFile(t, filepath.Join(hostRoot, "memory.max"), "1073741824\n")
+
+	m, err := ReadAgentCgroupMetrics(99999, "destroyed-agent")
+	if err != nil {
+		t.Fatalf("ReadAgentCgroupMetrics() error: %v", err)
+	}
+	if m.MemoryUsedBytes != 2097152 {
+		t.Errorf("MemoryUsedBytes = %d, want 2097152 (host fallback)", m.MemoryUsedBytes)
+	}
+	if m.MemoryLimitBytes != 1073741824 {
+		t.Errorf("MemoryLimitBytes = %d, want 1073741824 (host fallback)", m.MemoryLimitBytes)
+	}
+}
+
+func TestReadAgentCgroupMetrics_ZeroWhenBothUnreadable(t *testing.T) {
+	overrideAgentBase(t, filepath.Join(t.TempDir(), "missing-agent-cgroup"))
+	overrideHostReaders(t, t.TempDir(), filepath.Join(t.TempDir(), "no-meminfo"))
+
+	m, err := ReadAgentCgroupMetrics(99999, "gone-agent")
+	if err != nil {
+		t.Fatalf("ReadAgentCgroupMetrics() error: %v", err)
+	}
+	if m.MemoryUsedBytes != 0 || m.MemoryLimitBytes != 0 || m.CPUQuota != 0 {
+		t.Errorf("ReadAgentCgroupMetrics() = %+v, want zero values", m)
+	}
+}
+
+func TestReadAgentCgroupMetrics_MaxLimitHybrid(t *testing.T) {
+	// Agent memory.current readable but memory.max == "max" (unlimited):
+	// used must come from the agent path, limit from the host fallback.
+	agentRoot := t.TempDir()
+	overrideAgentBase(t, agentRoot)
+	writeTestFile(t, filepath.Join(agentRoot, "memory.current"), "1048576\n")
+	writeTestFile(t, filepath.Join(agentRoot, "memory.max"), "max\n")
+
+	hostRoot := t.TempDir()
+	overrideHostReaders(t, hostRoot, writeFixture(t, "meminfo",
+		"MemTotal:       16384000 kB\nMemAvailable:   15000000 kB\n"))
+	writeTestFile(t, filepath.Join(hostRoot, "memory.current"), "999999999\n")
+	writeTestFile(t, filepath.Join(hostRoot, "memory.max"), "1073741824\n")
+
+	m, err := ReadAgentCgroupMetrics(12345, "agent-2")
+	if err != nil {
+		t.Fatalf("ReadAgentCgroupMetrics() error: %v", err)
+	}
+	if m.MemoryUsedBytes != 1048576 {
+		t.Errorf("MemoryUsedBytes = %d, want 1048576 (agent path)", m.MemoryUsedBytes)
+	}
+	if m.MemoryLimitBytes != 1073741824 {
+		t.Errorf("MemoryLimitBytes = %d, want 1073741824 (host fallback)", m.MemoryLimitBytes)
+	}
+}
+
+// writeTestFile writes content into an existing directory (unlike
+// writeFixture, which creates its own temp dir).
+func writeTestFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+}

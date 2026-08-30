@@ -958,6 +958,55 @@ func TestAgentMetrics(t *testing.T) {
 	}
 }
 
+// TestAgentMetrics_HostFallbackWhenAgentUserAbsent verifies AgentMetrics
+// degrades to the host-level read (no error, no panic) when the agent's Linux
+// user does not exist on the host — e.g. a stopped or destroyed agent. The
+// exact MemoryUsedBytes value is host-dependent, so only >0 is asserted.
+func TestAgentMetrics_HostFallbackWhenAgentUserAbsent(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	tracker := resource.NewTracker(10, logger)
+	tracker.Register(&resource.AgentRecord{
+		AgentID: "agent-1",
+		Status:  "running",
+		Limits: &v1.ResourceLimits{
+			MemoryMaxBytes: 512 * 1024 * 1024,
+			DiskMaxBytes:   10 * 1024 * 1024 * 1024,
+		},
+	})
+
+	svc := &bunkerdService{
+		cfg:     config.DefaultConfig(),
+		logger:  logger,
+		tracker: tracker,
+	}
+
+	req := connect.NewRequest(&v1.AgentMetricsRequest{AgentId: "agent-1"})
+	resp, err := svc.AgentMetrics(context.Background(), req)
+	if err != nil {
+		t.Fatalf("AgentMetrics() error: %v", err)
+	}
+	msg := resp.Msg
+	if msg.AgentId != "agent-1" {
+		t.Errorf("AgentMetrics().AgentId = %q, want agent-1", msg.AgentId)
+	}
+	if msg.Status != "running" {
+		t.Errorf("AgentMetrics().Status = %q, want running", msg.Status)
+	}
+	// Record-sourced fields must be unchanged.
+	if msg.MemoryLimitBytes != 512*1024*1024 {
+		t.Errorf("AgentMetrics().MemoryLimitBytes = %d, want 512MB", msg.MemoryLimitBytes)
+	}
+	if msg.DiskLimitBytes != 10*1024*1024*1024 {
+		t.Errorf("AgentMetrics().DiskLimitBytes = %d, want 10GB", msg.DiskLimitBytes)
+	}
+	// The user "bunker-agent-1" does not exist in test environments, so the
+	// per-agent cgroup read must have fallen back to the host read. Assert the
+	// read ran (non-zero) rather than an exact value (host-dependent).
+	if msg.MemoryUsedBytes == 0 {
+		t.Errorf("AgentMetrics().MemoryUsedBytes = 0, want >0 (host fallback read ran)")
+	}
+}
+
 // TestAgentMetrics_NotFound verifies AgentMetrics returns NotFound for missing agent.
 func TestAgentMetrics_NotFound(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))

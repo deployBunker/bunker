@@ -85,6 +85,76 @@ func ReadCgroupMetrics() (*CgroupMetrics, error) {
 	return m, nil
 }
 
+// ReadAgentCgroupMetrics reads memory and CPU usage from the agent's own
+// systemd user-unit cgroup, not the host root cgroup. The unit is created by
+// systemd-run at spawn time and lives under:
+//
+//	/sys/fs/cgroup/user.slice/user-<uid>.slice/user@<uid>.service/bunker-docker-<agentID>.service
+//
+// When the agent cgroup is absent (stopped or destroyed agent, deleted user)
+// or any controller file is unreadable, the missing fields degrade to the
+// host-level read from ReadCgroupMetrics (which itself falls back to
+// /proc/meminfo). This function never returns a non-nil error, so callers can
+// always render a coherent metrics response.
+func ReadAgentCgroupMetrics(uid int, agentID string) (*CgroupMetrics, error) {
+	base := agentCgroupBase(uid, agentID)
+	m := &CgroupMetrics{}
+
+	usedOK := false
+	limitOK := false
+
+	// memory.current -> MemoryUsedBytes (the agent's own usage).
+	if raw, err := os.ReadFile(filepath.Join(base, "memory.current")); err == nil {
+		if val, parseErr := strconv.ParseUint(strings.TrimSpace(string(raw)), 10, 64); parseErr == nil {
+			m.MemoryUsedBytes = val
+			usedOK = true
+		}
+	}
+
+	// memory.max -> MemoryLimitBytes; "max" means unlimited, leave for fallback.
+	if raw, err := os.ReadFile(filepath.Join(base, "memory.max")); err == nil {
+		maxStr := strings.TrimSpace(string(raw))
+		if maxStr != "max" && maxStr != "" {
+			if val, parseErr := strconv.ParseUint(maxStr, 10, 64); parseErr == nil {
+				m.MemoryLimitBytes = val
+				limitOK = true
+			}
+		}
+	}
+
+	// cpu.max -> CPUQuota (quota/period), same parse as ReadAgentCgroupLimits.
+	if raw, err := os.ReadFile(filepath.Join(base, "cpu.max")); err == nil {
+		fields := strings.Fields(strings.TrimSpace(string(raw)))
+		if len(fields) == 2 && fields[0] != "max" {
+			if quota, parseErr := strconv.ParseUint(fields[0], 10, 64); parseErr == nil {
+				if period, parseErr := strconv.ParseUint(fields[1], 10, 64); parseErr == nil && period > 0 {
+					m.CPUQuota = float64(quota) / float64(period)
+				}
+			}
+		}
+	}
+
+	// MANDATORY fallback: when the agent cgroup is absent or any memory field
+	// is missing, degrade to the host-level read — never hard-error, never
+	// panic. When both are unreadable the result is a zero-valued metrics
+	// struct, matching the ReadCgroupMetrics contract.
+	if !usedOK || !limitOK {
+		if host, err := ReadCgroupMetrics(); err == nil {
+			if !usedOK {
+				m.MemoryUsedBytes = host.MemoryUsedBytes
+			}
+			if !limitOK {
+				m.MemoryLimitBytes = host.MemoryLimitBytes
+			}
+			if m.CPUQuota == 0 {
+				m.CPUQuota = host.CPUQuota
+			}
+		}
+	}
+
+	return m, nil
+}
+
 // parseUsageUsec extracts the usage_usec counter from a cpu.stat string.
 // It returns ok=false when the field is absent or unparsable.
 func parseUsageUsec(cpuStat string) (uint64, bool) {

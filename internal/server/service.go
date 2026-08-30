@@ -7,7 +7,9 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -227,8 +229,18 @@ func (s *bunkerdService) AgentMetrics(ctx context.Context, req *connect.Request[
 		resp.DiskLimitBytes = rec.Limits.DiskMaxBytes
 	}
 
-	// Try to read cgroup metrics (best-effort)
-	if metrics, err := resource.ReadCgroupMetrics(); err == nil {
+	// Try to read the agent's own cgroup metrics (best-effort). The agent's
+	// systemd user unit lives under user.slice/user-<uid>.slice/..., so resolve
+	// the agent user's UID first. When the user or cgroup is absent (stopped or
+	// destroyed agent, deleted user), ReadAgentCgroupMetrics degrades to the
+	// host-level read — never an error, never a panic.
+	uid := 0
+	if u, err := user.Lookup("bunker-" + rec.AgentID); err == nil {
+		if parsedUID, err := strconv.Atoi(u.Uid); err == nil {
+			uid = parsedUID
+		}
+	}
+	if metrics, err := resource.ReadAgentCgroupMetrics(uid, rec.AgentID); err == nil {
 		resp.CpuUsagePercent = metrics.CPUUsagePercent
 		resp.MemoryUsedBytes = metrics.MemoryUsedBytes
 	}
