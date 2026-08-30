@@ -16,8 +16,9 @@ import (
 
 // defaultAuditLogPath is the daemon's configured audit log location
 // (internal/config AuditConfig.Path); the audit subcommands default to it
-// and --path overrides. verify/list/export default to local mode (reading
+// and --path overrides. list/export default to local mode (reading
 // this file); passing --server switches them to querying the daemon.
+// verify is local-only.
 const defaultAuditLogPath = "/var/log/bunkerd/audit.log"
 
 // NewAuditCommand returns the `bunker audit` command group for inspecting
@@ -33,8 +34,9 @@ authenticated RPC (one record per request; file mode 0600; token values are
 never written). Records are hash-chained (SHA-256) across the live file and
 rotated backups (.1-.3).
 
-Subcommands read the local log by default (--path) or query a remote
-bunkerd daemon when --server is given.`,
+list and export read the local log by default (--path) or query a remote
+bunkerd daemon when --server is given. --server applies to list/export
+only; verify is local-only (run it on the host that owns the log).`,
 	}
 	cmd.AddCommand(newAuditVerifyCommand())
 	cmd.AddCommand(newAuditListCommand())

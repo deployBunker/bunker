@@ -302,3 +302,37 @@ func TestAuditVerifyCommandMissingFile(t *testing.T) {
 		t.Fatal("verify on missing file returned nil error")
 	}
 }
+
+// TestAuditCommandHelpScopesServerToListExport guards DOGFOOD-013: the
+// group help must scope --server to list/export only and state that verify
+// is local-only, instead of the old wording that implied every subcommand
+// (including verify) accepts --server.
+func TestAuditCommandHelpScopesServerToListExport(t *testing.T) {
+	out, err := auditCmd(t, "--help")
+	if err != nil {
+		t.Fatalf("audit --help: %v", err)
+	}
+	for _, want := range []string{"verify is local-only", "list and export"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("audit --help missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Subcommands read the local log") {
+		t.Errorf("audit --help still has the old un-scoped wording:\n%s", out)
+	}
+}
+
+// TestAuditVerifyHelpLocalOnly guards DOGFOOD-013: verify --help must not
+// advertise --server (verify is local-only by design).
+func TestAuditVerifyHelpLocalOnly(t *testing.T) {
+	out, err := auditCmd(t, "verify", "--help")
+	if err != nil {
+		t.Fatalf("audit verify --help: %v", err)
+	}
+	if strings.Contains(out, "--server") {
+		t.Errorf("audit verify --help must not mention --server:\n%s", out)
+	}
+	if !strings.Contains(out, "Local log only") {
+		t.Errorf("audit verify --help missing 'Local log only':\n%s", out)
+	}
+}
