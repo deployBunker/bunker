@@ -15,6 +15,16 @@ var agentCgroupBaseFn = func(uid int, agentID string) string {
 	return fmt.Sprintf("/sys/fs/cgroup/user.slice/user-%d.slice/user@%d.service/bunker-docker-%s.service", uid, uid, agentID)
 }
 
+// agentUserSliceFn is the function used to compute the agent user slice path.
+// All of an agent's processes live under this slice: the systemd-run rootless
+// dockerd unit AND every SSH session scope for the agent user (each
+// `bunker exec` runs in user.slice/user-<uid>.slice/session-*.scope). The
+// slice's memory.max is the agent's --memory limit, so reading the slice is
+// the correct per-agent view. It is a variable so tests can override it.
+var agentUserSliceFn = func(uid int) string {
+	return fmt.Sprintf("/sys/fs/cgroup/user.slice/user-%d.slice", uid)
+}
+
 // cgroupBaseDir and meminfoFile are variables (not constants) so tests can
 // point them at fixtures without touching the real host files.
 var (
@@ -86,18 +96,20 @@ func ReadCgroupMetrics() (*CgroupMetrics, error) {
 }
 
 // ReadAgentCgroupMetrics reads memory and CPU usage from the agent's own
-// systemd user-unit cgroup, not the host root cgroup. The unit is created by
-// systemd-run at spawn time and lives under:
+// cgroup, not the host root cgroup. The agent's processes (the systemd-run
+// rootless dockerd unit and every SSH session scope for `bunker exec`) all
+// live under the agent user's slice:
 //
-//	/sys/fs/cgroup/user.slice/user-<uid>.slice/user@<uid>.service/bunker-docker-<agentID>.service
+//	/sys/fs/cgroup/user.slice/user-<uid>.slice
 //
-// When the agent cgroup is absent (stopped or destroyed agent, deleted user)
-// or any controller file is unreadable, the missing fields degrade to the
-// host-level read from ReadCgroupMetrics (which itself falls back to
-// /proc/meminfo). This function never returns a non-nil error, so callers can
-// always render a coherent metrics response.
+// The slice's memory.max is the agent's --memory limit, so this is the correct
+// per-agent view. When the agent cgroup is absent (stopped or destroyed agent,
+// deleted user) or any controller file is unreadable, the missing fields
+// degrade to the host-level read from ReadCgroupMetrics (which itself falls
+// back to /proc/meminfo). This function never returns a non-nil error, so
+// callers can always render a coherent metrics response.
 func ReadAgentCgroupMetrics(uid int, agentID string) (*CgroupMetrics, error) {
-	base := agentCgroupBase(uid, agentID)
+	base := agentUserSliceFn(uid)
 	m := &CgroupMetrics{}
 
 	usedOK := false

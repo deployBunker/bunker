@@ -221,13 +221,13 @@ func TestReadAgentCgroupLimits_GracefulWhenMissing(t *testing.T) {
 	}
 }
 
-// overrideAgentBase points agentCgroupBaseFn at a fixed directory and restores
+// overrideUserSlice points agentUserSliceFn at a fixed directory and restores
 // it in t.Cleanup. Returns the base path used.
-func overrideAgentBase(t *testing.T, base string) {
+func overrideUserSlice(t *testing.T, base string) {
 	t.Helper()
-	original := agentCgroupBaseFn
-	agentCgroupBaseFn = func(uid int, agentID string) string { return base }
-	t.Cleanup(func() { agentCgroupBaseFn = original })
+	original := agentUserSliceFn
+	agentUserSliceFn = func(uid int) string { return base }
+	t.Cleanup(func() { agentUserSliceFn = original })
 }
 
 // overrideHostReaders points cgroupBaseDir and meminfoFile at fixtures and
@@ -247,7 +247,7 @@ func overrideHostReaders(t *testing.T, cgroupDir, meminfo string) {
 func TestReadAgentCgroupMetrics_AgentPathWins(t *testing.T) {
 	agentRoot := t.TempDir()
 	hostRoot := t.TempDir()
-	overrideAgentBase(t, agentRoot)
+	overrideUserSlice(t, agentRoot)
 	overrideHostReaders(t, hostRoot, writeFixture(t, "meminfo",
 		"MemTotal:       16384000 kB\nMemAvailable:   15000000 kB\n"))
 
@@ -278,7 +278,7 @@ func TestReadAgentCgroupMetrics_FallbackToHost(t *testing.T) {
 	// Agent cgroup absent (stopped/destroyed agent) → host values must be
 	// returned without error.
 	missingAgentBase := filepath.Join(t.TempDir(), "missing-agent-cgroup")
-	overrideAgentBase(t, missingAgentBase)
+	overrideUserSlice(t, missingAgentBase)
 
 	hostRoot := t.TempDir()
 	overrideHostReaders(t, hostRoot, writeFixture(t, "meminfo",
@@ -299,7 +299,7 @@ func TestReadAgentCgroupMetrics_FallbackToHost(t *testing.T) {
 }
 
 func TestReadAgentCgroupMetrics_ZeroWhenBothUnreadable(t *testing.T) {
-	overrideAgentBase(t, filepath.Join(t.TempDir(), "missing-agent-cgroup"))
+	overrideUserSlice(t, filepath.Join(t.TempDir(), "missing-agent-cgroup"))
 	overrideHostReaders(t, t.TempDir(), filepath.Join(t.TempDir(), "no-meminfo"))
 
 	m, err := ReadAgentCgroupMetrics(99999, "gone-agent")
@@ -315,7 +315,7 @@ func TestReadAgentCgroupMetrics_MaxLimitHybrid(t *testing.T) {
 	// Agent memory.current readable but memory.max == "max" (unlimited):
 	// used must come from the agent path, limit from the host fallback.
 	agentRoot := t.TempDir()
-	overrideAgentBase(t, agentRoot)
+	overrideUserSlice(t, agentRoot)
 	writeTestFile(t, filepath.Join(agentRoot, "memory.current"), "1048576\n")
 	writeTestFile(t, filepath.Join(agentRoot, "memory.max"), "max\n")
 
