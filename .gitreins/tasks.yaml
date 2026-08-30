@@ -1154,9 +1154,24 @@ tasks:
   created_at: '2026-08-27T18:39:27.419867+00:00'
   completed_at: '2026-08-27T18:40:43.654725+00:00'
 - id: DOGFOOD-013
-  title: 'P2 - bunker audit help text contradicts audit verify: parent help claims --server for all subcommands, verify rejects it (local-only)'
+  title: 'P2 - bunker audit help text contradicts audit verify: parent help claims
+    --server for all subcommands, verify rejects it (local-only)'
   criteria:
-  - 'PASS: `bunker audit --help` states --server applies to list/export only and verify is local-only; `bunker audit verify --help` does not mention --server; regression tests in internal/cli/audit_test.go assert scoped wording and pass; gofmt clean; go build/vet/test pass.'
+  - 'PASS: `bunker audit --help` states --server applies to list/export only and verify
+    is local-only; `bunker audit verify --help` does not mention --server; regression
+    tests in internal/cli/audit_test.go assert scoped wording and pass; gofmt clean;
+    go build/vet/test pass.'
   status: complete
   created_at: '2026-08-29T16:12:32.000000+00:00'
   completed_at: '2026-08-30T04:29:33.537577+00:00'
+- id: DOGFOOD-014
+  title: "P2 \u2014 destroy removes the local SSH key (~/.bunker/keys/<id>); --keep-key\
+    \ flag"
+  criteria:
+  - "PASS: spawn \u2192 destroy \u2192 ls ~/.bunker/keys/<id> fails (file removed);\
+    \ --keep-key preserves the key; regression tests in internal/cli/destroy_test.go\
+    \ cover success/keep-key/rpc-error/not-found paths; gofmt clean; go build/vet/test\
+    \ pass"
+  status: complete
+  created_at: '2026-08-30T05:56:38.136735+00:00'
+  completed_at: '2026-08-30T05:56:40.923507+00:00'
