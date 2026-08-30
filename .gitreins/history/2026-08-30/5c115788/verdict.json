@@ -1,0 +1,17 @@
+{
+  "task_id": "DOGFOOD-014",
+  "task_title": "P2 \u2014 destroy removes the local SSH key (~/.bunker/keys/<id>); --keep-key flag",
+  "task_criteria": [
+    "PASS: spawn \u2192 destroy \u2192 ls ~/.bunker/keys/<id> fails (file removed); --keep-key preserves the key; regression tests in internal/cli/destroy_test.go cover success/keep-key/rpc-error/not-found paths; gofmt clean; go build/vet/test pass"
+  ],
+  "passed": true,
+  "items": [
+    {
+      "criterion": "PASS: spawn \u2192 destroy \u2192 ls ~/.bunker/keys/<id> fails (file removed); --keep-key preserves the key; regression tests in internal/cli/destroy_test.go cover success/keep-key/rpc-error/not-found paths; gofmt clean; go build/vet/test pass",
+      "status": "PASS",
+      "detail": "destroy.go:101 defines --keep-key flag; removeLocalSSHKey() (destroy.go:113-135) removes ~/.bunker/keys/<id> via defaultSSHKeyPath (cp.go:223 \u2192 configFilePath ~/.bunker/config.yaml \u2192 ~/.bunker/keys/<id>), returning nil early when keepKey is set. destroy_test.go TestDestroyCommand_LocalSSHKeyCleanup covers success-removes, --keep-key-leaves, rpc-error-leaves, in-band-not_found-removes, connect-CodeNotFound-removes, already-absent \u2014 all PASS (go test ./internal/cli/ -run TestDestroyCommand -count=1 -v: ok). gofmt -l exit 0 (clean); go build ./... exit 0; go vet ./... exit 0; go test ./... -count=1 exit 0 (all packages ok)."
+    }
+  ],
+  "summary": "Judge Result: DOGFOOD-014\n\nTier 2 (Agentic Evaluator): COMPLETE\n  \u2713 PASS: spawn \u2192 destroy \u2192 ls ~/.bunker/keys/<id> fails (file removed); --keep-key preserves the key; regression tests in internal/cli/destroy_test.go cover success/keep-key/rpc-error/not-found paths; gofmt clean; go build/vet/test pass: destroy.go:101 defines --keep-key flag; removeLocalSSHKey() (destroy.go:113-135) removes ~/.bunker/keys/<id> via defaultSSHKeyPath (cp.go:223 \u2192 configFilePath ~/.bunker/config.yaml \u2192 ~/.bunker/keys/<id>), returning nil early when keepKey is set. destroy_test.go TestDestroyCommand_LocalSSHKeyCleanup covers success-removes, --keep-key-leaves, rpc-error-leaves, in-band-not_found-removes, connect-CodeNotFound-removes, already-absent \u2014 all PASS (go test ./internal/cli/ -run TestDestroyCommand -count=1 -v: ok). gofmt -l exit 0 (clean); go build ./... exit 0; go vet ./... exit 0; go test ./... -count=1 exit 0 (all packages ok).\n\nOverall: PASS \u2713",
+  "evaluated_at": "2026-08-30T05:57:56.647825"
+}
