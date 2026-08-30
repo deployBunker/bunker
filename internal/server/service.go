@@ -408,12 +408,18 @@ func (s *bunkerdService) HeartbeatAgent(ctx context.Context, req *connect.Reques
 	if rec == nil {
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("agent %q not found", req.Msg.AgentId))
 	}
-	// Extend TTL on heartbeat unless the agent has a zero TTL.
+	// Extend TTL on heartbeat unless the agent has a zero TTL. Never SHRINK:
+	// heartbeating a long-TTL agent (e.g. 720h) must not reset it to the
+	// default 6h — a shorter expiry would silently destroy the agent on TTL
+	// expiry (userdel + data loss) between renewal runs.
 	ttl := 6 * time.Hour
 	if s.cfg.Agent.DefaultTTL > 0 {
 		ttl = s.cfg.Agent.DefaultTTL
 	}
-	rec.ExpiresAt = time.Now().Add(ttl)
+	candidate := time.Now().Add(ttl)
+	if candidate.After(rec.ExpiresAt) {
+		rec.ExpiresAt = candidate
+	}
 	return connect.NewResponse(&v1.HeartbeatAgentResponse{
 		AgentId:      req.Msg.AgentId,
 		ExpiresAt:    rec.ExpiresAt.Format(time.RFC3339),
@@ -663,8 +669,13 @@ func (s *agentService) Heartbeat(ctx context.Context, req *connect.Request[v1.He
 	if rec == nil {
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("agent %q not found", req.Msg.AgentId))
 	}
-	// Extend TTL on heartbeat.
-	rec.ExpiresAt = time.Now().Add(6 * time.Hour)
+	// Extend TTL on heartbeat; never SHRINK a longer expiry (same rule as
+	// bunkerdService.HeartbeatAgent — a heartbeat must not reset a 720h
+	// agent back to the 6h default).
+	candidate := time.Now().Add(6 * time.Hour)
+	if candidate.After(rec.ExpiresAt) {
+		rec.ExpiresAt = candidate
+	}
 	return connect.NewResponse(&v1.HeartbeatAgentResponse{
 		AgentId:      req.Msg.AgentId,
 		ExpiresAt:    rec.ExpiresAt.Format(time.RFC3339),

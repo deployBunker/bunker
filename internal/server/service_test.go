@@ -240,6 +240,38 @@ func TestAgentService_Heartbeat(t *testing.T) {
 	}
 }
 
+// TestAgentService_Heartbeat_DoesNotShrink verifies a heartbeat never SHRINKS
+// an agent's existing expiry (a 720h agent heartbeated must stay 720h, not be
+// reset to the 6h default — a shorter expiry would silently destroy the agent).
+func TestAgentService_Heartbeat_DoesNotShrink(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	tracker := resource.NewTracker(10, logger)
+	farFuture := time.Now().Add(720 * time.Hour)
+	tracker.Register(&resource.AgentRecord{
+		AgentID:   "agent-1",
+		Status:    "running",
+		ExpiresAt: farFuture,
+	})
+
+	svc := &agentService{logger: logger, tracker: tracker}
+
+	req := connect.NewRequest(&v1.HeartbeatAgentRequest{AgentId: "agent-1"})
+	resp, err := svc.Heartbeat(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Heartbeat() error: %v", err)
+	}
+	if !resp.Msg.Acknowledged {
+		t.Error("Heartbeat().Acknowledged = false, want true")
+	}
+	rec := tracker.Get("agent-1")
+	if rec == nil {
+		t.Fatal("tracker record missing after heartbeat")
+	}
+	if rec.ExpiresAt.Before(farFuture) {
+		t.Errorf("Heartbeat() shrank ExpiresAt: before=%v after=%v", farFuture, rec.ExpiresAt)
+	}
+}
+
 // TestAgentService_Heartbeat_NotFound verifies Heartbeat returns NotFound for a
 // missing agent.
 func TestAgentService_Heartbeat_NotFound(t *testing.T) {
