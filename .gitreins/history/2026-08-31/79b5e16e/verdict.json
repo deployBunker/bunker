@@ -1,0 +1,17 @@
+{
+  "task_id": "GAP-061",
+  "task_title": "Remove stale root prebuilt binaries; build into gitignored bin/",
+  "task_criteria": [
+    "PASS: ls bunker bunkerd at repo root returns empty (files absent); bin/bunker and bin/bunkerd exist and run; .gitignore keeps /bunker, /bunkerd, bin/ entries; git status clean"
+  ],
+  "passed": true,
+  "items": [
+    {
+      "criterion": "PASS: ls bunker bunkerd at repo root returns empty (files absent); bin/bunker and bin/bunkerd exist and run; .gitignore keeps /bunker, /bunkerd, bin/ entries; git status clean",
+      "status": "PASS",
+      "detail": "ls bunker bunkerd at root -> 'No such file or directory' (exit 2), files absent. bin/bunker (19MB) and bin/bunkerd (22MB) exist and run (both --help print usage, exit 0). .gitignore contains /bunker, /bunkerd, and bin/ entries; git check-ignore confirms all 4 paths ignored. git ls-files shows no bunker/bunkerd/bin tracked (only bunker-hero.png image). git status shows only .gitreins/tasks.yaml modified (the GAP-061 task entry itself), no stale binaries present."
+    }
+  ],
+  "summary": "Judge Result: GAP-061\n\nTier 2 (Agentic Evaluator): COMPLETE\n  \u2713 PASS: ls bunker bunkerd at repo root returns empty (files absent); bin/bunker and bin/bunkerd exist and run; .gitignore keeps /bunker, /bunkerd, bin/ entries; git status clean: ls bunker bunkerd at root -> 'No such file or directory' (exit 2), files absent. bin/bunker (19MB) and bin/bunkerd (22MB) exist and run (both --help print usage, exit 0). .gitignore contains /bunker, /bunkerd, and bin/ entries; git check-ignore confirms all 4 paths ignored. git ls-files shows no bunker/bunkerd/bin tracked (only bunker-hero.png image). git status shows only .gitreins/tasks.yaml modified (the GAP-061 task entry itself), no stale binaries present.\n\nOverall: PASS \u2713",
+  "evaluated_at": "2026-08-31T18:06:12.482149"
+}
