@@ -280,6 +280,39 @@ func TestSpawn_CapacityConflict(t *testing.T) {
 	}
 }
 
+// TestSpawn_CapacityConflict_DoesNotLeakPortRange guards against the
+// port-range leak: Allocate used to run BEFORE the capacity check, so a
+// rejected spawn permanently consumed a range from the in-memory allocator
+// (bunkerd up for days + repeated failed spawns = pool exhausted). The
+// allocator must be untouched after a capacity-full rejection.
+func TestSpawn_CapacityConflict_DoesNotLeakPortRange(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cfg := config.DefaultConfig()
+	pa, err := resource.NewPortAllocator(cfg.Agent.PortRangeStart, cfg.Agent.PortRangeEnd, cfg.Agent.PortRangePerAgent)
+	if err != nil {
+		t.Fatalf("new port allocator: %v", err)
+	}
+	m := &AgentManager{
+		cfg:       cfg,
+		logger:    logger,
+		tracker:   resource.NewTracker(1, logger),
+		portAlloc: pa,
+		ttlStop:   make(chan struct{}),
+	}
+	if err := m.tracker.Register(&resource.AgentRecord{AgentID: "existing"}); err != nil {
+		t.Fatalf("register fixture: %v", err)
+	}
+	before := pa.Available()
+
+	_, err = m.Spawn(context.Background(), &v1.SpawnAgentRequest{AgentId: "new-agent"})
+	if err == nil || !strings.Contains(err.Error(), "capacity full") {
+		t.Fatalf("error = %v, want capacity conflict", err)
+	}
+	if after := pa.Available(); after != before {
+		t.Fatalf("port ranges leaked: available before=%d after=%d, want unchanged", before, after)
+	}
+}
+
 func TestDestroy_InvalidIDs_Coverage(t *testing.T) {
 	m := newCoverageTestManager(1)
 	for _, agentID := range []string{"", "UPPER", "slash/id", strings.Repeat("x", 64)} {

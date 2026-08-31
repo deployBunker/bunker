@@ -49,7 +49,14 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		ttl = parsed
 	}
 
-	// ── Step 1.5: Allocate port range ────────────────────────────
+	// ── Step 1.5: Check capacity BEFORE allocating a port range ──
+	// (allocating first leaks the range when capacity is full — the
+	// allocator is in-memory and only freed on destroy)
+	if !m.tracker.HasCapacity(1) {
+		return nil, fmt.Errorf("capacity full: %d/%d agents", m.tracker.Count(), m.tracker.MaxAgents())
+	}
+
+	// ── Step 1.6: Allocate port range ────────────────────────────
 	var portStart, portEnd uint32
 	if m.portAlloc != nil {
 		var allocErr error
@@ -64,19 +71,20 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	}
 	m.logger.Info("allocated port range", "agent_id", agentID, "range", fmt.Sprintf("%d-%d", portStart, portEnd))
 
-	// ── Step 1.6: Check capacity ─────────────────────────────────
-	if !m.tracker.HasCapacity(1) {
-		return nil, fmt.Errorf("capacity full: %d/%d agents", m.tracker.Count(), m.tracker.MaxAgents())
-	}
-
 	m.logger.Info("spawning agent", "agent_id", agentID)
 
 	// Track what we've created for cleanup on failure.
 	var createdUser bool
 	var createdUserSlice bool
 	var keyFile string
+	portRangeAllocated := m.portAlloc != nil
 
 	cleanup := func() {
+		// Free the port range first — the in-memory allocator leaks
+		// permanently if a failed spawn never releases it.
+		if portRangeAllocated {
+			m.portAlloc.Free(agentID)
+		}
 		if createdUserSlice {
 			removeUserSliceLimits(ctx, agentID, m.logger)
 		}
