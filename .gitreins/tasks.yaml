@@ -1184,3 +1184,14 @@ tasks:
   status: complete
   created_at: '2026-08-31T18:05:44.431828+00:00'
   completed_at: '2026-08-31T18:05:57.861569+00:00'
+- id: GAP-060
+  title: bunker metrics can still silently report HOST memory (host-level fallback
+    flag)
+  criteria:
+  - 'PASS: bunker metrics on a missing/degraded agent prints an explicit host-level
+    fallback notice (or daemon log warns); host_level_fallback field present in regenerated
+    bunker.pb.go and wired through service.go and cli/metrics.go; go build/vet/test
+    all pass'
+  status: complete
+  created_at: '2026-09-01T00:43:00.150750+00:00'
+  completed_at: '2026-09-01T00:48:26.897096+00:00'
