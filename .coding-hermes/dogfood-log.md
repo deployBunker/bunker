@@ -37,3 +37,4 @@
 - **Artifacts:** tasks DOGFOOD-011..014 (tasks.md + tasks.jsonl, event 306), docs/dogfood/2026-08-29-integration.md (this run), docs/dogfood/diagnostics.md §10, skills/bunker-usage/SKILL.md v1.2.0 refresh.
 - **Foreman:** active (21600s cooldown pin, Enabled true, tick #407 latest, board had 77/77 complete before this run) — picks up DOGFOOD-011..014 automatically on next tick. No scheduler PUT needed.
 - **Note:** picker selected `bunker-sync` (DuckBrain sync entry, empty workdir, placeholder URL) — dogfooded the real `bunker` project it mirrors, per Step-0 manual-pick fallback.
+2026-09-01 | SHIPPABLE | 28s t2fs | friction 5 | 5 findings
