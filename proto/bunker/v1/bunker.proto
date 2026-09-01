@@ -171,6 +171,7 @@ message AgentMetricsResponse {
   uint64 disk_limit_bytes = 7;
   uint32 docker_containers = 8;
   string uptime = 9;
+  bool host_level_fallback = 10;  // true when metrics are HOST values, not the agent's own cgroup
 }
 
 message HeartbeatAgentRequest {

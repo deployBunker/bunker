@@ -1178,18 +1178,19 @@ func (x *AgentMetricsRequest) GetAgentId() string {
 }
 
 type AgentMetricsResponse struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	AgentId          string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
-	Status           string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
-	CpuUsagePercent  float64                `protobuf:"fixed64,3,opt,name=cpu_usage_percent,json=cpuUsagePercent,proto3" json:"cpu_usage_percent,omitempty"`
-	MemoryUsedBytes  uint64                 `protobuf:"varint,4,opt,name=memory_used_bytes,json=memoryUsedBytes,proto3" json:"memory_used_bytes,omitempty"`
-	MemoryLimitBytes uint64                 `protobuf:"varint,5,opt,name=memory_limit_bytes,json=memoryLimitBytes,proto3" json:"memory_limit_bytes,omitempty"`
-	DiskUsedBytes    uint64                 `protobuf:"varint,6,opt,name=disk_used_bytes,json=diskUsedBytes,proto3" json:"disk_used_bytes,omitempty"`
-	DiskLimitBytes   uint64                 `protobuf:"varint,7,opt,name=disk_limit_bytes,json=diskLimitBytes,proto3" json:"disk_limit_bytes,omitempty"`
-	DockerContainers uint32                 `protobuf:"varint,8,opt,name=docker_containers,json=dockerContainers,proto3" json:"docker_containers,omitempty"`
-	Uptime           string                 `protobuf:"bytes,9,opt,name=uptime,proto3" json:"uptime,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	AgentId           string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Status            string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	CpuUsagePercent   float64                `protobuf:"fixed64,3,opt,name=cpu_usage_percent,json=cpuUsagePercent,proto3" json:"cpu_usage_percent,omitempty"`
+	MemoryUsedBytes   uint64                 `protobuf:"varint,4,opt,name=memory_used_bytes,json=memoryUsedBytes,proto3" json:"memory_used_bytes,omitempty"`
+	MemoryLimitBytes  uint64                 `protobuf:"varint,5,opt,name=memory_limit_bytes,json=memoryLimitBytes,proto3" json:"memory_limit_bytes,omitempty"`
+	DiskUsedBytes     uint64                 `protobuf:"varint,6,opt,name=disk_used_bytes,json=diskUsedBytes,proto3" json:"disk_used_bytes,omitempty"`
+	DiskLimitBytes    uint64                 `protobuf:"varint,7,opt,name=disk_limit_bytes,json=diskLimitBytes,proto3" json:"disk_limit_bytes,omitempty"`
+	DockerContainers  uint32                 `protobuf:"varint,8,opt,name=docker_containers,json=dockerContainers,proto3" json:"docker_containers,omitempty"`
+	Uptime            string                 `protobuf:"bytes,9,opt,name=uptime,proto3" json:"uptime,omitempty"`
+	HostLevelFallback bool                   `protobuf:"varint,10,opt,name=host_level_fallback,json=hostLevelFallback,proto3" json:"host_level_fallback,omitempty"` // true when metrics are HOST values, not the agent's own cgroup
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *AgentMetricsResponse) Reset() {
@@ -1283,6 +1284,13 @@ func (x *AgentMetricsResponse) GetUptime() string {
 		return x.Uptime
 	}
 	return ""
+}
+
+func (x *AgentMetricsResponse) GetHostLevelFallback() bool {
+	if x != nil {
+		return x.HostLevelFallback
+	}
+	return false
 }
 
 type HeartbeatAgentRequest struct {
@@ -2195,7 +2203,7 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\x10GetAgentResponse\x12-\n" +
 	"\x05agent\x18\x01 \x01(\v2\x17.bunker.v1.AgentSummaryR\x05agent\"0\n" +
 	"\x13AgentMetricsRequest\x12\x19\n" +
-	"\bagent_id\x18\x01 \x01(\tR\aagentId\"\xe6\x02\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\"\x96\x03\n" +
 	"\x14AgentMetricsResponse\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12*\n" +
@@ -2205,7 +2213,9 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\x0fdisk_used_bytes\x18\x06 \x01(\x04R\rdiskUsedBytes\x12(\n" +
 	"\x10disk_limit_bytes\x18\a \x01(\x04R\x0ediskLimitBytes\x12+\n" +
 	"\x11docker_containers\x18\b \x01(\rR\x10dockerContainers\x12\x16\n" +
-	"\x06uptime\x18\t \x01(\tR\x06uptime\"2\n" +
+	"\x06uptime\x18\t \x01(\tR\x06uptime\x12.\n" +
+	"\x13host_level_fallback\x18\n" +
+	" \x01(\bR\x11hostLevelFallback\"2\n" +
 	"\x15HeartbeatAgentRequest\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\"v\n" +
 	"\x16HeartbeatAgentResponse\x12\x19\n" +

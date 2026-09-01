@@ -167,6 +167,9 @@ func printAgentMetrics(ctx context.Context, client bunkerv1connect.BunkerdClient
 	if msg.Uptime != "" {
 		fmt.Printf("  Uptime:         %s\n", msg.Uptime)
 	}
+	if msg.HostLevelFallback {
+		fmt.Println("  NOTE: host-level fallback (agent cgroup unavailable — metrics are HOST values, not agent values)")
+	}
 	fmt.Println()
 
 	return nil

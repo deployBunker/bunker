@@ -1033,9 +1033,13 @@ func TestAgentMetrics_HostFallbackWhenAgentUserAbsent(t *testing.T) {
 	}
 	// The user "bunker-agent-1" does not exist in test environments, so the
 	// per-agent cgroup read must have fallen back to the host read. Assert the
-	// read ran (non-zero) rather than an exact value (host-dependent).
+	// read ran (non-zero) rather than an exact value (host-dependent), and
+	// that the host-level fallback is surfaced on the response.
 	if msg.MemoryUsedBytes == 0 {
 		t.Errorf("AgentMetrics().MemoryUsedBytes = 0, want >0 (host fallback read ran)")
+	}
+	if !msg.HostLevelFallback {
+		t.Error("AgentMetrics().HostLevelFallback = false, want true (agent user absent -> host fallback)")
 	}
 }
 

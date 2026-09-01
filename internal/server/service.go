@@ -232,17 +232,39 @@ func (s *bunkerdService) AgentMetrics(ctx context.Context, req *connect.Request[
 	// Try to read the agent's own cgroup metrics (best-effort). The agent's
 	// systemd user unit lives under user.slice/user-<uid>.slice/..., so resolve
 	// the agent user's UID first. When the user or cgroup is absent (stopped or
-	// destroyed agent, deleted user), ReadAgentCgroupMetrics degrades to the
-	// host-level read — never an error, never a panic.
+	// destroyed agent, deleted user), the read degrades to the host-level read
+	// and HostLevelFallback is set — never an error, never a panic.
 	uid := 0
+	userResolved := true
 	if u, err := user.Lookup("bunker-" + rec.AgentID); err == nil {
 		if parsedUID, err := strconv.Atoi(u.Uid); err == nil {
 			uid = parsedUID
+		} else {
+			userResolved = false
+			s.logger.Warn("agent user UID parse failed; metrics will fall back to host level",
+				"agent_id", rec.AgentID, "error", err)
 		}
+	} else {
+		userResolved = false
+		s.logger.Warn("agent user lookup failed; metrics will fall back to host level",
+			"agent_id", rec.AgentID, "error", err)
 	}
-	if metrics, err := resource.ReadAgentCgroupMetrics(uid, rec.AgentID); err == nil {
-		resp.CpuUsagePercent = metrics.CPUUsagePercent
-		resp.MemoryUsedBytes = metrics.MemoryUsedBytes
+
+	if userResolved {
+		if metrics, err := resource.ReadAgentCgroupMetrics(uid, rec.AgentID); err == nil {
+			resp.CpuUsagePercent = metrics.CPUUsagePercent
+			resp.MemoryUsedBytes = metrics.MemoryUsedBytes
+			resp.HostLevelFallback = metrics.HostLevelFallback
+		}
+	} else {
+		// Unknown agent user: never attempt a user-0.slice read as if it were
+		// a valid agent cgroup. Read host-level metrics directly and flag the
+		// fallback so callers can warn that these are HOST values.
+		if metrics, err := resource.ReadCgroupMetrics(); err == nil {
+			resp.CpuUsagePercent = metrics.CPUUsagePercent
+			resp.MemoryUsedBytes = metrics.MemoryUsedBytes
+			resp.HostLevelFallback = true
+		}
 	}
 
 	// Read per-agent disk usage (best-effort)

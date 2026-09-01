@@ -38,6 +38,11 @@ type CgroupMetrics struct {
 	MemoryUsedBytes  uint64
 	MemoryLimitBytes uint64
 	CPUQuota         float64
+	// HostLevelFallback is true when any memory field could not be read from
+	// the agent's own cgroup and was filled (or left zero) from the host-level
+	// read. Callers should surface this so host values are not mistaken for
+	// agent values.
+	HostLevelFallback bool
 }
 
 // ReadCgroupMetrics reads CPU and memory usage from cgroup v2.
@@ -148,9 +153,12 @@ func ReadAgentCgroupMetrics(uid int, agentID string) (*CgroupMetrics, error) {
 
 	// MANDATORY fallback: when the agent cgroup is absent or any memory field
 	// is missing, degrade to the host-level read — never hard-error, never
-	// panic. When both are unreadable the result is a zero-valued metrics
-	// struct, matching the ReadCgroupMetrics contract.
+	// panic. HostLevelFallback is set so callers can warn that the values are
+	// HOST values (or zero when the host read also fails), not the agent's
+	// own cgroup values. When both are unreadable the result is a zero-valued
+	// metrics struct, matching the ReadCgroupMetrics contract.
 	if !usedOK || !limitOK {
+		m.HostLevelFallback = true
 		if host, err := ReadCgroupMetrics(); err == nil {
 			if !usedOK {
 				m.MemoryUsedBytes = host.MemoryUsedBytes

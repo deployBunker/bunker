@@ -272,6 +272,9 @@ func TestReadAgentCgroupMetrics_AgentPathWins(t *testing.T) {
 	if m.CPUQuota != 0.5 {
 		t.Errorf("CPUQuota = %v, want 0.5", m.CPUQuota)
 	}
+	if m.HostLevelFallback {
+		t.Error("HostLevelFallback = true, want false (agent path supplied all fields)")
+	}
 }
 
 func TestReadAgentCgroupMetrics_FallbackToHost(t *testing.T) {
@@ -296,6 +299,9 @@ func TestReadAgentCgroupMetrics_FallbackToHost(t *testing.T) {
 	if m.MemoryLimitBytes != 1073741824 {
 		t.Errorf("MemoryLimitBytes = %d, want 1073741824 (host fallback)", m.MemoryLimitBytes)
 	}
+	if !m.HostLevelFallback {
+		t.Error("HostLevelFallback = false, want true (host fallback filled the fields)")
+	}
 }
 
 func TestReadAgentCgroupMetrics_ZeroWhenBothUnreadable(t *testing.T) {
@@ -308,6 +314,9 @@ func TestReadAgentCgroupMetrics_ZeroWhenBothUnreadable(t *testing.T) {
 	}
 	if m.MemoryUsedBytes != 0 || m.MemoryLimitBytes != 0 || m.CPUQuota != 0 {
 		t.Errorf("ReadAgentCgroupMetrics() = %+v, want zero values", m)
+	}
+	if !m.HostLevelFallback {
+		t.Error("HostLevelFallback = false, want true (agent cgroup base unreadable)")
 	}
 }
 
@@ -334,6 +343,9 @@ func TestReadAgentCgroupMetrics_MaxLimitHybrid(t *testing.T) {
 	}
 	if m.MemoryLimitBytes != 1073741824 {
 		t.Errorf("MemoryLimitBytes = %d, want 1073741824 (host fallback)", m.MemoryLimitBytes)
+	}
+	if !m.HostLevelFallback {
+		t.Error("HostLevelFallback = false, want true (host fallback filled the fields)")
 	}
 }
 

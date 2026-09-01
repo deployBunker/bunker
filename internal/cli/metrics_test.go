@@ -198,6 +198,39 @@ func TestMetricsCommand_AgentMetrics(t *testing.T) {
 	}
 }
 
+func TestMetricsCommand_AgentMetrics_HostFallbackNotice(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	mock := &metricsMockServer{
+		agentMetrics: &v1.AgentMetricsResponse{
+			AgentId:           "abc123",
+			Status:            "running",
+			MemoryUsedBytes:   1024 * 1024 * 256,
+			MemoryLimitBytes:  1024 * 1024 * 1024,
+			HostLevelFallback: true,
+		},
+	}
+	ts := newMetricsTestServer(t, mock)
+	defer ts.Close()
+
+	if err := RegisterServer("test", ts.URL, "", true); err != nil {
+		t.Fatalf("register server: %v", err)
+	}
+
+	cmd := NewMetricsCommand()
+	cmd.SetArgs([]string{"abc123", "--server", "test"})
+	output := captureStdout(t, func() {
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+	})
+
+	if !strings.Contains(output, "host-level fallback") {
+		t.Fatalf("expected host-level fallback notice in output, got:\n%s", output)
+	}
+}
+
 func TestMetricsCommand_ServerError(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
