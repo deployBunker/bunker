@@ -1195,3 +1195,14 @@ tasks:
   status: complete
   created_at: '2026-09-01T00:43:00.150750+00:00'
   completed_at: '2026-09-01T00:48:26.897096+00:00'
+- id: QA-BUNKER-4
+  title: 'Port-range allocator leak: non-force destroy returns not_found after userdel
+    failure WITHOUT freeing the range'
+  criteria:
+  - Non-force Destroy of an agent whose userdel -rf fails must return Status=not_found
+    AND return the agent's port range to the portAlloc pool (idempotent Free in the
+    early-return path); force-mode destroy with failing userdel must also free; TTL-reaper
+    path (expired agent with running process) must not leak a range; unit tests cover
+    all three; go build/vet/test green; VERIFY-PASS battery evidence committed
+  status: in_progress
+  created_at: '2026-09-04T22:47:05.241103+00:00'
