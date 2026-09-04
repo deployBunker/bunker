@@ -4,10 +4,13 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"strings"
+	"time"
 
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 )
@@ -15,6 +18,13 @@ import (
 func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) (*v1.DestroyAgentResponse, error) {
 	// Step 0: validate agent_id
 	if agentID == "" || !validAgentID.MatchString(agentID) {
+		// Free is unconditional and idempotent (no-ops for IDs that never
+		// held a range); calling it on every early return keeps the
+		// "no destroy path leaks a port range" invariant structural
+		// (QA-BUNKER-4).
+		if m.portAlloc != nil {
+			m.portAlloc.Free(agentID)
+		}
 		return &v1.DestroyAgentResponse{AgentId: agentID, Status: "error"},
 			fmt.Errorf("invalid agent_id %q", agentID)
 	}
@@ -59,11 +69,30 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 		m.logger.Warn("systemctl disable failed", "unit", unitName, "error", err, "output", string(out))
 	}
 
+	// Step 2b: Wait for the agent's rootless processes to actually exit.
+	// userdel -rf refuses to remove a user that still owns running processes,
+	// and stopDockerdDirect only SIGKILLs the pids from its first scan —
+	// stragglers (an orphaned dockerd reparented after rootlesskit died, or
+	// respawned children) can still be alive here. Waiting keeps the non-force
+	// path below from treating a slow-shutdown agent as not_found.
+	waitAgentProcessesExit(ctx, username, m.logger)
+
 	// Step 3: Remove the Linux user
 	cmd = exec.CommandContext(ctx, "userdel", "-rf", username)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		// Check if user doesn't exist (already destroyed)
 		if !force {
+			// Free the port range first — the in-memory allocator leaks
+			// permanently if a destroy path returns without releasing it.
+			// The TTL reaper hit this on bunker-las-03: userdel failed
+			// against a still-running rootless dockerd, the tracker slot
+			// was freed, and the range stayed allocated until the whole
+			// pool was exhausted. Free is unconditional and idempotent —
+			// it no-ops for IDs with no allocated range.
+			if m.portAlloc != nil {
+				m.portAlloc.Free(agentID)
+				m.logger.Info("freed port range", "agent_id", agentID)
+			}
 			m.tracker.Unregister(agentID)
 			// Raw userdel output stays in the server log for diagnostics;
 			// the user-facing error must stay clean so the CLI can present
@@ -118,4 +147,46 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 
 	m.logger.Info("agent destroyed", "agent_id", agentID)
 	return &v1.DestroyAgentResponse{AgentId: agentID, Status: "destroyed"}, nil
+}
+
+// waitAgentProcessesExit polls until the agent user owns no rootlesskit or
+// dockerd processes (up to ~10s), SIGKILLing stragglers as they are found.
+// userdel -rf refuses to remove a user that still owns running processes, so
+// destroy must not attempt userdel while rootless docker processes linger —
+// a non-force failure there reports not_found, which used to strand the
+// agent's port range until the whole pool was exhausted (QA-BUNKER-4).
+// pgrep exits non-zero when nothing matches, so an unknown or already-deleted
+// user returns immediately.
+func waitAgentProcessesExit(ctx context.Context, username string, logger *slog.Logger) {
+	const pollInterval = 200 * time.Millisecond
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		// pgrep -f treats the pattern as an extended regex: match the
+		// dockerd daemon and its rootlesskit supervisor.
+		cmd := exec.CommandContext(ctx, "pgrep", "-u", username, "-f", "dockerd|rootlesskit")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return // no matching processes — safe to userdel
+		}
+		pids := strings.Fields(string(out))
+		if len(pids) == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			logger.Warn("agent processes still running after 10s grace; proceeding to userdel",
+				"user", username, "pids", strings.Join(pids, ","))
+			return
+		}
+		for _, pid := range pids {
+			// Anything still alive here already survived stopDockerdDirect's
+			// SIGTERM and 5s grace, so escalate immediately.
+			logger.Info("killing lingering agent process", "user", username, "pid", pid)
+			_ = exec.CommandContext(ctx, "kill", "-KILL", pid).Run()
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(pollInterval):
+		}
+	}
 }

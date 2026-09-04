@@ -553,6 +553,137 @@ func TestDestroy_UserdelFail_NotFound(t *testing.T) {
 	}
 }
 
+// ── QA-BUNKER-4: destroy must never leak a port range ──────────
+
+// TestDestroy_UserdelFail_NotFound_FreesPortRange is the QA-BUNKER-4
+// regression test: a non-force destroy whose userdel fails (agent user
+// missing here; a still-running rootless dockerd on the server) returns
+// not_found AND must hand the agent's port range back to the pool. Before
+// the fix the tracker slot was freed but the range stayed allocated
+// forever — the TTL reaper eventually exhausted the whole pool on
+// bunker-las-03 (19 successful spawns, then "no free port ranges available
+// (pool exhausted)").
+func TestDestroy_UserdelFail_NotFound_FreesPortRange(t *testing.T) {
+	m := newTestManager(t)
+	agentID := "qa-bunker4-nf"
+	if _, _, err := m.portAlloc.Allocate(agentID); err != nil {
+		t.Fatalf("Allocate: %v", err)
+	}
+	if got, want := m.portAlloc.Available(), m.portAlloc.MaxRanges()-1; got != want {
+		t.Fatalf("Available() after Allocate = %d, want %d", got, want)
+	}
+
+	resp, err := m.Destroy(t.Context(), agentID, false)
+	if err == nil {
+		t.Fatal("expected error for missing user (userdel fails)")
+	}
+	if resp == nil || resp.Status != "not_found" {
+		t.Fatalf("Status = %q, want 'not_found'", resp.Status)
+	}
+
+	// The leaked range is the bug: the pool must be back to full.
+	if got, want := m.portAlloc.Available(), m.portAlloc.MaxRanges(); got != want {
+		t.Errorf("non-force destroy leaked the port range: Available() = %d, want %d", got, want)
+	}
+
+	// A second destroy must not corrupt the pool: Free is idempotent.
+	if _, err := m.Destroy(t.Context(), agentID, false); err == nil {
+		t.Fatal("expected error on second destroy of missing user")
+	}
+	if got, want := m.portAlloc.Available(), m.portAlloc.MaxRanges(); got != want {
+		t.Errorf("second destroy corrupted the pool: Available() = %d, want %d", got, want)
+	}
+}
+
+// TestDestroy_UserdelFail_Force_FreesPortRange verifies that force-mode
+// destroy with a failing userdel (the mode that logs and continues past the
+// failure) still reaches the happy-path Free at the end of Destroy and
+// returns the agent's port range to the pool.
+func TestDestroy_UserdelFail_Force_FreesPortRange(t *testing.T) {
+	m := newTestManager(t)
+	agentID := "qa-bunker4-force"
+	if _, _, err := m.portAlloc.Allocate(agentID); err != nil {
+		t.Fatalf("Allocate: %v", err)
+	}
+	if got, want := m.portAlloc.Available(), m.portAlloc.MaxRanges()-1; got != want {
+		t.Fatalf("Available() after Allocate = %d, want %d", got, want)
+	}
+
+	resp, err := m.Destroy(t.Context(), agentID, true)
+	if err != nil {
+		t.Fatalf("force destroy: %v", err)
+	}
+	if resp == nil || resp.Status != "destroyed" {
+		t.Fatalf("Status = %q, want 'destroyed'", resp.Status)
+	}
+	if got, want := m.portAlloc.Available(), m.portAlloc.MaxRanges(); got != want {
+		t.Errorf("force destroy leaked the port range: Available() = %d, want %d", got, want)
+	}
+}
+
+// TestTTLReaper_UserdelFail_NoPortRangeLeak covers the production trigger
+// for QA-BUNKER-4: the 1-minute TTL reaper destroys an expired agent whose
+// rootless dockerd outlives the stop; userdel fails; the reaper's non-force
+// Destroy reports not_found — and must still release the agent's port
+// range. The "running process" is simulated with an agent whose user does
+// not exist, which drives the same not_found path.
+func TestTTLReaper_UserdelFail_NoPortRangeLeak(t *testing.T) {
+	m := newTestManager(t)
+	expiredID := "qa-bunker4-expired"
+	liveID := "qa-bunker4-live"
+
+	if _, _, err := m.portAlloc.Allocate(expiredID); err != nil {
+		t.Fatalf("Allocate(%q): %v", expiredID, err)
+	}
+	if err := m.tracker.Register(&resource.AgentRecord{
+		AgentID:   expiredID,
+		Status:    "running",
+		CreatedAt: time.Now().Add(-2 * time.Hour),
+		ExpiresAt: time.Now().Add(-1 * time.Second),
+	}); err != nil {
+		t.Fatalf("register expired agent: %v", err)
+	}
+
+	// A live agent must survive the reap and keep its range.
+	if _, _, err := m.portAlloc.Allocate(liveID); err != nil {
+		t.Fatalf("Allocate(%q): %v", liveID, err)
+	}
+	if err := m.tracker.Register(&resource.AgentRecord{
+		AgentID:   liveID,
+		Status:    "running",
+		CreatedAt: time.Now(),
+		ExpiresAt: time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("register live agent: %v", err)
+	}
+
+	m.reapExpiredAgents()
+
+	if got := m.tracker.Count(); got != 1 {
+		t.Errorf("tracker Count() = %d after reap, want 1 (only the live agent)", got)
+	}
+	if m.tracker.Get(liveID) == nil {
+		t.Error("live agent must not be reaped")
+	}
+	if got, want := m.portAlloc.Available(), m.portAlloc.MaxRanges()-1; got != want {
+		t.Errorf("expired agent's range leaked: Available() = %d, want %d (live agent only)", got, want)
+	}
+}
+
+// TestWaitAgentProcessesExit_NoProcesses verifies the destroy hardening
+// helper returns immediately when the agent user owns no rootlesskit/dockerd
+// processes (pgrep exits non-zero for a missing user) instead of polling for
+// the full 10s grace period.
+func TestWaitAgentProcessesExit_NoProcesses(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	username := fmt.Sprintf("qa4-nonexistent-%d", time.Now().UnixNano()%100000)
+	start := time.Now()
+	waitAgentProcessesExit(t.Context(), username, logger)
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Errorf("waitAgentProcessesExit took %v for a missing user; want an immediate return", elapsed)
+	}
+}
+
 func TestStopDockerdDirect_NoProcess(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	err := stopDockerdDirect(t.Context(), "nonexistent-user-12345", "bunker-docker-test", logger)
