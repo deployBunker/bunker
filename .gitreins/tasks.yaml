@@ -1207,3 +1207,14 @@ tasks:
   status: complete
   created_at: '2026-09-04T22:47:05.241103+00:00'
   completed_at: '2026-09-04T23:00:41.331936+00:00'
+- id: DF-BUNKER-2
+  title: '[dogfood:P1] specs/api.md REST table is wrong: GET endpoints return 405,
+    API is POST-only'
+  criteria:
+  - 'specs/api.md REST Mapping table lists every RPC as POST (no GET entries); a note
+    explains connect-go serves all RPCs over POST only (405 on GET, 401 on unauthenticated
+    POST); PASS: grep specs/api.md for ''GET'' in the REST Mapping table returns 0
+    matches and the table lists all 10 Bunkerd RPCs as POST'
+  status: complete
+  created_at: '2026-09-07T04:23:39.745425+00:00'
+  completed_at: '2026-09-07T04:25:12.121230+00:00'
