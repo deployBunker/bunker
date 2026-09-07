@@ -313,20 +313,42 @@ Agent-scoped tokens are rejected on Bunkerd service RPCs (master-only).
 
 ## REST Mapping
 
-connect-go maps proto RPCs to REST paths:
+connect-go maps proto RPCs to REST paths. The handler is created without the
+`WithHTTPGet` option, so every RPC is served over **POST only** — there are no
+read-style HTTP endpoints.
+
+### Bunkerd service (master token)
 
 | RPC | Method | Path |
 |-----|--------|------|
-| ServerInfo | GET | /bunker.v1.Bunkerd/ServerInfo |
+| ServerInfo | POST | /bunker.v1.Bunkerd/ServerInfo |
+| ServerMetrics | POST | /bunker.v1.Bunkerd/ServerMetrics |
 | SpawnAgent | POST | /bunker.v1.Bunkerd/SpawnAgent |
-| ListAgents | GET | /bunker.v1.Bunkerd/ListAgents |
-| GetAgent | GET | /bunker.v1.Bunkerd/GetAgent |
 | DestroyAgent | POST | /bunker.v1.Bunkerd/DestroyAgent |
+| ListAgents | POST | /bunker.v1.Bunkerd/ListAgents |
+| GetAgent | POST | /bunker.v1.Bunkerd/GetAgent |
+| AgentMetrics | POST | /bunker.v1.Bunkerd/AgentMetrics |
 | ExecAgent | POST | /bunker.v1.Bunkerd/ExecAgent |
 | RunAgent | POST | /bunker.v1.Bunkerd/RunAgent |
-| ServerMetrics | GET | /bunker.v1.Bunkerd/ServerMetrics |
-| AgentMetrics | GET | /bunker.v1.Bunkerd/AgentMetrics |
 | HeartbeatAgent | POST | /bunker.v1.Bunkerd/HeartbeatAgent |
+| QueryAudit | POST | /bunker.v1.Bunkerd/QueryAudit |
+
+### Agent service (scoped sub-key)
+
+| RPC | Method | Path |
+|-----|--------|------|
+| GetInfo | POST | /bunker.v1.Agent/GetInfo |
+| Metrics | POST | /bunker.v1.Agent/Metrics |
+| Heartbeat | POST | /bunker.v1.Agent/Heartbeat |
+
+> **POST-only:** connect-go serves all RPCs over POST (HTTP/1.1 and HTTP/2);
+> no route accepts any other method. Sending any non-POST request to one of
+> the paths above returns `405 Method Not Allowed`. The auth interceptor runs
+> on the POST path only, so an unauthenticated request receives `401
+> Unauthenticated` only when sent as POST — a non-POST request returns 405
+> instead of 401 because it never reaches the interceptor. curl users must
+> send `-X POST` with a JSON body (`Content-Type: application/json`) and the
+> `Authorization: Bearer <token>` header.
 
 Content-Type: `application/json` or `application/proto`.
 
