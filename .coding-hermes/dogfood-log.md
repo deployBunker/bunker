@@ -38,3 +38,4 @@
 - **Foreman:** active (21600s cooldown pin, Enabled true, tick #407 latest, board had 77/77 complete before this run) — picks up DOGFOOD-011..014 automatically on next tick. No scheduler PUT needed.
 - **Note:** picker selected `bunker-sync` (DuckBrain sync entry, empty workdir, placeholder URL) — dogfooded the real `bunker` project it mirrors, per Step-0 manual-pick fallback.
 2026-09-01 | SHIPPABLE | 28s t2fs | friction 5 | 5 findings
+2026-09-07 | PROMISING-BUT-ROUGH | 40s t2fs | friction 8 | 5 findings
