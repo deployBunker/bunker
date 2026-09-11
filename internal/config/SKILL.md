@@ -7,6 +7,7 @@
 - `TLSConfig` — enabled, file certs, certmagic AutoTLS, self-signed, mTLS, CA file, CN verification, and hosts.
 - `AuthConfig` — enabled (defaults TRUE — secure-by-default, GAP-011), static token, JWT secret, JWT TTL.
 - `AuditConfig` — daemon-side audit trail settings (GAP-047, cc66105): `Enabled` (defaults TRUE — every authenticated RPC is logged) and `Path` (default `/var/log/bunkerd/audit.log`). The log is append-only JSONL, file mode 0600, and never contains token values.
+- `ContainmentConfig` — GAP-067 containment-exposure disclosure: `Disclosure` (defaults FALSE — hidden by default; enabling makes agents disclose the managed sandbox). `ContainmentSandboxEnv` is the canonical `BUNKER_SANDBOX=1` constant (single literal; referenced by `internal/server` and `internal/agent`). Env bind: `BUNKERD_CONTAINMENT_DISCLOSURE` (overrides a config-file false). See `specs/containment-disclosure.md`.
 - `AgentConfig` — base data dir, SSH dir, port ranges, max agents, default CPU/memory/disk/process/file/container limits, and TTL.
 - `TunnelConfig` / `NamedTunnelConfig` / `TailscaleConfig` — networking settings.
 - `DefaultConfig()` — returns a fully populated default config.
@@ -17,7 +18,7 @@
 ## Conventions
 
 - Config keys map to env vars with the `BUNKERD_` prefix and underscores replacing nested dots: `BUNKERD_SERVER_GRPC_ADDR`, `BUNKERD_TLS_CERT_FILE`, etc.
-- `viper.AutomaticEnv()` and explicit `BindEnv` calls cover the same keys; explicit binds ensure consistent behavior even when nested defaults change. The audit keys are explicitly bound too: `BUNKERD_AUDIT_ENABLED` and `BUNKERD_AUDIT_PATH`.
+- `viper.AutomaticEnv()` and explicit `BindEnv` calls cover the same keys; explicit binds ensure consistent behavior even when nested defaults change. The audit keys are explicitly bound too: `BUNKERD_AUDIT_ENABLED` and `BUNKERD_AUDIT_PATH`. GAP-067 adds `BUNKERD_CONTAINMENT_DISCLOSURE`.
 - Default addresses are `":9090"` (gRPC/Connect) and `":8080"` (REST). Bunker production deployments typically run the REST port on `:18080`.
 - Default agent port range is `10000-19999` with 100 ports per agent (100-agent capacity, matching MaxAgents 100 — GAP-010). Was `10000-10100`/10 before 4df96ec; docs and `TestDefaultConfig` both assert `19999`/`100`.
 - Default `max_agents` is 100, aligned across ALL three sources (code default, config.example.yaml, README inline config) since GAP-028 (5b3fe56) — before that the docs said 50 while code defaulted to 100, a silent cap discrepancy. `TestDefaultConfig` asserts `MaxAgents == 100`.
@@ -35,7 +36,7 @@
 
 - `config_test.go` verifies defaults, env overrides, file loading, and validation error cases.
 - `TestDefaultConfig` asserts the full default surface: port range `19999`/`100` (GAP-010), `MaxAgents == 100` (GAP-028), auth enabled (GAP-011), 6h default TTL, and audit enabled with default path `/var/log/bunkerd/audit.log` (GAP-047).
-- Tests use `t.Setenv` to exercise `BUNKERD_*` env var bindings without touching real files. `TestLoad_AuditEnvOverrides` covers `BUNKERD_AUDIT_ENABLED=false` + a custom `BUNKERD_AUDIT_PATH`; a config-file test covers an explicit `audit.enabled: false` and custom `audit.path` in YAML.
+- Tests use `t.Setenv` to exercise `BUNKERD_*` env var bindings without touching real files. `TestLoad_AuditEnvOverrides` covers `BUNKERD_AUDIT_ENABLED=false` + a custom `BUNKERD_AUDIT_PATH`; a config-file test covers an explicit `audit.enabled: false` and custom `audit.path` in YAML. GAP-067 adds the containment battery: default-false (`TestDefaultConfig_ContainmentDisclosureDisabled`), env override (`BUNKERD_CONTAINMENT_DISCLOSURE=true`), env-beats-file, and file-true.
 - Validation tests cover all TLS modes: missing certs, AutoTLS without domain, mTLS without CA file, and valid combinations.
 - Tests assert default values are populated even when the config file is absent.
 

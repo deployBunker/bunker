@@ -26,7 +26,7 @@ func TestBuildRunAgentArgs(t *testing.T) {
 		"docker",
 		[]string{"compose", "up"},
 		map[string]string{"DATABASE_URL": "postgres://db"},
-		limits,
+		limits, false,
 	)
 
 	wantSubstrings := []string{
@@ -71,7 +71,7 @@ func TestBuildRunAgentArgs_EnvFileWrapperBeforeCommand(t *testing.T) {
 	args := buildRunAgentArgs(
 		"test-agent", "1001", "1001",
 		"bunker-run-test-agent-abc",
-		"my-binary", nil, nil, nil,
+		"my-binary", nil, nil, nil, false,
 	)
 	got := strings.Join(args, " ")
 	srcIdx := strings.Index(got, ". /run/bunker/test-agent/env")
@@ -90,7 +90,7 @@ func TestBuildRunAgentArgs_EnvFileWrapperBeforeCommand(t *testing.T) {
 // TestBuildRunAgentArgs_NoArgsDoesNotPanic ensures we don't crash if the user
 // provides a command with zero positional args.
 func TestBuildRunAgentArgs_NoArgsDoesNotPanic(t *testing.T) {
-	args := buildRunAgentArgs("a", "1000", "1000", "u", "sh", nil, nil, nil)
+	args := buildRunAgentArgs("a", "1000", "1000", "u", "sh", nil, nil, nil, false)
 	if len(args) == 0 {
 		t.Fatal("expected non-empty args")
 	}
@@ -109,7 +109,7 @@ func TestBuildRunAgentArgs_OverrideDefaultEnv(t *testing.T) {
 		"sh",
 		[]string{"-c", "echo hi"},
 		map[string]string{"TMPDIR": "/custom/tmp", "DOCKER_HOST": "unix:///custom/docker.sock"},
-		nil,
+		nil, false,
 	)
 
 	got := " " + strings.Join(args, " ") + " "
@@ -121,6 +121,55 @@ func TestBuildRunAgentArgs_OverrideDefaultEnv(t *testing.T) {
 	}
 	if !strings.Contains(got, " --setenv=DOCKER_HOST=unix:///custom/docker.sock ") {
 		t.Error("custom DOCKER_HOST should be present")
+	}
+}
+
+// TestBuildRunAgentArgs_ContainmentEnv verifies GAP-067: detached runs get
+// BUNKER_SANDBOX=1 as a dedicated --setenv element when disclosure is on,
+// and the argv is untouched when off. The disclosure value is
+// ADMIN-CONTROLLED: an agent-supplied env override for the same key can
+// neither suppress nor rewrite it when disclosure is enabled.
+func TestBuildRunAgentArgs_ContainmentEnv(t *testing.T) {
+	off := buildRunAgentArgs("test-agent", "1001", "1001", "u", "my-binary", nil, nil, nil, false)
+	joinedOff := strings.Join(off, " ")
+	if strings.Contains(joinedOff, "BUNKER_SANDBOX") {
+		t.Errorf("flag-off detached argv must not contain BUNKER_SANDBOX: %v", off)
+	}
+
+	on := buildRunAgentArgs("test-agent", "1001", "1001", "u", "my-binary", nil, nil, nil, true)
+	joinedOn := strings.Join(on, " ")
+	want := "--setenv=" + config.ContainmentSandboxEnv
+	if !strings.Contains(" "+joinedOn+" ", " "+want+" ") {
+		t.Errorf("flag-on detached argv missing exact %q element: %v", want, on)
+	}
+
+	// Admin disclosure value wins: an agent trying to rewrite
+	// BUNKER_SANDBOX when disclosure is enabled gets the canonical value.
+	rewrite := buildRunAgentArgs("test-agent", "1001", "1001", "u", "my-binary", nil,
+		map[string]string{"BUNKER_SANDBOX": "user-value"}, nil, true)
+	joinedRewrite := strings.Join(rewrite, " ")
+	if !strings.Contains(" "+joinedRewrite+" ", " "+want+" ") {
+		t.Errorf("admin disclosure value must win over agent rewrite: %v", rewrite)
+	}
+	if strings.Contains(joinedRewrite, "--setenv=BUNKER_SANDBOX=user-value") {
+		t.Errorf("agent rewrite of BUNKER_SANDBOX must be ignored: %v", rewrite)
+	}
+
+	// Attempted suppression (empty value) is ignored the same way — the
+	// canonical value stays present.
+	suppress := buildRunAgentArgs("test-agent", "1001", "1001", "u", "my-binary", nil,
+		map[string]string{"BUNKER_SANDBOX": ""}, nil, true)
+	joinedSuppress := strings.Join(suppress, " ")
+	if !strings.Contains(" "+joinedSuppress+" ", " "+want+" ") {
+		t.Errorf("admin disclosure value must survive suppression attempt: %v", suppress)
+	}
+
+	// With disclosure DISABLED there is nothing to protect: an agent-set
+	// BUNKER_SANDBOX passes through as ordinary user env.
+	userOff := buildRunAgentArgs("test-agent", "1001", "1001", "u", "my-binary", nil,
+		map[string]string{"BUNKER_SANDBOX": "user-value"}, nil, false)
+	if !strings.Contains(strings.Join(userOff, " "), "--setenv=BUNKER_SANDBOX=user-value") {
+		t.Errorf("flag-off user env for BUNKER_SANDBOX should pass through: %v", userOff)
 	}
 }
 

@@ -324,13 +324,18 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 
 	// Determine execution mode: raw (no shell) or shell-wrapped. Scripts are
 	// uploaded and executed by the shell wrapper, so they share the same path.
+	// GAP-067: when containment disclosure is enabled the same explicit env
+	// injection path that carries PATH/DOCKER_HOST/TMPDIR also carries
+	// BUNKER_SANDBOX=1. Disabled → the built commands are byte-identical to
+	// the pre-GAP-067 output.
+	disclosed := s.cfg != nil && s.cfg.Containment.Disclosure
 	var cmd *exec.Cmd
 	if req.Msg.GetRaw() {
-		cmd = buildExecSSHRawCommand(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args)
+		cmd = buildExecSSHRawCommand(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args, disclosed)
 	} else if req.Msg.GetScriptContent() != "" {
-		cmd = buildExecSSHScriptCommand(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.GetScriptContent())
+		cmd = buildExecSSHScriptCommand(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.GetScriptContent(), disclosed)
 	} else {
-		cmd = buildExecSSHCommand(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args)
+		cmd = buildExecSSHCommand(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args, disclosed)
 	}
 
 	stdoutPipe, err := cmd.StdoutPipe()
@@ -346,10 +351,15 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 		return connect.NewError(connect.CodeInternal, fmt.Errorf("start ssh: %w", err))
 	}
 
-	// Stream stdout and stderr concurrently
+	// Stream stdout and stderr concurrently. The stdout streamer records
+	// whether ANY process stdout was forwarded and whether the last byte
+	// ended in '\n'; those facts are read AFTER wg.Wait() to build the
+	// marker frame (GAP-067) — writes are synchronized by the WaitGroup.
 	var wg sync.WaitGroup
 	stdoutDone := make(chan struct{})
 	stderrDone := make(chan struct{})
+	var stdoutSent bool
+	var stdoutEndsNewline bool
 
 	wg.Add(2)
 	go func() {
@@ -358,7 +368,9 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 		buf := make([]byte, 4096)
 		for {
 			n, err := stdoutPipe.Read(buf)
-			if n > 0 {
+			if markerCountsAsSent(n) {
+				stdoutSent = true
+				stdoutEndsNewline = buf[n-1] == '\n'
 				if err := stream.Send(&v1.ExecAgentResponse{
 					Output: &v1.ExecAgentResponse_Stdout{Stdout: buf[:n]},
 				}); err != nil {
@@ -404,6 +416,27 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 
 	// Wait for streamers to finish
 	wg.Wait()
+
+	// GAP-067 containment disclosure: after all process output frames and
+	// before the exit-code frame, an allowed system-info probe gets ONE
+	// self-describing marker line on stdout. The frame is built from the
+	// ACTUAL streamed-stdout state (any bytes sent? last byte a newline?)
+	// so a probe whose output lacks a trailing newline still gets the
+	// marker on its own line client-side, while empty output and
+	// newline-terminated output get no extra blank line. The command's
+	// exit code — success or failure — is sent unchanged below. Non-probe
+	// commands and all execs when the flag is disabled produce no marker
+	// and no extra bytes. Script uploads (req.Msg.Command empty) are never
+	// probes.
+	if disclosed && isContainmentProbe(req.Msg.Command, req.Msg.Args) {
+		if frame := markerFrameForStream(stdoutSent, stdoutEndsNewline, true); frame != "" {
+			if err := stream.Send(&v1.ExecAgentResponse{
+				Output: &v1.ExecAgentResponse_Stdout{Stdout: []byte(frame)},
+			}); err != nil {
+				s.logger.Warn("send containment marker", "error", err)
+			}
+		}
+	}
 
 	// Send final exit code
 	if err := stream.Send(&v1.ExecAgentResponse{
@@ -538,12 +571,21 @@ const agentExecBasePath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sb
 // TMPDIR are set regardless of sshd PermitUserEnvironment/AcceptEnv settings,
 // and sources /run/bunker/<id>/env so that `bunker env set` injections are
 // visible to the command.
-func buildAgentExecCommand(agentID, userHome, command string, args []string) string {
+func buildAgentExecCommand(agentID, userHome, command string, args []string, disclosed bool) string {
 	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
 	tmpDir := filepath.Join("/run", "bunker", agentID, "tmp")
 	agentBinPath := filepath.Join(userHome, "bin")
 	agentPath := agentBinPath + ":" + agentExecBasePath
 	envFile := fmt.Sprintf("/run/bunker/%s/env", agentID)
+	// GAP-067 containment disclosure: the sandbox env var rides the SAME
+	// explicit env(1) injection path as PATH/DOCKER_HOST/TMPDIR, so it is
+	// visible to the wrapped command regardless of sshd config. When
+	// disclosed is false this string is empty and the built command is
+	// byte-identical to the pre-GAP-067 output.
+	sandboxEnv := ""
+	if disclosed {
+		sandboxEnv = containmentSandboxEnv + " "
+	}
 	remoteCmd := command
 	if len(args) > 0 {
 		quoted := make([]string, len(args))
@@ -557,8 +599,8 @@ func buildAgentExecCommand(agentID, userHome, command string, args []string) str
 	// shell variables, invisible to the wrapped command. The [ -f ] guard
 	// keeps a fresh agent (no env file yet) from making dash exit 2 on the
 	// failed dot-source.
-	return fmt.Sprintf("set -a; [ -f %s ] && . %s 2>/dev/null; set +a; env PATH=%s DOCKER_HOST=unix://%s TMPDIR=%s sh -c %s",
-		envFile, envFile, agentPath, dockerSockPath, tmpDir, shellQuoteSingle(remoteCmd))
+	return fmt.Sprintf("set -a; [ -f %s ] && . %s 2>/dev/null; set +a; env PATH=%s DOCKER_HOST=unix://%s TMPDIR=%s %ssh -c %s",
+		envFile, envFile, agentPath, dockerSockPath, tmpDir, sandboxEnv, shellQuoteSingle(remoteCmd))
 }
 
 // shellQuoteSingle returns s wrapped in single quotes, with embedded single
@@ -575,7 +617,7 @@ func shellQuoteSingle(s string) string {
 // sourced by the *shell* at the top of buildAgentExecCommand / buildAgentScriptCommand,
 // and `bunker env set` is meant for shell-aware commands. Use plain `bunker exec`
 // (without --raw) or `bunker exec --script` to see env vars set via `bunker env set`.
-func buildAgentRawExecCommand(agentID, userHome, command string, args []string) []string {
+func buildAgentRawExecCommand(agentID, userHome, command string, args []string, disclosed bool) []string {
 	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
 	tmpDir := filepath.Join("/run", "bunker", agentID, "tmp")
 	agentBinPath := filepath.Join(userHome, "bin")
@@ -584,30 +626,43 @@ func buildAgentRawExecCommand(agentID, userHome, command string, args []string) 
 	// passing a command with args and using ssh's internal exec channel (when
 	// the remote shell is not forced) will execve directly. We keep a tiny
 	// wrapper here: env(1) so we can set DOCKER_HOST and TMPDIR before the real binary.
-	return append([]string{
+	argv := []string{
 		"env",
 		"PATH=" + agentPath,
 		"DOCKER_HOST=unix://" + dockerSockPath,
 		"TMPDIR=" + tmpDir,
-		command,
-	}, args...)
+	}
+	// GAP-067 containment disclosure: BUNKER_SANDBOX=1 rides the same env(1)
+	// argv as PATH/DOCKER_HOST/TMPDIR. When disclosure is disabled no extra
+	// argv element is appended and the argv is identical to pre-GAP-067.
+	if disclosed {
+		argv = append(argv, containmentSandboxEnv)
+	}
+	argv = append(argv, command)
+	return append(argv, args...)
 }
 
 // buildAgentScriptCommand writes scriptContent to a remote file and returns the
 // shell command that executes it. The file is written via ssh heredoc.
-func buildAgentScriptCommand(agentID, userHome, scriptContent string) string {
+func buildAgentScriptCommand(agentID, userHome, scriptContent string, disclosed bool) string {
 	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
 	tmpDir := filepath.Join("/run", "bunker", agentID, "tmp")
 	agentBinPath := filepath.Join(userHome, "bin")
 	agentPath := agentBinPath + ":" + agentExecBasePath
 	scriptPath := filepath.Join(userHome, ".bunker", "exec-script.sh")
 	envFile := fmt.Sprintf("/run/bunker/%s/env", agentID)
+	// GAP-067 containment disclosure: same env(1) injection as the shell
+	// exec path. Empty string when disabled — byte-identical output.
+	sandboxEnv := ""
+	if disclosed {
+		sandboxEnv = containmentSandboxEnv + " "
+	}
 	// Use POSIX heredoc to create + chmod + execute the script in one SSH call.
 	// We quote the EOF delimiter to prevent expansion of the script body.
 	escaped := strings.ReplaceAll(scriptContent, "'", "'\\''")
 	return fmt.Sprintf(
-		"mkdir -p %q && cat > %q <<'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %q && set -a; [ -f %s ] && . %s 2>/dev/null; set +a; env PATH=%s DOCKER_HOST=unix://%s TMPDIR=%s %q",
-		filepath.Dir(scriptPath), scriptPath, escaped, scriptPath, envFile, envFile, agentPath, dockerSockPath, tmpDir, scriptPath,
+		"mkdir -p %q && cat > %q <<'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %q && set -a; [ -f %s ] && . %s 2>/dev/null; set +a; env PATH=%s DOCKER_HOST=unix://%s TMPDIR=%s %s%q",
+		filepath.Dir(scriptPath), scriptPath, escaped, scriptPath, envFile, envFile, agentPath, dockerSockPath, tmpDir, sandboxEnv, scriptPath,
 	)
 }
 
@@ -615,8 +670,8 @@ func buildAgentScriptCommand(agentID, userHome, scriptContent string) string {
 // inside the agent via ssh.  The remote script is passed as a single quoted
 // "sh -c '...'" argument to OpenSSH so that multi-token commands such as
 // "docker version" are not misparsed by the inner shell.
-func buildExecSSHCommand(ctx context.Context, agentID, sshKeyPath, userHome, command string, args []string) *exec.Cmd {
-	wrappedCmd := buildAgentExecCommand(agentID, userHome, command, args)
+func buildExecSSHCommand(ctx context.Context, agentID, sshKeyPath, userHome, command string, args []string, disclosed bool) *exec.Cmd {
+	wrappedCmd := buildAgentExecCommand(agentID, userHome, command, args, disclosed)
 	sshRemoteCmd := fmt.Sprintf("sh -c %s", shellQuoteSingle(wrappedCmd))
 	return buildSSHBaseCommand(ctx, agentID, sshKeyPath, sshRemoteCmd)
 }
@@ -624,15 +679,15 @@ func buildExecSSHCommand(ctx context.Context, agentID, sshKeyPath, userHome, com
 // buildExecSSHRawCommand returns an exec.Cmd that runs command+args directly
 // without a shell wrapper. Each arg is passed as a separate ssh argument; sshd
 // will attempt to exec the requested program directly.
-func buildExecSSHRawCommand(ctx context.Context, agentID, sshKeyPath, userHome, command string, args []string) *exec.Cmd {
-	remoteArgv := buildAgentRawExecCommand(agentID, userHome, command, args)
+func buildExecSSHRawCommand(ctx context.Context, agentID, sshKeyPath, userHome, command string, args []string, disclosed bool) *exec.Cmd {
+	remoteArgv := buildAgentRawExecCommand(agentID, userHome, command, args, disclosed)
 	return buildSSHBaseCommand(ctx, agentID, sshKeyPath, remoteArgv...)
 }
 
 // buildExecSSHScriptCommand returns an exec.Cmd that uploads scriptContent via
 // heredoc and executes it on the agent.
-func buildExecSSHScriptCommand(ctx context.Context, agentID, sshKeyPath, userHome, scriptContent string) *exec.Cmd {
-	wrappedCmd := buildAgentScriptCommand(agentID, userHome, scriptContent)
+func buildExecSSHScriptCommand(ctx context.Context, agentID, sshKeyPath, userHome, scriptContent string, disclosed bool) *exec.Cmd {
+	wrappedCmd := buildAgentScriptCommand(agentID, userHome, scriptContent, disclosed)
 	sshRemoteCmd := fmt.Sprintf("sh -c %s", shellQuoteSingle(wrappedCmd))
 	return buildSSHBaseCommand(ctx, agentID, sshKeyPath, sshRemoteCmd)
 }

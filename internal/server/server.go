@@ -67,6 +67,13 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 		return fmt.Errorf("invalid config: %w", err)
 	}
 	s.logger.Info("bunkerd config loaded", "max_agents", s.cfg.Agent.MaxAgents)
+	// GAP-067: safe startup note about containment disclosure state. Only
+	// the boolean is logged — never secrets, tokens, or host paths.
+	if s.cfg.Containment.Disclosure {
+		s.logger.Info(logDisclosureStartup(true))
+	} else {
+		s.logger.Info(logDisclosureStartup(false))
+	}
 
 	// Close the audit trail when the daemon exits.
 	if s.auditLog != nil {

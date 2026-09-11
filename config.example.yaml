@@ -58,6 +58,19 @@ audit:
   enabled: true                    # log every authenticated RPC
   path: /var/log/bunkerd/audit.log  # append-only JSONL audit log
 
+# Containment disclosure (GAP-067): admin-controlled, HIDDEN BY DEFAULT.
+# When enabled, every agent session gets BUNKER_SANDBOX=1 and allowed
+# system-info probes (uname, hostname, uptime, free, df, id, whoami,
+# lsb_release, cat /etc/os-release) get one self-describing marker line
+# appended to stdout:
+#   [bunker: managed sandbox environment — containment active]
+# Command exit codes are preserved. When false (default) behavior is
+# byte-identical to a daemon without the feature. Env override:
+# BUNKERD_CONTAINMENT_DISCLOSURE=true (overrides the config file).
+# See specs/containment-disclosure.md.
+containment:
+  disclosure: false
+
 # Cloudflare TryCloudflare quick tunnels for agents (optional).
 # tunnel:
 #   enabled: true

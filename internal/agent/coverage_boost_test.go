@@ -66,7 +66,7 @@ func TestBuildRunAgentArgs_LimitBranches(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			args := buildRunAgentArgs("coverage", "1001", "1002", "coverage-unit", "true", nil, nil, tt.limits)
+			args := buildRunAgentArgs("coverage", "1001", "1002", "coverage-unit", "true", nil, nil, tt.limits, false)
 			joined := strings.Join(args, " ")
 			for _, want := range tt.want {
 				if !strings.Contains(joined, want) {
@@ -92,6 +92,7 @@ func TestBuildRunAgentArgs_OverridesAndPassthrough(t *testing.T) {
 			"EXTRA":       "extra value",
 		},
 		&v1.ResourceLimits{CpuQuota: 2, MemoryMaxBytes: 512, DiskMaxBytes: 1024},
+		false,
 	)
 
 	for _, want := range []string{
@@ -821,7 +822,7 @@ func TestSpawn_RequestLimitsCapturedBeforeFailure(t *testing.T) {
 
 func TestBuildRunAgentArgs_CPUOnly(t *testing.T) {
 	limits := &v1.ResourceLimits{CpuQuota: 2.0}
-	args := buildRunAgentArgs("agent1", "1000", "1000", "unit1", "echo", []string{"hi"}, nil, limits)
+	args := buildRunAgentArgs("agent1", "1000", "1000", "unit1", "echo", []string{"hi"}, nil, limits, false)
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "CPUQuota=200%") {
 		t.Errorf("expected CPUQuota=200%%: %s", joined)
@@ -836,7 +837,7 @@ func TestBuildRunAgentArgs_CPUOnly(t *testing.T) {
 
 func TestBuildRunAgentArgs_MemoryOnly(t *testing.T) {
 	limits := &v1.ResourceLimits{MemoryMaxBytes: 1024 * 1024 * 128}
-	args := buildRunAgentArgs("agent1", "1000", "1000", "unit1", "echo", nil, nil, limits)
+	args := buildRunAgentArgs("agent1", "1000", "1000", "unit1", "echo", nil, nil, limits, false)
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "MemoryMax=134217728") {
 		t.Errorf("expected MemoryMax=134217728: %s", joined)
@@ -848,7 +849,7 @@ func TestBuildRunAgentArgs_MemoryOnly(t *testing.T) {
 
 func TestBuildRunAgentArgs_DiskOnly(t *testing.T) {
 	limits := &v1.ResourceLimits{DiskMaxBytes: 1024 * 1024 * 512}
-	args := buildRunAgentArgs("agent1", "1000", "1000", "unit1", "echo", nil, nil, limits)
+	args := buildRunAgentArgs("agent1", "1000", "1000", "unit1", "echo", nil, nil, limits, false)
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "LimitFSIZE=536870912") {
 		t.Errorf("expected LimitFSIZE=536870912: %s", joined)
@@ -860,7 +861,7 @@ func TestBuildRunAgentArgs_AllArgsPassed(t *testing.T) {
 		"agent1", "1000", "1000", "unit1",
 		"docker",
 		[]string{"run", "-d", "--name", "test"},
-		nil, nil,
+		nil, nil, false,
 	)
 	joined := " " + strings.Join(args, " ") + " "
 	for _, want := range []string{"run", "-d", "--name", "test"} {

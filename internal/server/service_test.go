@@ -29,7 +29,7 @@ func TestExecAgent_RegisteredBuildsSSH(t *testing.T) {
 	keyPath := "/keys/abc123"
 	userHome := "/home/bunker-abc123"
 
-	rawCmd := buildExecSSHRawCommand(ctx, agentID, keyPath, userHome, "echo", []string{"hi"})
+	rawCmd := buildExecSSHRawCommand(ctx, agentID, keyPath, userHome, "echo", []string{"hi"}, false)
 	if rawCmd.Path != "ssh" && !strings.HasSuffix(rawCmd.Path, "ssh") {
 		t.Fatalf("raw: want ssh command, got %q", rawCmd.Path)
 	}
@@ -40,7 +40,7 @@ func TestExecAgent_RegisteredBuildsSSH(t *testing.T) {
 		}
 	}
 
-	scriptCmd := buildExecSSHScriptCommand(ctx, agentID, keyPath, userHome, "#!/bin/sh\necho hi")
+	scriptCmd := buildExecSSHScriptCommand(ctx, agentID, keyPath, userHome, "#!/bin/sh\necho hi", false)
 	if scriptCmd.Path != "ssh" && !strings.HasSuffix(scriptCmd.Path, "ssh") {
 		t.Fatalf("script: want ssh command, got %q", scriptCmd.Path)
 	}
@@ -55,7 +55,7 @@ func TestExecAgent_RegisteredBuildsSSH(t *testing.T) {
 // TestBuildExecSSHRawCommand verifies SSH args for raw mode.
 func TestBuildExecSSHRawCommand(t *testing.T) {
 	ctx := context.Background()
-	cmd := buildExecSSHRawCommand(ctx, "abc123", "/keys/abc123", "/home/bunker-abc123", "echo", []string{"hi"})
+	cmd := buildExecSSHRawCommand(ctx, "abc123", "/keys/abc123", "/home/bunker-abc123", "echo", []string{"hi"}, false)
 	if cmd.Path != "ssh" && !strings.HasSuffix(cmd.Path, "ssh") {
 		t.Fatalf("want ssh command, got %q", cmd.Path)
 	}
@@ -81,7 +81,7 @@ func TestBuildExecSSHRawCommand(t *testing.T) {
 // TestBuildExecSSHScriptCommand verifies SSH args for script mode.
 func TestBuildExecSSHScriptCommand(t *testing.T) {
 	ctx := context.Background()
-	cmd := buildExecSSHScriptCommand(ctx, "abc123", "/keys/abc123", "/home/bunker-abc123", "#!/bin/sh\necho hi")
+	cmd := buildExecSSHScriptCommand(ctx, "abc123", "/keys/abc123", "/home/bunker-abc123", "#!/bin/sh\necho hi", false)
 	if cmd.Path != "ssh" && !strings.HasSuffix(cmd.Path, "ssh") {
 		t.Fatalf("want ssh command, got %q", cmd.Path)
 	}
@@ -425,7 +425,7 @@ func TestExecAgent_AgentIDRequired(t *testing.T) {
 
 // TestBuildAgentExecCommand verifies the env prefix and command are built.
 func TestBuildAgentExecCommand(t *testing.T) {
-	got := buildAgentExecCommand("abc123", "/home/bunker-abc123", "docker", []string{"version"})
+	got := buildAgentExecCommand("abc123", "/home/bunker-abc123", "docker", []string{"version"}, false)
 	wantParts := []string{
 		// Sourcing the per-agent env file so `bunker env set` injections are
 		// visible. stderr redirection makes the source tolerant of a missing
@@ -451,7 +451,7 @@ func TestBuildAgentExecCommand(t *testing.T) {
 // source line appears before the env(1) + user command, so that vars set via
 // `bunker env set` take effect for the executed command.
 func TestBuildAgentExecCommand_EnvFileSourcedBeforeCommand(t *testing.T) {
-	got := buildAgentExecCommand("abc123", "/home/bunker-abc123", "docker", []string{"version"})
+	got := buildAgentExecCommand("abc123", "/home/bunker-abc123", "docker", []string{"version"}, false)
 	srcIdx := strings.Index(got, ". /run/bunker/abc123/env")
 	cmdIdx := strings.Index(got, "sh -c 'docker")
 	if srcIdx < 0 || cmdIdx < 0 || srcIdx >= cmdIdx {
@@ -496,7 +496,7 @@ func TestBuildAgentExecCommand_ArgQuoting(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := buildAgentExecCommand("abc123", "/home/bunker-abc123", c.command, c.args)
+			got := buildAgentExecCommand("abc123", "/home/bunker-abc123", c.command, c.args, false)
 			out, err := exec.Command("sh", "-c", got).CombinedOutput()
 			if err != nil {
 				t.Fatalf("sh -c %q failed: %v, output: %s", got, err, out)
@@ -508,7 +508,7 @@ func TestBuildAgentExecCommand_ArgQuoting(t *testing.T) {
 	}
 	// Empty/nil args: the command must be the sole wrapped token with no
 	// trailing junk after it.
-	got := buildAgentExecCommand("abc123", "/home/bunker-abc123", "docker", nil)
+	got := buildAgentExecCommand("abc123", "/home/bunker-abc123", "docker", nil, false)
 	if !strings.HasSuffix(got, "sh -c 'docker'") {
 		t.Errorf("buildAgentExecCommand() empty args = %q, want suffix \"sh -c 'docker'\"", got)
 	}
@@ -524,7 +524,7 @@ func TestBuildAgentExecCommand_EnvFileMissingShellSurvives(t *testing.T) {
 	if _, err := os.Stat("/run/bunker/abc123/env"); err == nil {
 		t.Skip("/run/bunker/abc123/env unexpectedly exists")
 	}
-	got := buildAgentExecCommand("abc123", "/home/bunker-abc123", "echo", []string{"still-alive"})
+	got := buildAgentExecCommand("abc123", "/home/bunker-abc123", "echo", []string{"still-alive"}, false)
 	// The guard must be present: source only when the file exists.
 	if !strings.Contains(got, "[ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env 2>/dev/null") {
 		t.Fatalf("buildAgentExecCommand() missing [ -f ] guard for env file: %q", got)
@@ -541,7 +541,7 @@ func TestBuildAgentExecCommand_EnvFileMissingShellSurvives(t *testing.T) {
 
 // TestBuildAgentRawExecCommand verifies TMPDIR is present in the raw argv.
 func TestBuildAgentRawExecCommand(t *testing.T) {
-	got := buildAgentRawExecCommand("abc123", "/home/bunker-abc123", "echo", []string{"hi"})
+	got := buildAgentRawExecCommand("abc123", "/home/bunker-abc123", "echo", []string{"hi"}, false)
 	joined := strings.Join(got, " ")
 	wantParts := []string{
 		"env",
@@ -576,7 +576,7 @@ func TestBuildAgentRawExecCommand(t *testing.T) {
 // therefore only visible to non-raw `bunker exec` / `bunker exec --script` /
 // `bunker run --detach`.
 func TestBuildAgentRawExecCommand_NoEnvFileSourcing(t *testing.T) {
-	got := buildAgentRawExecCommand("abc123", "/home/bunker-abc123", "echo", []string{"hi"})
+	got := buildAgentRawExecCommand("abc123", "/home/bunker-abc123", "echo", []string{"hi"}, false)
 	joined := strings.Join(got, " ")
 	if strings.Contains(joined, "/run/bunker/abc123/env") {
 		t.Errorf("buildAgentRawExecCommand() should not reference env file (raw mode), got: %v", got)
@@ -585,7 +585,7 @@ func TestBuildAgentRawExecCommand_NoEnvFileSourcing(t *testing.T) {
 
 // TestBuildAgentScriptCommand verifies TMPDIR is set for script execution.
 func TestBuildAgentScriptCommand(t *testing.T) {
-	got := buildAgentScriptCommand("abc123", "/home/bunker-abc123", "#!/bin/sh\necho hi\n")
+	got := buildAgentScriptCommand("abc123", "/home/bunker-abc123", "#!/bin/sh\necho hi\n", false)
 	wantParts := []string{
 		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
 		"TMPDIR=/run/bunker/abc123/tmp",
@@ -621,7 +621,7 @@ func TestShellQuoteSingle(t *testing.T) {
 // command string with sh -c '...' so the inner command is not misparsed.
 func TestBuildExecSSHCommand(t *testing.T) {
 	ctx := context.Background()
-	cmd := buildExecSSHCommand(ctx, "abc123", "/keys/abc123", "/home/bunker-abc123", "docker", []string{"version"})
+	cmd := buildExecSSHCommand(ctx, "abc123", "/keys/abc123", "/home/bunker-abc123", "docker", []string{"version"}, false)
 	if cmd.Path != "ssh" && !strings.HasSuffix(cmd.Path, "ssh") {
 		t.Fatalf("want ssh command, got %q", cmd.Path)
 	}
@@ -650,7 +650,7 @@ func TestBuildExecSSHCommand(t *testing.T) {
 	// command — this is the end-to-end proof that compound snippets and
 	// quoted args survive buildAgentExecCommand → shellQuoteSingle → ssh.
 	// (Use echo so the test needs no docker daemon.)
-	echoCmd := buildExecSSHCommand(ctx, "abc123", "/keys/abc123", "/home/bunker-abc123", "echo", []string{"round-trip-ok"})
+	echoCmd := buildExecSSHCommand(ctx, "abc123", "/keys/abc123", "/home/bunker-abc123", "echo", []string{"round-trip-ok"}, false)
 	echoLast := echoCmd.Args[len(echoCmd.Args)-1]
 	out, err := exec.Command("sh", "-c", echoLast).CombinedOutput()
 	if err != nil {

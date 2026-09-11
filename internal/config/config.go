@@ -21,7 +21,34 @@ type Config struct {
 	NamedTunnel NamedTunnelConfig `mapstructure:"named_tunnel"`
 	Tailscale   TailscaleConfig   `mapstructure:"tailscale"`
 	Audit       AuditConfig       `mapstructure:"audit"`
+	Containment ContainmentConfig `mapstructure:"containment"`
 }
+
+// ContainmentConfig holds the GAP-067 containment-exposure disclosure
+// settings. Disclosure is an admin-controlled, HIDDEN-BY-DEFAULT feature:
+// when enabled, managed agents honestly disclose that they run in a managed
+// sandbox — a BUNKER_SANDBOX=1 env var in every agent session and a
+// self-describing marker line after allowed system-info probe output. When
+// disabled (the default) behavior is byte-identical to a daemon without the
+// feature. See specs/containment-disclosure.md.
+type ContainmentConfig struct {
+	Disclosure bool `mapstructure:"disclosure"`
+}
+
+// ContainmentSandboxEnv is the canonical KEY=VALUE env var injected into
+// EVERY agent session (shell exec, raw exec, script exec, detached
+// RunAgent) when containment disclosure is enabled (GAP-067). It rides the
+// same explicit env injection path as PATH/DOCKER_HOST/TMPDIR and is absent
+// when disclosure is disabled. Single definition here — the server and
+// agent packages both reference this constant; never duplicate the literal.
+const ContainmentSandboxEnv = "BUNKER_SANDBOX=1"
+
+// ContainmentSandboxEnvKey is the env-var KEY of ContainmentSandboxEnv, for
+// callers that must match the key alone (e.g. the detached-run builder
+// rejecting agent-supplied overrides of the admin-controlled disclosure
+// var). It is the literal prefix of ContainmentSandboxEnv — consistency is
+// pinned by TestContainmentSandboxEnvKeyMatchesValue in this package.
+const ContainmentSandboxEnvKey = "BUNKER_SANDBOX"
 
 // ServerConfig holds gRPC and REST listener addresses and timeouts.
 type ServerConfig struct {
@@ -189,6 +216,12 @@ func DefaultConfig() *Config {
 			Enabled: true,
 			Path:    "/var/log/bunkerd/audit.log",
 		},
+		// GAP-067: containment disclosure is hidden by default. Enabling it
+		// changes observable behavior (env var + probe marker), so it must
+		// never be on unless the operator asked for it.
+		Containment: ContainmentConfig{
+			Disclosure: false,
+		},
 	}
 }
 
@@ -251,6 +284,7 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("tailscale.startup_timeout")
 	v.BindEnv("audit.enabled")
 	v.BindEnv("audit.path")
+	v.BindEnv("containment.disclosure")
 
 	// Read config file if it exists
 	if _, err := os.Stat(path); err == nil {

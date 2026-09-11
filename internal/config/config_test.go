@@ -181,6 +181,113 @@ func TestLoad_AuditEnvOverrides(t *testing.T) {
 	}
 }
 
+// GAP-067: containment disclosure default/env/file semantics.
+func TestDefaultConfig_ContainmentDisclosureDisabled(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.Containment.Disclosure {
+		t.Error("containment.disclosure must default to false (hidden by default, GAP-067)")
+	}
+}
+
+// TestContainmentSandboxEnvKeyMatchesValue pins that ContainmentSandboxEnvKey
+// is the KEY of the KEY=VALUE pair ContainmentSandboxEnv — callers match the
+// key alone against agent-supplied overrides, so the two must never drift.
+func TestContainmentSandboxEnvKeyMatchesValue(t *testing.T) {
+	const (
+		val = ContainmentSandboxEnv
+		key = ContainmentSandboxEnvKey
+	)
+	if !strings.HasPrefix(val, key+"=") {
+		t.Errorf("ContainmentSandboxEnvKey %q is not the key of ContainmentSandboxEnv %q", key, val)
+	}
+	if strings.Contains(strings.TrimPrefix(val, key+"="), "=") {
+		t.Errorf("ContainmentSandboxEnv value must not itself contain '=': %q", val)
+	}
+}
+
+func TestLoad_ContainmentDisclosureDefaultsFalse(t *testing.T) {
+	cfg, err := Load("/nonexistent/path/config.yaml")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Containment.Disclosure {
+		t.Error("Load() without containment config must leave disclosure false")
+	}
+}
+
+func TestLoad_ContainmentDisclosureEnvOverride(t *testing.T) {
+	// BUNKERD_CONTAINMENT_DISCLOSURE=true must enable disclosure even when
+	// the config file (or its absence) says nothing.
+	t.Setenv("BUNKERD_CONTAINMENT_DISCLOSURE", "true")
+	cfg, err := Load("/nonexistent/path/config.yaml")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !cfg.Containment.Disclosure {
+		t.Error("BUNKERD_CONTAINMENT_DISCLOSURE=true should enable disclosure")
+	}
+}
+
+func TestLoad_ContainmentDisclosureEnvOverrideBeatsFile(t *testing.T) {
+	// A config file with disclosure: false must be overridden by the env var.
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	content := `
+containment:
+  disclosure: false
+`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	t.Setenv("BUNKERD_CONTAINMENT_DISCLOSURE", "true")
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !cfg.Containment.Disclosure {
+		t.Error("BUNKERD_CONTAINMENT_DISCLOSURE=true should override config-file false")
+	}
+}
+
+func TestLoad_ContainmentDisclosureFileTrue(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	content := `
+containment:
+  disclosure: true
+`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	// No env var: the config-file true must stand on its own.
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !cfg.Containment.Disclosure {
+		t.Error("config-file containment.disclosure: true should enable disclosure")
+	}
+}
+
+func TestLoad_ContainmentDisclosureFileFalseNoEnv(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	content := `
+containment:
+  disclosure: false
+`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Containment.Disclosure {
+		t.Error("config-file containment.disclosure: false should keep disclosure off")
+	}
+}
+
 func TestValidate_Valid(t *testing.T) {
 	cfg := DefaultConfig()
 	if err := cfg.Validate(); err != nil {

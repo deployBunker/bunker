@@ -143,6 +143,29 @@ never written). It is on by default; configure it under `audit` in
 `/var/log/bunkerd/audit.log`) — or via the `BUNKERD_AUDIT_ENABLED` /
 `BUNKERD_AUDIT_PATH` env overrides.
 
+**Containment disclosure (optional, hidden by default)** — an operator can
+make managed agents honestly disclose their sandbox. When
+`containment.disclosure: true` (or `BUNKERD_CONTAINMENT_DISCLOSURE=true`,
+which overrides the config file):
+
+- every agent session (exec, exec --raw, exec --script, run --detach) gets
+  the environment variable `BUNKER_SANDBOX=1`; and
+- a strict allowlist of system-info probes (`uname`, `hostname`, `uptime`,
+  `free`, `df`, `id`, `whoami`, `lsb_release`, and
+  `cat /etc/os-release`) gets one self-describing marker line appended to
+  its stdout:
+
+  ```
+  [bunker: managed sandbox environment — containment active]
+  ```
+
+Command exit codes are preserved exactly (including non-zero). Non-probe
+commands are never modified, and with the flag off (the default) daemon
+behavior is byte-identical to a build without the feature. Machine parsers
+should tolerate the bracketed final marker line on disclosing servers.
+See `specs/containment-disclosure.md` for the full semantics, allowlist
+rules, and safety boundaries.
+
 ### Run the daemon
 
 > **⚠️ `bunkerd` must run as root** — agent spawn calls `useradd`/`systemd-run` and fails with `useradd: Permission denied` under a non-root user. Run it directly as root (or via `sudo`, or as a systemd service under `User=root`):
