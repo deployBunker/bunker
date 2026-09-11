@@ -1218,3 +1218,14 @@ tasks:
   status: complete
   created_at: '2026-09-07T04:23:39.745425+00:00'
   completed_at: '2026-09-07T04:25:12.121230+00:00'
+- id: GAP-064
+  title: Per-agent container customization API
+  criteria:
+  - 'Implement the GAP-063-backed image-spec API: allowlist parser accepts only package-add
+    directives and rejects FROM/USER/curl-pipe/mount/socket attempts; rejected specs
+    return invalid_argument before any build; rootless build cache builds identical
+    specs once and changed specs again; CLI/docs land; live bunker-mvp E2E outputs
+    VERIFY-PASS and proves an allowed package is present.'
+  status: complete
+  created_at: '2026-09-11T05:08:33.032825+00:00'
+  completed_at: '2026-09-11T07:22:53.391772+00:00'
