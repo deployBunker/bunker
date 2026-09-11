@@ -1,0 +1,11 @@
+{
+  "task_id": "GAP-064",
+  "task_title": "Per-agent container customization API",
+  "task_criteria": [
+    "Implement the GAP-063-backed image-spec API: allowlist parser accepts only package-add directives and rejects FROM/USER/curl-pipe/mount/socket attempts; rejected specs return invalid_argument before any build; rootless build cache builds identical specs once and changed specs again; CLI/docs land; live bunker-mvp E2E outputs VERIFY-PASS and proves an allowed package is present."
+  ],
+  "passed": false,
+  "items": [],
+  "summary": "Judge Result: GAP-064\n\nTier 2 (Agentic Evaluator): INCOMPLETE\n\nOverall: FAIL \u2717",
+  "evaluated_at": "2026-09-11T07:25:28.199414"
+}
