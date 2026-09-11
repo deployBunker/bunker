@@ -110,6 +110,27 @@ message SpawnAgentRequest {
   string ttl = 4;                // e.g. "6h", "24h", "7d"
   bytes ssh_public_key = 5;      // Optional: push existing key
   map<string, string> labels = 6;
+  ImageSpec image_spec = 7;      // Optional: secure package-add customization (GAP-064)
+}
+
+// ── Image specification (GAP-064) ─────────────────────────────
+//
+// A small declarative, additive-only customization of the per-agent image:
+// base image (from the server's allowlist) plus package-add directives for
+// apt / go install / npm install -g. The server validates BEFORE any side
+// effect; rejected specs return CodeInvalidArgument without creating the
+// user, allocating ports, starting dockerd, or building an image. Arbitrary
+// Dockerfile text is NOT representable in this grammar (no FROM/USER/EXPOSE/
+// VOLUME/ENV/RUN rewrites, no curl|sh, no mounts or namespace escapes).
+message ImageSpec {
+  string base = 1;               // Optional: allowed base image (server default if empty)
+  repeated PackageAdd packages = 2; // Optional: package-add directives
+}
+
+// One constrained package-install directive.
+message PackageAdd {
+  string manager = 1;            // "apt" | "go" | "npm"
+  repeated string packages = 2;  // names, optionally =ver (apt) or @ver (go/npm)
 }
 
 message SpawnAgentResponse {
@@ -125,6 +146,7 @@ message SpawnAgentResponse {
   string expires_at = 10;
   string tailnet_ip = 11;
   string api_key = 12;             // Agent-scoped opaque API sub-key (if auth enabled)
+  string image = 13;               // Customized image ref when image_spec was supplied (GAP-064)
 }
 
 message DestroyAgentRequest {

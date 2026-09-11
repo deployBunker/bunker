@@ -14,6 +14,7 @@ import (
 
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 
+	"github.com/deployBunker/bunker/internal/imagespec"
 	"github.com/deployBunker/bunker/internal/resource"
 )
 
@@ -47,6 +48,25 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 			return nil, fmt.Errorf("invalid ttl %q: %w", req.GetTtl(), err)
 		}
 		ttl = parsed
+	}
+
+	// ── Step 1.7: Validate the image spec BEFORE any side effect ──
+	// GAP-064: an invalid or disallowed image spec must fail with a
+	// validation error (mapped to CodeInvalidArgument by the server) without
+	// creating the user, allocating ports, starting dockerd, or building an
+	// image. The parsed spec is carried through the rest of spawn; the nil
+	// spec is the common no-customization case. When the feature is disabled
+	// server-side, a supplied spec is likewise rejected up front.
+	var imageSpec *imagespec.Spec
+	if req.GetImageSpec() != nil {
+		if m.imageBuilder == nil {
+			return nil, fmt.Errorf("image spec support is not available on this server")
+		}
+		spec, err := imagespec.FromProto(req.GetImageSpec())
+		if err != nil {
+			return nil, fmt.Errorf("invalid image spec: %w", err)
+		}
+		imageSpec = spec
 	}
 
 	// ── Step 1.5: Check capacity BEFORE allocating a port range ──
@@ -469,6 +489,22 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		}
 	}
 
+	// ── Step 5b.5: Build the customized image (GAP-064) ────────────
+	// When the spawn carries an image spec, build (or reuse from cache) the
+	// customized image through this agent's rootless socket. Validation
+	// already happened in Step 1.7 (before any side effect), so reaching
+	// this point means the spec is valid.
+	imageRef := ""
+	if imageSpec != nil {
+		built, err := m.imageBuilder.BuildValidated(ctx, agentID, imageSpec)
+		if err != nil {
+			cleanup()
+			return nil, fmt.Errorf("image spec build for %s: %w", agentID, err)
+		}
+		imageRef = built
+		m.logger.Info("customized image ready", "agent_id", agentID, "image", imageRef)
+	}
+
 	// ── Step 5c: Apply cgroup limits to the user slice ─────────────
 	// The systemd unit above (bunker-docker-<id>) only constrains the dockerd
 	// process.  Non-docker commands (bunker exec <id> -- stress, dd, etc.) run
@@ -588,6 +624,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		ExpiresAt:        time.Now().Add(ttl).Format(time.RFC3339),
 		PublicUrl:        publicURL,
 		TailnetIp:        tailnetIP,
+		Image:            imageRef,
 	}
 
 	m.logger.Info("agent spawned successfully", "agent_id", agentID)

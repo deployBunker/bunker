@@ -11,6 +11,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
+	"github.com/deployBunker/bunker/internal/imagespec"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 )
 
@@ -33,6 +34,7 @@ func NewSpawnCommand() *cobra.Command {
 		trycloudflare bool
 		domain        string
 		sshHost       string
+		imageSpecFile string
 	)
 
 	cmd := &cobra.Command{
@@ -49,7 +51,8 @@ Examples:
   bunker spawn demo-agent --ttl 1h
   bunker spawn --cpu 2.0 --memory 4294967296
   bunker spawn --network cloudflare --trycloudflare
-  bunker spawn --server staging --ttl 24h`,
+  bunker spawn --server staging --ttl 24h
+  bunker spawn --image-spec spec.json`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// 0. Bind + validate the agent ID locally, BEFORE any config
@@ -64,6 +67,22 @@ Examples:
 			}
 			if agentID != "" && !agentIDRe.MatchString(agentID) {
 				return fmt.Errorf("invalid agent id %q: must match ^[a-z0-9-]{1,64}$ (lowercase letters, digits, hyphens only, 1-64 characters)", agentID)
+			}
+
+			// 0.5 Load + validate the image spec LOCALLY so bad specs fail
+			// fast without a round-trip (GAP-064). The file is JSON:
+			// {"base": "...", "packages": [{"manager": "apt|go|npm", "packages": [...]}]}.
+			var imageSpecPB *v1.ImageSpec
+			if imageSpecFile != "" {
+				raw, err := os.ReadFile(imageSpecFile)
+				if err != nil {
+					return fmt.Errorf("read image spec: %w", err)
+				}
+				spec, err := imagespec.Parse(raw)
+				if err != nil {
+					return fmt.Errorf("invalid image spec %s: %w", imageSpecFile, err)
+				}
+				imageSpecPB = spec.ToProto()
 			}
 
 			// 1. Load CLI config
@@ -95,8 +114,9 @@ Examples:
 			defer cancel()
 
 			req := connect.NewRequest(&v1.SpawnAgentRequest{
-				AgentId: agentID,
-				Ttl:     ttl,
+				AgentId:   agentID,
+				Ttl:       ttl,
+				ImageSpec: imageSpecPB,
 			})
 
 			// Limits
@@ -195,6 +215,9 @@ Examples:
 			if r.ApiKey != "" {
 				fmt.Printf("  API Key:      %s\n", r.ApiKey)
 			}
+			if r.Image != "" {
+				fmt.Printf("  Image:        %s\n", r.Image)
+			}
 			if r.SshfsMount != "" {
 				fmt.Printf("  SSHFS Mount:  %s\n", rewriteSSHFSMount(r.SshfsMount, serverHost, resolvedHost, keyPath))
 			}
@@ -218,6 +241,7 @@ Examples:
 	cmd.Flags().BoolVar(&trycloudflare, "trycloudflare", false, "Use anonymous TryCloudflare tunnel")
 	cmd.Flags().StringVar(&domain, "domain", "", "Custom domain for Cloudflare tunnel")
 	cmd.Flags().StringVar(&sshHost, "ssh-host", "", "SSH host shown in the bundle (default: hostname from server config URL)")
+	cmd.Flags().StringVar(&imageSpecFile, "image-spec", "", "JSON file with an image customization spec (base + apt/go/npm package adds)")
 
 	return cmd
 }

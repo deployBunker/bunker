@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/deployBunker/bunker/internal/config"
+	"github.com/deployBunker/bunker/internal/imagespec"
 	"github.com/deployBunker/bunker/internal/resource"
 	"github.com/deployBunker/bunker/internal/tailscale"
 	"github.com/deployBunker/bunker/internal/tunnel"
@@ -27,6 +28,9 @@ type AgentManager struct {
 	tunnelMgr    *tunnel.TunnelManager
 	tailscaleMgr *tailscale.TailscaleManager
 	ttlStop      chan struct{}
+	// imageBuilder is the GAP-064 rootless image-spec builder/cache. Nil in
+	// tests that construct AgentManager directly; nil disables customization.
+	imageBuilder *imagespec.Builder
 }
 
 // NewAgentManager creates a new AgentManager.
@@ -46,6 +50,11 @@ func NewAgentManager(cfg *config.Config, logger *slog.Logger, tracker *resource.
 		// Port allocator is nil when disabled; spawn will use the full range as fallback.
 	}
 	am := &AgentManager{cfg: cfg, logger: logger, tracker: tracker, portAlloc: pa, tunnelMgr: tunnelMgr, tailscaleMgr: tailscaleMgr, ttlStop: make(chan struct{})}
+	am.imageBuilder = imagespec.NewBuilder(nil, &imagespec.CacheOptions{
+		Dir:          cfg.Agent.ImageSpec.CacheDir,
+		BuildTimeout: cfg.Agent.ImageSpec.BuildTimeout,
+		Disabled:     !cfg.Agent.ImageSpec.Enabled,
+	})
 	am.startTTLReaper()
 	return am
 }

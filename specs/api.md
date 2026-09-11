@@ -76,6 +76,20 @@ Request:
 - `ttl` (string): Duration like "6h", "24h", "7d"
 - `ssh_public_key` (bytes, optional): Push existing key
 - `labels` (map<string,string>): Metadata key-value pairs
+- `image_spec` (ImageSpec, optional): Secure per-agent image customization
+  (GAP-064). A small declarative grammar — NOT Dockerfile text:
+  - `base` (string, optional): base image; must be one of the server's
+    allowed bases (default: `docker.io/library/ubuntu:24.04`; also
+    ubuntu:22.04, debian:12, debian:11)
+  - `packages` (repeated PackageAdd, optional): package-add directives;
+    `manager` is `apt` (apt-get install), `go` (go install), or `npm`
+    (npm install -g); each directive lists package names, optionally pinned
+    (`name=version` for apt, `name@version` for go/npm). Max 16 directives,
+    16 packages each; tokens are limited to letters, digits and
+    `. + - _ : / @ =` (no slashes for apt), so shell chaining, substitution,
+    redirection, `curl|sh`, mounts/sockets, and any non-package command are
+    structurally impossible. Unknown fields (FROM/USER/EXPOSE/VOLUME/ENV/RUN
+    lookalikes) are rejected. Validation happens BEFORE any side effect.
 
 Response:
 - `agent_id` (string): Assigned agent ID
@@ -89,11 +103,14 @@ Response:
 - `expires_at` (string): ISO 8601 expiry timestamp
 - `tailnet_ip` (string): Tailscale IP (if enabled)
 - `api_key` (string): Agent-scoped API sub-key (if auth enabled)
+- `image` (string): Customized image ref (e.g.
+  `bunkerd-imagespec-<key>:latest`) when `image_spec` was supplied
 
 Error codes:
 - `CodeResourceExhausted`: No capacity for requested limits
 - `CodeAlreadyExists`: agent_id collision
-- `CodeInvalidArgument`: Bad limits or TTL format
+- `CodeInvalidArgument`: Bad limits, TTL format, or rejected image spec
+  (rejected specs build NOTHING — no user, ports, dockerd, or image)
 
 ### DestroyAgent
 

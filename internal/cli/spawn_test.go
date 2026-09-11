@@ -35,6 +35,9 @@ type mockSpawnServer struct {
 	spawnResp  *v1.SpawnAgentResponse
 	spawnErr   error
 	gotAgentID string // AgentId from the last SpawnAgent request (DOGFOOD-008)
+	// gotImageSpec captures the ImageSpec from the last SpawnAgent request
+	// (GAP-064 request propagation).
+	gotImageSpec *v1.ImageSpec
 	// capturedDeadline/capturedDeadlineOK record the deadline of the context
 	// the CLI passed to SpawnAgent, so tests can assert the RPC timeout
 	// (SPAWN-TIMEOUT-001: must be ~300s, not the old 30s).
@@ -48,6 +51,7 @@ func (m *mockSpawnServer) SpawnAgent(
 ) (*connect.Response[v1.SpawnAgentResponse], error) {
 	m.capturedDeadline, m.capturedDeadlineOK = ctx.Deadline()
 	m.gotAgentID = req.Msg.AgentId
+	m.gotImageSpec = req.Msg.GetImageSpec()
 	if m.spawnErr != nil {
 		return nil, m.spawnErr
 	}

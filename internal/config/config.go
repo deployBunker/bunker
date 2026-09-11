@@ -84,6 +84,23 @@ type AgentConfig struct {
 	DefaultMaxOpenFiles        uint64        `mapstructure:"default_max_open_files"`
 	DefaultMaxDockerContainers uint32        `mapstructure:"default_max_docker_containers"`
 	DefaultTTL                 time.Duration `mapstructure:"default_ttl"`
+	// ImageSpec holds the GAP-064 image-customization policy.
+	ImageSpec ImageSpecConfig `mapstructure:"image_spec"`
+}
+
+// ImageSpecConfig is server policy for the GAP-064 per-agent image
+// customization feature: where customized images are cached and how long a
+// single rootless build may take. The validation grammar itself (what a spec
+// may contain) is code, not config — see internal/imagespec.
+type ImageSpecConfig struct {
+	// Enabled gates the feature; when false a spawn carrying an image_spec is
+	// rejected with CodeInvalidArgument before any side effect.
+	Enabled bool `mapstructure:"enabled"`
+	// CacheDir is where canonicalized spec builds are cached on the server
+	// (one directory per spec cache key).
+	CacheDir string `mapstructure:"cache_dir"`
+	// BuildTimeout bounds a single rootless image build.
+	BuildTimeout time.Duration `mapstructure:"build_timeout"`
 }
 
 // TunnelConfig holds Cloudflare TryCloudflare tunnel settings.
@@ -147,6 +164,11 @@ func DefaultConfig() *Config {
 			DefaultMaxOpenFiles:        65536,
 			DefaultMaxDockerContainers: 10,
 			DefaultTTL:                 6 * time.Hour,
+			ImageSpec: ImageSpecConfig{
+				Enabled:      true,
+				CacheDir:     "/var/cache/bunkerd/imagespec",
+				BuildTimeout: 20 * time.Minute,
+			},
 		},
 		Tunnel: TunnelConfig{
 			Enabled:        true,

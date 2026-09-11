@@ -309,6 +309,11 @@ Container-mode destroy keeps today's teardown order
 dockerd stop** so no container leaks past the daemon:
 
 ```
+0.  DONE cleanupAgentContainers (GAP-064, manager_destroy_containers.go):
+         docker --host unix:///run/bunker/<id>/docker.sock stop -t 5 bunker-<id>
+         docker --host unix:///run/bunker/<id>/docker.sock rm        bunker-<id>
+         (docker rm -f when force=true); only the agent's own socket is
+         touched — best-effort, a dead daemon has nothing to clean
 1.  NEW  docker --host unix:///run/bunker/<id>/docker.sock stop  bunker-<id>
           docker --host unix:///run/bunker/<id>/docker.sock rm    bunker-<id>
           (docker rm -f when force=true); prune that agent's volumes

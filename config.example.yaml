@@ -46,6 +46,12 @@ agent:
   port_range_per_agent: 100
   # default_ttl: 6h           # default agent TTL (\\d+[hmd] format, e.g. 6h/90m/7d)
 
+# Per-agent image customization (GAP-064): secure package-add specs on spawn.
+# image_spec:
+#   enabled: true                      # reject spawns carrying a spec when false
+#   cache_dir: /var/cache/bunkerd/imagespec  # per-agent build cache
+#   build_timeout: 20m                 # hard bound per rootless build
+
 # Daemon-side audit trail: append-only JSONL log of every authenticated RPC
 # (file mode 0600; never contains token values).
 audit:

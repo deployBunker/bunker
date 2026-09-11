@@ -30,6 +30,7 @@ bunker connect http://78.46.173.180:18080 --token <token>   # writes ~/.bunker/c
 bunker status                                               # ONLINE, version, agents, real CPU/mem/disk — 0.56s
 bunker list                                                 # current agents
 bunker spawn --ttl 1h                                       # ~10s → connection bundle (key, ports, TTL, sshfs/tunnel cmds); use --agent-id <name> for a named agent
+bunker spawn --image-spec spec.json --ttl 1h                # GAP-064: customize the agent image (apt/go/npm package adds, validated & cached server-side)
 bunker info <id>                                            # status, expires, limits (CPU 2.0, mem 4 GB, disk 20 GB, 10 containers)
 bunker exec <id> -- uname -a                                # isolated user: bunker-<id>
 bunker exec <id> -- docker run --rm alpine echo hi          # rootless Docker works (3.4s first pull)

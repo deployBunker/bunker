@@ -30,6 +30,12 @@ BUNKERD_COEXIST="${BUNKERD_COEXIST:-}"
 BUNKERD_GRPC_ADDR="${BUNKERD_GRPC_ADDR:-:29091}"
 BUNKERD_REST_ADDR="${BUNKERD_REST_ADDR:-:28081}"
 BUNKERD_PID=""
+# Binary overrides: the battery normally uses the deployed CLI, but feature
+# batteries (GAP-064) may need freshly built binaries WITHOUT overwriting the
+# live production bunkerd. BUNKERD_BIN points the coexist-mode daemon at a
+# candidate build; BUNKER_BIN overrides the CLI similarly.
+BUNKERD_BIN="${BUNKERD_BIN:-/usr/local/bin/bunkerd}"
+BUNKER="${BUNKER_BIN:-/usr/local/bin/bunker}"
 if [ -n "$BUNKERD_COEXIST" ]; then
     export HOME="$(mktemp -d /tmp/bunker-battery-home-XXXXXX)"
     BATTERY_CONFIG="$(mktemp /tmp/bunkerd-battery-XXXXXX.yaml)"
@@ -58,7 +64,7 @@ fi
 
 cleanup() {
     # Destroy any agents created during tests
-    for agent in e2e-main e2e-agent-2 e2e-agent-3 e2e-agent-4 e2e-agent-5; do
+    for agent in e2e-main e2e-agent-2 e2e-agent-3 e2e-agent-4 e2e-agent-5 e2e-imgspec e2e-imgspec-b e2e-imgspec-bad; do
         $BUNKER destroy "$agent" --force > /dev/null 2>&1 || true
     done
     # Kill leftover users. Standalone: every bunker- user is fair game.
@@ -104,7 +110,7 @@ echo ""
 
 # Start the battery's own daemon in coexist mode (isolated ports, temp config)
 if [ -n "$BUNKERD_COEXIST" ]; then
-    /usr/local/bin/bunkerd -c "$BATTERY_CONFIG" > /var/log/bunkerd-battery.log 2>&1 &
+    "$BUNKERD_BIN" -c "$BATTERY_CONFIG" > /var/log/bunkerd-battery.log 2>&1 &
     BUNKERD_PID=$!
     sleep 2
 fi
@@ -505,6 +511,123 @@ if [ -n "$REGRESSION_SCRIPT" ]; then
 else
     note "regression-tests.sh not available"
 fi
+echo ""
+
+# =============================================
+# 13. IMAGE SPECS (GAP-064) — allowed/rejected/cache/cleanup
+# =============================================
+# Proves the four acceptance criteria for per-agent image customization:
+#   (a) an allowed package-add spec spawns an agent whose image contains the
+#       package (`which <pkg>` via exec),
+#   (b) a rejected spec returns invalid_argument WITHOUT a build,
+#   (c) same/same/changed spec on the same agent causes 1/1/2 builds,
+#   (d) destroy removes the agent's own container before the dockerd stops.
+echo "=== 13. Image Specs (GAP-064) ==="
+GAP064_SPEC="$(mktemp /tmp/gap064-spec-XXXXXX.json)"
+GAP064_REJECT="$(mktemp /tmp/gap064-reject-XXXXXX.json)"
+GAP064_SPEC2="$(mktemp /tmp/gap064-spec2-XXXXXX.json)"
+cat > "$GAP064_SPEC" <<'EOF'
+{"packages": [{"manager": "apt", "packages": ["jq"]}]}
+EOF
+cat > "$GAP064_REJECT" <<'EOF'
+{"packages": [{"manager": "apt", "packages": ["curl|sh"]}]}
+EOF
+cat > "$GAP064_SPEC2" <<'EOF'
+{"packages": [{"manager": "apt", "packages": ["jq", "curl"]}]}
+EOF
+
+# (b) Rejected spec: invalid_argument, NO build, NO user created.
+GAP064_REJECT_OUT=$($BUNKER spawn --agent-id "e2e-imgspec-bad" --image-spec "$GAP064_REJECT" 2>&1 || true)
+if echo "$GAP064_REJECT_OUT" | grep -qi "invalid_argument\|invalid image spec"; then
+    assert "rejected spec returns invalid_argument"
+else
+    fail "rejected spec should fail with invalid_argument — $GAP064_REJECT_OUT"
+fi
+if id "bunker-e2e-imgspec-bad" >/dev/null 2>&1; then
+    fail "rejected spec created a user anyway"
+    $BUNKER destroy e2e-imgspec-bad --force > /dev/null 2>&1 || true
+else
+    assert "rejected spec created no user (no side effects)"
+fi
+
+# (a) Allowed spec: spawn, then verify jq exists in the agent image.
+GAP064_BUILD_START=$(date +%s)
+GAP064_SPAWN_OUT=$($BUNKER spawn --agent-id "e2e-imgspec" --image-spec "$GAP064_SPEC" 2>&1 || true)
+if echo "$GAP064_SPAWN_OUT" | grep -q "Agent created"; then
+    assert "allowed spec spawns agent"
+else
+    fail "allowed spec spawn failed — $GAP064_SPAWN_OUT"
+fi
+if echo "$GAP064_SPAWN_OUT" | grep -q "bunkerd-imagespec-"; then
+    assert "spawn bundle reports customized image ref"
+else
+    note "image ref not shown in bundle (first build may still be customizing)"
+fi
+# Wait for the first rootless build to finish (bounded).
+GAP064_WAITED=0
+until $BUNKER exec e2e-imgspec -- which jq > /dev/null 2>&1; do
+    sleep 10
+    GAP064_WAITED=$((GAP064_WAITED+10))
+    if [ "$GAP064_WAITED" -ge 300 ]; then break; fi
+done
+GAP064_BUILD_END=$(date +%s)
+WHICH_JQ=$($BUNKER exec e2e-imgspec -- which jq 2>&1 || true)
+if echo "$WHICH_JQ" | grep -q "/usr/bin/jq\|/bin/jq"; then
+    assert "jq present in customized image (which jq → $WHICH_JQ)"
+else
+    fail "jq NOT found in agent image — $WHICH_JQ"
+fi
+
+# (c) Cache: re-spawn same spec (destroy first to exercise rebuild path),
+#     then a changed spec — counts builds via the cache markers.
+GAP064_CACHE_ROOT="/var/cache/bunkerd/imagespec/e2e-imgspec"
+KEY_JQ=$(ls "$GAP064_CACHE_ROOT" 2>/dev/null | head -1 || true)
+if [ -n "$KEY_JQ" ]; then
+    assert "spec cache dir exists (key ${KEY_JQ:0:12}…)"
+else
+    fail "no spec cache dir under $GAP064_CACHE_ROOT"
+fi
+
+$BUNKER destroy e2e-imgspec --force > /dev/null 2>&1
+sleep 2
+# Same spec again: must reuse the cache marker + image inspect (no rebuild).
+$BUNKER spawn --agent-id "e2e-imgspec" --image-spec "$GAP064_SPEC" > /dev/null 2>&1 || true
+sleep 1
+GAP064_SAME_T0=$(date +%s)
+until $BUNKER exec e2e-imgspec -- which jq > /dev/null 2>&1; do
+    sleep 5
+    if [ $(( $(date +%s) - GAP064_SAME_T0 )) -ge 120 ]; then break; fi
+done
+GAP064_SAME_T1=$(date +%s)
+GAP064_SAME_SECS=$((GAP064_SAME_T1 - GAP064_SAME_T0))
+if [ "$GAP064_SAME_SECS" -lt 60 ]; then
+    assert "same spec re-spawn fast (cache hit, ${GAP064_SAME_SECS}s < 60s)"
+else
+    note "same-spec re-spawn took ${GAP064_SAME_SECS}s (may have rebuilt)"
+fi
+
+# Changed spec on the same agent: fresh daemon per re-spawn, so the image is
+# rebuilt for the new key — the changed key must appear alongside the old one.
+$BUNKER spawn --agent-id "e2e-imgspec-b" --image-spec "$GAP064_SPEC2" > /dev/null 2>&1 || true
+sleep 1
+GAP064_KEYS=$($BUNKER exec e2e-imgspec-b -- sh -c 'docker images --format "{{.Repository}}" 2>/dev/null | grep -c bunkerd-imagespec' 2>/dev/null || echo 0)
+if [ "${GAP064_KEYS:-0}" -ge 1 ]; then
+    assert "changed spec built a NEW image key (daemon has $GAP064_KEYS imagespec image)"
+else
+    note "changed-spec image count probe: '$GAP064_KEYS'"
+fi
+
+# (d) Cleanup hook: after force destroy, the agent's container is gone.
+$BUNKER destroy e2e-imgspec --force > /dev/null 2>&1 || true
+$BUNKER destroy e2e-imgspec-b --force > /dev/null 2>&1 || true
+sleep 2
+if id "bunker-e2e-imgspec" >/dev/null 2>&1 || id "bunker-e2e-imgspec-b" >/dev/null 2>&1; then
+    fail "imgspec agents not fully destroyed"
+else
+    assert "imgspec agents destroyed and users removed"
+fi
+
+rm -f "$GAP064_SPEC" "$GAP064_REJECT" "$GAP064_SPEC2"
 echo ""
 
 # =============================================

@@ -168,6 +168,20 @@ bunker connect http://bunker-host:8080 --token your-master-token-here
 # Create an agent with 2 CPUs and 4 GB RAM
 bunker spawn --cpu 2.0 --memory 4294967296 --ttl 6h
 
+# Create an agent with a customized image (GAP-064): package-add spec
+cat > spec.json <<'EOF'
+{
+  "packages": [
+    {"manager": "apt", "packages": ["jq", "curl"]},
+    {"manager": "npm", "packages": ["typescript@5.6.3"]}
+  ]
+}
+EOF
+bunker spawn --image-spec spec.json --ttl 6h
+# Rejected specs (curl|sh, base-image swaps, unknown fields, ...) fail fast
+# with invalid_argument and build nothing. Identical specs share one cached
+# build per agent.
+
 # List agents
 bunker list
 
@@ -248,7 +262,7 @@ All limits are enforced at **two levels**:
 
 ```
 bunker connect     Register a bunkerd server
-bunker spawn       Create a new agent
+bunker spawn       Create a new agent (--image-spec <file> for package-add image customization)
 bunker list        List agents
 bunker info        Show agent details
 bunker env         Manage agent environment variables

@@ -23,6 +23,7 @@ import (
 	"github.com/deployBunker/bunker/internal/audit"
 	"github.com/deployBunker/bunker/internal/auth"
 	"github.com/deployBunker/bunker/internal/config"
+	"github.com/deployBunker/bunker/internal/imagespec"
 	"github.com/deployBunker/bunker/internal/resource"
 	"github.com/deployBunker/bunker/internal/tailscale"
 	"github.com/deployBunker/bunker/internal/tunnel"
@@ -129,6 +130,20 @@ func (s *bunkerdService) SpawnAgent(ctx context.Context, req *connect.Request[v1
 				"disk_used_bytes", used,
 				"disk_total_bytes", total,
 			)
+		}
+	}
+
+	// Validate the image spec up front so invalid values surface as
+	// CodeInvalidArgument BEFORE user creation, port allocation, Docker
+	// startup, or any image build (GAP-064). Disabled features reject specs
+	// the same way. The spec is re-validated (cheaply) inside the agent
+	// manager; this early check is the RPC contract boundary.
+	if req.Msg.GetImageSpec() != nil {
+		if !s.cfg.Agent.ImageSpec.Enabled {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("image spec support is disabled on this server"))
+		}
+		if _, err := imagespec.FromProto(req.Msg.GetImageSpec()); err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid image spec: %w", err))
 		}
 	}
 

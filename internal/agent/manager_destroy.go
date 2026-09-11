@@ -31,6 +31,14 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 
 	m.logger.Info("destroying agent", "agent_id", agentID)
 
+	// Step 0.4: Stop and remove the agent's own container through ONLY that
+	// agent's rootless socket — BEFORE the dockerd stop below, so no
+	// container leaks past the daemon (specs/container-mode.md §4). Best-
+	// effort: a daemon that already died has nothing to clean up.
+	if err := cleanupAgentContainers(ctx, agentID, force, m.logger); err != nil {
+		m.logger.Warn("agent container cleanup incomplete", "agent_id", agentID, "error", err)
+	}
+
 	// Step 0.5: Remove user slice cgroup drop-in so stale limits don't
 	// accumulate after the agent is destroyed.
 	removeUserSliceLimits(ctx, agentID, m.logger)
