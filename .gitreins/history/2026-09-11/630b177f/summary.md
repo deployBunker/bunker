@@ -1,0 +1,19 @@
+# Verdict: INT-CI-002
+
+**Task:** Fix root-suite timeout in image-spec nil-builder regression test
+**Evaluated:** 2026-09-11T13:39:54.684003
+**Result:** ✗ FAIL
+
+## Criteria
+
+- ✗ **TestSpawn_ValidSpecNilBuilderRejected must exercise the intended nil-builder rejection without invoking a real Docker build; the root-gated TestSpawn|TestCgroup|TestConcurrency suite must complete within its 300s timeout; go build ./..., go vet ./..., and go test ./... -count=1 -short -parallel 4 must pass.**
+  - Partial pass only. (a) Nil-builder test OK: `sudo go test -count=1 -v -run 'TestSpawn_ValidSpecNilBuilderRejected|TestSpawn_RejectedImageSpecBeforeUserCreation' ./internal/agent/` -> `--- PASS: TestSpawn_ValidSpecNilBuilderRejected (0.00s)`, `ok github.com/deployBunker/bunker/internal/agent 0.004s`; the test now sets `m.imageBuilder = nil` (manager_imagespec_test.go:70) so Spawn returns at the Step 1.7 gate (manager_spawn.go:62) with 'image spec support is not available on this server' — no Docker build. (b) go build ./... exit 0; go vet ./... exit 0; go test ./... -count=1 -short -parallel 4 exit 0 (all packages ok). (c) ROOT SUITE FAILS: `sudo go test -count=1 -run 'TestSpawn|TestCgroup|TestConcurrency' ./... -timeout 300s` -> `FAIL github.com/deployBunker/bunker/internal/agent 300.012s`, `panic: test timed out after 5m0s`, `running tests: TestSpawn_Response (8s)` stuck in `installRootlessDocker` (internal/agent/rootless.go:200) called from `Spawn` (manager_spawn.go:322) via manager_test.go:250 — i.e. the suite still exceeds its 300s timeout. Additional failures in the same run: `--- FAIL: TestCgroup_MemoryLimitKillsStressProcess (0.76s)` (cgroup_test.go:149: expected stress process to be killed, got exit 0) and `--- FAIL: TestConcurrency_SpawnFiveAgents (54.49s)` (concurrency_test.go:104: expected 5 successful spawns, got 3; useradd: cannot lock /etc/passwd). The fix addressed only the image-spec test; the root-gated suite still times out and fails.
+
+## Summary
+
+Judge Result: INT-CI-002
+
+Tier 2 (Agentic Evaluator): INCOMPLETE
+  ✗ TestSpawn_ValidSpecNilBuilderRejected must exercise the intended nil-builder rejection without invoking a real Docker build; the root-gated TestSpawn|TestCgroup|TestConcurrency suite must complete within its 300s timeout; go build ./..., go vet ./..., and go test ./... -count=1 -short -parallel 4 must pass.: Partial pass only. (a) Nil-builder test OK: `sudo go test -count=1 -v -run 'TestSpawn_ValidSpecNilBuilderRejected|TestSpawn_RejectedImageSpecBeforeUserCreation' ./internal/agent/` -> `--- PASS: TestSpawn_ValidSpecNilBuilderRejected (0.00s)`, `ok github.com/deployBunker/bunker/internal/agent 0.004s`; the test now sets `m.imageBuilder = nil` (manager_imagespec_test.go:70) so Spawn returns at the Step 1.7 gate (manager_spawn.go:62) with 'image spec support is not available on this server' — no Docker build. (b) go build ./... exit 0; go vet ./... exit 0; go test ./... -count=1 -short -parallel 4 exit 0 (all packages ok). (c) ROOT SUITE FAILS: `sudo go test -count=1 -run 'TestSpawn|TestCgroup|TestConcurrency' ./... -timeout 300s` -> `FAIL github.com/deployBunker/bunker/internal/agent 300.012s`, `panic: test timed out after 5m0s`, `running tests: TestSpawn_Response (8s)` stuck in `installRootlessDocker` (internal/agent/rootless.go:200) called from `Spawn` (manager_spawn.go:322) via manager_test.go:250 — i.e. the suite still exceeds its 300s timeout. Additional failures in the same run: `--- FAIL: TestCgroup_MemoryLimitKillsStressProcess (0.76s)` (cgroup_test.go:149: expected stress process to be killed, got exit 0) and `--- FAIL: TestConcurrency_SpawnFiveAgents (54.49s)` (concurrency_test.go:104: expected 5 successful spawns, got 3; useradd: cannot lock /etc/passwd). The fix addressed only the image-spec test; the root-gated suite still times out and fails.
+
+Overall: FAIL ✗
