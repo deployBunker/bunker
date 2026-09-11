@@ -52,15 +52,22 @@ func TestSpawn_RejectedImageSpecBeforeUserCreation(t *testing.T) {
 }
 
 // TestSpawn_AcceptsValidImageSpec_NoDaemon exercises the validation path with
-// a valid spec on a non-LIVE manager: the builder is nil in newTestManager,
-// so a valid spec must fail at the builder gate AFTER validation but still
-// before user creation (imageBuilder==nil ⇒ "not available"). This pins the
-// gate ordering: nil builder + valid spec → clean validation error, no user.
+// a valid spec on a non-LIVE manager: the builder is explicitly forced to nil
+// (GAP-064 wires a real builder in newTestManager), so a valid spec must fail
+// fast at the Step 1.7 nil-builder gate — before proto validation, user
+// creation, or any other side effect (imageBuilder==nil ⇒ "not available").
+// This pins the gate ordering: nil builder + valid spec → clean validation
+// error, no user, no Docker build.
 func TestSpawn_ValidSpecNilBuilderRejected(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("test requires root privileges")
 	}
 	m := newTestManager(t)
+	// Force the nil-builder gate: newTestManager wires a real builder via
+	// NewAgentManager (GAP-064). Without this, a valid spec sails past the
+	// Step 1.7 gate and reaches a real rootless Docker build in Step 5b.5,
+	// which hangs root CI runners (INT-CI-002).
+	m.imageBuilder = nil
 	agentID := uniqueAgentID("imgspec-nilb")
 
 	req := &v1.SpawnAgentRequest{
