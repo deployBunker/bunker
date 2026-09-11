@@ -1239,3 +1239,15 @@ tasks:
   status: complete
   created_at: '2026-09-11T13:13:39.797969+00:00'
   completed_at: '2026-09-11T13:32:17.905106+00:00'
+- id: GAP-067
+  title: Containment disclosure feature flag and discovery markers
+  criteria:
+  - Flag off preserves byte-identical probe output and omits BUNKER_SANDBOX; flag
+    on appends one greppable containment marker to strict allowlisted system probes
+    without changing exit codes, leaves non-probe commands untouched, injects BUNKER_SANDBOX=1,
+    honors BUNKERD_CONTAINMENT_DISCLOSURE over config, includes table-driven tests
+    and docs, and live bunker-mvp verification records flag-on marker plus clean flag-off
+    output and VERIFY-PASS.
+  status: complete
+  created_at: '2026-09-11T20:49:29.709057+00:00'
+  completed_at: '2026-09-11T21:56:55.640670+00:00'
