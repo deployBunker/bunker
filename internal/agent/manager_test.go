@@ -20,6 +20,9 @@ import (
 func newTestManager(t *testing.T) *AgentManager {
 	t.Helper()
 	cfg := config.DefaultConfig()
+	// GAP-070: keep the durable registry inside the test's temp dir so no
+	// test reads or writes the host's real /var/lib/bunkerd/agents.jsonl.
+	isolateRegistry(t, cfg)
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	tracker := resource.NewTracker(cfg.Agent.MaxAgents, logger)
 	return NewAgentManager(cfg, logger, tracker, nil, nil)

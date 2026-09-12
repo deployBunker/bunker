@@ -42,6 +42,11 @@ Bunker is a **multi-agent hosting platform** — a daemon (`bunkerd`) that runs 
 - **Multi-server** — One CLI, many `bunkerd` instances. Switch with `--server`
 - **Scoped API keys** — Master tokens for admin, agent-scoped sub-keys for CI/CD
 - **TTL expiry** — Agents auto-destroy after their time-to-live. Heartbeat to extend
+- **Durable registry** — Agent lifecycle state (spawn/heartbeat/destroy) is an
+  append-only JSONL log replayed at startup, so agents survive a `bunkerd`
+  restart. Size-capped (5 MiB × 3 rotation), compactable offline with
+  `bunker registry compact`, and reconciled against system users on boot
+  (orphans destroyed or adopted). See [specs/agent-lifecycle.md](specs/agent-lifecycle.md)
 - **Networking** — Cloudflare tunnels (named or TryCloudflare), Tailscale mesh, or direct port ranges
 - **gRPC + REST** — Dual protocol via connect-go, single binary
 - **TLS/mTLS** — Self-signed, Let's Encrypt (certmagic), or mutual TLS
@@ -332,6 +337,7 @@ bunker metrics     Show resource usage
 bunker heartbeat   Extend agent TTL
 bunker destroy     Tear down an agent (removes the local key unless --keep-key)
 bunker audit       Inspect the audit trail (verify / list / export — see docs/audit.md)
+bunker registry    Maintain the durable agent registry (compact)
 bunker version     Print version/commit/build metadata (also --version)
 ```
 

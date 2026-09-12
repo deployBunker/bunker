@@ -356,6 +356,7 @@ func TestNewAgentManager_PortAllocatorValid(t *testing.T) {
 	cfg.Agent.PortRangeStart = 10000
 	cfg.Agent.PortRangeEnd = 10099
 	cfg.Agent.PortRangePerAgent = 10
+	isolateRegistry(t, cfg)
 
 	m := NewAgentManager(cfg, logger, resource.NewTracker(10, logger), nil, nil)
 	if m.portAlloc == nil {
@@ -382,6 +383,7 @@ func TestNewAgentManager_PortAllocatorNil(t *testing.T) {
 			cfg.Agent.PortRangeStart = tt.start
 			cfg.Agent.PortRangeEnd = tt.end
 			cfg.Agent.PortRangePerAgent = tt.per
+			isolateRegistry(t, cfg)
 
 			m := NewAgentManager(cfg, logger, resource.NewTracker(10, logger), nil, nil)
 			if m.portAlloc != nil {
@@ -426,6 +428,7 @@ func TestSpawn_PortAllocNilFallback_Coverage(t *testing.T) {
 	cfg.Agent.PortRangeStart = 40000
 	cfg.Agent.PortRangeEnd = 49999
 	cfg.Agent.PortRangePerAgent = 0 // triggers portAlloc=nil
+	isolateRegistry(t, cfg)
 
 	m := NewAgentManager(cfg, logger, resource.NewTracker(10, logger), nil, nil)
 	if m.portAlloc != nil {
@@ -519,6 +522,7 @@ func TestStop_ClosesTTLChannel(t *testing.T) {
 	cfg.Agent.PortRangeStart = 60000
 	cfg.Agent.PortRangeEnd = 69999
 	cfg.Agent.PortRangePerAgent = 1000
+	isolateRegistry(t, cfg)
 
 	m := NewAgentManager(cfg, logger, resource.NewTracker(10, logger), nil, nil)
 	m.Stop()
@@ -600,6 +604,7 @@ func TestDestroy_NilManagers(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Agent.PortRangeStart = 100
 	cfg.Agent.PortRangeEnd = 50 // invalid → portAlloc nil
+	isolateRegistry(t, cfg)
 	tracker := resource.NewTracker(10, logger)
 	m := NewAgentManager(cfg, logger, tracker, nil, nil)
 	defer m.Stop()
@@ -643,6 +648,7 @@ func TestSpawn_EmptyAgentID_NoValidationError(t *testing.T) {
 
 func TestNewAgentManager_AllFieldsPopulated(t *testing.T) {
 	cfg := config.DefaultConfig()
+	isolateRegistry(t, cfg)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	tracker := resource.NewTracker(cfg.Agent.MaxAgents, logger)
 	m := NewAgentManager(cfg, logger, tracker, nil, nil)

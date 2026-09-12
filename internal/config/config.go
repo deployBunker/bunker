@@ -113,7 +113,64 @@ type AgentConfig struct {
 	DefaultTTL                 time.Duration `mapstructure:"default_ttl"`
 	// ImageSpec holds the GAP-064 image-customization policy.
 	ImageSpec ImageSpecConfig `mapstructure:"image_spec"`
+	// Registry holds the GAP-070 durable agent registry settings.
+	Registry RegistryConfig `mapstructure:"registry"`
+	// Reconciliation holds the GAP-070 startup reconciliation policy.
+	Reconciliation ReconciliationConfig `mapstructure:"reconciliation"`
 }
+
+// RegistryConfig is the GAP-070 durable agent lifecycle registry policy: an
+// append-only JSONL event log (spawn/heartbeat/destroy) that bunkerd replays
+// at startup so agent state survives a daemon restart.
+type RegistryConfig struct {
+	// Enabled gates durable persistence. When false the daemon behaves
+	// exactly as before GAP-070 (in-memory tracker only) and `bunker
+	// registry compact` has nothing to compact.
+	Enabled bool `mapstructure:"enabled"`
+	// Path is the active registry file (mode 0600). Rotated backups are
+	// Path.1 … Path.<max_backups>.
+	Path string `mapstructure:"path"`
+	// MaxBytes caps the active file before it is rotated.
+	MaxBytes int64 `mapstructure:"max_bytes"`
+	// MaxBackups is the number of rotated files retained.
+	MaxBackups int `mapstructure:"max_backups"`
+	// KnownIDCap bounds the destroyed-agent ID index that compaction
+	// persists (newest kept), which is what keeps a repeated destroy
+	// idempotent after compaction.
+	KnownIDCap int `mapstructure:"known_id_cap"`
+}
+
+// ReconciliationConfig controls what bunkerd does at startup with agents
+// found in one store but not the other.
+type ReconciliationConfig struct {
+	// Mode is "destroy" (default) or "adopt".
+	//
+	//   destroy — a bunker-* system user that the registry does not know is
+	//             removed from the host.
+	//   adopt   — such an orphan is re-registered in the tracker and its
+	//             exact persisted port reservation is restored, so a later
+	//             spawn cannot double-allocate the same ports.
+	Mode string `mapstructure:"mode"`
+}
+
+// ReconcileModes are the accepted reconciliation.mode values.
+const (
+	ReconcileModeDestroy = "destroy"
+	ReconcileModeAdopt   = "adopt"
+)
+
+// Registry defaults. Kept in sync with internal/registry's documented
+// defaults by TestRegistryConfigDefaultsMatchRegistryPackage.
+const (
+	// DefaultRegistryPath is the production registry file.
+	DefaultRegistryPath = "/var/lib/bunkerd/agents.jsonl"
+	// DefaultRegistryMaxBytes caps the active file at 5 MiB.
+	DefaultRegistryMaxBytes int64 = 5 << 20
+	// DefaultRegistryMaxBackups is the number of rotated files kept.
+	DefaultRegistryMaxBackups = 3
+	// DefaultRegistryKnownIDCap bounds the persisted destroyed-ID index.
+	DefaultRegistryKnownIDCap = 10000
+)
 
 // ImageSpecConfig is server policy for the GAP-064 per-agent image
 // customization feature: where customized images are cached and how long a
@@ -196,6 +253,20 @@ func DefaultConfig() *Config {
 				CacheDir:     "/var/cache/bunkerd/imagespec",
 				BuildTimeout: 20 * time.Minute,
 			},
+			// GAP-070: durable registry is ON by default so a daemon
+			// restart never forgets its agents. Reconciliation defaults to
+			// destroy — an unmanaged bunker-* user is a leftover, not an
+			// agent the operator asked to keep.
+			Registry: RegistryConfig{
+				Enabled:    true,
+				Path:       "/var/lib/bunkerd/agents.jsonl",
+				MaxBytes:   5 << 20, // 5 MiB
+				MaxBackups: 3,
+				KnownIDCap: 10000,
+			},
+			Reconciliation: ReconciliationConfig{
+				Mode: ReconcileModeDestroy,
+			},
 		},
 		Tunnel: TunnelConfig{
 			Enabled:        true,
@@ -269,6 +340,12 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("agent.default_disk_bytes")
 	v.BindEnv("agent.default_max_docker_containers")
 	v.BindEnv("agent.default_ttl")
+	v.BindEnv("agent.registry.enabled")
+	v.BindEnv("agent.registry.path")
+	v.BindEnv("agent.registry.max_bytes")
+	v.BindEnv("agent.registry.max_backups")
+	v.BindEnv("agent.registry.known_id_cap")
+	v.BindEnv("agent.reconciliation.mode")
 	v.BindEnv("tunnel.enabled")
 	v.BindEnv("tunnel.binary_path")
 	v.BindEnv("tunnel.tunnel_port")
@@ -329,7 +406,62 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("tls.ca_file is required when mtls is enabled")
 		}
 	}
+	switch c.Agent.Registry.Defaults(); c.Agent.Registry.Enabled {
+	case true:
+		if c.Agent.Registry.Path == "" {
+			return fmt.Errorf("agent.registry.path is required when the registry is enabled")
+		}
+		if c.Agent.Registry.MaxBytes <= 0 {
+			return fmt.Errorf("agent.registry.max_bytes must be > 0")
+		}
+		if c.Agent.Registry.MaxBackups <= 0 {
+			return fmt.Errorf("agent.registry.max_backups must be > 0")
+		}
+	}
+	if err := c.Agent.Reconciliation.Validate(); err != nil {
+		return err
+	}
 	return nil
+}
+
+// Defaults fills in zero-valued registry settings so a config file that only
+// sets a path still gets the documented caps.
+func (r *RegistryConfig) Defaults() {
+	if r.Path == "" {
+		r.Path = DefaultRegistryPath
+	}
+	if r.MaxBytes <= 0 {
+		r.MaxBytes = DefaultRegistryMaxBytes
+	}
+	if r.MaxBackups <= 0 {
+		r.MaxBackups = DefaultRegistryMaxBackups
+	}
+	if r.KnownIDCap <= 0 {
+		r.KnownIDCap = DefaultRegistryKnownIDCap
+	}
+}
+
+// Validate normalises and checks the reconciliation mode. An empty mode means
+// the documented default (destroy).
+func (r *ReconciliationConfig) Validate() error {
+	if r.Mode == "" {
+		r.Mode = ReconcileModeDestroy
+	}
+	switch r.Mode {
+	case ReconcileModeDestroy, ReconcileModeAdopt:
+		return nil
+	default:
+		return fmt.Errorf("agent.reconciliation.mode must be %q or %q, got %q",
+			ReconcileModeDestroy, ReconcileModeAdopt, r.Mode)
+	}
+}
+
+// ModeOrDestroy returns the effective reconciliation mode.
+func (r *ReconciliationConfig) ModeOrDestroy() string {
+	if r.Mode == "" {
+		return ReconcileModeDestroy
+	}
+	return r.Mode
 }
 
 // CheckAuth is the startup authentication gate. It returns a non-empty

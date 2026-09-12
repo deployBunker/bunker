@@ -586,6 +586,17 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		m.logger.Error("tracker register failed", "agent_id", agentID, "error", err)
 	}
 
+	// ── Step 3.5: Persist the spawn durably (GAP-070) ──────────────
+	// The registry is what survives a daemon restart, so a spawn that
+	// cannot be persisted must NOT report success: roll back the user, the
+	// SSH key, the port range and the tracker slot, and fail loudly.
+	if err := m.persistSpawn(rec); err != nil {
+		m.logger.Error("persisting agent spawn failed, rolling back", "agent_id", agentID, "error", err)
+		m.tracker.Unregister(agentID)
+		cleanup()
+		return nil, fmt.Errorf("persist agent spawn: %w", err)
+	}
+
 	// ── Build response ─────────────────────────────────────────────
 	// hostname is already determined above for SSHFS/tunnel commands.
 
@@ -609,6 +620,17 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		} else {
 			tailnetIP = ip
 			rec.TailnetIP = tailnetIP
+		}
+	}
+
+	// ── Step 3.6: Refresh persisted connection metadata (GAP-070) ──
+	// The durability gate above ran before the tunnel/tailscale starts, so
+	// the public URL and tailnet IP are upserted here. This second append is
+	// best-effort: the agent is already durable, and a lost URL only means a
+	// replayed record lacks it until the next spawn.
+	if publicURL != "" || tailnetIP != "" {
+		if err := m.persistSpawn(rec); err != nil {
+			m.logger.Warn("refreshing persisted agent metadata failed", "agent_id", agentID, "error", err)
 		}
 	}
 

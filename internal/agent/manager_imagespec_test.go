@@ -173,6 +173,7 @@ func TestAgentContainerName(t *testing.T) {
 
 func TestNewAgentManager_WiresImageBuilder(t *testing.T) {
 	cfg := config.DefaultConfig()
+	isolateRegistry(t, cfg)
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	tracker := resource.NewTracker(cfg.Agent.MaxAgents, logger)
 	m := NewAgentManager(cfg, logger, tracker, nil, nil)

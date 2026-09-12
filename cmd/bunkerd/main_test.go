@@ -186,6 +186,15 @@ agent:
 // clean exit (nil error or context.Canceled from the signal-driven cancel).
 func TestStartupShutdown(t *testing.T) {
 	port := scratchPort(t)
+	// This test exercises daemon boot/shutdown, NOT the GAP-070 durable
+	// registry, so the registry stays OFF. Startup reconciliation is
+	// destructive by design — an agent it cannot restore/adopt with its
+	// EXACT port reservation is force-destroyed — so any live reconcile
+	// here could delete the test host's real bunker-* agents. Adoption
+	// mode is NOT a safe substitute: an orphan without readable port
+	// metadata fails adoption and is destroyed. The registry-enabled start
+	// path is covered by internal/server's "refuses without a durable
+	// registry" test and the reconcile tests in internal/agent.
 	cfgPath := writeTestConfig(t, fmt.Sprintf(`
 server:
   grpc_addr: "127.0.0.1:%d"
@@ -193,6 +202,9 @@ server:
 auth:
   enabled: true
   token: "test-token"
+agent:
+  registry:
+    enabled: false
 `, port))
 
 	oldArgs := os.Args

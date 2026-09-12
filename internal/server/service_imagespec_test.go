@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -89,6 +90,8 @@ func TestSpawnAgent_DisabledFeatureIsInvalidArgument(t *testing.T) {
 // plumbing, never from the image-spec gate itself.
 func TestSpawnAgent_NoImageSpecUnaffected(t *testing.T) {
 	cfg := config.DefaultConfig()
+	// Keep the GAP-070 durable registry out of the host's real state.
+	cfg.Agent.Registry.Path = filepath.Join(t.TempDir(), "agents.jsonl")
 	logger := testDiscardLogger()
 	tracker := resource.NewTracker(cfg.Agent.MaxAgents, logger)
 	agentMgr := agent.NewAgentManager(cfg, logger, tracker, nil, nil)

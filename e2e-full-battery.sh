@@ -51,6 +51,12 @@ agent:
   port_range_start: 30000
   port_range_end: 30999
   port_range_per_agent: 100
+  # GAP-070: this battery's daemon must NEVER open the production registry or
+  # reconcile against the host's real agents — on a shared host the default
+  # reconciliation mode would DESTROY production agents. Durable-registry
+  # behaviour is covered deterministically by the Go suite and by section 14.
+  registry:
+    enabled: false
 EOF
 fi
 
@@ -64,7 +70,7 @@ fi
 
 cleanup() {
     # Destroy any agents created during tests
-    for agent in e2e-main e2e-agent-2 e2e-agent-3 e2e-agent-4 e2e-agent-5 e2e-imgspec e2e-imgspec-b e2e-imgspec-bad; do
+    for agent in e2e-main e2e-agent-2 e2e-agent-3 e2e-agent-4 e2e-agent-5 e2e-imgspec e2e-imgspec-b e2e-imgspec-bad gap070-idem; do
         $BUNKER destroy "$agent" --force > /dev/null 2>&1 || true
     done
     # Kill leftover users. Standalone: every bunker- user is fair game.
@@ -628,6 +634,155 @@ else
 fi
 
 rm -f "$GAP064_SPEC" "$GAP064_REJECT" "$GAP064_SPEC2"
+echo ""
+
+# =============================================
+# 14. DURABLE AGENT REGISTRY (GAP-070)
+# =============================================
+# Deterministic and host-safe: every check runs against a throwaway registry in
+# /tmp (3 spawns + 1 heartbeat + 1 destroy, plus a corrupt line and a torn
+# tail). Nothing here touches the live registry or any real agent, so this
+# section runs in BOTH standalone and coexist (CI) mode.
+echo "=== 14. Durable Registry (GAP-070) ==="
+GAP070_DIR="$(mktemp -d /tmp/bunker-gap070-XXXXXX)"
+GAP070_REG="$GAP070_DIR/agents.jsonl"
+cat > "$GAP070_REG" <<'EOF'
+{"ts":"2026-09-12T10:00:00Z","kind":"spawn","agent_id":"aa","status":"running","created_at":"2026-09-12T10:00:00Z","expires_at":"2026-09-12T16:00:00Z","port_start":31000,"port_end":31099,"ssh_key_path":"/etc/bunkerd/ssh/aa"}
+{"ts":"2026-09-12T10:00:01Z","kind":"spawn","agent_id":"bb","status":"running","created_at":"2026-09-12T10:00:01Z","expires_at":"2026-09-12T16:00:00Z","port_start":31100,"port_end":31199,"ssh_key_path":"/etc/bunkerd/ssh/bb"}
+{"ts":"2026-09-12T10:00:02Z","kind":"spawn","agent_id":"cc","status":"running","created_at":"2026-09-12T10:00:02Z","expires_at":"2026-09-12T16:00:00Z","port_start":31200,"port_end":31299,"ssh_key_path":"/etc/bunkerd/ssh/cc"}
+{"ts":"2026-09-12T10:05:00Z","kind":"heartbeat","agent_id":"aa","expires_at":"2026-09-12T22:00:00Z","status":"running"}
+{"ts":"2026-09-12T10:10:00Z","kind":"destroy","agent_id":"cc"}
+{"ts":"2026-09-12T10:11:00Z","kind":"spawn", BROKEN-LINE}
+EOF
+# A torn final line (no newline) must be ignored, not parse-failed loudly.
+printf '%s' '{"ts":"2026-09-12T10:12:00Z"' >> "$GAP070_REG"
+chmod 600 "$GAP070_REG"
+
+COMPACT_OUT=$($BUNKER registry compact --path "$GAP070_REG" 2>&1)
+COMPACT_EXIT=$?
+if [ "$COMPACT_EXIT" -eq 0 ] && echo "$COMPACT_OUT" | grep -q "registry compacted:"; then
+    assert "bunker registry compact rewrote the registry"
+else
+    fail "bunker registry compact failed (exit $COMPACT_EXIT): $COMPACT_OUT"
+fi
+if echo "$COMPACT_OUT" | grep -qE "events: [0-9]+ -> [0-9]+" && echo "$COMPACT_OUT" | grep -qE "live agents: 2 -> 2"; then
+    assert "compact printed before/after counts ($(echo "$COMPACT_OUT" | grep 'events:' | sed 's/^ *//'))"
+else
+    fail "compact did not print before/after counts: $COMPACT_OUT"
+fi
+if [ "$(grep -c '"kind":"spawn"' "$GAP070_REG")" = "2" ] && ! grep -q '"agent_id":"cc"' "$GAP070_REG"; then
+    assert "compacted registry holds exactly one current-state record per live agent"
+else
+    fail "compacted registry has the wrong record set ($(wc -l < "$GAP070_REG") lines)"
+fi
+if grep -q '"kind":"known"' "$GAP070_REG" && grep -q '"cc"' "$GAP070_REG"; then
+    assert "destroyed ID kept in the bounded known-index record (idempotent destroy)"
+else
+    fail "destroyed ID was not retained by compaction"
+fi
+if [ "$(stat -c '%a' "$GAP070_REG")" = "600" ]; then
+    assert "registry file mode is 0600"
+else
+    fail "registry file mode is $(stat -c '%a' "$GAP070_REG"), want 600"
+fi
+if [ -f "$GAP070_REG.1" ]; then
+    fail "rotated backup survived compaction (would resurrect stale events)"
+else
+    assert "compaction removed superseded rotated backups"
+fi
+COMPACT_OUT2=$($BUNKER registry compact --path "$GAP070_REG" 2>&1)
+if echo "$COMPACT_OUT2" | grep -qE "live agents: 2 -> 2"; then
+    assert "second compaction is idempotent (live set unchanged)"
+else
+    fail "second compaction changed the live set: $COMPACT_OUT2"
+fi
+if [ "$(wc -l < "$GAP070_REG")" = "3" ]; then
+    assert "compacted registry replays to 2 live records + 1 known-index record"
+else
+    fail "compacted registry line count = $(wc -l < "$GAP070_REG"), want 3"
+fi
+# Spawn metadata needed by adopt must survive the rewrite.
+if grep -q '"port_start":31000' "$GAP070_REG" && grep -q '"ssh_key_path":"/etc/bunkerd/ssh/aa"' "$GAP070_REG"; then
+    assert "exact port reservation + key path survive compaction (adopt metadata)"
+else
+    fail "compaction dropped port/key metadata needed to restore an exact reservation"
+fi
+# Cross-process exclusion: a held advisory lock must make compact wait.
+if command -v flock > /dev/null 2>&1; then
+    flock "$GAP070_REG.lock" -c 'sleep 3' &
+    GAP070_LOCK_PID=$!
+    sleep 0.3
+    GAP070_START=$(date +%s%N)
+    $BUNKER registry compact --path "$GAP070_REG" > /dev/null 2>&1
+    GAP070_MS=$(( ($(date +%s%N) - GAP070_START) / 1000000 ))
+    wait "$GAP070_LOCK_PID" 2>/dev/null || true
+    if [ "$GAP070_MS" -ge 1000 ]; then
+        assert "compact waited for the cross-process lock (${GAP070_MS}ms)"
+    else
+        fail "compact ignored a held cross-process lock (${GAP070_MS}ms)"
+    fi
+else
+    note "flock unavailable — cross-process lock check skipped (covered by go test)"
+fi
+# --dry-run must not modify anything.
+GAP070_SUM_BEFORE=$(md5sum < "$GAP070_REG")
+$BUNKER registry compact --path "$GAP070_REG" --dry-run > /dev/null 2>&1
+GAP070_SUM_AFTER=$(md5sum < "$GAP070_REG")
+if [ "$GAP070_SUM_BEFORE" = "$GAP070_SUM_AFTER" ]; then
+    assert "compact --dry-run left the registry untouched"
+else
+    fail "compact --dry-run modified the registry"
+fi
+rm -rf "$GAP070_DIR"
+
+# Coexist daemons must never open the production registry (they would reconcile
+# against — and destroy — the host's real agents).
+if [ -n "$BUNKERD_COEXIST" ]; then
+    if grep -q "registry:" "$BATTERY_CONFIG" && grep -q "enabled: false" "$BATTERY_CONFIG"; then
+        assert "coexist daemon runs with the durable registry disabled (production agents safe)"
+    else
+        fail "coexist daemon config does not disable the durable registry"
+    fi
+    note "live-daemon registry checks skipped in coexist mode — replay/reconcile/destroy-twice are covered by go test ./internal/{registry,agent,server}"
+else
+    # Standalone: full take-over, so exercise the live daemon's own registry.
+    GAP070_LIVE="${BUNKER_REGISTRY_PATH:-/var/lib/bunkerd/agents.jsonl}"
+    $BUNKER spawn gap070-idem > /dev/null 2>&1 || true
+    sleep 2
+    if [ -f "$GAP070_LIVE" ] && grep -q '"agent_id":"gap070-idem"' "$GAP070_LIVE"; then
+        assert "spawn persisted a durable registry record at $GAP070_LIVE"
+    else
+        fail "no durable spawn record for gap070-idem in $GAP070_LIVE"
+    fi
+    if [ "$(stat -c '%a' "$GAP070_LIVE" 2>/dev/null)" = "600" ]; then
+        assert "live registry file mode is 0600"
+    else
+        fail "live registry file mode is $(stat -c '%a' "$GAP070_LIVE" 2>/dev/null), want 600"
+    fi
+    # Idempotent destroy: the FIRST destroy removes the agent, the SECOND must
+    # still succeed because the registry remembers it.
+    $BUNKER destroy gap070-idem --force > /dev/null 2>&1
+    FIRST_EXIT=$?
+    $BUNKER destroy gap070-idem --force > /dev/null 2>&1
+    SECOND_EXIT=$?
+    if [ "$SECOND_EXIT" -eq 0 ]; then
+        assert "repeated destroy of a known absent agent succeeds (first=$FIRST_EXIT second=$SECOND_EXIT)"
+    else
+        fail "repeated destroy failed (first=$FIRST_EXIT second=$SECOND_EXIT) — registry knowledge was lost"
+    fi
+    # Never-seen IDs must still report not_found (non-force).
+    $BUNKER destroy gap070-never-seen > /dev/null 2>&1
+    if [ "$?" -ne 0 ]; then
+        assert "destroy of a never-seen ID still reports not_found"
+    else
+        fail "destroy of a never-seen ID unexpectedly succeeded"
+    fi
+    if grep -q '"kind":"destroy"' "$GAP070_LIVE" && grep -q '"agent_id":"gap070-idem"' "$GAP070_LIVE"; then
+        assert "destroy lifecycle event durably recorded"
+    else
+        fail "destroy was not persisted to the registry"
+    fi
+fi
 echo ""
 
 # =============================================

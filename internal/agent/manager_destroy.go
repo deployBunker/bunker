@@ -50,9 +50,11 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	// Look up the UID before userdel so we can clean up the actual rootless socket
 	// created under /run/user/<uid>.
 	var uid string
+	userPresent := true
 	if u, err := user.Lookup(username); err == nil {
 		uid = u.Uid
 	} else {
+		userPresent = false
 		m.logger.Warn("cannot lookup user before destroy", "username", username, "error", err)
 	}
 
@@ -102,6 +104,21 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 				m.logger.Info("freed port range", "agent_id", agentID)
 			}
 			m.tracker.Unregister(agentID)
+
+			// GAP-070 idempotent destroy: the system user is gone AND the
+			// durable lifecycle store already knew this agent, so this is a
+			// repeat destroy (TTL reaper retry, CLI retry, reconcile
+			// cleanup) and it succeeds. A never-seen ID still reports
+			// not_found below, which is what makes the two cases
+			// distinguishable after a restart or a compaction.
+			if !userPresent && m.knownAgent(agentID) {
+				if perr := m.persistDestroy(agentID); perr != nil {
+					m.logger.Warn("registry destroy append failed", "agent_id", agentID, "error", perr)
+				}
+				m.logger.Info("agent already absent; destroy succeeded idempotently",
+					"agent_id", agentID, "username", username)
+				return &v1.DestroyAgentResponse{AgentId: agentID, Status: "destroyed"}, nil
+			}
 			// Raw userdel output stays in the server log for diagnostics;
 			// the user-facing error must stay clean so the CLI can present
 			// a tidy "agent not found" without leaking command output.
@@ -151,6 +168,16 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	if m.portAlloc != nil {
 		m.portAlloc.Free(agentID)
 		m.logger.Info("freed port range", "agent_id", agentID)
+	}
+
+	// GAP-070: the agent is gone from the host — record that durably so a
+	// restart does not resurrect it, and so a repeated destroy of the same
+	// ID stays idempotent. The destroy itself already succeeded, so a failed
+	// append is logged rather than failing the caller (the next replay would
+	// otherwise report a live agent that no longer exists, which
+	// reconciliation then purges).
+	if err := m.persistDestroy(agentID); err != nil {
+		m.logger.Warn("registry destroy append failed", "agent_id", agentID, "error", err)
 	}
 
 	m.logger.Info("agent destroyed", "agent_id", agentID)

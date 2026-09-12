@@ -160,7 +160,28 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	tunnelMgr := tunnel.NewTunnelManager(&s.cfg.Tunnel, s.logger)
 	tailscaleMgr := tailscale.NewTailscaleManager(&s.cfg.Tailscale, s.logger)
 	agentMgr := agent.NewAgentManager(s.cfg, s.logger, tracker, tunnelMgr, tailscaleMgr)
-	bunkerdSvc := &bunkerdService{cfg: s.cfg, logger: s.logger, agentMgr: agentMgr, tracker: tracker, tunnelMgr: tunnelMgr, tailscaleMgr: tailscaleMgr, keyMgr: s.keyMgr, jwtAuth: s.jwtAuth, cpuSampler: resource.NewCPUSampler(), auditLog: s.auditLog}
+	// GAP-070: a daemon that cannot persist agent lifecycle state must not
+	// serve — every spawn it accepted would be forgotten by the next
+	// restart. Fail before opening any listener.
+	if err := agentMgr.RegistryError(); err != nil {
+		return fmt.Errorf("agent registry unavailable: %w", err)
+	}
+	// Replay + reconcile BEFORE serving and before the TTL reaper ticks:
+	// replayed live agents are restored (with their exact port
+	// reservations), stale records are purged, and orphans are destroyed or
+	// adopted per agent.reconciliation.mode.
+	rep := agentMgr.Reconcile(ctx)
+	s.logger.Info("agent registry reconciliation complete",
+		"mode", rep.Mode,
+		"replayed_live", rep.ReplayedLive,
+		"replayed_known", rep.ReplayedKnown,
+		"system_agents", rep.SystemAgents,
+		"restored", rep.Restored,
+		"purged", rep.Purged,
+		"adopted", rep.Adopted,
+		"destroyed", rep.Destroyed,
+	)
+	bunkerdSvc := &bunkerdService{cfg: s.cfg, logger: s.logger, agentMgr: agentMgr, heartbeats: agentMgr, tracker: tracker, tunnelMgr: tunnelMgr, tailscaleMgr: tailscaleMgr, keyMgr: s.keyMgr, jwtAuth: s.jwtAuth, cpuSampler: resource.NewCPUSampler(), auditLog: s.auditLog}
 
 	// Audit interceptor: composed INSIDE the auth interceptor (auth listed
 	// first, so it runs outermost) so only authenticated requests reach it —
@@ -182,7 +203,7 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 
 	// Also mount the Agent service with a permissive auth interceptor
 	// that accepts both master tokens and agent-scoped sub-keys.
-	agentSvc := &agentService{logger: s.logger, tracker: tracker}
+	agentSvc := &agentService{logger: s.logger, tracker: tracker, heartbeats: agentMgr}
 	agentPath, agentHandler := bunkerv1connect.NewAgentHandler(
 		agentSvc,
 		connect.WithInterceptors(agentInterceptors...),

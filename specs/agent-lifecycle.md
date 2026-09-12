@@ -1,6 +1,6 @@
 # Bunker — Agent Lifecycle Specification
 
-Version: 1.1.0
+Version: 1.2.0
 Status: Stable
 Last Updated: 2026-09-12
 
@@ -324,6 +324,128 @@ bunker run <agent-id> --detach -- docker compose up
 2. Unit type: `oneshot` with `RemainAfterExit=yes`
 3. Survives exec session termination
 4. Managed via `systemctl --user --machine=bunker-<id>@`
+
+## Durable Registry (GAP-070)
+
+Agent lifecycle state is persisted in an append-only JSONL log that the daemon
+replays at startup, so agent state survives a `bunkerd` restart. Before GAP-070
+the tracker was in-memory only: a restart forgot every agent while its Linux
+user, home directory, and containers kept running.
+
+### Log format
+
+Default path `/var/lib/bunkerd/agents.jsonl`, mode `0600`, one JSON object per
+line (a torn final line is ignored on replay; a corrupt complete line is logged
+and skipped, and every earlier valid event is retained):
+
+```json
+{"ts":"2026-09-12T10:00:00Z","kind":"spawn","agent_id":"abc","status":"running","created_at":"...","expires_at":"...","port_start":10000,"port_end":10099,"limits":{...},"ssh_key_path":"/etc/bunkerd/ssh/abc"}
+{"ts":"2026-09-12T10:05:00Z","kind":"heartbeat","agent_id":"abc","expires_at":"...","status":"running"}
+{"ts":"2026-09-12T11:00:00Z","kind":"destroy","agent_id":"abc"}
+{"ts":"...","kind":"known","known_ids":["abc","def"]}
+```
+
+Replay folds events in file order (later wins): `spawn` upserts a live record
+with the full current state needed to restore the agent, `heartbeat` extends its
+expiry (never shrinks), `destroy` removes it from the live set and remembers the
+ID, and `known` seeds the bounded destroyed-ID index written by compaction.
+
+### Retention and rotation
+
+The active file is size-capped at `agent.registry.max_bytes` (default 5 MiB) and
+rotated through `agent.registry.max_backups` files (default 3:
+`agents.jsonl.1` … `.3`). Replay reads the oldest rotation first. Rotation is a
+**retention window, not a state transition** — an event that rotates out is
+gone, so keep the log small with `bunker registry compact` (a fleet's event
+volume is kilobytes; the 20 MiB window is deliberate headroom).
+
+### Compaction
+
+```
+bunker registry compact [--path /var/lib/bunkerd/agents.jsonl] [--dry-run]
+```
+
+Rewrites the active log to **exactly one current-state record per live agent**,
+dropping stale lifecycle events, and prints before/after counts. Consequences:
+
+* destroyed agents disappear except for their IDs, which live in a single
+  bounded `known` index record (`agent.registry.known_id_cap`, default 10000,
+  newest kept) — that index is what keeps a repeated `destroy` idempotent after
+  compaction;
+* rotated backups are removed (they are superseded, and re-folding them would
+  resurrect stale events);
+* the rewrite is atomic (temp file + rename, file and parent directory
+  fsync'd), so a crash mid-compaction cannot truncate the registry;
+* the daemon and the CLI share an advisory `flock` on `agents.jsonl.lock`, so
+  compaction is serialized against spawn/destroy/heartbeat appends and is safe
+  with the daemon running (and safe offline).
+
+### Startup reconciliation
+
+`server.Run` replays and reconciles **before** serving traffic and **before**
+the TTL reaper ticks. Each agent produces exactly one startup log line:
+
+| Registry | System user | Action |
+|---|---|---|
+| live record | exists | **restored** into the tracker with its exact port reservation (an unrestorable record is **destroyed** instead — see Failure semantics) |
+| live record | missing | **purged** (stale; ID remembered as known) |
+| no record | exists | orphan → **destroyed** (default) or **adopted** |
+| no record | missing | nothing |
+
+`agent.reconciliation.mode` is `destroy` (default) or `adopt`. Adoption
+re-registers the agent and restores its **exact** persisted port sub-range from
+`<home>/.bunker/ports` (written at spawn time) via `PortAllocator.Restore`, so a
+post-relaunch spawn can never double-allocate the same ports. Adopted agents
+carry no durable TTL (zero expiry) and are therefore never reaped.
+
+Adoption is **exact-port or nothing**. Missing or malformed metadata, a
+persisted range that is not a legal pool sub-range, or a range another agent
+already holds all fail adoption *before* a tracker or registry record can
+exist; reconciliation then force-destroys the orphan (one `destroy` action
+line, no `adopt` line). An agent whose ports the next spawn could
+double-allocate must not be served — a leftover user is cheaper to recreate
+than a port collision.
+
+Restoration is held to the same contract: ports are reserved **before** the
+tracker record is registered (and released again if registration fails), so an
+agent is never half-managed — visible to the RPC surface without the exact
+reservation that makes it safe.
+
+A failed system probe (e.g. unreadable `/etc/passwd`) aborts reconciliation
+rather than being read as "no agents exist" — otherwise one broken probe would
+destroy every orphan and purge every live record.
+
+### Idempotent destroy
+
+`destroy` of an ID that the registry knew **and** whose system user is already
+gone succeeds (`destroyed`) instead of returning `not_found`; a never-seen ID
+still returns `not_found`. That distinction is durable across replay and
+compaction via the bounded known-ID index. Any non-force failure path still
+releases the tracker slot and the port range.
+
+### Failure semantics
+
+* A spawn whose registry append fails **rolls back** (user removed, key
+  removed, port range released, tracker slot freed) and returns an error — the
+  daemon never reports durable success for state it could not persist.
+* **Unsafe adoption or restoration falls back to destroy.** An agent is only
+  ever served with its exact isolation metadata. If a replayed live record's
+  reservation cannot be re-established — range missing, invalid, outside the
+  pool, or already held by another agent — reconciliation fails closed for that
+  agent: any tracker record and port reservation it holds are dropped, the
+  unsafe live registry record is removed (so a restart cannot resurrect it),
+  the system agent is force-destroyed through the destroy path, and exactly one
+  `destroy` action line is logged. An orphan that cannot be adopted with its
+  exact persisted range is destroyed the same way. Running an agent whose ports
+  the next spawn could double-allocate is never an option.
+* A destroy failure in that fail-closed path is logged as an error and the
+  agent is **still** left with no tracker record, no port reservation and no
+  live registry record — the following restart re-detects the surviving system
+  user as an orphan.
+* A daemon that cannot open the registry refuses to start
+  (`agent registry unavailable`).
+* A failed heartbeat append is logged and tolerated: the in-memory TTL
+  extension stands and the next heartbeat retries.
 
 ## State Machine
 

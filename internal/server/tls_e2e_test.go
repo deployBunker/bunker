@@ -108,6 +108,11 @@ func TestServer_RunWithSelfSignedTLS(t *testing.T) {
 	cfg.TLS.KeyFile = tmp + "/key.pem"
 	cfg.TLS.Hosts = []string{"127.0.0.1"}
 	cfg.Auth.Enabled = false
+	// This test exercises the TLS listener, not the GAP-070 durable agent
+	// registry: keep the registry OFF so the daemon neither touches the
+	// host's real /var/lib/bunkerd state nor reconciles (and potentially
+	// destroys) real bunker-* agents on the test host.
+	cfg.Agent.Registry.Enabled = false
 
 	s := New(cfg)
 	ctx, cancel := context.WithCancel(context.Background())

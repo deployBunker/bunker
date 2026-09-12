@@ -47,6 +47,7 @@ type bunkerdService struct {
 	cfg          *config.Config
 	logger       *slog.Logger
 	agentMgr     agentManager
+	heartbeats   heartbeatManager
 	tracker      *resource.Tracker
 	tunnelMgr    *tunnel.TunnelManager
 	tailscaleMgr *tailscale.TailscaleManager
@@ -58,6 +59,15 @@ type bunkerdService struct {
 	// to it. It is only used for read access here — the interceptor owns
 	// the write path.
 	auditLog *audit.AuditLog
+}
+
+// heartbeatManager is the narrow slice of the agent manager the heartbeat
+// RPCs use. Heartbeats are routed through the manager (GAP-070) so the
+// durable registry records every lifecycle change; a nil implementation
+// (tests, unwired services) falls back to the pre-existing direct tracker
+// mutation.
+type heartbeatManager interface {
+	Heartbeat(agentID string, ttl time.Duration) (*resource.AgentRecord, error)
 }
 
 // agentManager is the subset of *agent.AgentManager used by bunkerdService.
@@ -474,17 +484,30 @@ func (s *bunkerdService) RunAgent(ctx context.Context, req *connect.Request[v1.R
 
 // HeartbeatAgent acknowledges an agent heartbeat.
 func (s *bunkerdService) HeartbeatAgent(ctx context.Context, req *connect.Request[v1.HeartbeatAgentRequest]) (*connect.Response[v1.HeartbeatAgentResponse], error) {
-	rec := s.tracker.Get(req.Msg.AgentId)
-	if rec == nil {
-		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("agent %q not found", req.Msg.AgentId))
-	}
-	// Extend TTL on heartbeat unless the agent has a zero TTL. Never SHRINK:
-	// heartbeating a long-TTL agent (e.g. 720h) must not reset it to the
-	// default 6h — a shorter expiry would silently destroy the agent on TTL
-	// expiry (userdel + data loss) between renewal runs.
+	// The TTL to extend by: the configured default, or 6h when unset.
 	ttl := 6 * time.Hour
 	if s.cfg.Agent.DefaultTTL > 0 {
 		ttl = s.cfg.Agent.DefaultTTL
+	}
+	// Route through the agent manager so the durable registry records the
+	// extension (GAP-070). The manager applies the same never-SHRINK rule:
+	// heartbeating a long-TTL agent (e.g. 720h) must not reset it to the
+	// default 6h — a shorter expiry would silently destroy the agent on TTL
+	// expiry (userdel + data loss) between renewal runs.
+	if s.heartbeats != nil {
+		rec, err := s.heartbeats.Heartbeat(req.Msg.AgentId, ttl)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeNotFound, err)
+		}
+		return connect.NewResponse(&v1.HeartbeatAgentResponse{
+			AgentId:      req.Msg.AgentId,
+			ExpiresAt:    rec.ExpiresAt.Format(time.RFC3339),
+			Acknowledged: true,
+		}), nil
+	}
+	rec := s.tracker.Get(req.Msg.AgentId)
+	if rec == nil {
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("agent %q not found", req.Msg.AgentId))
 	}
 	candidate := time.Now().Add(ttl)
 	if candidate.After(rec.ExpiresAt) {
@@ -708,8 +731,9 @@ func buildSSHBaseCommand(ctx context.Context, agentID, sshKeyPath string, remote
 
 // agentService implements bunkerv1connect.AgentHandler.
 type agentService struct {
-	logger  *slog.Logger
-	tracker *resource.Tracker
+	logger     *slog.Logger
+	tracker    *resource.Tracker
+	heartbeats heartbeatManager
 }
 
 // GetInfo returns info about the authenticated agent.
@@ -757,6 +781,19 @@ func (s *agentService) Metrics(ctx context.Context, req *connect.Request[v1.Agen
 
 // Heartbeat sends a heartbeat from the authenticated agent.
 func (s *agentService) Heartbeat(ctx context.Context, req *connect.Request[v1.HeartbeatAgentRequest]) (*connect.Response[v1.HeartbeatAgentResponse], error) {
+	// Routed through the agent manager so the durable registry sees the
+	// extension (GAP-070); falls back to the tracker when unwired.
+	if s.heartbeats != nil {
+		rec, err := s.heartbeats.Heartbeat(req.Msg.AgentId, 6*time.Hour)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeNotFound, err)
+		}
+		return connect.NewResponse(&v1.HeartbeatAgentResponse{
+			AgentId:      req.Msg.AgentId,
+			ExpiresAt:    rec.ExpiresAt.Format(time.RFC3339),
+			Acknowledged: true,
+		}), nil
+	}
 	rec := s.tracker.Get(req.Msg.AgentId)
 	if rec == nil {
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("agent %q not found", req.Msg.AgentId))

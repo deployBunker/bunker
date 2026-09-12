@@ -46,6 +46,28 @@ agent:
   port_range_per_agent: 100
   # default_ttl: 6h           # default agent TTL (\\d+[hmd] format, e.g. 6h/90m/7d)
 
+  # Durable agent registry (GAP-070). Append-only JSONL lifecycle log
+  # (spawn / heartbeat / destroy) replayed at startup, so agents survive a
+  # daemon restart. Mode 0600, size-capped with rotation.
+  # A daemon that cannot open this file REFUSES TO START: every spawn it
+  # accepted would otherwise be forgotten by the next replay.
+  # Env overrides: BUNKERD_AGENT_REGISTRY_ENABLED / _PATH / _MAX_BYTES /
+  # _MAX_BACKUPS / _KNOWN_ID_CAP.
+  registry:
+    enabled: true                          # false = pre-GAP-070 in-memory behavior
+    path: /var/lib/bunkerd/agents.jsonl    # active log; rotated to .1 .2 .3
+    max_bytes: 5242880                     # 5 MiB per file before rotation
+    max_backups: 3                         # agents.jsonl.1 .. agents.jsonl.3
+    known_id_cap: 10000                    # destroyed-ID index kept by compaction
+
+  # Startup reconciliation between the replayed registry and system users.
+  #   destroy (default): a bunker-* user the registry does not know is removed.
+  #   adopt:             it is re-registered and its EXACT persisted port
+  #                      reservation is restored (no double allocation).
+  # Env override: BUNKERD_AGENT_RECONCILIATION_MODE.
+  reconciliation:
+    mode: destroy
+
 # Per-agent image customization (GAP-064): secure package-add specs on spawn.
 # image_spec:
 #   enabled: true                      # reject spawns carrying a spec when false
