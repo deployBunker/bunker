@@ -43,6 +43,7 @@ func recordToRegistry(rec *resource.AgentRecord) *registry.Record {
 		DockerHostTunnel: rec.DockerHostTunnel,
 		PublicURL:        rec.PublicURL,
 		TailnetIP:        rec.TailnetIP,
+		Image:            rec.Image,
 	}
 }
 
@@ -68,6 +69,7 @@ func registryToRecord(rec *registry.Record) *resource.AgentRecord {
 		TailnetIP:         rec.TailnetIP,
 		SshfsMount:        rec.SSHFSMount,
 		DockerHostTunnel:  rec.DockerHostTunnel,
+		Image:             rec.Image,
 	}
 }
 

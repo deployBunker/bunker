@@ -24,6 +24,12 @@ type AgentRecord struct {
 	SshfsMount        string // sshfs mount command
 	DockerHostTunnel  string // ssh -L tunnel command
 	DiskUsedBytes     uint64 // per-agent disk usage in bytes
+	// Image is the ref of the per-agent customized image built from the
+	// spawn's image spec (internal/imagespec, GAP-064). When non-empty, exec
+	// must run inside a container of this image through the agent's own
+	// rootless dockerd instead of the bare host user context (GAP-069).
+	// Empty for agents spawned without an image spec.
+	Image string
 }
 
 // Tracker manages agent state, capacity, and resource allocation.

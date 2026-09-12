@@ -123,6 +123,7 @@ func (s *Store) Compact() (CompactStats, error) {
 			DockerHostTunnel: rec.DockerHostTunnel,
 			PublicURL:        rec.PublicURL,
 			TailnetIP:        rec.TailnetIP,
+			Image:            rec.Image,
 		})
 	}
 

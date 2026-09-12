@@ -94,6 +94,11 @@ type Event struct {
 	PublicURL        string `json:"public_url,omitempty"`
 	TailnetIP        string `json:"tailnet_ip,omitempty"`
 
+	// Image is the per-agent customized image ref (GAP-064 image spec) that
+	// exec must run inside (GAP-069). Persisted so a replayed or adopted
+	// agent keeps the container context its spawn established.
+	Image string `json:"image,omitempty"`
+
 	// KnownIDs is set only on KindKnown index records.
 	KnownIDs []string `json:"known_ids,omitempty"`
 }
@@ -112,6 +117,7 @@ type Record struct {
 	DockerHostTunnel string
 	PublicURL        string
 	TailnetIP        string
+	Image            string
 }
 
 // Report summarises one replay pass.
@@ -409,6 +415,7 @@ func (s *Store) AppendSpawn(rec *Record) error {
 		DockerHostTunnel: rec.DockerHostTunnel,
 		PublicURL:        rec.PublicURL,
 		TailnetIP:        rec.TailnetIP,
+		Image:            rec.Image,
 	}
 	return s.append(ev, func() {
 		clone := *rec
@@ -631,6 +638,7 @@ func eventToRecord(ev *Event) *Record {
 		DockerHostTunnel: ev.DockerHostTunnel,
 		PublicURL:        ev.PublicURL,
 		TailnetIP:        ev.TailnetIP,
+		Image:            ev.Image,
 	}
 	if rec.Status == "" {
 		rec.Status = "running"

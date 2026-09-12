@@ -339,13 +339,20 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 	// BUNKER_SANDBOX=1. Disabled → the built commands are byte-identical to
 	// the pre-GAP-067 output.
 	disclosed := s.cfg != nil && s.cfg.Containment.Disclosure
+	// GAP-069: an agent spawned with an image spec carries its image ref on the
+	// tracker record (and in the durable registry, so a replayed/adopted agent
+	// keeps it). With a ref set, exec runs the command INSIDE a fresh container
+	// of that image through the agent's own rootless dockerd, instead of in the
+	// bare host user context. An empty ref (no image spec) is delegated
+	// unchanged to the pre-GAP-069 host-context builders.
+	imageRef := rec.Image
 	var cmd *exec.Cmd
 	if req.Msg.GetRaw() {
-		cmd = buildExecSSHRawCommand(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args, disclosed)
+		cmd = buildExecSSHRawCommandImage(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args, disclosed, imageRef)
 	} else if req.Msg.GetScriptContent() != "" {
-		cmd = buildExecSSHScriptCommand(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.GetScriptContent(), disclosed)
+		cmd = buildExecSSHScriptCommandImage(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.GetScriptContent(), disclosed, imageRef)
 	} else {
-		cmd = buildExecSSHCommand(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args, disclosed)
+		cmd = buildExecSSHCommandImage(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args, disclosed, imageRef)
 	}
 
 	stdoutPipe, err := cmd.StdoutPipe()
@@ -609,14 +616,7 @@ func buildAgentExecCommand(agentID, userHome, command string, args []string, dis
 	if disclosed {
 		sandboxEnv = containmentSandboxEnv + " "
 	}
-	remoteCmd := command
-	if len(args) > 0 {
-		quoted := make([]string, len(args))
-		for i, a := range args {
-			quoted[i] = shellQuoteSingle(a)
-		}
-		remoteCmd += " " + strings.Join(quoted, " ")
-	}
+	remoteCmd := buildAgentRemoteCmd(command, args)
 	// set -a (allexport) around the source so injected vars are exported to
 	// the child `sh -c` below — plain KEY=VALUE lines would otherwise only be
 	// shell variables, invisible to the wrapped command. The [ -f ] guard
@@ -624,6 +624,65 @@ func buildAgentExecCommand(agentID, userHome, command string, args []string, dis
 	// failed dot-source.
 	return fmt.Sprintf("set -a; [ -f %s ] && . %s 2>/dev/null; set +a; env PATH=%s DOCKER_HOST=unix://%s TMPDIR=%s %ssh -c %s",
 		envFile, envFile, agentPath, dockerSockPath, tmpDir, sandboxEnv, shellQuoteSingle(remoteCmd))
+}
+
+// buildAgentRemoteCmd joins the user command with its shell-quoted args into
+// the single command string both the host-context and the image-container
+// shell exec paths hand to `sh -c`.
+func buildAgentRemoteCmd(command string, args []string) string {
+	if len(args) == 0 {
+		return command
+	}
+	quoted := make([]string, len(args))
+	for i, a := range args {
+		quoted[i] = shellQuoteSingle(a)
+	}
+	return command + " " + strings.Join(quoted, " ")
+}
+
+// containerRunPrefix returns the leading `docker run` argv for an image-backed
+// exec (GAP-069): --rm so a one-shot exec never leaves a container behind, plus
+// the containment disclosure marker as a container env var when enabled, so the
+// in-container view matches the host-context one (GAP-067).
+func containerRunPrefix(disclosed bool) []string {
+	argv := []string{"docker", "run", "--rm"}
+	if disclosed {
+		argv = append(argv, "-e", containmentSandboxEnv)
+	}
+	return argv
+}
+
+// buildAgentImageExecCommand is buildAgentExecCommand (own rootless dockerd
+// reachable through DOCKER_HOST, agent env file sourced) with the user command
+// executed inside a FRESH container of imageRef instead of in the bare host
+// user context (GAP-069). The docker CLI runs on the REMOTE side as the agent
+// user against the agent's own socket; the host is never asked to run docker.
+//
+// The command is re-quoted with the same POSIX single-quote scheme the
+// host-context path uses, because it now crosses two shell layers: the agent's
+// sshd shell (which parses the docker argv) and the container's `sh -lc`.
+func buildAgentImageExecCommand(agentID, userHome, command string, args []string, disclosed bool, imageRef string) string {
+	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
+	tmpDir := filepath.Join("/run", "bunker", agentID, "tmp")
+	agentBinPath := filepath.Join(userHome, "bin")
+	agentPath := agentBinPath + ":" + agentExecBasePath
+	envFile := fmt.Sprintf("/run/bunker/%s/env", agentID)
+	sandboxEnv := ""
+	if disclosed {
+		sandboxEnv = containmentSandboxEnv + " "
+	}
+	remoteCmd := buildAgentRemoteCmd(command, args)
+
+	// The agent home is bind-mounted at the SAME absolute path and used as the
+	// working directory, so paths that are valid in the host context (the
+	// agent's home, files an operator just copied in) stay valid in-container.
+	runArgv := containerRunPrefix(disclosed)
+	runArgv = append(runArgv, "-v", userHome+":"+userHome, "-w", userHome, imageRef, "sh", "-lc",
+		shellQuoteSingle(remoteCmd))
+
+	return fmt.Sprintf("set -a; [ -f %s ] && . %s 2>/dev/null; set +a; env PATH=%s DOCKER_HOST=unix://%s TMPDIR=%s %ssh -c %s",
+		envFile, envFile, agentPath, dockerSockPath, tmpDir, sandboxEnv,
+		shellQuoteSingle(strings.Join(runArgv, " ")))
 }
 
 // shellQuoteSingle returns s wrapped in single quotes, with embedded single
@@ -665,6 +724,32 @@ func buildAgentRawExecCommand(agentID, userHome, command string, args []string, 
 	return append(argv, args...)
 }
 
+// buildAgentImageRawExecCommand is buildAgentRawExecCommand with the command
+// executed inside a fresh container of imageRef (GAP-069). Raw mode keeps its
+// no-intermediate-shell contract: the command and args are handed to docker run
+// verbatim (`docker run --rm <image> <command> <args...>`) with no sh wrapper,
+// so no shell metacharacter is interpreted a layer earlier than it was before.
+// The home directory is NOT bind-mounted in raw mode — raw mode never sourced
+// the agent env file either; use shell mode when host paths are needed.
+func buildAgentImageRawExecCommand(agentID, userHome, command string, args []string, disclosed bool, imageRef string) []string {
+	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
+	tmpDir := filepath.Join("/run", "bunker", agentID, "tmp")
+	agentBinPath := filepath.Join(userHome, "bin")
+	agentPath := agentBinPath + ":" + agentExecBasePath
+	argv := []string{
+		"env",
+		"PATH=" + agentPath,
+		"DOCKER_HOST=unix://" + dockerSockPath,
+		"TMPDIR=" + tmpDir,
+	}
+	if disclosed {
+		argv = append(argv, containmentSandboxEnv)
+	}
+	argv = append(argv, containerRunPrefix(disclosed)...)
+	argv = append(argv, imageRef, command)
+	return append(argv, args...)
+}
+
 // buildAgentScriptCommand writes scriptContent to a remote file and returns the
 // shell command that executes it. The file is written via ssh heredoc.
 func buildAgentScriptCommand(agentID, userHome, scriptContent string, disclosed bool) string {
@@ -686,6 +771,35 @@ func buildAgentScriptCommand(agentID, userHome, scriptContent string, disclosed 
 	return fmt.Sprintf(
 		"mkdir -p %q && cat > %q <<'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %q && set -a; [ -f %s ] && . %s 2>/dev/null; set +a; env PATH=%s DOCKER_HOST=unix://%s TMPDIR=%s %s%q",
 		filepath.Dir(scriptPath), scriptPath, escaped, scriptPath, envFile, envFile, agentPath, dockerSockPath, tmpDir, sandboxEnv, scriptPath,
+	)
+}
+
+// buildAgentImageScriptCommand is buildAgentScriptCommand with the uploaded
+// script executed inside a fresh container of imageRef (GAP-069). The upload
+// flow is unchanged (heredoc → chmod +x) so the script file still lands in the
+// agent's home; only the final invocation is wrapped, and it runs the script by
+// PATH inside the container, which is possible because the agent home is
+// bind-mounted at the same absolute path.
+func buildAgentImageScriptCommand(agentID, userHome, scriptContent string, disclosed bool, imageRef string) string {
+	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
+	tmpDir := filepath.Join("/run", "bunker", agentID, "tmp")
+	agentBinPath := filepath.Join(userHome, "bin")
+	agentPath := agentBinPath + ":" + agentExecBasePath
+	scriptPath := filepath.Join(userHome, ".bunker", "exec-script.sh")
+	envFile := fmt.Sprintf("/run/bunker/%s/env", agentID)
+	sandboxEnv := ""
+	if disclosed {
+		sandboxEnv = containmentSandboxEnv + " "
+	}
+	escaped := strings.ReplaceAll(scriptContent, "'", "'\\''")
+
+	runArgv := containerRunPrefix(disclosed)
+	runArgv = append(runArgv, "-v", userHome+":"+userHome, imageRef, "sh", shellQuoteSingle(scriptPath))
+
+	return fmt.Sprintf(
+		"mkdir -p %q && cat > %q <<'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %q && set -a; [ -f %s ] && . %s 2>/dev/null; set +a; env PATH=%s DOCKER_HOST=unix://%s TMPDIR=%s %s%s",
+		filepath.Dir(scriptPath), scriptPath, escaped, scriptPath, envFile, envFile, agentPath, dockerSockPath, tmpDir, sandboxEnv,
+		strings.Join(runArgv, " "),
 	)
 }
 
@@ -711,6 +825,43 @@ func buildExecSSHRawCommand(ctx context.Context, agentID, sshKeyPath, userHome, 
 // heredoc and executes it on the agent.
 func buildExecSSHScriptCommand(ctx context.Context, agentID, sshKeyPath, userHome, scriptContent string, disclosed bool) *exec.Cmd {
 	wrappedCmd := buildAgentScriptCommand(agentID, userHome, scriptContent, disclosed)
+	sshRemoteCmd := fmt.Sprintf("sh -c %s", shellQuoteSingle(wrappedCmd))
+	return buildSSHBaseCommand(ctx, agentID, sshKeyPath, sshRemoteCmd)
+}
+
+// The *Image variants below are the GAP-069 exec path: when the agent record
+// carries an image-spec ref, the user command runs inside a fresh container of
+// that image (through the agent's own rootless dockerd) instead of in the bare
+// host user context. An EMPTY imageRef delegates to the original builder
+// unchanged, so an agent spawned without an image spec keeps the exact
+// pre-GAP-069 command — the delegation is what makes that byte-identity
+// structural rather than a promise.
+
+// buildExecSSHCommandImage is buildExecSSHCommand for an image-backed agent.
+func buildExecSSHCommandImage(ctx context.Context, agentID, sshKeyPath, userHome, command string, args []string, disclosed bool, imageRef string) *exec.Cmd {
+	if imageRef == "" {
+		return buildExecSSHCommand(ctx, agentID, sshKeyPath, userHome, command, args, disclosed)
+	}
+	wrappedCmd := buildAgentImageExecCommand(agentID, userHome, command, args, disclosed, imageRef)
+	sshRemoteCmd := fmt.Sprintf("sh -c %s", shellQuoteSingle(wrappedCmd))
+	return buildSSHBaseCommand(ctx, agentID, sshKeyPath, sshRemoteCmd)
+}
+
+// buildExecSSHRawCommandImage is buildExecSSHRawCommand for an image-backed agent.
+func buildExecSSHRawCommandImage(ctx context.Context, agentID, sshKeyPath, userHome, command string, args []string, disclosed bool, imageRef string) *exec.Cmd {
+	if imageRef == "" {
+		return buildExecSSHRawCommand(ctx, agentID, sshKeyPath, userHome, command, args, disclosed)
+	}
+	remoteArgv := buildAgentImageRawExecCommand(agentID, userHome, command, args, disclosed, imageRef)
+	return buildSSHBaseCommand(ctx, agentID, sshKeyPath, remoteArgv...)
+}
+
+// buildExecSSHScriptCommandImage is buildExecSSHScriptCommand for an image-backed agent.
+func buildExecSSHScriptCommandImage(ctx context.Context, agentID, sshKeyPath, userHome, scriptContent string, disclosed bool, imageRef string) *exec.Cmd {
+	if imageRef == "" {
+		return buildExecSSHScriptCommand(ctx, agentID, sshKeyPath, userHome, scriptContent, disclosed)
+	}
+	wrappedCmd := buildAgentImageScriptCommand(agentID, userHome, scriptContent, disclosed, imageRef)
 	sshRemoteCmd := fmt.Sprintf("sh -c %s", shellQuoteSingle(wrappedCmd))
 	return buildSSHBaseCommand(ctx, agentID, sshKeyPath, sshRemoteCmd)
 }

@@ -580,6 +580,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		SshPrivateKeyPath: sshKeyPath,
 		SshfsMount:        sshfsMount,
 		DockerHostTunnel:  dockerHostTunnel,
+		Image:             imageRef,
 	}
 	if err := m.tracker.Register(rec); err != nil {
 		// This shouldn't happen (we checked capacity above), but handle gracefully
