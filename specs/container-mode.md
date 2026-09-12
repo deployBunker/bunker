@@ -33,11 +33,17 @@ exist yet, this spec says so explicitly instead of assuming it.
 ### Constraints this spec must respect (both stated, not assumed away)
 
 **Constraint A — `SpawnAgentRequest` has no container-mode field.**
-`message SpawnAgentRequest` (`proto/bunker/v1/bunker.proto`, lines 106–113)
-carries only `agent_id`, `limits`, `network`, `ttl`, `ssh_public_key`, `labels`.
-There is no `mode`/`container` field today. Adding one (plus the full-wipe flag
-from §2) is follow-up proto work scoped to GAP-064. This spec defines the
+`message SpawnAgentRequest` (`proto/bunker/v1/bunker.proto`) carries only
+`agent_id`, `limits`, `network`, `ttl`, `ssh_public_key`, `labels`, and
+`image_spec`. There is still no `mode`/`container` field. Adding one (plus the
+full-wipe flag from §2) is follow-up proto work. This spec defines the
 *semantics* of such a field only; it does not pretend the field exists.
+
+> **Status note (2026-09-12).** GAP-064 landed as **per-agent image specs**
+> (additive package-add customization + a base-image allowlist), not as
+> container mode; `cleanupAgentContainers` also landed in the destroy path
+> (`internal/agent/manager_destroy.go` step 0.4). The container-mode field
+> itself is still unimplemented, so the rest of this spec remains design.
 
 **Constraint B — there is no restart RPC.** The `Bunkerd` service
 (`bunker.proto`) exposes exactly `ServerInfo`, `ServerMetrics`, `SpawnAgent`,
@@ -422,10 +428,13 @@ capped even before the cgroup slice applies:
    `DIRECT`-mode published ports may need `ssh -L`/tunnel ingress; the exact
    bind address for `-p` is an implementation decision with an availability
    tradeoff.
-5. **Image pull policy / supply chain.** There is no base-image allowlist,
-   pinned digest policy, or pull-time verification today; container-mode makes
-   image supply a first-class security control that must be defined (image
-   registry, digest pinning, pull policy) before general availability.
+5. **Image pull policy / supply chain.** GAP-064 added a *base-image
+   allowlist* for `image_spec` (`docker.io/library/ubuntu:24.04` default, plus
+   `ubuntu:22.04`, `debian:12`, `debian:11` — `internal/imagespec/parse.go`), but
+   there is still no pinned-digest policy or pull-time verification, and the
+   legacy (non-image-spec) agent image is unconstrained. Container-mode makes
+   image supply a first-class security control that must be defined (registry,
+   digest pinning, pull policy) before general availability.
 6. **Persistence vs. today's `userdel -rf`.** The §2 DEFAULT (home survives
    destroy) conflicts with the existing destroy step `userdel -rf bunker-<id>`,
    which deletes the home. Container-mode destroy must deviate (preserve home;

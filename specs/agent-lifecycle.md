@@ -1,14 +1,22 @@
 # Bunker — Agent Lifecycle Specification
 
-Version: 1.0.0
+Version: 1.1.0
 Status: Stable
-Last Updated: 2026-07-19
+Last Updated: 2026-09-12
 
 ## Overview
 
 Each agent is an isolated Linux user with a rootless Docker daemon, private SSH keypair, dedicated port range, and optional network ingress. This spec covers the full lifecycle from spawn through runtime to destroy.
 
 ## Spawn: Step-by-Step
+
+> **Canonical order in `internal/agent/manager_spawn.go`:** validate TTL + image
+> spec → allocate ports → `useradd` → write `authorized_keys`/`.profile` →
+> persist the server-side SSH key → `configureSubIDs` → rootlesskit AppArmor
+> profile → install rootless Docker (which enables linger first) → create the
+> `systemd-run --system` dockerd unit → `waitForDockerd` → runtime dir →
+> tunnels → agent API key → response. The numbered sections below describe each
+> piece; where a number differs from that order, the code is authoritative.
 
 ### 1. Request Validation
 
@@ -18,7 +26,11 @@ SpawnAgentRequest → validate limits, TTL format, agent_id uniqueness
 
 - If `agent_id` is empty, generate `bunker-<8-char-random>`
 - Validate `limits` against server capacity
-- Validate `ttl` format: `\d+[hmd]` (e.g., "6h", "24h", "7d")
+- Validate `ttl` format: `\d+[hmd]` (e.g., "6h", "24h", "7d") — an empty TTL
+  falls back to `agent.default_ttl` (default 6h)
+- Validate a supplied `image_spec` (GAP-064) before ANY side effect: base image
+  must be in the server allowlist, package directives limited to apt/go/npm;
+  a rejected spec returns `CodeInvalidArgument` and builds nothing
 - Check agent_id doesn't exist in resource tracker
 
 ### 2. Port Allocation
@@ -53,27 +65,34 @@ chmod 700 /home/bunker-<id>/.ssh
 chmod 600 /home/bunker-<id>/.ssh/authorized_keys
 ```
 
-- Private key returned in response (not stored on server)
+- The private key is returned in the response AND persisted server-side at
+  `<agent.ssh_dir>/<agent-id>` (default `/etc/bunkerd/ssh/<agent-id>`, mode
+  0600) so `ExecAgent` / `RunAgent` can SSH in. `DestroyAgent` removes it.
 - If `ssh_public_key` provided in request, append to authorized_keys instead
 - `environment="DOCKER_HOST=unix:///run/user/<UID>/docker.sock"` prepended for auto socket discovery
 
 ### 5. Resource Limits Enforcement
 
 ```
-systemd-run --user --machine=bunker-<id>@ \
-  --property=CPUQuota=<pct> \
+systemd-run --system --unit=bunker-docker-<id> --uid=<uid> --gid=<gid> \
+  --property=PAMName=login \
+  --property=CPUQuota=<pct>% \
   --property=MemoryMax=<bytes> \
-  --property=TasksMax=<max_procs> \
-  --property=LimitNOFILE=<max_fds> \
   --property=LimitFSIZE=<disk_bytes> \
-  ...
+  --property=TasksMax=<max_procs> \
+  --property=LimitNOFILE=<max_fds>:<max_fds> \
+  --setenv=... <dockerd-rootless.sh>
 ```
 
-- `CPUQuota`: Percentage of one CPU core (100% per core, so 200% = 2 cores)
-- `MemoryMax`: Absolute byte limit
-- `TasksMax`: Process count limit (default: 256)
-- `LimitNOFILE`: Open file limit (default: 65536)
-- `LimitFSIZE`: Disk quota per file (default: 20 GiB)
+- The unit is a **system** unit run as the agent user (`--system --uid`), not
+  `systemd-run --user --machine=...` — it does not require a running user
+  manager/D-Bus for a freshly created user.
+- `CPUQuota`: Percentage of one CPU core (100%=1 core, 200%=2 cores); the code
+  passes `int(cpuQuota*100)%`
+- `MemoryMax`: Absolute byte limit (default: 4 GiB)
+- `LimitFSIZE`: Per-file size cap, the pragmatic disk enforcement (default: 20 GiB)
+- `TasksMax`: Process count limit (default: **4096**, `agent.default_max_processes`)
+- `LimitNOFILE`: Open file limit, passed as `N:N` (default: 65536)
 
 ### 6. User Manager Enablement
 
@@ -81,7 +100,9 @@ systemd-run --user --machine=bunker-<id>@ \
 loginctl enable-linger bunker-<id>
 ```
 
-Enables persistent systemd user manager so dockerd survives SSH session termination.
+Called inside `installRootlessDocker` **before** the rootless installer runs —
+the installer needs the systemd user manager (`systemctl --user`) to exist, and
+linger makes the user manager persist so dockerd survives session termination.
 
 ### 7. Rootless Docker Installation
 
@@ -97,9 +118,12 @@ chown bunker-<id>:bunker-<id> /home/bunker-<id>/bin
 dockerd-rootless-setuptool.sh install
 ```
 
-- `dockerd-rootless-setuptool.sh` must be available on the host
+- On a fresh host this downloads the official `docker-ce-rootless-extras`
+  installer and installs rootlesskit + dockerd under `~/bin/` — a **~93 MB
+  download taking 60-90s+**. That is why a first spawn on a host is slow;
+  later spawns reuse the cached tooling (~10s).
 - Ubuntu 24.04 requires an AppArmor profile: `/etc/apparmor.d/home.bunker-<id>.bin.rootlesskit`
-- Install process creates rootlesskit + dockerd under `~/bin/`
+  (`ensureRootlesskitAppArmor` runs before the installer)
 
 ### 8. Docker Daemon Start
 
@@ -117,7 +141,7 @@ Environment variables:
 
 ```
 waitForDockerd(agentID, UID, 5s timeout):
-  poll every 250ms:
+  poll every 200ms:
     1. Check for dockerd process owned by agent UID
     2. Check /run/user/<UID>/docker.sock exists
   on success: create symlink /run/bunker/<id>/docker.sock → /run/user/<UID>/docker.sock
@@ -169,60 +193,77 @@ apikey.Generate(agentID) → (keyID, plaintext, hash)
 SpawnAgentResponse {
   agent_id, docker_host_ssh, docker_host_tunnel, sshfs_mount,
   public_url, port_range_start, port_range_end,
-  ssh_private_key, limits, expires_at, tailnet_ip, api_key
+  ssh_private_key, limits, expires_at, tailnet_ip, api_key, image
 }
 ```
 
+`image` is set to the customized image ref (e.g. `bunkerd-imagespec-<key>:latest`)
+when `image_spec` was supplied (GAP-064); `expires_at` is RFC3339 in the server's
+local timezone.
+
 ## Destroy: Step-by-Step
 
-### 1. Agent Lookup
+Order per `internal/agent/manager_destroy.go`:
 
-```
-tracker.Get(agentID) → Agent record
-```
-- Returns error if agent not found
-- `force=true` skips safety checks
+### 0. Agent ID Validation
 
-### 2. Network Teardown
+An invalid `agent_id` still frees the allocator range (idempotent) and returns
+`status: "error"`.
 
-- **cloudflared**: `pkill -f "cloudflared.*bunker-<id>"` or process group kill
-- **tailscale**: `tailscale down --hostname=bunker-<id>` (best-effort)
-- **named tunnel**: `cloudflared tunnel cleanup <domain>`
+### 1. Agent Container Cleanup (step 0.4)
 
-### 3. Docker Shutdown
+`cleanupAgentContainers` stops/removes the agent's own container through the
+agent's rootless socket, **before** the daemon is stopped, so no container leaks
+past it. Best-effort.
+
+### 2. User Slice Limits (step 0.5)
+
+`removeUserSliceLimits` deletes the cgroup drop-in
+(`/etc/systemd/system/user-<UID>.slice.d/50-bunker.conf`) so stale limits don't
+accumulate.
+
+### 3. Docker Shutdown (steps 1-2b)
+
+- `stopDockerdDirect` (SIGTERM, then kill) with a `systemctl --user stop`
+  fallback
+- `systemctl --user disable bunker-docker-<id>`
+- `waitAgentProcessesExit` polls up to 10s, SIGKILLing lingering
+  `dockerd`/`rootlesskit` processes, so `userdel` can succeed
+
+### 4. User Removal (step 3)
 
 ```bash
-systemctl --user --machine=bunker-<id>@ stop docker
-systemctl --user --machine=bunker-<id>@ disable docker
+userdel -rf bunker-<id>
 ```
-
-- Grace period: 10 seconds for container shutdown
-- Force kill dockerd process if unresponsive
-
-### 4. User Removal
-
-```bash
-userdel -r bunker-<id>
-```
-- `-r`: Remove home directory and mail spool
+- `-rf`: Remove home directory (and force). Home is deleted — container-mode's
+  "home survives destroy" default is a planned deviation, not current behavior.
 - Cleans up `/home/bunker-<id>/`, subuid/subgid entries
+- A non-force `userdel` failure returns `not_found` (and still frees the port
+  range + tracker slot)
 
-### 5. Runtime Cleanup
+### 5. Runtime Cleanup (step 4)
 
 ```bash
 rm -rf /run/bunker/<id>/
+rm /run/user/<UID>/docker.sock      # the real rootless socket
 ```
 
-### 6. Port Reclamation
+### 6. Persisted SSH Key (step 4.5)
+
+```bash
+rm <agent.ssh_dir>/<agent-id>       # default /etc/bunkerd/ssh/<agent-id>
+```
+
+### 7. Network Teardown
+
+- **cloudflared** tunnel stop (best-effort)
+- **tailscale** stop (best-effort)
+
+### 8. Tracker / Port Reclamation
 
 ```
-PortAllocator.Free(port_range_start, port_range_end)
-```
-
-### 7. Tracker Removal
-
-```
-tracker.Delete(agentID)
+tracker.Unregister(agentID)
+PortAllocator.Free(agentID)          # unconditional + idempotent
 ```
 
 ## Runtime Operations
@@ -268,8 +309,10 @@ bunker heartbeat <agent-id>
 ```
 
 1. CLI calls HeartbeatAgent RPC
-2. Server extends `ExpiresAt = now + TTL`
-3. Returns new expiry timestamp
+2. Server sets `ExpiresAt = now + agent.default_ttl` (default 6h) and **never
+   shrinks** an existing longer expiry
+3. Returns new expiry timestamp (RFC3339, server-local timezone) and
+   `acknowledged: true`
 
 ### Run (Detached Commands)
 

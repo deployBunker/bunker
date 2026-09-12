@@ -43,6 +43,10 @@ which serves the same RPCs over **gRPC and REST** from a single listener pair.
   gRPC clients use the standard `bunkerv1.Bunkerd` service. REST clients POST
   JSON to the connect-go path convention: `POST /bunker.v1.Bunkerd/<Method>`
   (e.g. `POST /bunker.v1.Bunkerd/SpawnAgent`), `Content-Type: application/json`.
+  The handler is mounted **without `WithHTTPGet`**, so REST is POST-only: any
+  other HTTP method returns `405`, and the auth interceptor runs on the POST path
+  only (a `GET` returns `405`, not `401`). Request fields use proto snake_case
+  names — e.g. `{"agent_id": "abc123"}`, not `{"id": ...}`.
 - TLS: optional per listener (`tls.*` config: cert/key files, certmagic
   auto-TLS/Let's Encrypt, self-signed, or mTLS). Plaintext is the default.
 - The CLI resolves the endpoint from the server registry in `~/.bunker/config.yaml`
@@ -136,6 +140,7 @@ auditing — audit failure never blocks startup.
 | `ExecAgent` | **server-streaming** | run a command, stream stdout/stderr + exit code |
 | `RunAgent` | unary | run a command in the agent's environment (`--detach` for background) |
 | `HeartbeatAgent` | unary | extend an agent's TTL |
+| `QueryAudit` | unary | read the audit trail (filters: agent/method/since/until/limit; see [audit.md](audit.md)) |
 
 ### `bunkerd.Agent` — scoped sub-key access
 
@@ -187,7 +192,7 @@ spawn ──▶ exec/run ──▶ cp/deploy ──▶ mount/tunnel ──▶ me
 | Disk | 20 GiB | quota |
 | Max processes / open files | 4096 / 65536 | systemd Limits |
 | Max Docker containers | 10 | per agent |
-| TTL | none (required on spawn) | `\d+[hmd]`, heartbeat-extendable |
+| TTL | 6h (`agent.default_ttl`) when `--ttl` is omitted | `\d+[hmd]`, heartbeat-extendable |
 | Network mode | direct port range | `--network cloudflare` (TryCloudflare/named), `--network tailscale`, or direct |
 
 Server capacity defaults: `max_agents: 50`, port range 10000–19999. All
@@ -207,6 +212,7 @@ overridable in `config.yaml` (see `config.example.yaml` at the repo root).
 
 ## 9. Live demo instance
 
-`78.46.173.180` — gRPC `:19090`, REST `:18080`, auth enforced (401 without
-token). Resource-limited shared sandbox; demo tokens are provisioned on request.
-See the README **Live demo** callout.
+`78.46.173.180` — gRPC `:19090`, REST `:18080`, auth enforced (an unauth
+**POST** returns `401`; a non-POST request returns `405` before auth). The
+instance runs max 50 agents. Resource-limited shared sandbox; demo tokens are
+provisioned on request. See the README **Live demo** callout.

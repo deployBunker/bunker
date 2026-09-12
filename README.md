@@ -45,6 +45,9 @@ Bunker is a **multi-agent hosting platform** — a daemon (`bunkerd`) that runs 
 - **Networking** — Cloudflare tunnels (named or TryCloudflare), Tailscale mesh, or direct port ranges
 - **gRPC + REST** — Dual protocol via connect-go, single binary
 - **TLS/mTLS** — Self-signed, Let's Encrypt (certmagic), or mutual TLS
+- **Container mode (planned)** — an opt-in spawn mode that runs the workload
+  as a container on the agent's own rootless daemon; design in
+  [specs/container-mode.md](specs/container-mode.md) (not implemented yet)
 
 ## Quick Start
 
@@ -69,7 +72,7 @@ bunker status
 bunker spawn --ttl 1h demo-agent
 ```
 
-The demo is a shared, resource-limited sandbox (max 50 agents; per-agent CPU/memory/disk caps, default 1h TTL) — **do not run production workloads on it**. Auth is enforced: every request needs a bearer token (`bunker connect --token`), and unauthenticated clients receive `401`. See [docs/integration.md](docs/integration.md) for the full client-server protocol.
+The demo is a shared, resource-limited sandbox (max 50 agents; per-agent CPU/memory/disk caps, default 1h TTL) — **do not run production workloads on it**. Auth is enforced: every request needs a bearer token (`bunker connect --token`); an unauthenticated **POST** receives `401` (the REST surface is POST-only — a non-POST request returns `405` before auth runs). See [docs/integration.md](docs/integration.md) for the full client-server protocol.
 
 ### Prerequisites
 
@@ -190,6 +193,11 @@ bunker connect http://bunker-host:8080 --token your-master-token-here
 
 # Create an agent with 2 CPUs and 4 GB RAM
 bunker spawn --cpu 2.0 --memory 4294967296 --ttl 6h
+# NOTE: the FIRST spawn on a host is slow. It installs rootless Docker into the
+# agent's home (a ~93 MB download) and takes 60-90s+ before dockerd is ready.
+# The CLI prints "Creating agent..." and waits under a 300s deadline, so a
+# multi-minute first spawn is expected, not a hang. Later spawns reuse the
+# server's cached tooling and return in ~10s.
 
 # Create an agent with a customized image (GAP-064): package-add spec
 cat > spec.json <<'EOF'
@@ -228,9 +236,16 @@ bunker env get abc12345 KEY
 # Extend TTL
 bunker heartbeat abc12345
 
-# Tear down
+# Tear down (also deletes the client-local SSH key ~/.bunker/keys/abc12345)
 bunker destroy abc12345
+# Keep the local key for a spawn/destroy/spawn key-reuse cycle:
+bunker destroy abc12345 --keep-key
 ```
+
+> **`bunker destroy` removes your local key.** Spawn saves the agent's private
+> key to `~/.bunker/keys/<agent-id>`; destroy deletes it after a successful
+> teardown (including the `not_found` path) unless `--keep-key` is passed. If
+> you reuse keys across spawn/destroy cycles, pass `--keep-key`.
 
 ## Architecture
 
@@ -260,8 +275,16 @@ bunker destroy abc12345
 
 | Service | Protocol | RPCs |
 |---------|----------|------|
-| `Bunkerd` | gRPC + REST | `ServerInfo`, `ServerMetrics`, `SpawnAgent`, `DestroyAgent`, `ListAgents`, `GetAgent`, `AgentMetrics`, `ExecAgent`, `HeartbeatAgent` |
+| `Bunkerd` | gRPC + REST | `ServerInfo`, `ServerMetrics`, `SpawnAgent`, `DestroyAgent`, `ListAgents`, `GetAgent`, `AgentMetrics`, `ExecAgent`, `RunAgent`, `HeartbeatAgent`, `QueryAudit` |
 | `Agent` | gRPC + REST (scoped) | `GetInfo`, `Metrics`, `Heartbeat` |
+
+The REST surface is **POST-only** (connect-go, mounted without `WithHTTPGet`):
+every method is `POST /bunker.v1.Bunkerd/<Rpc>` (or `/bunker.v1.Agent/<Rpc>`),
+and any other HTTP method returns `405`. The auth interceptor runs on the POST
+path only, so an unauthenticated request gets `401` **only when sent as POST** —
+a `GET` returns `405` before auth. Request fields use proto snake_case names
+(`agent_id`, not `id`). Full request/response shapes are in
+[specs/api.md](specs/api.md).
 
 ## Resource Limits
 
@@ -281,10 +304,18 @@ All limits are enforced at **two levels**:
 | Open files | `agent.default_max_open_files` | — | 65536 |
 | Docker containers | `agent.default_max_docker_containers` | — | 10 |
 
+`bunker metrics <id>` reads the agent's own cgroup slice; when that slice is
+unreadable (e.g. a dead agent user) it falls back to **host-level** values and
+prints an explicit `NOTE: host-level fallback` line, and the wire response sets
+`host_level_fallback` (proto field 10). Treat those numbers as host figures, not
+the agent's.
+
 ## CLI Commands
 
 ```
 bunker connect     Register a bunkerd server
+bunker use         Select the active server
+bunker status      Show server status (CPU/memory/disk/uptime)
 bunker spawn       Create a new agent (--image-spec <file> for package-add image customization)
 bunker list        List agents
 bunker info        Show agent details
@@ -299,8 +330,9 @@ bunker deploy      Deploy a directory into an agent's environment
 bunker systemd     Manage the bunkerd systemd service (install/uninstall/status)
 bunker metrics     Show resource usage
 bunker heartbeat   Extend agent TTL
-bunker destroy     Tear down an agent
+bunker destroy     Tear down an agent (removes the local key unless --keep-key)
 bunker audit       Inspect the audit trail (verify / list / export — see docs/audit.md)
+bunker version     Print version/commit/build metadata (also --version)
 ```
 
 ## Tech Stack

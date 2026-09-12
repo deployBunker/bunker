@@ -1,8 +1,8 @@
 # Bunker — API Specification
 
-Version: 1.0.0
+Version: 1.1.0
 Based on: proto/bunker/v1/bunker.proto
-Last Updated: 2026-07-19
+Last Updated: 2026-09-12
 
 ## Protocol
 
@@ -190,6 +190,10 @@ Response:
 - `disk_used_bytes`, `disk_limit_bytes` (uint64)
 - `docker_containers` (uint32): Running containers
 - `uptime` (string): Human-readable uptime
+- `host_level_fallback` (bool): true when the memory values came from the host
+  cgroup (`/proc/meminfo`), i.e. the agent's own cgroup slice was unreadable —
+  the numbers are host figures, not the agent's. `bunker metrics <id>` prints an
+  explicit `NOTE: host-level fallback` line in that case (GAP-060).
 
 ### ExecAgent
 
@@ -305,6 +309,7 @@ Same schema as Bunkerd.HeartbeatAgent, scoped to the calling agent.
 | port_range_start | uint32 | First port in agent's allocation |
 | port_range_end | uint32 | Last port in agent's allocation |
 | tailnet_ip | string | Tailscale IP address |
+| disk_used_bytes | uint64 | Per-agent disk usage in bytes |
 
 ### NetworkConfig
 
@@ -315,6 +320,33 @@ Same schema as Bunkerd.HeartbeatAgent, scoped to the calling agent.
 | trycloudflare | bool | Anonymous tunnel |
 | port_range_start | uint32 | Agent port range start |
 | port_range_end | uint32 | Agent port range end |
+
+### QueryAudit
+
+Read-only query over the daemon's audit trail (master auth). Returns matching
+records oldest-first from the live log plus rotated backups (`.1`-`.3`).
+
+```
+rpc QueryAudit(QueryAuditRequest) returns (QueryAuditResponse)
+```
+
+Request (all filters optional and ANDed; empty matches everything):
+- `agent_id` (string): exact match
+- `method` (string): substring match on the full procedure, e.g. `SpawnAgent`
+- `since` / `until` (string): RFC3339 bounds, inclusive
+- `limit` (uint32): max records, keeping the NEWEST matches; 0 = no limit
+
+Response:
+- `records` (repeated AuditRecord): `ts`, `caller`, `method`, `remote_addr`,
+  `agent_id`, `duration_ms`, `outcome`, `summary`, `hash`, `prev_hash` — the same
+  fields the JSONL log stores.
+
+Error codes:
+- `CodeInvalidArgument`: unparseable `since`/`until`
+- `CodeUnavailable`: audit logging is disabled on the daemon
+
+See [docs/audit.md](../docs/audit.md) for the record format, hash chain, and the
+`bunker audit list/export` client surface.
 
 ## Auth Headers
 

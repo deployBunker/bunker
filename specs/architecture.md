@@ -1,8 +1,8 @@
 # Bunker — Architecture Specification
 
-Version: 1.0.0
+Version: 1.1.0
 Status: Stable
-Last Updated: 2026-07-19
+Last Updated: 2026-09-12
 
 ## Overview
 
@@ -39,7 +39,7 @@ Bunker provisions isolated Docker environments ("agents") for AI coding agents. 
 │  ┌──────────────────┐  ┌──────────────────┐         │
 │  │  Agent: bunker-a │  │  Agent: bunker-b │  ...    │
 │  │  User: bunker-a  │  │  User: bunker-b  │         │
-│  │  dockerd (root)  │  │  dockerd (root)  │         │
+│  │ rootless dockerd │  │ rootless dockerd │         │
 │  │  Ports: 10000+   │  │  Ports: 10100+   │         │
 │  │  cgroup: 1 CPU   │  │  cgroup: 2 CPU   │         │
 │  │        1 GB RAM  │  │        4 GB RAM  │         │
@@ -72,22 +72,35 @@ Bunker provisions isolated Docker environments ("agents") for AI coding agents. 
 5. SSH keypair generated; public key written to `~/.ssh/authorized_keys`
 6. `systemd-run --user --machine=bunker-<id>@` creates a transient unit for dockerd
 7. `loginctl enable-linger bunker-<id>` enables persistent user manager
-8. `dockerd-rootless-setuptool.sh install` configures rootless Docker
-9. Docker daemon starts; `waitForDockerd` polls for socket + process
+8. Rootless Docker tooling is installed into `~/bin` if absent
+   (`installRootlessDocker`: a fresh host downloads ~93 MB, so the first spawn
+   takes 60-90s+; later spawns reuse the cached tooling)
+9. Docker daemon starts via `systemd-run --system --unit=bunker-docker-<id>`;
+   `waitForDockerd` polls for socket + process
 10. Symlink created: `/run/bunker/<id>/docker.sock` → `/run/user/<UID>/docker.sock`
 11. Optional: cloudflared tunnel or tailscale join
-12. Response returned with SSH connection string, keys, port range, tunnel URL
+12. Optional per-agent image customization (`image_spec`, GAP-064): the
+    validated package-add spec is built once through the agent's rootless socket
+    before the response is returned
+13. Response returned with SSH connection string, keys, port range, tunnel URL
 
 ### Destroy Flow
 
+Order per `internal/agent/manager_destroy.go`:
+
 1. CLI sends `DestroyAgentRequest` to bunkerd
-2. Tunnel processes terminated (cloudflared pkill, tailscale leave)
-3. Docker daemon stopped via systemd unit stop
-4. systemd unit disabled and removed
-5. `userdel -r bunker-<id>` removes user + home directory
-6. Runtime directory `/run/bunker/<id>/` cleaned
-7. Port range returned to allocator pool
-8. Resource tracker freed
+2. The agent's own containers are stopped/removed through its rootless socket
+   (`cleanupAgentContainers`) — before the daemon is stopped
+3. The user-slice cgroup drop-in (`user-<UID>.slice.d/50-bunker.conf`) is removed
+4. rootless dockerd is stopped (direct SIGTERM/kill, then `systemctl --user
+   stop`) and the transient unit disabled; destroy waits up to ~10s for the
+   agent's `dockerd`/`rootlesskit` processes to exit
+5. `userdel -rf bunker-<id>` removes the user + home directory
+6. Runtime directory `/run/bunker/<id>/` is removed
+7. The real socket `/run/user/<UID>/docker.sock` is removed
+8. The server-side persisted key `<agent.ssh_dir>/<id>` is removed
+9. Tunnel (cloudflared) and Tailscale teardown
+10. Resource tracker unregistered; port range returned to the allocator pool
 
 ### States
 
@@ -166,43 +179,56 @@ Each agent gets a private TMPDIR at `/run/bunker/<id>/tmp/`, preventing `/tmp` c
 
 ### Bunkerd Service (master auth)
 
-| RPC | Method | Description |
-|-----|--------|------------|
-| ServerInfo | GET/Query | Hostname, version, capacity |
-| ServerMetrics | GET/Query | CPU, memory, disk, container totals |
-| SpawnAgent | POST/Mutation | Create new agent |
-| DestroyAgent | POST/Mutation | Remove agent |
-| ListAgents | GET/Query | List agents (filterable, paginated) |
-| GetAgent | GET/Query | Single agent details |
-| AgentMetrics | GET/Query | Per-agent resource usage |
-| ExecAgent | POST/Stream | Execute command, stream stdout/stderr |
-| RunAgent | POST/Mutation | Execute command (optionally detached) |
-| HeartbeatAgent | POST/Mutation | Extend TTL |
+connect-go serves every RPC over **POST only** (the handler is created without
+`WithHTTPGet`); the "Kind" column is the RPC shape, not an HTTP method. Any
+non-POST request to these paths returns `405`.
+
+| RPC | Kind | Description |
+|-----|------|------------|
+| ServerInfo | unary | Hostname, version, capacity |
+| ServerMetrics | unary | CPU, memory, disk, container totals |
+| SpawnAgent | unary | Create new agent |
+| DestroyAgent | unary | Remove agent |
+| ListAgents | unary | List agents (filterable, paginated) |
+| GetAgent | unary | Single agent details |
+| AgentMetrics | unary | Per-agent resource usage |
+| ExecAgent | server-streaming | Execute command, stream stdout/stderr |
+| RunAgent | unary | Execute command (optionally detached) |
+| HeartbeatAgent | unary | Extend TTL |
+| QueryAudit | unary | Query the audit trail (see docs/audit.md) |
 
 ### Agent Service (agent-scoped auth)
 
-| RPC | Method | Description |
-|-----|--------|------------|
-| GetInfo | GET/Query | Agent's own details |
-| Metrics | GET/Query | Agent's own resource usage |
-| Heartbeat | POST/Mutation | Extend own TTL |
+| RPC | Kind | Description |
+|-----|------|------------|
+| GetInfo | unary | Agent's own details |
+| Metrics | unary | Agent's own resource usage |
+| Heartbeat | unary | Extend own TTL |
 
 ## CLI Commands
 
 | Command | Description |
 |---------|------------|
 | `bunker connect <host>:<port>` | Register a bunkerd server |
-| `bunker spawn [--cpu X] [--memory Y] [--ttl Z]` | Create agent |
+| `bunker use <name>` | Select the active server |
+| `bunker status` | Server status (CPU/memory/disk/uptime) |
+| `bunker spawn [--cpu X] [--memory Y] [--ttl Z] [--image-spec F]` | Create agent |
 | `bunker list [--server <name>]` | List agents |
 | `bunker info <agent-id>` | Agent details |
-| `bunker destroy <agent-id>` | Remove agent |
+| `bunker destroy <agent-id> [--keep-key]` | Remove agent (deletes the local key) |
 | `bunker exec <agent-id> -- <cmd>` | Execute command via SSH |
 | `bunker metrics [agent-id]` | Resource usage |
 | `bunker heartbeat <agent-id>` | Extend TTL |
 | `bunker tunnel <agent-id> [port]` | SSH tunnel to Docker socket |
 | `bunker mount <agent-id> [path]` | SSHFS mount agent home |
+| `bunker ssh <agent-id> [cmd]` | Interactive SSH session |
+| `bunker cp <local> <agent-id>:<path>` | Copy a file into an agent |
+| `bunker deploy <local-path> <agent-id>:<path>` | Copy + chown a path into an agent |
 | `bunker run <agent-id> [--detach] -- <cmd>` | Run command (optionally persistent) |
-| `bunker env set <agent-id> KEY=VALUE` | Set environment variable |
+| `bunker env set|get|list|unset <agent-id> ...` | Manage environment variables |
+| `bunker systemd install|uninstall|status` | Manage the bunkerd systemd service |
+| `bunker audit verify|list|export` | Inspect the audit trail |
+| `bunker version` | Print version/commit/build metadata |
 
 ## Technology Stack
 
