@@ -22,7 +22,7 @@ import "runtime/debug"
 
 var (
 	// Version is the semantic version of the build.
-	Version = "0.1.3"
+	Version = "0.1.4"
 
 	// Commit is the git short SHA the binaries were built from.
 	// "unknown" when neither injected via ldflags nor derivable from
