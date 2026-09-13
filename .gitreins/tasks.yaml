@@ -1271,3 +1271,12 @@ tasks:
   status: complete
   created_at: '2026-09-12T18:10:15.454672+00:00'
   completed_at: '2026-09-12T18:23:45.189934+00:00'
+- id: INT-CI-003
+  title: CI regression job red masked by continue-on-error (fixed 143a859)
+  criteria:
+  - 'Latest main push run shows regression job SUCCESS at job level with BUNKER_BIN/BUNKERD_BIN
+    wired from workspace; no ''unknown flag: --image-spec'' failures in the E2E battery
+    step'
+  status: complete
+  created_at: '2026-09-13T10:32:38.644650+00:00'
+  completed_at: '2026-09-13T10:33:05.710847+00:00'
