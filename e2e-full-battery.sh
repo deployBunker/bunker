@@ -868,7 +868,10 @@ echo ""
 #        /tmp — the module must not apply host-wide
 #   15.2d a detached run unit carries PrivateTmp=yes and its /tmp is not root's
 #   15.3 /srv/bunker-share is the ONLY sanctioned exchange point, with
-#        group/setgid semantics and a kernel-enforced per-agent size cap
+#        group/setgid semantics and a kernel-enforced per-agent size cap: each
+#        per-agent directory is its OWN tmpfs mount, the kernel-reported mount
+#        size in BYTES must equal the statfs byte count, and a write past the
+#        cap fails with ENOSPC
 #   15.3b the exchange ROOT is setgid and NOT writable by agents or the world
 #        (mode 2750): an agent cannot create an arbitrary uncapped entry beside
 #        its own capped directory
@@ -1251,14 +1254,40 @@ rmdir "$GAP075_SHARE/$GAP075_ARB" 2>/dev/null || true
 rm -f "$GAP075_SHARE/$GAP075_ARB-file" 2>/dev/null || true
 GAP075_ARB=""
 
-# Bounding: the directory must be a tmpfs whose size the KERNEL reports as the
-# configured cap, and a write past the cap must fail with ENOSPC.
-GAP075_CAP=$(findmnt -no OPTIONS --target "$GAP075_ADIR" 2>/dev/null | tr ',' '\n' | sed -n 's/^size=//p' || true)
-GAP075_KERNEL_CAP=$(( $(stat -f -c %b "$GAP075_ADIR" 2>/dev/null || echo 0) * $(stat -f -c %S "$GAP075_ADIR" 2>/dev/null || echo 0) ))
-if [ -n "$GAP075_CAP" ] && [ "$GAP075_KERNEL_CAP" = "$GAP075_CAP" ]; then
-    assert "per-agent scratch is bounded by the kernel at $GAP075_CAP bytes"
+# Bounding: the directory must be its OWN tmpfs mount whose size the KERNEL
+# reports as the configured cap, and a write past the cap must fail with
+# ENOSPC.
+#
+# `findmnt -b -n -o SIZE` reports the mount size in BYTES as plain digits. The
+# previous revision read the human-readable mount OPTION (`size=16384k`),
+# compared that string with the statfs byte count (never equal) and then fed
+# `16384k` to `[ ... -le ... ]`, which aborts with "integer expression
+# expected" — so the over-cap ENOSPC proof below was silently skipped. Read
+# bytes, and validate every value as digits BEFORE any arithmetic. A directory
+# that is not itself a mount makes findmnt report the CONTAINING filesystem
+# (root-fs size, fstype ext4), which a pure size comparison would accept as
+# "bounded": the tmpfs/mountpoint assertion closes that false green.
+GAP075_CAP_RAW=$(findmnt -b -n -o SIZE --target "$GAP075_ADIR" 2>/dev/null || true)
+GAP075_CAP_FSTYPE=$(findmnt -n -o FSTYPE --target "$GAP075_ADIR" 2>/dev/null || true)
+GAP075_FS_BLOCKS=$(stat -f -c %b "$GAP075_ADIR" 2>/dev/null || true)
+GAP075_FS_BSIZE=$(stat -f -c %S "$GAP075_ADIR" 2>/dev/null || true)
+GAP075_CAP=""
+GAP075_KERNEL_CAP=0
+if printf '%s' "$GAP075_CAP_RAW" | grep -qE '^[0-9]+$' &&
+    printf '%s' "$GAP075_FS_BLOCKS" | grep -qE '^[0-9]+$' &&
+    printf '%s' "$GAP075_FS_BSIZE" | grep -qE '^[0-9]+$'; then
+    GAP075_CAP="$GAP075_CAP_RAW"
+    GAP075_KERNEL_CAP=$(( GAP075_FS_BLOCKS * GAP075_FS_BSIZE ))
+fi
+if [ "$GAP075_CAP_FSTYPE" = "tmpfs" ] && mountpoint -q "$GAP075_ADIR" 2>/dev/null; then
+    assert "per-agent scratch $GAP075_ADIR is its own tmpfs mount"
 else
-    fail "scratch cap not reported by the kernel (mount size=$GAP075_CAP statfs=$GAP075_KERNEL_CAP)"
+    fail "per-agent scratch $GAP075_ADIR is not a dedicated tmpfs mount (fstype=${GAP075_CAP_FSTYPE:-<none>}) — the per-agent cap would not be enforced"
+fi
+if [ -n "$GAP075_CAP" ] && [ "$GAP075_KERNEL_CAP" = "$GAP075_CAP" ]; then
+    assert "per-agent scratch is bounded by the kernel at $GAP075_CAP bytes (mount size bytes == statfs bytes)"
+else
+    fail "scratch cap not reported by the kernel (mount size bytes=${GAP075_CAP_RAW:-<none>} statfs=$GAP075_KERNEL_CAP)"
 fi
 if [ -n "$GAP075_CAP" ] && [ "$GAP075_CAP" -le 67108864 ]; then
     GAP075_FILL_MB=$(( GAP075_CAP / 1048576 + 2 ))
@@ -1456,10 +1485,14 @@ if [ "$FAIL" -eq 0 ]; then
     if [ "$NOTE" -gt 0 ]; then
         echo "  ($NOTE issues documented — see notes above)"
     fi
+    echo ""
+    exit 0
 else
     echo "  STATUS: $FAIL FAILURES — review above"
+    echo "  VERIFY-FAIL"
+    echo ""
+    # A failing battery MUST exit non-zero: the previous revision ended with a
+    # bare `exit 0`, so the CI E2E step stayed green while VERIFY-PASS was
+    # absent and the failures were only visible in the log text.
+    exit 1
 fi
-
-echo ""
-
-exit 0
