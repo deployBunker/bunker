@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.4 (2026-09-13)
+
+### Added
+- Durable agent registry (GAP-070): append-only JSONL lifecycle log (spawn/heartbeat/destroy) replayed at startup so a `bunkerd` restart never orphans live agents; startup reconciliation of unmanaged `bunker-*` users (`destroy` default, `adopt` opt-in via `agent.reconciliation.mode`); `bunker registry compact` for rotation; the daemon refuses to start when the registry is enabled but its file cannot be opened
+
 ## 0.1.3 (2026-08-20)
 
 ### Fixed
