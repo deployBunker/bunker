@@ -191,11 +191,17 @@ jobs:
         run: bash regression-tests.sh
         timeout-minutes: 10
 
+      # INT-CI-003: the battery defaults to /usr/local/bin/bunker{,d}, which is a
+      # stale host build lacking newer CLI surface (--image-spec), so section 13
+      # failed 9 cells while the run still reported success (continue-on-error).
+      # Point it at the binaries this job just built from the pushed commit.
       - name: E2E battery
         env:
           BUNKERD_COEXIST: "1"
           BUNKERD_GRPC_ADDR: ":29091"
           BUNKERD_REST_ADDR: ":28081"
+          BUNKER_BIN: ${{ github.workspace }}/bunker
+          BUNKERD_BIN: ${{ github.workspace }}/bunkerd
         run: bash e2e-full-battery.sh
         timeout-minutes: 15
 
