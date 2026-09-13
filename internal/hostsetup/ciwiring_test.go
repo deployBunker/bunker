@@ -1,0 +1,294 @@
+package hostsetup
+
+import (
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+)
+
+// The Regression suite job (self-hosted `bunker` runner) is the gate that runs
+// regression-tests.sh against a real host. On run 34778344738 that job was a
+// hard FAILURE — 31 PASS / 2 FAIL (`exec whoami returns agent username`,
+// `exec propagates exit code`) so the E2E battery step never ran — even though
+// the run-level status stayed green (`continue-on-error: true`).
+//
+// Root cause: regression-tests.sh invokes BARE `bunker` / `bunkerd`, so the
+// runner resolved them through PATH to the stale /usr/local host baseline — a
+// build that predates the GAP-075 private-/tmp + PAM boundary runtime setup, so
+// `exec` into a freshly spawned agent was denied. The job's own freshness guard
+// only ever looked at the workspace build, and the E2E battery step is the only
+// step that pinned the candidate binaries.
+//
+// The workflow is the authoritative surface that decides WHICH binaries the
+// suite exercises, so it is pinned here — statically, no runner required — next
+// to the two script facts that make the PATH wiring effective. A cheap CI edit
+// (dropping the PATH export, or repointing the battery at /usr/local) fails in
+// `go test ./...` on every push instead of only on the self-hosted runner.
+
+const (
+	ciWorkflowPath             = "../../.github/workflows/ci.yml"
+	regressionSuiteScriptPath  = "../../regression-tests.sh"
+	regressionSuiteStepName    = "Regression suite"
+	e2eBatteryStepName         = "E2E battery"
+	githubWorkspaceContextExpr = "${{ github.workspace }}"
+)
+
+func readRepoFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return string(data)
+}
+
+// workflowStepBlock returns the raw YAML of the step whose `- name:` is name.
+// A step block starts at its `- name:` line and ends at the next `- ` entry at
+// the SAME indentation (nested sequences live deeper, so they stay inside).
+func workflowStepBlock(t *testing.T, workflow, name string) string {
+	t.Helper()
+	lines := strings.Split(workflow, "\n")
+	start, indent := -1, ""
+	for i, line := range lines {
+		if strings.TrimSpace(line) != "- name: "+name {
+			continue
+		}
+		start = i
+		indent = line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+		break
+	}
+	if start < 0 {
+		t.Fatalf("%s: no step named %q — this guard is stale", ciWorkflowPath, name)
+	}
+	end := len(lines)
+	for i := start + 1; i < len(lines); i++ {
+		if strings.HasPrefix(lines[i], indent+"- ") {
+			end = i
+			break
+		}
+	}
+	return strings.Join(lines[start:end], "\n")
+}
+
+// stripYAMLComments removes whole-line YAML comments so an assertion can never
+// be satisfied by prose in the explanatory comment above a step (the fix's own
+// comment names the PATH wiring).
+func stripYAMLComments(block string) string {
+	kept := make([]string, 0, 32)
+	for _, line := range strings.Split(block, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return strings.Join(kept, "\n")
+}
+
+// ciRegressionPathPreamble returns the commands the Regression suite step runs
+// BEFORE the suite itself — the PATH export and the provenance proof. The step
+// must be a literal block scalar for those commands to exist at all.
+func ciRegressionPathPreamble(t *testing.T, workflow string) []string {
+	t.Helper()
+	step := stripYAMLComments(workflowStepBlock(t, workflow, regressionSuiteStepName))
+	lines := strings.Split(step, "\n")
+	runIdx, runIndent := -1, ""
+	for i, line := range lines {
+		if !strings.HasPrefix(strings.TrimSpace(line), "run:") {
+			continue
+		}
+		runIdx = i
+		runIndent = line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+		break
+	}
+	if runIdx < 0 {
+		t.Fatalf("the %q step has no `run:` key:\n%s", regressionSuiteStepName, step)
+	}
+	if strings.TrimSpace(lines[runIdx]) != "run: |" {
+		t.Fatalf("the %q step's run block is no longer a literal block scalar (%q) — the PATH export and its provenance proof have nowhere to live",
+			regressionSuiteStepName, strings.TrimSpace(lines[runIdx]))
+	}
+	var body []string
+	for i := runIdx + 1; i < len(lines); i++ {
+		line := lines[i]
+		if len(line)-len(strings.TrimLeft(line, " \t")) <= len(runIndent) {
+			break
+		}
+		body = append(body, line)
+	}
+	preamble := make([]string, 0, len(body))
+	for _, line := range body {
+		if strings.Contains(line, "bash regression-tests.sh") {
+			break
+		}
+		preamble = append(preamble, line)
+	}
+	return preamble
+}
+
+func writeStubBinary(t *testing.T, dir, name string) {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("write stub %s: %v", path, err)
+	}
+}
+
+// TestCIRegressionPathPreambleSelectsWorkspaceBinary runs the step's PATH
+// preamble for real under the shell semantics GitHub uses (`bash -e`): with a
+// decoy `bunker`/`bunkerd` EARLIER on PATH than the workspace, and with the
+// workspace binaries present, the provenance proof must accept the workspace
+// ones; with the workspace binaries missing the proof must fail the step loudly
+// instead of silently exercising the decoy.
+func TestCIRegressionPathPreambleSelectsWorkspaceBinary(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skipf("bash not available: %v", err)
+	}
+	preamble := ciRegressionPathPreamble(t, readRepoFile(t, ciWorkflowPath))
+	if len(preamble) == 0 {
+		t.Fatalf("the %q step has no commands before `bash regression-tests.sh` — nothing selects the workspace binaries",
+			regressionSuiteStepName)
+	}
+	script := filepath.Join(t.TempDir(), "regression-preamble.sh")
+	if err := os.WriteFile(script, []byte("set -euo pipefail\n"+strings.Join(preamble, "\n")+"\n"), 0o700); err != nil {
+		t.Fatalf("write preamble script: %v", err)
+	}
+
+	decoy := t.TempDir()
+	writeStubBinary(t, decoy, "bunker")
+	writeStubBinary(t, decoy, "bunkerd")
+
+	run := func(workspace string) (int, string) {
+		t.Helper()
+		cmd := exec.Command("bash", script)
+		cmd.Env = []string{
+			"PATH=" + decoy + ":" + os.Getenv("PATH"),
+			"GITHUB_WORKSPACE=" + workspace,
+		}
+		out, err := cmd.CombinedOutput()
+		code := 0
+		if err != nil {
+			var exitErr *exec.ExitError
+			if !errors.As(err, &exitErr) {
+				t.Fatalf("run preamble: %v\n%s", err, out)
+			}
+			code = exitErr.ExitCode()
+		}
+		return code, string(out)
+	}
+
+	workspace := t.TempDir()
+	writeStubBinary(t, workspace, "bunker")
+	writeStubBinary(t, workspace, "bunkerd")
+	if code, out := run(workspace); code != 0 {
+		t.Errorf("preamble rejected the workspace binaries (exit %d) even though they exist:\n%s", code, out)
+	}
+
+	// A runner whose workspace build is missing must NOT fall through to the
+	// decoy baseline — that is the silent-stale-binary class this fix removes.
+	empty := t.TempDir()
+	if code, out := run(empty); code == 0 {
+		t.Errorf("preamble accepted a workspace WITHOUT bunker/bunkerd (exit 0), so the suite would silently run the PATH baseline again:\n%s", out)
+	}
+}
+
+// TestCIRegressionSuiteRunsWorkspaceBinaries pins the fix for the job-level
+// rejection: the Regression suite step must put the job's just-built workspace
+// binaries FIRST on PATH and prove that resolution before the suite runs, and
+// the E2E battery step must keep its explicit BUNKER_BIN/BUNKERD_BIN wiring.
+func TestCIRegressionSuiteRunsWorkspaceBinaries(t *testing.T) {
+	workflow := readRepoFile(t, ciWorkflowPath)
+
+	step := stripYAMLComments(workflowStepBlock(t, workflow, regressionSuiteStepName))
+
+	// 1. The step must still run the real suite (and not quietly skip it).
+	if !strings.Contains(step, "bash regression-tests.sh") {
+		t.Errorf("the %q step no longer runs `bash regression-tests.sh`:\n%s", regressionSuiteStepName, step)
+	}
+
+	// 2. PATH must be exported with the workspace ahead of the inherited PATH,
+	//    and that export must happen BEFORE the suite starts.
+	exportLine, suiteLine := -1, -1
+	for i, line := range strings.Split(step, "\n") {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(trimmed, "export PATH="):
+			exportLine = i
+			value := strings.Trim(strings.TrimPrefix(trimmed, "export PATH="), `"'`)
+			first := strings.TrimSpace(strings.Split(value, ":")[0])
+			if first != "${GITHUB_WORKSPACE}" && first != "$GITHUB_WORKSPACE" {
+				t.Errorf("the %q step puts %q first on PATH; the workspace (%s or ${GITHUB_WORKSPACE}) must come first so bare `bunker`/`bunkerd` resolve to the just-built binaries",
+					regressionSuiteStepName, first, githubWorkspaceContextExpr)
+			}
+		case strings.Contains(trimmed, "bash regression-tests.sh"):
+			if suiteLine < 0 {
+				suiteLine = i
+			}
+		}
+	}
+	if exportLine < 0 {
+		t.Fatalf("the %q step does not export PATH — regression-tests.sh invokes bare `bunker`/`bunkerd`, so the runner falls back to the stale /usr/local baseline and `exec` is denied (job 103780758333, 31 PASS / 2 FAIL):\n%s",
+			regressionSuiteStepName, step)
+	}
+	if suiteLine >= 0 && exportLine > suiteLine {
+		t.Errorf("the %q step exports PATH after starting the suite, so the suite still resolves the stale host binaries:\n%s", regressionSuiteStepName, step)
+	}
+
+	// 3. Fail loud if the resolution ever picks something else: `command -v`
+	//    must be compared against the workspace paths, so a future runner
+	//    without the workspace build fails instead of silently testing a
+	//    stale host binary.
+	for _, want := range []string{"command -v bunkerd", "command -v bunker", `"${GITHUB_WORKSPACE}/bunkerd"`, `"${GITHUB_WORKSPACE}/bunker"`} {
+		if !strings.Contains(step, want) {
+			t.Errorf("the %q step no longer proves the resolved binaries are the workspace build (missing %q) — a stale host binary could be exercised silently:\n%s",
+				regressionSuiteStepName, want, step)
+		}
+	}
+
+	// 4. The battery keeps its explicit wiring (INT-CI-003) — the PATH export
+	//    is additive, never a replacement.
+	battery := stripYAMLComments(workflowStepBlock(t, workflow, e2eBatteryStepName))
+	for _, want := range []string{"BUNKER_BIN: " + githubWorkspaceContextExpr + "/bunker", "BUNKERD_BIN: " + githubWorkspaceContextExpr + "/bunkerd"} {
+		if !strings.Contains(battery, want) {
+			t.Errorf("the %q step lost its explicit candidate-binary wiring (%q missing):\n%s", e2eBatteryStepName, want, battery)
+		}
+	}
+}
+
+// TestRegressionSuiteInvokesBinariesViaPath pins the script-side fact that makes
+// the PATH wiring authoritative: the suite must resolve both binaries through
+// PATH. The /usr/local baseline may only be an existence assertion — executing
+// it is exactly what produced the 2 failing exec cells.
+func TestRegressionSuiteInvokesBinariesViaPath(t *testing.T) {
+	script := readRepoFile(t, regressionSuiteScriptPath)
+
+	// Bare invocations = PATH-resolved. The daemon start is the one that
+	// matters for spawn/exec behaviour (it writes the systemd units and the
+	// SSH forced command that implement the private-/tmp boundary).
+	for _, want := range []string{`bunkerd -c "$REGRESSION_CONFIG"`, "bunker connect", "bunker spawn", "bunker exec"} {
+		if !strings.Contains(script, want) {
+			t.Errorf("%s no longer contains the bare invocation %q — if the suite switched to an absolute path, the CI PATH wiring is dead and the pushed commit is no longer what runs",
+				regressionSuiteScriptPath, want)
+		}
+	}
+
+	// No absolute host path may be executed (command position). Existence
+	// assertions are fine; anything else would pin the run to the stale
+	// /usr/local build.
+	commandPosition := regexp.MustCompile(`^[ \t]*["']?/usr/local/bin/bunkerd?["']?[ \t]`)
+	pipelineUse := regexp.MustCompile(`[|&;(][ \t]*["']?/usr/local/bin/bunkerd?["']?[ \t]`)
+	for i, line := range strings.Split(script, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		if commandPosition.MatchString(line) || pipelineUse.MatchString(line) {
+			t.Errorf("%s:%d executes the absolute host baseline (%q); the suite must keep resolving bunker/bunkerd through PATH", regressionSuiteScriptPath, i+1, strings.TrimSpace(line))
+		}
+		if strings.Contains(line, "/usr/local/bin/bunker") && !strings.Contains(line, "[ -f ") {
+			t.Errorf("%s:%d references the host baseline %q outside an existence assertion — the CI PATH wiring only decides what runs if the suite never executes an absolute path", regressionSuiteScriptPath, i+1, strings.TrimSpace(line))
+		}
+	}
+}
