@@ -42,6 +42,15 @@ Bunker is a **multi-agent hosting platform** — a daemon (`bunkerd`) that runs 
 - **Multi-server** — One CLI, many `bunkerd` instances. Switch with `--server`
 - **Scoped API keys** — Master tokens for admin, agent-scoped sub-keys for CI/CD
 - **TTL expiry** — Agents auto-destroy after their time-to-live. Heartbeat to extend
+- **Private /tmp per agent** — every agent session gets its own `/tmp`
+  (per-session `pam_namespace` instance; `PrivateTmp=yes` on the rootless
+  dockerd and detached-run units), so no agent can read or collide with
+  another agent's or root's temporary files. Cross-agent file exchange is
+  strictly opt-in through one bounded directory (`/srv/bunker-share`, setgid to
+  the agent group and NOT writable by it — mode 2750 — with a kernel-enforced
+  per-agent size cap). Install the host half with
+  `bunker host-provision --apply`; see
+  [specs/agent-tmp-isolation.md](specs/agent-tmp-isolation.md)
 - **Durable registry** — Agent lifecycle state (spawn/heartbeat/destroy) is an
   append-only JSONL log replayed at startup, so agents survive a `bunkerd`
   restart. Size-capped (5 MiB × 3 rotation), compactable offline with
@@ -315,6 +324,72 @@ prints an explicit `NOTE: host-level fallback` line, and the wire response sets
 `host_level_fallback` (proto field 10). Treat those numbers as host figures, not
 the agent's.
 
+## Agent isolation (`/tmp` and cross-agent exchange)
+
+Every **agent** runs with an **enforced private `/tmp`**:
+
+| Execution path | Mechanism | Scope of the private `/tmp` |
+|----------------|-----------|-----------------------------|
+| `bunker exec`, `bunker ssh`, scp (`cp`/`deploy`), sshfs (`mount`), docker SSH transport | `pam_namespace` per SSH session | the session, persistent per agent |
+| rootless dockerd, `bunker run --detach` | `PrivateTmp=yes` on the transient unit | the unit (and its containers) |
+
+The sshd half is **scoped to agent-named sessions** (the reserved `bunker-*`
+username pattern) and **fails closed**, so it is an agent boundary and not a
+host-wide policy. Bunker installs this marked session block:
+
+```
+session    [success=2 auth_err=ignore default=die]    pam_succeed_if.so quiet user !~ bunker-*
+session    [success=ignore default=die]               pam_exec.so quiet /usr/lib/bunker/pam-tmp-guard verify bunker-agents
+session    required                                   pam_namespace.so
+```
+
+The classifier keys on the NAME (not on group state, so a deleted group cannot
+turn an agent session into an operator session); a non-agent session jumps over
+all three modules and keeps the host's own `/tmp`. An agent session must then
+pass the root-owned `pam_exec` precondition — the exact Bunker `/tmp` rule, the
+agent group **and** the membership, the instance parent, and its whole trust
+chain (root-owned, non-writable helper directory → root-owned sha256 manifest →
+the helper's own bytes) — before `pam_namespace` runs. Any failure (missing
+helper, missing or wrong or malformed drop-in, missing group, lost membership,
+writable helper directory or manifest) **denies** the session instead of
+silently continuing with the shared `/tmp`; the module line also carries no
+`ignore_config_error`, which would make it skip a broken config. `--status`
+(`--json`) answers the isolation question from the SAME static properties the
+helper enforces, so it never reports `isolated: true` for a host whose agent
+sessions are denied or shared.
+
+The host half is provisioned once, as root, with an idempotent installer that
+never touches `/etc/fstab`:
+
+```bash
+sudo -S -p '' bunker host-provision --status     # what is in place right now (--json for CI)
+sudo -S -p '' bunker host-provision              # dry run: print the plan
+sudo -S -p '' bunker host-provision --apply      # install (idempotent, reversible)
+sudo -S -p '' bunker host-provision --uninstall --apply
+```
+
+Cross-agent file exchange is **opt-in and explicitly bounded**: the only
+sanctioned shared location is `/srv/bunker-share`, whose root is root-owned,
+setgid to the agent group `bunker-agents` and NOT writable by it or by the world
+(mode `2750` — so an agent cannot create a plain, uncapped entry beside the
+capped directories), and where the daemon creates one directory per agent with
+the setgid bit set to the agent group and a kernel-enforced per-agent size cap
+(a tmpfs — writes past the cap fail with `ENOSPC` instead of filling the host).
+If the bounded filesystem cannot be mounted, the directory is not created at
+all; there is no unbounded fallback.
+Agent-group membership itself is granted to every agent at spawn regardless of
+that toggle — the membership is what the fail-closed precondition verifies, not
+a feature of the exchange directory.
+
+```bash
+# agent A hands a file to agent B
+bunker exec a -- sh -c 'cp build.tar /srv/bunker-share/a/build.tar'
+bunker exec b -- cp /srv/bunker-share/a/build.tar ./build.tar
+```
+
+Defaults, limits and the exact verification steps are in
+[specs/agent-tmp-isolation.md](specs/agent-tmp-isolation.md).
+
 ## CLI Commands
 
 ```
@@ -338,6 +413,8 @@ bunker heartbeat   Extend agent TTL
 bunker destroy     Tear down an agent (removes the local key unless --keep-key)
 bunker audit       Inspect the audit trail (verify / list / export — see docs/audit.md)
 bunker registry    Maintain the durable agent registry (compact)
+bunker host-provision  Provision the per-agent isolation boundary on this host
+                   (dry run by default; --apply installs, --status reports)
 bunker version     Print version/commit/build metadata (also --version)
 ```
 

@@ -13,6 +13,7 @@ import (
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 
 	"github.com/deployBunker/bunker/internal/config"
+	"github.com/deployBunker/bunker/internal/hostsetup"
 	"github.com/deployBunker/bunker/internal/imagespec"
 	"github.com/deployBunker/bunker/internal/registry"
 	"github.com/deployBunker/bunker/internal/resource"
@@ -49,6 +50,10 @@ type AgentManager struct {
 	listSystemAgents func() ([]SystemAgent, error)
 	// destroyAgent is the reconciliation destroy path (defaults to Destroy).
 	destroyAgent func(ctx context.Context, agentID string, force bool) (*v1.DestroyAgentResponse, error)
+	// hostRunner is the GAP-075 host-provisioning command seam (mount,
+	// usermod, chown, …). Nil in production (real commands); tests inject a
+	// fake so spawn/destroy can be exercised without touching host state.
+	hostRunner hostsetup.Runner
 
 	// reconcileDone is closed once Reconcile has run (or been given up on).
 	// The TTL reaper waits for it so it can never destroy an agent before

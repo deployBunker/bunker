@@ -37,8 +37,8 @@ const (
 // instead of a promise. Regenerate only for a deliberate change to the
 // host-context command shape.
 var (
-	goldenShellOff = "sh -c 'set -a; [ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env 2>/dev/null; set +a; env PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin DOCKER_HOST=unix:///run/bunker/abc123/docker.sock TMPDIR=/run/bunker/abc123/tmp sh -c '\\''docker '\\''\\'\\'''\\''version'\\''\\'\\'''\\'''\\'''"
-	goldenShellOn  = "sh -c 'set -a; [ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env 2>/dev/null; set +a; env PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin DOCKER_HOST=unix:///run/bunker/abc123/docker.sock TMPDIR=/run/bunker/abc123/tmp BUNKER_SANDBOX=1 sh -c '\\''sh '\\''\\'\\'''\\''-c'\\''\\'\\'''\\'' '\\''\\'\\'''\\''echo SB=$BUNKER_SANDBOX'\\''\\'\\'''\\'''\\'''"
+	goldenShellOff = "sh -c 'set -a; [ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env 2>/dev/null; set +a; env PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin DOCKER_HOST=unix:///run/bunker/abc123/docker.sock TMPDIR=/tmp sh -c '\\''docker '\\''\\'\\'''\\''version'\\''\\'\\'''\\'''\\'''"
+	goldenShellOn  = "sh -c 'set -a; [ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env 2>/dev/null; set +a; env PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin DOCKER_HOST=unix:///run/bunker/abc123/docker.sock TMPDIR=/tmp BUNKER_SANDBOX=1 sh -c '\\''sh '\\''\\'\\'''\\''-c'\\''\\'\\'''\\'' '\\''\\'\\'''\\''echo SB=$BUNKER_SANDBOX'\\''\\'\\'''\\'''\\'''"
 	goldenRawOff   = []string{
 		"ssh",
 		"-o",
@@ -55,7 +55,7 @@ var (
 		"env",
 		"PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
-		"TMPDIR=/run/bunker/abc123/tmp",
+		"TMPDIR=/tmp",
 		"echo",
 		"it's",
 		"a b",
@@ -76,13 +76,13 @@ var (
 		"env",
 		"PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
-		"TMPDIR=/run/bunker/abc123/tmp",
+		"TMPDIR=/tmp",
 		"BUNKER_SANDBOX=1",
 		"echo",
 		"hi",
 	}
-	goldenScriptOff = "sh -c 'mkdir -p \"/home/bunker-abc123/.bunker\" && cat > \"/home/bunker-abc123/.bunker/exec-script.sh\" <<'\\''EOFSCRIPT'\\''\n#!/bin/sh\necho hi\n\nEOFSCRIPT\nchmod +x \"/home/bunker-abc123/.bunker/exec-script.sh\" && set -a; [ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env 2>/dev/null; set +a; env PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin DOCKER_HOST=unix:///run/bunker/abc123/docker.sock TMPDIR=/run/bunker/abc123/tmp \"/home/bunker-abc123/.bunker/exec-script.sh\"'"
-	goldenScriptOn  = "sh -c 'mkdir -p \"/home/bunker-abc123/.bunker\" && cat > \"/home/bunker-abc123/.bunker/exec-script.sh\" <<'\\''EOFSCRIPT'\\''\n#!/bin/sh\necho hi\n\nEOFSCRIPT\nchmod +x \"/home/bunker-abc123/.bunker/exec-script.sh\" && set -a; [ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env 2>/dev/null; set +a; env PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin DOCKER_HOST=unix:///run/bunker/abc123/docker.sock TMPDIR=/run/bunker/abc123/tmp BUNKER_SANDBOX=1 \"/home/bunker-abc123/.bunker/exec-script.sh\"'"
+	goldenScriptOff = "sh -c 'mkdir -p \"/home/bunker-abc123/.bunker\" && cat > \"/home/bunker-abc123/.bunker/exec-script.sh\" <<'\\''EOFSCRIPT'\\''\n#!/bin/sh\necho hi\n\nEOFSCRIPT\nchmod +x \"/home/bunker-abc123/.bunker/exec-script.sh\" && set -a; [ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env 2>/dev/null; set +a; env PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin DOCKER_HOST=unix:///run/bunker/abc123/docker.sock TMPDIR=/tmp \"/home/bunker-abc123/.bunker/exec-script.sh\"'"
+	goldenScriptOn  = "sh -c 'mkdir -p \"/home/bunker-abc123/.bunker\" && cat > \"/home/bunker-abc123/.bunker/exec-script.sh\" <<'\\''EOFSCRIPT'\\''\n#!/bin/sh\necho hi\n\nEOFSCRIPT\nchmod +x \"/home/bunker-abc123/.bunker/exec-script.sh\" && set -a; [ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env 2>/dev/null; set +a; env PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin DOCKER_HOST=unix:///run/bunker/abc123/docker.sock TMPDIR=/tmp BUNKER_SANDBOX=1 \"/home/bunker-abc123/.bunker/exec-script.sh\"'"
 )
 
 // goldenSSHArgv returns the ssh argv carrying the given remote command string.
@@ -306,7 +306,7 @@ func TestExecBuilders_ImageScriptMode(t *testing.T) {
 	remote := cmd.Args[len(cmd.Args)-1]
 
 	// Premise of the anchor below: the golden really carries the env chain.
-	const anchor = "TMPDIR=/run/bunker/abc123/tmp "
+	const anchor = "TMPDIR=/tmp "
 	if !strings.Contains(goldenScriptOff, anchor) {
 		t.Fatalf("golden script command lost its env chain anchor: %q", goldenScriptOff)
 	}

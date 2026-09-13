@@ -97,6 +97,7 @@ and control ephemeral development environments — all from the CLI.`,
 	root.AddCommand(cli.NewStatusCommand())
 	root.AddCommand(cli.NewAuditCommand())
 	root.AddCommand(cli.NewRegistryCommand())
+	root.AddCommand(cli.NewHostProvisionCommand())
 
 	return root
 }

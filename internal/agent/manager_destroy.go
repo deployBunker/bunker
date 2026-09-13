@@ -43,6 +43,11 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	// accumulate after the agent is destroyed.
 	removeUserSliceLimits(ctx, agentID, m.logger)
 
+	// Step 0.6 (GAP-075): unmount and remove the bounded shared-scratch
+	// directory and the private-/tmp instance directory. Idempotent, so a
+	// partially provisioned agent still destroys cleanly.
+	m.removeIsolation(ctx, agentID)
+
 	// Step 1: Stop the dockerd systemd user unit
 	unitName := "bunker-docker-" + agentID
 	username := "bunker-" + agentID

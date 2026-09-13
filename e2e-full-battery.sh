@@ -36,6 +36,19 @@ BUNKERD_PID=""
 # candidate build; BUNKER_BIN overrides the CLI similarly.
 BUNKERD_BIN="${BUNKERD_BIN:-/usr/local/bin/bunkerd}"
 BUNKER="${BUNKER_BIN:-/usr/local/bin/bunker}"
+
+# GAP-075 section state. Initialized here (not in section 15) so the EXIT trap
+# can always reference it under `set -u`, even when the battery dies early.
+GAP075_OP_USER=""
+GAP075_OP_HOME=""
+GAP075_OP_KEYDIR=""
+GAP075_RUN_UNIT=""
+GAP075_DROPIN_RESTORE=""
+GAP075_DROPIN_PATH="/etc/security/namespace.d/50-bunker-agents.conf"
+GAP075_HELPER_PATH="/usr/lib/bunker/pam-tmp-guard"
+GAP075_HELPER_RESTORE=""
+GAP075_HELPERDIR_RESTORE=""
+GAP075_MASK_RESTORE=""
 if [ -n "$BUNKERD_COEXIST" ]; then
     export HOME="$(mktemp -d /tmp/bunker-battery-home-XXXXXX)"
     BATTERY_CONFIG="$(mktemp /tmp/bunkerd-battery-XXXXXX.yaml)"
@@ -51,6 +64,12 @@ agent:
   port_range_start: 30000
   port_range_end: 30999
   port_range_per_agent: 100
+  # GAP-075: keep each agent's shared-scratch cap small so this battery can
+  # prove the kernel-enforced bound (16 MiB) instead of only inspecting it.
+  # The scratch root stays at the documented default: /srv/bunker-share.
+  isolation:
+    shared_scratch_enabled: true
+    shared_scratch_per_agent_bytes: 16777216
   # GAP-070: this battery's daemon must NEVER open the production registry or
   # reconcile against the host's real agents — on a shared host the default
   # reconciliation mode would DESTROY production agents. Durable-registry
@@ -70,7 +89,7 @@ fi
 
 cleanup() {
     # Destroy any agents created during tests
-    for agent in e2e-main e2e-agent-2 e2e-agent-3 e2e-agent-4 e2e-agent-5 e2e-imgspec e2e-imgspec-b e2e-imgspec-bad gap070-idem; do
+    for agent in e2e-main e2e-agent-2 e2e-agent-3 e2e-agent-4 e2e-agent-5 e2e-imgspec e2e-imgspec-b e2e-imgspec-bad gap070-idem gap075-a gap075-b; do
         $BUNKER destroy "$agent" --force > /dev/null 2>&1 || true
     done
     # Kill leftover users. Standalone: every bunker- user is fair game.
@@ -91,6 +110,54 @@ cleanup() {
             mv "/etc/bunkerd/ssh/$k" "/tmp/bunker-battery-key-quarantine-$$/" 2>/dev/null || true
         done
     fi
+    # GAP-075: stop the disposable detached run unit, remove the disposable
+    # non-agent test user, restore a backed-up namespace drop-in, and remove the
+    # /tmp markers. Scratch dirs are removed by the daemon's destroy; a leftover
+    # is unmounted here so the host is clean.
+    if [ -n "${GAP075_RUN_UNIT:-}" ]; then
+        systemctl stop "${GAP075_RUN_UNIT}" > /dev/null 2>&1 || true
+    fi
+    if [ -n "${GAP075_DROPIN_RESTORE:-}" ] && [ -f "${GAP075_DROPIN_RESTORE}" ]; then
+        cp -a "${GAP075_DROPIN_RESTORE}" "${GAP075_DROPIN_PATH}" 2>/dev/null || true
+        rm -f "${GAP075_DROPIN_RESTORE}" 2>/dev/null || true
+    fi
+    # GAP-075 rework: restore the pam_exec precondition helper if the
+    # fail-closed checks were interrupted while it was moved aside, and drop any
+    # disposable marker line from the sshd stack.
+    if [ -n "${GAP075_HELPER_RESTORE:-}" ] && [ -f "${GAP075_HELPER_RESTORE}" ]; then
+        cp -a "${GAP075_HELPER_RESTORE}" "${GAP075_HELPER_PATH}" 2>/dev/null || true
+        chown root:root "${GAP075_HELPER_PATH}" 2>/dev/null || true
+        chmod 0755 "${GAP075_HELPER_PATH}" 2>/dev/null || true
+        rm -f "${GAP075_HELPER_RESTORE}" 2>/dev/null || true
+    fi
+    # ...and restore the helper directory's mode if the widened-directory check
+    # was interrupted mid-flight (the mode is part of the trust chain).
+    if [ -n "${GAP075_HELPERDIR_RESTORE:-}" ]; then
+        chown root:root "${GAP075_HELPER_DIR:-/usr/lib/bunker}" 2>/dev/null || true
+        chmod "${GAP075_HELPERDIR_RESTORE}" "${GAP075_HELPER_DIR:-/usr/lib/bunker}" 2>/dev/null || true
+        GAP075_HELPERDIR_RESTORE=""
+    fi
+    if [ -n "${GAP075_MASK_RESTORE:-}" ]; then
+        grep -vF "${GAP075_MASK_RESTORE}" /etc/pam.d/sshd > /etc/pam.d/sshd.bunker-battery-tmp 2>/dev/null &&
+            cat /etc/pam.d/sshd.bunker-battery-tmp > /etc/pam.d/sshd 2>/dev/null || true
+        rm -f /etc/pam.d/sshd.bunker-battery-tmp 2>/dev/null || true
+    fi
+    if [ -n "${GAP075_OP_USER:-}" ]; then
+        userdel -rf "${GAP075_OP_USER}" > /dev/null 2>&1 || true
+    fi
+    if [ -n "${GAP075_OP_KEYDIR:-}" ]; then
+        rm -rf "${GAP075_OP_KEYDIR}" 2>/dev/null || true
+    fi
+    rm -f /tmp/gap075-* 2>/dev/null || true
+    # A refused arbitrary-entry probe leaves nothing behind; remove anything a
+    # FAILED probe may have created directly under the exchange root.
+    rm -rf "${BUNKER_SHARED_SCRATCH:-/srv/bunker-share}"/gap075-arb-* 2>/dev/null || true
+    for d in /srv/bunker-share/gap075-a /srv/bunker-share/gap075-b; do
+        if mountpoint -q "$d" 2>/dev/null; then
+            umount -l "$d" 2>/dev/null || true
+        fi
+        [ -d "$d" ] && rmdir "$d" 2>/dev/null || true
+    done
     # Stop the battery's own bunkerd (coexist mode only)
     if [ -n "$BUNKERD_PID" ]; then
         kill "$BUNKERD_PID" 2>/dev/null || true
@@ -782,6 +849,592 @@ else
     else
         fail "destroy was not persisted to the registry"
     fi
+fi
+echo ""
+
+# =============================================
+# 15. AGENT /tmp ISOLATION + SCOPED SHARED SCRATCH (GAP-075)
+# =============================================
+# Security-boundary checks, all with disposable names and cleanup traps:
+#
+#   15.1 host provisioning: idempotent, never touches /etc/fstab, reports the
+#        agent group + classifier + pam_exec precondition + helper integrity,
+#        and the DEPLOYED sshd PAM block is the agent-NAME-scoped, fail-closed
+#        trio (classifier -> pam_exec precondition -> pam_namespace) with no
+#        fail-open option; a re-apply preserves a foreign rule
+#   15.2 an agent's /tmp is private: agent-vs-root and agent-vs-agent
+#   15.2b the agent user is a member of the agent group (the precondition's input)
+#   15.2c an ordinary NON-agent SSH user on the same host still sees the host
+#        /tmp — the module must not apply host-wide
+#   15.2d a detached run unit carries PrivateTmp=yes and its /tmp is not root's
+#   15.3 /srv/bunker-share is the ONLY sanctioned exchange point, with
+#        group/setgid semantics and a kernel-enforced per-agent size cap
+#   15.3b the exchange ROOT is setgid and NOT writable by agents or the world
+#        (mode 2750): an agent cannot create an arbitrary uncapped entry beside
+#        its own capped directory
+#   15.4 unauthorized paths stay unavailable
+#   15.5 the daemon's own units carry PrivateTmp=yes
+#   15.6 a MALFORMED namespace drop-in cannot succeed open: the agent session is
+#        denied instead of continuing with the host's shared /tmp
+#   15.6b a WIDENED helper directory (group/world writable) cannot succeed open:
+#        the agent could replace the helper and its manifest, so the session is
+#        denied until the mode is restored
+#
+# Enabling the per-session private /tmp edits the sshd PAM stack, so the section
+# is fail-safe: if an agent session cannot open after the install, the
+# Bunker-managed PAM block is rolled back immediately and the check fails loudly
+# (root sessions are unaffected either way).
+echo "=== 15. Agent /tmp Isolation + Shared Scratch (GAP-075) ==="
+GAP075_UNIQ="$$"
+GAP075_A="gap075-a"
+GAP075_B="gap075-b"
+GAP075_GROUP="${BUNKER_AGENT_GROUP:-bunker-agents}"
+GAP075_SHARE="${BUNKER_SHARED_SCRATCH:-/srv/bunker-share}"
+GAP075_A_FILE="gap075-${GAP075_UNIQ}-a"
+GAP075_ROOT_FILE="gap075-${GAP075_UNIQ}-root"
+GAP075_RUN_FILE="gap075-${GAP075_UNIQ}-run"
+GAP075_OP_FILE="gap075-${GAP075_UNIQ}-op"
+GAP075_FSTAB_BEFORE=$(md5sum /etc/fstab 2>/dev/null | awk '{print $1}')
+
+# ── 15.1 host provisioning ─────────────────────────────────────────────
+if ! $BUNKER host-provision --help > /dev/null 2>&1; then
+    fail "bunker binary has no host-provision command — build the candidate CLI and point BUNKER_BIN at it (GAP-075 host half missing)"
+else
+    assert "bunker host-provision is available"
+fi
+GAP075_DRY=$($BUNKER host-provision 2>&1 || true)
+if echo "$GAP075_DRY" | grep -q "dry run"; then
+    assert "host-provision defaults to a dry run"
+else
+    fail "host-provision without --apply did not report a dry run: $GAP075_DRY"
+fi
+$BUNKER host-provision --apply > /dev/null 2>&1 || true
+GAP075_STATUS_JSON=$($BUNKER host-provision --status --json 2>&1 || true)
+if echo "$GAP075_STATUS_JSON" | grep -q '"isolated": *true'; then
+    assert "host isolation active: agent-scoped per-session private /tmp installed"
+else
+    fail "host isolation not active after --apply: $GAP075_STATUS_JSON"
+fi
+if echo "$GAP075_STATUS_JSON" | grep -q "\"agent_group\": *\"$GAP075_GROUP\""; then
+    assert "the installer reports the agent isolation group $GAP075_GROUP"
+else
+    fail "host-provision reports the wrong agent group: $GAP075_STATUS_JSON"
+fi
+if echo "$GAP075_STATUS_JSON" | grep -q '"classifier_module": *true'; then
+    assert "the agent-name classifier module (pam_succeed_if) is installed"
+else
+    fail "pam_succeed_if is missing — the agent-name scoping cannot be expressed: $GAP075_STATUS_JSON"
+fi
+if echo "$GAP075_STATUS_JSON" | grep -q '"pam_exec_module": *true'; then
+    assert "the fail-closed precondition module (pam_exec) is installed"
+else
+    fail "pam_exec is missing — the fail-closed precondition cannot run: $GAP075_STATUS_JSON"
+fi
+if echo "$GAP075_STATUS_JSON" | grep -q '"classifier_pattern_ok": *true'; then
+    assert "the classifier module supports the agent-name pattern test (Linux-PAM >= 1.6)"
+else
+    fail "pam_succeed_if cannot express user !~ bunker-* on this host: $GAP075_STATUS_JSON"
+fi
+if echo "$GAP075_STATUS_JSON" | grep -q '"helper_integrity_ok": *true'; then
+    assert "the pam_exec precondition helper matches its sha256 manifest"
+else
+    fail "the precondition helper/manifest are missing or drifted: $GAP075_STATUS_JSON"
+fi
+GAP075_FSTAB_AFTER=$(md5sum /etc/fstab 2>/dev/null | awk '{print $1}')
+if [ "$GAP075_FSTAB_BEFORE" = "$GAP075_FSTAB_AFTER" ]; then
+    assert "/etc/fstab was not modified by host provisioning"
+else
+    fail "host provisioning modified /etc/fstab"
+fi
+if [ -f "$GAP075_DROPIN_PATH" ]; then
+    assert "pam_namespace drop-in installed in /etc/security/namespace.d"
+else
+    fail "pam_namespace drop-in missing"
+fi
+
+# The DEPLOYED PAM block must be the agent-scoped, fail-closed block, and must
+# not carry the fail-open option that lets a malformed config be skipped.
+#
+#   session    [success=2 auth_err=ignore default=die]    pam_succeed_if.so quiet user !~ bunker-*
+#   session    [success=ignore default=die]               pam_exec.so quiet <helper> verify <group>
+#   session    required                                   pam_namespace.so
+#
+# The classifier keys on the reserved NAME pattern (so a deleted agent group
+# cannot turn an agent session into an operator session), and the pam_exec
+# precondition must run between it and the module.
+GAP075_CLASSIFIER_LINE="session    [success=2 auth_err=ignore default=die]    pam_succeed_if.so quiet user !~ bunker-*"
+GAP075_VERIFY_RE="^session[[:space:]]+\[success=ignore default=die\][[:space:]]+pam_exec\.so[[:space:]]+quiet[[:space:]]+${GAP075_HELPER_PATH}[[:space:]]+verify[[:space:]]+${GAP075_GROUP}[[:space:]]*$"
+if grep -qF "$GAP075_CLASSIFIER_LINE" /etc/pam.d/sshd; then
+    assert "the sshd stack carries the agent-NAME classifier (reserved pattern bunker-*)"
+else
+    fail "the agent-name classifier line is not in /etc/pam.d/sshd — a deleted agent group could fail OPEN"
+fi
+if grep -qE "$GAP075_VERIFY_RE" /etc/pam.d/sshd; then
+    assert "the sshd stack carries the agent-only fail-closed precondition (pam_exec -> $GAP075_HELPER_PATH, group $GAP075_GROUP)"
+else
+    fail "the pam_exec precondition line is missing or does not name the helper/group: $(grep -n 'pam_exec' /etc/pam.d/sshd || true)"
+fi
+if grep -qE '^session[[:space:]]+required[[:space:]]+pam_namespace\.so[[:space:]]*$' /etc/pam.d/sshd; then
+    assert "the pam_namespace session line is bare and required (no weakening options)"
+else
+    fail "the pam_namespace session line is missing or carries options"
+fi
+if grep -q 'ignore_config_error' /etc/pam.d/sshd; then
+    fail "the deployed PAM stack still carries ignore_config_error — a malformed namespace config would be SKIPPED and the session would continue with the shared /tmp"
+else
+    assert "no fail-open ignore_config_error in the deployed PAM stack"
+fi
+# Adjacency: the classifier jumps over exactly two modules, so the verifier and
+# the module line must follow it immediately, in that order.
+if awk -v c="$GAP075_CLASSIFIER_LINE" '
+        $0==c {getline v; getline m;
+               if (v ~ /^session[[:space:]]+\[success=ignore default=die\][[:space:]]+pam_exec\.so/ &&
+                   m ~ /^session[[:space:]]+required[[:space:]]+pam_namespace\.so[[:space:]]*$/) found=1}
+        END {exit !found}' /etc/pam.d/sshd; then
+    assert "classifier -> precondition -> pam_namespace are adjacent (the two-module jump lands correctly)"
+else
+    fail "the managed block is not adjacent/ordered — the classifier's jump would skip an unrelated module"
+fi
+
+# ── 15.1b the managed precondition helper is a root-owned, managed file ─
+# The helper's TRUST CHAIN is directory -> manifest -> helper. A writable
+# directory or manifest would let a local agent replace both root-owned files by
+# rename/unlink, so all three links are asserted, not just the helper's bytes.
+GAP075_HELPER_DIR=$(dirname "$GAP075_HELPER_PATH")
+if [ -d "$GAP075_HELPER_DIR" ]; then
+    GAP075_DIR_META=$(stat -c '%U:%G %a' "$GAP075_HELPER_DIR" 2>/dev/null || echo "missing")
+    if [ "$GAP075_DIR_META" = "root:root 755" ]; then
+        assert "the helper directory $GAP075_HELPER_DIR is root:root mode 755 (first link of the trust chain)"
+    else
+        fail "helper directory ownership/mode = $GAP075_DIR_META, want root:root 755 — an agent could replace the helper AND its manifest"
+    fi
+else
+    fail "the helper directory $GAP075_HELPER_DIR is missing — every agent session would be denied"
+fi
+if [ -f "$GAP075_HELPER_PATH.sha256" ]; then
+    GAP075_MANIFEST_META=$(stat -c '%U:%G %a' "$GAP075_HELPER_PATH.sha256" 2>/dev/null || echo "missing")
+    if [ "$GAP075_MANIFEST_META" = "root:root 444" ]; then
+        assert "the helper manifest is root:root mode 444 (a writable manifest would prove anything)"
+    else
+        fail "helper manifest ownership/mode = $GAP075_MANIFEST_META, want root:root 444"
+    fi
+else
+    fail "the helper manifest $GAP075_HELPER_PATH.sha256 is missing — every agent session would be denied"
+fi
+if [ -f "$GAP075_HELPER_PATH" ]; then
+    GAP075_HELPER_META=$(stat -c '%U:%G %a' "$GAP075_HELPER_PATH" 2>/dev/null || echo "missing")
+    if [ "$GAP075_HELPER_META" = "root:root 755" ]; then
+        assert "the pam_exec precondition helper is root:root mode 755"
+    else
+        fail "helper ownership/mode = $GAP075_HELPER_META, want root:root 755"
+    fi
+    if [ "$(sha256sum "$GAP075_HELPER_PATH" | awk '{print $1}')" = "$(head -n 1 "$GAP075_HELPER_PATH.sha256" 2>/dev/null)" ]; then
+        assert "the helper content matches its sha256 manifest"
+    else
+        fail "the helper does not match its manifest — every agent session would be denied"
+    fi
+else
+    fail "the pam_exec precondition helper $GAP075_HELPER_PATH is missing — every agent session would be denied"
+fi
+
+# ── 15.1c install/repair never deletes an operator-owned rule ──────────
+# A foreign pam_succeed_if rule (a shape Bunker itself used to write) must
+# survive a re-apply byte for byte, and so must a foreign bare pam_namespace
+# rule line's COUNT (a repair must not remove or relocate the operator's own
+# modules). The disposable marker line is removed again by the trap.
+GAP075_MASK_RESTORE="session    optional     pam_succeed_if.so quiet user = gap075-foreign-$GAP075_UNIQ"
+printf '%s\n' "$GAP075_MASK_RESTORE" >> /etc/pam.d/sshd 2>/dev/null || true
+GAP075_NS_COUNT_BEFORE=$(grep -cE '^session[[:space:]]+required[[:space:]]+pam_namespace\.so[[:space:]]*$' /etc/pam.d/sshd 2>/dev/null || echo 0)
+$BUNKER host-provision --apply > /dev/null 2>&1 || true
+if grep -qF "$GAP075_MASK_RESTORE" /etc/pam.d/sshd; then
+    assert "a repair re-apply preserved a foreign pam_succeed_if rule byte for byte"
+else
+    fail "host-provision --apply deleted an operator-owned pam_succeed_if rule"
+fi
+GAP075_NS_COUNT_AFTER=$(grep -cE '^session[[:space:]]+required[[:space:]]+pam_namespace\.so[[:space:]]*$' /etc/pam.d/sshd 2>/dev/null || echo 0)
+if [ "$GAP075_NS_COUNT_BEFORE" = "$GAP075_NS_COUNT_AFTER" ]; then
+    assert "a repair re-apply left the bare pam_namespace rule count unchanged ($GAP075_NS_COUNT_AFTER)"
+else
+    fail "re-apply changed the bare pam_namespace rule count ($GAP075_NS_COUNT_BEFORE -> $GAP075_NS_COUNT_AFTER)"
+fi
+grep -vF "$GAP075_MASK_RESTORE" /etc/pam.d/sshd > /etc/pam.d/sshd.bunker-battery-tmp 2>/dev/null &&
+    cat /etc/pam.d/sshd.bunker-battery-tmp > /etc/pam.d/sshd 2>/dev/null || true
+rm -f /etc/pam.d/sshd.bunker-battery-tmp 2>/dev/null || true
+GAP075_MASK_RESTORE=""
+
+# ── 15.2 agent private /tmp ────────────────────────────────────────────
+$BUNKER spawn --agent-id "$GAP075_A" > /dev/null 2>&1 || true
+$BUNKER spawn --agent-id "$GAP075_B" > /dev/null 2>&1 || true
+
+GAP075_SESSION=$($BUNKER exec "$GAP075_A" id 2>&1 || true)
+if echo "$GAP075_SESSION" | grep -q "bunker-$GAP075_A"; then
+    assert "agent session opens with pam_namespace enabled and keeps its own uid"
+else
+    fail "agent session broken after enabling pam_namespace: $GAP075_SESSION"
+    $BUNKER host-provision --uninstall --apply > /dev/null 2>&1 || true
+    note "rolled back the Bunker-managed pam_namespace configuration after a failed session"
+fi
+
+# Positive control first: the agent can write and read its OWN /tmp. Without
+# this, a later "hidden" result could just mean the write failed.
+GAP075_WRITE=$($BUNKER exec "$GAP075_A" -- sh -c "echo gap075-a > /tmp/$GAP075_A_FILE && cat /tmp/$GAP075_A_FILE" 2>&1 || true)
+if echo "$GAP075_WRITE" | grep -q "gap075-a"; then
+    assert "agent A writes and reads its own /tmp/$GAP075_A_FILE (positive control)"
+else
+    fail "agent A cannot use its own /tmp: $GAP075_WRITE"
+fi
+
+# root (host, outside the session) must not see the file.
+if [ -e "/tmp/$GAP075_A_FILE" ]; then
+    fail "root sees agent A's private /tmp file at /tmp/$GAP075_A_FILE"
+else
+    assert "root cannot see agent A's private /tmp file"
+fi
+
+# A second agent must not see it either.
+GAP075_B_LOOK=$($BUNKER exec "$GAP075_B" -- sh -c "test -e /tmp/$GAP075_A_FILE && echo VISIBLE || echo HIDDEN" 2>&1 || true)
+if echo "$GAP075_B_LOOK" | grep -q "HIDDEN"; then
+    assert "agent B cannot see agent A's private /tmp file"
+else
+    fail "agent B can see agent A's /tmp file: $GAP075_B_LOOK"
+fi
+
+# ...and the reverse direction: root writes /tmp, the agent must not see it.
+echo "gap075-root" > "/tmp/$GAP075_ROOT_FILE" 2>/dev/null || true
+GAP075_A_LOOK=$($BUNKER exec "$GAP075_A" -- sh -c "test -e /tmp/$GAP075_ROOT_FILE && echo VISIBLE || echo HIDDEN" 2>&1 || true)
+if echo "$GAP075_A_LOOK" | grep -q "HIDDEN"; then
+    assert "agent A cannot see root's /tmp file"
+else
+    fail "agent A can see root's /tmp file: $GAP075_A_LOOK"
+fi
+rm -f "/tmp/$GAP075_ROOT_FILE" 2>/dev/null || true
+
+# ── 15.2b the agent is in the isolation group (the guard's input) ──────
+if getent group "$GAP075_GROUP" > /dev/null 2>&1; then
+    assert "the agent isolation group $GAP075_GROUP exists on the host"
+else
+    fail "the agent isolation group $GAP075_GROUP does not exist — every agent session would be denied by the pam_exec precondition"
+fi
+GAP075_MEMBER=$($BUNKER exec "$GAP075_A" -- id -nG 2>&1 || true)
+if echo "$GAP075_MEMBER" | tr ' ' '\n' | grep -qx "$GAP075_GROUP"; then
+    assert "the agent session carries the $GAP075_GROUP membership"
+else
+    fail "agent A's session groups are '$GAP075_MEMBER', which lack $GAP075_GROUP"
+fi
+
+# ── 15.2c an ordinary NON-agent SSH user keeps the host /tmp ───────────
+# The module must not be mounted host-wide: a disposable non-agent user on the
+# same host must still see the host's /tmp, and the agent must not see what that
+# user wrote there. The user and its key are removed by the EXIT trap.
+GAP075_OP_KEYDIR=$(mktemp -d /tmp/gap075-op-keys-XXXXXX 2>/dev/null) || GAP075_OP_KEYDIR=""
+if [ -n "$GAP075_OP_KEYDIR" ] && ssh-keygen -q -t ed25519 -N '' -f "$GAP075_OP_KEYDIR/id" > /dev/null 2>&1; then
+    GAP075_OP_USER="gap075-op-${GAP075_UNIQ}"
+    if useradd -m -s /bin/bash "$GAP075_OP_USER" > /dev/null 2>&1; then
+        GAP075_OP_HOME=$(getent passwd "$GAP075_OP_USER" 2>/dev/null | awk -F: '{print $6}')
+        install -d -m 700 -o "$GAP075_OP_USER" -g "$GAP075_OP_USER" "$GAP075_OP_HOME/.ssh" 2>/dev/null || true
+        cat "$GAP075_OP_KEYDIR/id.pub" > "$GAP075_OP_HOME/.ssh/authorized_keys" 2>/dev/null || true
+        chown "$GAP075_OP_USER" "$GAP075_OP_HOME/.ssh/authorized_keys" 2>/dev/null || true
+        chmod 600 "$GAP075_OP_HOME/.ssh/authorized_keys" 2>/dev/null || true
+        # A file that exists ONLY in the host /tmp: a non-agent session must see
+        # it, an agent session must not.
+        echo "gap075-operator" > "/tmp/$GAP075_OP_FILE" 2>/dev/null || true
+        GAP075_OP_OUT=$(ssh -i "$GAP075_OP_KEYDIR/id" -o BatchMode=yes -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR \
+            "$GAP075_OP_USER@127.0.0.1" \
+            "test -e /tmp/$GAP075_OP_FILE && echo VISIBLE || echo HIDDEN; echo gap075-op-wrote > /tmp/$GAP075_OP_FILE-wrote; id -nG" 2>&1 || true)
+        if echo "$GAP075_OP_OUT" | grep -q "VISIBLE"; then
+            assert "ordinary non-agent SSH user $GAP075_OP_USER keeps the host /tmp (pam_namespace is NOT applied host-wide)"
+        elif echo "$GAP075_OP_OUT" | grep -q "HIDDEN"; then
+            fail "ordinary non-agent SSH user $GAP075_OP_USER cannot see the host /tmp — the module is applied host-wide"
+        else
+            note "ordinary-user scoping check inconclusive (no non-agent SSH session): $(echo "$GAP075_OP_OUT" | head -2 | tr '\n' ' ')"
+        fi
+        if [ -e "/tmp/$GAP075_OP_FILE-wrote" ]; then
+            assert "the non-agent user's /tmp write landed in the host's /tmp"
+            GAP075_AGENT_LOOK=$($BUNKER exec "$GAP075_A" -- sh -c "test -e /tmp/$GAP075_OP_FILE-wrote && echo VISIBLE || echo HIDDEN" 2>&1 || true)
+            if echo "$GAP075_AGENT_LOOK" | grep -q "HIDDEN"; then
+                assert "the agent cannot see the non-agent user's host /tmp file"
+            else
+                fail "the agent sees the non-agent user's host /tmp file: $GAP075_AGENT_LOOK"
+            fi
+        else
+            note "the disposable non-agent user could not write to the host /tmp (SSH session unavailable); cross-check skipped"
+        fi
+    else
+        note "could not create the disposable non-agent user; host-wide-scoping check skipped"
+    fi
+else
+    note "ssh-keygen or mktemp unavailable; host-wide-scoping check skipped"
+fi
+rm -f "/tmp/$GAP075_OP_FILE" "/tmp/$GAP075_OP_FILE-wrote" 2>/dev/null || true
+
+# ── 15.2d a detached run unit is private too ───────────────────────────
+$BUNKER run "$GAP075_A" --detach -- sh -c "echo gap075-run > /tmp/$GAP075_RUN_FILE; sleep 90" > /dev/null 2>&1 || true
+sleep 6
+GAP075_RUN_UNIT=$(systemctl list-units --all --no-legend "bunker-run-$GAP075_A-*" 2>/dev/null | awk '{print $1}' | head -1 || true)
+if [ -n "$GAP075_RUN_UNIT" ]; then
+    GAP075_RUN_PT=$(systemctl show "$GAP075_RUN_UNIT" -p PrivateTmp --value 2>/dev/null || true)
+    if [ "$GAP075_RUN_PT" = "yes" ]; then
+        assert "detached run unit $GAP075_RUN_UNIT runs with PrivateTmp=yes"
+    else
+        fail "detached run unit $GAP075_RUN_UNIT has PrivateTmp=$GAP075_RUN_PT, want yes"
+    fi
+    if [ -e "/tmp/$GAP075_RUN_FILE" ]; then
+        fail "root sees the detached run's private /tmp file at /tmp/$GAP075_RUN_FILE"
+    else
+        assert "root cannot see the detached run's private /tmp file"
+    fi
+    systemctl stop "$GAP075_RUN_UNIT" > /dev/null 2>&1 || true
+    GAP075_RUN_UNIT=""
+else
+    note "no running bunker-run-* unit found after --detach; the detached-run PrivateTmp property is covered by go test"
+fi
+
+# ── 15.3 shared scratch is the only sanctioned exchange point ──────────
+GAP075_ADIR="$GAP075_SHARE/$GAP075_A"
+GAP075_HANDOFF="$GAP075_A_FILE-handoff.txt"
+$BUNKER exec "$GAP075_A" -- sh -c "echo handoff-$GAP075_UNIQ > $GAP075_ADIR/$GAP075_HANDOFF" > /dev/null 2>&1 || true
+GAP075_READ=$($BUNKER exec "$GAP075_B" -- cat "$GAP075_ADIR/$GAP075_HANDOFF" 2>&1 || true)
+if echo "$GAP075_READ" | grep -q "handoff-$GAP075_UNIQ"; then
+    assert "agent B reads agent A's file through $GAP075_SHARE (cross-agent exchange)"
+else
+    fail "cross-agent exchange through $GAP075_SHARE failed: $GAP075_READ"
+fi
+GAP075_DMODE=$(stat -c '%a' "$GAP075_ADIR" 2>/dev/null || echo missing)
+GAP075_DGROUP=$(stat -c '%G' "$GAP075_ADIR/$GAP075_HANDOFF" 2>/dev/null || echo missing)
+if [ "$GAP075_DMODE" = "2770" ]; then
+    assert "per-agent scratch dir has setgid mode 2770"
+else
+    fail "scratch dir mode = $GAP075_DMODE, want 2770"
+fi
+if [ "$GAP075_DGROUP" = "$GAP075_GROUP" ]; then
+    assert "files created in the scratch inherit the agent group $GAP075_GROUP (setgid semantics)"
+else
+    fail "scratch file group = $GAP075_DGROUP, want $GAP075_GROUP"
+fi
+
+# ── 15.3b the exchange ROOT is setgid and NOT writable by agents ────────
+# The per-agent cap is only a cap while the root above the per-agent
+# directories cannot be written by an agent: a plain (uncapped) directory or
+# file created directly under the root would be an unbounded write surface
+# inside the exchange tree. The root is root-owned, setgid and mode 2750, and
+# an agent must be REFUSED there while still being able to use its own
+# sanctioned, capped directory (positive control: the handoff write above).
+GAP075_ROOT_MODE=$(stat -c '%a' "$GAP075_SHARE" 2>/dev/null || echo missing)
+GAP075_ROOT_META=$(stat -c '%U:%G' "$GAP075_SHARE" 2>/dev/null || echo missing)
+if [ "$GAP075_ROOT_MODE" = "2750" ]; then
+    assert "the exchange root $GAP075_SHARE is mode 2750 (setgid, not writable by the agent group or the world)"
+else
+    fail "exchange root mode = $GAP075_ROOT_MODE, want 2750 — an agent could create an uncapped entry beside its capped directory"
+fi
+if [ "$GAP075_ROOT_META" = "root:$GAP075_GROUP" ]; then
+    assert "the exchange root is owned by root:$GAP075_GROUP"
+else
+    fail "exchange root owner = $GAP075_ROOT_META, want root:$GAP075_GROUP"
+fi
+GAP075_ARB="gap075-arb-$GAP075_UNIQ"
+GAP075_ROOT_MKDIR=$($BUNKER exec "$GAP075_A" -- sh -c \
+    "if mkdir $GAP075_SHARE/$GAP075_ARB 2>/dev/null; then echo CREATED; else echo DENIED; fi" 2>&1 || true)
+if echo "$GAP075_ROOT_MKDIR" | grep -q "DENIED"; then
+    assert "an agent cannot create an arbitrary directory directly under the exchange root"
+else
+    fail "agent created $GAP075_SHARE/$GAP075_ARB — the exchange root is writable by agents (uncapped bypass): $GAP075_ROOT_MKDIR"
+fi
+GAP075_ROOT_TOUCH=$($BUNKER exec "$GAP075_A" -- sh -c \
+    "if touch $GAP075_SHARE/$GAP075_ARB-file 2>/dev/null; then echo CREATED; else echo DENIED; fi" 2>&1 || true)
+if echo "$GAP075_ROOT_TOUCH" | grep -q "DENIED"; then
+    assert "an agent cannot create an arbitrary file directly under the exchange root"
+else
+    fail "agent created $GAP075_SHARE/$GAP075_ARB-file — the exchange root is writable by agents (uncapped bypass): $GAP075_ROOT_TOUCH"
+fi
+rmdir "$GAP075_SHARE/$GAP075_ARB" 2>/dev/null || true
+rm -f "$GAP075_SHARE/$GAP075_ARB-file" 2>/dev/null || true
+GAP075_ARB=""
+
+# Bounding: the directory must be a tmpfs whose size the KERNEL reports as the
+# configured cap, and a write past the cap must fail with ENOSPC.
+GAP075_CAP=$(findmnt -no OPTIONS --target "$GAP075_ADIR" 2>/dev/null | tr ',' '\n' | sed -n 's/^size=//p' || true)
+GAP075_KERNEL_CAP=$(( $(stat -f -c %b "$GAP075_ADIR" 2>/dev/null || echo 0) * $(stat -f -c %S "$GAP075_ADIR" 2>/dev/null || echo 0) ))
+if [ -n "$GAP075_CAP" ] && [ "$GAP075_KERNEL_CAP" = "$GAP075_CAP" ]; then
+    assert "per-agent scratch is bounded by the kernel at $GAP075_CAP bytes"
+else
+    fail "scratch cap not reported by the kernel (mount size=$GAP075_CAP statfs=$GAP075_KERNEL_CAP)"
+fi
+if [ -n "$GAP075_CAP" ] && [ "$GAP075_CAP" -le 67108864 ]; then
+    GAP075_FILL_MB=$(( GAP075_CAP / 1048576 + 2 ))
+    GAP075_FILL=$($BUNKER exec "$GAP075_A" -- sh -c "dd if=/dev/zero of=$GAP075_ADIR/$GAP075_A_FILE-fill bs=1M count=$GAP075_FILL_MB 2>&1; echo write-exit=\$?" 2>&1 || true)
+    if echo "$GAP075_FILL" | grep -qE "write-exit=[1-9]|No space left"; then
+        assert "writing past the per-agent cap fails (${GAP075_FILL_MB}MiB into a ${GAP075_CAP}B cap)"
+    else
+        fail "over-cap write did NOT fail: $GAP075_FILL"
+    fi
+    $BUNKER exec "$GAP075_A" -- rm -f "$GAP075_ADIR/$GAP075_A_FILE-fill" > /dev/null 2>&1 || true
+else
+    note "per-agent cap is ${GAP075_CAP:-unknown} bytes — exhaustive ENOSPC fill skipped (cap too large for a battery run; kernel-reported size asserted above)"
+fi
+
+# ── 15.4 unauthorized paths stay unavailable ───────────────────────────
+GAP075_OUTSIDE=$($BUNKER exec "$GAP075_A" -- sh -c 'touch /srv/gap075-not-allowed 2>/dev/null && echo WROTE || echo DENIED' 2>&1 || true)
+if echo "$GAP075_OUTSIDE" | grep -q "DENIED"; then
+    assert "agent cannot write outside the sanctioned scratch tree"
+else
+    fail "agent wrote outside the scratch tree: $GAP075_OUTSIDE"
+fi
+rm -f /srv/gap075-not-allowed 2>/dev/null || true
+GAP075_INST=$($BUNKER exec "$GAP075_A" -- ls /var/lib/bunkerd/agent-tmp 2>&1 || true)
+if echo "$GAP075_INST" | grep -qi "permission denied"; then
+    assert "the private-/tmp instance parent is unreadable from inside a session"
+else
+    note "instance parent listing returned: $GAP075_INST"
+fi
+
+# ── 15.5 the daemon's own units carry PrivateTmp=yes ───────────────────
+if command -v systemctl > /dev/null 2>&1; then
+    GAP075_PT=$(systemctl show "bunker-docker-$GAP075_A" -p PrivateTmp --value 2>/dev/null || true)
+    if [ "$GAP075_PT" = "yes" ]; then
+        assert "rootless-dockerd unit runs with PrivateTmp=yes"
+    else
+        fail "bunker-docker-$GAP075_A PrivateTmp=$GAP075_PT, want yes"
+    fi
+else
+    note "systemctl unavailable — unit PrivateTmp check skipped (covered by go test)"
+fi
+
+# ── 15.6 a malformed namespace config cannot fail OPEN ─────────────────
+# pam_namespace without ignore_config_error makes a malformed line a session
+# error; with it the module would SKIP the line and the session would continue
+# with the host's shared /tmp. The agent session must be DENIED, and must work
+# again once the drop-in is restored (the trap restores it if this battery dies
+# mid-check).
+if [ -f "$GAP075_DROPIN_PATH" ]; then
+    GAP075_DROPIN_RESTORE=$(mktemp /tmp/gap075-dropin-restore-XXXXXX 2>/dev/null) || GAP075_DROPIN_RESTORE=""
+    if [ -n "$GAP075_DROPIN_RESTORE" ] && cp -a "$GAP075_DROPIN_PATH" "$GAP075_DROPIN_RESTORE" 2>/dev/null; then
+        # One field: pam_namespace cannot parse it (missing instance_prefix and
+        # method), so the module reports an error before any polyinstantiation.
+        printf '/tmp\n' > "$GAP075_DROPIN_PATH" 2>/dev/null || true
+        GAP075_BROKEN_EXIT=0
+        $BUNKER exec "$GAP075_A" -- true > /dev/null 2>&1 || GAP075_BROKEN_EXIT=$?
+        if [ "$GAP075_BROKEN_EXIT" -ne 0 ]; then
+            assert "a malformed namespace drop-in DENIES the agent session (fail closed, exit=$GAP075_BROKEN_EXIT)"
+        else
+            fail "a malformed namespace drop-in still let the agent session open — the boundary fails OPEN"
+        fi
+        cp -a "$GAP075_DROPIN_RESTORE" "$GAP075_DROPIN_PATH" 2>/dev/null || true
+        rm -f "$GAP075_DROPIN_RESTORE" 2>/dev/null || true
+        GAP075_DROPIN_RESTORE=""
+        GAP075_RECOVER=$($BUNKER exec "$GAP075_A" -- true > /dev/null 2>&1; echo "exit=$?")
+        if echo "$GAP075_RECOVER" | grep -q "exit=0"; then
+            assert "the agent session opens again after the drop-in is restored"
+        else
+            fail "the agent session did NOT recover after restoring the drop-in: $GAP075_RECOVER"
+        fi
+    else
+        note "could not back up $GAP075_DROPIN_PATH; malformed-config check skipped"
+    fi
+else
+    note "$GAP075_DROPIN_PATH absent; malformed-config check skipped"
+fi
+
+# ── 15.6b fail CLOSED when the boundary itself is gone ─────────────────
+# Two live proofs that a broken boundary DENIES an agent session instead of
+# handing it the host's shared /tmp:
+#   1. the pam_exec precondition helper is moved aside (a deleted helper must
+#      deny, not silently skip);
+#   2. the agent's membership in the isolation group is removed (a lost
+#      membership must deny — the first revision failed OPEN here).
+# Both are restored immediately, and the EXIT trap restores them if this battery
+# dies mid-check.
+$BUNKER exec "$GAP075_A" -- true > /dev/null 2>&1 && GAP075_HEALTHY=1 || GAP075_HEALTHY=0
+if [ "$GAP075_HEALTHY" = "1" ] && [ -f "$GAP075_HELPER_PATH" ]; then
+    GAP075_HELPER_RESTORE=$(mktemp /tmp/gap075-helper-restore-XXXXXX 2>/dev/null) || GAP075_HELPER_RESTORE=""
+    if [ -n "$GAP075_HELPER_RESTORE" ] && cp -a "$GAP075_HELPER_PATH" "$GAP075_HELPER_RESTORE" 2>/dev/null; then
+        rm -f "$GAP075_HELPER_PATH" 2>/dev/null || true
+        GAP075_NOHELPER_EXIT=0
+        $BUNKER exec "$GAP075_A" -- true > /dev/null 2>&1 || GAP075_NOHELPER_EXIT=$?
+        if [ "$GAP075_NOHELPER_EXIT" -ne 0 ]; then
+            assert "a deleted pam_exec precondition helper DENIES the agent session (fail closed, exit=$GAP075_NOHELPER_EXIT)"
+        else
+            fail "the agent session opened without the precondition helper — the boundary fails OPEN"
+        fi
+        cp -a "$GAP075_HELPER_RESTORE" "$GAP075_HELPER_PATH" 2>/dev/null || true
+        chown root:root "$GAP075_HELPER_PATH" 2>/dev/null || true
+        chmod 0755 "$GAP075_HELPER_PATH" 2>/dev/null || true
+        rm -f "$GAP075_HELPER_RESTORE" 2>/dev/null || true
+        GAP075_HELPER_RESTORE=""
+        if $BUNKER exec "$GAP075_A" -- true > /dev/null 2>&1; then
+            assert "the agent session opens again after the helper is restored"
+        else
+            fail "the agent session did NOT recover after restoring the helper"
+        fi
+    else
+        note "could not back up $GAP075_HELPER_PATH; helper-removal check skipped"
+    fi
+else
+    note "agent session unavailable or helper absent; the helper-removal fail-closed check is covered by go test"
+fi
+
+if [ "$GAP075_HEALTHY" = "1" ] && getent group "$GAP075_GROUP" > /dev/null 2>&1; then
+    GAP075_AGENT_USER="bunker-$GAP075_A"
+    usermod -aG "$GAP075_GROUP" "$GAP075_AGENT_USER" > /dev/null 2>&1 || true
+    gpasswd -d "$GAP075_AGENT_USER" "$GAP075_GROUP" > /dev/null 2>&1 || true
+    GAP075_NOMEMBER_EXIT=0
+    $BUNKER exec "$GAP075_A" -- true > /dev/null 2>&1 || GAP075_NOMEMBER_EXIT=$?
+    if [ "$GAP075_NOMEMBER_EXIT" -ne 0 ]; then
+        assert "a removed isolation-group membership DENIES the agent session (fail closed, exit=$GAP075_NOMEMBER_EXIT)"
+    else
+        fail "the agent session opened without the group membership — group drift fails OPEN"
+    fi
+    usermod -aG "$GAP075_GROUP" "$GAP075_AGENT_USER" > /dev/null 2>&1 || true
+    if $BUNKER exec "$GAP075_A" -- true > /dev/null 2>&1; then
+        assert "the agent session opens again after the membership is restored"
+    else
+        fail "the agent session did NOT recover after restoring the group membership"
+    fi
+else
+    note "agent session unavailable or group absent; the membership fail-closed check is covered by go test"
+fi
+
+# ── 15.6c a WIDENED helper directory cannot succeed open ───────────────
+# The helper's trust chain starts at its DIRECTORY: with a group/world-writable
+# /usr/lib/bunker, a local agent can replace the root-owned helper and its
+# manifest by rename/unlink, so the runtime helper must refuse before checking
+# anything else. The directory is widened only for the duration of this check
+# and restored immediately (the EXIT trap restores it too).
+if [ "$GAP075_HEALTHY" = "1" ] && [ -d "$GAP075_HELPER_DIR" ]; then
+    GAP075_DIR_MODE_BEFORE=$(stat -c '%a' "$GAP075_HELPER_DIR" 2>/dev/null || echo "")
+    if [ -n "$GAP075_DIR_MODE_BEFORE" ]; then
+        chmod 777 "$GAP075_HELPER_DIR" 2>/dev/null || true
+        GAP075_HELPERDIR_RESTORE="$GAP075_DIR_MODE_BEFORE"
+        GAP075_WIDEDIR_EXIT=0
+        $BUNKER exec "$GAP075_A" -- true > /dev/null 2>&1 || GAP075_WIDEDIR_EXIT=$?
+        chmod "$GAP075_DIR_MODE_BEFORE" "$GAP075_HELPER_DIR" 2>/dev/null || true
+        GAP075_HELPERDIR_RESTORE=""
+        if [ "$GAP075_WIDEDIR_EXIT" -ne 0 ]; then
+            assert "a group/world-writable helper directory DENIES the agent session (fail closed, exit=$GAP075_WIDEDIR_EXIT)"
+        else
+            fail "the agent session opened while $GAP075_HELPER_DIR was mode 777 — an agent could replace the helper and its manifest"
+        fi
+        if $BUNKER exec "$GAP075_A" -- true > /dev/null 2>&1; then
+            assert "the agent session opens again after the helper directory mode is restored"
+        else
+            fail "the agent session did NOT recover after restoring the helper directory mode"
+        fi
+    else
+        note "could not read $GAP075_HELPER_DIR mode; widened-directory check skipped"
+    fi
+else
+    note "agent session unavailable or helper directory absent; the widened-directory fail-closed check is covered by go test"
+fi
+
+# ── 15.7 cleanup ───────────────────────────────────────────────────────
+$BUNKER exec "$GAP075_A" -- rm -f "$GAP075_ADIR/$GAP075_HANDOFF" > /dev/null 2>&1 || true
+$BUNKER destroy "$GAP075_A" --force > /dev/null 2>&1 || true
+$BUNKER destroy "$GAP075_B" --force > /dev/null 2>&1 || true
+rm -f "/tmp/$GAP075_A_FILE" 2>/dev/null || true
+if [ -d "$GAP075_ADIR" ]; then
+    note "scratch dir $GAP075_ADIR survived destroy (unmounted later by the daemon or left for inspection)"
+else
+    assert "destroy removed the agent's bounded scratch directory"
 fi
 echo ""
 

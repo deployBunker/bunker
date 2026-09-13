@@ -49,6 +49,12 @@
 - GAP-067 disclosure tests (`disclosure_test.go`): `TestIsContainmentProbe_Allowed` is the table-driven matcher battery (allowed probes incl. safe-flag shapes and trusted-dir paths, lookalikes, compounds, untrusted paths like `/tmp/uname`, cat-flag rules); `TestBuildAgent*Command_ContainmentEnv` pin the disabled output as byte-identical exact strings AND run the built commands through `sh` to prove the env var reaches the child only when enabled; `TestMarkerFrameForStream` + `TestMarkerCountsAsSent` table-drive the actual frame/state logic (`markerFrameForStream` over the streamer-recorded stdout facts — marker on its own line, no extra blank lines, empty frame when disabled); `TestContainmentMarkerPreservesNonZeroExit` proves a failing probe keeps exit code 3 with the marker frame built exactly as ExecAgent builds it.
 - Use `httptest.NewServer` for non-TLS tests and `httptest.NewTLSServer` for TLS tests where appropriate.
 
+## Isolation (GAP-075)
+
+- Every exec builder (`buildAgentExecCommand`, `buildAgentRawExecCommand`, `buildAgentScriptCommand`, and their `*Image` variants) sets `TMPDIR=config.IsolationTmpDir` (`/tmp`), which inside an agent session is the session's OWN private `/tmp` bound by pam_namespace. The legacy `/run/bunker/<id>/tmp` is never advertised: a directory in a shared mount namespace is not an isolation boundary, and pointing `TMPDIR` there would let TMPDIR-honouring tools escape the enforced one.
+- Raw mode keeps the assignment as its OWN argv element (`env … TMPDIR=/tmp cmd`), so it can never be shell-split; shell and script modes carry it inside the `env(1)` prefix of the single quoted remote command. Both are pinned by `TestExecAgentSessionSeesPrivateTmp`, which drives the real RPC through a connect handler with a stub `ssh` and inspects the argv that reaches sshd.
+- The daemon does NOT provision the per-session boundary (that is `bunker host-provision`, host-side). It must never report success for isolation it did not verify.
+
 ## Pitfalls
 
 1. **The same router is used for both gRPC/Connect and REST traffic.** If `RESTAddr` differs from `GRPCAddr`, the same middleware/interceptor stack is applied to both listeners, which is usually desired but can cause double logging.

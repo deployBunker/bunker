@@ -325,7 +325,7 @@ func TestSpawn_AuthorizedKeysHasEnvironment(t *testing.T) {
 		t.Fatalf("read authorized_keys: %v", err)
 	}
 	got := string(content)
-	wantEnv := fmt.Sprintf(`environment="DOCKER_HOST=unix:///run/bunker/%s/docker.sock TMPDIR=/run/bunker/%s/tmp"`, agentID, agentID)
+	wantEnv := fmt.Sprintf(`environment="DOCKER_HOST=unix:///run/bunker/%s/docker.sock TMPDIR=/tmp"`, agentID)
 	if !strings.Contains(got, wantEnv) {
 		t.Errorf("authorized_keys missing environment prefix\ngot: %s\nwant substring: %s", got, wantEnv)
 	}
@@ -346,7 +346,7 @@ func TestSpawn_AuthorizedKeysHasEnvironment(t *testing.T) {
 	if !strings.Contains(string(profileContent), wantProfile) {
 		t.Errorf(".profile missing DOCKER_HOST export\ngot: %s\nwant substring: %s", string(profileContent), wantProfile)
 	}
-	wantTmpdirExport := fmt.Sprintf("export TMPDIR=/run/bunker/%s/tmp", agentID)
+	wantTmpdirExport := "export TMPDIR=/tmp"
 	if !strings.Contains(string(profileContent), wantTmpdirExport) {
 		t.Errorf(".profile missing TMPDIR export\ngot: %s\nwant substring: %s", string(profileContent), wantTmpdirExport)
 	}
@@ -375,7 +375,7 @@ func TestSpawn_ProfileHasDockerHost(t *testing.T) {
 	if !strings.Contains(got, wantExport) {
 		t.Errorf(".profile missing DOCKER_HOST export\ngot: %s\nwant substring: %s", got, wantExport)
 	}
-	wantTmpdir := fmt.Sprintf("export TMPDIR=/run/bunker/%s/tmp", agentID)
+	wantTmpdir := "export TMPDIR=/tmp"
 	if !strings.Contains(got, wantTmpdir) {
 		t.Errorf(".profile missing TMPDIR export\ngot: %s\nwant substring: %s", got, wantTmpdir)
 	}
@@ -480,7 +480,7 @@ func TestSpawn_RootlessEnvHasTMPDIR(t *testing.T) {
 		t.Skip("could not query systemd unit Environment")
 	}
 	output := string(out)
-	want := fmt.Sprintf("TMPDIR=/run/bunker/%s/tmp", agentID)
+	want := "TMPDIR=/tmp"
 	if !strings.Contains(output, want) {
 		t.Errorf("systemd unit Environment missing TMPDIR\ngot:\n%s\nwant substring: %s", output, want)
 	}

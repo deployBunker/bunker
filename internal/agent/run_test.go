@@ -42,7 +42,7 @@ func TestBuildRunAgentArgs(t *testing.T) {
 		"--setenv=HOME=/home/bunker-test-agent",
 		"--setenv=USER=bunker-test-agent",
 		"--setenv=DOCKER_HOST=unix:///run/bunker/test-agent/docker.sock",
-		"--setenv=TMPDIR=/run/bunker/test-agent/tmp",
+		"--setenv=TMPDIR=/tmp",
 		// BUNKER_ENV_FILE is exported so other tools (and tests) can locate it.
 		"--setenv=BUNKER_ENV_FILE=/run/bunker/test-agent/env",
 		"--setenv=DATABASE_URL=postgres://db",
@@ -113,7 +113,7 @@ func TestBuildRunAgentArgs_OverrideDefaultEnv(t *testing.T) {
 	)
 
 	got := " " + strings.Join(args, " ") + " "
-	if strings.Contains(got, " --setenv=TMPDIR=/run/bunker/test-agent/tmp ") {
+	if strings.Contains(got, " --setenv=TMPDIR=/tmp ") {
 		t.Error("default TMPDIR should be overridden")
 	}
 	if !strings.Contains(got, " --setenv=TMPDIR=/custom/tmp ") {

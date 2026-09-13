@@ -67,7 +67,7 @@ func TestBuildExecSSHRawCommand(t *testing.T) {
 		"env",
 		"PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
-		"TMPDIR=/run/bunker/abc123/tmp",
+		"TMPDIR=/tmp",
 		"echo",
 		"hi",
 	}
@@ -93,7 +93,7 @@ func TestBuildExecSSHScriptCommand(t *testing.T) {
 		"sh -c",
 		"mkdir -p",
 		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
-		"TMPDIR=/run/bunker/abc123/tmp",
+		"TMPDIR=/tmp",
 	}
 	for _, want := range wantParts {
 		if !strings.Contains(joined, want) {
@@ -435,7 +435,7 @@ func TestBuildAgentExecCommand(t *testing.T) {
 		"set -a; [ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env",
 		"set +a; env PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
-		"TMPDIR=/run/bunker/abc123/tmp",
+		"TMPDIR=/tmp",
 		// The user command is always wrapped in sh -c '<joined>' so compound
 		// snippets (command token or args) survive the outer wrapper.
 		"sh -c 'docker '\\''version'\\'''",
@@ -547,7 +547,7 @@ func TestBuildAgentRawExecCommand(t *testing.T) {
 		"env",
 		"PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
-		"TMPDIR=/run/bunker/abc123/tmp",
+		"TMPDIR=/tmp",
 		"echo",
 		"hi",
 	}
@@ -559,7 +559,7 @@ func TestBuildAgentRawExecCommand(t *testing.T) {
 	// Ensure TMPDIR is its own argv element (raw mode must not shell-split).
 	found := false
 	for _, arg := range got {
-		if arg == "TMPDIR=/run/bunker/abc123/tmp" {
+		if arg == "TMPDIR=/tmp" {
 			found = true
 			break
 		}
@@ -588,7 +588,7 @@ func TestBuildAgentScriptCommand(t *testing.T) {
 	got := buildAgentScriptCommand("abc123", "/home/bunker-abc123", "#!/bin/sh\necho hi\n", false)
 	wantParts := []string{
 		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
-		"TMPDIR=/run/bunker/abc123/tmp",
+		"TMPDIR=/tmp",
 		"env PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		// Env file source line for `bunker env set` propagation.
 		". /run/bunker/abc123/env",

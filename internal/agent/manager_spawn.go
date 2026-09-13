@@ -9,11 +9,13 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 
+	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/imagespec"
 	"github.com/deployBunker/bunker/internal/resource"
 )
@@ -126,6 +128,10 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		// Remove persisted SSH key from config dir
 		sshKeyPath := filepath.Join(m.cfg.Agent.SSHDir, agentID)
 		os.Remove(sshKeyPath)
+		// GAP-075: drop the scratch and private-/tmp instance directories so a
+		// failed spawn cannot leave a provisioned exchange point or tmp
+		// instance behind for an agent that does not exist.
+		m.removeIsolation(ctx, agentID)
 	}
 
 	// ── Step 2: Create Linux user ──────────────────────────────────
@@ -147,6 +153,27 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		}
 	} else {
 		createdUser = true
+	}
+
+	// ── Step 2.5: Provision the GAP-075 isolation boundary ─────────
+	// The agent's membership in the isolation group must be in place BEFORE
+	// its first login: supplementary groups come from the session and the sshd
+	// pam_exec precondition verifies that membership, so an agent without it
+	// has every session DENIED (it never falls back to the host's shared
+	// /tmp). That step is therefore fatal — the spawn is rolled back rather
+	// than leaving an agent that cannot open a session — and the private-/tmp
+	// instance directory is created with explicit ownership so the boundary
+	// exists before any session opens.
+	u, err := lookupAgentUser(username)
+	if err != nil {
+		cleanup()
+		return nil, fmt.Errorf("look up agent user %s for isolation provisioning: %w", username, err)
+	}
+	uid, _ := strconv.Atoi(u.Uid)
+	gid, _ := strconv.Atoi(u.Gid)
+	if err := m.provisionIsolation(ctx, agentID, username, uid, gid); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("provision isolation boundary for %s: %w", agentID, err)
 	}
 
 	// ── Step 3: Generate SSH keypair ───────────────────────────────
@@ -197,9 +224,14 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// Prepend environment= to the public key line so Docker's SSH transport
 	// finds the right socket (requires PermitUserEnvironment=yes in sshd_config).
 	// The pubKeyBytes end with a newline from ssh-keygen; strip and re-append.
-	// Also pin TMPDIR so SSH exec avoids root-owned /tmp collisions.
+	//
+	// GAP-075: TMPDIR points at /tmp, which an agent's SSH session sees as its
+	// OWN private instance (pam_namespace binds the session's /tmp instance
+	// there). tmpDir — /run/bunker/<id>/tmp — is still created as a legacy
+	// per-agent scratch path but is no longer advertised as TMPDIR, because a
+	// shared-namespace directory is not an isolation boundary.
 	pubKeyLine := strings.TrimSpace(string(pubKeyBytes))
-	envPrefix := fmt.Sprintf(`environment="DOCKER_HOST=unix://%s TMPDIR=%s"`, dockerSockPath, tmpDir)
+	envPrefix := fmt.Sprintf(`environment="DOCKER_HOST=unix://%s TMPDIR=%s"`, dockerSockPath, config.IsolationTmpDir)
 	authKeysContent := envPrefix + " " + pubKeyLine + "\n"
 
 	if err := os.WriteFile(authKeysFile, []byte(authKeysContent), 0600); err != nil {
@@ -221,7 +253,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 
 	// ── Step 4b: Set up .profile with DOCKER_HOST + TMPDIR (interactive sessions) ──
 	profilePath := filepath.Join(userHome, ".profile")
-	profileContent := fmt.Sprintf("# bunker: per-agent Docker socket and private tmp\nexport DOCKER_HOST=unix://%s\nexport TMPDIR=%s\n", dockerSockPath, tmpDir)
+	profileContent := fmt.Sprintf("# bunker: per-agent Docker socket and enforced private /tmp\nexport DOCKER_HOST=unix://%s\nexport TMPDIR=%s\n", dockerSockPath, config.IsolationTmpDir)
 	if err := os.WriteFile(profilePath, []byte(profileContent), 0644); err != nil {
 		cleanup()
 		return nil, fmt.Errorf("write .profile: %w", err)
@@ -265,8 +297,11 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		return nil, fmt.Errorf("chown socket dir: %w (output: %s)", err, string(out))
 	}
 
-	// Private TMPDIR under /run/bunker/<id>/tmp so agent processes do not collide
-	// with root-owned files in the shared /tmp.
+	// Legacy per-agent scratch under /run/bunker/<id>/tmp (mode 0700) for
+	// tools that still reference the path directly. GAP-075: this is NOT the
+	// isolation boundary any more — the boundary is the enforced private /tmp
+	// (pam_namespace per SSH session, PrivateTmp=yes per transient unit), and
+	// TMPDIR no longer points here.
 	if err := os.MkdirAll(tmpDir, 0700); err != nil {
 		cleanup()
 		return nil, fmt.Errorf("create tmp dir %s: %w", tmpDir, err)
@@ -344,7 +379,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// Limits are enforced by systemd through CPUQuota/MemoryMax, not by writing
 	// cgroup files directly. Read-back helpers in internal/resource use this
 	// path for metrics verification.
-	u, err := user.Lookup(username)
+	u, err = user.Lookup(username)
 	if err != nil {
 		cleanup()
 		return nil, fmt.Errorf("lookup user %s: %w", username, err)
@@ -358,59 +393,13 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// dockerd is running.
 	actualDockerSockPath := fmt.Sprintf("/run/user/%s/docker.sock", u.Uid)
 
-	systemdArgs := []string{
-		"--system",
-		"--unit=" + unitName,
-		"--uid=" + u.Uid,
-		"--gid=" + u.Gid,
-		"--property=PAMName=login",
-	}
-	if cpuQuota > 0 {
-		// CPUQuota is a percentage of one CPU: 100%=1 core, 200%=2 cores.
-		// This maps to cgroup v2 cpu.max as quota_us = CPUQuota%/100 * period_us.
-		systemdArgs = append(systemdArgs, fmt.Sprintf("--property=CPUQuota=%d%%", int(cpuQuota*100)))
-	}
-	if memMax > 0 {
-		systemdArgs = append(systemdArgs, fmt.Sprintf("--property=MemoryMax=%d", memMax))
-	}
-	if diskMax > 0 {
-		// LimitFSIZE caps the maximum file size (in bytes) an agent may create.
-		// This is a pragmatic systemd-level enforcement for disk_max_bytes when
-		// per-user filesystem quotas (xfs_quota) are not configured.
-		systemdArgs = append(systemdArgs, fmt.Sprintf("--property=LimitFSIZE=%d", diskMax))
-	}
-	if maxProcs > 0 {
-		systemdArgs = append(systemdArgs, fmt.Sprintf("--property=TasksMax=%d", maxProcs))
-	}
-	if maxFiles > 0 {
-		systemdArgs = append(systemdArgs, fmt.Sprintf("--property=LimitNOFILE=%d:%d", maxFiles, maxFiles))
-	}
-	if maxDockerContainers > 0 {
-		// There is no native systemd property for container count. Docker's
-		// daemon does not expose a per-user container limit. We enforce this
-		// at spawn time by checking the agent's current container count and
-		// storing the limit for the agent record; actual container capping is
-		// left to future policy enforcement.
-		_ = maxDockerContainers // used above via tracker — silence staticcheck
-	}
-
-	// Rootless dockerd script. DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns
-	// avoids needing a separate bridge. The socket path is passed through
-	// DOCKER_HOST so the per-agent socket is created where bunkerd expects it.
-	//
 	// rootlesskit checks that XDG_RUNTIME_DIR is set and writable. On systems
 	// where systemd has not created /run/user/<uid>, point it at a per-agent
 	// runtime directory under /run/bunker so dockerd-rootless.sh can start.
-	//
-	// Note: PID namespace isolation via --pidns is intentionally omitted for now;
-	// rootlesskit v1.1.1 on the server does not support --detach-netns, so mixing
-	// the two flags causes immediate exit. PID namespace isolation will be revisited
-	// when the installed rootlesskit supports it.
-	//
-	// Also: rootlesskit v1.1.1 uses --copy-up=/etc and --copy-up=/run by default,
-	// which requires a writable XDG_RUNTIME_DIR. We provide one under /run/bunker.
-	// The socket directory (/run/bunker/<id>) is also chowned to the agent so
-	// dockerd can create the socket there.
+	// rootlesskit v1.1.1 also uses --copy-up=/etc and --copy-up=/run by
+	// default, which requires a writable XDG_RUNTIME_DIR, and the socket
+	// directory (/run/bunker/<id>) is chowned to the agent so dockerd can
+	// create the socket there.
 	rootlessRuntimeDir := filepath.Join("/run", "bunker", agentID, "run")
 	if err := os.MkdirAll(rootlessRuntimeDir, 0700); err != nil {
 		cleanup()
@@ -421,40 +410,27 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		return nil, fmt.Errorf("chown rootless runtime dir: %w (output: %s)", err, string(out))
 	}
 
-	// systemd-run --system with --uid does not inherit the caller's environment.
-	// Pass each needed variable as --setenv so the transient unit actually has
-	// them in its process environment. rootlesskit checks XDG_RUNTIME_DIR, HOME,
-	// and USER, while dockerd-rootless.sh uses the other *_ROOTLESS_* variables.
-	rootlessEnv := []string{
-		"PATH=" + filepath.Join(userHome, "bin") + ":/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
-		"HOME=" + userHome,
-		"USER=" + username,
-		"XDG_RUNTIME_DIR=" + rootlessRuntimeDir,
-		"DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns",
-		"DOCKERD_ROOTLESS_ROOTLESSKIT_PORT_DRIVER=builtin",
-		// rootlesskit v1.1.1 does not support --detach-netns; the dockerd-rootless.sh
-		// shipped with the installer defaults to "true" and appends --detach-netns to
-		// ROOTLESSKIT_FLAGS, which makes rootlesskit exit immediately. Force it off.
-		"DOCKERD_ROOTLESS_ROOTLESSKIT_DETACH_NETNS=false",
-		"DOCKER_HOST=unix://" + dockerSockPath,
-		"TMPDIR=" + tmpDir,
-	}
-	for _, env := range rootlessEnv {
-		systemdArgs = append(systemdArgs, "--setenv="+env)
-	}
-	systemdArgs = append(systemdArgs, rootlessBin, "--host=unix://"+dockerSockPath)
+	// The unit argv (including the GAP-075 PrivateTmp=yes property) is built by
+	// a pure function so it is pinned by unit tests rather than by a live host.
+	systemdArgs, rootlessEnv := buildRootlessDockerdArgs(dockerdUnitArgs{
+		AgentID:        agentID,
+		UnitName:       unitName,
+		UID:            u.Uid,
+		GID:            u.Gid,
+		UserHome:       userHome,
+		RuntimeDir:     rootlessRuntimeDir,
+		DockerSockPath: dockerSockPath,
+		RootlessBin:    rootlessBin,
+		CPUQuota:       cpuQuota,
+		MemoryMax:      memMax,
+		DiskMax:        diskMax,
+		MaxProcesses:   maxProcs,
+		MaxOpenFiles:   maxFiles,
+	})
 
-	// If a stale system unit exists (from a previous incomplete destroy), stop it.
-	stopCmd := exec.CommandContext(ctx, "systemctl", "stop", unitName)
-	_ = stopCmd.Run() // ignore error — unit may not exist
-	stopCmd = exec.CommandContext(ctx, "systemctl", "disable", unitName)
-	_ = stopCmd.Run() // ignore error — unit may not exist
-	// Remove a loaded/failed transient unit so systemd-run can recreate it.
-	stopCmd = exec.CommandContext(ctx, "systemctl", "reset-failed", unitName)
-	_ = stopCmd.Run() // ignore error — unit may not be loaded
-
-	// Also kill any orphaned dockerd process directly (belt-and-suspenders).
-	_ = stopDockerdDirect(ctx, username, unitName, m.logger)
+	// Clear any leftover state from a previous unit with this name BEFORE
+	// systemd-run creates it (see resetStaleDockerdUnit).
+	resetStaleDockerdUnit(ctx, unitName, username, m.logger)
 
 	cmd = exec.CommandContext(ctx, "systemd-run", systemdArgs...)
 	cmd.Env = append(os.Environ(), rootlessEnv...)
@@ -477,6 +453,11 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// Enforce maxDockerContainers by asking the *just-started* rootless dockerd
 	// how many containers it already hosts. If it exceeds the configured limit,
 	// fail the spawn before the tracker is populated and run cleanup.
+	//
+	// This is the ONLY enforcement point for max_docker_containers: systemd has
+	// no per-user container property, and docker's daemon exposes no such limit,
+	// so the cap is applied by the daemon at spawn time (the unit argv carries
+	// no container-count property — see buildRootlessDockerdArgs).
 	if maxDockerContainers > 0 {
 		containers, err := countAgentContainers(ctx, dockerSockPath)
 		if err != nil {
@@ -668,6 +649,25 @@ var countAgentContainers = func(ctx context.Context, dockerSockPath string) (uin
 	}
 	lines := strings.Fields(string(out))
 	return uint32(len(lines)), nil
+}
+
+// resetStaleDockerdUnit clears leftover state from a previous unit with the
+// same name before systemd-run creates it:
+//
+//   - a loaded or failed transient unit makes `systemd-run --unit=` fail with
+//     "already loaded", so the unit is stopped, disabled and reset;
+//   - an orphaned dockerd process keeps the socket and the runtime dir busy, so
+//     any surviving process is killed directly (systemctl --user targets the
+//     wrong user manager for a systemd-run --system --uid unit).
+//
+// It is a named function (rather than four inline best-effort calls) so the
+// sequence is covered by a regression test — losing it makes every re-spawn of
+// a stale agent fail with "already loaded".
+func resetStaleDockerdUnit(ctx context.Context, unitName, username string, logger *slog.Logger) {
+	_ = exec.CommandContext(ctx, "systemctl", "stop", unitName).Run()
+	_ = exec.CommandContext(ctx, "systemctl", "disable", unitName).Run()
+	_ = exec.CommandContext(ctx, "systemctl", "reset-failed", unitName).Run()
+	_ = stopDockerdDirect(ctx, username, unitName, logger)
 }
 
 // stopDockerdDirect finds the dockerd process running under the given user

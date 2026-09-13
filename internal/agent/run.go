@@ -79,7 +79,6 @@ func (m *AgentManager) RunAgent(ctx context.Context, req *v1.RunAgentRequest) (*
 func buildRunAgentArgs(agentID, uid, gid, unitName, command string, args []string, envOverrides map[string]string, limits *v1.ResourceLimits, disclosure bool) []string {
 	userHome := "/home/bunker-" + agentID
 	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
-	tmpDir := filepath.Join("/run", "bunker", agentID, "tmp")
 	agentBinPath := filepath.Join(userHome, "bin")
 	envFile := fmt.Sprintf("/run/bunker/%s/env", agentID)
 
@@ -89,6 +88,11 @@ func buildRunAgentArgs(agentID, uid, gid, unitName, command string, args []strin
 		"--uid=" + uid,
 		"--gid=" + gid,
 		"--property=PAMName=login",
+		// GAP-075: a detached run gets the same enforced private /tmp as every
+		// other agent execution — systemd mounts a tmpfs private to this unit
+		// over /tmp, so the run cannot read or collide with the host's /tmp or
+		// with another agent's.
+		"--property=PrivateTmp=yes",
 	}
 
 	if limits != nil {
@@ -108,7 +112,10 @@ func buildRunAgentArgs(agentID, uid, gid, unitName, command string, args []strin
 		"HOME=" + userHome,
 		"USER=" + "bunker-" + agentID,
 		"DOCKER_HOST=unix://" + dockerSockPath,
-		"TMPDIR=" + tmpDir,
+		// GAP-075: TMPDIR is /tmp, which PrivateTmp=yes makes private to this
+		// unit. The legacy per-agent scratch (/run/bunker/<id>/tmp) is not an
+		// isolation boundary and is no longer advertised as TMPDIR.
+		"TMPDIR=" + config.IsolationTmpDir,
 		"BUNKER_ENV_FILE=" + envFile,
 	}
 	// GAP-067 containment disclosure: detached sessions get the same

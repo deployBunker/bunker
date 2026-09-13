@@ -271,7 +271,7 @@ func TestContainmentMarkerPreservesNonZeroExit(t *testing.T) {
 // the wrapped sh -c, and that disabled output is BYTE-IDENTICAL to the
 // pre-GAP-067 string (flag off = zero behavior change).
 func TestBuildAgentExecCommand_ContainmentEnv(t *testing.T) {
-	const wantDisabled = "set -a; [ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env 2>/dev/null; set +a; env PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin DOCKER_HOST=unix:///run/bunker/abc123/docker.sock TMPDIR=/run/bunker/abc123/tmp sh -c 'uname'"
+	const wantDisabled = "set -a; [ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env 2>/dev/null; set +a; env PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin DOCKER_HOST=unix:///run/bunker/abc123/docker.sock TMPDIR=/tmp sh -c 'uname'"
 	gotOff := buildAgentExecCommand("abc123", "/home/bunker-abc123", "uname", nil, false)
 	if gotOff != wantDisabled {
 		t.Errorf("flag-off output changed (must be byte-identical):\n got: %q\nwant: %q", gotOff, wantDisabled)
@@ -320,7 +320,7 @@ func TestBuildAgentRawExecCommand_ContainmentEnv(t *testing.T) {
 		"env",
 		"PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
-		"TMPDIR=/run/bunker/abc123/tmp",
+		"TMPDIR=/tmp",
 		"uname",
 	}
 	gotOff := buildAgentRawExecCommand("abc123", "/home/bunker-abc123", "uname", nil, false)
@@ -354,7 +354,7 @@ func TestBuildAgentRawExecCommand_ContainmentEnv(t *testing.T) {
 // byte-identical to the pre-GAP-067 string.
 func TestBuildAgentScriptCommand_ContainmentEnv(t *testing.T) {
 	script := "#!/bin/sh\necho hi\n"
-	const wantDisabled = "mkdir -p \"/home/bunker-abc123/.bunker\" && cat > \"/home/bunker-abc123/.bunker/exec-script.sh\" <<'EOFSCRIPT'\n#!/bin/sh\necho hi\n\nEOFSCRIPT\nchmod +x \"/home/bunker-abc123/.bunker/exec-script.sh\" && set -a; [ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env 2>/dev/null; set +a; env PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin DOCKER_HOST=unix:///run/bunker/abc123/docker.sock TMPDIR=/run/bunker/abc123/tmp \"/home/bunker-abc123/.bunker/exec-script.sh\""
+	const wantDisabled = "mkdir -p \"/home/bunker-abc123/.bunker\" && cat > \"/home/bunker-abc123/.bunker/exec-script.sh\" <<'EOFSCRIPT'\n#!/bin/sh\necho hi\n\nEOFSCRIPT\nchmod +x \"/home/bunker-abc123/.bunker/exec-script.sh\" && set -a; [ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env 2>/dev/null; set +a; env PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin DOCKER_HOST=unix:///run/bunker/abc123/docker.sock TMPDIR=/tmp \"/home/bunker-abc123/.bunker/exec-script.sh\""
 	gotOff := buildAgentScriptCommand("abc123", "/home/bunker-abc123", script, false)
 	if gotOff != wantDisabled {
 		t.Errorf("flag-off script command changed (must be byte-identical):\n got: %q\nwant: %q", gotOff, wantDisabled)

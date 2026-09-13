@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+
+	"github.com/deployBunker/bunker/internal/hostsetup"
 )
 
 // Config is the top-level bunkerd configuration.
@@ -42,6 +44,15 @@ type ContainmentConfig struct {
 // when disclosure is disabled. Single definition here — the server and
 // agent packages both reference this constant; never duplicate the literal.
 const ContainmentSandboxEnv = "BUNKER_SANDBOX=1"
+
+// IsolationTmpDir is the temporary directory every agent process is pointed
+// at (GAP-075). It is the plain "/tmp" on purpose: /tmp is what the isolation
+// boundary makes private — per SSH session through pam_namespace, and per
+// transient unit through systemd PrivateTmp=yes. A per-agent directory
+// elsewhere (/run/bunker/<id>/tmp) is NOT a boundary and is no longer
+// advertised as TMPDIR. Single definition — the agent and server packages both
+// reference this constant; never duplicate the literal.
+const IsolationTmpDir = "/tmp"
 
 // ContainmentSandboxEnvKey is the env-var KEY of ContainmentSandboxEnv, for
 // callers that must match the key alone (e.g. the detached-run builder
@@ -117,6 +128,73 @@ type AgentConfig struct {
 	Registry RegistryConfig `mapstructure:"registry"`
 	// Reconciliation holds the GAP-070 startup reconciliation policy.
 	Reconciliation ReconciliationConfig `mapstructure:"reconciliation"`
+	// Isolation holds the GAP-075 per-agent /tmp + shared-scratch policy.
+	Isolation IsolationConfig `mapstructure:"isolation"`
+}
+
+// IsolationConfig is the GAP-075 isolation policy. Every agent runs with an
+// ENFORCED private /tmp (a per-session pam_namespace instance for SSH
+// sessions, PrivateTmp=yes for every transient systemd unit). The ONLY
+// sanctioned cross-agent exchange point is the shared scratch directory,
+// which is group/setgid and bounded per agent.
+//
+// The private-/tmp half has no toggle: an isolation boundary that can be
+// switched off silently is not a boundary. The knobs below say WHERE the
+// exchange point lives and HOW MUCH each agent may leave there.
+type IsolationConfig struct {
+	// AgentGroup is the isolation group every agent joins. It has two jobs:
+	// the fail-closed pam_exec precondition requires the membership of every
+	// agent session it verifies (ordinary operator sessions are scoped out by
+	// name and never reach it), and it owns the shared-scratch tree so peers
+	// can read each other's exchanged files. Membership is granted to every
+	// agent at spawn whether or not SharedScratchEnabled is set — the group is
+	// the isolation identity, not a feature toggle. Default bunker-agents.
+	AgentGroup string `mapstructure:"agent_group"`
+	// SharedScratchEnabled gates the cross-agent exchange directory. When
+	// false, agents keep their private /tmp and simply have no sanctioned
+	// way to hand files to one another.
+	SharedScratchEnabled bool `mapstructure:"shared_scratch_enabled"`
+	// SharedScratchRoot is the exchange directory (root-owned, setgid,
+	// group-visible). Default /srv/bunker-share.
+	SharedScratchRoot string `mapstructure:"shared_scratch_root"`
+	// SharedScratchGroup is accepted as a legacy alias for AgentGroup: the
+	// first GAP-075 revision called the (single) group "shared_scratch_group".
+	// Prefer agent_group.
+	SharedScratchGroup string `mapstructure:"shared_scratch_group"`
+	// SharedScratchPerAgentBytes caps ONE agent's scratch directory
+	// (kernel-enforced tmpfs size). A scratch that cannot be mounted at the
+	// cap is not created at all — the bound is never skipped.
+	SharedScratchPerAgentBytes uint64 `mapstructure:"shared_scratch_per_agent_bytes"`
+	// PrivateTmpRoot is the pam_namespace instance parent for /tmp. One
+	// instance directory per agent holds that agent's private /tmp.
+	PrivateTmpRoot string `mapstructure:"private_tmp_root"`
+}
+
+// Defaults fills unset isolation fields with the values hostsetup provisions
+// and hostsetup.DefaultOptions() expects. Kept in one place so config,
+// installer and daemon can never disagree about where the boundary lives.
+func (c *IsolationConfig) Defaults() {
+	if c.AgentGroup == "" {
+		// Legacy alias: an explicit shared_scratch_group wins over the
+		// default so an existing deployment keeps its group name.
+		if c.SharedScratchGroup != "" {
+			c.AgentGroup = c.SharedScratchGroup
+		} else {
+			c.AgentGroup = hostsetup.DefaultAgentGroup
+		}
+	}
+	if c.SharedScratchGroup == "" {
+		c.SharedScratchGroup = c.AgentGroup
+	}
+	if c.SharedScratchRoot == "" {
+		c.SharedScratchRoot = hostsetup.DefaultScratchRoot
+	}
+	if c.SharedScratchPerAgentBytes == 0 {
+		c.SharedScratchPerAgentBytes = hostsetup.DefaultScratchMaxBytes
+	}
+	if c.PrivateTmpRoot == "" {
+		c.PrivateTmpRoot = hostsetup.DefaultTmpInstanceRoot
+	}
 }
 
 // RegistryConfig is the GAP-070 durable agent lifecycle registry policy: an
@@ -267,6 +345,17 @@ func DefaultConfig() *Config {
 			Reconciliation: ReconciliationConfig{
 				Mode: ReconcileModeDestroy,
 			},
+			// GAP-075: the exchange point is ON by default (agents need a
+			// sanctioned way to exchange artifacts) and every directory in it
+			// is size-capped, so "on" never means "unbounded".
+			Isolation: IsolationConfig{
+				AgentGroup:                 hostsetup.DefaultAgentGroup,
+				SharedScratchEnabled:       true,
+				SharedScratchRoot:          hostsetup.DefaultScratchRoot,
+				SharedScratchGroup:         hostsetup.DefaultAgentGroup,
+				SharedScratchPerAgentBytes: hostsetup.DefaultScratchMaxBytes,
+				PrivateTmpRoot:             hostsetup.DefaultTmpInstanceRoot,
+			},
 		},
 		Tunnel: TunnelConfig{
 			Enabled:        true,
@@ -346,6 +435,12 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("agent.registry.max_backups")
 	v.BindEnv("agent.registry.known_id_cap")
 	v.BindEnv("agent.reconciliation.mode")
+	v.BindEnv("agent.isolation.agent_group")
+	v.BindEnv("agent.isolation.shared_scratch_enabled")
+	v.BindEnv("agent.isolation.shared_scratch_root")
+	v.BindEnv("agent.isolation.shared_scratch_group")
+	v.BindEnv("agent.isolation.shared_scratch_per_agent_bytes")
+	v.BindEnv("agent.isolation.private_tmp_root")
 	v.BindEnv("tunnel.enabled")
 	v.BindEnv("tunnel.binary_path")
 	v.BindEnv("tunnel.tunnel_port")

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/deployBunker/bunker/internal/hostsetup"
 )
 
 func TestDefaultConfig(t *testing.T) {
@@ -333,5 +335,76 @@ func TestValidate_TLSWithFileCerts(t *testing.T) {
 	cfg.TLS.KeyFile = "/etc/certs/key.pem"
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("expected valid: %v", err)
+	}
+}
+
+// TestIsolationAgentGroupDefaults pins the board decision (group
+// `bunker-agents`, not the rejected `bunker`) across every surface that can
+// carry a default: the built-in default config, the zero-value Defaults()
+// filler, and the hostsetup constants the installer and the daemon share.
+func TestIsolationAgentGroupDefaults(t *testing.T) {
+	if hostsetup.DefaultAgentGroup != "bunker-agents" {
+		t.Errorf("hostsetup.DefaultAgentGroup = %q, want bunker-agents", hostsetup.DefaultAgentGroup)
+	}
+	if hostsetup.DefaultScratchGroup != hostsetup.DefaultAgentGroup {
+		t.Errorf("shared-scratch group %q must be the same group as the isolation group %q",
+			hostsetup.DefaultScratchGroup, hostsetup.DefaultAgentGroup)
+	}
+
+	cfg := DefaultConfig()
+	if cfg.Agent.Isolation.AgentGroup != "bunker-agents" {
+		t.Errorf("DefaultConfig() agent group = %q, want bunker-agents", cfg.Agent.Isolation.AgentGroup)
+	}
+	if cfg.Agent.Isolation.SharedScratchGroup != cfg.Agent.Isolation.AgentGroup {
+		t.Errorf("default scratch group %q != agent group %q",
+			cfg.Agent.Isolation.SharedScratchGroup, cfg.Agent.Isolation.AgentGroup)
+	}
+
+	// The zero value must land on the same group (the installer is often run
+	// with no config file at all).
+	var zero IsolationConfig
+	zero.Defaults()
+	if zero.AgentGroup != "bunker-agents" {
+		t.Errorf("IsolationConfig{}.Defaults() agent group = %q, want bunker-agents", zero.AgentGroup)
+	}
+}
+
+// TestIsolationAgentGroupLegacyAlias: the first GAP-075 revision called the
+// single group `shared_scratch_group`, so an existing file keeps working while
+// the canonical key is agent_group.
+func TestIsolationAgentGroupLegacyAlias(t *testing.T) {
+	var legacy IsolationConfig
+	legacy.SharedScratchGroup = "legacy-bunker"
+	legacy.Defaults()
+	if legacy.AgentGroup != "legacy-bunker" {
+		t.Errorf("legacy shared_scratch_group did not carry over: agent group = %q", legacy.AgentGroup)
+	}
+
+	var canonical IsolationConfig
+	canonical.AgentGroup = "my-agents"
+	canonical.SharedScratchGroup = "stale-ignore-me"
+	canonical.Defaults()
+	if canonical.AgentGroup != "my-agents" {
+		t.Errorf("explicit agent_group was overridden: %q", canonical.AgentGroup)
+	}
+}
+
+// TestLoad_IsolationAgentGroupFromFile proves the YAML key reaches the struct:
+// the isolation group is what the sshd pam_exec precondition requires of every
+// agent session, so a typo here would deny every session (a missing group is a
+// denial, never a silent shared /tmp).
+func TestLoad_IsolationAgentGroupFromFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bunkerd.yaml")
+	body := "server:\n  grpc_addr: \":19090\"\nagent:\n  isolation:\n    agent_group: custom-agents\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Agent.Isolation.AgentGroup != "custom-agents" {
+		t.Errorf("agent_group from file = %q, want custom-agents", cfg.Agent.Isolation.AgentGroup)
 	}
 }

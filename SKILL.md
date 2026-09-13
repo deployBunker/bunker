@@ -10,6 +10,13 @@ Multi-agent coding platform daemon/CLI. Spins up isolated Linux user environment
   - Its own rootless Docker daemon
   - Dedicated SSH keypair and port range
   - Resource limits (CPU, memory, disk, processes, open files, max containers)
+  - An ENFORCED private `/tmp` (pam_namespace per AGENT SSH session, scoped by
+    the reserved `bunker-*` NAME pattern and then verified against the
+    `bunker-agents` group, so ordinary operator sessions keep the host /tmp and
+    a broken boundary denies instead of sharing; `PrivateTmp=yes` per transient
+    unit) and one bounded cross-agent exchange directory (`/srv/bunker-share`);
+    install the host half with `bunker host-provision` — see
+    specs/agent-tmp-isolation.md
   - Optional public networking via Cloudflare tunnels or Tailscale
 
 ## Quick start
@@ -51,6 +58,7 @@ bash e2e-full-battery.sh
 - `internal/config` — YAML configuration
 - `internal/server` — connect-go service handlers
 - `internal/systemd` — systemd service installation helpers
+- `internal/hostsetup` — host provisioning for the isolation boundary (GAP-075): private /tmp, bounded shared scratch, host /tmp tmpfs cap
 - `internal/tunnel` — Cloudflare tunnel manager
 - `proto/bunker/v1` — Protobuf + connect-go generated code
 

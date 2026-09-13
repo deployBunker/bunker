@@ -601,9 +601,20 @@ const agentExecBasePath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sb
 // TMPDIR are set regardless of sshd PermitUserEnvironment/AcceptEnv settings,
 // and sources /run/bunker/<id>/env so that `bunker env set` injections are
 // visible to the command.
+//
+// GAP-075: TMPDIR is /tmp — the agent session's OWN private /tmp instance,
+// bound by pam_namespace for members of the agent group (every agent joins it
+// at spawn; ordinary operator sessions and root are not members and keep the
+// host /tmp). The session observes a genuinely private /tmp (not a per-agent
+// directory in a shared namespace), so no command can read or collide with
+// another agent's temporary files or root's.
 func buildAgentExecCommand(agentID, userHome, command string, args []string, disclosed bool) string {
 	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
-	tmpDir := filepath.Join("/run", "bunker", agentID, "tmp")
+	// GAP-075: TMPDIR is the enforced private /tmp of the agent's session
+	// (pam_namespace binds the session's own /tmp instance there). The legacy
+	// /run/bunker/<id>/tmp is not an isolation boundary and is no longer
+	// advertised as TMPDIR.
+	tmpDir := config.IsolationTmpDir
 	agentBinPath := filepath.Join(userHome, "bin")
 	agentPath := agentBinPath + ":" + agentExecBasePath
 	envFile := fmt.Sprintf("/run/bunker/%s/env", agentID)
@@ -663,7 +674,11 @@ func containerRunPrefix(disclosed bool) []string {
 // sshd shell (which parses the docker argv) and the container's `sh -lc`.
 func buildAgentImageExecCommand(agentID, userHome, command string, args []string, disclosed bool, imageRef string) string {
 	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
-	tmpDir := filepath.Join("/run", "bunker", agentID, "tmp")
+	// GAP-075: TMPDIR is the enforced private /tmp of the agent's session
+	// (pam_namespace binds the session's own /tmp instance there). The legacy
+	// /run/bunker/<id>/tmp is not an isolation boundary and is no longer
+	// advertised as TMPDIR.
+	tmpDir := config.IsolationTmpDir
 	agentBinPath := filepath.Join(userHome, "bin")
 	agentPath := agentBinPath + ":" + agentExecBasePath
 	envFile := fmt.Sprintf("/run/bunker/%s/env", agentID)
@@ -701,7 +716,11 @@ func shellQuoteSingle(s string) string {
 // (without --raw) or `bunker exec --script` to see env vars set via `bunker env set`.
 func buildAgentRawExecCommand(agentID, userHome, command string, args []string, disclosed bool) []string {
 	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
-	tmpDir := filepath.Join("/run", "bunker", agentID, "tmp")
+	// GAP-075: TMPDIR is the enforced private /tmp of the agent's session
+	// (pam_namespace binds the session's own /tmp instance there). The legacy
+	// /run/bunker/<id>/tmp is not an isolation boundary and is no longer
+	// advertised as TMPDIR.
+	tmpDir := config.IsolationTmpDir
 	agentBinPath := filepath.Join(userHome, "bin")
 	agentPath := agentBinPath + ":" + agentExecBasePath
 	// sshd's ForceCommand or default shell may still receive a string, but
@@ -733,7 +752,11 @@ func buildAgentRawExecCommand(agentID, userHome, command string, args []string, 
 // the agent env file either; use shell mode when host paths are needed.
 func buildAgentImageRawExecCommand(agentID, userHome, command string, args []string, disclosed bool, imageRef string) []string {
 	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
-	tmpDir := filepath.Join("/run", "bunker", agentID, "tmp")
+	// GAP-075: TMPDIR is the enforced private /tmp of the agent's session
+	// (pam_namespace binds the session's own /tmp instance there). The legacy
+	// /run/bunker/<id>/tmp is not an isolation boundary and is no longer
+	// advertised as TMPDIR.
+	tmpDir := config.IsolationTmpDir
 	agentBinPath := filepath.Join(userHome, "bin")
 	agentPath := agentBinPath + ":" + agentExecBasePath
 	argv := []string{
@@ -754,7 +777,11 @@ func buildAgentImageRawExecCommand(agentID, userHome, command string, args []str
 // shell command that executes it. The file is written via ssh heredoc.
 func buildAgentScriptCommand(agentID, userHome, scriptContent string, disclosed bool) string {
 	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
-	tmpDir := filepath.Join("/run", "bunker", agentID, "tmp")
+	// GAP-075: TMPDIR is the enforced private /tmp of the agent's session
+	// (pam_namespace binds the session's own /tmp instance there). The legacy
+	// /run/bunker/<id>/tmp is not an isolation boundary and is no longer
+	// advertised as TMPDIR.
+	tmpDir := config.IsolationTmpDir
 	agentBinPath := filepath.Join(userHome, "bin")
 	agentPath := agentBinPath + ":" + agentExecBasePath
 	scriptPath := filepath.Join(userHome, ".bunker", "exec-script.sh")
@@ -782,7 +809,11 @@ func buildAgentScriptCommand(agentID, userHome, scriptContent string, disclosed 
 // bind-mounted at the same absolute path.
 func buildAgentImageScriptCommand(agentID, userHome, scriptContent string, disclosed bool, imageRef string) string {
 	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
-	tmpDir := filepath.Join("/run", "bunker", agentID, "tmp")
+	// GAP-075: TMPDIR is the enforced private /tmp of the agent's session
+	// (pam_namespace binds the session's own /tmp instance there). The legacy
+	// /run/bunker/<id>/tmp is not an isolation boundary and is no longer
+	// advertised as TMPDIR.
+	tmpDir := config.IsolationTmpDir
 	agentBinPath := filepath.Join(userHome, "bin")
 	agentPath := agentBinPath + ":" + agentExecBasePath
 	scriptPath := filepath.Join(userHome, ".bunker", "exec-script.sh")

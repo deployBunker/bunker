@@ -60,6 +60,39 @@ agent:
     max_backups: 3                         # agents.jsonl.1 .. agents.jsonl.3
     known_id_cap: 10000                    # destroyed-ID index kept by compaction
 
+  # Per-agent isolation boundary (GAP-075). Every agent gets an ENFORCED
+  # private /tmp: SSH sessions through pam_namespace, transient systemd units
+  # through --property=PrivateTmp=yes. There is no toggle — an isolation
+  # boundary that can be switched off silently is not a boundary.
+  #
+  # agent_group is the isolation group every agent joins. The sshd block keys
+  # on the reserved `bunker-*` NAME pattern and then REQUIRES this group and the
+  # session user's membership of it (a root-owned pam_exec precondition runs
+  # before pam_namespace): root and ordinary operator accounts are not
+  # agent-named, so they are jumped over the whole block and keep the host /tmp
+  # (mounting the module host-wide would polyinstantiate every non-root user —
+  # that was the rejected design). A missing group or a lost membership DENIES
+  # the agent session rather than falling back to the shared /tmp. The host half
+  # is installed by `bunker host-provision`. Membership is granted to every agent
+  # at spawn whether or not the exchange point below is enabled, and a spawn that
+  # cannot grant it fails closed.
+  #
+  # The ONLY sanctioned cross-agent exchange point is shared_scratch_root: the
+  # daemon creates one directory per agent there, group-readable by every
+  # agent (setgid) and bounded by a kernel-enforced tmpfs size. A scratch
+  # directory whose bounded filesystem cannot be mounted is NOT created (no
+  # unbounded fallback).
+  #
+  # Env overrides: BUNKERD_AGENT_ISOLATION_AGENT_GROUP / _SHARED_SCRATCH_ENABLED
+  # / _ROOT / _GROUP / _PER_AGENT_BYTES / _PRIVATE_TMP_ROOT.
+  isolation:
+    agent_group: bunker-agents                       # isolation group (verified membership + exchange)
+    shared_scratch_enabled: true                     # exchange point on/off
+    shared_scratch_root: /srv/bunker-share           # root-owned, setgid, mode 2750 (NO group/world write)
+    shared_scratch_group: bunker-agents              # legacy alias of agent_group
+    shared_scratch_per_agent_bytes: 268435456        # 256 MiB cap per agent (tmpfs)
+    private_tmp_root: /var/lib/bunkerd/agent-tmp      # pam_namespace /tmp instances
+
   # Startup reconciliation between the replayed registry and system users.
   #   destroy (default): a bunker-* user the registry does not know is removed.
   #   adopt:             it is re-registered and its EXACT persisted port
