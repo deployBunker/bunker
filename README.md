@@ -449,6 +449,13 @@ go test ./... -short
 # Run E2E battery (requires a running bunkerd)
 bash e2e-full-battery.sh
 
+# The E2E battery requires root: it creates Linux users via useradd and
+# writes a root-owned daemon log under /var/log, so run it with sudo. The
+# harness prints a clear refusal (exit 42) instead of dying silently, and
+# any failure names the offending line and command. Verify the harness's
+# own diagnostics as a normal user — no root, no side effects:
+bash e2e-full-battery.sh --self-test
+
 # Run regression suite
 bash regression-tests.sh
 ```

@@ -2,6 +2,23 @@
 # Bunker E2E Test Battery — Practical
 # Tests what works, documents what doesn't
 set -euo pipefail
+#
+# REQUIREMENT: this battery MUST run as root. It creates Linux users via
+# useradd, installs PAM/systemd artifacts, and writes a root-owned daemon log
+# under /var/log (see README "Run E2E battery"). Run it as:
+#   sudo bash e2e-full-battery.sh
+# EXIT CODES:
+#   0   = success (final line "STATUS: ALL CORE TESTS PASS" / "VERIFY-PASS",
+#         or the --self-test diagnostics check completed)
+#   42  = preflight refusal (not root, or the daemon log path is not
+#         writable) — the reason is printed to stderr, nothing was changed
+#   1   = battery ran and failed, or a non-preflight error killed the run
+#         (the ERR trap prints the failing line + command before exit)
+# --SELF-TEST: `bash e2e-full-battery.sh --self-test` verifies the harness's
+#   own diagnostics (capture helper, ERR trap, non-root refusal decision)
+#   WITHOUT root: it never creates users, never starts daemons, never writes
+#   /var/log, and never runs a battery section. Final line:
+#   SELF-TEST: PASS
 
 PASS=0
 FAIL=0
@@ -49,6 +66,133 @@ GAP075_HELPER_PATH="/usr/lib/bunker/pam-tmp-guard"
 GAP075_HELPER_RESTORE=""
 GAP075_HELPERDIR_RESTORE=""
 GAP075_MASK_RESTORE=""
+
+# ── Diagnostics helpers (DF-BUNKER-6) ──────────────────────────────────
+# run_capture LABEL CMD... — run CMD, capture combined stdout+stderr, and
+# make the exit status available WITHOUT letting set -e abort the script.
+# Output is stored in RUN_CAPTURE_OUT / RUN_CAPTURE_EXIT. The helper ALWAYS
+# returns 0 (a non-zero return would kill a bare call site under set -e —
+# the exact silent death this helper exists to prevent); the wrapped
+# command's status is reported only via RUN_CAPTURE_EXIT. A failing command
+# substitution in a bare `VAR=$(...)` assignment aborts under set -e BEFORE
+# the if/else below it can run — that was the silent step-2 death this
+# helper replaces.
+RUN_CAPTURE_OUT=""
+RUN_CAPTURE_EXIT=0
+run_capture() {
+    local label="$1"; shift
+    RUN_CAPTURE_OUT=""
+    RUN_CAPTURE_EXIT=0
+    set +e
+    trap - ERR # the wrapped command's failure is EXPECTED here — handled by the caller's if/else, not the trap
+    RUN_CAPTURE_OUT=$("$@" 2>&1)
+    RUN_CAPTURE_EXIT=$?
+    trap 'diag_err $? $LINENO "$BASH_COMMAND"' ERR
+    set -e
+    if [ "$RUN_CAPTURE_EXIT" -ne 0 ]; then
+        echo "  [capture] $label failed (exit=$RUN_CAPTURE_EXIT)"
+    fi
+    return 0
+}
+
+# Preflight: refuse to run the battery as non-root BEFORE any write to
+# /var/log or any host mutation. Preflight_decision() is pure (no side
+# effects) so --self-test can exercise it as a non-root user.
+preflight_decision() {
+    if [ "$(id -u)" -ne 0 ]; then
+        echo "ERROR: this battery MUST run as root." >&2
+        echo "  Why: it creates Linux users (useradd), installs PAM/systemd" >&2
+        echo "  artifacts, and writes a root-owned daemon log under /var/log" >&2
+        echo "  (see README \"Run E2E battery\" / AGENTS.md \"E2E verification\")." >&2
+        echo "  Run it as: sudo bash e2e-full-battery.sh" >&2
+        echo "  (no-side-effect preview: bash e2e-full-battery.sh --self-test)" >&2
+        return 1
+    fi
+    return 0
+}
+if [ "${1:-}" = "--self-test" ]; then
+    # ── Self-test: prove the diagnostics work, with ZERO side effects. ──
+    # Never creates users, never starts daemons, never touches /var/log,
+    # never runs a battery section. Uses the same helpers as the main path.
+    ST_FAIL=0
+    echo "=== 0. Self-test (no root, no side effects) ==="
+
+    # (a) A failing command captured through run_capture must SURFACE its
+    # output (the exact helper the section-2 connect step calls).
+    run_capture "synthetic failing command" sh -c 'echo "synthetic stderr boom" >&2; exit 7'
+    if [ "$RUN_CAPTURE_EXIT" -ne 0 ] && printf '%s' "$RUN_CAPTURE_OUT" | grep -q "synthetic stderr boom"; then
+        assert "run_capture surfaces failing-command output (exit=$RUN_CAPTURE_EXIT)"
+    else
+        fail "run_capture swallowed a failing command's output or status"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+
+    # (b) A synthetic failure must hit the ERR trap and name line + command.
+    ST_TRAP_SAW=""
+    diag_err() { ST_TRAP_SAW="line=$2 cmd=$3"; }
+    set +e
+    false
+    set -e
+    diag_err() {
+        local status="$1" line="$2" cmd="$3"
+        echo "" >&2
+        echo "  ✗ ERROR: command failed (exit $status) at line $line: $cmd" >&2
+        echo "    (run aborted by set -e; partial results above, EXIT cleanup still runs)" >&2
+    }
+    if printf '%s' "$ST_TRAP_SAW" | grep -qE 'line=[0-9]+ cmd=false'; then
+        assert "ERR trap names failing line + command ($ST_TRAP_SAW)"
+    else
+        fail "ERR trap did not produce a line+command diagnostic (got: '$ST_TRAP_SAW')"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+
+    # (c) The non-root refusal decision must report "would refuse" for a
+    # non-root uid without exiting the self-test (id -u is forced here).
+    st_uid() { echo 1000; }
+    ST_REFUSED=""
+    ST_RC=0
+    # if/else condition context: the ERR trap does not fire on the EXPECTED
+    # refusal, and $? in the else branch is the real refusal status.
+    if ST_REFUSED=$(preflight_decision 2>&1); then
+        ST_RC=0
+    else
+        ST_RC=$?
+    fi
+    if [ "$ST_RC" -ne 0 ] && printf '%s' "$ST_REFUSED" | grep -q "MUST run as root"; then
+        assert "preflight would refuse a non-root uid (rc=$ST_RC, reason printed)"
+    else
+        fail "preflight_decision did not report the non-root refusal"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+
+    echo ""
+    if [ "$ST_FAIL" -eq 0 ]; then
+        echo "SELF-TEST: PASS"
+        exit 0
+    fi
+    echo "SELF-TEST: FAIL ($ST_FAIL check(s) failed)"
+    exit 1
+fi
+
+if ! preflight_decision; then
+    exit 42
+fi
+# EXIT cleanup — MAIN BATTERY PATH ONLY. The --self-test path above exits
+# BEFORE this is armed, so the self-test can never destroy agents, delete
+# users, or run any teardown (it is side-effect-free by construction).
+trap cleanup EXIT
+
+
+# ERR trap: name the failing line + command before any set -e exit. cleanup
+# (EXIT trap below) still runs; the script's exit status is preserved.
+trap 'diag_err $? $LINENO "$BASH_COMMAND"' ERR
+diag_err() {
+    local status="$1" line="$2" cmd="$3"
+    echo "" >&2
+    echo "  ✗ ERROR: command failed (exit $status) at line $line: $cmd" >&2
+    echo "    (run aborted by set -e; partial results above, EXIT cleanup still runs)" >&2
+}
+
 if [ -n "$BUNKERD_COEXIST" ]; then
     export HOME="$(mktemp -d /tmp/bunker-battery-home-XXXXXX)"
     BATTERY_CONFIG="$(mktemp /tmp/bunkerd-battery-XXXXXX.yaml)"
@@ -183,7 +327,14 @@ echo ""
 
 # Start the battery's own daemon in coexist mode (isolated ports, temp config)
 if [ -n "$BUNKERD_COEXIST" ]; then
-    "$BUNKERD_BIN" -c "$BATTERY_CONFIG" > /var/log/bunkerd-battery.log 2>&1 &
+    BUNKERD_BATTERY_LOG="${BUNKERD_BATTERY_LOG:-/var/log/bunkerd-battery.log}"
+    if ! [ -w "$BUNKERD_BATTERY_LOG" ] && ! [ -w "$(dirname "$BUNKERD_BATTERY_LOG")" ]; then
+        echo "ERROR: cannot write the battery daemon log: $BUNKERD_BATTERY_LOG" >&2
+        echo "  (override the location with BUNKERD_BATTERY_LOG=<path>)" >&2
+        exit 42
+    fi
+    touch "$BUNKERD_BATTERY_LOG" 2>/dev/null || true
+    "$BUNKERD_BIN" -c "$BATTERY_CONFIG" >> "$BUNKERD_BATTERY_LOG" 2>&1 &
     BUNKERD_PID=$!
     sleep 2
 fi
@@ -226,7 +377,8 @@ echo ""
 # 2. CONNECT
 # =============================================
 echo "=== 2. Connect ==="
-CONNECT_OUT=$($BUNKER connect "http://localhost:${REST_PORT}" --token test-regression-token 2>&1)
+run_capture "bunker connect" "$BUNKER" connect "http://localhost:${REST_PORT}" --token test-regression-token
+CONNECT_OUT="$RUN_CAPTURE_OUT"
 if echo "$CONNECT_OUT" | grep -q "Connected\|Server registered"; then
     assert "connect to bunkerd"
 else
@@ -238,7 +390,8 @@ echo ""
 # 3. LIST (empty)
 # =============================================
 echo "=== 3. List (empty) ==="
-LIST_OUT=$($BUNKER list --status all 2>&1)
+run_capture "bunker list" "$BUNKER" list --status all
+LIST_OUT="$RUN_CAPTURE_OUT"
 if echo "$LIST_OUT" | grep -q "No agents found"; then
     assert "list returns empty correctly"
 else
@@ -250,7 +403,8 @@ echo ""
 # 4. SPAWN
 # =============================================
 echo "=== 4. Spawn ==="
-SPAWN_OUT=$($BUNKER spawn --agent-id "e2e-main" 2>&1)
+run_capture "spawn e2e-main" "$BUNKER" spawn --agent-id "e2e-main"
+SPAWN_OUT="$RUN_CAPTURE_OUT"
 if echo "$SPAWN_OUT" | grep -q "Agent created"; then
     assert "spawn agent e2e-main"
 else
@@ -335,7 +489,8 @@ echo ""
 # =============================================
 echo "=== 6. Exec ==="
 # Test whoami
-WHOAMI_OUT=$($BUNKER exec e2e-main whoami 2>&1)
+run_capture "exec whoami" "$BUNKER" exec e2e-main whoami
+WHOAMI_OUT="$RUN_CAPTURE_OUT"
 if echo "$WHOAMI_OUT" | grep -q "bunker-e2e-main"; then
     assert "exec whoami returns agent user"
 else
@@ -343,7 +498,8 @@ else
 fi
 
 # Test basic command execution
-ENV_OUT=$($BUNKER exec e2e-main id 2>&1)
+run_capture "exec id" "$BUNKER" exec e2e-main id
+ENV_OUT="$RUN_CAPTURE_OUT"
 if echo "$ENV_OUT" | grep -q "bunker-e2e-main"; then
     assert "exec id works"
 else
@@ -469,7 +625,8 @@ echo ""
 # 9. DESTROY
 # =============================================
 echo "=== 9. Destroy ==="
-DESTROY_OUT=$($BUNKER destroy e2e-main --force 2>&1)
+run_capture "destroy e2e-main" "$BUNKER" destroy e2e-main --force
+DESTROY_OUT="$RUN_CAPTURE_OUT"
 if echo "$DESTROY_OUT" | grep -q "destroyed"; then
     assert "destroy e2e-main"
 else
@@ -725,8 +882,9 @@ EOF
 printf '%s' '{"ts":"2026-09-12T10:12:00Z"' >> "$GAP070_REG"
 chmod 600 "$GAP070_REG"
 
-COMPACT_OUT=$($BUNKER registry compact --path "$GAP070_REG" 2>&1)
-COMPACT_EXIT=$?
+run_capture "registry compact" "$BUNKER" registry compact --path "$GAP070_REG"
+COMPACT_OUT="$RUN_CAPTURE_OUT"
+COMPACT_EXIT="$RUN_CAPTURE_EXIT"
 if [ "$COMPACT_EXIT" -eq 0 ] && echo "$COMPACT_OUT" | grep -q "registry compacted:"; then
     assert "bunker registry compact rewrote the registry"
 else
@@ -757,7 +915,8 @@ if [ -f "$GAP070_REG.1" ]; then
 else
     assert "compaction removed superseded rotated backups"
 fi
-COMPACT_OUT2=$($BUNKER registry compact --path "$GAP070_REG" 2>&1)
+run_capture "registry compact (idempotence)" "$BUNKER" registry compact --path "$GAP070_REG"
+COMPACT_OUT2="$RUN_CAPTURE_OUT"
 if echo "$COMPACT_OUT2" | grep -qE "live agents: 2 -> 2"; then
     assert "second compaction is idempotent (live set unchanged)"
 else
