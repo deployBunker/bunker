@@ -350,15 +350,22 @@ func (l *AuditLog) StatusSnapshot() AuditStatus {
 }
 
 // Close closes the underlying file and stops the remote shipper (GAP-073)
-// when one is attached. Safe for concurrent use; subsequent Log calls return
+// when one is attached. The shipper is stopped FIRST and fully awaited, so
+// its worker can never touch the filesystem after the log file (or the test
+// temp dir) is gone. Safe for concurrent use; subsequent Log calls return
 // an error.
 func (l *AuditLog) Close() error {
 	l.mu.Lock()
-	if l.shipper != nil {
-		l.shipper.Stop()
-		l.shipper = nil
-	}
-	err := l.f.Close()
+	shipper := l.shipper
+	l.shipper = nil
 	l.mu.Unlock()
-	return err
+
+	// Stop the shipper before the file: Shipper.Stop blocks until the
+	// worker has exited, so no late writeState can recreate a file (or
+	// race temp-dir cleanup in tests) after Close returns.
+	shipper.Stop()
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.f.Close()
 }

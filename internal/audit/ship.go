@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -210,10 +211,17 @@ type Shipper struct {
 	lastAttemptAt time.Time
 	lastSuccessAt time.Time
 	lastResult    string
+	// stopped is set by Stop under mu: writeState refuses to touch the
+	// filesystem afterwards, so no shipstate write can land once Stop has
+	// begun (belt to Stop's done-channel braces).
+	stopped bool
 
 	wake     chan struct{}
 	stop     chan struct{}
 	stopOnce sync.Once
+	// done is closed by the worker goroutine when run() has fully exited;
+	// Stop waits on it so shutdown is deterministic.
+	done chan struct{}
 
 	// Test knobs: the production backoff is 1s doubling to 60s.
 	backoffBase time.Duration
@@ -244,6 +252,7 @@ func NewShipper(auditPath, shipTo string, logger *slog.Logger) (*Shipper, error)
 		hostname:    host,
 		wake:        make(chan struct{}, 1),
 		stop:        make(chan struct{}),
+		done:        make(chan struct{}),
 		backoffBase: defaultShipBackoff,
 		backoffMax:  maxShipBackoff,
 	}
@@ -290,8 +299,11 @@ func (s *Shipper) ShipSegment(segmentPath, chainHead, seal string) {
 }
 
 // run drains the queue until Stop. Single consumer: queue[0] is the item in
-// flight, later items wait behind it (FIFO preserves segment order).
+// flight, later items wait behind it (FIFO preserves segment order). Closing
+// done is the worker's last act — everything Stop guarantees (no goroutine,
+// no filesystem writes) holds only after it.
 func (s *Shipper) run() {
+	defer close(s.done)
 	for {
 		s.mu.Lock()
 		if len(s.queue) == 0 {
@@ -437,11 +449,23 @@ func clipSyslogLine(line []byte) string {
 	return string(line)
 }
 
-// Stop terminates the worker goroutine (idempotent). An in-flight HTTP
-// attempt finishes within its timeout; queued segments are dropped — the
+// Stop terminates the worker goroutine and waits for it to fully exit, so
+// after Stop returns there is no shipper goroutine left and no further
+// filesystem writes (the shipstate file is never touched again). Idempotent
+// and safe on a nil shipper (no shipper attached). An in-flight HTTP attempt
+// finishes within its timeout first; queued segments are dropped — the
 // daemon is exiting anyway.
 func (s *Shipper) Stop() {
-	s.stopOnce.Do(func() { close(s.stop) })
+	if s == nil {
+		return
+	}
+	s.stopOnce.Do(func() {
+		s.mu.Lock()
+		s.stopped = true
+		s.mu.Unlock()
+		close(s.stop)
+	})
+	<-s.done
 }
 
 // recordResult records a ship attempt that happened outside the worker loop
@@ -457,8 +481,19 @@ func (s *Shipper) recordResult(result string, depth int) {
 
 // writeState persists the post-attempt snapshot for `bunker audit status`.
 // Best effort: a failed state write warns but never affects shipping.
+//
+// Two guarantees matter for shutdown determinism:
+//   - Once Stop has set the stopped flag, the file is never touched again
+//     (Stop's <-s.done makes this transitively true for its callers).
+//   - The write is atomic (temp file in the same dir + rename), so a
+//     concurrent reader (the `bunker audit status` CLI) never sees a torn
+//     or partially written state file.
 func (s *Shipper) writeState(now time.Time, result string, depth int) {
 	s.mu.Lock()
+	if s.stopped {
+		s.mu.Unlock()
+		return
+	}
 	st := ShipState{
 		ShipTo:      s.target.Redacted(),
 		LastAttempt: now.UTC().Format(time.RFC3339),
@@ -468,12 +503,14 @@ func (s *Shipper) writeState(now time.Time, result string, depth int) {
 	if !s.lastSuccessAt.IsZero() {
 		st.LastSuccess = s.lastSuccessAt.UTC().Format(time.RFC3339)
 	}
+	path := s.auditPath + shipStateSuffix
 	s.mu.Unlock()
+
 	b, err := json.Marshal(st)
 	if err != nil {
 		return
 	}
-	if err := os.WriteFile(s.auditPath+shipStateSuffix, b, 0o600); err != nil {
+	if err := writeFileAtomic(path, b, 0o600); err != nil {
 		s.logger.Warn("audit ship: writing ship state file failed", "error", err)
 	}
 }
@@ -483,6 +520,31 @@ func (s *Shipper) snapshot() (lastAttempt, lastSuccess time.Time, lastResult str
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.lastAttemptAt, s.lastSuccessAt, s.lastResult, len(s.queue)
+}
+
+// writeFileAtomic writes b to path via a temp file in the same directory +
+// os.Rename, so readers never observe a torn or partially written file and a
+// crash leaves either the old or the new content, never a mix. The rename
+// keeps the write atomic on the same filesystem (same dir guarantees that).
+func writeFileAtomic(path string, b []byte, perm os.FileMode) error {
+	dir, base := filepath.Dir(path), filepath.Base(path)
+	tmp, err := os.CreateTemp(dir, "."+base+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // no-op after a successful rename
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpName, perm); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 // computeSeal derives the rotation seal for a chain head:
