@@ -14,7 +14,7 @@ import (
 	"connectrpc.com/connect"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 	bunkerv1connect "github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect"
-	"github.com/spf13/viper"
+	"go.yaml.in/yaml/v3"
 )
 
 // CLIConfig is the on-disk configuration for the bunker CLI.
@@ -45,6 +45,9 @@ func configFilePath() (string, error) {
 
 // LoadCLIConfig reads the CLI configuration from ~/.bunker/config.yaml.
 // Returns a default-initialised config when the file does not exist.
+// The config is read with direct YAML I/O (not viper) so that server-name
+// map keys keep their original case: viper lowercases every map key, which
+// broke lookups for mixed-case hostnames (DF-BUNKER-1).
 func LoadCLIConfig() (*CLIConfig, error) {
 	cfgPath, err := configFilePath()
 	if err != nil {
@@ -55,17 +58,12 @@ func LoadCLIConfig() (*CLIConfig, error) {
 		Servers: make(map[string]ServerEntry),
 	}
 
-	v := viper.New()
-	v.SetConfigFile(cfgPath)
-	v.SetConfigType("yaml")
-
-	if _, err := os.Stat(cfgPath); err == nil {
-		if err := v.ReadInConfig(); err != nil {
-			return nil, fmt.Errorf("read CLI config %s: %w", cfgPath, err)
+	if data, err := os.ReadFile(cfgPath); err == nil {
+		if err := yaml.Unmarshal(data, cfg); err != nil {
+			return nil, fmt.Errorf("unmarshal CLI config %s: %w", cfgPath, err)
 		}
-		if err := v.Unmarshal(cfg); err != nil {
-			return nil, fmt.Errorf("unmarshal CLI config: %w", err)
-		}
+	} else if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("read CLI config %s: %w", cfgPath, err)
 	}
 
 	if cfg.Servers == nil {
@@ -75,7 +73,8 @@ func LoadCLIConfig() (*CLIConfig, error) {
 }
 
 // SaveCLIConfig writes the CLI configuration to ~/.bunker/config.yaml,
-// creating the directory if needed.
+// creating the directory if needed. The file is written 0600 via direct
+// YAML I/O so map keys (server names) keep their original case.
 func SaveCLIConfig(cfg *CLIConfig) error {
 	cfgPath, err := configFilePath()
 	if err != nil {
@@ -87,15 +86,11 @@ func SaveCLIConfig(cfg *CLIConfig) error {
 		return fmt.Errorf("create config directory: %w", err)
 	}
 
-	v := viper.New()
-	v.SetConfigFile(cfgPath)
-	v.SetConfigType("yaml")
-
-	// Populate viper with the config values.
-	v.Set("servers", cfg.Servers)
-	v.Set("active_server", cfg.ActiveServer)
-
-	if err := v.WriteConfigAs(cfgPath); err != nil {
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal CLI config: %w", err)
+	}
+	if err := os.WriteFile(cfgPath, data, 0o600); err != nil {
 		return fmt.Errorf("write CLI config: %w", err)
 	}
 	return nil
