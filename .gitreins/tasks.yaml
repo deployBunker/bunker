@@ -1289,3 +1289,13 @@ tasks:
   status: complete
   created_at: '2026-09-13T16:52:22.902900+00:00'
   completed_at: '2026-09-13T20:32:52.152664+00:00'
+- id: DF-BUNKER-1
+  title: Mixed-case hostname breaks CLI after connect
+  criteria:
+  - "bunker connect (registering a mixed-case server name like karaHermes-mde-7840hs)\
+    \ followed by any subsequent command (status/exec/etc) resolves the server correctly\
+    \ \u2014 no 'not found in config' failure; mixed-case keys survive the CLI config\
+    \ round-trip"
+  status: complete
+  created_at: '2026-09-14T00:54:03.612058+00:00'
+  completed_at: '2026-09-14T01:00:29.701423+00:00'
