@@ -249,6 +249,97 @@ func TestAuditExportCommand_Remote(t *testing.T) {
 	}
 }
 
+// TestAuditStatusCommandOnPopulatedLog exercises `bunker audit status` on a
+// log dir with records, backups, a ship-state file, and a seal record.
+func TestAuditStatusCommandOnPopulatedLog(t *testing.T) {
+	path := newVerifyLog(t, 3)
+	// A rotated backup, created the way any JSONL writer would (status only
+	// reports sizes/counts — it does not verify chains; verify does that).
+	bak, err := audit.New(path + ".1")
+	if err != nil {
+		t.Fatalf("create backup log: %v", err)
+	}
+	if err := bak.Log(audit.Record{TS: "t0", Caller: "master", Method: "/m0", Outcome: "ok", Summary: "rec-0"}); err != nil {
+		t.Fatalf("Log(rec-0): %v", err)
+	}
+	_ = bak.Close()
+
+	// Ship-state file as the daemon's shipper would write it.
+	wantState := audit.ShipState{
+		ShipTo:      "https://collector.example.net/v1",
+		LastAttempt: "2026-09-14T12:00:00Z",
+		LastResult:  "ok",
+		LastSuccess: "2026-09-14T12:00:00Z",
+		QueueDepth:  2,
+	}
+	b, err := json.Marshal(wantState)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path+".shipstate", b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := auditCmd(t, "status", "--path", path)
+	if err != nil {
+		t.Fatalf("audit status: %v", err)
+	}
+	for _, want := range []string{
+		"enabled:              true",
+		"records:              4",
+		"backup .1 size:       ",
+		"rotations:            >= 1",
+		"last verify:          n/a",
+		"shipping:             enabled (https://collector.example.net/v1)",
+		"last ship result:     ok",
+		"ship retry queue:     2 segment(s)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("status output missing %q:\n%s", want, out)
+		}
+	}
+	if !strings.Contains(out, "chain head:") {
+		t.Errorf("status output missing chain head line:\n%s", out)
+	}
+
+	// JSON output: machine-readable, contains the same state.
+	out, err = auditCmd(t, "status", "--path", path, "--json")
+	if err != nil {
+		t.Fatalf("audit status --json: %v", err)
+	}
+	var st struct {
+		Enabled  bool `json:"enabled"`
+		Records  int  `json:"records"`
+		Shipping *struct {
+			ShipTo     string `json:"ship_to"`
+			QueueDepth int    `json:"queue_depth"`
+			LastResult string `json:"last_result"`
+		} `json:"shipping"`
+	}
+	if err := json.Unmarshal([]byte(out), &st); err != nil {
+		t.Fatalf("status --json is not valid JSON (%v):\n%s", err, out)
+	}
+	if !st.Enabled || st.Records != 4 {
+		t.Errorf("status --json = enabled=%v records=%d, want true/4", st.Enabled, st.Records)
+	}
+	if st.Shipping == nil || st.Shipping.QueueDepth != 2 || st.Shipping.LastResult != "ok" {
+		t.Errorf("status --json shipping = %+v, want queue_depth 2 / last_result ok", st.Shipping)
+	}
+}
+
+// TestAuditStatusCommandDisabled: a missing log file must report
+// enabled=false and exit 0, never error — status works on unconfigured hosts.
+func TestAuditStatusCommandDisabled(t *testing.T) {
+	out, err := auditCmd(t, "status", "--path", filepath.Join(t.TempDir(), "missing.log"))
+	if err != nil {
+		t.Fatalf("audit status on missing log: %v", err)
+	}
+	if !strings.Contains(out, "enabled:              false") {
+		t.Errorf("status output = %q, want enabled=false", out)
+	}
+}
+
+// TestAuditVerifyCommandOK: verify on an untouched log prints OK.
 func TestAuditVerifyCommandOK(t *testing.T) {
 	path := newVerifyLog(t, 3)
 

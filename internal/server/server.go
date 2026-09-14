@@ -5,6 +5,7 @@ package server
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -50,8 +51,27 @@ func New(cfg *config.Config) *BunkerdServer {
 	// Open the daemon-side audit trail when enabled. Failure is non-fatal
 	// (warn + run without audit) so a missing/unwritable /var/log/bunkerd
 	// never blocks daemon startup on existing deployments.
+	//
+	// GAP-073: when audit.ship_to is configured, remote shipping is attached
+	// here. An INVALID ship_to is non-fatal by design — warn and keep the
+	// local log without shipping; the same policy applies if the log itself
+	// fails to open. Sealing (audit.seal_key) rides the same options struct.
 	if cfg.Audit.Enabled {
-		l, err := audit.New(cfg.Audit.Path)
+		auditOpts := audit.Options{
+			ShipTo:  cfg.Audit.ShipTo,
+			SealKey: cfg.Audit.SealKey,
+			Logger:  s.logger,
+		}
+		l, err := audit.NewWithOptions(cfg.Audit.Path, auditOpts)
+		if err != nil {
+			if shipErr := (*audit.InvalidShipToError)(nil); errors.As(err, &shipErr) {
+				// Only the ship endpoint was bad: fall back to a plain
+				// log (no shipping) instead of losing the audit trail.
+				s.logger.Warn("audit shipping disabled",
+					"ship_to", audit.RedactShipTo(cfg.Audit.ShipTo), "error", err)
+				l, err = audit.New(cfg.Audit.Path)
+			}
+		}
 		if err != nil {
 			s.logger.Warn("audit logging disabled", "path", cfg.Audit.Path, "error", err)
 		} else {

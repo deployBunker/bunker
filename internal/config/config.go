@@ -102,9 +102,23 @@ type AuthConfig struct {
 // AuditConfig holds the daemon-side audit trail settings. When enabled, every
 // authenticated RPC appends one JSONL record to Path (mode 0600). The log
 // never contains token values.
+//
+// GAP-073 retention hardening (both opt-in, OFF by default — a config that
+// does not set them gets the exact pre-GAP-073 behavior):
+//   - ShipTo: remote ship endpoint for rotated segments. Supported schemes:
+//     https:// or http:// webhook (segment POSTed as the request body with
+//     X-Bunker-Chain-Head set) and syslog://host[:port] (RFC 3164 datagrams
+//     over UDP — the lossless copy is the webhook). Empty = off. Shipping is
+//     fire-and-forget: a dead endpoint never blocks or fails the audit write.
+//   - SealKey: when set, every rotation appends a chained SEAL record to the
+//     fresh log carrying HMAC-SHA256(key=SealKey, msg=<sealed chain head>),
+//     which lets holders of shipped copies prove a local file was truncated
+//     or replaced. Empty = no seal records.
 type AuditConfig struct {
 	Enabled bool   `mapstructure:"enabled"`
 	Path    string `mapstructure:"path"`
+	ShipTo  string `mapstructure:"ship_to"`
+	SealKey string `mapstructure:"seal_key"`
 }
 
 // AgentConfig holds agent lifecycle settings.
@@ -456,6 +470,8 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("tailscale.startup_timeout")
 	v.BindEnv("audit.enabled")
 	v.BindEnv("audit.path")
+	v.BindEnv("audit.ship_to")
+	v.BindEnv("audit.seal_key")
 	v.BindEnv("containment.disclosure")
 
 	// Read config file if it exists

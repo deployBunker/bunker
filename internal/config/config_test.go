@@ -290,6 +290,50 @@ containment:
 	}
 }
 
+// GAP-073: audit ship_to/seal_key parse from file and env, and default OFF.
+func TestAuditConfigShipToAndSealKey(t *testing.T) {
+	// Defaults: both off.
+	cfg, err := Load("/nonexistent/path/config.yaml")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Audit.ShipTo != "" || cfg.Audit.SealKey != "" {
+		t.Errorf("default ship_to/seal_key = %q/%q, want both empty (off by default)", cfg.Audit.ShipTo, cfg.Audit.SealKey)
+	}
+
+	// From config file.
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	content := "audit:\n  ship_to: \"https://collector.example.net/v1\"\n  seal_key: \"s3cret\"\n"
+	if err := os.WriteFile(cfgPath, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Audit.ShipTo != "https://collector.example.net/v1" {
+		t.Errorf("ship_to from file = %q", cfg.Audit.ShipTo)
+	}
+	if cfg.Audit.SealKey != "s3cret" {
+		t.Errorf("seal_key from file = %q", cfg.Audit.SealKey)
+	}
+
+	// From env (BUNKERD_AUDIT_SHIP_TO / BUNKERD_AUDIT_SEAL_KEY).
+	t.Setenv("BUNKERD_AUDIT_SHIP_TO", "syslog://10.0.0.5:601")
+	t.Setenv("BUNKERD_AUDIT_SEAL_KEY", "env-key")
+	cfg, err = Load("/nonexistent/path/config.yaml")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Audit.ShipTo != "syslog://10.0.0.5:601" {
+		t.Errorf("ship_to from env = %q", cfg.Audit.ShipTo)
+	}
+	if cfg.Audit.SealKey != "env-key" {
+		t.Errorf("seal_key from env = %q", cfg.Audit.SealKey)
+	}
+}
+
 func TestValidate_Valid(t *testing.T) {
 	cfg := DefaultConfig()
 	if err := cfg.Validate(); err != nil {

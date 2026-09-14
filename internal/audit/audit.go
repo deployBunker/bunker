@@ -1,10 +1,3 @@
-// Package audit provides an append-only structured audit log for bunkerd.
-//
-// Every authenticated RPC produces exactly one JSONL record capturing who did
-// what (caller identity, procedure, remote address, target agent), how long it
-// took, and the outcome. Token values are never written: caller identity is
-// derived exclusively from the authenticated Claims (agent id / key id /
-// subject) that the auth interceptor placed into the request context.
 package audit
 
 import (
@@ -12,9 +5,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 // MaxSize is the audit log rotation threshold: 5 MiB, matching this machine's
@@ -53,6 +48,16 @@ type Record struct {
 	// written has ""; after a rotation the first record of the fresh file
 	// chains to the last record of the rotated file.
 	PrevHash string `json:"prev_hash"`
+
+	// Seal is the GAP-073 rotation seal, present ONLY on seal records
+	// (Method=/internal/audit/seal) when audit.seal_key is configured; the
+	// omitempty keeps every other record's on-wire bytes byte-identical to
+	// the pre-GAP-073 format. A seal binds a completed segment to the live
+	// file: HMAC-SHA256(key=seal_key, msg=<sealed chain head>) hex, so
+	// holders of shipped copies can prove a local file was truncated or
+	// replaced. Seals chain like any record: the seal's prev_hash IS the
+	// sealed head, so the hash chain continues through it.
+	Seal string `json:"seal,omitempty"`
 }
 
 // AuditLog is an append-only JSONL writer. All writes are serialized under a
@@ -64,11 +69,55 @@ type AuditLog struct {
 	path     string
 	lastHash string // Hash of the most recently written record (chain link)
 	rotateAt int64  // size threshold that triggers rotation; MaxSize by default
+
+	// GAP-073: opt-in retention hardening. sealKey "" = no seal records;
+	// shipper nil = no remote shipping. Both default to off — New(path)
+	// leaves them zero and the behavior is byte-identical to pre-GAP-073.
+	sealKey string
+	shipper *Shipper
+	logger  *slog.Logger
 }
 
 // New opens (creating if needed) the audit log at path with file mode 0600.
-// Missing parent directories are created with mode 0700.
+// Missing parent directories are created with mode 0700. GAP-073 retention
+// hardening (remote shipping, rotation seals) is OFF: use NewWithOptions or
+// SetShipper to enable it.
 func New(path string) (*AuditLog, error) {
+	return newAuditLog(path)
+}
+
+// Options are the GAP-073 retention-hardening knobs for NewWithOptions.
+// Zero values keep the feature off.
+type Options struct {
+	// ShipTo is a validated audit.ship_to endpoint URI (https://…, http://…
+	// or syslog://host[:port]); "" disables shipping.
+	ShipTo string
+	// SealKey, when non-empty, appends a chained SEAL record to the fresh
+	// log after every rotation, binding the rotated segment to the live
+	// file: HMAC-SHA256(key=SealKey, msg=<chain head>) hex.
+	SealKey string
+	// Logger receives ship/seal warnings; nil falls back to slog.Default().
+	Logger *slog.Logger
+}
+
+// NewWithOptions opens the audit log like New and attaches the GAP-073
+// retention hardening described by opts. An invalid ShipTo URI returns an
+// error: callers must WARN and fall back (server.go disables shipping), never
+// crash the daemon or block the write path.
+func NewWithOptions(path string, opts Options) (*AuditLog, error) {
+	l, err := newAuditLog(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := l.applyOptions(opts); err != nil {
+		_ = l.Close()
+		return nil, err
+	}
+	return l, nil
+}
+
+// newAuditLog is the shared constructor body.
+func newAuditLog(path string) (*AuditLog, error) {
 	if path == "" {
 		return nil, fmt.Errorf("audit log path is empty")
 	}
@@ -84,6 +133,50 @@ func New(path string) (*AuditLog, error) {
 	return &AuditLog{f: f, path: path, rotateAt: MaxSize}, nil
 }
 
+// applyOptions validates opts and attaches the enabled features. Used by
+// NewWithOptions and SetShipper.
+func (l *AuditLog) applyOptions(opts Options) error {
+	if opts.Logger != nil {
+		l.logger = opts.Logger
+	}
+	if opts.SealKey != "" {
+		l.sealKey = opts.SealKey
+	}
+	if opts.ShipTo != "" {
+		s, err := NewShipper(l.path, opts.ShipTo, opts.Logger)
+		if err != nil {
+			return err
+		}
+		l.shipper = s
+	}
+	return nil
+}
+
+// SetShipper attaches a remote shipper after construction (used by callers
+// that build the log with New and then wire shipping from config). An invalid
+// shipTo URI returns an error and leaves the log unchanged. An empty shipTo
+// disables shipping.
+func (l *AuditLog) SetShipper(shipTo string, logger *slog.Logger) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if shipTo == "" {
+		if l.shipper != nil {
+			l.shipper.Stop()
+			l.shipper = nil
+		}
+		return nil
+	}
+	if logger != nil {
+		l.logger = logger
+	}
+	s, err := NewShipper(l.path, shipTo, logger)
+	if err != nil {
+		return err
+	}
+	l.shipper = s
+	return nil
+}
+
 // Log appends one record as a single JSON line, rotating the log first when
 // the live file has reached the size threshold. Safe for concurrent use.
 //
@@ -95,7 +188,13 @@ func New(path string) (*AuditLog, error) {
 func (l *AuditLog) Log(rec Record) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	return l.logLocked(rec)
+}
 
+// logLocked is Log's body with the lock already held (l.mu is NOT
+// re-entrant — this is the only sanctioned way for the rotation path to
+// append records). All locking discipline lives in Log and rotateLocked.
+func (l *AuditLog) logLocked(rec Record) error {
 	if info, err := l.f.Stat(); err != nil {
 		return fmt.Errorf("stat audit log: %w", err)
 	} else if l.rotateAt > 0 && info.Size() >= l.rotateAt {
@@ -128,11 +227,39 @@ func (l *AuditLog) Log(rec Record) error {
 	return nil
 }
 
+// writeSealRecordLocked appends the GAP-073 rotation seal record to the FRESH
+// audit.log after a rotation: Method=/internal/audit/seal, chained like any
+// record (its prev_hash is the sealed segment's final chain head — the same
+// value the seal HMAC was computed over, which is exactly what makes the
+// binding tamper-evident). Called from rotateLocked WITH l.mu already held
+// (l.mu is not re-entrant, so it delegates to logLocked, never Log). A seal
+// write failure is logged and never fails the rotation or the triggering
+// Log() call.
+func (l *AuditLog) writeSealRecordLocked(chainHead, seal string) {
+	rec := Record{
+		TS:      time.Now().UTC().Format(time.RFC3339Nano),
+		Caller:  "bunkerd",
+		Method:  SealMethod,
+		Outcome: "ok",
+		Summary: "rotation seal",
+		Seal:    seal,
+	}
+	if err := l.logLocked(rec); err != nil {
+		l.logWarn("audit rotation seal write failed", "error", err)
+	}
+}
+
 // rotateLocked performs the rotation under the caller's lock: audit.log ->
 // .1, .1 -> .2, .2 -> .3, anything older dropped, then a fresh audit.log is
 // opened with mode 0600. Renames preserve the 0600 mode of the rotated files.
 // The hash chain is not broken — lastHash persists, so the first record of
 // the fresh file chains to the last record of audit.log.1.
+//
+// GAP-073: after the fresh file is open, the just-rotated segment (now at
+// path.1) is handed to the remote shipper (fire-and-forget) and, when a seal
+// key is configured, a chained SEAL record is appended to the fresh file.
+// Neither step can fail the rotation or block the write path: shipping runs
+// on its own goroutine and seal failures are only logged.
 func (l *AuditLog) rotateLocked() error {
 	if err := l.f.Close(); err != nil {
 		return fmt.Errorf("close audit log for rotation: %w", err)
@@ -168,6 +295,19 @@ func (l *AuditLog) rotateLocked() error {
 		return fmt.Errorf("reopen audit log %s: %w", l.path, err)
 	}
 	l.f = f
+
+	// GAP-073 hardening (both steps fire-and-forget, post-rotation):
+	head := l.lastHash
+	seal := ""
+	if l.sealKey != "" && head != "" {
+		seal = computeSeal(l.sealKey, head)
+	}
+	if l.shipper != nil && head != "" {
+		l.shipper.ShipSegment(l.path+".1", head, seal)
+	}
+	if seal != "" {
+		l.writeSealRecordLocked(head, seal)
+	}
 	return nil
 }
 
@@ -180,10 +320,45 @@ func (l *AuditLog) Path() string {
 	return l.path
 }
 
-// Close closes the underlying file. Safe for concurrent use; subsequent Log
-// calls return an error.
+// logWarn emits a warning on the GAP-073 logger configured at construction
+// (nil logger = slog.Default()).
+func (l *AuditLog) logWarn(msg string, args ...any) {
+	if l.logger != nil {
+		l.logger.Warn(msg, args...)
+		return
+	}
+	slog.Warn(msg, args...)
+}
+
+// StatusSnapshot returns the current GAP-073 hardening state: whether
+// shipping/sealing are enabled, the last ship attempt result, and the retry
+// queue depth. With everything off (the default) only the Enabled flags are
+// false — the accessor exists for `bunker audit status` and daemon tooling.
+func (l *AuditLog) StatusSnapshot() AuditStatus {
+	l.mu.Lock()
+	shipper, sealing := l.shipper, l.sealKey != ""
+	l.mu.Unlock()
+	st := AuditStatus{SealingEnabled: sealing}
+	if shipper == nil {
+		return st
+	}
+	st.ShippingEnabled = true
+	st.ShipTo = shipper.target.Redacted()
+	st.LastShipAttempt, st.LastShipSuccess, st.LastShipResult, st.ShipQueueDepth =
+		shipper.snapshot()
+	return st
+}
+
+// Close closes the underlying file and stops the remote shipper (GAP-073)
+// when one is attached. Safe for concurrent use; subsequent Log calls return
+// an error.
 func (l *AuditLog) Close() error {
 	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.f.Close()
+	if l.shipper != nil {
+		l.shipper.Stop()
+		l.shipper = nil
+	}
+	err := l.f.Close()
+	l.mu.Unlock()
+	return err
 }

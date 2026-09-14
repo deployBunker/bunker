@@ -112,6 +112,23 @@ agent:
 audit:
   enabled: true                    # log every authenticated RPC
   path: /var/log/bunkerd/audit.log  # append-only JSONL audit log
+# GAP-073 retention hardening (both opt-in, OFF by default):
+# ship_to ships each ROTATED audit segment to a remote endpoint so a root
+# attacker cannot complete a cover-up by deleting the local backups.
+# Supported: https:// or http:// webhook (segment POSTed as the request
+# body, Content-Type application/x-ndjson, header X-Bunker-Chain-Head) and
+# syslog://host[:port] (RFC 3164 over UDP; one datagram per record line +
+# a SEAL datagram — lossless copies should use the webhook). Shipping is
+# fire-and-forget: a dead endpoint is retried with backoff from a bounded
+# queue and never blocks or fails the audit write. Env override:
+# BUNKERD_AUDIT_SHIP_TO.
+#  ship_to: https://collector.example.net/v1/audit
+# seal_key, when set, makes every rotation append a chained SEAL record to
+# the fresh log: HMAC-SHA256(key=seal_key, msg=<sealed chain head>). Holders
+# of shipped copies can use it to prove a local file was truncated or
+# replaced. Env override: BUNKERD_AUDIT_SEAL_KEY. Keep the key SECRET and
+# back it up with the shipped copies.
+#  seal_key: ""
 
 # Containment disclosure (GAP-067): admin-controlled, HIDDEN BY DEFAULT.
 # When enabled, every agent session gets BUNKER_SANDBOX=1 and allowed

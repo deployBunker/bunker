@@ -41,6 +41,7 @@ only; verify is local-only (run it on the host that owns the log).`,
 	cmd.AddCommand(newAuditVerifyCommand())
 	cmd.AddCommand(newAuditListCommand())
 	cmd.AddCommand(newAuditExportCommand())
+	cmd.AddCommand(newAuditStatusCommand())
 	return cmd
 }
 
@@ -284,6 +285,84 @@ Examples:
 	}
 	addAuditQueryFlags(cmd, f)
 	return cmd
+}
+
+// newAuditStatusCommand returns `bunker audit status`, a local-only summary
+// of the audit log's on-disk state plus the GAP-073 retention-hardening
+// state: chain head, file/backup sizes, rotation-count lower bound, and —
+// read from the daemon-written ship-state file — the last remote-ship
+// result and retry queue depth when shipping is configured. Verify history
+// is intentionally not tracked and reported as n/a. Like verify, this reads
+// only the local files; run it on the host that owns the log.
+func newAuditStatusCommand() *cobra.Command {
+	var (
+		path     string
+		wantJSON bool
+	)
+	cmd := &cobra.Command{
+		Use:   "status",
+		Short: "Show audit log state (chain head, sizes, shipping)",
+		Long: `Status prints a one-glance summary of the local audit log: the current
+chain head (hash of the last record of the live file), the live file and
+rotated backup sizes (.1-.3), a lower bound on rotation count, and the
+GAP-073 retention state (remote shipping result/queue from the ship-state
+file the daemon writes at <path>.shipstate, rotation sealing).
+
+Local log only — like verify, run it on the host that owns the log. Works
+on an unconfigured/disabled audit too (reports enabled=false). Verify
+history is not tracked: last verify is reported as n/a.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			st, err := audit.LocalStatus(path)
+			if err != nil {
+				return err
+			}
+			if wantJSON {
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				enc.SetEscapeHTML(false)
+				enc.SetIndent("", "  ")
+				return enc.Encode(st)
+			}
+			printAuditStatus(cmd.OutOrStdout(), path, st)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&path, "path", defaultAuditLogPath, "audit log file to inspect (rotated backups .1-.3 are included)")
+	cmd.Flags().BoolVar(&wantJSON, "json", false, "emit machine-readable JSON instead of plain text")
+	return cmd
+}
+
+// printAuditStatus renders the status fields as plain text, one per line.
+func printAuditStatus(w io.Writer, path string, st *audit.StatusReport) {
+	fmt.Fprintf(w, "audit log:            %s\n", path)
+	fmt.Fprintf(w, "enabled:              %v\n", st.Enabled)
+	if !st.Enabled {
+		return
+	}
+	fmt.Fprintf(w, "chain head:           %s\n", st.ChainHead)
+	fmt.Fprintf(w, "records:              %d (retained chain)\n", st.Records)
+	fmt.Fprintf(w, "live size:            %d bytes\n", st.LiveSize)
+	for i, sz := range st.BackupSizes {
+		if sz < 0 {
+			continue // backup not present
+		}
+		fmt.Fprintf(w, "backup .%d size:       %d bytes\n", i+1, sz)
+	}
+	fmt.Fprintf(w, "rotations:            >= %d (lower bound; files rotated beyond the %d-backup budget are gone)\n", st.RotationsLowerBound, audit.MaxBackups)
+	fmt.Fprintf(w, "last verify:          n/a\n")
+	if st.Shipping != nil {
+		fmt.Fprintf(w, "shipping:             enabled (%s)\n", st.Shipping.ShipTo)
+		fmt.Fprintf(w, "last ship attempt:    %s\n", st.Shipping.LastAttempt)
+		fmt.Fprintf(w, "last ship result:     %s\n", st.Shipping.LastResult)
+		if st.Shipping.LastSuccess != "" {
+			fmt.Fprintf(w, "last ship success:    %s\n", st.Shipping.LastSuccess)
+		} else {
+			fmt.Fprintf(w, "last ship success:    never\n")
+		}
+		fmt.Fprintf(w, "ship retry queue:     %d segment(s)\n", st.Shipping.QueueDepth)
+	} else {
+		fmt.Fprintf(w, "shipping:             disabled\n")
+	}
+	fmt.Fprintf(w, "rotation sealing:     %v\n", st.SealingEnabled)
 }
 
 // printAuditTable renders records as a fixed-width table on w.
