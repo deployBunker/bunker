@@ -1299,3 +1299,14 @@ tasks:
   status: complete
   created_at: '2026-09-14T00:54:03.612058+00:00'
   completed_at: '2026-09-14T01:00:29.701423+00:00'
+- id: GAP-073
+  title: Audit-log retention hardening
+  criteria:
+  - Rotation triggers remote ship payload (ship_to https/syslog, fire-and-forget,
+    retry queue); per-rotation seal record with HMAC(ring-key, chain-head) chains
+    correctly; ship failure never blocks writes and replays; 'bunker audit status'
+    shows chain head, file sizes, rotation count, last ship result; all flag-gated
+    off by default; go build/vet/test pass
+  status: complete
+  created_at: '2026-09-14T10:27:50.882558+00:00'
+  completed_at: '2026-09-14T11:39:13.943490+00:00'
