@@ -1325,3 +1325,13 @@ tasks:
     (6) no .go file, AGENTS.md or .github/workflows file is modified.'
   status: in_progress
   created_at: '2026-09-14T18:30:05.358412+00:00'
+- id: QA-BUNKER-12
+  title: "internal/hermes tests are non-hermetic \u2014 hardcoded /tmp/bunker-test"
+  criteria:
+  - 'Test suite passes with -count=3 and -race on a fresh host: internal/hermes/skills_test.go
+    must not use a fixed os.TempDir()/bunker-test path; each test uses t.TempDir()
+    or equivalent per-test isolation; go test -race ./internal/hermes/ -count=3 passes;
+    no /tmp/bunker-test directory remains after the run'
+  status: complete
+  created_at: '2026-09-15T10:16:40.353691+00:00'
+  completed_at: '2026-09-15T10:25:23.120016+00:00'
