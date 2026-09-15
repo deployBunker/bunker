@@ -1325,3 +1325,14 @@ tasks:
     (6) no .go file, AGENTS.md or .github/workflows file is modified.'
   status: in_progress
   created_at: '2026-09-14T18:30:05.358412+00:00'
+- id: QA-BUNKER-13
+  title: CI job build-and-test dies at Version authority check exitcode 128 on checkout
+    without tags/history
+  criteria:
+  - ci.yml Version authority check and Tag build check no longer hard-fail (exit 128)
+    on a checkout lacking tags; the degraded no-tag path is skipped/fallback with
+    a visible warning and success exit, and the normal full-depth path still enforces
+    tag==version==CHANGELOG parity
+  status: complete
+  created_at: '2026-09-15T16:40:17.734034+00:00'
+  completed_at: '2026-09-15T16:51:54.904012+00:00'
