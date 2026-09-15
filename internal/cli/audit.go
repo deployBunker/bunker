@@ -34,6 +34,12 @@ authenticated RPC (one record per request; file mode 0600; token values are
 never written). Records are hash-chained (SHA-256) across the live file and
 rotated backups (.1-.3).
 
+Reading the local audit log requires root: the file (default
+/var/log/bunkerd/audit.log) is mode 0600 and owned by root, so a non-root
+'bunker audit list' fails with a permission-denied error. Non-root users
+should either run audit commands with sudo (or as root) or query the
+daemon remotely instead via --server.
+
 list and export read the local log by default (--path) or query a remote
 bunkerd daemon when --server is given. --server applies to list/export
 only; verify is local-only (run it on the host that owns the log).`,

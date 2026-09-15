@@ -46,6 +46,12 @@ a connection bundle with SSH keys, Docker host, and networking details.
 The optional positional [agent-id] is an alias for --agent-id; it must
 match [a-z0-9-]{1,64} (lowercase letters, digits, hyphens only).
 
+The bundle's Expires timestamp is printed in the daemon host's local
+timezone (with offset, e.g. -05:00), while TTL durations (--ttl) are
+computed in UTC — a correct 6h TTL shows as a local-time timestamp
+exactly 6h ahead of the daemon host's current local time, not a UTC
+clock reading.
+
 Examples:
   bunker spawn
   bunker spawn demo-agent --ttl 1h

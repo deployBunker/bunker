@@ -153,12 +153,30 @@ auth:
 EOF
 ```
 
+**Non-default ports** — `bunkerd` listens on `:9090` (gRPC) and `:8080` (REST)
+by default. If those are already occupied on the host (a common scratch-host
+collision), change `server.grpc_addr` / `server.rest_addr` in
+`/etc/bunkerd/config.yaml` before starting the daemon:
+
+```yaml
+server:
+  grpc_addr: ":19090"
+  rest_addr: ":18080"
+```
+
+Then point the CLI at the new REST port when connecting — e.g.
+`bunker connect http://bunker-host:18080 --token ...` (the public demo above
+uses exactly these alternate ports).
+
 **Audit trail** — `bunkerd` writes an append-only JSONL audit log of every
 authenticated RPC (one record per request; file mode `0600`; token values are
 never written). It is on by default; configure it under `audit` in
 `config.yaml` — `audit.enabled` (default `true`) and `audit.path` (default
 `/var/log/bunkerd/audit.log`) — or via the `BUNKERD_AUDIT_ENABLED` /
-`BUNKERD_AUDIT_PATH` env overrides.
+`BUNKERD_AUDIT_PATH` env overrides. The log file is `0600` and **root-owned**,
+so `bunker audit list` / `export` / `verify` against the local log must run as
+root (e.g. via `sudo`); non-root users can instead query the daemon remotely
+with `bunker audit list --server <alias>` / `bunker audit export --server <alias>`.
 
 **Containment disclosure (optional, hidden by default)** — an operator can
 make managed agents honestly disclose their sandbox. When
@@ -260,6 +278,14 @@ bunker destroy abc12345 --keep-key
 > key to `~/.bunker/keys/<agent-id>`; destroy deletes it after a successful
 > teardown (including the `not_found` path) unless `--keep-key` is passed. If
 > you reuse keys across spawn/destroy cycles, pass `--keep-key`.
+
+> **Expiry timestamps are daemon-local, TTL math is UTC.** The `Expires:` line
+> in the spawn bundle (and `bunker info` / `bunker heartbeat` output) is
+> printed in the **daemon host's local timezone** with its offset, e.g.
+> `2026-09-14T15:00:00-05:00`, while TTL durations (`--ttl`) are computed in
+> UTC. A correct 6h TTL therefore shows as a local-time timestamp exactly 6h
+> ahead of the daemon host's current local time — it is not a UTC clock
+> reading, even though the wall-clock hour may differ from UTC by the offset.
 
 ## Architecture
 
