@@ -11,8 +11,9 @@ import (
 	"github.com/deployBunker/bunker/internal/config"
 )
 
-func testConfig() *config.Config {
-	return testConfigDir(filepath.Join(os.TempDir(), "bunker-test"))
+func testConfig(t *testing.T) *config.Config {
+	t.Helper()
+	return testConfigDir(t.TempDir())
 }
 
 func testConfigDir(baseDir string) *config.Config {
@@ -28,7 +29,7 @@ func testLogger() *slog.Logger {
 }
 
 func TestNewSkillManager(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	sm := NewSkillManager(cfg, testLogger())
 	if sm == nil {
 		t.Fatal("NewSkillManager returned nil")
@@ -40,13 +41,11 @@ func TestNewSkillManager(t *testing.T) {
 }
 
 func TestInitAgentSkills(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	sm := NewSkillManager(cfg, testLogger())
 	agentID := "test-agent-123"
 
-	// Clean up before test.
 	agentDir := filepath.Join(sm.skillsDir, agentID)
-	os.RemoveAll(agentDir)
 
 	ctx := t.Context()
 	if err := sm.InitAgentSkills(ctx, agentID); err != nil {
@@ -77,17 +76,13 @@ func TestInitAgentSkills(t *testing.T) {
 	if _, err := os.Stat(versionPath); os.IsNotExist(err) {
 		t.Fatalf("version.yaml not created")
 	}
-
-	// Clean up after test.
-	os.RemoveAll(agentDir)
 }
 
 func TestInitAgentSkills_Idempotent(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	sm := NewSkillManager(cfg, testLogger())
 	agentID := "test-agent-idempotent"
 	agentDir := filepath.Join(sm.skillsDir, agentID)
-	os.RemoveAll(agentDir)
 
 	ctx := t.Context()
 	// First init.
@@ -112,12 +107,10 @@ func TestInitAgentSkills_Idempotent(t *testing.T) {
 	if string(data) != "# Modified" {
 		t.Fatalf("tasks.md was overwritten on second init")
 	}
-
-	os.RemoveAll(agentDir)
 }
 
 func TestInitAgentSkills_EmptyAgentID(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	sm := NewSkillManager(cfg, testLogger())
 	ctx := t.Context()
 	if err := sm.InitAgentSkills(ctx, ""); err == nil {
@@ -126,7 +119,7 @@ func TestInitAgentSkills_EmptyAgentID(t *testing.T) {
 }
 
 func TestCleanupAgentSkills(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	sm := NewSkillManager(cfg, testLogger())
 	agentID := "test-agent-cleanup"
 	agentDir := filepath.Join(sm.skillsDir, agentID)
@@ -144,7 +137,7 @@ func TestCleanupAgentSkills(t *testing.T) {
 }
 
 func TestCleanupAgentSkills_EmptyAgentID(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	sm := NewSkillManager(cfg, testLogger())
 	if err := sm.CleanupAgentSkills(""); err == nil {
 		t.Fatal("expected error for empty agent_id")
@@ -152,7 +145,7 @@ func TestCleanupAgentSkills_EmptyAgentID(t *testing.T) {
 }
 
 func TestCleanupAgentSkills_NonExistent(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	sm := NewSkillManager(cfg, testLogger())
 	agentID := "non-existent-agent"
 	// Should not error if directory doesn't exist.
@@ -162,7 +155,7 @@ func TestCleanupAgentSkills_NonExistent(t *testing.T) {
 }
 
 func TestGetAgentTasksPath(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	sm := NewSkillManager(cfg, testLogger())
 	agentID := "test-agent-path"
 	path := sm.GetAgentTasksPath(agentID)
@@ -173,11 +166,9 @@ func TestGetAgentTasksPath(t *testing.T) {
 }
 
 func TestReadAgentTasks(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	sm := NewSkillManager(cfg, testLogger())
 	agentID := "test-agent-read"
-	agentDir := filepath.Join(sm.skillsDir, agentID)
-	os.RemoveAll(agentDir)
 
 	ctx := t.Context()
 	if err := sm.InitAgentSkills(ctx, agentID); err != nil {
@@ -191,15 +182,12 @@ func TestReadAgentTasks(t *testing.T) {
 	if !strings.Contains(content, "Welcome task") {
 		t.Fatalf("ReadAgentTasks content unexpected: %s", content)
 	}
-
-	os.RemoveAll(agentDir)
 }
 
 func TestReadAgentTasks_NotFound(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	sm := NewSkillManager(cfg, testLogger())
 	agentID := "test-agent-notfound"
-	os.RemoveAll(filepath.Join(sm.skillsDir, agentID))
 
 	_, err := sm.ReadAgentTasks(agentID)
 	if err == nil {
@@ -208,11 +196,9 @@ func TestReadAgentTasks_NotFound(t *testing.T) {
 }
 
 func TestUpdateAgentTasks(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	sm := NewSkillManager(cfg, testLogger())
 	agentID := "test-agent-update"
-	agentDir := filepath.Join(sm.skillsDir, agentID)
-	os.RemoveAll(agentDir)
 
 	newContent := "## Updated tasks\n\n- [x] All done\n"
 	if err := sm.UpdateAgentTasks(agentID, newContent); err != nil {
@@ -226,16 +212,12 @@ func TestUpdateAgentTasks(t *testing.T) {
 	if string(data) != newContent {
 		t.Fatalf("expected %q, got %q", newContent, string(data))
 	}
-
-	os.RemoveAll(agentDir)
 }
 
 func TestGetAgentSkillInfo(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	sm := NewSkillManager(cfg, testLogger())
 	agentID := "test-agent-info"
-	agentDir := filepath.Join(sm.skillsDir, agentID)
-	os.RemoveAll(agentDir)
 
 	ctx := t.Context()
 	if err := sm.InitAgentSkills(ctx, agentID); err != nil {
@@ -261,12 +243,10 @@ func TestGetAgentSkillInfo(t *testing.T) {
 	if info.InitializedAt.IsZero() {
 		t.Fatal("expected InitializedAt to be set")
 	}
-
-	os.RemoveAll(agentDir)
 }
 
 func TestGetAgentSkillInfo_EmptyAgentID(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	sm := NewSkillManager(cfg, testLogger())
 	_, err := sm.GetAgentSkillInfo("")
 	if err == nil {
@@ -275,10 +255,9 @@ func TestGetAgentSkillInfo_EmptyAgentID(t *testing.T) {
 }
 
 func TestGetAgentSkillInfo_NotInitialized(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	sm := NewSkillManager(cfg, testLogger())
 	agentID := "test-agent-uninit"
-	os.RemoveAll(filepath.Join(sm.skillsDir, agentID))
 
 	info, err := sm.GetAgentSkillInfo(agentID)
 	if err != nil {
@@ -293,7 +272,7 @@ func TestGetAgentSkillInfo_NotInitialized(t *testing.T) {
 }
 
 func TestAgentSkillInfo_CoreSkills(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	sm := NewSkillManager(cfg, testLogger())
 	info, _ := sm.GetAgentSkillInfo("any-agent")
 	expected := []string{"coding-hermes", "coding-hermes-cron", "hilo-usage", "gitreins"}
