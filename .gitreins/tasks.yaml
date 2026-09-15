@@ -1325,16 +1325,3 @@ tasks:
     (6) no .go file, AGENTS.md or .github/workflows file is modified.'
   status: in_progress
   created_at: '2026-09-14T18:30:05.358412+00:00'
-- id: DF-BUNKER-5
-  title: 'Docs+help: audit-root note, alt-port guidance, TTL timezone display'
-  criteria:
-  - "PASS: (1) 'bunker audit --help' (or audit list --help) text states root is required\
-    \ to read /var/log/bunkerd/audit.log (0600 root-owned); (2) README documents how\
-    \ to run bunkerd on non-default ports via grpc_addr/rest_addr config keys (quick-start\
-    \ or server section); (3) spawn/TTL expiry display issue addressed \u2014 either\
-    \ CLI prints UTC alongside local time or README explicitly documents the local-vs-UTC\
-    \ display convention; (4) no .go behavior change beyond help-text strings; go\
-    \ build ./... passes; go test -short ./... passes"
-  status: complete
-  created_at: '2026-09-15T01:27:25.757995+00:00'
-  completed_at: '2026-09-15T01:33:53.680973+00:00'
