@@ -81,6 +81,15 @@ jobs:
       - name: Version authority check
         run: |
           set -euo pipefail
+          # QA-BUNKER-13: no tags in the checkout (act run / shallow clone /
+          # fresh fork / tarball) would kill this step with exit 128 under
+          # `set -euo pipefail`. Hosted CI fetches full depth (fetch-depth: 0)
+          # and enforces the parity check there; tag-less checkouts skip it
+          # with a visible warning annotation instead of failing the job.
+          if ! git describe --tags --abbrev=0 >/dev/null 2>&1; then
+            echo "::warning::no tags in checkout (act/shallow/fork) — version-authority parity check skipped (hosted CI runs full-depth fetch-depth: 0 and enforces it)"
+            exit 0
+          fi
           latest_tag=$(git describe --tags --abbrev=0)
           cli_version=$(/tmp/bunker-smoke version | awk 'NR==1 {print $2}')
           changelog_top=$(grep -m1 '^## ' CHANGELOG.md | awk '{print $2}')
@@ -98,6 +107,12 @@ jobs:
       - name: Tag build check
         run: |
           set -euo pipefail
+          # QA-BUNKER-13: same no-tag guard as the version-authority step —
+          # without tags `git describe` exits 128 under `set -euo pipefail`.
+          if ! git describe --tags --abbrev=0 >/dev/null 2>&1; then
+            echo "::warning::no tags in checkout (act/shallow/fork) — tag build check skipped (hosted CI runs full-depth fetch-depth: 0 and enforces it)"
+            exit 0
+          fi
           latest_tag=$(git describe --tags --abbrev=0)
           expected=$(echo "${latest_tag#v}")
           git show "${latest_tag}:internal/version/version.go" | grep -q "Version = \"${expected}\""
