@@ -1590,3 +1590,17 @@ tasks:
   status: complete
   created_at: '2026-09-16T20:00:43.230372+00:00'
   completed_at: '2026-09-16T20:24:56.884966+00:00'
+- id: INT-CI-009
+  title: '[P1] rootless-install: prove user-manager reachability before the installer
+    and retry the unit start after daemon-reload'
+  criteria:
+  - internal/agent/rootless.go runs the user manager reachability probe as the agent
+    user BEFORE the rootless installer, retries the installer once after a 'systemctl
+    --user daemon-reload' when it fails with the docker.service-not-found signature,
+    and attributes a hard failure with the user-manager state instead of a bare error;
+    new table-driven tests with injected seams prove the ordering, the retry and the
+    attribution; go build/vet/test ./internal/agent/ green; no CI workflow or spawn-stage-name
+    change
+  status: complete
+  created_at: '2026-09-16T20:34:23.957052+00:00'
+  completed_at: '2026-09-16T21:21:33.683439+00:00'
