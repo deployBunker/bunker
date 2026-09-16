@@ -1326,3 +1326,15 @@ tasks:
   status: complete
   created_at: '2026-09-14T18:30:05.358412+00:00'
   completed_at: '2026-09-15T23:07:57.197304+00:00'
+- id: DF-BUNKER-3
+  title: Battery must certify the binary under test (staleness preflight + strict
+    mode)
+  criteria:
+  - 'e2e-full-battery.sh removes the dead BUNKER=/usr/local/bin/bunker assignment
+    and gains a no-side-effect binary-under-test certification: it reports path +
+    reported commit + repo HEAD, warns (NOTE) on mismatch in default mode, fails before
+    any host mutation when BUNKER_STRICT_BIN=1, and exposes --bin-report for independent
+    verification; --self-test covers the comparison pure function; CI sets BUNKER_STRICT_BIN=1.'
+  status: complete
+  created_at: '2026-09-16T05:23:12.427388+00:00'
+  completed_at: '2026-09-16T05:52:59.622450+00:00'
