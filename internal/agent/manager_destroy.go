@@ -23,17 +23,58 @@ var disableUserUnit = func(ctx context.Context, unit string) ([]byte, error) {
 	return exec.CommandContext(ctx, "systemctl", "--user", "disable", unit).CombinedOutput()
 }
 
+// normalizeUnitOutput lowercases systemctl output and strips `$` characters
+// so needles written against plain variable names match both the `$FOO` and
+// bare `FOO` spellings, in whatever case systemd prints them (DF-BUNKER-5
+// attempt 1 matched a test paraphrase instead of this output class).
+func normalizeUnitOutput(out []byte) string {
+	return strings.ReplaceAll(strings.ToLower(string(out)), "$", "")
+}
+
 // noUserManagerFailure reports whether a failed `systemctl --user disable`
 // is the well-known "this caller has no user session bus" class, which is
 // non-actionable for a transient per-agent unit whose user is removed in
 // the next step of Destroy.
+//
+// Matching is on normalised output (see normalizeUnitOutput) and on the
+// environment-variable NAMES alone where possible, so the class stays
+// robust across systemd versions rewording the sentence around them.
+// Verbatim variants observed live (DF-BUNKER-5):
+//
+//	A (bunker-las-01): Failed to connect to user scope bus via local
+//	  transport: $DBUS_SESSION_BUS_ADDRESS and $XDG_RUNTIME_DIR not
+//	  defined (consider using --machine=<user>@.host --user ...)
+//	B (bunker-mvp):    Failed to connect to bus: No medium found
+//	C (dogfood note):  Failed to connect to bus: DBUS_SESSION_BUS_ADDRESS
+//	  and XDG_RUNTIME_DIR not defined
 func noUserManagerFailure(out []byte) bool {
-	o := strings.ToLower(string(out))
+	o := normalizeUnitOutput(out)
 	for _, sig := range []string{
+		"dbus_session_bus_address",
+		"xdg_runtime_dir",
+		"failed to connect to user scope bus",
 		"failed to connect to bus",
-		"dbus_session_bus_address and xdg_runtime_dir not defined",
 		"no medium found",
-		"system has not been booted with systemd",
+		"has not been booted with systemd",
+	} {
+		if strings.Contains(o, sig) {
+			return true
+		}
+	}
+	return false
+}
+
+// unitAbsenceFailure reports whether a failed disable is just systemd
+// reporting the unit as absent from the user manager. The per-agent unit is
+// the agent's `systemd-run --user` TRANSIENT unit, so it is never "enabled"
+// anywhere — "nothing to disable" is the same non-actionable outcome as the
+// no-bus class (reproduced live on a destroy whose daemon DID have a bus).
+func unitAbsenceFailure(out []byte) bool {
+	o := normalizeUnitOutput(out)
+	for _, sig := range []string{
+		"does not exist",
+		"not loaded",
+		"is transient or generated",
 	} {
 		if strings.Contains(o, sig) {
 			return true
@@ -110,15 +151,23 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	// user session bus (the normal case for the root bunkerd daemon), the
 	// disable exits non-zero and the transient unit is destroyed together
 	// with the agent's user manager anyway — the very next steps remove
-	// the Linux user (userdel -rf below) and the socket. That known
-	// no-user-manager outcome is non-actionable, so it is logged at Debug
-	// with the raw output preserved; a genuine disable failure still Warns.
+	// the Linux user (userdel -rf below) and the socket. Both known
+	// non-actionable outcomes — no user session bus, and the unit being
+	// absent/not-loaded/transient from the caller's manager — are logged
+	// at Debug with the raw output preserved; a genuine disable failure
+	// (permission denied, operation not permitted, anything unrecognised)
+	// still Warns.
 	if out, err := disableUserUnit(ctx, unitName); err != nil {
-		if noUserManagerFailure(out) {
+		switch {
+		case noUserManagerFailure(out):
 			m.logger.Debug("agent user manager unreachable; transient unit disable skipped",
 				"unit", unitName, "reason", "no user session bus",
 				"error", err, "output", string(out))
-		} else {
+		case unitAbsenceFailure(out):
+			m.logger.Debug("transient unit absent from user manager; disable skipped",
+				"unit", unitName, "reason", "unit absent, not loaded, or transient",
+				"error", err, "output", string(out))
+		default:
 			m.logger.Warn("systemctl disable failed", "unit", unitName, "error", err, "output", string(out))
 		}
 	}
