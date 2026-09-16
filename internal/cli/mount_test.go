@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -71,6 +73,17 @@ func TestNewMountCommand_ServerFlag(t *testing.T) {
 	}
 	if flag.Name != "server" {
 		t.Errorf("flag name = %q, want %q", flag.Name, "server")
+	}
+}
+
+func TestNewMountCommand_SSHKeyFlag(t *testing.T) {
+	cmd := NewMountCommand()
+	flag := cmd.Flags().Lookup("ssh-key")
+	if flag == nil {
+		t.Fatal("--ssh-key flag not registered (must mirror `bunker ssh`)")
+	}
+	if flag.Name != "ssh-key" {
+		t.Errorf("flag name = %q, want %q", flag.Name, "ssh-key")
 	}
 }
 
@@ -160,6 +173,26 @@ func newMountTestServer(t *testing.T, sshfsMount string) {
 	}
 }
 
+// writeMountClientKey creates the client-local SSH key the CLI must resolve
+// for the fixture agent (defaultSSHKeyPath) and returns its path. The mount
+// command must fail fast when this file is missing, so behavioral tests call
+// this explicitly.
+func writeMountClientKey(t *testing.T) string {
+	t.Helper()
+	keyPath, err := defaultSSHKeyPath("df0916a")
+	if err != nil {
+		t.Fatalf("defaultSSHKeyPath: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(keyPath), 0o700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(keyPath, []byte("FAKE-TEST-KEY-NOT-REAL\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(keyPath) })
+	return keyPath
+}
+
 // stubSSHFSRun installs a stub for the sshfsRun seam that fails with the
 // given error for the first failTimes calls and succeeds afterwards,
 // recording each invocation. It returns the recorded calls and a restore
@@ -204,6 +237,7 @@ func runMountExecutesSSHFS(t *testing.T, mountpoint string) error {
 func TestMountCommand_RetriesUntilSuccess(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	newMountTestServer(t, mountFixtureSshfsMount)
+	writeMountClientKey(t)
 	calls, restore := stubSSHFSRun(t, 2, errors.New("exit status 1"))
 	defer restore()
 
@@ -218,6 +252,7 @@ func TestMountCommand_RetriesUntilSuccess(t *testing.T) {
 func TestMountCommand_BoundedRetryExhausted(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	newMountTestServer(t, mountFixtureSshfsMount)
+	writeMountClientKey(t)
 	calls, restore := stubSSHFSRun(t, 99, errors.New("exit status 1"))
 	defer restore()
 
@@ -228,9 +263,13 @@ func TestMountCommand_BoundedRetryExhausted(t *testing.T) {
 	if got := len(*calls); got != 3 {
 		t.Fatalf("sshfs called %d times, want exactly 3 (bounded, never 4)", got)
 	}
-	wantHint := "sshfs connection reset — agent host may be limiting parallel SSH sessions; try again or close other tunnels"
+	// The captured output contains the transient fragment ("Connection
+	// reset by peer"), so the session-limit hint IS evidenced here. The
+	// classified cause leads the message; the hint is appended only
+	// because the transient fragments are actually present in the output.
+	wantHint := "sshfs failed after 3 attempts (connection reset by peer) — agent host may be limiting parallel SSH sessions; try again or close other tunnels"
 	if !strings.Contains(err.Error(), wantHint) {
-		t.Errorf("error missing session-limit hint, got: %v", err)
+		t.Errorf("error missing evidenced session-limit hint, got: %v", err)
 	}
 	if !strings.Contains(err.Error(), "after 3 attempts") {
 		t.Errorf("error missing attempt count, got: %v", err)
@@ -243,6 +282,7 @@ func TestMountCommand_BoundedRetryExhausted(t *testing.T) {
 func TestMountCommand_NoRetryOnPermanentFailure(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	newMountTestServer(t, mountFixtureSshfsMount)
+	writeMountClientKey(t)
 	oldRun := sshfsRun
 	oldDelay := sshfsRetryDelay
 	sshfsRetryDelay = 0
@@ -275,6 +315,7 @@ func TestMountCommand_NoRetryOnPermanentFailure(t *testing.T) {
 func TestMountCommand_CausePreservedAfterExhaustedRetries(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	newMountTestServer(t, mountFixtureSshfsMount)
+	writeMountClientKey(t)
 	_, restore := stubSSHFSRun(t, 99, errors.New("exit status 1"))
 	defer restore()
 
@@ -294,6 +335,7 @@ func TestMountCommand_CausePreservedAfterExhaustedRetries(t *testing.T) {
 func TestMountCommand_ArgvRegression(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	newMountTestServer(t, mountFixtureSshfsMount)
+	clientKey := writeMountClientKey(t)
 	calls, restore := stubSSHFSRun(t, 0, nil)
 	defer restore()
 
@@ -310,11 +352,13 @@ func TestMountCommand_ArgvRegression(t *testing.T) {
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "IdentitiesOnly=yes",
-		// Stored command parts.
-		"-o", "IdentityFile=/etc/bunkerd/ssh/df0916a",
+		// Stored command parts, with the daemon-local key path rewritten
+		// to the client-local key and the daemon hostname resolved to the
+		// host the client actually reaches (the server URL hostname).
+		"-o", "IdentityFile=" + clientKey,
 		"-o", "idmap=user",
 		"-o", "allow_other",
-		"bunker-agent@bunker-host:/home/bunker-agent",
+		"bunker-agent@127.0.0.1:/home/bunker-agent",
 		// Caller mount point last, default replaced.
 		mountpoint,
 	}
@@ -326,6 +370,143 @@ func TestMountCommand_ArgvRegression(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("argv[%d] = %q, want %q", i, got[i], want[i])
 		}
+	}
+}
+
+// TestMountCommand_UsesClientKeyAndResolvedHost pins DF-BUNKER-14: the args
+// handed to the sshfs seam must carry the CLIENT key path and the resolved
+// host, never the daemon-local /etc/bunkerd/ssh path or the daemon-only
+// hostname baked into the stored command.
+func TestMountCommand_UsesClientKeyAndResolvedHost(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	newMountTestServer(t, mountFixtureSshfsMount)
+	clientKey := writeMountClientKey(t)
+	calls, restore := stubSSHFSRun(t, 0, nil)
+	defer restore()
+
+	if err := runMountExecutesSSHFS(t, t.TempDir()+"/mnt"); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if len(*calls) == 0 {
+		t.Fatal("sshfs seam never called")
+	}
+	argv := strings.Join((*calls)[0], " ")
+	if strings.Contains(argv, "/etc/bunkerd/ssh/") {
+		t.Errorf("argv must not carry the daemon-local key path, got: %s", argv)
+	}
+	if !strings.Contains(argv, "IdentityFile="+clientKey) {
+		t.Errorf("argv must carry the client key %q, got: %s", clientKey, argv)
+	}
+	if strings.Contains(argv, "bunker-agent@bunker-host") {
+		t.Errorf("argv must not carry the daemon-only hostname, got: %s", argv)
+	}
+	if !strings.Contains(argv, "bunker-agent@127.0.0.1:") {
+		t.Errorf("argv must carry the resolved host (server URL hostname), got: %s", argv)
+	}
+}
+
+// TestMountCommand_MissingLocalKey_FailsFast pins DF-BUNKER-14 C2: with no
+// client-local key on disk the command fails fast with an actionable error
+// and the sshfs seam is never invoked.
+func TestMountCommand_MissingLocalKey_FailsFast(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	newMountTestServer(t, mountFixtureSshfsMount)
+	calls, restore := stubSSHFSRun(t, 0, nil)
+	defer restore()
+
+	expectedKey, err := defaultSSHKeyPath("df0916a")
+	if err != nil {
+		t.Fatalf("defaultSSHKeyPath: %v", err)
+	}
+
+	mountErr := runMountExecutesSSHFS(t, t.TempDir()+"/mnt")
+	if mountErr == nil {
+		t.Fatal("expected fast error for missing client key, got success")
+	}
+	if !strings.Contains(mountErr.Error(), "SSH key not found at") {
+		t.Errorf("error missing actionable key message, got: %v", mountErr)
+	}
+	if !strings.Contains(mountErr.Error(), expectedKey) {
+		t.Errorf("error must name the expected key path %q, got: %v", expectedKey, mountErr)
+	}
+	if !strings.Contains(mountErr.Error(), "--ssh-key") {
+		t.Errorf("error must suggest --ssh-key, got: %v", mountErr)
+	}
+	if got := len(*calls); got != 0 {
+		t.Fatalf("sshfs called %d times, want 0 (must never run without the key)", got)
+	}
+}
+
+// TestMountCommand_SSHKeyFlagOverrideWins pins DF-BUNKER-14 (c): an explicit
+// --ssh-key path replaces both the default client key and the daemon-baked
+// IdentityFile.
+func TestMountCommand_SSHKeyFlagOverrideWins(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	newMountTestServer(t, mountFixtureSshfsMount)
+	writeMountClientKey(t) // default key exists, but the flag must win
+	customKey := filepath.Join(t.TempDir(), "custom-key")
+	if err := os.WriteFile(customKey, []byte("CUSTOM-TEST-KEY\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	calls, restore := stubSSHFSRun(t, 0, nil)
+	defer restore()
+
+	mountpoint := t.TempDir() + "/mnt"
+	cmd := NewMountCommand()
+	cmd.SetArgs([]string{"df0916a", mountpoint, "--ssh-key", customKey})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if len(*calls) == 0 {
+		t.Fatal("sshfs seam never called")
+	}
+	argv := strings.Join((*calls)[0], " ")
+	if !strings.Contains(argv, "IdentityFile="+customKey) {
+		t.Errorf("explicit --ssh-key must win, want IdentityFile=%s in: %s", customKey, argv)
+	}
+	if strings.Contains(argv, "/etc/bunkerd/ssh/") {
+		t.Errorf("daemon-local key path must not survive, got: %s", argv)
+	}
+}
+
+// TestMountCommand_TransientHintRequiresFragmentInOutput pins DF-BUNKER-14
+// (e)/C3: after exhausted retries the final message reports the CLASSIFIED
+// cause and only claims sshd session limiting when the captured output
+// actually contains the transient fragments that indicate it. An EOF-style
+// failure with no fragments must not produce the session-limit hint.
+func TestMountCommand_TransientHintRequiresFragmentInOutput(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	newMountTestServer(t, mountFixtureSshfsMount)
+	writeMountClientKey(t)
+	oldRun := sshfsRun
+	oldDelay := sshfsRetryDelay
+	sshfsRetryDelay = 0
+	calls := 0
+	sshfsRun = func(ctx context.Context, path string, args []string, stdout, stderr io.Writer) error {
+		calls++
+		// No output fragments at all; the failure is only visible in the
+		// process error (io.EOF classifies transient).
+		return io.EOF
+	}
+	defer func() {
+		sshfsRun = oldRun
+		sshfsRetryDelay = oldDelay
+	}()
+
+	err := runMountExecutesSSHFS(t, t.TempDir()+"/mnt")
+	if err == nil {
+		t.Fatal("expected error after exhausted retries")
+	}
+	if calls != 3 {
+		t.Fatalf("sshfs called %d times, want exactly 3 (transient class still retries)", calls)
+	}
+	if strings.Contains(err.Error(), "limiting parallel SSH sessions") {
+		t.Errorf("session-limit hint is unevidenced without transient fragments in output, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "unexpected EOF") {
+		t.Errorf("final message must report the classified cause, got: %v", err)
 	}
 }
 
@@ -361,6 +542,7 @@ func TestMountCommand_ClassifySSHFSFailure(t *testing.T) {
 func TestMountCommand_CaptureWritersWired(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	newMountTestServer(t, mountFixtureSshfsMount)
+	writeMountClientKey(t)
 	oldRun := sshfsRun
 	oldDelay := sshfsRetryDelay
 	sshfsRetryDelay = 0
