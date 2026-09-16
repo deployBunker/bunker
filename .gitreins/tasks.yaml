@@ -1604,3 +1604,17 @@ tasks:
   status: complete
   created_at: '2026-09-16T20:34:23.957052+00:00'
   completed_at: '2026-09-16T21:21:33.683439+00:00'
+- id: INT-DEMO-001
+  title: Host-provision must refuse when the installed bunkerd predates the spawn-side
+    isolation grant
+  criteria:
+  - bunker host-provision refuses (non-zero, actionable message naming the installed
+    vs required revision and the PAM session-denial failure mode) when the installed
+    daemon is older than the minimum that grants isolation-group membership at spawn;
+    equal/newer proceeds unchanged; missing/unprobeable binary warns without refusing;
+    an explicit override flag proceeds with a warning; uninstall is never blocked;
+    unit tests cover all cases and fail when the guard is neutered; go build/vet/gofmt/test
+    clean.
+  status: complete
+  created_at: '2026-09-16T21:52:12.542711+00:00'
+  completed_at: '2026-09-16T22:37:01.479252+00:00'
