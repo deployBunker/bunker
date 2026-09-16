@@ -137,7 +137,7 @@ func TestShipperStopWaitsForWorker(t *testing.T) {
 
 	// 5. writeState refuses to write after stop, even when driven
 	//    directly: the state file's mtime is frozen.
-	s.recordResult("ok", 0)
+	s.recordResult("ok")
 	time.Sleep(100 * time.Millisecond)
 	st2, err := os.Stat(logPath + ".shipstate")
 	if err != nil {

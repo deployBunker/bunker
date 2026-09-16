@@ -272,13 +272,46 @@ func TestShipFailureRetriesThenReplays(t *testing.T) {
 	if got := calls.Load(); got < failFirst+1 {
 		t.Errorf("endpoint received %d calls, want >= %d (2 failures + replay)", got, failFirst+1)
 	}
-	shipState, err := ReadShipState(path)
+	// INT-CI-004 hardening: assert the DURABLE outcome. The shipstate file
+	// is written by the worker, so poll it to convergence within a bounded
+	// deadline instead of reading it once against the in-memory snapshot
+	// (which raced the write and produced the CI flake). The deadline still
+	// fails the test if the queue never drains.
+	shipState, err := readShipStateUntil(path, 5*time.Second, func(st *ShipState) bool {
+		return st.LastResult == "ok" && st.QueueDepth == 0
+	})
 	if err != nil {
-		t.Fatalf("read ship state: %v", err)
+		t.Fatalf("ship state never reached ok/0 after replay: %v", err)
 	}
 	if shipState.LastResult != "ok" || shipState.QueueDepth != 0 {
 		t.Errorf("ship state = %+v, want ok/0 after replay", shipState)
 	}
+}
+
+// readShipStateUntil polls the shipstate file until pred accepts the state
+// or the deadline passes, returning the accepted state. A parse or read
+// failure inside the window keeps polling (the writer replaces the file via
+// rename, so transient read windows are possible).
+func readShipStateUntil(auditPath string, within time.Duration, pred func(*ShipState) bool) (*ShipState, error) {
+	deadline := time.Now().Add(within)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		st, err := ReadShipState(auditPath)
+		if err != nil {
+			lastErr = err
+		} else if pred(st) {
+			return st, nil
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if lastErr != nil {
+		return nil, fmt.Errorf("ship state not converged within %v: %w", within, lastErr)
+	}
+	st, err := ReadShipState(auditPath)
+	if err != nil {
+		return nil, fmt.Errorf("ship state not converged within %v: %w", within, err)
+	}
+	return st, fmt.Errorf("ship state = %+v not converged within %v", st, within)
 }
 
 // TestShipQueueDropsOldestWhenFull: the in-memory retry queue is bounded at

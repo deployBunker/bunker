@@ -273,7 +273,7 @@ func (s *Shipper) ShipSegment(segmentPath, chainHead, seal string) {
 		// failure here is abnormal and retrying would not fix it.
 		s.logger.Warn("audit ship: rotated segment unreadable, not queued",
 			"path", segmentPath, "error", err)
-		s.recordResult(fmt.Sprintf("error: read segment: %v", err), 0)
+		s.recordResult(fmt.Sprintf("error: read segment: %v", err))
 		return
 	}
 	s.mu.Lock()
@@ -364,8 +364,8 @@ func (s *Shipper) run() {
 			}
 		}
 		depth := len(s.queue)
+		s.writeStateLocked(now, result, depth)
 		s.mu.Unlock()
-		s.writeState(now, result, depth)
 	}
 }
 
@@ -469,29 +469,36 @@ func (s *Shipper) Stop() {
 }
 
 // recordResult records a ship attempt that happened outside the worker loop
-// (segment read failures at enqueue) and refreshes the state file.
-func (s *Shipper) recordResult(result string, depth int) {
+// (segment read failures at enqueue) and refreshes the state file. The
+// queue_depth in the persisted snapshot is derived from the live queue under
+// the shipper lock — a caller-supplied depth could contradict it.
+func (s *Shipper) recordResult(result string) {
 	now := time.Now()
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.lastAttemptAt = now
 	s.lastResult = result
-	s.mu.Unlock()
-	s.writeState(now, result, depth)
+	s.writeStateLocked(now, result, len(s.queue))
 }
 
-// writeState persists the post-attempt snapshot for `bunker audit status`.
+// writeStateLocked persists the post-attempt snapshot for `bunker audit
+// status`. CALLER MUST HOLD s.mu: the snapshot is published and persisted in
+// one critical section, so a reader that observes the in-memory snapshot can
+// never then read a file still carrying an older attempt's depth/result.
 // Best effort: a failed state write warns but never affects shipping.
 //
-// Two guarantees matter for shutdown determinism:
+// Guarantees (unchanged from the pre-INT-CI-004 writeState):
 //   - Once Stop has set the stopped flag, the file is never touched again
 //     (Stop's <-s.done makes this transitively true for its callers).
 //   - The write is atomic (temp file in the same dir + rename), so a
 //     concurrent reader (the `bunker audit status` CLI) never sees a torn
 //     or partially written state file.
-func (s *Shipper) writeState(now time.Time, result string, depth int) {
-	s.mu.Lock()
+//
+// Holding s.mu across writeFileAtomic is deliberate and safe: it is tiny
+// local disk I/O (no network), and it is what makes the file-visibility
+// ordering with the snapshot publication hold.
+func (s *Shipper) writeStateLocked(now time.Time, result string, depth int) {
 	if s.stopped {
-		s.mu.Unlock()
 		return
 	}
 	st := ShipState{
@@ -504,7 +511,6 @@ func (s *Shipper) writeState(now time.Time, result string, depth int) {
 		st.LastSuccess = s.lastSuccessAt.UTC().Format(time.RFC3339)
 	}
 	path := s.auditPath + shipStateSuffix
-	s.mu.Unlock()
 
 	b, err := json.Marshal(st)
 	if err != nil {
