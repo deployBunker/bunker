@@ -15,6 +15,33 @@ import (
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 )
 
+// disableUserUnit runs `systemctl --user disable <unit>` and returns its
+// combined output. Package-level seam: tests inject fake systemctl results
+// so the destroy path is exercised without touching ambient host state;
+// production code never swaps it.
+var disableUserUnit = func(ctx context.Context, unit string) ([]byte, error) {
+	return exec.CommandContext(ctx, "systemctl", "--user", "disable", unit).CombinedOutput()
+}
+
+// noUserManagerFailure reports whether a failed `systemctl --user disable`
+// is the well-known "this caller has no user session bus" class, which is
+// non-actionable for a transient per-agent unit whose user is removed in
+// the next step of Destroy.
+func noUserManagerFailure(out []byte) bool {
+	o := strings.ToLower(string(out))
+	for _, sig := range []string{
+		"failed to connect to bus",
+		"dbus_session_bus_address and xdg_runtime_dir not defined",
+		"no medium found",
+		"system has not been booted with systemd",
+	} {
+		if strings.Contains(o, sig) {
+			return true
+		}
+	}
+	return false
+}
+
 func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) (*v1.DestroyAgentResponse, error) {
 	// Step 0: validate agent_id
 	if agentID == "" || !validAgentID.MatchString(agentID) {
@@ -78,10 +105,22 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 		}
 	}
 
-	// Step 2: Disable the unit (prevent auto-restart)
-	cmd := exec.CommandContext(ctx, "systemctl", "--user", "disable", unitName)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		m.logger.Warn("systemctl disable failed", "unit", unitName, "error", err, "output", string(out))
+	// Step 2: Disable the unit (prevent auto-restart). The unit is the
+	// agent's `systemd-run --user` TRANSIENT unit: when the caller has no
+	// user session bus (the normal case for the root bunkerd daemon), the
+	// disable exits non-zero and the transient unit is destroyed together
+	// with the agent's user manager anyway — the very next steps remove
+	// the Linux user (userdel -rf below) and the socket. That known
+	// no-user-manager outcome is non-actionable, so it is logged at Debug
+	// with the raw output preserved; a genuine disable failure still Warns.
+	if out, err := disableUserUnit(ctx, unitName); err != nil {
+		if noUserManagerFailure(out) {
+			m.logger.Debug("agent user manager unreachable; transient unit disable skipped",
+				"unit", unitName, "reason", "no user session bus",
+				"error", err, "output", string(out))
+		} else {
+			m.logger.Warn("systemctl disable failed", "unit", unitName, "error", err, "output", string(out))
+		}
 	}
 
 	// Step 2b: Wait for the agent's rootless processes to actually exit.
@@ -93,7 +132,7 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	waitAgentProcessesExit(ctx, username, m.logger)
 
 	// Step 3: Remove the Linux user
-	cmd = exec.CommandContext(ctx, "userdel", "-rf", username)
+	cmd := exec.CommandContext(ctx, "userdel", "-rf", username)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		// Check if user doesn't exist (already destroyed)
 		if !force {
