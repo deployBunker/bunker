@@ -42,7 +42,10 @@ Bunker is a **multi-agent hosting platform** — a daemon (`bunkerd`) that runs 
 - **Multi-server** — One CLI, many `bunkerd` instances. Switch with `--server`
 - **Scoped API keys** — Master tokens for admin, agent-scoped sub-keys for CI/CD
 - **TTL expiry** — Agents auto-destroy after their time-to-live. Heartbeat to extend
-- **Private /tmp per agent** — every agent session gets its own `/tmp`
+- **Private /tmp per agent (requires host provisioning)** — on a fresh,
+  unprovisioned host, agent SSH sessions still share the host `/tmp`.
+  After the [required host setup](#provision-host-isolation-before-spawning),
+  a matching current daemon provides private temporary directories
   (per-session `pam_namespace` instance; `PrivateTmp=yes` on the rootless
   dockerd and detached-run units), so no agent can read or collide with
   another agent's or root's temporary files. Cross-agent file exchange is
@@ -216,6 +219,46 @@ should tolerate the bracketed final marker line on disclosing servers.
 See `specs/containment-disclosure.md` for the full semantics, allowlist
 rules, and safety boundaries.
 
+### Provision host isolation before spawning
+
+**Required for private `/tmp`:** building or starting `bunkerd` does not install
+its host-side SSH/PAM configuration. A fresh unprovisioned host leaves agent SSH
+sessions sharing the host `/tmp`. Run these commands on the **daemon host**, as
+root, from the checkout where `make build` produced both binaries. This is local
+host administration, not an RPC to the server selected by `bunker connect`.
+
+```bash
+# Inspect the plan first; no host changes without --apply.
+sudo ./bunker host-provision --daemon-binary "$(pwd)/bunkerd"
+# After reviewing the plan, install the host-side boundary.
+sudo ./bunker host-provision --daemon-binary "$(pwd)/bunkerd" --apply
+# Inspect the resulting host configuration (add --json for automation).
+sudo ./bunker host-provision --daemon-binary "$(pwd)/bunkerd" --status
+```
+
+Use the **same daemon binary** when starting the service below. For an installed
+service, substitute its actual executable path in `--daemon-binary` (the default
+is `/usr/local/bin/bunkerd`). Upgrade/restart an existing service before applying
+new host isolation rules: an older daemon can create agents without the required
+`bunker-agents` membership, and the fail-closed PAM rules then deny their SSH
+sessions (including exec, cp and mount).
+
+The current installer refuses a detected daemon version below **0.1.4**. This
+version floor is not a capability guarantee: the `v0.1.4` tag predates the
+isolation implementation, and matching version numbers alone do not prove the
+running daemon is current. Build CLI and daemon from the same current checkout.
+An absent, unreadable, timed-out or unparseable daemon version produces an
+**UNKNOWN warning**, not proof of compatibility. Resolve that warning rather
+than bypassing it with `--allow-daemon-skew`.
+
+`host-provision --status` inspects static host configuration; it is not an
+end-to-end SSH-session test. After starting/restarting the matching daemon and
+connecting, run `bunker status` **before spawning**. Require the `/tmp:` line to
+report `private`; `HOST-SHARED`, `unknown`, or `not reported` is not evidence of isolation.
+Do not put isolation-sensitive workloads on that host until the setup and
+running daemon agree. See [Agent isolation](#agent-isolation-tmp-and-cross-agent-exchange)
+for the mechanisms and teardown precautions.
+
 ### Run the daemon
 
 > **⚠️ `bunkerd` must run as root** — agent spawn calls `useradd`/`systemd-run` and fails with `useradd: Permission denied` under a non-root user. Run it directly as root (or via `sudo`, or as a systemd service under `User=root`):
@@ -367,7 +410,10 @@ the agent's.
 
 ## Agent isolation (`/tmp` and cross-agent exchange)
 
-Every **agent** runs with an **enforced private `/tmp`**:
+After [host provisioning](#provision-host-isolation-before-spawning) and starting
+a matching current daemon, agent execution paths have an **enforced private
+`/tmp`**. This is not automatic on a fresh host: unprovisioned SSH sessions
+share the host `/tmp`.
 
 | Execution path | Mechanism | Scope of the private `/tmp` |
 |----------------|-----------|-----------------------------|
@@ -395,29 +441,33 @@ helper, missing or wrong or malformed drop-in, missing group, lost membership,
 writable helper directory or manifest) **denies** the session instead of
 silently continuing with the shared `/tmp`; the module line also carries no
 `ignore_config_error`, which would make it skip a broken config. `--status`
-(`--json`) answers the isolation question from the SAME static properties the
-helper enforces, so it never reports `isolated: true` for a host whose agent
-sessions are denied or shared.
+(`--json`) inspects the static host properties used by the helper. It does not
+execute a live agent session or prove each agent's membership; use it together
+with the connected daemon's status and live session verification.
 
 `bunker status` shows the /tmp policy the connected daemon enforces, per
 server: `private` when the per-session `pam_namespace` instance is provisioned
 and enforced, `HOST-SHARED` (with a prominent warning) when agent sessions see
 the host `/tmp`, `unknown` when the state cannot be verified (e.g. the daemon
 is not root), and `not reported` when the daemon predates capability
-reporting. The isolation feature is **version-gated**: a daemon built from a
-tagged release that predates it (any `v0.1.x` tag) reports `HOST-SHARED` or
-`not reported` even though this section describes isolation — build and run a
-daemon from the same commit as the CLI instead of trusting a stale binary.
+reporting. The isolation feature is **build-dependent**: the `v0.1.4` release
+predates both the isolation implementation and capability reporting. Build and
+run a daemon from the same current checkout as the CLI; do not infer isolation
+from a version number alone.
 
-The host half is provisioned once, as root, with an idempotent installer that
-never touches `/etc/fstab`:
+Follow the [Quick Start provisioning sequence](#provision-host-isolation-before-spawning)
+on the daemon host. The installer is idempotent and does not touch `/etc/fstab`.
+It changes host SSH/PAM configuration, so review its plan before applying it.
+
+**Teardown only — do not run this as part of installation:**
 
 ```bash
-sudo -S -p '' bunker host-provision --status     # what is in place right now (--json for CI)
-sudo -S -p '' bunker host-provision              # dry run: print the plan
-sudo -S -p '' bunker host-provision --apply      # install (idempotent, reversible)
-sudo -S -p '' bunker host-provision --uninstall --apply
+sudo ./bunker host-provision --daemon-binary "$(pwd)/bunkerd" --uninstall --apply
 ```
+
+Uninstall removes the Bunker-managed host configuration and returns agent SSH
+sessions to shared `/tmp`. Do not hand-delete only the namespace drop-in: the
+remaining fail-closed PAM precondition can deny all `bunker-*` SSH sessions.
 
 Cross-agent file exchange is **opt-in and explicitly bounded**: the only
 sanctioned shared location is `/srv/bunker-share`, whose root is root-owned,
