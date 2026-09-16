@@ -205,8 +205,12 @@ func (o Options) Apply(ctx context.Context, apply bool) (*Report, error) {
 	// stage does not exist, every spawned agent stays out of the isolation
 	// group and the fail-closed PAM precondition denies every agent session.
 	// apply only widens what this run may DO: the plan must already tell the
-	// truth.
-	if err := o.CheckDaemonSkew(ctx, false, io.Discard); err != nil {
+	// truth. The allow argument is the operator's explicit override carried
+	// in on Options.DaemonSkewAllowed: true means the caller already warned,
+	// so this internal call stays silent (io.Discard) — exactly ONE warning
+	// reaches the operator. The zero value keeps the fail-safe refusal for
+	// every caller that did not opt in.
+	if err := o.CheckDaemonSkew(ctx, o.DaemonSkewAllowed, io.Discard); err != nil {
 		return combined, err
 	}
 

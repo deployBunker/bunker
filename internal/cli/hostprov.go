@@ -109,6 +109,14 @@ Without --apply the command only prints the plan.`,
 			}
 			opts.SkipHostTmpCap = skipTmpCap
 			opts.DaemonBinary = daemonBinary
+			// INT-DEMO-001 rework: carry the operator decision INTO Apply.
+			// Apply runs its own CheckDaemonSkew gate; without this field it
+			// refused with allow hardcoded false, so --allow-daemon-skew
+			// warned and then was refused anyway. The warning was already
+			// printed once by the CLI-level check below; Apply's own call
+			// stays silent (io.Discard), so exactly ONE warning reaches the
+			// operator.
+			opts.DaemonSkewAllowed = allowDaemonSkew
 			opts = opts.WithDefaults()
 
 			out := cmd.OutOrStdout()

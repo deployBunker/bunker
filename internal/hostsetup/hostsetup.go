@@ -147,6 +147,14 @@ type Options struct {
 	// DefaultRunner. It is its own seam (not Runner) so tests can fake the
 	// daemon's --version answer without pretending to be the whole host.
 	DaemonVersionRunner DaemonVersionRunner
+
+	// DaemonSkewAllowed records that the operator explicitly accepted the
+	// daemon skew (the --allow-daemon-skew override): Apply must then PROCEED
+	// past its internal CheckDaemonSkew gate, with the warning the caller
+	// printed — exactly one warning must reach the operator, so Apply's own
+	// internal call stays silent (io.Discard). Default false, so every OTHER
+	// library caller keeps today's refusal on a skewed daemon.
+	DaemonSkewAllowed bool
 }
 
 // Defaults for every field of Options. They are exported so docs, tests and
