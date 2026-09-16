@@ -1489,3 +1489,18 @@ tasks:
   status: complete
   created_at: '2026-09-16T15:02:23.085494+00:00'
   completed_at: '2026-09-16T15:07:27.621137+00:00'
+- id: DF-BUNKER-13
+  title: Reconcile must never destroy an agent whose ports are outside this daemon's
+    pool (multi-daemon data-loss trap)
+  criteria:
+  - 'An orphan bunker-* user whose persisted .bunker/ports range lies OUTSIDE this
+    daemon''s port pool is classified foreign: reconciliation skips it in BOTH adopt
+    and destroy mode (destroy seam not called, user left on host, report.Foreign counted,
+    warning log naming the agent and the range). Orphans with an in-pool range that
+    cannot be reserved, and orphans with missing/malformed port metadata, are still
+    destroyed exactly as before. go build ./... , go vet ./... and go test ./... -count=1
+    green; gofmt clean; README documents the multi-daemon registry/pool isolation
+    requirement.'
+  status: complete
+  created_at: '2026-09-16T15:14:00.610648+00:00'
+  completed_at: '2026-09-16T15:36:29.269918+00:00'
