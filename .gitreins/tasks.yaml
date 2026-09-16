@@ -1412,3 +1412,18 @@ tasks:
   status: complete
   created_at: '2026-09-16T12:10:47.620277+00:00'
   completed_at: '2026-09-16T12:28:52.594850+00:00'
+- id: INT-CI-005
+  title: Fix the 300s spawn deadline leaving a half-created agent (cancelled-context
+    rollback) and name the daemon-side stage on spawn failure
+  criteria:
+  - 'Criterion 1: a spawn whose request context is cancelled/expired (server request_timeout
+    300s) performs rollback under a detached bounded context: the Linux user is removed
+    and no /etc/bunkerd/ssh/<id> key or partial registry row is left. Criterion 2:
+    the daemon failure path records and logs the spawn stage reached (structured spawn-failure
+    record + stage-labelled log) so a client-side timeout is attributable to a daemon-side
+    cause. Criterion 3: go build ./..., go vet ./..., go test ./... -count=1 -short
+    and gofmt -l are clean, with new table-driven unit tests proving both behaviours
+    via PATH stubs and an injectable failure seam.'
+  status: complete
+  created_at: '2026-09-16T12:35:58.225873+00:00'
+  completed_at: '2026-09-16T13:22:25.161198+00:00'
