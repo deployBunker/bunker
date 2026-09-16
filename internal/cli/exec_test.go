@@ -555,3 +555,217 @@ func TestExecCommand_FlagSeparator(t *testing.T) {
 		})
 	}
 }
+
+// TestExecCommand_FlagsBeforeAgentID verifies that the four exec flags are
+// accepted BOTH before and after the agent-id token, that the "=" inline
+// forms parse, and that an unknown flag-like token before the agent-id
+// fails locally with an actionable message instead of reaching the server
+// and dying as a not_found stream error (DF-BUNKER-8: "bunker --server X
+// exec abc -- ..." previously sent agent-id="--server").
+func TestExecCommand_FlagsBeforeAgentID(t *testing.T) {
+	tests := []struct {
+		name          string
+		args          []string
+		registerSrv   string // extra server alias to register; "" = default only
+		scriptBody    string // if set, written to a temp file replacing {SCRIPT}
+		wantCommand   string
+		wantArgs      []string
+		wantTimeout   uint32
+		wantRaw       bool
+		wantScript    string // expected ScriptContent; "" = expect empty
+		wantErr       string // expected error substring; "" = expect success
+		wantNoRequest bool   // expect the server to receive NO request
+	}{
+		{
+			name:        "server flag before agent-id",
+			args:        []string{"--server", "srv2", "agent1", "--", "docker", "ps"},
+			registerSrv: "srv2",
+			wantCommand: "docker",
+			wantArgs:    []string{"ps"},
+			wantTimeout: 30,
+		},
+		{
+			name:        "server=NAME inline before agent-id",
+			args:        []string{"--server=srv2", "agent1", "--", "docker", "ps"},
+			registerSrv: "srv2",
+			wantCommand: "docker",
+			wantArgs:    []string{"ps"},
+			wantTimeout: 30,
+		},
+		{
+			name:        "timeout flag before agent-id",
+			args:        []string{"--timeout", "90", "abc", "--", "sleep", "1"},
+			wantCommand: "sleep",
+			wantArgs:    []string{"1"},
+			wantTimeout: 90,
+		},
+		{
+			name:        "timeout=900 inline before agent-id",
+			args:        []string{"--timeout=900", "abc", "--", "docker", "ps"},
+			wantCommand: "docker",
+			wantArgs:    []string{"ps"},
+			wantTimeout: 900,
+		},
+		{
+			name:        "server and timeout both before agent-id",
+			args:        []string{"--server", "srv2", "--timeout", "900", "abc", "--", "docker", "ps"},
+			registerSrv: "srv2",
+			wantCommand: "docker",
+			wantArgs:    []string{"ps"},
+			wantTimeout: 900,
+		},
+		{
+			name:        "raw flag before agent-id",
+			args:        []string{"--raw", "abc", "--", "docker", "ps", "--format", "{{.Names}}"},
+			wantCommand: "docker",
+			wantArgs:    []string{"ps", "--format", "{{.Names}}"},
+			wantTimeout: 30,
+			wantRaw:     true,
+		},
+		{
+			name:        "script flag before agent-id",
+			args:        []string{"--script", "{SCRIPT}", "abc"},
+			scriptBody:  "#!/bin/sh\necho hello-before-agent-id",
+			wantCommand: "",
+			wantTimeout: 30,
+			wantScript:  "#!/bin/sh\necho hello-before-agent-id",
+		},
+		{
+			name:        "script=PATH inline before agent-id",
+			args:        []string{"--script={SCRIPT}", "abc"},
+			scriptBody:  "#!/bin/sh\necho hello-inline-script",
+			wantCommand: "",
+			wantTimeout: 30,
+			wantScript:  "#!/bin/sh\necho hello-inline-script",
+		},
+		{
+			name:        "separator before agent-id is not a flag",
+			args:        []string{"--", "abc", "docker", "ps"},
+			wantCommand: "docker",
+			wantArgs:    []string{"ps"},
+			wantTimeout: 30,
+		},
+		{
+			name:        "server flag after agent-id still works",
+			args:        []string{"agent1", "--server", "srv2", "--", "docker", "ps"},
+			registerSrv: "srv2",
+			wantCommand: "docker",
+			wantArgs:    []string{"ps"},
+			wantTimeout: 30,
+		},
+		{
+			name:          "unknown flag before agent-id fails locally",
+			args:          []string{"--bogus", "abc", "--", "docker", "ps"},
+			wantErr:       `exec takes no flags before <agent-id> (got "--bogus")`,
+			wantNoRequest: true,
+		},
+		{
+			name:          "flags but no agent-id",
+			args:          []string{"--timeout", "60"},
+			wantErr:       "agent-id required after flags",
+			wantNoRequest: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			t.Setenv("HOME", tmpDir)
+
+			var got *v1.ExecAgentRequest
+			requests := 0
+			server := newExecTestServer(t, &mockExecServer{
+				execResponses: []*v1.ExecAgentResponse{
+					{Output: &v1.ExecAgentResponse_Stdout{Stdout: []byte("ok")}},
+					{ExitCode: 0},
+				},
+				captureReq: func(req *v1.ExecAgentRequest) {
+					requests++
+					got = req
+				},
+			})
+			defer server.Close()
+
+			cfg := &CLIConfig{
+				Servers: map[string]ServerEntry{
+					"default": {
+						Name:        "default",
+						URL:         server.URL,
+						ConnectedAt: "2026-06-28T00:00:00Z",
+					},
+				},
+				ActiveServer: "default",
+			}
+			if tt.registerSrv != "" {
+				cfg.Servers[tt.registerSrv] = ServerEntry{
+					Name:        tt.registerSrv,
+					URL:         server.URL,
+					ConnectedAt: "2026-06-28T00:00:00Z",
+				}
+			}
+			if err := SaveCLIConfig(cfg); err != nil {
+				t.Fatalf("SaveCLIConfig: %v", err)
+			}
+
+			args := append([]string(nil), tt.args...)
+			if tt.scriptBody != "" {
+				scriptFile := filepath.Join(tmpDir, "script.sh")
+				if err := os.WriteFile(scriptFile, []byte(tt.scriptBody), 0o644); err != nil {
+					t.Fatalf("write script: %v", err)
+				}
+				for i, a := range args {
+					if idx := strings.Index(a, "{SCRIPT}"); idx >= 0 {
+						args[i] = strings.ReplaceAll(a, "{SCRIPT}", scriptFile)
+					}
+				}
+			}
+
+			cmd := NewExecCommand()
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("expected error containing %q, got: %v", tt.wantErr, err)
+				}
+			} else if err != nil {
+				t.Fatalf("exec command failed: %v", err)
+			}
+
+			if tt.wantNoRequest {
+				if requests != 0 {
+					t.Fatalf("server received %d request(s), want 0", requests)
+				}
+				return
+			}
+			if requests != 1 {
+				t.Fatalf("server received %d request(s), want 1", requests)
+			}
+			if got == nil {
+				t.Fatal("request not captured")
+			}
+			if got.Command != tt.wantCommand {
+				t.Errorf("command = %q, want %q", got.Command, tt.wantCommand)
+			}
+			if len(got.Args) != len(tt.wantArgs) {
+				t.Fatalf("args = %v, want %v", got.Args, tt.wantArgs)
+			}
+			for i, want := range tt.wantArgs {
+				if got.Args[i] != want {
+					t.Errorf("args[%d] = %q, want %q", i, got.Args[i], want)
+				}
+			}
+			if got.TimeoutSeconds != tt.wantTimeout {
+				t.Errorf("TimeoutSeconds = %d, want %d", got.TimeoutSeconds, tt.wantTimeout)
+			}
+			if got.Raw != tt.wantRaw {
+				t.Errorf("Raw = %v, want %v", got.Raw, tt.wantRaw)
+			}
+			if tt.wantScript != "" && got.ScriptContent != tt.wantScript {
+				t.Errorf("ScriptContent = %q, want %q", got.ScriptContent, tt.wantScript)
+			}
+		})
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -40,6 +41,11 @@ quotes, parentheses, or pipes that would otherwise need shell escaping.
 
 Use --script <file> to upload a local script and execute it inside the agent.
 
+Any other flag before the agent-id is rejected before anything is sent to
+the server:
+
+  exec takes no flags before <agent-id> (got "--flag")
+
 Examples:
   bunker exec abc12345 docker ps
   bunker exec abc12345 -- docker run --rm hello-world
@@ -47,7 +53,9 @@ Examples:
   bunker exec abc12345 --timeout 60 -- docker build -t myapp .
   bunker exec abc12345 --raw -- docker ps --format '{{.Names}}'
   bunker exec abc12345 --script ./migrate.sh
-  bunker exec abc12345 --raw -- psql -c 'SELECT count(*) FROM pg_catalog.pg_tables'`,
+  bunker exec abc12345 --raw -- psql -c 'SELECT count(*) FROM pg_catalog.pg_tables'
+  bunker exec --server prod --timeout 60 abc12345 -- docker ps
+  bunker exec --raw abc12345 -- psql -c 'SELECT count(*) FROM pg_catalog.pg_tables'`,
 
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// With DisableFlagParsing, --help is passed as an argument. Detect it
@@ -57,8 +65,81 @@ Examples:
 					return cmd.Help()
 				}
 			}
-			if len(args) < 2 {
-				return fmt.Errorf("requires at least 2 arg(s), only received %d", len(args))
+			if len(args) < 1 {
+				return fmt.Errorf("requires at least 1 arg(s), only received %d", len(args))
+			}
+
+			// Peel flags that appear BEFORE the agent-id. Cobra Find strips
+			// global flag pairs when locating the subcommand only for commands
+			// with flag parsing enabled; exec disables parsing, so anything
+			// typed before "exec" lands here in args (e.g.
+			// "bunker --server prod exec abc123 -- ..." arrives as
+			// ["--server", "prod", "abc123", "--", ...]). Accept the same four
+			// flags here that the post-agent-id peeler below accepts, including
+			// the --flag=value form, so the global position behaves like it
+			// does for spawn/status/list/info/audit. Reject any other
+			// flag-like token with an actionable error instead of letting it
+			// become the agent-id and die as a server-side not_found.
+			head := 0
+			for head < len(args) {
+				arg := args[head]
+				if arg == "--" {
+					// A "--" before the agent-id terminates flag parsing; the
+					// next token is the agent-id itself, never a flag.
+					head++
+					break
+				}
+				if !strings.HasPrefix(arg, "-") || arg == "-" {
+					break
+				}
+				if arg == "--help" || arg == "-h" {
+					break // already handled above
+				}
+				name, value, hasValue := strings.Cut(arg, "=")
+				switch name {
+				case "--server":
+					if hasValue {
+						serverName = value
+						head++
+					} else if head+1 < len(args) {
+						serverName = args[head+1]
+						head += 2
+					} else {
+						return fmt.Errorf("flag needs an argument: %s", name)
+					}
+				case "--timeout":
+					v := value
+					if !hasValue {
+						if head+1 >= len(args) {
+							return fmt.Errorf("flag needs an argument: %s", name)
+						}
+						v = args[head+1]
+						head++
+					}
+					if n, err := strconv.ParseUint(v, 10, 32); err == nil {
+						timeout = uint32(n)
+					}
+					head++
+				case "--raw":
+					rawMode = true
+					head++
+				case "--script":
+					if hasValue {
+						scriptPath = value
+						head++
+					} else if head+1 < len(args) {
+						scriptPath = args[head+1]
+						head += 2
+					} else {
+						return fmt.Errorf("flag needs an argument: %s", name)
+					}
+				default:
+					return fmt.Errorf("exec takes no flags before <agent-id> (got %q)", arg)
+				}
+			}
+			args = args[head:]
+			if len(args) < 1 {
+				return fmt.Errorf("agent-id required after flags")
 			}
 
 			// After cobra parsing, args contains everything after the subcommand
@@ -69,7 +150,10 @@ Examples:
 			if len(rest) > 0 && rest[0] == "--" {
 				rest = rest[1:]
 			}
-			if len(rest) == 0 {
+			// A script-only exec sends no command token (the server runs the
+			// uploaded script), so only require a command when no script flag
+			// was peeled above.
+			if len(rest) == 0 && scriptPath == "" {
 				return fmt.Errorf("command required after agent-id")
 			}
 			// Parse our own flags from the head of rest. Anything after the
