@@ -1350,3 +1350,15 @@ tasks:
   status: complete
   created_at: '2026-09-16T06:40:07.326436+00:00'
   completed_at: '2026-09-16T06:45:16.067925+00:00'
+- id: INT-CI-004
+  title: 'CI red on HEAD: internal/audit shipstate vs in-memory queue consistency'
+  criteria:
+  - 'PASS: (1) the persisted shipstate file can never contradict the live queue at
+    write time (no caller-supplied depth that disagrees with len(queue); state writes
+    serialized so an older attempt cannot overwrite a newer snapshot); (2) a deterministic
+    regression test fails on pre-fix code and passes post-fix; (3) go test -count=1
+    -short ./... green; (4) go test -count=20 -short ./internal/audit/ -race green;
+    (5) gofmt clean, vet clean.'
+  status: complete
+  created_at: '2026-09-16T07:15:25.954400+00:00'
+  completed_at: '2026-09-16T08:06:28.989795+00:00'
