@@ -51,3 +51,5 @@
 - **Top 3 findings:** (1) DF-BUNKER-8 P1 — exec-only flag grammar, misleading not_found (exec.go:201 peeler). (2) DF-BUNKER-9 P1 — README "Private /tmp per agent" unshipped in ANY tag; daemon advertises no isolation level. (3) DF-BUNKER-10 P2 — fleet daemon a major version behind repo (v0.1.3 vs 66d4150+; las-03 unreachable).
 - **Artifacts:** board rows DF-BUNKER-8..12 (tasks.jsonl + tasks.md section), docs/dogfood/2026-09-16-integration.md, docs/dogfood/diagnostics.md §11, skills/bunker-usage/SKILL.md → v1.3.0 (stale "misses exec" line fixed; 5 new pitfalls).
 - **Foreman:** NOT woken, NO scheduler PUT (fleet law 21600s pin; cooldown was 43200s at pick). DF-BUNKER-5 rework worker ran in-tree during this session (HEAD moved to 358a10c mid-run) — my commit stages only my own paths.
+2026-09-16 | PROMISING-BUT-ROUGH | 110s t2fs | friction 12 | 5 findings
+
