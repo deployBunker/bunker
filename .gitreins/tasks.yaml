@@ -1464,3 +1464,15 @@ tasks:
   status: complete
   created_at: '2026-09-16T13:55:19.519019+00:00'
   completed_at: '2026-09-16T14:05:46.391281+00:00'
+- id: DF-BUNKER-11
+  title: Mount retries sshfs on connection resets and reports an actionable cause
+  criteria:
+  - bunker mount retries the sshfs invocation up to 3 attempts on connection-reset-class
+    failures with injectable backoff, returns an error naming the parallel-SSH-session
+    cause after exhaustion, and does not retry non-retryable failures; new unit tests
+    in internal/cli/mount_test.go prove attempts-until-success, bounded retry, no-retry
+    classification and preserved cause; go build ./... and go test ./internal/cli/
+    -count=1 pass
+  status: complete
+  created_at: '2026-09-16T14:16:03.880998+00:00'
+  completed_at: '2026-09-16T14:34:57.665010+00:00'
