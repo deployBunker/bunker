@@ -1399,3 +1399,16 @@ tasks:
   status: complete
   created_at: '2026-09-16T09:23:22.695780+00:00'
   completed_at: '2026-09-16T10:12:42.410154+00:00'
+- id: DF-BUNKER-8
+  title: 'exec flag grammar: accept leading --server/--timeout/--raw/--script before
+    the agent-id; actionable error for unknown pre-agent-id flags'
+  criteria:
+  - bunker exec accepts --server/--timeout/--raw/--script in the same pre-<agent-id>
+    position that every other subcommand accepts them (cobra Find strips them before
+    the subcommand is located); an unknown flag placed before the agent-id produces
+    the actionable error 'exec takes no flags before <agent-id> (got "--X")' instead
+    of a not_found stream error; go build ./... + go vet ./... + go test ./... green;
+    new table-driven unit tests in internal/cli/exec_test.go
+  status: complete
+  created_at: '2026-09-16T12:10:47.620277+00:00'
+  completed_at: '2026-09-16T12:28:52.594850+00:00'
