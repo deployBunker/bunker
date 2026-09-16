@@ -48,6 +48,13 @@ const userManagerStartStage = "user-manager-start"
 // point it at a temp directory and assert a real count.
 var lingerDir = "/var/lib/systemd/linger"
 
+// userRuntimeBaseDir is the root of systemd's per-user runtime tree; the
+// install path derives <userRuntimeBaseDir>/<uid> as the agent's standard
+// runtime directory. Var for the same reason as lingerDir: non-root unit
+// tests must be able to point the derivation at a temp tree instead of the
+// real /run/user (INT-CI-009).
+var userRuntimeBaseDir = "/run/user"
+
 // systemRunner executes a system command and returns its combined output.
 type systemRunner func(ctx context.Context, name string, args ...string) ([]byte, error)
 
@@ -60,6 +67,74 @@ func runSystemCmd(ctx context.Context, name string, args ...string) ([]byte, err
 // path. Package-level var so tests can inject a fake and never touch real
 // systemd.
 var userManagerRunner systemRunner = runSystemCmd
+
+// userManagerReloadCmd is the user-session command used both to prove the
+// agent's user manager is reachable and to make a freshly written unit
+// visible before the installer retry (INT-CI-009).
+const userManagerReloadCmd = "systemctl --user daemon-reload"
+
+// userSessionRunner executes a command inside the agent user's session.
+// Package-level seam mirroring userManagerRunner.
+var userSessionRunner = runUserSessionCmd
+
+// userSessionEnv builds the environment for a command that runs inside the
+// agent user's session: the standard systemd runtime directory and the user
+// manager's bus socket layered on top of the inherited environment. The
+// installer call uses the SAME construction (plus its own toggles), so every
+// user-session command — reachability probe, daemon-reload retry, installer —
+// speaks to the same manager (INT-CI-009).
+func userSessionEnv(runtimeDir string) []string {
+	return append(os.Environ(),
+		"XDG_RUNTIME_DIR="+runtimeDir,
+		"DBUS_SESSION_BUS_ADDRESS=unix:path="+filepath.Join(runtimeDir, "bus"),
+	)
+}
+
+// runUserSessionCmd is the production runner: `su - <username> -c <script>`
+// with the session environment applied.
+func runUserSessionCmd(ctx context.Context, username, runtimeDir, script string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "su", "-", username, "-c", script)
+	cmd.Env = userSessionEnv(runtimeDir)
+	return cmd.CombinedOutput()
+}
+
+// rootlessInstallerRunner executes the downloaded rootless installer as the
+// agent user. Package-level seam so the daemon-reload retry (INT-CI-009) is
+// testable without a real su, real systemd, or network.
+var rootlessInstallerRunner = runRootlessInstallerCmd
+
+// rootlessInstallerDownload fetches the official installer into installerPath.
+// Package-level seam so unit tests never touch the network.
+var rootlessInstallerDownload = downloadRootlessInstaller
+
+// downloadRootlessInstaller is the production download: curl to the official
+// Docker rootless extras URL.
+func downloadRootlessInstaller(ctx context.Context, installerPath string) ([]byte, error) {
+	curl := exec.CommandContext(ctx, "curl", "-fsSL", "-o", installerPath, rootlessInstallURL)
+	return curl.CombinedOutput()
+}
+
+// userLookup resolves a system user. Package-level seam so unit tests can
+// install a synthetic uid without creating real users (same rationale as
+// runtimeDirProbe).
+var userLookup = user.Lookup
+
+// rootHostRunner executes the root-side filesystem preparation commands of
+// the install path (chown of bin dir, runtime dir, installer, home).
+// Package-level seam (same type and production impl as userManagerRunner) so
+// the full install flow is unit-testable without real users (INT-CI-009).
+var rootHostRunner systemRunner = runSystemCmd
+
+// runRootlessInstallerCmd is the production installer runner: the identical
+// session environment to runUserSessionCmd plus the installer's own toggles.
+func runRootlessInstallerCmd(ctx context.Context, username, runtimeDir, installerPath string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "su", "-", username, "-c", installerPath)
+	cmd.Env = append(userSessionEnv(runtimeDir),
+		"FORCE_ROOTLESS_INSTALL=1",
+		"SKIP_IPTABLES=1",
+	)
+	return cmd.CombinedOutput()
+}
 
 // userManagerWaitBudget returns the effective bring-up budget.
 func userManagerWaitBudget() time.Duration {
@@ -161,7 +236,7 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 	}
 	// The bin directory must be owned by the agent user because the installer
 	// runs as that user and writes binaries into it.
-	if out, err := exec.CommandContext(ctx, "chown", "-R", username, binDir).CombinedOutput(); err != nil {
+	if out, err := rootHostRunner(ctx, "chown", "-R", username, binDir); err != nil {
 		return fmt.Errorf("chown bin dir: %w (output: %s)", err, string(out))
 	}
 
@@ -173,7 +248,7 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 
 	logger.Info("installing rootless docker", "user", username)
 
-	u, err := user.Lookup(username)
+	u, err := userLookup(username)
 	if err != nil {
 		return fmt.Errorf("lookup user %s: %w", username, err)
 	}
@@ -181,7 +256,7 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 	if err != nil {
 		return fmt.Errorf("parse uid %q: %w", u.Uid, err)
 	}
-	stdRuntimeDir := filepath.Join("/run", "user", strconv.Itoa(uid))
+	stdRuntimeDir := filepath.Join(userRuntimeBaseDir, strconv.Itoa(uid))
 
 	// Bring the systemd user manager up in a state-consistent order: reset
 	// stale state ONLY when there is real stale state, guarantee the runtime
@@ -211,36 +286,72 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 	// /run/user/<uid>/gvfs, and a FUSE mount without allow_other denies even
 	// root (chown -R / find -xdev both fail with "Permission denied"). A
 	// non-recursive chown of the top-level dir never descends into the mount.
-	if out, err := exec.CommandContext(ctx, "chown", username+":", stdRuntimeDir).CombinedOutput(); err != nil {
+	if out, err := rootHostRunner(ctx, "chown", username+":", stdRuntimeDir); err != nil {
 		return fmt.Errorf("chown runtime dir %s: %w (output: %s)", stdRuntimeDir, err, string(out))
 	}
 
 	// Download the installer into the agent's home as root (the installer will
 	// be executed by the target user, and we need a reliable download path).
 	installerPath := filepath.Join(userHome, "rootless-install.sh")
-	curl := exec.CommandContext(ctx, "curl", "-fsSL", "-o", installerPath, rootlessInstallURL)
-	if out, err := curl.CombinedOutput(); err != nil {
+	if out, err := rootlessInstallerDownload(ctx, installerPath); err != nil {
 		return fmt.Errorf("download rootless installer: %w (output: %s)", err, string(out))
 	}
 	if err := os.Chmod(installerPath, 0755); err != nil {
 		return fmt.Errorf("chmod installer: %w", err)
 	}
-	if out, err := exec.CommandContext(ctx, "chown", username, installerPath).CombinedOutput(); err != nil {
+	if out, err := rootHostRunner(ctx, "chown", username, installerPath); err != nil {
 		return fmt.Errorf("chown installer: %w (output: %s)", err, string(out))
+	}
+
+	// Prove the user manager is reachable from the agent's OWN session before
+	// handing over to the installer. The installer writes the docker.service
+	// unit and immediately runs `systemctl --user start docker.service`; if the
+	// manager bus is not usable from that session, the start fails with "Unit
+	// docker.service not found" and the whole install fails (INT-CI-009 CI run
+	// 35142150138). A successful daemon-reload IS the proof: it exercises the
+	// session bus end to end. Failure here must carry the manager state, the
+	// linger count and the journal — not a bare exec error.
+	if err := proveUserManagerReachable(ctx, username, uid, stdRuntimeDir, logger); err != nil {
+		return err
 	}
 
 	// Run the installer as the target user. It installs binaries into ~/bin.
 	// The standard systemd runtime directory and D-Bus bus address are provided
 	// so systemctl --user can communicate with the user manager.
-	cmd := exec.CommandContext(ctx, "su", "-", username, "-c", installerPath)
-	cmd.Env = append(os.Environ(),
-		"FORCE_ROOTLESS_INSTALL=1",
-		"SKIP_IPTABLES=1",
-		"XDG_RUNTIME_DIR="+stdRuntimeDir,
-		"DBUS_SESSION_BUS_ADDRESS=unix:path="+filepath.Join(stdRuntimeDir, "bus"),
-	)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("run rootless installer as %s: %w (output: %s)", username, err, string(out))
+	//
+	// The installer writes the docker.service unit and then starts it in the
+	// same run. When the manager has not yet observed the freshly written unit,
+	// that start races the unit lookup and fails with "Unit docker.service not
+	// found" even though the manager itself is healthy (INT-CI-009). That
+	// failure is retried ONCE after a user-session daemon-reload makes the new
+	// unit visible. Any other installer failure is returned untouched.
+	installerOut, installerErr := rootlessInstallerRunner(ctx, username, stdRuntimeDir, installerPath)
+	if installerErr != nil {
+		if !isUserUnitNotFound(installerOut) {
+			return fmt.Errorf("run rootless installer as %s: %w (output: %s)", username, installerErr, string(installerOut))
+		}
+		if logger != nil {
+			logger.Warn("rootless installer hit the unit-not-found race; reloading the user manager and retrying once",
+				"user", username, "unit", userManagerUnitName(uid),
+				"output", condenseJournal(string(installerOut)))
+		}
+		if _, err := userSessionRunner(ctx, username, stdRuntimeDir, userManagerReloadCmd); err != nil {
+			// The reload itself failed: retrying the installer through a dead
+			// bus would only reproduce the same not-found failure, so fail
+			// with the full attribution instead.
+			state := fetchUserManagerState(ctx, userManagerUnitName(uid))
+			return fmt.Errorf("rootless-install: user-session daemon-reload before the installer retry failed for %s: %w; %s; linger entries: %d; installer output: %s",
+				username, err, state.describe(userManagerUnitName(uid)), countLingerEntries(), condenseJournal(string(installerOut)))
+		}
+		installerOut, installerErr = rootlessInstallerRunner(ctx, username, stdRuntimeDir, installerPath)
+		if installerErr != nil {
+			state := fetchUserManagerState(ctx, userManagerUnitName(uid))
+			return fmt.Errorf("run rootless installer as %s: %w (retry after user-session daemon-reload also failed; output: %s; %s; linger entries: %d)",
+				username, installerErr, condenseJournal(string(installerOut)), state.describe(userManagerUnitName(uid)), countLingerEntries())
+		}
+		if logger != nil {
+			logger.Info("rootless installer succeeded on the daemon-reload retry", "user", username)
+		}
 	}
 
 	if _, err := os.Stat(rootlessScript); err != nil {
@@ -250,11 +361,68 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 	// The installer may have created files (config, install script, etc.) as
 	// root. Chown the entire home directory to the agent user so userdel -r
 	// can clean up cleanly during destroy.
-	if out, err := exec.CommandContext(ctx, "chown", "-R", username+":", userHome).CombinedOutput(); err != nil {
+	if out, err := rootHostRunner(ctx, "chown", "-R", username+":", userHome); err != nil {
 		logger.Warn("failed to chown agent home after rootless install", "user", username, "error", err, "output", string(out))
 	}
 
 	return nil
+}
+
+// proveUserManagerReachable verifies that the agent's systemd user manager is
+// reachable from the agent user's OWN session before the rootless installer
+// runs. The installer writes the docker.service unit and immediately runs
+// `systemctl --user start docker.service`; when the session bus is not usable
+// from that session, the start fails with "Unit docker.service not found" and
+// the installer exits 1 (INT-CI-009 CI run 35142150138: "no user session bus",
+// "Failed to connect to bus: No medium found").
+//
+// The probe is `systemctl --user daemon-reload` executed through
+// userSessionRunner — the exact environment the installer receives. A reload
+// succeeds only when the bus accepts and answers user-manager requests, so it
+// is a proof of reachability, not a mere existence check.
+//
+// On failure the returned error names the stage, the user-manager state, the
+// linger-entry count and a journal excerpt, so the operator can tell a dead
+// manager from a starving one without re-running the spawn. At most one WARN
+// is emitted with the same facts.
+func proveUserManagerReachable(ctx context.Context, username string, uid int, runtimeDir string, logger *slog.Logger) error {
+	if _, err := userSessionRunner(ctx, username, runtimeDir, userManagerReloadCmd); err != nil {
+		return proveUserManagerReachableErr(ctx, username, uid, runtimeDir, logger)
+	}
+	return nil
+}
+
+// proveUserManagerReachableErr builds the attribution error after a failed
+// reachability probe. Split from proveUserManagerReachable so the success
+// path stays a single seam call.
+func proveUserManagerReachableErr(ctx context.Context, username string, uid int, runtimeDir string, logger *slog.Logger) error {
+	unit := userManagerUnitName(uid)
+	state := fetchUserManagerState(ctx, unit)
+	lingerCount := countLingerEntries()
+	journal := fetchUserManagerJournal(ctx, unit, logger)
+	if logger != nil {
+		logger.Warn("agent user manager unreachable from the agent session before the rootless install",
+			"stage", "rootless-install",
+			"user", username,
+			"unit", unit,
+			"state", state.describe(unit),
+			"linger_entries", lingerCount,
+			"journal", journal,
+		)
+	}
+	return fmt.Errorf("rootless-install: agent user manager unreachable before the rootless install for %s: daemon-reload through the session bus failed; %s; linger entries: %d; journal: %s",
+		username, state.describe(unit), lingerCount, journal)
+}
+
+// isUserUnitNotFound reports whether the installer output carries the
+// unit-not-found signature: "not found" together with "docker.service",
+// case-insensitive. It is deliberately strict — the retry after a
+// daemon-reload is only safe for the manager-has-not-seen-the-unit race, so
+// unrelated installer failures (network, disk, permissions) must never
+// trigger it.
+func isUserUnitNotFound(out []byte) bool {
+	lower := strings.ToLower(string(out))
+	return strings.Contains(lower, "not found") && strings.Contains(lower, "docker.service")
 }
 
 // userManagerUnitName is the per-uid systemd user manager unit.
