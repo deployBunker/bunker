@@ -39,3 +39,15 @@
 - **Note:** picker selected `bunker-sync` (DuckBrain sync entry, empty workdir, placeholder URL) — dogfooded the real `bunker` project it mirrors, per Step-0 manual-pick fallback.
 2026-09-01 | SHIPPABLE | 28s t2fs | friction 5 | 5 findings
 2026-09-07 | PROMISING-BUT-ROUGH | 40s t2fs | friction 8 | 5 findings
+2026-09-16 | SHIPPABLE | 20s t2fs (named spawn→bundle; status ONLINE 1st call) | friction 6 | 5 findings (DF-BUNKER-8..12)
+
+## 2026-09-16 run detail
+
+- **Verdict:** ✅ SHIPPABLE (third run in the series: SHIPPABLE → PROMISING-BUT-ROUGH → SHIPPABLE). Core lifecycle solid at HEAD CLI vs v0.1.3 fleet daemon; findings are grammar/consistency and version-drift classes, not broken promises at HEAD.
+- **Promise statement:** "A user can spin up isolated, resource-limited rootless-Docker agents on a remote host and drive them entirely from one CLI: connect → spawn (named, --image-spec) → exec/docker/env/cp/run --detach → tunnel → audit → destroy, with auth enforced and the audit trail queryable."
+- **Method:** CLI built at HEAD 66d4150 (make build). Live daemon bunker-las-04 (v0.1.3, uptime 1h48m). Full lifecycle × 4 named agents (df0916a/b/c/d): spawn 20s/44s(image-spec)/33s/15m-TTL, info, exec (user bunker-<id>, $((6*7))=42), env set/get visible in exec, cp byte-round-trip (agent:path form), docker run alpine in-agent (rootless 29.8.1), run --detach ($HOME proof), tunnel (local docker ps via :2376), metrics (agent-scoped 376.7MB), heartbeat (+4h), audit list --agent (attributed), destroy ×4 clean (no WARN — DF-BUNKER-5 fix live). REST probes: 401/405/401/200/200. Mixed-case: new registrations round-trip (KaraCaseTest); legacy lowercase-key+mixed-name configs still fail (narrow residual). las-03 daemon + ssh dead (deadline_exceeded) — install leg done via project's own spawn (agent df0916c: clone github HEAD 0bd45e4 → make fails (no make, DF-BUNKER-12) → go build ×2 exit 0 → version OK → destroyed).
+- **Time-to-first-success:** 20s (spawn→bundle); exec+42 immediately after; full spawn→destroy cycle 21s.
+- **Friction count:** 6 (exec rejects --server before agent-id; --timeout position trap; cp arg-form error noise; mount Connection-reset 2/2; /tmp promise vs v0.1.3 reality; las-03 dead-but-registered).
+- **Top 3 findings:** (1) DF-BUNKER-8 P1 — exec-only flag grammar, misleading not_found (exec.go:201 peeler). (2) DF-BUNKER-9 P1 — README "Private /tmp per agent" unshipped in ANY tag; daemon advertises no isolation level. (3) DF-BUNKER-10 P2 — fleet daemon a major version behind repo (v0.1.3 vs 66d4150+; las-03 unreachable).
+- **Artifacts:** board rows DF-BUNKER-8..12 (tasks.jsonl + tasks.md section), docs/dogfood/2026-09-16-integration.md, docs/dogfood/diagnostics.md §11, skills/bunker-usage/SKILL.md → v1.3.0 (stale "misses exec" line fixed; 5 new pitfalls).
+- **Foreman:** NOT woken, NO scheduler PUT (fleet law 21600s pin; cooldown was 43200s at pick). DF-BUNKER-5 rework worker ran in-tree during this session (HEAD moved to 358a10c mid-run) — my commit stages only my own paths.

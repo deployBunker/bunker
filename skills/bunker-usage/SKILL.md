@@ -7,8 +7,11 @@ description: >-
   bunker/bunkerd, writing E2E scripts, or triaging agent lifecycle bugs.
   Verified against the live auth-enforced MVP on 2026-08-18
   (docs/dogfood/2026-08-18-integration.md); audit CLI + fleet notes added
-  2026-08-29 (docs/dogfood/2026-08-29-integration.md).
-version: 1.2.0
+  2026-08-29 (docs/dogfood/2026-08-29-integration.md); exec flag grammar,
+  /tmp semantics, mount and install notes re-verified against live
+  bunker-las-04 at CLI HEAD 66d4150 on 2026-09-16
+  (docs/dogfood/2026-09-16-integration.md).
+version: 1.3.0
 category: software-development
 ---
 
@@ -51,7 +54,7 @@ REST (same surface, JSON over HTTP): `POST http://<ip>:18080/bunker.v1.Bunkerd/<
 
 ```bash
 bunker audit list --server bunker-las-03                    # table: ts/caller/method/agent/outcome/summary
-bunker audit list --server <box> --agent <id>               # per-agent RPCs (⚠️ misses exec, see pitfalls)
+bunker audit list --server <box> --agent <id>               # per-agent RPCs incl. exec (fixed 406508b)
 bunker audit list --server <box> --since 2026-08-29T00:00:00Z
 bunker audit export --server <box> --since ...              # raw JSONL incl. hash+prev_hash chain
 bunker audit verify --path /var/log/bunkerd/audit.log       # LOCAL ONLY (daemon host), no --server
@@ -88,6 +91,11 @@ All features broken as of 2026-08-03 (tasks DOGFOOD-001..006) are fixed and veri
 - **`bunker metrics <id>` memory is PER-AGENT (fixed: DOGFOOD-011 + GAP-060)** — read from the agent's own cgroup: `/sys/fs/cgroup/user.slice/user-<uid>.slice` (cgroupv2), whose `memory.max` IS the agent's `--memory` limit (the systemd-run dockerd unit and every exec session scope both live in that slice). When the per-agent read is unavailable (stopped/destroyed agent, deleted user), the values fall back to the HOST-level read — and since GAP-060 (61dafd2) that fallback is explicit: the `AgentMetricsResponse` carries `host_level_fallback` (field 10, proto/bunker/v1/bunker.proto) and the CLI prints `NOTE: host-level fallback (agent cgroup unavailable — metrics are HOST values, not agent values)`. If you see the NOTE, treat the numbers as host values. Disk numbers are per-agent; real limits via `bunker info` or on-host `user.slice/user-<uid>.slice/*`.
 - **Audit `--agent <id>` exec filter works (fixed: DOGFOOD-012, commit 406508b)** — ExecAgent is a server-streaming RPC (the interceptor never sees its request message), but the handler now stamps the real target into a per-request sink (`audit.StampStreamAgentID`) and `remote_addr` comes from `conn.Peer()`, so exec records carry the right `agent_id` and address. Older logs from before the fix still show `agent_id:""` rows — filter those by `--since` timestamps + `bunker audit export`.
 - **`bunker audit verify` is local-only** — runs on the daemon host (`--path /var/log/bunkerd/audit.log`); `--server` → `unknown flag` (DOGFOOD-013; group help over-promises).
+- **exec is the ONE command with different flag grammar (2026-09-16, DF-BUNKER-8)** — `DisableFlagParsing: true` + a hand-rolled peeler means flags are only recognized AFTER the agent-id: `bunker --server X exec <id> ...` fails `agent "--server" not found` and `bunker exec <id> --timeout 900 -- ...` (flag after `--`) fails too. Right form: `bunker exec <id> --server X --timeout 900 -- cmd`, or simplest: `bunker use <server>` once, then bare exec. Everything else (spawn/list/status/info/audit/cp/env/metrics/heartbeat/destroy) accepts the global `--server`.
+- **/tmp semantics depend on the DAEMON version, not the CLI (2026-09-16, DF-BUNKER-9)** — on v0.1.3 daemons (all current tags), exec sessions see the HOST /tmp and `run --detach` units get their own PrivateTmp, so the three tmp views differ; per-agent private /tmp (GAP-075) is only in daemons built from ≥ 9703082, which is in NO release tag yet. Never look for detached-job output in /tmp — write/read `$HOME`.
+- **`bunker mount` can fail with raw `read: Connection reset by peer` against a healthy agent (2026-09-16, DF-BUNKER-11)** — raw ssh + sftp both fine; consistent with agent-host sshd parallel-session limiting. No CLI retry yet; wait and retry manually.
+- **`bunker cp` destination is `<agent-id>:<path>`** — a bare local path errors `accepts 2 arg(s), received 3`-style usage noise; the remote form is mandatory.
+- **Server version check before diagnosing** — `bunker status` prints the daemon's Version; the fleet can lag repo HEAD by a major version (las-04 = v0.1.3 on 2026-09-16), so behavior differences may be version drift, not bugs (DF-BUNKER-10).
 
 ## Right way to validate changes
 
@@ -106,4 +114,4 @@ All features broken as of 2026-08-03 (tasks DOGFOOD-001..006) are fixed and veri
 - Key hygiene after destroy → `internal/cli/destroy.go` (no local key cleanup, DOGFOOD-014)
 - Spawn/destroy/TTL/cgroups → `internal/agent/`
 - API contract → `specs/api.md`; architecture → `specs/architecture.md`
-- Full dogfood evidence + diagnostics → `docs/dogfood/2026-08-29-integration.md` (current, verified), `docs/dogfood/2026-08-18-integration.md` (prior run), `docs/dogfood/diagnostics.md`
+- Full dogfood evidence + diagnostics → `docs/dogfood/2026-09-16-integration.md` (current, verified), `docs/dogfood/2026-08-29-integration.md`, `docs/dogfood/2026-08-18-integration.md` (prior runs), `docs/dogfood/diagnostics.md`

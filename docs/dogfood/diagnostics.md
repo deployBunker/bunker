@@ -215,3 +215,51 @@ agent_id + non-empty remote_addr.
    — confirms the daemon-side host-cgroup read in metrics is the real source
    (and why DOGFOOD-011's fix must read the user slice from the daemon, not
    inside the agent).
+
+## 11. Dogfood run 2026-09-16 — live-fleet run against las-04 at HEAD 66d4150
+
+**Why this run looks different:** the standard ephemeral host (las-bunker-03) was down
+(ssh + daemon both timing out), so the install leg ran inside a throwaway agent created
+with bunker itself (spawn --image-spec git+curl → clone → build → smoke → destroy). That
+makes this the first run where the product was used to verify its own installability —
+and where the CLI/daemon version split was directly observable.
+
+**How the version split shaped the findings.** The CLI was built at HEAD (66d4150) but
+las-04's daemon is v0.1.3 (no tag contains the GAP-070/073/075 feature line: durable
+registry, audit hardening, per-agent /tmp isolation). Consequences, in order of discovery:
+
+1. `bunker --server X exec <id>` failed with `agent "--server" not found` — NOT a daemon
+   issue: exec is the one command with `DisableFlagParsing: true` plus a hand-rolled flag
+   peeler that only scans AFTER args[0] (internal/cli/exec.go:201). The global flag
+   position every other command accepts becomes the agent-id, and the server returns a
+   misleading not_found for a token that never was an id. `--timeout` in the same
+   position fails identically. Filed DF-BUNKER-8 (P1). Workaround: `bunker use`.
+2. `exec -- ls /tmp` showed the HOST's /tmp (colord/fwupd/polkit systemd-private dirs) —
+   README's "Private /tmp per agent" is simply not implemented in any tagged daemon; the
+   feature (GAP-075) exists only at HEAD. `run --detach` units use PrivateTmp, so the
+   three tmp views (exec / detach / promised per-agent) are all different on this daemon.
+   Filed DF-BUNKER-9 (P1): either ship a tag containing 9703082 or make daemons advertise
+   their isolation level so the README promise is checkable.
+3. Destroy was clean — the systemctl WARN noise class (DF-BUNKER-5) landed at HEAD and
+   the new CLI suppressed it; the daemon side was unchanged, proving the CLI-side
+   classifier works. The rework attempt for DF-BUNKER-5 landed in-tree DURING this run
+   (358a10c appeared mid-session), which is why HEAD moved between build and findings.
+4. Audit forensics got one false alarm worth remembering: `audit list --since` silently
+   returned "no records" for a window I had computed wrong (future clock skew), which
+   looked exactly like "exec records are dropped again". The proof cycle that settles it:
+   run a marked spawn→exec→destroy, then immediately audit-grep the marker window. All
+   three RPCs were attributed — DOGFOOD-012 stays closed.
+5. mount failed 2/2 with a raw `read: Connection reset by peer` while plain ssh and the
+   sftp subsystem both succeeded against the same agent — pointing at sshd
+   parallel-session limiting on a many-connection agent host, and at a missing
+   retry/backoff + actionable-error layer in the mount command (DF-BUNKER-11).
+6. The install rehearsal produced the run's cheapest finding: README Prerequisites omit
+   `make`, so the documented `make build` path dies with `make: not found` on a minimal
+   Go-only host, while the two-command `go build` path (documented only under
+   Development) works (DF-BUNKER-12).
+
+**Right way recap for future agents:** build at HEAD, `bunker use` before multi-command
+sessions, put exec flags after the agent-id, write detached-job output to $HOME (never
+/tmp), verify audit claims with a marked live cycle rather than window arithmetic, and
+remember the deployed daemons can lag the docs by a major version — check
+`bunker status` Version before interpreting behavior differences as bugs.
