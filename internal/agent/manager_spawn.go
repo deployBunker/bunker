@@ -25,12 +25,12 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	agentID := req.GetAgentId()
 	if agentID != "" {
 		if !validAgentID.MatchString(agentID) {
-			return nil, fmt.Errorf("invalid agent_id %q: must match [a-z0-9-]{1,63}", agentID)
+			return nil, spawnStageErr(ctx, agentID, StageValidate, fmt.Errorf("invalid agent_id %q: must match [a-z0-9-]{1,63}", agentID))
 		}
 	} else {
 		uuid, err := generateUUIDv4()
 		if err != nil {
-			return nil, fmt.Errorf("generate agent_id uuid: %w", err)
+			return nil, spawnStageErr(ctx, agentID, StageValidate, fmt.Errorf("generate agent_id uuid: %w", err))
 		}
 		// Use first segment of UUID as short ID.
 		agentID = strings.SplitN(uuid, "-", 2)[0]
@@ -47,7 +47,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	if req.GetTtl() != "" {
 		parsed, err := ParseAgentTTL(req.GetTtl())
 		if err != nil {
-			return nil, fmt.Errorf("invalid ttl %q: %w", req.GetTtl(), err)
+			return nil, spawnStageErr(ctx, agentID, StageValidate, fmt.Errorf("invalid ttl %q: %w", req.GetTtl(), err))
 		}
 		ttl = parsed
 	}
@@ -62,11 +62,11 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	var imageSpec *imagespec.Spec
 	if req.GetImageSpec() != nil {
 		if m.imageBuilder == nil {
-			return nil, fmt.Errorf("image spec support is not available on this server")
+			return nil, spawnStageErr(ctx, agentID, StageValidate, fmt.Errorf("image spec support is not available on this server"))
 		}
 		spec, err := imagespec.FromProto(req.GetImageSpec())
 		if err != nil {
-			return nil, fmt.Errorf("invalid image spec: %w", err)
+			return nil, spawnStageErr(ctx, agentID, StageValidate, fmt.Errorf("invalid image spec: %w", err))
 		}
 		imageSpec = spec
 	}
@@ -75,7 +75,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// (allocating first leaks the range when capacity is full — the
 	// allocator is in-memory and only freed on destroy)
 	if !m.tracker.HasCapacity(1) {
-		return nil, fmt.Errorf("capacity full: %d/%d agents", m.tracker.Count(), m.tracker.MaxAgents())
+		return nil, spawnStageErr(ctx, agentID, StageCapacity, fmt.Errorf("capacity full: %d/%d agents", m.tracker.Count(), m.tracker.MaxAgents()))
 	}
 
 	// ── Step 1.6: Allocate port range ────────────────────────────
@@ -84,7 +84,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		var allocErr error
 		portStart, portEnd, allocErr = m.portAlloc.Allocate(agentID)
 		if allocErr != nil {
-			return nil, fmt.Errorf("port range allocation: %w", allocErr)
+			return nil, spawnStageErr(ctx, agentID, StagePortAlloc, fmt.Errorf("port range allocation: %w", allocErr))
 		}
 	} else {
 		// Port allocator disabled — use full configured range as fallback.
@@ -95,31 +95,42 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 
 	m.logger.Info("spawning agent", "agent_id", agentID)
 
-	// Track what we've created for cleanup on failure.
+	// Track what we've created for the rollback on failure.
 	var createdUser bool
 	var createdUserSlice bool
 	var keyFile string
 	portRangeAllocated := m.portAlloc != nil
 
-	cleanup := func() {
+	// INT-CI-005: the rollback must survive request-context cancellation.
+	// The server (internal/server/server.go) wraps the handler in chi
+	// middleware.Timeout(cfg.Server.RequestTimeout, 300s by default); when a
+	// spawn exceeds it, the request ctx is cancelled and every
+	// exec.CommandContext(ctx, ...) in this closure used to die instantly —
+	// userdel never ran and the half-created agent (user without key/registry
+	// row) was left behind. The compensating actions therefore run under a
+	// context DETACHED from the request (context.WithoutCancel) bounded by
+	// its own timeout, and every outcome is recorded so the failure
+	// breadcrumb can show a partially-rolled-back agent.
+	rbRes := &rollbackResult{}
+	rollback := func() {
+		rollbackCtx, cancel := rollbackContext(ctx)
+		defer cancel()
+
 		// Free the port range first — the in-memory allocator leaks
 		// permanently if a failed spawn never releases it.
 		if portRangeAllocated {
 			m.portAlloc.Free(agentID)
+			rbRes.ok("port-range freed")
 		}
 		if createdUserSlice {
-			removeUserSliceLimits(ctx, agentID, m.logger)
+			if sliceErr := removeUserSliceLimits(rollbackCtx, agentID, m.logger); sliceErr != nil {
+				rbRes.err("slice-limits: " + sliceErr.Error())
+			} else {
+				rbRes.ok("slice-limits removed")
+			}
 		}
 		if createdUser {
-			m.logger.Warn("rolling back: removing user", "username", "bunker-"+agentID)
-			cmd := exec.CommandContext(ctx, "userdel", "-r", "bunker-"+agentID)
-			if out, err := cmd.CombinedOutput(); err != nil {
-				m.logger.Error("rollback userdel failed",
-					"agent_id", agentID,
-					"error", err,
-					"output", string(out),
-				)
-			}
+			removeAgentUser(rollbackCtx, agentID, m.logger, rbRes)
 		}
 		if keyFile != "" {
 			os.Remove(keyFile)
@@ -131,7 +142,37 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		// GAP-075: drop the scratch and private-/tmp instance directories so a
 		// failed spawn cannot leave a provisioned exchange point or tmp
 		// instance behind for an agent that does not exist.
-		m.removeIsolation(ctx, agentID)
+		m.removeIsolation(rollbackCtx, agentID)
+		rbRes.ok("isolation removed")
+	}
+
+	// INT-CI-005: every failure return from Spawn flows through this helper so
+	// the error names the stage, the journal carries an operator-readable
+	// breadcrumb, and slow-stage progress is attributable. `rollbackDone`
+	// distinguishes the one failure path that already rolled back itself
+	// (the durable-persist gate, which must also Unregister the tracker slot)
+	// from every other failure, which is rolled back exactly here.
+	var rollbackDone bool
+	fail := func(stage string, cause error) error {
+		if !rollbackDone {
+			rollback()
+		}
+		err := spawnStageErr(ctx, agentID, stage, cause)
+		m.logger.Error("spawn failed",
+			"agent_id", agentID,
+			"stage", stage,
+			"error", err,
+		)
+		ran, failedRb := rbRes.snapshot()
+		writeSpawnFailureBreadcrumb(m.logger, spawnBreadcrumb{
+			AgentID: agentID,
+			Stage:   stage,
+			CtxErr:  ctxErrText(ctx),
+			Error:   err.Error(),
+			Ran:     ran,
+			Failed:  failedRb,
+		})
+		return err
 	}
 
 	// ── Step 2: Create Linux user ──────────────────────────────────
@@ -148,8 +189,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 			// spawn response carries a working key for the same agent id.
 			m.logger.Info("user already exists; reusing for re-registration", "username", username)
 		} else {
-			cleanup()
-			return nil, fmt.Errorf("useradd %s failed: %w (output: %s)", username, err, string(out))
+			return nil, fail(StageUserCreate, fmt.Errorf("useradd %s failed: %w (output: %s)", username, err, string(out)))
 		}
 	} else {
 		createdUser = true
@@ -166,14 +206,12 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// exists before any session opens.
 	u, err := lookupAgentUser(username)
 	if err != nil {
-		cleanup()
-		return nil, fmt.Errorf("look up agent user %s for isolation provisioning: %w", username, err)
+		return nil, fail(StageIsolationProvision, fmt.Errorf("look up agent user %s for isolation provisioning: %w", username, err))
 	}
 	uid, _ := strconv.Atoi(u.Uid)
 	gid, _ := strconv.Atoi(u.Gid)
 	if err := m.provisionIsolation(ctx, agentID, username, uid, gid); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("provision isolation boundary for %s: %w", agentID, err)
+		return nil, fail(StageIsolationProvision, fmt.Errorf("provision isolation boundary for %s: %w", agentID, err))
 	}
 
 	// ── Step 3: Generate SSH keypair ───────────────────────────────
@@ -186,21 +224,18 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		"-C", "bunker-"+agentID,
 	)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("ssh-keygen failed: %w (output: %s)", err, string(out))
+		return nil, fail(StageKeygen, fmt.Errorf("ssh-keygen failed: %w (output: %s)", err, string(out)))
 	}
 	pubKeyFile := keyFile + ".pub"
 
 	// Read keys into memory.
 	privKeyBytes, err := os.ReadFile(keyFile)
 	if err != nil {
-		cleanup()
-		return nil, fmt.Errorf("read private key %s: %w", keyFile, err)
+		return nil, fail(StageKeygen, fmt.Errorf("read private key %s: %w", keyFile, err))
 	}
 	pubKeyBytes, err := os.ReadFile(pubKeyFile)
 	if err != nil {
-		cleanup()
-		return nil, fmt.Errorf("read public key %s: %w", pubKeyFile, err)
+		return nil, fail(StageKeygen, fmt.Errorf("read public key %s: %w", pubKeyFile, err))
 	}
 
 	// ── Step 4: Set up .ssh/authorized_keys with DOCKER_HOST env ──
@@ -212,13 +247,11 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 
 	m.logger.Info("setting up authorized_keys", "user", username)
 	if err := os.MkdirAll(sshDir, 0700); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("create .ssh dir %s: %w", sshDir, err)
+		return nil, fail(StageAuthorizedKeys, fmt.Errorf("create .ssh dir %s: %w", sshDir, err))
 	}
 	// Chown the .ssh directory to the user.
 	if out, err := exec.CommandContext(ctx, "chown", "-R", username, sshDir).CombinedOutput(); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("chown .ssh dir: %w (output: %s)", err, string(out))
+		return nil, fail(StageAuthorizedKeys, fmt.Errorf("chown .ssh dir: %w (output: %s)", err, string(out)))
 	}
 
 	// Prepend environment= to the public key line so Docker's SSH transport
@@ -235,12 +268,10 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	authKeysContent := envPrefix + " " + pubKeyLine + "\n"
 
 	if err := os.WriteFile(authKeysFile, []byte(authKeysContent), 0600); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("write authorized_keys: %w", err)
+		return nil, fail(StageAuthorizedKeys, fmt.Errorf("write authorized_keys: %w", err))
 	}
 	if out, err := exec.CommandContext(ctx, "chown", username, authKeysFile).CombinedOutput(); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("chown authorized_keys: %w (output: %s)", err, string(out))
+		return nil, fail(StageAuthorizedKeys, fmt.Errorf("chown authorized_keys: %w (output: %s)", err, string(out)))
 	}
 
 	// ── Step 4a: Provision host SSH key so bunkerd can SSH into the agent ──
@@ -255,23 +286,19 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	profilePath := filepath.Join(userHome, ".profile")
 	profileContent := fmt.Sprintf("# bunker: per-agent Docker socket and enforced private /tmp\nexport DOCKER_HOST=unix://%s\nexport TMPDIR=%s\n", dockerSockPath, config.IsolationTmpDir)
 	if err := os.WriteFile(profilePath, []byte(profileContent), 0644); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("write .profile: %w", err)
+		return nil, fail(StageAuthorizedKeys, fmt.Errorf("write .profile: %w", err))
 	}
 	if out, err := exec.CommandContext(ctx, "chown", username, profilePath).CombinedOutput(); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("chown .profile: %w (output: %s)", err, string(out))
+		return nil, fail(StageAuthorizedKeys, fmt.Errorf("chown .profile: %w (output: %s)", err, string(out)))
 	}
 
 	// ── Step 4c: Persist private key to the server's SSH directory ──
 	sshKeyPath := filepath.Join(m.cfg.Agent.SSHDir, agentID)
 	if err := os.MkdirAll(m.cfg.Agent.SSHDir, 0700); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("create ssh dir %s: %w", m.cfg.Agent.SSHDir, err)
+		return nil, fail(StageAuthorizedKeys, fmt.Errorf("create ssh dir %s: %w", m.cfg.Agent.SSHDir, err))
 	}
 	if err := os.WriteFile(sshKeyPath, privKeyBytes, 0600); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("write ssh private key to %s: %w", sshKeyPath, err)
+		return nil, fail(StageAuthorizedKeys, fmt.Errorf("write ssh private key to %s: %w", sshKeyPath, err))
 	}
 	m.logger.Info("persisted SSH private key", "path", sshKeyPath)
 
@@ -284,17 +311,16 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	unitName := "bunker-docker-" + agentID
 	m.logger.Info("starting rootless dockerd", "unit", unitName, "sock", dockerSockPath)
 
+	m.logger.Info("spawn entering stage", "agent_id", agentID, "stage", StageRootlessInstall)
 	// Create the socket directory.
 	sockDir := filepath.Dir(dockerSockPath)
 	if err := os.MkdirAll(sockDir, 0755); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("create docker sock dir %s: %w", sockDir, err)
+		return nil, fail(StageRootlessInstall, fmt.Errorf("create docker sock dir %s: %w", sockDir, err))
 	}
 	// Chown the socket directory to the agent user so dockerd can create the socket
 	// and the SSH transport can access it.
 	if out, err := exec.CommandContext(ctx, "chown", username, sockDir).CombinedOutput(); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("chown socket dir: %w (output: %s)", err, string(out))
+		return nil, fail(StageRootlessInstall, fmt.Errorf("chown socket dir: %w (output: %s)", err, string(out)))
 	}
 
 	// Legacy per-agent scratch under /run/bunker/<id>/tmp (mode 0700) for
@@ -303,12 +329,10 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// (pam_namespace per SSH session, PrivateTmp=yes per transient unit), and
 	// TMPDIR no longer points here.
 	if err := os.MkdirAll(tmpDir, 0700); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("create tmp dir %s: %w", tmpDir, err)
+		return nil, fail(StageRootlessInstall, fmt.Errorf("create tmp dir %s: %w", tmpDir, err))
 	}
 	if out, err := exec.CommandContext(ctx, "chown", username, tmpDir).CombinedOutput(); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("chown tmp dir: %w (output: %s)", err, string(out))
+		return nil, fail(StageRootlessInstall, fmt.Errorf("chown tmp dir: %w (output: %s)", err, string(out)))
 	}
 
 	// Determine resource limits: use request limits or server defaults
@@ -337,8 +361,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// agent user. We allocate a contiguous 65,536 UID/GID range starting from
 	// the user's own UID. This is the standard rootless Docker mapping.
 	if err := configureSubIDs(ctx, username); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("configure subuid/subgid for %s: %w", username, err)
+		return nil, fail(StageRootlessInstall, fmt.Errorf("configure subuid/subgid for %s: %w", username, err))
 	}
 
 	// Ensure an AppArmor profile exists for rootlesskit on Ubuntu 24.04+
@@ -355,8 +378,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// tools are not already present on the server.
 	rootlessBin := filepath.Join(userHome, "bin", "dockerd-rootless.sh")
 	if err := installRootlessDocker(ctx, username, userHome, m.logger); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("install rootless docker for %s: %w", username, err)
+		return nil, fail(StageRootlessInstall, fmt.Errorf("install rootless docker for %s: %w", username, err))
 	}
 
 	// Ensure an AppArmor profile exists for rootlesskit on Ubuntu 24.04+
@@ -379,10 +401,10 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// Limits are enforced by systemd through CPUQuota/MemoryMax, not by writing
 	// cgroup files directly. Read-back helpers in internal/resource use this
 	// path for metrics verification.
+	m.logger.Info("spawn entering stage", "agent_id", agentID, "stage", StageDockerdStart)
 	u, err = user.Lookup(username)
 	if err != nil {
-		cleanup()
-		return nil, fmt.Errorf("lookup user %s: %w", username, err)
+		return nil, fail(StageDockerdStart, fmt.Errorf("lookup user %s: %w", username, err))
 	}
 
 	// Rootless dockerd started via systemd-run --system --uid creates its Unix
@@ -402,12 +424,10 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// create the socket there.
 	rootlessRuntimeDir := filepath.Join("/run", "bunker", agentID, "run")
 	if err := os.MkdirAll(rootlessRuntimeDir, 0700); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("create rootless runtime dir %s: %w", rootlessRuntimeDir, err)
+		return nil, fail(StageDockerdStart, fmt.Errorf("create rootless runtime dir %s: %w", rootlessRuntimeDir, err))
 	}
 	if out, err := exec.CommandContext(ctx, "chown", username, rootlessRuntimeDir).CombinedOutput(); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("chown rootless runtime dir: %w (output: %s)", err, string(out))
+		return nil, fail(StageDockerdStart, fmt.Errorf("chown rootless runtime dir: %w (output: %s)", err, string(out)))
 	}
 
 	// The unit argv (including the GAP-075 PrivateTmp=yes property) is built by
@@ -435,8 +455,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	cmd = exec.CommandContext(ctx, "systemd-run", systemdArgs...)
 	cmd.Env = append(os.Environ(), rootlessEnv...)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("systemd-run rootless dockerd failed: %w (output: %s)", err, string(out))
+		return nil, fail(StageDockerdStart, fmt.Errorf("systemd-run rootless dockerd failed: %w (output: %s)", err, string(out)))
 	}
 
 	// ── Step 5b: Verify dockerd actually started ─────────────────────
@@ -446,8 +465,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// fail the spawn so the caller knows what went wrong.
 	if err := waitForDockerd(ctx, username, dockerSockPath, actualDockerSockPath, unitName, m.logger); err != nil {
 		m.logger.Error("dockerd failed to start; cleaning up agent", "agent_id", agentID, "error", err)
-		cleanup()
-		return nil, err
+		return nil, fail(StageDockerdStart, err)
 	}
 
 	// Enforce maxDockerContainers by asking the *just-started* rootless dockerd
@@ -461,12 +479,10 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	if maxDockerContainers > 0 {
 		containers, err := countAgentContainers(ctx, dockerSockPath)
 		if err != nil {
-			cleanup()
-			return nil, fmt.Errorf("count existing containers for %s: %w", username, err)
+			return nil, fail(StageContainerCap, fmt.Errorf("count existing containers for %s: %w", username, err))
 		}
 		if containers >= maxDockerContainers {
-			cleanup()
-			return nil, fmt.Errorf("max docker containers exceeded for agent %s: %d >= %d", agentID, containers, maxDockerContainers)
+			return nil, fail(StageContainerCap, fmt.Errorf("max docker containers exceeded for agent %s: %d >= %d", agentID, containers, maxDockerContainers))
 		}
 	}
 
@@ -477,10 +493,10 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// this point means the spec is valid.
 	imageRef := ""
 	if imageSpec != nil {
+		m.logger.Info("spawn entering stage", "agent_id", agentID, "stage", StageImageBuild)
 		built, err := m.imageBuilder.BuildValidated(ctx, agentID, imageSpec)
 		if err != nil {
-			cleanup()
-			return nil, fmt.Errorf("image spec build for %s: %w", agentID, err)
+			return nil, fail(StageImageBuild, fmt.Errorf("image spec build for %s: %w", agentID, err))
 		}
 		imageRef = built
 		m.logger.Info("customized image ready", "agent_id", agentID, "image", imageRef)
@@ -575,8 +591,9 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	if err := m.persistSpawn(rec); err != nil {
 		m.logger.Error("persisting agent spawn failed, rolling back", "agent_id", agentID, "error", err)
 		m.tracker.Unregister(agentID)
-		cleanup()
-		return nil, fmt.Errorf("persist agent spawn: %w", err)
+		rollback()
+		rollbackDone = true // this path already rolled back; fail() must not roll back twice
+		return nil, fail(StageRegister, fmt.Errorf("persist agent spawn: %w", err))
 	}
 
 	// ── Build response ─────────────────────────────────────────────
@@ -831,25 +848,4 @@ func applyUserSliceLimits(ctx context.Context, u *user.User, cpuQuota float64, m
 		return fmt.Errorf("daemon-reload: %w (output: %s)", err, string(out))
 	}
 	return nil
-}
-
-// removeUserSliceLimits removes the drop-in directory for the given agent's
-// slice and reloads systemd.  It is called during agent destroy to prevent
-// stale slice config from accumulating.
-func removeUserSliceLimits(ctx context.Context, agentID string, logger *slog.Logger) {
-	username := "bunker-" + agentID
-	u, err := user.Lookup(username)
-	if err != nil {
-		logger.Warn("cannot lookup user for slice cleanup", "username", username, "error", err)
-		return
-	}
-	sliceName := fmt.Sprintf("user-%s.slice", u.Uid)
-	dropinDir := filepath.Join("/etc/systemd/system", sliceName+".d")
-	if err := os.RemoveAll(dropinDir); err != nil && !os.IsNotExist(err) {
-		logger.Warn("failed to remove user slice drop-in", "slice", sliceName, "error", err)
-	} else {
-		logger.Info("removed user slice drop-in", "slice", sliceName)
-	}
-	cmd := exec.CommandContext(ctx, "systemctl", "daemon-reload")
-	_ = cmd.Run() // best-effort
 }
