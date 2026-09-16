@@ -1519,3 +1519,24 @@ tasks:
   status: complete
   created_at: '2026-09-16T15:45:57.471513+00:00'
   completed_at: '2026-09-16T16:28:02.033445+00:00'
+- id: INT-HOST-001
+  title: 'destroy un-lingers the agent user, plus a linger prune path and a host ratio
+    (corrected criteria: the CLI wiring line in cmd/bunker/main.go is in scope)'
+  criteria:
+  - go build ./... and go vet ./... exit 0, and go test ./internal/agent/ ./internal/cli/
+    -count=1 exits 0
+  - a unit test proves the destroy path issues loginctl disable-linger for the agent
+    user through the injected disableLinger seam, BEFORE userdel
+  - a unit test proves a failing loginctl disable-linger does NOT fail the destroy
+    (destroy still reports destroyed; the failure is only logged)
+  - a unit test proves the linger prune removes exactly the entries whose user no
+    longer exists and keeps every entry whose user exists (including root), and that
+    --dry-run mutates nothing
+  - commit 75ed7ef touches only internal/agent/manager_destroy.go and its linger test,
+    the new internal/cli/linger.go and linger_test.go, and the single command-registration
+    line in cmd/bunker/main.go; gofmt -l internal/agent internal/cli is empty
+  - a bare 'bunker linger' prints the host ratio (total entries, live users, stale)
+    read-only, and a missing linger directory is a clean no-op that exits 0
+  status: complete
+  created_at: '2026-09-16T17:26:25.122142+00:00'
+  completed_at: '2026-09-16T17:26:27.711332+00:00'
