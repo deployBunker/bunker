@@ -1566,3 +1566,27 @@ tasks:
   status: complete
   created_at: '2026-09-16T18:42:35.745423+00:00'
   completed_at: '2026-09-16T19:37:06.626000+00:00'
+- id: DF-BUNKER-14
+  title: bunker mount resolves the client-side SSH key and host instead of replaying
+    the daemon server-local command
+  criteria:
+  - 'C1 unit: the sshfs argument list built by internal/cli/mount.go uses the CLIENT
+    key path (~/.bunker/keys/<agent-id>, or an explicit --ssh-key/flag override) and
+    the client-resolved host, never the daemon-stored /etc/bunkerd/ssh/<agent-id>
+    IdentityFile path or the daemon-local host form; a new test in internal/cli/mount_test.go
+    fails on the pre-fix tree and passes after. C2 unit: when the local key file is
+    missing the command fails fast with an actionable message (spawn first / use --ssh-key)
+    and never executes sshfs with the server-local path. C3 unit: the requested mount
+    point replaces the daemon default and the retry/classification behaviour is preserved
+    (existing mount tests keep passing) while the final error no longer claims sshd
+    session limiting without evidence in the captured output. C4 live on bunker-mvp:
+    with the HEAD-built CLI and a freshly spawned agent, bunker mount <id> <dir> exits
+    0, the agent home is visible through the mount point, a file written through the
+    mount is readable inside the agent via bunker exec, unmount and destroy leave
+    no residue (user and linger entry gone); the pre-fix binary''s failure is captured
+    first as the A/B. C5 repo gates: gofmt -w applied, go build ./... , go vet ./...
+    and go test ./... -count=1 all pass on the committed tree and the commit carries
+    the repo co-author trailer.'
+  status: complete
+  created_at: '2026-09-16T20:00:43.230372+00:00'
+  completed_at: '2026-09-16T20:24:56.884966+00:00'
