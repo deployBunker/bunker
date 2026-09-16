@@ -1504,3 +1504,18 @@ tasks:
   status: complete
   created_at: '2026-09-16T15:14:00.610648+00:00'
   completed_at: '2026-09-16T15:36:29.269918+00:00'
+- id: INT-CI-007
+  title: 'explicit-ID spawn must not consume the client deadline: bring the systemd
+    user manager up deterministically (start user@<uid>.service after enable-linger,
+    reset-failed + one retry) and attribute the failure to the ''user-manager-start''
+    stage instead of returning a bare context-canceled'
+  criteria:
+  - go build ./... and go vet ./... exit 0; go test ./internal/agent/ -count=1 exits
+    0; new table-driven tests cover active-manager no-op, failed-then-reset-then-success,
+    both-fail attributed error containing the stage and unit name, caller-ctx-cancel
+    returning promptly, and delayed bus socket; gofmt -l internal/agent is empty;
+    commit touches only internal/agent/rootless.go plus its test file (and spawn_failure.go
+    only if a stage label is required)
+  status: complete
+  created_at: '2026-09-16T15:45:57.471513+00:00'
+  completed_at: '2026-09-16T16:28:02.033445+00:00'
