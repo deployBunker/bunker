@@ -36,6 +36,9 @@ func NewHostProvisionCommand() *cobra.Command {
 		agentGroup  string
 		tmpInstRoot string
 		asJSON      bool
+
+		daemonBinary    string
+		allowDaemonSkew bool
 	)
 
 	cmd := &cobra.Command{
@@ -105,10 +108,14 @@ Without --apply the command only prints the plan.`,
 				opts.HostTmpMaxBytes = uint64(hostTmpMax)
 			}
 			opts.SkipHostTmpCap = skipTmpCap
+			opts.DaemonBinary = daemonBinary
 			opts = opts.WithDefaults()
 
 			out := cmd.OutOrStdout()
+			errOut := cmd.ErrOrStderr()
 
+			// INT-DEMO-001: --status reports the skew reading but never
+			// gates on it. The override flag is meaningless there.
 			if showStatus {
 				st, err := opts.Status(ctx)
 				if err != nil {
@@ -131,6 +138,9 @@ Without --apply the command only prints the plan.`,
 				if !apply {
 					fmt.Fprintln(out, "dry run — pass --apply to remove the Bunker-managed host configuration")
 				}
+				// INT-DEMO-001: the uninstall path is deliberately NEVER gated
+				// by the daemon-skew check — returning the host to a shared /tmp
+				// must always remain possible, whatever daemon is installed.
 				rep, err := opts.RemoveTmpNamespace(ctx)
 				printReport(out, rep)
 				if err != nil {
@@ -150,6 +160,13 @@ Without --apply the command only prints the plan.`,
 
 			if !apply {
 				fmt.Fprintln(out, "dry run — pass --apply to make these changes")
+			}
+
+			// INT-DEMO-001: refuse (or, with --allow-daemon-skew, loudly warn
+			// about) an installed daemon older than the spawn-side isolation
+			// grant BEFORE anything is planned or written.
+			if err := opts.CheckDaemonSkew(ctx, allowDaemonSkew, errOut); err != nil {
+				return err
 			}
 
 			rep, err := opts.Apply(ctx, apply)
@@ -202,6 +219,8 @@ Without --apply the command only prints the plan.`,
 	// Kept as an alias for scripts written against the first GAP-075 revision.
 	cmd.Flags().StringVar(&agentGroup, "scratch-group", hostsetup.DefaultScratchGroup, "Deprecated alias of --agent-group")
 	cmd.Flags().StringVar(&tmpInstRoot, "private-tmp-root", hostsetup.DefaultTmpInstanceRoot, "pam_namespace /tmp instance parent")
+	cmd.Flags().StringVar(&daemonBinary, "daemon-binary", hostsetup.DefaultDaemonBinary, "Installed daemon binary the version-skew probe inspects (must report >= "+hostsetup.MinDaemonVersion+", the release that added the spawn-side isolation grant)")
+	cmd.Flags().BoolVar(&allowDaemonSkew, "allow-daemon-skew", false, "Proceed even when the installed daemon is older than "+hostsetup.MinDaemonVersion+" (prints a loud warning; agents it spawns will be denied SSH sessions until the daemon is upgraded)")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Emit machine-readable output (--status)")
 
 	return cmd
@@ -224,6 +243,14 @@ func printReport(out io.Writer, rep *hostsetup.Report) {
 func writeJSON(out io.Writer, opts hostsetup.Options, st hostsetup.Status) error {
 	payload := map[string]any{
 		"isolated": st.Isolated(),
+		"daemon_skew": map[string]any{
+			"state":             string(st.DaemonSkew),
+			"minimum_version":   hostsetup.MinDaemonVersion,
+			"installed_binary":  st.DaemonSkewBuild.Binary,
+			"installed_version": st.DaemonSkewBuild.Version,
+			"installed_commit":  st.DaemonSkewBuild.Commit,
+			"installed_built":   st.DaemonSkewBuild.Built,
+		},
 		"private_tmp": map[string]any{
 			"module_present":            st.TmpNamespace.ModulePresent,
 			"module_path":               st.TmpNamespace.ModulePath,

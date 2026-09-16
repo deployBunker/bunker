@@ -10,7 +10,10 @@ Idempotent, testable host provisioning for the agent isolation boundary
   defaults and applies the optional `Root` sandbox prefix, so tests can point the
   whole package at a temp tree instead of a real host. `WithDefaults` is
   idempotent (paths already inside `Root` are returned unchanged), because every
-  entry point calls it.
+  entry point calls it. `DaemonBinary` (default `DefaultDaemonBinary` =
+  `/usr/local/bin/bunkerd`, the same path `internal/systemd` writes into the
+  unit ExecStart) and `DaemonVersionRunner` (the version-probe seam, parallel to
+  `Runner`) feed the daemon version-skew check (`daemonversion.go`).
 - `Runner` — the command seam (`func(ctx, name, args ...string) ([]byte, error)`).
   Production uses `DefaultRunner`; tests inject a recorder that answers the
   probes (`getent`, `id`, `mountpoint`, `findmnt`) from simulated state and
@@ -112,6 +115,47 @@ Host `/tmp` cap (`tmpcap.go`):
   (asserted by `TestHostTmpCap_NeverTouchesFstab`).
 - `HostTmpStatus(ctx)` — fstype, live options/size, drop-in state.
 
+Daemon version skew (`daemonversion.go`, INT-DEMO-001):
+
+- The host half of GAP-075 fails CLOSED: the sshd PAM precondition denies every
+  `bunker-*` session unless the agent is in the isolation group, and that
+  membership is granted at SPAWN time by the daemon's isolation-provision stage.
+  A daemon older than the stage spawns agents WITHOUT the grant, so after a
+  host-provision every SSH session into a healthy agent is denied (bare ssh exit
+  254) while the agent is reported running — the live demo host lockout of
+  2026-09-16. The skew check makes installing the hardening over such a daemon
+  loud instead of silent.
+- `MinDaemonVersion` (`0.1.4`) — the first release carrying the grant; the
+  constant's comment names WHY. `Version` is the compared field (not `Commit`,
+  which is an unordered SHA, and not `Built`, which stamps the build machine):
+  it is injected by Makefile ldflags on release builds and falls back to the
+  module version for `go install`, so one comparison covers both binary kinds.
+  `versionAtLeast` compares dot-separated numerics (leading `v` ignored);
+  "unknown"/unparseable versions are NOT comparable and fail safe.
+- `ProbeDaemonVersion(ctx)` — runs `<DaemonBinary> --version` under
+  `DaemonProbeTimeout` (5s) and parses the `bunkerd`/`commit:`/`built:` block
+  (`ParseDaemonVersionOutput`). It NEVER fails the installer; it returns
+  `DaemonSkewOK` (equal/newer), `DaemonSkewSkewed` (older), or
+  `DaemonSkewUnknown` (binary absent / not executable / timed out /
+  unparseable) with a diagnostic error. A host may be provisioned before the
+  daemon exists, so UNKNOWN warns and proceeds — it never refuses.
+- `CheckDaemonSkew(ctx, allow, warn)` — the installer decision: SKEWED returns
+  the refusal (one actionable multi-line message: installed version/commit/
+  built, the required minimum, the operator-visible failure mode — bare exit
+  254 on exec/mount/cp against running agents — and BOTH remediations: upgrade
+  the daemon, or `bunker host-provision --uninstall --apply` back to a shared
+  /tmp; never hand-delete only the PAM drop-in, the remaining pam_exec
+  precondition fails closed); `allow` (`--allow-daemon-skew`) proceeds with a
+  loud WARNING; UNKNOWN prints the WARNING and proceeds; OK is silent.
+- `Apply` gates on the check BEFORE anything is planned or written; the
+  UNINSTALL path is deliberately never gated — returning the host to a shared
+  /tmp must always remain possible (and never probes the daemon).
+- `Status` carries `DaemonSkew` + `DaemonSkewBuild` (`--status` renders
+  `installed daemon (version skew)` /
+  `daemon vs minimum: OK|SKEWED|UNKNOWN (required daemon >= 0.1.4 — installed
+  <path>: version X, commit Y, built Z)`); the CLI `--status --json` payload
+  carries the same facts under `daemon_skew`.
+
 Orchestration (`status.go`):
 
 - `Status(ctx)` → `Status` with `Isolated()` — the single verdict the boundary
@@ -123,7 +167,9 @@ Orchestration (`status.go`):
   `ScratchRootModeOK` reports the exchange root's mode
   separately: a wide scratch root does not deny sessions, it silently widens the
   exchange tree, so it is flagged instead of folded into the isolation verdict.
-- `Apply(ctx, apply)` — scratch + namespace + host-/tmp cap in one call; with
+- `Apply(ctx, apply)` — daemon-skew check (INT-DEMO-001, `daemonversion.go`:
+  refuse an installed daemon older than `MinDaemonVersion` before anything is
+  planned or written) + scratch + namespace + host-/tmp cap in one call; with
   `apply=false` it renders the plan and mutates nothing.
 
 ## Conventions
@@ -269,3 +315,13 @@ Orchestration (`status.go`):
     driving both the fail-closed matrix and the status matrix: a row the helper
     denies but `--status` calls isolated is a false green, and that is exactly
     the bug the third revision fixed.
+12. **Host-side and daemon-side hardening versions skew, and the skew is
+    silent until it locks every agent out.** Any host config that DEPENDS on a
+    daemon capability (here: the spawn-time isolation-group grant) must probe
+    the installed daemon before installing, refuse on a skew older than the
+    documented minimum, and treat a failed probe as UNKNOWN (warn, never
+    refuse — the daemon may legitimately not be installed yet). Keep the
+    uninstall path exempt: the escape hatch must outlive any skew. Test the
+    daemon probe through its own seam (`DaemonVersionRunner`), never the real
+    binary — a dev host with a stale bunkerd must not fail the suite (a stale
+    `0.1.3` binary is exactly what the INT-DEMO-001 guard refuses).

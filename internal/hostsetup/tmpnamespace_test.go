@@ -22,6 +22,14 @@ func sshSandbox(t *testing.T, rec *recorder, pamBody string) (Options, string) {
 	t.Helper()
 	root := rec.root
 	o := Options{Runner: rec.run, Root: root}
+	// The daemon probe must not reach the REAL installed binary either: a
+	// dev/test host may carry an old bunkerd (this repo's own CI once did),
+	// so the sandbox answers it with a current fixture. A test that studies
+	// the daemon-skew decision overrides DaemonVersionRunner afterwards (see
+	// daemonversion_test.go).
+	o.DaemonVersionRunner = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		return daemonVersionFixture("0.1.4", "abcdef0", "2026-09-12T00:00:00Z"), nil
+	}
 	o = o.WithDefaults()
 
 	if err := os.MkdirAll(filepath.Dir(o.SSHDConfigPath), 0o755); err != nil {

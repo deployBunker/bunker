@@ -133,6 +133,20 @@ type Options struct {
 
 	// Runner executes host commands. Nil means DefaultRunner.
 	Runner Runner
+
+	// DaemonBinary is the installed daemon binary the version-skew probe
+	// (INT-DEMO-001) inspects before installing: `<DaemonBinary> --version`
+	// must report at least MinDaemonVersion, because older daemons do not
+	// grant isolation-group membership at spawn time and the fail-closed PAM
+	// precondition would then deny every agent session. It defaults to the
+	// same path internal/systemd uses for the unit ExecStart, so the probe
+	// inspects the binary systemd actually runs. Apply gates on it; the
+	// uninstall path never does.
+	DaemonBinary string
+	// DaemonVersionRunner executes the daemon version probe. Nil means
+	// DefaultRunner. It is its own seam (not Runner) so tests can fake the
+	// daemon's --version answer without pretending to be the whole host.
+	DaemonVersionRunner DaemonVersionRunner
 }
 
 // Defaults for every field of Options. They are exported so docs, tests and
@@ -367,6 +381,9 @@ func (o Options) WithDefaults() Options {
 	}
 	if o.HostTmpMaxBytes == 0 {
 		o.HostTmpMaxBytes = DefaultHostTmpMaxBytes
+	}
+	if o.DaemonBinary == "" {
+		o.DaemonBinary = DefaultDaemonBinary
 	}
 	o.ScratchRoot = o.applyRoot(o.ScratchRoot)
 	o.TmpInstanceRoot = o.applyRoot(o.TmpInstanceRoot)

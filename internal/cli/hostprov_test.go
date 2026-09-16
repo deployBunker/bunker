@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -123,10 +125,21 @@ func TestHostProvisionCommand_DryRunAndStatus(t *testing.T) {
 	})
 
 	t.Run("dry run prints a plan and mutates nothing", func(t *testing.T) {
+		// The plan path probes the INSTALLED daemon (INT-DEMO-001), so this
+		// subtest points --daemon-binary at a fixture reporting a current
+		// version: the test must hold on any host, whatever daemon is
+		// installed there. The refusal itself (older daemon) is covered by
+		// the daemon-skew decision tests in internal/hostsetup.
+		dir := t.TempDir()
+		bin := filepath.Join(dir, "bunkerd-version-fixture")
+		script := "#!/bin/sh\necho 'bunkerd 0.1.4'\necho '  commit:     abcdef0'\necho '  built:      2026-09-12T00:00:00Z'\n"
+		if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
 		cmd := NewHostProvisionCommand()
 		var out bytes.Buffer
 		cmd.SetOut(&out)
-		cmd.SetArgs([]string{})
+		cmd.SetArgs([]string{"--daemon-binary", bin})
 		if err := cmd.ExecuteContext(context.Background()); err != nil {
 			t.Fatalf("host-provision (dry run): %v", err)
 		}

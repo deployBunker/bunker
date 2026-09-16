@@ -3,6 +3,7 @@ package hostsetup
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 )
@@ -21,6 +22,25 @@ type Status struct {
 	ScratchRootModeOK bool
 	TmpNamespace      TmpNamespaceState
 	HostTmp           HostTmpState
+	// DaemonSkew is the daemon version-skew reading (INT-DEMO-001): is the
+	// installed daemon new enough to grant isolation-group membership at
+	// spawn time? OK (equal/newer — the hardening is safe), SKEWED (older —
+	// a refused install would deny every agent session), or UNKNOWN (the
+	// probe could not rule the skew out: binary absent/not executable/timed
+	// out/unparseable). A host may be provisioned before the daemon exists,
+	// so UNKNOWN is a warning, not a verdict against isolation.
+	DaemonSkew      DaemonProbeState
+	DaemonSkewBuild DaemonBuild
+}
+
+// DaemonSkewString renders the skew field for Status.String(): the state,
+// the installed revision, and the required minimum.
+func (s Status) DaemonSkewString() string {
+	detail := "required daemon >= " + MinDaemonVersion
+	if s.DaemonSkewBuild.Binary != "" {
+		detail += " — installed " + s.DaemonSkewBuild.Binary + ": " + s.DaemonSkewBuild.SkewVersion()
+	}
+	return string(s.DaemonSkew) + " (" + detail + ")"
 }
 
 // Isolated answers the one question the isolation boundary exists for: does
@@ -73,6 +93,8 @@ func (s Status) String() string {
 	fmt.Fprintf(&b, "  live size=:            %d\n", s.HostTmp.SizeBytes)
 	fmt.Fprintf(&b, "  drop-in present:       %v (%s)\n", s.HostTmp.DropInPresent, s.HostTmp.DropInPath)
 	fmt.Fprintf(&b, "  drop-in size=:         %d\n", s.HostTmp.DropInCappedBytes)
+	fmt.Fprintf(&b, "installed daemon (version skew)\n")
+	fmt.Fprintf(&b, "  daemon vs minimum:     %s\n", s.DaemonSkewString())
 	return b.String()
 }
 
@@ -161,6 +183,10 @@ func (o Options) Status(ctx context.Context) (Status, error) {
 		return st, err
 	}
 	st.HostTmp = host
+
+	build, state, _ := o.ProbeDaemonVersion(ctx)
+	st.DaemonSkew = state
+	st.DaemonSkewBuild = build
 	return st, nil
 }
 
@@ -172,6 +198,17 @@ func (o Options) Status(ctx context.Context) (Status, error) {
 func (o Options) Apply(ctx context.Context, apply bool) (*Report, error) {
 	o = o.WithDefaults()
 	combined := &Report{}
+
+	// INT-DEMO-001: refuse (or, with the operator override, warn about) an
+	// installed daemon older than MinDaemonVersion BEFORE anything is
+	// planned or written. On a skewed daemon the isolation-provision spawn
+	// stage does not exist, every spawned agent stays out of the isolation
+	// group and the fail-closed PAM precondition denies every agent session.
+	// apply only widens what this run may DO: the plan must already tell the
+	// truth.
+	if err := o.CheckDaemonSkew(ctx, false, io.Discard); err != nil {
+		return combined, err
+	}
 
 	if apply {
 		scratch, err := o.EnsureSharedScratch(ctx)
