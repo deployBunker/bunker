@@ -17,6 +17,55 @@ import (
 // rootlessInstallURL is the official Docker rootless extras installer.
 const rootlessInstallURL = "https://get.docker.com/rootless"
 
+// userManagerWaitTimeout bounds the deterministic bring-up of the systemd user
+// manager (start attempts + bus-socket wait). The wait must never grow with the
+// caller's request deadline: INT-CI-007 showed an explicit-ID spawn burning the
+// full 300s client deadline in a passive wait that could never succeed because
+// the idempotent enable-linger restarted nothing after the unit was stopped.
+const userManagerWaitTimeout = 30 * time.Second
+
+// userManagerWaitTimeoutOverride lets tests shrink the budget to milliseconds.
+// 0 means "use userManagerWaitTimeout". Package-level var on purpose: it is a
+// test seam, not operator configuration.
+var userManagerWaitTimeoutOverride time.Duration
+
+// userManagerPollInterval is the bus-socket poll cadence. Package-level var so
+// tests can tighten it without real sleeping.
+var userManagerPollInterval = 200 * time.Millisecond
+
+// userManagerStartStage names the deterministic bring-up sub-stage in error
+// text. The spawn-level stage stays rootless-install (the failure happens
+// inside it); this label makes the journal/breadcrumb grep-able for the exact
+// step that failed (INT-CI-007 attribution requirement).
+const userManagerStartStage = "user-manager-start"
+
+// lingerDir is the systemd linger directory. Its entry count is reported on a
+// failed bring-up because thousands of stale linger entries (INT-CI-007: 8024
+// for 2 bunker users) starve user-manager starts host-wide. Var so tests can
+// point it at a temp directory and assert a real count.
+var lingerDir = "/var/lib/systemd/linger"
+
+// systemRunner executes a system command and returns its combined output.
+type systemRunner func(ctx context.Context, name string, args ...string) ([]byte, error)
+
+// runSystemCmd is the production runner: a plain exec with combined output.
+func runSystemCmd(ctx context.Context, name string, args ...string) ([]byte, error) {
+	return exec.CommandContext(ctx, name, args...).CombinedOutput()
+}
+
+// userManagerRunner executes systemctl/loginctl for the user-manager bring-up
+// path. Package-level var so tests can inject a fake and never touch real
+// systemd.
+var userManagerRunner systemRunner = runSystemCmd
+
+// userManagerWaitBudget returns the effective bring-up budget.
+func userManagerWaitBudget() time.Duration {
+	if userManagerWaitTimeoutOverride > 0 {
+		return userManagerWaitTimeoutOverride
+	}
+	return userManagerWaitTimeout
+}
+
 // removeMountsUnder lazily unmounts any filesystems mounted under dir. On
 // desktop-flavoured hosts (Ubuntu with GNOME packages), the systemd user
 // manager starts gvfsd-fuse for the agent user, mounting a FUSE filesystem
@@ -152,6 +201,14 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 	if out, err := exec.CommandContext(ctx, "loginctl", "enable-linger", username).CombinedOutput(); err != nil {
 		return fmt.Errorf("enable linger for %s: %w (output: %s)", username, err, string(out))
 	}
+	// enable-linger is idempotent: when lingering is ALREADY recorded for the
+	// user (CI hosts re-spawn the same explicit agent ID repeatedly) it takes
+	// no start action, and the unit we stopped two steps above stays down. So
+	// bring the manager up deterministically instead of waiting passively
+	// (INT-CI-007: the passive wait burned the whole 300s request deadline).
+	if err := ensureUserManagerRunning(ctx, uid, logger); err != nil {
+		return err
+	}
 	if err := waitForUserManager(ctx, stdRuntimeDir); err != nil {
 		return fmt.Errorf("user manager did not start for %s: %w", username, err)
 	}
@@ -262,27 +319,175 @@ include <tunables/global>
 	return nil
 }
 
+// userManagerState captures the unit's last observed state for attribution.
+type userManagerState struct {
+	// active is the last `systemctl is-active` output (e.g. "active", "failed").
+	active string
+	// result is the last `systemctl show -p Result --value` output when known.
+	result string
+}
+
+// describe renders the state as the single-line attribution fragment used in
+// error text: "unit user@1002.service: is-active=failed (Result=exit-code)".
+func (s userManagerState) describe(unit string) string {
+	msg := fmt.Sprintf("unit %s: is-active=%s", unit, s.active)
+	if s.result != "" {
+		msg += fmt.Sprintf(" (Result=%s)", s.result)
+	}
+	return msg
+}
+
+// fetchUserManagerState queries systemctl for the unit's is-active and Result
+// properties. Best-effort: on query failure the fields carry whatever systemctl
+// printed (its own error text still aids attribution).
+func fetchUserManagerState(ctx context.Context, unit string) userManagerState {
+	state := userManagerState{}
+	if out, err := userManagerRunner(ctx, "systemctl", "is-active", unit); err != nil {
+		state.active = strings.TrimSpace(string(out))
+		if state.active == "" {
+			state.active = "query-error: " + err.Error()
+		}
+	} else {
+		state.active = strings.TrimSpace(string(out))
+	}
+	if out, err := userManagerRunner(ctx, "systemctl", "show", "-p", "Result", "--value", unit); err == nil {
+		state.result = strings.TrimSpace(string(out))
+	}
+	return state
+}
+
+// startUserManagerUnit starts the unit. It returns the combined output alongside
+// the error so the retry loop can attribute a failed attempt.
+func startUserManagerUnit(ctx context.Context, unit string) ([]byte, error) {
+	return userManagerRunner(ctx, "systemctl", "start", unit)
+}
+
+// countLingerEntries counts directory entries under the systemd linger
+// directory. This is diagnostic only: a huge count (INT-CI-007: 8024 stale
+// entries for 2 bunker users) means logind is churning on stale linger state
+// and the HOST, not the agent, is starving the user-manager start.
+func countLingerEntries() int {
+	entries, err := os.ReadDir(lingerDir)
+	if err != nil {
+		return -1
+	}
+	return len(entries)
+}
+
+// ensureUserManagerRunning brings the systemd user manager up deterministically
+// instead of waiting passively on the idempotent enable-linger. When the unit
+// is already active it does nothing (the healthy spawn path gains zero extra
+// start attempts). Otherwise it starts the unit, and on a failed start runs
+// `systemctl reset-failed` and retries ONCE — a unit that previously failed
+// stays in the "failed" state until reset, and systemd refuses plain starts of
+// a failed unit. When the unit still is not active after the bounded attempts,
+// it returns an attribution error naming the sub-stage (user-manager-start),
+// the unit, its last observed state, and the host's linger-entry count, and
+// emits exactly one WARN naming the same facts.
+//
+// The caller's context cancellation is honored: it is returned promptly (so a
+// client that gave up does not wait out the full budget) but it is never
+// passed off as the bring-up failure — the attribution error carries the real
+// unit state instead of a bare "context canceled" (INT-CI-007).
+func ensureUserManagerRunning(ctx context.Context, uid int, logger *slog.Logger) error {
+	unit := fmt.Sprintf("user@%d.service", uid)
+
+	if state := fetchUserManagerState(ctx, unit); state.active == "active" {
+		return nil // healthy path: already up, zero start attempts
+	}
+
+	var lastState userManagerState
+	for attempt := 1; attempt <= 2; attempt++ {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		out, startErr := startUserManagerUnit(ctx, unit)
+		if startErr == nil {
+			lastState = fetchUserManagerState(ctx, unit)
+			if lastState.active == "active" {
+				return nil
+			}
+		} else {
+			// Attribute the failed attempt: query the unit's Result (best
+			// effort), then clear the failed state so the retry's start is
+			// not refused for a unit stuck in the "failed" state.
+			lastState = fetchUserManagerState(ctx, unit)
+			if startErrMsg := strings.TrimSpace(string(out)); startErrMsg != "" {
+				lastState.result = startErrMsg
+			}
+			_, _ = userManagerRunner(ctx, "systemctl", "reset-failed", unit)
+		}
+		if logger != nil {
+			logger.Warn("user manager start attempt did not bring the unit active; retrying"+"\n",
+				slog.Group("retry",
+					slog.Int("attempt", attempt),
+					slog.String("stage", userManagerStartStage),
+				),
+				"unit", unit,
+				"is_active", lastState.active,
+			)
+		}
+	}
+
+	state := lastState
+	if state.active == "" {
+		state = fetchUserManagerState(ctx, unit)
+	}
+	lingerCount := countLingerEntries()
+	if logger != nil {
+		logger.Warn("systemd user manager did not start; host linger churn is a common cause",
+			"unit", unit,
+			"state", state.describe(unit),
+			"linger_entries", lingerCount,
+		)
+	}
+	return fmt.Errorf("%s failed: %s: linger_entries=%d",
+		userManagerStartStage, state.describe(unit), lingerCount)
+}
+
 // waitForUserManager polls for the systemd user manager to create the runtime
-// directory. Enabling linger starts the user manager asynchronously, so we
-// wait until the bus socket is present before running systemctl --user.
+// directory. ensureUserManagerRunning starts the manager deterministically
+// before this is called; the poll is bounded by its OWN package-level budget
+// (userManagerWaitTimeout, overridable via userManagerWaitTimeoutOverride in
+// tests) and never inherits the caller's request deadline — a client deadline
+// expiry must surface as an attributable user-manager error, not as a bare
+// 300s "context deadline exceeded" (INT-CI-007). Caller cancellation is still
+// honored promptly via ctx.Err().
 func waitForUserManager(ctx context.Context, runtimeDir string) error {
 	busPath := filepath.Join(runtimeDir, "bus")
-	ticker := time.NewTicker(200 * time.Millisecond)
+	ticker := time.NewTicker(userManagerPollInterval)
 	defer ticker.Stop()
-	deadline, ok := ctx.Deadline()
-	if !ok {
-		deadline = time.Now().Add(5 * time.Second)
-	}
+	deadline := time.Now().Add(userManagerWaitBudget())
+	// detached is set once the CALLER'S DEADLINE expires: from then on the
+	// poll runs on its own budget. A caller deadline must never be inherited
+	// as the reported cause (INT-CI-007: the 300s client deadline surfaced as
+	// a bare "context deadline exceeded"); genuine Cancellation is still
+	// honored promptly at every iteration.
+	detached := false
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			if _, err := os.Stat(busPath); err == nil {
-				return nil
+			if ctx.Err() == context.Canceled {
+				return ctx.Err()
 			}
-			if time.Now().After(deadline) {
-				return fmt.Errorf("timeout waiting for %s", busPath)
+			detached = true
+		case <-ticker.C:
+		}
+		if _, err := os.Stat(busPath); err == nil {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timeout after %v waiting for %s (stage %s)",
+				userManagerWaitBudget(), busPath, userManagerStartStage)
+		}
+		if detached {
+			// The caller's Done channel is closed (deadline), so selecting on
+			// it again would return instantly and spin the loop hot. Sleep
+			// one poll interval instead; a later genuine cancel() surfaces at
+			// the check below within one interval.
+			time.Sleep(userManagerPollInterval)
+			if ctx.Err() == context.Canceled {
+				return ctx.Err()
 			}
 		}
 	}
