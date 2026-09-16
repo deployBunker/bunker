@@ -1550,3 +1550,19 @@ tasks:
   status: complete
   created_at: '2026-09-16T17:37:34.886930+00:00'
   completed_at: '2026-09-16T18:31:44.334943+00:00'
+- id: INT-CI-008
+  title: 'Regression job red: user manager start fails because the agent runtime dir
+    was removed (pam_systemd: Failed to stat /run/user/<uid>)'
+  criteria:
+  - 'internal/agent/rootless.go ensures the agent systemd runtime dir /run/user/<uid>
+    exists and is owned by the agent uid BEFORE systemctl start user@<uid>.service,
+    and the fresh-uid path issues no systemctl stop user@<uid>.service, no loginctl
+    terminate-user and no rm -rf of the runtime dir (unit-tested via the existing
+    userManagerRunner seam). A failed start is attributed: the returned error and
+    WARN carry the unit reason from a bounded journalctl tail, not only is-active/Result.
+    go build ./..., go vet ./... and gofmt -l are clean and go test ./internal/agent/
+    -count=1 passes. The commit touches internal/agent code and tests only (no workflows,
+    proto or CLI), with exactly one Co-authored-by trailer.'
+  status: complete
+  created_at: '2026-09-16T18:42:35.745423+00:00'
+  completed_at: '2026-09-16T19:37:06.626000+00:00'
