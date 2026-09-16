@@ -28,9 +28,11 @@ jobs:
           # for the version-authority check (GAP-038).
           fetch-depth: 0
 
+      # Toolchain sourced from go.mod (QA-BUNKER-15): the declared CI version must match the
+      # required one, or every job silently GOTOOLCHAIN-downloads a second toolchain.
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version-file: "go.mod"
 
       - uses: bufbuild/buf-setup-action@v1
         with:
@@ -180,7 +182,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version-file: "go.mod"
 
       - uses: bufbuild/buf-setup-action@v1
         with:
@@ -254,7 +256,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version-file: "go.mod"
 
       - uses: bufbuild/buf-setup-action@v1
         with:
