@@ -1618,3 +1618,14 @@ tasks:
   status: complete
   created_at: '2026-09-16T21:52:12.542711+00:00'
   completed_at: '2026-09-16T22:37:01.479252+00:00'
+- id: DF-BUNKER-15
+  title: Document private tmp provisioning prerequisite
+  criteria:
+  - README accurately states fresh unprovisioned hosts share /tmp; Quick Start includes
+    host-provision plan/apply and status verification before spawning; documents daemon
+    skew requirements and correct --daemon-binary path without claiming automatic
+    isolation; examples match current CLI help; documentation-only change, no production
+    behavior changes.
+  status: complete
+  created_at: '2026-09-16T22:50:14.311576+00:00'
+  completed_at: '2026-09-16T23:07:21.046134+00:00'
