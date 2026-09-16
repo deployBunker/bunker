@@ -10,6 +10,15 @@
 # test window).
 set -uo pipefail
 
+# INT-CI-006: the hardcoded 300s go-test budget equaled the suite's real cost
+# on this runner (22 real spawns; run 35106585699 died at exactly 300s while
+# still progressing), so the job reddened intermittently with no code change.
+# 780s (13m) keeps strict headroom under the CI step's timeout-minutes: 15
+# (900s) so this script's EXIT-trap leak cleanup still gets room; a genuine
+# hang now takes 13m to red — the job still fails, and the budget line below
+# makes the timeout self-attributing.
+ROOT_SUITE_TIMEOUT="${ROOT_SUITE_TIMEOUT:-780s}"
+
 SNAP_PASSWD="$(mktemp /tmp/root-suite-passwd-XXXXXX)"
 SNAP_KEYS="$(mktemp /tmp/root-suite-keys-XXXXXX)"
 SNAP_RUN="$(mktemp /tmp/root-suite-run-XXXXXX)"
@@ -52,4 +61,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-go test -count=1 -run 'TestSpawn|TestCgroup|TestConcurrency' ./... -timeout 300s
+echo "root-suite: go test budget $ROOT_SUITE_TIMEOUT (CI step allows 15m; remainder is for leak cleanup)"
+go test -count=1 -run 'TestSpawn|TestCgroup|TestConcurrency' ./... -timeout "$ROOT_SUITE_TIMEOUT"
+rc=$?
+echo "root-suite: go test finished rc=$rc budget=$ROOT_SUITE_TIMEOUT"
+exit "$rc"
