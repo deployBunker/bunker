@@ -83,6 +83,46 @@ func unitAbsenceFailure(out []byte) bool {
 	return false
 }
 
+// lookupUser resolves a username through the system user database. Package-
+// level seam: tests inject a fake so destroy never inspects the ambient
+// /etc/passwd; production code never swaps it.
+var lookupUser = func(username string) (*user.User, error) {
+	return user.Lookup(username)
+}
+
+// disableLinger runs `loginctl disable-linger <username>` and returns its
+// combined output. Package-level seam (mirrors disableUserUnit above): tests
+// inject a fake loginctl so the destroy path is exercised without touching
+// the host's systemd state; production code never swaps it.
+var disableLinger = func(ctx context.Context, username string) ([]byte, error) {
+	return exec.CommandContext(ctx, "loginctl", "disable-linger", username).CombinedOutput()
+}
+
+// disableAgentLinger runs `loginctl disable-linger <username>` and returns
+// whether the call was attempted. It is skipped when username is empty or the
+// user is already gone — there is no linger entry to disable for a user that
+// does not resolve, and loginctl would only report the absence. Callers treat
+// every outcome as best-effort: an error is logged (WARN) and the destroy
+// proceeds exactly as before (INT-HOST-001).
+func disableAgentLinger(ctx context.Context, username string, logger *slog.Logger) bool {
+	if username == "" {
+		return false
+	}
+	if _, err := lookupUser(username); err != nil {
+		logger.Debug("skipping linger disable: user absent",
+			"username", username, "error", err)
+		return false
+	}
+	out, err := disableLinger(ctx, username)
+	if err != nil {
+		logger.Warn("loginctl disable-linger failed (continuing destroy)",
+			"username", username, "error", err, "output", string(out))
+		return true
+	}
+	logger.Debug("disabled linger for agent user", "username", username)
+	return true
+}
+
 func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) (*v1.DestroyAgentResponse, error) {
 	// Step 0: validate agent_id
 	if agentID == "" || !validAgentID.MatchString(agentID) {
@@ -124,7 +164,7 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	// created under /run/user/<uid>.
 	var uid string
 	userPresent := true
-	if u, err := user.Lookup(username); err == nil {
+	if u, err := lookupUser(username); err == nil {
 		uid = u.Uid
 	} else {
 		userPresent = false
@@ -179,6 +219,16 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	// respawned children) can still be alive here. Waiting keeps the non-force
 	// path below from treating a slow-shutdown agent as not_found.
 	waitAgentProcessesExit(ctx, username, m.logger)
+
+	// Step 2c (INT-HOST-001): disable systemd linger so the per-agent linger
+	// file goes away WITH the agent. spawn enables linger on every create and
+	// no destroy path ever disabled it: every destroyed agent left
+	// /var/lib/systemd/linger/<user> behind forever (8024 entries for 2 live
+	// users on the demo host; user-manager starts starved host-wide). This
+	// must run BEFORE userdel -rf (Step 3) because the username must still
+	// resolve, and it is best-effort: a failure is logged (WARN) and the
+	// destroy proceeds exactly as before.
+	disableAgentLinger(ctx, username, m.logger)
 
 	// Step 3: Remove the Linux user
 	cmd := exec.CommandContext(ctx, "userdel", "-rf", username)
