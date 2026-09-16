@@ -1374,3 +1374,15 @@ tasks:
   status: complete
   created_at: '2026-09-16T08:33:08.287803+00:00'
   completed_at: '2026-09-16T09:01:26.494026+00:00'
+- id: SPEC-IDX-1
+  title: "specs/_index.md \u2014 landing index for the spec suite (reading order +\
+    \ cross-links)"
+  criteria:
+  - specs/_index.md exists and links every file in specs/ (api.md, architecture.md,
+    agent-lifecycle.md, container-mode.md, agent-tmp-isolation.md, containment-disclosure.md);
+    each entry states what the doc covers, who should read it, and its honest status;
+    reading order for operator/integrator/contributor; no broken relative links; docs-only
+    diff (no .go, no .github/workflows changes)
+  status: complete
+  created_at: '2026-09-16T09:08:33.901572+00:00'
+  completed_at: '2026-09-16T09:17:00.485178+00:00'
