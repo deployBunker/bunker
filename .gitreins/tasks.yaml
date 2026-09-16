@@ -1476,3 +1476,16 @@ tasks:
   status: complete
   created_at: '2026-09-16T14:16:03.880998+00:00'
   completed_at: '2026-09-16T14:34:57.665010+00:00'
+- id: INT-CI-006
+  title: 'Root-suite CI job budget cliff: go test -timeout 300s equals the suite''s
+    real wall clock (intermittent ''panic: test timed out after 5m0s'' with zero code
+    change)'
+  criteria:
+  - scripts/root-suite.sh passes -timeout "$ROOT_SUITE_TIMEOUT" (default 780s) to
+    the SAME -run 'TestSpawn|TestCgroup|TestConcurrency' ./... selection, prints the
+    budget and the go-test rc in the step log, stays under the CI step's 15m timeout-minutes,
+    and bash -n is clean; fake-go seam proof shows the override reaching the go test;
+    diff = exactly that one file
+  status: complete
+  created_at: '2026-09-16T15:02:23.085494+00:00'
+  completed_at: '2026-09-16T15:07:27.621137+00:00'
