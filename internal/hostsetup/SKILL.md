@@ -117,7 +117,10 @@ Orchestration (`status.go`):
 - `Status(ctx)` → `Status` with `Isolated()` — the single verdict the boundary
   exists for (three modules + drop-in rule/owner/mode + helper trust chain +
   intact PAM block + agent group + a block naming that group + instance parent
-  presence/owner/mode). `ScratchRootModeOK` reports the exchange root's mode
+  presence/owner/mode). Ownership checks are gated the way the runtime helper
+  applies them (`if [ "$(id -u)" = 0 ]`): as non-root they are reported as
+  unverifiable rather than passing, while modes are always checked.
+  `ScratchRootModeOK` reports the exchange root's mode
   separately: a wide scratch root does not deny sessions, it silently widens the
   exchange tree, so it is flagged instead of folded into the isolation verdict.
 - `Apply(ctx, apply)` — scratch + namespace + host-/tmp cap in one call; with
@@ -185,6 +188,30 @@ Orchestration (`status.go`):
   foreign bare rule, a foreign optioned rule and a foreign `pam_succeed_if` rule
   both BEFORE and AFTER the managed block, and compares the uninstalled file
   byte-for-byte.
+- `battery_test.go` (dc45cdb) pins the two GAP-075 semantics the LIVE E2E
+  battery (`e2e-full-battery.sh`) initially got wrong: (1) the summary block
+  must be executed for real under the battery's `set -euo pipefail` and its
+  exit code must equal the FAIL count — a bare `exit 0` used to keep the CI E2E
+  step green while section 15 reported failures and never printed VERIFY-PASS;
+  (2) the per-agent scratch cap must be read as BYTES from `statfs` (validated
+  digits before any arithmetic) and proved to be its own tmpfs mount — the old
+  script compared the human `size=16384k` mount OPTION against the byte count
+  (never equal) and then aborted the `-le` arithmetic ("integer expression
+  expected"), silently skipping the over-cap ENOSPC proof. The battery's
+  capacity checks are therefore AUTHORITATIVE: over-cap behaviour is asserted
+  with real bytes, not human strings.
+- `ciwiring_test.go` (06865bc) statically pins WHICH binaries the CI regression
+  suite exercises. On run 34778344738 the self-hosted runner resolved the bare
+  `bunker`/`bunkerd` invocations of `regression-tests.sh` through PATH to the
+  stale `/usr/local` host baseline — a build predating the GAP-075 private-/tmp
+  + PAM boundary setup — so the Regression suite job failed 31 PASS / 2 FAIL
+  (`exec whoami returns agent username`, `exec propagates exit code`) while the
+  run-level status stayed green (`continue-on-error: true`) and the E2E battery
+  never ran. The workflow now exports the just-built workspace binaries FIRST
+  on PATH and asserts `command -v` resolves to `${{ github.workspace }}/…`
+  before running the suite; the test reads `.github/workflows/ci.yml` and
+  fails in `go test ./...` on any push that drops the PATH export, the
+  resolution proof, or repoints the battery at `/usr/local`.
 
 ## Pitfalls
 

@@ -25,6 +25,7 @@
 ## Test Patterns
 
 - `skills_test.go` covers: InitAgentSkills idempotency, CleanupAgentSkills with missing directory, missing agentID errors.
+- Tests are HERMETIC since 8b29dcf (QA-BUNKER-12): `testConfig(t)` takes the base directory from `t.TempDir()`, replacing the old shared `os.TempDir()/bunker-test` path — that fixed path made the suite fail on hosts where a root-owned `/tmp/bunker-test` already existed (agent workspaces could not be created under it), and parallel runs could collide. All manual `os.RemoveAll` cleanups were dropped; `t.TempDir()` owns the lifecycle. The failure mode to remember: any new test in this package must take paths from `t.TempDir()`, never from `os.TempDir()` — a shared absolute temp path re-imports both the root-owned-directory failure and cross-run pollution.
 - `integration_test.go` has 5 safe CI integration tests: skill lifecycle, task queue format, core skills list, tracker integration, cleanup idempotency.
 
 ## Pitfalls
