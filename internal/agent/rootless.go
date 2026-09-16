@@ -3,6 +3,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -11,7 +12,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
+	"unicode/utf8"
 )
 
 // rootlessInstallURL is the official Docker rootless extras installer.
@@ -180,43 +183,25 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 	}
 	stdRuntimeDir := filepath.Join("/run", "user", strconv.Itoa(uid))
 
-	// UIDs can be reused after userdel. A stale runtime directory from a previous
-	// user breaks systemctl --user (it may be owned by a different user or have
-	// an old user manager socket). Stop any existing user manager and remove the
-	// stale directory before enabling lingering for this user.
-	logger.Info("resetting user manager runtime", "user", username, "uid", uid, "runtime_dir", stdRuntimeDir)
-	_ = exec.CommandContext(ctx, "systemctl", "stop", fmt.Sprintf("user@%d.service", uid)).Run()
-	_ = exec.CommandContext(ctx, "loginctl", "terminate-user", strconv.Itoa(uid)).Run()
-	removeMountsUnder(ctx, stdRuntimeDir, logger)
-	if info, err := os.Stat(stdRuntimeDir); err == nil && info.IsDir() {
-		if out, err := exec.CommandContext(ctx, "rm", "-rf", stdRuntimeDir).CombinedOutput(); err != nil {
-			logger.Warn("failed to remove stale runtime dir", "dir", stdRuntimeDir, "error", err, "output", string(out))
-		}
-	}
-
-	// Enable systemd lingering so the user manager is available for the
-	// installer to run `systemctl --user start docker.service`. This must be done
-	// as root before dropping to the target user. After enabling linger, wait for
-	// the user manager to create the runtime directory.
-	if out, err := exec.CommandContext(ctx, "loginctl", "enable-linger", username).CombinedOutput(); err != nil {
-		return fmt.Errorf("enable linger for %s: %w (output: %s)", username, err, string(out))
-	}
-	// enable-linger is idempotent: when lingering is ALREADY recorded for the
-	// user (CI hosts re-spawn the same explicit agent ID repeatedly) it takes
-	// no start action, and the unit we stopped two steps above stays down. So
-	// bring the manager up deterministically instead of waiting passively
-	// (INT-CI-007: the passive wait burned the whole 300s request deadline).
-	if err := ensureUserManagerRunning(ctx, uid, logger); err != nil {
+	// Bring the systemd user manager up in a state-consistent order: reset
+	// stale state ONLY when there is real stale state, guarantee the runtime
+	// directory exists and is owned by the uid, then start the manager. The
+	// runtime directory MUST exist before user@<uid>.service starts, otherwise
+	// pam_systemd refuses XDG_RUNTIME_DIR and the manager can never go active
+	// (INT-CI-008).
+	if err := bringUpUserManager(ctx, username, uid, stdRuntimeDir, logger); err != nil {
 		return err
-	}
-	if err := waitForUserManager(ctx, stdRuntimeDir); err != nil {
-		return fmt.Errorf("user manager did not start for %s: %w", username, err)
 	}
 
 	// The installer uses systemctl --user, which requires a writable runtime
 	// directory and the systemd user manager bus. Use the standard systemd user
 	// runtime path for the install step; the actual daemon runtime is set to
 	// /run/bunker/<id>/run when dockerd is started by the manager.
+	//
+	// bringUpUserManager already created and ownership-verified this directory
+	// BEFORE the manager start (INT-CI-008). This block is kept as insurance for
+	// the install step, but it is no longer the only place the directory is
+	// created.
 	if err := os.MkdirAll(stdRuntimeDir, 0700); err != nil {
 		return fmt.Errorf("create runtime dir %s: %w", stdRuntimeDir, err)
 	}
@@ -269,6 +254,186 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 		logger.Warn("failed to chown agent home after rootless install", "user", username, "error", err, "output", string(out))
 	}
 
+	return nil
+}
+
+// userManagerUnitName is the per-uid systemd user manager unit.
+func userManagerUnitName(uid int) string { return fmt.Sprintf("user@%d.service", uid) }
+
+// userRuntimeDirUnitName is logind's runtime-directory unit for the same uid:
+// its ExecStart runs /usr/lib/systemd/systemd-user-runtime-dir start <uid>, so
+// systemd itself owns the creation of /run/user/<uid>. It is
+// Type=oneshot + RemainAfterExit=yes + StopWhenUnneeded=yes, which makes it a
+// best-effort first step only: once it has run, starting it again is a no-op
+// even when the directory is gone. The directory must therefore be created and
+// VERIFIED explicitly (INT-CI-008).
+func userRuntimeDirUnitName(uid int) string {
+	return fmt.Sprintf("user-runtime-dir@%d.service", uid)
+}
+
+// runtimeDirInfo is the observable state of a systemd user runtime directory.
+type runtimeDirInfo struct {
+	// exists is false when the path is absent (the fresh-uid path).
+	exists bool
+	// isDir is false when the path exists but is not a directory.
+	isDir bool
+	// owner is the uid owning the path; ownerKnown is false when the platform
+	// stat could not supply it.
+	owner      uint32
+	ownerKnown bool
+}
+
+// runtimeDirProbe inspects a runtime directory. Package-level var (same seam
+// style as userManagerRunner) because simulating a directory owned by a
+// DIFFERENT uid needs a real chown to another user, which requires root.
+var runtimeDirProbe = probeRuntimeDirOnDisk
+
+// probeRuntimeDirOnDisk is the production probe. It uses Lstat so a symlink
+// placed at the directory's path is NOT mistaken for a directory.
+func probeRuntimeDirOnDisk(path string) (runtimeDirInfo, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return runtimeDirInfo{}, nil
+		}
+		return runtimeDirInfo{}, err
+	}
+	st := runtimeDirInfo{exists: true, isDir: info.IsDir()}
+	if sys, ok := info.Sys().(*syscall.Stat_t); ok {
+		st.owner = sys.Uid
+		st.ownerKnown = true
+	}
+	return st, nil
+}
+
+// classifyRuntimeDir decides whether the observed runtime directory carries
+// state left behind by a PREVIOUS user of the same uid (which must be reset) or
+// is the fresh path (which must not be touched). It fails SAFE: anything it
+// cannot read or cross-check — an unreadable probe, a non-directory entry, an
+// unknowable owner — counts as stale, so the historical reset behavior is kept
+// rather than silently skipped.
+func classifyRuntimeDir(info runtimeDirInfo, probeErr error, uid int) (bool, string) {
+	switch {
+	case probeErr != nil:
+		return true, "runtime dir probe failed: " + probeErr.Error()
+	case !info.exists:
+		return false, ""
+	case !info.isDir:
+		return true, "runtime path exists but is not a directory"
+	case !info.ownerKnown:
+		return true, "runtime dir ownership cannot be determined"
+	case info.owner != uint32(uid):
+		return true, fmt.Sprintf("runtime dir owned by uid %d, not %d", info.owner, uid)
+	}
+	return false, ""
+}
+
+// resetUserManagerState tears down stale user manager state for uid so the next
+// start begins from a known-clean state, in a state-consistent order: stop the
+// manager, stop logind's runtime-directory unit (so its RemainAfterExit state
+// matches the filesystem instead of claiming a directory it no longer owns),
+// unmount whatever the old manager left mounted under the directory, remove the
+// directory. Every step is best effort; the caller re-creates the directory
+// before starting the manager.
+func resetUserManagerState(ctx context.Context, uid int, runtimeDir string, logger *slog.Logger) {
+	_, _ = userManagerRunner(ctx, "systemctl", "stop", userManagerUnitName(uid))
+	_, _ = userManagerRunner(ctx, "loginctl", "terminate-user", strconv.Itoa(uid))
+	removeMountsUnder(ctx, runtimeDir, logger)
+	_, _ = userManagerRunner(ctx, "systemctl", "stop", userRuntimeDirUnitName(uid))
+	if _, err := os.Stat(runtimeDir); err == nil {
+		if out, err := userManagerRunner(ctx, "rm", "-rf", runtimeDir); err != nil && logger != nil {
+			logger.Warn("failed to remove stale runtime dir",
+				"dir", runtimeDir, "error", err, "output", strings.TrimSpace(string(out)))
+		}
+	}
+}
+
+// ensureUserRuntimeDir guarantees the runtime directory exists and is owned by
+// uid BEFORE the user manager is started.
+//
+// systemd 255's user@.service has no Requires/After on
+// user-runtime-dir@<uid>.service, so starting the manager does not create the
+// directory. With it missing, pam_systemd refuses to set XDG_RUNTIME_DIR
+// ("Failed to stat() runtime directory '/run/user/<uid>'"), the manager exits 1
+// and the unit can never become active — the restart that failed the regression
+// job (INT-CI-008). Ask systemd's own directory unit to create it, create it
+// ourselves when that unit is a no-op, then verify the result.
+func ensureUserRuntimeDir(ctx context.Context, username string, uid int, stdRuntimeDir string, logger *slog.Logger) error {
+	if out, err := userManagerRunner(ctx, "systemctl", "start", userRuntimeDirUnitName(uid)); err != nil && logger != nil {
+		logger.Warn("systemd user-runtime-dir unit did not start; creating the runtime dir directly",
+			"unit", userRuntimeDirUnitName(uid), "dir", stdRuntimeDir,
+			"error", err, "output", strings.TrimSpace(string(out)))
+	}
+	if err := os.MkdirAll(stdRuntimeDir, 0o700); err != nil {
+		return fmt.Errorf("create runtime dir %s: %w", stdRuntimeDir, err)
+	}
+	// Non-recursive on purpose: on desktop-flavoured hosts the previous manager
+	// may have left a gvfsd-fuse mount under the directory, and a FUSE mount
+	// without allow_other denies even root (see removeMountsUnder).
+	if out, err := userManagerRunner(ctx, "chown", username+":", stdRuntimeDir); err != nil {
+		return fmt.Errorf("chown runtime dir %s: %w (output: %s)", stdRuntimeDir, err, string(out))
+	}
+	info, err := runtimeDirProbe(stdRuntimeDir)
+	if err != nil {
+		return fmt.Errorf("verify runtime dir %s after creation: %w", stdRuntimeDir, err)
+	}
+	if !info.exists || !info.isDir {
+		return fmt.Errorf("runtime dir %s is missing after creation", stdRuntimeDir)
+	}
+	if !info.ownerKnown {
+		return fmt.Errorf("runtime dir %s ownership cannot be verified", stdRuntimeDir)
+	}
+	if info.owner != uint32(uid) {
+		return fmt.Errorf("runtime dir %s is owned by uid %d, expected %d", stdRuntimeDir, info.owner, uid)
+	}
+	return nil
+}
+
+// bringUpUserManager brings the systemd user manager for uid up in a
+// state-consistent order and waits for its bus socket:
+//
+//  1. reset the runtime directory ONLY when it carries state from a previous
+//     user of that uid (the fresh path takes no destructive action at all);
+//  2. create and verify the runtime directory, owned by uid;
+//  3. enable lingering so the manager survives without a login session;
+//  4. start user@<uid>.service deterministically;
+//  5. wait for the manager's bus socket.
+//
+// The order of steps 2 and 4 is load-bearing (INT-CI-008): a manager started
+// without its runtime directory fails permanently, so the start can never be
+// allowed to be the thing that creates it. Step 2 also runs before step 3
+// because enabling linger can itself attempt a manager start.
+func bringUpUserManager(ctx context.Context, username string, uid int, stdRuntimeDir string, logger *slog.Logger) error {
+	info, probeErr := runtimeDirProbe(stdRuntimeDir)
+	if stale, reason := classifyRuntimeDir(info, probeErr, uid); stale {
+		if logger != nil {
+			logger.Info("resetting stale user manager runtime",
+				"user", username, "uid", uid, "runtime_dir", stdRuntimeDir, "reason", reason)
+		}
+		resetUserManagerState(ctx, uid, stdRuntimeDir, logger)
+	}
+
+	if err := ensureUserRuntimeDir(ctx, username, uid, stdRuntimeDir, logger); err != nil {
+		return err
+	}
+
+	// Enable systemd lingering so the user manager is available for the
+	// installer to run `systemctl --user start docker.service`. This must be
+	// done as root before dropping to the target user.
+	if out, err := userManagerRunner(ctx, "loginctl", "enable-linger", username); err != nil {
+		return fmt.Errorf("enable linger for %s: %w (output: %s)", username, err, string(out))
+	}
+	// enable-linger is idempotent: when lingering is ALREADY recorded for the
+	// user (CI hosts re-spawn the same explicit agent ID repeatedly) it takes
+	// no start action, and a unit stopped by the reset above stays down. So
+	// bring the manager up deterministically instead of waiting passively
+	// (INT-CI-007: the passive wait burned the whole 300s request deadline).
+	if err := ensureUserManagerRunning(ctx, uid, logger); err != nil {
+		return err
+	}
+	if err := waitForUserManager(ctx, stdRuntimeDir); err != nil {
+		return fmt.Errorf("user manager did not start for %s: %w", username, err)
+	}
 	return nil
 }
 
@@ -374,6 +539,59 @@ func countLingerEntries() int {
 	return len(entries)
 }
 
+// userManagerJournalQueryTimeout bounds the best-effort journal query used to
+// attribute a failed manager start. It is DETACHED from the caller's request
+// deadline (context.WithoutCancel) so attribution still works when the client
+// already gave up.
+const userManagerJournalQueryTimeout = 5 * time.Second
+
+// userManagerJournalMaxLen bounds the journal excerpt embedded in the
+// attribution error. The excerpt is condensed to one line, so this is a
+// character budget, not a line budget.
+const userManagerJournalMaxLen = 400
+
+// fetchUserManagerJournal returns a bounded, single-line excerpt of the unit's
+// journal. The systemd job Result alone does not name the cause (INT-CI-008:
+// the line that mattered was pam_systemd reporting the missing runtime
+// directory). Best effort: journalctl first, systemctl status as the fallback,
+// and an empty string when neither is readable — attribution must never turn a
+// failed start into a different failure.
+func fetchUserManagerJournal(ctx context.Context, unit string, logger *slog.Logger) string {
+	queryCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), userManagerJournalQueryTimeout)
+	defer cancel()
+	out, err := userManagerRunner(queryCtx, "journalctl", "--no-pager", "-u", unit, "-n", "20")
+	if err != nil && strings.TrimSpace(string(out)) == "" {
+		if st, stErr := userManagerRunner(queryCtx, "systemctl", "status", "--no-pager", "-n", "20", unit); stErr == nil {
+			return condenseJournal(string(st))
+		}
+		if logger != nil {
+			logger.Debug("no journal available for user manager attribution", "unit", unit, "error", err)
+		}
+	}
+	return condenseJournal(string(out))
+}
+
+// condenseJournal folds a journal excerpt into ONE line (fragments joined with
+// " | ") and truncates it at a rune boundary, so the text can be embedded in an
+// error string and in a log field without breaking either.
+func condenseJournal(raw string) string {
+	var parts []string
+	for _, line := range strings.Split(raw, "\n") {
+		if fields := strings.Fields(line); len(fields) > 0 {
+			parts = append(parts, strings.Join(fields, " "))
+		}
+	}
+	joined := strings.Join(parts, " | ")
+	if len(joined) > userManagerJournalMaxLen {
+		cut := userManagerJournalMaxLen
+		for cut > 0 && !utf8.RuneStart(joined[cut]) {
+			cut--
+		}
+		joined = strings.TrimSpace(joined[:cut]) + "..."
+	}
+	return joined
+}
+
 // ensureUserManagerRunning brings the systemd user manager up deterministically
 // instead of waiting passively on the idempotent enable-linger. When the unit
 // is already active it does nothing (the healthy spawn path gains zero extra
@@ -390,7 +608,7 @@ func countLingerEntries() int {
 // passed off as the bring-up failure — the attribution error carries the real
 // unit state instead of a bare "context canceled" (INT-CI-007).
 func ensureUserManagerRunning(ctx context.Context, uid int, logger *slog.Logger) error {
-	unit := fmt.Sprintf("user@%d.service", uid)
+	unit := userManagerUnitName(uid)
 
 	if state := fetchUserManagerState(ctx, unit); state.active == "active" {
 		return nil // healthy path: already up, zero start attempts
@@ -434,15 +652,27 @@ func ensureUserManagerRunning(ctx context.Context, uid int, logger *slog.Logger)
 		state = fetchUserManagerState(ctx, unit)
 	}
 	lingerCount := countLingerEntries()
+	// Attribute the real cause, not just the systemd job Result: the line that
+	// names it (pam_systemd refusing XDG_RUNTIME_DIR, a missing runtime
+	// directory, a failing ExecStart) never appears in systemctl's own output
+	// (INT-CI-008).
+	journal := fetchUserManagerJournal(ctx, unit, logger)
 	if logger != nil {
 		logger.Warn("systemd user manager did not start; host linger churn is a common cause",
 			"unit", unit,
 			"state", state.describe(unit),
 			"linger_entries", lingerCount,
+			"journal", journal,
 		)
 	}
-	return fmt.Errorf("%s failed: %s: linger_entries=%d",
+	// errors.New (not fmt.Errorf): the journal excerpt is arbitrary host output
+	// and must never be re-interpreted as a format string.
+	msg := fmt.Sprintf("%s failed: %s: linger_entries=%d",
 		userManagerStartStage, state.describe(unit), lingerCount)
+	if journal != "" {
+		msg += ": journal=" + journal
+	}
+	return errors.New(msg)
 }
 
 // waitForUserManager polls for the systemd user manager to create the runtime
