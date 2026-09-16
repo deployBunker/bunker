@@ -1540,3 +1540,13 @@ tasks:
   status: complete
   created_at: '2026-09-16T17:26:25.122142+00:00'
   completed_at: '2026-09-16T17:26:27.711332+00:00'
+- id: DF-BUNKER-16
+  title: 'CLI path resolution: explicit --config/BUNKER_HOME + daemon-config-aware
+    defaults'
+  criteria:
+  - go build/vet/test pass; tests prove --config > BUNKER_HOME > $HOME precedence
+    and that a temp daemon config's audit/registry path is used with fallback to the
+    current constants; no spawn/destroy/exec behavior change
+  status: complete
+  created_at: '2026-09-16T17:37:34.886930+00:00'
+  completed_at: '2026-09-16T18:31:44.334943+00:00'
