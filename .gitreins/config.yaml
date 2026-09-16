@@ -5,8 +5,13 @@
 # ── Global defaults (model + token budgets) ────────────────────
 defaults:
   model: deepseek-v4-flash
-  max_iterations: 50
-  max_time: "15m"
+  # 2026-09-16 (tick 429): the Tier 2 eval for GAP-068 (a docs task whose single
+  # criterion carries four conjuncts) died on the ITERATION cap, not on merits:
+  # "WARNING: Eval cap exceeded: Iteration cap (100) reached (100.1 used)" ->
+  # INCOMPLETE verdict. A docs/criteria-heavy eval needs headroom to run its own
+  # probe + greps + build/test; sized to the fleet-settled 200/25m shape here.
+  max_iterations: 200
+  max_time: "25m"
   # GAP-077 fix: bunker's repo size blew the 2M eval budget on every Tier 2 run
   # ("Cap exceeded: Input token budget (2.0M) exceeded (2.0M used)"), so no
   # APPROVED verdict.json was ever produced. 8M gives headroom; compaction still
@@ -50,11 +55,11 @@ tier1:
 # ── Evaluator caps (Tier 2) ─────────────────────────────────────
 evaluator:
   model: deepseek-v4-flash
-  max_iterations: 100
-  max_time: "15m"
+  max_iterations: 200
+  max_time: "25m"
   max_input_tokens: "4M"
   max_output_tokens: "384k"
-  cap: "100/15m/4M/384k"
+  cap: "200/25m/4M/384k"
 
 # ── Force legacy evaluator path (avoid default pipeline) ────────
 pipeline:

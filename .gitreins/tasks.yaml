@@ -1362,3 +1362,15 @@ tasks:
   status: complete
   created_at: '2026-09-16T07:15:25.954400+00:00'
   completed_at: '2026-09-16T08:06:28.989795+00:00'
+- id: GAP-068
+  title: Refresh stale SKILL.md docs across 7 packages + fix the factually wrong per-agent
+    memory claim in skills/bunker-usage
+  criteria:
+  - Freshness probe (per-dir -ot compare vs newest *.go) reports 0 stale dirs outside
+    the known proto/bunker/v1 + bunkerv1connect generated-code false positives; skills/bunker-usage/SKILL.md
+    no longer claims memory metrics are host-level/unfixed and documents host_level_fallback
+    + the CLI NOTE from GAP-060; commit touches only SKILL.md files; go build/vet/test-short
+    green
+  status: complete
+  created_at: '2026-09-16T08:33:08.287803+00:00'
+  completed_at: '2026-09-16T09:01:26.494026+00:00'
