@@ -51,7 +51,7 @@ func TestNewMountCommand_ArgsValidation_TwoArgs(t *testing.T) {
 	cmd := NewMountCommand()
 	// RangeArgs(1, 2) should accept 2 args
 	if err := cmd.Args(cmd, []string{"agent-1", "/tmp/mnt"}); err != nil {
-		t.Errorf("unexpected error for 1 arg: %v", err)
+		t.Errorf("unexpected error for 2 args: %v", err)
 	}
 }
 
