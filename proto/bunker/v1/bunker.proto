@@ -72,6 +72,17 @@ message ServerInfoResponse {
   uint32 max_agents = 5;
   ResourceLimits total_resources = 6;
   ResourceLimits available_resources = 7;
+  // /tmp isolation the daemon actually enforces for agent sessions
+  // (DF-BUNKER-9). "private" = per-session pam_namespace instance provisioned
+  // and enforced; "host-shared" = agent sessions see the host /tmp; "unknown"
+  // = the state could not be verified (e.g. the daemon is not root). An EMPTY
+  // value means the daemon predates capability reporting (any tagged v0.1.x
+  // release) — the README's private-/tmp promise does NOT hold on it.
+  string tmp_isolation = 8;
+  // Short human-readable reason/context for tmp_isolation (empty for
+  // "private"; the failing provisioning reason for "host-shared"; the
+  // verification failure for "unknown").
+  string tmp_isolation_detail = 9;
 }
 
 message ServerMetricsRequest {}

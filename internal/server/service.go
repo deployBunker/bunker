@@ -23,6 +23,7 @@ import (
 	"github.com/deployBunker/bunker/internal/audit"
 	"github.com/deployBunker/bunker/internal/auth"
 	"github.com/deployBunker/bunker/internal/config"
+	"github.com/deployBunker/bunker/internal/hostsetup"
 	"github.com/deployBunker/bunker/internal/imagespec"
 	"github.com/deployBunker/bunker/internal/resource"
 	"github.com/deployBunker/bunker/internal/tailscale"
@@ -59,6 +60,14 @@ type bunkerdService struct {
 	// to it. It is only used for read access here — the interceptor owns
 	// the write path.
 	auditLog *audit.AuditLog
+	// tmpIsolationOnce guards the one-time host probe behind ServerInfo's
+	// /tmp isolation report (DF-BUNKER-9). TmpNamespaceStatus stats the
+	// host's PAM/sshd configuration and runs getent, so it must not run on
+	// every ServerInfo call; the observed result is cached below. The
+	// cached values are written inside the Once and read by ServerInfo.
+	tmpIsolationOnce   sync.Once
+	tmpIsolationLevel  string
+	tmpIsolationDetail string
 }
 
 // heartbeatManager is the narrow slice of the agent manager the heartbeat
@@ -89,7 +98,125 @@ func (s *bunkerdService) ServerInfo(ctx context.Context, req *connect.Request[v1
 		AgentCount:    s.tracker.Count(),
 		MaxAgents:     s.tracker.MaxAgents(),
 	}
+	// DF-BUNKER-9: advertise which /tmp policy this daemon actually enforces
+	// so a README-vs-reality downgrade (e.g. a tagged release without the
+	// GAP-075 isolation work) is visible instead of silent. The probe runs
+	// once per process and never fails the RPC.
+	resp.TmpIsolation, resp.TmpIsolationDetail = s.tmpIsolation()
 	return connect.NewResponse(resp), nil
+}
+
+// The /tmp isolation levels ServerInfo reports in ServerInfoResponse
+// tmp_isolation. An EMPTY field means the daemon predates capability
+// reporting (any tagged v0.1.x release).
+const (
+	tmpIsolationPrivate    = "private"
+	tmpIsolationHostShared = "host-shared"
+	tmpIsolationUnknown    = "unknown"
+)
+
+// tmpIsolationFromState maps an observed hostsetup.TmpNamespaceState into the
+// (level, detail) pair ServerInfo reports. It is pure — no I/O, no root
+// required — so the four branches are pinned by a table-driven unit test that
+// passes as the non-root user running the tests:
+//
+//   - probe error                            -> ("unknown", <error>)
+//   - not OwnershipVerifiable (daemon !root) -> ("unknown", <reason>)
+//   - st.Active                              -> ("private", <confirmation>)
+//   - otherwise                              -> ("host-shared", <first failing
+//     provisioning reason, or a fallback>)
+func tmpIsolationFromState(st hostsetup.TmpNamespaceState, err error) (level, detail string) {
+	if err != nil {
+		return tmpIsolationUnknown, err.Error()
+	}
+	if !st.OwnershipVerifiable {
+		return tmpIsolationUnknown, "daemon is not running as root — /tmp isolation state cannot be verified"
+	}
+	if st.Active {
+		return tmpIsolationPrivate, "per-session pam_namespace instance is provisioned and enforced"
+	}
+	if reason := tmpIsolationInactiveReason(st); reason != "" {
+		return tmpIsolationHostShared, reason
+	}
+	return tmpIsolationHostShared, "pam_namespace private-/tmp provisioning is not active on this host"
+}
+
+// tmpIsolationInactiveReason names the FIRST property of the observed state
+// that keeps pam_namespace private-/tmp provisioning inactive, mirroring the
+// conjunction TmpNamespaceState.evaluateActive checks. Empty only when every
+// observed property passes (the caller then falls back to a generic reason).
+func tmpIsolationInactiveReason(st hostsetup.TmpNamespaceState) string {
+	switch {
+	case !st.ModulePresent:
+		return "pam_namespace.so is not installed on this host"
+	case !st.GuardModulePresent:
+		return "pam_succeed_if.so is not installed on this host"
+	case !st.GuardModuleSupportsPattern:
+		return "pam_succeed_if.so does not support the agent-name pattern test (needs Linux-PAM >= 1.6)"
+	case !st.ExecModulePresent:
+		return "pam_exec.so is not installed on this host"
+	case !st.ConfPresent:
+		return "the pam_namespace drop-in configuration is missing"
+	case !st.ConfRuleOK && st.ConfRuleDetail != "":
+		return st.ConfRuleDetail
+	case !st.ConfOwnerOK || !st.ConfModeOK:
+		return "the pam_namespace drop-in is not root-owned and non-writable"
+	case !st.HelperPresent:
+		return "the pam_exec precondition helper is missing"
+	case !st.HelperIntegrityOK:
+		return "the pam_exec precondition helper has drifted from its manifest"
+	case !st.HelperOwnerOK || !st.HelperModeOK:
+		return "the pam_exec precondition helper is not root-owned and non-writable"
+	case !st.HelperManifestPresent:
+		return "the pam_exec helper manifest is missing"
+	case !st.HelperManifestOwnerOK || !st.HelperManifestModeOK:
+		return "the pam_exec helper manifest is not root-owned and non-writable"
+	case !st.HelperDirPresent:
+		return "the pam_exec helper directory is missing"
+	case !st.HelperDirOwnerOK || !st.HelperDirModeOK:
+		return "the pam_exec helper directory is not root-owned and non-writable"
+	case !st.PAMBlockPresent:
+		return "the agent-scoped sshd PAM session block is missing or not intact"
+	case st.DeployedVerifyGroup != st.AgentGroup:
+		return "the deployed sshd verifier names a different agent group than this configuration"
+	case !st.AgentGroupPresent:
+		return "the agent isolation group does not exist on this host"
+	case !st.InstanceRootPresent:
+		return "the /tmp instance parent directory is missing"
+	case !st.InstanceRootOwnerOK || !st.InstanceRootModeOK:
+		return "the /tmp instance parent is not root-owned mode 0000"
+	}
+	return ""
+}
+
+// tmpIsolation returns the cached (level, detail) /tmp isolation report for
+// this daemon (DF-BUNKER-9). TmpNamespaceStatus stats the host's PAM/sshd
+// configuration and runs getent, so the probe runs exactly ONCE per process
+// (sync.Once) and ServerInfo — a hot path — reuses the result. A nil
+// configuration (tests construct the service without one) or a probe failure
+// degrades to ("unknown", …); it never makes ServerInfo error or panic.
+func (s *bunkerdService) tmpIsolation() (level, detail string) {
+	s.tmpIsolationOnce.Do(func() {
+		s.tmpIsolationLevel, s.tmpIsolationDetail = s.probeTmpIsolation()
+	})
+	return s.tmpIsolationLevel, s.tmpIsolationDetail
+}
+
+// probeTmpIsolation builds the hostsetup options the same way
+// internal/agent.(*AgentManager).hostSetup does (configured agent group and
+// private-/tmp instance root over the production defaults), minus the command
+// runner — status reporting observes the host, it never changes it.
+func (s *bunkerdService) probeTmpIsolation() (level, detail string) {
+	if s.cfg == nil {
+		return tmpIsolationUnknown, "daemon configuration is unavailable — /tmp isolation state cannot be verified"
+	}
+	iso := s.cfg.Agent.Isolation
+	iso.Defaults()
+	o := hostsetup.DefaultOptions()
+	o.AgentGroup = iso.AgentGroup
+	o.TmpInstanceRoot = iso.PrivateTmpRoot
+	o = o.WithDefaults()
+	return tmpIsolationFromState(o.TmpNamespaceStatus())
 }
 
 // ServerMetrics returns resource usage metrics for the server.

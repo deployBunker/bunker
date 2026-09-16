@@ -50,7 +50,13 @@ Bunker is a **multi-agent hosting platform** — a daemon (`bunkerd`) that runs 
   the agent group and NOT writable by it — mode 2750 — with a kernel-enforced
   per-agent size cap). Install the host half with
   `bunker host-provision --apply`; see
-  [specs/agent-tmp-isolation.md](specs/agent-tmp-isolation.md)
+  [specs/agent-tmp-isolation.md](specs/agent-tmp-isolation.md).
+  `bunker status` reports the /tmp policy a daemon ACTUALLY enforces
+  (`private`, `HOST-SHARED` with a warning, or `not reported` for a daemon
+  that predates capability reporting). The feature is VERSION-GATED: a
+  daemon built from a tagged release before the isolation work reports
+  `HOST-SHARED`/`not reported` even though these docs describe isolation —
+  build and run a daemon from the same commit as the CLI.
 - **Durable registry** — Agent lifecycle state (spawn/heartbeat/destroy) is an
   append-only JSONL log replayed at startup, so agents survive a `bunkerd`
   restart. Size-capped (5 MiB × 3 rotation), compactable offline with
@@ -383,6 +389,16 @@ silently continuing with the shared `/tmp`; the module line also carries no
 (`--json`) answers the isolation question from the SAME static properties the
 helper enforces, so it never reports `isolated: true` for a host whose agent
 sessions are denied or shared.
+
+`bunker status` shows the /tmp policy the connected daemon enforces, per
+server: `private` when the per-session `pam_namespace` instance is provisioned
+and enforced, `HOST-SHARED` (with a prominent warning) when agent sessions see
+the host `/tmp`, `unknown` when the state cannot be verified (e.g. the daemon
+is not root), and `not reported` when the daemon predates capability
+reporting. The isolation feature is **version-gated**: a daemon built from a
+tagged release that predates it (any `v0.1.x` tag) reports `HOST-SHARED` or
+`not reported` even though this section describes isolation — build and run a
+daemon from the same commit as the CLI instead of trusting a stale binary.
 
 The host half is provisioned once, as root, with an idempotent installer that
 never touches `/etc/fstab`:

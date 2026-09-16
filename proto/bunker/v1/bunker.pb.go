@@ -262,6 +262,17 @@ type ServerInfoResponse struct {
 	MaxAgents          uint32                 `protobuf:"varint,5,opt,name=max_agents,json=maxAgents,proto3" json:"max_agents,omitempty"`
 	TotalResources     *ResourceLimits        `protobuf:"bytes,6,opt,name=total_resources,json=totalResources,proto3" json:"total_resources,omitempty"`
 	AvailableResources *ResourceLimits        `protobuf:"bytes,7,opt,name=available_resources,json=availableResources,proto3" json:"available_resources,omitempty"`
+	// /tmp isolation the daemon actually enforces for agent sessions
+	// (DF-BUNKER-9). "private" = per-session pam_namespace instance provisioned
+	// and enforced; "host-shared" = agent sessions see the host /tmp; "unknown"
+	// = the state could not be verified (e.g. the daemon is not root). An EMPTY
+	// value means the daemon predates capability reporting (any tagged v0.1.x
+	// release) — the README's private-/tmp promise does NOT hold on it.
+	TmpIsolation string `protobuf:"bytes,8,opt,name=tmp_isolation,json=tmpIsolation,proto3" json:"tmp_isolation,omitempty"`
+	// Short human-readable reason/context for tmp_isolation (empty for
+	// "private"; the failing provisioning reason for "host-shared"; the
+	// verification failure for "unknown").
+	TmpIsolationDetail string `protobuf:"bytes,9,opt,name=tmp_isolation_detail,json=tmpIsolationDetail,proto3" json:"tmp_isolation_detail,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -343,6 +354,20 @@ func (x *ServerInfoResponse) GetAvailableResources() *ResourceLimits {
 		return x.AvailableResources
 	}
 	return nil
+}
+
+func (x *ServerInfoResponse) GetTmpIsolation() string {
+	if x != nil {
+		return x.TmpIsolation
+	}
+	return ""
+}
+
+func (x *ServerInfoResponse) GetTmpIsolationDetail() string {
+	if x != nil {
+		return x.TmpIsolationDetail
+	}
+	return ""
 }
 
 type ServerMetricsRequest struct {
@@ -2245,7 +2270,7 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\x16MODE_CLOUDFLARE_TUNNEL\x10\x01\x12\x12\n" +
 	"\x0eMODE_TAILSCALE\x10\x02\x12\x0f\n" +
 	"\vMODE_DIRECT\x10\x03\"\x13\n" +
-	"\x11ServerInfoRequest\"\xc1\x02\n" +
+	"\x11ServerInfoRequest\"\x98\x03\n" +
 	"\x12ServerInfoResponse\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12%\n" +
@@ -2255,7 +2280,9 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\n" +
 	"max_agents\x18\x05 \x01(\rR\tmaxAgents\x12B\n" +
 	"\x0ftotal_resources\x18\x06 \x01(\v2\x19.bunker.v1.ResourceLimitsR\x0etotalResources\x12J\n" +
-	"\x13available_resources\x18\a \x01(\v2\x19.bunker.v1.ResourceLimitsR\x12availableResources\"\x16\n" +
+	"\x13available_resources\x18\a \x01(\v2\x19.bunker.v1.ResourceLimitsR\x12availableResources\x12#\n" +
+	"\rtmp_isolation\x18\b \x01(\tR\ftmpIsolation\x120\n" +
+	"\x14tmp_isolation_detail\x18\t \x01(\tR\x12tmpIsolationDetail\"\x16\n" +
 	"\x14ServerMetricsRequest\"\xd8\x02\n" +
 	"\x15ServerMetricsResponse\x12*\n" +
 	"\x11cpu_usage_percent\x18\x01 \x01(\x01R\x0fcpuUsagePercent\x12*\n" +

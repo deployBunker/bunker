@@ -192,6 +192,7 @@ func formatServerStatus(st serverStatus) string {
 	b.WriteString(fmt.Sprintf("  Status:   ONLINE\n"))
 	b.WriteString(fmt.Sprintf("  Uptime:   %s\n", formatUptime(info.GetUptimeSeconds())))
 	b.WriteString(fmt.Sprintf("  Agents:   %d/%d\n", info.GetAgentCount(), info.GetMaxAgents()))
+	b.WriteString(formatTmpIsolation(info.GetTmpIsolation(), info.GetTmpIsolationDetail()))
 
 	// Metrics (best-effort).
 	if st.metrics != nil {
@@ -226,6 +227,50 @@ func formatServerStatus(st serverStatus) string {
 	}
 
 	return b.String()
+}
+
+// formatTmpIsolation renders the /tmp isolation line of the ONLINE status
+// section (DF-BUNKER-9). The daemon reports the /tmp policy it actually
+// enforces; a CLI must never let the README's private-/tmp promise stand
+// unverified:
+//
+//	private     -> "  /tmp:     private (per-session pam_namespace instance)"
+//	host-shared -> the line plus a prominent WARNING banner mirroring the
+//	               disk-warning banner, because the README promise does NOT
+//	               hold on this host
+//	unknown     -> "  /tmp:     unknown — <detail>"
+//	(empty)     -> "  /tmp:     not reported by this daemon — …" (a daemon
+//	               that predates capability reporting, e.g. any tagged
+//	               v0.1.x build)
+func formatTmpIsolation(level, detail string) string {
+	switch level {
+	case "private":
+		return "  /tmp:     private (per-session pam_namespace instance)\n"
+	case "host-shared":
+		var b strings.Builder
+		b.WriteString("  /tmp:     HOST-SHARED — agent sessions see the host /tmp\n")
+		b.WriteString("\n")
+		b.WriteString("  ╔══════════════════════════════════════════════════════════╗\n")
+		b.WriteString("  ║  ⚠  WARNING: Private /tmp is NOT active on this host.           ║\n")
+		b.WriteString("  ║  Agent exec sessions share the host /tmp; the README's        ║\n")
+		b.WriteString("  ║  'Private /tmp per agent' promise does not hold here.         ║\n")
+		b.WriteString("  ╚══════════════════════════════════════════════════════════╝\n")
+		if detail != "" {
+			b.WriteString(fmt.Sprintf("  Reason:   %s\n", detail))
+		}
+		return b.String()
+	case "unknown":
+		if detail != "" {
+			return fmt.Sprintf("  /tmp:     unknown — %s\n", detail)
+		}
+		return "  /tmp:     unknown\n"
+	default:
+		// Empty (or any unrecognized value): the daemon predates capability
+		// reporting — e.g. any tagged v0.1.x release built before the
+		// isolation feature (GAP-075) landed. Nothing here proves /tmp is
+		// private, so the CLI says so instead of staying silent.
+		return "  /tmp:     not reported by this daemon — it predates capability reporting; build/run a daemon from the same commit as the CLI (private /tmp is not guaranteed)\n"
+	}
 }
 
 // formatUptime converts seconds into a human-readable duration string.

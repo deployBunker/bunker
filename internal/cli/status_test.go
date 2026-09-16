@@ -581,6 +581,207 @@ func TestStatusCommand_HighDiskWarning(t *testing.T) {
 	}
 }
 
+// TestStatusCommand_TmpIsolationReporting verifies the /tmp isolation line of
+// the ONLINE status section (DF-BUNKER-9) end-to-end through the mock server,
+// for every reported level: private, host-shared (with its WARNING banner),
+// unknown (with the detail) and empty (a daemon that predates capability
+// reporting, e.g. any tagged v0.1.x build).
+func TestStatusCommand_TmpIsolationReporting(t *testing.T) {
+	tests := []struct {
+		name        string
+		tmpLevel    string
+		tmpDetail   string
+		wantSubstrs []string
+		notWant     []string
+	}{
+		{
+			name:     "private",
+			tmpLevel: "private",
+			wantSubstrs: []string{
+				"  /tmp:     private (per-session pam_namespace instance)",
+			},
+			notWant: []string{"HOST-SHARED", "WARNING"},
+		},
+		{
+			name:      "host-shared",
+			tmpLevel:  "host-shared",
+			tmpDetail: "pam_namespace.so is not installed on this host",
+			wantSubstrs: []string{
+				"  /tmp:     HOST-SHARED — agent sessions see the host /tmp",
+				"WARNING: Private /tmp is NOT active on this host.",
+				"'Private /tmp per agent' promise does not hold here.",
+				"Reason:   pam_namespace.so is not installed on this host",
+			},
+		},
+		{
+			name:      "unknown",
+			tmpLevel:  "unknown",
+			tmpDetail: "daemon is not running as root — /tmp isolation state cannot be verified",
+			wantSubstrs: []string{
+				"  /tmp:     unknown — daemon is not running as root — /tmp isolation state cannot be verified",
+			},
+			notWant: []string{"HOST-SHARED", "WARNING"},
+		},
+		{
+			name:     "empty field (daemon predates capability reporting)",
+			tmpLevel: "",
+			wantSubstrs: []string{
+				"  /tmp:     not reported by this daemon — it predates capability reporting; build/run a daemon from the same commit as the CLI (private /tmp is not guaranteed)",
+			},
+			notWant: []string{"HOST-SHARED", "WARNING"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+
+			mock := &statusMockServer{
+				info: &v1.ServerInfoResponse{
+					Hostname:           "iso-host",
+					Version:            "v1.0.0",
+					UptimeSeconds:      60,
+					AgentCount:         1,
+					MaxAgents:          5,
+					TmpIsolation:       tt.tmpLevel,
+					TmpIsolationDetail: tt.tmpDetail,
+				},
+			}
+			srv := newStatusTestServer(t, mock)
+			defer srv.Close()
+
+			cfg := &CLIConfig{
+				ActiveServer: "default",
+				Servers: map[string]ServerEntry{
+					"default": {Name: "default", URL: srv.URL},
+				},
+			}
+			if err := SaveCLIConfig(cfg); err != nil {
+				t.Fatalf("SaveCLIConfig: %v", err)
+			}
+
+			cmd := NewStatusCommand()
+			output := captureStdout(t, func() {
+				if err := cmd.Execute(); err != nil {
+					t.Fatalf("Execute: %v", err)
+				}
+			})
+
+			for _, want := range tt.wantSubstrs {
+				if !strings.Contains(output, want) {
+					t.Errorf("output missing %q, got:\n%s", want, output)
+				}
+			}
+			for _, notWant := range tt.notWant {
+				if strings.Contains(output, notWant) {
+					t.Errorf("output should not contain %q, got:\n%s", notWant, output)
+				}
+			}
+		})
+	}
+}
+
+// TestStatusCommand_AllServers_TmpIsolation verifies the /tmp line appears in
+// --all output too: every server section (online ones) flows through
+// formatServerStatus regardless of single-server vs --all mode.
+func TestStatusCommand_AllServers_TmpIsolation(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	mock := &statusMockServer{
+		info: &v1.ServerInfoResponse{
+			Hostname:           "iso-all-host",
+			Version:            "v1.0.0",
+			TmpIsolation:       "host-shared",
+			TmpIsolationDetail: "the agent isolation group does not exist on this host",
+		},
+	}
+	srv := newStatusTestServer(t, mock)
+	defer srv.Close()
+
+	cfg := &CLIConfig{
+		ActiveServer: "default",
+		Servers: map[string]ServerEntry{
+			"default": {Name: "default", URL: srv.URL},
+		},
+	}
+	if err := SaveCLIConfig(cfg); err != nil {
+		t.Fatalf("SaveCLIConfig: %v", err)
+	}
+
+	cmd := NewStatusCommand()
+	cmd.SetArgs([]string{"--all"})
+	output := captureStdout(t, func() {
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+	})
+
+	for _, want := range []string{
+		"1 servers",
+		"iso-all-host",
+		"  /tmp:     HOST-SHARED — agent sessions see the host /tmp",
+		"WARNING: Private /tmp is NOT active on this host.",
+		"Reason:   the agent isolation group does not exist on this host",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("output missing %q, got:\n%s", want, output)
+		}
+	}
+}
+
+// TestFormatTmpIsolation pins formatTmpIsolation's exact lines without going
+// through the command, including the empty-vs-unknown distinction.
+func TestFormatTmpIsolation(t *testing.T) {
+	tests := []struct {
+		name   string
+		level  string
+		detail string
+		want   string
+	}{
+		{
+			name:  "private",
+			level: "private",
+			want:  "  /tmp:     private (per-session pam_namespace instance)\n",
+		},
+		{
+			name:   "host-shared with detail",
+			level:  "host-shared",
+			detail: "the pam_namespace drop-in configuration is missing",
+			want: "  /tmp:     HOST-SHARED — agent sessions see the host /tmp\n" +
+				"\n" +
+				"  ╔══════════════════════════════════════════════════════════╗\n" +
+				"  ║  ⚠  WARNING: Private /tmp is NOT active on this host.           ║\n" +
+				"  ║  Agent exec sessions share the host /tmp; the README's        ║\n" +
+				"  ║  'Private /tmp per agent' promise does not hold here.         ║\n" +
+				"  ╚══════════════════════════════════════════════════════════╝\n" +
+				"  Reason:   the pam_namespace drop-in configuration is missing\n",
+		},
+		{
+			name:  "unknown without detail",
+			level: "unknown",
+			want:  "  /tmp:     unknown\n",
+		},
+		{
+			name:   "unknown with detail",
+			level:  "unknown",
+			detail: "probe failed",
+			want:   "  /tmp:     unknown — probe failed\n",
+		},
+		{
+			name:  "empty level",
+			level: "",
+			want:  "  /tmp:     not reported by this daemon — it predates capability reporting; build/run a daemon from the same commit as the CLI (private /tmp is not guaranteed)\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatTmpIsolation(tt.level, tt.detail)
+			if got != tt.want {
+				t.Errorf("formatTmpIsolation(%q, %q) =\n%q\nwant\n%q", tt.level, tt.detail, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestFormatUptime(t *testing.T) {
 	tests := []struct {
 		seconds uint64
