@@ -14,12 +14,36 @@ import (
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 )
 
-// defaultAuditLogPath is the daemon's configured audit log location
-// (internal/config AuditConfig.Path); the audit subcommands default to it
-// and --path overrides. list/export default to local mode (reading
-// this file); passing --server switches them to querying the daemon.
-// verify is local-only.
+// defaultAuditLogPath is the documented fallback audit log location (the
+// daemon's compiled-in default, internal/config AuditConfig.Path). The
+// audit subcommands' --path flag defaults to the daemon config's audit.path
+// when that file exists and parses (defaultAuditPathFlag), and to this
+// constant otherwise; an explicit --path always wins. list/export default
+// to local mode (reading this file); passing --server switches them to
+// querying the daemon. verify is local-only.
 const defaultAuditLogPath = "/var/log/bunkerd/audit.log"
+
+// defaultAuditPathFlag resolves the DEFAULT for the audit commands' --path
+// flag at RunE time: the daemon config's audit.path (via --daemon-config /
+// BUNKERD_CONFIG) when available, else the constant above. When the flag
+// was not given explicitly it is (re)written to the resolved default, so
+// `bunker audit list --path=/dev/null --daemon-config=...` keeps the
+// explicit value while a bare `bunker audit list` follows the daemon
+// config. The constant fallback keeps today's behavior when no daemon
+// config exists. Mirrored for registry compact by defaultRegistryPathFlag
+// (paths.go).
+func defaultAuditPathFlag(cmd *cobra.Command, flagName string) string {
+	def := DefaultAuditLogPath()
+	if f := cmd.Flags().Lookup(flagName); f != nil && !f.Changed {
+		f.DefValue = def
+		f.Value.Set(def)
+		return def
+	}
+	if f := cmd.Flags().Lookup(flagName); f != nil {
+		return f.Value.String()
+	}
+	return def
+}
 
 // NewAuditCommand returns the `bunker audit` command group for inspecting
 // the bunkerd audit trail. GAP-049 added local log verification; GAP-050
@@ -70,7 +94,7 @@ func addAuditQueryFlags(cmd *cobra.Command, f *auditQueryFlags) {
 	cmd.Flags().StringVar(&f.since, "since", "", "Only records at or after this RFC3339 timestamp (inclusive)")
 	cmd.Flags().StringVar(&f.until, "until", "", "Only records at or before this RFC3339 timestamp (inclusive)")
 	cmd.Flags().Uint32Var(&f.limit, "limit", 0, "Max records to return (most recent first); 0 = no limit")
-	cmd.Flags().StringVar(&f.path, "path", defaultAuditLogPath, "Local audit log file to read (ignored when --server is set)")
+	cmd.Flags().StringVar(&f.path, "path", defaultAuditLogPath, "Local audit log file to read (default: the daemon config's audit.path, else /var/log/bunkerd/audit.log; ignored when --server is set)")
 }
 
 // parseAuditFilter converts the shared flags into an audit.Filter,
@@ -105,6 +129,9 @@ func parseAuditFilter(f *auditQueryFlags) (audit.Filter, error) {
 // wire form for remote queries), so list and export share one rendering
 // path and local/remote output is byte-identical.
 func queryAuditRecords(cmd *cobra.Command, f *auditQueryFlags, filter audit.Filter) ([]audit.Record, error) {
+	// Follow the daemon config for the --path DEFAULT unless the operator
+	// set --path explicitly (an explicit --path always wins).
+	f.path = defaultAuditPathFlag(cmd, "path")
 	if f.serverName != "" {
 		return queryRemoteAudit(cmd, f.serverName, filter)
 	}
@@ -190,6 +217,7 @@ the first bad record index and exits non-zero; an untouched log prints
 "OK (N records)" and exits 0. Local log only — the daemon host's operator
 runs this on the host.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			path = defaultAuditPathFlag(cmd, "path")
 			records, firstBad, err := audit.Verify(path)
 			if err != nil {
 				if firstBad > 0 {
@@ -201,7 +229,7 @@ runs this on the host.`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&path, "path", defaultAuditLogPath, "audit log file to verify (rotated backups .1-.3 are checked as part of the chain)")
+	cmd.Flags().StringVar(&path, "path", defaultAuditLogPath, "audit log file to verify (default: the daemon config's audit.path, else /var/log/bunkerd/audit.log; rotated backups .1-.3 are checked as part of the chain)")
 	return cmd
 }
 
@@ -318,6 +346,7 @@ Local log only — like verify, run it on the host that owns the log. Works
 on an unconfigured/disabled audit too (reports enabled=false). Verify
 history is not tracked: last verify is reported as n/a.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			path = defaultAuditPathFlag(cmd, "path")
 			st, err := audit.LocalStatus(path)
 			if err != nil {
 				return err
@@ -332,7 +361,7 @@ history is not tracked: last verify is reported as n/a.`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&path, "path", defaultAuditLogPath, "audit log file to inspect (rotated backups .1-.3 are included)")
+	cmd.Flags().StringVar(&path, "path", defaultAuditLogPath, "audit log file to inspect (default: the daemon config's audit.path, else /var/log/bunkerd/audit.log; rotated backups .1-.3 are included)")
 	cmd.Flags().BoolVar(&wantJSON, "json", false, "emit machine-readable JSON instead of plain text")
 	return cmd
 }

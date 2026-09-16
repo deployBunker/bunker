@@ -54,6 +54,14 @@ func run() error {
 // --version is a first-class flag on the root command: it prints the exact
 // same 5-field block as the `version` subcommand (UX-005), instead of cobra's
 // auto-added --version flag which rendered a bare one-liner (GAP-045).
+//
+// --config / --daemon-config are persistent flags for the client-local path
+// resolution (internal/cli paths.go). They are transferred into the cli
+// package setters as soon as the command tree is built (before Execute
+// parses them) via the ChangeHost hook, so every subcommand — all of which
+// load the CLI config — sees the explicit value with no per-command flag
+// parsing. BUNKER_HOME and BUNKERD_CONFIG provide the env-tier defaults and
+// are read by internal/cli directly.
 func newRootCommand() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "bunker",
@@ -61,13 +69,55 @@ func newRootCommand() *cobra.Command {
 		Long: `bunker is the command-line tool for managing Bunker agent hosts.
 
 Manage servers, deploy bunkerd instances, connect to remote hosts,
-and control ephemeral development environments — all from the CLI.`,
+and control ephemeral development environments — all from the CLI.
+
+Client-side path overrides (persistent flags):
+  --config <path>         CLI config file. Precedence: --config >
+                          $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml.
+                          (bunker systemd install's local --config means the
+                          DAEMON config file and shadows this flag.)
+  --daemon-config <path>  DAEMON config file consulted for the default paths
+                          of the local-file commands (audit list/verify/export/
+                          status --path, registry compact --path). Precedence:
+                          --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml.
+                          Missing or unreadable files fall back silently to the
+                          documented constants. An explicit --path on those
+                          commands always wins.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
 
 	var showVersion bool
 	root.Flags().BoolVar(&showVersion, "version", false, "Print the bunker version (same as `bunker version`)")
+
+	// Persistent client-side path flags (see the Long help above for the
+	// precedence rules). The parsed values are transferred into the cli
+	// package setters by the PersistentPreRun wrapper below.
+	root.PersistentFlags().String("config", "",
+		"CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. "+
+			"NOTE: `bunker systemd install --config` means the DAEMON config and shadows this flag")
+	root.PersistentFlags().String("daemon-config", "",
+		"DAEMON config file for the local-file command defaults (audit --path, registry compact --path). "+
+			"Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. "+
+			"An explicit --path on those commands always wins")
+	configFlag := root.PersistentFlags().Lookup("config")
+	daemonFlag := root.PersistentFlags().Lookup("daemon-config")
+
+	// Cobra parses all flags (root persistent flags included) before running
+	// the target command, then walks the PersistentPreRun chain. No bunker
+	// subcommand defines its own PersistentPreRun, so this wrapper is the
+	// single point where the explicit values reach internal/cli before any
+	// command's RunE (all of which load the CLI config) executes. Empty or
+	// whitespace-only values are treated as unset by the cli package.
+	prevPersistentPreRun := root.PersistentPreRun
+	root.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		cli.SetConfigPathOverride(configFlag.Value.String())
+		cli.SetDaemonConfigPathOverride(daemonFlag.Value.String())
+		if prevPersistentPreRun != nil {
+			prevPersistentPreRun(cmd, args)
+		}
+	}
+
 	root.RunE = func(cmd *cobra.Command, args []string) error {
 		if showVersion {
 			cli.PrintVersion(cmd.OutOrStdout())

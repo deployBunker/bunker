@@ -34,13 +34,18 @@ type ServerEntry struct {
 	ConnectedAt string `mapstructure:"connected_at" yaml:"connected_at"`
 }
 
-// configFilePath returns the path to ~/.bunker/config.yaml.
+// configFilePath returns the path to the CLI config file, resolved from the
+// root --config flag, $BUNKER_HOME, or $HOME/.bunker/config.yaml (the
+// historical default). See paths.go for the resolution rules.
 func configFilePath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("cannot determine home directory: %w", err)
+	if configPathOverride != "" {
+		return configPathOverride, nil
 	}
-	return filepath.Join(home, ".bunker", "config.yaml"), nil
+	dir, err := bunkerStateDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "config.yaml"), nil
 }
 
 // LoadCLIConfig reads the CLI configuration from ~/.bunker/config.yaml.

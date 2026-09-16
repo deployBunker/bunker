@@ -469,6 +469,45 @@ bunker host-provision  Provision the per-agent isolation boundary on this host
 bunker version     Print version/commit/build metadata (also --version)
 ```
 
+## CLI config & path overrides (DF-BUNKER-16)
+
+The CLI stores its state (registered servers, active server) and the
+agent SSH keys client-locally. Every path below is explicit and
+overridable — no `~` or root defaults are baked into your invocations:
+
+**CLI config file** (server registry + active server):
+
+```
+--config /path/to/config.yaml     # highest precedence (persistent root flag)
+BUNKER_HOME=/path/to/state        # config at $BUNKER_HOME/config.yaml
+$HOME/.bunker/config.yaml         # default (unchanged)
+```
+
+`BUNKER_HOME` relocates the whole CLI state directory — the config file
+*and* the agent keys directory (`$BUNKER_HOME/keys/`). An explicit
+`--config` moves the key directory with it (`keys/` next to the config
+file). Empty or whitespace-only values are treated as unset.
+
+**Local-file command defaults** (`audit list/verify/export/status --path`,
+`registry compact --path`): the default is read from the **daemon config**
+so the CLI inspects the same files the daemon writes:
+
+```
+--daemon-config /path/to/config.yaml   # highest precedence (persistent root flag)
+BUNKERD_CONFIG=/path/to/config.yaml    # env tier
+/etc/bunkerd/config.yaml               # default
+```
+
+The daemon config's `audit.path` / `agent.registry.path` become the
+`--path` defaults. A missing, unreadable, or invalid daemon config is
+never an error — the documented constants (`/var/log/bunkerd/audit.log`,
+`/var/lib/bunkerd/agents.jsonl`) apply. An explicit `--path` on the
+command always wins.
+
+> **Note:** `bunker systemd install --config <path>` means the **daemon**
+> config file (it always did). Its local flag shadows the new root
+> `--config`, which targets the CLI config.
+
 ## Tech Stack
 
 | Layer | Technology |

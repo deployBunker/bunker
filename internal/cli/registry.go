@@ -62,6 +62,9 @@ cross-process lock the daemon uses for spawn/destroy appends, so it is safe
 against a running daemon. Before/after counts are printed.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Follow the daemon config for the --path DEFAULT unless the
+			// operator set --path explicitly (explicit always wins).
+			path = defaultRegistryPathFlag(cmd, "path")
 			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 			store, err := registry.Open(registry.Options{Path: path, Logger: logger})
 			if err != nil {
@@ -95,7 +98,7 @@ against a running daemon. Before/after counts are printed.`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&path, "path", defaultRegistryPath, "Registry file to compact (run on the host that owns it)")
+	cmd.Flags().StringVar(&path, "path", defaultRegistryPath, "Registry file to compact (default: the daemon config's agent.registry.path, else /var/lib/bunkerd/agents.jsonl; run on the host that owns it)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Report what compaction would do without rewriting the registry")
 	return cmd
 }
