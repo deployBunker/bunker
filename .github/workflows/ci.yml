@@ -232,6 +232,9 @@ jobs:
           BUNKERD_REST_ADDR: ":28081"
           BUNKER_BIN: ${{ github.workspace }}/bunker
           BUNKERD_BIN: ${{ github.workspace }}/bunkerd
+          # CI builds BUNKER_BIN from the pushed commit, so a certification
+          # MISMATCH here is a real defect, not a deployment mode.
+          BUNKER_STRICT_BIN: "1"
         run: bash e2e-full-battery.sh
         timeout-minutes: 15
 

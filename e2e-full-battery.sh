@@ -19,6 +19,11 @@ set -euo pipefail
 #   WITHOUT root: it never creates users, never starts daemons, never writes
 #   /var/log, and never runs a battery section. Final line:
 #   SELF-TEST: PASS
+# --BIN-REPORT: `bash e2e-full-battery.sh --bin-report` prints the binary
+#   certification banner (which binary reports which commit vs repo HEAD)
+#   with ZERO side effects and no root requirement — same output as the
+#   certification preflight of a full run, nothing else. Exit 0 on
+#   MATCH/SKIP, non-zero on MISMATCH (DF-BUNKER-3 / QA-BUNKER-3).
 
 PASS=0
 FAIL=0
@@ -35,7 +40,12 @@ echo "=========================================="
 echo ""
 
 export BUNKER_TOKEN="test-regression-token"
-BUNKER="/usr/local/bin/bunker"
+
+# Binary resolution (exactly one statement): BUNKER_BIN env override first,
+# falling back to the deployed default /usr/local/bin/bunker. Whatever this
+# resolves to is the binary the battery certifies — the certification
+# preflight below states it explicitly before any host mutation.
+BUNKER="${BUNKER_BIN:-/usr/local/bin/bunker}"
 
 # Coexistence mode (CI on bunker-mvp): the host runs a systemd-managed
 # production bunkerd on :19090/:18080. Use dedicated ports + a temp config and
@@ -47,12 +57,9 @@ BUNKERD_COEXIST="${BUNKERD_COEXIST:-}"
 BUNKERD_GRPC_ADDR="${BUNKERD_GRPC_ADDR:-:29091}"
 BUNKERD_REST_ADDR="${BUNKERD_REST_ADDR:-:28081}"
 BUNKERD_PID=""
-# Binary overrides: the battery normally uses the deployed CLI, but feature
-# batteries (GAP-064) may need freshly built binaries WITHOUT overwriting the
-# live production bunkerd. BUNKERD_BIN points the coexist-mode daemon at a
-# candidate build; BUNKER_BIN overrides the CLI similarly.
+# Feature batteries (GAP-064) may point BUNKERD_BIN at a freshly built daemon
+# WITHOUT overwriting the live production bunkerd in coexist mode.
 BUNKERD_BIN="${BUNKERD_BIN:-/usr/local/bin/bunkerd}"
-BUNKER="${BUNKER_BIN:-/usr/local/bin/bunker}"
 
 # GAP-075 section state. Initialized here (not in section 15) so the EXIT trap
 # can always reference it under `set -u`, even when the battery dies early.
@@ -93,6 +100,98 @@ run_capture() {
         echo "  [capture] $label failed (exit=$RUN_CAPTURE_EXIT)"
     fi
     return 0
+}
+
+# ── Binary certification (DF-BUNKER-3 / QA-BUNKER-3) ───────────────────
+# The battery can legitimately certify a DEPLOYED binary (default mode), but
+# the run must state WHICH binary and commit it certified — a VERIFY-PASS
+# transcript must never be readable as "HEAD was verified" when it was not.
+#
+# bin_commit_verdict REPO_HEAD BIN_COMMIT — PURE comparison helper: no side
+# effects, no I/O beyond its arguments. Returns:
+#   MATCH     the binary's commit matches repo HEAD (prefix compare: either
+#             side may be a short 7-8 char or a full 40-char SHA; they match
+#             when one is a prefix of the other and the shorter is >= 7 chars)
+#   SKIP      nothing comparable: BIN_COMMIT empty/"unknown"/"dev", or
+#             REPO_HEAD empty (no git worktree / git unavailable) — a SKIP is
+#             NOT a mismatch and must never fail a run
+#   MISMATCH  both sides are real SHAs and they disagree
+bin_commit_verdict() {
+    local repo_head="$1" bin_commit="$2"
+    local b_lc r_lc short long
+    b_lc="$(printf '%s' "${bin_commit:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+    r_lc="$(printf '%s' "${repo_head:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+    case "$b_lc" in
+        ""|unknown|dev) echo "SKIP:binary reported no comparable commit ('$bin_commit')"; return 0 ;;
+    esac
+    case "$r_lc" in
+        "") echo "SKIP:no repo HEAD available (not a git worktree or git unavailable)"; return 0 ;;
+    esac
+    if [ "${#b_lc}" -le "${#r_lc}" ]; then
+        short="$b_lc" long="$r_lc"
+    else
+        short="$r_lc" long="$b_lc"
+    fi
+    if [ "${#short}" -ge 7 ] && [ "${long:0:${#short}}" = "$short" ]; then
+        echo "MATCH"
+    else
+        echo "MISMATCH"
+    fi
+    return 0
+}
+
+# bin_certify VERDICT BIN_PATH BIN_COMMIT REPO_HEAD — PURE banner renderer
+# for the certification decision (no I/O, no mutation; 2>/dev/null not used).
+bin_certify() {
+    local verdict="$1" bin_path="$2" bin_commit="$3" repo_head="$4"
+    echo "  ── binary certification (DF-BUNKER-3 / QA-BUNKER-3) ──"
+    echo "  binary under test : $bin_path"
+    echo "  commit it reports : ${bin_commit:-<none>}"
+    echo "  repo HEAD         : ${repo_head:-<none>}"
+    echo "  verdict           : $verdict"
+}
+
+# Preflight (runs BEFORE any host mutation): state which binary the battery
+# will certify. Sets BIN_CERT_VERDICT / BIN_CERT_BIN_COMMIT for the RESULTS
+# SUMMARY. On MISMATCH it is a loud note by default (certifying a deployed
+# binary is legitimate); with BUNKER_STRICT_BIN=1 in the environment it is a
+# hard fail that exits BEFORE touching the host.
+BIN_CERT_VERDICT=""
+BIN_CERT_BIN_COMMIT=""
+bin_certification_preflight() {
+    BIN_CERT_BIN_COMMIT="$("${BUNKER:-/usr/local/bin/bunker}" version 2>/dev/null | awk 'NR==2 {print $2}')"
+    local repo_head="" verdict detail
+    if command -v git > /dev/null 2>&1; then
+        repo_head="$(git rev-parse HEAD 2>/dev/null)" || repo_head=""
+    fi
+    verdict="$(bin_commit_verdict "$repo_head" "$BIN_CERT_BIN_COMMIT")"
+    BIN_CERT_VERDICT="${verdict%%:*}"
+    detail=""
+    case "$verdict" in *:*) detail=" — ${verdict#*:}" ;; esac
+    echo ""
+    echo "=== BINARY CERTIFICATION ==="
+    bin_certify "$BIN_CERT_VERDICT" "${BUNKER:-<unset>}" "$BIN_CERT_BIN_COMMIT" "$repo_head"
+    case "$BIN_CERT_VERDICT" in
+        MATCH)
+            assert "battery certifies $BUNKER @ $BIN_CERT_BIN_COMMIT == repo HEAD"
+            ;;
+        SKIP)
+            note "binary certification SKIPPED${detail}"
+            ;;
+        MISMATCH)
+            if [ "${BUNKER_STRICT_BIN:-}" = "1" ]; then
+                fail "STRICT: binary $BUNKER reports commit '$BIN_CERT_BIN_COMMIT' but repo HEAD is '${repo_head}' — set BUNKER_BIN to a binary built from HEAD or re-deploy (BUNKER_STRICT_BIN=1)"
+                echo ""
+                echo "STATUS: binary certification MISMATCH under BUNKER_STRICT_BIN=1 — host untouched, nothing was run"
+                exit 1
+            else
+                note "battery certifies a binary that is NOT repo HEAD${detail} — legitimate for a deployed binary, but do not read VERIFY-PASS as 'HEAD was verified' (set BUNKER_STRICT_BIN=1 to make this fatal)"
+            fi
+            ;;
+        *)
+            note "binary certification produced an unknown verdict: $verdict"
+            ;;
+    esac
 }
 
 # Preflight: refuse to run the battery as non-root BEFORE any write to
@@ -165,6 +264,61 @@ if [ "${1:-}" = "--self-test" ]; then
         ST_FAIL=$((ST_FAIL+1))
     fi
 
+    # (d) bin_commit_verdict: MATCH for a short-vs-full SHA prefix pair, in
+    # BOTH orientations (binary may report short, HEAD may be full or vice
+    # versa).
+    V1=$(bin_commit_verdict "7232f304d46311a30d31d93e3de967666221214d" "7232f30")
+    V2=$(bin_commit_verdict "7232f30" "7232f304d46311a30d31d93e3de967666221214d")
+    if [ "$V1" = "MATCH" ] && [ "$V2" = "MATCH" ]; then
+        assert "bin_commit_verdict: short/full SHA prefixes MATCH both ways"
+    else
+        fail "bin_commit_verdict: expected MATCH for the short/full prefix pair (got '$V1' / '$V2')"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+
+    # (e) bin_commit_verdict: MISMATCH for two real but different SHAs.
+    V3=$(bin_commit_verdict "7232f30" "4af949d")
+    if [ "$V3" = "MISMATCH" ]; then
+        assert "bin_commit_verdict: two different real SHAs are a MISMATCH"
+    else
+        fail "bin_commit_verdict: expected MISMATCH for different SHAs (got '$V3')"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+
+    # (f) bin_commit_verdict: SKIP (never a failure) for an unreportable
+    # binary commit (unknown / dev / empty) and for a missing repo HEAD.
+    # The verdict word is the part before ':' — SKIP rows carry a reason.
+    V4=$(bin_commit_verdict "7232f30" "unknown")
+    V5=$(bin_commit_verdict "7232f30" "dev")
+    V6=$(bin_commit_verdict "7232f30" "")
+    V7=$(bin_commit_verdict "" "7232f30")
+    if [ "${V4%%:*}" = "SKIP" ] && [ "${V5%%:*}" = "SKIP" ] && [ "${V6%%:*}" = "SKIP" ] && [ "${V7%%:*}" = "SKIP" ]; then
+        assert "bin_commit_verdict: unknown/dev/empty commit and missing HEAD are SKIP (never MISMATCH)"
+    else
+        fail "bin_commit_verdict: expected SKIP for unknown/dev/empty/no-HEAD (got '$V4'/'$V5'/'$V6'/'$V7')"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+
+    # (g) Normalization: an uppercase full SHA (some stampers emit it) still
+    # MATCHes a lowercase short one.
+    V8=$(bin_commit_verdict "7232f30" "7232F304D46311A30D31D93E3DE967666221214D")
+    if [ "$V8" = "MATCH" ]; then
+        assert "bin_commit_verdict: case/whitespace normalized before compare"
+    else
+        fail "bin_commit_verdict: expected MATCH for an uppercase full SHA (got '$V8')"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+
+    # (h) A shorter-than-7-char prefix must NOT match even when it is a
+    # literal prefix of HEAD (git abbreviations are >= 7 chars).
+    V9=$(bin_commit_verdict "7232f30" "7232f3")
+    if [ "$V9" = "MISMATCH" ]; then
+        assert "bin_commit_verdict: a <7-char prefix never MATCHes (not a real git abbreviation)"
+    else
+        fail "bin_commit_verdict: expected MISMATCH for a 6-char prefix (got '$V9')"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+
     echo ""
     if [ "$ST_FAIL" -eq 0 ]; then
         echo "SELF-TEST: PASS"
@@ -174,9 +328,31 @@ if [ "${1:-}" = "--self-test" ]; then
     exit 1
 fi
 
+if [ "${1:-}" = "--bin-report" ]; then
+    # ── --bin-report: the certification banner ONLY, ZERO side effects. ──
+    # Same output as a full run's certification preflight and nothing else:
+    # no root requirement, no host mutation, no battery sections. Exit 0 on
+    # MATCH/SKIP, non-zero on MISMATCH — verifiable against a stub BUNKER_BIN
+    # on any box (DF-BUNKER-3 / QA-BUNKER-3).
+    bin_certification_preflight
+    case "$BIN_CERT_VERDICT" in
+        MATCH|SKIP) exit 0 ;;
+        *) exit 1 ;;
+    esac
+fi
+
 if ! preflight_decision; then
     exit 42
 fi
+
+# Binary certification preflight (DF-BUNKER-3 / QA-BUNKER-3) — runs BEFORE
+# any host mutation: before the CLEANUP user sweep, before the coexist daemon
+# is started, before /var/log is touched, before section 1. Pure output +
+# counters; under BUNKER_STRICT_BIN=1 a MISMATCH exits 1 right here, while
+# nothing on the host has been modified and the EXIT cleanup trap is not even
+# armed yet.
+bin_certification_preflight
+
 # EXIT cleanup — MAIN BATTERY PATH ONLY. The --self-test path above exits
 # BEFORE this is armed, so the self-test can never destroy agents, delete
 # users, or run any teardown (it is side-effect-free by construction).
@@ -1636,6 +1812,15 @@ echo "=========================================="
 echo "  ✓ Pass:  $PASS"
 echo "  ✗ Fail:  $FAIL"
 echo "  ⚠ Notes: $NOTE"
+echo ""
+# Binary certification (DF-BUNKER-3 / QA-BUNKER-3): state EXACTLY what this
+# run certified, so a VERIFY-PASS transcript can never be read as "HEAD was
+# verified" when the battery actually exercised a different build. The
+# ${VAR:-} defaults keep the line standalone-safe: the summary block is
+# extracted and executed on its own by
+# internal/hostsetup TestBatterySummaryExitCodeTracksFailures, which supplies
+# only PASS/FAIL/NOTE.
+echo "  CERTIFIED BINARY: ${BUNKER:-<standalone-summary-fixture>} (commit reported: ${BIN_CERT_BIN_COMMIT:-<none>}; verdict: ${BIN_CERT_VERDICT:-UNKNOWN})"
 echo ""
 
 if [ "$FAIL" -eq 0 ]; then
