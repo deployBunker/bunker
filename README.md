@@ -174,6 +174,15 @@ Then point the CLI at the new REST port when connecting — e.g.
 `bunker connect http://bunker-host:18080 --token ...` (the public demo above
 uses exactly these alternate ports).
 
+**Multiple daemons on one host** — a second `bunkerd` on the same machine
+shares the host's `bunker-*` user namespace and the durable registry
+(`agent.registry.path`). At startup, reconciliation leaves agents whose
+persisted ports fall outside that daemon's own pool untouched (logged as a
+loud `skipping foreign orphan agent` warning) instead of destroying them —
+but two daemons with OVERLAPPING port pools remain unsupported. Give each
+instance its own `port_range_start`/`port_range_end` slice, its own
+`agent.registry.path`, and destroy an agent from the daemon that owns it.
+
 **Audit trail** — `bunkerd` writes an append-only JSONL audit log of every
 authenticated RPC (one record per request; file mode `0600`; token values are
 never written). It is on by default; configure it under `audit` in

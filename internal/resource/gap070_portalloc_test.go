@@ -97,6 +97,21 @@ func TestValidateRangeExported(t *testing.T) {
 	}
 }
 
+// TestBoundsReturnsConfiguredSpan pins the read-only pool-bounds accessor
+// the reconcile orphan walk uses to classify an orphan as foreign
+// (DF-BUNKER-13): its persisted range is provably disjoint from this span.
+func TestBoundsReturnsConfiguredSpan(t *testing.T) {
+	pa := testAllocator(t)
+	start, end := pa.Bounds()
+	if start != 10000 || end != 19999 {
+		t.Errorf("Bounds() = %d-%d, want 10000-19999", start, end)
+	}
+	// Bounds must not mutate pool state.
+	if got, want := pa.Available(), pa.MaxRanges(); got != want {
+		t.Errorf("Available() = %d, want %d (Bounds must not touch the pool)", got, want)
+	}
+}
+
 // TestRestoreMatchesReserve proves Restore is the replay/adopt path with the
 // same validation and idempotency, and that a restored range is never handed
 // out twice.

@@ -200,6 +200,7 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 		"purged", rep.Purged,
 		"adopted", rep.Adopted,
 		"destroyed", rep.Destroyed,
+		"foreign", rep.Foreign,
 	)
 	bunkerdSvc := &bunkerdService{cfg: s.cfg, logger: s.logger, agentMgr: agentMgr, heartbeats: agentMgr, tracker: tracker, tunnelMgr: tunnelMgr, tailscaleMgr: tailscaleMgr, keyMgr: s.keyMgr, jwtAuth: s.jwtAuth, cpuSampler: resource.NewCPUSampler(), auditLog: s.auditLog}
 

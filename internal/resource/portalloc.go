@@ -134,6 +134,14 @@ func (pa *PortAllocator) validateRangeLocked(start, end uint32) error {
 	return nil
 }
 
+// Bounds returns the allocator's inclusive port span. Callers use it to tell
+// a sub-range that could belong to this pool from one that provably cannot.
+func (pa *PortAllocator) Bounds() (start, end uint32) {
+	pa.mu.Lock()
+	defer pa.mu.Unlock()
+	return pa.start, pa.end
+}
+
 // Reserve claims an EXACT port sub-range for agentID, validating it against
 // the pool geometry and against the currently-free list. It is idempotent
 // for the same agent + same range (a repeated replay/adopt of the same

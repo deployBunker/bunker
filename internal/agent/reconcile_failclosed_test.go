@@ -256,10 +256,10 @@ func TestReconcile_AdoptFailsClosedOnInvalidOrCollidingRange(t *testing.T) {
 			name:     "misaligned range",
 			metadata: "10050-10149\n",
 		},
-		{
-			name:     "outside the pool",
-			metadata: "30000-30099\n",
-		},
+		// NOTE(DF-BUNKER-13): the former "outside the pool" row
+		// (30000-30099) moved to reconcile_foreign_test.go — an orphan whose
+		// persisted range is disjoint from this daemon's pool is now
+		// classified foreign and skipped, never destroyed.
 		{
 			name:     "inverted range",
 			metadata: "10100-10000\n",

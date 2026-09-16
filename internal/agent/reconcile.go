@@ -42,6 +42,11 @@ type ReconcileReport struct {
 	Adopted int
 	// Destroyed counts orphans removed from the host.
 	Destroyed int
+	// Foreign counts orphans left untouched because their persisted ports
+	// lie outside this daemon's pool: such an agent cannot collide with a
+	// port this daemon allocates and belongs to another daemon instance
+	// (or an older pool geometry).
+	Foreign int
 }
 
 // Reconcile replays the durable registry against system state before the
@@ -56,8 +61,12 @@ type ReconcileReport struct {
 //  2. purges registry records whose system user is gone (stale);
 //  3. handles orphans — bunker-* users the registry does not know — by
 //     destroying them (default) or adopting them, per reconciliation.mode.
-//     Adoption requires readable, valid, free port metadata: an orphan that
-//     cannot be adopted with its exact reservation is destroyed instead;
+//     Orphans are classified FOREIGN first: one whose persisted port range
+//     lies entirely outside this daemon's pool cannot collide with a port
+//     this daemon allocates, so it belongs to another daemon instance (or
+//     an older pool geometry) and is left untouched. Adoption of the rest
+//     requires readable, valid, free port metadata: an orphan that cannot
+//     be adopted with its exact reservation is destroyed instead;
 //  4. unblocks the TTL reaper (which waits for this to finish).
 //
 // It never fails hard: every action is logged and the daemon keeps running.
@@ -136,6 +145,25 @@ func (m *AgentManager) Reconcile(ctx context.Context) ReconcileReport {
 	for _, sa := range systemAgents {
 		if m.registry.Get(sa.AgentID) != nil || handled[sa.AgentID] {
 			continue // known live agent (handled above) or already handled
+		}
+		// Foreign check BEFORE the mode branch: an orphan whose persisted
+		// ports lie outside this daemon's pool cannot collide with any port
+		// this daemon allocates, so it belongs to another daemon instance
+		// (or an older pool geometry) and must never be destroyed or
+		// adopted here — not even in destroy mode. Unreadable or malformed
+		// metadata is not foreign (the daemon cannot prove it is safe to
+		// leave), so it keeps the fail-closed treatment below.
+		if foreign, start, end := m.orphanIsForeign(sa); foreign {
+			poolStart, poolEnd := m.portAlloc.Bounds()
+			m.logger.Warn("registry reconcile: skipping foreign orphan agent",
+				"action", "skip",
+				"agent_id", sa.AgentID,
+				"system_user", sa.Username,
+				"persisted_range", fmt.Sprintf("%d-%d", start, end),
+				"pool", fmt.Sprintf("%d-%d", poolStart, poolEnd),
+				"reason", "persisted ports outside this daemon's pool: agent is owned by another daemon instance or an older pool geometry; destroy it from the daemon that owns it")
+			rep.Foreign++
+			continue
 		}
 		if rep.Mode == config.ReconcileModeAdopt {
 			if err := m.adoptAgent(sa); err != nil {
@@ -275,6 +303,29 @@ func (m *AgentManager) dropHalfManagedState(agentID string) {
 	if m.portAlloc != nil && m.portAlloc.Has(agentID) {
 		m.portAlloc.Free(agentID)
 	}
+}
+
+// orphanIsForeign reports whether an orphan's persisted port range is
+// disjoint from this daemon's own pool: such an agent cannot collide with a
+// port this daemon allocates, so it belongs to another daemon instance (or
+// an older pool geometry) and must never be destroyed here. Unreadable or
+// malformed metadata is NOT foreign — the daemon cannot prove it is safe to
+// leave, so the existing fail-closed path keeps handling it. The disjoint
+// test deliberately does not use ValidateRange, which also rejects
+// in-pool-but-unaligned ranges: those keep their current fail-closed
+// treatment, because two daemons with OVERLAPPING pools remain unsupported.
+// When no allocator is configured this daemon cannot prove any range
+// foreign, so nothing is ever skipped for it.
+func (m *AgentManager) orphanIsForeign(sa SystemAgent) (foreign bool, start, end uint32) {
+	if m.portAlloc == nil {
+		return false, 0, 0
+	}
+	start, end, ok := readPersistedPortRange(sa.Home)
+	if !ok {
+		return false, 0, 0
+	}
+	poolStart, poolEnd := m.portAlloc.Bounds()
+	return end < poolStart || start > poolEnd, start, end
 }
 
 // adoptAgent re-registers an orphan: it rebuilds the tracker record from
