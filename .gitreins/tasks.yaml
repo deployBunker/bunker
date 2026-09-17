@@ -1629,3 +1629,19 @@ tasks:
   status: complete
   created_at: '2026-09-16T22:50:14.311576+00:00'
   completed_at: '2026-09-16T23:07:21.046134+00:00'
+- id: INT-DEMO-001-C3
+  title: exec surfaces the session-denial cause and spawn reports ready only after
+    an SSH exec probe (INT-DEMO-001 criterion 3)
+  criteria:
+  - 'exec must not fail silently with a bare ssh exit 254 when the agent session is
+    denied: the daemon must detect the denial signature (exit 254 with no command
+    output) and emit an actionable diagnostic naming the session-denial cause and
+    its remediation; spawn must report the agent ready only after a bounded SSH exec
+    probe against the agent user succeeds, and must fail loudly with the classified
+    cause when the probe fails; unit tests cover both the firing and the non-firing
+    case (a normal non-zero exit must NOT be reported as a session denial) and fail
+    when the detection is neutered; go build/vet/gofmt/test clean; live E2E battery
+    VERIFY-PASS on bunker-mvp.'
+  status: complete
+  created_at: '2026-09-17T10:12:28.911826+00:00'
+  completed_at: '2026-09-17T10:51:51.262581+00:00'
