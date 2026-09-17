@@ -1749,3 +1749,36 @@ tasks:
   status: complete
   created_at: '2026-09-17T14:48:17.664027+00:00'
   completed_at: '2026-09-17T15:07:52.881854+00:00'
+- id: INT-SPAWN-001-LIVE
+  title: Live conjuncts for INT-SPAWN-001 on the demo host (recycled-uid replay +
+    standalone gate)
+  criteria:
+  - 'On bunker-mvp (78.46.173.180) with the daemon carrying the INT-SPAWN-001 fix
+    (1d1fb4c): (1) a controlled recycled-uid replay completes - spawn an agent, destroy
+    it, immediately spawn again so the allocated uid is recycled, and the second spawn
+    reaches a ready agent (no failure at stage rootless-install), with the daemon''s
+    own log/journal quoted for any recycled-uid WARN; (2) the standalone e2e-full-battery.sh
+    run against the production daemon at HEAD reports no spawn dying at stage rootless-install
+    (verdict and PASS/FAIL counts quoted verbatim); (3) the /var/lib/systemd/linger
+    entry set is not grown by the run. No code change is required - the fix already
+    landed at 1d1fb4c; this task judges the LIVE evidence.'
+  status: complete
+  created_at: '2026-09-17T15:35:28.037995+00:00'
+  completed_at: '2026-09-17T15:44:14.340713+00:00'
+- id: INT-CI-013
+  title: 'Standalone gate section 14: the never-seen-ID cell must assert the documented
+    CLI contract (idempotent exit 0 + not-found message), the daemon''s RPC-level
+    404 and the absence of a durable registry record'
+  criteria:
+  - 'e2e-full-battery.sh section 14''s never-seen-ID cell asserts, for a PER-RUN UNIQUE
+    id: (a) the CLI''s non-force destroy exits 0 and prints the not-found message
+    (the documented idempotent contract of internal/cli/destroy.go + DOGFOOD-005),
+    (b) the daemon''s DestroyAgent RPC answers HTTP 404 for that id, (c) the durable
+    registry at $GAP070_LIVE holds zero records for it, with the daemon URL named
+    in every assert and fail message. The previous expectation that a never-seen destroy
+    must exit non-zero is gone (grep -c ''unexpectedly succeeded'' == 0). No Go product
+    code is modified; bash -n e2e-full-battery.sh is clean; the known-absent idempotent
+    cell and every other cell are unchanged.'
+  status: complete
+  created_at: '2026-09-17T15:45:15.436153+00:00'
+  completed_at: '2026-09-17T15:45:18.015436+00:00'
