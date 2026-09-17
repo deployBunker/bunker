@@ -1811,3 +1811,18 @@ tasks:
   status: complete
   created_at: '2026-09-17T16:22:24.088724+00:00'
   completed_at: '2026-09-17T16:41:24.456125+00:00'
+- id: INT-SPAWN-004
+  title: Session bus environment must reach the agent session in-band (su - strips
+    the caller env)
+  criteria:
+  - 'PASS: (1) both production session runners (probe/daemon-reload and rootless installer)
+    deliver XDG_RUNTIME_DIR and DBUS_SESSION_BUS_ADDRESS INSIDE the command the session
+    executes, asserted on the COMMAND STRING not on cmd.Env; (2) ONE shared construction
+    is used by probe, daemon-reload retry and installer; (3) a unit test fails against
+    a runner that only sets cmd.Env (no phantom pass); (4) healthy path unchanged:
+    one probe call, zero destructive calls, no retry log line when the bus answers
+    immediately; (5) gofmt clean, go build ./... rc=0, go vet ./... rc=0, go test
+    ./... -count=1 rc=0'
+  status: complete
+  created_at: '2026-09-17T16:53:40.311502+00:00'
+  completed_at: '2026-09-17T17:12:41.906470+00:00'
