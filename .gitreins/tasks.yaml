@@ -1842,3 +1842,21 @@ tasks:
   status: complete
   created_at: '2026-09-17T18:25:26.808555+00:00'
   completed_at: '2026-09-17T18:47:45.061866+00:00'
+- id: INT-CI-017
+  title: 'Tier-0 unit flake amplification: unit tests must not gate the downstream
+    CI jobs'
+  criteria:
+  - 'PASS: (1) the ''Unit tests'' step is removed from the build-and-test job and
+    now runs in its OWN job named unit-tests, so gitreins-guard, regression and root-suite
+    keep ''needs: build-and-test'' and can no longer be SKIPPED by a unit-test failure;
+    (2) a live workflow_dispatch run on a temp branch carrying a deliberately failing
+    unit test shows the unit-tests job red while gitreins-guard still schedules and
+    runs (not skipped) - pre-fix, run 35253802213 skipped all three downstream jobs;
+    (3) no new continue-on-error anywhere, and a genuine unit-test failure still makes
+    the workflow run red; (4) every pre-existing step is preserved exactly once with
+    its if/continue-on-error/timeout semantics unchanged and no other repo file is
+    modified; (5) .github/workflows/ci.yml parses as YAML and the next push-to-main
+    run is job-level green.'
+  status: complete
+  created_at: '2026-09-17T19:23:48.455232+00:00'
+  completed_at: '2026-09-17T19:31:21.370336+00:00'
