@@ -1696,3 +1696,43 @@ tasks:
   status: complete
   created_at: '2026-09-17T12:15:10.691496+00:00'
   completed_at: '2026-09-17T13:08:41.261986+00:00'
+- id: INT-CI-011
+  title: 'Demo host at HEAD parity: install both HEAD binaries, restart bunkerd, bin-report
+    MATCH, standalone E2E gate VERIFY-PASS'
+  criteria:
+  - 'PASS: (1) /opt/bunker and /usr/local/bin both at origin/main HEAD; daemon restarted
+    from HEAD and ONLINE; bin-report reads MATCH exit 0; (2) standalone e2e-full-battery.sh
+    with BUNKER_DAEMON_URL=http://localhost:18080 + production token + BUNKERD_REST_ADDR=:18080
+    + BUNKERD_GRPC_ADDR=:19090 prints 0 FAIL and VERIFY-PASS; (3) operator /root/.bunker/config.yaml
+    sha256 unchanged before/after the battery run'
+  status: complete
+  created_at: '2026-09-17T13:40:13.877322+00:00'
+  completed_at: '2026-09-17T14:12:05.579519+00:00'
+- id: INT-DEMO-001-C1
+  title: 'Demo host: a freshly spawned agent accepts an SSH session (exec works, no
+    PAM denial) on a daemon at HEAD'
+  criteria:
+  - 'PASS live on bunker-mvp with the HEAD daemon deployed: (1) a freshly spawned
+    agent returns real output for ''bunker exec <id> -- whoami'' with exit 0 (NOT
+    the PAM lockout exit 254); (2) ''bunker exec <id> -- id -nG'' lists the bunker-agents
+    group; (3) ''bunker mount <id> /tmp/<mp>'' succeeds and is unmounted cleanly;
+    (4) destroy removes the agent user, the linger entry and the run dir with no residue,
+    and the linger count returns to its pre-spawn value'
+  status: complete
+  created_at: '2026-09-17T13:40:25.199607+00:00'
+  completed_at: '2026-09-17T14:10:05.384542+00:00'
+- id: INT-CI-012
+  title: 'Standalone E2E gate: the nested regression suite must not take over the
+    live daemon/ports or delete the operator CLI config, and section 12''s nested
+    verdict must be real'
+  criteria:
+  - 'PASS: (a) --self-test PASS incl. new assertions (nested suite gets non-production
+    ports in standalone; a nested suite exiting 1 makes section 12 report a failure;
+    the battery never removes a config it did not create); (b) grep-provable no unconditional
+    pkill bunkerd while a systemd-managed daemon is active and no rm -rf of the operator
+    config dir; (c) --show-plan/--bin-report unchanged; (d) live standalone gate on
+    bunker-mvp = 0 FAIL VERIFY-PASS with the production daemon uptime continuous and
+    /root/.bunker/config.yaml sha unchanged; (e) coexist path unchanged (CI green)'
+  status: complete
+  created_at: '2026-09-17T13:51:22.038436+00:00'
+  completed_at: '2026-09-17T14:14:43.915553+00:00'
