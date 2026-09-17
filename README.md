@@ -74,15 +74,77 @@ Bunker is a **multi-agent hosting platform** — a daemon (`bunkerd`) that runs 
 
 ## Quick Start
 
-### Live demo
+### Run it locally (recommended first path)
+
+Your own daemon on `localhost` is the shortest path to a working Bunker, and the
+only path where **you** issue the token — nothing here depends on a token from
+the maintainers or on the demo host being reachable. The steps are
+self-contained; the sections below ([Prerequisites](#prerequisites), Install,
+Configure, Run the daemon, Use the CLI) carry the full detail.
+
+```bash
+# 1. Get the source and build both binaries (see Install: make, or the
+#    make-free go build pair if this host has no make)
+git clone https://github.com/deployBunker/bunker.git
+cd bunker
+make build
+
+# 2. Configure. The daemon's default config path is /etc/bunkerd/config.yaml
+#    (cmd/bunkerd); set auth.token to a value you choose, and pass the same
+#    value to the CLI. Extra keys fall back to the daemon defaults
+#    (config.example.yaml / Configure below). For a token-free local daemon
+#    set auth.enabled: false instead — the daemon then logs a loud
+#    WARNING: AUTH DISABLED line and accepts unauthenticated requests.
+sudo mkdir -p /etc/bunkerd
+sudo tee /etc/bunkerd/config.yaml >/dev/null << 'EOF'
+server:
+  grpc_addr: ":9090"
+  rest_addr: ":8080"
+auth:
+  enabled: true
+  token: "your-master-token-here"
+EOF
+
+# 3. Start the daemon as root (spawn needs root). Default ports: REST :8080,
+#    gRPC :9090 — see the non-default-ports note below if they are taken.
+sudo ./bunkerd --config /etc/bunkerd/config.yaml
+
+# 4. In another terminal, point the CLI at it and check it is up
+./bunker connect http://127.0.0.1:8080 --token your-master-token-here
+./bunker status
+
+# 5. First agent: spawn, run a command inside it, tear it down
+./bunker spawn --ttl 1h demo-agent
+./bunker exec demo-agent -- uname -a
+./bunker destroy demo-agent
+```
+
+What to expect on a fresh host:
+
+- **Spawning needs a root daemon** — `bunker spawn` creates a Linux user
+  (`useradd`) and a systemd user slice (`systemd-run`). A non-root daemon starts
+  and answers the read-only RPCs (`status`, `list`, `info`), but spawn fails. The
+  `bunker` CLI itself runs as any user.
+- **The first spawn on a host is slow** — it installs rootless Docker into the
+  agent's home (a ~93 MB download, 60-90s+) before dockerd is ready; later
+  spawns take ~10s. See [Use the CLI](#use-the-cli).
+- **Private `/tmp` is host provisioning, not a build step.** Building and
+  starting the daemon do not install the host-side isolation; run
+  [Provision host isolation before spawning](#provision-host-isolation-before-spawning)
+  before putting isolation-sensitive workloads on the host.
+- **A build from a tagged release predates some documented features.** Build CLI
+  and daemon from the same checkout — see the freshness note under Install.
+
+### Or use the hosted demo (optional)
 
 > **⚠️ Request-access only — no self-serve signup.** Demo tokens are
 > provisioned on request by the [deployBunker](https://github.com/deployBunker)
 > maintainers (GitHub issue or email; a human replies, so expect latency).
-> If you need to try the platform immediately, skip to
-> [Prerequisites](#prerequisites) below and run your own instance instead.
+> There is no token endpoint, no signup form and no API key page in this repo —
+> if you need a token today, use [Run it locally](#run-it-locally-recommended-first-path)
+> above instead.
 
-A public demo instance runs on **bunker-mvp** (`78.46.173.180`, gRPC :19090 / REST :18080) with auth enforced. Once you have a token, try the platform without standing up your own root daemon:
+A public demo instance runs on **bunker-mvp** (`78.46.173.180`, gRPC :19090 / REST :18080) with auth enforced. Once a maintainer has issued you a token, try the platform without standing up your own root daemon:
 
 ```bash
 # Install the CLI (or: make build && ./bunker)
@@ -102,6 +164,9 @@ The demo is a shared, resource-limited sandbox (max 50 agents; per-agent CPU/mem
 - Linux host (Ubuntu 24.04+ recommended)
 - **Root access on the host** — `bunkerd` must run as root. Agent spawn creates Linux users (`useradd`) and systemd user slices (`systemd-run`) for cgroup resource limits; both require root privileges. A non-root daemon starts and serves read-only endpoints (list, version, health), but `bunker spawn` fails with `useradd: Permission denied`. The `bunker` CLI itself can run as any user — it talks to the daemon over gRPC/REST.
 - Go 1.26+
+- `make` — the documented `make build` needs it. On a minimal host with only Go
+  installed it fails immediately with `sh: 1: make: not found` (exit 127); use
+  the make-free `go build` pair in Install instead.
 - Docker CE (for rootless support)
 - `sshfs` (for mount command)
 - `cloudflared` (optional, for tunnels)
@@ -113,13 +178,26 @@ git clone https://github.com/deployBunker/bunker.git
 cd bunker
 # Builds ./bunkerd and ./bunker with version info baked in (ldflags)
 make build
+
+# No make on this host? The same two binaries without it — no gcc needed either:
+go build -o bunker ./cmd/bunker
+go build -o bunkerd ./cmd/bunkerd
 ```
+
+> **Cold host: the first build downloads every Go module.** Expect several
+> minutes on a fresh machine or an empty module cache; later builds take
+> seconds. The make-free pair above is a complete substitute for `make build` —
+> the binaries then carry the Go toolchain's own VCS metadata instead of the
+> Makefile's ldflags (that stamping needs `git` on `PATH` at build time, which a
+> clone host has), and `./bunker --version` reports the commit.
 
 > **Build before use.** The repo does not ship prebuilt binaries — `bunker`,
 > `bunkerd`, and `bin/` are gitignored (GAP-036). Always run `make build`
-> after cloning; a stale or missing `./bunker` is not the CLI this README
-> documents. Check the build with `./bunker --version` (cobra auto-flag,
-> GAP-035) — `bunker version` prints the full commit/build metadata.
+> after cloning — or the `go build` pair above on a host without `make`
+> (either way, no prebuilt binaries are shipped); a stale or missing `./bunker`
+> is not the CLI this README documents. Check the build with
+> `./bunker --version` (cobra auto-flag, GAP-035) — `bunker version` prints the
+> full commit/build metadata.
 
 > **Freshness check.** `go install ...@latest` serves the newest release
 > tag (v0.1.3), which may lag the repo HEAD. If `bunker --version`'s
