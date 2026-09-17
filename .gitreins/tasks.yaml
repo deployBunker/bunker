@@ -1797,3 +1797,17 @@ tasks:
   status: complete
   created_at: '2026-09-17T15:56:31.152660+00:00'
   completed_at: '2026-09-17T16:12:25.224556+00:00'
+- id: INT-SPAWN-003
+  title: 'Spawn readiness: the user-manager gate must prove the session bus answers,
+    not that the bus socket file exists'
+  criteria:
+  - 'PASS: (1) the nested suite''s rootless-install spawn cells go green on the demo
+    host OR a first-attempt probe refused while the manager is starting is explicitly
+    retried within the bounded budget and the spawn then succeeds; (2) a unit test
+    proves the readiness loop retries a not-yet-answering socket and still fails bounded
+    and attributed when the manager never answers; (3) the healthy path still probes
+    once with zero destructive calls; (4) go build ./..., go vet ./..., go test ./...
+    -count=1 and gofmt are clean.'
+  status: complete
+  created_at: '2026-09-17T16:22:24.088724+00:00'
+  completed_at: '2026-09-17T16:41:24.456125+00:00'
