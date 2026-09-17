@@ -70,6 +70,11 @@ type userUnitFakeHost struct {
 	// reads it.
 	ownership *userManagerOwnership
 
+	// waitBudget overrides the package readiness/bring-up budget when non-zero
+	// (INT-SPAWN-003): a test whose session bus never answers must shrink it,
+	// because the readiness gate polls until the budget is exhausted.
+	waitBudget time.Duration
+
 	calls []string // ordered call log across all seams
 }
 
@@ -112,6 +117,7 @@ func (h *userUnitFakeHost) install(t *testing.T, lingerDirPath string) {
 	prevBase := userRuntimeBaseDir
 	prevPoll := userManagerPollInterval
 	prevRoot := rootHostRunner
+	prevTimeout := userManagerWaitTimeoutOverride
 
 	userManagerRunner = h.systemRunner
 	userSessionRunner = h.sessionRunner
@@ -140,6 +146,9 @@ func (h *userUnitFakeHost) install(t *testing.T, lingerDirPath string) {
 	lingerDir = lingerDirPath
 	userRuntimeBaseDir = filepath.Dir(h.runtimeDir)
 	userManagerPollInterval = time.Millisecond
+	if h.waitBudget > 0 {
+		userManagerWaitTimeoutOverride = h.waitBudget
+	}
 
 	t.Cleanup(func() {
 		userManagerRunner = prevRunner
@@ -152,6 +161,7 @@ func (h *userUnitFakeHost) install(t *testing.T, lingerDirPath string) {
 		userRuntimeBaseDir = prevBase
 		userManagerPollInterval = prevPoll
 		rootHostRunner = prevRoot
+		userManagerWaitTimeoutOverride = prevTimeout
 	})
 }
 
@@ -379,6 +389,10 @@ func TestInstallRootlessDocker_HealthyPathOrder(t *testing.T) {
 func TestInstallRootlessDocker_ProbeFailureBlocksInstaller(t *testing.T) {
 	h := newUserUnitHost(t)
 	h.sessionScriptErr = true
+	// The session bus never answers, so the readiness gate (INT-SPAWN-003)
+	// rides out its own budget before the spawn fails: shrink it (the
+	// assertion below needs enough budget to observe the RETRY).
+	h.waitBudget = 100 * time.Millisecond
 	home := h.userHome(t)
 	h.install(t, lingerDirWithEntries(t, 3))
 
@@ -392,10 +406,18 @@ func TestInstallRootlessDocker_ProbeFailureBlocksInstaller(t *testing.T) {
 		"user@1002.service",
 		"is-active=",
 		"linger entries: 3",
+		// The readiness gate's own stderr text: the attribution must carry it.
+		"Failed to connect to bus: No medium found",
 	} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("probe-failure error missing %q, got: %s", want, msg)
 		}
+	}
+	// A not-yet-answering bus is retried on the gate's budget, never judged on
+	// a single probe (the tick-453 defect): the pre-fix code made exactly 2
+	// session calls here (the single probe plus the recovery's second one).
+	if got := h.countPrefix(sessionReloadLabel()); got <= 3 {
+		t.Errorf("expected the readiness gate to retry on its own budget, got %d probe(s):%s", got, h.callLog())
 	}
 	if got := h.countPrefix("installer#"); got != 0 {
 		t.Errorf("the installer must NEVER run when the probe fails, got %d installer calls:%s",

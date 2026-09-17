@@ -85,8 +85,49 @@ type recycledUidHost struct {
 	runtimeDir string
 
 	// sessionResults scripts each user-session daemon-reload by index (false =
-	// the probe fails). Indices past the end succeed.
+	// the probe fails). Indices past the end succeed. Ignored when
+	// sessionBusAnswers or foreignServedAfterTeardown is set.
 	sessionResults []bool
+
+	// sessionBusAnswers scripts the probe decision by probe INDEX (true = the
+	// manager answers). The readiness gate retries on its OWN budget, so the
+	// number of probes it issues is not knowable from an index-list script; a
+	// per-index function is what lets a test state "refused N times, then the
+	// bus answers" (INT-SPAWN-003).
+	sessionBusAnswers func(probeIndex int) bool
+
+	// sessionFailureText overrides the probe's own output per index, so a test
+	// can prove the attribution carries the LAST probe's stderr rather than,
+	// say, the first one's.
+	sessionFailureText func(probeIndex int) []byte
+
+	// sessionHonorsContext models the production runner (`su` under
+	// exec.CommandContext): a probe handed an already-DONE context fails with
+	// that context error instead of reaching the bus. It is what makes the
+	// detached-budget discipline observable — a gate that kept handing the
+	// caller's expired context to the probe could never succeed.
+	sessionHonorsContext bool
+
+	// foreignServedAfterTeardown models the genuine recycled-uid fingerprint:
+	// the socket in the runtime dir belongs to the previous owner and never
+	// serves the new user until the recovery removes that foreign state (the
+	// manager stop or the runtime-dir removal), after which the newly
+	// brought-up manager answers. State-driven on purpose: the readiness gate's
+	// probe count depends on its budget, so a per-index script cannot describe
+	// "unreachable until the teardown".
+	foreignServedAfterTeardown bool
+	// foreignTornDown is set by the teardown actions the host observes.
+	foreignTornDown bool
+
+	// doneCtxProbes counts the probes that were handed an already-done
+	// context. It must stay 0: the gate detaches instead of probing on a dead
+	// caller context (INT-CI-007).
+	doneCtxProbes int
+
+	// waitBudget overrides the package readiness/bring-up budget for this host
+	// when non-zero. A test that exercises the gate's never-answers path must
+	// shrink it, because that path polls until the budget is exhausted.
+	waitBudget time.Duration
 
 	// dirOwner is the uid owning the runtime directory as the probe reports it.
 	dirOwner uint32
@@ -164,6 +205,9 @@ func (h *recycledUidHost) systemRunner(_ context.Context, name string, args ...s
 		return nil, nil
 	case "rm":
 		if len(args) >= 1 {
+			// The runtime-dir removal takes the foreign manager's socket with
+			// it: the foreign state is gone (see foreignServedAfterTeardown).
+			h.foreignTornDown = true
 			return nil, os.RemoveAll(args[len(args)-1])
 		}
 		return nil, nil
@@ -208,7 +252,14 @@ func (h *recycledUidHost) systemRunner(_ context.Context, name string, args ...s
 				}
 			}
 			return nil, nil
-		case "stop", "reset-failed":
+		case "stop":
+			if unit == userManagerUnitName(h.uid) {
+				// Stopping the manager ends the previous owner's bus (see
+				// foreignServedAfterTeardown).
+				h.foreignTornDown = true
+			}
+			return nil, nil
+		case "reset-failed":
 			return nil, nil
 		case "status":
 			return nil, errors.New("exit status 3")
@@ -218,7 +269,7 @@ func (h *recycledUidHost) systemRunner(_ context.Context, name string, args ...s
 	return nil, fmt.Errorf("recycledUidHost: unexpected command %q", name)
 }
 
-func (h *recycledUidHost) sessionRunner(_ context.Context, username, runtimeDir, script string) ([]byte, error) {
+func (h *recycledUidHost) sessionRunner(ctx context.Context, username, runtimeDir, script string) ([]byte, error) {
 	if username != h.username {
 		return nil, fmt.Errorf("recycledUidHost: session runner got user %q", username)
 	}
@@ -228,17 +279,38 @@ func (h *recycledUidHost) sessionRunner(_ context.Context, username, runtimeDir,
 	idx := h.probeCalls
 	h.probeCalls++
 	h.calls = append(h.calls, "user-session["+script+"]")
+	if ctx.Err() != nil {
+		h.doneCtxProbes++
+		if h.sessionHonorsContext {
+			// The production runner is `su` under exec.CommandContext: a done
+			// context kills the command before it can talk to the bus.
+			return []byte(ctx.Err().Error()), ctx.Err()
+		}
+	}
 	ok := true
-	if idx < len(h.sessionResults) {
+	switch {
+	case h.foreignServedAfterTeardown:
+		ok = h.foreignTornDown
+	case h.sessionBusAnswers != nil:
+		ok = h.sessionBusAnswers(idx)
+	case idx < len(h.sessionResults):
 		ok = h.sessionResults[idx]
 	}
 	if !ok {
 		// The fingerprint of an unreachable manager: the session cannot talk
 		// to the live (foreign) manager. The probe's OWN output (which the
 		// attribution must carry) is this text.
-		return []byte(rcProbeFailureText), errors.New("exit status 1")
+		return h.probeFailureText(idx), errors.New("exit status 1")
 	}
 	return nil, nil
+}
+
+// probeFailureText is the failed probe's own output for probe index idx.
+func (h *recycledUidHost) probeFailureText(idx int) []byte {
+	if h.sessionFailureText != nil {
+		return h.sessionFailureText(idx)
+	}
+	return []byte(rcProbeFailureText)
 }
 
 // install swaps every seam the probe/recovery/bring-up path touches and
@@ -268,6 +340,11 @@ func (h *recycledUidHost) install(t *testing.T, lingerDirPath string) {
 	lingerDir = lingerDirPath
 	userManagerPollInterval = time.Millisecond
 	userManagerWaitTimeoutOverride = 2 * time.Second
+	if h.waitBudget > 0 {
+		// The readiness gate polls until its budget is exhausted, so the
+		// never-answers cases must shrink it (INT-SPAWN-003).
+		userManagerWaitTimeoutOverride = h.waitBudget
+	}
 
 	t.Cleanup(func() {
 		userManagerRunner = prevRunner
@@ -298,6 +375,33 @@ func (h *recycledUidHost) countPrefix(prefix string) int {
 	n := 0
 	for _, c := range h.calls {
 		if strings.HasPrefix(c, prefix) {
+			n++
+		}
+	}
+	return n
+}
+
+// countPrefixBefore counts calls with the prefix that appear strictly BEFORE
+// index `to`, so a test can split one call log around a teardown or a bring-up.
+func (h *recycledUidHost) countPrefixBefore(prefix string, to int) int {
+	n := 0
+	for i, c := range h.calls {
+		if i >= to {
+			break
+		}
+		if strings.HasPrefix(c, prefix) {
+			n++
+		}
+	}
+	return n
+}
+
+// countPrefixAfter counts calls with the prefix that appear strictly AFTER
+// index `from`.
+func (h *recycledUidHost) countPrefixAfter(prefix string, from int) int {
+	n := 0
+	for i, c := range h.calls {
+		if i > from && strings.HasPrefix(c, prefix) {
 			n++
 		}
 	}
@@ -358,7 +462,11 @@ func TestProveUserManagerReachableWithRecovery_HealthyPathIsNonDestructive(t *te
 func TestProveUserManagerReachableWithRecovery_RecycledUidIsRecoveredOnce(t *testing.T) {
 	h := newRecycledUidHost(t)
 	h.foreignManagerRunning(t)
-	h.sessionResults = []bool{false, true} // unreachable, then reachable again
+	// The foreign manager's socket never serves the new user: the probe is
+	// refused for the WHOLE readiness budget (INT-SPAWN-003) and only answers
+	// once the recovery has removed that foreign state.
+	h.foreignServedAfterTeardown = true
+	h.waitBudget = 30 * time.Millisecond
 	h.install(t, lingerDirWithEntries(t, 3))
 
 	var buf bytes.Buffer
@@ -380,9 +488,23 @@ func TestProveUserManagerReachableWithRecovery_RecycledUidIsRecoveredOnce(t *tes
 		}
 	}
 
-	// Exactly two session probes: the failing probe and the FINAL re-probe.
-	if got := h.countPrefix("user-session["); got != 2 {
-		t.Errorf("expected exactly 2 session probes, got %d:%s", got, h.callLog())
+	// The readiness gate retried on its own budget before the recovery fired
+	// (INT-SPAWN-003: one refused probe is a NOT-READY condition, not the final
+	// attribution), and the FINAL readiness wait answered on its FIRST probe
+	// once the manager was back up.
+	stopIdx := h.nextIndexOf("systemctl stop "+userManagerUnitName(h.uid), 0)
+	if stopIdx < 0 {
+		t.Fatalf("the recovery never stopped the manager:%s", h.callLog())
+	}
+	if got := h.countPrefixBefore("user-session[", stopIdx); got < 2 {
+		t.Errorf("the readiness gate must retry before the recovery fires, got %d probe(s):%s", got, h.callLog())
+	}
+	startIdx := h.nextIndexOf("systemctl start "+userManagerUnitName(h.uid), 0)
+	if startIdx < 0 {
+		t.Fatalf("the recovery never brought the manager back up:%s", h.callLog())
+	}
+	if got := h.countPrefixAfter("user-session[", startIdx); got != 1 {
+		t.Errorf("the final readiness wait must answer on its first probe, got %d probe(s) after the bring-up:%s", got, h.callLog())
 	}
 
 	// Exactly ONE WARN carrying the recovery marker, naming the user, uid and unit.
@@ -428,7 +550,9 @@ func TestProveUserManagerReachableWithRecovery_RecycledUidIsRecoveredOnce(t *tes
 func TestProveUserManagerReachableWithRecovery_InactiveUnitIsNotRecovered(t *testing.T) {
 	h := newRecycledUidHost(t)
 	// No bus socket: the manager is genuinely down (not the recycled-uid case).
-	h.sessionResults = []bool{false}
+	// The bus never answers, so the readiness gate spends its budget.
+	h.sessionBusAnswers = func(int) bool { return false }
+	h.waitBudget = 20 * time.Millisecond
 	h.install(t, lingerDirWithEntries(t, 3))
 
 	var buf bytes.Buffer
@@ -463,19 +587,20 @@ func TestProveUserManagerReachableWithRecovery_InactiveUnitIsNotRecovered(t *tes
 	if got := len(warnLinesWithMarker(buf.String(), recycledUIDRecoveryMarker)); got != 0 {
 		t.Errorf("no recovery was attempted, so no recovery WARN may be logged, got %d:\n%s", got, buf.String())
 	}
-	if got := h.countPrefix("user-session["); got != 1 {
-		t.Errorf("expected exactly 1 probe (no retry) for the inactive unit, got %d:%s", got, h.callLog())
+	if got := h.countPrefix("user-session["); got < 2 {
+		t.Errorf("the readiness gate must retry for a not-yet-answering bus (INT-SPAWN-003), got %d probe(s):%s", got, h.callLog())
 	}
 }
 
 // TestProveUserManagerReachableWithRecovery_BothProbesFailIsBounded proves the
-// one-shot bound: the recovery runs exactly once, the probe exactly twice, and
-// the error returned is the existing attribution error extended with the fact
-// that a recovery was attempted.
+// one-shot bound: the recovery runs exactly once, both readiness waits retry
+// and then exhaust their own budget, and the error returned is the existing
+// attribution error extended with the fact that a recovery was attempted.
 func TestProveUserManagerReachableWithRecovery_BothProbesFailIsBounded(t *testing.T) {
 	h := newRecycledUidHost(t)
 	h.foreignManagerRunning(t)
-	h.sessionResults = []bool{false, false} // still unreachable after the recovery
+	h.sessionBusAnswers = func(int) bool { return false } // still unreachable after the recovery
+	h.waitBudget = 20 * time.Millisecond
 	h.install(t, lingerDirWithEntries(t, 1))
 
 	var buf bytes.Buffer
@@ -514,8 +639,8 @@ func TestProveUserManagerReachableWithRecovery_BothProbesFailIsBounded(t *testin
 			t.Errorf("recovery action %q ran %d time(s), want exactly 1 (no loop):%s", action, got, h.callLog())
 		}
 	}
-	if got := h.countPrefix("user-session["); got != 2 {
-		t.Errorf("expected exactly 2 probes total, got %d:%s", got, h.callLog())
+	if got := h.countPrefix("user-session["); got < 2 {
+		t.Errorf("expected the readiness gate to retry (never a single-probe verdict), got %d probe(s):%s", got, h.callLog())
 	}
 	if got := len(warnLinesWithMarker(buf.String(), recycledUIDRecoveryMarker)); got != 1 {
 		t.Errorf("expected exactly 1 recovery WARN, got %d:\n%s", got, buf.String())
@@ -528,7 +653,9 @@ func TestProveUserManagerReachableWithRecovery_BothProbesFailIsBounded(t *testin
 func TestProveUserManagerReachableWithRecovery_CancelledContextIsPrompt(t *testing.T) {
 	h := newRecycledUidHost(t)
 	h.foreignManagerRunning(t)
-	h.sessionResults = []bool{false}
+	// A pre-cancelled caller: the gate must return the cancellation before any
+	// command at all, so the never-answering bus script never matters.
+	h.sessionBusAnswers = func(int) bool { return false }
 	h.install(t, t.TempDir())
 
 	var buf bytes.Buffer
@@ -629,7 +756,10 @@ func TestProveUserManagerReachable_ProbeOutputIsOnTheRecord(t *testing.T) {
 func TestProveUserManagerReachableWithRecovery_ClearsStaleLogindRecord(t *testing.T) {
 	h := newRecycledUidHost(t)
 	h.foreignManagerRunning(t)
-	h.sessionResults = []bool{false, true} // unreachable, then reachable again
+	// Unreachable until the recovery removes the foreign state, then reachable
+	// again (INT-SPAWN-003: the readiness gate is what decides, not one probe).
+	h.foreignServedAfterTeardown = true
+	h.waitBudget = 30 * time.Millisecond
 	// The uid's record belongs to a destroyed account and is lingering; the
 	// re-check after the teardown finds it gone (nil = no such record).
 	h.records = []*logindRecordStub{{name: rcForeignRecordName, linger: "yes", state: "active"}, nil}
@@ -683,9 +813,10 @@ func TestProveUserManagerReachableWithRecovery_ClearsStaleLogindRecord(t *testin
 		t.Errorf("the stale-record WARN must carry the reason the record is foreign:\n%s", warns[0])
 	}
 
-	// The recovery is still one-shot: two probes, one recovery, no respawn.
-	if got := h.countPrefix("user-session["); got != 2 {
-		t.Errorf("expected exactly 2 session probes, got %d:%s", got, h.callLog())
+	// The recovery is still one-shot: one recovery, no respawn, and the
+	// readiness gate retried before it (never a single-probe verdict).
+	if got := h.countPrefix("user-session["); got < 2 {
+		t.Errorf("expected the readiness gate to retry before the recovery, got %d probe(s):%s", got, h.callLog())
 	}
 	if got := len(warnLinesWithMarker(buf.String(), recycledUIDRecoveryMarker)); got != 1 {
 		t.Errorf("expected exactly 1 recovery WARN, got %d:\n%s", got, buf.String())
@@ -703,7 +834,8 @@ func TestProveUserManagerReachableWithRecovery_ClearsStaleLogindRecord(t *testin
 func TestProveUserManagerReachableWithRecovery_StillUnreachableIsBoundedAndNamed(t *testing.T) {
 	h := newRecycledUidHost(t)
 	h.foreignManagerRunning(t)
-	h.sessionResults = []bool{false, false} // still unreachable after the recovery
+	h.sessionBusAnswers = func(int) bool { return false } // still unreachable after the recovery
+	h.waitBudget = 20 * time.Millisecond
 	// One stable record: foreign before AND after the teardown.
 	h.records = []*logindRecordStub{{name: rcForeignRecordName, linger: "yes", state: "active"}}
 	h.install(t, lingerDirWithEntries(t, 6))
@@ -754,8 +886,8 @@ func TestProveUserManagerReachableWithRecovery_StillUnreachableIsBoundedAndNamed
 			t.Errorf("%q ran %d time(s), want exactly 1 (no loop):%s", action, got, h.callLog())
 		}
 	}
-	if got := h.countPrefix("user-session["); got != 2 {
-		t.Errorf("expected exactly 2 probes total, got %d:%s", got, h.callLog())
+	if got := h.countPrefix("user-session["); got < 2 {
+		t.Errorf("expected the readiness gate to retry on its own budget, got %d probe(s):%s", got, h.callLog())
 	}
 	if got := len(warnLinesWithMarker(buf.String(), recycledUIDRecoveryMarker)); got != 1 {
 		t.Errorf("expected exactly 1 recovery WARN, got %d:\n%s", got, buf.String())
@@ -786,7 +918,9 @@ func TestProveUserManagerReachableWithRecovery_NonForeignRecordIsLeftAlone(t *te
 		t.Run(tc.name, func(t *testing.T) {
 			h := newRecycledUidHost(t)
 			h.foreignManagerRunning(t)
-			h.sessionResults = []bool{false, true}
+			// The recovery is what makes the bus answer at all.
+			h.foreignServedAfterTeardown = true
+			h.waitBudget = 30 * time.Millisecond
 			h.records = tc.records
 			h.install(t, lingerDirWithEntries(t, 3))
 
@@ -829,7 +963,11 @@ func TestProveUserManagerReachableWithRecovery_NonForeignRecordIsLeftAlone(t *te
 func TestProveUserManagerReachableWithRecovery_ExpiredDeadlineIsPrompt(t *testing.T) {
 	h := newRecycledUidHost(t)
 	h.foreignManagerRunning(t)
-	h.sessionResults = []bool{false}
+	// The bus never answers, so the readiness gate rides out its OWN budget;
+	// only then does the expired caller deadline surface — and it must still
+	// surface promptly, without any destructive work.
+	h.sessionBusAnswers = func(int) bool { return false }
+	h.waitBudget = 20 * time.Millisecond
 	h.records = []*logindRecordStub{{name: rcForeignRecordName, linger: "yes", state: "active"}}
 	h.install(t, t.TempDir())
 

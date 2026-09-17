@@ -312,10 +312,17 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 	// session bus end to end. Failure here must carry the manager state, the
 	// linger count and the journal — not a bare exec error.
 	//
-	// The probe recovers ONCE when it fails against an ACTIVE unit: that pair
-	// means the uid was recycled from a destroyed agent whose user manager is
-	// still live (INT-SPAWN-001). The healthy path is unchanged — a successful
-	// probe returns before any fingerprint query or destructive step.
+	// "Reachable" means the bus ANSWERS, not that its socket file exists: the
+	// single probe of a manager that was still coming up became the final
+	// attribution and killed every spawn of the standalone gate's nested suite
+	// (INT-SPAWN-003). The bounded readiness wait retries the real probe on the
+	// package budget instead, so a bus that answers ~0.7s late is a wait.
+	//
+	// The probe recovers ONCE when the readiness wait is exhausted against an
+	// ACTIVE unit: that pair means the uid was recycled from a destroyed agent
+	// whose user manager is still live (INT-SPAWN-001). The healthy path is
+	// unchanged — a bus that answers on the first probe returns before any
+	// fingerprint query or destructive step.
 	if err := proveUserManagerReachableWithRecovery(ctx, username, uid, stdRuntimeDir, logger); err != nil {
 		return err
 	}
@@ -448,6 +455,128 @@ func proveUserManagerReachableErr(ctx context.Context, username string, uid int,
 	return errors.New(msg)
 }
 
+// userManagerReadinessRetryInfo is the ONE extra log line the readiness gate
+// emits when a retry was actually needed. Its existence is the point: it tells
+// an operator that the socket existed but the bus had not started answering
+// yet, so a late-answering bus is visibly a WAIT rather than a failure. The
+// per-attempt decisions are not logged (the gate can poll for the whole
+// budget); only the first retry names itself, with the attempt and the first
+// probe's own error.
+const userManagerReadinessRetryInfo = "agent user manager socket present but the session bus is not answering yet; retrying within the readiness budget"
+
+// userManagerReadinessDiagTimeout bounds the diagnostics the readiness gate
+// gathers for its exhaustion attribution (unit state, linger count, journal
+// excerpt). They run DETACHED from the caller's request deadline for the same
+// reason userManagerRecoveryDiagTimeout does: a caller deadline that expires
+// while the gate polls must not turn the very state that caused the failure
+// into "query-error: context deadline exceeded".
+const userManagerReadinessDiagTimeout = 5 * time.Second
+
+// waitForUserManagerBus proves that the agent's user manager bus ACCEPTS a
+// connection — not merely that its socket file exists. It repeats the REAL
+// session-side probe (probeUserManagerReachable: `systemctl --user
+// daemon-reload` through userSessionRunner, the exact command the installer
+// receives) until it succeeds or the package budget is exhausted.
+//
+// WHY (INT-SPAWN-003, tick 453 on bunker-mvp): a socket file existing is not
+// evidence that the bus answers. Every spawn in the standalone gate's nested
+// regression suite died at stage rootless-install with
+// "Failed to connect to bus: No medium found" ~0.7s after a CLEAN manager
+// start ("Listening on dbus.socket"), because the single probe ran while the
+// manager was still coming up and its failure became the FINAL attribution
+// instead of a retryable NOT-READY condition. A bus that answers one poll
+// interval late must be a wait, not a spawn failure.
+//
+// BUDGET: bounded by the existing package budget (userManagerWaitBudget, i.e.
+// userManagerWaitTimeout / userManagerWaitTimeoutOverride) so the wait never
+// grows with the caller's request deadline. The caller's DEADLINE is never
+// inherited as the reported cause (INT-CI-007): once it expires the remaining
+// probes run DETACHED (context.WithoutCancel) on the same budget, because a
+// client that gave up must not be able to declare a reachable bus unreachable.
+// A genuine caller CANCEL still returns promptly.
+//
+// HEALTHY PATH: a bus that answers immediately costs exactly ONE probe call
+// and zero destructive action, and logs nothing (the retry line appears only
+// when a retry actually happened).
+//
+// EXHAUSTION: the error is the existing attribution error
+// (proveUserManagerReachableErr), carrying stage, user, unit, unit state,
+// linger count, journal excerpt AND the LAST probe's own stderr
+// (session_probe), so existing greps keep matching.
+func waitForUserManagerBus(ctx context.Context, username string, uid int, runtimeDir string, logger *slog.Logger) error {
+	budget := userManagerWaitBudget()
+	deadline := time.Now().Add(budget)
+	ticker := time.NewTicker(userManagerPollInterval)
+	defer ticker.Stop()
+
+	// The probes run under the CALLER's context while that context is alive,
+	// so a cancellation is honored promptly. Once the caller's DEADLINE
+	// expires (or was already expired on entry) the remaining probes run
+	// detached: a caller deadline must never truncate a wait that would have
+	// succeeded, and must never surface as the reported cause.
+	probeCtx := ctx
+	detachedCtx, cancelDetached := context.WithTimeout(context.WithoutCancel(ctx), budget)
+	defer cancelDetached()
+
+	var lastProbeOut []byte
+	attempt := 0
+	for {
+		if ctx.Err() == context.Canceled {
+			return context.Canceled
+		}
+		if ctx.Err() != nil {
+			probeCtx = detachedCtx
+		}
+
+		attempt++
+		out, err := probeUserManagerReachable(probeCtx, username, runtimeDir)
+		if err == nil {
+			return nil
+		}
+		lastProbeOut = out
+
+		// Any probe failure is a NOT-READY condition, including "Failed to
+		// connect to bus: No medium found" and a probe that was interrupted by
+		// the caller's own deadline. Cancellation is the one exception.
+		if ctx.Err() == context.Canceled {
+			return context.Canceled
+		}
+		if !time.Now().Before(deadline) {
+			break
+		}
+		if attempt == 1 && logger != nil {
+			logger.Info(userManagerReadinessRetryInfo,
+				"stage", "rootless-install",
+				"user", username,
+				"uid", uid,
+				"unit", userManagerUnitName(uid),
+				"attempt", attempt,
+				"retry_attempt", attempt+1,
+				"session_probe", condenseJournal(string(out)),
+			)
+		}
+		if ctx.Err() != nil {
+			// The caller's Done channel is closed (deadline), so selecting on
+			// it again would return instantly and spin the loop hot. Sleep one
+			// poll interval instead; a later genuine cancel() surfaces at the
+			// loop-top check within one interval.
+			time.Sleep(userManagerPollInterval)
+			continue
+		}
+		select {
+		case <-ctx.Done():
+		case <-ticker.C:
+		}
+	}
+
+	// Exhausted on the gate's OWN budget: attribute the failure the way the
+	// single-probe path always did, with the diagnostics gathered detached so
+	// an expired caller deadline cannot hollow them out.
+	attrCtx, cancelAttr := context.WithTimeout(context.WithoutCancel(ctx), userManagerReadinessDiagTimeout)
+	defer cancelAttr()
+	return proveUserManagerReachableErr(attrCtx, username, uid, runtimeDir, logger, lastProbeOut)
+}
+
 // recycledUIDRecoveryMarker names the one-shot recycled-uid recovery in the
 // WARN and in the error text, so an operator (and a test) can grep for the
 // exact remedy that ran instead of parsing prose.
@@ -495,17 +624,22 @@ const userManagerRecoveryDiagTimeout = 5 * time.Second
 // a host-level cause (linger churn starving the start, a runtime directory that
 // cannot be created) and looping teardowns would only multiply host damage
 // while hiding that cause. So the function never loops: exactly one recovery,
-// at most two probes total, and the second probe's failure returns the existing
-// attribution error extended with the fact that the recovery was attempted.
-// Too-hard failures are reported, not retried away.
+// at most two bounded readiness waits (see waitForUserManagerBus), and the
+// second wait's failure returns the existing attribution error extended with
+// the fact that the recovery was attempted. Too-hard failures are reported,
+// not retried away.
 //
-// The healthy path is unchanged by construction: a successful probe returns nil
-// before the fingerprint query, so it performs no stop, no terminate-user and
-// no rm. A caller that already gave up (cancelled context) gets its own
-// cancellation back promptly instead of having a teardown started for it.
+// The healthy path is unchanged by construction: a bus that answers on the
+// first probe returns nil before the fingerprint query, so it performs no stop,
+// no terminate-user and no rm. A caller that already gave up (cancelled
+// context) gets its own cancellation back promptly instead of having a teardown
+// started for it.
 func proveUserManagerReachableWithRecovery(ctx context.Context, username string, uid int, runtimeDir string, logger *slog.Logger) error {
-	// 1. Probe first: the healthy path takes zero destructive action.
-	probeErr := proveUserManagerReachable(ctx, username, uid, runtimeDir, logger)
+	// 1. Prove the session bus ANSWERS before anything destructive: a bus that
+	// answers a poll interval late is a bounded WAIT, not a failure
+	// (INT-SPAWN-003 — the tick-453 failure was a single probe against a
+	// manager that was still coming up). Zero destructive action either way.
+	probeErr := waitForUserManagerBus(ctx, username, uid, runtimeDir, logger)
 	if probeErr == nil {
 		return nil
 	}
@@ -599,15 +733,17 @@ func proveUserManagerReachableWithRecovery(ctx context.Context, username string,
 			recycledUIDRecoveryMarker, username, uid, err)
 	}
 
-	// 6. Second and FINAL probe — the same user-session daemon-reload the
-	// healthy path issues.
-	finalOut, finalErr := probeUserManagerReachable(ctx, username, runtimeDir)
+	// 6. Second and FINAL readiness wait — the same user-session daemon-reload
+	// the healthy path issues, again bounded by the package budget, so a
+	// manager that answers shortly after the bring-up proceeds instead of
+	// failing the spawn.
+	finalErr := waitForUserManagerBus(ctx, username, uid, runtimeDir, logger)
 	if finalErr != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ctxErr
 		}
 		return fmt.Errorf("%w; %s was attempted once (user@%d.service torn down and brought back up) and the agent session still cannot reach the manager",
-			proveUserManagerReachableErr(ctx, username, uid, runtimeDir, logger, finalOut), recycledUIDRecoveryMarker, uid)
+			finalErr, recycledUIDRecoveryMarker, uid)
 	}
 	return nil
 }
