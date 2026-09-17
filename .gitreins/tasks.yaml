@@ -1782,3 +1782,18 @@ tasks:
   status: complete
   created_at: '2026-09-17T15:45:15.436153+00:00'
   completed_at: '2026-09-17T15:45:18.015436+00:00'
+- id: INT-SPAWN-002
+  title: 'Recycled-uid recovery completes: clear the stale logind user record, surface
+    the probe''s own output'
+  criteria:
+  - C1 The session probe's own output/stderr is included in the WARN and in the attribution
+    error (grep-able, unit-tested). C2 When a stale logind user record for the recycled
+    uid is present (name != target user / account deleted, Linger=yes), the one-shot
+    recovery clears it (disable-linger on the recorded name + terminate-user) before
+    the bring-up, verified by unit tests over the seams. C3 The healthy path still
+    takes zero destructive action and the recovery stays one-shot (no loop). C4 go
+    build ./... , go vet ./... and go test ./... -count=1 are green and gofmt reports
+    no diff.
+  status: complete
+  created_at: '2026-09-17T15:56:31.152660+00:00'
+  completed_at: '2026-09-17T16:12:25.224556+00:00'
