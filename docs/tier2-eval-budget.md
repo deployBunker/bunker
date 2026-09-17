@@ -1,9 +1,10 @@
 # Tier 2 evaluator input budget — measured breakdown and the fix (INT-CI-014)
 
 **Measured:** 2026-09-17 on repo HEAD `848625c` (pre-change config sha256 `734f9fbf…b5189`)
-**Runs:** nine instrumented runs on this repo — two pre-change (`INT-CI-017`), seven
+**Runs:** ten instrumented runs on this repo — two pre-change (`INT-CI-017`), eight
 post-change (five on `INT-CI-017`, three on `INT-CI-014`). The two consecutive post-change
-merit runs are F and G (§4.3); run E is the live compaction witness (§4.4).
+merit runs are F and G (§4.3); runs E and H are the live compaction witnesses, and run H —
+this row judging itself — is the final verification (§4.6).
 **Instrument:** `/tmp/tier2_spy.py` — runs the installed `gitreins` CLI in-process
 (`argv = ["judge", <id>]`) under the pipx venv interpreter, with `logging.DEBUG` and
 monkey-patches on exactly three runtime symbols:
@@ -12,7 +13,7 @@ monkey-patches on exactly three runtime symbols:
 `AgenticEvaluator._compact_context` / `_build_code_context` / `_compute_allowed_files`,
 plus `LLMClient.chat` (what is re-sent) and `AgenticEvaluator._execute_tool` (tool
 results). Every row is written to JSONL as it happens. Raw dumps stay in `/tmp`
-(`/tmp/tier2_spy_PRE.jsonl`, `…_v1.jsonl`, `…_POSTA.jsonl` … `…_POSTG.jsonl`) and are
+(`/tmp/tier2_spy_PRE.jsonl`, `…_v1.jsonl`, `…_POSTA.jsonl` … `…_POSTH.jsonl`) and are
 **not** committed. No number below is an estimate; every token count is read from the
 engine's own `response.usage` via the patched recorder.
 
@@ -224,7 +225,7 @@ produces. The witness for the change must therefore be runs that reached a verdi
 merits **and** are free of cap deaths: class `COMPLETE` with no `Cap exceeded` line, which a
 starved run can never fake (§1.2 — a cap death returns `INCOMPLETE`).
 
-### 4.2 All nine runs
+### 4.2 All ten runs
 
 | run | task | class | overall | calls | per-call prompt min/median/max | cumulative (counter) | real input sent | % of cap | compactions | cap line |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -237,6 +238,7 @@ starved run can never fake (§1.2 — a cap death returns `INCOMPLETE`).
 | POST E `2aaef334` | INT-CI-014 | INCOMPLETE | FAIL | 74 | 6,177 / 41,659 / **80,860** | 445,943 | 3,221,740 | 2.79 % (counter) | **1** | none |
 | **POST F `07b37f81`** | INT-CI-017 | **COMPLETE** | **PASS** | 15 | 6,211 / 20,469 / 31,504 | **308,413** | 308,413 | 1.93 % | 0 | none |
 | **POST G `45cdbd05`** | INT-CI-017 | **COMPLETE** | **PASS** | 15 | 6,211 / 23,180 / 32,580 | **321,672** | 321,672 | 2.01 % | 0 | none |
+| **POST H `8c923e98`** | INT-CI-014 | **COMPLETE** | **PASS** | **144** | 6,177 / 30,438 / 80,207 | 940,270 | **7,243,486** | 5.88 % (counter) | **1** | none |
 
 "cumulative (counter)" is what `EvalCap.cumulative_input_tokens` reported at the end —
 the number the 16M cap is checked against; "real input sent" is the sum of every
@@ -346,6 +348,32 @@ post-compaction segment shows the intended consequence: a much flatter slope (g 
 because the rebuilt conversation starts from the compacted prompt instead of the whole
 accumulated history.
 
+
+### 4.6 Final verification — the row judges itself and passes
+
+Run H (`8c923e98`, commit `4755e92`): **`Tier 2 (Agentic Evaluator): COMPLETE` /
+`Overall: PASS`**, items `["PASS","PASS","PASS"]`, `passed: true` — all three of this
+row's criteria verified against the live tree, including criterion 3, which cites runs F
+and G and their mtimes (F 15:17:24, G 15:18:10, no verdict between them).
+
+| metric | value |
+|---|---|
+| verdict | **PASS** — `.gitreins/history/2026-09-17/8c923e98/verdict.json` |
+| LLM calls | **144** (the longest run measured on this repo) |
+| per-call prompt min/median/max | 6,177 / 30,438 / **80,207** |
+| real input tokens sent | **7,243,486** (45.3 % of the cap) |
+| counter at the end | **940,270** (5.88 %) |
+| compaction events | **1** — `"Context near limit (80207/16000000 tokens) — compacting (#1)"`, 237 messages → 2 |
+| `Cap exceeded` line | none |
+
+Honest reading of what run H adds. It is **not** a rescue: without the valve this run's
+cumulative would have been 7,243,486 = 45.3 % of the cap, so a 144-call run of *this*
+shape would not have died anyway. What it does show is the mechanism working on a long,
+real run — the valve fired once, rebuilt a 237-message conversation to a 2-message one,
+and the run continued to a COMPLETE merit verdict with the counter at 5.88 % rather than
+45.3 %. The runs that *were* dying (the 2M→8M rungs) were of the steeper shapes in §4.5,
+where the wall sits at iteration 128–165; the valve now fires at iteration ~65 on every
+shape, well before any of them.
 
 ## 5. What to reach for next (in order), and what not to touch
 
