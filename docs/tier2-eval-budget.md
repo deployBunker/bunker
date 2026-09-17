@@ -199,11 +199,61 @@ required, merit verdict (PASS or FAIL) required — INCOMPLETE is a failure of t
 
 ### Run A — post-change, task INT-CI-017
 
-**PENDING**
+| metric | value |
+|---|---|
+| verdict | **PASS** — `.gitreins/history/2026-09-17/f6abe9e6/verdict.json` (`passed: true`) |
+| `Cap exceeded` line | **none** |
+| LLM calls (iterations) | **35** |
+| per-call prompt tokens (min / median / max) | **6,211 / 29,736 / 34,310** |
+| **cumulative input tokens** | **933,147** (5.83 % of the 16M cap) |
+| compaction events | 0 (the run never reaches the 80,000-token valve) |
+| `File not in scope` denials | **0** (pre-change: 1) |
+| allowlist construction | **not invoked** (`file_scope: full`) |
+
+What this run proves about the change, and what it does not:
+
+- The scope fix is live and effective: `_compute_allowed_files()` is **never called**
+  (no `allowed_files` row — pre-change it returned the 6-file board set), and the judge
+  read the judged artifact directly, **`read_file(".github/workflows/ci.yml")` twice with
+  zero errors** where the pre-change run was rejected on its first attempt.
+- The token total did **not** go down on this short task: 933,147 vs the 0.21M–0.41M
+  pre-change band. The judge simply explored further this time (45 `run_command` calls,
+  including an `actionlint` pass and per-job YAML multiset diffs of the pre/post workflow,
+  and 2.45M chars re-sent). This is honest run-to-run depth variance, not a regression
+  caused by the config — the valve is what bounds a *long* run, and a 35-call run never
+  reaches the 80,000-token threshold. Judge depth is not under this row's control; the
+  row's criteria are the verdict class and the absence of a cap line, both met.
 
 ### Run B — post-change, task INT-CI-014
 
-**PENDING**
+| metric | value |
+|---|---|
+| verdict | **FAIL** (merit verdict, not INCOMPLETE) — `.gitreins/history/2026-09-17/61b146b3/verdict.json` (`passed: false`) |
+| criteria 1 and 2 | **PASS** (breakdown recorded; the config change is the measured one and no cap was raised) |
+| criterion 3 | **FAIL — self-reference artifact, resolved by the commit that records this line** |
+| `Cap exceeded` line | **none** (nowhere in `.gitreins/history/2026-09-17/`) |
+| LLM calls (iterations) | **15** |
+| per-call prompt tokens (min / median / max) | **10,108 / 28,230 / 34,547** |
+| **cumulative input tokens** | **380,592** (2.38 % of the 16M cap) |
+| compaction events | 0 (run never reaches the 80,000-token valve) |
+| `File not in scope` denials | **0** |
+| reads of the deliverables | `docs/tier2-eval-budget.md` ×2, `.gitreins/config.yaml` ×1 — all successful |
+
+The FAIL is the ordering artifact named above, verbatim from the verdict: *"Only ONE
+post-change run exists … Run B is not done: docs/tier2-eval-budget.md:227-231 reads
+'### Run B … **PENDING**' … Run B's token total is therefore not recorded anywhere, so
+the 'two consecutive runs' and 'both runs' token totals' requirements are unmet."* That
+was true at the moment of judgment (the commit recorded below necessarily postdates the
+run it records); criteria 1 and 2 were both verified PASS against the live engine source.
+Recording this line is what closes criterion 3: both post-change runs then exist as merit
+verdicts (A = PASS, B = FAIL, neither with a cap line) with their totals in this document.
+
+**Post-change totals vs pre-change:** 933,147 (A) and 380,592 (B) against the pre-change
+band 206,704–408,009. Neither post-change run came close to the cap, and the reason the
+totals did not fall is the one measured above — judge depth varies run to run and neither
+short run reaches the 80,000-token compaction valve. The valve and the scope fix are what
+keep a *long* run (the measured 165-iteration wall) alive; they do not shrink a 15-call
+run, and no claim is made that they do.
 
 ---
 
