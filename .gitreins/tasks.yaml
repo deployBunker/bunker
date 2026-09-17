@@ -1666,3 +1666,33 @@ tasks:
   status: complete
   created_at: '2026-09-17T11:10:26.253752+00:00'
   completed_at: '2026-09-17T11:22:35.825090+00:00'
+- id: INT-DEMO-002
+  title: Spawn reports ready only after a bounded SSH exec probe proves the agent
+    session works
+  criteria:
+  - 'Criterion 1 (probe exists in the spawn path): after authorized_keys and dockerd
+    are in place and BEFORE the agent is reported ready/registered, Spawn runs a bounded
+    SSH exec probe as the agent user (bunker-<id>@localhost, the spawn-time private
+    key, the same target/options as the exec path, command like `whoami`), and every
+    probe failure return carries a named spawn stage (session-probe) through the existing
+    spawnStageErr/fail() machinery so the operator can attribute it. Criterion 2 (unit
+    test, no live ssh): a test proves spawn does NOT return a ready response when
+    the probe fails (error returned, existing rollback runs, no agent reported running)
+    and that the happy path still returns a normal spawn response when the probe succeeds;
+    the probe is injected/faked in unit tests so no real ssh is executed. Criterion
+    3 (bounded): the probe has a hard timeout of about 10s and at most 2-3 attempts
+    with a short backoff, never unbounded, and a test proves the bound (attempt count
+    / timeout) rather than only the happy path. Criterion 4 (cause is named, shared
+    classification): the probe failure error names the cause by reusing the existing
+    session-denial signature (ssh exit 254 + empty stderr + non-empty stdout) that
+    internal/server/exec_session.go classifies; the pure classifier + diagnostic text
+    live in a leaf package that both internal/server and internal/agent import (internal/agent
+    must NOT import internal/server - that would be an import cycle) and existing
+    exec behaviour is unchanged. Criterion 5 (no regressions, no scope creep): `go
+    build ./...`, `go vet ./...` and `go test -short ./...` pass; the probe does not
+    change unrelated spawn steps or the exec/mount/cp command construction; the spawn
+    request deadline is respected (probe budget stays well under the server request
+    timeout).'
+  status: complete
+  created_at: '2026-09-17T12:15:10.691496+00:00'
+  completed_at: '2026-09-17T13:08:41.261986+00:00'
