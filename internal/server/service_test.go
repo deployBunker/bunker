@@ -667,10 +667,34 @@ func TestBuildExecSSHCommand(t *testing.T) {
 	}
 }
 
-// TestServerInfo verifies ServerInfo returns hostname, version, and agent count.
+// TestServerInfo verifies ServerInfo returns hostname, version, agent count
+// and an uptime derived from the (injectable) daemon start time.
 func TestServerInfo(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	tracker := resource.NewTracker(10, logger)
+
+	// Uptime is asserted against a start time THIS test injects, never against
+	// the process-global wall clock read at assertion time (INT-CI-016).
+	//
+	// The previous guard — `msg.UptimeSeconds == 0 && time.Since(serverStartTime) >= time.Second`
+	// — compared a value ServerInfo computes at RPC entry with a second clock
+	// read taken AFTER the RPC returned, and ServerInfo's own body runs the
+	// /tmp-isolation host probe (hostsetup.TmpNamespaceStatus -> `getent group`
+	// plus a dozen host stats), i.e. arbitrary, host-dependent latency. Any
+	// schedule in which the work between the two reads carries the second read
+	// across a whole second turns a legitimate value into a failure: CI run
+	// 35253802213 failed exactly this way ("UptimeSeconds is 0, want seconds
+	// since daemon start") on a board-only commit, while the process was
+	// milliseconds old — the two certmagic auto-TLS tests ahead of it spent
+	// ~1s on real network work, putting the second read right on the boundary.
+	// Reproduced deterministically by adding 2s of probe latency (stub `getent`
+	// on PATH): uptime computed at 2ms (0), guard read at 2.007s (>= 1s) -> FAIL.
+	//
+	// With an injected start time the value is deterministic and the band
+	// below still catches a hardcoded 0 / a value that ignores serverStartTime.
+	original := serverStartTime
+	serverStartTime = time.Now().Add(-2 * time.Second)
+	t.Cleanup(func() { serverStartTime = original })
 
 	svc := &bunkerdService{
 		cfg:     config.DefaultConfig(),
@@ -693,13 +717,12 @@ func TestServerInfo(t *testing.T) {
 	if msg.Version != version.Version {
 		t.Errorf("ServerInfo().Version = %q, want %q (shared internal/version)", msg.Version, version.Version)
 	}
-	// UptimeSeconds truncates to whole seconds (uint64(time.Since(...).Seconds())).
-	// A freshly-started test binary (<1s old) legitimately reports 0; only flag 0
-	// when the process is old enough that truncation cannot explain it. Tolerance
-	// band proving intent (hardcoded-0 regression) without a sub-second flake
-	// (CI: UHLP-145 razor-edge pattern; bunker FLAKE-001).
-	if msg.UptimeSeconds == 0 && time.Since(serverStartTime) >= time.Second {
-		t.Error("ServerInfo().UptimeSeconds is 0, want seconds since daemon start")
+	// 2s was injected, so uptime must land in 2s +-1s: the band fails on a
+	// hardcoded 0 (or on any value that ignores serverStartTime) and does not
+	// depend on how old the test binary happens to be. UptimeSeconds truncates
+	// to whole seconds (uint64(time.Since(...).Seconds())), hence the -1s slack.
+	if got := msg.UptimeSeconds; got < 1 || got > 3 {
+		t.Errorf("ServerInfo().UptimeSeconds = %d, want ~2 (2s injected start time); 0 means the value is hardcoded or ignores serverStartTime", got)
 	}
 	if msg.AgentCount != 0 {
 		t.Errorf("ServerInfo().AgentCount = %d, want 0 (empty tracker)", msg.AgentCount)

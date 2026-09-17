@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -294,12 +295,35 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	}
 }
 
+// acmeProxyHook is a TEST SEAM for the certmagic auto-TLS path. When non-nil,
+// buildTLSConfig installs it as the ACME issuer's HTTP proxy selector, which
+// certmagic uses as the `Proxy` hook of the transport behind its ACME client.
+//
+// Why a proxy selector and not an *http.Client: certmagic v0.25.4 builds the
+// ACME client's transport internally (ACMEIssuer.httpClient is unexported and
+// is derived from the issuer template at acmeissuer.go NewACMEIssuer), so the
+// only exported knob that governs EVERY outbound ACME request — directory
+// fetch, nonce, account, order — is ACMEIssuer.HTTPProxy, which
+// github.com/mholt/acmez receives as its `HTTPClient`'s transport proxy.
+//
+// Production leaves this nil, in which case buildTLSConfig touches nothing and
+// certmagic keeps its own default (http.ProxyFromEnvironment). Tests set it to
+// a recorder that counts requests by host and refuses anything that is not
+// loopback, so no unit test in this package can reach a public CA (INT-CI-016).
+var acmeProxyHook func(*http.Request) (*url.URL, error)
+
 func (s *BunkerdServer) buildTLSConfig() (*tls.Config, error) {
 	if !s.cfg.TLS.Enabled {
 		return nil, nil
 	}
 
 	if s.cfg.TLS.AutoTLS {
+		// Test seam (INT-CI-016): certmagic constructs a fresh ACMEIssuer from
+		// the current DefaultACME value on every NewDefault() call, so the hook
+		// must be installed before certmagic.TLS() below.
+		if acmeProxyHook != nil {
+			certmagic.DefaultACME.HTTPProxy = acmeProxyHook
+		}
 		// Use certmagic for automatic Let's Encrypt certificates
 		certmagic.DefaultACME.Agreed = true
 		email := s.cfg.TLS.Domain
