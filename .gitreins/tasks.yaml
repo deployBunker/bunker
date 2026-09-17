@@ -1733,7 +1733,7 @@ tasks:
     config dir; (c) --show-plan/--bin-report unchanged; (d) live standalone gate on
     bunker-mvp = 0 FAIL VERIFY-PASS with the production daemon uptime continuous and
     /root/.bunker/config.yaml sha unchanged; (e) coexist path unchanged (CI green)'
-  status: complete
+  status: in_progress
   created_at: '2026-09-17T13:51:22.038436+00:00'
   completed_at: '2026-09-17T14:14:43.915553+00:00'
 - id: INT-SPAWN-001
