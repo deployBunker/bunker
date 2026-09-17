@@ -984,8 +984,10 @@ if [ "${1:-}" = "--show-plan" ]; then
     if [ -n "$BUNKERD_COEXIST" ]; then
         echo "  mode                  : coexist ($BUNKERD_COEXIST) — the battery starts its own daemon on its own ports"
     else
-        echo "  mode                  : standalone (host take-over; every bunker-* user is swept)"
+        echo "  mode                  : standalone — talks to the daemon already on the ports above; starts/stops no daemon itself (INT-CI-012)"
     fi
+    echo "  nested suite (sec 12) : its own ports $(nested_suite_ports) and its own CLI state dir — it never shares this battery's ports; a systemd-managed bunkerd and its agent state are left alone"
+    echo "  sections 13/14 policy : probe $BUNKER_DAEMON_URL first — an unreachable daemon fails ONE cell naming the endpoint, not a cascade of 'not found'"
     echo "  daemon URL (connect)  : $BUNKER_DAEMON_URL  [$BUNKER_DAEMON_URL_SOURCE]"
     echo "  REST port             : :$REST_PORT  (BUNKERD_REST_ADDR=$BUNKERD_REST_ADDR${BUNKERD_REST_ADDR_EXPLICIT:+, explicit})"
     echo "  gRPC port             : :$GRPC_PORT  (BUNKERD_GRPC_ADDR=$BUNKERD_GRPC_ADDR${BUNKERD_GRPC_ADDR_EXPLICIT:+, explicit})"
