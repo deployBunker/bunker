@@ -17,12 +17,69 @@ AGENT_IDS=()
 
 # Coexistence mode (CI on bunker-mvp): the host runs a systemd-managed
 # production bunkerd on :19090/:18080. Use dedicated ports + a temp config and
-# NEVER pkill/wipe the live service. Standalone (default): full take-over like
-# the original design. In coexist mode the CLI config is isolated via HOME so
-# the battery's connect does not clobber the live host's /root/.bunker.
+# never stop or wipe the live service. Standalone (default): take-over of the
+# daemons this suite can own — see the systemd detection immediately below.
 BUNKERD_COEXIST="${BUNKERD_COEXIST:-}"
 BUNKERD_GRPC_ADDR="${BUNKERD_GRPC_ADDR:-:29090}"
 BUNKERD_REST_ADDR="${BUNKERD_REST_ADDR:-:28080}"
+
+# ── Who owns the daemon (INT-CI-012) ───────────────────────────────────
+# The standalone branch is a take-over: it stopped bunkerd, swept
+# /run/bunker/* + /etc/bunkerd/ssh/* and cleared stale agent units. On a host
+# whose daemon is managed by systemd that take-over killed the LIVE service —
+# the unit auto-restarted it, the two daemons raced for the REST port, and the
+# caller's later sections found it 'connection refused' (host journal:
+# 'shutting down' → 'Started bunkerd.service' → 'bind: address already in
+# use'). When systemd manages a running bunkerd this suite therefore touches
+# ONLY what it created: its own daemon process, its own agents, and its own CLI
+# state dir.
+#
+# `systemctl` absent (dev host / container) = no systemd daemon = the
+# historical take-over behaviour, unchanged.
+SUITE_OWNS_DAEMON=1
+SYSTEMD_BUNKERD_PID=""
+detect_systemd_bunkerd() {
+    SYSTEMD_BUNKERD_PID=""
+    command -v systemctl >/dev/null 2>&1 || return 1
+    systemctl is-active --quiet bunkerd 2>/dev/null || return 1
+    # The unit's MainPID, so the note can name the daemon that is off limits.
+    SYSTEMD_BUNKERD_PID="$(systemctl show -p MainPID --value bunkerd 2>/dev/null || true)"
+    case "$SYSTEMD_BUNKERD_PID" in ''|*[!0-9]*) SYSTEMD_BUNKERD_PID="" ;; esac
+    return 0
+}
+if [ -n "$BUNKERD_COEXIST" ]; then
+    SUITE_OWNS_DAEMON=0 # coexist never takes over; the live daemon is out of scope by design
+elif detect_systemd_bunkerd; then
+    SUITE_OWNS_DAEMON=0
+fi
+
+# host_state_sweep_allowed WHAT — 0 when this suite may stop other bunkerd
+# processes and clear their agent state (keys, /run dirs, systemd user units).
+# False while systemd manages a running production daemon: that daemon is not
+# this suite's to stop and its state is not this suite's to delete.
+host_state_sweep_allowed() {
+    if [ "$SUITE_OWNS_DAEMON" = "1" ]; then
+        return 0
+    fi
+    if [ -n "$BUNKERD_COEXIST" ]; then
+        return 1
+    fi
+    echo "  ⚠ NOT $1: systemd manages the running bunkerd (MainPID ${SYSTEMD_BUNKERD_PID:-unknown}) — this suite only manages what it creates"
+    return 1
+}
+
+# kill_stray_bunkerd — stop leftover bunkerd processes before starting our own.
+# NEVER while a systemd-managed daemon is running: the unit owns its lifecycle
+# and the kill is what made the live service unavailable to the caller.
+kill_stray_bunkerd() {
+    host_state_sweep_allowed "killing bunkerd processes" || return 0
+    pkill bunkerd 2>/dev/null || true
+}
+
+# The operator's own HOME, captured BEFORE this suite reassigns it: an agent
+# dockerd unit directory under it belongs to the operator's home, and this
+# suite only ever removes what it created (INT-CI-012).
+REGRESSION_OPERATOR_HOME="${HOME:-/root}"
 # The CLI prefers BUNKER_HOME over HOME, so pinning HOME alone does not isolate
 # this suite: a caller that exports BUNKER_HOME (CI steps, e2e-full-battery.sh
 # section 12) would have its own state dir written by this suite's `connect`,
@@ -47,6 +104,13 @@ agent:
   port_range_end: 20999
   port_range_per_agent: 100
 EOF
+else
+    # INT-CI-012: pin HOME in standalone too. The CLI prefers BUNKER_HOME, but a
+    # build that predates it resolves ~/.bunker — with the inherited HOME=/root
+    # that wrote (and the pre-fix cleanup DELETED) the operator's own CLI
+    # config. Every CLI call here runs with BUNKER_HOME *and* HOME pointed at
+    # this suite's throwaway dir, which is the only state dir it removes.
+    export HOME="$REGRESSION_CLI_HOME"
 fi
 
 cleanup() {
@@ -88,8 +152,13 @@ cleanup() {
         [ -n "$id" ] && [ -d "/run/bunker/$id" ] && mv "/run/bunker/$id" "$QDIR/" 2>/dev/null || true
     done
     if [ -z "$BUNKERD_COEXIST" ]; then
-        pkill bunkerd 2>/dev/null || true
-        rm -rf /run/bunker/* /etc/bunkerd/ssh/t* 2>/dev/null || true
+        # Never a systemd-managed daemon, and never another daemon's agent
+        # state (INT-CI-012): only the daemon THIS suite started was stopped
+        # above ($BUNKERD_PID).
+        kill_stray_bunkerd
+        if host_state_sweep_allowed "sweeping /run/bunker/* and /etc/bunkerd/ssh/t*"; then
+            rm -rf /run/bunker/* /etc/bunkerd/ssh/t* 2>/dev/null || true
+        fi
     fi
 }
 trap cleanup EXIT
@@ -108,19 +177,29 @@ echo "── 1. Prerequisites ──"
 
 # Clean slate (full take-over only — coexist mode never touches live state)
 if [ -z "$BUNKERD_COEXIST" ]; then
-    pkill bunkerd 2>/dev/null || true
+    kill_stray_bunkerd
     sleep 1
     for u in $(grep '^bunker-' /etc/passwd 2>/dev/null | cut -d: -f1); do
         userdel -r "$u" 2>/dev/null || true
     done
     # Clean stale systemd user units
     systemctl --user reset-failed 2>/dev/null || true
-    for u in $(systemctl --user list-units --all 'bunker-docker-*' 2>/dev/null | grep bunker | awk '{print $1}'); do
-        systemctl --user stop "$u" 2>/dev/null || true
-        systemctl --user disable "$u" 2>/dev/null || true
-    done
-    rm -rf /root/.bunker /run/bunker/* /etc/bunkerd/ssh/* 2>/dev/null || true
-    rm -rf /root/.config/systemd/user/bunker-docker-* 2>/dev/null || true
+    if host_state_sweep_allowed "stopping/disabling stale agent dockerd units"; then
+        for u in $(systemctl --user list-units --all 'bunker-docker-*' 2>/dev/null | grep bunker | awk '{print $1}'); do
+            systemctl --user stop "$u" 2>/dev/null || true
+            systemctl --user disable "$u" 2>/dev/null || true
+        done
+    fi
+    # INT-CI-012: the operator's CLI config is NEVER removed. The pre-fix line
+    # removed the operator's own `/root/.bunker` registration together with the
+    # run/ssh sweeps, on every standalone run; this suite now only removes the
+    # throwaway CLI state dir it created itself (see cleanup).
+    if host_state_sweep_allowed "sweeping /run/bunker/* and /etc/bunkerd/ssh/*"; then
+        rm -rf /run/bunker/* /etc/bunkerd/ssh/* 2>/dev/null || true
+    fi
+    if host_state_sweep_allowed "removing stale bunker-docker-* user units"; then
+        rm -rf "$REGRESSION_OPERATOR_HOME"/.config/systemd/user/bunker-docker-* 2>/dev/null || true
+    fi
 fi
 mkdir -p /etc/bunkerd/ssh /run/bunker
 

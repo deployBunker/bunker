@@ -601,7 +601,9 @@ bash e2e-full-battery.sh --show-plan
 # own diagnostics as a normal user — no root, no side effects:
 bash e2e-full-battery.sh --self-test
 
-# Run regression suite
+# Run regression suite (standalone: takes over only daemons nothing else
+# manages; a systemd-managed bunkerd is detected and left running, and the
+# operator's own CLI config is never read, written or removed)
 bash regression-tests.sh
 ```
 
@@ -619,28 +621,66 @@ wins over the default:
 | `BUNKER_DAEMON_URL` | address the battery's `connect` targets | `http://localhost:$REST_PORT` |
 | `BUNKERD_REST_ADDR` | REST address: the port input and the port sections 1-13 check | `:18080` standalone, `:28081` coexist |
 | `BUNKERD_GRPC_ADDR` | gRPC address: the port input and the port sections 1-13 check | `:19090` standalone, `:29091` coexist |
-| `BUNKERD_COEXIST` | non-empty: start the battery's own daemon on its own ports and never sweep production users | unset (standalone take-over) |
+| `BUNKERD_COEXIST` | non-empty: start the battery's own daemon on its own ports and never sweep production users | unset (standalone: use the host's daemon, take over only daemons nothing manages) |
 | `BUNKER_STRICT_BIN` | `1`: a binary certification MISMATCH is fatal before any host mutation | unset (MISMATCH is a loud note) |
 
 `--show-plan` prints the resolved values for all of these without root, and
 never prints the token — only whether it came from the environment or the
 default, plus a masked fingerprint.
 
+### Who owns the daemon (standalone vs coexist)
+
+Standalone mode never starts, stops, or sweeps a daemon it does not own — the
+battery talks to the daemon the host already runs on the production ports
+(`:18080`/`:19090` by default):
+
+- **Section 12** runs `regression-tests.sh` with its own throwaway CLI state dir
+  and its **own ports** (`:29092`/`:28082`) in both modes, so the nested suite
+  can never bind or compete for the ports the battery is testing. The nested
+  suite detects a systemd-managed `bunkerd` (`systemctl is-active bunkerd` / the
+  unit's `MainPID`) and leaves it alone: it neither stops it nor sweeps its agent
+  state (`/run/bunker/*`, `/etc/bunkerd/ssh/*`), and it only stops the daemon
+  *it* started. On a host with no systemd daemon (or a container) the historical
+  take-over applies.
+- **Section 12's verdict is real.** It is the nested suite's own tally
+  (`PASS: N / FAIL: M`) plus that suite's exit status: a non-zero exit, a
+  non-zero FAIL count, or no tally at all fails the battery. The nested
+  transcript is not counted with a grep for the words "PASS"/"FAIL".
+- **Sections 13 and 14 probe first.** Both call a cheap reachability probe
+  (`bunker list`) before spawning or destroying anything, so an unreachable
+  daemon produces ONE actionable cell naming the endpoint and how to bring it
+  back (`systemctl restart bunkerd`) instead of cascading into "not found" cells.
+- **Coexist mode** (`BUNKERD_COEXIST=1`) is unchanged: the battery starts its own
+  daemon on its own ports (`:28081`/`:29091`) and never touches production users.
+
+The production daemon must therefore stay up for the whole standalone run: its
+uptime and `NRestarts` should be unchanged afterwards, and its own agents are
+only disturbed to the extent the documented standalone take-over already does
+(the battery's CLI state and `/root/.bunker` are never touched — see below).
+
 ### CLI-state isolation
 
-The battery never reads or writes your CLI config. Every `bunker` invocation it
-makes runs with `BUNKER_HOME` **and** `HOME` pointed at a throwaway state dir
-under `/tmp` (printed at the start of the run), so `connect` registers into that
-dir instead of `~/.bunker/config.yaml`. `HOME` is relocated as well because a
+The battery never reads or writes your CLI config — and neither does the nested
+regression suite it runs (both pin `BUNKER_HOME` **and** `HOME` to their own
+throwaway dirs, and the nested suite removes only the dir it created itself;
+a removal helper refuses any path that is not this harness's own scratch).
+Every `bunker` invocation it makes runs with `BUNKER_HOME` **and** `HOME` pointed
+at a throwaway state dir under `/tmp` (printed at the start of the run), so
+`connect` registers into that dir instead of `~/.bunker/config.yaml`. `HOME` is
+relocated as well because a
 CLI build older than `BUNKER_HOME` resolves `~/.bunker` only. The operator's
 config file is fingerprinted before the first CLI call and re-checked at the end
 of the run: if it changed, the run fails loudly instead of reporting green.
 
 ### Running against a deployed daemon
 
-Standalone mode talks to the daemon on the production ports. Pass the real
-token and address explicitly — the battery does not force the test token when
-you supply one:
+Standalone mode talks to the daemon on the production ports and owns nothing:
+the host's `bunkerd` must stay up for the whole run (the battery never starts or
+stops a daemon in standalone mode), while the nested regression suite in section
+12 runs on its own ports (`:29092`/`:28082`) with its own CLI state dir, and
+neither the nested suite nor the battery touches the operator's CLI config
+(`~/.bunker/config.yaml`). Pass the real token and address explicitly — the
+battery does not force the test token when you supply one:
 
 ```bash
 export PROD_TOKEN='<the daemon auth token from /etc/bunkerd/config.yaml>'

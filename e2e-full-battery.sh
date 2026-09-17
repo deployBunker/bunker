@@ -19,7 +19,10 @@ set -euo pipefail
 #   binary-commit verdicts, and — INT-CI-010 — the CLI-state isolation and the
 #   input precedence: an explicit BUNKERD_REST_ADDR / BUNKER_TOKEN wins, an
 #   unset BUNKER_TOKEN resolves to source=default, and a CLI invocation writes
-#   the battery's own config while the operator's stays byte-identical)
+#   the battery's own config while the operator's stays byte-identical; and —
+#   INT-CI-012 — the nested suite's isolated ports and single invocation site,
+#   section 12's verdict flipping on a failing nested fixture, and the removal
+#   helper refusing any path that is not this harness's own scratch)
 #   WITHOUT root: it never creates users, never starts daemons, never writes
 #   /var/log, and never runs a battery section. Final line:
 #   SELF-TEST: PASS
@@ -45,6 +48,23 @@ set -euo pipefail
 #                      production user sweep) instead of standalone take-over
 #   BUNKER_STRICT_BIN  =1 makes a certification MISMATCH fatal before any
 #                      host mutation
+#
+# DAEMON OWNERSHIP / THE STANDALONE CONTRACT (INT-CI-012):
+#  * The battery NEVER starts or stops the host's daemon: in standalone mode it
+#    talks to the daemon the host already runs on the production ports, and in
+#    coexist mode it starts its OWN daemon on its own ports.
+#  * Section 12 runs regression-tests.sh with its OWN CLI state dir and its OWN
+#    ports (:29092/:28082) in BOTH modes, so the nested suite can never bind —
+#    or compete for — the ports this battery is testing. The nested suite stops
+#    only the daemon it started itself: a systemd-managed bunkerd is detected
+#    (systemctl is-active / MainPID) and left alone, and its agent state
+#    (/run/bunker/*, /etc/bunkerd/ssh/*) is not swept.
+#  * Section 12's verdict is the nested suite's OWN tally ("PASS: N / FAIL: M")
+#    plus its real exit status: a non-zero exit, a non-zero FAIL count, or no
+#    tally at all fails the battery.
+#  * Sections 13 and 14 probe the daemon (a cheap list) before spawning or
+#    destroying anything: an unreachable daemon produces ONE cell naming the
+#    endpoint and how to bring it back, not a cascade of "not found" cells.
 #
 # CLI-STATE ISOLATION (INT-CI-010): the battery runs EVERY CLI invocation with
 # BUNKER_HOME *and* HOME pointed at its own throwaway state dir, so it never
@@ -227,6 +247,26 @@ battery_cli_config() {
     printf '%s/config.yaml' "$BATTERY_CLI_HOME"
 }
 
+# remove_own_state_dir DIR — remove a scratch dir THIS harness created. Every
+# scratch dir it creates lives directly under $TMPDIR with one of the two
+# documented prefixes below; anything else (the operator's CLI state dir, a
+# HOME, /root, an empty expansion) is REFUSED loudly and left on disk.
+# INT-CI-012: the nested suite used to `rm -rf /root/.bunker`, i.e. a harness
+# removed a config file it did not create — the operator's own CLI
+# registration. A pattern-checked removal cannot do that, whatever a variable
+# happens to hold.
+remove_own_state_dir() {
+    local dir="${1:-}"
+    case "$dir" in
+        "${TMPDIR:-/tmp}"/bunker-battery-cli-*|"${TMPDIR:-/tmp}"/bunker-battery-nested-cli-*)
+            rm -rf "$dir" 2>/dev/null || true
+            return 0
+            ;;
+    esac
+    echo "  ⚠ refusing to remove '$dir' — not a scratch dir this harness created (nothing was deleted; operator CLI config: ${OPERATOR_CLI_CONFIG:-<unset>})" >&2
+    return 1
+}
+
 # bcli — the ONE wrapper every CLI invocation in this battery goes through.
 # It forces BUNKER_HOME *and* HOME to the battery's own state dir for the
 # duration of the call, so no section (connect, spawn, exec, destroy, ...) can
@@ -302,6 +342,97 @@ run_capture() {
         echo "  [capture] $label failed (exit=$RUN_CAPTURE_EXIT)"
     fi
     return 0
+}
+
+# ── Section 12/13/14 helpers (INT-CI-012) ──────────────────────────────
+# All PURE or read-only: each one is exercised by --self-test with fixtures, so
+# the section-12 verdict and the daemon gate can be proven without root, a
+# daemon, or a nested suite.
+
+# nested_suite_ports — "<grpc> <rest>" handed to the nested regression suite.
+# The SAME isolated, non-production pair in BOTH modes: standalone used to let
+# the child inherit this battery's exported BUNKERD_REST_ADDR=:18080 /
+# BUNKERD_GRPC_ADDR=:19090, so the child's take-over killed the production
+# daemon and then raced it for :18080 (INT-CI-012). Pinned by --self-test.
+NESTED_GRPC_ADDR=":29092"
+NESTED_REST_ADDR=":28082"
+nested_suite_ports() {
+    printf '%s %s' "$NESTED_GRPC_ADDR" "$NESTED_REST_ADDR"
+}
+
+# nested_tally NESTED_OUTPUT — the nested suite's OWN summary counters
+# ("PASS: N / FAIL: M"), echoed as "<pass> <fail>", or "" when the transcript
+# carries no tally. The previous revision counted `grep -c "✓\|PASS"` over the
+# whole transcript (✓ cells + the word PASS), which is not a result at all.
+nested_tally() {
+    local out="$1" p="" f=""
+    p="$(printf '%s\n' "$out" | grep -oE 'PASS: [0-9]+' | tail -1 | grep -oE '[0-9]+' || true)"
+    f="$(printf '%s\n' "$out" | grep -oE 'FAIL: [0-9]+' | tail -1 | grep -oE '[0-9]+' || true)"
+    if [ -z "$p" ] || [ -z "$f" ]; then
+        printf ''
+        return 1
+    fi
+    printf '%s %s' "$p" "$f"
+    return 0
+}
+
+# nested_verdict NESTED_EXIT TALLY — PURE verdict string for section 12:
+#   PASS: <reason>   the nested suite ran, exited 0 and reported 0 failures
+#   FAIL: <reason>   non-zero exit, a non-zero FAIL count, or no tally at all
+# A suite that cannot run (dies, is killed, prints nothing) has no tally → FAIL:
+# the pre-fix code read REG_EXIT from a `... || true` command substitution, so
+# it was ALWAYS 0 and the battery asserted "regression suite PASSED" over a
+# transcript that said PASS: 16 / FAIL: 14.
+nested_verdict() {
+    local exit_code="$1" tally="$2" np="" nf=""
+    if [ -n "$tally" ]; then
+        np="${tally%% *}"
+        nf="${tally##* }"
+    else
+        echo "FAIL: the nested suite printed no tally (PASS: N / FAIL: M) — its result is UNVERIFIED (exit $exit_code)"
+        return 0
+    fi
+    if [ "$exit_code" -ne 0 ]; then
+        echo "FAIL: the nested suite exited $exit_code (tally PASS: $np / FAIL: $nf)"
+        return 0
+    fi
+    if [ "$nf" -ne 0 ]; then
+        echo "FAIL: the nested suite reported $nf failing cells (tally PASS: $np / FAIL: $nf)"
+        return 0
+    fi
+    echo "PASS: the nested suite exited 0 with tally PASS: $np / FAIL: $nf"
+    return 0
+}
+
+# daemon_health_probe — 0 when the daemon this battery is testing answers a
+# cheap status call. Read-only (a list); DAEMON_HEALTH_OUT carries the output
+# so a failure can quote it.
+DAEMON_HEALTH_OUT=""
+daemon_health_probe() {
+    local out="" rc=0
+    set +e
+    trap - ERR # an unreachable daemon is EXPECTED here — handled by the caller
+    out="$(bcli list --status all 2>&1)"
+    rc=$?
+    trap 'diag_err $? $LINENO "$BASH_COMMAND"' ERR
+    set -e
+    DAEMON_HEALTH_OUT="$out"
+    [ "$rc" -eq 0 ] || return 1
+    printf '%s' "$out" | grep -qiE 'connection refused|unavailable|no route to host' && return 1
+    return 0
+}
+
+# daemon_gate SECTION — prove the daemon is reachable BEFORE a section spawns
+# or destroys anything. On failure this is the section's ONE cell: it names the
+# endpoint and how to bring the daemon back, instead of cascading into
+# "not found" / "connection refused" cells (section 13's `agent "e2e-imgspec"
+# not found` was a consequence, not a second defect). Healthy runs — coexist CI
+# and a healthy standalone run — add NO cell here.
+daemon_gate() {
+    local section="$1"
+    daemon_health_probe && return 0
+    fail "$section: the daemon at $BUNKER_DAEMON_URL is unreachable, so nothing was spawned or destroyed here — bring it back with 'systemctl restart bunkerd' (or 'bunkerd -c /etc/bunkerd/config.yaml') and re-run this battery. Probe: $(printf '%s' "$DAEMON_HEALTH_OUT" | head -1)"
+    return 1
 }
 
 # ── Binary certification (DF-BUNKER-3 / QA-BUNKER-3) ───────────────────
@@ -430,6 +561,9 @@ if [ "${1:-}" = "--self-test" ]; then
     # Never creates users, never starts daemons, never touches /var/log,
     # never runs a battery section. Uses the same helpers as the main path.
     ST_FAIL=0
+    # The script under test, so a static check can assert on the real text
+    # (BASH_SOURCE works for `bash e2e-full-battery.sh` and for a sourced run).
+    ST_SELF="${BASH_SOURCE[0]:-$0}"
     echo "=== 0. Self-test (no root, no side effects) ==="
 
     # (a) A failing command captured through run_capture must SURFACE its
@@ -654,6 +788,147 @@ EOF
         ST_FAIL=$((ST_FAIL+1))
     fi
 
+    # (iv) INT-CI-012 — section 12 hands the nested suite its OWN isolated,
+    # non-production ports in BOTH modes, and there is exactly ONE invocation
+    # site. The pre-fix layout had a second, portless invocation in the
+    # standalone branch, so the child inherited this battery's exported
+    # BUNKERD_REST_ADDR=:18080 / BUNKERD_GRPC_ADDR=:19090 and then killed and
+    # raced the production daemon on those ports.
+    ST_NP="$(nested_suite_ports)"
+    if [ "$ST_NP" = ":29092 :28082" ]; then
+        assert "the nested suite is handed its own isolated ports in both modes ($ST_NP)"
+    else
+        fail "nested_suite_ports returned '$ST_NP', want ':29092 :28082'"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+    if printf '%s' "$ST_NP" | grep -qE ':(18080|19090|28081|29091)([^0-9]|$)'; then
+        fail "the nested suite is handed a production/battery port ($ST_NP) — it could take over the live daemon"
+        ST_FAIL=$((ST_FAIL+1))
+    else
+        assert "no production/battery port is handed to the nested suite"
+    fi
+    ST_S12_LINES="$(grep -nF 'bash "$REGRESSION_SCRIPT"' "$ST_SELF" 2>/dev/null | grep -vF 'grep -nF' | cut -d: -f1 | tr '\n' ' ' || true)"
+    ST_S12_N=0
+    ST_S12_BAD=""
+    for st_ln in $ST_S12_LINES; do
+        ST_S12_N=$((ST_S12_N+1))
+        st_line="$(sed -n "${st_ln}p" "$ST_SELF")"
+        printf '%s' "$st_line" | grep -qF 'BUNKERD_GRPC_ADDR="$NESTED_GRPC_ADDR"' || ST_S12_BAD="$ST_S12_BAD $st_ln:no-grpc-port"
+        printf '%s' "$st_line" | grep -qF 'BUNKERD_REST_ADDR="$NESTED_REST_ADDR"' || ST_S12_BAD="$ST_S12_BAD $st_ln:no-rest-port"
+    done
+    if [ "$ST_S12_N" = "1" ] && [ -z "$ST_S12_BAD" ]; then
+        assert "the single nested-suite invocation carries explicit non-production ports (line ${ST_S12_LINES% })"
+    else
+        fail "nested-suite invocations: $ST_S12_N with missing ports:$ST_S12_BAD (want exactly 1, carrying both ports)"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+
+    # (v) INT-CI-012 — section 12's verdict must FLIP when the nested suite
+    # fails. The pre-fix code read REG_EXIT after a `... || true` command
+    # substitution (always 0) and grepped the transcript's words, so a suite
+    # that printed PASS: 16 / FAIL: 14 still produced "✓ regression suite
+    # PASSED". A fixture script that exits 1 must flip the verdict, a green
+    # one must pass, and a suite that prints no tally must be UNVERIFIED.
+    ST_FIX_DIR="$(mktemp -d /tmp/bunker-battery-selftest-nested-XXXXXX)"
+    cat > "$ST_FIX_DIR/fail.sh" <<'STFIXEOF'
+#!/bin/bash
+echo "  ✓ synthetic nested cell"
+echo "  ✗ synthetic nested failure"
+echo "  PASS: 16"
+echo "  FAIL: 14"
+exit 1
+STFIXEOF
+    cat > "$ST_FIX_DIR/pass.sh" <<'STFIXEOF'
+#!/bin/bash
+echo "  ✓ synthetic nested cell"
+echo "  PASS: 21"
+echo "  FAIL: 0"
+exit 0
+STFIXEOF
+    cat > "$ST_FIX_DIR/notally.sh" <<'STFIXEOF'
+#!/bin/bash
+echo "bunker: spawn agent: unavailable: dial tcp [::1]:18080: connect: connection refused"
+exit 0
+STFIXEOF
+    run_capture "synthetic failing nested suite" bash "$ST_FIX_DIR/fail.sh"
+    ST_V_FAIL="$(nested_verdict "$RUN_CAPTURE_EXIT" "$(nested_tally "$RUN_CAPTURE_OUT" || true)")"
+    ST_TALLY_PARSED="$(nested_tally "$RUN_CAPTURE_OUT" || true)"
+    run_capture "synthetic passing nested suite" bash "$ST_FIX_DIR/pass.sh"
+    ST_V_PASS="$(nested_verdict "$RUN_CAPTURE_EXIT" "$(nested_tally "$RUN_CAPTURE_OUT" || true)")"
+    run_capture "synthetic tally-less nested suite" bash "$ST_FIX_DIR/notally.sh"
+    ST_V_NOTALLY="$(nested_verdict "$RUN_CAPTURE_EXIT" "$(nested_tally "$RUN_CAPTURE_OUT" || true)")"
+    case "$ST_V_FAIL" in
+        FAIL:*) assert "a nested suite exiting non-zero flips section 12 to FAIL ($ST_V_FAIL)" ;;
+        *) fail "a nested suite exiting 1 did NOT flip section 12 to FAIL (got '$ST_V_FAIL')"; ST_FAIL=$((ST_FAIL+1)) ;;
+    esac
+    if [ "$ST_TALLY_PARSED" = "16 14" ]; then
+        assert "section 12 reads the nested suite's OWN tally lines ($ST_TALLY_PARSED), not a grep of ✓/✗ and the word PASS"
+    else
+        fail "nested_tally parsed '$ST_TALLY_PARSED', want '16 14' (the suite's own summary counters)"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+    case "$ST_V_PASS" in
+        PASS:*) assert "a green nested suite reports PASS with its own tally ($ST_V_PASS)" ;;
+        *) fail "a green nested suite was not reported as PASS (got '$ST_V_PASS')"; ST_FAIL=$((ST_FAIL+1)) ;;
+    esac
+    case "$ST_V_NOTALLY" in
+        FAIL:*) assert "a nested suite that printed no tally is UNVERIFIED (FAIL), never a silent pass" ;;
+        *) fail "a tally-less nested suite was not a FAIL (got '$ST_V_NOTALLY')"; ST_FAIL=$((ST_FAIL+1)) ;;
+    esac
+    rm -rf "$ST_FIX_DIR" 2>/dev/null || true
+
+    # (vi) INT-CI-012 — the harness must never remove a config file it did not
+    # create. Behavioural, both arms: a removal pointed at a dir holding the
+    # operator's CLI config is REFUSED (and the file survives), while the
+    # harness's own scratch dir is removed. Plus the static invariants on the
+    # nested suite, whose pre-fix cleanup deleted the operator's CLI state on
+    # every standalone run.
+    ST_OP_DIR="$(mktemp -d /tmp/bunker-operator-config-XXXXXX)"
+    mkdir -p "$ST_OP_DIR/.bunker"
+    printf 'servers: {}\nactive_server: operator\n' > "$ST_OP_DIR/.bunker/config.yaml"
+    ST_OP_HASH="$(file_fingerprint "$ST_OP_DIR/.bunker/config.yaml")"
+    ST_OP_RC=0
+    remove_own_state_dir "$ST_OP_DIR" > /dev/null 2>&1 || ST_OP_RC=$?
+    if [ "$ST_OP_RC" -ne 0 ] && [ "$(file_fingerprint "$ST_OP_DIR/.bunker/config.yaml")" = "$ST_OP_HASH" ]; then
+        assert "remove_own_state_dir REFUSES a dir that is not the harness's own scratch (rc=$ST_OP_RC, the config file is untouched)"
+    else
+        fail "a removal pointed at a non-scratch dir was not refused / the config file did not survive (rc=$ST_OP_RC)"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+    ST_SCRATCH_PROBE="$(mktemp -d /tmp/bunker-battery-cli-XXXXXX)"
+    if remove_own_state_dir "$ST_SCRATCH_PROBE" && [ ! -d "$ST_SCRATCH_PROBE" ]; then
+        assert "remove_own_state_dir still removes the harness's OWN scratch dir"
+    else
+        fail "the harness's own scratch dir was not removed by remove_own_state_dir"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+    rm -rf "$ST_OP_DIR" 2>/dev/null || true
+    ST_NESTED_SCRIPT="$(dirname "$ST_SELF")/regression-tests.sh"
+    if [ -f "$ST_NESTED_SCRIPT" ]; then
+        ST_ROOT_RM="$(grep -nE 'rm -rf[[:space:]]+/root' "$ST_NESTED_SCRIPT" 2>/dev/null | grep -v ':[[:space:]]*#' | wc -l | tr -d ' ' || true)"
+        if [ "${ST_ROOT_RM:-0}" != "0" ]; then
+            fail "regression-tests.sh still removes operator state under /root ($ST_ROOT_RM executable line(s) — the operator's CLI config)"
+            ST_FAIL=$((ST_FAIL+1))
+        else
+            assert "regression-tests.sh removes no path under /root (no operator CLI config deletion)"
+        fi
+        if grep -qF 'export BUNKER_HOME="$REGRESSION_CLI_HOME"' "$ST_NESTED_SCRIPT" && grep -qF 'export HOME="$REGRESSION_CLI_HOME"' "$ST_NESTED_SCRIPT"; then
+            assert "regression-tests.sh pins BOTH BUNKER_HOME and HOME to its own scratch dir (standalone included)"
+        else
+            fail "regression-tests.sh does not pin BUNKER_HOME *and* HOME to its own scratch dir — an inherited HOME=/root is the operator's"
+            ST_FAIL=$((ST_FAIL+1))
+        fi
+        ST_PKILL_N="$(grep -h 'pkill bunkerd' "$ST_NESTED_SCRIPT" 2>/dev/null | grep -v '^[[:space:]]*#' | wc -l | tr -d ' ' || true)"
+        if [ "${ST_PKILL_N:-0}" = "1" ] && grep -qF 'kill_stray_bunkerd()' "$ST_NESTED_SCRIPT" && grep -qF 'host_state_sweep_allowed()' "$ST_NESTED_SCRIPT"; then
+            assert "regression-tests.sh funnels its single pkill bunkerd through kill_stray_bunkerd (never a systemd-managed daemon)"
+        else
+            fail "regression-tests.sh has ${ST_PKILL_N:-?} 'pkill bunkerd' site(s) — a stray unconditional kill can take the production daemon down"
+            ST_FAIL=$((ST_FAIL+1))
+        fi
+    else
+        note "regression-tests.sh is not beside this script — the nested-suite static checks were skipped"
+    fi
+
     # The self-test exits BEFORE the cleanup trap is armed, so it removes its
     # own scratch explicitly (a sentinel HOME, a stub CLI, and the battery CLI
     # state dir).
@@ -664,7 +939,7 @@ EOF
         rm -rf "$ST_STUB_DIR" 2>/dev/null || true
     fi
     if [ -n "${BATTERY_CLI_HOME:-}" ] && [ -d "$BATTERY_CLI_HOME" ]; then
-        rm -rf "$BATTERY_CLI_HOME" 2>/dev/null || true
+        remove_own_state_dir "$BATTERY_CLI_HOME"
         BATTERY_CLI_HOME=""
     fi
 
@@ -722,7 +997,7 @@ if [ "${1:-}" = "--show-plan" ]; then
     echo "  root requirement      : the full run needs root (exit 42 otherwise); --self-test/--show-plan/--bin-report never do"
     echo "  sections that run     : 1-11, 13, 14 (14's live-daemon registry replays are skipped in coexist mode)"
     echo "  sections that may skip: 12 only when no regression-tests.sh is present; 15.1 fails without a CLI that has host-provision"
-    rm -rf "$PLAN_CLI_HOME"
+    remove_own_state_dir "$PLAN_CLI_HOME"
     echo ""
     echo "PLAN: OK (nothing was changed)"
     exit 0
@@ -874,7 +1149,7 @@ cleanup() {
     done
     # Nested regression suite's isolated CLI state dir (section 12).
     if [ -n "${NESTED_CLI_HOME:-}" ] && [ -d "$NESTED_CLI_HOME" ]; then
-        rm -rf "$NESTED_CLI_HOME" 2>/dev/null || true
+        remove_own_state_dir "$NESTED_CLI_HOME"
     fi
     # Stop the battery's own bunkerd (coexist mode only)
     if [ -n "$BUNKERD_PID" ]; then
@@ -887,9 +1162,10 @@ cleanup() {
     if ! operator_config_check; then
         OPERATOR_CONFIG_VIOLATION=1
     fi
-    # The battery's own CLI state dir is scratch owned by this run — remove it.
+    # The battery's own CLI state dir is scratch owned by this run — remove it
+    # (pattern-checked: a removal can never reach the operator's config).
     if [ -n "${BATTERY_CLI_HOME:-}" ] && [ -d "$BATTERY_CLI_HOME" ]; then
-        rm -rf "$BATTERY_CLI_HOME" 2>/dev/null || true
+        remove_own_state_dir "$BATTERY_CLI_HOME"
     fi
     if [ "$OPERATOR_CONFIG_VIOLATION" = "1" ]; then
         exit 1
@@ -1343,15 +1619,21 @@ if [ -n "$REGRESSION_SCRIPT" ]; then
     # state dir so neither suite can reach the other's registration, in BOTH
     # modes (BUNKER_HOME is exported in standalone mode too).
     NESTED_CLI_HOME="$(mktemp -d /tmp/bunker-battery-nested-cli-XXXXXX)"
-    if [ -n "$BUNKERD_COEXIST" ]; then
-        # Coexist: nested regression suite gets its own ports so it does not
-        # collide with this battery's own daemon (or the live production one).
-        REG_OUT=$(BUNKER_HOME="$NESTED_CLI_HOME" HOME="$NESTED_CLI_HOME" BUNKERD_GRPC_ADDR=":29092" BUNKERD_REST_ADDR=":28082" bash "$REGRESSION_SCRIPT" 2>&1 || true)
-    else
-        REG_OUT=$(BUNKER_HOME="$NESTED_CLI_HOME" HOME="$NESTED_CLI_HOME" bash "$REGRESSION_SCRIPT" 2>&1 || true)
-    fi
-    REG_EXIT=$?
-    rm -rf "$NESTED_CLI_HOME"
+    # INT-CI-012: the child gets its OWN isolated, non-production ports in BOTH
+    # modes. Standalone used to pass no ports at all, so the child inherited
+    # this battery's exported BUNKERD_REST_ADDR=:18080 / BUNKERD_GRPC_ADDR=
+    # :19090, killed the production daemon and then raced it for :18080 (host
+    # journal: 'shutting down' → 'Started bunkerd.service' → 'bind: address
+    # already in use'). One invocation site, always carrying the ports.
+    NESTED_PORTS="$(nested_suite_ports)"
+    NESTED_GRPC_ADDR="${NESTED_PORTS%% *}"
+    NESTED_REST_ADDR="${NESTED_PORTS##* }"
+    run_capture "nested regression suite" env BUNKER_HOME="$NESTED_CLI_HOME" HOME="$NESTED_CLI_HOME" BUNKERD_GRPC_ADDR="$NESTED_GRPC_ADDR" BUNKERD_REST_ADDR="$NESTED_REST_ADDR" bash "$REGRESSION_SCRIPT"
+    REG_OUT="$RUN_CAPTURE_OUT"
+    # The nested suite's REAL exit status. The previous revision read `$?` after
+    # a `... || true` command substitution, so REG_EXIT was always 0.
+    REG_EXIT="$RUN_CAPTURE_EXIT"
+    remove_own_state_dir "$NESTED_CLI_HOME"
     # Leak guard: this battery's own registration must still be the resolved
     # endpoint. Without the isolation above it is silently replaced and the
     # failure only surfaces as a confusing 'connection refused' in section 13.
@@ -1361,17 +1643,20 @@ if [ -n "$REGRESSION_SCRIPT" ]; then
     else
         fail "nested regression rewrote this battery's CLI registration — later sections would dial the nested suite's ports"
     fi
-    # Count assertions
-    REG_PASS=$(echo "$REG_OUT" | grep -c "✓\|PASS" || echo "0")
-    REG_FAIL=$(echo "$REG_OUT" | grep -c "✗\|FAIL" || echo "0")
+    # The nested suite's OWN tally ("PASS: N / FAIL: M"), not a grep of the
+    # transcript's ✓/✗ cells and the word PASS.
+    REG_TALLY="$(nested_tally "$REG_OUT" || true)"
+    REG_PASS="${REG_TALLY%% *}"
+    REG_FAIL="${REG_TALLY##* }"
     echo "$REG_OUT" | tail -10
-    if [ "$REG_EXIT" -eq 0 ]; then
-        assert "regression suite PASSED"
-    else
-        note "regression suite had $REG_FAIL failures (check output above)"
-    fi
+    echo "  nested suite tally: PASS=${REG_PASS:-?} FAIL=${REG_FAIL:-?} (exit $REG_EXIT)"
+    REG_VERDICT="$(nested_verdict "$REG_EXIT" "$REG_TALLY")"
+    case "$REG_VERDICT" in
+        PASS:*) assert "regression suite ${REG_VERDICT#PASS: }" ;;
+        *)      fail "regression suite ${REG_VERDICT#FAIL: } — see the nested transcript above" ;;
+    esac
 else
-    note "regression-tests.sh not available"
+    note "regression-tests.sh not available (neither beside this script nor at /opt/bunker) — the nested suite was never invoked"
 fi
 echo ""
 
@@ -1390,6 +1675,12 @@ echo ""
 # the previous revision inherited whatever the operator's CLI config said and
 # hung on a dev port when that config pointed somewhere the daemon was not.
 echo "=== 13. Image Specs (GAP-064) ==="
+# INT-CI-012: prove the daemon answers BEFORE any spawn/destroy. An unreachable
+# daemon reports ONE actionable cell here (endpoint + how to bring it back)
+# instead of cascading into 'allowed spec spawn failed' followed by 'agent
+# "e2e-imgspec" not found', which was a consequence of the first failure, not a
+# second defect. Healthy runs (coexist CI, healthy standalone) add no cell.
+if daemon_gate "13. Image Specs (GAP-064)"; then
 GAP064_SPEC="$(mktemp /tmp/gap064-spec-XXXXXX.json)"
 GAP064_REJECT="$(mktemp /tmp/gap064-reject-XXXXXX.json)"
 GAP064_SPEC2="$(mktemp /tmp/gap064-spec2-XXXXXX.json)"
@@ -1495,6 +1786,10 @@ else
 fi
 
 rm -f "$GAP064_SPEC" "$GAP064_REJECT" "$GAP064_SPEC2"
+else
+    # daemon_gate already reported the single actionable failure.
+    note "section 13 skipped: the daemon is unreachable (no spawn/destroy attempted)"
+fi
 echo ""
 
 # =============================================
@@ -1609,6 +1904,11 @@ if [ -n "$BUNKERD_COEXIST" ]; then
     note "live-daemon registry checks skipped in coexist mode — replay/reconcile/destroy-twice are covered by go test ./internal/{registry,agent,server}"
 else
     # Standalone: full take-over, so exercise the live daemon's own registry.
+    # INT-CI-012: gate on a cheap health probe first, so an unreachable daemon
+    # reports ONE actionable cell instead of 'destroy of a never-seen ID
+    # unexpectedly succeeded' (a CLI that cannot reach the daemon is not a
+    # registry that lost its knowledge).
+    if daemon_gate "14. Durable Registry (GAP-070) live-daemon checks"; then
     GAP070_LIVE="${BUNKER_REGISTRY_PATH:-/var/lib/bunkerd/agents.jsonl}"
     bcli spawn gap070-idem > /dev/null 2>&1 || true
     sleep 2
@@ -1644,6 +1944,9 @@ else
         assert "destroy lifecycle event durably recorded"
     else
         fail "destroy was not persisted to the registry"
+    fi
+    else
+        note "section 14: live-daemon registry cells skipped — the daemon at $BUNKER_DAEMON_URL is unreachable"
     fi
 fi
 echo ""
