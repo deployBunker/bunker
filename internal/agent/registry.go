@@ -3,7 +3,11 @@ package agent
 
 import (
 	"bufio"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -95,6 +99,143 @@ func readPersistedPortRange(home string) (start, end uint32, ok bool) {
 		return 0, 0, false
 	}
 	return uint32(s), uint32(e), true
+}
+
+// ownerMarkerFilename is the per-agent ownership marker written at spawn time
+// next to `.bunker/ports`. It carries the spawning daemon's instance identity
+// plus (informationally) the pool geometry that daemon allocated from, so two
+// daemons sharing ONE host and OVERLAPPING port pools can still tell each
+// other's agents apart (DF-BUNKER-18).
+const ownerMarkerFilename = "owner"
+
+// persistedOwnerPath is the per-agent ownership marker path.
+func persistedOwnerPath(home string) string {
+	return filepath.Join(home, ".bunker", ownerMarkerFilename)
+}
+
+// readPersistedOwner reads an agent's daemon-ownership marker.
+//
+// The file has two lines, newline-terminated:
+//
+//	<daemon-instance-id>
+//	<pool-start>-<pool-end>
+//
+// ok is true only when line 1 carries a non-empty instance id; an unreadable
+// file, an empty file, or an empty line 1 all mean "no marker", and the
+// caller then falls back to its legacy (marker-absent) handling. Line 2 is
+// parsed leniently and is INFORMATIONAL ONLY — a missing or unparseable pool
+// line still yields ok=true with the instance id, because the pool geometry
+// deliberately plays no part in the ownership decision.
+func readPersistedOwner(home string) (instanceID string, poolStart, poolEnd uint32, ok bool) {
+	if home == "" {
+		return "", 0, 0, false
+	}
+	data, err := os.ReadFile(persistedOwnerPath(home))
+	if err != nil {
+		return "", 0, 0, false
+	}
+	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
+	id := strings.TrimSpace(lines[0])
+	if id == "" {
+		return "", 0, 0, false
+	}
+	if len(lines) > 1 {
+		line := strings.TrimSpace(lines[1])
+		parts := strings.SplitN(line, "-", 2)
+		if len(parts) == 2 {
+			s, err1 := strconv.ParseUint(strings.TrimSpace(parts[0]), 10, 32)
+			e, err2 := strconv.ParseUint(strings.TrimSpace(parts[1]), 10, 32)
+			if err1 == nil && err2 == nil {
+				poolStart, poolEnd = uint32(s), uint32(e)
+			}
+		}
+	}
+	return id, poolStart, poolEnd, true
+}
+
+// poolFingerprint renders this daemon's pool geometry ("<start>-<end>") for
+// the ownership marker written at spawn time. It falls back to the configured
+// range when no allocator is active. The fingerprint is recorded and logged
+// for operators only: it NEVER takes part in the ownership decision.
+func (m *AgentManager) poolFingerprint() string {
+	if m.portAlloc != nil {
+		start, end := m.portAlloc.Bounds()
+		return fmt.Sprintf("%d-%d", start, end)
+	}
+	return fmt.Sprintf("%d-%d", m.cfg.Agent.PortRangeStart, m.cfg.Agent.PortRangeEnd)
+}
+
+// instanceIDFile is the daemon-scoped file under agent.base_data_dir holding
+// this daemon's instance identity.
+const instanceIDFile = "instance"
+
+// daemonInstanceIDPath is this daemon's instance identity path.
+func daemonInstanceIDPath(baseDataDir string) string {
+	return filepath.Join(baseDataDir, instanceIDFile)
+}
+
+// loadOrCreateDaemonInstanceID resolves this daemon's restart-stable instance
+// identity: the identity file is CREATED once (0600, random 32-hex-char id)
+// and READ on every later start. Regenerating the id on each start is
+// deliberately forbidden — a fresh id every restart would make this daemon's
+// OWN previously-spawned agents read as foreign and leak forever.
+//
+// The creation is O_CREATE|O_EXCL so two daemons starting concurrently cannot
+// each walk away with a different id (the loser reads the winner's file).
+// Every failure is returned, never fatal: the caller logs a warning and keeps
+// the identity empty, which disables the ownership check (every marker is then
+// treated as absent, i.e. today's behaviour). Failure must never fail closed
+// into destroying more, and never fail daemon start.
+func loadOrCreateDaemonInstanceID(baseDataDir string, logger *slog.Logger) (string, error) {
+	if strings.TrimSpace(baseDataDir) == "" {
+		return "", errors.New("no agent base_data_dir configured")
+	}
+	path := daemonInstanceIDPath(baseDataDir)
+
+	data, err := os.ReadFile(path)
+	switch {
+	case err == nil:
+		if id := strings.TrimSpace(string(data)); id != "" {
+			return id, nil
+		}
+		return "", fmt.Errorf("instance identity file %s is empty", path)
+	case !errors.Is(err, os.ErrNotExist):
+		return "", fmt.Errorf("read instance identity %s: %w", path, err)
+	}
+
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate instance id: %w", err)
+	}
+	id := hex.EncodeToString(buf)
+
+	if err := os.MkdirAll(baseDataDir, 0o755); err != nil {
+		return "", fmt.Errorf("create agent base data dir %s: %w", baseDataDir, err)
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			// Lost the race (or a file appeared between the read and the
+			// open): whoever wrote it first owns the identity.
+			if data, rerr := os.ReadFile(path); rerr == nil {
+				if existing := strings.TrimSpace(string(data)); existing != "" {
+					return existing, nil
+				}
+			}
+		}
+		return "", fmt.Errorf("create instance identity %s: %w", path, err)
+	}
+	if _, err := f.WriteString(id + "\n"); err != nil {
+		f.Close()
+		return "", fmt.Errorf("write instance identity %s: %w", path, err)
+	}
+	if err := f.Close(); err != nil {
+		return "", fmt.Errorf("close instance identity %s: %w", path, err)
+	}
+	// The mode is asserted by the caller's tests, not assumed: a pre-existing
+	// file keeps its own mode, and umask can only narrow the requested one.
+	logger.Debug("daemon instance identity created", "path", path)
+	return id, nil
 }
 
 // defaultListSystemAgents enumerates managed agents present on the host by

@@ -561,6 +561,17 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		if err := os.WriteFile(portFile, []byte(portContent), 0644); err != nil {
 			m.logger.Warn("failed to write port range file", "agent_id", agentID, "error", err)
 		}
+		// DF-BUNKER-18: stamp THIS daemon's instance identity next to the
+		// port metadata, inside the same directory the chown below covers.
+		// A second daemon on the same host reads it and leaves the agent
+		// alone — the only reliable discrimination when the two pools
+		// overlap or this agent's port metadata is unreadable. Best
+		// effort, like the port file: spawn's success criteria must not
+		// change, and the pool line is recorded for operators only, never
+		// consulted by the ownership decision.
+		if err := m.writeOwnerMarker(bunkerMetaDir); err != nil {
+			m.logger.Warn("failed to write owner marker file", "agent_id", agentID, "error", err)
+		}
 		if out, err := exec.CommandContext(ctx, "chown", "-R", username+":", bunkerMetaDir).CombinedOutput(); err != nil {
 			m.logger.Warn("failed to chown .bunker meta dir", "agent_id", agentID, "error", err, "output", string(out))
 		}
@@ -873,4 +884,28 @@ func applyUserSliceLimits(ctx context.Context, u *user.User, cpuQuota float64, m
 		return fmt.Errorf("daemon-reload: %w (output: %s)", err, string(out))
 	}
 	return nil
+}
+
+// writeOwnerMarker stamps this daemon's restart-stable instance identity into
+// the agent's metadata directory (DF-BUNKER-18), next to `.bunker/ports`:
+//
+//	<daemon-instance-id>\n<pool-start>-<pool-end>\n
+//
+// Reconciliation reads it back and treats an orphan carrying a DIFFERENT id as
+// foreign — which is the only way a second daemon on the same host can tell
+// its own agents apart when the two port pools overlap or the port metadata is
+// unreadable. The pool line is informational (operator diagnostics); it never
+// takes part in the ownership decision.
+//
+// No file is written when this daemon has no identity (the identity file could
+// not be created or read): an absent marker degrades to the documented legacy
+// handling instead of fabricating ownership this daemon cannot honour. The
+// caller treats an error as a warning, exactly like the port file — the marker
+// must never change spawn's success criteria.
+func (m *AgentManager) writeOwnerMarker(metaDir string) error {
+	if m.instanceID == "" {
+		return nil
+	}
+	content := fmt.Sprintf("%s\n%s\n", m.instanceID, m.poolFingerprint())
+	return os.WriteFile(filepath.Join(metaDir, ownerMarkerFilename), []byte(content), 0644)
 }

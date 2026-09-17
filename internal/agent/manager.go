@@ -45,6 +45,17 @@ type AgentManager struct {
 	registry    *registry.Store
 	registryErr error
 
+	// instanceID is this daemon's persisted, restart-stable identity
+	// (DF-BUNKER-18), resolved once by NewAgentManager from
+	// <base_data_dir>/instance. Spawn stamps it into every agent's
+	// `.bunker/owner` marker; reconciliation treats an orphan carrying a
+	// DIFFERENT id as foreign and never adopts or destroys it — which is
+	// what makes two daemons with OVERLAPPING port pools safe on one host.
+	// Empty when the identity could not be created or read: the ownership
+	// check is then disabled and every marker is treated as absent (the
+	// legacy marker-free behaviour).
+	instanceID string
+
 	// Seams (production values set in NewAgentManager; tests inject fakes).
 	// listSystemAgents enumerates managed agents present on the host.
 	listSystemAgents func() ([]SystemAgent, error)
@@ -86,6 +97,19 @@ func NewAgentManager(cfg *config.Config, logger *slog.Logger, tracker *resource.
 	}
 	am.listSystemAgents = defaultListSystemAgents
 	am.destroyAgent = am.Destroy
+	// DF-BUNKER-18: resolve this daemon's restart-stable instance identity
+	// BEFORE any agent can be spawned or reconciled. A failure here is never
+	// fatal and never fails closed: the identity stays empty, which disables
+	// the ownership check and leaves the legacy behaviour in place.
+	if id, err := loadOrCreateDaemonInstanceID(cfg.Agent.BaseDataDir, logger); err != nil {
+		logger.Warn("daemon instance identity unavailable — agent ownership markers disabled",
+			"base_data_dir", cfg.Agent.BaseDataDir,
+			"error", err,
+		)
+	} else {
+		am.instanceID = id
+		logger.Info("daemon instance identity", "instance_id", id)
+	}
 	am.imageBuilder = imagespec.NewBuilder(nil, &imagespec.CacheOptions{
 		Dir:          cfg.Agent.ImageSpec.CacheDir,
 		BuildTimeout: cfg.Agent.ImageSpec.BuildTimeout,

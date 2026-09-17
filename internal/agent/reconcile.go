@@ -42,10 +42,10 @@ type ReconcileReport struct {
 	Adopted int
 	// Destroyed counts orphans removed from the host.
 	Destroyed int
-	// Foreign counts orphans left untouched because their persisted ports
-	// lie outside this daemon's pool: such an agent cannot collide with a
-	// port this daemon allocates and belongs to another daemon instance
-	// (or an older pool geometry).
+	// Foreign counts orphans left untouched because they belong to another
+	// daemon instance: either their persisted ports lie outside this
+	// daemon's pool, or (DF-BUNKER-18) their `.bunker/owner` marker names a
+	// different daemon instance than this one.
 	Foreign int
 }
 
@@ -61,12 +61,14 @@ type ReconcileReport struct {
 //  2. purges registry records whose system user is gone (stale);
 //  3. handles orphans — bunker-* users the registry does not know — by
 //     destroying them (default) or adopting them, per reconciliation.mode.
-//     Orphans are classified FOREIGN first: one whose persisted port range
-//     lies entirely outside this daemon's pool cannot collide with a port
-//     this daemon allocates, so it belongs to another daemon instance (or
-//     an older pool geometry) and is left untouched. Adoption of the rest
-//     requires readable, valid, free port metadata: an orphan that cannot
-//     be adopted with its exact reservation is destroyed instead;
+//     Orphans are classified FOREIGN first: one carrying another daemon
+//     instance's `.bunker/owner` marker (DF-BUNKER-18), or whose persisted
+//     port range lies entirely outside this daemon's pool, belongs to
+//     another daemon instance and is left untouched. The marker check is
+//     what makes OVERLAPPING pools safe, and it works even when the port
+//     metadata is missing or unreadable. Adoption of the rest requires
+//     readable, valid, free port metadata: an orphan that cannot be adopted
+//     with its exact reservation is destroyed instead;
 //  4. unblocks the TTL reaper (which waits for this to finish).
 //
 // It never fails hard: every action is logged and the daemon keeps running.
@@ -153,15 +155,13 @@ func (m *AgentManager) Reconcile(ctx context.Context) ReconcileReport {
 		// adopted here — not even in destroy mode. Unreadable or malformed
 		// metadata is not foreign (the daemon cannot prove it is safe to
 		// leave), so it keeps the fail-closed treatment below.
+		//
+		// DF-BUNKER-18: an orphan carrying ANOTHER daemon instance's
+		// ownership marker is foreign regardless of its persisted range,
+		// which also covers overlapping pools and unreadable port
+		// metadata — the two destructive shapes the port test could not.
 		if foreign, start, end := m.orphanIsForeign(sa); foreign {
-			poolStart, poolEnd := m.portAlloc.Bounds()
-			m.logger.Warn("registry reconcile: skipping foreign orphan agent",
-				"action", "skip",
-				"agent_id", sa.AgentID,
-				"system_user", sa.Username,
-				"persisted_range", fmt.Sprintf("%d-%d", start, end),
-				"pool", fmt.Sprintf("%d-%d", poolStart, poolEnd),
-				"reason", "persisted ports outside this daemon's pool: agent is owned by another daemon instance or an older pool geometry; destroy it from the daemon that owns it")
+			m.logForeignOrphanSkip(sa, start, end)
 			rep.Foreign++
 			continue
 		}
@@ -305,18 +305,83 @@ func (m *AgentManager) dropHalfManagedState(agentID string) {
 	}
 }
 
-// orphanIsForeign reports whether an orphan's persisted port range is
-// disjoint from this daemon's own pool: such an agent cannot collide with a
-// port this daemon allocates, so it belongs to another daemon instance (or
-// an older pool geometry) and must never be destroyed here. Unreadable or
-// malformed metadata is NOT foreign — the daemon cannot prove it is safe to
-// leave, so the existing fail-closed path keeps handling it. The disjoint
-// test deliberately does not use ValidateRange, which also rejects
-// in-pool-but-unaligned ranges: those keep their current fail-closed
-// treatment, because two daemons with OVERLAPPING pools remain unsupported.
-// When no allocator is configured this daemon cannot prove any range
-// foreign, so nothing is ever skipped for it.
+// logForeignOrphanSkip emits the loud skip warning for an orphan this daemon
+// leaves completely alone. It always names the agent, its persisted port
+// range (0-0 when unreadable) and this daemon's pool — nil-safe, because an
+// ownership-marker skip is possible with NO allocator configured — plus the
+// owning instance id and the pool geometry that daemon recorded in the
+// marker, when the marker is readable.
+func (m *AgentManager) logForeignOrphanSkip(sa SystemAgent, start, end uint32) {
+	var poolStart, poolEnd uint32
+	if m.portAlloc != nil {
+		poolStart, poolEnd = m.portAlloc.Bounds()
+	}
+	attrs := []any{
+		"action", "skip",
+		"agent_id", sa.AgentID,
+		"system_user", sa.Username,
+		"persisted_range", fmt.Sprintf("%d-%d", start, end),
+		"pool", fmt.Sprintf("%d-%d", poolStart, poolEnd),
+	}
+	if owner, ownerPoolStart, ownerPoolEnd, ok := readPersistedOwner(sa.Home); ok {
+		attrs = append(attrs, "owner", owner)
+		if ownerPoolStart != 0 || ownerPoolEnd != 0 {
+			attrs = append(attrs, "owner_pool", fmt.Sprintf("%d-%d", ownerPoolStart, ownerPoolEnd))
+		}
+	}
+	attrs = append(attrs, "reason",
+		"agent is owned by another daemon instance (or an older pool geometry): "+
+			"destroy it from the daemon that owns it")
+	m.logger.Warn("registry reconcile: skipping foreign orphan agent", attrs...)
+}
+
+// orphanIsForeign reports whether an orphan observed on the host belongs to
+// ANOTHER daemon instance and must therefore be left completely untouched
+// (never adopted, never destroyed).
+//
+// Precedence (DF-BUNKER-18):
+//
+//  1. OWNERSHIP MARKER NAMES ANOTHER INSTANCE — when `<home>/.bunker/owner`
+//     carries a non-empty instance id that is not this daemon's own (and this
+//     daemon has an identity of its own to compare against), the orphan is
+//     FOREIGN. This branch is checked FIRST and independently of the persisted
+//     port range, so it also holds when the two daemons' pools OVERLAP and
+//     when the port metadata is missing or unreadable — the two destructive
+//     shapes the port test could not classify;
+//  2. MARKER NAMES THIS DAEMON — the agent is OURS, so it is NOT foreign and
+//     the port test below is deliberately not applied to it: the marker, not
+//     the ports, decides ownership. The agent takes the ordinary adopt/destroy
+//     decision, fail-closed rules included, exactly as an orphan with no
+//     marker does when its metadata is unreservable. A disjoint range on an
+//     agent WE stamped is a leftover of our own from an older pool geometry;
+//     adoption refuses it (the range is outside the pool) and the fail-closed
+//     path destroys it from the daemon that owns it, which is the same
+//     treatment reconcile documents for any orphan that cannot be adopted with
+//     its exact reservation. Two daemons SHARING one data dir would share one
+//     identity file and could then claim each other's agents — that
+//     configuration is the isolation requirement the daemon already
+//     documents as unsupported, and it is not what this marker introduces;
+//  3. NO MARKER (or this daemon has no identity of its own) — the legacy
+//     behaviour, byte for byte: with no allocator this daemon cannot prove any
+//     range foreign, so nothing is ever skipped for it by the port test, and
+//     otherwise a persisted port range ENTIRELY disjoint from this daemon's
+//     pool is foreign. Unreadable or malformed metadata is NOT foreign — the
+//     daemon cannot prove it is safe to leave, so the existing fail-closed
+//     path keeps handling it. That disjoint test deliberately does not use
+//     ValidateRange, which also rejects in-pool-but-unaligned ranges: those
+//     keep their current fail-closed treatment.
+//
+// The pool line recorded inside the ownership marker is NOT part of this
+// decision: it is operator information. A legitimate pool-geometry change on
+// THIS daemon would otherwise reclassify its own agents as foreign and leak
+// them forever.
 func (m *AgentManager) orphanIsForeign(sa SystemAgent) (foreign bool, start, end uint32) {
+	if id, _, _, ok := readPersistedOwner(sa.Home); ok && m.instanceID != "" {
+		// The marker decides ownership. The reported range stays the agent's
+		// persisted ports (informational; 0-0 when unreadable).
+		start, end, _ = readPersistedPortRange(sa.Home)
+		return id != m.instanceID, start, end
+	}
 	if m.portAlloc == nil {
 		return false, 0, 0
 	}
