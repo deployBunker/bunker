@@ -49,7 +49,7 @@ func Verify(path string) (records int, firstBad int, err error) {
 			if os.IsNotExist(statErr) {
 				continue
 			}
-			return n, 0, fmt.Errorf("stat %s: %w", p, statErr)
+			return n, 0, pathError(p, statErr)
 		}
 		if info.Size() == 0 {
 			continue // empty backup contributes no records and breaks no links
@@ -74,7 +74,7 @@ func Verify(path string) (records int, firstBad int, err error) {
 		if os.IsNotExist(statErr) {
 			return 0, 0, fmt.Errorf("audit log %s: %w", path, os.ErrNotExist)
 		}
-		return 0, 0, fmt.Errorf("stat %s: %w", path, statErr)
+		return 0, 0, pathError(path, statErr)
 	}
 	if info.Size() > 0 {
 		cnt, bad, _, err := verifyFile(path, predecessorTail, haveTail)
@@ -134,7 +134,7 @@ func countRecords(path string) (int, error) {
 func verifyFile(path, head string, enforceHead bool) (records, firstBad int, tail string, err error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return 0, 0, "", fmt.Errorf("open %s: %w", path, err)
+		return 0, 0, "", pathError(path, err)
 	}
 	defer f.Close()
 

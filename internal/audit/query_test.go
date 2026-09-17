@@ -2,7 +2,9 @@ package audit
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -224,8 +226,14 @@ func TestQuery_LosslessHashChain(t *testing.T) {
 
 func TestQuery_MissingFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "absent.log")
-	if _, err := Query(path, Filter{}); err == nil {
+	_, err := Query(path, Filter{})
+	if err == nil {
 		t.Fatal("Query on a missing log returned nil error")
+	}
+	// Re-pointed for DF-BUNKER-17 (the assertion above is kept): the message
+	// must name the path exactly once.
+	if got := strings.Count(err.Error(), path); got != 1 {
+		t.Errorf("path appears %d times in %q, want exactly 1", got, err)
 	}
 }
 
@@ -273,4 +281,187 @@ func mustMarshal(t *testing.T, v any) []byte {
 		t.Fatalf("marshal: %v", err)
 	}
 	return b
+}
+
+// TestQuery_MissingFileNamesPathOnce pins the DF-BUNKER-17 message shape on a
+// missing log: the old wrapper printed the path TWICE
+// ("open <path>: open <path>: no such file or directory") because os.Open's
+// *os.PathError already carries op + path + cause. The path must appear
+// exactly once and the error must stay classifiable.
+func TestQuery_MissingFileNamesPathOnce(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+	}{
+		{"missing file in an existing dir", filepath.Join(t.TempDir(), "absent.log")},
+		{"path whose parent dir does not exist", filepath.Join(t.TempDir(), "missing-dir", "audit.log")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Query(tt.path, Filter{})
+			if err == nil {
+				t.Fatalf("Query(%q) returned nil error", tt.path)
+			}
+			if got := strings.Count(err.Error(), tt.path); got != 1 {
+				t.Errorf("path appears %d times in %q, want exactly 1", got, err)
+			}
+			if !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("error %v is no longer classifiable as ErrNotExist", err)
+			}
+			if strings.Contains(err.Error(), "open "+tt.path+": open ") {
+				t.Errorf("doubled 'open %s: open ' prefix is back: %v", tt.path, err)
+			}
+		})
+	}
+}
+
+// TestPathError_PermissionIsHintedAndNotDoubled unit-tests the shared helper
+// directly with a synthetic *os.PathError, so the single-occurrence property
+// and the actionable hint are pinned even on a host where the tests run as
+// root (where a real 0600 file is still readable).
+func TestPathError_PermissionIsHintedAndNotDoubled(t *testing.T) {
+	path := "/var/log/bunkerd/audit.log"
+	err := pathError(path, &os.PathError{Op: "open", Path: path, Err: fs.ErrPermission})
+
+	if err == nil {
+		t.Fatal("pathError returned nil")
+	}
+	if got := strings.Count(err.Error(), path); got != 1 {
+		t.Errorf("path appears %d times in %q, want exactly 1", got, err)
+	}
+	if !strings.Contains(err.Error(), "permission denied") {
+		t.Errorf("error %q lost the original cause", err)
+	}
+	if !errors.Is(err, fs.ErrPermission) {
+		t.Errorf("error %v is no longer classifiable as fs.ErrPermission", err)
+	}
+	for _, want := range []string{"run as root", "--path"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("permission error %q lacks the actionable hint %q", err, want)
+		}
+	}
+}
+
+// TestQuery_PermissionDeniedNamesPathOnce is the wiring check: a real
+// unreadable audit log (mode 0000) must produce the single-occurrence
+// permission error with the hint. Skipped as root, which bypasses file modes.
+func TestQuery_PermissionDeniedNamesPathOnce(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: file modes do not deny access")
+	}
+	path := filepath.Join(t.TempDir(), "audit.log")
+	if err := os.WriteFile(path, []byte("{}\n"), 0o000); err != nil {
+		t.Fatalf("write unreadable log: %v", err)
+	}
+
+	_, err := Query(path, Filter{})
+	if err == nil {
+		t.Fatalf("Query(%q) succeeded on a mode-0000 file", path)
+	}
+	if got := strings.Count(err.Error(), path); got != 1 {
+		t.Errorf("path appears %d times in %q, want exactly 1", got, err)
+	}
+	if !errors.Is(err, fs.ErrPermission) {
+		t.Errorf("error %v is not classifiable as fs.ErrPermission", err)
+	}
+	if !strings.Contains(err.Error(), "run as root") {
+		t.Errorf("permission error %q lacks the actionable hint", err)
+	}
+	if strings.Contains(err.Error(), "open "+path+": open ") {
+		t.Errorf("doubled 'open %s: open ' prefix is back: %v", path, err)
+	}
+}
+
+// TestLocalFileErrorsNamePathOnce extends the DF-BUNKER-17 single-occurrence
+// property to the local-file surfaces in the package that PROPAGATE a read
+// failure: Query (list/export), Verify and the log constructor. Each wraps a
+// *os.PathError, so pre-fix each printed the path twice. LocalStatus is not
+// in this table on purpose: a MISSING live file is not an error there (it
+// reports Enabled=false by contract) — its permission arm is covered by
+// TestLocalFilePermissionHint instead.
+func TestLocalFileErrorsNamePathOnce(t *testing.T) {
+	tests := []struct {
+		name string
+		path func(t *testing.T) string
+		run  func(path string) error
+	}{
+		{
+			name: "Query",
+			path: missingParentPath,
+			run:  func(p string) error { _, err := Query(p, Filter{}); return err },
+		},
+		{
+			name: "Verify",
+			path: missingParentPath,
+			run:  func(p string) error { _, _, err := Verify(p); return err },
+		},
+		{
+			name: "New (destination is a directory)",
+			path: func(t *testing.T) string { return t.TempDir() },
+			run: func(p string) error {
+				l, err := New(p)
+				if l != nil {
+					_ = l.Close()
+				}
+				return err
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := tt.path(t)
+			err := tt.run(path)
+			if err == nil {
+				t.Fatalf("no error for %q", path)
+			}
+			if got := strings.Count(err.Error(), path); got != 1 {
+				t.Errorf("path appears %d times in %q, want exactly 1", got, err)
+			}
+			if strings.Contains(err.Error(), path+": open "+path) || strings.Contains(err.Error(), path+": stat "+path) {
+				t.Errorf("doubled path prefix is back: %v", err)
+			}
+		})
+	}
+}
+
+// missingParentPath returns a path whose parent directory does not exist, so
+// opening/statting it fails deterministically for any uid (including root).
+func missingParentPath(t *testing.T) string {
+	t.Helper()
+	return filepath.Join(t.TempDir(), "missing-dir", "audit.log")
+}
+
+// TestLocalFilePermissionHint covers the permission arm on the same surfaces
+// with a real mode-0000 file. Skipped as root, which bypasses file modes.
+func TestLocalFilePermissionHint(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: file modes do not deny access")
+	}
+	path := filepath.Join(t.TempDir(), "audit.log")
+	if err := os.WriteFile(path, []byte("{}\n"), 0o000); err != nil {
+		t.Fatalf("write unreadable log: %v", err)
+	}
+
+	runs := map[string]func(string) error{
+		"Query":       func(p string) error { _, err := Query(p, Filter{}); return err },
+		"Verify":      func(p string) error { _, _, err := Verify(p); return err },
+		"LocalStatus": func(p string) error { _, err := LocalStatus(p); return err },
+	}
+	for name, run := range runs {
+		t.Run(name, func(t *testing.T) {
+			err := run(path)
+			if err == nil {
+				t.Fatalf("%s on a mode-0000 log returned nil error", name)
+			}
+			if got := strings.Count(err.Error(), path); got != 1 {
+				t.Errorf("path appears %d times in %q, want exactly 1", got, err)
+			}
+			if !errors.Is(err, fs.ErrPermission) {
+				t.Errorf("error %v is not classifiable as fs.ErrPermission", err)
+			}
+			if !strings.Contains(err.Error(), "run as root") {
+				t.Errorf("error %q lacks the actionable hint", err)
+			}
+		})
+	}
 }

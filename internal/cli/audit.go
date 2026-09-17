@@ -137,7 +137,10 @@ func queryAuditRecords(cmd *cobra.Command, f *auditQueryFlags, filter audit.Filt
 	}
 	records, err := audit.Query(f.path, filter)
 	if err != nil {
-		return nil, fmt.Errorf("query audit log %s: %w", f.path, err)
+		// No path in the prefix: audit.Query's error already names the file
+		// exactly once ("open <path>: permission denied — …"), and re-adding
+		// it here printed the path a second time (DF-BUNKER-17).
+		return nil, fmt.Errorf("query audit log: %w", err)
 	}
 	return records, nil
 }

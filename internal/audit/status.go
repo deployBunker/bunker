@@ -73,7 +73,7 @@ func LocalStatus(path string) (*StatusReport, error) {
 		if os.IsNotExist(err) {
 			return st, nil // disabled/unconfigured: enabled=false
 		}
-		return nil, fmt.Errorf("stat %s: %w", path, err)
+		return nil, pathError(path, err)
 	}
 	st.Enabled = true
 	st.LiveSize = info.Size()
@@ -86,7 +86,7 @@ func LocalStatus(path string) (*StatusReport, error) {
 			if os.IsNotExist(serr) {
 				continue
 			}
-			return nil, fmt.Errorf("stat %s: %w", p, serr)
+			return nil, pathError(p, serr)
 		}
 		st.BackupSizes[i-1] = bi.Size()
 		st.RotationsLowerBound++
@@ -127,7 +127,7 @@ func LocalStatus(path string) (*StatusReport, error) {
 func inspectLive(path string) (records, firstBad int, seal *LocalSealProbe, tail string, err error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return 0, 0, nil, "", fmt.Errorf("open %s: %w", path, err)
+		return 0, 0, nil, "", pathError(path, err)
 	}
 	defer f.Close()
 	sc := bufio.NewScanner(f)

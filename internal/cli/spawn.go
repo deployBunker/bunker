@@ -11,6 +11,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
+	"github.com/deployBunker/bunker/internal/agent"
 	"github.com/deployBunker/bunker/internal/imagespec"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 )
@@ -52,6 +53,10 @@ computed in UTC — a correct 6h TTL shows as a local-time timestamp
 exactly 6h ahead of the daemon host's current local time, not a UTC
 clock reading.
 
+--ttl is validated locally, before the RPC: an invalid value (e.g. 6x)
+fails fast with the accepted format and no "Creating agent..." progress
+line. Accepted format is <digits><unit>, unit h, m, or d: 6h, 90m, 7d.
+
 Examples:
   bunker spawn
   bunker spawn demo-agent --ttl 1h
@@ -89,6 +94,19 @@ Examples:
 					return fmt.Errorf("invalid image spec %s: %w", imageSpecFile, err)
 				}
 				imageSpecPB = spec.ToProto()
+			}
+
+			// 0.6 Validate --ttl LOCALLY, before the progress line and
+			// before the RPC, reusing the daemon's OWN parser
+			// (agent.ParseAgentTTL) so the accepted set can never drift
+			// from what bunkerd accepts (DF-BUNKER-17). Empty keeps
+			// today's behavior byte-for-byte: the daemon applies its
+			// default TTL. Without this, a typo cost a "Creating agent..."
+			// progress line and a round trip inside the 300s RPC.
+			if ttl != "" {
+				if _, err := agent.ParseAgentTTL(ttl); err != nil {
+					return fmt.Errorf("invalid --ttl %q: %w (accepted format: <digits><unit> where unit is h, m, or d — e.g. 6h, 90m, 7d)", ttl, err)
+				}
 			}
 
 			// 1. Load CLI config

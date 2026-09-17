@@ -128,7 +128,9 @@ func newAuditLog(path string) (*AuditLog, error) {
 	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
-		return nil, fmt.Errorf("open audit log %s: %w", path, err)
+		// pathError already names op + path + cause once; keep the "audit log"
+		// context without re-printing the path (DF-BUNKER-17).
+		return nil, fmt.Errorf("audit log: %w", pathError(path, err))
 	}
 	return &AuditLog{f: f, path: path, rotateAt: MaxSize}, nil
 }

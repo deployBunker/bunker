@@ -332,6 +332,21 @@ bunker destroy abc12345
 bunker destroy abc12345 --keep-key
 ```
 
+> **`bunker heartbeat` extends the TTL, it never shortens it — and there is no
+> duration flag.** The heartbeat request carries only the agent ID, so the
+> daemon always applies its own default TTL (6h unless the daemon config sets
+> `agent.default_ttl`). Every acknowledged heartbeat prints the resulting
+> expiry plus the semantics:
+>
+> ```
+> Heartbeat acknowledged for agent abc12345
+> Expires at: 2026-09-17T21:00:00-05:00
+> TTL: the agent's expiry was extended to the daemon's default TTL (6h unless the daemon config sets agent.default_ttl); an existing longer expiry is never shortened
+> ```
+>
+> A 7d agent heartbeated here stays at its long expiry (a heartbeat must not
+> reset it to 6h — a shorter expiry would destroy the agent on TTL expiry).
+
 > **`bunker destroy` removes your local key.** Spawn saves the agent's private
 > key to `~/.bunker/keys/<agent-id>`; destroy deletes it after a successful
 > teardown (including the `not_found` path) unless `--keep-key` is passed. If
@@ -518,6 +533,29 @@ bunker host-provision  Provision the per-agent isolation boundary on this host
                    (dry run by default; --apply installs, --status reports)
 bunker version     Print version/commit/build metadata (also --version)
 ```
+
+### Exit codes
+
+The CLI has no per-command exit codes of its own: `0` on success, `1` on any
+error (printed as `bunker: <error>` on stderr), plus the two ssh-style
+exceptions below — a propagated remote exit code from `exec`/`run`, and a
+reported not-found outcome from `destroy`.
+
+| Situation | Exit code | Traceable to |
+| --- | --- | --- |
+| Any command succeeds | `0` | `cmd/bunker/main.go:22` (nil error ⇒ no explicit exit) |
+| Any command fails (`spawn`, `list`, `info`, `heartbeat`, `cp`, `mount`, `audit`, `registry`, …) | `1`, with `bunker: <error>` on stderr | `cmd/bunker/main.go:28-29` |
+| `bunker exec <id> <cmd>` — the remote command exits non-zero | the remote code verbatim (e.g. `bunker exec … -- sh -c 'exit 7'` ⇒ `7`), printed silently ssh-style | `internal/cli/exec.go:280-281` → `cmd/bunker/main.go:25-27` |
+| `bunker run <id> <cmd>` — the remote command exits non-zero | same as `exec` (verbatim remote code) | `internal/cli/run.go:231-232` → `cmd/bunker/main.go:25-27` |
+| `bunker destroy <id>` — agent destroyed | `0` | `internal/cli/destroy.go:94` |
+| `bunker destroy <id>` — agent **not found** (never spawned, or already destroyed): a REPORTED outcome, not an error | `0` (prints `Agent <id> not found.`) | `internal/cli/destroy.go:80-82` (RPC `CodeNotFound`) and `internal/cli/destroy.go:90-92` (in-band `not_found`) |
+| `bunker destroy <id>` — real RPC failure (agent may still exist; local key kept) | `1` | `internal/cli/destroy.go:86` |
+| Invalid arguments/flags rejected locally (missing positional args, bad agent id, invalid `--ttl`, unknown exec flag) | `1`, with no RPC attempted | `internal/cli/spawn.go:79` (agent id), `internal/cli/spawn.go:107` (`--ttl`), `internal/cli/exec.go:137` (exec flag grammar) |
+
+`bunker exec` and `bunker run` are the only commands that propagate a remote
+exit code; a `not_found` destroy is the only failure-shaped outcome that exits
+`0` on purpose. Both exceptions are deliberate and documented in
+`internal/cli/SKILL.md`.
 
 ## CLI config & path overrides (DF-BUNKER-16)
 

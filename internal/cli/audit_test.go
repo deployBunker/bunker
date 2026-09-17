@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -425,5 +427,64 @@ func TestAuditVerifyHelpLocalOnly(t *testing.T) {
 	}
 	if !strings.Contains(out, "Local log only") {
 		t.Errorf("audit verify --help missing 'Local log only':\n%s", out)
+	}
+}
+
+// TestAuditQueryErrorNamesPathOnce pins DF-BUNKER-17 at the CLI surface: a
+// failure reading the local audit log must name the path exactly ONCE. The
+// old shape was "query audit log <path>: open <path>: open <path>: no such
+// file or directory" — the path three times, twice from os.Open's own
+// *os.PathError and once from each of the two wrappers.
+func TestAuditQueryErrorNamesPathOnce(t *testing.T) {
+	for _, sub := range []string{"list", "export"} {
+		t.Run(sub, func(t *testing.T) {
+			// Deterministic (root-proof) failure: the parent dir is absent.
+			path := filepath.Join(t.TempDir(), "missing-dir", "audit.log")
+
+			_, err := auditCmd(t, sub, "--path", path)
+			if err == nil {
+				t.Fatalf("audit %s on a missing log returned nil error", sub)
+			}
+			if got := strings.Count(err.Error(), path); got != 1 {
+				t.Errorf("path appears %d times in %q, want exactly 1", got, err)
+			}
+			if !strings.Contains(err.Error(), "query audit log:") {
+				t.Errorf("error %q lost the 'query audit log' context prefix", err)
+			}
+			if strings.Contains(err.Error(), "open "+path+": open ") {
+				t.Errorf("doubled 'open <path>: open ' prefix is back: %v", err)
+			}
+		})
+	}
+}
+
+// TestAuditQueryPermissionErrorNamesPathOnce covers the permission case the
+// dogfood finding observed: a non-root read of a 0600 log prints the path
+// once, plus the actionable hint. Skipped as root (file modes are bypassed).
+func TestAuditQueryPermissionErrorNamesPathOnce(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: file modes do not deny access")
+	}
+	path := filepath.Join(t.TempDir(), "audit.log")
+	if err := os.WriteFile(path, []byte("{}\n"), 0o000); err != nil {
+		t.Fatalf("write unreadable log: %v", err)
+	}
+
+	for _, sub := range []string{"list", "export"} {
+		t.Run(sub, func(t *testing.T) {
+			_, err := auditCmd(t, sub, "--path", path)
+			if err == nil {
+				t.Fatalf("audit %s on a mode-0000 log returned nil error", sub)
+			}
+			if got := strings.Count(err.Error(), path); got != 1 {
+				t.Errorf("path appears %d times in %q, want exactly 1", got, err)
+			}
+			if !errors.Is(err, fs.ErrPermission) {
+				t.Errorf("error %v is not classifiable as fs.ErrPermission", err)
+			}
+			if !strings.Contains(err.Error(), "run as root") {
+				t.Errorf("permission error %q lacks the actionable hint", err)
+			}
+		})
 	}
 }

@@ -11,6 +11,15 @@ import (
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 )
 
+// heartbeatTTLSemantics is the single-sentence statement of what an
+// acknowledged heartbeat does to the agent's expiry. It is printed on EVERY
+// acknowledged heartbeat (DF-BUNKER-17) and documented verbatim in README.md
+// (heartbeat section), so the behaviour is no longer only discoverable in
+// --help. The heartbeat request carries no duration (proto
+// HeartbeatAgentRequest has agent_id only), so the daemon decides the TTL —
+// hence "the daemon's default TTL" rather than a client-chosen duration.
+const heartbeatTTLSemantics = "the agent's expiry was extended to the daemon's default TTL (6h unless the daemon config sets agent.default_ttl); an existing longer expiry is never shortened"
+
 // NewHeartbeatCommand returns the `bunker heartbeat` cobra command.
 func NewHeartbeatCommand() *cobra.Command {
 	var serverName string
@@ -20,9 +29,16 @@ func NewHeartbeatCommand() *cobra.Command {
 		Short: "Send a heartbeat to extend an agent's TTL",
 		Long: `Send a heartbeat to the bunkerd server for the given agent.
 
-The server extends the agent's TTL by the configured default TTL (or 6h)
-when the heartbeat is acknowledged. This is useful for keeping long-running
-agents alive without changing the original spawn request.`,
+There is no duration flag: the request carries only the agent ID, so the
+daemon always applies its own default TTL (6h unless the daemon config sets
+agent.default_ttl) and never shortens an existing longer expiry — a 7d agent
+is not reset to 6h by a heartbeat. Every acknowledged heartbeat prints the
+resulting expiry and states exactly what happened:
+
+  TTL: ` + heartbeatTTLSemantics + `
+
+This is useful for keeping long-running agents alive without changing the
+original spawn request.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			agentID := args[0]
@@ -62,9 +78,17 @@ agents alive without changing the original spawn request.`,
 			msg := resp.Msg
 			if msg.Acknowledged {
 				fmt.Printf("Heartbeat acknowledged for agent %s\n", msg.AgentId)
-				if msg.ExpiresAt != "" {
-					fmt.Printf("Expires at: %s\n", msg.ExpiresAt)
+				// Always print the resulting expiry: it is the only way the
+				// operator can see WHICH expiry their heartbeat produced,
+				// and the daemon reports it on every acknowledgement.
+				expires := msg.ExpiresAt
+				if expires == "" {
+					expires = "(not reported by the daemon)"
 				}
+				fmt.Printf("Expires at: %s\n", expires)
+				// State the semantics too: without a duration flag the TTL
+				// the daemon applies is otherwise invisible (DF-BUNKER-17).
+				fmt.Printf("TTL: %s\n", heartbeatTTLSemantics)
 			} else {
 				fmt.Printf("Heartbeat not acknowledged for agent %s\n", msg.AgentId)
 			}

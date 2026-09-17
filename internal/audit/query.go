@@ -3,7 +3,9 @@ package audit
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"strings"
 	"time"
@@ -53,7 +55,7 @@ func Query(path string, f Filter) ([]Record, error) {
 			if os.IsNotExist(err) {
 				continue
 			}
-			return nil, fmt.Errorf("stat %s: %w", p, err)
+			return nil, pathError(p, err)
 		}
 		recs, err := queryFile(p, f)
 		if err != nil {
@@ -77,7 +79,7 @@ func Query(path string, f Filter) ([]Record, error) {
 func queryFile(path string, f Filter) ([]Record, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("open %s: %w", path, err)
+		return nil, pathError(path, err)
 	}
 	defer file.Close()
 
@@ -97,6 +99,32 @@ func queryFile(path string, f Filter) ([]Record, error) {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
 	return recs, nil
+}
+
+// pathError is the audit package's single wrapper for local-file access
+// failures (os.Stat / os.Open / os.OpenFile in audit.go, query.go, status.go,
+// verify.go). It turns a failure into an error that names the path ONCE, plus
+// an actionable hint when the cause is a permission failure.
+//
+// os.Stat and os.Open already return *os.PathError, whose Error() is
+// "<op> <path>: <cause>", so wrapping them as fmt.Errorf("%s %s: %w", op,
+// path, err) printed the path twice — the doubled, unactionable
+// "open /var/log/bunkerd/audit.log: open /var/log/bunkerd/audit.log:
+// permission denied" seen by a non-root `bunker audit export/list`
+// (DF-BUNKER-17). The *os.PathError is therefore returned unmodified (it
+// already carries op + path + cause) and the permission case gets the hint
+// appended. Callers keep full classification: errors.Is(err, fs.ErrPermission)
+// / os.IsNotExist still match the wrapped error.
+func pathError(path string, err error) error {
+	if errors.Is(err, fs.ErrPermission) {
+		return fmt.Errorf("%w — run as root (the audit log is mode 0600 and root-owned by default) or point --path at an audit log you can read", err)
+	}
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		return err // already names op + path + cause exactly once
+	}
+	// Not a *os.PathError: name the path ourselves, still exactly once.
+	return fmt.Errorf("open %s: %w", path, err)
 }
 
 // match reports whether rec satisfies every set field of f.

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -94,5 +95,101 @@ func TestHeartbeatCommand_SendsAgentID(t *testing.T) {
 	}
 	if mock.agentID != "ttl-agent" {
 		t.Fatalf("expected agentID ttl-agent, got %q", mock.agentID)
+	}
+}
+
+// TestHeartbeatCommand_OutputStatesTTLSemantics pins the DF-BUNKER-17
+// contract: an acknowledged heartbeat always prints the resulting expiry AND
+// states the TTL semantics (the daemon's default TTL is applied, an existing
+// longer expiry is never shortened) — the behaviour used to live only in
+// --help.
+func TestHeartbeatCommand_OutputStatesTTLSemantics(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	mock := &heartbeatMockServer{ack: true, expiresAt: "2026-06-30T12:00:00Z"}
+	srv := newTestServer(t, mock)
+	defer srv.Close()
+
+	cfg := &CLIConfig{
+		Servers: map[string]ServerEntry{
+			"mock": {Name: "mock", URL: srv.URL, Token: "test-token"},
+		},
+		ActiveServer: "mock",
+	}
+	if err := SaveCLIConfig(cfg); err != nil {
+		t.Fatalf("save test config: %v", err)
+	}
+
+	cmd := NewHeartbeatCommand()
+	cmd.SetArgs([]string{"ttl-agent"})
+	var execErr error
+	out := captureStdout(t, func() { execErr = cmd.Execute() })
+	if execErr != nil {
+		t.Fatalf("execute heartbeat: %v", execErr)
+	}
+
+	for _, want := range []string{
+		"Heartbeat acknowledged for agent ttl-agent", // pre-existing wording, kept
+		"Expires at: 2026-06-30T12:00:00Z",           // the resulting expiry
+		"TTL: " + heartbeatTTLSemantics,              // the semantics, stated
+		"never shortened",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("heartbeat output missing %q, got:\n%s", want, out)
+		}
+	}
+}
+
+// TestHeartbeatCommand_OutputWhenDaemonOmitsExpiry makes the expiry line
+// unconditional: an acknowledgement that carries no expires_at must still
+// show the line (with a placeholder) rather than silently dropping it.
+func TestHeartbeatCommand_OutputWhenDaemonOmitsExpiry(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	mock := &heartbeatMockServer{ack: true, expiresAt: ""}
+	srv := newTestServer(t, mock)
+	defer srv.Close()
+
+	cfg := &CLIConfig{
+		Servers: map[string]ServerEntry{
+			"mock": {Name: "mock", URL: srv.URL, Token: "test-token"},
+		},
+		ActiveServer: "mock",
+	}
+	if err := SaveCLIConfig(cfg); err != nil {
+		t.Fatalf("save test config: %v", err)
+	}
+
+	cmd := NewHeartbeatCommand()
+	cmd.SetArgs([]string{"ttl-agent"})
+	var execErr error
+	out := captureStdout(t, func() { execErr = cmd.Execute() })
+	if execErr != nil {
+		t.Fatalf("execute heartbeat: %v", execErr)
+	}
+
+	if !strings.Contains(out, "Expires at: (not reported by the daemon)") {
+		t.Errorf("heartbeat output missing the expiry line, got:\n%s", out)
+	}
+	if !strings.Contains(out, "TTL: "+heartbeatTTLSemantics) {
+		t.Errorf("heartbeat output missing the TTL semantics, got:\n%s", out)
+	}
+}
+
+// TestHeartbeatCommand_HelpStatesSemantics keeps --help and the runtime
+// output in lockstep (the semantics line is shared via heartbeatTTLSemantics).
+func TestHeartbeatCommand_HelpStatesSemantics(t *testing.T) {
+	cmd := NewHeartbeatCommand()
+	out := captureStdout(t, func() {
+		cmd.SetArgs([]string{"--help"})
+		_ = cmd.Execute()
+	})
+	if !strings.Contains(out, heartbeatTTLSemantics) {
+		t.Errorf("heartbeat --help does not state the TTL semantics, got:\n%s", out)
+	}
+	if !strings.Contains(out, "never shortened") {
+		t.Errorf("heartbeat --help does not mention the never-shrink rule, got:\n%s", out)
 	}
 }

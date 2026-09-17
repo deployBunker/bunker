@@ -35,6 +35,9 @@ type mockSpawnServer struct {
 	spawnResp  *v1.SpawnAgentResponse
 	spawnErr   error
 	gotAgentID string // AgentId from the last SpawnAgent request (DOGFOOD-008)
+	// gotTTL captures the Ttl from the last SpawnAgent request (DF-BUNKER-17
+	// local-validation proof: a rejected --ttl must never reach the server).
+	gotTTL string
 	// gotImageSpec captures the ImageSpec from the last SpawnAgent request
 	// (GAP-064 request propagation).
 	gotImageSpec *v1.ImageSpec
@@ -51,6 +54,7 @@ func (m *mockSpawnServer) SpawnAgent(
 ) (*connect.Response[v1.SpawnAgentResponse], error) {
 	m.capturedDeadline, m.capturedDeadlineOK = ctx.Deadline()
 	m.gotAgentID = req.Msg.AgentId
+	m.gotTTL = req.Msg.Ttl
 	m.gotImageSpec = req.Msg.GetImageSpec()
 	if m.spawnErr != nil {
 		return nil, m.spawnErr
@@ -623,5 +627,112 @@ func TestSpawnCommand_ServerNotFound(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("error should mention 'not found', got: %v", err)
+	}
+}
+
+// TestSpawnCommand_InvalidTTLFailsFastLocally pins DF-BUNKER-17: an invalid
+// --ttl is rejected before the "Creating agent..." progress line and before
+// any RPC. No server is configured here on purpose — the failure must be the
+// TTL error, not "no active server", proving validation runs before config
+// load and network I/O.
+func TestSpawnCommand_InvalidTTLFailsFastLocally(t *testing.T) {
+	tests := []struct {
+		name string
+		ttl  string
+	}{
+		{"unknown unit", "6x"},
+		{"missing unit", "6"},
+		{"unit only", "h"},
+		{"uppercase unit", "6H"},
+		{"negative", "-6h"},
+		{"zero", "0h"},
+		{"whitespace", " 6h"},
+		{"decimal", "1.5h"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir()) // empty HOME: no CLI config at all
+
+			cmd := NewSpawnCommand()
+			cmd.SetArgs([]string{"ttl-agent", "--ttl", tt.ttl})
+			var err error
+			out := captureStdout(t, func() { err = cmd.Execute() })
+
+			if err == nil {
+				t.Fatalf("spawn accepted invalid --ttl %q", tt.ttl)
+			}
+			if strings.Contains(out, "Creating agent...") {
+				t.Errorf("progress line printed before --ttl validation, stdout:\n%s", out)
+			}
+			if strings.Contains(err.Error(), "no active server") {
+				t.Errorf("--ttl %q was not validated before config load: %v", tt.ttl, err)
+			}
+			for _, want := range []string{"invalid --ttl", tt.ttl, "6h", "90m", "7d"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error for --ttl %q missing %q: %v", tt.ttl, want, err)
+				}
+			}
+		})
+	}
+}
+
+// TestSpawnCommand_InvalidTTLDoesNotReachServer runs the same rejection with a
+// reachable mock server: the SpawnAgent RPC must never be called.
+func TestSpawnCommand_InvalidTTLDoesNotReachServer(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	mock := &mockSpawnServer{
+		mockBunkerdServer: mockBunkerdServer{info: &v1.ServerInfoResponse{Hostname: "h", Version: "v"}},
+		spawnResp:         &v1.SpawnAgentResponse{AgentId: "ttl-agent"},
+	}
+	srv := newSpawnTestServer(t, mock)
+	defer srv.Close()
+	writeSpawnTestConfig(t, tmpDir, srv.URL)
+
+	cmd := NewSpawnCommand()
+	cmd.SetArgs([]string{"ttl-agent", "--ttl", "6x"})
+	var err error
+	out := captureStdout(t, func() { err = cmd.Execute() })
+
+	if err == nil {
+		t.Fatal("spawn accepted invalid --ttl 6x")
+	}
+	if strings.Contains(out, "Creating agent...") {
+		t.Errorf("progress line printed for an invalid --ttl, stdout:\n%s", out)
+	}
+	if mock.gotAgentID != "" {
+		t.Errorf("SpawnAgent was called with agent %q despite invalid --ttl", mock.gotAgentID)
+	}
+}
+
+// TestSpawnCommand_ValidTTLStillForwarded is the positive control: a valid
+// --ttl passes local validation unchanged and is still forwarded to the
+// daemon, and the progress line still precedes the RPC for valid input.
+func TestSpawnCommand_ValidTTLStillForwarded(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	mock := &mockSpawnServer{
+		mockBunkerdServer: mockBunkerdServer{info: &v1.ServerInfoResponse{Hostname: "h", Version: "v"}},
+		spawnResp:         &v1.SpawnAgentResponse{AgentId: "ttl-agent"},
+	}
+	srv := newSpawnTestServer(t, mock)
+	defer srv.Close()
+	writeSpawnTestConfig(t, tmpDir, srv.URL)
+
+	cmd := NewSpawnCommand()
+	cmd.SetArgs([]string{"ttl-agent", "--ttl", "90m"})
+	var err error
+	out := captureStdout(t, func() { err = cmd.Execute() })
+
+	if err != nil {
+		t.Fatalf("spawn with a valid --ttl failed: %v", err)
+	}
+	if mock.gotTTL != "90m" {
+		t.Errorf("server received Ttl %q, want 90m (local validation must not transform the value)", mock.gotTTL)
+	}
+	if !strings.Contains(out, "Creating agent...") {
+		t.Errorf("progress line missing for a valid spawn, stdout:\n%s", out)
 	}
 }

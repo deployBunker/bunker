@@ -44,6 +44,11 @@ is set to the agent user.
 
 The destination format is <agent-id>:/path — the colon and path are required.
 
+When the copy fails because the destination already exists on the agent host
+and is owned by another user (e.g. a host-owned /tmp path), the CLI prints an
+ownership hint naming the current owner and the agent's user instead of only
+scp's raw error.
+
 Examples:
   bunker cp ./config.yaml abc12345:/home/bunker-abc12345/config.yaml
   bunker cp secret.env def67890:/app/.env --ssh-port 2222
@@ -143,18 +148,28 @@ Examples:
 				port = sshPort
 			}
 
-			// Execute SCP
+			// Execute SCP. The agent user is resolved BEFORE scp so the
+			// failure path can name it in the ownership hint below.
+			sshUser := strings.SplitN(userAtHost, "@", 2)[0]
 			scpArgs := buildSCPArgs(keyPath, port, localPath, userAtHost, remotePath, false)
 			scpCmd := exec.CommandContext(ctx, "scp", scpArgs...)
 			scpCmd.Stdout = cmd.OutOrStdout()
 			scpCmd.Stderr = cmd.ErrOrStderr()
 
 			if err := scpCmd.Run(); err != nil {
+				// scp's own stderr already went to the user (streamed
+				// above); it names no next step, so run ONE bounded probe
+				// over the same SSH path to explain an existing
+				// host-owned destination (DF-BUNKER-17). Best-effort: a
+				// probe error/timeout only means "no hint". The raw scp
+				// error text is kept either way.
+				if hint := cpDestinationHint(keyPath, port, userAtHost, remotePath, sshUser); hint != "" {
+					fmt.Fprintf(cmd.ErrOrStderr(), "Hint: %s\n", hint)
+				}
 				return fmt.Errorf("scp: %w", err)
 			}
 
 			// Fix ownership: chown the file to the agent user
-			sshUser := strings.SplitN(userAtHost, "@", 2)[0]
 			chownCmd := exec.CommandContext(ctx, "ssh",
 				"-o", "StrictHostKeyChecking=no",
 				"-o", "UserKnownHostsFile=/dev/null",
@@ -217,6 +232,92 @@ func buildSCPArgs(keyPath string, port uint32, localPath, userAtHost, remotePath
 	}
 	args = append(args, localPath, fmt.Sprintf("%s:%s", userAtHost, remotePath))
 	return args
+}
+
+// cpProbeTimeout bounds the post-failure ownership probe. It is deliberately
+// short: one bounded round trip, never a retry (this is a message-quality
+// fix, not a retry fix — DF-BUNKER-17).
+const cpProbeTimeout = 10 * time.Second
+
+// cpOwnershipProbeFunc is the injectable runner seam for the ownership probe:
+// tests substitute it to exercise every probe outcome without a live host.
+type cpOwnershipProbeFunc func(keyPath string, port uint32, userAtHost, remotePath string) (string, error)
+
+// cpOwnershipProbeFn queries the destination's ownership on the agent host.
+// Package-level so it can be stubbed in tests.
+var cpOwnershipProbeFn cpOwnershipProbeFunc = probeRemoteOwnership
+
+// probeRemoteOwnership runs ONE bounded ssh command over the SAME SSH path scp
+// just used (same key, port, and user@host) and returns its trimmed stdout.
+// The command prints "<owner>:<group>" for an existing destination and
+// nothing for a missing one, so a non-existent path yields ("", nil) and the
+// caller simply prints no hint. The context is derived from Background, NOT
+// from the command's own (possibly already-expired) RPC context: a slow scp
+// can burn the caller's deadline, and a dead context here would silently
+// disable the hint.
+func probeRemoteOwnership(keyPath string, port uint32, userAtHost, remotePath string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), cpProbeTimeout)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, "ssh", buildSSHProbeArgs(keyPath, port, userAtHost, remotePath)...).Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// buildSSHProbeArgs constructs the ssh argv for the ownership probe: the same
+// connection options as buildSCPArgs (same key/port/userAtHost), with a stat
+// command instead of a file transfer. The remote path is single-quoted for
+// the remote POSIX shell; a missing path prints nothing and still exits 0.
+func buildSSHProbeArgs(keyPath string, port uint32, userAtHost, remotePath string) []string {
+	return []string{
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "LogLevel=ERROR",
+		"-o", "ConnectTimeout=10",
+		"-o", "IdentitiesOnly=yes",
+		"-i", keyPath,
+		"-p", fmt.Sprintf("%d", port),
+		userAtHost,
+		// %% escapes the literal % of stat's format string.
+		fmt.Sprintf("stat -c '%%U:%%G' -- %s 2>/dev/null || true", quotePOSIX(remotePath)),
+	}
+}
+
+// quotePOSIX single-quotes s for a remote POSIX shell.
+func quotePOSIX(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// cpDestinationHint runs the bounded ownership probe and turns its output
+// into an actionable hint, or "" when there is nothing useful to say. It is
+// failure-tolerant by construction: any probe error (unreachable host,
+// timeout, ssh missing) or empty/unparseable output yields "" and the caller
+// still reports the original scp error.
+func cpDestinationHint(keyPath string, port uint32, userAtHost, remotePath, agentUser string) string {
+	out, err := cpOwnershipProbeFn(keyPath, port, userAtHost, remotePath)
+	if err != nil {
+		return ""
+	}
+	return cpOwnershipHint(out, agentUser)
+}
+
+// cpOwnershipHint formats the hint appended to an scp failure when the
+// destination already exists on the agent host and is NOT owned by the agent
+// user. probeOut is the probe's trimmed output, "<owner>:<group>" (stat -c
+// '%U:%G'). Empty, colon-less, or malformed output — and an owner equal to
+// the agent user — return "" (no hint).
+func cpOwnershipHint(probeOut, agentUser string) string {
+	owner, group, ok := strings.Cut(strings.TrimSpace(probeOut), ":")
+	if !ok || owner == "" || group == "" || strings.ContainsAny(owner+group, " 	\n") {
+		return ""
+	}
+	if owner == agentUser {
+		return ""
+	}
+	return fmt.Sprintf("destination already exists on the agent host and is owned by %s:%s, not the agent user %q — remove it, pick another path, or write somewhere owned by %s (e.g. /home/%s/); scp cannot overwrite a file it does not own",
+		owner, group, agentUser, agentUser, agentUser)
 }
 
 // defaultSSHKeyPath returns the default path to the agent's SSH key saved during spawn.
