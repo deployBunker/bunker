@@ -206,8 +206,9 @@ the cap.
 
 ## 4. Post-change runs (instrumented, same repo)
 
-Nine instrumented runs exist in total — two pre-change, seven post-change (seven because
-this row's own verification uncovered two engine properties that forced extra runs; §4.4).
+Ten instrumented runs exist in total — two pre-change, eight post-change (eight because
+this row's own verification uncovered two engine properties that forced extra runs; §4.4,
+§4.6).
 All verdict files are `.gitreins/history/2026-09-17/<id>/verdict.json`, and no engine
 `Cap exceeded` line exists in any of them (the phrase appears only inside the stored
 criterion text / judge prose that quotes it).
@@ -281,10 +282,10 @@ What the whole post-change set shows, and what it does not:
   pass and per-job YAML multiset diffs, re-sending 2.45M chars). The valve bounds a *long*
   run; a 15-call run never reaches the 80,000-token threshold.
 
-### 4.4 Run E — the valve fires live — and the three self-judgments (B, C, E)
+### 4.4 Run E — the valve fires live — and the self-judgments (B, C, E; H in §4.6)
 
-**Run E (`2aaef334`) is the run that proves the change in production.** It is the first and
-only run so far in which compaction engaged, exactly as designed:
+**Run E (`2aaef334`) is the first run in which compaction engaged, exactly as designed**
+(run H engaged it a second time, §4.6):
 
 ```
 gitreins.evaluator WARNING  Context near limit (80860/16000000 tokens) — compacting (compaction #1)
