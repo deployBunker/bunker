@@ -135,12 +135,39 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # golangci-lint runs locally via `golangci-lint run`. The .golangci.yml
+      # config is committed for editor integration and pre-commit hooks.
+
+  # ── Tier 0b: unit tests — split out of build-and-test (INT-CI-017) ──
+  # A flaky unit assertion used to fail build-and-test, which gates
+  # gitreins-guard/regression/root-suite via `needs:` — so one flake silently
+  # stripped all three coverage layers from that push (run 35253802213 on
+  # 58546f5: build-and-test=failure, the other three=skipped). The downstream
+  # jobs need a COMPILING TREE, not passing unit tests, and they get that from
+  # build-and-test. A genuine unit-test failure still fails the workflow run —
+  # this job deliberately carries NO continue-on-error.
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          version: "1.50.0"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate protobuf code
+        run: buf generate
+
       - name: Unit tests
         run: go test -count=1 -short ./... -timeout ${{ env.GO_TEST_TIMEOUT }}
         timeout-minutes: 10
-
-      # golangci-lint runs locally via `golangci-lint run`. The .golangci.yml
-      # config is committed for editor integration and pre-commit hooks.
 
   # ── Tier 1: GitReins guard — secrets, lint, tests ──
   gitreins-guard:
