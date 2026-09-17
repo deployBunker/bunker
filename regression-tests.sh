@@ -23,6 +23,14 @@ AGENT_IDS=()
 BUNKERD_COEXIST="${BUNKERD_COEXIST:-}"
 BUNKERD_GRPC_ADDR="${BUNKERD_GRPC_ADDR:-:29090}"
 BUNKERD_REST_ADDR="${BUNKERD_REST_ADDR:-:28080}"
+# The CLI prefers BUNKER_HOME over HOME, so pinning HOME alone does not isolate
+# this suite: a caller that exports BUNKER_HOME (CI steps, e2e-full-battery.sh
+# section 12) would have its own state dir written by this suite's `connect`,
+# and this suite's registration would land there instead of beside its HOME
+# (proven live: run 35215499792 — the outer battery then dialed this suite's
+# ports and failed). Pin BUNKER_HOME in BOTH modes.
+REGRESSION_CLI_HOME="$(mktemp -d /tmp/bunker-regression-cli-XXXXXX)"
+export BUNKER_HOME="$REGRESSION_CLI_HOME"
 if [ -n "$BUNKERD_COEXIST" ]; then
     export HOME="$(mktemp -d /tmp/bunker-regression-home-XXXXXX)"
     REGRESSION_CONFIG="$(mktemp /tmp/bunkerd-regression-XXXXXX.yaml)"
@@ -43,6 +51,10 @@ fi
 
 cleanup() {
     echo -e "\n${YELLOW}=== Cleanup ===${NC}"
+    # This suite's own CLI state dir (see the BUNKER_HOME pin at the top).
+    if [ -n "${REGRESSION_CLI_HOME:-}" ] && [ -d "$REGRESSION_CLI_HOME" ]; then
+        rm -rf "$REGRESSION_CLI_HOME" 2>/dev/null || true
+    fi
     # Destroy any agents created during tests
     for id in "${AGENT_IDS[@]}"; do
         bunker destroy "$id" --force 2>/dev/null || true

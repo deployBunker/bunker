@@ -872,6 +872,10 @@ cleanup() {
         fi
         [ -d "$d" ] && rmdir "$d" 2>/dev/null || true
     done
+    # Nested regression suite's isolated CLI state dir (section 12).
+    if [ -n "${NESTED_CLI_HOME:-}" ] && [ -d "$NESTED_CLI_HOME" ]; then
+        rm -rf "$NESTED_CLI_HOME" 2>/dev/null || true
+    fi
     # Stop the battery's own bunkerd (coexist mode only)
     if [ -n "$BUNKERD_PID" ]; then
         kill "$BUNKERD_PID" 2>/dev/null || true
@@ -1331,14 +1335,32 @@ fi
 if [ -n "$REGRESSION_SCRIPT" ]; then
     REGRESSION_DIR="$(dirname "$REGRESSION_SCRIPT")"
     cd "$REGRESSION_DIR"
+    # INT-CI-010 regression (run 35215499792): the nested suite runs BARE
+    # `bunker`, and the CLI prefers BUNKER_HOME over HOME — so handing it this
+    # battery's exported state dir let its `connect` overwrite the config file
+    # the battery's own sections read; section 13 then dialed the nested port
+    # (127.0.0.1:29092) and died 'connection refused'. Give the child its own
+    # state dir so neither suite can reach the other's registration, in BOTH
+    # modes (BUNKER_HOME is exported in standalone mode too).
+    NESTED_CLI_HOME="$(mktemp -d /tmp/bunker-battery-nested-cli-XXXXXX)"
     if [ -n "$BUNKERD_COEXIST" ]; then
         # Coexist: nested regression suite gets its own ports so it does not
         # collide with this battery's own daemon (or the live production one).
-        REG_OUT=$(BUNKERD_GRPC_ADDR=":29092" BUNKERD_REST_ADDR=":28082" bash "$REGRESSION_SCRIPT" 2>&1 || true)
+        REG_OUT=$(BUNKER_HOME="$NESTED_CLI_HOME" HOME="$NESTED_CLI_HOME" BUNKERD_GRPC_ADDR=":29092" BUNKERD_REST_ADDR=":28082" bash "$REGRESSION_SCRIPT" 2>&1 || true)
     else
-        REG_OUT=$(bash "$REGRESSION_SCRIPT" 2>&1 || true)
+        REG_OUT=$(BUNKER_HOME="$NESTED_CLI_HOME" HOME="$NESTED_CLI_HOME" bash "$REGRESSION_SCRIPT" 2>&1 || true)
     fi
     REG_EXIT=$?
+    rm -rf "$NESTED_CLI_HOME"
+    # Leak guard: this battery's own registration must still be the resolved
+    # endpoint. Without the isolation above it is silently replaced and the
+    # failure only surfaces as a confusing 'connection refused' in section 13.
+    NESTED_CFG="$(grep -rl "url: $BUNKER_DAEMON_URL" "$BATTERY_CLI_HOME" 2>/dev/null | head -1 || true)"
+    if [ -n "$NESTED_CFG" ]; then
+        assert "nested regression left this battery's CLI registration on $BUNKER_DAEMON_URL"
+    else
+        fail "nested regression rewrote this battery's CLI registration — later sections would dial the nested suite's ports"
+    fi
     # Count assertions
     REG_PASS=$(echo "$REG_OUT" | grep -c "✓\|PASS" || echo "0")
     REG_FAIL=$(echo "$REG_OUT" | grep -c "✗\|FAIL" || echo "0")
