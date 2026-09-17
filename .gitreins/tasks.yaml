@@ -1736,3 +1736,16 @@ tasks:
   status: complete
   created_at: '2026-09-17T13:51:22.038436+00:00'
   completed_at: '2026-09-17T14:14:43.915553+00:00'
+- id: INT-SPAWN-001
+  title: Recycled-uid spawn recovery + failed-spawn linger rollback (INT-SPAWN-001)
+  criteria:
+  - 'spawn survives a recycled uid whose previous owner''s user@<uid> manager is still
+    live/unreachable: the daemon detects the active-but-unreachable manager, tears
+    the foreign state down in the INT-CI-008 state-consistent order, brings the manager
+    up again and re-probes once (no destructive action on the healthy path); the failed-spawn
+    rollback un-lingers and terminates the uid''s manager before userdel so no linger
+    entry is left behind; unit tests cover both, go build/vet/test green, and the
+    live standalone E2E gate on bunker-mvp shows no spawn dying at stage rootless-install.'
+  status: complete
+  created_at: '2026-09-17T14:48:17.664027+00:00'
+  completed_at: '2026-09-17T15:07:52.881854+00:00'
