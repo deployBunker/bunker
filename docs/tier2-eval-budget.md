@@ -1,7 +1,9 @@
 # Tier 2 evaluator input budget — measured breakdown and the fix (INT-CI-014)
 
-**Measured:** 2026-09-17 on repo HEAD `848625c` (config sha256 `734f9fbf…b5189`)
-**Task under judgment (Step 1 / run A):** `INT-CI-017` · **run B:** `INT-CI-014`
+**Measured:** 2026-09-17 on repo HEAD `848625c` (pre-change config sha256 `734f9fbf…b5189`)
+**Runs:** nine instrumented runs on this repo — two pre-change (`INT-CI-017`), seven
+post-change (five on `INT-CI-017`, three on `INT-CI-014`). The two consecutive post-change
+merit runs are F and G (§4.3); run E is the live compaction witness (§4.4).
 **Instrument:** `/tmp/tier2_spy.py` — runs the installed `gitreins` CLI in-process
 (`argv = ["judge", <id>]`) under the pipx venv interpreter, with `logging.DEBUG` and
 monkey-patches on exactly three runtime symbols:
@@ -10,7 +12,7 @@ monkey-patches on exactly three runtime symbols:
 `AgenticEvaluator._compact_context` / `_build_code_context` / `_compute_allowed_files`,
 plus `LLMClient.chat` (what is re-sent) and `AgenticEvaluator._execute_tool` (tool
 results). Every row is written to JSONL as it happens. Raw dumps stay in `/tmp`
-(`/tmp/tier2_spy_PRE.jsonl`, `…_v1.jsonl`, `…_POSTA.jsonl`, `…_POSTB.jsonl`) and are
+(`/tmp/tier2_spy_PRE.jsonl`, `…_v1.jsonl`, `…_POSTA.jsonl` … `…_POSTG.jsonl`) and are
 **not** committed. No number below is an estimate; every token count is read from the
 engine's own `response.usage` via the patched recorder.
 
@@ -191,103 +193,137 @@ is already ✓ — so merit progress survives the rebuild).
 **no token saving is claimed for it** — it moves so the file stops advertising a knob
 the engine ignores.
 
-Independent confirmation of the threshold's size (added after run C, §4.4): the deepest
-run measured on this repo reached a **78,930-token** single prompt at 48 LLM calls —
-**98.7 %** of the 80,000-token valve. The valve sits just above what a genuinely deep run
-reaches (so it does not fire prematurely and does not discard context the judge is using)
-while keeping the per-segment counter at 17.7 % of the cap.
+Independent confirmation of the threshold's size (added after runs C and E, §4.4): the
+deepest uncompacted run measured on this repo reached a **78,930-token** single prompt at
+48 LLM calls (**98.7 %** of the valve) without tripping it, and the next deep run (run E)
+crossed the valve at **80,860 tokens / iteration 65** and rebuilt its context. So the valve
+sits just above what a genuinely deep run reaches (it does not fire prematurely and does
+not discard context the judge is using) while keeping the per-segment counter at 17.7 % of
+the cap.
 
 ---
 
 ## 4. Post-change runs (instrumented, same repo)
 
-Six instrumented runs exist in total — two pre-change, four post-change. All verdict
-files below are `.gitreins/history/2026-09-17/<id>/verdict.json`; `Cap exceeded` appears
-nowhere under `.gitreins/history/2026-09-17/`.
+Nine instrumented runs exist in total — two pre-change, seven post-change (seven because
+this row's own verification uncovered two engine properties that forced extra runs; §4.4).
+All verdict files are `.gitreins/history/2026-09-17/<id>/verdict.json`, and no engine
+`Cap exceeded` line exists in any of them (the phrase appears only inside the stored
+criterion text / judge prose that quotes it).
 
-### 4.1 How criterion 3's "merit verdict" is operationalized (engine class rule)
+### 4.1 The engine's verdict class (why the runs below are labeled the way they are)
 
-The engine's verdict class has exactly two values. `Verdict.verdict` is documented as
-`"COMPLETE" | "INCOMPLETE"` (`evaluator.py:368`); `_parse_verdict` coerces anything else —
-including a model-emitted `"FAIL"` — to `INCOMPLETE` (`:1869-1871`); the partial path sets
-`"COMPLETE" if complete else "INCOMPLETE"` with `complete = all(items PASS)`
-(`:1310-1312`); and `judge.py:175` computes `result.passed = tier2.verdict == "COMPLETE"`.
-So **a merit FAIL is not representable as a class in this engine version: every run that
-finds an unmet criterion prints `Tier 2 (Agentic Evaluator): INCOMPLETE` next to
-`Overall: FAIL`** — the same label a cap death produces. Criterion 3's "merit verdict
-(PASS or FAIL, not INCOMPLETE)" is therefore implemented as the strictly stronger
-condition that a post-change run **completed its judgment with every criterion PASS**
-(class `COMPLETE`) and no `Cap exceeded` line, which a cap death cannot fake (§1.2).
+`Verdict.verdict` has exactly two values, `"COMPLETE" | "INCOMPLETE"` (`evaluator.py:368`);
+`_parse_verdict` coerces anything else — including a model-emitted `"FAIL"` — to
+`INCOMPLETE` (`:1869-1871`); the partial path sets `"COMPLETE" if complete else
+"INCOMPLETE"` with `complete = all(items PASS)` (`:1310-1312`); and `judge.py:175` computes
+`result.passed = tier2.verdict == "COMPLETE"`. So a merit FAIL is not representable as a
+*class* in this engine version — every run that finds an unmet criterion prints
+`Tier 2 (Agentic Evaluator): INCOMPLETE` beside `Overall: FAIL`, the same label a cap death
+produces. The witness for the change must therefore be runs that reached a verdict on the
+merits **and** are free of cap deaths: class `COMPLETE` with no `Cap exceeded` line, which a
+starved run can never fake (§1.2 — a cap death returns `INCOMPLETE`).
 
-### 4.2 All six runs
+### 4.2 All nine runs
 
-| run | task | class | overall | calls | per-call prompt min/median/max | cumulative input | % of cap | compactions | cap line |
-|---|---|---|---|---|---|---|---|---|---|
-| PRE v1 `e6d24301` | INT-CI-017 | COMPLETE | PASS | 13 | 6,211 / 15,084 / 24,507 | 206,704 | 1.29 % | 0 | none |
-| PRE v2 `616c1d33` | INT-CI-017 | COMPLETE | PASS | 23 | 6,211 / 18,053 / 29,323 | 408,009 | 2.55 % | 0 | none |
-| **POST A `f6abe9e6`** | INT-CI-017 | **COMPLETE** | **PASS** | 35 | 6,211 / 29,736 / 34,310 | **933,147** | 5.83 % | 0 | none |
-| POST B `61b146b3` | INT-CI-014 | INCOMPLETE | FAIL | 15 | 10,108 / 28,230 / 34,547 | 380,592 | 2.38 % | 0 | none |
-| POST C `dcb853ee` | INT-CI-014 | INCOMPLETE | FAIL | 48 | 6,177 / 47,890 / 78,930 | 2,301,457 | 14.38 % | 0 | none |
-| **POST D `a713a269`** | INT-CI-017 | **COMPLETE** | **PASS** | 25 | 6,211 / 23,971 / 36,776 | **613,063** | 3.83 % | 0 | none |
+| run | task | class | overall | calls | per-call prompt min/median/max | cumulative (counter) | real input sent | % of cap | compactions | cap line |
+|---|---|---|---|---|---|---|---|---|---|---|
+| PRE v1 `e6d24301` | INT-CI-017 | COMPLETE | PASS | 13 | 6,211 / 15,084 / 24,507 | 206,704 | 206,704 | 1.29 % | 0 | none |
+| PRE v2 `616c1d33` | INT-CI-017 | COMPLETE | PASS | 23 | 6,211 / 18,053 / 29,323 | 408,009 | 408,009 | 2.55 % | 0 | none |
+| POST A `f6abe9e6` | INT-CI-017 | **COMPLETE** | **PASS** | 35 | 6,211 / 29,736 / 34,310 | 933,147 | 933,147 | 5.83 % | 0 | none |
+| POST B `61b146b3` | INT-CI-014 | INCOMPLETE | FAIL | 15 | 10,108 / 28,230 / 34,547 | 380,592 | 380,592 | 2.38 % | 0 | none |
+| POST C `dcb853ee` | INT-CI-014 | INCOMPLETE | FAIL | 48 | 6,177 / 47,890 / 78,930 | 2,301,457 | 2,301,457 | 14.38 % | 0 | none |
+| POST D `a713a269` | INT-CI-017 | **COMPLETE** | **PASS** | 25 | 6,211 / 23,971 / 36,776 | 613,063 | 613,063 | 3.83 % | 0 | none |
+| POST E `2aaef334` | INT-CI-014 | INCOMPLETE | FAIL | 74 | 6,177 / 41,659 / **80,860** | 445,943 | 3,221,740 | 2.79 % (counter) | **1** | none |
+| **POST F `07b37f81`** | INT-CI-017 | **COMPLETE** | **PASS** | 15 | 6,211 / 20,469 / 31,504 | **308,413** | 308,413 | 1.93 % | 0 | none |
+| **POST G `45cdbd05`** | INT-CI-017 | **COMPLETE** | **PASS** | 15 | 6,211 / 23,180 / 32,580 | **321,672** | 321,672 | 2.01 % | 0 | none |
 
-### 4.3 The two post-change runs that finished with a merit verdict — A and D
+"cumulative (counter)" is what `EvalCap.cumulative_input_tokens` reported at the end —
+the number the 16M cap is checked against; "real input sent" is the sum of every
+`prompt_tokens` in the run, which diverges from it exactly when a compaction reset the
+counter (run E).
 
-| | run A (`f6abe9e6`) | run D (`a713a269`) |
+### 4.3 The two CONSECUTIVE post-change merit runs — F and G
+
+| | run F (`07b37f81`) | run G (`45cdbd05`) |
 |---|---|---|
 | task | INT-CI-017 | INT-CI-017 |
 | class / overall | **COMPLETE / PASS** | **COMPLETE / PASS** |
-| `passed` in verdict.json | `true` (items: PASS) | `true` (items: PASS) |
-| LLM calls | 35 | 25 |
-| per-call prompt min/median/max | 6,211 / 29,736 / 34,310 | 6,211 / 23,971 / 36,776 |
-| **cumulative input tokens** | **933,147** | **613,063** |
+| `passed` / items in verdict.json | `true` / `["PASS"]` | `true` / `["PASS"]` |
+| LLM calls | 15 | 15 |
+| per-call prompt min/median/max | 6,211 / 20,469 / 31,504 | 6,211 / 23,180 / 32,580 |
+| **cumulative input tokens** | **308,413** | **321,672** |
 | compaction events | 0 | 0 |
 | `Cap exceeded` line | none | none |
-| `File not in scope` denials | **0** (pre-change: 1) | **0** |
+| `File not in scope` denials | 0 | 0 |
 | allowlist construction | not invoked (`file_scope: full`) | not invoked |
 
-What they prove about the change:
+F and G ran back to back with no evaluation between them (the only post-change runs after
+G are the self-judgments discussed in §4.4), so they are a **consecutive** pair that both
+finished with a merit verdict and no cap line — criterion 3's requirement. Runs A and D
+were also merit runs (933,147 and 613,063) but are separated by B and C, so they are not
+the consecutive pair; the earlier revision of this document wrongly offered them as the
+evidence and the row's own judge rejected them on exactly that ground (§4.4, run E).
 
-- **The scope fix is live.** `_compute_allowed_files()` is never called in either run (no
-  `allowed_files` row; pre-change it returned the 6-file board-only set), and run A read
-  the judged artifact directly — `read_file(".github/workflows/ci.yml")` twice, zero
-  errors — where the pre-change run was denied on its first attempt. Run D also read
-  `.github/workflows/ci.yml` and the commit-scoped evidence without a denial.
-- **Both finished with a merit verdict and no cap line**, i.e. criterion 3's requirement.
+What the whole post-change set shows, and what it does not:
 
-What they do **not** prove (stated plainly):
+- **The scope fix is live.** `_compute_allowed_files()` is never invoked in any
+  post-change run (no `allowed_files` row; pre-change it returned a 6-file board-only set),
+  and the judge reads the judged artifact directly — run A read
+  `read_file(".github/workflows/ci.yml")` twice with zero errors, where the pre-change run
+  was denied on its first attempt. `File not in scope` denials post-change: **0**.
+- **The valve works live** — run E fired it (§4.4). No post-change run has a cap line.
+- **Nothing here claims the change shrinks a short run.** Post-change totals (308,413 /
+  321,672 / 613,063 / 933,147) overlap the pre-change band (206,704 / 408,009): judge depth
+  is not under this row's control (run A issued 45 `run_command` calls, an `actionlint`
+  pass and per-job YAML multiset diffs, re-sending 2.45M chars). The valve bounds a *long*
+  run; a 15-call run never reaches the 80,000-token threshold.
 
-- The token totals did **not** fall: 933,147 (A) and 613,063 (D) against the pre-change
-  band 206,704–408,009. Judge depth is not under this row's control — run A issued 45
-  `run_command` calls including an `actionlint` pass and per-job YAML multiset diffs,
-  re-sending 2.45M chars — and neither run reaches the 80,000-token valve, which is what
-  bounds a *long* run. Nothing here claims the change shrinks a 15–35 call run.
+### 4.4 Run E — the valve fires live — and the three self-judgments (B, C, E)
 
-### 4.4 Runs B and C (task INT-CI-014, the row itself) — recorded honestly
+**Run E (`2aaef334`) is the run that proves the change in production.** It is the first and
+only run so far in which compaction engaged, exactly as designed:
 
-Both judged this row and both returned `INCOMPLETE`/`FAIL`; neither is counted as a
-merit run above.
+```
+gitreins.evaluator WARNING  Context near limit (80860/16000000 tokens) — compacting (compaction #1)
+gitreins.evaluator INFO     Compacting evaluator context (compaction #1, 125 messages → clean slate)
+                            messages 125 → 2, new prompt 13,003 chars
+EvalCap.reset_context_tracking: counter 2,775,797 → 0   at iteration_credit 65.4
+run totals: 74 LLM calls, real input 3,221,740, final counter 445,943, 0 cap lines
+```
 
-- **Run B** (`61b146b3`, 15 calls, 380,592 tokens, 0 compactions, no cap line): criteria 1
-  and 2 were verified **PASS** against the live engine source; criterion 3 failed because
-  the document it was reading still said "Run B … PENDING" — a run's own record cannot
-  precede its verdict, and the commit that records a run necessarily postdates it. B's
-  FAIL is that ordering artifact, not a cap death (no cap line anywhere in the run).
-- **Run C** (`dcb853ee`, 48 calls, 2,301,457 tokens = 14.38 % of cap, no cap line): a
-  supplementary re-judgment taken after the two run records were committed, to test the
-  end state. It rejected the earlier wording that called run B a "merit FAIL" — correctly,
-  per §4.1 — and its own largest single prompt (**78,930 tokens**) is an independent
-  confirmation of the valve sizing: that is **98.7 %** of the 80,000-token threshold, so a
-  deep real run reaches the valve's neighbourhood and does not trip it prematurely.
-- **Why these two can never be merit runs:** a run that judges this row reads this
-  document, and this document can only record a run after that run has produced a verdict.
-  The self-judgment is therefore structurally `INCOMPLETE` while its own record is
-  pending. That is a property of the row, not of the change; the change is verified by A
-  and D on an independent task, plus §1–§3's measurements.
+- The threshold was crossed at **80,860 tokens**, i.e. the first prompt past the configured
+  80,000-token valve, at **iteration 65** — against the §3 model's prediction of
+  L = (80,000 − 5,435)/1,119 + 1 = **67** iterations.
+- The counter stood at 2,775,797 when it fired = **17.3 %** of the cap, matching the §3
+  prediction of a 2.84M per-segment peak (17.7 %) within 2 %.
+- The run then continued for another ~9 iterations of fresh context and ended with a
+  counter of 445,943 while having really sent 3,221,740 input tokens across 74 calls —
+  i.e. **the counter no longer tracks the wall, because the conversation it measures was
+  rebuilt**, and the run finished with no cap line.
+- Run E's judge verified criteria 1 and 2 PASS (the third time criteria 1–2 have been
+  independently confirmed) and failed criterion 3 because the merit runs it could see
+  (A and D) were not consecutive — the finding that produced runs F and G.
+
+**Runs B and C** (both on INT-CI-014, the row itself) are recorded for completeness, not as
+merit runs:
+
+- **Run B** (`61b146b3`, 15 calls, 380,592 tokens, no cap line): criteria 1 and 2 PASS;
+  criterion 3 failed because the document it was reading still said "Run B … PENDING" — a
+  run's record cannot precede its own verdict.
+- **Run C** (`dcb853ee`, 48 calls, 2,301,457 tokens = 14.38 % of cap, no cap line): rejected
+  the earlier revision's claim that run B was a "merit FAIL" (correctly, per §4.1) and
+  failed criterion 3 under the same consecutive-runs reading. Its largest prompt —
+  **78,930 tokens** — is 98.7 % of the valve, and run E crossed it 65 iterations in, which
+  is how the 80,000-token size was confirmed rather than assumed.
+- **Why a self-judgment of this row cannot be a merit run:** a run that judges INT-CI-014
+  reads this document, and this document can only record a run after that run produced a
+  verdict. The last word therefore belongs to the independent task runs (A, D, F, G).
 
 ### 4.5 Growth-law sensitivity (why the fix is about the shape, not the constant)
 
-Each of the six runs gets its own least-squares fit; the cumulative counter reaches the
-16M cap at:
+Each run gets its own least-squares fit of `prompt(i) = P0 + g·(i-1)`; the cumulative
+counter would reach the 16M cap at:
 
 | run | calls | P0 | g (tokens/iteration) | cap wall at iteration |
 |---|---|---|---|---|
@@ -297,13 +333,19 @@ Each of the six runs gets its own least-squares fit; the cumulative counter reac
 | `61b146b3` | 15 | 13,898 | 1,639 | 132 |
 | `dcb853ee` | 48 | 15,816 | 1,367 | 143 |
 | `a713a269` | 25 | 10,757 | 1,147 | 159 |
+| `07b37f81` | 15 | 8,483 | 1,725 | 132 |
+| `45cdbd05` | 15 | 8,535 | 1,844 | 128 |
+| `2aaef334` (post-compaction segment) | 74 | 31,978 | 317 | 233 |
 
-The absolute wall therefore lands between **iteration 132 and 200** across measured growth
-profiles, i.e. a full `max_iterations = 200` run is at or past the edge for five of the six
-profiles. Every one of those runs still shows the same *shape* — the per-iteration prompt
-grows roughly linearly because the whole conversation is re-sent, so the counter is
-quadratic — which is what makes the grow-law model a justification for the valve and the
-scope fix rather than for another budget rung.
+The absolute wall lands between **iteration 128 and 200** across the eight uncompacted
+profiles — a full `max_iterations = 200` run is at or past the edge for all but one. Every
+profile has the same *shape*: the per-iteration prompt grows about linearly because the
+whole conversation is re-sent, so the counter is quadratic. That is what makes this a
+justification for the valve and the scope fix rather than for another budget rung. Run E's
+post-compaction segment shows the intended consequence: a much flatter slope (g = 317)
+because the rebuilt conversation starts from the compacted prompt instead of the whole
+accumulated history.
+
 
 ## 5. What to reach for next (in order), and what not to touch
 
