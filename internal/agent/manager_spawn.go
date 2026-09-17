@@ -566,6 +566,31 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		}
 	}
 
+	// ── Step 5d: Prove the SSH session works BEFORE reporting ready ──
+	// INT-DEMO-002: spawn used to register Status="running" on the strength
+	// of the authorized_keys/dockerd stages alone. The INT-DEMO-001 outage
+	// had the daemon reporting a RUNNING agent while every SSH session was
+	// denied by PAM (ssh exit 254). The probe runs the exec path's exact
+	// ssh target/options (single-token `whoami`), is hard-bounded per
+	// attempt and capped at three tries, and fails CLOSED: no registration,
+	// no persist, no ready response — the standard rollback runs.
+	m.logger.Info("spawn entering stage", "agent_id", agentID, "stage", StageSessionProbe)
+	attempts, probeErr := probeAgentSession(ctx, agentID, username, sshKeyPath)
+	if probeErr != nil {
+		m.logger.Error("session probe failed; agent will not be reported ready",
+			"agent_id", agentID,
+			"stage", StageSessionProbe,
+			"attempts", attempts,
+			"error", probeErr,
+		)
+		return nil, fail(StageSessionProbe, probeErr)
+	}
+	m.logger.Info("session probe succeeded",
+		"agent_id", agentID,
+		"stage", StageSessionProbe,
+		"attempts", attempts,
+	)
+
 	rec := &resource.AgentRecord{
 		AgentID:           agentID,
 		Status:            "running",

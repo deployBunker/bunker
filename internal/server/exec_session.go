@@ -7,18 +7,20 @@
 // System error` to the SERVER journal, not to the client). The operator
 // otherwise sees only the banner plus a bare exit 254, with no cause.
 //
-// This file owns the recognition of exactly that signature and the single
-// operator-facing line streamed in its place. It is deliberately a pure
-// function of the child's observable result so it can be table-tested and
-// so it can never alter the exit code or the existing frames.
+// The recognition of that signature and the diagnostic text itself live in
+// the internal/sshsig leaf package (INT-DEMO-002): internal/server imports
+// internal/agent, so the agent-side spawn probe cannot import this package
+// without a cycle — the classifier moved to a leaf both sides share. This
+// file keeps the package-local names and delegates, so every existing call
+// site and test is unchanged.
 package server
 
+import "github.com/deployBunker/bunker/internal/sshsig"
+
 // sessionDenialDiagnostic is the one-line operator-facing message streamed
-// as a stderr frame when the session-denied signature is recognized. It
-// carries the observed evidence (exit 254, no SSH error on stderr), the
-// most likely cause, and the concrete checks/remedy. There is deliberately
-// no second cause: nothing else about this signature is substantiated.
-const sessionDenialDiagnostic = "bunker: exec session was denied before the command ran (ssh exit 254, no SSH error on stderr): the agent user's session was rejected by PAM. Most likely cause: the agent is not a member of the isolation group, which happens when the running daemon predates the spawn-side isolation grant. Check on the server: 'getent group bunker-agents', 'bunker host-provision --status', and rebuild/redeploy the daemon so spawn grants membership."
+// as a stderr frame when the session-denied signature is recognized. It is
+// owned by internal/sshsig so the spawn-path probe reports the same line.
+const sessionDenialDiagnostic = sshsig.SessionDenialDiagnostic
 
 // classifyExecSessionDenial reports whether an ssh child's result is the
 // session-denied-before-the-command-ran signature, and returns the
@@ -44,16 +46,9 @@ const sessionDenialDiagnostic = "bunker: exec session was denied before the comm
 //	                            session denial
 //
 // Pure: it reads no state and writes none, so callers keep full control of
-// frame ordering and exit codes.
+// frame ordering and exit codes. Behaviour is unchanged — the conjunction
+// and the diagnostic text are byte-identical to the pre-INT-DEMO-002
+// implementation, which now lives in internal/sshsig.
 func classifyExecSessionDenial(exitCode int, stderrBytes, stdoutBytes int) (string, bool) {
-	if exitCode != 254 {
-		return "", false
-	}
-	if stderrBytes != 0 {
-		return "", false
-	}
-	if stdoutBytes <= 0 {
-		return "", false
-	}
-	return sessionDenialDiagnostic, true
+	return sshsig.ClassifySessionDenial(exitCode, stderrBytes, stdoutBytes)
 }

@@ -31,6 +31,7 @@ const (
 	StageContainerCap       = "container-cap"
 	StageImageBuild         = "image-build"
 	StageSliceLimits        = "slice-limits"
+	StageSessionProbe       = "session-probe"
 	StageRegister           = "register"
 )
 
