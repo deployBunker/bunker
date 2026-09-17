@@ -387,36 +387,65 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 // is a proof of reachability, not a mere existence check.
 //
 // On failure the returned error names the stage, the user-manager state, the
-// linger-entry count and a journal excerpt, so the operator can tell a dead
-// manager from a starving one without re-running the spawn. At most one WARN
-// is emitted with the same facts.
+// linger-entry count, a journal excerpt AND the probe's own output, so the
+// operator can tell a dead manager from a starving one without re-running the
+// spawn. At most one WARN is emitted with the same facts.
+//
+// The probe's own output is load-bearing attribution, not decoration: the
+// session-side stderr ("Failed to connect to bus: No medium found",
+// "Permission denied", "Unit docker.service not found") names the cause while
+// `systemctl is-active`/`Result` only name the symptom. It is condensed the
+// same way the journal excerpt is (one line, rune-safe, bounded) and only when
+// there is output at all.
 func proveUserManagerReachable(ctx context.Context, username string, uid int, runtimeDir string, logger *slog.Logger) error {
-	if _, err := userSessionRunner(ctx, username, runtimeDir, userManagerReloadCmd); err != nil {
-		return proveUserManagerReachableErr(ctx, username, uid, runtimeDir, logger)
+	out, err := probeUserManagerReachable(ctx, username, runtimeDir)
+	if err != nil {
+		return proveUserManagerReachableErr(ctx, username, uid, runtimeDir, logger, out)
 	}
 	return nil
 }
 
+// probeUserManagerReachable runs the reachability probe and returns the
+// session runner's own combined output alongside the error, so a caller that
+// must attribute the failure (the recycled-uid recovery's second probe) can
+// hand the output to proveUserManagerReachableErr.
+func probeUserManagerReachable(ctx context.Context, username, runtimeDir string) ([]byte, error) {
+	return userSessionRunner(ctx, username, runtimeDir, userManagerReloadCmd)
+}
+
 // proveUserManagerReachableErr builds the attribution error after a failed
 // reachability probe. Split from proveUserManagerReachable so the success
-// path stays a single seam call.
-func proveUserManagerReachableErr(ctx context.Context, username string, uid int, runtimeDir string, logger *slog.Logger) error {
+// path stays a single seam call. probeOut is the failed probe's own combined
+// output; it is appended to the WARN (field session_probe) and to the error
+// text so the failure is diagnosable from the log alone.
+func proveUserManagerReachableErr(ctx context.Context, username string, uid int, runtimeDir string, logger *slog.Logger, probeOut []byte) error {
 	unit := userManagerUnitName(uid)
 	state := fetchUserManagerState(ctx, unit)
 	lingerCount := countLingerEntries()
 	journal := fetchUserManagerJournal(ctx, unit, logger)
+	probe := condenseJournal(string(probeOut))
 	if logger != nil {
-		logger.Warn("agent user manager unreachable from the agent session before the rootless install",
+		attrs := []any{
 			"stage", "rootless-install",
 			"user", username,
 			"unit", unit,
 			"state", state.describe(unit),
 			"linger_entries", lingerCount,
 			"journal", journal,
-		)
+		}
+		if probe != "" {
+			attrs = append(attrs, "session_probe", probe)
+		}
+		logger.Warn("agent user manager unreachable from the agent session before the rootless install", attrs...)
 	}
-	return fmt.Errorf("rootless-install: agent user manager unreachable before the rootless install for %s: daemon-reload through the session bus failed; %s; linger entries: %d; journal: %s",
+	msg := fmt.Sprintf("rootless-install: agent user manager unreachable before the rootless install for %s: daemon-reload through the session bus failed; %s; linger entries: %d; journal: %s",
 		username, state.describe(unit), lingerCount, journal)
+	if probe != "" {
+		msg += "; session probe: " + probe
+	}
+	// errors.New (not fmt.Errorf): the probe's and the journal's output are
+	// arbitrary host text and must never be re-interpreted as a format string.
+	return errors.New(msg)
 }
 
 // recycledUIDRecoveryMarker names the one-shot recycled-uid recovery in the
@@ -451,12 +480,16 @@ const userManagerRecoveryDiagTimeout = 5 * time.Second
 // destroyed agents).
 //
 // RECOVERY, in the INT-CI-008 state-consistent order and using the existing
-// seams: emit ONE WARN naming the fingerprint, run resetUserManagerState (stop
+// seams: emit ONE WARN naming the fingerprint, clear the uid's FOREIGN logind
+// user record (see classifyForeignLogindRecord: `loginctl disable-linger
+// <recorded name>`, then `loginctl terminate-user <uid>`) so logind has no
+// reason to restart the manager again, run resetUserManagerState (stop
 // user@<uid>.service, loginctl terminate-user <uid>, unmount under the runtime
-// dir, stop user-runtime-dir@<uid>.service, remove the runtime dir), re-run the
-// SAME bring-up the healthy path uses so the directory, the linger entry and
-// the manager come back in the documented order, then probe a FINAL second
-// time.
+// dir, stop user-runtime-dir@<uid>.service, remove the runtime dir), re-check
+// the record and name the logind-respawn event when the teardown did not
+// stick, re-run the SAME bring-up the healthy path uses so the directory, the
+// linger entry and the manager come back in the documented order, then probe a
+// FINAL second time.
 //
 // WHY ONE-SHOT: a manager that is still unreachable after a single teardown has
 // a host-level cause (linger churn starving the start, a runtime directory that
@@ -472,7 +505,8 @@ const userManagerRecoveryDiagTimeout = 5 * time.Second
 // cancellation back promptly instead of having a teardown started for it.
 func proveUserManagerReachableWithRecovery(ctx context.Context, username string, uid int, runtimeDir string, logger *slog.Logger) error {
 	// 1. Probe first: the healthy path takes zero destructive action.
-	if err := proveUserManagerReachable(ctx, username, uid, runtimeDir, logger); err == nil {
+	probeErr := proveUserManagerReachable(ctx, username, uid, runtimeDir, logger)
+	if probeErr == nil {
 		return nil
 	}
 
@@ -491,9 +525,10 @@ func proveUserManagerReachableWithRecovery(ctx context.Context, username string,
 	state := fetchUserManagerState(diagCtx, unit)
 	if state.active != "active" {
 		// Not the fingerprint: a manager that is not active owns no foreign
-		// state to tear down, so the existing attribution error is returned
-		// unchanged and no recovery is attempted.
-		return proveUserManagerReachableErr(ctx, username, uid, runtimeDir, logger)
+		// state to tear down, so the attribution error (already built by the
+		// probe, probe output included) is returned unchanged and no recovery
+		// is attempted.
+		return probeErr
 	}
 
 	// 3. Exactly ONE WARN naming the recovery, the user, the uid and the unit.
@@ -509,12 +544,52 @@ func proveUserManagerReachableWithRecovery(ctx context.Context, username string,
 		)
 	}
 
-	// 4. Tear the foreign state down in the INT-CI-008 state-consistent order,
+	// 4. The stale LOGIND user record — the state that SURVIVES the reset.
+	// logind keeps a per-uid user record with its linger flag after the
+	// account is destroyed, so it restarts user@<uid>.service for that
+	// lingering uid the moment it is stopped: `systemctl is-active` is
+	// "active" again right after the stop, ensureUserManagerRunning returns
+	// nil immediately and the final probe still cannot reach the manager
+	// (tick 452 on bunker-mvp: the recovery FIRED and recovered nothing).
+	// Clearing the linger flag before the teardown removes logind's reason to
+	// start the manager again, and it also un-blocks the bring-up's own
+	// `loginctl enable-linger <user>`, which is a NO-OP while an entry for the
+	// uid is already recorded. Every step is best effort.
+	record := fetchLogindUserRecord(diagCtx, uid)
+	foreign, reason := classifyForeignLogindRecord(record, username)
+	if foreign {
+		if logger != nil {
+			logger.Warn(staleLogindRecordWarn,
+				"stage", "rootless-install",
+				"user", username,
+				"uid", uid,
+				"record_name", record.name,
+				"record_linger", record.linger,
+				"record_state", record.state,
+				"reason", reason,
+				"linger_entries", countLingerEntries(),
+			)
+		}
+		clearForeignLogindRecord(diagCtx, uid, record, logger)
+	}
+
+	// 5. Tear the foreign state down in the INT-CI-008 state-consistent order,
 	// then bring the manager back up in the SAME order the healthy path uses
 	// (reset → runtime dir → linger → manager start → bus wait). The bring-up
 	// re-runs classifyRuntimeDir against the directory the reset removed, so it
 	// classifies fresh and does not reset a second time.
 	resetUserManagerState(ctx, uid, runtimeDir, logger)
+
+	// 5b. Re-check the record the recovery just cleared. A record that is STILL
+	// linger-active, or a unit that is ACTIVE again although the reset stopped
+	// it, is the logind-respawn event; naming it is what makes a
+	// recovery-that-recovered-nothing diagnosable from the log alone.
+	if foreign {
+		recheckCtx, cancelRecheck := context.WithTimeout(context.WithoutCancel(ctx), userManagerRecoveryDiagTimeout)
+		logLogindRespawn(recheckCtx, uid, record, unit, logger)
+		cancelRecheck()
+	}
+
 	if err := bringUpUserManager(ctx, username, uid, runtimeDir, logger); err != nil {
 		// The teardown or the bring-up itself failed: report it wrapped with
 		// the recovery marker instead of probing a manager that was never
@@ -524,16 +599,194 @@ func proveUserManagerReachableWithRecovery(ctx context.Context, username string,
 			recycledUIDRecoveryMarker, username, uid, err)
 	}
 
-	// 5. Second and FINAL probe — the same user-session daemon-reload the
+	// 6. Second and FINAL probe — the same user-session daemon-reload the
 	// healthy path issues.
-	if err := proveUserManagerReachable(ctx, username, uid, runtimeDir, logger); err != nil {
+	finalOut, finalErr := probeUserManagerReachable(ctx, username, runtimeDir)
+	if finalErr != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ctxErr
 		}
 		return fmt.Errorf("%w; %s was attempted once (user@%d.service torn down and brought back up) and the agent session still cannot reach the manager",
-			proveUserManagerReachableErr(ctx, username, uid, runtimeDir, logger), recycledUIDRecoveryMarker, uid)
+			proveUserManagerReachableErr(ctx, username, uid, runtimeDir, logger, finalOut), recycledUIDRecoveryMarker, uid)
 	}
 	return nil
+}
+
+// ── the stale logind user record (recycled uid) ────────────────────────────
+//
+// logind keeps a per-UID user record (name, linger flag, state, session ids)
+// and it does NOT remove it when the account is destroyed: `loginctl show-user
+// <uid>` on the demo host reported the name of a DELETED account as
+// State=active, Linger=yes, while `getent passwd` had no such user, and
+// /var/lib/systemd/linger held markers for five users that no longer existed
+// (tick 452). A recycled uid therefore inherits a linger flag that makes
+// logind restart user@<uid>.service the moment anything stops it, and makes
+// `loginctl enable-linger <new-user>` a NO-OP. That is the state the existing
+// reset cannot remove and the reason the recovery fired and recovered nothing.
+
+// staleLogindRecordMarker names the stale logind user record in WARN text, so
+// an operator can grep for the exact host state that made the recovery
+// necessary instead of parsing prose.
+const staleLogindRecordMarker = "stale logind user record"
+
+// staleLogindRecordWarn is the single WARN emitted when the uid's logind
+// record is FOREIGN (see classifyForeignLogindRecord).
+const staleLogindRecordWarn = staleLogindRecordMarker +
+	": logind still holds a user record and its linger flag for a uid whose previous owner is gone; clearing the record before the manager is torn down"
+
+// logindRespawnMarker names the logind-respawn event in WARN text: the manager
+// came back on its own after the teardown. Naming it is what tells a recovery
+// that recovered nothing apart from a mystery.
+const logindRespawnMarker = "logind respawn"
+
+// logindRespawnWarn is the single WARN emitted when the record the recovery
+// cleared is still linger-active, or the unit is active again, after the
+// teardown.
+const logindRespawnWarn = logindRespawnMarker +
+	": logind restarted the user manager for a uid whose previous owner is gone; the teardown did not stick"
+
+// logindUserRecordProperties are the properties the recycled-uid fingerprint
+// needs: the recorded Name (whose account may no longer exist), the Linger
+// flag (what makes logind restart the manager) and the State (context for the
+// operator).
+const logindUserRecordProperties = "Name,Linger,State"
+
+// logindUserRecord is logind's per-UID user record, reduced to what the
+// fingerprint needs.
+type logindUserRecord struct {
+	// known is true only when the record carries a NAME we can act on. An
+	// unreadable record, or one without a name, is "no evidence" and never
+	// "foreign": no destructive step may run on an absence of evidence.
+	known bool
+	// name is the account logind has recorded for the uid.
+	name string
+	// linger is the recorded Linger flag ("yes"/"no"); empty when unknown.
+	linger string
+	// state is the recorded State ("active", ...); diagnostic only.
+	state string
+	// queryError carries loginctl's own output when the query failed.
+	queryError string
+}
+
+// fetchLogindUserRecord reads logind's per-uid user record through the same
+// seam and with the same best-effort contract as fetchUserManagerState: a
+// failed or silent query yields known=false, so the caller takes no action.
+// (`loginctl show-user <uid>` is preferred over `loginctl list-users` because
+// it is per-uid and bounded; the caller passes a bounded, caller-detached
+// context.)
+func fetchLogindUserRecord(ctx context.Context, uid int) logindUserRecord {
+	out, err := userManagerRunner(ctx, "loginctl", "show-user", strconv.Itoa(uid),
+		"--property="+logindUserRecordProperties)
+	rec := logindUserRecord{}
+	for _, line := range strings.Split(string(out), "\n") {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if !ok {
+			continue
+		}
+		switch key {
+		case "Name":
+			rec.name = strings.TrimSpace(value)
+		case "Linger":
+			rec.linger = strings.TrimSpace(value)
+		case "State":
+			rec.state = strings.TrimSpace(value)
+		}
+	}
+	if err != nil {
+		rec.queryError = strings.TrimSpace(string(out))
+		if rec.queryError == "" {
+			rec.queryError = err.Error()
+		}
+	}
+	rec.known = rec.name != ""
+	return rec
+}
+
+// classifyForeignLogindRecord decides whether the uid's logind user record
+// belongs to a PREVIOUS owner of the uid — the recycled-uid fingerprint that
+// survives the existing reset — rather than to the user being brought up.
+//
+// FOREIGN requires ALL of:
+//
+//   - logind carries a record for the uid whose Name is readable;
+//   - the recorded name is NOT the username being brought up, or the recorded
+//     account no longer exists in the passwd database (userdel removes the
+//     account; logind keeps the record);
+//   - the recorded Linger flag is yes. Without linger logind has no reason to
+//     restart the manager, so there is no foreign linger state to clear.
+//
+// Everything else is NOT foreign — an unreadable record, one with no name, one
+// whose linger is off, and one whose name is the user being brought up. The
+// last case is a deliberate residual: a record that names the user we are
+// creating cannot be distinguished from a healthy one by these properties
+// alone (the host re-creates the SAME agent names repeatedly), so it is left
+// alone rather than torn down on a guess.
+//
+// The returned reason names the clause that matched, so the WARN says WHY the
+// record was treated as foreign.
+func classifyForeignLogindRecord(rec logindUserRecord, username string) (bool, string) {
+	if !rec.known {
+		return false, ""
+	}
+	if !strings.EqualFold(rec.linger, "yes") {
+		return false, ""
+	}
+	if rec.name != username {
+		return true, fmt.Sprintf("logind has the uid's record under the name %q, not %q", rec.name, username)
+	}
+	if _, err := userLookup(rec.name); err != nil {
+		return true, fmt.Sprintf("logind has the uid's record under %q, whose account no longer exists", rec.name)
+	}
+	return false, ""
+}
+
+// clearForeignLogindRecord clears the foreign logind record for uid:
+// `loginctl disable-linger <recorded name>` first — that is the flag that makes
+// logind restart the manager, and clearing it also un-blocks the bring-up's own
+// enable-linger, which is a NO-OP while an entry for the uid is already
+// recorded — then `loginctl terminate-user <uid>`. Rec.name is non-empty
+// whenever this runs (classifyForeignLogindRecord requires a readable name).
+//
+// Every step is best effort and is issued AT MOST ONCE: the recovery is
+// one-shot, so a failure is WARNed with loginctl's own output and the recovery
+// continues into the teardown.
+func clearForeignLogindRecord(ctx context.Context, uid int, rec logindUserRecord, logger *slog.Logger) {
+	if out, err := userManagerRunner(ctx, "loginctl", "disable-linger", rec.name); err != nil && logger != nil {
+		logger.Warn("could not disable lingering for the stale logind record's user; logind may restart the user manager again",
+			"user", rec.name, "uid", uid, "error", err, "output", condenseJournal(string(out)))
+	}
+	_, _ = userManagerRunner(ctx, "loginctl", "terminate-user", strconv.Itoa(uid))
+}
+
+// logLogindRespawn re-reads the logind record and the unit state AFTER the
+// teardown and WARNs when either shows the manager came back on its own: the
+// record is still linger-active, or the unit is active again although the
+// teardown stopped it. Without that line, "the recovery ran and recovered
+// nothing" is indistinguishable from a recovery that was never reached.
+func logLogindRespawn(ctx context.Context, uid int, cleared logindUserRecord, unit string, logger *slog.Logger) {
+	if logger == nil {
+		return
+	}
+	after := fetchLogindUserRecord(ctx, uid)
+	state := fetchUserManagerState(ctx, unit)
+	stillLingering := strings.EqualFold(after.linger, "yes")
+	if !stillLingering && state.active != "active" {
+		return
+	}
+	event := "the unit is active again after the teardown"
+	if stillLingering {
+		event = "the uid's record is still linger-active after the teardown"
+	}
+	logger.Warn(logindRespawnWarn,
+		"stage", "rootless-install",
+		"uid", uid,
+		"unit", unit,
+		"cleared_name", cleared.name,
+		"record_name", after.name,
+		"record_linger", after.linger,
+		"state", state.describe(unit),
+		"event", event,
+	)
 }
 
 // isUserUnitNotFound reports whether the installer output carries the

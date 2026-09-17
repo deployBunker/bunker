@@ -41,11 +41,31 @@ const (
 	rcTestUID      = 1002
 	rcTestUsername = "bunker-recycled-alpha"
 
+	// rcForeignRecordName is the account logind has the uid's record under when
+	// the uid was recycled from a destroyed agent: a name that is NOT the user
+	// being brought up and whose account no longer exists.
+	rcForeignRecordName = "bunker-recycled-ghost"
+
+	// rcProbeFailureText is what the fake agent session prints when it cannot
+	// reach the manager. It is the probe's OWN output — the text that names the
+	// cause while systemctl's Result only names the symptom.
+	rcProbeFailureText = "Failed to connect to bus: Permission denied"
+
 	// intSpawn001PresentUID is the uid presentUserStub (shared with the
 	// destroy-linger tests) models; the rollback tests pin that coupling with a
 	// premise assertion instead of hardcoding the number twice.
 	intSpawn001PresentUID = 61001
 )
+
+// logindRecordStub is one scripted `loginctl show-user` answer: the uid's
+// logind record as the host would report it. A nil entry in
+// recycledUidHost.records means "the uid has no logind record at all" (the
+// query fails, exactly as loginctl does for a uid it does not know).
+type logindRecordStub struct {
+	name   string
+	linger string
+	state  string
+}
 
 // recycledUidHost is an in-memory systemd host for the recovery tests. It
 // answers the root-side runner and the agent-session runner from scripted state
@@ -70,6 +90,13 @@ type recycledUidHost struct {
 
 	// dirOwner is the uid owning the runtime directory as the probe reports it.
 	dirOwner uint32
+
+	// records scripts the answers of `loginctl show-user <uid>` by index. A nil
+	// entry means "the uid has no logind record" (the query fails, as loginctl
+	// does for a uid it does not know). Indices past the end repeat the last
+	// entry, so a one-element list describes a record that does not change.
+	records     []*logindRecordStub
+	recordCalls int
 
 	calls      []string
 	probeCalls int
@@ -110,6 +137,26 @@ func (h *recycledUidHost) probe(path string) (runtimeDirInfo, error) {
 	return info, nil
 }
 
+// showUserRecord answers `loginctl show-user <uid> --property=Name,Linger,State`
+// from the scripted records. No record (or a nil entry) answers the way loginctl
+// answers a uid it does not know: a failure with "No such user" on stderr —
+// which the production query must treat as "no evidence", never as "foreign".
+func (h *recycledUidHost) showUserRecord() ([]byte, error) {
+	if len(h.records) == 0 {
+		return []byte("Failed to get user: No such user\n"), errors.New("exit status 1")
+	}
+	idx := h.recordCalls
+	h.recordCalls++
+	if idx >= len(h.records) {
+		idx = len(h.records) - 1
+	}
+	rec := h.records[idx]
+	if rec == nil {
+		return []byte("Failed to get user: No such user\n"), errors.New("exit status 1")
+	}
+	return []byte(fmt.Sprintf("Name=%s\nLinger=%s\nState=%s\n", rec.name, rec.linger, rec.state)), nil
+}
+
 func (h *recycledUidHost) systemRunner(_ context.Context, name string, args ...string) ([]byte, error) {
 	h.calls = append(h.calls, strings.TrimSpace(name+" "+strings.Join(args, " ")))
 	switch name {
@@ -129,6 +176,8 @@ func (h *recycledUidHost) systemRunner(_ context.Context, name string, args ...s
 		switch args[0] {
 		case "enable-linger", "terminate-user", "disable-linger":
 			return nil, nil
+		case "show-user":
+			return h.showUserRecord()
 		}
 		return nil, fmt.Errorf("recycledUidHost: unexpected loginctl verb %q", args[0])
 	case "systemctl":
@@ -185,8 +234,9 @@ func (h *recycledUidHost) sessionRunner(_ context.Context, username, runtimeDir,
 	}
 	if !ok {
 		// The fingerprint of an unreachable manager: the session cannot talk
-		// to the live (foreign) manager.
-		return []byte("Failed to connect to bus: Permission denied"), errors.New("exit status 1")
+		// to the live (foreign) manager. The probe's OWN output (which the
+		// attribution must carry) is this text.
+		return []byte(rcProbeFailureText), errors.New("exit status 1")
 	}
 	return nil, nil
 }
@@ -199,6 +249,7 @@ func (h *recycledUidHost) install(t *testing.T, lingerDirPath string) {
 	prevRunner := userManagerRunner
 	prevSession := userSessionRunner
 	prevProbe := runtimeDirProbe
+	prevLookup := userLookup
 	prevLinger := lingerDir
 	prevPoll := userManagerPollInterval
 	prevTimeout := userManagerWaitTimeoutOverride
@@ -206,6 +257,14 @@ func (h *recycledUidHost) install(t *testing.T, lingerDirPath string) {
 	userManagerRunner = h.systemRunner
 	userSessionRunner = h.sessionRunner
 	runtimeDirProbe = h.probe
+	// The passwd database the fingerprint cross-checks against: the user being
+	// brought up resolves, the uid's foreign (destroyed) owner does not.
+	userLookup = func(name string) (*user.User, error) {
+		if name == h.username {
+			return &user.User{Username: name, Uid: strconv.Itoa(h.uid)}, nil
+		}
+		return nil, user.UnknownUserError(name)
+	}
 	lingerDir = lingerDirPath
 	userManagerPollInterval = time.Millisecond
 	userManagerWaitTimeoutOverride = 2 * time.Second
@@ -214,6 +273,7 @@ func (h *recycledUidHost) install(t *testing.T, lingerDirPath string) {
 		userManagerRunner = prevRunner
 		userSessionRunner = prevSession
 		runtimeDirProbe = prevProbe
+		userLookup = prevLookup
 		lingerDir = prevLinger
 		userManagerPollInterval = prevPoll
 		userManagerWaitTimeoutOverride = prevTimeout
@@ -433,6 +493,10 @@ func TestProveUserManagerReachableWithRecovery_BothProbesFailIsBounded(t *testin
 		"is-active=",
 		"linger entries: 1",
 		"journal:",
+		// The final probe's own output: without it the operator sees a
+		// manager that "is active" while the session cannot reach it — the
+		// exact reading that hid the tick-452 defect.
+		rcProbeFailureText,
 	} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("bounded-recovery error missing %q, got: %s", want, msg)
@@ -486,6 +550,309 @@ func TestProveUserManagerReachableWithRecovery_CancelledContextIsPrompt(t *testi
 	}
 	if got := len(warnLinesWithMarker(buf.String(), recycledUIDRecoveryMarker)); got != 0 {
 		t.Errorf("no recovery may start on a cancelled context, got %d recovery WARN(s):\n%s", got, buf.String())
+	}
+}
+
+// ── INT-SPAWN-002: the stale logind record + probe-output attribution ───────
+//
+// The recycled-uid recovery of INT-SPAWN-001 FIRED but recovered nothing on
+// tick 452: after its teardown and bring-up the session still could not reach
+// user@1002.service and the spawn died at stage rootless-install. What it could
+// not remove is logind's per-UID user record — a name belonging to a DESTROYED
+// account, Linger=yes — which makes logind restart the manager the moment the
+// reset stops it: the stop is undone, `systemctl is-active` is "active" again,
+// ensureUserManagerRunning returns nil immediately, and the final probe fails
+// again (the same linger flag also makes the bring-up's own enable-linger a
+// no-op). These tests pin both halves of the fix: the recovery clears that
+// record before the teardown, in order and exactly once, and the WARNs/errors
+// carry the probe's own output plus the logind-respawn event so the next
+// occurrence is diagnosable from the log alone.
+
+// TestProveUserManagerReachable_ProbeOutputIsOnTheRecord covers the
+// diagnosability half: the probe's own output (which names the cause while
+// `systemctl is-active`/`Result` only name the symptom) reaches the WARN and
+// the attribution error, and the healthy path stays one seam call with no log
+// line at all.
+func TestProveUserManagerReachable_ProbeOutputIsOnTheRecord(t *testing.T) {
+	t.Run("failed_probe_carries_its_own_output_into_warn_and_error", func(t *testing.T) {
+		h := newRecycledUidHost(t)
+		h.sessionResults = []bool{false}
+		h.install(t, lingerDirWithEntries(t, 2))
+
+		var buf bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+		err := proveUserManagerReachable(context.Background(), h.username, h.uid, h.runtimeDir, logger)
+		if err == nil {
+			t.Fatalf("expected the probe failure to surface%s", h.callLog())
+		}
+		if !strings.Contains(err.Error(), rcProbeFailureText) {
+			t.Errorf("the attribution error must carry the probe's own output %q, got: %s", rcProbeFailureText, err)
+		}
+		warns := warnLinesWithMarker(buf.String(), "agent user manager unreachable from the agent session")
+		if len(warns) != 1 {
+			t.Fatalf("expected exactly 1 unreachable WARN, got %d:\n%s", len(warns), buf.String())
+		}
+		if !strings.Contains(warns[0], rcProbeFailureText) {
+			t.Errorf("the WARN must carry the probe's own output %q:\n%s", rcProbeFailureText, warns[0])
+		}
+		if got := h.countPrefix("user-session["); got != 1 {
+			t.Errorf("the failure path must still probe exactly once, got %d:%s", got, h.callLog())
+		}
+	})
+
+	t.Run("healthy_probe_probes_once_and_logs_nothing", func(t *testing.T) {
+		h := newRecycledUidHost(t)
+		h.sessionResults = []bool{true}
+		h.install(t, lingerDirWithEntries(t, 2))
+
+		var buf bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+		if err := proveUserManagerReachable(context.Background(), h.username, h.uid, h.runtimeDir, logger); err != nil {
+			t.Fatalf("healthy probe must return nil, got: %v%s", err, h.callLog())
+		}
+		if buf.Len() != 0 {
+			t.Errorf("the healthy probe path must log nothing new, got:\n%s", buf.String())
+		}
+		if len(h.calls) != 1 || h.calls[0] != sessionProbeLabel() {
+			t.Errorf("the healthy probe path must stay one seam call, got:%s", h.callLog())
+		}
+	})
+}
+
+// TestProveUserManagerReachableWithRecovery_ClearsStaleLogindRecord is
+// acceptance C2: with a FOREIGN logind record present, the one-shot recovery
+// clears it — `loginctl disable-linger <RECORDED name>` immediately followed by
+// `loginctl terminate-user <uid>`, exactly once, BEFORE the bring-up starts —
+// and names the record in its own WARN.
+func TestProveUserManagerReachableWithRecovery_ClearsStaleLogindRecord(t *testing.T) {
+	h := newRecycledUidHost(t)
+	h.foreignManagerRunning(t)
+	h.sessionResults = []bool{false, true} // unreachable, then reachable again
+	// The uid's record belongs to a destroyed account and is lingering; the
+	// re-check after the teardown finds it gone (nil = no such record).
+	h.records = []*logindRecordStub{{name: rcForeignRecordName, linger: "yes", state: "active"}, nil}
+	h.install(t, lingerDirWithEntries(t, 6))
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	if err := proveUserManagerReachableWithRecovery(context.Background(), h.username, h.uid, h.runtimeDir, logger); err != nil {
+		t.Fatalf("the recovery must recover once the foreign logind record is cleared, got: %v%s", err, h.callLog())
+	}
+
+	uidArg := strconv.Itoa(h.uid)
+	idxDisable := h.nextIndexOf("loginctl disable-linger "+rcForeignRecordName, 0)
+	idxTerminate := h.nextIndexOf("loginctl terminate-user "+uidArg, 0)
+	idxBringUp := h.nextIndexOf("systemctl start "+userRuntimeDirUnitName(h.uid), 0)
+	if idxDisable < 0 {
+		t.Fatalf("the recovery must run `loginctl disable-linger %s` for the RECORDED name:%s",
+			rcForeignRecordName, h.callLog())
+	}
+	if idxTerminate < 0 {
+		t.Fatalf("the recovery must terminate the uid's session after clearing the record:%s", h.callLog())
+	}
+	if idxTerminate != idxDisable+1 {
+		t.Errorf("disable-linger (call %d) must be immediately followed by terminate-user (call %d):%s",
+			idxDisable, idxTerminate, h.callLog())
+	}
+	if idxBringUp < 0 || idxTerminate > idxBringUp {
+		t.Errorf("the record must be cleared BEFORE the bring-up starts (terminate call %d, bring-up call %d):%s",
+			idxTerminate, idxBringUp, h.callLog())
+	}
+	if got := h.countPrefix("loginctl disable-linger " + rcForeignRecordName); got != 1 {
+		t.Errorf("disable-linger for the recorded name ran %d time(s), want exactly 1:%s", got, h.callLog())
+	}
+
+	warns := warnLinesWithMarker(buf.String(), staleLogindRecordMarker)
+	if len(warns) != 1 {
+		t.Fatalf("expected exactly 1 stale-record WARN, got %d:\n%s", len(warns), buf.String())
+	}
+	for _, want := range []string{
+		"record_name=" + rcForeignRecordName,
+		"record_linger=yes",
+		"uid=" + uidArg,
+		rcTestUsername,
+	} {
+		if !strings.Contains(warns[0], want) {
+			t.Errorf("the stale-record WARN must name %q:\n%s", want, warns[0])
+		}
+	}
+	if !strings.Contains(warns[0], "not") || !strings.Contains(warns[0], rcForeignRecordName) {
+		t.Errorf("the stale-record WARN must carry the reason the record is foreign:\n%s", warns[0])
+	}
+
+	// The recovery is still one-shot: two probes, one recovery, no respawn.
+	if got := h.countPrefix("user-session["); got != 2 {
+		t.Errorf("expected exactly 2 session probes, got %d:%s", got, h.callLog())
+	}
+	if got := len(warnLinesWithMarker(buf.String(), recycledUIDRecoveryMarker)); got != 1 {
+		t.Errorf("expected exactly 1 recovery WARN, got %d:\n%s", got, buf.String())
+	}
+	if got := len(warnLinesWithMarker(buf.String(), logindRespawnMarker)); got != 0 {
+		t.Errorf("the record is gone after the recovery, so no respawn may be reported, got %d:\n%s", got, buf.String())
+	}
+}
+
+// TestProveUserManagerReachableWithRecovery_StillUnreachableIsBoundedAndNamed
+// is the tick-452 shape end to end: the record the recovery cleared is STILL
+// linger-active on the re-check (logind restarted the manager for the uid's
+// dead owner), the final probe fails again, and the returned error names the
+// attempted recovery while carrying the probe's own output. No second teardown.
+func TestProveUserManagerReachableWithRecovery_StillUnreachableIsBoundedAndNamed(t *testing.T) {
+	h := newRecycledUidHost(t)
+	h.foreignManagerRunning(t)
+	h.sessionResults = []bool{false, false} // still unreachable after the recovery
+	// One stable record: foreign before AND after the teardown.
+	h.records = []*logindRecordStub{{name: rcForeignRecordName, linger: "yes", state: "active"}}
+	h.install(t, lingerDirWithEntries(t, 6))
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	err := proveUserManagerReachableWithRecovery(context.Background(), h.username, h.uid, h.runtimeDir, logger)
+	if err == nil {
+		t.Fatalf("expected the second probe failure to surface%s", h.callLog())
+	}
+	msg := err.Error()
+	for _, want := range []string{
+		recycledUIDRecoveryMarker,
+		rcProbeFailureText,
+		"rootless-install",
+		userManagerUnitName(h.uid),
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the bounded-recovery error must contain %q, got: %s", want, msg)
+		}
+	}
+
+	// The respawn event is named exactly once, with the recorded name.
+	respawn := warnLinesWithMarker(buf.String(), logindRespawnMarker)
+	if len(respawn) != 1 {
+		t.Fatalf("expected exactly 1 logind-respawn WARN, got %d:\n%s", len(respawn), buf.String())
+	}
+	for _, want := range []string{
+		"record_name=" + rcForeignRecordName,
+		"cleared_name=" + rcForeignRecordName,
+		"record_linger=yes",
+		"still linger-active",
+	} {
+		if !strings.Contains(respawn[0], want) {
+			t.Errorf("the respawn WARN must name %q:\n%s", want, respawn[0])
+		}
+	}
+
+	// One-shot loop guard: every step ran exactly once and probed twice.
+	for _, action := range []string{
+		"systemctl stop " + userManagerUnitName(h.uid),
+		"systemctl stop " + userRuntimeDirUnitName(h.uid),
+		"rm -rf " + h.runtimeDir,
+		"loginctl disable-linger " + rcForeignRecordName,
+	} {
+		if got := h.countPrefix(action); got != 1 {
+			t.Errorf("%q ran %d time(s), want exactly 1 (no loop):%s", action, got, h.callLog())
+		}
+	}
+	if got := h.countPrefix("user-session["); got != 2 {
+		t.Errorf("expected exactly 2 probes total, got %d:%s", got, h.callLog())
+	}
+	if got := len(warnLinesWithMarker(buf.String(), recycledUIDRecoveryMarker)); got != 1 {
+		t.Errorf("expected exactly 1 recovery WARN, got %d:\n%s", got, buf.String())
+	}
+}
+
+// TestProveUserManagerReachableWithRecovery_NonForeignRecordIsLeftAlone is
+// acceptance C3 for the new query: nothing but a genuinely foreign,
+// linger-active record triggers a destructive step, so the recovery's teardown
+// set is byte-identical to the pre-INT-SPAWN-002 behaviour in every other case.
+// (The healthy path is pinned separately by HealthyPathIsNonDestructive, which
+// asserts the whole call list is the probe alone — so no logind query runs
+// there either.)
+func TestProveUserManagerReachableWithRecovery_NonForeignRecordIsLeftAlone(t *testing.T) {
+	cases := []struct {
+		name    string
+		records []*logindRecordStub
+	}{
+		{"no_record_at_all", nil},
+		{"record_names_the_user_being_brought_up", []*logindRecordStub{
+			{name: rcTestUsername, linger: "yes", state: "active"},
+		}},
+		{"foreign_name_but_linger_off", []*logindRecordStub{
+			{name: rcForeignRecordName, linger: "no", state: "active"},
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newRecycledUidHost(t)
+			h.foreignManagerRunning(t)
+			h.sessionResults = []bool{false, true}
+			h.records = tc.records
+			h.install(t, lingerDirWithEntries(t, 3))
+
+			var buf bytes.Buffer
+			logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+			if err := proveUserManagerReachableWithRecovery(context.Background(), h.username, h.uid, h.runtimeDir, logger); err != nil {
+				t.Fatalf("the recovery must still work for a non-foreign record, got: %v%s", err, h.callLog())
+			}
+			if got := h.countPrefix("loginctl disable-linger"); got != 0 {
+				t.Errorf("a non-foreign record must never be cleared, disable-linger ran %d time(s):%s", got, h.callLog())
+			}
+			if got := h.countPrefix("loginctl terminate-user " + strconv.Itoa(h.uid)); got != 1 {
+				t.Errorf("the uid's session must be terminated exactly once (by the teardown), got %d:%s", got, h.callLog())
+			}
+			if got := len(warnLinesWithMarker(buf.String(), staleLogindRecordMarker)); got != 0 {
+				t.Errorf("no stale-record WARN may be logged, got %d:\n%s", got, buf.String())
+			}
+			if got := len(warnLinesWithMarker(buf.String(), logindRespawnMarker)); got != 0 {
+				t.Errorf("no respawn WARN may be logged, got %d:\n%s", got, buf.String())
+			}
+			for _, action := range []string{
+				"systemctl stop " + userManagerUnitName(h.uid),
+				"systemctl stop " + userRuntimeDirUnitName(h.uid),
+				"rm -rf " + h.runtimeDir,
+			} {
+				if got := h.countPrefix(action); got != 1 {
+					t.Errorf("the teardown must be unchanged for a non-foreign record, %q ran %d time(s):%s",
+						action, got, h.callLog())
+				}
+			}
+		})
+	}
+}
+
+// TestProveUserManagerReachableWithRecovery_ExpiredDeadlineIsPrompt is the
+// short-context half of acceptance C3: a caller whose deadline already expired
+// gets that deadline back promptly and NO destructive action at all — not even
+// the new logind query, and certainly no teardown.
+func TestProveUserManagerReachableWithRecovery_ExpiredDeadlineIsPrompt(t *testing.T) {
+	h := newRecycledUidHost(t)
+	h.foreignManagerRunning(t)
+	h.sessionResults = []bool{false}
+	h.records = []*logindRecordStub{{name: rcForeignRecordName, linger: "yes", state: "active"}}
+	h.install(t, t.TempDir())
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	err := proveUserManagerReachableWithRecovery(ctx, h.username, h.uid, h.runtimeDir, logger)
+	if err != context.DeadlineExceeded {
+		t.Fatalf("expected exactly context.DeadlineExceeded, got %T: %v", err, err)
+	}
+	for _, forbidden := range []string{
+		"systemctl stop", "loginctl terminate-user", "loginctl disable-linger",
+		"loginctl show-user", "loginctl enable-linger", "rm -rf", "systemctl start",
+	} {
+		if got := h.countPrefix(forbidden); got != 0 {
+			t.Errorf("an expired caller must not trigger work, but %q ran %d time(s):%s", forbidden, got, h.callLog())
+		}
+	}
+	if got := len(warnLinesWithMarker(buf.String(), staleLogindRecordMarker)); got != 0 {
+		t.Errorf("an expired caller must not reach the record handling, got %d WARN(s):\n%s", got, buf.String())
 	}
 }
 
