@@ -1860,3 +1860,19 @@ tasks:
   status: complete
   created_at: '2026-09-17T19:23:48.455232+00:00'
   completed_at: '2026-09-17T19:31:21.370336+00:00'
+- id: INT-CI-014
+  title: 'Tier 2 evaluator input-budget: measure where the tokens go, then fix the
+    driver (not another cap rung)'
+  criteria:
+  - 'docs/tier2-eval-budget.md records a MEASURED breakdown of one Tier 2 run on this
+    repo: iteration count, per-iteration prompt tokens, compaction events, and the
+    cumulative input-token total, all read from instrumented engine data, no estimates'
+  - .gitreins/config.yaml carries one change justified by that measurement; it is
+    NOT a max_input_tokens raise, and the doc shows the arithmetic that justifies
+    it (starved run total vs post-change totals)
+  - Two consecutive post-change Tier 2 runs on this repo finished with a merit verdict
+    (PASS or FAIL, not INCOMPLETE) and with no 'Cap exceeded' line; both runs' token
+    totals are recorded in docs/tier2-eval-budget.md
+  status: complete
+  created_at: '2026-09-17T19:56:36.106546+00:00'
+  completed_at: '2026-09-17T20:35:08.923287+00:00'
