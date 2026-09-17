@@ -1889,3 +1889,27 @@ tasks:
   status: complete
   created_at: '2026-09-17T21:15:46.632937+00:00'
   completed_at: '2026-09-17T21:43:19.307566+00:00'
+- id: DF-BUNKER-17
+  title: 'CLI actionability: heartbeat TTL semantics, cp destination-ownership hint,
+    single-location audit permission error, fail-fast --ttl validation, documented
+    exit codes'
+  criteria:
+  - '1. bunker heartbeat''s user-visible output names the TTL semantics: the extension
+    is the daemon default (never shortens an existing longer expiry) and the resulting
+    expiry is printed; README documents the same wording and no longer leaves the
+    behaviour only in --help. 2. bunker cp to a destination that already exists on
+    the agent host prints an actionable ownership hint naming the current owner and
+    the agent user, in addition to the raw scp error, and that path has a unit test.
+    3. bunker audit export against an unreadable local log prints the permission error
+    exactly once (no doubled ''open <path>: open <path>: permission denied'') plus
+    an actionable hint, pinned by a unit test. 4. bunker spawn with an invalid --ttl
+    fails fast with a message naming the accepted format and never prints the ''Creating
+    agent...'' progress line before that validation; a unit test asserts the progress
+    line is absent on the invalid path. 5. README carries an exit-code table derived
+    from the source (success 0, general error 1, exec/run propagate the remote exit
+    code, destroy of a never-seen id exits 0 as a reported outcome), each row traceable
+    to a file. 6. No .proto or generated-file change; gofmt -l . empty; go build ./...
+    , go vet ./... and go test ./... -count=1 all exit 0.'
+  status: complete
+  created_at: '2026-09-17T22:20:47.385001+00:00'
+  completed_at: '2026-09-17T22:37:28.723818+00:00'
