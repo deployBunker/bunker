@@ -70,19 +70,126 @@ var userManagerRunner systemRunner = runSystemCmd
 
 // userManagerReloadCmd is the user-session command used both to prove the
 // agent's user manager is reachable and to make a freshly written unit
-// visible before the installer retry (INT-CI-009).
+// visible before the installer retry (INT-CI-009). It is the SCRIPT of that
+// command; the command string the session receives is built by
+// userManagerReloadSessionCmd, which carries the session bus environment
+// IN-BAND (INT-SPAWN-004).
 const userManagerReloadCmd = "systemctl --user daemon-reload"
 
+// ── the session bus environment is delivered IN-BAND (INT-SPAWN-004) ───────
+//
+// The daemon runs commands inside the agent user's session with
+// `su - <user> -c <script>`. A LOGIN shell started by `su -` RESETS the
+// environment, so anything set on the `su` PROCESS never reaches the command
+// the session actually runs. Measured on the demo host, as root, both ways:
+//
+//	XDG_RUNTIME_DIR=/run/user/1002 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1002/bus \
+//	    su - kara -c 'echo XDG=[$XDG_RUNTIME_DIR] DBUS=[$DBUS_SESSION_BUS_ADDRESS]'
+//	→ XDG=[] DBUS=[]                        (the environment was stripped)
+//
+//	systemd-run --quiet --wait --pipe --unit=probe su - kara -c \
+//	    'echo XDG=[$XDG_RUNTIME_DIR] DBUS=[$DBUS_SESSION_BUS_ADDRESS]'
+//	→ XDG=[/run/user/1001] DBUS=[unix:path=/run/user/1001/bus]
+//
+// pam_systemd only supplies the bus environment when the caller is NOT already
+// inside a logind session, so an ssh-launched daemon gets nothing while a
+// transient service does — and `su -` discards what the daemon set either way.
+// The agent session therefore had NEITHER variable and systemctl answered
+// "Failed to connect to bus: No medium found", killing every spawn of a daemon
+// that was not launched by systemd at stage rootless-install. A readiness
+// retry cannot fix that: no amount of waiting makes a stripped variable come
+// back.
+//
+// The delivery that survives the login shell's reset is an IN-BAND assignment:
+// the two variables are assigned INSIDE the command the session runs (measured
+// working on the same host). ONE construction serves every user-session
+// command — the reachability probe, the pre-retry daemon-reload and the
+// rootless installer — so they all speak to the same manager (INT-CI-009) and
+// all survive the reset (INT-SPAWN-004).
+
+// rootlessInstallerToggles are the rootless installer's own switches. They are
+// delivered IN-BAND for the same reason the bus environment is: the installer
+// reads them from its environment, and the login shell's reset would otherwise
+// leave FORCE_ROOTLESS_INSTALL/SKIP_IPTABLES unset in the installer process.
+const (
+	rootlessInstallerForceEnv     = "FORCE_ROOTLESS_INSTALL=1"
+	rootlessInstallerSkipIptables = "SKIP_IPTABLES=1"
+)
+
+// sessionEnvAssignments renders the in-band shell assignments that carry the
+// session bus environment into the command the agent's login shell runs: the
+// agent's standard systemd runtime directory and the user manager's bus socket
+// address. Both values are DERIVED from the runtime directory the caller
+// passes, so the construction works for any uid. Values are single-quoted (see
+// shellQuote) so a path carrying spaces, quotes or shell metacharacters can
+// neither break the command nor expand inside it. extra assignments are
+// appended verbatim: they are caller-owned constants (the installer toggles),
+// not caller-supplied data.
+func sessionEnvAssignments(runtimeDir string, extra ...string) []string {
+	assignments := []string{
+		"XDG_RUNTIME_DIR=" + shellQuote(runtimeDir),
+		"DBUS_SESSION_BUS_ADDRESS=" + shellQuote("unix:path="+filepath.Join(runtimeDir, "bus")),
+	}
+	return append(assignments, extra...)
+}
+
+// sessionEnvPrefix renders the in-band assignments as the shell prefix of a
+// session command: one `export` statement, terminated by the separator that
+// introduces the caller's script.
+func sessionEnvPrefix(runtimeDir string, extra ...string) string {
+	return "export " + strings.Join(sessionEnvAssignments(runtimeDir, extra...), " ") + "; "
+}
+
+// sessionCommand is the ONE construction of a command string that the agent
+// user's login shell must run: the in-band bus environment (plus any caller
+// toggles) followed by the caller's script content BYTE-IDENTICAL. Nothing is
+// prepended to, quoted around or rewritten inside the script, so the command
+// string is the script the caller wrote, with an environment assignment in
+// front of it that the login shell applies before the script runs.
+func sessionCommand(runtimeDir, script string, extra ...string) string {
+	return sessionEnvPrefix(runtimeDir, extra...) + script
+}
+
+// shellQuote renders value as a POSIX single-quoted shell word: everything
+// inside is literal, and the closing quote is broken only to insert an escaped
+// literal quote for values that contain one.
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
+}
+
+// userManagerReloadSessionCmd is the user-manager daemon-reload as the agent
+// session must run it: the session bus environment IN-BAND, then the reload
+// command. Both the reachability probe and the pre-retry daemon-reload use
+// this SAME construction.
+func userManagerReloadSessionCmd(runtimeDir string) string {
+	return sessionCommand(runtimeDir, userManagerReloadCmd)
+}
+
+// rootlessInstallerSessionCmd is the installer execution as the agent session
+// must run it: the session bus environment IN-BAND plus the installer's own
+// toggles, then the installer path byte-identical.
+func rootlessInstallerSessionCmd(runtimeDir, installerPath string) string {
+	return sessionCommand(runtimeDir, installerPath, rootlessInstallerForceEnv, rootlessInstallerSkipIptables)
+}
+
 // userSessionRunner executes a command inside the agent user's session.
-// Package-level seam mirroring userManagerRunner.
+// Package-level seam mirroring userManagerRunner. Its `script` argument is the
+// COMPLETE command string — callers build it with sessionCommand (through
+// userManagerReloadSessionCmd / rootlessInstallerSessionCmd), which is what
+// makes the in-band environment observable to a test that fakes this seam.
 var userSessionRunner = runUserSessionCmd
 
 // userSessionEnv builds the environment for a command that runs inside the
 // agent user's session: the standard systemd runtime directory and the user
-// manager's bus socket layered on top of the inherited environment. The
-// installer call uses the SAME construction (plus its own toggles), so every
-// user-session command — reachability probe, daemon-reload retry, installer —
-// speaks to the same manager (INT-CI-009).
+// manager's bus socket layered on top of the inherited environment.
+//
+// This is BELT-AND-BRACES, not the delivery mechanism (INT-SPAWN-004): a login
+// shell started by `su -` resets the environment, so anything set on the `su`
+// PROCESS never reaches the command the session runs. What the session depends
+// on is the in-band assignment inside the command string itself
+// (sessionCommand). The environment is kept because it is harmless and helps
+// in the one shape where it survives — a daemon already inside a logind
+// session — but no behavior may depend on it.
 func userSessionEnv(runtimeDir string) []string {
 	return append(os.Environ(),
 		"XDG_RUNTIME_DIR="+runtimeDir,
@@ -91,7 +198,10 @@ func userSessionEnv(runtimeDir string) []string {
 }
 
 // runUserSessionCmd is the production runner: `su - <username> -c <script>`
-// with the session environment applied.
+// with the session environment ALSO applied to the su process. script is the
+// complete session command (sessionCommand-built), so the bus environment it
+// needs is in-band and survives the login shell's environment reset; the
+// process environment is redundant insurance (see userSessionEnv).
 func runUserSessionCmd(ctx context.Context, username, runtimeDir, script string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "su", "-", username, "-c", script)
 	cmd.Env = userSessionEnv(runtimeDir)
@@ -99,8 +209,9 @@ func runUserSessionCmd(ctx context.Context, username, runtimeDir, script string)
 }
 
 // rootlessInstallerRunner executes the downloaded rootless installer as the
-// agent user. Package-level seam so the daemon-reload retry (INT-CI-009) is
-// testable without a real su, real systemd, or network.
+// agent user. Its `script` argument is the COMPLETE installer session command
+// (rootlessInstallerSessionCmd). Package-level seam so the daemon-reload retry
+// (INT-CI-009) is testable without a real su, real systemd, or network.
 var rootlessInstallerRunner = runRootlessInstallerCmd
 
 // rootlessInstallerDownload fetches the official installer into installerPath.
@@ -125,13 +236,17 @@ var userLookup = user.Lookup
 // the full install flow is unit-testable without real users (INT-CI-009).
 var rootHostRunner systemRunner = runSystemCmd
 
-// runRootlessInstallerCmd is the production installer runner: the identical
-// session environment to runUserSessionCmd plus the installer's own toggles.
-func runRootlessInstallerCmd(ctx context.Context, username, runtimeDir, installerPath string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "su", "-", username, "-c", installerPath)
+// runRootlessInstallerCmd is the production installer runner:
+// `su - <username> -c <script>` where script is the COMPLETE installer session
+// command built by rootlessInstallerSessionCmd (bus environment AND the
+// installer's own toggles in-band). The process environment is kept
+// belt-and-braces (see userSessionEnv): the login shell resets it, so the
+// session depends on the in-band assignment, never on cmd.Env (INT-SPAWN-004).
+func runRootlessInstallerCmd(ctx context.Context, username, runtimeDir, script string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "su", "-", username, "-c", script)
 	cmd.Env = append(userSessionEnv(runtimeDir),
-		"FORCE_ROOTLESS_INSTALL=1",
-		"SKIP_IPTABLES=1",
+		rootlessInstallerForceEnv,
+		rootlessInstallerSkipIptables,
 	)
 	return cmd.CombinedOutput()
 }
@@ -329,7 +444,9 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 
 	// Run the installer as the target user. It installs binaries into ~/bin.
 	// The standard systemd runtime directory and D-Bus bus address are provided
-	// so systemctl --user can communicate with the user manager.
+	// IN-BAND inside the command the session runs (rootlessInstallerSessionCmd),
+	// together with the installer's own toggles, so `su -`'s environment reset
+	// cannot strip them (INT-SPAWN-004).
 	//
 	// The installer writes the docker.service unit and then starts it in the
 	// same run. When the manager has not yet observed the freshly written unit,
@@ -337,7 +454,8 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 	// found" even though the manager itself is healthy (INT-CI-009). That
 	// failure is retried ONCE after a user-session daemon-reload makes the new
 	// unit visible. Any other installer failure is returned untouched.
-	installerOut, installerErr := rootlessInstallerRunner(ctx, username, stdRuntimeDir, installerPath)
+	installerCmd := rootlessInstallerSessionCmd(stdRuntimeDir, installerPath)
+	installerOut, installerErr := rootlessInstallerRunner(ctx, username, stdRuntimeDir, installerCmd)
 	if installerErr != nil {
 		if !isUserUnitNotFound(installerOut) {
 			return fmt.Errorf("run rootless installer as %s: %w (output: %s)", username, installerErr, string(installerOut))
@@ -347,7 +465,11 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 				"user", username, "unit", userManagerUnitName(uid),
 				"output", condenseJournal(string(installerOut)))
 		}
-		if _, err := userSessionRunner(ctx, username, stdRuntimeDir, userManagerReloadCmd); err != nil {
+		// The SAME construction and the SAME seam call as the reachability
+		// probe above, so the reload before the retry speaks to the manager
+		// through the identical command string (single construction,
+		// INT-CI-009 + INT-SPAWN-004).
+		if _, err := probeUserManagerReachable(ctx, username, stdRuntimeDir); err != nil {
 			// The reload itself failed: retrying the installer through a dead
 			// bus would only reproduce the same not-found failure, so fail
 			// with the full attribution instead.
@@ -355,7 +477,7 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 			return fmt.Errorf("rootless-install: user-session daemon-reload before the installer retry failed for %s: %w; %s; linger entries: %d; installer output: %s",
 				username, err, state.describe(userManagerUnitName(uid)), countLingerEntries(), condenseJournal(string(installerOut)))
 		}
-		installerOut, installerErr = rootlessInstallerRunner(ctx, username, stdRuntimeDir, installerPath)
+		installerOut, installerErr = rootlessInstallerRunner(ctx, username, stdRuntimeDir, installerCmd)
 		if installerErr != nil {
 			state := fetchUserManagerState(ctx, userManagerUnitName(uid))
 			return fmt.Errorf("run rootless installer as %s: %w (retry after user-session daemon-reload also failed; output: %s; %s; linger entries: %d)",
@@ -416,8 +538,15 @@ func proveUserManagerReachable(ctx context.Context, username string, uid int, ru
 // session runner's own combined output alongside the error, so a caller that
 // must attribute the failure (the recycled-uid recovery's second probe) can
 // hand the output to proveUserManagerReachableErr.
+//
+// The command string is built by userManagerReloadSessionCmd, which carries the
+// session bus environment IN-BAND: `su -` resets the environment, so a probe
+// whose bus variables only existed on the su process could never reach the
+// manager (INT-SPAWN-004). The pre-retry daemon-reload in installRootlessDocker
+// calls THIS function, so both reloads are the same construction and the same
+// seam call.
 func probeUserManagerReachable(ctx context.Context, username, runtimeDir string) ([]byte, error) {
-	return userSessionRunner(ctx, username, runtimeDir, userManagerReloadCmd)
+	return userSessionRunner(ctx, username, runtimeDir, userManagerReloadSessionCmd(runtimeDir))
 }
 
 // proveUserManagerReachableErr builds the attribution error after a failed

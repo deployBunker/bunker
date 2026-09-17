@@ -75,6 +75,14 @@ type userUnitFakeHost struct {
 	// because the readiness gate polls until the budget is exhausted.
 	waitBudget time.Duration
 
+	// sessionScripts records the raw COMMAND STRING handed to the session
+	// runner, and installerScripts the one handed to the installer runner.
+	// They are recorded verbatim (in-band assignment and all) because that
+	// string is what `su -` executes: the bus environment must be IN it
+	// (INT-SPAWN-004), not merely in the su process environment.
+	sessionScripts   []string
+	installerScripts []string
+
 	calls []string // ordered call log across all seams
 }
 
@@ -265,7 +273,12 @@ func (h *userUnitFakeHost) sessionRunner(_ context.Context, username, runtimeDir
 	if runtimeDir != h.runtimeDir {
 		return nil, fmt.Errorf("userUnitFakeHost: session runner got runtime dir %q, want %q", runtimeDir, h.runtimeDir)
 	}
-	label := "user-session[" + script + "]"
+	// The COMMAND STRING is recorded verbatim: it carries the session bus
+	// environment IN-BAND (INT-SPAWN-004), which is what the in-band tests
+	// assert. The call label names the caller's own script, so the
+	// order/count assertions stay about the command, not about its prefix.
+	h.sessionScripts = append(h.sessionScripts, script)
+	label := "user-session[" + sessionScriptTail(script) + "]"
 	if h.sessionScriptErr {
 		h.calls = append(h.calls, label+" [session-bus-down]")
 		return []byte("Failed to connect to bus: No medium found"), errors.New("exit status 1")
@@ -277,10 +290,17 @@ func (h *userUnitFakeHost) sessionRunner(_ context.Context, username, runtimeDir
 // installerRunner models the official installer: it "writes"
 // ~/.config/systemd/user/docker.service on every call and is scripted by
 // installerRuns (true = success, false = fail with installerFailOutput).
-func (h *userUnitFakeHost) installerRunner(_ context.Context, username, runtimeDir, installerPath string) ([]byte, error) {
+//
+// script is the COMPLETE installer session command (the in-band bus
+// environment plus the installer's toggles, then the installer path), so the
+// path is recovered from its tail — which is also what proves the caller's
+// path is passed through byte-identically.
+func (h *userUnitFakeHost) installerRunner(_ context.Context, username, runtimeDir, script string) ([]byte, error) {
 	if username != h.username || runtimeDir != h.runtimeDir {
 		return nil, fmt.Errorf("userUnitFakeHost: installer runner got user=%q dir=%q", username, runtimeDir)
 	}
+	h.installerScripts = append(h.installerScripts, script)
+	installerPath := sessionScriptTail(script)
 	idx := h.installerCalls
 	h.installerCalls++
 	h.calls = append(h.calls, fmt.Sprintf("installer#%d[%s]", idx, installerPath))

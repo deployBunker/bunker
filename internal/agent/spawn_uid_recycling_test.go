@@ -139,6 +139,13 @@ type recycledUidHost struct {
 	records     []*logindRecordStub
 	recordCalls int
 
+	// sessionScripts records every raw COMMAND STRING handed to the session
+	// runner, verbatim. That string is what `su -` executes, so it is the
+	// artifact the in-band bus environment must appear in (INT-SPAWN-004); a
+	// test asserting cmd.Env on the su process instead would be a phantom
+	// pass, because the login shell strips exactly that environment.
+	sessionScripts []string
+
 	calls      []string
 	probeCalls int
 }
@@ -278,7 +285,11 @@ func (h *recycledUidHost) sessionRunner(ctx context.Context, username, runtimeDi
 	}
 	idx := h.probeCalls
 	h.probeCalls++
-	h.calls = append(h.calls, "user-session["+script+"]")
+	// The COMMAND STRING is recorded verbatim: it carries the session bus
+	// environment IN-BAND (INT-SPAWN-004). The call label names the caller's
+	// own script so the count/order assertions keep matching.
+	h.sessionScripts = append(h.sessionScripts, script)
+	h.calls = append(h.calls, "user-session["+sessionScriptTail(script)+"]")
 	if ctx.Err() != nil {
 		h.doneCtxProbes++
 		if h.sessionHonorsContext {
