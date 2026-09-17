@@ -504,6 +504,14 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 	stderrDone := make(chan struct{})
 	var stdoutSent bool
 	var stdoutEndsNewline bool
+	// Byte counters for the streamed process output. The stdout count is a
+	// minimal extension of the existing sent/newline state; the stderr
+	// count has no prior equivalent and is what lets the session-denial
+	// classifier distinguish "ssh said nothing" from "ssh reported an
+	// error". Both are written by their streamer goroutine and read after
+	// wg.Wait(), which is what synchronizes them.
+	var stdoutBytes int
+	var stderrBytes int
 
 	wg.Add(2)
 	go func() {
@@ -514,6 +522,7 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 			n, err := stdoutPipe.Read(buf)
 			if markerCountsAsSent(n) {
 				stdoutSent = true
+				stdoutBytes += n
 				stdoutEndsNewline = buf[n-1] == '\n'
 				if err := stream.Send(&v1.ExecAgentResponse{
 					Output: &v1.ExecAgentResponse_Stdout{Stdout: buf[:n]},
@@ -535,6 +544,7 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 		for {
 			n, err := stderrPipe.Read(buf)
 			if n > 0 {
+				stderrBytes += n
 				if err := stream.Send(&v1.ExecAgentResponse{
 					Output: &v1.ExecAgentResponse_Stderr{Stderr: buf[:n]},
 				}); err != nil {
@@ -579,6 +589,23 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 			}); err != nil {
 				s.logger.Warn("send containment marker", "error", err)
 			}
+		}
+	}
+
+	// Session-denial diagnostic (INT-DEMO-001): a session rejected by PAM
+	// before the command ran leaves ssh exiting 254 with the banner as the
+	// only stdout and nothing on stderr, so the operator otherwise learns
+	// nothing. When that exact signature is present, stream ONE stderr
+	// frame naming the likely cause and the checks. The exit code below is
+	// unchanged, and this sits after the GAP-067 marker block so no
+	// existing frame is suppressed or reordered.
+	if diag, denied := classifyExecSessionDenial(int(exitCode), stderrBytes, stdoutBytes); denied {
+		s.logger.Warn("exec session denied before command ran",
+			"agent_id", agentID, "exit_code", exitCode)
+		if err := stream.Send(&v1.ExecAgentResponse{
+			Output: &v1.ExecAgentResponse_Stderr{Stderr: []byte(diag + "\n")},
+		}); err != nil {
+			s.logger.Warn("send session-denial diagnostic", "error", err)
 		}
 	}
 
