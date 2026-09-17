@@ -1913,3 +1913,37 @@ tasks:
   status: complete
   created_at: '2026-09-17T22:20:47.385001+00:00'
   completed_at: '2026-09-17T22:37:28.723818+00:00'
+- id: DF-BUNKER-19
+  title: 'Documented first experience: real REST response shapes + local-daemon-first
+    quick start + self-serve token path (+ README make prerequisite, DF-BUNKER-12)'
+  criteria:
+  - 'DF-BUNKER-19(a): docs/integration.md documents the REAL REST response shape of
+    a live daemon call: protojson camelCase field naming (e.g. uptimeSeconds), 64-bit
+    integral fields encoded as STRINGS (e.g. "uptimeSeconds":"5"), a repeated field
+    with no entries OMITTED from the JSON body (an empty ListAgents answers {}), the
+    error envelope {"code":...,"message":...} (GetAgent on an unknown id), that an
+    unknown RPC path answers HTTP 404 text/plain while a non-POST method answers 405
+    - with at least one copy-pasteable curl example whose pasted output was captured
+    from a real daemon run.'
+  - 'DF-BUNKER-19(b): the README quick start leads with the LOCAL daemon path, which
+    needs no human-issued token (build; run bunkerd; connect; status), and presents
+    the hosted demo at 78.46.173.180 as the optional second path with its request-access
+    caveat; the documented first path is fully reproducible with only the repo plus
+    Go.'
+  - 'DF-BUNKER-19(c): the docs state plainly how a demo token is obtained (request-access
+    via the deployBunker maintainers) or provide a self-serve alternative; no doc
+    claims a self-serve signup that does not exist.'
+  - 'DF-BUNKER-12: README Prerequisites/install no longer documents a build that can
+    fail with "make: not found" on a host with only Go installed (make is listed as
+    a prerequisite AND/OR the make-free go build command pair is documented in the
+    install step), and the install section sets the cold-host expectation that the
+    first build downloads modules for several minutes.'
+  - 'Documentation-only commit: no .go, .proto or generated file changes; git show
+    --stat HEAD lists markdown files only; no token, key or credential value appears
+    in any doc or example (placeholders only).'
+  - 'Every response-shape claim in the docs is reproducible by the documented recipe
+    (fresh bunkerd with auth disabled on a non-privileged port): no field name, numeric
+    encoding or HTTP status is documented that the live daemon does not actually produce.'
+  status: complete
+  created_at: '2026-09-17T23:10:01.578949+00:00'
+  completed_at: '2026-09-17T23:20:58.676864+00:00'
