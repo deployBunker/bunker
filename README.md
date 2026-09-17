@@ -589,6 +589,11 @@ go test ./... -short
 # Run E2E battery (requires a running bunkerd)
 bash e2e-full-battery.sh
 
+# Preview exactly what the battery would use — binaries + certification
+# verdict, endpoints, token source, state dirs, which sections run. No root,
+# nothing is changed:
+bash e2e-full-battery.sh --show-plan
+
 # The E2E battery requires root: it creates Linux users via useradd and
 # writes a root-owned daemon log under /var/log, so run it with sudo. The
 # harness prints a clear refusal (exit 42) instead of dying silently, and
@@ -599,6 +604,80 @@ bash e2e-full-battery.sh --self-test
 # Run regression suite
 bash regression-tests.sh
 ```
+
+### E2E battery inputs
+
+`e2e-full-battery.sh` takes the daemon address and the token from the
+environment. Every input is optional, and an explicitly exported value always
+wins over the default:
+
+| Variable | Meaning | Default |
+|----------|---------|---------|
+| `BUNKER_BIN` | CLI binary under test (what the run certifies) | `/usr/local/bin/bunker` |
+| `BUNKERD_BIN` | daemon binary the battery starts in coexist mode | `/usr/local/bin/bunkerd` |
+| `BUNKER_TOKEN` | auth token for the daemon | `test-regression-token` |
+| `BUNKER_DAEMON_URL` | address the battery's `connect` targets | `http://localhost:$REST_PORT` |
+| `BUNKERD_REST_ADDR` | REST address: the port input and the port sections 1-13 check | `:18080` standalone, `:28081` coexist |
+| `BUNKERD_GRPC_ADDR` | gRPC address: the port input and the port sections 1-13 check | `:19090` standalone, `:29091` coexist |
+| `BUNKERD_COEXIST` | non-empty: start the battery's own daemon on its own ports and never sweep production users | unset (standalone take-over) |
+| `BUNKER_STRICT_BIN` | `1`: a binary certification MISMATCH is fatal before any host mutation | unset (MISMATCH is a loud note) |
+
+`--show-plan` prints the resolved values for all of these without root, and
+never prints the token — only whether it came from the environment or the
+default, plus a masked fingerprint.
+
+### CLI-state isolation
+
+The battery never reads or writes your CLI config. Every `bunker` invocation it
+makes runs with `BUNKER_HOME` **and** `HOME` pointed at a throwaway state dir
+under `/tmp` (printed at the start of the run), so `connect` registers into that
+dir instead of `~/.bunker/config.yaml`. `HOME` is relocated as well because a
+CLI build older than `BUNKER_HOME` resolves `~/.bunker` only. The operator's
+config file is fingerprinted before the first CLI call and re-checked at the end
+of the run: if it changed, the run fails loudly instead of reporting green.
+
+### Running against a deployed daemon
+
+Standalone mode talks to the daemon on the production ports. Pass the real
+token and address explicitly — the battery does not force the test token when
+you supply one:
+
+```bash
+export PROD_TOKEN='<the daemon auth token from /etc/bunkerd/config.yaml>'
+sudo BUNKER_TOKEN="$PROD_TOKEN" \
+     BUNKER_DAEMON_URL=http://localhost:18080 \
+     BUNKERD_REST_ADDR=:18080 \
+     BUNKERD_GRPC_ADDR=:19090 \
+     bash e2e-full-battery.sh
+```
+
+On a host that already runs the production daemon and you must not disturb it,
+use coexist mode with dedicated ports (this is what CI does):
+
+```bash
+sudo BUNKERD_COEXIST=1 BUNKERD_REST_ADDR=:28081 BUNKERD_GRPC_ADDR=:29091 \
+     bash e2e-full-battery.sh
+```
+
+### Deploying a build for the E2E gate
+
+The battery certifies whatever `BUNKER_BIN` resolves to, so a `VERIFY-PASS`
+transcript is only meaningful for the build you deployed. Install **both**
+binaries from the same build, then confirm the certification reads `MATCH`
+instead of a standing `MISMATCH`:
+
+```bash
+make build                                  # ./bunker and ./bunkerd from this checkout
+sudo install -m 0755 bunker  /usr/local/bin/bunker
+sudo install -m 0755 bunkerd /usr/local/bin/bunkerd
+sudo systemctl restart bunkerd              # the running daemon must match the install
+
+bash e2e-full-battery.sh --bin-report       # expect: verdict MATCH, exit 0
+```
+
+`--bin-report` prints the certification banner (binary path, the commit the
+binary reports, repo HEAD, verdict) with no side effects and exits non-zero on
+`MISMATCH`, so it doubles as the post-deploy check.
 
 ### Quality Gates
 
