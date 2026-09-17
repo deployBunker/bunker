@@ -1907,9 +1907,9 @@ if [ -n "$BUNKERD_COEXIST" ]; then
 else
     # Standalone: full take-over, so exercise the live daemon's own registry.
     # INT-CI-012: gate on a cheap health probe first, so an unreachable daemon
-    # reports ONE actionable cell instead of 'destroy of a never-seen ID
-    # unexpectedly succeeded' (a CLI that cannot reach the daemon is not a
-    # registry that lost its knowledge).
+    # reports ONE actionable cell instead of a cascade of not-found cells (a
+    # CLI that cannot reach the daemon is not a registry that lost its
+    # knowledge — it cannot report the documented idempotent result either).
     if daemon_gate "14. Durable Registry (GAP-070) live-daemon checks"; then
     GAP070_LIVE="${BUNKER_REGISTRY_PATH:-/var/lib/bunkerd/agents.jsonl}"
     bcli spawn gap070-idem > /dev/null 2>&1 || true
@@ -1935,12 +1935,48 @@ else
     else
         fail "repeated destroy failed (first=$FIRST_EXIT second=$SECOND_EXIT) — registry knowledge was lost"
     fi
-    # Never-seen IDs must still report not_found (non-force).
-    bcli destroy gap070-never-seen > /dev/null 2>&1
-    if [ "$?" -ne 0 ]; then
-        assert "destroy of a never-seen ID still reports not_found"
+    # Never-seen IDs: assert the three facts that actually validate GAP-070 for
+    # an ID the registry has never seen, each at the layer where it lives.
+    # The CLI maps not_found to exit 0 BY CONTRACT (internal/cli/destroy.go:80,90;
+    # internal/cli/SKILL.md; DOGFOOD-005) — the "reports not_found" claim lives at
+    # the RPC layer (404) and in the registry, which is what this cell asserts.
+    # The ID is unique PER RUN (pid + epoch): durable knowledge from an earlier
+    # run must never be able to make "never seen" a lie.
+    GAP070_NEVER_SEEN="gap070-never-seen-$$-$(date +%s)"
+    # (a) CLI half — the documented idempotent UX: exit 0 + the not-found
+    # message. Either half regressing must red this cell.
+    run_capture "destroy never-seen ($GAP070_NEVER_SEEN)" bcli destroy "$GAP070_NEVER_SEEN"
+    GAP070_NEVER_SEEN_EXIT="$RUN_CAPTURE_EXIT"
+    if [ "$GAP070_NEVER_SEEN_EXIT" -eq 0 ] && printf '%s' "$RUN_CAPTURE_OUT" | grep -q "not found"; then
+        assert "destroy of a never-seen ID reports not found and exits 0 (via $BUNKER_DAEMON_URL): $(printf '%s' "$RUN_CAPTURE_OUT" | head -1)"
     else
-        fail "destroy of a never-seen ID unexpectedly succeeded"
+        fail "destroy of a never-seen ID did not report the documented idempotent result (exit=$GAP070_NEVER_SEEN_EXIT via $BUNKER_DAEMON_URL): $(printf '%s' "$RUN_CAPTURE_OUT" | head -1)"
+    fi
+    # (b) Daemon half — the RPC itself really answers NotFound (HTTP 404), so an
+    # unreachable or wrong daemon can never be read as a registry bug.
+    if command -v curl > /dev/null 2>&1; then
+        run_capture "DestroyAgent RPC for a never-seen ID" curl -s -o /dev/null -w '%{http_code}' \
+            -X POST "${BUNKER_DAEMON_URL}/bunker.v1.Bunkerd/DestroyAgent" \
+            -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer ${BUNKER_TOKEN}" \
+            -d "{\"agent_id\":\"${GAP070_NEVER_SEEN}\"}"
+        GAP070_NEVER_SEEN_HTTP="$RUN_CAPTURE_OUT"
+        if [ "$GAP070_NEVER_SEEN_HTTP" = "404" ]; then
+            assert "the daemon's DestroyAgent RPC reports not_found (HTTP 404) for a never-seen ID at $BUNKER_DAEMON_URL"
+        else
+            fail "the daemon's DestroyAgent RPC at $BUNKER_DAEMON_URL answered '${GAP070_NEVER_SEEN_HTTP}' for a never-seen ID, want 404 (curl exit=$RUN_CAPTURE_EXIT)"
+        fi
+    else
+        fail "curl is unavailable, so the RPC-level not_found (404) half of GAP-070 could not be probed at $BUNKER_DAEMON_URL — install curl and re-run"
+    fi
+    # (c) Registry half — the attempt invented no record: a not-found report
+    # must not leave durable knowledge behind.
+    if [ ! -f "$GAP070_LIVE" ]; then
+        fail "no durable registry at $GAP070_LIVE, so the never-seen destroy could not be checked for an invented record"
+    elif [ "$(grep -c "\"agent_id\":\"${GAP070_NEVER_SEEN}\"" "$GAP070_LIVE" || true)" = "0" ]; then
+        assert "a never-seen destroy recorded nothing in the durable registry"
+    else
+        fail "a never-seen destroy wrote a durable registry record for $GAP070_NEVER_SEEN although it was reported as not found"
     fi
     if grep -q '"kind":"destroy"' "$GAP070_LIVE" && grep -q '"agent_id":"gap070-idem"' "$GAP070_LIVE"; then
         assert "destroy lifecycle event durably recorded"
