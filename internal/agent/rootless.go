@@ -311,7 +311,12 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 	// 35142150138). A successful daemon-reload IS the proof: it exercises the
 	// session bus end to end. Failure here must carry the manager state, the
 	// linger count and the journal — not a bare exec error.
-	if err := proveUserManagerReachable(ctx, username, uid, stdRuntimeDir, logger); err != nil {
+	//
+	// The probe recovers ONCE when it fails against an ACTIVE unit: that pair
+	// means the uid was recycled from a destroyed agent whose user manager is
+	// still live (INT-SPAWN-001). The healthy path is unchanged — a successful
+	// probe returns before any fingerprint query or destructive step.
+	if err := proveUserManagerReachableWithRecovery(ctx, username, uid, stdRuntimeDir, logger); err != nil {
 		return err
 	}
 
@@ -412,6 +417,123 @@ func proveUserManagerReachableErr(ctx context.Context, username string, uid int,
 	}
 	return fmt.Errorf("rootless-install: agent user manager unreachable before the rootless install for %s: daemon-reload through the session bus failed; %s; linger entries: %d; journal: %s",
 		username, state.describe(unit), lingerCount, journal)
+}
+
+// recycledUIDRecoveryMarker names the one-shot recycled-uid recovery in the
+// WARN and in the error text, so an operator (and a test) can grep for the
+// exact remedy that ran instead of parsing prose.
+const recycledUIDRecoveryMarker = "recycled-uid recovery"
+
+// recycledUIDRecoveryWarn is the single WARN emitted when the fingerprint
+// matches. It names the recovery, the user, the uid and the unit.
+const recycledUIDRecoveryWarn = recycledUIDRecoveryMarker +
+	": the unit is ACTIVE but the agent session cannot reach the manager; tearing the foreign manager down and bringing the manager up again"
+
+// userManagerRecoveryDiagTimeout bounds the recovery's own diagnostics (unit
+// state, linger count, journal excerpt). They run DETACHED from the caller's
+// request deadline: a nearly-expired deadline must not turn the very state that
+// triggered the recovery into "query-error: context deadline exceeded".
+const userManagerRecoveryDiagTimeout = 5 * time.Second
+
+// proveUserManagerReachableWithRecovery probes the agent's user manager and,
+// when the probe fails against an ACTIVE unit, recovers ONCE from a uid
+// recycled from a previously destroyed agent.
+//
+// FINGERPRINT: `systemctl is-active user@<uid>.service` reports active
+// (Result=success) while `su - <user> -c "systemctl --user daemon-reload"`
+// fails. Only one host state produces that pair — a uid whose PREVIOUS owner's
+// user manager is still running: the unit is active for the recycled uid but
+// the live manager belongs to the old user and does not serve the new one. It
+// is invisible to classifyRuntimeDir, because a recycled uid legitimately OWNS
+// its runtime directory, so the state is classified fresh and the INT-CI-008
+// reset never runs (tick 450 on bunker-mvp: spawn of regr-alpha died at stage
+// rootless-install exactly this way, with linger entries still held for the
+// destroyed agents).
+//
+// RECOVERY, in the INT-CI-008 state-consistent order and using the existing
+// seams: emit ONE WARN naming the fingerprint, run resetUserManagerState (stop
+// user@<uid>.service, loginctl terminate-user <uid>, unmount under the runtime
+// dir, stop user-runtime-dir@<uid>.service, remove the runtime dir), re-run the
+// SAME bring-up the healthy path uses so the directory, the linger entry and
+// the manager come back in the documented order, then probe a FINAL second
+// time.
+//
+// WHY ONE-SHOT: a manager that is still unreachable after a single teardown has
+// a host-level cause (linger churn starving the start, a runtime directory that
+// cannot be created) and looping teardowns would only multiply host damage
+// while hiding that cause. So the function never loops: exactly one recovery,
+// at most two probes total, and the second probe's failure returns the existing
+// attribution error extended with the fact that the recovery was attempted.
+// Too-hard failures are reported, not retried away.
+//
+// The healthy path is unchanged by construction: a successful probe returns nil
+// before the fingerprint query, so it performs no stop, no terminate-user and
+// no rm. A caller that already gave up (cancelled context) gets its own
+// cancellation back promptly instead of having a teardown started for it.
+func proveUserManagerReachableWithRecovery(ctx context.Context, username string, uid int, runtimeDir string, logger *slog.Logger) error {
+	// 1. Probe first: the healthy path takes zero destructive action.
+	if err := proveUserManagerReachable(ctx, username, uid, runtimeDir, logger); err == nil {
+		return nil
+	}
+
+	// A caller that gave up must surface promptly: starting a teardown on a
+	// dead context would only leave the foreign state half-removed.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	// 2. Fingerprint: an ACTIVE unit behind an unreachable session is the
+	// recycled-uid signature. The query runs detached and bounded so the
+	// caller's remaining budget cannot hollow out the diagnosis.
+	unit := userManagerUnitName(uid)
+	diagCtx, cancelDiag := context.WithTimeout(context.WithoutCancel(ctx), userManagerRecoveryDiagTimeout)
+	defer cancelDiag()
+	state := fetchUserManagerState(diagCtx, unit)
+	if state.active != "active" {
+		// Not the fingerprint: a manager that is not active owns no foreign
+		// state to tear down, so the existing attribution error is returned
+		// unchanged and no recovery is attempted.
+		return proveUserManagerReachableErr(ctx, username, uid, runtimeDir, logger)
+	}
+
+	// 3. Exactly ONE WARN naming the recovery, the user, the uid and the unit.
+	if logger != nil {
+		logger.Warn(recycledUIDRecoveryWarn,
+			"stage", "rootless-install",
+			"user", username,
+			"uid", uid,
+			"unit", unit,
+			"state", state.describe(unit),
+			"linger_entries", countLingerEntries(),
+			"journal", fetchUserManagerJournal(diagCtx, unit, logger),
+		)
+	}
+
+	// 4. Tear the foreign state down in the INT-CI-008 state-consistent order,
+	// then bring the manager back up in the SAME order the healthy path uses
+	// (reset → runtime dir → linger → manager start → bus wait). The bring-up
+	// re-runs classifyRuntimeDir against the directory the reset removed, so it
+	// classifies fresh and does not reset a second time.
+	resetUserManagerState(ctx, uid, runtimeDir, logger)
+	if err := bringUpUserManager(ctx, username, uid, runtimeDir, logger); err != nil {
+		// The teardown or the bring-up itself failed: report it wrapped with
+		// the recovery marker instead of probing a manager that was never
+		// brought up (that probe's error would name the symptom, not the step
+		// that broke).
+		return fmt.Errorf("%s: bringing the user manager back up for %s (uid %d) failed; the unit was torn down and re-created: %w",
+			recycledUIDRecoveryMarker, username, uid, err)
+	}
+
+	// 5. Second and FINAL probe — the same user-session daemon-reload the
+	// healthy path issues.
+	if err := proveUserManagerReachable(ctx, username, uid, runtimeDir, logger); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		return fmt.Errorf("%w; %s was attempted once (user@%d.service torn down and brought back up) and the agent session still cannot reach the manager",
+			proveUserManagerReachableErr(ctx, username, uid, runtimeDir, logger), recycledUIDRecoveryMarker, uid)
+	}
+	return nil
 }
 
 // isUserUnitNotFound reports whether the installer output carries the

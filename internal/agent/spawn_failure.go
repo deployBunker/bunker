@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -167,16 +168,24 @@ func ctxErrText(ctx context.Context) string {
 	return ""
 }
 
-// removeAgentUser is the rollback half of user creation: it runs
+// removeAgentUser is the rollback half of user creation: it clears the host
+// state that would block (or outlive) the removal, then runs
 // `userdel -r bunker-<id>` under the DETACHED rollback context and records
 // the outcome. When the first userdel leaves the user behind (classic cause:
 // live processes keep the home directory busy), the user's processes are
 // terminated and userdel is attempted a second time inside the same detached
 // context — a half-removed user is exactly the state INT-CI-005 reddened CI
 // with, so a lingering user must be loud AND retried.
+//
+// Before the first userdel it runs clearUserStateBeforeUserdel: the linger
+// entry spawn enabled and the uid's systemd user manager are exactly what kept
+// userdel failing with "user <name> is currently used by process <pid>" and
+// what outlived the removed user afterwards (INT-SPAWN-001).
 func removeAgentUser(ctx context.Context, agentID string, logger *slog.Logger, res *rollbackResult) {
 	username := "bunker-" + agentID
 	logger.Warn("rolling back: removing user", "agent_id", agentID, "username", username)
+
+	clearUserStateBeforeUserdel(ctx, username, logger, res)
 
 	userdel := func() error {
 		out, err := exec.CommandContext(ctx, "userdel", "-r", username).CombinedOutput()
@@ -205,6 +214,85 @@ func removeAgentUser(ctx context.Context, agentID string, logger *slog.Logger, r
 		return
 	}
 	res.ok("userdel " + username)
+}
+
+// clearUserStateBeforeUserdel removes the two pieces of host state that block
+// or outlive the rollback's `userdel -r` (INT-SPAWN-001), in the required order:
+//
+//  1. resolve the uid (best effort) — a user that no longer resolves has no uid
+//     whose manager could hold it busy, so the rollback goes straight to the
+//     existing userdel path;
+//  2. `loginctl disable-linger <username>` through the SAME seam Destroy uses
+//     (disableLinger — a second loginctl wrapper would be a second place for
+//     the flags to drift). spawn enables linger for every agent user and no
+//     rollback path ever disabled it: the entry survived the user, so
+//     /var/lib/systemd/linger kept holding bunker-regr-alpha, bunker-1dd412d0
+//     and bunker-ff86d69a for users that no longer existed;
+//  3. stop the uid's user manager (`systemctl stop user@<uid>.service`) and
+//     terminate the user's session (`loginctl terminate-user <uid>`). For a uid
+//     recycled from a previously destroyed agent this live manager is precisely
+//     what makes userdel exit 8 with "currently used by process 2168325";
+//  4. the caller's existing userdel + process-termination retry, unchanged.
+//
+// Every step is best-effort and recorded in the rollback result: a rollback
+// that aborted on a failing loginctl would leave MORE host state behind than
+// one that continues, and the operator still needs the failure in the
+// breadcrumb.
+func clearUserStateBeforeUserdel(ctx context.Context, username string, logger *slog.Logger, res *rollbackResult) {
+	u, err := lookupUser(username)
+	if err != nil {
+		logger.Warn("skipping linger/user-manager cleanup before userdel: user does not resolve",
+			"username", username, "error", err)
+		return
+	}
+
+	disableLingerBeforeUserdel(ctx, username, logger, res)
+	stopUserManagerBeforeUserdel(ctx, u.Uid, username, logger, res)
+}
+
+// disableLingerBeforeUserdel disables systemd lingering for the failing agent's
+// user through the shared disableLinger seam and records the outcome. Never
+// fatal: the caller continues to userdel regardless of the result.
+func disableLingerBeforeUserdel(ctx context.Context, username string, logger *slog.Logger, res *rollbackResult) {
+	out, err := disableLinger(ctx, username)
+	if err != nil {
+		res.err("loginctl disable-linger " + username + ": " + err.Error())
+		logger.Warn("loginctl disable-linger failed during spawn rollback (continuing to userdel)",
+			"username", username, "error", err, "output", string(out))
+		return
+	}
+	res.ok("loginctl disable-linger " + username)
+	logger.Info("disabled linger during spawn rollback", "username", username)
+}
+
+// stopUserManagerBeforeUserdel stops the systemd user manager for uid and
+// terminates the user's session, so a live (possibly FOREIGN, from a recycled
+// uid) manager cannot keep the username busy for userdel. Both calls go through
+// the userManagerRunner seam — the same one resetUserManagerState uses for these
+// exact commands. Never fatal: the outcome is recorded and the caller proceeds.
+func stopUserManagerBeforeUserdel(ctx context.Context, uid, username string, logger *slog.Logger, res *rollbackResult) {
+	parsed, err := strconv.Atoi(uid)
+	if err != nil {
+		logger.Warn("skipping user manager stop before userdel: uid is not numeric",
+			"username", username, "uid", uid, "error", err)
+		return
+	}
+	unit := userManagerUnitName(parsed)
+	if out, err := userManagerRunner(ctx, "systemctl", "stop", unit); err != nil {
+		res.err("systemctl stop " + unit + ": " + err.Error())
+		logger.Warn("could not stop the user manager before userdel (continuing)",
+			"username", username, "unit", unit, "error", err, "output", string(out))
+	} else {
+		res.ok("systemctl stop " + unit)
+	}
+	uidArg := strconv.Itoa(parsed)
+	if out, err := userManagerRunner(ctx, "loginctl", "terminate-user", uidArg); err != nil {
+		res.err("loginctl terminate-user " + uidArg + ": " + err.Error())
+		logger.Warn("could not terminate the user session before userdel (continuing)",
+			"username", username, "uid", uidArg, "error", err, "output", string(out))
+	} else {
+		res.ok("loginctl terminate-user " + uidArg)
+	}
 }
 
 // terminateUserProcesses kills every process owned by username (SIGKILL) so a
