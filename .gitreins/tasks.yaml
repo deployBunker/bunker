@@ -1876,3 +1876,16 @@ tasks:
   status: complete
   created_at: '2026-09-17T19:56:36.106546+00:00'
   completed_at: '2026-09-17T20:35:08.923287+00:00'
+- id: DF-BUNKER-18
+  title: 'Reconcile destroy path: daemon-instance identity in agent metadata (DF-BUNKER-13
+    residual)'
+  criteria:
+  - A test proves an orphan carrying ANOTHER daemon instance's ownership marker is
+    skipped in both adopt and destroy mode even when its persisted port range lies
+    INSIDE this daemon's pool (overlapping pools), while an agent with no marker keeps
+    today's behaviour byte-for-byte (disjoint-port foreign skip; malformed/metadata-missing
+    fail-closed destroy). go build ./... , go vet ./... and the full internal/agent
+    suite stay green, and the new tests are falsified against the pre-change source.
+  status: complete
+  created_at: '2026-09-17T21:15:46.632937+00:00'
+  completed_at: '2026-09-17T21:43:19.307566+00:00'
