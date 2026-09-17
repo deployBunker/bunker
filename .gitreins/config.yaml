@@ -14,17 +14,24 @@ defaults:
   max_time: "25m"
   # ESCALATION (2M -> 4M -> 8M -> 16M): each rung bought about one tick. Raised to
   # 16M on tick 451 after INT-SPAWN-001's Tier 2 hit "Cap exceeded: Input token budget
-  # (8.0M) exceeded (8.0M used)" -> INCOMPLETE verdict 73e7ecae. The durable fix is
-  # reducing what the evaluator re-sends per iteration (file_scope: full), not another rung.
+  # (8.0M) exceeded (8.0M used)" -> INCOMPLETE verdict 73e7ecae. NO FURTHER RUNG:
+  # INT-CI-014 measured the driver (docs/tier2-eval-budget.md) — the evaluator re-sends
+  # the whole conversation every iteration (+1,119 prompt tokens/iteration, so the
+  # cumulative counter is quadratic in iterations: 6.1M at 100 iterations, 16.4M at 167,
+  # i.e. the cap dies before max_iterations=200 can be reached). Another rung only buys
+  # ~+35 iterations; the fixes are file_scope + the compaction valve, below.
   # GAP-077 fix: bunker's repo size blew the 2M eval budget on every Tier 2 run
   # ("Cap exceeded: Input token budget (2.0M) exceeded (2.0M used)"), so no
-  # APPROVED verdict.json was ever produced. 8M gives headroom; compaction still
-  # fires proportionally at 90% of the budget.
+  # APPROVED verdict.json was ever produced.
   max_input_tokens: "16M"
   max_output_tokens: "384k"
   tool_call_weight: 0.1
-  code_context_budget: 0.40
-  compaction_threshold: 0.90
+  # NOTE: code_context_budget / compaction_threshold / file_scope do NOT belong here.
+  # engine/evaluator.py reads them from the `evaluator:` section only (it calls
+  # evaluator_cfg.get(key, <hard-coded fallback>)), so values set here are DEAD config.
+  # Until INT-CI-014 this block carried code_context_budget: 0.40 and
+  # compaction_threshold: 0.90 — neither ever reached the evaluator. They now live in
+  # the `evaluator:` block below, where the engine actually reads them.
 
 # ── Static guards (Tier 1) ─────────────────────────────────────
 guards:
@@ -57,6 +64,10 @@ tier1:
       - "test -z \"$(gofmt -l .)\""
 
 # ── Evaluator caps (Tier 2) ─────────────────────────────────────
+# The evaluator reads its knobs from THIS section only:
+#   file_scope, code_context_budget, compaction_threshold  -> evaluator_cfg.get(k, default)
+#   caps (max_iterations/max_time/max_input_tokens/...)    -> evaluator_cfg + defaults
+#   max_file_bytes                                         -> evaluator_cfg.get("max_file_bytes", 131072)
 evaluator:
   model: deepseek-v4-flash
   max_iterations: 200
@@ -64,6 +75,42 @@ evaluator:
   max_input_tokens: "16M"
   max_output_tokens: "384k"
   cap: "200/25m/16M/384k"
+  # ── Context-growth knobs (INT-CI-014, measured 2026-09-17) ────
+  # MEASURED (docs/tier2-eval-budget.md, instrumented runs e6d24301 + 616c1d33 on
+  # INT-CI-017 at HEAD 848625c): 23 LLM calls, per-call prompt 6,211 -> 29,323
+  # tokens (least-squares P0=5,435, +1,119/iteration), cumulative input 408,009
+  # (13-call repeat: 206,704 — same config, run-to-run variance 1.97x), 0
+  # compactions, 0 cap lines, verdict PASS.
+  #
+  # file_scope: full — the WORKING TREE is clean when the judge runs (work is
+  # committed before `gitreins task complete`), so file_scope: changed fed the
+  # judge an allowed set of 6 files, NONE of them the judged artifact
+  # (.github/workflows/ci.yml from commit fe8e1be): the only "changed" entries were
+  # board bookkeeping (.gitreins/tasks.yaml, .coding-hermes/board/events.jsonl) plus
+  # go.mod/go.sum/Makefile/config.yaml. Measured cost of that mismatch: the judge's
+  # FIRST read_file on the artifact was rejected ("File not in scope"), and it then
+  # re-read ci.yml through 4 run_command slices in 5 extra iterations
+  # (4,359+4,378+4,373+2,354 chars), every one of which is re-sent on every
+  # subsequent iteration. Scope=changed does not bound read SIZE (max_file_bytes
+  # does), so it only withholds files the judge is asked to verify.
+  file_scope: full
+  # code_context_budget: relocated from `defaults:` (where it was dead). Measured
+  # non-binding: the pre-loaded code context was 10,973 chars ~ 3,657 tokens, while
+  # the live cap is 0.40 x 16M = 6.4M tokens. No credit claimed for tokens; it is
+  # here so the knob means what it says.
+  code_context_budget: 0.40
+  # compaction_threshold: 0.005 -> the valve fires when a SINGLE prompt exceeds
+  # 0.005 x 16M = 80,000 tokens. The engine multiplies this ratio by
+  # max_input_tokens (not by the model context window; deepseek-v4-flash = 1M), so
+  # the shipped 0.90 meant 14.4M tokens of single-prompt context = 491x the largest
+  # prompt measured (29,323) => the valve could never fire, and compaction is the
+  # ONLY mechanism that resets the cumulative input counter
+  # (eval_cap.reset_context_tracking). At 80,000 tokens: iterations per segment
+  # L = (80,000 - 5,435)/1,119 + 1 = 67, so the per-segment counter peaks at
+  # 2.84M = 17.7% of the cap (5.6x margin); a full 200-iteration run then fires 2
+  # compactions, peaks at a 2.92M counter and costs 8.44M real input tokens instead
+  # of 23.35M (-64%) — and no longer trips the cap at iteration 165.
+  compaction_threshold: 0.005
 
 # ── Force legacy evaluator path (avoid default pipeline) ────────
 pipeline:
