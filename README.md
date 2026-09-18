@@ -583,9 +583,16 @@ the line reads `not reported` for a daemon that predates the probe — a missing
 line is never a clean host. `Residue:` showing counts while `Agents: 0/N` shows
 nothing registered is the leak fingerprint: check the daemon's
 `/var/lib/bunkerd/spawn-failures.jsonl` breadcrumb journal, remove the leftover
-state, and only then spawn again. A `Probe: partial` line means at least one
-plane could not be read (usually a daemon that is not root), so the counts are a
-lower bound rather than zero.
+state, and only then spawn again. Two of those planes have a local-only
+maintenance command — run them on the daemon host, as root: `bunker homes`
+reports every `/home/bunker-*` entry as STALE (its user no longer exists) or
+KEPT (its user still exists) with the stale set's on-disk size, and
+`bunker homes prune` removes exactly the stale ones — never a home whose user
+still exists, never an entry that does not match `bunker-*`, and nothing at all
+after an inconclusive user lookup (fail-closed); `bunker linger prune` does the
+same for the stale `systemd` linger entries. Take `--dry-run` first. A
+`Probe: partial` line means at least one plane could not be read (usually a
+daemon that is not root), so the counts are a lower bound rather than zero.
 
 Follow the [Quick Start provisioning sequence](#provision-host-isolation-before-spawning)
 on the daemon host. The installer is idempotent and does not touch `/etc/fstab`.
