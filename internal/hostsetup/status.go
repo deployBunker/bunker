@@ -34,11 +34,12 @@ type Status struct {
 }
 
 // DaemonSkewString renders the skew field for Status.String(): the state,
-// the installed revision, and the required minimum.
+// the installed revision, and the requirement — the reported capability first,
+// the version floor second (the floor is not a capability guarantee).
 func (s Status) DaemonSkewString() string {
-	detail := "required daemon >= " + MinDaemonVersion
+	detail := "required daemon capability " + GrantCapability + " (version floor " + MinDaemonVersion + ", secondary)"
 	if s.DaemonSkewBuild.Binary != "" {
-		detail += " — installed " + s.DaemonSkewBuild.Binary + ": " + s.DaemonSkewBuild.SkewVersion()
+		detail += " — installed " + s.DaemonSkewBuild.Binary + ": " + s.DaemonSkewBuild.SkewVersion() + ", caps " + s.DaemonSkewBuild.capabilityList()
 	}
 	return string(s.DaemonSkew) + " (" + detail + ")"
 }

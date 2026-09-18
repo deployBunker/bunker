@@ -227,8 +227,8 @@ Without --apply the command only prints the plan.`,
 	// Kept as an alias for scripts written against the first GAP-075 revision.
 	cmd.Flags().StringVar(&agentGroup, "scratch-group", hostsetup.DefaultScratchGroup, "Deprecated alias of --agent-group")
 	cmd.Flags().StringVar(&tmpInstRoot, "private-tmp-root", hostsetup.DefaultTmpInstanceRoot, "pam_namespace /tmp instance parent")
-	cmd.Flags().StringVar(&daemonBinary, "daemon-binary", hostsetup.DefaultDaemonBinary, "Installed daemon binary the version-skew probe inspects (must report >= "+hostsetup.MinDaemonVersion+", the release that added the spawn-side isolation grant)")
-	cmd.Flags().BoolVar(&allowDaemonSkew, "allow-daemon-skew", false, "Proceed even when the installed daemon is older than "+hostsetup.MinDaemonVersion+" (prints a loud warning; agents it spawns will be denied SSH sessions until the daemon is upgraded)")
+	cmd.Flags().StringVar(&daemonBinary, "daemon-binary", hostsetup.DefaultDaemonBinary, "Installed daemon binary the capability/skew probe inspects (must report the "+hostsetup.GrantCapability+" capability in --version; the "+hostsetup.MinDaemonVersion+" version floor is a secondary check)")
+	cmd.Flags().BoolVar(&allowDaemonSkew, "allow-daemon-skew", false, "Proceed even when the installed daemon does not prove the "+hostsetup.GrantCapability+" capability or is older than "+hostsetup.MinDaemonVersion+" (prints a loud warning; agents it spawns will be denied SSH sessions until the daemon is upgraded)")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Emit machine-readable output (--status)")
 
 	return cmd
@@ -252,12 +252,14 @@ func writeJSON(out io.Writer, opts hostsetup.Options, st hostsetup.Status) error
 	payload := map[string]any{
 		"isolated": st.Isolated(),
 		"daemon_skew": map[string]any{
-			"state":             string(st.DaemonSkew),
-			"minimum_version":   hostsetup.MinDaemonVersion,
-			"installed_binary":  st.DaemonSkewBuild.Binary,
-			"installed_version": st.DaemonSkewBuild.Version,
-			"installed_commit":  st.DaemonSkewBuild.Commit,
-			"installed_built":   st.DaemonSkewBuild.Built,
+			"state":               string(st.DaemonSkew),
+			"required_capability": hostsetup.GrantCapability,
+			"minimum_version":     hostsetup.MinDaemonVersion,
+			"installed_binary":    st.DaemonSkewBuild.Binary,
+			"installed_version":   st.DaemonSkewBuild.Version,
+			"installed_commit":    st.DaemonSkewBuild.Commit,
+			"installed_built":     st.DaemonSkewBuild.Built,
+			"installed_caps":      st.DaemonSkewBuild.Capabilities,
 		},
 		"private_tmp": map[string]any{
 			"module_present":            st.TmpNamespace.ModulePresent,

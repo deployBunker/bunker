@@ -16,8 +16,10 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 
+	"github.com/deployBunker/bunker/internal/agent"
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/server"
 	"github.com/deployBunker/bunker/internal/version"
@@ -36,11 +38,17 @@ func main() {
 // `version` positional verb both call it, so the two forms stay byte-identical
 // and use one implementation. internal/hostsetup.ParseDaemonVersionOutput
 // parses exactly this shape (a "bunkerd <version>" line, then lines prefixed
-// commit: / built:), so field order and indentation are load-bearing.
+// commit: / built: / caps:), so field order and indentation are load-bearing.
+//
+// caps: carries the spawn-side capability tokens this build reports
+// (internal/agent.SpawnCapabilities). The installer's daemon-skew probe
+// REQUIRES the isolation-grant token, because a version number alone cannot
+// prove a capability — a bare `go build` reports the package default version.
 func printVersion(w io.Writer) {
 	fmt.Fprintf(w, "bunkerd %s\n", version.Version)
 	fmt.Fprintf(w, "  commit:     %s\n", version.Commit)
 	fmt.Fprintf(w, "  built:      %s\n", version.BuildDate)
+	fmt.Fprintf(w, "  caps:       %s\n", strings.Join(agent.SpawnCapabilities(), ","))
 	fmt.Fprintf(w, "  go version: %s\n", runtime.Version())
 	fmt.Fprintf(w, "  platform:   %s/%s\n", runtime.GOOS, runtime.GOARCH)
 }

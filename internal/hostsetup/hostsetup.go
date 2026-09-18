@@ -136,9 +136,11 @@ type Options struct {
 
 	// DaemonBinary is the installed daemon binary the version-skew probe
 	// (INT-DEMO-001) inspects before installing: `<DaemonBinary> --version`
-	// must report at least MinDaemonVersion, because older daemons do not
-	// grant isolation-group membership at spawn time and the fail-closed PAM
-	// precondition would then deny every agent session. It defaults to the
+	// must report the isolation-grant capability (GrantCapability), because a
+	// daemon that does not grant isolation-group membership at spawn time
+	// leaves the fail-closed PAM precondition denying every agent session.
+	// The capability is the proof; MinDaemonVersion is a secondary floor for
+	// daemons that report it. It defaults to the
 	// same path internal/systemd uses for the unit ExecStart, so the probe
 	// inspects the binary systemd actually runs. Apply gates on it; the
 	// uninstall path never does.

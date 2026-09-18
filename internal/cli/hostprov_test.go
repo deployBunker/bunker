@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/deployBunker/bunker/internal/hostsetup"
 )
 
 // TestHostProvisionCommand_DryRunAndStatus runs the installer in its two
@@ -132,7 +134,7 @@ func TestHostProvisionCommand_DryRunAndStatus(t *testing.T) {
 		// the daemon-skew decision tests in internal/hostsetup.
 		dir := t.TempDir()
 		bin := filepath.Join(dir, "bunkerd-version-fixture")
-		script := "#!/bin/sh\necho 'bunkerd 0.1.4'\necho '  commit:     abcdef0'\necho '  built:      2026-09-12T00:00:00Z'\n"
+		script := "#!/bin/sh\necho 'bunkerd 0.1.4'\necho '  commit:     abcdef0'\necho '  built:      2026-09-12T00:00:00Z'\necho '  caps:       " + hostsetup.GrantCapability + "'\n"
 		if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
 			t.Fatal(err)
 		}

@@ -321,10 +321,27 @@ new host isolation rules: an older daemon can create agents without the required
 `bunker-agents` membership, and the fail-closed PAM rules then deny their SSH
 sessions (including exec, cp and mount).
 
-The current installer refuses a detected daemon version below **0.1.4**. This
-version floor is not a capability guarantee: the `v0.1.4` tag predates the
-isolation implementation, and matching version numbers alone do not prove the
-running daemon is current. Build CLI and daemon from the same current checkout.
+The current installer requires the daemon to prove the spawn-side isolation
+grant by **reporting the `isolation-grant` capability** in its own version block
+(printed by both `bunkerd --version` and `bunkerd version`):
+
+```text
+$ ./bunkerd --version
+bunkerd 0.1.4
+  commit:     923c4be
+  built:      2026-09-18T23:46:15Z
+  caps:       isolation-grant
+  go version: go1.26.5
+  platform:   linux/amd64
+```
+
+A daemon that does not report `caps: isolation-grant` is refused at **any**
+version, because a version number cannot prove a capability: the `v0.1.4` tag
+predates the isolation implementation, and a plain `go build` reports the package
+version whatever the tree contains — a `v0.1.4` binary self-reports `0.1.4` while
+carrying no grant. The **0.1.4** version floor is a legacy minimum kept as a
+secondary check (it still applies when the capability *is* reported) and is not a
+capability guarantee. Build CLI and daemon from the same current checkout.
 An absent, unreadable, timed-out or unparseable daemon version produces an
 **UNKNOWN warning**, not proof of compatibility. Resolve that warning rather
 than bypassing it with `--allow-daemon-skew`.
@@ -570,9 +587,10 @@ and enforced, `HOST-SHARED` (with a prominent warning) when agent sessions see
 the host `/tmp`, `unknown` when the state cannot be verified (e.g. the daemon
 is not root), and `not reported` when the daemon predates capability
 reporting. The isolation feature is **build-dependent**: the `v0.1.4` release
-predates both the isolation implementation and capability reporting. Build and
-run a daemon from the same current checkout as the CLI; do not infer isolation
-from a version number alone.
+predates both the isolation implementation and capability reporting, which is why
+`host-provision` requires the daemon to report the `isolation-grant` capability
+rather than a version number. Build and run a daemon from the same current
+checkout as the CLI; do not infer isolation from a version number alone.
 
 `bunker status` also reports the daemon's **residue inventory**: orphan users,
 orphan homes, orphan keys and stale `systemd` linger entries — host state left

@@ -161,6 +161,26 @@ func (m *AgentManager) hostSetup() hostsetup.Options {
 	return o.WithDefaults()
 }
 
+// IsolationGrantCapability is advertised in `bunkerd --version` by any build
+// that ships the spawn-side isolation grant (provisionIsolation in this file,
+// StageIsolationProvision in manager_spawn.go). The installer's daemon-skew
+// probe REQUIRES this token, because a version number cannot prove the grant:
+// a bare `go build` of any revision reports the package default version, so a
+// binary claiming a version like 0.1.4 may carry no grant at all.
+//
+// The token is declared HERE, in the same package as the grant it proves, so a
+// build without the grant cannot advertise it: dropping provisionIsolation
+// drops this constant with it. internal/hostsetup keeps its own literal copy
+// (it cannot import this package — internal/agent imports internal/hostsetup,
+// so the reverse would be an import cycle); a test in this package pins the two
+// copies equal.
+const IsolationGrantCapability = "isolation-grant"
+
+// SpawnCapabilities lists the spawn-side capability tokens this build reports
+// in `bunkerd --version`. It is the single source of the advertised list, so
+// adding a token here is the only way to advertise one.
+func SpawnCapabilities() []string { return []string{IsolationGrantCapability} }
+
 // provisionIsolation provisions the agent-side half of the boundary.
 //
 // The agent group membership comes FIRST and is REQUIRED: the sshd pam_exec

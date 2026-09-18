@@ -143,28 +143,46 @@ Daemon version skew (`daemonversion.go`, INT-DEMO-001):
   254) while the agent is reported running — the live demo host lockout of
   2026-09-16. The skew check makes installing the hardening over such a daemon
   loud instead of silent.
-- `MinDaemonVersion` (`0.1.4`) — the first release carrying the grant; the
-  constant's comment names WHY. `Version` is the compared field (not `Commit`,
-  which is an unordered SHA, and not `Built`, which stamps the build machine):
-  it is injected by Makefile ldflags on release builds and falls back to the
-  module version for `go install`, so one comparison covers both binary kinds.
-  `versionAtLeast` compares dot-separated numerics (leading `v` ignored);
-  "unknown"/unparseable versions are NOT comparable and fail safe.
+- `MinDaemonVersion` (`0.1.4`) — a SECONDARY version floor, **not** a capability
+  guarantee (GAP-082 corrected a comment that claimed v0.1.4 was "the first
+  release that carries the grant" — it is not: `git ls-tree --name-only v0.1.4
+  internal/` lists no `hostsetup`, the package was added in 207e0e5 on
+  2026-09-16, and `git tag --contains 207e0e5` is empty). `Version` is the
+  compared field (not `Commit`, which is an unordered SHA, and not `Built`,
+  which stamps the build machine): it is injected by Makefile ldflags on release
+  builds and falls back to the module version for `go install`, so one
+  comparison covers both binary kinds. `versionAtLeast` compares dot-separated
+  numerics (leading `v` ignored); "unknown"/unparseable versions are NOT
+  comparable and fail safe.
+- `GrantCapability` (`isolation-grant`) — the token the probe REQUIRES in the
+  daemon's `caps:` line; a literal here because internal/agent imports
+  internal/hostsetup (the reverse would be an import cycle). It is declared next
+  to the grant it proves (`internal/agent.IsolationGrantCapability` /
+  `SpawnCapabilities()`, printed by `cmd/bunkerd/main.go printVersion`), and
+  `internal/agent/isolation_capability_test.go` pins the two copies equal.
+  `GrantMinTag` names the first release tag whose tree carries the token; it is
+  EMPTY because no released tag does today, and `TestGrantFloorMatchesReality`
+  fails if the constant and the tag list disagree in either direction.
+- `DaemonBuild.Capabilities` + `HasCapability(name)` — the parsed `caps:` tokens
+  (case-insensitive, trimmed) and the query used by the decision.
 - `ProbeDaemonVersion(ctx)` — runs `<DaemonBinary> --version` under
-  `DaemonProbeTimeout` (5s) and parses the `bunkerd`/`commit:`/`built:` block
-  (`ParseDaemonVersionOutput`). It NEVER fails the installer; it returns
-  `DaemonSkewOK` (equal/newer), `DaemonSkewSkewed` (older), or
-  `DaemonSkewUnknown` (binary absent / not executable / timed out /
-  unparseable) with a diagnostic error. A host may be provisioned before the
-  daemon exists, so UNKNOWN warns and proceeds — it never refuses.
+  `DaemonProbeTimeout` (5s) and parses the `bunkerd`/`commit:`/`built:`/`caps:`
+  block (`ParseDaemonVersionOutput`). It NEVER fails the installer; the state
+  comes from `daemonSkewState`: `DaemonSkewOK` (capability present AND version
+  >= floor), `DaemonSkewSkewed` (capability ABSENT at any version, or present
+  below the floor), or `DaemonSkewUnknown` (binary absent / not executable /
+  timed out / unparseable) with a diagnostic error. A host may be provisioned
+  before the daemon exists, so UNKNOWN warns and proceeds — it never refuses.
 - `CheckDaemonSkew(ctx, allow, warn)` — the installer decision: SKEWED returns
-  the refusal (one actionable multi-line message: installed version/commit/
-  built, the required minimum, the operator-visible failure mode — bare exit
-  254 on exec/mount/cp against running agents — and BOTH remediations: upgrade
-  the daemon, or `bunker host-provision --uninstall --apply` back to a shared
+  the refusal (one actionable multi-line message: the installed revision, the
+  missing `isolation-grant` capability plus what the daemon DID report, the
+  operator-visible failure mode — bare exit 254 on exec/mount/cp against running
+  agents — and BOTH remediations: upgrade to a daemon that reports the
+  capability, or `bunker host-provision --uninstall --apply` back to a shared
   /tmp; never hand-delete only the PAM drop-in, the remaining pam_exec
-  precondition fails closed); `allow` (`--allow-daemon-skew`) proceeds with a
-  loud WARNING; UNKNOWN prints the WARNING and proceeds; OK is silent.
+  precondition fails closed); the `0.1.4` floor is named only as the secondary
+  check it is. `allow` (`--allow-daemon-skew`) proceeds with a loud WARNING;
+  UNKNOWN prints the WARNING and proceeds; OK is silent.
 - `Apply` gates on the check BEFORE anything is planned or written; the
   UNINSTALL path is deliberately never gated — returning the host to a shared
   /tmp must always remain possible (and never probes the daemon). The gate reads
@@ -176,16 +194,19 @@ Daemon version skew (`daemonversion.go`, INT-DEMO-001):
   field existed, `Apply` ran its own check with `allow` hardcoded false, so the
   flag warned and was then refused anyway (rc=1) and both the flag and its help
   text were lies (2bfb638).
-- `CheckDaemonSkew(ctx, allow, warn)` / `DaemonSkew(build)` / `DaemonSkewHint(state, build, probeErr)` — the decision and its two operator messages: `DaemonSkew` IS the refusal error (naming the installed revision, the required minimum, the failure mode and both remediations), `DaemonSkewHint` is the one-line WARNING for an override or an UNKNOWN probe, and `CheckDaemonSkew` wires them (OK silent, SKEWED → refusal or warning per `allow`, UNKNOWN → warning and proceed).
-- `DaemonBuild` (`Binary` / `Version` / `Commit` / `Built`, with `SkewVersion()` rendering them for messages) and `ParseDaemonVersionOutput(out)` — what the probe read and the lenient parser for the `bunkerd`/`commit:`/`built:` block (indentation- and leading-`v`-tolerant; at least a parseable version is required, and a missing or `unknown` version is an error, i.e. UNKNOWN — never a silent pass).
+- `CheckDaemonSkew(ctx, allow, warn)` / `DaemonSkew(build)` / `DaemonSkewHint(state, build, probeErr)` — the decision and its two operator messages: `DaemonSkew` IS the refusal error (naming the installed revision, the REQUIRED `isolation-grant` capability, the reported capabilities, the failure mode and both remediations; it refuses on the same `daemonSkewState` the probe uses, so the predicate and the decision cannot drift), `DaemonSkewHint` is the one-line WARNING for an override or an UNKNOWN probe, and `CheckDaemonSkew` wires them (OK silent, SKEWED → refusal or warning per `allow`, UNKNOWN → warning and proceed).
+- `DaemonBuild` (`Binary` / `Version` / `Commit` / `Built` / `Capabilities`, with `SkewVersion()` and `HasCapability()` for messages and decisions) and `ParseDaemonVersionOutput(out)` — what the probe read and the lenient parser for the `bunkerd`/`commit:`/`built:`/`caps:` block (indentation- and leading-`v`-tolerant; at least a parseable version is required, and a missing or `unknown` version is an error, i.e. UNKNOWN — never a silent pass). The `caps:` value splits on commas and/or whitespace (`parseCapabilities`); an EMPTY `caps:` line means "no capabilities" and is not a parse error — it is refused by the capability check.
 - `Status` carries `DaemonSkew` + `DaemonSkewBuild` (`--status` renders
   `installed daemon (version skew)` /
-  `daemon vs minimum: OK|SKEWED|UNKNOWN (required daemon >= 0.1.4 — installed
-  <path>: version X, commit Y, built Z)`); the CLI `--status --json` payload
-  carries the same facts under `daemon_skew`. `Status.DaemonSkewString()` is the
-  single renderer of that reading (state + required minimum + the installed
-  revision when the probe named a binary), so the text and the `--json` payload
-  cannot drift apart.
+  `daemon vs minimum: OK|SKEWED|UNKNOWN (required daemon capability
+  isolation-grant (version floor 0.1.4, secondary) — installed <path>: version X,
+  commit Y, built Z, caps none reported|<tokens>)`); the CLI `--status --json`
+  payload carries the same facts under `daemon_skew` (`state`,
+  `required_capability`, `minimum_version`, `installed_*`, `installed_caps`).
+  `Status.DaemonSkewString()` is the
+  single renderer of that reading (state + the required capability + the floor +
+  the installed revision when the probe named a binary), so the text and the
+  `--json` payload cannot drift apart.
 
 Orchestration (`status.go`):
 
@@ -199,9 +220,10 @@ Orchestration (`status.go`):
   separately: a wide scratch root does not deny sessions, it silently widens the
   exchange tree, so it is flagged instead of folded into the isolation verdict.
 - `Apply(ctx, apply)` — daemon-skew check (INT-DEMO-001, `daemonversion.go`:
-  refuse an installed daemon older than `MinDaemonVersion` before anything is
-  planned or written) + scratch + namespace + host-/tmp cap in one call; with
-  `apply=false` it renders the plan and mutates nothing.
+  refuse an installed daemon that does not report the `isolation-grant`
+  capability, at any version, before anything is planned or written; the `0.1.4`
+  floor applies on top of it) + scratch + namespace + host-/tmp cap in one call;
+  with `apply=false` it renders the plan and mutates nothing.
 
 ## Conventions
 
@@ -277,19 +299,35 @@ Orchestration (`status.go`):
   expected"), silently skipping the over-cap ENOSPC proof. The battery's
   capacity checks are therefore AUTHORITATIVE: over-cap behaviour is asserted
   with real bytes, not human strings.
-- `daemonversion_test.go` (INT-DEMO-001, 207e0e5) drives the skew check through
-  the `DaemonVersionRunner` seam (never a real binary, so a host carrying a stale
-  `/usr/local/bin/bunkerd` still runs the suite): `TestCheckDaemonSkew_DecisionTable`
-  (OK/SKEWED/UNKNOWN × allow/no-allow), `_UnknownWarnsAndNamesTheProbe`,
-  `TestApply_RefusesOlderDaemonBeforeAnyMutation` (nothing is planned or written),
-  `TestApply_ProbeFailureWarnsAndProceeds`, `TestUninstall_NeverGatedByDaemonSkew`,
-  `TestParseDaemonVersionOutput`, `TestVersionAtLeast` and `TestDaemonSkewHint`.
+- `daemonversion_test.go` (INT-DEMO-001, 207e0e5; capability gate GAP-082) drives
+  the skew check through the `DaemonVersionRunner` seam (never a real binary, so
+  a host carrying a stale `/usr/local/bin/bunkerd` still runs the suite):
+  `TestCheckDaemonSkew_DecisionTable` (OK/SKEWED/UNKNOWN × allow/no-allow, with
+  the capability rows that make the gate real: a caps-less 0.1.4 block — the live
+  v0.1.4 shape — and a caps-less 0.2.0 block are SKEWED/refused, an empty or
+  unrelated `caps:` line is refused, the token at/below the floor splits
+  OK/SKEWED, and a probe failure stays UNKNOWN), `TestCapabilityIsAuthoritativeOverVersion`
+  (the same version with and without the token), `_UnknownWarnsAndNamesTheProbe`,
+  `TestApply_RefusesOlderDaemonBeforeAnyMutation` (nothing is planned or
+  written), `TestApply_RefusesLegacyDaemonWithoutTheCapability` (the v0.1.4 shape
+  is refused before any host command), `TestApply_ProbeFailureWarnsAndProceeds`,
+  `TestUninstall_NeverGatedByDaemonSkew`, `TestParseDaemonVersionOutput` +
+  `TestParseDaemonVersionOutput_CapsLine` (the caps grammar: comma/space
+  separated, indentation, case preserved, empty value = none),
+  `TestDaemonBuildHasCapability`, `TestVersionAtLeast`,
+  `TestDaemonSkewHint`, `TestDaemonSkewStringNamesTheCapability`,
+  `TestGrantFloorMatchesReality` (repo invariant: `GrantMinTag` vs `git tag` —
+  skips when git is absent, the cwd is not a work tree, or no tags are visible)
+  and `TestGrantProbeAgainstRealBinary` (opt-in via `BUNKER_TEST_DAEMON_BINARY`:
+  execs a REAL binary through the whole probe).
   The WIRED half lives one package up, in `internal/cli/hostprov_skew_test.go`
-  (2bfb638): it drives `bunker host-provision` end to end via `ExecuteContext`
-  against a `--version` fixture script and asserts `--allow-daemon-skew` actually
-  proceeds with exactly ONE warning — the test that FAILS against the pre-fix tree,
-  when `Apply` ignored the override. A library-only decision table cannot catch
-  that class (pitfall 13).
+  (2bfb638; capability case GAP-082): it drives `bunker host-provision` end to end
+  via `ExecuteContext` against a `--version` fixture script (with and without a
+  caps line) and asserts `--allow-daemon-skew` actually proceeds with exactly ONE
+  warning — the test that FAILS against the pre-fix tree, when `Apply` ignored the
+  override — plus `TestHostProvisionCommand_RefusesDaemonWithoutTheCapability`
+  for the v0.1.4 shape. A library-only decision table cannot catch that class
+  (pitfall 13).
 - `ciwiring_test.go` (06865bc) statically pins WHICH binaries the CI regression
   suite exercises. On run 34778344738 the self-hosted runner resolved the bare
   `bunker`/`bunkerd` invocations of `regression-tests.sh` through PATH to the
@@ -359,16 +397,31 @@ Orchestration (`status.go`):
     driving both the fail-closed matrix and the status matrix: a row the helper
     denies but `--status` calls isolated is a false green, and that is exactly
     the bug the third revision fixed.
-12. **Host-side and daemon-side hardening versions skew, and the skew is
-    silent until it locks every agent out.** Any host config that DEPENDS on a
-    daemon capability (here: the spawn-time isolation-group grant) must probe
-    the installed daemon before installing, refuse on a skew older than the
-    documented minimum, and treat a failed probe as UNKNOWN (warn, never
-    refuse — the daemon may legitimately not be installed yet). Keep the
-    uninstall path exempt: the escape hatch must outlive any skew. Test the
-    daemon probe through its own seam (`DaemonVersionRunner`), never the real
-    binary — a dev host with a stale bunkerd must not fail the suite (a stale
-    `0.1.3` binary is exactly what the INT-DEMO-001 guard refuses).
+12. **A VERSION cannot prove a CAPABILITY — require a build-derived token, and
+    keep the version only as a secondary check (GAP-082).** `daemonversion.go`
+    claimed `v0.1.4` was "the first release that carries the grant"; it was not
+    (`git ls-tree --name-only v0.1.4 internal/` has no `hostsetup`; the package
+    was added in 207e0e5 on 2026-09-16 and no tag contains it), and because a
+    plain `go build` reports the package default version
+    (`internal/version.Version = "0.1.4"`), the probe answered OK for exactly the
+    build that carries no grant — a false green that could only be found by
+    reading a tag tree. Rules: (a) advertise the capability from the package that
+    OWNS the code the capability depends on (`internal/agent.IsolationGrantCapability`
+    next to `provisionIsolation`/`StageIsolationProvision`), so a build without
+    that code cannot report it; (b) parse the token, require it, and make an
+    ABSENT token SKEWED at any version while the version floor still applies when
+    the token IS present; (c) when the two halves must live in different packages
+    (import direction forbids the reverse), keep a literal copy and PIN the two
+    equal with a test in the importing package; (d) pin the constant that names
+    "the first release carrying it" against the repository's real tag list with a
+    test that SKIPS (never fails) when git/tags are unavailable — otherwise the
+    constant silently rots; (e) a probe path that cannot prove the capability
+    (absent binary, unparseable output) stays UNKNOWN/warn, never refuse — a host
+    may be provisioned before the daemon exists. Keep the uninstall path exempt:
+    the escape hatch must outlive any skew. Test the daemon probe through its own
+    seam (`DaemonVersionRunner`) so a dev host with a stale bunkerd cannot fail
+    the suite, and add ONE opt-in test (`BUNKER_TEST_DAEMON_BINARY`) that execs a
+    real binary when a built one is available.
 13. **A gate that re-checks the condition with the OVERRIDE HARDCODED is a lie
     (2bfb638).** `Apply` used to run
     `o.CheckDaemonSkew(ctx, false, io.Discard)` internally, so the CLI's

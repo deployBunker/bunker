@@ -14,7 +14,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/deployBunker/bunker/internal/agent"
 	"github.com/deployBunker/bunker/internal/config"
+	"github.com/deployBunker/bunker/internal/hostsetup"
 )
 
 // TestBunkerdFlags exercises the entrypoint flag surface: --help, --version,
@@ -379,7 +381,7 @@ func TestBunkerdPositionalArgs(t *testing.T) {
 	}
 
 	// The positional verb must reuse the --version implementation, so its whole
-	// block is byte-identical to the flag form: five lines, same field order and
+	// block is byte-identical to the flag form: six lines, same field order and
 	// indentation, because internal/hostsetup.ParseDaemonVersionOutput parses
 	// exactly that shape.
 	t.Run("version verb output matches --version byte for byte", func(t *testing.T) {
@@ -399,13 +401,38 @@ func TestBunkerdPositionalArgs(t *testing.T) {
 		if posOut != flagOut {
 			t.Errorf("positional version output differs from --version:\n--version:  %q\npositional: %q", flagOut, posOut)
 		}
-		if got := strings.Count(strings.TrimRight(posOut, "\n"), "\n") + 1; got != 5 {
-			t.Errorf("version block has %d lines, want 5: %q", got, posOut)
+		if got := strings.Count(strings.TrimRight(posOut, "\n"), "\n") + 1; got != 6 {
+			t.Errorf("version block has %d lines, want 6: %q", got, posOut)
 		}
-		for _, field := range []string{"commit:", "built:", "go version:", "platform:"} {
+		for _, field := range []string{"commit:", "built:", "caps:", "go version:", "platform:"} {
 			if !strings.Contains(posOut, field) {
 				t.Errorf("version block missing %q: %q", field, posOut)
 			}
+		}
+	})
+
+	// GAP-082: the block must ROUND-TRIP through the parser the installer's
+	// daemon-skew probe uses, and it must advertise the spawn-side capability.
+	// A version number cannot prove the grant, so this line is the proof the
+	// probe reads; breaking it (a renamed prefix, a reordered line the parser
+	// stops at, a dropped token) makes the installer refuse a healthy daemon.
+	t.Run("advertised capability round-trips through the daemon probe parser", func(t *testing.T) {
+		out := captureStdout(t, func() {
+			setArgs(t, "--version")
+			if err := run(); err != nil {
+				t.Fatalf("run --version: %v", err)
+			}
+		})
+		build, err := hostsetup.ParseDaemonVersionOutput([]byte(out))
+		if err != nil {
+			t.Fatalf("the version block does not parse as daemon version output: %v\n%s", err, out)
+		}
+		if !build.HasCapability(hostsetup.GrantCapability) {
+			t.Errorf("parsed build does not report %s (caps=%v):\n%s", hostsetup.GrantCapability, build.Capabilities, out)
+		}
+		want := strings.Join(agent.SpawnCapabilities(), ",")
+		if got := strings.Join(build.Capabilities, ","); got != want {
+			t.Errorf("parsed caps = %q, want the advertised set %q", got, want)
 		}
 	})
 }
