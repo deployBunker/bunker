@@ -2005,3 +2005,18 @@ tasks:
   status: complete
   created_at: '2026-09-18T01:11:29.644519+00:00'
   completed_at: '2026-09-18T01:26:45.080850+00:00'
+- id: INT-CI-015
+  title: 'Fix section-13 changed-spec image-count probe: non-numeric capture must
+    FAIL the cell, not abort its test'
+  criteria:
+  - 'PASS: (1) bash -n e2e-full-battery.sh is clean; (2) a bash-driven harness that
+    stubs bcli so it prints a NON-NUMERIC value and returns 1 makes the section-13
+    cell count a FAIL (fail counter >= 1) and prints NO integer-expression error,
+    with the raw value shown on ONE line; (3) the same harness driving bcli to print
+    0 and return 1 (the real grep -c zero-match shape) yields a single numeric NOTE
+    of 0 with no integer-expression error; (4) bcli printing 2 and returning 0 still
+    yields the unchanged ASSERT naming 2 images; (5) the commit touches exactly one
+    file (e2e-full-battery.sh) and no other cell text changed.'
+  status: complete
+  created_at: '2026-09-18T02:48:55.047328+00:00'
+  completed_at: '2026-09-18T02:51:55.013161+00:00'
