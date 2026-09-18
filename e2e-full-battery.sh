@@ -1770,8 +1770,20 @@ fi
 # rebuilt for the new key — the changed key must appear alongside the old one.
 bcli spawn --agent-id "e2e-imgspec-b" --image-spec "$GAP064_SPEC2" > /dev/null 2>&1 || true
 sleep 1
-GAP064_KEYS=$(bcli exec e2e-imgspec-b -- sh -c 'docker images --format "{{.Repository}}" 2>/dev/null | grep -c bunkerd-imagespec' 2>/dev/null || echo 0)
-if [ "${GAP064_KEYS:-0}" -ge 1 ]; then
+GAP064_KEYS_RAW=$(bcli exec e2e-imgspec-b -- sh -c 'docker images --format "{{.Repository}}" 2>/dev/null | grep -c bunkerd-imagespec' 2>/dev/null || echo 0)
+# `grep -c` PRINTS its count and exits 1 when the count is zero, so the `|| echo 0`
+# above APPENDS a second line instead of replacing the first: a zero count arrives
+# as "0\n0". `[ "0\n0" -ge 1 ]` then aborted with "integer expression expected",
+# which killed the test and downgraded this cell to a note — a probe that cannot be
+# evaluated must not read as a pass-through. Normalise to the last line that is
+# purely digits, accepted only when EVERY line of the capture is numeric (a
+# diagnostic caught here fails the cell below). `|| true` on each probe keeps
+# set -euo pipefail from aborting the whole run when grep matches nothing.
+GAP064_KEYS=$(printf '%s\n' "$GAP064_KEYS_RAW" | grep -E '^[[:space:]]*[0-9]+[[:space:]]*$' | tail -n 1 | tr -d '[:space:]' || true)
+GAP064_KEYS_NONNUMERIC=$(printf '%s\n' "$GAP064_KEYS_RAW" | grep -c -v -E '^[[:space:]]*[0-9]*[[:space:]]*$' || true)
+if [ -z "$GAP064_KEYS" ] || [ "$GAP064_KEYS_NONNUMERIC" -gt 0 ]; then
+    fail "changed-spec image count probe returned a non-numeric value: '$(printf '%s' "$GAP064_KEYS_RAW" | tr '\n' '|' || true)'"
+elif [ "$GAP064_KEYS" -ge 1 ]; then
     assert "changed spec built a NEW image key (daemon has $GAP064_KEYS imagespec image)"
 else
     note "changed-spec image count probe: '$GAP064_KEYS'"
