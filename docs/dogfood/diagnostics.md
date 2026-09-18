@@ -263,3 +263,82 @@ sessions, put exec flags after the agent-id, write detached-job output to $HOME 
 /tmp), verify audit claims with a marked live cycle rather than window arithmetic, and
 remember the deployed daemons can lag the docs by a major version — check
 `bunker status` Version before interpreting behavior differences as bugs.
+
+## 12. Dogfood run 2026-09-18 — REST-integrator run (read this before writing a client)
+
+**Focus:** the *protocol* surface, not the CLI. A stdlib-only Python client was
+written from `docs/integration.md` and drove a full lifecycle against
+`bunker-las-02` (v0.1.4, HEAD `967c331`). Findings DF-BUNKER-21..26.
+
+1. **Why this run exists.** Every previous run drove the CLI; the CLI hides the
+   protocol. A client that speaks HTTP directly is the actual product promise
+   ("gRPC + REST … single binary"), and it is where the docs gaps are visible.
+   The unary surface is in good shape (post-DF-BUNKER-19 rewrite of
+   `integration.md`): field naming, string-encoded 64-bit numbers, error
+   envelopes, auth mapping and pre-side-effect TTL validation all matched the
+   doc on the first try.
+2. **The streaming wall (DF-BUNKER-21).** `ExecAgent` is server-streaming, and
+   the doc's own §2 recipe (`Content-Type: application/json`) answers
+   `415` with an **empty** body — no `{"code","message"}` envelope, directly
+   contradicting §2's error-promise paragraph. The working shape is connect
+   streaming: `application/connect+json`, one length-prefixed envelope per
+   message (`[flags:1][len:4 BE][payload]`), chunked response, base64
+   `stdout`/`stderr`, `exitCode` present only when non-zero, and a final
+   `flags=0x02` trailer. Both spec-shaped end-of-stream endings fail
+   (`incomplete envelope: unexpected EOF` / `unmarshal end stream message:
+   unexpected end of JSON input`) — omitting the EOS and letting
+   Content-Length end the request is the only form that works. A client
+   checking only HTTP status sees `200` on those failures.
+3. **Unknown fields are invisible (DF-BUNKER-22).** `SpawnAgent {"name": "..."}`
+   returns `200` with a random `agentId`; the field is not in
+   `SpawnAgentRequest` at all. §5 still advertises `name` (and env vars) — a
+   doc-faithful client loses the handle on the agent it just created and only
+   discovers it via `404 not_found` on itself. The correct field is
+   `agent_id`, and it works (`df0918-named` round-tripped).
+4. **Key hygiene is asymmetric (DF-BUNKER-23).** `DestroyAgent` removes its own
+   key (`ls /etc/bunkerd/ssh/<id>` gone after the CLI destroy), but the hosts
+   carry keys for users that no longer exist: **139/139 on las-03**, 4/7 on
+   las-02, 1/1 on the demo host (each checked with `id bunker-<key>`). This is
+   the key-material half of the same residue family as GAP-080 (orphan homes +
+   linger units): agents that die by TTL expiry or by the daemon's startup
+   reconcile leave their private key behind. Re-spawning a *known* id reuses
+   the same key name, so the residue is not just litter.
+5. **Install leg, fresh host, real numbers.** Ephemeral agent on
+   `bunker-las-03` (bare Debian 13): clone 2s, `make build` →
+   `sh: 1: go: not found` / `Error 127` (make present, Go absent), then a Go
+   1.26.5 tarball install (which prints the `GOPATH and GOROOT are the same
+   directory` warning if extracted into `$HOME`) → `make build` **49s** →
+   `./bunker --version` = `0.1.4 / 967c331`. Install works; the first step
+   fails for anyone without Go, and the repo ships no binaries and no Go
+   install instructions (DF-BUNKER-24).
+6. **Verifications that matter for future runs.** `AgentMetrics` is
+   agent-scoped over REST (401 MB / 8 GB) — DOGFOOD-011 stays closed;
+   `QueryAudit` attributes `ExecAgent` with `agentId` + `remoteAddr` including
+   REST-streaming calls — DOGFOOD-012 stays closed; the CLI destroy now prints
+   `Removed local SSH key` — DOGFOOD-014 stays closed; `DestroyAgent` on a
+   *never-known* id is `404` while a *just-destroyed* id is `200 destroyed` —
+   the tombstone nuance is undocumented (DF-BUNKER-26).
+
+7. **The spawn-failure chain (DF-BUNKER-21) — the run's most serious finding.**
+   A `SpawnAgent` landed on UID 1012, previously used by a deleted agent whose
+   `user-1012.slice` was still ACTIVE (3 days) with 145 lingering `bunker-*`
+   entries in `/var/lib/systemd/linger` and stale `/run/user/<uid>` dirs around.
+   The daemon logged `resetting user manager runtime` → `lazily unmounted stale
+   runtime mount` → **5 minutes of silence** → `rolling back: removing user` →
+   `rollback userdel failed: context deadline exceeded` → `spawn agent failed:
+   ... user manager did not start ...: context deadline exceeded` → HTTP 500,
+   154B, in `5m0.001s`. A client on the documented 300s timeout sees only a
+   socket timeout. Residue: the `/etc/passwd` entry, `/home/bunker-df0918-ttl`,
+   and a fresh linger entry — all invisible to `GetAgent` (404) and to
+   `bunker list`. Control: after deleting that residue at the operator level, a
+   spawn landing on the **same** UID 1012 succeeded in 21.8s. When a spawn looks
+   dead, read `journalctl -u bunkerd` on the daemon host before anything else.
+
+**Right way recap for future agents:** build at HEAD; for anything that needs
+command output over REST use `application/connect+json` with envelope framing
+and **no** end-of-stream envelope; de-chunk and base64-decode before parsing;
+spawn with `agent_id` (never `name`); check `id bunker-<agent>` and
+`/etc/bunkerd/ssh/<agent>` on the daemon host after experiments — destroy is
+clean, TTL expiry may not be; and treat a `200` on the streaming path as
+"transport OK", not "command OK", because protocol errors arrive inside the
+stream.

@@ -10,8 +10,10 @@ description: >-
   2026-08-29 (docs/dogfood/2026-08-29-integration.md); exec flag grammar,
   /tmp semantics, mount and install notes re-verified against live
   bunker-las-04 at CLI HEAD 66d4150 on 2026-09-16
-  (docs/dogfood/2026-09-16-integration.md).
-version: 1.3.0
+  (docs/dogfood/2026-09-16-integration.md); REST-integrator recipes (unary +
+  connect streaming) added 2026-09-18 against bunker-las-02 at HEAD 967c331
+  (docs/dogfood/2026-09-18-integration.md).
+version: 1.4.0
 category: software-development
 ---
 
@@ -50,6 +52,52 @@ bunker destroy <id>                                         # 1.9s; server back 
 
 REST (same surface, JSON over HTTP): `POST http://<ip>:18080/bunker.v1.Bunkerd/<Rpc>` with `Authorization: Bearer <token>` and `Content-Type: application/json` — e.g. `.../ListAgents`, `.../ServerInfo`.
 
+## REST client recipes (verified 2026-09-18, las-02 @ HEAD 967c331)
+
+**Unary RPCs** — as documented in `docs/integration.md`: proto **snake_case in**,
+protojson **camelCase out**, 64-bit fields as JSON **strings** (`"uptimeSeconds"`),
+`{"code","message"}` + real HTTP status on error (`404 not_found`, `400
+invalid_argument`, `401 unauthenticated`). Spawn takes **`agent_id`** (never
+`name` — see pitfalls), and `{"ttl":"banana"}` is rejected **before any side effect**.
+
+**Streaming RPCs (`ExecAgent`, `RunAgent`) — NOT `application/json`.** The
+documented content type returns a bare `415` with an empty body. The shape that
+works is connect streaming:
+
+```
+POST /bunker.v1.Bunkerd/ExecAgent
+Content-Type: application/connect+json
+Authorization: Bearer <token>
+body = [flags:1][len:4 big-endian][json payload]     # ONE envelope, NO end-of-stream envelope
+```
+
+Response is `200`, `Transfer-Encoding: chunked`; de-chunk, then read envelopes:
+
+```
+flags=0x00 {"stdout":"<base64>"}   # stdout/stderr are base64 bytes, one frame per write
+flags=0x00 {"stderr":"<base64>"}
+flags=0x00 {"exitCode":3}          # present ONLY when non-zero
+flags=0x02 {}                      # end-of-stream trailer
+```
+
+```python
+import json, struct, base64, urllib.request
+def frame(payload, flags=0): return struct.pack(">BI", flags, len(payload)) + payload
+req = urllib.request.Request(url + "/bunker.v1.Bunkerd/ExecAgent",
+      data=frame(json.dumps({"agent_id": aid, "command": "docker run --rm alpine echo hi"}).encode()),
+      headers={"Content-Type": "application/connect+json", "Authorization": f"Bearer {token}"})
+# parse: de-chunk the body, then [flags][len][payload] repeatedly; base64-decode stdout/stderr
+```
+
+Both spec-shaped endings are rejected: a trailing `0x02` byte → `invalid_argument
+"protocol error: incomplete envelope: unexpected EOF"`, a trailing
+`[0x02][0x00000000]` envelope → `internal "unmarshal end stream message:
+unexpected end of JSON input"` — and both arrive as **HTTP 200 with an error
+object inside the stream**, so check the frames, not just the status.
+`Connect-Protocol-Version` is not required. Working reference client:
+`/tmp/dogfood-bunker-rest/{bunker_rest,exec_stream}.py` (reproduced in
+`docs/dogfood/2026-09-18-integration.md`).
+
 **NEW in v0.1.3 — audit trail (GAP-047/049/050, verified live 2026-08-29):**
 
 ```bash
@@ -85,7 +133,10 @@ All features broken as of 2026-08-03 (tasks DOGFOOD-001..006) are fixed and veri
 - **Server-reported hostname ≠ reachable host.** Any raw SSH/SCP/SSHFS command printed by spawn uses `bunker-mvp` and server paths — substitute the real IP and client key. (The `bunker cp` / `deploy` / `tunnel` CLI subcommands are fixed and work from a client directly.)
 - **Don't trust "CI green" for SSH features** — the battery runs on the server where hostname+keys resolve. Remote-client behavior is the real test.
 - **Auth is REQUIRED** — the MVP has enforced auth since GAP-014; an empty/missing token is rejected (unauthenticated → connect error; no Content-Type → 415; wrong service path → 404). Never commit real tokens — the test token `test-regression-token` (in e2e scripts) is fine for the MVP.
-- **REST path is `bunker.v1.Bunkerd`, not `bunkerd.v1.Bunkerd`** — `POST http://<ip>:18080/bunker.v1.Bunkerd/<Rpc>` with `Content-Type: application/json`; a guessed service name 404s, errors are connect codes (`CodeNotFound`, `CodeInvalidArgument`, `CodeUnauthenticated`, `CodeResourceExhausted`).
+- **REST path is `bunker.v1.Bunkerd`, not `bunkerd.v1.Bunkerd`** — `POST http://<ip>:18080/bunker.v1.Bunkerd/<Rpc>` with `Content-Type: application/json`; a guessed service name 404s, errors are connect codes (`CodeNotFound`, `CodeInvalidArgument`, `CodeUnauthenticated`, `CodeResourceExhausted`). **Exception: streaming RPCs** (`ExecAgent`/`RunAgent`) need `application/connect+json` + envelope framing — see the REST recipes section; `application/json` there is a bare `415` with no envelope.
+- **`SpawnAgent` takes `agent_id`; a `name` field does not exist (2026-09-18, DF-BUNKER-23)** — `docs/integration.md` §5 still advertises "name" (and env vars). Posting `{"name":"build-1"}` returns `200` with a RANDOM `agentId` and no warning; `GetAgent {"agent_id":"build-1"}` then 404s. Use `{"agent_id":"build-1"}` for a deterministic handle, and treat an unknown-field `200` as a silent drop.
+- **Orphan private keys accumulate on daemon hosts (2026-09-18, DF-BUNKER-24)** — `destroy` cleans its own key, but hosts carry keys for users that no longer exist: las-03 139/139, las-02 4/7, demo host 1/1 (check with `id bunker-<key>`). Same residue family as GAP-080 (orphan homes + linger). If an experiment uses a *known* agent id, re-spawn reuses the same key name — don't assume a fresh key means a fresh host.
+- **A spawn can hang ~5 minutes and then fail with `user manager did not start` (2026-09-18, DF-BUNKER-21)** — measured on bunker-las-02 when the agent's UID still carried the previous occupant's systemd state (`user-<uid>.slice` active, linger entry, stale `/run/user/<uid>`; 145 linger entries on that host). The client sees only a socket timeout at the documented 300s request timeout (the 500 lands at 5m0.001s), and the rollback ALSO fails (`rollback userdel failed: context deadline exceeded`), leaving the user, home and a fresh linger entry behind — invisible to `GetAgent` (404) and `bunker list`. Diagnose with `journalctl -u bunkerd` on the daemon host; a spawn on a clean UID took 21.8s on the same box.
 - **Scratch agents:** always `bunker destroy <id>` after a run (1.9s, idempotent); TTL auto-destroys but don't rely on it. `bunker list` to confirm zero.
 - **spawn positional name arg works (fixed DOGFOOD-008)** — `bunker spawn --ttl 30m my-agent` names the agent `my-agent`; `--agent-id` also accepted; ids match `^[a-z0-9-]{1,64}$`.
 - **`bunker metrics <id>` memory is PER-AGENT (fixed: DOGFOOD-011 + GAP-060)** — read from the agent's own cgroup: `/sys/fs/cgroup/user.slice/user-<uid>.slice` (cgroupv2), whose `memory.max` IS the agent's `--memory` limit (the systemd-run dockerd unit and every exec session scope both live in that slice). When the per-agent read is unavailable (stopped/destroyed agent, deleted user), the values fall back to the HOST-level read — and since GAP-060 (61dafd2) that fallback is explicit: the `AgentMetricsResponse` carries `host_level_fallback` (field 10, proto/bunker/v1/bunker.proto) and the CLI prints `NOTE: host-level fallback (agent cgroup unavailable — metrics are HOST values, not agent values)`. If you see the NOTE, treat the numbers as host values. Disk numbers are per-agent; real limits via `bunker info` or on-host `user.slice/user-<uid>.slice/*`.
@@ -111,7 +162,7 @@ All features broken as of 2026-08-03 (tasks DOGFOOD-001..006) are fixed and veri
 - Audit trail gaps → `internal/audit/interceptor.go` (`WrapStreamingHandler`; the msg-invisible streaming gap is closed for ExecAgent via `StampStreamAgentID`, DOGFOOD-012/406508b), `internal/audit/audit.go` (chain/rotation/shipping/seals), `internal/cli/audit.go`
 - Metrics wrong numbers → `internal/resource/cgroup.go` (`ReadAgentCgroupMetrics` reads the per-agent `user-<uid>.slice`; host fallback flagged via `host_level_fallback`, DOGFOOD-011/GAP-060), `internal/server/service.go` `AgentMetrics`, `internal/cli/metrics.go` (the NOTE line)
 - SCP/tunnel host/key issues → `internal/cli/cp.go`, `internal/cli/deploy.go`, `internal/cli/tunnel.go`
-- Key hygiene after destroy → `internal/cli/destroy.go` (no local key cleanup, DOGFOOD-014)
+- Key hygiene after destroy → `internal/cli/destroy.go` (client key cleanup landed — CLI prints `Removed local SSH key`, DOGFOOD-014 verified fixed 2026-09-18) and the daemon-side sweep for orphaned `/etc/bunkerd/ssh/<id>` keys (DF-BUNKER-23, still open)
 - Spawn/destroy/TTL/cgroups → `internal/agent/`
 - API contract → `specs/api.md`; architecture → `specs/architecture.md`
-- Full dogfood evidence + diagnostics → `docs/dogfood/2026-09-16-integration.md` (current, verified), `docs/dogfood/2026-08-29-integration.md`, `docs/dogfood/2026-08-18-integration.md` (prior runs), `docs/dogfood/diagnostics.md`
+- Full dogfood evidence + diagnostics → `docs/dogfood/2026-09-18-integration.md` (current: REST-integrator run), `docs/dogfood/2026-09-16-integration.md`, `docs/dogfood/2026-08-29-integration.md`, `docs/dogfood/2026-08-18-integration.md` (prior runs), `docs/dogfood/diagnostics.md` (§12 = REST/protocol state)
