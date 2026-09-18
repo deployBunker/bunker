@@ -2360,3 +2360,15 @@ tasks:
   status: complete
   created_at: '2026-09-18T22:37:20.189907+00:00'
   completed_at: '2026-09-18T23:03:59.819908+00:00'
+- id: GAP-082
+  title: "GAP-082: MinDaemonVersion floor rests on a false statement \u2014 honest\
+    \ floor + capability-marker grant proof"
+  criteria:
+  - 'PASS: (a) the daemonversion.go comment and README state the same fact about v0.1.4
+    (no released tag carries the isolation grant); (b) a unit test asserts the tag
+    named by the floor constant actually contains the spawn-side grant, so the constant
+    cannot drift from reality again; (c) probing a daemon whose version matches a
+    tag that lacks the grant yields SKEWED/refusal (or an explicit capability-unknown
+    warning) rather than OK.'
+  status: in_progress
+  created_at: '2026-09-18T23:44:40.453602+00:00'
