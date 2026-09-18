@@ -1,0 +1,115 @@
+AGENT=gap071live-3497392
+MARKER=gap071-marker-3497392.txt
+=== 1. SPAWN ===
+
+══════════ Connection Bundle ══════════
+
+  Docker SSH:   DOCKER_HOST=ssh://bunker-gap071live-3497392@78.46.173.180
+  SSH Key:      (saved to ~/.bunker/keys/)
+                /home/kara/.bunker/keys/gap071live-3497392
+  Port Range:   10000-10099
+  Expires:      2026-09-18T07:18:58Z
+  SSHFS Mount:  sshfs -o IdentityFile=/home/kara/.bunker/keys/gap071live-3497392 -o idmap=user -o allow_other bunker-gap071live-3497392@78.46.173.180:/home/bunker-gap071live-3497392 /mnt/bunker/gap071live-3497392
+  Docker Tunnel: ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o IdentitiesOnly=yes -i /home/kara/.bunker/keys/gap071live-3497392 -L 2376:/run/bunker/gap071live-3497392/docker.sock bunker-gap071live-3497392@78.46.173.180 -N
+
+═ Use `bunker exec` to run commands in this agent ═
+spawn_rc=0
+=== 2. EXEC write marker (running) ===
+keepme-3497392
+exec_write_rc=0
+=== 3. LIST (expect running) ===
+
+══════════ Agents ══════════
+
+  Agent ID       Status     Disk                   Created                   Public URL
+  ────────       ──────     ────────────────────   ───────                   ──────────
+  gap071live-3497392 running    1% (246.7 MB/20.0 GB)  2026-09-18T06:18:58Z      (no URL)
+
+Total: 1 agents (server: bunker-mvp)
+=== 4. INFO (before stop) ===
+
+══════════ Agent: gap071live-3497392 ══════════
+
+  Status:           running
+  Created At:       2026-09-18T06:18:58Z
+  Expires At:       2026-09-18T07:18:58Z
+  Port Range:       10000-10099
+  Docker Tunnel:    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o IdentitiesOnly=yes -i /home/kara/.bunker/keys/gap071live-3497392 -L 2376:/run/bunker/gap071live-3497392/docker.sock bunker-gap071live-3497392@78.46.173.180 -N
+  SSHFS Mount:      sshfs -o IdentityFile=/home/kara/.bunker/keys/gap071live-3497392 -o idmap=user -o allow_other bunker-gap071live-3497392@78.46.173.180:/home/bunker-gap071live-3497392 /mnt/bunker/gap071live-3497392
+  Limits:
+    CPU Quota:      2.0 cores
+    Memory Limit:   4.0 GB
+    Disk Limit:     20.0 GB
+    Max Containers: 10
+
+=== 5. STOP ===
+Agent gap071live-3497392 stopped.
+stop_rc=0
+=== 6. LIST (expect stopped) ===
+
+══════════ Agents ══════════
+
+  Agent ID       Status     Disk                   Created                   Public URL
+  ────────       ──────     ────────────────────   ───────                   ──────────
+  gap071live-3497392 stopped    1% (246.7 MB/20.0 GB)  2026-09-18T06:18:58Z      (no URL)
+
+Total: 1 agents (server: bunker-mvp)
+=== 7. EXEC against STOPPED agent (expect agent_stopped, NOT not_found) ===
+bunker: stream error: failed_precondition: agent_stopped: agent "gap071live-3497392" is stopped; run 'bunker start gap071live-3497392'
+exec_stopped_rc=0
+=== 8. INFO (after stop: user/home/ports must survive) ===
+
+══════════ Agent: gap071live-3497392 ══════════
+
+  Status:           stopped
+  Created At:       2026-09-18T06:18:58Z
+  Expires At:       2026-09-18T07:18:58Z
+  Port Range:       10000-10099
+  Docker Tunnel:    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o IdentitiesOnly=yes -i /home/kara/.bunker/keys/gap071live-3497392 -L 2376:/run/bunker/gap071live-3497392/docker.sock bunker-gap071live-3497392@78.46.173.180 -N
+  SSHFS Mount:      sshfs -o IdentityFile=/home/kara/.bunker/keys/gap071live-3497392 -o idmap=user -o allow_other bunker-gap071live-3497392@78.46.173.180:/home/bunker-gap071live-3497392 /mnt/bunker/gap071live-3497392
+  Limits:
+    CPU Quota:      2.0 cores
+    Memory Limit:   4.0 GB
+    Disk Limit:     20.0 GB
+    Max Containers: 10
+
+
+==============================================================================
+=== 9. START ===
+Agent gap071live-3497392 started.
+start_rc=0
+=== 10. EXEC after start: home marker must SURVIVE the stop ===
+keepme-3497392
+exec_after_start_rc=0
+=== 11. LIST (expect running again) ===
+
+══════════ Agents ══════════
+
+  Agent ID       Status     Disk                   Created                   Public URL
+  ────────       ──────     ────────────────────   ───────                   ──────────
+  gap071live-3497392 running    1% (246.7 MB/20.0 GB)  2026-09-18T06:18:58Z      (no URL)
+
+Total: 1 agents (server: bunker-mvp)
+=== 12. RESTART (TTL reset) ===
+Agent gap071live-3497392 restarted.
+Expires at: 2026-09-18T12:19:11Z
+restart_rc=0
+=== 13. EXEC after restart: marker STILL present ===
+keepme-3497392
+session=1789712352
+exec_after_restart_rc=0
+=== 14. AUDIT records for the agent (stop/start/restart transitions) ===
+bunker: query audit log: open /var/log/bunkerd/audit.log: permission denied — run as root (the audit log is mode 0600 and root-owned by default) or point --path at an audit log you can read
+audit_rc=1
+--- audit list raw tail (no agent filter support?) ---
+bunker: query audit log: open /var/log/bunkerd/audit.log: permission denied — run as root (the audit log is mode 0600 and root-owned by default) or point --path at an audit log you can read
+=== 15. IDEMPOTENCE: stop twice (second = already_stopped no-op) ===
+Agent gap071live-3497392 stopped.
+stop2_rc=0
+Agent gap071live-3497392 is already stopped.
+stop_again_rc=0
+=== 16. UNKNOWN ID on stop (expect not_found, no panic) ===
+bunker: stop agent: not_found: agent "no-such-agent-zzz" not found
+stop_unknown_rc=1
+
+==============================================================================

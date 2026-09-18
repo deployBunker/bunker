@@ -2041,3 +2041,21 @@ tasks:
   status: complete
   created_at: '2026-09-18T04:54:22.929322+00:00'
   completed_at: '2026-09-18T05:16:11.747163+00:00'
+- id: GAP-071-LIVE
+  title: 'GAP-071 live gate: deploy HEAD to bunker-mvp and verify the agent lifecycle
+    RPCs end-to-end'
+  criteria:
+  - '1) /opt/bunker on bunker-mvp is reset to origin/main and the running bunkerd
+    reports the HEAD commit hash (not 95e55a8/eab2c0a). 2) Bunkerd restarts healthy:
+    systemctl is-active bunkerd, /healthz = 200, unauthenticated RPC = 401. 3) Live:
+    spawn an agent, then ''bunker stop <id>'' succeeds and the allocator/user/home
+    SURVIVE stop; ''bunker exec'' against the stopped agent fails with a DISTINCT
+    agent_stopped signal (not not_found); ''bunker start <id>'' then makes exec succeed
+    again; ''bunker restart <id>'' yields a fresh session while a file written to
+    the home pre-restart is still present. 4) Audit records exist for the stop/start/restart
+    transitions. 5) The AGENTS.md live gate passes: e2e-full-battery.sh on bunker-mvp
+    prints VERIFY-PASS / ALL CORE TESTS PASS. 6) No leftover test agents: bunker list
+    shows the spawned test agent destroyed.'
+  status: complete
+  created_at: '2026-09-18T06:18:13.858096+00:00'
+  completed_at: '2026-09-18T06:24:39.528546+00:00'
