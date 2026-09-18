@@ -2255,3 +2255,23 @@ tasks:
   status: complete
   created_at: '2026-09-18T18:04:48.193400+00:00'
   completed_at: '2026-09-18T18:05:00.644038+00:00'
+- id: DF-BUNKER-27
+  title: ExecAgent corrupts the streamed response when a command writes to BOTH stdout
+    and stderr (concurrent ServerStream.Send)
+  criteria:
+  - 'internal/server/service.go serializes every ExecAgent stream write: exactly one
+    Send at a time and no Send after the handler returns (both pipe streamers share
+    one mutex-guarded send path)'
+  - 'the streamed output is COMPLETE: both pipes are fully drained before the process
+    is reaped (or the exec package''s own copier goroutines are joined by Wait), with
+    exit-code semantics unchanged'
+  - a testable seam lets a test substitute the exec command while the default path
+    uses the three existing buildExecSSHCommand* helpers exactly as today
+  - a new test in internal/server/ drives the REAL connect handler over httptest with
+    a command writing to both pipes, iterated enough to be timing-sensitive, and asserts
+    every frame decodes plus both payloads and the exit code arrive intact
+  - 'mutation proof: bypassing the serialization (direct stream.Send) makes that test
+    FAIL, and restoring it makes it PASS again'
+  status: complete
+  created_at: '2026-09-18T18:17:20.309068+00:00'
+  completed_at: '2026-09-18T18:27:32.109071+00:00'
