@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -591,103 +592,74 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 	// bare host user context. An empty ref (no image spec) is delegated
 	// unchanged to the pre-GAP-069 host-context builders.
 	imageRef := rec.Image
+	// DF-BUNKER-27: the builders are reached through package-level seams so a
+	// test can substitute the command ExecAgent runs; the defaults are the
+	// three image-aware builders, selected below by exactly the same
+	// raw/script/plain conditions as before.
 	var cmd *exec.Cmd
 	if req.Msg.GetRaw() {
-		cmd = buildExecSSHRawCommandImage(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args, disclosed, imageRef)
+		cmd = execSSHRawCommandBuilder(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args, disclosed, imageRef)
 	} else if req.Msg.GetScriptContent() != "" {
-		cmd = buildExecSSHScriptCommandImage(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.GetScriptContent(), disclosed, imageRef)
+		cmd = execSSHScriptCommandBuilder(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.GetScriptContent(), disclosed, imageRef)
 	} else {
-		cmd = buildExecSSHCommandImage(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args, disclosed, imageRef)
+		cmd = execSSHCommandBuilder(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args, disclosed, imageRef)
 	}
 
-	stdoutPipe, err := cmd.StdoutPipe()
-	if err != nil {
-		return connect.NewError(connect.CodeInternal, fmt.Errorf("stdout pipe: %w", err))
-	}
-	stderrPipe, err := cmd.StderrPipe()
-	if err != nil {
-		return connect.NewError(connect.CodeInternal, fmt.Errorf("stderr pipe: %w", err))
-	}
+	// DF-BUNKER-27: connect's ServerStream.Send is not safe for concurrent use.
+	// The two pipe streamers and the frames emitted after the command finished
+	// used to write the same HTTP response from three goroutines, which
+	// interleaved envelopes and split the response (a command writing to BOTH
+	// pipes produced an undecodable body plus an "http: superfluous
+	// response.WriteHeader call" in the journal). Every frame — pipe output and
+	// post-exec frames alike — now goes through ONE mutex-guarded sender.
+	sender := &execStreamSender{stream: stream, logger: s.logger}
+	stdoutSink := &execStreamSink{sender: sender}
+	stderrSink := &execStreamSink{sender: sender, stderr: true}
+
+	// Let the exec package own the pipes: its copy goroutines write into the
+	// sinks and cmd.Wait joins them, so both pipes are drained to EOF before the
+	// process is reaped. The previous manual StdoutPipe/StderrPipe reads were
+	// still in flight when Wait closed the read ends under them, which is the
+	// truncation os/exec documents ("it is incorrect to call Wait before all
+	// reads from the pipe have completed"). WaitDelay bounds the one case Wait
+	// cannot: a descendant that inherited a write end and keeps it open.
+	cmd.Stdout = stdoutSink
+	cmd.Stderr = stderrSink
+	cmd.WaitDelay = execStreamDrainGrace
 
 	if err := cmd.Start(); err != nil {
 		return connect.NewError(connect.CodeInternal, fmt.Errorf("start ssh: %w", err))
 	}
 
-	// Stream stdout and stderr concurrently. The stdout streamer records
-	// whether ANY process stdout was forwarded and whether the last byte
-	// ended in '\n'; those facts are read AFTER wg.Wait() to build the
-	// marker frame (GAP-067) — writes are synchronized by the WaitGroup.
-	var wg sync.WaitGroup
-	stdoutDone := make(chan struct{})
-	stderrDone := make(chan struct{})
-	var stdoutSent bool
-	var stdoutEndsNewline bool
-	// Byte counters for the streamed process output. The stdout count is a
-	// minimal extension of the existing sent/newline state; the stderr
-	// count has no prior equivalent and is what lets the session-denial
-	// classifier distinguish "ssh said nothing" from "ssh reported an
-	// error". Both are written by their streamer goroutine and read after
-	// wg.Wait(), which is what synchronizes them.
-	var stdoutBytes int
-	var stderrBytes int
-
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		defer close(stdoutDone)
-		buf := make([]byte, 4096)
-		for {
-			n, err := stdoutPipe.Read(buf)
-			if markerCountsAsSent(n) {
-				stdoutSent = true
-				stdoutBytes += n
-				stdoutEndsNewline = buf[n-1] == '\n'
-				if err := stream.Send(&v1.ExecAgentResponse{
-					Output: &v1.ExecAgentResponse_Stdout{Stdout: buf[:n]},
-				}); err != nil {
-					s.logger.Warn("send stdout", "error", err)
-					return
-				}
-			}
-			if err != nil {
-				return
-			}
-		}
-	}()
-
-	go func() {
-		defer wg.Done()
-		defer close(stderrDone)
-		buf := make([]byte, 4096)
-		for {
-			n, err := stderrPipe.Read(buf)
-			if n > 0 {
-				stderrBytes += n
-				if err := stream.Send(&v1.ExecAgentResponse{
-					Output: &v1.ExecAgentResponse_Stderr{Stderr: buf[:n]},
-				}); err != nil {
-					s.logger.Warn("send stderr", "error", err)
-					return
-				}
-			}
-			if err != nil {
-				return
-			}
-		}
-	}()
-
-	// Wait for command completion
+	// Wait for command completion. Wait returns only once both pipes have been
+	// drained to EOF (or the drain grace expired), so the exit-code frame always
+	// follows the last output frame.
 	exitCode := int32(0)
-	if err := cmd.Wait(); err != nil {
+	err := cmd.Wait()
+	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			exitCode = int32(exitErr.ExitCode())
+		} else if errors.Is(err, exec.ErrWaitDelay) {
+			// The child exited successfully but a descendant held a pipe open
+			// past the drain grace, so the tail of its output was dropped. The
+			// command itself did not fail: keep the exit-code semantics
+			// (non-zero child exit -> exitCode frame; non-exit failure ->
+			// CodeInternal) and record the truncation instead of turning it
+			// into an internal error.
+			s.logger.Warn("exec output drain exceeded the wait delay; a descendant held a pipe open",
+				"agent_id", agentID, "drain_grace", execStreamDrainGrace.String())
 		} else {
 			return connect.NewError(connect.CodeInternal, fmt.Errorf("ssh wait: %w", err))
 		}
 	}
 
-	// Wait for streamers to finish
-	wg.Wait()
+	// Both sinks are quiescent now (Wait joined the exec copy goroutines), so
+	// these reads are race-free. The stdout facts feed the GAP-067 containment
+	// marker; both byte counts feed the session-denial classifier.
+	stdoutSent := stdoutSink.sent
+	stdoutEndsNewline := stdoutSink.endsNewline
+	stdoutBytes := stdoutSink.bytes
+	stderrBytes := stderrSink.bytes
 
 	// GAP-067 containment disclosure: after all process output frames and
 	// before the exit-code frame, an allowed system-info probe gets ONE
@@ -702,11 +674,9 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 	// probes.
 	if disclosed && isContainmentProbe(req.Msg.Command, req.Msg.Args) {
 		if frame := markerFrameForStream(stdoutSent, stdoutEndsNewline, true); frame != "" {
-			if err := stream.Send(&v1.ExecAgentResponse{
+			sender.send("send containment marker", &v1.ExecAgentResponse{
 				Output: &v1.ExecAgentResponse_Stdout{Stdout: []byte(frame)},
-			}); err != nil {
-				s.logger.Warn("send containment marker", "error", err)
-			}
+			})
 		}
 	}
 
@@ -720,21 +690,86 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 	if diag, denied := classifyExecSessionDenial(int(exitCode), stderrBytes, stdoutBytes); denied {
 		s.logger.Warn("exec session denied before command ran",
 			"agent_id", agentID, "exit_code", exitCode)
-		if err := stream.Send(&v1.ExecAgentResponse{
+		sender.send("send session-denial diagnostic", &v1.ExecAgentResponse{
 			Output: &v1.ExecAgentResponse_Stderr{Stderr: []byte(diag + "\n")},
-		}); err != nil {
-			s.logger.Warn("send session-denial diagnostic", "error", err)
-		}
+		})
 	}
 
 	// Send final exit code
-	if err := stream.Send(&v1.ExecAgentResponse{
+	sender.send("send exit code", &v1.ExecAgentResponse{
 		ExitCode: exitCode,
-	}); err != nil {
-		s.logger.Warn("send exit code", "error", err)
-	}
+	})
 
 	return nil
+}
+
+// execStreamDrainGrace bounds how long cmd.Wait waits for the child's I/O pipes
+// to reach EOF once the process itself has exited (DF-BUNKER-27). The drain
+// normally completes in microseconds; the bound exists only so a descendant
+// that inherited a write end — and therefore keeps the pipe open past the
+// process exit — cannot hang the handler forever.
+const execStreamDrainGrace = 30 * time.Second
+
+// execStreamSender is the ONLY path to the exec stream's frames. connect's
+// ServerStream.Send is not safe for concurrent use, so a mutex-free sender
+// interleaves the stdout, stderr and post-exec envelopes inside the same HTTP
+// response and leaves the client with an undecodable body.
+type execStreamSender struct {
+	mu     sync.Mutex
+	stream *connect.ServerStream[v1.ExecAgentResponse]
+	logger *slog.Logger
+}
+
+// send serializes one frame. A send failure is logged and swallowed exactly as
+// the pre-DF-BUNKER-27 streamers did, so one failed frame can neither abort the
+// remaining output nor change the command's exit-code semantics.
+func (w *execStreamSender) send(label string, msg *v1.ExecAgentResponse) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if err := w.stream.Send(msg); err != nil {
+		w.logger.Warn(label, "error", err)
+	}
+}
+
+// execStreamSink forwards one of the child's output pipes to the exec stream as
+// frames. It is deliberately a writer rather than a manual pipe reader: cmd.Wait
+// joins the exec package's own copy goroutines, so the pipe is drained to EOF
+// before the process is reaped and no output is lost to the reap.
+//
+// bytes/sent/endsNewline are written by the copy goroutine and read by the
+// handler only after Wait returned — that join is what orders them.
+type execStreamSink struct {
+	sender *execStreamSender
+	stderr bool
+
+	bytes       int
+	sent        bool
+	endsNewline bool
+}
+
+// Write streams one chunk. It never returns an error: the pre-DF-BUNKER-27
+// streamers logged a failed frame and kept draining, and a non-nil error here
+// would surface through cmd.Wait() as a non-exit failure (CodeInternal).
+func (w *execStreamSink) Write(p []byte) (int, error) {
+	n := len(p)
+	if markerCountsAsSent(n) {
+		w.bytes += n
+		w.sent = true
+		w.endsNewline = p[n-1] == '\n'
+		// The exec copier reuses its buffer, so the frame owns its bytes.
+		frame := make([]byte, n)
+		copy(frame, p)
+		if w.stderr {
+			w.sender.send("send stderr", &v1.ExecAgentResponse{
+				Output: &v1.ExecAgentResponse_Stderr{Stderr: frame},
+			})
+		} else {
+			w.sender.send("send stdout", &v1.ExecAgentResponse{
+				Output: &v1.ExecAgentResponse_Stdout{Stdout: frame},
+			})
+		}
+	}
+	return n, nil
 }
 
 // RunAgent starts a command in the agent environment as a persistent systemd
@@ -1146,6 +1181,17 @@ func buildExecSSHScriptCommand(ctx context.Context, agentID, sshKeyPath, userHom
 	sshRemoteCmd := fmt.Sprintf("sh -c %s", shellQuoteSingle(wrappedCmd))
 	return buildSSHBaseCommand(ctx, agentID, sshKeyPath, sshRemoteCmd)
 }
+
+// DF-BUNKER-27: the seams through which ExecAgent obtains the command it runs.
+// Tests substitute these to drive the real handler with a local command; the
+// defaults are the existing builders, and the call site keeps selecting them by
+// exactly the same raw/script/plain conditions as before, so the production
+// command bytes are unchanged.
+var (
+	execSSHCommandBuilder       = buildExecSSHCommandImage
+	execSSHRawCommandBuilder    = buildExecSSHRawCommandImage
+	execSSHScriptCommandBuilder = buildExecSSHScriptCommandImage
+)
 
 // The *Image variants below are the GAP-069 exec path: when the agent record
 // carries an image-spec ref, the user command runs inside a fresh container of
