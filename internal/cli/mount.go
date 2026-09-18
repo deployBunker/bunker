@@ -35,11 +35,17 @@ var sshfsRetryDelay = 2 * time.Second
 // to the terminal (os.Stdout/os.Stderr) exactly as before while also
 // forwarding it to the caller-provided capture writers. Package-level
 // seam so tests can stub the execution.
+//
+// The child is run through the shared long-lived-child contract
+// (runDetachedChildCommand, proc.go): it gets its own process group, so the
+// context cancellation that ends an attempt (its own timeout, or a signal)
+// reaps the whole attempt — sshfs and the ssh/sftp helpers it spawns — instead
+// of leaving them behind as orphans (GAP-084).
 var sshfsRun = func(ctx context.Context, path string, args []string, stdout, stderr io.Writer) error {
-	cmd := exec.CommandContext(ctx, path, args...)
+	cmd := newLongLivedCommand(ctx, path, args...)
 	cmd.Stdout = io.MultiWriter(stdout, os.Stdout)
 	cmd.Stderr = io.MultiWriter(stderr, os.Stderr)
-	return cmd.Run()
+	return runDetachedChildCommand(cmd)
 }
 
 // sshfsMaxOutputTail bounds the captured-output tail embedded in error text.
@@ -248,11 +254,21 @@ Examples:
 			var combined bytes.Buffer
 			var lastErr error
 			var lastClass, lastReason string
+			// Each sshfs ATTEMPT is a long-lived local child and must not
+			// outlive this CLI (GAP-084): the attempts run under ONE
+			// signal-aware context (SIGINT/SIGTERM/SIGHUP cancels it, and the
+			// shared contract in proc.go reaps the in-flight attempt's process
+			// group), while every attempt still gets its OWN fresh timeout
+			// derived from it — a signal-aware context must not turn a bounded
+			// retry loop into a sequence of unbounded attempts.
+			mountCtx, stopMountSignals := newChildSignalContext()
+			defer stopMountSignals()
+
 			for attempt := 1; attempt <= sshfsMaxAttempts; attempt++ {
 				combined.Reset()
 				stdoutCap := &bytes.Buffer{}
 				stderrCap := &bytes.Buffer{}
-				attemptCtx, attemptCancel := context.WithTimeout(context.Background(), sshfsAttemptTimeout)
+				attemptCtx, attemptCancel := context.WithTimeout(mountCtx, sshfsAttemptTimeout)
 				err := sshfsRun(attemptCtx, parts[0], sshfsArgs, stdoutCap, stderrCap)
 				attemptCancel()
 				_, _ = combined.Write(stdoutCap.Bytes())
@@ -260,6 +276,12 @@ Examples:
 				if err == nil {
 					lastErr = nil
 					break
+				}
+				if mountCtx.Err() != nil {
+					// Signalled while the attempt ran (Ctrl-C, SIGTERM from a
+					// manager): the attempt's group was already reaped, so
+					// report the interruption and never retry.
+					return fmt.Errorf("sshfs: interrupted by a shutdown signal — the mount attempt was stopped (last output: %s)", trimSSHFSOutput(combined.String()))
 				}
 				lastErr = err
 				lastClass, lastReason = classifySSHFSFailure(combined.String(), err)

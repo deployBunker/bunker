@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"time"
 
 	"connectrpc.com/connect"
@@ -116,15 +115,39 @@ Examples:
 			}
 
 			// Execute ssh with the session streams attached. No context
-			// deadline: an interactive session must live until the user
-			// exits (Ctrl+C on the terminal reaches the ssh child directly).
-			sshCmd := exec.Command("ssh", buildSSHArgs(keyPath, port, userAtHost, remoteCmd)...)
+			// deadline: an interactive session must live until the user exits.
+			//
+			// It DOES run under a signal-aware context with the shared
+			// long-lived-child contract (proc.go): a SIGTERM/SIGHUP delivered
+			// to the CLI alone (a manager stopping a detached client — the
+			// same case GAP-079 fixed for the tunnel) used to kill the CLI
+			// and leave the root ssh session reparented to init. The child
+			// deliberately does NOT get its own process group (see
+			// runTerminalChildCommand): ssh puts the terminal into raw mode
+			// and reads fd 0, and a child in a background process group of
+			// the controlling terminal is stopped by SIGTTIN/SIGTTOU — it
+			// would freeze the session. Staying in the CLI's own group is
+			// also what keeps Ctrl-C reaching ssh directly, exactly as
+			// before.
+			sessionCtx, stopSession := newChildSignalContext()
+			defer stopSession()
+
+			sshCmd := newLongLivedCommand(sessionCtx, "ssh", buildSSHArgs(keyPath, port, userAtHost, remoteCmd)...)
 			sshCmd.Stdin = cmd.InOrStdin()
 			sshCmd.Stdout = cmd.OutOrStdout()
 			sshCmd.Stderr = cmd.ErrOrStderr()
 
-			if err := sshCmd.Run(); err != nil {
-				return fmt.Errorf("ssh: %w", err)
+			runErr := runTerminalChildCommand(sshCmd)
+			if sessionCtx.Err() != nil {
+				// Stopped by a signal (Ctrl-C on a non-raw terminal, or a
+				// manager's SIGTERM/SIGHUP): the child has already been
+				// reaped, and that is the operator's intent, not a failure —
+				// report the clean end of the session instead of "signal:
+				// killed".
+				return nil
+			}
+			if runErr != nil {
+				return fmt.Errorf("ssh: %w", runErr)
 			}
 			return nil
 		},

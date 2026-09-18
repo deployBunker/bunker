@@ -148,15 +148,35 @@ Examples:
 				port = sshPort
 			}
 
+			// The transfer and the chown that follows it are long-lived LOCAL
+			// children: they must not outlive this CLI (GAP-084). They run
+			// under the shared long-lived-child contract (proc.go) — a
+			// signal-aware context (SIGINT/SIGTERM/SIGHUP turns into a
+			// cancellation instead of the CLI dying mid-syscall), an own
+			// process group with a group-wide SIGTERM-then-SIGKILL teardown,
+			// and the kernel parent-death backstop for the case NOTHING in
+			// this process can run (kill -9).
+			childCtx, stopChildren := newChildSignalContext()
+			defer stopChildren()
+
 			// Execute SCP. The agent user is resolved BEFORE scp so the
 			// failure path can name it in the ownership hint below.
 			sshUser := strings.SplitN(userAtHost, "@", 2)[0]
 			scpArgs := buildSCPArgs(keyPath, port, localPath, userAtHost, remotePath, false)
-			scpCmd := exec.CommandContext(ctx, "scp", scpArgs...)
+			scpCtx, cancelSCP := context.WithTimeout(childCtx, copyChildBudget)
+			scpCmd := newLongLivedCommand(scpCtx, "scp", scpArgs...)
 			scpCmd.Stdout = cmd.OutOrStdout()
 			scpCmd.Stderr = cmd.ErrOrStderr()
 
-			if err := scpCmd.Run(); err != nil {
+			scpErr := runDetachedChildCommand(scpCmd)
+			cancelSCP()
+			if scpErr != nil {
+				if childCtx.Err() != nil {
+					// The CLI was signalled: the group teardown above already
+					// reaped the transfer, so report the interruption instead
+					// of a misleading "context canceled" and skip the probe.
+					return fmt.Errorf("scp: interrupted by a shutdown signal — the copy was stopped")
+				}
 				// scp's own stderr already went to the user (streamed
 				// above); it names no next step, so run ONE bounded probe
 				// over the same SSH path to explain an existing
@@ -166,11 +186,12 @@ Examples:
 				if hint := cpDestinationHint(keyPath, port, userAtHost, remotePath, sshUser); hint != "" {
 					fmt.Fprintf(cmd.ErrOrStderr(), "Hint: %s\n", hint)
 				}
-				return fmt.Errorf("scp: %w", err)
+				return fmt.Errorf("scp: %w", scpErr)
 			}
 
 			// Fix ownership: chown the file to the agent user
-			chownCmd := exec.CommandContext(ctx, "ssh",
+			chownCtx, cancelChown := context.WithTimeout(childCtx, copyChildBudget)
+			chownCmd := newLongLivedCommand(chownCtx, "ssh",
 				"-o", "StrictHostKeyChecking=no",
 				"-o", "UserKnownHostsFile=/dev/null",
 				"-o", "LogLevel=ERROR",
@@ -184,8 +205,13 @@ Examples:
 			chownCmd.Stdout = cmd.OutOrStdout()
 			chownCmd.Stderr = cmd.ErrOrStderr()
 
-			if err := chownCmd.Run(); err != nil {
-				return fmt.Errorf("chown after scp: %w", err)
+			chownErr := runDetachedChildCommand(chownCmd)
+			cancelChown()
+			if chownErr != nil {
+				if childCtx.Err() != nil {
+					return fmt.Errorf("chown after scp: interrupted by a shutdown signal")
+				}
+				return fmt.Errorf("chown after scp: %w", chownErr)
 			}
 
 			fmt.Fprintf(cmd.OutOrStdout(), "Copied %s to %s:%s\n", localPath, agentID, remotePath)
@@ -238,6 +264,15 @@ func buildSCPArgs(keyPath string, port uint32, localPath, userAtHost, remotePath
 // short: one bounded round trip, never a retry (this is a message-quality
 // fix, not a retry fix — DF-BUNKER-17).
 const cpProbeTimeout = 10 * time.Second
+
+// copyChildBudget bounds one transfer step of `bunker cp` / `bunker deploy`
+// (scp, then the chown that follows it). It preserves the envelope those
+// commands effectively had before GAP-084 — the 30s GetAgent deadline was
+// handed straight to exec, so it was the transfer's deadline too — but it is
+// now an explicit per-child budget derived from the command's SIGNAL context
+// instead of a side effect of the RPC's: an over-running step still fails, and
+// a signal still reaps the child while it runs.
+const copyChildBudget = 30 * time.Second
 
 // cpOwnershipProbeFunc is the injectable runner seam for the ownership probe:
 // tests substitute it to exercise every probe outcome without a live host.

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -135,15 +134,30 @@ Examples:
 				port = sshPort
 			}
 
+			// The recursive transfer and the chown that follows it are
+			// long-lived LOCAL children: they must not outlive this CLI
+			// (GAP-084). Same shared contract as `bunker cp` (proc.go).
+			childCtx, stopChildren := newChildSignalContext()
+			defer stopChildren()
+
 			// Execute recursive SCP. The agent user is resolved BEFORE scp so
 			// the failure path can name it in the ownership hint below.
 			sshUser := strings.SplitN(userAtHost, "@", 2)[0]
 			scpArgs := buildSCPArgs(keyPath, port, localPath, userAtHost, remotePath, true)
-			scpCmd := exec.CommandContext(ctx, "scp", scpArgs...)
+			scpCtx, cancelSCP := context.WithTimeout(childCtx, copyChildBudget)
+			scpCmd := newLongLivedCommand(scpCtx, "scp", scpArgs...)
 			scpCmd.Stdout = cmd.OutOrStdout()
 			scpCmd.Stderr = cmd.ErrOrStderr()
 
-			if err := scpCmd.Run(); err != nil {
+			scpErr := runDetachedChildCommand(scpCmd)
+			cancelSCP()
+			if scpErr != nil {
+				if childCtx.Err() != nil {
+					// Signalled: the group teardown already reaped the
+					// transfer; report the interruption, not "context
+					// canceled", and skip the ownership probe.
+					return fmt.Errorf("scp -r: interrupted by a shutdown signal — the copy was stopped")
+				}
 				// scp's own stderr already went to the user (streamed
 				// above); it names no next step, so run ONE bounded probe
 				// over the same SSH path to explain an existing
@@ -155,11 +169,12 @@ Examples:
 				if hint := cpDestinationHint(keyPath, port, userAtHost, remotePath, sshUser); hint != "" {
 					fmt.Fprintf(cmd.ErrOrStderr(), "Hint: %s\n", hint)
 				}
-				return fmt.Errorf("scp -r: %w", err)
+				return fmt.Errorf("scp -r: %w", scpErr)
 			}
 
 			// Fix ownership: chown the directory recursively to the agent user
-			chownCmd := exec.CommandContext(ctx, "ssh",
+			chownCtx, cancelChown := context.WithTimeout(childCtx, copyChildBudget)
+			chownCmd := newLongLivedCommand(chownCtx, "ssh",
 				"-o", "StrictHostKeyChecking=no",
 				"-o", "UserKnownHostsFile=/dev/null",
 				"-o", "LogLevel=ERROR",
@@ -173,8 +188,13 @@ Examples:
 			chownCmd.Stdout = cmd.OutOrStdout()
 			chownCmd.Stderr = cmd.ErrOrStderr()
 
-			if err := chownCmd.Run(); err != nil {
-				return fmt.Errorf("chown after scp: %w", err)
+			chownErr := runDetachedChildCommand(chownCmd)
+			cancelChown()
+			if chownErr != nil {
+				if childCtx.Err() != nil {
+					return fmt.Errorf("chown after scp: interrupted by a shutdown signal")
+				}
+				return fmt.Errorf("chown after scp: %w", chownErr)
 			}
 
 			fmt.Fprintf(cmd.OutOrStdout(), "Deployed %s to %s:%s\n", localPath, agentID, remotePath)

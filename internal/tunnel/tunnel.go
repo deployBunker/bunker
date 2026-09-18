@@ -28,7 +28,11 @@ type runningTunnel struct {
 	PublicURL string
 	cmd       *exec.Cmd
 	cancel    context.CancelFunc
-	port      uint32
+	// pin holds the OS thread that created cmd: the child is armed with
+	// Pdeathsig, and that signal is delivered when the creating THREAD exits,
+	// so the pin must stay held for the child's whole life (see childpin.go).
+	pin  *childPin
+	port uint32
 }
 
 // TunnelManager manages Cloudflare tunnels (anonymous TryCloudflare + named tunnels).
@@ -104,7 +108,13 @@ func (m *TunnelManager) Start(ctx context.Context, agentID string, localPort uin
 	}
 	cmd.Stderr = cmd.Stdout // cloudflared writes the URL banner to stdout; merge stderr for completeness
 
-	if err := cmd.Start(); err != nil {
+	// Start from a pinned OS thread: the child is armed with Pdeathsig, which
+	// the kernel delivers when the THREAD that created it exits, so that
+	// thread has to outlive the child (childpin.go). Every failure path below
+	// releases the pin.
+	pin := newChildPin()
+	if err := pin.start(cmd); err != nil {
+		pin.release()
 		cancel()
 		return "", fmt.Errorf("start cloudflared: %w", err)
 	}
@@ -142,15 +152,15 @@ func (m *TunnelManager) Start(ctx context.Context, agentID string, localPort uin
 	select {
 	case res := <-resultCh:
 		if res.err != nil {
-			stopTunnelCommand(cmd, cancel) //nolint:errcheck
+			stopTunnelCommand(cmd, cancel, pin) //nolint:errcheck
 			return "", res.err
 		}
 		publicURL = res.url
 	case <-time.After(timeout):
-		stopTunnelCommand(cmd, cancel) //nolint:errcheck
+		stopTunnelCommand(cmd, cancel, pin) //nolint:errcheck
 		return "", fmt.Errorf("timeout waiting for TryCloudflare URL after %v", timeout)
 	case <-ctx.Done():
-		stopTunnelCommand(cmd, cancel) //nolint:errcheck
+		stopTunnelCommand(cmd, cancel, pin) //nolint:errcheck
 		return "", ctx.Err()
 	}
 
@@ -164,6 +174,7 @@ func (m *TunnelManager) Start(ctx context.Context, agentID string, localPort uin
 		PublicURL: publicURL,
 		cmd:       cmd,
 		cancel:    cancel,
+		pin:       pin,
 		port:      localPort,
 	}
 
@@ -226,7 +237,11 @@ func (m *TunnelManager) StartNamed(ctx context.Context, agentID string, localPor
 	}
 	cmd.Stderr = cmd.Stdout
 
-	if err := cmd.Start(); err != nil {
+	// Pinned start for the same reason as the anonymous tunnel: Pdeathsig is
+	// delivered when the THREAD that created the child exits (childpin.go).
+	pin := newChildPin()
+	if err := pin.start(cmd); err != nil {
+		pin.release()
 		cancel()
 		return "", fmt.Errorf("start cloudflared named tunnel: %w", err)
 	}
@@ -257,7 +272,7 @@ func (m *TunnelManager) StartNamed(ctx context.Context, agentID string, localPor
 
 	select {
 	case res := <-resultCh:
-		stopTunnelCommand(cmd, cancel) //nolint:errcheck
+		stopTunnelCommand(cmd, cancel, pin) //nolint:errcheck
 		return "", res.err
 	case <-time.After(timeout):
 		// Named tunnel doesn't print the URL — it uses the pre-configured domain.
@@ -268,6 +283,7 @@ func (m *TunnelManager) StartNamed(ctx context.Context, agentID string, localPor
 			PublicURL: domain,
 			cmd:       cmd,
 			cancel:    cancel,
+			pin:       pin,
 			port:      localPort,
 		}
 
@@ -284,7 +300,7 @@ func (m *TunnelManager) StartNamed(ctx context.Context, agentID string, localPor
 
 		return domain, nil
 	case <-ctx.Done():
-		stopTunnelCommand(cmd, cancel) //nolint:errcheck
+		stopTunnelCommand(cmd, cancel, pin) //nolint:errcheck
 		return "", ctx.Err()
 	}
 }
@@ -298,7 +314,7 @@ func (m *TunnelManager) Stop(agentID string) error {
 		delete(m.tunnels, agentID)
 		m.mu.Unlock()
 
-		err := stopTunnelCommand(rt.cmd, rt.cancel)
+		err := stopTunnelCommand(rt.cmd, rt.cancel, rt.pin)
 		if err != nil {
 			m.logger.Debug("cloudflared exited", "agent_id", agentID, "error", err)
 		}
@@ -312,7 +328,7 @@ func (m *TunnelManager) Stop(agentID string) error {
 		delete(m.namedTunnels, agentID)
 		m.mu.Unlock()
 
-		err := stopTunnelCommand(nrt.cmd, nrt.cancel)
+		err := stopTunnelCommand(nrt.cmd, nrt.cancel, nrt.pin)
 		if err != nil {
 			m.logger.Debug("cloudflared named exited", "agent_id", agentID, "error", err)
 		}
