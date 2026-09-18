@@ -2114,95 +2114,100 @@ tasks:
   status: complete
   created_at: '2026-09-18T08:11:50.204652+00:00'
   completed_at: '2026-09-18T08:12:10.010166+00:00'
-
 - id: DF-BUNKER-21
-  title: 'P1 spawn-failure chain: a spawn on a UID still carrying the previous agent''s
-    systemd state hangs ~5 minutes, fails with a user-manager-start timeout, and the
-    rollback fails too — leaving an orphan user + home + linger entry no API surface reports'
+  title: "P1 spawn-failure chain: a spawn on a UID still carrying the previous agent's\
+    \ systemd state hangs ~5 minutes, fails with a user-manager-start timeout, and\
+    \ the rollback fails too \u2014 leaving an orphan user + home + linger entry no\
+    \ API surface reports"
   criteria:
-  - 'a spawn that hits stale per-UID state either succeeds or fails FAST (<60s) with an
-    actionable error naming the stage and the stale state (measured baseline: 5m0.001s of
-    silence then HTTP 500 internal "user manager did not start"; a client on the documented
-    300s timeout sees only a socket timeout)'
-  - 'the rollback runs on a context that is NOT the expired spawn context, so a failed spawn
-    always removes the agent user, /home/bunker-<id> and the /var/lib/systemd/linger entry
-    (measured residue: uid 1012 user, 36K home and a fresh linger entry all left behind while
-    /etc/bunkerd/ssh/<id> was removed)'
-  - 'before reusing a UID the daemon stops/resets the previous occupant''s user-<uid>.slice
-    and linger state (it already detects and unmounts the stale /run/user/<uid>)'
-  - 'a test reproduces the recycled-UID-with-stale-slice case and asserts zero residue'
-  - 'bunker status (or an inventory RPC) reports residue counts: orphan users, homes, keys,
-    linger entries'
-  status: pending
+  - 'a spawn that hits stale per-UID state either succeeds or fails FAST (<60s) with
+    an actionable error naming the stage and the stale state (measured baseline: 5m0.001s
+    of silence then HTTP 500 internal "user manager did not start"; a client on the
+    documented 300s timeout sees only a socket timeout)'
+  - 'the rollback runs on a context that is NOT the expired spawn context, so a failed
+    spawn always removes the agent user, /home/bunker-<id> and the /var/lib/systemd/linger
+    entry (measured residue: uid 1012 user, 36K home and a fresh linger entry all
+    left behind while /etc/bunkerd/ssh/<id> was removed)'
+  - before reusing a UID the daemon stops/resets the previous occupant's user-<uid>.slice
+    and linger state (it already detects and unmounts the stale /run/user/<uid>)
+  - a test reproduces the recycled-UID-with-stale-slice case and asserts zero residue
+  - 'bunker status (or an inventory RPC) reports residue counts: orphan users, homes,
+    keys, linger entries'
+  status: complete
   created_at: '2026-09-18T10:30:00+00:00'
+  completed_at: '2026-09-18T16:04:50.127605+00:00'
 - id: DF-BUNKER-22
-  title: 'P1 ExecAgent/RunAgent over REST — document the connect-streaming recipe and return
-    a real error envelope instead of a bare 415'
+  title: "P1 ExecAgent/RunAgent over REST \u2014 document the connect-streaming recipe\
+    \ and return a real error envelope instead of a bare 415"
   criteria:
-  - 'docs/integration.md contains a runnable ExecAgent-over-REST example (curl or short
-    script) that returns command output, naming Content-Type application/connect+json and the
-    [flags:1][len:4 BE][json] envelope framing'
-  - 'the doc states that stdout/stderr arrive base64-encoded, that the response is chunked,
-    that exitCode is present only when non-zero, and that the final frame is a flags=0x02 trailer'
-  - 'the §2 claim that errors carry a JSON {code,message} envelope is either true for a wrong
-    content type (server returns a MediaType/invalid_argument envelope) or the doc names the
-    exception explicitly'
+  - docs/integration.md contains a runnable ExecAgent-over-REST example (curl or short
+    script) that returns command output, naming Content-Type application/connect+json
+    and the [flags:1][len:4 BE][json] envelope framing
+  - the doc states that stdout/stderr arrive base64-encoded, that the response is
+    chunked, that exitCode is present only when non-zero, and that the final frame
+    is a flags=0x02 trailer
+  - "the \xA72 claim that errors carry a JSON {code,message} envelope is either true\
+    \ for a wrong content type (server returns a MediaType/invalid_argument envelope)\
+    \ or the doc names the exception explicitly"
   - 'the rejected end-of-stream forms are covered: a trailing 0x02 byte and a trailing
-    [0x02][0x00000000] envelope both currently return HTTP 200 with the error inside the
-    stream; a test pins whichever behaviour the maintainers choose'
+    [0x02][0x00000000] envelope both currently return HTTP 200 with the error inside
+    the stream; a test pins whichever behaviour the maintainers choose'
   status: pending
   created_at: '2026-09-18T10:30:00+00:00'
 - id: DF-BUNKER-23
-  title: 'P2 docs/integration.md §5 documents a SpawnAgent name field (and env vars) that
-    SpawnAgentRequest does not have — unknown JSON fields are silently dropped'
+  title: "P2 docs/integration.md \xA75 documents a SpawnAgent name field (and env\
+    \ vars) that SpawnAgentRequest does not have \u2014 unknown JSON fields are silently\
+    \ dropped"
   criteria:
-  - '§5 lists only fields that exist in proto/bunker/v1/bunker.proto SpawnAgentRequest
-    (agent_id, limits, network, ttl, ssh_public_key, labels, image_spec) and the worked
-    example uses agent_id'
-  - 'an unknown request field is rejected (protojson DiscardUnknown=false) or logged/warned,
-    so a client is never silently given a random id'
-  - 'a doc-derived client can address the agent it created by the id it asked for'
-  - 'the env-vars claim is removed or replaced with the real path (bunker env set, which is
-    not a spawn-time field)'
+  - "\xA75 lists only fields that exist in proto/bunker/v1/bunker.proto SpawnAgentRequest\
+    \ (agent_id, limits, network, ttl, ssh_public_key, labels, image_spec) and the\
+    \ worked example uses agent_id"
+  - an unknown request field is rejected (protojson DiscardUnknown=false) or logged/warned,
+    so a client is never silently given a random id
+  - a doc-derived client can address the agent it created by the id it asked for
+  - the env-vars claim is removed or replaced with the real path (bunker env set,
+    which is not a spawn-time field)
   status: pending
   created_at: '2026-09-18T10:30:00+00:00'
 - id: DF-BUNKER-24
-  title: 'P2 Orphan agent private keys accumulate on daemon hosts — /etc/bunkerd/ssh/<agent>
-    survives agents that die by TTL expiry or startup reconcile'
+  title: "P2 Orphan agent private keys accumulate on daemon hosts \u2014 /etc/bunkerd/ssh/<agent>\
+    \ survives agents that die by TTL expiry or startup reconcile"
   criteria:
-  - 'the TTL-expiry and reconcile death paths run the same key sweep DestroyAgent runs
-    (measured: las-03 139 keys / 139 orphans, las-02 7/4, demo host 1/1; an explicit destroy
-    removed its own key immediately)'
-  - 'after killing N agents by TTL expiry on a test host, key files (N) == 0 == agent users (N)'
-  - 'residue counters (orphan keys/homes) are visible in an inventory surface so an operator
-    can see the drift without root shell access'
-  - 'a test covers the TTL-expiry cleanup path'
+  - 'the TTL-expiry and reconcile death paths run the same key sweep DestroyAgent
+    runs (measured: las-03 139 keys / 139 orphans, las-02 7/4, demo host 1/1; an explicit
+    destroy removed its own key immediately)'
+  - after killing N agents by TTL expiry on a test host, key files (N) == 0 == agent
+    users (N)
+  - residue counters (orphan keys/homes) are visible in an inventory surface so an
+    operator can see the drift without root shell access
+  - a test covers the TTL-expiry cleanup path
   status: pending
   created_at: '2026-09-18T10:30:00+00:00'
 - id: DF-BUNKER-25
-  title: 'P2 Fresh-host adoption gate: no prebuilt binaries and no Go install path — the
-    first documented command on a stock Debian host dies with sh: 1: go: not found (Error 127)'
+  title: "P2 Fresh-host adoption gate: no prebuilt binaries and no Go install path\
+    \ \u2014 the first documented command on a stock Debian host dies with sh: 1:\
+    \ go: not found (Error 127)"
   criteria:
-  - 'a fresh Debian/Ubuntu host following only the README reaches a working ./bunker --version
-    without an undocumented step (measured: stock Debian 13 has make+docker, no Go; documented
-    make build fails with Error 127)'
-  - 'either release binaries plus a documented install script exist, or Prerequisites carries
-    a concrete install-Go-1.26 block (tarball to /usr/local/go, PATH export) that avoids the
-    GOPATH==GOROOT warning seen when extracting into $HOME'
-  - 'the expected first-build cost (Go toolchain + module downloads) is stated next to the
-    first-spawn warning'
+  - 'a fresh Debian/Ubuntu host following only the README reaches a working ./bunker
+    --version without an undocumented step (measured: stock Debian 13 has make+docker,
+    no Go; documented make build fails with Error 127)'
+  - either release binaries plus a documented install script exist, or Prerequisites
+    carries a concrete install-Go-1.26 block (tarball to /usr/local/go, PATH export)
+    that avoids the GOPATH==GOROOT warning seen when extracting into $HOME
+  - the expected first-build cost (Go toolchain + module downloads) is stated next
+    to the first-spawn warning
   status: pending
   created_at: '2026-09-18T10:30:00+00:00'
 - id: DF-BUNKER-26
   title: 'P3 Doc/cosmetic drift bundle: audit schema missing the hash chain, ServerMetrics
     agents[] undocumented, double-escaped TTL regex, destroy tombstone 200-vs-404'
   criteria:
-  - 'docs/integration.md §4 documents hash/prevHash on audit records (QueryAudit returns
-    them; the log is SHA-256 chained)'
-  - '§2/§5 mention the agents[] array returned inside ServerMetrics on 0.1.4+'
-  - 'the invalid-TTL error message prints the regex single-escaped (currently double-escaped)
-    and a test pins the string'
-  - '§5 states the destroy semantics precisely: a never-known id is 404 not_found, a
-    just-destroyed id is 200 destroyed (tombstone)'
+  - "docs/integration.md \xA74 documents hash/prevHash on audit records (QueryAudit\
+    \ returns them; the log is SHA-256 chained)"
+  - "\xA72/\xA75 mention the agents[] array returned inside ServerMetrics on 0.1.4+"
+  - the invalid-TTL error message prints the regex single-escaped (currently double-escaped)
+    and a test pins the string
+  - "\xA75 states the destroy semantics precisely: a never-known id is 404 not_found,\
+    \ a just-destroyed id is 200 destroyed (tombstone)"
   status: pending
   created_at: '2026-09-18T10:30:00+00:00'
