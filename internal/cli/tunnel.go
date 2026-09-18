@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +19,16 @@ import (
 // execCommandContext is a package-level hook for testing the tunnel command
 // without requiring a real ssh binary.
 var execCommandContext = exec.CommandContext
+
+// tunnelShutdownGrace is how long the tunnel's ssh process group is given to
+// exit after SIGTERM before it is SIGKILLed. It also bounds exec.Cmd's own
+// bookkeeping (WaitDelay): if the group is somehow still around after the
+// grace, the exec package SIGKILLs the leader and closes its pipes.
+const tunnelShutdownGrace = 500 * time.Millisecond
+
+// tunnelShutdownPollInterval is how often the shutdown grace re-checks whether
+// the tunnel's process group is still alive.
+const tunnelShutdownPollInterval = 25 * time.Millisecond
 
 // NewTunnelCommand returns the `bunker tunnel` cobra command.
 func NewTunnelCommand() *cobra.Command {
@@ -75,15 +86,21 @@ agent's Docker socket is available on the local port:
 			}
 
 			client := newBunkerdClient(entry)
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
+
+			// The 30s deadline belongs to the GetAgent RPC and NOTHING else.
+			// It is cancelled as soon as the RPC returns — deliberately NOT
+			// deferred: a deferred cancel never runs when the process is killed
+			// by a signal, which is how the tunnel below used to stay wired to
+			// an RPC deadline nobody was left to enforce (GAP-079).
+			rpcCtx, cancelRPC := context.WithTimeout(context.Background(), 30*time.Second)
 
 			req := connect.NewRequest(&v1.GetAgentRequest{AgentId: agentID})
 			token := resolveToken(entry)
 			if token != "" {
 				req.Header().Set("Authorization", "Bearer "+token)
 			}
-			info, err := client.GetAgent(ctx, req)
+			info, err := client.GetAgent(rpcCtx, req)
+			cancelRPC()
 			if err != nil {
 				return fmt.Errorf("get agent %s: %w", agentID, err)
 			}
@@ -161,10 +178,34 @@ agent's Docker socket is available on the local port:
 			}
 			fmt.Fprintf(os.Stderr, "Opening tunnel to %s on local port %d. Press Ctrl-C to stop.\n", agentID, localPort)
 
-			c := execCommandContext(ctx, parts[0], cmdArgs...)
+			// The tunnel runs under its OWN signal-aware context with NO
+			// deadline. It used to reuse the 30s GetAgent deadline above, which
+			// (a) killed the ssh child ~30s after it opened — the help text
+			// promises the foreground until interrupted — and (b) left the
+			// child orphaned, because a signal killed the CLI outright and no
+			// deferred cancel or reaper ever ran (GAP-079: orphaned root
+			// ssh sessions holding the docker-sock forward with ppid=1).
+			tunnelCtx, stopTunnel := signal.NotifyContext(context.Background(), tunnelShutdownSignals()...)
+			defer stopTunnel()
+
+			c := execCommandContext(tunnelCtx, parts[0], cmdArgs...)
 			c.Stdout = os.Stdout
 			c.Stderr = os.Stderr
-			return c.Run()
+			// Own process group + group kill: see tunnel_proc_unix.go. Both must
+			// be in place before Run() starts the child.
+			configureTunnelCommand(c)
+			c.Cancel = func() error { return terminateTunnelCommand(c) }
+			c.WaitDelay = tunnelShutdownGrace
+
+			runErr := c.Run()
+			if tunnelCtx.Err() != nil {
+				// The tunnel was stopped by a signal (Ctrl-C, SIGTERM, SIGHUP):
+				// that is the operator's intent, not a failure — and the child
+				// has already been reaped above. Report a clean stop instead of
+				// surfacing "context canceled" plus cobra usage.
+				return nil
+			}
+			return runErr
 		},
 	}
 

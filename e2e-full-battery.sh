@@ -1400,11 +1400,19 @@ echo ""
 # =============================================
 echo "=== 6a. Docker Tunnel ==="
 TUNNEL_PID=""
+TUNNEL_SETSID=0
 TUNNEL_LOG=/tmp/bunker-tunnel-e2e-main.log
 # nohup cannot invoke a shell function, so this one CLI call stays direct — it
 # inherits the BUNKER_HOME exported by battery_cli_state_dir (the battery's own
 # CLI state dir), so it is isolated exactly like every bcli call.
-nohup "$BUNKER" tunnel e2e-main > "$TUNNEL_LOG" 2>&1 &
+# setsid gives the tunnel its own session, so the teardown below can signal its
+# whole process GROUP without ever signalling this script.
+if command -v setsid >/dev/null 2>&1; then
+    nohup setsid "$BUNKER" tunnel e2e-main > "$TUNNEL_LOG" 2>&1 &
+    TUNNEL_SETSID=1
+else
+    nohup "$BUNKER" tunnel e2e-main > "$TUNNEL_LOG" 2>&1 &
+fi
 TUNNEL_PID=$!
 sleep 3
 
@@ -1416,6 +1424,20 @@ if kill -0 "$TUNNEL_PID" 2>/dev/null; then
         TUNNEL_OK=1
     else
         fail "docker version through SSH tunnel — $TUNNEL_DOCKER"
+    fi
+    # Tear the tunnel down GROUP-first (GAP-079). The CLI reaps its ssh child on
+    # SIGTERM, and the group kill also covers a tunnel still running the old
+    # code, whose ssh child used to be reparented to init and keep the -L
+    # forward (plus an SSH MaxStartups slot) for good. The group signal is only
+    # safe because setsid put the CLI in its own session above — without it the
+    # CLI shares this script's process group.
+    if [ "$TUNNEL_SETSID" -eq 1 ]; then
+        kill -TERM -- "-$TUNNEL_PID" 2>/dev/null || true
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+            kill -0 -- "-$TUNNEL_PID" 2>/dev/null || break
+            sleep 0.2
+        done
+        kill -KILL -- "-$TUNNEL_PID" 2>/dev/null || true
     fi
     kill "$TUNNEL_PID" 2>/dev/null || true
     wait "$TUNNEL_PID" 2>/dev/null || true

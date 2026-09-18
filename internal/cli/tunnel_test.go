@@ -7,8 +7,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/go-chi/chi/v5"
@@ -372,3 +376,274 @@ func TestTunnelCommand_InvalidPort(t *testing.T) {
 
 // Ensure imported packages are used (keeps compiler happy in test builds).
 var _ = os.Stdout
+
+// ── GAP-079: the tunnel must not outlive the CLI ────────────────────────────
+//
+// The live gate left orphaned root ssh sessions holding
+// "-L 2376:/run/bunker/<agent>/docker.sock" with ppid=1 after the CLI that
+// created them was killed by a signal (agent user already deleted).
+
+// tunnelTestHostCommand is the server-baked tunnel command the mock bunkerd
+// returns: the same shape the daemon stores (server-side key path and host),
+// which the CLI rewrites into a client-local ssh invocation.
+const tunnelTestHostCommand = "ssh -o StrictHostKeyChecking=no -i /etc/bunkerd/ssh/abc123 -L 2376:/run/bunker/abc123/docker.sock bunker-abc123@bunker-mvp -N"
+
+// TestTunnelCommand_TunnelContextIndependentOfRPCD exercises the context the
+// ssh child is started with, through the execCommandContext hook:
+//
+//   - it must have NO deadline. The 30s GetAgent deadline used to be handed
+//     straight to exec, so the ssh child was killed ~30s after it opened even
+//     though the help text promises the foreground "until interrupted".
+//   - it must still be alive while the tunnel child runs, and be cancelled once
+//     RunE returns — i.e. owned by the tunnel (signal.NotifyContext + stop()),
+//     not chained to the RPC context.
+func TestTunnelCommand_TunnelContextIndependentOfRPCD(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	server := newTunnelTestServer(t, &mockTunnelServer{
+		getAgentResp: &v1.GetAgentResponse{
+			Agent: &v1.AgentSummary{AgentId: "abc123", DockerHostTunnel: tunnelTestHostCommand},
+		},
+	})
+	defer server.Close()
+	writeTunnelTestConfig(t, tmpDir, server.URL)
+	writeTunnelKey(t, tmpDir, "abc123")
+
+	type ctxCapture struct {
+		ctx        context.Context
+		deadline   bool
+		deadlineAt time.Time
+		err        error
+	}
+	captured := make(chan ctxCapture, 1)
+
+	oldExec := execCommandContext
+	execCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		dl, hasDeadline := ctx.Deadline()
+		captured <- ctxCapture{ctx: ctx, deadline: hasDeadline, deadlineAt: dl, err: ctx.Err()}
+		// A real, short-lived child: the assertions below are about the context
+		// the tunnel hands to exec, not about ssh itself.
+		c := exec.CommandContext(ctx, "sleep", "1")
+		c.Stdout, c.Stderr = io.Discard, io.Discard
+		return c
+	}
+	defer func() { execCommandContext = oldExec }()
+
+	done := make(chan error, 1)
+	go func() {
+		cmd := NewTunnelCommand()
+		cmd.SetOut(io.Discard)
+		cmd.SetErr(io.Discard)
+		cmd.SetArgs([]string{"abc123"})
+		done <- cmd.Execute()
+	}()
+
+	var got ctxCapture
+	select {
+	case got = <-captured:
+	case <-time.After(15 * time.Second):
+		t.Fatal("the tunnel never reached the ssh exec")
+	}
+
+	if got.deadline {
+		t.Fatalf("GAP-079: the tunnel context has a deadline (%s from now) — the long-lived ssh child is still bounded by the GetAgent RPC deadline",
+			time.Until(got.deadlineAt))
+	}
+	if got.err != nil {
+		t.Fatalf("the tunnel context was already done when the child started: %v", got.err)
+	}
+
+	// The RPC has returned (the ssh command was built from its response) and the
+	// tunnel child is running: its context must not be done.
+	select {
+	case <-got.ctx.Done():
+		t.Fatal("GAP-079: the tunnel context was cancelled while the tunnel child was still running — it is chained to the RPC context")
+	case <-time.After(250 * time.Millisecond):
+	}
+
+	if err := <-done; err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	select {
+	case <-got.ctx.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("the tunnel context was not cancelled after RunE returned (signal context stop() leak)")
+	}
+}
+
+// TestTunnelCommand_SignalReapsSSHChild is the load-bearing GAP-079 test. It
+// builds the real CLI (go build ./cmd/bunker), points it at the in-process mock
+// bunkerd, puts a fake `ssh` first on PATH that records its own pid, spawns a
+// long-lived grandchild and waits for it, then SIGTERMs the CLI and asserts the
+// whole subtree is gone.
+//
+// Pre-fix the CLI died on the signal with no cleanup at all: the ssh child was
+// reparented to init and kept its -L forward (and the root sshd session behind
+// it) forever.
+func TestTunnelCommand_SignalReapsSSHChild(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX process-group semantics")
+	}
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skipf("go toolchain not on PATH, cannot build the CLI under test: %v", err)
+	}
+
+	tmp := t.TempDir()
+
+	server := newTunnelTestServer(t, &mockTunnelServer{
+		getAgentResp: &v1.GetAgentResponse{
+			Agent: &v1.AgentSummary{
+				AgentId:          "e2e-main",
+				DockerHostTunnel: "ssh -o StrictHostKeyChecking=no -i /etc/bunkerd/ssh/e2e-main -L 2376:/run/bunker/e2e-main/docker.sock bunker-e2e-main@bunker-mvp -N",
+			},
+		},
+	})
+	defer server.Close()
+
+	// CLI state: config.yaml (points at the mock server) + the agent key.
+	home := filepath.Join(tmp, "bunker-home")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatalf("mkdir %s: %v", home, err)
+	}
+	t.Setenv("BUNKER_HOME", home)
+	// NOTE: HOME is set for the CLI CHILD only (below), never for the test
+	// process — overriding it here would relocate the go build's module cache
+	// (GOPATH defaults to $HOME/go) into the temp dir.
+	writeTunnelTestConfig(t, home, server.URL)
+	writeTunnelKey(t, home, "e2e-main")
+
+	// Fake ssh: records its pid, spawns a grandchild that would outlive any
+	// sane grace period, and waits for it (so the ssh child stays alive).
+	binDir := filepath.Join(tmp, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", binDir, err)
+	}
+	sshPIDFile := filepath.Join(tmp, "ssh.pid")
+	grandchildPIDFile := filepath.Join(tmp, "ssh-grandchild.pid")
+	sshScript := "#!/bin/sh\n" +
+		"echo \"$$\" > \"$FAKE_SSH_PID_FILE\"\n" +
+		"sleep 300 &\n" +
+		"echo \"$!\" > \"$FAKE_SSH_GRANDCHILD_PID_FILE\"\n" +
+		"wait\n"
+	if err := os.WriteFile(filepath.Join(binDir, "ssh"), []byte(sshScript), 0o755); err != nil {
+		t.Fatalf("write fake ssh: %v", err)
+	}
+
+	// Build the CLI the test drives — the real binary, real main().
+	cliBin := filepath.Join(tmp, "bunker")
+	build := exec.Command("go", "build", "-o", cliBin, "./cmd/bunker")
+	build.Dir = filepath.Join("..", "..")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("go build ./cmd/bunker: %v\n%s", err, out)
+	}
+
+	cliLog := filepath.Join(tmp, "cli.log")
+	logFile, err := os.Create(cliLog)
+	if err != nil {
+		t.Fatalf("create %s: %v", cliLog, err)
+	}
+	t.Cleanup(func() { _ = logFile.Close() })
+
+	cli := exec.Command(cliBin, "tunnel", "e2e-main")
+	cli.Dir = tmp
+	cli.Env = append(os.Environ(),
+		"BUNKER_HOME="+home,
+		"HOME="+tmp,
+		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"FAKE_SSH_PID_FILE="+sshPIDFile,
+		"FAKE_SSH_GRANDCHILD_PID_FILE="+grandchildPIDFile,
+	)
+	// Plain files, not pipes: the orphan we are hunting for inherits the CLI's
+	// stdout/stderr, and a pipe would keep Wait blocked on the copy goroutine.
+	cli.Stdout, cli.Stderr = logFile, logFile
+
+	if err := cli.Start(); err != nil {
+		t.Fatalf("start CLI: %v", err)
+	}
+
+	sshPID, grandchildPID := 0, 0
+	// Clean up whatever survives, so a failing (pre-fix) run does not itself
+	// leak the orphaned ssh forward this test exists to prevent.
+	t.Cleanup(func() {
+		if cli.Process != nil {
+			_ = cli.Process.Kill()
+		}
+		for _, pid := range []int{sshPID, grandchildPID} {
+			if pid > 0 {
+				_ = syscall.Kill(pid, syscall.SIGKILL)
+			}
+		}
+	})
+
+	sshPID = waitForPIDFile(t, sshPIDFile, 15*time.Second, cliLog)
+	grandchildPID = waitForPIDFile(t, grandchildPIDFile, 15*time.Second, cliLog)
+
+	// Premise: the fake ssh (and its grandchild) really are running, otherwise
+	// the assertions below would be vacuously true.
+	for name, pid := range map[string]int{"fake ssh": sshPID, "fake ssh grandchild": grandchildPID} {
+		if err := syscall.Kill(pid, 0); err != nil {
+			t.Fatalf("%s (pid %d) is not running before the signal: %v", name, pid, err)
+		}
+	}
+
+	if err := cli.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatalf("SIGTERM the CLI: %v", err)
+	}
+
+	waited := make(chan error, 1)
+	go func() { waited <- cli.Wait() }()
+	select {
+	case <-waited:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("the CLI did not exit within 10s of SIGTERM (log:\n%s)", readFileOr(cliLog))
+	}
+
+	// The load-bearing assertion: nothing the CLI started may survive it.
+	deadline := time.Now().Add(5 * time.Second)
+	for _, child := range []struct {
+		name string
+		pid  int
+	}{
+		{"the ssh child", sshPID},
+		{"the ssh grandchild", grandchildPID},
+	} {
+		for {
+			if err := syscall.Kill(child.pid, 0); err != nil {
+				break // ESRCH: gone
+			}
+			if time.Now().After(deadline) {
+				t.Errorf("GAP-079: %s (pid %d) survived a SIGTERM to the CLI — the tunnel subtree was orphaned", child.name, child.pid)
+				break
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+}
+
+// waitForPIDFile waits for a pid file written by the fake ssh helper to appear
+// with a positive pid, and returns it.
+func waitForPIDFile(t *testing.T, path string, within time.Duration, cliLog string) int {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for time.Now().Before(deadline) {
+		if raw, err := os.ReadFile(path); err == nil {
+			if pid, err := strconv.Atoi(strings.TrimSpace(string(raw))); err == nil && pid > 0 {
+				return pid
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("no pid in %s after %s (CLI log:\n%s)", path, within, readFileOr(cliLog))
+	return 0
+}
+
+// readFileOr returns the file's contents, or the read error as text.
+func readFileOr(path string) string {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return err.Error()
+	}
+	return string(raw)
+}
