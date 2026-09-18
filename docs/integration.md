@@ -306,7 +306,7 @@ auditing — audit failure never blocks startup.
 |-----|------|---------|
 | `ServerInfo` | unary | hostname, version, uptime, agent count/capacity, total & available resources, residue inventory (orphan users/homes/keys/stale linger entries + probe status) |
 | `ServerMetrics` | unary | live CPU %, memory used/total, disk used/total |
-| `SpawnAgent` | unary | create an agent (name, TTL, resource limits, network mode, env vars) |
+| `SpawnAgent` | unary | create an agent (`agent_id` handle, TTL, resource limits, network mode, SSH key, labels, image spec) |
 | `DestroyAgent` | unary | tear down an agent (idempotent — unknown id → `CodeNotFound`) |
 | `ListAgents` | unary | all agents with status, resources, endpoints |
 | `GetAgent` | unary | one agent's details |
@@ -323,6 +323,76 @@ auditing — audit failure never blocks startup.
 | `GetInfo` | agent self-description (id, limits, endpoints) |
 | `Metrics` | the agent's own resource usage |
 | `Heartbeat` | the agent extends its own TTL |
+
+### `SpawnAgent` over REST — naming the agent
+
+`SpawnAgent` is the call that decides how you address the agent afterwards, and
+the only field that does that is **`agent_id`**. Every field of
+`SpawnAgentRequest` is optional (the REST conventions are §2's: proto snake_case
+field names in, protojson camelCase out, `Content-Type: application/json`):
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `agent_id` | string | the handle every later call uses (`GetAgent`, `ExecAgent`, `HeartbeatAgent`, `DestroyAgent`). Empty → the daemon generates one. Must match `[a-z0-9-]{1,63}`; the CLI validates that locally, and a bad id sent straight to the daemon fails the spawn's `validate` stage. |
+| `limits` | `ResourceLimits` | `cpu_quota` (cores), `memory_max_bytes`, `disk_max_bytes`, `max_docker_containers`; server defaults when empty |
+| `network` | `NetworkConfig` | `mode` (`MODE_CLOUDFLARE_TUNNEL`, `MODE_TAILSCALE` or `MODE_DIRECT`), plus `domain`, `trycloudflare`, `port_range_start`, `port_range_end` |
+| `ttl` | string | lifetime as `\d+[hmd]` (`6h`, `90m`, `7d`); the server default (`agent.default_ttl`) when empty |
+| `ssh_public_key` | bytes | push an existing key instead of letting the daemon generate one — base64 in JSON, because protojson renders `bytes` that way |
+| `labels` | map<string,string> | free-form metadata carried on the agent |
+| `image_spec` | `ImageSpec` | declarative image customization (allowlisted base + apt/go/npm package adds, GAP-064), validated before any side effect |
+
+**There is no `name` field, and no environment field.** Request bodies are
+decoded with unknown fields *discarded*, not rejected, so naming a field the
+proto does not have still answers `200` — the mistake is silent:
+
+| Request body | What actually happens |
+|--------------|-----------------------|
+| `{"agent_id":"build-1","ttl":"1h"}` | ✅ `200`, the agent is `build-1` |
+| `{"name":"build-1","ttl":"1h"}` | ⚠️ `200` with an auto-generated `agentId` — `name` does not exist and is dropped, so the follow-up `GetAgent {"agent_id":"build-1"}` is a `404` |
+| `{"agent_id":"build-1","env":{"FOO":"bar"}}` | ⚠️ `200`, `env` dropped — the variable is not set |
+
+Read `agentId` back out of the response and compare it with what you asked for:
+for an ignored field that check is the only signal there is.
+
+**Environment is configured after the spawn, not during it.** The supported
+interface is the CLI — `bunker env set <agent-id> KEY=VALUE` writes
+`/run/bunker/<agent-id>/env` on the agent host through `ExecAgent`, and that file
+is sourced at the start of every `bunker exec` / `bunker exec --script` and every
+detached `bunker run --detach`, so the variables persist until `bunker env unset`
+or the agent is destroyed. A REST-only client gets the same effect by writing
+that file with `ExecAgent` (`--raw` mode does **not** source it). There is no
+per-spawn env field in the proto.
+
+The round trip, copy-pasteable (drop the `Authorization` header on a daemon with
+`auth.enabled: false`):
+
+```bash
+# 1) Spawn with the handle you want to use from here on.
+$ curl -s http://127.0.0.1:8080/bunker.v1.Bunkerd/SpawnAgent \
+    -H 'Content-Type: application/json' \
+    -H 'Authorization: Bearer <token>' \
+    -d '{"agent_id":"build-1","ttl":"1h"}'
+{"agentId":"build-1", ...}                        # abbreviated — see below
+
+# 2) The same id addresses it afterwards.
+$ curl -s http://127.0.0.1:8080/bunker.v1.Bunkerd/GetAgent \
+    -H 'Content-Type: application/json' \
+    -H 'Authorization: Bearer <token>' \
+    -d '{"agent_id":"build-1"}'
+{"agentId":"build-1","status":"running", ...}
+
+# 3) A handle that was never created answers 404 with the usual envelope.
+$ curl -s http://127.0.0.1:8080/bunker.v1.Bunkerd/GetAgent \
+    -H 'Content-Type: application/json' -d '{"agent_id":"build-9"}'
+{"code":"not_found","message":"agent \"build-9\" not found"}
+```
+
+The bodies are abbreviated to the fields that matter here; `SpawnAgentResponse`
+also carries the connection bundle — `dockerHostSsh`, `dockerHostTunnel`,
+`sshfsMount`, `publicUrl`, `portRangeStart`/`portRangeEnd`, `sshPrivateKey`,
+`limits`, `expiresAt`, `tailnetIp`, `apiKey`, `image` — and the live capture of
+this round trip (named spawn → `agentId` echoed → `404` on the dropped name) is
+in [dogfood/2026-09-18-integration.md](dogfood/2026-09-18-integration.md) §4.4.
 
 ### `ExecAgent` over REST — the streaming recipe
 
