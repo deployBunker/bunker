@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/user"
 	"path/filepath"
@@ -211,16 +212,26 @@ func (m *AgentManager) provisionIsolation(ctx context.Context, agentID, username
 // removeIsolation removes the agent's scratch and /tmp instance directories
 // during destroy. Both removals are idempotent, so a partially provisioned
 // (or never provisioned) agent destroys cleanly.
-func (m *AgentManager) removeIsolation(ctx context.Context, agentID string) {
+//
+// DF-BUNKER-21: the outcome is RETURNED as well as logged. The spawn rollback
+// records it in the failure breadcrumb, and a breadcrumb that claimed
+// "isolation removed" while both removals had failed was one of the swallowed
+// failures the QA foreman had to reconstruct from the host. Destroy keeps
+// calling it best-effort (the error is logged, the destroy proceeds).
+func (m *AgentManager) removeIsolation(ctx context.Context, agentID string) error {
 	host := m.hostSetup()
+	var errs []error
 	if rep, err := host.RemoveAgentScratch(ctx, agentID); err != nil {
 		m.logger.Warn("shared scratch removal incomplete", "agent_id", agentID, "error", err)
+		errs = append(errs, fmt.Errorf("shared scratch: %w", err))
 	} else {
 		m.logger.Debug("shared scratch removed", "agent_id", agentID, "report", rep.String())
 	}
 	if rep, err := host.RemoveAgentTmpInstance(ctx, agentID); err != nil {
 		m.logger.Warn("private /tmp instance removal incomplete", "agent_id", agentID, "error", err)
+		errs = append(errs, fmt.Errorf("private /tmp instance: %w", err))
 	} else {
 		m.logger.Debug("private /tmp instance removed", "agent_id", agentID, "report", rep.String())
 	}
+	return errors.Join(errs...)
 }

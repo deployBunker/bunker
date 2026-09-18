@@ -1090,9 +1090,7 @@ func TestRemoveAgentUser_ClearsLingerAndManagerBeforeUserdel(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	res := &rollbackResult{}
-	rollbackCtx, cancel := rollbackContext(context.Background())
-	defer cancel()
-	removeAgentUser(rollbackCtx, agentID, logger, res)
+	removeAgentUser(newRollbackBudget(context.Background()), agentID, logger, res)
 
 	lines := readRecord(t, logPath)
 	idxDisable := lineIndex(lines, "loginctl disable-linger "+username)
@@ -1167,9 +1165,7 @@ func TestRemoveAgentUser_DisableLingerFailureStillRunsUserdel(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	res := &rollbackResult{}
-	rollbackCtx, cancel := rollbackContext(context.Background())
-	defer cancel()
-	removeAgentUser(rollbackCtx, agentID, logger, res)
+	removeAgentUser(newRollbackBudget(context.Background()), agentID, logger, res)
 
 	if calls := readRecord(t, logPath); len(calls) != 1 {
 		t.Errorf("userdel must still run after a failing disable-linger, calls: %v", calls)
@@ -1229,9 +1225,7 @@ func TestRemoveAgentUser_AbsentUserSkipsManagerCleanup(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	res := &rollbackResult{}
-	rollbackCtx, cancel := rollbackContext(context.Background())
-	defer cancel()
-	removeAgentUser(rollbackCtx, agentID, logger, res)
+	removeAgentUser(newRollbackBudget(context.Background()), agentID, logger, res)
 
 	if calls := readRecord(t, logPath); len(calls) != 1 {
 		t.Errorf("the existing userdel path must still run, calls: %v", calls)

@@ -236,18 +236,62 @@ var userLookup = user.Lookup
 // the full install flow is unit-testable without real users (INT-CI-009).
 var rootHostRunner systemRunner = runSystemCmd
 
-// runRootlessInstallerCmd is the production installer runner:
-// `su - <username> -c <script>` where script is the COMPLETE installer session
-// command built by rootlessInstallerSessionCmd (bus environment AND the
-// installer's own toggles in-band). The process environment is kept
-// belt-and-braces (see userSessionEnv): the login shell resets it, so the
+// rootlessInstallerCommand builds the installer execution as the production
+// runner must issue it: `su - <username> -c <script>` where script is the
+// COMPLETE installer session command built by rootlessInstallerSessionCmd (bus
+// environment AND the installer's own toggles in-band). The process environment
+// is kept belt-and-braces (see userSessionEnv): the login shell resets it, so the
 // session depends on the in-band assignment, never on cmd.Env (INT-SPAWN-004).
-func runRootlessInstallerCmd(ctx context.Context, username, runtimeDir, script string) ([]byte, error) {
+//
+// Split from the runner so the process-group wiring (DF-BUNKER-21) is assertable
+// against the real command the installer path builds.
+func rootlessInstallerCommand(ctx context.Context, username, runtimeDir, script string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "su", "-", username, "-c", script)
 	cmd.Env = append(userSessionEnv(runtimeDir),
 		rootlessInstallerForceEnv,
 		rootlessInstallerSkipIptables,
 	)
+	return cmd
+}
+
+// runRootlessInstallerCmd runs the installer (see rootlessInstallerCommand) in
+// its OWN process group so a context cancellation takes the whole installer
+// subtree down (DF-BUNKER-21), not just `su`.
+func runRootlessInstallerCmd(ctx context.Context, username, runtimeDir, script string) ([]byte, error) {
+	return runInOwnProcessGroup(ctx, rootlessInstallerCommand(ctx, username, runtimeDir, script))
+}
+
+// runInOwnProcessGroup runs cmd in its OWN process group and, when ctx is done,
+// kills the WHOLE group — not just the direct child, which is all
+// exec.CommandContext's default cancellation signals.
+//
+// WHY (DF-BUNKER-21): the rootless installer is `su - <user> -c <installer>`,
+// and the work that matters happens in ITS children — the `curl` fetching ~90MB
+// of docker-ce-rootless-extras, the extracted install script, rootlesskit. On
+// the QA host the spawn failed 2/2 while that download was at ~1.7MB/s and the
+// 300s request deadline expired; killing only `su` orphaned those children as
+// the agent user. They kept running (and writing) while the rollback tried to
+// remove that very user, holding the home directory and the user manager busy —
+// which is precisely what makes `userdel -r` exit 8 with "user is currently used
+// by process". SIGKILL to the group ends the subtree at the same instant the
+// request gives up.
+//
+// SAFETY: Setpgid gives the child a group of its own, so the negative-pid kill
+// reaches only processes this command started. The daemon, its siblings, and
+// the test binary (which is in a different group) are never signalled.
+func runInOwnProcessGroup(ctx context.Context, cmd *exec.Cmd) ([]byte, error) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process == nil {
+			return nil
+		}
+		// Negative pid = every process in the child's group.
+		if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
+			// The group is already gone (ESRCH) is the common, benign case.
+			return err
+		}
+		return nil
+	}
 	return cmd.CombinedOutput()
 }
 

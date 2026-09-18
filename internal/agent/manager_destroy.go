@@ -153,8 +153,11 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 
 	// Step 0.6 (GAP-075): unmount and remove the bounded shared-scratch
 	// directory and the private-/tmp instance directory. Idempotent, so a
-	// partially provisioned agent still destroys cleanly.
-	m.removeIsolation(ctx, agentID)
+	// partially provisioned agent still destroys cleanly. Best-effort here
+	// (the spawn rollback is the caller that records the outcome).
+	if err := m.removeIsolation(ctx, agentID); err != nil {
+		m.logger.Warn("isolation removal incomplete", "agent_id", agentID, "error", err)
+	}
 
 	// Step 1: Stop the dockerd systemd user unit
 	unitName := "bunker-docker-" + agentID

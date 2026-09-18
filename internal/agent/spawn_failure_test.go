@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/user"
@@ -96,15 +97,62 @@ func readRecord(t *testing.T, logPath string) []string {
 	return lines
 }
 
+// spawnInBackground runs Spawn on its own goroutine so a test can cancel the
+// request context while the spawn is provably inside a stage.
+func spawnInBackground(m *AgentManager, ctx context.Context, req *v1.SpawnAgentRequest) <-chan spawnResult {
+	done := make(chan spawnResult, 1)
+	go func() {
+		resp, err := m.Spawn(ctx, req)
+		done <- spawnResult{resp: resp, err: err}
+	}()
+	return done
+}
+
+// awaitSpawnResult blocks until the background spawn returns, or fails the test
+// once the budget is spent. The budget exists only so a hanging rollback fails
+// loudly instead of blocking the suite; it is far above every rollback budget.
+func awaitSpawnResult(t *testing.T, done <-chan spawnResult, budget time.Duration) spawnResult {
+	t.Helper()
+	select {
+	case res := <-done:
+		return res
+	case <-time.After(budget):
+		t.Fatalf("the spawn did not return within %s of the request context being cancelled (rollback hang?)", budget)
+		return spawnResult{}
+	}
+}
+
+// awaitPath bounded-polls for path to appear. It is the SYNCHRONISATION the
+// cancellation premise is built on: a stub touches the marker when it starts,
+// so the test cancels only once the spawn has PROVEN it is inside that stage.
+// The old 50ms wall-clock deadline raced the pre-keygen stages on a loaded host
+// (INT-CI-020) and is not an acceptable premise (DF-BUNKER-21).
+func awaitPath(t *testing.T, path string, budget time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(budget)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("test premise broken: %s did not appear within %s (the spawn never reached the signalling stub)", path, budget)
+}
+
 // TestSpawnRollbackRunsUserdelUnderCancelledContext is the INT-CI-005
 // criterion-1 proof, reproducing the CI run 35084607865 fingerprint: the user
 // is created while the request context is still healthy, the spawn then hangs
 // in a later stage, and the request context is cancelled (the chi
 // middleware.Timeout 300s deadline) BEFORE the rollback runs. The rollback
-// must still invoke `userdel` through the DETACHED rollback context, and the
+// must still invoke `userdel` through the DETACHED rollback budget, and the
 // returned error must name the stage. The cancelled row reddens against the
 // old behaviour: there the compensating exec borrowed the cancelled request
 // ctx, died instantly, and the stub was never invoked.
+//
+// DF-BUNKER-21: the cancellation is armed by the keygen stub's OWN SIGNAL plus a
+// bounded poll — not by a wall-clock premise. The previous 50ms deadline raced
+// the useradd/isolation stages on a loaded host, so the test asserted a
+// mid-spawn cancellation that it could not guarantee.
 func TestSpawnRollbackRunsUserdelUnderCancelledContext(t *testing.T) {
 	t.Run("cancelled mid-spawn after user creation", func(t *testing.T) {
 		m := intci5Manager(t)
@@ -117,10 +165,16 @@ func TestSpawnRollbackRunsUserdelUnderCancelledContext(t *testing.T) {
 		writeStub(t, binDir, "useradd", recordingStub(useraddLog, 0))
 		// userdel succeeds and records (the compensating action under test).
 		writeStub(t, binDir, "userdel", recordingStub(userdelLog, 0))
-		// ssh-keygen sleeps far longer than the request budget, so the
-		// request ctx is cancelled while it runs — then it dies with a
-		// context error, exactly like a spawn hung past the 300s deadline.
-		writeStub(t, binDir, "ssh-keygen", "sleep 2\nexit 1\n")
+		// The rollback reaps the user's processes before the first userdel, so
+		// pkill/pgrep are stubbed: the rollback must never signal a process on
+		// the machine running the tests.
+		writeStub(t, binDir, "pkill", stubSucceeds)
+		writeStub(t, binDir, "pgrep", "exit 1\n")
+		// ssh-keygen signals that it is running and then blocks, like a spawn
+		// hung past the 300s deadline. The test cancels on that signal, so the
+		// cancellation lands inside the keygen stage by construction.
+		keygenStarted := filepath.Join(t.TempDir(), "keygen-started")
+		writeStub(t, binDir, "ssh-keygen", "touch "+keygenStarted+"\nexec sleep 30\n")
 		t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 		restore := lookupAgentUser
@@ -129,13 +183,18 @@ func TestSpawnRollbackRunsUserdelUnderCancelledContext(t *testing.T) {
 		}
 		defer func() { lookupAgentUser = restore }()
 
-		// The "request": cancelled after 50ms — while ssh-keygen is still
-		// sleeping. All pre-keygen steps complete within a few ms.
-		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
 		agentID := uniqueAgentID("intci5-cancel")
-		_, err := m.Spawn(ctx, &v1.SpawnAgentRequest{AgentId: agentID, Ttl: "1h"})
+		done := spawnInBackground(m, ctx, &v1.SpawnAgentRequest{AgentId: agentID, Ttl: "1h"})
+
+		// Premise FIRST, cancellation SECOND: the spawn has signalled that it is
+		// inside the keygen stage, so this really is a mid-spawn cancellation.
+		awaitPath(t, keygenStarted, 30*time.Second)
+		cancel()
+
+		err := awaitSpawnResult(t, done, 60*time.Second).err
 		if err == nil {
 			t.Fatal("Spawn() succeeded although ssh-keygen was stubbed to hang and the ctx was cancelled")
 		}
@@ -205,6 +264,8 @@ func TestSpawnRollbackRunsUserdelUnderCancelledContext(t *testing.T) {
 		userdelLog := filepath.Join(t.TempDir(), "userdel-calls")
 		writeStub(t, binDir, "useradd", stubSucceeds)
 		writeStub(t, binDir, "userdel", recordingStub(userdelLog, 0))
+		writeStub(t, binDir, "pkill", stubSucceeds)
+		writeStub(t, binDir, "pgrep", "exit 1\n")
 		writeStub(t, binDir, "ssh-keygen", "echo 'keygen: failure simulated' >&2\nexit 1\n")
 		t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
@@ -343,9 +404,7 @@ func TestRemoveAgentUserRetryTable(t *testing.T) {
 
 		logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 		res := &rollbackResult{}
-		rollbackCtx, cancel := rollbackContext(context.Background())
-		defer cancel()
-		removeAgentUser(rollbackCtx, "retry-agent", logger, res)
+		removeAgentUser(newRollbackBudget(context.Background()), "retry-agent", logger, res)
 
 		calls := readRecord(t, logPath)
 		if len(calls) != 2 {
@@ -353,6 +412,18 @@ func TestRemoveAgentUserRetryTable(t *testing.T) {
 		}
 		if len(res.failed) != 0 {
 			t.Errorf("retry succeeded but failures were recorded: %v", res.failed)
+		}
+		// The recovered attempt is still on the record as a NOTE (evidence, not
+		// residual): rollback_failed must stay "what the rollback could not fix".
+		notices := res.noticeSnapshot()
+		sawAttempt := false
+		for _, n := range notices {
+			if strings.HasPrefix(n, "userdel attempt failed: ") {
+				sawAttempt = true
+			}
+		}
+		if !sawAttempt {
+			t.Errorf("the recovered userdel attempt is missing from the notes: %v", notices)
 		}
 		ranList, _ := res.snapshot()
 		found := false
@@ -376,9 +447,7 @@ func TestRemoveAgentUserRetryTable(t *testing.T) {
 
 		logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 		res := &rollbackResult{}
-		rollbackCtx, cancel := rollbackContext(context.Background())
-		defer cancel()
-		removeAgentUser(rollbackCtx, "stuck-agent", logger, res)
+		removeAgentUser(newRollbackBudget(context.Background()), "stuck-agent", logger, res)
 
 		if calls := readRecord(t, logPath); len(calls) != 2 {
 			t.Fatalf("userdel invoked %d times, want bounded 2 attempts: %v", len(calls), calls)
@@ -388,25 +457,58 @@ func TestRemoveAgentUserRetryTable(t *testing.T) {
 		}
 	})
 
-	t.Run("cancelled context runs no compensating exec", func(t *testing.T) {
+	// DF-BUNKER-21 replaced the old "cancelled context runs no compensating
+	// exec" row: that behaviour WAS the leak. Under the pre-budget design a step
+	// handed a dead context silently ran nothing, so the spawn that had consumed
+	// the shared rollback budget left its user, home and linger entry behind.
+	// The contract now is the opposite one — and this row proves the critical
+	// late step still gets a live context AFTER the anchor has been spent.
+	t.Run("exhausted anchor still reaches userdel on the reserved floor", func(t *testing.T) {
 		binDir := t.TempDir()
 		logPath := filepath.Join(t.TempDir(), "userdel-calls")
 		writeStub(t, binDir, "userdel", recordingStub(logPath, 0))
-		writeStub(t, binDir, "pkill", stubSucceeds)
-		writeStub(t, binDir, "pgrep", "exit 1\n")
 		t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-		logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-		res := &rollbackResult{}
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		removeAgentUser(ctx, "ghost-agent", logger, res)
+		// The anchor is already spent before the first step: every step of this
+		// rollback must run on the reserved floor with a LIVE context.
+		restoreTimings := shrinkRollbackBudgets(t, 20*time.Millisecond, 5*time.Millisecond, 40*time.Millisecond)
+		defer restoreTimings()
 
-		if calls := readRecord(t, logPath); len(calls) != 0 {
-			t.Errorf("userdel ran under a cancelled context (stubs: %v) — the rollback ctx must be detached", calls)
+		restoreLinger := disableLinger
+		disableLinger = func(context.Context, string) ([]byte, error) { return nil, nil }
+		t.Cleanup(func() { disableLinger = restoreLinger })
+		restoreRunner := userManagerRunner
+		userManagerRunner = func(context.Context, string, ...string) ([]byte, error) { return nil, nil }
+		t.Cleanup(func() { userManagerRunner = restoreRunner })
+		restoreLookup := lookupUser
+		lookupUser = func(name string) (*user.User, error) {
+			return &user.User{Username: name, Uid: "61001", Gid: "61001"}, nil
 		}
-		if len(res.failed) == 0 {
-			t.Error("the dead rollback attempt was not recorded as failed")
+		t.Cleanup(func() { lookupUser = restoreLookup })
+
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		res := &rollbackResult{}
+		budget := newRollbackBudget(context.Background())
+		// Simulate the anchor being spent: the deadline is in the past.
+		budget.deadline = time.Now().Add(-time.Second)
+		removeAgentUser(budget, "floor-agent", logger, res)
+
+		calls := readRecord(t, logPath)
+		if len(calls) != 1 {
+			t.Fatalf("userdel invoked %d times, want 1: the reserved floor must still start the critical step (calls: %v)",
+				len(calls), calls)
+		}
+		if !recorded(t, res, "userdel bunker-floor-agent", false) {
+			t.Errorf("userdel was not recorded as run: %+v", res)
+		}
+		notices := res.noticeSnapshot()
+		if len(notices) == 0 {
+			t.Error("a rollback whose anchor is spent must SAY so in the breadcrumb notices")
+		}
+		for _, n := range notices {
+			if !strings.Contains(n, "rollback budget exhausted") {
+				t.Errorf("unexpected notice shape: %q", n)
+			}
 		}
 	})
 }

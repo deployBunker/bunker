@@ -20,6 +20,22 @@ import (
 	"github.com/deployBunker/bunker/internal/resource"
 )
 
+// agentHomeRoot is the root under which agent home directories live. "/home" in
+// production; the spawn-failure regressions point it at a temp directory so the
+// whole spawn path — authorized_keys, .profile, the rootless install directory,
+// the port metadata — can be driven end to end without writing into the real
+// /home of the machine running the tests. Declared as a var (not a const) purely
+// as that test seam; production never writes it.
+var agentHomeRoot = "/home"
+
+// spawnRunRoot is the root of the per-agent runtime state the spawn creates:
+// <root>/<agent_id>/docker.sock, <root>/<agent_id>/tmp and
+// <root>/<agent_id>/run. "/run/bunker" in production; the same test seam as
+// agentHomeRoot, so a regression can drive the spawn into the rootless stage
+// without writing into the host's /run (which needs root, and would leave a
+// directory behind on a machine that runs the tests as root).
+var spawnRunRoot = filepath.Join("/run", "bunker")
+
 func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v1.SpawnAgentResponse, error) {
 	// ── Step 1: Validate or generate agent_id ──────────────────────
 	agentID := req.GetAgentId()
@@ -101,37 +117,53 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	var keyFile string
 	portRangeAllocated := m.portAlloc != nil
 
-	// INT-CI-005: the rollback must survive request-context cancellation.
-	// The server (internal/server/server.go) wraps the handler in chi
+	// INT-CI-005 / DF-BUNKER-21: the rollback must survive request-context
+	// cancellation AND must not let one slow compensating step starve the ones
+	// after it. The server (internal/server/server.go) wraps the handler in chi
 	// middleware.Timeout(cfg.Server.RequestTimeout, 300s by default); when a
 	// spawn exceeds it, the request ctx is cancelled and every
 	// exec.CommandContext(ctx, ...) in this closure used to die instantly —
 	// userdel never ran and the half-created agent (user without key/registry
-	// row) was left behind. The compensating actions therefore run under a
-	// context DETACHED from the request (context.WithoutCancel) bounded by
-	// its own timeout, and every outcome is recorded so the failure
-	// breadcrumb can show a partially-rolled-back agent.
+	// row) was left behind. Detaching the context (context.WithoutCancel) fixed
+	// that but still gave every step ONE shared budget, so a step that consumed
+	// it left the next ones holding a dead context and silently doing nothing
+	// (QA-BUNKER-19: spawn cancelled during the rootless download, host left
+	// with 11 orphan bunker-* users and 0 registered agents). Every compensating
+	// action now draws its OWN fresh, detached, bounded context from the
+	// rollback budget, and every outcome is recorded so the failure breadcrumb
+	// can show a partially-rolled-back agent.
 	rbRes := &rollbackResult{}
+	rb := newRollbackBudget(ctx)
 	rollback := func() {
-		rollbackCtx, cancel := rollbackContext(ctx)
-		defer cancel()
-
 		// Free the port range first — the in-memory allocator leaks
-		// permanently if a failed spawn never releases it.
+		// permanently if a failed spawn never releases it. No command, no
+		// budget: this cannot be starved.
 		if portRangeAllocated {
 			m.portAlloc.Free(agentID)
 			rbRes.ok("port-range freed")
 		}
+		// Release the tracker slot defensively. The durable-persist gate below
+		// unregisters before it calls this closure, but a rolled-back spawn
+		// must never leave the in-memory registry holding an agent that does
+		// not exist: capacity math and the reconcile sweep both read it.
+		if m.tracker.Get(agentID) != nil {
+			m.tracker.Unregister(agentID)
+			rbRes.ok("tracker slot released")
+		}
 		if createdUserSlice {
-			if sliceErr := removeUserSliceLimits(rollbackCtx, agentID, m.logger); sliceErr != nil {
-				rbRes.err("slice-limits: " + sliceErr.Error())
-			} else {
+			rb.runStep("slice-limits "+agentID, rbRes, func(ctx context.Context) {
+				if sliceErr := removeUserSliceLimits(ctx, agentID, m.logger); sliceErr != nil {
+					rbRes.err("slice-limits: " + sliceErr.Error())
+					return
+				}
 				rbRes.ok("slice-limits removed")
-			}
+			})
 		}
 		if createdUser {
-			removeAgentUser(rollbackCtx, agentID, m.logger, rbRes)
+			removeAgentUser(rb, agentID, m.logger, rbRes)
 		}
+		// Key files and the persisted SSH key are plain filesystem removals:
+		// they need no context, so no budget can starve them.
 		if keyFile != "" {
 			os.Remove(keyFile)
 			os.Remove(keyFile + ".pub")
@@ -142,8 +174,16 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		// GAP-075: drop the scratch and private-/tmp instance directories so a
 		// failed spawn cannot leave a provisioned exchange point or tmp
 		// instance behind for an agent that does not exist.
-		m.removeIsolation(rollbackCtx, agentID)
-		rbRes.ok("isolation removed")
+		rb.runStep("isolation "+agentID, rbRes, func(ctx context.Context) {
+			if isoErr := m.removeIsolation(ctx, agentID); isoErr != nil {
+				// DF-BUNKER-21: reported, not swallowed. The rollback used to
+				// claim "isolation removed" unconditionally, so a breadcrumb
+				// could assert a teardown that had failed.
+				rbRes.err("isolation: " + isoErr.Error())
+				return
+			}
+			rbRes.ok("isolation removed")
+		})
 	}
 
 	// INT-CI-005: every failure return from Spawn flows through this helper so
@@ -171,6 +211,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 			Error:   err.Error(),
 			Ran:     ran,
 			Failed:  failedRb,
+			Notices: rbRes.noticeSnapshot(),
 		})
 		return err
 	}
@@ -239,11 +280,11 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	}
 
 	// ── Step 4: Set up .ssh/authorized_keys with DOCKER_HOST env ──
-	userHome := "/home/" + username
+	userHome := filepath.Join(agentHomeRoot, username)
 	sshDir := filepath.Join(userHome, ".ssh")
 	authKeysFile := filepath.Join(sshDir, "authorized_keys")
-	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
-	tmpDir := filepath.Join("/run", "bunker", agentID, "tmp")
+	dockerSockPath := filepath.Join(spawnRunRoot, agentID, "docker.sock")
+	tmpDir := filepath.Join(spawnRunRoot, agentID, "tmp")
 
 	m.logger.Info("setting up authorized_keys", "user", username)
 	if err := os.MkdirAll(sshDir, 0700); err != nil {
@@ -307,7 +348,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// a non-root user, so we use Docker's rootless mode. The setup installs
 	// rootlesskit, slirp4netns/vpnkit, and configures subuid/subgid for the
 	// user, then starts dockerd-rootless.sh as a systemd user unit.
-	dockerSockPath = fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
+	dockerSockPath = filepath.Join(spawnRunRoot, agentID, "docker.sock")
 	unitName := "bunker-docker-" + agentID
 	m.logger.Info("starting rootless dockerd", "unit", unitName, "sock", dockerSockPath)
 
@@ -422,7 +463,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// default, which requires a writable XDG_RUNTIME_DIR, and the socket
 	// directory (/run/bunker/<id>) is chowned to the agent so dockerd can
 	// create the socket there.
-	rootlessRuntimeDir := filepath.Join("/run", "bunker", agentID, "run")
+	rootlessRuntimeDir := filepath.Join(spawnRunRoot, agentID, "run")
 	if err := os.MkdirAll(rootlessRuntimeDir, 0700); err != nil {
 		return nil, fail(StageDockerdStart, fmt.Errorf("create rootless runtime dir %s: %w", rootlessRuntimeDir, err))
 	}
