@@ -2072,3 +2072,17 @@ tasks:
   status: complete
   created_at: '2026-09-18T07:22:36.436924+00:00'
   completed_at: '2026-09-18T07:29:12.949668+00:00'
+- id: GAP-078-LIVE
+  title: 'Live gate: deploy HEAD to bunker-mvp and prove the bunkerd positional-arg
+    refusal'
+  criteria:
+  - (a) /opt/bunker checkout and both installed binaries (/opt/bunker/bunkerd, /usr/local/bin/bunkerd)
+    report commit a570197 (HEAD at deploy time) after make build + systemctl restart
+    bunkerd; (b) /opt/bunker/bunkerd version prints the 5-field version block with
+    rc=0 and no daemon startup logs; (c) within 5s of that probe ss -ltnp shows ONLY
+    the restarted daemon PID on :18080/:19090 and systemctl is-active bunkerd is unchanged
+    (active); (d) /opt/bunker/bunkerd bogus exits 1 with an error naming the argument
+    and leaves the daemon untouched (same MainPID, still active); (e) the commit deployed
+    cites observed job-level green CI evidence.
+  status: in_progress
+  created_at: '2026-09-18T08:08:10.289714+00:00'

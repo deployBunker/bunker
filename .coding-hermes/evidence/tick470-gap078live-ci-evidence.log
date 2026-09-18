@@ -1,0 +1,50 @@
+# tick 470 — GAP-078-LIVE: job-level CI evidence for the deployed commit
+
+Repo: deployBunker/bunker   Branch: main
+
+## The commit this tick deployed to bunker-mvp
+
+  /opt/bunker git rev-parse --short HEAD  ->  a570197
+  (a57019765768dd94976ee84edf03a6f0257bd25b)
+
+  $ gh run view 35321002999 --repo deployBunker/bunker --json headSha,conclusion,status
+  headSha=a57019765768dd94976ee84edf03a6f0257bd25b status=completed conclusion=success
+
+## Job level is the only CI truth in this repo (run-level lies: `continue-on-error`)
+
+  $ gh run view 35321002999 --repo deployBunker/bunker --json jobs
+  completed / success
+    build-and-test  | completed | success
+    unit-tests      | completed | success
+    root-suite      | completed | success
+    regression      | completed | success
+    gitreins-guard  | completed | success
+
+  $ gh run view 35320949543 --repo deployBunker/bunker --json jobs   # previous push
+  completed / success
+    build-and-test | completed | success
+    regression     | completed | success
+    gitreins-guard | completed | success
+    unit-tests     | completed | success
+    root-suite     | completed | success
+
+  $ gh run view 35319762488 --repo deployBunker/bunker --json jobs   # feature commit 7346a88
+  completed / success
+    build-and-test | completed | success
+    root-suite     | completed | success
+    unit-tests     | completed | success
+    regression     | completed | success
+    gitreins-guard | completed | success
+
+## Host window (bunker-mvp is shared with the CI runner)
+
+  $ gh run list --repo deployBunker/bunker --limit 3 --json status,databaseId
+  completed 35321002999
+  completed 35320949543
+  completed 35319762488
+  -> nothing queued / in_progress at deploy time; host load average 0.04 0.68 0.87
+  $ ssh bunker-mvp 'ps aux | grep -c "[e]2e-full-battery"'  ->  0
+
+## No CI failure to flag this tick
+
+Runs 35321002999 / 35320949543 / 35319762488: every job at job level is green.

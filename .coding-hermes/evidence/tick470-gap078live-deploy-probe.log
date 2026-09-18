@@ -1,0 +1,85 @@
+== HOST ==
+bunker-mvp
+ 08:08:22 up 81 days, 22:48,  6 users,  load average: 0.02, 0.59, 0.83
+== BEFORE: daemon ==
+MainPID=4037510
+NRestarts=0
+ExecMainStartTimestamp=Fri 2026-09-18 06:18:27 UTC
+== BEFORE: listeners ==
+LISTEN 0      4096               *:19090            *:*    users:(("bunkerd",pid=4037510,fd=8))                      
+LISTEN 0      4096               *:18080            *:*    users:(("bunkerd",pid=4037510,fd=7))                      
+== BEFORE: checkout ==
+23073ee chore(foreman): tick #467 - GAP-071 agent lifecycle RPCs landed (948ebf4); QA-BUNKER-14 + CI-SOAK-1 verified-and-closed; INT-CI-020 filed
+23073ee
+== BEFORE: bunkerd processes ==
+4037510 /opt/bunker/bunkerd --config /etc/bunkerd/config.yaml
+== DEPLOY: fetch + reset --hard ==
+deployed_commit=a570197
+a570197 chore(board): tick 469 — record DuckBrain narration write ids on the audit event
+== BUILD ==
+go build -ldflags "-X github.com/deployBunker/bunker/internal/version.Version=0.1.4 -X github.com/deployBunker/bunker/internal/version.Commit=a570197 -X github.com/deployBunker/bunker/internal/version.BuildDate=2026-09-18T08:08:23Z" -o ./bunkerd ./cmd/bunkerd
+go build -ldflags "-X github.com/deployBunker/bunker/internal/version.Version=0.1.4 -X github.com/deployBunker/bunker/internal/version.Commit=a570197 -X github.com/deployBunker/bunker/internal/version.BuildDate=2026-09-18T08:08:23Z" -o ./bunker ./cmd/bunker
+build_rc=0
+bunker 0.1.4
+  commit:     a570197
+  built:      2026-09-18T08:08:23Z
+  go version: go1.26.5
+  platform:   linux/amd64
+bunkerd 0.1.4
+  commit:     a570197
+  built:      2026-09-18T08:08:23Z
+  go version: go1.26.5
+  platform:   linux/amd64
+== INSTALL (backup old binaries first) ==
+bunkerd 0.1.4
+  commit:     a570197
+  built:      2026-09-18T08:08:23Z
+  go version: go1.26.5
+  platform:   linux/amd64
+== RESTART DAEMON ==
+active
+MainPID=143236
+NRestarts=0
+ExecMainStartTimestamp=Fri 2026-09-18 08:08:25 UTC
+healthz=200
+unauth_rpc=401
+listeners_after_restart:
+LISTEN 0      4096               *:19090            *:*    users:(("bunkerd",pid=143236,fd=8))                       
+LISTEN 0      4096               *:18080            *:*    users:(("bunkerd",pid=143236,fd=7))                       
+== PROBE (b): /opt/bunker/bunkerd version ==
+version_rc=0
+--- stdout ---
+bunkerd 0.1.4
+  commit:     a570197
+  built:      2026-09-18T08:08:23Z
+  go version: go1.26.5
+  platform:   linux/amd64
+--- stderr ---
+startup_log_lines_in_probe=0
+== PROBE (c): immediately after, listeners unchanged? ==
+2026-09-18T08:08:29Z
+LISTEN 0      4096               *:19090            *:*    users:(("bunkerd",pid=143236,fd=8))                       
+LISTEN 0      4096               *:18080            *:*    users:(("bunkerd",pid=143236,fd=7))                       
+after 5s:
+LISTEN 0      4096               *:19090            *:*    users:(("bunkerd",pid=143236,fd=8))                       
+LISTEN 0      4096               *:18080            *:*    users:(("bunkerd",pid=143236,fd=7))                       
+bunkerd_proc_count=1
+active
+MainPID=143236
+== PROBE (d): /opt/bunker/bunkerd bogus ==
+bogus_rc=1
+--- stdout ---
+--- stderr ---
+bunkerd: unknown argument "bogus"
+after bogus: bunkerd_proc_count=1
+active
+MainPID=143236
+LISTEN 0      4096               *:19090            *:*    users:(("bunkerd",pid=143236,fd=8))                       
+LISTEN 0      4096               *:18080            *:*    users:(("bunkerd",pid=143236,fd=7))                       
+== PROBE: installed CLI version ==
+bunker 0.1.4
+  commit:     a570197
+  built:      2026-09-18T08:08:23Z
+  go version: go1.26.5
+  platform:   linux/amd64
+== END ==
