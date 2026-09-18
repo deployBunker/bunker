@@ -2059,3 +2059,16 @@ tasks:
   status: complete
   created_at: '2026-09-18T06:18:13.858096+00:00'
   completed_at: '2026-09-18T06:24:39.528546+00:00'
+- id: GAP-078
+  title: bunkerd must reject unknown positional args and support 'bunkerd version'
+    / 'bunkerd help' verbs
+  criteria:
+  - 'cmd/bunkerd/main.go inspects fs.Args(): ''version'' verb prints the existing
+    5-field version block and exits 0; ''help'' verb prints Usage and exits 0; any
+    other positional arg returns an error naming the argument BEFORE config.Load runs
+    (no second daemon boot, no port race); table-driven tests in cmd/bunkerd/main_test.go
+    cover all four cases incl. proof the unknown-arg path never reaches config load;
+    go build/vet/test/gofmt clean; version output stays byte-compatible with internal/hostsetup.ParseDaemonVersionOutput'
+  status: complete
+  created_at: '2026-09-18T07:22:36.436924+00:00'
+  completed_at: '2026-09-18T07:29:12.949668+00:00'
