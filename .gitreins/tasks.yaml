@@ -2348,3 +2348,15 @@ tasks:
   status: complete
   created_at: '2026-09-18T21:22:35.941342+00:00'
   completed_at: '2026-09-18T22:18:40.993082+00:00'
+- id: GAP-084
+  title: 'GAP-084: shared long-lived-child reap helper for cp/deploy/mount/ssh + Pdeathsig
+    in internal/tunnel'
+  criteria:
+  - 'PASS: (1) SIGTERM to ''bunker cp <agent> <big-file>'' mid-transfer ends the transfer
+    (no scp descendant alive within a bounded window) and Ctrl-C during a mount attempt
+    leaves no sshfs/ssh attempt process; (2) a test pins the shared helper''s group+Pdeathsig
+    semantics; (3) killing the cloudflared child''s parent with SIGKILL no longer
+    leaves cloudflared running.'
+  status: complete
+  created_at: '2026-09-18T22:37:20.189907+00:00'
+  completed_at: '2026-09-18T23:03:59.819908+00:00'
