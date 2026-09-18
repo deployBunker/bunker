@@ -2212,3 +2212,46 @@ tasks:
     \ a just-destroyed id is 200 destroyed (tombstone)"
   status: pending
   created_at: '2026-09-18T10:30:00+00:00'
+- id: GAP-080
+  title: 'GAP-080: operator cleanup path for orphaned agent home directories (bunker
+    homes report + prune) and live residue verification on the demo host'
+  criteria:
+  - 'CONJUNCT 1: internal/cli/homes.go provides the bunker homes group with a bare
+    read-only report (classifies bunker-* entries into stale=user-gone vs kept=user-exists,
+    printing counts, the stale set''s on-disk size and the sorted stale names) and
+    the homes prune subcommand with --dir and --dry-run that removes exactly the stale
+    entries. CONJUNCT 2: fail-closed prune - an inconclusive user-existence probe
+    aborts with NOTHING removed, an entry whose user still exists is never removed,
+    and names that do not match bunker-* are never touched; all three are proven by
+    unit tests that inject the seams (no test touches the real /home or /etc/passwd).
+    CONJUNCT 3: the command is registered in cmd/bunker/main.go so it is reachable
+    from the CLI (the built binary''s --help lists a homes command). CONJUNCT 4: go
+    build ./... , go vet ./... , go test ./internal/cli/ -count=1 and go test ./cmd/...
+    -count=1 are all green. CONJUNCT 5: README.md documents the new orphan-home remediation
+    path and internal/cli/SKILL.md carries the NewHomesCommand()/homes_test.go bullets
+    in the existing linger style. CONJUNCT 6 (SCOPE, corrected): the branch carries
+    exactly TWO commits ahead of origin/main - the feature commit f3bc048 touching
+    exactly internal/cli/homes.go, internal/cli/homes_test.go, cmd/bunker/main.go,
+    README.md, internal/cli/SKILL.md, and the foreman''s live-evidence commit 00fbff3
+    touching exactly docs/dogfood/2026-09-18-demo-residue-live.md. The foreman''s
+    commit is part of the deliverable (the tick''s live-verification rule requires
+    committed live evidence), NOT scope creep. Each of the two commits carries exactly
+    ONE Co-authored-by trailer appended by the repo''s gitreins pre-commit hook: exactly
+    one is the repo convention and is REQUIRED - the author must not add a second.
+    The modified .gitreins/tasks.yaml is GitReins lifecycle bookkeeping for this task
+    id and is expected to ride along with the board commit; it is not a scope violation.
+    No commit touches .coding-hermes/board/*. The worker pushed nothing. CONJUNCT
+    7 (LIVE EVIDENCE): docs/dogfood/2026-09-18-demo-residue-live.md records the live
+    verification on the demo host - the deployed daemon build it was measured on (checkout/binary
+    27e06f0, built 2026-09-18T17:56:04Z, healthz 200, unauthenticated ServerInfo 401),
+    the host truth before (125 /home/bunker-* dirs with no system user, 52 linger
+    entries of which 51 stale) and the daemon Residue line after the deploy (0 orphan
+    users, 125 orphan homes, 0 orphan keys, 50 stale linger entries), the dry-run
+    no-mutation assertion (125 dirs still present after prune --dry-run), the real
+    prune results (51 stale linger entries removed leaving the 1 live user''s entry;
+    125 orphan homes removed leaving 0), and the final Residue line (0/0/0/0 with
+    the residue warning gone) - and the document''s claims are consistent with internal/cli/homes.go''s
+    implemented behavior.'
+  status: complete
+  created_at: '2026-09-18T18:04:48.193400+00:00'
+  completed_at: '2026-09-18T18:05:00.644038+00:00'
