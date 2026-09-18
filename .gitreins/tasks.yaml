@@ -1963,3 +1963,30 @@ tasks:
   status: complete
   created_at: '2026-09-18T00:04:28.487885+00:00'
   completed_at: '2026-09-18T00:10:54.641448+00:00'
+- id: DOC-19
+  title: 'Doc-freshness class: refresh the stale package SKILL.md files (internal/cli,
+    internal/agent, internal/resource, internal/hostsetup) from their feature commits'
+  criteria:
+  - 'Doc-freshness class refresh in ONE docs-only commit: (1) internal/cli/SKILL.md
+    documents the DF-BUNKER-17 CLI actionability work (heartbeat TTL semantics printed
+    and documented, cp destination-ownership hint, single-location audit permission
+    error, fail-fast --ttl validation, exit-code table) plus the DF-BUNKER-20 deploy
+    recursive-scp ownership hint and the DF-BUNKER-11/DF-BUNKER-14 mount bounded-retry
+    classification; (2) internal/agent/SKILL.md no longer describes the user-manager
+    reset as an unconditional preamble - it documents the INT-CI-008 conditional reset
+    ordering (classifyRuntimeDir, ensureUserRuntimeDir created and ownership-verified
+    before the manager start, fetchUserManagerJournal attribution) and the DF-BUNKER-18
+    daemon-instance ownership marker in agent metadata; (3) internal/resource/SKILL.md
+    documents the DF-BUNKER-13 foreign-orphan classification (a port range outside
+    this daemon pool is never destroyed), PortAllocator.Bounds and the foreign reconciliation
+    summary field; (4) internal/hostsetup/SKILL.md documents the INT-DEMO-001 daemon-skew
+    class (host-provision refuses when the installed daemon predates the spawn-side
+    isolation grant, and --allow-daemon-skew is honored by Apply); (5) the canonical
+    per-dir freshness probe (for each directory holding .go files, SKILL.md must not
+    be older than the newest .go file in it) reports no STALE for internal/cli, internal/agent,
+    internal/resource and internal/hostsetup; (6) git show --stat of the docs commit
+    lists ONLY SKILL.md files; (7) no .go or .proto file is modified and go build
+    ./... plus go vet ./... still pass.'
+  status: complete
+  created_at: '2026-09-18T00:35:35.625510+00:00'
+  completed_at: '2026-09-18T00:44:52.054061+00:00'
