@@ -622,6 +622,174 @@ func TestTunnelCommand_SignalReapsSSHChild(t *testing.T) {
 	}
 }
 
+// TestTunnelCommand_SIGKILLReapsSSHChild proves the kernel BACKSTOP, i.e. the
+// case a signal-handling teardown can never cover: the CLI is killed with an
+// UNCATCHABLE signal (kill -9 / OOM kill / a manager's cleanup), so no context
+// is cancelled, no deferred function runs and no reaper executes — and the ssh
+// child is still gone. Before the backstop, that child was reparented to init
+// with its "-L 2376:.../docker.sock" forward (and the root sshd session behind
+// it) alive forever.
+//
+// Same harness as TestTunnelCommand_SignalReapsSSHChild (real CLI built with
+// `go build ./cmd/bunker`, in-process mock bunkerd, fake ssh that records its
+// pid, spawns a `sleep 300` grandchild and waits); only the kill signal differs.
+//
+// SCOPE, measured rather than assumed: Pdeathsig is a PARENT-DEATH signal for
+// the DIRECT child — the process that owns the forward — and it is delivered
+// when the thread that created the child exits. A process that no longer exists
+// cannot signal anything, so the fake ssh's own grandchild cannot die on this
+// path by any user-space mechanism (verified with a standalone probe: with
+// Setpgid+Pdeathsig, SIGKILLing the parent leaves the direct child GONE and its
+// `sleep 300` grandchild ALIVE). What the real command leaks is the ssh client
+// and, through it, the remote sshd session — both of which die with the direct
+// child, whose death closes the TCP connection the session rides on. The
+// grandchild is therefore logged as an observation and only its LIVENESS BEFORE
+// the kill is asserted, so the test cannot pass vacuously with a dead fixture.
+func TestTunnelCommand_SIGKILLReapsSSHChild(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX parent-death / process-group semantics")
+	}
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skipf("go toolchain not on PATH, cannot build the CLI under test: %v", err)
+	}
+
+	tmp := t.TempDir()
+
+	server := newTunnelTestServer(t, &mockTunnelServer{
+		getAgentResp: &v1.GetAgentResponse{
+			Agent: &v1.AgentSummary{
+				AgentId:          "e2e-main",
+				DockerHostTunnel: "ssh -o StrictHostKeyChecking=no -i /etc/bunkerd/ssh/e2e-main -L 2376:/run/bunker/e2e-main/docker.sock bunker-e2e-main@bunker-mvp -N",
+			},
+		},
+	})
+	defer server.Close()
+
+	// CLI state: config.yaml (points at the mock server) + the agent key.
+	home := filepath.Join(tmp, "bunker-home")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatalf("mkdir %s: %v", home, err)
+	}
+	t.Setenv("BUNKER_HOME", home)
+	// NOTE: HOME is set for the CLI CHILD only (below), never for the test
+	// process — overriding it here would relocate the go build's module cache
+	// (GOPATH defaults to $HOME/go) into the temp dir.
+	writeTunnelTestConfig(t, home, server.URL)
+	writeTunnelKey(t, home, "e2e-main")
+
+	// Fake ssh: records its pid, spawns a grandchild that would outlive any
+	// sane grace period, and waits for it (so the ssh child stays alive).
+	binDir := filepath.Join(tmp, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", binDir, err)
+	}
+	sshPIDFile := filepath.Join(tmp, "ssh.pid")
+	grandchildPIDFile := filepath.Join(tmp, "ssh-grandchild.pid")
+	sshScript := "#!/bin/sh\n" +
+		"echo \"$$\" > \"$FAKE_SSH_PID_FILE\"\n" +
+		"sleep 300 &\n" +
+		"echo \"$!\" > \"$FAKE_SSH_GRANDCHILD_PID_FILE\"\n" +
+		"wait\n"
+	if err := os.WriteFile(filepath.Join(binDir, "ssh"), []byte(sshScript), 0o755); err != nil {
+		t.Fatalf("write fake ssh: %v", err)
+	}
+
+	// Build the CLI the test drives — the real binary, real main().
+	cliBin := filepath.Join(tmp, "bunker")
+	build := exec.Command("go", "build", "-o", cliBin, "./cmd/bunker")
+	build.Dir = filepath.Join("..", "..")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("go build ./cmd/bunker: %v\n%s", err, out)
+	}
+
+	cliLog := filepath.Join(tmp, "cli.log")
+	logFile, err := os.Create(cliLog)
+	if err != nil {
+		t.Fatalf("create %s: %v", cliLog, err)
+	}
+	t.Cleanup(func() { _ = logFile.Close() })
+
+	cli := exec.Command(cliBin, "tunnel", "e2e-main")
+	cli.Dir = tmp
+	cli.Env = append(os.Environ(),
+		"BUNKER_HOME="+home,
+		"HOME="+tmp,
+		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"FAKE_SSH_PID_FILE="+sshPIDFile,
+		"FAKE_SSH_GRANDCHILD_PID_FILE="+grandchildPIDFile,
+	)
+	// Plain files, not pipes: the orphan we are hunting for inherits the CLI's
+	// stdout/stderr, and a pipe would keep Wait blocked on the copy goroutine.
+	cli.Stdout, cli.Stderr = logFile, logFile
+
+	if err := cli.Start(); err != nil {
+		t.Fatalf("start CLI: %v", err)
+	}
+
+	sshPID, grandchildPID := 0, 0
+	// Clean up whatever survives, so a failing (pre-backstop) run does not
+	// itself leak the orphaned ssh forward this test exists to prevent.
+	t.Cleanup(func() {
+		if cli.Process != nil {
+			_ = cli.Process.Kill()
+		}
+		for _, pid := range []int{sshPID, grandchildPID} {
+			if pid > 0 {
+				_ = syscall.Kill(pid, syscall.SIGKILL)
+			}
+		}
+	})
+
+	sshPID = waitForPIDFile(t, sshPIDFile, 15*time.Second, cliLog)
+	grandchildPID = waitForPIDFile(t, grandchildPIDFile, 15*time.Second, cliLog)
+
+	// Premise: the fake ssh (and its grandchild) really are running, otherwise
+	// the assertion below would be vacuously true.
+	for name, pid := range map[string]int{"fake ssh": sshPID, "fake ssh grandchild": grandchildPID} {
+		if err := syscall.Kill(pid, 0); err != nil {
+			t.Fatalf("%s (pid %d) is not running before the kill: %v", name, pid, err)
+		}
+	}
+
+	// The uncatchable kill: SIGKILL to the CLI. Nothing in the CLI can run
+	// afterwards — the ssh child's death can only come from the kernel.
+	if err := cli.Process.Kill(); err != nil {
+		t.Fatalf("SIGKILL the CLI: %v", err)
+	}
+
+	waited := make(chan error, 1)
+	go func() { waited <- cli.Wait() }()
+	select {
+	case <-waited:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("the CLI did not exit within 10s of SIGKILL (log:\n%s)", readFileOr(cliLog))
+	}
+
+	// The load-bearing assertion: the ssh child — the process holding the
+	// docker-sock forward — must be gone even though the CLI had no chance to
+	// run a line of code after the signal.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if err := syscall.Kill(sshPID, 0); err != nil {
+			break // ESRCH: the parent-death backstop fired
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("GAP-079: the ssh child (pid %d) survived a SIGKILL to the CLI — no parent-death backstop is armed (log:\n%s)",
+				sshPID, readFileOr(cliLog))
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	// Observation only (see the SCOPE note above): the grandchild is beyond the
+	// reach of a dead process, so its state is reported, not asserted.
+	time.Sleep(300 * time.Millisecond)
+	grandchildState := "gone"
+	if err := syscall.Kill(grandchildPID, 0); err == nil {
+		grandchildState = "still running (expected: Pdeathsig is direct-child only; the group teardown cannot run because the CLI was SIGKILLed)"
+	}
+	t.Logf("SIGKILL backstop: ssh child pid %d gone; grandchild pid %d %s", sshPID, grandchildPID, grandchildState)
+}
+
 // waitForPIDFile waits for a pid file written by the fake ssh helper to appear
 // with a positive pid, and returns it.
 func waitForPIDFile(t *testing.T, path string, within time.Duration, cliLog string) int {

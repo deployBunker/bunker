@@ -21,12 +21,17 @@ func tunnelShutdownSignals() []os.Signal {
 
 // configureTunnelCommand puts the ssh child in its OWN process group so the
 // negative-pid kill in terminateTunnelCommand reaches only the processes this
-// command started — never the CLI itself nor its shell.
+// command started — never the CLI itself nor its shell — and arms the
+// parent-death backstop that covers the case nothing in this process can run.
 //
-// This must be applied BEFORE cmd.Start(); execCmd.Run() starts the process, so
-// setting SysProcAttr here (immediately after the command is built) is safe.
+// This must be applied BEFORE cmd.Start(); Start() is what installs both, so
+// setting SysProcAttr here (immediately after the command is built, before the
+// child is started from startTunnelChild) is safe.
 func configureTunnelCommand(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// Pdeathsig is Linux/FreeBSD-only, so it lives behind its own build tag
+	// (tunnel_proc_pdeathsig_supported.go) while this file keeps the POSIX arm.
+	configureTunnelPdeathsig(cmd)
 }
 
 // terminateTunnelCommand stops the tunnel's whole process group: SIGTERM first

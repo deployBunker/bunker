@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,52 @@ import (
 // execCommandContext is a package-level hook for testing the tunnel command
 // without requiring a real ssh binary.
 var execCommandContext = exec.CommandContext
+
+// startTunnelChild starts the ssh child from a goroutine that pins its OS
+// thread, and holds that pin for as long as the tunnel lives.
+//
+// WHY the pin is load-bearing (GAP-079): the child is started with Pdeathsig
+// (tunnel_proc_pdeathsig_supported.go), and the kernel delivers that signal when
+// the THREAD that created the child exits — not when the process does. prctl(2)
+// PR_SET_PDEATHSIG is explicit about it ("the signal will be sent when that
+// thread terminates ... rather than after all of the threads in the parent
+// process terminate"); measured: a helper thread that forks a
+// Pdeathsig=SIGKILL child and then pthread_exit()s leaves its process alive and
+// the child SIGKILLed, 3/3 runs.
+//
+// Go's goroutines are multiplexed over OS threads whose lifetime is NOT tied to
+// the process: runtime.LockOSThread's own contract is that a locked goroutine
+// which exits without unlocking has its thread terminated, threads are torn
+// down through mexit() (gogo(&m.g0.sched) — "let mstart0 exit the thread")
+// independently of the process, and the forking thread is whichever M runs
+// Start(). A bare Pdeathsig field would therefore make the tunnel die at a
+// random moment — when the thread that forked ssh goes away — instead of at CLI
+// death. That is the difference between a working backstop and a random-kill
+// bug, so the pin is not decoration.
+//
+// The starting goroutine must NOT return while the child runs: it parks on the
+// tunnel context, which RunE's deferred stop() cancels on the way out (either a
+// signal stop or after Wait reaped the child), so the pin is released exactly
+// when the tunnel is over. Start's error is propagated to the caller the same
+// way exec.Cmd.Run propagates it; Wait stays in RunE.
+func startTunnelChild(cmd *exec.Cmd, tunnelCtx context.Context) error {
+	started := make(chan error, 1)
+
+	go func() {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+
+		if err := cmd.Start(); err != nil {
+			started <- err
+			return
+		}
+		started <- nil
+
+		<-tunnelCtx.Done()
+	}()
+
+	return <-started
+}
 
 // tunnelShutdownGrace is how long the tunnel's ssh process group is given to
 // exit after SIGTERM before it is SIGKILLed. It also bounds exec.Cmd's own
@@ -191,13 +238,23 @@ agent's Docker socket is available on the local port:
 			c := execCommandContext(tunnelCtx, parts[0], cmdArgs...)
 			c.Stdout = os.Stdout
 			c.Stderr = os.Stderr
-			// Own process group + group kill: see tunnel_proc_unix.go. Both must
-			// be in place before Run() starts the child.
+			// Own process group + group kill + kernel parent-death backstop:
+			// see tunnel_proc_unix.go. All of it must be in place before the
+			// child is started.
 			configureTunnelCommand(c)
 			c.Cancel = func() error { return terminateTunnelCommand(c) }
 			c.WaitDelay = tunnelShutdownGrace
 
-			runErr := c.Run()
+			// Start from an OS thread this goroutine pins for as long as the
+			// tunnel lives: Pdeathsig is delivered when the THREAD that
+			// created the child exits, so the starting thread has to outlive
+			// the child (see startTunnelChild). Wait stays on the normal path,
+			// exactly as exec.Cmd.Run does it internally.
+			if err := startTunnelChild(c, tunnelCtx); err != nil {
+				return err
+			}
+
+			runErr := c.Wait()
 			if tunnelCtx.Err() != nil {
 				// The tunnel was stopped by a signal (Ctrl-C, SIGTERM, SIGHUP):
 				// that is the operator's intent, not a failure — and the child
