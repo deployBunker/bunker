@@ -47,6 +47,12 @@ which serves the same RPCs over **gRPC and REST** from a single listener pair.
   other HTTP method returns `405`, and the auth interceptor runs on the POST path
   only (a `GET` returns `405`, not `401`). Request fields use proto snake_case
   names — e.g. `{"agent_id": "abc123"}`, not `{"id": ...}`.
+- **Server-streaming RPCs are the exception to `application/json`.** They cannot
+  be reached with the unary media type — the daemon answers `415` with a
+  `{"code","message"}` envelope that names the media type to use — because a
+  streaming RPC needs Connect's streaming protocol (`Content-Type:
+  application/connect+json`, one envelope per message in *and* out). §5 has a
+  copy-pasteable `ExecAgent` client.
 - TLS: optional per listener (`tls.*` config: cert/key files, certmagic
   auto-TLS/Let's Encrypt, self-signed, or mTLS). Plaintext is the default.
 - The CLI resolves the endpoint from the server registry in `~/.bunker/config.yaml`
@@ -318,6 +324,207 @@ auditing — audit failure never blocks startup.
 | `Metrics` | the agent's own resource usage |
 | `Heartbeat` | the agent extends its own TTL |
 
+### `ExecAgent` over REST — the streaming recipe
+
+`ExecAgent` is the only **server-streaming** RPC in the service, and it is the
+one RPC that `application/json` cannot carry: the daemon refuses the unary media
+type with `415` (see §2 and *Errors* below). This section is the missing
+recipe — a complete, runnable client that needs nothing but the Python standard
+library (3.8+), verified end to end against a live daemon (see
+[dogfood/2026-09-18-integration-rest-streaming.md](dogfood/2026-09-18-integration-rest-streaming.md)
+for the captured transcript).
+
+```
+POST /bunker.v1.Bunkerd/ExecAgent
+Content-Type: application/connect+json      # NOT application/json
+Authorization: Bearer <token>
+body:  [flags:1 byte][length:4 bytes big-endian][protojson payload]
+```
+
+The response is `HTTP 200` with `Transfer-Encoding: chunked` (any HTTP library
+de-chunks for you) whose body is the same envelope sequence, one envelope per
+write of the remote process. The mapping from the proto to that stream:
+
+| Frame | protojson payload | Meaning |
+|-------|-------------------|---------|
+| `flags=0x00` | `{"stdout":"PGJhc2U2ND4="}` | a chunk of the command's stdout — **base64**, not text (protojson `bytes`) |
+| `flags=0x00` | `{"stderr":"PGJhc2U2ND4="}` | a chunk of its stderr, also base64 |
+| `flags=0x00` | `{}` | the exit code is **0** — protojson omits a default value, so a zero `exitCode` is simply absent |
+| `flags=0x00` | `{"exitCode":3}` | a **non-zero** exit code (the only time the field appears) |
+| `flags=0x02` | `{}` | end-of-stream trailer: the command has finished |
+
+An RPC error is not an HTTP error: it arrives **inside** the `200` stream as
+`{"error":{"code":"...","message":"..."}}`, so checking the status code alone
+reports success on a failure. `Connect-Protocol-Version: 1` is **not** required.
+
+**Do not append an end-of-stream envelope to the request.** Both spec-shaped
+endings are rejected, and the rejection arrives inside the `200`:
+
+| Request body tail | What the daemon answers |
+|-------------------|-------------------------|
+| nothing — let `Content-Length` end the body | ✅ the full frame sequence above |
+| a bare `0x02` byte | `{"error":{"code":"invalid_argument","message":"protocol error: incomplete envelope: unexpected EOF"}}` |
+| `[0x02][0x00000000]` (5 bytes) | `{"error":{"code":"internal","message":"unmarshal end stream message: unexpected end of JSON input"}}` |
+
+A copy-pasteable client — save as `exec_agent_rest.py`, `chmod +x`, then:
+
+```bash
+export BUNKER_TOKEN=...                     # from ~/.bunker/config.yaml; never hardcode it
+python3 exec_agent_rest.py http://127.0.0.1:8080 kara-lair -- sh -c 'echo hello'
+```
+
+```python
+#!/usr/bin/env python3
+"""Run a command in a Bunker agent over the REST (Connect streaming) surface.
+
+Stdlib only (Python 3.8+). Usage:
+
+    export BUNKER_TOKEN=...                     # never hardcode a token
+    python3 exec_agent_rest.py http://127.0.0.1:8080 kara-lair -- sh -c 'echo hello'
+
+Prints the command's stdout to stdout, its stderr to stderr, and the remote
+exit code to stderr. Exits 0 when the command ran (whatever its own exit code)
+and 1 on a transport/protocol/RPC failure.
+"""
+import base64
+import http.client
+import json
+import os
+import struct
+import sys
+import urllib.error
+import urllib.request
+
+ENVELOPE_MESSAGE = 0x00
+ENVELOPE_TRAILER = 0x02
+
+
+def envelope(payload: bytes, flags: int = ENVELOPE_MESSAGE) -> bytes:
+    """[flags:1][len:4 big-endian][payload] — one Connect streaming message."""
+    return bytes([flags]) + struct.pack(">I", len(payload)) + payload
+
+
+def iter_envelopes(raw: bytes):
+    """Yield (flags, payload) for each envelope in an already de-chunked body."""
+    pos = 0
+    while pos + 5 <= len(raw):
+        flags = raw[pos]
+        (length,) = struct.unpack(">I", raw[pos + 1:pos + 5])
+        pos += 5
+        if pos + length > len(raw):
+            raise ValueError(
+                "truncated envelope: flags=0x%02x needs %d bytes, %d left"
+                % (flags, length, len(raw) - pos)
+            )
+        yield flags, raw[pos:pos + length]
+        pos += length
+
+
+def main(argv) -> int:
+    if len(argv) < 5 or argv[3] != "--":
+        print(__doc__, file=sys.stderr)
+        return 1
+    base_url, agent_id = argv[1].rstrip("/"), argv[2]
+    command = argv[4:]
+
+    token = os.environ.get("BUNKER_TOKEN", "")
+    if not token:
+        print("BUNKER_TOKEN is not set — read it from ~/.bunker/config.yaml, never hardcode it.", file=sys.stderr)
+        return 1
+
+    body = envelope(json.dumps({
+        "agentId": agent_id,          # requests accept the proto field names too
+        "command": command[0],
+        "args": command[1:],
+    }).encode())
+    # No end-of-stream envelope: Content-Length ends the request body.
+
+    req = urllib.request.Request(
+        base_url + "/bunker.v1.Bunkerd/ExecAgent",
+        data=body,
+        method="POST",
+        headers={
+            "Content-Type": "application/connect+json",   # not application/json
+            "Authorization": "Bearer " + token,
+            "Accept": "*/*",
+        },
+    )
+
+    try:
+        # urlopen de-chunks the Transfer-Encoding: chunked response for us.
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            raw = resp.read()
+    except urllib.error.HTTPError as err:
+        print("HTTP %d %s: %s" % (err.code, err.reason, err.read().decode("utf-8", "replace")), file=sys.stderr)
+        return 1
+    except http.client.HTTPException as err:
+        print("streaming response was not decodable (%s)" % err, file=sys.stderr)
+        return 1
+
+    exit_code = 0
+    try:
+        for flags, payload in iter_envelopes(raw):
+            if flags & ENVELOPE_TRAILER:
+                continue                          # end-of-stream trailer: no data
+            if not payload:
+                continue                          # e.g. {} for a zero exit code
+            msg = json.loads(payload)
+            if "error" in msg:                    # delivered inside an HTTP 200
+                print("stream error: %s" % json.dumps(msg["error"]), file=sys.stderr)
+                return 1
+            if "stdout" in msg:
+                sys.stdout.write(base64.b64decode(msg["stdout"]).decode("utf-8", "replace"))
+            if "stderr" in msg:
+                sys.stderr.write(base64.b64decode(msg["stderr"]).decode("utf-8", "replace"))
+            if "exitCode" in msg:
+                exit_code = msg["exitCode"]
+    except (ValueError, json.JSONDecodeError) as err:
+        print("stream was truncated or not valid JSON (%s)" % err, file=sys.stderr)
+        return 1
+
+    print("exit code: %d" % exit_code, file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
+```
+
+Captured against a live `bunker-las-02` (`kara-lair`), 2026-09-18:
+
+```bash
+$ python3 exec_agent_rest.py http://100.116.99.35:10001 kara-lair -- sh -c 'echo OUT'
+OUT
+exit code: 0
+$ python3 exec_agent_rest.py http://100.116.99.35:10001 kara-lair -- sh -c 'echo ERR 1>&2; exit 3'
+ERR
+exit code: 3
+```
+
+**Known limitation — a command that writes to BOTH stdout and stderr.** Measured
+2026-09-18 on a live `0.1.4` daemon (build `cef10fc`): when the command's output
+reaches both pipes, the streamed response arrives corrupted at the socket level
+(the status line and body are interleaved with duplicates), so no client can
+decode it — `0/10` attempts decoded, while the same daemon decoded `10/10`
+stdout-only commands in the same run. The strongly-indicated cause is in the
+daemon, not the client: `ExecAgent` writes the stdout and the stderr frames from
+two goroutines calling `ServerStream.Send` concurrently, and Connect's send path
+marshals straight into the HTTP writer without a lock (the daemon log records
+`http: superfluous response.WriteHeader call from ...middleware.(*basicWriter).Write`
+at the same moment). Until that is fixed, keep a command's output on one stream,
+or write the second stream to a file and read it with a second `ExecAgent` call:
+
+```bash
+$ python3 exec_agent_rest.py http://127.0.0.1:8080 kara-lair -- \
+      sh -c '{ echo OUT; echo ERR 1>&2; } 2>&1'      # both lines, one stream
+OUT
+ERR
+exit code: 0
+```
+
+Related: `RunAgent` is *unary* (it returns one response, `--detach` for
+background work) — do not send it Connect streaming framing.
+
 ### Errors
 
 connect-go error codes: `CodeInvalidArgument` (e.g. bad `--ttl` format, or a body
@@ -332,6 +539,15 @@ status the code maps to, and the code appears as its string form (`not_found`,
 `invalid_argument`, `unauthenticated`, ...) — see **Request and response shape**
 in §2 for captured examples. Not every non-2xx response is JSON: an unknown RPC
 path is a plain-text `404` from the HTTP router.
+
+**An unsupported media type on a streaming RPC carries an envelope too.** Calling
+a server-streaming RPC with the unary media type (`application/json`) answers
+`415 Unsupported Media Type` with
+`{"code":"invalid_argument","message":"… is a server-streaming RPC … Retry with
+Content-Type: application/connect+json …"}`, and the `Accept-Post` response
+header lists every media type the daemon accepts for that RPC. A daemon older
+than that change answers the same `415` with an empty body — which is why the
+streaming recipe in §5 is worth reading before writing a client.
 
 ## 6. Agent lifecycle walkthrough
 
