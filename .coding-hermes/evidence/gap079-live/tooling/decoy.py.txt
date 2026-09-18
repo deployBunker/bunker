@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+"""Plant/clear a decoy that LOOKS like the GAP-079 leak signature.
+
+The decoy is a harmless sleeping process whose own argv carries
+`-L <port>:.../docker.sock` and whose parent is init (double-fork + setsid), i.e.
+byte-for-byte the process-table shape session_tunnel_leak_check() counts. It
+proves the battery's reap check is not vacuous.
+
+  decoy.py start   -> plants it, prints decoy_pid=<pid>, writes /tmp/gap079-decoy.pid
+  decoy.py stop    -> SIGKILLs exactly the pid in /tmp/gap079-decoy.pid (never pkill -f)
+  decoy.py status  -> prints pid + ppid
+"""
+import os
+import sys
+import time
+
+PIDFILE = "/tmp/gap079-decoy.pid"
+FAKE_ARGV = [
+    "/usr/bin/python3", "-c", "import time; time.sleep(900)",
+    "-L", "2377:/run/bunker/decoy-live/docker.sock", "-N",
+]
+
+
+def start():
+    if os.path.exists(PIDFILE):
+        os.unlink(PIDFILE)
+    pid = os.fork()
+    if pid > 0:
+        for _ in range(60):
+            if os.path.exists(PIDFILE):
+                break
+            time.sleep(0.1)
+        if os.path.exists(PIDFILE):
+            print("decoy_pid=%s" % open(PIDFILE).read().strip())
+        else:
+            print("decoy_pid=UNKNOWN")
+        return 0
+    os.setsid()
+    if os.fork() > 0:
+        os._exit(0)
+    with open(PIDFILE, "w") as fh:
+        fh.write(str(os.getpid()))
+    os.execv(FAKE_ARGV[0], FAKE_ARGV)
+
+
+def read_pid():
+    if not os.path.exists(PIDFILE):
+        sys.exit("decoy: no pidfile")
+    return open(PIDFILE).read().strip()
+
+
+def status():
+    pid = read_pid()
+    try:
+        with open("/proc/%s/stat" % pid) as fh:
+            stat = fh.read()
+        ppid = stat[stat.rindex(")") + 2:].split()[1]
+        with open("/proc/%s/cmdline" % pid, "rb") as fh:
+            args = [a for a in fh.read().decode("utf8", "replace").split("\0") if a]
+        print("decoy_pid=%s ppid=%s argv=%s" % (pid, ppid, " ".join(args)))
+    except OSError as exc:
+        print("decoy_pid=%s GONE (%s)" % (pid, exc))
+
+
+def stop():
+    pid = int(read_pid())
+    try:
+        os.kill(pid, 9)
+        print("decoy_killed=%d (explicit pid)" % pid)
+    except ProcessLookupError:
+        print("decoy_pid=%d already gone" % pid)
+    time.sleep(0.5)
+    try:
+        os.kill(pid, 0)
+        print("decoy_check=STILL_ALIVE")
+    except ProcessLookupError:
+        print("decoy_check=GONE")
+    if os.path.exists(PIDFILE):
+        os.unlink(PIDFILE)
+
+
+if __name__ == "__main__":
+    what = sys.argv[1] if len(sys.argv) > 1 else ""
+    if what == "start":
+        start()
+    elif what == "stop":
+        stop()
+    elif what == "status":
+        status()
+    else:
+        sys.exit("usage: decoy.py start|stop|status")
+    sys.exit(0)

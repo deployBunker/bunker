@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+"""Print the daemon auth token from /etc/bunkerd/config.yaml (unquoted).
+
+Used by the GAP-079-LIVE phase scripts so the token reaches the CLI through the
+environment (never argv, never a transcript line).
+"""
+import re
+import sys
+
+for line in open("/etc/bunkerd/config.yaml"):
+    m = re.match(r"\s*token:\s*(.+?)\s*$", line)
+    if m:
+        v = m.group(1).strip().strip('"').strip("'")
+        if v:
+            sys.stdout.write(v)
+            sys.exit(0)
+sys.exit("no token found in /etc/bunkerd/config.yaml")

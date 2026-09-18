@@ -1,0 +1,247 @@
+#!/usr/bin/env python3
+"""GAP-079-LIVE focused live docker-sock tunnel probe.
+
+Measures ONE property on the live host: after `bunker tunnel <agent>` is
+signalled, does the ssh child that holds the `-L 2376:.../docker.sock`
+forward survive (leak) or is it gone (reaped)?
+
+Usage:
+  tunnel_probe.py LABEL BIN STATE_DIR AGENT SIG {TERM|KILL} [--docker]
+
+Environment:
+  BUNKER_DAEMON_URL  connect target (default http://localhost:18080)
+  BUNKER_TOKEN       optional; otherwise read from /etc/bunkerd/config.yaml
+
+The token is never printed (only a masked sha256 fingerprint).
+
+The probe signals ONLY the tunnel CLI's own pid (os.kill on that pid), never a
+process group, so the ONLY thing that can remove the ssh child is the CLI's own
+reaping (SIGTERM path) or the kernel's parent-death signal (SIGKILL path).
+
+Process liveness is read from /proc, so a zombie (exited, not yet reaped by its
+parent) is reported as state `Z` and is never confused with a live process.
+"""
+import hashlib
+import os
+import re
+import signal
+import subprocess
+import sys
+import time
+
+PROC = "/proc"
+DOCKER_SOCK = "docker.sock"
+
+
+def read_token():
+    tok = os.environ.get("BUNKER_TOKEN", "")
+    if tok:
+        return tok
+    try:
+        with open("/etc/bunkerd/config.yaml", "r") as fh:
+            for line in fh:
+                m = re.match(r"\s*token:\s*(.+?)\s*$", line)
+                if m:
+                    v = m.group(1).strip().strip('"').strip("'")
+                    if v:
+                        return v
+    except OSError as exc:
+        sys.exit("cannot read daemon token: %s" % exc)
+    sys.exit("no token found in BUNKER_TOKEN or /etc/bunkerd/config.yaml")
+
+
+def proc_table():
+    """{pid: (ppid, [args])} read straight from /proc — never matches this
+    python process by accident (its own argv carries no docker.sock token)."""
+    out = {}
+    for pid in os.listdir(PROC):
+        if not pid.isdigit():
+            continue
+        try:
+            with open("%s/%s/stat" % (PROC, pid), "r") as fh:
+                stat = fh.read()
+            rest = stat[stat.rindex(")") + 2:].split()
+            ppid = int(rest[1])
+            with open("%s/%s/cmdline" % (PROC, pid), "rb") as fh:
+                args = [a for a in fh.read().decode("utf8", "replace").split("\0") if a]
+            out[int(pid)] = (ppid, args)
+        except (OSError, ValueError, IndexError):
+            continue
+    return out
+
+
+def proc_state(pid):
+    """Process state letter from /proc/<pid>/stat, or None when it is gone."""
+    try:
+        with open("%s/%d/stat" % (PROC, pid), "r") as fh:
+            stat = fh.read()
+        return stat[stat.rindex(")") + 2:].split()[0]
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def forwards(tbl):
+    """[(pid, ppid, forward_spec, argv)] for every process holding an -L
+    forward whose target is a docker.sock."""
+    res = []
+    for pid, (ppid, args) in tbl.items():
+        specs = []
+        for i, a in enumerate(args):
+            if a == "-L" and i + 1 < len(args):
+                specs.append(args[i + 1])
+            elif a.startswith("-L") and len(a) > 2:
+                specs.append(a[2:])
+        for spec in specs:
+            if spec.endswith(DOCKER_SOCK):
+                res.append((pid, ppid, spec, " ".join(args)))
+    return res
+
+
+def main():
+    argv = sys.argv[1:]
+    want_docker = "--docker" in argv
+    argv = [a for a in argv if a != "--docker"]
+    if len(argv) != 5:
+        sys.exit(__doc__)
+    label, binf, state, agent, sig_name = argv
+    sig = signal.SIGTERM if sig_name == "TERM" else signal.SIGKILL
+
+    token = read_token()
+    url = os.environ.get("BUNKER_DAEMON_URL", "http://localhost:18080")
+    env = dict(os.environ)
+    env.update(HOME=state, BUNKER_HOME=state, BUNKER_TOKEN=token)
+
+    print("=== TUNNEL PROBE: %s ===" % label)
+    ver = subprocess.run([binf, "version"], env=env, capture_output=True, text=True)
+    vline = " | ".join(l.strip() for l in ver.stdout.splitlines() if l.strip())
+    print("bin            : %s" % binf)
+    print("bin version    : %s" % vline)
+    print("state dir      : %s" % state)
+    print("agent          : %s" % agent)
+    print("signal under test: SIG%s (to the CLI pid only)" % sig_name)
+    print("daemon         : %s" % url)
+    print("token          : sha256:%s (value never printed)" % hashlib.sha256(token.encode()).hexdigest()[:8])
+
+    con = subprocess.run([binf, "connect", url], env=env, capture_output=True, text=True)
+    print("connect        : %s" % ((con.stdout or con.stderr).strip().replace("\n", " / ")))
+
+    tbl0 = proc_table()
+    pre_fw = forwards(tbl0)
+    print("PRE  forwards  : %d" % len(pre_fw))
+    for f in pre_fw:
+        print("  pre-forward  : pid=%d ppid=%d spec=%s" % (f[0], f[1], f[2]))
+
+    log_path = os.path.join(state, "tunnel-%s-%s.log" % (label, sig_name))
+    log = open(log_path, "w")
+    t_start = time.time()
+    proc = subprocess.Popen([binf, "tunnel", agent], env=env, stdout=log, stderr=log,
+                            start_new_session=True)
+    cli_pid = proc.pid
+    print("CLI started    : pid=%d (own session, so only this pid is signalled)" % cli_pid)
+
+    child = None
+    deadline = t_start + 30
+    while time.time() < deadline:
+        tbl = proc_table()
+        kids = [f for f in forwards(tbl) if f[1] == cli_pid]
+        if kids:
+            child = kids[0]
+            break
+        if proc_state(cli_pid) is None:
+            break
+        time.sleep(0.25)
+
+    if child is None:
+        print("ssh child      : NOT FOUND after %.1fs (tunnel did not establish)" % (time.time() - t_start))
+        print("  cli state    : %s" % (proc_state(cli_pid) or "GONE"))
+        print("  tunnel log   : %s" % open(log_path).read().strip()[:400])
+        print("RESULT: PROBE-INCONCLUSIVE")
+        print("RESULT_LINE label=%s sig=%s verdict=INCONCLUSIVE" % (label, sig_name))
+        try:
+            os.kill(cli_pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        return 3
+
+    child_pid = child[0]
+    print("ssh child      : pid=%d ppid=%d (== CLI pid: %s) after %.1fs"
+          % (child_pid, child[1], child[1] == cli_pid, time.time() - t_start))
+    print("ssh argv       : %s" % child[3])
+
+    if want_docker:
+        dv = subprocess.run(["docker", "version"], env=dict(env, DOCKER_HOST="tcp://localhost:2376"),
+                            capture_output=True, text=True)
+        out = (dv.stdout + dv.stderr).strip()
+        srv = [l for l in out.splitlines()
+               if l.startswith("Server:") or l.startswith("Client:")
+               or "Version:" in l or "Engine:" in l]
+        print("docker via tunnel: exit=%d" % dv.returncode)
+        for l in srv[:8]:
+            print("  %s" % l.strip())
+
+    ss = subprocess.run(["ss", "-tlnp"], capture_output=True, text=True)
+    port_before = [l for l in ss.stdout.splitlines() if "2376" in l]
+    print("local port 2376 bound before signal: %s" % (port_before[0].strip() if port_before else "no"))
+
+    print("signalling     : SIG%s -> pid %d" % (sig_name, cli_pid))
+    t_sig = time.time()
+    os.kill(cli_pid, sig)
+
+    cli_gone_at = None
+    child_gone_at = None
+    while time.time() - t_sig < 10:
+        if cli_gone_at is None and proc_state(cli_pid) in (None, "Z"):
+            cli_gone_at = time.time() - t_sig
+        if child_gone_at is None and proc_state(child_pid) is None:
+            child_gone_at = time.time() - t_sig
+        if child_gone_at is not None:
+            break
+        time.sleep(0.1)
+
+    cli_st = proc_state(cli_pid)
+    child_st = proc_state(child_pid)
+    print("post           : cli_state=%s (exited at %s) ssh_child_state=%s (gone at %s)"
+          % (cli_st or "GONE", "%.2fs" % cli_gone_at if cli_gone_at else "never",
+             child_st or "GONE", "%.2fs" % child_gone_at if child_gone_at else "never"))
+    tbl = proc_table()
+    ent = tbl.get(child_pid)
+    if ent:
+        print("  leaked child : pid=%d ppid=%d spec=%s" % (child_pid, ent[0], child[2]))
+    ss = subprocess.run(["ss", "-tlnp"], capture_output=True, text=True)
+    port_after = [l for l in ss.stdout.splitlines() if "2376" in l]
+    print("local port 2376 bound after  signal: %s" % (port_after[0].strip() if port_after else "no"))
+
+    post_fw = forwards(proc_table())
+    print("POST forwards  : %d" % len(post_fw))
+
+    if child_st is None:
+        verdict = "REAPED"
+        print("RESULT: REAPED — the ssh child holding %s is gone (no /proc entry) after the CLI signal" % child[2])
+    elif child_st == "Z":
+        verdict = "ZOMBIE"
+        print("RESULT: ZOMBIE — ssh child pid=%d exited but was not reaped" % child_pid)
+    else:
+        verdict = "SURVIVED"
+        print("RESULT: SURVIVED — LEAK: ssh child pid=%d still holds %s (state=%s ppid=%d)"
+              % (child_pid, child[2], child_st, ent[0] if ent else -1))
+        print("cleanup        : SIGKILL -> explicit pid %d only (no pkill -f)" % child_pid)
+        try:
+            os.kill(child_pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        time.sleep(0.5)
+        print("cleanup check  : child state=%s ; forwards now=%d"
+              % (proc_state(child_pid) or "GONE", len(forwards(proc_table()))))
+
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        pass
+    log.close()
+    print("RESULT_LINE label=%s sig=%s verdict=%s" % (label, sig_name, verdict))
+    print("PROBE_EXIT=0")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
