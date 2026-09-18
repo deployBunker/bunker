@@ -65,7 +65,15 @@ func newEnvelopeTestHandlers(t *testing.T) (wrapped *httptest.Server, raw *httpt
 // post issues a POST with an explicit body (possibly empty) and media type.
 func post(t *testing.T, url, mediaType, body string) (status int, respBody []byte, header http.Header) {
 	t.Helper()
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, strings.NewReader(body))
+	return postBytes(t, url, mediaType, []byte(body))
+}
+
+// postBytes is post for bodies that are not valid UTF-8 text — the trailing
+// end-of-stream forms of DF-BUNKER-22 are raw bytes (a lone 0x02, or the 5-byte
+// [0x02][0x00000000] envelope).
+func postBytes(t *testing.T, url, mediaType string, body []byte) (status int, respBody []byte, header http.Header) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -82,6 +90,65 @@ func post(t *testing.T, url, mediaType, body string) (status int, respBody []byt
 		t.Fatalf("read body: %v", err)
 	}
 	return resp.StatusCode, raw, resp.Header
+}
+
+// streamFrame is one decoded connect JSON-stream envelope:
+// [flags:1 byte][length:4 bytes big-endian][payload].
+type streamFrame struct {
+	flags   byte
+	payload []byte
+}
+
+// endOfStreamFlag marks the trailer flag connect uses for the final frame. The
+// RPC error of a JSON stream arrives inside a 200 body as such a frame.
+const endOfStreamFlag byte = 0x02
+
+// decodeStreamFrames splits a connect streaming response body into its
+// envelopes, failing loudly on a truncated one.
+func decodeStreamFrames(t *testing.T, body []byte) []streamFrame {
+	t.Helper()
+	var frames []streamFrame
+	for len(body) > 0 {
+		if len(body) < 5 {
+			t.Fatalf("truncated frame header: %d trailing byte(s): %q", len(body), body)
+		}
+		n := int(binary.BigEndian.Uint32(body[1:5]))
+		if len(body) < 5+n {
+			t.Fatalf("frame declares %d payload byte(s), only %d remain: %q", n, len(body)-5, body)
+		}
+		frames = append(frames, streamFrame{flags: body[0], payload: body[5 : 5+n]})
+		body = body[5+n:]
+	}
+	return frames
+}
+
+// streamError is the RPC error object a connect JSON stream carries in-band.
+type streamError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// decodeSoleErrorFrame requires the body to be exactly one end-of-stream frame
+// whose payload is an RPC error, and returns that error.
+func decodeSoleErrorFrame(t *testing.T, body []byte) streamError {
+	t.Helper()
+	frames := decodeStreamFrames(t, body)
+	if len(frames) != 1 {
+		t.Fatalf("want exactly 1 frame, got %d: %q", len(frames), body)
+	}
+	if frames[0].flags != endOfStreamFlag {
+		t.Errorf("frame flags = %#02x, want %#02x (end-of-stream trailer)", frames[0].flags, endOfStreamFlag)
+	}
+	var env struct {
+		Error streamError `json:"error"`
+	}
+	if err := json.Unmarshal(frames[0].payload, &env); err != nil {
+		t.Fatalf("frame payload is not JSON (%v): %s", err, frames[0].payload)
+	}
+	if env.Error.Code == "" {
+		t.Fatalf("frame payload carries no error object: %s", frames[0].payload)
+	}
+	return env.Error
 }
 
 // TestStreamingEnvelope_UnaryJSONOnStreamingRPC is the acceptance case: the
@@ -209,6 +276,134 @@ func TestStreamingEnvelope_StreamingStillWorks(t *testing.T) {
 	}
 	if got := connect.CodeOf(serr); got != connect.CodeNotFound {
 		t.Errorf("code = %v, want %v (err: %v)", got, connect.CodeNotFound, serr)
+	}
+}
+
+// TestStreamingEnvelope_RejectedEndOfStreamForms pins the end-of-stream table
+// documented in docs/integration.md §5 "ExecAgent over REST — the streaming
+// recipe" and docs/dogfood/2026-09-18-integration.md §4.2: the request body must
+// be ended by Content-Length alone, and both spec-shaped endings are rejected —
+// the rejection arrives as an HTTP 200 whose only frame is an in-band RPC error,
+// so a status-code-only client reads it as success. All three rows of that table
+// are pinned here, so the day the daemon changes its mind the failure is a test
+// failure and not a doc drift.
+func TestStreamingEnvelope_RejectedEndOfStreamForms(t *testing.T) {
+	t.Parallel()
+	wrapped, raw := newEnvelopeTestHandlers(t)
+
+	// A valid connect+json streaming request: one envelope,
+	// [flags:1][len:4 BE][protojson payload]. The agent does not exist, so an
+	// accepted request always fails in the domain layer — which is exactly what
+	// makes the third case below a proof that the RPC was reached.
+	payload := []byte(`{"agentId":"nope-not-an-agent","command":"id"}`)
+	framed := make([]byte, 0, 5+len(payload))
+	framed = append(framed, 0x00)
+	framed = binary.BigEndian.AppendUint32(framed, uint32(len(payload)))
+	framed = append(framed, payload...)
+
+	const (
+		// The two markers the accepted form must NOT produce.
+		rejectedProtocolErr = "protocol error: incomplete envelope: unexpected EOF"
+		rejectedUnmarshal   = "unmarshal end stream message: unexpected end of JSON input"
+	)
+
+	cases := []struct {
+		name string
+		tail []byte
+		// wantCode/wantMessage are the documented in-band error, pinned verbatim:
+		// a reworded message or a re-coded failure is a deliberate behaviour
+		// change and must break this test, not slip through it.
+		wantCode    string
+		wantMessage string
+		// wantContains are substrings of an accepted (non-protocol) failure.
+		wantContains []string
+		// rejected: the request died in the protocol layer, so the accepted-form
+		// markers must be absent.
+		rejected bool
+	}{
+		{
+			name:     "no_end_of_stream_envelope",
+			tail:     nil,
+			wantCode: "not_found",
+			wantContains: []string{
+				`"nope-not-an-agent"`, // proves the RPC ran with our agent id
+				"not found",
+			},
+			rejected: false,
+		},
+		{
+			name:        "trailing_0x02_byte",
+			tail:        []byte{0x02},
+			wantCode:    "invalid_argument",
+			wantMessage: rejectedProtocolErr,
+			rejected:    true,
+		},
+		{
+			name:        "trailing_empty_trailer_envelope",
+			tail:        []byte{0x02, 0x00, 0x00, 0x00, 0x00},
+			wantCode:    "internal",
+			wantMessage: rejectedUnmarshal,
+			rejected:    true,
+		},
+	}
+
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			body := append(append([]byte{}, framed...), c.tail...)
+			const mediaType = "application/connect+json"
+
+			wStatus, wBody, _ := postBytes(t, wrapped.URL+execAgentPath, mediaType, body)
+
+			// The documented shape: not an HTTP error, ever.
+			if wStatus != http.StatusOK {
+				t.Fatalf("status = %d, want 200 (the rejection is carried in the stream); body: %q", wStatus, wBody)
+			}
+
+			// The wrapper is 415-only and must not be what rejects the trailer.
+			rStatus, rBody, _ := postBytes(t, raw.URL+execAgentPath, mediaType, body)
+			if rStatus != wStatus {
+				t.Errorf("raw handler status = %d, wrapped = %d", rStatus, wStatus)
+			}
+			if !bytes.Equal(wBody, rBody) {
+				t.Errorf("the envelope wrapper must pass this exchange through untouched:\n wrapped: %q\n raw:     %q", wBody, rBody)
+			}
+
+			streamText := string(wBody)
+			errObj := decodeSoleErrorFrame(t, wBody)
+
+			if errObj.Code != c.wantCode {
+				t.Errorf("in-stream error code = %q, want %q (message: %s)", errObj.Code, c.wantCode, errObj.Message)
+			}
+			if c.wantMessage != "" && errObj.Message != c.wantMessage {
+				t.Errorf("in-stream error message = %q, want %q", errObj.Message, c.wantMessage)
+			}
+			for _, want := range c.wantContains {
+				if !strings.Contains(errObj.Message, want) {
+					t.Errorf("in-stream error message %q must contain %q", errObj.Message, want)
+				}
+			}
+
+			if c.rejected {
+				// Both rejected rows are protocol failures: the command never ran.
+				if !strings.Contains(streamText, "protocol error") && !strings.Contains(streamText, "unmarshal end stream") {
+					t.Errorf("rejected form %q must be reported as a protocol error, got: %s", c.name, streamText)
+				}
+				return
+			}
+
+			// No end-of-stream envelope: the request reached the RPC, so the
+			// stream must carry a DOMAIN error, never a protocol/parse one.
+			for _, marker := range []string{rejectedProtocolErr, rejectedUnmarshal} {
+				if strings.Contains(streamText, marker) {
+					t.Errorf("ending the body without a trailer must not be a protocol error; got %q", streamText)
+				}
+			}
+			if errObj.Message == "" {
+				t.Error("the domain error must carry a message")
+			}
+		})
 	}
 }
 
