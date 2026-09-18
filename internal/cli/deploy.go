@@ -135,18 +135,30 @@ Examples:
 				port = sshPort
 			}
 
-			// Execute recursive SCP
+			// Execute recursive SCP. The agent user is resolved BEFORE scp so
+			// the failure path can name it in the ownership hint below.
+			sshUser := strings.SplitN(userAtHost, "@", 2)[0]
 			scpArgs := buildSCPArgs(keyPath, port, localPath, userAtHost, remotePath, true)
 			scpCmd := exec.CommandContext(ctx, "scp", scpArgs...)
 			scpCmd.Stdout = cmd.OutOrStdout()
 			scpCmd.Stderr = cmd.ErrOrStderr()
 
 			if err := scpCmd.Run(); err != nil {
+				// scp's own stderr already went to the user (streamed
+				// above); it names no next step, so run ONE bounded probe
+				// over the same SSH path to explain an existing
+				// host-owned destination (the recursive-copy mirror of
+				// DF-BUNKER-17). stat works on a directory, so the
+				// destination itself is what gets probed. Best-effort: a
+				// probe error/timeout only means "no hint". The raw scp
+				// error text is kept either way.
+				if hint := cpDestinationHint(keyPath, port, userAtHost, remotePath, sshUser); hint != "" {
+					fmt.Fprintf(cmd.ErrOrStderr(), "Hint: %s\n", hint)
+				}
 				return fmt.Errorf("scp -r: %w", err)
 			}
 
 			// Fix ownership: chown the directory recursively to the agent user
-			sshUser := strings.SplitN(userAtHost, "@", 2)[0]
 			chownCmd := exec.CommandContext(ctx, "ssh",
 				"-o", "StrictHostKeyChecking=no",
 				"-o", "UserKnownHostsFile=/dev/null",
