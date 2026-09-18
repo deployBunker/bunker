@@ -2168,8 +2168,9 @@ tasks:
   - a doc-derived client can address the agent it created by the id it asked for
   - the env-vars claim is removed or replaced with the real path (bunker env set,
     which is not a spawn-time field)
-  status: pending
+  status: complete
   created_at: '2026-09-18T10:30:00+00:00'
+  completed_at: '2026-09-18T21:02:48.450060+00:00'
 - id: DF-BUNKER-24
   title: "P2 Orphan agent private keys accumulate on daemon hosts \u2014 /etc/bunkerd/ssh/<agent>\
     \ survives agents that die by TTL expiry or startup reconcile"
