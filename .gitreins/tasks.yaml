@@ -2152,8 +2152,9 @@ tasks:
   - 'the rejected end-of-stream forms are covered: a trailing 0x02 byte and a trailing
     [0x02][0x00000000] envelope both currently return HTTP 200 with the error inside
     the stream; a test pins whichever behaviour the maintainers choose'
-  status: pending
+  status: complete
   created_at: '2026-09-18T10:30:00+00:00'
+  completed_at: '2026-09-18T17:18:31.903190+00:00'
 - id: DF-BUNKER-23
   title: "P2 docs/integration.md \xA75 documents a SpawnAgent name field (and env\
     \ vars) that SpawnAgentRequest does not have \u2014 unknown JSON fields are silently\
