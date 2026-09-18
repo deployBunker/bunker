@@ -1947,3 +1947,19 @@ tasks:
   status: complete
   created_at: '2026-09-17T23:10:01.578949+00:00'
   completed_at: '2026-09-17T23:20:58.676864+00:00'
+- id: DF-BUNKER-20
+  title: 'bunker deploy: actionable ownership hint on recursive scp failure (DF-BUNKER-17
+    parity)'
+  criteria:
+  - a failing recursive scp against an existing host-owned destination prints a Hint
+    line naming the owner and group, the agent user and the remedy, with the raw scp
+    error text preserved
+  - a probe error (unreachable host or timeout) or empty/unparseable probe output
+    prints NO hint and leaves the raw scp error unchanged
+  - a unit test covers the deploy hint path through the injectable probe seam and
+    is falsified by removing the hint call
+  - gofmt -l . is empty and go build ./... , go vet ./... and go test ./... -count=1
+    all pass
+  status: complete
+  created_at: '2026-09-18T00:04:28.487885+00:00'
+  completed_at: '2026-09-18T00:10:54.641448+00:00'
