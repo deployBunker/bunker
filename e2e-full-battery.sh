@@ -247,6 +247,86 @@ battery_cli_config() {
     printf '%s/config.yaml' "$BATTERY_CLI_HOME"
 }
 
+# ── Tunnel reaping check (GAP-079) ─────────────────────────────────────
+# session_tunnel_leak_check — count the docker-sock socket forwards still alive
+# after the tunnel teardown and FAIL the battery when there are any. This is the
+# check section 6a was missing: the leak that created GAP-079 (two root ssh
+# sessions with ppid 1, `-L 2376:/run/bunker/e2e-main/docker.sock`, outliving the
+# CLI for 13h20m) was produced BY this battery and was invisible to it.
+#
+# The matched shape is the one the tunnel command builds (internal/agent/
+# manager_spawn.go):  ssh ... -L 2376:/run/bunker/<agent-id>/docker.sock ... -N
+# so the matcher is `-L <port>:...docker.sock` and NOT a bare `docker.sock` — the
+# host's own rootlesskit/dockerd processes carry
+# `--host=unix:///run/bunker/<id>/docker.sock` and must never be counted.
+#
+# LEAK SIGNATURE — the forward is ORPHANED (its owner is gone). Two shapes:
+#   * ppid 1: reparented to init. This is exactly what the row measured.
+#   * the parent is itself a TOP-LEVEL process (ppid 1) and is not a live tunnel
+#     CLI: a reaper adopted the orphan — a systemd user manager is a subreaper,
+#     so in a login session the orphan lands there instead of on init — or the
+#     owner is an orphaned leftover. A normally started tunnel never matches this
+#     arm (its CLI is parented by the shell that started it), and a forward whose
+#     parent is a live tunnel CLI is a tunnel that is RUNNING, not a leak.
+# There is deliberately NO age filter: a forward orphaned by an earlier run is
+# still a leak, and any time bound could hide one.
+#
+# Prints ONE count line in this battery's style and returns non-zero when the
+# count is > 0; the failure is recorded through fail(), so the run's own tally
+# and exit code flip on their own. One ps + one awk, no sleeps.
+session_tunnel_leak_check() {
+    local ps_out pids count
+    # `-ww` is load-bearing: without it ps truncates the args column at the
+    # screen width (~80 cols when stdout is not a tty) and the ssh command line's
+    # `-L 2376:...docker.sock` tail is cut off — the check would always count 0.
+    ps_out="$(ps -ww -eo pid=,ppid=,stat=,args= 2>/dev/null || true)"
+    if [ -z "$ps_out" ]; then
+        # An unreadable process table is UNKNOWN, never a green 0.
+        fail "tunnel reap check: cannot enumerate processes (ps returned nothing) — leak status UNKNOWN"
+        return 1
+    fi
+    # The marker inside the awk program keeps this pipeline out of its own count:
+    # the program text carries the pattern below, so its own argv would otherwise
+    # be a candidate row.
+    if ! pids="$(printf '%s\n' "$ps_out" | awk '
+        # tunnel_reap_check: this marker excludes the check own pipeline
+        {
+            pid = $1; par = $2
+            line = ""
+            for (i = 4; i <= NF; i++) line = line (i > 4 ? " " : "") $i
+            ppid_of[pid] = par
+            stat_of[pid] = $3
+            args_of[pid] = line
+            order[NR] = pid
+        }
+        END {
+            out = ""
+            for (n = 1; n <= NR; n++) {
+                pid = order[n]
+                if (args_of[pid] !~ /-L [0-9]+:.*docker\.sock/) continue
+                if (args_of[pid] ~ /tunnel_reap_check/) continue
+                if (stat_of[pid] ~ /^Z/) continue   # killed, not yet reaped: not a live forward
+                par = ppid_of[pid]
+                if (par == 1 || (ppid_of[par] == 1 && args_of[par] !~ /bunker[^ ]* tunnel/)) {
+                    out = out (out == "" ? "" : " ") pid
+                }
+            }
+            if (out != "") print out
+        }')"; then
+        fail "tunnel reap check: cannot read the process table (ps/awk pipeline failed) — leak status UNKNOWN"
+        return 1
+    fi
+    # Count the (space-separated) pids without spawning anything else.
+    set -- $pids
+    count=$#
+    if [ "$count" -gt 0 ]; then
+        fail "tunnel reap check: $count leftover docker-sock forward(s) survived teardown (pid: $pids) — GAP-079 leak: an ssh child was not reaped and kept its -L forward; kill the pid(s) above, a host still holding this leak cannot go green"
+        return 1
+    fi
+    assert "tunnel reap check: 0 leftover docker-sock forward(s)"
+    return 0
+}
+
 # remove_own_state_dir DIR — remove a scratch dir THIS harness created. Every
 # scratch dir it creates lives directly under $TMPDIR with one of the two
 # documented prefixes below; anything else (the operator's CLI state dir, a
@@ -1447,6 +1527,15 @@ fi
 if [ "$TUNNEL_OK" -eq 0 ]; then
     echo "  tunnel log: $(cat "$TUNNEL_LOG" 2>/dev/null | head -5)"
 fi
+# GAP-079: section 6a must prove its OWN cleanup — the leak that created this row
+# was produced by this very section and was invisible to it. Nothing may survive
+# the teardown above (including a tunnel that exited early and left a forward).
+if ! session_tunnel_leak_check; then
+    # fail() inside the helper already recorded it (FAIL++ → VERIFY-FAIL, exit
+    # 1); this empty branch only keeps `set -e` from aborting the run before the
+    # RESULTS SUMMARY prints.
+    :
+fi
 echo ""
 
 # =============================================
@@ -2646,6 +2735,14 @@ echo ""
 # supplied) by internal/hostsetup TestBatterySummaryExitCodeTracksFailures.
 if ! operator_config_check; then
     FAIL=$((FAIL+1))
+fi
+
+# GAP-079: the run as a WHOLE must not have leaked a docker-sock forward from any
+# other stage (every spawn/exec/destroy path that opens a tunnel), so the check
+# runs a second time just before the verdict is printed.
+if ! session_tunnel_leak_check; then
+    # Recorded by the helper's own fail() already; see the note at section 6a.
+    :
 fi
 
 # =============================================
