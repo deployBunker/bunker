@@ -89,6 +89,10 @@ type agentManager interface {
 	StartAgent(ctx context.Context, agentID string) (*v1.StartAgentResponse, error)
 	RestartAgent(ctx context.Context, agentID string) (*v1.RestartAgentResponse, error)
 	RunAgent(ctx context.Context, req *v1.RunAgentRequest) (*v1.RunAgentResponse, error)
+	// ResidueInventory probes the host's residue planes (orphan users, homes,
+	// keys, linger entries) for the operator status surface (DF-BUNKER-21).
+	// Read-only, never fails: an unreadable plane is reported in Status/Detail.
+	ResidueInventory() agent.ResidueInventory
 	Stop()
 }
 
@@ -107,7 +111,43 @@ func (s *bunkerdService) ServerInfo(ctx context.Context, req *connect.Request[v1
 	// GAP-075 isolation work) is visible instead of silent. The probe runs
 	// once per process and never fails the RPC.
 	resp.TmpIsolation, resp.TmpIsolationDetail = s.tmpIsolation()
+	// DF-BUNKER-21: report the residue the daemon itself can see on the host,
+	// so a leaked agent (an orphan user/home/key/linger entry with no agent
+	// behind it) is visible to an operator instead of only in a rollback
+	// breadcrumb. Read-only; a daemon without a manager reports nothing rather
+	// than inventing zeroes.
+	resp.Residue = s.residueInventory()
 	return connect.NewResponse(resp), nil
+}
+
+// residueInventory maps the agent manager's host probe into the ServerInfo
+// message. A service without a manager (tests, unwired services) reports NO
+// residue rather than a fabricated zero inventory: an absent message is
+// distinguishable from a clean host by construction (see the proto field).
+func (s *bunkerdService) residueInventory() *v1.ResidueInventory {
+	if s.agentMgr == nil {
+		return nil
+	}
+	inv := s.agentMgr.ResidueInventory()
+	return &v1.ResidueInventory{
+		OrphanUsers:        uint32(maxInt(inv.OrphanUsers, 0)),
+		OrphanHomes:        uint32(maxInt(inv.OrphanHomes, 0)),
+		OrphanKeys:         uint32(maxInt(inv.OrphanKeys, 0)),
+		StaleLingerEntries: uint32(maxInt(inv.StaleLinger, 0)),
+		RegisteredAgents:   uint32(maxInt(inv.Registered, 0)),
+		Status:             inv.Status,
+		Detail:             inv.Detail,
+	}
+}
+
+// maxInt clamps a probe count at zero before the uint32 conversion: the proto
+// counts are unsigned, and a negative value must never wrap into ~4 billion
+// "residue" items.
+func maxInt(v, min int) int {
+	if v < min {
+		return min
+	}
+	return v
 }
 
 // The /tmp isolation levels ServerInfo reports in ServerInfoResponse

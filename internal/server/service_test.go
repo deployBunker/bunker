@@ -13,6 +13,7 @@ import (
 	"connectrpc.com/connect"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 
+	"github.com/deployBunker/bunker/internal/agent"
 	"github.com/deployBunker/bunker/internal/auth"
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/resource"
@@ -800,6 +801,11 @@ type fakeAgentManager struct {
 	lifecycleErr    error
 	lifecycleCalled bool
 	restartResp     *v1.RestartAgentResponse
+
+	// DF-BUNKER-21 residue inventory: the probe result ServerInfo must carry
+	// through unchanged (status/detail included).
+	residue       agent.ResidueInventory
+	residueCalled bool
 }
 
 func (f *fakeAgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v1.SpawnAgentResponse, error) {
@@ -843,6 +849,12 @@ func (f *fakeAgentManager) RestartAgent(ctx context.Context, agentID string) (*v
 
 func (f *fakeAgentManager) RunAgent(ctx context.Context, req *v1.RunAgentRequest) (*v1.RunAgentResponse, error) {
 	return nil, nil
+}
+
+// ResidueInventory returns the scripted probe result.
+func (f *fakeAgentManager) ResidueInventory() agent.ResidueInventory {
+	f.residueCalled = true
+	return f.residue
 }
 
 func (f *fakeAgentManager) Stop() {}

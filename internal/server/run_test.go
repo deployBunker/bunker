@@ -9,6 +9,7 @@ import (
 	"connectrpc.com/connect"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 
+	"github.com/deployBunker/bunker/internal/agent"
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/resource"
 )
@@ -49,6 +50,11 @@ func (m *runAgentMockManager) StartAgent(ctx context.Context, agentID string) (*
 
 func (m *runAgentMockManager) RestartAgent(ctx context.Context, agentID string) (*v1.RestartAgentResponse, error) {
 	return &v1.RestartAgentResponse{AgentId: agentID, Status: "restarted"}, nil
+}
+
+// ResidueInventory is outside this mock's scope: an "ok" empty inventory.
+func (m *runAgentMockManager) ResidueInventory() agent.ResidueInventory {
+	return agent.ResidueInventory{Status: agent.ResidueStatusOK}
 }
 
 func (m *runAgentMockManager) Stop() {}

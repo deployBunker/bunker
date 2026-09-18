@@ -193,6 +193,7 @@ func formatServerStatus(st serverStatus) string {
 	b.WriteString(fmt.Sprintf("  Uptime:   %s\n", formatUptime(info.GetUptimeSeconds())))
 	b.WriteString(fmt.Sprintf("  Agents:   %d/%d\n", info.GetAgentCount(), info.GetMaxAgents()))
 	b.WriteString(formatTmpIsolation(info.GetTmpIsolation(), info.GetTmpIsolationDetail()))
+	b.WriteString(formatResidue(info.GetResidue()))
 
 	// Metrics (best-effort).
 	if st.metrics != nil {
@@ -271,6 +272,49 @@ func formatTmpIsolation(level, detail string) string {
 		// private, so the CLI says so instead of staying silent.
 		return "  /tmp:     not reported by this daemon — it predates capability reporting; build/run a daemon from the same commit as the CLI (private /tmp is not guaranteed)\n"
 	}
+}
+
+// formatResidue renders the DF-BUNKER-21 residue inventory reported by
+// ServerInfo. The counts are what an operator needs after a failed spawn: the
+// QA host held 11 orphan bunker-* users, ~2.5GB of homes and fresh linger
+// entries with 0 registered agents, and no status surface said so.
+//
+// Three states, mirroring formatTmpIsolation's honesty contract:
+//
+//	ok        -> the four counts, one line
+//	partial / unavailable -> the counts PLUS the probe status and the exact
+//	             planes that could not be read (a "0" that came from an
+//	             unreadable directory must never read as "host is clean")
+//	(absent)  -> the daemon predates residue reporting; say so instead of
+//	             printing zeroes the daemon never probed
+func formatResidue(inv *v1.ResidueInventory) string {
+	if inv == nil {
+		return "  Residue:  not reported by this daemon — it predates residue inventory reporting (DF-BUNKER-21); agent users/homes/keys/linger entries left behind on this host are NOT visible here\n"
+	}
+
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("  Residue:  %d orphan users, %d orphan homes, %d orphan keys, %d stale linger entries (%d registered agents)\n",
+		inv.GetOrphanUsers(), inv.GetOrphanHomes(), inv.GetOrphanKeys(), inv.GetStaleLingerEntries(),
+		inv.GetRegisteredAgents()))
+
+	switch inv.GetStatus() {
+	case "ok":
+		// every plane probed: nothing to add
+	case "", "unknown":
+		// A daemon that reports the counts but no status cannot be trusted to
+		// have probed every plane; say so rather than implying "ok".
+		b.WriteString("  Probe:    status not reported by this daemon — the counts above may be a lower bound\n")
+	default:
+		b.WriteString(fmt.Sprintf("  Probe:    %s — the counts above are a LOWER BOUND (not every plane could be read)\n", inv.GetStatus()))
+		if detail := inv.GetDetail(); detail != "" {
+			b.WriteString(fmt.Sprintf("            %s\n", detail))
+		}
+	}
+
+	if inv.GetOrphanUsers()+inv.GetOrphanHomes()+inv.GetOrphanKeys()+inv.GetStaleLingerEntries() > 0 {
+		b.WriteString("            residue present: this host holds agent users/homes/keys/linger entries with no registered agent behind them\n")
+	}
+	return b.String()
 }
 
 // formatUptime converts seconds into a human-readable duration string.

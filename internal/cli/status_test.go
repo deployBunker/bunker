@@ -815,3 +815,187 @@ func TestFormatUptime(t *testing.T) {
 		})
 	}
 }
+
+// ── DF-BUNKER-21 (AC5): `bunker status` reports residue counts ──────────────
+
+// residueInfo builds a ServerInfo with a scripted residue inventory.
+func residueInfo(inv *v1.ResidueInventory) *v1.ServerInfoResponse {
+	return &v1.ServerInfoResponse{
+		Hostname:      "residue-host",
+		Version:       "v1.0.0",
+		UptimeSeconds: 120,
+		AgentCount:    inv.GetRegisteredAgents(),
+		MaxAgents:     10,
+		Residue:       inv,
+	}
+}
+
+// runStatusSingle boots a mock server with the given ServerInfo, points the CLI
+// config at it and returns `bunker status` output.
+func runStatusSingle(t *testing.T, info *v1.ServerInfoResponse) string {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	srv := newStatusTestServer(t, &statusMockServer{info: info})
+	defer srv.Close()
+	cfg := &CLIConfig{
+		ActiveServer: "default",
+		Servers:      map[string]ServerEntry{"default": {Name: "default", URL: srv.URL}},
+	}
+	if err := SaveCLIConfig(cfg); err != nil {
+		t.Fatalf("SaveCLIConfig: %v", err)
+	}
+	cmd := NewStatusCommand()
+	return captureStdout(t, func() {
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+	})
+}
+
+// TestStatusCommand_ResidueInventoryReporting is the AC5 acceptance: an operator
+// running `bunker status` against a host carrying leaked agent state sees the
+// four counts, including the QA-BUNKER-19 shape (residue with nothing
+// registered).
+func TestStatusCommand_ResidueInventoryReporting(t *testing.T) {
+	output := runStatusSingle(t, residueInfo(&v1.ResidueInventory{
+		OrphanUsers:        11,
+		OrphanHomes:        9,
+		OrphanKeys:         3,
+		StaleLingerEntries: 4,
+		RegisteredAgents:   0,
+		Status:             "ok",
+	}))
+
+	for _, want := range []string{
+		"  Residue:  11 orphan users, 9 orphan homes, 3 orphan keys, 4 stale linger entries (0 registered agents)",
+		"residue present: this host holds agent users/homes/keys/linger entries with no registered agent behind them",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("output missing %q, got:\n%s", want, output)
+		}
+	}
+	// A clean host must NOT carry the residue-present note.
+	clean := runStatusSingle(t, residueInfo(&v1.ResidueInventory{RegisteredAgents: 2, Status: "ok"}))
+	if !strings.Contains(clean, "  Residue:  0 orphan users, 0 orphan homes, 0 orphan keys, 0 stale linger entries (2 registered agents)") {
+		t.Errorf("clean inventory line missing, got:\n%s", clean)
+	}
+	if strings.Contains(clean, "residue present") {
+		t.Errorf("a clean host must not warn about residue, got:\n%s", clean)
+	}
+}
+
+// A daemon that predates residue reporting must be named as such: printing
+// zeroes it never probed would be a fabricated "host is clean".
+func TestStatusCommand_ResidueNotReportedByDaemon(t *testing.T) {
+	output := runStatusSingle(t, residueInfo(nil))
+
+	if !strings.Contains(output, "  Residue:  not reported by this daemon — it predates residue inventory reporting (DF-BUNKER-21)") {
+		t.Errorf("output missing the not-reported line, got:\n%s", output)
+	}
+	if strings.Contains(output, "0 orphan users") {
+		t.Errorf("the CLI must not print counts the daemon never probed, got:\n%s", output)
+	}
+}
+
+// A partial probe prints the counts AND the reason they are a lower bound.
+func TestStatusCommand_ResiduePartialProbe(t *testing.T) {
+	output := runStatusSingle(t, residueInfo(&v1.ResidueInventory{
+		OrphanUsers:      2,
+		RegisteredAgents: 0,
+		Status:           "partial",
+		Detail:           "keys: open /etc/bunkerd/ssh: permission denied",
+	}))
+
+	for _, want := range []string{
+		"  Residue:  2 orphan users, 0 orphan homes, 0 orphan keys, 0 stale linger entries (0 registered agents)",
+		"  Probe:    partial — the counts above are a LOWER BOUND (not every plane could be read)",
+		"            keys: open /etc/bunkerd/ssh: permission denied",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("output missing %q, got:\n%s", want, output)
+		}
+	}
+}
+
+// TestStatusCommand_AllServers_Residue proves the line reaches --all output too.
+func TestStatusCommand_AllServers_Residue(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	srv := newStatusTestServer(t, &statusMockServer{
+		info: residueInfo(&v1.ResidueInventory{OrphanUsers: 1, StaleLingerEntries: 1, Status: "ok"}),
+	})
+	defer srv.Close()
+	cfg := &CLIConfig{
+		ActiveServer: "default",
+		Servers:      map[string]ServerEntry{"default": {Name: "default", URL: srv.URL}},
+	}
+	if err := SaveCLIConfig(cfg); err != nil {
+		t.Fatalf("SaveCLIConfig: %v", err)
+	}
+	cmd := NewStatusCommand()
+	cmd.SetArgs([]string{"--all"})
+	output := captureStdout(t, func() {
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+	})
+	if !strings.Contains(output, "  Residue:  1 orphan users, 0 orphan homes, 0 orphan keys, 1 stale linger entries (0 registered agents)") {
+		t.Errorf("--all output missing the residue line, got:\n%s", output)
+	}
+}
+
+// TestFormatResidue pins the exact rendering, including the statuses that are
+// NOT "ok" (a daemon that reports counts but no status is not proof of a
+// complete probe).
+func TestFormatResidue(t *testing.T) {
+	tests := []struct {
+		name string
+		inv  *v1.ResidueInventory
+		want string
+	}{
+		{
+			name: "absent (daemon predates residue reporting)",
+			inv:  nil,
+			want: "  Residue:  not reported by this daemon — it predates residue inventory reporting (DF-BUNKER-21); agent users/homes/keys/linger entries left behind on this host are NOT visible here\n",
+		},
+		{
+			name: "ok",
+			inv:  &v1.ResidueInventory{RegisteredAgents: 3, Status: "ok"},
+			want: "  Residue:  0 orphan users, 0 orphan homes, 0 orphan keys, 0 stale linger entries (3 registered agents)\n",
+		},
+		{
+			name: "residue present adds the note",
+			inv:  &v1.ResidueInventory{OrphanUsers: 2, OrphanHomes: 1, StaleLingerEntries: 1, Status: "ok"},
+			want: "  Residue:  2 orphan users, 1 orphan homes, 0 orphan keys, 1 stale linger entries (0 registered agents)\n" +
+				"            residue present: this host holds agent users/homes/keys/linger entries with no registered agent behind them\n",
+		},
+		{
+			name: "partial probe with detail",
+			inv:  &v1.ResidueInventory{OrphanKeys: 1, Status: "partial", Detail: "homes: read /home: permission denied"},
+			want: "  Residue:  0 orphan users, 0 orphan homes, 1 orphan keys, 0 stale linger entries (0 registered agents)\n" +
+				"  Probe:    partial — the counts above are a LOWER BOUND (not every plane could be read)\n" +
+				"            homes: read /home: permission denied\n" +
+				"            residue present: this host holds agent users/homes/keys/linger entries with no registered agent behind them\n",
+		},
+		{
+			name: "unavailable probe",
+			inv:  &v1.ResidueInventory{Status: "unavailable", Detail: "users: probe unavailable"},
+			want: "  Residue:  0 orphan users, 0 orphan homes, 0 orphan keys, 0 stale linger entries (0 registered agents)\n" +
+				"  Probe:    unavailable — the counts above are a LOWER BOUND (not every plane could be read)\n" +
+				"            users: probe unavailable\n",
+		},
+		{
+			name: "counts without a status field",
+			inv:  &v1.ResidueInventory{OrphanUsers: 1},
+			want: "  Residue:  1 orphan users, 0 orphan homes, 0 orphan keys, 0 stale linger entries (0 registered agents)\n" +
+				"  Probe:    status not reported by this daemon — the counts above may be a lower bound\n" +
+				"            residue present: this host holds agent users/homes/keys/linger entries with no registered agent behind them\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := formatResidue(tt.inv); got != tt.want {
+				t.Errorf("formatResidue() =\n%q\nwant\n%q", got, tt.want)
+			}
+		})
+	}
+}

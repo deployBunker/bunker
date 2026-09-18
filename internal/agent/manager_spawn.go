@@ -889,7 +889,7 @@ var dockerdProcessChecker = func(ctx context.Context, username string) (bool, er
 // /etc/systemd/system/user-<UID>.slice.d/50-bunker.conf.
 func applyUserSliceLimits(ctx context.Context, u *user.User, cpuQuota float64, memMax, diskMax, maxProcs, maxFiles uint64, logger *slog.Logger) error {
 	sliceName := fmt.Sprintf("user-%s.slice", u.Uid)
-	dropinDir := filepath.Join("/etc/systemd/system", sliceName+".d")
+	dropinDir := userSliceDropinDir(u.Uid)
 	if err := os.MkdirAll(dropinDir, 0755); err != nil {
 		return fmt.Errorf("mkdir %s: %w", dropinDir, err)
 	}

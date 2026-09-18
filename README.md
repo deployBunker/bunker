@@ -574,6 +574,19 @@ predates both the isolation implementation and capability reporting. Build and
 run a daemon from the same current checkout as the CLI; do not infer isolation
 from a version number alone.
 
+`bunker status` also reports the daemon's **residue inventory**: orphan users,
+orphan homes, orphan keys and stale `systemd` linger entries — host state left
+behind by agents the daemon no longer knows about (a spawn cancelled past the
+request deadline, a rollback that could not finish, a crashed daemon). The
+counts are probed from the host itself, never from a bookkeeping counter, and
+the line reads `not reported` for a daemon that predates the probe — a missing
+line is never a clean host. `Residue:` showing counts while `Agents: 0/N` shows
+nothing registered is the leak fingerprint: check the daemon's
+`/var/lib/bunkerd/spawn-failures.jsonl` breadcrumb journal, remove the leftover
+state, and only then spawn again. A `Probe: partial` line means at least one
+plane could not be read (usually a daemon that is not root), so the counts are a
+lower bound rather than zero.
+
 Follow the [Quick Start provisioning sequence](#provision-host-isolation-before-spawning)
 on the daemon host. The installer is idempotent and does not touch `/etc/fstab`.
 It changes host SSH/PAM configuration, so review its plan before applying it.

@@ -55,6 +55,23 @@ var lingerDir = "/var/lib/systemd/linger"
 // real /run/user (INT-CI-009).
 var userRuntimeBaseDir = "/run/user"
 
+// systemdUnitDirRoot is the root of systemd's unit/drop-in tree. The per-agent
+// cgroup limits are written as <root>/user-<uid>.slice.d/50-bunker.conf (see
+// applyUserSliceLimits) and the recycled-uid recovery resets that same
+// directory for the uid it is about to reuse (AC3 of DF-BUNKER-21). Var for the
+// same reason as lingerDir: a non-root unit test must be able to point the
+// slice plane at a temp tree instead of the real /etc/systemd/system.
+var systemdUnitDirRoot = "/etc/systemd/system"
+
+// subUIDPath / subGIDPath are the subordinate-id databases configureSubIDs
+// maintains for rootless Docker's uid mapping. Vars for the same reason as
+// userRuntimeBaseDir: the spawn path must be drivable end to end without
+// writing into the host's /etc.
+var (
+	subUIDPath = "/etc/subuid"
+	subGIDPath = "/etc/subgid"
+)
+
 // systemRunner executes a system command and returns its combined output.
 type systemRunner func(ctx context.Context, name string, args ...string) ([]byte, error)
 
@@ -337,7 +354,7 @@ func removeMountsUnder(ctx context.Context, dir string, logger *slog.Logger) {
 // user. We map the range starting at the user's own UID/GID so every agent gets
 // a unique namespace derived from its system identity.
 func configureSubIDs(ctx context.Context, username string) error {
-	u, err := user.Lookup(username)
+	u, err := userLookup(username)
 	if err != nil {
 		return fmt.Errorf("lookup user %s: %w", username, err)
 	}
@@ -350,10 +367,10 @@ func configureSubIDs(ctx context.Context, username string) error {
 		return fmt.Errorf("parse gid %q: %w", u.Gid, err)
 	}
 
-	if err := ensureSubIDEntry("/etc/subuid", username, uid); err != nil {
+	if err := ensureSubIDEntry(subUIDPath, username, uid); err != nil {
 		return fmt.Errorf("subuid: %w", err)
 	}
-	if err := ensureSubIDEntry("/etc/subgid", username, gid); err != nil {
+	if err := ensureSubIDEntry(subGIDPath, username, gid); err != nil {
 		return fmt.Errorf("subgid: %w", err)
 	}
 	return nil
@@ -1187,9 +1204,18 @@ func classifyRuntimeDir(info runtimeDirInfo, probeErr error, uid int) (bool, str
 // unmount whatever the old manager left mounted under the directory, remove the
 // directory. Every step is best effort; the caller re-creates the directory
 // before starting the manager.
+//
+// DF-BUNKER-21 (AC3): the SLICE the previous occupant of a recycled uid left
+// behind is reset here too — the slice unit is stopped and its drop-in removed
+// (see resetStaleUserSlice). The manager stop alone does not touch either: a
+// uid recycled from a destroyed agent keeps /etc/systemd/system/user-<uid>.slice.d
+// with the OLD agent's limits, which would then be enforced against the NEW
+// agent, and logind keeps the slice loaded for a uid that no longer has its own
+// manager.
 func resetUserManagerState(ctx context.Context, uid int, runtimeDir string, logger *slog.Logger) {
 	_, _ = userManagerRunner(ctx, "systemctl", "stop", userManagerUnitName(uid))
 	_, _ = userManagerRunner(ctx, "loginctl", "terminate-user", strconv.Itoa(uid))
+	resetStaleUserSlice(ctx, uid, logger)
 	removeMountsUnder(ctx, runtimeDir, logger)
 	_, _ = userManagerRunner(ctx, "systemctl", "stop", userRuntimeDirUnitName(uid))
 	if _, err := os.Stat(runtimeDir); err == nil {

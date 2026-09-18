@@ -504,6 +504,57 @@ func terminateUserProcesses(ctx context.Context, username string) error {
 	}
 }
 
+// userSliceDropinDir is the drop-in directory that carries the cgroup limits for
+// a uid's user slice. Both the spawn-time writer (applyUserSliceLimits) and the
+// two cleanup paths (removeUserSliceLimits for an agent being destroyed or
+// rolled back, resetStaleUserSlice for a uid being recycled) derive the path
+// here, so the three can never drift apart. The root is a var (test seam): a
+// non-root regression must be able to exercise the slice plane against a temp
+// tree instead of the real /etc/systemd/system.
+func userSliceDropinDir(uid string) string {
+	return filepath.Join(systemdUnitDirRoot, fmt.Sprintf("user-%s.slice.d", uid))
+}
+
+// resetStaleUserSlice resets the user-slice state a PREVIOUS occupant of uid
+// left behind, before the manager for the new occupant is brought up
+// (DF-BUNKER-21 AC3). Two pieces of state survive a destroyed agent and neither
+// is touched by stopping user@<uid>.service:
+//
+//   - the stale drop-in <systemdUnitDirRoot>/user-<uid>.slice.d/50-bunker.conf,
+//     which carries the OLD agent's CPU/memory/disk limits and would be enforced
+//     against the NEW agent reusing the uid (spawn rewrites it later, but only
+//     after the manager bring-up this reset belongs to);
+//   - the slice unit itself, still loaded for the uid. It is stopped so nothing
+//     from the previous occupant keeps running inside the slice, and so the
+//     drop-in removal is not merely a file the unit re-reads from.
+//
+// Both steps are best effort and logged: a host where the slice unit does not
+// exist (the fresh path — systemd has never seen this uid) is a clean no-op, and
+// a caller that cannot write /etc/systemd/system must not fail the spawn over
+// it — the drop-in write in applyUserSliceLimits is already non-fatal.
+func resetStaleUserSlice(ctx context.Context, uid int, logger *slog.Logger) {
+	uidArg := strconv.Itoa(uid)
+	sliceUnit := fmt.Sprintf("user-%s.slice", uidArg)
+	if out, err := userManagerRunner(ctx, "systemctl", "stop", sliceUnit); err != nil && logger != nil {
+		logger.Debug("stopping the uid's user slice was refused (nothing to reset)",
+			"uid", uid, "unit", sliceUnit, "error", err, "output", strings.TrimSpace(string(out)))
+	}
+	dropinDir := userSliceDropinDir(uidArg)
+	if _, err := os.Stat(dropinDir); err != nil {
+		return // no stale slice state for this uid: nothing to remove
+	}
+	if err := os.RemoveAll(dropinDir); err != nil && !os.IsNotExist(err) {
+		if logger != nil {
+			logger.Warn("failed to remove stale user slice drop-in for a recycled uid",
+				"uid", uid, "dir", dropinDir, "error", err)
+		}
+		return
+	}
+	if logger != nil {
+		logger.Info("removed stale user slice state for a recycled uid", "uid", uid, "dir", dropinDir)
+	}
+}
+
 // removeUserSliceLimits removes the drop-in directory for the given agent's
 // slice and reloads systemd. It is called during agent destroy and during the
 // spawn rollback to prevent stale slice config from accumulating. The error
@@ -517,7 +568,7 @@ func removeUserSliceLimits(ctx context.Context, agentID string, logger *slog.Log
 		return fmt.Errorf("lookup %s: %w", username, err)
 	}
 	sliceName := fmt.Sprintf("user-%s.slice", u.Uid)
-	dropinDir := filepath.Join("/etc/systemd/system", sliceName+".d")
+	dropinDir := userSliceDropinDir(u.Uid)
 	if err := os.RemoveAll(dropinDir); err != nil && !os.IsNotExist(err) {
 		logger.Warn("failed to remove user slice drop-in", "slice", sliceName, "error", err)
 		return fmt.Errorf("remove %s: %w", dropinDir, err)

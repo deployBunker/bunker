@@ -94,6 +94,39 @@ message ServerInfoResponse {
   // "private"; the failing provisioning reason for "host-shared"; the
   // verification failure for "unknown").
   string tmp_isolation_detail = 9;
+  // Residue inventory (DF-BUNKER-21). Host state left behind by agents the
+  // daemon does not know about: orphan users, homes, keys and linger entries.
+  // UNSET (nil) means the daemon predates residue reporting — an older CLI must
+  // not read absence of the field as "the host is clean".
+  ResidueInventory residue = 10;
+}
+
+// ResidueInventory reports host residue counts probed from the host itself
+// (never from a bookkeeping counter), so an operator can see what a failed
+// spawn, a crash or a partially rolled-back agent left behind.
+message ResidueInventory {
+  // Managed (bunker-*) system users the daemon does not know: neither tracked
+  // live nor present in the durable registry.
+  uint32 orphan_users = 1;
+  // Managed home directories whose agent the daemon does not know. Includes
+  // homes left by `userdel` without -r, i.e. a home with no user at all.
+  uint32 orphan_homes = 2;
+  // Persisted agent SSH private keys whose agent the daemon does not know.
+  uint32 orphan_keys = 3;
+  // systemd linger entries for managed agent users the daemon does not know —
+  // the state that makes logind resurrect a user manager for a dead agent.
+  uint32 stale_linger_entries = 4;
+  // Agents the daemon knows (tracker + durable registry). The denominator:
+  // "11 orphan users / 0 registered" is the leak fingerprint this field exists
+  // to make legible.
+  uint32 registered_agents = 5;
+  // Probe status (DF-BUNKER-21): "ok" = every plane was probed; "partial" =
+  // at least one plane could not be read, so the counts are a LOWER BOUND;
+  // "unavailable" = no plane could be read at all (counts are meaningless).
+  // An empty value means the daemon predates residue reporting.
+  string status = 6;
+  // Names every plane that could not be probed and why. Empty for "ok".
+  string detail = 7;
 }
 
 message ServerMetricsRequest {}

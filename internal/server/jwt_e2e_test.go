@@ -11,6 +11,7 @@ import (
 	"connectrpc.com/connect"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 
+	"github.com/deployBunker/bunker/internal/agent"
 	"github.com/deployBunker/bunker/internal/apikey"
 	"github.com/deployBunker/bunker/internal/auth"
 	"github.com/deployBunker/bunker/internal/config"
@@ -220,6 +221,11 @@ func (m *stubAgentManager) StartAgent(ctx context.Context, agentID string) (*v1.
 
 func (m *stubAgentManager) RestartAgent(ctx context.Context, agentID string) (*v1.RestartAgentResponse, error) {
 	return &v1.RestartAgentResponse{AgentId: agentID, Status: "restarted"}, nil
+}
+
+// ResidueInventory is outside this stub's scope: an "ok" empty inventory.
+func (m *stubAgentManager) ResidueInventory() agent.ResidueInventory {
+	return agent.ResidueInventory{Status: agent.ResidueStatusOK}
 }
 
 func (m *stubAgentManager) Stop() {}

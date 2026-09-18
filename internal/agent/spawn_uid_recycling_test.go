@@ -139,6 +139,15 @@ type recycledUidHost struct {
 	records     []*logindRecordStub
 	recordCalls int
 
+	// lingerModelPath, when non-empty, makes the loginctl linger verbs MUTATE a
+	// real linger directory: `enable-linger <user>` creates the entry,
+	// `disable-linger <user>` removes it. The recycled-uid + rollback regression
+	// asserts the linger plane as a FILESYSTEM fact (an empty directory), so the
+	// verbs that own that plane must actually write it instead of being stubbed
+	// promises. Off by default: the recovery tests only count entries in a
+	// fixture directory they seed themselves.
+	lingerModelPath string
+
 	// sessionScripts records every raw COMMAND STRING handed to the session
 	// runner, verbatim. That string is what `su -` executes, so it is the
 	// artifact the in-band bus environment must appear in (INT-SPAWN-004); a
@@ -171,6 +180,21 @@ func (h *recycledUidHost) foreignManagerRunning(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(h.runtimeDir, "bus"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// setLingerEntry models one `loginctl enable/disable-linger <user>` on the
+// real linger directory when the test asked for the linger plane to be modelled
+// (lingerModelPath), and is a no-op otherwise.
+func (h *recycledUidHost) setLingerEntry(username string, on bool) {
+	if h.lingerModelPath == "" {
+		return
+	}
+	path := filepath.Join(h.lingerModelPath, username)
+	if on {
+		_ = os.WriteFile(path, nil, 0o644)
+		return
+	}
+	_ = os.Remove(path)
 }
 
 // probe mirrors production ownership reporting: a recycled uid owns its runtime
@@ -225,7 +249,13 @@ func (h *recycledUidHost) systemRunner(_ context.Context, name string, args ...s
 			return nil, errors.New("loginctl: missing verb")
 		}
 		switch args[0] {
-		case "enable-linger", "terminate-user", "disable-linger":
+		case "enable-linger":
+			h.setLingerEntry(args[len(args)-1], true)
+			return nil, nil
+		case "disable-linger":
+			h.setLingerEntry(args[len(args)-1], false)
+			return nil, nil
+		case "terminate-user":
 			return nil, nil
 		case "show-user":
 			return h.showUserRecord()

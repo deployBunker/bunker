@@ -298,7 +298,7 @@ auditing — audit failure never blocks startup.
 
 | RPC | Kind | Purpose |
 |-----|------|---------|
-| `ServerInfo` | unary | hostname, version, uptime, agent count/capacity, total & available resources |
+| `ServerInfo` | unary | hostname, version, uptime, agent count/capacity, total & available resources, residue inventory (orphan users/homes/keys/stale linger entries + probe status) |
 | `ServerMetrics` | unary | live CPU %, memory used/total, disk used/total |
 | `SpawnAgent` | unary | create an agent (name, TTL, resource limits, network mode, env vars) |
 | `DestroyAgent` | unary | tear down an agent (idempotent — unknown id → `CodeNotFound`) |

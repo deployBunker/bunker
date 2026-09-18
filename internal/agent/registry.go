@@ -21,6 +21,14 @@ import (
 // A system user with this prefix is a managed agent (bunker-<agent_id>).
 const agentUserPrefix = "bunker-"
 
+// agentPasswdPath is the user database the host-plane probes read: the
+// reconciliation sweep (defaultListSystemAgents) and the residue inventory
+// (ResidueInventory) must answer "which managed agents exist on this host?"
+// from the SAME file, so the path is declared once. Var because a non-root
+// regression has to exercise both against a fixture database instead of the
+// real /etc/passwd (production value is /etc/passwd, i.e. unchanged behaviour).
+var agentPasswdPath = "/etc/passwd"
+
 // persistedPortsPath is the per-agent file written at spawn time holding the
 // agent's allocated port sub-range ("<start>-<end>"). It is the durable
 // metadata reconciliation uses to restore an orphan's EXACT reservation.
@@ -239,12 +247,12 @@ func loadOrCreateDaemonInstanceID(baseDataDir string, logger *slog.Logger) (stri
 }
 
 // defaultListSystemAgents enumerates managed agents present on the host by
-// reading /etc/passwd for bunker-* users. It is the production probe behind
-// AgentManager.listSystemAgents (tests inject their own).
+// reading agentPasswdPath (/etc/passwd) for bunker-* users. It is the production
+// probe behind AgentManager.listSystemAgents (tests inject their own).
 func defaultListSystemAgents() ([]SystemAgent, error) {
-	f, err := os.Open("/etc/passwd")
+	f, err := os.Open(agentPasswdPath)
 	if err != nil {
-		return nil, fmt.Errorf("read /etc/passwd: %w", err)
+		return nil, fmt.Errorf("read %s: %w", agentPasswdPath, err)
 	}
 	defer f.Close()
 
