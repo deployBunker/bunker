@@ -241,7 +241,185 @@ agent:
 	}
 }
 
+// TestBunkerdPositionalArgs covers GAP-078: positional verbs must be resolved
+// before anything touches config, and every other positional must be refused
+// loudly. Pre-fix, `bunkerd version` fell silently through to the serve path —
+// it loaded the config and raced the running daemon for ports and agent
+// reconciliation (the entry path that made DF-BUNKER-13 reachable).
+//
+// Every case passes an explicit NON-EXISTENT --config (and the load-bearing
+// case also exports BUNKERD_CONFIG to that same missing path) so a pre-fix run
+// fails fast inside config.Load. That matters on this host: /etc/bunkerd/
+// config.yaml exists and a bunkerd is already serving :8080/:9090, so without
+// the override the pre-fix red run would boot a second daemon and race the live
+// one — the exact incident this gap is about.
+//
+// Flags must precede the positional in every case: Go's flag package stops
+// parsing at the first non-flag token, so `bunkerd bogus --config X` would
+// leave cfgPath at the default and reach the real config file.
+func TestBunkerdPositionalArgs(t *testing.T) {
+	const missingCfg = "/nonexistent/definitely-no-config.yaml"
+
+	oldArgs := os.Args
+	t.Cleanup(func() { os.Args = oldArgs })
+
+	tests := []struct {
+		name       string
+		args       []string
+		envCfg     string   // when set, exported as BUNKERD_CONFIG for the case
+		wantErrSub string   // substring the returned error MUST carry ("" => nil error)
+		errNotSubs []string // substrings the returned error must NOT carry
+		wantStdout []string // substrings required in captured stdout
+		wantStderr []string // substrings required in captured stderr
+	}{
+		{
+			name:       "version verb",
+			args:       []string{"--config", missingCfg, "version"},
+			wantStdout: []string{"bunkerd ", "commit:"},
+		},
+		{
+			name:       "help verb",
+			args:       []string{"--config", missingCfg, "help"},
+			wantStderr: []string{"Usage:"},
+		},
+		{
+			name:       "unknown positional",
+			args:       []string{"--config", missingCfg, "bogus"},
+			wantErrSub: "bogus",
+			errNotSubs: configPathSignatures(),
+		},
+		{
+			// The load-bearing case: BUNKERD_CONFIG points at a missing file
+			// AND --config points at the same missing file. Refusal must
+			// still precede config.Load, so the error names the argument
+			// rather than the config file.
+			name:       "unknown positional with env and flag config",
+			args:       []string{"--config", missingCfg, "bogus"},
+			envCfg:     missingCfg,
+			wantErrSub: "bogus",
+			errNotSubs: configPathSignatures(),
+		},
+		{
+			// A second positional is still a refusal: the extra token is named
+			// and nothing is served.
+			name:       "second positional",
+			args:       []string{"--config", missingCfg, "version", "extra"},
+			wantErrSub: "extra",
+			errNotSubs: configPathSignatures(),
+		},
+		{
+			// Stronger than the missing-path cases: config.Load short-circuits
+			// to DefaultConfig() when the path does not exist, so only an
+			// EXISTING-but-malformed file can prove the refusal never read it.
+			// Pre-fix this errors with "read config <path>: ...".
+			name:       "unknown positional with malformed existing config",
+			args:       []string{"--config", writeTestConfig(t, "server: [\n"), "bogus"},
+			wantErrSub: "bogus",
+			errNotSubs: append(configPathSignatures(), "read config"),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.envCfg != "" {
+				prev, had := os.LookupEnv("BUNKERD_CONFIG")
+				if err := os.Setenv("BUNKERD_CONFIG", tc.envCfg); err != nil {
+					t.Fatalf("setenv BUNKERD_CONFIG: %v", err)
+				}
+				t.Cleanup(func() {
+					if had {
+						_ = os.Setenv("BUNKERD_CONFIG", prev)
+						return
+					}
+					_ = os.Unsetenv("BUNKERD_CONFIG")
+				})
+			}
+
+			setArgs(t, tc.args...)
+
+			var (
+				runErr error
+				errOut string
+			)
+			out := captureStdout(t, func() {
+				errOut = captureStderr(t, func() {
+					runErr = run()
+				})
+			})
+
+			if tc.wantErrSub == "" {
+				if runErr != nil {
+					t.Fatalf("run(%v) returned error, want nil: %v", tc.args, runErr)
+				}
+			} else {
+				if runErr == nil {
+					t.Fatalf("run(%v) returned nil, want error containing %q", tc.args, tc.wantErrSub)
+				}
+				if !strings.Contains(runErr.Error(), tc.wantErrSub) {
+					t.Errorf("error %q does not name the offending argument %q", runErr, tc.wantErrSub)
+				}
+				for _, forbidden := range tc.errNotSubs {
+					if strings.Contains(runErr.Error(), forbidden) {
+						t.Errorf("error %q carries %q — refusal must precede config.Load (no config read, no auth gate, no serve path)", runErr, forbidden)
+					}
+				}
+			}
+
+			for _, want := range tc.wantStdout {
+				if !strings.Contains(out, want) {
+					t.Errorf("stdout missing %q, got: %q", want, out)
+				}
+			}
+			for _, want := range tc.wantStderr {
+				if !strings.Contains(errOut, want) {
+					t.Errorf("stderr missing %q, got: %q", want, errOut)
+				}
+			}
+		})
+	}
+
+	// The positional verb must reuse the --version implementation, so its whole
+	// block is byte-identical to the flag form: five lines, same field order and
+	// indentation, because internal/hostsetup.ParseDaemonVersionOutput parses
+	// exactly that shape.
+	t.Run("version verb output matches --version byte for byte", func(t *testing.T) {
+		flagOut := captureStdout(t, func() {
+			setArgs(t, "--version")
+			if err := run(); err != nil {
+				t.Fatalf("run --version: %v", err)
+			}
+		})
+		posOut := captureStdout(t, func() {
+			setArgs(t, "--config", missingCfg, "version")
+			if err := run(); err != nil {
+				t.Fatalf("run version: %v", err)
+			}
+		})
+
+		if posOut != flagOut {
+			t.Errorf("positional version output differs from --version:\n--version:  %q\npositional: %q", flagOut, posOut)
+		}
+		if got := strings.Count(strings.TrimRight(posOut, "\n"), "\n") + 1; got != 5 {
+			t.Errorf("version block has %d lines, want 5: %q", got, posOut)
+		}
+		for _, field := range []string{"commit:", "built:", "go version:", "platform:"} {
+			if !strings.Contains(posOut, field) {
+				t.Errorf("version block missing %q: %q", field, posOut)
+			}
+		}
+	})
+}
+
 // --- helpers ---
+
+// configPathSignatures returns the error substrings that indicate an argument
+// fell through to the config/startup path. Both appear only AFTER config.Load:
+// "load config" / "read config" come from the loader, "refusing to start" from
+// the auth gate that runs once a config object exists. A positional refusal
+// must carry neither.
+func configPathSignatures() []string {
+	return []string{"load config", "refusing to start"}
+}
 
 func setArgs(t *testing.T, args ...string) {
 	t.Helper()

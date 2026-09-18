@@ -12,6 +12,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"runtime"
@@ -29,6 +30,19 @@ func main() {
 		fmt.Fprintf(os.Stderr, "bunkerd: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// printVersion writes the version block to w. The --version flag and the
+// `version` positional verb both call it, so the two forms stay byte-identical
+// and use one implementation. internal/hostsetup.ParseDaemonVersionOutput
+// parses exactly this shape (a "bunkerd <version>" line, then lines prefixed
+// commit: / built:), so field order and indentation are load-bearing.
+func printVersion(w io.Writer) {
+	fmt.Fprintf(w, "bunkerd %s\n", version.Version)
+	fmt.Fprintf(w, "  commit:     %s\n", version.Commit)
+	fmt.Fprintf(w, "  built:      %s\n", version.BuildDate)
+	fmt.Fprintf(w, "  go version: %s\n", runtime.Version())
+	fmt.Fprintf(w, "  platform:   %s/%s\n", runtime.GOOS, runtime.GOARCH)
 }
 
 func run() error {
@@ -52,6 +66,8 @@ func run() error {
 
 Usage:
   bunkerd [flags]
+  bunkerd version      Print version (same as --version)
+  bunkerd help         Show this help (same as --help)
 
 Flags:
   -h, --help       Show help
@@ -69,17 +85,36 @@ Docker agent hosts. Send SIGINT/SIGTERM for graceful shutdown.
 		return err
 	}
 
+	// Positional arguments (GAP-078). Go's flag package stops parsing at the
+	// first non-flag token, so without this block `bunkerd version` leaves
+	// cfgPath at the default and falls straight through to config.Load and the
+	// serve path — loading the real config and racing the running daemon for
+	// ports and agent reconciliation. That is the entry path behind the
+	// DF-BUNKER-13 second-bunkerd incident. Resolve positionals here, before
+	// anything reads config, binds a port or installs a signal handler.
+	if args := fs.Args(); len(args) > 0 {
+		if len(args) > 1 {
+			return fmt.Errorf("unexpected argument %q", args[1])
+		}
+		switch args[0] {
+		case "version":
+			printVersion(os.Stdout)
+			return nil
+		case "help":
+			fs.Usage()
+			return nil
+		default:
+			return fmt.Errorf("unknown argument %q", args[0])
+		}
+	}
+
 	if showHelp {
 		fs.Usage()
 		return nil
 	}
 
 	if showVersion {
-		fmt.Printf("bunkerd %s\n", version.Version)
-		fmt.Printf("  commit:     %s\n", version.Commit)
-		fmt.Printf("  built:      %s\n", version.BuildDate)
-		fmt.Printf("  go version: %s\n", runtime.Version())
-		fmt.Printf("  platform:   %s/%s\n", runtime.GOOS, runtime.GOARCH)
+		printVersion(os.Stdout)
 		return nil
 	}
 
