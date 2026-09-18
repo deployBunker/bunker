@@ -1990,3 +1990,18 @@ tasks:
   status: complete
   created_at: '2026-09-18T00:35:35.625510+00:00'
   completed_at: '2026-09-18T00:44:52.054061+00:00'
+- id: INT-CI-019
+  title: 'Fix intermittent root-suite spawn failure: runtime dir /run/user/<uid> ownership
+    verification must converge under a concurrent re-creation race'
+  criteria:
+  - 'ensureUserRuntimeDir converges: a transient runtime-dir ownership mismatch is
+    re-asserted and re-probed within a bounded retry budget and the spawn SUCCEEDS;
+    a persistent mismatch still FAILS with attribution naming the observed owner,
+    the expected uid and the mount-point verdict; the FRESH path (no pre-existing
+    dir) still performs no destructive reset, preserving INT-CI-008 semantics; new
+    seam-based unit tests cover transient-converge, persistent-fail and fresh-path-no-reset;
+    go build ./... and go vet ./... pass; go test ./internal/agent/... -count=1 passes;
+    no changes to .github/workflows or host unit files'
+  status: complete
+  created_at: '2026-09-18T01:11:29.644519+00:00'
+  completed_at: '2026-09-18T01:26:45.080850+00:00'
