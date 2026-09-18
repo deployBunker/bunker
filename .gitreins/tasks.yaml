@@ -2111,5 +2111,6 @@ tasks:
     committed transcripts plus the job-level CI read, but the verifier must say so
     explicitly instead of substituting local-machine probes, and a local probe of
     this box must be labelled as the wrong host.'
-  status: in_progress
+  status: complete
   created_at: '2026-09-18T08:11:50.204652+00:00'
+  completed_at: '2026-09-18T08:12:10.010166+00:00'
