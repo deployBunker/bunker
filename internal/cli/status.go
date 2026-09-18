@@ -293,9 +293,11 @@ func formatResidue(inv *v1.ResidueInventory) string {
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("  Residue:  %d orphan users, %d orphan homes, %d orphan keys, %d stale linger entries (%d registered agents)\n",
-		inv.GetOrphanUsers(), inv.GetOrphanHomes(), inv.GetOrphanKeys(), inv.GetStaleLingerEntries(),
-		inv.GetRegisteredAgents()))
+	b.WriteString("  Residue:  " + residueCount(inv.GetOrphanUsers(), "orphan user", "orphan users") +
+		", " + residueCount(inv.GetOrphanHomes(), "orphan home", "orphan homes") +
+		", " + residueCount(inv.GetOrphanKeys(), "orphan key", "orphan keys") +
+		", " + residueCount(inv.GetStaleLingerEntries(), "stale linger entry", "stale linger entries") +
+		" (" + residueCount(inv.GetRegisteredAgents(), "registered agent", "registered agents") + ")\n")
 
 	switch inv.GetStatus() {
 	case "ok":
@@ -315,6 +317,15 @@ func formatResidue(inv *v1.ResidueInventory) string {
 		b.WriteString("            residue present: this host holds agent users/homes/keys/linger entries with no registered agent behind them\n")
 	}
 	return b.String()
+}
+
+// residueCount renders "N <noun>", pluralised when N != 1, so the status line
+// never reads "1 orphan users".
+func residueCount(n uint32, singular, plural string) string {
+	if n == 1 {
+		return fmt.Sprintf("%d %s", n, singular)
+	}
+	return fmt.Sprintf("%d %s", n, plural)
 }
 
 // formatUptime converts seconds into a human-readable duration string.

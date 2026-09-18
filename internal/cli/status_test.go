@@ -938,7 +938,7 @@ func TestStatusCommand_AllServers_Residue(t *testing.T) {
 			t.Fatalf("Execute: %v", err)
 		}
 	})
-	if !strings.Contains(output, "  Residue:  1 orphan users, 0 orphan homes, 0 orphan keys, 1 stale linger entries (0 registered agents)") {
+	if !strings.Contains(output, "  Residue:  1 orphan user, 0 orphan homes, 0 orphan keys, 1 stale linger entry (0 registered agents)") {
 		t.Errorf("--all output missing the residue line, got:\n%s", output)
 	}
 }
@@ -965,13 +965,13 @@ func TestFormatResidue(t *testing.T) {
 		{
 			name: "residue present adds the note",
 			inv:  &v1.ResidueInventory{OrphanUsers: 2, OrphanHomes: 1, StaleLingerEntries: 1, Status: "ok"},
-			want: "  Residue:  2 orphan users, 1 orphan homes, 0 orphan keys, 1 stale linger entries (0 registered agents)\n" +
+			want: "  Residue:  2 orphan users, 1 orphan home, 0 orphan keys, 1 stale linger entry (0 registered agents)\n" +
 				"            residue present: this host holds agent users/homes/keys/linger entries with no registered agent behind them\n",
 		},
 		{
 			name: "partial probe with detail",
 			inv:  &v1.ResidueInventory{OrphanKeys: 1, Status: "partial", Detail: "homes: read /home: permission denied"},
-			want: "  Residue:  0 orphan users, 0 orphan homes, 1 orphan keys, 0 stale linger entries (0 registered agents)\n" +
+			want: "  Residue:  0 orphan users, 0 orphan homes, 1 orphan key, 0 stale linger entries (0 registered agents)\n" +
 				"  Probe:    partial — the counts above are a LOWER BOUND (not every plane could be read)\n" +
 				"            homes: read /home: permission denied\n" +
 				"            residue present: this host holds agent users/homes/keys/linger entries with no registered agent behind them\n",
@@ -986,7 +986,7 @@ func TestFormatResidue(t *testing.T) {
 		{
 			name: "counts without a status field",
 			inv:  &v1.ResidueInventory{OrphanUsers: 1},
-			want: "  Residue:  1 orphan users, 0 orphan homes, 0 orphan keys, 0 stale linger entries (0 registered agents)\n" +
+			want: "  Residue:  1 orphan user, 0 orphan homes, 0 orphan keys, 0 stale linger entries (0 registered agents)\n" +
 				"  Probe:    status not reported by this daemon — the counts above may be a lower bound\n" +
 				"            residue present: this host holds agent users/homes/keys/linger entries with no registered agent behind them\n",
 		},
