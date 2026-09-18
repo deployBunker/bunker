@@ -221,7 +221,10 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 		bunkerdSvc,
 		connect.WithInterceptors(bunkerdInterceptors...),
 	)
-	r.Mount(bunkerdPath, bunkerdHandler)
+	// DF-BUNKER-22: wrap both mounts so a streaming RPC reached with the unary
+	// REST media type answers 415 with a {"code","message"} envelope instead of
+	// connect's body-less 415. Non-streaming paths pass through untouched.
+	r.Mount(bunkerdPath, connectStreamingEnvelope(bunkerdHandler))
 
 	// Also mount the Agent service with a permissive auth interceptor
 	// that accepts both master tokens and agent-scoped sub-keys.
@@ -230,7 +233,7 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 		agentSvc,
 		connect.WithInterceptors(agentInterceptors...),
 	)
-	r.Mount(agentPath, agentHandler)
+	r.Mount(agentPath, connectStreamingEnvelope(agentHandler))
 
 	// Determine TLS config
 	var tlsConfig *tls.Config
