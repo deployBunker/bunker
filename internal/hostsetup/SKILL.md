@@ -13,15 +13,33 @@ Idempotent, testable host provisioning for the agent isolation boundary
   entry point calls it. `DaemonBinary` (default `DefaultDaemonBinary` =
   `/usr/local/bin/bunkerd`, the same path `internal/systemd` writes into the
   unit ExecStart) and `DaemonVersionRunner` (the version-probe seam, parallel to
-  `Runner`) feed the daemon version-skew check (`daemonversion.go`).
+  `Runner`) feed the daemon version-skew check (`daemonversion.go`);
+  `DaemonSkewAllowed` (default false) carries the operator's explicit
+  `--allow-daemon-skew` decision INTO `Apply`, so the override is honored where
+  the gate actually runs instead of being re-litigated there.
+- `DefaultOptions()` — the production layout with defaults applied
+  (`ScratchEnabled: true` + `WithDefaults`), the constructor callers and tests
+  start from when they do not need to name every field.
 - `Runner` — the command seam (`func(ctx, name, args ...string) ([]byte, error)`).
   Production uses `DefaultRunner`; tests inject a recorder that answers the
   probes (`getent`, `id`, `mountpoint`, `findmnt`) from simulated state and
   records every argv, so host state is never touched and the exact command line
   can be asserted.
-- `Report`/`Change` — what a provisioner considered or did. `Mutations()` returns
+- `Report`/`Change` — what a provisioner considered or did (`Change` =
+  `Action`/`Target`/`Detail`/`Applied`). `Mutations()` returns
   only the changes that modified host state (pure `ok`/`skip` rows excluded),
   which is what makes idempotency assertable: a second apply must have none.
+- Path helpers derived from `Options` — `NamespaceConfPath()`,
+  `TmpMountDropInPath()`, `PamHelperPath()`, `PamHelperManifestPath()`,
+  `NamespacePAMBlockForOptions()`, `ScratchDir(agentID)`,
+  `TmpInstanceDir(agentID)`. They apply the `Root` sandbox prefix, so a caller
+  (or a test) can ask where something WILL live without re-deriving the layout.
+- `NamespaceMethod` (`user:noinit`) and `NamespaceUserExclusion` (`root`) — the
+  two constants of the namespace rule's third/fourth fields; the fourth is
+  defense in depth only (exact names, `getpwnam`), never the scoping mechanism.
+- `DefaultTmpMountOptions` — the `Options=` baseline a stock systemd `tmp.mount`
+  carries (`mode=1777,strictatime,nosuid,nodev`), which `MergeTmpMountOptions`
+  merges the size cap into.
 
 Shared scratch (`scratch.go`):
 
@@ -149,12 +167,25 @@ Daemon version skew (`daemonversion.go`, INT-DEMO-001):
   loud WARNING; UNKNOWN prints the WARNING and proceeds; OK is silent.
 - `Apply` gates on the check BEFORE anything is planned or written; the
   UNINSTALL path is deliberately never gated — returning the host to a shared
-  /tmp must always remain possible (and never probes the daemon).
+  /tmp must always remain possible (and never probes the daemon). The gate reads
+  `Options.DaemonSkewAllowed` (default false) as its `allow` argument and stays
+  SILENT (`io.Discard`): the operator decision crosses the boundary as a FIELD,
+  so a caller that already warned does not get a second warning, and every other
+  library caller keeps the refusal. The CLI (`internal/cli/hostprov.go`) sets
+  that field from `--allow-daemon-skew` before calling `Apply` — before this
+  field existed, `Apply` ran its own check with `allow` hardcoded false, so the
+  flag warned and was then refused anyway (rc=1) and both the flag and its help
+  text were lies (2bfb638).
+- `CheckDaemonSkew(ctx, allow, warn)` / `DaemonSkew(build)` / `DaemonSkewHint(state, build, probeErr)` — the decision and its two operator messages: `DaemonSkew` IS the refusal error (naming the installed revision, the required minimum, the failure mode and both remediations), `DaemonSkewHint` is the one-line WARNING for an override or an UNKNOWN probe, and `CheckDaemonSkew` wires them (OK silent, SKEWED → refusal or warning per `allow`, UNKNOWN → warning and proceed).
+- `DaemonBuild` (`Binary` / `Version` / `Commit` / `Built`, with `SkewVersion()` rendering them for messages) and `ParseDaemonVersionOutput(out)` — what the probe read and the lenient parser for the `bunkerd`/`commit:`/`built:` block (indentation- and leading-`v`-tolerant; at least a parseable version is required, and a missing or `unknown` version is an error, i.e. UNKNOWN — never a silent pass).
 - `Status` carries `DaemonSkew` + `DaemonSkewBuild` (`--status` renders
   `installed daemon (version skew)` /
   `daemon vs minimum: OK|SKEWED|UNKNOWN (required daemon >= 0.1.4 — installed
   <path>: version X, commit Y, built Z)`); the CLI `--status --json` payload
-  carries the same facts under `daemon_skew`.
+  carries the same facts under `daemon_skew`. `Status.DaemonSkewString()` is the
+  single renderer of that reading (state + required minimum + the installed
+  revision when the probe named a binary), so the text and the `--json` payload
+  cannot drift apart.
 
 Orchestration (`status.go`):
 
@@ -246,6 +277,19 @@ Orchestration (`status.go`):
   expected"), silently skipping the over-cap ENOSPC proof. The battery's
   capacity checks are therefore AUTHORITATIVE: over-cap behaviour is asserted
   with real bytes, not human strings.
+- `daemonversion_test.go` (INT-DEMO-001, 207e0e5) drives the skew check through
+  the `DaemonVersionRunner` seam (never a real binary, so a host carrying a stale
+  `/usr/local/bin/bunkerd` still runs the suite): `TestCheckDaemonSkew_DecisionTable`
+  (OK/SKEWED/UNKNOWN × allow/no-allow), `_UnknownWarnsAndNamesTheProbe`,
+  `TestApply_RefusesOlderDaemonBeforeAnyMutation` (nothing is planned or written),
+  `TestApply_ProbeFailureWarnsAndProceeds`, `TestUninstall_NeverGatedByDaemonSkew`,
+  `TestParseDaemonVersionOutput`, `TestVersionAtLeast` and `TestDaemonSkewHint`.
+  The WIRED half lives one package up, in `internal/cli/hostprov_skew_test.go`
+  (2bfb638): it drives `bunker host-provision` end to end via `ExecuteContext`
+  against a `--version` fixture script and asserts `--allow-daemon-skew` actually
+  proceeds with exactly ONE warning — the test that FAILS against the pre-fix tree,
+  when `Apply` ignored the override. A library-only decision table cannot catch
+  that class (pitfall 13).
 - `ciwiring_test.go` (06865bc) statically pins WHICH binaries the CI regression
   suite exercises. On run 34778344738 the self-hosted runner resolved the bare
   `bunker`/`bunkerd` invocations of `regression-tests.sh` through PATH to the
@@ -325,3 +369,24 @@ Orchestration (`status.go`):
     daemon probe through its own seam (`DaemonVersionRunner`), never the real
     binary — a dev host with a stale bunkerd must not fail the suite (a stale
     `0.1.3` binary is exactly what the INT-DEMO-001 guard refuses).
+13. **A gate that re-checks the condition with the OVERRIDE HARDCODED is a lie
+    (2bfb638).** `Apply` used to run
+    `o.CheckDaemonSkew(ctx, false, io.Discard)` internally, so the CLI's
+    `--allow-daemon-skew` warning was followed by `Apply`'s own refusal (rc=1):
+    the flag and its help text promised something the library never honored,
+    while every unit test passed because they drove the library DECISION
+    (`TestCheckDaemonSkew_DecisionTable`) and nothing exercised the wired cobra
+    path with the flag. Two rules: an operator override must travel as a FIELD
+    on the options it overrides (here `Options.DaemonSkewAllowed`, default false
+    so other callers keep the safe refusal) and the gate that consumes it must
+    pass it through, staying silent so exactly ONE warning reaches the operator;
+    and the wired command — not just the decision function — must be under test
+    (`hostprov_skew_test.go` fails against the pre-fix tree).
+14. **A library default that must fail SAFE is not the same as a caller's
+    explicit opt-in.** `DaemonSkewAllowed` defaults to false on purpose: a
+    programmatic caller of `Apply` that never decided anything keeps the
+    refusal, and only the CLI path that printed the warning sets it. Do not
+    "helpfully" default an override to true to make a call site work — the
+    difference between "nobody asked" and "the operator accepted the skew" is
+    the whole point of the field, and it is why the zero value is exercised in
+    the suite (`TestApply_RefusesOlderDaemonBeforeAnyMutation`).
