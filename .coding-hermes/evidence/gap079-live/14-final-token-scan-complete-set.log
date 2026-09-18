@@ -1,0 +1,33 @@
+SCAN3_START_UTC=2026-09-18T22:07:14Z
+complete committed evidence set (transcripts + tooling), streamed from this workstation
+  01-phaseA-control-prefix-cli.log              sha256=29b50f09401d5a8200fed1ea92b12244547371d4336f168070d3de28e4b202dd token_bytes=0
+  02-phaseA-control-prefix-cli-probe-v1.log     sha256=2e0047f0c4af966d78947b75789b183de121ff1c1944428060a6b9469d7ead20 token_bytes=0
+  03-phaseA-interspersed-artifact.log           sha256=28e87c8bbf3e5df0a93ea22798396133ae23d14aa01c5b27dcea3b8fd2b7fda2 token_bytes=0
+  04-phaseB-deploy.log                          sha256=ab65657bc611e8f76e585718cfff9b6afb56ba12d07140ef8b34af1860d7e8d0 token_bytes=0
+  05-phaseC-postfix-deployed-cli.log            sha256=f2eaaafef35c7549ff246150c5d070e7beb3c74f5a54777c9f5723bc8e2b6fdd token_bytes=0
+  06-phaseC2-destroy-residue.log                sha256=6314a3bb0e36eb8c1b402368fb2abae3823c02684ccc426bb9dc0e38af969dd5 token_bytes=0
+  07-phaseD-reap-check-decoy.log                sha256=45a3de11e6d728011dff85474fb4c801dba5d16d2510b5be11a09b90c393a30d token_bytes=0
+  08-phaseE-battery.log                         sha256=fcce7a4ee67d95f7f18f20832a9dbb59998c39ac6ac2b8479a96738c07ebf2d8 token_bytes=0
+  09-phaseF-post-run-residue.log                sha256=cd36ebaa685fd420b67e3eacdaf24e69434ee18f8817b925baf79a78f8e48418 token_bytes=0
+  10-leakscan.log                               sha256=e118325df3245ecb28ba96c2c50b30dee9ea6b8e1efa2d496afe46db97f2c593 token_bytes=0
+  11-phaseE2-battery-and-residue.log            sha256=402a33eb00460554ab747a7c21e896476255054d3c2f4871795d739b2f83aa02 token_bytes=0
+  12-leakscan-run2.log                          sha256=3baa6e78c89b1d830be4fb334ac278f8d4ca83a702aca2c7d27fc67c96cbab00 token_bytes=0
+  13-final-cleanup.log                          sha256=8faebd9f623ed232b2230873dda920a1f0d20dfcf7c391fefd39837f4fca5775 token_bytes=0
+  decoy.py                                      sha256=a958a0906e9540bb396fad5191eb29ea0c5aa509ec8152cc93cdd74f533b2862 token_bytes=0
+  host_state.sh                                 sha256=951362933ac52bce2b3edfca087f8f5cefdefeb746d2ba703f7d01a875f090d1 token_bytes=0
+  leakscan.sh                                   sha256=d375ccf96becf791ac76e4869cb731b683b49093c048fb6489a804b434265d8f token_bytes=0
+  phaseA2.sh                                    sha256=70843aeaa7a97b5ee689109f975ebeb7623978e7cfa8b81c692ab29af247d40f token_bytes=0
+  phaseB.sh                                     sha256=7d18c12e53aa27609aa21ec4998350298652a721999116948f0858754a063dbc token_bytes=0
+  phaseC.sh                                     sha256=12c169b3c21c11c2a46eed29a82aba096dc6d63d882e2a784d9619757e2f715f token_bytes=0
+  phaseC2.sh                                    sha256=c4f53dadada460433b8c4b8317050e7eea3ff1662b15e0e80c1d499229cb1640 token_bytes=0
+  phaseD.sh                                     sha256=73e39a573de1f1846d7079091abc448a146b404b63fe65868035b567915e33aa token_bytes=0
+  phaseE.sh                                     sha256=ce15df9497bc142be39b496fdc2b0bf4ff420eeaa4fcd170c15610c0dcee5d02 token_bytes=0
+  phaseE2.sh                                    sha256=cd41ef28f8ee26c6e43be0d237b87ff4ba116fad25c05ff47a9f3455cef0edd5 token_bytes=0
+  phaseF.sh                                     sha256=9d5aebc0f7a3180225d5d374fa31ebb13184d6ae67290cb3f39ee586fd97836c token_bytes=0
+  token.py                                      sha256=ea0cec59e1e2d1c5568cd9cd8adabd7220aa5413e7c3c5416414c6db8ae48128 token_bytes=0
+  tunnel_probe.py                               sha256=fdf2fd838dacfe7884d4eb7dc13681f96bd0929b2e211bee2a800f0332d945f9 token_bytes=0
+scanned_files=26 token_hits_total=0 token_len=48
+SCAN3_CLEAN=YES
+--- removing the scan scratch dir again ---
+ls: cannot access '/root/gap079-live': No such file or directory
+SCAN3_END_UTC=2026-09-18T22:07:14Z

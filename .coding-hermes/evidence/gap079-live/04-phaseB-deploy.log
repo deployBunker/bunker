@@ -1,0 +1,111 @@
+PHASE_B_START_UTC=2026-09-18T21:49:28Z
+
+########## BACK UP THE INSTALLED BINARIES ##########
+115d6f7df3213ec422f351c178d6e382742baa3f7f218e46667fd69a248a2162  /root/gap079-live/backup/bunker.pre-gap079live
+45989a49ebe774bad8d259a11bc5b785231080bb4aaa6c3aac99f57a547ec3d7  /root/gap079-live/backup/bunkerd.pre-gap079live
+bunker 0.1.4
+  commit:     59853c4
+  built:      2026-09-18T20:03:15Z
+
+########## CHECKOUT STATE BEFORE ##########
+?? bunker.pre-intdemo001
+?? bunker.prev-2fac9f5
+?? bunkerd.bak-preskew
+?? bunkerd.pre-intdemo001
+?? bunkerd.prev-8aa4d8a
+head_before=59853c4216b0e9016cee085a5ebe8b31e1bd2065
+
+########## FETCH + RESET TO origin/main ##########
+6a6ad20 chore(board): record tick 477 metadata
+head_after=6a6ad2003e28c6041a0916301038092f283d5c3e
+
+########## BUILD ##########
+go version go1.26.5 linux/amd64
+go build -ldflags "-X github.com/deployBunker/bunker/internal/version.Version=0.1.4 -X github.com/deployBunker/bunker/internal/version.Commit=6a6ad20 -X github.com/deployBunker/bunker/internal/version.BuildDate=2026-09-18T21:49:29Z" -o ./bunkerd ./cmd/bunkerd
+go build -ldflags "-X github.com/deployBunker/bunker/internal/version.Version=0.1.4 -X github.com/deployBunker/bunker/internal/version.Commit=6a6ad20 -X github.com/deployBunker/bunker/internal/version.BuildDate=2026-09-18T21:49:29Z" -o ./bunker ./cmd/bunker
+build_rc=0
+
+########## INSTALL (both binaries, /usr/local/bin) ##########
+go build -ldflags "-X github.com/deployBunker/bunker/internal/version.Version=0.1.4 -X github.com/deployBunker/bunker/internal/version.Commit=6a6ad20 -X github.com/deployBunker/bunker/internal/version.BuildDate=2026-09-18T21:49:31Z" -o ./bunkerd ./cmd/bunkerd
+go build -ldflags "-X github.com/deployBunker/bunker/internal/version.Version=0.1.4 -X github.com/deployBunker/bunker/internal/version.Commit=6a6ad20 -X github.com/deployBunker/bunker/internal/version.BuildDate=2026-09-18T21:49:31Z" -o ./bunker ./cmd/bunker
+install -m 0755 ./bunkerd /usr/local/bin/bunkerd
+install -m 0755 ./bunker /usr/local/bin/bunker
+install_rc=0
+
+########## RESTART THE DAEMON ##########
+is_active=active
+MainPID=1258698
+NRestarts=0
+ExecMainStartTimestamp=Fri 2026-09-18 21:49:34 UTC
+exe=/opt/bunker/bunkerd
+healthz=200
+serverinfo_unauth=401
+
+########## DEPLOYED IDENTITY (all four paths must read 6a6ad20) ##########
+--- /opt/bunker/bunkerd
+bunkerd 0.1.4
+  commit:     6a6ad20
+  built:      2026-09-18T21:49:31Z
+c02735657c8d4a38a8260fe03792d4ddd4f7781210b69265988595c671ba39d8  /opt/bunker/bunkerd
+--- /opt/bunker/bunker
+bunker 0.1.4
+  commit:     6a6ad20
+  built:      2026-09-18T21:49:31Z
+a6aadbb93e7b447b8a7822ce3051612ac1291088c747d69bb8d0c5bc954d49da  /opt/bunker/bunker
+--- /usr/local/bin/bunkerd
+bunkerd 0.1.4
+  commit:     6a6ad20
+  built:      2026-09-18T21:49:31Z
+c02735657c8d4a38a8260fe03792d4ddd4f7781210b69265988595c671ba39d8  /usr/local/bin/bunkerd
+--- /usr/local/bin/bunker
+bunker 0.1.4
+  commit:     6a6ad20
+  built:      2026-09-18T21:49:31Z
+a6aadbb93e7b447b8a7822ce3051612ac1291088c747d69bb8d0c5bc954d49da  /usr/local/bin/bunker
+
+########## BINARY CERTIFICATION (--bin-report) ##########
+==========================================
+ BUNKER END-TO-END TEST BATTERY
+ Fri Sep 18 09:49:38 PM UTC 2026
+==========================================
+
+
+=== BINARY CERTIFICATION ===
+  ── binary certification (DF-BUNKER-3 / QA-BUNKER-3) ──
+  binary under test : /usr/local/bin/bunker
+  commit it reports : 6a6ad20
+  repo HEAD         : 6a6ad2003e28c6041a0916301038092f283d5c3e
+  verdict           : MATCH
+  ✓ battery certifies /usr/local/bin/bunker @ 6a6ad20 == repo HEAD
+bin_report_rc=0
+
+########## RESOLVED RUN PLAN (--show-plan) ##########
+==========================================
+ BUNKER END-TO-END TEST BATTERY
+ Fri Sep 18 09:49:38 PM UTC 2026
+==========================================
+
+
+=== E2E BATTERY PLAN (no root required, nothing was changed) ===
+  battery CLI binary    : /usr/local/bin/bunker
+  battery daemon binary : /usr/local/bin/bunkerd
+  certification verdict : MATCH (binary reports 6a6ad20; repo HEAD 6a6ad2003e28c6041a0916301038092f283d5c3e)
+  mode                  : standalone — talks to the daemon already on the ports above; starts/stops no daemon itself (INT-CI-012)
+  nested suite (sec 12) : its own ports :29092 :28082 and its own CLI state dir — it never shares this battery's ports; a systemd-managed bunkerd and its agent state are left alone
+  sections 13/14 policy : probe http://localhost:18080 first — an unreachable daemon fails ONE cell naming the endpoint, not a cascade of 'not found'
+  daemon URL (connect)  : http://localhost:18080  [default]
+  REST port             : :18080  (BUNKERD_REST_ADDR=:18080)
+  gRPC port             : :19090  (BUNKERD_GRPC_ADDR=:19090)
+  token source          : default (fingerprint sha256:1096116d; the token itself is never printed)
+  battery CLI state dir : /tmp/bunker-battery-cli-6ElSE7  (BUNKER_HOME and HOME for every CLI call; removed on exit)
+  battery CLI config    : /tmp/bunker-battery-cli-6ElSE7/config.yaml  (created on the first CLI call)
+  operator CLI config   : /root/.bunker/config.yaml  (exists; sha256:7e4f8752eed08c07d574467d19f7c2d50b1b1d5a13e99d9c9fac4dd94326bcec)
+  operator config policy: never read or written by this battery — the fingerprint is re-checked at the end of the run
+  root requirement      : the full run needs root (exit 42 otherwise); --self-test/--show-plan/--bin-report never do
+  sections that run     : 1-11, 13, 14 (14's live-daemon registry replays are skipped in coexist mode)
+  sections that may skip: 12 only when no regression-tests.sh is present; 15.1 fails without a CLI that has host-provision
+
+PLAN: OK (nothing was changed)
+show_plan_rc=0
+PHASE_B_END_UTC=2026-09-18T21:49:38Z
+phaseB_rc=0

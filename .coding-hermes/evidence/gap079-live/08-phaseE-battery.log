@@ -1,0 +1,211 @@
+BATTERY_START_UTC=2026-09-18T21:51:43Z
+cwd=/opt/bunker
+repo HEAD=6a6ad2003e28c6041a0916301038092f283d5c3e
+BUNKER_BIN=<default /usr/local/bin/bunker>
+BUNKERD_BIN=<default /usr/local/bin/bunkerd>
+BUNKER_STRICT_BIN=1
+BUNKERD_COEXIST=<unset - standalone mode>
+token_len=48 (value never printed)
+
+==========================================
+ BUNKER END-TO-END TEST BATTERY
+ Fri Sep 18 09:51:43 PM UTC 2026
+==========================================
+
+
+=== BINARY CERTIFICATION ===
+  ── binary certification (DF-BUNKER-3 / QA-BUNKER-3) ──
+  binary under test : /usr/local/bin/bunker
+  commit it reports : 6a6ad20
+  repo HEAD         : 6a6ad2003e28c6041a0916301038092f283d5c3e
+  verdict           : MATCH
+  ✓ battery certifies /usr/local/bin/bunker @ 6a6ad20 == repo HEAD
+  battery CLI state dir: /tmp/bunker-battery-cli-008wRC  (BUNKER_HOME and HOME for every CLI call)
+  battery CLI config   : /tmp/bunker-battery-cli-008wRC/config.yaml
+  operator CLI config  : /root/.bunker/config.yaml  (sha256:7e4f8752eed08c07d574467d19f7c2d50b1b1d5a13e99d9c9fac4dd94326bcec — the battery never reads or writes it)
+
+=== CLEANUP ===
+
+=== 1. Server Health ===
+  ✓ bunkerd process running (PID=1258698)
+  ✓ gRPC listening on :19090
+  ✓ REST listening on :18080
+
+=== 2. Connect ===
+  ✓ connect to bunkerd (http://localhost:18080, token from env)
+  ✓ CLI registration stored under the battery's own state dir (config.yaml)
+
+=== 3. List (empty) ===
+  ✓ list returns empty correctly
+
+=== 4. Spawn ===
+  ✓ spawn agent e2e-main
+  ✓ Linux user bunker-e2e-main created
+  ✓ home directory exists
+  ✓ SSH private key persisted
+  ✓ authorized_keys configured
+  ✓ port range assigned: 10300-10399
+
+  --- Docker Status ---
+  ✓ dockerd running under agent user (PID=1260492)
+  ✓ docker socket exists
+  ✓ docker run inside agent works
+
+=== 5. List (1 agent) ===
+  ✓ list shows e2e-main
+
+=== 6. Exec ===
+  ✓ exec whoami returns agent user
+  ✓ exec id works
+  ✓ docker run via exec
+
+=== 6a. Docker Tunnel ===
+  ✓ docker version through SSH tunnel
+  ✓ tunnel reap check: 0 leftover docker-sock forward(s)
+
+=== 7. Server Metrics ===
+  ✓ server metrics show disk usage
+  ⚠ server metrics — no agent summary
+=== 7a. Agent Metrics ===
+  ✓ agent metrics returns data
+
+=== 8. Multi-agent Spawn ===
+  ✓ 5 agents spawned (5/5 Linux users)
+  ✓ all 5 home directories unique
+  ✓ all 5 port ranges unique
+
+=== 9. Destroy ===
+  ✓ destroy e2e-main
+  ✓ Linux user removed
+  ✓ home directory cleaned up
+  ✓ re-spawn same ID works (idempotency)
+
+=== 10. Cleanup All ===
+  ✓ all agents cleaned up
+
+=== 11. Config & CI ===
+  ✓ bunkerd config exists
+  ✓ battery's own CLI config exists (/tmp/bunker-battery-cli-008wRC/config.yaml)
+  ⚠ operator CLI config /root/.bunker/config.yaml untouched (sha256:7e4f8752eed08c07d574467d19f7c2d50b1b1d5a13e99d9c9fac4dd94326bcec)
+  ✓ GitHub Actions CI workflow exists
+  ✓ regression-tests.sh present
+
+=== 12. Regression Suite ===
+  ✓ nested regression left this battery's CLI registration on http://localhost:18080
+  [0;32m✓[0m handles unreachable server
+
+══════════════════════════════════════════════
+  [0;32mPASS: 33[0m
+  [0;31mFAIL: 0[0m
+══════════════════════════════════════════════
+
+[1;33m=== Cleanup ===[0m
+  ⚠ NOT killing bunkerd processes: systemd manages the running bunkerd (MainPID 1258698) — this suite only manages what it creates
+  ⚠ NOT sweeping /run/bunker/* and /etc/bunkerd/ssh/t*: systemd manages the running bunkerd (MainPID 1258698) — this suite only manages what it creates
+  nested suite tally: PASS=33 FAIL=0 (exit 0)
+  ✓ regression suite the nested suite exited 0 with tally PASS: 33 / FAIL: 0
+
+=== 13. Image Specs (GAP-064) ===
+  ✓ rejected spec returns invalid_argument
+  ✓ rejected spec created no user (no side effects)
+  ✓ allowed spec spawns agent
+  ✓ spawn bundle reports customized image ref
+  ✓ jq present in customized image (which jq → /usr/bin/jq)
+  ✓ spec cache dir exists (key 6f33f37a39f9…)
+  ✓ same spec re-spawn fast (cache hit, 1s < 60s)
+  ⚠ changed-spec image count probe: '0'
+  ✓ imgspec agents destroyed and users removed
+
+=== 14. Durable Registry (GAP-070) ===
+  ✓ bunker registry compact rewrote the registry
+  ✓ compact printed before/after counts (events: 6 -> 3)
+  ✓ compacted registry holds exactly one current-state record per live agent
+  ✓ destroyed ID kept in the bounded known-index record (idempotent destroy)
+  ✓ registry file mode is 0600
+  ✓ compaction removed superseded rotated backups
+  ✓ second compaction is idempotent (live set unchanged)
+  ✓ compacted registry replays to 2 live records + 1 known-index record
+  ✓ exact port reservation + key path survive compaction (adopt metadata)
+  ✓ compact waited for the cross-process lock (2709ms)
+  ✓ compact --dry-run left the registry untouched
+  ✓ spawn persisted a durable registry record at /var/lib/bunkerd/agents.jsonl
+  ✓ live registry file mode is 0600
+  ✓ repeated destroy of a known absent agent succeeds (first=0 second=0)
+  ✓ destroy of a never-seen ID reports not found and exits 0 (via http://localhost:18080): Agent gap070-never-seen-1259869-1789768507 not found.
+  ✓ the daemon's DestroyAgent RPC reports not_found (HTTP 404) for a never-seen ID at http://localhost:18080
+  ✓ a never-seen destroy recorded nothing in the durable registry
+  ✓ destroy lifecycle event durably recorded
+
+=== 15. Agent /tmp Isolation + Shared Scratch (GAP-075) ===
+  ✓ bunker host-provision is available
+  ✓ host-provision defaults to a dry run
+  ✓ host isolation active: agent-scoped per-session private /tmp installed
+  ✓ the installer reports the agent isolation group bunker-agents
+  ✓ the agent-name classifier module (pam_succeed_if) is installed
+  ✓ the fail-closed precondition module (pam_exec) is installed
+  ✓ the classifier module supports the agent-name pattern test (Linux-PAM >= 1.6)
+  ✓ the pam_exec precondition helper matches its sha256 manifest
+  ✓ /etc/fstab was not modified by host provisioning
+  ✓ pam_namespace drop-in installed in /etc/security/namespace.d
+  ✓ the sshd stack carries the agent-NAME classifier (reserved pattern bunker-*)
+  ✓ the sshd stack carries the agent-only fail-closed precondition (pam_exec -> /usr/lib/bunker/pam-tmp-guard, group bunker-agents)
+  ✓ the pam_namespace session line is bare and required (no weakening options)
+  ✓ no fail-open ignore_config_error in the deployed PAM stack
+  ✓ classifier -> precondition -> pam_namespace are adjacent (the two-module jump lands correctly)
+  ✓ the helper directory /usr/lib/bunker is root:root mode 755 (first link of the trust chain)
+  ✓ the helper manifest is root:root mode 444 (a writable manifest would prove anything)
+  ✓ the pam_exec precondition helper is root:root mode 755
+  ✓ the helper content matches its sha256 manifest
+  ✓ a repair re-apply preserved a foreign pam_succeed_if rule byte for byte
+  ✓ a repair re-apply left the bare pam_namespace rule count unchanged (1)
+  ✓ agent session opens with pam_namespace enabled and keeps its own uid
+  ✓ agent A writes and reads its own /tmp/gap075-1259869-a (positive control)
+  ✓ root cannot see agent A's private /tmp file
+  ✓ agent B cannot see agent A's private /tmp file
+  ✓ agent A cannot see root's /tmp file
+  ✓ the agent isolation group bunker-agents exists on the host
+  ✓ the agent session carries the bunker-agents membership
+  ✓ ordinary non-agent SSH user gap075-op-1259869 keeps the host /tmp (pam_namespace is NOT applied host-wide)
+  ✓ the non-agent user's /tmp write landed in the host's /tmp
+  ✓ the agent cannot see the non-agent user's host /tmp file
+  ✓ detached run unit bunker-run-gap075-a-97b2bff4.service runs with PrivateTmp=yes
+  ✓ root cannot see the detached run's private /tmp file
+  ✓ agent B reads agent A's file through /srv/bunker-share (cross-agent exchange)
+  ✓ per-agent scratch dir has setgid mode 2770
+  ✓ files created in the scratch inherit the agent group bunker-agents (setgid semantics)
+  ✓ the exchange root /srv/bunker-share is mode 2750 (setgid, not writable by the agent group or the world)
+  ✓ the exchange root is owned by root:bunker-agents
+  ✓ an agent cannot create an arbitrary directory directly under the exchange root
+  ✓ an agent cannot create an arbitrary file directly under the exchange root
+  ✓ per-agent scratch /srv/bunker-share/gap075-a is its own tmpfs mount
+  ✓ per-agent scratch is bounded by the kernel at 268435456 bytes (mount size bytes == statfs bytes)
+  ⚠ per-agent cap is 268435456 bytes — exhaustive ENOSPC fill skipped (cap too large for a battery run; kernel-reported size asserted above)
+  ✓ agent cannot write outside the sanctioned scratch tree
+  ✓ the private-/tmp instance parent is unreadable from inside a session
+  ✓ rootless-dockerd unit runs with PrivateTmp=yes
+  ✓ a malformed namespace drop-in DENIES the agent session (fail closed, exit=254)
+  ✓ the agent session opens again after the drop-in is restored
+  ✓ a deleted pam_exec precondition helper DENIES the agent session (fail closed, exit=254)
+  ✓ the agent session opens again after the helper is restored
+  ✓ a removed isolation-group membership DENIES the agent session (fail closed, exit=254)
+  ✓ the agent session opens again after the membership is restored
+  ✓ a group/world-writable helper directory DENIES the agent session (fail closed, exit=254)
+  ✓ the agent session opens again after the helper directory mode is restored
+  ✓ destroy removed the agent's bounded scratch directory
+
+  ✓ tunnel reap check: 0 leftover docker-sock forward(s)
+
+==========================================
+ RESULTS SUMMARY
+==========================================
+  ✓ Pass:  119
+  ✗ Fail:  0
+  ⚠ Notes: 4
+
+  CERTIFIED BINARY: /usr/local/bin/bunker (commit reported: 6a6ad20; verdict: MATCH)
+
+  STATUS: ALL CORE TESTS PASS
+  VERIFY-PASS
+  (4 issues documented — see notes above)
+
+phaseE_rc=0

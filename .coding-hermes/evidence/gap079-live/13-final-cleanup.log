@@ -1,0 +1,17 @@
+scratch_removed
+ls: cannot access '/root/gap079-live': No such file or directory
+---
+total 72
+drwx------ 11 root root  4096 Sep 18 22:06 .
+drwxr-xr-x 23 root root  4096 Jun 28 09:20 ..
+-rw-r--r--  1 root root  3142 Jun 28 09:26 .bashrc
+drwxr-xr-x  2 root root  4096 Sep 17 15:04 bin-prefix
+drwx------  3 root root  4096 Sep 17 15:04 .bunker
+drwx------  4 root root  4096 Jun 29 11:40 .cache
+-rw-r--r--  1 root root     0 May 18 08:43 .cloud-locale-test.skip
+drwxr-xr-x  4 root root  4096 Aug  4 07:59 .config
+drwx------  3 root root  4096 Aug  3 02:47 .docker
+---
+0
+---
+/tmp/bunker-tunnel-e2e-main.log

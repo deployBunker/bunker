@@ -1,0 +1,67 @@
+LEAKSCAN_START_UTC=2026-09-18T21:56:36Z
+scan_root=/root/gap079-live
+
+########## files under the scratch dir ##########
+  /root/gap079-live/backup/bunkerd.pre-gap079live
+  /root/gap079-live/backup/bunker.pre-gap079live
+  /root/gap079-live/bin/bunker-prefix
+  /root/gap079-live/bin/decoy.py
+  /root/gap079-live/bin/host_state.sh
+  /root/gap079-live/bin/leakscan.sh
+  /root/gap079-live/bin/phaseA2.sh
+  /root/gap079-live/bin/phaseA.sh
+  /root/gap079-live/bin/phaseB.sh
+  /root/gap079-live/bin/phaseC2.sh
+  /root/gap079-live/bin/phaseC.sh
+  /root/gap079-live/bin/phaseD.sh
+  /root/gap079-live/bin/phaseE.sh
+  /root/gap079-live/bin/phaseF.sh
+  /root/gap079-live/bin/__pycache__/token.cpython-312.pyc
+  /root/gap079-live/bin/reap_check.sh
+  /root/gap079-live/bin/token.py
+  /root/gap079-live/bin/tunnel_probe.py
+  /root/gap079-live/extracted_function.sh
+  /root/gap079-live/scan/phaseA-interspersed-artifact.log
+  /root/gap079-live/scan/phaseA.log
+  /root/gap079-live/scan/phaseA-run1-clean.log
+  /root/gap079-live/scan/phaseB.log
+  /root/gap079-live/scan/phaseC2.log
+  /root/gap079-live/scan/phaseC.log
+  /root/gap079-live/scan/phaseD.log
+  /root/gap079-live/scan/phaseE-battery.log
+  /root/gap079-live/scan/phaseF-residue.log
+  /root/gap079-live/state/config.yaml
+  /root/gap079-live/state/tunnel-conf-prefix-KILL-KILL.log
+  /root/gap079-live/state/tunnel-conf-prefix-TERM-TERM.log
+  /root/gap079-live/state/tunnel-post-fix-KILL-KILL.log
+  /root/gap079-live/state/tunnel-post-fix-TERM-TERM.log
+
+########## sha256 of the transcript copies ##########
+28e87c8bbf3e5df0a93ea22798396133ae23d14aa01c5b27dcea3b8fd2b7fda2  phaseA-interspersed-artifact.log
+29b50f09401d5a8200fed1ea92b12244547371d4336f168070d3de28e4b202dd  phaseA.log
+2e0047f0c4af966d78947b75789b183de121ff1c1944428060a6b9469d7ead20  phaseA-run1-clean.log
+ab65657bc611e8f76e585718cfff9b6afb56ba12d07140ef8b34af1860d7e8d0  phaseB.log
+6314a3bb0e36eb8c1b402368fb2abae3823c02684ccc426bb9dc0e38af969dd5  phaseC2.log
+f2eaaafef35c7549ff246150c5d070e7beb3c74f5a54777c9f5723bc8e2b6fdd  phaseC.log
+45a3de11e6d728011dff85474fb4c801dba5d16d2510b5be11a09b90c393a30d  phaseD.log
+fcce7a4ee67d95f7f18f20832a9dbb59998c39ac6ac2b8479a96738c07ebf2d8  phaseE-battery.log
+cd36ebaa685fd420b67e3eacdaf24e69434ee18f8817b925baf79a78f8e48418  phaseF-residue.log
+
+########## token-bytes scan (the real token is read here, never printed) ##########
+token_len=48 scanned_files=33 token_hits=1
+  TOKEN LEAK: /root/gap079-live/state/config.yaml
+leakscan_clean=NO
+
+########## /tmp/bunkerd-battery-* provenance (nested-suite temp configs) ##########
+count=344
+newest_5:
+  -rw------- 1 root root 860 Sep 18 21:30 /tmp/bunkerd-battery-LvZ5r8.yaml
+  -rw------- 1 root root 860 Sep 18 21:25 /tmp/bunkerd-battery-Bid7vp.yaml
+  -rw------- 1 root root 860 Sep 18 21:15 /tmp/bunkerd-battery-vZydqK.yaml
+  -rw------- 1 root root 860 Sep 18 20:37 /tmp/bunkerd-battery-oAd2l2.yaml
+  -rw------- 1 root root 860 Sep 18 20:22 /tmp/bunkerd-battery-fQIJF2.yaml
+created_in_this_window_2151_2156=0
+
+########## /tmp/bunker-tunnel-e2e-main.log ##########
+-rw-r--r-- 1 root root 69 Sep 18 21:52 /tmp/bunker-tunnel-e2e-main.log
+LEAKSCAN_END_UTC=2026-09-18T21:56:36Z

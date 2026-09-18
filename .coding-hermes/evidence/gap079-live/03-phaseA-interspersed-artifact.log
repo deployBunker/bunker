@@ -1,0 +1,154 @@
+BUNKER_TOKEN_LEN=48 (value never printed)
+PHASE_A_START_UTC=2026-09-18T21:43:52Z
+
+########## BEFORE STATE ##########
+snapshot_utc=2026-09-18T21:43:52Z
+hostname=bunker-mvp
+--- /opt/bunker checkout ---
+checkout_HEAD=59853c4216b0e9016cee085a5ebe8b31e1bd2065
+checkout_origin_main=59853c4216b0e9016cee085a5ebe8b31e1bd2065
+--- deployed binaries (commit line) ---
+/opt/bunker/bunkerd: 59853c4
+/opt/bunker/bunker: 59853c4
+/usr/local/bin/bunkerd: 59853c4
+/usr/local/bin/bunker: 59853c4
+--- systemd ---
+bunkerd_is_active=active
+bunkerd_MainPID=989712
+bunkerd_NRestarts=0
+bunkerd_ExecMainStart=Fri 2026-09-18 20:03:18 UTC
+bunkerd_exe=/opt/bunker/bunkerd
+healthz=200
+--- docker ---
+docker_ps_count=0
+--- process table facts ---
+docker_sock_forward_count=0
+orphan_forward_count=0
+sshd_processes=0
+agent_dockerd_count_free_text=0
+battery_procs=0
+--- users / homes / keys / linger ---
+bunker_users=0
+bunker_homes=10
+bunker_keys=1
+ssh_key_names=tick453-beta 
+linger_entries=12
+linger_names=bunker-0f4d1805 bunker-2c05d847 bunker-2d8bb740 bunker-6dd64410 bunker-86fef0b3 bunker-c307cebb bunker-c3aa7a88 bunker-cb4165e2 bunker-d05e7758 bunker-db61a815 bunker-imgspec-none root 
+run_bunker_dirs=6
+run_bunker_names=/run/bunker/1dd412d0 /run/bunker/2abff2b5 /run/bunker/34ec2821 /run/bunker/42a1b1e1 /run/bunker/ff86d69a /run/bunker/tick453-beta 
+--- operator CLI config (fingerprint only) ---
+operator_config_sha256=7e4f8752eed08c07d574467d19f7c2d50b1b1d5a13e99d9c9fac4dd94326bcec
+operator_config_mtime=2026-09-17 21:46:33.980820242 +0000
+--- battery scratch ---
+battery_cli_state_dirs=0
+bunker_tunnel_logs=1
+scratch_dir=/root/gap079-live
+
+########## PRE-FIX CLIENT IDENTITY ##########
+binary: /root/gap079-live/bin/bunker-prefix
+37ed34965ae0798b03bd9156eaf60ea2582f2554caba0b1af1852aa9b523cb60  /root/gap079-live/bin/bunker-prefix
+bunker 0.1.4
+  commit:     acfe850
+  built:      2026-09-18T21:26:14Z
+  go version: go1.26.5
+  platform:   linux/amd64
+
+########## CONNECT (isolated state dir /root/gap079-live/state) ##########
+Connected to bunker-mvp (0.1.4)
+  Agents: 0/50
+  Uptime: 6034s
+  Server registered as "bunker-mvp"
+
+########## SPAWN agent gap079live (pre-fix CLI) ##########
+Creating agent...
+Agent created: gap079live
+
+══════════ Connection Bundle ══════════
+
+  Docker SSH:   DOCKER_HOST=ssh://bunker-gap079live@localhost
+  SSH Key:      (saved to ~/.bunker/keys/)
+                /root/gap079-live/state/keys/gap079live
+  Port Range:   10300-10399
+  Expires:      2026-09-19T03:44:06Z
+  SSHFS Mount:  sshfs -o Identity=== TUNNEL PROBE: conf-prefix-TERM ===
+bin            : /root/gap079-live/bin/bunker-prefix
+bin version    : bunker 0.1.4 | commit:     acfe850 | built:      2026-09-18T21:26:14Z | go version: go1.26.5 | platform:   linux/amd64
+state dir      : /root/gap079-live/state
+agent          : gap079live
+signal under test: SIGTERM (to the CLI pid only)
+daemon         : http://localhost:18080
+token          : sha256:32ad31d5 (value never printed)
+connect        : bunker: connect to http://localhost:18080: unauthenticated: invalid token
+PRE  forwards  : 0
+CLI started    : pid=1254129 (own session, so only this pid is signalled)
+ssh child      : NOT FOUND after 30.2s (tunnel did not establish)
+  cli alive    : True
+  tunnel log   : Opening tunnel to gap079live on local port 2376. Press Ctrl-C to stop.
+RESULT: PROBE-INCONCLUSIVE
+probe_TERM_rc=3
+
+########## PROBE 2: SIGKILL, PRE-FIX CLI ##########
+=== TUNNEL PROBE: conf-prefix-KILL ===
+bin            : /root/gap079-live/bin/bunker-prefix
+bin version    : bunker 0.1.4 | commit:     acfe850 | built:      2026-09-18T21:26:14Z | go version: go1.26.5 | platform:   linux/amd64
+state dir      : /root/gap079-live/state
+agent          : gap079live
+signal under test: SIGKILL (to the CLI pid only)
+daemon         : http://localhost:18080
+token          : sha256:32ad31d5 (value never printed)
+connect        : bunker: connect to http://localhost:18080: unauthenticated: invalid token
+PRE  forwards  : 0
+CLI started    : pid=1254631 (own session, so only this pid is signalled)
+ssh child      : pid=1254638 ppid=1254631 (== CLI pid: True) after 0.3s
+ssh argv       : ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o IdentitiesOnly=yes -i /root/gap079-live/state/keys/gap079live -L 2376:/run/bunker/gap079live/docker.sock bunker-gap079live@localhost -N
+local port 2376 bound before signal: LISTEN 0      128        127.0.0.1:2376       0.0.0.0:*    users:(("ssh",pid=1254638,fd=5))
+signalling     : SIGKILL -> pid 1254631
+post           : cli_alive=True (gone at never) ssh_child_alive=True (gone at never)
+  leaked child : pid=1254638 ppid=1 spec=2376:/run/bunker/gap079live/docker.sock
+local port 2376 bound after  signal: LISTEN 0      128        127.0.0.1:2376       0.0.0.0:*    users:(("ssh",pid=1254638,fd=5))
+POST forwards  : 1
+RESULT: SURVIVED — LEAK: ssh child pid=1254638 still holds 2376:/run/bunker/gap079live/docker.sock (ppid=1)
+cleanup        : SIGKILL -> explicit pid 1254638 only (no pkill -f)
+cleanup check  : child alive=False ; forwards now=0
+RESULT_LINE label=conf-prefix-KILL sig=KILL verdict=SURVIVED
+PROBE_EXIT=0
+probe_KILL_rc=0
+
+########## POST-PHASE-A FORWARDS ##########
+/usr/local/bin/bunkerd: 59853c4
+/usr/local/bin/bunker: 59853c4
+docker_sock_forward_count=0
+orphan_forward_count=0
+PHASE_A_END_UTC=2026-09-18T21:44:47Z
+079-live/bin/bunker-prefix
+bin version    : bunker 0.1.4 | commit:     acfe850 | built:      2026-09-18T21:26:14Z | go version: go1.26.5 | platform:   linux/amd64
+state dir      : /root/gap079-live/state
+agent          : gap079live
+signal under test: SIGKILL (to the CLI pid only)
+daemon         : http://localhost:18080
+token          : sha256:53f24d84 (value never printed)
+connect        : Connected to bunker-mvp (0.1.4) /   Agents: 1/50 /   Uptime: 6059s /   Server registered as "bunker-mvp"
+PRE  forwards  : 0
+CLI started    : pid=1254396 (own session, so only this pid is signalled)
+ssh child      : pid=1254403 ppid=1254396 (== CLI pid: True) after 0.3s
+ssh argv       : ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o IdentitiesOnly=yes -i /root/gap079-live/state/keys/gap079live -L 2376:/run/bunker/gap079live/docker.sock bunker-gap079live@localhost -N
+local port 2376 bound before signal: LISTEN 0      128        127.0.0.1:2376       0.0.0.0:*    users:(("ssh",pid=1254403,fd=5))
+signalling     : SIGKILL -> pid 1254396
+post           : cli_alive=True (gone at never) ssh_child_alive=True (gone at never)
+  leaked child : pid=1254403 ppid=1 spec=2376:/run/bunker/gap079live/docker.sock
+local port 2376 bound after  signal: LISTEN 0      128        127.0.0.1:2376       0.0.0.0:*    users:(("ssh",pid=1254403,fd=5))
+POST forwards  : 1
+RESULT: SURVIVED — LEAK: ssh child pid=1254403 still holds 2376:/run/bunker/gap079live/docker.sock (ppid=1)
+cleanup        : SIGKILL -> explicit pid 1254403 only (no pkill -f)
+cleanup check  : child alive=False ; forwards now=0
+RESULT_LINE label=conf-prefix-KILL sig=KILL verdict=SURVIVED
+PROBE_EXIT=0
+probe_KILL_rc=0
+
+########## POST-PHASE-A FORWARDS ##########
+/usr/local/bin/bunkerd: 59853c4
+/usr/local/bin/bunker: 59853c4
+docker_sock_forward_count=0
+orphan_forward_count=0
+PHASE_A_END_UTC=2026-09-18T21:44:28Z
+phaseA_rc=0

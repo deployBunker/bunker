@@ -1,0 +1,53 @@
+PHASE_C2_START_UTC=2026-09-18T21:51:08Z
+
+########## BEFORE DESTROY ##########
+uid=1002(bunker-gap079live) gid=1002(bunker-gap079live) groups=1002(bunker-gap079live),987(bunker-agents)
+/home/bunker-gap079live
+/run/bunker/gap079live
+gap079live
+tick453-beta
+linger=bunker-0f4d1805 bunker-2c05d847 bunker-2d8bb740 bunker-6dd64410 bunker-86fef0b3 bunker-c307cebb bunker-c3aa7a88 bunker-cb4165e2 bunker-d05e7758 bunker-db61a815 bunker-gap079live bunker-imgspec-none root 
+
+########## DESTROY gap079live (deployed CLI 6a6ad20) ##########
+Agent gap079live destroyed.
+Removed local SSH key /root/gap079-live/state/keys/gap079live
+destroy_rc=0
+
+########## AFTER DESTROY ##########
+id: ‘bunker-gap079live’: no such user
+ls: cannot access '/home/bunker-gap079live': No such file or directory
+ls: cannot access '/run/bunker/gap079live': No such file or directory
+ssh_keys_present=tick453-beta 
+linger=bunker-0f4d1805 bunker-2c05d847 bunker-2d8bb740 bunker-6dd64410 bunker-86fef0b3 bunker-c307cebb bunker-c3aa7a88 bunker-cb4165e2 bunker-d05e7758 bunker-db61a815 bunker-imgspec-none root 
+
+########## DAEMON-SIDE VIEW ##########
+No agents found.
+--- bunker status (residue surface) ---
+── bunker-mvp ──
+  Hostname: bunker-mvp
+  URL:      http://localhost:18080
+  Version:  0.1.4
+  Status:   ONLINE
+  Uptime:   1m 40s
+  Agents:   0/50
+  /tmp:     private (per-session pam_namespace instance)
+  Residue:  0 orphan users, 10 orphan homes, 0 orphan keys, 10 stale linger entries (0 registered agents)
+            residue present: this host holds agent users/homes/keys/linger entries with no registered agent behind them
+  CPU:      0.0%
+  Memory:   1.2 GB / 15.2 GB
+  Disk:     8% (12.5 GB/149.9 GB)
+
+########## HOST FINGERPRINT ##########
+docker_sock_forward_count=0
+orphan_forward_count=0
+bunker_users=0
+bunker_homes=10
+bunker_keys=1
+ssh_key_names=tick453-beta 
+linger_entries=12
+linger_names=bunker-0f4d1805 bunker-2c05d847 bunker-2d8bb740 bunker-6dd64410 bunker-86fef0b3 bunker-c307cebb bunker-c3aa7a88 bunker-cb4165e2 bunker-d05e7758 bunker-db61a815 bunker-imgspec-none root 
+run_bunker_dirs=6
+run_bunker_names=/run/bunker/1dd412d0 /run/bunker/2abff2b5 /run/bunker/34ec2821 /run/bunker/42a1b1e1 /run/bunker/ff86d69a /run/bunker/tick453-beta 
+operator_config_sha256=7e4f8752eed08c07d574467d19f7c2d50b1b1d5a13e99d9c9fac4dd94326bcec
+operator_config_mtime=2026-09-17 21:46:33.980820242 +0000
+PHASE_C2_END_UTC=2026-09-18T21:51:14Z

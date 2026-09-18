@@ -1,0 +1,29 @@
+PHASE_D_START_UTC=2026-09-18T21:51:35Z
+
+########## EXTRACT session_tunnel_leak_check FROM THE DEPLOYED BATTERY ##########
+extracted_bytes=2403 extracted_sha256=d192bfa2c8fc04429b7c7fee063b15d27fe0ec943cef71b624278b95e3143a54
+battery_source_sha256=1ef3a10eb9a00493d71f50d885b0345402902e686fb8c4c0c52586738421e19e
+extracted_sha256=d192bfa2c8fc04429b7c7fee063b15d27fe0ec943cef71b624278b95e3143a54
+
+########## 1) BASELINE, NO DECOY (expect 0) ##########
+  OK: tunnel reap check: 0 leftover docker-sock forward(s)
+reap_check_rc=0 pass=1 fail=0
+
+########## 2) PLANT THE DECOY (orphan-shaped -L .../docker.sock) ##########
+decoy_pid=1259797
+decoy_pid=1259797 ppid=1 argv=/usr/bin/python3 -c import time; time.sleep(900) -L 2377:/run/bunker/decoy-live/docker.sock -N
+--- decoy rows in the process table ---
+1259797       1 S    /usr/bin/python3 -c import time; time.sleep(900) -L 2377:/run/bunker/decoy-live/docker.sock -N
+
+########## 3) REAP CHECK WITH THE DECOY PLANTED (expect FAIL > 0) ##########
+  FAIL: tunnel reap check: 1 leftover docker-sock forward(s) survived teardown (pid: 1259797) — GAP-079 leak: an ssh child was not reaped and kept its -L forward; kill the pid(s) above, a host still holding this leak cannot go green
+reap_check_rc=1 pass=0 fail=1
+
+########## 4) KILL THE DECOY (explicit pid, no pkill -f) ##########
+decoy_killed=1259797 (explicit pid)
+decoy_check=GONE
+
+########## 5) REAP CHECK AFTER CLEANUP (expect 0) ##########
+  OK: tunnel reap check: 0 leftover docker-sock forward(s)
+reap_check_rc=0 pass=1 fail=0
+PHASE_D_END_UTC=2026-09-18T21:51:37Z

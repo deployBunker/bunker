@@ -1,0 +1,77 @@
+BUNKER_TOKEN_LEN=48 (value never printed)
+PHASE_C_START_UTC=2026-09-18T21:50:50Z
+
+########## DEPLOYED CLIENT IDENTITY ##########
+binary: /usr/local/bin/bunker
+a6aadbb93e7b447b8a7822ce3051612ac1291088c747d69bb8d0c5bc954d49da  /usr/local/bin/bunker
+bunker 0.1.4
+  commit:     6a6ad20
+  built:      2026-09-18T21:49:31Z
+  go version: go1.26.5
+  platform:   linux/amd64
+repo HEAD (checkout): 6a6ad2003e28c6041a0916301038092f283d5c3e
+
+########## PROBE 3: SIGTERM, DEPLOYED HEAD CLI (--docker) ##########
+=== TUNNEL PROBE: post-fix-TERM ===
+bin            : /usr/local/bin/bunker
+bin version    : bunker 0.1.4 | commit:     6a6ad20 | built:      2026-09-18T21:49:31Z | go version: go1.26.5 | platform:   linux/amd64
+state dir      : /root/gap079-live/state
+agent          : gap079live
+signal under test: SIGTERM (to the CLI pid only)
+daemon         : http://localhost:18080
+token          : sha256:53f24d84 (value never printed)
+connect        : Connected to bunker-mvp (0.1.4) /   Agents: 1/50 /   Uptime: 76s /   Server registered as "bunker-mvp"
+PRE  forwards  : 0
+CLI started    : pid=1258912 (own session, so only this pid is signalled)
+ssh child      : pid=1258921 ppid=1258912 (== CLI pid: True) after 0.3s
+ssh argv       : ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o IdentitiesOnly=yes -i /root/gap079-live/state/keys/gap079live -L 2376:/run/bunker/gap079live/docker.sock bunker-gap079live@localhost -N
+docker via tunnel: exit=0
+  Client:
+  Version:           29.1.3
+  Server:
+  Engine:
+  Version:          29.1.3
+  Version:          2.2.1
+  Version:          1.3.4-0ubuntu1~24.04.1
+  Version:          0.19.0
+local port 2376 bound before signal: LISTEN 0      128        127.0.0.1:2376       0.0.0.0:*    users:(("ssh",pid=1258921,fd=5))
+signalling     : SIGTERM -> pid 1258912
+post           : cli_state=Z (exited at 0.10s) ssh_child_state=GONE (gone at 0.10s)
+local port 2376 bound after  signal: no
+POST forwards  : 0
+RESULT: REAPED — the ssh child holding 2376:/run/bunker/gap079live/docker.sock is gone (no /proc entry) after the CLI signal
+RESULT_LINE label=post-fix-TERM sig=TERM verdict=REAPED
+PROBE_EXIT=0
+probe_TERM_rc=0
+
+########## PROBE 4: SIGKILL, DEPLOYED HEAD CLI ##########
+=== TUNNEL PROBE: post-fix-KILL ===
+bin            : /usr/local/bin/bunker
+bin version    : bunker 0.1.4 | commit:     6a6ad20 | built:      2026-09-18T21:49:31Z | go version: go1.26.5 | platform:   linux/amd64
+state dir      : /root/gap079-live/state
+agent          : gap079live
+signal under test: SIGKILL (to the CLI pid only)
+daemon         : http://localhost:18080
+token          : sha256:53f24d84 (value never printed)
+connect        : Connected to bunker-mvp (0.1.4) /   Agents: 1/50 /   Uptime: 77s /   Server registered as "bunker-mvp"
+PRE  forwards  : 0
+CLI started    : pid=1259057 (own session, so only this pid is signalled)
+ssh child      : pid=1259066 ppid=1259057 (== CLI pid: True) after 0.3s
+ssh argv       : ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o IdentitiesOnly=yes -i /root/gap079-live/state/keys/gap079live -L 2376:/run/bunker/gap079live/docker.sock bunker-gap079live@localhost -N
+local port 2376 bound before signal: LISTEN 0      128        127.0.0.1:2376       0.0.0.0:*    users:(("ssh",pid=1259066,fd=5))
+signalling     : SIGKILL -> pid 1259057
+post           : cli_state=Z (exited at 0.10s) ssh_child_state=GONE (gone at 0.10s)
+local port 2376 bound after  signal: no
+POST forwards  : 0
+RESULT: REAPED — the ssh child holding 2376:/run/bunker/gap079live/docker.sock is gone (no /proc entry) after the CLI signal
+RESULT_LINE label=post-fix-KILL sig=KILL verdict=REAPED
+PROBE_EXIT=0
+probe_KILL_rc=0
+
+########## POST-PHASE-C FORWARDS ##########
+/usr/local/bin/bunkerd: 6a6ad20
+/usr/local/bin/bunker: 6a6ad20
+docker_sock_forward_count=0
+orphan_forward_count=0
+PHASE_C_END_UTC=2026-09-18T21:50:52Z
+phaseC_rc=0

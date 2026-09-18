@@ -1,0 +1,57 @@
+PHASE_F_START_UTC=2026-09-18T21:56:04Z
+
+########## (1) docker-sock SSH forwards: '-L <port>:...docker.sock' ##########
+docker_sock_forward_count=0
+orphan_forward_count=0
+sshd_processes=0
+
+########## (2) any ssh client process at all ##########
+    PID    PPID USER         ELAPSED COMMAND
+
+########## (3) bunkerd service state ##########
+is_active=active
+MainPID=1258698
+NRestarts=0
+ExecMainStartTimestamp=Fri 2026-09-18 21:49:34 UTC
+healthz=200
+
+########## (4) agents registered (daemon view) ##########
+No agents found.
+--- bunker status ---
+  Version:  0.1.4
+  Status:   ONLINE
+  Uptime:   6m 30s
+  Agents:   0/50
+  Residue:  0 orphan users, 10 orphan homes, 0 orphan keys, 10 stale linger entries (0 registered agents)
+
+########## (5) docker containers / agent dockerd ##########
+docker_ps_count=0
+agent_dockerd_count=0
+
+########## (6) users / homes / keys / linger / run dirs ##########
+bunker_users=0
+bunker_homes=10
+bunker_keys=1
+ssh_key_names=tick453-beta 
+linger_entries=12
+linger_names=bunker-0f4d1805 bunker-2c05d847 bunker-2d8bb740 bunker-6dd64410 bunker-86fef0b3 bunker-c307cebb bunker-c3aa7a88 bunker-cb4165e2 bunker-d05e7758 bunker-db61a815 bunker-imgspec-none root 
+run_bunker_dirs=6
+run_bunker_names=/run/bunker/1dd412d0 /run/bunker/2abff2b5 /run/bunker/34ec2821 /run/bunker/42a1b1e1 /run/bunker/ff86d69a /run/bunker/tick453-beta 
+operator_config_sha256=7e4f8752eed08c07d574467d19f7c2d50b1b1d5a13e99d9c9fac4dd94326bcec
+operator_config_mtime=2026-09-17 21:46:33.980820242 +0000
+battery_cli_state_dirs=0
+bunker_tunnel_logs=1
+
+########## (7) battery scratch leftovers ##########
+battery_cli_state_dirs=0
+bunkerd_battery_configs=344
+tunnel_logs=/tmp/bunker-tunnel-e2e-main.log 
+battery_run_dirs=0
+
+########## (8) deferred agent ids from the battery (should be gone) ##########
+leftover_scan_done=1
+
+########## (9) the battery's own reap check, re-run post-run ##########
+  OK: tunnel reap check: 0 leftover docker-sock forward(s)
+reap_check_rc=0 pass=1 fail=0
+PHASE_F_END_UTC=2026-09-18T21:56:04Z
