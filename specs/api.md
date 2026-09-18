@@ -137,6 +137,108 @@ Cleanup steps (in order):
 6. Free port range in allocator
 7. Remove from resource tracker
 
+### StopAgent
+
+Pauses an agent **without destroying it** (GAP-071): the agent's session units
+and processes are stopped so it stops consuming CPU, while the Linux user, home
+directory, container and allocated port range are all KEPT, and the resource
+tracker keeps the record with status `stopped`.
+
+```
+rpc StopAgent(StopAgentRequest) returns (StopAgentResponse)
+```
+
+Request:
+- `agent_id` (string): Agent to stop
+
+Response:
+- `agent_id` (string): Stopped agent
+- `status` (string): `"stopped"`, `"already_stopped"`, `"not_found"`, `"error"`
+
+Stop steps (in order), each best-effort — a leg that is already down does not
+fail the stop:
+
+1. Container-mode agent (one spawned with an image spec): `docker stop -t 5`
+   against the agent's container through the **agent's own** rootless socket.
+   The container is stopped, never removed.
+2. `systemctl --user stop bunker-docker-<id>` and, when discoverable,
+   `systemctl --user stop` for the agent's own `bunker-run-<id>-*` transient
+   units.
+3. The agent's `dockerd`/`rootlesskit` processes are signalled (SIGTERM →
+   SIGKILL) and awaited, exactly as the destroy path does.
+
+NOT done by stop (these are Destroy's steps): `userdel`, port range release,
+`/run/bunker/<id>` removal, home-directory removal, SSH-key removal.
+Stopping an already-stopped agent reports `already_stopped` and issues no host
+command (idempotent). An unknown id reports `not_found` with
+`CodeNotFound` — never a panic.
+
+### StartAgent
+
+Re-arms a stopped agent (GAP-071). The user and home were kept, so the session
+is restored: the agent's unit is started again (and a container-mode agent's
+kept container is started through the agent's own socket), and the status
+returns to `running`. The existing heartbeat expiry is left as it is —
+`RestartAgent` is the call that resets the TTL.
+
+```
+rpc StartAgent(StartAgentRequest) returns (StartAgentResponse)
+```
+
+Request:
+- `agent_id` (string): Agent to start
+
+Response:
+- `agent_id` (string): Started agent
+- `status` (string): `"started"`, `"already_running"`, `"not_found"`, `"error"`
+
+An agent that is not stopped reports `already_running` and issues no host
+command. An unknown id reports `not_found` with `CodeNotFound`.
+
+### RestartAgent
+
+Stops and starts an agent in one call and **resets the heartbeat expiry** — the
+recovery path for a wedged session (GAP-071). Nothing is destroyed.
+
+```
+rpc RestartAgent(RestartAgentRequest) returns (RestartAgentResponse)
+```
+
+Request:
+- `agent_id` (string): Agent to restart
+
+Response:
+- `agent_id` (string): Restarted agent
+- `status` (string): `"restarted"`, `"not_found"`, `"error"`
+- `expires_at` (string): Heartbeat expiry after the reset (RFC3339,
+  server-local timezone)
+
+The stop legs run unconditionally (a wedged session may be half-dead while the
+tracker says nothing useful), then the start legs, then the expiry is **set**
+to `now + agent.default_ttl` (6h unless configured). This is deliberately NOT
+the heartbeat rule: a heartbeat never shrinks a longer expiry, while a restart
+resets the TTL clock — an agent whose expiry was further out ends up at
+`now + default_ttl`.
+
+### Stopped agents: the `agent_stopped` error
+
+ExecAgent, RunAgent and HeartbeatAgent against a **stopped** agent fail with
+`CodeFailedPrecondition` and a message containing the stable token
+`agent_stopped`, e.g.:
+
+```
+agent_stopped: agent "abc12345" is stopped; run 'bunker start abc12345'
+```
+
+This is a distinct signal, not `CodeNotFound`: the agent exists, so a client
+should start or restart it instead of concluding it is gone. Unknown ids keep
+returning `CodeNotFound`, and behaviour for running agents is unchanged.
+
+A stopped agent is still subject to TTL expiry like a running one (its record
+keeps its `ExpiresAt`), so a pause longer than the remaining TTL is destroyed
+by the reaper — heartbeat a stopped agent is rejected rather than silently
+extending it.
+
 ### ListAgents
 
 Paginated agent listing with optional status filter.
@@ -374,6 +476,9 @@ read-style HTTP endpoints.
 | ServerMetrics | POST | /bunker.v1.Bunkerd/ServerMetrics |
 | SpawnAgent | POST | /bunker.v1.Bunkerd/SpawnAgent |
 | DestroyAgent | POST | /bunker.v1.Bunkerd/DestroyAgent |
+| StopAgent | POST | /bunker.v1.Bunkerd/StopAgent |
+| StartAgent | POST | /bunker.v1.Bunkerd/StartAgent |
+| RestartAgent | POST | /bunker.v1.Bunkerd/RestartAgent |
 | ListAgents | POST | /bunker.v1.Bunkerd/ListAgents |
 | GetAgent | POST | /bunker.v1.Bunkerd/GetAgent |
 | AgentMetrics | POST | /bunker.v1.Bunkerd/AgentMetrics |
@@ -415,5 +520,9 @@ Common error codes:
 - `CodeNotFound` (5): Agent not found
 - `CodeAlreadyExists` (6): Agent ID collision
 - `CodeResourceExhausted` (8): No capacity
+- `CodeFailedPrecondition` (9): The agent exists but is not runnable — the
+  stopped-agent case. The message carries the stable token `agent_stopped`,
+  e.g. `agent_stopped: agent "abc12345" is stopped; run 'bunker start abc12345'`
+  (GAP-071; only ExecAgent / RunAgent / HeartbeatAgent return it)
 - `CodeInvalidArgument` (3): Bad request parameters
 - `CodeInternal` (13): Server-side failure

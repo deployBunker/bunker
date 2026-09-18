@@ -29,6 +29,18 @@ func (m *deployMockServer) ServerMetrics(ctx context.Context, req *connect.Reque
 func (m *deployMockServer) SpawnAgent(ctx context.Context, req *connect.Request[v1.SpawnAgentRequest]) (*connect.Response[v1.SpawnAgentResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }
+func (m *deployMockServer) StopAgent(ctx context.Context, req *connect.Request[v1.StopAgentRequest]) (*connect.Response[v1.StopAgentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
+func (m *deployMockServer) StartAgent(ctx context.Context, req *connect.Request[v1.StartAgentRequest]) (*connect.Response[v1.StartAgentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
+func (m *deployMockServer) RestartAgent(ctx context.Context, req *connect.Request[v1.RestartAgentRequest]) (*connect.Response[v1.RestartAgentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
 func (m *deployMockServer) DestroyAgent(ctx context.Context, req *connect.Request[v1.DestroyAgentRequest]) (*connect.Response[v1.DestroyAgentResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }

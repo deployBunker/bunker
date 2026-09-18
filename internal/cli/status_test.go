@@ -54,6 +54,18 @@ func (m *statusMockServer) SpawnAgent(
 ) (*connect.Response[v1.SpawnAgentResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }
+func (m *statusMockServer) StopAgent(ctx context.Context, req *connect.Request[v1.StopAgentRequest]) (*connect.Response[v1.StopAgentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
+func (m *statusMockServer) StartAgent(ctx context.Context, req *connect.Request[v1.StartAgentRequest]) (*connect.Response[v1.StartAgentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
+func (m *statusMockServer) RestartAgent(ctx context.Context, req *connect.Request[v1.RestartAgentRequest]) (*connect.Response[v1.RestartAgentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
 func (m *statusMockServer) DestroyAgent(
 	ctx context.Context, req *connect.Request[v1.DestroyAgentRequest],
 ) (*connect.Response[v1.DestroyAgentResponse], error) {

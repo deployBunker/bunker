@@ -404,6 +404,15 @@ bunker env get abc12345 KEY
 # Extend TTL
 bunker heartbeat abc12345
 
+# Pause an agent without destroying it (frees CPU, keeps user/home/container/ports)
+bunker stop abc12345
+
+# Resume a stopped agent
+bunker start abc12345
+
+# Recover a wedged session: stop + start in one call, heartbeat TTL reset
+bunker restart abc12345
+
 # Tear down (also deletes the client-local SSH key ~/.bunker/keys/abc12345)
 bunker destroy abc12345
 # Keep the local key for a spawn/destroy/spawn key-reuse cycle:
@@ -429,6 +438,23 @@ bunker destroy abc12345 --keep-key
 > key to `~/.bunker/keys/<agent-id>`; destroy deletes it after a successful
 > teardown (including the `not_found` path) unless `--keep-key` is passed. If
 > you reuse keys across spawn/destroy cycles, pass `--keep-key`.
+
+> **`bunker stop` pauses an agent, it does not destroy it.** Stop returns the
+> CPU (the agent's units and processes are stopped) while keeping everything
+> that makes the agent itself: the Linux user, the home directory, the agent
+> container and the allocated port range all survive, and the agent is listed
+> with status `stopped`. `bunker start` re-arms it, and `bunker restart` stops
+> and starts in one call to recover a wedged session — restarting also
+> **resets the heartbeat expiry** to `now + agent.default_ttl` (6h unless
+> configured) and prints the refreshed expiry. Stopping an already-stopped
+> agent is a no-op, and stopping or starting an unknown agent exits non-zero
+> with the server's `not found` message.
+>
+> While an agent is stopped, `bunker exec`, `bunker run` and `bunker heartbeat`
+> against it fail with `CodeFailedPrecondition` and the message token
+> `agent_stopped` (not `not_found`) — the agent exists, so start or restart it
+> instead. A stopped agent still expires on its TTL like a running one, so a
+> pause longer than its remaining TTL ends in TTL destruction.
 
 > **Expiry timestamps are daemon-local, TTL math is UTC.** The `Expires:` line
 > in the spawn bundle (and `bunker info` / `bunker heartbeat` output) is
@@ -466,7 +492,7 @@ bunker destroy abc12345 --keep-key
 
 | Service | Protocol | RPCs |
 |---------|----------|------|
-| `Bunkerd` | gRPC + REST | `ServerInfo`, `ServerMetrics`, `SpawnAgent`, `DestroyAgent`, `ListAgents`, `GetAgent`, `AgentMetrics`, `ExecAgent`, `RunAgent`, `HeartbeatAgent`, `QueryAudit` |
+| `Bunkerd` | gRPC + REST | `ServerInfo`, `ServerMetrics`, `SpawnAgent`, `DestroyAgent`, `StopAgent`, `StartAgent`, `RestartAgent`, `ListAgents`, `GetAgent`, `AgentMetrics`, `ExecAgent`, `RunAgent`, `HeartbeatAgent`, `QueryAudit` |
 | `Agent` | gRPC + REST (scoped) | `GetInfo`, `Metrics`, `Heartbeat` |
 
 The REST surface is **POST-only** (connect-go, mounted without `WithHTTPGet`):

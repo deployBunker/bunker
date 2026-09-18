@@ -792,6 +792,14 @@ type fakeAgentManager struct {
 	destroyResp   *v1.DestroyAgentResponse
 	destroyErr    error
 	destroyCalled bool
+
+	// GAP-071 lifecycle control. lifecycleStatus/lifecycleErr drive all three
+	// RPCs (they share the same not_found/already_* mapping); lifecycleCalled
+	// records that the manager was reached at all.
+	lifecycleStatus string
+	lifecycleErr    error
+	lifecycleCalled bool
+	restartResp     *v1.RestartAgentResponse
 }
 
 func (f *fakeAgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v1.SpawnAgentResponse, error) {
@@ -804,6 +812,33 @@ func (f *fakeAgentManager) Destroy(ctx context.Context, agentID string, force bo
 		return f.destroyResp, f.destroyErr
 	}
 	return f.destroyResp, nil
+}
+
+func (f *fakeAgentManager) StopAgent(ctx context.Context, agentID string) (*v1.StopAgentResponse, error) {
+	f.lifecycleCalled = true
+	if f.lifecycleErr != nil {
+		return &v1.StopAgentResponse{AgentId: agentID, Status: f.lifecycleStatus}, f.lifecycleErr
+	}
+	return &v1.StopAgentResponse{AgentId: agentID, Status: f.lifecycleStatus}, nil
+}
+
+func (f *fakeAgentManager) StartAgent(ctx context.Context, agentID string) (*v1.StartAgentResponse, error) {
+	f.lifecycleCalled = true
+	if f.lifecycleErr != nil {
+		return &v1.StartAgentResponse{AgentId: agentID, Status: f.lifecycleStatus}, f.lifecycleErr
+	}
+	return &v1.StartAgentResponse{AgentId: agentID, Status: f.lifecycleStatus}, nil
+}
+
+func (f *fakeAgentManager) RestartAgent(ctx context.Context, agentID string) (*v1.RestartAgentResponse, error) {
+	f.lifecycleCalled = true
+	if f.lifecycleErr != nil {
+		return &v1.RestartAgentResponse{AgentId: agentID, Status: f.lifecycleStatus}, f.lifecycleErr
+	}
+	if f.restartResp != nil {
+		return f.restartResp, nil
+	}
+	return &v1.RestartAgentResponse{AgentId: agentID, Status: f.lifecycleStatus}, nil
 }
 
 func (f *fakeAgentManager) RunAgent(ctx context.Context, req *v1.RunAgentRequest) (*v1.RunAgentResponse, error) {

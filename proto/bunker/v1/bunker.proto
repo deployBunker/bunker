@@ -14,6 +14,17 @@ service Bunkerd {
   // Agent lifecycle
   rpc SpawnAgent(SpawnAgentRequest) returns (SpawnAgentResponse);
   rpc DestroyAgent(DestroyAgentRequest) returns (DestroyAgentResponse);
+  // GAP-071: pause / resume / restart an agent WITHOUT destroying it.
+  //   stop    — SIGTERM the agent's session units + processes; the Linux user,
+  //             home directory, container and allocated port range all SURVIVE
+  //             (status becomes "stopped"; the tracker record is kept);
+  //   start   — re-arm a stopped agent (status back to "running");
+  //   restart — stop + start in one call and reset the heartbeat expiry.
+  // Exec/Run/Heartbeat against a stopped agent fail with a DISTINCT
+  // FailedPrecondition carrying the token "agent_stopped" — never NotFound.
+  rpc StopAgent(StopAgentRequest) returns (StopAgentResponse);
+  rpc StartAgent(StartAgentRequest) returns (StartAgentResponse);
+  rpc RestartAgent(RestartAgentRequest) returns (RestartAgentResponse);
   rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
   rpc GetAgent(GetAgentRequest) returns (GetAgentResponse);
 
@@ -168,6 +179,47 @@ message DestroyAgentRequest {
 message DestroyAgentResponse {
   string agent_id = 1;
   string status = 2;             // destroyed, not_found, error
+}
+
+// ── Lifecycle control (GAP-071) ───────────────────────────────
+//
+// Stop/Start/Restart pause and resume an existing agent without destroying
+// it: the Linux user, home directory, container and allocated port range are
+// kept across a stop, so a stopped agent can be resumed (start) or recovered
+// from a wedged session (restart) instead of being torn down and re-created.
+// Every response mirrors DestroyAgentResponse's shape and reports a "status"
+// from a fixed vocabulary — "stopped" / "already_stopped" / "started" /
+// "already_running" / "restarted" / "not_found" — and an unknown agent id
+// never panics: it reports "not_found".
+
+message StopAgentRequest {
+  string agent_id = 1;
+}
+
+message StopAgentResponse {
+  string agent_id = 1;
+  string status = 2;             // stopped, already_stopped, not_found
+}
+
+message StartAgentRequest {
+  string agent_id = 1;
+}
+
+message StartAgentResponse {
+  string agent_id = 1;
+  string status = 2;             // started, already_running, not_found
+}
+
+message RestartAgentRequest {
+  string agent_id = 1;
+}
+
+message RestartAgentResponse {
+  string agent_id = 1;
+  string status = 2;             // restarted, not_found
+  // Heartbeat expiry after the restart's TTL reset (RFC3339, server-local
+  // timezone) — the same field name and format HeartbeatAgentResponse uses.
+  string expires_at = 3;
 }
 
 message ListAgentsRequest {

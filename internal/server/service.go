@@ -84,6 +84,10 @@ type heartbeatManager interface {
 type agentManager interface {
 	Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v1.SpawnAgentResponse, error)
 	Destroy(ctx context.Context, agentID string, force bool) (*v1.DestroyAgentResponse, error)
+	// GAP-071 lifecycle control: pause/resume/restart without destroying.
+	StopAgent(ctx context.Context, agentID string) (*v1.StopAgentResponse, error)
+	StartAgent(ctx context.Context, agentID string) (*v1.StartAgentResponse, error)
+	RestartAgent(ctx context.Context, agentID string) (*v1.RestartAgentResponse, error)
 	RunAgent(ctx context.Context, req *v1.RunAgentRequest) (*v1.RunAgentResponse, error)
 	Stop()
 }
@@ -339,6 +343,74 @@ func (s *bunkerdService) DestroyAgent(ctx context.Context, req *connect.Request[
 	return connect.NewResponse(resp), nil
 }
 
+// StopAgent pauses an agent: its session units and processes are stopped while
+// the agent itself — user, home, container, port range and tracker record —
+// survives, so it can be resumed with StartAgent (GAP-071).
+func (s *bunkerdService) StopAgent(ctx context.Context, req *connect.Request[v1.StopAgentRequest]) (*connect.Response[v1.StopAgentResponse], error) {
+	resp, err := s.agentMgr.StopAgent(ctx, req.Msg.GetAgentId())
+	if err != nil {
+		s.logger.Error("stop agent failed", "agent_id", req.Msg.GetAgentId(), "error", err)
+		return nil, lifecycleConnectError(respStatus(resp), err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// StartAgent resumes a stopped agent (GAP-071).
+func (s *bunkerdService) StartAgent(ctx context.Context, req *connect.Request[v1.StartAgentRequest]) (*connect.Response[v1.StartAgentResponse], error) {
+	resp, err := s.agentMgr.StartAgent(ctx, req.Msg.GetAgentId())
+	if err != nil {
+		s.logger.Error("start agent failed", "agent_id", req.Msg.GetAgentId(), "error", err)
+		return nil, lifecycleConnectError(respStatus(resp), err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// RestartAgent stops and starts an agent in one call and resets its heartbeat
+// expiry — the recovery path for a wedged session (GAP-071).
+func (s *bunkerdService) RestartAgent(ctx context.Context, req *connect.Request[v1.RestartAgentRequest]) (*connect.Response[v1.RestartAgentResponse], error) {
+	resp, err := s.agentMgr.RestartAgent(ctx, req.Msg.GetAgentId())
+	if err != nil {
+		s.logger.Error("restart agent failed", "agent_id", req.Msg.GetAgentId(), "error", err)
+		return nil, lifecycleConnectError(respStatus(resp), err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// lifecycleResponse is the shape the three lifecycle responses share: the
+// agent id plus a status drawn from the lifecycle vocabulary.
+type lifecycleResponse interface {
+	GetAgentId() string
+	GetStatus() string
+}
+
+// respStatus reads the status out of any lifecycle response (nil-safe), so the
+// error mapping never dereferences a nil response.
+func respStatus(resp lifecycleResponse) string {
+	if resp == nil {
+		return ""
+	}
+	return resp.GetStatus()
+}
+
+// lifecycleConnectError maps a lifecycle manager error onto the connect codes
+// DestroyAgent established: an unknown agent is CodeNotFound, everything else
+// is CodeInternal. A stopped agent is NOT routed here — the RPCs that cannot
+// serve a stopped agent (Exec/Run/Heartbeat) return CodeFailedPrecondition
+// with the "agent_stopped" token instead.
+func lifecycleConnectError(status string, err error) error {
+	if status == agent.StatusNotFound {
+		return connect.NewError(connect.CodeNotFound, err)
+	}
+	return connect.NewError(connect.CodeInternal, err)
+}
+
+// stoppedPreconditionError maps the agent package's stopped sentinel onto
+// CodeFailedPrecondition, keeping the sentinel's message (which carries the
+// stable token "agent_stopped") intact for the client.
+func stoppedPreconditionError(err error) error {
+	return connect.NewError(connect.CodeFailedPrecondition, err)
+}
+
 // ListAgents returns all agents.
 func (s *bunkerdService) ListAgents(ctx context.Context, req *connect.Request[v1.ListAgentsRequest]) (*connect.Response[v1.ListAgentsResponse], error) {
 	records := s.tracker.List()
@@ -442,6 +514,12 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 	rec := s.tracker.Get(agentID)
 	if rec == nil {
 		return connect.NewError(connect.CodeNotFound, fmt.Errorf("agent %q not found", agentID))
+	}
+	// GAP-071: a stopped agent still EXISTS — a command must not be attempted
+	// against it, and the client must be able to tell "stopped" from "gone"
+	// (CodeFailedPrecondition + agent_stopped, never CodeNotFound).
+	if err := agent.StoppedStatusError(rec, agentID); err != nil {
+		return stoppedPreconditionError(err)
 	}
 
 	// Build command to execute
@@ -632,8 +710,14 @@ func (s *bunkerdService) RunAgent(ctx context.Context, req *connect.Request[v1.R
 	if !req.Msg.GetDetach() {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("non-detached runs are not supported by RunAgent; use ExecAgent"))
 	}
-	if rec := s.tracker.Get(req.Msg.GetAgentId()); rec == nil {
+	rec := s.tracker.Get(req.Msg.GetAgentId())
+	if rec == nil {
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("agent %q not found", req.Msg.GetAgentId()))
+	}
+	// GAP-071: RunAgent against a stopped agent is a failed precondition, not
+	// a missing agent.
+	if err := agent.StoppedStatusError(rec, req.Msg.GetAgentId()); err != nil {
+		return nil, stoppedPreconditionError(err)
 	}
 	resp, err := s.agentMgr.RunAgent(ctx, req.Msg)
 	if err != nil {
@@ -649,6 +733,15 @@ func (s *bunkerdService) HeartbeatAgent(ctx context.Context, req *connect.Reques
 	ttl := 6 * time.Hour
 	if s.cfg.Agent.DefaultTTL > 0 {
 		ttl = s.cfg.Agent.DefaultTTL
+	}
+	// GAP-071: a stopped agent cannot heartbeat — extending the TTL of an
+	// agent that is not running would silently keep it alive until the reaper
+	// destroys it. The client gets the distinct agent_stopped signal so it can
+	// start or restart the agent instead.
+	if rec := s.tracker.Get(req.Msg.AgentId); rec != nil {
+		if err := agent.StoppedStatusError(rec, req.Msg.AgentId); err != nil {
+			return nil, stoppedPreconditionError(err)
+		}
 	}
 	// Route through the agent manager so the durable registry records the
 	// extension (GAP-070). The manager applies the same never-SHRINK rule:

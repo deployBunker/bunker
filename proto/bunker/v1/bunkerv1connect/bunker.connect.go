@@ -43,6 +43,12 @@ const (
 	BunkerdSpawnAgentProcedure = "/bunker.v1.Bunkerd/SpawnAgent"
 	// BunkerdDestroyAgentProcedure is the fully-qualified name of the Bunkerd's DestroyAgent RPC.
 	BunkerdDestroyAgentProcedure = "/bunker.v1.Bunkerd/DestroyAgent"
+	// BunkerdStopAgentProcedure is the fully-qualified name of the Bunkerd's StopAgent RPC.
+	BunkerdStopAgentProcedure = "/bunker.v1.Bunkerd/StopAgent"
+	// BunkerdStartAgentProcedure is the fully-qualified name of the Bunkerd's StartAgent RPC.
+	BunkerdStartAgentProcedure = "/bunker.v1.Bunkerd/StartAgent"
+	// BunkerdRestartAgentProcedure is the fully-qualified name of the Bunkerd's RestartAgent RPC.
+	BunkerdRestartAgentProcedure = "/bunker.v1.Bunkerd/RestartAgent"
 	// BunkerdListAgentsProcedure is the fully-qualified name of the Bunkerd's ListAgents RPC.
 	BunkerdListAgentsProcedure = "/bunker.v1.Bunkerd/ListAgents"
 	// BunkerdGetAgentProcedure is the fully-qualified name of the Bunkerd's GetAgent RPC.
@@ -73,6 +79,17 @@ type BunkerdClient interface {
 	// Agent lifecycle
 	SpawnAgent(context.Context, *connect.Request[v1.SpawnAgentRequest]) (*connect.Response[v1.SpawnAgentResponse], error)
 	DestroyAgent(context.Context, *connect.Request[v1.DestroyAgentRequest]) (*connect.Response[v1.DestroyAgentResponse], error)
+	// GAP-071: pause / resume / restart an agent WITHOUT destroying it.
+	//   stop    — SIGTERM the agent's session units + processes; the Linux user,
+	//             home directory, container and allocated port range all SURVIVE
+	//             (status becomes "stopped"; the tracker record is kept);
+	//   start   — re-arm a stopped agent (status back to "running");
+	//   restart — stop + start in one call and reset the heartbeat expiry.
+	// Exec/Run/Heartbeat against a stopped agent fail with a DISTINCT
+	// FailedPrecondition carrying the token "agent_stopped" — never NotFound.
+	StopAgent(context.Context, *connect.Request[v1.StopAgentRequest]) (*connect.Response[v1.StopAgentResponse], error)
+	StartAgent(context.Context, *connect.Request[v1.StartAgentRequest]) (*connect.Response[v1.StartAgentResponse], error)
+	RestartAgent(context.Context, *connect.Request[v1.RestartAgentRequest]) (*connect.Response[v1.RestartAgentResponse], error)
 	ListAgents(context.Context, *connect.Request[v1.ListAgentsRequest]) (*connect.Response[v1.ListAgentsResponse], error)
 	GetAgent(context.Context, *connect.Request[v1.GetAgentRequest]) (*connect.Response[v1.GetAgentResponse], error)
 	// Agent actions
@@ -117,6 +134,24 @@ func NewBunkerdClient(httpClient connect.HTTPClient, baseURL string, opts ...con
 			httpClient,
 			baseURL+BunkerdDestroyAgentProcedure,
 			connect.WithSchema(bunkerdMethods.ByName("DestroyAgent")),
+			connect.WithClientOptions(opts...),
+		),
+		stopAgent: connect.NewClient[v1.StopAgentRequest, v1.StopAgentResponse](
+			httpClient,
+			baseURL+BunkerdStopAgentProcedure,
+			connect.WithSchema(bunkerdMethods.ByName("StopAgent")),
+			connect.WithClientOptions(opts...),
+		),
+		startAgent: connect.NewClient[v1.StartAgentRequest, v1.StartAgentResponse](
+			httpClient,
+			baseURL+BunkerdStartAgentProcedure,
+			connect.WithSchema(bunkerdMethods.ByName("StartAgent")),
+			connect.WithClientOptions(opts...),
+		),
+		restartAgent: connect.NewClient[v1.RestartAgentRequest, v1.RestartAgentResponse](
+			httpClient,
+			baseURL+BunkerdRestartAgentProcedure,
+			connect.WithSchema(bunkerdMethods.ByName("RestartAgent")),
 			connect.WithClientOptions(opts...),
 		),
 		listAgents: connect.NewClient[v1.ListAgentsRequest, v1.ListAgentsResponse](
@@ -170,6 +205,9 @@ type bunkerdClient struct {
 	serverMetrics  *connect.Client[v1.ServerMetricsRequest, v1.ServerMetricsResponse]
 	spawnAgent     *connect.Client[v1.SpawnAgentRequest, v1.SpawnAgentResponse]
 	destroyAgent   *connect.Client[v1.DestroyAgentRequest, v1.DestroyAgentResponse]
+	stopAgent      *connect.Client[v1.StopAgentRequest, v1.StopAgentResponse]
+	startAgent     *connect.Client[v1.StartAgentRequest, v1.StartAgentResponse]
+	restartAgent   *connect.Client[v1.RestartAgentRequest, v1.RestartAgentResponse]
 	listAgents     *connect.Client[v1.ListAgentsRequest, v1.ListAgentsResponse]
 	getAgent       *connect.Client[v1.GetAgentRequest, v1.GetAgentResponse]
 	agentMetrics   *connect.Client[v1.AgentMetricsRequest, v1.AgentMetricsResponse]
@@ -197,6 +235,21 @@ func (c *bunkerdClient) SpawnAgent(ctx context.Context, req *connect.Request[v1.
 // DestroyAgent calls bunker.v1.Bunkerd.DestroyAgent.
 func (c *bunkerdClient) DestroyAgent(ctx context.Context, req *connect.Request[v1.DestroyAgentRequest]) (*connect.Response[v1.DestroyAgentResponse], error) {
 	return c.destroyAgent.CallUnary(ctx, req)
+}
+
+// StopAgent calls bunker.v1.Bunkerd.StopAgent.
+func (c *bunkerdClient) StopAgent(ctx context.Context, req *connect.Request[v1.StopAgentRequest]) (*connect.Response[v1.StopAgentResponse], error) {
+	return c.stopAgent.CallUnary(ctx, req)
+}
+
+// StartAgent calls bunker.v1.Bunkerd.StartAgent.
+func (c *bunkerdClient) StartAgent(ctx context.Context, req *connect.Request[v1.StartAgentRequest]) (*connect.Response[v1.StartAgentResponse], error) {
+	return c.startAgent.CallUnary(ctx, req)
+}
+
+// RestartAgent calls bunker.v1.Bunkerd.RestartAgent.
+func (c *bunkerdClient) RestartAgent(ctx context.Context, req *connect.Request[v1.RestartAgentRequest]) (*connect.Response[v1.RestartAgentResponse], error) {
+	return c.restartAgent.CallUnary(ctx, req)
 }
 
 // ListAgents calls bunker.v1.Bunkerd.ListAgents.
@@ -242,6 +295,17 @@ type BunkerdHandler interface {
 	// Agent lifecycle
 	SpawnAgent(context.Context, *connect.Request[v1.SpawnAgentRequest]) (*connect.Response[v1.SpawnAgentResponse], error)
 	DestroyAgent(context.Context, *connect.Request[v1.DestroyAgentRequest]) (*connect.Response[v1.DestroyAgentResponse], error)
+	// GAP-071: pause / resume / restart an agent WITHOUT destroying it.
+	//   stop    — SIGTERM the agent's session units + processes; the Linux user,
+	//             home directory, container and allocated port range all SURVIVE
+	//             (status becomes "stopped"; the tracker record is kept);
+	//   start   — re-arm a stopped agent (status back to "running");
+	//   restart — stop + start in one call and reset the heartbeat expiry.
+	// Exec/Run/Heartbeat against a stopped agent fail with a DISTINCT
+	// FailedPrecondition carrying the token "agent_stopped" — never NotFound.
+	StopAgent(context.Context, *connect.Request[v1.StopAgentRequest]) (*connect.Response[v1.StopAgentResponse], error)
+	StartAgent(context.Context, *connect.Request[v1.StartAgentRequest]) (*connect.Response[v1.StartAgentResponse], error)
+	RestartAgent(context.Context, *connect.Request[v1.RestartAgentRequest]) (*connect.Response[v1.RestartAgentResponse], error)
 	ListAgents(context.Context, *connect.Request[v1.ListAgentsRequest]) (*connect.Response[v1.ListAgentsResponse], error)
 	GetAgent(context.Context, *connect.Request[v1.GetAgentRequest]) (*connect.Response[v1.GetAgentResponse], error)
 	// Agent actions
@@ -282,6 +346,24 @@ func NewBunkerdHandler(svc BunkerdHandler, opts ...connect.HandlerOption) (strin
 		BunkerdDestroyAgentProcedure,
 		svc.DestroyAgent,
 		connect.WithSchema(bunkerdMethods.ByName("DestroyAgent")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bunkerdStopAgentHandler := connect.NewUnaryHandler(
+		BunkerdStopAgentProcedure,
+		svc.StopAgent,
+		connect.WithSchema(bunkerdMethods.ByName("StopAgent")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bunkerdStartAgentHandler := connect.NewUnaryHandler(
+		BunkerdStartAgentProcedure,
+		svc.StartAgent,
+		connect.WithSchema(bunkerdMethods.ByName("StartAgent")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bunkerdRestartAgentHandler := connect.NewUnaryHandler(
+		BunkerdRestartAgentProcedure,
+		svc.RestartAgent,
+		connect.WithSchema(bunkerdMethods.ByName("RestartAgent")),
 		connect.WithHandlerOptions(opts...),
 	)
 	bunkerdListAgentsHandler := connect.NewUnaryHandler(
@@ -336,6 +418,12 @@ func NewBunkerdHandler(svc BunkerdHandler, opts ...connect.HandlerOption) (strin
 			bunkerdSpawnAgentHandler.ServeHTTP(w, r)
 		case BunkerdDestroyAgentProcedure:
 			bunkerdDestroyAgentHandler.ServeHTTP(w, r)
+		case BunkerdStopAgentProcedure:
+			bunkerdStopAgentHandler.ServeHTTP(w, r)
+		case BunkerdStartAgentProcedure:
+			bunkerdStartAgentHandler.ServeHTTP(w, r)
+		case BunkerdRestartAgentProcedure:
+			bunkerdRestartAgentHandler.ServeHTTP(w, r)
 		case BunkerdListAgentsProcedure:
 			bunkerdListAgentsHandler.ServeHTTP(w, r)
 		case BunkerdGetAgentProcedure:
@@ -373,6 +461,18 @@ func (UnimplementedBunkerdHandler) SpawnAgent(context.Context, *connect.Request[
 
 func (UnimplementedBunkerdHandler) DestroyAgent(context.Context, *connect.Request[v1.DestroyAgentRequest]) (*connect.Response[v1.DestroyAgentResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.DestroyAgent is not implemented"))
+}
+
+func (UnimplementedBunkerdHandler) StopAgent(context.Context, *connect.Request[v1.StopAgentRequest]) (*connect.Response[v1.StopAgentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.StopAgent is not implemented"))
+}
+
+func (UnimplementedBunkerdHandler) StartAgent(context.Context, *connect.Request[v1.StartAgentRequest]) (*connect.Response[v1.StartAgentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.StartAgent is not implemented"))
+}
+
+func (UnimplementedBunkerdHandler) RestartAgent(context.Context, *connect.Request[v1.RestartAgentRequest]) (*connect.Response[v1.RestartAgentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.RestartAgent is not implemented"))
 }
 
 func (UnimplementedBunkerdHandler) ListAgents(context.Context, *connect.Request[v1.ListAgentsRequest]) (*connect.Response[v1.ListAgentsResponse], error) {

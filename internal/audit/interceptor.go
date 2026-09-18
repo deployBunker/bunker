@@ -181,6 +181,12 @@ func targetAgentID(msg any, claims *auth.Claims) string {
 			return m.AgentId
 		case *v1.HeartbeatAgentRequest:
 			return m.AgentId
+		case *v1.StopAgentRequest:
+			return m.AgentId
+		case *v1.StartAgentRequest:
+			return m.AgentId
+		case *v1.RestartAgentRequest:
+			return m.AgentId
 		}
 	}
 	if claims != nil {

@@ -210,4 +210,16 @@ func (m *stubAgentManager) RunAgent(ctx context.Context, req *v1.RunAgentRequest
 	return nil, fmt.Errorf("RunAgent not supported by stub")
 }
 
+func (m *stubAgentManager) StopAgent(ctx context.Context, agentID string) (*v1.StopAgentResponse, error) {
+	return &v1.StopAgentResponse{AgentId: agentID, Status: "stopped"}, nil
+}
+
+func (m *stubAgentManager) StartAgent(ctx context.Context, agentID string) (*v1.StartAgentResponse, error) {
+	return &v1.StartAgentResponse{AgentId: agentID, Status: "started"}, nil
+}
+
+func (m *stubAgentManager) RestartAgent(ctx context.Context, agentID string) (*v1.RestartAgentResponse, error) {
+	return &v1.RestartAgentResponse{AgentId: agentID, Status: "restarted"}, nil
+}
+
 func (m *stubAgentManager) Stop() {}

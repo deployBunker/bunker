@@ -1,8 +1,8 @@
 # Bunker — Agent Lifecycle Specification
 
-Version: 1.2.0
+Version: 1.3.0
 Status: Stable
-Last Updated: 2026-09-12
+Last Updated: 2026-09-17
 
 ## Overview
 
@@ -266,6 +266,65 @@ tracker.Unregister(agentID)
 PortAllocator.Free(agentID)          # unconditional + idempotent
 ```
 
+## Stop / Start / Restart: Step-by-Step (GAP-071)
+
+`StopAgent`, `StartAgent` and `RestartAgent` (plus `bunker stop` /
+`bunker start` / `bunker restart`) pause and resume an agent. They are the
+alternative to the destroy-everything exit: a stopped agent keeps its Linux
+user, home directory, container and allocated port range, so it can be resumed
+or recovered instead of re-created.
+
+`internal/agent/manager_lifecycle.go` owns all three. Every host command goes
+through a package-level seam (`stopUserUnit`, `startUserUnit`,
+`listUserUnits`, `agentDockerCLI`, `terminateAgentProcesses`) so the paths run
+without root in tests.
+
+### Stop (user mode)
+
+| Step | Command | Notes |
+|---|---|---|
+| 1 | `docker stop -t 5 bunker-<id>` via the agent's own socket | Container-mode agents (spawned with an image spec) only. The container is stopped, never removed. |
+| 2 | `systemctl --user stop bunker-docker-<id>` | Plus `systemctl --user stop` for the agent's own `bunker-run-<id>-*` transient units when they are discoverable. |
+| 3 | `stopDockerdDirect` + `waitAgentProcessesExit` | SIGTERM → SIGKILL for the agent's `dockerd`/`rootlesskit`, then a bounded wait — the same primitives Destroy uses. |
+| 4 | tracker `UpdateStatus(id, "stopped")` + registry append | The record and every resource it owns stay in place. |
+
+Deliberately NOT part of stop: `userdel`, `PortAllocator.Free`,
+`/run/bunker/<id>` removal, home-directory removal, SSH-key removal. Each leg
+is best-effort: a leg that is already down is logged, not fatal (that is
+exactly the wedged-agent case stop exists for).
+
+### Start
+
+1. `docker start bunker-<id>` through the agent's own socket (container-mode).
+2. `systemctl --user start bunker-docker-<id>`.
+3. Status back to `running`, persisted. The heartbeat expiry is NOT touched.
+
+### Restart
+
+Stop legs, then start legs (both unconditional — a wedged session may be
+half-dead while the tracker says nothing useful), then:
+`rec.ExpiresAt = now + agent.default_ttl` (6h unless configured), persisted,
+and returned in `expires_at`. This is a RESET, deliberately different from the
+heartbeat never-shrink rule.
+
+### Response vocabulary
+
+| Status | Meaning |
+|---|---|
+| `stopped` / `started` / `restarted` | the transition happened |
+| `already_stopped` / `already_running` | no-op, no host command issued |
+| `not_found` | unknown id → `CodeNotFound`, never a panic |
+| `error` | invalid agent id |
+
+### Stopped agents and the runtime RPCs
+
+`ExecAgent`, `RunAgent` and `HeartbeatAgent` reject a stopped agent with
+`CodeFailedPrecondition` whose message carries the token `agent_stopped`
+(`ErrAgentStopped` in `internal/agent`, wrapped with the agent id). Unknown ids
+keep returning `CodeNotFound`; running agents are unchanged. A stopped agent
+keeps its `ExpiresAt`, so the TTL reaper still destroys a paused agent whose
+TTL runs out — a heartbeat cannot silently extend a stopped agent.
+
 ## Runtime Operations
 
 ### Exec (SSH-based)
@@ -493,6 +552,9 @@ releases the tracker slot and the port range.
 | running | failed | dockerd crash, OOM kill, or disk full |
 | stopping | stopped | Cleanup complete |
 | running | running | HeartbeatAgent extends TTL |
+| running | stopped | StopAgent: units + processes stopped, record kept (GAP-071) |
+| stopped | running | StartAgent re-arms the kept agent (GAP-071) |
+| stopped | running | RestartAgent: stop + start, expiry reset (GAP-071) |
 | any | stopped | TTL expiry (auto-destroy) |
 
 ## Error Recovery
