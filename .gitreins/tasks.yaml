@@ -2275,3 +2275,66 @@ tasks:
   status: complete
   created_at: '2026-09-18T18:17:20.309068+00:00'
   completed_at: '2026-09-18T18:27:32.109071+00:00'
+- id: GAP-079
+  title: 'GAP-079: orphaned docker-sock SSH tunnels outlive the agent they were created
+    for (bunker tunnel leaves the ssh child behind on SIGTERM)'
+  criteria:
+  - bunker tunnel runs ssh under a signal-aware context (SIGINT/SIGTERM/SIGHUP cancel
+    it) with the 30s GetAgent RPC deadline no longer applied to the long-lived exec;
+    the ssh child runs in its own process group and is killed as a group (SIGTERM
+    then SIGKILL, Pdeathsig backstop) so no descendant survives the CLI's death; a
+    real-process test (re-exec child + fake ssh that spawns a grandchild and is sent
+    SIGTERM) proves no orphan remains and FAILS on the pre-fix code; e2e-full-battery.sh
+    section 6a launches the tunnel in its own session and kills the process group;
+    go build/vet/test green
+  status: complete
+  created_at: '2026-09-18T18:40:47.641491+00:00'
+  completed_at: '2026-09-18T18:57:38.700060+00:00'
+- id: GAP-079-R2
+  title: 'GAP-079 rework: Pdeathsig backstop for the bunker tunnel ssh child (SIGKILL
+    path)'
+  criteria:
+  - 'Five conjuncts, all documented in the repo and reproduced by the evaluator itself:
+    (1) bunker tunnel runs ssh under a signal-aware context (os.Interrupt/SIGTERM/SIGHUP)
+    with NO deadline, and the 30s GetAgent RPC deadline is cancelled immediately after
+    the RPC instead of deferred (internal/cli/tunnel.go); (2) the ssh child runs in
+    its own process group (SysProcAttr.Setpgid) and the signal path kills the whole
+    group TERM -> bounded grace -> KILL, proven by a real-process test that builds
+    the CLI, points it at a mock bunkerd, installs a fake ssh that records its pid,
+    spawns a grandchild and waits, SIGTERMs the CLI and asserts no descendant survives
+    - and that test FAILS against the pre-fix code; (3) a parent-death backstop cmd.SysProcAttr.Pdeathsig
+    = syscall.SIGKILL is armed on linux/freebsd behind a build tag (documented no-op
+    on the other POSIX platforms, windows untouched) and the child is started from
+    an OS thread pinned with runtime.LockOSThread for the tunnel''s lifetime, so a
+    SIGKILLed CLI cannot orphan the ssh process holding the -L docker.sock forward;
+    a real-process SIGKILL test proves the direct child dies and fails when the Pdeathsig
+    assignment is removed; (4) e2e-full-battery.sh section 6a launches the tunnel
+    under setsid and tears down its process group, keeping the section''s assertions
+    and banners unchanged; (5) gofmt clean, go build ./... , go vet ./... and go test
+    ./internal/cli/... ./internal/tunnel/... all green'
+  status: complete
+  created_at: '2026-09-18T19:16:16.584186+00:00'
+  completed_at: '2026-09-18T19:16:20.871810+00:00'
+- id: GAP-079-R3
+  title: 'GAP-079 round 3: the E2E battery must self-detect a leaked docker-sock tunnel
+    forward'
+  criteria:
+  - 'The board row''s own third PASS criterion: the battery prints a post-run reaping
+    check with an explicit count and fails non-zero when the count is greater than
+    zero. e2e-full-battery.sh gains session_tunnel_leak_check(), which counts processes
+    whose command line is a docker-sock socket forward (-L <port>:...docker.sock,
+    NOT the agent''s own dockerd/rootlesskit which carry --host=unix:///...), excludes
+    its own pipeline and zombie rows, treats a forward as a leak when it is orphaned
+    (ppid 1, or adopted by a subreaper whose own parent is init and which is not a
+    live ''bunker tunnel'' CLI), deliberately applies NO age filter, prints one explicit
+    count line and records a FAIL when the count is > 0, and reports UNKNOWN (not
+    green) when the process table cannot be read. It is called once right after section
+    6a''s tunnel teardown and once before the final verdict, and the section''s existing
+    assertions and exit semantics are unchanged. Proven locally by the foreman with
+    planted decoys: 0/PASS on a clean table, 1/FAIL for an orphaned forward, 0/PASS
+    while a live ''bunker tunnel'' CLI still owns the forward (no false positive that
+    would red a healthy battery run), and non-zero again once that CLI is killed and
+    the forward is reparented.'
+  status: complete
+  created_at: '2026-09-18T19:34:43.569393+00:00'
+  completed_at: '2026-09-18T19:34:44.024850+00:00'
