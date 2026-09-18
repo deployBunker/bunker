@@ -1,9 +1,11 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -36,6 +38,16 @@ const (
 // userManagerOwnership simulates the owner of the runtime directory.
 type userManagerOwnership struct {
 	owner uint32
+
+	// transientForeignProbes, when > 0, makes the first N probes report
+	// transientForeignOwner instead of owner. That is the INT-CI-019
+	// fingerprint: the chown was accepted (owner becomes the uid) yet the path
+	// reports a FOREIGN owner right afterwards, because a concurrent actor
+	// (logind's user-runtime-dir@<uid>.service during a uid transition) is
+	// replacing it. probes counts the probes this simulator answered.
+	transientForeignProbes int
+	transientForeignOwner  uint32
+	probes                 int
 }
 
 // probe mirrors probeRuntimeDirOnDisk for existence and type, and substitutes
@@ -46,7 +58,12 @@ func (o *userManagerOwnership) probe(path string) (runtimeDirInfo, error) {
 	if err != nil || !info.exists {
 		return info, err
 	}
-	info.owner = o.owner
+	o.probes++
+	owner := o.owner
+	if o.probes <= o.transientForeignProbes {
+		owner = o.transientForeignOwner
+	}
+	info.owner = owner
 	info.ownerKnown = true
 	return info, nil
 }
@@ -522,6 +539,264 @@ func TestClassifyRuntimeDir_FailsSafe(t *testing.T) {
 				t.Error("a stale classification must carry a reason for the operator")
 			}
 		})
+	}
+}
+
+// ── INT-CI-019: the runtime-directory guarantee CONVERGES ───────────────────
+//
+// CI run 35290635028, job root-suite, sha 613a92ce (a BOARD-ONLY commit)
+// failed TestSpawn_GeneratesAgentID at stage rootless-install:
+//
+//	spawn failed ... error="install rootless docker for bunker-b06bdb59:
+//	runtime dir /run/user/1004 is owned by uid 0, expected 1004"
+//
+// The whole failure lasted 30ms (no installer ever ran) and the SAME run
+// brought another agent up on the SAME uid 1004 fourteen seconds later — and
+// the string "resetting stale user manager runtime" never appears in the log,
+// so the path was NOT owned by root when the spawn classified it: it became
+// foreign AFTER the accepted chown, i.e. a concurrent actor (logind's
+// user-runtime-dir@<uid>.service across uid recycling) replaced it between the
+// chown and the probe. A single-shot verification therefore turns a transient
+// race into a failed spawn.
+//
+// These tests pin the convergence contract: re-assert + re-probe a bounded
+// number of times, WARN (and continue) when a transient mismatch converges,
+// keep failing (with mount-point attribution) on exhaustion, and never take a
+// destructive action on the fresh path.
+
+// rdLogger returns a logger writing into buf, so WARN-field assertions read
+// real log records instead of a private counter.
+func rdLogger(buf *bytes.Buffer) *slog.Logger {
+	return slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+}
+
+// umCount counts the exact argv issued through the userManagerRunner seam.
+func umCount(h *userManagerHost, command string) int {
+	n := 0
+	for _, c := range h.calls {
+		if c == command {
+			n++
+		}
+	}
+	return n
+}
+
+// installMountInfoFixture points the mount-point attribution at a fixture
+// /proc/self/mountinfo-style table naming mountPoint as a mount. The seam is
+// restored on cleanup: this package's tests share one process.
+func installMountInfoFixture(t *testing.T, mountPoint, fstype, source string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "mountinfo")
+	line := fmt.Sprintf("36 35 98:0 / %s rw,noatime - %s %s rw\n", mountPoint, fstype, source)
+	if err := os.WriteFile(path, []byte(line), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	prev := runtimeDirMountInfoPath
+	runtimeDirMountInfoPath = path
+	t.Cleanup(func() { runtimeDirMountInfoPath = prev })
+}
+
+// TestEnsureUserRuntimeDir_ConvergesTransientOwnershipMismatch is acceptance
+// (3): the first probe reports a FOREIGN owner (root, exactly as the CI log
+// says: "owned by uid 0") and the next one reports the uid. The guarantee must
+// converge — nil error, more than one chown, the transient mismatch reported —
+// instead of failing the spawn on the first probe.
+func TestEnsureUserRuntimeDir_ConvergesTransientOwnershipMismatch(t *testing.T) {
+	h := newUserManagerHost(t)
+	// The chown is accepted every time (owner becomes the uid); the probe
+	// reports uid 0 for its first answer only.
+	h.ownership.transientForeignProbes = 1
+	h.ownership.transientForeignOwner = 0
+	installUserManagerHost(t, h, lingerDirWithEntries(t, 0))
+
+	var logBuf bytes.Buffer
+	if err := ensureUserRuntimeDir(context.Background(), h.username, h.uid, h.runtimeDir, rdLogger(&logBuf)); err != nil {
+		t.Fatalf("a transient foreign owner must converge, got error = %v (calls:%s)", err, h.callLog())
+	}
+
+	chownCmd := "chown " + h.username + ": " + h.runtimeDir
+	if got := umCount(h, chownCmd); got <= 1 {
+		t.Errorf("ownership must be re-asserted after a foreign probe, chown ran %d time(s):%s", got, h.callLog())
+	}
+	if h.ownership.probes <= 1 {
+		t.Errorf("verification must re-probe after a foreign owner, probe ran %d time(s)", h.ownership.probes)
+	}
+	if h.ownership.owner != uint32(h.uid) {
+		t.Errorf("runtime dir owner after convergence = %d, want %d", h.ownership.owner, h.uid)
+	}
+
+	// The transient mismatch is REPORTED, with the attribution an operator
+	// needs: the dir, the observed owner, the expected uid and the attempt.
+	log := logBuf.String()
+	for _, want := range []string{
+		"level=WARN",
+		"dir=" + h.runtimeDir,
+		"owner=0",
+		"expected=" + strconv.Itoa(h.uid),
+		"attempt=1",
+	} {
+		if !strings.Contains(log, want) {
+			t.Errorf("convergence WARN missing %q, got log:\n%s", want, log)
+		}
+	}
+}
+
+// TestEnsureUserRuntimeDir_PersistentMismatchFailsWithMountAttribution is
+// acceptance (4) and (6): a foreign owner that never goes away must still FAIL
+// (fail-safe), the error must keep the greppable ownership fragment and carry
+// the dir, the observed uid, the expected uid and the mount-point verdict, and
+// the loop must be BOUNDED — exactly runtimeDirOwnershipAttempts chowns.
+func TestEnsureUserRuntimeDir_PersistentMismatchFailsWithMountAttribution(t *testing.T) {
+	h := newUserManagerHost(t)
+	h.ownershipNotApplied = true // the chown reports success without applying
+	h.ownership.owner = 0        // ... and the path keeps reporting root
+	installUserManagerHost(t, h, lingerDirWithEntries(t, 0))
+	// The path IS a mount point in the fixture table: the verdict must name its
+	// filesystem type and source, which is what tells an operator a concurrent
+	// mount owns the directory now.
+	installMountInfoFixture(t, h.runtimeDir, "tmpfs", "tmpfs")
+
+	var logBuf bytes.Buffer
+	err := ensureUserRuntimeDir(context.Background(), h.username, h.uid, h.runtimeDir, rdLogger(&logBuf))
+	if err == nil {
+		t.Fatal("a runtime dir that is never owned by the uid must fail the bring-up")
+	}
+
+	msg := err.Error()
+	for _, want := range []string{
+		h.runtimeDir,
+		"is owned by uid 0, expected " + strconv.Itoa(h.uid),
+		"mount point: yes",
+		"fstype tmpfs",
+		"source tmpfs",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("exhaustion error missing %q, got: %s", want, msg)
+		}
+	}
+	if strings.Contains(msg, "\n") {
+		t.Errorf("the exhaustion error must stay single-line, got: %q", msg)
+	}
+	if !strings.Contains(logBuf.String(), "level=WARN") {
+		t.Errorf("each non-converging attempt must be reported, got log:\n%s", logBuf.String())
+	}
+
+	// (6) BOUNDED: every attempt re-asserts ownership exactly once, and the
+	// budget itself stays small.
+	if got, want := umCount(h, "chown "+h.username+": "+h.runtimeDir), runtimeDirOwnershipAttempts; got != want {
+		t.Errorf("chown ran %d time(s), want exactly %d — the loop must be bounded:%s", got, want, h.callLog())
+	}
+	if runtimeDirOwnershipAttempts > 3 {
+		t.Errorf("the convergence attempt budget must stay small, got %d", runtimeDirOwnershipAttempts)
+	}
+	if h.ownership.probes != runtimeDirOwnershipAttempts {
+		t.Errorf("probe ran %d time(s), want %d (one per attempt)", h.ownership.probes, runtimeDirOwnershipAttempts)
+	}
+}
+
+// TestRuntimeDirMountVerdict pins the attribution helper's three outcomes so
+// the clause embedded in the exhaustion error cannot silently degrade.
+func TestRuntimeDirMountVerdict(t *testing.T) {
+	t.Run("not_a_mount_point", func(t *testing.T) {
+		installMountInfoFixture(t, "/some/other/path", "ext4", "/dev/sda1")
+		if got := runtimeDirMountVerdict("/run/user/1002"); got != "mount point: no" {
+			t.Errorf("runtimeDirMountVerdict() = %q, want %q", got, "mount point: no")
+		}
+	})
+
+	t.Run("mount_point_names_source_and_fstype", func(t *testing.T) {
+		installMountInfoFixture(t, "/run/user/1002", "tmpfs", "tmpfs")
+		got := runtimeDirMountVerdict("/run/user/1002")
+		for _, want := range []string{"mount point: yes", "fstype tmpfs", "source tmpfs"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("runtimeDirMountVerdict() = %q, want it to contain %q", got, want)
+			}
+		}
+	})
+
+	t.Run("unreadable_table_is_unknown_never_no", func(t *testing.T) {
+		prev := runtimeDirMountInfoPath
+		runtimeDirMountInfoPath = filepath.Join(t.TempDir(), "absent")
+		t.Cleanup(func() { runtimeDirMountInfoPath = prev })
+		got := runtimeDirMountVerdict("/run/user/1002")
+		if !strings.Contains(got, "unknown") {
+			t.Errorf("an unreadable mount table must be reported as unknown, got %q", got)
+		}
+	})
+}
+
+// TestEnsureUserRuntimeDir_AbortsOnCancelledContext pins the abort half of the
+// loop: once the caller's context is done, the remaining attempts are not
+// issued (the pause returns the context error) — a cancelled spawn never sleeps
+// through its budget.
+func TestEnsureUserRuntimeDir_AbortsOnCancelledContext(t *testing.T) {
+	h := newUserManagerHost(t)
+	h.ownershipNotApplied = true
+	h.ownership.owner = 0
+	installUserManagerHost(t, h, lingerDirWithEntries(t, 0))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // done before the first re-assert
+
+	err := ensureUserRuntimeDir(ctx, h.username, h.uid, h.runtimeDir, ctlLogger())
+	if err == nil {
+		t.Fatal("a done context must abort the convergence loop")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("the abort must carry the context error, got: %v", err)
+	}
+	if got := umCount(h, "chown "+h.username+": "+h.runtimeDir); got != 1 {
+		t.Errorf("chown ran %d time(s) after cancellation, want exactly 1 — no attempt may be issued on a done context:%s",
+			got, h.callLog())
+	}
+}
+
+// TestEnsureUserRuntimeDir_FreshPathConvergesWithoutReset is acceptance (5),
+// the INT-CI-008 regression guard: with the directory ABSENT the path is fresh,
+// so no destructive reset may run at all, and the directory must end up created
+// and owned by the uid.
+func TestEnsureUserRuntimeDir_FreshPathConvergesWithoutReset(t *testing.T) {
+	h := newUserManagerHost(t)
+	installUserManagerHost(t, h, lingerDirWithEntries(t, 1))
+
+	if _, err := os.Stat(h.runtimeDir); !os.IsNotExist(err) {
+		t.Fatalf("premise: the runtime dir must be absent for the fresh path, stat err = %v", err)
+	}
+
+	if err := bringUpUserManager(context.Background(), h.username, h.uid, h.runtimeDir, ctlLogger()); err != nil {
+		t.Fatalf("bringUpUserManager() error = %v", err)
+	}
+
+	// No destructive action on the fresh path (INT-CI-008), and no removal of
+	// anything else either.
+	for _, forbidden := range []string{
+		"systemctl stop " + userManagerUnitName(h.uid),
+		"systemctl stop " + userRuntimeDirUnitName(h.uid),
+		"loginctl terminate-user " + strconv.Itoa(h.uid),
+		"rm -rf " + h.runtimeDir,
+	} {
+		if h.ran(forbidden) {
+			t.Errorf("the fresh path issued destructive command %q:%s", forbidden, h.callLog())
+		}
+	}
+	if h.ranPrefix("rm ") {
+		t.Errorf("the fresh path removed something (rm argv present):%s", h.callLog())
+	}
+
+	// The directory ends up created and owned by the uid — on the FIRST attempt
+	// (a fresh path has nothing to converge from).
+	info, err := os.Stat(h.runtimeDir)
+	if err != nil {
+		t.Fatalf("runtime dir was not created: %v", err)
+	}
+	if !info.IsDir() {
+		t.Errorf("runtime path %s is not a directory", h.runtimeDir)
+	}
+	if h.ownership.owner != uint32(h.uid) {
+		t.Errorf("runtime dir owner = %d, want %d", h.ownership.owner, h.uid)
+	}
+	if got := umCount(h, "chown "+h.username+": "+h.runtimeDir); got != 1 {
+		t.Errorf("a converging path must not re-assert ownership, chown ran %d time(s):%s", got, h.callLog())
 	}
 }
 

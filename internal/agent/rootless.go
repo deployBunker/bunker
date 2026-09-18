@@ -1156,6 +1156,88 @@ func resetUserManagerState(ctx context.Context, uid int, runtimeDir string, logg
 	}
 }
 
+// runtimeDirOwnershipAttempts / runtimeDirOwnershipPause bound the
+// runtime-directory CONVERGENCE loop. A foreign owner observed right after an
+// accepted chown is not a permissions error: it is a concurrent actor
+// replacing the path — logind's user-runtime-dir@<uid>.service transitioning
+// while a recycled uid changes hands (INT-CI-019: the failing spawn died 30ms
+// into the stage, before any installer ran, while the SAME run brought other
+// agents up on the same uid). The guarantee is therefore "converge with a few
+// bounded re-assertions", never "give up on the first probe". The whole budget
+// (~100ms) is negligible against the 300s request deadline; it must stay
+// SMALL — this is a bounded loop, never an unbounded retry.
+const (
+	runtimeDirOwnershipAttempts = 3
+	runtimeDirOwnershipPause    = 50 * time.Millisecond
+)
+
+// runtimeDirMountInfoPath is the kernel mount table read for the exhaustion
+// attribution. Var so tests can point the attribution at a fixture table
+// instead of the host's mounts.
+var runtimeDirMountInfoPath = "/proc/self/mountinfo"
+
+// runtimeDirMountVerdict reports whether path ITSELF is a mount point in
+// /proc/self/mountinfo, naming the filesystem type and source when it is. An
+// unreadable table is reported as unknown, never as "no".
+func runtimeDirMountVerdict(path string) string {
+	data, err := os.ReadFile(runtimeDirMountInfoPath)
+	if err != nil {
+		return fmt.Sprintf("mount point: unknown (cannot read %s: %v)", runtimeDirMountInfoPath, err)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 6 || fields[4] != path {
+			continue
+		}
+		// The optional fields follow the mount options up to a lone "-", then
+		// the filesystem type and its source.
+		sep := -1
+		for i := 6; i < len(fields); i++ {
+			if fields[i] == "-" {
+				sep = i
+				break
+			}
+		}
+		if sep < 0 || sep+2 >= len(fields) {
+			return "mount point: yes"
+		}
+		return fmt.Sprintf("mount point: yes (fstype %s source %s)", fields[sep+1], fields[sep+2])
+	}
+	return "mount point: no"
+}
+
+// verifyRuntimeDir returns nil when one probe result satisfies the bring-up
+// contract, or the loud error to report for that outcome. The messages are
+// deliberately the pre-existing ones — the ownership one keeps the greppable
+// "runtime dir %s is owned by uid %d, expected %d" fragment.
+func verifyRuntimeDir(dir string, info runtimeDirInfo, probeErr error, uid int) error {
+	switch {
+	case probeErr != nil:
+		return fmt.Errorf("verify runtime dir %s after creation: %w", dir, probeErr)
+	case !info.exists || !info.isDir:
+		return fmt.Errorf("runtime dir %s is missing after creation", dir)
+	case !info.ownerKnown:
+		return fmt.Errorf("runtime dir %s ownership cannot be verified", dir)
+	case info.owner != uint32(uid):
+		return fmt.Errorf("runtime dir %s is owned by uid %d, expected %d", dir, info.owner, uid)
+	}
+	return nil
+}
+
+// waitRuntimeDirOwnershipRetry waits pause, or returns the context error as
+// soon as the caller's context is done, so a cancelled or expired spawn aborts
+// the convergence loop instead of sleeping through its remaining attempts.
+func waitRuntimeDirOwnershipRetry(ctx context.Context, pause time.Duration) error {
+	timer := time.NewTimer(pause)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
 // ensureUserRuntimeDir guarantees the runtime directory exists and is owned by
 // uid BEFORE the user manager is started.
 //
@@ -1166,35 +1248,61 @@ func resetUserManagerState(ctx context.Context, uid int, runtimeDir string, logg
 // and the unit can never become active — the restart that failed the regression
 // job (INT-CI-008). Ask systemd's own directory unit to create it, create it
 // ourselves when that unit is a no-op, then verify the result.
+//
+// The verification CONVERGES instead of shooting once (INT-CI-019): each
+// attempt re-asserts ownership (MkdirAll + non-recursive chown) and re-probes,
+// so a transient foreign owner — a concurrent replacement of the path by
+// logind, which is what produced "runtime dir /run/user/<uid> is owned by uid
+// 0, expected <uid>" on a host where the same uid came up healthy seconds
+// later — is logged and absorbed rather than turned into a failed spawn. The
+// loop is bounded (runtimeDirOwnershipAttempts) and aborts immediately when ctx
+// is done. On exhaustion the failure still fails the spawn (fail-safe: a
+// manager started without a correctly-owned runtime dir can never become
+// active), now carrying the mount-point verdict for that path.
 func ensureUserRuntimeDir(ctx context.Context, username string, uid int, stdRuntimeDir string, logger *slog.Logger) error {
 	if out, err := userManagerRunner(ctx, "systemctl", "start", userRuntimeDirUnitName(uid)); err != nil && logger != nil {
 		logger.Warn("systemd user-runtime-dir unit did not start; creating the runtime dir directly",
 			"unit", userRuntimeDirUnitName(uid), "dir", stdRuntimeDir,
 			"error", err, "output", strings.TrimSpace(string(out)))
 	}
-	if err := os.MkdirAll(stdRuntimeDir, 0o700); err != nil {
-		return fmt.Errorf("create runtime dir %s: %w", stdRuntimeDir, err)
+	var lastErr error
+	for attempt := 1; attempt <= runtimeDirOwnershipAttempts; attempt++ {
+		if attempt > 1 {
+			if err := waitRuntimeDirOwnershipRetry(ctx, runtimeDirOwnershipPause); err != nil {
+				return fmt.Errorf("re-assert ownership of runtime dir %s: %w", stdRuntimeDir, err)
+			}
+		}
+		if err := os.MkdirAll(stdRuntimeDir, 0o700); err != nil {
+			return fmt.Errorf("create runtime dir %s: %w", stdRuntimeDir, err)
+		}
+		// Non-recursive on purpose: on desktop-flavoured hosts the previous manager
+		// may have left a gvfsd-fuse mount under the directory, and a FUSE mount
+		// without allow_other denies even root (see removeMountsUnder).
+		if out, err := userManagerRunner(ctx, "chown", username+":", stdRuntimeDir); err != nil {
+			return fmt.Errorf("chown runtime dir %s: %w (output: %s)", stdRuntimeDir, err, string(out))
+		}
+		info, probeErr := runtimeDirProbe(stdRuntimeDir)
+		if lastErr = verifyRuntimeDir(stdRuntimeDir, info, probeErr, uid); lastErr == nil {
+			return nil
+		}
+		if attempt < runtimeDirOwnershipAttempts && logger != nil {
+			logger.Warn("runtime dir ownership not applied yet; re-asserting",
+				"dir", stdRuntimeDir, "owner", ownerField(info), "expected", uid,
+				"attempt", attempt, "attempts", runtimeDirOwnershipAttempts,
+				"error", lastErr)
+		}
 	}
-	// Non-recursive on purpose: on desktop-flavoured hosts the previous manager
-	// may have left a gvfsd-fuse mount under the directory, and a FUSE mount
-	// without allow_other denies even root (see removeMountsUnder).
-	if out, err := userManagerRunner(ctx, "chown", username+":", stdRuntimeDir); err != nil {
-		return fmt.Errorf("chown runtime dir %s: %w (output: %s)", stdRuntimeDir, err, string(out))
-	}
-	info, err := runtimeDirProbe(stdRuntimeDir)
-	if err != nil {
-		return fmt.Errorf("verify runtime dir %s after creation: %w", stdRuntimeDir, err)
-	}
-	if !info.exists || !info.isDir {
-		return fmt.Errorf("runtime dir %s is missing after creation", stdRuntimeDir)
-	}
+	return fmt.Errorf("%w after %d ownership attempts (%s)",
+		lastErr, runtimeDirOwnershipAttempts, runtimeDirMountVerdict(stdRuntimeDir))
+}
+
+// ownerField renders the observed owner for the convergence WARN: the uid when
+// the probe could read it, "unknown" when it could not.
+func ownerField(info runtimeDirInfo) any {
 	if !info.ownerKnown {
-		return fmt.Errorf("runtime dir %s ownership cannot be verified", stdRuntimeDir)
+		return "unknown"
 	}
-	if info.owner != uint32(uid) {
-		return fmt.Errorf("runtime dir %s is owned by uid %d, expected %d", stdRuntimeDir, info.owner, uid)
-	}
-	return nil
+	return info.owner
 }
 
 // bringUpUserManager brings the systemd user manager for uid up in a
