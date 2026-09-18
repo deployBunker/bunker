@@ -2339,3 +2339,12 @@ tasks:
   status: complete
   created_at: '2026-09-18T19:34:43.569393+00:00'
   completed_at: '2026-09-18T19:34:44.024850+00:00'
+- id: GAP-079-LIVE
+  title: Deploy GAP-079 CLI fix and verify no orphan docker-sock tunnels
+  criteria:
+  - On bunker-mvp, deploy the GAP-079 CLI fix, run the live tunnel/battery gate, prove
+    no orphaned root docker-sock SSH tunnel remains, and commit evidence with VERIFY-PASS
+    if applicable
+  status: complete
+  created_at: '2026-09-18T21:22:35.941342+00:00'
+  completed_at: '2026-09-18T22:18:40.993082+00:00'
