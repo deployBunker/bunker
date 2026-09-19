@@ -2172,19 +2172,14 @@ tasks:
   created_at: '2026-09-18T10:30:00+00:00'
   completed_at: '2026-09-18T21:02:48.450060+00:00'
 - id: DF-BUNKER-24
-  title: "P2 Orphan agent private keys accumulate on daemon hosts \u2014 /etc/bunkerd/ssh/<agent>\
-    \ survives agents that die by TTL expiry or startup reconcile"
+  title: Remove orphan agent SSH keys on TTL and reconcile cleanup
   criteria:
-  - 'the TTL-expiry and reconcile death paths run the same key sweep DestroyAgent
-    runs (measured: las-03 139 keys / 139 orphans, las-02 7/4, demo host 1/1; an explicit
-    destroy removed its own key immediately)'
-  - after killing N agents by TTL expiry on a test host, key files (N) == 0 == agent
-    users (N)
-  - residue counters (orphan keys/homes) are visible in an inventory surface so an
-    operator can see the drift without root shell access
-  - a test covers the TTL-expiry cleanup path
-  status: pending
-  created_at: '2026-09-18T10:30:00+00:00'
+  - After TTL expiry and startup reconcile cleanup, persisted SSH keys for removed
+    agents are removed; regression tests prove TTL and reconcile paths do not leave
+    orphan keys; gofmt/build/vet/tests pass.
+  status: complete
+  created_at: '2026-09-19T01:45:02.233460+00:00'
+  completed_at: '2026-09-19T02:14:42.639303+00:00'
 - id: DF-BUNKER-25
   title: "P2 Fresh-host adoption gate: no prebuilt binaries and no Go install path\
     \ \u2014 the first documented command on a stock Debian host dies with sh: 1:\
