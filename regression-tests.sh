@@ -235,13 +235,44 @@ EOF
     bunkerd -c "$REGRESSION_CONFIG" > /var/log/bunkerd-regression.log 2>&1 &
 fi
 BUNKERD_PID=$!
-sleep 2
 
+# INT-CI-020: the scratch daemon needs the FULL port pool free before it can
+# bind — registry replay of the live /var/lib/bunkerd/agents.jsonl happens
+# pre-bind (system_agents=0), and the pool is transiently exhausted right
+# after the root-suite job's teardown. Boot is occasionally slower than any
+# fixed wait (runs 35446586296 / 35455581554: "bunkerd started" green while
+# neither port listened → 22 cascade reds the harness never attributed,
+# because the daemon's stderr goes to /var/log/bunkerd-regression.log).
+# Poll for BOTH listeners with a bounded budget instead of sleeping a guess;
+# on timeout dump the daemon's own log tail so CI carries the real error.
 GRPC_PORT="${BUNKERD_GRPC_ADDR#:}"
 REST_PORT="${BUNKERD_REST_ADDR#:}"
 assert 'kill -0 $BUNKERD_PID 2>/dev/null' "bunkerd started (PID $BUNKERD_PID)"
-assert "ss -tlnp | grep -q $GRPC_PORT" "gRPC listening on :$GRPC_PORT"
-assert "ss -tlnp | grep -q $REST_PORT" "REST listening on :$REST_PORT"
+
+BUNKERD_READY_TIMEOUT="${BUNKERD_READY_TIMEOUT:-30}"
+case "$BUNKERD_READY_TIMEOUT" in ''|*[!0-9]*) BUNKERD_READY_TIMEOUT=30 ;; esac
+BUNKERD_READY=0
+for _ in $(seq 1 "$BUNKERD_READY_TIMEOUT"); do
+    kill -0 "$BUNKERD_PID" 2>/dev/null || break
+    LISTEN_SNAPSHOT="$(ss -tlnp 2>/dev/null || true)"
+    GRPC_UP=0
+    REST_UP=0
+    if echo "$LISTEN_SNAPSHOT" | grep -q ":$GRPC_PORT"; then GRPC_UP=1; fi
+    if echo "$LISTEN_SNAPSHOT" | grep -q ":$REST_PORT"; then REST_UP=1; fi
+    if [ "$GRPC_UP" = "1" ] && [ "$REST_UP" = "1" ]; then
+        BUNKERD_READY=1
+        break
+    fi
+    sleep 1
+done
+if [ "$BUNKERD_READY" = "1" ]; then
+    pass "listeners ready (gRPC :$GRPC_PORT, REST :$REST_PORT)"
+else
+    fail "listeners NOT ready within ${BUNKERD_READY_TIMEOUT}s (gRPC :$GRPC_PORT, REST :$REST_PORT)"
+    echo "  --- last 40 lines of /var/log/bunkerd-regression.log ---"
+    tail -n 40 /var/log/bunkerd-regression.log 2>/dev/null || echo "  (no /var/log/bunkerd-regression.log)"
+    echo "  --- end of /var/log/bunkerd-regression.log ---"
+fi
 
 echo ""
 
