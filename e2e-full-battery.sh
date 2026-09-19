@@ -887,6 +887,20 @@ EOF
     else
         assert "no production/battery port is handed to the nested suite"
     fi
+
+    # (v) Section 15 certifies $BUNKERD_BIN: every host-provision invocation
+    # in the script must include --daemon-binary "$BUNKERD_BIN" or the local
+    # gap075_bcli wrapper that appends it. A bare `bcli host-provision` would
+    # silently fall back to /usr/local/bin/bunkerd and defeat the candidate
+    # daemon certification.
+    ST_SEC15_BARE="$(grep -nE '^[[:space:]]*bcli host-provision' "$ST_SELF" 2>/dev/null | grep -vF -- '--daemon-binary' || true)"
+    ST_SEC15_HELPER="$(grep -cE '^[[:space:]]*gap075_bcli' "$ST_SELF" 2>/dev/null || true)"
+    if [ -z "$ST_SEC15_BARE" ] && [ "${ST_SEC15_HELPER:-0}" -ge 1 ]; then
+        assert "section 15 has no bare bcli host-provision calls and uses gap075_bcli (${ST_SEC15_HELPER} helper call site(s))"
+    else
+        fail "section 15 host-provision contract violated: bare='$ST_SEC15_BARE' helper_call_sites='$ST_SEC15_HELPER' (expected 0 bare, >=1 helper)"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
     ST_S12_LINES="$(grep -nF 'bash "$REGRESSION_SCRIPT"' "$ST_SELF" 2>/dev/null | grep -vF 'grep -nF' | cut -d: -f1 | tr '\n' ' ' || true)"
     ST_S12_N=0
     ST_S12_BAD=""
@@ -1079,6 +1093,7 @@ if [ "${1:-}" = "--show-plan" ]; then
     echo "  root requirement      : the full run needs root (exit 42 otherwise); --self-test/--show-plan/--bin-report never do"
     echo "  sections that run     : 1-11, 13, 14 (14's live-daemon registry replays are skipped in coexist mode)"
     echo "  sections that may skip: 12 only when no regression-tests.sh is present; 15.1 fails without a CLI that has host-provision"
+    echo "  section 15 certifies  : $BUNKERD_BIN (candidate daemon) via --daemon-binary on every host-provision call"
     remove_own_state_dir "$PLAN_CLI_HOME"
     echo ""
     echo "PLAN: OK (nothing was changed)"
@@ -2159,20 +2174,28 @@ GAP075_RUN_FILE="gap075-${GAP075_UNIQ}-run"
 GAP075_OP_FILE="gap075-${GAP075_UNIQ}-op"
 GAP075_FSTAB_BEFORE=$(md5sum /etc/fstab 2>/dev/null | awk '{print $1}')
 
-# ── 15.1 host provisioning ─────────────────────────────────────────────
-if ! bcli host-provision --help > /dev/null 2>&1; then
+# ── 15.1 host provisioning — CERTIFIES $BUNKERD_BIN (candidate daemon) ──
+# Every host-provision probe/apply/status/uninstall below passes
+# --daemon-binary "$BUNKERD_BIN" through a local helper, so this section
+# cannot silently fall back to /usr/local/bin/bunkerd when a candidate path
+# is set. Outside this section the battery still uses the installed default
+# daemon probe path.
+gap075_bcli() {
+    bcli host-provision --daemon-binary "$BUNKERD_BIN" "$@"
+}
+if ! gap075_bcli --help > /dev/null 2>&1; then
     fail "bunker binary has no host-provision command — build the candidate CLI and point BUNKER_BIN at it (GAP-075 host half missing)"
 else
     assert "bunker host-provision is available"
 fi
-GAP075_DRY=$(bcli host-provision 2>&1 || true)
+GAP075_DRY=$(gap075_bcli 2>&1 || true)
 if echo "$GAP075_DRY" | grep -q "dry run"; then
     assert "host-provision defaults to a dry run"
 else
     fail "host-provision without --apply did not report a dry run: $GAP075_DRY"
 fi
-bcli host-provision --apply > /dev/null 2>&1 || true
-GAP075_STATUS_JSON=$(bcli host-provision --status --json 2>&1 || true)
+gap075_bcli --apply > /dev/null 2>&1 || true
+GAP075_STATUS_JSON=$(gap075_bcli --status --json 2>&1 || true)
 if echo "$GAP075_STATUS_JSON" | grep -q '"isolated": *true'; then
     assert "host isolation active: agent-scoped per-session private /tmp installed"
 else
@@ -2308,7 +2331,7 @@ fi
 GAP075_MASK_RESTORE="session    optional     pam_succeed_if.so quiet user = gap075-foreign-$GAP075_UNIQ"
 printf '%s\n' "$GAP075_MASK_RESTORE" >> /etc/pam.d/sshd 2>/dev/null || true
 GAP075_NS_COUNT_BEFORE=$(grep -cE '^session[[:space:]]+required[[:space:]]+pam_namespace\.so[[:space:]]*$' /etc/pam.d/sshd 2>/dev/null || echo 0)
-bcli host-provision --apply > /dev/null 2>&1 || true
+gap075_bcli --apply > /dev/null 2>&1 || true
 if grep -qF "$GAP075_MASK_RESTORE" /etc/pam.d/sshd; then
     assert "a repair re-apply preserved a foreign pam_succeed_if rule byte for byte"
 else
@@ -2334,7 +2357,7 @@ if echo "$GAP075_SESSION" | grep -q "bunker-$GAP075_A"; then
     assert "agent session opens with pam_namespace enabled and keeps its own uid"
 else
     fail "agent session broken after enabling pam_namespace: $GAP075_SESSION"
-    bcli host-provision --uninstall --apply > /dev/null 2>&1 || true
+    gap075_bcli --uninstall --apply > /dev/null 2>&1 || true
     note "rolled back the Bunker-managed pam_namespace configuration after a failed session"
 fi
 
