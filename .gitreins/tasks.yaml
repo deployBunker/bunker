@@ -2386,3 +2386,25 @@ tasks:
   status: complete
   created_at: '2026-09-19T07:16:08.110376+00:00'
   completed_at: '2026-09-19T07:23:07.806523+00:00'
+- id: QA-BUNKER-22
+  title: internal/server ACME storage permission failure on clean machine
+  criteria:
+  - go test ./internal/server/ -run TestBuildTLSConfig -count=1 passes even when a
+    stale /tmp/bunker-int-ci-016-acme-storage dir owned by another UID exists
+  status: complete
+  created_at: '2026-09-19T16:28:05.972886+00:00'
+  completed_at: '2026-09-19T16:40:07.668740+00:00'
+- id: INT-CI-020
+  title: regression battery cascade-fails 22 checks when the scratch bunkerd boots
+    slower than the harness's fixed 2s wait
+  criteria:
+  - regression-tests.sh section 2 replaces the fixed sleep-2 + single-shot listener
+    asserts with a bounded readiness poll covering BOTH BUNKERD_GRPC_ADDR and BUNKERD_REST_ADDR;
+    the poll fails fast (printing a tail of the daemon log) when the daemon PID dies
+    or readiness never arrives within the budget; bash -n passes; the foreman stub
+    probe proves never-listening yields a loud single section-2 FAIL with log tail
+    and non-zero exit, and late-listening (within budget) yields section 2 green;
+    no other section, the coexist/standalone logic, or the cleanup trap changes
+  status: complete
+  created_at: '2026-09-19T17:08:31.945112+00:00'
+  completed_at: '2026-09-19T17:38:22.872158+00:00'
