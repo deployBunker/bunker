@@ -257,8 +257,15 @@ for _ in $(seq 1 "$BUNKERD_READY_TIMEOUT"); do
     LISTEN_SNAPSHOT="$(ss -tlnp 2>/dev/null || true)"
     GRPC_UP=0
     REST_UP=0
-    if echo "$LISTEN_SNAPSHOT" | grep -q ":$GRPC_PORT"; then GRPC_UP=1; fi
-    if echo "$LISTEN_SNAPSHOT" | grep -q ":$REST_PORT"; then REST_UP=1; fi
+    # INT-CI-020 rework: match the snapshot with a case/glob, NOT
+    # `echo "$SNAP" | grep -q`. grep -q exits on first match, the writer
+    # dies of SIGPIPE on a realistic ~24KB ss snapshot, and `set -uo pipefail`
+    # (top of file) then fails the pipeline EVEN WHEN grep matched — a port
+    # that was genuinely listening read as not-listening (judge repro:
+    # 100k-line var -> NOMATCH with pipefail, MATCH without; real snapshot
+    # 24751 bytes, port 22 listening, GRPC_UP stayed 0). A glob has no pipe.
+    case "$LISTEN_SNAPSHOT" in *":$GRPC_PORT "*) GRPC_UP=1 ;; esac
+    case "$LISTEN_SNAPSHOT" in *":$REST_PORT "*) REST_UP=1 ;; esac
     if [ "$GRPC_UP" = "1" ] && [ "$REST_UP" = "1" ]; then
         BUNKERD_READY=1
         break
