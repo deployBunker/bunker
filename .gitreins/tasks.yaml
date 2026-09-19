@@ -2408,3 +2408,12 @@ tasks:
   status: complete
   created_at: '2026-09-19T17:08:31.945112+00:00'
   completed_at: '2026-09-19T17:38:22.872158+00:00'
+- id: QA-BUNKER-21
+  title: Cache rootless Docker downloads and prevent failed spawn leaks
+  criteria:
+  - The worker implementation for QA-BUNKER-21 must land a real verified rootless
+    Docker bundle cache integrated into installRootlessDocker, with regression tests
+    and passing gofmt/build/vet/short tests plus gitreins guard --full.
+  status: complete
+  created_at: '2026-09-19T18:45:28.431587+00:00'
+  completed_at: '2026-09-19T18:45:28.919014+00:00'
