@@ -149,8 +149,10 @@ What to expect on a fresh host:
 A public demo instance runs on **bunker-mvp** (`78.46.173.180`, gRPC :19090 / REST :18080) with auth enforced. Once a maintainer has issued you a token, try the platform without standing up your own root daemon:
 
 ```bash
-# Install the CLI (or: make build && ./bunker)
-go install github.com/deployBunker/bunker/cmd/bunker@latest
+# Install the CLI — one command, prebuilt (see Install):
+#   curl -fsSL https://github.com/deployBunker/bunker/releases/latest/download/install.sh | sh
+# …or, with a Go toolchain:
+#   go install github.com/deployBunker/bunker/cmd/bunker@latest
 
 # 1. Request a demo token from the maintainers (request-access only, see above)
 # 2. Connect with your provisioned token:
@@ -163,54 +165,116 @@ The demo is a shared, resource-limited sandbox (max 50 agents; per-agent CPU/mem
 
 ### Prerequisites
 
-- Linux host (Ubuntu 24.04+ recommended)
+- Linux host (Ubuntu 24.04+ recommended). Prebuilt binaries are published for
+  **linux/amd64** and **linux/arm64**; on anything else, build from source.
 - **Root access on the host** — `bunkerd` must run as root. Agent spawn creates Linux users (`useradd`) and systemd user slices (`systemd-run`) for cgroup resource limits; both require root privileges. A non-root daemon starts and serves read-only endpoints (list, version, health), but `bunker spawn` fails with `useradd: Permission denied`. The `bunker` CLI itself can run as any user — it talks to the daemon over gRPC/REST.
-- Go 1.26+
-- `make` — the documented `make build` needs it. On a minimal host with only Go
-  installed it fails immediately with `sh: 1: make: not found` (exit 127); use
-  the make-free `go build` pair in Install instead.
+- **A Go toolchain — source builds only.** The one-command install below
+  downloads prebuilt binaries and needs no Go. `make build` and
+  `make release-binaries` compile Go source, so they need Go 1.26.5+ (see
+  `go.mod`) and refuse with instructions when it is missing instead of dying on
+  `sh: 1: go: not found` (exit 127). How to get it:
+  [Installing Go on a stock Debian/Ubuntu host](#installing-go-on-a-stock-debianubuntu-host).
+- `make` — needed by the source path (`make build`). On a minimal host with only
+  Go installed it fails immediately with `sh: 1: make: not found` (exit 127); use
+  `./scripts/install.sh --build` or the bare `go build` pair in Install instead.
 - Docker CE (for rootless support)
 - `sshfs` (for mount command)
 - `cloudflared` (optional, for tunnels)
 
 ### Install
 
+**Option 1 — one command (prebuilt release binaries; no Go, no `make`).** Every
+release tag publishes `bunker` and `bunkerd` for linux/amd64 and linux/arm64,
+plus a `SHA256SUMS` and this installer as release assets:
+
+```bash
+curl -fsSL https://github.com/deployBunker/bunker/releases/latest/download/install.sh | sh
+```
+
+The installer downloads both binaries for this platform, verifies each one
+against the release's `SHA256SUMS` **before anything is written**, installs them
+into `/usr/local/bin` (falling back to `$HOME/.local/bin` when that directory is
+not writable — make sure the directory it reports is on `PATH`), and finishes by
+running `bunker --version`. It never runs `sudo` on its own: an unwritable
+prefix is a message telling you what to do, not a silent escalation.
+
+```bash
+# Installer flags — `sh install.sh --help` prints the full text
+sh install.sh --version v0.1.4           # pin a release tag instead of the latest
+sh install.sh --from-dir ./dist          # install local binaries (offline/air-gapped)
+sh install.sh --build                    # build from this checkout with go build
+sh install.sh --dir "$HOME/.local/bin"   # choose the install prefix
+sh install.sh --dry-run                  # print the plan, change nothing
+```
+
+**Option 2 — build from source** (needs the Go toolchain and `make`):
+
 ```bash
 git clone https://github.com/deployBunker/bunker.git
 cd bunker
 # Builds ./bunkerd and ./bunker with version info baked in (ldflags)
 make build
+```
 
-# No make on this host? The same two binaries without it — no gcc needed either:
-go build -o bunker ./cmd/bunker
-go build -o bunkerd ./cmd/bunkerd
+#### Installing Go on a stock Debian/Ubuntu host
+
+A stock Debian/Ubuntu cloud image ships `make` and `docker` but no Go, which is
+why `make build` used to stop at `sh: 1: go: not found` (exit 127). Install the
+official tarball into `/usr/local/go` — **not into `$HOME`**:
+
+```bash
+# 1. The tarball for this host: linux-amd64 (use linux-arm64 on arm64).
+curl -fsSL https://go.dev/dl/go1.26.5.linux-amd64.tar.gz -o /tmp/go.tar.gz
+
+# 2. Extract under /usr/local, NOT under $HOME: a tarball unpacked into $HOME
+#    makes GOPATH == GOROOT and every go command then prints
+#    "warning: both GOPATH and GOROOT are the same directory".
+sudo rm -rf /usr/local/go
+sudo tar -C /usr/local -xzf /tmp/go.tar.gz
+
+# 3. Put it on PATH for this shell and for future logins.
+export PATH=/usr/local/go/bin:$PATH
+echo 'export PATH=/usr/local/go/bin:$PATH' >> ~/.profile
+
+go version   # go1.26.5 linux/amd64
+```
+
+Then build — `make build`, or `./scripts/install.sh --build` on a host without
+`make` (it applies the same ldflags version stamping and installs for you):
+
+```bash
+make build          # or: ./scripts/install.sh --build
+./bunker --version
 ```
 
 > **Cold host: the first build downloads every Go module.** Expect several
 > minutes on a fresh machine or an empty module cache; later builds take
-> seconds. The make-free pair above is a complete substitute for `make build` —
-> the binaries then carry the Go toolchain's own VCS metadata instead of the
-> Makefile's ldflags (that stamping needs `git` on `PATH` at build time, which a
-> clone host has), and `./bunker --version` reports the commit.
+> seconds. `./scripts/install.sh --build` is a complete substitute for
+> `make build`: it stamps the same version/commit/build-date metadata and needs
+> no `make`.
 
-> **Build before use.** The repo does not ship prebuilt binaries — `bunker`,
-> `bunkerd`, and `bin/` are gitignored (GAP-036). Always run `make build`
-> after cloning — or the `go build` pair above on a host without `make`
-> (either way, no prebuilt binaries are shipped); a stale or missing `./bunker`
-> is not the CLI this README documents. Check the build with
-> `./bunker --version` (cobra auto-flag, GAP-035) — `bunker version` prints the
-> full commit/build metadata.
+> **Prebuilt binaries come from GitHub Releases, not from git.** `bunker`,
+> `bunkerd`, and `bin/` stay gitignored (GAP-036) so no checkout can carry a
+> stale binary — and every release tag publishes the four cross-compiled
+> binaries plus `SHA256SUMS` and `install.sh` as release assets, which is exactly
+> what the one-command install above consumes. A clone has no `./bunker` until you
+> build it (`make build`, or `./scripts/install.sh --build`); check either one
+> with `./bunker --version` (cobra auto-flag, GAP-035) — `bunker version` prints
+> the full commit/build metadata.
 
-> **Freshness check — what `@latest` actually installs.** `go install
-> ...@latest` serves the newest release tag, `git describe --tags --abbrev=0` =
-> **v0.1.4**, which lags this repo's HEAD. Every command and feature this README
-> marks *requires a build from HEAD* — the lifecycle commands (`stop`, `start`,
-> `restart`) and the host-maintenance commands (`homes`, `linger`,
-> `host-provision`) — is in this tree but not in that tag; the post-release work
-> is listed under *Unreleased* in the [CHANGELOG](CHANGELOG.md). Build from this
-> checkout (`make build`) to get them. If `bunker --version`'s `commit:` field
-> doesn't match the repo's `git rev-parse HEAD`, the binary is stale — rebuild
-> from HEAD.
+> **Freshness check — what the release assets and `@latest` both carry.** The
+> newest release tag (`git describe --tags --abbrev=0`) is **v0.1.4**, which lags
+> this repo's HEAD: `go install ...@latest`, the release binaries the installer
+> downloads, and a build of that tag all carry that tag's surface. Every command
+> this README marks *requires a build from HEAD* — the lifecycle commands
+> (`stop`, `start`, `restart`) and the host-maintenance commands (`homes`,
+> `linger`, `host-provision`) — is in this tree but not in that tag; the
+> post-release work is listed under *Unreleased* in the
+> [CHANGELOG](CHANGELOG.md). Build from this checkout (`make build`) to get them.
+> A release asset or a tag build reports the tagged commit in `commit:` by
+> design, so only a HEAD build's `commit:` equals the repo's
+> `git rev-parse HEAD` — a `commit:` that does not match HEAD means you are
+> running a release build, and the HEAD-only commands need a build from HEAD.
 
 ### Configure
 

@@ -184,6 +184,14 @@ jobs:
         run: go test -count=1 -short ./... -timeout ${{ env.GO_TEST_TIMEOUT }}
         timeout-minutes: 10
 
+      # DF-BUNKER-25: install.sh is the documented first path for a fresh host,
+      # so its suite is a required step (same entry point as `make test-sh`).
+      # Network-free: it drives --from-dir fixtures, a file:// mirror of the
+      # release layout, and a Go-less PATH probe for the --build refusal.
+      - name: Installer tests (scripts/install_test.sh)
+        run: bash scripts/install_test.sh
+        timeout-minutes: 5
+
   # ── Tier 1: GitReins guard — secrets, lint, tests ──
   gitreins-guard:
     runs-on: ubuntu-latest

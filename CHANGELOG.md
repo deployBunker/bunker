@@ -26,12 +26,52 @@ from HEAD*.
   release tag older than the newest one is presented as current, and that this
   section exists while commits sit after the tag
 
+- `make test-sh` (DF-BUNKER-25): runs `scripts/install_test.sh`, a network-free
+  suite of 49 assertions — unsupported platform refuses with exit 42, checksum
+  mismatch refuses with exit 42 and installs nothing, a missing SHA256SUMS entry
+  refuses, `--from-dir` installs both binaries for the plain and
+  `bunker-<os>-<arch>` layouts and is idempotent, the default release path
+  installs from a `file://` mirror for both the latest and the tag-pinned asset
+  URLs, `--dry-run` writes nothing, and `--build` without a Go toolchain names
+  the README section instead of surfacing Error 127
+- `scripts/install.sh` (DF-BUNKER-25): one-command install for a fresh host —
+  the default mode downloads the prebuilt release assets for linux/amd64 or
+  linux/arm64 and verifies both binaries against the release's `SHA256SUMS`
+  before anything is written; `--from-dir` installs local binaries
+  (offline/air-gapped), `--build` builds from the checkout with `go build` and no
+  `make`, plus `--version`, `--dir`, `--dry-run` and `--help`. It refuses with
+  exit 42 on an unsupported platform, a checksum mismatch or a missing checksum
+  entry, falls back to `$HOME/.local/bin` when `/usr/local/bin` is not writable
+  instead of escalating privileges, and smoke-checks the installed binary's
+  `--version` (warning when the version stamp is missing)
+- `make release-binaries` (DF-BUNKER-25): the single source of truth for the
+  release artifacts — cross-compiles linux/amd64 and linux/arm64 for both
+  `bunker` and `bunkerd` with the same ldflags as `build`, then writes
+  `SHA256SUMS` and copies `scripts/install.sh` into `dist/`
+- `.github/workflows/release.yml` (DF-BUNKER-25): on a `v*` tag it calls
+  `make release-binaries` (the build commands are not duplicated in YAML) and
+  publishes `bunker-linux-amd64`, `bunkerd-linux-amd64`, `bunker-linux-arm64`,
+  `bunkerd-linux-arm64`, `SHA256SUMS` and `install.sh` as a GitHub Release,
+  idempotently: an existing release for the tag has its assets replaced
+  (`--clobber`) and the workflow asserts all six names are attached
+- Makefile `check-go` guard (DF-BUNKER-25): `build`, `build-daemon`,
+  `build-cli`, `install` and `release-binaries` refuse with the documented
+  recovery steps (README Install section, tarball URL, PATH export, and the
+  `$HOME` extraction pitfall) when no Go toolchain is on PATH, instead of
+  surfacing `sh: 1: go: not found` (exit 127)
+
 ### Docs
 
 - README: the documented CLI surface is split into "in the newest release tag"
   and "requires a build from HEAD" instead of documenting commands the
   `go install ...@latest` path cannot run, and the freshness note no longer calls
   `v0.1.3` the newest release — it is `v0.1.4` (GAP-081)
+- README (DF-BUNKER-25): the one-command installer is the first documented
+  install path, the build-from-source path documents obtaining Go on a stock
+  Debian/Ubuntu host (tarball under `/usr/local/go` plus the PATH export, with
+  the `GOPATH == GOROOT` pitfall called out for a `$HOME` extraction), and the
+  former "the repo does not ship prebuilt binaries" note now describes the
+  release-asset path
 
 ## 0.1.4 (2026-09-13)
 

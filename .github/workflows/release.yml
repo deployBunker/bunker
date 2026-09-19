@@ -1,0 +1,116 @@
+name: Release
+
+# Publishes the prebuilt assets that scripts/install.sh downloads (DF-BUNKER-25).
+# Git keeps binaries out of the tree (GAP-036), so a release tag must carry them
+# or a fresh host cannot install bunker without a Go toolchain.
+#
+# The build commands live in the Makefile's `release-binaries` target — this
+# workflow calls it and nothing else, so a local `make release-binaries` and a
+# published release cannot drift. Re-running the workflow for a tag that already
+# has a release uploads the assets again with --clobber (idempotent).
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to (re)publish, e.g. v0.1.4'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  # The six assets the GitHub Release must carry; install.sh downloads
+  # bunker-<os>-<arch>, bunkerd-<os>-<arch> and SHA256SUMS from the asset URLs.
+  RELEASE_ASSETS: >-
+    dist/bunker-linux-amd64
+    dist/bunkerd-linux-amd64
+    dist/bunker-linux-arm64
+    dist/bunkerd-linux-arm64
+    dist/SHA256SUMS
+    dist/install.sh
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Resolve the release tag
+        id: tag
+        run: |
+          set -euo pipefail
+          tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          case "$tag" in
+            v*) ;;
+            *) echo "release tag must start with v (got: ${tag})" >&2; exit 1 ;;
+          esac
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          # The tag tree, and full history so the version stamp is verifiable.
+          ref: ${{ steps.tag.outputs.tag }}
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+
+      # The single build command, shared with dev hosts. Nothing below rebuilds.
+      - name: Cross-compile the release binaries (make release-binaries)
+        run: make release-binaries VERSION=${{ steps.tag.outputs.version }}
+
+      - name: Verify the cross-compiled assets
+        run: |
+          set -euo pipefail
+          for platform in amd64 arm64; do
+            for name in bunker bunkerd; do
+              asset="dist/${name}-linux-${platform}"
+              test -x "${asset}"
+              go version -m "${asset}" | grep -q "GOARCH=${platform}"
+              go version -m "${asset}" | grep -q 'GOOS=linux'
+            done
+          done
+          # The stamp must be the tag's version, and the published installer must
+          # be byte-identical to the one in the repo.
+          dist/bunker-linux-amd64 version | grep -q "^bunker ${{ steps.tag.outputs.version }}$"
+          cmp scripts/install.sh dist/install.sh
+          ( cd dist && sha256sum --check SHA256SUMS )
+          echo "verified 4 cross-compiled binaries + SHA256SUMS + install.sh"
+
+      # Idempotent: an existing release for the tag gets its assets replaced,
+      # a missing one is created. Both paths end with the six assets attached.
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.tag.outputs.tag }}"
+          assets="${RELEASE_ASSETS}"
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "release ${tag} already exists — uploading assets (clobber)"
+            gh release upload "${tag}" ${assets} --clobber
+          else
+            echo "creating release ${tag}"
+            gh release create "${tag}" ${assets} \
+              --title "${tag}" \
+              --generate-notes
+          fi
+          echo "release ${tag} now carries:"
+          assets_json=$(gh release view "${tag}" --json assets)
+          published=$(printf '%s\n' "${assets_json}" | jq -r '.assets[].name')
+          printf '%s\n' "${published}"
+          missing=""
+          for want in bunker-linux-amd64 bunkerd-linux-amd64 bunker-linux-arm64 bunkerd-linux-arm64 SHA256SUMS install.sh; do
+            printf '%s\n' "${published}" | grep -qx "${want}" || missing="${missing} ${want}"
+          done
+          if [ -n "${missing}" ]; then
+            echo "release ${tag} is missing assets:${missing}" >&2
+            exit 1
+          fi
+          echo "release ${tag} carries all six assets"
