@@ -488,10 +488,6 @@ func TestTunnelCommand_SignalReapsSSHChild(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX process-group semantics")
 	}
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skipf("go toolchain not on PATH, cannot build the CLI under test: %v", err)
-	}
-
 	tmp := t.TempDir()
 
 	server := newTunnelTestServer(t, &mockTunnelServer{
@@ -533,13 +529,9 @@ func TestTunnelCommand_SignalReapsSSHChild(t *testing.T) {
 		t.Fatalf("write fake ssh: %v", err)
 	}
 
-	// Build the CLI the test drives — the real binary, real main().
-	cliBin := filepath.Join(tmp, "bunker")
-	build := exec.Command("go", "build", "-o", cliBin, "./cmd/bunker")
-	build.Dir = filepath.Join("..", "..")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("go build ./cmd/bunker: %v\n%s", err, out)
-	}
+	// GAP-090 load hygiene: one shared per-session build (procbuild_test.go);
+	// the per-test `go build` here was the suite's worst host-load offender.
+	cliBin := buildCLIOnce(t)
 
 	cliLog := filepath.Join(tmp, "cli.log")
 	logFile, err := os.Create(cliLog)
@@ -651,10 +643,6 @@ func TestTunnelCommand_SIGKILLReapsSSHChild(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX parent-death / process-group semantics")
 	}
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skipf("go toolchain not on PATH, cannot build the CLI under test: %v", err)
-	}
-
 	tmp := t.TempDir()
 
 	server := newTunnelTestServer(t, &mockTunnelServer{
@@ -696,13 +684,9 @@ func TestTunnelCommand_SIGKILLReapsSSHChild(t *testing.T) {
 		t.Fatalf("write fake ssh: %v", err)
 	}
 
-	// Build the CLI the test drives — the real binary, real main().
-	cliBin := filepath.Join(tmp, "bunker")
-	build := exec.Command("go", "build", "-o", cliBin, "./cmd/bunker")
-	build.Dir = filepath.Join("..", "..")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("go build ./cmd/bunker: %v\n%s", err, out)
-	}
+	// GAP-090 load hygiene: one shared per-session build (procbuild_test.go);
+	// the per-test `go build` here was the suite's worst host-load offender.
+	cliBin := buildCLIOnce(t)
 
 	cliLog := filepath.Join(tmp, "cli.log")
 	logFile, err := os.Create(cliLog)

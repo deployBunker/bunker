@@ -60,9 +60,9 @@ func newProcTestHarness(t *testing.T) *procTestHarness {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX process-group / parent-death semantics")
 	}
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skipf("go toolchain not on PATH, cannot build the CLI under test: %v", err)
-	}
+	// GAP-090 load hygiene: one shared per-session build (procbuild_test.go);
+	// the per-test `go build` here was the suite's worst host-load offender.
+	cliBin := buildCLIOnce(t)
 
 	tmp := t.TempDir()
 
@@ -90,13 +90,6 @@ func newProcTestHarness(t *testing.T) *procTestHarness {
 	binDir := filepath.Join(tmp, "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", binDir, err)
-	}
-
-	cliBin := filepath.Join(tmp, "bunker")
-	build := exec.Command("go", "build", "-o", cliBin, "./cmd/bunker")
-	build.Dir = filepath.Join("..", "..")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("go build ./cmd/bunker: %v\n%s", err, out)
 	}
 
 	cliLog := filepath.Join(tmp, "cli.log")
