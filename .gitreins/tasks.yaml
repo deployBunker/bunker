@@ -2195,7 +2195,7 @@ tasks:
     -l . and go test ./... -count=1 -short stay green.'
   status: complete
   created_at: '2026-09-19T03:41:01.432009+00:00'
-  completed_at: '2026-09-19T03:55:22.179716+00:00'
+  completed_at: '2026-09-19T04:51:15.786109+00:00'
 - id: DF-BUNKER-26
   title: 'P3 Doc/cosmetic drift bundle: audit schema missing the hash chain, ServerMetrics
     agents[] undocumented, double-escaped TTL regex, destroy tombstone 200-vs-404'
