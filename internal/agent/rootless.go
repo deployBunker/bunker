@@ -2,9 +2,11 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -241,6 +243,168 @@ func downloadRootlessInstaller(ctx context.Context, installerPath string) ([]byt
 	return curl.CombinedOutput()
 }
 
+// rootlessInstallerCacheDir is the host-level directory where downloaded
+// rootless installers are cached between spawns. It is a var so operators can
+// override it and tests can point it at a temp directory. The empty string
+// means "no host cache"; the production install path falls back to the legacy
+// uncached download seam when the cache is not configured.
+var rootlessInstallerCacheDir = ""
+
+// rootlessInstallerCacheKey returns the cache filename for the current
+// rootless installer URL. The filename is derived from the host so a future
+// URL change automatically creates a new cache entry instead of reusing a
+// stale artifact.
+func rootlessInstallerCacheKey() string {
+	return "rootless-installer-" + hostCacheSuffix(rootlessInstallURL) + ".sh"
+}
+
+// hostCacheSuffix returns a filesystem-safe suffix derived from url. It is
+// package-level so the implementation is testable without a real URL.
+func hostCacheSuffix(url string) string {
+	s := strings.TrimPrefix(url, "https://")
+	s = strings.TrimPrefix(s, "http://")
+	s = strings.ReplaceAll(s, "/", "-")
+	s = strings.ReplaceAll(s, ".", "-")
+	s = strings.ReplaceAll(s, ":", "-")
+	return s
+}
+
+// cachedRootlessInstallerDownload is the cached download seam. It returns the
+// installer bytes from cache on hit, or downloads, validates, and populates
+// the cache on miss. A partial or invalid cache entry is treated as a miss
+// and refreshed. Caller cancellation during download does not leave a
+// valid-looking cache artifact.
+var cachedRootlessInstallerDownload = downloadRootlessInstallerCached
+
+// downloadRootlessInstallerCached is the production cached downloader.
+func downloadRootlessInstallerCached(ctx context.Context, installerPath string) ([]byte, error) {
+	if err := os.MkdirAll(rootlessInstallerCacheDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create installer cache dir: %w", err)
+	}
+	cachePath := filepath.Join(rootlessInstallerCacheDir, rootlessInstallerCacheKey())
+
+	// Cache hit: validate before trusting.
+	if cached, err := os.ReadFile(cachePath); err == nil {
+		if validationErr := validateCachedInstaller(cachePath, cached); validationErr == nil {
+			if out, copyErr := copyFile(cachePath, installerPath); copyErr != nil {
+				return nil, fmt.Errorf("copy cached installer to %s: %w (output: %s)", installerPath, copyErr, string(out))
+			}
+			return cached, nil
+		}
+		// Partial or invalid cache entry: remove it so a later call retries
+		// cleanly instead of hitting the same poisoned artifact.
+		_ = os.Remove(cachePath)
+	}
+
+	// Cache miss: download to a temp file so a cancelled/interrupted write
+	// never leaves a partial artifact at the final cache path.
+	tmp, err := os.CreateTemp(rootlessInstallerCacheDir, "rootless-installer-*.sh.tmp")
+	if err != nil {
+		return nil, fmt.Errorf("create temp installer file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer func() {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+	}()
+
+	if out, err := rootlessInstallerDownload(ctx, tmpPath); err != nil {
+		return nil, fmt.Errorf("download rootless installer: %w (output: %s)", err, string(out))
+	}
+	downloaded, err := os.ReadFile(tmpPath)
+	if err != nil {
+		return nil, fmt.Errorf("read downloaded installer: %w", err)
+	}
+	if validationErr := validateCachedInstaller(tmpPath, downloaded); validationErr != nil {
+		return nil, fmt.Errorf("downloaded installer failed validation: %w", validationErr)
+	}
+	if err := os.Chmod(tmpPath, 0o644); err != nil {
+		return nil, fmt.Errorf("chmod temp installer: %w", err)
+	}
+	if err := os.Rename(tmpPath, cachePath); err != nil {
+		return nil, fmt.Errorf("promote temp installer to cache: %w", err)
+	}
+	_ = os.Remove(tmpPath)
+	defer func(path string) { _ = os.Remove(path) }(tmpPath)
+
+	if out, copyErr := copyFile(cachePath, installerPath); copyErr != nil {
+		return nil, fmt.Errorf("copy downloaded installer to %s: %w (output: %s)", installerPath, copyErr, string(out))
+	}
+	return downloaded, nil
+}
+
+// validateCachedInstaller performs the minimum sanity checks on a downloaded
+// rootless installer before it is executed or cached. It rejects:
+//   - files that are not regular files;
+//   - files smaller than the minimum viable size;
+//   - files whose leading bytes do not look like a shell script.
+//
+// The checks are intentionally conservative: they are designed to catch
+// interrupted downloads, HTML error pages, and empty/truncated artifacts
+// without depending on network access or the installer's own semantics.
+func validateCachedInstaller(path string, data []byte) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("stat cached installer: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("cached installer is not a regular file: %s", path)
+	}
+	if info.Size() < 8 {
+		return fmt.Errorf("cached installer is too small (%d bytes): %s", info.Size(), path)
+	}
+	if len(data) == 0 {
+		return errors.New("cached installer is empty")
+	}
+	trimmed := bytes.TrimLeft(data, " 	\n\r")
+	if !bytes.HasPrefix(trimmed, []byte("#!")) {
+		return errors.New("cached installer does not start with a shebang")
+	}
+	return nil
+}
+
+// copyFile copies src to dst using an atomic replace where the platform
+// supports it. It returns the combined output of any failure, matching the
+// error shape callers already expect from rootHostRunner.
+func copyFile(src, dst string) ([]byte, error) {
+	in, err := os.Open(src)
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", src, err)
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return nil, fmt.Errorf("create %s: %w", dst, err)
+	}
+	defer func() {
+		_ = out.Close()
+	}()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return nil, fmt.Errorf("copy %s -> %s: %w", src, dst, err)
+	}
+	if err := out.Close(); err != nil {
+		return nil, fmt.Errorf("close %s: %w", dst, err)
+	}
+	return nil, nil
+}
+
+// invalidateCachedRootlessInstaller removes the cached installer for the
+// current URL. It is best-effort: a missing cache is a no-op. Callers use it
+// when they know the cached artifact can no longer be trusted (e.g. after a
+// partial download that escaped the temp-file path).
+func invalidateCachedRootlessInstaller() error {
+	if rootlessInstallerCacheDir == "" {
+		return nil
+	}
+	path := filepath.Join(rootlessInstallerCacheDir, rootlessInstallerCacheKey())
+	if _, err := os.Stat(path); err != nil {
+		return nil
+	}
+	return os.Remove(path)
+}
+
 // userLookup resolves a system user. Package-level seam so unit tests can
 // install a synthetic uid without creating real users (same rationale as
 // runtimeDirProbe).
@@ -466,9 +630,20 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 
 	// Download the installer into the agent's home as root (the installer will
 	// be executed by the target user, and we need a reliable download path).
+	// A host-level cache is consulted first; on miss the installer is downloaded,
+	// validated, cached, and then copied to the per-install path.
 	installerPath := filepath.Join(userHome, "rootless-install.sh")
-	if out, err := rootlessInstallerDownload(ctx, installerPath); err != nil {
-		return fmt.Errorf("download rootless installer: %w (output: %s)", err, string(out))
+	if out, err := cachedRootlessInstallerDownload(ctx, installerPath); err != nil {
+		// Fall back to the legacy uncached download seam when the cache path
+		// is unavailable or disabled. This preserves the existing behavior
+		// for operators who have not configured a cache directory.
+		if rootlessInstallerCacheDir == "" {
+			if out, err := rootlessInstallerDownload(ctx, installerPath); err != nil {
+				return fmt.Errorf("download rootless installer: %w (output: %s)", err, string(out))
+			}
+		} else {
+			return fmt.Errorf("download rootless installer: %w (output: %s)", err, string(out))
+		}
 	}
 	if err := os.Chmod(installerPath, 0755); err != nil {
 		return fmt.Errorf("chmod installer: %w", err)

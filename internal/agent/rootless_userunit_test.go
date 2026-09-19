@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -83,6 +84,13 @@ type userUnitFakeHost struct {
 	sessionScripts   []string
 	installerScripts []string
 
+	// cacheDir is the temp directory the fake cache implementation uses.
+	cacheDir string
+	// cacheEntries records the bytes written to the cache on each populate.
+	cacheEntries [][]byte
+	// cacheHits counts cache reads that returned a valid cached installer.
+	cacheHits int
+
 	calls []string // ordered call log across all seams
 }
 
@@ -119,6 +127,7 @@ func (h *userUnitFakeHost) install(t *testing.T, lingerDirPath string) {
 	prevSession := userSessionRunner
 	prevInstaller := rootlessInstallerRunner
 	prevDownload := rootlessInstallerDownload
+	prevCachedDownload := cachedRootlessInstallerDownload
 	prevLookup := userLookup
 	prevProbe := runtimeDirProbe
 	prevLinger := lingerDir
@@ -126,6 +135,7 @@ func (h *userUnitFakeHost) install(t *testing.T, lingerDirPath string) {
 	prevPoll := userManagerPollInterval
 	prevRoot := rootHostRunner
 	prevTimeout := userManagerWaitTimeoutOverride
+	prevCacheDir := rootlessInstallerCacheDir
 
 	userManagerRunner = h.systemRunner
 	userSessionRunner = h.sessionRunner
@@ -134,8 +144,27 @@ func (h *userUnitFakeHost) install(t *testing.T, lingerDirPath string) {
 	rootlessInstallerDownload = func(_ context.Context, path string) ([]byte, error) {
 		h.calls = append(h.calls, "download "+path)
 		// Produce the file the installer would have downloaded: the
-		// production flow chmods/chowns it afterwards.
-		return nil, os.WriteFile(path, []byte("#!/bin/sh\n"), 0o644)
+		// production flow chmods/chowns it afterwards. The payload must
+		// satisfy the cached download validation (shebang + minimum size)
+		// so cache-miss paths can validate the temp file before promoting
+		// it.
+		return nil, os.WriteFile(path, []byte("#!/bin/sh\n# test installer\nset -e\necho downloaded\nexit 0\n"), 0o644)
+	}
+	if h.cacheDir != "" {
+		rootlessInstallerCacheDir = h.cacheDir
+		cached := prevCachedDownload
+		cachedRootlessInstallerDownload = func(ctx context.Context, path string) ([]byte, error) {
+			h.calls = append(h.calls, "cached-download "+path)
+			cacheKey := filepath.Join(h.cacheDir, rootlessInstallerCacheKey())
+			if data, err := os.ReadFile(cacheKey); err == nil {
+				h.cacheHits++
+				if out, copyErr := copyFile(cacheKey, path); copyErr != nil {
+					return nil, fmt.Errorf("copy cached installer to %s: %w (output: %s)", path, copyErr, string(out))
+				}
+				return data, nil
+			}
+			return cached(ctx, path)
+		}
 	}
 	userLookup = func(name string) (*user.User, error) {
 		if name != h.username {
@@ -163,6 +192,7 @@ func (h *userUnitFakeHost) install(t *testing.T, lingerDirPath string) {
 		userSessionRunner = prevSession
 		rootlessInstallerRunner = prevInstaller
 		rootlessInstallerDownload = prevDownload
+		cachedRootlessInstallerDownload = prevCachedDownload
 		userLookup = prevLookup
 		runtimeDirProbe = prevProbe
 		lingerDir = prevLinger
@@ -170,6 +200,7 @@ func (h *userUnitFakeHost) install(t *testing.T, lingerDirPath string) {
 		userManagerPollInterval = prevPoll
 		rootHostRunner = prevRoot
 		userManagerWaitTimeoutOverride = prevTimeout
+		rootlessInstallerCacheDir = prevCacheDir
 	})
 }
 
@@ -627,5 +658,146 @@ func TestInstallRootlessDocker_BringUpStillFirst(t *testing.T) {
 	}
 	if h.countPrefix("installer#") != 0 {
 		t.Errorf("a broken bring-up must fail before the installer:%s", h.callLog())
+	}
+}
+
+// TestCachedRootlessInstallerDownload_CacheHit skips the network when a
+// valid cached installer already exists.
+func TestCachedRootlessInstallerDownload_CacheHit(t *testing.T) {
+	cacheDir := t.TempDir()
+	rootlessInstallerCacheDir = cacheDir
+	defer func() { rootlessInstallerCacheDir = "" }()
+
+	installer := []byte("#!/bin/sh\n# cached rootless installer for tests\nset -euo pipefail\n# payload ensures the cached artifact is large enough for the production\n# minimum-size validation.\necho cached\nexit 0\n")
+	cachePath := filepath.Join(cacheDir, rootlessInstallerCacheKey())
+	if err := os.WriteFile(cachePath, installer, 0o644); err != nil {
+		t.Fatalf("write cache: %v", err)
+	}
+
+	out, err := cachedRootlessInstallerDownload(context.Background(), t.TempDir()+"/installer.sh")
+	if err != nil {
+		t.Fatalf("cached download failed: %v", err)
+	}
+	if !bytes.Equal(out, installer) {
+		t.Errorf("cached download returned %q, want %q", out, installer)
+	}
+}
+
+// TestCachedRootlessInstallerDownload_CacheMissPopulate proves a cache miss
+// downloads, validates, and populates the cache, and a second call reuses it
+// without another download.
+func TestCachedRootlessInstallerDownload_CacheMissPopulate(t *testing.T) {
+	cacheDir := t.TempDir()
+	rootlessInstallerCacheDir = cacheDir
+	defer func() { rootlessInstallerCacheDir = "" }()
+
+	fakeDownload := false
+	origDownload := rootlessInstallerDownload
+	rootlessInstallerDownload = func(ctx context.Context, path string) ([]byte, error) {
+		fakeDownload = true
+		script := "#!/bin/sh\n# cached rootless installer for tests\nset -euo pipefail\n# payload ensures the cached artifact is large enough for the production minimum-size validation.\necho hi\nexit 0\n"
+		return nil, os.WriteFile(path, []byte(script), 0o644)
+	}
+	defer func() { rootlessInstallerDownload = origDownload }()
+
+	dst1 := filepath.Join(t.TempDir(), "a.sh")
+	if _, err := cachedRootlessInstallerDownload(context.Background(), dst1); err != nil {
+		t.Fatalf("first download failed: %v", err)
+	}
+	if !fakeDownload {
+		t.Fatal("expected the download seam to be called on cache miss")
+	}
+	cacheKey := filepath.Join(cacheDir, rootlessInstallerCacheKey())
+	if _, err := os.Stat(cacheKey); err != nil {
+		t.Fatalf("cache was not populated: %v", err)
+	}
+
+	fakeDownload = false
+	dst2 := filepath.Join(t.TempDir(), "b.sh")
+	if _, err := cachedRootlessInstallerDownload(context.Background(), dst2); err != nil {
+		t.Fatalf("second download failed: %v", err)
+	}
+	if fakeDownload {
+		t.Fatal("expected the download seam to be skipped on cache hit")
+	}
+}
+
+// TestCachedRootlessInstallerDownload_InvalidCacheRefreshes proves a cached
+// installer that fails validation is removed and replaced by a fresh download.
+func TestCachedRootlessInstallerDownload_InvalidCacheRefreshes(t *testing.T) {
+	cacheDir := t.TempDir()
+	rootlessInstallerCacheDir = cacheDir
+	defer func() { rootlessInstallerCacheDir = "" }()
+
+	cacheKey := filepath.Join(cacheDir, rootlessInstallerCacheKey())
+	if err := os.WriteFile(cacheKey, []byte("not-a-script"), 0o644); err != nil {
+		t.Fatalf("write bad cache: %v", err)
+	}
+
+	downloads := 0
+	origDownload := rootlessInstallerDownload
+	rootlessInstallerDownload = func(ctx context.Context, path string) ([]byte, error) {
+		downloads++
+		return nil, os.WriteFile(path, []byte("#!/bin/sh\necho ok\n"), 0o644)
+	}
+	defer func() { rootlessInstallerDownload = origDownload }()
+
+	dst := filepath.Join(t.TempDir(), "installer.sh")
+	if _, err := cachedRootlessInstallerDownload(context.Background(), dst); err != nil {
+		t.Fatalf("download failed: %v", err)
+	}
+	if downloads != 1 {
+		t.Fatalf("expected 1 download after invalid cache, got %d", downloads)
+	}
+}
+
+// TestCachedRootlessInstallerDownload_CancelDuringDownload does not leave a
+// valid cache artifact when the context is cancelled before the download
+// completes.
+func TestCachedRootlessInstallerDownload_CancelDuringDownload(t *testing.T) {
+	cacheDir := t.TempDir()
+	rootlessInstallerCacheDir = cacheDir
+	defer func() { rootlessInstallerCacheDir = "" }()
+
+	origDownload := rootlessInstallerDownload
+	rootlessInstallerDownload = func(ctx context.Context, path string) ([]byte, error) {
+		return nil, context.Canceled
+	}
+	defer func() { rootlessInstallerDownload = origDownload }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	dst := filepath.Join(t.TempDir(), "installer.sh")
+	if _, err := cachedRootlessInstallerDownload(ctx, dst); err == nil {
+		t.Fatal("expected cancellation to fail")
+	}
+	cacheKey := filepath.Join(cacheDir, rootlessInstallerCacheKey())
+	if _, err := os.Stat(cacheKey); err == nil {
+		t.Fatal("cancelled download must not leave a cache artifact")
+	}
+}
+
+// TestInstallRootlessDocker_CacheHitSkipsDownload verifies the production
+// install path uses the cache seam and skips the network download on hit.
+func TestInstallRootlessDocker_CacheHitSkipsDownload(t *testing.T) {
+	h := newUserUnitHost(t)
+	h.cacheDir = t.TempDir()
+	home := h.userHome(t)
+	h.install(t, t.TempDir())
+
+	installer := []byte("#!/bin/sh\n# cached rootless installer for tests\nset -euo pipefail\n# payload ensures the cached artifact is large enough for the production minimum-size validation.\necho cached\nexit 0\n")
+	cachePath := filepath.Join(h.cacheDir, rootlessInstallerCacheKey())
+	if err := os.WriteFile(cachePath, installer, 0o644); err != nil {
+		t.Fatalf("write cache: %v", err)
+	}
+
+	if err := installRootlessDocker(context.Background(), h.username, home, uuLogger()); err != nil {
+		t.Fatalf("installRootlessDocker failed: %v%s", err, h.callLog())
+	}
+	if h.countPrefix("download ") != 0 {
+		t.Errorf("cache hit must not call the uncached download seam:%s", h.callLog())
+	}
+	if h.countPrefix("cached-download ") != 1 {
+		t.Errorf("cache hit must call the cached download seam once:%s", h.callLog())
 	}
 }
