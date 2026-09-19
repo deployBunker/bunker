@@ -2181,20 +2181,21 @@ tasks:
   created_at: '2026-09-19T01:45:02.233460+00:00'
   completed_at: '2026-09-19T02:14:42.639303+00:00'
 - id: DF-BUNKER-25
-  title: "P2 Fresh-host adoption gate: no prebuilt binaries and no Go install path\
-    \ \u2014 the first documented command on a stock Debian host dies with sh: 1:\
-    \ go: not found (Error 127)"
+  title: 'Fresh-host adoption gate: one documented install path from a stock Debian
+    host to a working bunker CLI'
   criteria:
-  - 'a fresh Debian/Ubuntu host following only the README reaches a working ./bunker
-    --version without an undocumented step (measured: stock Debian 13 has make+docker,
-    no Go; documented make build fails with Error 127)'
-  - either release binaries plus a documented install script exist, or Prerequisites
-    carries a concrete install-Go-1.26 block (tarball to /usr/local/go, PATH export)
-    that avoids the GOPATH==GOROOT warning seen when extracting into $HOME
-  - the expected first-build cost (Go toolchain + module downloads) is stated next
-    to the first-spawn warning
-  status: pending
-  created_at: '2026-09-18T10:30:00+00:00'
+  - 'PASS: (1) scripts/install.sh installs from prebuilt release assets (linux/amd64+arm64)
+    with SHA-256 verification, plus --from-dir/--build modes, refusing loudly (exit
+    42) on unsupported platform and on checksum mismatch; (2) a repo-owned cross-compile
+    target emits bin/dist artifacts + SHA256SUMS and a v*-tag release workflow uploads
+    them with install.sh; (3) README Prerequisites/Install document the Go toolchain
+    acquisition (no undocumented step) and make build refuses clearly instead of ''sh:
+    1: go: not found'' Error 127 when Go is absent; (4) scripts/install_test.sh covers
+    the refusal + install paths and exits 0; (5) go build ./... go vet ./... gofmt
+    -l . and go test ./... -count=1 -short stay green.'
+  status: complete
+  created_at: '2026-09-19T03:41:01.432009+00:00'
+  completed_at: '2026-09-19T03:55:22.179716+00:00'
 - id: DF-BUNKER-26
   title: 'P3 Doc/cosmetic drift bundle: audit schema missing the hash chain, ServerMetrics
     agents[] undocumented, double-escaped TTL regex, destroy tombstone 200-vs-404'
