@@ -10,7 +10,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"syscall"
 )
 
 // Per-session private /tmp (GAP-075).
@@ -516,13 +515,16 @@ func statOwnerMode(path string) (string, os.FileMode, bool) {
 }
 
 // ownerString renders "uid:gid" for a file, or "" when the platform does not
-// expose it.
+// expose it. The extraction itself is platform-specific (platformOwner, which
+// is build-tagged): unix reads the stat structure, a platform without POSIX
+// ownership has nothing to read. An empty string is never trusted by
+// ownerTrusted, so "unobservable" stays fail-closed on every platform.
 func ownerString(fi os.FileInfo) string {
-	sys, ok := fi.Sys().(*syscall.Stat_t)
+	uid, gid, ok := platformOwner(fi)
 	if !ok {
 		return ""
 	}
-	return fmt.Sprintf("%d:%d", sys.Uid, sys.Gid)
+	return fmt.Sprintf("%d:%d", uid, gid)
 }
 
 // findModule reports the first installed module path from candidates,

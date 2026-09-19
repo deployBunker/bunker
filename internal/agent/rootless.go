@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 	"unicode/utf8"
 )
@@ -295,19 +294,18 @@ func runRootlessInstallerCmd(ctx context.Context, username, runtimeDir, script s
 //
 // SAFETY: Setpgid gives the child a group of its own, so the negative-pid kill
 // reaches only processes this command started. The daemon, its siblings, and
-// the test binary (which is in a different group) are never signalled.
+// the test binary (which is in a different group) are never signalled. Both
+// halves are platform-specific (see procgroup_unix.go / procgroup_nonunix.go):
+// on a platform without POSIX process groups the setup is a no-op and the
+// cancellation kills the direct child instead — the installer it guards is
+// Linux-only, so that build is a portability fallback.
 func runInOwnProcessGroup(ctx context.Context, cmd *exec.Cmd) ([]byte, error) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	setOwnProcessGroup(cmd)
 	cmd.Cancel = func() error {
 		if cmd.Process == nil {
 			return nil
 		}
-		// Negative pid = every process in the child's group.
-		if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
-			// The group is already gone (ESRCH) is the common, benign case.
-			return err
-		}
-		return nil
+		return killProcessGroup(cmd)
 	}
 	return cmd.CombinedOutput()
 }
@@ -1168,8 +1166,11 @@ func probeRuntimeDirOnDisk(path string) (runtimeDirInfo, error) {
 		return runtimeDirInfo{}, err
 	}
 	st := runtimeDirInfo{exists: true, isDir: info.IsDir()}
-	if sys, ok := info.Sys().(*syscall.Stat_t); ok {
-		st.owner = sys.Uid
+	// Ownership extraction is platform-specific (statOwnerUID): a platform that
+	// exposes no POSIX owner reports it as UNKNOWN, and classifyRuntimeDir fails
+	// SAFE on an unknown owner (it counts as stale).
+	if owner, ok := statOwnerUID(info); ok {
+		st.owner = owner
 		st.ownerKnown = true
 	}
 	return st, nil

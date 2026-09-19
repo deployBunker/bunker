@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
@@ -623,9 +622,16 @@ func TestRootlessInstallerTeardownKillsTheWholeSubtree(t *testing.T) {
 		return pid
 	}
 	// killPid reaps the orphan the CONTROL arm deliberately leaves behind. Only
-	// the explicit PID the test started is ever signalled.
+	// the explicit PID the test started is ever signalled. os.Process.Kill is
+	// used instead of syscall.Kill so the test file stays buildable on every
+	// GOOS (SIGKILL is what Kill sends on unix; ErrProcessDone replaces ESRCH).
 	killPid := func(pid int) {
-		if err := syscall.Kill(pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
+		p, err := os.FindProcess(pid)
+		if err != nil {
+			t.Logf("cleanup: find %d: %v", pid, err)
+			return
+		}
+		if err := p.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
 			t.Logf("cleanup: kill %d: %v", pid, err)
 		}
 	}
