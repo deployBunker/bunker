@@ -52,7 +52,9 @@ Bunker is a **multi-agent hosting platform** — a daemon (`bunkerd`) that runs 
   strictly opt-in through one bounded directory (`/srv/bunker-share`, setgid to
   the agent group and NOT writable by it — mode 2750 — with a kernel-enforced
   per-agent size cap). Install the host half with
-  `bunker host-provision --apply`; see
+  `bunker host-provision --apply` (requires a build from HEAD — the newest
+  release tag has no `host-provision` command, see the freshness note under
+  Install); see
   [specs/agent-tmp-isolation.md](specs/agent-tmp-isolation.md).
   `bunker status` reports the /tmp policy a daemon ACTUALLY enforces
   (`private`, `HOST-SHARED` with a warning, or `not reported` for a daemon
@@ -199,10 +201,16 @@ go build -o bunkerd ./cmd/bunkerd
 > `./bunker --version` (cobra auto-flag, GAP-035) — `bunker version` prints the
 > full commit/build metadata.
 
-> **Freshness check.** `go install ...@latest` serves the newest release
-> tag (v0.1.3), which may lag the repo HEAD. If `bunker --version`'s
-> `commit:` field doesn't match the repo's `git rev-parse HEAD`, the
-> binary is stale — rebuild from HEAD with `make build`.
+> **Freshness check — what `@latest` actually installs.** `go install
+> ...@latest` serves the newest release tag, `git describe --tags --abbrev=0` =
+> **v0.1.4**, which lags this repo's HEAD. Every command and feature this README
+> marks *requires a build from HEAD* — the lifecycle commands (`stop`, `start`,
+> `restart`) and the host-maintenance commands (`homes`, `linger`,
+> `host-provision`) — is in this tree but not in that tag; the post-release work
+> is listed under *Unreleased* in the [CHANGELOG](CHANGELOG.md). Build from this
+> checkout (`make build`) to get them. If `bunker --version`'s `commit:` field
+> doesn't match the repo's `git rev-parse HEAD`, the binary is stale — rebuild
+> from HEAD.
 
 ### Configure
 
@@ -299,6 +307,10 @@ rules, and safety boundaries.
 
 ### Provision host isolation before spawning
 
+**Requires a build from HEAD.** `host-provision` is not in the newest release
+tag, so `go install ...@latest` cannot install the host-side boundary — build the
+CLI and daemon from this checkout (see the freshness note under Install).
+
 **Required for private `/tmp`:** building or starting `bunkerd` does not install
 its host-side SSH/PAM configuration. A fresh unprovisioned host leaves agent SSH
 sessions sharing the host `/tmp`. Run these commands on the **daemon host**, as
@@ -306,6 +318,7 @@ root, from the checkout where `make build` produced both binaries. This is local
 host administration, not an RPC to the server selected by `bunker connect`.
 
 ```bash
+# Requires a build from HEAD — host-provision is not in the newest release tag.
 # Inspect the plan first; no host changes without --apply.
 sudo ./bunker host-provision --daemon-binary "$(pwd)/bunkerd"
 # After reviewing the plan, install the host-side boundary.
@@ -336,10 +349,11 @@ bunkerd 0.1.4
 ```
 
 A daemon that does not report `caps: isolation-grant` is refused at **any**
-version, because a version number cannot prove a capability: the `v0.1.4` tag
-predates the isolation implementation, and a plain `go build` reports the package
-version whatever the tree contains — a `v0.1.4` binary self-reports `0.1.4` while
-carrying no grant. The **0.1.4** version floor is a legacy minimum kept as a
+version, because a version number cannot prove a capability: the newest release
+tag predates the isolation implementation, and a plain `go build` reports the
+package version whatever the tree contains — a binary built from a tagged
+release self-reports that release's version (e.g. `0.1.4`) while carrying no
+grant. The **0.1.4** version floor is a legacy minimum kept as a
 secondary check (it still applies when the capability *is* reported) and is not a
 capability guarantee. Build CLI and daemon from the same current checkout.
 An absent, unreadable, timed-out or unparseable daemon version produces an
@@ -421,6 +435,18 @@ bunker env get abc12345 KEY
 # Extend TTL
 bunker heartbeat abc12345
 
+# Tear down (also deletes the client-local SSH key ~/.bunker/keys/abc12345)
+bunker destroy abc12345
+# Keep the local key for a spawn/destroy/spawn key-reuse cycle:
+bunker destroy abc12345 --keep-key
+```
+
+Pause, resume and recover an agent — **requires a build from HEAD** (the newest
+release tag has no `stop`/`start`/`restart`; see the freshness note under
+Install):
+
+```bash
+# Requires a build from HEAD — not in the newest release tag.
 # Pause an agent without destroying it (frees CPU, keeps user/home/container/ports)
 bunker stop abc12345
 
@@ -429,11 +455,6 @@ bunker start abc12345
 
 # Recover a wedged session: stop + start in one call, heartbeat TTL reset
 bunker restart abc12345
-
-# Tear down (also deletes the client-local SSH key ~/.bunker/keys/abc12345)
-bunker destroy abc12345
-# Keep the local key for a spawn/destroy/spawn key-reuse cycle:
-bunker destroy abc12345 --keep-key
 ```
 
 > **`bunker heartbeat` extends the TTL, it never shortens it — and there is no
@@ -472,6 +493,11 @@ bunker destroy abc12345 --keep-key
 > `agent_stopped` (not `not_found`) — the agent exists, so start or restart it
 > instead. A stopped agent still expires on its TTL like a running one, so a
 > pause longer than its remaining TTL ends in TTL destruction.
+>
+> **Requires a build from HEAD.** `stop`, `start` and `restart` are not in the
+> newest release tag, so `go install ...@latest` cannot pause, resume or recover
+> an agent — build the CLI from this checkout (see the freshness note under
+> Install).
 
 > **Expiry timestamps are daemon-local, TTL math is UTC.** The `Expires:` line
 > in the spawn bundle (and `bunker info` / `bunker heartbeat` output) is
@@ -586,9 +612,10 @@ server: `private` when the per-session `pam_namespace` instance is provisioned
 and enforced, `HOST-SHARED` (with a prominent warning) when agent sessions see
 the host `/tmp`, `unknown` when the state cannot be verified (e.g. the daemon
 is not root), and `not reported` when the daemon predates capability
-reporting. The isolation feature is **build-dependent**: the `v0.1.4` release
+reporting. The isolation feature is **build-dependent**: the newest release tag
 predates both the isolation implementation and capability reporting, which is why
-`host-provision` requires the daemon to report the `isolation-grant` capability
+`host-provision` (requires a build from HEAD, see the freshness note under
+Install) requires the daemon to report the `isolation-grant` capability
 rather than a version number. Build and run a daemon from the same current
 checkout as the CLI; do not infer isolation from a version number alone.
 
@@ -602,7 +629,8 @@ line is never a clean host. `Residue:` showing counts while `Agents: 0/N` shows
 nothing registered is the leak fingerprint: check the daemon's
 `/var/lib/bunkerd/spawn-failures.jsonl` breadcrumb journal, remove the leftover
 state, and only then spawn again. Two of those planes have a local-only
-maintenance command — run them on the daemon host, as root: `bunker homes`
+maintenance command (requires a build from HEAD, see the freshness note under
+Install) — run them on the daemon host, as root: `bunker homes`
 reports every `/home/bunker-*` entry as STALE (its user no longer exists) or
 KEPT (its user still exists) with the stale set's on-disk size, and
 `bunker homes prune` removes exactly the stale ones — never a home whose user
@@ -619,6 +647,7 @@ It changes host SSH/PAM configuration, so review its plan before applying it.
 **Teardown only — do not run this as part of installation:**
 
 ```bash
+# Requires a build from HEAD — host-provision is not in the newest release tag.
 sudo ./bunker host-provision --daemon-binary "$(pwd)/bunkerd" --uninstall --apply
 ```
 
@@ -650,6 +679,10 @@ Defaults, limits and the exact verification steps are in
 
 ## CLI Commands
 
+Commands in the newest release tag (`git describe --tags --abbrev=0` → **v0.1.4**)
+— these are what `go install github.com/deployBunker/bunker/cmd/bunker@latest`
+gives you:
+
 ```
 bunker connect     Register a bunkerd server
 bunker use         Select the active server
@@ -671,9 +704,23 @@ bunker heartbeat   Extend agent TTL
 bunker destroy     Tear down an agent (removes the local key unless --keep-key)
 bunker audit       Inspect the audit trail (verify / list / export — see docs/audit.md)
 bunker registry    Maintain the durable agent registry (compact)
-bunker host-provision  Provision the per-agent isolation boundary on this host
-                   (dry run by default; --apply installs, --status reports)
 bunker version     Print version/commit/build metadata (also --version)
+```
+
+Requires a build from HEAD — these commands are in this tree but not in the
+newest release tag, so `go install ...@latest` cannot run them (see the
+freshness note under Install and the *Unreleased* CHANGELOG section):
+
+```
+# Requires a build from HEAD — not in the newest release tag.
+bunker stop        Pause an agent without destroying it (start/restart resume it)
+bunker start       Resume a stopped agent
+bunker restart     Stop + start in one call and reset the heartbeat TTL
+bunker homes       Inspect orphaned agent home directories (prune removes the stale ones)
+bunker linger      Inspect the systemd linger directory (prune removes the stale entries)
+bunker host-provision  Provision the per-agent isolation boundary on this host
+                   (dry run by default; --apply installs, --status reports,
+                   --uninstall removes)
 ```
 
 ### Exit codes
@@ -765,6 +812,10 @@ make build
 
 # Run tests
 go test ./... -short
+
+# Verify README/CHANGELOG against the newest release tag — documented CLI
+# commands must exist in that tag or be marked "requires a build from HEAD"
+make docs-check
 
 # Run E2E battery (requires a running bunkerd)
 bash e2e-full-battery.sh

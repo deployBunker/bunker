@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased
+
+Commits after the `v0.1.4` release tag. Everything below is in the tree but not
+in the newest release tag, so it is what the README marks as *requires a build
+from HEAD*.
+
+### Added
+
+- Agent lifecycle commands: `bunker stop <agent-id>` pauses an agent without
+  destroying it (its Linux user, home, container and allocated port range
+  survive), `bunker start <agent-id>` re-arms it, and `bunker restart <agent-id>`
+  does both in one call to recover a wedged session while resetting the heartbeat
+  expiry
+- Local host-maintenance commands: `bunker homes` / `bunker homes prune` report
+  and remove orphaned `bunker-*` home directories, and `bunker linger` /
+  `bunker linger prune` do the same for stale `systemd` linger entries
+  (`--dry-run` first; fail-closed on an inconclusive user lookup)
+- `bunker host-provision` installs, inspects (`--status`, `--json`) and removes
+  (`--uninstall`) the host-side per-agent `/tmp` isolation boundary — dry run by
+  default, and it requires the daemon to report the `isolation-grant` capability
+- `go run ./cmd/docs-drift` (also `make docs-check`, wired into CI): a
+  deterministic offline check that the README's documented CLI surface exists in
+  the newest release tag or is marked as requiring a build from HEAD, that no
+  release tag older than the newest one is presented as current, and that this
+  section exists while commits sit after the tag
+
+### Docs
+
+- README: the documented CLI surface is split into "in the newest release tag"
+  and "requires a build from HEAD" instead of documenting commands the
+  `go install ...@latest` path cannot run, and the freshness note no longer calls
+  `v0.1.3` the newest release — it is `v0.1.4` (GAP-081)
+
 ## 0.1.4 (2026-09-13)
 
 ### Added

@@ -94,7 +94,10 @@ jobs:
           fi
           latest_tag=$(git describe --tags --abbrev=0)
           cli_version=$(/tmp/bunker-smoke version | awk 'NR==1 {print $2}')
-          changelog_top=$(grep -m1 '^## ' CHANGELOG.md | awk '{print $2}')
+          # GAP-081: the CHANGELOG's top heading is `## Unreleased` while commits
+          # sit past the newest release tag, so the parity check must read the
+          # newest RELEASE heading, not the first heading of any kind.
+          changelog_top=$(grep -m1 -E '^## [0-9]' CHANGELOG.md | awk '{print $2}')
           echo "latest tag: ${latest_tag} | bunker version: ${cli_version} | CHANGELOG: ${changelog_top}"
           test "${latest_tag}" = "v${cli_version}"
           test "${cli_version}" = "${changelog_top}"
@@ -131,6 +134,18 @@ jobs:
           /tmp/bunker-tag-bin --help | grep -q '^  ssh'
           /tmp/bunker-tag-bin --help | grep -q '^  systemd'
           echo "tag build check OK: ${latest_tag}"
+
+      # Docs release-drift check (GAP-081): the README's documented CLI surface
+      # must be the one `go install ...@latest` actually installs. Fails when a
+      # documented command is absent from the newest release tag's internal/cli
+      # tree and its block is not marked "requires a build from HEAD", when the
+      # README names a release tag older than `git describe --tags --abbrev=0`,
+      # or when commits exist past that tag and CHANGELOG.md carries no
+      # `## Unreleased` section. Offline and deterministic; the same rules are
+      # unit-tested in internal/docscheck. Tag-less checkouts (act/shallow/fork)
+      # exit 0 with a visible warning, like the two checks above.
+      - name: Docs release-drift check (GAP-081)
+        run: go run ./cmd/docs-drift
 
       - name: Vet
         run: go vet ./...

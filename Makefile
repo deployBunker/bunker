@@ -74,6 +74,15 @@ clean:
 e2e:
 	bash ./e2e-full-battery.sh
 
+# Verify the documented CLI surface against the newest release tag (GAP-081):
+# README commands must exist in that tag or be marked "requires a build from
+# HEAD", no older release tag may be named, and the CHANGELOG must carry an
+# `## Unreleased` section while commits sit after the tag. Offline; skips with a
+# warning in a tag-less checkout (act/shallow/fork).
+.PHONY: docs-check
+docs-check:
+	go run ./cmd/docs-drift
+
 # Install binaries to /usr/local/bin (requires root)
 .PHONY: install
 install: build
@@ -82,4 +91,4 @@ install: build
 
 # Full CI-quality check
 .PHONY: ci
-ci: lint test-short
+ci: lint test-short docs-check
