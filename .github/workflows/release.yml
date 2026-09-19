@@ -8,6 +8,24 @@ name: Release
 # workflow calls it and nothing else, so a local `make release-binaries` and a
 # published release cannot drift. Re-running the workflow for a tag that already
 # has a release uploads the assets again with --clobber (idempotent).
+#
+# INT-CI-021 — tag tree vs workflow definition. A run's workflow DEFINITION is
+# taken from the ref that dispatched it (main, for `workflow_dispatch`), while
+# the checked out TREE is the selected release tag, and every build input below
+# must come from that tree. Run 35425592977 dispatched this workflow from main
+# for tag v0.1.4 and died in 26s with
+#   make: *** No rule to make target 'release-binaries'. Stop.
+# because v0.1.4 (cef10fc, 2026-09-12) predates the release target (added by
+# 777a0cd, DF-BUNKER-25, 2026-09-18). So the entrypoint is RESOLVED from the
+# checked-out tree before anything is built: the job builds when the tag's own
+# tree defines `release-binaries` and carries the installer the six-asset
+# contract needs, and otherwise fails closed naming the tag, what is missing and
+# the remedy. Nothing is ever built or copied from another ref — assets attached
+# to a tag must be that tag's, and a main/HEAD build stamped with the tag's
+# version would satisfy the version string while being the wrong tree.
+# The contract is pinned statically AND dynamically by internal/releasecheck
+# (`go test ./...`), which runs this workflow's own entrypoint resolver against
+# the historical tag trees.
 
 on:
   push:
@@ -61,11 +79,80 @@ jobs:
         with:
           go-version-file: "go.mod"
 
+      # ── INT-CI-021: resolve the build entrypoint FROM THE TAG'S OWN TREE ──
+      # `make -n release-binaries` is make itself answering "does this tree
+      # define the target?" — it executes no recipe, so the probe is safe on a
+      # tag tree that predates the target. Both ingredients of the six-asset
+      # contract are checked here because both must come from the same tree:
+      # the target that writes dist/ and the installer that ships beside it.
+      # The step always runs (no `if:`): a probe that can be skipped guards
+      # nothing.
+      - name: Resolve the release build entrypoint from the tag tree
+        id: build
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${RELEASE_TAG:?RELEASE_TAG is required}"
+          commit="$(git rev-parse HEAD 2>/dev/null || true)"
+          short="${commit:0:12}"; [ -n "${short}" ] || short="unknown"
+          if ! command -v make >/dev/null 2>&1; then
+            echo "::error::make is not available on this runner — the '${tag}' release entrypoint cannot be resolved" >&2
+            exit 1
+          fi
+
+          missing=""
+          [ -f Makefile ] || missing="${missing} Makefile"
+          [ -f scripts/install.sh ] || missing="${missing} scripts/install.sh"
+          if ! make -n release-binaries >/dev/null 2>&1; then
+            missing="${missing} Makefile target 'release-binaries'"
+          fi
+
+          if [ -n "${missing}" ]; then
+            echo "::error::${tag} (${short}) cannot build the six published assets from its own tree — missing:${missing}" >&2
+            {
+              echo ""
+              echo "${tag}'s tree has no tag-compatible release entrypoint:"
+              echo ""
+              echo "  * Makefile target 'release-binaries' — added by 777a0cd (DF-BUNKER-25, 2026-09-18)"
+              echo "  * scripts/install.sh               — the sixth published asset, added by the same commit"
+              echo ""
+              echo "Refusing to build: assets attached to ${tag} must be built from ${tag}'s tree, and this"
+              echo "workflow never checks out, archives or builds another ref (a main/HEAD build stamped with"
+              echo "${tag}'s version satisfies the version check while shipping a different tree)."
+              echo ""
+              echo "To publish a historical tag: its tree cannot gain the target without rewriting the tag,"
+              echo "so cut a new tag on a commit that carries the release machinery and re-run this workflow"
+              echo "for that tag. Nothing was built, uploaded or clobbered by this run."
+            } >&2
+            exit 1
+          fi
+
+          echo "build_path=make" >> "${GITHUB_OUTPUT}"
+          echo "tag_commit=${commit}" >> "${GITHUB_OUTPUT}"
+          echo "resolved: ${tag} (${short}) defines 'make release-binaries' and carries scripts/install.sh"
+          {
+            echo "### Release ${tag}"
+            echo ""
+            echo "- workflow definition: \`${GITHUB_WORKFLOW_REF:-unknown}\`"
+            echo "- checked out tree: \`${tag}\` @ \`${short}\` (\`git rev-parse HEAD\`)"
+            echo "- build entrypoint: \`make release-binaries\` — resolved from ${tag}'s own Makefile"
+          } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+
       # The single build command, shared with dev hosts. Nothing below rebuilds.
+      # Gated on the resolution above (INT-CI-021): the target is only invoked
+      # when the CHECKED-OUT TAG's Makefile defines it. If the gate is ever
+      # false without the resolver failing, the verification step below has no
+      # dist/ to check and fails the job — a skipped build is never a green
+      # release.
       - name: Cross-compile the release binaries (make release-binaries)
+        if: steps.build.outputs.build_path == 'make'
         run: make release-binaries VERSION=${{ steps.tag.outputs.version }}
 
       - name: Verify the cross-compiled assets
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.tag.outputs.version }}
         run: |
           set -euo pipefail
           for platform in amd64 arm64; do
@@ -78,10 +165,35 @@ jobs:
           done
           # The stamp must be the tag's version, and the published installer must
           # be byte-identical to the one in the repo.
-          dist/bunker-linux-amd64 version | grep -q "^bunker ${{ steps.tag.outputs.version }}$"
+          dist/bunker-linux-amd64 version | grep -q "^bunker ${RELEASE_VERSION}$"
           cmp scripts/install.sh dist/install.sh
           ( cd dist && sha256sum --check SHA256SUMS )
-          echo "verified 4 cross-compiled binaries + SHA256SUMS + install.sh"
+
+          # ── Tag provenance (INT-CI-021) ─────────────────────────────────────
+          # The version STRING cannot tell a build of this tag from a build of
+          # another ref stamped with the tag's version, so prove where the
+          # binaries came from: the checkout must BE the tag commit, and every
+          # binary must embed that commit as the toolchain's vcs.revision.
+          if ! tag_commit="$(git rev-parse --verify "${RELEASE_TAG}^{commit}" 2>/dev/null)"; then
+            echo "::error::cannot resolve ${RELEASE_TAG} in this checkout — the provenance of the assets cannot be verified, refusing to publish" >&2
+            exit 1
+          fi
+          head_commit="$(git rev-parse HEAD)"
+          if [ "${tag_commit}" != "${head_commit}" ]; then
+            echo "::error::the checkout is ${head_commit} but ${RELEASE_TAG} is ${tag_commit} — refusing to publish assets that are not this tag's tree" >&2
+            exit 1
+          fi
+          for platform in amd64 arm64; do
+            for name in bunker bunkerd; do
+              asset="dist/${name}-linux-${platform}"
+              revision="$(go version -m "${asset}" | awk '$1 == "build" && index($2, "vcs.revision=") == 1 { sub("vcs.revision=", "", $2); print $2 }')"
+              if [ "${revision}" != "${tag_commit}" ]; then
+                echo "::error::${asset} embeds vcs.revision=${revision:-<none>}, expected ${tag_commit} (${RELEASE_TAG}) — the asset was not built from this tag's tree" >&2
+                exit 1
+              fi
+            done
+          done
+          echo "verified 4 cross-compiled binaries + SHA256SUMS + install.sh, all built from ${RELEASE_TAG} (${head_commit})"
 
       # Idempotent: an existing release for the tag gets its assets replaced,
       # a missing one is created. Both paths end with the six assets attached.

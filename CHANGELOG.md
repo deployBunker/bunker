@@ -60,6 +60,29 @@ from HEAD*.
   `$HOME` extraction pitfall) when no Go toolchain is on PATH, instead of
   surfacing `sh: 1: go: not found` (exit 127)
 
+### Fixed
+
+- `.github/workflows/release.yml` (INT-CI-021): a `workflow_dispatch` re-run of
+  an existing tag took its workflow *definition* from the dispatching ref (main)
+  while checking out the tag's *tree*, so `make release-binaries` was invoked in
+  a tree that predates the target — `v0.1.4`'s tree (`cef10fc`, 2026-09-12) is
+  six days older than the release machinery (`777a0cd`, DF-BUNKER-25) and the
+  run died in 26s with `make: *** No rule to make target 'release-binaries'.
+  Stop.` (run 35425592977). The workflow now resolves the build entrypoint from
+  the checked-out tree itself (`make -n release-binaries`, a dry run that
+  executes no recipe) with an unconditional, fail-closed step that names the
+  tag, the missing ingredients and the remedy, gates the build on that
+  resolution, and never checks out, archives or builds another ref — so assets
+  can no longer be published under a tag from a different tree. The verification
+  step also gained the provenance check it was missing: the checkout must be the
+  tag commit and every binary must embed it as the toolchain's `vcs.revision`
+  (`go version -m`), since a `bunker <version>` stamp alone is satisfied by a
+  build of any ref stamped with the tag's version. Both properties, plus the six
+  assets, the amd64/arm64 `GOOS`/`GOARCH` checks, the `SHA256SUMS` verification
+  and the byte-identical installer, are pinned by `internal/releasecheck`
+  (`go test ./...`), which executes the workflow's own entrypoint resolver
+  against the historical tag trees offline.
+
 ### Docs
 
 - README: the documented CLI surface is split into "in the newest release tag"
