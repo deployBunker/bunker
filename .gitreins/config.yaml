@@ -10,8 +10,16 @@ defaults:
   # "WARNING: Eval cap exceeded: Iteration cap (100) reached (100.1 used)" ->
   # INCOMPLETE verdict. A docs/criteria-heavy eval needs headroom to run its own
   # probe + greps + build/test; sized to the fleet-settled 200/25m shape here.
+  # 2026-09-19 (tick 484): the SAME criterion-heavy shape starved on TIME twice in a
+  # row on DF-BUNKER-25 (verdicts 2c1b6bcd + d5a02a07, both "Cap exceeded: Time cap
+  # (25m) exceeded (25m10s / 25m8s elapsed)", tier1 PASS, items: [] — a cap, not a
+  # merits failure). Two starved runs at one rung license exactly ONE raise: 25m -> 45m,
+  # the fleet-settled shape for LIVE-VERIFIED criteria (the criteria make the judge
+  # cross-compile four binaries, drive a Go-less PATH probe and run a shell suite).
+  # Pre-solve class gitreins-judge-tier2-evaluator-time-cap-incomplete (corpus 1464)
+  # prescribes an isolated chore raise + a re-judge on the UNCHANGED commit.
   max_iterations: 200
-  max_time: "25m"
+  max_time: "45m"
   # ESCALATION (2M -> 4M -> 8M -> 16M): each rung bought about one tick. Raised to
   # 16M on tick 451 after INT-SPAWN-001's Tier 2 hit "Cap exceeded: Input token budget
   # (8.0M) exceeded (8.0M used)" -> INCOMPLETE verdict 73e7ecae. NO FURTHER RUNG:
@@ -71,10 +79,10 @@ tier1:
 evaluator:
   model: deepseek-v4-flash
   max_iterations: 200
-  max_time: "25m"
+  max_time: "45m"   # tick 484: 25m starved twice on DF-BUNKER-25 (see the defaults block)
   max_input_tokens: "16M"
   max_output_tokens: "384k"
-  cap: "200/25m/16M/384k"
+  cap: "200/45m/16M/384k"
   # ── Context-growth knobs (INT-CI-014, measured 2026-09-17) ────
   # MEASURED (docs/tier2-eval-budget.md, instrumented runs e6d24301 + 616c1d33 on
   # INT-CI-017 at HEAD 848625c): 23 LLM calls, per-call prompt 6,211 -> 29,323
