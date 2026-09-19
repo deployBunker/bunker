@@ -412,8 +412,17 @@ func hermeticACME(t *testing.T) *acmeRecorder {
 		acmeStub = httptest.NewServer(http.HandlerFunc(acmeDirectoryStub))
 		certmagic.DefaultACME.CA = acmeStub.URL + "/directory"
 		certmagic.DefaultACME.Agreed = true
+		// A FIXED /tmp storage path breaks on clean machines: a leftover dir
+		// owned by another UID (previous CI run, root-run test) makes certmagic
+		// fail with "permission denied" on certificates/... . os.MkdirTemp
+		// atomically creates a unique per-run directory with 0700 owned by the
+		// current user, so stale cross-UID leftovers are never reused.
+		storageDir, err := os.MkdirTemp("", "bunker-int-ci-016-acme-storage-")
+		if err != nil {
+			t.Fatalf("INT-CI-016: create per-run ACME storage dir: %v", err)
+		}
 		certmagic.Default.Storage = &certmagic.FileStorage{
-			Path: filepath.Join(os.TempDir(), "bunker-int-ci-016-acme-storage"),
+			Path: storageDir,
 		}
 		// Install the recorder ONLY through the production seam: if the seam is
 		// removed from buildTLSConfig, certmagic keeps its own transport and the
