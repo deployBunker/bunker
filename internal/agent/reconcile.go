@@ -122,6 +122,13 @@ func (m *AgentManager) Reconcile(ctx context.Context) ReconcileReport {
 				continue
 			}
 			rep.Purged++
+			// DF-BUNKER-24: the system user is gone but a purge only dropped
+			// the durable record — the agent's persisted private key stayed
+			// on disk forever. Convergence here is the same scoped removal the
+			// destroy path uses (best-effort, idempotent). Foreign orphans are
+			// skipped earlier and are not reached by this walk: it only visits
+			// records THIS daemon spawned.
+			m.removeAgentSSHKeyBestEffort(rec.AgentID, m.logger)
 			m.logger.Info("registry reconcile: purged stale registry record",
 				"action", "purge", "agent_id", rec.AgentID, "reason", "no system user")
 			continue

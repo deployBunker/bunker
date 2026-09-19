@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -261,6 +260,12 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 				if perr := m.persistDestroy(agentID); perr != nil {
 					m.logger.Warn("registry destroy append failed", "agent_id", agentID, "error", perr)
 				}
+				// DF-BUNKER-24: this branch returns BEFORE Step 4.5, so the
+				// persisted key has to be removed here too. It is the branch
+				// the TTL reaper lands on whenever the agent's system user is
+				// already gone (post-restart reap), and skipping it left
+				// cfg.Agent.SSHDir/<id> behind forever.
+				m.removeAgentSSHKeyBestEffort(agentID, m.logger)
 				m.logger.Info("agent already absent; destroy succeeded idempotently",
 					"agent_id", agentID, "username", username)
 				return &v1.DestroyAgentResponse{AgentId: agentID, Status: "destroyed"}, nil
@@ -269,6 +274,12 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 			// the user-facing error must stay clean so the CLI can present
 			// a tidy "agent not found" without leaking command output.
 			m.logger.Warn("userdel failed, treating agent as not found", "username", username, "error", err, "output", string(out))
+			// DF-BUNKER-24: a never-seen ID with a persisted key means the
+			// registry is unavailable (or compacted) while the host state is
+			// already gone — the reported not_found must still not leave a
+			// credential under cfg.Agent.SSHDir/<id> for the next agent that
+			// reuses the id. Removal is scoped by removeAgentSSHKey.
+			m.removeAgentSSHKeyBestEffort(agentID, m.logger)
 			return &v1.DestroyAgentResponse{AgentId: agentID, Status: "not_found"},
 				fmt.Errorf("agent %q not found", agentID)
 		}
@@ -291,11 +302,11 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 		}
 	}
 
-	// Step 4.5: Clean up persisted SSH key
-	sshKeyPath := filepath.Join(m.cfg.Agent.SSHDir, agentID)
-	if err := os.Remove(sshKeyPath); err != nil && !os.IsNotExist(err) {
-		m.logger.Warn("failed to remove ssh key", "path", sshKeyPath, "error", err)
-	}
+	// Step 4.5: Clean up persisted SSH key (DF-BUNKER-24: the same helper is
+	// also used by the two early returns above and by the reconcile purge, so
+	// every path that concludes the agent is gone converges on the same state
+	// through one scoped implementation).
+	m.removeAgentSSHKeyBestEffort(agentID, m.logger)
 
 	if m.tunnelMgr != nil {
 		if err := m.tunnelMgr.Stop(agentID); err != nil {
