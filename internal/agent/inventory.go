@@ -53,9 +53,14 @@ type ResidueInventory struct {
 	// OrphanKeys counts persisted agent SSH private keys (cfg.Agent.SSHDir)
 	// whose agent is unknown to the daemon.
 	OrphanKeys int
-	// StaleLinger counts systemd linger entries for managed agent users that
-	// are unknown to the daemon — the state that makes logind resurrect a user
-	// manager for an agent that no longer exists (INT-SPAWN-001).
+	// StaleLinger counts systemd linger entries whose user no longer exists on
+	// the host — the state that makes logind resurrect a user manager for a
+	// user that is gone (INT-SPAWN-001). Since INT-HOST-004 the plane is NOT
+	// name-scoped: logind acts on every entry in the directory, so a stale
+	// entry whose name drifted from the managed bunker- pattern (e.g.
+	// bunter-1d2b6cef) is counted too. Managed entries the daemon still knows
+	// and entries whose user still exists never count, matching what
+	// host-local `bunker linger` reports.
 	StaleLinger int
 	// Registered is the number of agents the daemon knows (tracker + durable
 	// registry). It is the denominator that makes the counts interpretable:
@@ -138,12 +143,34 @@ func (m *AgentManager) ResidueInventory() ResidueInventory {
 	}
 
 	// ── linger ───────────────────────────────────────────────────────────
-	linger, err := listAgentDirEntries(lingerDir, agentUserPrefix)
+	// INT-HOST-004: this plane is deliberately NOT name-scoped. Until this fix
+	// it listed entries through listAgentDirEntries(lingerDir, agentUserPrefix),
+	// which silently dropped every entry not named bunker-<valid-id> — measured
+	// on bunker-mvp as 50 stale reported while host-local `bunker linger` (which
+	// applies no prefix filter, see internal/cli/linger.go scanLingerDir)
+	// counted 51 at the same instant, with `bunter-1d2b6cef` on disk. logind
+	// acts on EVERY entry in the linger directory, so the residue probe scans
+	// the raw directory and classifies by user existence, exactly like the CLI:
+	// a managed entry the daemon still knows is not stale (the exemption is
+	// checked FIRST, before the user lookup, so a healthy agent's linger entry
+	// can never read as residue even on a host where its user vanished mid-probe);
+	// everything else is stale when its user no longer exists and ignored when
+	// the user is real. A missing directory is an empty plane, not a failure.
+	lingerNames, err := lingerRawDirNames(lingerDir)
 	if err != nil {
 		failures = append(failures, "linger: "+err.Error())
 	} else {
-		for _, id := range linger {
-			if !m.daemonKnowsAgent(id) {
+		for _, name := range lingerNames {
+			if id, ok := strings.CutPrefix(name, agentUserPrefix); ok && validAgentID.MatchString(id) && m.daemonKnowsAgent(id) {
+				continue
+			}
+			// lookupUser reports the user database through user.Lookup,
+			// which ERRORS when the user does not exist — the same
+			// translation every in-repo consumer applies to this seam
+			// (manager_destroy.go treats err != nil as the user being
+			// gone; internal/cli lingerUserExists maps it to the prune's
+			// target class). Error = user absent = stale linger.
+			if _, lookupErr := lookupUser(name); lookupErr != nil {
 				inv.StaleLinger++
 			}
 		}
@@ -162,6 +189,35 @@ func (m *AgentManager) ResidueInventory() ResidueInventory {
 		inv.Detail = strings.Join(failures, "; ")
 	}
 	return inv
+}
+
+// lingerRawDirNames lists the DIRECT entry names of dir with NO name-scoping
+// beyond dotfile exclusion, sorted: the linger plane reads the raw directory so
+// an entry whose name drifted from the managed bunker- pattern (INT-HOST-004)
+// is still seen. Semantics match listAgentDirEntries otherwise: a MISSING
+// directory is an empty plane (nil, nil), and any other read error is returned.
+// Unique to the linger plane (other planes list managed ids through
+// listAgentDirEntries); linger-prefixed so it cannot collide with sibling
+// workers' identifiers in this package.
+func lingerRawDirNames(dir string) ([]string, error) {
+	if dir == "" {
+		return nil, nil
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), ".") {
+			out = append(out, e.Name())
+		}
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // residuePlaneCount is the number of independently probed planes; the status is
