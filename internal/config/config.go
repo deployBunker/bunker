@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -84,7 +85,27 @@ type TLSConfig struct {
 	CAFile     string   `mapstructure:"ca_file"`
 	VerifyCN   string   `mapstructure:"verify_cn"`
 	Hosts      []string `mapstructure:"hosts"`
+	// InsecureDev is the GAP-126 / REQ-T1 explicit opt-in for binding a
+	// NON-loopback listener while TLS is disabled. It exists so the insecure
+	// configuration is a deliberate, named, auditable decision instead of a
+	// silent default: with it false (the default) CheckTLS REFUSES to start on
+	// a non-loopback plaintext bind, and with it true the daemon starts, logs a
+	// loud INSECURE warning, and stamps every audit record with
+	// InsecurePlaintextMarker. It has no effect while tls.enabled is true, and
+	// a loopback-only bind never needs it. Never set this on a shared or
+	// internet-reachable host.
+	InsecureDev bool `mapstructure:"insecure_dev"`
 }
+
+// InsecurePlaintextMarker is the audit-record marker stamped on every record
+// while the daemon serves a non-loopback plaintext listener under the explicit
+// tls.insecure_dev: true opt-in (GAP-126 / REQ-T1). It prefixes the record's
+// Summary field, so a reader of the audit trail can never mistake a request
+// that arrived over plaintext for one that arrived over TLS. The Record JSON
+// field set is deliberately unchanged — the marker rides the existing
+// human-readable Summary. Single definition here — internal/audit and the
+// startup gate both reference this constant; never duplicate the literal.
+const InsecurePlaintextMarker = "[INSECURE-PLAINTEXT]"
 
 // APIKey holds a generated API key with metadata.
 type APIKey struct {
@@ -572,6 +593,7 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("tls.mtls")
 	v.BindEnv("tls.ca_file")
 	v.BindEnv("tls.verify_cn")
+	v.BindEnv("tls.insecure_dev")
 	v.BindEnv("auth.enabled")
 	v.BindEnv("auth.token")
 	v.BindEnv("auth.jwt_secret")
@@ -998,4 +1020,116 @@ func (c *Config) inlineSecrets() []string {
 		out = append(out, "auth.jwt_secret")
 	}
 	return out
+}
+
+// CheckTLS is the startup transport gate (GAP-126 / REQ-T1). It mirrors
+// CheckAuth: it returns a non-empty warning when the daemon is about to serve
+// plaintext on a NON-loopback listener under the explicit tls.insecure_dev
+// opt-in, and an error — the daemon must refuse to start — when a non-loopback
+// listener would carry plaintext without that opt-in.
+//
+// The device is the one an evaluation fails on: an admin-capable RPC plane in
+// cleartext. Loopback-only binds stay allowed silently (they are not reachable
+// off-host), and TLS on makes the gate a no-op.
+//
+// grpcAddr/restAddr are the effective listen addresses; the daemon passes the
+// configured server.grpc_addr / server.rest_addr so the gate checks exactly
+// what Run is about to bind. Callers must treat a nil error with a non-empty
+// warning as "started, but loudly insecure".
+func (c *Config) CheckTLS(grpcAddr, restAddr string) (string, error) {
+	if c.TLS.Enabled {
+		return "", nil
+	}
+
+	// REST is optional: an empty rest_addr (or one aliasing the gRPC address,
+	// which Run skips as a duplicate listener) is not a second bind.
+	addrs := []string{grpcAddr}
+	if restAddr != "" && restAddr != grpcAddr {
+		addrs = append(addrs, restAddr)
+	}
+
+	nonLoopback := make([]string, 0, len(addrs))
+	for _, addr := range addrs {
+		if ok, _ := IsLoopbackAddr(addr); !ok {
+			nonLoopback = append(nonLoopback, addr)
+		}
+	}
+	if len(nonLoopback) == 0 {
+		return "", nil
+	}
+
+	if !c.TLS.InsecureDev {
+		return "", fmt.Errorf("refusing to bind non-loopback plaintext listener %s: "+
+			"set tls.enabled: true to serve TLS, or explicitly set tls.insecure_dev: true "+
+			"to run WITHOUT TLS on a reachable address (loudly warned and marked in the audit trail)",
+			strings.Join(nonLoopback, ", "))
+	}
+
+	return fmt.Sprintf("%s *** INSECURE: serving plaintext on non-loopback listener %s "+
+		"(tls.enabled is false and tls.insecure_dev is true). Any client that can reach this "+
+		"address controls the RPC plane; every audit record is marked %s. Disable tls.insecure_dev "+
+		"and enable TLS for anything reachable beyond this host. ***",
+		"bunkerd:", strings.Join(nonLoopback, ", "), InsecurePlaintextMarker), nil
+}
+
+// IsLoopbackAddr reports whether a listener address string binds only the
+// loopback interface. It is the classification CheckTLS decides on, exported so
+// the daemon and its tests share one definition.
+//
+// Rules, in order:
+//   - "" is not a bind at all: reported as NOT loopback (fail closed).
+//   - the host part is taken with net.SplitHostPort; when the string does not
+//     parse as host:port (e.g. a bare "8080") the whole string is used as the
+//     host, so a bare numeric port is treated as an address, not a pass.
+//   - an empty or wildcard host (":8080", "0.0.0.0:8080", "[::]:8080") means
+//     EVERY interface, so it is NON-loopback by definition.
+//   - "localhost" and any host whose IP is in 127.0.0.0/8 or is ::1 are
+//     loopback.
+//   - anything else (a routable IP, a hostname) is non-loopback: an unknown
+//     name is refused rather than trusted.
+//
+// The returned string is the resolved host when one was determined, for error
+// messages.
+func IsLoopbackAddr(addr string) (bool, string) {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return false, ""
+	}
+	host := addr
+	if h, _, err := net.SplitHostPort(addr); err == nil {
+		host = h
+	}
+	host = strings.TrimSpace(host)
+	// Empty host (":8080") or an explicit wildcard binds every interface.
+	if host == "" || host == "0.0.0.0" || host == "::" || host == "[::]" {
+		return false, host
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true, host
+	}
+	// Bracketed literals like "[::1]" only survive the fallback path; strip
+	// them before parsing.
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	if ip == nil {
+		return false, host // a name we cannot resolve: non-loopback (fail closed)
+	}
+	return ip.IsLoopback(), host
+}
+
+// InsecurePlaintextActive reports whether this configuration will serve
+// plaintext on a NON-loopback listener — i.e. TLS is disabled, the explicit
+// tls.insecure_dev opt-in is set, and at least one configured listener binds
+// beyond loopback.
+//
+// It is the single predicate behind the two halves of REQ-T1: the daemon uses
+// it to decide whether to mark audit records, and CheckTLS is defined so that a
+// true result is exactly the case in which CheckTLS returns a warning and no
+// error. A loopback-only insecure_dev config is NOT "insecure plaintext" (the
+// listener is not reachable off-host), and neither is a TLS config.
+func (c *Config) InsecurePlaintextActive() bool {
+	if c.TLS.Enabled || !c.TLS.InsecureDev {
+		return false
+	}
+	warn, err := c.CheckTLS(c.Server.GRPCAddr, c.Server.RESTAddr)
+	return err == nil && warn != ""
 }

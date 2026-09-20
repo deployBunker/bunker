@@ -62,15 +62,27 @@ func New(cfg *config.Config) *BunkerdServer {
 			ShipTo:  cfg.Audit.ShipTo,
 			SealKey: cfg.Audit.SealKey,
 			Logger:  s.logger,
+			// GAP-126: a daemon serving plaintext on a non-loopback
+			// listener under the explicit tls.insecure_dev opt-in stamps
+			// every record so the trail states its own transport. The
+			// predicate is decided in config so startup and the log agree
+			// by construction.
+			InsecurePlaintext: cfg.InsecurePlaintextActive(),
 		}
 		l, err := audit.NewWithOptions(cfg.Audit.Path, auditOpts)
 		if err != nil {
 			if shipErr := (*audit.InvalidShipToError)(nil); errors.As(err, &shipErr) {
 				// Only the ship endpoint was bad: fall back to a plain
 				// log (no shipping) instead of losing the audit trail.
+				// Fall back through NewWithOptions with the same
+				// insecure-transport option — a bad ship_to must not
+				// silently UNMARK records.
 				s.logger.Warn("audit shipping disabled",
 					"ship_to", audit.RedactShipTo(cfg.Audit.ShipTo), "error", err)
-				l, err = audit.New(cfg.Audit.Path)
+				l, err = audit.NewWithOptions(cfg.Audit.Path, audit.Options{
+					InsecurePlaintext: auditOpts.InsecurePlaintext,
+					Logger:            s.logger,
+				})
 			}
 		}
 		if err != nil {
@@ -86,6 +98,23 @@ func New(cfg *config.Config) *BunkerdServer {
 func (s *BunkerdServer) Run(ctx context.Context) error {
 	if err := s.cfg.Validate(); err != nil {
 		return fmt.Errorf("invalid config: %w", err)
+	}
+	// GAP-126 / REQ-T1 transport gate: refuse to serve a NON-loopback
+	// PLAINTEXT listener unless the operator made the explicit
+	// tls.insecure_dev opt-in. Mirrors the CheckAuth pattern — it runs here,
+	// before any listener opens (the same fail-before-listen point as the
+	// durable-registry gate below), so the daemon never puts an
+	// admin-capable RPC plane in cleartext on a reachable address by
+	// accident. A warning (the opt-in path) is written to the structured
+	// logger AND to stderr, so whichever stream a supervisor captures
+	// records it.
+	if warn, err := s.cfg.CheckTLS(s.cfg.Server.GRPCAddr, s.cfg.Server.RESTAddr); err != nil {
+		return fmt.Errorf("refusing to start: %w", err)
+	} else if warn != "" {
+		s.logger.Warn(warn)
+		// Belt and braces: the same line on stderr, like the auth gate, so a
+		// supervisor that captures only stderr still records it.
+		fmt.Fprintln(os.Stderr, warn)
 	}
 	s.logger.Info("bunkerd config loaded", "max_agents", s.cfg.Agent.MaxAgents)
 	// GAP-067: safe startup note about containment disclosure state. Only
