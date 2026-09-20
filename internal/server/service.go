@@ -30,6 +30,7 @@ import (
 	"github.com/deployBunker/bunker/internal/tailscale"
 	"github.com/deployBunker/bunker/internal/tunnel"
 	"github.com/deployBunker/bunker/internal/version"
+	v1connect "github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect"
 )
 
 // serverStartTime records when the bunkerd process started. ServerInfo
@@ -538,8 +539,102 @@ func (s *bunkerdService) AgentMetrics(ctx context.Context, req *connect.Request[
 	return connect.NewResponse(resp), nil
 }
 
+// execAuditState carries the mutable outcome facts one exec handler learns as
+// it runs. The handler's deferred recorder takes this together with the
+// handler's NAMED return error, so the command record is written with the
+// outcome the request ACTUALLY had rather than a guess made at entry, and no
+// error path — present or future — can be recorded as a success by omission.
+type execAuditState struct {
+	exitCode *int32
+}
+
+// recordExecAudit appends the GAP-142 correlated command-content record for one
+// exec/run request. It is the ONLY writer of exec command content in the
+// server: GAP-074's richer exec recorder is expected to extend this function
+// (and audit.ExecRecord) rather than stand up a second recorder beside it.
+//
+// Everything it needs is derived from the request that was just served:
+//
+//   - the command summary is built by the audit package's scrubber
+//     (audit.RedactCommandSummary for command+args, RedactScriptSummary for an
+//     uploaded script body, which is digested rather than scanned);
+//   - the caller and remote address come from the request context, so the
+//     record cannot disagree with the interceptor's RPC record;
+//   - the outcome reflects what happened: "ok", "exit_<code>" when the command
+//     ran and returned non-zero, or the connect error code when the handler
+//     failed.
+//
+// Failure handling mirrors the SEC-08/GAP-133 posture: a nil audit log is a
+// no-op and a write failure is logged and swallowed by
+// audit.RecordExecCommand, so auditing can never change an exec's outcome.
+func (s *bunkerdService) recordExecAudit(ctx context.Context, started time.Time, procedure, agentID string, msg any, st *execAuditState, handlerErr *error) {
+	if s.auditLog == nil {
+		return
+	}
+	var err error
+	if handlerErr != nil {
+		err = *handlerErr
+	}
+	rec := audit.ExecRecord{
+		Procedure:  procedure,
+		AgentID:    agentID,
+		Outcome:    execAuditOutcome(st, err),
+		Summary:    execCommandSummary(msg),
+		DurationMS: time.Since(started).Milliseconds(),
+	}
+	audit.RecordExecCommand(ctx, s.auditLog, s.logger, rec)
+}
+
+// execAuditOutcome derives the command record's outcome from what the handler
+// observed. A handler error wins (the command's fate is then described by the
+// RPC's failure), then a reaped exit code, then plain "ok".
+func execAuditOutcome(st *execAuditState, handlerErr error) string {
+	if handlerErr != nil {
+		return connect.CodeOf(handlerErr).String()
+	}
+	if st != nil && st.exitCode != nil && *st.exitCode != 0 {
+		return "exit_" + strconv.Itoa(int(*st.exitCode))
+	}
+	return "ok"
+}
+
+// execCommandSummary renders the redacted command summary for an exec/run
+// request. Three input shapes, three bodies of evidence:
+//
+//   - raw exec: argv is passed through verbatim (no shell), so command + args is
+//     the whole truth;
+//   - script upload: the script body IS the command, and it is arbitrary
+//     multi-line content — the most likely carrier of an embedded credential —
+//     so it is recorded as size + digest (audit.RedactScriptSummary) instead of
+//     being token-scanned into the trail;
+//   - shell exec: command + args, and the args are included because a shell
+//     wrapper's payload routinely lives in the arguments.
+//
+// Before this, the audit interceptor deliberately recorded NOTHING of the
+// request message (see audit.summarize); the redaction below is what makes
+// recording the command safe.
+func execCommandSummary(msg any) string {
+	switch m := msg.(type) {
+	case *v1.ExecAgentRequest:
+		if script := m.GetScriptContent(); script != "" {
+			return audit.RedactScriptSummary(script)
+		}
+		return audit.RedactCommandSummary(m.GetCommand(), m.GetArgs())
+	case *v1.RunAgentRequest:
+		return audit.RedactCommandSummary(m.GetCommand(), m.GetArgs())
+	}
+	return ""
+}
+
 // ExecAgent executes a command in the agent's environment via SSH.
-func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.ExecAgentRequest], stream *connect.ServerStream[v1.ExecAgentResponse]) error {
+//
+// The RESULT is a named return: the deferred GAP-142 recorder derives the
+// command record's outcome from it, so every error path — including ones added
+// later — is reflected in the trail rather than recorded as a success. Named
+// returns are what make that structural instead of a list of assignments to
+// keep in sync by hand (the RunAgent/tracker-not-found path was already
+// recorded as "ok" before this).
+func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.ExecAgentRequest], stream *connect.ServerStream[v1.ExecAgentResponse]) (err error) {
 	agentID := req.Msg.AgentId
 	if agentID == "" {
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("agent_id is required"))
@@ -550,6 +645,20 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 	// (DOGFOOD-012). Must happen before any early return so error paths are
 	// covered too.
 	audit.StampStreamAgentID(ctx, agentID)
+
+	// GAP-142: the interceptor's streaming record cannot see this request's
+	// message, so it records the RPC but never the COMMAND — the forensic core
+	// question ("what did this exec actually run?") had no answer in the trail.
+	// ONE correlated command-content record is appended on the way out, through
+	// the same AuditLog (same hash chain), carrying the redacted command, the
+	// target agent and the caller identity. Deferred FIRST so every return path
+	// below — lookup failure, stopped agent, ssh failures, the normal
+	// completion — is recorded, and so it runs BEFORE the interceptor (which
+	// runs after the handler returns) appends the RPC record: the command record
+	// precedes the RPC record it correlates with in the chain.
+	started := time.Now()
+	execState := &execAuditState{}
+	defer s.recordExecAudit(ctx, started, v1connect.BunkerdExecAgentProcedure, agentID, req.Msg, execState, &err)
 
 	// Look up agent record
 	rec := s.tracker.Get(agentID)
@@ -672,11 +781,11 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 	// drained to EOF (or the drain grace expired), so the exit-code frame always
 	// follows the last output frame.
 	exitCode := int32(0)
-	err := cmd.Wait()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
+	waitErr := cmd.Wait()
+	if waitErr != nil {
+		if exitErr, ok := waitErr.(*exec.ExitError); ok {
 			exitCode = int32(exitErr.ExitCode())
-		} else if errors.Is(err, exec.ErrWaitDelay) {
+		} else if errors.Is(waitErr, exec.ErrWaitDelay) {
 			// The child exited successfully but a descendant held a pipe open
 			// past the drain grace, so the tail of its output was dropped. The
 			// command itself did not fail: keep the exit-code semantics
@@ -689,6 +798,9 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 			return connect.NewError(connect.CodeInternal, fmt.Errorf("ssh wait: %w", err))
 		}
 	}
+	// GAP-142: the reaped exit code reaches the audit record (0 -> "ok",
+	// non-zero -> "exit_<code>") without changing any frame sent to the client.
+	execState.exitCode = &exitCode
 
 	// Both sinks are quiescent now (Wait joined the exec copy goroutines), so
 	// these reads are race-free. The stdout facts feed the GAP-067 containment
@@ -835,7 +947,15 @@ func (w *execStreamSink) Write(p []byte) (int, error) {
 // RunAgent starts a command in the agent environment as a persistent systemd
 // transient unit. The unit survives the RPC session ending. Non-detached
 // (synchronous) runs are handled by the CLI via ExecAgent streaming.
-func (s *bunkerdService) RunAgent(ctx context.Context, req *connect.Request[v1.RunAgentRequest]) (*connect.Response[v1.RunAgentResponse], error) {
+func (s *bunkerdService) RunAgent(ctx context.Context, req *connect.Request[v1.RunAgentRequest]) (result *connect.Response[v1.RunAgentResponse], err error) {
+	// GAP-142: same correlated command-content record as ExecAgent — the detach
+	// RPC also needs to carry WHAT was started into the trail. The state is
+	// filled by the named return below, so validation failures and manager
+	// failures are recorded with their real connect code.
+	started := time.Now()
+	execState := &execAuditState{}
+	defer s.recordExecAudit(ctx, started, v1connect.BunkerdRunAgentProcedure, req.Msg.GetAgentId(), req.Msg, execState, &err)
+
 	if req.Msg.GetAgentId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("agent_id is required"))
 	}
