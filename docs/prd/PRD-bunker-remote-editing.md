@@ -21,24 +21,96 @@ The main box carries both the thinking and the doing. Every build, test run, gre
 
 The bunkers already exist, are already spawned and destroyed by this fleet, and their disk/CPU are idle. What is missing is not capacity — it is that **the editing tools live on the wrong side of the wire**.
 
-## What it looks like to use (the tool list)
+## The tool surface (and the parameters that make it feel local)
 
-This is the surface a Hermes session gets. Each verb maps to one existing bunker operation; none of them is a new protocol.
+The surface is **derived from the tools I already have**, then extended with what `toolsd` adds. Parity is the requirement: if my local `read_file` takes an offset and a line limit, the remote one must too, or I will behave differently on remote trees and not notice.
 
-| Verb | What it does | Runs where | Backed by |
+### read — line windows, not whole files
+
+Local `read_file(path, offset, limit)` returns line-numbered output, a total line count and a continuation hint. `toolsd`'s `fsops.Read` returns **whole file content only** — no window. So this cannot be a passthrough; it is a bounded window read with line numbers, which is a shell read pattern, not a toolsd call.
+
+| Verb | Parameters | Returns | Backed by |
 |---|---|---|---|
-| `bunker_read <path>` | read a file with a size cap | agent | `ExecAgent` |
-| `bunker_write <path> <body>` | write via temp file + atomic rename | agent | `ExecAgent` (stdin, GAP-094) |
-| `bunker_patch <path> <diff>` | strict unified-diff apply, **no fuzz** — refuses rather than corrupting | agent | `toolsd patch` |
-| `bunker_apply <multi-file>` | atomic all-or-nothing multi-file edit with rollback | agent | `toolsd apply` |
-| `bunker_replace <path> <old> <new>` | literal replace, unique-match by default | agent | `toolsd replace` |
-| `bunker_search <pattern> <tree>` | bounded search, capped output | agent | ripgrep/`ExecAgent` |
-| `bunker_exec <cmd>` | plain shell | agent | `ExecAgent` |
-| `bunker_build` / `bunker_test` | build or test; long runs detach | agent | `ExecAgent` / `RunAgent` |
-| `bunker_lease <acquire\|release\|status>` | edit lease on the remote tree | agent | `toolsd lease` |
-| `bunker_bind <server> <agent> <repo>` | bind this session to one target | session | CLI config |
+| `bunker_read` | `path`, `offset` (1-based), `limit`, `max_bytes` | line-numbered window, `total_lines`, `next_offset`, explicit truncation notice | bounded `sed -n 'START,ENDp'` + `wc -l` on the agent |
 
-All ten are thin wrappers. The point of the list is that **the tools that already make local editing safe — strict patch, atomic multi-file apply, leases — are the same binaries, just executing where the tree is.**
+### search — modes, not one grep
+
+Local `search_files` has three output modes, a context count, a file glob and a limit. A single "search" verb that only returns matches loses two thirds of the behaviour I rely on.
+
+| Verb | Parameters | Returns | Backed by |
+|---|---|---|---|
+| `bunker_search` | `pattern`, `path`, `target` = `content` \| `files`, `output_mode` = `content` \| `files_only` \| `count`, `context`, `file_glob`, `limit` | matches with line numbers, or a file list, or per-file counts | `rg -n -C<context> -g<glob> -m<limit>` / `rg --files` / `rg -c` |
+
+### write / edit — the three shapes are genuinely different
+
+This is where the local and remote surfaces diverge most, and where a naive mapping breaks.
+
+| Verb | Parameters | Semantics | Backed by |
+|---|---|---|---|
+| `bunker_write` | `path`, `content` | whole-file overwrite, parents created, atomic (temp + rename) | `toolsd apply` (one entry) or `fsops.Write` |
+| `bunker_edit` | `path`, `old_string`, `new_string`, `replace_all` | literal replace; **unique match by default**, refuses naming the count | `toolsd replace` |
+| `bunker_patch` | `diff` (unified diff text) | strict, **no fuzz** — refuses rather than corrupting | `toolsd patch -` (stdin) |
+| `bunker_apply` | `edits[]` = `{path, content}` | atomic all-or-nothing across files, with rollback | `toolsd apply` |
+
+**Two parity gaps to state honestly:**
+
+1. **My local `patch` takes `old_string`/`new_string`; `toolsd patch` takes a diff.** So `bunker_patch` needs either a diff, or an adapter that synthesizes a unified diff from the two strings. `bunker_edit` is the honest home for the two-string case and is already backed by `toolsd replace` — whose unique-match default is *exactly* the "refuse instead of silently multi-hitting" behaviour my patch tool promises. So the two-string path maps to `toolsd replace`, and `bunker_patch` stays for genuine diffs.
+2. **My local `patch` fuzzy-matches (9 strategies); `toolsd patch` refuses on inexact input.** Losing the fuzz is arguably the improvement — a refusal is visible, a fuzzy match is silent — but it *is* a behaviour difference and must be documented, not discovered.
+
+### exec, alternatives, leases
+
+| Verb | Parameters | Semantics | Backed by |
+|---|---|---|---|
+| `bunker_exec` | `command`, `timeout`, `cwd` | run to completion, capture stdout/stderr/exit | `ExecAgent` |
+| `bunker_run` | `command`, `detach`, `timeout`, `name` | long jobs; detached returns a run id | `RunAgent` |
+| `bunker_lsp` | `op` = `definition` \| `references` \| `check`, `file`, `line`+`character` or `offset`, `root` | symbol queries before an edit | `toolsd lsp` |
+| `bunker_lease` | `action` = `acquire` \| `renew` \| `release` \| `status`, `holder`, `paths`, `ttl` | edit lease on the remote tree | `toolsd lease` |
+
+**Note on optional verbs:** `bunker_lsp` needs a language server *on the agent*, so it is the one verb that may legitimately be unavailable. It answers `capability_unavailable` naming what is missing (see below) rather than disappearing from the surface — which is the design point of the next section.
+
+## The surface is CONSTANT. The bunker is an argument.
+
+This is the rule that keeps the design from exploding, and it is worth stating as a hard constraint because the obvious wrong turn is very inviting.
+
+**The wrong turn:** register tools *per bunker*. N verbs × M bunkers. With this fleet's real numbers that is not hypothetical — 2 agents live today, a fleet that runs to dozens, and a verb set of ten. Twenty bunkers would mean **twenty read tools, twenty search tools, two hundred registrations**, plus a discovery and sync problem: every spawn, destroy and restart changes the tool list, so the agent's tool surface becomes a function of remote infrastructure state.
+
+**The rule:** *the tool count is fixed by the number of verbs and is completely independent of how many bunkers exist.* The target is **data**, resolved in this order:
+
+1. **explicit argument** on the call — `bunker_read(target, ...)`
+2. **the session's binding** — `bunker_bind(server, agent, repo)` once at session start, then every call uses it
+3. **refusal** naming the missing binding — never a global fallback
+
+So "which bunker" is a *value*, and the tool list is a constant. Nothing registers per-bunker; nothing has to be confirmed per agent; spawning or destroying a bunker does not change the surface I am offered.
+
+### What "tool state" actually is
+
+The state this design needs is small and session-scoped, not per-bunker:
+
+| State | Cardinality | Where |
+|---|---|---|
+| session → bound target | one row per session | session profile (`BUNKER_HOME`), keyed by `HERMES_SESSION_ID` |
+| session → server list + token | one file per session | `$BUNKER_HOME/config.yaml` |
+| which bunkers exist | fleet-wide inventory | the scheduler / `bunker list` — **not a tool-registration concern** |
+
+There is deliberately **no** per-bunker tool table, no capability sync, and no dynamic registration to reconcile.
+
+### Capability variance is an ERROR, not a dynamic list
+
+Bunkers differ — an older daemon lacks a verb, an agent has no language server, an agent is stopped. The tempting answer is to reflect that in the tool list. The rule is the opposite:
+
+- the verb stays on the surface
+- the call returns an explicit, structured failure naming what is missing and what to do — `capability_unavailable: toolsd not found on agent` / `agent_stopped` / `predates capability reporting`
+- the binding verify (below) reports the *known* capability set once per binding, so the failure is predictable rather than surprising
+
+That keeps the surface constant and fail-visible. A dynamic tool list would make the same information arrive as a silently missing tool, which is strictly worse: the agent cannot distinguish "not supported" from "not loaded" from "I forgot".
+
+### How this is delivered without a registration step
+
+Nothing here requires a new tool registration per bunker, and in the common case it requires **none at all**:
+
+- **`toolsd` already serves itself as MCP** (`toolsd mcp` — every verb as a tool over stdio). The edit primitives can be exposed **once**, with the bunker as the execution target rather than a tool dimension.
+- **The Hermes shim** (S6) adds the `bunker_*` verbs **once** in the Hermes agent project, with `target` as an argument.
+- The long-term shape: my existing editing tools (`read_file`, `patch`, `search_files`) keep their names and parameters, and the shim routes them to the bound target — so the surface I see does not change at all as bunkers come and go.
 
 ## Routing: always the right bunker
 
@@ -120,6 +192,9 @@ Six of the seven gaps are small. The shim is the only large piece, and it cannot
 8. **Anti-lying proof.** No verb reports success without a post-verify read-back; a call whose verify cannot run closes as `unverified`, and `unverified` is never rendered as success.
 9. **Offload proof.** A real edit-build-test cycle on a remote tree, with the local box's CPU measured during it. → The work demonstrably ran remotely; the local cost is the loop only.
 10. **Overhead proof.** Measure per-call verify latency and publish the number. If it exceeds local-equivalent latency beyond a stated factor, demote verification from per-call to per-session rather than assuming it is free.
+11. **Constant-surface proof (the anti-explosion criterion).** Spawn a fourth bunker and destroy a fifth, then enumerate the offered tool list. → The count and names are **byte-identical** before and after; nothing registered, nothing removed. Repeat with two sessions bound to different bunkers in the same moment: each sees the same constant list, and only the *target* differs.
+12. **Parameter-parity proof.** For each of `read`, `search`, `write`, `edit`, `patch`, `apply`, run the same arguments locally and remotely on the same file and diff the results. → Identical output modulo the tree, including `read`'s `offset`/`limit` windowing and line numbering, `search`'s three `output_mode` shapes and `context`, and `edit`'s unique-match refusal naming the occurrence count. Any difference is recorded as a documented divergence, not left implicit.
+13. **Capability-error proof.** Call a verb the target genuinely lacks (e.g. `bunker_lsp` on an agent with no language server). → The verb is still on the surface and returns a structured `capability_unavailable` naming the missing piece; the tool list did not change.
 
 ## Risks
 
