@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -123,6 +122,7 @@ func NewMountCommand() *cobra.Command {
 		serverName string
 		mountPoint string
 		sshKey     string
+		remotePath string
 	)
 
 	cmd := &cobra.Command{
@@ -147,7 +147,11 @@ Examples:
 				mountPoint = args[1]
 			}
 			if mountPoint == "" {
-				mountPoint = filepath.Join("/mnt", "bunker", agentID)
+				resolved, err := defaultMountPoint(agentID)
+				if err != nil {
+					return err
+				}
+				mountPoint = resolved
 			}
 
 			// 1. Load CLI config
@@ -212,9 +216,40 @@ Examples:
 				return fmt.Errorf("SSH key not found at %q — spawn the agent first or use --ssh-key", keyPath)
 			}
 
-			// 4. Ensure mount point exists.
-			if err := os.MkdirAll(mountPoint, 0755); err != nil {
+			// 3b. Preflight the remote path BEFORE mounting (GAP-103). Without
+			// this, mounting an agent whose home is empty (a re-created agent)
+			// or a --path that does not exist SUCCEEDS and presents an empty
+			// tree that looks correct -- so an editor writes into nothing. The
+			// check is bounded and names which of the two causes it hit.
+			//
+			// BUNKER_SKIP_MOUNT_PREFLIGHT exists for subprocess-based tests that
+			// cannot inject the remotePathCheck seam (the preflight shells out to
+			// a real host). It is deliberately explicit and loud rather than a
+			// silent fallback: an operator who sets it is choosing to mount
+			// without the empty-tree guarantee.
+			if os.Getenv("BUNKER_SKIP_MOUNT_PREFLIGHT") != "" {
+				fmt.Fprintln(os.Stderr, "bunker: WARNING: mount preflight skipped (BUNKER_SKIP_MOUNT_PREFLIGHT set) — an empty or missing remote path will mount as an empty tree")
+			} else if err := remotePathCheck(userAtHost, keyPath, remotePath); err != nil {
+				return err
+			}
+
+			// Default the remote path from the stored command when the operator
+			// did not ask for a specific subdirectory. --path is the WORKSPACE
+			// axis: mounting a repo inside the home rather than the whole home.
+			if remotePath == "" {
+				if fromCmd := lastRemoteSourcePath(mountCmd); fromCmd != "" {
+					remotePath = fromCmd
+				} else {
+					remotePath = "."
+				}
+			}
+
+			// 4. Ensure mount point exists (private to this user).
+			if err := os.MkdirAll(mountPoint, 0o700); err != nil {
 				return fmt.Errorf("create mount point %s: %w", mountPoint, err)
+			}
+			if err := checkWritableDir(mountPoint); err != nil {
+				return err
 			}
 
 			// 5. Build the SSHFS command: rewrite the stored command for
@@ -230,17 +265,38 @@ Examples:
 			}
 			parts[len(parts)-1] = mountPoint
 
-			// 5. Run sshfs with extra SSH options that are not encoded in the
-			// stored command so the connection succeeds without host-key prompts.
-			sshfsArgs := []string{
-				"-o", "StrictHostKeyChecking=no",
-				"-o", "UserKnownHostsFile=/dev/null",
-				"-o", "IdentitiesOnly=yes",
-			}
+			// 5. Durability + resource-safety options. These are constructed
+			// by the CLIENT rather than inherited from the daemon-stored
+			// command string (GAP-107): the stored command carries only the
+			// identity/mount basics, so a mount that survives a transport blip,
+			// detects a dead peer, bounds its own connect time and releases the
+			// mountpoint when the process dies has to be asked for here.
+			//
+			// Note on allow_other: the daemon's stored command may request it
+			// for cross-user sharing. In this CLI's default-user mode sshfs
+			// defaults to allow_other OFF for a good reason -- the mountpoint is
+			// created 0700, so only this user can enter it, while allow_other
+			// would let EVERY local user read the agent's files. The flag cannot
+			// be un-done safely at mount time, so every flag whose name starts
+			// with allow is refused below with a named cause instead of silently
+			// producing a world-readable mount. (A future opt-in can support it
+			// by creating a 0755/1777 mountpoint and setting user_allow_other.)
+			sshfsArgs := durableSSHFSArgs()
 			// Append everything except the leading `sshfs` and trailing mount
 			// point, then the mount point last.
 			sshfsArgs = append(sshfsArgs, parts[1:len(parts)-1]...)
 			sshfsArgs = append(sshfsArgs, parts[len(parts)-1])
+
+			// The daemon's stored command always requests allow_other (see
+			// manager_spawn.go:583), which widens the agent's files to every
+			// local user. This CLI creates a PRIVATE (0700) mountpoint, so the
+			// flag is both useless and harmful here: strip it and say so,
+			// rather than either refusing (which would break every real mount)
+			// or silently passing it through.
+			if stripped, offender, found := stripAllowOption(sshfsArgs); found {
+				sshfsArgs = stripped
+				fmt.Fprintf(os.Stderr, "bunker: note: dropped %q from the agent's stored SSHFS command — this mountpoint is private (0700) to your user, so the option would gain nothing and would expose the agent's files to other local users\n", offender)
+			}
 
 			// 6. Run sshfs with bounded retry. Transient failures
 			// (connection resets and similar) are retried with backoff
@@ -308,13 +364,14 @@ Examples:
 			}
 
 			fmt.Printf("Mounted %s at %s\n", agentID, mountPoint)
-			fmt.Printf("Unmount with: fusermount -u %s\n", mountPoint)
+			fmt.Printf("Unmount with: bunker umount %s\n", agentID)
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (default: active server)")
 	cmd.Flags().StringVar(&sshKey, "ssh-key", "", "SSH private key path (default: ~/.bunker/keys/<agent-id>)")
+	cmd.Flags().StringVar(&remotePath, "path", "", "Remote path inside the agent to mount (default: the agent's home)")
 	return cmd
 }
 

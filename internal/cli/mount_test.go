@@ -219,12 +219,36 @@ func stubSSHFSRun(t *testing.T, failTimes int, failErr error) (calls *[][]string
 	}
 }
 
-const mountFixtureSshfsMount = "sshfs -o IdentityFile=/etc/bunkerd/ssh/df0916a -o idmap=user -o allow_other bunker-agent@bunker-host:/home/bunker-agent /mnt/bunker/df0916a"
+// stubRemotePathCheck replaces the mount preflight's ssh probe. Every mount
+// test needs this because the preflight shells out to a real host, which no
+// unit test can do; stubbing it also lets a test drive the refusal paths.
+func stubRemotePathCheck(t *testing.T, err error) (calls *[]string, restore func()) {
+	t.Helper()
+	calls = &[]string{}
+	old := remotePathCheck
+	remotePathCheck = func(userAtHost, keyPath, remotePath string) error {
+		*calls = append(*calls, userAtHost+"|"+remotePath)
+		return err
+	}
+	return calls, func() { remotePathCheck = old }
+}
+
+const mountFixtureSshfsMount = "sshfs -o IdentityFile=/etc/bunkerd/ssh/df0916a -o idmap=user bunker-agent@bunker-host:/home/bunker-agent /mnt/bunker/df0916a"
+
+// mountFixtureSshfsMountAllowOther is the shape a daemon may store when it
+// wants cross-user sharing. The CLI refuses it (the mountpoint is 0700), so it
+// exists to drive that refusal.
+const mountFixtureSshfsMountAllowOther = "sshfs -o IdentityFile=/etc/bunkerd/ssh/df0916a -o idmap=user -o allow_other bunker-agent@bunker-host:/home/bunker-agent /mnt/bunker/df0916a"
 
 // runMountExecutesSSHFS runs `bunker mount df0916a <mountpoint>` against the
 // mock server with the stubbed runner and returns the RunE error.
 func runMountExecutesSSHFS(t *testing.T, mountpoint string) error {
 	t.Helper()
+	// The mount preflight shells out to a real host; stub it here so every
+	// caller exercises the mount path rather than failing at preflight.
+	_, restorePreflight := stubRemotePathCheck(t, nil)
+	defer restorePreflight()
+
 	cmd := NewMountCommand()
 	args := []string{"df0916a"}
 	if mountpoint != "" {
@@ -354,12 +378,20 @@ func TestMountCommand_ArgvRegression(t *testing.T) {
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "IdentitiesOnly=yes",
+		// Durability + resource-safety options (GAP-107). These are added by
+		// the CLIENT, not inherited from the daemon-stored command, and are
+		// asserted in this order so a silent removal fails the test.
+		"-o", "reconnect",
+		"-o", "ServerAliveInterval=" + sshfsServerAliveInterval,
+		"-o", "ServerAliveCountMax=" + sshfsServerAliveCountMax,
+		"-o", "ConnectTimeout=" + sshfsConnectTimeout,
+		"-o", "auto_unmount",
+		"-o", "dir_cache=no",
 		// Stored command parts, with the daemon-local key path rewritten
 		// to the client-local key and the daemon hostname resolved to the
 		// host the client actually reaches (the server URL hostname).
 		"-o", "IdentityFile=" + clientKey,
 		"-o", "idmap=user",
-		"-o", "allow_other",
 		"bunker-agent@127.0.0.1:/home/bunker-agent",
 		// Caller mount point last, default replaced.
 		mountpoint,
@@ -452,6 +484,8 @@ func TestMountCommand_SSHKeyFlagOverrideWins(t *testing.T) {
 	}
 	calls, restore := stubSSHFSRun(t, 0, nil)
 	defer restore()
+	_, restorePreflight := stubRemotePathCheck(t, nil)
+	defer restorePreflight()
 
 	mountpoint := t.TempDir() + "/mnt"
 	cmd := NewMountCommand()

@@ -109,6 +109,12 @@ func (h *procTestHarness) env() []string {
 	return append(os.Environ(),
 		"BUNKER_HOME="+h.home,
 		"PATH="+h.binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		// The CLI runs as a SUBPROCESS here, so the in-process remotePathCheck
+		// seam cannot reach it. The mount preflight otherwise shells out to a
+		// real host, which would make this harness network-dependent. The skip
+		// is loud in the CLI (it prints a warning) precisely so it cannot be
+		// mistaken for the real path.
+		"BUNKER_SKIP_MOUNT_PREFLIGHT=1",
 	)
 }
 
