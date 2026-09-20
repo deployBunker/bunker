@@ -39,8 +39,32 @@ jobs:
           version: "1.50.0"
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
+      # INT-CI-024: BSR rate limiting (`resource_exhausted: too many requests`)
+      # failed this step in root-suite + regression on runs 35496282840 /
+      # 35496107562, while run-level conclusion stayed success. Mitigation,
+      # identical in every job of this file:
+      #   1. actions/cache restores proto/ keyed on the proto input hash; the
+      #      step then SKIPS `buf generate` entirely when the committed
+      #      generated files are already current (cache hit, or the committed
+      #      proto/.codegen-fresh stamp matching the current inputs) — no BSR
+      #      call at all.
+      #   2. When regeneration IS needed, .github/scripts/ensure-proto.sh
+      #      retries a BSR resource_exhausted failure with exponential backoff
+      #      + jitter (5 attempts) and still fails the job loudly on retry
+      #      exhaustion or any other buf error.
+      # BUF_TOKEN: none exists in this repo (verified); the script never
+      # requires it.
+      - name: Restore generated protobuf code cache
+        id: proto-cache
+        uses: actions/cache@v4
+        with:
+          path: proto
+          key: proto-gen-v1-${{ hashFiles('**/*.proto', 'buf.gen.yaml') }}
+
       - name: Generate protobuf code
-        run: buf generate
+        env:
+          PROTO_CACHE_HIT: ${{ steps.proto-cache.outputs.cache-hit }}
+        run: bash .github/scripts/ensure-proto.sh
 
       - name: Build
         run: go build ./...
@@ -177,8 +201,17 @@ jobs:
           version: "1.50.0"
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Restore generated protobuf code cache
+        id: proto-cache
+        uses: actions/cache@v4
+        with:
+          path: proto
+          key: proto-gen-v1-${{ hashFiles('**/*.proto', 'buf.gen.yaml') }}
+
       - name: Generate protobuf code
-        run: buf generate
+        env:
+          PROTO_CACHE_HIT: ${{ steps.proto-cache.outputs.cache-hit }}
+        run: bash .github/scripts/ensure-proto.sh
 
       - name: Unit tests
         run: go test -count=1 -short ./... -timeout ${{ env.GO_TEST_TIMEOUT }}
@@ -212,8 +245,17 @@ jobs:
           version: "1.50.0"
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Restore generated protobuf code cache
+        id: proto-cache
+        uses: actions/cache@v4
+        with:
+          path: proto
+          key: proto-gen-v1-${{ hashFiles('**/*.proto', 'buf.gen.yaml') }}
+
       - name: Generate protobuf code
-        run: buf generate
+        env:
+          PROTO_CACHE_HIT: ${{ steps.proto-cache.outputs.cache-hit }}
+        run: bash .github/scripts/ensure-proto.sh
 
       - name: GitReins Tier 1 guard
         run: gitreins guard
@@ -239,8 +281,17 @@ jobs:
           version: "1.50.0"
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Restore generated protobuf code cache
+        id: proto-cache
+        uses: actions/cache@v4
+        with:
+          path: proto
+          key: proto-gen-v1-${{ hashFiles('**/*.proto', 'buf.gen.yaml') }}
+
       - name: Generate protobuf code
-        run: buf generate
+        env:
+          PROTO_CACHE_HIT: ${{ steps.proto-cache.outputs.cache-hit }}
+        run: bash .github/scripts/ensure-proto.sh
 
       # Runner runs as root; workspace checkout is owned by actions-runner —
       # git refuses "dubious ownership" otherwise (exit 128 on go build VCS).
@@ -313,8 +364,17 @@ jobs:
           version: "1.50.0"
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Restore generated protobuf code cache
+        id: proto-cache
+        uses: actions/cache@v4
+        with:
+          path: proto
+          key: proto-gen-v1-${{ hashFiles('**/*.proto', 'buf.gen.yaml') }}
+
       - name: Generate protobuf code
-        run: buf generate
+        env:
+          PROTO_CACHE_HIT: ${{ steps.proto-cache.outputs.cache-hit }}
+        run: bash .github/scripts/ensure-proto.sh
 
       # Runner runs as root; workspace checkout is owned by actions-runner —
       # git refuses "dubious ownership" otherwise (exit 128 on go build VCS).
