@@ -16,8 +16,12 @@ package server
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
+	"time"
 
+	"github.com/deployBunker/bunker/internal/audit"
+	"github.com/deployBunker/bunker/internal/auth"
 	"github.com/deployBunker/bunker/internal/config"
 )
 
@@ -291,6 +295,48 @@ func markerFrameForStream(sentBytes, endsWithNewline, enabled bool) string {
 // as process stdout for marker-separation purposes. Empty chunks (n == 0)
 // must not flip the sent state.
 func markerCountsAsSent(n int) bool { return n > 0 }
+
+// authDenySink is the GAP-133 bridge between the auth interceptors'
+// DenyFunc and the audit chain. Authentication denials are handled by the
+// auth interceptor, which runs OUTERMOST — before the audit interceptor — so
+// they can never be recorded by the normal per-request audit path. The sink
+// closes that gap: it appends one Record through the SAME AuditLog the audit
+// interceptor uses, so denial records are hash-chained with the rest of the
+// trail and `bunker audit verify` stays green.
+//
+// Secret hygiene: DenyEvent already carries only a token FINGERPRINT
+// (auth.FingerprintToken = "sha256:" + 12 hex chars); the sink re-checks
+// that shape before writing and drops the record if it is malformed, so a
+// future caller bug cannot smuggle raw token material into the trail.
+type authDenySink struct {
+	log *audit.AuditLog
+}
+
+// record appends one denial to the audit chain. Record field mapping:
+// Caller="static-token" (the shared label the auth layer uses for
+// static-token auth; a denial has no verified identity), Method=procedure,
+// RemoteAddr=source, Outcome="denied",
+// Summary="auth denied: <reason>; token fp=<fingerprint>". Write failures are
+// logged and swallowed: a broken audit sink must never change the auth
+// outcome (the caller has already decided the denial).
+func (s *authDenySink) record(ev auth.DenyEvent) {
+	if ev.TokenFingerprint != "" && len(ev.TokenFingerprint) != len("sha256:")+12 {
+		slog.Warn("auth denial audit record dropped: malformed token fingerprint",
+			"len", len(ev.TokenFingerprint))
+		return
+	}
+	rec := audit.Record{
+		TS:         time.Now().UTC().Format(time.RFC3339Nano),
+		Caller:     "static-token",
+		Method:     ev.Procedure,
+		RemoteAddr: ev.RemoteAddr,
+		Outcome:    "denied",
+		Summary:    fmt.Sprintf("auth denied: %s; token fp=%s", ev.Reason, ev.TokenFingerprint),
+	}
+	if err := s.log.Log(rec); err != nil {
+		slog.Warn("auth denial audit write failed", "error", err)
+	}
+}
 
 // logDisclosureStartup emits the safe startup note about whether
 // containment disclosure is enabled. It takes only the boolean — there is

@@ -33,6 +33,13 @@ type JWTAuth struct {
 	masterKey     string
 	staticToken   string // optional fallback static bearer token
 	masterKeyOnly bool   // when true, reject agent-scoped tokens
+
+	// deny (optional) receives every authentication denial, never token
+	// material — only the FingerprintToken fingerprint. Set via SetDenySink.
+	deny DenyFunc
+	// throttle (optional) applies SEC-15 per-source backoff to
+	// unauthenticated requests. Set via SetDenySink.
+	throttle *throttleState
 }
 
 // NewJWTAuth creates a JWTAuth using the given HS256 secret.
@@ -119,7 +126,7 @@ func (a *JWTAuth) issueToken(agentID, keyID string, ttl time.Duration) (string, 
 // WrapUnary validates the JWT on unary requests.
 func (a *JWTAuth) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-		claims, err := a.authenticate(req.Header())
+		claims, err := a.authenticate(req.Header(), peerAddr(req.Peer()), req.Spec().Procedure)
 		if err != nil {
 			return nil, err
 		}
@@ -130,7 +137,7 @@ func (a *JWTAuth) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 // WrapStreamingHandler validates the JWT on streaming requests.
 func (a *JWTAuth) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
-		claims, err := a.authenticate(conn.RequestHeader())
+		claims, err := a.authenticate(conn.RequestHeader(), peerAddr(conn.Peer()), conn.Spec().Procedure)
 		if err != nil {
 			return err
 		}
@@ -138,19 +145,41 @@ func (a *JWTAuth) WrapStreamingHandler(next connect.StreamingHandlerFunc) connec
 	}
 }
 
+// SetDenySink attaches a denial sink and the per-source throttle to this
+// interceptor (GAP-133). Semantics mirror TokenAuth.SetDenySink: every
+// authentication denial is reported with the presented token reduced to a
+// SHA-256 fingerprint, unauthenticated requests become subject to per-source
+// exponential backoff, and a successful auth resets the source. nil detaches.
+func (a *JWTAuth) SetDenySink(deny DenyFunc) {
+	a.deny = deny
+	if deny != nil {
+		a.throttle = newThrottleState()
+	} else {
+		a.throttle = nil
+	}
+}
+
+// denied is JWTAuth's deny path.
+func (a *JWTAuth) denied(source, procedure string, reason denyReason, base *connect.Error) error {
+	return applyDenySink(a.deny, a.throttle, source, procedure, reason, base)
+}
+
 // WrapStreamingClient is a no-op — auth is server-side only.
 func (a *JWTAuth) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
 	return next
 }
 
-func (a *JWTAuth) authenticate(header http.Header) (*Claims, error) {
-	token, err := ExtractBearerTokenFromHeader(header.Get("Authorization"))
+func (a *JWTAuth) authenticate(header http.Header, source, procedure string) (*Claims, error) {
+	rawToken, err := ExtractBearerTokenFromHeader(header.Get("Authorization"))
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+		return nil, a.denied(source, procedure, newDenyReason(err.Error(), ""), connect.NewError(connect.CodeUnauthenticated, err))
 	}
 
 	// Optional static-token fallback for migration/compat.
-	if a.staticToken != "" && subtle.ConstantTimeCompare([]byte(token), []byte(a.staticToken)) == 1 {
+	if a.staticToken != "" && subtle.ConstantTimeCompare([]byte(rawToken), []byte(a.staticToken)) == 1 {
+		if a.throttle != nil {
+			a.throttle.recordSuccess(source)
+		}
 		return &Claims{
 			RegisteredClaims: jwt.RegisteredClaims{
 				Subject: "static-token",
@@ -159,19 +188,25 @@ func (a *JWTAuth) authenticate(header http.Header) (*Claims, error) {
 	}
 
 	// First try JWT validation.
-	claims, jwtErr := a.parseToken(token)
+	claims, jwtErr := a.parseToken(rawToken)
 	if jwtErr == nil {
 		if a.masterKeyOnly && claims.AgentID != "" {
-			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("agent-scoped tokens are not allowed for this endpoint"))
+			return nil, a.denied(source, procedure, newDenyReason("agent-scoped tokens are not allowed for this endpoint", rawToken), connect.NewError(connect.CodeUnauthenticated, errors.New("agent-scoped tokens are not allowed for this endpoint")))
+		}
+		if a.throttle != nil {
+			a.throttle.recordSuccess(source)
 		}
 		return claims, nil
 	}
 
 	// If a key manager is configured, try opaque sub-key validation.
 	if a.keyMgr != nil {
-		if key, err := a.keyMgr.Validate(token); err == nil {
+		if key, keyErr := a.keyMgr.Validate(rawToken); keyErr == nil {
 			if a.masterKeyOnly && key.AgentID != "" {
-				return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("agent-scoped tokens are not allowed for this endpoint"))
+				return nil, a.denied(source, procedure, newDenyReason("agent-scoped tokens are not allowed for this endpoint", rawToken), connect.NewError(connect.CodeUnauthenticated, errors.New("agent-scoped tokens are not allowed for this endpoint")))
+			}
+			if a.throttle != nil {
+				a.throttle.recordSuccess(source)
 			}
 			return &Claims{
 				RegisteredClaims: jwt.RegisteredClaims{
@@ -184,11 +219,11 @@ func (a *JWTAuth) authenticate(header http.Header) (*Claims, error) {
 	}
 
 	// If the token looks like a JWT, report the JWT error.
-	if isLikelyJWT(token) {
-		return nil, connect.NewError(connect.CodeUnauthenticated, jwtErr)
+	if isLikelyJWT(rawToken) {
+		return nil, a.denied(source, procedure, newDenyReason(jwtErr.Error(), rawToken), connect.NewError(connect.CodeUnauthenticated, jwtErr))
 	}
 
-	return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("invalid token"))
+	return nil, a.denied(source, procedure, newDenyReason("invalid token", rawToken), connect.NewError(connect.CodeUnauthenticated, errors.New("invalid token")))
 }
 
 func (a *JWTAuth) parseToken(token string) (*Claims, error) {

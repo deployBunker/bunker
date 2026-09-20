@@ -206,6 +206,18 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	s.jwtAuth = auth.NewJWTAuth(s.cfg.Auth.JWTSecret, s.keyMgr)
 	bunkerdAuthInterceptor := auth.NewMasterOnlyAuthInterceptor(s.cfg.Auth.JWTSecret, s.keyMgr, s.cfg.Auth.Token, s.cfg.Auth.Enabled)
 	agentAuthInterceptor := auth.NewJWTAuthInterceptor(s.cfg.Auth.JWTSecret, s.keyMgr, s.cfg.Auth.Token, s.cfg.Auth.Enabled)
+	// GAP-133: authentication denials are composed BEFORE the audit
+	// interceptor in the chain (auth runs outermost), so they would otherwise
+	// never reach it — exactly why denials were invisible. Attach the deny
+	// sink directly to the auth interceptors instead: each denial is appended
+	// through the SAME AuditLog the audit interceptor uses, so the hash chain
+	// stays intact. The sink maps the denial to the same Record shape, with
+	// the presented token reduced to a SHA-256 fingerprint (never the secret).
+	if s.auditLog != nil {
+		sink := &authDenySink{log: s.auditLog}
+		bunkerdAuthInterceptor = auth.AttachDenySink(bunkerdAuthInterceptor, sink.record)
+		agentAuthInterceptor = auth.AttachDenySink(agentAuthInterceptor, sink.record)
+	}
 	tracker := resource.NewTracker(s.cfg.Agent.MaxAgents, s.logger)
 	tunnelMgr := tunnel.NewTunnelManager(&s.cfg.Tunnel, s.logger)
 	tailscaleMgr := tailscale.NewTailscaleManager(&s.cfg.Tailscale, s.logger)
