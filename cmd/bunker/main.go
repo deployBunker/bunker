@@ -41,12 +41,28 @@ func exitCodeFor(err error) (int, bool) {
 }
 
 func run() error {
+	// DF-BUNKER-43: writes to a pipe whose reader has gone away must not kill
+	// this process with SIGPIPE before it can report its status. With the
+	// signal ignored, a truncated write surfaces as EPIPE — an ordinary error
+	// the entry point can turn into the conventional 141. The headline effect
+	// is the one scripts need: a FAILING command keeps its failure status
+	// instead of dying by signal in a way a caller reads as success.
+	//
+	// Installed here, in the process entry point, and not in a package
+	// init() — a library that rewrote process-wide signal disposition would
+	// also do it inside the test binary and every importer.
+	cli.IgnoreSIGPIPE()
+
 	// Bind BUNKER_TOKEN env var early so it is available to subcommands.
 	viper.SetEnvPrefix("BUNKER")
 	viper.AutomaticEnv()
 	_ = viper.BindEnv("token") // BUNKER_TOKEN
 
-	return newRootCommand().Execute()
+	// exitOnBrokenPipe maps a truncated stream onto exit code 141 rather
+	// than the generic 1. Everything else — including every genuine failure —
+	// passes through to the existing %w printing and os.Exit(1) below
+	// unchanged, so no error text and no other exit code moves.
+	return cli.ExitOnBrokenPipe(newRootCommand().Execute())
 }
 
 // newRootCommand builds the bunker root command with all subcommands.
