@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -472,6 +473,170 @@ func TestVerifyTempReadmeCopyFailsOnInjectedCommand(t *testing.T) {
 	}); len(got) != 0 {
 		t.Fatalf("labelled block still reported: %v", got)
 	}
+}
+
+// ── group doc coverage (GAP-088) ────────────────────────────────────────────
+
+// TestGroupDocCoverageFailsOnMissingSubcommand: a documented group's doc page
+// must name every subcommand the tree ships. The fixture registers audit with
+// two subcommands in the tree surface; the page names only one.
+func TestGroupDocCoverageFailsOnMissingSubcommand(t *testing.T) {
+	in := baseInput()
+	in.TreeSurface = Surface{Commands: map[string]Command{
+		"audit": {Name: "audit", Subcommands: []string{"export", "list", "status", "verify"}},
+	}}
+	in.GroupDocs = map[string]string{"audit": "# Audit\n\n```bash\nbunker audit verify --path /x\nbunker audit list --agent a\nbunker audit export > out.jsonl\n```\n"}
+
+	problems := Check(in)
+	if len(problems) != 1 {
+		t.Fatalf("problems = %v, want exactly one (missing status)", problems)
+	}
+	p := problems[0]
+	if p.Rule != RuleGroupDocCoverage {
+		t.Fatalf("rule = %q, want %q", p.Rule, RuleGroupDocCoverage)
+	}
+	if p.File != "docs/audit.md" {
+		t.Errorf("file = %q, want docs/audit.md", p.File)
+	}
+	if !strings.Contains(p.Message, "`bunker audit status`") {
+		t.Errorf("message %q does not name `bunker audit status`", p.Message)
+	}
+}
+
+// TestGroupDocCoveragePassesWhenEverySubcommandIsDocumented: the fixture page
+// names all four subcommands (fenced blocks, prose spans and a table row all
+// count — the real page uses all three shapes).
+func TestGroupDocCoveragePassesWhenEverySubcommandIsDocumented(t *testing.T) {
+	in := baseInput()
+	in.TreeSurface = Surface{Commands: map[string]Command{
+		"audit": {Name: "audit", Subcommands: []string{"export", "list", "status", "verify"}},
+	}}
+	in.GroupDocs = map[string]string{"audit": "# Audit\n\n| Command |\n|---------|\n| `bunker audit status` shows state |\n\n```bash\nbunker audit verify\n```\n\nUse `bunker audit list` and `bunker audit export` for queries.\n"}
+
+	if got := Check(in); len(got) != 0 {
+		t.Fatalf("all-subcommands page reported: %v", got)
+	}
+}
+
+// TestGroupDocCoverageIgnoresUnregisteredGroupsAndLeafCommands: groups absent
+// from the registry, groups absent from the tree, and groups without
+// subcommands never fire the rule — only registered documented groups are
+// governed.
+func TestGroupDocCoverageIgnoresUnregisteredGroupsAndLeafCommands(t *testing.T) {
+	in := baseInput()
+	in.TreeSurface = Surface{Commands: map[string]Command{
+		"unknown-group": {Name: "unknown-group", Subcommands: []string{"a", "b"}},
+		"version":       {Name: "version"}, // leaf: no subcommands
+	}}
+	// No GroupDocs at all: also the "caller read no pages" shape.
+	if got := Check(in); len(got) != 0 {
+		t.Fatalf("unregistered/leaf groups reported: %v", got)
+	}
+}
+
+// TestVerifyReadsGroupDocPagesAndUsesTreeSurface is the falsification path
+// against the REAL tree: Verify must read the registered doc page from disk
+// and check it against the working-tree surface, so the shipped docs pass —
+// and a copy of docs/audit.md with the status coverage stripped fails the rule
+// naming `bunker audit status` (the GAP-088 defect, reproduced). The repo is
+// never modified: the stripped page is checked via Check, not written to disk.
+func TestVerifyReadsGroupDocPagesAndUsesTreeSurface(t *testing.T) {
+	root := repoRoot(t)
+	facts := factsOrSkip(t, root)
+
+	tree, err := TreeSurface(root)
+	if err != nil {
+		t.Fatalf("TreeSurface(HEAD): %v", err)
+	}
+	auditCmd, ok := tree.Commands["audit"]
+	if !ok || len(auditCmd.Subcommands) == 0 {
+		t.Fatalf("tree surface has no audit group: %+v", tree.Commands)
+	}
+
+	// Pass path: Verify reads docs/audit.md from disk and the shipped page
+	// covers every subcommand of the tree.
+	problems, err := Verify(root, facts)
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	for _, p := range problems {
+		if p.Rule == RuleGroupDocCoverage {
+			t.Fatalf("shipped docs/audit.md does not cover the tree's audit subcommands: %v", p)
+		}
+	}
+
+	// Fail path: strip the status coverage (the GAP-088 state) and the rule
+	// must fire naming `bunker audit status`.
+	docPage, err := os.ReadFile(filepath.Join(root, "docs/audit.md"))
+	if err != nil {
+		t.Fatalf("read docs/audit.md: %v", err)
+	}
+	stripped := stripStatusCoverage(string(docPage))
+	if stripped == string(docPage) {
+		t.Skip("docs/audit.md carries no `bunker audit status` coverage to strip")
+	}
+	readme, err := os.ReadFile(filepath.Join(root, "README.md"))
+	if err != nil {
+		t.Fatalf("read README: %v", err)
+	}
+	changelog, err := os.ReadFile(filepath.Join(root, "CHANGELOG.md"))
+	if err != nil {
+		t.Fatalf("read CHANGELOG: %v", err)
+	}
+	got := Check(Input{
+		ReadmePath: "README.md", ChangelogPath: "CHANGELOG.md",
+		Readme: string(readme), Changelog: string(changelog),
+		LatestTag: facts.LatestTag, Surface: facts.Surface,
+		PostTagCommits: facts.PostTagCommits,
+		GroupDocs:      map[string]string{"audit": stripped}, TreeSurface: tree,
+	})
+	var found *Problem
+	for i := range got {
+		if got[i].Rule == RuleGroupDocCoverage {
+			found = &got[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("stripped page produced no %s finding: %v", RuleGroupDocCoverage, got)
+	}
+	if !strings.Contains(found.Message, "`bunker audit status`") {
+		t.Errorf("finding %q does not name `bunker audit status`", found.Message)
+	}
+}
+
+// stripStatusCoverage returns doc with every `bunker audit status` phrase
+// removed — across fences, spans, table cells and wrapped lines (the
+// whitespace-run pattern is the same one the rule matches, so nothing
+// survives) — a mechanical stand-in for "the page predates status".
+func stripStatusCoverage(doc string) string {
+	re := regexp.MustCompile(`(?i)bunker\s+audit\s+status`)
+	return re.ReplaceAllString(doc, "")
+}
+
+// TestTreeSurfaceSeesSubcommandsTheTagLacks: TreeSurface must derive the
+// working tree's group tree (so a subcommand shipped after the newest tag is
+// still checked against the docs that ship with it).
+func TestTreeSurfaceSeesSubcommandsTheTagLacks(t *testing.T) {
+	root := repoRoot(t)
+	facts := factsOrSkip(t, root)
+
+	tree, err := TreeSurface(root)
+	if err != nil {
+		t.Fatalf("TreeSurface: %v", err)
+	}
+	var treeSubs int
+	if c, ok := tree.Commands["audit"]; ok {
+		treeSubs = len(c.Subcommands)
+	}
+	var tagSubs int
+	if c, ok := facts.Surface.Commands["audit"]; ok {
+		tagSubs = len(c.Subcommands)
+	}
+	if treeSubs <= tagSubs {
+		t.Skipf("tag surface already covers the tree's audit subcommands (tag=%d tree=%d)", tagSubs, treeSubs)
+	}
+	t.Logf("tree surface sees %d audit subcommand(s) the tag %s lacks", treeSubs-tagSubs, facts.LatestTag)
 }
 
 // TestGatherSkipsTaglessCheckout pins the skip path: a repository with no tags

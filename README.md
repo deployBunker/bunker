@@ -342,9 +342,11 @@ never written). It is on by default; configure it under `audit` in
 `config.yaml` — `audit.enabled` (default `true`) and `audit.path` (default
 `/var/log/bunkerd/audit.log`) — or via the `BUNKERD_AUDIT_ENABLED` /
 `BUNKERD_AUDIT_PATH` env overrides. The log file is `0600` and **root-owned**,
-so `bunker audit list` / `export` / `verify` against the local log must run as
-root (e.g. via `sudo`); non-root users can instead query the daemon remotely
-with `bunker audit list --server <alias>` / `bunker audit export --server <alias>`.
+so `bunker audit list` / `export` / `verify` / `status` against the local
+log must run as root (e.g. via `sudo`); non-root users can instead query the
+daemon remotely with `bunker audit list --server <alias>` /
+`bunker audit export --server <alias>` (`status` is local-only, like
+`verify`).
 
 **Containment disclosure (optional, hidden by default)** — an operator can
 make managed agents honestly disclose their sandbox. When
@@ -766,7 +768,7 @@ bunker systemd     Manage the bunkerd systemd service (install/uninstall/status)
 bunker metrics     Show resource usage
 bunker heartbeat   Extend agent TTL
 bunker destroy     Tear down an agent (removes the local key unless --keep-key)
-bunker audit       Inspect the audit trail (verify / list / export — see docs/audit.md)
+bunker audit       Inspect the audit trail (verify / list / export / status — see docs/audit.md)
 bunker registry    Maintain the durable agent registry (compact)
 bunker version     Print version/commit/build metadata (also --version)
 ```
