@@ -21,10 +21,16 @@
       "provider": "zai-glm-default",
       "brief": "/tmp/foreman-worker-DF-BUNKER-40.txt",
       "log": "/tmp/foreman-worker-DF-BUNKER-40.log",
-      "files_owned": ["internal/hostsetup/scratch.go", "internal/hostsetup/scratch_test.go", "internal/agent/isolation.go"],
-      "commit": null,
-      "merge": "pending",
-      "judge": "pending"
+      "files_owned": [
+        "internal/hostsetup/scratch.go",
+        "internal/hostsetup/scratch_test.go",
+        "internal/agent/isolation.go"
+      ],
+      "commit": "0e7ad3c",
+      "merge": "70f629b",
+      "judge": "PASS (Tier 2, gitreins task complete DF-BUNKER-40)",
+      "recovered_by": "foreman-direct re-gate of the unfinished tip (worker died before committing)",
+      "live_ab": "base 750 root:root err=nil (defect reproduced) -> tip 2750 root:bunker-agents setgid, idempotent"
     },
     {
       "task_id": "INT-CI-023",
@@ -36,13 +42,18 @@
       "provider": "zai-glm-default",
       "brief": "/tmp/foreman-worker-INT-CI-023.txt",
       "log": "/tmp/foreman-worker-INT-CI-023.log",
-      "files_owned": ["internal/cli/procbuild_test.go"],
+      "files_owned": [
+        "internal/cli/procbuild_test.go"
+      ],
       "commit": null,
       "merge": "pending",
-      "judge": "pending"
+      "judge": "pending",
+      "attempt_1": "dead dispatch — driver log \"No reply: every provider in the fallback chain kept failing over\", zero diff",
+      "attempt_2": "re-dispatched in the same worktree (glm-5.3-flash@zai-glm-default), live at tick close, uncommitted"
     }
   ],
   "independence_proof": "Neither row carries a depends_on edge (both are null on tasks.jsonl). Disjoint file sets: DF-BUNKER-40 owns internal/hostsetup/scratch.go + scratch_test.go (may touch internal/agent/isolation.go only to propagate a returned error); INT-CI-023 owns internal/cli/procbuild_test.go only. No shared file, no shared helper, no shared package (hostsetup vs cli). INT-CI-023's own defect class is the RISK this wave carries: the two workers share one host uid, so a shared build cache could let one worker's test binary be exec'd by the other — INT-CI-023 is precisely the row that removes that hazard, and each worker was told to keep its edits inside its own worktree. Mitigation recorded: worker gates are run in their own trees; if a cross-tree cache collision is observed during this wave it is itself evidence for INT-CI-023 and is recorded in the event detail rather than silently retried.",
-  "finished_at": null,
-  "outcome": null
+  "finished_at": "2026-09-20T16:10:00-05:00",
+  "outcome": "RECOVERED (partial, 1 of 2 workers landed). DF-BUNKER-40: worker died pre-commit with a complete working tree; foreman re-gated the tip (gofmt/build/vet clean, suite 23/23), committed 0e7ad3c, merged 70f629b, Tier 2 judge PASS, pushed origin/main; live root A/B on bunker-las-03 reproduced the defect on the base (750 root:root, err=nil) and proved the fix on the tip (2750 root:bunker-agents, idempotent). INT-CI-023: attempt 1 was a dead dispatch (provider fallback chain exhausted, zero diff); re-dispatched as attempt 2 in the same preserved worktree and still running at tick close — worktree and unmerged branch deliberately LEFT IN PLACE as evidence for the next tick. Board rows: DF-BUNKER-40 complete; INT-CI-023 still in_progress.",
+  "recovery_tick": "bunker-2026-09-20-15-31-35"
 }
