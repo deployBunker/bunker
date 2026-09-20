@@ -25,13 +25,23 @@ def check(name, cond, detail=""):
 
 
 def main():
+    # Hermetic against the GAP-106 session hold: a hold recorded by a REAL
+    # session would otherwise resolve before the env/refusal tiers and make
+    # the "unbound" checks below pass or fail on ambient state.
+    with tempfile.TemporaryDirectory() as _iso:
+        os.environ["BUNKER_SHIM_STATE"] = _iso
+        os.environ["HERMES_SESSION_ID"] = "test-session-gap097"
+        return _main()
+
+def _main():
     src = SHIM.read_text()
     tree = ast.parse(src)
     tools = [n.name for n in ast.walk(tree)
              if isinstance(n, ast.FunctionDef)
              for d in n.decorator_list
              if isinstance(d, ast.Call) and getattr(d.func, "attr", "") == "tool"]
-    check("constant surface = exactly 10 verbs", len(tools) == 10, str(tools))
+    check("constant surface = exactly 13 verbs (10 file/exec + 3 instance)",
+          len(tools) == 13, str(tools))
 
     # Import the shim module (FastMCP decorators run but do not connect)
     sys.path.insert(0, str(SHIM.parent))

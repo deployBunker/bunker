@@ -205,15 +205,24 @@ def shim_block():
              if isinstance(n, ast.FunctionDef)
              for d in n.decorator_list
              if isinstance(d, ast.Call) and getattr(d.func, "attr", "") == "tool"]
-    check("shim registers exactly 10 verbs", len(tools) == 10, str(tools))
-    check("shim verbs are the PRD set",
+    # The catalog is CONSTANT by design (GAP-106): 10 file/exec verbs + 3
+    # instance verbs (list/switch/hold). It must not scale with the fleet.
+    check("shim registers exactly 13 verbs", len(tools) == 13, str(tools))
+    check("shim verbs are the PRD set + the instance verbs",
           set(tools) == {"bunker_read", "bunker_search", "bunker_write", "bunker_edit",
                          "bunker_patch", "bunker_apply", "bunker_exec", "bunker_run",
-                         "bunker_lsp", "bunker_lease"}, str(sorted(tools)))
+                         "bunker_lsp", "bunker_lease",
+                         "bunker_list", "bunker_switch", "bunker_hold"}, str(sorted(tools)))
     src = shim.read_text()
+    # GAP-106 made the shim READ the CLI config for DISCOVERY (bunker_list),
+    # so the file name appearing is expected. The invariant that matters — and
+    # what this asserts — is that the shared active_server default is never
+    # used to BIND a call. Tested behaviourally in
+    # test_bunker_shim_instances.py ("discovery does not bind").
     check("shim never resolves a server from shared config",
-          "cfg.ActiveServer" not in src and "ActiveServer" not in src
-          and "config.yaml" not in src)
+          "ActiveServer" not in src
+          and "shared_default_not_used" in src
+          and "_resolve_target_with_source" in src)
     check("shim resolves explicit > session env",
           "BUNKER_SESSION_TARGET" in src and "server and server.strip()" in src)
 

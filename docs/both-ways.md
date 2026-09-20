@@ -63,3 +63,31 @@ operator could read the wrong tree believing it was theirs.
 - `--stdin <file|->` pipes a payload (or bunker's own stdin) into the remote command; binary-safe via temp file, natural EOF.
 - `--base64` returns stdout/stderr base64-encoded per frame so non-UTF8 bytes survive text-only transports.
 - `--exec-cap N` lowers (never raises) the per-direction output cap; the FINAL frame carries a truncation notice naming the cap and the remedy (narrow the command, or fetch the file with `bunker cp`). Output is never silently dropped.
+
+## Which bunker? Constant surface, runtime instances (GAP-106)
+
+The verb layer does not grow a tool per bunker. Its catalog is **fixed at
+thirteen** for one registered server or fifty; "which bunker" is a runtime value
+resolved per call, not a registration.
+
+- `bunker_list` — discover which bunkers exist. One local read of the CLI config;
+  no daemon, no network. Reports `active_server` for information and never binds
+  with it.
+- `bunker_switch(name)` — bind THIS session to a named bunker. The bind is
+  session state (one file keyed by the session id), never a write to the shared
+  config, so a switch cannot re-target a sibling session the way the shared
+  `active_server` default once did. An unknown name refuses and names the known
+  bunkers.
+- `bunker_hold(name=…, release=…)` — report which bunker this session is on and
+  which tier resolved it; `name` also binds, `release` clears.
+
+Resolution order, unchanged and fail-closed at the end:
+
+    explicit `server=`  >  session hold (switch/hold)  >  BUNKER_SESSION_TARGET  >  refusal
+
+A capability the target lacks is an **error** (`capability_unavailable`, naming
+what is absent) while the verb stays on the surface — variance is never a
+dynamically shrinking tool list. The invariant is pinned by
+`tools/test_bunker_shim_instances.py`: a 1-server and a 20-server config must
+register an identical tool set.
+
