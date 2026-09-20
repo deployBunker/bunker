@@ -157,6 +157,15 @@ Docker agent hosts. Send SIGINT/SIGTERM for graceful shutdown.
 		fmt.Fprintln(os.Stderr, warn)
 	}
 
+	// Subordinate-id gate (GAP-140 / SEC-22): the user-namespace separation
+	// between agents is only real if their subuid/subgid ranges are pairwise
+	// disjoint. Refuse to start when an existing overlap is detected rather
+	// than run with a false isolation guarantee. Remediate with
+	// `bunker subid-migrate` (preview) or `bunker subid-migrate --apply`.
+	if err := agent.CheckSubIDOverlaps(); err != nil {
+		return fmt.Errorf("refusing to start: %w\n  run `bunker subid-migrate` to preview a fix, or `bunker subid-migrate --apply` to rewrite managed agent ranges", err)
+	}
+
 	// Create and run server
 	srv := server.New(cfg)
 

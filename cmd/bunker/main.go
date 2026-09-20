@@ -155,6 +155,7 @@ Client-side path overrides (persistent flags):
 	root.AddCommand(cli.NewLingerCommand())
 	root.AddCommand(cli.NewHomesCommand())
 	root.AddCommand(cli.NewHostProvisionCommand())
+	root.AddCommand(cli.NewSubIDMigrateCommand())
 
 	return root
 }
