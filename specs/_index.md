@@ -16,6 +16,7 @@ Last verified against repo HEAD `9ee17c6` (2026-09-16).
 | [agent-lifecycle.md](agent-lifecycle.md) | The state machine | contributor, operator | implemented |
 | [agent-tmp-isolation.md](agent-tmp-isolation.md) | The isolation boundary | operator, contributor | implemented (GAP-075) |
 | [containment-disclosure.md](containment-disclosure.md) | The disclosure contract | operator, integrator | implemented (GAP-067), config-gated |
+| [safety-presets.md](safety-presets.md) | The trust-tier preset system | operator, contributor | not implemented (design authority, GAP-113) |
 | [container-mode.md](container-mode.md) | The proposed execution mode | contributor | not implemented (design draft) |
 
 This file is `_index.md`; every link above is relative and resolves from
@@ -103,6 +104,22 @@ guarantee.
   internal/config/config.go:26), canonical env constant at
   internal/config/config.go:46, exec-path injection at
   internal/server/service.go:736.
+
+### [safety-presets.md](safety-presets.md) — Safety Presets Specification (v1.0.0, GAP-113)
+
+The trust-tier preset system: four tiers by trust (`open`, `standard`, `guarded`,
+`hostile`), each a bundle of containment settings across the resource and unit-sandbox axes,
+with `standard` as the good-experience default. Fixes the two enforcement points (the
+user-`<uid>.slice` drop-in and the rootless-dockerd transient unit) and why one alone is
+insufficient, the `safety.preset` / `--preset` / `BUNKERD_SAFETY_PRESET` precedence, and two
+governing rules: the **experience-budget rule** (an unmeasured knob may not be default-on) and
+the **no-silent-no-op rule** (every knob is read back from the live cgroup or spawn fails).
+
+- **Who should read it:** operators choosing a trust posture per agent, and contributors
+  implementing GAP-116..122.
+- **Status: not implemented — design authority (GAP-113)** — no `safety` config key exists
+  yet; the tier→knob matrix is the contract the implementation rows build to, and `standard`
+  is pinned to today's shipped defaults (`internal/config/config.go:394-398`).
 
 ### [container-mode.md](container-mode.md) — Container-Mode Agent Specification (v0.1.0, draft)
 
