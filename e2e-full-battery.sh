@@ -51,6 +51,8 @@ set -euo pipefail
 #                      production user sweep) instead of standalone take-over
 #   BUNKER_STRICT_BIN  =1 makes a certification MISMATCH fatal before any
 #                      host mutation
+#   BUNKER_E2E_TARGET  name this battery registers its server under and binds
+#                      as its session-scoped target (default e2e-local)
 #
 # DAEMON OWNERSHIP / THE STANDALONE CONTRACT (INT-CI-012):
 #  * The battery NEVER starts or stops the host's daemon: in standalone mode it
@@ -110,6 +112,26 @@ BUNKERD_PID=""
 # Feature batteries (GAP-064) may point BUNKERD_BIN at a freshly built daemon
 # WITHOUT overwriting the live production bunkerd in coexist mode.
 BUNKERD_BIN="${BUNKERD_BIN:-/usr/local/bin/bunkerd}"
+
+# ── Session target binding (RELEASE-001) ───────────────────────────────
+# The GAP-093 fail-closed contract: a MUTATING verb (spawn/destroy/exec/run/
+# tunnel/...) resolves its server as `--server` flag > BUNKER_SESSION_TARGET
+# env > REFUSE, and never falls back to the shared `bunker use` default
+# (internal/cli/binding.go). This battery runs every CLI call through bcli,
+# which pins an isolated BUNKER_HOME but binds nothing — so every mutating
+# call used to be refused with "no target bound" before it ever reached the
+# daemon. That was the whole CI red (run 35500211074: 17 refusal cells;
+# run 35518195177: the same refusal on spawn/exec/tunnel, then the battery
+# died at `wait \"${SPAWN_PIDS[@]}\"`).
+#
+# Section 2 therefore registers the daemon under a suite-OWNED name (see
+# RegisterServer: with an empty --name the entry is named after the response
+# hostname, which on a real host can belong to a fleet server) and exports it
+# as the session target. The name is a NAME, not a URL: both --server and the
+# env var are looked up in cfg.Servers (spawn.go) — the entry `bunker connect
+# --name <name>` created. This is the same shape regression-tests.sh uses
+# (INT-CI-025, commits 9f58928 + 6aac7f8).
+BATTERY_TARGET_NAME="${BUNKER_E2E_TARGET:-e2e-local}"
 
 # ── Resolved inputs + CLI-state isolation (INT-CI-010) ─────────────────
 # Every input is optional and an explicitly exported value ALWAYS wins over
@@ -218,6 +240,19 @@ resolve_inputs() {
         OPERATOR_CLI_CONFIG="${HOME:-/root}/.bunker/config.yaml"
     fi
     OPERATOR_CLI_CONFIG_HASH="$(file_fingerprint "$OPERATOR_CLI_CONFIG")"
+
+    # Stale-binding guard (RELEASE-001): section 2 exports the battery's own
+    # BUNKER_SESSION_TARGET. If the caller's environment already carries a
+    # DIFFERENT binding, that value would win for every mutating call the
+    # section-2 export does not run under — and the run would silently target
+    # a server this battery never registered. Refuse loudly, before any host
+    # mutation, exactly like regression-tests.sh does (INT-CI-025).
+    if [ -n "${BUNKER_SESSION_TARGET:-}" ] && [ "${BUNKER_SESSION_TARGET}" != "$BATTERY_TARGET_NAME" ]; then
+        echo "FATAL: BUNKER_SESSION_TARGET='$BUNKER_SESSION_TARGET' is already set in this environment and does not name this battery's target ('$BATTERY_TARGET_NAME')." >&2
+        echo "       A stale binding would re-target every mutating call this battery makes." >&2
+        echo "       Unset BUNKER_SESSION_TARGET and re-run (or set BUNKER_E2E_TARGET='$BUNKER_SESSION_TARGET' to adopt it)." >&2
+        exit 2
+    fi
 }
 resolve_inputs
 
@@ -1078,6 +1113,98 @@ STFIXEOF
         note "regression-tests.sh is not beside this script — the nested-suite static checks were skipped"
     fi
 
+    # (vii) RELEASE-001 — the session-target binding is the whole defect this
+    # battery went red on: every mutating call through bcli inherited NOTHING,
+    # so the CLI's fail-closed resolver (internal/cli/binding.go) refused it
+    # before it reached the daemon (CI run 35500211074: 17 refusal cells;
+    # run 35518195177: the same refusal on spawn/exec/tunnel). None of that is
+    # reproducible without root and a take-over host, so what is proven here is
+    # the SHAPE the live run depends on:
+    #   (A) every mutating call site in this script carries an explicit
+    #       --server "$BATTERY_TARGET_NAME" (the flag WINS in the resolver, so
+    #       the run does not depend on the export surviving to that line), or
+    #       routes through gap075_bcli, which delegates to bcli;
+    #   (B) the script exports the binding exactly once, after the connect that
+    #       creates the cfg.Servers entry it names;
+    #   (C) the teardown order is destroys -> unset -> state-dir removal (the
+    #       unset must sit between them: the destroys still resolve through the
+    #       binding/config, and nothing may inherit the binding afterwards).
+    #       The battery's own order was already correct pre-fix, unlike
+    #       regression-tests.sh's (INT-CI-025 fixed that one); this arm PINS it.
+    #   (D) a foreign BUNKER_SESSION_TARGET makes the harness refuse.
+    ST_BIND_BAD=""
+    for st_v in spawn destroy exec run tunnel; do
+        st_lns="$(grep -nE "^[[:space:]]*bcli[[:space:]]+${st_v}[[:space:]]" "$ST_SELF" 2>/dev/null | grep -vF -- '--server' || true)"
+        [ -z "$st_lns" ] || ST_BIND_BAD="$ST_BIND_BAD ${st_v}:$(printf '%s' "$st_lns" | tr '\n' ',')"
+    done
+    st_special="$(grep -nE '^[[:space:]]*(nohup[[:space:]]+(setsid[[:space:]]+)?)?"\$BUNKER"[[:space:]]+tunnel[[:space:]]' "$ST_SELF" 2>/dev/null | grep -vF -- '--server' || true)"
+    [ -z "$st_special" ] || ST_BIND_BAD="$ST_BIND_BAD \$BUNKER-tunnel:$(printf '%s' "$st_special" | tr '\n' ',')"
+    if [ -z "$ST_BIND_BAD" ]; then
+        assert "every mutating call site carries an explicit --server \"\$BATTERY_TARGET_NAME\" (defense in depth, GAP-093 binding contract)"
+    else
+        fail "unbound mutating call site(s) remain:$ST_BIND_BAD — the CLI refuses those before they reach the daemon"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+    ST_BIND_EXPORTS="$(grep -cE '^[[:space:]]*export BUNKER_SESSION_TARGET=' "$ST_SELF" 2>/dev/null || true)"
+    ST_BIND_EXPORT_LINE="$(grep -nE '^[[:space:]]*export BUNKER_SESSION_TARGET=' "$ST_SELF" 2>/dev/null | cut -d: -f1 | head -1 || true)"
+    ST_CONNECT_LINE="$(grep -nF 'bcli connect "$BUNKER_DAEMON_URL" --name "$BATTERY_TARGET_NAME"' "$ST_SELF" 2>/dev/null | cut -d: -f1 | head -1 || true)"
+    if [ "${ST_BIND_EXPORTS:-0}" = "1" ] && [ -n "$ST_BIND_EXPORT_LINE" ] && [ -n "$ST_CONNECT_LINE" ] && [ "$ST_CONNECT_LINE" -lt "$ST_BIND_EXPORT_LINE" ]; then
+        assert "the battery exports BUNKER_SESSION_TARGET exactly once, AFTER the connect that registers \"\$BATTERY_TARGET_NAME\" (line $ST_CONNECT_LINE < $ST_BIND_EXPORT_LINE)"
+    else
+        fail "binding export contract violated: exports=${ST_BIND_EXPORTS:-?} connect_line=${ST_CONNECT_LINE:-none} export_line=${ST_BIND_EXPORT_LINE:-none} (want exactly 1 export, after the connect)"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+    ST_DESTROY_LINE="$(grep -nF 'bcli destroy --server "$BATTERY_TARGET_NAME" "$agent" --force' "$ST_SELF" 2>/dev/null | cut -d: -f1 | head -1 || true)"
+    ST_UNSET_LINE="$(awk '/^cleanup\(\)/,/^}/ {if ($0 ~ /^[[:space:]]*unset BUNKER_SESSION_TARGET/) {print NR; exit}}' "$ST_SELF" 2>/dev/null || true)"
+    ST_RMDIR_LINE="$(awk '/^cleanup\(\)/,/^}/ {if ($0 ~ /remove_own_state_dir "\$BATTERY_CLI_HOME"/) {print NR; exit}}' "$ST_SELF" 2>/dev/null || true)"
+    if [ -n "$ST_DESTROY_LINE" ] && [ -n "$ST_UNSET_LINE" ] && [ -n "$ST_RMDIR_LINE" ] && [ "$ST_DESTROY_LINE" -lt "$ST_UNSET_LINE" ] && [ "$ST_UNSET_LINE" -lt "$ST_RMDIR_LINE" ]; then
+        assert "teardown order is destroys ($ST_DESTROY_LINE) -> unset binding ($ST_UNSET_LINE) -> remove state dir ($ST_RMDIR_LINE) — PINNED (the battery's order was already correct; the inverted one was regression-tests.sh's, fixed by INT-CI-025)"
+    else
+        fail "teardown order wrong: destroy=$ST_DESTROY_LINE unset=$ST_UNSET_LINE rm-state-dir=$ST_RMDIR_LINE (want destroy < unset < rm; a destroy issued after the state dir is removed dies at the config-entry lookup and skips silently)"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+    # NOTE ON PINS vs DEFECTS: the assertions above are not equally strong, and
+    # the difference is stated rather than glossed. On the pre-fix battery
+    # (git show 6ea9495:e2e-full-battery.sh) the --server arm, the export arm and
+    # the stale-binding arm FAIL — they detect the RELEASE-001 defect — while the
+    # teardown-order arm already PASSED there (this battery's order was correct;
+    # it is a PIN against future inversion), and two arms (accept-own-name,
+    # default-name) hold identically on both revisions because they constrain
+    # behaviour that the fix did not change. RED-proof: splice only this block
+    # into the pre-fix revision and run --self-test.
+    # (D) behavioural, with NO recursion: the guard lives in resolve_inputs(),
+    # so drive resolve_inputs in a subshell (the same pattern the precedence
+    # checks above use) rather than re-invoking this script. The guard's
+    # `exit 2` closes that subshell, which is the status read below. No root,
+    # no daemon, no host mutation.
+    ST_GUARD_RC=0
+    ST_GUARD_OUT="$( export BUNKER_SESSION_TARGET=some-foreign-server; resolve_inputs 2>&1 )" || ST_GUARD_RC=$?
+    if [ "$ST_GUARD_RC" -eq 2 ] && printf '%s' "$ST_GUARD_OUT" | grep -qF "BUNKER_SESSION_TARGET='some-foreign-server' is already set" && printf '%s' "$ST_GUARD_OUT" | grep -qF "$BATTERY_TARGET_NAME"; then
+        assert "a foreign BUNKER_SESSION_TARGET is refused up front (rc=$ST_GUARD_RC, naming both the foreign value and this battery's target)"
+    else
+        fail "the stale-binding guard did not refuse a foreign BUNKER_SESSION_TARGET (rc=$ST_GUARD_RC, output: $(printf '%s' "$ST_GUARD_OUT" | head -2 | tr '\n' ' '))"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+    # ...and the SAME name must be ACCEPTED (the documented adoption path), so
+    # the guard is not simply refusing every non-empty value.
+    ST_GUARD_OK_RC=0
+    ST_GUARD_OK="$( export BUNKER_SESSION_TARGET="$BATTERY_TARGET_NAME"; resolve_inputs; printf '%s|%s' "$BATTERY_TARGET_NAME" "${BUNKER_SESSION_TARGET:-}" )" || ST_GUARD_OK_RC=$?
+    if [ "$ST_GUARD_OK_RC" -eq 0 ] && [ "$ST_GUARD_OK" = "$BATTERY_TARGET_NAME|$BATTERY_TARGET_NAME" ]; then
+        assert "the guard accepts a binding that already names this battery's target ($ST_GUARD_OK)"
+    else
+        fail "the guard refused / mangled the battery's OWN target name (rc=$ST_GUARD_OK_RC, got '$ST_GUARD_OK', want '$BATTERY_TARGET_NAME|$BATTERY_TARGET_NAME')"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+    # The default name is stable, so a transcript's target name is predictable
+    # and CI can adopt it via BUNKER_E2E_TARGET without reading this script.
+    ST_TARGET_DEFAULT="$(unset BUNKER_SESSION_TARGET; unset BUNKER_E2E_TARGET; resolve_inputs; printf '%s' "$BATTERY_TARGET_NAME")"
+    if [ "$ST_TARGET_DEFAULT" = "e2e-local" ]; then
+        assert "with BUNKER_E2E_TARGET unset the target name defaults to e2e-local"
+    else
+        fail "the default target name is '$ST_TARGET_DEFAULT', want 'e2e-local'"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+
     # The self-test exits BEFORE the cleanup trap is armed, so it removes its
     # own scratch explicitly (a sentinel HOME, a stub CLI, and the battery CLI
     # state dir).
@@ -1141,6 +1268,8 @@ if [ "${1:-}" = "--show-plan" ]; then
     echo "  REST port             : :$REST_PORT  (BUNKERD_REST_ADDR=$BUNKERD_REST_ADDR${BUNKERD_REST_ADDR_EXPLICIT:+, explicit})"
     echo "  gRPC port             : :$GRPC_PORT  (BUNKERD_GRPC_ADDR=$BUNKERD_GRPC_ADDR${BUNKERD_GRPC_ADDR_EXPLICIT:+, explicit})"
     echo "  token source          : $BUNKER_TOKEN_SOURCE (fingerprint $(token_fingerprint "$BUNKER_TOKEN"); the token itself is never printed)"
+    echo "  session target        : $BATTERY_TARGET_NAME  (registered by the section-2 connect --name, bound as BUNKER_SESSION_TARGET; every mutating call also passes --server explicitly — GAP-093)"
+    echo "  nested suite binding  : the child runs with BUNKER_SESSION_TARGET cleared (env -u) and binds its own target name"
     echo "  battery CLI state dir : $PLAN_CLI_HOME  (BUNKER_HOME and HOME for every CLI call; removed on exit)"
     echo "  battery CLI config    : $PLAN_CLI_CONFIG  ($([ -f "$PLAN_CLI_CONFIG" ] && echo exists || echo 'created on the first CLI call'))"
     echo "  operator CLI config   : $OPERATOR_CLI_CONFIG  ($([ -f "$OPERATOR_CLI_CONFIG" ] && echo exists || echo absent); $OPERATOR_CLI_CONFIG_HASH)"
@@ -1227,12 +1356,30 @@ echo "  operator CLI config  : $OPERATOR_CLI_CONFIG  ($OPERATOR_CLI_CONFIG_HASH 
 echo ""
 
 cleanup() {
-    # Destroy any agents created during tests. bcli pins BUNKER_HOME and HOME
-    # at the battery's own state dir, so cleanup can only ever reach the daemon
-    # this run registered — never whatever the operator's CLI config points at.
+    # Destroy any agents created during tests — BEFORE the battery's own CLI
+    # state dir is removed below: each destroy resolves its target through the
+    # CLI config inside that dir (bcli points BUNKER_HOME *and* HOME there), and
+    # LoadCLIConfig treats a missing config as an EMPTY config
+    # (internal/cli/config.go), so a destroy issued AFTER that removal would die
+    # at the config-entry lookup and skip silently. This battery's order was
+    # already correct when RELEASE-001 landed — the inverted order was
+    # regression-tests.sh's defect, which INT-CI-025 fixed there. The
+    # --self-test arm "teardown order is destroys -> unset binding -> remove
+    # state dir" now PINS this order so a future edit cannot invert it, which is
+    # also why the unset below sits between the two.
+    #
+    # bcli pins BUNKER_HOME and HOME at the battery's own state dir, so cleanup
+    # can only ever reach the daemon this run registered — never whatever the
+    # operator's CLI config points at. --server is passed explicitly as defense
+    # in depth: teardown must not depend on the exported binding alone.
     for agent in e2e-main e2e-agent-2 e2e-agent-3 e2e-agent-4 e2e-agent-5 e2e-imgspec e2e-imgspec-b e2e-imgspec-bad gap070-idem gap075-a gap075-b; do
-        bcli destroy "$agent" --force > /dev/null 2>&1 || true
+        bcli destroy --server "$BATTERY_TARGET_NAME" "$agent" --force > /dev/null 2>&1 || true
     done
+    # RELEASE-001: tear the binding down only now — after the destroys above,
+    # which still resolve through it, and before any caller that sources or
+    # re-runs this shell could inherit it. The state-dir removal follows the
+    # unset (see the note on the destroy loop for why the order matters).
+    unset BUNKER_SESSION_TARGET
     # Kill leftover users. Standalone: every bunker- user is fair game.
     # Coexist: only this battery's own agents (bunker-e2e-*) — NEVER touch
     # production users.
@@ -1429,18 +1576,53 @@ echo ""
 # 2. CONNECT
 # =============================================
 echo "=== 2. Connect ==="
-# INT-CI-010: the endpoint and the token come from the RESOLVED inputs
+# The endpoint and the token come from the RESOLVED inputs
 # (BUNKER_DAEMON_URL / BUNKER_TOKEN) and never from a literal — the previous
 # revision hardcoded the dev token here and rewrote the operator's CLI config.
 # bcli pins BUNKER_HOME, so this registration lands in the battery's own state
 # dir and every later CLI call (sections 3-13, cleanup) targets it.
-run_capture "bunker connect" bcli connect "$BUNKER_DAEMON_URL" --token "$BUNKER_TOKEN"
+#
+# RELEASE-001: --name is explicit, and the same name is then BOUND as the
+# session target. RegisterServer with an empty --name names the entry after
+# the RESPONSE HOSTNAME, which on a real host may already belong to a fleet
+# server (connect would silently overwrite it); a battery-owned name never
+# clobbers a real entry. Connect itself binds nothing — it only records the
+# server — so the export below is what makes the following mutating calls
+# resolve. Binding BEFORE the connect is not possible: the target name has no
+# cfg.Servers entry until the connect below creates it.
+#
+# The export is deliberately preceded by an `unset`: connect loads the CLI
+# config, and if the caller exported BUNKER_SESSION_TARGET with exactly this
+# name the run must still start from an unbound state, so a later "the
+# binding survived the connect" check cannot pass on an inherited value.
+unset BUNKER_SESSION_TARGET
+run_capture "bunker connect" bcli connect "$BUNKER_DAEMON_URL" --name "$BATTERY_TARGET_NAME" --token "$BUNKER_TOKEN"
 CONNECT_OUT="$RUN_CAPTURE_OUT"
 if echo "$CONNECT_OUT" | grep -q "Connected\|Server registered"; then
-    assert "connect to bunkerd ($BUNKER_DAEMON_URL, token from $BUNKER_TOKEN_SOURCE)"
+    assert "connect to bunkerd ($BUNKER_DAEMON_URL, token from $BUNKER_TOKEN_SOURCE, registered as \"$BATTERY_TARGET_NAME\")"
 else
     fail "connect to bunkerd ($BUNKER_DAEMON_URL) — $CONNECT_OUT"
 fi
+# The registration must be under the battery-OWNED name: every mutating call
+# below passes --server "$BATTERY_TARGET_NAME", so a registration under the
+# response hostname instead would fail them all at the config-entry lookup.
+if echo "$CONNECT_OUT" | grep -qF "Server registered as \"$BATTERY_TARGET_NAME\""; then
+    assert "server registered under the battery-owned name (no fleet clobber)"
+else
+    fail "server registration did not report the battery-owned name \"$BATTERY_TARGET_NAME\" — $CONNECT_OUT"
+fi
+# Bind the session target for every later mutating call (GAP-093: the resolver
+# is `--server` flag > BUNKER_SESSION_TARGET env > REFUSE). Prove the export
+# took, loudly, before any verb can silently fail closed — an unbound mutating
+# call is refused by the CLI before it ever reaches the daemon, which is
+# exactly how this battery went red in CI.
+export BUNKER_SESSION_TARGET="$BATTERY_TARGET_NAME"
+if [ -z "${BUNKER_SESSION_TARGET:-}" ]; then
+    fail "BUNKER_SESSION_TARGET export did not stick — refusing to run mutating verbs unbound"
+    echo "  FATAL: target binding missing; aborting before section 3 (spawn would be refused)" >&2
+    exit 3
+fi
+assert "session target bound: BUNKER_SESSION_TARGET=$BUNKER_SESSION_TARGET (--server is also passed explicitly on every mutating call)"
 # The registration must land INSIDE the battery's OWN state dir — BUNKER_HOME
 # for a current build, ~/.bunker for a build that predates BUNKER_HOME; both
 # live under $BATTERY_CLI_HOME. The operator's config is fingerprinted and
@@ -1470,7 +1652,7 @@ echo ""
 # 4. SPAWN
 # =============================================
 echo "=== 4. Spawn ==="
-run_capture "spawn e2e-main" bcli spawn --agent-id "e2e-main"
+run_capture "spawn e2e-main" bcli spawn --server "$BATTERY_TARGET_NAME" --agent-id "e2e-main"
 SPAWN_OUT="$RUN_CAPTURE_OUT"
 if echo "$SPAWN_OUT" | grep -q "Agent created"; then
     assert "spawn agent e2e-main"
@@ -1531,7 +1713,7 @@ else
     fail "docker socket not created"
 fi
 
-DOCKER_RUN=$(bcli exec e2e-main -- docker run --rm alpine:latest echo DOCKER-OK 2>&1 || true)
+DOCKER_RUN=$(bcli exec --server "$BATTERY_TARGET_NAME" e2e-main -- docker run --rm alpine:latest echo DOCKER-OK 2>&1 || true)
 if echo "$DOCKER_RUN" | grep -q "DOCKER-OK"; then
     assert "docker run inside agent works"
 else
@@ -1571,7 +1753,7 @@ echo ""
 # =============================================
 echo "=== 6. Exec ==="
 # Test whoami
-run_capture "exec whoami" bcli exec e2e-main whoami
+run_capture "exec whoami" bcli exec --server "$BATTERY_TARGET_NAME" e2e-main whoami
 WHOAMI_OUT="$RUN_CAPTURE_OUT"
 if echo "$WHOAMI_OUT" | grep -q "bunker-e2e-main"; then
     assert "exec whoami returns agent user"
@@ -1580,7 +1762,7 @@ else
 fi
 
 # Test basic command execution
-run_capture "exec id" bcli exec e2e-main id
+run_capture "exec id" bcli exec --server "$BATTERY_TARGET_NAME" e2e-main id
 ENV_OUT="$RUN_CAPTURE_OUT"
 if echo "$ENV_OUT" | grep -q "bunker-e2e-main"; then
     assert "exec id works"
@@ -1589,7 +1771,7 @@ else
 fi
 
 # Docker exec (must work now that dockerd is running)
-DOCKER_EXEC=$(bcli exec e2e-main -- docker run --rm alpine:latest echo DOCKER-OK 2>&1 || true)
+DOCKER_EXEC=$(bcli exec --server "$BATTERY_TARGET_NAME" e2e-main -- docker run --rm alpine:latest echo DOCKER-OK 2>&1 || true)
 if echo "$DOCKER_EXEC" | grep -q "DOCKER-OK"; then
     assert "docker run via exec"
 else
@@ -1610,10 +1792,10 @@ TUNNEL_LOG=/tmp/bunker-tunnel-e2e-main.log
 # setsid gives the tunnel its own session, so the teardown below can signal its
 # whole process GROUP without ever signalling this script.
 if command -v setsid >/dev/null 2>&1; then
-    nohup setsid "$BUNKER" tunnel e2e-main > "$TUNNEL_LOG" 2>&1 &
+    nohup setsid "$BUNKER" tunnel --server "$BATTERY_TARGET_NAME" e2e-main > "$TUNNEL_LOG" 2>&1 &
     TUNNEL_SETSID=1
 else
-    nohup "$BUNKER" tunnel e2e-main > "$TUNNEL_LOG" 2>&1 &
+    nohup "$BUNKER" tunnel --server "$BATTERY_TARGET_NAME" e2e-main > "$TUNNEL_LOG" 2>&1 &
 fi
 TUNNEL_PID=$!
 sleep 3
@@ -1695,7 +1877,7 @@ echo "=== 8. Multi-agent Spawn ==="
 # the spawn CLIs.
 SPAWN_PIDS=()
 for i in 2 3 4 5; do
-    bcli spawn --agent-id "e2e-agent-$i" > /dev/null 2>&1 &
+    bcli spawn --server "$BATTERY_TARGET_NAME" --agent-id "e2e-agent-$i" > /dev/null 2>&1 &
     SPAWN_PIDS+=($!)
 done
 wait "${SPAWN_PIDS[@]}"
@@ -1741,7 +1923,7 @@ echo ""
 # 9. DESTROY
 # =============================================
 echo "=== 9. Destroy ==="
-run_capture "destroy e2e-main" bcli destroy e2e-main --force
+run_capture "destroy e2e-main" bcli destroy --server "$BATTERY_TARGET_NAME" e2e-main --force
 DESTROY_OUT="$RUN_CAPTURE_OUT"
 if echo "$DESTROY_OUT" | grep -q "destroyed"; then
     assert "destroy e2e-main"
@@ -1763,7 +1945,7 @@ else
 fi
 
 # Re-spawn (idempotency)
-bcli spawn --agent-id "e2e-main" > /dev/null 2>&1
+bcli spawn --server "$BATTERY_TARGET_NAME" --agent-id "e2e-main" > /dev/null 2>&1
 sleep 1
 if id "bunker-e2e-main" >/dev/null 2>&1; then
     assert "re-spawn same ID works (idempotency)"
@@ -1777,7 +1959,7 @@ echo ""
 # =============================================
 echo "=== 10. Cleanup All ==="
 for agent in e2e-main e2e-agent-2 e2e-agent-3 e2e-agent-4 e2e-agent-5; do
-    bcli destroy "$agent" --force > /dev/null 2>&1 || true
+    bcli destroy --server "$BATTERY_TARGET_NAME" "$agent" --force > /dev/null 2>&1 || true
 done
 sleep 3
 
@@ -1863,7 +2045,14 @@ if [ -n "$REGRESSION_SCRIPT" ]; then
     NESTED_PORTS="$(nested_suite_ports)"
     NESTED_GRPC_ADDR="${NESTED_PORTS%% *}"
     NESTED_REST_ADDR="${NESTED_PORTS##* }"
-    run_capture "nested regression suite" env BUNKER_HOME="$NESTED_CLI_HOME" HOME="$NESTED_CLI_HOME" BUNKERD_GRPC_ADDR="$NESTED_GRPC_ADDR" BUNKERD_REST_ADDR="$NESTED_REST_ADDR" bash "$REGRESSION_SCRIPT"
+    # RELEASE-001: the child must never inherit this battery's session binding.
+    # regression-tests.sh guards a foreign binding by refusing to start
+    # (INT-CI-025: a stale binding would re-target every mutating call it
+    # makes), and this battery now exports its own binding in section 2. `env
+    # -u` clears it for the child, which then binds its OWN target after its
+    # connect — the same contract the battery follows. The battery's own
+    # binding lives in THIS shell, so section 13 continues to resolve normally.
+    run_capture "nested regression suite" env -u BUNKER_SESSION_TARGET BUNKER_HOME="$NESTED_CLI_HOME" HOME="$NESTED_CLI_HOME" BUNKERD_GRPC_ADDR="$NESTED_GRPC_ADDR" BUNKERD_REST_ADDR="$NESTED_REST_ADDR" bash "$REGRESSION_SCRIPT"
     REG_OUT="$RUN_CAPTURE_OUT"
     # The nested suite's REAL exit status. The previous revision read `$?` after
     # a `... || true` command substitution, so REG_EXIT was always 0.
@@ -1930,7 +2119,7 @@ cat > "$GAP064_SPEC2" <<'EOF'
 EOF
 
 # (b) Rejected spec: invalid_argument, NO build, NO user created.
-GAP064_REJECT_OUT=$(bcli spawn --agent-id "e2e-imgspec-bad" --image-spec "$GAP064_REJECT" 2>&1 || true)
+GAP064_REJECT_OUT=$(bcli spawn --server "$BATTERY_TARGET_NAME" --agent-id "e2e-imgspec-bad" --image-spec "$GAP064_REJECT" 2>&1 || true)
 if echo "$GAP064_REJECT_OUT" | grep -qi "invalid_argument\|invalid image spec"; then
     assert "rejected spec returns invalid_argument"
 else
@@ -1938,14 +2127,14 @@ else
 fi
 if id "bunker-e2e-imgspec-bad" >/dev/null 2>&1; then
     fail "rejected spec created a user anyway"
-    bcli destroy e2e-imgspec-bad --force > /dev/null 2>&1 || true
+    bcli destroy --server "$BATTERY_TARGET_NAME" e2e-imgspec-bad --force > /dev/null 2>&1 || true
 else
     assert "rejected spec created no user (no side effects)"
 fi
 
 # (a) Allowed spec: spawn, then verify jq exists in the agent image.
 GAP064_BUILD_START=$(date +%s)
-GAP064_SPAWN_OUT=$(bcli spawn --agent-id "e2e-imgspec" --image-spec "$GAP064_SPEC" 2>&1 || true)
+GAP064_SPAWN_OUT=$(bcli spawn --server "$BATTERY_TARGET_NAME" --agent-id "e2e-imgspec" --image-spec "$GAP064_SPEC" 2>&1 || true)
 if echo "$GAP064_SPAWN_OUT" | grep -q "Agent created"; then
     assert "allowed spec spawns agent"
 else
@@ -1958,13 +2147,13 @@ else
 fi
 # Wait for the first rootless build to finish (bounded).
 GAP064_WAITED=0
-until bcli exec e2e-imgspec -- which jq > /dev/null 2>&1; do
+until bcli exec --server "$BATTERY_TARGET_NAME" e2e-imgspec -- which jq > /dev/null 2>&1; do
     sleep 10
     GAP064_WAITED=$((GAP064_WAITED+10))
     if [ "$GAP064_WAITED" -ge 300 ]; then break; fi
 done
 GAP064_BUILD_END=$(date +%s)
-WHICH_JQ=$(bcli exec e2e-imgspec -- which jq 2>&1 || true)
+WHICH_JQ=$(bcli exec --server "$BATTERY_TARGET_NAME" e2e-imgspec -- which jq 2>&1 || true)
 if echo "$WHICH_JQ" | grep -q "/usr/bin/jq\|/bin/jq"; then
     assert "jq present in customized image (which jq → $WHICH_JQ)"
 else
@@ -1981,13 +2170,13 @@ else
     fail "no spec cache dir under $GAP064_CACHE_ROOT"
 fi
 
-bcli destroy e2e-imgspec --force > /dev/null 2>&1
+bcli destroy --server "$BATTERY_TARGET_NAME" e2e-imgspec --force > /dev/null 2>&1
 sleep 2
 # Same spec again: must reuse the cache marker + image inspect (no rebuild).
-bcli spawn --agent-id "e2e-imgspec" --image-spec "$GAP064_SPEC" > /dev/null 2>&1 || true
+bcli spawn --server "$BATTERY_TARGET_NAME" --agent-id "e2e-imgspec" --image-spec "$GAP064_SPEC" > /dev/null 2>&1 || true
 sleep 1
 GAP064_SAME_T0=$(date +%s)
-until bcli exec e2e-imgspec -- which jq > /dev/null 2>&1; do
+until bcli exec --server "$BATTERY_TARGET_NAME" e2e-imgspec -- which jq > /dev/null 2>&1; do
     sleep 5
     if [ $(( $(date +%s) - GAP064_SAME_T0 )) -ge 120 ]; then break; fi
 done
@@ -2001,9 +2190,9 @@ fi
 
 # Changed spec on the same agent: fresh daemon per re-spawn, so the image is
 # rebuilt for the new key — the changed key must appear alongside the old one.
-bcli spawn --agent-id "e2e-imgspec-b" --image-spec "$GAP064_SPEC2" > /dev/null 2>&1 || true
+bcli spawn --server "$BATTERY_TARGET_NAME" --agent-id "e2e-imgspec-b" --image-spec "$GAP064_SPEC2" > /dev/null 2>&1 || true
 sleep 1
-GAP064_KEYS_RAW=$(bcli exec e2e-imgspec-b -- sh -c 'docker images --format "{{.Repository}}" 2>/dev/null | grep -c bunkerd-imagespec' 2>/dev/null || echo 0)
+GAP064_KEYS_RAW=$(bcli exec --server "$BATTERY_TARGET_NAME" e2e-imgspec-b -- sh -c 'docker images --format "{{.Repository}}" 2>/dev/null | grep -c bunkerd-imagespec' 2>/dev/null || echo 0)
 # `grep -c` PRINTS its count and exits 1 when the count is zero, so the `|| echo 0`
 # above APPENDS a second line instead of replacing the first: a zero count arrives
 # as "0\n0". `[ "0\n0" -ge 1 ]` then aborted with "integer expression expected",
@@ -2023,8 +2212,8 @@ else
 fi
 
 # (d) Cleanup hook: after force destroy, the agent's container is gone.
-bcli destroy e2e-imgspec --force > /dev/null 2>&1 || true
-bcli destroy e2e-imgspec-b --force > /dev/null 2>&1 || true
+bcli destroy --server "$BATTERY_TARGET_NAME" e2e-imgspec --force > /dev/null 2>&1 || true
+bcli destroy --server "$BATTERY_TARGET_NAME" e2e-imgspec-b --force > /dev/null 2>&1 || true
 sleep 2
 if id "bunker-e2e-imgspec" >/dev/null 2>&1 || id "bunker-e2e-imgspec-b" >/dev/null 2>&1; then
     fail "imgspec agents not fully destroyed"
@@ -2157,7 +2346,7 @@ else
     # knowledge — it cannot report the documented idempotent result either).
     if daemon_gate "14. Durable Registry (GAP-070) live-daemon checks"; then
     GAP070_LIVE="${BUNKER_REGISTRY_PATH:-/var/lib/bunkerd/agents.jsonl}"
-    bcli spawn gap070-idem > /dev/null 2>&1 || true
+    bcli spawn --server "$BATTERY_TARGET_NAME" gap070-idem > /dev/null 2>&1 || true
     sleep 2
     if [ -f "$GAP070_LIVE" ] && grep -q '"agent_id":"gap070-idem"' "$GAP070_LIVE"; then
         assert "spawn persisted a durable registry record at $GAP070_LIVE"
@@ -2171,9 +2360,9 @@ else
     fi
     # Idempotent destroy: the FIRST destroy removes the agent, the SECOND must
     # still succeed because the registry remembers it.
-    bcli destroy gap070-idem --force > /dev/null 2>&1
+    bcli destroy --server "$BATTERY_TARGET_NAME" gap070-idem --force > /dev/null 2>&1
     FIRST_EXIT=$?
-    bcli destroy gap070-idem --force > /dev/null 2>&1
+    bcli destroy --server "$BATTERY_TARGET_NAME" gap070-idem --force > /dev/null 2>&1
     SECOND_EXIT=$?
     if [ "$SECOND_EXIT" -eq 0 ]; then
         assert "repeated destroy of a known absent agent succeeds (first=$FIRST_EXIT second=$SECOND_EXIT)"
@@ -2190,7 +2379,7 @@ else
     GAP070_NEVER_SEEN="gap070-never-seen-$$-$(date +%s)"
     # (a) CLI half — the documented idempotent UX: exit 0 + the not-found
     # message. Either half regressing must red this cell.
-    run_capture "destroy never-seen ($GAP070_NEVER_SEEN)" bcli destroy "$GAP070_NEVER_SEEN"
+    run_capture "destroy never-seen ($GAP070_NEVER_SEEN)" bcli destroy --server "$BATTERY_TARGET_NAME" "$GAP070_NEVER_SEEN"
     GAP070_NEVER_SEEN_EXIT="$RUN_CAPTURE_EXIT"
     if [ "$GAP070_NEVER_SEEN_EXIT" -eq 0 ] && printf '%s' "$RUN_CAPTURE_OUT" | grep -q "not found"; then
         assert "destroy of a never-seen ID reports not found and exits 0 (via $BUNKER_DAEMON_URL): $(printf '%s' "$RUN_CAPTURE_OUT" | head -1)"
@@ -2456,10 +2645,10 @@ rm -f /etc/pam.d/sshd.bunker-battery-tmp 2>/dev/null || true
 GAP075_MASK_RESTORE=""
 
 # ── 15.2 agent private /tmp ────────────────────────────────────────────
-bcli spawn --agent-id "$GAP075_A" > /dev/null 2>&1 || true
-bcli spawn --agent-id "$GAP075_B" > /dev/null 2>&1 || true
+bcli spawn --server "$BATTERY_TARGET_NAME" --agent-id "$GAP075_A" > /dev/null 2>&1 || true
+bcli spawn --server "$BATTERY_TARGET_NAME" --agent-id "$GAP075_B" > /dev/null 2>&1 || true
 
-GAP075_SESSION=$(bcli exec "$GAP075_A" id 2>&1 || true)
+GAP075_SESSION=$(bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_A" id 2>&1 || true)
 if echo "$GAP075_SESSION" | grep -q "bunker-$GAP075_A"; then
     assert "agent session opens with pam_namespace enabled and keeps its own uid"
 else
@@ -2470,7 +2659,7 @@ fi
 
 # Positive control first: the agent can write and read its OWN /tmp. Without
 # this, a later "hidden" result could just mean the write failed.
-GAP075_WRITE=$(bcli exec "$GAP075_A" -- sh -c "echo gap075-a > /tmp/$GAP075_A_FILE && cat /tmp/$GAP075_A_FILE" 2>&1 || true)
+GAP075_WRITE=$(bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_A" -- sh -c "echo gap075-a > /tmp/$GAP075_A_FILE && cat /tmp/$GAP075_A_FILE" 2>&1 || true)
 if echo "$GAP075_WRITE" | grep -q "gap075-a"; then
     assert "agent A writes and reads its own /tmp/$GAP075_A_FILE (positive control)"
 else
@@ -2485,7 +2674,7 @@ else
 fi
 
 # A second agent must not see it either.
-GAP075_B_LOOK=$(bcli exec "$GAP075_B" -- sh -c "test -e /tmp/$GAP075_A_FILE && echo VISIBLE || echo HIDDEN" 2>&1 || true)
+GAP075_B_LOOK=$(bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_B" -- sh -c "test -e /tmp/$GAP075_A_FILE && echo VISIBLE || echo HIDDEN" 2>&1 || true)
 if echo "$GAP075_B_LOOK" | grep -q "HIDDEN"; then
     assert "agent B cannot see agent A's private /tmp file"
 else
@@ -2494,7 +2683,7 @@ fi
 
 # ...and the reverse direction: root writes /tmp, the agent must not see it.
 echo "gap075-root" > "/tmp/$GAP075_ROOT_FILE" 2>/dev/null || true
-GAP075_A_LOOK=$(bcli exec "$GAP075_A" -- sh -c "test -e /tmp/$GAP075_ROOT_FILE && echo VISIBLE || echo HIDDEN" 2>&1 || true)
+GAP075_A_LOOK=$(bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_A" -- sh -c "test -e /tmp/$GAP075_ROOT_FILE && echo VISIBLE || echo HIDDEN" 2>&1 || true)
 if echo "$GAP075_A_LOOK" | grep -q "HIDDEN"; then
     assert "agent A cannot see root's /tmp file"
 else
@@ -2508,7 +2697,7 @@ if getent group "$GAP075_GROUP" > /dev/null 2>&1; then
 else
     fail "the agent isolation group $GAP075_GROUP does not exist — every agent session would be denied by the pam_exec precondition"
 fi
-GAP075_MEMBER=$(bcli exec "$GAP075_A" -- id -nG 2>&1 || true)
+GAP075_MEMBER=$(bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_A" -- id -nG 2>&1 || true)
 if echo "$GAP075_MEMBER" | tr ' ' '\n' | grep -qx "$GAP075_GROUP"; then
     assert "the agent session carries the $GAP075_GROUP membership"
 else
@@ -2544,7 +2733,7 @@ if [ -n "$GAP075_OP_KEYDIR" ] && ssh-keygen -q -t ed25519 -N '' -f "$GAP075_OP_K
         fi
         if [ -e "/tmp/$GAP075_OP_FILE-wrote" ]; then
             assert "the non-agent user's /tmp write landed in the host's /tmp"
-            GAP075_AGENT_LOOK=$(bcli exec "$GAP075_A" -- sh -c "test -e /tmp/$GAP075_OP_FILE-wrote && echo VISIBLE || echo HIDDEN" 2>&1 || true)
+            GAP075_AGENT_LOOK=$(bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_A" -- sh -c "test -e /tmp/$GAP075_OP_FILE-wrote && echo VISIBLE || echo HIDDEN" 2>&1 || true)
             if echo "$GAP075_AGENT_LOOK" | grep -q "HIDDEN"; then
                 assert "the agent cannot see the non-agent user's host /tmp file"
             else
@@ -2562,7 +2751,7 @@ fi
 rm -f "/tmp/$GAP075_OP_FILE" "/tmp/$GAP075_OP_FILE-wrote" 2>/dev/null || true
 
 # ── 15.2d a detached run unit is private too ───────────────────────────
-bcli run "$GAP075_A" --detach -- sh -c "echo gap075-run > /tmp/$GAP075_RUN_FILE; sleep 90" > /dev/null 2>&1 || true
+bcli run --server "$BATTERY_TARGET_NAME" "$GAP075_A" --detach -- sh -c "echo gap075-run > /tmp/$GAP075_RUN_FILE; sleep 90" > /dev/null 2>&1 || true
 sleep 6
 GAP075_RUN_UNIT=$(systemctl list-units --all --no-legend "bunker-run-$GAP075_A-*" 2>/dev/null | awk '{print $1}' | head -1 || true)
 if [ -n "$GAP075_RUN_UNIT" ]; then
@@ -2586,8 +2775,8 @@ fi
 # ── 15.3 shared scratch is the only sanctioned exchange point ──────────
 GAP075_ADIR="$GAP075_SHARE/$GAP075_A"
 GAP075_HANDOFF="$GAP075_A_FILE-handoff.txt"
-bcli exec "$GAP075_A" -- sh -c "echo handoff-$GAP075_UNIQ > $GAP075_ADIR/$GAP075_HANDOFF" > /dev/null 2>&1 || true
-GAP075_READ=$(bcli exec "$GAP075_B" -- cat "$GAP075_ADIR/$GAP075_HANDOFF" 2>&1 || true)
+bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_A" -- sh -c "echo handoff-$GAP075_UNIQ > $GAP075_ADIR/$GAP075_HANDOFF" > /dev/null 2>&1 || true
+GAP075_READ=$(bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_B" -- cat "$GAP075_ADIR/$GAP075_HANDOFF" 2>&1 || true)
 if echo "$GAP075_READ" | grep -q "handoff-$GAP075_UNIQ"; then
     assert "agent B reads agent A's file through $GAP075_SHARE (cross-agent exchange)"
 else
@@ -2626,14 +2815,14 @@ else
     fail "exchange root owner = $GAP075_ROOT_META, want root:$GAP075_GROUP"
 fi
 GAP075_ARB="gap075-arb-$GAP075_UNIQ"
-GAP075_ROOT_MKDIR=$(bcli exec "$GAP075_A" -- sh -c \
+GAP075_ROOT_MKDIR=$(bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_A" -- sh -c \
     "if mkdir $GAP075_SHARE/$GAP075_ARB 2>/dev/null; then echo CREATED; else echo DENIED; fi" 2>&1 || true)
 if echo "$GAP075_ROOT_MKDIR" | grep -q "DENIED"; then
     assert "an agent cannot create an arbitrary directory directly under the exchange root"
 else
     fail "agent created $GAP075_SHARE/$GAP075_ARB — the exchange root is writable by agents (uncapped bypass): $GAP075_ROOT_MKDIR"
 fi
-GAP075_ROOT_TOUCH=$(bcli exec "$GAP075_A" -- sh -c \
+GAP075_ROOT_TOUCH=$(bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_A" -- sh -c \
     "if touch $GAP075_SHARE/$GAP075_ARB-file 2>/dev/null; then echo CREATED; else echo DENIED; fi" 2>&1 || true)
 if echo "$GAP075_ROOT_TOUCH" | grep -q "DENIED"; then
     assert "an agent cannot create an arbitrary file directly under the exchange root"
@@ -2681,26 +2870,26 @@ else
 fi
 if [ -n "$GAP075_CAP" ] && [ "$GAP075_CAP" -le 67108864 ]; then
     GAP075_FILL_MB=$(( GAP075_CAP / 1048576 + 2 ))
-    GAP075_FILL=$(bcli exec "$GAP075_A" -- sh -c "dd if=/dev/zero of=$GAP075_ADIR/$GAP075_A_FILE-fill bs=1M count=$GAP075_FILL_MB 2>&1; echo write-exit=\$?" 2>&1 || true)
+    GAP075_FILL=$(bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_A" -- sh -c "dd if=/dev/zero of=$GAP075_ADIR/$GAP075_A_FILE-fill bs=1M count=$GAP075_FILL_MB 2>&1; echo write-exit=\$?" 2>&1 || true)
     if echo "$GAP075_FILL" | grep -qE "write-exit=[1-9]|No space left"; then
         assert "writing past the per-agent cap fails (${GAP075_FILL_MB}MiB into a ${GAP075_CAP}B cap)"
     else
         fail "over-cap write did NOT fail: $GAP075_FILL"
     fi
-    bcli exec "$GAP075_A" -- rm -f "$GAP075_ADIR/$GAP075_A_FILE-fill" > /dev/null 2>&1 || true
+    bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_A" -- rm -f "$GAP075_ADIR/$GAP075_A_FILE-fill" > /dev/null 2>&1 || true
 else
     note "per-agent cap is ${GAP075_CAP:-unknown} bytes — exhaustive ENOSPC fill skipped (cap too large for a battery run; kernel-reported size asserted above)"
 fi
 
 # ── 15.4 unauthorized paths stay unavailable ───────────────────────────
-GAP075_OUTSIDE=$(bcli exec "$GAP075_A" -- sh -c 'touch /srv/gap075-not-allowed 2>/dev/null && echo WROTE || echo DENIED' 2>&1 || true)
+GAP075_OUTSIDE=$(bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_A" -- sh -c 'touch /srv/gap075-not-allowed 2>/dev/null && echo WROTE || echo DENIED' 2>&1 || true)
 if echo "$GAP075_OUTSIDE" | grep -q "DENIED"; then
     assert "agent cannot write outside the sanctioned scratch tree"
 else
     fail "agent wrote outside the scratch tree: $GAP075_OUTSIDE"
 fi
 rm -f /srv/gap075-not-allowed 2>/dev/null || true
-GAP075_INST=$(bcli exec "$GAP075_A" -- ls /var/lib/bunkerd/agent-tmp 2>&1 || true)
+GAP075_INST=$(bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_A" -- ls /var/lib/bunkerd/agent-tmp 2>&1 || true)
 if echo "$GAP075_INST" | grep -qi "permission denied"; then
     assert "the private-/tmp instance parent is unreadable from inside a session"
 else
@@ -2732,7 +2921,7 @@ if [ -f "$GAP075_DROPIN_PATH" ]; then
         # method), so the module reports an error before any polyinstantiation.
         printf '/tmp\n' > "$GAP075_DROPIN_PATH" 2>/dev/null || true
         GAP075_BROKEN_EXIT=0
-        bcli exec "$GAP075_A" -- true > /dev/null 2>&1 || GAP075_BROKEN_EXIT=$?
+        bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_A" -- true > /dev/null 2>&1 || GAP075_BROKEN_EXIT=$?
         if [ "$GAP075_BROKEN_EXIT" -ne 0 ]; then
             assert "a malformed namespace drop-in DENIES the agent session (fail closed, exit=$GAP075_BROKEN_EXIT)"
         else
@@ -2741,7 +2930,7 @@ if [ -f "$GAP075_DROPIN_PATH" ]; then
         cp -a "$GAP075_DROPIN_RESTORE" "$GAP075_DROPIN_PATH" 2>/dev/null || true
         rm -f "$GAP075_DROPIN_RESTORE" 2>/dev/null || true
         GAP075_DROPIN_RESTORE=""
-        GAP075_RECOVER=$(bcli exec "$GAP075_A" -- true > /dev/null 2>&1; echo "exit=$?")
+        GAP075_RECOVER=$(bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_A" -- true > /dev/null 2>&1; echo "exit=$?")
         if echo "$GAP075_RECOVER" | grep -q "exit=0"; then
             assert "the agent session opens again after the drop-in is restored"
         else
@@ -2763,13 +2952,13 @@ fi
 #      membership must deny — the first revision failed OPEN here).
 # Both are restored immediately, and the EXIT trap restores them if this battery
 # dies mid-check.
-bcli exec "$GAP075_A" -- true > /dev/null 2>&1 && GAP075_HEALTHY=1 || GAP075_HEALTHY=0
+bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_A" -- true > /dev/null 2>&1 && GAP075_HEALTHY=1 || GAP075_HEALTHY=0
 if [ "$GAP075_HEALTHY" = "1" ] && [ -f "$GAP075_HELPER_PATH" ]; then
     GAP075_HELPER_RESTORE=$(mktemp /tmp/gap075-helper-restore-XXXXXX 2>/dev/null) || GAP075_HELPER_RESTORE=""
     if [ -n "$GAP075_HELPER_RESTORE" ] && cp -a "$GAP075_HELPER_PATH" "$GAP075_HELPER_RESTORE" 2>/dev/null; then
         rm -f "$GAP075_HELPER_PATH" 2>/dev/null || true
         GAP075_NOHELPER_EXIT=0
-        bcli exec "$GAP075_A" -- true > /dev/null 2>&1 || GAP075_NOHELPER_EXIT=$?
+        bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_A" -- true > /dev/null 2>&1 || GAP075_NOHELPER_EXIT=$?
         if [ "$GAP075_NOHELPER_EXIT" -ne 0 ]; then
             assert "a deleted pam_exec precondition helper DENIES the agent session (fail closed, exit=$GAP075_NOHELPER_EXIT)"
         else
@@ -2780,7 +2969,7 @@ if [ "$GAP075_HEALTHY" = "1" ] && [ -f "$GAP075_HELPER_PATH" ]; then
         chmod 0755 "$GAP075_HELPER_PATH" 2>/dev/null || true
         rm -f "$GAP075_HELPER_RESTORE" 2>/dev/null || true
         GAP075_HELPER_RESTORE=""
-        if bcli exec "$GAP075_A" -- true > /dev/null 2>&1; then
+        if bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_A" -- true > /dev/null 2>&1; then
             assert "the agent session opens again after the helper is restored"
         else
             fail "the agent session did NOT recover after restoring the helper"
@@ -2797,14 +2986,14 @@ if [ "$GAP075_HEALTHY" = "1" ] && getent group "$GAP075_GROUP" > /dev/null 2>&1;
     usermod -aG "$GAP075_GROUP" "$GAP075_AGENT_USER" > /dev/null 2>&1 || true
     gpasswd -d "$GAP075_AGENT_USER" "$GAP075_GROUP" > /dev/null 2>&1 || true
     GAP075_NOMEMBER_EXIT=0
-    bcli exec "$GAP075_A" -- true > /dev/null 2>&1 || GAP075_NOMEMBER_EXIT=$?
+    bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_A" -- true > /dev/null 2>&1 || GAP075_NOMEMBER_EXIT=$?
     if [ "$GAP075_NOMEMBER_EXIT" -ne 0 ]; then
         assert "a removed isolation-group membership DENIES the agent session (fail closed, exit=$GAP075_NOMEMBER_EXIT)"
     else
         fail "the agent session opened without the group membership — group drift fails OPEN"
     fi
     usermod -aG "$GAP075_GROUP" "$GAP075_AGENT_USER" > /dev/null 2>&1 || true
-    if bcli exec "$GAP075_A" -- true > /dev/null 2>&1; then
+    if bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_A" -- true > /dev/null 2>&1; then
         assert "the agent session opens again after the membership is restored"
     else
         fail "the agent session did NOT recover after restoring the group membership"
@@ -2825,7 +3014,7 @@ if [ "$GAP075_HEALTHY" = "1" ] && [ -d "$GAP075_HELPER_DIR" ]; then
         chmod 777 "$GAP075_HELPER_DIR" 2>/dev/null || true
         GAP075_HELPERDIR_RESTORE="$GAP075_DIR_MODE_BEFORE"
         GAP075_WIDEDIR_EXIT=0
-        bcli exec "$GAP075_A" -- true > /dev/null 2>&1 || GAP075_WIDEDIR_EXIT=$?
+        bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_A" -- true > /dev/null 2>&1 || GAP075_WIDEDIR_EXIT=$?
         chmod "$GAP075_DIR_MODE_BEFORE" "$GAP075_HELPER_DIR" 2>/dev/null || true
         GAP075_HELPERDIR_RESTORE=""
         if [ "$GAP075_WIDEDIR_EXIT" -ne 0 ]; then
@@ -2833,7 +3022,7 @@ if [ "$GAP075_HEALTHY" = "1" ] && [ -d "$GAP075_HELPER_DIR" ]; then
         else
             fail "the agent session opened while $GAP075_HELPER_DIR was mode 777 — an agent could replace the helper and its manifest"
         fi
-        if bcli exec "$GAP075_A" -- true > /dev/null 2>&1; then
+        if bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_A" -- true > /dev/null 2>&1; then
             assert "the agent session opens again after the helper directory mode is restored"
         else
             fail "the agent session did NOT recover after restoring the helper directory mode"
@@ -2846,9 +3035,9 @@ else
 fi
 
 # ── 15.7 cleanup ───────────────────────────────────────────────────────
-bcli exec "$GAP075_A" -- rm -f "$GAP075_ADIR/$GAP075_HANDOFF" > /dev/null 2>&1 || true
-bcli destroy "$GAP075_A" --force > /dev/null 2>&1 || true
-bcli destroy "$GAP075_B" --force > /dev/null 2>&1 || true
+bcli exec --server "$BATTERY_TARGET_NAME" "$GAP075_A" -- rm -f "$GAP075_ADIR/$GAP075_HANDOFF" > /dev/null 2>&1 || true
+bcli destroy --server "$BATTERY_TARGET_NAME" "$GAP075_A" --force > /dev/null 2>&1 || true
+bcli destroy --server "$BATTERY_TARGET_NAME" "$GAP075_B" --force > /dev/null 2>&1 || true
 rm -f "/tmp/$GAP075_A_FILE" 2>/dev/null || true
 if [ -d "$GAP075_ADIR" ]; then
     note "scratch dir $GAP075_ADIR survived destroy (unmounted later by the daemon or left for inspection)"

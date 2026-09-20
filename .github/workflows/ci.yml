@@ -262,12 +262,15 @@ jobs:
 
   # ── Regression + E2E (self-hosted runner only — requires Linux host) ──
   # This job runs ONLY when a self-hosted runner with the 'bunker' label is
-  # connected.  CI remains green even without it thanks to continue-on-error.
+  # connected. RELEASE-001: it is REQUIRED — a real failure here fails the
+  # workflow run. The continue-on-error mask that used to sit on this job made
+  # run 35500211074 report conclusion=success while the job itself was FAILURE
+  # (12 PASS / 17 FAIL), and run 35518195177 the same. Per-job conclusions are
+  # the only truth; the run conclusion lied.
   regression:
     runs-on: [self-hosted, Linux, bunker]
     timeout-minutes: 30
     needs: build-and-test
-    continue-on-error: true
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
@@ -346,11 +349,12 @@ jobs:
   # regression battery requires root by design). Prevents the 17 root-gated
   # tests (TestSpawn*/TestCgroup*/TestConcurrency*) from being skipped in CI.
   # Baseline evidence: docs/dogfood/2026-08-04-gap-001-root-e2e.md
+  # RELEASE-001: REQUIRED — the continue-on-error mask is gone, so a failure in
+  # this suite fails the workflow run instead of reporting success.
   root-suite:
     runs-on: [self-hosted, Linux, bunker]
     timeout-minutes: 30
     needs: build-and-test
-    continue-on-error: true
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
