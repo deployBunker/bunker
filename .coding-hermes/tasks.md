@@ -180,3 +180,64 @@ Angle: durability & trust surface (12 prior runs covered CLI, REST, install — 
 - [P2] DF-BUNKER-32 — README's "Run it locally" quick start buries the root requirement in step 3; a non-root daemon spawns partially (ports, dirs) then dies at `useradd` with a bare `exit 1`.
 
 Verified HOLDING this run (first live proof for each): TTL auto-destroy (`--ttl 2m` reaped on the next 60s tick: user removed, registry destroy event); kill -9 crash replay (both agents restored with EXACT port ranges, exec immediate — `restored:2`); stop/start lifecycle; sub-key service-class rejection (401 on Bunkerd) + GetInfo clamping; audit caller attribution (`agent:<id> key:<fp>`); **`bunker mount` works at HEAD** (first recorded success — the 09-16 connection-reset failures appear fixed); docker-in-agent (rootless alpine run). Cleanup: all scratch agents destroyed, synthetic orphan gone, scratch daemon stopped, host verified clean.
+
+## Dogfood Findings (2026-09-20)
+
+Angle: the AGENT ISOLATION BOUNDARY (`/tmp` promises + the cross-agent exchange point) and the one flagship
+command those docs lean on — `bunker mount`. 13 prior runs covered the CLI lifecycle, the REST protocol,
+fresh-machine install and the durability/trust surface; the isolation spec had never been exercised as a user.
+Method: CLI built at HEAD `93d7a53` (`make build`), four real agents on `bunker-las-03` (daemon 0.1.4 `6a6ad20`,
+`isolation-grant`), read-only probes against las-01/02/04/mvp. Verdict: 🔴 DOES-NOT-DELIVER.
+
+- [P0] DF-BUNKER-38 — **`bunker mount` cannot mount ANY agent at HEAD.** All four documented forms fail; the
+  best case is `mount preflight: no remote path to check`, the worst is a positive falsehood —
+  `remote path "/home/bunker-df1017b" does not exist or is not a directory` for a directory that `ssh` and
+  `bunker exec` both show exists. Root cause: `internal/cli/mount_preflight.go` `runWithTimeout` calls
+  `cmd.Start()` and then hands the SAME `*exec.Cmd` to `cmd.CombinedOutput()`, which calls Start again and
+  returns `exec: already started` immediately; the empty capture is rendered as a filesystem fact. Proven two
+  ways: an `ssh` shim on PATH shows the CLI execs ssh with an EMPTY stdin (the probe script is never written),
+  and a 20-line Go program mirroring the helper reproduces `out="" err=exec: already started`. The same helper
+  makes `bunker umount <mountpoint>` always print `unmount … failed (normal: exec: already started; lazy: …)`,
+  rc=1. Untested by construction: `mount_test.go:230` stubs `remotePathCheck` and `proc_lifecycle_test.go:120`
+  sets `BUNKER_SKIP_MOUNT_PREFLIGHT=1`, so the real function has zero coverage — which is why the suite is
+  green while the flagship feature is dead. With the preflight skipped the mount itself works end-to-end
+  (read + write + the agent sees the write), so the transport is fine.
+- [P1] DF-BUNKER-39 — the documented optional-mountpoint form `bunker mount <agent-id>` can never work: the
+  preflight is called with an empty remotePath and refuses before ssh runs. Two different invocation shapes
+  (`mount <id>` and `mount <id> <mnt>`) return the SAME message, so the operator cannot tell which precondition
+  is unmet.
+- [P1] DF-BUNKER-40 — **spawned agents can never use the shared scratch exchange point** on a host that never
+  ran `bunker host-provision --apply`: the root is `750 root:root` instead of the documented
+  `2750 root:bunker-agents`, so every README cross-agent example fails `Permission denied` — while the daemon
+  logs `"shared scratch ready"` for each spawn. `EnsureSharedScratch` (which creates + stat-verifies the root)
+  is called only from `bunker host-provision`; the per-spawn path (`EnsureAgentScratch`) assumes the root.
+  Measured fleet-wide: mvp correct (`2750`), las-01 `750 root:root`, las-02/las-04 no directory at all.
+- [P2] DF-BUNKER-41 — DF-BUNKER-31 unified `exec` only: `bunker run --server X <id> -- cmd` and
+  `bunker --server X run <id> -- cmd` still fail `no target bound`; only the reverse order works.
+- [P2] DF-BUNKER-42 — `bunker env set/get` accept `--server` only BEFORE the subcommand; anywhere else the flag
+  is consumed as the positional and the command refuses `requires exactly one KEY=VALUE argument`. Confirmed
+  against the agent: `K1=v1 K2= K3=`.
+- [P2] DF-BUNKER-43 — several real failures exit 0 when stdout is piped: `bunker audit list --server X`
+  (permission-denied) and `bunker status --json` (unknown flag) both printed `bunker: <error>` and reported
+  exit 0, against README §Exit codes. This run's own harness was fooled by it. The audit `--server` also fell
+  back to the local root-owned log instead of querying the daemon.
+
+Verified HOLDING this run (several are first live proofs — read §13.3 of docs/dogfood/diagnostics.md before
+re-testing): **detached units get their own `/tmp` (G3)** — on the same agent, `run --detach` sees `/tmp` with
+ONE entry and cannot see the host marker that the `exec` session reads; agent-to-agent `/tmp` isolation (B gets
+Permission denied on A's file, cannot overwrite it, A's value survives); the per-agent scratch cap is a real
+kernel bound (300 MiB into 256 MiB stops at exactly 268435456 bytes); `metrics`/`info`/`heartbeat` on a
+never-spawned id now return `not_found` (DF-BUNKER-28 genuinely fixed); `audit list --server` carries
+Caller + Agent and `--agent` filters; `stop`/`start` preserve user/home/env/files; spawn 29-48s warm.
+Install leg: PASS both documented paths (see below). Cleanup: all four agents destroyed, zero users/homes/keys/
+mounts/residue left on las-03; no repo visibility or permission touched.
+
+Install leg (fresh machine = ephemeral agent `bunker-df1017i` on las-03: bare Debian 13, non-root, no Go, no
+sshfs, sudo password-locked): one-command installer PASS (downloads both linux/amd64 binaries, verifies both
+against the release `SHA256SUMS` before writing, falls back to `~/.local/bin` without escalating, smoke-checks
+`--version` → 0.1.4; `--dry-run` writes nothing). Source path PASS (`git clone` 2s at `93d7a53`; `make build`
+without Go refuses cleanly with the recovery steps instead of `Error 127`; Go 1.26.5 → `make build` 49s →
+`bunker 0.1.4 commit 93d7a53`, `bunkerd caps: isolation-grant`). `scripts/install.sh --build` PASS. Non-root
+daemon behaves exactly as documented. Observation (not filed): `install.sh --build` in a tagless checkout
+prints `bunker 1.26.5` as the version — `bd_version` falls through to `GO_FALLBACK`, so the binary advertises
+the Go version as its own.

@@ -15,8 +15,10 @@ description: >-
   (docs/dogfood/2026-09-18-integration.md); durability battery (TTL reap,
   kill -9 registry replay, sub-key scoping, audit chain, reconciliation)
   verified 2026-09-19 against a scratch HEAD daemon
-  (docs/dogfood/2026-09-19-integration.md).
-version: 1.5.0
+  (docs/dogfood/2026-09-19-integration.md); isolation boundary + mount/
+  scratch defects re-verified live at HEAD 93d7a53 on 2026-09-20
+  (docs/dogfood/2026-09-20-integration.md, diagnostics.md §13).
+version: 1.6.0
 category: software-development
 ---
 
@@ -178,6 +180,29 @@ All features broken as of 2026-08-03 (tasks DOGFOOD-001..006) are fixed and veri
 - **`bunker audit verify` false-positives after ANY daemon restart (2026-09-19, DF-BUNKER-29)** — the hash-chain head lives only in process memory; a restarted daemon's first record carries an empty `prev_hash`, so verify reports "tamper detected" on a log nobody touched. Until fixed, `audit verify` is only meaningful on a daemon that hasn't restarted since the log was created.
 - **Adopt mode destroys orphans without readable port metadata (2026-09-19, DF-BUNKER-30)** — `reconciliation.mode: adopt` adopts ONLY if `/home/bunker-<id>/.bunker/ports` is readable and in-pool; a hand-made `useradd bunker-x` orphan is WARNed and destroyed even in adopt mode. This is fail-closed by design, but the config.example.yaml comment doesn't mention the precondition.
 - **Cleanup probes: use exact names** — `pgrep -f 'bunkerd --config …'` matches your own checking shell (two false "still running" readings in one session on 09-19); use `pgrep -x bunkerd` + `getent passwd bunker-<id>` instead.
+- **🔴 `bunker mount` is BROKEN at HEAD (2026-09-20, DF-BUNKER-38)** — EVERY documented form fails: `bunker mount <id>` → `mount preflight: no remote path to check`; `bunker mount <id> <mnt> --path <direxists>` → `remote path "…" does not exist or is not a directory` even when it provably does. Root cause: `internal/cli/mount_preflight.go` `runWithTimeout` does `cmd.Start()` and then hands the same `*exec.Cmd` to `cmd.CombinedOutput()` (which calls Start again → `exec: already started`, empty capture → the confident wrong message). The same helper breaks `bunker umount <mountpoint>` (`unmount … failed (normal: exec: already started; lazy: exec: already started…)`, rc=1). **To actually mount today:** `BUNKER_SKIP_MOUNT_PREFLIGHT=1 bunker mount <id> <mnt> --path /home/bunker-<id>` — that works end-to-end (verified: read + write + agent sees the write). Do NOT conclude "my agent is broken" from a mount refusal: check with `ssh -i ~/.bunker/keys/<id> bunker-<id>@<ip> 'test -d $HOME && echo DIR_OK'` first.
+- **`bunker mount <id>` with the documented optional mountpoint can never work (2026-09-20, DF-BUNKER-39)** — the preflight is called with an empty remote path and refuses before ssh runs. Always pass an explicit `--path` until this is fixed; a `--path` that is the agent home is `/home/bunker-<id>`.
+- **The shared scratch exchange point needs `bunker host-provision --apply` FIRST (2026-09-20, DF-BUNKER-40)** — the spawn path creates each agent's capped tmpfs directory under whatever `/srv/bunker-share` already exists, so on a host where the root was never provisioned for real (`2750 root:bunker-agents`) every README exchange example fails `Permission denied` while the daemon logs `"shared scratch ready"`. Check before you trust it: `ssh <host>-root 'stat -c "%n %a %U:%G" /srv/bunker-share'`. Measured: mvp `2750` ✅, las-01 `750 root:root` ✗, las-02/las-04 missing ✗.
+- **`--server` placement for `run`/`env` (2026-09-20, DF-BUNKER-41/42)** — `bunker run --server X <id> -- cmd` and `bunker --server X run <id> -- cmd` both fail `no target bound`; only `bunker run <id> --server X -- cmd` works. `bunker env set/get` accept `--server` ONLY before the subcommand (`bunker env --server X set <id> K=V`); anywhere else it is eaten as the positional and you get `requires exactly one KEY=VALUE argument`. (exec was unified in DF-BUNKER-31 but the peeler was not extended to its siblings.)
+- **Some failures exit 0 when stdout is piped (2026-09-20, DF-BUNKER-43)** — `bunker audit list --server X | head` and `bunker status --json | head` print `bunker: <error>` yet report exit 0, against the README's exit-code table. In scripts, take `${PIPESTATUS[0]}` AND grep stderr for `^bunker:` rather than trusting the status; the audit `--server` path also fell back to the local root-owned log in this run.
+
+## Cross-agent isolation — what is actually verified (2026-09-20, las-03 @ HEAD 93d7a53)
+
+Read this before writing anything that depends on the isolation promises.
+
+- **Detached units DO get their own `/tmp` (G3, confirmed live for the first time).** On the same agent:
+  `exec -- sh -c 'echo m > /tmp/x; ls /tmp | wc -l'` sees the session `/tmp` (host-shared when the host is not
+  provisioned — the host's own files and `/tmp | wc -l` ≈ 1219); `run --detach -- sh -c 'ls /tmp | wc -l'` sees
+  **1** and cannot see either the session marker or the host marker. Never look for detached output in `/tmp` —
+  write to `$HOME` (or `/home/bunker-<id>`).
+- **Agent-to-agent `/tmp` isolation is real** — B cannot read or overwrite A's `0600` file (Permission denied),
+  and A's value survives B's attempt untouched.
+- **The per-agent scratch cap is a real kernel bound** — a 300 MiB write into the 256 MiB agent directory stops
+  at exactly 268435456 bytes (`df` 100%). The cap works; reaching the directory is what does not (§ above).
+- **Confirmed fixed at HEAD (do not re-litigate):** `metrics`/`info`/`heartbeat` on a never-spawned id return
+  `not_found` (DF-BUNKER-28 fabricated records gone); `audit list --server` carries `Caller` + `Agent` per
+  record and `--agent` filters correctly; `stop`/`start` keep user/home/env/`/tmp`/files and `exec` against a
+  stopped agent fails with the `agent_stopped` token; spawn 29-48s on a warm host.
 
 ## Right way to validate changes
 

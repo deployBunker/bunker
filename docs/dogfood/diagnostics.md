@@ -391,3 +391,99 @@ safety with kill -9 (not restart), and read `audit verify` with the
 restart-breaks-chain caveat in mind. On a shared host, run your scratch
 daemon on private ports with a private BUNKER_HOME and `pgrep -x`/`getent`
 for cleanup checks.
+
+---
+
+## 13. Dogfood run 2026-09-20 — the isolation boundary + the mount command (read this before touching mount or the scratch point)
+
+**Headline: `bunker mount` has never worked at HEAD, and no test can see it.** Two findings here are worth
+internalising as *patterns*, not just bugs.
+
+### 13.1 The double-start trap — a helper that can never succeed, protected by its own test seam
+
+`internal/cli/mount_preflight.go` `runWithTimeout` does `cmd.Start()` and then hands the SAME `*exec.Cmd` to
+`cmd.CombinedOutput()` in a goroutine. `CombinedOutput` calls `Start()` internally, so it returns
+`exec: already started` synchronously; the goroutine result carries an empty capture and the timer branch is
+never reached. The caller reads the empty capture, takes the `details == ""` branch, and emits a **confident,
+specific, wrong diagnosis**: "remote path ... does not exist or is not a directory".
+
+**How to spot this class again:** an error message that names a cause must be checkpointed against the bytes
+that would prove it. Here the message names a filesystem fact while the function's own capture is empty — the
+absence of evidence was rendered as evidence of absence. (The `internal/cli/SKILL.md` pitfall #14 states this
+rule; the preflight violates it.) If you are debugging a "does not exist" for something you can see with your
+own eyes, log the helper's raw capture before believing the message.
+
+**Why coverage did not catch it — the generalisable part.** The only non-trivial behaviour in this function is
+"shell out to ssh and parse the output", and the package stubs exactly that away:
+
+* `internal/cli/mount_test.go:230` — `remotePathCheck = func(...)` stub, with the comment "the mount preflight
+  shells out to a real host; stub it here so every caller exercises the mount path rather than failing at
+  preflight". The stub is reasonable; the gap is that nothing anywhere executes the real function.
+* `internal/cli/proc_lifecycle_test.go:120` — sets `BUNKER_SKIP_MOUNT_PREFLIGHT=1` for the subprocess CLI.
+
+So the *seam* is tested and the *implementation* is not. **The fix pattern:** this function's only external
+dependency is the `ssh` binary name, so a test can put a fake `ssh` on `PATH` (a two-line shell script) and
+exercise the real code path end-to-end. When a seam exists purely because something "shells out to a real
+host", ask what a fake executable on `PATH` would cost — usually less than the seam.
+
+**Diagnostic tool that found it (reuse it):** put a logging shim named `ssh` early on `PATH`
+(`/tmp/df1017/shim/ssh` in this run) that records `"$@"`, a copy of stdin, and the exit status, then `exec`s
+`/usr/bin/ssh`. The CLI's own invocation appears with an EMPTY stdin while the same command run by hand
+carries the probe script — that single observation collapses "maybe ssh is failing" into "the script is never
+written". Then reproduce the helper in a ~20-line Go program before touching the repo.
+
+### 13.2 The shared scratch exchange point is provisioned by a command nobody is required to run
+
+`/srv/bunker-share` has **two** halves with different owners:
+
+| Half | Who creates it | Correct shape |
+|---|---|---|
+| the exchange ROOT | `hostsetup.Options.EnsureSharedScratch`, whose only caller is `internal/hostsetup/status.go:219` → `bunker host-provision --apply` | `2750 root:bunker-agents`, verified by a stat-back that is a hard error |
+| one agent's directory | `hostsetup.Options.EnsureAgentScratch` → `internal/agent/isolation.go:209` → **every spawn** | `2770 <agent>:bunker-agents`, tmpfs `size=<cap>` |
+
+The spawn path assumes the root is already right. It is not on a host that never ran `host-provision --apply`,
+and the failure is invisible from the daemon's side: `EnsureAgentScratch` logs `"shared scratch ready"`, the
+per-agent tmpfs mounts, the cap is enforceable — and the agent still cannot `ls /srv/bunker-share`, because
+the *parent* is `750 root:root` and not traversable.
+
+**The rule this violates:** "ready" must mean *usable by the consumer*, not *the last step I ran returned nil*.
+A capability whose provisioning is a manual host step, but whose advertisement is automatic, produces exactly
+this green-and-broken state.
+
+**How to check any host in one line:**
+
+```bash
+ssh <host>-root 'stat -c "%n %a %U:%G" /srv/bunker-share'
+# want: /srv/bunker-share 2750 root:bunker-agents
+```
+
+Measured 2026-09-20: `bunker-mvp` correct (2750 root:bunker-agents); `bunker-las-01` `750 root:root`;
+`bunker-las-02` and `bunker-las-04` absent. So treat a green `shared scratch ready` as unproven until this
+stat says 2750.
+
+### 13.3 The isolation boundary itself WORKS — the verified-clean list (do not re-litigate)
+
+Measured live at HEAD `93d7a53` against `bunker-las-03` (daemon 0.1.4 `6a6ad20`, `isolation-grant`):
+
+* **G3 (detached-unit `/tmp`) — confirmed for the first time, and it is the sharpest demo of the design.**
+  An `exec` session and a `run --detach` unit on the SAME agent see DIFFERENT `/tmp`s:
+  `exec -- sh -c 'echo m > /tmp/shell-marker; cat /tmp/host-marker.txt'` reads the host's `/tmp` (the host
+  marker is visible, `ls /tmp | wc -l` ≈ 1219); the detached unit sees `ls /tmp | wc -l` = **1**, cannot see
+  `shell-marker`, and cannot see the host marker. Two namespaces, one agent, no shared tmp. Note this is the
+  *unprovisioned-host* behaviour — private per-session `/tmp` (pam_namespace) had not been applied on las-03,
+  so the session path was HOST-SHARED while the unit path was already private.
+* Agent-to-agent `/tmp` isolation is real: agent B gets `Permission denied` reading agent A's `0600` file and
+  cannot create over the same path; A's value survives B's attempt unchanged.
+* The per-agent scratch **cap** is a real kernel bound: a 300 MiB write into the 256 MiB directory stops at
+  exactly `268435456` bytes with `df` at 100%.
+* `metrics`/`info`/`heartbeat` on a never-spawned id all return `not_found` — the DF-BUNKER-28 fabricated-record
+  defect is genuinely fixed at HEAD.
+* `audit list --server` carries `Caller` + `Agent` per record and its `--agent` filter resolves; `not_found`
+  RPCs are recorded too.
+
+### 13.4 Where to point the next run
+
+The mount chain is now the highest-value surface: `DF-BUNKER-38` (P0) fixed, GAP-112's live proof (phantom
+transport, reconnect, empty-tree refusal) becomes meaningful — and it has never passed. The scratch root is a
+one-line host check per box (§13.2) and should be part of the fleet inventory rather than discovered by a
+dogfood run.
