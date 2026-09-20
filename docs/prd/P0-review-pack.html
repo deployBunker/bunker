@@ -1,0 +1,851 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bunker — Security P0 Review Pack</title>
+<style>*{box-sizing:border-box} html{-webkit-text-size-adjust:100%}
+body{background:#0f0f1a;color:#e0e0e0;margin:0;font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:12px}
+@media(min-width:600px){body{font-size:16px;padding:24px}}
+.wrap{max-width:1000px;margin:0 auto}
+.hero{background:linear-gradient(135deg,#1a1a2e,#16213e);border:1px solid #2a2a3e;border-radius:14px;padding:22px 16px;margin-bottom:16px}
+@media(min-width:600px){.hero{padding:30px 26px}}
+h1{font-size:clamp(21px,4.6vw,30px);margin:0 0 8px;line-height:1.25;background:linear-gradient(135deg,#f7971e,#ffd200);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.verdict{display:inline-block;margin-top:10px;padding:6px 14px;border-radius:999px;background:#3b0820;color:#f472b6;font-weight:700;font-size:14.5px}
+.verdict.good{background:#14532d;color:#4ade80}
+.meta{color:#8b8ba7;font-size:13px;margin-top:10px;line-height:1.6}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:14px}
+@media(min-width:600px){.stats{grid-template-columns:repeat(4,1fr)}}
+.stat{background:#12121f;border:1px solid #2a2a3e;border-radius:10px;padding:12px;text-align:center}
+.stat .n{font-size:25px;font-weight:800} .stat .l{font-size:11px;color:#8b8ba7;text-transform:uppercase;letter-spacing:.6px;margin-top:2px}
+.n-red{color:#f472b6} .n-amber{color:#f59e0b} .n-blue{color:#60a5fa} .n-green{color:#4ade80}
+.toc{background:#1a1a2e;border:1px solid #2a2a3e;border-radius:12px;padding:14px 16px;margin-bottom:16px}
+.toc h3{margin:0 0 8px;font-size:13px;color:#ffd200;text-transform:uppercase;letter-spacing:.6px}
+.toc ol{margin:0;padding-left:20px} @media(min-width:760px){.toc ol{columns:2}}
+.toc a{color:#93c5fd;text-decoration:none} .toc li{margin:3px 0;break-inside:avoid}
+h2{font-size:19px;color:#ffd200;margin:28px 0 10px;padding-bottom:6px;border-bottom:1px solid #2a2a3e}
+.doc-h{font-size:20px;color:#fff;margin:34px 0 6px;padding:10px 14px;background:linear-gradient(135deg,#16213e,#1a1a2e);border-left:4px solid #f7971e;border-radius:0 10px 10px 0}
+.doc-sub{color:#8b8ba7;font-size:12.5px;margin:-2px 0 12px 4px}
+h3{font-size:16px;color:#f7971e;margin:20px 0 8px} h4{font-size:14px;color:#60a5fa;margin:14px 0 6px}
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:12px 0}
+table{border-collapse:collapse;min-width:560px;width:100%;font-size:13px}
+th{background:#12121f;color:#ffd200;text-align:left;padding:8px 10px;border:1px solid #2a2a3e;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px}
+td{padding:7px 10px;border:1px solid #2a2a3e;vertical-align:top}
+tr:nth-child(even) td{background:#16162a}
+code{background:#12121f;border:1px solid #2a2a3e;border-radius:5px;padding:1px 5px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;color:#93c5fd;overflow-wrap:anywhere}
+pre{background:#0b0b14;border:1px solid #2a2a3e;border-radius:10px;padding:12px;overflow-x:auto;margin:12px 0}
+pre code{background:none;border:none;color:#a5f3fc;font-size:12px;line-height:1.5}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}
+.b-blocker{background:#3b0820;color:#f472b6} .b-high{background:#3b1e08;color:#f59e0b} .b-ok{background:#14532d;color:#4ade80}
+blockquote{border-left:3px solid #f7971e;margin:12px 0;padding:6px 14px;background:#12121f;border-radius:0 8px 8px 0;color:#c7c7dd}
+hr{border:none;border-top:1px solid #2a2a3e;margin:22px 0} ul,ol{padding-left:22px} li{margin:4px 0} a{color:#60a5fa}
+.foot{color:#8b8ba7;font-size:12px;text-align:center;margin-top:26px}
+</style></head><body><div class="wrap">
+<div class="hero"><h1>Bunker — Security P0 Review Pack</h1>
+<span class="verdict good">P0 DOCS SHIPPED</span>
+<div class="meta">Six-model-family security panel, 2026-09-20 · the documentation half of the P0
+"honesty" phase · zero behaviour change · every claim re-verified against source</div>
+<div class="stats">
+<div class="stat"><div class="n n-green">5</div><div class="l">Docs shipped</div></div>
+<div class="stat"><div class="n n-red">6</div><div class="l">Blockers found</div></div>
+<div class="stat"><div class="n n-blue">30</div><div class="l">Board rows</div></div>
+<div class="stat"><div class="n n-green">4</div><div class="l">Rows closed</div></div>
+</div>
+<div class="meta" style="margin-top:14px"><strong style="color:#ffd200">What a reviewer can
+answer today:</strong> what Bunker protects, what it does NOT, who the adversaries are, what to
+do in an incident, and what data it keeps. That is what was missing.</div></div>
+<div class="toc"><h3>Contents</h3><ol><li><a href="#security-md">Security Policy</a></li>
+<li><a href="#docs-threat-model-md">Bunker Threat Model</a></li>
+<li><a href="#docs-incident-runbook-md">Incident Runbook</a></li>
+<li><a href="#docs-compliance-md">Compliance and Data-Handling Posture</a></li>
+<li><a href="#docs-disclosure-md">Vulnerability Disclosure Process</a></li>
+<li><a href="#prd-link">Full PRD (separate page: security-readiness.html)</a></li></ol></div>
+<h2 class="doc-h" id="security-md">Security Policy</h2><div class="doc-sub">SECURITY.md — The public security policy — rewritten so every control states its DEFAULT and PRECONDITION, the mTLS misstatement corrected, residual risk disclosed.</div><h2>Supported versions</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Version</th>
+<th>Supported</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1.x</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table></div>
+<p>Older versions are not backported; upgrade to receive security fixes.</p>
+<h2>Reporting a vulnerability</h2>
+<p><strong>Do not open a public issue.</strong> Email <strong>wojons@wojonstech.com</strong>.</p>
+<p>Include a description, reproduction steps, affected versions, and any mitigations you have
+identified. We acknowledge within <strong>48 hours</strong>. The full process — embargo (default 90 days),
+advisory publication, security-release channel, and our commitments to you — is in
+<a href="docs/disclosure.md"><code>docs/disclosure.md</code></a>.</p>
+<h2>Security model</h2>
+<p>Bunker provisions <strong>per-agent rootless Docker containers</strong> with these controls. Each entry
+states its <strong>default</strong> and its <strong>preconditions</strong>, because a control that is off by default,
+or that only works after host provisioning, is not a control until you turn it on.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Default</th>
+<th>Precondition</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>TLS between CLI and daemon</strong></td>
+<td><strong>OFF</strong> (<code>tls.enabled: false</code>)</td>
+<td>Operator sets <code>tls.enabled: true</code></td>
+<td>The daemon starts on a non-loopback bind with TLS off. <strong>Run TLS in any non-loopback deployment.</strong></td>
+</tr>
+<tr>
+<td><strong>Mutual TLS (client certs)</strong></td>
+<td>OFF (<code>tls.mtls: false</code>)</td>
+<td><code>tls.enabled</code> + <code>tls.ca_file</code></td>
+<td>Not enabled by default.</td>
+</tr>
+<tr>
+<td><strong>API authentication</strong></td>
+<td><strong>ON</strong> (<code>auth.enabled: true</code>), one static <strong>master token</strong></td>
+<td><code>auth.token</code> (or <code>auth.jwt_secret</code>) set in the config</td>
+<td>The daemon refuses to start if auth is enabled with no credential. There is <strong>no per-operator identity or RBAC</strong> — one shared credential today.</td>
+</tr>
+<tr>
+<td><strong>Private <code>/tmp</code> per agent</strong></td>
+<td>Enforced <strong>only after host provisioning</strong></td>
+<td><code>bunker hostprov</code> (host isolation) run</td>
+<td>On an unprovisioned host, SSH sessions share the host <code>/tmp</code>.</td>
+</tr>
+<tr>
+<td><strong>User-namespace remapping</strong></td>
+<td>ON</td>
+<td>—</td>
+<td><strong>Known defect (tracked):</strong> subordinate-ID ranges currently <em>overlap</em> between agents, weakening the separation between them. See <code>docs/threat-model.md</code> §5 (BT3) and board row <code>GAP-140</code>.</td>
+</tr>
+<tr>
+<td><strong>cgroup resource limits (CPU, memory, PIDs)</strong></td>
+<td>ON</td>
+<td>—</td>
+<td>Bounds a runaway agent's resource use; not a security boundary on its own.</td>
+</tr>
+<tr>
+<td><strong>SSH key isolation per agent</strong></td>
+<td>ON</td>
+<td>—</td>
+<td>Keys are per-agent; the spawn response can also return the agent's key over the wire — see residual risk.</td>
+</tr>
+<tr>
+<td><strong>Shared scratch exchange</strong> (<code>/srv/bunker-share</code>)</td>
+<td><strong>ON</strong> (<code>shared_scratch_enabled: true</code>), group <code>bunker-agents</code>, mode <code>2770</code></td>
+<td>—</td>
+<td>Cross-agent read/write is enabled by default. Turn it off if agents must not exchange data.</td>
+</tr>
+<tr>
+<td><strong>Audit trail</strong></td>
+<td>ON, hash-chained, <strong>not anchored off-box</strong></td>
+<td><code>audit.seal_key</code> + <code>audit.ship_to</code> for tamper-evidence</td>
+<td>Without an off-box anchor, a host-root attacker can rewrite the log undetectably.</td>
+</tr>
+<tr>
+<td><strong>Egress control</strong></td>
+<td><strong>NONE</strong></td>
+<td>—</td>
+<td>No default-deny or allowlist exists yet. Containment against exfiltration is not enforced by Bunker today.</td>
+</tr>
+</tbody>
+</table></div>
+<h2>Residual risk (please read)</h2>
+<p>These are true even with every control above enabled, and are disclosed rather than hidden:</p>
+<ul>
+<li><strong>A malicious container workload can attack the host kernel.</strong> Containers share the kernel;
+  the rootless/user-namespace design is defence-in-depth, not a hypervisor boundary.</li>
+<li><strong>An agent with legitimate <code>exec</code> access can run what the daemon would run.</strong> Audit records
+  it; it does not prevent it.</li>
+<li><strong>Isolation is per-instance, not per-lifetime.</strong> PID namespaces and <code>/tmp</code> state are not
+  preserved across a restart. PID-namespace isolation is intentionally omitted on the current
+  rootlesskit version (see <code>internal/agent/isolation.go</code>).</li>
+<li><strong>The audit trail's tamper-evidence is conditional.</strong> It is meaningful only with
+  <code>audit.seal_key</code> and an off-box <code>audit.ship_to</code> configured; without both, treat it as
+  corruptible by anyone with host root.</li>
+<li><strong><code>destroy</code> retains data by default.</strong> <code>agent.destroy_home_policy</code> defaults to <code>archive</code>,
+  not <code>purge</code> — a destroyed agent's home is archived, not deleted. See <code>docs/compliance.md</code>.</li>
+<li><strong>The control plane credential is not per-operator and not revocable at runtime.</strong> Rotation
+  today means updating the shared token and restarting the daemon. See the
+  <a href="docs/incident-runbook.md"><code>docs/incident-runbook.md</code></a>.</li>
+</ul>
+<h2>Out of scope</h2>
+<ul>
+<li>Social engineering and physical access to the host.</li>
+<li><strong>A malicious host root.</strong> Any process with host root can read the daemon config, rewrite
+  the audit log, and spawn agents. No sandboxing product defends this, and Bunker does not
+  claim to. The goal is safe operation <em>below</em> that line, and honesty about it.</li>
+</ul>
+<h2>Documentation</h2>
+<ul>
+<li><a href="docs/threat-model.md"><code>docs/threat-model.md</code></a> — assets, adversaries, boundaries, residual risk.</li>
+<li><a href="docs/incident-runbook.md"><code>docs/incident-runbook.md</code></a> — freeze, evidence capture, rotation.</li>
+<li><a href="docs/compliance.md"><code>docs/compliance.md</code></a> — data handling, retention, deletion defaults.</li>
+<li><a href="docs/disclosure.md"><code>docs/disclosure.md</code></a> — the reporting process.</li>
+<li><a href="docs/prd/security-readiness.md"><code>docs/prd/security-readiness.md</code></a> — the gap between the
+  above and what a team should require, prioritised.</li>
+</ul>
+<blockquote>
+<p><strong>Status of this document.</strong> It describes the <strong>shipped</strong> behaviour honestly, including its
+gaps. Where a protection is planned but not built, it is listed as a gap with a tracked row,
+not claimed here. This file is the record of what Bunker does <em>today</em>.</p>
+</blockquote><h2 class="doc-h" id="docs-threat-model-md">Bunker Threat Model</h2><div class="doc-sub">docs/threat-model.md — REQ-D1 / SEC-01 — assets, 7 adversaries, BT1–BT4 boundaries, 6 attack scenarios, residual risk.</div><p><strong>Status:</strong> v1, adopted from the security panel review (2026-09-20). Living document.
+<strong>Owner:</strong> repository maintainers. <strong>Review cadence:</strong> on any change to the control plane,
+transport, isolation path, or agent lifecycle.</p>
+<p>This document exists because its absence was the single most-repeated finding of the
+security panel: with no threat model there is nothing to approve against, no named
+adversaries, and no stated residual risk. Every claim below is written to be <strong>true of the
+shipped default configuration</strong>, verified against source at the commit noted in each
+Evidence cell.</p>
+<hr />
+<h2>1. Scope</h2>
+<p><strong>In scope:</strong> the daemon (<code>bunkerd</code>), the CLI (<code>bunker</code>), the transport between them, the
+per-agent isolation boundary, the audit chain, and the host-provisioning path.</p>
+<p><strong>Out of scope (stated, not hidden):</strong></p>
+<ul>
+<li><strong>A malicious host root.</strong> Any process running as host root can read the daemon's config,
+  rewrite the audit chain, and spawn agents. No sandboxing product can defend this, and
+  Bunker does not claim to. The goal is to be <em>honest</em> about that and <em>safe</em> below it.</li>
+<li>Social engineering and physical access to the host.</li>
+<li>Vulnerabilities in the container runtime or the Linux kernel itself, beyond tracking them.</li>
+</ul>
+<hr />
+<h2>2. System model</h2>
+<pre><code>  operator ──[network]──► bunkerd (host root) ──► agent user ──► container ──► internet
+              ▲ BT1                    ▲ BT2          ▲ BT3        ▲ BT4
+</code></pre>
+<ul>
+<li><strong>BT1 — Transport.</strong> Operator to daemon. <em>Default today: plaintext, TLS disabled.</em></li>
+<li><strong>BT2 — Authorization.</strong> The daemon's decision of who may call what. <em>Default today: one
+  static master token; no per-operator identity.</em></li>
+<li><strong>BT3 — Agent isolation.</strong> Host user/per-user dockerd/userns boundary. <em>Default today:
+  strong, with one known allocation defect (see §5).</em></li>
+<li><strong>BT4 — Egress.</strong> Container to internet. <em>Default today: unrestricted; no policy exists.</em></li>
+</ul>
+<p>The central conclusion of this model: <strong>BT3 — the boundary Bunker built well — is the
+boundary least likely to be crossed. BT1, BT2 and BT4 are where the risk actually sits, and
+all three are currently open.</strong> The panel's unanimous "do not approve for team use" follows
+from that sentence, not from any single bug.</p>
+<hr />
+<h2>3. Assets</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Asset</th>
+<th>Where it lives</th>
+<th>Why an attacker wants it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Daemon control plane</strong></td>
+<td>Host, root</td>
+<td>Can spawn/destroy/exec agents; root-equivalent over the fleet</td>
+</tr>
+<tr>
+<td><strong>Master credential</strong> (<code>auth.token</code> / <code>auth.jwt_secret</code>)</td>
+<td><code>/etc/bunkerd/config.yaml</code></td>
+<td>Total control-plane access; no rotation, no revocation, no per-user attribution</td>
+</tr>
+<tr>
+<td><strong>Agent home directories</strong></td>
+<td><code>/home/bunker-&lt;id&gt;</code></td>
+<td>Source code, artifacts, images, credentials the workload brought</td>
+</tr>
+<tr>
+<td><strong>Per-agent SSH private keys</strong></td>
+<td>Host + agent home; also returned by <code>SpawnAgentResponse.ssh_private_key</code></td>
+<td>Docker-host access to that agent</td>
+</tr>
+<tr>
+<td><strong>Audit log</strong></td>
+<td>Host (<code>internal/audit/</code>)</td>
+<td>The only forensic record; its integrity <em>is</em> incident response</td>
+</tr>
+<tr>
+<td><strong>Peer agent data</strong> (shared scratch <code>/srv/bunker-share</code>)</td>
+<td>Host, group <code>bunker-agents</code>, mode <code>2770</code></td>
+<td>Cross-tenant read/write</td>
+</tr>
+<tr>
+<td><strong>The host</strong></td>
+<td>—</td>
+<td>Anything that escapes the agent user reaches other agents</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2>4. Adversaries</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Adversary</th>
+<th>Capability assumed</th>
+<th>Primary control that must exist</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A1</td>
+<td><strong>Malicious or buggy agent workload</strong></td>
+<td>Full root <em>inside its own container</em>; arbitrary syscalls from a container</td>
+<td>Kernel/container boundary, egress control, resource bounds</td>
+</tr>
+<tr>
+<td>A2</td>
+<td><strong>The agent operator</strong> (a team member)</td>
+<td>Holds agent credentials; runs the <code>bunker</code> CLI</td>
+<td>Per-operator identity, RBAC, audit attribution</td>
+</tr>
+<tr>
+<td>A3</td>
+<td><strong>Tenant vs tenant</strong></td>
+<td>Agent A tries to read/affect agent B</td>
+<td>Isolation of home, scratch and daemon; no shared writable surface by default</td>
+</tr>
+<tr>
+<td>A4</td>
+<td><strong>Credential thief</strong></td>
+<td>Obtained the master token (log leak, shoulder-surf, world-readable file)</td>
+<td>Transport security, rotation, revocation, failed-auth detection</td>
+</tr>
+<tr>
+<td>A5</td>
+<td><strong>Host-local unprivileged user</strong></td>
+<td>A non-agent account on the same box</td>
+<td>File permissions, secret storage</td>
+</tr>
+<tr>
+<td>A6</td>
+<td><strong>Supply-chain attacker</strong></td>
+<td>Compromised image or rootless installer fetch</td>
+<td>Pinning, signatures, digest verification</td>
+</tr>
+<tr>
+<td>A7</td>
+<td><strong>Malicious host root</strong></td>
+<td>—</td>
+<td><strong>Out of scope</strong> (§1)</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2>5. Trust-boundary analysis, with defaults as shipped</h2>
+<h3>BT1 — Transport (adversary A4)</h3>
+<p><em>Default:</em> <code>tls.enabled: false</code>, <code>tls.mtls: false</code> (<code>internal/config/config.go</code>). The daemon
+will start on a non-loopback address with TLS off. <strong>There is no transport gate</strong> — the
+config has <code>CheckAuth()</code> (which refuses to start when auth is enabled but unconfigured) but
+no equivalent <code>CheckTLS()</code>, so a plaintext admin plane is the path of least resistance.</p>
+<p><em>Consequence:</em> every credential, every agent SSH key returned by <code>SpawnAgent</code>, and every
+agent-issued RPC crosses the wire in clear unless the operator independently decides to turn
+TLS on. An A4 adversary on-path can lift the master token and own the fleet.</p>
+<p><em>Control:</em> TLS-by-default with an explicit, warned, audited <code>insecure_dev</code> escape hatch; a
+self-signed + pinning path so the secure option is the easy one. <em>(REQ-T1, REQ-T2.)</em></p>
+<h3>BT2 — Authorization (adversaries A2, A4)</h3>
+<p><em>Default:</em> a single static master token (or a shared JWT secret) in the daemon config. There
+is no per-operator identity and no RBAC. Roles are effectively two: "master" and "agent's
+own key". An agent-scoped key that lacks an ownership check on a given RPC is an
+authorization bypass — one instance of this (heartbeat TTL extension) is confirmed; see §6.</p>
+<p><em>Control:</em> per-operator credentials surfaced as <code>caller</code> in audit; <code>admin</code>/<code>operator</code>/
+<code>agent:self</code> roles; a key lifecycle with rotation and revocation; ownership checks on every
+agent-scoped RPC. <em>(REQ-I1…I4.)</em></p>
+<h3>BT3 — Agent isolation (adversaries A1, A3)</h3>
+<p><em>Default:</em> per-agent Linux user, per-agent rootless dockerd, and user-namespace remapping.
+This is the product's core strength and the panel agreed it is built well.</p>
+<p><strong>Known defect (SEC-22, being fixed under GAP-140):</strong> the subordinate-ID writer allocates
+<code>subuid</code>/<code>subgid</code> ranges <em>starting at the agent's own uid</em> with a fixed count of 65536
+(<code>internal/agent/rootless.go</code>), so consecutive agents receive <strong>overlapping</strong> ranges
+(agent 1001 → <code>[1001..66536]</code>, agent 1002 → <code>[1002..66537]</code> — a 65,535-ID overlap), with no
+cross-agent overlap check and a read-then-append TOCTOU. Until GAP-140 lands, the
+user-namespace <em>separation between agents</em> is weaker than the design intends, because a
+later agent's container root can map into an ID space an earlier agent's container root
+already maps. This is disclosed here rather than hidden, and the fix is tracked.</p>
+<p><em>Also honest:</em> PID-namespace isolation is intentionally omitted on the current rootlesskit
+(see <code>internal/agent/isolation.go</code>); rootless containers share the host kernel, so the
+boundary is defence-in-depth, not a hypervisor.</p>
+<h3>BT4 — Egress (adversary A1)</h3>
+<p><em>Default:</em> <strong>none.</strong> There is no default-deny, no allowlist, and no egress code path. A
+container that a dependency has compromised can exfiltrate agent home data and reach internal
+services. The panel called egress control "the highest-value single addition."</p>
+<p><em>Control:</em> default-deny or a seeded allowlist, configurable per agent/trust tier. <em>(REQ-E1.)</em></p>
+<hr />
+<h2>6. Attack scenarios (concrete, not abstract)</h2>
+<ol>
+<li><strong>Lift the master token → own the fleet.</strong> A4 on-path on a plaintext link reads a token;
+   with TLS off this needs no exploit. <em>BT1.</em></li>
+<li><strong>Extend a peer's lease.</strong> An agent key calls heartbeat without an ownership check and
+   keeps another agent alive past its TTL — a confirmed authorization bypass. <em>BT2.</em></li>
+<li><strong>Brute-force the static token.</strong> No rate limiting on unauthenticated requests and no
+   audit record of denials means credential-stuffing is both cheap and invisible. <em>BT2.</em></li>
+<li><strong>Exfiltrate via a poisoned dependency.</strong> With no egress policy, a build-time dependency
+   reads the agent home and ships it out. <em>BT4.</em></li>
+<li><strong>Read a peer's artifacts.</strong> Shared scratch is on by default under a shared group; absent
+   an explicit decision, agent A can read what agent B exchanged. <em>BT3 / A3.</em></li>
+<li><strong>Cross the agent boundary via subuid overlap.</strong> Until GAP-140 lands, the overlapping
+   subordinate ranges above let a later agent's container root collide with an earlier
+   agent's ID mapping. <em>BT3.</em></li>
+</ol>
+<hr />
+<h2>7. Residual risk (true even after the roadmap lands)</h2>
+<p>These remain true and are stated in <code>SECURITY.md</code> as well:</p>
+<ul>
+<li>A malicious <strong>container</strong> workload can attack the <strong>host kernel</strong>. Containers share the
+  kernel; the userns/rootless design is defence-in-depth, not a hypervisor boundary.</li>
+<li>An agent with <strong>legitimate exec access</strong> can run anything the daemon would run on its
+  behalf. Audit records it; it does not prevent it.</li>
+<li><strong>Cross-boot PID/tmpfs state is not preserved</strong> — "isolation" is per-instance, not
+  per-lifetime.</li>
+<li>The audit chain detects tampering <strong>only</strong> when sealed and anchored off-box. Without both,
+  a host-root attacker can rewrite history undetectably, and the tamper-evidence claim must
+  be stated as conditional.</li>
+<li>Egress control, once added, is policy, not proof: it reduces exfiltration paths, it does
+  not eliminate covert channels.</li>
+</ul>
+<hr />
+<h2>8. Open work</h2>
+<p>This model is the <em>target</em> state for the controls marked above; the gap between it and the
+shipped defaults is the security-readiness backlog (board rows <code>GAP-123</code>…<code>GAP-142</code>), with the
+sequencing in <code>docs/prd/security-readiness.md</code> §6. The model is re-reviewed whenever a
+control changes state, so it never claims a protection that has not shipped.</p>
+<hr />
+<h2>Appendix — provenance</h2>
+<p>Derived from a six-seat, six-model-family security panel (2026-09-20): Zhipu GLM-5.3,
+Moonshot Kimi-K3, Qwen3-Coder-Plus, Anthropic Claude-Opus-4.8, Google Gemini-2.5-Pro, OpenAI
+gpt-5.6-sol. Unanimous verdict: <strong>do not approve for team use</strong> with the control plane in its
+current state. Every load-bearing claim was re-verified by the coordinator against raw
+source before being written here. Full ledger: <code>docs/prd/security-readiness.md</code> §4.</p><h2 class="doc-h" id="docs-incident-runbook-md">Incident Runbook</h2><div class="doc-sub">docs/incident-runbook.md — REQ-D3 / SEC-13 — freeze, evidence capture, containment, rotation, post-incident review.</div><p><strong>Status:</strong> v1 (2026-09-20). Covers the top operational security scenarios. Every command
+below exists in the shipped CLI (<code>bunker audit status|verify|list|export</code>, <code>bunker list</code>,
+<code>bunker destroy</code>, <code>bunker registry</code>, <code>bunker config</code>); paths are the documented defaults
+(<code>/etc/bunkerd/config.yaml</code>, <code>/var/lib/bunkerd</code>, <code>/etc/systemd/system/bunkerd.service</code>).</p>
+<blockquote>
+<p><strong>Read this first.</strong> Until the P1/P2 controls land (<code>docs/prd/security-readiness.md</code> §6),
+two facts shape every response: the transport may be <strong>plaintext</strong>, so treat any response
+action as observable on the wire; and the master token is <strong>not revocable per-operator</strong>,
+so "rotate the credential" means "rotate the one shared credential and restart."</p>
+</blockquote>
+<hr />
+<h2>1. Severity and first moves</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Severity</th>
+<th>Trigger</th>
+<th>First move</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>SEV-1</strong></td>
+<td>Suspected control-plane compromise, host root, or mass exfiltration</td>
+<td>§2 Freeze, then §3</td>
+</tr>
+<tr>
+<td><strong>SEV-2</strong></td>
+<td>Suspicious agent behaviour, cross-tenant access attempt, audit anomaly</td>
+<td>§4, then §3</td>
+</tr>
+<tr>
+<td><strong>SEV-3</strong></td>
+<td>Single agent misbehaving; leaked agent key; policy violation</td>
+<td>§5</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Universal first step — preserve evidence before you change state.</strong> Audit records are the
+only forensic record and are written to the host; do not restart or rebuild until §3's export
+has run.</p>
+<pre><code class="language-bash"># Snapshot the audit state and export the trail BEFORE any remediation.
+bunker audit status                       # chain head, sizes, shipping/anchor state
+bunker audit verify                       # confirm the chain is intact right now
+bunker audit export --since &lt;start&gt; --until &lt;now&gt; &gt; /root/ir-$(date +%s).jsonl
+</code></pre>
+<hr />
+<h2>2. Freeze (SEV-1)</h2>
+<p>Stop the bleeding with the least destructive action that works.</p>
+<ol>
+<li><strong>Stop the control plane</strong> (prevents new spawns/execs; running containers keep running):
+   <code>bash
+   sudo systemctl stop bunkerd</code></li>
+<li><strong>Stop agent containers</strong> (no daemon needed):
+   <code>bash
+   bunker list                     # capture the inventory first
+   # per agent, or via your host tooling:
+   sudo -u bunker-&lt;id&gt; XDG_RUNTIME_DIR=/run/user/$(id -u bunker-&lt;id&gt;) \
+       docker stop $(docker ps -q)</code></li>
+<li><strong>Isolate the host</strong> at the network layer (do not rely on Bunker for this — there is no
+   egress policy today): remove it from the network, or firewall it.</li>
+<li><strong>Do not wipe anything.</strong> Homes, containers and the audit log are evidence.</li>
+</ol>
+<hr />
+<h2>3. Evidence capture</h2>
+<p>Run before remediation; the audit chain is the incident timeline.</p>
+<pre><code class="language-bash">bunker audit status                                   # note the chain head hash
+bunker audit export &gt; /root/ir-full-$(date +%s).jsonl # the whole trail
+tar czf /root/ir-homes-$(date +%s).tar.gz /home/bunker-* 2&gt;/dev/null
+sudo cp /etc/bunkerd/config.yaml /root/ir-config-$(date +%s).yaml
+# Preserve the runtime: container list + images per agent
+for u in $(ls -d /home/bunker-* 2&gt;/dev/null); do echo &quot;== $u&quot;; sudo -u ${u#/home/} docker ps -a; done
+</code></pre>
+<p><strong>Honesty note (must be stated in any report):</strong> <code>bunker audit verify</code> proves the chain is
+internally consistent. Unless <code>audit.seal_key</code> and <code>audit.ship_to</code> are configured, it does
+<strong>not</strong> prove the log was not rewritten by someone with host root. Check <code>bunker audit
+status</code> for the anchor state and say plainly in the write-up whether an off-box anchor
+existed at the time.</p>
+<hr />
+<h2>4. Triage: was it an agent, a credential, or the host?</h2>
+<p><code>bunker audit list</code> and the exported JSONL answer "who did what", with one honest limit:
+<strong>failed authentication is not currently recorded</strong> (the audit interceptor sits inside auth),
+so a burst of denied RPCs will not appear in the chain today. Correlate with the daemon
+journal:</p>
+<pre><code class="language-bash">bunker audit list --since &lt;start&gt; --limit 500
+journalctl -u bunkerd --since &quot;&lt;start&gt;&quot; | grep -iE &quot;auth|denied|unauthenticated|spawn|exec|destroy&quot;
+</code></pre>
+<ul>
+<li><strong>A specific agent</strong> acting outside its lane → §5.</li>
+<li><strong>The master token used from an unexpected source</strong> → §6 rotation; assume the control plane
+  is compromised (SEV-1).</li>
+<li><strong>Evidence of host-root activity</strong> → outside Bunker's model; escalate to host/OS incident
+  response and record that Bunker does not claim to detect it.</li>
+</ul>
+<hr />
+<h2>5. Contain a single agent</h2>
+<pre><code class="language-bash">bunker audit list --agent &lt;id&gt; --limit 200    # establish the agent's action history
+bunker stop &lt;id&gt;                              # stop its container(s)
+bunker destroy &lt;id&gt;                           # deprovision
+</code></pre>
+<p><strong>Note the destroy-home policy before you run destroy.</strong> The default is <code>archive</code>, not
+<code>purge</code> (<code>agent.destroy_home_policy</code> in <code>/etc/bunkerd/config.yaml</code>). Archive preserves the
+home for forensics — the right choice during an incident. Only pass a purge policy once
+evidence has been exported.</p>
+<p><strong>The agent's own key cannot be revoked per-agent today</strong> (no <code>Revoke</code> RPC). It dies with the
+agent's user; until REQ-I4 lands, containment means <code>stop</code> + <code>destroy</code>, not key revocation.</p>
+<hr />
+<h2>6. Credential rotation (the compromised-token case)</h2>
+<p>Today this is a <strong>shared-secret rotation with a restart</strong>, because there is exactly one
+master credential and no revoke RPC.</p>
+<ol>
+<li>Generate a new token.</li>
+<li>Update <code>auth.token</code> in <code>/etc/bunkerd/config.yaml</code> (root-only).</li>
+<li><strong>Enable TLS before restarting if at all possible</strong> — restarting onto a plaintext link
+   re-exposes the new token exactly as the old one was exposed:
+   <code>yaml
+   tls:
+     enabled: true
+     self_signed: true     # or cert_file/key_file for a real cert</code></li>
+<li>Restart:
+   <code>bash
+   sudo systemctl restart bunkerd</code></li>
+<li>Re-issue agent keys as needed; distribute the new token to operators out of band.</li>
+<li><strong>Record the rotation in the audit trail</strong> (a manual note until the lifecycle RPCs land)
+   and confirm the old token no longer works.</li>
+</ol>
+<p>If keys are managed elsewhere (a secret store or a wrapper), rotate there and update the
+<code>auth.token</code> indirection in the same window.</p>
+<hr />
+<h2>7. Notification</h2>
+<ul>
+<li><strong>Report a Bunker vulnerability privately</strong> — see <code>SECURITY.md</code>. Do not open a public issue.</li>
+<li><strong>Customer/user notification</strong> is a policy decision: until <code>docs/prd/security-readiness.md</code>
+  REQ-D5 (disclosure process) and REQ-D4 (compliance posture) land, there is no published
+  embargo window or advisory channel. Decide and document per incident.</li>
+<li><strong>Preserve the timeline</strong> from §3; it is the input to the post-incident review.</li>
+</ul>
+<hr />
+<h2>8. Post-incident review</h2>
+<p>Within one week, produce a written review answering:</p>
+<ol>
+<li>What boundary was crossed (BT1 transport / BT2 authorization / BT3 isolation / BT4 egress)?</li>
+<li>Was it a <strong>missing control</strong> (→ backlog row), a <strong>mis-default</strong> (→ change the default), or
+   a <strong>known residual risk</strong> (§7 of the threat model)?</li>
+<li>Was the audit trail sufficient to reconstruct it? If failed-auth records were missing, say
+   so — that is REQ-A1's motivation.</li>
+<li>Update <code>docs/threat-model.md</code> if the incident revealed an adversary or asset not modelled.</li>
+</ol>
+<hr />
+<h2>9. Known gaps that limit this runbook (state them, do not paper over)</h2>
+<ul>
+<li><strong>No per-operator revocation</strong> — rotation is fleet-wide and needs a restart (REQ-I4).</li>
+<li><strong>No failed-auth audit, no rate limiting</strong> — brute force is invisible (REQ-A1, SEC-15).</li>
+<li><strong>No egress policy</strong> — network isolation must be done by host tooling, not Bunker (REQ-E1).</li>
+<li><strong>No off-box anchor by default</strong> — tamper-evidence is conditional (REQ-A2).</li>
+<li><strong>No compliance/retention statement</strong> — retention is whatever your host does (REQ-D4).</li>
+</ul>
+<p>Each gap maps to a tracked board row; this runbook should shrink these as controls land.</p><h2 class="doc-h" id="docs-compliance-md">Compliance and Data-Handling Posture</h2><div class="doc-sub">docs/compliance.md — REQ-D4 / SEC-18 — data inventory, retention, and the archive-vs-purge deletion default.</div><p><strong>Status:</strong> v1 (2026-09-20). This is a <strong>statement of the shipped defaults</strong>, not a
+certification. It exists because "no data-residency/retention/deletion statement" was a
+panel finding (SEC-18). It is written to be verifiable, and honest where no guarantee exists.</p>
+<blockquote>
+<p><strong>No certification is claimed.</strong> Bunker has no SOC 2, ISO 27001, or similar attestation.
+This document describes what the software does with data; it does not assert compliance
+with any regime. Teams with a regulatory obligation should treat the gaps in §5 as their
+own work or as a reason to wait for the roadmap.</p>
+</blockquote>
+<hr />
+<h2>1. What data Bunker holds</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Data</th>
+<th>Location</th>
+<th>Written by</th>
+<th>Sensitivity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Agent home directories</td>
+<td><code>/home/bunker-&lt;id&gt;</code></td>
+<td>The agent's workload</td>
+<td>Source, artifacts, any credential the workload brought</td>
+</tr>
+<tr>
+<td>Container images and layers</td>
+<td>Per-agent rootless Docker store under the agent home</td>
+<td><code>bunker spawn</code> / image build</td>
+<td>Workload-dependent</td>
+</tr>
+<tr>
+<td>Audit trail</td>
+<td><code>/var/lib/bunkerd/audit</code> (host, root)</td>
+<td>The daemon</td>
+<td>Who did what, when — control-plane metadata</td>
+</tr>
+<tr>
+<td>Daemon config</td>
+<td><code>/etc/bunkerd/config.yaml</code> (root, 0644 default)</td>
+<td>Operator</td>
+<td>Contains <code>auth.token</code> / <code>auth.jwt_secret</code> <strong>inline</strong> (see §4)</td>
+</tr>
+<tr>
+<td>SSH keys</td>
+<td><code>/etc/bunkerd/ssh</code> + agent home</td>
+<td><code>bunker spawn</code></td>
+<td>Per-agent host access</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>The control plane does not store workload <em>content</em> by default</strong> — it stores the homes the
+workload creates and the metadata to manage them.</p>
+<hr />
+<h2>2. Retention</h2>
+<p><strong>There is no built-in retention or aging policy.</strong> Data persists until an operator removes
+it. Specifically:</p>
+<ul>
+<li><strong>Agent homes:</strong> removed by <code>bunker destroy</code>, subject to <code>agent.destroy_home_policy</code>.</li>
+<li><strong>Audit trail:</strong> rotated by size/count; rotated segments are retained locally. Off-box
+  shipping happens <strong>only</strong> if <code>audit.ship_to</code> is set (it is empty by default). There is no
+  automatic deletion of old audit segments.</li>
+<li><strong>Images:</strong> retained in the per-agent store until the agent or its store is removed.</li>
+</ul>
+<p>Any retention guarantee must therefore be implemented by the operator (a host-side cron,
+backup policy, or storage lifecycle). <strong>No retention period is promised by Bunker.</strong></p>
+<hr />
+<h2>3. Deletion semantics — <code>destroy_home_policy</code></h2>
+<p>This is the one place the software makes a data-deletion choice, and it is important to get
+right. Set in <code>/etc/bunkerd/config.yaml</code>:</p>
+<pre><code class="language-yaml">agent:
+  destroy_home_policy: archive   # DEFAULT — the opposite of what most people assume
+</code></pre>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Value</th>
+<th>What <code>bunker destroy</code> does to <code>/home/bunker-&lt;id&gt;</code></th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>archive</code> <em>(default)</em></td>
+<td><strong>Moves the home to an archive location; data is retained.</strong></td>
+<td>Forensics, recovery, regulated audit</td>
+</tr>
+<tr>
+<td><code>purge</code></td>
+<td><strong>Deletes the home.</strong></td>
+<td>When deletion is the required outcome</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>The default is <code>archive</code>, not <code>purge</code>.</strong> A team that assumes <code>destroy</code> deletes data is
+wrong by default: the home survives. If your obligation is <em>deletion</em>, you must set <code>purge</code>
+explicitly — and understand that purge is irreversible.</p>
+<p><em>Roadmap note:</em> REQ-D4 makes this default explicit and documented (this document is part of
+that). Whether <code>archive</code> should remain the default is an owner decision (PRD §8).</p>
+<hr />
+<h2>4. Confidentiality of the control plane</h2>
+<ul>
+<li><strong>Secrets are inline in the config file.</strong> <code>auth.token</code> and <code>auth.jwt_secret</code> live in
+  <code>/etc/bunkerd/config.yaml</code>. There is no <code>*_FILE</code>/env indirection and no dedicated
+  <code>0600</code> secrets directory today (SEC-14 / REQ-I5). Protect the file with host permissions:
+  <code>chmod 600 /etc/bunkerd/config.yaml</code>.</li>
+<li><strong>Transport may be plaintext.</strong> TLS is off by default (SEC-02/SEC-03). Until REQ-T1/T2
+  land, any control-plane data on a non-loopback link is observable.</li>
+<li><strong>Audit trail confidentiality</strong> is whatever your host permissions provide; it may contain
+  agent ids, caller metadata, and paths.</li>
+</ul>
+<hr />
+<h2>5. Known gaps (state them; do not imply guarantees that do not exist)</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Gap</th>
+<th>Effect</th>
+<th>Tracked as</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>No retention/aging engine</td>
+<td>No retention period can be promised</td>
+<td>REQ-D4</td>
+</tr>
+<tr>
+<td><code>archive</code> default</td>
+<td>"destroy" does not delete by default</td>
+<td>REQ-D4 / owner decision</td>
+</tr>
+<tr>
+<td>Audit not anchored off-box by default</td>
+<td>Tamper-evidence is conditional</td>
+<td>REQ-A2</td>
+</tr>
+<tr>
+<td>Secrets inline in config</td>
+<td>Config copies/backups carry credentials</td>
+<td>REQ-I5</td>
+</tr>
+<tr>
+<td>No per-operator identity</td>
+<td>Access logs attribute to "the operator", not a person</td>
+<td>REQ-I1</td>
+</tr>
+<tr>
+<td>Exec command content only in syslog</td>
+<td>Forensic completeness for exec is partial</td>
+<td>REQ-A3</td>
+</tr>
+<tr>
+<td>No egress policy</td>
+<td>Data-exfiltration containment is not enforced by Bunker</td>
+<td>REQ-E1</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Data residency:</strong> Bunker makes no claim about where data resides beyond wherever the host
+runs. There is no geofencing or region-aware storage. Multi-region or residency-bound
+deployments are the operator's responsibility.</p>
+<p><strong>Sub-processors / third parties:</strong> the rootless installer is fetched from the network at
+provisioning time today; pinning is not enforced (SEC-12 / REQ-S1). Once pinned, this line
+should name the source and version.</p>
+<hr />
+<h2>6. What a compliance reviewer should take away</h2>
+<ol>
+<li>The software is <strong>transparent</strong> about its data handling (this document).</li>
+<li>It does <strong>not</strong> currently enforce retention, residency, or deletion policy on its own —
+   the operator must, and one default (<code>archive</code>) actively retains data.</li>
+<li>Control-plane confidentiality depends on host permissions and a TLS decision the operator
+   must make, because the shipping default is plaintext and inline secrets.</li>
+</ol>
+<p>Closing §5's gaps is what would let a team hand this document to an auditor instead of a
+runbook. Until then, it is an honest inventory, not an attestation.</p><h2 class="doc-h" id="docs-disclosure-md">Vulnerability Disclosure Process</h2><div class="doc-sub">docs/disclosure.md — REQ-D5 / SEC-20 — embargo, advisory path, security-release channel.</div><p><strong>Status:</strong> v1 (2026-09-20). Panel finding SEC-20: the previous policy was "email us" with no
+embargo, no advisory path, and no security-release channel. This defines the process.</p>
+<hr />
+<h2>1. Reporting</h2>
+<p><strong>Do not open a public issue for a security vulnerability.</strong></p>
+<p>Report privately to <strong>wojons@wojonstech.com</strong> with:</p>
+<ul>
+<li>A description of the vulnerability and its impact.</li>
+<li>Reproduction steps (a minimal case is ideal).</li>
+<li>Affected versions / commit.</li>
+<li>Any mitigations you have identified.</li>
+<li>Whether you intend to publish, and on what timeline.</li>
+</ul>
+<p>We acknowledge within <strong>48 hours</strong> and will keep you updated through triage and fix.</p>
+<p><strong>Encryption:</strong> if your report contains a live credential or an exploit, request the current
+PGP key in your first (content-free) message and we will send it before you transmit details.</p>
+<hr />
+<h2>2. Embargo</h2>
+<ul>
+<li><strong>Default embargo: 90 days</strong> from acknowledgement, or the date a fix ships, whichever is
+  earlier.</li>
+<li><strong>Shorter, coordinated disclosure</strong> is available by agreement for actively exploited issues
+  or when the reporter has a publication deadline — ask; we prefer to coordinate rather than
+  be surprised.</li>
+<li><strong>We will not ask for an open-ended embargo.</strong> If 90 days pass without a fix, the reporter
+  may disclose, and we will publish what we know alongside them.</li>
+<li><strong>Critical, actively-exploited issues</strong> are published as an advisory as soon as a fix or
+  mitigation exists, not held for the full window.</li>
+</ul>
+<hr />
+<h2>3. What we publish</h2>
+<p>Once a fix ships (or the embargo ends), a GitHub Security Advisory is published containing:</p>
+<ul>
+<li>A description, the affected versions, and the fixed version.</li>
+<li>The CVE id, when one is assigned.</li>
+<li>Credit to the reporter (unless they ask to remain anonymous).</li>
+<li>A "fix / workaround / residual risk" section — stating honestly if the fix is partial.</li>
+</ul>
+<p>A <strong>security-release channel</strong> carries the same content:</p>
+<ul>
+<li>GitHub Security Advisories (watch the repository → <em>Custom → Security alerts</em>).</li>
+<li>A release tagged <code>security-*</code> with the advisory linked in its notes.</li>
+</ul>
+<hr />
+<h2>4. Supported versions</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Version</th>
+<th>Security fixes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>1.x</code> (current)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Older</td>
+<td>Upgrade required; no backports</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2>5. Our commitments to the reporter</h2>
+<ul>
+<li><strong>Prompt acknowledgement</strong> (48 h) and honest status updates.</li>
+<li><strong>Public credit</strong> for a valid report, unless anonymity is requested.</li>
+<li><strong>No legal action</strong> against good-faith research that respects this process and does not
+  access or exfiltrate others' data.</li>
+<li><strong>We will say when we cannot fix something.</strong> Some findings here are residual risk by design
+  (§7 of <code>docs/threat-model.md</code>); we will state that plainly rather than leave a report open
+  indefinitely.</li>
+</ul>
+<hr />
+<h2>6. Internal handling (maintainers)</h2>
+<ol>
+<li><strong>Triage within 48 h</strong>: reproduce, assign severity (BLOCKER/HIGH/MED/LOW), open a private
+   board row. BLOCKER/HIGH get a fix bar; MED/LOW are scheduled.</li>
+<li><strong>Fix on a private branch</strong>; do not push a public commit that announces the bug before the
+   advisory. Land the fix, tag a <code>security-*</code> release, then publish the advisory.</li>
+<li><strong>Rotate any credential</strong> that the report shows to have been exposed — see
+   <code>docs/incident-runbook.md</code> §6.</li>
+<li><strong>Update <code>docs/threat-model.md</code></strong> if the report reveals a new adversary or asset.</li>
+<li><strong>Close the loop</strong> with the reporter before publishing.</li>
+</ol>
+<hr />
+<h2>Related documents</h2>
+<ul>
+<li><code>SECURITY.md</code> — the public policy (scopes, contact, supported versions).</li>
+<li><code>docs/threat-model.md</code> — adversaries, boundaries, residual risk.</li>
+<li><code>docs/incident-runbook.md</code> — operational response.</li>
+<li><code>docs/compliance.md</code> — data handling.</li>
+</ul>
+<div class="foot">Bunker P0 review pack · commits a7f3221 (docs) + 888f2ed (board) · panel artifacts in .coding-hermes/evidence/security-panel-2026-09-20/</div>
+</div></body></html>

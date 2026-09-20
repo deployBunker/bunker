@@ -1,9 +1,6 @@
-<!DOCTYPE html>
-<html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PRD — Bunker Security Readiness for Team Use</title>
-<style>
-*{box-sizing:border-box} html{-webkit-text-size-adjust:100%}
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>PRD — Bunker Security Readiness for Team Use</title>
+<style>*{box-sizing:border-box} html{-webkit-text-size-adjust:100%}
 body{background:#0f0f1a;color:#e0e0e0;margin:0;font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:12px}
 @media(min-width:600px){body{font-size:16px;padding:24px}}
 .wrap{max-width:1000px;margin:0 auto}
@@ -11,20 +8,23 @@ body{background:#0f0f1a;color:#e0e0e0;margin:0;font:15px/1.65 -apple-system,Blin
 @media(min-width:600px){.hero{padding:30px 26px}}
 h1{font-size:clamp(21px,4.6vw,30px);margin:0 0 8px;line-height:1.25;background:linear-gradient(135deg,#f7971e,#ffd200);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 .verdict{display:inline-block;margin-top:10px;padding:6px 14px;border-radius:999px;background:#3b0820;color:#f472b6;font-weight:700;font-size:14.5px}
+.verdict.good{background:#14532d;color:#4ade80}
 .meta{color:#8b8ba7;font-size:13px;margin-top:10px;line-height:1.6}
 .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:14px}
 @media(min-width:600px){.stats{grid-template-columns:repeat(4,1fr)}}
 .stat{background:#12121f;border:1px solid #2a2a3e;border-radius:10px;padding:12px;text-align:center}
 .stat .n{font-size:25px;font-weight:800} .stat .l{font-size:11px;color:#8b8ba7;text-transform:uppercase;letter-spacing:.6px;margin-top:2px}
-.n-red{color:#f472b6} .n-amber{color:#f59e0b} .n-blue{color:#60a5fa}
+.n-red{color:#f472b6} .n-amber{color:#f59e0b} .n-blue{color:#60a5fa} .n-green{color:#4ade80}
 .toc{background:#1a1a2e;border:1px solid #2a2a3e;border-radius:12px;padding:14px 16px;margin-bottom:16px}
 .toc h3{margin:0 0 8px;font-size:13px;color:#ffd200;text-transform:uppercase;letter-spacing:.6px}
-.toc ol{margin:0;padding-left:20px;columns:1} @media(min-width:760px){.toc ol{columns:2}}
+.toc ol{margin:0;padding-left:20px} @media(min-width:760px){.toc ol{columns:2}}
 .toc a{color:#93c5fd;text-decoration:none} .toc li{margin:3px 0;break-inside:avoid}
 h2{font-size:19px;color:#ffd200;margin:28px 0 10px;padding-bottom:6px;border-bottom:1px solid #2a2a3e}
+.doc-h{font-size:20px;color:#fff;margin:34px 0 6px;padding:10px 14px;background:linear-gradient(135deg,#16213e,#1a1a2e);border-left:4px solid #f7971e;border-radius:0 10px 10px 0}
+.doc-sub{color:#8b8ba7;font-size:12.5px;margin:-2px 0 12px 4px}
 h3{font-size:16px;color:#f7971e;margin:20px 0 8px} h4{font-size:14px;color:#60a5fa;margin:14px 0 6px}
 .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:12px 0}
-table{border-collapse:collapse;min-width:600px;width:100%;font-size:13px}
+table{border-collapse:collapse;min-width:560px;width:100%;font-size:13px}
 th{background:#12121f;color:#ffd200;text-align:left;padding:8px 10px;border:1px solid #2a2a3e;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px}
 td{padding:7px 10px;border:1px solid #2a2a3e;vertical-align:top}
 tr:nth-child(even) td{background:#16162a}
@@ -37,29 +37,25 @@ blockquote{border-left:3px solid #f7971e;margin:12px 0;padding:6px 14px;backgrou
 hr{border:none;border-top:1px solid #2a2a3e;margin:22px 0} ul,ol{padding-left:22px} li{margin:4px 0} a{color:#60a5fa}
 .foot{color:#8b8ba7;font-size:12px;text-align:center;margin-top:26px}
 </style></head><body><div class="wrap">
-<div class="hero">
-  <h1>PRD — Bunker Security Readiness for Team Use</h1>
-  <span class="verdict">PANEL VERDICT: 5/5 DO-NOT-APPROVE (team use, today)</span>
-  <div class="meta">5-seat multi-model security panel + coordinator re-verification · 2026-09-20<br>
-  10 themes converged at 5/5 · 12 claims re-verified against raw source (11 CONFIRMED, 1 REFINED)</div>
-  <div class="stats">
-    <div class="stat"><div class="n n-red">6</div><div class="l">Blockers</div></div>
-    <div class="stat"><div class="n n-amber">7</div><div class="l">High</div></div>
-    <div class="stat"><div class="n n-blue">17</div><div class="l">Board rows</div></div>
-    <div class="stat"><div class="n" style="color:#4ade80">5</div><div class="l">Model families</div></div>
-  </div>
-</div>
-<div class="toc"><h3>Contents</h3><ol>
-      <li><a href="#1-executive-summary">1. Executive summary</a></li>
-      <li><a href="#2-scope-and-audience">2. Scope and audience</a></li>
-      <li><a href="#3-threat-model-gap-1-and-its-draft">3. Threat model (gap #1 — and its draft)</a></li>
-      <li><a href="#4-verified-findings-ledger">4. Verified findings ledger</a></li>
-      <li><a href="#5-requirements">5. Requirements</a></li>
-      <li><a href="#6-roadmap">6. Roadmap</a></li>
-      <li><a href="#7-definition-of-team-ready-the-acceptance-gate">7. Definition of &quot;team-ready&quot; (the acceptance gate)</a></li>
-      <li><a href="#8-open-questions-for-the-owner">8. Open questions for the owner</a></li>
-      <li><a href="#9-appendix-panel-provenance">9. Appendix — panel provenance</a></li>
-</ol></div>
+<div class="hero"><h1>PRD — Bunker Security Readiness for Team Use</h1>
+<span class="verdict">PANEL VERDICT: 6/6 DO-NOT-APPROVE (team use, today)</span>
+<div class="meta">6-seat multi-model security panel + coordinator re-verification · 2026-09-20<br>
+10 themes converged at 5–6/6 · 12 claims re-verified against raw source (11 CONFIRMED, 1 REFINED)</div>
+<div class="stats">
+<div class="stat"><div class="n n-red">6</div><div class="l">Blockers</div></div>
+<div class="stat"><div class="n n-amber">7</div><div class="l">High</div></div>
+<div class="stat"><div class="n n-blue">30</div><div class="l">Board rows</div></div>
+<div class="stat"><div class="n n-green">6</div><div class="l">Model families</div></div>
+</div></div>
+<div class="toc"><h3>Contents</h3><ol><li><a href="#1-executive-summary">1. Executive summary</a></li>
+<li><a href="#2-scope-and-audience">2. Scope and audience</a></li>
+<li><a href="#3-threat-model-gap-1-and-its-draft">3. Threat model (gap #1 — and its draft)</a></li>
+<li><a href="#4-verified-findings-ledger">4. Verified findings ledger</a></li>
+<li><a href="#5-requirements">5. Requirements</a></li>
+<li><a href="#6-roadmap">6. Roadmap</a></li>
+<li><a href="#7-definition-of-team-ready-the-acceptance-gate">7. Definition of &quot;team-ready&quot; (the acceptance gate)</a></li>
+<li><a href="#8-open-questions-for-the-owner">8. Open questions for the owner</a></li>
+<li><a href="#9-appendix-panel-provenance">9. Appendix — panel provenance</a></li></ol></div>
 <p><strong>Status:</strong> DRAFT for owner review · 2026-09-20
 <strong>Author:</strong> Hermes (secure-panel coordinator) · <strong>Owner:</strong> Bane
 <strong>Provenance:</strong> 6-seat multi-model security panel — <strong>6/6 landed across 6 families</strong> (Zhipu GLM-5.3 · Moonshot Kimi-K3 · Qwen3-Coder-Plus · Anthropic Claude-Opus-4.8 · Google Gemini-2.5-Pro · OpenAI gpt-5.6-sol). Brief + raw outputs + merge ledger: <code>~/sec-panel-bunker-2026-09-20/</code>.
@@ -569,5 +565,5 @@ Allocate <code>subuid</code>/<code>subgid</code> ranges from a tracked, non-over
 <li><strong>Artifacts:</strong> <code>~/sec-panel-bunker-2026-09-20/{brief.txt, MERGE.md, seat-*.log, extract-seat-*.md}</code></li>
 <li><strong>Model access finding (criterion 1 of the ask):</strong> security-capable lanes confirmed live — <code>gpt-5.6-sol</code> (openai-codex, ExploitBench 76.5), <code>glm-5.3</code> (zai-glm, ExploitBench 54.4), <code>kimi-k3</code> (Moonshot), <code>qwen3-coder-plus</code> (Qwen), <code>claude-opus-4.8</code> and <code>gemini-2.5-pro</code>/<code>claude-sonnet-5</code> (both via clinepass). All six seats produced verdicts. <strong>S1 is the round's lesson: the registry's top-ranked security lane was the SLOWEST (needed ~50 min) — harvest too early and you lose the deepest findings.</strong> It was the only seat to catch the isolation-boundary BLOCKER.</li>
 </ul>
-<div class="foot">Bunker security-readiness PRD · generated from docs/prd/security-readiness.md · panel artifacts in .coding-hermes/evidence/security-panel-2026-09-20/</div>
+<div class="foot">Bunker security-readiness PRD · from docs/prd/security-readiness.md</div>
 </div></body></html>
