@@ -1,0 +1,66 @@
+{
+  "tick_id": "bunker-2026-09-20-13-27-42",
+  "project": "bunker",
+  "repo": "/home/kara/bunker",
+  "branch": "main",
+  "base_sha": "f71cbcb",
+  "created_at": "2026-09-20T13:38:00-05:00",
+  "mode": "git-worktrees",
+  "wave_budget": 12,
+  "independent": true,
+  "manifest_note": "Worker 1 (DF-BUNKER-41) was dispatched at 13:35:03-05:00, ~3 min before this manifest was written; the wave composition was decided from the foreman's own probe evidence (documented below) and worker 2 was held until this file existed. Recorded honestly rather than back-dated.",
+  "evidence": {
+    "probe_script_run": "/tmp/bunker-probe-41-42.sh",
+    "probe_script_exit_43": "/tmp/bunker-probe-43.sh",
+    "binary": "/tmp/bunker-head (built from f71cbcb)",
+    "discriminator": "BUNKER_HOME=/tmp/bunker-probe-home/config.yaml declares one server 'prod' at a dead port 127.0.0.1:19999; a command whose flag was ACCEPTED reaches the network and dies 'stream error: ... dial tcp 127.0.0.1:19999: connect: connection refused'; a command whose flag was REJECTED dies locally with a usage/permission error and never dials.",
+    "df_41_42_findings": [
+      "bunker run --server prod abc12345 -- echo hi  => 'no target bound' (flag swallowed; parseRunArgs break-in-switch leaves i on the flag which then becomes the command)",
+      "bunker run abc12345 --server prod -- echo hi   => network (post-agent position works)",
+      "bunker exec --server prod abc12345 -- echo hi  => network (DF-BUNKER-31 reference fix)",
+      "bunker env set/get/list with --server after the agent-id => 'requires exactly one ...' / 'takes no extra arguments' (extractEnvFlags only peels leading flags)"
+    ],
+    "df_43_falsified": "The DF-BUNKER-43 claim (status/audit exit 0 when piped) does NOT reproduce on HEAD: 9 of 9 probes show direct=1 and PIPESTATUS[0]=1; 'status' exits 0 only because queryServer degrades a dead server into printed OFFLINE text, which is pre-existing behaviour and not the filed class."
+  },
+  "workers": [
+    {
+      "task_id": "DF-BUNKER-41",
+      "title": "flags: run/env reject --server before the agent-id — finish the DF-BUNKER-31 grammar unification",
+      "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-41",
+      "branch": "wt/DF-BUNKER-41",
+      "base_sha": "f71cbcb",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/foreman-worker-DF-BUNKER-41.txt",
+      "log": "/tmp/foreman-worker-DF-BUNKER-41.log",
+      "dispatched_at": "2026-09-20T13:35:03-05:00",
+      "closes": ["DF-BUNKER-41", "DF-BUNKER-42"],
+      "files_owned": ["internal/cli/run.go", "internal/cli/env.go", "internal/cli/run_test.go", "internal/cli/env_test.go", "internal/cli/exec.go"],
+      "commit": "a4c1623",
+      "merge": "cc97553",
+      "judge": "tier1 PASS (merged tree, guard --full guard-20260920T145831); tier2 async job-3453fee782dc416597959da0cddf2fa7 dispatched by the recovery tick, still running at manifest close — DF-BUNKER-39's tier2 verdict for the same wave is PASS on record",
+      "recovery_verification": "tip gates GREEN (gofmt/build/vet/test -count=1 ./...); live discriminator probes on a binary built from the tip: run --server prod <id>, run --server=prod <id>, env list --server prod <id>, env --server=prod set <id> FOO=bar all reach the network instead of the old local refusals"
+    },
+    {
+      "task_id": "DF-BUNKER-39",
+      "title": "mount: documented default `bunker mount <agent-id>` can never mount (empty remotePath passed to the preflight)",
+      "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-39",
+      "branch": "wt/DF-BUNKER-39",
+      "base_sha": "f71cbcb",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/foreman-worker-DF-BUNKER-39.txt",
+      "log": "/tmp/foreman-worker-DF-BUNKER-39.log",
+      "dispatched_at": "2026-09-20T13:39:00-05:00",
+      "closes": ["DF-BUNKER-39"],
+      "files_owned": ["internal/cli/mount.go", "internal/cli/mount_preflight.go", "internal/cli/mount_test.go"],
+      "commit": "653d763",
+      "merge": "a3c41a9",
+      "judge": "tier1 + tier2 PASS on record (task completed 2026-09-20T14:06:01Z before the wave tick died)",
+      "recovery_verification": "tip gates GREEN (gofmt/build/vet/test -count=1 ./...); merge was present in main but UNPUSHED — the recovery tick pushed it"
+    }
+  ],
+  "independence_proof": "No depends_on edge between the two rows (both carry depends_on: null on tasks.jsonl). Disjoint file sets: worker 41 owns run.go/env.go (+ their tests) and may only touch exec.go additively; worker 39 owns mount.go/mount_preflight.go (+ mount tests, whose shell-out seam is stubbed via stubRemotePathCheck). The only shared test helper is the mock-server harness, which neither worker may modify.",
+  "finished_at": "2026-09-20T15:10:00-05:00",
+  "outcome": "RECOVERED — both workers' branches re-gated green on their tips and merged to main (a3c41a9 DF-BUNKER-39, cc97553 DF-BUNKER-41). DF-BUNKER-39's merge existed locally but was never pushed; the recovery tick pushed f71cbcb..cc97553 (origin/main == HEAD). Board rows DF-BUNKER-39/41/42 flipped to complete with commit hashes; wave_recovery event appended. Worktrees removed, both merged branches deleted. Tier 2 for DF-BUNKER-41 re-dispatched async (job-3453fee782dc416597959da0cddf2fa7) because the wave tick never ran the gitreins lifecycle for it."
+}

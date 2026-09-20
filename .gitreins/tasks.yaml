@@ -2616,3 +2616,42 @@ tasks:
   status: complete
   created_at: '2026-09-20T12:14:24.408526+00:00'
   completed_at: '2026-09-20T13:19:46.431760+00:00'
+- id: DF-BUNKER-41
+  title: Finish the DF-BUNKER-31 flag-grammar unification for run and env (DF-BUNKER-41
+    + DF-BUNKER-42)
+  criteria:
+  - bunker run and bunker env accept --server/--timeout in BOTH positions (before
+    and after the agent-id; for env also before the subcommand) and in both the space
+    and inline (--server=X) forms, so the documented 'bunker run --server <server>
+    <agent-id> -- cmd' form targets the named server instead of refusing 'no target
+    bound'; an unknown flag in any accepted position refuses LOCALLY naming the token
+    with zero RPCs; all pre-existing tests pass unmodified; gofmt/go build/go vet/go
+    test -count=1 ./... clean
+  status: complete
+  created_at: '2026-09-20T13:34:25.629801+00:00'
+  completed_at: '2026-09-20T14:58:39.516716+00:00'
+- id: DF-BUNKER-39
+  title: Fix the documented default 'bunker mount <agent-id>' (DF-BUNKER-39)
+  criteria:
+  - 'With no --path the mount preflight must be called with the SAME remote path the
+    mount actually uses (the source path embedded in the stored sshfs command, else
+    the agent home ''.'') instead of an empty string, so the documented ''bunker mount
+    <agent-id>'' form no longer dies with ''mount preflight: no remote path to check'';
+    an explicit --path keeps overriding it; the empty-path refusal stays reachable
+    and unit-tested as defensive behaviour; existing mount tests pass unmodified;
+    gofmt/go build/go vet/go test -count=1 ./... clean'
+  status: complete
+  created_at: '2026-09-20T13:36:35.285877+00:00'
+  completed_at: '2026-09-20T14:06:01.417150+00:00'
+- id: DF-BUNKER-42
+  title: 'env: --server must peel from every position (DF-BUNKER-42)'
+  criteria:
+  - bunker env set/get/list/unset accept --server and --timeout in every position
+    (before the subcommand, between the subcommand and the agent-id, and after the
+    payload) in both space and inline forms, so the payload validator sees exactly
+    the documented tokens and no form produces 'requires exactly one ...' / 'takes
+    no extra arguments' when the flag was supplied; a malformed payload is still reported
+    without needing a working server; unknown flags refuse locally naming the token;
+    existing env tests pass unmodified
+  status: in_progress
+  created_at: '2026-09-20T13:40:12.474774+00:00'
