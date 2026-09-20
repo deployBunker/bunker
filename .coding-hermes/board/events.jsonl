@@ -663,3 +663,7 @@
 {"id":665,"timestamp":"2026-09-20 20:10:28.426851","event_type":"task_updated","task_id":"GAP-128","actor":"foreman","detail":"{\"status\":\"in_progress\"}","tick_number":null}
 {"id":666,"timestamp":"2026-09-20 20:10:28.478226","event_type":"task_updated","task_id":"GAP-142","actor":"foreman","detail":"{\"status\":\"in_progress\"}","tick_number":null}
 {"id":667,"timestamp":"2026-09-20 20:10:28.53079","event_type":"task_updated","task_id":"SURF-006","actor":"foreman","detail":"{\"status\":\"in_progress\"}","tick_number":null}
+{"id":668,"timestamp":"2026-09-20 21:29:11.107018","event_type":"task_completed","task_id":"GAP-127","actor":"foreman","detail":"{\"status\":\"complete\"}","tick_number":null}
+{"id":669,"timestamp":"2026-09-20 21:29:11.129738","event_type":"task_completed","task_id":"GAP-128","actor":"foreman","detail":"{\"status\":\"complete\"}","tick_number":null}
+{"id":670,"timestamp":"2026-09-20 21:29:11.153117","event_type":"task_completed","task_id":"GAP-142","actor":"foreman","detail":"{\"status\":\"complete\"}","tick_number":null}
+{"id":671,"timestamp":"2026-09-20 21:29:11.178276","event_type":"task_completed","task_id":"SURF-006","actor":"foreman","detail":"{\"status\":\"complete\"}","tick_number":null}
