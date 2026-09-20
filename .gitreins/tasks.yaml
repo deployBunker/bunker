@@ -2738,3 +2738,56 @@ tasks:
   status: complete
   created_at: '2026-09-20T19:09:56.830982+00:00'
   completed_at: '2026-09-20T19:51:40.311960+00:00'
+- id: GAP-127
+  title: GAP-127 per board row (wave tick 506)
+  criteria:
+  - bunker connect --tls self-signed pins the server leaf certificate (sha256 hex)
+    on first use and a subsequent connect verifies against that pin (not blind trust)
+  - a rotated/mismatched certificate is REFUSED with a loud error naming both fingerprints
+    and a non-zero exit
+  - a self-signed server with no pin and no explicit accept is refused rather than
+    silently disabling verification
+  - the README quick-start uses the TLS path; tests cover first-use pin, pin match,
+    mismatch refusal, and the contradictory pin+tls_insecure config
+  status: complete
+  created_at: '2026-09-20T21:05:56.597342+00:00'
+  completed_at: '2026-09-20T21:06:30.845605+00:00'
+- id: GAP-128
+  title: GAP-128 per board row (wave tick 506)
+  criteria:
+  - the default SpawnAgentResponse contains NO ssh private key material (test asserts
+    the field is empty)
+  - the key is still obtainable via an explicit opt-in flag and via the master-gated
+    retrieval path so the CLI still writes a working local key file
+  - the proto field is marked deprecated and regenerated code is committed
+  - docs (README/threat-model/specs) describe the new flag and retrieval path
+  status: complete
+  created_at: '2026-09-20T21:05:56.991975+00:00'
+  completed_at: '2026-09-20T21:06:26.243183+00:00'
+- id: GAP-142
+  title: GAP-142 per board row (wave tick 506)
+  criteria:
+  - an exec/run request writes a correlated /command record into the SAME hash-chained
+    audit log carrying the command, the agent id and the caller
+  - the record is findable via bunker audit list --agent <id> --method /command
+  - credential-shaped values in the command are redacted to shape-preserving placeholders
+    (test covers a credential-shaped value; the raw value never appears in the log
+    or export)
+  - docs/exec-audit.md documents the correlated record and the redaction rules
+  - the hash chain still verifies with the correlated records present
+  status: complete
+  created_at: '2026-09-20T21:05:57.414491+00:00'
+  completed_at: '2026-09-20T21:06:31.650098+00:00'
+- id: SURF-006
+  title: SURF-006 per board row (wave tick 506)
+  criteria:
+  - one command makes a fresh agent socket-ready with no hand-written unit files,
+    writing the units through the agent own exec context
+  - re-running the install is a no-op (identical unit content is detected, changed=false)
+  - removal stops and disables the socket, removes both unit files, and provably leaves
+    no socket and no enabled unit
+  - a non-running user manager produces a named error rather than a silent partial
+    install
+  status: complete
+  created_at: '2026-09-20T21:05:57.859769+00:00'
+  completed_at: '2026-09-20T21:06:32.455034+00:00'

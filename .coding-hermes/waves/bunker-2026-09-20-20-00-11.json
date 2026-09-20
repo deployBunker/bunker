@@ -1,0 +1,55 @@
+{
+  "tick_id": "bunker-2026-09-20-20-00-11",
+  "created_at": "2026-09-20T20:05:00-05:00",
+  "project": "bunker",
+  "wave_type": "parallel",
+  "base_sha": "7e3de04",
+  "workers": [
+    {
+      "task_id": "GAP-127",
+      "title": "TLS self-signed cert generation on first boot + CLI TOFU pinning",
+      "worktree": "/home/kara/worktrees/bunker-GAP-127",
+      "branch": "wt/GAP-127",
+      "base_sha": "7e3de04",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/bunker-brief-GAP-127.txt",
+      "status": "dispatched"
+    },
+    {
+      "task_id": "GAP-128",
+      "title": "Stop returning agent SSH private key in SpawnAgentResponse by default",
+      "worktree": "/home/kara/worktrees/bunker-GAP-128",
+      "branch": "wt/GAP-128",
+      "base_sha": "7e3de04",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/bunker-brief-GAP-128.txt",
+      "status": "dispatched"
+    },
+    {
+      "task_id": "GAP-142",
+      "title": "Correlate exec/run command content into the audit chain (redacted)",
+      "worktree": "/home/kara/worktrees/bunker-GAP-142",
+      "branch": "wt/GAP-142",
+      "base_sha": "7e3de04",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/bunker-brief-GAP-142.txt",
+      "status": "dispatched"
+    },
+    {
+      "task_id": "SURF-006",
+      "title": "Idempotent socket+service unit install/remove through the agent's own context",
+      "worktree": "/home/kara/worktrees/bunker-SURF-006",
+      "branch": "wt/SURF-006",
+      "base_sha": "7e3de04",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/bunker-brief-SURF-006.txt",
+      "status": "dispatched"
+    }
+  ],
+  "middle_out_note": "Disjoint bands verified: GAP-127 (internal/server TLS boot + internal/cli connect), GAP-128 (proto SpawnAgentResponse + internal/agent spawn + internal/cli spawn), GAP-142 (internal/audit + internal/server exec path), SURF-006 (internal/cli new surface command). No shared import chain between picked pairs; GAP-136 excluded from wave (audit-band collision with GAP-142).",
+  "merge_order": ["GAP-127", "GAP-128", "GAP-142", "SURF-006"]
+}
