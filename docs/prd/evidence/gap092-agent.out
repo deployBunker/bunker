@@ -1,0 +1,484 @@
+
+===== ENVIRONMENT =====
+whoami=bunker-gap092-proof
+uname=x86_64
+--- toolsd version
+$ /home/bunker-gap092-proof/bin/toolsd version
+toolsd version dev
+rc=0
+tool git: PRESENT (/usr/bin/git)
+tool rg: ABSENT
+tool jq: PRESENT (/usr/bin/jq)
+tool gopls: ABSENT
+
+===== SURFACE (the CLI contract we would depend on) =====
+--- describe --json verb names
+$ sh -c /home/bunker-gap092-proof/bin/toolsd describe --json 2>/dev/null | tr ',' '\n' | grep -o '"name": *"[a-z0-9]*"' | sed 's/.*"name": *"//; s/"//' | sort
+apply
+config
+describe
+diff3
+fsops
+help
+lease
+lsp
+mcp
+metrics
+narrate
+patch
+probe
+replace
+session
+status
+version
+rc=0
+
+===== FSOPS REACHABILITY (basic read/write/list as CLI verbs?) =====
+--- toolsd read (expected: not a CLI verb)
+$ /home/bunker-gap092-proof/bin/toolsd read
+toolsd: unknown subcommand "read"
+
+Usage: toolsd <subcommand> [args]
+
+toolsd is the coding-hermes-tools CLI: agent-safe code modification primitives
+(strict patch apply, diff3 merge, atomic multi-file transactions). Every verb
+describes itself: what it does, WHEN to reach for it, its knobs, its examples
+and its outcomes.
+
+Subcommands:
+  version    Print the toolsd version and exit.
+  help       Print the surface, or one verb's full descriptor: toolsd help <verb>.
+  describe   Print the whole tool surface: every descriptor in full (--json for the registry verbatim).
+  config     Print every setting's effective value and which layer set it (flag, environment, file, default).
+  metrics    Count the toolkit's real usage from the invocation ledger: what was chosen, and whether it worked.
+  status     One monitoring screen: the usage counters, the invocation log tail, and the resolved settings.
+  diff3      Three-way merge two edited versions against a common base.
+  patch      Parse and strictly apply unified diffs.
+  apply      Atomically apply edits across multiple files (all-or-nothing).
+  replace    Replace literal text in one file in place (unique match, or --all).
+  lease      Advisory edit-lease registry: acquire, renew, release, status.
+  session    Git worktree sessions: start, end, list.
+  lsp        Language-server queries: definition, references, check.
+  narrate    Turn a unified diff into a JSON or Markdown evidence block.
+  probe      Run an HTTP probe battery against one endpoint (N requests, bounded concurrency, rate cap).
+  mcp        Serve every verb as an MCP tool on stdio (newline-delimited JSON-RPC 2.0).
+
+  Run `toolsd <subcommand> --help` (or `toolsd help <subcommand>`) for one
+  verb's full descriptor.
+
+Library primitives (Go packages, no subcommand):
+  fsops      Confined file-system operations: rooted read, whole-content write, mkdir, list.
+
+The whole surface as data: `toolsd describe` (text) or `toolsd describe --json`.
+rc=2
+--- toolsd write (expected: not a CLI verb)
+$ /home/bunker-gap092-proof/bin/toolsd write
+toolsd: unknown subcommand "write"
+
+Usage: toolsd <subcommand> [args]
+
+toolsd is the coding-hermes-tools CLI: agent-safe code modification primitives
+(strict patch apply, diff3 merge, atomic multi-file transactions). Every verb
+describes itself: what it does, WHEN to reach for it, its knobs, its examples
+and its outcomes.
+
+Subcommands:
+  version    Print the toolsd version and exit.
+  help       Print the surface, or one verb's full descriptor: toolsd help <verb>.
+  describe   Print the whole tool surface: every descriptor in full (--json for the registry verbatim).
+  config     Print every setting's effective value and which layer set it (flag, environment, file, default).
+  metrics    Count the toolkit's real usage from the invocation ledger: what was chosen, and whether it worked.
+  status     One monitoring screen: the usage counters, the invocation log tail, and the resolved settings.
+  diff3      Three-way merge two edited versions against a common base.
+  patch      Parse and strictly apply unified diffs.
+  apply      Atomically apply edits across multiple files (all-or-nothing).
+  replace    Replace literal text in one file in place (unique match, or --all).
+  lease      Advisory edit-lease registry: acquire, renew, release, status.
+  session    Git worktree sessions: start, end, list.
+  lsp        Language-server queries: definition, references, check.
+  narrate    Turn a unified diff into a JSON or Markdown evidence block.
+  probe      Run an HTTP probe battery against one endpoint (N requests, bounded concurrency, rate cap).
+  mcp        Serve every verb as an MCP tool on stdio (newline-delimited JSON-RPC 2.0).
+
+  Run `toolsd <subcommand> --help` (or `toolsd help <subcommand>`) for one
+  verb's full descriptor.
+
+Library primitives (Go packages, no subcommand):
+  fsops      Confined file-system operations: rooted read, whole-content write, mkdir, list.
+
+The whole surface as data: `toolsd describe` (text) or `toolsd describe --json`.
+rc=2
+--- toolsd list (expected: not a CLI verb)
+$ /home/bunker-gap092-proof/bin/toolsd list
+toolsd: unknown subcommand "list"
+
+Usage: toolsd <subcommand> [args]
+
+toolsd is the coding-hermes-tools CLI: agent-safe code modification primitives
+(strict patch apply, diff3 merge, atomic multi-file transactions). Every verb
+describes itself: what it does, WHEN to reach for it, its knobs, its examples
+and its outcomes.
+
+Subcommands:
+  version    Print the toolsd version and exit.
+  help       Print the surface, or one verb's full descriptor: toolsd help <verb>.
+  describe   Print the whole tool surface: every descriptor in full (--json for the registry verbatim).
+  config     Print every setting's effective value and which layer set it (flag, environment, file, default).
+  metrics    Count the toolkit's real usage from the invocation ledger: what was chosen, and whether it worked.
+  status     One monitoring screen: the usage counters, the invocation log tail, and the resolved settings.
+  diff3      Three-way merge two edited versions against a common base.
+  patch      Parse and strictly apply unified diffs.
+  apply      Atomically apply edits across multiple files (all-or-nothing).
+  replace    Replace literal text in one file in place (unique match, or --all).
+  lease      Advisory edit-lease registry: acquire, renew, release, status.
+  session    Git worktree sessions: start, end, list.
+  lsp        Language-server queries: definition, references, check.
+  narrate    Turn a unified diff into a JSON or Markdown evidence block.
+  probe      Run an HTTP probe battery against one endpoint (N requests, bounded concurrency, rate cap).
+  mcp        Serve every verb as an MCP tool on stdio (newline-delimited JSON-RPC 2.0).
+
+  Run `toolsd <subcommand> --help` (or `toolsd help <subcommand>`) for one
+  verb's full descriptor.
+
+Library primitives (Go packages, no subcommand):
+  fsops      Confined file-system operations: rooted read, whole-content write, mkdir, list.
+
+The whole surface as data: `toolsd describe` (text) or `toolsd describe --json`.
+rc=2
+--- toolsd mkdir (expected: not a CLI verb)
+$ /home/bunker-gap092-proof/bin/toolsd mkdir
+toolsd: unknown subcommand "mkdir"
+
+Usage: toolsd <subcommand> [args]
+
+toolsd is the coding-hermes-tools CLI: agent-safe code modification primitives
+(strict patch apply, diff3 merge, atomic multi-file transactions). Every verb
+describes itself: what it does, WHEN to reach for it, its knobs, its examples
+and its outcomes.
+
+Subcommands:
+  version    Print the toolsd version and exit.
+  help       Print the surface, or one verb's full descriptor: toolsd help <verb>.
+  describe   Print the whole tool surface: every descriptor in full (--json for the registry verbatim).
+  config     Print every setting's effective value and which layer set it (flag, environment, file, default).
+  metrics    Count the toolkit's real usage from the invocation ledger: what was chosen, and whether it worked.
+  status     One monitoring screen: the usage counters, the invocation log tail, and the resolved settings.
+  diff3      Three-way merge two edited versions against a common base.
+  patch      Parse and strictly apply unified diffs.
+  apply      Atomically apply edits across multiple files (all-or-nothing).
+  replace    Replace literal text in one file in place (unique match, or --all).
+  lease      Advisory edit-lease registry: acquire, renew, release, status.
+  session    Git worktree sessions: start, end, list.
+  lsp        Language-server queries: definition, references, check.
+  narrate    Turn a unified diff into a JSON or Markdown evidence block.
+  probe      Run an HTTP probe battery against one endpoint (N requests, bounded concurrency, rate cap).
+  mcp        Serve every verb as an MCP tool on stdio (newline-delimited JSON-RPC 2.0).
+
+  Run `toolsd <subcommand> --help` (or `toolsd help <subcommand>`) for one
+  verb's full descriptor.
+
+Library primitives (Go packages, no subcommand):
+  fsops      Confined file-system operations: rooted read, whole-content write, mkdir, list.
+
+The whole surface as data: `toolsd describe` (text) or `toolsd describe --json`.
+rc=2
+
+===== 1 READ (bounded line window) =====
+--- sed -n 30,40p lines.txt
+$ sed -n 30,40p lines.txt
+plain line 030
+plain line 031
+plain line 032
+plain line 033
+plain line 034
+plain line 035
+plain line 036
+needle-alpha line 037
+plain line 038
+plain line 039
+plain line 040
+rc=0
+--- wc -l lines.txt
+$ wc -l lines.txt
+120 lines.txt
+rc=0
+--- sed window beyond EOF (45,200p)
+$ sed -n 45,200p lines.txt
+plain line 045
+plain line 046
+plain line 047
+plain line 048
+plain line 049
+plain line 050
+plain line 051
+plain line 052
+plain line 053
+plain line 054
+plain line 055
+plain line 056
+plain line 057
+plain line 058
+plain line 059
+plain line 060
+plain line 061
+plain line 062
+plain line 063
+plain line 064
+plain line 065
+plain line 066
+plain line 067
+plain line 068
+plain line 069
+plain line 070
+plain line 071
+plain line 072
+plain line 073
+plain line 074
+plain line 075
+plain line 076
+plain line 077
+plain line 078
+plain line 079
+plain line 080
+plain line 081
+plain line 082
+plain line 083
+plain line 084
+plain line 085
+plain line 086
+plain line 087
+needle-beta line 088
+plain line 089
+plain line 090
+plain line 091
+plain line 092
+plain line 093
+plain line 094
+plain line 095
+plain line 096
+plain line 097
+plain line 098
+plain line 099
+plain line 100
+plain line 101
+plain line 102
+plain line 103
+plain line 104
+plain line 105
+plain line 106
+plain line 107
+plain line 108
+plain line 109
+plain line 110
+plain line 111
+plain line 112
+plain line 113
+plain line 114
+plain line 115
+plain line 116
+plain line 117
+plain line 118
+plain line 119
+plain line 120
+rc=0
+
+===== 2 SEARCH (three output modes) =====
+--- content mode
+$ rg -n needle .
+/home/bunker-gap092-proof/verbs.sh: line 16: rg: command not found
+rc=127
+--- files-only mode
+$ rg -l needle .
+/home/bunker-gap092-proof/verbs.sh: line 16: rg: command not found
+rc=127
+--- count mode
+$ rg -c needle .
+/home/bunker-gap092-proof/verbs.sh: line 16: rg: command not found
+rc=127
+
+===== 3 WRITE (whole-file, via the transport) =====
+--- cat written.txt
+$ cat written.txt
+written remotely
+rc=0
+--- sha256 written.txt
+$ sha256sum written.txt
+1dce85067342dd977e59470b5514570e6904ba9f98fdee0861d1a42d4339b5b4  written.txt
+rc=0
+
+===== 4 EDIT (unique-match replace) =====
+--- replace beta -> BETA
+$ /home/bunker-gap092-proof/bin/toolsd replace editme.txt beta BETA
+replaced 1 occurrence in editme.txt
+rc=0
+--- cat editme.txt after
+$ cat editme.txt
+alpha
+BETA
+gamma
+rc=0
+--- REFUSAL: ambiguous needle (alpha appears once, use 'a')
+$ /home/bunker-gap092-proof/bin/toolsd replace editme.txt a X
+toolsd: replace: editme.txt: textedit: ambiguous match: 4 occurrences (replace exactly one by narrowing the needle, or pass Options{All: true} to replace every occurrence)
+toolsd: replace: re-run with --all to replace every occurrence
+rc=1
+--- REFUSAL: no match
+$ /home/bunker-gap092-proof/bin/toolsd replace editme.txt zzzz X
+toolsd: replace: editme.txt: textedit: no match
+rc=1
+--- editme.txt unchanged after refusals (sha256)
+$ sha256sum editme.txt
+b0d5fcac7492427d0767380786c6d7843c342299a8a447ac2ccc8deaa78ca153  editme.txt
+rc=0
+
+===== 5 PATCH (strict unified diff) =====
+--- patch ok.diff
+$ /home/bunker-gap092-proof/bin/toolsd patch ok.diff
+patched 1 file(s) atomically
+rc=0
+--- cat patchme.txt after
+$ cat patchme.txt
+one
+TWO
+three
+rc=0
+--- REFUSAL: inexact diff
+$ /home/bunker-gap092-proof/bin/toolsd patch bad.diff
+toolsd: patch: hunk 0: does not apply: no exact match for its 3 context/removal line(s) at line 1 within an offset window of 0
+toolsd: patch: rolled back - no files in the tree were modified
+rc=1
+--- patchme.txt after refusal (sha256)
+$ sha256sum patchme.txt
+b2ef07f1e2b1b58edd8a1b35c5472177f5f1fa1ff74cad1c04cc776029511139  patchme.txt
+rc=0
+
+===== 6 APPLY (atomic multi-file) =====
+--- apply good.json
+$ /home/bunker-gap092-proof/bin/toolsd apply good.json
+applied 2 file(s) atomically
+rc=0
+--- cat apply_a.txt
+$ cat apply_a.txt
+set-a changed
+rc=0
+--- cat apply_b.txt
+$ cat apply_b.txt
+set-b changed
+rc=0
+--- ROLLBACK: edit-set with an unknown key
+$ /home/bunker-gap092-proof/bin/toolsd apply rollback.json
+toolsd: apply: edit 2 "apply_a.txt": unknown key "bogus" (an entry accepts only the "path" and "content" keys)
+rc=1
+--- apply_a.txt after rollback (sha256)
+$ sha256sum apply_a.txt
+3b6cf3f7386f3ae25ba69a5b4a9bfb796d130e3a1d6bd607d362166638130f99  apply_a.txt
+rc=0
+
+===== 7 LEASE (cross-session registry, git worktree required) =====
+--- git init for the lease root
+$ git init -q .
+
+rc=0
+--- lease acquire holder-A
+$ /home/bunker-gap092-proof/bin/toolsd lease acquire --holder holder-A --ttl 10m --root . lines.txt
+{
+  "holder": "holder-A",
+  "pid": 0,
+  "paths": [
+    "lines.txt"
+  ],
+  "expires_at": "2026-09-20T11:24:00.042465229-07:00",
+  "reclaimed": []
+}
+rc=0
+--- lease acquire holder-B on the SAME path (expect refusal naming holder-A)
+$ /home/bunker-gap092-proof/bin/toolsd lease acquire --holder holder-B --ttl 10m --root . lines.txt
+toolsd: lease: path "lines.txt" is held by holder-A (pid 0, expires 2026-09-20T18:24:00Z)
+rc=1
+--- lease status
+$ /home/bunker-gap092-proof/bin/toolsd lease status --root .
+{
+  "registry": ".git/agent-leases.json",
+  "now": "2026-09-20T11:14:00.067643616-07:00",
+  "active": [
+    {
+      "holder": "holder-A",
+      "pid": 0,
+      "paths": [
+        "lines.txt"
+      ],
+      "acquired_at": "2026-09-20T11:14:00.042465229-07:00",
+      "expires_at": "2026-09-20T11:24:00.042465229-07:00"
+    }
+  ],
+  "stale": [],
+  "overlaps": []
+}
+rc=0
+
+===== 8 BINARY round-trip (NUL + non-UTF8 must survive) =====
+--- sha256 binary.bin
+$ sha256sum binary.bin
+7262474850a536e774f2bda95d3520cd60f23c442fee296e0cbb97945909b8e5  binary.bin
+rc=0
+--- base64 round-trip through the transport
+$ sh -c base64 binary.bin > b64.txt; base64 -d b64.txt > binary.bin.rt; sha256sum binary.bin.rt
+7262474850a536e774f2bda95d3520cd60f23c442fee296e0cbb97945909b8e5  binary.bin.rt
+rc=0
+--- cmp binary.bin binary.bin.rt
+$ cmp binary.bin binary.bin.rt
+
+rc=0
+
+===== 9 LSP (needs a language server on the agent) =====
+--- lsp check with an explicit server (expect a named failure if absent)
+$ /home/bunker-gap092-proof/bin/toolsd lsp check --root . --server gopls
+toolsd: lsp: server unavailable: executable "gopls" was not found in PATH (exec: "gopls": executable file not found in $PATH)
+rc=1
+
+===== 10 EXEC (the transport itself) =====
+--- sh -c echo
+$ sh -c echo exec-ok; echo "stderr-line" >&2
+exec-ok
+stderr-line
+rc=0
+--- exit code propagation
+$ sh -c exit 42
+
+rc=42
+
+===== 11 DIFF3 / NARRATE / PROBE (surface presence) =====
+--- diff3 with no args (usage)
+$ /home/bunker-gap092-proof/bin/toolsd diff3
+toolsd: diff3 requires exactly 3 file arguments: <base> <ours> <theirs> (got 0)
+rc=1
+--- narrate with no args (usage)
+$ /home/bunker-gap092-proof/bin/toolsd narrate
+toolsd: narrate: a diff source is required: <diff-file|->
+usage: toolsd narrate [--format json|markdown] [--proven "<cmd>"]... <diff-file|->
+       --format json|markdown  output encoding (default json: the stable JSONL-board-row block)
+       --proven "<cmd>"        a proof command the caller ALREADY ran and verified (repeatable; carried verbatim)
+       <diff-file|->           the unified diff to narrate; "-" reads it from stdin
+The narrator CARRIES proof, it never invents it: only commands passed to --proven are reported as proven.
+rc=1
+--- probe with no args (usage)
+$ /home/bunker-gap092-proof/bin/toolsd probe
+toolsd: probe: a URL is required
+usage: toolsd probe [--n N] [--concurrency C] [--rps R] [--timeout D] [--method M] [--headers FILE] [--body FILE] [--out FILE] [--summary FILE] <url>
+       --n N            number of requests to issue (default 1)
+       --concurrency C  maximum requests in flight at once (default 1)
+       --rps R          cap the START rate at R requests per second (default 0: unthrottled)
+       --timeout D      per-request timeout, a Go duration such as 250ms or 10s (default 10s)
+       --method M       HTTP method (default GET)
+       --headers FILE   header profile: one "Name: value" per line, file mode 0600
+       --body FILE      request body read from FILE (default: no body)
+       --out FILE       write the JSONL results to FILE instead of stdout
+       --summary FILE   write the aggregate JSON object to FILE
+       <url>            the endpoint to probe (absolute http/https)
+Results are one flat JSON object per request, in issue order. A request that fails
+is DATA -- status 0 plus the transport error -- and the battery still exits 0.
+Header values come from a 0600 profile FILE only: there is no header flag, so a
+token never reaches argv or a process listing.
+rc=1
+
+===== END =====

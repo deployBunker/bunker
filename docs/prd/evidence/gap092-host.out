@@ -1,0 +1,492 @@
+
+===== ENVIRONMENT =====
+whoami=kara
+uname=x86_64
+--- toolsd version
+$ toolsd version
+toolsd version dev
+rc=0
+tool git: PRESENT (/usr/bin/git)
+tool rg: PRESENT (/usr/bin/rg)
+tool jq: PRESENT (/usr/bin/jq)
+tool gopls: PRESENT (/home/kara/go/bin/gopls)
+
+===== SURFACE (the CLI contract we would depend on) =====
+--- describe --json verb names
+$ sh -c toolsd describe --json 2>/dev/null | tr ',' '\n' | grep -o '"name": *"[a-z0-9]*"' | sed 's/.*"name": *"//; s/"//' | sort
+apply
+config
+describe
+diff3
+fsops
+help
+lease
+lsp
+mcp
+metrics
+narrate
+patch
+probe
+replace
+session
+status
+version
+rc=0
+
+===== FSOPS REACHABILITY (basic read/write/list as CLI verbs?) =====
+--- toolsd read (expected: not a CLI verb)
+$ toolsd read
+toolsd: unknown subcommand "read"
+
+Usage: toolsd <subcommand> [args]
+
+toolsd is the coding-hermes-tools CLI: agent-safe code modification primitives
+(strict patch apply, diff3 merge, atomic multi-file transactions). Every verb
+describes itself: what it does, WHEN to reach for it, its knobs, its examples
+and its outcomes.
+
+Subcommands:
+  version    Print the toolsd version and exit.
+  help       Print the surface, or one verb's full descriptor: toolsd help <verb>.
+  describe   Print the whole tool surface: every descriptor in full (--json for the registry verbatim).
+  config     Print every setting's effective value and which layer set it (flag, environment, file, default).
+  metrics    Count the toolkit's real usage from the invocation ledger: what was chosen, and whether it worked.
+  status     One monitoring screen: the usage counters, the invocation log tail, and the resolved settings.
+  diff3      Three-way merge two edited versions against a common base.
+  patch      Parse and strictly apply unified diffs.
+  apply      Atomically apply edits across multiple files (all-or-nothing).
+  replace    Replace literal text in one file in place (unique match, or --all).
+  lease      Advisory edit-lease registry: acquire, renew, release, status.
+  session    Git worktree sessions: start, end, list.
+  lsp        Language-server queries: definition, references, check.
+  narrate    Turn a unified diff into a JSON or Markdown evidence block.
+  probe      Run an HTTP probe battery against one endpoint (N requests, bounded concurrency, rate cap).
+  mcp        Serve every verb as an MCP tool on stdio (newline-delimited JSON-RPC 2.0).
+
+  Run `toolsd <subcommand> --help` (or `toolsd help <subcommand>`) for one
+  verb's full descriptor.
+
+Library primitives (Go packages, no subcommand):
+  fsops      Confined file-system operations: rooted read, whole-content write, mkdir, list.
+
+The whole surface as data: `toolsd describe` (text) or `toolsd describe --json`.
+rc=2
+--- toolsd write (expected: not a CLI verb)
+$ toolsd write
+toolsd: unknown subcommand "write"
+
+Usage: toolsd <subcommand> [args]
+
+toolsd is the coding-hermes-tools CLI: agent-safe code modification primitives
+(strict patch apply, diff3 merge, atomic multi-file transactions). Every verb
+describes itself: what it does, WHEN to reach for it, its knobs, its examples
+and its outcomes.
+
+Subcommands:
+  version    Print the toolsd version and exit.
+  help       Print the surface, or one verb's full descriptor: toolsd help <verb>.
+  describe   Print the whole tool surface: every descriptor in full (--json for the registry verbatim).
+  config     Print every setting's effective value and which layer set it (flag, environment, file, default).
+  metrics    Count the toolkit's real usage from the invocation ledger: what was chosen, and whether it worked.
+  status     One monitoring screen: the usage counters, the invocation log tail, and the resolved settings.
+  diff3      Three-way merge two edited versions against a common base.
+  patch      Parse and strictly apply unified diffs.
+  apply      Atomically apply edits across multiple files (all-or-nothing).
+  replace    Replace literal text in one file in place (unique match, or --all).
+  lease      Advisory edit-lease registry: acquire, renew, release, status.
+  session    Git worktree sessions: start, end, list.
+  lsp        Language-server queries: definition, references, check.
+  narrate    Turn a unified diff into a JSON or Markdown evidence block.
+  probe      Run an HTTP probe battery against one endpoint (N requests, bounded concurrency, rate cap).
+  mcp        Serve every verb as an MCP tool on stdio (newline-delimited JSON-RPC 2.0).
+
+  Run `toolsd <subcommand> --help` (or `toolsd help <subcommand>`) for one
+  verb's full descriptor.
+
+Library primitives (Go packages, no subcommand):
+  fsops      Confined file-system operations: rooted read, whole-content write, mkdir, list.
+
+The whole surface as data: `toolsd describe` (text) or `toolsd describe --json`.
+rc=2
+--- toolsd list (expected: not a CLI verb)
+$ toolsd list
+toolsd: unknown subcommand "list"
+
+Usage: toolsd <subcommand> [args]
+
+toolsd is the coding-hermes-tools CLI: agent-safe code modification primitives
+(strict patch apply, diff3 merge, atomic multi-file transactions). Every verb
+describes itself: what it does, WHEN to reach for it, its knobs, its examples
+and its outcomes.
+
+Subcommands:
+  version    Print the toolsd version and exit.
+  help       Print the surface, or one verb's full descriptor: toolsd help <verb>.
+  describe   Print the whole tool surface: every descriptor in full (--json for the registry verbatim).
+  config     Print every setting's effective value and which layer set it (flag, environment, file, default).
+  metrics    Count the toolkit's real usage from the invocation ledger: what was chosen, and whether it worked.
+  status     One monitoring screen: the usage counters, the invocation log tail, and the resolved settings.
+  diff3      Three-way merge two edited versions against a common base.
+  patch      Parse and strictly apply unified diffs.
+  apply      Atomically apply edits across multiple files (all-or-nothing).
+  replace    Replace literal text in one file in place (unique match, or --all).
+  lease      Advisory edit-lease registry: acquire, renew, release, status.
+  session    Git worktree sessions: start, end, list.
+  lsp        Language-server queries: definition, references, check.
+  narrate    Turn a unified diff into a JSON or Markdown evidence block.
+  probe      Run an HTTP probe battery against one endpoint (N requests, bounded concurrency, rate cap).
+  mcp        Serve every verb as an MCP tool on stdio (newline-delimited JSON-RPC 2.0).
+
+  Run `toolsd <subcommand> --help` (or `toolsd help <subcommand>`) for one
+  verb's full descriptor.
+
+Library primitives (Go packages, no subcommand):
+  fsops      Confined file-system operations: rooted read, whole-content write, mkdir, list.
+
+The whole surface as data: `toolsd describe` (text) or `toolsd describe --json`.
+rc=2
+--- toolsd mkdir (expected: not a CLI verb)
+$ toolsd mkdir
+toolsd: unknown subcommand "mkdir"
+
+Usage: toolsd <subcommand> [args]
+
+toolsd is the coding-hermes-tools CLI: agent-safe code modification primitives
+(strict patch apply, diff3 merge, atomic multi-file transactions). Every verb
+describes itself: what it does, WHEN to reach for it, its knobs, its examples
+and its outcomes.
+
+Subcommands:
+  version    Print the toolsd version and exit.
+  help       Print the surface, or one verb's full descriptor: toolsd help <verb>.
+  describe   Print the whole tool surface: every descriptor in full (--json for the registry verbatim).
+  config     Print every setting's effective value and which layer set it (flag, environment, file, default).
+  metrics    Count the toolkit's real usage from the invocation ledger: what was chosen, and whether it worked.
+  status     One monitoring screen: the usage counters, the invocation log tail, and the resolved settings.
+  diff3      Three-way merge two edited versions against a common base.
+  patch      Parse and strictly apply unified diffs.
+  apply      Atomically apply edits across multiple files (all-or-nothing).
+  replace    Replace literal text in one file in place (unique match, or --all).
+  lease      Advisory edit-lease registry: acquire, renew, release, status.
+  session    Git worktree sessions: start, end, list.
+  lsp        Language-server queries: definition, references, check.
+  narrate    Turn a unified diff into a JSON or Markdown evidence block.
+  probe      Run an HTTP probe battery against one endpoint (N requests, bounded concurrency, rate cap).
+  mcp        Serve every verb as an MCP tool on stdio (newline-delimited JSON-RPC 2.0).
+
+  Run `toolsd <subcommand> --help` (or `toolsd help <subcommand>`) for one
+  verb's full descriptor.
+
+Library primitives (Go packages, no subcommand):
+  fsops      Confined file-system operations: rooted read, whole-content write, mkdir, list.
+
+The whole surface as data: `toolsd describe` (text) or `toolsd describe --json`.
+rc=2
+
+===== 1 READ (bounded line window) =====
+--- sed -n 30,40p lines.txt
+$ sed -n 30,40p lines.txt
+plain line 030
+plain line 031
+plain line 032
+plain line 033
+plain line 034
+plain line 035
+plain line 036
+needle-alpha line 037
+plain line 038
+plain line 039
+plain line 040
+rc=0
+--- wc -l lines.txt
+$ wc -l lines.txt
+120 lines.txt
+rc=0
+--- sed window beyond EOF (45,200p)
+$ sed -n 45,200p lines.txt
+plain line 045
+plain line 046
+plain line 047
+plain line 048
+plain line 049
+plain line 050
+plain line 051
+plain line 052
+plain line 053
+plain line 054
+plain line 055
+plain line 056
+plain line 057
+plain line 058
+plain line 059
+plain line 060
+plain line 061
+plain line 062
+plain line 063
+plain line 064
+plain line 065
+plain line 066
+plain line 067
+plain line 068
+plain line 069
+plain line 070
+plain line 071
+plain line 072
+plain line 073
+plain line 074
+plain line 075
+plain line 076
+plain line 077
+plain line 078
+plain line 079
+plain line 080
+plain line 081
+plain line 082
+plain line 083
+plain line 084
+plain line 085
+plain line 086
+plain line 087
+needle-beta line 088
+plain line 089
+plain line 090
+plain line 091
+plain line 092
+plain line 093
+plain line 094
+plain line 095
+plain line 096
+plain line 097
+plain line 098
+plain line 099
+plain line 100
+plain line 101
+plain line 102
+plain line 103
+plain line 104
+plain line 105
+plain line 106
+plain line 107
+plain line 108
+plain line 109
+plain line 110
+plain line 111
+plain line 112
+plain line 113
+plain line 114
+plain line 115
+plain line 116
+plain line 117
+plain line 118
+plain line 119
+plain line 120
+rc=0
+
+===== 2 SEARCH (three output modes) =====
+--- content mode
+$ rg -n needle .
+./lines.txt:37:needle-alpha line 037
+./lines.txt:88:needle-beta line 088
+rc=0
+--- files-only mode
+$ rg -l needle .
+./lines.txt
+rc=0
+--- count mode
+$ rg -c needle .
+./lines.txt:2
+rc=0
+
+===== 3 WRITE (whole-file, via the transport) =====
+--- cat written.txt
+$ cat written.txt
+written remotely
+rc=0
+--- sha256 written.txt
+$ sha256sum written.txt
+1dce85067342dd977e59470b5514570e6904ba9f98fdee0861d1a42d4339b5b4  written.txt
+rc=0
+
+===== 4 EDIT (unique-match replace) =====
+--- replace beta -> BETA
+$ toolsd replace editme.txt beta BETA
+replaced 1 occurrence in editme.txt
+rc=0
+--- cat editme.txt after
+$ cat editme.txt
+alpha
+BETA
+gamma
+rc=0
+--- REFUSAL: ambiguous needle (alpha appears once, use 'a')
+$ toolsd replace editme.txt a X
+toolsd: replace: editme.txt: textedit: ambiguous match: 4 occurrences (replace exactly one by narrowing the needle, or pass Options{All: true} to replace every occurrence)
+toolsd: replace: re-run with --all to replace every occurrence
+rc=1
+--- REFUSAL: no match
+$ toolsd replace editme.txt zzzz X
+toolsd: replace: editme.txt: textedit: no match
+rc=1
+--- editme.txt unchanged after refusals (sha256)
+$ sha256sum editme.txt
+b0d5fcac7492427d0767380786c6d7843c342299a8a447ac2ccc8deaa78ca153  editme.txt
+rc=0
+
+===== 5 PATCH (strict unified diff) =====
+--- patch ok.diff
+$ toolsd patch ok.diff
+patched 1 file(s) atomically
+rc=0
+--- cat patchme.txt after
+$ cat patchme.txt
+one
+TWO
+three
+rc=0
+--- REFUSAL: inexact diff
+$ toolsd patch bad.diff
+toolsd: patch: hunk 0: does not apply: no exact match for its 3 context/removal line(s) at line 1 within an offset window of 0
+toolsd: patch: rolled back - no files in the tree were modified
+rc=1
+--- patchme.txt after refusal (sha256)
+$ sha256sum patchme.txt
+b2ef07f1e2b1b58edd8a1b35c5472177f5f1fa1ff74cad1c04cc776029511139  patchme.txt
+rc=0
+
+===== 6 APPLY (atomic multi-file) =====
+--- apply good.json
+$ toolsd apply good.json
+applied 2 file(s) atomically
+rc=0
+--- cat apply_a.txt
+$ cat apply_a.txt
+set-a changed
+rc=0
+--- cat apply_b.txt
+$ cat apply_b.txt
+set-b changed
+rc=0
+--- ROLLBACK: edit-set with an unknown key
+$ toolsd apply rollback.json
+toolsd: apply: edit 2 "apply_a.txt": unknown key "bogus" (an entry accepts only the "path" and "content" keys)
+rc=1
+--- apply_a.txt after rollback (sha256)
+$ sha256sum apply_a.txt
+3b6cf3f7386f3ae25ba69a5b4a9bfb796d130e3a1d6bd607d362166638130f99  apply_a.txt
+rc=0
+
+===== 7 LEASE (cross-session registry, git worktree required) =====
+--- git init for the lease root
+$ git init -q .
+
+rc=0
+--- lease acquire holder-A
+$ toolsd lease acquire --holder holder-A --ttl 10m --root . lines.txt
+{
+  "holder": "holder-A",
+  "pid": 0,
+  "paths": [
+    "lines.txt"
+  ],
+  "expires_at": "2026-09-20T13:23:38.151348593-05:00",
+  "reclaimed": []
+}
+rc=0
+--- lease acquire holder-B on the SAME path (expect refusal naming holder-A)
+$ toolsd lease acquire --holder holder-B --ttl 10m --root . lines.txt
+toolsd: lease: path "lines.txt" is held by holder-A (pid 0, expires 2026-09-20T18:23:38Z)
+rc=1
+--- lease status
+$ toolsd lease status --root .
+{
+  "registry": ".git/agent-leases.json",
+  "now": "2026-09-20T13:13:38.170086801-05:00",
+  "active": [
+    {
+      "holder": "holder-A",
+      "pid": 0,
+      "paths": [
+        "lines.txt"
+      ],
+      "acquired_at": "2026-09-20T13:13:38.151348593-05:00",
+      "expires_at": "2026-09-20T13:23:38.151348593-05:00"
+    }
+  ],
+  "stale": [],
+  "overlaps": []
+}
+rc=0
+
+===== 8 BINARY round-trip (NUL + non-UTF8 must survive) =====
+--- sha256 binary.bin
+$ sha256sum binary.bin
+7262474850a536e774f2bda95d3520cd60f23c442fee296e0cbb97945909b8e5  binary.bin
+rc=0
+--- base64 round-trip through the transport
+$ sh -c base64 binary.bin > b64.txt; base64 -d b64.txt > binary.bin.rt; sha256sum binary.bin.rt
+7262474850a536e774f2bda95d3520cd60f23c442fee296e0cbb97945909b8e5  binary.bin.rt
+rc=0
+--- cmp binary.bin binary.bin.rt
+$ cmp binary.bin binary.bin.rt
+
+rc=0
+
+===== 9 LSP (needs a language server on the agent) =====
+--- lsp check with an explicit server (expect a named failure if absent)
+$ toolsd lsp check --root . --server gopls
+{
+  "name": "gopls",
+  "version": "{\"GoVersion\":\"go1.26.0\",\"Path\":\"golang.org/x/tools/gopls\",\"Main\":{\"Path\":\"golang.org/x/tools/gopls\",\"Version\":\"v0.22.0\",\"Sum\":\"h1:9aON2mTxKrZ1y71RbQVnlPTTNfKZ9y5cv3x/f6XpsZw=\"},\"Deps\":[{\"Path\":\"github.com/BurntSushi/toml\",\"Version\":\"v1.6.0\",\"Sum\":\"h1:dRaEfpa2VI55EwlIW72hMRHdWouJeRF7TPYhI+AUQjk=\"},{\"Path\":\"github.com/fatih/camelcase\",\"Version\":\"v1.0.0\",\"Sum\":\"h1:hxNvNX/xYBp0ovncs8WyWZrOrpBNub/JfaMvbURyft8=\"},{\"Path\":\"github.com/fatih/gomodifytags\",\"Version\":\"v1.17.1-0.20250423142747-f3939df9aa3c\",\"Sum\":\"h1:dDSgAjoOMp8da3egfz0t2S+t8RGOpEmEXZubcGuc0Bg=\"},{\"Path\":\"github.com/fatih/structtag\",\"Version\":\"v1.2.0\",\"Sum\":\"h1:/OdNE99OxoI/PqaW/SuSK9uxxT3f/tcSZgon/ssNSx4=\"},{\"Path\":\"github.com/fsnotify/fsnotify\",\"Version\":\"v1.9.0\",\"Sum\":\"h1:2Ml+OJNzbYCTzsxtv8vKSFD9PbJjmhYF14k/jKC7S9k=\"},{\"Path\":\"github.com/google/go-cmp\",\"Version\":\"v0.7.0\",\"Sum\":\"h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=\"},{\"Path\":\"github.com/google/jsonschema-go\",\"Version\":\"v0.4.2\",\"Sum\":\"h1:tmrUohrwoLZZS/P3x7ex0WAVknEkBZM46iALbcqoRA8=\"},{\"Path\":\"github.com/modelcontextprotocol/go-sdk\",\"Version\":\"v1.4.0\",\"Sum\":\"h1:u0kr8lbJc1oBcawK7Df+/ajNMpIDFE41OEPxdeTLOn8=\"},{\"Path\":\"github.com/segmentio/asm\",\"Version\":\"v1.2.1\",\"Sum\":\"h1:DTNbBqs57ioxAD4PrArqftgypG4/qNpXoJx8TVXxPR0=\"},{\"Path\":\"github.com/segmentio/encoding\",\"Version\":\"v0.5.3\",\"Sum\":\"h1:OjMgICtcSFuNvQCdwqMCv9Tg7lEOXGwm1J5RPQccx6w=\"},{\"Path\":\"github.com/yosida95/uritemplate/v3\",\"Version\":\"v3.0.2\",\"Sum\":\"h1:Ed3Oyj9yrmi9087+NczuL5BwkIc4wvTb5zIM+UJPGz4=\"},{\"Path\":\"golang.org/x/exp/typeparams\",\"Version\":\"v0.0.0-20260312153236-7ab1446f8b90\",\"Sum\":\"h1:cfW8UCYSVdPblxA7qQe3o5Iad55Vsx4BFmuGS9RNOmc=\"},{\"Path\":\"golang.org/x/mod\",\"Version\":\"v0.35.0\",\"Sum\":\"h1:Ww1D637e6Pg+Zb2KrWfHQUnH2dQRLBQyAtpr/haaJeM=\"},{\"Path\":\"golang.org/x/oauth2\",\"Version\":\"v0.36.0\",\"Sum\":\"h1:peZ/1z27fi9hUOFCAZaHyrpWG5lwe0RJEEEeH0ThlIs=\"},{\"Path\":\"golang.org/x/sync\",\"Version\":\"v0.20.0\",\"Sum\":\"h1:e0PTpb7pjO8GAtTs2dQ6jYa5BWYlMuX047Dco/pItO4=\"},{\"Path\":\"golang.org/x/sys\",\"Version\":\"v0.43.0\",\"Sum\":\"h1:Rlag2XtaFTxp19wS8MXlJwTvoh8ArU6ezoyFsMyCTNI=\"},{\"Path\":\"golang.org/x/telemetry\",\"Version\":\"v0.0.0-20260409153401-be6f6cb8b1fa\",\"Sum\":\"h1:efT73AJZfAAUV7SOip6pWGkwJDzIGiKBZGVzHYa+ve4=\"},{\"Path\":\"golang.org/x/text\",\"Version\":\"v0.36.0\",\"Sum\":\"h1:JfKh3XmcRPqZPKevfXVpI1wXPTqbkE5f7JA92a55Yxg=\"},{\"Path\":\"golang.org/x/tools\",\"Version\":\"v0.44.1-0.20260513175300-635ae9663724\",\"Sum\":\"h1:rz7KAMVmPA+7ecCT/BHKLE353MUOoCAwMqlUveE8508=\"},{\"Path\":\"golang.org/x/vuln\",\"Version\":\"v1.1.4\",\"Sum\":\"h1:Ju8QsuyhX3Hk8ma3CesTbO8vfJD9EvUBgHvkxHBzj0I=\"},{\"Path\":\"honnef.co/go/tools\",\"Version\":\"v0.7.0\",\"Sum\":\"h1:w6WUp1VbkqPEgLz4rkBzH/CSU6HkoqNLp6GstyTx3lU=\"},{\"Path\":\"mvdan.cc/gofumpt\",\"Version\":\"v0.9.2\",\"Sum\":\"h1:zsEMWL8SVKGHNztrx6uZrXdp7AX8r421Vvp23sz7ik4=\"},{\"Path\":\"mvdan.cc/xurls/v2\",\"Version\":\"v2.6.0\",\"Sum\":\"h1:3NTZpeTxYVWNSokW3MKeyVkz/j7uYXYiMtXRUfmjbgI=\"}],\"Settings\":[{\"Key\":\"-buildmode\",\"Value\":\"exe\"},{\"Key\":\"-compiler\",\"Value\":\"gc\"},{\"Key\":\"CGO_ENABLED\",\"Value\":\"1\"},{\"Key\":\"CGO_CFLAGS\"},{\"Key\":\"CGO_CPPFLAGS\"},{\"Key\":\"CGO_CXXFLAGS\"},{\"Key\":\"CGO_LDFLAGS\"},{\"Key\":\"GOARCH\",\"Value\":\"amd64\"},{\"Key\":\"GOOS\",\"Value\":\"linux\"},{\"Key\":\"GOAMD64\",\"Value\":\"v1\"}],\"Version\":\"v0.22.0\"}",
+  "command": "gopls",
+  "root": "/tmp/gap092-fixture.8BDsRO/scratch",
+  "definition": true,
+  "references": true
+}
+rc=0
+
+===== 10 EXEC (the transport itself) =====
+--- sh -c echo
+$ sh -c echo exec-ok; echo "stderr-line" >&2
+exec-ok
+stderr-line
+rc=0
+--- exit code propagation
+$ sh -c exit 42
+
+rc=42
+
+===== 11 DIFF3 / NARRATE / PROBE (surface presence) =====
+--- diff3 with no args (usage)
+$ toolsd diff3
+toolsd: diff3 requires exactly 3 file arguments: <base> <ours> <theirs> (got 0)
+rc=1
+--- narrate with no args (usage)
+$ toolsd narrate
+toolsd: narrate: a diff source is required: <diff-file|->
+usage: toolsd narrate [--format json|markdown] [--proven "<cmd>"]... <diff-file|->
+       --format json|markdown  output encoding (default json: the stable JSONL-board-row block)
+       --proven "<cmd>"        a proof command the caller ALREADY ran and verified (repeatable; carried verbatim)
+       <diff-file|->           the unified diff to narrate; "-" reads it from stdin
+The narrator CARRIES proof, it never invents it: only commands passed to --proven are reported as proven.
+rc=1
+--- probe with no args (usage)
+$ toolsd probe
+toolsd: probe: a URL is required
+usage: toolsd probe [--n N] [--concurrency C] [--rps R] [--timeout D] [--method M] [--headers FILE] [--body FILE] [--out FILE] [--summary FILE] <url>
+       --n N            number of requests to issue (default 1)
+       --concurrency C  maximum requests in flight at once (default 1)
+       --rps R          cap the START rate at R requests per second (default 0: unthrottled)
+       --timeout D      per-request timeout, a Go duration such as 250ms or 10s (default 10s)
+       --method M       HTTP method (default GET)
+       --headers FILE   header profile: one "Name: value" per line, file mode 0600
+       --body FILE      request body read from FILE (default: no body)
+       --out FILE       write the JSONL results to FILE instead of stdout
+       --summary FILE   write the aggregate JSON object to FILE
+       <url>            the endpoint to probe (absolute http/https)
+Results are one flat JSON object per request, in issue order. A request that fails
+is DATA -- status 0 plus the transport error -- and the battery still exits 0.
+Header values come from a 0600 profile FILE only: there is no header flag, so a
+token never reaches argv or a process listing.
+rc=1
+
+===== END =====
