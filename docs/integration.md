@@ -277,7 +277,12 @@ atomically to a mode-`0600` file. Records capture caller identity (derived
 from the authenticated claims — **token values are never written**), the
 procedure, remote address, target agent, duration, and outcome; the record
 schema lives in `internal/audit` (`ts`, `caller`, `method`, `remote_addr`,
-`agent_id`, `duration_ms`, `outcome`, `summary`).
+`agent_id`, `duration_ms`, `outcome`, `summary`, `hash`, `prev_hash`).
+Each record also carries `hash` — the SHA-256 digest of the record's
+canonical bytes — and `prev_hash`, the previous record's `hash`, so the log
+is a tamper-evident hash chain: editing or dropping any record invalidates
+every hash after it, and a client that ignores the two hash fields silently
+loses that guarantee.
 
 Configuration is daemon-side, under the `audit` key in `config.yaml`:
 
@@ -305,9 +310,9 @@ auditing — audit failure never blocks startup.
 | RPC | Kind | Purpose |
 |-----|------|---------|
 | `ServerInfo` | unary | hostname, version, uptime, agent count/capacity, total & available resources, residue inventory (orphan users/homes/keys/stale linger entries + probe status) |
-| `ServerMetrics` | unary | live CPU %, memory used/total, disk used/total |
+| `ServerMetrics` | unary | live CPU %, memory used/total, disk used/total, plus an `agents[]` array of per-agent summaries (see below) |
 | `SpawnAgent` | unary | create an agent (`agent_id` handle, TTL, resource limits, network mode, SSH key, labels, image spec) |
-| `DestroyAgent` | unary | tear down an agent (idempotent — unknown id → `CodeNotFound`) |
+| `DestroyAgent` | unary | tear down an agent — idempotent in TWO distinct cases, see the note below the tables |
 | `ListAgents` | unary | all agents with status, resources, endpoints |
 | `GetAgent` | unary | one agent's details |
 | `AgentMetrics` | unary | one agent's live resource usage |
@@ -323,6 +328,41 @@ auditing — audit failure never blocks startup.
 | `GetInfo` | agent self-description (id, limits, endpoints) |
 | `Metrics` | the agent's own resource usage |
 | `Heartbeat` | the agent extends its own TTL |
+
+#### `ServerMetrics.agents[]` — per-agent summaries in one call
+
+The `ServerMetrics` response also carries an `agents: [...]` array of
+repeated `AgentSummary` messages — the same per-agent summaries
+`ListAgents` returns. Use it to read every agent's status, resource
+limits, disk usage, and port range in a single call, with no separate
+`ListAgents` round-trip. Each element's fields:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `agent_id` | string | the agent handle |
+| `status` | string | `pending`, `starting`, `running`, `stopping`, `stopped`, or `failed` |
+| `limits` | `ResourceLimits` | the agent's CPU/memory/disk/container caps |
+| `created_at` / `expires_at` | string | RFC3339 timestamps; `expires_at` is when the TTL lapses |
+| `sshfs_mount` | string | ready-to-run SSHFS mount command (empty when none) |
+| `docker_host_tunnel` | string | ready-to-run `ssh -L` tunnel command for the agent's rootless Docker (empty when none) |
+| `public_url` | string | the agent's public HTTPS URL |
+| `port_range_start` / `port_range_end` | uint32 | the agent's reserved port range |
+| `tailnet_ip` | string | the agent's tailnet address |
+| `disk_used_bytes` | uint64 | per-agent disk usage in bytes |
+
+Note on `DestroyAgent` idempotency — there are TWO distinct cases, both
+deliberate (`internal/agent/manager_destroy.go`):
+
+- **Never-known id** (never existed, or the daemon has no record of it):
+  `CodeNotFound` (`404 not_found` over REST).
+- **Re-destroying an id the daemon already destroyed and still knows in its
+  durable lifecycle store** (post-restart TTL reap, CLI retry, reconcile
+  cleanup): `200` with `{"status":"destroyed"}` — the daemon confirms the
+  teardown without error.
+
+So a client's "treat `not_found` as success" branch matches reality, but
+only for the never-known case; the already-destroyed case reports success
+directly.
 
 ### `SpawnAgent` over REST — naming the agent
 
@@ -648,8 +688,11 @@ spawn ──▶ exec/run ──▶ cp/deploy ──▶ mount/tunnel ──▶ me
 5. **Observe** — `bunker metrics build-1`, `bunker status` (agent + server level).
 6. **Heartbeat** — `bunker heartbeat build-1` extends the TTL; agents expire and
    auto-destroy when the TTL elapses.
-7. **Destroy** — `bunker destroy build-1`; idempotent, cleans user + dockerd +
-   run dirs. Always destroy scratch agents when done — the demo server is shared.
+7. **Destroy** — `bunker destroy build-1`; idempotent: a never-known id
+   returns `not_found` (safe to treat as success), while re-destroying an id
+   the daemon already destroyed and still knows returns `destroyed` with no
+   error. Cleans user + dockerd + run dirs. Always destroy scratch agents
+   when done — the demo server is shared.
 
 ## 7. Resource limits & networking knobs (per spawn)
 
