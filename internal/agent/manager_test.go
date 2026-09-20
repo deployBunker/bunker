@@ -224,15 +224,16 @@ func TestSpawn_GeneratesSSHKeys(t *testing.T) {
 	}
 	m := newTestManager(t)
 	agentID := uniqueAgentID("testagent")
-	req := &v1.SpawnAgentRequest{AgentId: agentID}
+	req := &v1.SpawnAgentRequest{AgentId: agentID, ReturnSshPrivateKey: true}
 	resp, err := m.Spawn(t.Context(), req)
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
 	defer cleanupAgent(t, m, resp.AgentId)
 
+	// GAP-128: key material now requires the explicit opt-in flag.
 	if resp.SshPrivateKey == "" {
-		t.Error("expected non-empty SSH private key")
+		t.Error("expected non-empty SSH private key for an opt-in spawn")
 	}
 	if !strings.HasPrefix(resp.SshPrivateKey, "-----BEGIN") {
 		preview := resp.SshPrivateKey
@@ -249,13 +250,16 @@ func TestSpawn_Response(t *testing.T) {
 	}
 	m := newTestManager(t)
 	agentID := uniqueAgentID("testagent")
-	req := &v1.SpawnAgentRequest{AgentId: agentID}
+	req := &v1.SpawnAgentRequest{AgentId: agentID, ReturnSshPrivateKey: true}
 	resp, err := m.Spawn(t.Context(), req)
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
 	defer cleanupAgent(t, m, resp.AgentId)
 
+	// GAP-128: this table asserts the FULL bundle, so the spawn opts in via
+	// return_ssh_private_key; the flag-off default is pinned by
+	// TestSpawn_DefaultResponseHasNoPrivateKey (gap128_test.go).
 	checks := []struct {
 		field string
 		value string

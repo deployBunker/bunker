@@ -53,6 +53,8 @@ const (
 	BunkerdListAgentsProcedure = "/bunker.v1.Bunkerd/ListAgents"
 	// BunkerdGetAgentProcedure is the fully-qualified name of the Bunkerd's GetAgent RPC.
 	BunkerdGetAgentProcedure = "/bunker.v1.Bunkerd/GetAgent"
+	// BunkerdGetAgentKeyProcedure is the fully-qualified name of the Bunkerd's GetAgentKey RPC.
+	BunkerdGetAgentKeyProcedure = "/bunker.v1.Bunkerd/GetAgentKey"
 	// BunkerdAgentMetricsProcedure is the fully-qualified name of the Bunkerd's AgentMetrics RPC.
 	BunkerdAgentMetricsProcedure = "/bunker.v1.Bunkerd/AgentMetrics"
 	// BunkerdExecAgentProcedure is the fully-qualified name of the Bunkerd's ExecAgent RPC.
@@ -92,6 +94,10 @@ type BunkerdClient interface {
 	RestartAgent(context.Context, *connect.Request[v1.RestartAgentRequest]) (*connect.Response[v1.RestartAgentResponse], error)
 	ListAgents(context.Context, *connect.Request[v1.ListAgentsRequest]) (*connect.Response[v1.ListAgentsResponse], error)
 	GetAgent(context.Context, *connect.Request[v1.GetAgentRequest]) (*connect.Response[v1.GetAgentResponse], error)
+	// GAP-128: explicit retrieval of an agent's SSH private key (spawn no
+	// longer returns it by default). Master-credential gated like the other
+	// Bunkerd RPCs.
+	GetAgentKey(context.Context, *connect.Request[v1.GetAgentKeyRequest]) (*connect.Response[v1.GetAgentKeyResponse], error)
 	// Agent actions
 	AgentMetrics(context.Context, *connect.Request[v1.AgentMetricsRequest]) (*connect.Response[v1.AgentMetricsResponse], error)
 	ExecAgent(context.Context, *connect.Request[v1.ExecAgentRequest]) (*connect.ServerStreamForClient[v1.ExecAgentResponse], error)
@@ -166,6 +172,12 @@ func NewBunkerdClient(httpClient connect.HTTPClient, baseURL string, opts ...con
 			connect.WithSchema(bunkerdMethods.ByName("GetAgent")),
 			connect.WithClientOptions(opts...),
 		),
+		getAgentKey: connect.NewClient[v1.GetAgentKeyRequest, v1.GetAgentKeyResponse](
+			httpClient,
+			baseURL+BunkerdGetAgentKeyProcedure,
+			connect.WithSchema(bunkerdMethods.ByName("GetAgentKey")),
+			connect.WithClientOptions(opts...),
+		),
 		agentMetrics: connect.NewClient[v1.AgentMetricsRequest, v1.AgentMetricsResponse](
 			httpClient,
 			baseURL+BunkerdAgentMetricsProcedure,
@@ -210,6 +222,7 @@ type bunkerdClient struct {
 	restartAgent   *connect.Client[v1.RestartAgentRequest, v1.RestartAgentResponse]
 	listAgents     *connect.Client[v1.ListAgentsRequest, v1.ListAgentsResponse]
 	getAgent       *connect.Client[v1.GetAgentRequest, v1.GetAgentResponse]
+	getAgentKey    *connect.Client[v1.GetAgentKeyRequest, v1.GetAgentKeyResponse]
 	agentMetrics   *connect.Client[v1.AgentMetricsRequest, v1.AgentMetricsResponse]
 	execAgent      *connect.Client[v1.ExecAgentRequest, v1.ExecAgentResponse]
 	runAgent       *connect.Client[v1.RunAgentRequest, v1.RunAgentResponse]
@@ -262,6 +275,11 @@ func (c *bunkerdClient) GetAgent(ctx context.Context, req *connect.Request[v1.Ge
 	return c.getAgent.CallUnary(ctx, req)
 }
 
+// GetAgentKey calls bunker.v1.Bunkerd.GetAgentKey.
+func (c *bunkerdClient) GetAgentKey(ctx context.Context, req *connect.Request[v1.GetAgentKeyRequest]) (*connect.Response[v1.GetAgentKeyResponse], error) {
+	return c.getAgentKey.CallUnary(ctx, req)
+}
+
 // AgentMetrics calls bunker.v1.Bunkerd.AgentMetrics.
 func (c *bunkerdClient) AgentMetrics(ctx context.Context, req *connect.Request[v1.AgentMetricsRequest]) (*connect.Response[v1.AgentMetricsResponse], error) {
 	return c.agentMetrics.CallUnary(ctx, req)
@@ -308,6 +326,10 @@ type BunkerdHandler interface {
 	RestartAgent(context.Context, *connect.Request[v1.RestartAgentRequest]) (*connect.Response[v1.RestartAgentResponse], error)
 	ListAgents(context.Context, *connect.Request[v1.ListAgentsRequest]) (*connect.Response[v1.ListAgentsResponse], error)
 	GetAgent(context.Context, *connect.Request[v1.GetAgentRequest]) (*connect.Response[v1.GetAgentResponse], error)
+	// GAP-128: explicit retrieval of an agent's SSH private key (spawn no
+	// longer returns it by default). Master-credential gated like the other
+	// Bunkerd RPCs.
+	GetAgentKey(context.Context, *connect.Request[v1.GetAgentKeyRequest]) (*connect.Response[v1.GetAgentKeyResponse], error)
 	// Agent actions
 	AgentMetrics(context.Context, *connect.Request[v1.AgentMetricsRequest]) (*connect.Response[v1.AgentMetricsResponse], error)
 	ExecAgent(context.Context, *connect.Request[v1.ExecAgentRequest], *connect.ServerStream[v1.ExecAgentResponse]) error
@@ -378,6 +400,12 @@ func NewBunkerdHandler(svc BunkerdHandler, opts ...connect.HandlerOption) (strin
 		connect.WithSchema(bunkerdMethods.ByName("GetAgent")),
 		connect.WithHandlerOptions(opts...),
 	)
+	bunkerdGetAgentKeyHandler := connect.NewUnaryHandler(
+		BunkerdGetAgentKeyProcedure,
+		svc.GetAgentKey,
+		connect.WithSchema(bunkerdMethods.ByName("GetAgentKey")),
+		connect.WithHandlerOptions(opts...),
+	)
 	bunkerdAgentMetricsHandler := connect.NewUnaryHandler(
 		BunkerdAgentMetricsProcedure,
 		svc.AgentMetrics,
@@ -428,6 +456,8 @@ func NewBunkerdHandler(svc BunkerdHandler, opts ...connect.HandlerOption) (strin
 			bunkerdListAgentsHandler.ServeHTTP(w, r)
 		case BunkerdGetAgentProcedure:
 			bunkerdGetAgentHandler.ServeHTTP(w, r)
+		case BunkerdGetAgentKeyProcedure:
+			bunkerdGetAgentKeyHandler.ServeHTTP(w, r)
 		case BunkerdAgentMetricsProcedure:
 			bunkerdAgentMetricsHandler.ServeHTTP(w, r)
 		case BunkerdExecAgentProcedure:
@@ -481,6 +511,10 @@ func (UnimplementedBunkerdHandler) ListAgents(context.Context, *connect.Request[
 
 func (UnimplementedBunkerdHandler) GetAgent(context.Context, *connect.Request[v1.GetAgentRequest]) (*connect.Response[v1.GetAgentResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.GetAgent is not implemented"))
+}
+
+func (UnimplementedBunkerdHandler) GetAgentKey(context.Context, *connect.Request[v1.GetAgentKeyRequest]) (*connect.Response[v1.GetAgentKeyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.GetAgentKey is not implemented"))
 }
 
 func (UnimplementedBunkerdHandler) AgentMetrics(context.Context, *connect.Request[v1.AgentMetricsRequest]) (*connect.Response[v1.AgentMetricsResponse], error) {

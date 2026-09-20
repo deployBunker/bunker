@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -35,6 +36,9 @@ type mockSpawnServer struct {
 	spawnResp  *v1.SpawnAgentResponse
 	spawnErr   error
 	gotAgentID string // AgentId from the last SpawnAgent request (DOGFOOD-008)
+	// gotReturnKey records the SpawnAgentRequest.ReturnSshPrivateKey flag
+	// (GAP-128: the CLI must leave it false — the wire default stays key-free).
+	gotReturnKey bool
 	// gotTTL captures the Ttl from the last SpawnAgent request (DF-BUNKER-17
 	// local-validation proof: a rejected --ttl must never reach the server).
 	gotTTL string
@@ -46,6 +50,14 @@ type mockSpawnServer struct {
 	// (SPAWN-TIMEOUT-001: must be ~300s, not the old 30s).
 	capturedDeadline   time.Time
 	capturedDeadlineOK bool
+	// GAP-128: GetAgentKey plumbing. gotKeyRequested/gotKeyAgentID record
+	// whether (and for whom) the CLI fetched the key after spawn; keyResp /
+	// keyErr control the fake response. When both are unset the mock answers
+	// CodeNotFound, like a server whose agent has no persisted key.
+	gotKeyRequested bool
+	gotKeyAgentID   string
+	keyResp         *v1.GetAgentKeyResponse
+	keyErr          error
 }
 
 func (m *mockSpawnServer) SpawnAgent(
@@ -56,10 +68,27 @@ func (m *mockSpawnServer) SpawnAgent(
 	m.gotAgentID = req.Msg.AgentId
 	m.gotTTL = req.Msg.Ttl
 	m.gotImageSpec = req.Msg.GetImageSpec()
+	m.gotReturnKey = req.Msg.GetReturnSshPrivateKey()
 	if m.spawnErr != nil {
 		return nil, m.spawnErr
 	}
 	return connect.NewResponse(m.spawnResp), nil
+}
+
+// GetAgentKey fakes the GAP-128 key-retrieval RPC.
+func (m *mockSpawnServer) GetAgentKey(
+	ctx context.Context,
+	req *connect.Request[v1.GetAgentKeyRequest],
+) (*connect.Response[v1.GetAgentKeyResponse], error) {
+	m.gotKeyRequested = true
+	m.gotKeyAgentID = req.Msg.GetAgentId()
+	if m.keyErr != nil {
+		return nil, m.keyErr
+	}
+	if m.keyResp != nil {
+		return connect.NewResponse(m.keyResp), nil
+	}
+	return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("agent %q not found", req.Msg.GetAgentId()))
 }
 
 // writeSpawnTestConfig writes a CLIConfig with a single server entry
@@ -735,5 +764,165 @@ func TestSpawnCommand_ValidTTLStillForwarded(t *testing.T) {
 	}
 	if !strings.Contains(out, "Creating agent...") {
 		t.Errorf("progress line missing for a valid spawn, stdout:\n%s", out)
+	}
+}
+
+// ── GAP-128: the spawn wire default carries no private key material ──
+
+// TestSpawnCommand_FetchesKeyViaGetAgentKey pins the criterion-3 end state:
+// the CLI sets NO return_ssh_private_key flag (the spawn body never asks for
+// key material), gets an empty SshPrivateKey back, then obtains a working
+// local key file through the GetAgentKey RPC.
+func TestSpawnCommand_FetchesKeyViaGetAgentKey(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	mock := &mockSpawnServer{
+		mockBunkerdServer: mockBunkerdServer{
+			info: &v1.ServerInfoResponse{
+				Hostname: "bunker-mvp",
+				Version:  "v0.2.0",
+			},
+		},
+		// Default server behavior: no key in the spawn response.
+		spawnResp: &v1.SpawnAgentResponse{
+			AgentId:       "gap128agent",
+			DockerHostSsh: "DOCKER_HOST=ssh://bunker-gap128agent@bunker-mvp",
+		},
+		keyResp: &v1.GetAgentKeyResponse{
+			AgentId:       "gap128agent",
+			SshPrivateKey: "test-private-key-data",
+		},
+	}
+	srv := newSpawnTestServer(t, mock)
+	defer srv.Close()
+	writeSpawnTestConfig(t, tmpDir, srv.URL)
+
+	cmd := NewSpawnCommand()
+	var err error
+	output := captureStdout(t, func() { err = cmd.Execute() })
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	// The spawn request must NOT opt into key material...
+	if mock.gotReturnKey {
+		t.Error("CLI spawn set return_ssh_private_key=true; the wire default must stay key-free (GAP-128)")
+	}
+	// ...and the fetch must have gone through GetAgentKey for this agent.
+	if !mock.gotKeyRequested {
+		t.Fatal("CLI did not call GetAgentKey after a key-free spawn response")
+	}
+	if mock.gotKeyAgentID != "gap128agent" {
+		t.Errorf("GetAgentKey asked for agent %q, want gap128agent", mock.gotKeyAgentID)
+	}
+
+	// Criterion 3: the operator still ends up with a working local key file.
+	keyPath := filepath.Join(tmpDir, ".bunker", "keys", "gap128agent")
+	raw, err := os.ReadFile(keyPath)
+	if err != nil {
+		t.Fatalf("client-local key not written via the GetAgentKey path: %v", err)
+	}
+	if string(raw) != "test-private-key-data" {
+		t.Errorf("local key content %q, want the key returned by GetAgentKey", raw)
+	}
+	info, err := os.Stat(keyPath)
+	if err != nil {
+		t.Fatalf("stat key: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0600 {
+		t.Errorf("local key mode %v, want 0600", got)
+	}
+	// The bundle must still show the key line.
+	if !strings.Contains(output, "SSH Key:") {
+		t.Errorf("bundle missing SSH Key line, stdout:\n%s", output)
+	}
+}
+
+// TestSpawnCommand_KeyFetchFailureIsNonFatal pins the degraded path: when the
+// server cannot serve the key (e.g. an older daemon without GetAgentKey, a
+// lost key file) the spawn itself still succeeds and reports the agent.
+func TestSpawnCommand_KeyFetchFailureIsNonFatal(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	mock := &mockSpawnServer{
+		mockBunkerdServer: mockBunkerdServer{
+			info: &v1.ServerInfoResponse{
+				Hostname: "bunker-mvp",
+				Version:  "v0.2.0",
+			},
+		},
+		spawnResp: &v1.SpawnAgentResponse{
+			AgentId:       "gap128fail",
+			DockerHostSsh: "DOCKER_HOST=ssh://bunker-gap128fail@bunker-mvp",
+		},
+		keyErr: connect.NewError(connect.CodeNotFound, fmt.Errorf("agent %q not found", "gap128fail")),
+	}
+	srv := newSpawnTestServer(t, mock)
+	defer srv.Close()
+	writeSpawnTestConfig(t, tmpDir, srv.URL)
+
+	cmd := NewSpawnCommand()
+	var err error
+	output := captureStdout(t, func() { err = cmd.Execute() })
+	if err != nil {
+		t.Fatalf("spawn must succeed even when the key fetch fails, got: %v", err)
+	}
+	if !mock.gotKeyRequested {
+		t.Error("CLI should still have attempted the key fetch")
+	}
+	if !strings.Contains(output, "could not fetch SSH key") {
+		t.Errorf("expected a warn line about the key fetch, stdout:\n%s", output)
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, ".bunker", "keys", "gap128fail")); !os.IsNotExist(err) {
+		t.Errorf("no key file must be written when the fetch failed (stat err: %v)", err)
+	}
+}
+
+// TestSpawnCommand_OptInResponseStillWritesLocalKey keeps old opt-in callers
+// working: a server that DOES return the key (return_ssh_private_key=true) —
+// for any client that sets the flag — must still produce a local key file and
+// must NOT trigger the extra GetAgentKey round trip.
+func TestSpawnCommand_OptInResponseStillWritesLocalKey(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	mock := &mockSpawnServer{
+		mockBunkerdServer: mockBunkerdServer{
+			info: &v1.ServerInfoResponse{
+				Hostname: "bunker-mvp",
+				Version:  "v0.2.0",
+			},
+		},
+		spawnResp: &v1.SpawnAgentResponse{
+			AgentId:       "gap128optin",
+			DockerHostSsh: "DOCKER_HOST=ssh://bunker-gap128optin@bunker-mvp",
+			SshPrivateKey: "test-private-key-data",
+		},
+	}
+	srv := newSpawnTestServer(t, mock)
+	defer srv.Close()
+	writeSpawnTestConfig(t, tmpDir, srv.URL)
+
+	cmd := NewSpawnCommand()
+	var err error
+	output := captureStdout(t, func() { err = cmd.Execute() })
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	if mock.gotKeyRequested {
+		t.Error("GetAgentKey must not be called when the spawn response already carried the key")
+	}
+	raw, err := os.ReadFile(filepath.Join(tmpDir, ".bunker", "keys", "gap128optin"))
+	if err != nil {
+		t.Fatalf("client-local key not saved from the opt-in response: %v", err)
+	}
+	if string(raw) != "test-private-key-data" {
+		t.Errorf("local key content %q, want the response key", raw)
+	}
+	if !strings.Contains(output, "SSH Key:") {
+		t.Errorf("bundle missing SSH Key line, stdout:\n%s", output)
 	}
 }

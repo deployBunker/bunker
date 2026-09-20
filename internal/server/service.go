@@ -478,6 +478,44 @@ func (s *bunkerdService) GetAgent(ctx context.Context, req *connect.Request[v1.G
 	}), nil
 }
 
+// GetAgentKey returns an agent's persisted SSH private key (GAP-128).
+// SpawnAgent no longer carries key material by default; callers that need a
+// local copy fetch it explicitly here. The RPC lives on the Bunkerd service,
+// so it is authorized by the same master-only interceptor as every other
+// admin-capable RPC (agent-scoped sub-keys are rejected before this handler
+// runs — mirror of ExecAgent/DestroyAgent authorization).
+func (s *bunkerdService) GetAgentKey(ctx context.Context, req *connect.Request[v1.GetAgentKeyRequest]) (*connect.Response[v1.GetAgentKeyResponse], error) {
+	agentID := req.Msg.GetAgentId()
+	// GAP-128: keyRec (not rec) — TestExecAgent_StampsAuditAgentID pins the
+	// source invariant that ExecAgent's audit stamp precedes the FIRST
+	// tracker-lookup-by-agent-id idiom in this file, so later handlers must
+	// not introduce that exact idiom before it.
+	keyRec := s.tracker.Get(agentID)
+	if keyRec == nil {
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("agent %q not found", agentID))
+	}
+	// Same precondition as exec: a stopped agent keeps its key on purpose
+	// (pause preserves user/home/ports), so the key stays retrievable —
+	// CodeFailedPrecondition + agent_stopped, never CodeNotFound.
+	if err := agent.StoppedStatusError(keyRec, agentID); err != nil {
+		return nil, stoppedPreconditionError(err)
+	}
+	if keyRec.SshPrivateKeyPath == "" {
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("agent %q has no persisted SSH private key", agentID))
+	}
+	keyBytes, err := os.ReadFile(keyRec.SshPrivateKeyPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("agent %q SSH private key missing at %s", agentID, keyRec.SshPrivateKeyPath))
+		}
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("read SSH private key for agent %q: %w", agentID, err))
+	}
+	return connect.NewResponse(&v1.GetAgentKeyResponse{
+		AgentId:       agentID,
+		SshPrivateKey: string(keyBytes),
+	}), nil
+}
+
 // AgentMetrics returns resource usage for a specific agent.
 func (s *bunkerdService) AgentMetrics(ctx context.Context, req *connect.Request[v1.AgentMetricsRequest]) (*connect.Response[v1.AgentMetricsResponse], error) {
 	rec := s.tracker.Get(req.Msg.AgentId)

@@ -65,9 +65,13 @@ chmod 700 /home/bunker-<id>/.ssh
 chmod 600 /home/bunker-<id>/.ssh/authorized_keys
 ```
 
-- The private key is returned in the response AND persisted server-side at
-  `<agent.ssh_dir>/<agent-id>` (default `/etc/bunkerd/ssh/<agent-id>`, mode
-  0600) so `ExecAgent` / `RunAgent` can SSH in. `DestroyAgent` removes it.
+- The private key is persisted server-side at `<agent.ssh_dir>/<agent-id>`
+  (default `/etc/bunkerd/ssh/<agent-id>`, mode 0600) so `ExecAgent` /
+  `RunAgent` can SSH in. `DestroyAgent` removes it. GAP-128: the spawn
+  response carries the key ONLY when the request set
+  `return_ssh_private_key: true`; otherwise callers fetch it explicitly via
+  the master-credential-gated `GetAgentKey` RPC (the CLI does this
+  automatically after spawn, writing `~/.bunker/keys/<agent-id>`).
 - If `ssh_public_key` provided in request, append to authorized_keys instead
 - `environment="DOCKER_HOST=unix:///run/user/<UID>/docker.sock"` prepended for auto socket discovery
 
@@ -193,7 +197,8 @@ apikey.Generate(agentID) → (keyID, plaintext, hash)
 SpawnAgentResponse {
   agent_id, docker_host_ssh, docker_host_tunnel, sshfs_mount,
   public_url, port_range_start, port_range_end,
-  ssh_private_key, limits, expires_at, tailnet_ip, api_key, image
+  ssh_private_key (GAP-128: only when return_ssh_private_key=true),
+  limits, expires_at, tailnet_ip, api_key, image
 }
 ```
 

@@ -44,6 +44,9 @@ func (s *rootExecStubServer) ExecAgent(ctx context.Context, req *connect.Request
 	return stream.Send(&v1.ExecAgentResponse{ExitCode: 0})
 }
 
+func (s *rootExecStubServer) GetAgentKey(context.Context, *connect.Request[v1.GetAgentKeyRequest]) (*connect.Response[v1.GetAgentKeyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
 func (s *rootExecStubServer) ServerInfo(context.Context, *connect.Request[v1.ServerInfoRequest]) (*connect.Response[v1.ServerInfoResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }

@@ -74,6 +74,10 @@ Request:
   - `trycloudflare`: Use anonymous TryCloudflare tunnel
   - `port_range_start` / `port_range_end`: Per-agent port isolation
 - `ttl` (string): Duration like "6h", "24h", "7d"
+- `return_ssh_private_key` (bool, optional): GAP-128 opt-in flag. When set,
+  the spawn response carries the generated private key (old behavior);
+  when unset (the default) the response is key-free and the key stays
+  persisted server-side, retrievable via `GetAgentKey`
 - `ssh_public_key` (bytes, optional): Push existing key
 - `labels` (map<string,string>): Metadata key-value pairs
 - `image_spec` (ImageSpec, optional): Secure per-agent image customization
@@ -98,7 +102,10 @@ Response:
 - `sshfs_mount` (string): `sshfs bunker-<id>@host:/home/...` command
 - `public_url` (string): Cloudflare tunnel URL (if enabled)
 - `port_range_start` / `port_range_end` (uint32): Allocated ports
-- `ssh_private_key` (string): Generated key (if not pushed)
+- `ssh_private_key` (string): **Deprecated (GAP-128).** Empty by default —
+  the spawn response carries NO private key material unless the request set
+  `return_ssh_private_key: true`. Keys are persisted server-side; fetch one
+  explicitly via `GetAgentKey` (master credentials only)
 - `limits` (ResourceLimits): Enforced resource caps
 - `expires_at` (string): ISO 8601 expiry timestamp
 - `tailnet_ip` (string): Tailscale IP (if enabled)
