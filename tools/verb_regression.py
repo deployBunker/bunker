@@ -67,7 +67,7 @@ def binding_block():
             "active_server: shared-default\n"
             "servers:\n"
             "  shared-default:\n"
-            "    address: http://127.0.0.1:1\n"
+            "    url: http://127.0.0.1:1\n"
             "    token: x\n"
         )
         env = {"BUNKER_HOME": td}
@@ -110,17 +110,36 @@ def override_block():
         cfg.write_text(
             "active_server: shared-default\n"
             "servers:\n"
-            "  alpha:\n    address: http://127.0.0.1:1\n    token: x\n"
-            "  beta:\n    address: http://127.0.0.1:1\n    token: x\n"
+            "  alpha:\n    url: http://127.0.0.1:19001\n    token: x\n"
+            "  beta:\n    url: http://127.0.0.1:19002\n    token: x\n"
         )
-        os.environ["BUNKER_SESSION_TARGET"] = "beta"
-        try:
-            rc, out, err = run(["exec", "--server", "alpha", "a1", "--", "true"], env={"BUNKER_HOME": td})
-        finally:
-            os.environ.pop("BUNKER_SESSION_TARGET", None)
+        import socket
+        def dead_port():
+            s_ = socket.socket()
+            s_.bind(("127.0.0.1", 0))
+            port = s_.getsockname()[1]
+            s_.close()
+            return port
+        pa, pb = dead_port(), dead_port()
+        while pb == pa:
+            pb = dead_port()
+        cfg.write_text(
+            "active_server: shared-default\n"
+            "servers:\n"
+            f"  alpha:\n    url: http://127.0.0.1:{pa}\n    token: x\n"
+            f"  beta:\n    url: http://127.0.0.1:{pb}\n    token: x\n"
+        )
+        env = {"BUNKER_HOME": td, "BUNKER_SESSION_TARGET": "beta"}
+        # explicit flag must pick alpha (port 19001), NOT the env's beta (19002)
+        rc, out, err = run(["exec", "--server", "alpha", "a1", "--", "true"], env=env)
         blob = out + err
-        check("explicit --server beats BUNKER_SESSION_TARGET",
-              "alpha" in blob and "beta" not in blob, blob[:200])
+        check("explicit --server beats BUNKER_SESSION_TARGET (dialed alpha's port)",
+              str(pa) in blob and str(pb) not in blob, blob[:220])
+        # and with NO flag, the env binding is what gets used
+        rc, out, err = run(["exec", "a1", "--", "true"], env=env)
+        blob = out + err
+        check("BUNKER_SESSION_TARGET is used when no flag is given (dialed beta's port)",
+              str(pb) in blob, blob[:220])
 
 
 # ---------------------------------------------------------------------------
@@ -136,8 +155,8 @@ def exec_flag_block():
     # --stdin - with no payload on a non-writable config still must not hang;
     # missing file is a LOCAL error, named, before any RPC.
     with tempfile.TemporaryDirectory() as td:
-        cfg = Path(td, "c.yaml")
-        cfg.write_text("servers:\n  s1:\n    address: http://127.0.0.1:1\n    token: x\n")
+        cfg = Path(td, "config.yaml")
+        cfg.write_text("servers:\n  s1:\n    url: http://127.0.0.1:1\n    token: x\n")
         rc, out, err = run(["exec", "--server", "s1", "a1",
                             "--stdin", "/nonexistent/file/xyz", "--", "true"],
                            env={"BUNKER_HOME": td})
@@ -147,8 +166,8 @@ def exec_flag_block():
 
     # --exec-cap must reject a non-numeric value rather than silently ignoring.
     with tempfile.TemporaryDirectory() as td:
-        cfg = Path(td, "c.yaml")
-        cfg.write_text("servers:\n  s1:\n    address: http://127.0.0.1:1\n    token: x\n")
+        cfg = Path(td, "config.yaml")
+        cfg.write_text("servers:\n  s1:\n    url: http://127.0.0.1:1\n    token: x\n")
         rc, out, err = run(["exec", "--server", "s1", "a1",
                             "--exec-cap", "notanumber", "--", "true"],
                            env={"BUNKER_HOME": td})
@@ -214,8 +233,8 @@ def refusal_quality_block():
     check("binding refusal names a remedy", names_remedy, blob[:250])
 
     with tempfile.TemporaryDirectory() as td:
-        cfg = Path(td, "c.yaml")
-        cfg.write_text("active_server: shared\nservers:\n  shared:\n    address: http://127.0.0.1:1\n    token: x\n")
+        cfg = Path(td, "config.yaml")
+        cfg.write_text("active_server: shared\nservers:\n  shared:\n    url: http://127.0.0.1:1\n    token: x\n")
         rc, out, err = run(["exec", "a1", "--", "true"], env={"BUNKER_HOME": td})
         blob = out + err
         check("refusal explains WHY the shared default is refused",
