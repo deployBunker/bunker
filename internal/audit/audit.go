@@ -9,8 +9,11 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/deployBunker/bunker/internal/config"
 )
 
 // MaxSize is the audit log rotation threshold: 5 MiB, matching this machine's
@@ -77,6 +80,12 @@ type AuditLog struct {
 	sealKey string
 	shipper *Shipper
 	logger  *slog.Logger
+
+	// insecurePlaintext, when true, marks EVERY record written through this
+	// log as having been served over a non-loopback PLAINTEXT listener
+	// (GAP-126 / REQ-T1). Default false: a daemon that never opts in (or
+	// serves TLS, or binds loopback only) writes byte-identical records.
+	insecurePlaintext bool
 }
 
 // New opens (creating if needed) the audit log at path with file mode 0600.
@@ -99,6 +108,12 @@ type Options struct {
 	SealKey string
 	// Logger receives ship/seal warnings; nil falls back to slog.Default().
 	Logger *slog.Logger
+	// InsecurePlaintext marks every record written through this log as
+	// served over a non-loopback plaintext listener (GAP-126 / REQ-T1).
+	// The daemon sets it from config.Config.InsecurePlaintextActive() once
+	// the transport gate has accepted the explicit tls.insecure_dev opt-in.
+	// Zero value keeps records byte-identical to a TLS-served daemon.
+	InsecurePlaintext bool
 }
 
 // NewWithOptions opens the audit log like New and attaches the GAP-073
@@ -267,6 +282,9 @@ func (l *AuditLog) applyOptions(opts Options) error {
 	if opts.SealKey != "" {
 		l.sealKey = opts.SealKey
 	}
+	if opts.InsecurePlaintext {
+		l.insecurePlaintext = true
+	}
 	if opts.ShipTo != "" {
 		s, err := NewShipper(l.path, opts.ShipTo, opts.Logger)
 		if err != nil {
@@ -316,10 +334,61 @@ func (l *AuditLog) Log(rec Record) error {
 	return l.logLocked(rec)
 }
 
+// MarkInsecurePlaintext turns on the GAP-126 / REQ-T1 insecure-transport
+// marker for every record this log writes from now on (and idempotently: a
+// second call is a no-op). The daemon calls it once the transport gate has
+// accepted the explicit tls.insecure_dev opt-in, so no request served over a
+// non-loopback plaintext listener can be mistaken for a TLS-served one in the
+// trail.
+//
+// The flag is sticky by design: a log that has written marked records must not
+// silently start writing unmarked ones. The daemon never turns it back off
+// within a process lifetime.
+func (l *AuditLog) MarkInsecurePlaintext() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.insecurePlaintext = true
+}
+
+// InsecurePlaintext reports whether records written through this log carry the
+// insecure-plaintext marker.
+func (l *AuditLog) InsecurePlaintext() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.insecurePlaintext
+}
+
+// markInsecureRecord prefixes rec.Summary with the marker when the log is in
+// insecure-plaintext mode. It is the SINGLE write-path stamp: every record
+// (interceptor records, rotation seals, and direct Log calls) is stamped
+// exactly once, so the marker cannot be skipped by a caller that builds its own
+// Record and cannot be double-applied on a path that already carries it.
+//
+// Called from logLocked with l.mu held; it returns the record to hash and
+// write. The Record field set is never changed — only Summary's value.
+func (l *AuditLog) markInsecureRecord(rec Record) Record {
+	if !l.insecurePlaintext {
+		return rec
+	}
+	if strings.HasPrefix(rec.Summary, config.InsecurePlaintextMarker) {
+		return rec
+	}
+	if rec.Summary == "" {
+		rec.Summary = config.InsecurePlaintextMarker
+		return rec
+	}
+	rec.Summary = config.InsecurePlaintextMarker + " " + rec.Summary
+	return rec
+}
+
 // logLocked is Log's body with the lock already held (l.mu is NOT
 // re-entrant — this is the only sanctioned way for the rotation path to
 // append records). All locking discipline lives in Log and rotateLocked.
 func (l *AuditLog) logLocked(rec Record) error {
+	// GAP-126: stamp the transport of record BEFORE hashing so the marker is
+	// covered by the chain digest like every other field.
+	rec = l.markInsecureRecord(rec)
+
 	if info, err := l.f.Stat(); err != nil {
 		return fmt.Errorf("stat audit log: %w", err)
 	} else if l.rotateAt > 0 && info.Size() >= l.rotateAt {
