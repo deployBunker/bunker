@@ -8,11 +8,78 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/deployBunker/bunker/internal/config"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 )
+
+// StatusHomeRetained is the destroy-path response status for a destroy that
+// REFUSED to delete: the agent's home could not be archived and verified, so
+// the Linux user, the home directory, the tracker record and the allocated
+// port range were all kept (DF-BUNKER-33). Losing the home is the one
+// unacceptable outcome; a retained agent can be retried or cleaned up later.
+const StatusHomeRetained = "home_retained"
+
+// archiveAgentHome tars homeDir into archiveDir and VERIFIES the archive
+// before the caller is allowed to delete anything. The verification is the
+// whole point of the step (DF-BUNKER-33): an archive that does not exist,
+// is zero bytes, or lists no real entries is treated as NO archive, and the
+// caller must fail closed instead of running userdel -rf behind it.
+func (m *AgentManager) archiveAgentHome(ctx context.Context, homeDir, archiveDir string) (string, error) {
+	base := filepath.Base(homeDir)
+	if err := os.MkdirAll(archiveDir, 0o700); err != nil {
+		return "", fmt.Errorf("create archive dir %s: %w", archiveDir, err)
+	}
+	archivePath := filepath.Join(archiveDir, base+"-"+time.Now().UTC().Format("20060102T150405Z")+".tar.gz")
+	if _, err := os.Stat(archivePath); err == nil {
+		return "", fmt.Errorf("archive %s already exists (second destroy within the same second?); refusing to overwrite", archivePath)
+	}
+	cmd := exec.CommandContext(ctx, "tar", "czf", archivePath, "-C", filepath.Dir(homeDir), base)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("archive home %s: %w (output: %s)", homeDir, err, strings.TrimSpace(string(out)))
+	}
+	if err := verifyArchiveFile(archivePath); err != nil {
+		return "", err
+	}
+	return archivePath, nil
+}
+
+// verifyArchiveFile is the DF-BUNKER-33 gate between "an archive file was
+// produced" and "the home may be deleted": the file must exist, be
+// non-empty, and `tar tzf` must list at least one entry. For GNU tar a
+// directory argument always lists at least the archived directory itself
+// (trailing slash preserved), so a literally empty listing means something
+// is genuinely broken with the artifact; an empty HOME also produces a
+// faithful root-only listing (nothing to lose) — it is the destroy path's
+// non-empty probe, not this verifier, that routes empty homes away from
+// archiving altogether.
+func verifyArchiveFile(archivePath string) error {
+	info, err := os.Stat(archivePath)
+	if err != nil {
+		return fmt.Errorf("verify archive %s: %w", archivePath, err)
+	}
+	if info.Size() == 0 {
+		return fmt.Errorf("verify archive %s: archive is empty", archivePath)
+	}
+	list, err := exec.Command("tar", "tzf", archivePath).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("verify archive %s: listing failed: %w (output: %s)", archivePath, err, strings.TrimSpace(string(list)))
+	}
+	entries := 0
+	for _, line := range strings.Split(string(list), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" && line != archivePath {
+			entries++
+		}
+	}
+	if entries == 0 {
+		return fmt.Errorf("verify archive %s: archive lists no entries", archivePath)
+	}
+	return nil
+}
 
 // disableUserUnit runs `systemctl --user disable <unit>` and returns its
 // combined output. Package-level seam: tests inject fake systemctl results
@@ -231,6 +298,52 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	// resolve, and it is best-effort: a failure is logged (WARN) and the
 	// destroy proceeds exactly as before.
 	disableAgentLinger(ctx, username, m.logger)
+
+	// Step 2.5 (DF-BUNKER-33): archive the agent home BEFORE userdel -rf.
+	// The cube-las-00 incident: a scheduled renewal destroyed an agent whose
+	// home held an unmerged product repo (4 git worktrees), .ssh and host
+	// tooling, and `userdel -rf` deleted all of it with no copy anywhere.
+	// DEFAULT policy "archive": tar the home, verify the archive (exists,
+	// non-empty, lists real entries), and only then allow the delete.
+	// "purge" preserves the historical userdel-only behavior. An archive or
+	// verification failure is FAIL-CLOSED: the user, home, tracker record
+	// and port range all survive and the response status is home_retained —
+	// losing the home is the one unacceptable outcome.
+	homeDir := filepath.Join(agentHomeRoot, username)
+	homeExists := false
+	if st, serr := os.Stat(homeDir); serr == nil && st.IsDir() {
+		if entries, derr := os.ReadDir(homeDir); derr == nil && len(entries) > 0 {
+			homeExists = true
+		}
+	}
+	if homeExists && m.cfg.Agent.DestroyHomePolicyOrDefault() == config.DestroyPolicyArchive {
+		archiveDir := m.cfg.Agent.DestroyArchiveDirOrDefault()
+		m.logger.Info("archiving agent home before delete",
+			"agent_id", agentID,
+			"policy", config.DestroyPolicyArchive,
+			"home", homeDir,
+			"archive_dir", archiveDir)
+		archivePath, aerr := m.archiveAgentHome(ctx, homeDir, archiveDir)
+		if aerr != nil {
+			m.logger.Error("agent home archive failed; home RETAINED, userdel NOT run",
+				"agent_id", agentID,
+				"policy", config.DestroyPolicyArchive,
+				"home", homeDir,
+				"archive_dir", archiveDir,
+				"error", aerr)
+			return &v1.DestroyAgentResponse{AgentId: agentID, Status: StatusHomeRetained},
+				fmt.Errorf("destroy aborted: agent home %s could not be archived to %s: %w (home retained, nothing deleted)", homeDir, archiveDir, aerr)
+		}
+		m.logger.Info("agent home archived and verified",
+			"agent_id", agentID,
+			"policy", config.DestroyPolicyArchive,
+			"archive_path", archivePath)
+	} else if homeExists {
+		m.logger.Info("destroy_home_policy purge: deleting agent home WITHOUT archiving",
+			"agent_id", agentID,
+			"policy", config.DestroyPolicyPurge,
+			"home", homeDir)
+	}
 
 	// Step 3: Remove the Linux user
 	cmd := exec.CommandContext(ctx, "userdel", "-rf", username)

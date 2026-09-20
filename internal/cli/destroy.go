@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -24,6 +25,15 @@ func NewDestroyCommand() *cobra.Command {
 		Use:   "destroy <agent-id>",
 		Short: "Destroy an agent",
 		Long: `Destroy an agent on the active bunkerd server.
+
+The agent's Linux user is removed, and WITH it the agent's entire home
+directory (/home/bunker-<id>) — including anything the agent stored there
+(cloned repositories, unmerged work, dotfiles and tooling). Under the
+default daemon policy the home is first archived to the daemon's
+destroy_archive_dir and the archive is verified BEFORE anything is
+deleted; if archiving fails, the destroy is refused and the home is
+retained (destroy_home_policy: purge restores the historical
+delete-without-archive behavior).
 
 Examples:
   bunker destroy abc12345
@@ -84,6 +94,15 @@ Examples:
 				}
 				// Real RPC error: the agent may still exist, so the local
 				// key is left in place.
+				//
+				// DF-BUNKER-33: a fail-closed destroy (home could not be
+				// archived before userdel) surfaces here as a CodeInternal
+				// whose message names the retained home. Print the plain
+				// guidance line first so the operator sees the outcome
+				// without parsing the wrapped RPC error.
+				if strings.Contains(err.Error(), "home retained") {
+					fmt.Printf("Agent %s NOT destroyed: the home could not be archived, so it was RETAINED (nothing was deleted).\n", agentID)
+				}
 				return fmt.Errorf("destroy agent: %w", err)
 			}
 
@@ -91,6 +110,13 @@ Examples:
 			if resp.Msg.Status == "not_found" {
 				fmt.Printf("Agent %s not found.\n", agentID)
 				return removeLocalSSHKey(agentID, keepKey)
+			}
+			// DF-BUNKER-33: fail-closed destroy — the server refused to delete
+			// because the home archive step failed. The agent (user, home, port
+			// range) is still registered; the local SSH key must stay too.
+			if resp.Msg.Status == "home_retained" {
+				fmt.Printf("Agent %s NOT destroyed: the home could not be archived, so it was RETAINED (nothing was deleted).\n", agentID)
+				return fmt.Errorf("agent %s retained: home archive failed before delete (nothing was deleted)", agentID)
 			}
 			fmt.Printf("Agent %s destroyed.\n", agentID)
 			return removeLocalSSHKey(agentID, keepKey)
