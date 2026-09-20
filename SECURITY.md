@@ -35,6 +35,7 @@ or that only works after host provisioning, is not a control until you turn it o
 | **Shared scratch exchange** (`/srv/bunker-share`) | **ON** (`shared_scratch_enabled: true`), group `bunker-agents`, mode `2770` | — | Cross-agent read/write is enabled by default. Turn it off if agents must not exchange data. |
 | **Audit trail** | ON, hash-chained, **not anchored off-box** | `audit.seal_key` + `audit.ship_to` for tamper-evidence | Without an off-box anchor, a host-root attacker can rewrite the log undetectably. |
 | **Egress control** | **NONE** | — | No default-deny or allowlist exists yet. Containment against exfiltration is not enforced by Bunker today. |
+| **Local mount (`bunker mount`, sshfs)** | **ON for the operator who mounts** | `sshfs` on the *client* | The mount runs the **SFTP server side on the agent**, so the trust direction is agent → your workstation: a malicious or compromised agent can attempt to read/write the client's files through the mount. Ship sshfs **>= 3.7.6** — see [`docs/mount-drivers.md`](docs/mount-drivers.md) §1 for the CVE and the upgrade path. |
 
 ## Residual risk (please read)
 
@@ -55,6 +56,13 @@ These are true even with every control above enabled, and are disclosed rather t
 - **The control plane credential is not per-operator and not revocable at runtime.** Rotation
   today means updating the shared token and restarting the daemon. See the
   [`docs/incident-runbook.md`](docs/incident-runbook.md).
+- **`bunker mount` trusts the agent with the client's filesystem.** The mount is a FUSE/SFTP
+  filesystem whose *server* is the agent, so the failure direction runs agent → client: a
+  malicious or compromised agent can attempt local file read/write on the operator's machine.
+  sshfs `<= 3.7.5` carries two CVEs in exactly this boundary (`CVE-2026-47187`, a 9.3 symlink
+  escape; `CVE-2026-48711`, argument injection to local command execution), both fixed in
+  **3.7.6**. The documented `transform_symlinks` mitigation does **not** cover the escape. Until
+  the upgrade ships, mount only agents you would let write to your local filesystem.
 
 ## Out of scope
 
@@ -66,6 +74,8 @@ These are true even with every control above enabled, and are disclosed rather t
 ## Documentation
 
 - [`docs/threat-model.md`](docs/threat-model.md) — assets, adversaries, boundaries, residual risk.
+- [`docs/mount-drivers.md`](docs/mount-drivers.md) — the mount driver model (sshfs default;
+  rclone and FUSE-over-io_uring as opt-in drivers) and the sshfs CVE upgrade path.
 - [`docs/incident-runbook.md`](docs/incident-runbook.md) — freeze, evidence capture, rotation.
 - [`docs/compliance.md`](docs/compliance.md) — data handling, retention, deletion defaults.
 - [`docs/disclosure.md`](docs/disclosure.md) — the reporting process.
