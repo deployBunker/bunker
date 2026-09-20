@@ -70,7 +70,18 @@ Examples:
   bunker env set abcd DATABASE_URL=postgres://db.local/app
   bunker env get abcd DATABASE_URL
   bunker env list abcd
-  bunker env unset abcd DATABASE_URL`,
+  bunker env unset abcd DATABASE_URL
+
+The --server and --timeout flags are accepted in EVERY position, in the space
+form (--server prod) and the inline form (--server=prod):
+
+  bunker env --server prod set abcd KEY=VALUE
+  bunker env set abcd KEY=VALUE --server prod
+  bunker env set --server prod abcd KEY=VALUE
+
+Any other flag is rejected before anything is sent to the server:
+
+  env takes no flags (got "--flag")`,
 
 		RunE: func(cmd *cobra.Command, args []string) error {
 			for _, a := range args {
@@ -80,7 +91,13 @@ Examples:
 			}
 
 			// Manual flag parsing for --server / --timeout (DisableFlagParsing is true).
-			rest, err := extractEnvFlags(args, &serverName, &timeout)
+			// DF-BUNKER-42: the flags are peeled from EVERY position —
+			// before the subcommand, between the subcommand and the
+			// agent-id, and after the payload — so the payload validator
+			// below sees exactly the documented tokens. An unknown
+			// flag-like token refuses LOCALLY (before any config load or
+			// RPC), naming the token.
+			rest, err := peelEnvFlags(args, &serverName, &timeout)
 			if err != nil {
 				return err
 			}
@@ -170,48 +187,34 @@ Examples:
 	return cmd
 }
 
-// extractEnvFlags peels --server and --timeout (and their = forms) off the
-// front of args, returning the remaining positional args. Empty/leftover
-// values for --server and --timeout are treated as errors.
-func extractEnvFlags(args []string, serverName *string, timeout *uint32) ([]string, error) {
-	rest := append([]string(nil), args...)
-	i := 0
-	for i < len(rest) {
-		switch {
-		case rest[i] == "--server":
-			if i+1 >= len(rest) {
-				return nil, fmt.Errorf("--server requires a value")
-			}
-			*serverName = rest[i+1]
-			i += 2
-			continue
-		case strings.HasPrefix(rest[i], "--server="):
-			*serverName = strings.TrimPrefix(rest[i], "--server=")
-			i++
-			continue
-		case rest[i] == "--timeout":
-			if i+1 >= len(rest) {
-				return nil, fmt.Errorf("--timeout requires a value")
-			}
-			v, err := parseUint32(rest[i+1])
-			if err != nil {
-				return nil, fmt.Errorf("--timeout: %w", err)
-			}
-			*timeout = v
-			i += 2
-			continue
-		case strings.HasPrefix(rest[i], "--timeout="):
-			v, err := parseUint32(strings.TrimPrefix(rest[i], "--timeout="))
-			if err != nil {
-				return nil, fmt.Errorf("--timeout: %w", err)
-			}
-			*timeout = v
-			i++
-			continue
-		}
-		break
+// peelEnvFlags peels --server and --timeout (and their = forms) out of args
+// WHEREVER they appear — before the subcommand, between the subcommand and
+// the agent-id, and after the payload — returning the remaining positional
+// tokens in order (DF-BUNKER-42). A value-taking flag with no value and an
+// unknown flag-like token both refuse LOCALLY naming the token (zero config
+// loads, zero RPCs). A "--" terminates flag parsing; everything after it is
+// payload, kept verbatim.
+func peelEnvFlags(args []string, serverName *string, timeout *uint32) ([]string, error) {
+	grammar := flagGrammar{name: "env", refusePrefix: "env takes no flags",
+		specs: map[string]flagGrammarSpec{
+			"--server": {apply: func(v string) error {
+				if v == "" {
+					return fmt.Errorf("--server requires a value")
+				}
+				*serverName = v
+				return nil
+			}},
+			"--timeout": {apply: func(v string) error {
+				n, err := parseUint32(v)
+				if err != nil {
+					return fmt.Errorf("--timeout: %v", err)
+				}
+				*timeout = n
+				return nil
+			}},
+		},
 	}
-	return rest[i:], nil
+	return grammar.peelAllFlags(args)
 }
 
 // parseEnvAssignment splits a single token of the form KEY=VALUE into (key,
