@@ -173,6 +173,7 @@ Client-side path overrides (persistent flags):
 	root.AddCommand(cli.NewRegistryCommand())
 	root.AddCommand(cli.NewLingerCommand())
 	root.AddCommand(cli.NewHomesCommand())
+	root.AddCommand(cli.NewSurfaceCommand())
 	root.AddCommand(cli.NewHostProvisionCommand())
 	root.AddCommand(cli.NewSubIDMigrateCommand())
 
