@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf8"
 )
@@ -532,57 +533,72 @@ func removeMountsUnder(ctx context.Context, dir string, logger *slog.Logger) {
 	}
 }
 
-// configureSubIDs ensures /etc/subuid and /etc/subgid contain a mapping for the
-// given username. Rootless Docker needs a contiguous 65,536 UID/GID range per
-// user. We map the range starting at the user's own UID/GID so every agent gets
-// a unique namespace derived from its system identity.
+// configureSubIDs ensures /etc/subuid and /etc/subgid contain a subordinate-ID
+// mapping for the given username. Rootless Docker needs a contiguous 65,536
+// UID/GID range per user; since GAP-140 that range is allocated from a global
+// pool and is guaranteed disjoint from every other name's range, and both
+// files are edited under one host-wide advisory lock with the read-choose-write
+// sequence inside it (see subid_alloc.go for why per-user start=uid overlapped
+// for every pair of agents).
+//
+// The username is resolved through userLookup so the caller's failure mode is
+// unchanged from the pre-GAP-140 path: an unresolvable user still refuses the
+// spawn before any file is touched.
 func configureSubIDs(ctx context.Context, username string) error {
-	u, err := userLookup(username)
-	if err != nil {
+	if _, err := userLookup(username); err != nil {
 		return fmt.Errorf("lookup user %s: %w", username, err)
 	}
-	uid, err := strconv.Atoi(u.Uid)
-	if err != nil {
-		return fmt.Errorf("parse uid %q: %w", u.Uid, err)
-	}
-	gid, err := strconv.Atoi(u.Gid)
-	if err != nil {
-		return fmt.Errorf("parse gid %q: %w", u.Gid, err)
-	}
 
-	if err := ensureSubIDEntry(subUIDPath, username, uid); err != nil {
+	release, err := lockSubIDs()
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	if err := ensureSubIDAllocation(subUIDPath, username); err != nil {
 		return fmt.Errorf("subuid: %w", err)
 	}
-	if err := ensureSubIDEntry(subGIDPath, username, gid); err != nil {
+	if err := ensureSubIDAllocation(subGIDPath, username); err != nil {
 		return fmt.Errorf("subgid: %w", err)
 	}
 	return nil
 }
 
-// ensureSubIDEntry appends a single mapping line to path when no mapping for
-// name exists. The mapping is name:start:65536.
-func ensureSubIDEntry(path, name string, start int) error {
-	data, err := os.ReadFile(path)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("read %s: %w", path, err)
+// lockSubIDs takes the host-wide advisory lock that serializes subordinate-ID
+// allocation, waiting at most subIDLockTimeout for it. The lock is one file for
+// BOTH databases because an agent's subuid and subgid blocks are a single unit
+// of policy: reading them under separate locks would let two spawns interleave
+// and hand the same block to two names.
+//
+// The wait deliberately does NOT use a blocking flock(2) from each waiter. A
+// kernel-blocked flock is uninterruptible: if the holder dies between "lock
+// taken" and "writer started" it never releases, and nothing on this side can
+// break out. Instead each waiter retries a non-blocking attempt, so every
+// iteration re-opens the lock file and re-validates the holder is still there —
+// a stale lock file with no live holder resolves immediately. A timed-out wait
+// is a hard error (the spawn fails, nothing is written); it is never a silent
+// fallback to appending without the lock, which is exactly the TOCTOU this
+// function exists to close.
+func lockSubIDs() (func(), error) {
+	if err := os.MkdirAll(subIDLockDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create subid lock dir %s: %w", subIDLockDir, err)
 	}
-	lines := strings.Split(string(data), "\n")
-	for _, line := range lines {
-		fields := strings.Split(strings.TrimSpace(line), ":")
-		if len(fields) >= 1 && fields[0] == name {
-			return nil // already configured
+	lockPath := filepath.Join(subIDLockDir, subIDLockFileName)
+	deadline := time.Now().Add(subIDLockTimeout)
+	for {
+		release, err := lockSubIDFileAttempt(lockPath, true)
+		if err == nil {
+			return release, nil
 		}
+		if !errors.Is(err, syscall.EWOULDBLOCK) {
+			return nil, err
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("subid allocation lock %s held by another process for more than %s: %w",
+				lockPath, subIDLockTimeout, err)
+		}
+		time.Sleep(subIDLockRetryInterval)
 	}
-	entry := fmt.Sprintf("%s:%d:65536\n", name, start)
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
-	if err != nil {
-		return fmt.Errorf("open %s: %w", path, err)
-	}
-	defer f.Close()
-	if _, err := f.WriteString(entry); err != nil {
-		return fmt.Errorf("append %s: %w", path, err)
-	}
-	return nil
 }
 
 // installRootlessDocker ensures the agent has the rootless Docker scripts in

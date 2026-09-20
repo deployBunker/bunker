@@ -163,7 +163,12 @@ func TestEnsureSubIDEntry_CreateAndAppend(t *testing.T) {
 			initial:  stringPointer("first:100000:65536"),
 			username: "second",
 			start:    400000,
-			want:     "first:100000:65536second:400000:65536\n",
+			// GAP-140: the pristine line is TERMINATED before the new entry is
+			// appended. The pre-GAP-140 writer concatenated directly onto the
+			// last line, producing the fused, unparseable record
+			// "first:100000:65536second:400000:65536" that the allocator now
+			// refuses to read — a real corruption the old expectation pinned.
+			want: "first:100000:65536\nsecond:400000:65536\n",
 		},
 	}
 

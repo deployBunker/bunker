@@ -113,6 +113,10 @@ func newRecycledResidueHost(t *testing.T, agentID string) *recycledResidueHost {
 	swapStringSeam(t, &agentPasswdPath, passwdPath)
 	swapStringSeam(t, &subUIDPath, filepath.Join(t.TempDir(), "subuid"))
 	swapStringSeam(t, &subGIDPath, filepath.Join(t.TempDir(), "subgid"))
+	// GAP-140: subordinate-ID allocation serializes on a host-wide lock under
+	// /var/lib/bunkerd, which a non-root test cannot write. Point the lock at
+	// the temp host like every other root-owned path in this fixture.
+	swapStringSeam(t, &subIDLockDir, t.TempDir())
 	t.Setenv("TMPDIR", tmpDir)
 
 	// The manager: temp registry, temp SSH dir, recorded host provisioning —
