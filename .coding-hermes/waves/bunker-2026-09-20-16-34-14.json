@@ -1,0 +1,43 @@
+{
+  "tick_id": "bunker-2026-09-20-16-34-14",
+  "project": "bunker",
+  "repo": "/home/kara/bunker",
+  "branch": "main",
+  "base_sha": "6ea9495",
+  "created_at": "2026-09-20T16:34:14-05:00",
+  "mode": "git-worktrees",
+  "wave_budget": 12,
+  "independent": true,
+  "workers": [
+    {
+      "task_id": "RELEASE-001",
+      "title": "RELEASE BLOCKER - regression job RED on HEAD while run reports success: ci.yml continue-on-error masks it (e2e-full-battery.sh never binds a session target)",
+      "worktree": "/home/kara/worktrees/bunker-RELEASE-001",
+      "branch": "wt/RELEASE-001",
+      "base_sha": "6ea9495",
+      "model": "cmc/deepseek/deepseek-v4-flash",
+      "provider": "custom",
+      "lane_note": "All glm subs quota-dead this tick: glm-5.3-flash@zai-glm-default weekly-exhausted, z-ai/glm-5.3-flash@xkiro 429 (7-day window, retry 284852s), ocg/glm-5.3-flash@9router 503 GoUsageLimitError. Probe 20260920_115459_2c062f answered genuinely on 9router with no fallback line.",
+      "brief": "/tmp/foreman-worker-RELEASE-001.txt",
+      "log": "/tmp/foreman-worker-RELEASE-001.log",
+      "files_owned": [".github/workflows/ci.yml", "e2e-full-battery.sh"]
+    },
+    {
+      "task_id": "DF-BUNKER-43",
+      "title": "[P2] `bunker status/audit` failures exit 0 when their output is piped - a permission-denied audit read and an unknown flag both look like success to any script",
+      "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-43",
+      "branch": "wt/DF-BUNKER-43",
+      "base_sha": "6ea9495",
+      "model": "cmc/deepseek/deepseek-v4-flash",
+      "provider": "custom",
+      "brief": "/tmp/foreman-worker-DF-BUNKER-43.txt",
+      "log": "/tmp/foreman-worker-DF-BUNKER-43.log",
+      "files_owned": ["internal/cli/status.go", "internal/cli/audit*.go", "cmd/bunker/main.go", "one new test file"]
+    }
+  ],
+  "independence_proof": "Verbatim from the board: both rows carry depends_on null/[] - no edge either way. Disjoint file sets, verified on disk at HEAD 6ea9495: RELEASE-001 owns .github/workflows/ci.yml (lines 270/353) + e2e-full-battery.sh (the bcli() wrapper at 362-364); DF-BUNKER-43 owns the CLI exit-code path (internal/cli/status.go, internal/cli/audit*.go, cmd/bunker/main.go) + one new test file. No shared file, no shared package (workflow+bash vs internal/cli), no shared helper. RELEASE-001 is an UNMASKING task (removing continue-on-error) - it deliberately does NOT attempt to make regression green, because making it green requires exactly the harness-binding work that is already owned by the merged INT-CI-025 row; the battery-side binding it adds (bcli target) is the same INT-CI-025 pattern applied to e2e-full-battery.sh. Conflict risk is nil because the two workers never touch the same path.",
+  "dispatch_note": "Serial merge required: the two branches are merged one at a time, each gated (bash -n / gofmt / go build / go vet / go test) before the next merge. Never a simultaneous merge.",
+  "started_at": "2026-09-20T16:39:00-05:00",
+  "finished_at": null,
+  "outcome": "OPEN - workers dispatched, merge pending"
+}

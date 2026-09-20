@@ -2655,3 +2655,49 @@ tasks:
     existing env tests pass unmodified
   status: in_progress
   created_at: '2026-09-20T13:40:12.474774+00:00'
+- id: DF-BUNKER-40
+  title: 'A spawned agent can NEVER use the shared scratch exchange: root created
+    0750 root:root instead of 2750 root:bunker-agents'
+  criteria:
+  - "The per-agent spawn path either provisions /srv/bunker-share as root:bunker-agents\
+    \ mode 2750 or fails loudly naming 'bunker host-provision --apply' \u2014 never\
+    \ a green 'shared scratch ready' followed by Permission denied; a unit test pins\
+    \ the ROOT mode 2750 and a failure-case test asserts the actionable error; gofmt/go\
+    \ build/go vet/go test -count=1 ./... clean"
+  status: complete
+  created_at: '2026-09-20T15:05:21.585643+00:00'
+  completed_at: '2026-09-20T15:54:10.953463+00:00'
+- id: INT-CI-023
+  title: "Shared per-uid CLI test-binary cache is shared by ALL worktrees \u2014 a\
+    \ sibling rebuild poisons another worktree's guard"
+  criteria:
+  - The internal/cli test-CLI build cache path is keyed per worktree root instead
+    of uid alone, so two worktrees cannot share a binary; a test asserts distinct
+    paths for distinct roots and stability for one root; GAP-090 one-build-per-worktree
+    property preserved; gofmt/go build/go vet/go test -count=1 ./... clean
+  status: complete
+  created_at: '2026-09-20T15:05:22.134353+00:00'
+  completed_at: '2026-09-20T16:28:41.815470+00:00'
+- id: RELEASE-001
+  title: RELEASE-001 unmask the CI regression/root-suite reds and clear the fail-closed
+    binding red in the E2E battery
+  criteria:
+  - The regression and root-suite jobs no longer carry continue-on-error (a real failure
+    fails the workflow run); the E2E battery step binds an explicit session target
+    so the GAP-093 fail-closed refusal no longer reds the battery; unbound mutating
+    calls still refuse; bash -n clean on every modified script; gofmt/go build/go
+    vet/go test -count=1 ./... clean
+  status: in_progress
+  created_at: '2026-09-20T16:55:42.929125+00:00'
+- id: DF-BUNKER-43
+  title: DF-BUNKER-43 stop SIGPIPE erasing the exit status of a piped command
+  criteria:
+  - A command whose stdout reader goes away mid-stream reports the conventional 141
+    (EPIPE) instead of dying by signal with no status; a piped invocation agrees with
+    the bare invocation for every read-only leaf command; success paths with a live
+    reader are unchanged; a table-driven test drives the real binary through a real
+    pipe and is RED-proven on the pre-fix arm; gofmt/go build/go vet/go test -count=1
+    ./... clean
+  status: complete
+  created_at: '2026-09-20T17:55:54.519173+00:00'
+  completed_at: '2026-09-20T17:56:15.832336+00:00'
