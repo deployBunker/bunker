@@ -119,7 +119,50 @@ strong{color:#fff} .tag{color:var(--mut);font-size:.85rem}
 <li>What varies per session is only the enabled set and the execution state — both data, neither a registration.</li>
 </ul>
 <p>So: <strong>no per-bunker tools, no per-session re-registration, and still fully per-session dynamic enable/disable.</strong></p>
-<h2>Routing: always the right bunker</h2>
+<h2>What Hermes already supports (audited 2026-09-20)</h2>
+<p>Nothing below is a proposal — it is what the running system does today, checked on this box. It resizes the build significantly, and it corrects one of my own assumptions.</p>
+<table>
+<tr><th>Capability</th><th>State</th><th>Evidence</th><th>What it means for this design</th></tr>
+<tr><th><strong>MCP per-session instance isolation</strong></th><th><strong>already true</strong></th><th>17 <code>toolsd mcp</code> processes, <strong>15 distinct parents</strong> (Hermes session processes + <code>cron.scheduler</code>). Each session spawns its own stdio child.</th><th>The state-isolation requirement is <strong>already satisfied for MCP tools</strong>: no shared client to leak state. What is missing is only a <em>guarantee</em> + test, not new machinery.</th></tr>
+<tr><th><strong><code>toolsd</code> already registered as MCP</strong></th><th><strong>already true</strong></th><th><code>config.yaml:1060</code> → <code>mcp_servers.toolsd</code> = <code>toolsd mcp</code>, <code>enabled: true</code></th><th>The catalog registration exists. No new registration step is needed to expose the primitives.</th></tr>
+<tr><th><strong>Per-run toolset projection</strong></th><th><strong>true, ephemeral</strong></th><th><code>hermes chat -t &lt;toolsets&gt;</code> — &quot;Comma-separated toolsets to enable&quot;, per run</th><th>Rule B&#x27;s projection mechanism exists. It is start-time-only, and there is no mid-session toggle.</th></tr>
+<tr><th><strong>Persistent enable/disable</strong></th><th><strong>global, not per-session</strong></th><th>`hermes tools enable\</th><th>disable<code> writes one </code>config.yaml<code> (</code>agent.disabled_toolsets<code>, </code>plugins.disabled<code>); </code>known_plugin_toolsets<code>, </code>platform_toolsets<code>, </code>toolsets:` sections are all global</th><th><strong>This is the one real gap for Rule B.</strong> Enabling a tool toggles a global read by every session.</th></tr>
+<tr><th><strong>Profiles exist but no per-session resolution</strong></th><th><strong>partial</strong></th><th><code>hermes profile</code> has <code>list/use/create/…</code>; <code>use</code> sets a <strong>sticky default</strong>, not a per-session pick</th><th>There is machinery to hang a per-session profile on, but no resolution keyed by session today.</th></tr>
+<tr><th><strong>Shell hooks can gate a tool call</strong></th><th><strong>available, unused</strong></th><th><code>hermes hooks</code> (shell + outbound webhooks), with a first-use consent allowlist; none configured here</th><th>A hook is a viable interim enforcement point for &quot;this verb is not enabled in this session&quot; while the native enabled-set lands.</th></tr>
+<tr><th><strong><code>sshfs</code> on this box</strong></th><th><strong>present</strong></th><th><code>/usr/bin/sshfs</code> (SSHFS 3.7.3), <code>fusermount3</code> 3.18.2</th><th>The mount path needs no new dependency on the client side.</th></tr>
+<tr><th><strong><code>bunker mount</code></strong></th><th><strong>exists, agent-scoped</strong></th><th><code>internal/cli/mount.go</code>; wires <code>IdentityFile</code> + host via <code>resolveUserAtHost</code>, <code>rewriteSSHFSMount</code> (DF-BUNKER-14)</th><th>A working mount client already exists; DF-BUNKER-17/20 fixed its failure reporting.</th></tr>
+</table>
+<p><strong>Conclusion:</strong> three of the seven things this design needed are already shipped, and one more (hooks) is an available interim. The build is smaller than the first draft implied and reduces to: <strong>one real Hermes gap (session-scoped enabled set) + the remote verb layer + the mount path.</strong></p>
+<h2>Two delivery paths (and why both, not one)</h2>
+<p>The review proposed a second route to the same goal: mount the bunker&#x27;s tree locally over SSHFS, so file edits travel the mount and only <em>commands</em> run remotely. That is right, and it is the more stable path for some operations — but the two routes fail in opposite places, so the design keeps both and splits the work between them by what each is good at.</p>
+<table>
+<tr><th></th><th><strong>Path A — remote verb layer</strong></th><th><strong>Path B — SSHFS mount + remote exec</strong></th></tr>
+<tr><th>How an edit lands</th><th><code>bunker_write</code> / <code>bunker_edit</code> / <code>bunker_apply</code> → exec on the agent</th><th>write the mounted local path; bytes go over SFTP</th></tr>
+<tr><th>How a build runs</th><th>remote (<code>bunker_build</code>)</th><th>remote (<code>bunker_build</code>) — <strong>never local</strong></th></tr>
+<tr><th>Transport</th><th>one RPC per operation, explicit target</th><th>kernel VFS / SFTP, POSIX semantics</th></tr>
+<tr><th>Tool behaviour</th><th>must be <em>made</em> equivalent to local tools (parameter parity, proofs 12)</th><th><strong>natively identical</strong> — it is a real filesystem, so <code>read_file</code>, <code>patch</code>, <code>search_files</code>, <code>git diff</code> all work unchanged</th></tr>
+<tr><th>Latency</th><th>one round-trip per call (~RPC)</th><th>per-syscall; fine for edits, <strong>fatal for builds</strong></th></tr>
+<tr><th>Git behaviour</th><th>remote by definition</th><th>local <code>git</code> reads/writes <code>.git</code> through the mount — convenient, but every object write is a round-trip</th></tr>
+<tr><th>API keys / env</th><th>remote: the agent&#x27;s own keys, never the local box&#x27;s</th><th>remote for commands; local tooling does not need the repo&#x27;s credentials</th></tr>
+<tr><th>Failure mode</th><th>an RPC fails loudly and attributable</th><th>a stalled mount <strong>hangs</strong> the tool instead of erroring</th></tr>
+<tr><th>Isolation</th><th>per-session binding, provable</th><th><strong>hard-linked mountpoint</strong> — needs path-per-session isolation</th></tr>
+</table>
+<p><strong>The rule that makes Path B safe:</strong> <em>the mount gives you file-level edits; it never gives you execution.</em> Anything that compiles, tests, installs or builds runs through <code>bunker_build</code>/<code>bunker_exec</code> <strong>on the agent</strong>. That single rule removes the objection that made me rule the mount out: local CPU is never spent traversing the tree, because no build ever walks the mount.</p>
+<p><strong>Honest limitation, stated rather than discovered:</strong> a mount cannot enforce binding. Two sessions mounting the same agent see the <em>same tree</em> through different mountpoints — correct for shared work, unguarded for concurrent writes. So Path B relies on the lease registry (which is per-tree and lives on the bunker) to turn a collision into a refusal. Path A gets binding as a first-class guarantee; Path B gets it from leases.</p>
+<h3>What each path is best for</h3>
+<ul>
+<li><strong>Path B (mount)</strong> for reading, grepping, diffing, small edits and anything where &quot;exactly like local&quot; matters most — it is the highest-fidelity option because it <em>is</em> a filesystem. It also makes <code>git</code> behave normally for inspection.</li>
+<li><strong>Path A (verbs)</strong> for the operations that must be explicitly targeted, attributed, and refuse-on-unbound: writes that matter, atomic multi-file edits, leases, and anything that must appear in the audit chain with a session id.</li>
+<li><strong>Both</strong> for builds: always remote, either transport.</li>
+</ul>
+<h2>The design, restated</h2>
+<p>Goal: <strong>file-edit tools as good as the local ones, so projects on remote servers are managed as if local, without copying data around.</strong></p>
+<ol>
+<li><strong>Hermes side (one real gap).</strong> Make the enabled set session-scoped instead of global, keep MCP instances per session (already true — pin it with a test), and expose a mid-session enable/disable. <em>Everything else on the Hermes side already exists.</em></li>
+<li><strong>Verb layer.</strong> The <code>bunker_*</code> verbs with true parameter parity, constant catalog, target-as-argument.</li>
+<li><strong>Mount path.</strong> Ship <code>bunker mount</code> as a supported editing surface with the <code>DO NOT BUILD LOCALLY</code> rule, per-session mountpoints, and a lease-backed write guard.</li>
+<li><strong>Never copy data.</strong> Neither path mirrors or syncs the repo; the tree stays on the bunker and session data stays local, which is the original goal.</li>
+</ol>
 <p>The correctness question is how N concurrent sessions never write to each other&#x27;s bunker or tree.</p>
 <p><strong>Design rule: routing is a value carried on every call, never an ambient global.</strong></p>
 <p>A session binds <code>(server, agent, repo)</code> once at <code>bunker_bind</code> and every translated call repeats it explicitly. A session with no binding <strong>refuses the operation and names the missing binding</strong>; it never falls back to a default.</p>
@@ -137,6 +180,7 @@ strong{color:#fff} .tag{color:var(--mut);font-size:.85rem}
 <tr><th><strong>ACTUAL</strong></th><th>which tree the bytes land in</th><th>the agent&#x27;s home dir on some host</th></tr>
 </table>
 <p>The dangerous edges are <strong>DECLARED→BOUND</strong> (silent substitution by the global) and <strong>BOUND→ACTUAL</strong> (the agent was re-created and the handle now points at a different, empty tree). Bind-time verification closes both: one cheap probe confirming the target exists, is reachable, and that <code>repo</code> is the tree expected.</p>
+<h2>Routing: always the right bunker</h2>
 <h2>Concurrency: how two sessions on one tree stay safe</h2>
 <p>Routing stops a session reaching the <em>wrong</em> bunker. It does not stop two sessions correctly bound to the <strong>same</strong> tree from overwriting each other — that needs locking, and the locking design has one non-obvious constraint.</p>
 <p><strong>Design rule: leases follow the TREE, and the tree is remote.</strong></p>
@@ -165,11 +209,11 @@ strong{color:#fff} .tag{color:var(--mut);font-size:.85rem}
 <p><strong>In scope:</strong> explicit-target binding; exec stdin/base64/output cap; session-id attribution; <code>toolsd</code> on agents; lease wrapper for remote trees; the Hermes tool surface; reconcile + accuracy loops.</p>
 <p><strong>Out of scope, with reasons:</strong></p>
 <ul>
-<li><strong>A remote filesystem mount (<code>sshfs</code>).</strong> <code>bunker mount</code> exists for humans; routing <em>tool calls</em> through a FUSE mount reintroduces a shared mutable view and pays local CPU for every metadata op — the opposite of offloading.</li>
 <li><strong>A new RPC family for file verbs.</strong> Everything reduces to exec/run; new RPCs fork the surface for no gain.</li>
 <li><strong>Cross-bunker distributed locking.</strong> Different bunkers are different trees; there is nothing to lock across them.</li>
 <li><strong>Auto-recreating a lost agent.</strong> Re-binding is a session decision — silently adopting a fresh empty tree is itself a failure mode.</li>
 </ul>
+<p>&gt; <strong>Superseded:</strong> an earlier draft listed the SSHFS mount as out of scope. That was wrong, and the reason it was wrong is worth keeping. The objection was that routing tool calls through a mount &quot;reintroduces a shared mutable view and pays local CPU for every metadata op.&quot; The first half is true but irrelevant to editing, and the second half only bites if builds traverse the mount. The review reframed it correctly: <strong>mount for edits, remote exec for builds.</strong> With builds kept off the mount, the objection dissolves. See &quot;Two delivery paths&quot; below.</p>
 <h2>Success criteria (replayable proofs)</h2>
 <ol>
 <li><strong>Wrong-bunker replay.</strong> Two sessions, different servers, neither passing an explicit target, one with <code>active_server</code> pointing at the other&#x27;s bunker. → Both mutating calls refuse with a named missing binding; <strong>zero bytes land in either tree</strong>.</li>
@@ -188,6 +232,10 @@ strong{color:#fff} .tag{color:var(--mut);font-size:.85rem}
 <li><strong>Session-isolation proof (the enable/disable requirement).</strong> Two concurrent sessions. Session A disables a tool and Session B leaves it enabled; then both enable/disable a different tool in the same minute. → Each session&#x27;s offered tool list is exactly what <em>that</em> session set; B&#x27;s list is unchanged by A&#x27;s toggles in both directions, and the global config&#x27;s <code>disabled_toolsets</code> / <code>plugins.disabled</code> are byte-identical before and after. Neither session&#x27;s change is visible in the other.</li>
 <li><strong>No-state-reuse proof.</strong> Session A loads a stateful tool (MCP client, LSP session, or a cached read) and leaves it warm; Session B then loads the same tool. → B receives a fresh instance with no A-derived state: no inherited working directory, cached read, open handle, subscription or document version. Prove it by having A leave a distinguishable artifact (a cached value or an open path) and asserting B&#x27;s instance does not contain it.</li>
 <li><strong>No-stranding proof.</strong> Kill a session holding per-session tool state. → Its connections/instances are reclaimed on session end rather than stranded, and a subsequent session&#x27;s memory footprint is unaffected by the dead session&#x27;s prior state.</li>
+<li><strong>Mount-fidelity proof (Path B).</strong> Mount a real agent&#x27;s tree and run the local tools against the mountpoint: <code>read_file</code> on a line window, <code>patch</code> on a known edit, <code>search_files</code> on a pattern, <code>git diff</code> and <code>git log</code>. → Byte-identical results to running the same operations against a local checkout of the same commit. Any divergence is recorded as a documented mount limitation.</li>
+<li><strong>Never-build-locally proof.</strong> With the mount active, run a build/test through the local toolchain by mistake (or by a naive <code>make</code>). → The design must make this either impossible or loudly wrong: the mount ships a guard (a repo-root marker plus a wrapper/hook that refuses and names <code>bunker_build</code>), and the proof shows the refusal firing rather than a silent 8-hour local build.</li>
+<li><strong>Mount-failure proof.</strong> Kill the SSH transport mid-edit (drop the agent&#x27;s sshd or the network). → The failure surfaces as a bounded timeout with a named cause, <strong>not</strong> an indefinitely hanging tool; no partial write is left behind, and the mountpoint is recoverable with one command.</li>
+<li><strong>Mount-isolation proof.</strong> Two sessions mount the same agent. → Each gets its own mountpoint path (never a shared one), a write by one is visible to the other through the filesystem, and a conflicting concurrent edit is refused by the <strong>lease registry</strong> (the documented Path B guard) rather than silently interleaved.</li>
 </ol>
 <h2>Risks</h2>
 <table>
@@ -209,6 +257,7 @@ strong{color:#fff} .tag{color:var(--mut);font-size:.85rem}
 <tr><th><strong>S5</strong> <code>toolsd</code> on agents via image-spec</th><th><strong>M</strong></th><th>reproducibility</th><th>S1</th></tr>
 <tr><th><strong>S6</strong> Hermes shim + per-session profile</th><th><strong>L</strong></th><th>the surface above</th><th>S2, S3, CHT-052</th></tr>
 <tr><th><strong>S8</strong> per-session tool enable/disable + state isolation</th><th><strong>M</strong></th><th>enables Rule B: session-scoped enabled set, per-session execution state</th><th>S6 (Hermes agent project)</th></tr>
+<tr><th><strong>S9</strong> mount path as a supported editing surface</th><th><strong>M</strong></th><th>Path B: <code>bunker mount</code> hardening, per-session mountpoints, DO-NOT-BUILD guard, lease-backed writes</th><th>S1</th></tr>
 <tr><th><strong>S7</strong> reconcile + accuracy loops</th><th><strong>M</strong></th><th>keeps refusals honest</th><th>S1</th></tr>
 <tr><th><strong>CHT-052</strong> lease wrapper (remote trees)</th><th><strong>M</strong></th><th>leases not skipped</th><th>S1</th></tr>
 </table>
