@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -185,5 +186,45 @@ func TestParseAgentTTL_RejectsInvalid(t *testing.T) {
 		if d, err := ParseAgentTTL(s); err == nil {
 			t.Errorf("ParseAgentTTL(%q) = %v, want error (no silent fallback)", s, d)
 		}
+	}
+}
+
+// TestParseAgentTTL_FormatErrorMessage pins the RENDERED text of the
+// invalid-format error: the pattern must appear exactly as specs/api.md
+// writes it — single-backslash `\d+[hmd]` — never the double-escaped
+// `\\d+[hmd]` that a %q verb over the raw pattern produces (the operator
+// must not have to mentally un-escape the error message).
+func TestParseAgentTTL_FormatErrorMessage(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+	}{
+		// Every input here misses agentTTLPattern and lands on the same
+		// format-error branch; the other branches (zero duration, overflow)
+		// have their own messages and are covered by TestParseAgentTTL.
+		{"banana", "banana"},
+		{"empty", ""},
+		{"uppercase unit", "6H"},
+		{"bare number", "6"},
+		{"decimal", "1.5h"},
+	}
+	const want = `must match "\d+[hmd]" (digits followed by h, m, or d)`
+	const banned = `\\d+[hmd]`
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseAgentTTL(tt.in)
+			if err == nil {
+				t.Fatalf("ParseAgentTTL(%q) = nil error, want format error", tt.in)
+			}
+			if got := err.Error(); got != want {
+				t.Errorf("ParseAgentTTL(%q) error = %q, want %q", tt.in, got, want)
+			}
+			if !strings.Contains(err.Error(), `\d+[hmd]`) {
+				t.Errorf("ParseAgentTTL(%q) error %q does not contain single-backslash `\\d+[hmd]`", tt.in, err.Error())
+			}
+			if strings.Contains(err.Error(), banned) {
+				t.Errorf("ParseAgentTTL(%q) error %q contains double-escaped `\\\\d+[hmd]`", tt.in, err.Error())
+			}
+		})
 	}
 }

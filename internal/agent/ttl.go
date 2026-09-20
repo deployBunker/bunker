@@ -24,7 +24,10 @@ var agentTTLPattern = regexp.MustCompile(`^(\d+)([hmd])$`)
 func ParseAgentTTL(s string) (time.Duration, error) {
 	m := agentTTLPattern.FindStringSubmatch(s)
 	if m == nil {
-		return 0, fmt.Errorf("must match %q (digits followed by h, m, or d)", `\d+[hmd]`)
+		// Raw string literal on purpose: a %q verb over `\d+[hmd]`
+		// re-escapes the backslash and renders \\d to the operator,
+		// which does not match specs/api.md's documented format.
+		return 0, fmt.Errorf(`must match "\d+[hmd]" (digits followed by h, m, or d)`)
 	}
 	n, err := strconv.ParseInt(m[1], 10, 64)
 	if err != nil {
