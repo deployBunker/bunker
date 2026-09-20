@@ -150,6 +150,58 @@ type AgentConfig struct {
 	Reconciliation ReconciliationConfig `mapstructure:"reconciliation"`
 	// Isolation holds the GAP-075 per-agent /tmp + shared-scratch policy.
 	Isolation IsolationConfig `mapstructure:"isolation"`
+	// DestroyHomePolicy selects what destroy does with an agent's home
+	// directory before the Linux user is removed (DF-BUNKER-33):
+	// "archive" (the default) tars the home into DestroyArchiveDir and
+	// VERIFIES the archive before running `userdel -rf`; "purge" keeps the
+	// historical behavior and destroys the home together with the user.
+	// Any other value resolves to the default — a typo must never silently
+	// re-enable the unrecoverable delete.
+	DestroyHomePolicy string `mapstructure:"destroy_home_policy"`
+	// DestroyArchiveDir is the host-level directory destroy writes home
+	// archives into (one <agent-id>-<UTC timestamp>.tar.gz per destroy,
+	// containing everything userdel -rf is about to delete). The daemon
+	// (root) creates it on demand as 0700. Empty string keeps the
+	// documented default below: an empty value NEVER disarms the archive —
+	// destroy_home_policy: purge is the documented way to opt out.
+	// Env override: BUNKER_DESTROY_ARCHIVE_DIR (empty = unset).
+	DestroyArchiveDir string `mapstructure:"destroy_archive_dir"`
+}
+
+// Destroy-home policy values accepted by AgentConfig.DestroyHomePolicy.
+const (
+	// DestroyPolicyArchive archives an agent's home before the recursive
+	// delete and only deletes once the archive is verified. Default.
+	DestroyPolicyArchive = "archive"
+	// DestroyPolicyPurge deletes the home with the user (legacy behavior).
+	DestroyPolicyPurge = "purge"
+)
+
+// DefaultDestroyArchiveDir is where agent home archives are written when no
+// archive directory is configured. It follows the other /var/backups-style
+// host data directories: root-owned, created on demand.
+const DefaultDestroyArchiveDir = "/var/backups/bunker"
+
+// DestroyHomePolicyOrDefault returns the effective destroy-home policy.
+// Anything other than an explicit "purge" resolves to "archive": the archive
+// is the recoverable direction, so a typo, an empty value or a config file
+// written before DF-BUNKER-33 can never silently restore the destructive
+// default.
+func (a *AgentConfig) DestroyHomePolicyOrDefault() string {
+	if strings.EqualFold(strings.TrimSpace(a.DestroyHomePolicy), DestroyPolicyPurge) {
+		return DestroyPolicyPurge
+	}
+	return DestroyPolicyArchive
+}
+
+// DestroyArchiveDirOrDefault returns the directory home archives are written
+// into, falling back to DefaultDestroyArchiveDir for an empty value (see the
+// field comment: an empty value never disarms the archive).
+func (a *AgentConfig) DestroyArchiveDirOrDefault() string {
+	if dir := strings.TrimSpace(a.DestroyArchiveDir); dir != "" {
+		return dir
+	}
+	return DefaultDestroyArchiveDir
 }
 
 // IsolationConfig is the GAP-075 isolation policy. Every agent runs with an
@@ -370,6 +422,13 @@ func DefaultConfig() *Config {
 			Reconciliation: ReconciliationConfig{
 				Mode: ReconcileModeDestroy,
 			},
+			// DF-BUNKER-33: destroy archives the agent home BEFORE the
+			// recursive delete, so a TTL expiry can never again destroy
+			// cloned repos (or any other host-owned data an agent held)
+			// with no way back. destroy_home_policy: purge restores the
+			// historical userdel-only behavior.
+			DestroyHomePolicy: DestroyPolicyArchive,
+			DestroyArchiveDir: DefaultDestroyArchiveDir,
 			// GAP-075: the exchange point is ON by default (agents need a
 			// sanctioned way to exchange artifacts) and every directory in it
 			// is size-capped, so "on" never means "unbounded".
@@ -461,6 +520,8 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("agent.registry.max_backups")
 	v.BindEnv("agent.registry.known_id_cap")
 	v.BindEnv("agent.reconciliation.mode")
+	v.BindEnv("agent.destroy_home_policy")
+	v.BindEnv("agent.destroy_archive_dir")
 	v.BindEnv("agent.isolation.agent_group")
 	v.BindEnv("agent.isolation.shared_scratch_enabled")
 	v.BindEnv("agent.isolation.shared_scratch_root")
