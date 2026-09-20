@@ -37,9 +37,40 @@ written after every authenticated request completes (outcome included):
 | `agent_id` | target agent of the request (`""` when none) |
 | `duration_ms` | wall time of the request in milliseconds |
 | `outcome` | `ok`, or the connect error code (e.g. `not_found`, `unauthenticated`) |
-| `summary` | short human-readable request summary (never request contents) |
+| `summary` | short human-readable request summary (never request contents); prefixed by a transport marker when the record describes an unverified session or a plaintext listener (see below) |
 | `hash` | SHA-256 hex digest of the canonical record line (hash field empty) |
 | `prev_hash` | `hash` of the previous record in the chain (`""` for the first) |
+
+## TLS verification markers
+
+A record's `summary` is prefixed with one or both of these markers when the
+request's transport was not verified. Both ride the existing `summary` field, so
+no parser that reads the documented keys breaks, and both are part of the hashed
+canonical line — a marked record still verifies.
+
+| Marker | What it means | Where it comes from |
+|--------|---------------|---------------------|
+| `[INSECURE-PLAINTEXT]` | the request arrived over a non-loopback listener with TLS disabled (`tls.enabled: false` + `tls.insecure_dev: true`) | the daemon's audit log, which stamps every record it writes while that opt-in is active (GAP-126) |
+| `[TLS-UNVERIFIED]` | the CLIENT declared that its TLS session skipped certificate verification — i.e. it dialed the daemon with `tls_insecure: true` / `--tls-insecure` under `BUNKER_ALLOW_TLS_INSECURE=1` | the audit interceptor, from the `X-Bunker-TLS-Unverified: 1` request header the CLI sends on every request of such a session (GAP-141) |
+
+The two are independent and can appear together: a request sent over a plaintext
+listener *by* a client that also skipped verification carries both.
+
+`[TLS-UNVERIFIED]` is stamped on **every** record written for the request — the
+per-RPC record **and** the correlated `/command` exec/run record (GAP-142) — so a
+filtered query cannot miss the command an unverified session issued:
+
+```bash
+# Which sessions did not verify the daemon, and what did they run?
+bunker audit export --path /var/log/bunkerd/audit.log | grep TLS-UNVERIFIED
+```
+
+The marker is a client **declaration**, not a proof: nothing in the TLS protocol
+tells a server how its peer chose to verify it, so a client could omit the
+header. What is provable is that the record is append-only and hash-chained — a
+session cannot remove the mark after the fact. Read it as "this session said it
+did not verify me", and treat an unmarked record from an untrusted network as
+unproven rather than as verified.
 
 ## Rotation and the hash chain
 

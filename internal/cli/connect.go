@@ -40,6 +40,17 @@ TLS trust (--tls):
                       system root store. A self-signed daemon is never accepted
                       silently — it fails verification unless you pin it.
 
+TLS verification is off only when you say so twice (GAP-141):
+
+  --tls-insecure      skips certificate verification. It is REFUSED unless
+                      BUNKER_ALLOW_TLS_INSECURE=1 is set in the environment for
+                      this invocation (an acknowledgement, not a grant), and it
+                      is refused outright for a server that has a pinned
+                      certificate — the pin wins. When honored, this session
+                      declares itself unverified to the daemon, which marks
+                      every record it writes for it. Use it for a throwaway
+                      test host only.
+
 On success the server is saved to ~/.bunker/config.yaml and becomes
 the active server for subsequent commands.`,
 		Args: cobra.ExactArgs(1),
@@ -76,7 +87,8 @@ the active server for subsequent commands.`,
 
 	cmd.Flags().StringVar(&serverName, "name", "", "Server alias (defaults to hostname from response)")
 	cmd.Flags().StringVar(&serverToken, "token", "", "Authentication token ($BUNKER_TOKEN)")
-	cmd.Flags().BoolVar(&tlsInsecure, "tls-insecure", false, "Skip TLS certificate verification (explicit opt-out)")
+	cmd.Flags().BoolVar(&tlsInsecure, "tls-insecure", false,
+		"Skip TLS certificate verification (explicit opt-out; requires "+TLSInsecureAckEnv+"=1, and is refused when a certificate is pinned)")
 	cmd.Flags().StringVar(&tlsMode, "tls", "", "TLS trust mode: self-signed (pin the daemon's certificate on first use) or system (verify against the system root store)")
 	cmd.Flags().BoolVar(&acceptCert, "accept-cert", false, "Accept and pin the certificate the server presents now, replacing any pin already stored for it")
 

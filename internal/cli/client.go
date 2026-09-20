@@ -11,8 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/spf13/viper"
 
+	"github.com/deployBunker/bunker/internal/audit"
 	bunkerv1connect "github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect"
 )
 
@@ -21,11 +23,12 @@ import (
 // store, or a pinned self-signed certificate (GAP-127) — so EVERY CLI RPC
 // verifies the daemon the same way `bunker connect` decided it should.
 //
-// An unusable trust configuration (contradictory pin + tls_insecure, malformed
-// pin, self-signed mode with no pin) does not degrade to a verification-free
-// client: the client is built with a transport that refuses every request with
-// the configuration error. Callers therefore report the real problem — and no
-// code path can reach the network with verification silently downgraded.
+// An unusable trust configuration (a pin plus tls_insecure, an unacknowledged
+// tls_insecure, a malformed pin, self-signed mode with no pin) does not degrade
+// to a verification-free client: the client is built with a transport that
+// refuses every request with the configuration error. Callers therefore report
+// the real problem — and no code path can reach the network with verification
+// silently downgraded.
 func newBunkerdClient(entry ServerEntry) bunkerv1connect.BunkerdClient {
 	httpClient := &http.Client{Timeout: 300 * time.Second}
 
@@ -37,7 +40,7 @@ func newBunkerdClient(entry ServerEntry) bunkerv1connect.BunkerdClient {
 	if tlsCfg != nil {
 		httpClient.Transport = &http.Transport{TLSClientConfig: tlsCfg}
 	}
-	return bunkerv1connect.NewBunkerdClient(httpClient, entry.URL)
+	return bunkerv1connect.NewBunkerdClient(httpClient, entry.URL, clientOptions(entry)...)
 }
 
 // newBunkerdClientChecked is newBunkerdClient for callers that must return the
@@ -51,8 +54,61 @@ func newBunkerdClientChecked(entry ServerEntry, timeout time.Duration) (bunkerv1
 	if tlsCfg != nil {
 		httpClient.Transport = &http.Transport{TLSClientConfig: tlsCfg}
 	}
-	return bunkerv1connect.NewBunkerdClient(httpClient, entry.URL), nil
+	return bunkerv1connect.NewBunkerdClient(httpClient, entry.URL, clientOptions(entry)...), nil
 }
+
+// clientOptions returns the connect client options a dial of entry needs. Today
+// that is one thing: an UNSECURE session declares itself on every request
+// (GAP-141), so the daemon's audit trail can state that this session did not
+// verify the server it talked to.
+func clientOptions(entry ServerEntry) []connect.ClientOption {
+	if !insecureTrustRequested(entry) {
+		return nil
+	}
+	return []connect.ClientOption{connect.WithInterceptors(unverifiedDeclarer{})}
+}
+
+// unverifiedDeclarer is the CLIENT half of the GAP-141 audit marker. Every
+// request issued by a session whose transport runs with InsecureSkipVerify
+// carries audit.UnverifiedHeader, and the daemon's audit interceptor stamps the
+// record it writes with audit.TLSUnverifiedMarker.
+//
+// The declaration is sent rather than merely logged locally because the
+// alternative — a client-side note in a file the daemon never sees — leaves the
+// daemon's trail unable to distinguish a verified caller from an unverified
+// one. The daemon treats it as a claim, not a proof: see
+// audit.UnverifiedSession.
+type unverifiedDeclarer struct{}
+
+func (unverifiedDeclarer) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		req.Header().Set(audit.UnverifiedHeader, unverifiedHeaderValue)
+		return next(ctx, req)
+	}
+}
+
+// WrapStreamingClient stamps the stream's request headers. connect-go sends them
+// with the first message, so setting them at connection time is enough — and it
+// is the only chance: a header written after the stream has spoken is dropped.
+func (unverifiedDeclarer) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
+		conn := next(ctx, spec)
+		conn.RequestHeader().Set(audit.UnverifiedHeader, unverifiedHeaderValue)
+		return conn
+	}
+}
+
+// WrapStreamingHandler is a no-op: this interceptor is a client concern only.
+func (unverifiedDeclarer) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return next
+}
+
+// unverifiedHeaderValue is the only value the daemon accepts as a declaration
+// (audit's own, re-stated here so the CLI has no dependency on audit internals).
+const unverifiedHeaderValue = "1"
+
+// Ensure the client interceptor satisfies connect's interface at compile time.
+var _ connect.Interceptor = unverifiedDeclarer{}
 
 // resolveClientTLS maps an entry onto a TLS configuration, consulting the
 // in-process trust-on-first-use cache when the entry itself carries no pin yet

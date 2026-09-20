@@ -415,12 +415,64 @@ The rules the CLI enforces:
   pin, and no first-use mode, is refused with instructions — the CLI will not
   quietly turn `InsecureSkipVerify` on for you.
 - **`cert_pin` + `tls_insecure` on one entry is refused as contradictory**, as
-  is `--tls self-signed --tls-insecure` on one command line.
-- **`--tls-insecure` stays available as an explicit, named opt-out** for a
-  throwaway test host. It prints a warning and marks the entry; it is never
-  chosen for you.
+  is `--tls self-signed --tls-insecure` on one command line. **The pin always
+  wins**: no flag, environment variable or acknowledgement unlocks skipping
+  verification for a server that carries a pinned certificate.
+- **`--tls-insecure` requires an explicit acknowledgement** and is never chosen
+  for you. It is refused outright unless `BUNKER_ALLOW_TLS_INSECURE=1` is set
+  in the environment for that invocation; when honored it prints a loud
+  `INSECURE TLS SESSION` warning on stderr, and **the session declares itself
+  unverified to the daemon**, which stamps every audit record it writes with
+  `[TLS-UNVERIFIED]`. See [the risk below](#the-tls-insecure-knob-2026-09).
 - **A pinned certificate must be inside its validity window.** An expired pin
   fails with the expiry date and the regeneration steps.
+
+#### The `tls_insecure` knob (GAP-141)
+
+`tls_insecure: true` (or `--tls-insecure`) turns off certificate verification
+for the whole control plane: every RPC — spawn, exec, destroy, key retrieval —
+is then sent to whoever answers on that address. An on-path attacker who can
+answer there impersonates the daemon, harvests the master token, and issues
+commands that the daemon will faithfully execute. It is the single most
+dangerous setting in the CLI config, and it is now a two-key act:
+
+```bash
+# Refused: the knob alone is not a decision.
+bunker connect --tls-insecure https://throwaway:9090
+#  Error: refusing to skip TLS verification for "…": tls_insecure requires an
+#  explicit acknowledgement.
+
+# Honored: acknowledged in the environment, warned about on stderr, marked in
+# the daemon's audit trail.
+BUNKER_ALLOW_TLS_INSECURE=1 bunker connect --tls-insecure https://throwaway:9090
+#  ============== INSECURE TLS SESSION ==============
+#  Certificate verification is DISABLED for …
+#  every RPC in this session is marked [TLS-UNVERIFIED] in the daemon's audit trail.
+```
+
+The rules:
+
+- **No acknowledgement, no insecure session.** `BUNKER_ALLOW_TLS_INSECURE=1`
+  (also accepts `true`/`yes`/`on`) is required on *every* invocation that would
+  dial an insecure entry — `connect` and every later command — so a leftover
+  `tls_insecure: true` in the config cannot silently downgrade a session in a
+  script that never asked for one. This is an acknowledgement, not a grant: it
+  proves the operator meant it, it does not make it safe.
+- **A pinned certificate is never overridden.** If the entry has a `cert_pin`,
+  an insecure dial is refused outright and the refusal says the pin wins. The
+  remedy is to remove `tls_insecure` (keeping verification) or re-pin
+  deliberately with `--tls self-signed --accept-cert`.
+- **The session is marked in the audit trail.** The CLI sends the declaration
+  header `X-Bunker-TLS-Unverified: 1` on every request of an insecure session;
+  `bunkerd` stamps those records with `[TLS-UNVERIFIED]` in the record
+  `summary` — the RPC record *and* the correlated `/command` exec record — so a
+  reader of the trail can tell a session that checked its server from one that
+  did not. (`X-Bunker-TLS-Unverified` is a client *claim*, not a proof: what is
+  provable is that the record is hash-chained and cannot be rewritten after the
+  fact. See [`docs/audit.md`](docs/audit.md#tls-verification-markers).)
+- **Prefer pinning.** An insecure session is for a throwaway test host on a
+  network you already control. Everything else is
+  `bunker connect --tls self-signed https://host:9090`.
 
 Verify the fingerprint out of band before trusting it (on the daemon host):
 
@@ -443,9 +495,10 @@ servers:
 ```
 
 `--tls` / `cert_pin` / `tls_mode` / `cert_pin_set_at` are all optional: configs
-written before this feature load unchanged, and an entry with none of them
-behaves exactly as it did before (system roots, or `tls_insecure` if it was
-set).
+written before this feature load unchanged, and an entry with none of them uses
+the historical behavior. One recorded value now needs an extra step: an entry
+with `tls_insecure: true` is refused until `BUNKER_ALLOW_TLS_INSECURE=1` is set
+for the invocation (see [the `tls_insecure` knob](#the-tls_insecure-knob-2026-09)).
 
 **Non-default ports** — `bunkerd` listens on `:9090` (gRPC) and `:8080` (REST)
 by default. If those are already occupied on the host (a common scratch-host

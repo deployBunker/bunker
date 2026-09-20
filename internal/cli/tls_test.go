@@ -254,6 +254,11 @@ func captureStderr(t *testing.T, fn func()) string {
 func TestBuildClientTLSConfig(t *testing.T) {
 	const goodPin = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
+	// GAP-141: an insecure entry is only honored behind the explicit
+	// environment acknowledgement. The refusal rows below assert the combined
+	// semantics; the dedicated battery is tls_insecure_test.go.
+	t.Setenv(TLSInsecureAckEnv, "1")
+
 	tests := []struct {
 		name        string
 		entry       ServerEntry
@@ -667,6 +672,9 @@ func TestRegisterServer_RotatedCertAcceptedWithFlag(t *testing.T) {
 // (or verifies against the system roots) must not be silently converted into a
 // pin, and vice versa.
 func TestRegisterServer_SelfSignedWithoutAcceptAgainstInsecureEntry(t *testing.T) {
+	// GAP-141: registering an insecure entry now needs the acknowledgement.
+	t.Setenv(TLSInsecureAckEnv, "1")
+
 	t.Run("existing tls_insecure entry refuses to be pinned", func(t *testing.T) {
 		useTempHome(t)
 		srv, _ := newTLSBunkerd(t, selfSignedTLSConfig(t), &mockBunkerdServer{info: testServerInfo("tls-host")})
@@ -730,6 +738,8 @@ func TestRegisterServer_SelfSignedWithoutAcceptAgainstInsecureEntry(t *testing.T
 // TestRegisterServer_PinAndInsecureRefused covers the contradictory flag pair.
 func TestRegisterServer_PinAndInsecureRefused(t *testing.T) {
 	useTempHome(t)
+	// GAP-141: even WITH the acknowledgement, the contradictory pair is refused.
+	t.Setenv(TLSInsecureAckEnv, "1")
 	srv, _ := newTLSBunkerd(t, selfSignedTLSConfig(t), &mockBunkerdServer{info: testServerInfo("tls-host")})
 
 	err := RegisterServerWithOptions(ConnectOptions{
@@ -1097,8 +1107,10 @@ func TestConfigRoundTrip_CertPin(t *testing.T) {
 }
 
 // TestExistingServerEntryShapesKeepWorking pins that configs written before
-// this change load unchanged and behave exactly as before: an insecure entry is
-// still insecure, and a plain entry still uses the default transport.
+// this change load unchanged and that a legacy entry's recorded decision still
+// governs — with one deliberate exception introduced by GAP-141: an insecure
+// entry is now refused until the operator acknowledges it in the environment.
+// The migration is therefore visible here rather than discovered in production.
 func TestExistingServerEntryShapesKeepWorking(t *testing.T) {
 	useTempHome(t)
 	const legacyYAML = `servers:
@@ -1128,12 +1140,23 @@ active_server: old-insecure
 	if insecure.CertPin != "" || insecure.TLSMode != "" {
 		t.Errorf("legacy entry invented trust fields: %+v", insecure)
 	}
+
+	// GAP-141: the legacy insecure entry is refused until acknowledged...
+	t.Setenv(TLSInsecureAckEnv, "")
+	if _, err := buildClientTLSConfig(insecure); err == nil {
+		t.Error("an unacknowledged legacy insecure entry must refuse to dial")
+	} else if !strings.Contains(err.Error(), TLSInsecureAckEnv) {
+		t.Errorf("error = %q, want the acknowledgement refusal", err.Error())
+	}
+
+	// ...and behaves exactly as before once acknowledged.
+	t.Setenv(TLSInsecureAckEnv, "1")
 	tlsCfg, err := buildClientTLSConfig(insecure)
 	if err != nil {
-		t.Fatalf("legacy insecure entry must still be dialable: %v", err)
+		t.Fatalf("acknowledged legacy insecure entry must still be dialable: %v", err)
 	}
 	if tlsCfg == nil || !tlsCfg.InsecureSkipVerify {
-		t.Errorf("legacy insecure entry must keep skipping verification, got %+v", tlsCfg)
+		t.Errorf("legacy insecure entry must keep skipping verification once acknowledged, got %+v", tlsCfg)
 	}
 
 	plain := cfg.Servers["old-plain"]
