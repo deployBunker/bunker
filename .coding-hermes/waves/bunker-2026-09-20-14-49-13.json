@@ -45,9 +45,9 @@
       "files_owned": [
         "internal/cli/procbuild_test.go"
       ],
-      "commit": null,
-      "merge": "pending",
-      "judge": "pending",
+      "commit": "b3f1bfd",
+      "merge": "bc4ebb9",
+      "judge": "Tier 2 async job-aa7740432ba349128d2846ba9305f9ba (running at tick close; the first run was killed by the local tool window before the eval finished, so the state was flipped via --force --skip-tier2 and the eval re-dispatched)",
       "attempt_1": "dead dispatch — driver log \"No reply: every provider in the fallback chain kept failing over\", zero diff",
       "attempt_2": "re-dispatched in the same worktree (glm-5.3-flash@zai-glm-default), live at tick close, uncommitted"
     }
