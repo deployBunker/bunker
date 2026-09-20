@@ -1,0 +1,66 @@
+{
+  "tick_id": "bunker-2026-09-20-05-15-37",
+  "project": "bunker",
+  "repo": "/home/kara/bunker",
+  "branch": "main",
+  "base_sha": "2a8aeff",
+  "created_at": "2026-09-20T05:20:00-05:00",
+  "finished_at": "2026-09-20T07:25:00-05:00",
+  "workers": [
+    {
+      "task_id": "DF-BUNKER-32",
+      "title": "README quick-start root requirement up front",
+      "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-32",
+      "branch": "wt/DF-BUNKER-32",
+      "base_sha": "2a8aeff",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/foreman-worker-DF-BUNKER-32.txt",
+      "commit": "c693d36",
+      "merge": "e49d2da",
+      "judge": "06e16e92 PASS"
+    },
+    {
+      "task_id": "DF-BUNKER-30",
+      "title": "config.example.yaml adopt precondition comment",
+      "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-30",
+      "branch": "wt/DF-BUNKER-30",
+      "base_sha": "2a8aeff",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/foreman-worker-DF-BUNKER-30.txt",
+      "commit": "9589674",
+      "merge": "ff99e9f",
+      "judge": "0b40ea20 PASS"
+    },
+    {
+      "task_id": "DF-BUNKER-29",
+      "title": "Audit hash chain survives daemon restart",
+      "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-29",
+      "branch": "wt/DF-BUNKER-29",
+      "base_sha": "2a8aeff",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/foreman-worker-DF-BUNKER-29.txt",
+      "commit": "d04ed3b",
+      "merge": "a2a0e1c",
+      "judge": "06851922 PASS"
+    },
+    {
+      "task_id": "DF-BUNKER-28",
+      "title": "Agent-service Metrics RPC per-agent scoping + existence check",
+      "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-28",
+      "branch": "wt/DF-BUNKER-28",
+      "base_sha": "2a8aeff",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/foreman-worker-DF-BUNKER-28.txt",
+      "commit": "fedfa2c",
+      "merge": "00c3555",
+      "judge": "ee9e01ab PASS"
+    }
+  ],
+  "recovered_by": "bunker-2026-09-20-05-15-37 (same tick, after sibling GAP-093/094 waves interleaved with the shared checkout)",
+  "recovery_verdict": "COMPLETE — 4/4 worker commits are ancestors of main via merge commits e49d2da/ff99e9f/a2a0e1c/00c3555; all 4 board rows status=complete with commit_hash + Tier 2 PASS verdicts on disk (06e16e92, 0b40ea20, 06851922, ee9e01ab); merged-tree gates green (go build ./..., go vet, internal/server + internal/audit -count=1); serial merge order 32->30->29->28 with per-merge gates.",
+  "notes": "Off-by-one post-debug submission sub_93b2df (audit-chain restart class). New board row INT-CI-023 (shared per-uid CLI test-binary cache cross-worktree poisoning). docs-drift CI failure at 05:27Z verified FIXED at current HEAD (go run ./cmd/docs-drift = OK)."
+}
