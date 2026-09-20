@@ -1,0 +1,66 @@
+{
+  "tick_id": "bunker-2026-09-20-11-43-46",
+  "project": "bunker",
+  "repo": "/home/kara/bunker",
+  "branch": "main",
+  "base_sha": "99e36b6",
+  "created_at": "2026-09-20T12:15:00-05:00",
+  "mode": "git-worktrees",
+  "wave_budget": 12,
+  "independent": true,
+  "recovery_note": "Preceding wave bunker-2026-09-20-08-53-27 recovered first: 3/3 branches were already merged+pushed by the prior tick; board rows complete; merged worktrees reaped; Tier 2 re-judges dispatched for DF-BUNKER-31/DF-BUNKER-33 (empty-items INCOMPLETE) and task-complete for INT-CI-024; manifest closed. This wave is this tick's new work.",
+  "workers": [
+    {
+      "task_id": "DF-BUNKER-38",
+      "title": "P0: runWithTimeout Start+CombinedOutput double-exec — mount preflight + umount dead",
+      "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-38",
+      "branch": "wt/DF-BUNKER-38",
+      "base_sha": "99e36b6",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/brief-DF-BUNKER-38.txt",
+      "commit": null,
+      "merge": null,
+      "judge": null
+    },
+    {
+      "task_id": "GAP-140",
+      "title": "P0: subuid/subgid ranges overlap between agents — global disjoint allocation + lock + refusal",
+      "worktree": "/home/kara/worktrees/bunker-GAP-140",
+      "branch": "wt/GAP-140",
+      "base_sha": "99e36b6",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/brief-GAP-140.txt",
+      "commit": null,
+      "merge": null,
+      "judge": null
+    },
+    {
+      "task_id": "INT-CI-025",
+      "title": "P1: regression-tests.sh mutating calls carry no bound target (GAP-093 fail-closed binding reds the job)",
+      "worktree": "/home/kara/worktrees/bunker-INT-CI-025",
+      "branch": "wt/INT-CI-025",
+      "base_sha": "99e36b6",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/brief-INT-CI-025.txt",
+      "commit": null,
+      "merge": null,
+      "judge": null
+    },
+    {
+      "task_id": "GAP-123",
+      "title": "P0 DOC: write docs/threat-model.md from security-readiness PRD section 3",
+      "worktree": "/home/kara/worktrees/bunker-GAP-123",
+      "branch": "wt/GAP-123",
+      "base_sha": "99e36b6",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/brief-GAP-123.txt",
+      "commit": null,
+      "merge": null,
+      "judge": null
+    }
+  ]
+}

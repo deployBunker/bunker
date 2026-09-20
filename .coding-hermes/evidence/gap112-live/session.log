@@ -1,0 +1,16 @@
+[08:19:10] === GAP-112 MOUNT LIVE PROOF ===
+[08:19:10] agent=kara-lair server=bunker-las-02 root=/home/kara/bunker/.coding-hermes/evidence/gap112-live/mnt
+[08:19:10] cli: bunker 0.1.4   commit:     00c3555 
+[08:19:10] --- STEP 1: baseline mount ---
+[08:19:10] mount rc=1 output: bunker: agent kara-lair has no SSHFS mount command; ensure it was spawned with SSHFS support
+[08:19:10] expected mountpoint: /home/kara/bunker/.coding-hermes/evidence/gap112-live/mnt/bunker-las-02/kara-lair
+[08:19:10] NOT A MOUNTPOINT (maybe different path) — listing:
+/home/kara/bunker/.coding-hermes/evidence/gap112-live/mnt
+/home/kara/bunker/.coding-hermes/evidence/gap112-live/mnt/kara-lair
+[08:19:10] --- baseline read (proves the mount serves real remote data) ---
+ls: cannot access '/home/kara/bunker/.coding-hermes/evidence/gap112-live/mnt/bunker-las-02/kara-lair': No such file or directory
+[08:19:10] workspace identity:
+fatal: cannot change to '/home/kara/bunker/.coding-hermes/evidence/gap112-live/mnt/bunker-las-02/kara-lair': No such file or directory
+[08:19:10] --- baseline write (must SUCCEED while healthy) ---
+sh: 1: cannot create /home/kara/bunker/.coding-hermes/evidence/gap112-live/mnt/bunker-las-02/kara-lair/gap112-baseline.txt: Directory nonexistent
+[08:19:10] chained: cat: /home/kara/bunker/.coding-hermes/evidence/gap112-live/mnt/bunker-las-02/kara-lair/gap112-baseline.txt: No such file or directory

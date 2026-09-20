@@ -20,8 +20,8 @@
       "brief": "/tmp/foreman-worker-DF-BUNKER-33.txt",
       "rescue_input": "/tmp/df33-config-partial.patch (uncommitted sibling WIP: config surface only)",
       "commit": null,
-      "merge": null,
-      "judge": null
+      "merge": "merged (d240e9b) --no-ff into main, pushed",
+      "judge": "prior verdict 4cf7b552 = Tier2 INCOMPLETE items:0 (cap-starvation shape); async re-judge job-d079e6b0c4844891bd185a8d2f8d7ece dispatched on commit 93d7a53"
     },
     {
       "task_id": "DF-BUNKER-31",
@@ -33,8 +33,8 @@
       "provider": "zai-glm-default",
       "brief": "/tmp/foreman-worker-DF-BUNKER-31.txt",
       "commit": null,
-      "merge": null,
-      "judge": null
+      "merge": "merged (5b72ceb) --no-ff into main, pushed",
+      "judge": "prior verdict 0b489dc9 = Tier2 INCOMPLETE items:0 (cap-starvation shape); async re-judge job-27f8d7f4dbd54b949cb82d7ac38609f3 dispatched on commit 6295793"
     },
     {
       "task_id": "INT-CI-024",
@@ -46,8 +46,10 @@
       "provider": "zai-glm-default",
       "brief": "/tmp/foreman-worker-INT-CI-024.txt",
       "commit": null,
-      "merge": null,
-      "judge": null
+      "merge": "merged (50247c7) --no-ff into main, pushed",
+      "judge": "gitreins task complete fired late by prior tick (task was left in_progress); Tier 2 running in background (/tmp/bunker-intci024-complete.log)"
     }
-  ]
+  ],
+  "finished_at": "2026-09-20T07:21:52-05:00",
+  "recovery_note": "Recovered by tick bunker-2026-09-20-11-43-46: all 3 branches verified merged into main (ancestry + sha match vs merge commits), main == origin/main (push parity 0/0), board rows complete with commit hashes, merged worktrees reaped + branches deleted, fresh zero-commit wt/INT-CI-025 worktree preserved for this tick's wave. Tier 2 re-judges for the two empty-items INCOMPLETE verdicts run as detached jobs."
 }
