@@ -208,7 +208,13 @@ func (m *AgentManager) provisionIsolation(ctx context.Context, agentID, username
 	if m.cfg.Agent.Isolation.SharedScratchEnabled {
 		rep, err := host.EnsureAgentScratch(ctx, agentID, username, uid, gid)
 		if err != nil {
-			m.logger.Warn("shared scratch not provisioned; agent keeps its private /tmp and has no cross-agent exchange directory",
+			// DF-BUNKER-40: the likely cause is the exchange ROOT, and the
+			// message must say so — a root left root:root (or group-writable)
+			// still produced "shared scratch ready" before, while the agent
+			// could not even list the directory. `bunker host-provision
+			// --apply` repairs the root on this and every other host; it is
+			// also the fail-closed remedy when the spawn path could not.
+			m.logger.Warn("shared scratch not provisioned; agent keeps its private /tmp and has no cross-agent exchange directory (check the exchange root, then run `bunker host-provision --apply`)",
 				"agent_id", agentID, "error", err)
 		} else {
 			m.logger.Info("shared scratch ready", "agent_id", agentID)

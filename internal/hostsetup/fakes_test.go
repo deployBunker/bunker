@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -25,6 +28,27 @@ type recorder struct {
 	tmpFSType    string
 	tmpOptions   string
 
+	// Scratch-root state: what `stat -c '%u:%g %a'` ANSWERS. It is per-path
+	// because the exchange root and a per-agent directory are both stat-ed,
+	// and a fake that answers every path identically cannot tell a correct
+	// root from a wrong one — the whole point of the DF-BUNKER-40 gate.
+	// Empty string means "no answer" (a non-zero exit from stat).
+	scratchOwners map[string]string
+	// scratchRootOwnerTo / scratchRootOctalTo carry out the host effect of a
+	// chown/chmod on the exchange root so the stat-back after a repair sees
+	// the repaired shape. A fake that records the command but leaves the
+	// observation wrong makes every repair look like a failure.
+	scratchRootOwnerTo string
+	scratchRootOctalTo string
+	// scratchRootRepairIneffective models a root whose owner and mode survive
+	// the repair commands: the chown/chmod are accepted and the stat answer
+	// does not change, so the observation can be asserted to disagree with the
+	// argv (the reason the gate re-stats instead of trusting the command).
+	scratchRootRepairIneffective bool
+	// scratchRoot is the exchange root of this sandbox (Root + the documented
+	// default), resolved once because Root is a per-recorder temp directory.
+	scratchRoot string
+
 	// root is a stable per-recorder sandbox directory: t.TempDir() returns a
 	// NEW directory on every call, so the sandbox must be captured once.
 	root string
@@ -35,14 +59,17 @@ type recorder struct {
 
 func newRecorder(t *testing.T) *recorder {
 	t.Helper()
+	root := t.TempDir()
 	return &recorder{
-		t:            t,
-		root:         t.TempDir(),
-		groupMembers: map[string]bool{},
-		mounts:       map[string]bool{},
-		mountOpts:    map[string]string{},
-		tmpFSType:    "tmpfs",
-		tmpOptions:   "rw,relatime,size=1073741824",
+		t:             t,
+		root:          root,
+		scratchRoot:   filepath.Join(root, DefaultScratchRoot),
+		groupMembers:  map[string]bool{},
+		mounts:        map[string]bool{},
+		mountOpts:     map[string]string{},
+		scratchOwners: map[string]string{},
+		tmpFSType:     "tmpfs",
+		tmpOptions:    "rw,relatime,size=1073741824",
 	}
 }
 
@@ -122,13 +149,97 @@ func (r *recorder) run(ctx context.Context, name string, args ...string) ([]byte
 		delete(r.mountOpts, dir)
 		return nil, nil
 	case "stat":
-		return []byte("root:" + DefaultScratchGroup + " 2750"), nil
+		// Per-path, and empty when the fake host has no answer: a fake that
+		// returned one hard-coded root shape for every path could not
+		// distinguish a correct exchange root from the measured defect.
+		return []byte(r.scratchOwners[args[len(args)-1]]), nil
 	case "systemctl":
 		return []byte(""), nil
-	default: // chown, chmod, ssh-keygen, …
+	case "chown":
+		if len(args) == 2 && args[1] == r.scratchRoot {
+			r.scratchRootOwnerTo = args[0]
+			r.syncScratchRootShape()
+		}
+		return nil, nil
+	case "chmod":
+		if len(args) == 2 && args[1] == r.scratchRoot {
+			r.scratchRootOctalTo = strings.TrimLeft(args[0], "0")
+			r.syncScratchRootShape()
+		}
+		return nil, nil
+	default: // ssh-keygen, …
 		return nil, nil
 	}
 	return nil, nil
+}
+
+// syncScratchRootShape composes the `stat` answer for the exchange root from
+// the ownership and mode the fake host has been given or has been told to
+// apply, so the stat-back after a repair observes the repaired shape rather
+// than the pre-repair one.
+func (r *recorder) syncScratchRootShape() {
+	if r.scratchRootRepairIneffective {
+		// The host accepts the chown/chmod command and keeps reporting the
+		// old shape — a filesystem that ignores the change (an NFS/SMB mount
+		// with root_squash, or a sandbox that drops the call). This is the
+		// case where "chmod exited 0" must not be read as "the root is now
+		// correct", so the observation deliberately disagrees with the argv.
+		return
+	}
+	owner := r.scratchRootOwnerTo
+	if owner == "" {
+		owner = "0:" + DefaultScratchGroup
+	}
+	octal := r.scratchRootOctalTo
+	if octal == "" {
+		octal = strings.TrimLeft(fmt.Sprintf("%04o", ScratchRootMode), "0")
+	}
+	r.scratchOwners[r.scratchRoot] = owner + " " + octal
+}
+
+// scratchRootOwner is the simulated `stat` answer for the exchange root.
+func (r *recorder) scratchRootOwner() string { return r.scratchOwners[r.scratchRoot] }
+
+// setScratchRootShape makes the fake host report the exchange root as
+// owner:group mode-octal, exactly as `stat -c '%u:%g %a'` would, AND creates
+// the directory on disk with the mode that octal describes — the mode half of
+// the boundary is read from the real directory (verifyScratchRoot), so a
+// fixture that only edited the `stat` answer would not model a real host. An
+// empty owner makes the fake answer "no owner observable" (unprivileged stat).
+func (r *recorder) setScratchRootShape(owner, group, octal string) {
+	perm, setgid := diskModeFromOctal(octal)
+	if err := os.MkdirAll(r.scratchRoot, perm); err != nil {
+		r.t.Fatal(err)
+	}
+	if err := os.Chmod(r.scratchRoot, setgid|perm); err != nil {
+		r.t.Fatal(err)
+	}
+	if owner == "" {
+		delete(r.scratchOwners, r.scratchRoot)
+		return
+	}
+	r.scratchOwners[r.scratchRoot] = owner + ":" + group + " " + octal
+}
+
+// diskModeFromOctal translates an octal mode as reported by `stat -c '%a'`
+// into the permission bits and setgid flag os.Chmod needs. The setgid bit is
+// the leading digit of the octal spelling, which os.FileMode cannot express
+// directly (ModeSetgid is not 0o2000) — the same trap the provisioner's
+// in-process chmod documents.
+func diskModeFromOctal(octal string) (perm os.FileMode, setgid os.FileMode) {
+	perm = 0o750
+	if octal == "" {
+		return perm, 0
+	}
+	if len(octal) >= 3 {
+		if v, err := strconv.ParseUint(octal[len(octal)-3:], 8, 32); err == nil {
+			perm = os.FileMode(v)
+		}
+	}
+	if len(octal) >= 4 && octal[len(octal)-4] == '2' {
+		setgid = os.ModeSetgid
+	}
+	return perm, setgid
 }
 
 // mutating returns the recorded commands that change host state (probes such
