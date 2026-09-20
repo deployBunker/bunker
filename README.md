@@ -100,6 +100,9 @@ make build
 #    (config.example.yaml / Configure below). For a token-free local daemon
 #    set auth.enabled: false instead — the daemon then logs a loud
 #    WARNING: AUTH DISABLED line and accepts unauthenticated requests.
+#
+#    tls.self_signed: true below makes the daemon generate its own certificate
+#    on first start, so the CLI never has to disable verification.
 sudo mkdir -p /etc/bunkerd
 sudo tee /etc/bunkerd/config.yaml >/dev/null << 'EOF'
 server:
@@ -108,14 +111,22 @@ server:
 auth:
   enabled: true
   token: "your-master-token-here"
+tls:
+  enabled: true
+  self_signed: true
+  cert_file: "/etc/bunkerd/tls/cert.pem"   # generated on first start if absent
+  key_file: "/etc/bunkerd/tls/key.pem"
+  hosts: ["localhost", "127.0.0.1"]        # add the host/IP you connect to
 EOF
 
 # 3. Start the daemon as root (spawn needs root). Default ports: REST :8080,
 #    gRPC :9090 — see the non-default-ports note below if they are taken.
 sudo ./bunkerd --config /etc/bunkerd/config.yaml
 
-# 4. In another terminal, point the CLI at it and check it is up
-./bunker connect http://127.0.0.1:8080 --token your-master-token-here
+# 4. In another terminal, point the CLI at it and check it is up. The first
+#    connect PRINTS the certificate fingerprint and pins it; every later
+#    command verifies against that pin (see TLS (trust on first use) below).
+./bunker connect --tls self-signed https://127.0.0.1:8080 --token your-master-token-here
 ./bunker status
 
 # 5. First agent: spawn, run a command inside it, tear it down
@@ -366,6 +377,76 @@ Rules the daemon enforces:
   rotated on restart** — an existing file (or a configured secret) is always
   reused, because agent API keys and issued JWTs are derived from it.
 
+#### TLS: the secure path is the easy path (GAP-127)
+
+A self-signed daemon is the normal way to run Bunker on a host you control: you
+own the box, so you do not need a public CA — but you also must not turn
+verification off. The CLI therefore **pins the certificate** instead, exactly
+like SSH host keys:
+
+```bash
+# First connect: the certificate is observed over a REAL TLS handshake, its
+# sha256 fingerprint is printed loudly, and it is stored on the server entry.
+bunker connect --tls self-signed https://bunker-host:9090 --token <token>
+#   ================= TRUST ON FIRST USE ================
+#   You are about to trust the certificate presented by https://bunker-host:9090 …
+#     fingerprint      sha256:1f9c…a3
+#   …
+#
+# Every later command — status, list, spawn, exec, destroy — verifies the leaf
+# against that pin. No command ever needs --tls-insecure again.
+```
+
+| What you are connecting to | Command |
+|---|---|
+| Self-signed daemon (default for a host you own) | `bunker connect --tls self-signed https://host:9090` |
+| CA-signed certificate | `bunker connect --tls system https://host:9090` |
+| Plain-HTTP loopback dev daemon | `bunker connect http://127.0.0.1:8080` |
+
+The rules the CLI enforces:
+
+- **A changed certificate is a loud refusal.** If the daemon is re-keyed (or
+  something else answers on that address), the next command fails naming BOTH
+  fingerprints and how to re-pin deliberately:
+  `bunker connect --tls self-signed --accept-cert https://host:9090`. An
+  unexpected certificate change is what a man-in-the-middle looks like, so it is
+  never accepted silently.
+- **No silent fallback to skipping verification.** A self-signed server with no
+  pin, and no first-use mode, is refused with instructions — the CLI will not
+  quietly turn `InsecureSkipVerify` on for you.
+- **`cert_pin` + `tls_insecure` on one entry is refused as contradictory**, as
+  is `--tls self-signed --tls-insecure` on one command line.
+- **`--tls-insecure` stays available as an explicit, named opt-out** for a
+  throwaway test host. It prints a warning and marks the entry; it is never
+  chosen for you.
+- **A pinned certificate must be inside its validity window.** An expired pin
+  fails with the expiry date and the regeneration steps.
+
+Verify the fingerprint out of band before trusting it (on the daemon host):
+
+```bash
+openssl x509 -in /etc/bunkerd/tls/cert.pem -noout -fingerprint -sha256
+```
+
+The pin lives with the rest of the server entry in `~/.bunker/config.yaml`:
+
+```yaml
+servers:
+  bunker-host:
+    name: bunker-host
+    url: https://bunker-host:9090
+    token: …
+    tls_mode: self-signed
+    cert_pin: "1f9c…a3"          # sha256 hex of the leaf certificate
+    cert_pin_set_at: "2026-09-20T15:04:05Z"
+    connected_at: "2026-09-20T15:04:05Z"
+```
+
+`--tls` / `cert_pin` / `tls_mode` / `cert_pin_set_at` are all optional: configs
+written before this feature load unchanged, and an entry with none of them
+behaves exactly as it did before (system roots, or `tls_insecure` if it was
+set).
+
 **Non-default ports** — `bunkerd` listens on `:9090` (gRPC) and `:8080` (REST)
 by default. If those are already occupied on the host (a common scratch-host
 collision), change `server.grpc_addr` / `server.rest_addr` in
@@ -507,8 +588,12 @@ bunker systemd status
 ### Use the CLI
 
 ```bash
-# Connect to a server
-bunker connect http://bunker-host:8080 --token your-master-token-here
+# Connect to a server. First connect to a self-signed daemon: the certificate
+# fingerprint is printed and pinned, and every later command verifies against it.
+bunker connect --tls self-signed https://bunker-host:9090 --token your-master-token-here
+
+# (Plain-HTTP loopback is still the dev case, and needs no trust decision.)
+#   bunker connect http://127.0.0.1:8080 --token your-master-token-here
 
 # Create an agent with 2 CPUs and 4 GB RAM
 bunker spawn --cpu 2.0 --memory 4294967296 --ttl 6h
@@ -804,7 +889,8 @@ Commands in the newest release tag (`git describe --tags --abbrev=0` → **v0.1.
 gives you:
 
 ```
-bunker connect     Register a bunkerd server
+bunker connect     Register a bunkerd server (--tls self-signed pins the daemon's
+                   certificate on first use; --accept-cert re-pins deliberately)
 bunker use         Select the active server
 bunker status      Show server status (CPU/memory/disk/uptime)
 bunker spawn       Create a new agent (--image-spec <file> for package-add image customization)

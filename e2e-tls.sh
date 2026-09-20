@@ -145,6 +145,99 @@ else
 fi
 
 echo ""
+echo "=== 3b. Certificate pinning (trust on first use, GAP-127) ==="
+# Fresh CLI state so the pinning flow starts from a blank slate.
+PIN_HOME="$(mktemp -d)"
+PIN_OPENSSL=$(openssl x509 -in "${TLS_DIR}/cert.pem" -noout -fingerprint -sha256 | sed 's/.*=//;s/://g' | tr 'A-Z' 'a-z')
+
+# 3b-a. No trust decision: the CLI must refuse and must NOT pin.
+NO_TLS_OUT=$(BUNKER_HOME="$PIN_HOME" $BUNKER connect "$URL" --token "$BUNKER_TOKEN" --name pin-test 2>&1 || true)
+if echo "$NO_TLS_OUT" | grep -q -- "--tls self-signed"; then
+    assert "connect without --tls refuses a self-signed daemon and points at the pinning flow"
+else
+    fail "connect without --tls — $NO_TLS_OUT"
+fi
+
+# 3b-b. First use pins the certificate and prints the fingerprint loudly.
+FIRST_OUT=$(BUNKER_HOME="$PIN_HOME" $BUNKER connect --tls self-signed "$URL" --token "$BUNKER_TOKEN" --name pin-test 2>&1)
+if echo "$FIRST_OUT" | grep -q "TRUST ON FIRST USE"; then
+    assert "first connect prints the trust-on-first-use warning"
+else
+    fail "first connect warning — $FIRST_OUT"
+fi
+if echo "$FIRST_OUT" | grep -q "sha256:${PIN_OPENSSL}"; then
+    assert "printed fingerprint matches openssl"
+else
+    fail "printed fingerprint — $FIRST_OUT"
+fi
+STORED_PIN=$(grep 'cert_pin:' "$PIN_HOME/config.yaml" | sed 's/.*cert_pin: *//' | tr -d '"')
+if [ "$STORED_PIN" = "$PIN_OPENSSL" ]; then
+    assert "pin stored in the CLI config matches openssl"
+else
+    fail "stored pin '$STORED_PIN' != openssl '$PIN_OPENSSL'"
+fi
+
+# 3b-c. Later commands verify against the pin (no --tls-insecure anywhere).
+if BUNKER_HOME="$PIN_HOME" $BUNKER --server pin-test list --status all 2>&1 | grep -q "No agents found"; then
+    assert "list over the pinned connection (verification ON)"
+else
+    fail "pinned list"
+fi
+
+# 3b-d. ROTATION: replace the certificate and restart the daemon on the SAME URL.
+kill "$BUNKERD_PID" 2>/dev/null || true
+wait "$BUNKERD_PID" 2>/dev/null || true
+rm -f "${TLS_DIR}/cert.pem" "${TLS_DIR}/key.pem"
+DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/0/bus" BUNKERD_CONFIG="$TMP_CONFIG" /usr/local/bin/bunkerd > /tmp/bunkerd-tls.log 2>&1 &
+BUNKERD_PID=$!
+for _ in $(seq 1 30); do ss -tln | grep -q ":${REST_PORT}" && break; sleep 1; done
+NEW_PIN=$(openssl x509 -in "${TLS_DIR}/cert.pem" -noout -fingerprint -sha256 | sed 's/.*=//;s/://g' | tr 'A-Z' 'a-z')
+if [ "$NEW_PIN" != "$PIN_OPENSSL" ]; then
+    assert "daemon certificate rotated (new fingerprint on the same URL)"
+else
+    fail "rotation produced the same certificate"
+fi
+
+ROT_OUT=$(BUNKER_HOME="$PIN_HOME" $BUNKER --server pin-test list --status all 2>&1 || true)
+if echo "$ROT_OUT" | grep -q "certificate pin mismatch"; then
+    assert "a rotated certificate is refused with a named pin mismatch"
+else
+    fail "rotated cert refusal — $ROT_OUT"
+fi
+if echo "$ROT_OUT" | grep -q "$PIN_OPENSSL" && echo "$ROT_OUT" | grep -q "$NEW_PIN"; then
+    assert "the refusal names both fingerprints"
+else
+    fail "refusal fingerprints — $ROT_OUT"
+fi
+if echo "$ROT_OUT" | grep -q -- "--accept-cert"; then
+    assert "the refusal names the deliberate re-pin command"
+else
+    fail "refusal re-pin command — $ROT_OUT"
+fi
+
+# 3b-e. Deliberate re-pin.
+REPIN_OUT=$(BUNKER_HOME="$PIN_HOME" $BUNKER connect --tls self-signed --accept-cert "$URL" --token "$BUNKER_TOKEN" --name pin-test 2>&1)
+if echo "$REPIN_OUT" | grep -q "RE-PINNING"; then
+    assert "--accept-cert re-pins deliberately and announces the replacement"
+else
+    fail "--accept-cert — $REPIN_OUT"
+fi
+if [ "$(grep 'cert_pin:' "$PIN_HOME/config.yaml" | sed 's/.*cert_pin: *//' | tr -d '"')" = "$NEW_PIN" ]; then
+    assert "the pin is updated to the rotated certificate"
+else
+    fail "pin not updated after --accept-cert"
+fi
+
+# 3b-f. Contradictory configuration is refused.
+CONTRA_OUT=$(BUNKER_HOME="$PIN_HOME" $BUNKER connect --tls self-signed --tls-insecure "$URL" --token "$BUNKER_TOKEN" 2>&1 || true)
+if echo "$CONTRA_OUT" | grep -qi "contradictory\|skips certificate verification"; then
+    assert "--tls self-signed with --tls-insecure is refused as contradictory"
+else
+    fail "contradictory flags — $CONTRA_OUT"
+fi
+rm -rf "$PIN_HOME"
+
+echo ""
 echo "=== 4. mTLS: reject client without cert ==="
 # Update config to require mTLS and restart bunkerd.
 kill "$BUNKERD_PID" 2>/dev/null || true
