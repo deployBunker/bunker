@@ -227,6 +227,31 @@ Examples:
 				return fmt.Errorf("SSH key not found at %q — spawn the agent first or use --ssh-key", keyPath)
 			}
 
+			// Default the remote path BEFORE the preflight (DF-BUNKER-39).
+			// --path is the WORKSPACE axis: mounting a repo inside the home
+			// rather than the whole home. When the operator did not ask for a
+			// specific subdirectory, fall back to the source path the daemon
+			// embedded in the stored sshfs command (the argument before the
+			// mountpoint — the agent's home as the daemon recorded it), then
+			// to "." (the agent's home).
+			//
+			// ORDERING CONTRACT: this resolution must precede remotePathCheck.
+			// The preflight refuses an empty path ("mount preflight: no remote
+			// path to check"), and --path defaults to "", so running the
+			// preflight first made the DOCUMENTED default form
+			// `bunker mount <agent-id>` fail on every invocation — it could
+			// never reach the mount attempt. Resolving first means the
+			// preflight verifies the same path the mount will actually use.
+			// TestMountDefaultPath_PreflightReceivesResolvedPath pins this
+			// ordering.
+			if remotePath == "" {
+				if fromCmd := lastRemoteSourcePath(mountCmd); fromCmd != "" {
+					remotePath = fromCmd
+				} else {
+					remotePath = "."
+				}
+			}
+
 			// 3b. Preflight the remote path BEFORE mounting (GAP-103). Without
 			// this, mounting an agent whose home is empty (a re-created agent)
 			// or a --path that does not exist SUCCEEDS and presents an empty
@@ -241,6 +266,8 @@ Examples:
 			if os.Getenv("BUNKER_SKIP_MOUNT_PREFLIGHT") != "" {
 				fmt.Fprintln(os.Stderr, "bunker: WARNING: mount preflight skipped (BUNKER_SKIP_MOUNT_PREFLIGHT set) — an empty or missing remote path will mount as an empty tree")
 			} else {
+				// remotePath is guaranteed non-empty here: the resolution
+				// above defaults it before this call (DF-BUNKER-39).
 				ident, err := remotePathCheck(userAtHost, keyPath, remotePath)
 				if err != nil {
 					return err
@@ -256,17 +283,6 @@ Examples:
 						expectWorkspace, ident.Describe())
 				}
 				fmt.Printf("Workspace: %s\n", ident.Describe())
-			}
-
-			// Default the remote path from the stored command when the operator
-			// did not ask for a specific subdirectory. --path is the WORKSPACE
-			// axis: mounting a repo inside the home rather than the whole home.
-			if remotePath == "" {
-				if fromCmd := lastRemoteSourcePath(mountCmd); fromCmd != "" {
-					remotePath = fromCmd
-				} else {
-					remotePath = "."
-				}
 			}
 
 			// 4. Ensure mount point exists (private to this user).
