@@ -154,6 +154,9 @@ Client-side path overrides (persistent flags):
 	root.AddCommand(cli.NewExecCommand())
 	root.AddCommand(cli.NewRunCommand())
 	root.AddCommand(cli.NewInfoCommand())
+	// The agent-side dependency probe: the remote editing verbs execute in the
+	// agent's context, so a tool present on the CLIENT is irrelevant to them.
+	root.AddCommand(cli.NewAgentToolsCommand())
 	root.AddCommand(cli.NewHeartbeatCommand())
 	root.AddCommand(cli.NewSystemdCommand())
 	root.AddCommand(cli.NewMountCommand())
