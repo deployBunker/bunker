@@ -19,226 +19,138 @@ ul,ol{margin:.4rem 0 .8rem;padding-left:1.3rem} li{margin:.3rem 0}
 hr{border:none;border-top:1px solid #2a3140;margin:1.4rem 0}
 strong{color:#fff} .tag{color:var(--mut);font-size:.85rem}
 </style></head><body>
-<h1>PRD: <code>\1</code> — make remote bunker file work feel local and never land in the wrong tree</h1>
-<p><strong>\1</strong> bunker (owning) · tools rows: coding-hermes-tools · shim row: hermes-agent</p>
-<p><strong>\1</strong> GAP-092..GAP-099 (board rows filed below) · <strong>\1</strong> Hermes (bunker thread 70902) · <strong>\1</strong> 2026-09-20</p>
-<p><strong>\1</strong> proposed · <strong>\1</strong> M (one S + three M items, one L) · <strong>\1</strong> <code>\1</code> (coding-hermes-tools), bunker ⇄ Hermes exec path</p>
-<p><strong>\1</strong> every Hermes session that edits code on a deployed bunker</p>
+<h1>PRD: <code>bunker-remote-editing</code> — remote file editing for Hermes sessions</h1>
+<p><strong>Project:</strong> bunker (owning) · <strong>Rows:</strong> GAP-092..GAP-098 (bunker), <code>CHT-052</code> (coding-hermes-tools) · <strong>Author:</strong> Hermes (bunker thread) · <strong>Date:</strong> 2026-09-20</p>
+<p><strong>Status:</strong> proposed · <strong>Effort:</strong> M (four S/M slices + one L shim) · <strong>Depends on:</strong> <code>toolsd</code> (coding-hermes-tools) · <strong>Feeds:</strong> every Hermes session that edits code</p>
 <hr>
 <h2>The one-liner</h2>
-<p>Give a Hermes session a <strong>\1</strong> onto a deployed bunker — so read/write/patch/apply/search/build/test behave like local tools on a remote tree, and a write can never land in another session&#x27;s bunker or tree because routing is a value carried on every call rather than a mutable global.</p>
-<h2>Why this PRD exists (not a task)</h2>
-<p>The request was one capability — &quot;make my file tools work against the bunkers so the compute moves off this box&quot;. Writing it as a task would have shipped a shim. The narrow shape is what breaks: a shim that trusts an ambient &quot;current server&quot; is <em>\1</em> wrong-bunker bug, and a lease scheme that isolates state per-agent defeats the collision protection it looks like it adds. This document is the whole circuit: state model, the two failure edges, the loops, and the proofs that close them.</p>
-<hr>
-<h2>The core insight: three states, two dangerous edges</h2>
+<p>A Hermes session edits code <strong>on a deployed bunker</strong> — read, write, patch, apply, search, build, test — so the compute runs on the bunker while session data and inference stay on the main box.</p>
+<h2>The problem, measured</h2>
+<p>The main box carries both the thinking and the doing. Every build, test run, grep and compile competes with the Hermes loops themselves.</p>
 <table>
-<tr><th>State</th><th>What it is</th><th>Where it lives today</th><th>Incident that lived on this edge</th></tr>
-<tr><th><strong>\1</strong></th><th>what the session believes it is working on (repo, bunker, agent)</th><th><em>\1</em> — today the session declares nothing</th><th>—</th></tr>
-<tr><th><strong>\1</strong></th><th>what the CLI/transport actually resolves at call time</th><th><code>\1</code> → <code>\1</code></th><th><strong>\1</strong> that file reads <code>\1</code> while its sibling entry carries <code>\1</code> — a <em>\1</em> session changed the target at 22:05 local. Next mutating call from any other session goes to las-02.</th></tr>
-<tr><th><strong>\1</strong></th><th>which tree the bytes actually landed in</th><th>the agent&#x27;s home dir on the bunker host</th><th>an agent destroyed and re-spawned under the same name resolves to a <strong>\1</strong> while the session still believes it holds the old one</th></tr>
+<tr><th>Fact</th><th>Value</th><th>Source</th></tr>
+<tr><th>Sessions started in the last 24h</th><th><strong>1,264</strong></th><th><code>state.db</code> sessions</th></tr>
+<tr><th>10-minute buckets holding concurrently-active sessions</th><th><strong>145</strong> (peak 51 in one bucket)</th><th><code>state.db</code> messages</th></tr>
+<tr><th>Agents live on bunker-las-02 today</th><th><strong>2</strong> (677MB and 736MB of a 64GB cap)</th><th><code>bunker list --server bunker-las-02</code></th></tr>
 </table>
-<p>The dangerous edges are <strong>\1</strong> (silent substitution by the global pointer) and <strong>\1</strong> (the target moved underneath a stale handle).</p>
-<p>What a naive implementation sees: <code>\1</code> is set, the call succeeds, exit 0. No error, no signal — the write simply lands somewhere else, and the <em>\1</em> evidence is a diff nobody expected. <strong>\1</strong> resolve their server implicitly today (<code>\1</code> appears at 22 non-test sites across <code>\1</code>), and only <strong>\1</strong> <code>\1</code> files even accept a <code>\1</code> flag.</p>
-<hr>
-<h2>Taxonomy of the failure this must kill</h2>
+<p>The bunkers already exist, are already spawned and destroyed by this fleet, and their disk/CPU are idle. What is missing is not capacity — it is that <strong>the editing tools live on the wrong side of the wire</strong>.</p>
+<h2>What it looks like to use (the tool list)</h2>
+<p>This is the surface a Hermes session gets. Each verb maps to one existing bunker operation; none of them is a new protocol.</p>
 <table>
-<tr><th>#</th><th>Class</th><th>One-line definition</th><th>Real example</th></tr>
-<tr><th>1</th><th><strong>\1</strong> (content)</th><th>a mutating call resolves its target from a shared mutable global</th><th><code>\1</code> rewritten mid-session above; 22 implicit sites</th></tr>
-<tr><th>2</th><th><strong>\1</strong> (lifecycle)</th><th>the bound agent/tree was destroyed or rebuilt; the handle still looks valid</th><th><code>\1</code> (GAP-071) covers <em>\1</em>; nothing covers <em>\1</em></th></tr>
-<tr><th>3</th><th><strong>\1</strong> (runtime)</th><th>two sessions edit one tree; the second silently overwrites</th><th><code>\1</code> CHT-007 was filed for exactly this (<em>\1</em>)</th></tr>
-<tr><th>4</th><th><strong>\1</strong> (design)</th><th>the lease registry lives on the wrong side of the wire, so it cannot see the real contender</th><th>a registry on this box, or per-agent, with two sessions on one tree</th></tr>
-<tr><th>5</th><th><strong>\1</strong> (credentials)</th><th>per-session tokens/keys resolve to one shared profile</th><th><code>\1</code> carries tokens for 3+ servers in one file read by every session</th></tr>
-<tr><th>6</th><th><strong>\1</strong> (forensics)</th><th>the audit chain records an action but not <em>\1</em> performed it</th><th>concurrent ticks appear as one actor</th></tr>
+<tr><th>Verb</th><th>What it does</th><th>Runs where</th><th>Backed by</th></tr>
+<tr><th><code>bunker_read &lt;path&gt;</code></th><th>read a file with a size cap</th><th>agent</th><th><code>ExecAgent</code></th></tr>
+<tr><th><code>bunker_write &lt;path&gt; &lt;body&gt;</code></th><th>write via temp file + atomic rename</th><th>agent</th><th><code>ExecAgent</code> (stdin, GAP-094)</th></tr>
+<tr><th><code>bunker_patch &lt;path&gt; &lt;diff&gt;</code></th><th>strict unified-diff apply, <strong>no fuzz</strong> — refuses rather than corrupting</th><th>agent</th><th><code>toolsd patch</code></th></tr>
+<tr><th><code>bunker_apply &lt;multi-file&gt;</code></th><th>atomic all-or-nothing multi-file edit with rollback</th><th>agent</th><th><code>toolsd apply</code></th></tr>
+<tr><th><code>bunker_replace &lt;path&gt; &lt;old&gt; &lt;new&gt;</code></th><th>literal replace, unique-match by default</th><th>agent</th><th><code>toolsd replace</code></th></tr>
+<tr><th><code>bunker_search &lt;pattern&gt; &lt;tree&gt;</code></th><th>bounded search, capped output</th><th>agent</th><th>ripgrep/<code>ExecAgent</code></th></tr>
+<tr><th><code>bunker_exec &lt;cmd&gt;</code></th><th>plain shell</th><th>agent</th><th><code>ExecAgent</code></th></tr>
+<tr><th><code>bunker_build</code> / <code>bunker_test</code></th><th>build or test; long runs detach</th><th>agent</th><th><code>ExecAgent</code> / <code>RunAgent</code></th></tr>
+<tr><th>`bunker_lease &lt;acquire\</th><th>release\</th><th>status&gt;`</th><th>edit lease on the remote tree</th><th>agent</th><th><code>toolsd lease</code></th></tr>
+<tr><th><code>bunker_bind &lt;server&gt; &lt;agent&gt; &lt;repo&gt;</code></th><th>bind this session to one target</th><th>session</th><th>CLI config</th></tr>
 </table>
-<p>Classes 1, 4 and 5 are the ones today&#x27;s evidence puts live. Class 3 is why <code>\1</code> exists. Class 6 is what makes 1–3 hard to debug after the fact.</p>
-<hr>
-<h2>The mechanism: Bane&#x27;s rule, taken as design authority</h2>
-<p>The user&#x27;s proposed mechanism was: <em>\1</em></p>
-<p>That is <strong>\1</strong>, and they are not both right. Both get a named commitment here.</p>
-<h3>Rule 1 — Statelessness (accepted, verbatim in spirit)</h3>
-<p>&gt; <strong>\1</strong></p>
-<p>Every translation layer call takes an explicit target <code>\1</code>; the session binds it once at start and every call repeats it. Concretely: <strong>\1</strong> A session that has no explicit binding <strong>\1</strong> — it never falls back to the global. Because the target is per-call data rather than process state, N sessions in N threads cannot interfere: there is nothing to interfere <em>\1</em>.</p>
-<p>This is what makes concurrency safe here — not locking, but the absence of shared mutable state on the routing path.</p>
-<h3>Rule 2 — Lease isolation: <strong>\1</strong></h3>
-<p>&gt; **Per-agent lease isolation would remove the protection, not add it. Leases must be isolated per <em>\1</em>, and shared by everyone touching that tree.**</p>
-<p>The measured mechanics decide it:</p>
+<p>All ten are thin wrappers. The point of the list is that <strong>the tools that already make local editing safe — strict patch, atomic multi-file apply, leases — are the same binaries, just executing where the tree is.</strong></p>
+<h2>Routing: always the right bunker</h2>
+<p>The correctness question is how N concurrent sessions never write to each other&#x27;s bunker or tree.</p>
+<p><strong>Design rule: routing is a value carried on every call, never an ambient global.</strong></p>
+<p>A session binds <code>(server, agent, repo)</code> once at <code>bunker_bind</code> and every translated call repeats it explicitly. A session with no binding <strong>refuses the operation and names the missing binding</strong>; it never falls back to a default.</p>
+<p>Why this rule and not a smarter default: today&#x27;s mechanism is a shared mutable pointer, and it is measurably fragile.</p>
 <ul>
-<li><code>\1</code> stores its registry at <strong>\1</strong> (<code>\1</code>, plus a <code>\1</code> sibling) — deliberately shared across <em>\1</em> of one repo, verified live in CHT-007: <em>\1</em></li>
-<li>The correct home for that registry is <strong>\1</strong>, because that is where the contended tree lives.</li>
-<li>Therefore:</li>
-<li>two sessions bound to <em>\1</em> → <strong>\1</strong> → second one gets a <strong>\1</strong> instead of a silent overwrite ✅ (that is the protection)</li>
-<li>two sessions bound to <em>\1</em> → <strong>\1</strong> → zero cross-talk ✅ (that is the isolation)</li>
+<li><code>~/.bunker/config.yaml</code> holds <strong><code>active_server</code></strong> — one value read by every session on this box. It currently reads <code>bunker-las-02</code>, and its sibling entry carries <code>connected_at: 2026-09-20T03:05:06Z</code> — a <strong>different session changed the target at 22:05 local today.</strong></li>
+<li><strong>22</strong> non-test sites in <code>internal/cli/</code> resolve the server implicitly from that global; only <strong>19 of 38</strong> cli files accept a <code>--server</code> flag at all.</li>
 </ul>
-<p>An isolated per-agent registry flips the first case into the worst outcome: <strong>\1</strong> — two writers who cannot see each other, which is strictly worse than today&#x27;s accidental collision because it is now invisible <em>\1</em> looks protected.</p>
-<p><strong>\1</strong> <em>\1</em></p>
-<h3>The placement corollary (what makes Rule 2 practical)</h3>
-<p>If the registry must live on the remote tree, then the lease verbs must be <strong>\1</strong> — one <code>\1</code> call running <code>\1</code> on the agent. No new protocol, no shared filesystem, no NFS assumption. The registry is already flock-guarded (<code>\1</code>), so remote concurrency is handled by the same machinery that already passed the 6-process probe.</p>
-<hr>
-<h2>The feedback loops</h2>
-<h3>Loop 1 — Binding (per call): resolve → verify → execute → record</h3>
-<ol>
-<li>Session holds <code>\1</code> bound at start (explicit flag or session env, never the global).</li>
-<li><strong>\1</strong> one cheap remote probe that the target exists, is reachable, and that <code>\1</code> is the tree the session expects (e.g. carries the expected commit or a marker file).</li>
-<li>Execute the translated operation.</li>
-<li>Record <code>\1</code>.</li>
-</ol>
+<p>So the first session to run <code>bunker use X</code> silently re-targets every other session. A wrong-bunker write produces no error, no signal — exit 0, and the first evidence is a diff nobody expected. Per-call binding removes the class rather than detecting it.</p>
+<h2>Three states, two dangerous edges</h2>
+<table>
+<tr><th>State</th><th>What it is</th><th>Today</th></tr>
+<tr><th><strong>DECLARED</strong></th><th>what the session believes it is editing</th><th>nothing — sessions declare no target</th></tr>
+<tr><th><strong>BOUND</strong></th><th>what the transport resolves at call time</th><th>the shared <code>active_server</code> global</th></tr>
+<tr><th><strong>ACTUAL</strong></th><th>which tree the bytes land in</th><th>the agent&#x27;s home dir on some host</th></tr>
+</table>
+<p>The dangerous edges are <strong>DECLARED→BOUND</strong> (silent substitution by the global) and <strong>BOUND→ACTUAL</strong> (the agent was re-created and the handle now points at a different, empty tree). Bind-time verification closes both: one cheap probe confirming the target exists, is reachable, and that <code>repo</code> is the tree expected.</p>
+<h2>Concurrency: how two sessions on one tree stay safe</h2>
+<p>Routing stops a session reaching the <em>wrong</em> bunker. It does not stop two sessions correctly bound to the <strong>same</strong> tree from overwriting each other — that needs locking, and the locking design has one non-obvious constraint.</p>
+<p><strong>Design rule: leases follow the TREE, and the tree is remote.</strong></p>
+<p><code>toolsd</code> stores its lease registry at <strong><code>&lt;git-common-dir&gt;/agent-leases.json</code></strong>, deliberately shared across linked worktrees of one repo. CHT-007 proved the semantics with a live probe: <em>6 concurrent CLI processes → exactly 1 grant / 5 refusals naming the holder; the worktree sees the same registry (commondir).</em></p>
+<p>Consequences, which are the whole design:</p>
 <ul>
-<li><strong>\1</strong> the call returns success <em>\1</em> the post-verify matches the expected pre-state. A call whose target fails verification <strong>\1</strong>, not as an error to retry.</li>
-<li><strong>\1</strong> 3 consecutive refusals for one binding → the binding is marked STALE and surfaced to the session as a decision (re-bind or abort), never auto-repaired.</li>
+<li>Two sessions bound to <strong>one remote tree</strong> → same registry → the second gets a <strong>refusal naming the holder</strong>, not a silent overwrite. That is the protection.</li>
+<li>Two sessions on <strong>different bunkers or repos</strong> → different registries → zero cross-talk. That is the isolation.</li>
+<li>The registry must therefore live <strong>inside the remote repo</strong>, queried by executing <code>toolsd</code> on the agent in one exec call. No shared mount, no NFS assumption — the existing flock handles concurrency.</li>
 </ul>
-<h3>Loop 2 — Collision (per edit): acquire → refuse-or-proceed → release → learn</h3>
-<ol>
-<li>Before a mutating edit, acquire a lease on the changed paths <strong>\1</strong>.</li>
-<li>A refusal names the live holder and its expiry (measured behaviour already: empty stdout + named conflict).</li>
-<li>Proceed only on grant; release on completion (TTL 45m default, <code>\1</code> liveness when the session is long-lived).</li>
-</ol>
-<ul>
-<li><strong>\1</strong> the edit commits <em>\1</em> the lease is released; a lease whose TTL expires without a release closes as <code>\1</code> and is reported, because abandonment is the signal that a session died mid-edit.</li>
-<li><strong>\1</strong> Loop 4&#x27;s false-refusal metric; and the &quot;two sessions on one tree&quot; event is the trigger to prefer <code>\1</code> worktrees.</li>
-</ul>
-<h3>Loop 3 — Reconcile (per session end): declared vs actual</h3>
-<ol>
-<li>At session end, compare the declared binding against the actual recorded writes.</li>
-<li>Any write that landed outside the declared tree → <strong>\1</strong>, reported with the audit rows that prove it.</li>
-</ol>
-<ul>
-<li><strong>\1</strong> zero out-of-binding writes for the session <em>\1</em> the declared tree&#x27;s HEAD provenance check.</li>
-<li><strong>\1</strong> the accuracy baseline (where the router actually sent traffic).</li>
-</ul>
-<h3>Loop 4 — Accuracy (per week, compounding): measure → loosen or tighten</h3>
-<ol>
-<li>From the recorded calls: refusal rate, false-refusal rate (a refusal where no live conflict existed), and unattributed-call count (must be <strong>\1</strong>).</li>
-<li>A class with a precision floor that keeps refusing harmless operations gets <strong>\1</strong> (warn instead of refuse) — one class at a time, with the measurement that licensed it.</li>
-<li>Recurrence of a real collision class → <strong>\1</strong> (a rule, not a warning).</li>
-</ol>
-<ul>
-<li><strong>\1</strong> every class is either refusing, warning, or retired; no class sits undefined.</li>
-<li><strong>\1</strong> each retired class shrinks the noise floor, which is what keeps operators from disabling the check.</li>
-</ul>
-<h3>Loop 5 — Attribution (per call, for forensics)</h3>
-<p>Session id flows into the existing audit chain (GAP-047..050 already hash-chain every RPC; the gap is that the chain records <em>\1</em> actor, not <em>\1</em>).</p>
-<ul>
-<li><strong>\1</strong> an incident can be reconstructed as &quot;session S, on bunker B, touched tree T at time X&quot; without guessing.</li>
-</ul>
-<hr>
-<h2>Lifecycle state machine</h2>
-<pre><code>
-unbound ──bind(server,agent,repo)──&gt; BOUND
-BOUND ──verify(pre) ok──&gt; VERIFIED
-VERIFIED ──lease grant──&gt; EDITING ──commit+release──&gt; CLOSED(ok)
-VERIFIED ──lease refuse──&gt; REFUSED(named holder) ──holder releases──&gt; retry | abort
-VERIFIED ──verify fail──&gt; STALE ──(3x)──&gt; ESCALATED(session decision)
-EDITING ──ttl expiry, no release──&gt; ABANDONED ──&gt; reported
-any ──session end──&gt; RECONCILE(declared vs actual) ──&gt; CLOSED | FINDING
-</code></pre>
-<p>Every transition is an <strong>\1</strong>; nothing is mutated in place, so the trail survives a crash mid-loop.</p>
-<hr>
+<p>The failure to avoid, stated plainly: a registry kept <strong>locally</strong>, or <strong>per-agent</strong>, while two sessions edit one shared tree. That produces <em>separate registries over one tree</em> — the two writers cannot see each other, get no refusal, and the collision is now invisible while appearing protected. Lease state is isolated <strong>by tree</strong>, never by agent.</p>
+<p>Per-session isolation does apply to one thing — credentials and config. <code>BUNKER_HOME</code> already relocates the CLI config and agent keys (<code>internal/cli/paths.go</code>), so <code>BUNKER_HOME=$HERMES_SESSION_DIR/bunker</code> gives each session its own server list and keys. <code>HERMES_SESSION_ID</code> exists to key it.</p>
+<h2>What already exists vs what is missing</h2>
+<table>
+<tr><th>Already shipped</th><th>Missing</th></tr>
+<tr><th><code>ExecAgent</code> / <code>RunAgent</code> with script upload</th><th>explicit-target enforcement (GAP-093)</th></tr>
+<tr><th>Per-agent Linux users, cgroups, resource limits</th><th>exec stdin + binary-safe bounded responses (GAP-094)</th></tr>
+<tr><th>Durable agent registry surviving restarts (GAP-070)</th><th>session id in the audit chain (GAP-095)</th></tr>
+<tr><th>Lifecycle RPCs incl. <code>agent_stopped</code> (GAP-071)</th><th><code>toolsd</code> installed on agents by design (GAP-096)</th></tr>
+<tr><th>Tamper-evident audit chain (GAP-047..050)</th><th>the Hermes-side shim + per-session profile (GAP-097)</th></tr>
+<tr><th><code>BUNKER_HOME</code> per-session profiles (DF-BUNKER-16)</th><th>lease wrapper + accuracy loops (CHT-052, GAP-098)</th></tr>
+<tr><th><code>toolsd</code> primitives incl. lease registry</th><th>remote-invocation contract for leases (CHT-052)</th></tr>
+</table>
+<p>Six of the seven gaps are small. The shim is the only large piece, and it cannot start until binding and bodies land.</p>
 <h2>Scope</h2>
-<h3>In scope</h3>
-<table>
-<tr><th>Component</th><th>What it does</th><th>Repo</th></tr>
-<tr><th><strong>\1</strong></th><th>explicit target required on mutating paths; no ambient fallback</th><th>bunker (CLI)</th></tr>
-<tr><th><strong>\1</strong></th><th>file bodies in, binary-safe bodies out, bounded responses</th><th>bunker (RPC)</th></tr>
-<tr><th><strong>\1</strong></th><th>attribution in the audit chain</th><th>bunker (daemon)</th></tr>
-<tr><th><strong>\1</strong></th><th>the edit primitives present remote</th><th>bunker (image-spec extras)</th></tr>
-<tr><th><strong>\1</strong></th><th>auto acquire/release around remote edits</th><th>coding-hermes-tools</th></tr>
-<tr><th><strong>\1</strong></th><th><code>\1</code> + per-session profile</th><th>hermes-agent</th></tr>
-</table>
-<h3>Per-source capability table (what each layer can and cannot answer)</h3>
-<table>
-<tr><th>Layer</th><th>Can answer</th><th>Cannot answer</th><th>Visible state when absent</th></tr>
-<tr><th>Remote <code>\1</code></th><th>patch/apply/replace integrity, diff3, symbol queries, lease state</th><th>anything about <em>\1</em> Hermes session is calling</th><th>n/a — always present once installed</th></tr>
-<tr><th>Bunker RPC</th><th>exec results, agent lifecycle, resource/IPC limits, audit chain</th><th>the caller&#x27;s intent or declared repo</th><th><code>\1</code> / <code>\1</code> (explicit codes)</th></tr>
-<tr><th>Hermes shim</th><th>routing, binding, translation, result shaping</th><th>remote auth failures beyond the daemon&#x27;s own codes</th><th>must render <strong>\1</strong>, never a silent default</th></tr>
-<tr><th>Audit chain</th><th>what ran, when, exit code, hash-chained order</th><th><em>\1</em>, and (until Loop 5) <em>\1</em></th><th>absent session id renders as <code>\1</code>, never <code>\1</code></th></tr>
-</table>
-<h3>Out of scope (with reasons)</h3>
+<p><strong>In scope:</strong> explicit-target binding; exec stdin/base64/output cap; session-id attribution; <code>toolsd</code> on agents; lease wrapper for remote trees; the Hermes tool surface; reconcile + accuracy loops.</p>
+<p><strong>Out of scope, with reasons:</strong></p>
 <ul>
-<li><strong>\1</strong> <code>\1</code> exists for humans; routing tool calls through a FUSE mount reintroduces a shared mutable view and local compute for every metadata op — the opposite of the goal.</li>
-<li><strong>\1</strong> Everything reduces to <code>\1</code> + <code>\1</code>; adding RPCs for file verbs would fork the surface for no gain.</li>
-<li><strong>\1</strong> It is a translation layer over existing tool semantics.</li>
-<li><strong>\1</strong> Different bunkers are different trees; there is nothing to lock across them, and pretending otherwise invents a coordination problem.</li>
-<li><strong>\1</strong> Re-binding is a session decision (Loop 1&#x27;s escalation), because silently adopting a fresh empty tree is failure class 2.</li>
+<li><strong>A remote filesystem mount (<code>sshfs</code>).</strong> <code>bunker mount</code> exists for humans; routing <em>tool calls</em> through a FUSE mount reintroduces a shared mutable view and pays local CPU for every metadata op — the opposite of offloading.</li>
+<li><strong>A new RPC family for file verbs.</strong> Everything reduces to exec/run; new RPCs fork the surface for no gain.</li>
+<li><strong>Cross-bunker distributed locking.</strong> Different bunkers are different trees; there is nothing to lock across them.</li>
+<li><strong>Auto-recreating a lost agent.</strong> Re-binding is a session decision — silently adopting a fresh empty tree is itself a failure mode.</li>
 </ul>
-<hr>
-<h2>User stories</h2>
-<ul>
-<li><strong>\1</strong>, I add a feature from chat and the build/test compute happens on a bunker, while my session history stays in one place here — I get the same edit loop with the CPU bill moved.</li>
-<li><strong>\1</strong>, I edit a repo on a remote bunker and my file operations look identical to local ones, so my briefs and verification recipes don&#x27;t fork per target.</li>
-<li><strong>\1</strong>, I try to edit a tree another session holds and I get a <strong>\1</strong> — I do not get a silently overwritten file.</li>
-<li><strong>\1</strong>, a session dies mid-edit; the abandoned lease expires and is reported, and the next session can proceed without me hand-clearing anything.</li>
-<li><strong>\1</strong>, I ask &quot;which session wrote this file&quot; and the answer is a row, not a guess.</li>
-<li><strong>\1</strong>, I read this doc and can execute the replayable proofs below without tribal knowledge.</li>
-</ul>
-<hr>
-<h2>Success criteria — replayable proofs, not adjectives</h2>
+<h2>Success criteria (replayable proofs)</h2>
 <ol>
-<li><strong>\1</strong> Two sessions, different servers, neither passing an explicit target, one of them with <code>\1</code> set to the other&#x27;s bunker. <em>\1</em> both mutating calls refuse with a named missing binding; <strong>\1</strong> bytes land in either tree. (Today this class is live: config shows the global was rewritten by another session at 22:05 local.)</li>
-<li><strong>\1</strong> Six concurrent remote edit calls on one tree. <em>\1</em> exactly <strong>\1</strong>, one registry record, registry inside the remote <code>\1</code>. (Local equivalent already passes; the proof is the same result <em>\1</em>.)</li>
-<li><strong>\1</strong> Two sessions on <strong>\1</strong> bunkers edit concurrently. <em>\1</em> zero refusals, zero cross-talk, two independent registries — demonstrating isolation is by tree.</li>
-<li><strong>\1</strong> Destroy and re-create the bound agent under the same name; issue an edit. <em>\1</em> the session reports STALE and refuses; it does not write into the new empty tree.</li>
-<li><strong>\1</strong> Read a file containing NUL bytes and non-UTF8 sequences through the shim. <em>\1</em> byte-identical round-trip (sha256 match), no truncation, no corruption.</li>
-<li><strong>\1</strong> Search a tree producing &gt;50MB of output. <em>\1</em> the response is capped with an explicit truncation notice naming the cap and how to narrow the search — never a silent partial result.</li>
-<li><strong>\1</strong> Perform one edit from each of two sessions. <em>\1</em> the daemon audit chain shows two distinct session ids on two rows.</li>
-<li><strong>\1</strong> For every criterion above, the shim may not report success without a post-verify read-back; a call whose verify cannot run closes as <code>\1</code>, and <code>\1</code> is never rendered as success.</li>
-<li><strong>\1</strong> Measure the per-call overhead of the verify step on the live path and publish the number in the row rather than assuming it is negligible; if it exceeds the local-equivalent latency by more than a stated factor, Loop 4 demotes the check to per-session instead of per-call.</li>
+<li><strong>Wrong-bunker replay.</strong> Two sessions, different servers, neither passing an explicit target, one with <code>active_server</code> pointing at the other&#x27;s bunker. → Both mutating calls refuse with a named missing binding; <strong>zero bytes land in either tree</strong>.</li>
+<li><strong>Collision replay (CHT-007 over the wire).</strong> Six concurrent remote edit calls on one tree. → Exactly <strong>1 grant / 5 refusals naming the holder</strong>, one registry record, registry inside the <strong>remote</strong> <code>.git</code>.</li>
+<li><strong>Inverse proof.</strong> Two sessions on <strong>different</strong> bunkers edit concurrently. → Zero refusals, zero cross-talk, two independent registries.</li>
+<li><strong>Stale-binding proof.</strong> Destroy and re-create the bound agent under the same name, then edit. → The session reports STALE and refuses; it does not write into the new empty tree.</li>
+<li><strong>Binary-safety proof.</strong> Read a file with NUL bytes and non-UTF8 sequences. → sha256-identical round trip, no truncation.</li>
+<li><strong>Cap proof.</strong> Search producing &gt;50MB. → Capped response with an explicit truncation notice naming the cap and how to narrow it, never a silent partial.</li>
+<li><strong>Attribution proof.</strong> One edit from each of two sessions. → Two distinct session ids on two audit rows; <code>bunker audit verify</code> still passes.</li>
+<li><strong>Anti-lying proof.</strong> No verb reports success without a post-verify read-back; a call whose verify cannot run closes as <code>unverified</code>, and <code>unverified</code> is never rendered as success.</li>
+<li><strong>Offload proof.</strong> A real edit-build-test cycle on a remote tree, with the local box&#x27;s CPU measured during it. → The work demonstrably ran remotely; the local cost is the loop only.</li>
+<li><strong>Overhead proof.</strong> Measure per-call verify latency and publish the number. If it exceeds local-equivalent latency beyond a stated factor, demote verification from per-call to per-session rather than assuming it is free.</li>
 </ol>
-<hr>
-<h2>Risks &amp; failure modes</h2>
+<h2>Risks</h2>
 <table>
-<tr><th>Risk</th><th>Mechanism</th><th>Mitigation (design rule, not intention)</th></tr>
-<tr><th>The shim recreates the exact bug it replaces</th><th>a &quot;default server&quot; creeps back for convenience</th><th>mutating paths <strong>\1</strong> <code>\1</code>; a test asserts the symbol is unreachable from the mutating code path</th></tr>
-<tr><th>Verify step adds latency to every call</th><th>remote round-trip per operation</th><th>verification is <em>\1</em> cheap probe per binding, re-used until the tree&#x27;s state marker changes; Loop 4 measures it (criterion 9)</th></tr>
-<tr><th>Leases become nagging and get disabled</th><th>false refusals on stale/abandoned leases</th><th>TTL + <code>\1</code> liveness already exist; Loop 4&#x27;s precision floor demotes noisy classes one at a time</th></tr>
-<tr><th>Two sessions legitimately share one tree</th><th>long-running pair work</th><th>that is what <code>\1</code> worktrees are for; the refusal message must suggest it</th></tr>
-<tr><th>Remote <code>\1</code> version drifts from local</th><th>two binaries, two behaviours</th><th>install version is pinned and reported in the binding verify; a mismatch is a named warning</th></tr>
-<tr><th>Session ids leak into shared artifacts</th><th>attribution added to audit rows</th><th>session id is an opaque identifier only; never a token, never a filesystem path</th></tr>
-<tr><th>The whole feature is built before it is proven useful</th><th>full shim written up front</th><th>the zero-code proof ships first: install <code>\1</code> on one agent and hand-drive the tool table before any shim code lands</th></tr>
+<tr><th>Risk</th><th>Mitigation (design rule)</th></tr>
+<tr><th>A &quot;default server&quot; creeps back for convenience</th><th>mutating paths must not read <code>active_server</code>; a test asserts the symbol is unreachable from that call graph</th></tr>
+<tr><th>Verify latency taxes every call</th><th>one cheap probe per binding, re-used until the tree&#x27;s state marker changes; criterion 10 measures it</th></tr>
+<tr><th>Leases nag and get disabled</th><th>TTL + <code>--pid</code> liveness exist; noisy classes are demoted one at a time with the measurement that licensed it</th></tr>
+<tr><th>Two sessions legitimately share one tree</th><th>that is what <code>toolsd session</code> worktrees are for; the refusal message must suggest it</th></tr>
+<tr><th>Remote <code>toolsd</code> version drifts from local</th><th>version pinned and reported at bind time; mismatch is a named warning, not a silent behaviour split</th></tr>
+<tr><th>Built before it is proven useful</th><th>zero-code proof ships first: <code>toolsd</code> on one agent, the tool table hand-driven, results recorded</th></tr>
 </table>
-<hr>
-<h2>Cost &amp; shape</h2>
+<h2>Cost &amp; sequencing</h2>
 <table>
-<tr><th>Slice</th><th>Effort</th><th>What ships</th><th>Depends on</th></tr>
-<tr><th><strong>\1</strong></th><th><strong>\1</strong></th><th><code>\1</code> installed on one agent; the tool table hand-driven against a real remote tree; results recorded</th><th>nothing</th></tr>
-<tr><th><strong>\1</strong></th><th><strong>\1</strong></th><th>explicit-target requirement on mutating paths + the refusal message</th><th>S1</th></tr>
-<tr><th><strong>\1</strong></th><th><strong>\1</strong></th><th>file bodies in, binary-safe bounded bodies out</th><th>S1</th></tr>
-<tr><th><strong>\1</strong></th><th><strong>\1</strong></th><th>session id through the audit chain</th><th>S1</th></tr>
-<tr><th><strong>\1</strong></th><th><strong>\1</strong></th><th>auto acquire/release around remote edits</th><th>S1</th></tr>
-<tr><th><strong>\1</strong></th><th><strong>\1</strong></th><th>the <code>\1</code> tool surface + per-session profile</th><th>S2, S3, S4, S5</th></tr>
+<tr><th>Slice</th><th>Effort</th><th>Ships</th><th>Depends</th></tr>
+<tr><th><strong>S1</strong> zero-code proof — toolsd on one agent, hand-drive the table</th><th><strong>S</strong></th><th>the contract, demonstrated</th><th>—</th></tr>
+<tr><th><strong>S2</strong> fail-closed binding</th><th><strong>M</strong></th><th>routing correctness (keystone)</th><th>S1</th></tr>
+<tr><th><strong>S3</strong> exec stdin / base64 / cap</th><th><strong>M</strong></th><th>file bodies + binaries</th><th>S1</th></tr>
+<tr><th><strong>S4</strong> session-id attribution</th><th><strong>S</strong></th><th>attributed audits</th><th>S1</th></tr>
+<tr><th><strong>S5</strong> <code>toolsd</code> on agents via image-spec</th><th><strong>M</strong></th><th>reproducibility</th><th>S1</th></tr>
+<tr><th><strong>S6</strong> Hermes shim + per-session profile</th><th><strong>L</strong></th><th>the surface above</th><th>S2, S3, CHT-052</th></tr>
+<tr><th><strong>S7</strong> reconcile + accuracy loops</th><th><strong>M</strong></th><th>keeps refusals honest</th><th>S1</th></tr>
+<tr><th><strong>CHT-052</strong> lease wrapper (remote trees)</th><th><strong>M</strong></th><th>leases not skipped</th><th>S1</th></tr>
 </table>
-<p><strong>\1</strong> S2 is the correctness keystone — nothing else should be relied on for safety until it lands. S6 must not start before S2, S3 and S5, or the shim ships with the wrong-bunker hole open.</p>
-<p><strong>\1</strong> PRD lives in <code>\1</code> (has a remote: <code>\1</code>). S2/S3/S4 rows go on the bunker board. S5 goes to <code>\1</code>, which <strong>\1</strong> (CHT-013 owns that decision) — so S5&#x27;s work exists only on this box until that is resolved; flagged here rather than discovered later. S6 belongs to the Hermes agent project.</p>
-<h2>Board rows filed with this PRD</h2>
-<table>
-<tr><th>Row</th><th>Repo</th><th>Depends on</th></tr>
-<tr><th>GAP-092</th><th>bunker</th><th>— (zero-code proof; blocks all below)</th></tr>
-<tr><th>GAP-093</th><th>bunker</th><th>GAP-092</th></tr>
-<tr><th>GAP-094</th><th>bunker</th><th>GAP-092</th></tr>
-<tr><th>GAP-095</th><th>bunker</th><th>GAP-092</th></tr>
-<tr><th>GAP-096</th><th>bunker</th><th>GAP-092</th></tr>
-<tr><th>GAP-097</th><th>bunker</th><th>GAP-092</th></tr>
-<tr><th>CHT-052</th><th>coding-hermes-tools</th><th>GAP-092</th></tr>
-<tr><th>GAP-098</th><th>bunker</th><th>GAP-093</th></tr>
-</table>
-<hr>
+<p><strong>S2 is the keystone</strong> — nothing else should be relied on for safety until it lands. S6 must not start before S2, S3 and CHT-052, or the shim ships with the wrong-bunker hole open.</p>
+<p><strong>Repo split:</strong> PRD and S1–S4, S7 live in <code>bunker</code> (remote: <code>deployBunker/bunker</code>). CHT-052 lives in <code>coding-hermes-tools</code> (remote: <code>totalwindupflightsystems/coding-hermes-tools</code>). S6 belongs to the Hermes agent project.</p>
 <h2>What it is NOT</h2>
 <ul>
-<li><strong>\1</strong> No mount, no FUSE, no shared view — calls are discrete and explicitly targeted.</li>
-<li><strong>\1</strong> for file verbs; it is <code>\1</code>/<code>\1</code> plus convention.</li>
-<li><strong>\1</strong> Leases belong to trees; per-agent isolation is the anti-pattern this doc exists to prevent.</li>
-<li><strong>\1</strong> It moves <em>\1</em>, not <em>\1</em> or <em>\1</em>.</li>
-<li><strong>\1</strong> <code>\1</code> primitives are the same binaries doing the same job, just executing where the tree is.</li>
-<li><strong>\1</strong> Per-session profiles <em>\1</em> credentials; they never store, rotate, or mint them.</li>
+<li>Not a remote filesystem, mount or FUSE layer — calls are discrete and explicitly targeted.</li>
+<li>Not a new protocol — it is <code>ExecAgent</code>/<code>RunAgent</code> plus convention.</li>
+<li>Not a per-agent lock manager — leases belong to trees.</li>
+<li>Not a scheduler or dispatcher — it moves <em>where</em> work executes, not <em>when</em> or <em>who</em>.</li>
+<li>Not a replacement for the edit tools — the same binaries, running where the tree is.</li>
+<li>Not a credentials manager — per-session profiles partition credentials; they never store, rotate or mint them.</li>
 </ul>
-<hr>
-<h2>The critique, taken seriously</h2>
-<p><strong>\1</strong> <em>\1</em></p>
-<p><strong>\1</strong></p>
+<h2>Open questions</h2>
 <ol>
-<li><em>\1</em> → killed by <strong>\1</strong> (explicit per-call target, no ambient global) <strong>\1</strong>. Statelessness alone does not stop two sessions targeting the same tree; the refusal does.</li>
-<li><em>\1</em> → killed by keeping the registry <strong>\1</strong>, where <code>\1</code>&#x27;s existing flock + atomic replace already made 6 concurrent writers produce exactly one winner.</li>
-<li><em>\1</em> → <strong>\1</strong> It converts a visible collision into an invisible one (shared tree, separate registries). Isolation is per-tree by law.</li>
-<li><em>\1</em> → killed by the per-session profile (<code>\1</code> already relocates config + keys, measured in <code>\1</code>), which is the part of the objection that is fully correct and is adopted as-is.</li>
+<li><strong>Per-call verify latency</strong> — unmeasured until S1&#x27;s proof runs; criterion 10 decides whether verification stays per-call.</li>
+<li><strong>Remote lease TTL under a hard agent kill</strong> — treated as <code>abandoned</code> and reported, but not claimed handled until probed on a real host.</li>
+<li><strong>Which targets get a standing binding</strong> — whether the fleet&#x27;s own foremen bind by project, or each tick binds explicitly.</li>
 </ol>
-<p><strong>\1</strong> the per-call latency of the binding verify step (criterion 9 measures it before relying on it), and the behaviour of remote lease TTL expiry under a hard agent kill (Loop 2 treats it as <code>\1</code> and reports; it is not claimed as handled until probed on a real host).</p>
 </body></html>
