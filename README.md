@@ -593,7 +593,9 @@ bunker restart abc12345
 > reset it to 6h — a shorter expiry would destroy the agent on TTL expiry).
 
 > **`bunker destroy` removes your local key.** Spawn saves the agent's private
-> key to `~/.bunker/keys/<agent-id>`; destroy deletes it after a successful
+> key to `~/.bunker/keys/<agent-id>` (fetched from the daemon via the
+> master-gated `GetAgentKey` RPC — the spawn response itself no longer
+> carries key material, GAP-128); destroy deletes it after a successful
 > teardown (including the `not_found` path) unless `--keep-key` is passed. If
 > you reuse keys across spawn/destroy cycles, pass `--keep-key`.
 

@@ -55,7 +55,7 @@ from that sentence, not from any single bug.
 | **Daemon control plane** | Host, root | Can spawn/destroy/exec agents; root-equivalent over the fleet |
 | **Master credential** (`auth.token` / `auth.jwt_secret`) | `/etc/bunkerd/config.yaml` | Total control-plane access; no rotation, no revocation, no per-user attribution |
 | **Agent home directories** | `/home/bunker-<id>` | Source code, artifacts, images, credentials the workload brought |
-| **Per-agent SSH private keys** | Host + agent home; also returned by `SpawnAgentResponse.ssh_private_key` | Docker-host access to that agent |
+| **Per-agent SSH private keys** | Host + agent home; over the wire only via the opt-in `return_ssh_private_key` spawn flag or the master-gated `GetAgentKey` RPC (GAP-128) | Docker-host access to that agent |
 | **Audit log** | Host (`internal/audit/`) | The only forensic record; its integrity *is* incident response |
 | **Peer agent data** (shared scratch `/srv/bunker-share`) | Host, group `bunker-agents`, mode `2770` | Cross-tenant read/write |
 | **The host** | — | Anything that escapes the agent user reaches other agents |

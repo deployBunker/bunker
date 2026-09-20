@@ -27,6 +27,10 @@ service Bunkerd {
   rpc RestartAgent(RestartAgentRequest) returns (RestartAgentResponse);
   rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
   rpc GetAgent(GetAgentRequest) returns (GetAgentResponse);
+  // GAP-128: explicit retrieval of an agent's SSH private key (spawn no
+  // longer returns it by default). Master-credential gated like the other
+  // Bunkerd RPCs.
+  rpc GetAgentKey(GetAgentKeyRequest) returns (GetAgentKeyResponse);
 
   // Agent actions
   rpc AgentMetrics(AgentMetricsRequest) returns (AgentMetricsResponse);
@@ -166,6 +170,7 @@ message SpawnAgentRequest {
   bytes ssh_public_key = 5;      // Optional: push existing key
   map<string, string> labels = 6;
   ImageSpec image_spec = 7;      // Optional: secure package-add customization (GAP-064)
+  bool return_ssh_private_key = 8; // GAP-128: opt-in; response carries the private key ONLY when true
 }
 
 // ── Image specification (GAP-064) ─────────────────────────────
@@ -196,12 +201,31 @@ message SpawnAgentResponse {
   string public_url = 5;         // https://agent-N.trycloudflare.com
   uint32 port_range_start = 6;
   uint32 port_range_end = 7;
-  string ssh_private_key = 8;    // Generated key (if not pushed)
+  // Deprecated: only populated when return_ssh_private_key=true (GAP-128).
+  // The default response carries NO key material; callers fetch it explicitly
+  // via the master-credential-gated GetAgentKey RPC.
+  string ssh_private_key = 8 [deprecated = true];
   ResourceLimits limits = 9;
   string expires_at = 10;
   string tailnet_ip = 11;
   string api_key = 12;             // Agent-scoped opaque API sub-key (if auth enabled)
   string image = 13;               // Customized image ref when image_spec was supplied (GAP-064)
+}
+
+// ── Agent SSH key retrieval (GAP-128) ─────────────────────────
+//
+// The spawn response no longer carries private key material by default.
+// Callers that need a local copy of the agent's SSH key fetch it explicitly
+// with this RPC. It sits on the Bunkerd service, so it is authorized exactly
+// like the other admin-capable RPCs (master token / master JWT only — agent
+// scoped sub-keys are rejected by the master-only interceptor).
+message GetAgentKeyRequest {
+  string agent_id = 1;
+}
+
+message GetAgentKeyResponse {
+  string agent_id = 1;
+  string ssh_private_key = 2;      // PEM private key (server-side persisted copy)
 }
 
 message DestroyAgentRequest {

@@ -6,6 +6,20 @@ Commits after the `v0.1.4` release tag. Everything below is in the tree but not
 in the newest release tag, so it is what the README marks as *requires a build
 from HEAD*.
 
+### Changed
+
+- **Security (GAP-128): `bunker spawn` no longer ships the agent's SSH private
+  key inside the spawn RPC response.** The wire default is key-free: a spawn
+  response carries `ssh_private_key` only when the caller explicitly sets the
+  new `return_ssh_private_key` request flag, and the field itself is marked
+  deprecated in the proto. `bunker spawn` (the CLI) is unaffected from the
+  operator's point of view — it now fetches the key through the new
+  master-credential-gated `GetAgentKey` RPC after spawn and still writes it to
+  `~/.bunker/keys/<agent-id>` (mode 0600). `bunker destroy --keep-key` and the
+  key-reuse workflow are unchanged. Raw RPC callers: set the flag to keep the
+  old behavior, or call `GetAgentKey` (authorized exactly like exec/destroy —
+  master token / master JWT; agent-scoped sub-keys are rejected).
+
 ### Added
 
 - Agent lifecycle commands: `bunker stop <agent-id>` pauses an agent without

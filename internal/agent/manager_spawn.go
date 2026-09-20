@@ -717,7 +717,6 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		DockerHostSsh:    fmt.Sprintf("DOCKER_HOST=ssh://%s@%s", username, host),
 		DockerHostTunnel: dockerHostTunnel,
 		SshfsMount:       sshfsMount,
-		SshPrivateKey:    string(privKeyBytes),
 		Limits:           effectiveLimits,
 		PortRangeStart:   portStart,
 		PortRangeEnd:     portEnd,
@@ -725,6 +724,13 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		PublicUrl:        publicURL,
 		TailnetIp:        tailnetIP,
 		Image:            imageRef,
+	}
+	// GAP-128: the wire response carries private key material ONLY when the
+	// caller explicitly opted in via return_ssh_private_key. The key itself
+	// stays persisted server-side (SshPrivateKeyPath above), so opt-in
+	// callers and the GetAgentKey RPC both read the same secret.
+	if req.GetReturnSshPrivateKey() {
+		resp.SshPrivateKey = string(privKeyBytes)
 	}
 
 	m.logger.Info("agent spawned successfully", "agent_id", agentID)

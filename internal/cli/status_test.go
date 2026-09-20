@@ -23,6 +23,10 @@ type statusMockServer struct {
 	metricsErr error
 }
 
+// GetAgentKey is unimplemented in this mock (GAP-128 handler surface).
+func (m *statusMockServer) GetAgentKey(context.Context, *connect.Request[v1.GetAgentKeyRequest]) (*connect.Response[v1.GetAgentKeyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
 func (m *statusMockServer) ServerInfo(
 	ctx context.Context,
 	req *connect.Request[v1.ServerInfoRequest],

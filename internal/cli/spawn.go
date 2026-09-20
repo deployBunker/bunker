@@ -187,6 +187,23 @@ Examples:
 			// 5. Print connection bundle
 			r := resp.Msg
 
+			// GAP-128: the spawn response carries NO private key by default
+			// (key material must be explicitly requested on the wire). The CLI
+			// fetches it through the master-credential-gated GetAgentKey RPC
+			// instead, so operators keep a working local key copy without the
+			// spawn body ever carrying the secret. Failure is non-fatal: the
+			// agent exists and is usable, so we warn and continue.
+			if r.SshPrivateKey == "" {
+				keyResp, err := client.GetAgentKey(ctx, connect.NewRequest(&v1.GetAgentKeyRequest{
+					AgentId: r.AgentId,
+				}))
+				if err != nil {
+					fmt.Printf("  (warn: could not fetch SSH key: %v)\n", err)
+				} else {
+					r.SshPrivateKey = keyResp.Msg.GetSshPrivateKey()
+				}
+			}
+
 			// Resolve the SSH host shown in the bundle: the client reached
 			// bunkerd via the server URL, so its hostname is the address a
 			// remote client can actually reach; fall back to the hostname the

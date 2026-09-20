@@ -39,6 +39,10 @@ type mockBunkerdServer struct {
 	auditRecords []*v1.AuditRecord
 }
 
+// GetAgentKey fakes the GAP-128 key-retrieval RPC (unimplemented default).
+func (m *mockBunkerdServer) GetAgentKey(context.Context, *connect.Request[v1.GetAgentKeyRequest]) (*connect.Response[v1.GetAgentKeyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
 func (m *mockBunkerdServer) ServerInfo(ctx context.Context, req *connect.Request[v1.ServerInfoRequest]) (*connect.Response[v1.ServerInfoResponse], error) {
 	if m.err != nil {
 		return nil, m.err

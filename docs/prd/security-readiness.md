@@ -105,7 +105,7 @@ Severity: **BLOCKER** = no team approval without it · **HIGH** = security team 
 | SEC-03 | BLOCKER | **No transport enforcement.** Daemon binds non-loopback plaintext with no refusal and no warning; auth has a gate (`config.go:658`), TLS has none. | `server.go` bind path; only `RegistryError()`/auth gate exist | 5/6 | CONFIRMED |
 | SEC-22 | BLOCKER ✅ **FIXED** | **subuid/subgid ranges OVERLAP between every pair of agents — the user-namespace separation the product is built on is not enforced.** `rootless.go:576` wrote `<name>:<start>:65536` with `start` = the agent's OWN uid ⇒ agent 1001 got `[1001..66536]`, agent 1002 got `[1002..66537]` — a 65,535-id overlap. Also no cross-agent overlap check and a read-then-append TOCTOU. **Caught only by seat S1.** | `rootless.go:544-576` | 1/6 | ✅ CLOSED — `subid_alloc.go` + host-wide flock + startup gate + `bunker subid-migrate`; live-proven (commits 07133cf, fbfb87a, ad40c54) |
 | SEC-04 | BLOCKER | **No per-operator identity / RBAC.** Exactly two roles: one shared static master token, and agent-scoped keys. No human attribution anywhere. | `config.go:97` `Token`; `auth/jwt.go:22-26` | 5/5 | CONFIRMED |
-| SEC-05 | BLOCKER | **Spawn returns agent SSH key material over the wire.** | `proto/bunker/v1/bunker.proto:199` `ssh_private_key = 8` | 3/5 | CONFIRMED |
+| SEC-05 | BLOCKER ✅ **FIXED** | **Spawn returns agent SSH key material over the wire.** | `proto/bunker/v1/bunker.proto:199` `ssh_private_key = 8` | 3/5 | ✅ CLOSED — GAP-128: key-free wire default via `SpawnAgentRequest.return_ssh_private_key` (opt-in only), field flagged `[deprecated = true]`, explicit `GetAgentKey` retrieval RPC (master credentials only, agent-scoped keys rejected); CLI fetches via `GetAgentKey` and keeps writing `~/.bunker/keys/<id>` |
 | SEC-06 | BLOCKER | **No egress control.** No default-deny, no allowlist. One compromised dependency is an exfiltration path. | grep `egress\|outbound` over `internal/`+`cmd/` → none | 5/5 | CONFIRMED |
 
 ### 4.2 HIGH
@@ -155,6 +155,7 @@ Ship self-signed cert generation and CLI trust-on-first-use pinning so the secur
 Either remove `ssh_private_key` from the response, or make it opt-in behind an explicit flag, and never over a non-TLS transport.
 *Why:* a private key in an RPC body is a credential crossing a boundary; today the boundary is plaintext.
 *PASS:* proto field deprecated/removed (or flag-gated); a test asserts the key is absent from the default response; docs updated.
+*STATUS (GAP-128):* ✅ shipped — flag-gated (`return_ssh_private_key`, default false) + `[deprecated = true]` on the response field; absence pinned by `TestSpawn_DefaultResponseHasNoPrivateKey` (internal/agent) and `TestSpawnAgentFlag_Contract` (internal/server); docs updated (specs/api.md, specs/agent-lifecycle.md, README, CHANGELOG, threat model).
 
 ### 5.2 Identity and authorization (SEC-04, SEC-07, SEC-10)
 **REQ-I1 — Per-operator identity.** Distinct credentials per human/CI job (JWT `sub` or client cert), surfaced as `caller` in audit records.
