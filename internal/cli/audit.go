@@ -283,10 +283,20 @@ and show the redacted command in the Summary column; isolate them with
 				return err
 			}
 			if len(records) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "No audit records match.")
+				// DF-BUNKER-44: even this short line must not swallow a write
+				// error — with an already-closed reader (`audit list | true`)
+				// the write fails immediately with EPIPE regardless of size.
+				if _, err := fmt.Fprintln(cmd.OutOrStdout(), "No audit records match."); err != nil {
+					return ExitOnBrokenPipe(err)
+				}
 				return nil
 			}
-			printAuditTable(cmd.OutOrStdout(), records)
+			// DF-BUNKER-44: printAuditTable's write errors used to be
+			// discarded, so a truncated table (`audit list | head -1`) exited
+			// 0 while `audit export` on the same pipe correctly exited 141.
+			if err := printAuditTable(cmd.OutOrStdout(), records); err != nil {
+				return ExitOnBrokenPipe(err)
+			}
 			return nil
 		},
 	}
@@ -377,7 +387,11 @@ history is not tracked: last verify is reported as n/a.`,
 				enc.SetIndent("", "  ")
 				return enc.Encode(st)
 			}
-			printAuditStatus(cmd.OutOrStdout(), path, st)
+			// DF-BUNKER-44: propagate the writer's error so a truncated
+			// status report also reaches ExitOnBrokenPipe.
+			if err := printAuditStatus(cmd.OutOrStdout(), path, st); err != nil {
+				return ExitOnBrokenPipe(err)
+			}
 			return nil
 		},
 	}
@@ -387,51 +401,95 @@ history is not tracked: last verify is reported as n/a.`,
 }
 
 // printAuditStatus renders the status fields as plain text, one per line.
-func printAuditStatus(w io.Writer, path string, st *audit.StatusReport) {
-	fmt.Fprintf(w, "audit log:            %s\n", path)
-	fmt.Fprintf(w, "enabled:              %v\n", st.Enabled)
-	if !st.Enabled {
-		return
+// Write errors are returned (DF-BUNKER-44): a truncated status report must
+// reach ExitOnBrokenPipe like every other audit read path.
+func printAuditStatus(w io.Writer, path string, st *audit.StatusReport) error {
+	if _, err := fmt.Fprintf(w, "audit log:            %s\n", path); err != nil {
+		return err
 	}
-	fmt.Fprintf(w, "chain head:           %s\n", st.ChainHead)
-	fmt.Fprintf(w, "records:              %d (retained chain)\n", st.Records)
-	fmt.Fprintf(w, "live size:            %d bytes\n", st.LiveSize)
+	if _, err := fmt.Fprintf(w, "enabled:              %v\n", st.Enabled); err != nil {
+		return err
+	}
+	if !st.Enabled {
+		return nil
+	}
+	if _, err := fmt.Fprintf(w, "chain head:           %s\n", st.ChainHead); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "records:              %d (retained chain)\n", st.Records); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "live size:            %d bytes\n", st.LiveSize); err != nil {
+		return err
+	}
 	for i, sz := range st.BackupSizes {
 		if sz < 0 {
 			continue // backup not present
 		}
-		fmt.Fprintf(w, "backup .%d size:       %d bytes\n", i+1, sz)
-	}
-	fmt.Fprintf(w, "rotations:            >= %d (lower bound; files rotated beyond the %d-backup budget are gone)\n", st.RotationsLowerBound, audit.MaxBackups)
-	fmt.Fprintf(w, "last verify:          n/a\n")
-	if st.Shipping != nil {
-		fmt.Fprintf(w, "shipping:             enabled (%s)\n", st.Shipping.ShipTo)
-		fmt.Fprintf(w, "last ship attempt:    %s\n", st.Shipping.LastAttempt)
-		fmt.Fprintf(w, "last ship result:     %s\n", st.Shipping.LastResult)
-		if st.Shipping.LastSuccess != "" {
-			fmt.Fprintf(w, "last ship success:    %s\n", st.Shipping.LastSuccess)
-		} else {
-			fmt.Fprintf(w, "last ship success:    never\n")
+		if _, err := fmt.Fprintf(w, "backup .%d size:       %d bytes\n", i+1, sz); err != nil {
+			return err
 		}
-		fmt.Fprintf(w, "ship retry queue:     %d segment(s)\n", st.Shipping.QueueDepth)
-	} else {
-		fmt.Fprintf(w, "shipping:             disabled\n")
 	}
-	fmt.Fprintf(w, "rotation sealing:     %v\n", st.SealingEnabled)
+	if _, err := fmt.Fprintf(w, "rotations:            >= %d (lower bound; files rotated beyond the %d-backup budget are gone)\n", st.RotationsLowerBound, audit.MaxBackups); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprint(w, "last verify:          n/a\n"); err != nil {
+		return err
+	}
+	if st.Shipping != nil {
+		if _, err := fmt.Fprintf(w, "shipping:             enabled (%s)\n", st.Shipping.ShipTo); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "last ship attempt:    %s\n", st.Shipping.LastAttempt); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "last ship result:     %s\n", st.Shipping.LastResult); err != nil {
+			return err
+		}
+		if st.Shipping.LastSuccess != "" {
+			if _, err := fmt.Fprintf(w, "last ship success:    %s\n", st.Shipping.LastSuccess); err != nil {
+				return err
+			}
+		} else {
+			if _, err := fmt.Fprint(w, "last ship success:    never\n"); err != nil {
+				return err
+			}
+		}
+		if _, err := fmt.Fprintf(w, "ship retry queue:     %d segment(s)\n", st.Shipping.QueueDepth); err != nil {
+			return err
+		}
+	} else {
+		if _, err := fmt.Fprint(w, "shipping:             disabled\n"); err != nil {
+			return err
+		}
+	}
+	_, err := fmt.Fprintf(w, "rotation sealing:     %v\n", st.SealingEnabled)
+	return err
 }
 
-// printAuditTable renders records as a fixed-width table on w.
-func printAuditTable(w io.Writer, records []audit.Record) {
-	fmt.Fprintf(w, "  %-30s %-22s %-34s %-10s %-14s %s\n", "TS", "Caller", "Method", "Agent", "Outcome", "Summary")
-	fmt.Fprintf(w, "  %-30s %-22s %-34s %-10s %-14s %s\n", "──────────────────────────────", "──────────────────────", "──────────────────────────────────", "──────────", "──────────────", "───────")
+// printAuditTable renders records as a fixed-width table on w. Every write
+// error is checked and returned — DF-BUNKER-44: the previous version ignored
+// them, so a reader that walked away mid-table (`audit list | head -1`) made
+// the command report success (exit 0) while `audit export` on the same pipe
+// correctly exited 141. Rendering stops at the first failed write.
+func printAuditTable(w io.Writer, records []audit.Record) error {
+	if _, err := fmt.Fprintf(w, "  %-30s %-22s %-34s %-10s %-14s %s\n", "TS", "Caller", "Method", "Agent", "Outcome", "Summary"); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "  %-30s %-22s %-34s %-10s %-14s %s\n", "──────────────────────────────", "──────────────────────", "──────────────────────────────────", "──────────", "──────────────", "───────"); err != nil {
+		return err
+	}
 	for _, r := range records {
 		method := r.Method
 		if idx := lastSlash(method); idx >= 0 {
 			method = method[idx+1:]
 		}
-		fmt.Fprintf(w, "  %-30s %-22s %-34s %-10s %-14s %s\n", r.TS, r.Caller, method, r.AgentID, r.Outcome, r.Summary)
+		if _, err := fmt.Fprintf(w, "  %-30s %-22s %-34s %-10s %-14s %s\n", r.TS, r.Caller, method, r.AgentID, r.Outcome, r.Summary); err != nil {
+			return err
+		}
 	}
-	fmt.Fprintf(w, "Total: %d records\n", len(records))
+	_, err := fmt.Fprintf(w, "Total: %d records\n", len(records))
+	return err
 }
 
 // lastSlash returns the index of the last '/' in s, or -1.

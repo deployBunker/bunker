@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -171,19 +173,28 @@ func newDF43AuditLog(t *testing.T, n int) string {
 }
 
 // TestBrokenPipeExitStatus is the DF-BUNKER-43 regression: the exit status a
-// PIPED caller observes must agree with the status a bare caller observes.
+// PIPED caller observes must agree with the status a bare caller observes —
+// except where the shell convention says otherwise, and that exception is
+// pinned explicitly (DF-BUNKER-44): a SUCCESS whose reader walked away exits
+// 141, the conventional 128+SIGPIPE status `head`/`grep` also report, never a
+// fake 0. The truncated-success cases therefore assert 141 against the table,
+// not "whatever the bare run did" — the original `got == direct` form was
+// vacuous there (0 == 0) and let the fake success through.
 func TestBrokenPipeExitStatus(t *testing.T) {
 	bin := buildCLIOnce(t)
 	bigLog := newDF43AuditLog(t, df43LogRecords)
 
 	// Cases whose output is larger than the pipe buffer, so the consumer's
 	// early exit really does cut the writer off. wantDirect is what the command
-	// reports with no pipe at all — the status the piped form must not lose.
+	// reports with no pipe at all — the premise, checked before piping.
+	// wantPiped pins the piped status; nil means "the same as bare" (the
+	// DF-BUNKER-43 contract for FAILURES).
 	cases := []struct {
 		name         string
 		args         []string
 		wantDirect   df43ExitStatus
 		wantConsumer string
+		wantPiped    *df43ExitStatus
 	}{
 		{
 			name: "unknown flag is a failure through a full pipe",
@@ -206,14 +217,39 @@ func TestBrokenPipeExitStatus(t *testing.T) {
 			wantConsumer: "true",
 		},
 		{
-			name: "truncated success must not die by signal",
-			// The real-binary reproduction of the SIBLING defect class: this
-			// command SUCCEEDS (exit 0 bare) and writes a table larger than the
-			// pipe buffer, so the kernel used to kill it mid-write. The caller
-			// must observe an exit STATUS it can reason about.
+			name: "truncated success (audit list | true) exits 141, not a fake success",
+			// DF-BUNKER-44: this command SUCCEEDS bare (exit 0) and writes a
+			// table larger than the pipe buffer, so the reader here walks away
+			// mid-table. The producer must exit 141 — the conventional status
+			// — NOT the bare 0. The pre-fix binary exited 0 here: the table
+			// writer's EPIPE was discarded before ExitOnBrokenPipe could see
+			// it. (Before DF-BUNKER-43 the kernel killed the process with
+			// signal 13 instead, losing the status entirely.)
 			args:         []string{"audit", "list", "--path", bigLog},
 			wantDirect:   df43ExitStatus{exited: true, code: 0},
 			wantConsumer: "true",
+			wantPiped:    df44Exited(141),
+		},
+		{
+			name: "truncated success (audit list | head -1) exits 141, not a fake success",
+			// The task's literal repro: a real `| head -1` consumer. Same
+			// contract as the `true` consumer above, through a reader that
+			// first consumes a line and THEN leaves.
+			args:         []string{"audit", "list", "--path", bigLog},
+			wantDirect:   df43ExitStatus{exited: true, code: 0},
+			wantConsumer: "head -1",
+			wantPiped:    df44Exited(141),
+		},
+		{
+			name: "truncated success (audit export | true) exits 141 like list must",
+			// Consistency pin: export's JSONL encoder always propagated the
+			// write error (141 measured pre-DF-BUNKER-44); list must behave
+			// identically. If one audit read path regresses and the other
+			// does not, this case and its list sibling diverge.
+			args:         []string{"audit", "export", "--path", bigLog},
+			wantDirect:   df43ExitStatus{exited: true, code: 0},
+			wantConsumer: "true",
+			wantPiped:    df44Exited(141),
 		},
 		{
 			name:         "success with a live reader still exits 0",
@@ -234,20 +270,40 @@ func TestBrokenPipeExitStatus(t *testing.T) {
 
 			got := df43PipeToCommand(t, bin, tc.args, tc.wantConsumer)
 
+			// The wanted piped status: pinned by the table (DF-BUNKER-44
+			// truncated-success cases), else the bare status (the
+			// DF-BUNKER-43 contract — a pipe must not change the verdict).
+			want := direct
+			if tc.wantPiped != nil {
+				want = *tc.wantPiped
+			}
+
 			// The invariant under test: a SIGNAL DEATH is never acceptable —
 			// that is the status a caller cannot attribute to the command.
 			if !got.exited {
 				t.Fatalf("piped %v (%s): %s — the producer was killed by a signal, "+
-					"so its exit status is lost; want the same status as the bare run (%s)",
-					tc.args, tc.wantConsumer, got, direct)
+					"so its exit status is lost; want %s",
+					tc.args, tc.wantConsumer, got, want)
 			}
-			if got != direct {
+			if got != want {
+				if tc.wantPiped != nil {
+					t.Fatalf("piped %v (%s) = %s, want %s (the conventional 128+SIGPIPE "+
+						"status): a truncated SUCCESS must not read as %s",
+						tc.args, tc.wantConsumer, got, want, direct)
+				}
 				t.Fatalf("piped %v (%s) = %s, want %s (same as the bare run): "+
 					"a pipe changed the exit status",
 					tc.args, tc.wantConsumer, got, direct)
 			}
 		})
 	}
+}
+
+// df44Exited returns a pointer to an exited-with-code status, for wantPiped
+// table entries (DF-BUNKER-44).
+func df44Exited(code int) *df43ExitStatus {
+	s := df43ExitStatus{exited: true, code: code}
+	return &s
 }
 
 // df43LogRecords is the fixture size: at ~150 bytes rendered per record this
@@ -406,4 +462,148 @@ func TestEveryCommandErrorReachesMain(t *testing.T) {
 			}
 		})
 	}
+}
+
+// failingWriter fails every write with the supplied error. DF-BUNKER-44's
+// class is "the renderer discarded the writer's error", which only shows up
+// when the writer actually fails — os.Pipe in the real-binary tests, a
+// deliberately failing writer here, where the error is deterministic.
+type df44FailingWriter struct{ err error }
+
+func (w *df44FailingWriter) Write(p []byte) (int, error) { return 0, w.err }
+
+// TestPrintAuditTableReturnsWriteError proves the renderer-level half of
+// DF-BUNKER-44: printAuditTable must CHECK and RETURN the writer's error (a
+// raw EPIPE, so brokenPipeError matches it and ExitOnBrokenPipe maps it to
+// 141), not silently discard it the way the pre-fix version did. It also pins
+// the fail-fast behavior: rendering stops at the first failed write instead
+// of continuing to format thousands of records into a dead pipe.
+func TestPrintAuditTableReturnsWriteError(t *testing.T) {
+	epipe := &os.PathError{Op: "write", Path: "/dev/stdout", Err: syscall.EPIPE}
+	records := make([]audit.Record, 64)
+	for i := range records {
+		records[i] = audit.Record{
+			TS:      "2026-09-20T12:00:00Z",
+			Caller:  "master",
+			Method:  fmt.Sprintf("/bunker.v1.Bunkerd/SpawnAgent%02d", i),
+			AgentID: "agent-000001",
+			Outcome: "ok",
+			Summary: "df44 renderer-error fixture record",
+		}
+	}
+
+	t.Run("returns the writer error", func(t *testing.T) {
+		w := &df44FailingWriter{err: epipe}
+		err := printAuditTable(w, records)
+		if err == nil {
+			t.Fatal("printAuditTable returned nil on a failing writer: the write " +
+				"error was discarded again (DF-BUNKER-44 regression)")
+		}
+		if !errors.Is(err, syscall.EPIPE) {
+			t.Fatalf("printAuditTable error = %v, want an error matching EPIPE", err)
+		}
+		var ee *ExitError
+		if got := ExitOnBrokenPipe(err); !errors.As(got, &ee) || ee.Code != 141 {
+			t.Fatalf("ExitOnBrokenPipe(renderer error) = %v, want *ExitError{141}", got)
+		}
+	})
+
+	t.Run("nil error with a healthy writer", func(t *testing.T) {
+		var buf bytes.Buffer
+		if err := printAuditTable(&buf, records); err != nil {
+			t.Fatalf("printAuditTable on a healthy writer = %v, want nil", err)
+		}
+		out := buf.String()
+		if !strings.Contains(out, "Total: 64 records") {
+			t.Fatalf("rendered output missing the Total line; got %d bytes, tail %q",
+				len(out), tailOf(out, 80))
+		}
+		if !strings.Contains(out, "SpawnAgent63") {
+			t.Fatal("rendered output missing the last record: the healthy-writer contract changed")
+		}
+	})
+
+	t.Run("stops at the first failed write", func(t *testing.T) {
+		var writes int
+		// n=0: the very FIRST write fails; the renderer must attempt no
+		// further writes after it (64 records would otherwise mean 66 calls).
+		w := errAfterWriter{n: 0, writes: &writes, err: epipe}
+		if err := printAuditTable(w, records); !errors.Is(err, syscall.EPIPE) {
+			t.Fatalf("printAuditTable = %v, want EPIPE", err)
+		}
+		if writes != 1 {
+			t.Fatalf("printAuditTable attempted %d writes after the first failed: "+
+				"rendering must stop at the first failure", writes)
+		}
+	})
+}
+
+// TestPrintAuditStatusReturnsWriteError is the DF-BUNKER-44 sibling check for
+// the audit status renderer: same class (writer errors must not be discarded),
+// same wiring contract through ExitOnBrokenPipe.
+func TestPrintAuditStatusReturnsWriteError(t *testing.T) {
+	epipe := &os.PathError{Op: "write", Path: "/dev/stdout", Err: syscall.EPIPE}
+
+	t.Run("returns the writer error", func(t *testing.T) {
+		w := &df44FailingWriter{err: epipe}
+		st := &audit.StatusReport{Enabled: true, ChainHead: "ab12", Records: 3}
+		err := printAuditStatus(w, "/var/log/bunkerd/audit.log", st)
+		if err == nil {
+			t.Fatal("printAuditStatus returned nil on a failing writer: the write " +
+				"error was discarded (DF-BUNKER-44 regression)")
+		}
+		if !errors.Is(err, syscall.EPIPE) {
+			t.Fatalf("printAuditStatus error = %v, want an error matching EPIPE", err)
+		}
+		var ee *ExitError
+		if got := ExitOnBrokenPipe(err); !errors.As(got, &ee) || ee.Code != 141 {
+			t.Fatalf("ExitOnBrokenPipe(renderer error) = %v, want *ExitError{141}", got)
+		}
+	})
+
+	t.Run("returns the writer error when audit is disabled", func(t *testing.T) {
+		w := &df44FailingWriter{err: epipe}
+		err := printAuditStatus(w, "/var/log/bunkerd/audit.log", &audit.StatusReport{Enabled: false})
+		if !errors.Is(err, syscall.EPIPE) {
+			t.Fatalf("printAuditStatus(disabled) error = %v, want EPIPE: the early "+
+				"return must not bypass the writer's error", err)
+		}
+	})
+
+	t.Run("nil error with a healthy writer", func(t *testing.T) {
+		var buf bytes.Buffer
+		st := &audit.StatusReport{Enabled: true, ChainHead: "ab12", Records: 3, LiveSize: 456}
+		if err := printAuditStatus(&buf, "/var/log/bunkerd/audit.log", st); err != nil {
+			t.Fatalf("printAuditStatus on a healthy writer = %v, want nil", err)
+		}
+		for _, want := range []string{"enabled:              true", "chain head:           ab12", "rotation sealing"} {
+			if !strings.Contains(buf.String(), want) {
+				t.Fatalf("rendered status missing %q; got:\n%s", want, buf.String())
+			}
+		}
+	})
+}
+
+// errAfterWriter lets the first n writes succeed, then fails the rest — the
+// fail-fast probe's counting writer.
+type errAfterWriter struct {
+	n      int
+	writes *int
+	err    error
+}
+
+func (w errAfterWriter) Write(p []byte) (int, error) {
+	*w.writes++
+	if *w.writes > w.n {
+		return 0, w.err
+	}
+	return len(p), nil
+}
+
+// tailOf returns at most the last n bytes of s (test-output helper).
+func tailOf(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[len(s)-n:]
 }
