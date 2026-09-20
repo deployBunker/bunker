@@ -138,6 +138,12 @@ type AgentConfig struct {
 	DefaultTTL                 time.Duration `mapstructure:"default_ttl"`
 	// ImageSpec holds the GAP-064 image-customization policy.
 	ImageSpec ImageSpecConfig `mapstructure:"image_spec"`
+	// RootlessInstallerCacheDir is the host-level directory where downloaded
+	// rootless Docker installers are cached between spawns (GAP-091). On a
+	// cache hit a fresh-agent spawn skips the ~93MB get.docker.com download
+	// entirely. Empty string keeps the legacy behavior: every spawn downloads
+	// from the network. Env override: BUNKER_ROOTLESS_INSTALLER_CACHE_DIR.
+	RootlessInstallerCacheDir string `mapstructure:"rootless_installer_cache_dir"`
 	// Registry holds the GAP-070 durable agent registry settings.
 	Registry RegistryConfig `mapstructure:"registry"`
 	// Reconciliation holds the GAP-070 startup reconciliation policy.
@@ -345,6 +351,11 @@ func DefaultConfig() *Config {
 				CacheDir:     "/var/cache/bunkerd/imagespec",
 				BuildTimeout: 20 * time.Minute,
 			},
+			// GAP-091: cache downloaded rootless installers under /var/cache
+			// so a fresh-agent spawn no longer depends on get.docker.com
+			// throughput. Root-owned mode 0755, one ~93MB file; setting
+			// rootless_installer_cache_dir: "" explicitly opts out.
+			RootlessInstallerCacheDir: "/var/cache/bunker/rootless-installer",
 			// GAP-070: durable registry is ON by default so a daemon
 			// restart never forgets its agents. Reconciliation defaults to
 			// destroy — an unmanaged bunker-* user is a leftover, not an
@@ -443,6 +454,7 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("agent.default_disk_bytes")
 	v.BindEnv("agent.default_max_docker_containers")
 	v.BindEnv("agent.default_ttl")
+	v.BindEnv("agent.rootless_installer_cache_dir")
 	v.BindEnv("agent.registry.enabled")
 	v.BindEnv("agent.registry.path")
 	v.BindEnv("agent.registry.max_bytes")

@@ -305,6 +305,11 @@ agent:
   port_range_start: 10000
   port_range_end: 19999
   port_range_per_agent: 100
+  # Rootless installer cache (GAP-091): downloaded rootless Docker installers
+  # (~93MB) are cached here so fresh-agent spawns skip the get.docker.com
+  # download. Empty string disables the cache (legacy uncached path). Env
+  # override: BUNKER_ROOTLESS_INSTALLER_CACHE_DIR.
+  rootless_installer_cache_dir: /var/cache/bunker/rootless-installer
 
 auth:
   enabled: true
