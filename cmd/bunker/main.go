@@ -88,14 +88,14 @@ Client-side path overrides (persistent flags):
 	}
 
 	var showVersion bool
-	root.Flags().BoolVar(&showVersion, "version", false, "Print the bunker version (same as `bunker version`)")
+	root.Flags().BoolVar(&showVersion, "version", false, "Print the bunker version (same as 'bunker version')")
 
 	// Persistent client-side path flags (see the Long help above for the
 	// precedence rules). The parsed values are transferred into the cli
 	// package setters by the PersistentPreRun wrapper below.
 	root.PersistentFlags().String("config", "",
 		"CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. "+
-			"NOTE: `bunker systemd install --config` means the DAEMON config and shadows this flag")
+			"NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag")
 	root.PersistentFlags().String("daemon-config", "",
 		"DAEMON config file for the local-file command defaults (audit --path, registry compact --path). "+
 			"Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. "+
