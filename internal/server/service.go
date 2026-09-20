@@ -864,6 +864,24 @@ func (s *bunkerdService) RunAgent(ctx context.Context, req *connect.Request[v1.R
 
 // HeartbeatAgent acknowledges an agent heartbeat.
 func (s *bunkerdService) HeartbeatAgent(ctx context.Context, req *connect.Request[v1.HeartbeatAgentRequest]) (*connect.Response[v1.HeartbeatAgentResponse], error) {
+	// SEC-07 / GAP-131: an agent-scoped credential may only extend its OWN
+	// agent's TTL. Extending a PEER's expiry is a privilege escalation: it
+	// silently keeps a foreign agent (and its home directory, docker socket and
+	// published ports) alive past the expiry its owner intended. This mirrors
+	// the scoping Metrics already enforces (claims.AgentID != requested id ->
+	// PermissionDenied). An empty claims AgentID means a master or
+	// static-token caller and may extend any agent.
+	//
+	// Defense in depth: this RPC is mounted behind the master-only interceptor
+	// (server.go), which rejects agent-scoped tokens (JWT and sub-key) before
+	// any handler runs — see internal/auth/jwt.go. The guard below therefore
+	// does not fire on the current mount; it is the check that carries the
+	// property if the mount is ever widened, and
+	// TestHeartbeatAgent_MasterOnlyInterceptorRejectsAgentScoped pins the
+	// interceptor half so the two cannot silently drift apart.
+	if claims, ok := auth.ClaimsFromContext(ctx); ok && claims.AgentID != "" && claims.AgentID != req.Msg.AgentId {
+		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("agent %q is not owned by caller", req.Msg.AgentId))
+	}
 	// The TTL to extend by: the configured default, or 6h when unset.
 	ttl := 6 * time.Hour
 	if s.cfg.Agent.DefaultTTL > 0 {
@@ -1420,6 +1438,19 @@ func (s *agentService) Metrics(ctx context.Context, req *connect.Request[v1.Agen
 
 // Heartbeat sends a heartbeat from the authenticated agent.
 func (s *agentService) Heartbeat(ctx context.Context, req *connect.Request[v1.HeartbeatAgentRequest]) (*connect.Response[v1.HeartbeatAgentResponse], error) {
+	// SEC-07 / GAP-131: same ownership rule as Metrics — an agent-scoped
+	// credential (JWT or scoped sub-key) may only heartbeat its OWN agent.
+	// Extending a PEER's expiry keeps a foreign agent alive past the expiry
+	// its owner intended. An empty claims AgentID (master / static token)
+	// may heartbeat any agent.
+	//
+	// Unlike bunkerdService.HeartbeatAgent this handler sits on the Agent
+	// service, which is deliberately mounted with the permissive interceptor
+	// that ACCEPTS agent-scoped sub-keys — so this guard is load-bearing here,
+	// not defense in depth.
+	if claims, ok := auth.ClaimsFromContext(ctx); ok && claims.AgentID != "" && claims.AgentID != req.Msg.AgentId {
+		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("agent %q is not owned by caller", req.Msg.AgentId))
+	}
 	// Routed through the agent manager so the durable registry sees the
 	// extension (GAP-070); falls back to the tracker when unwired.
 	if s.heartbeats != nil {
