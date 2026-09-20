@@ -1,0 +1,23 @@
+{
+  "scheduler_tick_id": "bunker-2026-09-20-18-56-12",
+  "tick_number": 505,
+  "composed_at": "2026-09-20T14:25:00-05:00",
+  "base_sha": "6ecc93c",
+  "mode": "git-worktrees",
+  "wave_budget": 12,
+  "recovery_of": "bunker-2026-09-20-16-34-14",
+  "recovery_note": "Tick 504 wave died pre-launch: briefs written for GAP-126/129 only, 3 gitreins tasks created, ZERO workers launched (no procs, no logs, no state.db messages, worktrees at base). Classified DEAD ORPHAN per wave-tick-494 doctrine. All 4 gitreins tasks (re)created+started this tick; GAP-131/133 briefs rewritten with foreman-verified facts (GAP-131 premise corrected: master-only interceptor already rejects agent-scoped creds at jwt.go:164/:173, so scope = handler guard + drift-pin test).",
+  "workers": [
+    {"task_id": "GAP-126", "worktree": "/home/kara/worktrees/bunker-GAP-126", "branch": "wt/GAP-126", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-GAP-126.txt", "gitreins_task": "GAP-126", "log": "/tmp/wave505-GAP-126.log"},
+    {"task_id": "GAP-129", "worktree": "/home/kara/worktrees/bunker-GAP-129", "branch": "wt/GAP-129", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-GAP-129.txt", "gitreins_task": "GAP-129", "log": "/tmp/wave505-GAP-129.log"},
+    {"task_id": "GAP-131", "worktree": "/home/kara/worktrees/bunker-GAP-131", "branch": "wt/GAP-131", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-GAP-131.txt", "gitreins_task": "GAP-131", "log": "/tmp/wave505-GAP-131.log"},
+    {"task_id": "GAP-133", "worktree": "/home/kara/worktrees/bunker-GAP-133", "branch": "wt/GAP-133", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-GAP-133.txt", "gitreins_task": "GAP-133", "log": "/tmp/wave505-GAP-133.log"}
+  ],
+  "excluded_independence_checks": [
+    "GAP-128 depends_on GAP-126 (blocked)",
+    "GAP-141 depends_on GAP-127 (blocked)",
+    "GAP-130 blocks GAP-132,GAP-133 + complexity 6 (too large for leaf cap) -> GAP-133 filed separately by earlier PM cycle, GAP-130 left for a serial tick",
+    "file-scope disjointness: 126=config/server+audit marker; 129=config+call-site+docs; 131=server/service.go heartbeat+auth tests; 133=auth+server wiring+audit read-only. 126 and 129 both touch internal/config/config.go -> worktrees isolate; merge order 126 then 129, conflict check at merge"
+  ],
+  "status": "dispatched"
+}
