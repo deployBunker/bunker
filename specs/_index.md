@@ -17,6 +17,8 @@ Last verified against repo HEAD `9ee17c6` (2026-09-16).
 | [agent-tmp-isolation.md](agent-tmp-isolation.md) | The isolation boundary | operator, contributor | implemented (GAP-075) |
 | [containment-disclosure.md](containment-disclosure.md) | The disclosure contract | operator, integrator | implemented (GAP-067), config-gated |
 | [safety-presets.md](safety-presets.md) | The trust-tier preset system | operator, contributor | not implemented (design authority, GAP-113) |
+| [preset-acceptance-harness.md](preset-acceptance-harness.md) | The preset verification battery | contributor, operator | not implemented (design, GAP-115) |
+| [knob-safety-matrix.md](knob-safety-matrix.md) | The measured knob evidence | contributor | methodology (GAP-114), findings pending measurement |
 | [container-mode.md](container-mode.md) | The proposed execution mode | contributor | not implemented (design draft) |
 
 This file is `_index.md`; every link above is relative and resolves from
@@ -120,6 +122,21 @@ the **no-silent-no-op rule** (every knob is read back from the live cgroup or sp
 - **Status: not implemented — design authority (GAP-113)** — no `safety` config key exists
   yet; the tier→knob matrix is the contract the implementation rows build to, and `standard`
   is pinned to today's shipped defaults (`internal/config/config.go:394-398`).
+
+### [preset-acceptance-harness.md](preset-acceptance-harness.md) — Preset Acceptance Harness Specification (v1.0.0, GAP-115)
+
+The verification battery for the preset tiers: a workload set (docker build, compose stack,
+a .NET app, node+python, a 1.4 GB `docker load`) that proves a tier is still usable, and an
+abuse set (fork bomb, memory bomb, IO hog) that proves abuse is contained **by asserting the
+mechanism** (`pids.events`, `memory.events`, peer impact), not by surviving. Mandates the
+**no-silent-no-op landing check** — every knob is read back from the live cgroup at **both**
+enforcement points, and a contained abuse case with an unlanded knob is a FAIL. Runs on
+`bunker-mvp` and rolls up into the existing `VERIFY-PASS` contract.
+
+- **Who should read it:** contributors implementing GAP-122, and operators who want to know
+  what "a tier passed" actually means.
+- **Status: not implemented — design (GAP-115)** — implemented and run by GAP-122; no
+  `preset-battery.sh` exists yet.
 
 ### [container-mode.md](container-mode.md) — Container-Mode Agent Specification (v0.1.0, draft)
 
