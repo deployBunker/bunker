@@ -471,7 +471,20 @@ func TestRemoveAgentUserRetryTable(t *testing.T) {
 
 		// The anchor is already spent before the first step: every step of this
 		// rollback must run on the reserved floor with a LIVE context.
-		restoreTimings := shrinkRollbackBudgets(t, 20*time.Millisecond, 5*time.Millisecond, 40*time.Millisecond)
+		//
+		// The floor is deliberately NOT shrunk to milliseconds. Production's
+		// floor is rollbackStepFloor (5s) precisely because it must be enough
+		// to actually exec a critical step; shrinking it to single-digit
+		// milliseconds makes the exec race the deadline, so `userdel` dies with
+		// "signal: killed" and the test reports a product defect that is really
+		// a test premise. It reproduced at loadavg ~50 and passed on an idle
+		// box, which is the signature of exactly that mistake.
+		//
+		// What this subtest asserts is that the step still RAN and that the
+		// breadcrumb SAYS the anchor was spent. Both hold with a floor far
+		// larger than a stub exec needs, so the floor is left at a value that
+		// cannot race the scheduler.
+		restoreTimings := shrinkRollbackBudgets(t, 20*time.Millisecond, 15*time.Second, 15*time.Second)
 		defer restoreTimings()
 
 		restoreLinger := disableLinger
