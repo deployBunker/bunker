@@ -5,11 +5,14 @@
   "branch": "main",
   "base_sha": "c2f6092",
   "created_at": "2026-09-20T01:52:00Z",
+  "finished_at": "2026-09-20T04:05:00Z",
+  "recovered_by": "bunker-2026-09-20-03-29-22",
   "note": "Wave dispatched only AFTER the 00-17-25 recovery was verified complete (all 4 workers already merged into main; gates re-run on the merged tree).",
+  "recovery_verdict": "COMPLETE — the tick that dispatched this wave (495) had already merged all three workers and reaped their worktrees before it ended; the 03-29-22 recovery tick re-verified from scratch rather than trusting the record: (a) git merge-base --is-ancestor for all 7 SHAs (3b53885, 1a6312f, aa113fd, 0ac9c5e, 641a3bb, b9d5c82, 198f6b4) = true against HEAD; (b) git worktree list = only /home/kara/bunker, git branch -a shows no wt/* branches — nothing unmerged to preserve as evidence; (c) board rows GAP-091/GAP-087/INT-HOST-004 all status=complete WITH commit_hash + worker_summary; (d) Tier 2 verdicts read off disk: GAP-091 6c3d9638 PASS, GAP-087 ad054af3 PASS, INT-HOST-004 983751f6 PASS. NOTE the two async judge jobs the previous tick left running (job-9049626b for GAP-091, job-fe1122256e for GAP-087) later ended as INCOMPLETE/'Cap exceeded: Time cap (45m) exceeded' with items:[] — a judge CAP failure, NOT a code failure: their verdicts are already on disk from earlier runs and both tasks were re-judged separately. No fixup worker was needed for any of the three.",
+  "gates_on_merged_tree": "go build ./... OK; go vet ./... OK; gofmt -l clean; go test ./... -count=1 = 23 packages ok / 0 FAIL",
   "workers": [
-    {"task_id": "GAP-091", "worktree": "/home/kara/worktrees/bunker-GAP-091", "branch": "wt/GAP-091", "base_sha": "c2f6092", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-GAP-091.txt"},
-    {"task_id": "GAP-087", "worktree": "/home/kara/worktrees/bunker-GAP-087", "branch": "wt/GAP-087", "base_sha": "c2f6092", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-GAP-087.txt"},
-    {"task_id": "INT-HOST-004", "worktree": "/home/kara/worktrees/bunker-INT-HOST-004", "branch": "wt/INT-HOST-004", "base_sha": "c2f6092", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-INT-HOST-004.txt"}
-  ],
-  "recovery_of": "bunker-2026-09-20-00-17-25"
+    {"task_id": "GAP-091", "worktree": "/home/kara/worktrees/bunker-GAP-091", "branch": "wt/GAP-091", "base_sha": "c2f6092", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-GAP-091.txt", "commit": "aa113fd", "merge": "merged (b9d5c82)", "judge": "6c3d9638 PASS"},
+    {"task_id": "GAP-087", "worktree": "/home/kara/worktrees/bunker-GAP-087", "branch": "wt/GAP-087", "base_sha": "c2f6092", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-GAP-087.txt", "commit": "0ac9c5e", "merge": "merged (198f6b4)", "judge": "ad054af3 PASS"},
+    {"task_id": "INT-HOST-004", "worktree": "/home/kara/worktrees/bunker-INT-HOST-004", "branch": "wt/INT-HOST-004", "base_sha": "c2f6092", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-INT-HOST-004.txt", "commit": "3b53885 + 1a6312f", "merge": "merged (641a3bb)", "judge": "983751f6 PASS"}
+  ]
 }

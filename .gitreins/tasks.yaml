@@ -2197,18 +2197,18 @@ tasks:
   created_at: '2026-09-19T03:41:01.432009+00:00'
   completed_at: '2026-09-19T04:51:15.786109+00:00'
 - id: DF-BUNKER-26
-  title: 'P3 Doc/cosmetic drift bundle: audit schema missing the hash chain, ServerMetrics
-    agents[] undocumented, double-escaped TTL regex, destroy tombstone 200-vs-404'
+  title: 'Doc/cosmetic drift bundle: audit schema missing hash chain, ServerMetrics
+    agents[] undocumented, double-escaped TTL regex in the error text, destroy tombstone
+    200-vs-404 nuance'
   criteria:
-  - "docs/integration.md \xA74 documents hash/prevHash on audit records (QueryAudit\
-    \ returns them; the log is SHA-256 chained)"
-  - "\xA72/\xA75 mention the agents[] array returned inside ServerMetrics on 0.1.4+"
-  - the invalid-TTL error message prints the regex single-escaped (currently double-escaped)
-    and a test pins the string
-  - "\xA75 states the destroy semantics precisely: a never-known id is 404 not_found,\
-    \ a just-destroyed id is 200 destroyed (tombstone)"
-  status: pending
-  created_at: '2026-09-18T10:30:00+00:00'
+  - docs/integration.md documents the audit record hash+prev_hash chain, the ServerMetrics
+    agents[] array, and both destroy cases (never-known id -> not_found 404, re-destroy
+    of a known-destroyed id -> destroyed 200) AND the ParseAgentTTL invalid-format
+    message renders a SINGLE backslash (\d+[hmd], not \\d+[hmd]) pinned by a test
+    AND gofmt/build/vet/test green AND go run ./cmd/docs-drift exit 0
+  status: complete
+  created_at: '2026-09-20T03:37:46.966255+00:00'
+  completed_at: '2026-09-20T03:52:00.865684+00:00'
 - id: GAP-080
   title: 'GAP-080: operator cleanup path for orphaned agent home directories (bunker
     homes report + prune) and live residue verification on the demo host'
