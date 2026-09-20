@@ -40,6 +40,22 @@ import (
 // the docs can write it in prose or as a `#` comment inside a code block.
 const Marker = "requires a build from HEAD"
 
+// GroupDocCoverageRule registers one documented command group whose doc page
+// must name every subcommand the tree ships (GAP-088). Group is the top-level
+// command's Use name (e.g. "audit"); DocPath is the doc file, relative to the
+// repository root, that claims to cover the group's command surface. Extend
+// this table as more groups get dedicated doc pages — the check stays generic.
+type GroupDocCoverageRule struct {
+	Group   string
+	DocPath string
+}
+
+// GroupDocCoverageRules is the registry of documented groups checked by the
+// group-doc-coverage rule. Currently: the audit trail group (docs/audit.md).
+var GroupDocCoverageRules = []GroupDocCoverageRule{
+	{Group: "audit", DocPath: "docs/audit.md"},
+}
+
 // Rule names reported on Problem.Rule.
 const (
 	// RuleCommandSurface marks a documented command that is absent from the
@@ -55,6 +71,13 @@ const (
 	// section (or puts it after the newest release section) while commits
 	// exist past the newest release tag.
 	RuleChangelog = "changelog-unreleased"
+	// RuleGroupDocCoverage marks a subcommand that exists in a documented
+	// command group's tree but is absent from that group's doc page (GAP-088:
+	// `bunker audit status` shipped while docs/audit.md and the README still
+	// named only verify/list/export — the release-level command check cannot
+	// see subcommand gaps inside a documented group). GroupDocCoverageRules
+	// registers which groups' doc pages are checked.
+	RuleGroupDocCoverage = "group-doc-coverage"
 )
 
 // Command is one top-level CLI command plus the subcommands registered under it.
@@ -109,6 +132,16 @@ type Input struct {
 	Surface Surface
 	// PostTagCommits is `git rev-list --count <LatestTag>..HEAD`.
 	PostTagCommits int
+	// GroupDocs maps a registered group prefix (GroupDocCoverageRules.Group)
+	// to the text of that group's doc page. Verify fills it from disk; the
+	// group-doc-coverage rule only fires for groups present in this map, so
+	// callers that read no doc pages are unaffected.
+	GroupDocs map[string]string
+	// TreeSurface is the CLI surface of the WORKING TREE (see
+	// GitFacts.TreeSurface). The group-doc-coverage rule checks against it —
+	// a subcommand must be documented by the tree that ships it — while the
+	// release rules above keep checking Surface (the newest tag).
+	TreeSurface Surface
 }
 
 // Problem is one drift finding.
@@ -210,6 +243,7 @@ func Check(in Input) []Problem {
 		}
 	}
 
+	problems = append(problems, checkGroupDocCoverage(in)...)
 	return problems
 }
 
@@ -537,4 +571,51 @@ func useName(body string) (string, error) {
 		return "", fmt.Errorf("empty `Use:` field")
 	}
 	return fields[0], nil
+}
+
+// ── group doc coverage (GAP-088) ────────────────────────────────────────────
+
+// checkGroupDocCoverage flags every subcommand a registered documented group
+// ships (its tree's Surface) that the group's doc page never names as
+// `bunker <group> <sub>`. The tree is the WORKING TREE's surface, not the
+// release tag's: a subcommand that is about to ship must be documented in the
+// same tree that ships it — the tag-based command-surface rule above already
+// governs the README's release claims. Groups without an entry in in.GroupDocs
+// (caller read no pages, or the doc file is absent) are skipped: a missing doc
+// FILE is a different failure than a gap inside an existing page.
+func checkGroupDocCoverage(in Input) []Problem {
+	if len(in.GroupDocs) == 0 || len(in.TreeSurface.Commands) == 0 {
+		return nil
+	}
+	var problems []Problem
+	for _, rule := range GroupDocCoverageRules {
+		cmd, ok := in.TreeSurface.Commands[rule.Group]
+		if !ok || len(cmd.Subcommands) == 0 {
+			continue // group not in this tree (or leaf command): nothing to check
+		}
+		doc, ok := in.GroupDocs[rule.Group]
+		if !ok {
+			continue
+		}
+		for _, sub := range cmd.Subcommands {
+			if groupSubDocumented(doc, rule.Group, sub) {
+				continue
+			}
+			problems = append(problems, Problem{
+				File: rule.DocPath,
+				Rule: RuleGroupDocCoverage,
+				Message: fmt.Sprintf("`bunker %s %s` exists in the tree but the group's doc page %s "+
+					"never names it — document it or extend the page's command list",
+					rule.Group, sub, rule.DocPath),
+			})
+		}
+	}
+	return problems
+}
+
+// groupSubDocumented reports whether doc names `bunker <group> <sub>` with
+// only whitespace between the tokens (any fencing, prose span or table row).
+func groupSubDocumented(doc, group, sub string) bool {
+	re := regexp.MustCompile(`bunker\s+` + regexp.QuoteMeta(group) + `\s+` + regexp.QuoteMeta(sub) + `\b`)
+	return re.MatchString(doc)
 }

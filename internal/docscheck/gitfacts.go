@@ -26,6 +26,13 @@ type GitFacts struct {
 	// tag with `git show`, never from the working tree, so a HEAD-only command
 	// cannot present itself as released.
 	Surface Surface
+	// TreeSurface is the CLI surface of the WORKING TREE (HEAD content read
+	// with `git show HEAD:…`). The group-doc-coverage rule uses it: a
+	// subcommand that is about to ship must be documented by the same tree
+	// that ships it, and a tag-based surface cannot see a subcommand that
+	// has no release tag yet (GAP-088: `audit status` was absent from
+	// v0.1.4, so a tag-based group check could never flag the doc gap).
+	TreeSurface Surface
 	// PostTagCommits is `git rev-list --count <LatestTag>..HEAD`.
 	PostTagCommits int
 }
@@ -58,6 +65,11 @@ func Gather(dir string) (GitFacts, error) {
 		return GitFacts{}, err
 	}
 
+	treeSurface, err := TreeSurface(root)
+	if err != nil {
+		return GitFacts{}, err
+	}
+
 	count, err := git(root, "rev-list", "--count", tag+"..HEAD")
 	if err != nil {
 		return GitFacts{}, fmt.Errorf("count commits after %s: %w", tag, err)
@@ -67,10 +79,11 @@ func Gather(dir string) (GitFacts, error) {
 		return GitFacts{}, fmt.Errorf("parse commit count %q: %w", strings.TrimSpace(count), err)
 	}
 
-	return GitFacts{Root: root, LatestTag: tag, Surface: surface, PostTagCommits: commits}, nil
+	return GitFacts{Root: root, LatestTag: tag, Surface: surface, TreeSurface: treeSurface, PostTagCommits: commits}, nil
 }
 
-// Verify reads the two documents in root and evaluates every rule against facts.
+// Verify reads the two documents in root plus every registered group's doc
+// page and evaluates every rule against facts.
 func Verify(root string, facts GitFacts) ([]Problem, error) {
 	readmePath := filepath.Join(root, "README.md")
 	changelogPath := filepath.Join(root, "CHANGELOG.md")
@@ -82,6 +95,21 @@ func Verify(root string, facts GitFacts) ([]Problem, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read CHANGELOG: %w", err)
 	}
+	// Group doc pages: read the ones the registry names that exist on disk.
+	// A page that does not exist is skipped here — a missing doc FILE is a
+	// different failure than a gap inside an existing page — but read errors
+	// other than not-exist surface loudly.
+	groupDocs := map[string]string{}
+	for _, rule := range GroupDocCoverageRules {
+		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rule.DocPath)))
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("read %s: %w", rule.DocPath, err)
+		}
+		groupDocs[rule.Group] = string(b)
+	}
 	return Check(Input{
 		ReadmePath:     "README.md",
 		ChangelogPath:  "CHANGELOG.md",
@@ -90,13 +118,30 @@ func Verify(root string, facts GitFacts) ([]Problem, error) {
 		LatestTag:      facts.LatestTag,
 		Surface:        facts.Surface,
 		PostTagCommits: facts.PostTagCommits,
+		GroupDocs:      groupDocs,
+		TreeSurface:    facts.TreeSurface,
 	}), nil
+}
+
+// TreeSurface derives the CLI surface of the WORKING TREE without checking
+// anything out: it reads `cmd/bunker/main.go` and the `internal/cli` sources
+// of the current HEAD content straight from the object database (git show
+// HEAD:<path>), so the check is deterministic under dirty worktrees and
+// identical in behavior to TagSurface. Callers use it for rules that govern
+// the tree that is about to ship rather than the newest release tag.
+func TreeSurface(dir string) (Surface, error) {
+	return tagSurfaceAt(dir, "HEAD")
 }
 
 // TagSurface derives the CLI surface of the tree at ref without checking it
 // out: it reads `cmd/bunker/main.go` and the `internal/cli` sources straight
 // out of the object database.
 func TagSurface(dir, ref string) (Surface, error) {
+	return tagSurfaceAt(dir, ref)
+}
+
+// tagSurfaceAt is the shared reader behind TagSurface and TreeSurface.
+func tagSurfaceAt(dir, ref string) (Surface, error) {
 	mainSrc, err := git(dir, "show", ref+":cmd/bunker/main.go")
 	if err != nil {
 		return Surface{}, fmt.Errorf("read cmd/bunker/main.go at %s: %w", ref, err)
