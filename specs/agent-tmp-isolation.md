@@ -229,6 +229,19 @@ still created (mode 0700, agent-owned) as a per-agent scratch path, but it is
   mount. `EnsureSharedScratch` re-asserts the mode on every apply and STATS the
   directory back afterwards: a `chmod` that exited 0 is not proof, so a root
   that is still group-writable is a hard error, never a warning.
+* **The spawn path enforces the same shape** (DF-BUNKER-40). `EnsureAgentScratch`
+  — which runs on EVERY spawn — verifies the root before it creates the agent's
+  directory under it, and repairs or creates it where the daemon may (it is
+  root): the root is `chown`-ed `0:<group>` and `chmod`-ed `2750`, and both the
+  mode (read from the real directory) and the ownership (re-observed after the
+  repair) are stat-ed back. A host whose root is already correct is left
+  completely untouched — the check costs at most two read-only probes — because
+  the alternative (`MkdirAll` on the agent directory with the root missing)
+  is exactly what creates a `root:root 0750` root that no agent can traverse.
+  A root that cannot be brought to `root:<group> 2750` refuses the scratch with
+  a message naming `bunker host-provision --apply`; the spawn then reports
+  "shared scratch not provisioned" (the private `/tmp` is unaffected) instead of
+  claiming a ready scratch the agent cannot reach.
 * Each agent directory is a `tmpfs` mounted with an explicit `size=`. The cap is
   enforced by the kernel: a write past it fails with `ENOSPC` (`write: No space
   left on device`), which is what makes the bound real rather than a promise.
@@ -386,7 +399,17 @@ Unit and integration (host-independent, `go test ./... -count=1 -short -parallel
 * the real `ExecAgent` RPC (driven through a connect handler with a stub `ssh`)
   puts `TMPDIR=/tmp` in the argv that reaches sshd and never the legacy path;
 * the real `Spawn` provisions the bounded scratch and the instance directory
-  (anti-phantom: the test drives `Spawn`, not the helper).
+  (anti-phantom: the test drives `Spawn`, not the helper);
+* **the spawn path verifies the exchange ROOT** (DF-BUNKER-40): with the root
+  correct the bounded scratch is still mounted and the spawn reports it ready;
+  with the measured defect (`root:root 0750`) no per-agent directory is created,
+  no bounded mount is issued, and the log carries the refusal plus
+  `bunker host-provision --apply`. The gate's own table covers a correct root
+  (verified, nothing re-paved, on both sides of the privilege split), a
+  `root:root 0750` root and a group-writable root (repaired and re-verified),
+  an absent root (created correctly), a repair the host ignores (fails rather
+  than claiming success), and an unprivileged process facing a wrong root
+  (checked and refused, never silently accepted).
 
 Live (`e2e-full-battery.sh`, section 15 — run on the host as root):
 

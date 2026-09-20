@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log/slog"
@@ -29,6 +30,13 @@ type hostRecorder struct {
 	opts         map[string]string
 	failUsermod  bool
 	failGroupadd bool
+
+	// scratchRootOwner is the answer to `stat -c '%u:%g %a'` for the exchange
+	// ROOT: "<uid>:<gid> <octal>". Per-path by construction (only the root is
+	// ever asked), because a fake that answered the same shape for every path
+	// could not tell a correct exchange root from the measured defect
+	// (DF-BUNKER-40).
+	scratchRootOwner string
 }
 
 func newHostRecorder() *hostRecorder {
@@ -76,6 +84,10 @@ func (r *hostRecorder) run(ctx context.Context, name string, args ...string) ([]
 	case "umount":
 		delete(r.mounted, args[len(args)-1])
 		return nil, nil
+	case "stat":
+		// The exchange root's owner, as the host would report it. Empty means
+		// "no answer" (a non-zero exit), which the gate reads as unobservable.
+		return []byte(r.scratchRootOwner), nil
 	default: // chown, chmod, systemctl, …
 		return nil, nil
 	}
@@ -228,6 +240,7 @@ func TestRunAgentUnitHasPrivateTmp(t *testing.T) {
 func TestProvisionIsolation_BoundedScratchAndTmpInstance(t *testing.T) {
 	rec := newHostRecorder()
 	scratchRoot := filepath.Join(t.TempDir(), "srv/bunker-share")
+	ensureProvisionedScratchRoot(t, rec, scratchRoot)
 	instanceRoot := instanceRootFor(t)
 
 	cfg := config.DefaultConfig()
@@ -454,6 +467,10 @@ func TestDestroyRemovesIsolation(t *testing.T) {
 func TestSpawnWiresIsolation(t *testing.T) {
 	rec := newHostRecorder()
 	scratchRoot := filepath.Join(t.TempDir(), "srv/bunker-share")
+	// The exchange root is verified on EVERY spawn (DF-BUNKER-40), so the
+	// fixture has to model a host that was provisioned: a root that is absent
+	// or root:root is correctly refused rather than silently accepted.
+	ensureProvisionedScratchRoot(t, rec, scratchRoot)
 	instanceRoot := instanceRootFor(t)
 
 	cfg := config.DefaultConfig()
@@ -502,6 +519,136 @@ func TestSpawnWiresIsolation(t *testing.T) {
 	// Rollback must not leave the provisioned exchange directory behind.
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
 		t.Errorf("failed spawn left the scratch directory behind: %v", err)
+	}
+}
+
+// ensureProvisionedScratchRoot models a host whose exchange root is already in
+// its documented shape: the directory exists setgid 2750 and the fake host
+// reports root ownership with the agent group. On a sandboxed path the go
+// process cannot chown to a foreign group, so the group column is what the fake
+// `stat` answers while the MODE — read from the real directory by the gate — is
+// made true on disk.
+func ensureProvisionedScratchRoot(t *testing.T, rec *hostRecorder, scratchRoot string) {
+	t.Helper()
+	if err := os.MkdirAll(scratchRoot, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(scratchRoot, os.ModeSetgid|0o750); err != nil {
+		t.Fatal(err)
+	}
+	// The gid the fake group resolves to (see hostRecorder.run's getent).
+	rec.scratchRootOwner = "0:1001 " + hostsetup.OctalModeForTest(hostsetup.ScratchRootMode)
+}
+
+// TestSpawnVerifiesExchangeRoot is the DF-BUNKER-40 anti-phantom check at the
+// level the defect was measured: the spawn path. Every spawn printed "shared
+// scratch ready" while the exchange ROOT was root:root 0750, so no agent could
+// even list /srv/bunker-share. A root that cannot be brought to its documented
+// shape must therefore abort the scratch step — no per-agent directory, no
+// bounded mount — and the refusal (plus the operator remedy) must reach the
+// spawn log rather than reporting a ready scratch.
+//
+// The scratch step stays BEST-EFFORT at the spawn stage by design: the
+// documented refusal is "this agent has no shared scratch" (its private /tmp is
+// unaffected), and the spawn continues. That is why the assertion is on the log
+// for the failure direction and on the issued commands for the success one.
+func TestSpawnVerifiesExchangeRoot(t *testing.T) {
+	const perAgent = 64 << 20
+
+	tests := []struct {
+		name        string
+		rootOwner   string
+		wantScratch bool
+	}{
+		{
+			name:        "a correct exchange root lets the scratch be provisioned",
+			rootOwner:   "0:1001 " + hostsetup.OctalModeForTest(hostsetup.ScratchRootMode),
+			wantScratch: true,
+		},
+		{
+			// The measured defect: root:root 0750. mkdir under it would
+			// succeed and the agent still could not reach the tree.
+			name:      "the measured root:root 0750 refuses the scratch",
+			rootOwner: "0:0 750",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := newHostRecorder()
+			rec.scratchRootOwner = tc.rootOwner
+			scratchRoot := filepath.Join(t.TempDir(), "srv/bunker-share")
+			// The root's MODE is read from the real directory, so the fixture
+			// has to exist with the mode its `stat` answer describes: setgid
+			// 2750 for the healthy host, plain 0750 for the measured defect.
+			rootSetgid := os.FileMode(0)
+			if tc.wantScratch {
+				rootSetgid = os.ModeSetgid
+			}
+			if err := os.MkdirAll(scratchRoot, 0o750); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(scratchRoot, rootSetgid|0o750); err != nil {
+				t.Fatal(err)
+			}
+
+			var logBuf bytes.Buffer
+			cfg := config.DefaultConfig()
+			isolateRegistry(t, cfg)
+			cfg.Agent.Isolation.SharedScratchRoot = scratchRoot
+			cfg.Agent.Isolation.PrivateTmpRoot = instanceRootFor(t)
+			cfg.Agent.Isolation.SharedScratchPerAgentBytes = perAgent
+			cfg.Agent.SSHDir = filepath.Join(t.TempDir(), "ssh")
+			logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+			m := NewAgentManager(cfg, logger, resource.NewTracker(cfg.Agent.MaxAgents, logger), nil, nil)
+			defer m.Stop()
+			m.hostRunner = rec.run
+
+			binDir := t.TempDir()
+			stub := "#!/bin/sh\necho \"useradd: user '$2' already exists\" >&2\nexit 9\n"
+			if err := os.WriteFile(filepath.Join(binDir, "useradd"), []byte(stub), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+			restore := lookupAgentUser
+			lookupAgentUser = func(username string) (*user.User, error) {
+				return &user.User{Username: username, Uid: "1001", Gid: "1001", HomeDir: "/home/" + username}, nil
+			}
+			defer func() { lookupAgentUser = restore }()
+
+			// The spawn fails later, at the agent home (this test does not own
+			// /home); the scratch step runs BEFORE that and is what matters.
+			agentID := uniqueAgentID("dfbunker40")
+			_, _ = m.Spawn(context.Background(), &v1.SpawnAgentRequest{AgentId: agentID, Ttl: "1h"})
+			dir := filepath.Join(scratchRoot, agentID)
+
+			if tc.wantScratch {
+				if !rec.ran("mount -t tmpfs -o size=67108864,mode=0770,nosuid,nodev tmpfs " + dir) {
+					t.Errorf("Spawn did not provision the bounded scratch under a correct root\ncalls: %v", rec.calls)
+				}
+				if !strings.Contains(logBuf.String(), "shared scratch ready") {
+					t.Errorf("Spawn did not report the scratch as ready on a correct host:\n%s", logBuf.String())
+				}
+				return
+			}
+
+			if rec.ranPrefix("mount -t tmpfs") {
+				t.Errorf("a bounded scratch was mounted under an unusable exchange root: %v", rec.calls)
+			}
+			if _, statErr := os.Stat(dir); !os.IsNotExist(statErr) {
+				t.Errorf("spawn with an unusable exchange root left %s behind: %v", dir, statErr)
+			}
+			// The refusal must be LOUD and actionable: this is the log line an
+			// operator sees on the host where every spawn used to claim the
+			// scratch was fine.
+			logged := logBuf.String()
+			if strings.Contains(logged, "shared scratch ready") {
+				t.Errorf("an unusable exchange root was reported as a ready scratch:\n%s", logged)
+			}
+			if !strings.Contains(logged, "host-provision --apply") {
+				t.Errorf("the refusal did not name the operator remedy:\n%s", logged)
+			}
+		})
 	}
 }
 
