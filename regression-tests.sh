@@ -219,22 +219,25 @@ cleanup() {
             fi
         fi
     fi
-    # This suite's own CLI state dir (see the BUNKER_HOME pin at the top).
-    # INT-CI-025: unset the binding AFTER the destroy loop below and BEFORE
-    # the state dir is removed. Unsetting earlier would unbind those destroys
-    # (they would hit the fail-closed refusal instead of the removed config),
-    # and leaving it set past teardown would leak the binding into any caller
-    # that later sources or re-runs this shell.
+    # Destroy any agents created during tests — BEFORE the suite's own CLI
+    # state dir is removed: each destroy resolves its target through the CLI
+    # config inside that dir, and LoadCLIConfig treats a missing config file
+    # as an EMPTY config (internal/cli/config.go), so deleting the dir first
+    # made every teardown destroy die at the config-entry lookup and
+    # silently skip (INT-CI-025 rework). Defense in depth: --server is also
+    # passed explicitly, so teardown does not depend on the exported binding
+    # alone (same contract as the live sections).
+    for id in "${AGENT_IDS[@]}"; do
+        bunker destroy --server "$REGRESSION_TARGET_NAME" "$id" --force 2>/dev/null || true
+    done
+    # INT-CI-025: tear the binding down only AFTER the destroys above, then
+    # remove this suite's own CLI state dir (see the BUNKER_HOME pin at the
+    # top). Leaving the binding set past teardown would leak it into any
+    # caller that later sources or re-runs this shell.
+    unset BUNKER_SESSION_TARGET
     if [ -n "${REGRESSION_CLI_HOME:-}" ] && [ -d "$REGRESSION_CLI_HOME" ]; then
         rm -rf "$REGRESSION_CLI_HOME" 2>/dev/null || true
     fi
-    # Destroy any agents created during tests
-    for id in "${AGENT_IDS[@]}"; do
-        bunker destroy "$id" --force 2>/dev/null || true
-    done
-    # INT-CI-025: tear the binding down only now — every teardown destroy
-    # above still needs it (see the note on the state-dir removal).
-    unset BUNKER_SESSION_TARGET
     # Kill leftover users. Standalone: every bunker- user is fair game.
     # Coexist: only this battery's own agents (regr-alpha + the auto ID) —
     # NEVER touch production users.
@@ -588,14 +591,18 @@ echo ""
 echo "── 4. Spawn ──"
 
 # 4a. Spawn with explicit ID
-OUT=$(bunker spawn --agent-id regr-alpha 2>&1)
+# Defense in depth (INT-CI-025): --server is passed explicitly even though
+# the exported BUNKER_SESSION_TARGET binds every call — the flag wins in the
+# resolver (internal/cli/binding.go), so the suite still targets its own
+# server even if the export is lost mid-run.
+OUT=$(bunker spawn --server "$REGRESSION_TARGET_NAME" --agent-id regr-alpha 2>&1)
 assert 'echo "$OUT" | grep -q "Agent created: regr-alpha"' "spawn with explicit ID"
 assert 'echo "$OUT" | grep -q "DOCKER_HOST=ssh://"' "returns Docker SSH URL"
 assert 'echo "$OUT" | grep -q "Port Range:"' "returns port range"
 AGENT_IDS+=("regr-alpha")
 
-# 4b. Spawn with auto-generated ID
-OUT=$(bunker spawn 2>&1 || true)
+# 4b. Spawn with auto-generated ID (bound via --server, same defense in depth)
+OUT=$(bunker spawn --server "$REGRESSION_TARGET_NAME" 2>&1 || true)
 AUTO_ID=$(echo "$OUT" | grep "Agent created:" | awk '{print $NF}' || echo "")
 if [ -n "$AUTO_ID" ]; then
     pass "spawn auto-generates ID (got: $AUTO_ID)"
@@ -643,16 +650,16 @@ echo ""
 echo "── 6. Exec ──"
 
 # 6a. Simple command
-OUT=$(bunker exec regr-alpha whoami 2>&1 || true)
+OUT=$(bunker exec --server "$REGRESSION_TARGET_NAME" regr-alpha whoami 2>&1 || true)
 assert 'echo "$OUT" | grep -q "bunker-regr-alpha"' "exec whoami returns agent username"
 
 # 6b. Docker version
-OUT=$(bunker exec regr-alpha "docker version --format '{{.Client.Version}}'" 2>&1 || true)
+OUT=$(bunker exec --server "$REGRESSION_TARGET_NAME" regr-alpha "docker version --format '{{.Client.Version}}'" 2>&1 || true)
 assert 'echo "$OUT" | grep -qE "[0-9]+\.[0-9]+"' "exec docker version returns version"
 
 # 6c. Command with exit code (propagated silently, ssh-style: process exits
 # with the remote code and prints no "bunker: exit code N" noise)
-OUT=$(bunker exec regr-alpha "exit 42" 2>&1; echo "EXIT:$?")
+OUT=$(bunker exec --server "$REGRESSION_TARGET_NAME" regr-alpha "exit 42" 2>&1; echo "EXIT:$?")
 assert 'echo "$OUT" | grep -q "EXIT:42"' "exec propagates exit code"
 
 echo ""
@@ -665,7 +672,10 @@ OUT=$(bunker metrics 2>&1 || true)
 assert 'echo "$OUT" | grep -qE "CPU|MEM|Agent|agent"' "server metrics shows data"
 
 # 7b. Agent metrics
-OUT=$(bunker metrics regr-alpha 2>&1 || true)
+# Read-only, but bound explicitly anyway: ReadOnlyTarget honors --server the
+# same way, and this keeps every per-agent call in the suite pointing at the
+# suite's own server (INT-CI-025 defense in depth).
+OUT=$(bunker metrics --server "$REGRESSION_TARGET_NAME" regr-alpha 2>&1 || true)
 echo "  ${YELLOW}⚠${NC} agent metrics: $(echo "$OUT" | head -1)"
 
 echo ""
@@ -674,7 +684,7 @@ echo ""
 echo "── 8. Destroy ──"
 
 # 8a. Destroy explicit agent (use --force to bypass systemctl user-instance bug)
-OUT=$(bunker destroy regr-alpha --force 2>&1 || true)
+OUT=$(bunker destroy --server "$REGRESSION_TARGET_NAME" regr-alpha --force 2>&1 || true)
 assert 'echo "$OUT" | grep -qE "destroyed|Destroyed"' "destroy regr-alpha"
 
 # 8b. Verify user is gone
@@ -683,7 +693,7 @@ assert '! grep -q "^bunker-regr-alpha" /etc/passwd 2>/dev/null || true' "user re
 assert '! [ -d /home/bunker-regr-alpha ] 2>/dev/null || true' "home directory removed"
 
 # 8c. Destroy auto-generated agent
-OUT=$(bunker destroy "$AUTO_ID" --force 2>&1 || true)
+OUT=$(bunker destroy --server "$REGRESSION_TARGET_NAME" "$AUTO_ID" --force 2>&1 || true)
 echo "  destroy $AUTO_ID: $(echo "$OUT" | head -1)"
 
 # 8d. Verify both gone (force-destroy may leave user briefly; cleanup trap handles it)
@@ -713,15 +723,18 @@ echo ""
 echo "── 10. Error handling ──"
 
 # 10a. Spawn with invalid ID
-OUT=$(bunker spawn --agent-id INVALID! 2>&1; echo "EXIT:$?")
+# Bound with --server (INT-CI-025): this cell asserts ID VALIDATION, not the
+# GAP-093 binding refusal — unbound, the resolver would refuse before the ID
+# is ever validated. The binding-refusal contract has its own cell below.
+OUT=$(bunker spawn --server "$REGRESSION_TARGET_NAME" --agent-id INVALID! 2>&1; echo "EXIT:$?")
 assert 'echo "$OUT" | grep -qE "invalid|error|Error"' "rejects invalid agent ID"
 
-# 10b. Exec on non-existent agent
-OUT=$(bunker exec nonexistent whoami 2>&1; echo "EXIT:$?")
+# 10b. Exec on non-existent agent (bound: asserts NOT-FOUND, not the binding refusal)
+OUT=$(bunker exec --server "$REGRESSION_TARGET_NAME" nonexistent whoami 2>&1; echo "EXIT:$?")
 assert 'echo "$OUT" | grep -qE "not.found|not found|error|Error"' "rejects exec on nonexistent agent"
 
-# 10c. Destroy non-existent agent
-OUT=$(bunker destroy nonexistent 2>&1; echo "EXIT:$?")
+# 10c. Destroy non-existent agent (bound: asserts NOT-FOUND, not the binding refusal)
+OUT=$(bunker destroy --server "$REGRESSION_TARGET_NAME" nonexistent 2>&1; echo "EXIT:$?")
 assert 'echo "$OUT" | grep -qE "not.found|not found|error|Error"' "rejects destroy of nonexistent agent"
 
 # 10d. Connect to bad server
@@ -736,6 +749,10 @@ assert 'echo "$OUT" | grep -qE "unavailable|refused|error|Error|connect"' "handl
 OUT=$(env -u BUNKER_SESSION_TARGET bunker spawn --agent-id should-refuse 2>&1; echo "EXIT:$?")
 assert 'echo "$OUT" | grep -q "no target bound: pass --server/--agent or set BUNKER_SESSION_TARGET"' "unbound spawn refused with the exact GAP-093 message"
 assert 'echo "$OUT" | grep -q "EXIT:1"' "unbound spawn exits non-zero"
+# INT-CI-025 rework: name the refusal in the failure text of the exit-code
+# cell too, so a future drift that changes the message or the code is
+# attributable from the job summary alone.
+assert 'echo "$OUT" | grep -q "no target bound: pass --server/--agent or set BUNKER_SESSION_TARGET"' "unbound spawn refused again when re-checked for its exit code"
 
 echo ""
 
