@@ -54,6 +54,7 @@ func (m *mockTunnelServer) GetAgent(
 // pointing at the given URL, and sets it as the active server.
 func writeTunnelTestConfig(t *testing.T, home, serverURL string) {
 	t.Helper()
+	t.Setenv(SessionTargetEnvVar, "default")
 	cfg := &CLIConfig{
 		Servers: map[string]ServerEntry{
 			"default": {

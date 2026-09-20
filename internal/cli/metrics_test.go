@@ -87,7 +87,7 @@ func TestMetricsCommand_Help(t *testing.T) {
 
 	cmd := NewMetricsCommand()
 	output := captureStdout(t, func() {
-		cmd.SetArgs([]string{"--help"})
+		cmd.SetArgs([]string{"--server", "default", "--help"})
 		cmd.Execute()
 	})
 
@@ -192,7 +192,7 @@ func TestMetricsCommand_AgentMetrics(t *testing.T) {
 	}
 
 	cmd := NewMetricsCommand()
-	cmd.SetArgs([]string{"abc123", "--server", "test"})
+	cmd.SetArgs([]string{"--server", "default", "abc123", "--server", "test"})
 	output := captureStdout(t, func() {
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("Execute: %v", err)
@@ -231,7 +231,7 @@ func TestMetricsCommand_AgentMetrics_HostFallbackNotice(t *testing.T) {
 	}
 
 	cmd := NewMetricsCommand()
-	cmd.SetArgs([]string{"abc123", "--server", "test"})
+	cmd.SetArgs([]string{"--server", "default", "abc123", "--server", "test"})
 	output := captureStdout(t, func() {
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("Execute: %v", err)
@@ -283,7 +283,7 @@ func TestMetricsCommand_AgentNotFound(t *testing.T) {
 	}
 
 	cmd := NewMetricsCommand()
-	cmd.SetArgs([]string{"missing-id", "--server", "test"})
+	cmd.SetArgs([]string{"--server", "default", "missing-id", "--server", "test"})
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("expected error for missing agent")

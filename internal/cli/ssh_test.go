@@ -50,7 +50,7 @@ func TestSSHCommand_NoServer(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for no active server")
 	}
-	if !strings.Contains(err.Error(), "no active server") {
+	if !strings.Contains(err.Error(), "no target bound") {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
@@ -80,6 +80,7 @@ func TestSSHCommand_AgentNotFound(t *testing.T) {
 }
 
 func TestSSHCommand_MissingSSHKey(t *testing.T) {
+	t.Setenv(SessionTargetEnvVar, "test")
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
@@ -113,6 +114,7 @@ func TestSSHCommand_MissingSSHKey(t *testing.T) {
 }
 
 func TestSSHCommand_EmptySshfsMount(t *testing.T) {
+	t.Setenv(SessionTargetEnvVar, "test")
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
@@ -146,6 +148,7 @@ func TestSSHCommand_EmptySshfsMount(t *testing.T) {
 }
 
 func TestSSHCommand_ValidKeyRunsSSH(t *testing.T) {
+	t.Setenv(SessionTargetEnvVar, "test")
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 

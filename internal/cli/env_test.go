@@ -40,7 +40,7 @@ func TestEnvCommand_Help(t *testing.T) {
 
 	cmd := NewEnvCommand()
 	output := captureStdout(t, func() {
-		cmd.SetArgs([]string{"--help"})
+		cmd.SetArgs([]string{"--server", "default", "--help"})
 		if err := cmd.Execute(); err != nil {
 			t.Logf("help Execute returned: %v", err)
 		}
@@ -66,7 +66,7 @@ func TestEnvCommand_NoServer(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when no active server")
 	}
-	if !strings.Contains(err.Error(), "bunker connect") {
+	if !strings.Contains(err.Error(), "no target bound") {
 		t.Fatalf("expected 'bunker connect' error, got: %v", err)
 	}
 }
@@ -76,7 +76,7 @@ func TestEnvCommand_MissingSubcommand(t *testing.T) {
 	t.Setenv("HOME", tmpDir)
 
 	cmd := NewEnvCommand()
-	cmd.SetArgs([]string{"abc123"})
+	cmd.SetArgs([]string{"--server", "default", "abc123"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected error for missing subcommand")
 	}
@@ -87,11 +87,11 @@ func TestEnvCommand_UnknownSubcommand(t *testing.T) {
 	t.Setenv("HOME", tmpDir)
 
 	// Need an active server for the dispatch switch to be reached, otherwise
-	// we hit the "no active server" path first.
+	// we hit the "no target bound" path first.
 	writeExecTestConfig(t, tmpDir, "http://127.0.0.1:1") // unreachable is fine
 
 	cmd := NewEnvCommand()
-	cmd.SetArgs([]string{"frobnicate", "abc123"})
+	cmd.SetArgs([]string{"--server", "default", "frobnicate", "abc123"})
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("expected error for unknown subcommand")
@@ -117,7 +117,7 @@ func TestEnvSet_Success(t *testing.T) {
 	writeExecTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewEnvCommand()
-	cmd.SetArgs([]string{"set", "abcd", "DATABASE_URL=postgres://db.local/app"})
+	cmd.SetArgs([]string{"--server", "default", "set", "abcd", "DATABASE_URL=postgres://db.local/app"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("env set failed: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestEnvSet_InvalidKey(t *testing.T) {
 
 	cmd := NewEnvCommand()
 	// Leading digit is not allowed by POSIX env name rules.
-	cmd.SetArgs([]string{"set", "abc", "1FOO=bar"})
+	cmd.SetArgs([]string{"--server", "default", "set", "abc", "1FOO=bar"})
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("expected error for invalid env key")
@@ -178,7 +178,7 @@ func TestEnvSet_InvalidFormat(t *testing.T) {
 	t.Setenv("HOME", tmpDir)
 
 	cmd := NewEnvCommand()
-	cmd.SetArgs([]string{"set", "abc", "NOEQUALS"})
+	cmd.SetArgs([]string{"--server", "default", "set", "abc", "NOEQUALS"})
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("expected error for missing '=' separator")
@@ -204,7 +204,7 @@ func TestEnvSet_EmptyValue(t *testing.T) {
 	writeExecTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewEnvCommand()
-	cmd.SetArgs([]string{"set", "abcd", "EMPTY="})
+	cmd.SetArgs([]string{"--server", "default", "set", "abcd", "EMPTY="})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("env set with empty value failed: %v", err)
 	}
@@ -230,7 +230,7 @@ func TestEnvGet_Success(t *testing.T) {
 	writeExecTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewEnvCommand()
-	cmd.SetArgs([]string{"get", "abcd", "DATABASE_URL"})
+	cmd.SetArgs([]string{"--server", "default", "get", "abcd", "DATABASE_URL"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("env get failed: %v", err)
 	}
@@ -250,7 +250,7 @@ func TestEnvGet_InvalidKey(t *testing.T) {
 	t.Setenv("HOME", tmpDir)
 
 	cmd := NewEnvCommand()
-	cmd.SetArgs([]string{"get", "abc", "BAD-KEY"})
+	cmd.SetArgs([]string{"--server", "default", "get", "abc", "BAD-KEY"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected error for invalid env key")
 	}
@@ -273,7 +273,7 @@ func TestEnvList_Success(t *testing.T) {
 	writeExecTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewEnvCommand()
-	cmd.SetArgs([]string{"list", "abcd"})
+	cmd.SetArgs([]string{"--server", "default", "list", "abcd"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("env list failed: %v", err)
 	}
@@ -303,7 +303,7 @@ func TestEnvUnset_Success(t *testing.T) {
 	writeExecTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewEnvCommand()
-	cmd.SetArgs([]string{"unset", "abcd", "DATABASE_URL"})
+	cmd.SetArgs([]string{"--server", "default", "unset", "abcd", "DATABASE_URL"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("env unset failed: %v", err)
 	}
@@ -322,7 +322,7 @@ func TestEnvUnset_InvalidKey(t *testing.T) {
 	t.Setenv("HOME", tmpDir)
 
 	cmd := NewEnvCommand()
-	cmd.SetArgs([]string{"unset", "abc", "BAD KEY"})
+	cmd.SetArgs([]string{"--server", "default", "unset", "abc", "BAD KEY"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected error for invalid env key with space")
 	}
@@ -342,7 +342,7 @@ func TestEnvSet_AgentNotFound(t *testing.T) {
 	writeExecTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewEnvCommand()
-	cmd.SetArgs([]string{"set", "missing", "FOO=bar"})
+	cmd.SetArgs([]string{"--server", "default", "set", "missing", "FOO=bar"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected error for not-found agent")
 	}
@@ -362,7 +362,7 @@ func TestEnvSet_ServerError(t *testing.T) {
 	writeExecTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewEnvCommand()
-	cmd.SetArgs([]string{"set", "abcd", "FOO=bar"})
+	cmd.SetArgs([]string{"--server", "default", "set", "abcd", "FOO=bar"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected error for server failure")
 	}
@@ -387,7 +387,7 @@ func TestEnvGet_ExitNonZero_NoError(t *testing.T) {
 	writeExecTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewEnvCommand()
-	cmd.SetArgs([]string{"get", "abcd", "MISSING_KEY"})
+	cmd.SetArgs([]string{"--server", "default", "get", "abcd", "MISSING_KEY"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("env get on missing key should NOT return an error, got: %v", err)
 	}
@@ -407,7 +407,7 @@ func TestEnvList_TimeoutFlag(t *testing.T) {
 	writeExecTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewEnvCommand()
-	cmd.SetArgs([]string{"--timeout", "60", "list", "abcd"})
+	cmd.SetArgs([]string{"--server", "default", "--timeout", "60", "list", "abcd"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("env list with --timeout failed: %v", err)
 	}

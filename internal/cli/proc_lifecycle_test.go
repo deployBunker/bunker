@@ -85,6 +85,9 @@ func newProcTestHarness(t *testing.T) *procTestHarness {
 	}
 	t.Setenv("BUNKER_HOME", home)
 	writeTunnelTestConfig(t, home, server.URL)
+	// Fail-closed binding (GAP-093): mutating CLI paths need an explicit
+	// target; bind the session via the env var, which reaches the child.
+	t.Setenv(SessionTargetEnvVar, "default")
 	writeTunnelKey(t, home, procTestAgentID)
 
 	binDir := filepath.Join(tmp, "bin")

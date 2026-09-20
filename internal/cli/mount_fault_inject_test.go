@@ -108,6 +108,7 @@ func TestFaultedRemotePathCheck_NoFaultIsClean(t *testing.T) {
 // retried. Retrying an auth failure wastes the operator's time and, worse,
 // mislabels the cause as session limiting.
 func TestMountFault_PermanentFailsImmediately(t *testing.T) {
+	t.Setenv(SessionTargetEnvVar, "default")
 	t.Setenv(envMountFault, faultPermanent)
 	defer applyMountFaultToSeam()()
 
@@ -132,6 +133,7 @@ func TestMountFault_PermanentFailsImmediately(t *testing.T) {
 // TestMountFault_TransientRecoversWithinBudget: the blip case. The retry loop
 // must absorb N transient failures and still mount, without operator action.
 func TestMountFault_TransientRecoversWithinBudget(t *testing.T) {
+	t.Setenv(SessionTargetEnvVar, "default")
 	t.Setenv(envMountFault, faultTransient)
 	t.Setenv(envMountFaultN, "2")
 	defer applyMountFaultToSeam()()

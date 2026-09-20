@@ -39,12 +39,14 @@ Examples:
 			}
 
 			// 2. Determine server
-			if serverName == "" {
-				serverName = cfg.ActiveServer
-			}
+			// Read-only convenience default is allowed, but the resolved
+			// target is always printed (GAP-093): a read is never mistaken
+			// for a read of a different server.
+			serverName = ReadOnlyTarget(serverName, cfg.ActiveServer)
 			if serverName == "" {
 				return fmt.Errorf("no active server; run 'bunker connect' first")
 			}
+			fmt.Fprintf(cmd.ErrOrStderr(), "bunker: reading server %q\n", serverName)
 
 			entry, ok := cfg.Servers[serverName]
 			if !ok {

@@ -71,7 +71,7 @@ func TestInfoCommand_Help(t *testing.T) {
 
 	cmd := NewInfoCommand()
 	output := captureStdout(t, func() {
-		cmd.SetArgs([]string{"--help"})
+		cmd.SetArgs([]string{"--server", "test", "--help"})
 		cmd.Execute()
 	})
 
@@ -95,6 +95,7 @@ func TestInfoCommand_MissingArgs(t *testing.T) {
 func TestInfoCommand_NoServer(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
+	t.Setenv(SessionTargetEnvVar, "")
 
 	cmd := NewInfoCommand()
 	cmd.SetArgs([]string{"abc123"})
@@ -146,7 +147,7 @@ func TestInfoCommand_Success(t *testing.T) {
 	}
 
 	cmd := NewInfoCommand()
-	cmd.SetArgs([]string{"e2e-test-42"})
+	cmd.SetArgs([]string{"--server", "test", "e2e-test-42"})
 
 	output := captureStdout(t, func() {
 		if err := cmd.Execute(); err != nil {
@@ -206,7 +207,7 @@ func TestInfoCommand_AgentNotFound(t *testing.T) {
 	}
 
 	cmd := NewInfoCommand()
-	cmd.SetArgs([]string{"nonexistent"})
+	cmd.SetArgs([]string{"--server", "test", "nonexistent"})
 	err := cmd.Execute()
 	if err == nil {
 		t.Error("expected error for agent not found")
@@ -234,7 +235,7 @@ func TestInfoCommand_ServerError(t *testing.T) {
 	}
 
 	cmd := NewInfoCommand()
-	cmd.SetArgs([]string{"error-agent"})
+	cmd.SetArgs([]string{"--server", "test", "error-agent"})
 	err := cmd.Execute()
 	if err == nil {
 		t.Error("expected error for server error")
@@ -269,7 +270,7 @@ func TestInfoCommand_MinimalAgent(t *testing.T) {
 	}
 
 	cmd := NewInfoCommand()
-	cmd.SetArgs([]string{"minimal-agent"})
+	cmd.SetArgs([]string{"--server", "test", "minimal-agent"})
 
 	output := captureStdout(t, func() {
 		if err := cmd.Execute(); err != nil {

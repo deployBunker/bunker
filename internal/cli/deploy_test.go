@@ -174,7 +174,7 @@ func TestDeployCommand_NoServer(t *testing.T) {
 	if err == nil {
 		t.Error("expected error when no server configured")
 	}
-	if err != nil && !strings.Contains(err.Error(), "no active server") {
+	if err != nil && !strings.Contains(err.Error(), "no target bound") {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
@@ -337,6 +337,7 @@ func runDeployCommand(t *testing.T, args ...string) (string, string, error) {
 // directory owned by someone other than the agent user. Every probe outcome
 // that is not "other owner" must stay silent rather than invent advice.
 func TestDeployCommand_ScpFailureOwnershipHint(t *testing.T) {
+	t.Setenv(SessionTargetEnvVar, "custom-server")
 	const remotePath = "/tmp/payload"
 
 	tests := []struct {

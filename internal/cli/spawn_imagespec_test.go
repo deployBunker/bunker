@@ -90,7 +90,7 @@ func TestSpawnCommand_ImageSpecPropagation(t *testing.T) {
 
 	cmd := NewSpawnCommand()
 	output := captureStdout(t, func() {
-		cmd.SetArgs([]string{"specagent", "--image-spec", specPath})
+		cmd.SetArgs([]string{"--server", "default", "specagent", "--image-spec", specPath})
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("Execute: %v", err)
 		}

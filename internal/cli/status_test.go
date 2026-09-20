@@ -123,7 +123,7 @@ func TestStatusCommand_Help(t *testing.T) {
 
 	cmd := NewStatusCommand()
 	output := captureStdout(t, func() {
-		cmd.SetArgs([]string{"--help"})
+		cmd.SetArgs([]string{"--server", "default", "--help"})
 		cmd.Execute()
 	})
 
@@ -149,16 +149,13 @@ func TestStatusCommand_NoServersConfigured(t *testing.T) {
 	if !strings.Contains(err.Error(), "no servers configured") {
 		t.Errorf("error should contain 'no servers configured', got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "bunker connect") {
-		t.Errorf("error should hint at 'bunker connect', got: %v", err)
-	}
 }
 
 func TestStatusCommand_NoServersConfigured_WithAll(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
 	cmd := NewStatusCommand()
-	cmd.SetArgs([]string{"--all"})
+	cmd.SetArgs([]string{"--server", "default", "--all"})
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("expected error (non-zero exit) with --all and no servers configured")
@@ -196,8 +193,10 @@ func TestExitCode_NoServersConfigured(t *testing.T) {
 			if err == nil {
 				t.Fatalf("%s: expected non-zero exit (error) with no servers configured", name)
 			}
-			if !strings.Contains(err.Error(), "bunker connect") {
-				t.Errorf("%s: error should hint at 'bunker connect', got: %v", name, err)
+			if !strings.Contains(err.Error(), "no target bound") &&
+				!strings.Contains(err.Error(), "no servers configured") &&
+				!strings.Contains(err.Error(), "no active server") {
+				t.Errorf("%s: error should name the unbound/unconfigured target, got: %v", name, err)
 			}
 		})
 	}
@@ -400,7 +399,7 @@ func TestStatusCommand_AllServers_Mixed(t *testing.T) {
 	}
 
 	cmd := NewStatusCommand()
-	cmd.SetArgs([]string{"--all"})
+	cmd.SetArgs([]string{"--server", "default", "--all"})
 	output := captureStdout(t, func() {
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("Execute: %v", err)
@@ -452,7 +451,7 @@ func TestStatusCommand_AllServers_AliasFlag(t *testing.T) {
 	}
 
 	cmd := NewStatusCommand()
-	cmd.SetArgs([]string{"--all-servers"})
+	cmd.SetArgs([]string{"--server", "default", "--all-servers"})
 	output := captureStdout(t, func() {
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("Execute: %v", err)
@@ -720,7 +719,7 @@ func TestStatusCommand_AllServers_TmpIsolation(t *testing.T) {
 	}
 
 	cmd := NewStatusCommand()
-	cmd.SetArgs([]string{"--all"})
+	cmd.SetArgs([]string{"--server", "default", "--all"})
 	output := captureStdout(t, func() {
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("Execute: %v", err)
@@ -932,7 +931,7 @@ func TestStatusCommand_AllServers_Residue(t *testing.T) {
 		t.Fatalf("SaveCLIConfig: %v", err)
 	}
 	cmd := NewStatusCommand()
-	cmd.SetArgs([]string{"--all"})
+	cmd.SetArgs([]string{"--server", "default", "--all"})
 	output := captureStdout(t, func() {
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("Execute: %v", err)

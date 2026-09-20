@@ -52,7 +52,13 @@ Examples:
 
 			// Single-server mode.
 			if serverName == "" {
-				serverName = cfg.ActiveServer
+				// Read-only convenience default, but the resolved target is
+				// always printed (GAP-093) so a read is never mistaken for a
+				// read of a different server.
+				serverName = ReadOnlyTarget(serverName, cfg.ActiveServer)
+				if serverName != "" {
+					fmt.Fprintf(cmd.ErrOrStderr(), "bunker: reading server %q\n", serverName)
+				}
 			}
 
 			// No servers configured at all — fail loudly (non-zero exit) so

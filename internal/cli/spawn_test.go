@@ -66,6 +66,7 @@ func (m *mockSpawnServer) SpawnAgent(
 // pointing at the given URL, and sets it as the active server.
 func writeSpawnTestConfig(t *testing.T, home, serverURL string) {
 	t.Helper()
+	t.Setenv(SessionTargetEnvVar, "default")
 	cfg := &CLIConfig{
 		Servers: map[string]ServerEntry{
 			"default": {
@@ -87,7 +88,7 @@ func TestSpawnCommand_Help(t *testing.T) {
 
 	cmd := NewSpawnCommand()
 	output := captureStdout(t, func() {
-		cmd.SetArgs([]string{"--help"})
+		cmd.SetArgs([]string{"--server", "default", "--help"})
 		cmd.Execute()
 	})
 
@@ -298,7 +299,7 @@ func TestSpawnCommand_SshHostFlag(t *testing.T) {
 	writeSpawnTestConfig(t, tmpDir, srv.URL)
 
 	cmd := NewSpawnCommand()
-	cmd.SetArgs([]string{"--ssh-host", "somehost.example"})
+	cmd.SetArgs([]string{"--server", "default", "--ssh-host", "somehost.example"})
 	output := captureStdout(t, func() {
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("Execute: %v", err)
@@ -633,7 +634,7 @@ func TestSpawnCommand_ServerNotFound(t *testing.T) {
 // TestSpawnCommand_InvalidTTLFailsFastLocally pins DF-BUNKER-17: an invalid
 // --ttl is rejected before the "Creating agent..." progress line and before
 // any RPC. No server is configured here on purpose — the failure must be the
-// TTL error, not "no active server", proving validation runs before config
+// TTL error, not "no target bound", proving validation runs before config
 // load and network I/O.
 func TestSpawnCommand_InvalidTTLFailsFastLocally(t *testing.T) {
 	tests := []struct {
@@ -654,7 +655,7 @@ func TestSpawnCommand_InvalidTTLFailsFastLocally(t *testing.T) {
 			t.Setenv("HOME", t.TempDir()) // empty HOME: no CLI config at all
 
 			cmd := NewSpawnCommand()
-			cmd.SetArgs([]string{"ttl-agent", "--ttl", tt.ttl})
+			cmd.SetArgs([]string{"--server", "default", "ttl-agent", "--ttl", tt.ttl})
 			var err error
 			out := captureStdout(t, func() { err = cmd.Execute() })
 
@@ -664,7 +665,7 @@ func TestSpawnCommand_InvalidTTLFailsFastLocally(t *testing.T) {
 			if strings.Contains(out, "Creating agent...") {
 				t.Errorf("progress line printed before --ttl validation, stdout:\n%s", out)
 			}
-			if strings.Contains(err.Error(), "no active server") {
+			if strings.Contains(err.Error(), "no target bound") {
 				t.Errorf("--ttl %q was not validated before config load: %v", tt.ttl, err)
 			}
 			for _, want := range []string{"invalid --ttl", tt.ttl, "6h", "90m", "7d"} {
@@ -691,7 +692,7 @@ func TestSpawnCommand_InvalidTTLDoesNotReachServer(t *testing.T) {
 	writeSpawnTestConfig(t, tmpDir, srv.URL)
 
 	cmd := NewSpawnCommand()
-	cmd.SetArgs([]string{"ttl-agent", "--ttl", "6x"})
+	cmd.SetArgs([]string{"--server", "default", "ttl-agent", "--ttl", "6x"})
 	var err error
 	out := captureStdout(t, func() { err = cmd.Execute() })
 
@@ -722,7 +723,7 @@ func TestSpawnCommand_ValidTTLStillForwarded(t *testing.T) {
 	writeSpawnTestConfig(t, tmpDir, srv.URL)
 
 	cmd := NewSpawnCommand()
-	cmd.SetArgs([]string{"ttl-agent", "--ttl", "90m"})
+	cmd.SetArgs([]string{"--server", "default", "ttl-agent", "--ttl", "90m"})
 	var err error
 	out := captureStdout(t, func() { err = cmd.Execute() })
 

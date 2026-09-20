@@ -173,6 +173,8 @@ func newMountTestServer(t *testing.T, sshfsMount string) {
 	if err := SaveCLIConfig(cfg); err != nil {
 		t.Fatalf("SaveCLIConfig: %v", err)
 	}
+	// Fail-closed binding (GAP-093): bind the session explicitly.
+	t.Setenv(SessionTargetEnvVar, "default")
 }
 
 // writeMountClientKey creates the client-local SSH key the CLI must resolve

@@ -119,7 +119,7 @@ func TestLifecycleCommands_Help(t *testing.T) {
 
 			cmd := commands[tt.name]()
 			output := captureStdout(t, func() {
-				cmd.SetArgs([]string{"--help"})
+				cmd.SetArgs([]string{"--server", "default", "--help"})
 				_ = cmd.Execute()
 			})
 			// Cobra renders Long (falling back to Short) in --help, so the
@@ -171,7 +171,7 @@ func TestStopCommand_Outputs(t *testing.T) {
 			writeDestroyTestConfig(t, tmpDir, srv.URL)
 
 			cmd := NewStopCommand()
-			cmd.SetArgs([]string{"abc12345"})
+			cmd.SetArgs([]string{"--server", "default", "abc12345"})
 			var err error
 			output := captureStdout(t, func() { err = cmd.Execute() })
 
@@ -215,7 +215,7 @@ func TestStartCommand_Outputs(t *testing.T) {
 			writeDestroyTestConfig(t, tmpDir, srv.URL)
 
 			cmd := NewStartCommand()
-			cmd.SetArgs([]string{"abc12345"})
+			cmd.SetArgs([]string{"--server", "default", "abc12345"})
 			var err error
 			output := captureStdout(t, func() { err = cmd.Execute() })
 			if err != nil {
@@ -247,7 +247,7 @@ func TestRestartCommand_PrintsRefreshedExpiry(t *testing.T) {
 	writeDestroyTestConfig(t, tmpDir, srv.URL)
 
 	cmd := NewRestartCommand()
-	cmd.SetArgs([]string{"abc12345"})
+	cmd.SetArgs([]string{"--server", "default", "abc12345"})
 	var err error
 	output := captureStdout(t, func() { err = cmd.Execute() })
 	if err != nil {
@@ -277,7 +277,7 @@ func TestRestartCommand_NotFoundExitsNonZero(t *testing.T) {
 	writeDestroyTestConfig(t, tmpDir, srv.URL)
 
 	cmd := NewRestartCommand()
-	cmd.SetArgs([]string{"ghost"})
+	cmd.SetArgs([]string{"--server", "default", "ghost"})
 	var err error
 	_ = captureStdout(t, func() { err = cmd.Execute() })
 	if err == nil {

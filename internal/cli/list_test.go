@@ -66,7 +66,7 @@ func TestListCommand_Help(t *testing.T) {
 
 	cmd := NewListCommand()
 	output := captureStdout(t, func() {
-		cmd.SetArgs([]string{"--help"})
+		cmd.SetArgs([]string{"--server", "default", "--help"})
 		cmd.Execute()
 	})
 

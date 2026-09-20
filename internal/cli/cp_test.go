@@ -151,7 +151,7 @@ func TestCpCommand_NoServer(t *testing.T) {
 	if err == nil {
 		t.Error("expected error when no server configured")
 	}
-	if err != nil && !strings.Contains(err.Error(), "no active server") {
+	if err != nil && !strings.Contains(err.Error(), "no target bound") {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
@@ -586,6 +586,7 @@ func TestBuildSSHProbeArgs(t *testing.T) {
 // by someone other than the agent user. Every probe outcome that is not
 // "other owner" must stay silent rather than invent advice.
 func TestCpCommand_ScpFailureOwnershipHint(t *testing.T) {
+	t.Setenv(SessionTargetEnvVar, "custom-server")
 	tests := []struct {
 		name      string
 		probeOut  string
@@ -662,6 +663,7 @@ func TestCpCommand_ScpFailureOwnershipHint(t *testing.T) {
 // probe shells out to ssh with the same key/port/user@host as scp and that
 // its output reaches the user as an ownership hint.
 func TestCpCommand_OwnershipProbeRunsThroughRealSSHPath(t *testing.T) {
+	t.Setenv(SessionTargetEnvVar, "custom-server")
 	localFile := setupCpFailureTest(t, cpTestSSHFSMount)
 
 	binDir := t.TempDir()

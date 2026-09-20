@@ -76,12 +76,13 @@ Examples:
 			}
 
 			// Determine server
-			if serverName == "" {
-				serverName = cfg.ActiveServer
+			// Fail-closed binding (GAP-093): mutating commands never fall
+			// back to the shared active_server default.
+			resolved, berr := SessionScopedTarget(serverName, cfg.ActiveServer)
+			if berr != nil {
+				return berr
 			}
-			if serverName == "" {
-				return fmt.Errorf("no active server; run 'bunker connect' first")
-			}
+			serverName = resolved
 
 			entry, ok := cfg.Servers[serverName]
 			if !ok {

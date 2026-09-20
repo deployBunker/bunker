@@ -79,6 +79,7 @@ func (m *heartbeatMockServer) RunAgent(ctx context.Context, req *connect.Request
 }
 
 func TestHeartbeatCommand_SendsAgentID(t *testing.T) {
+	t.Setenv(SessionTargetEnvVar, "mock")
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
@@ -116,6 +117,7 @@ func TestHeartbeatCommand_SendsAgentID(t *testing.T) {
 // longer expiry is never shortened) — the behaviour used to live only in
 // --help.
 func TestHeartbeatCommand_OutputStatesTTLSemantics(t *testing.T) {
+	t.Setenv(SessionTargetEnvVar, "mock")
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
@@ -157,6 +159,7 @@ func TestHeartbeatCommand_OutputStatesTTLSemantics(t *testing.T) {
 // unconditional: an acknowledgement that carries no expires_at must still
 // show the line (with a placeholder) rather than silently dropping it.
 func TestHeartbeatCommand_OutputWhenDaemonOmitsExpiry(t *testing.T) {
+	t.Setenv(SessionTargetEnvVar, "mock")
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 

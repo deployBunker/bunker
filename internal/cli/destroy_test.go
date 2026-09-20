@@ -68,7 +68,7 @@ func TestDestroyCommand_Help(t *testing.T) {
 
 	cmd := NewDestroyCommand()
 	output := captureStdout(t, func() {
-		cmd.SetArgs([]string{"--help"})
+		cmd.SetArgs([]string{"--server", "default", "--help"})
 		cmd.Execute()
 	})
 
@@ -91,7 +91,7 @@ func TestDestroyCommand_NoActiveServer(t *testing.T) {
 	t.Setenv("HOME", tmpDir)
 
 	cmd := NewDestroyCommand()
-	cmd.SetArgs([]string{"abc12345"})
+	cmd.SetArgs([]string{"--server", "default", "abc12345"})
 	err := cmd.Execute()
 	if err == nil {
 		t.Error("expected error when no active server")
@@ -99,6 +99,7 @@ func TestDestroyCommand_NoActiveServer(t *testing.T) {
 }
 
 func TestDestroyCommand_Success(t *testing.T) {
+	t.Setenv(SessionTargetEnvVar, "default")
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
@@ -120,7 +121,7 @@ func TestDestroyCommand_Success(t *testing.T) {
 	writeDestroyTestConfig(t, tmpDir, srv.URL)
 
 	cmd := NewDestroyCommand()
-	cmd.SetArgs([]string{"abc12345"})
+	cmd.SetArgs([]string{"--server", "default", "abc12345"})
 	output := captureStdout(t, func() {
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("Execute: %v", err)
@@ -133,6 +134,7 @@ func TestDestroyCommand_Success(t *testing.T) {
 }
 
 func TestDestroyCommand_NotFound(t *testing.T) {
+	t.Setenv(SessionTargetEnvVar, "default")
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
@@ -154,7 +156,7 @@ func TestDestroyCommand_NotFound(t *testing.T) {
 	writeDestroyTestConfig(t, tmpDir, srv.URL)
 
 	cmd := NewDestroyCommand()
-	cmd.SetArgs([]string{"missing-id"})
+	cmd.SetArgs([]string{"--server", "default", "missing-id"})
 	output := captureStdout(t, func() {
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("Execute: %v", err)
@@ -167,6 +169,7 @@ func TestDestroyCommand_NotFound(t *testing.T) {
 }
 
 func TestDestroyCommand_Force(t *testing.T) {
+	t.Setenv(SessionTargetEnvVar, "default")
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
@@ -188,7 +191,7 @@ func TestDestroyCommand_Force(t *testing.T) {
 	writeDestroyTestConfig(t, tmpDir, srv.URL)
 
 	cmd := NewDestroyCommand()
-	cmd.SetArgs([]string{"abc12345", "--force"})
+	cmd.SetArgs([]string{"--server", "default", "abc12345", "--force"})
 	output := captureStdout(t, func() {
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("Execute: %v", err)
@@ -219,7 +222,7 @@ func TestDestroyCommand_ServerError(t *testing.T) {
 	writeDestroyTestConfig(t, tmpDir, srv.URL)
 
 	cmd := NewDestroyCommand()
-	cmd.SetArgs([]string{"abc12345"})
+	cmd.SetArgs([]string{"--server", "default", "abc12345"})
 	err := cmd.Execute()
 	if err == nil {
 		t.Error("expected error from server")
@@ -231,6 +234,7 @@ func TestDestroyCommand_ServerError(t *testing.T) {
 // print the same clean message and exit 0 (nil error) as the in-band
 // resp.Status == "not_found" branch.
 func TestDestroyCommand_CodeNotFound(t *testing.T) {
+	t.Setenv(SessionTargetEnvVar, "default")
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
@@ -249,7 +253,7 @@ func TestDestroyCommand_CodeNotFound(t *testing.T) {
 	writeDestroyTestConfig(t, tmpDir, srv.URL)
 
 	cmd := NewDestroyCommand()
-	cmd.SetArgs([]string{"missing-id"})
+	cmd.SetArgs([]string{"--server", "default", "missing-id"})
 	output := captureStdout(t, func() {
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("Execute: %v", err)
@@ -300,7 +304,7 @@ func TestDestroyCommand_ServerNotFound(t *testing.T) {
 	}
 
 	cmd := NewDestroyCommand()
-	cmd.SetArgs([]string{"abc12345", "--server", "missing-server"})
+	cmd.SetArgs([]string{"--server", "default", "abc12345", "--server", "missing-server"})
 	err := cmd.Execute()
 	if err == nil {
 		t.Error("expected error for missing server")
@@ -315,6 +319,7 @@ func TestDestroyCommand_ServerNotFound(t *testing.T) {
 // key saved at spawn time (~/.bunker/keys/<id>), while --keep-key and real
 // RPC errors leave it in place.
 func TestDestroyCommand_LocalSSHKeyCleanup(t *testing.T) {
+	t.Setenv(SessionTargetEnvVar, "default")
 	tests := []struct {
 		name            string
 		agentID         string

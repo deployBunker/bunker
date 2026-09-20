@@ -88,13 +88,14 @@ func TestRunCommand_Help(t *testing.T) {
 func TestRunCommand_NoServer(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
+	t.Setenv(SessionTargetEnvVar, "")
 
 	cmd := NewRunCommand()
 	cmd.SetArgs([]string{"abc123", "docker", "ps"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected error when no active server")
-	} else if !strings.Contains(err.Error(), "bunker connect") {
-		t.Fatalf("expected 'bunker connect' error, got: %v", err)
+	} else if !strings.Contains(err.Error(), "no target bound") {
+		t.Fatalf("expected the no-target refusal, got: %v", err)
 	}
 }
 
@@ -138,6 +139,7 @@ func TestRunCommand_DetachedSuccess(t *testing.T) {
 	})
 	defer server.Close()
 	writeExecTestConfig(t, tmpDir, server.URL)
+	t.Setenv(SessionTargetEnvVar, "default")
 
 	cmd := NewRunCommand()
 	cmd.SetArgs([]string{"abc123", "--detach", "--", "docker", "compose", "up"})
@@ -180,6 +182,7 @@ func TestRunCommand_DetachedWithEnvAndName(t *testing.T) {
 	})
 	defer server.Close()
 	writeExecTestConfig(t, tmpDir, server.URL)
+	t.Setenv(SessionTargetEnvVar, "default")
 
 	cmd := NewRunCommand()
 	cmd.SetArgs([]string{"abc", "--env", "FOO=bar", "--env", "BAZ=qux", "--detach", "--name", "api", "--", "python", "serve.py"})
@@ -213,6 +216,7 @@ func TestRunCommand_SyncStreamsOutput(t *testing.T) {
 	})
 	defer server.Close()
 	writeExecTestConfig(t, tmpDir, server.URL)
+	t.Setenv(SessionTargetEnvVar, "default")
 
 	cmd := NewRunCommand()
 	cmd.SetArgs([]string{"abc123", "--", "ps", "aux"})
@@ -233,6 +237,7 @@ func TestRunCommand_SyncExitCode(t *testing.T) {
 	})
 	defer server.Close()
 	writeExecTestConfig(t, tmpDir, server.URL)
+	t.Setenv(SessionTargetEnvVar, "default")
 
 	cmd := NewRunCommand()
 	cmd.SetArgs([]string{"abc123", "--", "nonexistent-cmd"})
@@ -255,6 +260,7 @@ func TestRunCommand_DetachedServerError(t *testing.T) {
 	})
 	defer server.Close()
 	writeExecTestConfig(t, tmpDir, server.URL)
+	t.Setenv(SessionTargetEnvVar, "default")
 
 	cmd := NewRunCommand()
 	cmd.SetArgs([]string{"abc123", "--detach", "--", "docker", "compose", "up"})
@@ -272,6 +278,7 @@ func TestRunCommand_DetachedAgentNotFound(t *testing.T) {
 	})
 	defer server.Close()
 	writeExecTestConfig(t, tmpDir, server.URL)
+	t.Setenv(SessionTargetEnvVar, "default")
 
 	cmd := NewRunCommand()
 	cmd.SetArgs([]string{"missing", "--detach", "--", "docker", "compose", "up"})
@@ -298,6 +305,7 @@ func TestRunCommand_DockerFlagPassthrough(t *testing.T) {
 	})
 	defer server.Close()
 	writeExecTestConfig(t, tmpDir, server.URL)
+	t.Setenv(SessionTargetEnvVar, "default")
 
 	cmd := NewRunCommand()
 	cmd.SetArgs([]string{"abc123", "--detach", "--", "docker", "run", "--rm", "-d", "nginx"})

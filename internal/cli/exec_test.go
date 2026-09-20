@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -79,7 +80,7 @@ func TestExecCommand_Help(t *testing.T) {
 
 	cmd := NewExecCommand()
 	output := captureStdout(t, func() {
-		cmd.SetArgs([]string{"--help"})
+		cmd.SetArgs([]string{"--server", "default", "--help"})
 		if err := cmd.Execute(); err != nil {
 			t.Logf("help Execute returned: %v", err)
 		}
@@ -99,13 +100,14 @@ func TestExecCommand_Help(t *testing.T) {
 func TestExecCommand_NoServer(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
+	t.Setenv(SessionTargetEnvVar, "") // explicit: no session binding either
 
 	cmd := NewExecCommand()
 	cmd.SetArgs([]string{"abc123", "docker", "ps"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected error when no active server")
-	} else if !strings.Contains(err.Error(), "bunker connect") {
-		t.Fatalf("expected 'bunker connect' error, got: %v", err)
+	} else if !strings.Contains(err.Error(), "no target bound") {
+		t.Fatalf("expected 'no target bound' refusal, got: %v", err)
 	}
 }
 
@@ -124,7 +126,7 @@ func TestExecCommand_Success(t *testing.T) {
 	writeExecTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewExecCommand()
-	cmd.SetArgs([]string{"abc123", "docker", "ps"})
+	cmd.SetArgs([]string{"--server", "default", "abc123", "docker", "ps"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("exec command failed: %v", err)
 	}
@@ -144,7 +146,7 @@ func TestExecCommand_ExitCode(t *testing.T) {
 	writeExecTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewExecCommand()
-	cmd.SetArgs([]string{"abc123", "docker", "rm", "missing"})
+	cmd.SetArgs([]string{"--server", "default", "abc123", "docker", "rm", "missing"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected error for non-zero exit code")
 	} else if !strings.Contains(err.Error(), "exit code 1") {
@@ -168,7 +170,7 @@ func TestExecCommand_ExitCode7(t *testing.T) {
 	writeExecTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewExecCommand()
-	cmd.SetArgs([]string{"abc123", "sh", "-c", "exit 7"})
+	cmd.SetArgs([]string{"--server", "default", "abc123", "sh", "-c", "exit 7"})
 	err := cmd.Execute()
 	var exitErr *ExitError
 	if !errors.As(err, &exitErr) {
@@ -190,7 +192,7 @@ func TestExecCommand_ServerError(t *testing.T) {
 	writeExecTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewExecCommand()
-	cmd.SetArgs([]string{"abc123", "docker", "ps"})
+	cmd.SetArgs([]string{"--server", "default", "abc123", "docker", "ps"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected error for server failure")
 	}
@@ -207,7 +209,7 @@ func TestExecCommand_AgentNotFound(t *testing.T) {
 	writeExecTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewExecCommand()
-	cmd.SetArgs([]string{"missing", "docker", "ps"})
+	cmd.SetArgs([]string{"--server", "default", "missing", "docker", "ps"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected error for not found agent")
 	}
@@ -228,7 +230,7 @@ func TestExecCommand_StderrOutput(t *testing.T) {
 	writeExecTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewExecCommand()
-	cmd.SetArgs([]string{"abc123", "docker", "build", "."})
+	cmd.SetArgs([]string{"--server", "default", "abc123", "docker", "build", "."})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("exec command failed: %v", err)
 	}
@@ -248,7 +250,7 @@ func TestExecCommand_TimeoutFlag(t *testing.T) {
 	writeExecTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewExecCommand()
-	cmd.SetArgs([]string{"--timeout", "60", "abc123", "sleep", "1"})
+	cmd.SetArgs([]string{"--server", "default", "--timeout", "60", "abc123", "sleep", "1"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("exec command with timeout flag failed: %v", err)
 	}
@@ -259,7 +261,7 @@ func TestExecCommand_MissingArgs(t *testing.T) {
 	t.Setenv("HOME", tmpDir)
 
 	cmd := NewExecCommand()
-	cmd.SetArgs([]string{"abc123"}) // missing command
+	cmd.SetArgs([]string{"--server", "default", "abc123"}) // missing command
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected error for missing command argument")
 	}
@@ -283,7 +285,7 @@ func TestExecCommand_DockerFlagPassthrough(t *testing.T) {
 	writeExecTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewExecCommand()
-	cmd.SetArgs([]string{"abc123", "--", "docker", "run", "--rm", "hello-world"})
+	cmd.SetArgs([]string{"--server", "default", "abc123", "--", "docker", "run", "--rm", "hello-world"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("exec command failed: %v", err)
 	}
@@ -318,7 +320,7 @@ func TestExecCommand_DockerFlagsWithoutDoubleDash(t *testing.T) {
 	writeExecTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewExecCommand()
-	cmd.SetArgs([]string{"abc123", "docker", "run", "--rm", "hello-world"})
+	cmd.SetArgs([]string{"--server", "default", "abc123", "docker", "run", "--rm", "hello-world"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("exec command failed: %v", err)
 	}
@@ -338,7 +340,7 @@ func TestExecCommand_FlagTimeoutBeforeCommand(t *testing.T) {
 	writeExecTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewExecCommand()
-	cmd.SetArgs([]string{"--timeout", "60", "abc123", "--", "docker", "ps"})
+	cmd.SetArgs([]string{"--server", "default", "--timeout", "60", "abc123", "--", "docker", "ps"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("exec command with timeout flag failed: %v", err)
 	}
@@ -362,7 +364,7 @@ func TestExecCommand_RawFlag(t *testing.T) {
 	writeExecTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewExecCommand()
-	cmd.SetArgs([]string{"abc123", "--", "--raw", "docker", "ps", "--format", "{{.Names}}"})
+	cmd.SetArgs([]string{"--server", "default", "abc123", "--", "--raw", "docker", "ps", "--format", "{{.Names}}"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("exec command failed: %v", err)
 	}
@@ -410,7 +412,7 @@ func TestExecCommand_ScriptFlag(t *testing.T) {
 	writeExecTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewExecCommand()
-	cmd.SetArgs([]string{"abc123", "--script", scriptFile})
+	cmd.SetArgs([]string{"--server", "default", "abc123", "--script", scriptFile})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("exec command failed: %v", err)
 	}
@@ -439,7 +441,7 @@ func TestExecCommand_ScriptFlag_MissingFile(t *testing.T) {
 	writeExecTestConfig(t, tmpDir, server.URL)
 
 	cmd := NewExecCommand()
-	cmd.SetArgs([]string{"abc123", "--script", "/does/not/exist.sh"})
+	cmd.SetArgs([]string{"--server", "default", "abc123", "--script", "/does/not/exist.sh"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected error for missing script file")
 	}
@@ -528,6 +530,12 @@ func TestExecCommand_FlagSeparator(t *testing.T) {
 				}
 			} else {
 				writeExecTestConfig(t, tmpDir, server.URL)
+			}
+			// Fail-closed binding (GAP-093): the implicit-default cases need an
+			// explicit binding now. Inject it via the session env var so the
+			// flag-parsing behavior under test is untouched.
+			if !slices.Contains(tt.args, "--server") {
+				t.Setenv(SessionTargetEnvVar, "default")
 			}
 
 			cmd := NewExecCommand()
@@ -708,6 +716,16 @@ func TestExecCommand_FlagsBeforeAgentID(t *testing.T) {
 			}
 
 			args := append([]string(nil), tt.args...)
+			// Fail-closed binding (GAP-093): cases without --server bind via
+			// the session env so the flag-parse behavior under test is
+			// untouched; wantErr cases may leave the session unbound on
+			// purpose (their error is the point).
+			if tt.wantErr == "" && !slices.Contains(args, "--server") {
+				t.Setenv(SessionTargetEnvVar, tt.registerSrv)
+				if tt.registerSrv == "" {
+					t.Setenv(SessionTargetEnvVar, "default")
+				}
+			}
 			if tt.scriptBody != "" {
 				scriptFile := filepath.Join(tmpDir, "script.sh")
 				if err := os.WriteFile(scriptFile, []byte(tt.scriptBody), 0o644); err != nil {
