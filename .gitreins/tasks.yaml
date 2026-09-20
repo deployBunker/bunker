@@ -2458,3 +2458,33 @@ tasks:
   status: complete
   created_at: '2026-09-20T00:23:02.531378+00:00'
   completed_at: '2026-09-20T00:51:41.744428+00:00'
+- id: GAP-091
+  title: Wire the rootless installer cache dir knob (env + config) so the QA-BUNKER-21
+    cache actually arms in production
+  criteria:
+  - rootlessInstallerCacheDir is settable from config and/or env at daemon startup
+    with a documented default; a regression test proves the configured value arms
+    the cache path (second spawn exercises a cache hit); go build/vet/test green
+  status: complete
+  created_at: '2026-09-20T01:52:43.830144+00:00'
+  completed_at: '2026-09-20T03:01:56.068761+00:00'
+- id: GAP-087
+  title: docs/integration.md lifecycle walkthrough must use flags and grammar the
+    shipped CLI accepts, and docs/*.md example drift must be CI-visible
+  criteria:
+  - docs/integration.md walkthrough commands run as written against the built CLI
+    (spawn flags, deploy argument order corrected); the docs-drift check covers docs/*.md
+    example drift so the class cannot silently recur; go build/vet/test green
+  status: complete
+  created_at: '2026-09-20T01:52:44.283259+00:00'
+  completed_at: '2026-09-20T03:01:57.154388+00:00'
+- id: INT-HOST-004
+  title: Residue linger count must include non-managed stale linger entries (prefix-scoped
+    counter understates the host)
+  criteria:
+  - a stale linger entry under a non-bunker- name increments the daemon Residue stale-linger
+    count by exactly one and the count returns when the entry is removed; existing
+    inventory tests stay green
+  status: complete
+  created_at: '2026-09-20T01:52:44.784257+00:00'
+  completed_at: '2026-09-20T03:01:55.083103+00:00'
