@@ -29,7 +29,7 @@ or that only works after host provisioning, is not a control until you turn it o
 | **Mutual TLS (client certs)** | OFF (`tls.mtls: false`) | `tls.enabled` + `tls.ca_file` | Not enabled by default. |
 | **API authentication** | **ON** (`auth.enabled: true`), one static **master token** | `auth.token` (or `auth.jwt_secret`) set in the config | The daemon refuses to start if auth is enabled with no credential. There is **no per-operator identity or RBAC** — one shared credential today. |
 | **Private `/tmp` per agent** | Enforced **only after host provisioning** | `bunker hostprov` (host isolation) run | On an unprovisioned host, SSH sessions share the host `/tmp`. |
-| **User-namespace remapping** | ON | — | **Known defect (tracked):** subordinate-ID ranges currently *overlap* between agents, weakening the separation between them. See `docs/threat-model.md` §5 (BT3) and board row `GAP-140`. |
+| **User-namespace remapping** | ON | — | Subordinate-ID ranges are allocated **globally disjoint per agent** (GAP-140), under a host-wide lock, and `bunkerd` refuses to start if an overlap is present; remediate with `bunker subid-migrate`. |
 | **cgroup resource limits (CPU, memory, PIDs)** | ON | — | Bounds a runaway agent's resource use; not a security boundary on its own. |
 | **SSH key isolation per agent** | ON | — | Keys are per-agent; the spawn response can also return the agent's key over the wire — see residual risk. |
 | **Shared scratch exchange** (`/srv/bunker-share`) | **ON** (`shared_scratch_enabled: true`), group `bunker-agents`, mode `2770` | — | Cross-agent read/write is enabled by default. Turn it off if agents must not exchange data. |

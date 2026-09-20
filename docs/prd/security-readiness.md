@@ -103,7 +103,7 @@ Severity: **BLOCKER** = no team approval without it · **HIGH** = security team 
 | SEC-01 | BLOCKER | **No threat model document.** Nothing to approve against; no named adversaries, assets, boundaries, or residual risk. | `grep -ic "threat model"` over `README.md` + all `docs/*.md` = **0** | 5/5 | CONFIRMED |
 | SEC-02 | BLOCKER | **`SECURITY.md` misstates the default transport.** It advertises mTLS; the shipped default is TLS off. | `SECURITY.md:24` vs `config.go:374` `Enabled:false`, `:376` `MTLS:false` | 5/5 | CONFIRMED |
 | SEC-03 | BLOCKER | **No transport enforcement.** Daemon binds non-loopback plaintext with no refusal and no warning; auth has a gate (`config.go:658`), TLS has none. | `server.go` bind path; only `RegistryError()`/auth gate exist | 5/6 | CONFIRMED |
-| SEC-22 | BLOCKER | **subuid/subgid ranges OVERLAP between every pair of agents — the user-namespace separation the product is built on is not enforced.** `rootless.go:576` writes `<name>:<start>:65536` with `start` = the agent's OWN uid ⇒ agent 1001 gets `[1001..66536]`, agent 1002 gets `[1002..66537]` — a 65,535-id overlap. Also no cross-agent overlap check and a read-then-append TOCTOU (`rootless.go:564-586`). **Caught only by seat S1.** | `rootless.go:544-576` | 1/6 | CONFIRMED (arithmetic + code) |
+| SEC-22 | BLOCKER ✅ **FIXED** | **subuid/subgid ranges OVERLAP between every pair of agents — the user-namespace separation the product is built on is not enforced.** `rootless.go:576` wrote `<name>:<start>:65536` with `start` = the agent's OWN uid ⇒ agent 1001 got `[1001..66536]`, agent 1002 got `[1002..66537]` — a 65,535-id overlap. Also no cross-agent overlap check and a read-then-append TOCTOU. **Caught only by seat S1.** | `rootless.go:544-576` | 1/6 | ✅ CLOSED — `subid_alloc.go` + host-wide flock + startup gate + `bunker subid-migrate`; live-proven (commits 07133cf, fbfb87a, ad40c54) |
 | SEC-04 | BLOCKER | **No per-operator identity / RBAC.** Exactly two roles: one shared static master token, and agent-scoped keys. No human attribution anywhere. | `config.go:97` `Token`; `auth/jwt.go:22-26` | 5/5 | CONFIRMED |
 | SEC-05 | BLOCKER | **Spawn returns agent SSH key material over the wire.** | `proto/bunker/v1/bunker.proto:199` `ssh_private_key = 8` | 3/5 | CONFIRMED |
 | SEC-06 | BLOCKER | **No egress control.** No default-deny, no allowlist. One compromised dependency is an exfiltration path. | grep `egress\|outbound` over `internal/`+`cmd/` → none | 5/5 | CONFIRMED |
@@ -201,12 +201,12 @@ Either remove `ssh_private_key` from the response, or make it opt-in behind an e
 *Why:* the installer is fetched and executed as root; an unpinned fetch is remote code execution by design.
 *PASS:* a mismatched digest aborts the install loudly; a test covers the failure path.
 
-### 5.6 Isolation integrity (SEC-22 — caught only by seat S1)
+### 5.6 Isolation integrity (SEC-22 ✅ SHIPPED — caught only by seat S1)
 
-**REQ-X1 — Globally disjoint subordinate-ID allocation.**
-Allocate `subuid`/`subgid` ranges from a tracked, non-overlapping pool; take an exclusive lock around read-check-append; **refuse at startup** if any overlap is detected; ship a migration for already-overlapping hosts.
-*Why:* the current writer uses the agent's own uid as the range start, so consecutive agents share 65,535 subordinate IDs. User-namespace separation between agents is the product's core isolation claim — without disjoint ranges it is not enforced. This is the one panel finding that attacks the isolation boundary itself rather than the control plane.
-*PASS:* two consecutive spawns produce provably disjoint `subuid` **and** `subgid` ranges (interval-disjointness test); a concurrent-spawn test shows no TOCTOU; startup refuses loudly on a pre-existing overlap; migration path exists; live two-agent check on bunker-mvp.
+**REQ-X1 — Globally disjoint subordinate-ID allocation.** ✅ **SHIPPED** (`subid_alloc.go`, `subid_integrity.go`).
+Ranges are allocated from a pool (`subIDPoolBase`) that skips every range already in the file; the read-check-append runs under a host-wide flock; `CheckSubIDOverlaps` is a fail-closed startup gate in `cmd/bunkerd`; `bunker subid-migrate` (dry-run default) remediates existing hosts. Live-proven: dry run reports the overlap, the daemon refuses to start on it, `--apply` rewrites 4 defect ranges to disjoint `524288`/`589824`.
+*Why it mattered:* the old writer used the agent's own uid as the range start, so consecutive agents shared 65,535 subordinate IDs — the product's core isolation claim, unenforced.
+*PASS:* ✅ disjoint ranges (tests); ✅ no TOCTOU (flock + concurrent test); ✅ startup refusal (live); ✅ migration (command + tests); two-agent live spawn on bunker-mvp still belongs to GAP-122's battery.
 
 **REQ-X2 — Gate the client `tls_insecure` knob.**
 `internal/cli/config.go:33` + `client.go:23` ship an `InsecureSkipVerify` path. Require an explicit acknowledgement + loud warning, refuse it when a pinned cert is configured, and mark such sessions unverified in audit.

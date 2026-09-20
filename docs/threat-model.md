@@ -108,14 +108,14 @@ agent-scoped RPC. *(REQ-I1…I4.)*
 *Default:* per-agent Linux user, per-agent rootless dockerd, and user-namespace remapping.
 This is the product's core strength and the panel agreed it is built well.
 
-**Known defect (SEC-22, being fixed under GAP-140):** the subordinate-ID writer allocates
-`subuid`/`subgid` ranges *starting at the agent's own uid* with a fixed count of 65536
-(`internal/agent/rootless.go`), so consecutive agents receive **overlapping** ranges
-(agent 1001 → `[1001..66536]`, agent 1002 → `[1002..66537]` — a 65,535-ID overlap), with no
-cross-agent overlap check and a read-then-append TOCTOU. Until GAP-140 lands, the
-user-namespace *separation between agents* is weaker than the design intends, because a
-later agent's container root can map into an ID space an earlier agent's container root
-already maps. This is disclosed here rather than hidden, and the fix is tracked.
+**Former defect (SEC-22), now FIXED under GAP-140:** the subordinate-ID writer used to
+allocate each agent's range *starting at its own uid* with a fixed count of 65536, so
+consecutive agents received **overlapping** ranges (agent 1001 → `[1001..66536]`, agent 1002
+→ `[1002..66537]`). That meant the user-namespace separation between agents was weaker than
+the design intends. It is now closed: ranges are allocated from a pool that skips every range
+already in the database, under a host-wide flock, and the daemon **refuses to start** if an
+overlap is present (remediate with `bunker subid-migrate`). Two agents' subordinate ranges are
+pairwise disjoint by construction, and the guarantee is checked, not assumed.
 
 *Also honest:* PID-namespace isolation is intentionally omitted on the current rootlesskit
 (see `internal/agent/isolation.go`); rootless containers share the host kernel, so the
@@ -143,9 +143,7 @@ services. The panel called egress control "the highest-value single addition."
    reads the agent home and ships it out. *BT4.*
 5. **Read a peer's artifacts.** Shared scratch is on by default under a shared group; absent
    an explicit decision, agent A can read what agent B exchanged. *BT3 / A3.*
-6. **Cross the agent boundary via subuid overlap.** Until GAP-140 lands, the overlapping
-   subordinate ranges above let a later agent's container root collide with an earlier
-   agent's ID mapping. *BT3.*
+6. **Cross the agent boundary via subuid overlap.** *Formerly possible; now closed (GAP-140).* The overlapping subordinate ranges used to let a later agent's container root collide with an earlier agent's ID mapping. Ranges are now allocated disjoint under a host-wide lock and a startup gate refuses an overlapping host. *BT3.*
 
 ---
 

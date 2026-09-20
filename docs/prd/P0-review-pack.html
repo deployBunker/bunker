@@ -121,7 +121,7 @@ or that only works after host provisioning, is not a control until you turn it o
 <td><strong>User-namespace remapping</strong></td>
 <td>ON</td>
 <td>—</td>
-<td><strong>Known defect (tracked):</strong> subordinate-ID ranges currently <em>overlap</em> between agents, weakening the separation between them. See <code>docs/threat-model.md</code> §5 (BT3) and board row <code>GAP-140</code>.</td>
+<td>Subordinate-ID ranges are allocated <strong>globally disjoint per agent</strong> (GAP-140), under a host-wide lock, and <code>bunkerd</code> refuses to start if an overlap is present; remediate with <code>bunker subid-migrate</code>.</td>
 </tr>
 <tr>
 <td><strong>cgroup resource limits (CPU, memory, PIDs)</strong></td>
@@ -358,14 +358,14 @@ agent-scoped RPC. <em>(REQ-I1…I4.)</em></p>
 <h3>BT3 — Agent isolation (adversaries A1, A3)</h3>
 <p><em>Default:</em> per-agent Linux user, per-agent rootless dockerd, and user-namespace remapping.
 This is the product's core strength and the panel agreed it is built well.</p>
-<p><strong>Known defect (SEC-22, being fixed under GAP-140):</strong> the subordinate-ID writer allocates
-<code>subuid</code>/<code>subgid</code> ranges <em>starting at the agent's own uid</em> with a fixed count of 65536
-(<code>internal/agent/rootless.go</code>), so consecutive agents receive <strong>overlapping</strong> ranges
-(agent 1001 → <code>[1001..66536]</code>, agent 1002 → <code>[1002..66537]</code> — a 65,535-ID overlap), with no
-cross-agent overlap check and a read-then-append TOCTOU. Until GAP-140 lands, the
-user-namespace <em>separation between agents</em> is weaker than the design intends, because a
-later agent's container root can map into an ID space an earlier agent's container root
-already maps. This is disclosed here rather than hidden, and the fix is tracked.</p>
+<p><strong>Former defect (SEC-22), now FIXED under GAP-140:</strong> the subordinate-ID writer used to
+allocate each agent's range <em>starting at its own uid</em> with a fixed count of 65536, so
+consecutive agents received <strong>overlapping</strong> ranges (agent 1001 → <code>[1001..66536]</code>, agent 1002
+→ <code>[1002..66537]</code>). That meant the user-namespace separation between agents was weaker than
+the design intends. It is now closed: ranges are allocated from a pool that skips every range
+already in the database, under a host-wide flock, and the daemon <strong>refuses to start</strong> if an
+overlap is present (remediate with <code>bunker subid-migrate</code>). Two agents' subordinate ranges are
+pairwise disjoint by construction, and the guarantee is checked, not assumed.</p>
 <p><em>Also honest:</em> PID-namespace isolation is intentionally omitted on the current rootlesskit
 (see <code>internal/agent/isolation.go</code>); rootless containers share the host kernel, so the
 boundary is defence-in-depth, not a hypervisor.</p>
@@ -387,9 +387,7 @@ services. The panel called egress control "the highest-value single addition."</
    reads the agent home and ships it out. <em>BT4.</em></li>
 <li><strong>Read a peer's artifacts.</strong> Shared scratch is on by default under a shared group; absent
    an explicit decision, agent A can read what agent B exchanged. <em>BT3 / A3.</em></li>
-<li><strong>Cross the agent boundary via subuid overlap.</strong> Until GAP-140 lands, the overlapping
-   subordinate ranges above let a later agent's container root collide with an earlier
-   agent's ID mapping. <em>BT3.</em></li>
+<li><strong>Cross the agent boundary via subuid overlap.</strong> <em>Formerly possible; now closed (GAP-140).</em> The overlapping subordinate ranges used to let a later agent's container root collide with an earlier agent's ID mapping. Ranges are now allocated disjoint under a host-wide lock and a startup gate refuses an overlapping host. <em>BT3.</em></li>
 </ol>
 <hr />
 <h2>7. Residual risk (true even after the roadmap lands)</h2>

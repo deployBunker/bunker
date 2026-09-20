@@ -246,11 +246,11 @@ hr{border:none;border-top:1px solid #2a2a3e;margin:22px 0} ul,ol{padding-left:22
 </tr>
 <tr>
 <td>SEC-22</td>
-<td>BLOCKER</td>
-<td><strong>subuid/subgid ranges OVERLAP between every pair of agents — the user-namespace separation the product is built on is not enforced.</strong> <code>rootless.go:576</code> writes <code>&lt;name&gt;:&lt;start&gt;:65536</code> with <code>start</code> = the agent's OWN uid ⇒ agent 1001 gets <code>[1001..66536]</code>, agent 1002 gets <code>[1002..66537]</code> — a 65,535-id overlap. Also no cross-agent overlap check and a read-then-append TOCTOU (<code>rootless.go:564-586</code>). <strong>Caught only by seat S1.</strong></td>
+<td>BLOCKER ✅ <strong>FIXED</strong></td>
+<td><strong>subuid/subgid ranges OVERLAP between every pair of agents — the user-namespace separation the product is built on is not enforced.</strong> <code>rootless.go:576</code> wrote <code>&lt;name&gt;:&lt;start&gt;:65536</code> with <code>start</code> = the agent's OWN uid ⇒ agent 1001 got <code>[1001..66536]</code>, agent 1002 got <code>[1002..66537]</code> — a 65,535-id overlap. Also no cross-agent overlap check and a read-then-append TOCTOU. <strong>Caught only by seat S1.</strong></td>
 <td><code>rootless.go:544-576</code></td>
 <td>1/6</td>
-<td>CONFIRMED (arithmetic + code)</td>
+<td>✅ CLOSED — <code>subid_alloc.go</code> + host-wide flock + startup gate + <code>bunker subid-migrate</code>; live-proven (commits 07133cf, fbfb87a, ad40c54)</td>
 </tr>
 <tr>
 <td>SEC-04</td>
@@ -468,11 +468,11 @@ Either remove <code>ssh_private_key</code> from the response, or make it opt-in 
 <p><strong>REQ-S1 — Supply-chain verification.</strong> Pin the rootless installer version + SHA-256 manifest; signature/digest verification for images.
 <em>Why:</em> the installer is fetched and executed as root; an unpinned fetch is remote code execution by design.
 <em>PASS:</em> a mismatched digest aborts the install loudly; a test covers the failure path.</p>
-<h3>5.6 Isolation integrity (SEC-22 — caught only by seat S1)</h3>
-<p><strong>REQ-X1 — Globally disjoint subordinate-ID allocation.</strong>
-Allocate <code>subuid</code>/<code>subgid</code> ranges from a tracked, non-overlapping pool; take an exclusive lock around read-check-append; <strong>refuse at startup</strong> if any overlap is detected; ship a migration for already-overlapping hosts.
-<em>Why:</em> the current writer uses the agent's own uid as the range start, so consecutive agents share 65,535 subordinate IDs. User-namespace separation between agents is the product's core isolation claim — without disjoint ranges it is not enforced. This is the one panel finding that attacks the isolation boundary itself rather than the control plane.
-<em>PASS:</em> two consecutive spawns produce provably disjoint <code>subuid</code> <strong>and</strong> <code>subgid</code> ranges (interval-disjointness test); a concurrent-spawn test shows no TOCTOU; startup refuses loudly on a pre-existing overlap; migration path exists; live two-agent check on bunker-mvp.</p>
+<h3>5.6 Isolation integrity (SEC-22 ✅ SHIPPED — caught only by seat S1)</h3>
+<p><strong>REQ-X1 — Globally disjoint subordinate-ID allocation.</strong> ✅ <strong>SHIPPED</strong> (<code>subid_alloc.go</code>, <code>subid_integrity.go</code>).
+Ranges are allocated from a pool (<code>subIDPoolBase</code>) that skips every range already in the file; the read-check-append runs under a host-wide flock; <code>CheckSubIDOverlaps</code> is a fail-closed startup gate in <code>cmd/bunkerd</code>; <code>bunker subid-migrate</code> (dry-run default) remediates existing hosts. Live-proven: dry run reports the overlap, the daemon refuses to start on it, <code>--apply</code> rewrites 4 defect ranges to disjoint <code>524288</code>/<code>589824</code>.
+<em>Why it mattered:</em> the old writer used the agent's own uid as the range start, so consecutive agents shared 65,535 subordinate IDs — the product's core isolation claim, unenforced.
+<em>PASS:</em> ✅ disjoint ranges (tests); ✅ no TOCTOU (flock + concurrent test); ✅ startup refusal (live); ✅ migration (command + tests); two-agent live spawn on bunker-mvp still belongs to GAP-122's battery.</p>
 <p><strong>REQ-X2 — Gate the client <code>tls_insecure</code> knob.</strong>
 <code>internal/cli/config.go:33</code> + <code>client.go:23</code> ship an <code>InsecureSkipVerify</code> path. Require an explicit acknowledgement + loud warning, refuse it when a pinned cert is configured, and mark such sessions unverified in audit.
 <em>Why:</em> it defeats the pinning path REQ-T2 introduces.
