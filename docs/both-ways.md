@@ -38,7 +38,25 @@ a legitimate build later.
 
 - Mount fidelity is verified against a live agent in the GAP-112 live battery; the divergence list lives with that evidence rather than here.
 - Files cached by the kernel on a dead transport serve stale reads until the recovery window elapses — the write guard refuses first, so a stale read cannot mask a lost write.
-- The verb layer's binary-safe reads and stdin (GAP-094) are pending; until then, `bunker exec` is text-oriented.
+- The verb layer's binary-safe reads and stdin (GAP-094) are **live in the CLI** (`--stdin`, `--base64`, `--exec-cap`); see Exec fidelity below.
+
+## Mount paths and namespacing (GAP-113)
+
+A mountpoint is `<root>/<server>/<agent-id>`, where root is `$BUNKER_MOUNT_ROOT`,
+then `$XDG_RUNTIME_DIR/bunker/mnt`, then `~/.bunker/mnt`. The **server is part of
+the path** deliberately: agent ids are unique per server, not globally, so two
+bunkers each running an agent named `dev` would otherwise share one mountpoint —
+the second mount would collide with the first server's live mount, and an
+operator could read the wrong tree believing it was theirs.
+
+- Ids containing `/`, `..` or control characters are reduced to a single safe
+  path component, so an agent id can never escape the mount root.
+- `bunker umount <agent-id>` searches the namespaced layout and the pre-GAP-113
+  `<root>/<agent-id>` layout, so mounts created before this change still clean up.
+- If the same agent id is mounted from **more than one server**, `umount` refuses
+  and names both paths rather than guessing: silently unmounting the wrong tree
+  is the failure the namespace exists to prevent. Pass the mountpoint explicitly
+  to choose.
 
 ## Exec fidelity (GAP-094)
 

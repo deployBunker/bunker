@@ -98,7 +98,18 @@ Examples:
 }
 
 // findMountPointForAgent looks for an existing mountpoint for agentID across the
-// same roots defaultMountPoint considers. Returns an error when nothing exists.
+// same roots defaultMountPointForServer considers. Returns an error when
+// nothing exists.
+//
+// Two layouts are searched, newest first:
+//
+//	<root>/<server>/<agent>   the namespaced layout (GAP-113)
+//	<root>/<agent>            the pre-GAP-113 layout, still honoured so mounts
+//	                          created before the change can still be cleaned up
+//
+// When an agent id exists under several servers this reports the ambiguity by
+// name rather than picking one: unmounting the wrong tree silently is exactly
+// the failure the namespace was added to prevent.
 func findMountPointForAgent(agentID string) (string, error) {
 	var roots []string
 	if root := os.Getenv("BUNKER_MOUNT_ROOT"); root != "" {
@@ -110,13 +121,45 @@ func findMountPointForAgent(agentID string) (string, error) {
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		roots = append(roots, filepath.Join(home, ".bunker", "mnt"))
 	}
+	agent := sanitizeMountComponent(agentID)
+
+	var legacy []string
+	var namespaced []string
 	for _, root := range roots {
-		candidate := filepath.Join(root, agentID)
-		if _, err := os.Lstat(candidate); err == nil {
-			return candidate, nil
+		if legacyPath := filepath.Join(root, agentID); pathExists(legacyPath) {
+			legacy = append(legacy, legacyPath)
+		}
+		servers, err := os.ReadDir(root)
+		if err != nil {
+			continue
+		}
+		for _, s := range servers {
+			if !s.IsDir() {
+				continue
+			}
+			candidate := filepath.Join(root, s.Name(), agent)
+			if pathExists(candidate) {
+				namespaced = append(namespaced, candidate)
+			}
 		}
 	}
+
+	if len(namespaced) == 1 {
+		return namespaced[0], nil
+	}
+	if len(namespaced) > 1 {
+		return "", fmt.Errorf("agent %q is mounted from more than one server: %s (name the mountpoint explicitly to choose one)",
+			agentID, strings.Join(namespaced, ", "))
+	}
+	if len(legacy) > 0 {
+		return legacy[0], nil
+	}
 	return "", fmt.Errorf("no mountpoint for agent %q", agentID)
+}
+
+func pathExists(p string) bool {
+	_, err := os.Lstat(p)
+	return err == nil
 }
 
 // isMountPoint reports whether path currently has a filesystem mounted on it.

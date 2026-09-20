@@ -39,5 +39,12 @@ bin/
 __pycache__/
 test-config.yaml
 
+# ...but the repo's own tooling is Python and IS source: re-include tools/.
+# Without this the shim + verb regression suite are silently untracked, so a
+# "code half landed" commit ships an empty claim (proven 2026-09-20: commit
+# 70a94c8 said GAP-097 landed and carried only .gitreins/tasks.yaml).
+!tools/*.py
+tools/__pycache__/
+
 # Bunker E2E battery output (regenerated on each run)
 e2e-output/

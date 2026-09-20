@@ -150,13 +150,6 @@ Examples:
 			if len(args) > 1 {
 				mountPoint = args[1]
 			}
-			if mountPoint == "" {
-				resolved, err := defaultMountPoint(agentID)
-				if err != nil {
-					return err
-				}
-				mountPoint = resolved
-			}
 
 			// 1. Load CLI config
 			cfg, err := LoadCLIConfig()
@@ -173,6 +166,19 @@ Examples:
 			entry, ok := cfg.Servers[serverName]
 			if !ok {
 				return fmt.Errorf("server %q not found in config", serverName)
+			}
+
+			// The mountpoint is resolved AFTER the server binding on purpose:
+			// the path is namespaced by server (GAP-113) so that two bunkers
+			// each having an agent named `dev` do not collide on one
+			// mountpoint. Resolving it first — as this command used to — is
+			// how that collision became possible.
+			if mountPoint == "" {
+				resolvedMount, err := defaultMountPointForServer(serverName, agentID)
+				if err != nil {
+					return err
+				}
+				mountPoint = resolvedMount
 			}
 
 			// 2. Retrieve the SSHFS mount command from the server for the agent.

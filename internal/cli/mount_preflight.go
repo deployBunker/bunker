@@ -111,7 +111,75 @@ func defaultMountPoint(agentID string) (string, error) {
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		candidates = append(candidates, filepath.Join(home, ".bunker", "mnt", agentID))
 	}
+	return firstWritableMountPoint(candidates)
+}
 
+// defaultMountPointForServer is defaultMountPoint with the SERVER as the first
+// path component: <root>/<server>/<agent-id>.
+//
+// Why the server dimension exists (GAP-113): agent ids are unique per server,
+// not globally. Two bunkers that each have an agent named `dev` would both
+// resolve to <root>/dev and collide — the second mount finds a live mountpoint
+// belonging to the other server and fails, or worse, an operator reads the
+// wrong tree believing it is the one they mounted. Namespacing by server is
+// what makes "deploy any number of bunkers" scale past the first name clash.
+//
+// Agent ids are also sanitized into a single path component: an id containing
+// a slash or a ".." must never be able to escape the mount root.
+func defaultMountPointForServer(server, agentID string) (string, error) {
+	if agentID == "" {
+		return "", fmt.Errorf("mount: agent id is required")
+	}
+	agent := sanitizeMountComponent(agentID)
+	if agent == "" {
+		return "", fmt.Errorf("mount: agent id %q has no usable characters for a path component", agentID)
+	}
+	srv := sanitizeMountComponent(server)
+	if srv == "" {
+		return "", fmt.Errorf("mount: server %q has no usable characters for a path component", server)
+	}
+
+	var candidates []string
+	if root := os.Getenv("BUNKER_MOUNT_ROOT"); root != "" {
+		candidates = append(candidates, filepath.Join(root, srv, agent))
+	}
+	if run := os.Getenv("XDG_RUNTIME_DIR"); run != "" {
+		candidates = append(candidates, filepath.Join(run, "bunker", "mnt", srv, agent))
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		candidates = append(candidates, filepath.Join(home, ".bunker", "mnt", srv, agent))
+	}
+	return firstWritableMountPoint(candidates)
+}
+
+// sanitizeMountComponent reduces a server or agent id to a safe single path
+// component: path separators, traversal markers and control characters are
+// removed rather than escaped, so the result can never climb out of the mount
+// root. Ids that are already clean (the common case) are returned unchanged.
+func sanitizeMountComponent(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.ReplaceAll(s, string(filepath.Separator), "-")
+	s = strings.ReplaceAll(s, "/", "-")
+	s = strings.ReplaceAll(s, "\\", "-")
+	s = strings.ReplaceAll(s, "..", "-")
+	var b strings.Builder
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	out := strings.Trim(b.String(), "-. ")
+	// A single "." is not a usable component either.
+	if out == "." {
+		return ""
+	}
+	return out
+}
+
+// firstWritableMountPoint creates and validates the first candidate that can
+// actually be used, naming the failure of each rejected candidate if none can.
+func firstWritableMountPoint(candidates []string) (string, error) {
 	var lastErr error
 	for _, dir := range candidates {
 		// Create the mountpoint itself, private to this user. 0700 (not 0755)
