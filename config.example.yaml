@@ -106,6 +106,14 @@ agent:
   #   destroy (default): a bunker-* user the registry does not know is removed.
   #   adopt:             it is re-registered and its EXACT persisted port
   #                      reservation is restored (no double allocation).
+  #
+  # adopt applies ONLY to orphans carrying readable, valid, free port
+  # metadata (<home>/.bunker/ports: a legal pool sub-range that no other
+  # agent already holds — adoption is exact-port or nothing). An orphan
+  # WITHOUT that metadata is DESTROYED in both modes: adoption never
+  # guesses a reservation, and a leftover user is cheaper to recreate than
+  # a port collision. The startup log line names the reason ("adopt failed,
+  # destroying orphan instead" / "no readable port metadata at ...").
   # Env override: BUNKERD_AGENT_RECONCILIATION_MODE.
   reconciliation:
     mode: destroy
