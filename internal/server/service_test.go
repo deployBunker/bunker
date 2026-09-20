@@ -181,27 +181,108 @@ func TestAgentService_GetInfo_ClaimsMissingTracker(t *testing.T) {
 }
 
 // TestAgentService_Metrics verifies Metrics returns resource metrics for the
-// authenticated agent.
+// caller's OWN agent (record-driven), and that the DF-BUNKER-28 scoping
+// contract holds: a scoped sub-key cannot read another agent's metrics, and a
+// never-spawned id yields CodeNotFound — never a fabricated "running" record
+// with host-fallback data.
 func TestAgentService_Metrics(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	tracker := resource.NewTracker(10, logger)
-	svc := &agentService{logger: logger, tracker: tracker}
 
-	req := connect.NewRequest(&v1.AgentMetricsRequest{AgentId: "agent-1"})
-	resp, err := svc.Metrics(context.Background(), req)
-	if err != nil {
-		t.Fatalf("Metrics() error: %v", err)
+	newSvc := func() *agentService {
+		tracker := resource.NewTracker(10, logger)
+		tracker.Register(&resource.AgentRecord{
+			AgentID:   "agent-1",
+			Status:    "running",
+			PublicURL: "https://agent-1.example",
+			Limits: &v1.ResourceLimits{
+				MemoryMaxBytes: 256 * 1024 * 1024,
+			},
+		})
+		return &agentService{logger: logger, tracker: tracker}
 	}
-	if resp.Msg.AgentId != "agent-1" {
-		t.Errorf("Metrics().AgentId = %q, want agent-1", resp.Msg.AgentId)
+
+	tests := []struct {
+		name     string
+		claims   *auth.Claims // nil = no claims in context (master token / static auth)
+		agentID  string       // agent id in the request
+		wantCode connect.Code // zero = expect success
+	}{
+		{
+			name:    "sub-key on its OWN agent id succeeds",
+			claims:  &auth.Claims{AgentID: "agent-1"},
+			agentID: "agent-1",
+		},
+		{
+			name:    "master token (no claims) on existing agent succeeds",
+			agentID: "agent-1",
+		},
+		{
+			name:     "sub-key on FOREIGN agent id is denied (no cross-agent read)",
+			claims:   &auth.Claims{AgentID: "agent-1"},
+			agentID:  "dfdf-b",
+			wantCode: connect.CodePermissionDenied,
+		},
+		{
+			name:     "sub-key on UNKNOWN agent id is denied (auth checked before existence)",
+			claims:   &auth.Claims{AgentID: "agent-1"},
+			agentID:  "no-such-agent",
+			wantCode: connect.CodePermissionDenied,
+		},
+		{
+			name:     "master token on UNKNOWN agent id is NotFound (no fabricated running record)",
+			agentID:  "no-such-agent-xyz",
+			wantCode: connect.CodeNotFound,
+		},
 	}
-	if resp.Msg.Status != "running" {
-		t.Errorf("Metrics().Status = %q, want running", resp.Msg.Status)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := newSvc()
+			ctx := context.Background()
+			if tt.claims != nil {
+				ctx = auth.ContextWithClaims(ctx, tt.claims)
+			}
+			req := connect.NewRequest(&v1.AgentMetricsRequest{AgentId: tt.agentID})
+			resp, err := svc.Metrics(ctx, req)
+
+			if tt.wantCode != 0 {
+				if err == nil {
+					t.Fatalf("Metrics() expected %v error, got success with AgentId=%q Status=%q",
+						tt.wantCode, resp.Msg.GetAgentId(), resp.Msg.GetStatus())
+				}
+				connectErr, ok := err.(*connect.Error)
+				if !ok {
+					t.Fatalf("Metrics() error is %T, want *connect.Error: %v", err, err)
+				}
+				if connectErr.Code() != tt.wantCode {
+					t.Errorf("Metrics() error code = %v, want %v", connectErr.Code(), tt.wantCode)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Metrics() error: %v", err)
+			}
+			if resp.Msg.AgentId != tt.agentID {
+				t.Errorf("Metrics().AgentId = %q, want %q", resp.Msg.AgentId, tt.agentID)
+			}
+			if resp.Msg.Status != "running" {
+				t.Errorf("Metrics().Status = %q, want running (record-driven, not fabricated)", resp.Msg.Status)
+			}
+			if resp.Msg.MemoryLimitBytes != 256*1024*1024 {
+				t.Errorf("Metrics().MemoryLimitBytes = %d, want 256MB (record-driven limit)", resp.Msg.MemoryLimitBytes)
+			}
+			// The user "bunker-agent-1" does not exist in test environments, so
+			// the per-agent cgroup read must fall back to the host read (same
+			// contract bunkerdService.AgentMetrics is tested under): memory is
+			// populated and HostLevelFallback is surfaced.
+			if resp.Msg.MemoryUsedBytes == 0 {
+				t.Errorf("Metrics().MemoryUsedBytes = 0, want >0 (host fallback read ran)")
+			}
+			if !resp.Msg.HostLevelFallback {
+				t.Error("Metrics().HostLevelFallback = false, want true (agent user absent -> host fallback)")
+			}
+		})
 	}
-	// cgroup metrics may or may not be available in test environments; we just
-	// verify the fields are populated when the read succeeds.
-	_ = resp.Msg.CpuUsagePercent
-	_ = resp.Msg.MemoryUsedBytes
 }
 
 // TestAgentService_Heartbeat verifies Heartbeat extends the agent TTL and

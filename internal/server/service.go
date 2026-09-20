@@ -1280,15 +1280,79 @@ func (s *agentService) GetInfo(ctx context.Context, req *connect.Request[v1.GetI
 	return connect.NewResponse(resp), nil
 }
 
-// Metrics returns resource usage for the authenticated agent.
+// Metrics returns resource usage for the authenticated agent. The handler is
+// scoped like GetInfo and Heartbeat: a scoped sub-key (claims carry an
+// agent_id) may only read its OWN agent — a foreign agent id is a 403, and an
+// unknown id is a 404. Unlike the old implementation, a nonexistent agent
+// never yields a fabricated "running" record with host-level fallback data.
 func (s *agentService) Metrics(ctx context.Context, req *connect.Request[v1.AgentMetricsRequest]) (*connect.Response[v1.AgentMetricsResponse], error) {
-	resp := &v1.AgentMetricsResponse{
-		AgentId: req.Msg.AgentId,
-		Status:  "running",
+	// Extract agent_id from the auth context (JWT claims or scoped sub-key),
+	// mirroring GetInfo.
+	agentID := ""
+	if claims, ok := auth.ClaimsFromContext(ctx); ok && claims.AgentID != "" {
+		agentID = claims.AgentID
 	}
-	if metrics, err := resource.ReadCgroupMetrics(); err == nil {
-		resp.CpuUsagePercent = metrics.CPUUsagePercent
-		resp.MemoryUsedBytes = metrics.MemoryUsedBytes
+
+	// Scoped sub-key: the requested agent id must match the caller's own
+	// agent id. Mirrors the sub-key scoping used by GetInfo (via claims) and
+	// the explicit foreign-id rejection in the Heartbeat tests.
+	if agentID != "" && req.Msg.AgentId != agentID {
+		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("agent %q is not owned by caller", req.Msg.AgentId))
+	}
+
+	// Existence check via the tracker (same pattern as Heartbeat and
+	// bunkerdService.AgentMetrics): a nonexistent id is CodeNotFound — never
+	// host-fallback data with a fabricated "running" status.
+	rec := s.tracker.Get(req.Msg.AgentId)
+	if rec == nil {
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("agent %q not found", req.Msg.AgentId))
+	}
+
+	resp := &v1.AgentMetricsResponse{
+		AgentId: rec.AgentID,
+		Status:  rec.Status,
+	}
+	if resp.Status == "" {
+		resp.Status = "running"
+	}
+	if rec.Limits != nil {
+		resp.MemoryLimitBytes = rec.Limits.MemoryMaxBytes
+		resp.DiskLimitBytes = rec.Limits.DiskMaxBytes
+	}
+	// Read the agent's own cgroup metrics when the agent user resolves
+	// (best-effort, same degradation rules as bunkerdService.AgentMetrics);
+	// otherwise fall back to host-level metrics, flagged via
+	// HostLevelFallback so callers know these are HOST values.
+	uid := 0
+	userResolved := true
+	if u, err := user.Lookup("bunker-" + rec.AgentID); err == nil {
+		if parsedUID, err := strconv.Atoi(u.Uid); err == nil {
+			uid = parsedUID
+		} else {
+			userResolved = false
+			s.logger.Warn("agent user UID parse failed; metrics will fall back to host level",
+				"agent_id", rec.AgentID, "error", err)
+		}
+	} else {
+		userResolved = false
+		s.logger.Warn("agent user lookup failed; metrics will fall back to host level",
+			"agent_id", rec.AgentID, "error", err)
+	}
+	if userResolved {
+		if metrics, err := resource.ReadAgentCgroupMetrics(uid, rec.AgentID); err == nil {
+			resp.CpuUsagePercent = metrics.CPUUsagePercent
+			resp.MemoryUsedBytes = metrics.MemoryUsedBytes
+			resp.HostLevelFallback = metrics.HostLevelFallback
+		}
+	} else {
+		// Unknown agent user: never attempt a user-0.slice read as if it were
+		// a valid agent cgroup. Read host-level metrics directly and flag the
+		// fallback so callers can warn that these are HOST values.
+		if metrics, err := resource.ReadCgroupMetrics(); err == nil {
+			resp.CpuUsagePercent = metrics.CPUUsagePercent
+			resp.MemoryUsedBytes = metrics.MemoryUsedBytes
+			resp.HostLevelFallback = true
+		}
 	}
 	return connect.NewResponse(resp), nil
 }
