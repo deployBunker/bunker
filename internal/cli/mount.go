@@ -122,10 +122,11 @@ func trimSSHFSOutput(s string) string {
 // NewMountCommand returns the `bunker mount` cobra command.
 func NewMountCommand() *cobra.Command {
 	var (
-		serverName string
-		mountPoint string
-		sshKey     string
-		remotePath string
+		serverName      string
+		mountPoint      string
+		sshKey          string
+		remotePath      string
+		expectWorkspace string
 	)
 
 	cmd := &cobra.Command{
@@ -232,8 +233,22 @@ Examples:
 			// without the empty-tree guarantee.
 			if os.Getenv("BUNKER_SKIP_MOUNT_PREFLIGHT") != "" {
 				fmt.Fprintln(os.Stderr, "bunker: WARNING: mount preflight skipped (BUNKER_SKIP_MOUNT_PREFLIGHT set) — an empty or missing remote path will mount as an empty tree")
-			} else if err := remotePathCheck(userAtHost, keyPath, remotePath); err != nil {
-				return err
+			} else {
+				ident, err := remotePathCheck(userAtHost, keyPath, remotePath)
+				if err != nil {
+					return err
+				}
+				// Workspace identity: refuse when the tree is not the one the
+				// operator said they expected, so aiming at the wrong project
+				// is detectable instead of silent. An empty expectation never
+				// refuses — the check exists for a STATED expectation.
+				if !ident.MatchesExpected(expectWorkspace) {
+					return fmt.Errorf(
+						"mount refused: workspace identity does not match --expect-workspace %q\n  resolved: %s\n"+
+							"  pass the correct --path, or drop --expect-workspace if any tree is acceptable",
+						expectWorkspace, ident.Describe())
+				}
+				fmt.Printf("Workspace: %s\n", ident.Describe())
 			}
 
 			// Default the remote path from the stored command when the operator
@@ -375,6 +390,7 @@ Examples:
 	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (default: active server)")
 	cmd.Flags().StringVar(&sshKey, "ssh-key", "", "SSH private key path (default: ~/.bunker/keys/<agent-id>)")
 	cmd.Flags().StringVar(&remotePath, "path", "", "Remote path inside the agent to mount (default: the agent's home)")
+	cmd.Flags().StringVar(&expectWorkspace, "expect-workspace", "", "Refuse to mount unless the resolved workspace matches this git remote (e.g. deployBunker/bunker)")
 	return cmd
 }
 

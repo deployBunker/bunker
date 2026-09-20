@@ -236,27 +236,91 @@ func unsafeAllowOption(args []string) (string, bool) {
 	return "", false
 }
 
+// Workspace identity returned by the preflight. The mount records this in the
+// session binding so the operator can see WHICH tree was mounted, and so a
+// later mismatch (agent re-created, path replaced) is detectable rather than
+// silently served.
+type WorkspaceIdentity struct {
+	// RemotePath is the path that was resolved.
+	RemotePath string
+	// GitRemote is the workspace's origin URL, empty when it is not a repo.
+	GitRemote string
+	// GitHead is the resolved commit, empty when not a repo.
+	GitHead string
+	// GitBranch is the current branch, or "detached" / empty.
+	GitBranch string
+	// IsRepo reports whether the path is a git work tree at all.
+	IsRepo bool
+}
+
+// Describe renders the identity for an operator-facing message. It never
+// claims a repo when the path is not one: an empty tree says so.
+func (w WorkspaceIdentity) Describe() string {
+	if !w.IsRepo {
+		return fmt.Sprintf("%s (not a git work tree)", w.RemotePath)
+	}
+	head := w.GitHead
+	if len(head) > 8 {
+		head = head[:8]
+	}
+	remote := w.GitRemote
+	if remote == "" {
+		remote = "(no origin)"
+	}
+	return fmt.Sprintf("%s [%s @ %s]", remote, w.GitBranch, head)
+}
+
+// MatchesExpected reports whether this workspace is the one the operator said
+// they expected. An empty `expect` means "no expectation" and always matches --
+// refusals must be for a stated expectation, never for the absence of one.
+func (w WorkspaceIdentity) MatchesExpected(expect string) bool {
+	if expect == "" {
+		return true
+	}
+	if w.GitRemote == "" {
+		return false
+	}
+	// Accept either the full URL or the "owner/repo" suffix so an operator can
+	// pass the short form they actually think in.
+	if w.GitRemote == expect {
+		return true
+	}
+	trimmed := strings.TrimSuffix(strings.TrimSuffix(w.GitRemote, ".git"), "/")
+	return strings.HasSuffix(trimmed, strings.TrimSuffix(expect, ".git"))
+}
+
 // remotePathExists checks the remote path exists and is a directory, using the
-// same ssh identity/host the mount will use. This is the preflight that kills
-// the silent-empty-tree failure: without it, mounting an agent whose home is
-// empty (a re-created agent) or a --path that does not exist SUCCEEDS and
-// presents an empty tree that looks mounted and correct.
+// same ssh identity/host the mount will use, and returns the workspace's
+// identity. This is the preflight that kills the silent-empty-tree failure:
+// without it, mounting an agent whose home is empty (a re-created agent) or a
+// --path that does not exist SUCCEEDS and presents an empty tree that looks
+// mounted and correct.
 //
-// Returns a named error suitable for surfacing to the operator.
-func remotePathExists(userAtHost, keyPath, remotePath string) error {
+// It deliberately resolves the identity in the SAME round trip as the existence
+// check: a second ssh would be a second chance to disagree.
+func remotePathExists(userAtHost, keyPath, remotePath string) (WorkspaceIdentity, error) {
+	ident := WorkspaceIdentity{RemotePath: remotePath}
 	if userAtHost == "" {
-		return fmt.Errorf("mount preflight: no ssh target resolved")
+		return ident, fmt.Errorf("mount preflight: no ssh target resolved")
 	}
 	if remotePath == "" {
-		return fmt.Errorf("mount preflight: no remote path to check")
+		return ident, fmt.Errorf("mount preflight: no remote path to check")
 	}
 	if keyPath == "" {
-		return fmt.Errorf("mount preflight: no ssh key resolved")
+		return ident, fmt.Errorf("mount preflight: no ssh key resolved")
 	}
 
-	// Single-quote the remote path so a space or shell metacharacter cannot
-	// change the command shape; the path itself is validated by test -d.
-	q := "'" + strings.ReplaceAll(remotePath, "'", `'\''`) + "'"
+	// One round trip: confirm the directory, then report the git identity if
+	// there is one. `-C` keeps it safe on a non-repo (git exits non-zero and
+	// prints nothing, which the parser treats as "not a repo").
+	script := `set -e
+p=` + shellQuote(remotePath) + `
+[ -d "$p" ] || { echo "__BUNKER_NO_DIR__"; exit 3; }
+echo "__BUNKER_DIR__"
+echo "remote="$(git -C "$p" remote get-url origin 2>/dev/null || true)
+echo "head="$(git -C "$p" rev-parse HEAD 2>/dev/null || true)
+echo "branch="$(git -C "$p" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+`
 	cmd := exec.Command("ssh",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
@@ -264,20 +328,45 @@ func remotePathExists(userAtHost, keyPath, remotePath string) error {
 		"-o", "ConnectTimeout="+sshfsConnectTimeout,
 		"-i", keyPath,
 		userAtHost,
-		"test", "-d", q,
+		"sh", "-s",
 	)
+	cmd.Stdin = strings.NewReader(script)
 	out, err := runWithTimeout(cmd, sshfsPreflightTimeout)
+	text := string(out)
 	if err != nil {
-		// Distinguish "does not exist / not a directory" (test -d returned
-		// non-zero) from "could not reach the host at all": they call for
-		// different operator action.
-		details := strings.TrimSpace(out)
-		if details == "" {
-			return fmt.Errorf("mount preflight: remote path %q does not exist or is not a directory on %s", remotePath, userAtHost)
+		// Distinguish "does not exist / not a directory" from "could not reach
+		// the host at all": they call for different operator action.
+		if strings.Contains(text, "__BUNKER_NO_DIR__") {
+			return ident, fmt.Errorf("mount preflight: remote path %q does not exist or is not a directory on %s", remotePath, userAtHost)
 		}
-		return fmt.Errorf("mount preflight: cannot reach %s to verify %q: %s", userAtHost, remotePath, details)
+		details := strings.TrimSpace(text)
+		if details == "" {
+			return ident, fmt.Errorf("mount preflight: remote path %q does not exist or is not a directory on %s", remotePath, userAtHost)
+		}
+		return ident, fmt.Errorf("mount preflight: cannot reach %s to verify %q: %s", userAtHost, remotePath, details)
 	}
-	return nil
+	if !strings.Contains(text, "__BUNKER_DIR__") {
+		return ident, fmt.Errorf("mount preflight: remote path %q does not exist or is not a directory on %s", remotePath, userAtHost)
+	}
+
+	for _, line := range strings.Split(text, "\n") {
+		switch {
+		case strings.HasPrefix(line, "remote="):
+			ident.GitRemote = strings.TrimPrefix(line, "remote=")
+		case strings.HasPrefix(line, "head="):
+			ident.GitHead = strings.TrimPrefix(line, "head=")
+		case strings.HasPrefix(line, "branch="):
+			ident.GitBranch = strings.TrimPrefix(line, "branch=")
+		}
+	}
+	ident.IsRepo = ident.GitHead != ""
+	return ident, nil
+}
+
+// shellQuote single-quotes a value for a POSIX shell, so a path with a space or
+// metacharacter cannot change the command shape.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // runWithTimeout runs a command with a hard deadline, returning combined output.

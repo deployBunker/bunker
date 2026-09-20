@@ -226,9 +226,9 @@ func stubRemotePathCheck(t *testing.T, err error) (calls *[]string, restore func
 	t.Helper()
 	calls = &[]string{}
 	old := remotePathCheck
-	remotePathCheck = func(userAtHost, keyPath, remotePath string) error {
+	remotePathCheck = func(userAtHost, keyPath, remotePath string) (WorkspaceIdentity, error) {
 		*calls = append(*calls, userAtHost+"|"+remotePath)
-		return err
+		return WorkspaceIdentity{RemotePath: remotePath}, err
 	}
 	return calls, func() { remotePathCheck = old }
 }

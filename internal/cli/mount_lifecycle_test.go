@@ -228,7 +228,7 @@ func TestRemotePathExists_RejectsEmptyInputs(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := remotePathExists(tc.host, tc.key, tc.path); err == nil {
+			if _, err := remotePathExists(tc.host, tc.key, tc.path); err == nil {
 				t.Fatal("expected an error for incomplete preflight input")
 			}
 		})
@@ -243,7 +243,7 @@ func TestRemotePathExists_UnreachableHostNamesTheCause(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A host that cannot resolve/connect: the ssh invocation must fail fast.
-	err := remotePathExists("nobody@192.0.2.1", key, ".")
+	_, err := remotePathExists("nobody@192.0.2.1", key, ".")
 	if err == nil {
 		t.Skip("unexpectedly reached the unroutable address; network-dependent test skipped")
 	}
