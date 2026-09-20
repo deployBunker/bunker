@@ -250,6 +250,27 @@ func downloadRootlessInstaller(ctx context.Context, installerPath string) ([]byt
 // uncached download seam when the cache is not configured.
 var rootlessInstallerCacheDir = ""
 
+// RootlessInstallerCacheDirEnv is the environment variable the daemon reads at
+// startup to arm rootlessInstallerCacheDir. It overrides the
+// agent.rootless_installer_cache_dir config value (env > config > default);
+// an empty or unset value never clobbers the config file.
+const RootlessInstallerCacheDirEnv = "BUNKER_ROOTLESS_INSTALLER_CACHE_DIR"
+
+// SetRootlessInstallerCacheDir arms (or disarms, with "") the host-level
+// rootless installer cache. cmd/bunkerd calls it once at startup from the
+// resolved configuration; tests use it to point the cache at a temp directory
+// through the same seam production uses. The empty string keeps the previous
+// behavior exactly: every spawn downloads the installer from the network.
+func SetRootlessInstallerCacheDir(dir string) {
+	rootlessInstallerCacheDir = dir
+}
+
+// GetRootlessInstallerCacheDir reports the currently armed cache directory
+// ("" = no host cache). Read seam for the cmd/bunkerd startup tests.
+func GetRootlessInstallerCacheDir() string {
+	return rootlessInstallerCacheDir
+}
+
 // rootlessInstallerCacheKey returns the cache filename for the current
 // rootless installer URL. The filename is derived from the host so a future
 // URL change automatically creates a new cache entry instead of reusing a

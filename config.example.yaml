@@ -46,6 +46,15 @@ agent:
   port_range_per_agent: 100
   # default_ttl: 6h           # default agent TTL (\\d+[hmd] format, e.g. 6h/90m/7d)
 
+  # Host-level cache for downloaded rootless Docker installers (GAP-091).
+  # With a valid cached artifact (~93MB from get.docker.com) a fresh-agent
+  # spawn skips the network download entirely — retries no longer depend on
+  # get.docker.com throughput. The daemon (root) creates the directory as
+  # 0755 and stores one installer file in it. Empty string ("") disables
+  # the cache and restores the legacy uncached download path.
+  # Env override: BUNKER_ROOTLESS_INSTALLER_CACHE_DIR (empty = unset).
+  # rootless_installer_cache_dir: /var/cache/bunker/rootless-installer  # default
+
   # Durable agent registry (GAP-070). Append-only JSONL lifecycle log
   # (spawn / heartbeat / destroy) replayed at startup, so agents survive a
   # daemon restart. Mode 0600, size-capped with rotation.

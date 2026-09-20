@@ -138,6 +138,17 @@ Docker agent hosts. Send SIGINT/SIGTERM for graceful shutdown.
 		return fmt.Errorf("load config: %w", err)
 	}
 
+	// Arm the host-level rootless installer cache (GAP-091): env wins over
+	// the config file (BUNKERD_* convention), the config file wins over the
+	// DefaultConfig default. An empty env var is treated as unset so it
+	// never clobbers an explicit config value; an empty config value keeps
+	// the legacy uncached download path.
+	cacheDir := cfg.Agent.RootlessInstallerCacheDir
+	if envCacheDir := os.Getenv(agent.RootlessInstallerCacheDirEnv); envCacheDir != "" {
+		cacheDir = envCacheDir
+	}
+	agent.SetRootlessInstallerCacheDir(cacheDir)
+
 	// Authentication gate: refuse to start when auth is enabled but no
 	// credential is configured; warn loudly when auth is explicitly disabled.
 	if warn, err := cfg.CheckAuth(); err != nil {

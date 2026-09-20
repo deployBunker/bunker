@@ -45,6 +45,11 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Audit.Path != "/var/log/bunkerd/audit.log" {
 		t.Errorf("expected audit path /var/log/bunkerd/audit.log, got %q", cfg.Audit.Path)
 	}
+	// GAP-091: the rootless installer cache is armed by default so fresh
+	// agent spawns stop depending on get.docker.com throughput.
+	if cfg.Agent.RootlessInstallerCacheDir != "/var/cache/bunker/rootless-installer" {
+		t.Errorf("expected rootless_installer_cache_dir /var/cache/bunker/rootless-installer, got %q", cfg.Agent.RootlessInstallerCacheDir)
+	}
 }
 
 func TestCheckAuth_DefaultRefusesWithoutCredential(t *testing.T) {
