@@ -3,6 +3,7 @@ package audit
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"strings"
 	"time"
 
@@ -36,7 +37,10 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
 		start := time.Now()
 		resp, err := next(ctx, req)
-		i.record(ctx, req.Spec().Procedure, err, start, req.Any())
+		// GAP-141: the request headers are read HERE, not inside the handler's
+		// call-info scope, so the unverified-session declaration is seen on the
+		// same object the transport authenticated with.
+		i.record(ctx, req.Spec().Procedure, err, start, req.Any(), req.Header())
 		return resp, err
 	}
 }
@@ -73,7 +77,10 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		sink := &streamSink{remoteAddr: conn.Peer().Addr}
 		ctx = context.WithValue(ctx, streamSinkKey{}, sink)
 		err := next(ctx, conn)
-		i.record(ctx, conn.Spec().Procedure, err, start, nil)
+		// A streaming request's headers are visible before the handler consumes
+		// the stream (connect-go does not surface the request MESSAGE here), so
+		// the GAP-141 unverified-session declaration is read from the conn.
+		i.record(ctx, conn.Spec().Procedure, err, start, nil, conn.RequestHeader())
 		return err
 	}
 }
@@ -83,7 +90,7 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 	return next
 }
 
-func (i *Interceptor) record(ctx context.Context, procedure string, err error, start time.Time, msg any) {
+func (i *Interceptor) record(ctx context.Context, procedure string, err error, start time.Time, msg any, header http.Header) {
 	claims, _ := auth.ClaimsFromContext(ctx)
 
 	// Streaming handlers stamp the target agent id into the per-request sink;
@@ -119,6 +126,14 @@ func (i *Interceptor) record(ctx context.Context, procedure string, err error, s
 		DurationMS: time.Since(start).Milliseconds(),
 		Outcome:    outcome,
 		Summary:    summarize(procedure, agentID),
+	}
+	// GAP-141: a caller that dialed without verifying its server says so, and
+	// the record states it. Stamped here rather than in AuditLog because the
+	// declaration is per-REQUEST (a daemon cannot know a client's trust posture
+	// from the listener) — unlike the listener-wide GAP-126 plaintext marker,
+	// which the log stamps on every record it writes.
+	if unverifiedHeader(header) {
+		rec.Summary = prependMarker(TLSUnverifiedMarker, rec.Summary)
 	}
 	if err := i.log.Log(rec); err != nil && i.logger != nil {
 		i.logger.Warn("audit write failed", "error", err)
@@ -209,6 +224,14 @@ func RecordExecCommand(ctx context.Context, log *AuditLog, logger *slog.Logger, 
 		return
 	}
 	claims, _ := auth.ClaimsFromContext(ctx)
+	summary := ev.Summary
+	// GAP-141: the command-content record must carry the session declaration
+	// too, or a forensic reader filtering on the marker would miss the exact
+	// command that an unverified session issued — the record most worth
+	// distrusting would be the only unmarked one.
+	if UnverifiedSession(ctx) {
+		summary = prependMarker(TLSUnverifiedMarker, summary)
+	}
 	rec := Record{
 		TS:         time.Now().UTC().Format(time.RFC3339Nano),
 		Caller:     CallerFromClaims(claims),
@@ -217,7 +240,7 @@ func RecordExecCommand(ctx context.Context, log *AuditLog, logger *slog.Logger, 
 		AgentID:    ev.AgentID,
 		DurationMS: ev.DurationMS,
 		Outcome:    ev.Outcome,
-		Summary:    ev.Summary,
+		Summary:    summary,
 	}
 	if err := log.Log(rec); err != nil && logger != nil {
 		logger.Warn("exec command audit write failed", "error", err, "agent_id", ev.AgentID)

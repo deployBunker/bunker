@@ -182,6 +182,11 @@ func RegisterServer(name, url, token string, tlsInsecure bool) error {
 // certificate is observed over a real handshake, the fingerprint is printed
 // loudly, and it is stored on the entry so every later command verifies against
 // it (GAP-127). A changed certificate is a refusal unless AcceptCert is set.
+//
+// An insecure registration (GAP-141) additionally has to clear the
+// acknowledgement gate here — before any network activity — so a script that
+// passes --tls-insecure without acknowledging it fails loudly instead of
+// silently downgrading the connection.
 func RegisterServerWithOptions(opts ConnectOptions) error {
 	entry := ServerEntry{
 		Name:        opts.Name,
@@ -196,6 +201,21 @@ func RegisterServerWithOptions(opts ConnectOptions) error {
 	// the combination before any network activity.
 	if opts.Insecure && opts.TLSMode == TLSModeSelfSigned {
 		return fmt.Errorf("contradictory TLS configuration: --tls-insecure disables verification while --tls %s requires it — pass one or the other", TLSModeSelfSigned)
+	}
+
+	// GAP-141: an insecure registration needs the environment acknowledgement,
+	// and is refused outright when the server being registered already carries a
+	// pinned certificate — the pin wins, and no acknowledgement unlocks it.
+	if opts.Insecure {
+		if known := existingEntryFor(entry); known != nil && known.CertPin != "" {
+			if err := RequireInsecureAck(*known); err != nil {
+				return err
+			}
+		}
+		if err := RequireInsecureAck(entry); err != nil {
+			return err
+		}
+		printInsecureWarning(entry)
 	}
 
 	if opts.TLSMode == TLSModeSelfSigned || opts.AcceptCert {

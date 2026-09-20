@@ -370,15 +370,24 @@ func (l *AuditLog) markInsecureRecord(rec Record) Record {
 	if !l.insecurePlaintext {
 		return rec
 	}
-	if strings.HasPrefix(rec.Summary, config.InsecurePlaintextMarker) {
-		return rec
-	}
-	if rec.Summary == "" {
-		rec.Summary = config.InsecurePlaintextMarker
-		return rec
-	}
-	rec.Summary = config.InsecurePlaintextMarker + " " + rec.Summary
+	rec.Summary = prependMarker(config.InsecurePlaintextMarker, rec.Summary)
 	return rec
+}
+
+// prependMarker puts marker at the front of summary, exactly once. An empty
+// summary becomes the marker alone; a summary that already carries the marker
+// (as a prefix) is returned unchanged, so two writers stamping the same
+// declaration — or a caller handing Log an already-marked record — cannot
+// produce a doubled "[X] [X] …". Used by the listener-wide GAP-126 stamp above
+// and the per-request GAP-141 unverified-session stamp in interceptor.go.
+func prependMarker(marker, summary string) string {
+	if strings.HasPrefix(summary, marker) {
+		return summary
+	}
+	if summary == "" {
+		return marker
+	}
+	return marker + " " + summary
 }
 
 // logLocked is Log's body with the lock already held (l.mu is NOT

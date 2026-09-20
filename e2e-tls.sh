@@ -115,16 +115,43 @@ cleanup() {
 trap cleanup EXIT
 
 export BUNKER_TOKEN="test-regression-token"
+# GAP-141: --tls-insecure is refused unless the operator acknowledges it in the
+# environment for that invocation. The battery acknowledges it below, where the
+# insecure flow is the subject under test — and asserts the refusal first, so
+# the gate itself is covered live.
+export BUNKER_ALLOW_TLS_INSECURE=1
 BUNKER="/usr/local/bin/bunker"
 URL="https://localhost:${GRPC_PORT}"
 
 echo ""
 echo "=== 1. Connect with --tls-insecure ==="
+# 1a. The acknowledgement is REQUIRED: without it the knob is refused and
+#     nothing is registered.
+UNAKED_HOME="$(mktemp -d)"
+UNAKED_OUT=$(BUNKER_HOME="$UNAKED_HOME" BUNKER_ALLOW_TLS_INSECURE= $BUNKER connect "$URL" --token "$BUNKER_TOKEN" --tls-insecure --name tls-unacked 2>&1 || true)
+if echo "$UNAKED_OUT" | grep -q "BUNKER_ALLOW_TLS_INSECURE"; then
+    assert "connect --tls-insecure without the acknowledgement is refused, naming the variable"
+else
+    fail "unacknowledged --tls-insecure — $UNAKED_OUT"
+fi
+if [ ! -f "$UNAKED_HOME/config.yaml" ]; then
+    assert "the refused connect registered nothing"
+else
+    fail "a refused connect wrote a config: $(cat "$UNAKED_HOME/config.yaml")"
+fi
+rm -rf "$UNAKED_HOME"
+
+# 1b. Acknowledged: the connection is established and warns loudly.
 CONNECT_OUT=$($BUNKER connect "$URL" --token "$BUNKER_TOKEN" --tls-insecure --name tls-test 2>&1)
 if echo "$CONNECT_OUT" | grep -q "Connected\|Server registered"; then
-    assert "connect with --tls-insecure"
+    assert "connect with --tls-insecure (acknowledged)"
 else
     fail "connect with --tls-insecure — $CONNECT_OUT"
+fi
+if echo "$CONNECT_OUT" | grep -q "INSECURE TLS SESSION"; then
+    assert "the acknowledged insecure session warns loudly"
+else
+    fail "insecure warning — $CONNECT_OUT"
 fi
 
 echo ""
@@ -298,6 +325,9 @@ fi
 assert "bunkerd restarted with mTLS enabled"
 
 # Remove previous server entry so we can re-register with mTLS.
+# NOTE: BUNKER_ALLOW_TLS_INSECURE stays exported (set in section 1) — this step's
+# subject is the mTLS server rejecting a certless client, not the GAP-141 gate,
+# which sections 1a/1b already cover.
 rm -f /root/.bunker/config.yaml
 
 NO_CERT_OUT=$($BUNKER connect "$URL" --token "$BUNKER_TOKEN" --tls-insecure --name mtls-test 2>&1 || true)

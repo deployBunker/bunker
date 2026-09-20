@@ -103,6 +103,9 @@ func TestMetricsCommand_Help(t *testing.T) {
 func TestMetricsCommand_NoServer(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
+	// GAP-141: the servers registered below carry tls_insecure, which now
+	// requires the explicit environment acknowledgement.
+	t.Setenv(TLSInsecureAckEnv, "1")
 
 	cmd := NewMetricsCommand()
 	cmd.SetArgs([]string{})
@@ -118,6 +121,9 @@ func TestMetricsCommand_NoServer(t *testing.T) {
 func TestMetricsCommand_ServerMetrics(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
+	// GAP-141: the servers registered below carry tls_insecure, which now
+	// requires the explicit environment acknowledgement.
+	t.Setenv(TLSInsecureAckEnv, "1")
 
 	mock := &metricsMockServer{
 		serverMetrics: &v1.ServerMetricsResponse{
@@ -174,6 +180,9 @@ func TestMetricsCommand_ServerMetrics(t *testing.T) {
 func TestMetricsCommand_AgentMetrics(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
+	// GAP-141: the servers registered below carry tls_insecure, which now
+	// requires the explicit environment acknowledgement.
+	t.Setenv(TLSInsecureAckEnv, "1")
 
 	mock := &metricsMockServer{
 		agentMetrics: &v1.AgentMetricsResponse{
@@ -217,6 +226,9 @@ func TestMetricsCommand_AgentMetrics(t *testing.T) {
 func TestMetricsCommand_AgentMetrics_HostFallbackNotice(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
+	// GAP-141: the servers registered below carry tls_insecure, which now
+	// requires the explicit environment acknowledgement.
+	t.Setenv(TLSInsecureAckEnv, "1")
 
 	mock := &metricsMockServer{
 		agentMetrics: &v1.AgentMetricsResponse{
@@ -250,6 +262,9 @@ func TestMetricsCommand_AgentMetrics_HostFallbackNotice(t *testing.T) {
 func TestMetricsCommand_ServerError(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
+	// GAP-141: the servers registered below carry tls_insecure, which now
+	// requires the explicit environment acknowledgement.
+	t.Setenv(TLSInsecureAckEnv, "1")
 
 	mock := &metricsMockServer{
 		err: connect.NewError(connect.CodeInternal, fmt.Errorf("database error")),
@@ -275,6 +290,9 @@ func TestMetricsCommand_ServerError(t *testing.T) {
 func TestMetricsCommand_AgentNotFound(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
+	// GAP-141: the servers registered below carry tls_insecure, which now
+	// requires the explicit environment acknowledgement.
+	t.Setenv(TLSInsecureAckEnv, "1")
 
 	mock := &metricsMockServer{
 		err: connect.NewError(connect.CodeNotFound, fmt.Errorf("agent not found")),
