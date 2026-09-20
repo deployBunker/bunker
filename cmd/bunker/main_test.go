@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 
 	"github.com/deployBunker/bunker/internal/cli"
 )
@@ -114,6 +117,102 @@ func TestRootCommandRegistersLifecycleCommands(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestFlagUsagePlaceholdersRenderValuelessOrPathLike guards GAP-086: a
+// backticked span inside a flag's usage string is promoted by cobra's
+// UnquoteUsage into the flag's rendered VALUE placeholder, so `--version`
+// once rendered as "--version bunker version" (looking like it takes an
+// argument) and `--config` as "--config bunker systemd install --config"
+// (hiding which form takes a path). The fix keeps code spans out of flag
+// usage strings; this test walks the whole registered command tree, renders
+// each command's usage, and asserts every flag line carries either a
+// single-token placeholder (path-like, e.g. "string") or none at all.
+func TestFlagUsagePlaceholdersRenderValuelessOrPathLike(t *testing.T) {
+	root := newRootCommand()
+	commands := []*cobra.Command{root}
+	for _, c := range root.Commands() {
+		commands = append(commands, c)
+	}
+
+	for _, cmd := range commands {
+		var buf bytes.Buffer
+		cmd.SetOut(&buf)
+		cmd.SetErr(io.Discard)
+		if err := cmd.Usage(); err != nil {
+			t.Fatalf("%s: Usage() returned error: %v", cmd.CommandPath(), err)
+		}
+
+		for _, line := range strings.Split(buf.String(), "\n") {
+			name, placeholder, ok := parseFlagUsageLine(line)
+			if !ok {
+				continue
+			}
+			if strings.ContainsAny(placeholder, " \t") {
+				t.Errorf("%s: flag --%s renders a prose placeholder %q (a backticked span leaked out of the usage string into UnquoteUsage):\n%s",
+					cmd.CommandPath(), name, placeholder, line)
+			}
+		}
+	}
+
+	// Explicit GAP-086 regressions on the two originally affected flags.
+	rootHelp := renderHelp(t, root)
+	if strings.Contains(rootHelp, "--version bunker version") {
+		t.Errorf("root --help renders --version with a value placeholder; --version must be valueless:\n%s", rootHelp)
+	}
+	if !regexp.MustCompile(`(?m)^\s+--version\s{2,}Print the bunker version`).MatchString(rootHelp) {
+		t.Errorf("root --help does not render --version valueless directly beside its description:\n%s", rootHelp)
+	}
+	if strings.Contains(rootHelp, "--config bunker systemd install --config") {
+		t.Errorf("root --help renders --config with the prose span as its value placeholder:\n%s", rootHelp)
+	}
+}
+
+// renderHelp executes the real root invocation for a subcommand (or the root
+// itself) and returns the rendered help text.
+func renderHelp(t *testing.T, root *cobra.Command, args ...string) string {
+	t.Helper()
+	root = newRootCommand()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(io.Discard)
+	root.SetArgs(append(args, "--help"))
+	if err := root.Execute(); err != nil {
+		t.Fatalf("`bunker %s --help` returned an error: %v", strings.Join(args, " "), err)
+	}
+	return out.String()
+}
+
+// parseFlagUsageLine parses one rendered usage line like
+// "      --config string   CLI config file. ..." or
+// "  -h, --help   help for bunker". It reports the flag name, the rendered
+// placeholder ("" when the flag renders valueless), and whether the line is a
+// flag line at all. Line shape per pflag's FlagUsages: two leading spaces, an
+// optional "-X, " shorthand, the flag name, an optional single-token
+// placeholder, then two-or-more spaces before the usage text.
+func parseFlagUsageLine(line string) (name, placeholder string, ok bool) {
+	rest := strings.TrimSpace(line)
+	if !strings.HasPrefix(rest, "--") {
+		return "", "", false
+	}
+	rest = rest[2:]
+	// Drop a shorthand if this is a merged "-X, --name" line.
+	if i := strings.Index(rest, ", --"); i >= 0 {
+		rest = rest[i+4:]
+	}
+	end := strings.IndexAny(rest, " \t")
+	if end < 0 {
+		return rest, "", true
+	}
+	name = rest[:end]
+	// The gap between the name and the usage text is two or more spaces; a
+	// placeholder is whatever single token sits in between.
+	body := rest[end:]
+	desc := strings.Index(body, "  ")
+	if desc < 0 {
+		return name, "", true
+	}
+	return name, strings.TrimSpace(body[:desc]), true
 }
 
 // keysOf returns the map's keys sorted, for deterministic failure messages.
