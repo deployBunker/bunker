@@ -1,0 +1,53 @@
+{
+  "tick_id": "bunker-2026-09-20-08-53-27",
+  "project": "bunker",
+  "repo": "/home/kara/bunker",
+  "branch": "main",
+  "base_sha": "8316fea",
+  "created_at": "2026-09-20T09:20:00-05:00",
+  "mode": "git-worktrees",
+  "wave_budget": 12,
+  "independent": true,
+  "workers": [
+    {
+      "task_id": "DF-BUNKER-33",
+      "title": "destroy archives agent home before userdel -rf (data-loss P0)",
+      "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-33",
+      "branch": "wt/DF-BUNKER-33",
+      "base_sha": "8316fea",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/foreman-worker-DF-BUNKER-33.txt",
+      "rescue_input": "/tmp/df33-config-partial.patch (uncommitted sibling WIP: config surface only)",
+      "commit": null,
+      "merge": null,
+      "judge": null
+    },
+    {
+      "task_id": "DF-BUNKER-31",
+      "title": "exec flag grammar parity: global flags before the agent-id",
+      "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-31",
+      "branch": "wt/DF-BUNKER-31",
+      "base_sha": "8316fea",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/foreman-worker-DF-BUNKER-31.txt",
+      "commit": null,
+      "merge": null,
+      "judge": null
+    },
+    {
+      "task_id": "INT-CI-024",
+      "title": "CI proto step must survive BSR rate limiting",
+      "worktree": "/home/kara/worktrees/bunker-INT-CI-024",
+      "branch": "wt/INT-CI-024",
+      "base_sha": "8316fea",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/foreman-worker-INT-CI-024.txt",
+      "commit": null,
+      "merge": null,
+      "judge": null
+    }
+  ]
+}
