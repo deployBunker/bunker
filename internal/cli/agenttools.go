@@ -124,7 +124,13 @@ result is evidence rather than a claim. Only tools we build ourselves are copied
 that way; ripgrep and the language servers are in distribution registries and
 belong to the image-spec package-add path, which pins versions and verifies
 signatures. A dynamically linked artifact is REFUSED, because it would depend on
-this machine's libc.
+this machine's libc. The command names what it did NOT deliver and prints the
+image-spec directive for those, so it never claims a fully provisioned agent.
+After copying, the agent is re-probed and the delivery FAILS if the tool is
+still unreachable — "copied the file" is not "the tool works". A local/remote
+version difference is a named warning (an operator testing one build while an
+agent runs another is a silent behaviour split). Spec:
+docs/prd/SPEC-agent-tool-delivery.md.
 
 Examples:
   bunker agent-tools abc12345
