@@ -1,0 +1,14 @@
+{
+  "tick_id": "bunker-2026-09-20-00-17-25",
+  "project": "bunker",
+  "repo": "/home/kara/bunker",
+  "branch": "main",
+  "base_sha": "ef92a8e",
+  "created_at": "2026-09-20T00:25:00Z",
+  "workers": [
+    {"task_id": "GAP-086", "worktree": "/home/kara/worktrees/bunker-GAP-086", "branch": "wt/GAP-086", "base_sha": "ef92a8e", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-GAP-086.txt"},
+    {"task_id": "GAP-088", "worktree": "/home/kara/worktrees/bunker-GAP-088", "branch": "wt/GAP-088", "base_sha": "ef92a8e", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-GAP-088.txt"},
+    {"task_id": "QA-BUNKER-20", "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-20", "branch": "wt/QA-BUNKER-20", "base_sha": "ef92a8e", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-QA-BUNKER-20.txt"},
+    {"task_id": "DEPS-001", "worktree": "/home/kara/worktrees/bunker-DEPS-001", "branch": "wt/DEPS-001", "base_sha": "ef92a8e", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-DEPS-001.txt"}
+  ]
+}

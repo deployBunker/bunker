@@ -2417,3 +2417,44 @@ tasks:
   status: complete
   created_at: '2026-09-19T18:45:28.431587+00:00'
   completed_at: '2026-09-19T18:45:28.919014+00:00'
+- id: GAP-086
+  title: bunker --help renders value placeholders out of prose backticks
+  criteria:
+  - bunker --help and every subcommand Global Flags render --config with a path-like
+    placeholder, no prose backtick span promoted to value placeholder AND --version
+    renders valueless AND a unit test renders root usage asserting no flag placeholder
+    contains a space AND go build ./... + go vet ./... + go test ./... green
+  status: complete
+  created_at: '2026-09-20T00:22:59.403135+00:00'
+  completed_at: '2026-09-20T00:56:28.955648+00:00'
+- id: GAP-088
+  title: bunker audit status absent from docs/audit.md and README audit surface
+  criteria:
+  - docs/audit.md documents all four audit subcommands including audit status AND
+    README.md audit surface names status alongside verify/list/export AND a surface
+    check flags any subcommand present in a documented group tree but absent from
+    that group doc page AND go build ./... + go vet ./... + go test ./... green
+  status: complete
+  created_at: '2026-09-20T00:23:00.271230+00:00'
+  completed_at: '2026-09-20T01:08:14.359788+00:00'
+- id: QA-BUNKER-20
+  title: battery token preflight refusal
+  criteria:
+  - e2e-full-battery.sh treats unauthenticated invalid token at the section-2 connect
+    step as a preflight refusal naming BUNKER_TOKEN and the standalone-mode requirement
+    exiting 42 before any battery section runs AND section 5 fails loudly with the
+    section name instead of aborting mid-run via set -e AND bash -n e2e-full-battery.sh
+    passes and internal/hostsetup battery-summary tests stay green
+  status: complete
+  created_at: '2026-09-20T00:23:01.559394+00:00'
+  completed_at: '2026-09-20T01:22:16.705610+00:00'
+- id: DEPS-001
+  title: dependency refresh of 4 outdated direct Go modules
+  criteria:
+  - go.mod bumps connectrpc.com/connect to v1.21.0 AND github.com/go-chi/chi/v5 to
+    v5.3.2 AND google.golang.org/protobuf to v1.36.12 AND go.yaml.in/yaml/v3 to v3.0.5
+    AND go mod tidy run with direct-outdated count 0 AND go build ./... + go vet ./...
+    + go test ./... green AND no files changed besides go.mod and go.sum
+  status: complete
+  created_at: '2026-09-20T00:23:02.531378+00:00'
+  completed_at: '2026-09-20T00:51:41.744428+00:00'
