@@ -1,51 +1,20 @@
 {
-  "tick_id": "bunker-2026-09-20-16-34-14",
-  "project": "bunker",
-  "repo": "/home/kara/bunker",
-  "branch": "main",
-  "base_sha": "6ea9495",
-  "created_at": "2026-09-20T16:34:14-05:00",
+  "scheduler_tick_id": "bunker-2026-09-20-16-34-14",
+  "tick_number": 504,
+  "composed_at": "2026-09-20T13:49:15-05:00",
+  "base_sha": "6ecc93c",
   "mode": "git-worktrees",
   "wave_budget": 12,
-  "independent": true,
   "workers": [
-    {
-      "task_id": "RELEASE-001",
-      "title": "RELEASE BLOCKER - regression job RED on HEAD while run reports success: ci.yml continue-on-error masks it (e2e-full-battery.sh never binds a session target)",
-      "worktree": "/home/kara/worktrees/bunker-RELEASE-001",
-      "branch": "wt/RELEASE-001",
-      "base_sha": "6ea9495",
-      "model": "cmc/deepseek/deepseek-v4-flash",
-      "provider": "custom",
-      "lane_note": "All glm subs quota-dead this tick: glm-5.3-flash@zai-glm-default weekly-exhausted, z-ai/glm-5.3-flash@xkiro 429 (7-day window, retry 284852s), ocg/glm-5.3-flash@9router 503 GoUsageLimitError. Probe 20260920_115459_2c062f answered genuinely on 9router with no fallback line.",
-      "brief": "/tmp/foreman-worker-RELEASE-001.txt",
-      "log": "/tmp/foreman-worker-RELEASE-001.log",
-      "files_owned": [
-        ".github/workflows/ci.yml",
-        "e2e-full-battery.sh"
-      ]
-    },
-    {
-      "task_id": "DF-BUNKER-43",
-      "title": "[P2] `bunker status/audit` failures exit 0 when their output is piped - a permission-denied audit read and an unknown flag both look like success to any script",
-      "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-43",
-      "branch": "wt/DF-BUNKER-43",
-      "base_sha": "6ea9495",
-      "model": "cmc/deepseek/deepseek-v4-flash",
-      "provider": "custom",
-      "brief": "/tmp/foreman-worker-DF-BUNKER-43.txt",
-      "log": "/tmp/foreman-worker-DF-BUNKER-43.log",
-      "files_owned": [
-        "internal/cli/status.go",
-        "internal/cli/audit*.go",
-        "cmd/bunker/main.go",
-        "one new test file"
-      ]
-    }
+    {"task_id": "GAP-126", "worktree": "/home/kara/worktrees/bunker-GAP-126", "branch": "wt/GAP-126", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-GAP-126.txt"},
+    {"task_id": "GAP-129", "worktree": "/home/kara/worktrees/bunker-GAP-129", "branch": "wt/GAP-129", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-GAP-129.txt"},
+    {"task_id": "GAP-131", "worktree": "/home/kara/worktrees/bunker-GAP-131", "branch": "wt/GAP-131", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-GAP-131.txt"},
+    {"task_id": "GAP-133", "worktree": "/home/kara/worktrees/bunker-GAP-133", "branch": "wt/GAP-133", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-GAP-133.txt"}
   ],
-  "independence_proof": "Verbatim from the board: both rows carry depends_on null/[] - no edge either way. Disjoint file sets, verified on disk at HEAD 6ea9495: RELEASE-001 owns .github/workflows/ci.yml (lines 270/353) + e2e-full-battery.sh (the bcli() wrapper at 362-364); DF-BUNKER-43 owns the CLI exit-code path (internal/cli/status.go, internal/cli/audit*.go, cmd/bunker/main.go) + one new test file. No shared file, no shared package (workflow+bash vs internal/cli), no shared helper. RELEASE-001 is an UNMASKING task (removing continue-on-error) - it deliberately does NOT attempt to make regression green, because making it green requires exactly the harness-binding work that is already owned by the merged INT-CI-025 row; the battery-side binding it adds (bcli target) is the same INT-CI-025 pattern applied to e2e-full-battery.sh. Conflict risk is nil because the two workers never touch the same path.",
-  "dispatch_note": "Serial merge required: the two branches are merged one at a time, each gated (bash -n / gofmt / go build / go vet / go test) before the next merge. Never a simultaneous merge.",
-  "started_at": "2026-09-20T16:39:00-05:00",
-  "finished_at": "2026-09-20T13:10:00-05:00",
-  "outcome": "COMPLETE - both workers landed and both were merged serially with a gate on each. RELEASE-001: ebee2c3 (continue-on-error removed from the regression/root-suite jobs; e2e-full-battery.sh binds BUNKER_SESSION_TARGET, 0->27 markers, plus an explicit --server on every live mutating call site). Verified by the foreman, not self-reported: bash -n clean, --self-test PASS (41 checks), gofmt/build/vet clean, full short suite green, guard PASS non-vacuous. The worker committed to the MAIN worktree rather than its own branch because the brief named the main repo path - the content was verified independently before accepting and no second writer was present. DF-BUNKER-43: 60ca84c, merged ea8a062 (SIGPIPE no longer erases a piped command's exit status). That board row's premise was REFUTED - the foreman's probe read PIPESTATUS after a command substitution, which resets it, so the probe reported 0 for every command; the real defect was the sibling in the opposite direction: audit list | head wrote 324KB and died by signal (141 on 20/20 piped runs) while exiting 0 bare. The foreman ran the falsification control independently (neutering signal.Ignore makes the new table-driven test FAIL; restore byte-identical by sha256 and green again). DF-BUNKER-43's Tier 2 judge returned FAIL on a REAL residual which the foreman reproduced: printAuditTable discards write errors, so a truncated audit list exits 0 instead of 141 - filed as DF-BUNKER-44 rather than silently closed. Both worktree branches removed after merge. MAIN PUSHED via SSH (the https remote's OAuth token lacks workflow scope for ci.yml); remote main parity 0 unpushed. Residual: DF-BUNKER-44; and the full live battery (root + take-over host) was not run, so no VERIFY-PASS is claimed for RELEASE-001."
+  "excluded_independence_checks": [
+    "GAP-128 depends_on GAP-126 (blocked)",
+    "GAP-141 depends_on GAP-127 (blocked, and GAP-127 not started)",
+    "GAP-130 blocks GAP-132,GAP-133 + complexity 6 (too large for 10-min leaf cap)"
+  ],
+  "status": "dispatched"
 }
