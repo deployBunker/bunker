@@ -24,20 +24,21 @@ type runArgs struct {
 	commandArgs []string
 }
 
-// parseRunArgs extracts the agent ID, flags, and command from the raw args slice.
-// It supports --detach, --env KEY=VALUE, --env=KEY=VALUE, --timeout, --server, and --name.
+// parseRunArgs extracts the agent ID, flags, and command from the raw args
+// slice. The accepted flag set (--server, --timeout, --detach, --name,
+// --env, plus the root persistent flags --config/--daemon-config) is peeled
+// in BOTH the pre-agent-id position and the post-agent-id position, each in
+// the space form (--server prod) and the inline form (--server=prod)
+// (DF-BUNKER-41). A flag-like token outside the set refuses LOCALLY —
+// before any config load or RPC — naming the token.
+//
+// A peeled --config / --daemon-config is APPLIED through the cli setters:
+// with DisableFlagParsing cobra never parses the root persistent flags for
+// run, so the root PersistentPreRun transfer sees an empty value and a
+// peeled path would otherwise be accepted and silently ignored.
 func parseRunArgs(args []string) (runArgs, error) {
 	if len(args) < 2 {
 		return runArgs{}, fmt.Errorf("requires at least 2 arg(s), only received %d", len(args))
-	}
-
-	agentID := args[0]
-	rest := args[1:]
-	if len(rest) > 0 && rest[0] == "--" {
-		rest = rest[1:]
-	}
-	if len(rest) == 0 {
-		return runArgs{}, fmt.Errorf("command required after agent-id")
 	}
 
 	var (
@@ -47,48 +48,41 @@ func parseRunArgs(args []string) (runArgs, error) {
 		name       string
 		envVars    []string
 	)
+	grammar := flagGrammar{name: "run", specs: map[string]flagGrammarSpec{
+		"--server": {apply: func(v string) error { serverName = v; return nil }},
+		"--timeout": {apply: func(v string) error {
+			n, err := parseUint32(v)
+			if err != nil {
+				return fmt.Errorf("--timeout: %v", err)
+			}
+			timeout = n
+			return nil
+		}},
+		"--detach":        {apply: func(string) error { detach = true; return nil }, boolean: true},
+		"--name":          {apply: func(v string) error { name = v; return nil }},
+		"--env":           {apply: func(v string) error { envVars = append(envVars, v); return nil }},
+		"--config":        {apply: func(v string) error { SetConfigPathOverride(v); return nil }},
+		"--daemon-config": {apply: func(v string) error { SetDaemonConfigPathOverride(v); return nil }},
+	}}
 
-	i := 0
-	for i < len(rest) {
-		switch {
-		case rest[i] == "--server":
-			if i+1 < len(rest) {
-				serverName = rest[i+1]
-				i += 2
-				continue
-			}
-		case rest[i] == "--timeout":
-			if i+1 < len(rest) {
-				if v, err := parseUint32(rest[i+1]); err == nil {
-					timeout = v
-				}
-				i += 2
-				continue
-			}
-		case rest[i] == "--detach":
-			detach = true
-			i += 1
-			continue
-		case rest[i] == "--name":
-			if i+1 < len(rest) {
-				name = rest[i+1]
-				i += 2
-				continue
-			}
-		case strings.HasPrefix(rest[i], "--env="):
-			envVars = append(envVars, strings.TrimPrefix(rest[i], "--env="))
-			i += 1
-			continue
-		case rest[i] == "--env":
-			if i+1 < len(rest) {
-				envVars = append(envVars, rest[i+1])
-				i += 2
-				continue
-			}
-		}
-		break
+	// Flags BEFORE the agent-id: strict — an unknown flag-like token
+	// refuses locally instead of silently becoming the agent-id (the
+	// DF-BUNKER-41 bug: `run --server prod abc -- echo` parsed "--server"
+	// as the agent-id and died with "no target bound").
+	pre, err := grammar.peelHead(args)
+	if err != nil {
+		return runArgs{}, err
 	}
-	rest = rest[i:]
+	if len(pre) == 0 {
+		return runArgs{}, fmt.Errorf("agent-id required after flags")
+	}
+	agentID := pre[0]
+
+	// Flags AFTER the agent-id: lenient — the peel stops at the first
+	// token that is not an accepted flag (the command), so Docker flags
+	// such as --rm, --format, -d, and --name are never eaten. This is the
+	// position that already worked; its grammar is unchanged.
+	rest := grammar.peelLeading(pre[1:])
 	if len(rest) > 0 && rest[0] == "--" {
 		rest = rest[1:]
 	}
@@ -132,10 +126,25 @@ printed on success.
 Use -- to separate bunker flags from the command to execute, so that Docker
 flags such as --rm, --format, -d, and --name are not intercepted by the CLI.
 
+The run flags (--server, --timeout, --detach, --name, --env) and the global
+persistent flags --config and --daemon-config are accepted in BOTH
+positions, before and after the agent-id, in the space form (--server prod)
+and the inline form (--server=prod):
+
+  bunker run --server prod abc12345 -- echo hi
+  bunker run abc12345 --server prod -- echo hi
+
+Any other flag before the agent-id is rejected before anything is sent to
+the server:
+
+  run takes no flags before <agent-id> (got "--flag")
+
 Examples:
   bunker run abc12345 -- docker ps
+  bunker run --server prod abc12345 -- echo hi
   bunker run abc12345 --detach -- docker compose up
-  bunker run abc12345 --detach --env DATABASE_URL=postgres://... -- ./worker`,
+  bunker run abc12345 --detach --env DATABASE_URL=postgres://... -- ./worker
+  bunker run --timeout 60 abc12345 -- ./longjob`,
 
 		RunE: func(cmd *cobra.Command, args []string) error {
 			for _, a := range args {
