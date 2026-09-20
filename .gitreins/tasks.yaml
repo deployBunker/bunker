@@ -2572,8 +2572,9 @@ tasks:
     --exec-cap and their =value forms); a genuinely unknown flag still refuses with
     an actionable message naming the flag; unit tests cover each accepted form + the
     unknown-flag refusal; go build ./... + go vet ./... + go test ./... green
-  status: in_progress
+  status: complete
   created_at: '2026-09-20T09:04:13.994484+00:00'
+  completed_at: '2026-09-20T11:10:42.963950+00:00'
 - id: INT-CI-024
   title: CI proto step must survive BSR rate limiting (buf generate resource_exhausted)
   criteria:
@@ -2583,5 +2584,40 @@ tasks:
     change is proven parseable (actionlint or yaml parse) and the repo''s own go build
     ./... + go test ./... stay green; evidence documents how a rate-limited generate
     is now non-fatal'
-  status: in_progress
+  status: complete
   created_at: '2026-09-20T09:04:14.240516+00:00'
+  completed_at: '2026-09-20T12:06:23.146362+00:00'
+- id: INT-CI-025
+  title: regression-tests.sh binds an explicit session target
+  criteria:
+  - regression-tests.sh exports BUNKER_SESSION_TARGET after connect and passes --server
+    to every mutating call so GAP-093 fail-closed binding no longer reds the job;
+    refusal-assertion cells still assert the fail-closed contract
+  status: in_progress
+  created_at: '2026-09-20T12:14:23.584177+00:00'
+- id: DF-BUNKER-38
+  title: "Fix runWithTimeout Start+CombinedOutput double-exec \u2014 mount preflight\
+    \ and umount are dead"
+  criteria:
+  - runWithTimeout never Starts a command handed to CombinedOutput; mount preflight
+    works against a fake ssh on PATH; regression test exercises remotePathExists with
+    a real local sh; umount fusermount3->umount -l chain restored; go build/vet/test
+    green
+  status: in_progress
+  created_at: '2026-09-20T12:14:23.172544+00:00'
+- id: GAP-123
+  title: docs/threat-model.md from PRD section 3
+  criteria:
+  - docs/threat-model.md exists with 7 assets, 7 adversaries, trust-boundary diagram
+    (BT3 strong, BT1/BT2/BT4 open), and a stated residual-risk section, moved largely
+    intact from docs/prd/security-readiness.md section 3
+  status: in_progress
+  created_at: '2026-09-20T12:14:24.002915+00:00'
+- id: GAP-140
+  title: Globally disjoint subuid/subgid ranges per agent
+  criteria:
+  - subordinate uid/gid ranges are allocated globally disjoint across agents with
+    host-wide locking, overlap is refused, and a unit test proves two spawned agents
+    get disjoint ranges
+  status: in_progress
+  created_at: '2026-09-20T12:14:24.408526+00:00'
