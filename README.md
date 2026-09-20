@@ -80,7 +80,10 @@ Bunker is a **multi-agent hosting platform** — a daemon (`bunkerd`) that runs 
 
 Your own daemon on `localhost` is the shortest path to a working Bunker, and the
 only path where **you** issue the token — nothing here depends on a token from
-the maintainers or on the demo host being reachable. The steps are
+the maintainers or on the demo host being reachable. **The daemon must run as
+root** — agent spawn creates Linux users (`useradd`) and systemd user slices
+(`systemd-run`), which need root; running `bunkerd` as a non-root user fails
+later at spawn time with `useradd: exit 1`. The steps are
 self-contained; the sections below ([Prerequisites](#prerequisites), Install,
 Configure, Run the daemon, Use the CLI) carry the full detail.
 
@@ -136,6 +139,10 @@ What to expect on a fresh host:
   before putting isolation-sensitive workloads on the host.
 - **A build from a tagged release predates some documented features.** Build CLI
   and daemon from the same checkout — see the freshness note under Install.
+
+**Troubleshooting:** `useradd: exit 1` on a first spawn — the daemon is running
+as a non-root user. Kill it and restart `bunkerd` under `sudo` (or as root):
+spawn creates system users and needs root privileges to succeed.
 
 ### Or use the hosted demo (optional)
 
