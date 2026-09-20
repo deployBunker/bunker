@@ -324,6 +324,48 @@ auth:
 EOF
 ```
 
+#### Control-plane secrets (GAP-129 / SEC-14)
+
+Keeping `auth.token` / `auth.jwt_secret` inline in the YAML means every copy,
+backup and reader of that file carries the credential. Both credentials can be
+kept out of the config file instead, and each has three sources resolved in
+this precedence order (highest last):
+
+| Precedence | `auth.token` | `auth.jwt_secret` | Source |
+|---|---|---|---|
+| 1 (lowest) | `token:` inline | `jwt_secret:` inline | config file (legacy — warned at startup) |
+| 2 | `token_file:` | `jwt_secret_file:` | a file path named in the config file |
+| 3 (highest) | `BUNKER_AUTH_TOKEN_FILE` | `BUNKER_AUTH_JWT_SECRET_FILE` | a file path named in the environment |
+
+```bash
+# Root-only secrets location (dir 0700, file 0600). This default is the
+# one the daemon uses for generated secrets; override with BUNKER_SECRETS_DIR.
+sudo install -d -m 0700 -o "$USER" -g "$USER" ~/.config/bunkerd/secrets
+printf '%s\n' "$(openssl rand -hex 32)" | sudo tee ~/.config/bunkerd/secrets/token >/dev/null
+sudo chmod 600 ~/.config/bunkerd/secrets/token
+
+# Point the daemon at it — nothing secret is written to the config file.
+sudo systemctl edit --user bunkerd   # or an EnvironmentFile
+#   Environment="BUNKER_AUTH_TOKEN_FILE=/home/you/.config/bunkerd/secrets/token"
+```
+
+Rules the daemon enforces:
+
+- **A path that is set but unreadable is a hard startup error** (before any
+  listener binds) — never a silent fallback to an inline value. An empty
+  secret file is refused too, so a truncated file can never yield an empty
+  credential.
+- **The secrets directory is `0700` and each secret file `0600`.** Existing
+  directories are tightened on write.
+- **Legacy inline secrets still work and print a warning** naming the field
+  and the file-based alternative.
+- **`jwt_secret` is auto-generated on first boot** when auth is enabled, a
+  static token exists, and no secret is configured: 32 crypto-random bytes
+  (hex) persisted to `$BUNKER_SECRETS_DIR/jwt_secret` (default
+  `~/.config/bunkerd/secrets/jwt_secret`) with mode 0600. It is **never
+  rotated on restart** — an existing file (or a configured secret) is always
+  reused, because agent API keys and issued JWTs are derived from it.
+
 **Non-default ports** — `bunkerd` listens on `:9090` (gRPC) and `:8080` (REST)
 by default. If those are already occupied on the host (a common scratch-host
 collision), change `server.grpc_addr` / `server.rest_addr` in

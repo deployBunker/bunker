@@ -3,8 +3,12 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -92,11 +96,83 @@ type APIKey struct {
 }
 
 // AuthConfig holds authentication settings.
+//
+// GAP-129 (SEC-14 / REQ-I5) secret storage: every credential has three
+// accepted sources, resolved by ResolveSecrets in this precedence order
+// (inline < file path < env-file). Only the LAST level keeps the secret out
+// of the config file entirely:
+//
+//  1. inline   — auth.token / auth.jwt_secret in the config file (or the
+//     BUNKERD_AUTH_TOKEN / BUNKERD_AUTH_JWT_SECRET env vars).
+//     Legacy: still supported, but CheckAuth warns about it.
+//  2. file path — auth.token_file / auth.jwt_secret_file point at a file
+//     holding the secret (mode 0600); the file value wins over an
+//     inline value so an operator can move a secret out of the
+//     config without deleting the old line in the same edit.
+//  3. env-file  — BUNKER_AUTH_TOKEN_FILE / BUNKER_AUTH_JWT_SECRET_FILE name
+//     the file. Wins over both of the above. A set-but-unreadable
+//     env path is a hard error (fail-before-listen), never a
+//     silent fallback to a weaker source.
+//
+// A missing/unreadable file named by the CONFIG is also a hard error: a
+// daemon that silently ignored it would run with a weaker credential than
+// the operator asked for.
 type AuthConfig struct {
 	Enabled   bool          `mapstructure:"enabled"`
 	Token     string        `mapstructure:"token"`
 	JWTSecret string        `mapstructure:"jwt_secret"`
 	JWTTTL    time.Duration `mapstructure:"jwt_ttl"`
+	// TokenFile / JWTSecretFile are the config-file level indirection: the
+	// path to a file holding the secret (trailing whitespace trimmed).
+	// Env-file override: BUNKER_AUTH_TOKEN_FILE / BUNKER_AUTH_JWT_SECRET_FILE.
+	TokenFile string `mapstructure:"token_file"`
+	// JWTSecretFile — see TokenFile.
+	JWTSecretFile string `mapstructure:"jwt_secret_file"`
+}
+
+// Env vars for the *_FILE indirection (GAP-129). The BUNKER_ prefix matches
+// the daemon's other secret-bearing knobs (BUNKER_ROOTLESS_INSTALLER_CACHE_DIR)
+// and keeps the credential path out of the BUNKERD_* config-key namespace.
+const (
+	// AuthTokenFileEnv names a file holding the master token.
+	AuthTokenFileEnv = "BUNKER_AUTH_TOKEN_FILE"
+	// AuthJWTSecretFileEnv names a file holding the JWT signing secret.
+	AuthJWTSecretFileEnv = "BUNKER_AUTH_JWT_SECRET_FILE"
+	// SecretsDirEnv overrides where the daemon persists generated secrets.
+	SecretsDirEnv = "BUNKER_SECRETS_DIR"
+)
+
+// Secrets-location defaults: the generated jwt_secret file, the file it is
+// persisted in, and the permission bits the daemon creates (dir 0700, file
+// 0600 — owner-only, never group/world readable).
+const (
+	// DefaultSecretsDir is where generated secrets are persisted when
+	// BUNKER_SECRETS_DIR is unset.
+	DefaultSecretsDir = ".config/bunkerd/secrets"
+	// JWTSecretFileName is the persisted auto-generated JWT signing secret.
+	JWTSecretFileName = "jwt_secret"
+	// SecretsDirMode is the mode of the secrets directory (owner rwx only).
+	SecretsDirMode os.FileMode = 0o700
+	// SecretsFileMode is the mode of each persisted secret file.
+	SecretsFileMode os.FileMode = 0o600
+	// GeneratedJWTSecretBytes is the size of an auto-generated JWT secret.
+	// 32 bytes (64 hex chars) is the HS256 key size.
+	GeneratedJWTSecretBytes = 32
+)
+
+// SecretsDirOrDefault returns the directory the daemon persists generated
+// secrets in: BUNKER_SECRETS_DIR when set, otherwise $HOME/<DefaultSecretsDir>.
+// It is a lookup, not a create — the caller creates it 0700 on write. A host
+// with no HOME yields the relative default, which fails loudly at write time
+// rather than silently scattering secrets into the process CWD.
+func SecretsDirOrDefault() string {
+	if env := strings.TrimSpace(os.Getenv(SecretsDirEnv)); env != "" {
+		return env
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, DefaultSecretsDir)
+	}
+	return DefaultSecretsDir
 }
 
 // AuditConfig holds the daemon-side audit trail settings. When enabled, every
@@ -500,6 +576,11 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("auth.token")
 	v.BindEnv("auth.jwt_secret")
 	v.BindEnv("auth.jwt_ttl")
+	// GAP-129 *_FILE indirection. The config-file paths are bound as
+	// BUNKERD_AUTH_TOKEN_FILE / BUNKERD_AUTH_JWT_SECRET_FILE; the higher
+	// precedence BUNKER_*_FILE vars are read directly in resolveSecret.
+	v.BindEnv("auth.token_file")
+	v.BindEnv("auth.jwt_secret_file")
 	v.BindEnv("agent.base_data_dir")
 	v.BindEnv("agent.ssh_dir")
 	v.BindEnv("agent.port_range_start")
@@ -556,6 +637,14 @@ func Load(path string) (*Config, error) {
 
 	if err := v.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
+	}
+
+	// GAP-129: resolve the control-plane credentials from their *_FILE
+	// sources BEFORE anything can gate on them (CheckAuth, server.New, the
+	// apikey manager). A path that was set but unreadable fails here, i.e.
+	// before any listener binds — never as a silently weaker credential.
+	if err := cfg.ResolveSecrets(); err != nil {
+		return nil, fmt.Errorf("resolve secrets: %w", err)
 	}
 
 	return cfg, nil
@@ -648,11 +737,235 @@ func (r *ReconciliationConfig) ModeOrDestroy() string {
 	return r.Mode
 }
 
+// readSecretFile reads a secret from path, trimming surrounding whitespace
+// (a trailing newline is the normal shape of an operator-written or
+// `openssl rand -hex 32 > file` secret) and rejecting an empty file: an empty
+// secret file is a misconfiguration, and silently resolving it to "" would
+// hand the caller a credential-less daemon that looks configured.
+func readSecretFile(label, path string) (string, error) {
+	b, err := os.ReadFile(path) //nolint:gosec // path is operator-supplied config/env, not untrusted input
+	if err != nil {
+		return "", fmt.Errorf("%s: read secret file %q: %w", label, path, err)
+	}
+	s := strings.TrimSpace(string(b))
+	if s == "" {
+		return "", fmt.Errorf("%s: secret file %q is empty — write the secret into it (mode 0600) or unset the path", label, path)
+	}
+	return s, nil
+}
+
+// resolveSecret returns the effective value of one credential under the
+// documented precedence (inline < config-file path < env-file path).
+//
+// It reads files and no mutable state, so it is safe to call from Load as
+// well as from the explicit ResolveSecrets entry point.
+//
+//   - inline     — value from the config file / BUNKERD_* env var.
+//   - configPath — auth.token_file / auth.jwt_secret_file.
+//   - envPath    — BUNKER_AUTH_TOKEN_FILE / BUNKER_AUTH_JWT_SECRET_FILE.
+//
+// A path that is set but unreadable is an error at every level, including the
+// env level: falling back to a weaker source after the operator explicitly
+// pointed at a file is how a daemon ends up authenticating with a secret the
+// operator no longer intends to use.
+func resolveSecret(label, inline, configPath, envPath string) (string, error) {
+	if p := strings.TrimSpace(envPath); p != "" {
+		return readSecretFile(label, p)
+	}
+	if p := strings.TrimSpace(configPath); p != "" {
+		return readSecretFile(label, p)
+	}
+	return inline, nil
+}
+
+// ResolveSecrets resolves auth.token and auth.jwt_secret from their inline
+// values, the *_file config paths, and the BUNKER_AUTH_*_FILE env vars, in
+// that precedence order. It mutates the receiver so every later consumer
+// (CheckAuth, server.New, the apikey manager) sees the resolved values.
+//
+// It is called automatically by Load, so a caller that goes through Load
+// needs no extra step; it is exported (and idempotent) for callers that build
+// a Config by hand — notably tests. Resolving twice is a no-op: the second
+// call re-reads the same file into the same field.
+func (a *AuthConfig) ResolveSecrets() error {
+	token, err := resolveSecret("auth.token", a.Token, a.TokenFile, os.Getenv(AuthTokenFileEnv))
+	if err != nil {
+		return err
+	}
+	a.Token = token
+
+	secret, err := resolveSecret("auth.jwt_secret", a.JWTSecret, a.JWTSecretFile, os.Getenv(AuthJWTSecretFileEnv))
+	if err != nil {
+		return err
+	}
+	a.JWTSecret = secret
+	return nil
+}
+
+// ResolveSecrets resolves every credential-bearing field of the config.
+// Errors are returned before any listener binds (fail-before-listen).
+func (c *Config) ResolveSecrets() error {
+	return c.Auth.ResolveSecrets()
+}
+
+// EnsureJWTSecret makes auth.jwt_secret available without ever rotating a
+// secret that already exists:
+//
+//  1. a secret from any configured source (inline / *_FILE / env-file) is
+//     used as-is — nothing is written;
+//  2. otherwise <secrets-dir>/jwt_secret is loaded if it exists (this is what
+//     keeps API keys and issued JWTs valid across restarts, and across ticks
+//     that re-run the binary);
+//  3. only when NO secret exists anywhere is one generated (32 crypto-random
+//     bytes, hex), persisted to <secrets-dir>/jwt_secret with mode 0600 (dir
+//     0700), read back, and reported in the returned message.
+//
+// Generation is additionally gated on a credential being present: jwt_secret
+// is consumed as an apikey-manager seed only when auth is enabled and a
+// static token exists (server.go / service.go), so minting one for an
+// auth-disabled or token-less config would persist a secret nothing reads.
+// The disabled case returns a "" message and no error — CheckAuth owns the
+// refusal.
+//
+// The returned string is a human-readable notice an operator would want to
+// see at boot ("" when nothing happened); each notice names its node and
+// reason so a dead record is visible rather than silent.
+func (c *Config) EnsureJWTSecret() (string, error) {
+	dir := SecretsDirOrDefault()
+	path := filepath.Join(dir, JWTSecretFileName)
+
+	if c.Auth.JWTSecret != "" {
+		// Source 1: a configured secret. Never rotate it — the apikey
+		// manager derives every issued agent key from it.
+		if _, err := os.Stat(path); err == nil {
+			// A persisted secret exists but the config supplies a
+			// different one: the persisted file is inert input, and an
+			// operator reading it later would be misled about which key is
+			// live. Say so rather than silently ignoring the file.
+			if persisted, rerr := readSecretFile("auth.jwt_secret", path); rerr == nil && persisted != c.Auth.JWTSecret {
+				return fmt.Sprintf("bunkerd: auth.jwt_secret is configured (%s) and %s exists with a DIFFERENT value — using the configured secret; the persisted file is not in use", c.secretSourceLabel(), path), nil
+			}
+		}
+		return "", nil
+	}
+
+	if !c.Auth.Enabled || c.Auth.Token == "" {
+		// Nothing consumes a jwt secret here (no apikey manager is built
+		// without a token), so do not create one.
+		return "", nil
+	}
+
+	// Source 2: an already-persisted secret. Signature continuity: existing
+	// API keys were derived from this value, so it must be reused verbatim.
+	if persisted, err := readSecretFile("auth.jwt_secret", path); err == nil {
+		c.Auth.JWTSecret = persisted
+		// Record where it came from so CheckAuth does not misreport a
+		// file-backed secret as legacy inline storage (and so an operator
+		// reading the effective config sees the real location).
+		c.Auth.JWTSecretFile = path
+		return fmt.Sprintf("bunkerd: loaded auth.jwt_secret from %s", path), nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		// Present but unreadable/empty: do NOT generate a replacement over
+		// it — that would rotate a live secret out from under issued keys.
+		return "", fmt.Errorf("refusing to start: %s exists but cannot be read (%w) — fix its permissions (mode 0600, owner-readable) or remove it to have a new secret generated", path, err)
+	}
+
+	// Source 3: first boot — generate, persist, load back.
+	secret, err := generateJWTSecret()
+	if err != nil {
+		return "", err
+	}
+	if err := writeSecretFile(dir, path, secret); err != nil {
+		return "", fmt.Errorf("persist generated jwt_secret: %w", err)
+	}
+	persisted, err := readSecretFile("auth.jwt_secret", path)
+	if err != nil {
+		return "", fmt.Errorf("reload generated jwt_secret: %w", err)
+	}
+	if persisted != secret {
+		return "", fmt.Errorf("persisted jwt_secret at %s does not match the generated value — refusing to start with an unknown signing key", path)
+	}
+	c.Auth.JWTSecret = persisted
+	c.Auth.JWTSecretFile = path
+	return fmt.Sprintf("bunkerd: *** GENERATED a new auth.jwt_secret *** (no secret was configured) and persisted it to %s (mode 0600, dir %s mode 0700) — existing agent API keys remain valid until this file is replaced", path, dir), nil
+}
+
+// secretSourceLabel names where the configured jwt_secret came from, for the
+// warning paths. The value itself is never included.
+func (c *Config) secretSourceLabel() string {
+	switch {
+	case strings.TrimSpace(os.Getenv(AuthJWTSecretFileEnv)) != "":
+		return AuthJWTSecretFileEnv + " file"
+	case strings.TrimSpace(c.Auth.JWTSecretFile) != "":
+		return "auth.jwt_secret_file " + c.Auth.JWTSecretFile
+	default:
+		return "auth.jwt_secret in the config file"
+	}
+}
+
+// generateJWTSecret returns GeneratedJWTSecretBytes crypto-random bytes, hex
+// encoded (no dashes, no base64 padding — it round-trips through a file, an
+// env var and a YAML scalar without quoting surprises).
+func generateJWTSecret() (string, error) {
+	buf := make([]byte, GeneratedJWTSecretBytes)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate jwt_secret: %w", err)
+	}
+	return hex.EncodeToString(buf), nil
+}
+
+// writeSecretFile creates dir (mode 0700) and writes value to dir/name with
+// mode 0600, writing to a temporary file in the same directory and renaming
+// it into place so a crash mid-write can never leave a truncated secret that
+// would later be loaded as a short signing key. The temporary file is created
+// 0600 before any secret byte is written, so the value is never briefly
+// world-readable.
+func writeSecretFile(dir, path, value string) error {
+	if err := os.MkdirAll(dir, SecretsDirMode); err != nil {
+		return fmt.Errorf("create secrets dir %s: %w", dir, err)
+	}
+	// MkdirAll does not tighten an existing directory (and a pre-existing
+	// 0755 dir would otherwise keep advertising secrets as readable). Bring
+	// it to 0700 and fail loudly if that is not possible.
+	if err := os.Chmod(dir, SecretsDirMode); err != nil {
+		return fmt.Errorf("set secrets dir %s mode %#o: %w", dir, SecretsDirMode, err)
+	}
+
+	tmp := path + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, SecretsFileMode)
+	if err != nil {
+		return fmt.Errorf("create temp secret file %s: %w", tmp, err)
+	}
+	if _, err := f.WriteString(value + "\n"); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return fmt.Errorf("write temp secret file %s: %w", tmp, err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("close temp secret file %s: %w", tmp, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("rename %s -> %s: %w", tmp, path, err)
+	}
+	return nil
+}
+
 // CheckAuth is the startup authentication gate. It returns a non-empty
 // warning when authentication is explicitly disabled, and an error when
 // authentication is enabled but no credential (static token or JWT secret)
 // is configured — the daemon must refuse to start rather than silently
 // run unauthenticated.
+//
+// It also emits the GAP-129 legacy-storage warning when a credential is
+// still inline in the config file: inline works, but a config copy, backup
+// or `bunker status` reader carries the credential with it, which is exactly
+// what the *_FILE indirection exists to avoid.
+//
+// Secrets must already be resolved (Load does this automatically); a caller
+// that hand-builds a Config should call ResolveSecrets first so the file
+// sources are counted here.
 func (c *Config) CheckAuth() (string, error) {
 	if !c.Auth.Enabled {
 		return "bunkerd: *** WARNING: AUTH DISABLED *** — running WITHOUT authentication; any client that can reach this server can spawn/destroy agents. Set auth.enabled: true and auth.token in the config file to enable authentication.", nil
@@ -660,5 +973,29 @@ func (c *Config) CheckAuth() (string, error) {
 	if c.Auth.Token == "" && c.Auth.JWTSecret == "" {
 		return "", fmt.Errorf("auth.enabled is true but neither auth.token nor auth.jwt_secret is set — set one in the config file, or explicitly set auth.enabled: false to run without authentication")
 	}
+	if inline := c.inlineSecrets(); len(inline) > 0 {
+		return fmt.Sprintf("bunkerd: *** WARNING: legacy secret storage *** — %s is set inline in the config file; the config file is copied, backed up and read by tooling, so the credential travels with it. Move it to a file: %s=\"<path>\" (file mode 0600, e.g. under %s) or auth.token_file/auth.jwt_secret_file. Precedence: inline < file path < env-file.",
+			strings.Join(inline, ", "), AuthTokenFileEnv, SecretsDirOrDefault()), nil
+	}
 	return "", nil
+}
+
+// inlineSecrets names the credential fields that are configured inline
+// (neither overridden by a config *_file path nor by an env-file). Only the
+// field NAMES are returned — never a value.
+//
+// Configuration is read as "inline" when the field is non-empty, regardless
+// of whether a *_file path also resolved it: ResolveSecrets overwrites the
+// inline field with the file's value, so a file-backed config looks
+// identical here. The source env/config path is re-checked to tell them
+// apart.
+func (c *Config) inlineSecrets() []string {
+	var out []string
+	if c.Auth.Token != "" && strings.TrimSpace(os.Getenv(AuthTokenFileEnv)) == "" && strings.TrimSpace(c.Auth.TokenFile) == "" {
+		out = append(out, "auth.token")
+	}
+	if c.Auth.JWTSecret != "" && strings.TrimSpace(os.Getenv(AuthJWTSecretFileEnv)) == "" && strings.TrimSpace(c.Auth.JWTSecretFile) == "" {
+		out = append(out, "auth.jwt_secret")
+	}
+	return out
 }

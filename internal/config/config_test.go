@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,6 +70,10 @@ func TestCheckAuth_DefaultRefusesWithoutCredential(t *testing.T) {
 	}
 }
 
+// TestCheckAuth_WithToken: a tokened config starts, but since GAP-129 an
+// inline credential is called out as legacy storage (see
+// TestCheckAuth_WarnsOnInlineSecrets and TestLoad_ResolvesTokenFromEnvFile for
+// the file-backed, warning-free equivalent).
 func TestCheckAuth_WithToken(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Auth.Token = "test-token"
@@ -76,11 +81,13 @@ func TestCheckAuth_WithToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if warn != "" {
-		t.Errorf("expected no warning with token set, got %q", warn)
+	if !strings.Contains(warn, "legacy secret storage") {
+		t.Errorf("expected a GAP-129 legacy-storage warning for an inline token, got %q", warn)
 	}
 }
 
+// TestCheckAuth_WithJWTSecret: same contract as TestCheckAuth_WithToken — an
+// inline jwt_secret starts the daemon and warns that it should move to a file.
 func TestCheckAuth_WithJWTSecret(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Auth.JWTSecret = "test-jwt-secret-must-be-at-least-32-bytes-long"
@@ -88,8 +95,8 @@ func TestCheckAuth_WithJWTSecret(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if warn != "" {
-		t.Errorf("expected no warning with jwt_secret set, got %q", warn)
+	if !strings.Contains(warn, "auth.jwt_secret") {
+		t.Errorf("expected a GAP-129 legacy-storage warning naming auth.jwt_secret, got %q", warn)
 	}
 }
 
@@ -455,5 +462,566 @@ func TestLoad_IsolationAgentGroupFromFile(t *testing.T) {
 	}
 	if cfg.Agent.Isolation.AgentGroup != "custom-agents" {
 		t.Errorf("agent_group from file = %q, want custom-agents", cfg.Agent.Isolation.AgentGroup)
+	}
+}
+
+// --- GAP-129: control-plane secret storage (_FILE/env indirection + ---- //
+// --- auto-generated jwt_secret)                                      ---- //
+
+// clearSecretEnv unsets every GAP-129 env var for the duration of a test so
+// the ambient environment of an operator's shell can never leak a *_FILE
+// indirection into an assertion about the config file.
+func clearSecretEnv(t *testing.T) {
+	t.Helper()
+	for _, k := range []string{AuthTokenFileEnv, AuthJWTSecretFileEnv, SecretsDirEnv} {
+		prev, had := os.LookupEnv(k)
+		if err := os.Unsetenv(k); err != nil {
+			t.Fatalf("unsetenv %s: %v", k, err)
+		}
+		t.Cleanup(func() {
+			if had {
+				_ = os.Setenv(k, prev)
+				return
+			}
+			_ = os.Unsetenv(k)
+		})
+	}
+}
+
+// writeSecret writes a secret file the way an operator would (mode 0600) and
+// returns its path.
+func writeSecret(t *testing.T, dir, name, value string) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(value), 0o600); err != nil {
+		t.Fatalf("write secret %s: %v", path, err)
+	}
+	return path
+}
+
+// TestAuthConfigResolveSecrets_Precedence is the GAP-129 acceptance table:
+// inline < config *_file path < env-file, for both credentials, plus the
+// failure modes that must stay loud (missing file, empty file).
+func TestAuthConfigResolveSecrets_Precedence(t *testing.T) {
+	dir := t.TempDir()
+	cfgFile := writeSecret(t, dir, "cfg-token", "from-config-file\n")
+	envFile := writeSecret(t, dir, "env-token", "  from-env-file  \n")
+
+	missing := filepath.Join(dir, "does-not-exist")
+	if err := os.WriteFile(filepath.Join(dir, "empty"), []byte("\n  \n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	empty := filepath.Join(dir, "empty")
+
+	tests := []struct {
+		name          string
+		inline        string
+		cfgPath       string
+		envPath       string
+		want          string
+		wantErrSubstr string
+	}{
+		{
+			name:   "inline only (legacy) is used as-is",
+			inline: "inline-token",
+			want:   "inline-token",
+		},
+		{
+			name:    "config file path wins over inline",
+			inline:  "inline-token",
+			cfgPath: cfgFile,
+			want:    "from-config-file",
+		},
+		{
+			name:    "env file path wins over config file path and inline",
+			inline:  "inline-token",
+			cfgPath: cfgFile,
+			envPath: envFile,
+			want:    "from-env-file",
+		},
+		{
+			name:    "env file path wins when it is the only source",
+			envPath: envFile,
+			want:    "from-env-file",
+		},
+		{
+			name: "inline stays empty when nothing is configured",
+			want: "",
+		},
+		{
+			name:          "config path pointing at a missing file is a hard error",
+			inline:        "inline-token",
+			cfgPath:       missing,
+			wantErrSubstr: "read secret file",
+		},
+		{
+			name:          "env path pointing at a missing file is a hard error (no fallback)",
+			inline:        "inline-token",
+			cfgPath:       cfgFile,
+			envPath:       missing,
+			wantErrSubstr: "read secret file",
+		},
+		{
+			name:          "empty secret file is a hard error, not an empty credential",
+			cfgPath:       empty,
+			wantErrSubstr: "is empty",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			clearSecretEnv(t)
+
+			a := AuthConfig{Token: tc.inline, TokenFile: tc.cfgPath}
+			if tc.envPath != "" {
+				t.Setenv(AuthTokenFileEnv, tc.envPath)
+			}
+			err := a.ResolveSecrets()
+			if tc.wantErrSubstr != "" {
+				if err == nil {
+					t.Fatalf("ResolveSecrets() = nil error, want one containing %q", tc.wantErrSubstr)
+				}
+				if !strings.Contains(err.Error(), tc.wantErrSubstr) {
+					t.Errorf("error %q does not contain %q", err, tc.wantErrSubstr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ResolveSecrets() error = %v", err)
+			}
+			if a.Token != tc.want {
+				t.Errorf("Token = %q, want %q", a.Token, tc.want)
+			}
+		})
+	}
+
+	// The jwt_secret side must honor the identical precedence table.
+	t.Run("jwt_secret follows the same precedence", func(t *testing.T) {
+		clearSecretEnv(t)
+		envSecret := writeSecret(t, dir, "env-jwt", "env-jwt-secret")
+		a := AuthConfig{JWTSecret: "inline-jwt", JWTSecretFile: cfgFile, Token: "t"}
+		t.Setenv(AuthJWTSecretFileEnv, envSecret)
+		if err := a.ResolveSecrets(); err != nil {
+			t.Fatalf("ResolveSecrets() error = %v", err)
+		}
+		if a.JWTSecret != "env-jwt-secret" {
+			t.Errorf("JWTSecret = %q, want env-jwt-secret (env-file must win)", a.JWTSecret)
+		}
+		if a.Token != "t" {
+			t.Errorf("Token = %q, want t (unchanged)", a.Token)
+		}
+	})
+}
+
+// TestLoad_ResolvesTokenFromEnvFile is acceptance criterion 1 at the Load
+// level: a config that carries NO inline secret starts with a populated
+// credential because BUNKER_AUTH_TOKEN_FILE points at a file. The token value
+// proves the file was read (whitespace trimmed), not merely that no error was
+// returned.
+func TestLoad_ResolvesTokenFromEnvFile(t *testing.T) {
+	clearSecretEnv(t)
+	tokenFile := writeSecret(t, t.TempDir(), "token", "file-supplied-token\n")
+	t.Setenv(AuthTokenFileEnv, tokenFile)
+
+	cfgPath := filepath.Join(t.TempDir(), "bunkerd.yaml")
+	body := "auth:\n  enabled: true\n"
+	if err := os.WriteFile(cfgPath, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Auth.Token != "file-supplied-token" {
+		t.Fatalf("Auth.Token = %q, want file-supplied-token", cfg.Auth.Token)
+	}
+	// Acceptance criterion 2: the config file itself holds no plaintext
+	// secret, so the loaded credential exists ONLY because of the file
+	// indirection.
+	raw, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "file-supplied-token") {
+		t.Error("config file contains the plaintext token — the supported path must keep it out")
+	}
+	// And the credential now satisfies the startup gate.
+	warn, err := cfg.CheckAuth()
+	if err != nil {
+		t.Fatalf("CheckAuth() after file resolution = %v", err)
+	}
+	if warn != "" {
+		t.Errorf("CheckAuth() warned %q; a file-sourced credential is not legacy inline storage", warn)
+	}
+}
+
+// TestLoad_ConfigFilePathIndirection: the same indirection through the config
+// file (no env var at all), plus the documented config-env var form.
+func TestLoad_ConfigFilePathIndirection(t *testing.T) {
+	clearSecretEnv(t)
+	dir := t.TempDir()
+	tokenFile := writeSecret(t, dir, "token", "cfg-path-token")
+	jwtFile := writeSecret(t, dir, "jwt", "cfg-path-jwt-secret")
+
+	cfgPath := filepath.Join(dir, "bunkerd.yaml")
+	body := "auth:\n  enabled: true\n  token_file: " + filepath.ToSlash(tokenFile) +
+		"\n  jwt_secret_file: " + filepath.ToSlash(jwtFile) + "\n"
+	if err := os.WriteFile(cfgPath, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Auth.Token != "cfg-path-token" {
+		t.Errorf("Auth.Token = %q, want cfg-path-token", cfg.Auth.Token)
+	}
+	if cfg.Auth.JWTSecret != "cfg-path-jwt-secret" {
+		t.Errorf("Auth.JWTSecret = %q, want cfg-path-jwt-secret", cfg.Auth.JWTSecret)
+	}
+}
+
+// TestLoad_EnvFilePathBeatsConfigFilePath pins the top of the precedence
+// ladder at the Load level: both sources are set and the env one wins.
+func TestLoad_EnvFilePathBeatsConfigFilePath(t *testing.T) {
+	clearSecretEnv(t)
+	dir := t.TempDir()
+	cfgToken := writeSecret(t, dir, "cfg-token", "from-config")
+	envToken := writeSecret(t, dir, "env-token", "from-env")
+	t.Setenv(AuthTokenFileEnv, envToken)
+
+	cfgPath := filepath.Join(dir, "bunkerd.yaml")
+	body := "auth:\n  enabled: true\n  token_file: " + filepath.ToSlash(cfgToken) + "\n"
+	if err := os.WriteFile(cfgPath, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Auth.Token != "from-env" {
+		t.Errorf("Auth.Token = %q, want from-env (env-file outranks the config file path)", cfg.Auth.Token)
+	}
+}
+
+// TestLoad_UnreadableSecretFileFailsBeforeListen: a *_file path that cannot be
+// read must fail the load, never silently fall back to an inline value or to
+// an empty credential.
+func TestLoad_UnreadableSecretFileFailsBeforeListen(t *testing.T) {
+	clearSecretEnv(t)
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "bunkerd.yaml")
+	body := "auth:\n  enabled: true\n  token: \"inline-fallback\"\n  token_file: " +
+		filepath.ToSlash(filepath.Join(dir, "nope")) + "\n"
+	if err := os.WriteFile(cfgPath, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(cfgPath)
+	if err == nil {
+		t.Fatal("Load() = nil error for an unreadable token_file, want a hard error")
+	}
+	if !strings.Contains(err.Error(), "read secret file") {
+		t.Errorf("error %q does not name the failed file read", err)
+	}
+	if strings.Contains(err.Error(), "inline-fallback") {
+		t.Error("error leaked the inline credential value")
+	}
+}
+
+// TestEnsureJWTSecret_GeneratesPersistsAndReloads is acceptance criterion 3:
+// first boot generates a 32-byte hex secret, persists it 0600 in a 0700
+// directory, loads it back into the config, and a SECOND boot reuses the same
+// value (signature continuity — never rotate silently).
+func TestEnsureJWTSecret_GeneratesPersistsAndReloads(t *testing.T) {
+	clearSecretEnv(t)
+	dir := t.TempDir()
+	t.Setenv(SecretsDirEnv, dir)
+
+	cfg := DefaultConfig()
+	cfg.Auth.Token = "static-token"
+
+	notice, err := cfg.EnsureJWTSecret()
+	if err != nil {
+		t.Fatalf("EnsureJWTSecret() error = %v", err)
+	}
+	if !strings.Contains(notice, "GENERATED") {
+		t.Errorf("first-boot notice = %q, want it to say a secret was generated", notice)
+	}
+	generated := cfg.Auth.JWTSecret
+	if len(generated) != 2*GeneratedJWTSecretBytes {
+		t.Fatalf("generated secret is %d chars, want %d (hex of %d bytes)",
+			len(generated), 2*GeneratedJWTSecretBytes, GeneratedJWTSecretBytes)
+	}
+	if _, err := hex.DecodeString(generated); err != nil {
+		t.Errorf("generated secret is not hex: %v", err)
+	}
+
+	// File mode 0600, dir mode 0700.
+	path := filepath.Join(dir, JWTSecretFileName)
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat secret file: %v", err)
+	}
+	if got := fileInfo.Mode().Perm(); got != SecretsFileMode {
+		t.Errorf("secret file mode = %#o, want %#o", got, SecretsFileMode)
+	}
+	dirInfo, err := os.Stat(dir)
+	if err != nil {
+		t.Fatalf("stat secrets dir: %v", err)
+	}
+	if got := dirInfo.Mode().Perm(); got != SecretsDirMode {
+		t.Errorf("secrets dir mode = %#o, want %#o", got, SecretsDirMode)
+	}
+
+	// On-disk content is the secret plus a single trailing newline; the
+	// loaded value is trimmed.
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(raw)) != generated {
+		t.Errorf("persisted file %q does not hold the generated secret", string(raw))
+	}
+
+	// Second boot: SAME value, no regeneration, no rewrite.
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg2 := DefaultConfig()
+	cfg2.Auth.Token = "static-token"
+	notice2, err := cfg2.EnsureJWTSecret()
+	if err != nil {
+		t.Fatalf("second EnsureJWTSecret() error = %v", err)
+	}
+	if cfg2.Auth.JWTSecret != generated {
+		t.Errorf("second boot produced a DIFFERENT jwt_secret (%q vs %q) — issued keys would break",
+			cfg2.Auth.JWTSecret, generated)
+	}
+	if strings.Contains(notice2, "GENERATED") {
+		t.Errorf("second boot regenerated a secret: %q", notice2)
+	}
+	after, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !after.ModTime().Equal(before.ModTime()) {
+		t.Error("second boot rewrote the persisted secret file (rotation on restart is forbidden)")
+	}
+}
+
+// TestEnsureJWTSecret_ConfiguredSecretIsNeverRotated: a secret from any
+// configured source is used as-is and nothing is written.
+func TestEnsureJWTSecret_ConfiguredSecretIsNeverRotated(t *testing.T) {
+	clearSecretEnv(t)
+	dir := t.TempDir()
+	t.Setenv(SecretsDirEnv, dir)
+
+	cfg := DefaultConfig()
+	cfg.Auth.Token = "static-token"
+	cfg.Auth.JWTSecret = "configured-secret-value"
+
+	notice, err := cfg.EnsureJWTSecret()
+	if err != nil {
+		t.Fatalf("EnsureJWTSecret() error = %v", err)
+	}
+	if notice != "" {
+		t.Errorf("notice = %q, want empty when a secret is already configured", notice)
+	}
+	if cfg.Auth.JWTSecret != "configured-secret-value" {
+		t.Errorf("configured secret was replaced with %q", cfg.Auth.JWTSecret)
+	}
+	path := filepath.Join(dir, JWTSecretFileName)
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("a secret file was written at %s even though a secret was configured (stat err = %v)", path, err)
+	}
+}
+
+// TestEnsureJWTSecret_UnreadablePersistedSecretIsFatal: an existing but
+// unreadable file must refuse to start rather than generate a replacement over
+// a live signing key.
+func TestEnsureJWTSecret_UnreadablePersistedSecretIsFatal(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: an unreadable file is still readable")
+	}
+	clearSecretEnv(t)
+	dir := t.TempDir()
+	t.Setenv(SecretsDirEnv, dir)
+
+	path := writeSecret(t, dir, JWTSecretFileName, "existing-secret")
+	if err := os.Chmod(path, 0o000); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := DefaultConfig()
+	cfg.Auth.Token = "static-token"
+	notice, err := cfg.EnsureJWTSecret()
+	if err == nil {
+		t.Fatalf("EnsureJWTSecret() = nil error for an unreadable persisted secret (notice %q)", notice)
+	}
+	if !strings.Contains(err.Error(), "refusing to start") {
+		t.Errorf("error %q does not refuse to start", err)
+	}
+	if cfg.Auth.JWTSecret != "" {
+		t.Errorf("config was seeded with a generated secret despite the failure: %q", cfg.Auth.JWTSecret)
+	}
+}
+
+// TestEnsureJWTSecret_SkipsWithoutConsumers pins the generation gate: with
+// auth disabled, or with no static token, nothing consumes a jwt_secret, so
+// first boot must not persist one.
+func TestEnsureJWTSecret_SkipsWithoutConsumers(t *testing.T) {
+	tests := []struct {
+		name  string
+		auth  func(*Config)
+		notOk string
+	}{
+		{
+			name:  "auth explicitly disabled",
+			auth:  func(c *Config) { c.Auth.Enabled = false; c.Auth.Token = "static-token" },
+			notOk: "auth disabled must not mint a secret nothing uses",
+		},
+		{
+			name:  "enabled but tokenless",
+			auth:  func(c *Config) { c.Auth.Enabled = true; c.Auth.Token = "" },
+			notOk: "tokenless config must not mint a secret (no apikey manager is built)",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			clearSecretEnv(t)
+			dir := t.TempDir()
+			t.Setenv(SecretsDirEnv, dir)
+
+			cfg := DefaultConfig()
+			tc.auth(cfg)
+
+			notice, err := cfg.EnsureJWTSecret()
+			if err != nil {
+				t.Fatalf("EnsureJWTSecret() error = %v", err)
+			}
+			if notice != "" {
+				t.Errorf("notice = %q, want empty", notice)
+			}
+			if cfg.Auth.JWTSecret != "" {
+				t.Errorf("JWTSecret = %q; %s", cfg.Auth.JWTSecret, tc.notOk)
+			}
+			if _, err := os.Stat(filepath.Join(dir, JWTSecretFileName)); !os.IsNotExist(err) {
+				t.Errorf("a secret file was written: %v", err)
+			}
+		})
+	}
+}
+
+// TestEnsureJWTSecret_TightensExistingDir: MkdirAll leaves a pre-existing
+// directory's mode alone, so a 0755 secrets dir must be tightened to 0700 —
+// otherwise an auto-generated secret is world-listable (and its content
+// world-readable if the file mode were ever wrong too).
+func TestEnsureJWTSecret_TightensExistingDir(t *testing.T) {
+	clearSecretEnv(t)
+	dir := filepath.Join(t.TempDir(), "secrets")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(SecretsDirEnv, dir)
+
+	cfg := DefaultConfig()
+	cfg.Auth.Token = "static-token"
+	if _, err := cfg.EnsureJWTSecret(); err != nil {
+		t.Fatalf("EnsureJWTSecret() error = %v", err)
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != SecretsDirMode {
+		t.Errorf("pre-existing dir mode = %#o, want tightened to %#o", got, SecretsDirMode)
+	}
+}
+
+// TestCheckAuth_WarnsOnInlineSecrets is acceptance criterion 4's warning half:
+// inline (legacy) startup works AND warns; file-backed startup works and does
+// NOT warn.
+func TestCheckAuth_WarnsOnInlineSecrets(t *testing.T) {
+	clearSecretEnv(t)
+
+	t.Run("inline token warns", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Auth.Token = "inline-token"
+		warn, err := cfg.CheckAuth()
+		if err != nil {
+			t.Fatalf("CheckAuth() error = %v", err)
+		}
+		if !strings.Contains(warn, "legacy secret storage") || !strings.Contains(warn, "auth.token") {
+			t.Errorf("warning = %q, want a legacy-storage warning naming auth.token", warn)
+		}
+		if strings.Contains(warn, "inline-token") {
+			t.Error("warning leaked the credential value")
+		}
+	})
+
+	t.Run("inline jwt_secret warns", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Auth.JWTSecret = "inline-jwt-secret"
+		warn, err := cfg.CheckAuth()
+		if err != nil {
+			t.Fatalf("CheckAuth() error = %v", err)
+		}
+		if !strings.Contains(warn, "auth.jwt_secret") {
+			t.Errorf("warning = %q, want it to name auth.jwt_secret", warn)
+		}
+	})
+
+	t.Run("file-backed token does not warn", func(t *testing.T) {
+		dir := t.TempDir()
+		tokenFile := writeSecret(t, dir, "token", "file-token")
+		cfg := DefaultConfig()
+		cfg.Auth.Token = "file-token"
+		cfg.Auth.TokenFile = tokenFile
+		warn, err := cfg.CheckAuth()
+		if err != nil {
+			t.Fatalf("CheckAuth() error = %v", err)
+		}
+		if warn != "" {
+			t.Errorf("warning = %q, want none for a file-backed credential", warn)
+		}
+	})
+
+	t.Run("disabled still warns and never inspects credentials", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Auth.Enabled = false
+		cfg.Auth.Token = "inline-token"
+		warn, err := cfg.CheckAuth()
+		if err != nil {
+			t.Fatalf("CheckAuth() error = %v", err)
+		}
+		if !strings.Contains(warn, "AUTH DISABLED") {
+			t.Errorf("warning = %q, want the AUTH DISABLED warning to take precedence", warn)
+		}
+	})
+}
+
+// TestSecretsDirOrDefault: env wins, otherwise $HOME/.config/bunkerd/secrets.
+func TestSecretsDirOrDefault(t *testing.T) {
+	clearSecretEnv(t)
+
+	t.Setenv(SecretsDirEnv, "/tmp/custom-secrets")
+	if got := SecretsDirOrDefault(); got != "/tmp/custom-secrets" {
+		t.Errorf("SecretsDirOrDefault() = %q, want /tmp/custom-secrets", got)
+	}
+
+	_ = os.Unsetenv(SecretsDirEnv)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	want := filepath.Join(home, DefaultSecretsDir)
+	if got := SecretsDirOrDefault(); got != want {
+		t.Errorf("SecretsDirOrDefault() = %q, want %q", got, want)
+	}
+	if !strings.HasSuffix(want, filepath.Join(".config", "bunkerd", "secrets")) {
+		t.Errorf("default secrets dir %q is not the documented location", want)
 	}
 }
