@@ -1,0 +1,135 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spec Bunker Native File Tools</title>
+<style>
+:root{--bg:#0f1115;--fg:#d7dae0;--mut:#8b93a1;--acc:#5eb0ef;--card:#161a22}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--fg);
+font:17px/1.65 -apple-system,'Segoe UI',Roboto,sans-serif;padding:1.1rem;max-width:46rem;margin-inline:auto}
+h1{font-size:1.45rem;line-height:1.3;color:#fff;margin:.2rem 0 .6rem}
+h2{font-size:1.15rem;color:var(--acc);border-bottom:1px solid #2a3140;padding-bottom:.3rem;margin:1.6rem 0 .5rem}
+h3{font-size:1.02rem;color:#fff;margin:1.2rem 0 .3rem}
+p{margin:.55rem 0} code{background:var(--card);border:1px solid #2a3140;border-radius:5px;
+padding:.08em .35em;font-size:.86em;font-family:ui-monospace,Menlo,monospace;color:#9ecbff}
+pre{background:var(--card);border:1px solid #2a3140;border-radius:8px;padding:.8rem;overflow-x:auto}
+pre code{border:none;background:none;padding:0;color:#c9e2a8}
+table{border-collapse:collapse;width:100%;font-size:.92rem;margin:.6rem 0}
+th,td{text-align:left;padding:.45rem;border-bottom:1px solid #2a3140;vertical-align:top}
+th{color:var(--mut)} a{color:var(--acc)}
+ul,ol{margin:.4rem 0 .8rem;padding-left:1.3rem} li{margin:.3rem 0}
+hr{border:none;border-top:1px solid #2a3140;margin:1.4rem 0}
+strong{color:#fff} .tag{color:var(--mut);font-size:.85rem}
+</style></head><body>
+<h1>SPEC: Bunker native file tools + toolsd verbs — namespace and workspace control</h1>
+<p><strong>Project:</strong> bunker · <strong>Rows:</strong> GAP-094 (exec bodies), GAP-106 (dynamic instances), <strong>this spec adds the namespace/workspace argument model and the verb catalog</strong> · <strong>Author:</strong> Hermes · <strong>Date:</strong> 2026-09-20</p>
+<p><strong>Status:</strong> proposed (spec of record for Path A) · <strong>Effort:</strong> M · <strong>Depends on:</strong> GAP-093 (fail-closed binding) · <strong>Feeds:</strong> GAP-097 (shim)</p>
+<p><strong>PRD of record:</strong> <code>docs/prd/PRD-bunker-remote-editing.md</code> (Path A)</p>
+<hr>
+<h2>The problem in one sentence</h2>
+<p>Path A gives the mesh of file operations over the wire — every verb of the local tool set and every <code>toolsd</code> primitive — and <code>toolsd</code> is <em>already registered as an MCP server on this box</em> (<code>config.yaml:1060</code>), so the work is not &quot;expose tools&quot;; it is <strong>make every verb carry an unambiguous namespace and workspace, with the same semantics as the local tools.</strong></p>
+<h2>Two sources, one catalog</h2>
+<p>The verb set is the <strong>union</strong> of what the local tool set does and what <code>toolsd</code> adds. They are not competitors: <code>toolsd</code> is the safety-hardened implementation of the same primitives, and the local tools define the <em>parameters</em> the surface must honour.</p>
+<h3>Source 1 — the local tools (what &quot;as good as local&quot; means)</h3>
+<table>
+<tr><th>Local tool</th><th>Parameters that must be honoured</th><th>Notes</th></tr>
+<tr><th><code>read_file</code></th><th><code>path</code>, <code>offset</code> (1-based), <code>limit</code>, line numbers, <code>total_lines</code>, continuation</th><th>windowed, never whole-file</th></tr>
+<tr><th><code>search_files</code></th><th><code>pattern</code>, <code>path</code>, <code>target</code> (content/files), <code>output_mode</code> (content/files_only/count), <code>context</code>, <code>file_glob</code>, <code>limit</code>, <code>order</code></th><th>three output shapes</th></tr>
+<tr><th><code>write_file</code></th><th><code>path</code>, <code>content</code> (whole file, create parents)</th><th>atomic</th></tr>
+<tr><th><code>patch</code></th><th><code>old_string</code>, <code>new_string</code>, <code>replace_all</code></th><th>unique match by default</th></tr>
+<tr><th>(terminal) <code>argv</code></th><th>command, cwd, timeout</th><th>execution</th></tr>
+<tr><th>(skills/board)</th><th>n/a</th><th>out of scope</th></tr>
+</table>
+<h3>Source 2 — the <code>toolsd</code> primitives (what each is <em>for</em>)</h3>
+<table>
+<tr><th>Verb</th><th>Purpose (from its own descriptor)</th><th>Parameters</th></tr>
+<tr><th><code>patch</code></th><th>a diff you did not generate that might not apply cleanly — strict, <strong>no fuzz</strong>, refuses instead of corrupting</th><th>a diff <strong>file</strong> (or <code>-</code> for stdin); no flags</th></tr>
+<tr><th><code>replace</code></th><th>change one known literal, exactly once — unique match or <code>--all</code></th><th><code>file</code>, <code>old</code>, <code>new</code>, <code>--all</code></th></tr>
+<tr><th><code>apply</code></th><th>a change spanning several files, atomic all-or-nothing with rollback</th><th>an edit-set JSON: <code>[{path, content}]</code></th></tr>
+<tr><th><code>diff3</code></th><th>two edited versions against a common base — reconcile instead of picking a winner</th><th>base + two sides</th></tr>
+<tr><th><code>lease</code></th><th>cross-session edit registry — acquire/renew/release/status before editing shared files</th><th><code>--holder</code>, <code>--paths</code>, <code>--ttl</code>, <code>--root</code>, <code>--pid</code></th></tr>
+<tr><th><code>lsp</code></th><th>definition / references / check before an edit made blind to symbols</th><th><code>--file</code>, <code>--line</code>/<code>--character</code> or <code>--offset</code>, <code>--root</code>, <code>--server</code></th></tr>
+<tr><th><code>probe</code></th><th>bounded HTTP probe battery against one endpoint</th><th><code>--n</code>, concurrency, rate cap</th></tr>
+<tr><th><code>narrate</code></th><th>turn a diff into a JSON/Markdown evidence block</th><th>diff input</th></tr>
+<tr><th><code>session</code></th><th>one git worktree per agent so work does not disturb another checkout</th><th><code>start</code>/<code>end</code>/<code>list</code></th></tr>
+<tr><th><code>fsops</code></th><th>confined file-system ops: rooted read, whole-content write, mkdir, list — <strong>the confinement root is the mechanism</strong></th><th><code>Open(root)</code>; paths must resolve inside it</th></tr>
+</table>
+<p><strong>Note the marriage:</strong> <code>fsops.Open(root)</code> is already <em>the</em> workspace-confinement primitive — every path must resolve inside the root or it fails <code>ErrOutsideRoot</code> before anything is touched. That is exactly the guarantee the remote layer needs, so the native verbs are built <em>on</em> <code>fsops</code> rather than re-implementing path checks.</p>
+<h2>The catalog (constant), and the two axes that vary per call</h2>
+<p>Two axes, and confusing them is the failure mode to avoid:</p>
+<table>
+<tr><th>Axis</th><th>Values</th><th>Meaning</th></tr>
+<tr><th><strong>namespace</strong></th><th>the fleet project / server alias (e.g. <code>bunker-las-02</code>, project <code>bunker</code>)</th><th><em>whose</em> bunker — the routing axis</th></tr>
+<tr><th><strong>workspace</strong></th><th>a tree inside the agent (repo root, subdirectory)</th><th><em>which tree</em> — the confinement axis</th></tr>
+</table>
+<p>Both are <strong>arguments</strong>, never ambient globals. Resolution:</p>
+<ol>
+<li>explicit per call (<code>--namespace</code>, <code>--workspace</code>)</li>
+<li>the session binding (set once per session)</li>
+<li><strong>refusal</strong> naming the missing binding — never a fallback to a global</li>
+</ol>
+<h3>The verb catalog (Path A)</h3>
+<table>
+<tr><th>Verb</th><th>Parameters</th><th>Semantics</th><th>Backed by</th><th>Needs</th></tr>
+<tr><th><code>bunker_read</code></th><th><code>namespace?</code>, <code>workspace?</code>, <code>path</code>, <code>offset</code>, <code>limit</code>, <code>max_bytes</code></th><th>line-numbered window + <code>total_lines</code> + <code>next_offset</code>; truncation notice</th><th>bounded <code>sed -n</code> + <code>wc -l</code> on the agent</th><th>—</th></tr>
+<tr><th><code>bunker_list</code></th><th><code>…</code>, <code>path</code></th><th>one directory level, with metadata</th><th><code>fsops.List</code></th><th>—</th></tr>
+<tr><th><code>bunker_search</code></th><th><code>…</code>, <code>pattern</code>, <code>target</code>, <code>output_mode</code>, <code>context</code>, <code>file_glob</code>, <code>limit</code></th><th>matches / file list / counts</th><th><code>rg</code> on the agent</th><th>—</th></tr>
+<tr><th><code>bunker_write</code></th><th><code>…</code>, <code>path</code>, <code>content</code></th><th>whole-file, parents created, atomic</th><th><code>fsops.Write</code> (temp + rename)</th><th>GAP-094</th></tr>
+<tr><th><code>bunker_edit</code></th><th><code>…</code>, <code>path</code>, <code>old_string</code>, <code>new_string</code>, <code>replace_all</code></th><th>unique match by default; refuses naming the count</th><th><code>toolsd replace</code></th><th>GAP-094</th></tr>
+<tr><th><code>bunker_patch</code></th><th><code>…</code>, <code>diff</code></th><th>strict, no fuzz, refuses rather than corrupting</th><th><code>toolsd patch -</code></th><th>GAP-094</th></tr>
+<tr><th><code>bunker_apply</code></th><th><code>…</code>, <code>edits[] {path, content}</code></th><th>atomic all-or-nothing, with rollback</th><th><code>toolsd apply</code></th><th>GAP-094</th></tr>
+<tr><th><code>bunker_diff3</code></th><th><code>…</code>, <code>base</code>, <code>ours</code>, <code>theirs</code></th><th>three-way reconcile</th><th><code>toolsd diff3</code></th><th>—</th></tr>
+<tr><th><code>bunker_exec</code></th><th><code>…</code>, <code>command</code>, <code>cwd</code>, <code>timeout</code></th><th>run to completion; exit code preserved</th><th><code>ExecAgent</code></th><th>—</th></tr>
+<tr><th><code>bunker_run</code></th><th><code>…</code>, <code>command</code>, <code>detach</code>, <code>name</code></th><th>long jobs; detached returns a run id</th><th><code>RunAgent</code></th><th>—</th></tr>
+<tr><th><code>bunker_lsp</code></th><th><code>…</code>, <code>op</code>, <code>file</code>, <code>line</code>+<code>character</code> \</th><th><code>offset</code></th><th>definition / references / check</th><th><code>toolsd lsp</code></th><th>language server on agent</th></tr>
+<tr><th><code>bunker_lease</code></th><th><code>…</code>, <code>action</code>, <code>holder</code>, <code>paths</code>, <code>ttl</code></th><th>lease on <strong>the workspace tree</strong></th><th><code>toolsd lease</code></th><th>CHT-052</th></tr>
+<tr><th><code>bunker_session</code></th><th><code>…</code>, <code>action</code></th><th>worktree per agent in the workspace</th><th><code>toolsd session</code></th><th>—</th></tr>
+<tr><th><code>bunker_narrate</code></th><th><code>…</code>, <code>diff</code></th><th>evidence block from a diff</th><th><code>toolsd narrate</code></th><th>—</th></tr>
+<tr><th><code>bunker_probe</code></th><th><code>…</code>, <code>endpoint</code>, <code>n</code></th><th>bounded probe battery</th><th><code>toolsd probe</code></th><th>—</th></tr>
+<tr><th><code>bunker_instances</code></th><th>—</th><th>discover reachable instances (data)</th><th>session profile + fleet inventory</th><th>GAP-106</th></tr>
+<tr><th><code>bunker_bind</code></th><th><code>namespace</code>, <code>agent</code>, <code>workspace</code></th><th>bind this session</th><th>session state</th><th>GAP-093</th></tr>
+</table>
+<p><strong>Constant-catalog rule:</strong> adding an instance does not add a tool. The catalog&#x27;s size is fixed by the verb count; instances are discovered data and the target is an argument.</p>
+<h2>Namespace + workspace enforcement (where it actually bites)</h2>
+<p>An argument is not enforcement. Four places the design makes it real:</p>
+<ol>
+<li><strong>Resolution refusal.</strong> No binding and no explicit argument ⇒ refuse (<code>no_workspace_bound</code>), never a default. Distinct from <code>namespace_unknown</code> and <code>workspace_invalid</code>, so an operator can tell &quot;you did not say&quot; from &quot;that does not exist&quot;.</li>
+<li><strong>Confinement.</strong> Every path is resolved <strong>inside the workspace root</strong> — the <code>fsops</code> rule, applied remotely: a path that escapes the root (via <code>..</code>, a symlink, or an absolute path) fails <strong>before</strong> anything is touched, with <code>ErrOutsideRoot</code>. This is the mechanism that makes the workspace a boundary rather than a label.</li>
+<li><strong>Workspace identity.</strong> The resolved workspace must carry the expected marker (git remote, or a workspace marker file). A mismatch refuses naming the expected vs actual, so aiming at the wrong tree is detectable — the Path A counterpart of the mount&#x27;s <code>stale</code> verdict.</li>
+<li><strong>Echo.</strong> Every verb&#x27;s result names the <code>(namespace, agent, workspace)</code> it acted on, so an audit row and a tool result are both self-describing.</li>
+</ol>
+<h3>Namespace isolation is per <em>namespace</em>, not per verb</h3>
+<p>Two sessions bound to different namespaces never share: not the binding, not the lease registry (per tree), not the mountpoint (per session), not the audit attribution. That is the isolation axis, and the spec requires it be <em>proved</em> (see below) rather than assumed.</p>
+<h2>Interface rules (design imperatives, not preferences)</h2>
+<ol>
+<li><strong>Parameter parity is a contract, not a nicety.</strong> For every verb with a local counterpart, the same arguments produce the same result. Divergences are enumerated in one place and each is justified — never discovered by accident.</li>
+<li><strong>A refusal is a success of the tool.</strong> <code>patch</code> refusing an inexact diff, <code>replace</code> refusing an ambiguous needle, confinement refusing an escaping path: report as an outcome, never retry blindly.</li>
+<li><strong>No success without evidence.</strong> A write reports success only after a read-back or a verified post-condition. Otherwise <code>unverified</code>.</li>
+<li><strong>Two known divergences, both deliberate</strong> (carried from the PRD, repeated here so this spec is self-contained):</li>
+</ol>
+<ul>
+<li>local <code>patch</code> takes <code>old_string</code>/<code>new_string</code>; <code>toolsd patch</code> takes a diff ⇒ the two-string path is <code>bunker_edit</code> (on <code>toolsd replace</code>), and <code>bunker_patch</code> stays for genuine diffs.</li>
+<li>local <code>patch</code> fuzzy-matches; <code>toolsd patch</code> refuses on inexact input ⇒ <strong>stricter</strong>, and documented as a behaviour difference.</li>
+</ul>
+<ol>
+<li><strong>Capability variance is an error, not a missing tool.</strong> A verb the target lacks stays on the surface and returns <code>capability_unavailable</code> naming what is missing.</li>
+</ol>
+<h2>Acceptance criteria</h2>
+<ol>
+<li><strong>Parity matrix.</strong> For <code>read</code>, <code>list</code>, <code>search</code> (all three modes), <code>write</code>, <code>edit</code>, <code>patch</code>, <code>apply</code>: the same arguments run locally and remotely produce identical output modulo the tree; every divergence recorded with its justification.</li>
+<li><strong>Confinement proof.</strong> A path escaping the workspace (<code>../</code>, an absolute path, a symlink pointing out) is refused with <code>ErrOutsideRoot</code> <strong>and nothing is written</strong> — proved against a real agent.</li>
+<li><strong>Binding refusal proof.</strong> With no binding and no explicit argument, every mutating verb refuses with <code>no_workspace_bound</code>, naming the missing piece, and touches nothing; <code>namespace_unknown</code> and <code>workspace_invalid</code> are distinct verdicts.</li>
+<li><strong>Identity proof.</strong> With the workspace pointed at a different project&#x27;s tree, the call refuses naming expected vs actual.</li>
+<li><strong>Constant-catalog proof.</strong> With three instances known: the offered tool list is byte-identical before and after adding or removing an instance; switching instances changes only the target.</li>
+<li><strong>Namespace-isolation proof.</strong> Two sessions bound to different namespaces run concurrently: zero cross-writes, zero shared state, distinct audit attribution.</li>
+<li><strong>Refusal-fidelity proof.</strong> <code>bunker_edit</code> on an ambiguous needle refuses naming the count with the file left <strong>byte-identical</strong>; <code>bunker_patch</code> on an inexact diff refuses with the file untouched.</li>
+<li><strong>Anti-lying proof.</strong> No verb reports success without a read-back; <code>unverified</code> never renders as success; a capability-missing verb reports <code>capability_unavailable</code> while remaining on the list.</li>
+<li><strong>Echo proof.</strong> Every result names the <code>(namespace, agent, workspace)</code> acted upon, and the audit row carries the same triple.</li>
+</ol>
+<h2>Boundaries — what this spec does NOT do</h2>
+<ul>
+<li><strong>Does not grow the catalog per instance.</strong> Instances are data.</li>
+<li><strong>Does not replace the mount path.</strong> It is the targeted/attributed write path; the mount is the high-fidelity editing path.</li>
+<li><strong>Does not run builds locally.</strong> Execution is always remote.</li>
+<li><strong>Does not manage credentials.</strong> Per-session profiles partition them; the verbs never store, rotate or mint them.</li>
+<li><strong>Does not fuzzy-match.</strong> Strict refusal is the designed behaviour.</li>
+</ul>
+</body></html>

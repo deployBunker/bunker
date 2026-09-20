@@ -1,0 +1,132 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spec Sshfs Mount Durability</title>
+<style>
+:root{--bg:#0f1115;--fg:#d7dae0;--mut:#8b93a1;--acc:#5eb0ef;--card:#161a22}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--fg);
+font:17px/1.65 -apple-system,'Segoe UI',Roboto,sans-serif;padding:1.1rem;max-width:46rem;margin-inline:auto}
+h1{font-size:1.45rem;line-height:1.3;color:#fff;margin:.2rem 0 .6rem}
+h2{font-size:1.15rem;color:var(--acc);border-bottom:1px solid #2a3140;padding-bottom:.3rem;margin:1.6rem 0 .5rem}
+h3{font-size:1.02rem;color:#fff;margin:1.2rem 0 .3rem}
+p{margin:.55rem 0} code{background:var(--card);border:1px solid #2a3140;border-radius:5px;
+padding:.08em .35em;font-size:.86em;font-family:ui-monospace,Menlo,monospace;color:#9ecbff}
+pre{background:var(--card);border:1px solid #2a3140;border-radius:8px;padding:.8rem;overflow-x:auto}
+pre code{border:none;background:none;padding:0;color:#c9e2a8}
+table{border-collapse:collapse;width:100%;font-size:.92rem;margin:.6rem 0}
+th,td{text-align:left;padding:.45rem;border-bottom:1px solid #2a3140;vertical-align:top}
+th{color:var(--mut)} a{color:var(--acc)}
+ul,ol{margin:.4rem 0 .8rem;padding-left:1.3rem} li{margin:.3rem 0}
+hr{border:none;border-top:1px solid #2a3140;margin:1.4rem 0}
+strong{color:#fff} .tag{color:var(--mut);font-size:.85rem}
+</style></head><body>
+<h1>SPEC: SSHFS mount durability — no phantom spaces, no silent disappearance, auto-recovery</h1>
+<p><strong>Project:</strong> bunker · <strong>Rows:</strong> GAP-103 (lifecycle), GAP-104 (namespace/workspace), <strong>this spec adds durability</strong> · <strong>Author:</strong> Hermes · <strong>Date:</strong> 2026-09-20</p>
+<p><strong>Status:</strong> proposed (spec of record for the durability half of Path B) · <strong>Effort:</strong> M · <strong>Depends on:</strong> GAP-103 · <strong>Feeds:</strong> GAP-105 (fidelity + do-not-build guard)</p>
+<p><strong>PRD of record:</strong> <code>docs/prd/PRD-bunker-remote-editing.md</code> (Path B / S9)</p>
+<hr>
+<h2>The problem in one sentence</h2>
+<p>An SSHFS mount is a <strong>network filesystem that pretends to be a local directory</strong>, so when the link dies it does not crash — it <em>lingers</em>, and the operator keeps writing into something that is no longer connected.</p>
+<h2>The six failure modes (each measured against the current code)</h2>
+<p>Checked on 2026-09-20 against <code>internal/cli/mount.go</code> (331 lines) and <code>sshfs</code> 3.7.3.</p>
+<table>
+<tr><th>#</th><th>Failure mode</th><th>What the operator sees</th><th>Status today</th></tr>
+<tr><th>1</th><th><strong>Phantom space</strong> — transport drops, FUSE session stays</th><th><code>ls</code> returns <strong>stale cached entries</strong>; a write &quot;succeeds&quot; into a kernel buffer and is lost when the session finally dies</th><th><strong>LIVE.</strong> <code>mount.go</code> passes only <code>StrictHostKeyChecking</code>, <code>UserKnownHostsFile</code>, <code>IdentitiesOnly</code>. No <code>-o reconnect</code>, no keepalive — a blip is permanent, and nothing detects it.</th></tr>
+<tr><th>2</th><th><strong>Silent empty tree</strong></th><th>mount succeeds against an agent whose home is empty (re-created agent) — an editor writes into a fresh empty tree</th><th><strong>LIVE.</strong> The mount replays the daemon&#x27;s stored command; nothing verifies the remote path exists or is a directory.</th></tr>
+<tr><th>3</th><th><strong>Stranded mountpoint</strong></th><th>process dies (crash, SIGKILL, reboot) and the mountpoint stays, blocking the next mount with <code>mountpoint is not empty</code></th><th><strong>LIVE.</strong> No <code>-o auto_unmount</code>; no cleanup command (<code>mount.go:311</code> only <em>prints</em> the <code>fusermount -u</code> hint).</th></tr>
+<tr><th>4</th><th><strong>Unbounded hang</strong></th><th>a tool call blocks indefinitely instead of erroring — the worst failure for an agent, because it cannot tell &quot;slow&quot; from &quot;dead&quot;</th><th><strong>PARTIAL.</strong> GAP-084 gave the <em>mount attempt</em> a bounded retry; the <em>mounted session</em> has no timeout, and no <code>-o ConnectTimeout</code> (unlike <code>cp</code>, <code>ssh</code>, <code>deploy</code>, <code>session_probe</code>, which all pass <code>-o ConnectTimeout=10</code>).</th></tr>
+<tr><th>5</th><th><strong>Stale-after-reconnect confusion</strong></th><th>transport recovers but the tree on the far side changed (agent re-created, branch switched); the mount looks fine and serves a different reality</th><th><strong>UNHANDLED.</strong> No state/identity check at any point after mount.</th></tr>
+<tr><th>6</th><th><strong>Interleaved concurrent writers</strong></th><th>two sessions on one agent silently overwrite each other</th><th><strong>PARTIALLY GUARDED.</strong> Leases are the designed guard (CHT-052) but are not yet wired to the mount path.</th></tr>
+</table>
+<h2>Design: the mount is a claim that must be continuously true</h2>
+<p>A mount is not an event — it is an <strong>ongoing assertion</strong> that &quot;this local path is that remote tree, right now&quot;. Every failure above is the assertion going false while the mount keeps looking mounted. So the design makes the assertion explicit, checkable, and repairable.</p>
+<h3>1. Durability options that must be passed (currently absent)</h3>
+<table>
+<tr><th>Option</th><th>Why</th><th>Today</th></tr>
+<tr><th><code>-o reconnect</code></th><th>survive a transport blip instead of dying permanently (failure 1)</th><th><strong>absent</strong></th></tr>
+<tr><th><code>-o ServerAliveInterval=15 -o ServerAliveCountMax=3</code></th><th>detect a dead peer within ~45s instead of hanging forever</th><th><strong>absent</strong></th></tr>
+<tr><th><code>-o ConnectTimeout=10</code></th><th>bound the initial connect — every other ssh path in this repo already does this</th><th><strong>absent</strong></th></tr>
+<tr><th><code>-o auto_unmount</code></th><th>release the mountpoint when the process dies (failure 3)</th><th><strong>absent</strong></th></tr>
+<tr><th><code>-o dir_cache=no</code> (editing profile)</th><th>avoid serving stale directory entries while editing (failure 1)</th><th><strong>absent</strong></th></tr>
+<tr><th><code>-o idmap=user</code></th><th>uid/gid mapping so files read as the operator, not as nobody</th><th>varies by stored command</th></tr>
+</table>
+<p><strong>Rule:</strong> the durability option set is <strong>constructed by the client</strong>, not inherited from the daemon-stored command string. The stored command is a starting point; durability flags are added explicitly and are asserted present by a test.</p>
+<h3>2. The health predicate (kills the phantom)</h3>
+<p>A mount is considered <strong>healthy</strong> only if a <em>stat of a known path on the remote side</em> succeeds within a bounded time, against a marker whose content is known.</p>
+<ul>
+<li>Cheap probe: <code>stat</code> the workspace marker (<code>.bunker-mount</code> or the repo&#x27;s <code>.git/HEAD</code>) with a hard timeout.</li>
+<li><strong>Cheap + truthful:</strong> the marker&#x27;s <em>content</em> is compared to a value captured at mount time. A mount whose marker vanished or changed is <strong>not the tree we mounted</strong> (failure 5) and is reported as <code>stale</code>, distinct from <code>unreachable</code>.</li>
+<li>Health is checked: before each tool call that writes, on a timer for long sessions, and on demand (<code>bunker mount status</code>).</li>
+</ul>
+<p>Three verdicts, never two:</p>
+<ul>
+<li><strong>healthy</strong> — probe succeeded and the identity matches</li>
+<li><strong>unreachable</strong> — probe timed out or failed (transport dead)</li>
+<li><strong>stale</strong> — probe succeeded but the tree is not the one mounted (agent re-created / path replaced)</li>
+</ul>
+<p><code>unreachable</code> and <code>stale</code> demand <em>different</em> recovery, which is why they are not collapsed into &quot;broken&quot;.</p>
+<h3>3. Write-time guard (no silent loss)</h3>
+<p>A write through a phantom mount is the expensive failure — the operator believes the edit landed. So:</p>
+<ul>
+<li><strong>No write is reported successful without a read-back</strong> through the same path, or a successful health probe immediately prior.</li>
+<li>If the health probe fails, the write is <strong>refused</strong> with a named cause (<code>mount_unreachable</code> / <code>mount_stale</code>), not attempted-and-lost.</li>
+<li>Where a write cannot be verified, it closes as <code>unverified</code> — never as success. (Same anti-lying rule as the verb layer, proof 8.)</li>
+</ul>
+<p>This is the difference between &quot;the mount dropped and my edit is gone&quot; and &quot;the mount dropped and my tool told me&quot;.</p>
+<h3>4. Auto-recovery, with an explicit policy</h3>
+<p>Not &quot;retry forever&quot; — a <strong>bounded, idempotent recovery ladder</strong> whose steps are chosen by the verdict:</p>
+<table>
+<tr><th>Verdict</th><th>Recovery</th></tr>
+<tr><th><code>unreachable</code> (transport)</th><th>wait for the built-in <code>reconnect</code> window; if the health probe recovers, continue with <strong>no operator action</strong>; if not, attempt unmount + remount <strong>once</strong>, then stop and report</th></tr>
+<tr><th><code>stale</code> (wrong tree)</th><th><strong>never auto-remount silently</strong> — a stale mount may hold unflushed writes. Report, refuse writes, and require an explicit <code>bunker mount --recover</code></th></tr>
+<tr><th><code>stranded</code> mountpoint (no live FUSE)</th><th>clear it automatically (normal unmount, falling back to lazy) then remount — bounded to one attempt</th></tr>
+<tr><th><code>busy</code> mountpoint (live consumer)</th><th><strong>never</strong> touch it; report the holder (pid/process) by name</th></tr>
+</table>
+<p><strong>The rule that keeps recovery safe:</strong> recovery may <strong>re-establish</strong> a mount, never <strong>re-target</strong> one. Recovery is idempotent — running it twice leaves the same state as running it once — and every step is logged, because a silent auto-repair is indistinguishable from the bug it is repairing.</p>
+<h3>5. Cleanup that cannot be forgotten</h3>
+<ul>
+<li><code>bunker umount &lt;agent|mountpoint&gt;</code> — idempotent (already gone = success), clears dead sessions via lazy unmount when a normal unmount fails, reports exactly what it did.</li>
+<li><code>bunker mount status</code> / <code>--json</code> — every live mount as data: agent, mountpoint, remote path, namespace, pid, health verdict, age, last successful probe.</li>
+<li><strong>Teardown hooks:</strong> agent destroy, session end, and daemon shutdown each release that session&#x27;s mounts. A destroyed agent must leave <strong>zero</strong> local mountpoints.</li>
+<li><strong>Orphan sweep:</strong> a mount whose owning pid no longer exists is reported (and cleaned on request) — the mount-side twin of the agent registry reconciliation in GAP-070.</li>
+</ul>
+<h3>6. Where the state lives</h3>
+<table>
+<tr><th>State</th><th>Cardinality</th><th>Location</th></tr>
+<tr><th>live mounts (agent, mountpoint, remote path, namespace, pid, health)</th><th>one row per live mount</th><th><code>$XDG_RUNTIME_DIR/bunker/mounts.json</code> (per user, per boot)</th></tr>
+<tr><th>mount identity marker (content hash captured at mount)</th><th>one per mount</th><th>recorded with the row</th></tr>
+<tr><th>durability option assertions</th><th>constant</th><th>asserted by test</th></tr>
+</table>
+<p>Per-session, never a global registry, and never shared with another user.</p>
+<h2>Failure-mode → mechanism matrix (the closure table)</h2>
+<table>
+<tr><th>Failure</th><th>Detected by</th><th>Recovered by</th><th>Closes as</th></tr>
+<tr><th>Phantom space</th><th>health predicate (<code>unreachable</code>)</th><th><code>reconnect</code> window → remount once</th><th><code>mount_unreachable</code> on refusal</th></tr>
+<tr><th>Silent empty tree</th><th>mount-time preflight (path exists + non-empty + identity)</th><th>none — refused before mount</th><th><code>workspace_invalid</code></th></tr>
+<tr><th>Stranded mountpoint</th><th>no live FUSE session for a recorded row</th><th>auto-clear (normal → lazy) + remount once</th><th><code>mount_recovered</code></th></tr>
+<tr><th>Unbounded hang</th><th><code>ConnectTimeout</code> + <code>ServerAlive*</code> + hard probe timeout</th><th>n/a — bounded by construction</th><th><code>mount_unreachable</code> within ≤45s</th></tr>
+<tr><th>Stale identity</th><th>marker content mismatch</th><th><strong>manual</strong> <code>--recover</code> only</th><th><code>mount_stale</code></th></tr>
+<tr><th>Concurrent writers</th><th>lease registry (per tree, on the bunker)</th><th>refusal naming the holder</th><th><code>lease_conflict</code></th></tr>
+<tr><th>Forgotten cleanup</th><th>status surface + orphan sweep</th><th>umount / teardown hooks</th><th><code>mount_removed</code></th></tr>
+</table>
+<h2>Acceptance criteria (observable, each independently checkable)</h2>
+<ol>
+<li><strong>Phantom-space proof.</strong> Mount a real agent; drop the transport (<code>iptables</code> drop or kill the agent&#x27;s sshd); attempt a write. → The write is <strong>refused within ≤45s</strong> with <code>mount_unreachable</code>; no success is reported; no partial file remains on either side.</li>
+<li><strong>Reconnect proof.</strong> Blip the transport for &lt;15s and restore. → The mount recovers with <strong>no operator action</strong> and the next read is correct (not a cached stale entry).</li>
+<li><strong>Empty-tree proof.</strong> Mount an agent whose home is empty (or a <code>--path</code> that does not exist). → <strong>Refused before mounting</strong> with a named cause; nothing appears at the mountpoint.</li>
+<li><strong>Stale-identity proof.</strong> Mount; destroy and re-create the agent under the same name; probe. → Reported <code>stale</code> (<strong>not</strong> healthy, <strong>not</strong> <code>unreachable</code>), writes refused, and no automatic remount without <code>--recover</code>.</li>
+<li><strong>Stranded-mountpoint proof.</strong> <code>kill -9</code> the sshfs process; attempt to mount again. → The stale mountpoint is cleared automatically and the remount succeeds, without the operator running <code>fusermount</code> by hand.</li>
+<li><strong>Idempotent-recovery proof.</strong> Run the recovery path twice. → State after the second run is identical to after the first; one mount, one registry row.</li>
+<li><strong>Cleanup proof.</strong> Destroy the agent (and separately, end the session). → Zero local mountpoints remain; <code>bunker mount status</code> lists none; an orphan sweep finds nothing.</li>
+<li><strong>Hang-bounded proof.</strong> With the peer firewalled, <code>stat</code> the mountpoint. → Returns a named error within the bounded window; the tool never blocks indefinitely.</li>
+<li><strong>Busy-mount proof.</strong> With a live consumer holding the mountpoint, request unmount. → Refused, reporting the holder by pid; the live mount is not disturbed.</li>
+<li><strong>Anti-lying proof.</strong> For every criterion above: no success is reported without a prior successful health probe or a read-back; <code>unverified</code> is never rendered as success.</li>
+</ol>
+<h2>Boundaries — what this spec does NOT do</h2>
+<ul>
+<li><strong>Does not make a mount safe for builds.</strong> It stays editing-only; the do-not-build guard is GAP-105.</li>
+<li><strong>Does not enforce session binding.</strong> A mount cannot; concurrent writes are guarded by the per-tree lease registry.</li>
+<li><strong>Does not silently repair a stale tree.</strong> Auto-recovery re-establishes, never re-targets.</li>
+<li><strong>Does not pool mounts across sessions.</strong> Per-session mountpoints, per-user state.</li>
+<li><strong>Does not replace the verb layer.</strong> It is the high-fidelity editing path; targeted writes and attribution remain the verbs&#x27; job.</li>
+</ul>
+</body></html>
