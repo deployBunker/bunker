@@ -5,10 +5,13 @@
   "branch": "main",
   "base_sha": "ef92a8e",
   "created_at": "2026-09-20T00:25:00Z",
+  "finished_at": "2026-09-20T01:45:00Z",
+  "recovered_by": "bunker-2026-09-20-01-39-49",
+  "recovery_verdict": "COMPLETE — all 4 workers landed before the recovery tick; nothing was left unmerged. Verified: a017b21 (GAP-086), ef22e57 (QA-BUNKER-20), 994c472 (GAP-088), 33d886b (DEPS-001) are all ancestors of main@c2f6092 via merge commits a352c25/d259c03/a5e5b3e/add0004; board rows all status=complete with commit_hash; worktrees already reaped; gates re-run on the merged tree (build OK, vet OK, gofmt clean, go test ./... = 23 ok / 0 FAIL).",
   "workers": [
-    {"task_id": "GAP-086", "worktree": "/home/kara/worktrees/bunker-GAP-086", "branch": "wt/GAP-086", "base_sha": "ef92a8e", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-GAP-086.txt"},
-    {"task_id": "GAP-088", "worktree": "/home/kara/worktrees/bunker-GAP-088", "branch": "wt/GAP-088", "base_sha": "ef92a8e", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-GAP-088.txt"},
-    {"task_id": "QA-BUNKER-20", "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-20", "branch": "wt/QA-BUNKER-20", "base_sha": "ef92a8e", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-QA-BUNKER-20.txt"},
-    {"task_id": "DEPS-001", "worktree": "/home/kara/worktrees/bunker-DEPS-001", "branch": "wt/DEPS-001", "base_sha": "ef92a8e", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-DEPS-001.txt"}
+    {"task_id": "GAP-086", "worktree": "/home/kara/worktrees/bunker-GAP-086", "branch": "wt/GAP-086", "base_sha": "ef92a8e", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-GAP-086.txt", "commit": "a017b21", "merge": "merged (a352c25)", "judge": "5bd05333 PASS"},
+    {"task_id": "GAP-088", "worktree": "/home/kara/worktrees/bunker-GAP-088", "branch": "wt/GAP-088", "base_sha": "ef92a8e", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-GAP-088.txt", "commit": "994c472", "merge": "merged (d259c03)", "judge": "1e7c40ae PASS"},
+    {"task_id": "QA-BUNKER-20", "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-20", "branch": "wt/QA-BUNKER-20", "base_sha": "ef92a8e", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-QA-BUNKER-20.txt", "commit": "ef22e57", "merge": "merged (a5e5b3e)", "judge": "1d109712 PASS"},
+    {"task_id": "DEPS-001", "worktree": "/home/kara/worktrees/bunker-DEPS-001", "branch": "wt/DEPS-001", "base_sha": "ef92a8e", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/foreman-worker-DEPS-001.txt", "commit": "33d886b", "merge": "merged (add0004)", "judge": "5ada9ad4 PASS"}
   ]
 }
