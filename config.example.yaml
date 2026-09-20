@@ -14,6 +14,14 @@ server:
   request_timeout: 300s       # per-request timeout
 
 # TLS for the gRPC/REST listeners. Leave disabled for plaintext.
+#
+# self_signed: true makes the daemon generate its own certificate on first
+# start (tlsutil.GenerateSelfSignedCert) for the hosts below, and the CLI pins
+# it on first connect — so clients verify the daemon WITHOUT disabling
+# verification:
+#   bunker connect --tls self-signed https://<host>:9090
+# See the README section "TLS: the secure path is the easy path" for the pin,
+# rotation and re-pin rules.
 # tls:
 #   enabled: false
 #   cert_file: ""
@@ -24,7 +32,7 @@ server:
 #   mtls: false
 #   ca_file: ""
 #   verify_cn: ""
-#   hosts: ["localhost"]
+#   hosts: ["localhost", "127.0.0.1"]  # names/IPs in the generated cert
 
 auth:
   enabled: true               # require the master token on every request

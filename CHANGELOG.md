@@ -48,6 +48,20 @@ from HEAD*.
   release artifacts — cross-compiles linux/amd64 and linux/arm64 for both
   `bunker` and `bunkerd` with the same ldflags as `build`, then writes
   `SHA256SUMS` and copies `scripts/install.sh` into `dist/`
+- TLS certificate pinning for the CLI (GAP-127): `bunker connect --tls
+  self-signed https://host:9090` observes the daemon's leaf certificate over a
+  real TLS handshake, prints its sha256 fingerprint loudly, and stores it as
+  `cert_pin` on the server entry. Every later command — `status`, `list`,
+  `spawn`, `exec`, `destroy` — verifies the leaf against that pin, so a
+  self-signed daemon no longer needs `--tls-insecure`. A changed certificate is
+  a non-zero-exit refusal naming both fingerprints and the deliberate re-pin
+  command (`--accept-cert`); a self-signed server with no pin and no first-use
+  mode is refused with instructions; a contradictory `cert_pin` + `tls_insecure`
+  entry (or `--tls self-signed --tls-insecure` on one command line) is refused.
+  `--tls system` verifies against the system root store and plain-HTTP loopback
+  stays the zero-configuration dev path. The new config keys are optional, so
+  configs written before this change load and behave exactly as before, and the
+  README quick-start now connects over TLS by default
 - `.github/workflows/release.yml` (DF-BUNKER-25): on a `v*` tag it calls
   `make release-binaries` (the build commands are not duplicated in YAML) and
   publishes `bunker-linux-amd64`, `bunkerd-linux-amd64`, `bunker-linux-arm64`,
