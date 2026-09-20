@@ -101,6 +101,8 @@ func NewAgentToolsCommand() *cobra.Command {
 	var serverName string
 	var asJSON bool
 	var timeout uint32
+	var install bool
+	var binaryPath string
 
 	cmd := &cobra.Command{
 		Use:   "agent-tools AGENT_ID",
@@ -116,9 +118,19 @@ search has no working output mode and lsp refuses with nothing to serve.
 A missing tool is DATA (exit 0 with a named list), matching bunker probe's
 contract. Only a probe that could not run exits non-zero.
 
+With --install the vendored tools are DELIVERED onto the agent's own PATH
+($HOME/bin, which the server already puts on every exec), then re-probed so the
+result is evidence rather than a claim. Only tools we build ourselves are copied
+that way; ripgrep and the language servers are in distribution registries and
+belong to the image-spec package-add path, which pins versions and verifies
+signatures. A dynamically linked artifact is REFUSED, because it would depend on
+this machine's libc.
+
 Examples:
   bunker agent-tools abc12345
   bunker agent-tools abc12345 --json
+  bunker agent-tools abc12345 --install
+  bunker agent-tools abc12345 --install --binary ./dist/toolsd-linux-amd64
   bunker agent-tools abc12345 --server staging`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -149,6 +161,10 @@ Examples:
 			ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 			defer cancel()
 
+			if install {
+				return installAgentTools(cmd, ctx, client, entry, agentID, binaryPath)
+			}
+
 			report, err := probeAgentTools(ctx, client, entry, agentID)
 			if err != nil {
 				return err
@@ -171,24 +187,28 @@ Examples:
 	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (default: active server)")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Emit the report as JSON")
 	cmd.Flags().Uint32Var(&timeout, "timeout", 60, "Probe timeout in seconds")
+	cmd.Flags().BoolVar(&install, "install", false,
+		"Deliver the vendored tools (toolsd) onto the agent's PATH, then re-probe")
+	cmd.Flags().StringVar(&binaryPath, "binary", "",
+		"Artifact to deliver with --install (default: the local toolsd on PATH)")
 	return cmd
 }
 
-// probeAgentTools runs the probe on the agent and parses its output.
-func probeAgentTools(ctx context.Context, client bunkerv1connect.BunkerdClient, entry ServerEntry, agentID string) (agentToolReport, error) {
-	names := make([]string, 0, len(agentToolCatalog))
-	for _, t := range agentToolCatalog {
-		names = append(names, t.Name)
-	}
-	// strings.Replace, not Sprintf: the script body contains literal
-	// printf format verbs, which Sprintf would try to consume.
-	script := strings.Replace(agentProbeScript, "__TOOLS__", strings.Join(names, " "), 1)
+// execOnAgentScript runs ONE shell program on the agent over the audited exec
+// RPC and returns its combined stdout, its exit code, and any transport error.
+// The probe and the tool installer share this path deliberately: one
+// authentication story, one audit trail, one error mapping.
+func execOnAgentScript(ctx context.Context, client bunkerv1connect.BunkerdClient, entry ServerEntry,
+	agentID, script string, timeoutSeconds uint32) (string, int32, error) {
 
+	if timeoutSeconds == 0 {
+		timeoutSeconds = uint32(ctxDeadlineSeconds(ctx))
+	}
 	req := connect.NewRequest(&v1.ExecAgentRequest{
 		AgentId:          agentID,
 		Command:          "sh",
 		Args:             []string{"-c", script},
-		TimeoutSeconds:   uint32(ctxDeadlineSeconds(ctx)),
+		TimeoutSeconds:   timeoutSeconds,
 		ResponseEncoding: v1.ExecEncoding_EXEC_ENCODING_TEXT,
 	})
 	if token := resolveToken(entry); token != "" {
@@ -197,7 +217,7 @@ func probeAgentTools(ctx context.Context, client bunkerv1connect.BunkerdClient, 
 
 	stream, err := client.ExecAgent(ctx, req)
 	if err != nil {
-		return agentToolReport{}, fmt.Errorf("probe agent: %w", err)
+		return "", 0, fmt.Errorf("exec on agent: %w", err)
 	}
 	var stdout, stderr strings.Builder
 	var exitCode int32
@@ -214,16 +234,31 @@ func probeAgentTools(ctx context.Context, client bunkerv1connect.BunkerdClient, 
 		}
 	}
 	if err := stream.Err(); err != nil {
-		return agentToolReport{}, fmt.Errorf("stream error: %w", err)
+		return stdout.String(), exitCode, fmt.Errorf("stream error: %w", err)
+	}
+	return stdout.String(), exitCode, nil
+}
+
+// probeAgentTools runs the probe on the agent and parses its output.
+func probeAgentTools(ctx context.Context, client bunkerv1connect.BunkerdClient, entry ServerEntry, agentID string) (agentToolReport, error) {
+	names := make([]string, 0, len(agentToolCatalog))
+	for _, t := range agentToolCatalog {
+		names = append(names, t.Name)
+	}
+	// strings.Replace, not Sprintf: the script body contains literal
+	// printf format verbs, which Sprintf would try to consume.
+	script := strings.Replace(agentProbeScript, "__TOOLS__", strings.Join(names, " "), 1)
+
+	stdout, exitCode, err := execOnAgentScript(ctx, client, entry, agentID, script, uint32(ctxDeadlineSeconds(ctx)))
+	if err != nil {
+		return agentToolReport{}, fmt.Errorf("probe agent: %w", err)
 	}
 	if exitCode != 0 {
 		// The probe writing an ERROR is a capability question, not a missing
 		// tool: report the agent's own words rather than inventing a finding.
-		return agentToolReport{}, fmt.Errorf("probe exited %d on the agent: %s",
-			exitCode, strings.TrimSpace(stderr.String()))
+		return agentToolReport{}, fmt.Errorf("probe exited %d on the agent", exitCode)
 	}
-
-	return parseAgentToolOutput(agentID, stdout.String(), exitCode), nil
+	return parseAgentToolOutput(agentID, stdout, exitCode), nil
 }
 
 // parseAgentToolOutput turns the probe's tab-separated lines into a report.
