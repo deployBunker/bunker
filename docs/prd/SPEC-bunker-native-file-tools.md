@@ -123,3 +123,4 @@ Two sessions bound to different namespaces never share: not the binding, not the
 - **Does not run builds locally.** Execution is always remote.
 - **Does not manage credentials.** Per-session profiles partition them; the verbs never store, rotate or mint them.
 - **Does not fuzzy-match.** Strict refusal is the designed behaviour.
+Related: [docs/both-ways.md](../../both-ways.md) — when to use the verbs vs the SSHFS mount.

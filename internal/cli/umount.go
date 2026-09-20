@@ -85,6 +85,9 @@ Examples:
 			if err := unmount(mountPoint, force); err != nil {
 				return err
 			}
+			// Remove the do-not-build marker with the mount: a stale marker on
+			// a now-ordinary directory would refuse builds that are fine.
+			_ = os.Remove(filepath.Join(mountPoint, MountMarkerName))
 			fmt.Printf("Unmounted %s\n", mountPoint)
 			return nil
 		},

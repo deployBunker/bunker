@@ -382,6 +382,13 @@ Examples:
 			}
 
 			fmt.Printf("Mounted %s at %s\n", agentID, mountPoint)
+			// The do-not-build guard's physical half: a marker at the mountpoint
+			// root that the build-entry wrapper detects. Best effort -- a
+			// filesystem that refuses the write still mounts, but the operator
+			// is told the guard is blind here.
+			if ok, err := WriteMountMarker(mountPoint); !ok {
+				fmt.Fprintf(os.Stderr, "bunker: WARNING: could not write the do-not-build marker at %s (%v) — a local build inside this mount will NOT be refused\n", mountPoint, err)
+			}
 			fmt.Printf("Unmount with: bunker umount %s\n", agentID)
 			return nil
 		},

@@ -765,6 +765,8 @@ bunker env         Manage agent environment variables
 bunker exec        Run a command inside an agent
 bunker run         Run a command in an agent's environment (with --detach for background)
 bunker mount       Mount agent filesystem via SSHFS
+bunker umount      Unmount a mountpoint (idempotent, also clears stranded mounts)
+bunker guard       Do-not-build guard for SSHFS mounts (check/install — see docs/both-ways.md)
 bunker tunnel      Forward agent Docker socket
 bunker ssh         Open an interactive SSH session into an agent
 bunker cp          Copy a file into an agent's environment

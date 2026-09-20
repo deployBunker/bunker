@@ -142,6 +142,7 @@ Client-side path overrides (persistent flags):
 	root.AddCommand(cli.NewSystemdCommand())
 	root.AddCommand(cli.NewMountCommand())
 	root.AddCommand(cli.NewUmountCommand())
+	root.AddCommand(cli.NewGuardCommand())
 	root.AddCommand(cli.NewTunnelCommand())
 	root.AddCommand(cli.NewVersionCommand())
 	root.AddCommand(cli.NewUseCommand())
