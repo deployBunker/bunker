@@ -11,7 +11,10 @@ set -euo pipefail
 #   0   = success (final line "STATUS: ALL CORE TESTS PASS" / "VERIFY-PASS",
 #         or the --self-test diagnostics check completed)
 #   42  = preflight refusal (not root, or the daemon log path is not
-#         writable) — the reason is printed to stderr, nothing was changed
+#         writable, or — standalone mode only — the daemon rejected
+#         BUNKER_TOKEN, probed up front via a read-only `bcli list` BEFORE
+#         any battery section or host mutation) — the reason is printed to
+#         stderr, nothing was changed
 #   1   = battery ran and failed, or a non-preflight error killed the run
 #         (the ERR trap prints the failing line + command before exit)
 # --SELF-TEST: `bash e2e-full-battery.sh --self-test` verifies the harness's
@@ -621,6 +624,29 @@ bin_certification_preflight() {
     esac
 }
 
+# QA-BUNKER-20 — token_refusal_decision OUTPUT_TEXT — PURE. Returns 0
+# (refuse, up front) when OUTPUT_TEXT is the upstream's unauthenticated-error
+# signature, 1 otherwise; the refusal REASON goes on stdout so the caller can
+# print it before exiting 42 (the same shape as preflight_decision).
+token_refusal_decision() {
+    local output_text="$1"
+    if printf '%s' "$output_text" | grep -qiE 'unauthenticated|invalid token'; then
+        cat <<EOF
+ERROR: the daemon rejected BUNKER_TOKEN (daemon said: $output_text)
+  Why: in standalone mode this battery talks to the daemon ALREADY running on
+  the production ports, and that daemon only accepts ITS OWN configured token.
+  An unset BUNKER_TOKEN resolves to the documented default
+  (test-regression-token), which is not the daemon's token.
+  Fix: pass the daemon's real token explicitly, e.g.
+    sudo BUNKER_TOKEN="<daemon-token>" bash e2e-full-battery.sh
+  (see README "Run E2E battery" — a standalone run must pass BUNKER_TOKEN).
+  Nothing was run and nothing was changed (no battery section started).
+EOF
+        return 0
+    fi
+    return 1
+}
+
 # Preflight: refuse to run the battery as non-root BEFORE any write to
 # /var/log or any host mutation. Preflight_decision() is pure (no side
 # effects) so --self-test can exercise it as a non-root user.
@@ -694,7 +720,36 @@ if [ "${1:-}" = "--self-test" ]; then
         ST_FAIL=$((ST_FAIL+1))
     fi
 
-    # (d) bin_commit_verdict: MATCH for a short-vs-full SHA prefix pair, in
+    # (d-qa20) The token-refusal decision must REFUSE on the unauthenticated
+    # signature (rc 0 = refuse) and ACCEPT any other outcome (rc 1). The
+    # `VAR=$(fn) || RC=$?` shape below keeps an unexpected refusal outcome
+    # from killing the self-test under set -e: the assignment records the
+    # real status and the assert decides.
+    ST_TOKEN_OUT="connect: unauthenticated: invalid token"
+    # `VAR=$(fn) || RC=$?` assigns RC only when the helper FAILS — a helper
+    # that returns 0 leaves RC at its initializer. So the initializer must be
+    # the EXPECTED outcome (0 = refuse): if the helper misbehaves to 1, the ||
+    # assignment records it and the assert below fails.
+    ST_TOK_RC=0
+    ST_TOK_TEXT=""
+    ST_TOK_TEXT="$(token_refusal_decision "$ST_TOKEN_OUT")" || ST_TOK_RC=$?
+    if [ "$ST_TOK_RC" -eq 0 ] && [ -n "$ST_TOK_TEXT" ] && printf '%s' "$ST_TOK_TEXT" | grep -q "BUNKER_TOKEN"; then
+        assert "token refusal would refuse an unauthenticated connect (rc=$ST_TOK_RC, reason printed)"
+    else
+        fail "token_refusal_decision did not report the token refusal (rc=$ST_TOK_RC, text: '$ST_TOK_TEXT')"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+    ST_TOK2_RC=0
+    ST_TOK2_TEXT=""
+    ST_TOK2_TEXT="$(token_refusal_decision "Connected.")" || ST_TOK2_RC=$?
+    if [ "$ST_TOK2_RC" -ne 0 ] && [ -z "$ST_TOK2_TEXT" ]; then
+        assert "token refusal accepts a successful connect (rc=0)"
+    else
+        fail "token_refusal_decision refused a successful connect (rc=$ST_TOK2_RC, text: '$ST_TOK2_TEXT')"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+
+    # (e) bin_commit_verdict: MATCH for a short-vs-full SHA prefix pair, in
     # BOTH orientations (binary may report short, HEAD may be full or vice
     # versa).
     V1=$(bin_commit_verdict "7232f304d46311a30d31d93e3de967666221214d" "7232f30")
@@ -1270,6 +1325,43 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Token preflight (QA-BUNKER-20): in STANDALONE mode this battery talks to the
+# daemon the host already runs, so a wrong BUNKER_TOKEN matches nothing and the
+# run used to cascade — section 2 fails "unauthenticated", sections 3-4 report
+# "no active server" plus missing artifacts, then section 5 aborted the whole
+# run under `set -e`. The refusal must also come BEFORE the standalone CLEANUP
+# user sweep below: the sweep deletes EVERY bunker-* user on the host, and a
+# wrong-token run has no business touching it. Probe the daemon with a cheap
+# read-only `list` through bcli (the same pattern as the sections-13/14
+# pre-probes) and refuse the run UP FRONT with a named reason, before any
+# host mutation, mirroring the not-root / unwritable-log refusals. Placed
+# after cleanup() is defined and armed so an exit 42 still tears down the
+# battery's own scratch state dir (the only thing this run has created).
+# Coexist mode is excluded: it starts its OWN daemon with a config whose token
+# this battery controls, so a wrong BUNKER_TOKEN there is not the standalone
+# mismatch this preflight guards against.
+if [ -z "$BUNKERD_COEXIST" ]; then
+    TOKEN_PREFLIGHT_OUT=""
+    TOKEN_PREFLIGHT_RC=0
+    set +e
+    trap - ERR # a token mismatch is EXPECTED here — handled below, not by the trap
+    TOKEN_PREFLIGHT_OUT=$(bcli list --status all 2>&1)
+    TOKEN_PREFLIGHT_RC=$?
+    trap 'diag_err $? $LINENO "$BASH_COMMAND"' ERR
+    set -e
+    if [ "$TOKEN_PREFLIGHT_RC" -ne 0 ]; then
+        # The pure decision helper (defined next to preflight_decision,
+        # self-test-exercised) owns both the signature match and the refusal
+        # text: rc 0 = refuse with the reason on stdout.
+        if TOKEN_REFUSAL_TEXT="$(token_refusal_decision "$TOKEN_PREFLIGHT_OUT")"; then
+            echo "" >&2
+            echo "Refused by the token preflight — the probe was 'bcli list --status all' against $BUNKER_DAEMON_URL (token source: ${BUNKER_TOKEN_SOURCE:-unknown})." >&2
+            printf '%s\n' "$TOKEN_REFUSAL_TEXT" >&2
+            exit 42
+        fi
+    fi
+fi
+
 # Clean up any leftover test agents
 echo "=== CLEANUP ==="
 if [ -n "$BUNKERD_COEXIST" ]; then
@@ -1451,7 +1543,22 @@ echo ""
 # 5. LIST (1 agent)
 # =============================================
 echo "=== 5. List (1 agent) ==="
-LIST_OUT=$(bcli list --status all 2>&1)
+# QA-BUNKER-20: a failing capture here used to abort the whole run silently
+# under `set -e` (a bare `VAR=$(cmd)` assignment dies on the command's exit
+# status BEFORE the if/else below it can run — same silent death run_capture
+# exists to prevent). Capture the status explicitly and fail LOUDLY with the
+# section name and the command's output instead. NOTE: `VAR=$(cmd) || RC=$?`
+# is the shape that survives set -e AND records the real rc — inside
+# `if ! VAR=$(cmd); then`, $? is the NEGATED status (always 0), in the
+# then-branch too.
+LIST_RC=0
+LIST_OUT=$(bcli list --status all 2>&1) || LIST_RC=$?
+if [ "$LIST_RC" -ne 0 ]; then
+    fail "SECTION 5 (List): 'bcli list --status all' failed with exit $LIST_RC — output:
+$LIST_OUT
+  (remaining sections skipped — the daemon or its auth is unusable)"
+    exit 1
+fi
 if echo "$LIST_OUT" | grep -q "e2e-main"; then
     assert "list shows e2e-main"
 else
