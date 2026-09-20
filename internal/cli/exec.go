@@ -189,6 +189,24 @@ Examples:
 						i += 2
 						continue
 					}
+				case "--stdin":
+					if i+1 < len(rest) {
+						stdinPath = rest[i+1]
+						i += 2
+						continue
+					}
+				case "--base64":
+					base64Out = true
+					i += 1
+					continue
+				case "--exec-cap":
+					if i+1 < len(rest) {
+						if v, err := strconv.ParseUint(rest[i+1], 10, 64); err == nil {
+							execCap = v
+						}
+						i += 2
+						continue
+					}
 				}
 				break
 			}
@@ -260,6 +278,7 @@ Examples:
 				ScriptContent:    scriptContent,
 				StdinPayload:     stdinPayload,
 				ResponseEncoding: encoding,
+				ResponseCapBytes: execCap,
 			})
 
 			// Auth token
