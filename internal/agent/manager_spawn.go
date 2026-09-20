@@ -399,8 +399,10 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	}
 
 	// Configure subuid/subgid so rootless Docker can map container root to the
-	// agent user. We allocate a contiguous 65,536 UID/GID range starting from
-	// the user's own UID. This is the standard rootless Docker mapping.
+	// agent user. Each agent gets a contiguous 65,536-ID range allocated from a
+	// global pool under a host-wide lock, guaranteed disjoint from every other
+	// name's range (GAP-140: the previous start=<own uid> scheme overlapped for
+	// every pair of agents).
 	if err := configureSubIDs(ctx, username); err != nil {
 		return nil, fail(StageRootlessInstall, fmt.Errorf("configure subuid/subgid for %s: %w", username, err))
 	}

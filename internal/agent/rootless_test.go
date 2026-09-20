@@ -9,31 +9,56 @@ import (
 )
 
 func TestConfigureSubIDs_AlreadyConfigured(t *testing.T) {
-	// Use the current user — it almost certainly already has subuid/subgid entries.
+	// A host that already carries entries must be left alone: this is the
+	// idempotent re-spawn path. The fixture is the REAL /etc/subuid content (so
+	// the test proves the allocator reads a real host's entry set), copied into
+	// a temp database because allocation needs a writable file and a writable
+	// lock directory — the same seam the spawn fixtures use.
 	u, err := user.Current()
 	if err != nil {
 		t.Skipf("cannot determine current user: %v", err)
 	}
+	realUID, err := os.ReadFile("/etc/subuid")
+	if err != nil || len(realUID) == 0 {
+		t.Skipf("no readable /etc/subuid on this host: %v", err)
+	}
+	realGID, err := os.ReadFile("/etc/subgid")
+	if err != nil || len(realGID) == 0 {
+		t.Skipf("no readable /etc/subgid on this host: %v", err)
+	}
+
+	dir := t.TempDir()
+	uidPath := filepath.Join(dir, "subuid")
+	gidPath := filepath.Join(dir, "subgid")
+	if err := os.WriteFile(uidPath, realUID, 0o644); err != nil {
+		t.Fatalf("seed subuid fixture: %v", err)
+	}
+	if err := os.WriteFile(gidPath, realGID, 0o644); err != nil {
+		t.Fatalf("seed subgid fixture: %v", err)
+	}
+	restoreUID := subUIDPath
+	restoreGID := subGIDPath
+	restoreLock := subIDLockDir
+	subUIDPath, subGIDPath, subIDLockDir = uidPath, gidPath, dir
+	t.Cleanup(func() {
+		subUIDPath, subGIDPath, subIDLockDir = restoreUID, restoreGID, restoreLock
+	})
 
 	if err := configureSubIDs(t.Context(), u.Username); err != nil {
 		t.Fatalf("configureSubIDs for current user: %v", err)
 	}
 
-	// Verify a line for the user exists in /etc/subuid.
-	data, err := os.ReadFile("/etc/subuid")
+	// The entry the host already had must survive byte-for-byte, and the
+	// allocator must not have appended a second one for the same name.
+	got, err := os.ReadFile(uidPath)
 	if err != nil {
-		t.Fatalf("read /etc/subuid: %v", err)
+		t.Fatalf("read subuid fixture: %v", err)
 	}
-	found := false
-	for _, line := range strings.Split(string(data), "\n") {
-		fields := strings.Split(strings.TrimSpace(line), ":")
-		if len(fields) >= 1 && fields[0] == u.Username {
-			found = true
-			break
-		}
+	if string(got) != string(realUID) {
+		t.Errorf("existing subuid database was rewritten: got %q, want %q", got, realUID)
 	}
-	if !found {
-		t.Errorf("no subuid entry for user %q", u.Username)
+	if n := strings.Count(string(got), u.Username+":"); n != strings.Count(string(realUID), u.Username+":") {
+		t.Errorf("subuid entry count for %q changed: %d -> %d", u.Username, strings.Count(string(realUID), u.Username+":"), n)
 	}
 }
 
