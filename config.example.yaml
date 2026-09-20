@@ -29,6 +29,16 @@ server:
 auth:
   enabled: true               # require the master token on every request
   token: "your-master-token-here"  # CHANGE ME — also used by `bunker connect`
+  # GAP-129 secret storage: keep the credential OUT of this file instead of
+  # inlining it. Precedence (highest last): inline < *_file path < env-file.
+  #   token_file: /etc/bunkerd/secrets/token          # mode 0600
+  #   jwt_secret_file: /etc/bunkerd/secrets/jwt_secret
+  #   BUNKER_AUTH_TOKEN_FILE       (env) — same, but wins over the config
+  #   BUNKER_AUTH_JWT_SECRET_FILE  (env)
+  # A set-but-unreadable path is a hard startup error (no silent fallback).
+  # jwt_secret is auto-generated on first boot when it is empty and a token
+  # exists: persisted 0600 at $BUNKER_SECRETS_DIR/jwt_secret (default
+  # ~/.config/bunkerd/secrets/) and never rotated on restart.
   # jwt_secret: ""            # optional; auto-generated when empty
   # jwt_ttl: 6h
 

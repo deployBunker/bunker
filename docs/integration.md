@@ -249,6 +249,11 @@ URL works for gRPC or REST — connect-go negotiates per request).
 Auth is **secure-by-default** (`auth.enabled: true` in `config.example.yaml`):
 
 - **Master token**: configured via `auth.token` (or `BUNKERD_AUTH_TOKEN` env).
+  Since GAP-129 the credential can stay out of the config file entirely:
+  `auth.token_file` names a 0600 file, and `BUNKER_AUTH_TOKEN_FILE` (env) wins
+  over both it and the inline value — precedence inline < file path <
+  env-file. A path that is set but unreadable is a hard startup error, never a
+  silent fallback to a weaker source.
   Sent on every request as `Authorization: Bearer <token>`. Without a valid
   token the server returns `401`; missing header and wrong token are both
   rejected before any RPC logic runs (`Config.CheckAuth()` startup gate —

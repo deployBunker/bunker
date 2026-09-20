@@ -151,6 +151,19 @@ Docker agent hosts. Send SIGINT/SIGTERM for graceful shutdown.
 
 	// Authentication gate: refuse to start when auth is enabled but no
 	// credential is configured; warn loudly when auth is explicitly disabled.
+	//
+	// GAP-129 runs first: config.Load has already resolved the inline /
+	// *_FILE / BUNKER_AUTH_*_FILE credential sources; EnsureJWTSecret then
+	// loads the persisted jwt_secret or generates one on first boot, so the
+	// gate below sees the secret that will actually sign tokens and the
+	// apikey manager is seeded with the same value it will keep across
+	// restarts. A generation/persistence failure is fatal here — before any
+	// listener binds.
+	if notice, err := cfg.EnsureJWTSecret(); err != nil {
+		return fmt.Errorf("refusing to start: %w", err)
+	} else if notice != "" {
+		fmt.Fprintln(os.Stderr, notice)
+	}
 	if warn, err := cfg.CheckAuth(); err != nil {
 		return fmt.Errorf("refusing to start: %w", err)
 	} else if warn != "" {

@@ -68,10 +68,17 @@ that). Whether `archive` should remain the default is an owner decision (PRD §8
 
 ## 4. Confidentiality of the control plane
 
-- **Secrets are inline in the config file.** `auth.token` and `auth.jwt_secret` live in
-  `/etc/bunkerd/config.yaml`. There is no `*_FILE`/env indirection and no dedicated
-  `0600` secrets directory today (SEC-14 / REQ-I5). Protect the file with host permissions:
-  `chmod 600 /etc/bunkerd/config.yaml`.
+- **Secrets can be kept out of the config file.** `auth.token` and
+  `auth.jwt_secret` accept three sources, resolved in this precedence order
+  (highest last): inline in `/etc/bunkerd/config.yaml` (legacy — the daemon
+  warns at startup), `auth.token_file` / `auth.jwt_secret_file` naming a file,
+  and the `BUNKER_AUTH_TOKEN_FILE` / `BUNKER_AUTH_JWT_SECRET_FILE` env vars.
+  Generated secrets are persisted under `$BUNKER_SECRETS_DIR` (default
+  `~/.config/bunkerd/secrets`) with directory mode `0700` and file mode `0600`
+  (SEC-14 / REQ-I5). A set-but-unreadable path is a hard startup error rather
+  than a silent fallback; an inline credential still works and is warned
+  about. Until every credential is moved, protect the file with host
+  permissions: `chmod 600 /etc/bunkerd/config.yaml`.
 - **Transport may be plaintext.** TLS is off by default (SEC-02/SEC-03). Until REQ-T1/T2
   land, any control-plane data on a non-loopback link is observable.
 - **Audit trail confidentiality** is whatever your host permissions provide; it may contain
@@ -86,7 +93,7 @@ that). Whether `archive` should remain the default is an owner decision (PRD §8
 | No retention/aging engine | No retention period can be promised | REQ-D4 |
 | `archive` default | "destroy" does not delete by default | REQ-D4 / owner decision |
 | Audit not anchored off-box by default | Tamper-evidence is conditional | REQ-A2 |
-| Secrets inline in config | Config copies/backups carry credentials | REQ-I5 |
+| Secrets inline in config | Config copies/backups carry credentials when the operator keeps them inline | REQ-I5 (0600-file indirection shipped; the shipped example still inlines a placeholder token) |
 | No per-operator identity | Access logs attribute to "the operator", not a person | REQ-I1 |
 | Exec command content only in syslog | Forensic completeness for exec is partial | REQ-A3 |
 | No egress policy | Data-exfiltration containment is not enforced by Bunker | REQ-E1 |
