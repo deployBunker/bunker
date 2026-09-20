@@ -191,7 +191,7 @@ func chooseSubIDRangeStart(entries []subIDEntry) (int64, bool) {
 		if u.end() <= cand {
 			continue // entirely below the candidate
 		}
-		if u.start >= cand+subIDRangeSize-1 {
+		if u.start >= cand+subIDRangeSize {
 			break // the block fits in the gap in front of this occupant
 		}
 		cand = u.end() // jump past the occupant and look again
