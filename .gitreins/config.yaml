@@ -19,7 +19,12 @@ defaults:
   # Pre-solve class gitreins-judge-tier2-evaluator-time-cap-incomplete (corpus 1464)
   # prescribes an isolated chore raise + a re-judge on the UNCHANGED commit.
   max_iterations: 200
-  max_time: "45m"
+  # ESCALATION (25m -> 45m -> 60m): 25m starved twice on DF-BUNKER-25 (verdicts
+  # 2c1b6bcd + d5a02a07). 45m starved twice on DF-BUNKER-31 (verdict 0b489dc9
+  # items:[] + async job-27f8d7f4 re-run, both "Time cap (45m) exceeded",
+  # tier1 PASS — a cap, not merits). Two starved runs at one rung license
+  # exactly ONE raise: 45m -> 60m (tick 500).
+  max_time: "60m"
   # ESCALATION (2M -> 4M -> 8M -> 16M): each rung bought about one tick. Raised to
   # 16M on tick 451 after INT-SPAWN-001's Tier 2 hit "Cap exceeded: Input token budget
   # (8.0M) exceeded (8.0M used)" -> INCOMPLETE verdict 73e7ecae. NO FURTHER RUNG:
@@ -79,10 +84,10 @@ tier1:
 evaluator:
   model: deepseek-v4-flash
   max_iterations: 200
-  max_time: "45m"   # tick 484: 25m starved twice on DF-BUNKER-25 (see the defaults block)
+  max_time: "60m"   # tick 500: 45m starved twice on DF-BUNKER-31 (defaults block)
   max_input_tokens: "16M"
   max_output_tokens: "384k"
-  cap: "200/45m/16M/384k"
+  cap: "200/60m/16M/384k"
   # ── Context-growth knobs (INT-CI-014, measured 2026-09-17) ────
   # MEASURED (docs/tier2-eval-budget.md, instrumented runs e6d24301 + 616c1d33 on
   # INT-CI-017 at HEAD 848625c): 23 LLM calls, per-call prompt 6,211 -> 29,323
