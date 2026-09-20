@@ -68,49 +68,69 @@ This is where the local and remote surfaces diverge most, and where a naive mapp
 
 **Note on optional verbs:** `bunker_lsp` needs a language server *on the agent*, so it is the one verb that may legitimately be unavailable. It answers `capability_unavailable` naming what is missing (see below) rather than disappearing from the surface — which is the design point of the next section.
 
-## The surface is CONSTANT. The bunker is an argument.
+## The surface is CONSTANT in SHAPE. Each session's ENABLED SET is its own.
 
-This is the rule that keeps the design from exploding, and it is worth stating as a hard constraint because the obvious wrong turn is very inviting.
+Two rules that are easy to conflate, and conflating them is how this design goes wrong in either direction.
 
-**The wrong turn:** register tools *per bunker*. N verbs × M bunkers. With this fleet's real numbers that is not hypothetical — 2 agents live today, a fleet that runs to dozens, and a verb set of ten. Twenty bunkers would mean **twenty read tools, twenty search tools, two hundred registrations**, plus a discovery and sync problem: every spawn, destroy and restart changes the tool list, so the agent's tool surface becomes a function of remote infrastructure state.
+**Rule A — shape is fixed by verb count.** The *catalog* of verbs is independent of how many bunkers exist. Adding a twentieth bunker must not add a twentieth read tool.
 
-**The rule:** *the tool count is fixed by the number of verbs and is completely independent of how many bunkers exist.* The target is **data**, resolved in this order:
+**Rule B — the enabled set is session-mutable.** Which verbs *this session* has enabled is dynamic: a session can enable or disable a tool mid-life, and that changes the tool list that session is offered. Rule A does not forbid this; it only forbids the catalog from being a function of remote infrastructure.
 
-1. **explicit argument** on the call — `bunker_read(target, ...)`
-2. **the session's binding** — `bunker_bind(server, agent, repo)` once at session start, then every call uses it
-3. **refusal** naming the missing binding — never a global fallback
+Together: *one catalog, N independently mutable session views.*
 
-So "which bunker" is a *value*, and the tool list is a constant. Nothing registers per-bunker; nothing has to be confirmed per agent; spawning or destroying a bunker does not change the surface I am offered.
+### Why the two are different problems
 
-### What "tool state" actually is
-
-The state this design needs is small and session-scoped, not per-bunker:
-
-| State | Cardinality | Where |
+| | Catalog (Rule A) | Enabled set (Rule B) |
 |---|---|---|
-| session → bound target | one row per session | session profile (`BUNKER_HOME`), keyed by `HERMES_SESSION_ID` |
-| session → server list + token | one file per session | `$BUNKER_HOME/config.yaml` |
-| which bunkers exist | fleet-wide inventory | the scheduler / `bunker list` — **not a tool-registration concern** |
+| Depends on | the verb list — a code constant | session intent and task |
+| Changes when | a verb is added to the code | a session enables/disables, at any time |
+| Cardinality | **1**, fleet-wide | one row **per session** |
+| Must not depend on | bunker count | any other session |
 
-There is deliberately **no** per-bunker tool table, no capability sync, and no dynamic registration to reconcile.
+### The current isolation gap (measured)
 
-### Capability variance is an ERROR, not a dynamic list
+Hermes today has both halves of this, but they are at different scopes:
 
-Bunkers differ — an older daemon lacks a verb, an agent has no language server, an agent is stopped. The tempting answer is to reflect that in the tool list. The rule is the opposite:
+- `hermes chat -t <toolsets>` selects toolsets for **one run** — genuinely per-session, but ephemeral and set only at start.
+- `hermes tools enable|disable` is the **persistent** surface, and it writes to a single global config: `agent.disabled_toolsets` and `plugins.disabled` in one `config.yaml` read by **every** session on the box.
 
-- the verb stays on the surface
-- the call returns an explicit, structured failure naming what is missing and what to do — `capability_unavailable: toolsd not found on agent` / `agent_stopped` / `predates capability reporting`
-- the binding verify (below) reports the *known* capability set once per binding, so the failure is predictable rather than surprising
+So enabling a tool for one session currently toggles a global — the same shared-mutable-pointer shape as `active_server` on the routing side (22 implicit sites, rewritten mid-session). A session that enables a verb for its own task silently changes what every other session is offered.
 
-That keeps the surface constant and fail-visible. A dynamic tool list would make the same information arrive as a silently missing tool, which is strictly worse: the agent cannot distinguish "not supported" from "not loaded" from "I forgot".
+**Design rule: a session's enabled set is session state, never global config.** Enabling a verb for this session writes one row — this session's own — and re-projects the tool list for this session only. Nothing else on the box changes.
 
-### How this is delivered without a registration step
+### Tool state: what is shared and what is never shared
 
-Nothing here requires a new tool registration per bunker, and in the common case it requires **none at all**:
+The requirement is precise: a tool loaded for one session must not reuse another session's state. The clean split that satisfies it *and* keeps memory bounded:
 
-- **`toolsd` already serves itself as MCP** (`toolsd mcp` — every verb as a tool over stdio). The edit primitives can be exposed **once**, with the bunker as the execution target rather than a tool dimension.
-- **The Hermes shim** (S6) adds the `bunker_*` verbs **once** in the Hermes agent project, with `target` as an argument.
-- The long-term shape: my existing editing tools (`read_file`, `patch`, `search_files`) keep their names and parameters, and the shim routes them to the bound target — so the surface I see does not change at all as bunkers come and go.
+| Layer | Sharing | Why |
+|---|---|---|
+| **Registration metadata** (name, JSON schema, description) | **shared, immutable** | it is identical for every session; duplicating it would cost memory × sessions for zero isolation benefit |
+| **Enabled set** (which verbs this session sees) | **per session**, mutable | this is the isolation boundary that Rule B needs |
+| **Execution state** (MCP client connection, plugin instance, LSP session, caches, lease handles, open file handles) | **per session, never shared** | this is where "reusing state from other sessions" actually happens, and it is the thing that must not leak |
+
+**The rule:** *registrations are shared and immutable; execution state is per-session and never pooled across sessions.*
+
+A pooled stateful client handed from session A to session B is exactly the leak to prevent — B would inherit A's subscriptions, working directory, half-open file, cached reads, or LSP document state. Envelope those per session; pool only what is provably stateless.
+
+**Resource honesty:** per-session execution state costs memory in proportion to *concurrently active* sessions, not total sessions (1,264 starts/day, far fewer concurrent). Reclaim on session end; a session that dies must not strand its connections. If a verb's per-session state is expensive, the mitigation is to make the client stateless or lazy — not to share it.
+
+### What the session tool list is, mechanically
+
+1. **catalog** — a constant list of verb definitions (shared, immutable)
+2. **session enabled set** — a per-session row, defaulted from a profile, mutable at runtime
+3. **projection** — the intersection, rendered into that session's system prompt as the tool list the model sees
+4. **dispatch** — a call resolves against **the session's own enabled set**, never a global; an unenabled verb is refused as `tool_not_enabled_in_session`, distinct from `capability_unavailable`
+5. **state** — any instance the call creates is keyed `(session_id, tool)` and released at session end
+
+Because the projection is per-session, enabling a tool mid-session is a local change that takes effect for that session on its next turn, and is invisible to every other session.
+
+### Delivery with no per-bunker, and no per-session, registration step
+
+- `toolsd mcp` already serves every verb as an MCP tool — the **catalog** is one registration with the bunker as an argument.
+- The `bunker_*` shim is registered **once** in the Hermes agent project.
+- What varies per session is only the enabled set and the execution state — both data, neither a registration.
+
+So: **no per-bunker tools, no per-session re-registration, and still fully per-session dynamic enable/disable.**
 
 ## Routing: always the right bunker
 
@@ -195,6 +215,9 @@ Six of the seven gaps are small. The shim is the only large piece, and it cannot
 11. **Constant-surface proof (the anti-explosion criterion).** Spawn a fourth bunker and destroy a fifth, then enumerate the offered tool list. → The count and names are **byte-identical** before and after; nothing registered, nothing removed. Repeat with two sessions bound to different bunkers in the same moment: each sees the same constant list, and only the *target* differs.
 12. **Parameter-parity proof.** For each of `read`, `search`, `write`, `edit`, `patch`, `apply`, run the same arguments locally and remotely on the same file and diff the results. → Identical output modulo the tree, including `read`'s `offset`/`limit` windowing and line numbering, `search`'s three `output_mode` shapes and `context`, and `edit`'s unique-match refusal naming the occurrence count. Any difference is recorded as a documented divergence, not left implicit.
 13. **Capability-error proof.** Call a verb the target genuinely lacks (e.g. `bunker_lsp` on an agent with no language server). → The verb is still on the surface and returns a structured `capability_unavailable` naming the missing piece; the tool list did not change.
+14. **Session-isolation proof (the enable/disable requirement).** Two concurrent sessions. Session A disables a tool and Session B leaves it enabled; then both enable/disable a different tool in the same minute. → Each session's offered tool list is exactly what *that* session set; B's list is unchanged by A's toggles in both directions, and the global config's `disabled_toolsets` / `plugins.disabled` are byte-identical before and after. Neither session's change is visible in the other.
+15. **No-state-reuse proof.** Session A loads a stateful tool (MCP client, LSP session, or a cached read) and leaves it warm; Session B then loads the same tool. → B receives a fresh instance with no A-derived state: no inherited working directory, cached read, open handle, subscription or document version. Prove it by having A leave a distinguishable artifact (a cached value or an open path) and asserting B's instance does not contain it.
+16. **No-stranding proof.** Kill a session holding per-session tool state. → Its connections/instances are reclaimed on session end rather than stranded, and a subsequent session's memory footprint is unaffected by the dead session's prior state.
 
 ## Risks
 
@@ -217,6 +240,7 @@ Six of the seven gaps are small. The shim is the only large piece, and it cannot
 | **S4** session-id attribution | **S** | attributed audits | S1 |
 | **S5** `toolsd` on agents via image-spec | **M** | reproducibility | S1 |
 | **S6** Hermes shim + per-session profile | **L** | the surface above | S2, S3, CHT-052 |
+| **S8** per-session tool enable/disable + state isolation | **M** | enables Rule B: session-scoped enabled set, per-session execution state | S6 (Hermes agent project) |
 | **S7** reconcile + accuracy loops | **M** | keeps refusals honest | S1 |
 | **CHT-052** lease wrapper (remote trees) | **M** | leases not skipped | S1 |
 
