@@ -204,7 +204,10 @@ func unmount(mountPoint string, force bool) error {
 		}
 	}
 
-	// Prefer fusermount for FUSE mounts; fall back to umount for the rest.
+	// Prefer fusermount for FUSE mounts (normal first, then the lazy -uz
+	// retry); fall back to plain umount (then umount -l) for the rest.
+	// The fallback chain is only reachable because runWithTimeout executes
+	// each attempt exactly once (DF-BUNKER-38).
 	if _, err := exec.LookPath("fusermount3"); err == nil {
 		if out, err := runWithTimeout(exec.Command("fusermount3", "-u", mountPoint), umountTimeout); err != nil {
 			_ = out

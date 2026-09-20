@@ -436,28 +436,3 @@ echo "branch="$(git -C "$p" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
-
-// runWithTimeout runs a command with a hard deadline, returning combined output.
-func runWithTimeout(cmd *exec.Cmd, timeout time.Duration) (string, error) {
-	type result struct {
-		out []byte
-		err error
-	}
-	done := make(chan result, 1)
-	if err := cmd.Start(); err != nil {
-		return "", err
-	}
-	go func() {
-		out, err := cmd.CombinedOutput()
-		done <- result{out, err}
-	}()
-	select {
-	case r := <-done:
-		return string(r.out), r.err
-	case <-time.After(timeout):
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
-		return "", fmt.Errorf("timed out after %s", timeout)
-	}
-}
