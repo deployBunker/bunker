@@ -271,6 +271,13 @@ func TestResidueInventory_NoReadablePlaneIsUnavailable(t *testing.T) {
 // counts (an operator's own files live in these directories too).
 func TestResidueInventory_IgnoresUnrelatedEntries(t *testing.T) {
 	f := newResidueFixture(t)
+	// The linger plane classifies an entry by USER EXISTENCE (INT-HOST-004),
+	// not by the managed name prefix, so the "kara" expectation below reads the
+	// AMBIENT user database. Stub the probe so a real user named kara resolves
+	// on every host: on a CI runner no such account exists and the seeded
+	// linger entry would otherwise count as stale, failing this test for a
+	// reason that has nothing to do with the property it asserts.
+	lingerStubbedUsersExist(t, []string{"kara"})
 	f.addUser(t, "real-ghost")
 	// Uppercase is not a valid agent id; "other-" does not carry the prefix; a
 	// dotfile is never an agent.
