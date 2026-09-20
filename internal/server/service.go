@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -604,6 +605,35 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 		cmd = execSSHCommandBuilder(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args, disclosed, imageRef)
 	}
 
+	// GAP-094: optional stdin. The payload rides a TEMP FILE, not a pipe:
+	// cmd.Wait() closes the parent's StdinPipe write-end itself (Go 1.20+), so
+	// closing it from our own goroutine double-closes the fd — and when the fd
+	// number is reused by an unrelated socket in between, Wait's cleanup kills
+	// that socket (observed as randomly truncated exec streams in the
+	// DF-BUNKER-27 interleaving battery). A file gives the child natural EOF at
+	// its end, bounds even a large payload without pipe backpressure, and
+	// involves no goroutines.
+	if payload := req.Msg.GetStdinPayload(); len(payload) > 0 {
+		tmp, err := os.CreateTemp("", "bunker-exec-stdin-")
+		if err != nil {
+			return connect.NewError(connect.CodeInternal, fmt.Errorf("stdin temp file: %w", err))
+		}
+		defer os.Remove(tmp.Name())
+		if _, err := tmp.Write(payload); err != nil {
+			tmp.Close()
+			return connect.NewError(connect.CodeInternal, fmt.Errorf("stdin temp write: %w", err))
+		}
+		if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+			tmp.Close()
+			return connect.NewError(connect.CodeInternal, fmt.Errorf("stdin temp seek: %w", err))
+		}
+		// The child reads the file to EOF; no close races are possible.
+		cmd.Stdin = tmp
+	}
+	// No payload: leave Stdin nil — the process reads the null device, which is
+	// byte-identical to the pre-GAP-094 behavior for every command.
+	encoding := req.Msg.GetResponseEncoding()
+
 	// DF-BUNKER-27: connect's ServerStream.Send is not safe for concurrent use.
 	// The two pipe streamers and the frames emitted after the command finished
 	// used to write the same HTTP response from three goroutines, which
@@ -612,8 +642,16 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 	// response.WriteHeader call" in the journal). Every frame — pipe output and
 	// post-exec frames alike — now goes through ONE mutex-guarded sender.
 	sender := &execStreamSender{stream: stream, logger: s.logger}
-	stdoutSink := &execStreamSink{sender: sender}
-	stderrSink := &execStreamSink{sender: sender, stderr: true}
+	// GAP-094 cap: per-request override may LOWER the server ceiling, never
+	// raise it (a client cannot make the daemon buffer unbounded memory).
+	encCap := ExecResponseCapBytes
+	if reqCap := req.Msg.GetResponseCapBytes(); reqCap > 0 && reqCap < uint64(encCap) {
+		encCap = int(reqCap)
+	}
+	stdoutWrap := &execEncodingWriter{sender: sender, encoding: encoding, capBytes: encCap}
+	stderrWrap := &execEncodingWriter{sender: sender, encoding: encoding, capBytes: encCap, stderr: true}
+	stdoutSink := &execStreamSink{sender: sender, wrap: stdoutWrap}
+	stderrSink := &execStreamSink{sender: sender, stderr: true, wrap: stderrWrap}
 
 	// Let the exec package own the pipes: its copy goroutines write into the
 	// sinks and cmd.Wait joins them, so both pipes are drained to EOF before the
@@ -694,10 +732,20 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 		})
 	}
 
-	// Send final exit code
-	sender.send("send exit code", &v1.ExecAgentResponse{
-		ExitCode: exitCode,
-	})
+	// Send final exit code; GAP-094: attach the truncation notice (if any) so
+	// the LAST frame states exactly what was dropped and how to get the rest.
+	final := &v1.ExecAgentResponse{ExitCode: exitCode}
+	if notice := stdoutWrap.finalNotice(); notice != "" {
+		final.TruncationNotice = notice
+	}
+	if notice := stderrWrap.finalNotice(); notice != "" {
+		if final.TruncationNotice != "" {
+			final.TruncationNotice = final.TruncationNotice + "; stderr truncated: " + notice
+		} else {
+			final.TruncationNotice = "stderr truncated: " + notice
+		}
+	}
+	sender.send("send exit code", final)
 
 	return nil
 }
@@ -740,6 +788,9 @@ func (w *execStreamSender) send(label string, msg *v1.ExecAgentResponse) {
 type execStreamSink struct {
 	sender *execStreamSender
 	stderr bool
+	// GAP-094: when set, frames flow through the encoding/cap wrapper; nil
+	// means the legacy raw path (used by tests that construct sinks directly).
+	wrap *execEncodingWriter
 
 	bytes       int
 	sent        bool
@@ -751,6 +802,16 @@ type execStreamSink struct {
 // would surface through cmd.Wait() as a non-exit failure (CodeInternal).
 func (w *execStreamSink) Write(p []byte) (int, error) {
 	n := len(p)
+	if w.wrap != nil {
+		// Encoding-aware path: accounting for bytes/sent happens inside.
+		w.bytes += n
+		w.endsNewline = n > 0 && p[n-1] == '\n'
+		sent, _ := w.wrap.Write(p)
+		if sent > 0 || w.wrap.truncated {
+			w.sent = true
+		}
+		return n, nil
+	}
 	if markerCountsAsSent(n) {
 		w.bytes += n
 		w.sent = true

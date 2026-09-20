@@ -21,6 +21,55 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// How the response carries stdout/stderr. TEXT (zero) is the default and is
+// byte-identical to pre-GAP-094 behavior; BASE64 lets a caller ship non-UTF8
+// bytes through anything that insists on text without corruption.
+type ExecEncoding int32
+
+const (
+	ExecEncoding_EXEC_ENCODING_TEXT   ExecEncoding = 0
+	ExecEncoding_EXEC_ENCODING_BASE64 ExecEncoding = 1
+)
+
+// Enum value maps for ExecEncoding.
+var (
+	ExecEncoding_name = map[int32]string{
+		0: "EXEC_ENCODING_TEXT",
+		1: "EXEC_ENCODING_BASE64",
+	}
+	ExecEncoding_value = map[string]int32{
+		"EXEC_ENCODING_TEXT":   0,
+		"EXEC_ENCODING_BASE64": 1,
+	}
+)
+
+func (x ExecEncoding) Enum() *ExecEncoding {
+	p := new(ExecEncoding)
+	*p = x
+	return p
+}
+
+func (x ExecEncoding) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ExecEncoding) Descriptor() protoreflect.EnumDescriptor {
+	return file_proto_bunker_v1_bunker_proto_enumTypes[0].Descriptor()
+}
+
+func (ExecEncoding) Type() protoreflect.EnumType {
+	return &file_proto_bunker_v1_bunker_proto_enumTypes[0]
+}
+
+func (x ExecEncoding) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ExecEncoding.Descriptor instead.
+func (ExecEncoding) EnumDescriptor() ([]byte, []int) {
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{0}
+}
+
 type NetworkConfig_Mode int32
 
 const (
@@ -57,11 +106,11 @@ func (x NetworkConfig_Mode) String() string {
 }
 
 func (NetworkConfig_Mode) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_bunker_v1_bunker_proto_enumTypes[0].Descriptor()
+	return file_proto_bunker_v1_bunker_proto_enumTypes[1].Descriptor()
 }
 
 func (NetworkConfig_Mode) Type() protoreflect.EnumType {
-	return &file_proto_bunker_v1_bunker_proto_enumTypes[0]
+	return &file_proto_bunker_v1_bunker_proto_enumTypes[1]
 }
 
 func (x NetworkConfig_Mode) Number() protoreflect.EnumNumber {
@@ -1973,15 +2022,21 @@ func (x *HeartbeatAgentResponse) GetAcknowledged() bool {
 }
 
 type ExecAgentRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	AgentId        string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
-	Command        string                 `protobuf:"bytes,2,opt,name=command,proto3" json:"command,omitempty"`
-	Args           []string               `protobuf:"bytes,3,rep,name=args,proto3" json:"args,omitempty"`
-	TimeoutSeconds uint32                 `protobuf:"varint,4,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
-	Raw            bool                   `protobuf:"varint,5,opt,name=raw,proto3" json:"raw,omitempty"`                                         // Bypass shell interpretation; exec directly
-	ScriptContent  string                 `protobuf:"bytes,6,opt,name=script_content,json=scriptContent,proto3" json:"script_content,omitempty"` // Optional: upload and execute this script
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	AgentId          string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Command          string                 `protobuf:"bytes,2,opt,name=command,proto3" json:"command,omitempty"`
+	Args             []string               `protobuf:"bytes,3,rep,name=args,proto3" json:"args,omitempty"`
+	TimeoutSeconds   uint32                 `protobuf:"varint,4,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
+	Raw              bool                   `protobuf:"varint,5,opt,name=raw,proto3" json:"raw,omitempty"`                                                                               // Bypass shell interpretation; exec directly
+	ScriptContent    string                 `protobuf:"bytes,6,opt,name=script_content,json=scriptContent,proto3" json:"script_content,omitempty"`                                       // Optional: upload and execute this script
+	StdinPayload     []byte                 `protobuf:"bytes,7,opt,name=stdin_payload,json=stdinPayload,proto3" json:"stdin_payload,omitempty"`                                          // Optional: piped to the command's stdin
+	ResponseEncoding ExecEncoding           `protobuf:"varint,8,opt,name=response_encoding,json=responseEncoding,proto3,enum=bunker.v1.ExecEncoding" json:"response_encoding,omitempty"` // Optional: how stdout/stderr are returned
+	// Optional: per-request raw-output cap in bytes (each direction). 0 = server
+	// default (512MiB). Lets a cautious caller lower the cap without a server
+	// config change; can never RAISE it past the server ceiling.
+	ResponseCapBytes uint64 `protobuf:"varint,9,opt,name=response_cap_bytes,json=responseCapBytes,proto3" json:"response_cap_bytes,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *ExecAgentRequest) Reset() {
@@ -2056,16 +2111,40 @@ func (x *ExecAgentRequest) GetScriptContent() string {
 	return ""
 }
 
+func (x *ExecAgentRequest) GetStdinPayload() []byte {
+	if x != nil {
+		return x.StdinPayload
+	}
+	return nil
+}
+
+func (x *ExecAgentRequest) GetResponseEncoding() ExecEncoding {
+	if x != nil {
+		return x.ResponseEncoding
+	}
+	return ExecEncoding_EXEC_ENCODING_TEXT
+}
+
+func (x *ExecAgentRequest) GetResponseCapBytes() uint64 {
+	if x != nil {
+		return x.ResponseCapBytes
+	}
+	return 0
+}
+
 type ExecAgentResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Output:
 	//
 	//	*ExecAgentResponse_Stdout
 	//	*ExecAgentResponse_Stderr
-	Output        isExecAgentResponse_Output `protobuf_oneof:"output"`
-	ExitCode      int32                      `protobuf:"varint,3,opt,name=exit_code,json=exitCode,proto3" json:"exit_code,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Output   isExecAgentResponse_Output `protobuf_oneof:"output"`
+	ExitCode int32                      `protobuf:"varint,3,opt,name=exit_code,json=exitCode,proto3" json:"exit_code,omitempty"`
+	// Set on the FINAL frame when any output was truncated: names the cap in
+	// bytes and the remedy. Never set when nothing was dropped.
+	TruncationNotice string `protobuf:"bytes,4,opt,name=truncation_notice,json=truncationNotice,proto3" json:"truncation_notice,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *ExecAgentResponse) Reset() {
@@ -2128,6 +2207,13 @@ func (x *ExecAgentResponse) GetExitCode() int32 {
 		return x.ExitCode
 	}
 	return 0
+}
+
+func (x *ExecAgentResponse) GetTruncationNotice() string {
+	if x != nil {
+		return x.TruncationNotice
+	}
+	return ""
 }
 
 type isExecAgentResponse_Output interface {
@@ -2837,18 +2923,22 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x1d\n" +
 	"\n" +
 	"expires_at\x18\x02 \x01(\tR\texpiresAt\x12\"\n" +
-	"\facknowledged\x18\x03 \x01(\bR\facknowledged\"\xbd\x01\n" +
+	"\facknowledged\x18\x03 \x01(\bR\facknowledged\"\xd6\x02\n" +
 	"\x10ExecAgentRequest\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x18\n" +
 	"\acommand\x18\x02 \x01(\tR\acommand\x12\x12\n" +
 	"\x04args\x18\x03 \x03(\tR\x04args\x12'\n" +
 	"\x0ftimeout_seconds\x18\x04 \x01(\rR\x0etimeoutSeconds\x12\x10\n" +
 	"\x03raw\x18\x05 \x01(\bR\x03raw\x12%\n" +
-	"\x0escript_content\x18\x06 \x01(\tR\rscriptContent\"n\n" +
+	"\x0escript_content\x18\x06 \x01(\tR\rscriptContent\x12#\n" +
+	"\rstdin_payload\x18\a \x01(\fR\fstdinPayload\x12D\n" +
+	"\x11response_encoding\x18\b \x01(\x0e2\x17.bunker.v1.ExecEncodingR\x10responseEncoding\x12,\n" +
+	"\x12response_cap_bytes\x18\t \x01(\x04R\x10responseCapBytes\"\x9b\x01\n" +
 	"\x11ExecAgentResponse\x12\x18\n" +
 	"\x06stdout\x18\x01 \x01(\fH\x00R\x06stdout\x12\x18\n" +
 	"\x06stderr\x18\x02 \x01(\fH\x00R\x06stderr\x12\x1b\n" +
-	"\texit_code\x18\x03 \x01(\x05R\bexitCodeB\b\n" +
+	"\texit_code\x18\x03 \x01(\x05R\bexitCode\x12+\n" +
+	"\x11truncation_notice\x18\x04 \x01(\tR\x10truncationNoticeB\b\n" +
 	"\x06output\"\x9e\x02\n" +
 	"\x0fRunAgentRequest\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x18\n" +
@@ -2898,7 +2988,10 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\tprev_hash\x18\n" +
 	" \x01(\tR\bprevHash\"F\n" +
 	"\x12QueryAuditResponse\x120\n" +
-	"\arecords\x18\x01 \x03(\v2\x16.bunker.v1.AuditRecordR\arecords2\xba\b\n" +
+	"\arecords\x18\x01 \x03(\v2\x16.bunker.v1.AuditRecordR\arecords*@\n" +
+	"\fExecEncoding\x12\x16\n" +
+	"\x12EXEC_ENCODING_TEXT\x10\x00\x12\x18\n" +
+	"\x14EXEC_ENCODING_BASE64\x10\x012\xba\b\n" +
 	"\aBunkerd\x12I\n" +
 	"\n" +
 	"ServerInfo\x12\x1c.bunker.v1.ServerInfoRequest\x1a\x1d.bunker.v1.ServerInfoResponse\x12R\n" +
@@ -2936,107 +3029,109 @@ func file_proto_bunker_v1_bunker_proto_rawDescGZIP() []byte {
 	return file_proto_bunker_v1_bunker_proto_rawDescData
 }
 
-var file_proto_bunker_v1_bunker_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_proto_bunker_v1_bunker_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_proto_bunker_v1_bunker_proto_msgTypes = make([]protoimpl.MessageInfo, 39)
 var file_proto_bunker_v1_bunker_proto_goTypes = []any{
-	(NetworkConfig_Mode)(0),        // 0: bunker.v1.NetworkConfig.Mode
-	(*ResourceLimits)(nil),         // 1: bunker.v1.ResourceLimits
-	(*NetworkConfig)(nil),          // 2: bunker.v1.NetworkConfig
-	(*ServerInfoRequest)(nil),      // 3: bunker.v1.ServerInfoRequest
-	(*ServerInfoResponse)(nil),     // 4: bunker.v1.ServerInfoResponse
-	(*ResidueInventory)(nil),       // 5: bunker.v1.ResidueInventory
-	(*ServerMetricsRequest)(nil),   // 6: bunker.v1.ServerMetricsRequest
-	(*ServerMetricsResponse)(nil),  // 7: bunker.v1.ServerMetricsResponse
-	(*AgentSummary)(nil),           // 8: bunker.v1.AgentSummary
-	(*SpawnAgentRequest)(nil),      // 9: bunker.v1.SpawnAgentRequest
-	(*ImageSpec)(nil),              // 10: bunker.v1.ImageSpec
-	(*PackageAdd)(nil),             // 11: bunker.v1.PackageAdd
-	(*SpawnAgentResponse)(nil),     // 12: bunker.v1.SpawnAgentResponse
-	(*DestroyAgentRequest)(nil),    // 13: bunker.v1.DestroyAgentRequest
-	(*DestroyAgentResponse)(nil),   // 14: bunker.v1.DestroyAgentResponse
-	(*StopAgentRequest)(nil),       // 15: bunker.v1.StopAgentRequest
-	(*StopAgentResponse)(nil),      // 16: bunker.v1.StopAgentResponse
-	(*StartAgentRequest)(nil),      // 17: bunker.v1.StartAgentRequest
-	(*StartAgentResponse)(nil),     // 18: bunker.v1.StartAgentResponse
-	(*RestartAgentRequest)(nil),    // 19: bunker.v1.RestartAgentRequest
-	(*RestartAgentResponse)(nil),   // 20: bunker.v1.RestartAgentResponse
-	(*ListAgentsRequest)(nil),      // 21: bunker.v1.ListAgentsRequest
-	(*ListAgentsResponse)(nil),     // 22: bunker.v1.ListAgentsResponse
-	(*GetAgentRequest)(nil),        // 23: bunker.v1.GetAgentRequest
-	(*GetAgentResponse)(nil),       // 24: bunker.v1.GetAgentResponse
-	(*AgentMetricsRequest)(nil),    // 25: bunker.v1.AgentMetricsRequest
-	(*AgentMetricsResponse)(nil),   // 26: bunker.v1.AgentMetricsResponse
-	(*HeartbeatAgentRequest)(nil),  // 27: bunker.v1.HeartbeatAgentRequest
-	(*HeartbeatAgentResponse)(nil), // 28: bunker.v1.HeartbeatAgentResponse
-	(*ExecAgentRequest)(nil),       // 29: bunker.v1.ExecAgentRequest
-	(*ExecAgentResponse)(nil),      // 30: bunker.v1.ExecAgentResponse
-	(*RunAgentRequest)(nil),        // 31: bunker.v1.RunAgentRequest
-	(*RunAgentResponse)(nil),       // 32: bunker.v1.RunAgentResponse
-	(*GetInfoRequest)(nil),         // 33: bunker.v1.GetInfoRequest
-	(*GetInfoResponse)(nil),        // 34: bunker.v1.GetInfoResponse
-	(*QueryAuditRequest)(nil),      // 35: bunker.v1.QueryAuditRequest
-	(*AuditRecord)(nil),            // 36: bunker.v1.AuditRecord
-	(*QueryAuditResponse)(nil),     // 37: bunker.v1.QueryAuditResponse
-	nil,                            // 38: bunker.v1.SpawnAgentRequest.LabelsEntry
-	nil,                            // 39: bunker.v1.RunAgentRequest.EnvEntry
+	(ExecEncoding)(0),              // 0: bunker.v1.ExecEncoding
+	(NetworkConfig_Mode)(0),        // 1: bunker.v1.NetworkConfig.Mode
+	(*ResourceLimits)(nil),         // 2: bunker.v1.ResourceLimits
+	(*NetworkConfig)(nil),          // 3: bunker.v1.NetworkConfig
+	(*ServerInfoRequest)(nil),      // 4: bunker.v1.ServerInfoRequest
+	(*ServerInfoResponse)(nil),     // 5: bunker.v1.ServerInfoResponse
+	(*ResidueInventory)(nil),       // 6: bunker.v1.ResidueInventory
+	(*ServerMetricsRequest)(nil),   // 7: bunker.v1.ServerMetricsRequest
+	(*ServerMetricsResponse)(nil),  // 8: bunker.v1.ServerMetricsResponse
+	(*AgentSummary)(nil),           // 9: bunker.v1.AgentSummary
+	(*SpawnAgentRequest)(nil),      // 10: bunker.v1.SpawnAgentRequest
+	(*ImageSpec)(nil),              // 11: bunker.v1.ImageSpec
+	(*PackageAdd)(nil),             // 12: bunker.v1.PackageAdd
+	(*SpawnAgentResponse)(nil),     // 13: bunker.v1.SpawnAgentResponse
+	(*DestroyAgentRequest)(nil),    // 14: bunker.v1.DestroyAgentRequest
+	(*DestroyAgentResponse)(nil),   // 15: bunker.v1.DestroyAgentResponse
+	(*StopAgentRequest)(nil),       // 16: bunker.v1.StopAgentRequest
+	(*StopAgentResponse)(nil),      // 17: bunker.v1.StopAgentResponse
+	(*StartAgentRequest)(nil),      // 18: bunker.v1.StartAgentRequest
+	(*StartAgentResponse)(nil),     // 19: bunker.v1.StartAgentResponse
+	(*RestartAgentRequest)(nil),    // 20: bunker.v1.RestartAgentRequest
+	(*RestartAgentResponse)(nil),   // 21: bunker.v1.RestartAgentResponse
+	(*ListAgentsRequest)(nil),      // 22: bunker.v1.ListAgentsRequest
+	(*ListAgentsResponse)(nil),     // 23: bunker.v1.ListAgentsResponse
+	(*GetAgentRequest)(nil),        // 24: bunker.v1.GetAgentRequest
+	(*GetAgentResponse)(nil),       // 25: bunker.v1.GetAgentResponse
+	(*AgentMetricsRequest)(nil),    // 26: bunker.v1.AgentMetricsRequest
+	(*AgentMetricsResponse)(nil),   // 27: bunker.v1.AgentMetricsResponse
+	(*HeartbeatAgentRequest)(nil),  // 28: bunker.v1.HeartbeatAgentRequest
+	(*HeartbeatAgentResponse)(nil), // 29: bunker.v1.HeartbeatAgentResponse
+	(*ExecAgentRequest)(nil),       // 30: bunker.v1.ExecAgentRequest
+	(*ExecAgentResponse)(nil),      // 31: bunker.v1.ExecAgentResponse
+	(*RunAgentRequest)(nil),        // 32: bunker.v1.RunAgentRequest
+	(*RunAgentResponse)(nil),       // 33: bunker.v1.RunAgentResponse
+	(*GetInfoRequest)(nil),         // 34: bunker.v1.GetInfoRequest
+	(*GetInfoResponse)(nil),        // 35: bunker.v1.GetInfoResponse
+	(*QueryAuditRequest)(nil),      // 36: bunker.v1.QueryAuditRequest
+	(*AuditRecord)(nil),            // 37: bunker.v1.AuditRecord
+	(*QueryAuditResponse)(nil),     // 38: bunker.v1.QueryAuditResponse
+	nil,                            // 39: bunker.v1.SpawnAgentRequest.LabelsEntry
+	nil,                            // 40: bunker.v1.RunAgentRequest.EnvEntry
 }
 var file_proto_bunker_v1_bunker_proto_depIdxs = []int32{
-	0,  // 0: bunker.v1.NetworkConfig.mode:type_name -> bunker.v1.NetworkConfig.Mode
-	1,  // 1: bunker.v1.ServerInfoResponse.total_resources:type_name -> bunker.v1.ResourceLimits
-	1,  // 2: bunker.v1.ServerInfoResponse.available_resources:type_name -> bunker.v1.ResourceLimits
-	5,  // 3: bunker.v1.ServerInfoResponse.residue:type_name -> bunker.v1.ResidueInventory
-	8,  // 4: bunker.v1.ServerMetricsResponse.agents:type_name -> bunker.v1.AgentSummary
-	1,  // 5: bunker.v1.AgentSummary.limits:type_name -> bunker.v1.ResourceLimits
-	1,  // 6: bunker.v1.SpawnAgentRequest.limits:type_name -> bunker.v1.ResourceLimits
-	2,  // 7: bunker.v1.SpawnAgentRequest.network:type_name -> bunker.v1.NetworkConfig
-	38, // 8: bunker.v1.SpawnAgentRequest.labels:type_name -> bunker.v1.SpawnAgentRequest.LabelsEntry
-	10, // 9: bunker.v1.SpawnAgentRequest.image_spec:type_name -> bunker.v1.ImageSpec
-	11, // 10: bunker.v1.ImageSpec.packages:type_name -> bunker.v1.PackageAdd
-	1,  // 11: bunker.v1.SpawnAgentResponse.limits:type_name -> bunker.v1.ResourceLimits
-	8,  // 12: bunker.v1.ListAgentsResponse.agents:type_name -> bunker.v1.AgentSummary
-	8,  // 13: bunker.v1.GetAgentResponse.agent:type_name -> bunker.v1.AgentSummary
-	39, // 14: bunker.v1.RunAgentRequest.env:type_name -> bunker.v1.RunAgentRequest.EnvEntry
-	1,  // 15: bunker.v1.GetInfoResponse.limits:type_name -> bunker.v1.ResourceLimits
-	36, // 16: bunker.v1.QueryAuditResponse.records:type_name -> bunker.v1.AuditRecord
-	3,  // 17: bunker.v1.Bunkerd.ServerInfo:input_type -> bunker.v1.ServerInfoRequest
-	6,  // 18: bunker.v1.Bunkerd.ServerMetrics:input_type -> bunker.v1.ServerMetricsRequest
-	9,  // 19: bunker.v1.Bunkerd.SpawnAgent:input_type -> bunker.v1.SpawnAgentRequest
-	13, // 20: bunker.v1.Bunkerd.DestroyAgent:input_type -> bunker.v1.DestroyAgentRequest
-	15, // 21: bunker.v1.Bunkerd.StopAgent:input_type -> bunker.v1.StopAgentRequest
-	17, // 22: bunker.v1.Bunkerd.StartAgent:input_type -> bunker.v1.StartAgentRequest
-	19, // 23: bunker.v1.Bunkerd.RestartAgent:input_type -> bunker.v1.RestartAgentRequest
-	21, // 24: bunker.v1.Bunkerd.ListAgents:input_type -> bunker.v1.ListAgentsRequest
-	23, // 25: bunker.v1.Bunkerd.GetAgent:input_type -> bunker.v1.GetAgentRequest
-	25, // 26: bunker.v1.Bunkerd.AgentMetrics:input_type -> bunker.v1.AgentMetricsRequest
-	29, // 27: bunker.v1.Bunkerd.ExecAgent:input_type -> bunker.v1.ExecAgentRequest
-	31, // 28: bunker.v1.Bunkerd.RunAgent:input_type -> bunker.v1.RunAgentRequest
-	27, // 29: bunker.v1.Bunkerd.HeartbeatAgent:input_type -> bunker.v1.HeartbeatAgentRequest
-	35, // 30: bunker.v1.Bunkerd.QueryAudit:input_type -> bunker.v1.QueryAuditRequest
-	33, // 31: bunker.v1.Agent.GetInfo:input_type -> bunker.v1.GetInfoRequest
-	25, // 32: bunker.v1.Agent.Metrics:input_type -> bunker.v1.AgentMetricsRequest
-	27, // 33: bunker.v1.Agent.Heartbeat:input_type -> bunker.v1.HeartbeatAgentRequest
-	4,  // 34: bunker.v1.Bunkerd.ServerInfo:output_type -> bunker.v1.ServerInfoResponse
-	7,  // 35: bunker.v1.Bunkerd.ServerMetrics:output_type -> bunker.v1.ServerMetricsResponse
-	12, // 36: bunker.v1.Bunkerd.SpawnAgent:output_type -> bunker.v1.SpawnAgentResponse
-	14, // 37: bunker.v1.Bunkerd.DestroyAgent:output_type -> bunker.v1.DestroyAgentResponse
-	16, // 38: bunker.v1.Bunkerd.StopAgent:output_type -> bunker.v1.StopAgentResponse
-	18, // 39: bunker.v1.Bunkerd.StartAgent:output_type -> bunker.v1.StartAgentResponse
-	20, // 40: bunker.v1.Bunkerd.RestartAgent:output_type -> bunker.v1.RestartAgentResponse
-	22, // 41: bunker.v1.Bunkerd.ListAgents:output_type -> bunker.v1.ListAgentsResponse
-	24, // 42: bunker.v1.Bunkerd.GetAgent:output_type -> bunker.v1.GetAgentResponse
-	26, // 43: bunker.v1.Bunkerd.AgentMetrics:output_type -> bunker.v1.AgentMetricsResponse
-	30, // 44: bunker.v1.Bunkerd.ExecAgent:output_type -> bunker.v1.ExecAgentResponse
-	32, // 45: bunker.v1.Bunkerd.RunAgent:output_type -> bunker.v1.RunAgentResponse
-	28, // 46: bunker.v1.Bunkerd.HeartbeatAgent:output_type -> bunker.v1.HeartbeatAgentResponse
-	37, // 47: bunker.v1.Bunkerd.QueryAudit:output_type -> bunker.v1.QueryAuditResponse
-	34, // 48: bunker.v1.Agent.GetInfo:output_type -> bunker.v1.GetInfoResponse
-	26, // 49: bunker.v1.Agent.Metrics:output_type -> bunker.v1.AgentMetricsResponse
-	28, // 50: bunker.v1.Agent.Heartbeat:output_type -> bunker.v1.HeartbeatAgentResponse
-	34, // [34:51] is the sub-list for method output_type
-	17, // [17:34] is the sub-list for method input_type
-	17, // [17:17] is the sub-list for extension type_name
-	17, // [17:17] is the sub-list for extension extendee
-	0,  // [0:17] is the sub-list for field type_name
+	1,  // 0: bunker.v1.NetworkConfig.mode:type_name -> bunker.v1.NetworkConfig.Mode
+	2,  // 1: bunker.v1.ServerInfoResponse.total_resources:type_name -> bunker.v1.ResourceLimits
+	2,  // 2: bunker.v1.ServerInfoResponse.available_resources:type_name -> bunker.v1.ResourceLimits
+	6,  // 3: bunker.v1.ServerInfoResponse.residue:type_name -> bunker.v1.ResidueInventory
+	9,  // 4: bunker.v1.ServerMetricsResponse.agents:type_name -> bunker.v1.AgentSummary
+	2,  // 5: bunker.v1.AgentSummary.limits:type_name -> bunker.v1.ResourceLimits
+	2,  // 6: bunker.v1.SpawnAgentRequest.limits:type_name -> bunker.v1.ResourceLimits
+	3,  // 7: bunker.v1.SpawnAgentRequest.network:type_name -> bunker.v1.NetworkConfig
+	39, // 8: bunker.v1.SpawnAgentRequest.labels:type_name -> bunker.v1.SpawnAgentRequest.LabelsEntry
+	11, // 9: bunker.v1.SpawnAgentRequest.image_spec:type_name -> bunker.v1.ImageSpec
+	12, // 10: bunker.v1.ImageSpec.packages:type_name -> bunker.v1.PackageAdd
+	2,  // 11: bunker.v1.SpawnAgentResponse.limits:type_name -> bunker.v1.ResourceLimits
+	9,  // 12: bunker.v1.ListAgentsResponse.agents:type_name -> bunker.v1.AgentSummary
+	9,  // 13: bunker.v1.GetAgentResponse.agent:type_name -> bunker.v1.AgentSummary
+	0,  // 14: bunker.v1.ExecAgentRequest.response_encoding:type_name -> bunker.v1.ExecEncoding
+	40, // 15: bunker.v1.RunAgentRequest.env:type_name -> bunker.v1.RunAgentRequest.EnvEntry
+	2,  // 16: bunker.v1.GetInfoResponse.limits:type_name -> bunker.v1.ResourceLimits
+	37, // 17: bunker.v1.QueryAuditResponse.records:type_name -> bunker.v1.AuditRecord
+	4,  // 18: bunker.v1.Bunkerd.ServerInfo:input_type -> bunker.v1.ServerInfoRequest
+	7,  // 19: bunker.v1.Bunkerd.ServerMetrics:input_type -> bunker.v1.ServerMetricsRequest
+	10, // 20: bunker.v1.Bunkerd.SpawnAgent:input_type -> bunker.v1.SpawnAgentRequest
+	14, // 21: bunker.v1.Bunkerd.DestroyAgent:input_type -> bunker.v1.DestroyAgentRequest
+	16, // 22: bunker.v1.Bunkerd.StopAgent:input_type -> bunker.v1.StopAgentRequest
+	18, // 23: bunker.v1.Bunkerd.StartAgent:input_type -> bunker.v1.StartAgentRequest
+	20, // 24: bunker.v1.Bunkerd.RestartAgent:input_type -> bunker.v1.RestartAgentRequest
+	22, // 25: bunker.v1.Bunkerd.ListAgents:input_type -> bunker.v1.ListAgentsRequest
+	24, // 26: bunker.v1.Bunkerd.GetAgent:input_type -> bunker.v1.GetAgentRequest
+	26, // 27: bunker.v1.Bunkerd.AgentMetrics:input_type -> bunker.v1.AgentMetricsRequest
+	30, // 28: bunker.v1.Bunkerd.ExecAgent:input_type -> bunker.v1.ExecAgentRequest
+	32, // 29: bunker.v1.Bunkerd.RunAgent:input_type -> bunker.v1.RunAgentRequest
+	28, // 30: bunker.v1.Bunkerd.HeartbeatAgent:input_type -> bunker.v1.HeartbeatAgentRequest
+	36, // 31: bunker.v1.Bunkerd.QueryAudit:input_type -> bunker.v1.QueryAuditRequest
+	34, // 32: bunker.v1.Agent.GetInfo:input_type -> bunker.v1.GetInfoRequest
+	26, // 33: bunker.v1.Agent.Metrics:input_type -> bunker.v1.AgentMetricsRequest
+	28, // 34: bunker.v1.Agent.Heartbeat:input_type -> bunker.v1.HeartbeatAgentRequest
+	5,  // 35: bunker.v1.Bunkerd.ServerInfo:output_type -> bunker.v1.ServerInfoResponse
+	8,  // 36: bunker.v1.Bunkerd.ServerMetrics:output_type -> bunker.v1.ServerMetricsResponse
+	13, // 37: bunker.v1.Bunkerd.SpawnAgent:output_type -> bunker.v1.SpawnAgentResponse
+	15, // 38: bunker.v1.Bunkerd.DestroyAgent:output_type -> bunker.v1.DestroyAgentResponse
+	17, // 39: bunker.v1.Bunkerd.StopAgent:output_type -> bunker.v1.StopAgentResponse
+	19, // 40: bunker.v1.Bunkerd.StartAgent:output_type -> bunker.v1.StartAgentResponse
+	21, // 41: bunker.v1.Bunkerd.RestartAgent:output_type -> bunker.v1.RestartAgentResponse
+	23, // 42: bunker.v1.Bunkerd.ListAgents:output_type -> bunker.v1.ListAgentsResponse
+	25, // 43: bunker.v1.Bunkerd.GetAgent:output_type -> bunker.v1.GetAgentResponse
+	27, // 44: bunker.v1.Bunkerd.AgentMetrics:output_type -> bunker.v1.AgentMetricsResponse
+	31, // 45: bunker.v1.Bunkerd.ExecAgent:output_type -> bunker.v1.ExecAgentResponse
+	33, // 46: bunker.v1.Bunkerd.RunAgent:output_type -> bunker.v1.RunAgentResponse
+	29, // 47: bunker.v1.Bunkerd.HeartbeatAgent:output_type -> bunker.v1.HeartbeatAgentResponse
+	38, // 48: bunker.v1.Bunkerd.QueryAudit:output_type -> bunker.v1.QueryAuditResponse
+	35, // 49: bunker.v1.Agent.GetInfo:output_type -> bunker.v1.GetInfoResponse
+	27, // 50: bunker.v1.Agent.Metrics:output_type -> bunker.v1.AgentMetricsResponse
+	29, // 51: bunker.v1.Agent.Heartbeat:output_type -> bunker.v1.HeartbeatAgentResponse
+	35, // [35:52] is the sub-list for method output_type
+	18, // [18:35] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_proto_bunker_v1_bunker_proto_init() }
@@ -3053,7 +3148,7 @@ func file_proto_bunker_v1_bunker_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_bunker_v1_bunker_proto_rawDesc), len(file_proto_bunker_v1_bunker_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      2,
 			NumMessages:   39,
 			NumExtensions: 0,
 			NumServices:   2,

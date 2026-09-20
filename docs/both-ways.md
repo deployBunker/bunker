@@ -39,3 +39,9 @@ a legitimate build later.
 - Mount fidelity is verified against a live agent in the GAP-112 live battery; the divergence list lives with that evidence rather than here.
 - Files cached by the kernel on a dead transport serve stale reads until the recovery window elapses — the write guard refuses first, so a stale read cannot mask a lost write.
 - The verb layer's binary-safe reads and stdin (GAP-094) are pending; until then, `bunker exec` is text-oriented.
+
+## Exec fidelity (GAP-094)
+
+- `--stdin <file|->` pipes a payload (or bunker's own stdin) into the remote command; binary-safe via temp file, natural EOF.
+- `--base64` returns stdout/stderr base64-encoded per frame so non-UTF8 bytes survive text-only transports.
+- `--exec-cap N` lowers (never raises) the per-direction output cap; the FINAL frame carries a truncation notice naming the cap and the remedy (narrow the command, or fetch the file with `bunker cp`). Output is never silently dropped.

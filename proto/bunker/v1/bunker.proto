@@ -309,6 +309,22 @@ message ExecAgentRequest {
   uint32 timeout_seconds = 4;
   bool raw = 5;                   // Bypass shell interpretation; exec directly
   string script_content = 6;      // Optional: upload and execute this script
+  bytes stdin_payload = 7;        // Optional: piped to the command's stdin
+  ExecEncoding response_encoding = 8; // Optional: how stdout/stderr are returned
+  // Optional: per-request raw-output cap in bytes (each direction). 0 = server
+  // default (512MiB). Lets a cautious caller lower the cap without a server
+  // config change; can never RAISE it past the server ceiling.
+  uint64 response_cap_bytes = 9;
+}
+
+// How the response carries stdout/stderr. TEXT (zero) is the default and is
+// byte-identical to pre-GAP-094 behavior; BASE64 lets a caller ship non-UTF8
+// bytes through anything that insists on text without corruption.
+enum ExecEncoding {
+  EXEC_ENCODING_TEXT = 0;
+  EXEC_ENCODING_BASE64 = 1;
+  // The response carries a truncation note instead of silently dropping bytes.
+  // A cap response names the cap and how to narrow the query.
 }
 
 message ExecAgentResponse {
@@ -317,6 +333,9 @@ message ExecAgentResponse {
     bytes stderr = 2;
   }
   int32 exit_code = 3;
+  // Set on the FINAL frame when any output was truncated: names the cap in
+  // bytes and the remedy. Never set when nothing was dropped.
+  string truncation_notice = 4;
 }
 
 message RunAgentRequest {

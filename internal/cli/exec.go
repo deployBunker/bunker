@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -22,6 +23,9 @@ func NewExecCommand() *cobra.Command {
 		timeout    uint32
 		rawMode    bool
 		scriptPath string
+		stdinPath  string
+		base64Out  bool
+		execCap    uint64
 	)
 
 	cmd := &cobra.Command{
@@ -239,13 +243,23 @@ Examples:
 			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 			defer cancel()
 
+			stdinPayload, err := readStdinPayload(stdinPath)
+			if err != nil {
+				return err
+			}
+			encoding := v1.ExecEncoding_EXEC_ENCODING_TEXT
+			if base64Out {
+				encoding = v1.ExecEncoding_EXEC_ENCODING_BASE64
+			}
 			req := connect.NewRequest(&v1.ExecAgentRequest{
-				AgentId:        agentID,
-				Command:        command,
-				Args:           commandArgs,
-				TimeoutSeconds: timeout,
-				Raw:            rawMode,
-				ScriptContent:  scriptContent,
+				AgentId:          agentID,
+				Command:          command,
+				Args:             commandArgs,
+				TimeoutSeconds:   timeout,
+				Raw:              rawMode,
+				ScriptContent:    scriptContent,
+				StdinPayload:     stdinPayload,
+				ResponseEncoding: encoding,
 			})
 
 			// Auth token
@@ -293,6 +307,26 @@ Examples:
 	cmd.Flags().Uint32Var(&timeout, "timeout", 30, "Command timeout in seconds")
 	cmd.Flags().BoolVar(&rawMode, "raw", false, "Bypass shell interpretation and pass command directly to execve")
 	cmd.Flags().StringVar(&scriptPath, "script", "", "Upload and execute a local script file")
+	cmd.Flags().StringVar(&stdinPath, "stdin", "", "Send this local file to the command's stdin ('-' reads bunker's own stdin)")
+	cmd.Flags().BoolVar(&base64Out, "base64", false, "Base64-encode the response so binary bytes survive text-only transports")
+	cmd.Flags().Uint64Var(&execCap, "exec-cap", 0, "Max response bytes per direction (server default 512MiB; may only lower, never raise)")
 
 	return cmd
+}
+
+// readStdinPayload loads the --stdin payload: a file path, or "-" to pass
+// bunker's own stdin through. Empty when no --stdin was given.
+func readStdinPayload(path string) ([]byte, error) {
+	switch path {
+	case "":
+		return nil, nil
+	case "-":
+		return io.ReadAll(os.Stdin)
+	default:
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("read --stdin %s: %w", path, err)
+		}
+		return b, nil
+	}
 }
