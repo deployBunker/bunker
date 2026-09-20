@@ -10,16 +10,19 @@ claim against raw source before it is logged. Brief: `brief.txt`. Seat outputs: 
 
 | Seat | Model | Provider | Family | Bytes | Landed |
 |---|---|---|---|---|---|
-| S1 | gpt-5.6-sol | openai-codex | OpenAI | 165 | **NO — stalled** (openai-codex lane; 0 bytes of review) |
+| S1 | gpt-5.6-sol | openai-codex | OpenAI | 28.3 K | YES — **recovered** (finished inside its 3000 s budget after an early harvest read it as stalled) |
 | S2 | glm-5.3 | zai-glm-default | Zhipu-GLM | 27.8 K | YES |
 | S3 | kimi-k3 | custom | Moonshot-Kimi | 58.9 K | YES |
 | S4 | qwen/qwen3-coder-plus:free | xkiro | Qwen | 20.1 K | YES |
 | S5 | claude-opus-4.8 | clinepass | Anthropic | 41.5 K | YES |
 | S6 | gemini-2.5-pro | clinepass | Google | 35.5 K | YES |
 
-**Quorum: MET** — 5 independent verdicts across 5 distinct families (≥3 required). S1 is an
-honest lane failure, not a silent drop; per the substitution law it was NOT replaced, because
-5 families already exceed the diversity bar. Note: S5/S6 (and the failed S1) are **plan/PYG
+**Quorum: MET — 6/6 seats across 6 distinct families.** S1 was initially harvested as stalled
+(0 bytes at ~20 min) and the review proceeded on 5/5; it then completed inside its budget and was
+recovered by re-reading its log. **The recovered seat produced the round's only isolation-boundary
+BLOCKER (SEC-22, subuid overlap) and the `tls_insecure` finding — neither of which any other seat
+caught.** Lesson for future rounds: the registry's top-ranked security lane was the slowest; trust
+the 50-minute budget over an early byte-count. Note: S5/S6 (and the failed S1) are **plan/PYG
 lanes**; S2/S3/S4 ride subs — the round mixed transports, which is allowed.
 
 ## Verdict tally — the sign-off question was _unanimous_
@@ -88,3 +91,28 @@ flips if `ssh_private_key` leaves `SpawnAgentResponse`.
 - Consolidated ranked gap list with file:line: see the PRD
   (`~/bunker/docs/prd/security-readiness.md`) — section 3 is this ledger expanded into
   actionable items, each carrying its seat attestation count.
+
+
+## Post-harvest update — S1 recovered (2026-09-20)
+
+S1 (gpt-5.6-sol) was read as stalled at the ~20-minute mark and the round was merged on 5/5.
+The process then completed inside its 3000 s budget. Re-harvested and extracted.
+
+**Two NEW findings, verified by the coordinator — both missed by the other five seats:**
+
+1. **SEC-22 (BLOCKER):** `internal/agent/rootless.go:576` writes the subordinate-ID entry as
+   `<name>:<start>:65536` with `start` = the agent's OWN uid. Agent uid 1001 -> subuid
+   `[1001..66536]`; uid 1002 -> `[1002..66537]`; **overlap [1002..66536] = 65,535 ids.** No
+   cross-agent overlap check (the guard at :570-575 only early-returns for the SAME name), no
+   lock, read-then-append TOCTOU. Consequence: every later agent can map container-root into an
+   ID space an earlier agent's container-root already maps — **the user-namespace separation the
+   product is built on is not enforced.** Filed as GAP-140 (P0), moved into PRD phase P0.
+   *This is the only finding in the round that attacks the isolation boundary itself rather than
+   the control plane — it inverts the round's central framing, which had said isolation was the
+   strong part.*
+2. **`tls_insecure` client knob ships** (`internal/cli/config.go:33`, `client.go:23`
+   `InsecureSkipVerify: true`) and defeats the pinning path. Filed as GAP-141 (P1).
+
+**Round arithmetic revised:** 6/6 seats, 6 families. The unanimous DO-NOT-APPROVE stands unchanged,
+but the sixth seat materially deepened the review — which is the argument for never treating a
+slow seat as a failed one.

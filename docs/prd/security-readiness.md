@@ -2,8 +2,10 @@
 
 **Status:** DRAFT for owner review · 2026-09-20
 **Author:** Hermes (secure-panel coordinator) · **Owner:** Bane
-**Provenance:** 5-seat multi-model security panel (Zhipu GLM-5.3 · Moonshot Kimi-K3 · Qwen3-Coder-Plus · Anthropic Claude-Opus-4.8 · Google Gemini-2.5-Pro), one stalled seat (OpenAI gpt-5.6-sol). Brief + raw outputs + merge ledger: `~/sec-panel-bunker-2026-09-20/`.
-**Method:** every finding below is either (a) converged across ≥4 of 5 independent model families, or (b) re-verified by the coordinator against raw source. Attestation counts are stated; nothing is asserted without one of those two.
+**Provenance:** 6-seat multi-model security panel — **6/6 landed across 6 families** (Zhipu GLM-5.3 · Moonshot Kimi-K3 · Qwen3-Coder-Plus · Anthropic Claude-Opus-4.8 · Google Gemini-2.5-Pro · OpenAI gpt-5.6-sol). Brief + raw outputs + merge ledger: `~/sec-panel-bunker-2026-09-20/`.
+**Method:** every finding below is either (a) converged across ≥4 of 6 independent model families, or (b) re-verified by the coordinator against raw source. Attestation counts are stated; nothing is asserted without one of those two.
+
+> **Post-merge note (round integrity):** gpt-5.6-sol (S1) was initially harvested as a stalled seat and the review proceeded on 5/5. It finished inside its 3000 s budget and was recovered — **and it caught two findings the other five seats missed**, one of them a BLOCKER (SEC-22, below). The final panel is 6/6. The 5/5 verdict was unanimous and the sixth seat did not dissent; it contributed depth.
 
 ---
 
@@ -40,7 +42,6 @@
 ---
 
 ## 3. Threat model (gap #1 — and its draft)
-
 The panel's single most-repeated finding: *there is no threat model*. Nothing to approve against, no stated residual risk, no named adversaries. This section **is** that document — written here so it can be moved to `docs/threat-model.md` largely intact.
 
 ### 3.1 Assets
@@ -101,7 +102,8 @@ Severity: **BLOCKER** = no team approval without it · **HIGH** = security team 
 |---|---|---|---|---|---|
 | SEC-01 | BLOCKER | **No threat model document.** Nothing to approve against; no named adversaries, assets, boundaries, or residual risk. | `grep -ic "threat model"` over `README.md` + all `docs/*.md` = **0** | 5/5 | CONFIRMED |
 | SEC-02 | BLOCKER | **`SECURITY.md` misstates the default transport.** It advertises mTLS; the shipped default is TLS off. | `SECURITY.md:24` vs `config.go:374` `Enabled:false`, `:376` `MTLS:false` | 5/5 | CONFIRMED |
-| SEC-03 | BLOCKER | **No transport enforcement.** Daemon binds non-loopback plaintext with no refusal and no warning; auth has a gate (`config.go:658`), TLS has none. | `server.go` bind path; only `RegistryError()`/auth gate exist | 5/5 | CONFIRMED |
+| SEC-03 | BLOCKER | **No transport enforcement.** Daemon binds non-loopback plaintext with no refusal and no warning; auth has a gate (`config.go:658`), TLS has none. | `server.go` bind path; only `RegistryError()`/auth gate exist | 5/6 | CONFIRMED |
+| SEC-22 | BLOCKER | **subuid/subgid ranges OVERLAP between every pair of agents — the user-namespace separation the product is built on is not enforced.** `rootless.go:576` writes `<name>:<start>:65536` with `start` = the agent's OWN uid ⇒ agent 1001 gets `[1001..66536]`, agent 1002 gets `[1002..66537]` — a 65,535-id overlap. Also no cross-agent overlap check and a read-then-append TOCTOU (`rootless.go:564-586`). **Caught only by seat S1.** | `rootless.go:544-576` | 1/6 | CONFIRMED (arithmetic + code) |
 | SEC-04 | BLOCKER | **No per-operator identity / RBAC.** Exactly two roles: one shared static master token, and agent-scoped keys. No human attribution anywhere. | `config.go:97` `Token`; `auth/jwt.go:22-26` | 5/5 | CONFIRMED |
 | SEC-05 | BLOCKER | **Spawn returns agent SSH key material over the wire.** | `proto/bunker/v1/bunker.proto:199` `ssh_private_key = 8` | 3/5 | CONFIRMED |
 | SEC-06 | BLOCKER | **No egress control.** No default-deny, no allowlist. One compromised dependency is an exfiltration path. | grep `egress\|outbound` over `internal/`+`cmd/` → none | 5/5 | CONFIRMED |
@@ -155,7 +157,6 @@ Either remove `ssh_private_key` from the response, or make it opt-in behind an e
 *PASS:* proto field deprecated/removed (or flag-gated); a test asserts the key is absent from the default response; docs updated.
 
 ### 5.2 Identity and authorization (SEC-04, SEC-07, SEC-10)
-
 **REQ-I1 — Per-operator identity.** Distinct credentials per human/CI job (JWT `sub` or client cert), surfaced as `caller` in audit records.
 *Why:* "who did this" is the first question in every incident review; one shared token makes it unanswerable.
 *PASS:* two operators get distinct creds; audit records show distinct `caller`; a test asserts attribution.
@@ -200,7 +201,19 @@ Either remove `ssh_private_key` from the response, or make it opt-in behind an e
 *Why:* the installer is fetched and executed as root; an unpinned fetch is remote code execution by design.
 *PASS:* a mismatched digest aborts the install loudly; a test covers the failure path.
 
-### 5.5 Documentation (SEC-01, SEC-19, SEC-20, SEC-21)
+### 5.6 Isolation integrity (SEC-22 — caught only by seat S1)
+
+**REQ-X1 — Globally disjoint subordinate-ID allocation.**
+Allocate `subuid`/`subgid` ranges from a tracked, non-overlapping pool; take an exclusive lock around read-check-append; **refuse at startup** if any overlap is detected; ship a migration for already-overlapping hosts.
+*Why:* the current writer uses the agent's own uid as the range start, so consecutive agents share 65,535 subordinate IDs. User-namespace separation between agents is the product's core isolation claim — without disjoint ranges it is not enforced. This is the one panel finding that attacks the isolation boundary itself rather than the control plane.
+*PASS:* two consecutive spawns produce provably disjoint `subuid` **and** `subgid` ranges (interval-disjointness test); a concurrent-spawn test shows no TOCTOU; startup refuses loudly on a pre-existing overlap; migration path exists; live two-agent check on bunker-mvp.
+
+**REQ-X2 — Gate the client `tls_insecure` knob.**
+`internal/cli/config.go:33` + `client.go:23` ship an `InsecureSkipVerify` path. Require an explicit acknowledgement + loud warning, refuse it when a pinned cert is configured, and mark such sessions unverified in audit.
+*Why:* it defeats the pinning path REQ-T2 introduces.
+*PASS:* `tls_insecure: true` warns and is refused with a pin configured; the insecure session is marked in audit; tests cover both.
+
+### 5.7 Documentation (SEC-01, SEC-19, SEC-20, SEC-21)
 
 **REQ-D1 — `docs/threat-model.md`.** Adopt §3 of this PRD (assets, adversaries, boundaries, residual risk) as the canonical model.
 **REQ-D2 — Rewrite `SECURITY.md`.** Per-control entry with its *default*, its *preconditions*, and its *residual risk*; correct the mTLS claim; state the out-of-scope items honestly.
@@ -216,7 +229,7 @@ Ordered so each phase unlocks the next and nothing ships a doc that describes be
 
 | Phase | Content | Rows | Gate |
 |---|---|---|---|
-| **P0 — Honesty** (fastest win) | Threat model (REQ-D1), `SECURITY.md` rewrite incl. the mTLS correction (REQ-D2, SEC-02), residual-risk disclosure. **Documentation only; no behaviour change.** | REQ-D1, D2 | A reviewer reading only `SECURITY.md` + `docs/threat-model.md` can state the product's actual posture and its residual risk. |
+| **P0 — Honesty** (fastest win) | Threat model (REQ-D1), `SECURITY.md` rewrite incl. the mTLS correction (REQ-D2, SEC-02), residual-risk disclosure, **and the subuid overlap fix (REQ-X1 / SEC-22 — it breaks the isolation claim itself, so it cannot wait behind governance work)**. | REQ-D1, D2, X1 | A reviewer reading only `SECURITY.md` + `docs/threat-model.md` can state the product's actual posture; two agents have provably disjoint subordinate-ID ranges. |
 | **P1 — Close the door** | TLS gate (REQ-T1), self-signed+pinning (REQ-T2), stop returning key material (REQ-T3), secret storage (REQ-I5). | REQ-T1..T3, I5 | Non-loopback plaintext is impossible without an explicit, loud opt-in. |
 | **P2 — Know who** | Per-operator identity (REQ-I1), RBAC (REQ-I2), heartbeat fix (REQ-I3), key lifecycle (REQ-I4), auth-failure audit (REQ-A1). | REQ-I1..I4, A1 | Every action is attributable; a leaked credential can be revoked. |
 | **P3 — Contain** | Egress policy (REQ-E1), supply-chain pinning (REQ-S1), shared-scratch default (SEC-11), anchored audit (REQ-A2), command content (REQ-A3). | REQ-E1, S1, A2, A3 | A compromised agent cannot exfiltrate; the chain detects tampering. |
@@ -237,13 +250,14 @@ Bunker is approvable for a team when **all** of the following hold, verified liv
 3. **Every action is attributable** to a distinct operator or agent credential, visible in the audit chain.
 4. **A leaked credential can be revoked** without a restart, and rotation is documented and tested.
 5. **Failed authentication is recorded and rate-limited.**
-6. **Egress is controlled by policy** with a safe default.
-7. **The audit chain is anchored off-box** and its tamper-evidence claim is conditional and honest.
-8. **Supply chain is pinned** for the rootless installer and image specs.
-9. **An incident runbook exists** covering kill-switch, rotation, freeze, and notification.
-10. **Residual risk is stated** — kernel sharing, exec-as-agent, per-instance isolation, unanchored-audit limits — in the security doc, not in code comments.
+6. **Agent subordinate-IDs are globally disjoint** and overlap is refused at startup — the user-namespace separation claim is enforceable, not aspirational. *(SEC-22)*
+7. **Egress is controlled by policy** with a safe default.
+8. **The audit chain is anchored off-box** and its tamper-evidence claim is conditional and honest.
+9. **Supply chain is pinned** for the rootless installer and image specs.
+10. **An incident runbook exists** covering kill-switch, rotation, freeze, and notification.
+11. **Residual risk is stated** — kernel sharing, exec-as-agent, per-instance isolation, unanchored-audit limits — in the security doc, not in code comments.
 
-This is the checklist we hand the security engineer. Items 1–5 are the difference between "impressive project" and "tool a team can adopt."
+This is the checklist we hand the security engineer. Items 1–6 are the difference between "impressive project" and "tool a team can adopt."
 
 ---
 
@@ -259,8 +273,8 @@ This is the checklist we hand the security engineer. Items 1–5 are the differe
 
 ## 9. Appendix — panel provenance
 
-- **Seats (5 landed / 5 families):** Zhipu GLM-5.3 · Moonshot Kimi-K3 · Qwen3-Coder-Plus · Anthropic Claude-Opus-4.8 · Google Gemini-2.5-Pro. **Stalled:** OpenAI gpt-5.6-sol (lane failure, recorded not hidden).
-- **Convergence:** 10 themes at 5/5, 2 at 4/5. Zero CONTRADICTED against the coordinator's prior framing — the seats out-performed that framing, which is the round working.
+- **Seats (6 landed / 6 families):** Zhipu GLM-5.3 · Moonshot Kimi-K3 · Qwen3-Coder-Plus · Anthropic Claude-Opus-4.8 · Google Gemini-2.5-Pro · OpenAI gpt-5.6-sol. S1 (gpt-5.6-sol) was initially filed as stalled, then recovered inside its budget — and contributed the round's only isolation-boundary BLOCKER (SEC-22, subuid overlap) plus the `tls_insecure` finding. **An early "stalled" harvest was wrong; the seat finished late and was recovered by re-reading the log.**
+- **Convergence:** 10 themes at 5–6/6, 2 at 4/6. Zero CONTRADICTED against the coordinator's prior framing — the seats out-performed that framing, which is the round working.
 - **Coordinator re-verification:** 12 load-bearing claims re-checked against raw source; 11 CONFIRMED, 1 REFINED (the "mTLS dead code" claim — it is config-gated, not dead; sub-claim unverified).
 - **Artifacts:** `~/sec-panel-bunker-2026-09-20/{brief.txt, MERGE.md, seat-*.log, extract-seat-*.md}`
-- **Model access finding (criterion 1 of the ask):** the security-capable lanes confirmed live are `gpt-5.6-sol` (openai-codex, ExploitBench 76.5 — *stalled on this run*), `glm-5.3` (zai-glm, ExploitBench 54.4), `kimi-k3` (Moonshot), `qwen3-coder-plus` (Qwen), `claude-opus-4.8` (Anthropic via clinepass), `gemini-2.5-pro` (Google via clinepass). Five of the six produced verdicts; the registry's top-ranked security lane is also the one that failed, which is itself worth noting for future rounds.
+- **Model access finding (criterion 1 of the ask):** security-capable lanes confirmed live — `gpt-5.6-sol` (openai-codex, ExploitBench 76.5), `glm-5.3` (zai-glm, ExploitBench 54.4), `kimi-k3` (Moonshot), `qwen3-coder-plus` (Qwen), `claude-opus-4.8` and `gemini-2.5-pro`/`claude-sonnet-5` (both via clinepass). All six seats produced verdicts. **S1 is the round's lesson: the registry's top-ranked security lane was the SLOWEST (needed ~50 min) — harvest too early and you lose the deepest findings.** It was the only seat to catch the isolation-boundary BLOCKER.

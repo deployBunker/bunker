@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRD — Bunker Security Readiness for Team Use</title>
+<style>
+*{box-sizing:border-box} html{-webkit-text-size-adjust:100%}
+body{background:#0f0f1a;color:#e0e0e0;margin:0;font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:12px}
+@media(min-width:600px){body{font-size:16px;padding:24px}}
+.wrap{max-width:1000px;margin:0 auto}
+.hero{background:linear-gradient(135deg,#1a1a2e,#16213e);border:1px solid #2a2a3e;border-radius:14px;padding:22px 16px;margin-bottom:16px}
+@media(min-width:600px){.hero{padding:30px 26px}}
+h1{font-size:clamp(21px,4.6vw,30px);margin:0 0 8px;line-height:1.25;background:linear-gradient(135deg,#f7971e,#ffd200);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.verdict{display:inline-block;margin-top:10px;padding:6px 14px;border-radius:999px;background:#3b0820;color:#f472b6;font-weight:700;font-size:14.5px}
+.meta{color:#8b8ba7;font-size:13px;margin-top:10px;line-height:1.6}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:14px}
+@media(min-width:600px){.stats{grid-template-columns:repeat(4,1fr)}}
+.stat{background:#12121f;border:1px solid #2a2a3e;border-radius:10px;padding:12px;text-align:center}
+.stat .n{font-size:25px;font-weight:800} .stat .l{font-size:11px;color:#8b8ba7;text-transform:uppercase;letter-spacing:.6px;margin-top:2px}
+.n-red{color:#f472b6} .n-amber{color:#f59e0b} .n-blue{color:#60a5fa}
+.toc{background:#1a1a2e;border:1px solid #2a2a3e;border-radius:12px;padding:14px 16px;margin-bottom:16px}
+.toc h3{margin:0 0 8px;font-size:13px;color:#ffd200;text-transform:uppercase;letter-spacing:.6px}
+.toc ol{margin:0;padding-left:20px;columns:1} @media(min-width:760px){.toc ol{columns:2}}
+.toc a{color:#93c5fd;text-decoration:none} .toc li{margin:3px 0;break-inside:avoid}
+h2{font-size:19px;color:#ffd200;margin:28px 0 10px;padding-bottom:6px;border-bottom:1px solid #2a2a3e}
+h3{font-size:16px;color:#f7971e;margin:20px 0 8px} h4{font-size:14px;color:#60a5fa;margin:14px 0 6px}
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:12px 0}
+table{border-collapse:collapse;min-width:600px;width:100%;font-size:13px}
+th{background:#12121f;color:#ffd200;text-align:left;padding:8px 10px;border:1px solid #2a2a3e;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px}
+td{padding:7px 10px;border:1px solid #2a2a3e;vertical-align:top}
+tr:nth-child(even) td{background:#16162a}
+code{background:#12121f;border:1px solid #2a2a3e;border-radius:5px;padding:1px 5px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;color:#93c5fd;overflow-wrap:anywhere}
+pre{background:#0b0b14;border:1px solid #2a2a3e;border-radius:10px;padding:12px;overflow-x:auto;margin:12px 0}
+pre code{background:none;border:none;color:#a5f3fc;font-size:12px;line-height:1.5}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}
+.b-blocker{background:#3b0820;color:#f472b6} .b-high{background:#3b1e08;color:#f59e0b} .b-ok{background:#14532d;color:#4ade80}
+blockquote{border-left:3px solid #f7971e;margin:12px 0;padding:6px 14px;background:#12121f;border-radius:0 8px 8px 0;color:#c7c7dd}
+hr{border:none;border-top:1px solid #2a2a3e;margin:22px 0} ul,ol{padding-left:22px} li{margin:4px 0} a{color:#60a5fa}
+.foot{color:#8b8ba7;font-size:12px;text-align:center;margin-top:26px}
+</style></head><body><div class="wrap">
+<div class="hero">
+  <h1>PRD — Bunker Security Readiness for Team Use</h1>
+  <span class="verdict">PANEL VERDICT: 5/5 DO-NOT-APPROVE (team use, today)</span>
+  <div class="meta">5-seat multi-model security panel + coordinator re-verification · 2026-09-20<br>
+  10 themes converged at 5/5 · 12 claims re-verified against raw source (11 CONFIRMED, 1 REFINED)</div>
+  <div class="stats">
+    <div class="stat"><div class="n n-red">6</div><div class="l">Blockers</div></div>
+    <div class="stat"><div class="n n-amber">7</div><div class="l">High</div></div>
+    <div class="stat"><div class="n n-blue">17</div><div class="l">Board rows</div></div>
+    <div class="stat"><div class="n" style="color:#4ade80">5</div><div class="l">Model families</div></div>
+  </div>
+</div>
+<div class="toc"><h3>Contents</h3><ol>
+      <li><a href="#1-executive-summary">1. Executive summary</a></li>
+      <li><a href="#2-scope-and-audience">2. Scope and audience</a></li>
+      <li><a href="#3-threat-model-gap-1-and-its-draft">3. Threat model (gap #1 — and its draft)</a></li>
+      <li><a href="#4-verified-findings-ledger">4. Verified findings ledger</a></li>
+      <li><a href="#5-requirements">5. Requirements</a></li>
+      <li><a href="#6-roadmap">6. Roadmap</a></li>
+      <li><a href="#7-definition-of-team-ready-the-acceptance-gate">7. Definition of &quot;team-ready&quot; (the acceptance gate)</a></li>
+      <li><a href="#8-open-questions-for-the-owner">8. Open questions for the owner</a></li>
+      <li><a href="#9-appendix-panel-provenance">9. Appendix — panel provenance</a></li>
+</ol></div>
+<p><strong>Status:</strong> DRAFT for owner review · 2026-09-20
+<strong>Author:</strong> Hermes (secure-panel coordinator) · <strong>Owner:</strong> Bane
+<strong>Provenance:</strong> 6-seat multi-model security panel — <strong>6/6 landed across 6 families</strong> (Zhipu GLM-5.3 · Moonshot Kimi-K3 · Qwen3-Coder-Plus · Anthropic Claude-Opus-4.8 · Google Gemini-2.5-Pro · OpenAI gpt-5.6-sol). Brief + raw outputs + merge ledger: <code>~/sec-panel-bunker-2026-09-20/</code>.
+<strong>Method:</strong> every finding below is either (a) converged across ≥4 of 6 independent model families, or (b) re-verified by the coordinator against raw source. Attestation counts are stated; nothing is asserted without one of those two.</p>
+<blockquote>
+<p><strong>Post-merge note (round integrity):</strong> gpt-5.6-sol (S1) was initially harvested as a stalled seat and the review proceeded on 5/5. It finished inside its 3000 s budget and was recovered — <strong>and it caught two findings the other five seats missed</strong>, one of them a BLOCKER (SEC-22, below). The final panel is 6/6. The 5/5 verdict was unanimous and the sixth seat did not dissent; it contributed depth.</p>
+</blockquote>
+<hr />
+<h2 id="1-executive-summary">1. Executive summary</h2>
+<p><strong>The panel's unanimous verdict: DO NOT APPROVE Bunker for a team today — 5/5 seats, five different model families.</strong> Every seat simultaneously praised the isolation engineering and refused on the control plane. That split is the finding.</p>
+<p><strong>What is genuinely good</strong> (all five seats, unprompted): per-agent rootless dockerd, the PAM/<code>pam_namespace</code> fail-closed <code>/tmp</code> boundary, the hash-chained audit log, spawn rollback with fail-closed semantics, an honest runtime self-report when isolation is <em>not</em> provisioned. This is not a repo that ignored security; it is a repo that built hard parts well and never built the governance layer around them.</p>
+<p><strong>What blocks approval</strong> — two of them are <em>affirmatively wrong</em>, not merely missing:</p>
+<ol>
+<li><strong>The daemon serves plaintext by default and the security doc says it uses mTLS.</strong> <code>SECURITY.md:24</code> states "mTLS between <code>bunker</code> CLI and <code>bunkerd</code> server" in the advertised security model; <code>internal/config/config.go:374</code> ships <code>TLS: {Enabled: false, MTLS: false}</code>. A security team reading the doc and then the config finds the product misdescribing its own default. <em>(5/5)</em></li>
+<li><strong>The spawn RPC returns the agent's SSH private key over that same unencrypted wire.</strong> <code>proto/bunker/v1/bunker.proto:199</code> — <code>string ssh_private_key = 8</code>. Key material crosses the transport that has no transport security. <em>(3/5 raised; coordinator confirmed)</em></li>
+<li><strong>No threat model exists at all.</strong> Zero hits for "threat model" across <code>README.md</code> + all of <code>docs/</code>. Nothing to approve against. <em>(5/5)</em></li>
+<li><strong>One shared static master token, no per-operator identity, no revocation, no rotation.</strong> <code>internal/apikey/manager.go:17-21</code> is in-memory; <code>Revoke()</code> exists at <code>:101</code> and is called from no RPC. <em>(5/5)</em></li>
+<li><strong>Heartbeat has no ownership check.</strong> <code>internal/server/service.go:1422</code> extends any agent's TTL by id, while <code>Metrics</code> at <code>:95-98</code> correctly gates on <code>claims.AgentID</code>. An agent-scoped key can keep a peer alive indefinitely. <em>(5/5)</em></li>
+</ol>
+<p><strong>The strategic read:</strong> Bunker's isolation story is <em>ahead of</em> its control-plane story. The product is a strong sandbox behind a weak door. For a solo operator on a private tailnet that is a defensible trade; for a team — the explicit ask — it is not, because a team multiplies exactly the things that are missing: more operators sharing one credential, more people who need to read a written model, more blast radius when the one token leaks.</p>
+<p><strong>This PRD turns the panel's output into a plan.</strong> Sections 3–5 are the threat model, the verified findings ledger, and the requirements. Section 6 is the phased roadmap; Section 7 is the definition of "team-ready" (the acceptance gate we would hand a security engineer).</p>
+<hr />
+<h2 id="2-scope-and-audience">2. Scope and audience</h2>
+<p><strong>In scope:</strong> everything a security engineer evaluates when deciding whether to let their engineers use Bunker — control plane, identity, transport, secrets, audit, egress, supply chain, documentation, and operational readiness.</p>
+<p><strong>Explicitly out of scope</strong> (owned by the sibling resource-preset family GAP-113..GAP-122, filed 2026-09-20): cgroup resource knobs, swap/IO bounding, <code>memory.oom.group</code>, unit sandboxing properties, <code>cgroup.kill</code> teardown, resource observability. Those are the <em>resource</em> axis; this PRD is the <em>security-governance</em> axis. The two meet only at §6 phase ordering.</p>
+<p><strong>Audience:</strong> (1) Bane as owner, deciding what to fund; (2) the Bunker foreman, which will turn §4 findings into board rows; (3) a prospective security reviewer, who should be able to read §3 + §7 and know exactly what they would be approving.</p>
+<p><strong>Non-goal:</strong> making Bunker survive a malicious <em>host root</em>. No agent-sandboxing product can, and <code>SECURITY.md</code> already (correctly) scopes that out. The ask is narrower and harder: be <em>honest</em> about that scope, and be <em>safe</em> within it.</p>
+<hr />
+<h2 id="3-threat-model-gap-1-and-its-draft">3. Threat model (gap #1 — and its draft)</h2>
+<p>The panel's single most-repeated finding: <em>there is no threat model</em>. Nothing to approve against, no stated residual risk, no named adversaries. This section <strong>is</strong> that document — written here so it can be moved to <code>docs/threat-model.md</code> largely intact.</p>
+<h3>3.1 Assets</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Asset</th>
+<th>Where it lives</th>
+<th>Why an attacker wants it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>The daemon control plane</strong> (<code>bunkerd</code>)</td>
+<td>Host, root</td>
+<td>It can spawn/destroy/exec agents. Root-equivalent over the fleet.</td>
+</tr>
+<tr>
+<td><strong>The master credential</strong> (<code>auth.token</code> / <code>auth.jwt_secret</code>)</td>
+<td><code>/etc/bunkerd/config.yaml</code> on the host</td>
+<td>Total control-plane access; no rotation, no revocation, no per-user attribution.</td>
+</tr>
+<tr>
+<td><strong>Agent home directories</strong></td>
+<td><code>/home/bunker-&lt;id&gt;</code></td>
+<td>Source code, transferred artifacts, images, credentials the workload brought.</td>
+</tr>
+<tr>
+<td><strong>Per-agent SSH private keys</strong></td>
+<td>Host + agent home; returned by <code>SpawnAgentResponse.ssh_private_key</code></td>
+<td>Docker-host access to that agent.</td>
+</tr>
+<tr>
+<td><strong>The audit log</strong></td>
+<td>Host (<code>internal/audit/</code>)</td>
+<td>The only forensic record; its integrity <em>is</em> the incident response.</td>
+</tr>
+<tr>
+<td><strong>Peer agent data</strong> (shared scratch <code>/srv/bunker-share</code>)</td>
+<td>Host, group <code>bunker-agents</code>, mode <code>2770</code></td>
+<td>Cross-tenant read/write — currently on by default.</td>
+</tr>
+<tr>
+<td><strong>The host itself</strong></td>
+<td>—</td>
+<td>Anything that escapes the agent user reaches other agents' daemons.</td>
+</tr>
+</tbody>
+</table></div>
+<h3>3.2 Adversaries (named, with the control each demands)</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Adversary</th>
+<th>Capability assumed</th>
+<th>Primary control</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A1</td>
+<td><strong>Malicious/buggy agent workload</strong></td>
+<td>Full root <em>inside its own container</em>; arbitrary code, arbitrary syscalls from a container</td>
+<td>Kernel/container boundary + egress control + resource bounds</td>
+</tr>
+<tr>
+<td>A2</td>
+<td><strong>The agent operator</strong> (a team member)</td>
+<td>Holds agent credentials; runs <code>bunker</code> CLI</td>
+<td>Per-operator identity, RBAC, audit attribution</td>
+</tr>
+<tr>
+<td>A3</td>
+<td><strong>Tenant-vs-tenant</strong></td>
+<td>Agent A tries to read/affect agent B</td>
+<td>Isolation of home + scratch + daemon; no shared writable surface by default</td>
+</tr>
+<tr>
+<td>A4</td>
+<td><strong>Credential thief</strong></td>
+<td>Obtained the master token (log leak, shoulder-surf, 0644 file)</td>
+<td>Transport security, rotation, revocation, failed-auth detection</td>
+</tr>
+<tr>
+<td>A5</td>
+<td><strong>Host-local unprivileged user</strong></td>
+<td>A non-agent account on the same box</td>
+<td>File permissions, secret storage</td>
+</tr>
+<tr>
+<td>A6</td>
+<td><strong>Supply-chain attacker</strong></td>
+<td>Compromised image / rootless installer fetch</td>
+<td>Pinning, signatures, digest verification</td>
+</tr>
+<tr>
+<td>A7</td>
+<td><strong>Malicious <em>host</em> root</strong></td>
+<td>—</td>
+<td><strong>Out of scope</strong> (stated explicitly, as today)</td>
+</tr>
+</tbody>
+</table></div>
+<h3>3.3 Trust boundaries</h3>
+<pre><code>  A2 operator ──[network]──► bunkerd (host root)  ──► agent users ──► containers ──► internet
+                   ▲BT1                      ▲BT2              ▲BT3          ▲BT4
+  BT1 = the transport (today: PLAINTEXT, no auth on the wire)
+  BT2 = the daemon's authorization boundary (today: one static master token, no per-operator id)
+  BT3 = the agent-user boundary (today: STRONG — userns, per-user dockerd, PAM /tmp)
+  BT4 = egress (today: NONE — no policy at all)
+</code></pre>
+<p><strong>The model's own conclusion:</strong> BT3 — the part Bunker built well — is the boundary least likely to be crossed. BT1, BT2, BT4 — the governance boundaries — are where the risk actually sits, and all three are currently open. This single diagram is the argument for the whole PRD.</p>
+<h3>3.4 Residual risk that must be <em>stated</em>, not hidden</h3>
+<p>Even after this PRD lands, the following remain true and must appear in <code>SECURITY.md</code>:
+- A malicious <strong>container</strong> workload can attack the <strong>host kernel</strong> (containers share the kernel; the userns/rootless design is defence-in-depth, not a hypervisor boundary).
+- An agent that has <strong>legitimate exec access</strong> can run anything the daemon would run on its own behalf; audit records it, it does not prevent it.
+- <strong>Cross-boot PID/tmpfs state</strong> is not preserved; "isolation" is per-instance, not per-lifetime.
+- The audit chain detects tampering <strong>only</strong> when sealed/anchored off-box; without <code>seal_key</code> + <code>ship_to</code>, a host-root attacker can rewrite history undetectably.</p>
+<hr />
+<h2 id="4-verified-findings-ledger">4. Verified findings ledger</h2>
+<p>Severity: <strong class="badge b-blocker">BLOCKER</strong> = no team approval without it · <strong class="badge b-high">HIGH</strong> = security team demands it before production · <strong>MED</strong> = should-have · <strong>LOW</strong> = polish.
+"Seats" = independent model families flagging it (of 5). "Coord" = coordinator re-verification against raw source.</p>
+<h3>4.1 BLOCKERS</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Severity</th>
+<th>Finding</th>
+<th>Evidence</th>
+<th>Seats</th>
+<th>Coord</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SEC-01</td>
+<td>BLOCKER</td>
+<td><strong>No threat model document.</strong> Nothing to approve against; no named adversaries, assets, boundaries, or residual risk.</td>
+<td><code>grep -ic "threat model"</code> over <code>README.md</code> + all <code>docs/*.md</code> = <strong>0</strong></td>
+<td>5/5</td>
+<td>CONFIRMED</td>
+</tr>
+<tr>
+<td>SEC-02</td>
+<td>BLOCKER</td>
+<td><strong><code>SECURITY.md</code> misstates the default transport.</strong> It advertises mTLS; the shipped default is TLS off.</td>
+<td><code>SECURITY.md:24</code> vs <code>config.go:374</code> <code>Enabled:false</code>, <code>:376</code> <code>MTLS:false</code></td>
+<td>5/5</td>
+<td>CONFIRMED</td>
+</tr>
+<tr>
+<td>SEC-03</td>
+<td>BLOCKER</td>
+<td><strong>No transport enforcement.</strong> Daemon binds non-loopback plaintext with no refusal and no warning; auth has a gate (<code>config.go:658</code>), TLS has none.</td>
+<td><code>server.go</code> bind path; only <code>RegistryError()</code>/auth gate exist</td>
+<td>5/6</td>
+<td>CONFIRMED</td>
+</tr>
+<tr>
+<td>SEC-22</td>
+<td>BLOCKER</td>
+<td><strong>subuid/subgid ranges OVERLAP between every pair of agents — the user-namespace separation the product is built on is not enforced.</strong> <code>rootless.go:576</code> writes <code>&lt;name&gt;:&lt;start&gt;:65536</code> with <code>start</code> = the agent's OWN uid ⇒ agent 1001 gets <code>[1001..66536]</code>, agent 1002 gets <code>[1002..66537]</code> — a 65,535-id overlap. Also no cross-agent overlap check and a read-then-append TOCTOU (<code>rootless.go:564-586</code>). <strong>Caught only by seat S1.</strong></td>
+<td><code>rootless.go:544-576</code></td>
+<td>1/6</td>
+<td>CONFIRMED (arithmetic + code)</td>
+</tr>
+<tr>
+<td>SEC-04</td>
+<td>BLOCKER</td>
+<td><strong>No per-operator identity / RBAC.</strong> Exactly two roles: one shared static master token, and agent-scoped keys. No human attribution anywhere.</td>
+<td><code>config.go:97</code> <code>Token</code>; <code>auth/jwt.go:22-26</code></td>
+<td>5/5</td>
+<td>CONFIRMED</td>
+</tr>
+<tr>
+<td>SEC-05</td>
+<td>BLOCKER</td>
+<td><strong>Spawn returns agent SSH key material over the wire.</strong></td>
+<td><code>proto/bunker/v1/bunker.proto:199</code> <code>ssh_private_key = 8</code></td>
+<td>3/5</td>
+<td>CONFIRMED</td>
+</tr>
+<tr>
+<td>SEC-06</td>
+<td>BLOCKER</td>
+<td><strong>No egress control.</strong> No default-deny, no allowlist. One compromised dependency is an exfiltration path.</td>
+<td>grep <code>egress\|outbound</code> over <code>internal/</code>+<code>cmd/</code> → none</td>
+<td>5/5</td>
+<td>CONFIRMED</td>
+</tr>
+</tbody>
+</table></div>
+<h3>4.2 HIGH</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Severity</th>
+<th>Finding</th>
+<th>Evidence</th>
+<th>Seats</th>
+<th>Coord</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SEC-07</td>
+<td>HIGH</td>
+<td><strong>Heartbeat lacks an ownership check</strong> — any agent key extends any peer's TTL indefinitely.</td>
+<td><code>service.go:1422</code> (no claims check) vs <code>Metrics</code> <code>:95-98</code> (has one)</td>
+<td>5/5</td>
+<td>CONFIRMED</td>
+</tr>
+<tr>
+<td>SEC-08</td>
+<td>HIGH</td>
+<td><strong>Failed auth is never audited.</strong> The audit interceptor sits inside auth, so denials never reach the chain.</td>
+<td>interceptor ordering in <code>server.go</code></td>
+<td>4/5</td>
+<td>CONFIRMED</td>
+</tr>
+<tr>
+<td>SEC-09</td>
+<td>HIGH</td>
+<td><strong>Chain is unkeyed + unanchored by default.</strong> Truncation/forgery verify OK; <code>seal_key</code>/<code>ship_to</code> are opt-in and off.</td>
+<td><code>audit.go:242,340</code> sha256; <code>:267</code> SealKey opt-in</td>
+<td>5/5</td>
+<td>CONFIRMED</td>
+</tr>
+<tr>
+<td>SEC-10</td>
+<td>HIGH</td>
+<td><strong>No key lifecycle.</strong> In-memory keys, no persistence, no rotation, <code>Revoke()</code> unreachable from any RPC.</td>
+<td><code>apikey/manager.go:17-21</code>, <code>:101</code> (no caller)</td>
+<td>5/5</td>
+<td>CONFIRMED</td>
+</tr>
+<tr>
+<td>SEC-11</td>
+<td>HIGH</td>
+<td><strong>Shared scratch is on by default and cross-readable/writable.</strong> <code>/srv/bunker-share/&lt;id&gt;</code> is <code>2770</code> setgid under a shared group.</td>
+<td><code>scratch.go:13</code>; <code>config.go:437</code> <code>SharedScratchEnabled: true</code></td>
+<td>5/5</td>
+<td>CONFIRMED</td>
+</tr>
+<tr>
+<td>SEC-12</td>
+<td>HIGH</td>
+<td><strong>No supply-chain policy.</strong> No image allowlist, signature verification, or digest pinning for the rootless installer or image specs.</td>
+<td><code>rootless.go:21-22,242</code>; <code>internal/imagespec/</code></td>
+<td>5/5</td>
+<td>CONFIRMED</td>
+</tr>
+<tr>
+<td>SEC-13</td>
+<td>HIGH</td>
+<td><strong>No operator incident runbook.</strong> No kill-switch, emergency rotation, host-freeze, or notification path.</td>
+<td>no such doc in <code>docs/</code></td>
+<td>5/5</td>
+<td>CONFIRMED</td>
+</tr>
+</tbody>
+</table></div>
+<h3>4.3 MEDIUM / LOW</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Severity</th>
+<th>Finding</th>
+<th>Evidence</th>
+<th>Seats</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SEC-14</td>
+<td>MED</td>
+<td>Secret storage hygiene: <code>auth.token</code>/<code>jwt_secret</code> live inline in the config file; no <code>_FILE</code>/env indirection, no 0600 secrets dir.</td>
+<td><code>config.go:97-98</code></td>
+<td>4/5</td>
+</tr>
+<tr>
+<td>SEC-15</td>
+<td>MED</td>
+<td>Control-plane denial-of-service: no rate limiting/backoff on unauthenticated requests.</td>
+<td>—</td>
+<td>3/5</td>
+</tr>
+<tr>
+<td>SEC-16</td>
+<td>MED</td>
+<td>Audit status is not self-critical: reports neither its own anchor status nor "no off-host anchor configured."</td>
+<td>S5 live repro</td>
+<td>2/5</td>
+</tr>
+<tr>
+<td>SEC-17</td>
+<td>MED</td>
+<td>Exec/run command content is logged only in snoopy/syslog, uncorrelated to the audit chain.</td>
+<td><code>docs/exec-audit.md</code></td>
+<td>2/5</td>
+</tr>
+<tr>
+<td>SEC-18</td>
+<td>MED</td>
+<td>Compliance posture absent: no data-residency/retention/deletion statement; <code>destroy_home_policy</code> defaults to <strong>archive</strong>, not purge.</td>
+<td><code>config.go:430</code></td>
+<td>3/5</td>
+</tr>
+<tr>
+<td>SEC-19</td>
+<td>LOW</td>
+<td><code>SECURITY.md</code> is a stub (~30 lines) with no per-control defaults, preconditions, or residual risk.</td>
+<td>file length</td>
+<td>5/5</td>
+</tr>
+<tr>
+<td>SEC-20</td>
+<td>LOW</td>
+<td>No vulnerability-disclosure process beyond "email us": no embargo policy, advisory path, or security-release channel.</td>
+<td><code>SECURITY.md:19</code></td>
+<td>3/5</td>
+</tr>
+<tr>
+<td>SEC-21</td>
+<td>LOW</td>
+<td>PID-namespace and <code>/tmp</code> state disclosures live in code comments and README, not in <code>SECURITY.md</code>.</td>
+<td><code>isolation.go:77-80</code>; <code>README.md:653-656</code></td>
+<td>2/5</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="5-requirements">5. Requirements</h2>
+<p>Each requirement states <strong>what</strong>, <strong>why a security team demands it</strong>, and <strong>PASS</strong> (the acceptance criterion). These are the rows the foreman will file.</p>
+<h3>5.1 Transport (SEC-02, SEC-03)</h3>
+<p><strong>REQ-T1 — TLS-by-default with an explicit insecure escape hatch.</strong>
+The daemon MUST refuse to bind a non-loopback listener without TLS, unless the operator sets an explicit <code>insecure_dev: true</code> (which logs a loud warning at startup and stamps every audit record). Mirror the existing auth gate pattern (<code>config.go:658</code>, fail-before-listen).
+<em>Why:</em> an admin-capable RPC plane on plaintext is the one finding that ends a security evaluation.
+<em>PASS:</em> (1) <code>bunkerd</code> with <code>tls.enabled:false</code> and a non-loopback bind exits with a clear error; (2) <code>insecure_dev: true</code> starts but emits a warning and marks audit records; (3) loopback-only bind still allowed; (4) unit tests for all three cases.</p>
+<p><strong>REQ-T2 — Self-signed + pinning path so "easy" is not "insecure."</strong>
+Ship self-signed cert generation and CLI trust-on-first-use pinning so the secure path is the <em>default</em> path, not the harder one.
+<em>Why:</em> the current demo path (<code>README.md:166</code>, the <code>78.46.173.180:18080</code> example) teaches plaintext. Documentation that teaches the insecure path will be followed.
+<em>PASS:</em> <code>bunker connect --tls self-signed</code> works end-to-end on a live host; the README quick-start uses it.</p>
+<p><strong>REQ-T3 — Stop returning key material in <code>SpawnAgentResponse</code>.</strong>
+Either remove <code>ssh_private_key</code> from the response, or make it opt-in behind an explicit flag, and never over a non-TLS transport.
+<em>Why:</em> a private key in an RPC body is a credential crossing a boundary; today the boundary is plaintext.
+<em>PASS:</em> proto field deprecated/removed (or flag-gated); a test asserts the key is absent from the default response; docs updated.</p>
+<h3>5.2 Identity and authorization (SEC-04, SEC-07, SEC-10)</h3>
+<p><strong>REQ-I1 — Per-operator identity.</strong> Distinct credentials per human/CI job (JWT <code>sub</code> or client cert), surfaced as <code>caller</code> in audit records.
+<em>Why:</em> "who did this" is the first question in every incident review; one shared token makes it unanswerable.
+<em>PASS:</em> two operators get distinct creds; audit records show distinct <code>caller</code>; a test asserts attribution.</p>
+<p><strong>REQ-I2 — RBAC roles.</strong> At minimum <code>admin</code> / <code>operator</code> / <code>agent:self</code>, with agent keys restricted to their own agent.
+<em>Why:</em> SEC-07 is a concrete instance of what happens without this.
+<em>PASS:</em> table-driven authorization tests per role × RPC; agent key acting on a peer → permission denied.</p>
+<p><strong>REQ-I3 — Fix the heartbeat ownership check.</strong> Add the <code>claims.AgentID</code> comparison that <code>Metrics</code> already has.
+<em>Why:</em> it is an authorization bypass with a one-line fix.
+<em>PASS:</em> an agent-scoped key cannot extend a peer's TTL (test).</p>
+<p><strong>REQ-I4 — Key lifecycle.</strong> Persist keys, add <code>Rotate</code>/<code>Revoke</code> RPCs, auto-generate and persist <code>jwt_secret</code> on first boot, support rotation without downtime.
+<em>Why:</em> unrevocable credentials cannot be used by a team; a leaked token must be killable.
+<em>PASS:</em> keys survive restart; <code>Revoke</code> invalidates a live token; rotation works without restart.</p>
+<p><strong>REQ-I5 — Control-plane secret storage.</strong> Move <code>auth.token</code>/<code>jwt_secret</code> out of the config file into a root-only <code>0600</code> secrets file or <code>_FILE</code>/env indirection.
+<em>Why:</em> config files get copied, backed up, and committed.
+<em>PASS:</em> secrets load from <code>*_FILE</code>/env; config holds no plaintext secret; a test asserts the file mode.</p>
+<h3>5.3 Audit and forensics (SEC-08, SEC-09, SEC-16, SEC-17)</h3>
+<p><strong>REQ-A1 — Audit auth failures.</strong> Move denials into the chain (or add a parallel denial log) with source, credential id, and outcome.
+<em>Why:</em> credential-stuffing detection is table stakes; today it is invisible.
+<em>PASS:</em> a failed RPC produces an audit record; a test asserts it.</p>
+<p><strong>REQ-A2 — Anchored tamper-evidence by default.</strong> Enable sealing; require an off-box anchor (<code>ship_to</code>) for a "tamper-evident" claim, and make the claim conditional in the docs.
+<em>Why:</em> an unkeyed, unanchored chain detects accidental corruption, not an attacker.
+<em>PASS:</em> a truncated chain fails verification; <code>audit status</code> reports anchor state and says plainly when none is configured.</p>
+<p><strong>REQ-A3 — Command content in the chain.</strong> Bring exec/run command lines into the audit chain (correlated, not just syslog).
+<em>Why:</em> "which command, by which agent, when" is the core forensic question.
+<em>PASS:</em> an exec appears in <code>audit query</code> with its command and agent.</p>
+<h3>5.4 Egress and supply chain (SEC-06, SEC-12)</h3>
+<p><strong>REQ-E1 — Egress policy with a safe default.</strong> Default-deny or default-allowlist for agent traffic, configurable per agent/tier.
+<em>Why:</em> the panel called this "the highest-value single addition" — without it, containment is worthless against exfiltration.
+<em>PASS:</em> a default-deny config blocks an outbound connection from an agent container; an allowlisted host succeeds.</p>
+<p><strong>REQ-S1 — Supply-chain verification.</strong> Pin the rootless installer version + SHA-256 manifest; signature/digest verification for images.
+<em>Why:</em> the installer is fetched and executed as root; an unpinned fetch is remote code execution by design.
+<em>PASS:</em> a mismatched digest aborts the install loudly; a test covers the failure path.</p>
+<h3>5.6 Isolation integrity (SEC-22 — caught only by seat S1)</h3>
+<p><strong>REQ-X1 — Globally disjoint subordinate-ID allocation.</strong>
+Allocate <code>subuid</code>/<code>subgid</code> ranges from a tracked, non-overlapping pool; take an exclusive lock around read-check-append; <strong>refuse at startup</strong> if any overlap is detected; ship a migration for already-overlapping hosts.
+<em>Why:</em> the current writer uses the agent's own uid as the range start, so consecutive agents share 65,535 subordinate IDs. User-namespace separation between agents is the product's core isolation claim — without disjoint ranges it is not enforced. This is the one panel finding that attacks the isolation boundary itself rather than the control plane.
+<em>PASS:</em> two consecutive spawns produce provably disjoint <code>subuid</code> <strong>and</strong> <code>subgid</code> ranges (interval-disjointness test); a concurrent-spawn test shows no TOCTOU; startup refuses loudly on a pre-existing overlap; migration path exists; live two-agent check on bunker-mvp.</p>
+<p><strong>REQ-X2 — Gate the client <code>tls_insecure</code> knob.</strong>
+<code>internal/cli/config.go:33</code> + <code>client.go:23</code> ship an <code>InsecureSkipVerify</code> path. Require an explicit acknowledgement + loud warning, refuse it when a pinned cert is configured, and mark such sessions unverified in audit.
+<em>Why:</em> it defeats the pinning path REQ-T2 introduces.
+<em>PASS:</em> <code>tls_insecure: true</code> warns and is refused with a pin configured; the insecure session is marked in audit; tests cover both.</p>
+<h3>5.7 Documentation (SEC-01, SEC-19, SEC-20, SEC-21)</h3>
+<p><strong>REQ-D1 — <code>docs/threat-model.md</code>.</strong> Adopt §3 of this PRD (assets, adversaries, boundaries, residual risk) as the canonical model.
+<strong>REQ-D2 — Rewrite <code>SECURITY.md</code>.</strong> Per-control entry with its <em>default</em>, its <em>preconditions</em>, and its <em>residual risk</em>; correct the mTLS claim; state the out-of-scope items honestly.
+<strong>REQ-D3 — <code>docs/incident-runbook.md</code>.</strong> Kill-switch, emergency rotation, host-freeze, notification, and post-incident review.
+<strong>REQ-D4 — Compliance posture statement.</strong> Data residency, retention, deletion guarantees; make <code>destroy_home_policy: archive</code> vs <code>purge</code> explicit and documented.
+<strong>REQ-D5 — Disclosure process.</strong> Embargo policy, advisory publication path, security-release channel.</p>
+<hr />
+<h2 id="6-roadmap">6. Roadmap</h2>
+<p>Ordered so each phase unlocks the next and nothing ships a doc that describes behaviour not yet built.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Content</th>
+<th>Rows</th>
+<th>Gate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>P0 — Honesty</strong> (fastest win)</td>
+<td>Threat model (REQ-D1), <code>SECURITY.md</code> rewrite incl. the mTLS correction (REQ-D2, SEC-02), residual-risk disclosure, <strong>and the subuid overlap fix (REQ-X1 / SEC-22 — it breaks the isolation claim itself, so it cannot wait behind governance work)</strong>.</td>
+<td>REQ-D1, D2, X1</td>
+<td>A reviewer reading only <code>SECURITY.md</code> + <code>docs/threat-model.md</code> can state the product's actual posture; two agents have provably disjoint subordinate-ID ranges.</td>
+</tr>
+<tr>
+<td><strong>P1 — Close the door</strong></td>
+<td>TLS gate (REQ-T1), self-signed+pinning (REQ-T2), stop returning key material (REQ-T3), secret storage (REQ-I5).</td>
+<td>REQ-T1..T3, I5</td>
+<td>Non-loopback plaintext is impossible without an explicit, loud opt-in.</td>
+</tr>
+<tr>
+<td><strong>P2 — Know who</strong></td>
+<td>Per-operator identity (REQ-I1), RBAC (REQ-I2), heartbeat fix (REQ-I3), key lifecycle (REQ-I4), auth-failure audit (REQ-A1).</td>
+<td>REQ-I1..I4, A1</td>
+<td>Every action is attributable; a leaked credential can be revoked.</td>
+</tr>
+<tr>
+<td><strong>P3 — Contain</strong></td>
+<td>Egress policy (REQ-E1), supply-chain pinning (REQ-S1), shared-scratch default (SEC-11), anchored audit (REQ-A2), command content (REQ-A3).</td>
+<td>REQ-E1, S1, A2, A3</td>
+<td>A compromised agent cannot exfiltrate; the chain detects tampering.</td>
+</tr>
+<tr>
+<td><strong>P4 — Operate</strong></td>
+<td>Incident runbook (REQ-D3), compliance statement (REQ-D4), disclosure process (REQ-D5), remaining MED/LOW items.</td>
+<td>REQ-D3..D5, SEC-15..18</td>
+<td>An on-call engineer has a written response for the top scenarios.</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Estimate:</strong> P0 is days (writing). P1–P2 are the substantive work (single-digit engineer-weeks). P3 is the largest (egress + supply chain). Each phase ends with the live <code>e2e-full-battery.sh</code> <code>VERIFY-PASS</code> per <code>AGENTS.md</code>, plus the new security assertions.</p>
+<p><strong>Deliberate ordering note:</strong> P0 ships first and changes no behaviour. That is intentional — a security team's first question is answerable in days, which buys the credibility to do the engineering in P1–P3.</p>
+<hr />
+<h2 id="7-definition-of-team-ready-the-acceptance-gate">7. Definition of "team-ready" (the acceptance gate)</h2>
+<p>Bunker is approvable for a team when <strong>all</strong> of the following hold, verified live:</p>
+<ol>
+<li><strong>A written model exists</strong> and matches the code — <code>SECURITY.md</code> + <code>docs/threat-model.md</code>, every claim true of the <em>default</em> config.</li>
+<li><strong>Non-loopback plaintext is impossible</strong> without an explicit, warned, audited opt-in.</li>
+<li><strong>Every action is attributable</strong> to a distinct operator or agent credential, visible in the audit chain.</li>
+<li><strong>A leaked credential can be revoked</strong> without a restart, and rotation is documented and tested.</li>
+<li><strong>Failed authentication is recorded and rate-limited.</strong></li>
+<li><strong>Agent subordinate-IDs are globally disjoint</strong> and overlap is refused at startup — the user-namespace separation claim is enforceable, not aspirational. <em>(SEC-22)</em></li>
+<li><strong>Egress is controlled by policy</strong> with a safe default.</li>
+<li><strong>The audit chain is anchored off-box</strong> and its tamper-evidence claim is conditional and honest.</li>
+<li><strong>Supply chain is pinned</strong> for the rootless installer and image specs.</li>
+<li><strong>An incident runbook exists</strong> covering kill-switch, rotation, freeze, and notification.</li>
+<li><strong>Residual risk is stated</strong> — kernel sharing, exec-as-agent, per-instance isolation, unanchored-audit limits — in the security doc, not in code comments.</li>
+</ol>
+<p>This is the checklist we hand the security engineer. Items 1–6 are the difference between "impressive project" and "tool a team can adopt."</p>
+<hr />
+<h2 id="8-open-questions-for-the-owner">8. Open questions for the owner</h2>
+<ol>
+<li><strong>Threat model scope</strong> — is a hosted/multi-tenant Bunker a real target, or is this a per-team private deployment? It changes the severity of SEC-04/SEC-06 materially.</li>
+<li><strong>Egress default</strong> — default-deny (secure, breaks things) vs default-allowlist seeded from common registries (usable, weaker)? The panel split here.</li>
+<li><strong>How much compliance</strong> — is a SOC-2-adjacent story wanted, or only enough for an internal security review? SEC-18/D4 scale to that answer.</li>
+<li><strong>Shared scratch</strong> — SEC-11 says the cross-agent exchange directory is on by default. Keep the convenience, or flip the default and make sharing opt-in?</li>
+<li><strong>Who owns the docs</strong> — P0 is writing; should it be the foreman's rows, a dedicated pass, or handed to an outside reviewer to write (which is a stronger signal of independence)?</li>
+</ol>
+<hr />
+<h2 id="9-appendix-panel-provenance">9. Appendix — panel provenance</h2>
+<ul>
+<li><strong>Seats (6 landed / 6 families):</strong> Zhipu GLM-5.3 · Moonshot Kimi-K3 · Qwen3-Coder-Plus · Anthropic Claude-Opus-4.8 · Google Gemini-2.5-Pro · OpenAI gpt-5.6-sol. S1 (gpt-5.6-sol) was initially filed as stalled, then recovered inside its budget — and contributed the round's only isolation-boundary BLOCKER (SEC-22, subuid overlap) plus the <code>tls_insecure</code> finding. <strong>An early "stalled" harvest was wrong; the seat finished late and was recovered by re-reading the log.</strong></li>
+<li><strong>Convergence:</strong> 10 themes at 5–6/6, 2 at 4/6. Zero CONTRADICTED against the coordinator's prior framing — the seats out-performed that framing, which is the round working.</li>
+<li><strong>Coordinator re-verification:</strong> 12 load-bearing claims re-checked against raw source; 11 CONFIRMED, 1 REFINED (the "mTLS dead code" claim — it is config-gated, not dead; sub-claim unverified).</li>
+<li><strong>Artifacts:</strong> <code>~/sec-panel-bunker-2026-09-20/{brief.txt, MERGE.md, seat-*.log, extract-seat-*.md}</code></li>
+<li><strong>Model access finding (criterion 1 of the ask):</strong> security-capable lanes confirmed live — <code>gpt-5.6-sol</code> (openai-codex, ExploitBench 76.5), <code>glm-5.3</code> (zai-glm, ExploitBench 54.4), <code>kimi-k3</code> (Moonshot), <code>qwen3-coder-plus</code> (Qwen), <code>claude-opus-4.8</code> and <code>gemini-2.5-pro</code>/<code>claude-sonnet-5</code> (both via clinepass). All six seats produced verdicts. <strong>S1 is the round's lesson: the registry's top-ranked security lane was the SLOWEST (needed ~50 min) — harvest too early and you lose the deepest findings.</strong> It was the only seat to catch the isolation-boundary BLOCKER.</li>
+</ul>
+<div class="foot">Bunker security-readiness PRD · generated from docs/prd/security-readiness.md · panel artifacts in .coding-hermes/evidence/security-panel-2026-09-20/</div>
+</div></body></html>
