@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -132,7 +133,129 @@ func newAuditLog(path string) (*AuditLog, error) {
 		// context without re-printing the path (DF-BUNKER-17).
 		return nil, fmt.Errorf("audit log: %w", pathError(path, err))
 	}
-	return &AuditLog{f: f, path: path, rotateAt: MaxSize}, nil
+	l := &AuditLog{f: f, path: path, rotateAt: MaxSize}
+	// DF-BUNKER-29: re-seed the hash chain head from an existing log so the
+	// first record written by THIS process chains to the last record the
+	// PREVIOUS process wrote. Without this, every daemon restart (systemd
+	// restart, deploy, crash) broke the chain — the first post-restart record
+	// carried prev_hash:"" and `bunker audit verify` reported a tamper on an
+	// untouched log. lastHash is process state; the file is the durable truth.
+	// Best-effort: the append path never blocks on recovery.
+	l.reseedChainHead()
+	return l, nil
+}
+
+// reseedChainHead initializes lastHash from the tail of the existing log file
+// (if any) so a restarted process continues the hash chain instead of
+// restarting it. Genesis stays genesis: an empty (or missing) file leaves
+// lastHash "" and the first record ever written keeps prev_hash:"".
+//
+// deliberately NOT seeded: lastHash stays "" and the next record starts a new
+// chain segment with prev_hash:"", which `bunker audit verify` already
+// reports as a tamper at the damaged record — recovery must not bless a
+// broken tail by chaining onto it. Errors only warn: this is best-effort
+// recovery on the open path; it must never block the write path. Callers hold
+// no lock (constructor); Log serializes writes afterwards.
+//
+// Reuses Verify's own digest convention — canonical line (hash field emptied)
+// digested with SHA-256 — via auditChainHead; hashing is never reimplemented,
+// so the seed is the chain head Verify would accept and the writer and the
+// verifier agree by construction.
+func (l *AuditLog) reseedChainHead() {
+	info, err := l.f.Stat()
+	if err != nil || info.Size() == 0 {
+		if err != nil {
+			l.logWarn("audit chain-head recovery stat failed", "error", err)
+		}
+		return // empty or unreadable file: genesis chain head ""
+	}
+	head, err := auditChainHead(l.path)
+	if err != nil {
+		l.logWarn("audit chain-head recovery skipped", "error", err)
+		return
+	}
+	l.lastHash = head
+}
+
+// auditChainHead returns the hash chain head of the audit log at path: the
+// declared hash of the last record whose own hash AND chaining prev_hash both
+// verify, computed exactly as Verify does — the record's canonical bytes (the
+// line with the hash field emptied) digested with SHA-256. Backups
+// (path.1 .. path.MaxBackups, oldest first) are read before the live file so
+// a first record chaining into a rotated-away predecessor — what Verify's
+// oldest-retained-file rule accepts and what a restart right after rotation
+// presents — verifies against the predecessor's real tail instead of being
+// rejected as unchained; predecessors beyond MaxBackups are gone and their
+// link is accepted unverifiable, mirroring Verify.
+func auditChainHead(path string) (string, error) {
+	var head string
+	for i := MaxBackups; i >= 1; i-- {
+		p := fmt.Sprintf("%s.%d", path, i)
+		if _, err := os.Stat(p); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return "", pathError(p, err)
+		}
+		h, err := verifyFileHead(p, head, head != "")
+		if err != nil {
+			return "", err
+		}
+		head = h
+	}
+	h, err := verifyFileHead(path, head, head != "")
+	if err != nil {
+		return "", err
+	}
+	return h, nil
+}
+
+// verifyFileHead verifies one file's records with Verify's own rules and
+// returns the hash of its last record. Semantics match Verify's walk: the
+// first record's prev_hash must equal head when enforceHead is set, every
+// later record must chain to the previous record, and each record's hash must
+// be the SHA-256 digest of its canonical line — the exact convention Log
+// writes and Verify checks, so this never reimplements hashing.
+func verifyFileHead(path, head string, enforceHead bool) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", pathError(path, err)
+	}
+	defer f.Close()
+
+	prevHash := head // hash the next record must chain to
+	records := 0
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024) // same budget as Verify
+	for sc.Scan() {
+		records++
+		var rec Record
+		if err := json.Unmarshal(sc.Bytes(), &rec); err != nil {
+			return prevHash, fmt.Errorf("%s: record is not valid JSON: %w", path, err)
+		}
+		declared, prev := rec.Hash, rec.PrevHash
+		rec.Hash = ""
+		canonical, err := json.Marshal(rec)
+		if err != nil {
+			return prevHash, fmt.Errorf("%s: record re-marshal: %w", path, err)
+		}
+		sum := sha256.Sum256(canonical)
+		if hex.EncodeToString(sum[:]) != declared {
+			return prevHash, fmt.Errorf("%s: record hash mismatch (tampered)", path)
+		}
+		// Same chain rule as verifyFile: the first record must chain to the
+		// predecessor file's tail (when one exists); every later record to
+		// the previous one.
+		if (records == 1 && enforceHead && prev != prevHash) ||
+			(records > 1 && prev != prevHash) {
+			return prevHash, fmt.Errorf("%s: record %d: prev_hash does not chain (tampered)", path, records)
+		}
+		prevHash = declared
+	}
+	if err := sc.Err(); err != nil {
+		return prevHash, fmt.Errorf("read %s: %w", path, err)
+	}
+	return prevHash, nil
 }
 
 // applyOptions validates opts and attaches the enabled features. Used by
