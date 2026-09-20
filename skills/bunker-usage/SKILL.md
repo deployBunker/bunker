@@ -12,8 +12,11 @@ description: >-
   bunker-las-04 at CLI HEAD 66d4150 on 2026-09-16
   (docs/dogfood/2026-09-16-integration.md); REST-integrator recipes (unary +
   connect streaming) added 2026-09-18 against bunker-las-02 at HEAD 967c331
-  (docs/dogfood/2026-09-18-integration.md).
-version: 1.4.0
+  (docs/dogfood/2026-09-18-integration.md); durability battery (TTL reap,
+  kill -9 registry replay, sub-key scoping, audit chain, reconciliation)
+  verified 2026-09-19 against a scratch HEAD daemon
+  (docs/dogfood/2026-09-19-integration.md).
+version: 1.5.0
 category: software-development
 ---
 
@@ -114,6 +117,31 @@ across rotated backups (.1–.3).
 
 Spawn ≈ 10s. Limits are real — check them at `/sys/fs/cgroup/user.slice/user-<uid>.slice/{memory.max,cpu.max,pids.max}` (NOT `/sys/fs/cgroup/memory.max`), drop-in at `/etc/systemd/system/user-<uid>.slice.d/50-bunker.conf`.
 
+## Durability recipes (verified 2026-09-19, scratch daemon @ HEAD e344088)
+
+```bash
+# Prove TTL auto-destroy in ~2 minutes (the reaper ticks every 60s):
+bunker spawn --ttl 2m ttl-canary
+# → within ~2-3 min: "TTL expired, destroying agent" in the daemon log,
+#   user gone, registry destroy event appended. No operator action needed.
+
+# Prove crash safety the honest way — kill -9, then restart:
+sudo kill -9 $(pgrep -x bunkerd | head -1)   # SIGKILL, no graceful flush
+# restart the daemon → startup logs "restored:<N>" and each agent keeps
+# its EXACT persisted port range; exec works immediately after replay.
+
+# Scratch-daemon on a shared host (never touch the fleet daemon):
+#   own ports + registry/audit/ssh paths in /tmp, own BUNKER_HOME,
+#   reconciliation mode: adopt on the first restart if foreign bunker-*
+#   users exist on the host. See docs/dogfood/diagnostics.md §8.
+```
+
+Agent-scoped sub-keys (minted on spawn when `auth.jwt_secret` is set):
+the sub-key is rejected on the Bunkerd service (401) and `Agent/GetInfo`
+is clamped to the sub-key's own agent — but `Agent/Metrics` currently
+enforces NEITHER (DF-BUNKER-28): treat metrics data reached via a sub-key
+as unscoped until that row lands.
+
 ## Previously broken — now verified (2026-08-18)
 
 All features broken as of 2026-08-03 (tasks DOGFOOD-001..006) are fixed and verified live against the auth-enforced MVP:
@@ -147,6 +175,9 @@ All features broken as of 2026-08-03 (tasks DOGFOOD-001..006) are fixed and veri
 - **`bunker mount` can fail with raw `read: Connection reset by peer` against a healthy agent (2026-09-16, DF-BUNKER-11)** — raw ssh + sftp both fine; consistent with agent-host sshd parallel-session limiting. No CLI retry yet; wait and retry manually.
 - **`bunker cp` destination is `<agent-id>:<path>`** — a bare local path errors `accepts 2 arg(s), received 3`-style usage noise; the remote form is mandatory.
 - **Server version check before diagnosing** — `bunker status` prints the daemon's Version; the fleet can lag repo HEAD by a major version (las-04 = v0.1.3 on 2026-09-16), so behavior differences may be version drift, not bugs (DF-BUNKER-10).
+- **`bunker audit verify` false-positives after ANY daemon restart (2026-09-19, DF-BUNKER-29)** — the hash-chain head lives only in process memory; a restarted daemon's first record carries an empty `prev_hash`, so verify reports "tamper detected" on a log nobody touched. Until fixed, `audit verify` is only meaningful on a daemon that hasn't restarted since the log was created.
+- **Adopt mode destroys orphans without readable port metadata (2026-09-19, DF-BUNKER-30)** — `reconciliation.mode: adopt` adopts ONLY if `/home/bunker-<id>/.bunker/ports` is readable and in-pool; a hand-made `useradd bunker-x` orphan is WARNed and destroyed even in adopt mode. This is fail-closed by design, but the config.example.yaml comment doesn't mention the precondition.
+- **Cleanup probes: use exact names** — `pgrep -f 'bunkerd --config …'` matches your own checking shell (two false "still running" readings in one session on 09-19); use `pgrep -x bunkerd` + `getent passwd bunker-<id>` instead.
 
 ## Right way to validate changes
 

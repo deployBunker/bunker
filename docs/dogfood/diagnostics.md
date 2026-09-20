@@ -334,6 +334,51 @@ written from `docs/integration.md` and drove a full lifecycle against
    spawn landing on the **same** UID 1012 succeeded in 21.8s. When a spawn looks
    dead, read `journalctl -u bunkerd` on the daemon host before anything else.
 
+8. **The durability surface (2026-09-19 run) — how the trust promises actually behave.**
+   - *TTL reaper mechanics:* a 1-minute ticker in `internal/agent/manager.go`
+     scans the tracker for `ExpiresAt` in the past and destroys the agent
+     (user, home, keys, ports, registry destroy event). Verified live: `--ttl 2m`
+     agent expired on schedule and was reaped on the next tick (~40s later). A
+     short-TTL spawn is the cheapest way to prove the whole destroy path
+     without touching anything you care about.
+   - *Crash replay:* the registry (`agents.jsonl`, append-only, fsync'd appends)
+     is replayed before listeners open; `restoreAgent` reinstates each live
+     record with its EXACT persisted port range (a record without a range fails
+     closed and is force-destroyed — that is `failClosedRestore`). Verified
+     with a `kill -9` + restart: `restored:2`, port ranges identical, exec
+     working immediately. **The right way to test durability is kill -9, not
+     systemctl restart** — restart masks unflushed-state bugs that SIGKILL
+     exposes (here: none; the appends are already on disk).
+   - *Audit chain internals:* each record hashes its canonical bytes with the
+     previous record's hash; `lastHash` lives in the AuditLog struct (memory).
+     Rotation keeps the chain (seal record carries the head) but a PROCESS
+     RESTART starts a fresh chain with `prev_hash:""` — `bunker audit verify`
+     then reports "tamper detected" at the first post-restart record
+     (`internal/audit/audit.go`: no chain-head recovery at New). Until fixed,
+     `audit verify` output is only meaningful on a daemon that has not
+     restarted since the log was created.
+   - *Reconcile decision matrix (startup):* registry-live + user present →
+     restore; registry-live + user gone → purge (+ scoped key removal);
+     user present + registry-unknown → FOREIGN check first (owner marker /
+     out-of-pool ports — DF-BUNKER-18), then per mode: destroy → destroy;
+     adopt → adopt ONLY if `/home/bunker-<id>/.bunker/ports` is readable and
+     the range is in-pool, else WARN + destroy. The adopt precondition is
+     the sharp edge: a hand-made `useradd bunker-x` orphan will always be
+     destroyed even in adopt mode. To construct an adoptable orphan you must
+     write a plausible `.bunker/ports` file first.
+   - *Scratch-daemon pattern (the right way to dogfood this project on a
+     shared host):* private config in /tmp (own ports, own registry/audit
+     paths, own SSH dir), `BUNKER_HOME` pointed at a private CLI home, and
+     reconciliation `adopt` for the first restart if foreign `bunker-*`
+     users exist on the host (defense against destroying another lane's
+     agents by mistake). Verify cleanup by exact-name probes (`pgrep -x
+     bunkerd`, `getent passwd`), never `pgrep -f` — the full-command match
+     hits your own checking shell and lies twice in one session.
+   - *Non-root daemon behavior:* spawn proceeds (ports, dirs) until
+     `useradd` needs root, then fails `exit 1` with the rollback path —
+     correct, but easy to misread as a port/permission bug if you forgot the
+     daemon needs root.
+
 **Right way recap for future agents:** build at HEAD; for anything that needs
 command output over REST use `application/connect+json` with envelope framing
 and **no** end-of-stream envelope; de-chunk and base64-decode before parsing;
@@ -341,4 +386,8 @@ spawn with `agent_id` (never `name`); check `id bunker-<agent>` and
 `/etc/bunkerd/ssh/<agent>` on the daemon host after experiments — destroy is
 clean, TTL expiry may not be; and treat a `200` on the streaming path as
 "transport OK", not "command OK", because protocol errors arrive inside the
-stream.
+stream. For durability claims: prove TTL with a `--ttl 2m` agent, prove crash
+safety with kill -9 (not restart), and read `audit verify` with the
+restart-breaks-chain caveat in mind. On a shared host, run your scratch
+daemon on private ports with a private BUNKER_HOME and `pgrep -x`/`getent`
+for cleanup checks.
