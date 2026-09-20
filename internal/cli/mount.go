@@ -22,9 +22,12 @@ import (
 // retries) before the mount command gives up.
 const sshfsMaxAttempts = 3
 
-// sshfsAttemptTimeout bounds each individual sshfs attempt. Every attempt
-// gets a fresh budget so earlier failed attempts do not starve later ones.
-const sshfsAttemptTimeout = 30 * time.Second
+// sshfsAttemptTimeout bounds each individual sshfs attempt: every attempt gets
+// its own fresh deadline so a signal-aware parent context cannot turn a bounded
+// retry loop into a sequence of unbounded attempts. Package-level var (not a
+// const) so tests can shrink it — the hang-bounding contract is only testable
+// if a test can reach the deadline without waiting 30 real seconds per attempt.
+var sshfsAttemptTimeout = 30 * time.Second
 
 // sshfsRetryDelay is the wait between sshfs attempts. Package-level so
 // tests can zero it out (no real sleeps).
