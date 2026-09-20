@@ -2488,3 +2488,47 @@ tasks:
   status: complete
   created_at: '2026-09-20T01:52:44.784257+00:00'
   completed_at: '2026-09-20T03:01:55.083103+00:00'
+- id: DF-BUNKER-28
+  title: Agent-service Metrics RPC per-agent scoping + existence check
+  criteria:
+  - "internal/server/service.go agentService.Metrics: (1) a spawned agent's sub-key\
+    \ calling Metrics with a foreign agentId gets 403 or 404 (no cross-agent read);\
+    \ (2) Metrics with a never-spawned agentId returns not_found for ANY caller including\
+    \ master \u2014 no fabricated status:running host-fallback record; (3) unit tests\
+    \ in internal/server cover all three probe shapes (sub-key foreign id, sub-key\
+    \ unknown id, master unknown id); (4) go build ./... and go test ./internal/server/...\
+    \ pass"
+  status: complete
+  created_at: '2026-09-20T05:21:26.135139+00:00'
+  completed_at: '2026-09-20T07:04:12.890933+00:00'
+- id: DF-BUNKER-29
+  title: Audit hash chain survives daemon restart
+  criteria:
+  - "(1) opening an existing chained audit.log re-seeds the in-memory chain head from\
+    \ the log tail (or seal record) so the first post-restart record's prev_hash links\
+    \ to the pre-restart tail; (2) a regression test opens an existing chained log,\
+    \ appends a record, and audit verification reports OK \u2014 covering both graceful-restart\
+    \ and SIGKILL shapes; (3) go build ./... and go test ./internal/audit/... pass"
+  status: complete
+  created_at: '2026-09-20T05:21:43.328143+00:00'
+  completed_at: '2026-09-20T06:05:24.856519+00:00'
+- id: DF-BUNKER-30
+  title: config.example.yaml adopt precondition comment
+  criteria:
+  - "(1) the reconciliation comment in config.example.yaml states that mode:adopt\
+    \ applies ONLY to orphans carrying readable, valid, in-pool port metadata (~/.bunker/ports);\
+    \ (2) it states that orphans without that metadata are DESTROYED in both modes;\
+    \ (3) comment-only change \u2014 no .go files modified"
+  status: complete
+  created_at: '2026-09-20T05:21:44.429129+00:00'
+  completed_at: '2026-09-20T05:40:23.717792+00:00'
+- id: DF-BUNKER-32
+  title: README quick-start root requirement up front
+  criteria:
+  - "(1) the README 'Run it locally' quick-start states the daemon root requirement\
+    \ in the section intro, before the first spawn command; (2) a troubleshooting\
+    \ line names the non-root useradd exit-1 failure mode; (3) docs-only change \u2014\
+    \ no .go files modified"
+  status: complete
+  created_at: '2026-09-20T05:21:45.465122+00:00'
+  completed_at: '2026-09-20T05:40:22.982896+00:00'
