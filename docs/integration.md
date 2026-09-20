@@ -626,15 +626,21 @@ spawn ──▶ exec/run ──▶ cp/deploy ──▶ mount/tunnel ──▶ me
 (create)   (command)   (files)        (fs/socket)     (observe)   (extend TTL)   (cleanup)
 ```
 
-1. **Spawn** — `bunker spawn --name build-1 --ttl 2h --cpu 2 --mem 4g`
+1. **Spawn** — `bunker spawn build-1 --ttl 2h --cpu 2 --memory 4294967296`
+   (`--memory`/`--disk` take a byte count — 4294967296 is 4 GiB; the
+   positional argument is an alias for `--agent-id`).
    Validates TTL (`\d+[hmd]`, e.g. `6h`, `90m`, `7d`) before any side effects;
    allocates a port range from the configured pool (default 10000–19999, 100 per
    agent); creates the Linux user, SSH keypair, and rootless dockerd.
 2. **Exec / Run** — `bunker exec build-1 -- env FOO=bar make test`
    (compound shell snippets work: `bunker exec build-1 -- 'if [ -f x ]; then cat x; fi'`).
-   `bunker run build-1 -- --detach sleep 600` backgrounds a long job.
-3. **Files** — `bunker cp file.txt build-1:/tmp/`, `bunker deploy build-1 dist/`
-   (scp-based; client resolves the SSH host by `--ssh-host` > server URL host >
+   `bunker run build-1 --detach -- sleep 600` backgrounds a long job
+   (`--detach` is a `bunker run` flag, so it goes before the `--` separator;
+   everything after `--` belongs to the remote command).
+3. **Files** — `bunker cp file.txt build-1:/tmp/`,
+   `bunker deploy dist/ build-1:/tmp/dist/` (deploy takes the local directory
+   first and an `<agent-id>:/path` destination second; scp-based; client
+   resolves the SSH host by `--ssh-host` > server URL host >
    server hostname, and always uses `-o IdentitiesOnly=yes`).
 4. **Mount / Tunnel** — `bunker mount build-1 /mnt/agent` (SSHFS),
    `bunker tunnel build-1` → `docker -H localhost:2376 ps` (forwards the agent's

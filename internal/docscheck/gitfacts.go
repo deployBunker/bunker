@@ -33,6 +33,12 @@ type GitFacts struct {
 	// has no release tag yet (GAP-088: `audit status` was absent from
 	// v0.1.4, so a tag-based group check could never flag the doc gap).
 	TreeSurface Surface
+	// TreeFlags is the per-command long-flag registry of the WORKING TREE
+	// (same HEAD sources TreeSurface is parsed from). The docs-flag-surface
+	// rule checks against it (GAP-087): a documented flag must be accepted
+	// by the tree that ships the docs, and a tag-based registry cannot see
+	// a flag that has no release tag yet.
+	TreeFlags map[string]map[string]bool
 	// PostTagCommits is `git rev-list --count <LatestTag>..HEAD`.
 	PostTagCommits int
 }
@@ -69,6 +75,10 @@ func Gather(dir string) (GitFacts, error) {
 	if err != nil {
 		return GitFacts{}, err
 	}
+	treeFlags, err := TreeFlags(root)
+	if err != nil {
+		return GitFacts{}, err
+	}
 
 	count, err := git(root, "rev-list", "--count", tag+"..HEAD")
 	if err != nil {
@@ -79,7 +89,7 @@ func Gather(dir string) (GitFacts, error) {
 		return GitFacts{}, fmt.Errorf("parse commit count %q: %w", strings.TrimSpace(count), err)
 	}
 
-	return GitFacts{Root: root, LatestTag: tag, Surface: surface, TreeSurface: treeSurface, PostTagCommits: commits}, nil
+	return GitFacts{Root: root, LatestTag: tag, Surface: surface, TreeSurface: treeSurface, TreeFlags: treeFlags, PostTagCommits: commits}, nil
 }
 
 // Verify reads the two documents in root plus every registered group's doc
@@ -110,6 +120,29 @@ func Verify(root string, facts GitFacts) ([]Problem, error) {
 		}
 		groupDocs[rule.Group] = string(b)
 	}
+	// Doc pages: docs/*.md carry runnable example invocations (GAP-087).
+	// Read them all so the docs-flag-surface rule sees them; a page that
+	// disappears is simply not checked. Read errors other than not-exist
+	// surface loudly.
+	docs := map[string]string{}
+	docMatches, err := filepath.Glob(filepath.Join(root, "docs", "*.md"))
+	if err != nil {
+		return nil, fmt.Errorf("list docs/*.md: %w", err)
+	}
+	for _, docPath := range docMatches {
+		b, err := os.ReadFile(docPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("read %s: %w", docPath, err)
+		}
+		rel, err := filepath.Rel(root, docPath)
+		if err != nil {
+			rel = docPath
+		}
+		docs[filepath.ToSlash(rel)] = string(b)
+	}
 	return Check(Input{
 		ReadmePath:     "README.md",
 		ChangelogPath:  "CHANGELOG.md",
@@ -120,6 +153,8 @@ func Verify(root string, facts GitFacts) ([]Problem, error) {
 		PostTagCommits: facts.PostTagCommits,
 		GroupDocs:      groupDocs,
 		TreeSurface:    facts.TreeSurface,
+		Docs:           docs,
+		TreeFlags:      facts.TreeFlags,
 	}), nil
 }
 
@@ -133,6 +168,17 @@ func TreeSurface(dir string) (Surface, error) {
 	return tagSurfaceAt(dir, "HEAD")
 }
 
+// TreeFlags derives the per-command long-flag registry of the WORKING TREE
+// from the same HEAD sources TreeSurface reads (GAP-087). Same determinism
+// guarantees: object-database reads, no checkout, no build.
+func TreeFlags(dir string) (map[string]map[string]bool, error) {
+	mainSrc, files, err := treeSources(dir)
+	if err != nil {
+		return nil, err
+	}
+	return FlagsFor(mainSrc, files), nil
+}
+
 // TagSurface derives the CLI surface of the tree at ref without checking it
 // out: it reads `cmd/bunker/main.go` and the `internal/cli` sources straight
 // out of the object database.
@@ -142,13 +188,29 @@ func TagSurface(dir, ref string) (Surface, error) {
 
 // tagSurfaceAt is the shared reader behind TagSurface and TreeSurface.
 func tagSurfaceAt(dir, ref string) (Surface, error) {
+	mainSrc, files, err := treeSourcesAt(dir, ref)
+	if err != nil {
+		return Surface{}, err
+	}
+	return ParseSurface(mainSrc, files)
+}
+
+// treeSources reads cmd/bunker/main.go plus the internal/cli sources of the
+// WORKING TREE (HEAD content).
+func treeSources(dir string) (string, map[string]string, error) {
+	return treeSourcesAt(dir, "HEAD")
+}
+
+// treeSourcesAt reads cmd/bunker/main.go and every non-test internal/cli
+// source at ref straight out of the object database.
+func treeSourcesAt(dir, ref string) (string, map[string]string, error) {
 	mainSrc, err := git(dir, "show", ref+":cmd/bunker/main.go")
 	if err != nil {
-		return Surface{}, fmt.Errorf("read cmd/bunker/main.go at %s: %w", ref, err)
+		return "", nil, fmt.Errorf("read cmd/bunker/main.go at %s: %w", ref, err)
 	}
 	listing, err := git(dir, "ls-tree", "-r", "--name-only", ref, "--", "internal/cli")
 	if err != nil {
-		return Surface{}, fmt.Errorf("list internal/cli at %s: %w", ref, err)
+		return "", nil, fmt.Errorf("list internal/cli at %s: %w", ref, err)
 	}
 	files := map[string]string{}
 	for _, path := range strings.Fields(listing) {
@@ -157,11 +219,11 @@ func tagSurfaceAt(dir, ref string) (Surface, error) {
 		}
 		src, err := git(dir, "show", ref+":"+path)
 		if err != nil {
-			return Surface{}, fmt.Errorf("read %s at %s: %w", path, ref, err)
+			return "", nil, fmt.Errorf("read %s at %s: %w", path, ref, err)
 		}
 		files[path] = src
 	}
-	return ParseSurface(mainSrc, files)
+	return mainSrc, files, nil
 }
 
 // git runs git in dir and returns stdout, folding stderr into the error.

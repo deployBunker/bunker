@@ -9,7 +9,11 @@
 //     its block is marked "requires a build from HEAD";
 //   - no release tag older than the newest one is named in the README;
 //   - the CHANGELOG carries an `## Unreleased` section while commits exist
-//     after the newest release tag.
+//     after the newest release tag;
+//   - every long flag used in a docs/*.md example invocation is one the
+//     working tree's CLI can accept for that command (GAP-087: the
+//     integration walkthrough documented `spawn --name/--mem`, which the
+//     shipped CLI rejects — that class of drift used to be invisible to CI).
 //
 // A tag-less checkout (shallow clone, `act` run, source tarball) skips with a
 // warning instead of failing, matching the CI version-authority and tag-build
@@ -55,7 +59,7 @@ func run(dir string) error {
 
 	names := facts.Surface.Names()
 	if len(problems) == 0 {
-		fmt.Printf("docs OK: README/CHANGELOG match %s (%d released commands, %d commit(s) after the tag)\n",
+		fmt.Printf("docs OK: README/CHANGELOG/docs match %s (%d released commands, %d commit(s) after the tag)\n",
 			facts.LatestTag, len(names), facts.PostTagCommits)
 		fmt.Printf("  released: %v\n", names)
 		return nil
