@@ -1,0 +1,147 @@
+# BUNKER SECURITY READINESS — CLAIM-CHECKLIST PANEL BRIEF
+
+**You are one seat in a multi-model panel. Work the ENTIRE checklist below; do not
+specialize. Your verdicts are proposals that the coordinator will re-verify against raw
+data before anything is ruled.**
+
+## LENS FOR THIS PANEL
+
+**Not:** "is the code buggy". **Not:** a code audit in the abstract.
+
+**Yes:** *Would a security engineer, asked to approve Bunker for a TEAM of engineers to
+use, sign off?* What is MISSING, what must be ADDED, what must be TUNED, and what DOC must
+be UPGRADED — for Bunker to be a tool a security team would want their engineers using, not
+tolerating.
+
+Read the artifact as a security engineer reading a vendor's product, not as its author.
+
+## WHAT THIS ARTIFACT IS
+
+`github.com/deployBunker/bunker` — provisions per-user rootless-Docker hosts for AI agents
+on a shared box. One Linux user = one Docker daemon = one isolated agent. Claims: "complete
+isolation without Docker-in-Docker, Sysbox, or full VMs". Density claim: 20+ agents on one
+bare-metal host.
+
+**Prior context (2026-09-20, same day):** a sibling review found that Bunker's cgroup usage
+covers only 5 knobs (CPUQuota, MemoryMax, TasksMax, LimitNOFILE, LimitFSIZE) and omits swap
+bounding, memory.high, memory.oom.group and all IO limits. A 10-row preset family
+(GAP-113..GAP-122) was filed on the board for that. Do NOT re-derive those rows — ASSUME
+that resource-limiting work is in flight, and judge everything ELSE.
+
+## GROUND FILES — read these, do not review from memory
+
+Repo root: `/home/kara/bunker` (git HEAD at read time; record the sha you saw)
+
+- `SECURITY.md` — the security policy + stated security model
+- `README.md`
+- `internal/auth/` — interceptor.go, jwt.go, mtls.go (+ their tests)
+- `internal/audit/` — audit.go, ship.go, verify.go, status.go, query.go
+- `internal/server/server.go` — TLS/mTLS config (buildTLSConfig), RPC surface
+- `internal/server/service.go` — the RPC service (spawn/destroy/exec/run/logs)
+- `internal/agent/manager_spawn.go` — spawn pipeline, rollback, slice limits
+- `internal/agent/isolation.go`, `internal/agent/run.go` — unit argv, env
+- `internal/hostsetup/` — host provisioning (PAM /tmp isolation, systemd drop-ins)
+- `internal/config/config.go` — every knob
+- `docs/` — audit.md, exec-audit.md, integration.md, both-ways.md
+- `.coding-hermes/board/tasks.jsonl` — the live board (JSONL, one task/line). Grep it for
+  `security`, `auth`, `audit`, `escape`, `root`, `hardened`, `GAP-067`, `GAP-074`.
+
+Useful commands (all read-only):
+```
+cd /home/kara/bunker && git log -1 --format='%h %s'
+grep -rn "InsecureSkipVerify\|insecure.NewCredentials\|WithTransportCredentials" --include=*.go internal/ cmd/ | grep -v _test
+grep -rn "rand.Read\|uuid.New\|CryptoRandom\|token" --include=*.go internal/auth internal/agent | grep -v _test | head -40
+ls docs/ && wc -l docs/*.md
+```
+
+## YOUR OUTPUT SHAPE — mandatory, in this order
+
+### 1. SIGN-OFF VERDICT (1 paragraph + 1 line)
+Would you approve Bunker for your team today? APPROVE / APPROVE-WITH-CONDITIONS /
+DO-NOT-APPROVE, and the single biggest reason.
+
+### 2. CLAIM VERDICTS — every claim below, in order
+For EACH claim: `ID | VERDICT (VERIFIED / CONTRADICTED / SPLIT / UNRESOLVED) | evidence
+(file:line or command→output)`. A verdict without a file/line or a command is a vibe and
+will be discarded. Where a claim is a QUESTION (C-8), answer it rather than voting.
+
+**A — Control plane (the daemon is the crown jewel)**
+- C-1  The `SECURITY.md` "security model" list matches what the code actually implements
+       (each of its 5 bullets is real and correctly described).
+- C-2  Auth is sound: token/JWT generation, scope enforcement, and the mtls path are
+       correct; no auth bypass on any RPC.
+- C-3  Transport default posture is safe: what is the DEFAULT when TLS is off — does the
+       daemon refuse to run, warn, or silently serve plaintext on a reachable interface?
+- C-4  Authorization between agents: nothing lets agent A's credentials act on agent B.
+- C-5  Destroy/renew/register RPCs are authorized at least as strictly as spawn.
+
+**B — Agent isolation (the product's core promise)**
+- C-6  Container escape: `SECURITY.md` says root-in-own-container is OUT OF SCOPE. For a
+       SECURITY-TEAM audience, is that defensible as written, or must it be re-worded
+       (and how)? Judge the WORDING as product risk, not the kernel reality.
+- C-7  The per-agent isolation claims (own dockerd, userns remap, SSH key isolation)
+       hold in the code and are not merely aspirational.
+- C-8  What host-accessible surfaces does an agent user still have beyond its own
+       container — anything that lets agent A read or affect another agent's data?
+
+**C — Provisioning & supply chain**
+- C-9  `useradd`/`userdel`/`subuid`/`chown`/`systemd-run` call paths: any injection or
+       TOCTOU class where an agent-influenced value ([agent-id], paths) reaches a shell
+       or system tool unsafely?
+- C-10 Binary/install supply chain: how the binaries and the rootless-docker installer
+       get onto a host, and whether that path is pinned/verified.
+
+**D — Audit & forensics**
+- C-11 The audit chain is genuinely tamper-evident, and what a root-level attacker on the
+       AGENT's side (not the host's) can still do to it.
+- C-12 `bunker audit status` / query / verify give an incident responder what they need,
+       or what is missing.
+
+**E — Secrets**
+- C-13 Secret handling end to end: the bunkerd token, JWT secret, per-agent SSH keys, and
+       any credential that lands in the agent home. Where are they stored, what are the
+       file modes, and what is exposed to the agent itself?
+
+**F — Operational security (the team-use bar)**
+- C-14 The single most likely REAL-WORLD security incident with this design used as
+       intended by a team — the concrete scenario, and the control that is missing.
+
+### 3. THE SECURITY-TEAM GAP LIST
+The heart of this panel. As a security engineer, list what must exist for you to approve
+team use. For EACH: `ID | MISSING / ADD / TUNE / DOC-UPGRADE | what it is | why a
+security team demands it | severity (BLOCKER / HIGH / MED / LOW)`. Cover at least:
+threat model, auth/rbac model, secret management story, egress control, image/supply-chain
+policy, logging/incident response, compliance posture, and the operator's incident
+runbook. Name what a SOC-2-adjacent or regulated-industry reviewer would ask first.
+
+### 4. DOC UPGRADES
+Specifically which documents must be written or rewritten, and what each must contain.
+At minimum judge whether `SECURITY.md` is adequate as a security model, and whether a
+threat model document is owed.
+
+### 5. TOP-10 RANKED FIXES
+`rank | fix | severity | effort (S/M/L) | why it is a security-team demand`
+
+### 6. REPEAT-OFFENSE SECTION
+What in THIS artifact causes the SAME failure classes Bunker has shipped before?
+(a) credential/key paths leaking, (b) success-marker string checks treated as state,
+(c) state ladders, (d) silent-skip paths, (e) fixes that weaken a requirement to fit a
+lane, (f) green-but-did-nothing. Each with the file:line.
+
+### 7. ONE COMMAND THAT WOULD FALSIFY YOUR MAIN CLAIM
+State it.
+
+## BUDGET RULE (deliverable-first)
+Sections 1–5 are MANDATORY. Cap live verification experiments at ~4. **An unfinished review
+is a failed review** — a research-rich, report-poor response will be discarded. If you run
+out of budget, ship sections 1–3 with what you have.
+
+## HARD RULES
+- Read the actual files. Reviewing from memory or from this brief's summary will be caught.
+- Every verdict needs file:line or a command→output. No exceptions.
+- You are read-only: never write in the repo, never git-write, never restart anything.
+  Scratch work goes in /tmp.
+- Independence is the method: do not soften a finding because the code looks well-built.
+  A round that finds nothing found nothing.
+
+End your response with the exact line: `PANEL REVIEW COMPLETE`
