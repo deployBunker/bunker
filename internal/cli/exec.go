@@ -28,6 +28,46 @@ func NewExecCommand() *cobra.Command {
 		execCap    uint64
 	)
 
+	// execFlagSpec describes one flag the exec peelers accept, in BOTH the
+	// space form (--flag value) and the inline form (--flag=value). A
+	// boolean flag takes no value; any other flag without one produces
+	// "flag needs an argument" in the pre-agent-id position.
+	type execFlagSpec struct {
+		apply   func(value string)
+		boolean bool
+	}
+
+	// execFlagSpecs is the single accepted-flag table for `bunker exec`:
+	// the seven exec flags plus the root command's persistent flags. Both
+	// peelers (pre- and post-agent-id) drive off this map; every declared
+	// exec flag must appear here (TestExecAcceptsEveryDeclaredFlag walks
+	// the declared flags end-to-end) and every root persistent flag must
+	// appear here (the cmd/bunker root-tree test walks
+	// root.PersistentFlags() through the real `bunker exec` invocation).
+	// The root persistent flags must be applied HERE: with
+	// DisableFlagParsing cobra never parses them for exec, so the root
+	// PersistentPreRun transfer runs with an empty value and a peeled
+	// --config would otherwise be accepted and silently ignored.
+	execFlagSpecs := map[string]execFlagSpec{
+		"--server": {apply: func(v string) { serverName = v }},
+		"--timeout": {apply: func(v string) {
+			if n, err := strconv.ParseUint(v, 10, 32); err == nil {
+				timeout = uint32(n)
+			}
+		}},
+		"--raw":    {apply: func(string) { rawMode = true }, boolean: true},
+		"--script": {apply: func(v string) { scriptPath = v }},
+		"--stdin":  {apply: func(v string) { stdinPath = v }},
+		"--base64": {apply: func(string) { base64Out = true }, boolean: true},
+		"--exec-cap": {apply: func(v string) {
+			if n, err := strconv.ParseUint(v, 10, 64); err == nil {
+				execCap = n
+			}
+		}},
+		"--config":        {apply: SetConfigPathOverride},
+		"--daemon-config": {apply: SetDaemonConfigPathOverride},
+	}
+
 	cmd := &cobra.Command{
 		Use:   "exec <agent-id> [flags] [--] <command> [args...]",
 		Short: "Execute a command in an agent's environment",
@@ -44,6 +84,11 @@ directly to execve on the remote host. This is useful for commands with
 quotes, parentheses, or pipes that would otherwise need shell escaping.
 
 Use --script <file> to upload a local script and execute it inside the agent.
+
+The global persistent flags --config and --daemon-config are accepted in
+every position, including before the agent-id:
+
+  bunker exec --config ./cfg.yaml abc12345 -- docker ps
 
 Any other flag before the agent-id is rejected before anything is sent to
 the server:
@@ -78,12 +123,17 @@ Examples:
 			// with flag parsing enabled; exec disables parsing, so anything
 			// typed before "exec" lands here in args (e.g.
 			// "bunker --server prod exec abc123 -- ..." arrives as
-			// ["--server", "prod", "abc123", "--", ...]). Accept the same four
-			// flags here that the post-agent-id peeler below accepts, including
-			// the --flag=value form, so the global position behaves like it
-			// does for spawn/status/list/info/audit. Reject any other
-			// flag-like token with an actionable error instead of letting it
-			// become the agent-id and die as a server-side not_found.
+			// ["--server", "prod", "abc123", "--", ...]). Accept the FULL
+			// flag set — the exec flags in execFlagSpecs below plus the root
+			// command's persistent flags (--config/--daemon-config, which
+			// exec must apply itself: DisableFlagParsing means cobra never
+			// parses them and the root PersistentPreRun transfer sees an
+			// empty value) — here and after the agent-id, each in the space
+			// form (--server X) and the inline form (--server=X), so the
+			// global position behaves like it does for
+			// spawn/status/list/info/audit. Reject any other flag-like token
+			// with an actionable error instead of letting it become the
+			// agent-id and die as a server-side not_found.
 			head := 0
 			for head < len(args) {
 				arg := args[head]
@@ -100,46 +150,22 @@ Examples:
 					break // already handled above
 				}
 				name, value, hasValue := strings.Cut(arg, "=")
-				switch name {
-				case "--server":
-					if hasValue {
-						serverName = value
-						head++
-					} else if head+1 < len(args) {
-						serverName = args[head+1]
-						head += 2
-					} else {
-						return fmt.Errorf("flag needs an argument: %s", name)
-					}
-				case "--timeout":
-					v := value
-					if !hasValue {
-						if head+1 >= len(args) {
-							return fmt.Errorf("flag needs an argument: %s", name)
-						}
-						v = args[head+1]
-						head++
-					}
-					if n, err := strconv.ParseUint(v, 10, 32); err == nil {
-						timeout = uint32(n)
-					}
-					head++
-				case "--raw":
-					rawMode = true
-					head++
-				case "--script":
-					if hasValue {
-						scriptPath = value
-						head++
-					} else if head+1 < len(args) {
-						scriptPath = args[head+1]
-						head += 2
-					} else {
-						return fmt.Errorf("flag needs an argument: %s", name)
-					}
-				default:
+				spec, ok := execFlagSpecs[name]
+				if !ok {
 					return fmt.Errorf("exec takes no flags before <agent-id> (got %q)", arg)
 				}
+				if !hasValue {
+					if spec.boolean {
+						value = "true"
+					} else if head+1 < len(args) {
+						value = args[head+1]
+						head++
+					} else {
+						return fmt.Errorf("flag needs an argument: %s", name)
+					}
+				}
+				spec.apply(value)
+				head++
 			}
 			args = args[head:]
 			if len(args) < 1 {
@@ -162,53 +188,33 @@ Examples:
 			}
 			// Parse our own flags from the head of rest. Anything after the
 			// command token is left untouched so Docker flags pass through.
+			// Unknown flag-like tokens and value-taking flags with no value
+			// BREAK the loop here (they are part of the command) — only the
+			// pre-agent-id peeler refuses; this mirrors the original
+			// switch-and-break shape so `docker run --rm` is never eaten.
 			i := 0
 			for i < len(rest) {
-				switch rest[i] {
-				case "--server":
-					if i+1 < len(rest) {
-						serverName = rest[i+1]
-						i += 2
-						continue
-					}
-				case "--timeout":
-					if i+1 < len(rest) {
-						if v, err := strconv.ParseUint(rest[i+1], 10, 32); err == nil {
-							timeout = uint32(v)
-						}
-						i += 2
-						continue
-					}
-				case "--raw":
-					rawMode = true
-					i += 1
-					continue
-				case "--script":
-					if i+1 < len(rest) {
-						scriptPath = rest[i+1]
-						i += 2
-						continue
-					}
-				case "--stdin":
-					if i+1 < len(rest) {
-						stdinPath = rest[i+1]
-						i += 2
-						continue
-					}
-				case "--base64":
-					base64Out = true
-					i += 1
-					continue
-				case "--exec-cap":
-					if i+1 < len(rest) {
-						if v, err := strconv.ParseUint(rest[i+1], 10, 64); err == nil {
-							execCap = v
-						}
-						i += 2
-						continue
+				arg := rest[i]
+				if !strings.HasPrefix(arg, "-") || arg == "-" {
+					break
+				}
+				name, value, hasValue := strings.Cut(arg, "=")
+				spec, ok := execFlagSpecs[name]
+				if !ok {
+					break // unknown token: part of the command, left untouched
+				}
+				if !hasValue {
+					if spec.boolean {
+						value = "true"
+					} else if i+1 < len(rest) {
+						value = rest[i+1]
+						i++
+					} else {
+						break // dangling value-taking flag: part of the command
 					}
 				}
-				break
+				spec.apply(value)
+				i++
 			}
 			// The flag loop stops at the first non-flag token. If that token
 			// is the "--" separator, skip it so it is not sent as the command.
