@@ -133,6 +133,100 @@ func TestAuditListCommand_InvalidSince(t *testing.T) {
 	}
 }
 
+// TestAuditCommandHelpListsSubcommandsAndDocumentsCommandRecords covers the
+// operator-facing surface for GAP-142: the audit group documents the correlated
+// command records and names the query that finds them.
+func TestAuditCommandHelpDocumentsCommandRecords(t *testing.T) {
+	out, err := auditCmd(t, "--help")
+	if err != nil {
+		t.Fatalf("audit --help: %v", err)
+	}
+	for _, want := range []string{"command", audit.ExecRecordMethod} {
+		if !strings.Contains(out, want) {
+			t.Errorf("audit --help output does not mention %q:\n%s", want, out)
+		}
+	}
+	listHelp, err := auditCmd(t, "list", "--help")
+	if err != nil {
+		t.Fatalf("audit list --help: %v", err)
+	}
+	if !strings.Contains(listHelp, audit.ExecRecordMethod) {
+		t.Errorf("audit list --help does not show the command-record query:\n%s", listHelp)
+	}
+}
+
+// TestAuditCommand_CommandRecordsAreQueryable is the CLI half of acceptance
+// criterion 1: `bunker audit list` shows a correlated exec record with its
+// command, agent id and caller, and its method sub-kind isolates it from the
+// per-RPC records.
+func TestAuditCommand_CommandRecordsAreQueryable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.log")
+	l, err := audit.New(path)
+	if err != nil {
+		t.Fatalf("audit.New: %v", err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+
+	// One RPC record (as the interceptor writes it) plus the correlated command
+	// record (as the exec recorder writes it).
+	if err := l.Log(audit.Record{
+		TS: "2026-09-20T12:00:00.000000001Z", Caller: "master",
+		Method: "/bunker.v1.Bunkerd/ExecAgent", AgentID: "agt-9", Outcome: "ok",
+		Summary: "ExecAgent agent_id=agt-9",
+	}); err != nil {
+		t.Fatalf("Log: %v", err)
+	}
+	if err := l.Log(audit.Record{
+		TS: "2026-09-20T12:00:00.000000002Z", Caller: "master",
+		Method: "/bunker.v1.Bunkerd/ExecAgent" + audit.ExecRecordMethod, AgentID: "agt-9", Outcome: "ok",
+		Summary: "deploy --region eu-1 --token [REDACTED:len12]",
+	}); err != nil {
+		t.Fatalf("Log: %v", err)
+	}
+
+	// The command sub-kind isolates the command record.
+	out, err := auditCmd(t, "list", "--method", audit.ExecRecordMethod, "--path", path)
+	if err != nil {
+		t.Fatalf("audit list --method: %v", err)
+	}
+	if !strings.Contains(out, "Total: 1 records") {
+		t.Errorf("command-sub-kind filter did not isolate the command record:\n%s", out)
+	}
+	if !strings.Contains(out, "deploy --region eu-1") {
+		t.Errorf("the command record does not show the command:\n%s", out)
+	}
+	if !strings.Contains(out, "agt-9") || !strings.Contains(out, "master") {
+		t.Errorf("the command record does not show the agent id and caller:\n%s", out)
+	}
+
+	// The agent filter finds both records for the same agent (the correlation).
+	out, err = auditCmd(t, "list", "--agent", "agt-9", "--path", path)
+	if err != nil {
+		t.Fatalf("audit list --agent: %v", err)
+	}
+	if !strings.Contains(out, "Total: 2 records") {
+		t.Errorf("agent filter = want 2 records (RPC + command):\n%s", out)
+	}
+
+	// Export carries the record losslessly.
+	out, err = auditCmd(t, "export", "--method", audit.ExecRecordMethod, "--path", path)
+	if err != nil {
+		t.Fatalf("audit export: %v", err)
+	}
+	var rec audit.Record
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &rec); err != nil {
+		t.Fatalf("exported line is not a record: %v (%q)", err, out)
+	}
+	if rec.AgentID != "agt-9" || rec.Caller != "master" || rec.Hash == "" || rec.PrevHash == "" {
+		t.Errorf("exported command record is not lossless: %+v", rec)
+	}
+
+	// And the chain still verifies through the CLI.
+	if _, err := auditCmd(t, "verify", "--path", path); err != nil {
+		t.Fatalf("audit verify: %v", err)
+	}
+}
+
 func TestAuditExportCommand_ValidJSONL(t *testing.T) {
 	path := newAuditQueryLog(t, 3)
 

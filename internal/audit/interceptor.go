@@ -112,7 +112,7 @@ func (i *Interceptor) record(ctx context.Context, procedure string, err error, s
 
 	rec := Record{
 		TS:         time.Now().UTC().Format(time.RFC3339Nano),
-		Caller:     callerFromClaims(claims),
+		Caller:     CallerFromClaims(claims),
 		Method:     procedure,
 		RemoteAddr: remote,
 		AgentID:    agentID,
@@ -136,12 +136,124 @@ func StampStreamAgentID(ctx context.Context, agentID string) {
 	}
 }
 
-// callerFromClaims derives a stable, non-secret identity from the
-// authenticated claims. The static master token and unscoped master JWTs both
-// map to "master"; agent-scoped keys identify the agent (and the specific key
-// when present); any other subject is used verbatim. Raw token material is
-// never part of the result.
-func callerFromClaims(claims *auth.Claims) string {
+// ExecRecordMethod is the audit Method stamped on the ONE correlated
+// command-content record an exec/run appends (GAP-142). The per-RPC record the
+// interceptor writes keeps the bare connect procedure
+// (/bunker.v1.Bunkerd/ExecAgent); this second record names the sub-kind so a
+// forensic reader can separate "someone called the exec RPC" from "this exact
+// command was issued", without overloading either the procedure namespace or
+// the Record schema. Both records ride the SAME AuditLog and therefore the same
+// hash chain. The suffix is appended to the procedure rather than replacing it,
+// so `bunker audit query --method` and a bare procedure grep both still find
+// the command record.
+const ExecRecordMethod = "/command"
+
+// ExecRecord is one redacted command-content record destined for the audit
+// chain (GAP-142). It exists as a struct rather than a long argument list so
+// the single recorder below has ONE call shape that GAP-074's planned exec
+// recorder can inherit instead of standing up a second writer.
+type ExecRecord struct {
+	// Procedure is the connect procedure the command arrived on
+	// (/bunker.v1.Bunkerd/ExecAgent or /RunAgent).
+	Procedure string
+	// AgentID is the exec target — the same value StampStreamAgentID gives the
+	// interceptor's record, so the two records correlate on agent_id.
+	AgentID string
+	// Outcome is the exec result: "ok", "exit_<code>" (the command ran and
+	// returned non-zero), or the connect error code string when the handler
+	// failed before/around the command.
+	Outcome string
+	// Summary is the ALREADY-REDACTED command summary (see
+	// RedactCommandSummary / RedactScriptSummary). RecordExecCommand re-checks
+	// it before writing.
+	Summary string
+	// DurationMS is the measured handler wall time when the caller has it
+	// (0 = unknown).
+	DurationMS int64
+}
+
+// RecordExecCommand appends ONE correlated command-content record for an
+// exec/run to the audit chain. It is the GAP-142 seam and the single writer
+// GAP-074 (the planned richer exec recorder) should extend rather than
+// duplicate: everything about how a command reaches the trail lives here.
+//
+// Mirrors the SEC-08 / GAP-133 authDenySink posture exactly:
+//
+//   - the record goes through the SAME *AuditLog the interceptor uses, so it is
+//     hash-chained with the RPC record that caused it;
+//   - the redaction is RE-CHECKED here before writing, so a future caller bug
+//     that hands over a raw value cannot land it in the trail (belt: the
+//     scrubber in RedactCommandSummary; braces: this check, mirroring
+//     disclosure.go's fingerprint-shape re-check);
+//   - a write failure is logged and swallowed — auditing must never change the
+//     operation's outcome.
+//
+// A nil (or path-less) log is a no-op, so the handler needs no nil-check of its
+// own and a daemon with auditing disabled behaves exactly as before.
+//
+// The caller identity is deliberately NOT passed in: it is read from the
+// request context, which is the only source that cannot drift from the
+// interceptor's own record (CallerFromClaims is the same function the
+// interceptor uses).
+func RecordExecCommand(ctx context.Context, log *AuditLog, logger *slog.Logger, ev ExecRecord) {
+	if log == nil {
+		return
+	}
+	if !commandSummaryAllowed(ev.Summary) {
+		// A command summary that reaches here already masked is fine (passing
+		// one through the scrubber twice is idempotent); one that still carries
+		// credential material is dropped rather than written, because writing
+		// it is the exact failure this feature exists to prevent.
+		log.logWarn("exec command audit record dropped: summary not redacted",
+			"agent_id", ev.AgentID, "summary_len", len(ev.Summary))
+		return
+	}
+	claims, _ := auth.ClaimsFromContext(ctx)
+	rec := Record{
+		TS:         time.Now().UTC().Format(time.RFC3339Nano),
+		Caller:     CallerFromClaims(claims),
+		Method:     ev.Procedure + ExecRecordMethod,
+		RemoteAddr: remoteAddr(ctx),
+		AgentID:    ev.AgentID,
+		DurationMS: ev.DurationMS,
+		Outcome:    ev.Outcome,
+		Summary:    ev.Summary,
+	}
+	if err := log.Log(rec); err != nil && logger != nil {
+		logger.Warn("exec command audit write failed", "error", err, "agent_id", ev.AgentID)
+	}
+}
+
+// commandSummaryAllowed reports whether a rendered command summary is safe to
+// write. Two sanctioned shapes are accepted:
+//
+//   - the script-digest form (scriptSummaryRe): a byte count and a hex SHA-256.
+//     It is accepted verbatim because the digest is — correctly — hex-shaped,
+//     and re-running the command scrubber over it would mask the digest as if it
+//     were a credential, rejecting the recorder's own output. Nothing but those
+//     two hex-decimal fields matches, so an arbitrary 'script bytes=…' line
+//     carrying a secret still fails;
+//   - anything else must survive the command scrubber unchanged. Redaction is
+//     idempotent, so an already-masked summary passes; a raw credential summary
+//     fails and is dropped rather than written.
+func commandSummaryAllowed(summary string) bool {
+	if scriptSummaryRe.MatchString(summary) {
+		return true
+	}
+	return redactCommandLine(summary) == summary
+}
+
+// CallerFromClaims derives a stable, non-secret identity from the authenticated
+// claims. The static master token and unscoped master JWTs both map to
+// "master"; agent-scoped keys identify the agent (and the specific key when
+// present); any other subject is used verbatim. Raw token material is never
+// part of the result.
+//
+// Exported because the exec command recorder needs the SAME caller string the
+// interceptor writes for the RPC, taken from the same context — deriving it
+// twice by two different rules is how an audit record comes to disagree with
+// the record it is meant to correlate with.
+func CallerFromClaims(claims *auth.Claims) string {
 	if claims == nil {
 		return "unknown" // auth disabled — no identity available
 	}

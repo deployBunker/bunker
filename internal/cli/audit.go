@@ -64,6 +64,19 @@ Reading the local audit log requires root: the file (default
 should either run audit commands with sudo (or as root) or query the
 daemon remotely instead via --server.
 
+CORRELATED EXEC COMMAND RECORDS (GAP-142): an exec/run request writes ONE
+record for the RPC plus ONE record carrying the COMMAND that was issued —
+marked with the method suffix ` + "`" + audit.ExecRecordMethod + "`" + ` (for example
+/bunker.v1.Bunkerd/ExecAgent` + audit.ExecRecordMethod + `). Command content is
+redacted before it enters the record, so credentials (bearer headers,
+--token/--api-key values, KEY=secret assignments, long hex/base64 blobs)
+appear only as shape-preserving placeholders such as [REDACTED:len32]. An
+uploaded script body is never recorded: it is summarized as its byte count
+and SHA-256 digest. Find the commands for an agent with:
+
+  bunker audit list --agent <agent-id> --method ` + audit.ExecRecordMethod + `
+  bunker audit export --method ` + audit.ExecRecordMethod + ` | jq -r .summary
+
 list and export read the local log by default (--path) or query a remote
 bunkerd daemon when --server is given. --server applies to list/export
 only; verify is local-only (run it on the host that owns the log).`,
@@ -255,7 +268,11 @@ included in ` + "`bunker audit export`" + `.
 Examples:
   bunker audit list --agent abc123
   bunker audit list --method SpawnAgent --since 2026-08-20T00:00:00Z
-  bunker audit list --server prod --agent abc123 --limit 20`,
+  bunker audit list --server prod --agent abc123 --limit 20
+
+Correlated exec COMMAND records (GAP-142) carry the method suffix ` + "`" + audit.ExecRecordMethod + "`" + `
+and show the redacted command in the Summary column; isolate them with
+--method ` + audit.ExecRecordMethod + ` (see ` + "`bunker audit --help`" + `).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			filter, err := parseAuditFilter(f)
 			if err != nil {

@@ -180,3 +180,117 @@ audit trail as sensitive: it contains full command lines from all users.
 Retention is governed by the journal's `SystemMaxUse` setting — size-capped
 journals rotate audit data out; archive or forward it if long-term retention
 is required.
+
+## 6. Command correlation in the daemon audit chain (GAP-142)
+
+Section 1-5 describe the host-level layer (snoopy → journald): it proves a
+command ran on the host, but it is not correlated to bunkerd's own records, and
+a command issued through the API leaves no trace in the daemon's hash-chained
+audit trail. GAP-142 closes that half.
+
+### 6.1 What is recorded
+
+The audit interceptor records ONE record per authenticated RPC
+(`Method=/bunker.v1.Bunkerd/ExecAgent`, `Summary=ExecAgent agent_id=<id>`), but
+server-stream request messages are not visible to connect interceptors, so the
+RPC record cannot carry the command. An exec/run therefore appends a **second,
+correlated record** from the handler itself:
+
+| field | value |
+|-------|-------|
+| `method` | the RPC procedure plus the `/command` sub-kind, e.g. `/bunker.v1.Bunkerd/ExecAgent/command` |
+| `agent_id` | the exec target — the same value the RPC record carries |
+| `caller` | the same identity string the RPC record carries (`master`, `agent:<id>`, …) |
+| `remote_addr` | the client address as seen by the server |
+| `outcome` | `ok`, `exit_<code>` when the command ran and returned non-zero, or the connect error code (`not_found`, `failed_precondition`, `internal`) when the request failed before/around the command |
+| `summary` | the redacted command (or the script digest form, below) |
+
+Both records go through the **same `AuditLog`**, so they land in the same
+SHA-256 hash chain — the command record is written first (the handler's deferred
+recorder runs before the interceptor appends the RPC record), and
+`bunker audit verify` covers both. Correlation keys are `agent_id` + `caller` +
+adjacency in the chain.
+
+The record carries no `[REDACTED]`-free request body, no stdin payload and no
+response bytes: the command line (and, for script uploads, its digest) is the
+whole of the recorded content.
+
+### 6.2 Redaction rules
+
+Command content is scrubbed at the point of writing, mirroring the SEC-08/GAP-133
+posture for auth-denial records: a value identified as credential material is
+replaced by a **shape-preserving placeholder** — `[REDACTED:len32]` — so an
+investigator still learns the value's length without learning the value. The
+scrubber is conservative in one direction only: it may mask an ordinary token
+that merely looks like a key, and never passes a credential through.
+
+Scrubbed, per whitespace-delimited token:
+
+| shape | example | recorded as |
+|-------|---------|-------------|
+| credential flag value | `--token X`, `--api-key=X`, `-u X`, `--password=X` | `--token [REDACTED:len12]` |
+| bearer/basic credential | `-H "Authorization: Bearer X"` | `Authorization: Bearer [REDACTED:len12]` |
+| credential-named header | `"Cookie: session=X"`, `"X-Api-Key: X"` | `Cookie: [REDACTED:len20]` |
+| env / key assignment | `API_SECRET=X`, `GITHUB_TOKEN=X` | `API_SECRET=[REDACTED:len12]` |
+| long hex blob (≥20) | `5f4dcc3b…aabbccdd` | `[REDACTED:len40]` |
+| base64 blob (≥20 payload) | `dGhpcy1pc19h…==` | `[REDACTED:len32]` |
+| url-safe blob (≥32) | a JWT segment or `_`/`-` key | `[REDACTED:len43]` |
+| JWT | `eyJ….eyJ….…` | `[REDACTED:len91]` |
+| known credential prefix | `sk-…`, `ghp_…`, `AKIA…`, `xoxb-…` | `[REDACTED:len28]` |
+| bare keyword + value | `Bearer X`, `Authorization: X` | `Bearer [REDACTED:len12]` |
+
+Name matching is word-based (`--keynote` and `monkey` are not credentials;
+`github-token`, `X-Api-Key` and `api_key` are). Ordinary commands pass through
+byte-for-byte, including original spacing.
+
+Two extra rules worth knowing:
+
+- **Script uploads are never token-scanned.** A script body (`script_content`)
+  is arbitrary multi-line content and the likeliest carrier of an embedded
+  credential, so it is recorded as `script bytes=<n> sha256=<hex>` — enough to
+  correlate the audit record with the script a caller supplied and to prove two
+  records describe the same script, with nothing secret in the trail.
+- **Summaries are capped** (512 bytes, marked `…(truncated)`), and truncation
+  happens *after* redaction, so it can never expose a value the scrubber masked.
+
+The write path re-checks the summary before it is written (`commandSummaryAllowed`)
+and **drops the record** rather than writing one that still carries credential
+material — the same fail-closed shape as the auth-denial sink's token-fingerprint
+check. A write failure is logged and swallowed: auditing never changes an exec's
+outcome.
+
+### 6.3 Querying the correlated records
+
+```bash
+# every command issued for one agent (RPC records + command records)
+bunker audit list --agent my-agent
+
+# only the command-content records, for the whole trail
+bunker audit list --method /command
+
+# the raw commands (redacted) as JSONL, for correlation with snoopy/journald
+bunker audit export --method /command | jq -r '[.ts,.agent_id,.caller,.outcome,.summary]|@tsv'
+
+# the command record followed by the RPC record it correlates with
+bunker audit list --agent my-agent --since 2026-09-20T12:00:00Z
+
+# the chain is intact across both record kinds
+sudo bunker audit verify
+```
+
+A remote daemon can be queried the same way with `--server <alias>` on `list`
+and `export` (`verify` is local-only, run it on the host that owns the log).
+
+End-to-end with the host layer: take the `ts`/`agent_id` from the command record,
+map the agent to its uid (section 2), and match the `summary` text against
+`journalctl -t snoopy` for the same second — the daemon record says *what was
+requested*, the snoopy line says *what the kernel actually executed*.
+
+### 6.4 Where this hooks in
+
+`internal/audit/redact.go` owns the scrubber; `audit.RecordExecCommand` is the
+single writer of command content (both `ExecAgent` and `RunAgent` call it
+through `bunkerdService.recordExecAudit`). A future exec-capture feature
+(GAP-074) is expected to extend that recorder — one writer, one call shape —
+rather than add a second one beside it.
+

@@ -510,8 +510,8 @@ func TestCallerFromClaims(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := callerFromClaims(tc.claims); got != tc.want {
-				t.Errorf("callerFromClaims(%v) = %q, want %q", tc.claims, got, tc.want)
+			if got := CallerFromClaims(tc.claims); got != tc.want {
+				t.Errorf("CallerFromClaims(%v) = %q, want %q", tc.claims, got, tc.want)
 			}
 		})
 	}
