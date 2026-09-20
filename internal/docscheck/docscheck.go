@@ -78,6 +78,12 @@ const (
 	// see subcommand gaps inside a documented group). GroupDocCoverageRules
 	// registers which groups' doc pages are checked.
 	RuleGroupDocCoverage = "group-doc-coverage"
+	// RuleDocsFlagSurface marks a long flag used in a docs/*.md invocation
+	// that the parsed CLI surface cannot accept for that command (GAP-087:
+	// the integration walkthrough documented `spawn --name/--mem`, which the
+	// shipped CLI rejects). Flag-level only: free-form argument grammar is
+	// deliberately not validated (see flags.go).
+	RuleDocsFlagSurface = "docs-flag-surface"
 )
 
 // Command is one top-level CLI command plus the subcommands registered under it.
@@ -142,6 +148,18 @@ type Input struct {
 	// a subcommand must be documented by the tree that ships it — while the
 	// release rules above keep checking Surface (the newest tag).
 	TreeSurface Surface
+	// Docs maps doc file paths (relative to the repo root, e.g.
+	// "docs/integration.md") to their contents. Only docs/*.md example
+	// invocations are checked (GAP-087); README/CHANGELOG keep their own
+	// dedicated rules. Verify fills this from disk; Check callers that set
+	// no docs are unaffected.
+	Docs map[string]string
+	// TreeFlags is the per-command long-flag registry of the WORKING TREE
+	// (FlagsFor over the same sources TreeSurface is parsed from). The
+	// docs-flag-surface rule checks against it — a documented flag must be
+	// accepted by the tree that ships the docs. Keyed by top-level command
+	// name; the empty key holds the root command's flags.
+	TreeFlags map[string]map[string]bool
 }
 
 // Problem is one drift finding.
@@ -244,6 +262,7 @@ func Check(in Input) []Problem {
 	}
 
 	problems = append(problems, checkGroupDocCoverage(in)...)
+	problems = append(problems, checkDocsFlagSurface(in)...)
 	return problems
 }
 
