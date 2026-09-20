@@ -1,0 +1,42 @@
+{
+  "tick_id": "bunker-2026-09-20-21-40-09",
+  "created_at": "2026-09-20T21:55:00-05:00",
+  "project": "bunker",
+  "wave_type": "parallel",
+  "recovery_of": "bunker-2026-09-20-20-00-11",
+  "recovery_summary": "Recovery first: all 4 recovery branches verified ancestor-merged (b26ce65/9edf15a/c53cacc/888e366), board rows complete w/ judge PASS, post-merge gate GREEN (build+vet+fmt clean, go test ./... all ok), merged worktrees removed, merged branches deleted, manifest closed with finished_at.",
+  "base_sha": "f60bfad",
+  "workers": [
+    {
+      "task_id": "GAP-141",
+      "title": "Gate the client tls_insecure knob \u2014 explicit acknowledgement, refuse against pins, audit-mark insecure sessions",
+      "worktree": "/home/kara/worktrees/bunker-GAP-141",
+      "branch": "wt/GAP-141",
+      "base_sha": "f60bfad",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/bunker-brief-GAP-141.txt",
+      "status": "merged",
+      "merge_commit": "d30e33a"
+    },
+    {
+      "task_id": "DF-BUNKER-44",
+      "title": "audit list propagates write errors \u2014 truncated pipe exits 141, not fake success",
+      "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-44",
+      "branch": "wt/DF-BUNKER-44",
+      "base_sha": "f60bfad",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/bunker-brief-DF-BUNKER-44.txt",
+      "status": "merged",
+      "merge_commit": "be1c6a2"
+    }
+  ],
+  "middle_out_note": "Both in internal/cli but disjoint files: GAP-141 owns config.go + client.go + audit session-marking seam; DF-BUNKER-44 owns audit.go read path + exit_code_pipe_test.go. No depends_on edge between rows (verified from board). QA-BUNKER-19 excluded: its script lives unversioned in ~/.hermes/scripts (no worktree flow). Pre-existing wt/DF-BUNKER-43 + wt/RELEASE-001 worktrees left untouched (owned by other flows).",
+  "merge_order": [
+    "GAP-141",
+    "DF-BUNKER-44"
+  ],
+  "finished_at": "2026-09-20T22:45:00-05:00",
+  "recovery_note": "All workers merged to main (GAP-141 d30e33a, DF-BUNKER-44 be1c6a2); merged-tree full suite green; judge GAP-141 PASS (e45cc688), DF44 async at close."
+}
