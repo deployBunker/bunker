@@ -138,6 +138,47 @@ write_sums() {
 	)
 }
 
+# fake_sshfs DIR VERSION — a stand-in sshfs reporting VERSION. PATH-inject
+# DIR ahead of the real PATH so tests never depend on the host's sshfs.
+fake_sshfs() {
+	fs_dir=$1
+	fs_ver=$2
+	mkdir -p "$fs_dir"
+	{
+		printf '#!/bin/sh\n'
+		printf 'printf "%%s\\n" "SSHFS version %s"\n' "$fs_ver"
+	} >"$fs_dir/sshfs"
+	chmod 0755 "$fs_dir/sshfs"
+}
+
+# fake_apt_get DIR — a stand-in apt-get that fails loudly if ever invoked:
+# no --sshfs test may reach a real package manager, and a suite run that
+# installs anything would be a defect, not a pass.
+fake_apt_get() {
+	mkdir -p "$1"
+	{
+		printf '#!/bin/sh\n'
+		printf 'echo "FAKE-APT-GET-WAS-INVOKED $*" >&2\n'
+		printf 'exit 1\n'
+	} >"$1/apt-get"
+	chmod 0755 "$1/apt-get"
+}
+
+# fake_apt_cache DIR — a stand-in apt-cache whose `policy sshfs` candidate
+# comes from $SSHFS_TEST_CANDIDATE.
+fake_apt_cache() {
+	mkdir -p "$1"
+	{
+		printf '#!/bin/sh\n'
+		printf 'if [ "$1" = policy ] && [ "$2" = sshfs ]; then\n'
+		printf '\tprintf '"'"'sshfs:\\n  Candidate: %%s\\n'"'"' "$SSHFS_TEST_CANDIDATE"\n'
+		printf 'else\n'
+		printf '\texit 1\n'
+		printf 'fi\n'
+	} >"$1/apt-cache"
+	chmod 0755 "$1/apt-cache"
+}
+
 printf 'install_test.sh: testing %s\n' "$INSTALL"
 printf 'install_test.sh: interpreter %s (%s)\n\n' "$SH_BIN" "${SH_ABS:-unknown}"
 
@@ -365,6 +406,95 @@ if command -v go >/dev/null 2>&1 && [ -f "$ROOT/go.mod" ]; then
 else
 	printf 'SKIP  --build with Go present (no Go toolchain on this host)\n'
 fi
+
+# ── 11b. --sshfs (MOUNT-009): parser, default-off, and mode behaviour ────────
+
+# bare --sshfs parses (accepted, exit 0 on --help-free dry run later; here we
+# only pin that the parser does not refuse it). The version-unresolvable sshfs
+# ahead on PATH forces the "needs install" path, so the announce is assertable
+# regardless of the (patched) real sshfs a dev host may carry in /usr/local/bin.
+SSHFS_DIR="$TMP_ROOT/sshfs-bin"
+mkdir -p "$SSHFS_DIR"
+BROKEN_SSHFS_DIR="$TMP_ROOT/sshfs-broken"
+mkdir -p "$BROKEN_SSHFS_DIR"
+printf '#!/bin/sh\nprintf "sshfs (no version info)\\n"\n' >"$BROKEN_SSHFS_DIR/sshfs"
+chmod 0755 "$BROKEN_SSHFS_DIR/sshfs"
+OUT=$(PATH="$BROKEN_SSHFS_DIR:$SSHFS_DIR:$PATH" "$SH_BIN" "$INSTALL" --from-dir "$GOOD_SRC" --dir "$DRY_PFX" --dry-run --sshfs 2>&1) && RC=0 || RC=$?
+check_rc 0 "bare --sshfs is accepted" "$RC" "$OUT"
+contains "bare --sshfs dry-run announces the package-manager step" "$OUT" "dry-run: would run: apt-get install -y sshfs"
+
+OUT=$("$SH_BIN" "$INSTALL" --from-dir "$GOOD_SRC" --dir "$DRY_PFX" --dry-run --sshfs=bogus 2>&1) && RC=0 || RC=$?
+check_rc 42 "--sshfs=bogus refuses with exit 42" "$RC"
+contains "--sshfs=bogus refusal names the valid modes" "$OUT" "need min, package or source"
+
+# Default (no --sshfs): NO sshfs action whatsoever, even on a host with an
+# affected sshfs and no package-manager fixtures on PATH.
+FAKE_SSHFS_DIR="$TMP_ROOT/sshfs-old"
+fake_sshfs "$FAKE_SSHFS_DIR" 3.7.3
+fake_apt_get "$SSHFS_DIR"
+OUT=$(PATH="$FAKE_SSHFS_DIR:$SSHFS_DIR:$PATH" "$SH_BIN" "$INSTALL" --from-dir "$GOOD_SRC" --dir "$DRY_PFX" --dry-run 2>&1) && RC=0 || RC=$?
+check_rc 0 "default run (no --sshfs) exits 0 with an affected sshfs on PATH" "$RC"
+lacks "default run performs no sshfs actions" "$OUT" "sshfs"
+if [ -z "$(ls -A "$FAKE_SSHFS_DIR" | grep -v '^sshfs$')" ]; then
+	pass "default run left the host's sshfs alone"
+else
+	fail "default run left the host's sshfs alone" "found: $(ls -A "$FAKE_SSHFS_DIR")"
+fi
+
+# --sshfs=min on a host whose sshfs already satisfies >= 3.7.6: a no-op with
+# an informational line, and the package manager is never invoked.
+MIN_OK_DIR="$TMP_ROOT/sshfs-min-ok"
+fake_sshfs "$MIN_OK_DIR" 3.7.6
+OUT=$(PATH="$MIN_OK_DIR:$SSHFS_DIR:$PATH" "$SH_BIN" "$INSTALL" --from-dir "$GOOD_SRC" --dir "$DRY_PFX" --dry-run --sshfs=min 2>&1) && RC=0 || RC=$?
+check_rc 0 "--sshfs=min with patched sshfs exits 0" "$RC"
+contains "--sshfs=min with patched sshfs says so" "$OUT" "already satisfies"
+lacks "--sshfs=min with patched sshfs never invokes the package manager" "$OUT" "apt-get install"
+
+# --sshfs=min with an affected sshfs: asks the package manager (dry-run
+# announces it), never runs a real apt-get (the fake one fails loudly).
+OUT=$(PATH="$FAKE_SSHFS_DIR:$SSHFS_DIR:$PATH" "$SH_BIN" "$INSTALL" --from-dir "$GOOD_SRC" --dir "$DRY_PFX" --dry-run --sshfs=min 2>&1) && RC=0 || RC=$?
+check_rc 0 "--sshfs=min with affected sshfs exits 0" "$RC"
+contains "--sshfs=min with affected sshfs announces the install" "$OUT" "apt-get install -y sshfs"
+lacks "--sshfs=min never reaches a real package manager in tests" "$OUT" "FAKE-APT-GET-WAS-INVOKED"
+
+# --sshfs=min on a host with NO USABLE sshfs (the broken fake's output parses
+# to nothing): same announce, no real call.
+OUT=$(PATH="$BROKEN_SSHFS_DIR:$SSHFS_DIR:$PATH" "$SH_BIN" "$INSTALL" --from-dir "$GOOD_SRC" --dir "$DRY_PFX" --dry-run --sshfs 2>&1) && RC=0 || RC=$?
+check_rc 0 "bare --sshfs with no usable host sshfs exits 0" "$RC"
+contains "bare --sshfs with no usable host sshfs announces the install" "$OUT" "apt-get install -y sshfs"
+
+# --sshfs=package with an old candidate refuses (42) BEFORE any install; the
+# candidate comes from the fake apt-cache, the install would hit the fake
+# (failing, loud) apt-get.
+PKG_PFX="$TMP_ROOT/prefix-sshfs-package"
+mkdir -p "$PKG_PFX"
+OUT=$(SSHFS_TEST_CANDIDATE="3.7.3-1.1build5" PATH="$FAKE_SSHFS_DIR:$SSHFS_DIR:$PATH" "$SH_BIN" "$INSTALL" --from-dir "$GOOD_SRC" --dir "$PKG_PFX" --sshfs=package 2>&1) && RC=0 || RC=$?
+check_rc 42 "--sshfs=package refuses when the candidate is affected" "$RC"
+contains "--sshfs=package refusal names the candidate" "$OUT" "3.7.3-1.1build5"
+contains "--sshfs=package refusal names the affected range" "$OUT" "CVE-2026-47187"
+lacks "--sshfs=package refusal never attempts the install" "$OUT" "FAKE-APT-GET-WAS-INVOKED"
+if [ ! -e "$PKG_PFX/sshfs" ]; then
+	pass "--sshfs=package refusal installed no sshfs"
+else
+	fail "--sshfs=package refusal installed no sshfs" "$PKG_PFX/sshfs exists"
+fi
+
+# --sshfs=package with a satisfying candidate installs through the normal
+# path (here: --from-dir content) and never refuses.
+OUT=$(SSHFS_TEST_CANDIDATE="3.7.6-1" PATH="$MIN_OK_DIR:$SSHFS_DIR:$PATH" "$SH_BIN" "$INSTALL" --from-dir "$GOOD_SRC" --dir "$PKG_PFX" --sshfs=package 2>&1) && RC=0 || RC=$?
+check_rc 0 "--sshfs=package with a patched candidate exits 0" "$RC" "$OUT"
+contains "--sshfs=package with a patched candidate reports no action needed" "$OUT" "already satisfies"
+
+# --sshfs=source dry-run: announces the pinned clone/build/install, writes
+# nothing, and refuses nothing on hosts without meson/ninja (no tool probing
+# happens before the dry-run gate).
+OUT=$("$SH_BIN" "$INSTALL" --from-dir "$GOOD_SRC" --dir "$DRY_PFX" --dry-run --sshfs=source 2>&1) && RC=0 || RC=$?
+check_rc 0 "--sshfs=source dry-run exits 0" "$RC"
+contains "--sshfs=source dry-run names the pinned tag" "$OUT" "sshfs-3.7.6"
+contains "--sshfs=source dry-run names the pinned commit" "$OUT" "7a2d988775446ebe7af9b01c99b3b8e86bddb05a"
+contains "--sshfs=source dry-run names meson" "$OUT" "meson setup"
+contains "--sshfs=source dry-run targets DEST/sshfs" "$OUT" "then install it to $DRY_PFX/sshfs"
+lacks "--sshfs=source dry-run downloads nothing" "$OUT" "cloning sshfs"
 
 # ── summary ─────────────────────────────────────────────────────────────────
 printf '\ninstall_test.sh: %d passed, %d failed\n' "$PASS_COUNT" "$FAIL_COUNT"

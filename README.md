@@ -196,7 +196,10 @@ The demo is a shared, resource-limited sandbox (max 50 agents; per-agent CPU/mem
   Go installed it fails immediately with `sh: 1: make: not found` (exit 127); use
   `./scripts/install.sh --build` or the bare `go build` pair in Install instead.
 - Docker CE (for rootless support)
-- `sshfs` (for mount command)
+- `sshfs` (for mount command). Older sshfs (< 3.7.6) is vulnerable to
+  CVE-2026-47187 / CVE-2026-48711; `bunker mount` warns and offers
+  `--sshfs-require-patched`, and the installer can harden it opt-in via
+  `sh install.sh --sshfs=source` (never touched by default).
 - `cloudflared` (optional, for tunnels)
 
 ### Install
@@ -223,6 +226,7 @@ sh install.sh --from-dir ./dist          # install local binaries (offline/air-g
 sh install.sh --build                    # build from this checkout with go build
 sh install.sh --dir "$HOME/.local/bin"   # choose the install prefix
 sh install.sh --dry-run                  # print the plan, change nothing
+sh install.sh --sshfs=source             # opt-in: build+install patched sshfs (default: sshfs untouched)
 ```
 
 **Option 2 — build from source** (needs the Go toolchain and `make`):

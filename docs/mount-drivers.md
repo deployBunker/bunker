@@ -37,9 +37,26 @@ Two vulnerabilities in **sshfs itself** were fixed in **3.7.6**:
 **Until the upgrade lands, treat `bunker mount` as write-capable-from-the-agent
 and only mount agents you would let write to your local filesystem.**
 
+**Mitigations now shipped (MOUNT-009):** sshfs 3.7.6 has been built from the
+pinned upstream tag and deployed to the control host and bunker-mvp (see
+`docs/sshfs-3.7.6-deployment.md`), and two code defenses exist:
+
+1. **Install-time option** — `install.sh --sshfs[=min|package|source]`
+   optionally hardens sshfs after the bunker install. Default (no flag): the
+   installer never touches sshfs. `min` installs the distro's newest sshfs when
+   missing or < 3.7.6 and warns if the result is still affected; `package`
+   refuses (42) when the distro cannot provide >= 3.7.6; `source` builds the
+   pinned `sshfs-3.7.6` tag (HEAD verified against the pinned commit, sha256
+   recorded before install) with meson/ninja.
+2. **Refuse-fast guard** — `bunker mount` probes `sshfs --version` once before
+   any mount attempt. An sshfs < 3.7.6 (or an unprobeable/unparsable one)
+   prints a warning naming both CVEs and continues; `--sshfs-require-patched`
+   turns that into a refusal before any sshfs exec or mountpoint creation.
+
 Plan of record: build and ship sshfs `>= 3.7.6` for our deployments, offer it as
 an **install-time option**, and keep this document as the record. Tracked as
-`MOUNT-009` on the board.
+`MOUNT-009` on the board — the install-time option and the mount-time guard
+have landed (see above); deploying 3.7.6 to remaining hosts is operational work.
 
 ## 2. The driver model
 

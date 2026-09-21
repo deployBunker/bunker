@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -32,6 +34,140 @@ var sshfsAttemptTimeout = 30 * time.Second
 // sshfsRetryDelay is the wait between sshfs attempts. Package-level so
 // tests can zero it out (no real sleeps).
 var sshfsRetryDelay = 2 * time.Second
+
+// sshfsPatchedVersion is the sshfs release that fixes CVE-2026-47187
+// (symlink escape — a rogue SFTP server gains local file read/write on the
+// client) and CVE-2026-48711 (argument injection — local command execution).
+// Everything below it is in the affected range. See docs/mount-drivers.md §1
+// and docs/sshfs-3.7.6-deployment.md for the deployment record.
+const sshfsPatchedVersion = "3.7.6"
+
+// sshfsProbeTimeout bounds the one-time `sshfs --version` probe. The probe is
+// cheap when the binary is healthy; the bound exists so a wedged wrapper
+// script cannot stall every mount for minutes. Package-level var so tests can
+// shrink it and actually reach the deadline.
+var sshfsProbeTimeout = 5 * time.Second
+
+// sshfsVersionProbe runs `<sshfsPath> --version` and returns its combined
+// output. Package-level seam (mirrors sshfsRun) so tests can inject a fake
+// probe and stay hermetic — no real sshfs, no network.
+//
+// Even though a version print is short-lived, the child goes through the
+// shared long-lived-child contract (own process group + group-wide teardown +
+// WaitDelay): an sshfs wrapper script can start descendants of its own, and a
+// bare exec.CommandContext would kill only the leader on timeout and orphan
+// the rest — the GAP-084 subprocess fixtures do exactly that, and the probe
+// must not be the leak the contract exists to prevent.
+var sshfsVersionProbe = func(ctx context.Context, path string) (string, error) {
+	probeCtx, cancel := context.WithTimeout(ctx, sshfsProbeTimeout)
+	defer cancel()
+	cmd := newLongLivedCommand(probeCtx, path, "--version")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	err := runDetachedChildCommand(cmd)
+	return out.String(), err
+}
+
+// sshfsVersionRE matches the version number in sshfs --version output.
+// Upstream prints "SSHFS version 3.7.6"; some distro builds and wrappers
+// lowercase it or print a bare "X.Y.Z", so the pattern accepts either shape
+// and captures X.Y or X.Y.Z.
+var sshfsVersionRE = regexp.MustCompile(`(?i)SSHFS version (\d+\.\d+(?:\.\d+)?)|(\d+\.\d+\.\d+)`)
+
+// parseSSHFSVersion extracts the sshfs version from --version output.
+// Returns the X.Y[.Z] string and whether a version was found at all.
+func parseSSHFSVersion(out string) (string, bool) {
+	m := sshfsVersionRE.FindStringSubmatch(out)
+	if m == nil {
+		return "", false
+	}
+	if m[1] != "" {
+		return m[1], true
+	}
+	return m[2], true
+}
+
+// sshfsVersionLess reports whether version a < b using a numeric component
+// comparison ("3.7" < "3.7.5" < "3.8"), not a string comparison (where
+// "3.10" < "3.7"). Unparsable components compare as 0.
+func sshfsVersionLess(a, b string) bool {
+	as := strings.Split(a, ".")
+	bs := strings.Split(b, ".")
+	for i := 0; i < len(as) || i < len(bs); i++ {
+		var ai, bi int
+		if i < len(as) {
+			ai, _ = strconv.Atoi(as[i])
+		}
+		if i < len(bs) {
+			bi, _ = strconv.Atoi(bs[i])
+		}
+		if ai != bi {
+			return ai < bi
+		}
+	}
+	return false
+}
+
+// sshfsAffected reports whether a PARSED sshfs version is in the affected
+// range (< sshfsPatchedVersion). An unparsable probe result is never called
+// "affected" here: callers handle unknown versions as their own case.
+func sshfsAffected(parsed string) bool {
+	if parsed == "" {
+		return false
+	}
+	return sshfsVersionLess(parsed, sshfsPatchedVersion)
+}
+
+// errSSHFSVersionUnverified names the unparseable-output case so the refusal
+// and the warning say the same thing.
+var errSSHFSVersionUnverified = errors.New("sshfs version could not be verified (probe output unparsable)")
+
+// guardSSHFSVersion is the refuse-fast version guard (MOUNT-009). It probes
+// the sshfs binary ONCE per command invocation — before any mount attempt —
+// and:
+//
+//   - patched or newer: silent proceed;
+//   - affected (< sshfsPatchedVersion): WARNING naming the CVEs and the range,
+//     then proceed (default); with requirePatched, a named error BEFORE any
+//     sshfs exec or mountpoint creation;
+//   - probe failure or unparseable output: WARNING (never blocks) by default;
+//     with requirePatched, a refusal — an operator who demands a patched
+//     sshfs must not be silently satisfied by an unverifiable one.
+//
+// It sits on the shared code path before the retry loop, so every sshfs
+// attempt the command could make is covered while the probe itself runs once.
+func guardSSHFSVersion(ctx context.Context, sshfsPath string, requirePatched bool) error {
+	out, probeErr := sshfsVersionProbe(ctx, sshfsPath)
+	parsed, ok := "", false
+	if probeErr == nil {
+		parsed, ok = parseSSHFSVersion(out)
+	}
+	if probeErr == nil && ok && !sshfsAffected(parsed) {
+		return nil
+	}
+
+	switch {
+	case probeErr != nil:
+		if requirePatched {
+			return fmt.Errorf("--sshfs-require-patched: sshfs version probe failed (%v) — refusing to mount: an unprobeable sshfs may be in the affected range (< %s) for CVE-2026-47187 / CVE-2026-48711 — install sshfs >= %s (see docs/mount-drivers.md §1)", probeErr, sshfsPatchedVersion, sshfsPatchedVersion)
+		}
+		fmt.Fprintf(os.Stderr, "bunker: WARNING: sshfs version probe failed (%v) — cannot confirm sshfs >= %s (CVE-2026-47187 / CVE-2026-48711); continuing (pass --sshfs-require-patched to refuse instead)\n", probeErr, sshfsPatchedVersion)
+		return nil
+	case !ok:
+		if requirePatched {
+			return fmt.Errorf("--sshfs-require-patched: %w — refusing to mount: an unverifiable sshfs may be in the affected range (< %s) for CVE-2026-47187 / CVE-2026-48711 — install sshfs >= %s (see docs/mount-drivers.md §1)", errSSHFSVersionUnverified, sshfsPatchedVersion, sshfsPatchedVersion)
+		}
+		fmt.Fprintf(os.Stderr, "bunker: WARNING: %v — cannot confirm sshfs >= %s (CVE-2026-47187 / CVE-2026-48711); continuing (pass --sshfs-require-patched to refuse instead)\n", errSSHFSVersionUnverified, sshfsPatchedVersion)
+		return nil
+	default:
+		if requirePatched {
+			return fmt.Errorf("--sshfs-require-patched: refusing to mount: sshfs %s is in the affected range (< %s) for CVE-2026-47187 (symlink escape) / CVE-2026-48711 (argument injection) — upgrade to sshfs >= %s (see docs/mount-drivers.md §1)", parsed, sshfsPatchedVersion, sshfsPatchedVersion)
+		}
+		fmt.Fprintf(os.Stderr, "bunker: WARNING: sshfs %s is in the affected range (< %s) for CVE-2026-47187 (symlink escape — a rogue SFTP server gains local file read/write) / CVE-2026-48711 (argument injection) — continuing, but only mount agents you would let write to your local filesystem (pass --sshfs-require-patched to refuse instead)\n", parsed, sshfsPatchedVersion)
+		return nil
+	}
+}
 
 // sshfsRun runs the sshfs binary with args, streaming its combined output
 // to the terminal (os.Stdout/os.Stderr) exactly as before while also
@@ -122,11 +258,12 @@ func trimSSHFSOutput(s string) string {
 // NewMountCommand returns the `bunker mount` cobra command.
 func NewMountCommand() *cobra.Command {
 	var (
-		serverName      string
-		mountPoint      string
-		sshKey          string
-		remotePath      string
-		expectWorkspace string
+		serverName          string
+		mountPoint          string
+		sshKey              string
+		remotePath          string
+		expectWorkspace     string
+		sshfsRequirePatched bool
 	)
 
 	cmd := &cobra.Command{
@@ -143,7 +280,12 @@ resolved to the server address this client actually connects to.
 Examples:
   bunker mount abc12345
   bunker mount abc12345 /tmp/bunker-mnt
-  bunker mount abc12345 --ssh-key ~/.ssh/custom_key`,
+  bunker mount abc12345 --ssh-key ~/.ssh/custom_key
+  bunker mount abc12345 --sshfs-require-patched
+
+sshfs older than 3.7.6 is vulnerable to CVE-2026-47187 / CVE-2026-48711; by
+default the version is probed once and an affected or unverifiable sshfs only
+produces a warning. Pass --sshfs-require-patched to refuse instead of warning.`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			agentID := args[0]
@@ -285,6 +427,33 @@ Examples:
 				fmt.Printf("Workspace: %s\n", ident.Describe())
 			}
 
+			// 3c. Refuse-fast sshfs version guard (MOUNT-009). This runs ONCE,
+			// on the shared code path, BEFORE the mountpoint is created and
+			// before any sshfs exec — including every attempt the retry loop
+			// below could make. Default is warn-and-proceed (a version probe
+			// must never block a working mount); --sshfs-require-patched turns
+			// an affected or unverifiable sshfs into a named refusal here.
+			//
+			// The stored command's first field is the sshfs binary the mount
+			// will exec — the client rewrite below touches only key/host
+			// arguments, never field 0 — so the guard probes exactly the
+			// binary the mount path uses.
+			mountFields := strings.Fields(mountCmd)
+			if len(mountFields) == 0 {
+				return fmt.Errorf("invalid SSHFS mount command: %s", mountCmd)
+			}
+			// The probe shells out to the host's sshfs binary, so it honours the
+			// same explicit subprocess-test skip as the mount preflight (which
+			// shells out to a real host for the same reason): a subprocess
+			// harness whose PATH carries process-group fixtures (proc_lifecycle
+			// tests) premised exactly ONE sshfs exec per CLI run, and a probe
+			// would consume — and group-kill — that fixture first.
+			if os.Getenv("BUNKER_SKIP_MOUNT_PREFLIGHT") != "" {
+				fmt.Fprintln(os.Stderr, "bunker: note: sshfs version probe skipped (BUNKER_SKIP_MOUNT_PREFLIGHT set)")
+			} else if err := guardSSHFSVersion(cmd.Context(), mountFields[0], sshfsRequirePatched); err != nil {
+				return err
+			}
+
 			// 4. Ensure mount point exists (private to this user).
 			if err := os.MkdirAll(mountPoint, 0o700); err != nil {
 				return fmt.Errorf("create mount point %s: %w", mountPoint, err)
@@ -421,6 +590,7 @@ Examples:
 	cmd.Flags().StringVar(&sshKey, "ssh-key", "", "SSH private key path (default: ~/.bunker/keys/<agent-id>)")
 	cmd.Flags().StringVar(&remotePath, "path", "", "Remote path inside the agent to mount (default: the agent's home)")
 	cmd.Flags().StringVar(&expectWorkspace, "expect-workspace", "", "Refuse to mount unless the resolved workspace matches this git remote (e.g. deployBunker/bunker)")
+	cmd.Flags().BoolVar(&sshfsRequirePatched, "sshfs-require-patched", false, "Refuse to mount (before any mount attempt) when the local sshfs is older than "+sshfsPatchedVersion+" or its version cannot be verified — CVE-2026-47187 / CVE-2026-48711. Default: warn and proceed")
 	return cmd
 }
 

@@ -33,6 +33,11 @@
 #                        the test suite; default https://github.com/deployBunker/bunker/releases)
 #   INSTALL_SH_TEST_OS   override the detected OS, e.g. "darwin" (tests only)
 #   INSTALL_SH_TEST_ARCH override the detected architecture (tests only)
+#
+# sshfs (MOUNT-009): by default this installer NEVER touches the host's sshfs.
+# Pass --sshfs[=MODE] to opt in (see usage). sshfs <= 3.7.5 is affected by
+# CVE-2026-47187 / CVE-2026-48711; the pinned fix is 3.7.6
+# (docs/sshfs-3.7.6-deployment.md).
 # ══════════════════════════════════════════════════════════════════════════════
 set -eu
 
@@ -69,6 +74,9 @@ Usage:
 Default: download the prebuilt release assets for this platform (linux/amd64 or
 linux/arm64), verify them against the release's SHA256SUMS, then install.
 
+sshfs is NOT installed or upgraded unless --sshfs is passed; the default run
+leaves whatever sshfs the host already has exactly as it is.
+
 Options:
   --version vX.Y.Z  install that release tag instead of the newest release
   --from-dir DIR    install the binaries in DIR (offline/air-gapped); the
@@ -78,16 +86,29 @@ Options:
   --dir PREFIX      install prefix (default /usr/local/bin; falls back to
                     $HOME/.local/bin when the default is not writable)
   --dry-run         print every action without downloading, writing or building
+  --sshfs[=MODE]    after the bunker install, also ensure the host's sshfs.
+                    MODE is one of:
+                      min (default)  install the newest sshfs the distro offers
+                                     when none or < 3.7.6; WARN when the result
+                                     is still in the affected range (< 3.7.6)
+                      package        like min, but REFUSE (42) when the distro
+                                     cannot provide >= 3.7.6
+                      source         build sshfs 3.7.6 from the pinned upstream
+                                     tag (checksum-verified) and install it to
+                                     <prefix>/sshfs; needs meson, ninja and git
+                    Without =MODE, --sshfs means --sshfs=min.
   -h, --help        print this help
 
 Exit codes: 0 success, 42 refusal (unsupported platform, checksum mismatch,
-missing checksum entry, no Go for --build), 1 any other error.
+missing checksum entry, no Go for --build, sshfs mode refusals), 1 any other
+error.
 
 Examples:
   curl -fsSL https://github.com/deployBunker/bunker/releases/latest/download/install.sh | sh
   sh install.sh --version v0.1.4 --dir "$HOME/.local/bin"
   sh install.sh --from-dir ./dist
   sh install.sh --build
+  sh install.sh --sshfs=source --dir "$HOME/.local/bin"   # also build+install patched sshfs
 EOF
 }
 
@@ -98,6 +119,8 @@ VERSION=
 DEST=$DEFAULT_DEST
 DEST_EXPLICIT=0
 DRY_RUN=0
+# SSHFS_MODE empty = the flag was not passed = sshfs is NOT touched.
+SSHFS_MODE=
 
 parse_args() {
 	while [ $# -gt 0 ]; do
@@ -124,6 +147,20 @@ parse_args() {
 			;;
 		--build)
 			MODE=build
+			shift
+			;;
+		--sshfs)
+			SSHFS_MODE=min
+			shift
+			;;
+		--sshfs=*)
+			SSHFS_MODE=${1#--sshfs=}
+			case "$SSHFS_MODE" in
+			min | package | source) ;;
+			*)
+				refuse "--sshfs: unknown mode \"$SSHFS_MODE\" (need min, package or source; try --help)"
+				;;
+			esac
 			shift
 			;;
 		--dir)
@@ -586,6 +623,209 @@ smoke_check() {
 	return 0
 }
 
+# ── sshfs (MOUNT-009, opt-in via --sshfs[=MODE]) ────────────────────────────
+# sshfsPatchedVersion is the fixed release: CVE-2026-47187 (symlink escape —
+# a rogue SFTP server gains local file read/write on the client) and
+# CVE-2026-48711 (argument injection — local command execution) are fixed in
+# 3.7.6; everything below is in the affected range. Deployment record:
+# docs/sshfs-3.7.6-deployment.md.
+SSHFS_PINNED_VERSION=3.7.6
+SSHFS_PINNED_TAG=sshfs-3.7.6
+SSHFS_PINNED_COMMIT=7a2d988775446ebe7af9b01c99b3b8e86bddb05a
+
+# sshfs_version_of BINARY: print the X.Y[.Z] version `BINARY --version`
+# reports, or nothing when the binary is missing or its output is unparsable.
+sshfs_version_of() {
+	sv_bin=$1
+	command -v "$sv_bin" >/dev/null 2>&1 || return 0
+	sv_out=$("$sv_bin" --version 2>/dev/null || true)
+	printf '%s\n' "$sv_out" | sed -n 's/.*[Vv]ersion \([0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?\).*/\1/p' | head -n 1
+}
+
+# sshfs_version_lt A B: 0 when version A < B numerically (component-wise, so
+# 3.10 > 3.7 — a plain string compare would get that wrong).
+sshfs_version_lt() {
+	svl_a=$1
+	svl_b=$2
+	svl_cmp=$(awk -v a="$svl_a" -v b="$svl_b" 'BEGIN {
+		split(a, aa, "."); split(b, bb, ".")
+		for (i = 1; i <= 3; i++) {
+			x = (i in aa) ? aa[i]+0 : 0; y = (i in bb) ? bb[i]+0 : 0
+			if (x < y) { print "lt"; exit }
+			if (x > y) { print "gt"; exit }
+		}
+		print "eq"
+	}')
+	[ "$svl_cmp" = lt ]
+}
+
+# sshfs_report_version BINARY: print the resulting sshfs --version output and
+# WARN loudly when the binary is still in the affected range.
+sshfs_report_version() {
+	sr_bin=$1
+	if command -v "$sr_bin" >/dev/null 2>&1; then
+		"$sr_bin" --version 2>&1 || true
+		sr_ver=$(sshfs_version_of "$sr_bin")
+		if [ -n "$sr_ver" ] && sshfs_version_lt "$sr_ver" "$SSHFS_PINNED_VERSION"; then
+			warn "sshfs $sr_ver is STILL in the affected range (< $SSHFS_PINNED_VERSION) for CVE-2026-47187 / CVE-2026-48711 — re-run with --sshfs=source to build the patched release"
+		fi
+	else
+		warn "$sr_bin is not on PATH after the sshfs install attempt"
+	fi
+}
+
+# ensure_sshfs_min: bare --sshfs / --sshfs=min. After the bunker install,
+# check the host's sshfs; when it is missing or < 3.7.6, install the newest
+# version the host's package manager offers and print the resulting
+# sshfs --version (with a loud warning when the result is still affected).
+ensure_sshfs_min() {
+	em_ver=$(sshfs_version_of sshfs)
+	if [ -n "$em_ver" ] && ! sshfs_version_lt "$em_ver" "$SSHFS_PINNED_VERSION"; then
+		say "sshfs $em_ver already satisfies >= $SSHFS_PINNED_VERSION — no action needed"
+		return 0
+	fi
+	if [ -n "$em_ver" ]; then
+		say "sshfs $em_ver is below $SSHFS_PINNED_VERSION (CVE-2026-47187 / CVE-2026-48711) — asking the package manager for its newest sshfs"
+	else
+		say "no sshfs found on PATH — asking the package manager to install one"
+	fi
+	em_rc=0
+	if command -v apt-get >/dev/null 2>&1; then
+		if [ "$DRY_RUN" = 1 ]; then
+			say "dry-run: would run: apt-get install -y sshfs"
+			return 0
+		fi
+		DEBIAN_FRONTEND=noninteractive apt-get install -y sshfs >/dev/null 2>&1 || em_rc=$?
+	elif command -v dnf >/dev/null 2>&1; then
+		if [ "$DRY_RUN" = 1 ]; then
+			say "dry-run: would run: dnf install -y sshfs"
+			return 0
+		fi
+		dnf install -y sshfs >/dev/null 2>&1 || em_rc=$?
+	else
+		if [ "$SSHFS_MODE" = min ]; then
+			warn "no supported package manager found (need apt-get or dnf) — sshfs was NOT installed"
+			return 0
+		fi
+		refuse "--sshfs=$SSHFS_MODE: no supported package manager found (need apt-get or dnf)"
+	fi
+	if [ "$em_rc" -ne 0 ]; then
+		if [ "$SSHFS_MODE" = min ]; then
+			warn "the package manager failed to install sshfs (exit $em_rc) — sshfs may be missing or outdated"
+			return 0
+		fi
+		refuse "--sshfs=$SSHFS_MODE: the package manager failed to install sshfs (exit $em_rc)"
+	fi
+	sshfs_report_version sshfs
+}
+
+# ensure_sshfs_package: --sshfs=package. Same discovery as min, but a distro
+# that cannot provide >= 3.7.6 is a refusal (42), not a warning.
+ensure_sshfs_package() {
+	ep_ver=$(sshfs_version_of sshfs)
+	if [ -n "$ep_ver" ] && ! sshfs_version_lt "$ep_ver" "$SSHFS_PINNED_VERSION"; then
+		say "sshfs $ep_ver already satisfies >= $SSHFS_PINNED_VERSION — no action needed"
+		return 0
+	fi
+	command -v apt-get >/dev/null 2>&1 || command -v dnf >/dev/null 2>&1 ||
+		refuse "--sshfs=package: no supported package manager found (need apt-get or dnf)"
+	if [ "$DRY_RUN" = 1 ]; then
+		if command -v apt-get >/dev/null 2>&1; then
+			say "dry-run: would run: apt-get install -y sshfs and REFUSE if the candidate is < $SSHFS_PINNED_VERSION"
+		else
+			say "dry-run: would run: dnf install -y sshfs and REFUSE if the candidate is < $SSHFS_PINNED_VERSION"
+		fi
+		return 0
+	fi
+	ep_candidate=$("${SSHFS_TEST_APT_CACHE:-apt-cache}" policy sshfs 2>/dev/null | awk '/Candidate:/ {print $2; exit}')
+	[ -n "$ep_candidate" ] || ep_candidate=$(dnf --showduplicates list sshfs 2>/dev/null | awk '$1 == "sshfs" && $2 !~ /^Available/ {print $2; exit}' | sed 's/-[0-9][0-9]*\..*//')
+	if [ -z "$ep_candidate" ] || [ "$ep_candidate" = "(none)" ]; then
+		refuse "--sshfs=package: the package manager offers no sshfs candidate at all — cannot satisfy >= $SSHFS_PINNED_VERSION"
+	fi
+	ep_norm=$(printf '%s' "$ep_candidate" | sed 's/^[0-9]*://; s/-[0-9][0-9]*$//; s/[^0-9.].*$//')
+	if [ -z "$ep_norm" ] || sshfs_version_lt "$ep_norm" "$SSHFS_PINNED_VERSION"; then
+		refuse "--sshfs=package: the best candidate is $ep_candidate, which is in the affected range (< $SSHFS_PINNED_VERSION) for CVE-2026-47187 / CVE-2026-48711 — re-run with --sshfs=source to build the patched release"
+	fi
+	ensure_sshfs_min
+}
+
+# ensure_sshfs_source: --sshfs=source. Build the pinned upstream release and
+# install it to $DEST/sshfs. The pin is verified TWICE: the cloned HEAD must
+# equal SSHFS_PINNED_COMMIT, and the built binary must keep the sha256
+# recorded immediately after the build (before the install moves it).
+ensure_sshfs_source() {
+	command -v meson >/dev/null 2>&1 || refuse "--sshfs=source: meson is not installed — it is required to build sshfs from source (e.g. apt-get install meson ninja-build git)"
+	command -v ninja >/dev/null 2>&1 || refuse "--sshfs=source: ninja is not installed — it is required to build sshfs from source (e.g. apt-get install meson ninja-build git)"
+	command -v git >/dev/null 2>&1 || refuse "--sshfs=source: git is not installed — it is required to clone the pinned sshfs tag"
+
+	es_src=$TMP_DIR/sshfs-src
+	es_build=$TMP_DIR/sshfs-build
+	if [ "$DRY_RUN" = 1 ]; then
+		say "dry-run: would git clone --depth 1 --branch $SSHFS_PINNED_TAG https://github.com/libfuse/sshfs.git"
+		say "dry-run: would verify HEAD == $SSHFS_PINNED_COMMIT"
+		say "dry-run: would run: meson setup $es_build --buildtype release && ninja -C $es_build"
+		say "dry-run: would record the binary's sha256, then install it to $DEST/sshfs"
+		return 0
+	fi
+
+	ensure_tmp
+	say "cloning sshfs $SSHFS_PINNED_TAG (depth 1)"
+	git clone --depth 1 --branch "$SSHFS_PINNED_TAG" https://github.com/libfuse/sshfs.git "$es_src" ||
+		die "git clone of sshfs $SSHFS_PINNED_TAG failed (check the network, or use --sshfs=min)"
+	es_commit=$(git -C "$es_src" rev-parse HEAD)
+	if [ "$es_commit" != "$SSHFS_PINNED_COMMIT" ]; then
+		refuse "sshfs source verification failed: $SSHFS_PINNED_TAG HEAD is $es_commit, expected $SSHFS_PINNED_COMMIT — the pin moved upstream, refusing to build"
+	fi
+	say "verified clone at the pinned commit $es_commit"
+
+	say "building sshfs with meson/ninja (release)"
+	(meson setup "$es_build" "$es_src" --buildtype release >/dev/null 2>&1) ||
+		die "meson setup failed — the sshfs build requirements (libfuse3-dev, glib2.0-dev) may be missing"
+	(ninja -C "$es_build" >/dev/null 2>&1) ||
+		die "ninja -C build failed — the sshfs build failed to compile"
+	[ -f "$es_build/sshfs" ] || die "ninja did not produce $es_build/sshfs"
+
+	es_sha=$(sha256_of "$es_build/sshfs")
+	say "built sshfs (sha256 $es_sha)"
+	install_one_sshfs "$es_build/sshfs"
+	es_installed=$DEST/sshfs
+	es_installed_sha=$(sha256_of "$es_installed")
+	if [ "$es_installed_sha" != "$es_sha" ]; then
+		refuse "sshfs install verification failed: the installed $es_installed hashes to $es_installed_sha but $es_sha was recorded before the install"
+	fi
+	say "verified installed sshfs (sha256 $es_installed_sha) matches the build"
+	sshfs_report_version "$es_installed"
+}
+
+# install_one_sshfs SRC: install one staged binary to $DEST/sshfs, honouring
+# --dry-run like install_binaries does.
+install_one_sshfs() { # install_one_sshfs SRC
+	if [ "$DRY_RUN" = 1 ]; then
+		say "dry-run: would install $1 -> $DEST/sshfs (mode 0755)"
+		return 0
+	fi
+	is_tmp=$DEST/.sshfs.$$.tmp
+	cp "$1" "$is_tmp" || die "cannot write $is_tmp"
+	chmod 0755 "$is_tmp"
+	mv -f "$is_tmp" "$DEST/sshfs" || die "cannot install $DEST/sshfs"
+	say "installed $DEST/sshfs"
+}
+
+# ensure_sshfs dispatches on SSHFS_MODE (empty = no-op: the default install
+# never touches the host's sshfs).
+ensure_sshfs() {
+	case "$SSHFS_MODE" in
+	'') return 0 ;;
+	min) ensure_sshfs_min ;;
+	package) ensure_sshfs_package ;;
+	source) ensure_sshfs_source ;;
+	*)
+		# parse_args already refuses unknown modes; this is belt and braces.
+		refuse "unknown --sshfs mode \"$SSHFS_MODE\""
+		;;
+	esac
+}
+
 # ── main ────────────────────────────────────────────────────────────────────
 parse_args "$@"
 
@@ -636,3 +876,9 @@ if [ "$DRY_RUN" = 0 ]; then
 else
 	say "dry-run complete: nothing was downloaded, built or written"
 fi
+
+# ── sshfs (MOUNT-009) ───────────────────────────────────────────────────────
+# Runs AFTER the bunker install and its reporting. Empty SSHFS_MODE (the
+# default, no --sshfs flag) is a no-op: the default install NEVER touches the
+# host's sshfs.
+ensure_sshfs
