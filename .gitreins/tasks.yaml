@@ -2889,5 +2889,24 @@ tasks:
   - cleanup() re-reads the live daemon's agent list and keeps snapshot-union-live
     agents; live drill on bunker-mvp proves a mid-window spawned agent survives the
     sweep
-  status: in_progress
+  status: complete
   created_at: '2026-09-21T11:28:43.415207+00:00'
+  completed_at: '2026-09-21T11:34:21.498301+00:00'
+- id: QA-BUNKER-001
+  title: per-uid test-CLI build cache root
+  criteria:
+  - go test ./internal/cli/ -count=1 passes with a foreign-uid 0700 /tmp/bunker-cli-build-cache-roots
+    root present; root name embeds os.Getuid(); build/vet/gofmt clean
+  status: complete
+  created_at: '2026-09-21T11:49:05.915398+00:00'
+  completed_at: '2026-09-21T12:09:42.362207+00:00'
+- id: GAP-116
+  title: safety.preset plumbing
+  criteria:
+  - config safety.preset + --preset flag + BUNKERD_SAFETY_PRESET env with flag>env>config>open
+    precedence, unknown-preset hard error, bunker info reports effective preset+knob
+    set, and a byte-identical zero-delta test for default-preset systemd-run argv
+    and slice drop-in; go build/vet/test/gofmt clean
+  status: complete
+  created_at: '2026-09-21T11:49:09.176072+00:00'
+  completed_at: '2026-09-21T12:44:28.055127+00:00'
