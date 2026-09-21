@@ -398,5 +398,7 @@ jobs:
       - name: Root-gated suite (TestSpawn|TestCgroup|TestConcurrency)
         # Wrapper guarantees 0 leaked users/keys even when a test leaks or
         # fails mid-way (GAP-007); see scripts/root-suite.sh.
+        # INT-CI-031: budget raised to 1050s (scripts/root-suite.sh); 20m here
+        # leaves 150s of headroom for the wrapper's leak-cleanup EXIT trap.
         run: bash scripts/root-suite.sh
-        timeout-minutes: 15
+        timeout-minutes: 20

@@ -2085,7 +2085,16 @@ if [ -n "$REGRESSION_SCRIPT" ]; then
     # -u` clears it for the child, which then binds its OWN target after its
     # connect — the same contract the battery follows. The battery's own
     # binding lives in THIS shell, so section 13 continues to resolve normally.
-    run_capture "nested regression suite" env -u BUNKER_SESSION_TARGET BUNKER_HOME="$NESTED_CLI_HOME" HOME="$NESTED_CLI_HOME" BUNKERD_GRPC_ADDR="$NESTED_GRPC_ADDR" BUNKERD_REST_ADDR="$NESTED_REST_ADDR" bash "$REGRESSION_SCRIPT"
+    # INT-CI-031: the child must also resolve the binary THIS battery
+    # certifies. On run 35565852250 the nested suite's bare `bunker` fell
+    # through to the stale /usr/local host baseline (v0.1.4, 6a6ad20), which
+    # predates the GAP-093 fail-closed binding fix, so the re-check cell got
+    # `no active server` instead of the required refusal message. Prepend the
+    # certified binary's directory to the child's PATH — both bunker and
+    # bunkerd live there in CI (workspace) and in the manual default
+    # (/usr/local/bin), so one dirname prepend pins both.
+    echo "  nested suite PATH pin: $(dirname "$BUNKER") (bunker -> $(command -v bunker 2>/dev/null || echo "$BUNKER"))"
+    run_capture "nested regression suite" env -u BUNKER_SESSION_TARGET PATH="$(dirname "$BUNKER"):$PATH" BUNKER_HOME="$NESTED_CLI_HOME" HOME="$NESTED_CLI_HOME" BUNKERD_GRPC_ADDR="$NESTED_GRPC_ADDR" BUNKERD_REST_ADDR="$NESTED_REST_ADDR" bash "$REGRESSION_SCRIPT"
     REG_OUT="$RUN_CAPTURE_OUT"
     # The nested suite's REAL exit status. The previous revision read `$?` after
     # a `... || true` command substitution, so REG_EXIT was always 0.

@@ -17,7 +17,12 @@ set -uo pipefail
 # (900s) so this script's EXIT-trap leak cleanup still gets room; a genuine
 # hang now takes 13m to red — the job still fails, and the budget line below
 # makes the timeout self-attributing.
-ROOT_SUITE_TIMEOUT="${ROOT_SUITE_TIMEOUT:-780s}"
+# INT-CI-031 (second cliff): run 35565852250 reddened again with
+# internal/agent consuming the FULL 780s while spawns/destroys still flowed —
+# the GAP-126..142 security wave grew the root-gated suite past 780s. The CI
+# step timeout is now 20m (1200s), so a 1050s budget leaves 150s for this
+# script's EXIT-trap leak cleanup.
+ROOT_SUITE_TIMEOUT="${ROOT_SUITE_TIMEOUT:-1050s}"
 
 SNAP_PASSWD="$(mktemp /tmp/root-suite-passwd-XXXXXX)"
 SNAP_KEYS="$(mktemp /tmp/root-suite-keys-XXXXXX)"
@@ -61,7 +66,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "root-suite: go test budget $ROOT_SUITE_TIMEOUT (CI step allows 15m; remainder is for leak cleanup)"
+echo "root-suite: go test budget $ROOT_SUITE_TIMEOUT (CI step allows 20m; remainder is for leak cleanup)"
 go test -count=1 -run 'TestSpawn|TestCgroup|TestConcurrency' ./... -timeout "$ROOT_SUITE_TIMEOUT"
 rc=$?
 echo "root-suite: go test finished rc=$rc budget=$ROOT_SUITE_TIMEOUT"

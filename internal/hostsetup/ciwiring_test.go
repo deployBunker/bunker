@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -33,8 +34,10 @@ const (
 	ciWorkflowPath             = "../../.github/workflows/ci.yml"
 	regressionSuiteScriptPath  = "../../regression-tests.sh"
 	e2eBatteryScriptPath       = "../../e2e-full-battery.sh"
+	rootSuiteScriptPath        = "../../scripts/root-suite.sh"
 	regressionSuiteStepName    = "Regression suite"
 	e2eBatteryStepName         = "E2E battery"
+	rootSuiteStepName          = "Root-gated suite (TestSpawn|TestCgroup|TestConcurrency)"
 	githubWorkspaceContextExpr = "${{ github.workspace }}"
 )
 
@@ -380,5 +383,99 @@ func TestBatteryScriptsArmInsecureDevInGeneratedConfig(t *testing.T) {
 				t.Errorf("%s readiness probe no longer names the CheckTLS refusal shape %q — a startup death cascades into unattributable cell failures", tc.scriptPath, tc.refusalNote)
 			}
 		})
+	}
+}
+
+// TestBatteryNestedSuiteRunsCertifiedBinary pins INT-CI-031: the battery's
+// nested regression suite must resolve `bunker` from the directory of the
+// certified $BUNKER binary. On run 35565852250 the battery's E2E step does
+// not pin PATH, so the child's bare `bunker` fell through to the runner's
+// stale /usr/local baseline (v0.1.4, 6a6ad20 — predates the GAP-093
+// fail-closed binding fix) and the re-check cell got `no active server`
+// instead of the required refusal message, while the battery's CERTIFIED
+// BINARY line (verdict MATCH) covered only $BUNKER_BIN. The battery must
+// exercise the same binary it certifies: the child env gets the certified
+// binary's directory PREPENDED to PATH (both bunker and bunkerd live there
+// in CI workspace and in the /usr/local default, so one dirname pins both).
+func TestBatteryNestedSuiteRunsCertifiedBinary(t *testing.T) {
+	script := readRepoFile(t, e2eBatteryScriptPath)
+
+	// Exactly one nested-suite invocation site (INT-CI-012 doctrine), and it
+	// must carry the PATH pin.
+	pinLine := ""
+	invocations := 0
+	for _, line := range strings.Split(script, "\n") {
+		if strings.Contains(line, `run_capture "nested regression suite"`) {
+			invocations++
+			pinLine = line
+		}
+	}
+	if invocations != 1 {
+		t.Fatalf("e2e-full-battery.sh has %d `run_capture \"nested regression suite\"` invocations, want exactly 1 — the pin is unverifiable with more than one site (last: %s)", invocations, pinLine)
+	}
+
+	// env flags stay before name=value pairs, and the certified binary's
+	// directory comes FIRST in the child's PATH.
+	envFlagAndPin := `env -u BUNKER_SESSION_TARGET PATH="$(dirname "$BUNKER"):$PATH"`
+	if !strings.Contains(pinLine, envFlagAndPin) {
+		t.Errorf("the nested regression invocation lost the certified-binary PATH pin (%q missing) — the child falls back to the runner's stale /usr/local baseline and the battery no longer exercises the binary it certifies:\n%s", envFlagAndPin, pinLine)
+	}
+
+	// Every env assignment the child received before the fix must survive:
+	// the pin is additive, never a replacement.
+	for _, want := range []string{
+		`BUNKER_HOME="$NESTED_CLI_HOME"`,
+		`HOME="$NESTED_CLI_HOME"`,
+		`BUNKERD_GRPC_ADDR="$NESTED_GRPC_ADDR"`,
+		`BUNKERD_REST_ADDR="$NESTED_REST_ADDR"`,
+		`bash "$REGRESSION_SCRIPT"`,
+	} {
+		if !strings.Contains(pinLine, want) {
+			t.Errorf("the nested regression invocation lost %q when the PATH pin landed:\n%s", want, pinLine)
+		}
+	}
+
+	// Self-attributing line: the job log must show which directory the child
+	// will resolve `bunker`/`bunkerd` from, next to the CERTIFIED BINARY
+	// verdict for the same run.
+	if !strings.Contains(script, "nested suite PATH pin:") {
+		t.Errorf("e2e-full-battery.sh no longer echoes the `nested suite PATH pin:` line — a repeat of run 35565852250 would not show what the child resolved against the certification verdict")
+	}
+}
+
+// TestRootSuiteBudgetFitsCIWindow pins the INT-CI-031 budget raise: the
+// root-gated suite's real cost grew past the 780s rung (run 35565852250:
+// internal/agent consumed the FULL 780s with spawns/destroys still flowing —
+// the GAP-126..142 security wave added root-gated spawn tests). Per the
+// INT-CI-006 doctrine the budget rises, never the -run filter: 1050s default
+// under a 20m CI step window (1200s), leaving 150s of headroom so the
+// wrapper's EXIT-trap leak cleanup (GAP-007: zero leaked users/keys) still
+// runs inside the window.
+func TestRootSuiteBudgetFitsCIWindow(t *testing.T) {
+	script := readRepoFile(t, rootSuiteScriptPath)
+	const budgetSeconds = 1050
+	if !strings.Contains(script, `ROOT_SUITE_TIMEOUT="${ROOT_SUITE_TIMEOUT:-1050s}"`) {
+		t.Errorf("%s does not default ROOT_SUITE_TIMEOUT to %ds — the suite's real cost passed the previous 780s rung (run 35565852250, internal/agent consumed the full budget while progressing)", rootSuiteScriptPath, budgetSeconds)
+	}
+
+	workflow := readRepoFile(t, ciWorkflowPath)
+	step := stripYAMLComments(workflowStepBlock(t, workflow, rootSuiteStepName))
+	m := regexp.MustCompile(`(?m)^\s*timeout-minutes:\s*(\d+)\s*$`).FindStringSubmatch(step)
+	if m == nil {
+		t.Fatalf("the %q step has no timeout-minutes — the budget's cleanup headroom is unguardable:\n%s", rootSuiteStepName, step)
+	}
+	minutes, err := strconv.Atoi(m[1])
+	if err != nil {
+		t.Fatalf("parse timeout-minutes %q: %v", m[1], err)
+	}
+	if minutes != 20 {
+		t.Errorf("the %q step timeout-minutes = %d, want 20 (run 35565852250 reddened at the 15m window; the 1050s budget needs 1200s)", rootSuiteStepName, minutes)
+	}
+
+	// The encoded headroom invariant: 1200s window - 1050s budget >= 150s
+	// for the leak-cleanup EXIT trap. Expressed against the parsed step
+	// value so a future window edit must keep the math honest.
+	if headroom := minutes*60 - budgetSeconds; headroom < 150 {
+		t.Errorf("root-suite window %dm (%ds) leaves only %ds of headroom under the %ds budget; >= 150s is required for the wrapper's EXIT-trap leak cleanup", minutes, minutes*60, headroom, budgetSeconds)
 	}
 }
