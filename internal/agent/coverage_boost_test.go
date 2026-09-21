@@ -703,9 +703,8 @@ func TestApplyUserSliceLimits_NotRoot_Coverage(t *testing.T) {
 			t.Skipf("cannot determine current user: %v", err)
 		}
 	}
-	err = applyUserSliceLimits(context.Background(), u,
-		0.5, 256*1024*1024, 0, 100, 1024, logger)
-	if err == nil {
+	if _, err = applyUserSliceLimits(context.Background(), u,
+		0.5, 256*1024*1024, 0, 100, 1024, logger); err == nil {
 		t.Fatal("expected error when not root")
 	}
 	// The error could be from mkdir or from WriteFile depending on whether

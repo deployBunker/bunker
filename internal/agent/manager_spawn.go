@@ -68,6 +68,19 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		ttl = parsed
 	}
 
+	// ── Step 1b: Resolve the safety preset BEFORE any side effect ──
+	// GAP-116 precedence: per-spawn flag (req.SafetyPreset) > the
+	// BUNKERD_SAFETY_PRESET env > the config global > the built-in default.
+	// An unknown name from any source is a hard error (mapped to
+	// CodeInvalidArgument by the server) — never a silent fallback. The
+	// resolved name is stamped on the agent record so `bunker info` can
+	// report the effective preset.
+	preset, err := m.cfg.ResolveSafetyPreset(req.GetSafetyPreset())
+	if err != nil {
+		return nil, spawnStageErr(ctx, agentID, StageValidate, err)
+	}
+	m.logger.Info("resolved safety preset", "agent_id", agentID, "preset", preset)
+
 	// ── Step 1.7: Validate the image spec BEFORE any side effect ──
 	// GAP-064: an invalid or disallowed image spec must fail with a
 	// validation error (mapped to CodeInvalidArgument by the server) without
@@ -475,6 +488,9 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 
 	// The unit argv (including the GAP-075 PrivateTmp=yes property) is built by
 	// a pure function so it is pinned by unit tests rather than by a live host.
+	// GAP-116: the limit property block is table-driven from the resolved
+	// preset's knob set (identical values/order for every preset in this row).
+	unitKnobs, sliceKnobs := KnobsForPreset(preset, cpuQuota, memMax, diskMax, maxProcs, maxFiles)
 	systemdArgs, rootlessEnv := buildRootlessDockerdArgs(dockerdUnitArgs{
 		AgentID:        agentID,
 		UnitName:       unitName,
@@ -489,6 +505,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		DiskMax:        diskMax,
 		MaxProcesses:   maxProcs,
 		MaxOpenFiles:   maxFiles,
+		UnitKnobs:      unitKnobs,
 	})
 
 	// Clear any leftover state from a previous unit with this name BEFORE
@@ -554,9 +571,10 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// *every* process owned by the agent user — containers and direct commands
 	// alike.
 	createdUserSlice = false
-	if err := applyUserSliceLimits(ctx, u, cpuQuota, memMax, diskMax, maxProcs, maxFiles, m.logger); err != nil {
+	dropinContent, sliceErr := applyUserSliceLimits(ctx, u, cpuQuota, memMax, diskMax, maxProcs, maxFiles, m.logger)
+	if sliceErr != nil {
 		m.logger.Warn("failed to apply user slice limits; agent user is unconstrained except for dockerd",
-			"agent_id", agentID, "error", err)
+			"agent_id", agentID, "error", sliceErr)
 	} else {
 		createdUserSlice = true
 	}
@@ -657,6 +675,14 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		SshfsMount:        sshfsMount,
 		DockerHostTunnel:  dockerHostTunnel,
 		Image:             imageRef,
+		// GAP-116: the effective safety preset and the knob set the agent was
+		// actually spawned under — the unit argv's properties, and the slice
+		// drop-in's when it was written. `bunker info` reports these as-is.
+		SafetyPreset:     preset,
+		UnitProperties:   systemdKnobsToProto(unitKnobs),
+		SliceProperties:  systemdKnobsToProto(sliceKnobs),
+		SliceDropIn:      dropinContent,
+		SliceDropInState: sliceDropInState(createdUserSlice),
 	}
 	if err := m.tracker.Register(rec); err != nil {
 		// This shouldn't happen (we checked capacity above), but handle gracefully
@@ -895,44 +921,37 @@ var dockerdProcessChecker = func(ctx context.Context, username string) (bool, er
 // so that *all* processes owned by the agent user inherit the configured cgroup
 // limits — not just the dockerd unit.  The drop-in is written to
 // /etc/systemd/system/user-<UID>.slice.d/50-bunker.conf.
-func applyUserSliceLimits(ctx context.Context, u *user.User, cpuQuota float64, memMax, diskMax, maxProcs, maxFiles uint64, logger *slog.Logger) error {
+//
+// GAP-116: the property block is table-driven (sliceKnobsFor — the resolved
+// preset's knob set, byte-identical to pre-GAP-116 for this row) and the
+// written content is returned so the spawn can stamp it on the agent record
+// for `bunker info` effective-set reporting.
+func applyUserSliceLimits(ctx context.Context, u *user.User, cpuQuota float64, memMax, diskMax, maxProcs, maxFiles uint64, logger *slog.Logger) (string, error) {
 	sliceName := fmt.Sprintf("user-%s.slice", u.Uid)
 	dropinDir := userSliceDropinDir(u.Uid)
 	if err := os.MkdirAll(dropinDir, 0755); err != nil {
-		return fmt.Errorf("mkdir %s: %w", dropinDir, err)
+		return "", fmt.Errorf("mkdir %s: %w", dropinDir, err)
 	}
 
 	var parts []string
 	parts = append(parts, "[Slice]")
-	if cpuQuota > 0 {
-		parts = append(parts, fmt.Sprintf("CPUQuota=%d%%", int(cpuQuota*100)))
-	}
-	if memMax > 0 {
-		parts = append(parts, fmt.Sprintf("MemoryMax=%d", memMax))
-	}
-	if maxProcs > 0 {
-		parts = append(parts, fmt.Sprintf("TasksMax=%d", maxProcs))
-	}
-	if maxFiles > 0 {
-		parts = append(parts, fmt.Sprintf("LimitNOFILE=%d:%d", maxFiles, maxFiles))
-	}
-	if diskMax > 0 {
-		parts = append(parts, fmt.Sprintf("LimitFSIZE=%d", diskMax))
+	for _, k := range sliceKnobsFor(cpuQuota, memMax, diskMax, maxProcs, maxFiles) {
+		parts = append(parts, k.Name+"="+k.Value)
 	}
 	content := strings.Join(parts, "\n") + "\n"
 
 	confPath := filepath.Join(dropinDir, "50-bunker.conf")
 	if err := os.WriteFile(confPath, []byte(content), 0644); err != nil {
-		return fmt.Errorf("write %s: %w", confPath, err)
+		return "", fmt.Errorf("write %s: %w", confPath, err)
 	}
 	logger.Info("wrote user slice drop-in", "slice", sliceName, "path", confPath)
 
 	// Reload systemd so the slice picks up the new limits immediately.
 	cmd := exec.CommandContext(ctx, "systemctl", "daemon-reload")
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("daemon-reload: %w (output: %s)", err, string(out))
+		return "", fmt.Errorf("daemon-reload: %w (output: %s)", err, string(out))
 	}
-	return nil
+	return content, nil
 }
 
 // writeOwnerMarker stamps this daemon's restart-stable instance identity into

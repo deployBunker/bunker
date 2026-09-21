@@ -49,6 +49,18 @@ func (m *AgentManager) RunAgent(ctx context.Context, req *v1.RunAgentRequest) (*
 		limits = rec.Limits
 	}
 
+	// GAP-116: the detached-run unit gets the same preset resolution as
+	// spawn — per-request flag > BUNKERD_SAFETY_PRESET env > config global >
+	// built-in default. An unknown name fails LOUD before the unit is
+	// created. The knob set for the run unit comes from the same table; in
+	// this plumbing row it resolves to the same properties the limits above
+	// already produced, so the argv is unchanged for every valid preset.
+	preset, err := m.cfg.ResolveSafetyPreset(req.GetSafetyPreset())
+	if err != nil {
+		return nil, err
+	}
+	_, _ = KnobsForPreset(preset, 0, 0, 0, 0, 0) // vocabulary guard: fail loud on an untabled preset
+
 	cmdArgs := buildRunAgentArgs(agentID, u.Uid, u.Gid, unitName, req.GetCommand(), req.GetArgs(), req.GetEnv(), limits, m.cfg != nil && m.cfg.Containment.Disclosure)
 	cmd := exec.CommandContext(ctx, "systemd-run", cmdArgs...)
 	out, err := cmd.CombinedOutput()

@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 
+	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
+
 	"github.com/deployBunker/bunker/internal/registry"
 	"github.com/deployBunker/bunker/internal/resource"
 )
@@ -56,7 +58,27 @@ func recordToRegistry(rec *resource.AgentRecord) *registry.Record {
 		PublicURL:        rec.PublicURL,
 		TailnetIP:        rec.TailnetIP,
 		Image:            rec.Image,
+		// GAP-116: the effective preset and knob set ride the durable record
+		// so a replayed/adopted agent keeps reporting what it was spawned
+		// with. The property lists convert from the wire type into the
+		// registry's plain-JSON form so the durable record stays proto-free.
+		SafetyPreset:    rec.SafetyPreset,
+		UnitProperties:  protoToRegistryProperties(rec.UnitProperties),
+		SliceProperties: protoToRegistryProperties(rec.SliceProperties),
 	}
+}
+
+// protoToRegistryProperties converts the wire property list into the
+// registry's plain-JSON form (nil-safe).
+func protoToRegistryProperties(props []*v1.SystemdProperty) []registry.SystemdProperty {
+	if len(props) == 0 {
+		return nil
+	}
+	out := make([]registry.SystemdProperty, 0, len(props))
+	for _, p := range props {
+		out = append(out, registry.SystemdProperty{Name: p.GetName(), Value: p.GetValue()})
+	}
+	return out
 }
 
 // registryToRecord converts a replayed registry record into a tracker record.
@@ -82,7 +104,27 @@ func registryToRecord(rec *registry.Record) *resource.AgentRecord {
 		SshfsMount:        rec.SSHFSMount,
 		DockerHostTunnel:  rec.DockerHostTunnel,
 		Image:             rec.Image,
+		// GAP-116: restore the effective preset/knob reporting from the durable
+		// record so a replayed or adopted agent reports the set it was spawned
+		// with. The property lists convert from the registry's plain-JSON form
+		// back to the wire type.
+		SafetyPreset:    rec.SafetyPreset,
+		UnitProperties:  registryPropertiesToProto(rec.UnitProperties),
+		SliceProperties: registryPropertiesToProto(rec.SliceProperties),
 	}
+}
+
+// registryPropertiesToProto converts registry SystemdProperty rows into the
+// wire type (nil-safe: a pre-GAP-116 record has none and reports nil).
+func registryPropertiesToProto(props []registry.SystemdProperty) []*v1.SystemdProperty {
+	if len(props) == 0 {
+		return nil
+	}
+	out := make([]*v1.SystemdProperty, 0, len(props))
+	for _, p := range props {
+		out = append(out, &v1.SystemdProperty{Name: p.Name, Value: p.Value})
+	}
+	return out
 }
 
 // readPersistedPortRange reads an agent's persisted port sub-range from its

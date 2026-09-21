@@ -160,6 +160,19 @@ message AgentSummary {
   uint32 port_range_end = 10;
   string tailnet_ip = 11;
   uint64 disk_used_bytes = 12;   // per-agent disk usage in bytes
+  // GAP-116 effective safety preset: the resolved preset name (flag > env >
+  // config global > built-in default "open") and the effective systemd knob
+  // set the agent was spawned under. Additive: older clients ignore both.
+  string safety_preset = 13;
+  repeated SystemdProperty systemd_properties = 14;
+}
+
+// One resolved systemd property of an agent's effective knob set (GAP-116):
+// a NAME=VALUE pair as written into the spawn unit / slice drop-in, so
+// `bunker info` reports exactly what systemd enforces.
+message SystemdProperty {
+  string name = 1;   // e.g. CPUQuota, MemoryMax, TasksMax, LimitNOFILE, LimitFSIZE
+  string value = 2;  // e.g. "200%", "4294967296"
 }
 
 message SpawnAgentRequest {
@@ -171,6 +184,11 @@ message SpawnAgentRequest {
   map<string, string> labels = 6;
   ImageSpec image_spec = 7;      // Optional: secure package-add customization (GAP-064)
   bool return_ssh_private_key = 8; // GAP-128: opt-in; response carries the private key ONLY when true
+  // GAP-116 per-spawn safety preset override ("open" | "standard" |
+  // "hardened"). Empty = defer to BUNKERD_SAFETY_PRESET, then the config
+  // global, then the built-in default. An unknown name is a hard error —
+  // never a silent fallback.
+  string safety_preset = 9;
 }
 
 // ── Image specification (GAP-064) ─────────────────────────────
@@ -369,7 +387,10 @@ message RunAgentRequest {
   map<string, string> env = 4;
   bool detach = 5;                  // Start as persistent background unit
   uint32 timeout_seconds = 6;
-  string name = 7;                  // Optional name suffix for the unit
+  string name = 7;                  // Optional name suffix for the run unit
+  // GAP-116 per-spawn safety preset override (same grammar and precedence as
+  // SpawnAgentRequest.safety_preset). Empty = defer to env > config > default.
+  string safety_preset = 8;
 }
 
 message RunAgentResponse {

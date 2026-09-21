@@ -195,6 +195,19 @@ audit:
 containment:
   disclosure: false
 
+# Safety preset (GAP-116): the daemon-wide default safety profile every agent
+# spawn resolves against. Precedence: per-spawn `bunker spawn --preset` flag >
+# BUNKERD_SAFETY_PRESET env > this config global > built-in default "open".
+# Accepted names: open (today's five-knob baseline: CPUQuota, MemoryMax,
+# TasksMax, LimitNOFILE, LimitFSIZE), standard, hardened (standard/hardened
+# are reserved names today — they currently resolve to the same knob set; a
+# later row differentiates them). An unknown name REFUSES TO START: fail loud,
+# never a silent fallback. Empty/unset = the built-in default "open", which is
+# byte-identical to pre-GAP-116 behavior.
+# Env override: BUNKERD_SAFETY_PRESET (overrides this config value).
+safety:
+  preset: ""
+
 # Cloudflare TryCloudflare quick tunnels for agents (optional).
 # tunnel:
 #   enabled: true

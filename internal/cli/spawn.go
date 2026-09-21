@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/deployBunker/bunker/internal/agent"
+	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/imagespec"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 )
@@ -36,6 +37,7 @@ func NewSpawnCommand() *cobra.Command {
 		domain        string
 		sshHost       string
 		imageSpecFile string
+		preset        string
 	)
 
 	cmd := &cobra.Command{
@@ -109,6 +111,16 @@ Examples:
 				}
 			}
 
+			// 0.7 Validate --preset LOCALLY, before the progress line and
+			// the RPC (GAP-116): an unknown preset name fails fast with the
+			// accepted vocabulary, exactly like --ttl fails fast with the
+			// duration format. Empty defers to BUNKERD_SAFETY_PRESET, then
+			// the daemon's config global, then the built-in default — the
+			// daemon re-validates the resolved value regardless.
+			if preset != "" && !config.ValidSafetyPreset(preset) {
+				return fmt.Errorf("invalid --preset %q (valid: %v)", preset, config.ValidSafetyPresets())
+			}
+
 			// 1. Load CLI config
 			cfg, err := LoadCLIConfig()
 			if err != nil {
@@ -139,9 +151,10 @@ Examples:
 			defer cancel()
 
 			req := connect.NewRequest(&v1.SpawnAgentRequest{
-				AgentId:   agentID,
-				Ttl:       ttl,
-				ImageSpec: imageSpecPB,
+				AgentId:      agentID,
+				Ttl:          ttl,
+				ImageSpec:    imageSpecPB,
+				SafetyPreset: preset,
 			})
 
 			// Limits
@@ -284,6 +297,7 @@ Examples:
 	cmd.Flags().StringVar(&domain, "domain", "", "Custom domain for Cloudflare tunnel")
 	cmd.Flags().StringVar(&sshHost, "ssh-host", "", "SSH host shown in the bundle (default: hostname from server config URL)")
 	cmd.Flags().StringVar(&imageSpecFile, "image-spec", "", "JSON file with an image customization spec (base + apt/go/npm package adds)")
+	cmd.Flags().StringVar(&preset, "preset", "", "Safety preset for this agent: open, standard, hardened (default: BUNKERD_SAFETY_PRESET, then the server's config, then open)")
 
 	return cmd
 }

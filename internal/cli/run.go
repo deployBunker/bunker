@@ -9,6 +9,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
+	"github.com/deployBunker/bunker/internal/config"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 )
 
@@ -20,6 +21,7 @@ type runArgs struct {
 	detach      bool
 	name        string
 	envVars     []string
+	preset      string
 	command     string
 	commandArgs []string
 }
@@ -47,6 +49,7 @@ func parseRunArgs(args []string) (runArgs, error) {
 		detach     bool
 		name       string
 		envVars    []string
+		preset     string
 	)
 	grammar := flagGrammar{name: "run", specs: map[string]flagGrammarSpec{
 		"--server": {apply: func(v string) error { serverName = v; return nil }},
@@ -58,9 +61,12 @@ func parseRunArgs(args []string) (runArgs, error) {
 			timeout = n
 			return nil
 		}},
-		"--detach":        {apply: func(string) error { detach = true; return nil }, boolean: true},
-		"--name":          {apply: func(v string) error { name = v; return nil }},
-		"--env":           {apply: func(v string) error { envVars = append(envVars, v); return nil }},
+		"--detach": {apply: func(string) error { detach = true; return nil }, boolean: true},
+		"--name":   {apply: func(v string) error { name = v; return nil }},
+		"--env":    {apply: func(v string) error { envVars = append(envVars, v); return nil }},
+		// GAP-116: the run path's preset flag — the per-spawn equivalent of
+		// `spawn --preset`. Validated LOCALLY (vocabulary check) below.
+		"--preset":        {apply: func(v string) error { preset = v; return nil }},
 		"--config":        {apply: func(v string) error { SetConfigPathOverride(v); return nil }},
 		"--daemon-config": {apply: func(v string) error { SetDaemonConfigPathOverride(v); return nil }},
 	}}
@@ -97,6 +103,13 @@ func parseRunArgs(args []string) (runArgs, error) {
 		}
 	}
 
+	// GAP-116: validate --preset LOCALLY so an unknown name fails fast
+	// without a round-trip. Empty defers to BUNKERD_SAFETY_PRESET > config
+	// global > built-in default on the daemon side (re-validated there).
+	if preset != "" && !config.ValidSafetyPreset(preset) {
+		return runArgs{}, fmt.Errorf("invalid --preset %q (valid: %v)", preset, config.ValidSafetyPresets())
+	}
+
 	return runArgs{
 		agentID:     agentID,
 		serverName:  serverName,
@@ -104,6 +117,7 @@ func parseRunArgs(args []string) (runArgs, error) {
 		detach:      detach,
 		name:        name,
 		envVars:     envVars,
+		preset:      preset,
 		command:     rest[0],
 		commandArgs: rest[1:],
 	}, nil
@@ -195,6 +209,7 @@ Examples:
 					Detach:         true,
 					TimeoutSeconds: parsed.timeout,
 					Name:           parsed.name,
+					SafetyPreset:   parsed.preset,
 				})
 				if token != "" {
 					req.Header().Set("Authorization", "Bearer "+token)

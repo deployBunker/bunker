@@ -29,6 +29,120 @@ type Config struct {
 	Tailscale   TailscaleConfig   `mapstructure:"tailscale"`
 	Audit       AuditConfig       `mapstructure:"audit"`
 	Containment ContainmentConfig `mapstructure:"containment"`
+	// Safety holds the GAP-116 safety-preset policy: the daemon-wide default
+	// preset every spawn resolves against when neither the per-spawn flag nor
+	// the environment names one. Empty (the zero value) is the built-in
+	// default — exactly today's behavior, byte for byte.
+	Safety SafetyConfig `mapstructure:"safety"`
+}
+
+// Safety preset vocabulary and defaults (GAP-116).
+//
+// The vocabulary is exactly {"open", "standard", "hardened"}. "open" names
+// TODAY'S de-facto five-knob baseline (CPUQuota, MemoryMax, TasksMax,
+// LimitNOFILE, LimitFSIZE — see the internal/agent spawn path); this row is
+// plumbing only, so "standard" and "hardened" are VALID NAMES that resolve to
+// the same knob set today — later rows differentiate them. Nothing outside the
+// vocabulary is ever accepted: unknown names fail LOUDLY at config load and at
+// spawn, never as a silent fallback to a weaker (or stronger) set.
+const (
+	// SafetyPresetOpen is today's five-knob baseline and the built-in default.
+	SafetyPresetOpen = "open"
+	// SafetyPresetStandard is reserved (GAP-117+); currently identical to open.
+	SafetyPresetStandard = "standard"
+	// SafetyPresetHardened is reserved (GAP-117+); currently identical to open.
+	SafetyPresetHardened = "hardened"
+	// SafetyPresetDefault is the effective preset when every source is unset.
+	SafetyPresetDefault = SafetyPresetOpen
+	// SafetyPresetEnv is the env override between the per-spawn flag and the
+	// config global (GAP-116 precedence: flag > env > config > default).
+	SafetyPresetEnv = "BUNKERD_SAFETY_PRESET"
+)
+
+// ValidSafetyPresets lists the accepted preset names in display order.
+func ValidSafetyPresets() []string {
+	return []string{SafetyPresetOpen, SafetyPresetStandard, SafetyPresetHardened}
+}
+
+// ValidSafetyPreset reports whether name is a member of the preset vocabulary
+// (exact match after trimming surrounding whitespace — an empty name is NOT
+// valid here; absence is expressed by the empty string and handled by the
+// precedence resolver, not by validation).
+func ValidSafetyPreset(name string) bool {
+	name = strings.TrimSpace(name)
+	for _, p := range ValidSafetyPresets() {
+		if name == p {
+			return true
+		}
+	}
+	return false
+}
+
+// SafetyConfig holds the GAP-116 safety-preset default. Admin-controlled and
+// hidden-by-default in the GAP-067 sense: the zero value changes nothing.
+type SafetyConfig struct {
+	// Preset is the daemon-wide default preset name. Empty = unset = the
+	// built-in default (SafetyPresetDefault). Validate rejects any other
+	// value outside the vocabulary — a typo must never silently resolve to
+	// a different knob set.
+	Preset string `mapstructure:"preset"`
+}
+
+// Validate checks the configured preset against the vocabulary. Empty is the
+// unset default and always passes.
+func (s SafetyConfig) Validate() error {
+	if s.Preset == "" {
+		return nil
+	}
+	if !ValidSafetyPreset(s.Preset) {
+		return fmt.Errorf("safety.preset must be one of %v, got %q", ValidSafetyPresets(), s.Preset)
+	}
+	return nil
+}
+
+// GlobalSafetyPresetOrDefault returns the config-level preset, resolving the
+// unset (empty) value to SafetyPresetDefault. The stored value must already
+// be valid (Validate runs at config load); an invalid hand-built value fails
+// LOUD here too rather than silently degrading — fail loud is the row's rule.
+func (s SafetyConfig) GlobalSafetyPresetOrDefault() (string, error) {
+	if s.Preset == "" {
+		return SafetyPresetDefault, nil
+	}
+	if !ValidSafetyPreset(s.Preset) {
+		return "", fmt.Errorf("safety.preset: %w", errUnknownSafetyPreset(s.Preset))
+	}
+	return s.Preset, nil
+}
+
+// errUnknownSafetyPreset builds the shared unknown-preset error.
+func errUnknownSafetyPreset(name string) error {
+	return fmt.Errorf("unknown safety preset %q (valid: %v)", name, ValidSafetyPresets())
+}
+
+// ResolveSafetyPreset is the SINGLE precedence resolver for the safety preset
+// (GAP-116): per-spawn flag > BUNKERD_SAFETY_PRESET env > the config global >
+// the built-in default. Every spawn-shaped code path (spawn, detached run)
+// resolves through this function so the sources can never disagree.
+//
+// An unknown name from ANY source is a hard error naming the source — never a
+// silent fallback to a weaker set. Precedence means first-WIN: a valid flag
+// short-circuits even when a lower source holds an invalid name, exactly like
+// the env-file secret chain (a lower source is only consulted when no higher
+// source matched).
+func (c *Config) ResolveSafetyPreset(flagPreset string) (string, error) {
+	if p := strings.TrimSpace(flagPreset); p != "" {
+		if !ValidSafetyPreset(p) {
+			return "", fmt.Errorf("--preset: %w", errUnknownSafetyPreset(p))
+		}
+		return p, nil
+	}
+	if p := strings.TrimSpace(os.Getenv(SafetyPresetEnv)); p != "" {
+		if !ValidSafetyPreset(p) {
+			return "", fmt.Errorf("%s: %w", SafetyPresetEnv, errUnknownSafetyPreset(p))
+		}
+		return p, nil
+	}
+	return c.Safety.GlobalSafetyPresetOrDefault()
 }
 
 // ContainmentConfig holds the GAP-067 containment-exposure disclosure
@@ -608,6 +722,13 @@ func DefaultConfig() *Config {
 		Containment: ContainmentConfig{
 			Disclosure: false,
 		},
+		// GAP-116: the safety preset default is the EMPTY string — the
+		// built-in default ("open" = today's five-knob baseline). An unset
+		// key must produce the exact pre-GAP-116 behavior, so the default
+		// config never names a preset explicitly.
+		Safety: SafetyConfig{
+			Preset: "",
+		},
 	}
 }
 
@@ -701,6 +822,11 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("audit.ship_to")
 	v.BindEnv("audit.seal_key")
 	v.BindEnv("containment.disclosure")
+	// GAP-116: the config-global safety preset and its env override. The env
+	// var is ALSO read directly by ResolveSafetyPreset (it beats the config
+	// global there, matching the GAP-067 precedence rule); this binding keeps
+	// the viper/automatic-env surface complete for operator introspection.
+	v.BindEnv("safety.preset")
 
 	// Read config file if it exists
 	if _, err := os.Stat(path); err == nil {
@@ -766,6 +892,12 @@ func (c *Config) Validate() error {
 		}
 	}
 	if err := c.Agent.Reconciliation.Validate(); err != nil {
+		return err
+	}
+	// GAP-116: an unknown safety.preset must refuse to start (fail loud) —
+	// a typoed preset name can never silently resolve to a different knob
+	// set at spawn time.
+	if err := c.Safety.Validate(); err != nil {
 		return err
 	}
 	return nil

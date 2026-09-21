@@ -30,6 +30,17 @@ type AgentRecord struct {
 	// rootless dockerd instead of the bare host user context (GAP-069).
 	// Empty for agents spawned without an image spec.
 	Image string
+	// GAP-116 safety-preset effective-set reporting: the resolved preset name
+	// (flag > env > config global > built-in default) and the knob set the
+	// agent was ACTUALLY spawned under, plus the state of the slice drop-in.
+	// `bunker info` renders these from the agent-status plumbing; an older
+	// record (pre-GAP-116 replay, adopted agent) reports an empty preset and
+	// no properties, which the CLI renders as the built-in default.
+	SafetyPreset     string
+	UnitProperties   []*v1.SystemdProperty
+	SliceProperties  []*v1.SystemdProperty
+	SliceDropIn      string // exact drop-in content when written; empty otherwise
+	SliceDropInState string // "written" or "failed" (best-effort step)
 }
 
 // Tracker manages agent state, capacity, and resource allocation.
@@ -133,5 +144,12 @@ func (r *AgentRecord) ToAgentSummary() *v1.AgentSummary {
 		SshfsMount:       r.SshfsMount,
 		DockerHostTunnel: r.DockerHostTunnel,
 		DiskUsedBytes:    r.DiskUsedBytes,
+		// GAP-116 effective-set reporting: the preset the agent was spawned
+		// under and its resolved systemd knob set (unit surface — the same
+		// five properties the slice carries in the drop-in's order). The
+		// fields are additive: pre-GAP-116 records leave them zero and the
+		// CLI renders the built-in default.
+		SafetyPreset:      r.SafetyPreset,
+		SystemdProperties: r.UnitProperties,
 	}
 }
