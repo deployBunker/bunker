@@ -319,6 +319,11 @@ jobs:
           BUNKERD_COEXIST: "1"
           BUNKERD_GRPC_ADDR: ":29090"
           BUNKERD_REST_ADDR: ":28080"
+          # INT-CI-028: belt-and-suspenders next to the tls.insecure_dev key
+          # the suite writes into its generated config — the env name is what
+          # a future config-shape change (env-only startup) would need. See
+          # TestCheckTLS_CIBatteryShape / TestCIWiringArmsInsecureDevOptIn.
+          BUNKERD_TLS_INSECURE_DEV: "true"
         run: |
           export PATH="${GITHUB_WORKSPACE}:${PATH}"
           command -v bunker bunkerd
@@ -336,6 +341,11 @@ jobs:
           BUNKERD_COEXIST: "1"
           BUNKERD_GRPC_ADDR: ":29091"
           BUNKERD_REST_ADDR: ":28081"
+          # INT-CI-028: belt-and-suspenders next to the tls.insecure_dev key
+          # the battery writes into its generated config — the env name is
+          # what a future config-shape change (env-only startup) would need.
+          # See TestCheckTLS_CIBatteryShape / TestCIWiringArmsInsecureDevOptIn.
+          BUNKERD_TLS_INSECURE_DEV: "true"
           BUNKER_BIN: ${{ github.workspace }}/bunker
           BUNKERD_BIN: ${{ github.workspace }}/bunkerd
           # CI builds BUNKER_BIN from the pushed commit, so a certification

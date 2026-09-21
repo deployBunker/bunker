@@ -316,3 +316,58 @@ func TestLoad_TLSInsecureDevEnvOverride(t *testing.T) {
 		t.Error("BUNKERD_TLS_INSECURE_DEV=true did not set tls.insecure_dev")
 	}
 }
+
+// TestCheckTLS_CIBatteryShape pins the CI battery daemon shape (INT-CI-028).
+// Both battery suites bind the wildcard CI ports :29090/:28080 — an empty
+// host is every interface, NON-loopback per IsLoopbackAddr — so since GAP-126
+// the daemons refused to start until the generated battery configs carried
+// the explicit tls.insecure_dev opt-in. The table proves BOTH directions:
+// opted in, the daemon starts LOUDLY (warning, no error) and the audit
+// predicate is armed; opted out, the exact same shape is still refused with
+// an empty warning — the gate stays fail-closed for real deployments.
+func TestCheckTLS_CIBatteryShape(t *testing.T) {
+	tests := []struct {
+		name        string
+		insecureDev bool
+		wantErr     bool // refusal: the daemon must not start
+		wantMarked  bool // InsecurePlaintextActive() for the same shape
+	}{
+		{
+			name:        "ci wildcard ports with insecure_dev warn and start",
+			insecureDev: true,
+			wantMarked:  true,
+		},
+		{
+			name:    "ci wildcard ports without the opt-in still refuse",
+			wantErr: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.TLS.Enabled = false
+			cfg.TLS.InsecureDev = tc.insecureDev
+
+			warn, err := cfg.CheckTLS(":29090", ":28080")
+
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("CheckTLS(:29090, :28080) = nil error, want refusal without the opt-in")
+				}
+				if warn != "" {
+					t.Errorf("refusal must not also warn, got %q", warn)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("CheckTLS(:29090, :28080) = %v, want nil error with the opt-in", err)
+			}
+			if warn == "" {
+				t.Error("opted-in CI shape must start loudly: warning is empty")
+			}
+			if got := cfg.InsecurePlaintextActive(); got != tc.wantMarked {
+				t.Errorf("InsecurePlaintextActive() = %v, want %v", got, tc.wantMarked)
+			}
+		})
+	}
+}

@@ -32,6 +32,7 @@ import (
 const (
 	ciWorkflowPath             = "../../.github/workflows/ci.yml"
 	regressionSuiteScriptPath  = "../../regression-tests.sh"
+	e2eBatteryScriptPath       = "../../e2e-full-battery.sh"
 	regressionSuiteStepName    = "Regression suite"
 	e2eBatteryStepName         = "E2E battery"
 	githubWorkspaceContextExpr = "${{ github.workspace }}"
@@ -290,5 +291,94 @@ func TestRegressionSuiteInvokesBinariesViaPath(t *testing.T) {
 		if strings.Contains(line, "/usr/local/bin/bunker") && !strings.Contains(line, "[ -f ") {
 			t.Errorf("%s:%d references the host baseline %q outside an existence assertion — the CI PATH wiring only decides what runs if the suite never executes an absolute path", regressionSuiteScriptPath, i+1, strings.TrimSpace(line))
 		}
+	}
+}
+
+// TestCIWiringArmsInsecureDevOptIn pins the INT-CI-028 wiring: since GAP-126,
+// CheckTLS refuses a plaintext daemon on the wildcard battery ports
+// (:29090-91/:28080-81 classify NON-loopback), so the CI battery daemons died
+// at startup and every cell failed for lack of a server. The daemons get the
+// opt-in from the tls.insecure_dev key the suites write into their generated
+// configs; these CI steps must ALSO carry the BUNKERD_TLS_INSECURE_DEV env
+// name so a future config-shape change cannot silently drop the opt-in. The
+// production gate itself is NOT pinned to change — only the opt-in.
+func TestCIWiringArmsInsecureDevOptIn(t *testing.T) {
+	workflow := readRepoFile(t, ciWorkflowPath)
+
+	for _, tc := range []struct {
+		stepName string
+		grpcPort string
+		restPort string
+	}{
+		{stepName: regressionSuiteStepName, grpcPort: ":29090", restPort: ":28080"},
+		{stepName: e2eBatteryStepName, grpcPort: ":29091", restPort: ":28081"},
+	} {
+		t.Run(tc.stepName, func(t *testing.T) {
+			step := stripYAMLComments(workflowStepBlock(t, workflow, tc.stepName))
+
+			// The step must still target the battery ports (a port change
+			// here usually means a renumber, not a security change — but the
+			// opt-in below is only meaningful next to these binds).
+			for _, want := range []string{"BUNKERD_GRPC_ADDR: \"" + tc.grpcPort + "\"", "BUNKERD_REST_ADDR: \"" + tc.restPort + "\""} {
+				if !strings.Contains(step, want) {
+					t.Errorf("the %q step no longer binds %s/%s (missing %q):\\n%s", tc.stepName, tc.grpcPort, tc.restPort, want, step)
+				}
+			}
+
+			// The explicit opt-in env name must be set in the step itself —
+			// not inherited from the environment, not commented out.
+			if !strings.Contains(step, "BUNKERD_TLS_INSECURE_DEV: \"true\"") {
+				t.Errorf("the %q step lost BUNKERD_TLS_INSECURE_DEV: \"true\" — CheckTLS will refuse the wildcard plaintext binds and every cell fails for lack of a server:\\n%s", tc.stepName, step)
+			}
+		})
+	}
+}
+
+// TestBatteryScriptsArmInsecureDevInGeneratedConfig pins the script-side half
+// of INT-CI-028: BOTH suites start their coexist daemons from GENERATED
+// config files, so the opt-in must live in those heredocs — env vars are not
+// the mechanism when a config file is passed with -c (viper: explicit file
+// values beat AutomaticEnv). Also pinned: the readiness probes that name a
+// startup death instead of cascading red cells.
+func TestBatteryScriptsArmInsecureDevInGeneratedConfig(t *testing.T) {
+	for _, tc := range []struct {
+		scriptPath  string
+		configVar   string
+		tlsKey      string
+		refusalNote string
+	}{
+		{scriptPath: regressionSuiteScriptPath, configVar: "REGRESSION_CONFIG", tlsKey: "tls:", refusalNote: "refusing to bind non-loopback plaintext listener"},
+		{scriptPath: e2eBatteryScriptPath, configVar: "BATTERY_CONFIG", tlsKey: "tls:", refusalNote: "refusing to bind non-loopback plaintext listener"},
+	} {
+		t.Run(tc.scriptPath, func(t *testing.T) {
+			script := readRepoFile(t, tc.scriptPath)
+
+			// The generated config heredoc must carry the opt-in key. Search
+			// from the heredoc start (`cat > "$VAR"`) to its EOF terminator:
+			// a `tls:` line elsewhere (comment, unrelated block) must not
+			// satisfy this.
+			configArmed := false
+			for _, block := range strings.Split(script, "cat > \"$"+tc.configVar+"\"") {
+				if len(block) == len(script) {
+					continue // split found nothing: the heredoc writer is absent
+				}
+				heredoc := strings.SplitN(block, "\nEOF\n", 2)[0]
+				for _, line := range strings.Split(heredoc, "\n") {
+					trimmed := strings.TrimSpace(line)
+					if trimmed == "tls:" || strings.HasPrefix(trimmed, "tls:") {
+						configArmed = true
+					}
+				}
+			}
+			if !configArmed {
+				t.Errorf("%s generates $%s WITHOUT a tls: block — CheckTLS refuses wildcard plaintext binds since GAP-126, so the coexist daemon dies at startup (INT-CI-028)", tc.scriptPath, tc.configVar)
+			}
+
+			// The readiness diagnostics must name the known refusal shape so
+			// a future regression reads its cause, not a cascade of reds.
+			if !strings.Contains(script, tc.refusalNote) {
+				t.Errorf("%s readiness probe no longer names the CheckTLS refusal shape %q — a startup death cascades into unattributable cell failures", tc.scriptPath, tc.refusalNote)
+			}
+		})
 	}
 }

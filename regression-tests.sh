@@ -185,6 +185,15 @@ server:
   rest_addr: "$BUNKERD_REST_ADDR"
 auth:
   enabled: false
+# INT-CI-028: the suite's ports are WILDCARD binds (:29090/:28080 — an empty
+# host means every interface, which IsLoopbackAddr classifies NON-loopback),
+# so since GAP-126 CheckTLS refuses to start a plaintext daemon on them
+# without the explicit opt-in — the daemon died at startup and every cell
+# failed for lack of a server (run 35545229314). This is an ephemeral test
+# daemon on an isolated runner/host, not a deployment: opt in HERE, in the
+# generated config, and leave the production gate itself untouched.
+tls:
+  insecure_dev: true
 agent:
   ssh_dir: /etc/bunkerd/ssh
   max_agents: 10
@@ -503,6 +512,15 @@ server:
   rest_addr: "$BUNKERD_REST_ADDR"
 auth:
   enabled: false
+# INT-CI-028: the suite's ports are WILDCARD binds (:29090/:28080 — an empty
+# host means every interface, which IsLoopbackAddr classifies NON-loopback),
+# so since GAP-126 CheckTLS refuses to start a plaintext daemon on them
+# without the explicit opt-in — the daemon died at startup and every cell
+# failed for lack of a server (run 35545229314). This is an ephemeral test
+# daemon on an isolated runner/host, not a deployment: opt in HERE, in the
+# generated config, and leave the production gate itself untouched.
+tls:
+  insecure_dev: true
 agent:
   ssh_dir: /etc/bunkerd/ssh
   max_agents: 10
@@ -553,7 +571,22 @@ done
 if [ "$BUNKERD_READY" = "1" ]; then
     pass "listeners ready (gRPC :$GRPC_PORT, REST :$REST_PORT)"
 else
-    fail "listeners NOT ready within ${BUNKERD_READY_TIMEOUT}s (gRPC :$GRPC_PORT, REST :$REST_PORT)"
+    # INT-CI-028: a daemon that DIED at startup is a different failure than a
+    # slow boot — say so with the actual refusal line instead of a generic
+    # timeout. GAP-126's TLS gate is the known shape: the refusal lands in the
+    # log and the process is gone within the first poll second, so every cell
+    # below cascades red for lack of a server unless this names the cause.
+    STARTUP_REFUSAL="$(grep -m1 -E 'refusing to bind non-loopback plaintext listener|CheckTLS|fatal|Failed to load|error loading config' /var/log/bunkerd-regression.log 2>/dev/null || true)"
+    if ! kill -0 "$BUNKERD_PID" 2>/dev/null; then
+        if [ -n "$STARTUP_REFUSAL" ]; then
+            fail "bunkerd EXITED AT STARTUP (PID $BUNKERD_PID): $STARTUP_REFUSAL"
+            echo "  → the daemon refused its own config; check tls.insecure_dev / addresses in \$REGRESSION_CONFIG before re-running"
+        else
+            fail "bunkerd EXITED AT STARTUP (PID $BUNKERD_PID) — no recognised refusal line in the log; see the tail below"
+        fi
+    else
+        fail "listeners NOT ready within ${BUNKERD_READY_TIMEOUT}s (gRPC :$GRPC_PORT, REST :$REST_PORT)"
+    fi
     echo "  --- last 40 lines of /var/log/bunkerd-regression.log ---"
     tail -n 40 /var/log/bunkerd-regression.log 2>/dev/null || echo "  (no /var/log/bunkerd-regression.log)"
     echo "  --- end of /var/log/bunkerd-regression.log ---"

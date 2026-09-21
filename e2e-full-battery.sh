@@ -1323,6 +1323,14 @@ server:
   rest_addr: "$BUNKERD_REST_ADDR"
 auth:
   enabled: false
+# INT-CI-028: the battery ports are WILDCARD binds (:29091/:28081 — an empty
+# host means every interface, which IsLoopbackAddr classifies NON-loopback),
+# so since GAP-126 CheckTLS refuses to start a plaintext daemon on them
+# without the explicit opt-in. This is an ephemeral test daemon on an
+# isolated runner, not a deployment: opt in HERE, in the generated config,
+# and leave the production gate itself untouched.
+tls:
+  insecure_dev: true
 agent:
   ssh_dir: /etc/bunkerd/ssh
   max_agents: 10
@@ -1536,6 +1544,31 @@ if [ -n "$BUNKERD_COEXIST" ]; then
     "$BUNKERD_BIN" -c "$BATTERY_CONFIG" >> "$BUNKERD_BATTERY_LOG" 2>&1 &
     BUNKERD_PID=$!
     sleep 2
+    # INT-CI-028 readiness probe: the failure mode this guards is a daemon
+    # that died BEFORE binding (GAP-126's CheckTLS refusal is the known
+    # shape) — the process check below would then fail every cell for lack
+    # of a server while the log holds the actual reason. Probe the REST port
+    # with a cheap HTTP GET and, if the process is already gone, name the
+    # startup line and abort: continuing would only manufacture red cells.
+    if ! kill -0 "$BUNKERD_PID" 2>/dev/null; then
+        echo "" >&2
+        echo "FATAL: the battery daemon (PID $BUNKERD_PID) exited at startup — tail of $BUNKERD_BATTERY_LOG:" >&2
+        tail -n 20 "$BUNKERD_BATTERY_LOG" >&2 || true
+        case "$(tail -n 20 "$BUNKERD_BATTERY_LOG" 2>/dev/null)" in
+            *"refusing to bind non-loopback plaintext listener"*)
+                echo "  → CheckTLS refused the config: the generated \$BATTERY_CONFIG must carry tls.insecure_dev: true for these wildcard binds (INT-CI-028)" >&2 ;;
+        esac
+        exit 42
+    fi
+    BATTERY_REST_PROBE_RC=0
+    curl -s -o /dev/null --max-time 5 "http://127.0.0.1:${REST_PORT}/" || BATTERY_REST_PROBE_RC=$?
+    if [ "$BATTERY_REST_PROBE_RC" -ne 0 ]; then
+        echo "" >&2
+        echo "FATAL: battery daemon (PID $BUNKERD_PID) is alive but REST :$REST_PORT did not answer within 5s (curl rc=$BATTERY_REST_PROBE_RC) — tail of $BUNKERD_BATTERY_LOG:" >&2
+        tail -n 20 "$BUNKERD_BATTERY_LOG" >&2 || true
+        exit 42
+    fi
+    echo "  battery daemon readiness: REST :$REST_PORT answered (PID $BUNKERD_PID alive)"
 fi
 
 # =============================================
