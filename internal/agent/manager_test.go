@@ -389,6 +389,9 @@ func TestSpawn_PersistsSSHKey(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("test requires root privileges")
 	}
+
+	// Default leg: without ReturnSshPrivateKey the persisted key still lands on
+	// disk, but the response must NOT carry the private key (GAP-128 contract).
 	m := newTestManager(t)
 	agentID := uniqueAgentID("testagent")
 	req := &v1.SpawnAgentRequest{AgentId: agentID}
@@ -406,8 +409,33 @@ func TestSpawn_PersistsSSHKey(t *testing.T) {
 	if !strings.HasPrefix(string(content), "-----BEGIN") {
 		t.Errorf("persisted SSH key doesn't start with -----BEGIN: %q", string(content)[:50])
 	}
-	if string(content) != resp.SshPrivateKey {
-		t.Error("persisted SSH key doesn't match response SshPrivateKey")
+	if resp.SshPrivateKey != "" {
+		t.Errorf("default spawn response carries SshPrivateKey (%d bytes); want empty without ReturnSshPrivateKey", len(resp.SshPrivateKey))
+	}
+
+	// Opt-in leg: with ReturnSshPrivateKey the response carries the same key
+	// that was persisted server-side, byte-for-byte.
+	optAgentID := uniqueAgentID("testagent")
+	optReq := &v1.SpawnAgentRequest{AgentId: optAgentID, ReturnSshPrivateKey: true}
+	optResp, err := m.Spawn(t.Context(), optReq)
+	if err != nil {
+		t.Fatalf("opt-in Spawn failed: %v", err)
+	}
+	defer cleanupAgent(t, m, optResp.AgentId)
+
+	if optResp.SshPrivateKey == "" {
+		t.Fatal("opt-in spawn response SshPrivateKey is empty; want the persisted key")
+	}
+	if !strings.HasPrefix(optResp.SshPrivateKey, "-----BEGIN") {
+		t.Errorf("opt-in response SshPrivateKey doesn't start with -----BEGIN: %q", optResp.SshPrivateKey[:min(50, len(optResp.SshPrivateKey))])
+	}
+	optKeyPath := fmt.Sprintf("/etc/bunkerd/ssh/%s", optAgentID)
+	optContent, err := os.ReadFile(optKeyPath)
+	if err != nil {
+		t.Fatalf("read persisted SSH key %s: %v", optKeyPath, err)
+	}
+	if optResp.SshPrivateKey != string(optContent) {
+		t.Errorf("opt-in response SshPrivateKey doesn't match persisted key %s\nresponse len: %d, persisted len: %d", optKeyPath, len(optResp.SshPrivateKey), len(optContent))
 	}
 }
 
