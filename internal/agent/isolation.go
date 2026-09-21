@@ -16,7 +16,7 @@ import (
 // This row is PLUMBING ONLY: the preset resolves to the SAME five knobs the
 // spawn path already applied, with the SAME values, so a default-preset spawn
 // is byte-identical to pre-GAP-116 (pinned by the zero-delta tests). The
-// table exists so later rows (GAP-117+) differentiate standard/hardened by
+// table exists so later rows (GAP-118/119) differentiate the tiers by
 // extending it instead of growing new conditionals through the spawn path.
 
 // SystemdKnob is one systemd property of an agent's effective knob set:
@@ -73,9 +73,11 @@ func unitKnobsFor(cpuQuota float64, memMax, diskMax, maxProcs, maxFiles uint64) 
 	return knobs
 }
 
-// KnobsForPreset is the preset → knob-set resolution (GAP-116). This row's
-// vocabulary is {"open", "standard", "hardened"} and every member resolves to
-// today's five-knob baseline; the CALLER resolves the preset name through
+// KnobsForPreset is the preset → knob-set resolution (GAP-116 plumbing,
+// GAP-117 naming). The vocabulary is {"standard", "open", "hardened"}; the
+// shipped/default tier "standard" resolves to today's five-knob baseline, and
+// "open"/"hardened" resolve to the SAME set until GAP-118/119 differentiate
+// the tiers. The CALLER resolves the preset name through
 // config.ResolveSafetyPreset (flag > env > config global > default) — here the
 // name arrives already validated, and an unknown name is a programming error
 // that fails LOUD (never a silent fallback).

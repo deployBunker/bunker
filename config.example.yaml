@@ -195,15 +195,19 @@ audit:
 containment:
   disclosure: false
 
-# Safety preset (GAP-116): the daemon-wide default safety profile every agent
-# spawn resolves against. Precedence: per-spawn `bunker spawn --preset` flag >
-# BUNKERD_SAFETY_PRESET env > this config global > built-in default "open".
-# Accepted names: open (today's five-knob baseline: CPUQuota, MemoryMax,
-# TasksMax, LimitNOFILE, LimitFSIZE), standard, hardened (standard/hardened
-# are reserved names today — they currently resolve to the same knob set; a
-# later row differentiates them). An unknown name REFUSES TO START: fail loud,
-# never a silent fallback. Empty/unset = the built-in default "open", which is
-# byte-identical to pre-GAP-116 behavior.
+# Safety preset (GAP-116 plumbing; GAP-117 naming): the daemon-wide default
+# safety profile every agent spawn resolves against. Precedence: per-spawn
+# `bunker spawn --preset` flag > BUNKERD_SAFETY_PRESET env > this config
+# global > built-in default "standard".
+# The shipped tier "standard" (GAP-117) carries exactly today's five-knob
+# baseline: CPUQuota 2.0, MemoryMax 4 GiB, TasksMax 4096, LimitNOFILE 65536,
+# LimitFSIZE 20 GiB (the agent.default_* values, applied at both the
+# user-<uid>.slice drop-in and the dockerd transient unit).
+# "open" and "hardened" remain accepted names that resolve to the same knob
+# set today — GAP-118/119 differentiate the tiers, so a config that already
+# says safety.preset: open keeps working unchanged. An unknown name REFUSES
+# TO START: fail loud, never a silent fallback. Empty/unset = the built-in
+# default "standard", which is byte-identical to pre-GAP-116 behavior.
 # Env override: BUNKERD_SAFETY_PRESET (overrides this config value).
 safety:
   preset: ""

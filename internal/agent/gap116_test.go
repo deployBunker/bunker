@@ -12,12 +12,12 @@ import (
 // ── GAP-116 zero-delta proofs ─────────────────────────────────────────
 //
 // The load-bearing criterion: with NO flag/env/config set (the built-in
-// default preset "open"), the systemd-run argv and the slice drop-in written
-// for a spawned agent must be BYTE-IDENTICAL to pre-GAP-116. The expected
-// strings below were recorded from the PRE-CHANGE behavior (the exact
-// fmt.Sprintf conditionals in buildRootlessDockerdArgs and
-// applyUserSliceLimits at commit 708a875) BEFORE the table-driven refactor,
-// and are asserted verbatim.
+// default preset — "standard" since GAP-117), the systemd-run argv and the
+// slice drop-in written for a spawned agent must be BYTE-IDENTICAL to
+// pre-GAP-116. The expected strings below were recorded from the PRE-CHANGE
+// behavior (the exact fmt.Sprintf conditionals in buildRootlessDockerdArgs
+// and applyUserSliceLimits at commit 708a875) BEFORE the table-driven
+// refactor, and are asserted verbatim.
 
 // gap116BaselineLimits is the production-shaped default limit set the
 // zero-delta expectations were recorded with (config defaults: 2.0 CPU
@@ -112,10 +112,11 @@ func TestGAP116_ZeroDelta_SliceDropIn(t *testing.T) {
 	}
 }
 
-// TestGAP116_ZeroDelta_DefaultPresetMatchesOpenStandardHardened pins the
-// plumbing-row semantics: all three vocabulary members resolve to the SAME
-// unit and slice knob sets (later rows differentiate them).
-func TestGAP116_ZeroDelta_DefaultPresetMatchesOpenStandardHardened(t *testing.T) {
+// TestGAP116_ZeroDelta_DefaultPresetMatchesAllNames pins the tier-equivalence
+// contract: every vocabulary member resolves to the SAME unit and slice knob
+// sets (the shipped tier "standard" since GAP-117; open/hardened stay
+// identical until GAP-118/119 differentiate them).
+func TestGAP116_ZeroDelta_DefaultPresetMatchesAllNames(t *testing.T) {
 	cpuQuota, memMax, diskMax, maxProcs, maxFiles := gap116BaselineLimits()
 	openUnit, openSlice := KnobsForPreset(config.SafetyPresetOpen, cpuQuota, memMax, diskMax, maxProcs, maxFiles)
 	for _, preset := range []string{config.SafetyPresetStandard, config.SafetyPresetHardened, config.SafetyPresetDefault} {

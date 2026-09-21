@@ -570,8 +570,13 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// same CPU, memory, disk, process-count, and file-descriptor limits to
 	// *every* process owned by the agent user — containers and direct commands
 	// alike.
+	//
+	// GAP-117: the drop-in properties resolve from the SAME tier knob table
+	// (KnobsForPreset) as the unit argv — both enforcement points route through
+	// one tier resolution, so a tier that narrows a knob can never narrow only
+	// one surface.
 	createdUserSlice = false
-	dropinContent, sliceErr := applyUserSliceLimits(ctx, u, cpuQuota, memMax, diskMax, maxProcs, maxFiles, m.logger)
+	dropinContent, sliceErr := applyUserSliceLimits(ctx, u, cpuQuota, memMax, diskMax, maxProcs, maxFiles, sliceKnobs, m.logger)
 	if sliceErr != nil {
 		m.logger.Warn("failed to apply user slice limits; agent user is unconstrained except for dockerd",
 			"agent_id", agentID, "error", sliceErr)
@@ -922,20 +927,29 @@ var dockerdProcessChecker = func(ctx context.Context, username string) (bool, er
 // limits — not just the dockerd unit.  The drop-in is written to
 // /etc/systemd/system/user-<UID>.slice.d/50-bunker.conf.
 //
-// GAP-116: the property block is table-driven (sliceKnobsFor — the resolved
-// preset's knob set, byte-identical to pre-GAP-116 for this row) and the
-// written content is returned so the spawn can stamp it on the agent record
-// for `bunker info` effective-set reporting.
-func applyUserSliceLimits(ctx context.Context, u *user.User, cpuQuota float64, memMax, diskMax, maxProcs, maxFiles uint64, logger *slog.Logger) (string, error) {
+// GAP-116: the property block is table-driven and the written content is
+// returned so the spawn can stamp it on the agent record for `bunker info`
+// effective-set reporting.
+//
+// GAP-117: sliceKnobs is the resolved tier's knob set — the SAME resolution
+// the unit argv consumed (KnobsForPreset at the spawn site), so both
+// enforcement points answer to one tier table. A nil/empty sliceKnobs falls
+// back to the direct derivation (identical values/order/conditional), which
+// keeps standalone callers byte-identical; the spawn site always passes the
+// tier-resolved set.
+func applyUserSliceLimits(ctx context.Context, u *user.User, cpuQuota float64, memMax, diskMax, maxProcs, maxFiles uint64, sliceKnobs []SystemdKnob, logger *slog.Logger) (string, error) {
 	sliceName := fmt.Sprintf("user-%s.slice", u.Uid)
 	dropinDir := userSliceDropinDir(u.Uid)
 	if err := os.MkdirAll(dropinDir, 0755); err != nil {
 		return "", fmt.Errorf("mkdir %s: %w", dropinDir, err)
 	}
 
+	if len(sliceKnobs) == 0 {
+		sliceKnobs = sliceKnobsFor(cpuQuota, memMax, diskMax, maxProcs, maxFiles)
+	}
 	var parts []string
 	parts = append(parts, "[Slice]")
-	for _, k := range sliceKnobsFor(cpuQuota, memMax, diskMax, maxProcs, maxFiles) {
+	for _, k := range sliceKnobs {
 		parts = append(parts, k.Name+"="+k.Value)
 	}
 	content := strings.Join(parts, "\n") + "\n"

@@ -36,32 +36,41 @@ type Config struct {
 	Safety SafetyConfig `mapstructure:"safety"`
 }
 
-// Safety preset vocabulary and defaults (GAP-116).
+// Safety preset vocabulary and defaults (GAP-116 plumbing; GAP-117 naming).
 //
-// The vocabulary is exactly {"open", "standard", "hardened"}. "open" names
-// TODAY'S de-facto five-knob baseline (CPUQuota, MemoryMax, TasksMax,
-// LimitNOFILE, LimitFSIZE — see the internal/agent spawn path); this row is
-// plumbing only, so "standard" and "hardened" are VALID NAMES that resolve to
-// the same knob set today — later rows differentiate them. Nothing outside the
-// vocabulary is ever accepted: unknown names fail LOUDLY at config load and at
-// spawn, never as a silent fallback to a weaker (or stronger) set.
+// The shipped tier is "standard" (GAP-117): it is the spec's default tier
+// (specs/safety-presets.md §1/§3) and resolves to exactly today's five-knob
+// baseline (CPUQuota, MemoryMax, TasksMax, LimitNOFILE, LimitFSIZE — the
+// agent.Default* config values, applied at BOTH enforcement points). "open"
+// and "hardened" stay VALID, accepted names that resolve to the identical
+// knob set until GAP-118/119 differentiate the tiers — a config that already
+// says safety.preset: open keeps working unchanged. Nothing outside the
+// vocabulary is ever accepted: unknown names fail LOUDLY at config load and
+// at spawn, never as a silent fallback to a weaker (or stronger) set.
 const (
-	// SafetyPresetOpen is today's five-knob baseline and the built-in default.
-	SafetyPresetOpen = "open"
-	// SafetyPresetStandard is reserved (GAP-117+); currently identical to open.
+	// SafetyPresetStandard is the shipped tier (GAP-117): the spec's
+	// good-experience default tier, carrying exactly today's five-knob
+	// baseline. It is the built-in default.
 	SafetyPresetStandard = "standard"
-	// SafetyPresetHardened is reserved (GAP-117+); currently identical to open.
+	// SafetyPresetOpen remains a VALID name (GAP-116 configs keep working);
+	// it resolves to the same knob set as standard until GAP-118/119
+	// differentiate the tiers.
+	SafetyPresetOpen = "open"
+	// SafetyPresetHardened is a VALID name that resolves to the same knob
+	// set as standard until GAP-118/119 differentiate the tiers.
 	SafetyPresetHardened = "hardened"
-	// SafetyPresetDefault is the effective preset when every source is unset.
-	SafetyPresetDefault = SafetyPresetOpen
+	// SafetyPresetDefault is the effective preset when every source is unset:
+	// the spec's default tier, standard.
+	SafetyPresetDefault = SafetyPresetStandard
 	// SafetyPresetEnv is the env override between the per-spawn flag and the
 	// config global (GAP-116 precedence: flag > env > config > default).
 	SafetyPresetEnv = "BUNKERD_SAFETY_PRESET"
 )
 
-// ValidSafetyPresets lists the accepted preset names in display order.
+// ValidSafetyPresets lists the accepted preset names in display order —
+// the shipped/default tier first (GAP-117), then the aliases.
 func ValidSafetyPresets() []string {
-	return []string{SafetyPresetOpen, SafetyPresetStandard, SafetyPresetHardened}
+	return []string{SafetyPresetStandard, SafetyPresetOpen, SafetyPresetHardened}
 }
 
 // ValidSafetyPreset reports whether name is a member of the preset vocabulary
@@ -723,9 +732,9 @@ func DefaultConfig() *Config {
 			Disclosure: false,
 		},
 		// GAP-116: the safety preset default is the EMPTY string — the
-		// built-in default ("open" = today's five-knob baseline). An unset
-		// key must produce the exact pre-GAP-116 behavior, so the default
-		// config never names a preset explicitly.
+		// built-in default ("standard" = the shipped five-knob tier,
+		// GAP-117). An unset key must produce the exact pre-GAP-116
+		// behavior, so the default config never names a preset explicitly.
 		Safety: SafetyConfig{
 			Preset: "",
 		},

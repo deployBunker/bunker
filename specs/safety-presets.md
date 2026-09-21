@@ -1,8 +1,9 @@
 # Bunker — Safety Presets Specification
 
-Version: 1.0.0
-Status: Implemented design — **spec-only** (GAP-113); implementation is GAP-116..122
-Last Updated: 2026-09-20
+Version: 1.1.0
+Status: Implementation in progress — GAP-113 (spec), GAP-116 (plumbing, shipped),
+GAP-117 (the shipped/default tier formalised, shipped); GAP-118..122 remain
+Last Updated: 2026-09-21
 Related: specs/agent-lifecycle.md (the spawn path these knobs ride),
 specs/containment-disclosure.md (the config-surface precedent this follows),
 specs/agent-tmp-isolation.md (the other half of the isolation boundary)
@@ -51,7 +52,7 @@ in review — see §9).
 | Tier | Trust posture | Intended use | The promise |
 |---|---|---|---|
 | `open` | Trusted operator's own agent | A dev box where the agent is your own code | *Still keeps a ceiling* — a rogue fork or memory bomb must not take the host — but maximises freedom |
-| `standard` | **DEFAULT** | General team use | The good-experience tier: an agent can still run `docker build`, a compose stack, a .NET app, and node/python workloads |
+| `standard` | **DEFAULT** — SHIPPED (GAP-117) | General team use | The good-experience tier: an agent can still run `docker build`, a compose stack, a .NET app, and node/python workloads |
 | `guarded` | Third-party / less-trusted code | Running someone else's agent code | `standard` + unit sandboxing + IO bounds |
 | `hostile` | Adversarial / multi-tenant | Untrusted tenants on shared infrastructure | `guarded` + the strictest knobs |
 
@@ -64,6 +65,11 @@ the other.
 
 `open` is not "no limits": it still carries a ceiling. The difference between `open` and
 `hostile` is the *tightness* of the same axes, not their presence or absence.
+
+`open` remains a **valid, accepted preset name** after GAP-117: it resolves to the identical
+knob set as `standard` until GAP-118/119 differentiate the tiers, so an existing
+`safety.preset: open` config keeps working unchanged. Unknown preset names still fail as
+hard errors at config load and at spawn (never a silent fallback).
 
 ---
 
@@ -100,27 +106,34 @@ breakage**. Under R1, anything *UNMEASURED* may not be default-on until GAP-114 
 
 | Axis | Knob (systemd property → cgroup v2) | Enforce | UX-cost status (from the isolation-skill incident record) | open | standard | guarded | hostile |
 |---|---|---|---|---|---|---|---|
-| **CPU ceiling** | `CPUQuota=P%` → `cpu.max` | E1+E2 | measured (throughput cap) | 2.0 cores | 2.0 cores | 2.0 cores | 1.0 core |
-| **Memory ceiling** | `MemoryMax=B` → `memory.max` | E1+E2 | *UNMEASURED* (too tight → OOM mid-`docker build`) — GAP-114 (a) | 4 GiB | 4 GiB | 4 GiB | 2 GiB |
+| **CPU ceiling** | `CPUQuota=P%` → `cpu.max` | E1+E2 | measured (throughput cap) | 2.0 cores | **2.0 cores — SHIPPED** | 2.0 cores | 1.0 core |
+| **Memory ceiling** | `MemoryMax=B` → `memory.max` | E1+E2 | *UNMEASURED* (too tight → OOM mid-`docker build`) — GAP-114 (a) | 4 GiB | **4 GiB — SHIPPED** | 4 GiB | 2 GiB |
 | **Swap accounting** | `MemorySwapMax=B` → `memory.swap.max` | E1+E2 | **documented breakage** (memlock/swap interactions; peak builds can die) — GAP-114 (b) | unset | unset | `0` | `0` |
 | **Memory soft limit** | `MemoryHigh=B` → `memory.high` | E1+E2 | *UNMEASURED* (throttle vs kill) — GAP-114 (c) | unset | unset | 3 GiB | 1.5 GiB |
 | **OOM atomicity** | `MemoryOOMGroup=1` → `memory.oom.group` | E1+E2 | *UNMEASURED* (reaps the whole subtree — the compose-stack-consistency fix) — GAP-114 (d) | unset | unset | `1` | `1` |
-| **Process ceiling** | `TasksMax=N` → `pids.max` | E1+E2 | measured (compose stack trips low values; fork rejection is the mode) — GAP-114 (f) | 8192 | 4096 | 2048 | 1024 |
-| **File descriptors** | `LimitNOFILE=N` → `RLIMIT_NOFILE` | E1+E2 | measured (low values break builds) | 65536 | 65536 | 8192 | 4096 |
-| **Per-file size** | `LimitFSIZE=B` → `RLIMIT_FSIZE` | E1+E2 | **documented breakage — .NET crash-loop class.** It is a per-*file* cap, not a usage quota; Sonarr/Radarr/Jellyfin `ftruncate` a 2 TiB sparse file at first boot → `EFBIG` → `SIGXFSZ` → restart loop. Historical fix: `default_disk_bytes: 0` | 0 (off) | 20 GiB (today's value) | 20 GiB | 20 GiB |
+| **Process ceiling** | `TasksMax=N` → `pids.max` | E1+E2 | measured (compose stack trips low values; fork rejection is the mode) — GAP-114 (f) | 8192 | **4096 — SHIPPED** | 2048 | 1024 |
+| **File descriptors** | `LimitNOFILE=N` → `RLIMIT_NOFILE` | E1+E2 | measured (low values break builds) | 65536 | **65536 — SHIPPED** | 8192 | 4096 |
+| **Per-file size** | `LimitFSIZE=B` → `RLIMIT_FSIZE` | E1+E2 | **documented breakage — .NET crash-loop class.** It is a per-*file* cap, not a usage quota; Sonarr/Radarr/Jellyfin `ftruncate` a 2 TiB sparse file at first boot → `EFBIG` → `SIGXFSZ` → restart loop. Historical fix: `default_disk_bytes: 0` | 0 (off) | **20 GiB — SHIPPED** | 20 GiB | 20 GiB |
 | **IO weight** | `IOWeight=N` → `io.weight` | E2 | *UNMEASURED* — GAP-114 (e) | unset | unset | `50` | `10` |
 | **IO bandwidth** | `IOReadBandwidthMax=…` | E2 | *UNMEASURED* (protects host during a 1.4 GB `docker load`) — GAP-114 (e) | unset | unset | unset | set |
 | **Unit sandbox** | `NoNewPrivileges=`, `ProtectKernelTunables=`, `ProtectKernelModules=`, `ProtectControlGroups=`, `RestrictNamespaces=`, `RestrictSUIDSGID=`, `CapabilityBoundingSet=`, `SystemCallFilter=` | E2 | **mixed — classification is GAP-114 (g):** `ProtectSystem=strict` is *known to break spawn* (`useradd` cannot lock a read-only `/etc` → misleading lock-contention error); other properties may break rootlesskit/dockerd | none | none | subset (GAP-114 g) | full (GAP-114 g) |
 | **Teardown atomicity** | cgroup kill / `KillMode=control-group` (see GAP-120) | E1+E2 | *UNMEASURED* — closes the destroy race | off | off | on | on |
 | **Observability** | `memory.events`, `memory.peak` read-out (see GAP-121) | E1 | no UX cost (read-only) | off | off | on | on |
 
-**Reading the matrix:** the `standard` column is deliberately **exactly today's shipped
-defaults** (`DefaultCPUQuota 2.0`, `DefaultMemoryBytes 4 GiB`, `DefaultMaxProcesses 4096`,
+**Reading the matrix:** the `standard` column — the shipped/default tier — is deliberately
+**exactly today's shipped defaults** (`DefaultCPUQuota 2.0`, `DefaultMemoryBytes 4 GiB`,
+`DefaultMaxProcesses 4096`,
 `DefaultMaxOpenFiles 65536`, `DefaultDiskBytes 20 GiB` — `internal/config/config.go:394-398`).
 That is not an accident: it is what makes GAP-116's zero-delta assertion achievable, and it is
 the honest starting point under R1 — none of the *new* knobs may enter `standard` until
 GAP-114 has measured their UX cost. The preset system as first shipped adds **structure and
 honesty**, not new restrictions; the restrictions arrive with their measurements.
+
+**(GAP-117, shipped):** today's five knobs ARE the `standard` tier — the built-in default
+preset name is `standard` (not `open`, which GAP-116 plumbing had used for the baseline).
+`open` and `hardened` remain valid names resolving to the identical knob set until
+GAP-118/119 differentiate the tiers; both enforcement points (E1 slice drop-in, E2 unit argv)
+resolve the five properties from the tier table.
 
 `open` is identical to `standard` except where a ceiling is deliberately relaxed
 (`TasksMax 8192`, `LimitFSIZE 0`); `guarded` and `hostile` are where the new containment
@@ -136,8 +149,14 @@ per-invocation override and an env override.
 ```yaml
 # /etc/bunkerd/config.yaml
 safety:
-  preset: standard   # open | standard | guarded | hostile  (default: standard)
+  preset: standard   # open | standard | hardened  (default: standard)
 ```
+
+> **Note (GAP-117, shipped):** the built-in default preset name is `standard`. The spec's
+> original four-tier sketch (`open | standard | guarded | hostile`) is deferred — `guarded`
+> and `hostile` are NOT accepted names today; proposing one is a hard error. `open` remains
+> accepted (resolving to the identical knob set as `standard` until GAP-118/119), so a config
+> written before GAP-117 keeps working.
 
 | Source | Key / flag | Notes |
 |---|---|---|
@@ -160,10 +179,11 @@ never has to guess whether a preset took effect — the human-facing half of R2.
 
 ## 5. Interaction with existing defaults and rows
 
-- **Today's five knobs become the `standard` tier** (GAP-117). The current `agent.*` default
-  fields remain the source of those numbers; the preset selects *which bundle*, it does not
-  duplicate the arithmetic. GAP-117 must prove the `standard` spawn is **byte-identical** to
-  pre-change (same drop-in content, same `systemd-run` argv).
+- **Today's five knobs are the `standard` tier** (GAP-117 — shipped: the built-in default
+  preset name is `standard`, with `open` kept as a valid alias until GAP-118/119). The current
+  `agent.*` default fields remain the source of those numbers; the preset selects *which
+  bundle*, it does not duplicate the arithmetic. GAP-117 proved the `standard` spawn is
+  **byte-identical** to pre-change (same drop-in content, same `systemd-run` argv).
 - **`containment.disclosure` (GAP-067)** is orthogonal and unchanged. It is a *disclosure*
   axis, not a containment axis; a preset does not imply or alter it.
 - **`hardened.mode` (GAP-074)** is orthogonal and unchanged — see §1's boundary.

@@ -27,8 +27,12 @@ func TestGAP116_DefaultConfig_SafetyPresetUnset(t *testing.T) {
 	if resolved != SafetyPresetDefault {
 		t.Errorf("resolved preset = %q, want built-in default %q", resolved, SafetyPresetDefault)
 	}
-	if SafetyPresetDefault != SafetyPresetOpen {
-		t.Errorf("built-in default must be %q, got %q", SafetyPresetOpen, SafetyPresetDefault)
+	// GAP-117: the built-in default is "standard" — the spec's default tier
+	// (specs/safety-presets.md §1/§3), carrying today's five-knob baseline.
+	// GAP-116 plumbing had named the baseline "open"; the rename changed only
+	// the default NAME, never a knob value (zero-delta tests still hold).
+	if SafetyPresetDefault != SafetyPresetStandard {
+		t.Errorf("built-in default must be %q (the shipped tier), got %q", SafetyPresetStandard, SafetyPresetDefault)
 	}
 }
 
@@ -44,7 +48,7 @@ func TestGAP116_ResolvePrecedence(t *testing.T) {
 		wantErr    bool
 		errContain string
 	}{
-		{name: "all unset resolves to built-in default", want: SafetyPresetOpen},
+		{name: "all unset resolves to built-in default", want: SafetyPresetDefault},
 		{name: "config only", configVal: "hardened", want: "hardened"},
 		{name: "env only", envVal: "standard", want: "standard"},
 		{name: "flag only", flagVal: "hardened", want: "hardened"},

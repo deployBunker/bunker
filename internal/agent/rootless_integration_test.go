@@ -111,7 +111,7 @@ func TestIntegration_ApplyUserSliceLimits(t *testing.T) {
 	maxProcs := uint64(4096)
 	maxFiles := uint64(65536)
 
-	if _, err := applyUserSliceLimits(t.Context(), u, cpuQuota, memMax, diskMax, maxProcs, maxFiles, logger); err != nil {
+	if _, err := applyUserSliceLimits(t.Context(), u, cpuQuota, memMax, diskMax, maxProcs, maxFiles, nil, logger); err != nil {
 		t.Fatalf("applyUserSliceLimits: %v", err)
 	}
 
@@ -165,7 +165,7 @@ func TestIntegration_ApplyUserSliceLimits_ZeroValues(t *testing.T) {
 		_ = exec.Command("systemctl", "daemon-reload").Run()
 	})
 
-	if _, err := applyUserSliceLimits(t.Context(), u, 0, 0, 0, 0, 0, logger); err != nil {
+	if _, err := applyUserSliceLimits(t.Context(), u, 0, 0, 0, 0, 0, nil, logger); err != nil {
 		t.Fatalf("applyUserSliceLimits with zero values: %v", err)
 	}
 
