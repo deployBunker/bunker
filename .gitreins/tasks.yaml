@@ -2845,3 +2845,18 @@ tasks:
   status: complete
   created_at: '2026-09-21T07:25:15.329973+00:00'
   completed_at: '2026-09-21T07:40:37.380580+00:00'
+- id: MOUNT-001
+  title: "P0 SECURITY: sshfs 3.7.3 in CVE-2026-47187/48711 range \u2014 build+install\
+    \ >= 3.7.6 on control host and mount host"
+  criteria:
+  - '1) sshfs --version on the control host resolves to >= 3.7.6 via the default PATH
+    (evidence: command -v sshfs + version banner). 2) sshfs --version on 78.46.173.180
+    reports >= 3.7.6. 3) A functional FUSE smoke with the new binary succeeds as the
+    unprivileged user: mount over SSH, file written through the mount reads back byte-identical,
+    clean unmount. 4) Build auditable: source at upstream tag sshfs-3.7.6 (commit
+    7a2d988775446ebe7af9b01c99b3b8e86bddb05a) with sha256 recorded for both installed
+    binaries. 5) No repo code changes required; durableSSHFSArgs carries no trust-widening
+    options (no transform_symlinks, no allow_*).'
+  status: complete
+  created_at: '2026-09-21T08:09:51.544661+00:00'
+  completed_at: '2026-09-21T08:16:39.293492+00:00'
