@@ -2797,3 +2797,18 @@ tasks:
   status: complete
   created_at: '2026-09-21T02:14:49.322936+00:00'
   completed_at: '2026-09-21T02:37:52.259564+00:00'
+- id: INT-CI-029
+  title: 'root-suite TestSpawn_PersistsSSHKey red: test still compares persisted key
+    to GAP-128-empty response field'
+  criteria:
+  - 'C1: internal/agent/manager_test.go TestSpawn_PersistsSSHKey default-path leg
+    spawns WITHOUT ReturnSshPrivateKey and asserts the persisted /etc/bunkerd/ssh/<id>
+    file exists, starts with -----BEGIN, AND resp.SshPrivateKey is empty. C2: a second
+    leg spawns WITH ReturnSshPrivateKey=true and asserts resp.SshPrivateKey equals
+    the persisted file content byte-for-byte. C3: no product (.go non-test) files
+    changed; GAP-128 behavior stays as shipped. C4: go build ./... and go vet ./internal/agent/
+    clean; gofmt -l internal/agent/ empty. C5: go test ./internal/agent/ -run TestSpawn_PersistsSSHKey
+    -count=1 as the current non-root user exits SKIP with no compile error.'
+  status: complete
+  created_at: '2026-09-21T05:34:27.301272+00:00'
+  completed_at: '2026-09-21T05:46:31.387754+00:00'
