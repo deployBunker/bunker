@@ -2869,3 +2869,16 @@ tasks:
   status: complete
   created_at: '2026-09-21T08:51:14.787742+00:00'
   completed_at: '2026-09-21T09:32:47.752869+00:00'
+- id: MOUNT-009
+  title: 'MOUNT-009 sshfs>=3.7.6 ship: install-time option + refuse-fast mount guard'
+  criteria:
+  - 'scripts/install.sh gains --sshfs[=min|package|source] (default: bunker install
+    unchanged, sshfs untouched, documented in help; source mode pins sshfs-3.7.6 commit
+    7a2d988775446ebe7af9b01c99b3b8e86bddb05a and refuses without meson/ninja) AND
+    internal/cli/mount.go warns on affected sshfs (<3.7.6, CVE-2026-47187/48711) with
+    --sshfs-require-patched refusing BEFORE any mount attempt; table-driven hermetic
+    tests cover affected/unaffected/garbage versions in both modes; go build/vet/test
+    ./internal/cli and bash scripts/install_test.sh pass'
+  status: complete
+  created_at: '2026-09-21T09:56:52.499042+00:00'
+  completed_at: '2026-09-21T10:23:22.744227+00:00'
