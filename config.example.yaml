@@ -87,6 +87,23 @@ agent:
     max_backups: 3                         # agents.jsonl.1 .. agents.jsonl.3
     known_id_cap: 10000                    # destroyed-ID index kept by compaction
 
+  # Destroy-time home archive retention (INFRA-BACKUP-01). With the default
+  # destroy_home_policy: archive, every destroy writes one tarball of the
+  # agent home into destroy_archive_dir — and destroy archives have no
+  # retention otherwise: 1394 tarballs (~130G) filled a 150G disk once
+  # (2026-09-21 incident). destroy_archive_keep bounds the archive dir to
+  # the newest N tarballs after every successful archive; an explicit 0
+  # disables pruning entirely and negative values behave like 0.
+  # destroy_archive_max_bytes is an optional total-size cap: when the sum of
+  # the archives exceeds it, the OLDEST are deleted first — but never down
+  # to zero (the single newest archive always survives). 0 = disabled.
+  # Env overrides: BUNKERD_AGENT_DESTROY_ARCHIVE_KEEP /
+  # BUNKERD_AGENT_DESTROY_ARCHIVE_MAX_BYTES (the archive dir itself:
+  # BUNKERD_AGENT_DESTROY_ARCHIVE_DIR).
+  destroy_archive_keep: 20               # 0 = disable keep pruning (explicit opt-out)
+  destroy_archive_max_bytes: 0            # total-size cap in bytes; 0 = disabled
+  # destroy_archive_dir: /var/backups/bunker  # default
+
   # Per-agent isolation boundary (GAP-075). Every agent gets an ENFORCED
   # private /tmp: SSH sessions through pam_namespace, transient systemd units
   # through --property=PrivateTmp=yes. There is no toggle — an isolation

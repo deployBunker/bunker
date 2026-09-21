@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -45,6 +46,108 @@ func (m *AgentManager) archiveAgentHome(ctx context.Context, homeDir, archiveDir
 		return "", err
 	}
 	return archivePath, nil
+}
+
+// pruneArchiveDir bounds the archive directory's retention (INFRA-BACKUP-01).
+// Only files matching the archiveAgentHome naming convention (*.tar.gz under
+// archiveDir) are considered; anything else in the directory is never
+// touched. keep > 0 keeps the newest keep archives (mtime descending,
+// filename as the tiebreaker — the names embed the UTC timestamp) and
+// deletes the rest. maxBytes > 0 additionally deletes OLDEST-first until the
+// total size of the remaining archives is at or under the cap, never pruning
+// down to zero (the single newest archive always survives — it is the one
+// the destroy that just succeeded relies on). Removal errors are reported in
+// the returned list/log, not aggravated: the caller treats pruning as
+// best-effort — losing an old archive is acceptable, failing a destroy is
+// not.
+func (m *AgentManager) pruneArchiveDir(archiveDir string, keep int, maxBytes int64) (removed []string, err error) {
+	if keep <= 0 && maxBytes <= 0 {
+		return nil, nil
+	}
+	entries, err := os.ReadDir(archiveDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	type archive struct {
+		path    string
+		name    string
+		size    int64
+		modTime time.Time
+	}
+	var archives []archive
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".tar.gz") {
+			continue
+		}
+		info, serr := e.Info()
+		if serr != nil {
+			m.logger.Warn("archive prune: stat failed (leaving file alone)",
+				"dir", archiveDir, "file", e.Name(), "error", serr)
+			continue
+		}
+		archives = append(archives, archive{
+			path:    filepath.Join(archiveDir, e.Name()),
+			name:    e.Name(),
+			size:    info.Size(),
+			modTime: info.ModTime(),
+		})
+	}
+	if len(archives) == 0 {
+		return nil, nil
+	}
+	var remaining int64
+	for _, a := range archives {
+		remaining += a.size
+	}
+	// Newest first: mtime descending, filename as the deterministic
+	// tiebreaker (archived names embed the UTC timestamp, so a name
+	// descending order alone is already a reasonable approximation).
+	sort.Slice(archives, func(i, j int) bool {
+		if !archives[i].modTime.Equal(archives[j].modTime) {
+			return archives[i].modTime.After(archives[j].modTime)
+		}
+		return archives[i].name > archives[j].name
+	})
+	remove := func(a archive) {
+		if rerr := os.Remove(a.path); rerr != nil {
+			// Best-effort: a file we cannot remove simply survives this
+			// pass; report it in the log and the removal list so an
+			// operator can see the accounting.
+			m.logger.Warn("archive prune: remove failed (leaving file alone)",
+				"dir", archiveDir, "file", a.name, "error", rerr)
+		}
+		remaining -= a.size
+	}
+	// Keep pass: delete everything beyond the newest `keep` archives.
+	candidates := archives
+	if keep > 0 {
+		if keep < len(archives) {
+			for _, a := range archives[keep:] {
+				m.logger.Info("archive prune: removing old archive beyond keep limit",
+					"dir", archiveDir, "file", a.name, "keep", keep)
+				remove(a)
+				removed = append(removed, a.name)
+			}
+		}
+		candidates = archives[:min(keep, len(archives))]
+	}
+	// Size pass: still over the cap? Delete OLDEST-first (candidates is
+	// newest-first, so the oldest is the last index) until under it,
+	// always retaining at least the single newest archive (stop at index
+	// 1 — index 0 is the newest and is never removed by the size pass).
+	if maxBytes > 0 && len(candidates) > 1 {
+		for i := len(candidates) - 1; i >= 1 && remaining > maxBytes; i-- {
+			a := candidates[i]
+			m.logger.Info("archive prune: removing old archive over size cap",
+				"dir", archiveDir, "file", a.name, "max_bytes", maxBytes)
+			remove(a)
+			removed = append(removed, a.name)
+		}
+	}
+	return removed, nil
 }
 
 // verifyArchiveFile is the DF-BUNKER-33 gate between "an archive file was
@@ -338,6 +441,21 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 			"agent_id", agentID,
 			"policy", config.DestroyPolicyArchive,
 			"archive_path", archivePath)
+		// INFRA-BACKUP-01: with the archive VERIFIED and this destroy on
+		// the success path, prune old archives so the archive dir has real
+		// retention. Best-effort: a prune failure is logged, never allowed
+		// to fail a destroy that already succeeded — losing an old archive
+		// is acceptable, failing a destroy is not. keep=0 (explicit
+		// opt-out) and maxBytes=0 disable their respective passes.
+		if removed, perr := m.pruneArchiveDir(archiveDir,
+			m.cfg.Agent.DestroyArchiveKeepOrZero(),
+			m.cfg.Agent.DestroyArchiveMaxBytes); perr != nil {
+			m.logger.Warn("archive prune failed (archive dir may grow unbounded)",
+				"archive_dir", archiveDir, "error", perr)
+		} else if len(removed) > 0 {
+			m.logger.Info("archive prune removed old archives",
+				"archive_dir", archiveDir, "removed", len(removed))
+		}
 	} else if homeExists {
 		m.logger.Info("destroy_home_policy purge: deleting agent home WITHOUT archiving",
 			"agent_id", agentID,

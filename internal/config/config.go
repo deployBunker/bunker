@@ -261,8 +261,28 @@ type AgentConfig struct {
 	// (root) creates it on demand as 0700. Empty string keeps the
 	// documented default below: an empty value NEVER disarms the archive —
 	// destroy_home_policy: purge is the documented way to opt out.
-	// Env override: BUNKER_DESTROY_ARCHIVE_DIR (empty = unset).
+	// Env override: BUNKERD_AGENT_DESTROY_ARCHIVE_DIR (empty = unset).
 	DestroyArchiveDir string `mapstructure:"destroy_archive_dir"`
+	// DestroyArchiveKeep bounds the archive directory's retention (INFRA-
+	// BACKUP-01): after each SUCCESSFUL destroy archive, the oldest
+	// *.tar.gz files are pruned so only the newest N remain. Without this
+	// bound the archive dir grows forever — on 2026-09-21 bunker-mvp
+	// accumulated 1394 tarballs (~130G, no pruning anywhere) and filled
+	// its disk to 100%, red-flagging the root-suite CI. The default is 20
+	// (matching the manual emergency cleanup that kept the 20 newest).
+	// 0 = explicit OPT-OUT: pruning is disabled entirely. Unset defaults
+	// to 20 via the viper default below. Negative values are treated as
+	// 0 (disabled), not as the default. Env override:
+	// BUNKERD_AGENT_DESTROY_ARCHIVE_KEEP.
+	DestroyArchiveKeep int `mapstructure:"destroy_archive_keep"`
+	// DestroyArchiveMaxBytes is an optional TOTAL-SIZE cap on the archive
+	// directory: when the sum of the archive files exceeds it, the oldest
+	// files are deleted oldest-first until the total is under the cap
+	// (always retaining the single newest archive). 0 (the default)
+	// disables the cap. It applies alongside DestroyArchiveKeep, after
+	// the keep pass. Env override:
+	// BUNKERD_AGENT_DESTROY_ARCHIVE_MAX_BYTES.
+	DestroyArchiveMaxBytes int64 `mapstructure:"destroy_archive_max_bytes"`
 }
 
 // Destroy-home policy values accepted by AgentConfig.DestroyHomePolicy.
@@ -278,6 +298,12 @@ const (
 // archive directory is configured. It follows the other /var/backups-style
 // host data directories: root-owned, created on demand.
 const DefaultDestroyArchiveDir = "/var/backups/bunker"
+
+// DefaultDestroyArchiveKeep is how many archived agent homes survive in the
+// archive dir when destroy_archive_keep is unset (INFRA-BACKUP-01). It
+// matches the 2026-09-21 bunker-mvp emergency cleanup precedent, which kept
+// the 20 newest of 1394 accumulated archive tarballs.
+const DefaultDestroyArchiveKeep = 20
 
 // DestroyHomePolicyOrDefault returns the effective destroy-home policy.
 // Anything other than an explicit "purge" resolves to "archive": the archive
@@ -299,6 +325,21 @@ func (a *AgentConfig) DestroyArchiveDirOrDefault() string {
 		return dir
 	}
 	return DefaultDestroyArchiveDir
+}
+
+// DestroyArchiveKeepOrZero returns the effective post-archive keep count.
+// The distinction between "unset" and "explicit 0" lives in the env/viper
+// binding, not here: Load() applies DefaultDestroyArchiveKeep through
+// viper.SetDefault so an UNSET or ABSENT key arrives as 20, while an
+// explicit destroy_archive_keep: 0 (from YAML or env) reaches the struct as
+// 0 and disables pruning entirely. This getter treats 0 and any negative
+// value as disabled (returning 0) — it never converts a 0 back to the
+// default, so an operator's explicit opt-out survives the round trip.
+func (a *AgentConfig) DestroyArchiveKeepOrZero() int {
+	if a.DestroyArchiveKeep < 0 {
+		return 0
+	}
+	return a.DestroyArchiveKeep
 }
 
 // IsolationConfig is the GAP-075 isolation policy. Every agent runs with an
@@ -523,9 +564,13 @@ func DefaultConfig() *Config {
 			// recursive delete, so a TTL expiry can never again destroy
 			// cloned repos (or any other host-owned data an agent held)
 			// with no way back. destroy_home_policy: purge restores the
-			// historical userdel-only behavior.
-			DestroyHomePolicy: DestroyPolicyArchive,
-			DestroyArchiveDir: DefaultDestroyArchiveDir,
+			// historical userdel-only behavior. INFRA-BACKUP-01: retention is
+			// bounded by default (keep 20) so the archive dir can never again
+			// grow unbounded — an explicit destroy_archive_keep: 0 disables
+			// pruning.
+			DestroyHomePolicy:  DestroyPolicyArchive,
+			DestroyArchiveDir:  DefaultDestroyArchiveDir,
+			DestroyArchiveKeep: DefaultDestroyArchiveKeep,
 			// GAP-075: the exchange point is ON by default (agents need a
 			// sanctioned way to exchange artifacts) and every directory in it
 			// is size-capped, so "on" never means "unbounded".
@@ -624,6 +669,13 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("agent.registry.known_id_cap")
 	v.BindEnv("agent.reconciliation.mode")
 	v.BindEnv("agent.destroy_home_policy")
+	// INFRA-BACKUP-01: destroy_archive_keep gets a viper DEFAULT of 20 so
+	// "unset" and "explicitly 0" are distinguishable at the struct — unset
+	// resolves to the default keep-20, an explicit 0 (file or env) arrives
+	// as 0 and disables pruning. See DestroyArchiveKeepOrZero.
+	v.SetDefault("agent.destroy_archive_keep", DefaultDestroyArchiveKeep)
+	v.BindEnv("agent.destroy_archive_keep")
+	v.BindEnv("agent.destroy_archive_max_bytes")
 	v.BindEnv("agent.destroy_archive_dir")
 	v.BindEnv("agent.isolation.agent_group")
 	v.BindEnv("agent.isolation.shared_scratch_enabled")

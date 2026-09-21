@@ -135,3 +135,104 @@ func TestDestroyPolicyConstantsAreStable(t *testing.T) {
 		t.Errorf("default archive dir moved off /var/backups: %q", DefaultDestroyArchiveDir)
 	}
 }
+
+// INFRA-BACKUP-01: destroy_archive_keep is the retention bound for the
+// destroy-time home archive dir. The tricky resolution rule: UNSET must
+// default to 20 (the emergency-cleanup precedent) while an EXPLICIT 0 must
+// disable pruning entirely — the distinction lives in the viper default +
+// env binding, not in ordinary Go zero-value logic.
+func TestDestroyArchiveKeepOrZero(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  int
+		want int
+	}{
+		{"unset struct field passes through (viper supplies 20 earlier)", 0, 0},
+		{"default value passes through", DefaultDestroyArchiveKeep, DefaultDestroyArchiveKeep},
+		{"custom keep passes through", 5, 5},
+		{"negative treated as disabled", -3, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var a AgentConfig
+			a.DestroyArchiveKeep = tt.raw
+			if got := a.DestroyArchiveKeepOrZero(); got != tt.want {
+				t.Errorf("DestroyArchiveKeepOrZero(%d) = %d, want %d", tt.raw, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestDefaultConfig_DestroyArchiveKeepDefault: a fresh DefaultConfig()
+// ships the keep-20 retention default.
+func TestDefaultConfig_DestroyArchiveKeepDefault(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.Agent.DestroyArchiveKeep != DefaultDestroyArchiveKeep {
+		t.Errorf("default destroy_archive_keep = %d, want %d", cfg.Agent.DestroyArchiveKeep, DefaultDestroyArchiveKeep)
+	}
+	if DefaultDestroyArchiveKeep != 20 {
+		t.Errorf("DefaultDestroyArchiveKeep drifted: %d, want 20 (incident precedent)", DefaultDestroyArchiveKeep)
+	}
+}
+
+// TestLoad_DestroyArchiveKeepUnsetDefaultsTo20: a config file with NO
+// destroy_archive_keep key resolves to 20 inside Load — the unset-vs-0
+// distinction is real at the Load boundary.
+func TestLoad_DestroyArchiveKeepUnsetDefaultsTo20(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bunkerd.yaml")
+	body := "agent:\n  destroy_home_policy: purge\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := cfg.Agent.DestroyArchiveKeep; got != 20 {
+		t.Errorf("unset destroy_archive_keep = %d, want 20", got)
+	}
+}
+
+// TestLoad_DestroyArchiveKeepExplicitZeroDisables: an explicit
+// destroy_archive_keep: 0 in YAML must reach the struct as 0 (pruning
+// disabled), NOT be converted back to the default.
+func TestLoad_DestroyArchiveKeepExplicitZero(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bunkerd.yaml")
+	body := "agent:\n  destroy_archive_keep: 0\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := cfg.Agent.DestroyArchiveKeep; got != 0 {
+		t.Errorf("explicit 0 destroy_archive_keep = %d, want 0 (explicit opt-out)", got)
+	}
+}
+
+// TestLoad_DestroyArchiveKeepEnvOverride proves the BindEnv wiring for
+// both new knobs: BUNKERD_AGENT_DESTROY_ARCHIVE_KEEP overrides the file
+// and BUNKERD_AGENT_DESTROY_ARCHIVE_MAX_BYTES reaches the struct.
+func TestLoad_DestroyArchiveKeepEnvOverride(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bunkerd.yaml")
+	body := "agent:\n  destroy_archive_keep: 3\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("BUNKERD_AGENT_DESTROY_ARCHIVE_KEEP", "7")
+	t.Setenv("BUNKERD_AGENT_DESTROY_ARCHIVE_MAX_BYTES", "1073741824")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := cfg.Agent.DestroyArchiveKeep; got != 7 {
+		t.Errorf("destroy_archive_keep after env override = %d, want 7", got)
+	}
+	if got := cfg.Agent.DestroyArchiveMaxBytes; got != 1073741824 {
+		t.Errorf("destroy_archive_max_bytes after env override = %d, want 1073741824", got)
+	}
+}
