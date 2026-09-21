@@ -2882,3 +2882,12 @@ tasks:
   status: complete
   created_at: '2026-09-21T09:56:52.499042+00:00'
   completed_at: '2026-09-21T10:23:22.744227+00:00'
+- id: INT-SPAWN-006
+  title: Root-suite leak sweep destroys agents spawned during the CI window (killed
+    t517mount)
+  criteria:
+  - cleanup() re-reads the live daemon's agent list and keeps snapshot-union-live
+    agents; live drill on bunker-mvp proves a mid-window spawned agent survives the
+    sweep
+  status: in_progress
+  created_at: '2026-09-21T11:28:43.415207+00:00'

@@ -10,6 +10,18 @@
 # test window).
 set -uo pipefail
 
+# INT-SPAWN-006: the snapshot is taken ONCE at script start, but the suite
+# runs for up to 17 minutes — any agent a live daemon spawns DURING that
+# window reads as a "leaked test user" and the old sweep deleted it (proven
+# 2026-09-21 09:38:24Z: userdel -rf bunker-t517mount while the demo daemon
+# served it). The live daemon's agent list is therefore re-read in cleanup()
+# and UNIONED with the start snapshot: a user kept either at start or still
+# listed as running right now survives the sweep.
+refresh_live_agent_ids() {
+    /usr/local/bin/bunker list --status all 2>/dev/null \
+        | awk '/^  [a-z0-9]/{print $1}' || true
+}
+
 # INT-CI-006: the hardcoded 300s go-test budget equaled the suite's real cost
 # on this runner (22 real spawns; run 35106585699 died at exactly 300s while
 # still progressing), so the job reddened intermittently with no code change.
@@ -36,11 +48,19 @@ PROD_IDS="$(/usr/local/bin/bunker list --status all 2>/dev/null | awk '/^  [a-z0
 
 cleanup() {
     local rc=$?
+    # INT-SPAWN-006: re-read the live daemon's agents NOW — the snapshot is
+    # stale by the end of a 17-minute suite, and an operator agent spawned
+    # mid-window is NOT a leak.
+    LIVE_IDS="$(refresh_live_agent_ids)"
     for u in $(grep '^bunker-' /etc/passwd | cut -d: -f1); do
         grep -qx "$u" "$SNAP_PASSWD" && continue
         id_short="${u#bunker-}"
         if echo "$PROD_IDS" | grep -qx "$id_short"; then
             echo "keep production agent user $u"
+            continue
+        fi
+        if echo "$LIVE_IDS" | grep -qx "$id_short"; then
+            echo "keep live-daemon agent user $u (spawned during the run — INT-SPAWN-006)"
             continue
         fi
         echo "removing leaked test user $u"
@@ -51,12 +71,17 @@ cleanup() {
     for k in $(ls /etc/bunkerd/ssh 2>/dev/null); do
         grep -qx "$k" "$SNAP_KEYS" && continue
         echo "$PROD_IDS" | grep -qx "$k" && continue
+        # INT-SPAWN-006: a key minted for an agent the live daemon is still
+        # serving is production state, not a leak.
+        echo "$LIVE_IDS" | grep -qx "$k" && continue
         mv "/etc/bunkerd/ssh/$k" "$QDIR/" 2>/dev/null || true
         mv "/etc/bunkerd/ssh/$k.pub" "$QDIR/" 2>/dev/null || true
     done
     for d in $(ls /run/bunker 2>/dev/null); do
         grep -qx "$d" "$SNAP_RUN" && continue
         echo "$PROD_IDS" | grep -qx "$d" && continue
+        # INT-SPAWN-006: same live-agent reclassification as above.
+        echo "$LIVE_IDS" | grep -qx "$d" && continue
         # Run dirs are ephemeral tmpfs (docker.sock + empty run/tmp) — delete
         # outright. mv-quarantine left the source behind when a socket was
         # briefly busy (observed 65fa62e1, GAP-006 audit).
