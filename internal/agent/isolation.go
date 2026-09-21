@@ -11,6 +11,115 @@ import (
 	"github.com/deployBunker/bunker/internal/hostsetup"
 )
 
+// ── Safety preset knob table (GAP-116) ────────────────────────────────
+//
+// This row is PLUMBING ONLY: the preset resolves to the SAME five knobs the
+// spawn path already applied, with the SAME values, so a default-preset spawn
+// is byte-identical to pre-GAP-116 (pinned by the zero-delta tests). The
+// table exists so later rows (GAP-117+) differentiate standard/hardened by
+// extending it instead of growing new conditionals through the spawn path.
+
+// SystemdKnob is one systemd property of an agent's effective knob set:
+// exactly the property line written into the spawn unit argv / the slice
+// drop-in.
+type SystemdKnob struct {
+	// Name is the systemd property name (CPUQuota, MemoryMax, TasksMax,
+	// LimitNOFILE, LimitFSIZE).
+	Name string
+	// Value is the property value EXACTLY as written ("200%", "4294967296",
+	// "65536:65536").
+	Value string
+	// Scope tells where the knob is applied: dockerd unit only ("unit"),
+	// slice drop-in only ("slice"), or both ("both").
+	Scope string
+}
+
+// Knob scopes. The dockerd unit carries CPUQuota/MemoryMax/LimitFSIZE/
+// TasksMax/LimitNOFILE as --property; the slice drop-in carries the same set
+// in ITS order (CPUQuota, MemoryMax, TasksMax, LimitNOFILE, LimitFSIZE). The
+// scope column records membership so a future row can narrow a knob to one
+// surface without re-deriving the tables.
+const (
+	KnobScopeUnit  = "unit"
+	KnobScopeSlice = "slice"
+	KnobScopeBoth  = "both"
+)
+
+// unitKnobsFor builds the dockerd-unit property set for one agent's resolved
+// limits — the single source the unit argv builder consumes. The values and
+// the conditional (only configured >0 limits emit a property) are exactly the
+// pre-GAP-116 buildRootlessDockerdArgs logic, moved here unmodified.
+func unitKnobsFor(cpuQuota float64, memMax, diskMax, maxProcs, maxFiles uint64) []SystemdKnob {
+	var knobs []SystemdKnob
+	if cpuQuota > 0 {
+		knobs = append(knobs, SystemdKnob{Name: "CPUQuota", Value: fmt.Sprintf("%d%%", int(cpuQuota*100)), Scope: KnobScopeUnit})
+	}
+	if memMax > 0 {
+		knobs = append(knobs, SystemdKnob{Name: "MemoryMax", Value: fmt.Sprintf("%d", memMax), Scope: KnobScopeUnit})
+	}
+	if diskMax > 0 {
+		// LimitFSIZE caps the maximum file size (in bytes) an agent may
+		// create. This is a pragmatic systemd-level enforcement for
+		// disk_max_bytes when per-user filesystem quotas (xfs_quota) are not
+		// configured.
+		knobs = append(knobs, SystemdKnob{Name: "LimitFSIZE", Value: fmt.Sprintf("%d", diskMax), Scope: KnobScopeUnit})
+	}
+	if maxProcs > 0 {
+		knobs = append(knobs, SystemdKnob{Name: "TasksMax", Value: fmt.Sprintf("%d", maxProcs), Scope: KnobScopeUnit})
+	}
+	if maxFiles > 0 {
+		knobs = append(knobs, SystemdKnob{Name: "LimitNOFILE", Value: fmt.Sprintf("%d:%d", maxFiles, maxFiles), Scope: KnobScopeUnit})
+	}
+	return knobs
+}
+
+// KnobsForPreset is the preset → knob-set resolution (GAP-116). This row's
+// vocabulary is {"open", "standard", "hardened"} and every member resolves to
+// today's five-knob baseline; the CALLER resolves the preset name through
+// config.ResolveSafetyPreset (flag > env > config global > default) — here the
+// name arrives already validated, and an unknown name is a programming error
+// that fails LOUD (never a silent fallback).
+//
+// The knobs describe the SAME five properties the spawn path has always
+// applied: unit surface in the unit argv's order (CPUQuota, MemoryMax,
+// LimitFSIZE, TasksMax, LimitNOFILE), slice surface in the drop-in's order
+// (CPUQuota, MemoryMax, TasksMax, LimitNOFILE, LimitFSIZE).
+func KnobsForPreset(preset string, cpuQuota float64, memMax, diskMax, maxProcs, maxFiles uint64) (unit, slice []SystemdKnob) {
+	switch preset {
+	case config.SafetyPresetOpen, config.SafetyPresetStandard, config.SafetyPresetHardened:
+		// Plumbing row: identical knob sets. Later rows differentiate here.
+	default:
+		panic(fmt.Sprintf("knobs for unknown safety preset %q — resolve through config.ResolveSafetyPreset", preset))
+	}
+	unit = unitKnobsFor(cpuQuota, memMax, diskMax, maxProcs, maxFiles)
+	slice = sliceKnobsFor(cpuQuota, memMax, diskMax, maxProcs, maxFiles)
+	return unit, slice
+}
+
+// sliceKnobsFor builds the slice drop-in property set in the drop-in's own
+// order — the single source applyUserSliceLimits consumes. The values and the
+// conditional are exactly the pre-GAP-116 applyUserSliceLimits logic, moved
+// here unmodified.
+func sliceKnobsFor(cpuQuota float64, memMax, diskMax, maxProcs, maxFiles uint64) []SystemdKnob {
+	var knobs []SystemdKnob
+	if cpuQuota > 0 {
+		knobs = append(knobs, SystemdKnob{Name: "CPUQuota", Value: fmt.Sprintf("%d%%", int(cpuQuota*100)), Scope: KnobScopeSlice})
+	}
+	if memMax > 0 {
+		knobs = append(knobs, SystemdKnob{Name: "MemoryMax", Value: fmt.Sprintf("%d", memMax), Scope: KnobScopeSlice})
+	}
+	if maxProcs > 0 {
+		knobs = append(knobs, SystemdKnob{Name: "TasksMax", Value: fmt.Sprintf("%d", maxProcs), Scope: KnobScopeSlice})
+	}
+	if maxFiles > 0 {
+		knobs = append(knobs, SystemdKnob{Name: "LimitNOFILE", Value: fmt.Sprintf("%d:%d", maxFiles, maxFiles), Scope: KnobScopeSlice})
+	}
+	if diskMax > 0 {
+		knobs = append(knobs, SystemdKnob{Name: "LimitFSIZE", Value: fmt.Sprintf("%d", diskMax), Scope: KnobScopeSlice})
+	}
+	return knobs
+}
+
 // lookupAgentUser resolves an agent's uid/gid. It is a variable so tests can
 // drive the spawn-time isolation wiring without root privileges (the real
 // lookup only succeeds after useradd has run).
@@ -62,6 +171,11 @@ type dockerdUnitArgs struct {
 	DiskMax        uint64
 	MaxProcesses   uint64
 	MaxOpenFiles   uint64
+	// UnitKnobs is the GAP-116 resolved limit-property set (the preset's knob
+	// table for this agent's limits). When nil/empty the builder derives the
+	// set from the limits above — the derivation is identical to pre-GAP-116,
+	// so both paths produce the same argv for the same limits.
+	UnitKnobs []SystemdKnob
 }
 
 // buildRootlessDockerdArgs builds the exact `systemd-run` argv and the
@@ -69,6 +183,11 @@ type dockerdUnitArgs struct {
 // unit property — including the GAP-075 PrivateTmp=yes that gives dockerd (and
 // everything it starts) a private /tmp — is pinned by unit tests instead of by
 // an integration test on a live host.
+//
+// The limit properties are built from the GAP-116 knob table (unitKnobsFor):
+// the preset resolves to the same five properties with the same values as
+// pre-GAP-116, so a default-preset argv is byte-identical (pinned by the
+// zero-delta test).
 //
 // DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns avoids needing a separate
 // bridge, and the per-agent socket path is passed through DOCKER_HOST so the
@@ -117,25 +236,18 @@ func buildRootlessDockerdArgs(a dockerdUnitArgs) (args []string, env []string) {
 		// host's (root's) /tmp or with another agent's.
 		"--property=PrivateTmp=yes",
 	}
-	if a.CPUQuota > 0 {
-		// CPUQuota is a percentage of one CPU: 100%=1 core, 200%=2 cores.
-		// This maps to cgroup v2 cpu.max as quota_us = CPUQuota%/100 * period_us.
-		args = append(args, fmt.Sprintf("--property=CPUQuota=%d%%", int(a.CPUQuota*100)))
+	// GAP-116: the limit property block is table-driven (same values, same
+	// order, same conditional as pre-GAP-116 — pinned byte-for-byte by the
+	// zero-delta test). The preset name itself carries no knob information in
+	// this row: every valid preset resolves to the baseline set, and the
+	// resolved limits above ARE the baseline when the caller spawned with the
+	// built-in default.
+	knobs := a.UnitKnobs
+	if len(knobs) == 0 {
+		knobs = unitKnobsFor(a.CPUQuota, a.MemoryMax, a.DiskMax, a.MaxProcesses, a.MaxOpenFiles)
 	}
-	if a.MemoryMax > 0 {
-		args = append(args, fmt.Sprintf("--property=MemoryMax=%d", a.MemoryMax))
-	}
-	if a.DiskMax > 0 {
-		// LimitFSIZE caps the maximum file size (in bytes) an agent may create.
-		// This is a pragmatic systemd-level enforcement for disk_max_bytes when
-		// per-user filesystem quotas (xfs_quota) are not configured.
-		args = append(args, fmt.Sprintf("--property=LimitFSIZE=%d", a.DiskMax))
-	}
-	if a.MaxProcesses > 0 {
-		args = append(args, fmt.Sprintf("--property=TasksMax=%d", a.MaxProcesses))
-	}
-	if a.MaxOpenFiles > 0 {
-		args = append(args, fmt.Sprintf("--property=LimitNOFILE=%d:%d", a.MaxOpenFiles, a.MaxOpenFiles))
+	for _, k := range knobs {
+		args = append(args, "--property="+k.Name+"="+k.Value)
 	}
 	for _, e := range env {
 		args = append(args, "--setenv="+e)

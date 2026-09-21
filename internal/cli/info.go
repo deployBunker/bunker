@@ -8,6 +8,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
+	"github.com/deployBunker/bunker/internal/config"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 )
 
@@ -122,6 +123,22 @@ Examples:
 				}
 				if limits.MaxDockerContainers > 0 {
 					fmt.Printf("    Max Containers: %d\n", limits.MaxDockerContainers)
+				}
+			}
+			// GAP-116 effective safety set: the preset the agent was spawned
+			// under and the systemd knob set actually applied. A daemon (or
+			// record) predating GAP-116 reports an empty preset — shown as
+			// the built-in default name, no knob block (honest absence beats
+			// a fabricated set).
+			presetName := a.GetSafetyPreset()
+			if presetName == "" {
+				presetName = config.SafetyPresetDefault
+			}
+			fmt.Printf("  Safety Preset:    %s\n", presetName)
+			if props := a.GetSystemdProperties(); len(props) > 0 {
+				fmt.Println("  Safety Knobs:")
+				for _, p := range props {
+					fmt.Printf("    %-14s  %s\n", p.GetName()+":", p.GetValue())
 				}
 			}
 			fmt.Println()

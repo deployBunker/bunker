@@ -99,8 +99,24 @@ type Event struct {
 	// agent keeps the container context its spawn established.
 	Image string `json:"image,omitempty"`
 
+	// GAP-116 safety-preset reporting: the effective preset name and the
+	// resolved systemd knob set the agent was spawned under. Persisted so a
+	// replayed or adopted agent keeps reporting its effective set. The
+	// property VALUE strings are exactly the drop-in/argv form ("200%",
+	// "65536:65536"); Limits already carries the numeric values.
+	SafetyPreset    string            `json:"safety_preset,omitempty"`
+	UnitProperties  []SystemdProperty `json:"unit_properties,omitempty"`
+	SliceProperties []SystemdProperty `json:"slice_properties,omitempty"`
+
 	// KnownIDs is set only on KindKnown index records.
 	KnownIDs []string `json:"known_ids,omitempty"`
+}
+
+// SystemdProperty is the registry's plain-JSON form of one effective systemd
+// knob (GAP-116): NAME + the exact VALUE written to the unit/drop-in.
+type SystemdProperty struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
 }
 
 // Record is the folded current state of one live agent.
@@ -118,6 +134,10 @@ type Record struct {
 	PublicURL        string
 	TailnetIP        string
 	Image            string
+	// GAP-116 safety-preset reporting fields; see Event.
+	SafetyPreset    string
+	UnitProperties  []SystemdProperty
+	SliceProperties []SystemdProperty
 }
 
 // Report summarises one replay pass.
@@ -416,6 +436,11 @@ func (s *Store) AppendSpawn(rec *Record) error {
 		PublicURL:        rec.PublicURL,
 		TailnetIP:        rec.TailnetIP,
 		Image:            rec.Image,
+		// GAP-116: the effective preset and knob set ride the spawn event so
+		// a replayed agent keeps reporting what it was spawned with.
+		SafetyPreset:    rec.SafetyPreset,
+		UnitProperties:  rec.UnitProperties,
+		SliceProperties: rec.SliceProperties,
 	}
 	return s.append(ev, func() {
 		clone := *rec
@@ -639,6 +664,9 @@ func eventToRecord(ev *Event) *Record {
 		PublicURL:        ev.PublicURL,
 		TailnetIP:        ev.TailnetIP,
 		Image:            ev.Image,
+		SafetyPreset:     ev.SafetyPreset,
+		UnitProperties:   ev.UnitProperties,
+		SliceProperties:  ev.SliceProperties,
 	}
 	if rec.Status == "" {
 		rec.Status = "running"

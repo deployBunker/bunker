@@ -344,6 +344,14 @@ func (s *bunkerdService) SpawnAgent(ctx context.Context, req *connect.Request[v1
 		reqTTL = parsed
 	}
 
+	// GAP-116: an unknown safety preset (per-spawn flag, or a bad
+	// BUNKERD_SAFETY_PRESET env / config global the manager would resolve)
+	// surfaces as CodeInvalidArgument — fail loud at the RPC boundary with
+	// the same code the CLI-side local check produces, never CodeInternal.
+	if _, perr := s.cfg.ResolveSafetyPreset(req.Msg.GetSafetyPreset()); perr != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, perr)
+	}
+
 	resp, err := s.agentMgr.Spawn(ctx, req.Msg)
 	if err != nil {
 		s.logger.Error("spawn agent failed", "error", err)
@@ -1011,6 +1019,12 @@ func (s *bunkerdService) RunAgent(ctx context.Context, req *connect.Request[v1.R
 	// a missing agent.
 	if err := agent.StoppedStatusError(rec, req.Msg.GetAgentId()); err != nil {
 		return nil, stoppedPreconditionError(err)
+	}
+	// GAP-116: an unknown safety preset must surface as CodeInvalidArgument
+	// (the spawn-path symmetry), not CodeInternal — validate before the
+	// manager runs so the rejection is unambiguous.
+	if _, perr := s.cfg.ResolveSafetyPreset(req.Msg.GetSafetyPreset()); perr != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, perr)
 	}
 	resp, err := s.agentMgr.RunAgent(ctx, req.Msg)
 	if err != nil {

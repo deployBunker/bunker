@@ -124,6 +124,15 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	} else {
 		s.logger.Info(logDisclosureStartup(false))
 	}
+	// GAP-116: same safe-startup shape for the effective safety preset. The
+	// preset is validated by cfg.Validate() above, so this can only fail on a
+	// hand-built config that skipped Validate — and even then the name (never
+	// a secret) is the only content in the message.
+	if effectivePreset, perr := s.cfg.ResolveSafetyPreset(""); perr != nil {
+		s.logger.Warn("bunkerd safety.preset is invalid; spawns will be rejected until the config is fixed", "error", perr)
+	} else {
+		s.logger.Info("bunkerd safety preset", "preset", effectivePreset)
+	}
 
 	// Close the audit trail when the daemon exits.
 	if s.auditLog != nil {
