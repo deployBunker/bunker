@@ -110,6 +110,15 @@ from HEAD*.
   and the byte-identical installer, are pinned by `internal/releasecheck`
   (`go test ./...`), which executes the workflow's own entrypoint resolver
   against the historical tag trees offline.
+- `docs/release-checklist.md` and `scripts/pre-release-check.sh` (RELEASE-004):
+  the documented cut procedure plus its fail-fast local gate — the script
+  verifies before any push that `internal/version/version.go`, the newest
+  `## N.N.N` CHANGELOG heading and the Makefile `VERSION ?=` agree, that the
+  newest tag is `v<version>` (skipped with a warning in tag-less checkouts,
+  like CI), that the first CHANGELOG heading is `## Unreleased`, and via
+  `--tag <tag>` that a freshly cut tag's own tree declares the tag version
+  (the exact grep CI's tag build check runs), so a bare tag push can no longer
+  go red on "Version authority check" / "Tag build check"
 
 ### Docs
 
