@@ -2910,3 +2910,12 @@ tasks:
   status: complete
   created_at: '2026-09-21T11:49:09.176072+00:00'
   completed_at: '2026-09-21T12:44:28.055127+00:00'
+- id: GAP-117
+  title: formalize today's five knobs as the built-in default tier
+  criteria:
+  - For a spawn with no --preset the emitted slice drop-in AND systemd-run argv are
+    byte-identical to pre-change; the tier is named + in the spec matrix; tier->knobs
+    resolution table-driven tested; go test ./... green
+  status: complete
+  created_at: '2026-09-21T13:32:18.946882+00:00'
+  completed_at: '2026-09-21T14:07:27.315316+00:00'
