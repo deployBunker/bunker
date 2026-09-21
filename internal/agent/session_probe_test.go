@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -335,8 +336,19 @@ func TestSpawn_SessionProbeSuccessReturnsReady(t *testing.T) {
 	if resp.AgentId != agentID {
 		t.Errorf("resp.AgentId = %q, want %q", resp.AgentId, agentID)
 	}
-	if resp.SshPrivateKey == "" {
-		t.Errorf("ready response missing SshPrivateKey")
+
+	// Default leg: without ReturnSshPrivateKey the persisted key still lands on
+	// disk, but the response must NOT carry the private key (GAP-128 contract).
+	if resp.SshPrivateKey != "" {
+		t.Errorf("default spawn response carries SshPrivateKey (%d bytes); want empty without ReturnSshPrivateKey", len(resp.SshPrivateKey))
+	}
+	keyPath := fmt.Sprintf("/etc/bunkerd/ssh/%s", agentID)
+	content, readErr := os.ReadFile(keyPath)
+	if readErr != nil {
+		t.Fatalf("read persisted SSH key %s: %v", keyPath, readErr)
+	}
+	if !strings.HasPrefix(string(content), "-----BEGIN") {
+		t.Errorf("persisted SSH key doesn't start with -----BEGIN: %q", string(content)[:50])
 	}
 	rec := m.tracker.Get(agentID)
 	if rec == nil {

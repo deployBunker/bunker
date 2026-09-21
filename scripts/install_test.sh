@@ -432,6 +432,7 @@ contains "--sshfs=bogus refusal names the valid modes" "$OUT" "need min, package
 FAKE_SSHFS_DIR="$TMP_ROOT/sshfs-old"
 fake_sshfs "$FAKE_SSHFS_DIR" 3.7.3
 fake_apt_get "$SSHFS_DIR"
+fake_apt_cache "$SSHFS_DIR"
 OUT=$(PATH="$FAKE_SSHFS_DIR:$SSHFS_DIR:$PATH" "$SH_BIN" "$INSTALL" --from-dir "$GOOD_SRC" --dir "$DRY_PFX" --dry-run 2>&1) && RC=0 || RC=$?
 check_rc 0 "default run (no --sshfs) exits 0 with an affected sshfs on PATH" "$RC"
 lacks "default run performs no sshfs actions" "$OUT" "sshfs"
