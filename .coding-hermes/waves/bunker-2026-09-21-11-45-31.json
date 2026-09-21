@@ -1,0 +1,36 @@
+{
+  "tick_id": "bunker-2026-09-21-11-45-31",
+  "created_at": "2026-09-21T11:55:00-05:00",
+  "project": "bunker",
+  "wave_type": "worktree-wave",
+  "wave_budget": 4,
+  "lanes_used": 2,
+  "base_sha": "708a875",
+  "note": "Two MUTUALLY INDEPENDENT P1 code tasks, disjoint file sets, no depends_on edges between them. GAP-116 touches internal/config + internal/server + config.example.yaml + cmd/bunker (spawn flags); QA-BUNKER-001 touches internal/cli/procbuild_test.go only. Both dispatched as isolated worktree workers; merged serially with a gate per merge.",
+  "workers": [
+    {
+      "lane": "A",
+      "task_id": "QA-BUNKER-001",
+      "scope": "per-uid shared test-CLI build cache root (internal/cli/procbuild_test.go + its tests)",
+      "mode": "worktree-worker",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-001",
+      "branch": "wt/QA-BUNKER-001",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/foreman-worker-QA-BUNKER-001.txt",
+      "log": "/tmp/foreman-worker-QA-BUNKER-001.log"
+    },
+    {
+      "lane": "B",
+      "task_id": "GAP-116",
+      "scope": "safety.preset plumbing (config field, spawn flag, env override, precedence, effective-set reporting, zero-delta proof)",
+      "mode": "worktree-worker",
+      "worktree": "/home/kara/worktrees/bunker-GAP-116",
+      "branch": "wt/GAP-116",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/foreman-worker-GAP-116.txt",
+      "log": "/tmp/foreman-worker-GAP-116.log"
+    }
+  ]
+}
