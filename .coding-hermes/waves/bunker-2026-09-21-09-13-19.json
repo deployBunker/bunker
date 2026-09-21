@@ -1,0 +1,33 @@
+{
+  "tick_id": "bunker-2026-09-21-09-13-19",
+  "created_at": "2026-09-21T09:55:00-05:00",
+  "project": "bunker",
+  "wave_type": "hybrid-serial-merge",
+  "wave_budget": 10,
+  "lanes_used": 2,
+  "base_sha": "f3f569d",
+  "note": "Two MUTUALLY INDEPENDENT P0-family items, one per dependency chain. LANE A = worktree worker (code, merge second after gate). LANE B = foreman-direct live evidence battery on bunker-las-02 agent (no repo edits until evidence commit; merge first). Merge order: B then A; gate each merge; one push of both refs at the end.",
+  "workers": [
+    {
+      "lane": "A",
+      "task_id": "MOUNT-009",
+      "scope": "legs 3+4 only: --sshfs installer option (scripts/install.sh + tests) and bunker-mount refuse-fast version guard (internal/cli/mount.go + tests) + docs/mount-drivers.md section 1 refresh",
+      "mode": "worktree-worker",
+      "worktree": "/home/kara/worktrees/bunker-MOUNT-009",
+      "branch": "wt/MOUNT-009",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/foreman-worker-MOUNT-009.txt",
+      "log": "/tmp/foreman-worker-MOUNT-009.log"
+    },
+    {
+      "lane": "B",
+      "task_id": "MOUNT-002",
+      "scope": "3-conjunct adversarial escape battery (symlink escape read/write via mount, phantom write on dropped transport, mid-flight truncation) + comparative leg vs unpatched /usr/bin/sshfs 3.7.3, against a real agent on bunker-las-02; raw evidence committed under docs/evidence/mount-002/",
+      "mode": "foreman-direct-live-evidence",
+      "model": "glm-5.3-flash",
+      "provider": "api_server (this session)",
+      "gitreins_task": "MOUNT-002 (already in-progress from tick #516; tasks.yaml +8 diff rides along)"
+    }
+  ]
+}
