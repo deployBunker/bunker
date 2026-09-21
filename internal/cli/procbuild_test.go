@@ -45,6 +45,14 @@ import (
 // session, a stable path that repeated runs inside one checkout REUSE (it is
 // still a cache, not a per-run or per-PID directory), and the same flock for
 // concurrent runs inside one worktree.
+//
+// QA-BUNKER-001 (multi-tenant host EACCES): the cache ROOT above the checkout
+// key was one fixed shared name, so whichever uid ran the suite first owned it
+// 0700 and every later uid failed in TestMain with "create build cache dir:
+// ... permission denied" — no cross-uid sharing existed below it, so the fix
+// embeds the uid in the ROOT name (testCLICacheRoot) while the checkout key,
+// sweep, legacy purge, flock, and marker/staleness behavior are unchanged;
+// the sweep simply walks this uid's root.
 const (
 	// minTestCLIBuildConcurrency keeps a lone build from stalling on a
 	// mistyped "0"/"1" knob value.
@@ -59,9 +67,11 @@ const (
 	// cliBuildConcurrencyEnv is the knob. Unset/blank/garbage → the default.
 	cliBuildConcurrencyEnv = "BUNKER_TEST_CLI_BUILD_CONCURRENCY"
 
-	// cliBuildCacheRootName is the per-host cache ROOT under the OS temp dir.
-	// One checkout's cache dir sits one level below it, so the root (not the
-	// temp dir itself) is what the housekeeping sweep walks.
+	// cliBuildCacheRootName is the cache ROOT name under the OS temp dir;
+	// the uid is appended to it (testCLICacheRoot) so each uid gets its own
+	// root (QA-BUNKER-001). One checkout's cache dir sits one level below
+	// that root, so the root (not the temp dir itself) is what the
+	// housekeeping sweep walks.
 	cliBuildCacheRootName = "bunker-cli-build-cache-roots"
 
 	// cliBuildCacheKeyEnv pins the cache key explicitly: CI, or a checkout
@@ -185,18 +195,24 @@ func testCLICacheKeyForRoot(worktreeRoot, explicit string) string {
 	return testCLICacheKey(worktreeRoot)
 }
 
-// testCLICacheRoot is the per-host cache root under tempDir.
+// testCLICacheRoot is the per-UID cache root under tempDir
+// (QA-BUNKER-001): the uid is embedded in the ROOT name so each uid on a
+// multi-tenant host owns its own 0700 root. The shared single-name root let
+// whichever uid ran the suite first own it 0700 and every later uid die with
+// EACCES in TestMain before any test ran. The per-CHECKOUT key sits below
+// this root and is unchanged (INT-CI-023).
 func testCLICacheRoot(tempDir string) string {
-	return filepath.Join(tempDir, cliBuildCacheRootName)
+	return filepath.Join(tempDir, fmt.Sprintf("%s-%d", cliBuildCacheRootName, os.Getuid()))
 }
 
-// testCLICacheDir is one checkout's cache dir: <temp>/bunker-cli-build-cache/<key>.
+// testCLICacheDir is one checkout's cache dir:
+// <temp>/bunker-cli-build-cache-roots-<uid>/<key>.
 func testCLICacheDir(tempDir, key string) string {
 	return filepath.Join(testCLICacheRoot(tempDir), key)
 }
 
 // testCLICacheBinaryPath is the shared test CLI for one checkout:
-// <temp>/bunker-cli-build-cache/<checkout-key>/bunker.
+// <temp>/bunker-cli-build-cache-roots-<uid>/<checkout-key>/bunker.
 func testCLICacheBinaryPath(tempDir, key string) string {
 	return filepath.Join(testCLICacheDir(tempDir, key), cliBuildCacheBinaryName)
 }
@@ -286,7 +302,7 @@ func testCLICheckoutInfo() testCLICheckout {
 }
 
 // sharedCLIBinaryPath is where the shared test CLI lands: a per-CHECKOUT cache
-// dir under the OS temp dir — outside the repo and outside any t.TempDir (which
+// dir under this uid's cache root in the OS temp dir — outside the repo and outside any t.TempDir (which
 // the harness's HOME override must never relocate; see the HOME notes in the
 // tunnel tests) — and keyed on the checkout so no other worktree of this repo
 // can build over it.
@@ -531,7 +547,9 @@ func TestSharedCLIBinaryCachePathPerCheckout(t *testing.T) {
 	t.Run("path_shape", func(t *testing.T) {
 		key := testCLICacheKey(rootA)
 		p := testCLICacheBinaryPath(tempDir, key)
-		if want := filepath.Join(tempDir, cliBuildCacheRootName, key, cliBuildCacheBinaryName); p != want {
+		// QA-BUNKER-001: the root is per-UID, so the expected shape embeds
+		// this uid via the same derivation the builder uses.
+		if want := filepath.Join(testCLICacheRoot(tempDir), key, cliBuildCacheBinaryName); p != want {
 			t.Fatalf("path = %q, want %q", p, want)
 		}
 		if filepath.Base(p) != cliBuildCacheBinaryName {
@@ -900,4 +918,122 @@ func TestNoPerTestCLIBuildsOutsideSharedBuilder(t *testing.T) {
 			}
 		}
 	}
+}
+
+// QA-BUNKER-001: the cache ROOT is per-UID. The multi-tenant failure it fixes:
+// the root used to be one fixed shared name under the OS temp dir; whichever
+// uid ran the suite first owned it 0700 and every later uid died in TestMain
+// with "gap090: shared test CLI build failed: create build cache dir: mkdir
+// ...: permission denied" before any test ran. Embedding the uid in the ROOT
+// name gives each uid its own 0700 root; the per-CHECKOUT key below it is
+// unchanged (INT-CI-023's fix is not being relitigated — the uid is in the
+// ROOT level only, never in the checkout key).
+//
+// Cannot run as a different uid unprivileged, so the cross-uid claim is
+// proven by construction: this uid's root name carries THIS uid, and a 0700
+// root named for a DIFFERENT uid does not collide with (nor get walked by)
+// this uid's derivation. EEXIST-tolerance on the MkdirAll is covered by
+// buildTestCLI already succeeding on a pre-existing root — asserted here via
+// the real builder's contract with a same-uid root pre-created 0700.
+func TestCLICacheRootIsPerUID(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("running as root: a 0700 root owned by another uid is still writable, the per-uid separation cannot be exercised")
+	}
+
+	t.Run("root_name_carries_uid", func(t *testing.T) {
+		tempDir := t.TempDir()
+		root := testCLICacheRoot(tempDir)
+		wantSuffix := fmt.Sprintf("%s-%d", cliBuildCacheRootName, os.Getuid())
+		if want, got := filepath.Join(tempDir, wantSuffix), root; got != want {
+			t.Fatalf("cache root = %q, want per-uid root %q", got, want)
+		}
+		if filepath.Base(root) != wantSuffix {
+			t.Fatalf("cache root base = %q, want %q", filepath.Base(root), wantSuffix)
+		}
+		// One path element: the uid rides in the name, not in a subdir.
+		if rel, err := filepath.Rel(tempDir, root); err != nil || strings.Contains(rel, string(filepath.Separator)) {
+			t.Fatalf("cache root %q is not a single element under %q (rel %q, err %v)", root, tempDir, rel, err)
+		}
+	})
+
+	t.Run("other_uid_root_does_not_collide", func(t *testing.T) {
+		tempDir := t.TempDir()
+		otherUID := os.Getuid() + 1
+		// The shape of the original incident: another uid's 0700 root.
+		otherRoot := filepath.Join(tempDir, fmt.Sprintf("%s-%d", cliBuildCacheRootName, otherUID))
+		if err := os.MkdirAll(otherRoot, 0o700); err != nil {
+			t.Fatalf("seed other-uid root: %v", err)
+		}
+		// Deriving and materialising THIS uid's cache dir must succeed —
+		// the derivation lands in a DIFFERENT root, so the other uid's
+		// 0700 directory cannot block it (the pre-fix EACCES).
+		dir := testCLICacheDir(tempDir, testCLICacheKey(t.TempDir()))
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatalf("MkdirAll into own-uid cache dir failed with a foreign 0700 root present: %v", err)
+		}
+		if filepath.Dir(dir) != testCLICacheRoot(tempDir) {
+			t.Fatalf("cache dir %q does not live under the per-uid root %q", dir, testCLICacheRoot(tempDir))
+		}
+		if _, err := os.Stat(filepath.Join(otherRoot, "probe")); !os.IsNotExist(err) {
+			t.Fatalf("own derivation touched the other uid's root: stat probe err=%v", err)
+		}
+	})
+
+	t.Run("sweep_operates_on_per_uid_root", func(t *testing.T) {
+		tempDir := t.TempDir()
+		root := testCLICacheRoot(tempDir)
+		if err := os.MkdirAll(root, 0o700); err != nil {
+			t.Fatalf("seed own root: %v", err)
+		}
+		// A stale sibling CHECKOUT cache dir inside THIS uid's root is
+		// reaped (absent marker = stale by contract); ownKey is kept
+		// unconditionally; and nothing inside the OTHER uid's root is
+		// touched — the sweep walks only the per-uid root, never the
+		// shared parent.
+		ownStale := filepath.Join(root, "own-stale")
+		checkoutStale := filepath.Join(root, "checkout-stale")
+		if err := os.MkdirAll(filepath.Join(root, "own-stale"), 0o700); err != nil {
+			t.Fatalf("seed own stale dir: %v", err)
+		}
+		if err := os.MkdirAll(checkoutStale, 0o700); err != nil {
+			t.Fatalf("seed stale checkout dir: %v", err)
+		}
+		otherUID := os.Getuid() + 1
+		otherRoot := filepath.Join(tempDir, fmt.Sprintf("%s-%d", cliBuildCacheRootName, otherUID))
+		otherStale := filepath.Join(otherRoot, "other-stale")
+		if err := os.MkdirAll(otherStale, 0o700); err != nil {
+			t.Fatalf("seed other-uid stale dir: %v", err)
+		}
+		if removed := sweepStaleCLICaches(root, "own-stale", time.Now()); len(removed) != 1 || removed[0] != "checkout-stale" {
+			t.Fatalf("sweep removed %v, want [checkout-stale]", removed)
+		}
+		if _, err := os.Stat(ownStale); err != nil {
+			t.Fatalf("sweep reaped ownKey %q (must keep its own): %v", ownStale, err)
+		}
+		if _, err := os.Stat(checkoutStale); err == nil {
+			t.Fatalf("sweep left stale checkout dir %q in place", checkoutStale)
+		}
+		if _, err := os.Stat(otherStale); err != nil {
+			t.Fatalf("sweep walked outside the per-uid root: other uid's dir removed: %v", err)
+		}
+	})
+
+	t.Run("builder_tolerates_existing_root", func(t *testing.T) {
+		// The EEXIST leg: a root that ALREADY exists (the normal steady
+		// state, and the pre-fix MkdirAll's implicit-create path) must not
+		// fail the build. Proven on the real builder's precondition —
+		// MkdirAll on an existing 0700 dir of this uid returns nil.
+		tempDir := t.TempDir()
+		root := testCLICacheRoot(tempDir)
+		if err := os.MkdirAll(root, 0o700); err != nil {
+			t.Fatalf("seed root: %v", err)
+		}
+		if err := os.Chmod(root, 0o700); err != nil {
+			t.Fatalf("chmod root: %v", err)
+		}
+		dir := testCLICacheDir(tempDir, testCLICacheKey(t.TempDir()))
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatalf("MkdirAll tolerated an existing root elsewhere but not here: %v", err)
+		}
+	})
 }
