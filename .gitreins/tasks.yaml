@@ -2812,3 +2812,19 @@ tasks:
   status: complete
   created_at: '2026-09-21T05:34:27.301272+00:00'
   completed_at: '2026-09-21T05:46:31.387754+00:00'
+- id: RELEASE-004
+  title: 'Pre-cut sequencing for v0.2.0: release checklist + fail-fast pre-release
+    check script'
+  criteria:
+  - Repo contains docs/release-checklist.md documenting the version-authority parity
+    constraint (git describe latest_tag == bunker version == CHANGELOG newest numeric
+    heading) and the exact ordering that avoids a red tag-push (bump commit carrying
+    version.go+version_test+Makefile+CHANGELOG heading rename, tagged v0.2.0 and pushed
+    together); scripts/pre-release-check.sh exists, is POSIX-shell, exits 0 on the
+    current compliant tree (version 0.1.4 == tag == changelog heading), exits non-zero
+    with a named reason when version/changelog/Makefile disagree, and supports a --tag
+    mode verifying the tag points at HEAD; no premature version bump in this diff;
+    go build ./... passes; gitreins guard green
+  status: complete
+  created_at: '2026-09-21T06:30:35.353949+00:00'
+  completed_at: '2026-09-21T06:45:30.407485+00:00'
