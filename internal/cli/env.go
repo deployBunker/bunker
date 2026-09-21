@@ -119,7 +119,7 @@ Any other flag is rejected before anything is sent to the server:
 			switch subcommand {
 			case "set":
 				if len(tail) != 1 {
-					return fmt.Errorf("env set requires exactly one KEY=VALUE argument")
+					return envArityError("env set requires exactly one KEY=VALUE argument", tail)
 				}
 				key, value, err := parseEnvAssignment(tail[0])
 				if err != nil {
@@ -129,7 +129,7 @@ Any other flag is rejected before anything is sent to the server:
 				failOn = true
 			case "get":
 				if len(tail) != 1 {
-					return fmt.Errorf("env get requires exactly one KEY argument")
+					return envArityError("env get requires exactly one KEY argument", tail)
 				}
 				if err := validateEnvKey(tail[0]); err != nil {
 					return err
@@ -138,13 +138,13 @@ Any other flag is rejected before anything is sent to the server:
 				failOn = false
 			case "list":
 				if len(tail) != 0 {
-					return fmt.Errorf("env list takes no extra arguments")
+					return envArityError("env list takes no extra arguments", tail)
 				}
 				shellCmd = buildEnvListCommand(envFilePath(agentID))
 				failOn = true
 			case "unset":
 				if len(tail) != 1 {
-					return fmt.Errorf("env unset requires exactly one KEY argument")
+					return envArityError("env unset requires exactly one KEY argument", tail)
 				}
 				if err := validateEnvKey(tail[0]); err != nil {
 					return err
@@ -215,6 +215,15 @@ func peelEnvFlags(args []string, serverName *string, timeout *uint32) ([]string,
 		},
 	}
 	return grammar.peelAllFlags(args)
+}
+
+// envArityError builds an env subcommand's arity refusal, naming the
+// leftover arguments the payload validator actually saw (DF-BUNKER-42): a
+// flag-shaped token that reached the payload — via "--", a peel miss, or a
+// malformed invocation — can no longer vanish behind a bare count complaint.
+// The base text is unchanged so existing wording and tests keep matching.
+func envArityError(base string, tail []string) error {
+	return fmt.Errorf("%s (got %q)", base, tail)
 }
 
 // parseEnvAssignment splits a single token of the form KEY=VALUE into (key,
