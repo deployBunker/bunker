@@ -29,5 +29,8 @@
       "provider": "api_server (this session)",
       "gitreins_task": "MOUNT-002 (already in-progress from tick #516; tasks.yaml +8 diff rides along)"
     }
-  ]
+  ],
+  "finished_at": "2026-09-21T05:52:00-05:00",
+  "recovered_by": "bunker-2026-09-21-10-33-05",
+  "recovery_summary": "MOUNT-009: worktree branch patch-identical to landed 002961f; merged tree gated (tier-1 PASS), tier-2 verdict 7d48e556 PASS, board closed, pushed. MOUNT-002: already closed tick 517 (3f1a64e, tier-2 cad863d4). CI red on the window attributed to pre-existing root-suite flake, filed INT-CI-032."
 }
