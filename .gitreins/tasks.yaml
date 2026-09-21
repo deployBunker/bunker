@@ -2828,3 +2828,20 @@ tasks:
   status: complete
   created_at: '2026-09-21T06:30:35.353949+00:00'
   completed_at: '2026-09-21T06:45:30.407485+00:00'
+- id: INT-CI-031
+  title: 'INT-CI-031 unred CI: nested regression suite PATH pin + root-suite budget
+    1050s'
+  criteria:
+  - (1) e2e-full-battery.sh section 12 nested regression run_capture invocation prepends
+    the certified binary's directory to the child PATH (PATH="$(dirname "$BUNKER"):$PATH")
+    while preserving all prior env assignments (BUNKER_HOME, HOME, BUNKERD_GRPC_ADDR,
+    BUNKERD_REST_ADDR, env -u BUNKER_SESSION_TARGET); (2) scripts/root-suite.sh defaults
+    ROOT_SUITE_TIMEOUT to 1050s with the evidence comment updated; (3) .github/workflows/ci.yml
+    root-suite step timeout-minutes raised to 20 citing INT-CI-031 headroom, no other
+    workflow change; (4) internal/hostsetup/ciwiring_test.go asserts the three new
+    invariants in its existing source-grep style and go test ./internal/hostsetup/
+    -count=1 passes; (5) go build ./... and go vet ./... clean; bash -n clean on both
+    shell scripts; (6) exactly one commit touching exactly these four files on main
+  status: complete
+  created_at: '2026-09-21T07:25:15.329973+00:00'
+  completed_at: '2026-09-21T07:40:37.380580+00:00'
