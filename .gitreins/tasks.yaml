@@ -2919,3 +2919,16 @@ tasks:
   status: complete
   created_at: '2026-09-21T13:32:18.946882+00:00'
   completed_at: '2026-09-21T14:07:27.315316+00:00'
+- id: INT-CI-033
+  title: 'CI red: stale GAP-128 assertion in TestSpawn_SessionProbeSuccessReturnsReady
+    + non-deterministic installer test fixture'
+  criteria:
+  - 'unit-tests and root-suite jobs on deployBunker/bunker main go green: (1) session_probe_test.go
+    asserts the GAP-128 default contract (empty SshPrivateKey in default spawn response,
+    persisted key on disk) instead of the pre-GAP-128 response-carry assertion; (2)
+    install_test.sh wires fake_apt_cache into the --sshfs=package fixture PATH so
+    SSHFS_TEST_CANDIDATE drives apt-cache policy; (3) go build/vet clean, sh scripts/install_test.sh
+    77/77'
+  status: complete
+  created_at: '2026-09-21T22:24:43.610796+00:00'
+  completed_at: '2026-09-21T22:46:07.272954+00:00'
