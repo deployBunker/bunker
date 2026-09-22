@@ -1,0 +1,21 @@
+{
+  "scheduler_tick_id": "bunker-2026-09-22-15-01-03",
+  "created_at": "2026-09-22T15:12:30-05:00",
+  "wave_budget": 9,
+  "lanes": [
+    {
+      "task_id": "GAP-132",
+      "title": "Key lifecycle — persist keys, Rotate/Revoke RPCs, zero-downtime jwt_secret rotation",
+      "mode": "orphan-recovery-worker-in-main-tree",
+      "reason_single_lane": "Only actionable row this tick is the GAP-132 orphan recovery; the work sits UNCOMMITTED in the main tree (dead worker 20260922_084911, INT-GW-001 class), so it cannot move to a worktree without losing the tree state. No other independent, deps-clean, non-live-host rows available.",
+      "worktree": "/home/kara/bunker",
+      "branch": "main",
+      "worker_model": "glm-5.3-flash",
+      "worker_provider": "zai-glm-default",
+      "brief_path": "/tmp/gap132-brief.md",
+      "worker_log": "/tmp/gap132-worker.log",
+      "orphan_snapshot": "/tmp/gap132-orphan-snapshot/",
+      "dispatched_at": "2026-09-22T15:12:00-05:00"
+    }
+  ]
+}
