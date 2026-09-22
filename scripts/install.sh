@@ -754,10 +754,6 @@ ensure_sshfs_package() {
 # equal SSHFS_PINNED_COMMIT, and the built binary must keep the sha256
 # recorded immediately after the build (before the install moves it).
 ensure_sshfs_source() {
-	command -v meson >/dev/null 2>&1 || refuse "--sshfs=source: meson is not installed — it is required to build sshfs from source (e.g. apt-get install meson ninja-build git)"
-	command -v ninja >/dev/null 2>&1 || refuse "--sshfs=source: ninja is not installed — it is required to build sshfs from source (e.g. apt-get install meson ninja-build git)"
-	command -v git >/dev/null 2>&1 || refuse "--sshfs=source: git is not installed — it is required to clone the pinned sshfs tag"
-
 	es_src=$TMP_DIR/sshfs-src
 	es_build=$TMP_DIR/sshfs-build
 	if [ "$DRY_RUN" = 1 ]; then
@@ -767,6 +763,9 @@ ensure_sshfs_source() {
 		say "dry-run: would record the binary's sha256, then install it to $DEST/sshfs"
 		return 0
 	fi
+	command -v meson >/dev/null 2>&1 || refuse "--sshfs=source: meson is not installed — it is required to build sshfs from source (e.g. apt-get install meson ninja-build git)"
+	command -v ninja >/dev/null 2>&1 || refuse "--sshfs=source: ninja is not installed — it is required to build sshfs from source (e.g. apt-get install meson ninja-build git)"
+	command -v git >/dev/null 2>&1 || refuse "--sshfs=source: git is not installed — it is required to clone the pinned sshfs tag"
 
 	ensure_tmp
 	say "cloning sshfs $SSHFS_PINNED_TAG (depth 1)"
