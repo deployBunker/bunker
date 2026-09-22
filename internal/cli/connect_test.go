@@ -97,6 +97,18 @@ func (m *mockBunkerdServer) QueryAudit(ctx context.Context, req *connect.Request
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }
 
+// GAP-132 key-lifecycle RPCs: unimplemented by this generic mock (the key
+// CLI tests supply their own mocks that set these).
+func (m *mockBunkerdServer) RotateJWTSecret(context.Context, *connect.Request[v1.RotateJWTSecretRequest]) (*connect.Response[v1.RotateJWTSecretResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+func (m *mockBunkerdServer) RevokeKey(context.Context, *connect.Request[v1.RevokeKeyRequest]) (*connect.Response[v1.RevokeKeyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+func (m *mockBunkerdServer) KeyList(context.Context, *connect.Request[v1.KeyListRequest]) (*connect.Response[v1.KeyListResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
 // newTestServer starts an httptest server with a chi router mounting the connect handler.
 func newTestServer(t *testing.T, mock bunkerv1connect.BunkerdHandler) *httptest.Server {
 	t.Helper()

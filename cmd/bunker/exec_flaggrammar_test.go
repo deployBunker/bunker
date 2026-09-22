@@ -86,6 +86,15 @@ func (s *rootExecStubServer) HeartbeatAgent(context.Context, *connect.Request[v1
 func (s *rootExecStubServer) QueryAudit(context.Context, *connect.Request[v1.QueryAuditRequest]) (*connect.Response[v1.QueryAuditResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }
+func (s *rootExecStubServer) RotateJWTSecret(context.Context, *connect.Request[v1.RotateJWTSecretRequest]) (*connect.Response[v1.RotateJWTSecretResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+func (s *rootExecStubServer) RevokeKey(context.Context, *connect.Request[v1.RevokeKeyRequest]) (*connect.Response[v1.RevokeKeyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+func (s *rootExecStubServer) KeyList(context.Context, *connect.Request[v1.KeyListRequest]) (*connect.Response[v1.KeyListResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
 
 // newRootExecStub starts an httptest server serving the stub handler.
 func newRootExecStub(t *testing.T) (*httptest.Server, *rootExecStubServer) {

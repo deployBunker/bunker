@@ -209,7 +209,12 @@ auth:
 agent:
   registry:
     enabled: false
-`, port))
+  # GAP-132: the durable key store lives under base_data_dir. The default
+  # (/var/lib/bunkerd) is root-owned, so a non-root test boot must point the
+  # daemon at a scratch dir — the key store correctly refuses (fail-before-
+  # listen) when it cannot open its store.
+  base_data_dir: %q
+`, port, filepath.Join(t.TempDir(), "data")))
 
 	oldArgs := os.Args
 	os.Args = []string{"bunkerd", "--config", cfgPath}

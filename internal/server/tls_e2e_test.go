@@ -113,6 +113,8 @@ func TestServer_RunWithSelfSignedTLS(t *testing.T) {
 	// host's real /var/lib/bunkerd state nor reconciles (and potentially
 	// destroys) real bunker-* agents on the test host.
 	cfg.Agent.Registry.Enabled = false
+	// GAP-132: keep the key store off the root-owned default data dir too.
+	cfg.Agent.BaseDataDir = tmp + "/data"
 
 	s := New(cfg)
 	ctx, cancel := context.WithCancel(context.Background())

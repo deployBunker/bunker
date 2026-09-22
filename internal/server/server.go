@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -211,7 +212,18 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	// The Bunkerd service handles server-level RPCs (spawn, destroy, etc.) and
 	// must NOT accept agent-scoped sub-keys — only master tokens are allowed.
 	// Agent-scoped keys are handled by the separate Agent service below.
-	s.keyMgr = apikey.NewManager(s.cfg.Auth.JWTSecret)
+	// GAP-132: the API-key manager must be backed by the durable JSONL key
+	// store under the daemon data directory, so issued sub-keys and
+	// revocations survive a restart. A daemon that cannot OPEN the store
+	// must not serve (the GAP-070 fail-before-listen posture): silently
+	// falling back to the in-memory manager would re-create the exact bug
+	// GAP-132 fixes (spawn responses handing out tokens the next restart
+	// forgets).
+	keyMgr, err := apikey.NewManagerAt(s.cfg.Auth.JWTSecret, filepath.Join(s.cfg.Agent.BaseDataDir, "keys"))
+	if err != nil {
+		return fmt.Errorf("api key store unavailable: %w", err)
+	}
+	s.keyMgr = keyMgr
 	s.jwtAuth = auth.NewJWTAuth(s.cfg.Auth.JWTSecret, s.keyMgr)
 	bunkerdAuthInterceptor := auth.NewMasterOnlyAuthInterceptor(s.cfg.Auth.JWTSecret, s.keyMgr, s.cfg.Auth.Token, s.cfg.Auth.Enabled)
 	agentAuthInterceptor := auth.NewJWTAuthInterceptor(s.cfg.Auth.JWTSecret, s.keyMgr, s.cfg.Auth.Token, s.cfg.Auth.Enabled)

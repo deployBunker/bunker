@@ -40,6 +40,21 @@ service Bunkerd {
 
   // Audit trail
   rpc QueryAudit(QueryAuditRequest) returns (QueryAuditResponse);
+
+  // Key lifecycle (GAP-132). All three are MASTER-auth-gated: they sit on the
+  // Bunkerd service, so the master-only interceptor rejects agent-scoped
+  // sub-keys before the handler runs (CodeUnauthenticated), exactly like
+  // SpawnAgent / GetAgentKey.
+  //
+  // RotateJWTSecret swaps the HS256 signing secret WITHOUT downtime: the new
+  // secret signs immediately, while the retired one keeps VALIDATING tokens
+  // for a bounded overlap window (dual accept). The new secret is returned
+  // in the response exactly once — the daemon itself never echoes it again.
+  // RevokeKey kills an API sub-key (and the credentials issued under it)
+  // immediately; KeyList reports active keys without any secret material.
+  rpc RotateJWTSecret(RotateJWTSecretRequest) returns (RotateJWTSecretResponse);
+  rpc RevokeKey(RevokeKeyRequest) returns (RevokeKeyResponse);
+  rpc KeyList(KeyListRequest) returns (KeyListResponse);
 }
 
 // ── Agent Service (scoped sub-key access) ─────────────────────
@@ -442,4 +457,63 @@ message AuditRecord {
 
 message QueryAuditResponse {
   repeated AuditRecord records = 1;
+}
+
+// ── Key lifecycle (GAP-132) ─────────────────────────────────────
+
+// RotateJWTSecretRequest asks the daemon to rotate the HS256 signing secret.
+// overlap_seconds bounds the dual-accept window: for that long after the
+// rotation the RETIRED secret still validates existing tokens (so in-flight
+// clients never see an auth failure), after which it is rejected. 0 selects
+// the daemon default. The window is capped server-side (hard maximum
+// 3600s); values beyond the cap are clamped, not rejected.
+message RotateJWTSecretRequest {
+  uint32 overlap_seconds = 1;
+}
+
+// RotateJWTSecretResponse carries the NEW secret exactly once. It is never
+// stored in plaintext anywhere retrievable again — persist it operator-side
+// (or let the daemon's own 0600 secret file carry it) before losing this
+// response. rotated_at is RFC3339 UTC; overlap_seconds reports the effective
+// window actually applied (after clamping).
+message RotateJWTSecretResponse {
+  string jwt_secret = 1;
+  string rotated_at = 2;
+  uint32 overlap_seconds = 3;
+  // Previous secret's fingerprint (sha256, first 12 hex chars) so an
+  // operator can correlate which secret was retired — never the value.
+  string previous_fingerprint = 4;
+}
+
+// RevokeKeyRequest names an API sub-key by its key ID (as reported by
+// spawn / KeyList). Revocation is immediate: tokens/credentials issued under
+// the key stop validating before the response is sent.
+message RevokeKeyRequest {
+  string key_id = 1;
+}
+
+message RevokeKeyResponse {
+  string key_id = 1;
+  // "revoked" on success.
+  string status = 2;
+}
+
+// KeyListRequest lists active API sub-keys, optionally scoped to one agent.
+message KeyListRequest {
+  // Optional exact agent_id filter ("" = all keys).
+  string agent_id = 1;
+}
+
+// KeyInfo is one key in a KeyListResponse. Metadata only — never a token,
+// hash, or any secret material.
+message KeyInfo {
+  string key_id = 1;
+  string agent_id = 2;
+  string created_at = 3;   // RFC3339
+  string expires_at = 4;   // RFC3339
+  bool revoked = 5;        // revoked keys are listed with revoked=true until they expire out
+}
+
+message KeyListResponse {
+  repeated KeyInfo keys = 1;
 }

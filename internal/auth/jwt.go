@@ -4,12 +4,15 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
@@ -25,10 +28,90 @@ type Claims struct {
 	KeyID   string `json:"key_id,omitempty"`
 }
 
+// DefaultRotateOverlap is the dual-accept window applied when a rotation
+// request does not name one (GAP-132): long enough for in-flight clients to
+// re-authenticate against the new secret, short enough to close a retired
+// key fast. MaxRotateOverlap is the hard ceiling — a larger requested window
+// is clamped, never widened past it.
+const (
+	DefaultRotateOverlap = 10 * time.Minute
+	MaxRotateOverlap     = time.Hour
+)
+
+// rotatingSecret holds the live and (optionally) the most recently retired
+// HS256 secrets. The current secret signs immediately after a rotate; the
+// retired one keeps VALIDATING until previousRetireAt, after which tokens
+// signed with it are rejected (dual accept with a hard expiry — GAP-132).
+// All access is under mu: rotation races with request authentication.
+type rotatingSecret struct {
+	mu               sync.RWMutex
+	current          []byte
+	previous         []byte
+	previousRetireAt time.Time // zero when no retired secret is honored
+}
+
+// set installs new as the signing secret and moves the old one into the
+// overlap slot for the given window.
+func (r *rotatingSecret) set(newSecret string, overlap time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.current) > 0 {
+		r.previous = r.current
+		r.previousRetireAt = time.Now().Add(overlap)
+	}
+	r.current = []byte(newSecret)
+}
+
+// signing returns the secret tokens are signed with (always current).
+func (r *rotatingSecret) signing() []byte {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.current
+}
+
+// accepting returns every secret that currently validates tokens: the
+// current one, plus the previous one while the overlap window is open
+// (GAP-132 dual accept). Copies are returned so callers cannot mutate the
+// live key material through a slice alias. The bytes are returned verbatim
+// — truncating or zero-padding to a fixed width would validate under a
+// DIFFERENT key than issueToken signed with whenever a secret is not
+// exactly that width (a freshly-issued token would then fail its own
+// signature check).
+func (r *rotatingSecret) accepting() [][]byte {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([][]byte, 0, 2)
+	cur := make([]byte, len(r.current))
+	copy(cur, r.current)
+	out = append(out, cur)
+	if len(r.previous) > 0 && (r.previousRetireAt.IsZero() || time.Now().Before(r.previousRetireAt)) {
+		prev := make([]byte, len(r.previous))
+		copy(prev, r.previous)
+		out = append(out, prev)
+	}
+	return out
+}
+
+// fingerprint returns "sha256:<12 hex>" of the current secret — enough to
+// correlate which secret was retired, never the value.
+func (r *rotatingSecret) fingerprint() string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return FingerprintSecret(string(r.current))
+}
+
+// FingerprintSecret reduces a secret to "sha256:<first 12 hex>" of its
+// SHA-256, the same disclosure shape the auth layer already uses for
+// presented tokens (auth.FingerprintToken). Safe for audit trails.
+func FingerprintSecret(secret string) string {
+	sum := sha256.Sum256([]byte(secret))
+	return "sha256:" + hex.EncodeToString(sum[:6])
+}
+
 // JWTAuth validates incoming requests against JWT tokens (HS256).
 // Supports a top-level master token and per-agent scoped sub-keys.
 type JWTAuth struct {
-	secret        []byte
+	secret        *rotatingSecret
 	keyMgr        *apikey.Manager
 	masterKey     string
 	staticToken   string // optional fallback static bearer token
@@ -47,7 +130,7 @@ type JWTAuth struct {
 // against the apikey manager as opaque sub-keys.
 func NewJWTAuth(secret string, keyMgr *apikey.Manager) *JWTAuth {
 	return &JWTAuth{
-		secret:    []byte(secret),
+		secret:    &rotatingSecret{current: []byte(secret)},
 		keyMgr:    keyMgr,
 		masterKey: secret,
 	}
@@ -57,7 +140,7 @@ func NewJWTAuth(secret string, keyMgr *apikey.Manager) *JWTAuth {
 // Only master tokens (with no agent_id claim) are accepted.
 func NewMasterOnlyJWTAuth(secret string, keyMgr *apikey.Manager) *JWTAuth {
 	return &JWTAuth{
-		secret:        []byte(secret),
+		secret:        &rotatingSecret{current: []byte(secret)},
 		keyMgr:        keyMgr,
 		masterKey:     secret,
 		masterKeyOnly: true,
@@ -79,6 +162,27 @@ func NewMasterOnlyJWTAuthWithStaticFallback(secret, staticToken string, keyMgr *
 	a := NewMasterOnlyJWTAuth(secret, keyMgr)
 	a.staticToken = staticToken
 	return a
+}
+
+// RotateSecret installs newSecret as the authoritative signing secret
+// WITHOUT downtime (GAP-132): the previous secret keeps validating existing
+// tokens for the overlap window (0 = DefaultRotateOverlap, values beyond
+// MaxRotateOverlap are clamped to it) and is rejected afterwards. The
+// returned fingerprint names the retired secret (never its value). Tokens
+// minted after this call are signed with newSecret immediately.
+func (a *JWTAuth) RotateSecret(newSecret string, overlap time.Duration) (previousFingerprint string, err error) {
+	if len(strings.TrimSpace(newSecret)) < 32 {
+		return "", fmt.Errorf("jwt secret must be at least 32 bytes")
+	}
+	switch {
+	case overlap <= 0:
+		overlap = DefaultRotateOverlap
+	case overlap > MaxRotateOverlap:
+		overlap = MaxRotateOverlap
+	}
+	prev := a.secret.fingerprint()
+	a.secret.set(newSecret, overlap)
+	return prev, nil
 }
 
 // GenerateSecret creates a new random HS256 secret of the given byte length.
@@ -107,7 +211,8 @@ func (a *JWTAuth) IssueAgentToken(agentID string, ttl time.Duration) (string, er
 }
 
 func (a *JWTAuth) issueToken(agentID, keyID string, ttl time.Duration) (string, error) {
-	if len(a.secret) == 0 {
+	secret := a.secret.signing()
+	if len(secret) == 0 {
 		return "", fmt.Errorf("jwt secret not configured")
 	}
 	now := time.Now()
@@ -120,7 +225,7 @@ func (a *JWTAuth) issueToken(agentID, keyID string, ttl time.Duration) (string, 
 		AgentID: agentID,
 		KeyID:   keyID,
 	}
-	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(a.secret)
+	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(secret)
 }
 
 // WrapUnary validates the JWT on unary requests.
@@ -227,21 +332,35 @@ func (a *JWTAuth) authenticate(header http.Header, source, procedure string) (*C
 }
 
 func (a *JWTAuth) parseToken(token string) (*Claims, error) {
-	if len(a.secret) == 0 {
+	accepted := a.secret.accepting()
+	if len(accepted) == 0 {
 		return nil, errors.New("jwt secret not configured")
 	}
 
 	claims := &Claims{}
-	_, err := jwt.ParseWithClaims(token, claims, func(t *jwt.Token) (interface{}, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+	// Dual accept (GAP-132): the current secret validates first; while the
+	// overlap window is open the retired secret validates too, so tokens
+	// minted before a rotation keep working. After the window expires the
+	// retired secret is no longer in the accept set and those tokens fail.
+	var lastErr error
+	for _, secret := range accepted {
+		key := make([]byte, len(secret))
+		copy(key, secret[:])
+		_, err := jwt.ParseWithClaims(token, claims, func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			}
+			return key, nil
+		}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
+		if err == nil {
+			return claims, nil
 		}
-		return a.secret, nil
-	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
-	if err != nil {
-		return nil, err
+		lastErr = err
 	}
-	return claims, nil
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, errors.New("invalid token")
 }
 
 func isLikelyJWT(token string) bool {

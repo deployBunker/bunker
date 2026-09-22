@@ -65,6 +65,12 @@ const (
 	BunkerdHeartbeatAgentProcedure = "/bunker.v1.Bunkerd/HeartbeatAgent"
 	// BunkerdQueryAuditProcedure is the fully-qualified name of the Bunkerd's QueryAudit RPC.
 	BunkerdQueryAuditProcedure = "/bunker.v1.Bunkerd/QueryAudit"
+	// BunkerdRotateJWTSecretProcedure is the fully-qualified name of the Bunkerd's RotateJWTSecret RPC.
+	BunkerdRotateJWTSecretProcedure = "/bunker.v1.Bunkerd/RotateJWTSecret"
+	// BunkerdRevokeKeyProcedure is the fully-qualified name of the Bunkerd's RevokeKey RPC.
+	BunkerdRevokeKeyProcedure = "/bunker.v1.Bunkerd/RevokeKey"
+	// BunkerdKeyListProcedure is the fully-qualified name of the Bunkerd's KeyList RPC.
+	BunkerdKeyListProcedure = "/bunker.v1.Bunkerd/KeyList"
 	// AgentGetInfoProcedure is the fully-qualified name of the Agent's GetInfo RPC.
 	AgentGetInfoProcedure = "/bunker.v1.Agent/GetInfo"
 	// AgentMetricsProcedure is the fully-qualified name of the Agent's Metrics RPC.
@@ -82,11 +88,13 @@ type BunkerdClient interface {
 	SpawnAgent(context.Context, *connect.Request[v1.SpawnAgentRequest]) (*connect.Response[v1.SpawnAgentResponse], error)
 	DestroyAgent(context.Context, *connect.Request[v1.DestroyAgentRequest]) (*connect.Response[v1.DestroyAgentResponse], error)
 	// GAP-071: pause / resume / restart an agent WITHOUT destroying it.
-	//   stop    — SIGTERM the agent's session units + processes; the Linux user,
-	//             home directory, container and allocated port range all SURVIVE
-	//             (status becomes "stopped"; the tracker record is kept);
-	//   start   — re-arm a stopped agent (status back to "running");
-	//   restart — stop + start in one call and reset the heartbeat expiry.
+	//
+	//	stop    — SIGTERM the agent's session units + processes; the Linux user,
+	//	          home directory, container and allocated port range all SURVIVE
+	//	          (status becomes "stopped"; the tracker record is kept);
+	//	start   — re-arm a stopped agent (status back to "running");
+	//	restart — stop + start in one call and reset the heartbeat expiry.
+	//
 	// Exec/Run/Heartbeat against a stopped agent fail with a DISTINCT
 	// FailedPrecondition carrying the token "agent_stopped" — never NotFound.
 	StopAgent(context.Context, *connect.Request[v1.StopAgentRequest]) (*connect.Response[v1.StopAgentResponse], error)
@@ -105,6 +113,20 @@ type BunkerdClient interface {
 	HeartbeatAgent(context.Context, *connect.Request[v1.HeartbeatAgentRequest]) (*connect.Response[v1.HeartbeatAgentResponse], error)
 	// Audit trail
 	QueryAudit(context.Context, *connect.Request[v1.QueryAuditRequest]) (*connect.Response[v1.QueryAuditResponse], error)
+	// Key lifecycle (GAP-132). All three are MASTER-auth-gated: they sit on the
+	// Bunkerd service, so the master-only interceptor rejects agent-scoped
+	// sub-keys before the handler runs (CodeUnauthenticated), exactly like
+	// SpawnAgent / GetAgentKey.
+	//
+	// RotateJWTSecret swaps the HS256 signing secret WITHOUT downtime: the new
+	// secret signs immediately, while the retired one keeps VALIDATING tokens
+	// for a bounded overlap window (dual accept). The new secret is returned
+	// in the response exactly once — the daemon itself never echoes it again.
+	// RevokeKey kills an API sub-key (and the credentials issued under it)
+	// immediately; KeyList reports active keys without any secret material.
+	RotateJWTSecret(context.Context, *connect.Request[v1.RotateJWTSecretRequest]) (*connect.Response[v1.RotateJWTSecretResponse], error)
+	RevokeKey(context.Context, *connect.Request[v1.RevokeKeyRequest]) (*connect.Response[v1.RevokeKeyResponse], error)
+	KeyList(context.Context, *connect.Request[v1.KeyListRequest]) (*connect.Response[v1.KeyListResponse], error)
 }
 
 // NewBunkerdClient constructs a client for the bunker.v1.Bunkerd service. By default, it uses the
@@ -208,26 +230,47 @@ func NewBunkerdClient(httpClient connect.HTTPClient, baseURL string, opts ...con
 			connect.WithSchema(bunkerdMethods.ByName("QueryAudit")),
 			connect.WithClientOptions(opts...),
 		),
+		rotateJWTSecret: connect.NewClient[v1.RotateJWTSecretRequest, v1.RotateJWTSecretResponse](
+			httpClient,
+			baseURL+BunkerdRotateJWTSecretProcedure,
+			connect.WithSchema(bunkerdMethods.ByName("RotateJWTSecret")),
+			connect.WithClientOptions(opts...),
+		),
+		revokeKey: connect.NewClient[v1.RevokeKeyRequest, v1.RevokeKeyResponse](
+			httpClient,
+			baseURL+BunkerdRevokeKeyProcedure,
+			connect.WithSchema(bunkerdMethods.ByName("RevokeKey")),
+			connect.WithClientOptions(opts...),
+		),
+		keyList: connect.NewClient[v1.KeyListRequest, v1.KeyListResponse](
+			httpClient,
+			baseURL+BunkerdKeyListProcedure,
+			connect.WithSchema(bunkerdMethods.ByName("KeyList")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // bunkerdClient implements BunkerdClient.
 type bunkerdClient struct {
-	serverInfo     *connect.Client[v1.ServerInfoRequest, v1.ServerInfoResponse]
-	serverMetrics  *connect.Client[v1.ServerMetricsRequest, v1.ServerMetricsResponse]
-	spawnAgent     *connect.Client[v1.SpawnAgentRequest, v1.SpawnAgentResponse]
-	destroyAgent   *connect.Client[v1.DestroyAgentRequest, v1.DestroyAgentResponse]
-	stopAgent      *connect.Client[v1.StopAgentRequest, v1.StopAgentResponse]
-	startAgent     *connect.Client[v1.StartAgentRequest, v1.StartAgentResponse]
-	restartAgent   *connect.Client[v1.RestartAgentRequest, v1.RestartAgentResponse]
-	listAgents     *connect.Client[v1.ListAgentsRequest, v1.ListAgentsResponse]
-	getAgent       *connect.Client[v1.GetAgentRequest, v1.GetAgentResponse]
-	getAgentKey    *connect.Client[v1.GetAgentKeyRequest, v1.GetAgentKeyResponse]
-	agentMetrics   *connect.Client[v1.AgentMetricsRequest, v1.AgentMetricsResponse]
-	execAgent      *connect.Client[v1.ExecAgentRequest, v1.ExecAgentResponse]
-	runAgent       *connect.Client[v1.RunAgentRequest, v1.RunAgentResponse]
-	heartbeatAgent *connect.Client[v1.HeartbeatAgentRequest, v1.HeartbeatAgentResponse]
-	queryAudit     *connect.Client[v1.QueryAuditRequest, v1.QueryAuditResponse]
+	serverInfo      *connect.Client[v1.ServerInfoRequest, v1.ServerInfoResponse]
+	serverMetrics   *connect.Client[v1.ServerMetricsRequest, v1.ServerMetricsResponse]
+	spawnAgent      *connect.Client[v1.SpawnAgentRequest, v1.SpawnAgentResponse]
+	destroyAgent    *connect.Client[v1.DestroyAgentRequest, v1.DestroyAgentResponse]
+	stopAgent       *connect.Client[v1.StopAgentRequest, v1.StopAgentResponse]
+	startAgent      *connect.Client[v1.StartAgentRequest, v1.StartAgentResponse]
+	restartAgent    *connect.Client[v1.RestartAgentRequest, v1.RestartAgentResponse]
+	listAgents      *connect.Client[v1.ListAgentsRequest, v1.ListAgentsResponse]
+	getAgent        *connect.Client[v1.GetAgentRequest, v1.GetAgentResponse]
+	getAgentKey     *connect.Client[v1.GetAgentKeyRequest, v1.GetAgentKeyResponse]
+	agentMetrics    *connect.Client[v1.AgentMetricsRequest, v1.AgentMetricsResponse]
+	execAgent       *connect.Client[v1.ExecAgentRequest, v1.ExecAgentResponse]
+	runAgent        *connect.Client[v1.RunAgentRequest, v1.RunAgentResponse]
+	heartbeatAgent  *connect.Client[v1.HeartbeatAgentRequest, v1.HeartbeatAgentResponse]
+	queryAudit      *connect.Client[v1.QueryAuditRequest, v1.QueryAuditResponse]
+	rotateJWTSecret *connect.Client[v1.RotateJWTSecretRequest, v1.RotateJWTSecretResponse]
+	revokeKey       *connect.Client[v1.RevokeKeyRequest, v1.RevokeKeyResponse]
+	keyList         *connect.Client[v1.KeyListRequest, v1.KeyListResponse]
 }
 
 // ServerInfo calls bunker.v1.Bunkerd.ServerInfo.
@@ -305,6 +348,21 @@ func (c *bunkerdClient) QueryAudit(ctx context.Context, req *connect.Request[v1.
 	return c.queryAudit.CallUnary(ctx, req)
 }
 
+// RotateJWTSecret calls bunker.v1.Bunkerd.RotateJWTSecret.
+func (c *bunkerdClient) RotateJWTSecret(ctx context.Context, req *connect.Request[v1.RotateJWTSecretRequest]) (*connect.Response[v1.RotateJWTSecretResponse], error) {
+	return c.rotateJWTSecret.CallUnary(ctx, req)
+}
+
+// RevokeKey calls bunker.v1.Bunkerd.RevokeKey.
+func (c *bunkerdClient) RevokeKey(ctx context.Context, req *connect.Request[v1.RevokeKeyRequest]) (*connect.Response[v1.RevokeKeyResponse], error) {
+	return c.revokeKey.CallUnary(ctx, req)
+}
+
+// KeyList calls bunker.v1.Bunkerd.KeyList.
+func (c *bunkerdClient) KeyList(ctx context.Context, req *connect.Request[v1.KeyListRequest]) (*connect.Response[v1.KeyListResponse], error) {
+	return c.keyList.CallUnary(ctx, req)
+}
+
 // BunkerdHandler is an implementation of the bunker.v1.Bunkerd service.
 type BunkerdHandler interface {
 	// Server management
@@ -314,11 +372,13 @@ type BunkerdHandler interface {
 	SpawnAgent(context.Context, *connect.Request[v1.SpawnAgentRequest]) (*connect.Response[v1.SpawnAgentResponse], error)
 	DestroyAgent(context.Context, *connect.Request[v1.DestroyAgentRequest]) (*connect.Response[v1.DestroyAgentResponse], error)
 	// GAP-071: pause / resume / restart an agent WITHOUT destroying it.
-	//   stop    — SIGTERM the agent's session units + processes; the Linux user,
-	//             home directory, container and allocated port range all SURVIVE
-	//             (status becomes "stopped"; the tracker record is kept);
-	//   start   — re-arm a stopped agent (status back to "running");
-	//   restart — stop + start in one call and reset the heartbeat expiry.
+	//
+	//	stop    — SIGTERM the agent's session units + processes; the Linux user,
+	//	          home directory, container and allocated port range all SURVIVE
+	//	          (status becomes "stopped"; the tracker record is kept);
+	//	start   — re-arm a stopped agent (status back to "running");
+	//	restart — stop + start in one call and reset the heartbeat expiry.
+	//
 	// Exec/Run/Heartbeat against a stopped agent fail with a DISTINCT
 	// FailedPrecondition carrying the token "agent_stopped" — never NotFound.
 	StopAgent(context.Context, *connect.Request[v1.StopAgentRequest]) (*connect.Response[v1.StopAgentResponse], error)
@@ -337,6 +397,20 @@ type BunkerdHandler interface {
 	HeartbeatAgent(context.Context, *connect.Request[v1.HeartbeatAgentRequest]) (*connect.Response[v1.HeartbeatAgentResponse], error)
 	// Audit trail
 	QueryAudit(context.Context, *connect.Request[v1.QueryAuditRequest]) (*connect.Response[v1.QueryAuditResponse], error)
+	// Key lifecycle (GAP-132). All three are MASTER-auth-gated: they sit on the
+	// Bunkerd service, so the master-only interceptor rejects agent-scoped
+	// sub-keys before the handler runs (CodeUnauthenticated), exactly like
+	// SpawnAgent / GetAgentKey.
+	//
+	// RotateJWTSecret swaps the HS256 signing secret WITHOUT downtime: the new
+	// secret signs immediately, while the retired one keeps VALIDATING tokens
+	// for a bounded overlap window (dual accept). The new secret is returned
+	// in the response exactly once — the daemon itself never echoes it again.
+	// RevokeKey kills an API sub-key (and the credentials issued under it)
+	// immediately; KeyList reports active keys without any secret material.
+	RotateJWTSecret(context.Context, *connect.Request[v1.RotateJWTSecretRequest]) (*connect.Response[v1.RotateJWTSecretResponse], error)
+	RevokeKey(context.Context, *connect.Request[v1.RevokeKeyRequest]) (*connect.Response[v1.RevokeKeyResponse], error)
+	KeyList(context.Context, *connect.Request[v1.KeyListRequest]) (*connect.Response[v1.KeyListResponse], error)
 }
 
 // NewBunkerdHandler builds an HTTP handler from the service implementation. It returns the path on
@@ -436,6 +510,24 @@ func NewBunkerdHandler(svc BunkerdHandler, opts ...connect.HandlerOption) (strin
 		connect.WithSchema(bunkerdMethods.ByName("QueryAudit")),
 		connect.WithHandlerOptions(opts...),
 	)
+	bunkerdRotateJWTSecretHandler := connect.NewUnaryHandler(
+		BunkerdRotateJWTSecretProcedure,
+		svc.RotateJWTSecret,
+		connect.WithSchema(bunkerdMethods.ByName("RotateJWTSecret")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bunkerdRevokeKeyHandler := connect.NewUnaryHandler(
+		BunkerdRevokeKeyProcedure,
+		svc.RevokeKey,
+		connect.WithSchema(bunkerdMethods.ByName("RevokeKey")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bunkerdKeyListHandler := connect.NewUnaryHandler(
+		BunkerdKeyListProcedure,
+		svc.KeyList,
+		connect.WithSchema(bunkerdMethods.ByName("KeyList")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/bunker.v1.Bunkerd/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case BunkerdServerInfoProcedure:
@@ -468,6 +560,12 @@ func NewBunkerdHandler(svc BunkerdHandler, opts ...connect.HandlerOption) (strin
 			bunkerdHeartbeatAgentHandler.ServeHTTP(w, r)
 		case BunkerdQueryAuditProcedure:
 			bunkerdQueryAuditHandler.ServeHTTP(w, r)
+		case BunkerdRotateJWTSecretProcedure:
+			bunkerdRotateJWTSecretHandler.ServeHTTP(w, r)
+		case BunkerdRevokeKeyProcedure:
+			bunkerdRevokeKeyHandler.ServeHTTP(w, r)
+		case BunkerdKeyListProcedure:
+			bunkerdKeyListHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -535,6 +633,18 @@ func (UnimplementedBunkerdHandler) HeartbeatAgent(context.Context, *connect.Requ
 
 func (UnimplementedBunkerdHandler) QueryAudit(context.Context, *connect.Request[v1.QueryAuditRequest]) (*connect.Response[v1.QueryAuditResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.QueryAudit is not implemented"))
+}
+
+func (UnimplementedBunkerdHandler) RotateJWTSecret(context.Context, *connect.Request[v1.RotateJWTSecretRequest]) (*connect.Response[v1.RotateJWTSecretResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.RotateJWTSecret is not implemented"))
+}
+
+func (UnimplementedBunkerdHandler) RevokeKey(context.Context, *connect.Request[v1.RevokeKeyRequest]) (*connect.Response[v1.RevokeKeyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.RevokeKey is not implemented"))
+}
+
+func (UnimplementedBunkerdHandler) KeyList(context.Context, *connect.Request[v1.KeyListRequest]) (*connect.Response[v1.KeyListResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.KeyList is not implemented"))
 }
 
 // AgentClient is a client for the bunker.v1.Agent service.

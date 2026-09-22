@@ -31,6 +31,10 @@ func gateTestConfig(t *testing.T) *config.Config {
 	cfg.Auth.Enabled = false
 	cfg.Audit.Enabled = false
 	cfg.Agent.Registry.Enabled = false
+	// GAP-132: the durable key store lives under base_data_dir; the default
+	// (/var/lib/bunkerd) is root-owned on a test host and would refuse to
+	// open before any TLS gate is exercised. Point it at a scratch dir.
+	cfg.Agent.BaseDataDir = filepath.Join(t.TempDir(), "data")
 	// Run validates the config, so TLS knobs must be inert unless the case
 	// turns them on.
 	cfg.TLS.Enabled = false

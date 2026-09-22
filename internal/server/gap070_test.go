@@ -153,6 +153,9 @@ func TestServerRunRefusesWithoutDurableRegistry(t *testing.T) {
 	cfg.Server.RESTAddr = ""
 	cfg.Auth.Enabled = false
 	cfg.Audit.Enabled = false
+	// GAP-132: the key store must OPEN cleanly here (scratch data dir) so
+	// the failure this test pins is the registry's, not the key store's.
+	cfg.Agent.BaseDataDir = t.TempDir() + "/data"
 	// /proc is not writable: opening (and creating the parent of) the
 	// registry here always fails.
 	cfg.Agent.Registry.Path = "/proc/bunker-does-not-exist/agents.jsonl"
