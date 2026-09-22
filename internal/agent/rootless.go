@@ -652,17 +652,8 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 	// BEFORE the manager start (INT-CI-008). This block is kept as insurance for
 	// the install step, but it is no longer the only place the directory is
 	// created.
-	if err := os.MkdirAll(stdRuntimeDir, 0700); err != nil {
-		return fmt.Errorf("create runtime dir %s: %w", stdRuntimeDir, err)
-	}
-	// The runtime dir is created by logind as the agent user, so ownership is
-	// already correct in the fresh path. Do NOT chown recursively: on
-	// desktop-flavoured hosts the user manager mounts gvfsd-fuse at
-	// /run/user/<uid>/gvfs, and a FUSE mount without allow_other denies even
-	// root (chown -R / find -xdev both fail with "Permission denied"). A
-	// non-recursive chown of the top-level dir never descends into the mount.
-	if out, err := rootHostRunner(ctx, "chown", username+":", stdRuntimeDir); err != nil {
-		return fmt.Errorf("chown runtime dir %s: %w (output: %s)", stdRuntimeDir, err, string(out))
+	if err := ensureInstallRuntimeDir(ctx, username, uid, stdRuntimeDir); err != nil {
+		return err
 	}
 
 	// Download the installer into the agent's home as root (the installer will
@@ -770,6 +761,50 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 		logger.Warn("failed to chown agent home after rootless install", "user", username, "error", err, "output", string(out))
 	}
 
+	return nil
+}
+
+// ensureInstallRuntimeDir is the install-step insurance for the agent's
+// standard systemd runtime directory (/run/user/<uid>): MkdirAll, then a
+// NON-RECURSIVE chown to the agent user.
+//
+// The runtime dir is created by logind as the agent user, so ownership is
+// already correct in the fresh path. Do NOT chown recursively: on
+// desktop-flavoured hosts the user manager mounts gvfsd-fuse at
+// /run/user/<uid>/gvfs, and a FUSE mount without allow_other denies even
+// root (chown -R / find -xdev both fail with "Permission denied"). A
+// non-recursive chown of the top-level dir never descends into the mount.
+//
+// bringUpUserManager created and ownership-verified this directory BEFORE the
+// manager start (INT-CI-008), but a concurrent logind teardown for the same
+// uid (loginctl terminate-user from a prior rollback, or user@.service stop
+// after a linger flip on a CI runner that reuses the uid) can remove the
+// directory in the window between this function's MkdirAll and its chown; the
+// chown then hits ENOENT and the whole spawn fails ("chown runtime dir
+// /run/user/<uid>: exit status 1 (output: chown: cannot access ...: No such
+// file or directory)", INT-CI-035). On that ENOENT the directory is recreated
+// once and the same non-recursive chown re-run; only a second failure fails
+// the spawn.
+func ensureInstallRuntimeDir(ctx context.Context, username string, uid int, stdRuntimeDir string) error {
+	if err := os.MkdirAll(stdRuntimeDir, 0700); err != nil {
+		return fmt.Errorf("create runtime dir %s: %w", stdRuntimeDir, err)
+	}
+	out, err := rootHostRunner(ctx, "chown", username+":", stdRuntimeDir)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, os.ErrNotExist) && !strings.Contains(err.Error()+" "+string(out), "No such file or directory") {
+		return fmt.Errorf("chown runtime dir %s: %w (output: %s)", stdRuntimeDir, err, string(out))
+	}
+	// The runtime dir vanished between the MkdirAll and the chown (logind
+	// teardown for the reused uid). Recreate it once and re-run the SAME
+	// non-recursive chown; do not widen this into a recursive repair.
+	if err := os.MkdirAll(stdRuntimeDir, 0700); err != nil {
+		return fmt.Errorf("create runtime dir %s after teardown race: %w", stdRuntimeDir, err)
+	}
+	if out, err := rootHostRunner(ctx, "chown", username+":", stdRuntimeDir); err != nil {
+		return fmt.Errorf("chown runtime dir %s: %w (output: %s)", stdRuntimeDir, err, string(out))
+	}
 	return nil
 }
 
