@@ -3,6 +3,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -506,9 +507,16 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// overrides, and rides the slice drop-in (below) and the R2 landing check.
 	unitKnobs, sliceKnobs := KnobsForPreset(preset, cpuQuota, memMax, diskMax, maxProcs, maxFiles)
 	containment := resolveContainmentKnobs(preset, memMax, m.cfg.Agent)
-	if extra := sliceContainmentKnobs(containment); len(extra) > 0 {
-		sliceKnobs = append(sliceKnobs, extra...)
+	// INT-CI-37: the containment render is the FIRST thing that can fail for
+	// knob reasons, and it must fail LOUD before systemd-run creates any
+	// unit state: an explicit IOWriteBandwidthMax request whose whole-disk
+	// device cannot be resolved is a StageSliceLimits failure naming the
+	// knob — never a silently-omitted property (the R2 no-silent-no-op rule).
+	containKnobs, containErr := sliceContainmentKnobs(containment)
+	if containErr != nil {
+		return nil, fail(StageSliceLimits, containErr)
 	}
+	sliceKnobs = append(sliceKnobs, containKnobs...)
 	systemdArgs, rootlessEnv := buildRootlessDockerdArgs(dockerdUnitArgs{
 		AgentID:        agentID,
 		UnitName:       unitName,
@@ -534,18 +542,6 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	cmd.Env = append(os.Environ(), rootlessEnv...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return nil, fail(StageDockerdStart, fmt.Errorf("systemd-run rootless dockerd failed: %w (output: %s)", err, string(out)))
-	}
-
-	// ── Step 5a.1: R2 containment landing check (GAP-118) ───────────
-	// The no-silent-no-op rule: every requested knob is read back from the
-	// LIVE cgroup of the agent's user slice and compared; a knob that cannot
-	// be verified FAILS THE SPAWN (never a silent pass — an unenforced
-	// default is worse than an absent one, shadow-proc B2). Knobs the tier
-	// did not request are skipped, not failed. The check runs AFTER the unit
-	// start so the slice drop-in has been consumed and its properties are
-	// visible in the cgroup; failures surface at the new slice-limits stage.
-	if err := m.verifyContainmentLanding(u.Uid, containment); err != nil {
-		return nil, fail(StageSliceLimits, err)
 	}
 
 	// ── Step 5b: Verify dockerd actually started ─────────────────────
@@ -605,9 +601,30 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// (KnobsForPreset) as the unit argv — both enforcement points route through
 	// one tier resolution, so a tier that narrows a knob can never narrow only
 	// one surface.
+	//
+	// INT-CI-37: the apply step now carries the R2 containment landing check
+	// with it — the slice drop-in write AND its daemon-reload MUST land before
+	// verifyContainmentLanding reads the live cgroup. The pre-fix order
+	// (check right after systemd-run, drop-in written minutes later) read
+	// memory.swap.max = "max" off the untouched slice and failed EVERY root
+	// spawn at StageSliceLimits (CI run 35835000060). The verify half re-reads
+	// the cgroup a bounded number of times, so a systemd that consumes the
+	// drop-in slightly after daemon-reload returns still converges — without
+	// ever weakening the check: exhaustion reports requested-versus-observed
+	// and fails the spawn.
 	createdUserSlice = false
-	dropinContent, sliceErr := applyUserSliceLimits(ctx, u, cpuQuota, memMax, diskMax, maxProcs, maxFiles, sliceKnobs, m.logger)
+	dropinContent, sliceErr := m.applyUserSliceLimitsAndVerify(ctx, u, cpuQuota, memMax, diskMax, maxProcs, maxFiles, sliceKnobs, containment)
 	if sliceErr != nil {
+		// The drop-in write itself failing stays the documented best-effort
+		// degradation (agent user constrained by the dockerd unit only). But
+		// a drop-in that WROTE and then failed its containment landing check
+		// is a hard spawn failure at slice-limits — an unenforced containment
+		// default must never pass silently.
+		if !errors.Is(sliceErr, errSliceApplyWrite) {
+			m.logger.Error("slice-limits stage failed; agent will not be reported ready",
+				"agent_id", agentID, "stage", StageSliceLimits, "error", sliceErr)
+			return nil, fail(StageSliceLimits, sliceErr)
+		}
 		m.logger.Warn("failed to apply user slice limits; agent user is unconstrained except for dockerd",
 			"agent_id", agentID, "error", sliceErr)
 	} else {
@@ -984,7 +1001,8 @@ func applyUserSliceLimits(ctx context.Context, u *user.User, cpuQuota float64, m
 	sliceName := fmt.Sprintf("user-%s.slice", u.Uid)
 	dropinDir := userSliceDropinDir(u.Uid)
 	if err := os.MkdirAll(dropinDir, 0755); err != nil {
-		return "", fmt.Errorf("mkdir %s: %w", dropinDir, err)
+		// INT-CI-37: the whole write leg is degradable — mark it.
+		return "", fmt.Errorf("%w: mkdir %s: %v", errSliceApplyWrite, dropinDir, err)
 	}
 
 	if len(sliceKnobs) == 0 {
@@ -999,14 +1017,19 @@ func applyUserSliceLimits(ctx context.Context, u *user.User, cpuQuota float64, m
 
 	confPath := filepath.Join(dropinDir, "50-bunker.conf")
 	if err := os.WriteFile(confPath, []byte(content), 0644); err != nil {
-		return "", fmt.Errorf("write %s: %w", confPath, err)
+		// INT-CI-37: the write is the DEGRADABLE leg — wrap it in the
+		// errSliceApplyWrite sentinel so the caller (the ordered gate) can
+		// tell a failed write apart from a failed landing check.
+		return "", fmt.Errorf("%w: write %s: %v", errSliceApplyWrite, confPath, err)
 	}
 	logger.Info("wrote user slice drop-in", "slice", sliceName, "path", confPath)
 
 	// Reload systemd so the slice picks up the new limits immediately.
-	cmd := exec.CommandContext(ctx, "systemctl", "daemon-reload")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("daemon-reload: %w (output: %s)", err, string(out))
+	// INT-CI-37: this runs through the sliceApplySystemctl seam and MUST
+	// complete before the caller's landing check reads the cgroup — the
+	// check only ever verifies what the drop-in systemd has consumed.
+	if out, err := sliceApplySystemctl(ctx, "systemctl", "daemon-reload"); err != nil {
+		return "", fmt.Errorf("%w: daemon-reload: %v (output: %s)", errSliceApplyWrite, err, string(out))
 	}
 	return content, nil
 }

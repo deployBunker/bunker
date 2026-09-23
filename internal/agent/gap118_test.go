@@ -65,7 +65,10 @@ func TestGAP118_TierTableMatchesMatrix(t *testing.T) {
 			// The merged resolution (what the spawn path consumes) derives
 			// the concrete properties for the baseline limits.
 			r := resolveContainmentKnobs(tt.tier, memMax, config.AgentConfig{})
-			extra := sliceContainmentKnobs(r)
+			extra, extraErr := sliceContainmentKnobs(r)
+			if extraErr != nil {
+				t.Fatalf("tier %q containment render failed: %v", tt.tier, extraErr)
+			}
 			if tt.tier == config.SafetyPresetOpen {
 				if len(extra) != 0 {
 					t.Fatalf("open tier emitted containment properties %v (bar-swap on open is the measured-UNSAFE direction)", extra)
@@ -116,8 +119,8 @@ func TestGAP118_SwapBarNeverOnOpen(t *testing.T) {
 	if r.swapBarred {
 		t.Fatal("open tier resolved swapBarred=true")
 	}
-	if extra := sliceContainmentKnobs(r); len(extra) != 0 {
-		t.Fatalf("open tier emitted %v", extra)
+	if extra, extraErr := sliceContainmentKnobs(r); extraErr != nil || len(extra) != 0 {
+		t.Fatalf("open tier emitted %v (err %v)", extra, extraErr)
 	}
 	// Positive override values must not arm the bar either (they are not
 	// valid bar-swap requests; bar is a tier-table verdict).
@@ -147,8 +150,8 @@ func TestGAP118_AdminOverrideReleasePrecedence(t *testing.T) {
 	if !r.swapOverride {
 		t.Fatal("the release was not reported (swapOverride=false)")
 	}
-	if extra := sliceContainmentKnobs(r); len(extra) != 1 || extra[0].Name != "MemoryHigh" {
-		t.Fatalf("released tier emitted %v, want only the MemoryHigh cushion", extra)
+	if extra, extraErr := sliceContainmentKnobs(r); extraErr != nil || len(extra) != 1 || extra[0].Name != "MemoryHigh" {
+		t.Fatalf("released tier emitted %v (err %v), want only the MemoryHigh cushion", extra, extraErr)
 	}
 	// Release via the flat field.
 	r = resolveContainmentKnobs(config.SafetyPresetStandard, 4<<30, config.AgentConfig{
@@ -171,7 +174,10 @@ func TestGAP118_AdminOverrideReleasePrecedence(t *testing.T) {
 	if r.ioWeight != 100 || r.ioWriteBps != 100<<20 || !r.ioOverride {
 		t.Fatalf("IO opt-in resolution = %+v", r)
 	}
-	extra := sliceContainmentKnobs(r)
+	extra, extraErr := sliceContainmentKnobs(r)
+	if extraErr != nil {
+		t.Fatalf("IO opt-in render failed: %v", extraErr)
+	}
 	if len(extra) != 4 { // swap + high + weight + bandwidth
 		t.Fatalf("IO opt-in emitted %v, want 4 properties", extra)
 	}
@@ -209,7 +215,11 @@ func TestGAP118_BothSurfacesPerTier(t *testing.T) {
 		t.Run("tier="+tier, func(t *testing.T) {
 			unitKnobs, sliceKnobs := KnobsForPreset(tier, cpuQuota, memMax, diskMax, maxProcs, maxFiles)
 			r := resolveContainmentKnobs(tier, memMax, config.AgentConfig{})
-			sliceKnobs = append(sliceKnobs, sliceContainmentKnobs(r)...)
+			containExtra, containErr := sliceContainmentKnobs(r)
+			if containErr != nil {
+				t.Fatalf("tier %q containment render failed: %v", tier, containErr)
+			}
+			sliceKnobs = append(sliceKnobs, containExtra...)
 
 			// The unit argv keeps EXACTLY the five baseline properties for
 			// every tier (GAP-118 emits no unit-surface properties).
@@ -497,7 +507,11 @@ func TestGAP118_MemoryBombContainmentAtStandardAndAbove(t *testing.T) {
 	for _, tier := range []string{config.SafetyPresetStandard, config.SafetyPresetHardened} {
 		t.Run("tier="+tier, func(t *testing.T) {
 			_, sliceKnobs := KnobsForPreset(tier, cpuQuota, memMax, diskMax, maxProcs, maxFiles)
-			sliceKnobs = append(sliceKnobs, sliceContainmentKnobs(resolveContainmentKnobs(tier, memMax, config.AgentConfig{}))...)
+			bombExtra, bombErr := sliceContainmentKnobs(resolveContainmentKnobs(tier, memMax, config.AgentConfig{}))
+			if bombErr != nil {
+				t.Fatalf("tier %q containment render failed: %v", tier, bombErr)
+			}
+			sliceKnobs = append(sliceKnobs, bombExtra...)
 			byName := map[string]string{}
 			for _, k := range sliceKnobs {
 				byName[k.Name] = k.Value
@@ -540,7 +554,11 @@ func TestGAP118_MemoryBombContainmentAtStandardAndAbove(t *testing.T) {
 // lowest measured-enforced bound (20MiB/s), never below it.
 func TestGAP118_DockerLoadHeadroomAtStandard(t *testing.T) {
 	r := resolveContainmentKnobs(config.SafetyPresetStandard, 4<<30, config.AgentConfig{})
-	for _, k := range sliceContainmentKnobs(r) {
+	headExtra, headErr := sliceContainmentKnobs(r)
+	if headErr != nil {
+		t.Fatalf("standard render failed: %v", headErr)
+	}
+	for _, k := range headExtra {
 		if k.Name == "IOWriteBandwidthMax" || k.Name == "IOReadBandwidthMax" || k.Name == "IOWeight" {
 			t.Fatalf("standard tier emitted %s=%q by default — the matrix's own evidence (1.4GB load at full NVMe speed) contradicts a default bound", k.Name, k.Value)
 		}

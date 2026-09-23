@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/user"
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/hostsetup"
@@ -307,11 +309,13 @@ func resolveContainmentKnobs(preset string, memMax uint64, a config.AgentConfig)
 // own order. The five-knob baseline set is untouched — this function only
 // renders the GAP-118 additions. The write-bound property carries the WHOLE
 // disk device resolved from the root filesystem's backing device (io.max
-// rejects partitions — matrix correction #5); an unresolvable device yields
-// no property rather than a wrong one, and the caller's landing check then
-// fails the spawn loudly (never a silent no-op).
-func sliceContainmentKnobs(r containmentResolved) []SystemdKnob {
-	var knobs []SystemdKnob
+// rejects partitions — matrix correction #5). INT-CI-37 (the R2
+// no-silent-no-op rule): a tier that REQUESTS the write bound but whose
+// device cannot be resolved FAILS LOUD here — the error is propagated to the
+// spawn path, which fails at StageSliceLimits naming the knob. The resolver
+// is a var (resolveWholeDiskDevice) so tests can pin the resolution.
+func sliceContainmentKnobs(r containmentResolved) ([]SystemdKnob, error) {
+	knobs := []SystemdKnob{}
 	if r.swapBarred {
 		knobs = append(knobs, SystemdKnob{Name: "MemorySwapMax", Value: "0", Scope: KnobScopeSlice})
 	}
@@ -322,15 +326,17 @@ func sliceContainmentKnobs(r containmentResolved) []SystemdKnob {
 		knobs = append(knobs, SystemdKnob{Name: "IOWeight", Value: fmt.Sprintf("%d", r.ioWeight), Scope: KnobScopeSlice})
 	}
 	if r.ioWriteBps > 0 {
-		if dev, err := resolveWholeDiskDevice(); err == nil {
-			knobs = append(knobs, SystemdKnob{
-				Name:  "IOWriteBandwidthMax",
-				Value: fmt.Sprintf("%s %d", dev, r.ioWriteBps),
-				Scope: KnobScopeSlice,
-			})
+		dev, devErr := resolveWholeDiskDevice()
+		if devErr != nil {
+			return nil, fmt.Errorf("IOWriteBandwidthMax: resolve whole-disk device for the root filesystem: %w", devErr)
 		}
+		knobs = append(knobs, SystemdKnob{
+			Name:  "IOWriteBandwidthMax",
+			Value: fmt.Sprintf("%s %d", dev, r.ioWriteBps),
+			Scope: KnobScopeSlice,
+		})
 	}
-	return knobs
+	return knobs, nil
 }
 
 // resolveWholeDiskDevice resolves the whole-disk device for the ROOT
@@ -422,6 +428,11 @@ var cgroupV2Root = "/sys/fs/cgroup"
 // read seam next to the spawn flow that consumes it.
 func (m *AgentManager) verifyContainmentLanding(uid string, want containmentResolved) error {
 	base := filepath.Join(cgroupV2Root, "user.slice", "user-"+uid+".slice")
+	// intci37LandingWatcher is nil in production; tests install a fixture
+	// hook there to model the cgroup's convergence while the check reads it.
+	if intci37LandingWatcher != nil {
+		intci37LandingWatcher()
+	}
 	read := func(file string) (string, error) {
 		b, err := os.ReadFile(filepath.Join(base, file))
 		if err != nil {
@@ -503,6 +514,99 @@ func (m *AgentManager) verifyContainmentLanding(uid string, want containmentReso
 // (matrix: UNMEASURED, blocked from default-on), so a request can only come
 // from a future capable-host row that extends containmentForPreset.
 func (r containmentResolved) oomGroupRequested() bool { return r.oomGroup }
+
+// ── INT-CI-37: ordered apply-then-verify + bounded convergence ─────────────
+
+// errSliceApplyWrite marks a failure of the slice drop-in WRITE itself (as
+// opposed to a failure of the landing check that runs after the write). The
+// write failing is the documented best-effort degradation — the agent stays
+// up, constrained by the dockerd unit only, and the spawn reports
+// SliceDropInState="failed". The landing check failing is NOT degradable: an
+// armed containment set that never landed must fail the spawn (R2). The
+// two are told apart by errors.Is on this sentinel.
+var errSliceApplyWrite = errors.New("slice drop-in write failed")
+
+// intci37LandingWatcher is nil in production; tests install a fixture hook
+// there to model the cgroup's convergence while the landing check reads it.
+var intci37LandingWatcher func()
+
+// sliceApplySystemctl runs systemctl for the slice-apply path (the
+// daemon-reload that makes the drop-in take effect). It is a var so the
+// ordering regression can pin the call order on a recording fake: the
+// contract is drop-in write -> daemon-reload -> landing check, and the fake
+// observes it, rather than the check being asserted by reading source.
+var sliceApplySystemctl = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+	return exec.CommandContext(ctx, name, args...).CombinedOutput()
+}
+
+// The landing check's bounded convergence (INT-CI-37): the landing check runs
+// AFTER the drop-in write and its daemon-reload, but systemd consumes a
+// drop-in slightly asynchronously even after daemon-reload returns — the very
+// first read can still observe the untouched cgroup (memory.swap.max="max")
+// on a slow manager. The verify half therefore re-reads the cgroup a bounded
+// number of times before giving up. The bound is deliberately small and the
+// poll short: this is convergence tolerance, not a retry-the-enforcement
+// loop — a knob that has not landed after the bounds is a FAILED spawn, with
+// the requested-versus-observed pair in the error. Var (not const) so a test
+// can prove the bound two-way-matches the loop.
+var containmentConvergeAttempts = 5
+
+// containmentConvergePoll is the wait BETWEEN convergence re-reads. Var so a
+// test can drive exhaustion/cancellation without real waits.
+var containmentConvergePoll = 25 * time.Millisecond
+
+// verifyContainmentLandingConverged runs verifyContainmentLanding with the
+// bounded re-read convergence described above. Context cancellation and
+// deadlines are preserved: a re-read that would start into a dead context
+// aborts immediately, wrapping the context error TOGETHER with the last
+// verified failure so neither the cancellation nor the observability is lost.
+func (m *AgentManager) verifyContainmentLandingConverged(ctx context.Context, uid string, want containmentResolved) error {
+	var lastErr error
+	for attempt := 1; attempt <= containmentConvergeAttempts; attempt++ {
+		if attempt > 1 {
+			select {
+			case <-ctx.Done():
+				if lastErr != nil {
+					return fmt.Errorf("containment landing: converged check aborted at re-read %d/%d, context over: %w (last verified failure: %v)",
+						attempt, containmentConvergeAttempts, ctx.Err(), lastErr)
+				}
+				return fmt.Errorf("containment landing: check aborted, context over: %w", ctx.Err())
+			case <-time.After(containmentConvergePoll):
+			}
+		}
+		lastErr = m.verifyContainmentLanding(uid, want)
+		if lastErr == nil {
+			return nil
+		}
+	}
+	return fmt.Errorf("containment landing did not converge within %d reads: %w", containmentConvergeAttempts, lastErr)
+}
+
+// applyUserSliceLimitsAndVerify is the slice-limits stage's ordered gate
+// (INT-CI-37): the slice drop-in write and its daemon-reload land FIRST, and
+// verifyContainmentLanding — which reads the live cgroup through the drop-in
+// systemd has just consumed — runs only afterwards. This ordering is the fix
+// for CI run 35835000060, where the landing check ran right after
+// systemd-run, minutes BEFORE applyUserSliceLimits wrote the drop-in, and
+// read memory.swap.max="max" off the untouched slice on every root spawn.
+//
+// Returns the drop-in content (empty when the write failed) and the outcome:
+//   - a WRITE failure is wrapped in errSliceApplyWrite (degradable; the
+//     caller warns, reports SliceDropInState="failed" and keeps the spawn up);
+//   - any OTHER failure is the landing check not converging — non-degradable;
+//     the caller fails the spawn at StageSliceLimits. Enforcement is never
+//     weakened: exhaustion after the bounded re-reads is that loud failure,
+//     carrying the requested-versus-observed pair from verifyContainmentLanding.
+func (m *AgentManager) applyUserSliceLimitsAndVerify(ctx context.Context, u *user.User, cpuQuota float64, memMax, diskMax, maxProcs, maxFiles uint64, sliceKnobs []SystemdKnob, want containmentResolved) (string, error) {
+	content, writeErr := applyUserSliceLimits(ctx, u, cpuQuota, memMax, diskMax, maxProcs, maxFiles, sliceKnobs, m.logger)
+	if writeErr != nil {
+		return "", writeErr
+	}
+	if verifyErr := m.verifyContainmentLandingConverged(ctx, u.Uid, want); verifyErr != nil {
+		return content, verifyErr
+	}
+	return content, nil
+}
 
 // lookupAgentUser resolves an agent's uid/gid. It is a variable so tests can
 // drive the spawn-time isolation wiring without root privileges (the real
