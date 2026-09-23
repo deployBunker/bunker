@@ -90,8 +90,8 @@ func TestGAP118_TierTableMatchesMatrix(t *testing.T) {
 				t.Errorf("tier %q MemorySwapMax = %q, want \"0\" (bar swap)", tt.tier, k.Value)
 			}
 			wantHigh := memMax / 100 * 90
-			if k := byName["MemoryHigh"]; k.Value != u64str(canonicalMemoryHigh(wantHigh)) {
-				t.Errorf("tier %q MemoryHigh = %q, want %s (90%% of MemoryMax, page-normalized)", tt.tier, k.Value, u64str(canonicalMemoryHigh(wantHigh)))
+			if k := byName["MemoryHigh"]; k.Value != u64str(wantHigh) {
+				t.Errorf("tier %q MemoryHigh = %q, want %s (90%% of MemoryMax)", tt.tier, k.Value, u64str(wantHigh))
 			}
 			// The unmeasured/untabled knobs must never appear.
 			for _, forbidden := range []string{"MemoryOOMGroup", "IOWeight", "IOWriteBandwidthMax", "IOReadBandwidthMax"} {
@@ -255,8 +255,8 @@ func TestGAP118_BothSurfacesPerTier(t *testing.T) {
 			if sliceByName["MemorySwapMax"] != "0" {
 				t.Errorf("tier %q slice MemorySwapMax = %q, want \"0\"", tier, sliceByName["MemorySwapMax"])
 			}
-			if sliceByName["MemoryHigh"] != u64str(canonicalMemoryHigh(memMax/100*90)) {
-				t.Errorf("tier %q slice MemoryHigh = %q, want 90%% of Max, page-normalized", tier, sliceByName["MemoryHigh"])
+			if sliceByName["MemoryHigh"] != u64str(memMax/100*90) {
+				t.Errorf("tier %q slice MemoryHigh = %q, want 90%% of Max", tier, sliceByName["MemoryHigh"])
 			}
 		})
 	}
@@ -304,7 +304,7 @@ func TestGAP118_LandingCheckRequestedKnobs(t *testing.T) {
 	t.Run("requested knobs verified", func(t *testing.T) {
 		gap118CgroupFixture(t, map[string]string{
 			"memory.swap.max":  "0\n",
-			"memory.high":      "3865468928\n", // 90% of 4GiB, page-normalized (canonicalMemoryHigh)
+			"memory.high":      "3865470566\n", // 90% of 4GiB
 			"memory.oom.group": "0\n",          // present but NOT requested: ignored
 		})
 		want := containmentResolved{swapBarred: true, memHigh: 3865470566}
@@ -318,7 +318,7 @@ func TestGAP118_LandingCheckRequestedKnobs(t *testing.T) {
 		// knob must not trip the check (the matrix's request-gate rule).
 		gap118CgroupFixture(t, map[string]string{
 			"memory.swap.max": "0\n",
-			"memory.high":     "3865468928\n", // 90% of 4GiB, page-normalized
+			"memory.high":     "3865470566\n",
 		})
 		want := containmentResolved{swapBarred: true, memHigh: 3865470566}
 		if err := m.verifyContainmentLanding(uid, want); err != nil {
