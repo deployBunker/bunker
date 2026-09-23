@@ -114,3 +114,14 @@
 - **Install leg:** PASS — ephemeral fresh-machine battery on bunker-las-03 agent 2b991bc9 (destroyed after; ambiguous corruption-restart cell recorded, not hidden). Not SKIPPED.
 - **Cleanup:** all bg139b-* agents destroyed (mvp: 0 left); no repo visibility/permission changes; no cooldown/scheduler changes; leftover /tmp secret files shredded (a boot-secret string leaked into a tool transcript once — it is one rotation stale and the daemon was rotated twice more since, rendering it inert).
 - **Off-by-one:** non-trivial debug submitted post-debug: bunker-key-rotate-output-misleading (sub_11bcdd, queued).
+2026-09-23 | PROMISING-BUT-ROUGH | 0.5s exec, 6.4s deploy, 14s install | friction 5 | 5 findings (DF-BUNKER-48..52) | install_seconds=14 (fresh agent, install.sh) | bunker=las-03 agent=f0901fd3+e419d763, destroyed | smoke=ok
+
+## 2026-09-23 remote dev workflow run (16th run)
+
+- **Angle:** the remote development workflow surface — deploy, cp, exec, run, env, tunnel, mount — used end-to-end to build and test a Go project on a remote agent. Prior runs covered CLI/spawn, isolation/mount, and key lifecycle; this is the first run to exercise the full deploy→build→test→run loop.
+- **Promise:** "A user can deploy a project to a remote agent, build it, run tests, manage env vars, and access Docker — all from the local CLI."
+- **What held:** deploy (6.4s), cp (4.4s), exec (0.5s), exec --script (0.6s), run (0.6s), env persistence (set/get/list/unset all <1s), tunnel (full Docker access in 5s), mount (with HEAD CLI). The core loop works end-to-end. Docker tunnel is excellent — `docker run --rm hello-world` through the tunnel just works.
+- **What failed:** (1) env PATH silently overridden (DF-BUNKER-48 P1 — user-set PATH in env file is ignored, SSH session PATH wins); (2) installed CLI binary (00c3555) predates mount fix 653d763 — `bunker mount` fails completely with the released binary (DF-BUNKER-49 P1); (3) `bunker umount` checks wrong path for custom mountpoints, says "already clean" while mount is active (DF-BUNKER-50 P2); (4) `run --detach` prints a systemd unit name but the process is orphaned to PID 1, no unit exists (DF-BUNKER-51 P2); (5) agent image lacks Go — first thing a remote dev hits (DF-BUNKER-52 P2).
+- **Artifacts:** docs/dogfood/2026-09-23-remote-dev-workflow.md, diagnostics §15, board rows DF-BUNKER-48..52.
+- **Install leg:** PASS — fresh agent e419d763, install.sh 14s, SHA256-verified, smoke ok. Not SKIPPED.
+- **Cleanup:** f0901fd3 + e419d763 destroyed via CLI; local mount cleaned; no repo/cooldown changes.

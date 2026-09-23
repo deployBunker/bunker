@@ -253,4 +253,27 @@ Read this before writing anything that depends on the isolation promises.
 - Key hygiene after destroy → `internal/cli/destroy.go` (client key cleanup landed — CLI prints `Removed local SSH key`, DOGFOOD-014 verified fixed 2026-09-18) and the daemon-side sweep for orphaned `/etc/bunkerd/ssh/<id>` keys (DF-BUNKER-23, still open)
 - Spawn/destroy/TTL/cgroups → `internal/agent/`
 - API contract → `specs/api.md`; architecture → `specs/architecture.md`
-- Full dogfood evidence + diagnostics → `docs/dogfood/2026-09-18-integration.md` (current: REST-integrator run), `docs/dogfood/2026-09-16-integration.md`, `docs/dogfood/2026-08-29-integration.md`, `docs/dogfood/2026-08-18-integration.md` (prior runs), `docs/dogfood/diagnostics.md` (§12 = REST/protocol state)
+- Full dogfood evidence + diagnostics → `docs/dogfood/2026-09-23-remote-dev-workflow.md` (current: remote dev workflow run), `docs/dogfood/2026-09-22-integration.md` (key lifecycle), `docs/dogfood/2026-09-20-integration.md` (isolation/mount), `docs/dogfood/diagnostics.md` (§15 = remote dev workflow, §14 = key lifecycle, §13 = isolation/mount)
+
+## Remote Dev Workflow (2026-09-23, HEAD 945cd5c)
+
+The deploy→build→test→run loop on a remote agent works. Key commands and their
+real-use behavior:
+
+- `bunker deploy <dir> <agent>:/path --server <srv>` — SCP recursive, 6s for 4 files. Ownership set to agent user.
+- `bunker cp <file> <agent>:/path --server <srv>` — SCP single file, 4s. Ownership set to agent user.
+- `bunker exec <agent> --server <srv> --timeout <N> -- <cmd>` — SSH-based, 0.5s. Fast. `/tmp` persists on SSH-based agents (las-03). On image-spec agents (dedi-2), `/tmp` evaporates per exec (SURF-012).
+- `bunker exec --script <file>` — uploads and runs a local script. Works well for multi-step build+test+run.
+- `bunker run <agent> --server <srv> --timeout <N> -- <cmd>` — same speed as exec (0.6s).
+- `bunker run --detach` — starts a background process, but it's orphaned to PID 1, NOT a real systemd unit despite the printed unit name (DF-BUNKER-51).
+- `bunker env set/get/list/unset` — persistent env vars in `/run/bunker/<id>/env`. Works for GOPATH/GOCACHE/APP_MODE etc. BUT PATH is silently overridden by the SSH session (DF-BUNKER-48).
+- `bunker tunnel <agent>` — SSH tunnel to agent's Docker socket. Works perfectly: `DOCKER_HOST=tcp://localhost:2376 docker <cmd>` gives full Docker access.
+- `bunker mount <agent> [mountpoint] --server <srv>` — SSHFS mount. WORKS at HEAD (945cd5c) but BROKEN in released binary 00c3555 (DF-BUNKER-49). Always pass `--path /home/bunker-<id>` if using an older CLI.
+- `bunker umount <agent>` — only works for default mountpoint path. Custom mountpoints need `fusermount -u <path>` (DF-BUNKER-50).
+
+### Known gotchas (remote dev)
+
+1. **No Go in default image** — install manually: `curl -sSL https://go.dev/dl/go1.21.13.linux-amd64.tar.gz -o ~/go.tar.gz && tar xzf ~/go.tar.gz -C ~ && rm ~/go.tar.gz`. Then use `~/go/bin/go` (absolute path, because env PATH is overridden).
+2. **No sudo** — agents are non-root. Install everything in user space.
+3. **SSH key saved at spawn** — `~/.bunker/keys/<id>` is written correctly at spawn time (DF-BUNKER-47 was fixed). Use `-o IdentitiesOnly=yes -i ~/.bunker/keys/<id>` for manual SSH.
+4. **sshfs + ssh-agent** — if your ssh-agent has many keys, raw `sshfs` without `-o IdentitiesOnly=yes` fails with "Too many authentication failures" (GAP-144). The CLI's mount command includes this flag, but the spawn output's copy-paste command does not.

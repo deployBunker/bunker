@@ -259,3 +259,26 @@ docs/dogfood/2026-09-22-integration.md; diagnostics: docs/dogfood/diagnostics.md
 - [P2] INSTALL-bunker: PASS — fresh-machine battery on ephemeral las-03 agent 2b991bc9
   (go 1.26.5 + zig cc bootstrap, clone+build, chaos cells); evidence in
   /tmp/bunker-qa-evidence-20260922T232343Z-*.jsonl (agent destroyed after).
+
+## Dogfood Findings (2026-09-23 — remote dev workflow)
+
+Verdict: PROMISING-BUT-ROUGH — the core deploy→build→test→run loop works end-to-end
+in under 10s, Docker tunnel is excellent, env persistence works (except PATH). The
+mount is broken in the released binary but works at HEAD. Full write-up:
+docs/dogfood/2026-09-23-remote-dev-workflow.md; diagnostics: docs/dogfood/diagnostics.md §15.
+
+- [P1] DF-BUNKER-48: bunker env set PATH is silently overridden by exec/run — the SSH
+  session unconditionally sets PATH to ~/bin:/usr/local/sbin:..., ignoring the user-set
+  PATH in /run/bunker/<id>/env. GOPATH/GOCACHE work; PATH does not. First thing a remote
+  developer hits after installing a toolchain.
+- [P1] DF-BUNKER-49: installed CLI binary (00c3555, 09-20) predates mount fix 653d763
+  (DF-BUNKER-39) — bunker mount fails completely with the released binary; building from
+  HEAD fixes it. Cut a new release.
+- [P2] DF-BUNKER-50: bunker umount checks wrong path for custom mountpoints — says
+  "already clean" while mount is still active.
+- [P2] DF-BUNKER-51: bunker run --detach prints a systemd unit name but the process is
+  orphaned to PID 1 — no unit exists, no management possible.
+- [P2] DF-BUNKER-52: default agent image lacks Go — first toolchain friction for the
+  remote dev use case. Compounded by DF-BUNKER-48 (PATH override).
+- [PASS] INSTALL-bunker: fresh agent e419d763 on las-03, install.sh 14s, SHA256-verified,
+  smoke ok. Agent destroyed after.

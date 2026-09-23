@@ -540,5 +540,56 @@ because a crash-looping daemon would then burn through secrets irreversibly.
 14.5 Right way to verify a change on this surface. Two ports of call, one port number:
 the Bunkerd service and the Agent service live behind different interceptors on the same
 listener. Any auth-matrix test needs both. And when a probe returns 401, capture the
-BODY before concluding — this run found three distinct 401s (missing header, invalid
+the BODY before concluding — this run found three distinct 401s (missing header, invalid
 signature, agent-scoped-denied) that mean completely different things.
+
+## 15. Remote Dev Workflow (2026-09-23)
+
+### 15.1 How the exec/run path works
+
+`bunker exec` and `bunker run` both resolve the agent's SSH connection details from the
+bunkerd API (user `bunker-<id>`, host from server URL, key from `~/.bunker/keys/<id>`)
+and execute the command via SSH. On las-03 (no container mode), exec runs directly as
+the agent user via SSH — `/tmp` persists across calls, the home directory persists, and
+the only ephemerality is the agent's TTL. On image-spec agents (dedi-2), exec runs
+`docker run --rm` per call, so `/tmp` and installed tools evaporate (SURF-012).
+
+### 15.2 The env file and the PATH override
+
+`bunker env set` writes KEY=VALUE lines to `/run/bunker/<id>/env` on the agent host.
+Every `bunker exec` and `bunker run --detach` sources this file before executing the
+command. GOPATH, GOCACHE, APP_MODE and other vars correctly persist across calls.
+
+PATH does NOT persist as set — the SSH session's PAM/profile setup unconditionally
+sets PATH to `/home/bunker-<id>/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
+overriding whatever the env file contains. This is because the env file is sourced
+BEFORE the profile runs, or the profile's PATH assignment is unconditional. The fix
+is to source the env file AFTER the profile, or to prepend the user's PATH.
+
+### 15.3 The mount preflight and the CLI version gap
+
+The mount preflight (`remotePathExists` in mount_preflight.go) sends a shell script
+via `ssh ... sh -s` to verify the remote path exists. The runWithTimeout function
+was fixed in DF-BUNKER-38 (it used to call Start+CombinedOutput on the same Cmd).
+The default-path resolution was fixed in DF-BUNKER-39 (653d763).
+
+Both fixes are in HEAD (945cd5c) but NOT in the released CLI binary (00c3555,
+2026-09-20). The released CLI's mount command fails with "no remote path to check"
+(default form) or "does not exist or is not a directory" (with --path). Building
+from HEAD and using the fresh binary fixes both issues immediately.
+
+### 15.4 The detached run that isn't a systemd unit
+
+`bunker run --detach` starts a process via SSH that gets orphaned to PID 1. The CLI
+prints a "Unit: bunker-run-<id>-<uuid>" name, suggesting it's a systemd transient
+unit, but `systemctl --user list-units` shows no such unit. The process runs in a
+session scope, not a service unit. The unit name is cosmetic — there's no systemd
+management possible.
+
+### 15.5 The Docker tunnel: the right way
+
+`bunker tunnel <agent>` opens an SSH tunnel from local port 2376 to the agent's
+rootless Docker socket at `/run/bunker/<id>/docker.sock`. Once the tunnel is up,
+`DOCKER_HOST=tcp://localhost:2376 docker <cmd>` works exactly like a local Docker.
+Tested: version, ps, run hello-world — all succeed. The tunnel is a foreground
+process (Ctrl-C to stop).
