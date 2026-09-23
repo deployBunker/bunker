@@ -224,9 +224,21 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 		return fmt.Errorf("api key store unavailable: %w", err)
 	}
 	s.keyMgr = keyMgr
-	s.jwtAuth = auth.NewJWTAuth(s.cfg.Auth.JWTSecret, s.keyMgr)
-	bunkerdAuthInterceptor := auth.NewMasterOnlyAuthInterceptor(s.cfg.Auth.JWTSecret, s.keyMgr, s.cfg.Auth.Token, s.cfg.Auth.Enabled)
-	agentAuthInterceptor := auth.NewJWTAuthInterceptor(s.cfg.Auth.JWTSecret, s.keyMgr, s.cfg.Auth.Token, s.cfg.Auth.Enabled)
+	// DF-BUNKER-45: ONE JWTAuth instance is shared between the key-lifecycle
+	// RPCs (RotateJWTSecret mutates s.jwtAuth via RotateSecret) and BOTH
+	// request-validation interceptors. The previous wiring passed the raw
+	// secret string to the string-based factories, which each built a PRIVATE
+	// JWTAuth holding the boot secret forever: rotations never took effect on
+	// the validating path (live-proven — a JWT minted with the secret the
+	// rotate RPC returned was rejected 401 immediately after every rotation).
+	// The FromAuth factories wrap/derive from THIS instance, whose rotating
+	// secret is shared, so new-secret tokens validate immediately and the
+	// retired one dual-accepts through the overlap window (GAP-132) exactly
+	// as internal/auth implements it. The static token rides the instance so
+	// the fallback behavior matches the old string-based construction.
+	s.jwtAuth = auth.NewJWTAuthWithStaticFallback(s.cfg.Auth.JWTSecret, s.cfg.Auth.Token, s.keyMgr)
+	bunkerdAuthInterceptor := auth.NewMasterOnlyAuthInterceptorFromAuth(s.jwtAuth, s.cfg.Auth.Enabled)
+	agentAuthInterceptor := auth.NewJWTAuthInterceptorFromAuth(s.jwtAuth, s.cfg.Auth.Enabled)
 	// GAP-133: authentication denials are composed BEFORE the audit
 	// interceptor in the chain (auth runs outermost), so they would otherwise
 	// never reach it — exactly why denials were invisible. Attach the deny

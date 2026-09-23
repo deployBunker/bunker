@@ -113,7 +113,7 @@ func FingerprintSecret(secret string) string {
 type JWTAuth struct {
 	secret        *rotatingSecret
 	keyMgr        *apikey.Manager
-	masterKey     string
+	masterKey     string // legacy: retained for debug inspection only, never consulted on the auth path
 	staticToken   string // optional fallback static bearer token
 	masterKeyOnly bool   // when true, reject agent-scoped tokens
 
@@ -145,6 +145,25 @@ func NewMasterOnlyJWTAuth(secret string, keyMgr *apikey.Manager) *JWTAuth {
 		masterKey:     secret,
 		masterKeyOnly: true,
 	}
+}
+
+// NewMasterOnlyJWTAuthFromAuth derives a master-only JWTAuth from an EXISTING
+// instance without copying key material (DF-BUNKER-45): the returned instance
+// shares the base's rotating secret (so RotateSecret on the base is visible
+// immediately), its key manager, static-token fallback, deny sink and
+// throttle; only the agent-scoped-token rejection is forced on. The base
+// instance is never mutated, so it keeps serving permissive validation
+// elsewhere. A nil base yields nil — callers treat that as auth-disabled.
+func NewMasterOnlyJWTAuthFromAuth(base *JWTAuth) *JWTAuth {
+	if base == nil {
+		return nil
+	}
+	// Shallow copy: every field shares the base's backing state. masterKey
+	// is re-pointed at the same secret string, masterKeyOnly is flipped, and
+	// the rotatingSecret POINTER is shared so rotation is observed live.
+	derived := *base
+	derived.masterKeyOnly = true
+	return &derived
 }
 
 // NewJWTAuthWithStaticFallback creates a JWTAuth that also accepts a static
