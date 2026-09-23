@@ -139,7 +139,9 @@ func TestHeartbeatAgent_AgentKeyOwnership(t *testing.T) {
 // for the SEC-07 property the handler guard above backstops.
 //
 // HeartbeatAgent is mounted behind the master-only interceptor
-// (internal/server/server.go builds it with auth.NewMasterOnlyAuthInterceptor).
+// (internal/server/server.go builds it with
+// auth.NewMasterOnlyAuthInterceptorFromAuth, derived from the SHARED jwtAuth
+// instance so rotations take effect live — DF-BUNKER-45).
 // That interceptor — not the handler guard — is what actually rejects agent
 // credentials today: auth.JWTAuth.authenticate refuses both an agent-scoped
 // JWT and an agent-scoped opaque sub-key with CodeUnauthenticated BEFORE the
@@ -297,16 +299,21 @@ func TestHeartbeatAgent_InterceptorMountsArePinned(t *testing.T) {
 		why    string
 	}{
 		{
-			needle: "bunkerdAuthInterceptor := auth.NewMasterOnlyAuthInterceptor(",
-			why:    "the Bunkerd service must be built with the master-only interceptor",
+			// DF-BUNKER-45: the master-only interceptor must be derived from
+			// the SAME JWTAuth instance RotateJWTSecret mutates, so a rotation
+			// takes effect on this mount without a restart. A private
+			// string-built interceptor would freeze the boot secret here.
+			needle: "bunkerdAuthInterceptor := auth.NewMasterOnlyAuthInterceptorFromAuth(s.jwtAuth,",
+			why:    "the Bunkerd service must be built with the master-only interceptor derived from the SHARED jwtAuth instance",
 		},
 		{
 			needle: "bunkerdInterceptors := []connect.Interceptor{bunkerdAuthInterceptor}",
 			why:    "the Bunkerd mount must use the master-only interceptor",
 		},
 		{
-			needle: "agentAuthInterceptor := auth.NewJWTAuthInterceptor(",
-			why:    "the Agent service must keep the permissive (agent-scoped-capable) interceptor",
+			// DF-BUNKER-45: same instance-sharing rule for the permissive mount.
+			needle: "agentAuthInterceptor := auth.NewJWTAuthInterceptorFromAuth(s.jwtAuth,",
+			why:    "the Agent service must keep the permissive (agent-scoped-capable) interceptor derived from the SHARED jwtAuth instance",
 		},
 		{
 			needle: "agentInterceptors := []connect.Interceptor{agentAuthInterceptor}",

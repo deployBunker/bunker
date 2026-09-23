@@ -222,6 +222,10 @@ func peerAddr(p connect.Peer) string {
 // Falls back to static token auth if jwtSecret is empty but static token is enabled.
 // When both jwtSecret and staticToken are set, the JWT interceptor also accepts the
 // static token as a fallback so existing clients keep working during JWT rollout.
+//
+// New callers must prefer NewJWTAuthInterceptorFromAuth: this string-based form
+// builds a PRIVATE JWTAuth, so a later RotateSecret on a different instance never
+// reaches the interceptor it returned (the DF-BUNKER-45 live-rotation defect).
 func NewJWTAuthInterceptor(jwtSecret string, keyMgr *apikey.Manager, staticToken string, enabled bool) connect.Interceptor {
 	if !enabled {
 		return NoAuth{}
@@ -238,6 +242,10 @@ func NewJWTAuthInterceptor(jwtSecret string, keyMgr *apikey.Manager, staticToken
 // NewMasterOnlyAuthInterceptor returns a JWT interceptor that rejects agent-scoped
 // tokens. Only master tokens and static tokens are accepted.
 // This should be used for Bunkerd-level RPCs where scoped sub-keys must not be allowed.
+//
+// Same caveat as NewJWTAuthInterceptor: string-based, builds a PRIVATE JWTAuth.
+// Prefer NewMasterOnlyAuthInterceptorFromAuth for anything that must observe
+// secret rotation (DF-BUNKER-45).
 func NewMasterOnlyAuthInterceptor(jwtSecret string, keyMgr *apikey.Manager, staticToken string, enabled bool) connect.Interceptor {
 	if !enabled {
 		return NoAuth{}
@@ -249,6 +257,34 @@ func NewMasterOnlyAuthInterceptor(jwtSecret string, keyMgr *apikey.Manager, stat
 		return NewTokenAuth(staticToken)
 	}
 	return NoAuth{}
+}
+
+// NewJWTAuthInterceptorFromAuth wraps an EXISTING *JWTAuth as the permissive
+// (agent-scoped-capable) interceptor (DF-BUNKER-45): validation reads the
+// live rotating secret through the shared instance on every request, so
+// RotateSecret's mutation takes effect on this path immediately. The static
+// token fallback must already be carried by the instance (build it with
+// NewJWTAuthWithStaticFallback). Auth disabled or a nil instance yields
+// NoAuth — the same posture the string-based factory produces for those.
+func NewJWTAuthInterceptorFromAuth(jwtAuth *JWTAuth, enabled bool) connect.Interceptor {
+	if !enabled || jwtAuth == nil {
+		return NoAuth{}
+	}
+	return jwtAuth
+}
+
+// NewMasterOnlyAuthInterceptorFromAuth is the master-only counterpart of
+// NewJWTAuthInterceptorFromAuth (DF-BUNKER-45): it derives a master-only
+// JWTAuth from the SAME instance the key-lifecycle RPCs mutate, so secret
+// rotation is observed live while agent-scoped tokens stay rejected
+// (SEC-07/GAP-131 posture). The derivation shares the rotating secret, key
+// manager and static fallback; only the master-only gate differs. Auth
+// disabled or a nil instance yields NoAuth.
+func NewMasterOnlyAuthInterceptorFromAuth(jwtAuth *JWTAuth, enabled bool) connect.Interceptor {
+	if !enabled || jwtAuth == nil {
+		return NoAuth{}
+	}
+	return NewMasterOnlyJWTAuthFromAuth(jwtAuth)
 }
 
 // staticTokenClaims returns the Claims attributed to a successful static
