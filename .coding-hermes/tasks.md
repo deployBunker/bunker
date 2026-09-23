@@ -241,3 +241,21 @@ without Go refuses cleanly with the recovery steps instead of `Error 127`; Go 1.
 daemon behaves exactly as documented. Observation (not filed): `install.sh --build` in a tagless checkout
 prints `bunker 1.26.5` as the version — `bd_version` falls through to `GO_FALLBACK`, so the binary advertises
 the Go version as its own.
+
+## Dogfood Findings (2026-09-22/23 — key lifecycle / GAP-139b live acceptance)
+
+Verdict: PROMISING-BUT-ROUGH (⬆ from 2026-09-20's DOES-NOT-DELIVER — the lifecycle core
+works; the rotation feature does not, and its UX actively misleads). Full write-up:
+docs/dogfood/2026-09-22-integration.md; diagnostics: docs/dogfood/diagnostics.md §14.
+
+- [P0] DF-BUNKER-45: `key rotate` never affects the live auth path — RotateJWTSecret
+  mutates s.jwtAuth (server.go:227) while the validating interceptors (server.go:228/229)
+  keep the boot secret; proven live with minted JWTs across three rotations. Fix: share
+  one auth instance + the missing integration test.
+- [P1] DF-BUNKER-46: rotate output/help misleads on credential class, destination file
+  and effect timing; locked this run out of its own CLI config (recovered from backup).
+- [P2] DF-BUNKER-47: spawn bundle's SSH-key fetch is unauthenticated (no local key ever
+  lands) and the printed tunnel command has an empty `-i` + server-side key path.
+- [P2] INSTALL-bunker: PASS — fresh-machine battery on ephemeral las-03 agent 2b991bc9
+  (go 1.26.5 + zig cc bootstrap, clone+build, chaos cells); evidence in
+  /tmp/bunker-qa-evidence-20260922T232343Z-*.jsonl (agent destroyed after).

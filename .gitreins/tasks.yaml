@@ -2968,3 +2968,58 @@ tasks:
   status: complete
   created_at: '2026-09-22T13:28:06.606095+00:00'
   completed_at: '2026-09-22T19:43:12.904453+00:00'
+- id: GAP-139b
+  title: 'Deploy GAP-132 key lifecycle to the demo daemon (bunker-mvp): live key rotate/list/revoke
+    acceptance'
+  criteria:
+  - Daemon binary at /opt/bunker/bunkerd reports a commit at or past 325da4c; bunker
+    key list against bunker-mvp returns live sub-key metadata rows (key id, agent,
+    created, expires) for a real spawned agent; bunker key rotate prints a new secret
+    exactly once with overlap metadata and the pre-rotation master token still validates
+    during the overlap window; bunker key revoke <id> immediately invalidates a live
+    sub-key (daemon rejects it right after revoke); rotate and revoke each leave a
+    visible record in the daemon journal / audit log on the live host
+  status: complete
+  created_at: '2026-09-22T23:12:15.573074+00:00'
+  completed_at: '2026-09-23T00:33:43.807862+00:00'
+- id: MOUNT-006
+  title: 'Mount driver seam: explicit driver identity beside the sshfs command, server
+    selects driver (default sshfs), client dispatches per driver, per-driver failure
+    classifiers'
+  criteria:
+  - 1) SpawnAgentResponse/AgentRecord carry an explicit mount driver identity (structured
+    spec preferred) alongside the existing sshfs command string, and an OLD client
+    reading the new response still mounts via the sshfs default. 2) Server emits the
+    command for the selected driver on spawn/mount; selection defaults to sshfs; requesting
+    a driver the client or host cannot support REFUSES by name rather than silent
+    fallback. 3) CLI mount dispatches per driver instead of assuming sshfs. 4) A test
+    asserts every registered driver either has a failure classifier or explicitly
+    declares its absence with reason. 5) go build ./... and go test ./... pass, gofmt
+    clean.
+  status: in_progress
+  created_at: '2026-09-23T00:19:40.721564+00:00'
+- id: INT-CI-030
+  title: 'Regression suite: delta-based absolute-count cells or audited pre-clean
+    + named non-pristine diagnostic'
+  criteria:
+  - '1) The two absolute-count cells in regression-tests.sh (initial ''Agents: 0/''
+    and ''Total: 2 agents'') assert on DELTAS or run an explicit audited pre-clean
+    sweep that logs what it removed. 2) A dirty runner produces a NAMED ''runner is
+    not pristine: N leftover agents'' diagnostic, not two misleading cell failures.
+    3) No continue-on-error papering. 4) bash -n clean; the changed cells still pass
+    on a pristine host (existing suite structure preserved).'
+  status: in_progress
+  created_at: '2026-09-23T00:19:41.407776+00:00'
+- id: INTEG-003
+  title: 'State the mooted daemon trigger condition as falsifiable: revival of an
+    in-agent toolsd service ONLY for change subscriptions or measured per-op chattiness'
+  criteria:
+  - "1) docs/prd/ADR-toolsd-integration.md states both trigger conditions as measurable,\
+    \ falsifiable conditions with the concrete measurement source named (CHT-038 invocation\
+    \ ledger, CHT-037 sink) and the threshold semantics a revival must beat. 2) The\
+    \ MCP-over-socket evidence (SURF-001: mechanism proven, marginal cost ~two unit\
+    \ files) is reconciled with the triggers so the ADR does not contradict the evidence.\
+    \ 3) Any future daemon proposal must argue against the stated triggers \u2014\
+    \ the review clause is updated to name them. Docs-only diff."
+  status: in_progress
+  created_at: '2026-09-23T00:19:42.127365+00:00'

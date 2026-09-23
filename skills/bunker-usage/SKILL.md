@@ -18,7 +18,7 @@ description: >-
   (docs/dogfood/2026-09-19-integration.md); isolation boundary + mount/
   scratch defects re-verified live at HEAD 93d7a53 on 2026-09-20
   (docs/dogfood/2026-09-20-integration.md, diagnostics.md §13).
-version: 1.6.0
+version: 1.7.0
 category: software-development
 ---
 
@@ -156,6 +156,38 @@ All features broken as of 2026-08-03 (tasks DOGFOOD-001..006) are fixed and veri
 | `bunker spawn --ttl banana` | ✅ rejected cleanly | `invalid_argument: invalid ttl "banana": must match "[0-9]+[hmd]"` — no more silent 6h agent |
 | `bunker destroy <unknown-id>` | ✅ idempotent exit 0 | `Agent <id> not found.` and exit 0 (DOGFOOD-005 fix holds) |
 | `bunker status` CPU/Memory/Uptime | ✅ real values | 0.56s; no more zeros/unknown |
+
+## Key lifecycle — the real credential model (2026-09-22/23, live on bunker-mvp @ 16fff6d)
+
+Three credential classes; never test one and claim things about another:
+
+1. Master/static bearer token (48-char opaque; daemon `auth.token`; operator CLI config
+   per server entry). `key rotate` does NOT touch it — it bypasses JWT machinery entirely.
+   The ONLY credential for Bunkerd-service (admin) RPCs (`GetAgent`, `KeyList`,
+   `RotateJWTSecret`, `RevokeKey`, spawn/destroy/exec).
+2. Agent sub-keys (43-char opaque; in the spawn bundle `API Key:` line ONLY — the agent's
+   own `~/.bunker/` has NO config file, and no local SSH key is fetched: the bundle even
+   warns `could not fetch SSH key: unauthenticated`). Valid ONLY on the Agent service
+   (`/bunker.v1.Agent/GetInfo|Metrics|Heartbeat`). On Bunkerd endpoints a LIVE sub-key
+   gets `401 {"message":"agent-scoped tokens are not allowed for this endpoint"}` BY
+   DESIGN — scope-denial = key is LIVE; `invalid token` = revoked/unknown. Prove
+   revoke-immediacy against `Agent/GetInfo`, not `Bunkerd/GetAgent`.
+3. JWTs signed by the HS256 secret — what `key rotate` governs. NO CLI command currently
+   issues one; to observe rotation, mint one yourself (secret = raw hex bytes of the
+   output; HMAC over `<b64url(header)>.<b64url(payload)>`, standard HS256).
+
+KNOWN P0 (DF-BUNKER-45): `key rotate` mutates `s.jwtAuth` but request validation runs in
+interceptor instances built at boot — so rotation NEVER takes effect on the live path
+until the daemon restarts with a manually-persisted secret file. Until that is fixed,
+treat rotate as "deferred to restart", not zero-downtime, and do not build automation on
+the overlap window. Rotate output (`auth.jwt_secret_file` + restart wording) describes
+the JWT SIGNING secret — never paste it into the CLI config `token:` field (that is the
+static master token; you will lock yourself out — recovery: older config backup or
+`auth: token:` in /etc/bunkerd/config.yaml on the daemon host).
+
+Revoke is the strong part of the surface: immediate, survives restart (both verified
+live), hash-chained audit records in /var/log/bunkerd/audit.log (rotate and revoke
+each append one correlated record; fingerprints/key-ids only, never secrets).
 
 ## Pitfalls
 

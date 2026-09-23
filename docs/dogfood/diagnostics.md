@@ -487,3 +487,58 @@ The mount chain is now the highest-value surface: `DF-BUNKER-38` (P0) fixed, GAP
 transport, reconnect, empty-tree refusal) becomes meaningful — and it has never passed. The scratch root is a
 one-line host check per box (§13.2) and should be part of the fleet inventory rather than discovered by a
 dogfood run.
+
+## 14. Dogfood run 2026-09-22/23 — the key lifecycle and the three-instance auth split (read this before touching auth)
+
+This run picked up the GAP-132 key-lifecycle surface the day after it landed, because
+GAP-139b asked for live proof on the demo daemon. The run's value is less "does it work"
+than "what is the auth model, actually" — because the surface forced the question.
+
+14.1 How auth is really wired. server.go builds three independent auth objects from the
+same config values: the service struct's `s.jwtAuth` (line ~227), the Bunkerd-service
+master-only interceptor (~228), and the Agent-service interceptor (~229). Nothing shares
+mutable state between them by design — the interceptors are plain values built at boot.
+That is a fine architecture for stateless validation, and it is exactly why GAP-132's
+"rotate the secret live" feature cannot work as shipped: `RotateJWTSecret` mutates the
+one instance that never validates a request. The lesson is general: whenever a feature
+mutates security state at runtime, the FIRST review question is "which object does the
+enforcement path actually read, and is it the same object?".
+
+14.2 Why the tests could not see it. gap132_test.go drives the service methods directly
+and checks the audit log; the mock servers in cli tests echo the RPCs. No test sends a
+post-rotate request through `bunkerv1connect` handlers with the real interceptor chain.
+The green suite was honest about what it tested — the integration was simply never
+tested. The cheap missing test: build the real handler stack (NewBunkerdHandler +
+NewAgentHandler with their interceptors), rotate via the RPC, send one request signed
+with the old secret and one with the new, assert 200/401 at both endpoints. That test
+fails today and would have caught this before deploy.
+
+14.3 The three credential classes and where each breaks. (1) The static master token is
+a bearer token that bypasses JWT machinery entirely — rotate does not touch it, and its
+validity confused two consecutive verification passes into thinking overlap worked.
+Probing `key list` after a rotate proves nothing about JWTs. (2) Agent sub-keys are
+opaque tokens validated by the apikey manager ONLY on the Agent service; on Bunkerd
+endpoints the master-only interceptor denies them with "agent-scoped tokens are not
+allowed" — a 401 that is BY DESIGN even for a perfectly live key. Two runs (this one and
+the interrupted 09-22 session) initially misread that 401. The discriminator is the
+message body: scope-denial = key live, "invalid token" = key revoked/unknown. (3) JWTs
+are what rotate governs, and the only way to observe the rotation today is to mint one
+yourself with the candidate secret — which is precisely how the P0 was proven.
+
+14.4 The error trail worth keeping. The CLI's rotate output says "restart bunkerd to
+load it", which reads as if the operator must persist the secret for anything to change;
+in reality the service instance switches immediately, the interceptors never do, and a
+restart loads whatever is in /etc/bunkerd/jwt_secret (rotate does not write it). A
+dogfood run that pasted the output into its CLI config locked itself out mid-run and
+recovered from a config backup — the recovery path (the old config backup, or
+`auth: token:` on the daemon host) is the one to document, because the failure mode will
+recur for every operator who reads the output the natural way. Also: the boot secret
+file is one rotation behind on purpose (rotate is not persistent) — do not "fix" that by
+writing the rotated secret from the RPC handler without deciding the restart story,
+because a crash-looping daemon would then burn through secrets irreversibly.
+
+14.5 Right way to verify a change on this surface. Two ports of call, one port number:
+the Bunkerd service and the Agent service live behind different interceptors on the same
+listener. Any auth-matrix test needs both. And when a probe returns 401, capture the
+BODY before concluding — this run found three distinct 401s (missing header, invalid
+signature, agent-scoped-denied) that mean completely different things.
