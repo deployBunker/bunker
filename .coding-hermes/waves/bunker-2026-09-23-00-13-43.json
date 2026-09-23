@@ -1,0 +1,48 @@
+{
+  "tick": "bunker-2026-09-23-00-13-43",
+  "tick_number": 525,
+  "project": "bunker",
+  "workdir": "/home/kara/bunker",
+  "wave_budget": 3,
+  "tasks": [
+    {
+      "id": "DF-BUNKER-45",
+      "band": "go-server-auth",
+      "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-45",
+      "branch": "wt/DF-BUNKER-45",
+      "base_sha": "7bc589b",
+      "files": ["internal/server/server.go", "internal/server/keys_rpc.go", "internal/server/*_test.go", "internal/auth/*.go", "internal/auth/*_test.go"],
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "note": "slotted in AFTER the dogfood tick (bunker-dogfood-2026-09-22-23-11-04-nudge1) completed and live-proved the rotate overlap window dead; replaces INTEG-003's slot"
+    },
+    {
+      "id": "MOUNT-006",
+      "band": "go-engine-proto-cli",
+      "worktree": "/home/kara/worktrees/bunker-MOUNT-006",
+      "branch": "wt/MOUNT-006",
+      "files": ["proto/bunker/v1/bunker.proto", "proto/bunker/v1/bunkerv1connect", "internal/agent/manager_spawn.go", "internal/cli/mount.go", "internal/cli/mount_*_test.go", "internal/agent/*_test.go"],
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default"
+    },
+    {
+      "id": "INT-CI-030",
+      "band": "bash-harness",
+      "worktree": "/home/kara/worktrees/bunker-INT-CI-030",
+      "branch": "wt/INT-CI-030",
+      "files": ["regression-tests.sh"],
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default"
+    },
+    {
+      "id": "INTEG-003",
+      "band": "docs",
+      "worktree": "/home/kara/worktrees/bunker-INTEG-003",
+      "branch": "wt/INTEG-003",
+      "files": ["docs/prd/ADR-toolsd-integration.md"],
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default"
+    }
+  ],
+  "notes": "GAP-139b (live key-lifecycle acceptance) held out of the wave: foreman-direct infra row, deferred because bunker-dogfood nudge1 sibling was probing the live daemon. The dogfood tick COMPLETED 00:48Z: deploy leg already done by the prior failed tick (daemon at 16fff6d >= 325da4c), revoke/audit/list criteria PASS live, but the rotate-overlap criterion is LIVE-PROVEN UNREACHABLE — P0 DF-BUNKER-45 filed (RotateJWTSecret mutates s.jwtAuth but interceptors hold boot-secret instances). GAP-139b stays pending, blocked on DF-BUNKER-45; DF-BUNKER-45 was slotted into the wave in INTEG-003's completed slot."
+}
