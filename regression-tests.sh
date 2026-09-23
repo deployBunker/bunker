@@ -19,6 +19,26 @@ set -uo pipefail
 #   REGRESSION_TARGETS_ONLY=1        full target-binding preflight, then exit
 #   REGRESSION_TARGETS_ONLY=refusal  every mutating verb driven with the
 #                                    export cleared; all must refuse.
+#
+# ── Shared-runner residue policy (INT-CI-030) ──────────────────────────
+# The CI runner coexists with a production daemon whose durable registry
+# (/var/lib/bunkerd/agents.jsonl — this suite's generated config sets no
+# registry.path, so the DEFAULT path is shared) is replayed and ADOPTED
+# by this suite's scratch daemon at boot. Agents left behind by an
+# earlier run are therefore already in the tracker when section 3
+# connects, and two ABSOLUTE-count cells ('Agents: 0/' at connect,
+# 'Total: 2 agents' after spawn) failed FIRST on exactly that state (run
+# 35560137989) — the E2E battery step then never ran. The suite now
+# measures a residue BASELINE right after connect (section 3b: bunker
+# status/list probes, numeric-or-fatal) and asserts agent counts as
+# DELTAS against it, plus ONE named 'runner is not pristine: N leftover
+# agents' diagnostic instead of two misleading cell failures. The 3b
+# pre-clean removes only ORPHAN agent users — bunker-* users with NO
+# durable-registry record; an unreadable or unparseable registry makes
+# attribution unprovable and nothing is removed (fail-closed).
+# Registered agents are never this suite's to destroy (INT-CI-012).
+# A pristine host is a no-op: 'pre-clean: 0 leftover agents', and the
+# early cells pass exactly as before.
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -605,7 +625,10 @@ echo "── 3. Connect ──"
 # drives a bare mutating verb.
 OUT=$(bunker connect "http://127.0.0.1:$GRPC_PORT" --name "$REGRESSION_TARGET_NAME" --token test-regression-token 2>&1)
 assert 'echo "$OUT" | grep -q "Connected"' "connect succeeds"
-assert 'echo "$OUT" | grep -q "Agents: 0/"' "initial agent count is 0"
+# INT-CI-030: a shared runner's registry residue means connect can report a
+# non-zero agent count BEFORE this suite spawns anything; the pristine-host
+# expectation ('Agents: 0/') moved to the section-3b delta baseline.
+assert 'echo "$OUT" | grep -q "Agents: [0-9]*/"' "connect reports a numeric agent count (pristine host reads 'Agents: 0/'; residue reads higher and is baselined in section 3b)"
 assert 'echo "$OUT" | grep -q "Server registered as \"'"$REGRESSION_TARGET_NAME"'\""' "registered under the dedicated name (no fleet clobber)"
 
 # Bind the session target for every later mutating call, then prove the
@@ -617,6 +640,100 @@ if [ -z "${BUNKER_SESSION_TARGET:-}" ]; then
     exit 3
 fi
 pass "session target bound: BUNKER_SESSION_TARGET=$BUNKER_SESSION_TARGET"
+
+# ── 3b. Runner-residue baseline (INT-CI-030, deltas + audited pre-clean) ──
+# The scratch daemon replays+adopts the shared durable registry, so a shared
+# runner can connect with agents ALREADY counted (the two absolute-count
+# cells that failed first on run 35560137989). Measure the baseline here,
+# right after connect; every agent count below is asserted as
+# after-minus-BASELINE against it.
+REGRESSION_REGISTRY="/var/lib/bunkerd/agents.jsonl"
+STATUS_OUT=$(bunker status --server "$REGRESSION_TARGET_NAME" 2>&1 || true)
+LIST_BEFORE_OUT=$(bunker list --server "$REGRESSION_TARGET_NAME" 2>&1 || true)
+# `  Agents:   N/M` (status.go) — capture N only. A non-matching shape leaves
+# BASELINE empty and the case below fails the run with the raw first line.
+BASELINE=$(echo "$STATUS_OUT" | sed -n 's/.*Agents:[[:space:]]*\([0-9][0-9]*\)\/.*/\1/p' | head -1)
+case "$BASELINE" in
+    ''|*[!0-9]*)
+        fail "runner residue baseline: could not read a numeric agent count from 'bunker status' (first line: $(echo "$STATUS_OUT" | head -1))"
+        exit 3
+        ;;
+esac
+# LIST_BEFORE: the section-5 cells add to this count. Numeric capture is
+# REQUIRED (the `|| echo 0` append trap is deliberately NOT used — a failed
+# capture must fail the run loudly with the raw value, never masquerade as 0).
+# ONE explicit exception, evidence-based not tolerance: on a pristine host
+# this baseline runs BEFORE any spawn, and list's zero-agent early return
+# prints 'No agents found.' with NO Total line (internal/cli/list.go) — that
+# exact line IS the zero reading. Any other shape without a Total line fails.
+LIST_BEFORE=""
+if echo "$LIST_BEFORE_OUT" | grep -q '^No agents found\.'; then
+    LIST_BEFORE=0
+else
+    LIST_BEFORE=$(echo "$LIST_BEFORE_OUT" | sed -n 's/^Total: \([0-9][0-9]*\) agents.*/\1/p' | head -1)
+fi
+case "$LIST_BEFORE" in
+    ''|*[!0-9]*)
+        fail "runner residue baseline: could not read 'Total: N agents' from 'bunker list' (last line: $(echo "$LIST_BEFORE_OUT" | tail -1))"
+        exit 3
+        ;;
+esac
+# Registry-backed agent IDs (JSONL records of REGISTERED agents — used ONLY
+# for attribution; an unreadable/unparseable registry leaves this empty and
+# the attribution below fail-closes to no-sweep).
+REGISTRY_IDS=""
+if [ -r "$REGRESSION_REGISTRY" ] && [ -s "$REGRESSION_REGISTRY" ]; then
+    REGISTRY_IDS=$(grep -o '"agent_id":"[^"]*"' "$REGRESSION_REGISTRY" 2>/dev/null | sed 's/^"agent_id":"//;s/"$//' | sort -u)
+    if [ -z "$REGISTRY_IDS" ]; then
+        # Non-empty file, no parseable agent_id: treat as unparseable —
+        # attribution is unprovable, the sweep must remove nothing.
+        REGISTRY_IDS="(unparseable)"
+    fi
+fi
+# 3b pre-clean sweep — audit-first, remove-only-orphan, log-everything.
+# Attribution rule: a bunker-* user with NO agent_id record in the durable
+# registry is provably a leftover test user (test IDs are regr-* or UUIDs;
+# production agents are registered), so destroying it is residue cleanup.
+# Anything ambiguous (registry unreadable/unparseable) fail-closes: NOTHING
+# is removed; the leftover count is reported and the deltas absorb it.
+PRECLEAN_REMOVED=0
+PRECLEAN_REMOVED_NAMES=""
+PRECLEAN_LEFT=0
+PRECLEAN_LEFT_NAMES=""
+for u in $(grep '^bunker-' /etc/passwd 2>/dev/null | cut -d: -f1); do
+    id="${u#bunker-}"
+    registered=""
+    if [ "$REGISTRY_IDS" != "(unparseable)" ]; then
+        for r in $REGISTRY_IDS; do
+            if [ "$r" = "$id" ]; then
+                registered=1
+                break
+            fi
+        done
+    fi
+    if [ "$REGISTRY_IDS" = "(unparseable)" ] || [ -n "$registered" ]; then
+        PRECLEAN_LEFT=$((PRECLEAN_LEFT + 1))
+        PRECLEAN_LEFT_NAMES="$PRECLEAN_LEFT_NAMES $u"
+    else
+        bunker destroy --server "$REGRESSION_TARGET_NAME" "$id" --force >/dev/null 2>&1 || userdel -r "$u" >/dev/null 2>&1 || true
+        PRECLEAN_REMOVED=$((PRECLEAN_REMOVED + 1))
+        PRECLEAN_REMOVED_NAMES="$PRECLEAN_REMOVED_NAMES $u"
+    fi
+done
+echo "  pre-clean: $PRECLEAN_REMOVED leftover agents removed (registry: $REGRESSION_REGISTRY)"
+if [ -n "$PRECLEAN_REMOVED_NAMES" ]; then
+    echo "    removed:$PRECLEAN_REMOVED_NAMES"
+fi
+if [ "$PRECLEAN_LEFT" -gt 0 ]; then
+    echo "  ${YELLOW}⚠${NC} pre-clean: $PRECLEAN_LEFT agent user(s) NOT removed — registered in the durable registry (not this suite's to destroy, INT-CI-012):"
+    echo "    kept:$PRECLEAN_LEFT_NAMES"
+fi
+# The NAMED residue diagnostic (criterion 2): one line, names the count,
+# replaces the two misleading cell failures on a dirty runner. The count is
+# the BASELINE — residue absorbed by the deltas, never hidden.
+if [ "$BASELINE" -gt 0 ]; then
+    echo "  ${YELLOW}⚠${NC} runner is not pristine: $BASELINE leftover agents — counts below are asserted as DELTAS against this baseline"
+fi
 
 echo ""
 
@@ -672,9 +789,14 @@ OUT=$(bunker list 2>&1 || true)
 assert 'echo "$OUT" | grep -q "regr-alpha"' "list shows regr-alpha"
 if [ -n "$AUTO_ID" ] && [ "$AUTO_ID" != "regr-auto-fallback" ]; then
     assert 'echo "$OUT" | grep -q "'"$AUTO_ID"'"' "list shows $AUTO_ID"
-    assert 'echo "$OUT" | grep -q "Total: 2 agents"' "list shows 2 total agents"
+    # INT-CI-030: delta-based — the baseline (section 3b) absorbs any
+    # registry residue the shared runner carried in; this cell asserts
+    # exactly the two spawns THIS suite performed. Absolute expectation on a
+    # pristine host is unchanged (0 + 2 = 2).
+    assert 'echo "$OUT" | grep -q "Total: '"$((LIST_BEFORE + 2))"' agents"' "list shows 2 more agents than the pre-spawn baseline (baseline $LIST_BEFORE + 2)"
 else
-    assert 'echo "$OUT" | grep -q "Total: 1 agents"' "list shows 1 total agent"
+    # Same delta contract when the auto-spawn cell failed: baseline + 1.
+    assert 'echo "$OUT" | grep -q "Total: '"$((LIST_BEFORE + 1))"' agents"' "list shows 1 more agent than the pre-spawn baseline (baseline $LIST_BEFORE + 1)"
 fi
 
 echo ""
