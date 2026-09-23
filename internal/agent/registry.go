@@ -58,6 +58,9 @@ func recordToRegistry(rec *resource.AgentRecord) *registry.Record {
 		PublicURL:        rec.PublicURL,
 		TailnetIP:        rec.TailnetIP,
 		Image:            rec.Image,
+		// MOUNT-006: the mount driver rides the durable record so a
+		// replayed/adopted agent keeps the driver its spawn selected.
+		MountDriver: rec.MountDriver,
 		// GAP-116: the effective preset and knob set ride the durable record
 		// so a replayed/adopted agent keeps reporting what it was spawned
 		// with. The property lists convert from the wire type into the
@@ -104,6 +107,9 @@ func registryToRecord(rec *registry.Record) *resource.AgentRecord {
 		SshfsMount:        rec.SSHFSMount,
 		DockerHostTunnel:  rec.DockerHostTunnel,
 		Image:             rec.Image,
+		// MOUNT-006: restore the mount driver from the durable record so a
+		// replayed or adopted agent keeps the driver its spawn selected.
+		MountDriver: rec.MountDriver,
 		// GAP-116: restore the effective preset/knob reporting from the durable
 		// record so a replayed or adopted agent reports the set it was spawned
 		// with. The property lists convert from the registry's plain-JSON form

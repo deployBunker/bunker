@@ -99,6 +99,12 @@ type Event struct {
 	// agent keeps the container context its spawn established.
 	Image string `json:"image,omitempty"`
 
+	// MountDriver is the registered mount driver (MOUNT-006) that produced
+	// SSHFSMount. Empty on pre-seam records (meaning: the sshfs default).
+	// Persisted so a replayed or adopted agent keeps the driver its spawn
+	// selected instead of being re-labelled by command-text guessing.
+	MountDriver string `json:"mount_driver,omitempty"`
+
 	// GAP-116 safety-preset reporting: the effective preset name and the
 	// resolved systemd knob set the agent was spawned under. Persisted so a
 	// replayed or adopted agent keeps reporting its effective set. The
@@ -134,6 +140,9 @@ type Record struct {
 	PublicURL        string
 	TailnetIP        string
 	Image            string
+	// MountDriver is the registered mount driver (MOUNT-006) that produced
+	// SSHFSMount. Empty = pre-seam record = the sshfs default.
+	MountDriver string
 	// GAP-116 safety-preset reporting fields; see Event.
 	SafetyPreset    string
 	UnitProperties  []SystemdProperty
@@ -436,6 +445,9 @@ func (s *Store) AppendSpawn(rec *Record) error {
 		PublicURL:        rec.PublicURL,
 		TailnetIP:        rec.TailnetIP,
 		Image:            rec.Image,
+		// MOUNT-006: the mount driver rides the spawn event so a replayed
+		// agent keeps the driver its spawn selected.
+		MountDriver: rec.MountDriver,
 		// GAP-116: the effective preset and knob set ride the spawn event so
 		// a replayed agent keeps reporting what it was spawned with.
 		SafetyPreset:    rec.SafetyPreset,
@@ -664,6 +676,7 @@ func eventToRecord(ev *Event) *Record {
 		PublicURL:        ev.PublicURL,
 		TailnetIP:        ev.TailnetIP,
 		Image:            ev.Image,
+		MountDriver:      ev.MountDriver,
 		SafetyPreset:     ev.SafetyPreset,
 		UnitProperties:   ev.UnitProperties,
 		SliceProperties:  ev.SliceProperties,

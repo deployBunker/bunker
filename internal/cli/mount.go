@@ -7,21 +7,22 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
+	"github.com/deployBunker/bunker/internal/mountdriver"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 )
 
 // sshfsMaxAttempts is the total number of sshfs attempts (first try plus
-// retries) before the mount command gives up.
+// retries) before the mount command gives up. It bounds the sshfs driver's
+// retry loop (MOUNT-006: the sshfs-shaped durability layer is the sshfs
+// driver's declared behaviour, not a default other drivers inherit).
 const sshfsMaxAttempts = 3
 
 // sshfsAttemptTimeout bounds each individual sshfs attempt: every attempt gets
@@ -189,57 +190,28 @@ var sshfsRun = func(ctx context.Context, path string, args []string, stdout, std
 // sshfsMaxOutputTail bounds the captured-output tail embedded in error text.
 const sshfsMaxOutputTail = 500
 
-// sshfsPermanentFragments are lowercase output fragments that indicate a
-// permanent sshfs failure. Retrying cannot help, so the command fails
-// immediately on the first attempt without any session-limit hint.
-var sshfsPermanentFragments = []string{
-	"permission denied",
-	"no such file or directory",
-	"mountpoint is not empty",
-	"fuse: device not found",
-	"transport endpoint is not connected",
-}
-
-// sshfsTransientFragments are lowercase output fragments that indicate a
-// transient connection failure worth retrying. These were observed against
-// healthy agents whose host limits parallel SSH sessions (sshd MaxStartups):
-// each sshfs attempt opens a fresh connection while tunnels stay alive.
-var sshfsTransientFragments = []string{
-	"connection reset by peer",
-	"remote host has disconnected",
-	"connection closed",
-}
+// sshfsPermanentFragments/sshfsTransientFragments and classifySSHFSFailure
+// moved to internal/mountdriver (MOUNT-006): the fragments and their
+// precedence are now the sshfs DRIVER's declared failure classifier, so a
+// future driver cannot silently inherit (or silently skip) them.
+// classifySSHFSFailure delegates to the sshfs driver's classifier and keeps
+// the pre-seam signature for the existing callers/tests.
 
 // classifySSHFSFailure inspects the captured sshfs output and the process
 // error and returns a class ("permanent", "transient", or "unknown") plus a
-// short human-readable reason. Permanent causes take precedence: real ssh
-// transcripts often contain both a permanent fragment and a transient one
-// (e.g. "Permission denied ... Connection closed by host"), and retrying an
-// auth failure would only add noise.
+// short human-readable reason, exactly as before the seam. It resolves the
+// driver through the registry so the classifier under test is the one the
+// registry actually serves for sshfs.
 func classifySSHFSFailure(output string, err error) (string, string) {
-	lower := strings.ToLower(output)
-	for _, frag := range sshfsPermanentFragments {
-		if strings.Contains(lower, frag) {
-			return "permanent", frag
-		}
+	d, derr := mountdriver.Resolve(mountdriver.DefaultDriver)
+	if derr != nil || d.Classify == nil {
+		// Unreachable while the sshfs driver is registered (the registry
+		// invariant test pins both halves); classify as unknown rather
+		// than panicking a diagnostic path.
+		return "unknown", ""
 	}
-	for _, frag := range sshfsTransientFragments {
-		if strings.Contains(lower, frag) {
-			return "transient", frag
-		}
-	}
-	if err != nil {
-		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-			return "transient", "unexpected EOF"
-		}
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && exitErr.ProcessState != nil {
-			if ws, ok := exitErr.ProcessState.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
-				return "transient", fmt.Sprintf("killed by signal %s", ws.Signal())
-			}
-		}
-	}
-	return "unknown", ""
+	class, reason := d.Classify(output, err)
+	return string(class), reason
 }
 
 // trimSSHFSOutput trims captured sshfs output to a sane tail for embedding
@@ -337,9 +309,27 @@ produces a warning. Pass --sshfs-require-patched to refuse instead of warning.`,
 			if err != nil {
 				return fmt.Errorf("get agent %s: %w", agentID, err)
 			}
+			// MOUNT-006: dispatch per driver. The server stamps an explicit
+			// driver identity (MountSpec) next to the legacy opaque command
+			// string; a pre-seam server (or a legacy record) reports no
+			// MountSpec, which means the sshfs default — the exact old
+			// behaviour. An UNKNOWN driver name is a loud named refusal,
+			// never a silent sshfs fallback.
+			mountSpec := info.Msg.GetAgent().GetMountSpec()
 			mountCmd := info.Msg.GetAgent().GetSshfsMount()
+			if mountSpec != nil && mountSpec.GetCommand() != "" {
+				mountCmd = mountSpec.GetCommand()
+			}
+			mountDriverName := mountdriver.DefaultDriver
+			if mountSpec != nil && mountSpec.GetDriver() != "" {
+				mountDriverName = mountSpec.GetDriver()
+			}
+			mountDriver, driverErr := mountdriver.Resolve(mountDriverName)
+			if driverErr != nil {
+				return fmt.Errorf("mount refused: %w — this client does not support that driver; upgrade `bunker` or re-spawn the agent with --mount-driver %s", driverErr, mountdriver.DefaultDriver)
+			}
 			if mountCmd == "" {
-				return fmt.Errorf("agent %s has no SSHFS mount command; ensure it was spawned with SSHFS support", agentID)
+				return fmt.Errorf("agent %s has no %s mount command; ensure it was spawned with mount support", agentID, mountDriver.Name)
 			}
 
 			// 3. Resolve the client-side connection details. The stored
@@ -567,7 +557,7 @@ produces a warning. Pass --sshfs-require-patched to refuse instead of warning.`,
 					lastClass, lastReason = classifySSHFSFailure(combined.String(), lastErr)
 				}
 				msg := fmt.Sprintf("sshfs failed after %d attempts (%s)", sshfsMaxAttempts, lastReason)
-				if lastClass == "transient" && containsAnyFragment(combined.String(), sshfsTransientFragments) {
+				if lastClass == "transient" && mountdriver.ContainsAnyFragment(combined.String(), mountdriver.TransientFragmentsSSHFS()) {
 					msg += " — agent host may be limiting parallel SSH sessions; try again or close other tunnels"
 				}
 				return fmt.Errorf("%s: %w (last output: %s)", msg, lastErr, trimSSHFSOutput(combined.String()))
@@ -592,16 +582,4 @@ produces a warning. Pass --sshfs-require-patched to refuse instead of warning.`,
 	cmd.Flags().StringVar(&expectWorkspace, "expect-workspace", "", "Refuse to mount unless the resolved workspace matches this git remote (e.g. deployBunker/bunker)")
 	cmd.Flags().BoolVar(&sshfsRequirePatched, "sshfs-require-patched", false, "Refuse to mount (before any mount attempt) when the local sshfs is older than "+sshfsPatchedVersion+" or its version cannot be verified — CVE-2026-47187 / CVE-2026-48711. Default: warn and proceed")
 	return cmd
-}
-
-// containsAnyFragment reports whether s contains any of the (lowercase)
-// fragments, so evidenced hints can be gated on the captured output.
-func containsAnyFragment(s string, fragments []string) bool {
-	lower := strings.ToLower(s)
-	for _, frag := range fragments {
-		if strings.Contains(lower, frag) {
-			return true
-		}
-	}
-	return false
 }

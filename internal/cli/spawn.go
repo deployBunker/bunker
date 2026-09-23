@@ -38,6 +38,7 @@ func NewSpawnCommand() *cobra.Command {
 		sshHost       string
 		imageSpecFile string
 		preset        string
+		mountDriver   string
 	)
 
 	cmd := &cobra.Command{
@@ -155,6 +156,11 @@ Examples:
 				Ttl:          ttl,
 				ImageSpec:    imageSpecPB,
 				SafetyPreset: preset,
+				// MOUNT-006: the requested mount driver. Empty = the
+				// server's sshfs default; an unknown name is refused by
+				// the server (CodeInvalidArgument) — never a silent
+				// fallback to sshfs.
+				MountDriver: mountDriver,
 			})
 
 			// Limits
@@ -298,6 +304,7 @@ Examples:
 	cmd.Flags().StringVar(&sshHost, "ssh-host", "", "SSH host shown in the bundle (default: hostname from server config URL)")
 	cmd.Flags().StringVar(&imageSpecFile, "image-spec", "", "JSON file with an image customization spec (base + apt/go/npm package adds)")
 	cmd.Flags().StringVar(&preset, "preset", "", "Safety preset for this agent: open, standard, hardened (default: BUNKERD_SAFETY_PRESET, then the server's config, then open)")
+	cmd.Flags().StringVar(&mountDriver, "mount-driver", "", "Mount driver for this agent (default: sshfs; an unknown name is refused by the server)")
 
 	return cmd
 }

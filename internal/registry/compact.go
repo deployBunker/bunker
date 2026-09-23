@@ -124,6 +124,7 @@ func (s *Store) Compact() (CompactStats, error) {
 			PublicURL:        rec.PublicURL,
 			TailnetIP:        rec.TailnetIP,
 			Image:            rec.Image,
+			MountDriver:      rec.MountDriver,
 		})
 	}
 
