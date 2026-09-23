@@ -16,6 +16,7 @@ package server
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"time"
@@ -31,6 +32,12 @@ import (
 // encoded). Matches the GAP-129 generation length so a rotated secret and a
 // first-boot generated secret are indistinguishable in shape.
 const generatedSecretBytes = 32
+
+// generateRotateSecretFn is the secret-generation seam RotateJWTSecret uses
+// (DF-BUNKER-46): a package variable so tests can pin the "generated"
+// value — e.g. to prove the static-token collision refusal deterministically.
+// Production callers never touch it.
+var generateRotateSecretFn = generateRotateSecret
 
 // generateRotateSecret mints a new HS256 secret: crypto-random bytes, hex
 // encoded (same shape as config.generateJWTSecret — it round-trips through
@@ -51,9 +58,16 @@ func (s *bunkerdService) RotateJWTSecret(ctx context.Context, req *connect.Reque
 	if s.jwtAuth == nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("JWT auth is not configured on this server"))
 	}
-	newSecret, err := generateRotateSecret()
+	newSecret, err := generateRotateSecretFn()
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	// DF-BUNKER-46: the signing secret and the static bearer token are
+	// different credential classes and must stay disjoint. A secret equal
+	// to auth.token would make one paste of it into either slot
+	// simultaneously a credential swap — refuse BEFORE any mutation.
+	if s.cfg != nil && s.cfg.Auth.Token != "" && subtle.ConstantTimeCompare([]byte(newSecret), []byte(s.cfg.Auth.Token)) == 1 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("generated signing secret collides with the static auth.token — credential classes must stay disjoint; retry the rotation"))
 	}
 	prevFp, err := s.jwtAuth.RotateSecret(newSecret, time.Duration(req.Msg.GetOverlapSeconds())*time.Second)
 	if err != nil {
@@ -67,7 +81,10 @@ func (s *bunkerdService) RotateJWTSecret(ctx context.Context, req *connect.Reque
 		}
 	}
 	now := time.Now().UTC()
-	s.recordKeyLifecycle(ctx, "/bunker.v1.Bunkerd/RotateJWTSecret", fmt.Sprintf("jwt_secret rotated; overlap=%s; previous fp=%s", effective, prevFp))
+	// DF-BUNKER-46: the audit record names the credential class and the
+	// immediate in-memory switch so the trail itself cannot propagate the
+	// paste-as-bearer mistake. Fingerprints only — never secret material.
+	s.recordKeyLifecycle(ctx, "/bunker.v1.Bunkerd/RotateJWTSecret", fmt.Sprintf("JWT signing secret (NOT a bearer token) rotated; in-memory switch is immediate; overlap=%s; previous fp=%s", effective, prevFp))
 	return connect.NewResponse(&v1.RotateJWTSecretResponse{
 		JwtSecret:           newSecret,
 		RotatedAt:           now.Format(time.RFC3339),

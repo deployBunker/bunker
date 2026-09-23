@@ -24,18 +24,23 @@ func NewKeysCommand() *cobra.Command {
 		Short: "Manage API keys and the JWT signing secret (master only)",
 		Long: `Manage API keys and the JWT signing secret on a bunkerd server.
 
-key rotate  Rotate the JWT signing secret WITHOUT downtime. The new secret is
-            printed EXACTLY ONCE — store it (env-file / auth.jwt_secret_file)
-            before you lose this output. During the overlap window
-            (--overlap-seconds, default 600, capped at 3600) the retired
-            secret keeps validating existing tokens, so live clients never
-            see an auth failure; after the window they are rejected.
+key rotate  Rotate the HS256 JWT SIGNING SECRET (NOT a bearer token) without
+            downtime. The new secret is printed EXACTLY ONCE — store it
+            (env-file / auth.jwt_secret_file) before you lose this output.
+            The switch is IMMEDIATE: new-secret tokens validate with NO
+            restart; persisting it and restarting the daemon is only
+            crash-persistence. During the overlap window (--overlap-seconds,
+            default 600, capped at 3600) the retired secret keeps validating
+            existing tokens, so live clients never see an auth failure;
+            after the window they are rejected.
 key list    List active API sub-keys (metadata only, no secrets).
 key revoke  Revoke an API sub-key by key ID. Immediate and durable: the
             credential stops validating and stays revoked across restarts.
 
-All verbs require the master credential (BUNKER_TOKEN or the server entry
-token); agent sub-keys are rejected.`,
+All verbs require the master credential (BUNKER_TOKEN or the server entry's
+static auth.token); agent sub-keys are rejected. Never use the signing
+secret as a bearer token — the daemon rejects it with
+"unauthenticated: invalid token".`,
 	}
 	cmd.AddCommand(newKeyRotateCommand())
 	cmd.AddCommand(newKeyListCommand())
@@ -71,7 +76,7 @@ func newKeyRotateCommand() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "rotate",
-		Short: "Rotate the JWT signing secret without downtime (new secret printed ONCE)",
+		Short: "Rotate the JWT signing secret (NOT a bearer token); effective immediately, no restart",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			entry, err := keyServerEntry(serverName)
@@ -95,7 +100,13 @@ func newKeyRotateCommand() *cobra.Command {
 			fmt.Fprintf(out, "# rotated_at: %s\n", resp.Msg.GetRotatedAt())
 			fmt.Fprintf(out, "# overlap_seconds: %d (old secret still validates until then, then rejected)\n", resp.Msg.GetOverlapSeconds())
 			fmt.Fprintf(out, "# previous fingerprint: %s\n", resp.Msg.GetPreviousFingerprint())
-			fmt.Fprintln(out, "# The new secret is shown ONCE — persist it now (auth.jwt_secret_file / env-file) and restart bunkerd to load it.")
+			fmt.Fprintln(out, "# This is the HS256 JWT SIGNING SECRET — NOT a bearer token (it is shown ONCE).")
+			fmt.Fprintln(out, "# NEVER paste it into a server entry's `token:` field: that field holds the")
+			fmt.Fprintln(out, "# static auth.token from /etc/bunkerd/config.yaml, which key rotate NEVER")
+			fmt.Fprintln(out, "# changes; pasting the signing secret there makes every request fail with")
+			fmt.Fprintln(out, "# \"unauthenticated: invalid token\".")
+			fmt.Fprintln(out, "# The in-memory switch is IMMEDIATE — no restart is needed for the new secret to take effect.")
+			fmt.Fprintln(out, "# Persisting it (auth.jwt_secret_file / env-file) and restarting is only crash-persistence.")
 			return nil
 		},
 	}

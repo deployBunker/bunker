@@ -342,6 +342,17 @@ func (a *JWTAuth) authenticate(header http.Header, source, procedure string) (*C
 		}
 	}
 
+	// DF-BUNKER-46 classification — runs ONLY after every real credential
+	// path above failed, so admission order is unchanged. If the presented
+	// value is the (live or overlap-window) signing secret itself, the
+	// caller pasted key material into the bearer slot: name the category
+	// mistake instead of the generic "invalid token" that caused the
+	// paste-as-bearer lockout. The compare covers only currently-accepted
+	// secrets, so a retired, window-expired secret keeps the generic error.
+	if a.matchesSigningSecret(rawToken) {
+		return nil, a.denied(source, procedure, newDenyReason(errSigningSecretAsBearer.Error(), rawToken), connect.NewError(connect.CodeUnauthenticated, errSigningSecretAsBearer))
+	}
+
 	// If the token looks like a JWT, report the JWT error.
 	if isLikelyJWT(rawToken) {
 		return nil, a.denied(source, procedure, newDenyReason(jwtErr.Error(), rawToken), connect.NewError(connect.CodeUnauthenticated, jwtErr))
@@ -380,6 +391,31 @@ func (a *JWTAuth) parseToken(token string) (*Claims, error) {
 		return nil, lastErr
 	}
 	return nil, errors.New("invalid token")
+}
+
+// errSigningSecretAsBearer is the DF-BUNKER-46 classification error: the
+// presented bearer credential IS the signing secret (or a still-accepted
+// retired one), which is the paste-as-bearer category mistake that locked
+// operators out of their own CLI config. It names the credential class and
+// the bearer alternative instead of the generic "invalid token".
+var errSigningSecretAsBearer = errors.New("invalid token: this is the HS256 JWT signing secret, not a bearer token — use the daemon's static auth.token or a signed JWT")
+
+// matchesSigningSecret constant-time-compares presented against every
+// signing secret this daemon currently accepts (the live one, plus the
+// retired one while its GAP-132 overlap window is open — accepting() holds
+// the acceptance rule). DF-BUNKER-46: it answers ONE question only, "is
+// this the signing key material?", and runs ONLY after the real credential
+// paths (JWT, static fallback, opaque sub-key) have already failed, so it
+// never changes admission. Secrets outside the current acceptance set (e.g.
+// a retired secret whose overlap window has closed) are NOT compared, so a
+// dead secret stays indistinguishable from a random wrong token.
+func (a *JWTAuth) matchesSigningSecret(presented string) bool {
+	for _, secret := range a.secret.accepting() {
+		if subtle.ConstantTimeCompare([]byte(presented), secret) == 1 {
+			return true
+		}
+	}
+	return false
 }
 
 func isLikelyJWT(token string) bool {
