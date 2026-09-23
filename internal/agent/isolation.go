@@ -268,10 +268,16 @@ func resolveContainmentKnobs(preset string, memMax uint64, a config.AgentConfig)
 	}
 	// The tier's cushion is a PERCENT of this agent's resolved MemoryMax;
 	// an open-tier table (0%) leaves the knob unrequested — emitNothing.
+	// The kernel normalizes memory.high writes to the system page size
+	// (floor requested/page * page — measured in hosted CI run 35844834462:
+	// 241591860 → 241590272, 3865470480 → 3865468928), so the resolved
+	// value is carried canonically: the drop-in emits, the landing check
+	// compares against, and the diagnostics report the exact number the
+	// kernel will hold (INT-CI-37 rework).
 	if tier.memHighPct > 0 {
-		r.memHigh = memMax / 100 * uint64(tier.memHighPct)
+		r.memHigh = canonicalMemoryHigh(memMax / 100 * uint64(tier.memHighPct))
 		if r.memHigh == 0 {
-			r.memHigh = memMax
+			r.memHigh = canonicalMemoryHigh(memMax)
 		}
 	}
 	if c := a.Containment; c.MemorySwapMaxBytes == -1 || a.DefaultMemorySwapMaxBytes == -1 {
@@ -283,7 +289,9 @@ func resolveContainmentKnobs(preset string, memMax uint64, a config.AgentConfig)
 		if v == 0 {
 			v = a.DefaultMemoryHighBytes
 		}
-		r.memHigh = uint64(v)
+		// Same page-canonical contract on the admin-override path; the
+		// sub-page clamp-to-one-page edge lives inside the helper.
+		r.memHigh = canonicalMemoryHigh(uint64(v))
 		r.highOverride = true
 	}
 	if c := a.Containment; c.IOWeight > 0 || a.DefaultIOWeight > 0 {
@@ -320,7 +328,7 @@ func sliceContainmentKnobs(r containmentResolved) ([]SystemdKnob, error) {
 		knobs = append(knobs, SystemdKnob{Name: "MemorySwapMax", Value: "0", Scope: KnobScopeSlice})
 	}
 	if r.memHigh > 0 {
-		knobs = append(knobs, SystemdKnob{Name: "MemoryHigh", Value: fmt.Sprintf("%d", r.memHigh), Scope: KnobScopeSlice})
+		knobs = append(knobs, SystemdKnob{Name: "MemoryHigh", Value: fmt.Sprintf("%d", canonicalMemoryHigh(r.memHigh)), Scope: KnobScopeSlice})
 	}
 	if r.ioWeight > 0 {
 		knobs = append(knobs, SystemdKnob{Name: "IOWeight", Value: fmt.Sprintf("%d", r.ioWeight), Scope: KnobScopeSlice})
@@ -346,13 +354,78 @@ func sliceContainmentKnobs(r containmentResolved) ([]SystemdKnob, error) {
 // device. It is a var so tests can pin the resolution without a real NVMe.
 var resolveWholeDiskDevice = resolveWholeDiskDeviceReal
 
-func resolveWholeDiskDeviceReal() (string, error) {
-	// Find the partition holding / from /proc/self/mountinfo, then map it to
-	// its parent disk via the /sys/block/<disk>/<part>/ hierarchy.
-	partName, err := rootDeviceName()
+// sysDevBlockRoot is the kernel's device-number alias directory:
+// /sys/dev/block/<major>:<minor> symlinks to the canonical sysfs subtree of
+// the backing block device. On /dev/root-style hosts this is the only path
+// from the mount table to a real partition node. Var so tests can point it
+// at a fixture tree (same seam pattern as wholeDiskSysBlockRoot).
+var sysDevBlockRoot = "/sys/dev/block"
+
+// sysDevBlockTarget resolves a <major>:<minor> alias to the canonical sysfs
+// directory it names. Var so tests can pin the resolution; production
+// lstat + readlink handles both symlink aliases (the kernel shape) and real
+// directories.
+var sysDevBlockTarget = sysDevBlockTargetReal
+
+func sysDevBlockTargetReal(majMin string) (string, error) {
+	p := filepath.Join(sysDevBlockRoot, majMin)
+	fi, err := os.Lstat(p)
 	if err != nil {
 		return "", err
 	}
+	if fi.Mode()&os.ModeSymlink == 0 {
+		return p, nil
+	}
+	raw, err := os.Readlink(p)
+	if err != nil {
+		return "", err
+	}
+	if !filepath.IsAbs(raw) {
+		raw = filepath.Join(sysDevBlockRoot, raw)
+	}
+	return raw, nil
+}
+
+func resolveWholeDiskDeviceReal() (string, error) {
+	// Find the partition holding / from /proc/self/mountinfo, then map it
+	// to its parent disk. Two host shapes exist:
+	//
+	//  1. The mount source IS a partition node (/dev/vda1, /dev/nvme0n1p2):
+	//     its base name sits under /sys/block/<disk>/<part> directly.
+	//  2. The mount source is a devtmpfs NAME (/dev/root — hosted CI
+	//     runners): it names NO sysfs node, so the root mountinfo record's
+	//     major:minor plus the /sys/dev/block canonical alias identify the
+	//     real backing partition, and that partition maps to its whole
+	//     disk under /sys/block. The /dev/root node itself is NEVER
+	//     statted or opened: device-node st(2) mirrors whatever device
+	//     last resolved through the node, so the mount record's
+	//     major:minor is the only trustworthy identity (INT-CI-37
+	//     rework).
+	source, err := rootDeviceSource()
+	if err != nil {
+		return "", err
+	}
+	partName := path.Base(source)
+	if dev, nameErr := resolveWholeDiskByName(partName); nameErr == nil {
+		return dev, nil
+	}
+	majMin, mmErr := rootDeviceMajorMinor()
+	if mmErr != nil {
+		return "", fmt.Errorf("no whole-disk device in %s holds the root filesystem: source %q is not a sysfs partition, and the root device id could not be read: %v",
+			wholeDiskSysBlockRoot, source, mmErr)
+	}
+	dev, devErr := resolveWholeDiskViaDevBlock(majMin)
+	if devErr == nil {
+		return dev, nil
+	}
+	return "", fmt.Errorf("root filesystem device not identifiable: source %q is not a sysfs partition and %s has no %s canonical target under %s: %v",
+		source, sysDevBlockRoot, majMin, wholeDiskSysBlockRoot, devErr)
+}
+
+// resolveWholeDiskByName maps a sysfs partition name (e.g. vda1,
+// nvme0n1p2) to its parent whole disk by walking /sys/block/<disk>/<part>
+// and returning /dev/<disk>. The go lever is shared by both resolver shapes.
+func resolveWholeDiskByName(partName string) (string, error) {
 	entries, err := os.ReadDir(wholeDiskSysBlockRoot)
 	if err != nil {
 		return "", fmt.Errorf("list %s: %w", wholeDiskSysBlockRoot, err)
@@ -362,7 +435,21 @@ func resolveWholeDiskDeviceReal() (string, error) {
 			return "/dev/" + e.Name(), nil
 		}
 	}
-	return "", fmt.Errorf("no whole-disk device in /sys/block holds partition %q", partName)
+	return "", fmt.Errorf("no whole-disk device in %s holds partition %q", wholeDiskSysBlockRoot, partName)
+}
+
+// resolveWholeDiskViaDevBlock maps the root filesystem's <major>:<minor>
+// through the kernel's /sys/dev/block alias to the real sysfs partition
+// subtree, then reuses the /sys/block walk for the whole-disk parent.
+func resolveWholeDiskViaDevBlock(majMin string) (string, error) {
+	target, err := sysDevBlockTarget(majMin)
+	if err != nil {
+		return "", fmt.Errorf("resolve %s canonical target under %s: %w", majMin, sysDevBlockRoot, err)
+	}
+	// The alias resolves to the PARTITION subtree (…/vda/vda1,
+	// …/nvme0n1/nvme0n1p2); its base name is the sysfs partition node the
+	// name-walk needs.
+	return resolveWholeDiskByName(path.Base(target))
 }
 
 // rootDeviceMountInfoPath is the mount table read to find the root fs's
@@ -379,19 +466,63 @@ var wholeDiskSysBlockRoot = "/sys/block"
 // located by mountpoint "/" and the source is taken from AFTER the "-"
 // separator (fstype, source, super-options), which sidesteps overlayfs-style
 // wrapper lines where the source is not the real device.
-func rootDeviceName() (string, error) {
+// rootDeviceSource returns the mount SOURCE string backing the root
+// filesystem from the mount table ("/dev/vda1", or the devtmpfs NAME
+// "/dev/root" on hosted runners). The line is located by mountpoint "/" and
+// the source is taken from AFTER the "-" separator (fstype, source,
+// super-options), which sidesteps overlayfs-style wrapper lines where the
+// source is not the real device.
+func rootDeviceSource() (string, error) {
+	raw, err := rootDeviceMountInfoFields()
+	if err != nil {
+		return "", err
+	}
+	return raw.source, nil
+}
+
+// rootDeviceMajorMinor returns the root mountinfo record's device id — the
+// <major>:<minor> pair (the first field of the line), which is the root fs's
+// block device identity even when the source field only carries a devtmpfs
+// NAME (/dev/root). The /sys/dev/block/<maj>:<min> alias keys off exactly
+// this pair.
+func rootDeviceMajorMinor() (string, error) {
+	raw, err := rootDeviceMountInfoFields()
+	if err != nil {
+		return "", err
+	}
+	maj, min, ok := strings.Cut(raw.majMin, ":")
+	if !ok || maj == "" || min == "" {
+		return "", fmt.Errorf("root mountinfo record carries a malformed device id %q in %s", raw.majMin, rootDeviceMountInfoPath)
+	}
+	return raw.majMin, nil
+}
+
+// rootDeviceRaw is one parsed root-mountinfo record: the source string and
+// the <major>:<minor> device id.
+type rootDeviceRaw struct {
+	source string
+	majMin string
+}
+
+// rootDeviceMountInfoFields reads and parses the root record of the mount
+// table once for both resolver identities (source name and major:minor).
+func rootDeviceMountInfoFields() (rootDeviceRaw, error) {
 	data, err := os.ReadFile(rootDeviceMountInfoPath)
 	if err != nil {
-		return "", fmt.Errorf("read %s: %w", rootDeviceMountInfoPath, err)
+		return rootDeviceRaw{}, fmt.Errorf("read %s: %w", rootDeviceMountInfoPath, err)
 	}
 	for _, line := range strings.Split(string(data), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 6 || fields[4] != "/" {
 			continue
 		}
+		// The device-id field is the <maj>:<min> token among the fields
+		// BEFORE the "-" separator (field 3 on a normal line; scanned so
+		// exotic mountpoint shapes do not zero the index). The id and the
+		// separator are located independently.
 		sep := -1
-		for i := 6; i < len(fields); i++ {
-			if fields[i] == "-" {
+		for i, f := range fields {
+			if f == "-" {
 				sep = i
 				break
 			}
@@ -399,16 +530,76 @@ func rootDeviceName() (string, error) {
 		if sep < 0 || sep+2 >= len(fields) {
 			continue
 		}
-		dev := path.Base(fields[sep+2])
-		if dev == "" || dev == "none" || dev == "overlay" {
+		majMin := ""
+		for _, f := range fields[:sep] {
+			if m, _, ok := strings.Cut(f, ":"); ok && m != "" && isAllDigits(m) {
+				majMin = f
+				break
+			}
+		}
+		if majMin == "" {
 			continue
 		}
-		return dev, nil
+		source := fields[sep+2]
+		base := path.Base(source)
+		if base == "" || base == "none" || base == "overlay" {
+			continue
+		}
+		return rootDeviceRaw{source: source, majMin: majMin}, nil
 	}
-	return "", fmt.Errorf("root filesystem device not found in %s", rootDeviceMountInfoPath)
+	return rootDeviceRaw{}, fmt.Errorf("root filesystem device not found in %s", rootDeviceMountInfoPath)
+}
+
+// isAllDigits reports whether s is a non-empty decimal run (the major side
+// of a device id is always numeric; this rejects path-shaped ':' lookalikes
+// like "0:34" being confused with… itself, but keeps ids from carrying a
+// non-numeric left side).
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // ── the R2 landing check (write-then-read-back, fail loud) ─────────────────
+
+// systemPageSizeBytes is the OS page size used for the memory.high knob's
+// canonical contract. Var so tests can pin it; production initializes it
+// from os.Getpagesize at first use (page size never changes on a running
+// kernel).
+var systemPageSizeBytes = uint64(os.Getpagesize())
+
+// canonicalMemoryHigh returns the kernel-observable form of a memory.high
+// request: the kernel (v6.x, and systemd's unit-set path) normalizes
+// cgroup memory.high writes DOWN to the system page size — measured in the
+// hosted CI run 35844834462 as requested 241591860 → observed 241590272 and
+// requested 3865470480 → observed 3865468928, each exactly
+// floor(requested/4096)*4096. Emitting and comparing the canonical value
+// keeps the generated knob / readback contract deterministic without
+// weakening enforcement — a one-page-or-more divergent value still fails
+// the landing check loudly. Contract edge: a sub-page request floors to 0,
+// and memory.high=0 means UNLIMITED (the knob disarms), so a positive
+// request never canonicalizes to 0 — it clamps up to one full page. The
+// function is the ONLY place this contract lives; emit and verify both
+// call it.
+func canonicalMemoryHigh(requested uint64) uint64 {
+	if requested == 0 {
+		return 0 // unrequested: the emitNothing path, exactly 0
+	}
+	if systemPageSizeBytes == 0 { // defensive: a test zeroed the seam
+		systemPageSizeBytes = uint64(os.Getpagesize())
+	}
+	canon := requested / systemPageSizeBytes * systemPageSizeBytes
+	if canon == 0 {
+		return systemPageSizeBytes
+	}
+	return canon
+}
 
 // cgroupV2Root is where the unified hierarchy is mounted. Var: the landing
 // tests point it at a fixture tree; production never writes it.
@@ -454,8 +645,14 @@ func (m *AgentManager) verifyContainmentLanding(uid string, want containmentReso
 		if err != nil {
 			return fmt.Errorf("containment landing: read memory.high: %w", err)
 		}
-		if got != fmt.Sprintf("%d", want.memHigh) {
-			return fmt.Errorf("containment landing: memory.high = %q, want %d", got, want.memHigh)
+		// The kernel normalizes memory.high to the system page size (floor
+		// requested/page * page). The REQUESTED value is compared in its
+		// canonical form — no tolerance, no near-match: any value that is
+		// not exactly the page-normalized request still fails with the
+		// requested-versus-observed pair below (INT-CI-37 rework).
+		wantHigh := canonicalMemoryHigh(want.memHigh)
+		if got != fmt.Sprintf("%d", wantHigh) {
+			return fmt.Errorf("containment landing: memory.high = %q, want %d", got, wantHigh)
 		}
 	}
 	if want.oomGroupRequested() {
