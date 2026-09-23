@@ -623,6 +623,26 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 
 	logger.Info("installing rootless docker", "user", username)
 
+	// Satisfy the HOST prerequisites the official installer assumes exist.
+	// Without them the installer fails in ways that are hard to read — or,
+	// worse, succeeds and leaves a daemon that cannot map uids or route
+	// container traffic. Each prerequisite is tried as: already present -> OS
+	// package (per distribution family) -> prebuilt static binary -> source. A
+	// required miss aborts with every strategy that was tried and why; an
+	// optional miss only warns and the install continues.
+	//
+	// This is the fix for "the first spawn on a fresh host died because
+	// newuidmap was missing": the failure used to surface as an opaque
+	// installer error the operator had to diagnose by hand.
+	if outcomes, err := EnsureRootlessPrerequisites(ctx, PrereqOptions{Apply: true, Logger: logger}); err != nil {
+		rendered := make([]string, 0, len(outcomes))
+		for _, o := range outcomes {
+			rendered = append(rendered, o.String())
+		}
+		return fmt.Errorf("rootless prerequisites for %s: %w (host prerequisite report: %s)",
+			username, err, strings.Join(rendered, "; "))
+	}
+
 	u, err := userLookup(username)
 	if err != nil {
 		return fmt.Errorf("lookup user %s: %w", username, err)
