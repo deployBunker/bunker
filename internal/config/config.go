@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"path/filepath"
@@ -356,6 +357,51 @@ type AgentConfig struct {
 	DefaultMaxOpenFiles        uint64        `mapstructure:"default_max_open_files"`
 	DefaultMaxDockerContainers uint32        `mapstructure:"default_max_docker_containers"`
 	DefaultTTL                 time.Duration `mapstructure:"default_ttl"`
+	// GAP-118 DoS-containment knobs. These are ADMIN-OVERRIDE inputs to the
+	// tier table (internal/agent/isolation.go containmentForPreset), NOT a
+	// second source of tier values: the docs/presets/knob-safety-matrix.md
+	// verdicts decide what each tier emits, and a zero value here means "the
+	// tier table decides". -1 (or a positive value) overrides the tier for
+	// operators who must deviate; anything below -1 is a misconfiguration and
+	// fails validation.
+	//
+	// DefaultMemorySwapMaxBytes maps to systemd MemorySwapMax / cgroup v2
+	// memory.swap.max. The matrix's tiers emit 0 (bar swap — under-
+	// provisioning must fail loudly) or leave the host default (open tier);
+	// 0 here is INDISTINGUISHABLE from "tier table decides", so an operator
+	// who wants the open tier to bar swap explicitly sets -1... which is the
+	// measured-UNSAFE direction (matrix: bar-swap on open converts a
+	// would-have-completed run into an OOM), so -1 means "host default /
+	// opt OUT of the tier's bar-swap", never "infinity". Validation rejects
+	// everything below -1.
+	DefaultMemorySwapMaxBytes int64 `mapstructure:"default_memory_swap_max_bytes"`
+	// DefaultMemoryHighBytes maps to systemd MemoryHigh / cgroup v2
+	// memory.high (the soft throttle). 0 = the tier table decides (matrix:
+	// 90%/90% of MemoryMax for standard/hardened, off for open). A positive
+	// value overrides the tier's cushion in bytes.
+	DefaultMemoryHighBytes int64 `mapstructure:"default_memory_high_bytes"`
+	// DefaultMemoryOOMGroup would map to systemd MemoryOOMGroup / cgroup v2
+	// memory.oom.group. It is a BREAK-GLASS flag and validation REJECTS true:
+	// the GAP-114 matrix measured the knob UNMEASURED-here (the systemd 259
+	// user manager refuses the property; delegated cgroupfs writes EACCES)
+	// and blocked it from default-on. The only sanctioned way to arm it is a
+	// tier that requests it (hostile), never a daemon-wide default that
+	// bypasses the tier table. Left as a config field so the refusal carries
+	// a name operators can grep, and so a capable-host measurement can flip
+	// the matrix verdict in one later row.
+	DefaultMemoryOOMGroup bool `mapstructure:"default_memory_oom_group"`
+	// DefaultIOWeight maps to systemd IOWeight / cgroup v2 io.weight. The
+	// matrix measured the knob INERT on uncontended NVMe: no tier defaults
+	// it; a positive value opts this daemon in (spinning-disk/shared-bus
+	// hosts) for every tier. Range 1..10000 (kernel io.weight range).
+	DefaultIOWeight int64 `mapstructure:"default_io_weight"`
+	// DefaultIOWriteBps maps to systemd IOWriteBandwidthMax / cgroup v2
+	// io.max wbps, applied to the WHOLE disk device (io.max rejects
+	// partitions — measured). 0 = the tier table decides (matrix: opt-in on
+	// standard, off on open). The floor for a positive value is the matrix's
+	// measured 20MiB/s: nothing below it was ever measured, and under the
+	// experience-budget rule an unmeasured cost may not ship.
+	DefaultIOWriteBps int64 `mapstructure:"default_io_write_bps"`
 	// ImageSpec holds the GAP-064 image-customization policy.
 	ImageSpec ImageSpecConfig `mapstructure:"image_spec"`
 	// RootlessInstallerCacheDir is the host-level directory where downloaded
@@ -406,6 +452,93 @@ type AgentConfig struct {
 	// the keep pass. Env override:
 	// BUNKERD_AGENT_DESTROY_ARCHIVE_MAX_BYTES.
 	DestroyArchiveMaxBytes int64 `mapstructure:"destroy_archive_max_bytes"`
+	// GAP-118 DoS-containment admin overrides. See the per-field comments
+	// above (search DefaultMemorySwapMaxBytes): zero = the tier table in
+	// internal/agent/isolation.go decides, -1/positive = an operator
+	// override, and Validate() rejects values outside the measured envelope.
+	Containment ContainmentKnobs `mapstructure:"containment"`
+}
+
+// Measured bounds for the GAP-118 containment knobs. Every number here comes
+// from docs/presets/knob-safety-matrix.md (GAP-114, measured on this host
+// 2026-09-22); nothing is guessed. If the matrix is re-measured, these bounds
+// move with it.
+const (
+	// MinContainmentIOWriteBps is the LOWEST measured-enforced write bound
+	// (the matrix's hostile 20MiB/s cell, probe-e-iobounds.sh: "21.0 MB/s
+	// against a 20MiB/s cap"). A configured bound below it was never
+	// measured and is refused.
+	MinContainmentIOWriteBps = 20 * 1024 * 1024
+	// MaxContainmentIOWriteBps is a sanity ceiling: above it the knob no
+	// longer bounds anything on any host this code base targets, and a typo
+	// (a GB/s value) must fail at load, not throttle nothing in production.
+	MaxContainmentIOWriteBps = 2 * 1024 * 1024 * 1024
+	// MinContainmentIOWeight / MaxContainmentIOWeight are the kernel
+	// io.weight range (1..10000; the matrix measured docker mapping
+	// `--blkio-weight 150` to io.weight default 1415).
+	MinContainmentIOWeight = 1
+	MaxContainmentIOWeight = 10000
+)
+
+// ContainmentKnobs carries the GAP-118 DoS-containment admin overrides on the
+// agent config. Zero values mean "the tier table decides"; see the per-field
+// comments on AgentConfig for the exact override semantics.
+type ContainmentKnobs struct {
+	// MemorySwapMaxBytes, MemoryHighBytes and IOWriteBps mirror the
+	// AgentConfig fields of the same purpose; kept on the nested block so
+	// operators configure a coherent group under agent.containment.*.
+	// Validate() enforces that the nested block and the flat fields never
+	// disagree.
+	MemorySwapMaxBytes int64 `mapstructure:"memory_swap_max_bytes"`
+	MemoryHighBytes    int64 `mapstructure:"memory_high_bytes"`
+	IOWriteBps         int64 `mapstructure:"io_write_bps"`
+	// MemoryOOMGroup is refused true by Validate (matrix: UNMEASURED,
+	// blocked from default-on; the user manager refuses the property).
+	MemoryOOMGroup bool `mapstructure:"memory_oom_group"`
+	// IOWeight opts this daemon into the IOWeight knob on every tier (no
+	// tier defaults it — matrix: inert on uncontended NVMe).
+	IOWeight int64 `mapstructure:"io_weight"`
+}
+
+// Validate rejects containment values outside the measured envelope. It is
+// the config-load half of the fail-loud rule: a bad knob must never reach
+// spawn as a silently degraded set.
+func (k ContainmentKnobs) Validate() error {
+	for _, c := range []struct {
+		name  string
+		value int64
+		min   int64
+		max   int64
+	}{
+		// The only accepted negative is -1 (release the tier knob back to
+		// the host default); 0 means "the tier table decides"; positive
+		// values are byte overrides (memory_high) or opt-ins within their
+		// measured/range bounds.
+		{"agent.containment.memory_swap_max_bytes", k.MemorySwapMaxBytes, -1, -1},
+		{"agent.containment.memory_high_bytes", k.MemoryHighBytes, -1, math.MaxInt64},
+		{"agent.containment.io_weight", k.IOWeight, MinContainmentIOWeight, MaxContainmentIOWeight},
+		{"agent.containment.io_write_bps", k.IOWriteBps, MinContainmentIOWriteBps, MaxContainmentIOWriteBps},
+	} {
+		if c.value == 0 {
+			continue
+		}
+		if c.value < c.min || c.value > c.max {
+			if c.min == c.max {
+				return fmt.Errorf("%s: only -1 (release the tier knob / host default) is accepted, got %d", c.name, c.value)
+			}
+			return fmt.Errorf("%s: must be 0 (tier table decides), -1 (release), or between %d and %d — got %d", c.name, c.min, c.max, c.value)
+		}
+	}
+	if k.MemoryOOMGroup {
+		return fmt.Errorf("agent.containment.memory_oom_group is refused: the knob is UNMEASURED on this host (systemd user manager refuses MemoryOOMGroup=; see docs/presets/knob-safety-matrix.md) and is blocked from any default-on; it can only be armed by a tier that requests it")
+	}
+	return nil
+}
+
+// mergeErr reports an inconsistency between the flat AgentConfig overrides
+// and the nested containment block.
+func containmentMergeErr(name string) error {
+	return fmt.Errorf("agent.%s and agent.containment.* disagree; set only one (containment.* wins)", name)
 }
 
 // Destroy-home policy values accepted by AgentConfig.DestroyHomePolicy.
@@ -836,6 +969,19 @@ func Load(path string) (*Config, error) {
 	// global there, matching the GAP-067 precedence rule); this binding keeps
 	// the viper/automatic-env surface complete for operator introspection.
 	v.BindEnv("safety.preset")
+	// GAP-118: the DoS-containment admin overrides. The nested block is the
+	// documented configuration surface (agent.containment.*); the flat
+	// agent.default_* bindings keep the BUNKERD_* env surface complete.
+	v.BindEnv("agent.containment.memory_swap_max_bytes")
+	v.BindEnv("agent.containment.memory_high_bytes")
+	v.BindEnv("agent.containment.memory_oom_group")
+	v.BindEnv("agent.containment.io_weight")
+	v.BindEnv("agent.containment.io_write_bps")
+	v.BindEnv("agent.default_memory_swap_max_bytes")
+	v.BindEnv("agent.default_memory_high_bytes")
+	v.BindEnv("agent.default_memory_oom_group")
+	v.BindEnv("agent.default_io_weight")
+	v.BindEnv("agent.default_io_write_bps")
 
 	// Read config file if it exists
 	if _, err := os.Stat(path); err == nil {
@@ -907,6 +1053,38 @@ func (c *Config) Validate() error {
 	// a typoed preset name can never silently resolve to a different knob
 	// set at spawn time.
 	if err := c.Safety.Validate(); err != nil {
+		return err
+	}
+	// GAP-118: the DoS-containment admin overrides are validated where they
+	// are configured, so a typoed knob value fails at load — never as a
+	// half-applied set at spawn. A knob set in BOTH shapes (flat field and
+	// nested block) is ambiguous about intent and rejected; containment.*
+	// wins for single-shape configuration.
+	if err := c.Agent.Containment.Validate(); err != nil {
+		return err
+	}
+	k := c.Agent.Containment
+	switch {
+	case c.Agent.DefaultMemorySwapMaxBytes != 0 && k.MemorySwapMaxBytes != 0:
+		return containmentMergeErr("default_memory_swap_max_bytes")
+	case c.Agent.DefaultMemoryHighBytes != 0 && k.MemoryHighBytes != 0:
+		return containmentMergeErr("default_memory_high_bytes")
+	case c.Agent.DefaultIOWriteBps != 0 && k.IOWriteBps != 0:
+		return containmentMergeErr("default_io_write_bps")
+	case c.Agent.DefaultIOWeight != 0 && k.IOWeight != 0:
+		return containmentMergeErr("default_io_weight")
+	case c.Agent.DefaultMemoryOOMGroup && k.MemoryOOMGroup:
+		return containmentMergeErr("default_memory_oom_group")
+	}
+	// The flat fields carry the same envelope as the nested block.
+	flat := ContainmentKnobs{
+		MemorySwapMaxBytes: c.Agent.DefaultMemorySwapMaxBytes,
+		MemoryHighBytes:    c.Agent.DefaultMemoryHighBytes,
+		IOWriteBps:         c.Agent.DefaultIOWriteBps,
+		MemoryOOMGroup:     c.Agent.DefaultMemoryOOMGroup,
+		IOWeight:           c.Agent.DefaultIOWeight,
+	}
+	if err := flat.Validate(); err != nil {
 		return err
 	}
 	return nil

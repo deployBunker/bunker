@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/user"
+	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/hostsetup"
@@ -98,6 +101,97 @@ func KnobsForPreset(preset string, cpuQuota float64, memMax, diskMax, maxProcs, 
 	return unit, slice
 }
 
+// ── GAP-118 DoS-containment knobs ──────────────────────────────────────────
+
+// containmentKnobs is the DoS-containment knob set one tier requests on top
+// of the five-knob baseline. The zero value requests NOTHING, which is
+// exactly the open-tier shape — an absent knob is never emitted by the table,
+// so a tier that does not request a knob can never trip its landing check
+// (the matrix's MemoryOOMGroup rule, applied to every GAP-118 knob).
+type containmentKnobs struct {
+	// swapMax: true = emit MemorySwapMax=0 (bar swap); false = emit nothing
+	// (host default). The field is a bool rather than a number because the
+	// matrix's tier verdict is BINARY (bar / leave host default) — the bytes
+	// value is always 0 when set.
+	swapMax bool
+	// memHighPct is the MemoryHigh cushion as a PERCENT of the agent's
+	// resolved MemoryMax (the matrix's "90% of Max" cell); 0 = emit nothing.
+	// The table carries the percent — the matrix's design unit — and the
+	// resolver derives the bytes per agent.
+	memHighPct int
+	// oomGroup requests MemoryOOMGroup=yes; no tier in this table sets it.
+	oomGroup bool
+	// ioWeight requests IOWeight=N; 0 = emit nothing (no tier defaults it).
+	ioWeight int64
+	// ioWriteBps requests IOWriteBandwidthMax=<whole-disk> <bps>; 0 = emit
+	// nothing.
+	ioWriteBps int64
+}
+
+// containmentForPreset is the GAP-118 tier table. It is the binding code of
+// docs/presets/knob-safety-matrix.md's "Tier matrix" section (GAP-114,
+// measured on this host 2026-09-22); every cell cites the matrix:
+//
+//	MemorySwapMax  standard/hardened: 0 (bar)   open: host default
+//	  (matrix: with swap barred an at-limit workload dies loudly at the cap;
+//	  with swap allowed the same under-sizing is masked by paging. Bar-swap
+//	  must NEVER reach open — it converts a would-have-completed run into a
+//	  hard OOM.)
+//	MemoryHigh     standard/hardened: 90% of MemoryMax   open: off
+//	  (matrix: measured graceful — throttle + swap spill, zero kills; the
+//	  peak pins exactly at the cap. systemd MemoryHigh= only: docker
+//	  --memory-reservation measured a cgroup-v2 no-op.)
+//	MemoryOOMGroup open/standard/hardened: off
+//	  (matrix: UNMEASURED-here — the systemd 259 user manager refuses the
+//	  property and delegated cgroupfs writes EACCES; blocked from
+//	  default-on. A tier that does not request it must never hit its
+//	  landing check.)
+//	IOWeight       off on every tier (matrix: measured INERT on uncontended
+//	  NVMe — 900 vs 100 weights, identical throughput). Config opt-in only.
+//	IO write bound standard: opt-in (emit nothing here), open: off.
+//	  (matrix: the bound measured effective and exact; standard stays
+//	  opt-in so a 1.4GB docker load keeps today's throughput. An emitted
+//	  bound must resolve to the WHOLE disk device — io.max rejects
+//	  partitions, measured ENODEV.)
+//
+// Tier-name mapping note (matrix "Findings" #1): the matrix names the four
+// tiers open/standard/guarded/hostile; this code's vocabulary is
+// open/standard/hardened, and hardened is the guarded-and-above reading —
+// the containment cells are identical for the upper tiers, so the table
+// maps hardened to the matrix's guarded/hostile rows without changing a
+// measured value.
+func containmentForPreset(preset string) containmentKnobs {
+	switch preset {
+	case config.SafetyPresetOpen:
+		return containmentKnobs{}
+	case config.SafetyPresetStandard, config.SafetyPresetHardened:
+		return containmentKnobs{
+			swapMax:    true,
+			memHighPct: 90, // matrix: 90% of MemoryMax, measured-graceful
+		}
+	default:
+		panic(fmt.Sprintf("containment knobs for unknown safety preset %q — resolve through config.ResolveSafetyPreset", preset))
+	}
+}
+
+// ── the resolution-order seam (GAP-118) ────────────────────────────────────
+//
+// The spec (specs/safety-presets.md §3, as GAP-117 pinned it) makes the
+// agent.Default* config values the SOURCE of the shipped tier's five baseline
+// numbers — the preset selects the bundle, it does not duplicate the
+// arithmetic. The GAP-118 containment knobs inherit exactly that shape: the
+// tier table above is the DESIGN authority (the matrix's verdicts), and the
+// config fields on AgentConfig are the ADMIN-OVERRIDE seam in the documented
+// precedence tier-table → daemon config → per-spawn request. The tier table
+// holds the matrix's authority and config/release wins only where an
+// operator explicitly sets them; the per-spawn leg lands with the row that
+// adds the flag (run.go's vocabulary guard already resolves the tier for the
+// detached-run path).
+//
+// resolveOrderErr anchors that documented order in code so the precedence
+// test has a named seam to pin; production never reads it.
+var resolveOrderErr = errors.New("resolve order: tier table -> daemon config -> per-spawn request")
+
 // sliceKnobsFor builds the slice drop-in property set in the drop-in's own
 // order — the single source applyUserSliceLimits consumes. The values and the
 // conditional are exactly the pre-GAP-116 applyUserSliceLimits logic, moved
@@ -121,6 +215,294 @@ func sliceKnobsFor(cpuQuota float64, memMax, diskMax, maxProcs, maxFiles uint64)
 	}
 	return knobs
 }
+
+// containmentResolved is one agent's effective containment knob set after the
+// documented precedence (tier table → daemon config overrides) has been
+// applied. It is also the landing-check request: every field the enforcer
+// emitted must be verifiable against the live cgroup, and every field a tier
+// did not request must never trip a check.
+type containmentResolved struct {
+	// swapBarred is true when MemorySwapMax=0 must be applied AND verified.
+	swapBarred bool
+	// memHigh is the requested MemoryHigh in bytes; 0 = not requested (no
+	// emission, no landing check).
+	memHigh uint64
+	// ioWeight / ioWriteBps: requested values; 0 = not requested.
+	ioWeight   int64
+	ioWriteBps int64
+	// oomGroup is the request for memory.oom.group. The tier table never
+	// sets it (matrix: UNMEASURED-here, blocked from default-on); the field
+	// exists so a future capable-host measurement can arm the knob through
+	// the table in one place, and so the landing check's request gate is
+	// testable via the same struct the enforcer consumes.
+	oomGroup bool
+	// swapOverride / highOverride record that the tier's value was replaced
+	// by a daemon-config override (reported, never silent — the operator
+	// must be able to see that a spawn ran on an overridden knob).
+	swapOverride bool
+	highOverride bool
+	ioOverride   bool
+	// containerOnly names knobs that belong to the container/hosted layer
+	// per the matrix and must NOT be claimed from a user-unit knob list.
+	// Populated only when such a knob is explicitly configured; no tier
+	// table entry sets it.
+	containerOnly []string
+}
+
+// resolveContainmentKnobs merges the tier table with the daemon's admin
+// overrides (config.Agent, populated by the caller from cfg). Precedence is
+// the spec's: the tier table decides unless the operator explicitly set a
+// value; -1 releases a tier knob back to the host default (the only sane
+// override direction for bar-swap — matrix: forcing swap OFF open is the
+// measured-UNSAFE direction, and 0 on an int64 field means "unset").
+// The emitNothing rule: a knob resolved to "not requested" emits NO property
+// on ANY surface, so an unrequested knob can never trip its landing check.
+func resolveContainmentKnobs(preset string, memMax uint64, a config.AgentConfig) containmentResolved {
+	tier := containmentForPreset(preset)
+	r := containmentResolved{
+		swapBarred: tier.swapMax,
+		ioWeight:   tier.ioWeight,
+		ioWriteBps: tier.ioWriteBps,
+	}
+	// The tier's cushion is a PERCENT of this agent's resolved MemoryMax;
+	// an open-tier table (0%) leaves the knob unrequested — emitNothing.
+	if tier.memHighPct > 0 {
+		r.memHigh = memMax / 100 * uint64(tier.memHighPct)
+		if r.memHigh == 0 {
+			r.memHigh = memMax
+		}
+	}
+	if c := a.Containment; c.MemorySwapMaxBytes == -1 || a.DefaultMemorySwapMaxBytes == -1 {
+		r.swapBarred = false
+		r.swapOverride = true
+	}
+	if c := a.Containment; c.MemoryHighBytes > 0 || a.DefaultMemoryHighBytes > 0 {
+		v := c.MemoryHighBytes
+		if v == 0 {
+			v = a.DefaultMemoryHighBytes
+		}
+		r.memHigh = uint64(v)
+		r.highOverride = true
+	}
+	if c := a.Containment; c.IOWeight > 0 || a.DefaultIOWeight > 0 {
+		v := c.IOWeight
+		if v == 0 {
+			v = a.DefaultIOWeight
+		}
+		r.ioWeight = v
+		r.ioOverride = true
+	}
+	if c := a.Containment; c.IOWriteBps > 0 || a.DefaultIOWriteBps > 0 {
+		v := c.IOWriteBps
+		if v == 0 {
+			v = a.DefaultIOWriteBps
+		}
+		r.ioWriteBps = v
+		r.ioOverride = true
+	}
+	return r
+}
+
+// sliceContainmentKnobs renders the containment set in the slice drop-in's
+// own order. The five-knob baseline set is untouched — this function only
+// renders the GAP-118 additions. The write-bound property carries the WHOLE
+// disk device resolved from the root filesystem's backing device (io.max
+// rejects partitions — matrix correction #5); an unresolvable device yields
+// no property rather than a wrong one, and the caller's landing check then
+// fails the spawn loudly (never a silent no-op).
+func sliceContainmentKnobs(r containmentResolved) []SystemdKnob {
+	var knobs []SystemdKnob
+	if r.swapBarred {
+		knobs = append(knobs, SystemdKnob{Name: "MemorySwapMax", Value: "0", Scope: KnobScopeSlice})
+	}
+	if r.memHigh > 0 {
+		knobs = append(knobs, SystemdKnob{Name: "MemoryHigh", Value: fmt.Sprintf("%d", r.memHigh), Scope: KnobScopeSlice})
+	}
+	if r.ioWeight > 0 {
+		knobs = append(knobs, SystemdKnob{Name: "IOWeight", Value: fmt.Sprintf("%d", r.ioWeight), Scope: KnobScopeSlice})
+	}
+	if r.ioWriteBps > 0 {
+		if dev, err := resolveWholeDiskDevice(); err == nil {
+			knobs = append(knobs, SystemdKnob{
+				Name:  "IOWriteBandwidthMax",
+				Value: fmt.Sprintf("%s %d", dev, r.ioWriteBps),
+				Scope: KnobScopeSlice,
+			})
+		}
+	}
+	return knobs
+}
+
+// resolveWholeDiskDevice resolves the whole-disk device for the ROOT
+// filesystem (the matrix's bound applies to the agent host's main device).
+// io.max rejects partition devices (measured ENODEV on nvme0n1p2), so the
+// resolver walks /sys/block until it finds a disk holding the root fs's
+// device. It is a var so tests can pin the resolution without a real NVMe.
+var resolveWholeDiskDevice = resolveWholeDiskDeviceReal
+
+func resolveWholeDiskDeviceReal() (string, error) {
+	// Find the partition holding / from /proc/self/mountinfo, then map it to
+	// its parent disk via the /sys/block/<disk>/<part>/ hierarchy.
+	partName, err := rootDeviceName()
+	if err != nil {
+		return "", err
+	}
+	entries, err := os.ReadDir(wholeDiskSysBlockRoot)
+	if err != nil {
+		return "", fmt.Errorf("list %s: %w", wholeDiskSysBlockRoot, err)
+	}
+	for _, e := range entries {
+		if _, err := os.Stat(filepath.Join(wholeDiskSysBlockRoot, e.Name(), partName)); err == nil {
+			return "/dev/" + e.Name(), nil
+		}
+	}
+	return "", fmt.Errorf("no whole-disk device in /sys/block holds partition %q", partName)
+}
+
+// rootDeviceMountInfoPath is the mount table read to find the root fs's
+// device. Var so tests can point it at a fixture (same seam pattern as
+// runtimeDirMountInfoPath).
+var rootDeviceMountInfoPath = "/proc/self/mountinfo"
+
+// wholeDiskSysBlockRoot is the sysfs block hierarchy walked to map a
+// partition to its parent disk. Var for the same reason.
+var wholeDiskSysBlockRoot = "/sys/block"
+
+// rootDeviceName returns the kernel device name backing the root filesystem
+// from the mount table (e.g. "nvme0n1p2" for /dev/nvme0n1p2). The line is
+// located by mountpoint "/" and the source is taken from AFTER the "-"
+// separator (fstype, source, super-options), which sidesteps overlayfs-style
+// wrapper lines where the source is not the real device.
+func rootDeviceName() (string, error) {
+	data, err := os.ReadFile(rootDeviceMountInfoPath)
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", rootDeviceMountInfoPath, err)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 6 || fields[4] != "/" {
+			continue
+		}
+		sep := -1
+		for i := 6; i < len(fields); i++ {
+			if fields[i] == "-" {
+				sep = i
+				break
+			}
+		}
+		if sep < 0 || sep+2 >= len(fields) {
+			continue
+		}
+		dev := path.Base(fields[sep+2])
+		if dev == "" || dev == "none" || dev == "overlay" {
+			continue
+		}
+		return dev, nil
+	}
+	return "", fmt.Errorf("root filesystem device not found in %s", rootDeviceMountInfoPath)
+}
+
+// ── the R2 landing check (write-then-read-back, fail loud) ─────────────────
+
+// cgroupV2Root is where the unified hierarchy is mounted. Var: the landing
+// tests point it at a fixture tree; production never writes it.
+var cgroupV2Root = "/sys/fs/cgroup"
+
+// verifyContainmentLanding verifies the requested containment knobs against
+// the LIVE cgroup of the agent's user slice: each REQUESTED knob is read back
+// and compared; an unrequested knob is skipped (never failed — a tier that
+// does not ask for memory.oom.group must not die on its landing check); a
+// knob the cgroup does not expose at all, or exposes at a different value,
+// fails LOUD with the requested-vs-observed pair (the no-silent-no-op rule —
+// R2). On this host an ENOENT or EACCES read is exactly how a refused knob
+// presents (matrix: delegated controller writes EACCES), so both degrade to
+// the same loud failure path.
+//
+// It is a function on the manager (not a free function) only to keep the
+// read seam next to the spawn flow that consumes it.
+func (m *AgentManager) verifyContainmentLanding(uid string, want containmentResolved) error {
+	base := filepath.Join(cgroupV2Root, "user.slice", "user-"+uid+".slice")
+	read := func(file string) (string, error) {
+		b, err := os.ReadFile(filepath.Join(base, file))
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(string(b)), nil
+	}
+	if want.swapBarred {
+		got, err := read("memory.swap.max")
+		if err != nil {
+			return fmt.Errorf("containment landing: read memory.swap.max: %w", err)
+		}
+		if got != "0" {
+			return fmt.Errorf("containment landing: memory.swap.max = %q, want \"0\" (bar swap)", got)
+		}
+	}
+	if want.memHigh > 0 {
+		got, err := read("memory.high")
+		if err != nil {
+			return fmt.Errorf("containment landing: read memory.high: %w", err)
+		}
+		if got != fmt.Sprintf("%d", want.memHigh) {
+			return fmt.Errorf("containment landing: memory.high = %q, want %d", got, want.memHigh)
+		}
+	}
+	if want.oomGroupRequested() {
+		got, err := read("memory.oom.group")
+		if err != nil {
+			// Honest degradation on a host whose manager refuses the
+			// property: the refusal IS the fault path, asserted — not
+			// swept. The wrap says so explicitly.
+			return fmt.Errorf("containment landing: memory.oom.group unreadable (the host's manager likely refuses the property; see the matrix's UNMEASURED register): %w", err)
+		}
+		if got != "1" {
+			return fmt.Errorf("containment landing: memory.oom.group = %q, want \"1\"", got)
+		}
+	}
+	if want.ioWeight > 0 {
+		got, err := read("io.weight")
+		if err != nil {
+			return fmt.Errorf("containment landing: read io.weight: %w (the io controller may not be delegated to the user slice on this host)", err)
+		}
+		if got != fmt.Sprintf("%d", want.ioWeight) {
+			return fmt.Errorf("containment landing: io.weight = %q, want %d", got, want.ioWeight)
+		}
+	}
+	if want.ioWriteBps > 0 {
+		got, err := read("io.max")
+		if err != nil {
+			return fmt.Errorf("containment landing: read io.max: %w (the io controller may not be delegated to the user slice on this host)", err)
+		}
+		dev, devErr := resolveWholeDiskDevice()
+		if devErr != nil {
+			return fmt.Errorf("containment landing: resolve whole-disk device: %w", devErr)
+		}
+		wantVal := fmt.Sprintf("%s wbps=%d", dev, want.ioWriteBps)
+		found := false
+		for _, line := range strings.Split(got, "\n") {
+			if strings.HasPrefix(strings.TrimSpace(line), dev+" ") && strings.Contains(line, fmt.Sprintf("wbps=%d", want.ioWriteBps)) {
+				found = true
+				break
+			}
+			if strings.HasPrefix(strings.TrimSpace(line), dev+" ") {
+				// Right device, wrong/no bound: report the observed line so
+				// the failure names what actually landed.
+				return fmt.Errorf("containment landing: io.max for %s = %q, want %q", dev, strings.TrimSpace(line), wantVal)
+			}
+		}
+		if !found {
+			return fmt.Errorf("containment landing: io.max has no line for %s (want %q)", dev, wantVal)
+		}
+	}
+	return nil
+}
+
+// oomGroupRequested reports whether the resolved set asks for
+// memory.oom.group — the tier-table gate that keeps an unrequested knob from
+// ever reaching its landing check. The tier table never sets oomGroup
+// (matrix: UNMEASURED, blocked from default-on), so a request can only come
+// from a future capable-host row that extends containmentForPreset.
+func (r containmentResolved) oomGroupRequested() bool { return r.oomGroup }
 
 // lookupAgentUser resolves an agent's uid/gid. It is a variable so tests can
 // drive the spawn-time isolation wiring without root privileges (the real

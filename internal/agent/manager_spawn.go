@@ -501,7 +501,14 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// a pure function so it is pinned by unit tests rather than by a live host.
 	// GAP-116: the limit property block is table-driven from the resolved
 	// preset's knob set (identical values/order for every preset in this row).
+	// GAP-118: the DoS-containment set resolves from the same preset through
+	// the tier table (matrix verdicts) merged with the daemon's admin
+	// overrides, and rides the slice drop-in (below) and the R2 landing check.
 	unitKnobs, sliceKnobs := KnobsForPreset(preset, cpuQuota, memMax, diskMax, maxProcs, maxFiles)
+	containment := resolveContainmentKnobs(preset, memMax, m.cfg.Agent)
+	if extra := sliceContainmentKnobs(containment); len(extra) > 0 {
+		sliceKnobs = append(sliceKnobs, extra...)
+	}
 	systemdArgs, rootlessEnv := buildRootlessDockerdArgs(dockerdUnitArgs{
 		AgentID:        agentID,
 		UnitName:       unitName,
@@ -527,6 +534,18 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	cmd.Env = append(os.Environ(), rootlessEnv...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return nil, fail(StageDockerdStart, fmt.Errorf("systemd-run rootless dockerd failed: %w (output: %s)", err, string(out)))
+	}
+
+	// ── Step 5a.1: R2 containment landing check (GAP-118) ───────────
+	// The no-silent-no-op rule: every requested knob is read back from the
+	// LIVE cgroup of the agent's user slice and compared; a knob that cannot
+	// be verified FAILS THE SPAWN (never a silent pass — an unenforced
+	// default is worse than an absent one, shadow-proc B2). Knobs the tier
+	// did not request are skipped, not failed. The check runs AFTER the unit
+	// start so the slice drop-in has been consumed and its properties are
+	// visible in the cgroup; failures surface at the new slice-limits stage.
+	if err := m.verifyContainmentLanding(u.Uid, containment); err != nil {
+		return nil, fail(StageSliceLimits, err)
 	}
 
 	// ── Step 5b: Verify dockerd actually started ─────────────────────

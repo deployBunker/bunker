@@ -55,11 +55,16 @@ func (m *AgentManager) RunAgent(ctx context.Context, req *v1.RunAgentRequest) (*
 	// created. The knob set for the run unit comes from the same table; in
 	// this plumbing row it resolves to the same properties the limits above
 	// already produced, so the argv is unchanged for every valid preset.
+	// GAP-118: the vocabulary guard resolves through the SAME tier tables as
+	// spawn (KnobsForPreset AND the containment table), so an untabled
+	// preset can never reach the unit builder on either surface.
 	preset, err := m.cfg.ResolveSafetyPreset(req.GetSafetyPreset())
 	if err != nil {
 		return nil, err
 	}
-	_, _ = KnobsForPreset(preset, 0, 0, 0, 0, 0) // vocabulary guard: fail loud on an untabled preset
+	_, _ = KnobsForPreset(preset, 0, 0, 0, 0, 0)        // vocabulary guard: fail loud on an untabled preset
+	_ = containmentForPreset(preset)                    // GAP-118 containment table answers the same names
+	_ = resolveContainmentKnobs(preset, 0, m.cfg.Agent) // and the merged resolution is total over the vocabulary
 
 	cmdArgs := buildRunAgentArgs(agentID, u.Uid, u.Gid, unitName, req.GetCommand(), req.GetArgs(), req.GetEnv(), limits, m.cfg != nil && m.cfg.Containment.Disclosure)
 	cmd := exec.CommandContext(ctx, "systemd-run", cmdArgs...)
