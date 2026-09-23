@@ -3042,3 +3042,29 @@ tasks:
   status: complete
   created_at: '2026-09-23T00:50:01.036587+00:00'
   completed_at: '2026-09-23T01:48:50.592422+00:00'
+- id: DF-BUNKER-46
+  title: key rotate output names the JWT signing secret class and immediate switch
+  criteria:
+  - "1) internal/cli/keys.go rotate output + help name the credential class ('JWT\
+    \ SIGNING SECRET', 'NOT a bearer token'), point to static auth.token, and state\
+    \ the in-memory switch is immediate (persist+restart = crash-persistence only);\
+    \ 2) internal/auth presents the signing secret as bearer \u2192 deny names the\
+    \ category error ('signing secret, not a bearer token'), constant-time, admission\
+    \ order unchanged; 3) RotateJWTSecret refuses newSecret == staticToken with CodeInvalidArgument;\
+    \ 4) rotate audit record names class + immediacy; 5) go build ./..., go vet ./...,\
+    \ go test ./internal/auth/ ./internal/server/ ./internal/cli/ -count=1 pass"
+  status: complete
+  created_at: '2026-09-23T02:16:18.781788+00:00'
+  completed_at: '2026-09-23T02:55:37.277325+00:00'
+- id: GAP-114
+  title: "knob-safety matrix \u2014 measured evidence per candidate knob"
+  criteria:
+  - docs/presets/knob-safety-matrix.md covers every GAP-119 knob (MemorySwapMax, MemoryHigh,
+    MemoryOOMGroup, IO bounds, TasksMax, unit-sandbox set) plus the LimitFSIZE/memlock/ProtectSystem
+    breakage classes, each with a probe script from probes/knob-safety/ and verbatim
+    captured output or UNMEASURED with reason; every knob carries open/standard/guarded/hostile
+    tier verdicts; the three breakage classes are reproduced live with visible errno/signal
+    output; the doc contains explicit default-on candidates and must-stay-opt-in lists;
+    all probes pass bash -n; the commit touches only docs/presets/ and probes/knob-safety/
+  status: in_progress
+  created_at: '2026-09-23T02:22:02.559580+00:00'
