@@ -3097,3 +3097,17 @@ tasks:
   status: in_progress
   created_at: '2026-09-23T06:14:27.756654+00:00'
   completed_at: '2026-09-23T07:54:12.470083+00:00'
+- id: INT-CI-37
+  title: R2 containment landing check reads slice before drop-in applied; device resolver
+    breaks on /dev-root hosts; IO opt-in dropped silently
+  criteria:
+  - 1) verifyContainmentLanding runs AFTER the slice drop-in write+daemon-reload with
+    a bounded converge re-read; 2) IOWriteBandwidthMax with an unresolvable device
+    fails loud, never silently dropped; 3) whole-disk resolver covers /dev-root-style
+    hosts via sysfs major:minor parent mapping, fixture-tested; 4) pre-existing test
+    assertions untouched (gap118_test.go byte-identical to 36553bd, zero-delta baseline
+    contract); 5) go build/vet/gofmt clean and the full internal/agent suite passes;
+    the pushed commit's CI run is the live gate
+  status: complete
+  created_at: '2026-09-23T11:19:29.042736+00:00'
+  completed_at: '2026-09-23T11:19:32.237274+00:00'
