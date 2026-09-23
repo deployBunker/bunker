@@ -26,6 +26,7 @@ import (
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/hostsetup"
 	"github.com/deployBunker/bunker/internal/imagespec"
+	"github.com/deployBunker/bunker/internal/mountdriver"
 	"github.com/deployBunker/bunker/internal/resource"
 	"github.com/deployBunker/bunker/internal/tailscale"
 	"github.com/deployBunker/bunker/internal/tunnel"
@@ -350,6 +351,16 @@ func (s *bunkerdService) SpawnAgent(ctx context.Context, req *connect.Request[v1
 	// the same code the CLI-side local check produces, never CodeInternal.
 	if _, perr := s.cfg.ResolveSafetyPreset(req.Msg.GetSafetyPreset()); perr != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, perr)
+	}
+
+	// MOUNT-006: an unknown mount driver surfaces as CodeInvalidArgument at
+	// the RPC boundary — a spawn naming a driver this server does not
+	// register must REFUSE BY NAME, never silently fall back to sshfs. The
+	// manager re-resolves (and would fail at Step 1c) but the mapping to a
+	// connect code happens here, like the preset check above.
+	if req.Msg.GetMountDriver() != "" && !mountdriver.Known(req.Msg.GetMountDriver()) {
+		_, derr := mountdriver.Resolve(req.Msg.GetMountDriver())
+		return nil, connect.NewError(connect.CodeInvalidArgument, derr)
 	}
 
 	resp, err := s.agentMgr.Spawn(ctx, req.Msg)

@@ -30,6 +30,11 @@ type AgentRecord struct {
 	// rootless dockerd instead of the bare host user context (GAP-069).
 	// Empty for agents spawned without an image spec.
 	Image string
+	// MountDriver is the registered mount driver (MOUNT-006) that produced
+	// SshfsMount (the stored mount command). Empty on pre-seam records and
+	// treated as the sshfs default everywhere it is read. The CLI refuses an
+	// unknown value by name; it never silently falls back to sshfs.
+	MountDriver string
 	// GAP-116 safety-preset effective-set reporting: the resolved preset name
 	// (flag > env > config global > built-in default) and the knob set the
 	// agent was ACTUALLY spawned under, plus the state of the slice drop-in.
@@ -144,6 +149,11 @@ func (r *AgentRecord) ToAgentSummary() *v1.AgentSummary {
 		SshfsMount:       r.SshfsMount,
 		DockerHostTunnel: r.DockerHostTunnel,
 		DiskUsedBytes:    r.DiskUsedBytes,
+		// MOUNT-006: the explicit driver identity for the stored mount
+		// command. An empty pre-seam value still reports the sshfs default
+		// (derived in newMountSpecForSummary) so GetAgentInfo/ListAgents
+		// carry an explicit identity for every record.
+		MountSpec: newMountSpecForSummary(r.MountDriver, r.SshfsMount),
 		// GAP-116 effective-set reporting: the preset the agent was spawned
 		// under and its resolved systemd knob set (unit surface — the same
 		// five properties the slice carries in the drop-in's order). The

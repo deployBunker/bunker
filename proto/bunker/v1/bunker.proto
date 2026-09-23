@@ -180,6 +180,11 @@ message AgentSummary {
   // set the agent was spawned under. Additive: older clients ignore both.
   string safety_preset = 13;
   repeated SystemdProperty systemd_properties = 14;
+  // MOUNT-006: explicit driver identity for the stored mount command.
+  // ADDITIVE (older clients keep reading sshfs_mount = 6 and mount via
+  // sshfs). Populated by agents spawned after the seam; a replayed
+  // pre-seam record reports driver "sshfs" derived from the stored command.
+  MountSpec mount_spec = 15;
 }
 
 // One resolved systemd property of an agent's effective knob set (GAP-116):
@@ -204,6 +209,10 @@ message SpawnAgentRequest {
   // global, then the built-in default. An unknown name is a hard error —
   // never a silent fallback.
   string safety_preset = 9;
+  // MOUNT-006: requested mount driver (e.g. "sshfs"). Empty = the server
+  // default (sshfs). An unknown driver name REFUSES the spawn with a named
+  // error (CodeInvalidArgument) — never a silent fallback to sshfs.
+  string mount_driver = 10;
 }
 
 // ── Image specification (GAP-064) ─────────────────────────────
@@ -226,6 +235,28 @@ message PackageAdd {
   repeated string packages = 2;  // names, optionally =ver (apt) or @ver (go/npm)
 }
 
+// ── Mount driver seam (MOUNT-006) ──────────────────────────────
+//
+// The mount command used to be one opaque, sshfs-shaped string
+// (`sshfs_mount`). MountSpec carries an EXPLICIT driver identity ALONGSIDE
+// that string so a future mount driver (rclone, FUSE/io_uring) can be
+// selected on spawn/mount without guessing from the command text.
+//
+// Backward compatibility contract: `sshfs_mount` keeps its field number and
+// its exact semantics (the sshfs command string), and remains the ONLY thing
+// an older client reads. A client that ignores MountSpec therefore mounts
+// via sshfs exactly as before; a client that reads MountSpec dispatches per
+// driver and must refuse an unregistered driver by name, never silently
+// falling back to sshfs.
+message MountSpec {
+  // driver is the registered mount-driver name that produced `command`.
+  // Empty means the producer predates the seam and the command is sshfs.
+  string driver = 1;
+  // command is the stored, opaque mount command for that driver. For sshfs
+  // it is byte-identical to the legacy `sshfs_mount` string.
+  string command = 2;
+}
+
 message SpawnAgentResponse {
   string agent_id = 1;
   string docker_host_ssh = 2;    // DOCKER_HOST=ssh://agent-N@host
@@ -243,6 +274,10 @@ message SpawnAgentResponse {
   string tailnet_ip = 11;
   string api_key = 12;             // Agent-scoped opaque API sub-key (if auth enabled)
   string image = 13;               // Customized image ref when image_spec was supplied (GAP-064)
+  // MOUNT-006: explicit driver identity for the mount command. ADDITIVE:
+  // `sshfs_mount` above keeps its number and semantics so an older client
+  // (which reads only that field) keeps mounting via the sshfs default.
+  MountSpec mount_spec = 14;
 }
 
 // ── Agent SSH key retrieval (GAP-128) ─────────────────────────

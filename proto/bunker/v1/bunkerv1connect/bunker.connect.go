@@ -88,13 +88,11 @@ type BunkerdClient interface {
 	SpawnAgent(context.Context, *connect.Request[v1.SpawnAgentRequest]) (*connect.Response[v1.SpawnAgentResponse], error)
 	DestroyAgent(context.Context, *connect.Request[v1.DestroyAgentRequest]) (*connect.Response[v1.DestroyAgentResponse], error)
 	// GAP-071: pause / resume / restart an agent WITHOUT destroying it.
-	//
-	//	stop    — SIGTERM the agent's session units + processes; the Linux user,
-	//	          home directory, container and allocated port range all SURVIVE
-	//	          (status becomes "stopped"; the tracker record is kept);
-	//	start   — re-arm a stopped agent (status back to "running");
-	//	restart — stop + start in one call and reset the heartbeat expiry.
-	//
+	//   stop    — SIGTERM the agent's session units + processes; the Linux user,
+	//             home directory, container and allocated port range all SURVIVE
+	//             (status becomes "stopped"; the tracker record is kept);
+	//   start   — re-arm a stopped agent (status back to "running");
+	//   restart — stop + start in one call and reset the heartbeat expiry.
 	// Exec/Run/Heartbeat against a stopped agent fail with a DISTINCT
 	// FailedPrecondition carrying the token "agent_stopped" — never NotFound.
 	StopAgent(context.Context, *connect.Request[v1.StopAgentRequest]) (*connect.Response[v1.StopAgentResponse], error)
@@ -372,13 +370,11 @@ type BunkerdHandler interface {
 	SpawnAgent(context.Context, *connect.Request[v1.SpawnAgentRequest]) (*connect.Response[v1.SpawnAgentResponse], error)
 	DestroyAgent(context.Context, *connect.Request[v1.DestroyAgentRequest]) (*connect.Response[v1.DestroyAgentResponse], error)
 	// GAP-071: pause / resume / restart an agent WITHOUT destroying it.
-	//
-	//	stop    — SIGTERM the agent's session units + processes; the Linux user,
-	//	          home directory, container and allocated port range all SURVIVE
-	//	          (status becomes "stopped"; the tracker record is kept);
-	//	start   — re-arm a stopped agent (status back to "running");
-	//	restart — stop + start in one call and reset the heartbeat expiry.
-	//
+	//   stop    — SIGTERM the agent's session units + processes; the Linux user,
+	//             home directory, container and allocated port range all SURVIVE
+	//             (status becomes "stopped"; the tracker record is kept);
+	//   start   — re-arm a stopped agent (status back to "running");
+	//   restart — stop + start in one call and reset the heartbeat expiry.
 	// Exec/Run/Heartbeat against a stopped agent fail with a DISTINCT
 	// FailedPrecondition carrying the token "agent_stopped" — never NotFound.
 	StopAgent(context.Context, *connect.Request[v1.StopAgentRequest]) (*connect.Response[v1.StopAgentResponse], error)

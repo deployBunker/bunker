@@ -81,6 +81,17 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	}
 	m.logger.Info("resolved safety preset", "agent_id", agentID, "preset", preset)
 
+	// ── Step 1c: Resolve the mount driver BEFORE any side effect ────
+	// MOUNT-006: the requested driver (req.MountDriver, empty = the
+	// sshfs default) must be registered on this server. An unknown name
+	// REFUSES here — before user creation, port allocation, or dockerd
+	// start — with a named error; it never silently falls back to sshfs.
+	mountDriver, mountDriverErr := resolveMountDriver(req.GetMountDriver())
+	if mountDriverErr != nil {
+		return nil, spawnStageErr(ctx, agentID, StageValidate, mountDriverErr)
+	}
+	m.logger.Info("resolved mount driver", "agent_id", agentID, "driver", mountDriver.Name)
+
 	// ── Step 1.7: Validate the image spec BEFORE any side effect ──
 	// GAP-064: an invalid or disallowed image spec must fail with a
 	// validation error (mapped to CodeInvalidArgument by the server) without
@@ -599,14 +610,19 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// Effective TTL was validated and resolved in Step 1a; `ttl` is used
 	// below for the agent record and response ExpiresAt.
 
-	// Build the SSHFS mount command and the Docker SSH tunnel command once
-	// we know the user, home directory, and hostname.
+	// Build the mount command for the SELECTED driver and the Docker SSH
+	// tunnel command once we know the user, home directory, and hostname.
+	// MOUNT-006: the sshfs default produces the byte-identical legacy
+	// string (sshfsMount keeps feeding SshfsMount/MountSpec.Command).
 	host, _ := os.Hostname()
 	if host == "" {
 		host = "localhost"
 	}
-	sshfsMount := fmt.Sprintf("sshfs -o IdentityFile=%s -o idmap=user -o allow_other %s@%s:%s %s",
-		sshKeyPath, username, host, userHome, filepath.Join("/mnt", "bunker", agentID))
+	sshfsMount, mountCmdErr := buildMountCommand(mountDriver, sshKeyPath, username, host, userHome, agentID)
+	if mountCmdErr != nil {
+		return nil, fail(StageValidate, fmt.Errorf("build %s mount command: %w", mountDriver.Name, mountCmdErr))
+	}
+	mountSpec := &v1.MountSpec{Driver: mountDriver.Name, Command: sshfsMount}
 	// Build the SSH tunnel command that forwards a local TCP port to the
 	// agent's remote Docker socket.  Port 2376 is the conventional Docker TLS
 	// port; on the rare occasion two agents are tunnelled from the same client
@@ -680,6 +696,10 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		SshfsMount:        sshfsMount,
 		DockerHostTunnel:  dockerHostTunnel,
 		Image:             imageRef,
+		// MOUNT-006: the selected mount driver rides the record so `bunker
+		// info`/ListAgents can report an explicit identity and the mount
+		// path can dispatch per driver instead of assuming sshfs.
+		MountDriver: mountDriver.Name,
 		// GAP-116: the effective safety preset and the knob set the agent was
 		// actually spawned under — the unit argv's properties, and the slice
 		// drop-in's when it was written. `bunker info` reports these as-is.
@@ -755,6 +775,10 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		PublicUrl:        publicURL,
 		TailnetIp:        tailnetIP,
 		Image:            imageRef,
+		// MOUNT-006: explicit driver identity ALONGSIDE the legacy opaque
+		// sshfs_mount string (which keeps its field number and semantics,
+		// so a client that ignores mount_spec still mounts via sshfs).
+		MountSpec: mountSpec,
 	}
 	// GAP-128: the wire response carries private key material ONLY when the
 	// caller explicitly opted in via return_ssh_private_key. The key itself
