@@ -466,7 +466,7 @@ func TestExecCommand_FlagSeparator(t *testing.T) {
 			args:        []string{"ms-a1", "--server", "srv", "--", "docker", "ps"},
 			wantCommand: "docker",
 			wantArgs:    []string{"ps"},
-			wantTimeout: 30, // --timeout flag default
+			wantTimeout: execDefaultTimeoutSeconds, // --timeout flag default
 			wantServer:  "srv",
 		},
 		{
@@ -481,14 +481,14 @@ func TestExecCommand_FlagSeparator(t *testing.T) {
 			args:        []string{"abc", "--", "docker", "ps"},
 			wantCommand: "docker",
 			wantArgs:    []string{"ps"},
-			wantTimeout: 30, // --timeout flag default
+			wantTimeout: execDefaultTimeoutSeconds, // --timeout flag default
 		},
 		{
 			name:        "no separator",
 			args:        []string{"abc", "docker", "ps"},
 			wantCommand: "docker",
 			wantArgs:    []string{"ps"},
-			wantTimeout: 30, // --timeout flag default
+			wantTimeout: execDefaultTimeoutSeconds, // --timeout flag default
 		},
 	}
 
@@ -590,7 +590,7 @@ func TestExecCommand_FlagsBeforeAgentID(t *testing.T) {
 			registerSrv: "srv2",
 			wantCommand: "docker",
 			wantArgs:    []string{"ps"},
-			wantTimeout: 30,
+			wantTimeout: execDefaultTimeoutSeconds,
 		},
 		{
 			name:        "server=NAME inline before agent-id",
@@ -598,7 +598,7 @@ func TestExecCommand_FlagsBeforeAgentID(t *testing.T) {
 			registerSrv: "srv2",
 			wantCommand: "docker",
 			wantArgs:    []string{"ps"},
-			wantTimeout: 30,
+			wantTimeout: execDefaultTimeoutSeconds,
 		},
 		{
 			name:        "timeout flag before agent-id",
@@ -627,7 +627,7 @@ func TestExecCommand_FlagsBeforeAgentID(t *testing.T) {
 			args:        []string{"--raw", "abc", "--", "docker", "ps", "--format", "{{.Names}}"},
 			wantCommand: "docker",
 			wantArgs:    []string{"ps", "--format", "{{.Names}}"},
-			wantTimeout: 30,
+			wantTimeout: execDefaultTimeoutSeconds,
 			wantRaw:     true,
 		},
 		{
@@ -635,7 +635,7 @@ func TestExecCommand_FlagsBeforeAgentID(t *testing.T) {
 			args:        []string{"--script", "{SCRIPT}", "abc"},
 			scriptBody:  "#!/bin/sh\necho hello-before-agent-id",
 			wantCommand: "",
-			wantTimeout: 30,
+			wantTimeout: execDefaultTimeoutSeconds,
 			wantScript:  "#!/bin/sh\necho hello-before-agent-id",
 		},
 		{
@@ -643,7 +643,7 @@ func TestExecCommand_FlagsBeforeAgentID(t *testing.T) {
 			args:        []string{"--script={SCRIPT}", "abc"},
 			scriptBody:  "#!/bin/sh\necho hello-inline-script",
 			wantCommand: "",
-			wantTimeout: 30,
+			wantTimeout: execDefaultTimeoutSeconds,
 			wantScript:  "#!/bin/sh\necho hello-inline-script",
 		},
 		{
@@ -651,7 +651,7 @@ func TestExecCommand_FlagsBeforeAgentID(t *testing.T) {
 			args:        []string{"--", "abc", "docker", "ps"},
 			wantCommand: "docker",
 			wantArgs:    []string{"ps"},
-			wantTimeout: 30,
+			wantTimeout: execDefaultTimeoutSeconds,
 		},
 		{
 			name:        "server flag after agent-id still works",
@@ -659,7 +659,7 @@ func TestExecCommand_FlagsBeforeAgentID(t *testing.T) {
 			registerSrv: "srv2",
 			wantCommand: "docker",
 			wantArgs:    []string{"ps"},
-			wantTimeout: 30,
+			wantTimeout: execDefaultTimeoutSeconds,
 		},
 		{
 			name:          "unknown flag before agent-id fails locally",

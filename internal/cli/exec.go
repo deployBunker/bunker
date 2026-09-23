@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +14,33 @@ import (
 
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 )
+
+// execDefaultTimeoutSeconds is the default --timeout budget for
+// `bunker exec`. SURF-011: the old 30s default killed every real build
+// with `deadline_exceeded` (a cold `go build ./...` measures ~173s on a
+// remote box), and the failure read as a timeout rather than a missing
+// flag. 1800s covers the remote build/test round; an explicit --timeout
+// still wins.
+const execDefaultTimeoutSeconds uint32 = 1800
+
+// decorateExecDeadline appends an actionable hint to deadline-class exec
+// failures without changing the error's semantics: the command still
+// fails non-zero, the text just names the lever (--timeout) and the
+// budget that elapsed. Recognizes both the connect deadline code and a
+// bare context.DeadlineExceeded.
+func decorateExecDeadline(err error, timeout uint32) error {
+	if err == nil {
+		return nil
+	}
+	deadline := errors.Is(err, context.DeadlineExceeded)
+	if ce := new(connect.Error); errors.As(err, &ce) && ce.Code() == connect.CodeDeadlineExceeded {
+		deadline = true
+	}
+	if !deadline {
+		return err
+	}
+	return fmt.Errorf("%w\nexec deadline exceeded after %ds - pass --timeout <seconds> to extend", err, timeout)
+}
 
 // NewExecCommand returns the `bunker exec` cobra command.
 func NewExecCommand() *cobra.Command {
@@ -233,7 +261,7 @@ Examples:
 			// 4. Call RPC (streaming)
 			stream, err := client.ExecAgent(ctx, req)
 			if err != nil {
-				return fmt.Errorf("exec agent: %w", err)
+				return decorateExecDeadline(fmt.Errorf("exec agent: %w", err), timeout)
 			}
 
 			// 5. Stream output
@@ -251,7 +279,7 @@ Examples:
 				}
 			}
 			if err := stream.Err(); err != nil {
-				return fmt.Errorf("stream error: %w", err)
+				return decorateExecDeadline(fmt.Errorf("stream error: %w", err), timeout)
 			}
 
 			if exitCode != 0 {
@@ -266,7 +294,7 @@ Examples:
 	// are still declared for help output and so that flag-aware tooling can see
 	// them; runtime parsing is done manually in RunE.
 	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (default: active server)")
-	cmd.Flags().Uint32Var(&timeout, "timeout", 30, "Command timeout in seconds")
+	cmd.Flags().Uint32Var(&timeout, "timeout", execDefaultTimeoutSeconds, "Command timeout in seconds")
 	cmd.Flags().BoolVar(&rawMode, "raw", false, "Bypass shell interpretation and pass command directly to execve")
 	cmd.Flags().StringVar(&scriptPath, "script", "", "Upload and execute a local script file")
 	cmd.Flags().StringVar(&stdinPath, "stdin", "", "Send this local file to the command's stdin ('-' reads bunker's own stdin)")

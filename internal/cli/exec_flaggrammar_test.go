@@ -77,7 +77,7 @@ func TestExecFlagGrammar(t *testing.T) {
 			sessionEnv:  "custom-default", // only resolvable via the custom config
 			wantCommand: "docker",
 			wantArgs:    []string{"ps"},
-			wantTimeout: 30,
+			wantTimeout: execDefaultTimeoutSeconds, // the flag default (no --timeout passed)
 			wantCfgApp:  true,
 		},
 		{
@@ -86,7 +86,7 @@ func TestExecFlagGrammar(t *testing.T) {
 			sessionEnv:  "custom-default",
 			wantCommand: "docker",
 			wantArgs:    []string{"ps"},
-			wantTimeout: 30,
+			wantTimeout: execDefaultTimeoutSeconds,
 			wantCfgApp:  true,
 		},
 		{
@@ -95,7 +95,7 @@ func TestExecFlagGrammar(t *testing.T) {
 			sessionEnv:  "custom-default",
 			wantCommand: "docker",
 			wantArgs:    []string{"ps"},
-			wantTimeout: 30,
+			wantTimeout: execDefaultTimeoutSeconds,
 			wantCfgApp:  true,
 		},
 		{
@@ -104,7 +104,7 @@ func TestExecFlagGrammar(t *testing.T) {
 			sessionEnv:    "default",
 			wantCommand:   "docker",
 			wantArgs:      []string{"ps"},
-			wantTimeout:   30,
+			wantTimeout:   execDefaultTimeoutSeconds,
 			wantDaemonApp: true,
 		},
 		{
@@ -113,7 +113,7 @@ func TestExecFlagGrammar(t *testing.T) {
 			sessionEnv:    "default",
 			wantCommand:   "docker",
 			wantArgs:      []string{"ps"},
-			wantTimeout:   30,
+			wantTimeout:   execDefaultTimeoutSeconds,
 			wantDaemonApp: true,
 		},
 
@@ -126,7 +126,7 @@ func TestExecFlagGrammar(t *testing.T) {
 			sessionEnv:   "default",
 			wantCommand:  "cat",
 			wantArgs:     []string{},
-			wantTimeout:  30,
+			wantTimeout:  execDefaultTimeoutSeconds,
 			wantStdinRel: "{CONFIG}",
 		},
 		{
@@ -135,7 +135,7 @@ func TestExecFlagGrammar(t *testing.T) {
 			sessionEnv:   "default",
 			wantCommand:  "cat",
 			wantArgs:     []string{},
-			wantTimeout:  30,
+			wantTimeout:  execDefaultTimeoutSeconds,
 			wantStdinRel: "{CONFIG}",
 		},
 		{
@@ -144,7 +144,7 @@ func TestExecFlagGrammar(t *testing.T) {
 			sessionEnv:  "default",
 			wantCommand: "docker",
 			wantArgs:    []string{"ps"},
-			wantTimeout: 30,
+			wantTimeout: execDefaultTimeoutSeconds,
 			wantBase64:  true,
 		},
 		{
@@ -153,7 +153,7 @@ func TestExecFlagGrammar(t *testing.T) {
 			sessionEnv:  "default",
 			wantCommand: "docker",
 			wantArgs:    []string{"ps"},
-			wantTimeout: 30,
+			wantTimeout: execDefaultTimeoutSeconds,
 			wantBase64:  true,
 		},
 		{
@@ -162,7 +162,7 @@ func TestExecFlagGrammar(t *testing.T) {
 			sessionEnv:  "default",
 			wantCommand: "docker",
 			wantArgs:    []string{"logs", "x"},
-			wantTimeout: 30,
+			wantTimeout: execDefaultTimeoutSeconds,
 			wantExecCap: 1048576,
 		},
 		{
@@ -171,7 +171,7 @@ func TestExecFlagGrammar(t *testing.T) {
 			sessionEnv:  "default",
 			wantCommand: "docker",
 			wantArgs:    []string{"logs", "x"},
-			wantTimeout: 30,
+			wantTimeout: execDefaultTimeoutSeconds,
 			wantExecCap: 1048576,
 		},
 		{
@@ -179,7 +179,7 @@ func TestExecFlagGrammar(t *testing.T) {
 			args:        []string{"--server=default", "agent1", "--", "docker", "ps"},
 			wantCommand: "docker",
 			wantArgs:    []string{"ps"},
-			wantTimeout: 30,
+			wantTimeout: execDefaultTimeoutSeconds,
 		},
 		{
 			name:        "timeout inline form before agent-id",
@@ -195,7 +195,7 @@ func TestExecFlagGrammar(t *testing.T) {
 			sessionEnv:  "default",
 			wantCommand: "docker",
 			wantArgs:    []string{"ps"},
-			wantTimeout: 30,
+			wantTimeout: execDefaultTimeoutSeconds,
 			wantRaw:     true,
 		},
 		{
@@ -205,7 +205,7 @@ func TestExecFlagGrammar(t *testing.T) {
 			scriptBody:  "#!/bin/sh\necho inline-script-grammar",
 			wantCommand: "",
 			wantArgs:    []string{},
-			wantTimeout: 30,
+			wantTimeout: execDefaultTimeoutSeconds,
 			wantScript:  "#!/bin/sh\necho inline-script-grammar",
 		},
 		{
@@ -248,7 +248,7 @@ func TestExecFlagGrammar(t *testing.T) {
 			sessionEnv:  "default",
 			wantCommand: "agent1",
 			wantArgs:    []string{"docker", "ps"},
-			wantTimeout: 30,
+			wantTimeout: execDefaultTimeoutSeconds,
 		},
 
 		// -- Requirement 3: unknown flags refuse LOCALLY, naming the flag.
@@ -316,7 +316,7 @@ func TestExecFlagGrammar(t *testing.T) {
 			sessionEnv:  "default",
 			wantCommand: "docker",
 			wantArgs:    []string{"run", "--rm", "hi"},
-			wantTimeout: 30,
+			wantTimeout: execDefaultTimeoutSeconds,
 		},
 		{
 			name:        "unknown token after agent-id is the command",
@@ -324,7 +324,7 @@ func TestExecFlagGrammar(t *testing.T) {
 			sessionEnv:  "default",
 			wantCommand: "--bogus",
 			wantArgs:    []string{"x"},
-			wantTimeout: 30,
+			wantTimeout: execDefaultTimeoutSeconds,
 		},
 		{
 			name:        "dangling value-taking flag after agent-id is the command",
@@ -332,7 +332,7 @@ func TestExecFlagGrammar(t *testing.T) {
 			sessionEnv:  "default",
 			wantCommand: "--stdin",
 			wantArgs:    []string{},
-			wantTimeout: 30,
+			wantTimeout: execDefaultTimeoutSeconds,
 		},
 	}
 
