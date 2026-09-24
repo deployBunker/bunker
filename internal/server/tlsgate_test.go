@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -42,8 +43,11 @@ func gateTestConfig(t *testing.T) *config.Config {
 }
 
 // scratchListenPort returns a port that was free a moment ago. It is only
-// used to give an allowed case a real address to bind; a race with another
-// process would fail the test loudly rather than silently pass.
+// used to give an allowed case a real address to bind. The close it performs
+// opens a close→rebind window another process can win; the allowed cases
+// absorb that with a bounded FRESH-port retry (see TestServerRun_TLSGate) so
+// a lost port race does not fail the acceptance table. A genuine gate
+// regression still fails loudly rather than silently pass.
 func scratchListenPort(t *testing.T) string {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -75,6 +79,19 @@ func waitForTCPListen(addr string, timeout time.Duration) bool {
 func isShutdownErr(err error) bool {
 	return err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) ||
 		err.Error() == "server error: http: Server closed"
+}
+
+// isBindRace reports whether err is the lost close→rebind race of a scratch
+// port (INT-FLAKE-001): another process bound the address between the probe
+// close and Run's rebind. The errno check is primary (Run wraps bind errors
+// with %w); the message match is a fallback in case the error chain is ever
+// re-shaped.
+func isBindRace(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, syscall.EADDRINUSE) ||
+		strings.Contains(err.Error(), "address already in use")
 }
 
 // TestServerRun_TLSGate is the acceptance table at the Run boundary: refused
@@ -164,29 +181,61 @@ func TestServerRun_TLSGate(t *testing.T) {
 			// Allowed: the daemon must reach a live listener. Run blocks, so
 			// it goes to a goroutine and a cancelled context asserts the
 			// clean shutdown a refused config would never have reached.
-			ctx, cancel := context.WithCancel(context.Background())
-			done := make(chan error, 1)
-			go func() { done <- New(cfg).Run(ctx) }()
+			//
+			// INT-FLAKE-001: the scratch port was closed by scratchListenPort a
+			// moment ago, so another process (or a concurrent test binary) can
+			// bind it before Run rebinds. Losing that race surfaces as
+			// EADDRINUSE — a different failure from the TLS-gate defect under
+			// test — so on EADDRINUSE re-scratch a FRESH port (never retry the
+			// same one) within a bounded budget. A genuine gate regression
+			// refuses before any bind and still fails loudly on attempt 1.
+			grpcHost, _, err := net.SplitHostPort(tc.grpcAddr)
+			if err != nil {
+				t.Fatalf("parse allowed-case grpcAddr %q: %v", tc.grpcAddr, err)
+			}
+			dialHost, _, err := net.SplitHostPort(tc.dialAddr)
+			if err != nil {
+				t.Fatalf("parse allowed-case dialAddr %q: %v", tc.dialAddr, err)
+			}
+			const maxBindAttempts = 5
+			for attempt := 1; ; attempt++ {
+				cfg.Server.GRPCAddr = net.JoinHostPort(grpcHost, port)
+				dialAddr := net.JoinHostPort(dialHost, port)
 
-			if !waitForTCPListen(tc.dialAddr, 10*time.Second) {
-				cancel()
-				select {
-				case runErr := <-done:
+				ctx, cancel := context.WithCancel(context.Background())
+				done := make(chan error, 1)
+				go func() { done <- New(cfg).Run(ctx) }()
+
+				if !waitForTCPListen(dialAddr, 10*time.Second) {
+					cancel()
+					var runErr error
+					select {
+					case runErr = <-done:
+					case <-time.After(5 * time.Second):
+					}
+					if attempt < maxBindAttempts && isBindRace(runErr) {
+						port = scratchListenPort(t) // fresh port, not the lost one
+						continue
+					}
 					if runErr != nil && !isShutdownErr(runErr) {
 						t.Fatalf("Run failed before serving: %v", runErr)
 					}
-				case <-time.After(5 * time.Second):
+					t.Fatalf("Run never opened %s — the gate refused a config it must allow", dialAddr)
 				}
-				t.Fatalf("Run never opened %s — the gate refused a config it must allow", tc.dialAddr)
-			}
-			cancel()
-			select {
-			case runErr := <-done:
-				if !isShutdownErr(runErr) {
-					t.Fatalf("Run after cancel: %v", runErr)
+				cancel()
+				select {
+				case runErr := <-done:
+					if attempt < maxBindAttempts && isBindRace(runErr) {
+						port = scratchListenPort(t) // fresh port, not the lost one
+						continue
+					}
+					if !isShutdownErr(runErr) {
+						t.Fatalf("Run after cancel: %v", runErr)
+					}
+				case <-time.After(15 * time.Second):
+					t.Fatal("Run did not shut down after cancel")
 				}
-			case <-time.After(15 * time.Second):
-				t.Fatal("Run did not shut down after cancel")
+				break // bound, served, and shut down cleanly
 			}
 		})
 	}
