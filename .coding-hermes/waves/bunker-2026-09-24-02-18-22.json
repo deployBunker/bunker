@@ -35,5 +35,8 @@
     }
   ],
   "independence_note": "middle-out verified disjoint: internal/imagespec (engine-adjacent spec parser) vs internal/agent (lifecycle manager); no import chain between them (grep-proven: imagespec importers are server/config/cli/resource/agent-manager files, agent does not import imagespec except an unrelated name string in manager_destroy_containers.go); DF-BUNKER-53/54 share internal/agent so 54 stays serial for a later tick; SURF-019 is a live-host spike, incompatible with this tick's single-host budget",
-  "serial_fallback": "merge order: GAP-147 first, then DF-BUNKER-53; rebase onto moved main per foreman skill 2a if base moves"
+  "serial_fallback": "merge order: GAP-147 first, then DF-BUNKER-53; rebase onto moved main per foreman skill 2a if base moves",
+  "finished_at": "2026-09-24 05:42:00",
+  "finished_by_tick": "bunker-2026-09-24-04-22-14",
+  "recovery_outcome": "BOTH workers had already landed before this recovery tick fired. Verified this tick: wt/GAP-147 tip a73132d MERGED into main via 7d8e76e; wt/DF-BUNKER-53 tip 900ad89 MERGED via 35231a9; both Tier-2 verdicts on disk and passed=true (2026-09-24/b63ddf66 GAP-147, 2026-09-24/5dd37220 DF-BUNKER-53); both board rows complete with commit_hash + merge_commit; origin/main == 02269f0 == local main, 0 unpushed. Closeout: both merged worktrees removed, both merged branches deleted, wt/GAP-123 (unmerged, unrelated) PRESERVED as evidence. No fixup worker required."
 }

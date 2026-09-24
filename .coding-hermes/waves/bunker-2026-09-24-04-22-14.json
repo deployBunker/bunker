@@ -1,0 +1,54 @@
+{
+  "tick_id": "bunker-2026-09-24-04-22-14",
+  "tick_number": 533,
+  "created_at": "2026-09-24 04:30:00",
+  "foreman": "prompt-mode foreman (hermes api_server)",
+  "wave_budget": 4,
+  "recovery_note": "Preceding wave tick=bunker-2026-09-24-02-18-22 (tick 532) completed BOTH its workers before this tick fired: GAP-147 (wt/GAP-147 a73132d, merge 7d8e76e) and DF-BUNKER-53 (wt/DF-BUNKER-53 900ad89, merge 35231a9), both merged into main, both Tier-2 PASS (history 2026-09-24/b63ddf66 = GAP-147 passed=true; 2026-09-24/5dd37220 = DF-BUNKER-53 passed=true), board rows complete with commit_hash+merge_commit, origin/main == local main == 02269f0 (0 unpushed). Recovery closeout performed THIS tick: removed both merged worktrees, deleted both merged branches, preserved wt/GAP-123 (unmerged) as evidence. No fixup worker needed.",
+  "workers": [
+    {
+      "task_id": "GAP-148",
+      "worktree": "~/worktrees/bunker-GAP-148",
+      "branch": "wt/GAP-148",
+      "base": "origin/main",
+      "base_sha": "02269f0",
+      "model": "z-ai/glm-5.3-flash",
+      "provider": "xkiro",
+      "brief": "/tmp/foreman-worker-GAP-148.txt",
+      "log": "/tmp/foreman-worker-GAP-148.log",
+      "launch": "/tmp/bunker-533-GAP-148-launch.sh",
+      "scope": "internal/imagespec",
+      "gitreins_task": "GAP-148"
+    },
+    {
+      "task_id": "DF-BUNKER-54",
+      "worktree": "~/worktrees/bunker-DF-BUNKER-54",
+      "branch": "wt/DF-BUNKER-54",
+      "base": "origin/main",
+      "base_sha": "02269f0",
+      "model": "z-ai/glm-5.3-flash",
+      "provider": "xkiro",
+      "brief": "/tmp/foreman-worker-DF-BUNKER-54.txt",
+      "log": "/tmp/foreman-worker-DF-BUNKER-54.log",
+      "launch": "/tmp/bunker-533-DF-BUNKER-54-launch.sh",
+      "scope": "internal/agent + internal/cli display + docs",
+      "gitreins_task": "DF-BUNKER-54"
+    },
+    {
+      "task_id": "DF-BUNKER-50",
+      "worktree": "~/worktrees/bunker-DF-BUNKER-50",
+      "branch": "wt/DF-BUNKER-50",
+      "base": "origin/main",
+      "base_sha": "02269f0",
+      "model": "z-ai/glm-5.3-flash",
+      "provider": "xkiro",
+      "brief": "/tmp/foreman-worker-DF-BUNKER-50.txt",
+      "log": "/tmp/foreman-worker-DF-BUNKER-50.log",
+      "launch": "/tmp/bunker-533-DF-BUNKER-50-launch.sh",
+      "scope": "internal/cli/umount.go",
+      "gitreins_task": "DF-BUNKER-50"
+    }
+  ],
+  "independence_note": "MIDDLE-OUT: GAP-148 lives entirely in internal/imagespec (leaf engine package: `go list -deps ./internal/imagespec` = itself only) and touches no other package. DF-BUNKER-54 touches internal/agent/{isolation.go,run.go} + internal/cli/{info.go,list.go,disk.go} + docs; DF-BUNKER-50 touches internal/cli/umount.go only. File sets are pairwise DISJOINT (verified by grep of each row's named surfaces against the tree). DISCLOSED DEVIATION: DF-BUNKER-54 and DF-BUNKER-50 both sit in the internal/cli package, which the band rule treats as one band; accepted here because they edit strictly disjoint files with no shared helper or test file and merges are serial with gates re-run on each merged tree, so a conflict (if any) goes to the checklist's fixup-worker path rather than hand-resolution. DF-BUNKER-51 (run --detach unit) was EXCLUDED: it edits internal/cli/run.go AND internal/agent/run.go, colliding with both 54 and 50. DF-BUNKER-52 (image lacks Go) was EXCLUDED: it edits internal/imagespec, colliding with GAP-148. GAP-152/GAP-149/GAP-150 all depend_on GAP-147/GAP-148 and are not dispatchable. GAP-161 (disk decision record) requires live-agent boundary demos and is not a worktree task. GAP-145 (build-vs-HEAD alignment) is a live multi-host redeploy, not code.",
+  "serial_fallback": "merge order: GAP-148 first, then DF-BUNKER-54, then DF-BUNKER-50; base sha 02269f0 recorded for the skill 2a re-check (git merge-base --is-ancestor 02269f0 main) before each merge"
+}
