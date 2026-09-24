@@ -802,30 +802,45 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 // directory in the window between this function's MkdirAll and its chown; the
 // chown then hits ENOENT and the whole spawn fails ("chown runtime dir
 // /run/user/<uid>: exit status 1 (output: chown: cannot access ...: No such
-// file or directory)", INT-CI-035). On that ENOENT the directory is recreated
-// once and the same non-recursive chown re-run; only a second failure fails
-// the spawn.
+// file or directory)", INT-CI-035).
+//
+// On that ENOENT the directory is recreated and the same non-recursive chown
+// re-run, CONVERGENCE-STYLE (INT-CI-038): the INT-CI-035 single retry proved
+// insufficient on CI run 35978846999, where the teardown window outlasted the
+// one retry and the second chown died on the same ENOENT. The helper now
+// converges across the same bounded budget the bring-up path uses
+// (runtimeDirOwnershipAttempts): each attempt MkdirAlls and re-runs the SAME
+// non-recursive chown — never a recursive repair — and aborts immediately when
+// ctx is done. Any chown error that is NOT the teardown race fails the spawn
+// on that attempt with no further retries. Exhaustion (every attempt hit the
+// race) still fails the spawn loudly, carrying the last ENOENT output and the
+// mount-point verdict for the path.
 func ensureInstallRuntimeDir(ctx context.Context, username string, uid int, stdRuntimeDir string) error {
-	if err := os.MkdirAll(stdRuntimeDir, 0700); err != nil {
-		return fmt.Errorf("create runtime dir %s: %w", stdRuntimeDir, err)
+	var lastErr error
+	for attempt := 1; attempt <= runtimeDirOwnershipAttempts; attempt++ {
+		if attempt > 1 {
+			if err := waitRuntimeDirOwnershipRetry(ctx, runtimeDirOwnershipPause); err != nil {
+				return fmt.Errorf("re-assert install runtime dir %s: %w", stdRuntimeDir, err)
+			}
+		}
+		if err := os.MkdirAll(stdRuntimeDir, 0700); err != nil {
+			return fmt.Errorf("create runtime dir %s: %w", stdRuntimeDir, err)
+		}
+		out, err := rootHostRunner(ctx, "chown", username+":", stdRuntimeDir)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, os.ErrNotExist) && !strings.Contains(err.Error()+" "+string(out), "No such file or directory") {
+			return fmt.Errorf("chown runtime dir %s: %w (output: %s)", stdRuntimeDir, err, string(out))
+		}
+		// The runtime dir vanished between this attempt's MkdirAll and its
+		// chown (logind teardown for the reused uid). Record it and let the
+		// next attempt recreate and re-own; exhaustion is handled after the
+		// loop.
+		lastErr = fmt.Errorf("chown runtime dir %s: %w (output: %s)", stdRuntimeDir, err, string(out))
 	}
-	out, err := rootHostRunner(ctx, "chown", username+":", stdRuntimeDir)
-	if err == nil {
-		return nil
-	}
-	if !errors.Is(err, os.ErrNotExist) && !strings.Contains(err.Error()+" "+string(out), "No such file or directory") {
-		return fmt.Errorf("chown runtime dir %s: %w (output: %s)", stdRuntimeDir, err, string(out))
-	}
-	// The runtime dir vanished between the MkdirAll and the chown (logind
-	// teardown for the reused uid). Recreate it once and re-run the SAME
-	// non-recursive chown; do not widen this into a recursive repair.
-	if err := os.MkdirAll(stdRuntimeDir, 0700); err != nil {
-		return fmt.Errorf("create runtime dir %s after teardown race: %w", stdRuntimeDir, err)
-	}
-	if out, err := rootHostRunner(ctx, "chown", username+":", stdRuntimeDir); err != nil {
-		return fmt.Errorf("chown runtime dir %s: %w (output: %s)", stdRuntimeDir, err, string(out))
-	}
-	return nil
+	return fmt.Errorf("%w after %d convergence attempts (%s)",
+		lastErr, runtimeDirOwnershipAttempts, runtimeDirMountVerdict(stdRuntimeDir))
 }
 
 // proveUserManagerReachable verifies that the agent's systemd user manager is

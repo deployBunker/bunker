@@ -65,6 +65,12 @@ type raceHost struct {
 	// persistentOut is the combined output paired with persistentErr.
 	persistentOut string
 
+	// raceCalls, when > 0, makes the FIRST raceCalls chown calls return
+	// the measured ENOENT teardown-race shape regardless of
+	// scriptErr/persistentErr - a teardown window that outlasts earlier
+	// retries (INT-CI-038). Zero keeps the legacy scripted behaviour.
+	raceCalls int
+
 	chownCalls int
 }
 
@@ -82,6 +88,8 @@ func (h *raceHost) run(_ context.Context, name string, args ...string) ([]byte, 
 		return nil, fmt.Errorf("raceHost: chown of unexpected path %q", dir)
 	}
 	switch {
+	case h.raceCalls > 0 && h.chownCalls <= h.raceCalls:
+		return []byte(raceENOENTOut), errors.New(raceENOENTText)
 	case h.chownCalls == 1 && h.scriptErr != nil:
 		return []byte(h.scriptOut), h.scriptErr
 	case h.persistentErr != nil:
@@ -262,6 +270,76 @@ func TestEnsureInstallRuntimeDir_NonRaceChownFailureStaysLoud(t *testing.T) {
 			}
 			if h.chownCalls != tc.wantCalls {
 				t.Fatalf("expected exactly %d chown calls, got %d", tc.wantCalls, h.chownCalls)
+			}
+		})
+	}
+}
+
+// TestEnsureInstallRuntimeDir_TeardownRaceConverges covers the INT-CI-038
+// upgrade: the INT-CI-035 insurance retried the ENOENT teardown race exactly
+// ONCE, and CI run 35978846999 measured a teardown window that outlasted that
+// single retry (the second chown died on the same ENOENT and the spawn
+// failed). The helper now converges across the same bounded budget as the
+// bring-up path (runtimeDirOwnershipAttempts), so a teardown hostile through
+// attempt 2 must succeed on attempt 3, and a teardown hostile through every
+// attempt must still fail the spawn loudly — with the attempt count, the
+// ENOENT output, and the mount verdict in the error.
+func TestEnsureInstallRuntimeDir_TeardownRaceConverges(t *testing.T) {
+	tests := map[string]struct {
+		// raceCalls is how many consecutive chown calls return the
+		// measured ENOENT teardown-race shape before the window closes.
+		raceCalls int
+		// wantErrSubstrings asserts the failure shape; nil means success.
+		wantErrSubstrings []string
+	}{
+		// The measured CI shape: the teardown window outlasts the legacy
+		// single retry (attempts 1 and 2 hit ENOENT) and closes before
+		// attempt 3 — the spawn must ride it out with exactly
+		// runtimeDirOwnershipAttempts chown calls, where the OLD code
+		// hard-failed after 2.
+		"hostile-through-2-succeeds-on-3": {
+			raceCalls: 2,
+		},
+		// A teardown that outlasts the whole budget: every chown hits the
+		// race, the helper must fail LOUDLY after exactly
+		// runtimeDirOwnershipAttempts attempts — never loop unbounded,
+		// never fail after the legacy single attempt.
+		"hostile-through-budget-fails-loudly": {
+			raceCalls:         runtimeDirOwnershipAttempts,
+			wantErrSubstrings: []string{"after", "convergence attempts", "No such file or directory"},
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			h := newRaceHost(t)
+			h.raceCalls = tc.raceCalls
+			h.setupRuntimeDir(t, false)
+			requireDirRemoved(t, h.dir)
+
+			err := ensureInstallRuntimeDir(context.Background(), h.username, h.uid, h.dir)
+			if tc.wantErrSubstrings == nil {
+				if err != nil {
+					t.Fatalf("ensureInstallRuntimeDir() must converge once the teardown window closes, error = %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Fatal("ensureInstallRuntimeDir() must fail loudly when the teardown outlasts the whole convergence budget")
+				}
+				for _, want := range tc.wantErrSubstrings {
+					if !strings.Contains(err.Error(), want) {
+						t.Fatalf("error %q must carry %q", err, want)
+					}
+				}
+			}
+			if h.chownCalls != runtimeDirOwnershipAttempts {
+				t.Fatalf("expected exactly %d chown calls (bounded convergence budget), got %d",
+					runtimeDirOwnershipAttempts, h.chownCalls)
+			}
+			if tc.wantErrSubstrings == nil {
+				info, statErr := os.Lstat(h.dir)
+				if statErr != nil || !info.IsDir() {
+					t.Fatalf("runtime dir %s must exist as a directory after convergence: %v", h.dir, statErr)
+				}
 			}
 		})
 	}
