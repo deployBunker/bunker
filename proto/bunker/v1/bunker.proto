@@ -70,7 +70,13 @@ service Agent {
 message ResourceLimits {
   double cpu_quota = 1;        // CPU quota (cores), e.g. 2.0
   uint64 memory_max_bytes = 2;  // Memory limit in bytes
-  uint64 disk_max_bytes = 3;    // Disk quota in bytes
+  // disk_max_bytes is a PER-FILE size cap, not a total-disk quota: it is
+  // applied on the host as systemd LimitFSIZE (RLIMIT_FSIZE), bounding the
+  // size of any single file. Nothing caps an agent's TOTAL on-disk usage
+  // (real per-user filesystem quotas are GAP-161, not implemented), so a
+  // value of N does not bound the agent to N bytes — present it as a
+  // per-file cap, never as a disk limit (DF-BUNKER-54).
+  uint64 disk_max_bytes = 3;
   uint32 max_docker_containers = 4; // Max concurrent Docker containers
 }
 
@@ -388,6 +394,11 @@ message AgentMetricsResponse {
   uint64 memory_used_bytes = 4;
   uint64 memory_limit_bytes = 5;
   uint64 disk_used_bytes = 6;
+  // disk_limit_bytes is the agent's PER-FILE size cap (systemd LimitFSIZE /
+  // RLIMIT_FSIZE), NOT a total-disk limit: it is echoed from the agent's
+  // ResourceLimits.disk_max_bytes. Compare it against disk_used_bytes only
+  // as two separate facts — a used-vs-cap ratio would assert an enforcement
+  // that does not exist (DF-BUNKER-54; total-disk quotas are GAP-161).
   uint64 disk_limit_bytes = 7;
   uint32 docker_containers = 8;
   string uptime = 9;

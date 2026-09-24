@@ -549,6 +549,16 @@ func (s *bunkerdService) AgentMetrics(ctx context.Context, req *connect.Request[
 	}
 	if rec.Limits != nil {
 		resp.MemoryLimitBytes = rec.Limits.MemoryMaxBytes
+		// DF-BUNKER-54: DiskMaxBytes is echoed on the wire as
+		// disk_limit_bytes, whose name overstates the semantic. Its host
+		// mechanism is systemd LimitFSIZE (RLIMIT_FSIZE) — a PER-FILE size
+		// cap — and nothing in bunker caps the agent's TOTAL on-disk usage
+		// (real per-user quotas are GAP-161, unimplemented). The field is
+		// kept wire-compatible on purpose: renaming it would break existing
+		// clients and the on-disk registry replay reads the same message, so
+		// the correction lives in the proto comment, in the CLI labels
+		// (internal/cli/disk.go vocabulary) and in this echo. Consumers must
+		// never compute disk_used_bytes/disk_limit_bytes as a percentage.
 		resp.DiskLimitBytes = rec.Limits.DiskMaxBytes
 	}
 
@@ -1579,6 +1589,9 @@ func (s *agentService) Metrics(ctx context.Context, req *connect.Request[v1.Agen
 	}
 	if rec.Limits != nil {
 		resp.MemoryLimitBytes = rec.Limits.MemoryMaxBytes
+		// DF-BUNKER-54: same PER-FILE size cap as AgentMetrics — disk_limit_bytes
+		// is echoed LimitFSIZE/RLIMIT_FSIZE, not a total-disk limit. See
+		// bunkerdService.AgentMetrics for the wire-compatibility rationale.
 		resp.DiskLimitBytes = rec.Limits.DiskMaxBytes
 	}
 	// Read the agent's own cgroup metrics when the agent user resolves

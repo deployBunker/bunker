@@ -284,13 +284,26 @@ func TestListCommand_WithDiskUsage(t *testing.T) {
 		}
 	})
 
-	// Agent with disk limit: should show "40% (80.0 GB/200.0 GB)"
-	if !strings.Contains(output, "40% (80.0 GB/200.0 GB)") {
-		t.Errorf("output missing disk with limit, got:\n%s", output)
+	// DF-BUNKER-54: the agent's disk figure is two separately labelled facts —
+	// measured usage and a PER-FILE size cap — and NOT a used-vs-cap ratio
+	// (the old "40% (80.0 GB/200.0 GB)" cell compared real usage against a
+	// number no host mechanism enforces). The assertion is updated to the
+	// truthful expectation rather than deleted.
+	if !strings.Contains(output, "80.0 GB") {
+		t.Errorf("output missing measured disk usage 80.0 GB, got:\n%s", output)
 	}
-	// Agent without disk limit: should show "50.0 GB" (0% when limit=0, but used/total with total=0)
-	if !strings.Contains(output, "0% (50.0 GB/0 B)") {
-		t.Errorf("output missing disk without limit, got:\n%s", output)
+	if !strings.Contains(output, "200.0 GB") {
+		t.Errorf("output missing the per-file cap 200.0 GB, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Max File Size") {
+		t.Errorf("output missing the per-file cap column, got:\n%s", output)
+	}
+	// Agent without a cap: an explicit absence, not "0% (50.0 GB/0 B)".
+	if !strings.Contains(output, "50.0 GB") {
+		t.Errorf("output missing measured disk usage 50.0 GB, got:\n%s", output)
+	}
+	if strings.Contains(output, "% (") {
+		t.Errorf("output still renders a usage-vs-cap percentage, got:\n%s", output)
 	}
 	if !strings.Contains(output, "Total: 2 agents") {
 		t.Errorf("output missing total, got:\n%s", output)

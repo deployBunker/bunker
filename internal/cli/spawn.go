@@ -60,6 +60,13 @@ clock reading.
 fails fast with the accepted format and no "Creating agent..." progress
 line. Accepted format is <digits><unit>, unit h, m, or d: 6h, 90m, 7d.
 
+--disk is a PER-FILE size cap, not a total-disk quota: it is applied on
+the host as systemd LimitFSIZE (RLIMIT_FSIZE), which bounds the size of
+any single file the agent writes. Nothing caps the agent's total disk
+usage (per-user filesystem quotas are a separate, unimplemented item,
+GAP-161), and a finite value makes .NET apps that ftruncate a large
+sparse file at first boot crash-loop — see internal/agent/SKILL.md.
+
 Examples:
   bunker spawn
   bunker spawn demo-agent --ttl 1h
@@ -296,7 +303,7 @@ Examples:
 	cmd.Flags().StringVar(&agentID, "agent-id", "", "Agent ID (auto-generated if empty; positional [agent-id] is an alias)")
 	cmd.Flags().Float64Var(&cpuQuota, "cpu", 0, "CPU quota in cores (e.g. 2.0)")
 	cmd.Flags().Uint64Var(&memoryMax, "memory", 0, "Memory limit in bytes")
-	cmd.Flags().Uint64Var(&diskMax, "disk", 0, "Disk limit in bytes")
+	cmd.Flags().Uint64Var(&diskMax, "disk", 0, "Per-file size cap in bytes (LimitFSIZE/RLIMIT_FSIZE — not a total-disk quota; 0 = no cap)")
 	cmd.Flags().StringVar(&ttl, "ttl", "", "Time-to-live (6h, 24h, 7d)")
 	cmd.Flags().StringVar(&networkMode, "network", "", "Network mode: cloudflare, tailscale, direct")
 	cmd.Flags().BoolVar(&trycloudflare, "trycloudflare", false, "Use anonymous TryCloudflare tunnel")

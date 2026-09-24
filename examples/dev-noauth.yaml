@@ -26,7 +26,7 @@ agent:
   max_agents: 10
   default_cpu_quota: 1.0
   default_memory_bytes: 1073741824    # 1 GB
-  default_disk_bytes: 1073741824      # 1 GB
+  default_disk_bytes: 1073741824       # 1 GB (PER-FILE cap, not a total-disk quota)
   default_max_processes: 1024
   default_max_open_files: 16384
   default_max_docker_containers: 2

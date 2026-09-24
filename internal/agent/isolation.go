@@ -64,10 +64,17 @@ func unitKnobsFor(cpuQuota float64, memMax, diskMax, maxProcs, maxFiles uint64) 
 		knobs = append(knobs, SystemdKnob{Name: "MemoryMax", Value: fmt.Sprintf("%d", memMax), Scope: KnobScopeUnit})
 	}
 	if diskMax > 0 {
-		// LimitFSIZE caps the maximum file size (in bytes) an agent may
-		// create. This is a pragmatic systemd-level enforcement for
-		// disk_max_bytes when per-user filesystem quotas (xfs_quota) are not
-		// configured.
+		// LimitFSIZE is RLIMIT_FSIZE: the maximum size of a SINGLE FILE
+		// this unit may create. It is NOT a total-disk limit — nothing
+		// counts the agent's aggregate on-disk usage, so an agent can sit
+		// well past diskMax in total as long as no individual file exceeds
+		// it. Real total-disk enforcement (per-user filesystem quotas) is
+		// GAP-161 and is NOT implemented here; every operator-facing
+		// surface must therefore call this number a per-file cap and never
+		// a disk quota (DF-BUNKER-54). A finite value also crash-loops .NET
+		// apps that ftruncate a large sparse file at first boot (EFBIG →
+		// SIGXFSZ), which is why internal/agent/SKILL.md documents
+		// default_disk_bytes: 0 as the good configuration.
 		knobs = append(knobs, SystemdKnob{Name: "LimitFSIZE", Value: fmt.Sprintf("%d", diskMax), Scope: KnobScopeUnit})
 	}
 	if maxProcs > 0 {
@@ -214,6 +221,9 @@ func sliceKnobsFor(cpuQuota float64, memMax, diskMax, maxProcs, maxFiles uint64)
 		knobs = append(knobs, SystemdKnob{Name: "LimitNOFILE", Value: fmt.Sprintf("%d:%d", maxFiles, maxFiles), Scope: KnobScopeSlice})
 	}
 	if diskMax > 0 {
+		// Same LimitFSIZE (RLIMIT_FSIZE) PER-FILE cap as unitKnobsFor: not a
+		// total-disk limit, not a disk quota. See unitKnobsFor and GAP-161
+		// (DF-BUNKER-54).
 		knobs = append(knobs, SystemdKnob{Name: "LimitFSIZE", Value: fmt.Sprintf("%d", diskMax), Scope: KnobScopeSlice})
 	}
 	return knobs

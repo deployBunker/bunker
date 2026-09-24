@@ -119,7 +119,11 @@ Examples:
 					fmt.Printf("    Memory Limit:   %s\n", humanBytes(limits.MemoryMaxBytes))
 				}
 				if limits.DiskMaxBytes > 0 {
-					fmt.Printf("    Disk Limit:     %s\n", humanBytes(limits.DiskMaxBytes))
+					// DF-BUNKER-54: DiskMaxBytes arrives on the host as
+					// LimitFSIZE (RLIMIT_FSIZE) — a PER-FILE size cap. It is
+					// not a total-disk quota; nothing caps the agent's
+					// aggregate usage (real quotas are GAP-161).
+					fmt.Printf("    %s:   %s %s\n", maxFileSizeLabel, humanBytes(limits.DiskMaxBytes), perFileCapQualifier)
 				}
 				if limits.MaxDockerContainers > 0 {
 					fmt.Printf("    Max Containers: %d\n", limits.MaxDockerContainers)

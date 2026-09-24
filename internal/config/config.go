@@ -344,14 +344,25 @@ type AuditConfig struct {
 
 // AgentConfig holds agent lifecycle settings.
 type AgentConfig struct {
-	BaseDataDir                string        `mapstructure:"base_data_dir"`
-	SSHDir                     string        `mapstructure:"ssh_dir"`
-	PortRangeStart             uint32        `mapstructure:"port_range_start"`
-	PortRangeEnd               uint32        `mapstructure:"port_range_end"`
-	PortRangePerAgent          uint32        `mapstructure:"port_range_per_agent"`
-	MaxAgents                  uint32        `mapstructure:"max_agents"`
-	DefaultCPUQuota            float64       `mapstructure:"default_cpu_quota"`
-	DefaultMemoryBytes         uint64        `mapstructure:"default_memory_bytes"`
+	BaseDataDir        string  `mapstructure:"base_data_dir"`
+	SSHDir             string  `mapstructure:"ssh_dir"`
+	PortRangeStart     uint32  `mapstructure:"port_range_start"`
+	PortRangeEnd       uint32  `mapstructure:"port_range_end"`
+	PortRangePerAgent  uint32  `mapstructure:"port_range_per_agent"`
+	MaxAgents          uint32  `mapstructure:"max_agents"`
+	DefaultCPUQuota    float64 `mapstructure:"default_cpu_quota"`
+	DefaultMemoryBytes uint64  `mapstructure:"default_memory_bytes"`
+	// DefaultDiskBytes is the per-agent PER-FILE size cap (systemd
+	// LimitFSIZE → RLIMIT_FSIZE) applied to a spawned agent's dockerd unit
+	// and user slice. It is NOT a total-disk quota: no mechanism in bunker
+	// counts an agent's aggregate on-disk usage, so a value of N does not
+	// bound the agent to N bytes (DF-BUNKER-54). Real total-disk
+	// enforcement — per-user filesystem quotas — is GAP-161 and is not
+	// implemented; reporting surfaces must therefore present this number as
+	// a per-file cap. Note also that a finite RLIMIT_FSIZE crash-loops .NET
+	// apps that ftruncate a large sparse file at first boot (EFBIG →
+	// SIGXFSZ), which is why internal/agent/SKILL.md documents 0 (off) as
+	// the good configuration.
 	DefaultDiskBytes           uint64        `mapstructure:"default_disk_bytes"`
 	DefaultMaxProcesses        uint64        `mapstructure:"default_max_processes"`
 	DefaultMaxOpenFiles        uint64        `mapstructure:"default_max_open_files"`
@@ -787,7 +798,7 @@ func DefaultConfig() *Config {
 			MaxAgents:                  100,
 			DefaultCPUQuota:            2.0,
 			DefaultMemoryBytes:         4 * 1024 * 1024 * 1024,  // 4 GiB
-			DefaultDiskBytes:           20 * 1024 * 1024 * 1024, // 20 GiB
+			DefaultDiskBytes:           20 * 1024 * 1024 * 1024, // 20 GiB per-file cap (LimitFSIZE), NOT a quota
 			DefaultMaxProcesses:        4096,
 			DefaultMaxOpenFiles:        65536,
 			DefaultMaxDockerContainers: 10,

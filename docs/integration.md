@@ -346,14 +346,14 @@ limits, disk usage, and port range in a single call, with no separate
 |-------|------|---------|
 | `agent_id` | string | the agent handle |
 | `status` | string | `pending`, `starting`, `running`, `stopping`, `stopped`, or `failed` |
-| `limits` | `ResourceLimits` | the agent's CPU/memory/disk/container caps |
+| `limits` | `ResourceLimits` | the agent's CPU/memory/per-file-size/container caps (`disk_max_bytes` is a per-file cap, not a total-disk quota) |
 | `created_at` / `expires_at` | string | RFC3339 timestamps; `expires_at` is when the TTL lapses |
 | `sshfs_mount` | string | ready-to-run SSHFS mount command (empty when none) |
 | `docker_host_tunnel` | string | ready-to-run `ssh -L` tunnel command for the agent's rootless Docker (empty when none) |
 | `public_url` | string | the agent's public HTTPS URL |
 | `port_range_start` / `port_range_end` | uint32 | the agent's reserved port range |
 | `tailnet_ip` | string | the agent's tailnet address |
-| `disk_used_bytes` | uint64 | per-agent disk usage in bytes |
+| `disk_used_bytes` | uint64 | per-agent disk usage in bytes (a measured fact; the agent's cap is a PER-FILE cap, so this is not a ratio against it) |
 
 Note on `DestroyAgent` idempotency — there are TWO distinct cases, both
 deliberate (`internal/agent/manager_destroy.go`):
@@ -379,7 +379,7 @@ field names in, protojson camelCase out, `Content-Type: application/json`):
 | Field | Type | Meaning |
 |-------|------|---------|
 | `agent_id` | string | the handle every later call uses (`GetAgent`, `ExecAgent`, `HeartbeatAgent`, `DestroyAgent`). Empty → the daemon generates one. Must match `[a-z0-9-]{1,63}`; the CLI validates that locally, and a bad id sent straight to the daemon fails the spawn's `validate` stage. |
-| `limits` | `ResourceLimits` | `cpu_quota` (cores), `memory_max_bytes`, `disk_max_bytes`, `max_docker_containers`; server defaults when empty |
+| `limits` | `ResourceLimits` | `cpu_quota` (cores), `memory_max_bytes`, `disk_max_bytes` (**per-file size cap** — `LimitFSIZE`/`RLIMIT_FSIZE`, not a total-disk quota; DF-BUNKER-54), `max_docker_containers`; server defaults when empty |
 | `network` | `NetworkConfig` | `mode` (`MODE_CLOUDFLARE_TUNNEL`, `MODE_TAILSCALE` or `MODE_DIRECT`), plus `domain`, `trycloudflare`, `port_range_start`, `port_range_end` |
 | `ttl` | string | lifetime as `\d+[hmd]` (`6h`, `90m`, `7d`); the server default (`agent.default_ttl`) when empty |
 | `ssh_public_key` | bytes | push an existing key instead of letting the daemon generate one — base64 in JSON, because protojson renders `bytes` that way |

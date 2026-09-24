@@ -161,7 +161,10 @@ func printAgentMetrics(ctx context.Context, client bunkerv1connect.BunkerdClient
 		fmt.Printf("  Disk Used:      %s\n", humanBytes(msg.DiskUsedBytes))
 	}
 	if msg.DiskLimitBytes > 0 {
-		fmt.Printf("  Disk Limit:     %s\n", humanBytes(msg.DiskLimitBytes))
+		// DF-BUNKER-54: DiskLimitBytes is the agent's PER-FILE size cap
+		// (LimitFSIZE/RLIMIT_FSIZE), not a total-disk quota — labelled as
+		// such so no surface presents it as an enforced disk limit.
+		fmt.Printf("  %s:   %s %s\n", maxFileSizeLabel, humanBytes(msg.DiskLimitBytes), perFileCapQualifier)
 	}
 	if msg.DockerContainers > 0 {
 		fmt.Printf("  Docker Containers: %d\n", msg.DockerContainers)

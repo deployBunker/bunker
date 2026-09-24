@@ -123,11 +123,17 @@ func (NetworkConfig_Mode) EnumDescriptor() ([]byte, []int) {
 }
 
 type ResourceLimits struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	CpuQuota            float64                `protobuf:"fixed64,1,opt,name=cpu_quota,json=cpuQuota,proto3" json:"cpu_quota,omitempty"`                                   // CPU quota (cores), e.g. 2.0
-	MemoryMaxBytes      uint64                 `protobuf:"varint,2,opt,name=memory_max_bytes,json=memoryMaxBytes,proto3" json:"memory_max_bytes,omitempty"`                // Memory limit in bytes
-	DiskMaxBytes        uint64                 `protobuf:"varint,3,opt,name=disk_max_bytes,json=diskMaxBytes,proto3" json:"disk_max_bytes,omitempty"`                      // Disk quota in bytes
-	MaxDockerContainers uint32                 `protobuf:"varint,4,opt,name=max_docker_containers,json=maxDockerContainers,proto3" json:"max_docker_containers,omitempty"` // Max concurrent Docker containers
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	CpuQuota       float64                `protobuf:"fixed64,1,opt,name=cpu_quota,json=cpuQuota,proto3" json:"cpu_quota,omitempty"`                    // CPU quota (cores), e.g. 2.0
+	MemoryMaxBytes uint64                 `protobuf:"varint,2,opt,name=memory_max_bytes,json=memoryMaxBytes,proto3" json:"memory_max_bytes,omitempty"` // Memory limit in bytes
+	// disk_max_bytes is a PER-FILE size cap, not a total-disk quota: it is
+	// applied on the host as systemd LimitFSIZE (RLIMIT_FSIZE), bounding the
+	// size of any single file. Nothing caps an agent's TOTAL on-disk usage
+	// (real per-user filesystem quotas are GAP-161, not implemented), so a
+	// value of N does not bound the agent to N bytes — present it as a
+	// per-file cap, never as a disk limit (DF-BUNKER-54).
+	DiskMaxBytes        uint64 `protobuf:"varint,3,opt,name=disk_max_bytes,json=diskMaxBytes,proto3" json:"disk_max_bytes,omitempty"`
+	MaxDockerContainers uint32 `protobuf:"varint,4,opt,name=max_docker_containers,json=maxDockerContainers,proto3" json:"max_docker_containers,omitempty"` // Max concurrent Docker containers
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -2118,17 +2124,22 @@ func (x *AgentMetricsRequest) GetAgentId() string {
 }
 
 type AgentMetricsResponse struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	AgentId           string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
-	Status            string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
-	CpuUsagePercent   float64                `protobuf:"fixed64,3,opt,name=cpu_usage_percent,json=cpuUsagePercent,proto3" json:"cpu_usage_percent,omitempty"`
-	MemoryUsedBytes   uint64                 `protobuf:"varint,4,opt,name=memory_used_bytes,json=memoryUsedBytes,proto3" json:"memory_used_bytes,omitempty"`
-	MemoryLimitBytes  uint64                 `protobuf:"varint,5,opt,name=memory_limit_bytes,json=memoryLimitBytes,proto3" json:"memory_limit_bytes,omitempty"`
-	DiskUsedBytes     uint64                 `protobuf:"varint,6,opt,name=disk_used_bytes,json=diskUsedBytes,proto3" json:"disk_used_bytes,omitempty"`
-	DiskLimitBytes    uint64                 `protobuf:"varint,7,opt,name=disk_limit_bytes,json=diskLimitBytes,proto3" json:"disk_limit_bytes,omitempty"`
-	DockerContainers  uint32                 `protobuf:"varint,8,opt,name=docker_containers,json=dockerContainers,proto3" json:"docker_containers,omitempty"`
-	Uptime            string                 `protobuf:"bytes,9,opt,name=uptime,proto3" json:"uptime,omitempty"`
-	HostLevelFallback bool                   `protobuf:"varint,10,opt,name=host_level_fallback,json=hostLevelFallback,proto3" json:"host_level_fallback,omitempty"` // true when metrics are HOST values, not the agent's own cgroup
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	AgentId          string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Status           string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	CpuUsagePercent  float64                `protobuf:"fixed64,3,opt,name=cpu_usage_percent,json=cpuUsagePercent,proto3" json:"cpu_usage_percent,omitempty"`
+	MemoryUsedBytes  uint64                 `protobuf:"varint,4,opt,name=memory_used_bytes,json=memoryUsedBytes,proto3" json:"memory_used_bytes,omitempty"`
+	MemoryLimitBytes uint64                 `protobuf:"varint,5,opt,name=memory_limit_bytes,json=memoryLimitBytes,proto3" json:"memory_limit_bytes,omitempty"`
+	DiskUsedBytes    uint64                 `protobuf:"varint,6,opt,name=disk_used_bytes,json=diskUsedBytes,proto3" json:"disk_used_bytes,omitempty"`
+	// disk_limit_bytes is the agent's PER-FILE size cap (systemd LimitFSIZE /
+	// RLIMIT_FSIZE), NOT a total-disk limit: it is echoed from the agent's
+	// ResourceLimits.disk_max_bytes. Compare it against disk_used_bytes only
+	// as two separate facts — a used-vs-cap ratio would assert an enforcement
+	// that does not exist (DF-BUNKER-54; total-disk quotas are GAP-161).
+	DiskLimitBytes    uint64 `protobuf:"varint,7,opt,name=disk_limit_bytes,json=diskLimitBytes,proto3" json:"disk_limit_bytes,omitempty"`
+	DockerContainers  uint32 `protobuf:"varint,8,opt,name=docker_containers,json=dockerContainers,proto3" json:"docker_containers,omitempty"`
+	Uptime            string `protobuf:"bytes,9,opt,name=uptime,proto3" json:"uptime,omitempty"`
+	HostLevelFallback bool   `protobuf:"varint,10,opt,name=host_level_fallback,json=hostLevelFallback,proto3" json:"host_level_fallback,omitempty"` // true when metrics are HOST values, not the agent's own cgroup
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }

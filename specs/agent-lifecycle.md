@@ -97,7 +97,10 @@ systemd-run --system --unit=bunker-docker-<id> --uid=<uid> --gid=<gid> \
 - `CPUQuota`: Percentage of one CPU core (100%=1 core, 200%=2 cores); the code
   passes `int(cpuQuota*100)%`
 - `MemoryMax`: Absolute byte limit (default: 4 GiB)
-- `LimitFSIZE`: Per-file size cap, the pragmatic disk enforcement (default: 20 GiB)
+- `LimitFSIZE`: maximum size of a SINGLE FILE (`RLIMIT_FSIZE`), default 20 GiB.
+  This is **not** a disk quota and does not bound the agent's total usage —
+  nothing counts aggregate on-disk bytes (total-disk enforcement is GAP-161;
+  DF-BUNKER-54 owns the honest labelling)
 - `TasksMax`: Process count limit (default: **4096**, `agent.default_max_processes`)
 - `LimitNOFILE`: Open file limit, passed as `N:N` (default: 65536)
 
