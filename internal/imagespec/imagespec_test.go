@@ -244,9 +244,9 @@ func TestDockerfile_PackageAdds(t *testing.T) {
 	}
 	got := spec.Dockerfile()
 	want := "FROM " + DefaultBaseImage + "\n" +
-		"RUN apt-get update && apt-get install -y --no-install-recommends jq curl && rm -rf /var/lib/apt/lists/*\n" +
-		"RUN go install golang.org/x/tools/gopls@v0.17.0\n" +
-		"RUN npm install -g typescript@5.6.3\n"
+		"RUN apt-get update && apt-get install -y --no-install-recommends 'jq' 'curl' && rm -rf /var/lib/apt/lists/*\n" +
+		"RUN go install 'golang.org/x/tools/gopls@v0.17.0'\n" +
+		"RUN npm install -g 'typescript@5.6.3'\n"
 	if got != want {
 		t.Errorf("Dockerfile() =\n%s\nwant\n%s", got, want)
 	}

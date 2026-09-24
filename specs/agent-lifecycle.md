@@ -29,8 +29,11 @@ SpawnAgentRequest → validate limits, TTL format, agent_id uniqueness
 - Validate `ttl` format: `\d+[hmd]` (e.g., "6h", "24h", "7d") — an empty TTL
   falls back to `agent.default_ttl` (default 6h)
 - Validate a supplied `image_spec` (GAP-064) before ANY side effect: base image
-  must be in the server allowlist, package directives limited to apt/go/npm;
-  a rejected spec returns `CodeInvalidArgument` and builds nothing
+  must be in the server allowlist, package directives must name a registered
+  manager (apt/go/npm/pip/cargo/gem/composer — the registry in
+  internal/imagespec is authoritative), and every token must pass that
+  manager's token policy (GAP-148); a rejected spec returns
+  `CodeInvalidArgument` and builds nothing
 - Check agent_id doesn't exist in resource tracker
 
 ### 2. Port Allocation

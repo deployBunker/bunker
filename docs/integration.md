@@ -384,7 +384,7 @@ field names in, protojson camelCase out, `Content-Type: application/json`):
 | `ttl` | string | lifetime as `\d+[hmd]` (`6h`, `90m`, `7d`); the server default (`agent.default_ttl`) when empty |
 | `ssh_public_key` | bytes | push an existing key instead of letting the daemon generate one — base64 in JSON, because protojson renders `bytes` that way |
 | `labels` | map<string,string> | free-form metadata carried on the agent |
-| `image_spec` | `ImageSpec` | declarative image customization (allowlisted base + apt/go/npm package adds, GAP-064), validated before any side effect |
+| `image_spec` | `ImageSpec` | declarative image customization (allowlisted base + package adds for the registered managers — apt/go/npm/pip/cargo/gem/composer — validated before any side effect, GAP-064/GAP-148) |
 
 **There is no `name` field, and no environment field.** Request bodies are
 decoded with unknown fields *discarded*, not rejected, so naming a field the
