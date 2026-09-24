@@ -145,6 +145,18 @@ Examples:
 					fmt.Printf("    %-14s  %s\n", p.GetName()+":", p.GetValue())
 				}
 			}
+			// DF-BUNKER-34: the orphan-uid verdict. Non-empty means the
+			// agent's user record is GONE from the host while processes
+			// still run under its uid — the state that made a destroyed
+			// agent look healthy for 20+ hours. Rendered as a warning block,
+			// never as a plain status line.
+			if orphan := a.GetOrphanUidDetail(); orphan != "" {
+				fmt.Println()
+				fmt.Println("  ⚠  ORPHANED UID DETECTED:")
+				fmt.Printf("    %s\n", orphan)
+				fmt.Println("    Stop these processes on the host before destroying or renewing this agent;")
+				fmt.Println("    a destroy that proceeds past them orphans them (they hold the home and possibly ports).")
+			}
 			fmt.Println()
 
 			return nil

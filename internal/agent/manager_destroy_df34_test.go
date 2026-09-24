@@ -1,0 +1,476 @@
+package agent
+
+// DF-BUNKER-34 regression tests. Every test drives the destroy gate, the
+// drift probe or the orphan classification through SEAMS — no /proc writes,
+// no real userdel, no host users.
+
+import (
+	"bytes"
+	"context"
+	"io"
+	"log/slog"
+	"os"
+	"os/user"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/deployBunker/bunker/internal/config"
+	"github.com/deployBunker/bunker/internal/resource"
+)
+
+// stubDestroyProcessProbe swaps the destroy gate's process probe for fn and
+// restores it via t.Cleanup (tests in this package run in one process).
+func stubDestroyProcessProbe(t *testing.T, fn func(username string) ([]userProcess, uint32, bool, error)) {
+	t.Helper()
+	orig := destroyProcessProbe
+	destroyProcessProbe = fn
+	t.Cleanup(func() { destroyProcessProbe = orig })
+}
+
+// presentUserWithUID stubs lookupUser to resolve username to the given uid.
+func presentUserWithUID(t *testing.T, username string, uid string) {
+	t.Helper()
+	stubLookupUser(t, func(name string) (*user.User, error) {
+		if name == username {
+			return &user.User{Username: name, Uid: uid, Gid: uid, HomeDir: "/home/" + name}, nil
+		}
+		return nil, user.UnknownUserError(name)
+	})
+}
+
+// newGateManager is a hermetic manager for the destroy-gate tests: disabled
+// registry, no system agents, recorder-backed host provisioning. buf may be
+// nil (an io.Discard logger is used).
+func newGateManager(t *testing.T, buf *bytes.Buffer) *AgentManager {
+	t.Helper()
+	var logger *slog.Logger
+	if buf == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	} else {
+		logger = slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	}
+	cfg := config.DefaultConfig()
+	cfg.Agent.Registry.Enabled = false
+	tracker := resource.NewTracker(cfg.Agent.MaxAgents, logger)
+	m := NewAgentManager(cfg, logger, tracker, nil, nil)
+	m.listSystemAgents = func() ([]SystemAgent, error) { return nil, nil }
+	t.Cleanup(func() { m.Stop() })
+	return m
+}
+
+// liveAgent registers a running tracker record so the destroy path runs its
+// full teardown sequence against the stubs.
+func liveAgent(t *testing.T, m *AgentManager, id string) {
+	t.Helper()
+	if m.portAlloc != nil {
+		if _, _, err := m.portAlloc.Allocate(id); err != nil {
+			t.Fatalf("allocate ports for %s: %v", id, err)
+		}
+	}
+	if err := m.tracker.Register(&resource.AgentRecord{
+		AgentID:   id,
+		Status:    StatusRunning,
+		CreatedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("register %s: %v", id, err)
+	}
+}
+
+// procFixtureEntry is one fixture /proc/<PID> entry: PID is the directory
+// name, UID the ownership, Cmd the (space-joined) cmdline.
+type procFixtureEntry struct {
+	PID  string
+	UID  uint32
+	Name string
+	Cmd  string
+}
+
+// fixtureProcStatus renders a /proc/<pid>/status body the ownership probe
+// reads.
+func fixtureProcStatus(uid uint32, name string) []byte {
+	uidStr := itoaUID(uid)
+	return []byte("Name:\t" + name + "\nUid:\t" + uidStr + "\t" + uidStr + "\t" + uidStr + "\t" + uidStr + "\n")
+}
+
+func itoaUID(v uint32) string {
+	if v == 0 {
+		return "0"
+	}
+	digits := ""
+	for v > 0 {
+		digits = string(rune('0'+v%10)) + digits
+		v /= 10
+	}
+	return digits
+}
+
+// procDirFixture builds a fixture /proc tree (one directory per entry, each
+// with a status file and — when cmd is non-empty — a cmdline file) and swaps
+// the probes onto it for the test's duration.
+func procDirFixture(t *testing.T, procs []procFixtureEntry) {
+	t.Helper()
+	root := t.TempDir()
+	for _, p := range procs {
+		dir := filepath.Join(root, p.PID)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "status"), fixtureProcStatus(p.UID, p.Name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if p.Cmd != "" {
+			if err := os.WriteFile(filepath.Join(dir, "cmdline"), []byte(strings.ReplaceAll(p.Cmd, " ", "\x00")), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	orig := procStatusPath
+	procStatusPath = root
+	t.Cleanup(func() { procStatusPath = orig })
+}
+
+// ── Criterion 2: destroy refuses loudly on a live uid process ──────────────
+
+// TestDestroy_LiveProcessGate is the row's criterion-2 acceptance: a destroy
+// whose agent uid still owns a live process (evidence from a FAKE process
+// source, no root) fails loudly with a named error that carries the process
+// evidence, reports status live_processes, and deletes NOTHING (the user,
+// home, tracker record and port range all survive).
+func TestDestroy_LiveProcessGate(t *testing.T) {
+	for _, force := range []bool{false, true} {
+		name := "non_force"
+		if force {
+			name = "force"
+		}
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			m := newGateManager(t, &buf)
+			const id = "dfb34-live"
+			const username = "bunker-" + id
+			liveAgent(t, m, id)
+
+			// The gate's evidence source: a fake probe reporting one live
+			// process under the agent's uid. No /proc, no root.
+			fake := []userProcess{{PID: 4242, Cmd: "node /home/bunker-dfb34-live/app/server.js"}}
+			stubDestroyProcessProbe(t, func(string) ([]userProcess, uint32, bool, error) {
+				return fake, 61001, true, nil
+			})
+			presentUserWithUID(t, username, "61001")
+
+			// userdel recorder: the destroy must NEVER reach it.
+			userLog := filepath.Join(t.TempDir(), "userdel.log")
+			stubDir := t.TempDir()
+			script := "#!/bin/sh\nprintf '%s\\n' \"$0 $*\" >> \"" + userLog + "\"\n"
+			if err := os.WriteFile(filepath.Join(stubDir, "userdel"), []byte(script), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", stubDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+			resp, err := m.Destroy(context.Background(), id, force)
+			if err == nil {
+				t.Fatal("destroy with a live uid process must FAIL, not proceed")
+			}
+			if resp == nil || resp.Status != StatusLiveProcesses {
+				t.Fatalf("status = %v, want %q", resp, StatusLiveProcesses)
+			}
+			// The refusal names the user, the uid and the live process.
+			for _, want := range []string{"destroy refused", username, "61001", "pid 4242", "node /home/bunker-dfb34-live/app/server.js"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("refusal error missing %q — got: %v", want, err)
+				}
+			}
+			// The evidence is on the log record too (force mode included).
+			if !strings.Contains(buf.String(), "agent uid still owns live processes") {
+				t.Errorf("log missing the refusal record; log:\n%s", buf.String())
+			}
+			// Nothing was deleted: userdel never ran.
+			if calls, rerr := os.ReadFile(userLog); rerr == nil && len(calls) > 0 {
+				t.Errorf("userdel ran despite live-process refusal: %q", calls)
+			}
+			// The tracker record and port range survive (nothing destroyed).
+			if rec := m.tracker.Get(id); rec == nil {
+				t.Error("tracker record lost on live-process refusal")
+			}
+			if m.portAlloc != nil && !m.portAlloc.Has(id) {
+				t.Error("port range leaked on live-process refusal")
+			}
+		})
+	}
+}
+
+// TestDestroy_ProcessFreeUserProceeds is the control arm: with the fake
+// probe reporting NO live processes, the destroy proceeds exactly as before
+// (userdel runs once, status destroyed) — the gate must not block a clean
+// teardown.
+func TestDestroy_ProcessFreeUserProceeds(t *testing.T) {
+	var buf bytes.Buffer
+	m := newGateManager(t, &buf)
+	const id = "dfb34-clean"
+	const username = "bunker-" + id
+	liveAgent(t, m, id)
+
+	stubDestroyProcessProbe(t, func(string) ([]userProcess, uint32, bool, error) {
+		return nil, 61001, true, nil
+	})
+	presentUserWithUID(t, username, "61001")
+
+	userLog := filepath.Join(t.TempDir(), "userdel.log")
+	stubDir := t.TempDir()
+	script := "#!/bin/sh\nprintf '%s\\n' \"$0 $*\" >> \"" + userLog + "\"\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(stubDir, "userdel"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", stubDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	resp, err := m.Destroy(context.Background(), id, false)
+	if err != nil {
+		t.Fatalf("process-free destroy must succeed: %v", err)
+	}
+	if resp.Status != "destroyed" {
+		t.Fatalf("status = %q, want destroyed", resp.Status)
+	}
+	if calls, rerr := os.ReadFile(userLog); rerr != nil || len(calls) == 0 {
+		t.Errorf("userdel never ran on the clean path (calls: %q, err: %v)", calls, rerr)
+	}
+}
+
+// TestDestroy_UserdelFailureSurfacesEvidence covers criterion 2's second
+// leg: userdel -rf itself fails on a busy home (NOT the user-absent class)
+// and the destroy must surface it as a hard error carrying the
+// surviving-process evidence — never the historical silent not_found.
+func TestDestroy_UserdelFailureSurfacesEvidence(t *testing.T) {
+	var buf bytes.Buffer
+	m := newGateManager(t, &buf)
+	const id = "dfb34-userdel-fail"
+	const username = "bunker-" + id
+	liveAgent(t, m, id)
+
+	// The gate passes (no live processes at gate time), then userdel fails
+	// with the busy-home output.
+	stubDestroyProcessProbe(t, func(string) ([]userProcess, uint32, bool, error) {
+		return nil, 61001, true, nil
+	})
+	presentUserWithUID(t, username, "61001")
+
+	// The evidence probe (run AFTER userdel fails) reports the surviving
+	// process: the incident's shape — a scheduler daemon still ticking under
+	// the agent's uid after the userdel failure.
+	procDirFixture(t, []procFixtureEntry{
+		{PID: "1220620", UID: 61001, Name: "schedulerd", Cmd: "/home/bunker-dfb34-live/bin/schedulerd --workdir /home/bunker-dfb34-live/eduos"},
+	})
+
+	userLog := filepath.Join(t.TempDir(), "userdel.log")
+	stubDir := t.TempDir()
+	script := "#!/bin/sh\nprintf '%s\\n' \"$0 $*\" >> \"" + userLog + "\"\necho 'userdel: error removing directory /home/bunker-dfb34-live' >&2\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(stubDir, "userdel"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", stubDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	resp, err := m.Destroy(context.Background(), id, false)
+	if err == nil {
+		t.Fatal("a failed userdel (busy home) must be a hard error, not not_found")
+	}
+	if resp == nil || resp.Status != StatusUserdelFailed {
+		t.Fatalf("status = %v, want %q", resp, StatusUserdelFailed)
+	}
+	// The error names the destroy, the userdel failure and the SURVIVING
+	// process evidence.
+	for _, want := range []string{"destroy of " + id + " failed", "userdel error", "pid 1220620", "schedulerd"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("hard error missing %q — got: %v", want, err)
+		}
+	}
+	// The not_found lie must not come back.
+	if strings.Contains(err.Error(), "not found") {
+		t.Errorf("error reads as not_found: %v", err)
+	}
+}
+
+// ── Criterion 4: orphan-uid detection ──────────────────────────────────────
+
+// TestListUserProcesses_ClassifiesByUID is the probe's own table: it lists
+// only the processes whose status Uid matches, sorts them by PID, and never
+// lets an unrelated uid's process through. (The fixture writes pids in
+// NON-sorted file order — 100, 55, 77 — so the sort is proven, not assumed.)
+func TestListUserProcesses_ClassifiesByUID(t *testing.T) {
+	procDirFixture(t, []procFixtureEntry{
+		{PID: "100", UID: 61001, Name: "node", Cmd: "node /home/bunker-x/app.js"},
+		{PID: "55", UID: 61002, Name: "python", Cmd: "python /other.py"},
+		{PID: "77", UID: 61001, Name: "sh", Cmd: "sh -c long-running"},
+		{PID: "nonnum", UID: 61001, Name: "notapidir", Cmd: "should-not-match"},
+	})
+
+	procs, err := listUserProcesses(61001)
+	if err != nil {
+		t.Fatalf("listUserProcesses: %v", err)
+	}
+	if len(procs) != 2 {
+		t.Fatalf("got %d processes, want 2 (the 61001 pids, sorted): %+v", len(procs), procs)
+	}
+	// Sorted by PID even though /proc directory order is lexicographic
+	// (100 < 77 as text, 77 < 100 numerically) — the sort is proven, not
+	// assumed.
+	if procs[0].PID != 77 || procs[1].PID != 100 {
+		t.Errorf("processes not sorted by pid: %+v", procs)
+	}
+	if procs[0].Cmd != "sh -c long-running" || procs[1].Cmd != "node /home/bunker-x/app.js" {
+		t.Errorf("cmd heads wrong: %+v", procs)
+	}
+
+	// The other uid sees only its own process.
+	procs, err = listUserProcesses(61002)
+	if err != nil {
+		t.Fatalf("listUserProcesses(61002): %v", err)
+	}
+	if len(procs) != 1 || procs[0].Cmd != "python /other.py" {
+		t.Errorf("uid 61002 processes = %+v, want exactly the python process", procs)
+	}
+}
+
+// TestOrphanUIDCheck_Classification is the criterion-4 unit table: the
+// classification function must call the orphan case exactly (user gone +
+// live processes) and must never classify user-present, process-free or
+// unknown states as orphan.
+func TestOrphanUIDCheck_Classification(t *testing.T) {
+	tests := []struct {
+		name string
+		chk  orphanUIDCheck
+		want bool
+	}{
+		{
+			name: "user gone + live processes = ORPHAN",
+			chk: orphanUIDCheck{UID: 61001, UIDKnown: true, UserExists: false,
+				Processes: []userProcess{{PID: 1, Cmd: "node"}}},
+			want: true,
+		},
+		{
+			name: "user present + processes = not orphan (destroy gate's case)",
+			chk: orphanUIDCheck{UID: 61001, UIDKnown: true, UserExists: true,
+				Processes: []userProcess{{PID: 1, Cmd: "node"}}},
+			want: false,
+		},
+		{
+			name: "user gone + no processes = not orphan",
+			chk:  orphanUIDCheck{UID: 61001, UIDKnown: true, UserExists: false},
+			want: false,
+		},
+		{
+			name: "uid unknown = never orphan (fail closed)",
+			chk:  orphanUIDCheck{UserExists: false, Processes: []userProcess{{PID: 1, Cmd: "x"}}},
+			want: false,
+		},
+		{
+			name: "probe error = never orphan",
+			chk:  orphanUIDCheck{UIDKnown: true, UserExists: false, ProbeErr: "list /proc: permission denied"},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.chk.IsOrphan(); got != tt.want {
+				t.Errorf("IsOrphan() = %v, want %v (check: %+v)", got, tt.want, tt.chk)
+			}
+		})
+	}
+}
+
+// TestOrphanUIDSummary_UserPresentStaysEmpty is the manager-level
+// criterion-4 arm that runs everywhere (no root): an agent whose user record
+// resolves must never carry an orphan summary — the summary is empty for
+// every non-orphan class, so absence never fabricates a verdict.
+func TestOrphanUIDSummary_UserPresentStaysEmpty(t *testing.T) {
+	var buf bytes.Buffer
+	m := newGateManager(t, &buf)
+
+	// The user record RESOLVES (presentUserWithUID) and the uid owns nothing
+	// (empty fixture /proc): healthy, empty summary.
+	procDirFixture(t, nil)
+	presentUserWithUID(t, "bunker-present-x", "61004")
+	if got := m.OrphanUIDSummary("present-x"); got != "" {
+		t.Errorf("user-present agent must not carry an orphan summary, got %q", got)
+	}
+	// Invalid / empty ids stay empty.
+	if got := m.OrphanUIDSummary(""); got != "" {
+		t.Errorf("empty id must be empty, got %q", got)
+	}
+	if got := m.OrphanUIDSummary("Bad_ID"); got != "" {
+		t.Errorf("invalid id must be empty, got %q", got)
+	}
+}
+
+// TestOrphanUIDCheck_HomeOwnershipUIDSource proves the orphan path's uid
+// source: with the user record gone, the probe reads the uid from the HOME's
+// on-disk ownership (the artifact userdel-without-clean-home leaves). The
+// fixture home is chowned when the test can (root); otherwise the uid source
+// is unobservable and the check must fail CLOSED (unknown, not orphan).
+func TestOrphanUIDCheck_HomeOwnershipUIDSource(t *testing.T) {
+	var buf bytes.Buffer
+	m := newGateManager(t, &buf)
+
+	homeRoot := t.TempDir()
+	origRoot := agentHomeRoot
+	agentHomeRoot = homeRoot
+	t.Cleanup(func() { agentHomeRoot = origRoot })
+	home := filepath.Join(homeRoot, "bunker-orphan-y")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const uid = 61005
+	root := t.TempDir()
+	procStatusPathOrig := procStatusPath
+	procStatusPath = root
+	t.Cleanup(func() { procStatusPath = procStatusPathOrig })
+
+	if os.Geteuid() == 0 {
+		// Root: chown the home, seed a live process under the uid, make the
+		// user record gone, and assert the FULL orphan classification.
+		if err := os.Chown(home, uid, uid); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "901", "status"), fixtureProcStatus(uid, "duckbrain.js"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "900", "status"), fixtureProcStatus(1, "init"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		stubLookupUser(t, func(name string) (*user.User, error) {
+			return nil, user.UnknownUserError(name)
+		})
+
+		c := m.checkOrphanUID("orphan-y")
+		if !c.IsOrphan() {
+			t.Fatalf("orphan case not classified: %+v", c)
+		}
+		if c.UID != uid {
+			t.Errorf("UID = %d, want %d (from the home's ownership)", c.UID, uid)
+		}
+		if len(c.Processes) != 1 || c.Processes[0].PID != 900 {
+			t.Errorf("processes = %+v, want exactly pid 900 (the uid's)", c.Processes)
+		}
+	} else {
+		// Non-root: the home's owner is the test user's own uid, and that IS
+		// observable — the probe reads it and (with no process under that uid
+		// in the fixture) classifies "user gone + uid owns nothing" as NOT an
+		// orphan. The fail-closed property asserted here is the opposite
+		// edge: a uid whose probe finds nothing must never read as orphan.
+		stubLookupUser(t, func(name string) (*user.User, error) {
+			return nil, user.UnknownUserError(name)
+		})
+		if err := os.MkdirAll(filepath.Join(root, "901"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "901", "status"), fixtureProcStatus(1, "init"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		c := m.checkOrphanUID("orphan-y")
+		if c.IsOrphan() {
+			t.Errorf("non-root orphan check classified an orphan with no matching live process: %+v", c)
+		}
+		if !c.UIDKnown {
+			t.Errorf("non-root check should resolve the uid from the home's ownership: %+v", c)
+		}
+	}
+}

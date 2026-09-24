@@ -698,9 +698,15 @@ type AgentSummary struct {
 	// ADDITIVE (older clients keep reading sshfs_mount = 6 and mount via
 	// sshfs). Populated by agents spawned after the seam; a replayed
 	// pre-seam record reports driver "sshfs" derived from the stored command.
-	MountSpec     *MountSpec `protobuf:"bytes,15,opt,name=mount_spec,json=mountSpec,proto3" json:"mount_spec,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	MountSpec *MountSpec `protobuf:"bytes,15,opt,name=mount_spec,json=mountSpec,proto3" json:"mount_spec,omitempty"`
+	// DF-BUNKER-34 orphan-uid surfacing: when NON-EMPTY, the agent's user
+	// record (bunker-<agent_id>) is GONE from the host while processes are
+	// still running under its uid. The value names the uid and every live
+	// process (pid + command head). Empty = healthy, unknown, or not
+	// applicable (the home does not exist). ADDITIVE: older clients ignore it.
+	OrphanUidDetail string `protobuf:"bytes,16,opt,name=orphan_uid_detail,json=orphanUidDetail,proto3" json:"orphan_uid_detail,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *AgentSummary) Reset() {
@@ -836,6 +842,13 @@ func (x *AgentSummary) GetMountSpec() *MountSpec {
 		return x.MountSpec
 	}
 	return nil
+}
+
+func (x *AgentSummary) GetOrphanUidDetail() string {
+	if x != nil {
+		return x.OrphanUidDetail
+	}
+	return ""
 }
 
 // One resolved systemd property of an agent's effective knob set (GAP-116):
@@ -1524,7 +1537,7 @@ func (x *DestroyAgentRequest) GetForce() bool {
 type DestroyAgentResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
-	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"` // destroyed, not_found, error
+	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"` // destroyed, not_found, error, home_retained, live_processes, userdel_failed
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1573,6 +1586,234 @@ func (x *DestroyAgentResponse) GetStatus() string {
 	return ""
 }
 
+// ── Renewal drift report (DF-BUNKER-34) ─────────────────────────
+//
+// A renewal that keeps the stable agent id keeps the home path too, but the
+// artifacts INSIDE the home (systemd --user units, cron entries, shell/env
+// and config files) can still carry the PREVIOUS home path from before the
+// first stable renewal. The drift report scans those classes for references
+// to a given old-home path and REPORTS every hit — it never rewrites (an
+// automatic rewrite of a user's service units is a data mutation the daemon
+// has no authority over; the recipe documents the operator's rewrite).
+type RenewalDriftRequest struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	AgentId string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"` // the agent whose home is scanned
+	// old_home is the path searched for (the previous home path). REQUIRED:
+	// a scan with no needle would read as "clean" without proving anything.
+	OldHome string `protobuf:"bytes,2,opt,name=old_home,json=oldHome,proto3" json:"old_home,omitempty"`
+	// home is the directory to scan; empty = the agent's own home
+	// (/home/bunker-<agent_id>).
+	Home          string `protobuf:"bytes,3,opt,name=home,proto3" json:"home,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RenewalDriftRequest) Reset() {
+	*x = RenewalDriftRequest{}
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RenewalDriftRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RenewalDriftRequest) ProtoMessage() {}
+
+func (x *RenewalDriftRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RenewalDriftRequest.ProtoReflect.Descriptor instead.
+func (*RenewalDriftRequest) Descriptor() ([]byte, []int) {
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *RenewalDriftRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *RenewalDriftRequest) GetOldHome() string {
+	if x != nil {
+		return x.OldHome
+	}
+	return ""
+}
+
+func (x *RenewalDriftRequest) GetHome() string {
+	if x != nil {
+		return x.Home
+	}
+	return ""
+}
+
+type RenewalDriftResponse struct {
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	AgentId      string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Home         string                 `protobuf:"bytes,2,opt,name=home,proto3" json:"home,omitempty"`                      // the home that was scanned
+	OldHome      string                 `protobuf:"bytes,3,opt,name=old_home,json=oldHome,proto3" json:"old_home,omitempty"` // the path searched for
+	FilesScanned uint32                 `protobuf:"varint,4,opt,name=files_scanned,json=filesScanned,proto3" json:"files_scanned,omitempty"`
+	Hits         []*RenewalDriftHit     `protobuf:"bytes,5,rep,name=hits,proto3" json:"hits,omitempty"`
+	Unreadable   []string               `protobuf:"bytes,6,rep,name=unreadable,proto3" json:"unreadable,omitempty"` // files that exist but could not be read
+	// summary is the operator-facing one-line-per-hit rendering (what the CLI
+	// prints verbatim).
+	Summary       string `protobuf:"bytes,7,opt,name=summary,proto3" json:"summary,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RenewalDriftResponse) Reset() {
+	*x = RenewalDriftResponse{}
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RenewalDriftResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RenewalDriftResponse) ProtoMessage() {}
+
+func (x *RenewalDriftResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RenewalDriftResponse.ProtoReflect.Descriptor instead.
+func (*RenewalDriftResponse) Descriptor() ([]byte, []int) {
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *RenewalDriftResponse) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *RenewalDriftResponse) GetHome() string {
+	if x != nil {
+		return x.Home
+	}
+	return ""
+}
+
+func (x *RenewalDriftResponse) GetOldHome() string {
+	if x != nil {
+		return x.OldHome
+	}
+	return ""
+}
+
+func (x *RenewalDriftResponse) GetFilesScanned() uint32 {
+	if x != nil {
+		return x.FilesScanned
+	}
+	return 0
+}
+
+func (x *RenewalDriftResponse) GetHits() []*RenewalDriftHit {
+	if x != nil {
+		return x.Hits
+	}
+	return nil
+}
+
+func (x *RenewalDriftResponse) GetUnreadable() []string {
+	if x != nil {
+		return x.Unreadable
+	}
+	return nil
+}
+
+func (x *RenewalDriftResponse) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+// RenewalDriftHit is one stale-path reference found in an agent-side file.
+type RenewalDriftHit struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	File          string                 `protobuf:"bytes,1,opt,name=file,proto3" json:"file,omitempty"`  // path inside the agent home (relative)
+	Line          uint32                 `protobuf:"varint,2,opt,name=line,proto3" json:"line,omitempty"` // 1-based line number
+	Text          string                 `protobuf:"bytes,3,opt,name=text,proto3" json:"text,omitempty"`  // the trimmed line content
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RenewalDriftHit) Reset() {
+	*x = RenewalDriftHit{}
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RenewalDriftHit) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RenewalDriftHit) ProtoMessage() {}
+
+func (x *RenewalDriftHit) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RenewalDriftHit.ProtoReflect.Descriptor instead.
+func (*RenewalDriftHit) Descriptor() ([]byte, []int) {
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *RenewalDriftHit) GetFile() string {
+	if x != nil {
+		return x.File
+	}
+	return ""
+}
+
+func (x *RenewalDriftHit) GetLine() uint32 {
+	if x != nil {
+		return x.Line
+	}
+	return 0
+}
+
+func (x *RenewalDriftHit) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
 type StopAgentRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
@@ -1582,7 +1823,7 @@ type StopAgentRequest struct {
 
 func (x *StopAgentRequest) Reset() {
 	*x = StopAgentRequest{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[18]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1594,7 +1835,7 @@ func (x *StopAgentRequest) String() string {
 func (*StopAgentRequest) ProtoMessage() {}
 
 func (x *StopAgentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[18]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1607,7 +1848,7 @@ func (x *StopAgentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopAgentRequest.ProtoReflect.Descriptor instead.
 func (*StopAgentRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{18}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *StopAgentRequest) GetAgentId() string {
@@ -1627,7 +1868,7 @@ type StopAgentResponse struct {
 
 func (x *StopAgentResponse) Reset() {
 	*x = StopAgentResponse{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[19]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1639,7 +1880,7 @@ func (x *StopAgentResponse) String() string {
 func (*StopAgentResponse) ProtoMessage() {}
 
 func (x *StopAgentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[19]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1652,7 +1893,7 @@ func (x *StopAgentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopAgentResponse.ProtoReflect.Descriptor instead.
 func (*StopAgentResponse) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{19}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *StopAgentResponse) GetAgentId() string {
@@ -1678,7 +1919,7 @@ type StartAgentRequest struct {
 
 func (x *StartAgentRequest) Reset() {
 	*x = StartAgentRequest{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[20]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1690,7 +1931,7 @@ func (x *StartAgentRequest) String() string {
 func (*StartAgentRequest) ProtoMessage() {}
 
 func (x *StartAgentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[20]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1703,7 +1944,7 @@ func (x *StartAgentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartAgentRequest.ProtoReflect.Descriptor instead.
 func (*StartAgentRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{20}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *StartAgentRequest) GetAgentId() string {
@@ -1723,7 +1964,7 @@ type StartAgentResponse struct {
 
 func (x *StartAgentResponse) Reset() {
 	*x = StartAgentResponse{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[21]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1735,7 +1976,7 @@ func (x *StartAgentResponse) String() string {
 func (*StartAgentResponse) ProtoMessage() {}
 
 func (x *StartAgentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[21]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1748,7 +1989,7 @@ func (x *StartAgentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartAgentResponse.ProtoReflect.Descriptor instead.
 func (*StartAgentResponse) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{21}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *StartAgentResponse) GetAgentId() string {
@@ -1774,7 +2015,7 @@ type RestartAgentRequest struct {
 
 func (x *RestartAgentRequest) Reset() {
 	*x = RestartAgentRequest{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[22]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1786,7 +2027,7 @@ func (x *RestartAgentRequest) String() string {
 func (*RestartAgentRequest) ProtoMessage() {}
 
 func (x *RestartAgentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[22]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1799,7 +2040,7 @@ func (x *RestartAgentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestartAgentRequest.ProtoReflect.Descriptor instead.
 func (*RestartAgentRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{22}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *RestartAgentRequest) GetAgentId() string {
@@ -1822,7 +2063,7 @@ type RestartAgentResponse struct {
 
 func (x *RestartAgentResponse) Reset() {
 	*x = RestartAgentResponse{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[23]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1834,7 +2075,7 @@ func (x *RestartAgentResponse) String() string {
 func (*RestartAgentResponse) ProtoMessage() {}
 
 func (x *RestartAgentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[23]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1847,7 +2088,7 @@ func (x *RestartAgentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestartAgentResponse.ProtoReflect.Descriptor instead.
 func (*RestartAgentResponse) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{23}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *RestartAgentResponse) GetAgentId() string {
@@ -1882,7 +2123,7 @@ type ListAgentsRequest struct {
 
 func (x *ListAgentsRequest) Reset() {
 	*x = ListAgentsRequest{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[24]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1894,7 +2135,7 @@ func (x *ListAgentsRequest) String() string {
 func (*ListAgentsRequest) ProtoMessage() {}
 
 func (x *ListAgentsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[24]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1907,7 +2148,7 @@ func (x *ListAgentsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAgentsRequest.ProtoReflect.Descriptor instead.
 func (*ListAgentsRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{24}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ListAgentsRequest) GetStatusFilter() string {
@@ -1942,7 +2183,7 @@ type ListAgentsResponse struct {
 
 func (x *ListAgentsResponse) Reset() {
 	*x = ListAgentsResponse{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[25]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1954,7 +2195,7 @@ func (x *ListAgentsResponse) String() string {
 func (*ListAgentsResponse) ProtoMessage() {}
 
 func (x *ListAgentsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[25]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1967,7 +2208,7 @@ func (x *ListAgentsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAgentsResponse.ProtoReflect.Descriptor instead.
 func (*ListAgentsResponse) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{25}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *ListAgentsResponse) GetAgents() []*AgentSummary {
@@ -2000,7 +2241,7 @@ type GetAgentRequest struct {
 
 func (x *GetAgentRequest) Reset() {
 	*x = GetAgentRequest{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[26]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2012,7 +2253,7 @@ func (x *GetAgentRequest) String() string {
 func (*GetAgentRequest) ProtoMessage() {}
 
 func (x *GetAgentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[26]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2025,7 +2266,7 @@ func (x *GetAgentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAgentRequest.ProtoReflect.Descriptor instead.
 func (*GetAgentRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{26}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *GetAgentRequest) GetAgentId() string {
@@ -2044,7 +2285,7 @@ type GetAgentResponse struct {
 
 func (x *GetAgentResponse) Reset() {
 	*x = GetAgentResponse{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[27]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2056,7 +2297,7 @@ func (x *GetAgentResponse) String() string {
 func (*GetAgentResponse) ProtoMessage() {}
 
 func (x *GetAgentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[27]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2069,7 +2310,7 @@ func (x *GetAgentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAgentResponse.ProtoReflect.Descriptor instead.
 func (*GetAgentResponse) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{27}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *GetAgentResponse) GetAgent() *AgentSummary {
@@ -2088,7 +2329,7 @@ type AgentMetricsRequest struct {
 
 func (x *AgentMetricsRequest) Reset() {
 	*x = AgentMetricsRequest{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[28]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2100,7 +2341,7 @@ func (x *AgentMetricsRequest) String() string {
 func (*AgentMetricsRequest) ProtoMessage() {}
 
 func (x *AgentMetricsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[28]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2113,7 +2354,7 @@ func (x *AgentMetricsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentMetricsRequest.ProtoReflect.Descriptor instead.
 func (*AgentMetricsRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{28}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *AgentMetricsRequest) GetAgentId() string {
@@ -2146,7 +2387,7 @@ type AgentMetricsResponse struct {
 
 func (x *AgentMetricsResponse) Reset() {
 	*x = AgentMetricsResponse{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[29]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2158,7 +2399,7 @@ func (x *AgentMetricsResponse) String() string {
 func (*AgentMetricsResponse) ProtoMessage() {}
 
 func (x *AgentMetricsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[29]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2171,7 +2412,7 @@ func (x *AgentMetricsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentMetricsResponse.ProtoReflect.Descriptor instead.
 func (*AgentMetricsResponse) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{29}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *AgentMetricsResponse) GetAgentId() string {
@@ -2253,7 +2494,7 @@ type HeartbeatAgentRequest struct {
 
 func (x *HeartbeatAgentRequest) Reset() {
 	*x = HeartbeatAgentRequest{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[30]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2265,7 +2506,7 @@ func (x *HeartbeatAgentRequest) String() string {
 func (*HeartbeatAgentRequest) ProtoMessage() {}
 
 func (x *HeartbeatAgentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[30]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2278,7 +2519,7 @@ func (x *HeartbeatAgentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatAgentRequest.ProtoReflect.Descriptor instead.
 func (*HeartbeatAgentRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{30}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *HeartbeatAgentRequest) GetAgentId() string {
@@ -2299,7 +2540,7 @@ type HeartbeatAgentResponse struct {
 
 func (x *HeartbeatAgentResponse) Reset() {
 	*x = HeartbeatAgentResponse{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[31]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2311,7 +2552,7 @@ func (x *HeartbeatAgentResponse) String() string {
 func (*HeartbeatAgentResponse) ProtoMessage() {}
 
 func (x *HeartbeatAgentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[31]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2324,7 +2565,7 @@ func (x *HeartbeatAgentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatAgentResponse.ProtoReflect.Descriptor instead.
 func (*HeartbeatAgentResponse) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{31}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *HeartbeatAgentResponse) GetAgentId() string {
@@ -2368,7 +2609,7 @@ type ExecAgentRequest struct {
 
 func (x *ExecAgentRequest) Reset() {
 	*x = ExecAgentRequest{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[32]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2380,7 +2621,7 @@ func (x *ExecAgentRequest) String() string {
 func (*ExecAgentRequest) ProtoMessage() {}
 
 func (x *ExecAgentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[32]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2393,7 +2634,7 @@ func (x *ExecAgentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecAgentRequest.ProtoReflect.Descriptor instead.
 func (*ExecAgentRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{32}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *ExecAgentRequest) GetAgentId() string {
@@ -2476,7 +2717,7 @@ type ExecAgentResponse struct {
 
 func (x *ExecAgentResponse) Reset() {
 	*x = ExecAgentResponse{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[33]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2488,7 +2729,7 @@ func (x *ExecAgentResponse) String() string {
 func (*ExecAgentResponse) ProtoMessage() {}
 
 func (x *ExecAgentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[33]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2501,7 +2742,7 @@ func (x *ExecAgentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecAgentResponse.ProtoReflect.Descriptor instead.
 func (*ExecAgentResponse) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{33}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *ExecAgentResponse) GetOutput() isExecAgentResponse_Output {
@@ -2577,7 +2818,7 @@ type RunAgentRequest struct {
 
 func (x *RunAgentRequest) Reset() {
 	*x = RunAgentRequest{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[34]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2589,7 +2830,7 @@ func (x *RunAgentRequest) String() string {
 func (*RunAgentRequest) ProtoMessage() {}
 
 func (x *RunAgentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[34]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2602,7 +2843,7 @@ func (x *RunAgentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunAgentRequest.ProtoReflect.Descriptor instead.
 func (*RunAgentRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{34}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *RunAgentRequest) GetAgentId() string {
@@ -2673,7 +2914,7 @@ type RunAgentResponse struct {
 
 func (x *RunAgentResponse) Reset() {
 	*x = RunAgentResponse{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[35]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2685,7 +2926,7 @@ func (x *RunAgentResponse) String() string {
 func (*RunAgentResponse) ProtoMessage() {}
 
 func (x *RunAgentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[35]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2698,7 +2939,7 @@ func (x *RunAgentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunAgentResponse.ProtoReflect.Descriptor instead.
 func (*RunAgentResponse) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{35}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *RunAgentResponse) GetRunId() string {
@@ -2737,7 +2978,7 @@ type GetInfoRequest struct {
 
 func (x *GetInfoRequest) Reset() {
 	*x = GetInfoRequest{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[36]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2749,7 +2990,7 @@ func (x *GetInfoRequest) String() string {
 func (*GetInfoRequest) ProtoMessage() {}
 
 func (x *GetInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[36]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2762,7 +3003,7 @@ func (x *GetInfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetInfoRequest.ProtoReflect.Descriptor instead.
 func (*GetInfoRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{36}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{39}
 }
 
 type GetInfoResponse struct {
@@ -2779,7 +3020,7 @@ type GetInfoResponse struct {
 
 func (x *GetInfoResponse) Reset() {
 	*x = GetInfoResponse{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[37]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2791,7 +3032,7 @@ func (x *GetInfoResponse) String() string {
 func (*GetInfoResponse) ProtoMessage() {}
 
 func (x *GetInfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[37]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2804,7 +3045,7 @@ func (x *GetInfoResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetInfoResponse.ProtoReflect.Descriptor instead.
 func (*GetInfoResponse) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{37}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *GetInfoResponse) GetAgentId() string {
@@ -2866,7 +3107,7 @@ type QueryAuditRequest struct {
 
 func (x *QueryAuditRequest) Reset() {
 	*x = QueryAuditRequest{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[38]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2878,7 +3119,7 @@ func (x *QueryAuditRequest) String() string {
 func (*QueryAuditRequest) ProtoMessage() {}
 
 func (x *QueryAuditRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[38]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2891,7 +3132,7 @@ func (x *QueryAuditRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueryAuditRequest.ProtoReflect.Descriptor instead.
 func (*QueryAuditRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{38}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *QueryAuditRequest) GetAgentId() string {
@@ -2950,7 +3191,7 @@ type AuditRecord struct {
 
 func (x *AuditRecord) Reset() {
 	*x = AuditRecord{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[39]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2962,7 +3203,7 @@ func (x *AuditRecord) String() string {
 func (*AuditRecord) ProtoMessage() {}
 
 func (x *AuditRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[39]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2975,7 +3216,7 @@ func (x *AuditRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditRecord.ProtoReflect.Descriptor instead.
 func (*AuditRecord) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{39}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *AuditRecord) GetTs() string {
@@ -3057,7 +3298,7 @@ type QueryAuditResponse struct {
 
 func (x *QueryAuditResponse) Reset() {
 	*x = QueryAuditResponse{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[40]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3069,7 +3310,7 @@ func (x *QueryAuditResponse) String() string {
 func (*QueryAuditResponse) ProtoMessage() {}
 
 func (x *QueryAuditResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[40]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3082,7 +3323,7 @@ func (x *QueryAuditResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueryAuditResponse.ProtoReflect.Descriptor instead.
 func (*QueryAuditResponse) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{40}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *QueryAuditResponse) GetRecords() []*AuditRecord {
@@ -3107,7 +3348,7 @@ type RotateJWTSecretRequest struct {
 
 func (x *RotateJWTSecretRequest) Reset() {
 	*x = RotateJWTSecretRequest{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[41]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3119,7 +3360,7 @@ func (x *RotateJWTSecretRequest) String() string {
 func (*RotateJWTSecretRequest) ProtoMessage() {}
 
 func (x *RotateJWTSecretRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[41]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3132,7 +3373,7 @@ func (x *RotateJWTSecretRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RotateJWTSecretRequest.ProtoReflect.Descriptor instead.
 func (*RotateJWTSecretRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{41}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *RotateJWTSecretRequest) GetOverlapSeconds() uint32 {
@@ -3161,7 +3402,7 @@ type RotateJWTSecretResponse struct {
 
 func (x *RotateJWTSecretResponse) Reset() {
 	*x = RotateJWTSecretResponse{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[42]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3173,7 +3414,7 @@ func (x *RotateJWTSecretResponse) String() string {
 func (*RotateJWTSecretResponse) ProtoMessage() {}
 
 func (x *RotateJWTSecretResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[42]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3186,7 +3427,7 @@ func (x *RotateJWTSecretResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RotateJWTSecretResponse.ProtoReflect.Descriptor instead.
 func (*RotateJWTSecretResponse) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{42}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *RotateJWTSecretResponse) GetJwtSecret() string {
@@ -3229,7 +3470,7 @@ type RevokeKeyRequest struct {
 
 func (x *RevokeKeyRequest) Reset() {
 	*x = RevokeKeyRequest{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[43]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3241,7 +3482,7 @@ func (x *RevokeKeyRequest) String() string {
 func (*RevokeKeyRequest) ProtoMessage() {}
 
 func (x *RevokeKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[43]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3254,7 +3495,7 @@ func (x *RevokeKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeKeyRequest.ProtoReflect.Descriptor instead.
 func (*RevokeKeyRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{43}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *RevokeKeyRequest) GetKeyId() string {
@@ -3275,7 +3516,7 @@ type RevokeKeyResponse struct {
 
 func (x *RevokeKeyResponse) Reset() {
 	*x = RevokeKeyResponse{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[44]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3287,7 +3528,7 @@ func (x *RevokeKeyResponse) String() string {
 func (*RevokeKeyResponse) ProtoMessage() {}
 
 func (x *RevokeKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[44]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3300,7 +3541,7 @@ func (x *RevokeKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeKeyResponse.ProtoReflect.Descriptor instead.
 func (*RevokeKeyResponse) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{44}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *RevokeKeyResponse) GetKeyId() string {
@@ -3328,7 +3569,7 @@ type KeyListRequest struct {
 
 func (x *KeyListRequest) Reset() {
 	*x = KeyListRequest{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[45]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3340,7 +3581,7 @@ func (x *KeyListRequest) String() string {
 func (*KeyListRequest) ProtoMessage() {}
 
 func (x *KeyListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[45]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3353,7 +3594,7 @@ func (x *KeyListRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KeyListRequest.ProtoReflect.Descriptor instead.
 func (*KeyListRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{45}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *KeyListRequest) GetAgentId() string {
@@ -3378,7 +3619,7 @@ type KeyInfo struct {
 
 func (x *KeyInfo) Reset() {
 	*x = KeyInfo{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[46]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3390,7 +3631,7 @@ func (x *KeyInfo) String() string {
 func (*KeyInfo) ProtoMessage() {}
 
 func (x *KeyInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[46]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3403,7 +3644,7 @@ func (x *KeyInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KeyInfo.ProtoReflect.Descriptor instead.
 func (*KeyInfo) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{46}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *KeyInfo) GetKeyId() string {
@@ -3450,7 +3691,7 @@ type KeyListResponse struct {
 
 func (x *KeyListResponse) Reset() {
 	*x = KeyListResponse{}
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[47]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3462,7 +3703,7 @@ func (x *KeyListResponse) String() string {
 func (*KeyListResponse) ProtoMessage() {}
 
 func (x *KeyListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[47]
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3475,7 +3716,7 @@ func (x *KeyListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KeyListResponse.ProtoReflect.Descriptor instead.
 func (*KeyListResponse) Descriptor() ([]byte, []int) {
-	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{47}
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *KeyListResponse) GetKeys() []*KeyInfo {
@@ -3538,7 +3779,7 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\x0fdisk_used_bytes\x18\x04 \x01(\x04R\rdiskUsedBytes\x12(\n" +
 	"\x10disk_total_bytes\x18\x05 \x01(\x04R\x0ediskTotalBytes\x126\n" +
 	"\x17docker_containers_total\x18\x06 \x01(\rR\x15dockerContainersTotal\x12/\n" +
-	"\x06agents\x18\a \x03(\v2\x17.bunker.v1.AgentSummaryR\x06agents\"\xdc\x04\n" +
+	"\x06agents\x18\a \x03(\v2\x17.bunker.v1.AgentSummaryR\x06agents\"\x88\x05\n" +
 	"\fAgentSummary\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x121\n" +
@@ -3561,7 +3802,8 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\rsafety_preset\x18\r \x01(\tR\fsafetyPreset\x12I\n" +
 	"\x12systemd_properties\x18\x0e \x03(\v2\x1a.bunker.v1.SystemdPropertyR\x11systemdProperties\x123\n" +
 	"\n" +
-	"mount_spec\x18\x0f \x01(\v2\x14.bunker.v1.MountSpecR\tmountSpec\";\n" +
+	"mount_spec\x18\x0f \x01(\v2\x14.bunker.v1.MountSpecR\tmountSpec\x12*\n" +
+	"\x11orphan_uid_detail\x18\x10 \x01(\tR\x0forphanUidDetail\";\n" +
 	"\x0fSystemdProperty\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value\"\xfc\x03\n" +
@@ -3622,7 +3864,25 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\x05force\x18\x02 \x01(\bR\x05force\"I\n" +
 	"\x14DestroyAgentResponse\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x16\n" +
-	"\x06status\x18\x02 \x01(\tR\x06status\"-\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\"_\n" +
+	"\x13RenewalDriftRequest\x12\x19\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x19\n" +
+	"\bold_home\x18\x02 \x01(\tR\aoldHome\x12\x12\n" +
+	"\x04home\x18\x03 \x01(\tR\x04home\"\xef\x01\n" +
+	"\x14RenewalDriftResponse\x12\x19\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x12\n" +
+	"\x04home\x18\x02 \x01(\tR\x04home\x12\x19\n" +
+	"\bold_home\x18\x03 \x01(\tR\aoldHome\x12#\n" +
+	"\rfiles_scanned\x18\x04 \x01(\rR\ffilesScanned\x12.\n" +
+	"\x04hits\x18\x05 \x03(\v2\x1a.bunker.v1.RenewalDriftHitR\x04hits\x12\x1e\n" +
+	"\n" +
+	"unreadable\x18\x06 \x03(\tR\n" +
+	"unreadable\x12\x18\n" +
+	"\asummary\x18\a \x01(\tR\asummary\"M\n" +
+	"\x0fRenewalDriftHit\x12\x12\n" +
+	"\x04file\x18\x01 \x01(\tR\x04file\x12\x12\n" +
+	"\x04line\x18\x02 \x01(\rR\x04line\x12\x12\n" +
+	"\x04text\x18\x03 \x01(\tR\x04text\"-\n" +
 	"\x10StopAgentRequest\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\"F\n" +
 	"\x11StopAgentResponse\x12\x19\n" +
@@ -3769,14 +4029,14 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\x04keys\x18\x01 \x03(\v2\x12.bunker.v1.KeyInfoR\x04keys*@\n" +
 	"\fExecEncoding\x12\x16\n" +
 	"\x12EXEC_ENCODING_TEXT\x10\x00\x12\x18\n" +
-	"\x14EXEC_ENCODING_BASE64\x10\x012\xec\n" +
-	"\n" +
+	"\x14EXEC_ENCODING_BASE64\x10\x012\xc3\v\n" +
 	"\aBunkerd\x12I\n" +
 	"\n" +
 	"ServerInfo\x12\x1c.bunker.v1.ServerInfoRequest\x1a\x1d.bunker.v1.ServerInfoResponse\x12R\n" +
 	"\rServerMetrics\x12\x1f.bunker.v1.ServerMetricsRequest\x1a .bunker.v1.ServerMetricsResponse\x12I\n" +
 	"\n" +
-	"SpawnAgent\x12\x1c.bunker.v1.SpawnAgentRequest\x1a\x1d.bunker.v1.SpawnAgentResponse\x12O\n" +
+	"SpawnAgent\x12\x1c.bunker.v1.SpawnAgentRequest\x1a\x1d.bunker.v1.SpawnAgentResponse\x12U\n" +
+	"\x12RenewalDriftReport\x12\x1e.bunker.v1.RenewalDriftRequest\x1a\x1f.bunker.v1.RenewalDriftResponse\x12O\n" +
 	"\fDestroyAgent\x12\x1e.bunker.v1.DestroyAgentRequest\x1a\x1f.bunker.v1.DestroyAgentResponse\x12F\n" +
 	"\tStopAgent\x12\x1b.bunker.v1.StopAgentRequest\x1a\x1c.bunker.v1.StopAgentResponse\x12I\n" +
 	"\n" +
@@ -3813,7 +4073,7 @@ func file_proto_bunker_v1_bunker_proto_rawDescGZIP() []byte {
 }
 
 var file_proto_bunker_v1_bunker_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_proto_bunker_v1_bunker_proto_msgTypes = make([]protoimpl.MessageInfo, 50)
+var file_proto_bunker_v1_bunker_proto_msgTypes = make([]protoimpl.MessageInfo, 53)
 var file_proto_bunker_v1_bunker_proto_goTypes = []any{
 	(ExecEncoding)(0),               // 0: bunker.v1.ExecEncoding
 	(NetworkConfig_Mode)(0),         // 1: bunker.v1.NetworkConfig.Mode
@@ -3835,38 +4095,41 @@ var file_proto_bunker_v1_bunker_proto_goTypes = []any{
 	(*GetAgentKeyResponse)(nil),     // 17: bunker.v1.GetAgentKeyResponse
 	(*DestroyAgentRequest)(nil),     // 18: bunker.v1.DestroyAgentRequest
 	(*DestroyAgentResponse)(nil),    // 19: bunker.v1.DestroyAgentResponse
-	(*StopAgentRequest)(nil),        // 20: bunker.v1.StopAgentRequest
-	(*StopAgentResponse)(nil),       // 21: bunker.v1.StopAgentResponse
-	(*StartAgentRequest)(nil),       // 22: bunker.v1.StartAgentRequest
-	(*StartAgentResponse)(nil),      // 23: bunker.v1.StartAgentResponse
-	(*RestartAgentRequest)(nil),     // 24: bunker.v1.RestartAgentRequest
-	(*RestartAgentResponse)(nil),    // 25: bunker.v1.RestartAgentResponse
-	(*ListAgentsRequest)(nil),       // 26: bunker.v1.ListAgentsRequest
-	(*ListAgentsResponse)(nil),      // 27: bunker.v1.ListAgentsResponse
-	(*GetAgentRequest)(nil),         // 28: bunker.v1.GetAgentRequest
-	(*GetAgentResponse)(nil),        // 29: bunker.v1.GetAgentResponse
-	(*AgentMetricsRequest)(nil),     // 30: bunker.v1.AgentMetricsRequest
-	(*AgentMetricsResponse)(nil),    // 31: bunker.v1.AgentMetricsResponse
-	(*HeartbeatAgentRequest)(nil),   // 32: bunker.v1.HeartbeatAgentRequest
-	(*HeartbeatAgentResponse)(nil),  // 33: bunker.v1.HeartbeatAgentResponse
-	(*ExecAgentRequest)(nil),        // 34: bunker.v1.ExecAgentRequest
-	(*ExecAgentResponse)(nil),       // 35: bunker.v1.ExecAgentResponse
-	(*RunAgentRequest)(nil),         // 36: bunker.v1.RunAgentRequest
-	(*RunAgentResponse)(nil),        // 37: bunker.v1.RunAgentResponse
-	(*GetInfoRequest)(nil),          // 38: bunker.v1.GetInfoRequest
-	(*GetInfoResponse)(nil),         // 39: bunker.v1.GetInfoResponse
-	(*QueryAuditRequest)(nil),       // 40: bunker.v1.QueryAuditRequest
-	(*AuditRecord)(nil),             // 41: bunker.v1.AuditRecord
-	(*QueryAuditResponse)(nil),      // 42: bunker.v1.QueryAuditResponse
-	(*RotateJWTSecretRequest)(nil),  // 43: bunker.v1.RotateJWTSecretRequest
-	(*RotateJWTSecretResponse)(nil), // 44: bunker.v1.RotateJWTSecretResponse
-	(*RevokeKeyRequest)(nil),        // 45: bunker.v1.RevokeKeyRequest
-	(*RevokeKeyResponse)(nil),       // 46: bunker.v1.RevokeKeyResponse
-	(*KeyListRequest)(nil),          // 47: bunker.v1.KeyListRequest
-	(*KeyInfo)(nil),                 // 48: bunker.v1.KeyInfo
-	(*KeyListResponse)(nil),         // 49: bunker.v1.KeyListResponse
-	nil,                             // 50: bunker.v1.SpawnAgentRequest.LabelsEntry
-	nil,                             // 51: bunker.v1.RunAgentRequest.EnvEntry
+	(*RenewalDriftRequest)(nil),     // 20: bunker.v1.RenewalDriftRequest
+	(*RenewalDriftResponse)(nil),    // 21: bunker.v1.RenewalDriftResponse
+	(*RenewalDriftHit)(nil),         // 22: bunker.v1.RenewalDriftHit
+	(*StopAgentRequest)(nil),        // 23: bunker.v1.StopAgentRequest
+	(*StopAgentResponse)(nil),       // 24: bunker.v1.StopAgentResponse
+	(*StartAgentRequest)(nil),       // 25: bunker.v1.StartAgentRequest
+	(*StartAgentResponse)(nil),      // 26: bunker.v1.StartAgentResponse
+	(*RestartAgentRequest)(nil),     // 27: bunker.v1.RestartAgentRequest
+	(*RestartAgentResponse)(nil),    // 28: bunker.v1.RestartAgentResponse
+	(*ListAgentsRequest)(nil),       // 29: bunker.v1.ListAgentsRequest
+	(*ListAgentsResponse)(nil),      // 30: bunker.v1.ListAgentsResponse
+	(*GetAgentRequest)(nil),         // 31: bunker.v1.GetAgentRequest
+	(*GetAgentResponse)(nil),        // 32: bunker.v1.GetAgentResponse
+	(*AgentMetricsRequest)(nil),     // 33: bunker.v1.AgentMetricsRequest
+	(*AgentMetricsResponse)(nil),    // 34: bunker.v1.AgentMetricsResponse
+	(*HeartbeatAgentRequest)(nil),   // 35: bunker.v1.HeartbeatAgentRequest
+	(*HeartbeatAgentResponse)(nil),  // 36: bunker.v1.HeartbeatAgentResponse
+	(*ExecAgentRequest)(nil),        // 37: bunker.v1.ExecAgentRequest
+	(*ExecAgentResponse)(nil),       // 38: bunker.v1.ExecAgentResponse
+	(*RunAgentRequest)(nil),         // 39: bunker.v1.RunAgentRequest
+	(*RunAgentResponse)(nil),        // 40: bunker.v1.RunAgentResponse
+	(*GetInfoRequest)(nil),          // 41: bunker.v1.GetInfoRequest
+	(*GetInfoResponse)(nil),         // 42: bunker.v1.GetInfoResponse
+	(*QueryAuditRequest)(nil),       // 43: bunker.v1.QueryAuditRequest
+	(*AuditRecord)(nil),             // 44: bunker.v1.AuditRecord
+	(*QueryAuditResponse)(nil),      // 45: bunker.v1.QueryAuditResponse
+	(*RotateJWTSecretRequest)(nil),  // 46: bunker.v1.RotateJWTSecretRequest
+	(*RotateJWTSecretResponse)(nil), // 47: bunker.v1.RotateJWTSecretResponse
+	(*RevokeKeyRequest)(nil),        // 48: bunker.v1.RevokeKeyRequest
+	(*RevokeKeyResponse)(nil),       // 49: bunker.v1.RevokeKeyResponse
+	(*KeyListRequest)(nil),          // 50: bunker.v1.KeyListRequest
+	(*KeyInfo)(nil),                 // 51: bunker.v1.KeyInfo
+	(*KeyListResponse)(nil),         // 52: bunker.v1.KeyListResponse
+	nil,                             // 53: bunker.v1.SpawnAgentRequest.LabelsEntry
+	nil,                             // 54: bunker.v1.RunAgentRequest.EnvEntry
 }
 var file_proto_bunker_v1_bunker_proto_depIdxs = []int32{
 	1,  // 0: bunker.v1.NetworkConfig.mode:type_name -> bunker.v1.NetworkConfig.Mode
@@ -3879,65 +4142,68 @@ var file_proto_bunker_v1_bunker_proto_depIdxs = []int32{
 	14, // 7: bunker.v1.AgentSummary.mount_spec:type_name -> bunker.v1.MountSpec
 	2,  // 8: bunker.v1.SpawnAgentRequest.limits:type_name -> bunker.v1.ResourceLimits
 	3,  // 9: bunker.v1.SpawnAgentRequest.network:type_name -> bunker.v1.NetworkConfig
-	50, // 10: bunker.v1.SpawnAgentRequest.labels:type_name -> bunker.v1.SpawnAgentRequest.LabelsEntry
+	53, // 10: bunker.v1.SpawnAgentRequest.labels:type_name -> bunker.v1.SpawnAgentRequest.LabelsEntry
 	12, // 11: bunker.v1.SpawnAgentRequest.image_spec:type_name -> bunker.v1.ImageSpec
 	13, // 12: bunker.v1.ImageSpec.packages:type_name -> bunker.v1.PackageAdd
 	2,  // 13: bunker.v1.SpawnAgentResponse.limits:type_name -> bunker.v1.ResourceLimits
 	14, // 14: bunker.v1.SpawnAgentResponse.mount_spec:type_name -> bunker.v1.MountSpec
-	9,  // 15: bunker.v1.ListAgentsResponse.agents:type_name -> bunker.v1.AgentSummary
-	9,  // 16: bunker.v1.GetAgentResponse.agent:type_name -> bunker.v1.AgentSummary
-	0,  // 17: bunker.v1.ExecAgentRequest.response_encoding:type_name -> bunker.v1.ExecEncoding
-	51, // 18: bunker.v1.RunAgentRequest.env:type_name -> bunker.v1.RunAgentRequest.EnvEntry
-	2,  // 19: bunker.v1.GetInfoResponse.limits:type_name -> bunker.v1.ResourceLimits
-	41, // 20: bunker.v1.QueryAuditResponse.records:type_name -> bunker.v1.AuditRecord
-	48, // 21: bunker.v1.KeyListResponse.keys:type_name -> bunker.v1.KeyInfo
-	4,  // 22: bunker.v1.Bunkerd.ServerInfo:input_type -> bunker.v1.ServerInfoRequest
-	7,  // 23: bunker.v1.Bunkerd.ServerMetrics:input_type -> bunker.v1.ServerMetricsRequest
-	11, // 24: bunker.v1.Bunkerd.SpawnAgent:input_type -> bunker.v1.SpawnAgentRequest
-	18, // 25: bunker.v1.Bunkerd.DestroyAgent:input_type -> bunker.v1.DestroyAgentRequest
-	20, // 26: bunker.v1.Bunkerd.StopAgent:input_type -> bunker.v1.StopAgentRequest
-	22, // 27: bunker.v1.Bunkerd.StartAgent:input_type -> bunker.v1.StartAgentRequest
-	24, // 28: bunker.v1.Bunkerd.RestartAgent:input_type -> bunker.v1.RestartAgentRequest
-	26, // 29: bunker.v1.Bunkerd.ListAgents:input_type -> bunker.v1.ListAgentsRequest
-	28, // 30: bunker.v1.Bunkerd.GetAgent:input_type -> bunker.v1.GetAgentRequest
-	16, // 31: bunker.v1.Bunkerd.GetAgentKey:input_type -> bunker.v1.GetAgentKeyRequest
-	30, // 32: bunker.v1.Bunkerd.AgentMetrics:input_type -> bunker.v1.AgentMetricsRequest
-	34, // 33: bunker.v1.Bunkerd.ExecAgent:input_type -> bunker.v1.ExecAgentRequest
-	36, // 34: bunker.v1.Bunkerd.RunAgent:input_type -> bunker.v1.RunAgentRequest
-	32, // 35: bunker.v1.Bunkerd.HeartbeatAgent:input_type -> bunker.v1.HeartbeatAgentRequest
-	40, // 36: bunker.v1.Bunkerd.QueryAudit:input_type -> bunker.v1.QueryAuditRequest
-	43, // 37: bunker.v1.Bunkerd.RotateJWTSecret:input_type -> bunker.v1.RotateJWTSecretRequest
-	45, // 38: bunker.v1.Bunkerd.RevokeKey:input_type -> bunker.v1.RevokeKeyRequest
-	47, // 39: bunker.v1.Bunkerd.KeyList:input_type -> bunker.v1.KeyListRequest
-	38, // 40: bunker.v1.Agent.GetInfo:input_type -> bunker.v1.GetInfoRequest
-	30, // 41: bunker.v1.Agent.Metrics:input_type -> bunker.v1.AgentMetricsRequest
-	32, // 42: bunker.v1.Agent.Heartbeat:input_type -> bunker.v1.HeartbeatAgentRequest
-	5,  // 43: bunker.v1.Bunkerd.ServerInfo:output_type -> bunker.v1.ServerInfoResponse
-	8,  // 44: bunker.v1.Bunkerd.ServerMetrics:output_type -> bunker.v1.ServerMetricsResponse
-	15, // 45: bunker.v1.Bunkerd.SpawnAgent:output_type -> bunker.v1.SpawnAgentResponse
-	19, // 46: bunker.v1.Bunkerd.DestroyAgent:output_type -> bunker.v1.DestroyAgentResponse
-	21, // 47: bunker.v1.Bunkerd.StopAgent:output_type -> bunker.v1.StopAgentResponse
-	23, // 48: bunker.v1.Bunkerd.StartAgent:output_type -> bunker.v1.StartAgentResponse
-	25, // 49: bunker.v1.Bunkerd.RestartAgent:output_type -> bunker.v1.RestartAgentResponse
-	27, // 50: bunker.v1.Bunkerd.ListAgents:output_type -> bunker.v1.ListAgentsResponse
-	29, // 51: bunker.v1.Bunkerd.GetAgent:output_type -> bunker.v1.GetAgentResponse
-	17, // 52: bunker.v1.Bunkerd.GetAgentKey:output_type -> bunker.v1.GetAgentKeyResponse
-	31, // 53: bunker.v1.Bunkerd.AgentMetrics:output_type -> bunker.v1.AgentMetricsResponse
-	35, // 54: bunker.v1.Bunkerd.ExecAgent:output_type -> bunker.v1.ExecAgentResponse
-	37, // 55: bunker.v1.Bunkerd.RunAgent:output_type -> bunker.v1.RunAgentResponse
-	33, // 56: bunker.v1.Bunkerd.HeartbeatAgent:output_type -> bunker.v1.HeartbeatAgentResponse
-	42, // 57: bunker.v1.Bunkerd.QueryAudit:output_type -> bunker.v1.QueryAuditResponse
-	44, // 58: bunker.v1.Bunkerd.RotateJWTSecret:output_type -> bunker.v1.RotateJWTSecretResponse
-	46, // 59: bunker.v1.Bunkerd.RevokeKey:output_type -> bunker.v1.RevokeKeyResponse
-	49, // 60: bunker.v1.Bunkerd.KeyList:output_type -> bunker.v1.KeyListResponse
-	39, // 61: bunker.v1.Agent.GetInfo:output_type -> bunker.v1.GetInfoResponse
-	31, // 62: bunker.v1.Agent.Metrics:output_type -> bunker.v1.AgentMetricsResponse
-	33, // 63: bunker.v1.Agent.Heartbeat:output_type -> bunker.v1.HeartbeatAgentResponse
-	43, // [43:64] is the sub-list for method output_type
-	22, // [22:43] is the sub-list for method input_type
-	22, // [22:22] is the sub-list for extension type_name
-	22, // [22:22] is the sub-list for extension extendee
-	0,  // [0:22] is the sub-list for field type_name
+	22, // 15: bunker.v1.RenewalDriftResponse.hits:type_name -> bunker.v1.RenewalDriftHit
+	9,  // 16: bunker.v1.ListAgentsResponse.agents:type_name -> bunker.v1.AgentSummary
+	9,  // 17: bunker.v1.GetAgentResponse.agent:type_name -> bunker.v1.AgentSummary
+	0,  // 18: bunker.v1.ExecAgentRequest.response_encoding:type_name -> bunker.v1.ExecEncoding
+	54, // 19: bunker.v1.RunAgentRequest.env:type_name -> bunker.v1.RunAgentRequest.EnvEntry
+	2,  // 20: bunker.v1.GetInfoResponse.limits:type_name -> bunker.v1.ResourceLimits
+	44, // 21: bunker.v1.QueryAuditResponse.records:type_name -> bunker.v1.AuditRecord
+	51, // 22: bunker.v1.KeyListResponse.keys:type_name -> bunker.v1.KeyInfo
+	4,  // 23: bunker.v1.Bunkerd.ServerInfo:input_type -> bunker.v1.ServerInfoRequest
+	7,  // 24: bunker.v1.Bunkerd.ServerMetrics:input_type -> bunker.v1.ServerMetricsRequest
+	11, // 25: bunker.v1.Bunkerd.SpawnAgent:input_type -> bunker.v1.SpawnAgentRequest
+	20, // 26: bunker.v1.Bunkerd.RenewalDriftReport:input_type -> bunker.v1.RenewalDriftRequest
+	18, // 27: bunker.v1.Bunkerd.DestroyAgent:input_type -> bunker.v1.DestroyAgentRequest
+	23, // 28: bunker.v1.Bunkerd.StopAgent:input_type -> bunker.v1.StopAgentRequest
+	25, // 29: bunker.v1.Bunkerd.StartAgent:input_type -> bunker.v1.StartAgentRequest
+	27, // 30: bunker.v1.Bunkerd.RestartAgent:input_type -> bunker.v1.RestartAgentRequest
+	29, // 31: bunker.v1.Bunkerd.ListAgents:input_type -> bunker.v1.ListAgentsRequest
+	31, // 32: bunker.v1.Bunkerd.GetAgent:input_type -> bunker.v1.GetAgentRequest
+	16, // 33: bunker.v1.Bunkerd.GetAgentKey:input_type -> bunker.v1.GetAgentKeyRequest
+	33, // 34: bunker.v1.Bunkerd.AgentMetrics:input_type -> bunker.v1.AgentMetricsRequest
+	37, // 35: bunker.v1.Bunkerd.ExecAgent:input_type -> bunker.v1.ExecAgentRequest
+	39, // 36: bunker.v1.Bunkerd.RunAgent:input_type -> bunker.v1.RunAgentRequest
+	35, // 37: bunker.v1.Bunkerd.HeartbeatAgent:input_type -> bunker.v1.HeartbeatAgentRequest
+	43, // 38: bunker.v1.Bunkerd.QueryAudit:input_type -> bunker.v1.QueryAuditRequest
+	46, // 39: bunker.v1.Bunkerd.RotateJWTSecret:input_type -> bunker.v1.RotateJWTSecretRequest
+	48, // 40: bunker.v1.Bunkerd.RevokeKey:input_type -> bunker.v1.RevokeKeyRequest
+	50, // 41: bunker.v1.Bunkerd.KeyList:input_type -> bunker.v1.KeyListRequest
+	41, // 42: bunker.v1.Agent.GetInfo:input_type -> bunker.v1.GetInfoRequest
+	33, // 43: bunker.v1.Agent.Metrics:input_type -> bunker.v1.AgentMetricsRequest
+	35, // 44: bunker.v1.Agent.Heartbeat:input_type -> bunker.v1.HeartbeatAgentRequest
+	5,  // 45: bunker.v1.Bunkerd.ServerInfo:output_type -> bunker.v1.ServerInfoResponse
+	8,  // 46: bunker.v1.Bunkerd.ServerMetrics:output_type -> bunker.v1.ServerMetricsResponse
+	15, // 47: bunker.v1.Bunkerd.SpawnAgent:output_type -> bunker.v1.SpawnAgentResponse
+	21, // 48: bunker.v1.Bunkerd.RenewalDriftReport:output_type -> bunker.v1.RenewalDriftResponse
+	19, // 49: bunker.v1.Bunkerd.DestroyAgent:output_type -> bunker.v1.DestroyAgentResponse
+	24, // 50: bunker.v1.Bunkerd.StopAgent:output_type -> bunker.v1.StopAgentResponse
+	26, // 51: bunker.v1.Bunkerd.StartAgent:output_type -> bunker.v1.StartAgentResponse
+	28, // 52: bunker.v1.Bunkerd.RestartAgent:output_type -> bunker.v1.RestartAgentResponse
+	30, // 53: bunker.v1.Bunkerd.ListAgents:output_type -> bunker.v1.ListAgentsResponse
+	32, // 54: bunker.v1.Bunkerd.GetAgent:output_type -> bunker.v1.GetAgentResponse
+	17, // 55: bunker.v1.Bunkerd.GetAgentKey:output_type -> bunker.v1.GetAgentKeyResponse
+	34, // 56: bunker.v1.Bunkerd.AgentMetrics:output_type -> bunker.v1.AgentMetricsResponse
+	38, // 57: bunker.v1.Bunkerd.ExecAgent:output_type -> bunker.v1.ExecAgentResponse
+	40, // 58: bunker.v1.Bunkerd.RunAgent:output_type -> bunker.v1.RunAgentResponse
+	36, // 59: bunker.v1.Bunkerd.HeartbeatAgent:output_type -> bunker.v1.HeartbeatAgentResponse
+	45, // 60: bunker.v1.Bunkerd.QueryAudit:output_type -> bunker.v1.QueryAuditResponse
+	47, // 61: bunker.v1.Bunkerd.RotateJWTSecret:output_type -> bunker.v1.RotateJWTSecretResponse
+	49, // 62: bunker.v1.Bunkerd.RevokeKey:output_type -> bunker.v1.RevokeKeyResponse
+	52, // 63: bunker.v1.Bunkerd.KeyList:output_type -> bunker.v1.KeyListResponse
+	42, // 64: bunker.v1.Agent.GetInfo:output_type -> bunker.v1.GetInfoResponse
+	34, // 65: bunker.v1.Agent.Metrics:output_type -> bunker.v1.AgentMetricsResponse
+	36, // 66: bunker.v1.Agent.Heartbeat:output_type -> bunker.v1.HeartbeatAgentResponse
+	45, // [45:67] is the sub-list for method output_type
+	23, // [23:45] is the sub-list for method input_type
+	23, // [23:23] is the sub-list for extension type_name
+	23, // [23:23] is the sub-list for extension extendee
+	0,  // [0:23] is the sub-list for field type_name
 }
 
 func init() { file_proto_bunker_v1_bunker_proto_init() }
@@ -3945,7 +4211,7 @@ func file_proto_bunker_v1_bunker_proto_init() {
 	if File_proto_bunker_v1_bunker_proto != nil {
 		return
 	}
-	file_proto_bunker_v1_bunker_proto_msgTypes[33].OneofWrappers = []any{
+	file_proto_bunker_v1_bunker_proto_msgTypes[36].OneofWrappers = []any{
 		(*ExecAgentResponse_Stdout)(nil),
 		(*ExecAgentResponse_Stderr)(nil),
 	}
@@ -3955,7 +4221,7 @@ func file_proto_bunker_v1_bunker_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_bunker_v1_bunker_proto_rawDesc), len(file_proto_bunker_v1_bunker_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   50,
+			NumMessages:   53,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

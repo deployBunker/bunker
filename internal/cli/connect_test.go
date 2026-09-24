@@ -109,6 +109,12 @@ func (m *mockBunkerdServer) KeyList(context.Context, *connect.Request[v1.KeyList
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }
 
+// DF-BUNKER-34: the renewal drift RPC joined the handler surface; this
+// generic mock stays unimplemented for it (the renew tests supply their own).
+func (m *mockBunkerdServer) RenewalDriftReport(context.Context, *connect.Request[v1.RenewalDriftRequest]) (*connect.Response[v1.RenewalDriftResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
 // newTestServer starts an httptest server with a chi router mounting the connect handler.
 func newTestServer(t *testing.T, mock bunkerv1connect.BunkerdHandler) *httptest.Server {
 	t.Helper()

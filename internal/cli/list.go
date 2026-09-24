@@ -111,6 +111,18 @@ Examples:
 			fmt.Printf("Total: %d agents (server: %s)\n", resp.Msg.TotalCount, serverName)
 			fmt.Printf("Disk Used is the agent's measured usage; %s %s\n", perFileCapHeader, perFileCapQualifier)
 
+			// DF-BUNKER-34: surface the orphan-uid state the table itself cannot
+			// carry. An agent whose user record is gone while its uid still owns
+			// live processes is the state that made a destroyed agent look
+			// healthy for 20+ hours; the list must name it, not bury it.
+			for _, a := range agents {
+				if orphan := a.GetOrphanUidDetail(); orphan != "" {
+					fmt.Println()
+					fmt.Printf("⚠  %s: %s\n", a.AgentId, orphan)
+					fmt.Println("   Stop these processes on the host; a destroy that proceeds past them orphans them.")
+				}
+			}
+
 			return nil
 		},
 	}

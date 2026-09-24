@@ -32,6 +32,9 @@ func (m *infoMockServer) RevokeKey(context.Context, *connect.Request[v1.RevokeKe
 func (m *infoMockServer) KeyList(context.Context, *connect.Request[v1.KeyListRequest]) (*connect.Response[v1.KeyListResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }
+func (m *infoMockServer) RenewalDriftReport(context.Context, *connect.Request[v1.RenewalDriftRequest]) (*connect.Response[v1.RenewalDriftResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
 func (m *infoMockServer) ServerInfo(ctx context.Context, req *connect.Request[v1.ServerInfoRequest]) (*connect.Response[v1.ServerInfoResponse], error) {
 	return connect.NewResponse(&v1.ServerInfoResponse{}), nil
 }

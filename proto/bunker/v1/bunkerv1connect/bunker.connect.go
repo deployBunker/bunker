@@ -41,6 +41,9 @@ const (
 	BunkerdServerMetricsProcedure = "/bunker.v1.Bunkerd/ServerMetrics"
 	// BunkerdSpawnAgentProcedure is the fully-qualified name of the Bunkerd's SpawnAgent RPC.
 	BunkerdSpawnAgentProcedure = "/bunker.v1.Bunkerd/SpawnAgent"
+	// BunkerdRenewalDriftReportProcedure is the fully-qualified name of the Bunkerd's
+	// RenewalDriftReport RPC.
+	BunkerdRenewalDriftReportProcedure = "/bunker.v1.Bunkerd/RenewalDriftReport"
 	// BunkerdDestroyAgentProcedure is the fully-qualified name of the Bunkerd's DestroyAgent RPC.
 	BunkerdDestroyAgentProcedure = "/bunker.v1.Bunkerd/DestroyAgent"
 	// BunkerdStopAgentProcedure is the fully-qualified name of the Bunkerd's StopAgent RPC.
@@ -86,6 +89,11 @@ type BunkerdClient interface {
 	ServerMetrics(context.Context, *connect.Request[v1.ServerMetricsRequest]) (*connect.Response[v1.ServerMetricsResponse], error)
 	// Agent lifecycle
 	SpawnAgent(context.Context, *connect.Request[v1.SpawnAgentRequest]) (*connect.Response[v1.SpawnAgentResponse], error)
+	// DF-BUNKER-34: the renewal drift report. Scans an agent home for
+	// references to a given (old) home path across the artifact classes a
+	// renewal goes stale in — systemd --user units, cron entries, shell/env
+	// and config files. Read-only: it reports, it never rewrites.
+	RenewalDriftReport(context.Context, *connect.Request[v1.RenewalDriftRequest]) (*connect.Response[v1.RenewalDriftResponse], error)
 	DestroyAgent(context.Context, *connect.Request[v1.DestroyAgentRequest]) (*connect.Response[v1.DestroyAgentResponse], error)
 	// GAP-071: pause / resume / restart an agent WITHOUT destroying it.
 	//   stop    — SIGTERM the agent's session units + processes; the Linux user,
@@ -154,6 +162,12 @@ func NewBunkerdClient(httpClient connect.HTTPClient, baseURL string, opts ...con
 			httpClient,
 			baseURL+BunkerdSpawnAgentProcedure,
 			connect.WithSchema(bunkerdMethods.ByName("SpawnAgent")),
+			connect.WithClientOptions(opts...),
+		),
+		renewalDriftReport: connect.NewClient[v1.RenewalDriftRequest, v1.RenewalDriftResponse](
+			httpClient,
+			baseURL+BunkerdRenewalDriftReportProcedure,
+			connect.WithSchema(bunkerdMethods.ByName("RenewalDriftReport")),
 			connect.WithClientOptions(opts...),
 		),
 		destroyAgent: connect.NewClient[v1.DestroyAgentRequest, v1.DestroyAgentResponse](
@@ -251,24 +265,25 @@ func NewBunkerdClient(httpClient connect.HTTPClient, baseURL string, opts ...con
 
 // bunkerdClient implements BunkerdClient.
 type bunkerdClient struct {
-	serverInfo      *connect.Client[v1.ServerInfoRequest, v1.ServerInfoResponse]
-	serverMetrics   *connect.Client[v1.ServerMetricsRequest, v1.ServerMetricsResponse]
-	spawnAgent      *connect.Client[v1.SpawnAgentRequest, v1.SpawnAgentResponse]
-	destroyAgent    *connect.Client[v1.DestroyAgentRequest, v1.DestroyAgentResponse]
-	stopAgent       *connect.Client[v1.StopAgentRequest, v1.StopAgentResponse]
-	startAgent      *connect.Client[v1.StartAgentRequest, v1.StartAgentResponse]
-	restartAgent    *connect.Client[v1.RestartAgentRequest, v1.RestartAgentResponse]
-	listAgents      *connect.Client[v1.ListAgentsRequest, v1.ListAgentsResponse]
-	getAgent        *connect.Client[v1.GetAgentRequest, v1.GetAgentResponse]
-	getAgentKey     *connect.Client[v1.GetAgentKeyRequest, v1.GetAgentKeyResponse]
-	agentMetrics    *connect.Client[v1.AgentMetricsRequest, v1.AgentMetricsResponse]
-	execAgent       *connect.Client[v1.ExecAgentRequest, v1.ExecAgentResponse]
-	runAgent        *connect.Client[v1.RunAgentRequest, v1.RunAgentResponse]
-	heartbeatAgent  *connect.Client[v1.HeartbeatAgentRequest, v1.HeartbeatAgentResponse]
-	queryAudit      *connect.Client[v1.QueryAuditRequest, v1.QueryAuditResponse]
-	rotateJWTSecret *connect.Client[v1.RotateJWTSecretRequest, v1.RotateJWTSecretResponse]
-	revokeKey       *connect.Client[v1.RevokeKeyRequest, v1.RevokeKeyResponse]
-	keyList         *connect.Client[v1.KeyListRequest, v1.KeyListResponse]
+	serverInfo         *connect.Client[v1.ServerInfoRequest, v1.ServerInfoResponse]
+	serverMetrics      *connect.Client[v1.ServerMetricsRequest, v1.ServerMetricsResponse]
+	spawnAgent         *connect.Client[v1.SpawnAgentRequest, v1.SpawnAgentResponse]
+	renewalDriftReport *connect.Client[v1.RenewalDriftRequest, v1.RenewalDriftResponse]
+	destroyAgent       *connect.Client[v1.DestroyAgentRequest, v1.DestroyAgentResponse]
+	stopAgent          *connect.Client[v1.StopAgentRequest, v1.StopAgentResponse]
+	startAgent         *connect.Client[v1.StartAgentRequest, v1.StartAgentResponse]
+	restartAgent       *connect.Client[v1.RestartAgentRequest, v1.RestartAgentResponse]
+	listAgents         *connect.Client[v1.ListAgentsRequest, v1.ListAgentsResponse]
+	getAgent           *connect.Client[v1.GetAgentRequest, v1.GetAgentResponse]
+	getAgentKey        *connect.Client[v1.GetAgentKeyRequest, v1.GetAgentKeyResponse]
+	agentMetrics       *connect.Client[v1.AgentMetricsRequest, v1.AgentMetricsResponse]
+	execAgent          *connect.Client[v1.ExecAgentRequest, v1.ExecAgentResponse]
+	runAgent           *connect.Client[v1.RunAgentRequest, v1.RunAgentResponse]
+	heartbeatAgent     *connect.Client[v1.HeartbeatAgentRequest, v1.HeartbeatAgentResponse]
+	queryAudit         *connect.Client[v1.QueryAuditRequest, v1.QueryAuditResponse]
+	rotateJWTSecret    *connect.Client[v1.RotateJWTSecretRequest, v1.RotateJWTSecretResponse]
+	revokeKey          *connect.Client[v1.RevokeKeyRequest, v1.RevokeKeyResponse]
+	keyList            *connect.Client[v1.KeyListRequest, v1.KeyListResponse]
 }
 
 // ServerInfo calls bunker.v1.Bunkerd.ServerInfo.
@@ -284,6 +299,11 @@ func (c *bunkerdClient) ServerMetrics(ctx context.Context, req *connect.Request[
 // SpawnAgent calls bunker.v1.Bunkerd.SpawnAgent.
 func (c *bunkerdClient) SpawnAgent(ctx context.Context, req *connect.Request[v1.SpawnAgentRequest]) (*connect.Response[v1.SpawnAgentResponse], error) {
 	return c.spawnAgent.CallUnary(ctx, req)
+}
+
+// RenewalDriftReport calls bunker.v1.Bunkerd.RenewalDriftReport.
+func (c *bunkerdClient) RenewalDriftReport(ctx context.Context, req *connect.Request[v1.RenewalDriftRequest]) (*connect.Response[v1.RenewalDriftResponse], error) {
+	return c.renewalDriftReport.CallUnary(ctx, req)
 }
 
 // DestroyAgent calls bunker.v1.Bunkerd.DestroyAgent.
@@ -368,6 +388,11 @@ type BunkerdHandler interface {
 	ServerMetrics(context.Context, *connect.Request[v1.ServerMetricsRequest]) (*connect.Response[v1.ServerMetricsResponse], error)
 	// Agent lifecycle
 	SpawnAgent(context.Context, *connect.Request[v1.SpawnAgentRequest]) (*connect.Response[v1.SpawnAgentResponse], error)
+	// DF-BUNKER-34: the renewal drift report. Scans an agent home for
+	// references to a given (old) home path across the artifact classes a
+	// renewal goes stale in — systemd --user units, cron entries, shell/env
+	// and config files. Read-only: it reports, it never rewrites.
+	RenewalDriftReport(context.Context, *connect.Request[v1.RenewalDriftRequest]) (*connect.Response[v1.RenewalDriftResponse], error)
 	DestroyAgent(context.Context, *connect.Request[v1.DestroyAgentRequest]) (*connect.Response[v1.DestroyAgentResponse], error)
 	// GAP-071: pause / resume / restart an agent WITHOUT destroying it.
 	//   stop    — SIGTERM the agent's session units + processes; the Linux user,
@@ -432,6 +457,12 @@ func NewBunkerdHandler(svc BunkerdHandler, opts ...connect.HandlerOption) (strin
 		BunkerdSpawnAgentProcedure,
 		svc.SpawnAgent,
 		connect.WithSchema(bunkerdMethods.ByName("SpawnAgent")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bunkerdRenewalDriftReportHandler := connect.NewUnaryHandler(
+		BunkerdRenewalDriftReportProcedure,
+		svc.RenewalDriftReport,
+		connect.WithSchema(bunkerdMethods.ByName("RenewalDriftReport")),
 		connect.WithHandlerOptions(opts...),
 	)
 	bunkerdDestroyAgentHandler := connect.NewUnaryHandler(
@@ -532,6 +563,8 @@ func NewBunkerdHandler(svc BunkerdHandler, opts ...connect.HandlerOption) (strin
 			bunkerdServerMetricsHandler.ServeHTTP(w, r)
 		case BunkerdSpawnAgentProcedure:
 			bunkerdSpawnAgentHandler.ServeHTTP(w, r)
+		case BunkerdRenewalDriftReportProcedure:
+			bunkerdRenewalDriftReportHandler.ServeHTTP(w, r)
 		case BunkerdDestroyAgentProcedure:
 			bunkerdDestroyAgentHandler.ServeHTTP(w, r)
 		case BunkerdStopAgentProcedure:
@@ -581,6 +614,10 @@ func (UnimplementedBunkerdHandler) ServerMetrics(context.Context, *connect.Reque
 
 func (UnimplementedBunkerdHandler) SpawnAgent(context.Context, *connect.Request[v1.SpawnAgentRequest]) (*connect.Response[v1.SpawnAgentResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.SpawnAgent is not implemented"))
+}
+
+func (UnimplementedBunkerdHandler) RenewalDriftReport(context.Context, *connect.Request[v1.RenewalDriftRequest]) (*connect.Response[v1.RenewalDriftResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.RenewalDriftReport is not implemented"))
 }
 
 func (UnimplementedBunkerdHandler) DestroyAgent(context.Context, *connect.Request[v1.DestroyAgentRequest]) (*connect.Response[v1.DestroyAgentResponse], error) {

@@ -58,6 +58,10 @@ type bunkerdService struct {
 	keyMgr       *apikey.Manager
 	jwtAuth      *auth.JWTAuth
 	cpuSampler   cpuSampler
+	// orphanUIDSummarizer is the DF-BUNKER-34 orphan probe (nil in tests and
+	// unwired services: no probe, no fabricated "healthy"). The production
+	// wiring (server.go) sets it to the agent manager's OrphanUIDSummary.
+	orphanUIDSummarizer func(agentID string) string
 	// auditLog is the daemon's audit trail writer (nil when audit logging
 	// is disabled). QueryAudit reads from it; the audit interceptor writes
 	// to it. It is only used for read access here — the interceptor owns
@@ -404,6 +408,38 @@ func (s *bunkerdService) DestroyAgent(ctx context.Context, req *connect.Request[
 	return connect.NewResponse(resp), nil
 }
 
+// RenewalDriftReport scans an agent's home for references to a previous home
+// path and REPORTS every hit (DF-BUNKER-34, criterion 3). Read-only: it never
+// rewrites — an automatic rewrite of a user's systemd units is a data
+// mutation the daemon has no authority over; the recipe documents the
+// operator's rewrite. The scan targets the artifact classes a renewal goes
+// stale in: systemd --user units, cron entries, shell/env and config files.
+func (s *bunkerdService) RenewalDriftReport(ctx context.Context, req *connect.Request[v1.RenewalDriftRequest]) (*connect.Response[v1.RenewalDriftResponse], error) {
+	if d, ok := s.agentMgr.(interface {
+		RenewalDriftReport(agentID, oldHome, home string) agent.DriftReport
+	}); ok {
+		rep := d.RenewalDriftReport(req.Msg.GetAgentId(), req.Msg.GetOldHome(), req.Msg.GetHome())
+		return connect.NewResponse(driftReportToProto(rep)), nil
+	}
+	return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("renewal drift report is not available on this daemon"))
+}
+
+// driftReportToProto maps the manager's drift report onto the wire message.
+func driftReportToProto(rep agent.DriftReport) *v1.RenewalDriftResponse {
+	out := &v1.RenewalDriftResponse{
+		AgentId:      rep.AgentID,
+		Home:         rep.Home,
+		OldHome:      rep.OldHome,
+		FilesScanned: uint32(rep.FilesScanned),
+		Summary:      rep.Summarize(),
+	}
+	for _, h := range rep.Hits {
+		out.Hits = append(out.Hits, &v1.RenewalDriftHit{File: h.File, Line: uint32(h.Line), Text: h.Text})
+	}
+	out.Unreadable = append(out.Unreadable, rep.Unreadable...)
+	return out
+}
+
 // StopAgent pauses an agent: its session units and processes are stopped while
 // the agent itself — user, home, container, port range and tracker record —
 // survives, so it can be resumed with StartAgent (GAP-071).
@@ -472,6 +508,14 @@ func stoppedPreconditionError(err error) error {
 	return connect.NewError(connect.CodeFailedPrecondition, err)
 }
 
+// orphanUIDSummaryer is the narrow slice of the agent manager the orphan-uid
+// surfacing uses (DF-BUNKER-34 criterion 4). Nil-safe: a service without a
+// manager (tests, unwired services) reports no orphan detail rather than
+// probing a host it cannot see.
+type orphanUIDSummaryer interface {
+	OrphanUIDSummary(agentID string) string
+}
+
 // ListAgents returns all agents.
 func (s *bunkerdService) ListAgents(ctx context.Context, req *connect.Request[v1.ListAgentsRequest]) (*connect.Response[v1.ListAgentsResponse], error) {
 	records := s.tracker.List()
@@ -480,6 +524,16 @@ func (s *bunkerdService) ListAgents(ctx context.Context, req *connect.Request[v1
 		// Compute per-agent disk usage (best-effort, async-safe).
 		rec.DiskUsedBytes = agentDiskUsage(rec.AgentID)
 		summaries = append(summaries, rec.ToAgentSummary())
+	}
+	// DF-BUNKER-34: the orphan-uid check rides every summary. An agent whose
+	// user record is gone while its uid still owns live processes is the one
+	// state the status planes cannot see (the cube-las-00 shape: a
+	// "healthy" fleet ticking against a deleted home for 20+ hours); without
+	// this field list/info read exactly as healthy.
+	if s.orphanUIDSummarizer != nil {
+		for _, sum := range summaries {
+			sum.OrphanUidDetail = s.orphanUIDSummarizer(sum.GetAgentId())
+		}
 	}
 	return connect.NewResponse(&v1.ListAgentsResponse{
 		Agents:     summaries,
@@ -493,8 +547,14 @@ func (s *bunkerdService) GetAgent(ctx context.Context, req *connect.Request[v1.G
 	if rec == nil {
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("agent %q not found", req.Msg.AgentId))
 	}
+	summary := rec.ToAgentSummary()
+	// DF-BUNKER-34: the same orphan-uid check the list surface carries, so
+	// `bunker info` on ONE agent shows the state too.
+	if s.orphanUIDSummarizer != nil {
+		summary.OrphanUidDetail = s.orphanUIDSummarizer(summary.GetAgentId())
+	}
 	return connect.NewResponse(&v1.GetAgentResponse{
-		Agent: rec.ToAgentSummary(),
+		Agent: summary,
 	}), nil
 }
 

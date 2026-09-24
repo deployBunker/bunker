@@ -39,6 +39,9 @@ func (m *statusMockServer) RevokeKey(context.Context, *connect.Request[v1.Revoke
 func (m *statusMockServer) KeyList(context.Context, *connect.Request[v1.KeyListRequest]) (*connect.Response[v1.KeyListResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }
+func (m *statusMockServer) RenewalDriftReport(context.Context, *connect.Request[v1.RenewalDriftRequest]) (*connect.Response[v1.RenewalDriftResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
 func (m *statusMockServer) ServerInfo(
 	ctx context.Context,
 	req *connect.Request[v1.ServerInfoRequest],

@@ -994,6 +994,8 @@ freshness note under Install and the *Unreleased* CHANGELOG section):
 bunker stop        Pause an agent without destroying it (start/restart resume it)
 bunker start       Resume a stopped agent
 bunker restart     Stop + start in one call and reset the heartbeat TTL
+bunker renew       Renew an agent under its STABLE identity (destroy + re-spawn the
+                   same id; refuses without --agent-id — see docs/renewal.md)
 bunker homes       Inspect orphaned agent home directories (prune removes the stale ones)
 bunker linger      Inspect the systemd linger directory (prune removes the stale entries)
 bunker umount      Unmount a mountpoint (idempotent, clears stranded mounts)

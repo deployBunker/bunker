@@ -95,6 +95,9 @@ func (s *rootExecStubServer) RevokeKey(context.Context, *connect.Request[v1.Revo
 func (s *rootExecStubServer) KeyList(context.Context, *connect.Request[v1.KeyListRequest]) (*connect.Response[v1.KeyListResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }
+func (s *rootExecStubServer) RenewalDriftReport(context.Context, *connect.Request[v1.RenewalDriftRequest]) (*connect.Response[v1.RenewalDriftResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
 
 // newRootExecStub starts an httptest server serving the stub handler.
 func newRootExecStub(t *testing.T) (*httptest.Server, *rootExecStubServer) {

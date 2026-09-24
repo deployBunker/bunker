@@ -13,6 +13,11 @@ service Bunkerd {
 
   // Agent lifecycle
   rpc SpawnAgent(SpawnAgentRequest) returns (SpawnAgentResponse);
+  // DF-BUNKER-34: the renewal drift report. Scans an agent home for
+  // references to a given (old) home path across the artifact classes a
+  // renewal goes stale in — systemd --user units, cron entries, shell/env
+  // and config files. Read-only: it reports, it never rewrites.
+  rpc RenewalDriftReport(RenewalDriftRequest) returns (RenewalDriftResponse);
   rpc DestroyAgent(DestroyAgentRequest) returns (DestroyAgentResponse);
   // GAP-071: pause / resume / restart an agent WITHOUT destroying it.
   //   stop    — SIGTERM the agent's session units + processes; the Linux user,
@@ -191,6 +196,12 @@ message AgentSummary {
   // sshfs). Populated by agents spawned after the seam; a replayed
   // pre-seam record reports driver "sshfs" derived from the stored command.
   MountSpec mount_spec = 15;
+  // DF-BUNKER-34 orphan-uid surfacing: when NON-EMPTY, the agent's user
+  // record (bunker-<agent_id>) is GONE from the host while processes are
+  // still running under its uid. The value names the uid and every live
+  // process (pid + command head). Empty = healthy, unknown, or not
+  // applicable (the home does not exist). ADDITIVE: older clients ignore it.
+  string orphan_uid_detail = 16;
 }
 
 // One resolved systemd property of an agent's effective knob set (GAP-116):
@@ -319,7 +330,45 @@ message DestroyAgentRequest {
 
 message DestroyAgentResponse {
   string agent_id = 1;
-  string status = 2;             // destroyed, not_found, error
+  string status = 2;             // destroyed, not_found, error, home_retained, live_processes, userdel_failed
+}
+
+// ── Renewal drift report (DF-BUNKER-34) ─────────────────────────
+//
+// A renewal that keeps the stable agent id keeps the home path too, but the
+// artifacts INSIDE the home (systemd --user units, cron entries, shell/env
+// and config files) can still carry the PREVIOUS home path from before the
+// first stable renewal. The drift report scans those classes for references
+// to a given old-home path and REPORTS every hit — it never rewrites (an
+// automatic rewrite of a user's service units is a data mutation the daemon
+// has no authority over; the recipe documents the operator's rewrite).
+message RenewalDriftRequest {
+  string agent_id = 1;   // the agent whose home is scanned
+  // old_home is the path searched for (the previous home path). REQUIRED:
+  // a scan with no needle would read as "clean" without proving anything.
+  string old_home = 2;
+  // home is the directory to scan; empty = the agent's own home
+  // (/home/bunker-<agent_id>).
+  string home = 3;
+}
+
+message RenewalDriftResponse {
+  string agent_id = 1;
+  string home = 2;       // the home that was scanned
+  string old_home = 3;   // the path searched for
+  uint32 files_scanned = 4;
+  repeated RenewalDriftHit hits = 5;
+  repeated string unreadable = 6; // files that exist but could not be read
+  // summary is the operator-facing one-line-per-hit rendering (what the CLI
+  // prints verbatim).
+  string summary = 7;
+}
+
+// RenewalDriftHit is one stale-path reference found in an agent-side file.
+message RenewalDriftHit {
+  string file = 1;  // path inside the agent home (relative)
+  uint32 line = 2;  // 1-based line number
+  string text = 3;  // the trimmed line content
 }
 
 // ── Lifecycle control (GAP-071) ───────────────────────────────

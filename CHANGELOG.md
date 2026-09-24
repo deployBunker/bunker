@@ -22,6 +22,27 @@ from HEAD*.
 
 ### Added
 
+- **Stable-identity renewals (DF-BUNKER-34).** `bunker renew --agent-id <id>`
+  destroys and re-spawns an agent under its STABLE id, so the home path
+  (`/home/bunker-<id>`), the system user and every stored path survive a
+  renewal unchanged; without `--agent-id` the command REFUSES with the recipe
+  (docs/renewal.md). The pre-flight drift report scans the current home's
+  systemd `--user` units, cron entries and config files for references to the
+  old home path and prints every hit (report-only — never rewrites). A new
+  `RenewalDriftReport` RPC carries the scan; a daemon predating it warns
+  instead of blocking the renewal.
+- **Loud destroy on live processes (DF-BUNKER-34).** `bunker destroy`
+  verifies the agent's uid owns no live process (read from /proc) before
+  `userdel -rf` and refuses with a `live_processes` error naming the uid and
+  every process; `--force` does not bypass the gate. A userdel failure that
+  is not the user-absent class is now a hard `userdel_failed` error carrying
+  the surviving-process evidence, never the historical silent not_found.
+- **Orphan-uid detection on info/list (DF-BUNKER-34).** An agent whose user
+  record is gone while processes still run under its uid — the state that
+  made a destroyed agent look healthy for 20+ hours — is now reported on
+  `bunker info` and `bunker list` (wire field `orphan_uid_detail`; rendered
+  as a named warning block). Non-empty only for the orphan class: absence is
+  never a fabricated "healthy".
 - Agent lifecycle commands: `bunker stop <agent-id>` pauses an agent without
   destroying it (its Linux user, home, container and allocated port range
   survive), `bunker start <agent-id>` re-arms it, and `bunker restart <agent-id>`

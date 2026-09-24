@@ -144,6 +144,7 @@ Client-side path overrides (persistent flags):
 
 	root.AddCommand(cli.NewConnectCommand())
 	root.AddCommand(cli.NewSpawnCommand())
+	root.AddCommand(cli.NewRenewCommand())
 	root.AddCommand(cli.NewListCommand())
 	root.AddCommand(cli.NewDestroyCommand())
 	root.AddCommand(cli.NewStopCommand())

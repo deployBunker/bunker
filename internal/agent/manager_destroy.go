@@ -10,6 +10,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,6 +24,15 @@ import (
 // port range were all kept (DF-BUNKER-33). Losing the home is the one
 // unacceptable outcome; a retained agent can be retried or cleaned up later.
 const StatusHomeRetained = "home_retained"
+
+// StatusLiveProcesses is the destroy-path response status for a destroy that
+// REFUSED to run userdel because the agent's uid still owns live processes
+// (DF-BUNKER-34). Nothing was deleted: the user, the home, the tracker record
+// and the port range all survive, and the error names every live process. The
+// historical alternative was the partial state userdel -rf leaves when it
+// fails on a busy home — user record gone, processes orphaned, the destroy
+// reporting not_found (the cube-las-00 incident).
+const StatusLiveProcesses = "live_processes"
 
 // archiveAgentHome tars homeDir into archiveDir and VERIFIES the archive
 // before the caller is allowed to delete anything. The verification is the
@@ -392,6 +402,25 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	// path below from treating a slow-shutdown agent as not_found.
 	waitAgentProcessesExit(ctx, username, m.logger)
 
+	// Step 2b.1 (DF-BUNKER-34): verify the agent's uid is process-free before
+	// anything destructive. waitAgentProcessesExit only SIGKILLs the dockerd
+	// and rootlesskit pids its first scan saw; ANY other process still running
+	// under the agent's uid (a service the agent's operator installed — a
+	// scheduler daemon, a node server, a cron job) survives both the stop
+	// stages and this reap, and userdel -rf then fails on the busy home while
+	// userdel STILL removes the user record. That exact partial state is the
+	// cube-las-00 incident: user record gone, ~35 uid processes alive for 20+
+	// hours, one of them holding port 3000 and shadowing the next agent's
+	// daemon, and the destroy reporting not_found while a "healthy" fleet kept
+	// ticking against a deleted workdir. The gate fails LOUDLY instead: the
+	// error names the uid, every live process and the remedy. Processes the
+	// normal reap could not kill are evidence, not something to paper over.
+	// FORCE MODE IS NOT AN EXCEPTION: --force means "tear the agent down even
+	// though it is running", not "orphan every process it owns".
+	if err := gateDestroyOnLiveProcesses(ctx, username, m.logger); err != nil {
+		return &v1.DestroyAgentResponse{AgentId: agentID, Status: StatusLiveProcesses}, err
+	}
+
 	// Step 2c (INT-HOST-001): disable systemd linger so the per-agent linger
 	// file goes away WITH the agent. spawn enables linger on every create and
 	// no destroy path ever disabled it: every destroyed agent left
@@ -466,8 +495,51 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	// Step 3: Remove the Linux user
 	cmd := exec.CommandContext(ctx, "userdel", "-rf", username)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		// Check if user doesn't exist (already destroyed)
-		if !force {
+		// DF-BUNKER-34: a userdel failure that is NOT "the user is already
+		// gone" means the host is in exactly the partial state this row
+		// exists to prevent — userdel -rf fails on a busy home (processes
+		// still hold it) and may have removed the user record while the
+		// directory and every process under the uid SURVIVE. That state must
+		// surface as a hard error carrying the surviving-process evidence,
+		// not as a not_found (the cube-las-00 shape: a "healthy" fleet for
+		// 20+ hours ticking against a deleted workdir). The check is
+		// evidence-based, not string-matched: re-probe the uid for live
+		// processes; anything found rides the error.
+		if !destroyUserAbsentOutput(out) {
+			evidence := m.destroyFailureEvidence(username)
+			if force {
+				// Force mode keeps its historical continue-on-failure
+				// semantics, but the failure is now LOUD on the record: the
+				// surviving-process evidence is logged at Error, never
+				// swallowed.
+				m.logger.Error("userdel failed in force mode; agent state is partially removed",
+					"username", username, "error", err, "output", string(out), "evidence", evidence)
+			} else {
+				m.logger.Error("userdel failed; destroy aborted with evidence",
+					"username", username, "error", err, "output", string(out), "evidence", evidence)
+				// Free the port range first — the in-memory allocator leaks
+				// permanently if a destroy path returns without releasing it.
+				// The TTL reaper hit this on bunker-las-03: userdel failed
+				// against a still-running rootless dockerd, the tracker slot
+				// was freed, and the range stayed allocated until the whole
+				// pool was exhausted. Free is unconditional and idempotent —
+				// it no-ops for IDs with no allocated range.
+				if m.portAlloc != nil {
+					m.portAlloc.Free(agentID)
+					m.logger.Info("freed port range", "agent_id", agentID)
+				}
+				m.tracker.Unregister(agentID)
+				if perr := m.persistDestroy(agentID); perr != nil {
+					m.logger.Warn("registry destroy append failed", "agent_id", agentID, "error", perr)
+				}
+				m.removeAgentSSHKeyBestEffort(agentID, m.logger)
+				return &v1.DestroyAgentResponse{AgentId: agentID, Status: StatusUserdelFailed},
+					fmt.Errorf("destroy of %s failed: userdel error: %v (output: %s). %s",
+						agentID, err, strings.TrimSpace(string(out)), evidence)
+			}
+		} else if !force {
+			// The historical "user already gone" path (idempotent destroy or
+			// not_found) — unchanged.
 			// Free the port range first — the in-memory allocator leaks
 			// permanently if a destroy path returns without releasing it.
 			// The TTL reaper hit this on bunker-las-03: userdel failed
@@ -513,9 +585,10 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 			m.removeAgentSSHKeyBestEffort(agentID, m.logger)
 			return &v1.DestroyAgentResponse{AgentId: agentID, Status: "not_found"},
 				fmt.Errorf("agent %q not found", agentID)
+		} else {
+			// Force mode, user-absent class: historical behavior.
+			m.logger.Warn("userdel failed in force mode (user absent)", "username", username, "error", err, "output", string(out))
 		}
-		// Force mode: log and continue even if userdel fails
-		m.logger.Warn("userdel failed in force mode", "username", username, "error", err, "output", string(out))
 	}
 
 	// Step 4: Clean up /run/bunker/<id>/ directory
@@ -570,6 +643,147 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 
 	m.logger.Info("agent destroyed", "agent_id", agentID)
 	return &v1.DestroyAgentResponse{AgentId: agentID, Status: "destroyed"}, nil
+}
+
+// gateDestroyOnLiveProcesses verifies the agent user's uid owns NO live
+// process before destroy may run userdel -rf (DF-BUNKER-34, criterion 2).
+// It runs AFTER the dockerd/rootlesskit reap, so the processes it finds are
+// exactly the ones the normal teardown could not kill — long-lived user
+// services the agent's operator installed (a scheduler daemon, a node
+// server, a forward script), which survive SIGTERM/SIGKILL rounds aimed at
+// the docker stack and keep the home busy.
+//
+// The refusal is loud and complete: the error names the username, the uid,
+// every live process (pid + command head) and the remedy. No deletion has
+// happened when it fires — the caller returns StatusLiveProcesses with the
+// user, home, tracker record and port range intact.
+//
+// The probe is seam-isolated (destroyLiveProcessProbe) so a unit test drives
+// the refusal without touching the host's /proc, and a user that no longer
+// resolves skips the gate entirely (the idempotent-destroy path owns that
+// case; there is no uid to check for an already-gone user).
+func gateDestroyOnLiveProcesses(_ context.Context, username string, logger *slog.Logger) error {
+	procs, uid, ok, err := destroyProcessProbe(username)
+	if err != nil {
+		// The probe could not run (e.g. /proc unreadable). "Cannot look" must
+		// never read as "nothing there" — but it also must not wedge every
+		// destroy on an environment without /proc: the gate REFUSES, and the
+		// refusal names the probe failure so the operator knows the destroy
+		// was blocked by an unobservable host, not by live processes.
+		return fmt.Errorf("destroy refused: cannot verify that user %s owns no live processes: %v", username, err)
+	}
+	if !ok {
+		return nil // user record already gone: no uid to check
+	}
+	if len(procs) == 0 {
+		return nil
+	}
+	summary := (&orphanUIDCheck{UID: uid, UIDKnown: true, UserExists: true, Processes: procs}).Describe()
+	logger.Error("destroy refused: agent uid still owns live processes",
+		"username", username,
+		"uid", uid,
+		"processes", len(procs),
+		"evidence", summary)
+	return fmt.Errorf("%s", buildDestroyLiveProcessRefusal(username, uid, procs))
+}
+
+// destroyProcessProbe is the seam behind the gate: it returns the live
+// processes owned by the username's uid, the uid, ok=true when the user
+// record resolved, and the probe error. Production resolves through the
+// lookupUser seam and reads /proc; tests inject fakes.
+var destroyProcessProbe = func(username string) (procs []userProcess, uid uint32, ok bool, err error) {
+	u, uerr := lookupUser(username)
+	if uerr != nil {
+		return nil, 0, false, nil // user gone: the idempotent path, not this gate's case
+	}
+	v, perr := strconv.ParseUint(u.Uid, 10, 32)
+	if perr != nil {
+		return nil, 0, false, fmt.Errorf("parse uid of %s: %w", username, perr)
+	}
+	procs, lerr := listUserProcesses(uint32(v))
+	if lerr != nil {
+		return nil, 0, false, lerr
+	}
+	return procs, uint32(v), true, nil
+}
+
+// buildDestroyLiveProcessRefusal renders the operator-facing refusal for a
+// uid that still owns live processes. It is the single construction for the
+// gate error and the orphan report line, so the two surfaces cannot drift.
+func buildDestroyLiveProcessRefusal(username string, uid uint32, procs []userProcess) string {
+	summary := (&orphanUIDCheck{UID: uid, UIDKnown: true, UserExists: true, Processes: procs}).Describe()
+	return fmt.Sprintf(
+		"destroy refused: user %s (uid %d) still owns live processes that userdel -rf would orphan. %s. "+
+			"Stop those processes on the host (they are NOT killed by bunker destroy — a previous destroy "+
+			"that orphaned them is exactly the failure this gate exists to prevent), then retry the destroy",
+		username, uid, summary)
+}
+
+// StatusUserdelFailed is the destroy-path response status for a userdel -rf
+// failure that is NOT the idempotent "user already gone" class (DF-BUNKER-34):
+// the host is left in the partial state userdel produces when processes still
+// hold the home — the user record may be gone while the directory and every
+// uid process survive. The destroy reports it as a hard error carrying the
+// surviving-process evidence instead of the historical silent not_found.
+const StatusUserdelFailed = "userdel_failed"
+
+// destroyUserAbsentOutput classifies userdel output as the benign
+// "user does not exist" class. It is deliberately conservative: anything the
+// classifier cannot PROVE is the absent-user case is treated as a real
+// failure, because the historical misclassification (every failure read as
+// not_found) is the bug. The accepted wordings cover the two shapes userdel
+// prints for a missing account (name-based and uid-based); everything else —
+// "error removing directory", "user ... is currently used by process",
+// permission failures — falls through to the hard-error branch.
+func destroyUserAbsentOutput(out []byte) bool {
+	o := strings.ToLower(string(out))
+	for _, sig := range []string{
+		"does not exist",
+		"no such user",
+		"not found",
+	} {
+		if strings.Contains(o, sig) {
+			return true
+		}
+	}
+	return false
+}
+
+// destroyFailureEvidence probes the host state a failed userdel leaves behind
+// and renders it as operator-facing evidence: whether the user record is
+// still present, whether the uid still owns live processes, and whether the
+// home still exists. It is evidence for the destroy error / force-mode log —
+// read-only, best-effort, and honest about the parts it could not observe.
+func (m *AgentManager) destroyFailureEvidence(username string) string {
+	var parts []string
+	_, lerr := lookupUser(username)
+	switch {
+	case lerr == nil:
+		parts = append(parts, "user record still present")
+	default:
+		parts = append(parts, "user record REMOVED from the host while destroy failed")
+	}
+	if uid, ok := resolveUsernameUID(username); ok {
+		procs, perr := listUserProcesses(uid)
+		switch {
+		case perr != nil:
+			parts = append(parts, "process state unobservable: "+perr.Error())
+		case len(procs) > 0:
+			summary := (&orphanUIDCheck{UID: uid, UIDKnown: true, UserExists: lerr == nil, Processes: procs}).Describe()
+			parts = append(parts, summary)
+		default:
+			parts = append(parts, fmt.Sprintf("no live processes remain under uid %d", uid))
+		}
+	} else if lerr == nil {
+		parts = append(parts, "uid of "+username+" unresolvable")
+	}
+	home := filepath.Join(agentHomeRoot, username)
+	if _, serr := os.Stat(home); serr == nil {
+		parts = append(parts, "home directory "+home+" still exists")
+	} else {
+		parts = append(parts, "home directory "+home+" is gone")
+	}
+	return "surviving state: " + strings.Join(parts, "; ")
 }
 
 // waitAgentProcessesExit polls until the agent user owns no rootlesskit or
