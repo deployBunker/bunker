@@ -1,0 +1,39 @@
+{
+  "tick_id": "bunker-2026-09-24-02-18-22",
+  "tick_number": 532,
+  "created_at": "2026-09-24 02:35:00",
+  "foreman": "prompt-mode foreman (hermes api_server)",
+  "wave_budget": 8,
+  "workers": [
+    {
+      "task_id": "GAP-147",
+      "worktree": "~/worktrees/bunker-GAP-147",
+      "branch": "wt/GAP-147",
+      "base": "origin/main",
+      "base_sha": "d1b0654",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/foreman-worker-GAP-147.txt",
+      "log": "/tmp/foreman-worker-GAP-147.log",
+      "launch": "/tmp/bunker-532-GAP-147-launch.sh",
+      "scope": "internal/imagespec",
+      "gitreins_task": "GAP-147"
+    },
+    {
+      "task_id": "DF-BUNKER-53",
+      "worktree": "~/worktrees/bunker-DF-BUNKER-53",
+      "branch": "wt/DF-BUNKER-53",
+      "base": "origin/main",
+      "base_sha": "d1b0654",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/tmp/foreman-worker-DF-BUNKER-53.txt",
+      "log": "/tmp/foreman-worker-DF-BUNKER-53.log",
+      "launch": "/tmp/bunker-532-DF-BUNKER-53-launch.sh",
+      "scope": "internal/agent",
+      "gitreins_task": "DF-BUNKER-53"
+    }
+  ],
+  "independence_note": "middle-out verified disjoint: internal/imagespec (engine-adjacent spec parser) vs internal/agent (lifecycle manager); no import chain between them (grep-proven: imagespec importers are server/config/cli/resource/agent-manager files, agent does not import imagespec except an unrelated name string in manager_destroy_containers.go); DF-BUNKER-53/54 share internal/agent so 54 stays serial for a later tick; SURF-019 is a live-host spike, incompatible with this tick's single-host budget",
+  "serial_fallback": "merge order: GAP-147 first, then DF-BUNKER-53; rebase onto moved main per foreman skill 2a if base moves"
+}
