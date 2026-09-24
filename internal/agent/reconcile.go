@@ -173,7 +173,7 @@ func (m *AgentManager) Reconcile(ctx context.Context) ReconcileReport {
 			continue
 		}
 		if rep.Mode == config.ReconcileModeAdopt {
-			if err := m.adoptAgent(sa); err != nil {
+			if err := m.adoptAgent(ctx, sa); err != nil {
 				m.logger.Warn("registry reconcile: adopt failed, destroying orphan instead",
 					"action", "adopt", "agent_id", sa.AgentID, "error", err)
 				// Adoption is exact-port or nothing: drop any residue so a
@@ -412,7 +412,31 @@ func (m *AgentManager) orphanIsForeign(sa SystemAgent) (foreign bool, start, end
 // force-destroys the orphan. An agent whose ports the next spawn could
 // double-allocate must not be served, and a leftover user is cheaper to
 // recreate than a port collision.
-func (m *AgentManager) adoptAgent(sa SystemAgent) error {
+//
+// DF-BUNKER-53: adoption also RE-APPLIES the agent's isolation to the host —
+// the exact gap live evidence exposed (an adopted agent reported limits while
+// `systemctl show user-<uid>.slice` read CPUQuotaPerSecUSec=infinity,
+// MemoryMax=infinity, no drop-in, no constrained unit). Two contracts:
+//
+//   - the applied AND reported limits come from the agent's OWN durable
+//     record (the KindSpawn event persistSpawn wrote, read back from the
+//     registry file including rotated backups), never from the current
+//     m.defaultLimits(): an operator who raised the config between the spawn
+//     and the adopt must not silently re-limit an agent to the new defaults.
+//     When no readable record exists (older build, rotated-away history) the
+//     documented fallback is m.defaultLimits(), logged loudly — never
+//     silently;
+//   - the host stages a fresh spawn performs run here too, through the same
+//     functions: the user-slice drop-in + daemon-reload + containment landing
+//     check (applyUserSliceLimitsAndVerify), and the bunker-docker-<agentID>
+//     systemd-run unit with the resolved limit properties. Both are function
+//     seams (nil = skip, the documented degradation for hand-built managers)
+//     so tests inject recorders instead of touching systemd.
+//
+// Failure discipline is unchanged: a failing host stage fails adoption before
+// the tracker/registry record exists, and the caller's rollback drops any
+// reservation — an adopted agent is never served with one half of its state.
+func (m *AgentManager) adoptAgent(ctx context.Context, sa SystemAgent) error {
 	start, end, ok := readPersistedPortRange(sa.Home)
 	if !ok {
 		return fmt.Errorf("no readable port metadata at %s", persistedPortsPath(sa.Home))
@@ -425,14 +449,142 @@ func (m *AgentManager) adoptAgent(sa SystemAgent) error {
 			return fmt.Errorf("persisted port range %d-%d cannot be reserved: %w", start, end, err)
 		}
 	}
+
+	// DF-BUNKER-53: source the agent's OWN persisted record (limits + knob
+	// properties it was spawned with). The live fold cannot carry it — an
+	// orphan is by definition an agent the registry does not know as live —
+	// so the record is read back from the durable store ON DISK. Without a
+	// readable record the documented fallback is the current config defaults,
+	// stated loudly in the log so the adoption's limit source is always
+	// attributable.
+	persisted, hasRecord := m.readPersistedAgentRecord(sa.AgentID)
+	var (
+		cpuQuota   float64
+		memMax     uint64
+		diskMax    uint64
+		maxProcs   uint64
+		maxFiles   uint64
+		reported   *v1.ResourceLimits
+		unitKnobs  []SystemdKnob
+		sliceKnobs []SystemdKnob
+	)
+	if hasRecord && persisted != nil && persisted.Limits != nil {
+		limits := persisted.Limits
+		reported = &v1.ResourceLimits{
+			CpuQuota:            limits.CpuQuota,
+			MemoryMaxBytes:      limits.MemoryMaxBytes,
+			DiskMaxBytes:        limits.DiskMaxBytes,
+			MaxDockerContainers: limits.MaxDockerContainers,
+		}
+		cpuQuota = limits.CpuQuota
+		memMax = limits.MemoryMaxBytes
+		diskMax = limits.DiskMaxBytes
+		// The process/fd limits never rode the durable record; they resolve
+		// from this daemon's config exactly like a fresh spawn's.
+		maxProcs = m.cfg.Agent.DefaultMaxProcesses
+		maxFiles = m.cfg.Agent.DefaultMaxOpenFiles
+		unitKnobs, sliceKnobs = knobsFromLimits(persisted, cpuQuota, memMax, diskMax, maxProcs, maxFiles)
+		m.logger.Info("adopting agent with its persisted limits",
+			"agent_id", sa.AgentID,
+			"cpu_quota", cpuQuota, "memory_max_bytes", memMax, "disk_max_bytes", diskMax,
+			"safety_preset", persisted.SafetyPreset)
+	} else {
+		// No readable durable record: fall back to the current defaults.
+		// The log line is the "say so" part of the fallback contract.
+		def := m.defaultLimits()
+		reported = &v1.ResourceLimits{
+			CpuQuota:            def.CpuQuota,
+			MemoryMaxBytes:      def.MemoryMaxBytes,
+			DiskMaxBytes:        def.DiskMaxBytes,
+			MaxDockerContainers: def.MaxDockerContainers,
+		}
+		cpuQuota = def.CpuQuota
+		memMax = def.MemoryMaxBytes
+		diskMax = def.DiskMaxBytes
+		maxProcs = m.cfg.Agent.DefaultMaxProcesses
+		maxFiles = m.cfg.Agent.DefaultMaxOpenFiles
+		unitKnobs, sliceKnobs = knobsFromLimits(nil, cpuQuota, memMax, diskMax, maxProcs, maxFiles)
+		m.logger.Warn("adopting agent without a readable persisted record; applying CURRENT config defaults",
+			"agent_id", sa.AgentID,
+			"cpu_quota", cpuQuota, "memory_max_bytes", memMax, "disk_max_bytes", diskMax)
+	}
+
+	// Apply the same host stages a fresh spawn applies, in the same order:
+	// the docker unit first (a fresh spawn's Step 5), then the user-slice
+	// drop-in + landing check (Step 5c). Both stages are seams so tests never
+	// run systemd; a nil seam skips its stage (the documented degradation for
+	// hand-built managers), a FAILING seam fails adoption loudly below.
+	unitName := "bunker-docker-" + sa.AgentID
+
+	// The knob stages are preset-parameterised (containment rides the tier
+	// table), and the tier tables fail LOUD on an unknown name — so the
+	// preset is resolved ONCE here through the single precedence resolver,
+	// exactly like a fresh spawn. A record that carries a preset uses ITS
+	// value (what the agent was spawned under); a record without one, or no
+	// record at all, resolves to this daemon's effective preset. The record
+	// keeps its own (possibly empty) preset for REPORTING: a pre-GAP-116
+	// agent keeps reporting no preset rather than a fabricated one.
+	knobsPreset := config.SafetyPresetStandard
+	if hasRecord && persisted != nil && persisted.SafetyPreset != "" {
+		knobsPreset = persisted.SafetyPreset
+	} else {
+		resolved, perr := m.cfg.ResolveSafetyPreset("")
+		if perr != nil {
+			m.releasePortReservation(sa.AgentID)
+			return fmt.Errorf("resolve safety preset for adopted agent %s: %w", sa.AgentID, perr)
+		}
+		knobsPreset = resolved
+	}
+
+	// The agent's uid/gid feed the docker unit (systemd-run --uid/--gid on a
+	// fresh spawn). The user must exist — an adoptable orphan always has one
+	// (it is a bunker-* system user) — and a failed lookup is an adoption
+	// failure, never a warning: without a uid there is no unit to constrain.
+	u, userErr := lookupAgentUser(sa.Username)
+	if userErr != nil {
+		m.releasePortReservation(sa.AgentID)
+		return fmt.Errorf("lookup adopted agent user %s: %w", sa.Username, userErr)
+	}
+	if m.runAdoptedDockerUnit != nil {
+		if err := m.runAdoptedDockerUnit(ctx, unitName, u.Uid, u.Gid, unitKnobs); err != nil {
+			m.releasePortReservation(sa.AgentID)
+			return fmt.Errorf("apply adopted docker unit %s: %w", unitName, err)
+		}
+	}
+	var dropinContent string
+	var createdUserSlice bool
+	if m.applyAdoptedSliceLimits != nil {
+		containment := resolveContainmentKnobs(knobsPreset, memMax, m.cfg.Agent)
+		content, sliceErr := m.applyAdoptedSliceLimits(ctx, u, cpuQuota, memMax, diskMax, maxProcs, maxFiles, sliceKnobs, containment)
+		if sliceErr != nil {
+			// DF-BUNKER-53 failure contract: a failing host stage fails
+			// adoption LOUDLY. Reconcile's rollback below drops the port
+			// reservation; because the tracker record has not been created
+			// yet, nothing half-managed can survive — the agent is then
+			// destroyed instead of being served unconstrained.
+			m.releasePortReservation(sa.AgentID)
+			return fmt.Errorf("apply adopted user slice limits for %s: %w", sa.AgentID, sliceErr)
+		}
+		dropinContent = content
+		createdUserSlice = true
+	}
+
 	rec := &resource.AgentRecord{
 		AgentID:           sa.AgentID,
 		Status:            "running",
-		Limits:            m.defaultLimits(),
+		Limits:            reported,
 		CreatedAt:         homeCreatedAt(sa.Home),
 		SshPrivateKeyPath: m.sshKeyPath(sa.AgentID),
 		PortRangeStart:    start,
 		PortRangeEnd:      end,
+		// GAP-116 reporting fields: the adopted agent reports the same shape
+		// a fresh spawn records — the preset it was spawned with (when known)
+		// and the knob set the host stages just applied.
+		SafetyPreset:     presetForRecord(persisted, hasRecord),
+		UnitProperties:   systemdKnobsToProto(unitKnobs),
+		SliceProperties:  systemdKnobsToProto(sliceKnobs),
+		SliceDropIn:      dropinContent,
+		SliceDropInState: sliceDropInState(createdUserSlice),
 	}
 	if m.tracker.Get(sa.AgentID) == nil {
 		if err := m.tracker.Register(rec); err != nil {
@@ -448,6 +600,50 @@ func (m *AgentManager) adoptAgent(sa SystemAgent) error {
 		return fmt.Errorf("persist adopted agent: %w", err)
 	}
 	return nil
+}
+
+// knobsFromLimits resolves the unit + slice knob sets for an adopted agent
+// (DF-BUNKER-53). When the agent's durable record carries the GAP-116
+// property lists, THOSE are used verbatim — they are exactly what the agent
+// was spawned under, and re-deriving could drift (a sibling row owns changing
+// the semantics; adoption must apply what spawn applied). A record without
+// properties (or the no-record fallback) resolves through KnobsForPreset,
+// which fails LOUD on an unknown preset name.
+func knobsFromLimits(persisted *registry.Record, cpuQuota float64, memMax, diskMax, maxProcs, maxFiles uint64) (unit, slice []SystemdKnob) {
+	if persisted != nil {
+		if unit = protoToSystemdKnobs(persisted.UnitProperties); len(unit) > 0 {
+			slice = protoToSystemdKnobs(persisted.SliceProperties)
+			return unit, slice
+		}
+	}
+	preset := config.SafetyPresetStandard
+	if persisted != nil && persisted.SafetyPreset != "" {
+		preset = persisted.SafetyPreset
+	}
+	return KnobsForPreset(preset, cpuQuota, memMax, diskMax, maxProcs, maxFiles)
+}
+
+// protoToSystemdKnobs converts a durable record's plain-JSON property list
+// back into knob form (nil-safe; the registry's proto-free storage form).
+func protoToSystemdKnobs(props []registry.SystemdProperty) []SystemdKnob {
+	if len(props) == 0 {
+		return nil
+	}
+	out := make([]SystemdKnob, 0, len(props))
+	for _, p := range props {
+		out = append(out, SystemdKnob{Name: p.Name, Value: p.Value})
+	}
+	return out
+}
+
+// presetForRecord returns the preset an adopted agent should report: the one
+// its durable record carries, or the empty string when none is known (a
+// pre-GAP-116 agent keeps reporting no preset rather than a fabricated one).
+func presetForRecord(persisted *registry.Record, hasRecord bool) string {
+	if hasRecord && persisted != nil {
+		return persisted.SafetyPreset
+	}
+	return ""
 }
 
 // destroyOrphan removes an orphan through the manager's destroy path.

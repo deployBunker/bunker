@@ -213,6 +213,13 @@ func TestReconcile_AdoptRestoresTrackerAndExactPorts(t *testing.T) {
 	m.listSystemAgents = func() ([]SystemAgent, error) {
 		return []SystemAgent{{AgentID: "adopt-me", Username: "bunker-adopt-me", Home: home}}, nil
 	}
+	// DF-BUNKER-53: adoption resolves the agent's uid/gid for the docker-unit
+	// stage; the fabricated username does not exist on the test host, so the
+	// lookup is stubbed (same convention as the gap075 spawn tests).
+	stubUser(t, "bunker-adopt-me")
+	// ...and the host stages are seams: record no-ops so no test ever runs
+	// real systemd.
+	installNoopAdoptSeams(t, m)
 
 	rep := m.Reconcile(context.Background())
 	if rep.Adopted != 1 {

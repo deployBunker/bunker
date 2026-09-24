@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"log/slog"
+	"os/user"
 	"regexp"
 	"sync"
 	"time"
@@ -66,6 +67,20 @@ type AgentManager struct {
 	// fake so spawn/destroy can be exercised without touching host state.
 	hostRunner hostsetup.Runner
 
+	// applyAdoptedSliceLimits is the DF-BUNKER-53 reconciliation seam for the
+	// user-slice knob stage: it applies the SAME drop-in + daemon-reload a
+	// fresh spawn performs (applyUserSliceLimitsAndVerify) for an ADOPTED
+	// agent, with the agent's persisted limits. Nil in production (the real
+	// stage runs); tests inject a recorder so adoption is exercisable without
+	// touching a host slice. A nil seam is the documented degradation: the
+	// stage is skipped, never a panic.
+	applyAdoptedSliceLimits func(ctx context.Context, u *user.User, cpuQuota float64, memMax, diskMax, maxProcs, maxFiles uint64, sliceKnobs []SystemdKnob, want containmentResolved) (string, error)
+	// runAdoptedDockerUnit is the matching per-agent docker-unit seam: it
+	// creates the bunker-docker-<agentID> transient unit with the resolved
+	// limit properties (the systemd-run a fresh spawn performs). Nil in
+	// production; a nil seam skips the stage like the slice seam above.
+	runAdoptedDockerUnit func(ctx context.Context, unitName, uid, gid string, unitKnobs []SystemdKnob) error
+
 	// reconcileDone is closed once Reconcile has run (or been given up on).
 	// The TTL reaper waits for it so it can never destroy an agent before
 	// the registry has been replayed and reconciled against system state.
@@ -97,6 +112,12 @@ func NewAgentManager(cfg *config.Config, logger *slog.Logger, tracker *resource.
 	}
 	am.listSystemAgents = defaultListSystemAgents
 	am.destroyAgent = am.Destroy
+	// DF-BUNKER-53: adoption applies the same host isolation a fresh spawn
+	// does. The production seams route to the real spawn-time stages (the
+	// slice drop-in + daemon-reload + containment landing check, and the
+	// bunker-docker-<id> systemd-run unit); tests inject fakes here.
+	am.applyAdoptedSliceLimits = am.applyUserSliceLimitsAndVerify
+	am.runAdoptedDockerUnit = am.runSystemdRunDockerUnit
 	// DF-BUNKER-18: resolve this daemon's restart-stable instance identity
 	// BEFORE any agent can be spawned or reconciled. A failure here is never
 	// fatal and never fails closed: the identity stays empty, which disables

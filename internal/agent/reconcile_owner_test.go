@@ -278,6 +278,12 @@ func TestReconcile_OwnOwnerMarkerKeepsTodaysHandling(t *testing.T) {
 			m.listSystemAgents = func() ([]SystemAgent, error) {
 				return []SystemAgent{{AgentID: "foreign-agent", Username: "bunker-foreign-agent", Home: home}}, nil
 			}
+			// DF-BUNKER-53: the adopt-mode rows resolve the agent's uid/gid
+			// for the docker-unit stage; stub the lookup for the fabricated
+			// username (gap075 convention) and install no-op host seams so
+			// no test ever runs real systemd.
+			stubUser(t, "bunker-foreign-agent")
+			installNoopAdoptSeams(t, m)
 
 			rep := m.Reconcile(context.Background())
 
