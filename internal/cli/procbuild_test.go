@@ -444,7 +444,13 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "gap090: shared test CLI build failed: %v\n", err)
 		os.Exit(1)
 	}
-	os.Exit(m.Run())
+	// QA-BUNKER-23: every config write in this package must land in the
+	// test's own isolation, never the operator's home. The sentinel HOME
+	// absorbs any leak; checkSentinelTestHome fails the run if it happens.
+	sentinelHome := pinSentinelTestHome()
+	code := m.Run()
+	checkSentinelTestHome(sentinelHome)
+	os.Exit(code)
 }
 
 // buildCLIOnce returns the shared CLI binary path, building it lazily (once)

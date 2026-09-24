@@ -243,6 +243,10 @@ func (m *orphanInfoMockServer) GetAgent(ctx context.Context, req *connect.Reques
 // orphan-uid warning block when the daemon reports one, and nothing when it
 // reports none.
 func TestInfoCommand_OrphanUIDWarning(t *testing.T) {
+	// writeInfoConfig below saves the CLI config; isolate from the real
+	// operator ~/.bunker/config.yaml like every other config-writing test.
+	t.Setenv("HOME", t.TempDir())
+
 	orphan := "ORPHANED UID: user record bunker-zomb is GONE from the host but 2 live process(es) under uid 1002: pid 1189: node duckbrain.js"
 	mock := &orphanInfoMockServer{
 		orphan: orphan,
