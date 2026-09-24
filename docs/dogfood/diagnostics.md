@@ -593,3 +593,50 @@ rootless Docker socket at `/run/bunker/<id>/docker.sock`. Once the tunnel is up,
 `DOCKER_HOST=tcp://localhost:2376 docker <cmd>` works exactly like a local Docker.
 Tested: version, ps, run hello-world — all succeed. The tunnel is a foreground
 process (Ctrl-C to stop).
+
+## 16. Dogfood run 2026-09-24 — agent-tools delivery + lifecycle (read this before touching tool delivery or stop/start/restart)
+
+**How tool delivery actually works (and why the refusal exists).** `bunker
+agent-tools <id>` probes the AGENT (not the client) for toolsd/rg/git/jq/gopls
+and prints a table — missing tools are DATA, exit 0. `--install` ships the
+vendored toolsd onto the agent's `$HOME/bin` (already on the exec PATH) and
+re-probes; it REFUSES a dynamically linked binary, because it would depend on
+the control host's libc and die on the agent. That refusal is correct and its
+error names the fix: build static via `make dist` (CGO_ENABLED=0) in the
+toolkit repo. Proven live: the refusal fired on the dev toolsd, the dist
+static build delivered clean (21.9s), the agent ran the delivered binary, and
+a file written pre-stop survived stop→start→restart. The gap is coverage, not
+design: rg and gopls are named REQUIRED by the same probe that cannot install
+them on SSH-based agent classes (no image-spec path there) — DF-BUNKER-57.
+
+**The lifecycle commands mean what they say.** stop = SIGSTOP-equivalent state
+preservation (files intact, exec fails with `failed_precondition: agent_stopped`
+naming the resume command, exit 1); start resumes; restart ALSO grants a full
+default TTL, not the agent's remaining TTL — a 2h agent came back with ~4h
+(measured 16:37→20:38 -07). If you meant "just cycle it", budget for the extra
+lifetime. `restart` output prints only the new expiry (not the agent table).
+
+**Host maintenance is deliberately local-only and dry-run-first.** `homes` and
+`linger` inspect THIS host, not the wire protocol (root only on the daemon
+host; they are control-host tools when the control host owns /home). Both
+classify stale-vs-kept by user existence, refuse to prune anything inconclusive,
+and demand `--dry-run` first by convention (prune --dry-run works and prints the
+would-remove set). On this control host: 1 stale home (bunker-media-hermes),
+2 stale linger entries — left unpruned (dogfood does not run destructive
+commands; the tool surfaced them correctly).
+
+**The error I hit and the right way around it.** First `--install` failed
+rc=1 in 0.03s: "refusing to deliver ... DYNAMICALLY linked ... Build it
+statically (`make dist` in the toolkit repo sets CGO_ENABLED=0)". The wrong
+next step is hunting for a static binary on PATH (the dev toolsd is dynamic);
+the right one is the dist/ directory of the tools repo
+(~/coding-hermes-tools/dist/toolsd-linux-amd64), which exists precisely for
+this. A release asset carrying that static build would make the whole flow
+one command (DF-BUNKER-57's fix direction covers it).
+
+**Verify-only scripting note (this run's own trap).** `bunker registry` (and
+its unknown subcommands) print help and exit 0 — never script against a bare
+`registry` invocation as a success signal. See DF-BUNKER-58.
+
+Evidence: docs/dogfood/2026-09-24-agenttools-lifecycle.md (live command/time
+table), board rows DF-BUNKER-57/58, .coding-hermes/dogfood-log.md.

@@ -282,3 +282,22 @@ docs/dogfood/2026-09-23-remote-dev-workflow.md; diagnostics: docs/dogfood/diagno
   remote dev use case. Compounded by DF-BUNKER-48 (PATH override).
 - [PASS] INSTALL-bunker: fresh agent e419d763 on las-03, install.sh 14s, SHA256-verified,
   smoke ok. Agent destroyed after.
+
+## Dogfood Findings (2026-09-24 — agent-tools delivery + lifecycle)
+
+Verdict: PROMISING-BUT-ROUGH — lifecycle (stop/start/restart) and host maintenance
+(homes/linger) are solid and honest; the agent-tools design is good but its REQUIRED
+verdict names tools no documented path can install on SSH-based agents. Full write-up:
+docs/dogfood/2026-09-24-agenttools-lifecycle.md; diagnostics: §16.
+
+- [P1] DF-BUNKER-57: agent-tools --install names rg+gopls REQUIRED but delivers neither
+  on SSH-based agents — the image-spec package-add path it points to does not exist for
+  this agent class; probe permanently reports missing REQUIRED tools.
+- [P2] DF-BUNKER-58: bunker registry has no read verb (only compact); bare/unknown
+  subcommand prints help and exits 0.
+- [PASS] INSTALL-bunker: bunker-qa.sh fresh battery on las-03 agent 695732de —
+  fresh-install go build OK (v0.1.4), upgrade v0.1.3→HEAD clean, chaos-errorpath OK;
+  ci-pass cell FAIL = harness (no act-accessible workflow; native suite ran ok), not a
+  code finding. Evidence /tmp/bunker-qa-evidence-20260924T214016Z-3656410.jsonl
+  (agent destroyed after). Perf: no row — warm exec 559.7ms ± 50.7ms (10 runs),
+  probe 0.47s, delivery 21.9s; nothing a user would notice as slow.

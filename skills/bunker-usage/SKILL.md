@@ -18,7 +18,7 @@ description: >-
   (docs/dogfood/2026-09-19-integration.md); isolation boundary + mount/
   scratch defects re-verified live at HEAD 93d7a53 on 2026-09-20
   (docs/dogfood/2026-09-20-integration.md, diagnostics.md §13).
-version: 1.7.0
+version: 1.8.0
 category: software-development
 ---
 
@@ -277,3 +277,13 @@ real-use behavior:
 2. **No sudo** — agents are non-root. Install everything in user space.
 3. **SSH key saved at spawn** — `~/.bunker/keys/<id>` is written correctly at spawn time (DF-BUNKER-47 was fixed). Use `-o IdentitiesOnly=yes -i ~/.bunker/keys/<id>` for manual SSH.
 4. **sshfs + ssh-agent** — if your ssh-agent has many keys, raw `sshfs` without `-o IdentitiesOnly=yes` fails with "Too many authentication failures" (GAP-144). The CLI's mount command includes this flag, but the spawn output's copy-paste command does not.
+
+## Agent tool delivery + lifecycle (2026-09-24, live on las-03, df-agenttools-0924)
+
+- `bunker agent-tools <id>` probes the agent for toolsd/rg/git/jq/gopls — exit 0 with a named table even when tools are missing; non-zero only if the probe itself could not run.
+- `--install` delivers ONLY statically-linked vendored tools. A dynamic local toolsd is refused rc=1 with the fix in the message: build static via `make dist` in the tools repo (dist/toolsd-linux-amd64). Then `--install --binary <path>/toolsd-linux-amd64`. Delivery re-probes on the agent; "copied" is never claimed as "works".
+- On SSH-based agents (las-03 class) rg/gopls are reported REQUIRED but CANNOT be installed by any CLI path (no image-spec there) — DF-BUNKER-57. Don't burn time looking for the flag.
+- Lifecycle: `stop` preserves state (exec fails `failed_precondition: agent_stopped` exit 1, message names `start`), `start` resumes, `restart` resets TTL to the FULL DEFAULT (2h agent → ~4h — budget for it). Files survive all three.
+- `homes` / `linger` are local-only host tools (root, on the /home owner), stale-vs-kept by user existence, `--dry-run` before any prune.
+- `bunker registry` has no read verb (only `compact`) and unknown subcommands exit 0 — never treat bare registry output as a successful read.
+- Scripting: `bunker exec … | tail` reports the PIPE's status; use `${PIPESTATUS[0]}` (or run without pipes) when the exit code matters.

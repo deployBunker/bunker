@@ -125,3 +125,15 @@
 - **Artifacts:** docs/dogfood/2026-09-23-remote-dev-workflow.md, diagnostics §15, board rows DF-BUNKER-48..52.
 - **Install leg:** PASS — fresh agent e419d763, install.sh 14s, SHA256-verified, smoke ok. Not SKIPPED.
 - **Cleanup:** f0901fd3 + e419d763 destroyed via CLI; local mount cleaned; no repo/cooldown changes.
+2026-09-24 | PROMISING-BUT-ROUGH | 27.1s spawn / 0.47s probe / 0.56s warm exec | friction 2 filed + 2 minor | 2 findings (DF-BUNKER-57..58) | install_seconds=n/a (bunker-qa battery; fresh-install cell OK) | bunker=las-03 agents df-agenttools-0924+695732de, destroyed | smoke=ok
+
+## 2026-09-24 agent-tools + lifecycle run (17th run)
+
+- **Angle:** the surfaces runs 1-16 never touched — agent-tools (probe + --install tool delivery), stop/start/restart lifecycle, homes/linger/registry maintenance.
+- **Promise:** "A fresh agent ships without the tools the remote editing verbs need; one command probes it, one more delivers the vendored tools onto the agent's own PATH and re-proves it. Stop keeps state, start resumes, restart resets TTL."
+- **What held:** probe contract (missing = data, exit 0); dynamic-link refusal with the exact fix in the message; delivery re-probes on the agent (delivered toolsd ran, version echoed); state survives stop→start AND stop→restart; restart grants full default TTL (2h→4h04m measured — surprise, not a bug); homes/linger classify stale/kept with dry-run-first prune; status honestly WARNINGs HOST-SHARED /tmp; in-agent exit codes propagate (false→1, exit 7→7).
+- **What failed:** DF-BUNKER-57 P1 — probe names rg+gopls REQUIRED but --install can deliver neither on SSH-based agents (image-spec path unreachable there); DF-BUNKER-58 P2 — registry has no read verb, unknown subcommand exits 0. Minor unfiled: "the toolkit repo" unnamed in the refusal error; restart TTL surprise.
+- **Artifacts:** board rows DF-BUNKER-57/58 (events 750/751), tasks.md section, docs/dogfood/2026-09-24-agenttools-lifecycle.md, diagnostics §16, skills/bunker-usage/SKILL.md → v1.8.0.
+- **Install leg:** PASS — bunker-qa.sh battery, fresh-install OK (go build v0.1.4), upgrade v0.1.3→HEAD clean, chaos-errorpath OK; ci-pass FAIL is harness (no act-triggerable workflow; native suite ok). Not SKIPPED.
+- **Perf:** warm exec 559.7ms ± 50.7ms (hyperfine 10 runs), probe 0.47s, delivery 21.9s, homes/linger ~6ms — no user-noticeable slowness, no PERF row (skill §2b: a win nobody can feel is not a finding).
+- **Cleanup:** both agents destroyed (df-agenttools-0924 manual, 695732de by collect); ~/.bunker/config.yaml md5 3a5a07ffed5c721a2219b21ddab3e042 unchanged (pre-run backup /tmp/dogfood-bunker-config-backup.yaml); no repo visibility/permission changes; no scheduler changes.
