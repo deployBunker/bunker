@@ -75,7 +75,11 @@ func fromWire(raw *wireImageSpec) (*Spec, error) {
 	}
 	for _, p := range raw.Packages {
 		if !p.Manager.Valid() {
-			return nil, fmt.Errorf("unsupported package manager %q (allowed: apt, go, npm)", string(p.Manager))
+			names := make([]string, 0, len(managerDefs))
+			for _, def := range managerDefs {
+				names = append(names, string(def.Name))
+			}
+			return nil, fmt.Errorf("unsupported package manager %q (allowed: %s)", string(p.Manager), strings.Join(names, ", "))
 		}
 		if seen[p.Manager] {
 			return nil, fmt.Errorf("duplicate directive for package manager %q", string(p.Manager))
@@ -112,10 +116,11 @@ func AllowedBases() []string {
 }
 
 // validateToken enforces the constrained token grammar on a single package
-// name or name@version / name=version token. Slashes are allowed only for go
-// module paths and npm scoped names — never for apt, so absolute paths like
-// /var/run/docker.sock or --mount=type=bind,source=/etc,target=/etc cannot
-// ride through as "packages" (a mounted path is not a package name).
+// name or name@version / name=version token. The per-manager policy (extra
+// allowed characters, denied substrings) lives entirely in the manager's
+// registry row (see ManagerDef.Probe); this wrapper adds the shared
+// size/emptiness bounds. Slashes are denied for apt — never for go module
+// paths or npm scoped names — by that row's TokenDeny.
 func validateToken(m PackageManager, tok string) error {
 	if tok == "" {
 		return fmt.Errorf("empty package token")
@@ -123,21 +128,11 @@ func validateToken(m PackageManager, tok string) error {
 	if len(tok) > MaxTokenBytes {
 		return fmt.Errorf("token exceeds %d bytes", MaxTokenBytes)
 	}
-	// Hand-rolled character check (equivalent to tokenRe): every byte must be
-	// in [A-Za-z0-9] or one of . + - _ : / @ =
-	for i := 0; i < len(tok); i++ {
-		c := tok[i]
-		switch {
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
-		case c == '.' || c == '+' || c == '-' || c == '_' || c == ':' || c == '/' || c == '@' || c == '=':
-		default:
-			return fmt.Errorf("illegal character %q at position %d: package tokens may contain only letters, digits, and . + - _ : / @ =", string(c), i+1)
-		}
+	if def := m.Def(); def != nil {
+		return def.Probe(tok)
 	}
-	if m == ManagerAPT && strings.Contains(tok, "/") {
-		return fmt.Errorf("apt package names may not contain %q", "/")
-	}
-	return nil
+	// Unregistered manager: no policy means no acceptance.
+	return fmt.Errorf("unsupported package manager %q", string(m))
 }
 
 // CacheKey returns the deterministic SHA-256 hex digest of the canonical spec.
@@ -177,34 +172,16 @@ func Hash(data []byte) (string, error) {
 
 // Dockerfile renders the validated spec into the exact Dockerfile the builder
 // writes. The grammar guarantees every line below is builder-generated — the
-// caller's bytes never reach this text.
+// caller's bytes never reach this text. Rendering is fully registry-driven:
+// each directive's manager row supplies its line renderer.
 func (s *Spec) Dockerfile() string {
 	var b strings.Builder
 	b.WriteString("FROM ")
 	b.WriteString(s.Base)
 	b.WriteString("\n")
 	for _, d := range s.Packages {
-		switch d.Manager {
-		case ManagerAPT:
-			b.WriteString("RUN apt-get update && apt-get install -y --no-install-recommends")
-			for _, p := range d.Packages {
-				b.WriteString(" ")
-				b.WriteString(p)
-			}
-			b.WriteString(" && rm -rf /var/lib/apt/lists/*\n")
-		case ManagerGo:
-			for _, p := range d.Packages {
-				b.WriteString("RUN go install ")
-				b.WriteString(p)
-				b.WriteString("\n")
-			}
-		case ManagerNPM:
-			b.WriteString("RUN npm install -g")
-			for _, p := range d.Packages {
-				b.WriteString(" ")
-				b.WriteString(p)
-			}
-			b.WriteString("\n")
+		if def := d.Manager.Def(); def != nil {
+			def.Render(&b, d.Packages)
 		}
 	}
 	return b.String()
