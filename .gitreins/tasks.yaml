@@ -3152,8 +3152,9 @@ tasks:
     no longer presents an unenforced number as a total-disk limit (or enforcement
     exists); the docs describing default_disk_bytes as a disk cap are corrected; go
     build/vet/test green
-  status: in_progress
+  status: complete
   created_at: '2026-09-24T04:37:07.866990+00:00'
+  completed_at: '2026-09-24T07:52:45.299276+00:00'
 - id: DF-BUNKER-50
   title: bunker umount resolves the ACTUAL mountpoint, never assumes the default path
   criteria:
@@ -3161,5 +3162,6 @@ tasks:
     clean' path fires only when nothing is mounted anywhere for that agent; a regression
     test drives a custom mountpoint and asserts the real unmount; go build/vet/test
     green
-  status: in_progress
+  status: complete
   created_at: '2026-09-24T04:37:08.622800+00:00'
+  completed_at: '2026-09-24T06:41:54.185754+00:00'
