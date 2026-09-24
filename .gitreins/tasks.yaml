@@ -3111,3 +3111,22 @@ tasks:
   status: complete
   created_at: '2026-09-23T11:19:29.042736+00:00'
   completed_at: '2026-09-23T11:19:32.237274+00:00'
+- id: GAP-147
+  title: image-spec ManagerDef registry (behaviour-preserving)
+  criteria:
+  - ManagerDef registry exists in internal/imagespec; apt/go/npm Dockerfile() output
+    byte-identical (golden test); all internal/imagespec tests green; test asserts
+    no manager registers without token policy + render func
+  status: complete
+  created_at: '2026-09-24T02:33:26.411411+00:00'
+  completed_at: '2026-09-24T03:57:34.545715+00:00'
+- id: DF-BUNKER-53
+  title: adoptAgent applies isolation knobs from persisted limits
+  criteria:
+  - 'after adopt: user-<uid>.slice carries CPUQuota/MemoryMax/LimitFSIZE knobs and
+    per-agent docker unit exists; regression test drives adoptAgent with injected
+    runners asserting knobs applied; reported limits sourced from the agent''s persisted
+    values not config defaults'
+  status: complete
+  created_at: '2026-09-24T02:33:27.012781+00:00'
+  completed_at: '2026-09-24T03:57:58.724311+00:00'
