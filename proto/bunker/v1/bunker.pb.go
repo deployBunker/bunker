@@ -1013,12 +1013,14 @@ func (x *SpawnAgentRequest) GetMountDriver() string {
 // ── Image specification (GAP-064) ─────────────────────────────
 //
 // A small declarative, additive-only customization of the per-agent image:
-// base image (from the server's allowlist) plus package-add directives for
-// apt / go install / npm install -g. The server validates BEFORE any side
-// effect; rejected specs return CodeInvalidArgument without creating the
-// user, allocating ports, starting dockerd, or building an image. Arbitrary
-// Dockerfile text is NOT representable in this grammar (no FROM/USER/EXPOSE/
-// VOLUME/ENV/RUN rewrites, no curl|sh, no mounts or namespace escapes).
+// base image (from the server's allowlist) plus package-add directives for the
+// registered package managers (apt, go, npm, pip, cargo, gem, composer — the
+// authoritative list is the server's manager registry, internal/imagespec).
+// The server validates BEFORE any side effect; rejected specs return
+// CodeInvalidArgument without creating the user, allocating ports, starting
+// dockerd, or building an image. Arbitrary Dockerfile text is NOT
+// representable in this grammar (no FROM/USER/EXPOSE/VOLUME/ENV/RUN rewrites,
+// no curl|sh, no mounts or namespace escapes).
 type ImageSpec struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Base          string                 `protobuf:"bytes,1,opt,name=base,proto3" json:"base,omitempty"`         // Optional: allowed base image (server default if empty)
@@ -1073,9 +1075,17 @@ func (x *ImageSpec) GetPackages() []*PackageAdd {
 
 // One constrained package-install directive.
 type PackageAdd struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Manager       string                 `protobuf:"bytes,1,opt,name=manager,proto3" json:"manager,omitempty"`   // "apt" | "go" | "npm"
-	Packages      []string               `protobuf:"bytes,2,rep,name=packages,proto3" json:"packages,omitempty"` // names, optionally =ver (apt) or @ver (go/npm)
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// manager is a registered manager name ("apt" | "go" | "npm" | "pip" |
+	// "cargo" | "gem" | "composer"); the server rejects any name it has no
+	// registry row for.
+	Manager string `protobuf:"bytes,1,opt,name=manager,proto3" json:"manager,omitempty"`
+	// packages are package names with an optional manager-specific version
+	// suffix (=version for apt, @version for go/npm, a PEP 440 specifier for
+	// pip, crate@requirement for cargo, name@requirement for gem,
+	// vendor/package:constraint for composer). Every token is rendered
+	// single-quoted into the image's RUN line.
+	Packages      []string `protobuf:"bytes,2,rep,name=packages,proto3" json:"packages,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

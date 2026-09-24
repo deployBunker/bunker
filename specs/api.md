@@ -86,13 +86,23 @@ Request:
     allowed bases (default: `docker.io/library/ubuntu:24.04`; also
     ubuntu:22.04, debian:12, debian:11)
   - `packages` (repeated PackageAdd, optional): package-add directives;
-    `manager` is `apt` (apt-get install), `go` (go install), or `npm`
-    (npm install -g); each directive lists package names, optionally pinned
-    (`name=version` for apt, `name@version` for go/npm). Max 16 directives,
-    16 packages each; tokens are limited to letters, digits and
-    `. + - _ : / @ =` (no slashes for apt), so shell chaining, substitution,
-    redirection, `curl|sh`, mounts/sockets, and any non-package command are
-    structurally impossible. Unknown fields (FROM/USER/EXPOSE/VOLUME/ENV/RUN
+    `manager` is one of the registered managers — `apt` (apt-get install),
+    `go` (go install), `npm` (npm install -g), `pip` (pip install),
+    `cargo` (cargo install), `gem` (gem install), `composer`
+    (composer global require); each directive lists package names with an
+    optional manager-specific version (`name=version` for apt,
+    `name@version` for go/npm, a PEP 440 specifier for pip,
+    `crate@requirement` for cargo, `name@requirement` for gem,
+    `vendor/package:constraint` for composer). Max 16 directives,
+    16 packages each. Every token is limited to letters, digits and
+    `. + - _ : / @ =` (no slashes for apt) PLUS the version-grammar
+    characters that manager's own row declares (pip: `, < > [ ] ! ~`;
+    cargo: `, < > ^ ~`; gem/composer: `, < > ^ ~ !`), and every token is
+    rendered SINGLE-QUOTED into the RUN line, so shell chaining,
+    substitution, redirection, `curl|sh`, mounts/sockets, and any
+    non-package command are structurally impossible. Whitespace,
+    `; & | $ ` \ ' "` and newlines are refused for EVERY manager.
+    Unknown fields (FROM/USER/EXPOSE/VOLUME/ENV/RUN
     lookalikes) are rejected. Validation happens BEFORE any side effect.
 
 Response:

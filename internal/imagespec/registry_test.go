@@ -96,7 +96,10 @@ func TestRegistry_RegisterRefusesIncompleteDefs(t *testing.T) {
 
 // TestRegistry_TokenPolicyPerRow pins each row's token policy as registry
 // data: apt denies "/", go and npm keep slash (module paths, scoped names),
-// and the shared grammar still applies to every row.
+// and the shared grammar still applies to every row. GAP-148 added rows whose
+// version grammar genuinely extends the character class; the extension is
+// pinned per-row below, and the metacharacter that must fail for EVERY row is
+// checked generically at the end.
 func TestRegistry_TokenPolicyPerRow(t *testing.T) {
 	if err := ManagerAPT.Def().Probe("jq"); err != nil {
 		t.Errorf("apt rejected a plain package name: %v", err)
@@ -116,16 +119,31 @@ func TestRegistry_TokenPolicyPerRow(t *testing.T) {
 			t.Errorf("npm rejected %q: %v", ok, err)
 		}
 	}
-	// No row may extend the grammar silently: today TokenExtra is empty
-	// everywhere, and a metacharacter outside the shared grammar must fail
-	// for every manager.
+	// GAP-148: the grammar extension is DELIBERATE and per-row. The rows that
+	// carry version syntax beyond the shared class are named here, so a fifth
+	// row acquiring TokenExtra still has to come through this test.
+	extended := map[PackageManager]string{
+		ManagerPip:      ",<>[]!~",
+		ManagerCargo:    ",<>^~",
+		ManagerGem:      ",<>~!",
+		ManagerComposer: ",<>^~!",
+	}
 	for i := range managerDefs {
 		def := &managerDefs[i]
-		if def.TokenExtra != "" {
-			t.Errorf("manager %q sets TokenExtra %q — update this test deliberately if the grammar extension is intended", def.Name, def.TokenExtra)
+		want, isExtended := extended[def.Name]
+		if isExtended && def.TokenExtra != want {
+			t.Errorf("manager %q TokenExtra = %q, want %q", def.Name, def.TokenExtra, want)
 		}
-		if err := def.Probe("a!b"); err == nil {
-			t.Errorf("manager %q accepted %q — grammar extended without updating the shared-grammar test", def.Name, "a!b")
+		if !isExtended && def.TokenExtra != "" {
+			t.Errorf("manager %q sets TokenExtra %q — apt/go/npm's grammar is frozen (GAP-148); a genuinely new manager needs a row here", def.Name, def.TokenExtra)
+		}
+		// A metacharacter in NO row's grammar must fail for every row: this
+		// is the part of the old assertion that still holds universally.
+		if err := def.Probe("a!b"); err == nil && !strings.Contains(def.TokenExtra, "!") {
+			t.Errorf("manager %q accepted %q without declaring %q — grammar widened silently", def.Name, "a!b", "!")
+		}
+		if err := def.Probe("a{b"); err == nil {
+			t.Errorf("manager %q accepted %q — brace expansion is refused for every manager", def.Name, "a{b")
 		}
 	}
 }
@@ -151,14 +169,18 @@ func TestRegistry_UnregisteredManagerHasNoPolicy(t *testing.T) {
 // pairing honest in both directions: every PackageManager constant has a
 // registry row, and every row names a PackageManager constant.
 func TestRegistry_CoversPackageManagerConstants(t *testing.T) {
-	for _, m := range []PackageManager{ManagerAPT, ManagerGo, ManagerNPM} {
+	for _, m := range []PackageManager{
+		ManagerAPT, ManagerGo, ManagerNPM,
+		ManagerPip, ManagerCargo, ManagerGem, ManagerComposer,
+	} {
 		if !m.Valid() {
 			t.Errorf("constant %q has no registry row", m)
 		}
 	}
 	for i := range managerDefs {
 		switch managerDefs[i].Name {
-		case ManagerAPT, ManagerGo, ManagerNPM:
+		case ManagerAPT, ManagerGo, ManagerNPM,
+			ManagerPip, ManagerCargo, ManagerGem, ManagerComposer:
 		default:
 			t.Errorf("registry row %q has no PackageManager constant", managerDefs[i].Name)
 		}
@@ -168,7 +190,8 @@ func TestRegistry_CoversPackageManagerConstants(t *testing.T) {
 // TestRegistry_DockerfileSkipsUnregisteredManagers pins the renderer's
 // defensive behaviour for a Spec assembled in code (not via Parse) that names
 // an unregistered manager: the directive renders nothing rather than
-// panicking or emitting attacker-controlled text.
+// panicking or emitting attacker-controlled text. The apt line is the
+// GAP-148 quoted form.
 func TestRegistry_DockerfileSkipsUnregisteredManagers(t *testing.T) {
 	spec := Spec{
 		Base: DefaultBaseImage,
@@ -179,7 +202,7 @@ func TestRegistry_DockerfileSkipsUnregisteredManagers(t *testing.T) {
 	}
 	got := spec.Dockerfile()
 	want := "FROM " + DefaultBaseImage + "\n" +
-		"RUN apt-get update && apt-get install -y --no-install-recommends jq && rm -rf /var/lib/apt/lists/*\n"
+		"RUN apt-get update && apt-get install -y --no-install-recommends 'jq' && rm -rf /var/lib/apt/lists/*\n"
 	if got != want {
 		t.Errorf("Dockerfile() =\n%s\nwant\n%s", got, want)
 	}
