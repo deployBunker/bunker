@@ -3165,3 +3165,69 @@ tasks:
   status: complete
   created_at: '2026-09-24T04:37:08.622800+00:00'
   completed_at: '2026-09-24T06:41:54.185754+00:00'
+- id: DF-BUNKER-34
+  title: "Renewal spawns without --agent-id \u2014 stable identity, loud destroy,\
+    \ drift report, orphan detection"
+  criteria:
+  - 1) renewal carries stable --agent-id or refuses loudly + documented renewal recipe;
+    2) destroy with a live uid process fails loudly with named error + evidence (unit-test
+    proven); 3) renewal emits drift report naming stale paths (test proven); 4) orphan
+    detection (uid alive, user record gone) surfaced in info/list path (unit test
+    proven); 5) go build/vet/gofmt green, internal cli/server/agent suites green
+  status: complete
+  created_at: '2026-09-24T08:51:51.878635+00:00'
+  completed_at: '2026-09-24T12:45:07.280179+00:00'
+- id: INT-CI-038
+  title: Upgrade ensureInstallRuntimeDir single ENOENT retry to a bounded converge
+    loop
+  criteria:
+  - "1) go build/vet/gofmt clean and internal/agent package tests green on the worktree\
+    \ commit; 2) ensureInstallRuntimeDir retries the ENOENT teardown race up to ~3\
+    \ bounded attempts (not 1): a simulated teardown hostile through attempt 2 succeeds\
+    \ on attempt 3, and a non-race chown error still fails on the FIRST call with\
+    \ no retry; 3) the non-recursive chown rule (gvfs FUSE) is preserved in every\
+    \ attempt; 4) exhaustion still fails the spawn loudly carrying the ENOENT output\
+    \ and the mount verdict; 5) diff touches only internal/agent/rootless.go and the\
+    \ race test file \u2014 no edits to other test messages"
+  status: complete
+  created_at: '2026-09-24T12:26:01.802411+00:00'
+  completed_at: '2026-09-24T14:58:24.411934+00:00'
+- id: DF-BUNKER-56
+  title: Destroy must terminate the agent user manager + absorb its own session pair
+    in the live-process gate
+  criteria:
+  - 1) a probe reporting ONLY the session pair (systemd --user + (sd-pam)) lets destroy
+    succeed (status destroyed, userdel ran) in non-force AND force mode; 2) a probe
+    reporting pair+node-server still refuses with live_processes and the error names
+    ONLY the node process; 3) loginctl terminate-user failure warns and the destroy
+    still proceeds for a pair-only probe; 4) go build/vet/gofmt green and agent+cli+server
+    suites green; 5) diff confined to manager_destroy.go, orphan_uid.go and the df34
+    test file
+  status: complete
+  created_at: '2026-09-24T13:05:55.927972+00:00'
+  completed_at: '2026-09-24T14:58:33.750157+00:00'
+- id: QA-BUNKER-23
+  title: "internal/cli tests clobber operator ~/.bunker/config.yaml \u2014 HOME isolation\
+    \ for renew_test + package TestMain tripwire"
+  criteria:
+  - "1) No test in internal/cli writes outside its own isolated HOME: sentinel probe\
+    \ shows the sentinel config.yaml byte-identical after a full HOME-isolated go\
+    \ test ./internal/cli/ -count=1 run; 2) go build ./... && go vet ./... && gofmt\
+    \ -l internal/cli green; 3) go test ./internal/cli/ -count=1 passes with isolated\
+    \ HOME; 4) diff confined to internal/cli test files \u2014 zero production code\
+    \ changes; 5) renew_test.go orphan-test assertions unchanged (no weakening)"
+  status: complete
+  created_at: '2026-09-24T20:05:18.724148+00:00'
+  completed_at: '2026-09-24T20:13:15.421863+00:00'
+- id: INT-FLAKE-001
+  title: "internal/server TestServerRun_TLSGate port flake \u2014 race-safe scratch\
+    \ port"
+  criteria:
+  - "1) 20 consecutive runs of go test ./internal/server/ -count=1 under concurrency\
+    \ leave zero 'address already in use' failures; 2) TLS-gate acceptance table intact:\
+    \ every refused case still refuses, every allowed case still binds, no test deleted\
+    \ or weakened; 3) go build ./... && go vet ./... && gofmt -l internal/server green;\
+    \ 4) go test ./internal/server/ -count=1 passes; 5) diff confined to internal/server\
+    \ test files \u2014 zero production code changes"
+  status: in_progress
+  created_at: '2026-09-24T20:05:19.450503+00:00'

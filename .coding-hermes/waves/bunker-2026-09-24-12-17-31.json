@@ -1,0 +1,52 @@
+{
+  "tick_id": "bunker-2026-09-24-12-17-31",
+  "tick_number": 536,
+  "composed_at": "2026-09-24T14:35:00-05:00",
+  "mode": "wave",
+  "wave_budget": 4,
+  "workers": 2,
+  "why_wave": "QA-BUNKER-23 (internal/cli test-isolation fix) and INT-FLAKE-001 (internal/server port-flake fix) are mutually independent: disjoint packages, no depends_on edges, test-only diffs, no shared import band. WAVE: 2 workers \u2014 middle-out verified disjoint.",
+  "residual_from_tick_535": {
+    "INT-CI-038": "judge re-run in background this tick (stranded in_progress; commit c915225 + merge c15f017 already landed and pushed)",
+    "DF-BUNKER-56": "judge re-run in background this tick (stranded in_progress; commit c915225 + merge fa02ec5 already landed and pushed)",
+    "note": "Both rows already complete on the board with commit_hash; verdicts were lost when tick 535 died mid-closeout. No new implementation for these two."
+  },
+  "tasks": [
+    {
+      "id": "QA-BUNKER-23",
+      "worktree": "~/worktrees/bunker-QA-BUNKER-23",
+      "branch": "wt/QA-BUNKER-23",
+      "base": "origin/main",
+      "base_sha": "fa02ec5",
+      "status": "merged",
+      "brief": "/tmp/bkr536_brief_qabunker23.txt"
+    },
+    {
+      "id": "INT-FLAKE-001",
+      "worktree": "~/worktrees/bunker-INT-FLAKE-001",
+      "branch": "wt/INT-FLAKE-001",
+      "base": "origin/main",
+      "base_sha": "fa02ec5",
+      "status": "merged",
+      "brief": "/tmp/bkr536_brief_intflake001.txt"
+    }
+  ],
+  "status": "finished",
+  "harvest": {
+    "tick": 537,
+    "scheduler_tick_id": "bunker-2026-09-24-19-48-29",
+    "work_commits": {
+      "QA-BUNKER-23": "8412361",
+      "INT-FLAKE-001": "aeefd5b"
+    },
+    "merges": {
+      "INT-FLAKE-001": "94be7e6",
+      "QA-BUNKER-23": "3b44949"
+    },
+    "gate": "go build+vet+test ./... exit 0 on merged tree 3b44949",
+    "pushed": true,
+    "board_event": 740,
+    "gitreins": "task create/start/complete run for both ids; tier-2 verdicts pending at closeout (20-30min class), verify next tick",
+    "note": "tick-536 foreman died pre-closeout; tick 537 verified worker claims adversarially (sentinel probe byte-identical; 4-run stress green) before merging"
+  }
+}
