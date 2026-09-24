@@ -165,7 +165,12 @@ CPU and memory limits are set via `systemd-run --property=CPUQuota=<pct> --prope
 
 ### Disk Quota
 
-`LimitFSIZE=<bytes>` prevents disk exhaustion. Default: 20 GiB per agent.
+**Not implemented.** `LimitFSIZE=<bytes>` is a PER-FILE size cap (`RLIMIT_FSIZE`),
+NOT a total-disk quota: nothing counts an agent's aggregate on-disk usage, so the
+configured number (`agent.default_disk_bytes`, default 20 GiB) does not bound the
+agent's total disk. Real per-user filesystem quotas are GAP-161. See
+[specs/safety-presets.md](specs/safety-presets.md) ("Per-file size") and
+internally DF-BUNKER-54 for the honest-reporting contract.
 
 ### Process Isolation
 

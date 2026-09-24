@@ -120,6 +120,10 @@ func buildRunAgentArgs(agentID, uid, gid, unitName, command string, args []strin
 			cmdArgs = append(cmdArgs, fmt.Sprintf("--property=MemoryMax=%d", limits.MemoryMaxBytes))
 		}
 		if limits.DiskMaxBytes > 0 {
+			// DiskMaxBytes is a PER-FILE size cap (LimitFSIZE / RLIMIT_FSIZE),
+			// NOT a total-disk quota: it bounds the size of any one file, and
+			// nothing bounds the agent's aggregate usage (GAP-161 owns real
+			// total-disk enforcement; DF-BUNKER-54 owns the honest reporting).
 			cmdArgs = append(cmdArgs, fmt.Sprintf("--property=LimitFSIZE=%d", limits.DiskMaxBytes))
 		}
 	}

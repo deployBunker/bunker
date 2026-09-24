@@ -84,25 +84,32 @@ Examples:
 				return nil
 			}
 
+			// DF-BUNKER-54: the agent's disk figure is TWO facts, not a
+			// ratio. The usage is measured; the cap is a PER-FILE size cap
+			// (LimitFSIZE/RLIMIT_FSIZE) with no mechanism capping total
+			// usage, so it must never be printed as a used-vs-limit
+			// percentage (that was the "218% (43.6 GB/20.0 GB)" cell — real
+			// usage compared against a number nothing enforces).
 			fmt.Println()
 			fmt.Println("══════════ Agents ══════════")
 			fmt.Println()
-			fmt.Printf("  %-14s %-10s %-22s %-25s %s\n", "Agent ID", "Status", "Disk", "Created", "Public URL")
-			fmt.Printf("  %-14s %-10s %-22s %-25s %s\n", "────────", "──────", "────────────────────", "───────", "──────────")
+			fmt.Printf("  %-14s %-10s %-14s %-14s %-25s %s\n", "Agent ID", "Status", diskUsedHeader, perFileCapHeader, "Created", "Public URL")
+			fmt.Printf("  %-14s %-10s %-14s %-14s %-25s %s\n", "────────", "──────", "─────────", "─────────────", "───────", "──────────")
 			for _, a := range agents {
 				publicURL := a.PublicUrl
 				if publicURL == "" {
 					publicURL = "(no URL)"
 				}
-				diskLimit := uint64(0)
+				diskCap := uint64(0)
 				if a.GetLimits() != nil {
-					diskLimit = a.GetLimits().GetDiskMaxBytes()
+					diskCap = a.GetLimits().GetDiskMaxBytes()
 				}
-				diskStr := formatDisk(a.DiskUsedBytes, diskLimit)
-				fmt.Printf("  %-14s %-10s %-22s %-25s %s\n", a.AgentId, a.Status, diskStr, a.CreatedAt, publicURL)
+				fmt.Printf("  %-14s %-10s %-14s %-14s %-25s %s\n",
+					a.AgentId, a.Status, humanBytes(a.DiskUsedBytes), formatPerFileCap(diskCap), a.CreatedAt, publicURL)
 			}
 			fmt.Println()
 			fmt.Printf("Total: %d agents (server: %s)\n", resp.Msg.TotalCount, serverName)
+			fmt.Printf("Disk Used is the agent's measured usage; %s %s\n", perFileCapHeader, perFileCapQualifier)
 
 			return nil
 		},

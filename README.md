@@ -36,7 +36,7 @@ Bunker is a **multi-agent hosting platform** — a daemon (`bunkerd`) that runs 
 ## Features
 
 - **Isolated agents** — Each agent is a dedicated Linux user with its own home directory, SSH keypair, and rootless Docker daemon
-- **Resource limits** — CPU, memory, disk, process count, and open file limits enforced via cgroups (systemd user slice)
+- **Resource limits** — CPU, memory, process count, and open file limits enforced via cgroups (systemd user slice); an agent per-file size cap (`--disk`) is enforced via `RLIMIT_FSIZE`
 - **SSHFS native mount** — Mount any agent's filesystem locally: `bunker mount <id> /mnt/agent`
 - **Docker tunnel** — Forward the agent's Docker socket locally: `bunker tunnel <id>` → `docker -H localhost:2376 ps`
 - **Multi-server** — One CLI, many `bunkerd` instances. Switch with `--server`
@@ -179,7 +179,7 @@ bunker status
 bunker spawn --ttl 1h demo-agent
 ```
 
-The demo is a shared, resource-limited sandbox (max 50 agents; per-agent CPU/memory/disk caps, default 1h TTL) — **do not run production workloads on it**. Auth is enforced: every request needs a bearer token (`bunker connect --token`); an unauthenticated **POST** receives `401` (the REST surface is POST-only — a non-POST request returns `405` before auth runs). See [docs/integration.md](docs/integration.md) for the full client-server protocol.
+The demo is a shared, resource-limited sandbox (max 50 agents; per-agent CPU/memory caps and a per-file size cap, default 1h TTL) — **do not run production workloads on it**. Auth is enforced: every request needs a bearer token (`bunker connect --token`); an unauthenticated **POST** receives `401` (the REST surface is POST-only — a non-POST request returns `405` before auth runs). See [docs/integration.md](docs/integration.md) for the full client-server protocol.
 
 ### Prerequisites
 
@@ -320,7 +320,7 @@ agent:
   max_agents: 100
   default_cpu_quota: 2.0           # 2 CPU cores
   default_memory_bytes: 4294967296  # 4 GB
-  default_disk_bytes: 21474836480   # 20 GB
+  default_disk_bytes: 21474836480   # 20 GiB PER-FILE cap (LimitFSIZE) — not a total-disk quota
   default_max_processes: 4096
   default_max_open_files: 65536
   default_max_docker_containers: 10
@@ -823,10 +823,23 @@ All limits are enforced at **two levels**:
 |-------|-----------|----------|---------|
 | CPU | `agent.default_cpu_quota` | `--cpu` | 2.0 cores |
 | Memory | `agent.default_memory_bytes` | `--memory` | 4 GB |
-| Disk | `agent.default_disk_bytes` | `--disk` | 20 GB |
+| Per-file size | `agent.default_disk_bytes` | `--disk` | 20 GiB |
 | Processes | `agent.default_max_processes` | — | 4096 |
 | Open files | `agent.default_max_open_files` | — | 65536 |
 | Docker containers | `agent.default_max_docker_containers` | — | 10 |
+
+`agent.default_disk_bytes` is a **per-file size cap, not a total-disk quota**
+(DF-BUNKER-54). It reaches the host as systemd `LimitFSIZE` (i.e. `RLIMIT_FSIZE`),
+which bounds the size of any **single file** the agent writes — nothing counts
+the agent's aggregate on-disk usage, so an agent can occupy far more than the
+configured number in total as long as no individual file exceeds it. Real
+total-disk enforcement (per-user filesystem quotas) is **not implemented**
+(GAP-161). `bunker list` / `bunker info` therefore label this number
+`Max File Size` and never print a used-vs-cap percentage. A finite value also
+makes .NET apps that `ftruncate` a large sparse file at first boot crash-loop
+(`EFBIG` → `SIGXFSZ`), so `0` (off) is the documented-good configuration — see
+[specs/safety-presets.md](specs/safety-presets.md) and
+[internal/agent/SKILL.md](internal/agent/SKILL.md).
 
 `bunker metrics <id>` reads the agent's own cgroup slice; when that slice is
 unreadable (e.g. a dead agent user) it falls back to **host-level** values and

@@ -55,7 +55,7 @@ agent:
   max_agents: 100
   default_cpu_quota: 2.0           # 2 CPU cores
   default_memory_bytes: 4294967296  # 4 GB
-  default_disk_bytes: 21474836480   # 20 GB
+  default_disk_bytes: 21474836480   # 20 GiB PER-FILE cap (LimitFSIZE), not a total-disk quota
   default_max_processes: 4096
   default_max_open_files: 65536
   default_max_docker_containers: 10
@@ -201,8 +201,8 @@ containment:
 # global > built-in default "standard".
 # The shipped tier "standard" (GAP-117) carries exactly today's five-knob
 # baseline: CPUQuota 2.0, MemoryMax 4 GiB, TasksMax 4096, LimitNOFILE 65536,
-# LimitFSIZE 20 GiB (the agent.default_* values, applied at both the
-# user-<uid>.slice drop-in and the dockerd transient unit).
+# LimitFSIZE 20 GiB — a per-file cap, not a disk quota (agent.default_* values,
+# applied at both the user-<uid>.slice drop-in and the dockerd transient unit).
 # "open" and "hardened" remain accepted names that resolve to the same knob
 # set today — GAP-118/119 differentiate the tiers, so a config that already
 # says safety.preset: open keeps working unchanged. An unknown name REFUSES

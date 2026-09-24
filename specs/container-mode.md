@@ -404,7 +404,7 @@ capped even before the cgroup slice applies:
 | `MemoryMax` (bytes) | `--memory` | byte-for-byte |
 | `TasksMax` | `--pids-limit` | process cap inside the container |
 | `LimitNOFILE` | `--ulimit nofile=<n>:<n>` | fd cap |
-| `LimitFSIZE` | `--ulimit fsize=<bytes>` | per-file size cap (disk quota proxy) |
+| `LimitFSIZE` | `--ulimit fsize=<bytes>` | per-file size cap — NOT a disk quota (no total-usage enforcement; GAP-161) |
 
 ## 6. PASS(6) — Open Risks
 

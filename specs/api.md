@@ -66,7 +66,7 @@ Request:
 - `limits` (ResourceLimits, optional): Falls back to server defaults
   - `cpu_quota` (double): CPU cores (e.g., 2.0)
   - `memory_max_bytes` (uint64): RAM limit
-  - `disk_max_bytes` (uint64): Disk quota
+  - `disk_max_bytes` (uint64): Per-file size cap (applied as `LimitFSIZE`/`RLIMIT_FSIZE`), not a total-disk quota (DF-BUNKER-54)
   - `max_docker_containers` (uint32): Container cap
 - `network` (NetworkConfig, optional): Ingress configuration
   - `mode`: CLOUDFLARE_TUNNEL, TAILSCALE, or DIRECT
@@ -296,7 +296,9 @@ Response:
 - `agent_id`, `status`
 - `cpu_usage_percent` (double)
 - `memory_used_bytes`, `memory_limit_bytes` (uint64)
-- `disk_used_bytes`, `disk_limit_bytes` (uint64)
+- `disk_used_bytes`, `disk_limit_bytes` (uint64) — `disk_limit_bytes` is the
+  agent's PER-FILE size cap (`LimitFSIZE`/`RLIMIT_FSIZE`), **not** a total-disk
+  limit; see `ResourceLimits.disk_max_bytes` (DF-BUNKER-54)
 - `docker_containers` (uint32): Running containers
 - `uptime` (string): Human-readable uptime
 - `host_level_fallback` (bool): true when the memory values came from the host
@@ -400,7 +402,7 @@ Same schema as Bunkerd.HeartbeatAgent, scoped to the calling agent.
 |-------|------|------------|
 | cpu_quota | double | CPU cores, e.g. 2.0 |
 | memory_max_bytes | uint64 | Memory limit in bytes |
-| disk_max_bytes | uint64 | Disk quota in bytes |
+| `disk_max_bytes` | uint64 | Per-file size cap in bytes (applied as `LimitFSIZE`/`RLIMIT_FSIZE`) — **not** a total-disk quota (DF-BUNKER-54) |
 | max_docker_containers | uint32 | Max concurrent containers |
 
 ### AgentSummary
