@@ -837,6 +837,47 @@ func (m *AgentManager) applyUserSliceLimitsAndVerify(ctx context.Context, u *use
 	return content, nil
 }
 
+// runSystemdRunDockerUnit re-creates the per-agent rootless-dockerd transient
+// unit for an ADOPTED agent (DF-BUNKER-53): the same `systemd-run --system
+// --unit=bunker-docker-<agentID> --uid/--gid` invocation a fresh spawn's
+// Step 5 performs, carrying the SAME limit properties (CPUQuota / MemoryMax /
+// LimitFSIZE / TasksMax / LimitNOFILE, resolved from the agent's persisted
+// knob set) plus the GAP-075 PrivateTmp boundary.
+//
+// Deliberately narrower than spawn's full unit setup: an adopted agent's
+// dockerd is ALREADY RUNNING under its pre-existing unit, and the limit
+// surface is the only thing adoption re-asserts. Steps that would disrupt a
+// working agent are therefore out of scope here: no dockerd restart, no
+// resetStaleDockerdUnit (a transient unit systemd still holds is exactly the
+// live dockerd), no waitForDockerd socket probe, no socket symlink (the
+// running daemon already serves one). The property set is what `systemctl
+// show` reports for the unit, so the cgroup ceiling takes effect on the NEXT
+// process systemd places under it — matching the fresh-spawn enforcement
+// point (the unit argv) without touching the running daemon.
+//
+// The argv shape mirrors buildRootlessDockerdArgs' limit block exactly (same
+// table, same order); it is a method so tests can drive it through the
+// runAdoptedDockerUnit seam instead.
+func (m *AgentManager) runSystemdRunDockerUnit(ctx context.Context, unitName, uid, gid string, unitKnobs []SystemdKnob) error {
+	args := []string{
+		"--system",
+		"--unit=" + unitName,
+		"--uid=" + uid,
+		"--gid=" + gid,
+		"--property=PAMName=login",
+		"--property=PrivateTmp=yes",
+	}
+	for _, k := range unitKnobs {
+		args = append(args, "--property="+k.Name+"="+k.Value)
+	}
+	cmd := exec.CommandContext(ctx, "systemd-run", args...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("systemd-run for %s failed: %w (output: %s)", unitName, err, strings.TrimSpace(string(out)))
+	}
+	m.logger.Info("re-applied docker unit limits for adopted agent", "unit", unitName, "uid", uid, "gid", gid)
+	return nil
+}
+
 // lookupAgentUser resolves an agent's uid/gid. It is a variable so tests can
 // drive the spawn-time isolation wiring without root privileges (the real
 // lookup only succeeds after useradd has run).

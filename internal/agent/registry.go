@@ -3,15 +3,19 @@ package agent
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 
@@ -155,6 +159,153 @@ func readPersistedPortRange(home string) (start, end uint32, ok bool) {
 		return 0, 0, false
 	}
 	return uint32(s), uint32(e), true
+}
+
+// readPersistedAgentRecord reads an agent's durable lifecycle record for the
+// on-disk registry file backing m.registry (DF-BUNKER-53).
+//
+// Adoption needs the agent's OWN record — the limits (and the knob
+// properties) it was SPAWNED with — but the live fold cannot carry it: an
+// orphan is by definition an agent m.registry.Get does not know. The record
+// therefore comes from the durable store ON DISK. Spawns append a KindSpawn
+// event with the full record (internal/registry.AppendSpawn), destroys append
+// a KindDestroy event, and the events fold last-wins in file order, so the
+// LAST event for agentID decides its state. The store's own active file
+// (m.registry.Path()) is read, plus its rotated backups (.1 … .N) oldest
+// first — the same order Replay folds them in — so an agent whose spawn was
+// rotated into a backup is still found.
+//
+// ok is false when the registry is disabled, the file is unreadable, no
+// well-formed event mentions agentID, or the agent's last event is a destroy
+// (a destroyed agent must never be adopted with stale limits). A missed
+// parse of ONE malformed line is tolerated (skipped) exactly like the
+// registry's own replay does. The caller falls back to m.defaultLimits()
+// with a warning — never silently: adopted limits must be attributable to a
+// source.
+func (m *AgentManager) readPersistedAgentRecord(agentID string) (rec *registry.Record, ok bool) {
+	if m.registry == nil {
+		return nil, false
+	}
+	storePath := m.registry.Path()
+	if storePath == "" {
+		return nil, false
+	}
+	dir := filepath.Dir(storePath)
+	base := filepath.Base(storePath)
+
+	// Oldest-first file order: rotated backups .N … .1, then the active
+	// file (Replay reads backups oldest-first, then the active file).
+	var files []string
+	entries, err := os.ReadDir(dir)
+	if err == nil {
+		rotated := make([]string, 0, 4)
+		for _, e := range entries {
+			name := e.Name()
+			if !strings.HasPrefix(name, base+".") || e.IsDir() {
+				continue
+			}
+			suffix := strings.TrimPrefix(name, base+".")
+			if n, err := strconv.Atoi(suffix); err == nil && n > 0 {
+				rotated = append(rotated, name)
+			}
+		}
+		nums := make([]int, 0, len(rotated))
+		byNum := make(map[int]string, len(rotated))
+		for _, name := range rotated {
+			n, _ := strconv.Atoi(strings.TrimPrefix(name, base+"."))
+			nums = append(nums, n)
+			byNum[n] = name
+		}
+		sort.Ints(nums)
+		for _, n := range nums {
+			files = append(files, filepath.Join(dir, byNum[n]))
+		}
+	}
+	files = append(files, storePath)
+
+	var last *registry.Event
+	for _, path := range files {
+		f, err := os.Open(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			m.logger.Warn("adopt: cannot read durable registry file", "path", path, "error", err)
+			continue
+		}
+		scanner := bufio.NewScanner(f)
+		// Guard against pathological lines while keeping real spawn events
+		// (which carry the full record) well inside the buffer.
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		for scanner.Scan() {
+			line := scanner.Bytes()
+			if len(bytes.TrimSpace(line)) == 0 {
+				continue
+			}
+			var ev registry.Event
+			if err := json.Unmarshal(line, &ev); err != nil {
+				continue // damaged line: skipped, same tolerance as replay
+			}
+			if ev.AgentID != agentID || ev.Kind == "" {
+				continue
+			}
+			// ev is a fresh variable per iteration, so taking its address
+			// is safe: each accepted event is an independent value.
+			last = &ev
+		}
+		f.Close()
+	}
+	if last == nil {
+		return nil, false
+	}
+	switch last.Kind {
+	case registry.KindSpawn:
+		return eventToRecordAgent(last), true
+	case registry.KindDestroy:
+		// The durable store says this agent was destroyed; its limits are
+		// gone and it must not be adopted with stale ones.
+		return nil, false
+	default:
+		// A heartbeat-only history carries no limits record.
+		return nil, false
+	}
+}
+
+// eventToRecordAgent lifts a replayed registry event into the record form the
+// adopt path consumes (the same mapping the registry's replay fold uses;
+// duplicated here because the registry's own mapper is unexported).
+func eventToRecordAgent(ev *registry.Event) *registry.Record {
+	createdAt := time.Time{}
+	if ev.CreatedAt != "" {
+		if t, err := time.Parse(time.RFC3339, ev.CreatedAt); err == nil {
+			createdAt = t
+		}
+	}
+	expiresAt := time.Time{}
+	if ev.ExpiresAt != "" {
+		if t, err := time.Parse(time.RFC3339, ev.ExpiresAt); err == nil {
+			expiresAt = t
+		}
+	}
+	return &registry.Record{
+		AgentID:          ev.AgentID,
+		Status:           ev.Status,
+		CreatedAt:        createdAt,
+		ExpiresAt:        expiresAt,
+		PortStart:        ev.PortStart,
+		PortEnd:          ev.PortEnd,
+		Limits:           ev.Limits,
+		SSHKeyPath:       ev.SSHKeyPath,
+		SSHFSMount:       ev.SSHFSMount,
+		DockerHostTunnel: ev.DockerHostTunnel,
+		PublicURL:        ev.PublicURL,
+		TailnetIP:        ev.TailnetIP,
+		Image:            ev.Image,
+		MountDriver:      ev.MountDriver,
+		SafetyPreset:     ev.SafetyPreset,
+		UnitProperties:   ev.UnitProperties,
+		SliceProperties:  ev.SliceProperties,
+	}
 }
 
 // ownerMarkerFilename is the per-agent ownership marker written at spawn time

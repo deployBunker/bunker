@@ -340,6 +340,12 @@ func TestReconcile_AdoptStillWorksWithExactMetadata(t *testing.T) {
 	m.listSystemAgents = func() ([]SystemAgent, error) {
 		return []SystemAgent{{AgentID: "orphan", Username: "bunker-orphan", Home: home}}, nil
 	}
+	// DF-BUNKER-53: adoption resolves the agent's uid/gid for the docker-unit
+	// stage; stub the lookup for the fabricated username (gap075 convention).
+	stubUser(t, "bunker-orphan")
+	// ...and the host stages are seams: record no-ops so no test ever runs
+	// real systemd.
+	installNoopAdoptSeams(t, m)
 
 	rep := m.Reconcile(context.Background())
 	if rep.Adopted != 1 || rep.Destroyed != 0 {
