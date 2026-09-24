@@ -52,6 +52,37 @@ type userProcess struct {
 	Cmd string
 }
 
+// isAgentSessionProcess reports whether one live process is the agent uid's
+// OWN systemd session manager or its PAM bookkeeping twin — the process pair
+// every lingered agent legitimately owns (DF-BUNKER-56). Spawn enables
+// linger, so systemd starts user@<uid>.service and the uid always carries
+// "systemd --user" plus its "(sd-pam)" child; the dockerd/rootlesskit reap
+// never touches them. These are lifecycle infrastructure, NOT orphanable
+// operator processes: destroy terminates the manager itself
+// (terminateAgentUserManager) and the destroy gate absorbs whatever pair
+// processes survive the grace window. The orphan-uid report deliberately
+// does NOT use this classifier: there the user record is already gone, so
+// ANY live process under the uid is anomaly evidence.
+//
+// Shapes covered: the CI-measured "/usr/lib/systemd/systemd --user",
+// Debian's "/lib/systemd/..." variant, a bare "systemd --user", and the
+// (sd-pam) twin in its literal-argv, bracketed-Name and plain forms.
+func isAgentSessionProcess(p userProcess) bool {
+	cmd := strings.TrimSpace(p.Cmd)
+	switch {
+	case cmd == "systemd --user",
+		strings.HasSuffix(cmd, " systemd --user"),
+		strings.HasSuffix(cmd, "/systemd --user"):
+		return true
+	case cmd == "(sd-pam)",
+		cmd == "[sd-pam]",
+		cmd == "[(sd-pam)]",
+		strings.HasSuffix(cmd, " (sd-pam)"):
+		return true
+	}
+	return false
+}
+
 // listUserProcesses returns every live process owned by uid, read from
 // /proc/<pid>/status (the Uid: line) — sorted by PID for stable reports.
 // An unreadable entry is skipped, not failed: a process can exit between the

@@ -474,3 +474,146 @@ func TestOrphanUIDCheck_HomeOwnershipUIDSource(t *testing.T) {
 		}
 	}
 }
+
+// TestDestroy_SessionPairAbsorbed covers DF-BUNKER-56 criterion 1: the
+// agent's own systemd session pair ("systemd --user" + "(sd-pam)") is
+// lifecycle infrastructure every lingered agent legitimately owns — CI run
+// 35998446840 refused EVERY healthy destroy because the DF-BUNKER-34 gate
+// counted the pair as orphanable live processes. Destroy must proceed
+// (status destroyed, userdel runs) when ONLY the pair remains, in force and
+// non-force mode alike.
+func TestDestroy_SessionPairAbsorbed(t *testing.T) {
+	for _, force := range []bool{false, true} {
+		name := "non_force"
+		if force {
+			name = "force"
+		}
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			m := newGateManager(t, &buf)
+			const id = "dfb56-pair"
+			const username = "bunker-" + id
+			liveAgent(t, m, id)
+
+			// The gate's evidence source: the pair, and nothing else. The
+			// pids are fakes; the Cmd heads are the CI-measured shapes.
+			fake := []userProcess{
+				{PID: 5001, Cmd: "/usr/lib/systemd/systemd --user"},
+				{PID: 5002, Cmd: "(sd-pam)"},
+			}
+			stubDestroyProcessProbe(t, func(string) ([]userProcess, uint32, bool, error) {
+				return fake, 61002, true, nil
+			})
+			presentUserWithUID(t, username, "61002")
+
+			// Keep the terminate step's grace wait short: the stubbed probe
+			// never reports the pair gone, so the step rides out the whole
+			// deadline — which is exactly the path under test.
+			oldGrace := terminateUserManagerGrace
+			terminateUserManagerGrace = 50 * time.Millisecond
+			t.Cleanup(func() { terminateUserManagerGrace = oldGrace })
+
+			userLog := filepath.Join(t.TempDir(), "userdel.log")
+			stubDir := t.TempDir()
+			script := "#!/bin/sh\nprintf '%s\\n' \"$0 $*\" >> \"" + userLog + "\"\nexit 0\n"
+			if err := os.WriteFile(filepath.Join(stubDir, "userdel"), []byte(script), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", stubDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+			resp, err := m.Destroy(context.Background(), id, force)
+			if err != nil {
+				t.Fatalf("destroy with only the session pair alive must succeed: %v", err)
+			}
+			if resp.Status != "destroyed" {
+				t.Fatalf("status = %q, want destroyed", resp.Status)
+			}
+			if calls, rerr := os.ReadFile(userLog); rerr != nil || len(calls) == 0 {
+				t.Errorf("userdel never ran on the pair-only path (calls: %q, err: %v)", calls, rerr)
+			}
+			// The terminate step warned (no logind session for the fake user
+			// in the test environment) and the destroy continued anyway.
+			if !strings.Contains(buf.String(), "loginctl terminate-user failed") {
+				t.Errorf("log missing the terminate-user WARN record; log:\n%s", buf.String())
+			}
+			// The tracker record and port range are gone (destroy completed).
+			if rec := m.tracker.Get(id); rec != nil {
+				t.Error("tracker record survived a successful destroy")
+			}
+		})
+	}
+}
+
+// TestDestroy_OperatorProcessStillRefusedWithPair covers criterion 2: the
+// pair absorption must NOT swallow real operator processes — pair + node
+// server still refuses with live_processes, and the refusal names ONLY the
+// node process.
+func TestDestroy_OperatorProcessStillRefusedWithPair(t *testing.T) {
+	var buf bytes.Buffer
+	m := newGateManager(t, &buf)
+	const id = "dfb56-mixed"
+	const username = "bunker-" + id
+	liveAgent(t, m, id)
+
+	fake := []userProcess{
+		{PID: 5100, Cmd: "/usr/lib/systemd/systemd --user"},
+		{PID: 5101, Cmd: "(sd-pam)"},
+		{PID: 5102, Cmd: "node /home/bunker-dfb56-mixed/app/server.js"},
+	}
+	stubDestroyProcessProbe(t, func(string) ([]userProcess, uint32, bool, error) {
+		return fake, 61003, true, nil
+	})
+	presentUserWithUID(t, username, "61003")
+
+	oldGrace := terminateUserManagerGrace
+	terminateUserManagerGrace = 50 * time.Millisecond
+	t.Cleanup(func() { terminateUserManagerGrace = oldGrace })
+
+	resp, err := m.Destroy(context.Background(), id, false)
+	if err == nil {
+		t.Fatal("destroy with an operator process alive must FAIL even when the session pair is present")
+	}
+	if resp == nil || resp.Status != StatusLiveProcesses {
+		t.Fatalf("status = %v, want %q", resp, StatusLiveProcesses)
+	}
+	for _, want := range []string{"destroy refused", "pid 5102", "node /home/bunker-dfb56-mixed/app/server.js"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal error missing %q — got: %v", want, err)
+		}
+	}
+	for _, banned := range []string{"pid 5100", "pid 5101", "systemd --user", "(sd-pam)"} {
+		if strings.Contains(err.Error(), banned) {
+			t.Errorf("refusal error must not name the absorbed session pair (%q) — got: %v", banned, err)
+		}
+	}
+}
+
+// TestIsAgentSessionProcess covers the classifier's accepted shapes and its
+// negatives: operator processes (node, dockerd, rootlesskit) must never
+// classify as the session pair.
+func TestIsAgentSessionProcess(t *testing.T) {
+	tests := map[string]struct {
+		cmd  string
+		want bool
+	}{
+		"ci-measured-systemd":     {"/usr/lib/systemd/systemd --user", true},
+		"debian-lib-path":         {"/lib/systemd/systemd --user", true},
+		"bare-systemd":            {"systemd --user", true},
+		"sd-pam-literal":          {"(sd-pam)", true},
+		"sd-pam-bracketed-name":   {"[sd-pam]", true},
+		"sd-pam-bracketed-argv":   {"[(sd-pam)]", true},
+		"node-server":             {"node /home/bunker-x/app/server.js", false},
+		"dockerd":                 {"/usr/bin/dockerd", false},
+		"rootlesskit":             {"rootlesskit --net=slirp4netns", false},
+		"unknown-empty-cmdline":   {"(unknown)", false},
+		"lookalike-suffix-word":   {"tail -f systemd --userLog", false},
+		"systemd-user-other-flag": {"/usr/lib/systemd/systemd --user --deserialize", false},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := isAgentSessionProcess(userProcess{PID: 1, Cmd: tc.cmd}); got != tc.want {
+				t.Errorf("isAgentSessionProcess(%q) = %v, want %v", tc.cmd, got, tc.want)
+			}
+		})
+	}
+}

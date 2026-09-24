@@ -402,6 +402,16 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	// path below from treating a slow-shutdown agent as not_found.
 	waitAgentProcessesExit(ctx, username, m.logger)
 
+	// Step 2b.05 (DF-BUNKER-56): end the agent's systemd user session BEFORE
+	// the live-process gate. Spawn enables linger, so the uid always owns its
+	// own "systemd --user" + "(sd-pam)" pair; without this step the DF-34
+	// gate refused EVERY healthy agent's destroy (CI run 35998446840:
+	// TestConcurrency cleanup + the regression battery's "destroy regr-alpha"
+	// all refused because the pair was alive). Best-effort: a logind without
+	// the session only warns, the gate's pair absorption below is the
+	// load-bearing tolerance, and any operator process still refuses loudly.
+	terminateAgentUserManager(ctx, username, m.logger)
+
 	// Step 2b.1 (DF-BUNKER-34): verify the agent's uid is process-free before
 	// anything destructive. waitAgentProcessesExit only SIGKILLs the dockerd
 	// and rootlesskit pids its first scan saw; ANY other process still running
@@ -414,7 +424,10 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	// daemon, and the destroy reporting not_found while a "healthy" fleet kept
 	// ticking against a deleted workdir. The gate fails LOUDLY instead: the
 	// error names the uid, every live process and the remedy. Processes the
-	// normal reap could not kill are evidence, not something to paper over.
+	// normal reap could not kill are evidence, not something to paper over. The
+	// agent uid's OWN systemd session pair is absorbed by the gate
+	// (DF-BUNKER-56) — it is lifecycle infrastructure every lingered agent
+	// legitimately owns.
 	// FORCE MODE IS NOT AN EXCEPTION: --force means "tear the agent down even
 	// though it is running", not "orphan every process it owns".
 	if err := gateDestroyOnLiveProcesses(ctx, username, m.logger); err != nil {
@@ -678,13 +691,75 @@ func gateDestroyOnLiveProcesses(_ context.Context, username string, logger *slog
 	if len(procs) == 0 {
 		return nil
 	}
-	summary := (&orphanUIDCheck{UID: uid, UIDKnown: true, UserExists: true, Processes: procs}).Describe()
+	// DF-BUNKER-56: the agent's OWN session pair (systemd --user + (sd-pam))
+	// is lifecycle infrastructure, not an orphanable operator process — the
+	// reap above never kills it and terminateAgentUserManager may have had no
+	// logind session to terminate. Whatever pair processes survive the grace
+	// window are absorbed; ONLY the remainder refuses the destroy.
+	var foreign []userProcess
+	for _, p := range procs {
+		if !isAgentSessionProcess(p) {
+			foreign = append(foreign, p)
+		}
+	}
+	if len(foreign) == 0 {
+		logger.Debug("destroy proceeding: only the agent's own systemd session pair remains",
+			"username", username, "uid", uid)
+		return nil
+	}
+	summary := (&orphanUIDCheck{UID: uid, UIDKnown: true, UserExists: true, Processes: foreign}).Describe()
 	logger.Error("destroy refused: agent uid still owns live processes",
 		"username", username,
 		"uid", uid,
-		"processes", len(procs),
+		"processes", len(foreign),
 		"evidence", summary)
-	return fmt.Errorf("%s", buildDestroyLiveProcessRefusal(username, uid, procs))
+	return fmt.Errorf("%s", buildDestroyLiveProcessRefusal(username, uid, foreign))
+}
+
+// terminateUserManagerGrace bounds the wait for the session pair to exit
+// after loginctl terminate-user. Package var so tests keep the suite fast.
+var terminateUserManagerGrace = 2 * time.Second
+
+// terminateAgentUserManager asks logind to end the agent user's session so
+// its own "systemd --user" + "(sd-pam)" pair does not wedge the DF-34
+// live-process gate (DF-BUNKER-56). terminate-user failing (no logind seat,
+// session already gone, a container without logind) is NOT an error: the
+// outcome is warned with the raw output and the destroy continues — the
+// gate's pair absorption is the tolerance that keeps every environment
+// working, the terminate is the fast path that makes the gate's probe come
+// back empty instead of waiting out the grace window.
+func terminateAgentUserManager(ctx context.Context, username string, logger *slog.Logger) {
+	out, err := exec.CommandContext(ctx, "loginctl", "terminate-user", username).CombinedOutput()
+	if err != nil {
+		logger.Warn("loginctl terminate-user failed (continuing destroy; the live-process gate absorbs the session pair)",
+			"user", username, "error", err, "output", strings.TrimSpace(string(out)))
+	}
+	deadline := time.Now().Add(terminateUserManagerGrace)
+	for {
+		procs, _, ok, perr := destroyProcessProbe(username)
+		if perr != nil || !ok {
+			return
+		}
+		remaining := 0
+		for _, p := range procs {
+			if !isAgentSessionProcess(p) {
+				remaining++
+			}
+		}
+		if remaining > 0 {
+			// Non-session processes are none of this step's business: the
+			// gate owns them. Stop waiting and let it refuse loudly.
+			return
+		}
+		if len(procs) == 0 || time.Now().After(deadline) {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
 }
 
 // destroyProcessProbe is the seam behind the gate: it returns the live
