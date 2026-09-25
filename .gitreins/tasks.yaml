@@ -3316,8 +3316,8 @@ tasks:
     cases; run.go and env.go default --timeout to 1800 with the pass --timeout hint
     on deadline errors; exec.go output byte-identical; no diff outside internal/cli/
   status: complete
-  completed_at: '2026-09-25T11:53:46.595210+00:00'
   created_at: '2026-09-25T11:27:00.592897+00:00'
+  completed_at: '2026-09-25T11:53:46.595210+00:00'
 - id: DF-BUNKER-60
   title: 'Fresh-machine green make test-short: uninstall tests must not write /etc/pam.d/sshd.bunker-tmp
     without root'
@@ -3337,8 +3337,8 @@ tasks:
     exist in spec.go; other four Tier-1 rows untouched; no diff outside internal/imagespec/;
     gofmt clean
   status: complete
-  completed_at: '2026-09-25T11:50:36.662436+00:00'
   created_at: '2026-09-25T11:27:14.619336+00:00'
+  completed_at: '2026-09-25T11:50:36.662436+00:00'
 - id: GAP-160
   title: 'container-mode spec: settled exec-parity + exclusions/persistence reconciliation'
   criteria:
@@ -3348,5 +3348,16 @@ tasks:
     = specs/container-mode.md only; no section renumbered; GAP 154/155/161/064/065
     cross-refs intact
   status: complete
-  completed_at: '2026-09-25T11:50:20.208621+00:00'
   created_at: '2026-09-25T11:27:39.290728+00:00'
+  completed_at: '2026-09-25T11:50:20.208621+00:00'
+- id: INT-CI-041
+  title: Absorb the agent's own systemctl --user client in the destroy live-process
+    gate
+  criteria:
+  - go test ./internal/agent/ passes with new table rows classifying 'systemctl --user
+    <verb>' and the '(ystemctl)' comm form as session infrastructure while 'systemctl
+    start nginx.service' stays foreign; go build/vet/test ./... green; diff limited
+    to internal/agent classifier + test file
+  status: complete
+  created_at: '2026-09-25T15:15:13.024231+00:00'
+  completed_at: '2026-09-25T15:42:24.986003+00:00'
