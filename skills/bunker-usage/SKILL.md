@@ -18,7 +18,7 @@ description: >-
   (docs/dogfood/2026-09-19-integration.md); isolation boundary + mount/
   scratch defects re-verified live at HEAD 93d7a53 on 2026-09-20
   (docs/dogfood/2026-09-20-integration.md, diagnostics.md §13).
-version: 1.9.0
+version: 1.10.0
 category: software-development
 ---
 
@@ -294,3 +294,11 @@ real-use behavior:
 - **PITFALL (DF-BUNKER-59, P1): `bunker spawn` on an auth-enforced daemon prints "could not fetch SSH key: unauthenticated: missing Authorization header" and saves NO key** — the GAP-128 GetAgentKey follow-up in spawn.go sends no Authorization header. Until fixed, recover with raw REST: `POST /bunker.v1.Bunkerd/GetAgentKey {"agent_id":...}` with the master token → write `sshPrivateKey` to `~/.bunker/keys/<id>`, chmod 600. (Each connect request must carry its own credential — headers are NOT inherited across requests on one client.)
 - **PITFALL: `bunker destroy` can die with `deadline_exceeded`** on an agent that did heavy work, while the same DestroyAgent over raw REST returns 200 in seconds — the CLI deadline is the limit, not the daemon (DF-BUNKER-61). Re-check with a list before assuming the agent survived.
 - **`make test-short` is red on a fresh non-root machine** — host-provision uninstall tests write /etc/pam.d/sshd.bunker-tmp for real (DF-BUNKER-60). A fresh-machine suite failure there is the tests, not your checkout; `make build` is the honest fresh-machine gate.
+
+## TLS trust surface (TOFU pinning + the insecure knob) (2026-09-25b, scratch daemon @ HEAD a4e98ce)
+
+- **Verified verbatim across a nine-arm battery** (diagnostics.md §18): fresh-home `connect --tls self-signed` prints the sha256 fingerprint and stores `cert_pin`; a re-keyed daemon is refused on every command naming BOTH fingerprints; re-pin is `--accept-cert`; the expired-pin refusal names notAfter + remedy and stores NOTHING; plain http vs TLS port refuses. **Pin it once and never pass `--tls-insecure` again.**
+- **The insecure knob needs `BUNKER_ALLOW_TLS_INSECURE=1` on EVERY invocation** — an ack'd `connect` does NOT carry to the next command (the next `exec` refuses). A pinned entry refuses insecure dialing with or without the env (the pin wins). Sessions send `X-Bunker-TLS-Unverified: 1`; the daemon stamps `[TLS-UNVERIFIED]` on the RPC record AND the correlated `/command` record; `bunker audit verify` still passes over the mixed log.
+- **PITFALL (DF-BUNKER-62, P1): the README quick start does not run as written** — `connect` → `status` → `spawn` fails with `no target bound`. Mutating commands (spawn/exec/run/env/cp/deploy/destroy) need `--server <alias>` (or `BUNKER_SESSION_TARGET`) on EVERY call; `bunker use <alias>` does NOT satisfy them, and `spawn --help` still says "default: active server".
+- **PITFALL (DF-BUNKER-63, P0): spawn can hand out a uid a host-docker container already runs as.** A container started under the PREVIOUS agent's uid keeps running after destroy; the next spawn's useradd reuses that uid → the agent user and the production process share it (measured: `kill -0` on the container PID from inside the agent, `/proc` visible). Destroy then refuses forever (live-process gate) and the TTL reaper retries unbounded; `--force` does NOT bypass. If a scratch daemon's agents hang as "running" past TTL with `destroy refused: ... still owns live processes` in its log, this is it — kill the foreign process on the host, then destroy.
+- **Refusal UX (DF-BUNKER-64, P2): `bunker status` exits 0 on TLS refusals** (pin mismatch, expired, contradictory) while `list` exits 1 — script `|| alert` gates on status. The TOFU banner claims the pin was stored even when auth failed and nothing was stored. A config-class insecure-dial refusal surfaces as `stream error: unavailable:`.

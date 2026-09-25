@@ -684,3 +684,65 @@ Evidence: docs/dogfood/2026-09-25-rest-credential-surface.md (full report +
 transcripts), docs/dogfood/2026-09-25-rest-probes/ (runnable scripts), board
 rows DF-BUNKER-59/60/61 + PERF-002 (events 752-755), .coding-hermes/dogfood-log.md.
 
+## 18. Dogfood run 2026-09-25b — the TLS trust surface (read this before touching TLS, TOFU pinning, or the insecure knob)
+
+**How this surface is built (the why):** GAP-127 replaced `--tls-insecure` with
+SSH-style trust on first use. The CLI observes the daemon's leaf certificate on
+a real TLS handshake, prints its sha256 fingerprint loudly, and stores it as
+`cert_pin` on the server entry (`~/.bunker/config.yaml`); every later command
+re-verifies the leaf against that pin. GAP-141 then made `tls_insecure` a
+**two-key act**: the knob alone is refused; `BUNKER_ALLOW_TLS_INSECURE=1` must
+be in the environment for EVERY invocation (connect and each later command), a
+pinned entry refuses insecure dialing outright (ack or not — the pin wins), and
+the CLI declares itself with `X-Bunker-TLS-Unverified: 1` so the daemon stamps
+`[TLS-UNVERIFIED]` on the RPC record AND the correlated `/command` record. The
+reasoning is deliberate: a version number cannot prove a capability, and a
+silent fallback to skipping verification is the one mistake this surface must
+never make. Client side: `internal/cli` TLS dial + pin checks; server side:
+`internal/config` (tls.self_signed generation at first boot, cert paths),
+`internal/audit/interceptor.go` (header → record summary stamping).
+
+**How it was tested (the nine-arm battery, reproducible):** run a scratch
+daemon from a HEAD build on private ports with the README's inline config
+verbatim (`tls.enabled: true`, `tls.self_signed: true`), then: (1) fresh-home
+TOFU connect — fingerprint printed, pin stored; (2) wrong token — auth fails
+(but note the banner still CLAIMS the pin was stored — DF-BUNKER-64a); (3)
+re-key the daemon by pointing `tls.cert_file` at a NEW empty dir and restarting
+(the daemon generates a fresh self-signed pair — no cert deletion needed) —
+every command refuses naming BOTH fingerprints; (4) re-pin deliberately with
+`--accept-cert`; (5) `--tls-insecure` without the env — refused; (6) with the
+env — INSECURE banner, and the audit log gains `[TLS-UNVERIFIED]` on the RPC
+and /command records; (7) hand-set `tls_insecure: true` on a pinned entry —
+refused both with and without the ack; (8) mint an already-expired cert with a
+10-line Python script (cryptography is enough; no faketime needed) and point
+the daemon at it — first-use and TOFU both refuse with notAfter + remedy, and
+no pin is stored on refusal; (9) plain http against the TLS port — refused.
+Close with `bunker audit verify` over the mixed log (chain OK).
+
+**Errors hit and their fixes (the right way):**
+- "kill the daemon" tripped a root-delete approval gate → kill by PID, never
+  `pkill`+`rm` under sudo; re-point cert paths instead of deleting certs.
+- The bash -lic background wrapper means `kill $!` kills the wrapper, not
+  bunkerd — resolve the real PID via `pgrep -x bunkerd` or the listen port.
+- Hyperfine on a scratch CLI home failed with "server not found" — the scratch
+  home does not know other servers; pass the home explicitly per invocation.
+- An expired-cert arm silently "passed" once because the entry still carried
+  `tls_insecure: true` from the previous arm — the contradiction refusal fired
+  first. Reset the entry between arms; one arm per config state.
+- ${PIPESTATUS[0]} after pipes, again (third run in a row this bit the harness).
+
+**What this surface still owes (rows filed this run):** the uid-collision /
+reaper-loop interplay (DF-BUNKER-63 — spawn hands out a uid a host-docker
+container already runs as; destroy's live-process gate then blocks userdel
+forever and the TTL reaper retries unbounded; `--force` does NOT bypass), the
+README quick start vs fail-closed target binding (DF-BUNKER-62 — pass
+`--server`/`BUNKER_SESSION_TARGET` on every mutating call, `bunker use` does
+NOT help), and the refusal-UX edges (DF-BUNKER-64 — status exit-0 on refusals,
+banner persistence claim on auth failure, stream-error class for a config
+refusal, scheme-mismatch message).
+
+**The one-liner:** TLS TOFU does what the README says, verbatim, in all nine
+arms — pin it and forget `--tls-insecure` exists. The new risks this run found
+live one layer down, in uid allocation and lifecycle reaping, not in TLS.
+
+

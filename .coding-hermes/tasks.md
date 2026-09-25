@@ -301,3 +301,26 @@ docs/dogfood/2026-09-24-agenttools-lifecycle.md; diagnostics: §16.
   code finding. Evidence /tmp/bunker-qa-evidence-20260924T214016Z-3656410.jsonl
   (agent destroyed after). Perf: no row — warm exec 559.7ms ± 50.7ms (10 runs),
   probe 0.47s, delivery 21.9s; nothing a user would notice as slow.
+
+## Dogfood Findings (2026-09-25b — TLS trust surface, run 19)
+
+Real-use run by coding-hermes-dogfood (cron): ANGLE = the never-tested TLS trust
+surface (GAP-127 TOFU pinning + GAP-141 insecure knob) + daemon-side TLS. Method:
+scratch bunkerd built from HEAD a4e98ce, run as root from the README's inline
+config verbatim (private ports 18093/19093, own ssh_dir/registry/audit, pool
+28000-28999 — fleet daemon untouched, NRestarts 0). Nine-arm TLS battery, REST
+method matrix, audit-chain verify, perf, ephemeral-bunker install leg (PASS, 15s
+@ a4827b2, agent destroyed + verified host-side). Every TLS promise held — the
+P0 below is one layer down. Full report: `docs/dogfood/2026-09-25b-tls-trust-surface.md`.
+
+| ID | Task | Pri | Cpx | Deps | Tags | Model | Reasoning | Fallback |
+|----|------|-----|-----|------|------|-------|-----------|----------|
+| DF-BUNKER-62 | README Quick Start is broken as written: spawn/exec/destroy refuse without --server while spawn --help still says 'default: active server'. Repro: fresh BUNKER_HOME, README quick start verbatim (connect → status → spawn) fails 'no target bound: pass --server/--agent or set BUNKER_SESSION_TARGET' — the fail-closed binding rule (binding.go) is GOOD but undocumented; `bunker use` does NOT satisfy mutating commands (verified); dogfood hit the refusal 6x in one session. Fix: README quick start line + examples carry --server, help text aligned. | P1 | 2 | — | +docs, +cli, +ux | deepseek-v4-flash | Docs-vs-reality drift on the most-followed README path; feature itself correct | deepseek-v4-flash |
+| DF-BUNKER-63 | [P0] spawn can hand out a numeric uid a host-docker container already runs as; destroy then refuses forever and the TTL reaper retries unbounded (--force does NOT bypass). Repro: agent fad4b89a got uid 1001 = the uid an orphaned production container (imhotep-backend-1, started Sep 23 under the PREVIOUS uid-1001 agent) still runs as. MEASURED: agent `kill -0 7085` SUCCEEDS + /proc/7085/cmdline readable (isolation broken); destroy gate refuses with exact evidence (gate is RIGHT); reaper loops expired→refused→repeat every 60s, agent stuck 'running' forever; no operator exit hatch. Fix: spawn pre-checks candidate uid vs live processes; destroy gets a real bypass that keeps the user but releases the record when blocking processes predate the agent; reaper caps retries + escalates. | P0 | 3 | — | +++bugfix, ++security, ++lifecycle | deepseek-v4-flash | Breaks isolation AND lifecycle promises simultaneously on any host whose docker containers outlive their agents | GLM-5.2 |
+| DF-BUNKER-64 | TLS refusal UX: `status` exits 0 on pin-mismatch/expired/contradictory refusals (list exits 1 — scripted gates never fire); TOFU banner claims 'stored as cert_pin' when auth failed and NOTHING was stored (also hardcodes default path vs BUNKER_HOME); config-class insecure-dial refusal surfaces as 'stream error: unavailable:' (wrong class); http-vs-TLS refusal says 'internal: 400 Bad Request'. Messages themselves are excellent — exit codes and error classes are the weak edge. | P2 | 2 | — | +cli, +ux, +tls | deepseek-v4-flash | A security refusal that exits 0 is a monitoring hole | deepseek-v4-flash |
+
+Cleanup record: 3 scratch agents (fad4b89a reaped-zombie by the uid collision —
+user removed host-side with userdel after evidence capture, container unharmed;
+df0925perf + 5284392c destroyed via CLI, verified gone host-side). Scratch daemon
+stopped, ports released. No repo visibility/permission changes; no credentials
+committed; scheduler untouched (21600s law respected).
