@@ -220,9 +220,18 @@ Examples:
 			// spawn body ever carrying the secret. Failure is non-fatal: the
 			// agent exists and is usable, so we warn and continue.
 			if r.SshPrivateKey == "" {
-				keyResp, err := client.GetAgentKey(ctx, connect.NewRequest(&v1.GetAgentKeyRequest{
+				// The key fetch must authenticate the same way SpawnAgent does:
+				// building a fresh connect.Request here used to drop the
+				// Authorization header, so an auth-enforced daemon answered
+				// "unauthenticated: missing Authorization header" and the
+				// spawned agent was left without a client-local key (DF-BUNKER-59).
+				keyReq := connect.NewRequest(&v1.GetAgentKeyRequest{
 					AgentId: r.AgentId,
-				}))
+				})
+				if token != "" {
+					keyReq.Header().Set("Authorization", "Bearer "+token)
+				}
+				keyResp, err := client.GetAgentKey(ctx, keyReq)
 				if err != nil {
 					fmt.Printf("  (warn: could not fetch SSH key: %v)\n", err)
 				} else {

@@ -58,6 +58,11 @@ type mockSpawnServer struct {
 	gotKeyAgentID   string
 	keyResp         *v1.GetAgentKeyResponse
 	keyErr          error
+	// DF-BUNKER-59: the Authorization header each RPC arrived with, so the
+	// regression test can assert the CLI authenticates the GetAgentKey
+	// request the same way it authenticates SpawnAgent.
+	gotSpawnAuth string
+	gotKeyAuth   string
 }
 
 func (m *mockSpawnServer) SpawnAgent(
@@ -69,6 +74,7 @@ func (m *mockSpawnServer) SpawnAgent(
 	m.gotTTL = req.Msg.Ttl
 	m.gotImageSpec = req.Msg.GetImageSpec()
 	m.gotReturnKey = req.Msg.GetReturnSshPrivateKey()
+	m.gotSpawnAuth = req.Header().Get("Authorization")
 	if m.spawnErr != nil {
 		return nil, m.spawnErr
 	}
@@ -82,6 +88,7 @@ func (m *mockSpawnServer) GetAgentKey(
 ) (*connect.Response[v1.GetAgentKeyResponse], error) {
 	m.gotKeyRequested = true
 	m.gotKeyAgentID = req.Msg.GetAgentId()
+	m.gotKeyAuth = req.Header().Get("Authorization")
 	if m.keyErr != nil {
 		return nil, m.keyErr
 	}
@@ -924,5 +931,107 @@ func TestSpawnCommand_OptInResponseStillWritesLocalKey(t *testing.T) {
 	}
 	if !strings.Contains(output, "SSH Key:") {
 		t.Errorf("bundle missing SSH Key line, stdout:\n%s", output)
+	}
+}
+
+// ── DF-BUNKER-59: the GetAgentKey request must carry the server token ──
+
+// writeSpawnTestConfigWithToken writes a CLIConfig with a single token-carrying
+// server entry (as `bunker connect --token ...` leaves it) set as active.
+func writeSpawnTestConfigWithToken(t *testing.T, home, serverURL, token string) {
+	t.Helper()
+	t.Setenv(SessionTargetEnvVar, "default")
+	cfg := &CLIConfig{
+		Servers: map[string]ServerEntry{
+			"default": {
+				Name:        "default",
+				URL:         serverURL,
+				Token:       token,
+				ConnectedAt: "2026-09-25T00:00:00Z",
+			},
+		},
+		ActiveServer: "default",
+	}
+	if err := SaveCLIConfig(cfg); err != nil {
+		t.Fatalf("SaveCLIConfig: %v", err)
+	}
+}
+
+// TestSpawnCommand_GetAgentKeyCarriesAuthHeader is the DF-BUNKER-59
+// regression: on an auth-enforced daemon the CLI used to send SpawnAgent with
+// a Bearer token but then build a FRESH header-less connect.Request for the
+// GAP-128 GetAgentKey fetch, so the daemon rejected it
+// ("unauthenticated: missing Authorization header") and every spawned agent
+// was left without a client-local key. The GetAgentKey request must carry the
+// same Authorization header when a token is configured.
+func TestSpawnCommand_GetAgentKeyCarriesAuthHeader(t *testing.T) {
+	const testToken = "test-server-token-dfbunker59"
+
+	cases := []struct {
+		name       string
+		configured bool
+	}{
+		{name: "token_configured_bearer_sent", configured: true},
+		{name: "no_token_no_header", configured: false},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			t.Setenv("HOME", tmpDir)
+
+			mock := &mockSpawnServer{
+				mockBunkerdServer: mockBunkerdServer{
+					info: &v1.ServerInfoResponse{
+						Hostname: "bunker-mvp",
+						Version:  "v0.2.0",
+					},
+				},
+				spawnResp: &v1.SpawnAgentResponse{
+					AgentId:       "authfetch",
+					DockerHostSsh: "DOCKER_HOST=ssh://***@bunker-mvp",
+				},
+				keyResp: &v1.GetAgentKeyResponse{
+					AgentId:       "authfetch",
+					SshPrivateKey: "test-private-key-data",
+				},
+			}
+			srv := newSpawnTestServer(t, mock)
+			defer srv.Close()
+
+			if tc.configured {
+				writeSpawnTestConfigWithToken(t, tmpDir, srv.URL, testToken)
+			} else {
+				writeSpawnTestConfig(t, tmpDir, srv.URL)
+			}
+
+			cmd := NewSpawnCommand()
+			var err error
+			output := captureStdout(t, func() { err = cmd.Execute() })
+			if err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+
+			wantAuth := ""
+			if tc.configured {
+				wantAuth = "Bearer " + testToken
+			}
+			if mock.gotSpawnAuth != wantAuth {
+				t.Errorf("SpawnAgent Authorization %q, want %q", mock.gotSpawnAuth, wantAuth)
+			}
+			if mock.gotKeyAuth != wantAuth {
+				t.Errorf("GetAgentKey Authorization %q, want %q (DF-BUNKER-59)", mock.gotKeyAuth, wantAuth)
+			}
+			if !mock.gotKeyRequested {
+				t.Error("CLI did not call GetAgentKey after a key-free spawn response")
+			}
+			// The warn line must not appear: the authenticated fetch succeeds.
+			if strings.Contains(output, "could not fetch SSH key") {
+				t.Errorf("spawn warned about a key fetch failure despite a valid token, stdout:\n%s", output)
+			}
+			if _, err := os.Stat(filepath.Join(tmpDir, ".bunker", "keys", "authfetch")); err != nil {
+				t.Errorf("client-local key not written via the authenticated GetAgentKey path: %v", err)
+			}
+		})
 	}
 }
