@@ -3308,3 +3308,45 @@ tasks:
   status: complete
   created_at: '2026-09-25T08:33:15.102556+00:00'
   completed_at: '2026-09-25T09:18:03.944520+00:00'
+- id: SURF-017
+  title: Extend the SURF-011 timeout default + deadline hint to bunker run and bunker
+    env
+  criteria:
+  - go build/vet exit 0; go test ./internal/cli/... -count=1 green with new table
+    cases; run.go and env.go default --timeout to 1800 with the pass --timeout hint
+    on deadline errors; exec.go output byte-identical; no diff outside internal/cli/
+  status: complete
+  completed_at: '2026-09-25T11:53:46.595210+00:00'
+  created_at: '2026-09-25T11:27:00.592897+00:00'
+- id: DF-BUNKER-60
+  title: 'Fresh-machine green make test-short: uninstall tests must not write /etc/pam.d/sshd.bunker-tmp
+    without root'
+  criteria:
+  - go build/vet exit 0; go test ./internal/hostsetup/... ./internal/agent/... -count=1
+    -short green as non-root with no test writing outside t.TempDir(); /etc/pam.d/sshd
+    remains the production default; no diff outside internal/hostsetup/ and internal/agent/;
+    gofmt clean
+  status: complete
+  created_at: '2026-09-25T11:27:11.546176+00:00'
+  completed_at: '2026-09-25T12:58:48.344053+00:00'
+- id: GAP-149
+  title: 'image spec: pipx Tier-1 manager (pip/cargo/gem/composer already landed)'
+  criteria:
+  - go build/vet exit 0; go test ./internal/imagespec/... -count=1 green with new
+    pipx token-grammar AND golden-render cases; ManagerPipx constant + registry row
+    exist in spec.go; other four Tier-1 rows untouched; no diff outside internal/imagespec/;
+    gofmt clean
+  status: complete
+  completed_at: '2026-09-25T11:50:36.662436+00:00'
+  created_at: '2026-09-25T11:27:14.619336+00:00'
+- id: GAP-160
+  title: 'container-mode spec: settled exec-parity + exclusions/persistence reconciliation'
+  criteria:
+  - grep -n RECOMMENDED specs/container-mode.md has 0 exec-parity-context hits and
+    SS3 carries an explicit DECIDED statement with mechanism + client-invariance invariant;
+    SS5/SS2 agree on home-bind persistence naming the userdel -rf gap; git diff --stat
+    = specs/container-mode.md only; no section renumbered; GAP 154/155/161/064/065
+    cross-refs intact
+  status: complete
+  completed_at: '2026-09-25T11:50:20.208621+00:00'
+  created_at: '2026-09-25T11:27:39.290728+00:00'

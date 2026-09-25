@@ -1,0 +1,51 @@
+{
+  "scheduler_tick_id": "bunker-2026-09-25-10-37-07",
+  "created_at": "2026-09-25T06:00:00-05:00",
+  "wave_budget": 7,
+  "workers": [
+    {
+      "task_id": "SURF-017",
+      "board_line": "SURF-017 (pending copy)",
+      "worktree": "~/worktrees/bunker-SURF-017",
+      "branch": "wt/SURF-017",
+      "base_sha": "c852a14",
+      "summary": "SURF-011's 30s-default fix was scoped to exec only: bunker run (internal/cli/run.go:48,265) and bunker env (internal/cli/env.go:42,186) still default --timeout 30 with a bare deadline error. Raise to 1800s + actionable deadline hint, mirroring exec.go."
+    },
+    {
+      "task_id": "DF-BUNKER-60",
+      "board_line": "DF-BUNKER-60 (pending copy)",
+      "worktree": "~/worktrees/bunker-DF-BUNKER-60",
+      "branch": "wt/DF-BUNKER-60",
+      "base_sha": "c852a14",
+      "summary": "make test-short fails on a fresh machine: host-provision uninstall tests write /etc/pam.d/sshd.bunker-tmp without root. Locate + root-gate or inject the path so a non-root short suite exits 0; assertions unchanged, root path unchanged."
+    },
+    {
+      "task_id": "GAP-149-PIPX",
+      "board_line": "GAP-149 (last pending copy; pip/cargo/gem/composer already landed - only pipx missing)",
+      "worktree": "~/worktrees/bunker-GAP-149-PIPX",
+      "branch": "wt/GAP-149-PIPX",
+      "base_sha": "c852a14",
+      "summary": "Add the pipx ManagerDef registry row (name + pip-style TokenExtra + render func) to internal/imagespec/spec.go, mirroring the pip row; extend the imagespec test tables (token grammar, golden render)."
+    },
+    {
+      "task_id": "GAP-160",
+      "board_line": "GAP-160 (last pending copy)",
+      "worktree": "~/worktrees/bunker-GAP-160",
+      "branch": "wt/GAP-160",
+      "base_sha": "c852a14",
+      "summary": "Docs-only: settle specs/container-mode.md exec-parity (SS3 options (i)/(ii) -> DECIDED option (ii) server-side docker exec via per-agent rootless socket, client-invariance invariant, implementation owed to GAP-154/155) and reconcile SS5 exclusions with the SS2 persistence matrix."
+    }
+  ],
+  "independence_check": "No depends_on edges among the four; file sets disjoint and different middle-out bands: internal/cli (CLI surface) vs internal/hostsetup+internal/agent TEST files (engine tests) vs internal/imagespec (engine, distinct package) vs specs/ (docs). GAP-149-PIPX and DF-BUNKER-60 both live under internal/ but share zero packages or files. Foreman premise-verified each row live pre-dispatch (SURF-017 30s defaults present; GAP-149 pipx absent; GAP-160 open-decision section present; DF-BUNKER-60 row still pending).",
+  "worker_pair": "glm-5.3-flash @ xkiro (all four)",
+  "wave_manifest_note": "base c852a14 = origin/main at dispatch (local main a4827b2 one behind; base is origin/main per worktree.sh). DF-BUNKER-63 (P0, sibling dogfood finding on origin/main) deliberately EXCLUDED from this wave: same spawn/subid band as DF-BUNKER-60 + live E2E gate required - own tick after this wave.",
+  "ci_attribution": "Work commits pushed ALONE first (one push per merged branch in dispatch order), board commit separate, so CI attributes runs to feature shas.",
+  "outcomes": [
+    {"task_id": "SURF-017", "work": "74d0be9", "merged": "da4780a", "pushed": true, "tier2": "70ddd89d PASS", "board": "closed tick 541"},
+    {"task_id": "DF-BUNKER-60", "work": "c9ff0f6", "merged": "66d7206", "pushed": true, "tier2": "f62f75b0 PASS", "board": "closed tick 541; merge + gate done by recovery tick (prior instance died pre-merge); make test-short exit 0 non-root on merged tree"},
+    {"task_id": "GAP-149", "work": "0c30c1c", "merged": "64d4207", "pushed": true, "tier2": "9a0f89a8 PASS", "board": "closed tick 541"},
+    {"task_id": "GAP-160", "work": "e2a5f10", "merged": "e2a5f10", "pushed": true, "tier2": "2f98c600 PASS", "board": "closed tick 541"}
+  ],
+  "recovery_note": "Tick fired twice under id bunker-2026-09-25-10-37-07: the first instance dispatched the wave, merged+pushed 3 branches, and died before merging DF-BUNKER-60 / committing bookkeeping. The re-fired instance completed the chain (wave-recovery, not a re-execution). Sibling dogfood closeout 8348b72 was rescued from unpushed state first. CI note: the 3 work pushes actually went out as merge commits, so CI attributed runs to merge shas (12:07:28-41Z); run 36133146931 root-suite flaked red (TestConcurrency_SpawnFiveAgents destroy-gate counting the agent's own session process) -> INT-CI-041 filed.",
+  "finished_at": "2026-09-25T13:15:00-05:00"
+}
