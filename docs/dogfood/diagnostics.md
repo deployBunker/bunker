@@ -795,3 +795,63 @@ because the containment gate's convergence budget is smaller than systemd's
 actual landing latency.
 
 
+
+## 20. Dogfood run 2026-09-25d — the ops/maintenance surface (read this before running stop/start/restart, the residue tools, or the docker tunnel)
+
+**How this surface is built.** Agent lifecycle state lives in an append-only
+registry replayed on boot; RPC verbs (exec/env/info/stop/start/restart/destroy)
+travel the connect-go wire, while the SSH family (cp/deploy/ssh/mount/tunnel)
+is the CLI driving ssh/scp/sshfs from a client-local key copy saved at spawn.
+`homes`/`linger` are deliberately LOCAL-ONLY — they inspect the host they run
+on (`/home`, `/var/lib/systemd/linger`) and refuse `--server` by design; the
+operator workflow is root SSH to the host, not a remote call. That split is
+easy to misread as a missing feature; it is a security boundary.
+
+**Error 1 — spawn says "could not fetch SSH key: unauthenticated".** The
+spawn path fetches the key via GetAgentKey after GAP-128 stopped carrying key
+material in the spawn body. The fix (19892c3) attaches the Bearer header; it
+is 597 commits ahead of the v0.1.4 tag, so EVERY release-channel binary (the
+daemon AND the CLI the README installs) still fails the fetch, and the agent
+spawns keyless. Keyless does not mean broken — exec/env/docker still work (RPC
+verbs don't need the local key) — but cp/deploy/ssh/mount/tunnel are dead with
+`SSH key not found at ...`. **Right way:** check `bunker version`'s commit
+against git main before judging the SSH family; a HEAD CLI fixes it against a
+release daemon today (proven live), and the durable fix is cutting a release.
+
+**Error 2 — `docker ps` inside a fresh agent: "no such file or directory" on
+/run/bunker/<id>/docker.sock.** systemctl --user docker.service failed with
+`failed to lock /run/user/<uid>/dockerd-rootless/lock, another RootlessKit is
+running with the same state directory?`. Cause: the daemon recycled a uid
+whose previous owner (destroyed the same day) left /run/user/<uid> behind;
+RootlessKit refuses to run against a stale lock. `bunker info` shows
+`Status: running` the whole time — the agent tracker tracks the socket PATH,
+not socket liveness. **Right way to debug:** `systemctl --user status
+docker.service` INSIDE the agent (journalctl --user), check `id -u` and who
+else held that uid (`journalctl` snoopy lines are gold), and note a manual
+user-unit start succeeds once the stale dir is cleared. The fix is destroy-
+side scrubbing plus a degraded status — see DF-BUNKER-72.
+
+**Error 3 — the README quickstart's raw-URL installer 404s.** The tag does
+not carry scripts/install.sh at the raw URL. The verified working path is the
+release asset (`releases/latest/download/install.sh`, 6s cold on a bare
+Debian user, smoke check built in). The installer's PATH warning is not
+cosmetic — without `export PATH=$HOME/.local/bin:$PATH` the very next command
+fails confusingly.
+
+**Right way to measure this system.** exec round trip is 1.25s ± 0.04s warm
+(hyperfine ×10, remote agent); spawn 16s; cp 7s; stop 1.6s; start/restart
+0.4s. If a workflow feels slow, time it with hyperfine before profiling —
+every latency number this run produced was comfortably fast; the run's real
+defects were correctness (key delivery, docker liveness), not speed.
+
+**Operator residue workflow (verified).** `bunker homes` (2.5s, 581 entries →
+580 stale classified with sizes) and `bunker linger` (335 → 333 stale, and the
+tool itself tells you to `--dry-run` first) run as root on the host. They
+classify and never guess — prune removes only entries whose user is gone, and
+`homes` prints exactly that contract. Trust the help text; it matches the
+code.
+
+**Hygiene that bit nobody this run but almost did:** the shared workdir had
+in-flight sibling edits breaking a plain `go build` (destroy-probe signature
+mismatch mid-refactor). Building the HEAD CLI for live verification must go
+through `git archive HEAD | tar -x | go build`, never the dirty checkout.

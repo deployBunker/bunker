@@ -17,8 +17,11 @@ description: >-
   verified 2026-09-19 against a scratch HEAD daemon
   (docs/dogfood/2026-09-19-integration.md); isolation boundary + mount/
   scratch defects re-verified live at HEAD 93d7a53 on 2026-09-20
-  (docs/dogfood/2026-09-20-integration.md, diagnostics.md §13).
-version: 1.11.0
+  (docs/dogfood/2026-09-20-integration.md, diagnostics.md §13);
+  ops/maintenance surface + release-channel key gap + uid-recycle docker
+  failure verified 2026-09-25 against bunker-mvp at 0.1.4/509fc42
+  (docs/dogfood/2026-09-25d-ops-surface.md, diagnostics.md §20).
+version: 1.12.0
 category: software-development
 ---
 
@@ -311,3 +314,14 @@ real-use behavior:
 - **PITFALL (DF-BUNKER-67, P1): standard/hardened spawn fails on bunker-las-03 right now** — `containment landing did not converge within 5 reads: memory.swap.max = "max", want "0"`. The code allows 125ms (5×25ms, isolation.go:790) for systemd to land MemorySwapMax=0; systemd 257.13 on that box takes ~125-349ms (measured with a direct drop-in probe). Workaround: `--preset open` (no swap bar). renew has NO --preset flag, so renewing a standard-preset agent inherits this failure.
 - **PITFALL (DF-BUNKER-69, P2): release 0.1.4 (509fc42) has no `renew` subcommand** — bare `unknown command "renew"`, no upgrade hint. Renewing anything requires a HEAD-built client (`cd ~/bunker && make build && ./bunker renew …`).
 - **PITFALL (DF-BUNKER-70, P2): on a daemon older than the drift RPC the report degrades to one warn line** (`drift pre-flight unavailable: unimplemented: 404 Not Found`) and the renew CONTINUES — the safety scan silently disappears mid-operation; read the warn, don't let a script swallow it.
+
+## Ops/maintenance surface (verified live 2026-09-25d against bunker-mvp @ 0.1.4/509fc42; docs/dogfood/2026-09-25d-ops-surface.md, diagnostics.md §20)
+
+- **Lifecycle semantics (HEAD CLI):** `stop` (1.6s) pauses but KEEPS user/home/ports/files; `start` (0.4s) resumes; `restart` (0.4s) RESETS TTL to the full original (a 30m agent restarts to +6h default window — check `info` after). Files in $HOME and /tmp survive all three. `destroy` removes the user AND the client-side `~/.bunker/keys/<id>`.
+- **Release channel still ships the spawn-SSH-key bug (DF-BUNKER-71, P1):** the DF-BUNKER-59 fix (19892c3) is 597 commits ahead of the v0.1.4 tag. Release CLIs/daemons print `(warn: could not fetch SSH key: unauthenticated: missing Authorization header)` at spawn and never write `~/.bunker/keys/<id>`; the agent then "works" via exec/env/docker but cp/deploy/ssh/mount/tunnel ALL hard-fail with `SSH key not found at ...`. Diagnose by `bunker version` commit vs git main; HEAD CLI against a release daemon is fine (proven live). The durable fix is a release cut, not code.
+- **No recovery command for a keyless agent (DF-BUNKER-73, P2):** GetAgentKey exists server-side but no CLI verb surfaces it — losing `~/.bunker/keys/<id>` means respawn. Until `key fetch` (or equivalent) exists, only respawn.
+- **A "running" agent can have dead docker (DF-BUNKER-72, P1):** uid recycling can leave a stale `/run/user/<uid>/dockerd-rootless` lock; rootless dockerd then fails with `failed to lock ... another RootlessKit is running with the same state directory?` while `bunker info` says running. ALWAYS smoke docker on a fresh agent before real work: `bunker exec <id> -- docker ps` (or `DOCKER_HOST=unix:///run/user/<uid>/docker.sock docker ps` — the exec bridge sets the /run/bunker path, which only exists when docker came up). Fix = destroy-side scrub + degraded status; today, respawn onto a fresh uid is the workaround.
+- **`homes` / `linger` are LOCAL-ONLY on purpose:** they refuse `--server`; run them as root ON the host (`bunker homes` → classified stale/kept with sizes; `bunker linger` → live/stale, says `--dry-run` first). Verified read-only: 581/335 entries classified in ~2.5s. Never expect a remote form.
+- **`bunker agent-tools <id>`** prints exactly which remote-editing deps are missing (required vs optional) — run it before using toolsd/rg-dependent verbs.
+- **Install (verified on a bare agent, 6s cold):** the release-asset installer works — `curl -fsSL -o install.sh https://github.com/deployBunker/bunker/releases/latest/download/install.sh && sh install.sh` — but the README raw-URL variant 404s (DF-BUNKER-74) and you must `export PATH=$HOME/.local/bin:$PATH` yourself.
+- **Building a HEAD CLI for live verification:** never `go build` the shared checkout (sibling edits break it); `git archive HEAD | tar -x -C /tmp/src && (cd /tmp/src && go build -o /tmp/bunker-head ./cmd/bunker)`.

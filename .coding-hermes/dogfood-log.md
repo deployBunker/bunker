@@ -87,6 +87,7 @@
 2026-09-20 | DOES-NOT-DELIVER | 40s t2fs (spawn->exec) | friction 14 | 6 findings (DF-BUNKER-38..43) | install_seconds=48 spawn/49 make-build | bunker=las-03 agent=df1017i | smoke=ok
 
 2026-09-25c | PROMISING-BUT-ROUGH | stable identity + drift report real; renew kills client SSH key, gate unsatisfiable agent-side / absent on deployed daemon, standard re-spawn fails containment gate | 3 findings (DF-BUNKER-65..70) | install=battery launched (dfda436e, las-03) | bunker=las-03 agents=df-renew-0925+dfda436e | smoke=see QA lane
+2026-09-25d | PROMISING-BUT-ROUGH | ops/maintenance surface (stop/start/restart, homes/linger, agent-tools, docker tunnel) + install leg on cube-las-00 (las-03 down) | DF-BUNKER-71 P1 release binaries still lose the spawn SSH key (DF-59 fix 597 commits ahead of tag; SSH family dead on release agents) · DF-BUNKER-72 P1 uid-recycle RootlessKit stale lock kills rootless docker on an agent reporting 'running' · DF-BUNKER-73 P2 no key-recovery verb · DF-BUNKER-74 P2 README raw-URL installer 404s | exec RT 1.25s±0.04 (hyperfine ×10); spawn 16s; install_seconds=6; smoke=ok
 
 ## 2026-09-20 run detail
 
@@ -207,3 +208,34 @@
   ports released after evidence capture. ~/.bunker/config.yaml md5 8c1fdfd7…
   unchanged (all scratch work in /tmp configs). No repo visibility/permission
   changes; no credentials committed; scheduler untouched.
+
+## 2026-09-25d run detail (21st run — ops/maintenance surface)
+
+- **Angle:** everything AFTER the first hour of an agent's life, which runs 1-20 never drove as one workflow:
+  stop/start/restart lifecycle, host residue tools (homes/linger), agent-tools, the docker-tunnel path on a
+  release daemon, and the ephemeral install leg.
+- **Promise statement:** "A user can spin up isolated agents from one CLI and operate them over their whole
+  life — and keep the host clean with the residue tools."
+- **What held (live, bunker-mvp 0.1.4):** exec/env/docker RPC verbs on every agent incl. keyless; HEAD-CLI
+  lifecycle: cp byte-verified (7.0s), ssh verb, stop→start→restart with files surviving and restart resetting
+  TTL; destroy ×5 clean (local keys removed; servers back to pre-run agent counts); homes/linger classify
+  honestly and refuse --server by design; agent-tools dependency report accurate; install leg (cube-las-00 —
+  las-03 DOWN, ssh 100.69.3.13 timed out): release-asset installer on a bare agent → both binaries + smoke OK
+  in 6s.
+- **What fell apart:** (1) DF-BUNKER-71 P1 — release-channel spawn never delivers the client SSH key (DF-59 fix
+  19892c3 is 597 commits past the v0.1.4 tag): warn at spawn, keyless agent, cp/ssh/mount/tunnel all dead while
+  the agent looks fine. Proven both directions against the same daemon (release CLI warn+keyless; HEAD CLI key
+  delivered, SSH family works). (2) DF-BUNKER-72 P1 — fresh agent dfops0925c: rootless dockerd failed (stale
+  RootlessKit lock, uid 1007 recycled same-day from conctest-3-91761), agent 'running' throughout, found via the
+  documented tunnel workflow. (3) DF-BUNKER-73 P2 — no recovery verb for keyless agents (GetAgentKey exists, no
+  CLI surface). (4) DF-BUNKER-74 P2 — README raw-URL installer 404s; PATH export undocumented.
+- **Friction count:** 4 findings, 1 dead host (las-03), 1 dirty-checkout build trap (worked around via
+  git archive; lesson recorded in the usage skill).
+- **Perf (Step 2b):** exec round trip 1.25s ± 0.04s (hyperfine, 10 runs, warm) — comfortably fast; spawn 16s;
+  cp 7s; stop 1.6s; start/restart 0.4s; install 6s cold; homes scan 2.5s/581 entries. No PERF row filed:
+  nothing was slow enough for a user to notice; the run's pain was correctness.
+- **Artifacts:** docs/dogfood/2026-09-25d-ops-surface.md, diagnostics.md §20,
+  skills/bunker-usage/SKILL.md → v1.12.0, board rows DF-BUNKER-71..74 (commit 9350506).
+- **Cleanup:** all 5 agents destroyed + verified via list; tunnel process killed; scratch build tree in /tmp
+  only. No repo visibility/permission changes; no credentials minted or committed.
+- **Verdict:** 🟡 PROMISING-BUT-ROUGH — HEAD-grade operator experience, release-channel delivery gap.
