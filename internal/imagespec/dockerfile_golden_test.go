@@ -58,6 +58,14 @@ func TestDockerfile_Golden(t *testing.T) {
 			want: "FROM docker.io/library/ubuntu:24.04\nRUN pip install --no-cache-dir 'requests>=2.31,<3' 'flask[async]>=3.0'\n",
 		},
 		{
+			// pipx installs PyPI applications into isolated venvs; the CLI
+			// spelling is `pipx install pkg` with pip requirement syntax on
+			// the token, so the line follows renderPip's shape.
+			name: "pipx applications with version specifiers",
+			spec: &Spec{Base: DefaultBaseImage, Packages: []PackageAdd{{Manager: ManagerPipx, Packages: []string{"black>=24.0,<25", "ruff~=0.6", "poetry[all]"}}}},
+			want: "FROM docker.io/library/ubuntu:24.04\nRUN pipx install 'black>=24.0,<25' 'ruff~=0.6' 'poetry[all]'\n",
+		},
+		{
 			name: "cargo requirements",
 			spec: &Spec{Base: DefaultBaseImage, Packages: []PackageAdd{{Manager: ManagerCargo, Packages: []string{"ripgrep@^14.1", "cargo-edit@~0.12"}}}},
 			want: "FROM docker.io/library/ubuntu:24.04\nRUN cargo install 'ripgrep@^14.1' 'cargo-edit@~0.12'\n",
@@ -82,6 +90,7 @@ func TestDockerfile_Golden(t *testing.T) {
 				{Manager: ManagerGo, Packages: []string{"golang.org/x/tools/gopls@v0.17.0"}},
 				{Manager: ManagerNPM, Packages: []string{"typescript@5.6.3"}},
 				{Manager: ManagerPip, Packages: []string{"requests>=2.31,<3"}},
+				{Manager: ManagerPipx, Packages: []string{"black>=24.0,<25"}},
 				{Manager: ManagerCargo, Packages: []string{"ripgrep@^14.1"}},
 				{Manager: ManagerGem, Packages: []string{"rake@~>13.0"}},
 				{Manager: ManagerComposer, Packages: []string{"symfony/console:^7.0"}},
@@ -91,6 +100,7 @@ func TestDockerfile_Golden(t *testing.T) {
 				"RUN go install 'golang.org/x/tools/gopls@v0.17.0'\n" +
 				"RUN npm install -g 'typescript@5.6.3'\n" +
 				"RUN pip install --no-cache-dir 'requests>=2.31,<3'\n" +
+				"RUN pipx install 'black>=24.0,<25'\n" +
 				"RUN cargo install 'ripgrep@^14.1'\n" +
 				"RUN gem install --no-document -v '~>13.0' 'rake'\n" +
 				"RUN composer global require --no-interaction 'symfony/console:^7.0'\n",

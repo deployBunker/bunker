@@ -82,6 +82,7 @@ const (
 	ManagerGo       PackageManager = "go"
 	ManagerNPM      PackageManager = "npm"
 	ManagerPip      PackageManager = "pip"
+	ManagerPipx     PackageManager = "pipx"
 	ManagerCargo    PackageManager = "cargo"
 	ManagerGem      PackageManager = "gem"
 	ManagerComposer PackageManager = "composer"
@@ -247,6 +248,15 @@ var managerDefs = []ManagerDef{
 		Render:     renderPip,
 	},
 	{
+		// pipx installs PyPI applications into isolated venvs and inherits
+		// pip's requirement grammar for them (PEP 440 specifiers,
+		// comma-separated AND clauses, [extras] groups), so it declares the
+		// same TokenExtra as pip; `*` stays refused for the same reason.
+		Name:       ManagerPipx,
+		TokenExtra: ",<>[]!~",
+		Render:     renderPipx,
+	},
+	{
 		// cargo's version requirement grammar: comparison operators plus
 		// the caret/tilde shorthands, comma-separated. Used as the real
 		// CLI form `cargo install crate@^1.2`.
@@ -320,7 +330,8 @@ func register(d *ManagerDef) {
 //     whitespace, ; & | $ ` \ ' " or a newline.
 //  2. The shared class and the row's TokenExtra decide the ordinary
 //     characters. `<` and `>` are NOT in the shared class: they are admitted
-//     only by a row that declares them (pip, cargo, gem, composer), because
+//     only by a row that declares them (pip, pipx, cargo, gem, composer),
+//     because
 //     apt/go/npm's accepted set is a frozen contract (GAP-148 criterion 6)
 //     and neither manager's version grammar uses a comparator.
 //  3. A `<` or `>` that IS declared must carry a comparator shape: it opens
@@ -413,6 +424,19 @@ func renderNPM(b *strings.Builder, pkgs []string) {
 
 func renderPip(b *strings.Builder, pkgs []string) {
 	b.WriteString("RUN pip install --no-cache-dir")
+	for _, p := range pkgs {
+		b.WriteString(" ")
+		writeQuoted(b, p)
+	}
+	b.WriteString("\n")
+}
+
+// renderPipx mirrors renderPip: pipx's install positional takes the same
+// PEP 440 requirement specifiers pip does (`pipx install 'black>=24.0,<25'`).
+// Every token is single-quoted, so the version-grammar characters are inert
+// to the shell that parses the RUN line.
+func renderPipx(b *strings.Builder, pkgs []string) {
+	b.WriteString("RUN pipx install")
 	for _, p := range pkgs {
 		b.WriteString(" ")
 		writeQuoted(b, p)

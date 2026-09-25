@@ -300,6 +300,7 @@ func TestTokenGrammar_ExtrasAreOnlyVersionGrammarCharacters(t *testing.T) {
 		ManagerGo:       "",
 		ManagerNPM:      "",
 		ManagerPip:      ",<>[]!~",
+		ManagerPipx:     ",<>[]!~",
 		ManagerCargo:    ",<>^~",
 		ManagerGem:      ",<>~!",
 		ManagerComposer: ",<>^~!",
@@ -331,10 +332,13 @@ func TestTokenGrammar_ExtrasAreOnlyVersionGrammarCharacters(t *testing.T) {
 // its entry here — the test fails if a row has none — so new syntax can never
 // ship untested.
 var realVersionSyntax = map[PackageManager][]string{
-	ManagerAPT:      {"jq", "curl=8.5.0-2ubuntu10", "libssl3=3.0.13-0ubuntu3"},
-	ManagerGo:       {"golang.org/x/tools/gopls@v0.17.0", "honnef.co/go/tools/cmd/staticcheck@latest"},
-	ManagerNPM:      {"typescript@5.6.3", "@types/node@20.14.0", "npm"},
-	ManagerPip:      {"requests>=2.31,<3", "flask[async]", "requests[foo]>=2.31,<3", "tox~=4.0", "django!=5.0"},
+	ManagerAPT: {"jq", "curl=8.5.0-2ubuntu10", "libssl3=3.0.13-0ubuntu3"},
+	ManagerGo:  {"golang.org/x/tools/gopls@v0.17.0", "honnef.co/go/tools/cmd/staticcheck@latest"},
+	ManagerNPM: {"typescript@5.6.3", "@types/node@20.14.0", "npm"},
+	ManagerPip: {"requests>=2.31,<3", "flask[async]", "requests[foo]>=2.31,<3", "tox~=4.0", "django!=5.0"},
+	// pipx installs PyPI applications into isolated venvs and inherits pip's
+	// requirement grammar for them (PEP 440 specifiers, comma AND, [extras]).
+	ManagerPipx:     {"black>=24.0,<25", "ruff~=0.6", "poetry[all]", "pipdeptree==2.23.1", "httpie!=3.2.0"},
 	ManagerCargo:    {"ripgrep@^14.1", "cargo-edit@~0.12", "hyperfine@>=1.18,<2", "bat"},
 	ManagerGem:      {"rake@~>13.0", "rails@>=7,<8", "rubocop@!=1.5.0", "puma"},
 	ManagerComposer: {"symfony/console:^7.0", "phpunit/phpunit:~10.5", "monolog/monolog:>=3.0,<4.0", "laravel/pint"},
@@ -393,6 +397,10 @@ func TestTokenGrammar_Reject_UnsupportedSyntaxPerManager(t *testing.T) {
 		{ManagerNPM, "jq;id", "chaining"},
 		{ManagerPip, "symfony/console:^7.0", "composer constraint"},
 		{ManagerPip, "jq*", "pip wildcards stay refused (glob shape)"},
+		// pipx inherits pip's grammar exactly: the same foreign syntax and
+		// the same wildcard refusal apply.
+		{ManagerPipx, "symfony/console:^7.0", "composer constraint"},
+		{ManagerPipx, "jq*", "pipx wildcards stay refused (glob shape)"},
 		{ManagerCargo, "requests[foo]", "extras belong to pip"},
 		{ManagerCargo, "ripgrep@*", "cargo wildcard stays refused (glob shape)"},
 		{ManagerGem, "jq{curl,sh}", "brace expansion"},

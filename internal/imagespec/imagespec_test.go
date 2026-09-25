@@ -50,6 +50,14 @@ func TestParse_Accepts(t *testing.T) {
 			},
 		},
 		{
+			name:  "pipx install pinned applications",
+			input: `{"packages": [{"manager": "pipx", "packages": ["black>=24.0,<25", "ruff~=0.6"]}]}`,
+			want: Spec{
+				Base:     DefaultBaseImage,
+				Packages: []PackageAdd{{Manager: ManagerPipx, Packages: []string{"black>=24.0,<25", "ruff~=0.6"}}},
+			},
+		},
+		{
 			name:  "one directive per manager",
 			input: `{"packages": [{"manager": "apt", "packages": ["jq"]}, {"manager": "go", "packages": ["golang.org/x/tools/gopls@v0.17.0"]}, {"manager": "npm", "packages": ["typescript"]}]}`,
 			want: Spec{
