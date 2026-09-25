@@ -361,3 +361,21 @@ daemons on the control host never spawned agents (uid-1001 collision
 precondition avoided); remote scratch daemon (las-03, /root/df-renew-scratch)
 to be stopped after evidence capture. No repo visibility/permission changes; no
 credentials committed; scheduler untouched.
+
+## Dogfood Findings (2026-09-25d — run 21, ops/maintenance surface)
+
+Angle: stop/start/restart lifecycle, homes/linger residue tools, agent-tools,
+the docker-tunnel workflow, and the ephemeral install leg (cube-las-00 —
+las-bunker-03 DOWN: ssh connect timeout to 100.69.3.13; host substitution
+recorded per the no-silent-skip rule). Full report:
+`docs/dogfood/2026-09-25d-ops-surface.md`; diagnostics §20; skill v1.12.0.
+
+| ID | Task | Pri | Cpx | Deps | Tags | Reasoning |
+|----|------|-----|-----|------|------|-----------|
+| DF-BUNKER-71 | v0.1.4 release binaries still lose the client-local SSH key at spawn: DF-BUNKER-59 fix (19892c3) is 597 commits ahead of the tag; live bunker-mvp daemon AND any release CLI print 'could not fetch SSH key: unauthenticated' and the agent spawns keyless — cp/deploy/ssh/mount/tunnel all hard-fail while exec/env/docker keep working. Proven both directions against the same daemon (release CLI: warn + no key; HEAD CLI built from git archive 2118511: key delivered, SSH family functional). | P1 | 2 | — | +cli, +spawn, +release, +ssh-key | Cut a tagged release carrying 19892c3 (and main); add a spawn-warn hint naming the version-skew cause |
+| DF-BUNKER-72 | rootless dockerd fails to start on a fresh agent when the daemon recycles a uid whose /run/user/<uid> survived a same-day destroy: '[rootlesskit:parent] error: failed to lock /run/user/1007/dockerd-rootless/lock, another RootlessKit is running with the same state directory?' (uid 1007 previously conctest-3-91761, snoopy log 04:24:13). Agent reports 'running' throughout — docker liveness is unmonitored. Manual user-unit start succeeds once stale state is gone; next fresh-uid spawn clean. | P1 | 3 | — | +spawn, +docker, +rootlesskit, +uid-recycle | Destroy-side scrub of /run/user/<uid> rootless state (or refuse uid reuse while it exists); surface docker.service liveness in info/status as degraded |
+| DF-BUNKER-73 | No CLI recovery path for a keyless agent: GetAgentKey exists (service.go:575, built exactly for GAP-128 client-side fetch) but no verb surfaces it; cp/ssh error text says 'spawn the agent first' for an already-running agent. A lost ~/.bunker/keys/<id> currently means respawn. | P2 | 2 | — | +cli, +ssh-key, +recovery | `bunker key fetch --agent <id>` writing ~/.bunker/keys/<id>, or offer the fetch in the cp/ssh/mount error message |
+| DF-BUNKER-74 | README install snippet raw-URL 404s (raw.githubusercontent.com/.../v0.1.4/scripts/install.sh); the verified working path is the release-asset installer (6s cold on a bare agent, smoke built in) and the quickstart omits the PATH export the installer warns about. | P2 | 1 | — | +docs, +install | Fix the raw URL or ship scripts/install.sh at the tag; add `export PATH=$HOME/.local/bin:$PATH` to the quickstart |
+
+Perf: exec round trip 1.25s±0.04s (hyperfine ×10, warm) — nothing user-noticeable;
+no PERF row filed. Install: INSTALL_SECONDS=6, smoke PASS (release-asset installer).
