@@ -51,6 +51,8 @@ set -euo pipefail
 #                      production user sweep) instead of standalone take-over
 #   BUNKER_STRICT_BIN  =1 makes a certification MISMATCH fatal before any
 #                      host mutation
+#   BUNKER_CONNECT_ATTEMPTS  section-2 connect attempts      (default 6)
+#   BUNKER_CONNECT_WAIT      seconds between connect retries (default 5)
 #   BUNKER_E2E_TARGET  name this battery registers its server under and binds
 #                      as its session-scoped target (default e2e-local)
 #
@@ -466,6 +468,52 @@ run_capture() {
 # All PURE or read-only: each one is exercised by --self-test with fixtures, so
 # the section-12 verdict and the daemon gate can be proven without root, a
 # daemon, or a nested suite.
+
+# connect_with_retry — section-2 connect with a bounded retry (INT-CI-040).
+# The original revision fired a single `bcli connect`: on CI run
+# 36097795108 (bab0721) the battery daemon came up while bunkerd's 30s
+# startup reconcile was force-destroying 2 stale agents (one with an
+# out-of-pool port reservation, 10500-10599), the single connect raced that
+# window and failed, and every section downstream failed with it. The retry
+# must NOT mask a genuinely broken daemon: on each failed attempt it
+# re-runs the INT-CI-028 REST probe (curl against http://127.0.0.1:$REST_PORT/)
+# and, in the script's own-daemon mode (BUNKERD_PID set), a dead daemon
+# (curl failing AND kill -0 on BUNKERD_PID failing) fails fast with the
+# last connect output and a pointer to BUNKERD_BATTERY_LOG instead of
+# burning the remaining attempts. Everything goes through run_capture so
+# the ERR-trap handoff (trap - ERR around the expected failure) stays on
+# the one path it already handles.
+#
+# Outputs: RUN_CAPTURE_OUT / RUN_CAPTURE_EXIT from the FINAL attempt
+# (success or last failure); the section-2 assert block below is fed by
+# the retried output exactly as it was by the single-shot one.
+BUNKER_CONNECT_ATTEMPTS="${BUNKER_CONNECT_ATTEMPTS:-6}"
+BUNKER_CONNECT_WAIT="${BUNKER_CONNECT_WAIT:-5}"
+connect_with_retry() {
+    local attempt=1
+    while [ "$attempt" -le "$BUNKER_CONNECT_ATTEMPTS" ]; do
+        run_capture "bunker connect (attempt ${attempt}/${BUNKER_CONNECT_ATTEMPTS})" \
+            bcli connect "$BUNKER_DAEMON_URL" --name "$BATTERY_TARGET_NAME" --token "$BUNKER_TOKEN"
+        if [ "$RUN_CAPTURE_EXIT" -eq 0 ] && echo "$RUN_CAPTURE_OUT" | grep -q "Connected\|Server registered"; then
+            return 0
+        fi
+        if [ "$attempt" -lt "$BUNKER_CONNECT_ATTEMPTS" ]; then
+            # Cheap liveness signal before spending BUNKER_CONNECT_WAIT more
+            # seconds: the same curl probe INT-CI-028 uses for readiness.
+            if ! curl -s -o /dev/null --max-time 5 "http://127.0.0.1:${REST_PORT}/"; then
+                if [ -n "$BUNKERD_PID" ] && ! kill -0 "$BUNKERD_PID" 2>/dev/null; then
+                    echo "  connect_with_retry: battery daemon (PID $BUNKERD_PID) is gone and REST :$REST_PORT is dead — not retrying (see $BUNKERD_BATTERY_LOG)" >&2
+                    echo "  last connect output: $RUN_CAPTURE_OUT" >&2
+                    return 1
+                fi
+            fi
+            sleep "$BUNKER_CONNECT_WAIT"
+        fi
+        attempt=$((attempt + 1))
+    done
+    echo "  connect_with_retry: connect still failing after ${BUNKER_CONNECT_ATTEMPTS} attempts (last output: $RUN_CAPTURE_OUT)" >&2
+    return 1
+}
 
 # nested_suite_ports — "<grpc> <rest>" handed to the nested regression suite.
 # The SAME isolated, non-production pair in BOTH modes: standalone used to let
@@ -1629,7 +1677,14 @@ echo "=== 2. Connect ==="
 # name the run must still start from an unbound state, so a later "the
 # binding survived the connect" check cannot pass on an inherited value.
 unset BUNKER_SESSION_TARGET
-run_capture "bunker connect" bcli connect "$BUNKER_DAEMON_URL" --name "$BATTERY_TARGET_NAME" --token "$BUNKER_TOKEN"
+# INT-CI-040: the connect retries across a bounded window instead of
+# gambling on one shot — on run 36097795108 the daemon was still force-
+# destroying 2 stale agents from its 30s startup reconcile (one with an
+# out-of-pool port reservation 10500-10599) when the single connect fired.
+# BUNKER_CONNECT_ATTEMPTS (default 6) attempts, BUNKER_CONNECT_WAIT
+# (default 5) seconds apart; the last output is surfaced on final failure
+# (CONNECT_OUT below is fed by the FINAL attempt either way).
+connect_with_retry
 CONNECT_OUT="$RUN_CAPTURE_OUT"
 if echo "$CONNECT_OUT" | grep -q "Connected\|Server registered"; then
     assert "connect to bunkerd ($BUNKER_DAEMON_URL, token from $BUNKER_TOKEN_SOURCE, registered as \"$BATTERY_TARGET_NAME\")"
