@@ -1039,6 +1039,43 @@ func (o Options) RemoveTmpNamespace(ctx context.Context) (*Report, error) {
 	o = o.WithDefaults()
 	rep := &Report{}
 
+	// DF-BUNKER-60: the uninstall steps below are privileged writes (the
+	// atomic .bunker-tmp rewrite lands in the sshd config's directory, which
+	// only root can write on a real host). An UNPRIVILEGED caller pointed at
+	// the REAL host layout must therefore fail fast here instead of halfway
+	// through a doomed write — exactly what made `make test-short` red on
+	// every fresh machine where the boundary is provisioned: a test process
+	// without root attempted to rewrite /etc/pam.d/sshd and died with
+	// permission denied. A sandbox Root means every path was redirected into
+	// a test tree (the library's own test shape, where removal is the thing
+	// being proven), so the gate stays quiet there, and a root caller keeps
+	// today's behavior byte for byte. When nothing Bunker manages is
+	// present, the gate is quiet too and the run falls through to the normal
+	// sequence of reported absences.
+	if !privileged() && o.Root == "" {
+		removed := false
+		if body, err := os.ReadFile(o.SSHDConfigPath); err == nil && hasManagedBlock(string(body)) {
+			rep.Add("skip", o.SSHDConfigPath,
+				"Bunker-managed PAM block present but removing it requires root — run `bunker host-provision --uninstall --apply` as root", false)
+			removed = true
+		}
+		if _, err := os.Stat(o.NamespaceConfPath()); err == nil {
+			rep.Add("skip", o.NamespaceConfPath(),
+				"Bunker-managed namespace drop-in present but removing it requires root — run `bunker host-provision --uninstall --apply` as root", false)
+			removed = true
+		}
+		for _, p := range []string{o.PamHelperManifestPath(), o.PamHelperPath()} {
+			if _, err := os.Stat(p); err == nil {
+				rep.Add("skip", p,
+					"Bunker-managed precondition helper file present but removing it requires root — run `bunker host-provision --uninstall --apply` as root", false)
+				removed = true
+			}
+		}
+		if removed {
+			return rep, nil
+		}
+	}
+
 	// 1. The PAM block, before anything it depends on.
 	body, err := os.ReadFile(o.SSHDConfigPath)
 	if err != nil {
