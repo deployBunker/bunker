@@ -23,12 +23,11 @@ import (
 // still wins.
 const execDefaultTimeoutSeconds uint32 = 1800
 
-// decorateExecDeadline appends an actionable hint to deadline-class exec
-// failures without changing the error's semantics: the command still
-// fails non-zero, the text just names the lever (--timeout) and the
-// budget that elapsed. Recognizes both the connect deadline code and a
-// bare context.DeadlineExceeded.
-func decorateExecDeadline(err error, timeout uint32) error {
+// decorateDeadline is the verb-generic deadline decoration: same contract
+// as decorateExecDeadline, but the message names the verb the user
+// invoked (`bunker run`, `bunker env`, ...) so the hint reads right on
+// every command that runs against a client-side deadline (SURF-017).
+func decorateDeadline(verb string, err error, timeout uint32) error {
 	if err == nil {
 		return nil
 	}
@@ -39,7 +38,16 @@ func decorateExecDeadline(err error, timeout uint32) error {
 	if !deadline {
 		return err
 	}
-	return fmt.Errorf("%w\nexec deadline exceeded after %ds - pass --timeout <seconds> to extend", err, timeout)
+	return fmt.Errorf("%w\n%s deadline exceeded after %ds - pass --timeout <seconds> to extend", err, verb, timeout)
+}
+
+// decorateExecDeadline appends an actionable hint to deadline-class exec
+// failures without changing the error's semantics: the command still
+// fails non-zero, the text just names the lever (--timeout) and the
+// budget that elapsed. Recognizes both the connect deadline code and a
+// bare context.DeadlineExceeded.
+func decorateExecDeadline(err error, timeout uint32) error {
+	return decorateDeadline("exec", err, timeout)
 }
 
 // NewExecCommand returns the `bunker exec` cobra command.

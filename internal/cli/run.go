@@ -13,6 +13,13 @@ import (
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 )
 
+// runDefaultTimeoutSeconds is the default --timeout budget for
+// `bunker run`. SURF-017: the old 30s default was the same remote-build
+// killer SURF-011 already fixed on `bunker exec` (a cold `go build ./...`
+// measures ~173s on a remote box), one verb over. 1800s matches exec and
+// covers the remote build/test round; an explicit --timeout still wins.
+const runDefaultTimeoutSeconds uint32 = 1800
+
 // runArgs holds the parsed arguments for a `bunker run` invocation.
 type runArgs struct {
 	agentID     string
@@ -45,7 +52,7 @@ func parseRunArgs(args []string) (runArgs, error) {
 
 	var (
 		serverName string
-		timeout    uint32 = 30
+		timeout    uint32 = runDefaultTimeoutSeconds
 		detach     bool
 		name       string
 		envVars    []string
@@ -216,7 +223,7 @@ Examples:
 				}
 				resp, err := client.RunAgent(ctx, req)
 				if err != nil {
-					return fmt.Errorf("run agent: %w", err)
+					return decorateDeadline("run", fmt.Errorf("run agent: %w", err), parsed.timeout)
 				}
 				fmt.Printf("Run ID: %s\n", resp.Msg.GetRunId())
 				fmt.Printf("Unit: %s\n", resp.Msg.GetUnitName())
@@ -235,7 +242,7 @@ Examples:
 			}
 			stream, err := client.ExecAgent(ctx, req)
 			if err != nil {
-				return fmt.Errorf("exec agent: %w", err)
+				return decorateDeadline("run", fmt.Errorf("exec agent: %w", err), parsed.timeout)
 			}
 			var exitCode int32
 			for stream.Receive() {
@@ -251,7 +258,7 @@ Examples:
 				}
 			}
 			if err := stream.Err(); err != nil {
-				return fmt.Errorf("stream error: %w", err)
+				return decorateDeadline("run", fmt.Errorf("stream error: %w", err), parsed.timeout)
 			}
 			if exitCode != 0 {
 				return &ExitError{Code: int(exitCode)}
@@ -262,7 +269,7 @@ Examples:
 	}
 
 	cmd.Flags().String("server", "", "Server alias (default: active server)")
-	cmd.Flags().Uint32("timeout", 30, "Command timeout in seconds")
+	cmd.Flags().Uint32("timeout", runDefaultTimeoutSeconds, "Command timeout in seconds")
 	cmd.Flags().Bool("detach", false, "Run as a persistent systemd transient unit")
 	cmd.Flags().String("name", "", "Optional name suffix for the run unit")
 	cmd.Flags().StringArray("env", nil, "Environment variable in KEY=VALUE form (repeatable)")
