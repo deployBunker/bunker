@@ -519,11 +519,25 @@ type orphanUIDSummaryer interface {
 // ListAgents returns all agents.
 func (s *bunkerdService) ListAgents(ctx context.Context, req *connect.Request[v1.ListAgentsRequest]) (*connect.Response[v1.ListAgentsResponse], error) {
 	records := s.tracker.List()
+	// PERF-001: serve per-agent disk usage from the TTL snapshot cache and
+	// prune entries whose agent vanished from the tracker, so this handler
+	// never walks a home more than once per TTL window and the cache cannot
+	// grow without bound. Best-effort semantics unchanged (0 on error).
+	liveIDs := make(map[string]struct{}, len(records))
+	for _, rec := range records {
+		liveIDs[rec.AgentID] = struct{}{}
+	}
+	agentDiskUsageCache.pruneLive(liveIDs)
 	summaries := make([]*v1.AgentSummary, 0, len(records))
 	for _, rec := range records {
-		// Compute per-agent disk usage (best-effort, async-safe).
-		rec.DiskUsedBytes = agentDiskUsage(rec.AgentID)
-		summaries = append(summaries, rec.ToAgentSummary())
+		summary := rec.ToAgentSummary()
+		// PERF-001: set the field on the per-response summary, NOT on the
+		// shared *AgentRecord — Tracker.List hands out record pointers, so
+		// concurrent ListAgents calls writing rec.DiskUsedBytes were a data
+		// race (proven by go test -race). The wire value is identical and
+		// nothing outside this response reads the record's field.
+		summary.DiskUsedBytes = agentDiskUsageCache.usageFor(rec.AgentID)
+		summaries = append(summaries, summary)
 	}
 	// DF-BUNKER-34: the orphan-uid check rides every summary. An agent whose
 	// user record is gone while its uid still owns live processes is the one
@@ -660,8 +674,9 @@ func (s *bunkerdService) AgentMetrics(ctx context.Context, req *connect.Request[
 		}
 	}
 
-	// Read per-agent disk usage (best-effort)
-	resp.DiskUsedBytes = agentDiskUsage(rec.AgentID)
+	// Read per-agent disk usage (best-effort). PERF-001: served from the TTL
+	// snapshot cache — a request inside the TTL window never walks the home.
+	resp.DiskUsedBytes = agentDiskUsageCache.usageFor(rec.AgentID)
 
 	return connect.NewResponse(resp), nil
 }
