@@ -640,3 +640,47 @@ its unknown subcommands) print help and exit 0 — never script against a bare
 
 Evidence: docs/dogfood/2026-09-24-agenttools-lifecycle.md (live command/time
 table), board rows DF-BUNKER-57/58, .coding-hermes/dogfood-log.md.
+
+## 17. Dogfood run 2026-09-25 — the raw-REST integrator surface (read this before writing a non-CLI client)
+
+**How to talk to bunkerd without the CLI.** Unary RPCs: `POST
+/bunker.v1.Bunkerd/<Method>` with `Content-Type: application/json`, proto
+snake_case field names IN, protojson camelCase OUT, int64 fields as JSON
+STRINGS (`uptimeSeconds:"71420"`), 32-bit/floats as numbers, zero-valued
+scalars omitted. Errors are `{"code","message"}` envelopes with the connect
+code in string form; an unknown path is a plain-text router 404 (not JSON);
+a GET is 405 before auth runs. The only streaming RPC is ExecAgent: it needs
+`application/connect+json` with `[flag:1][len:4 BE][protojson]` envelopes in
+AND out (responses arrive HTTP-chunked, so de-chunk before walking envelopes),
+stdout/stderr base64, exit code absent when 0, 0x02 trailer ends the stream,
+and RPC errors arrive INSIDE the 200 — checking the HTTP status alone lies.
+Both recipes were validated live against bunker-mvp and left as runnable
+scripts in docs/dogfood/2026-09-25-rest-probes/.
+
+**How the CLI gets the agent SSH key (GAP-128) — and how it broke.** Spawn
+responses carry NO key material; the CLI follows up with GetAgentKey (master
+gated) and writes ~/.bunker/keys/<id>. On 09-25 that follow-up sent NO
+Authorization header (internal/cli/spawn.go sets the header only on the
+SpawnAgent request), so every spawn on an auth-enforced daemon warned
+"unauthenticated: missing Authorization header" and saved no key — while raw
+REST with the same token got 200 and the 411-byte key. Proven with a
+standalone Go repro (WITH header → 200, WITHOUT → 401) and filed as
+DF-BUNKER-59. Lesson: when a CLI composes TWO RPCs for one user operation,
+each request must carry its own credential — connect does not inherit headers
+across requests on the same client. The operator workaround until fixed:
+`POST /bunker.v1.Bunkerd/GetAgentKey {"agent_id":...}` with the master token,
+write the returned sshPrivateKey to ~/.bunker/keys/<id>, chmod 600.
+
+**Fresh-machine reality check (the run's inversion).** The INSTALL path was
+fine — real public clone 2s, scripts/install.sh 3s, make build ~60s on a bare
+agent — but `make test-short` was RED: two host-provision uninstall tests
+write /etc/pam.d/sshd.bunker-tmp for real and fail as non-root
+(DF-BUNKER-60). The suite that "proves fresh machines" only passes as root.
+Second inversion: `bunker destroy` deadline_exceeded 3× on an agent that had
+run a build, while raw REST destroyed the same agent in seconds
+(DF-BUNKER-61) — the CLI deadline is the constraint, not the daemon.
+
+Evidence: docs/dogfood/2026-09-25-rest-credential-surface.md (full report +
+transcripts), docs/dogfood/2026-09-25-rest-probes/ (runnable scripts), board
+rows DF-BUNKER-59/60/61 + PERF-002 (events 752-755), .coding-hermes/dogfood-log.md.
+

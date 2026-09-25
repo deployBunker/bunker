@@ -18,7 +18,7 @@ description: >-
   (docs/dogfood/2026-09-19-integration.md); isolation boundary + mount/
   scratch defects re-verified live at HEAD 93d7a53 on 2026-09-20
   (docs/dogfood/2026-09-20-integration.md, diagnostics.md §13).
-version: 1.8.0
+version: 1.9.0
 category: software-development
 ---
 
@@ -287,3 +287,10 @@ real-use behavior:
 - `homes` / `linger` are local-only host tools (root, on the /home owner), stale-vs-kept by user existence, `--dry-run` before any prune.
 - `bunker registry` has no read verb (only `compact`) and unknown subcommands exit 0 — never treat bare registry output as a successful read.
 - Scripting: `bunker exec … | tail` reports the PIPE's status; use `${PIPESTATUS[0]}` (or run without pipes) when the exit code matters.
+
+## Raw REST integrator surface + the spawn key-fetch break (2026-09-25, live on bunker-mvp)
+
+- **Unary REST works exactly as docs/integration.md says**: POST `/bunker.v1.Bunkerd/<Method>`, `Content-Type: application/json`, snake_case IN / camelCase OUT, int64 fields are JSON strings, zero scalars omitted. No token → 401; GET → 405; unknown path → plain-text 404. ExecAgent is the ONLY streaming RPC — it needs `application/connect+json` envelope framing (`[flag:1][len:4 BE][protojson]`, HTTP-chunked responses, base64 stdout/stderr, exit code omitted when 0, 0x02 trailer, errors INSIDE the 200). Runnable validated scripts: docs/dogfood/2026-09-25-rest-probes/.
+- **PITFALL (DF-BUNKER-59, P1): `bunker spawn` on an auth-enforced daemon prints "could not fetch SSH key: unauthenticated: missing Authorization header" and saves NO key** — the GAP-128 GetAgentKey follow-up in spawn.go sends no Authorization header. Until fixed, recover with raw REST: `POST /bunker.v1.Bunkerd/GetAgentKey {"agent_id":...}` with the master token → write `sshPrivateKey` to `~/.bunker/keys/<id>`, chmod 600. (Each connect request must carry its own credential — headers are NOT inherited across requests on one client.)
+- **PITFALL: `bunker destroy` can die with `deadline_exceeded`** on an agent that did heavy work, while the same DestroyAgent over raw REST returns 200 in seconds — the CLI deadline is the limit, not the daemon (DF-BUNKER-61). Re-check with a list before assuming the agent survived.
+- **`make test-short` is red on a fresh non-root machine** — host-provision uninstall tests write /etc/pam.d/sshd.bunker-tmp for real (DF-BUNKER-60). A fresh-machine suite failure there is the tests, not your checkout; `make build` is the honest fresh-machine gate.
