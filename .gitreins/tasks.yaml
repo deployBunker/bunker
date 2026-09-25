@@ -3361,3 +3361,13 @@ tasks:
   status: complete
   created_at: '2026-09-25T15:15:13.024231+00:00'
   completed_at: '2026-09-25T15:42:24.986003+00:00'
+- id: DF-BUNKER-63
+  title: spawn uid-collision precheck, destroy --force exit hatch, reaper backoff
+  criteria:
+  - go build/vet/test-short pass; new tests prove spawn collision rollback + clean
+    spawn + destroy force=false refusal unchanged + destroy force=true bounded kill
+    + reaper backoff; refused state persists in registry; no existing test weakened;
+    one commit
+  status: complete
+  created_at: '2026-09-25T18:10:37.873089+00:00'
+  completed_at: '2026-09-25T19:53:27.487583+00:00'
