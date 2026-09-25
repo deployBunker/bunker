@@ -407,12 +407,13 @@ func TestReconcile_RestoreFailsClosedOnUnrestorableRange(t *testing.T) {
 				rec.PortRangeStart, rec.PortRangeEnd = 10050, 10149
 			},
 		},
-		{
-			name: "persisted range outside the pool",
-			seed: func(rec *resource.AgentRecord) {
-				rec.PortRangeStart, rec.PortRangeEnd = 30000, 30099
-			},
-		},
+		// NOTE(INT-CI-042): the former out-of-pool row (30000-30099
+		// against the default pool) moved to reconcile_pool_drift_test.go
+		// with FLIPPED expectations — a range disjoint from this daemon's
+		// pool is pool-geometry drift, cannot collide with any port this
+		// daemon allocates (the DF-BUNKER-13 orphan-walk principle), and
+		// is now restored instead of force-destroyed. Only in-pool
+		// unrestorable ranges keep the fail-closed treatment here.
 		{
 			name: "persisted range collides with a held reservation",
 			seed: func(rec *resource.AgentRecord) {

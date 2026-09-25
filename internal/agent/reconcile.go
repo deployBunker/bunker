@@ -36,6 +36,16 @@ type ReconcileReport struct {
 	// A record that could not be restored exactly is counted under
 	// Destroyed instead — reconciliation fails closed for it.
 	Restored int
+	// RestoredForeignPool (INT-CI-042) counts replayed records restored
+	// despite a persisted port range lying entirely OUTSIDE this daemon's
+	// pool: pool-geometry drift (e.g. a CI battery configuring a different
+	// pool than the one the persisted reservation came from). Such a range
+	// cannot collide with any port this daemon allocates, so the agent is
+	// restored with its exact persisted range while the out-of-pool
+	// reservation is deliberately NOT re-tracked in the allocator (see
+	// restoreAgent). Counted separately from Restored — never
+	// double-counted.
+	RestoredForeignPool int `json:"restored_foreign_pool,omitempty"`
 	// Purged counts registry records with no system user (stale).
 	Purged int
 	// Adopted counts orphans adopted into the tracker + registry.
@@ -134,6 +144,33 @@ func (m *AgentManager) Reconcile(ctx context.Context) ReconcileReport {
 			continue
 		}
 		if err := m.restoreAgent(rec); err != nil {
+			// INT-CI-042: a persisted range ENTIRELY DISJOINT from this
+			// daemon's pool is pool-geometry drift, not corruption — the
+			// same DF-BUNKER-13 principle the orphan walk applies via
+			// orphanIsForeign. A disjoint range cannot collide with any
+			// port this daemon allocates, so force-destroying the agent
+			// buys nothing and loses a healthy one (the CI regression
+			// battery lost exactly such an agent to its own pool change).
+			// Only a PROVABLY disjoint range is tolerated here: both ends
+			// readable, end < poolStart or start > poolEnd. ValidateRange
+			// is deliberately NOT used for this test — it also rejects
+			// in-pool-but-misaligned ranges, which must keep their
+			// fail-closed treatment below.
+			if start, end := rec.PortStart, rec.PortEnd; m.portAlloc != nil &&
+				start != 0 && end != 0 {
+				poolStart, poolEnd := m.portAlloc.Bounds()
+				if end < poolStart || start > poolEnd {
+					m.tracker.Register(registryToRecord(rec))
+					rep.RestoredForeignPool++
+					m.logger.Warn("registry reconcile: foreign-pool port reservation tolerated",
+						"action", "restore-foreign-pool",
+						"agent_id", rec.AgentID,
+						"persisted_range", fmt.Sprintf("%d-%d", start, end),
+						"pool", fmt.Sprintf("%d-%d", poolStart, poolEnd),
+						"reason", "disjoint from the configured pool (pool-geometry drift): no collision possible, out-of-pool reservation not re-tracked in the allocator")
+					continue
+				}
+			}
 			// Fail closed: the agent's exact port reservation could not be
 			// re-established, so serving it risks a later spawn
 			// double-allocating its ports. Drop the half-managed state,
@@ -222,6 +259,17 @@ func (m *AgentManager) Reconcile(ctx context.Context) ReconcileReport {
 // (failClosedRestore) instead of serving it without isolation metadata.
 // Registering a record that is already tracked is not an error — the
 // registry is the durable copy, the tracker the live one.
+//
+// INT-CI-042: an error whose cause is a persisted range ENTIRELY DISJOINT
+// from the current pool (pool-geometry drift) is handled by the CALLER
+// (Reconcile's replay walk): the tracker record is restored and the exact
+// out-of-pool reservation is deliberately NOT re-tracked in the allocator —
+// ValidateRange/Reserve would reject it for being out-of-pool. That is safe
+// by construction: spawn allocates EXCLUSIVELY through the allocator, which
+// only ever hands out in-pool ranges, so an out-of-pool reservation that is
+// not tracked in the allocator can never be handed out again. Everything
+// else (no persisted range, in-pool misaligned, in-pool colliding) keeps the
+// fail-closed treatment.
 func (m *AgentManager) restoreAgent(rec *registry.Record) error {
 	trackerRec := registryToRecord(rec)
 	if m.portAlloc != nil {
