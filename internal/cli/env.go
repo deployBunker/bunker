@@ -13,6 +13,13 @@ import (
 	bunkerv1connect "github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect"
 )
 
+// envDefaultTimeoutSeconds is the default --timeout budget for
+// `bunker env`. SURF-017: same remote-build killer as run/exec — the env
+// subcommands issue ExecAgent RPCs against the same client-side deadline,
+// so the 30s default and the bare deadline error moved here too. 1800s
+// matches the other verbs; an explicit --timeout still wins.
+const envDefaultTimeoutSeconds uint32 = 1800
+
 // envFilePath returns the canonical path of the env file for an agent.
 // The file lives under /run/bunker/<agent-id>/, writable by the bunker user.
 func envFilePath(agentID string) string {
@@ -39,7 +46,7 @@ func shQuoteSingle(s string) string {
 func NewEnvCommand() *cobra.Command {
 	var (
 		serverName string
-		timeout    uint32 = 30
+		timeout    uint32 = envDefaultTimeoutSeconds
 	)
 
 	cmd := &cobra.Command{
@@ -177,13 +184,13 @@ Any other flag is rejected before anything is sent to the server:
 			defer cancel()
 			token := resolveToken(entry)
 
-			return streamEnvExec(ctx, cmd, client, agentID, shellCmd, token, failOn)
+			return streamEnvExec(ctx, cmd, client, agentID, shellCmd, token, timeout, failOn)
 		},
 		DisableFlagParsing: true,
 	}
 
 	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (default: active server)")
-	cmd.Flags().Uint32Var(&timeout, "timeout", 30, "Command timeout in seconds")
+	cmd.Flags().Uint32Var(&timeout, "timeout", envDefaultTimeoutSeconds, "Command timeout in seconds")
 	return cmd
 }
 
@@ -323,12 +330,16 @@ func buildEnvUnsetCommand(file, key string) string {
 // streamEnvExec issues an ExecAgent streaming RPC with the given shell
 // command and prints stdout to the cobra command's output, returning an
 // error only for transport/protocol issues (or non-zero exit when
-// failOnError is true). Token may be empty.
+// failOnError is true). Token may be empty. Deadline-class failures are
+// decorated with the actionable --timeout hint via decorateDeadline,
+// naming the `env` verb (SURF-017) — the budget reported is the caller's
+// effective --timeout.
 func streamEnvExec(
 	ctx context.Context,
 	cmd *cobra.Command,
 	client bunkerv1connect.BunkerdClient,
 	agentID, shellCmd, token string,
+	timeout uint32,
 	failOnError bool,
 ) error {
 	req := connect.NewRequest(&v1.ExecAgentRequest{
@@ -343,7 +354,7 @@ func streamEnvExec(
 
 	stream, err := client.ExecAgent(ctx, req)
 	if err != nil {
-		return fmt.Errorf("exec agent: %w", err)
+		return decorateDeadline("env", fmt.Errorf("exec agent: %w", err), timeout)
 	}
 
 	var exitCode int32
@@ -364,7 +375,7 @@ func streamEnvExec(
 		}
 	}
 	if err := stream.Err(); err != nil {
-		return fmt.Errorf("stream error: %w", err)
+		return decorateDeadline("env", fmt.Errorf("stream error: %w", err), timeout)
 	}
 
 	// For `env set`/`env list`/`env unset`: any non-zero exit is a real failure.

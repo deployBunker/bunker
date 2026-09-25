@@ -74,7 +74,7 @@ func TestRunFlagGrammar(t *testing.T) {
 			sessionEnv:  "default",
 			wantCommand: "echo",
 			wantArgs:    []string{"hi"},
-			wantTimeout: 30,
+			wantTimeout: runDefaultTimeoutSeconds,
 		},
 		{
 			name:        "server inline form before agent-id reaches server",
@@ -82,7 +82,7 @@ func TestRunFlagGrammar(t *testing.T) {
 			sessionEnv:  "default",
 			wantCommand: "echo",
 			wantArgs:    []string{"hi"},
-			wantTimeout: 30,
+			wantTimeout: runDefaultTimeoutSeconds,
 		},
 		{
 			name:        "server space form after agent-id reaches server",
@@ -90,7 +90,7 @@ func TestRunFlagGrammar(t *testing.T) {
 			sessionEnv:  "default",
 			wantCommand: "echo",
 			wantArgs:    []string{"hi"},
-			wantTimeout: 30,
+			wantTimeout: runDefaultTimeoutSeconds,
 		},
 		{
 			name:        "server inline form after agent-id reaches server",
@@ -98,7 +98,7 @@ func TestRunFlagGrammar(t *testing.T) {
 			sessionEnv:  "default",
 			wantCommand: "echo",
 			wantArgs:    []string{"hi"},
-			wantTimeout: 30,
+			wantTimeout: runDefaultTimeoutSeconds,
 		},
 		{
 			name:        "config space form before agent-id is applied",
@@ -106,7 +106,7 @@ func TestRunFlagGrammar(t *testing.T) {
 			sessionEnv:  "custom-default", // only resolvable via the custom config
 			wantCommand: "echo",
 			wantArgs:    []string{"hi"},
-			wantTimeout: 30,
+			wantTimeout: runDefaultTimeoutSeconds,
 			wantCfgApp:  true,
 		},
 		{
@@ -115,7 +115,7 @@ func TestRunFlagGrammar(t *testing.T) {
 			sessionEnv:  "custom-default",
 			wantCommand: "echo",
 			wantArgs:    []string{"hi"},
-			wantTimeout: 30,
+			wantTimeout: runDefaultTimeoutSeconds,
 			wantCfgApp:  true,
 		},
 		{
@@ -124,7 +124,7 @@ func TestRunFlagGrammar(t *testing.T) {
 			sessionEnv:  "custom-default",
 			wantCommand: "echo",
 			wantArgs:    []string{"hi"},
-			wantTimeout: 30,
+			wantTimeout: runDefaultTimeoutSeconds,
 			wantCfgApp:  true,
 		},
 		{
@@ -169,7 +169,7 @@ func TestRunFlagGrammar(t *testing.T) {
 			sessionEnv:  "default",
 			wantCommand: "agent1",
 			wantArgs:    []string{"echo", "hi"},
-			wantTimeout: 30,
+			wantTimeout: runDefaultTimeoutSeconds,
 		},
 
 		// -- Unknown flags refuse LOCALLY, naming the flag.
@@ -215,7 +215,7 @@ func TestRunFlagGrammar(t *testing.T) {
 			detach:      true,
 			wantCommand: "docker",
 			wantArgs:    []string{"run", "--rm", "-d", "nginx"},
-			wantTimeout: 30,
+			wantTimeout: runDefaultTimeoutSeconds,
 			wantDetach:  true,
 		},
 		{
@@ -224,7 +224,7 @@ func TestRunFlagGrammar(t *testing.T) {
 			sessionEnv:  "default",
 			wantCommand: "--bogus-flag",
 			wantArgs:    []string{"x"},
-			wantTimeout: 30,
+			wantTimeout: runDefaultTimeoutSeconds,
 		},
 
 		// -- Existing contract errors preserved.
