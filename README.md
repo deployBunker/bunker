@@ -380,6 +380,9 @@ Rules the daemon enforces:
   `~/.config/bunkerd/secrets/jwt_secret`) with mode 0600. It is **never
   rotated on restart** — an existing file (or a configured secret) is always
   reused, because agent API keys and issued JWTs are derived from it.
+  Zero-downtime rotation of this secret at runtime is the `bunker key
+  rotate` command (see [CLI Commands](#cli-commands)) with the RPC
+  contract in [specs/api.md](specs/api.md) (RotateJWTSecret).
 
 #### TLS: the secure path is the easy path (GAP-127)
 
@@ -1005,7 +1008,10 @@ bunker host-provision  Provision the per-agent isolation boundary on this host
                    --uninstall removes)
 bunker key         Manage API keys and the JWT signing secret (master only):
                    key rotate (zero-downtime; overlap window; the new secret
-                   is printed exactly once), key list, key revoke
+                   is printed exactly once), key list, key revoke. Rotation
+                   is the runtime twin of the jwt_secret handling described
+                   in "Control-plane secrets (GAP-129 / SEC-14)" above; the
+                   RPC contract lives in specs/api.md (RotateJWTSecret)
 bunker agent-tools  Probe the agent (not the client) for the executables the
                    remote editing verbs need; --install delivers the vendored
                    toolsd onto the agent's own PATH (see

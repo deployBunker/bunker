@@ -462,6 +462,11 @@ Error codes:
 - `CodeInvalidArgument`: the generated secret collides with the static
   `auth.token` (credential classes must stay disjoint; retry the rotation)
 
+The config-file side of `jwt_secret` handling (sources, generation, why it is
+never rotated on restart) is documented in the README's "Control-plane secrets
+(GAP-129 / SEC-14)" section; the operator-facing command is `bunker key
+rotate`.
+
 ### RevokeKey
 
 Revokes an API sub-key by key ID. Immediate — the credential stops validating
