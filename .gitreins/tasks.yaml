@@ -3294,3 +3294,17 @@ tasks:
   status: complete
   created_at: '2026-09-25T06:25:58.268663+00:00'
   completed_at: '2026-09-25T06:39:59.330783+00:00'
+- id: INT-CI-040
+  title: 'INT-CI-040: battery connect races daemon startup residue cleanup - bounded
+    retry window'
+  criteria:
+  - e2e-full-battery.sh passes bash -n AND a connect_with_retry function exists and
+    section 2 invokes it exactly once with no single-shot bcli connect left in the
+    connect path AND the function retries across BUNKER_CONNECT_ATTEMPTS (default
+    6) sleeping BUNKER_CONNECT_WAIT (default 5) between attempts and surfaces the
+    last connect output on final failure AND in coexist mode with a dead battery daemon
+    it fails fast without exhausting the window AND the committed diff touches only
+    e2e-full-battery.sh
+  status: complete
+  created_at: '2026-09-25T08:33:15.102556+00:00'
+  completed_at: '2026-09-25T09:18:03.944520+00:00'
