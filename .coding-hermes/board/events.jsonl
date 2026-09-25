@@ -754,3 +754,4 @@
 {"id": 753, "timestamp": "2026-09-25 00:23:25.000000", "event_type": "task_created", "task_id": "DF-BUNKER-60", "actor": "dogfood", "detail": "{\"id\": \"DF-BUNKER-60\", \"priority\": \"P2\", \"source\": \"dogfood-2026-09-25\"}"}
 {"id": 754, "timestamp": "2026-09-25 00:23:25.000000", "event_type": "task_created", "task_id": "DF-BUNKER-61", "actor": "dogfood", "detail": "{\"id\": \"DF-BUNKER-61\", \"priority\": \"P2\", \"source\": \"dogfood-2026-09-25\"}"}
 {"id": 755, "timestamp": "2026-09-25 00:23:25.000000", "event_type": "task_created", "task_id": "PERF-002", "actor": "dogfood", "detail": "{\"id\": \"PERF-002\", \"priority\": \"P2\", \"source\": \"dogfood-2026-09-25\"}"}
+{"id":756,"timestamp":"2026-09-25T00:51:50.000000Z","event_type":"task_created","task_id":"INT-CI-040","actor":"foreman","detail":"{\"id\":\"INT-CI-040\",\"status\":\"pending\",\"run\":\"36097795108\"}","tick_number":538}
