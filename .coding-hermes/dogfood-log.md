@@ -86,6 +86,8 @@
 - **Foreman:** NOT woken, NO scheduler PUT (2026-09-09 fleet law: 21600s floor; run instruction forbids cooldown changes). Rows picked up at normal cadence. Board HEAD moved twice mid-run (sibling commits 8a24090, GAP-112/113 wave) — my appends verified against the live tail after each write.
 2026-09-20 | DOES-NOT-DELIVER | 40s t2fs (spawn->exec) | friction 14 | 6 findings (DF-BUNKER-38..43) | install_seconds=48 spawn/49 make-build | bunker=las-03 agent=df1017i | smoke=ok
 
+2026-09-25c | PROMISING-BUT-ROUGH | stable identity + drift report real; renew kills client SSH key, gate unsatisfiable agent-side / absent on deployed daemon, standard re-spawn fails containment gate | 3 findings (DF-BUNKER-65..70) | install=battery launched (dfda436e, las-03) | bunker=las-03 agents=df-renew-0925+dfda436e | smoke=see QA lane
+
 ## 2026-09-20 run detail
 
 - **Verdict:** 🔴 DOES-NOT-DELIVER (series: … SHIPPABLE → SHIPPABLE → PROMISING-BUT-ROUGH → DOG FOOD). The lifecycle and the isolation boundary are fine; the run found a P0 whose blast radius is the README's flagship command and a P1 that makes a documented isolation feature unusable fleet-wide.
@@ -162,3 +164,46 @@
 - **Perf (Step 2b):** warm pinned-TLS RPC 7.5ms ± 0.7ms (hyperfine 20 runs); cold TOFU connect 0.01s; warm cross-network list 362ms ± 12ms (network RTT, not CLI); warm spawn 11.5s (rootless cache); fresh install 15s (clone 10s). Nothing user-noticeable — no PERF row (perf law: a win nobody can feel is not a finding).
 - **Install leg:** PASS — ephemeral agent 5284392c on las-bunker-03 (2h TTL): public clone 10s @ a4827b2, documented one-command install (fetched to /tmp then `sh`; remote pipe-to-shell gated interactively) 15s, SHA256-verified, smoke OK (release 0.1.4 @ 235e715 — freshness note holds: tag lags HEAD a4e98ce), PATH warning correct. Agent destroyed via CLI, verified gone host-side (user + home).
 - **Cleanup:** fad4b89a (reaper-zombie via uid collision) — user removed host-side with userdel after evidence capture, production container verified Up/healthy; df0925perf destroyed via CLI (exit 0, key removed); 5284392c destroyed (exit 0, key removed); host census: 0 bunker-* users, 0 orphan homes. Scratch daemon stopped, 18093/19093 released. ~/.bunker/config.yaml untouched (md5 unchanged). No repo visibility/permission changes; no credentials committed; scheduler untouched (21600s law respected); no cooldown changes, foreman not woken (active tick 540 observed mid-run).
+
+## 2026-09-25c run detail (20th run — renewal / stable-identity surface)
+
+- **Angle:** the never-tested `bunker renew` workflow (docs/renewal.md, DF-BUNKER-34's
+  fix): drift pre-flight + destroy live-process gate + same-id re-spawn, as an
+  operator renewing a long-lived agent (real footprint seeded: units, cron, configs).
+- **What held:** stable identity across renew (same id/uid/home, 39s end-to-end);
+  the drift report at HEAD is genuinely good (file:line hits, found the agent
+  image's own rootless-docker unit paths); home-wipe honesty; the destroy gate
+  fires at HEAD with exact pid evidence; `open`-preset lifecycle fully clean.
+- **What broke:** DF-BUNKER-65 P1 (renew never re-fetches the client SSH key —
+  ssh/cp/mount dead after every successful renew; no recovery on the deployed
+  daemon, which predates GetAgentKey 325da4c); DF-BUNKER-66 P1 (destroy-gate
+  remedy unsatisfiable agent-side — rootless session services respawn; gate
+  ABSENT on deployed 0.1.4 → renew destroys agents with live processes);
+  DF-BUNKER-67 P1 (containment landing gate: 125ms code budget vs MEASURED
+  125-349ms systemd drop-in landing on las-03 → standard spawn hard-fails 3/3,
+  run 19 same box/binary passed this morning; `--preset open` unaffected; renew
+  has no --preset); DF-BUNKER-68 P2 (failed renew leaves agent destroyed, no
+  archive/recovery hint); DF-BUNKER-69 P2 (release 0.1.4 client: bare 'unknown
+  command "renew"'); DF-BUNKER-70 P2 (drift RPC 404 on old daemon degrades to
+  one warn line, renew continues unscanned).
+- **Board:** 6 rows + 6 events appended (tasks 436→442, events 766→772, 0 bad
+  lines, my ids unique; pre-existing MOUNT-011 dupe noted, untouched). Verified
+  via git diff after commit.
+- **Artifacts:** docs/dogfood/2026-09-25c-renewal-identity.md (incl. version-skew
+  matrix), diagnostics.md §19, skills/bunker-usage/SKILL.md → v1.11.0,
+  tasks.md run-20 section.
+- **Install leg:** bunker-qa.sh launch PASS (agent dfda436e @ las-03, fresh-install
+  + upgrade-prep cells started) — collection RUNNING at report time; result to be
+  folded into the board by the QA lane. Launch-side harness errors recorded
+  (docker pull arity + '[: skip: integer expected' in upgrade-prep prep).
+- **Perf (Step 2b):** renew end-to-end 39s (clean agent, fleet daemon); failed
+  renew 49s to loud error; drift scan sub-second. systemd drop-in landing
+  latency probe: 349ms incl. daemon-reload (the DF-BUNKER-67 number). Nothing
+  user-noticeable beyond the failures themselves — no PERF row; the 125-vs-349ms
+  gap IS a correctness row (67).
+- **Cleanup:** df-renew-0925 destroyed via CLI (verified list-empty); scratch
+  HEAD daemons: control-host one never spawned agents (stopped; uid-1001
+  collision precondition avoided), remote scratch daemon on las-03 stopped and
+  ports released after evidence capture. ~/.bunker/config.yaml md5 8c1fdfd7…
+  unchanged (all scratch work in /tmp configs). No repo visibility/permission
+  changes; no credentials committed; scheduler untouched.

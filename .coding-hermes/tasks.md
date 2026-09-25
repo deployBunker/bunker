@@ -324,3 +324,40 @@ user removed host-side with userdel after evidence capture, container unharmed;
 df0925perf + 5284392c destroyed via CLI, verified gone host-side). Scratch daemon
 stopped, ports released. No repo visibility/permission changes; no credentials
 committed; scheduler untouched (21600s law respected).
+
+## Dogfood Findings (2026-09-25c — renewal/identity surface, run 20)
+
+Real-use run by coding-hermes-dogfood (cron): ANGLE = `bunker renew` + the
+destroy live-process gate + the drift pre-flight (docs/renewal.md's operator
+recipe) — untouched by runs 1-19. Method: live agents on bunker-las-03 (fleet
+daemon 0.1.4 @ 6a6ad20) driven by BOTH the release client (509fc42) and HEAD
+(a4e98ce), plus run 19's scratch HEAD-daemon pattern on las-03 (REST 28094,
+ports 28200-28299; real ~/.bunker/config.yaml untouched). Real long-lived
+footprint seeded into agents before every renewal (systemd --user units,
+crontab, config files embedding /home/bunker-<id>, .bashrc PATH).
+
+Held: stable identity (same id/uid/home after renew, 39s), drift report at
+HEAD (file:line hits incl. the agent image's own rootless-docker unit), home
+wipe honesty, the destroy gate firing at HEAD. Broke: the SSH surface dies
+after every successful renew (key never re-fetched); the gate's remedy is
+unsatisfiable agent-side (rootless session services respawn) while the gate is
+absent on the deployed daemon (renew destroys live agents); standard-preset
+spawn hard-fails on this box (containment landing 125ms budget vs measured
+125-349ms systemd latency). Full report:
+`docs/dogfood/2026-09-25c-renewal-identity.md` (incl. version-skew matrix).
+
+| ID | Task | Pri | Cpx | Deps | Tags | Model | Reasoning | Fallback |
+|----|------|-----|-----|------|------|-------|-----------|----------|
+| DF-BUNKER-65 | renew never re-fetches the agent SSH key: after a successful renewal ~/.bunker/keys/<id> is stale (renew.go lacks the GetAgentKey fetch spawn.go:228 does), daemon persists a NEW keypair (manager_spawn.go:822) — bunker cp exit 255, mount preflight denied, direct ssh denied; bunker exec (token RPC) fine. Recovery needs GetAgentKey, which the deployed 0.1.4 fleet daemon (6a6ad20) predates (325da4c) — no recovery path there. | P1 | 3 | — | +cli, +renew, +ssh | deepseek-v4-flash | Code-anchored (spawn vs renew asymmetry), live-repro'd on two daemon versions | deepseek-v4-flash |
+| DF-BUNKER-66 | destroy live-process gate: (a) at HEAD the remedy is unsatisfiable agent-side — the counted processes are the rootless-docker session's own dbus-daemon/pipewire/wireplumber; exec reaps children, run --detach stop doesn't stick, pkill gets respawned by user systemd — renewing any agent that ever ran rootless-docker needs a host-root window; (b) on the deployed 0.1.4 daemon the gate is ABSENT: renew succeeded exit-0 with live processes under the uid (orphan risk). | P1 | 5 | — | +daemon, +destroy, +lifecycle | deepseek-v4-flash | Gate semantics vs rootless session lifecycle; two daemon versions tested | GLM-5.2 |
+| DF-BUNKER-67 | containment landing gate fails standard/hardened spawn on bunker-las-03: 'did not converge within 5 reads: memory.swap.max = "max", want "0"' (3/3, full rollback); drop-in written correctly, systemd 257.13 lands MemorySwapMax=0 in ~125-349ms (measured) vs the code's 125ms budget (isolation.go:789-796, 5x25ms). Run 19 same box/binary passed this morning — timing headroom. --preset open spawns fine; renew has NO --preset so renewing a standard agent inherits the failure. | P1 | 4 | — | +daemon, +spawn, +isolation | deepseek-v4-flash | Measured landing latency vs budget; config ruled out | deepseek-v4-flash |
+| DF-BUNKER-68 | failed renew leaves the agent destroyed with no recovery hint: destroy already ran when the re-spawn leg failed; error names only the spawn stage; CLI neither prints the pre-renewal archive reminder (docs/renewal.md step 0) nor offers a report-only drift arm. | P2 | 2 | — | +cli, +renew, +ux | deepseek-v4-flash | Observed failure path; small CLI fix | deepseek-v4-flash |
+| DF-BUNKER-69 | release 0.1.4 client (509fc42) rejects `bunker renew` with bare 'unknown command' — no newer-CLI hint; docs/renewal.md requires HEAD. Cut a release carrying renew or add a subcommand suggestion naming docs/renewal.md. | P2 | 1 | — | +cli, +release | deepseek-v4-flash | Observed on the shipped release binary | deepseek-v4-flash |
+| DF-BUNKER-70 | drift pre-flight silently degrades to one warn line ('unimplemented: 404') on daemons without the RPC and renew CONTINUES with no stale-path report — the recipe's only automated safety scan disappears mid-operation. Require an explicit --no-drift-report to proceed and print the manual-scan recipe. | P2 | 2 | — | +cli, +renew, +version-skew | deepseek-v4-flash | Safety scan silently vanishing on old daemons | deepseek-v4-flash |
+
+Cleanup record: fleet-daemon agents df-renew-0925 (2 spawns + 1 destroy +
+1 renew) and QA agent dfda436e (bunker-qa.sh leg) — see run log. Scratch HEAD
+daemons on the control host never spawned agents (uid-1001 collision
+precondition avoided); remote scratch daemon (las-03, /root/df-renew-scratch)
+to be stopped after evidence capture. No repo visibility/permission changes; no
+credentials committed; scheduler untouched.

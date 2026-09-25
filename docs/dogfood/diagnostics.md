@@ -745,4 +745,53 @@ refusal, scheme-mismatch message).
 arms — pin it and forget `--tls-insecure` exists. The new risks this run found
 live one layer down, in uid allocation and lifecycle reaping, not in TLS.
 
+## 19. Dogfood run 2026-09-25c — the renewal/identity surface (read this before touching renew, spawn containment, or the destroy gate)
+
+**What this surface IS.** `bunker renew` = destroy + re-spawn on the SAME id,
+so every stored path (`/home/bunker-<id>`, the uid, fleet.toml entries,
+systemd units) stays valid across a refresh (docs/renewal.md). Three layers
+have to agree: the client's pre-flight drift report (RPC), the daemon's
+destroy live-process gate, and the re-spawn's containment landing.
+
+**How it works, and why the pieces sit where they sit.** The drift report
+scans the CURRENT home (path extracted from the stored sshfs mount line,
+`internal/cli/renew.go:25`) for references to the same path — report-only,
+never rewrites. The destroy gate reads `/proc/<pid>/status` for the uid so
+`userdel -rf` can never orphan a live scheduler daemon (the DF-BUNKER-34
+failure that started this). The landing gate re-reads the agent uid's cgroup
+after the slice drop-in write+reload because systemd consumes drop-ins
+slightly asynchronously (INT-CI-37).
+
+**Errors hit and their fixes (the right way):**
+- Renew against a DEPLOYED (older) daemon silently loses both safety layers:
+  the drift RPC 404s ("unimplemented") and degrades to one warn line, and the
+  destroy gate doesn't exist — the agent gets destroyed WITH live processes.
+  Version-check before renewing anything real.
+- After ANY successful renew the client's `~/.bunker/keys/<id>` is stale
+  (renew never re-fetches the key; spawn does at spawn.go:228). RPC verbs
+  work; ssh/cp/mount are dead. Workaround until fixed: refetch via
+  GetAgentKey (master-token RPC) and overwrite the key file.
+- Scratch HEAD daemon (run 19's pattern) needs `server.grpc_addr/rest_addr`,
+  `agent.base_data_dir/ssh_dir/port_range_*`, `auth.token` (not
+  master_token), and `BUNKER_ALLOW_TLS_INSECURE=1` on every client call.
+  NEVER scratch-spawn on the control host: a local container already runs as
+  uid 1001 (the DF-BUNKER-63 collision precondition).
+- The destroy gate's remedy ("stop those processes … then retry") is
+  unsatisfiable from inside the agent for the rootless-docker session's own
+  services (dbus-daemon/pipewire): exec sessions reap their children,
+  detached stop/pkill get respawned by user systemd. The gate is only
+  passable with host-side root — plan renewals for a maintenance window.
+- Standard/hardened spawns on bunker-las-03 currently fail the containment
+  landing gate: the code allows 125ms (5×25ms, isolation.go:790) for
+  MemorySwapMax=0 to land, systemd 257.13 on this box takes ~125-349ms
+  (measured). If spawns fail with "memory.swap.max = \"max\"", it is this,
+  not the daemon's config. `--preset open` has no swap bar and spawns fine.
+
+**The one-liner:** the stable-identity idea is real and the drift report
+proves itself on first use — but as shipped, renew kills the client's SSH
+access, cannot pass the destroy gate on any agent that has ever run
+rootless-docker, and on this fleet box cannot even re-spawn a standard agent
+because the containment gate's convergence budget is smaller than systemd's
+actual landing latency.
+
 
