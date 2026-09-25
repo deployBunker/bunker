@@ -84,6 +84,8 @@ func isAgentSessionProcess(p userProcess) bool {
 		return true
 	case isSystemdExecutorManager(cmd):
 		return true
+	case isUserManagerClient(cmd):
+		return true
 	}
 	return false
 }
@@ -100,6 +102,58 @@ func isSystemdExecutorManager(cmd string) bool {
 		return false
 	}
 	return filepath.Base(fields[0]) == "systemd-executor" && fields[1] == "--deserialize"
+}
+
+// isUserManagerClient reports whether cmd is the agent's OWN transient
+// "systemctl --user" CLIENT invocation — the session bookkeeping the agent
+// runtime runs against its user manager (unset-environment during teardown,
+// show-environment / import-environment / stop during spawn and destroy
+// races). INT-CI-041: the destroy live-process gate classified those
+// clients as foreign and refused, persisting the user and home (CI runs
+// 36133146931 and 36138476899).
+//
+// This is safe because the classifier only ever runs against processes
+// owned by the agent uid: a live systemctl process under that uid is by
+// definition a client of THAT agent's own user manager (a short-lived one
+// — systemctl connects, performs the verb, exits), and destroy terminates
+// the user manager itself, so the client cannot outlive the teardown the
+// gate fronts. A system-mode invocation keeps its readable full cmdline
+// ("systemctl start nginx.service") and stays foreign — the negative rows
+// pin that; only the cmdline-unreadable comm forms below reach here without
+// their argv.
+//
+// Shapes covered:
+//   - full cmdline present: argv0 basename "systemctl" (any path prefix)
+//     with "--user" anywhere in the argv — any subcommand after it
+//     (unset-environment, show-environment, stop, daemon-reload, ...),
+//     flags before the verb, and a truncated head (the 256-byte
+//     procCmdlineHeadBytes cap appends " …"; the flag can sit inside the
+//     kept head). A system-mode systemctl (no --user) stays foreign.
+//   - cmdline unreadable: the bracketed/truncated comm forms — "(ystemctl)"
+//     and "[ystemctl]" (the kernel caps comm at 15 bytes, so "systemctl"
+//     loses its first char), plus the full "systemctl" and truncated
+//     "ystemctl" comm renders. Under an agent uid, a live systemctl process
+//     is transient user-manager bookkeeping, never an operator process.
+func isUserManagerClient(cmd string) bool {
+	switch strings.TrimSpace(cmd) {
+	case "(ystemctl)", "[ystemctl]", "systemctl", "ystemctl":
+		// Comm forms: the process's cmdline was unreadable, so argv
+		// discrimination is impossible. The comm of a cmdline-less process
+		// whose name starts with "ystemctl" is the truncated systemctl
+		// client; a real operator process under the agent uid carries a
+		// readable argv and never lands in this branch.
+		return true
+	}
+	fields := strings.Fields(cmd)
+	if len(fields) == 0 || filepath.Base(fields[0]) != "systemctl" {
+		return false
+	}
+	for _, f := range fields[1:] {
+		if f == "--user" {
+			return true
+		}
+	}
+	return false
 }
 
 // listUserProcesses returns every live process owned by uid, read from
