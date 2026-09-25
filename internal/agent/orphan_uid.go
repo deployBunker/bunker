@@ -65,8 +65,11 @@ type userProcess struct {
 // ANY live process under the uid is anomaly evidence.
 //
 // Shapes covered: the CI-measured "/usr/lib/systemd/systemd --user",
-// Debian's "/lib/systemd/..." variant, a bare "systemd --user", and the
-// (sd-pam) twin in its literal-argv, bracketed-Name and plain forms.
+// Debian's "/lib/systemd/..." variant, a bare "systemd --user", the
+// (sd-pam) twin in its literal-argv, bracketed-Name and plain forms, and
+// (systemd >= 254, INT-CI-039) the user manager started THROUGH
+// systemd-executor — "<path>/systemd-executor --deserialize <fd> ..." —
+// the argv that replaces "systemd --user" entirely on those hosts.
 func isAgentSessionProcess(p userProcess) bool {
 	cmd := strings.TrimSpace(p.Cmd)
 	switch {
@@ -79,8 +82,24 @@ func isAgentSessionProcess(p userProcess) bool {
 		cmd == "[(sd-pam)]",
 		strings.HasSuffix(cmd, " (sd-pam)"):
 		return true
+	case isSystemdExecutorManager(cmd):
+		return true
 	}
 	return false
+}
+
+// isSystemdExecutorManager reports whether cmd is the systemd >= 254
+// user-manager executor shape: argv0 with the basename "systemd-executor"
+// (any path prefix — "/usr/lib/systemd/...", Debian's "/lib/systemd/...",
+// or bare) whose first argument is "--deserialize" (the serialized manager
+// state fd; the fd number varies). An executor with any other first
+// argument is not the user manager and stays foreign.
+func isSystemdExecutorManager(cmd string) bool {
+	fields := strings.Fields(cmd)
+	if len(fields) < 2 {
+		return false
+	}
+	return filepath.Base(fields[0]) == "systemd-executor" && fields[1] == "--deserialize"
 }
 
 // listUserProcesses returns every live process owned by uid, read from
