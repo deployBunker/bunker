@@ -1,0 +1,30 @@
+{
+  "scheduler_tick_id": "bunker-2026-09-25-03-03-41",
+  "created_at": "2026-09-25T03:30:00-05:00",
+  "wave_budget": 8,
+  "workers": [
+    {
+      "task_id": "INT-CI-039",
+      "board_line": 420,
+      "worktree": "/home/kara/worktrees/bunker-INT-CI-039",
+      "branch": "wt/INT-CI-039",
+      "summary": "CI streak >=4 runs red at regression E2E battery: destroy gate refuses because isAgentSessionProcess does not match the systemd>=254 'systemd-executor --deserialize N' user-manager argv (CI log fingerprint, runs 36071328941/36070753607/36069593866/36053547606/36052732319). Fix the classifier + tests."
+    },
+    {
+      "task_id": "PERF-001",
+      "board_line": 428,
+      "worktree": "/home/kara/worktrees/bunker-PERF-001",
+      "branch": "wt/PERF-001",
+      "summary": "ListAgents/AgentMetrics walk every agent home synchronously per request (7.2s on cube, 804k files). Cache the disk-usage snapshot with TTL/incremental refresh, serve cached value."
+    },
+    {
+      "task_id": "DOCS-G164-165",
+      "board_line": "421+422 (GAP-164+GAP-165 one diff)",
+      "worktree": "/home/kara/worktrees/bunker-DOCS-G164-165",
+      "branch": "wt/DOCS-G164-165",
+      "summary": "Docs-only: add missing CLI commands (key, agent-tools, subid-migrate) to README command lists; add RenewalDriftReport/RotateJWTSecret/RevokeKey/KeyList to specs/api.md + README Services table (14/22 -> 22 RPCs)."
+    }
+  ],
+  "independence_check": "No depends_on edges among the three; file sets disjoint: internal/agent/* vs internal/server/service.go vs README.md+specs/api.md. gitreins ids distinct (GAP-164/GAP-165 taken in tasks.yaml -> combined docs task uses DOCS-G164-165).",
+  "ci_attribution": "Work commits pushed ALONE first, board commit separate, so CI attributes runs to feature shas."
+}
