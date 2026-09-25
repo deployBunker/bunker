@@ -124,6 +124,7 @@ func TestRegistry_TokenPolicyPerRow(t *testing.T) {
 	// row acquiring TokenExtra still has to come through this test.
 	extended := map[PackageManager]string{
 		ManagerPip:      ",<>[]!~",
+		ManagerPipx:     ",<>[]!~",
 		ManagerCargo:    ",<>^~",
 		ManagerGem:      ",<>~!",
 		ManagerComposer: ",<>^~!",
@@ -171,7 +172,7 @@ func TestRegistry_UnregisteredManagerHasNoPolicy(t *testing.T) {
 func TestRegistry_CoversPackageManagerConstants(t *testing.T) {
 	for _, m := range []PackageManager{
 		ManagerAPT, ManagerGo, ManagerNPM,
-		ManagerPip, ManagerCargo, ManagerGem, ManagerComposer,
+		ManagerPip, ManagerPipx, ManagerCargo, ManagerGem, ManagerComposer,
 	} {
 		if !m.Valid() {
 			t.Errorf("constant %q has no registry row", m)
@@ -180,7 +181,7 @@ func TestRegistry_CoversPackageManagerConstants(t *testing.T) {
 	for i := range managerDefs {
 		switch managerDefs[i].Name {
 		case ManagerAPT, ManagerGo, ManagerNPM,
-			ManagerPip, ManagerCargo, ManagerGem, ManagerComposer:
+			ManagerPip, ManagerPipx, ManagerCargo, ManagerGem, ManagerComposer:
 		default:
 			t.Errorf("registry row %q has no PackageManager constant", managerDefs[i].Name)
 		}
