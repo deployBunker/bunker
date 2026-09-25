@@ -2,7 +2,7 @@
 
 Version: 0.1.0 (Draft)
 Status: Draft — design gate for GAP-063; implementation lands as GAP-064/GAP-065 follow-ups
-Last Updated: 2026-09-04
+Last Updated: 2026-09-25
 
 ## 0. Overview & Repo Reality
 
@@ -250,29 +250,63 @@ The client-visible contract is **byte-for-byte unchanged** in container mode:
   exec` / `cp` / `run` / `tunnel` remain identical because they ride the SSH
   exec model and the socket contract, not the container's internals.
 
-### Exec parity decision (the one real delta — decided here, not hand-waved)
+### Exec parity decision (the one real delta — DECIDED)
 
 Today `ExecAgent`/`RunAgent`/`cp` SSH into a real Linux user running sshd
 (`buildAgentExecCommand` sets `DOCKER_HOST` and `TMPDIR` and runs the user
 command). In container mode the workload lives inside `bunker-<id>` the
-container, so exec parity must be chosen explicitly:
+container, so exec parity had to be chosen explicitly. **It is decided here,
+not handed to implementation:** container-mode exec is **server-side docker
+exec through the per-agent rootless engine socket** — option (ii) below — not
+an sshd inside the container.
 
-- **(i) sshd-in-container**: the base image runs an sshd carrying the same
-  `authorized_keys`; clients keep SSHing "into the agent" and land inside the
-  container.
-- **(ii) server-side docker exec (RECOMMENDED)**: bunkerd routes exec to
-  `docker --host unix:///run/bunker/<id>/docker.sock exec -it bunker-<id> ...`
-  — the same docker-over-this-socket pattern already proven by
-  `countAgentContainers` (`docker --host unix://<socket> ps -q`).
+**Mechanism (a):** bunkerd routes exec to
+`docker --host unix:///run/bunker/<id>/docker.sock exec bunker-<id> ...`,
+invoked server-side by the daemon itself; **no sshd runs in the container
+image**. There is no `-it` in the server path — a TTY is attached only when the
+caller requested one (`RunAgent`/`ExecAgent` stdin streaming), mirroring
+today's `buildAgentExecCommand` behavior. This reuses the exact
+docker-over-this-socket pattern already proven by `countAgentContainers`
+(`docker --host unix://<socket> ps -q` in `manager_spawn.go`), so no new
+daemon-to-agent transport exists.
 
-**Recommendation and justification: (ii) as the default.** It adds no
-sshd-in-container attack surface, reuses a pattern already exercised against
-this exact socket, and keeps the raw-docker-CLI and `bunker tunnel` contracts
-invariant — the client never knows whether the exec landed via sshd or the
-socket. Option (i) is recorded as the documented alternative for workloads that
-need a real interactive SSH login inside the container. The choice is a
-follow-up implementation decision (GAP-064/065) that must not leak into the
-client contract; see §6 risk 2.
+**Client-invariance invariant (b):** the client contract — `SpawnAgent` /
+`ExecAgent` / `RunAgent` / `cp` over the SSH-tunneled or gRPC transport —
+**never learns which mode executed**. A client built against today's SSH-mode
+behavior keeps working unchanged: it sends the same RPCs, gets the same
+streams, and lands inside the container without being told it did. Whether the
+command ran via sshd (legacy host-user mode) or via server-side docker exec
+(container mode) is invisible above the server boundary; the container-vs-host
+switch may not leak into any request, response, or stream field.
+
+**Host-user tooling assumptions (c):** the in-container exec switch does **not**
+move host-user-side tooling. `bunker env set` keeps writing `/run/bunker/<id>/env`
+(a `/run/bunker/<id>` path owned by bunkerd, not by the container); detached
+`RunAgent` units stay systemd units on the **host** under the agent user; sshfs
+mounts of `~/.bunker` and the home bind-mount stay on the host user side. The
+home bind already puts the same files at `/home/<uid>` inside the container, so
+host-side reads of agent files continue to work regardless of where exec lands.
+
+**Implementation ownership (d):** the exec route lands as **GAP-155**
+(persistent per-agent container + the docker exec exec path) with
+**GAP-154** (route login+mount into the container). GAP-154/GAP-155 are the
+implementation rows; this spec stays design-authority — the decision, its
+invariant, and the mechanism above are normative for both rows.
+
+**Rejected alternative — (i) sshd-in-container.** The base image would run an
+sshd carrying the same `authorized_keys`, and clients would keep SSHing "into
+the agent" and land inside the container. Rejected: an sshd inside **every**
+agent container doubles the attack surface (one more network-facing daemon per
+agent, one more credential-checking surface to keep patched) and breaks the
+no-network-daemon posture of §5 — the container should expose nothing of its
+own, only what §3 publishes. It is recorded here as the documented rejected
+alternative for workloads that need a real interactive SSH login inside the
+container; if such a need is proven later, it is a new opt-in row in this spec,
+not a reopening of this decision.
+
+> Testing of the settled decision remains owned by GAP-064/065 — the decision
+> is made, but parity with the SSH-mode behavior must still be proven with a
+> live E2E (see §6 risk 2).
 
 ## 4. PASS(4) — Lifecycle Mapping to Docker Primitives
 
@@ -363,7 +397,15 @@ no container-mode-aware sweep exists today (see §6 risk 3).
 ## 5. PASS(5) — Security Exclusions
 
 Container-mode explicitly **excludes** all of the following — none of these are
-part of the design:
+part of the design. Nothing here conflicts with §2's DEFAULT: the home
+bind-mount `-v /home/bunker-<id>:/home/<uid>` is the **persistence layer** — a
+host directory that outlives the container. Destroy tears the container and its
+writable layer but leaves `/home/bunker-<id>` on the host (§2 DEFAULT matrix).
+The one open implementation gap blocking that DEFAULT from shipping is §6
+risk 6: today's destroy step `userdel -rf bunker-<id>` deletes the home, and
+until it is deviated (preserve home + re-ownership policy on re-spawn), the §2
+destroy column remains aspirational. The exclusions below govern the container
+around that bind, not the bind itself.
 
 - ❌ **No docker socket mounted inside the agent container** — neither
   `/run/bunker/<id>/docker.sock` nor `/run/user/<uid>/docker.sock` is ever
@@ -390,6 +432,23 @@ part of the design:
   its own per-agent rootless engine socket; there is no shared docker socket and
   no cross-agent container visibility.
 
+### How each exclusion is enforced
+
+Every exclusion above maps to an existing run-flag / systemd-unit property on
+the substrate this spec builds on — no new exclusion mechanism is invented:
+
+| Exclusion | Enforced by |
+|-----------|-------------|
+| No docker socket inside the container | The `docker run` in §1/§4 carries only the `-v /home/bunker-<id>:/home/<uid>` bind — neither socket path is ever mounted, so the container has no path to its own engine (and server-side docker exec, §3, keeps exec outside the container entirely) |
+| No `--privileged` | The spawn command simply never passes the flag (§1 `docker run`); nothing in the design adds it |
+| No host PID namespace | `docker run` default PID namespace; the rootlesskit daemon constraint (`--pidns` disabled, §0) is inherited unchanged |
+| No host network namespace | `docker run` default bridge namespace + rootlesskit slirp4netns (`DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns`, §0); reachability only via §3 `-p` |
+| No host IPC namespace | `docker run` default IPC namespace |
+| No bind-mounts beyond the home | The single `-v /home/bunker-<id>:/home/<uid>` in the §1/§4 spawn command is the only mount flag issued |
+| No container drift of daemon posture | Bunkerd issues the one spawn command (§4) from its own policy — image allowlist (§6 risk 5), flags fixed server-side; clients never supply run flags |
+| No root inside the container | `--user <uid>:<gid>` in the §1 spawn command + `configureSubIDs` (`name:<uid>:65536`, `internal/agent/rootless.go`) |
+| Reachability daemon-scoped | The per-agent socket `/run/bunker/<id>/docker.sock` is the only engine endpoint, reachable only by bunkerd and the agent user's own credentials |
+
 ### Resource limits mapping (from existing limits to `docker run`)
 
 The per-agent limits enforced today on the dockerd unit (CPUQuota / MemoryMax /
@@ -414,11 +473,15 @@ capped even before the cgroup slice applies:
    Docker maps container uid 0 to the dockerd host uid and lays the 65536
    subuid range elsewhere. GAP-065 must prove ownership/write parity with a
    live E2E before this design is locked. (Cross-ref §1.)
-2. **Exec parity decision.** sshd-in-container vs server-side docker exec
-   (option (i) vs (ii) in §3) changes host-user tooling assumptions
-   (e.g. `bunker env set`, detached `RunAgent` units, sshfs of `~/.bunker`).
-   The choice must be made and tested by GAP-064/065 without leaking into the
-   client contract.
+2. **Exec parity — decision settled in §3, testing still open.** Container-mode
+   exec is server-side docker exec through the per-agent rootless engine socket
+   (option (ii) in §3 — DECIDED, not open). The host-user tooling assumptions
+   named there (`bunker env set` via `/run/bunker/<id>/env`, detached
+   `RunAgent` systemd units, sshfs of `~/.bunker`) stay on the host-user side
+   and are unaffected by the in-container exec switch (§3 point (c)). What
+   remains open is proof, not choice: GAP-064/065 must test that the docker-exec
+   path achieves parity with the SSH-mode behavior in a live E2E, without
+   leaking the mode into the client contract.
 3. **No container-mode orphan sweep exists.** Today's Destroy handles only the
    dockerd unit + Linux user; containers/images/volumes of dead container-mode
    agents after a daemon restart are uncovered. The §4 orphan-handling note
