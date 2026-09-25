@@ -3281,3 +3281,16 @@ tasks:
   status: complete
   created_at: '2026-09-25T03:27:05.840864+00:00'
   completed_at: '2026-09-25T05:37:37.126809+00:00'
+- id: DF-BUNKER-59
+  title: spawn GetAgentKey request missing Authorization header on auth-enforced daemons
+  criteria:
+  - "internal/cli/spawn.go attaches the Authorization header (Bearer <resolved server\
+    \ token>) to the GetAgentKey connect request issued on the spawn path when a token\
+    \ is configured, mirroring the SpawnAgent request; a regression test in internal/cli\
+    \ asserts the header is present on the GetAgentKey request (must FAIL against\
+    \ the unfixed code \u2014 RED proof shown in the report) and PASS after the fix;\
+    \ go build ./..., go vet ./... and go test ./... -count=1 -short all pass on the\
+    \ fixed tree"
+  status: complete
+  created_at: '2026-09-25T06:25:58.268663+00:00'
+  completed_at: '2026-09-25T06:39:59.330783+00:00'
