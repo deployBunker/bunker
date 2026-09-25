@@ -7,6 +7,7 @@ package agent
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -138,8 +139,17 @@ func procDirFixture(t *testing.T, procs []procFixtureEntry) {
 // source, no root) fails loudly with a named error that carries the process
 // evidence, reports status live_processes, and deletes NOTHING (the user,
 // home, tracker record and port range all survive).
+//
+// DF-BUNKER-63: this table used to iterate force={false,true} and assert the
+// refusal for BOTH — that force row encoded the defect this repo inherited
+// (there was no operator exit hatch: `destroy --force` refused exactly like
+// a plain destroy, so an operator could not clear a wedged agent at all).
+// The force arm has been MOVED, not deleted, into
+// TestDestroy_Force_KillsUIDProcessesAndCompletes below with FLIPPED
+// expectations; the non-force control row here is untouched and must keep
+// passing byte-identically.
 func TestDestroy_LiveProcessGate(t *testing.T) {
-	for _, force := range []bool{false, true} {
+	for _, force := range []bool{false} { // DF-BUNKER-63: the force=true row moved out (flipped) — see above
 		name := "non_force"
 		if force {
 			name = "force"
@@ -615,5 +625,176 @@ func TestIsAgentSessionProcess(t *testing.T) {
 				t.Errorf("isAgentSessionProcess(%q) = %v, want %v", tc.cmd, got, tc.want)
 			}
 		})
+	}
+}
+
+// ── DF-BUNKER-63: the destroy --force exit hatch ───────────────────────────
+
+// TestDestroy_Force_KillsUIDProcessesAndCompletes is the FLIPPED force row
+// moved out of TestDestroy_LiveProcessGate (see that test's comment): with
+// force=true the destroy no longer refuses on the foreign processes — it
+// runs the bounded SIGTERM → SIGKILL escalation, the kill list is logged,
+// and the destroy completes over the normal path (status destroyed).
+func TestDestroy_Force_KillsUIDProcessesAndCompletes(t *testing.T) {
+	var buf bytes.Buffer
+	m := newGateManager(t, &buf)
+	const id = "dfb63-force"
+	const username = "bunker-" + id
+	liveAgent(t, m, id)
+
+	// The gate's evidence source: one foreign operator process. The probe is
+	// call-indexed because the destroy path probes THREE times here: the
+	// terminate step's wait (1), the gate entry (2), and the post-escalation
+	// re-probe (3) — which reports the process GONE (the escalation worked).
+	fake := []userProcess{{PID: 4242, Cmd: "node /home/bunker-dfb63-force/app/server.js"}}
+	var signalled []string
+	probeCalls := 0
+	stubDestroyProcessProbe(t, func(string) ([]userProcess, uint32, bool, error) {
+		probeCalls++
+		if probeCalls <= 2 {
+			return fake, 61005, true, nil
+		}
+		return nil, 0, true, nil
+	})
+	// Keep the terminate step's grace wait short: it rides out the whole
+	// deadline on the stubbed probe otherwise.
+	oldGrace := terminateUserManagerGrace
+	terminateUserManagerGrace = 50 * time.Millisecond
+	t.Cleanup(func() { terminateUserManagerGrace = oldGrace })
+	m.forceKillUserProcessesFn = func(username string, uid uint32, procs []userProcess) {
+		for _, p := range procs {
+			// The kill list is recorded, never signalled.
+			signalled = append(signalled, fmt.Sprintf("pid=%d", p.PID))
+		}
+	}
+	presentUserWithUID(t, username, "61005")
+
+	userLog := filepath.Join(t.TempDir(), "userdel.log")
+	stubDir := t.TempDir()
+	script := "#!/bin/sh\nprintf '%s\\n' \"$0 $*\" >> \"" + userLog + "\"\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(stubDir, "userdel"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", stubDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	resp, err := m.Destroy(context.Background(), id, true)
+	if err != nil {
+		t.Fatalf("force destroy must kill the uid's processes and complete: %v", err)
+	}
+	if resp.Status != "destroyed" {
+		t.Fatalf("status = %q, want destroyed", resp.Status)
+	}
+	if len(signalled) == 0 {
+		t.Error("the force escalation never signalled the foreign process")
+	}
+	for _, want := range []string{"pid=4242"} {
+		found := false
+		for _, s := range signalled {
+			if s == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("kill list missing %q (signalled: %v)", want, signalled)
+		}
+	}
+	if calls, rerr := os.ReadFile(userLog); rerr != nil || len(calls) == 0 {
+		t.Errorf("userdel never ran after the force escalation (calls: %q, err: %v)", calls, rerr)
+	}
+	// The kill list is on the log record.
+	if !strings.Contains(buf.String(), "destroy --force cleared the agent uid's live processes") {
+		t.Errorf("log missing the force-clear record; log:\n%s", buf.String())
+	}
+	// The tracker record is gone (destroy completed).
+	if rec := m.tracker.Get(id); rec != nil {
+		t.Error("tracker record survived a successful force destroy")
+	}
+}
+
+// TestDestroy_Force_SurvivorsStillRefuse pins the honesty channel: an
+// escalation that CANNOT clear the uid (SIGKILL-immune process) leaves the
+// destroy refusing loudly — force never trades evidence for momentum, and
+// nothing has been deleted when it fires.
+func TestDestroy_Force_SurvivorsStillRefuse(t *testing.T) {
+	var buf bytes.Buffer
+	m := newGateManager(t, &buf)
+	const id = "dfb63-survivor"
+	const username = "bunker-" + id
+	liveAgent(t, m, id)
+
+	fake := []userProcess{{PID: 4343, Cmd: "uninterruptible /home/bunker-dfb63-survivor/app"}}
+	stubDestroyProcessProbe(t, func(string) ([]userProcess, uint32, bool, error) {
+		return fake, 61006, true, nil
+	})
+	// The escalation ran; the re-probe still shows the process.
+	m.forceKillUserProcessesFn = func(string, uint32, []userProcess) {}
+	presentUserWithUID(t, username, "61006")
+
+	userLog := filepath.Join(t.TempDir(), "userdel.log")
+	stubDir := t.TempDir()
+	script := "#!/bin/sh\nprintf '%s\\n' \"$0 $*\" >> \"" + userLog + "\"\n"
+	if err := os.WriteFile(filepath.Join(stubDir, "userdel"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", stubDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	resp, err := m.Destroy(context.Background(), id, true)
+	if err == nil {
+		t.Fatal("a process that survives the escalation must still refuse the destroy")
+	}
+	if resp == nil || resp.Status != StatusLiveProcesses {
+		t.Fatalf("status = %v, want %q", resp, StatusLiveProcesses)
+	}
+	for _, want := range []string{"survived the destroy --force escalation", "pid 4343"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal error missing %q — got: %v", want, err)
+		}
+	}
+	if calls, rerr := os.ReadFile(userLog); rerr == nil && len(calls) > 0 {
+		t.Errorf("userdel ran despite surviving processes: %q", calls)
+	}
+	if rec := m.tracker.Get(id); rec == nil {
+		t.Error("tracker record lost on a surviving-process refusal")
+	}
+}
+
+// TestDestroy_Force_UnobservablePostEscalationRefuses pins the no-blind-userdel
+// rule: when the post-escalation probe cannot observe the uid, even --force
+// refuses instead of deleting blind.
+func TestDestroy_Force_UnobservablePostEscalationRefuses(t *testing.T) {
+	var buf bytes.Buffer
+	m := newGateManager(t, &buf)
+	const id = "dfb63-blind"
+	const username = "bunker-" + id
+	liveAgent(t, m, id)
+
+	fake := []userProcess{{PID: 4444, Cmd: "node /home/bunker-dfb63-blind/app"}}
+	// The probe is call-indexed: the terminate step's wait consumes the first
+	// call(s), the gate entry reports the foreign process, and the
+	// post-escalation probe reports the user record GONE (unobservable).
+	calls := 0
+	stubDestroyProcessProbe(t, func(string) ([]userProcess, uint32, bool, error) {
+		calls++
+		if calls <= 2 {
+			return fake, 61007, true, nil
+		}
+		return nil, 0, false, nil
+	})
+	// Keep the terminate step's grace wait short.
+	oldGrace := terminateUserManagerGrace
+	terminateUserManagerGrace = 50 * time.Millisecond
+	t.Cleanup(func() { terminateUserManagerGrace = oldGrace })
+	m.forceKillUserProcessesFn = func(string, uint32, []userProcess) {}
+	presentUserWithUID(t, username, "61007")
+
+	resp, err := m.Destroy(context.Background(), id, true)
+	if err == nil {
+		t.Fatal("an unobservable post-escalation state must refuse even in force mode")
+	}
+	if resp == nil || resp.Status != StatusLiveProcesses {
+		t.Fatalf("status = %v, want %q", resp, StatusLiveProcesses)
+	}
+	if !strings.Contains(err.Error(), "unobservable") {
+		t.Errorf("refusal error does not name the unobservable state: %v", err)
 	}
 }

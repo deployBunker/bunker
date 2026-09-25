@@ -182,6 +182,8 @@ func TestSpawnRollbackRunsUserdelUnderCancelledContext(t *testing.T) {
 			return &user.User{Username: username, Uid: "1001", Gid: "1001", HomeDir: "/home/" + username}, nil
 		}
 		defer func() { lookupAgentUser = restore }()
+		// DF-BUNKER-63: the fake uid must not be scanned in the ambient /proc.
+		stubSpawnScanner(t, func(uint32) ([]userProcess, error) { return nil, nil })
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -274,6 +276,8 @@ func TestSpawnRollbackRunsUserdelUnderCancelledContext(t *testing.T) {
 			return &user.User{Username: username, Uid: "1001", Gid: "1001", HomeDir: "/home/" + username}, nil
 		}
 		defer func() { lookupAgentUser = restore }()
+		// DF-BUNKER-63: the fake uid must not be scanned in the ambient /proc.
+		stubSpawnScanner(t, func(uint32) ([]userProcess, error) { return nil, nil })
 
 		agentID := uniqueAgentID("intci5-healthy")
 		_, err := m.Spawn(context.Background(), &v1.SpawnAgentRequest{AgentId: agentID, Ttl: "1h"})
@@ -572,6 +576,7 @@ func TestSpawnStagesCoverNamedStages(t *testing.T) {
 		"capacity":            StageCapacity,
 		"port-alloc":          StagePortAlloc,
 		"user-create":         StageUserCreate,
+		"uid-collision":       StageUIDCollision, // DF-BUNKER-63
 		"isolation-provision": StageIsolationProvision,
 		"keygen":              StageKeygen,
 		"authorized-keys":     StageAuthorizedKeys,

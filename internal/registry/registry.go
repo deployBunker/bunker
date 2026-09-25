@@ -53,6 +53,12 @@ const (
 	// KindDestroy removes an agent from the live set and adds it to the
 	// known-ID set so a repeated destroy stays idempotent.
 	KindDestroy = "destroy"
+	// KindRefusal records a destroy REFUSAL against a live agent
+	// (DF-BUNKER-63): the manager refused to delete it (live-process gate or
+	// home-retention) and the TTL reaper must back off instead of retrying
+	// every minute. The refusal state rides the agent's live record until a
+	// successful destroy or a fresh spawn supersedes it.
+	KindRefusal = "refusal"
 	// KindKnown is a compaction-only index carrying the bounded list of
 	// previously-known agent IDs (most recent last).
 	KindKnown = "known"
@@ -105,6 +111,10 @@ type Event struct {
 	// selected instead of being re-labelled by command-text guessing.
 	MountDriver string `json:"mount_driver,omitempty"`
 
+	// Refusal is the destroy-refusal state of a live agent (DF-BUNKER-63).
+	// Set only on KindRefusal events; the spawn and destroy paths clear it.
+	Refusal *Refusal `json:"refusal,omitempty"`
+
 	// GAP-116 safety-preset reporting: the effective preset name and the
 	// resolved systemd knob set the agent was spawned under. Persisted so a
 	// replayed or adopted agent keeps reporting its effective set. The
@@ -123,6 +133,25 @@ type Event struct {
 type SystemdProperty struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
+}
+
+// Refusal is the destroy-refusal state of one live agent (DF-BUNKER-63). It
+// records WHY a destroy refused (status), how many attempts have been made,
+// the last error text and the last attempt time — the state the TTL reaper
+// reads to back off exponentially instead of retrying every minute, and that
+// list/status surfaces to show the agent as destroy-refused rather than
+// running-forever.
+type Refusal struct {
+	// Status is the destroy-path refusal status: "live_processes" or
+	// "home_retained" (the manager's StatusLiveProcesses /
+	// StatusHomeRetained vocabulary).
+	Status string `json:"status"`
+	// Attempts counts every refused destroy attempt recorded for the agent.
+	Attempts int `json:"attempts"`
+	// LastError is the refusal error text of the most recent attempt.
+	LastError string `json:"last_error,omitempty"`
+	// LastAttemptAt is the wall-clock time of the most recent attempt.
+	LastAttemptAt string `json:"last_attempt_at,omitempty"`
 }
 
 // Record is the folded current state of one live agent.
@@ -147,6 +176,10 @@ type Record struct {
 	SafetyPreset    string
 	UnitProperties  []SystemdProperty
 	SliceProperties []SystemdProperty
+
+	// Refusal is the folded destroy-refusal state (DF-BUNKER-63); nil when
+	// the agent has no refusal on record.
+	Refusal *Refusal
 }
 
 // Report summarises one replay pass.
@@ -343,6 +376,27 @@ func (s *Store) replayLocked() (Report, error) {
 					known[ev.AgentID] = true
 					knownOrder = append(knownOrder, ev.AgentID)
 				}
+			case KindRefusal:
+				// DF-BUNKER-63: a refusal folds INTO the agent's live record
+				// so the backoff state survives a restart. An agent the
+				// registry does not know as live cannot carry a refusal (the
+				// spawn's durability gate guarantees a live record exists
+				// before any destroy can refuse against it); such a stray
+				// event is skipped as malformed, never folded silently.
+				rec, ok := live[ev.AgentID]
+				if !ok || ev.AgentID == "" {
+					rep.Malformed++
+					s.logger.Warn("registry: skipping refusal for unknown agent", "file", path, "agent_id", ev.AgentID)
+					continue
+				}
+				if ev.Refusal == nil {
+					// A refusal event with no payload is malformed too —
+					// nothing to fold.
+					rep.Malformed++
+					s.logger.Warn("registry: skipping refusal without payload", "file", path, "agent_id", ev.AgentID)
+					continue
+				}
+				rec.Refusal = ev.Refusal
 			case KindKnown:
 				for _, id := range ev.KnownIDs {
 					if id == "" || known[id] {
@@ -456,6 +510,7 @@ func (s *Store) AppendSpawn(rec *Record) error {
 	}
 	return s.append(ev, func() {
 		clone := *rec
+		clone.Refusal = nil // a fresh spawn supersedes any stale refusal
 		s.live[rec.AgentID] = &clone
 		if s.known[rec.AgentID] {
 			delete(s.known, rec.AgentID)
@@ -516,6 +571,56 @@ func (s *Store) AppendDestroy(agentID string) error {
 		}
 		s.knownOrder = trimKnown(s.knownOrder, s.known, s.live, s.knownCap)
 	})
+}
+
+// AppendRefusal folds a destroy REFUSAL into agentID's live record
+// (DF-BUNKER-63). The TTL reaper reads the folded state to back off
+// exponentially instead of retrying every minute, and the CLI's list/info
+// surfaces read it to report the agent as destroy-refused. The event carries
+// the FULL refusal payload (status, attempts, last error, last attempt time)
+// so replay reconstructs it exactly. An agent the registry does not know as
+// live is a caller error: the append fails loudly rather than fabricating
+// durable state for an agent that does not exist.
+func (s *Store) AppendRefusal(agentID string, refusal *Refusal) error {
+	if agentID == "" {
+		return fmt.Errorf("registry: refusal event requires an agent_id")
+	}
+	if refusal == nil {
+		return fmt.Errorf("registry: refusal event requires a refusal payload")
+	}
+	s.mu.Lock()
+	_, wasLive := s.live[agentID]
+	s.mu.Unlock()
+	if !wasLive {
+		return fmt.Errorf("registry: refusal event for unknown agent %q", agentID)
+	}
+	ev := Event{
+		TS:      time.Now().UTC().Format(time.RFC3339),
+		Kind:    KindRefusal,
+		AgentID: agentID,
+		Refusal: refusal,
+	}
+	return s.append(ev, func() {
+		if rec, ok := s.live[agentID]; ok {
+			clone := *refusal
+			rec.Refusal = &clone
+		}
+	})
+}
+
+// RefusalOf returns a copy of agentID's folded refusal state, or nil when the
+// agent carries none (unknown agent, no refusal recorded, or an empty
+// payload). The caller gets a copy so the folded record cannot be mutated
+// behind the store's back.
+func (s *Store) RefusalOf(agentID string) *Refusal {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rec, ok := s.live[agentID]
+	if !ok || rec.Refusal == nil {
+		return nil
+	}
+	clone := *rec.Refusal
+	return &clone
 }
 
 // Forget drops agentID from both the live set and the known-ID index, used
@@ -680,6 +785,11 @@ func eventToRecord(ev *Event) *Record {
 		SafetyPreset:     ev.SafetyPreset,
 		UnitProperties:   ev.UnitProperties,
 		SliceProperties:  ev.SliceProperties,
+		// DF-BUNKER-63: a refusal rides the record when the event carries
+		// one (a KindRefusal fold, or a compacted spawn event preserving
+		// the live record's refusal). A plain spawn event has none and
+		// leaves the field nil — a fresh spawn supersedes stale refusals.
+		Refusal: ev.Refusal,
 	}
 	if rec.Status == "" {
 		rec.Status = "running"

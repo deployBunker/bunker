@@ -86,6 +86,20 @@ type AgentManager struct {
 	// the registry has been replayed and reconciled against system state.
 	reconcileDone chan struct{}
 	reconcileOnce sync.Once
+
+	// DF-BUNKER-63 method-shaped seams: the gate and the reaper need the
+	// manager's registry/logger, which package function seams cannot carry.
+	// Production values are set in NewAgentManager; tests may swap them to
+	// record or stub. They are nil-safe by construction (production methods
+	// are always wired here), but hand-built test managers (struct literals
+	// in coverage tests) leave them nil, so every call site nil-guards.
+	// recordDestroyRefusalFn folds a destroy refusal into the durable
+	// registry record (live_processes / home_retained) and marks the
+	// tracker status.
+	recordDestroyRefusalFn func(agentID, status string, cause error)
+	// forceKillUserProcessesFn is the destroy --force kill escalation
+	// (SIGTERM, wait, SIGKILL, kill list logged).
+	forceKillUserProcessesFn func(username string, uid uint32, procs []userProcess)
 }
 
 // NewAgentManager creates a new AgentManager.
@@ -112,6 +126,13 @@ func NewAgentManager(cfg *config.Config, logger *slog.Logger, tracker *resource.
 	}
 	am.listSystemAgents = defaultListSystemAgents
 	am.destroyAgent = am.Destroy
+	// DF-BUNKER-63: wire the destroy-gate refusal recorder and the --force
+	// kill escalation. The gate dereferences these through the receiver (m),
+	// so every NewAgentManager-built manager has them.
+	am.recordDestroyRefusalFn = am.recordDestroyRefusal
+	am.forceKillUserProcessesFn = func(username string, uid uint32, procs []userProcess) {
+		am.killUserProcessesForce(context.Background(), username, uid, procs)
+	}
 	// DF-BUNKER-53: adoption applies the same host isolation a fresh spawn
 	// does. The production seams route to the real spawn-time stages (the
 	// slice drop-in + daemon-reload + containment landing check, and the
@@ -279,10 +300,26 @@ func (m *AgentManager) startTTLReaper() {
 }
 
 // reapExpiredAgents destroys all agents whose ExpiresAt is in the past.
+//
+// DF-BUNKER-63: an agent whose destroy was REFUSED (live-process gate or
+// home retention) is not retried every minute — the durable registry record
+// carries the refusal (attempts, last attempt time), the retry delay is
+// exponential (1m doubled per attempt, capped at one hour), and until the
+// delay elapses the reaper skips the agent with a log line instead of
+// hammering a refusal that cannot succeed. Because the state is durable
+// (GAP-070), the backoff survives a daemon restart. A destroy that SUCCEEDS
+// clears the refusal together with the agent's record.
 func (m *AgentManager) reapExpiredAgents() {
 	now := time.Now()
 	for _, rec := range m.tracker.List() {
 		if rec.ExpiresAt.IsZero() || rec.ExpiresAt.After(now) {
+			continue
+		}
+		if wait := m.reaperBackoffRemaining(rec.AgentID); wait > 0 {
+			m.logger.Info("TTL expired but a destroy refusal is backing off; skipping until the retry window opens",
+				"agent_id", rec.AgentID,
+				"status", rec.Status,
+				"retry_in", wait.String())
 			continue
 		}
 		m.logger.Info("TTL expired, destroying agent", "agent_id", rec.AgentID, "expires_at", rec.ExpiresAt)

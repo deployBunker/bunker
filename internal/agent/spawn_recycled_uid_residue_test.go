@@ -170,6 +170,12 @@ func newRecycledResidueHost(t *testing.T, agentID string) *recycledResidueHost {
 		return &user.User{Username: name, Uid: strconv.Itoa(h.uid), Gid: strconv.Itoa(h.uid), HomeDir: filepath.Join(homeRoot, name)}, nil
 	}
 	t.Cleanup(func() { lookupAgentUser = restoreAgentUser })
+	// DF-BUNKER-63: the spawn's uid-collision precheck must not depend on the
+	// ambient /proc — the fake uid this test models has no real processes.
+	// (On hosts where a REAL process runs under the stubbed uid — measured:
+	// pid 7085 under uid 1001 — an unstubbed scanner turns this hermetic test
+	// into a false collision failure.)
+	stubSpawnScanner(t, func(uint32) ([]userProcess, error) { return nil, nil })
 
 	// The rollback resolves the user through lookupUser before it clears linger
 	// and the manager; the uid must be the recycled one.

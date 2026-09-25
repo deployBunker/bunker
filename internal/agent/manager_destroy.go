@@ -428,10 +428,20 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	// agent uid's OWN systemd session pair is absorbed by the gate
 	// (DF-BUNKER-56) — it is lifecycle infrastructure every lingered agent
 	// legitimately owns.
-	// FORCE MODE IS NOT AN EXCEPTION: --force means "tear the agent down even
-	// though it is running", not "orphan every process it owns".
-	if err := gateDestroyOnLiveProcesses(ctx, username, m.logger); err != nil {
-		return &v1.DestroyAgentResponse{AgentId: agentID, Status: StatusLiveProcesses}, err
+	//
+	// DF-BUNKER-63: with force=true the operator has an exit hatch — the
+	// foreign processes are terminated with a bounded SIGTERM → SIGKILL
+	// escalation (the kill list is logged), the home is archived FIRST, and
+	// then the destroy proceeds over the normal path. Without force today's
+	// refusal semantics are byte-identical: status live_processes, every pid
+	// named, nothing deleted, and (now) the refusal is recorded for the
+	// reaper's backoff.
+	// The gate records the refusal itself (live_processes on the durable
+	// record for the reaper's backoff) and, in force mode, runs the bounded
+	// kill escalation internally before returning nil — see its own contract
+	// below.
+	if gerr := m.gateDestroyOnLiveProcesses(ctx, agentID, username, m.logger, force); gerr != nil {
+		return &v1.DestroyAgentResponse{AgentId: agentID, Status: StatusLiveProcesses}, gerr
 	}
 
 	// Step 2c (INT-HOST-001): disable systemd linger so the per-agent linger
@@ -476,6 +486,13 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 				"home", homeDir,
 				"archive_dir", archiveDir,
 				"error", aerr)
+			// DF-BUNKER-63: home_retained is a destroy REFUSAL — the TTL
+			// reaper must back off instead of retrying every minute. The
+			// refusal is recorded on the durable registry record.
+			if m.recordDestroyRefusalFn != nil {
+				m.recordDestroyRefusalFn(agentID, StatusHomeRetained,
+					fmt.Errorf("destroy aborted: agent home %s could not be archived to %s (home retained, nothing deleted)", homeDir, archiveDir))
+			}
 			return &v1.DestroyAgentResponse{AgentId: agentID, Status: StatusHomeRetained},
 				fmt.Errorf("destroy aborted: agent home %s could not be archived to %s: %w (home retained, nothing deleted)", homeDir, archiveDir, aerr)
 		}
@@ -671,11 +688,29 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 // happened when it fires — the caller returns StatusLiveProcesses with the
 // user, home, tracker record and port range intact.
 //
-// The probe is seam-isolated (destroyLiveProcessProbe) so a unit test drives
+// The probe is seam-isolated (destroyProcessProbe) so a unit test drives
 // the refusal without touching the host's /proc, and a user that no longer
 // resolves skips the gate entirely (the idempotent-destroy path owns that
 // case; there is no uid to check for an already-gone user).
-func gateDestroyOnLiveProcesses(_ context.Context, username string, logger *slog.Logger) error {
+//
+// DF-BUNKER-63 exit hatch: with force=true the gate no longer refuses on the
+// foreign processes — it terminates them with a bounded SIGTERM → SIGKILL
+// escalation (kill list logged, the destroy's own process excluded) and
+// returns whatever the post-escalation probe shows; the caller then proceeds
+// over the normal destroy path (archive home first, then userdel). The
+// refusal-status return is the force path's HONESTY channel: processes that
+// survived even the escalation come back as (refused, uid, nil) so the
+// caller can still refuse loudly instead of userdel'ing into a busy uid.
+// With force=false the refusal semantics are byte-identical to pre-DF-63
+// behaviour, and the refusal is additionally recorded on the durable
+// registry record for the TTL reaper's backoff.
+//
+//	Return contract: err == nil → the uid is process-free (or the user record
+//	is gone) and the destroy may proceed. err != nil → refusing (caller
+//	returns StatusLiveProcesses), including in force mode when the escalation
+//	could not clear the uid or the post-escalation state is unobservable —
+//	force never trades evidence for momentum.
+func (m *AgentManager) gateDestroyOnLiveProcesses(_ context.Context, agentID, username string, logger *slog.Logger, force bool) error {
 	procs, uid, ok, err := destroyProcessProbe(username)
 	if err != nil {
 		// The probe could not run (e.g. /proc unreadable). "Cannot look" must
@@ -683,7 +718,16 @@ func gateDestroyOnLiveProcesses(_ context.Context, username string, logger *slog
 		// destroy on an environment without /proc: the gate REFUSES, and the
 		// refusal names the probe failure so the operator knows the destroy
 		// was blocked by an unobservable host, not by live processes.
-		return fmt.Errorf("destroy refused: cannot verify that user %s owns no live processes: %v", username, err)
+		// DF-BUNKER-63: force does NOT bypass an unobservable probe — a
+		// forced userdel with no evidence would be exactly the cube-las-00
+		// partial state. The refusal is recorded either way.
+		refusal := fmt.Errorf("destroy refused: cannot verify that user %s owns no live processes: %v", username, err)
+		logger.Error("destroy refused: cannot verify that the user owns no live processes",
+			"username", username, "probe_error", err.Error(), "force", force)
+		if m.recordDestroyRefusalFn != nil {
+			m.recordDestroyRefusalFn(agentID, StatusLiveProcesses, refusal)
+		}
+		return refusal
 	}
 	if !ok {
 		return nil // user record already gone: no uid to check
@@ -707,13 +751,67 @@ func gateDestroyOnLiveProcesses(_ context.Context, username string, logger *slog
 			"username", username, "uid", uid)
 		return nil
 	}
+	if force {
+		// DF-BUNKER-63 exit hatch: bounded SIGTERM → SIGKILL escalation over
+		// the foreign processes, then re-probe. The escalation's kill list is
+		// logged inside killUserProcessesForce.
+		if m.forceKillUserProcessesFn != nil {
+			m.forceKillUserProcessesFn(username, uid, foreign)
+		}
+		remaining, _, pok, perr := destroyProcessProbe(username)
+		if perr != nil || !pok {
+			// Post-escalation state unobservable (probe failure, or the user
+			// record vanished mid-escalation): refuse rather than userdel
+			// blind — the gate never trades evidence for momentum.
+			cause := perr
+			if cause == nil {
+				cause = fmt.Errorf("user record %s no longer resolves after the escalation", username)
+			}
+			refusal := fmt.Errorf("destroy --force: post-escalation probe failed; refusing to userdel an unobservable uid for %s (uid %d): %v", username, uid, cause)
+			logger.Error("destroy --force: post-escalation probe failed; refusing to userdel an unobservable uid",
+				"username", username, "uid", uid, "probe_error", cause.Error())
+			if m.recordDestroyRefusalFn != nil {
+				m.recordDestroyRefusalFn(agentID, StatusLiveProcesses, refusal)
+			}
+			return refusal
+		}
+		var survivors []userProcess
+		for _, p := range remaining {
+			if !isAgentSessionProcess(p) {
+				survivors = append(survivors, p)
+			}
+		}
+		if len(survivors) > 0 {
+			// The escalation could not clear the uid: refuse loudly, exactly
+			// like the non-force path (nothing has been deleted yet — the
+			// archive and userdel both run after this gate).
+			summary := (&orphanUIDCheck{UID: uid, UIDKnown: true, UserExists: true, Processes: survivors}).Describe()
+			logger.Error("destroy --force: uid still owns live processes after the SIGTERM/SIGKILL escalation",
+				"username", username, "uid", uid, "processes", len(survivors), "evidence", summary)
+			refusal := fmt.Errorf("destroy refused: user %s (uid %d) still owns live processes that survived the destroy --force escalation (SIGTERM, then SIGKILL). %s. "+
+				"Stop those processes on the host, then retry the destroy", username, uid, summary)
+			if m.recordDestroyRefusalFn != nil {
+				m.recordDestroyRefusalFn(agentID, StatusLiveProcesses, refusal)
+			}
+			return refusal
+		}
+		logger.Info("destroy --force cleared the agent uid's live processes; proceeding with teardown",
+			"username", username, "uid", uid)
+		return nil
+	}
+	// Non-force: today's refusal, byte-identical, plus the durable refusal
+	// record for the reaper's backoff (DF-BUNKER-63 limb 3).
 	summary := (&orphanUIDCheck{UID: uid, UIDKnown: true, UserExists: true, Processes: foreign}).Describe()
 	logger.Error("destroy refused: agent uid still owns live processes",
 		"username", username,
 		"uid", uid,
 		"processes", len(foreign),
 		"evidence", summary)
-	return fmt.Errorf("%s", buildDestroyLiveProcessRefusal(username, uid, foreign))
+	refusal := fmt.Errorf("%s", buildDestroyLiveProcessRefusal(username, uid, foreign))
+	if m.recordDestroyRefusalFn != nil {
+		m.recordDestroyRefusalFn(agentID, StatusLiveProcesses, refusal)
+	}
+	return refusal
 }
 
 // terminateUserManagerGrace bounds the wait for the session pair to exit

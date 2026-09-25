@@ -125,6 +125,11 @@ func (s *Store) Compact() (CompactStats, error) {
 			TailnetIP:        rec.TailnetIP,
 			Image:            rec.Image,
 			MountDriver:      rec.MountDriver,
+			// DF-BUNKER-63: the compacted spawn event preserves the live
+			// record's refusal state so compaction cannot wipe the reaper's
+			// backoff state. A record without a refusal writes nothing (the
+			// field is omitempty).
+			Refusal: rec.Refusal,
 		})
 	}
 

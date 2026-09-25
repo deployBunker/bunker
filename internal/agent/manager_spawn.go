@@ -274,8 +274,30 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	if err != nil {
 		return nil, fail(StageIsolationProvision, fmt.Errorf("look up agent user %s for isolation provisioning: %w", username, err))
 	}
-	uid, _ := strconv.Atoi(u.Uid)
+	uid, atoiErr := strconv.Atoi(u.Uid)
+	if atoiErr != nil {
+		// DF-BUNKER-63: the collision precheck cannot verify a uid it cannot
+		// parse, and scanning uid 0 would be nonsense — fail closed at the
+		// collision stage rather than handing out an unverifiable identity.
+		return nil, fail(StageUIDCollision, fmt.Errorf("uid of agent user %s is not numeric (%q): the uid-collision precheck cannot verify it (fail closed)", username, u.Uid))
+	}
 	gid, _ := strconv.Atoi(u.Gid)
+
+	// ── Step 2.6 (DF-BUNKER-63): verify the new uid owns NO live process ──
+	// The agent itself has no processes yet, so ANY hit is foreign — the
+	// fad4b89a shape: the uid an unrelated production container still runs
+	// as. Handing the uid out anyway would grant the agent same-uid signal
+	// privilege over that process, breaking the per-user isolation promise.
+	// Fail closed through the standard rollback: the just-created user is
+	// removed, the spawn fails with a named stage error listing the
+	// colliding pids, and the JSONL breadcrumb records it. The probe is
+	// seam-isolated (spawnProcessScanner) so tests drive both branches
+	// without root.
+	m.logger.Info("spawn entering stage", "agent_id", agentID, "stage", StageUIDCollision)
+	if err := m.checkSpawnUIDCollision(ctx, username, uint32(uid)); err != nil {
+		return nil, fail(StageUIDCollision, err)
+	}
+
 	if err := m.provisionIsolation(ctx, agentID, username, uid, gid); err != nil {
 		return nil, fail(StageIsolationProvision, fmt.Errorf("provision isolation boundary for %s: %w", agentID, err))
 	}

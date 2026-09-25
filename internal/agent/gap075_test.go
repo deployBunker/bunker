@@ -400,6 +400,8 @@ func TestSpawnFailsClosedWithoutIsolationMembership(t *testing.T) {
 		return &user.User{Username: username, Uid: "1001", Gid: "1001", HomeDir: "/home/" + username}, nil
 	}
 	defer func() { lookupAgentUser = restore }()
+	// DF-BUNKER-63: the fake uid must not be scanned in the ambient /proc.
+	stubSpawnScanner(t, func(uint32) ([]userProcess, error) { return nil, nil })
 
 	agentID := uniqueAgentID("gap075-closed")
 	_, err := m.Spawn(context.Background(), &v1.SpawnAgentRequest{AgentId: agentID, Ttl: "1h"})
@@ -498,6 +500,8 @@ func TestSpawnWiresIsolation(t *testing.T) {
 		return &user.User{Username: username, Uid: "1001", Gid: "1001", HomeDir: "/home/" + username}, nil
 	}
 	defer func() { lookupAgentUser = restore }()
+	// DF-BUNKER-63: the fake uid must not be scanned in the ambient /proc.
+	stubSpawnScanner(t, func(uint32) ([]userProcess, error) { return nil, nil })
 
 	// The spawn is expected to fail at the agent home (the test does not own
 	// /home); the provisioning step runs BEFORE that and is what we assert on.
@@ -615,6 +619,8 @@ func TestSpawnVerifiesExchangeRoot(t *testing.T) {
 				return &user.User{Username: username, Uid: "1001", Gid: "1001", HomeDir: "/home/" + username}, nil
 			}
 			defer func() { lookupAgentUser = restore }()
+			// DF-BUNKER-63: the fake uid must not be scanned in the ambient /proc.
+			stubSpawnScanner(t, func(uint32) ([]userProcess, error) { return nil, nil })
 
 			// The spawn fails later, at the agent home (this test does not own
 			// /home); the scratch step runs BEFORE that and is what matters.
