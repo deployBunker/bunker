@@ -3232,3 +3232,52 @@ tasks:
   status: complete
   created_at: '2026-09-24T20:05:19.450503+00:00'
   completed_at: '2026-09-24T20:17:51.554363+00:00'
+- id: INT-CI-039
+  title: 'E2E battery destroy-refused on systemd>=254: isAgentSessionProcess misses
+    ''systemd-executor --deserialize N'''
+  criteria:
+  - '1) internal/agent/orphan_uid.go isAgentSessionProcess returns true for userProcess
+    Cmd values matching the systemd v254+ user-manager shape ''systemd-executor --deserialize
+    <fd>'' (path-prefixed variants included), with table tests covering the exact
+    CI fingerprint string ''/usr/lib/systemd/systemd-executor --deserialize 27 --log-level
+    info --log-target auto'' plus the existing systemd --user and (sd-pam) shapes
+    unchanged. 2) The full existing test suite passes (go test ./... -count=1). 3)
+    go vet and gofmt clean on touched files. 4) No behavior change for genuinely foreign
+    processes: a non-session command (e.g. sleep 999) still refuses the destroy (table
+    test asserts refusal path). 5) The fix ships with a RED proof: the new table case
+    fails on pre-fix code per the commit body.'
+  status: complete
+  created_at: '2026-09-25T03:27:05.105801+00:00'
+  completed_at: '2026-09-25T04:12:17.655727+00:00'
+- id: PERF-001
+  title: ListAgents/AgentMetrics walk agent homes synchronously per request (7.2s
+    on cube) - cache the disk-usage snapshot
+  criteria:
+  - '1) internal/server/service.go ListAgents and AgentMetrics no longer call agentDiskUsage
+    synchronously per request on the hot path; disk usage is served from a cached
+    snapshot refreshed on a TTL (bounded stale window <= 5 minutes) and/or after spawn
+    events, with the cache safe for concurrent use. 2) A unit test proves the walk
+    is NOT executed on a second request inside the TTL window (e.g. injectable clock/seam
+    counting walks). 3) A unit test proves staleness bound: after TTL expiry the next
+    request refreshes (or a background refresh path exists) and the value updates.
+    4) Full suite passes (go test ./... -count=1), go vet + gofmt clean. 5) RED proof
+    in commit body: pre-fix, the new tests fail because every request walks.'
+  status: complete
+  created_at: '2026-09-25T03:27:05.480834+00:00'
+  completed_at: '2026-09-25T05:13:38.685598+00:00'
+- id: DOCS-G164-165
+  title: README command lists + specs/api.md + README Services table cover every registered
+    command and all 22 proto RPCs (GAP-164 + GAP-165)
+  criteria:
+  - 1) README.md CLI Commands lists include every command registered in cmd/bunker/main.go
+    (35 NewXCommand registrations), specifically adding key, agent-tools and subid-migrate
+    with one-line descriptions in the correct release section; a grep census of registrations
+    vs README entries is quoted in the commit body. 2) specs/api.md documents RenewalDriftReport,
+    RotateJWTSecret, RevokeKey and KeyList RPCs and adds them to its REST mapping
+    table, mirroring the existing GetAgentKey entry style. 3) README.md Services table
+    (~line 802) lists all 22 RPCs of service Bunkerd from proto/bunker/v1/bunker.proto.
+    4) Diff touches ONLY README.md and specs/api.md. 5) Links/cross-references added
+    for key rotation docs where a natural anchor exists.
+  status: complete
+  created_at: '2026-09-25T03:27:05.840864+00:00'
+  completed_at: '2026-09-25T05:37:37.126809+00:00'
