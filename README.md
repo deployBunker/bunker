@@ -799,7 +799,7 @@ bunker restart abc12345
 
 | Service | Protocol | RPCs |
 |---------|----------|------|
-| `Bunkerd` | gRPC + REST | `ServerInfo`, `ServerMetrics`, `SpawnAgent`, `DestroyAgent`, `StopAgent`, `StartAgent`, `RestartAgent`, `ListAgents`, `GetAgent`, `AgentMetrics`, `ExecAgent`, `RunAgent`, `HeartbeatAgent`, `QueryAudit` |
+| `Bunkerd` | gRPC + REST | `ServerInfo`, `ServerMetrics`, `SpawnAgent`, `RenewalDriftReport`, `DestroyAgent`, `StopAgent`, `StartAgent`, `RestartAgent`, `ListAgents`, `GetAgent`, `GetAgentKey`, `AgentMetrics`, `ExecAgent`, `RunAgent`, `HeartbeatAgent`, `QueryAudit`, `RotateJWTSecret`, `RevokeKey`, `KeyList` |
 | `Agent` | gRPC + REST (scoped) | `GetInfo`, `Metrics`, `Heartbeat` |
 
 The REST surface is **POST-only** (connect-go, mounted without `WithHTTPGet`):
@@ -1003,6 +1003,18 @@ bunker guard       Do-not-build guard for SSHFS mounts (check/install — see do
 bunker host-provision  Provision the per-agent isolation boundary on this host
                    (dry run by default; --apply installs, --status reports,
                    --uninstall removes)
+bunker key         Manage API keys and the JWT signing secret (master only):
+                   key rotate (zero-downtime; overlap window; the new secret
+                   is printed exactly once), key list, key revoke
+bunker agent-tools  Probe the agent (not the client) for the executables the
+                   remote editing verbs need; --install delivers the vendored
+                   toolsd onto the agent's own PATH (see
+                   docs/prd/SPEC-agent-tool-delivery.md)
+bunker surface     Manage the agent's toolsd socket surface (systemd user
+                   units; install/remove)
+bunker subid-migrate  Rewrite overlapping subordinate-id (subuid/subgid)
+                   ranges for managed agents (dry run by default; --apply
+                   rewrites)
 ```
 
 ### Exit codes

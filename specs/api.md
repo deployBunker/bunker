@@ -379,6 +379,127 @@ Response:
 - `expires_at` (string): New expiry timestamp
 - `acknowledged` (bool): Always true on success
 
+### GetAgentKey
+
+Returns the agent's persisted SSH private key (GAP-128: `SpawnAgent` no longer
+carries key material by default — set `return_ssh_private_key` there to keep
+the old inline behavior, or call this after spawn). Master-credential gated
+exactly like exec/destroy: agent-scoped sub-keys are rejected before the
+handler runs.
+
+```
+rpc GetAgentKey(GetAgentKeyRequest) returns (GetAgentKeyResponse)
+```
+
+Request:
+- `agent_id` (string)
+
+Response:
+- `agent_id` (string)
+- `ssh_private_key` (string): PEM private key (the server-side persisted copy)
+
+Error codes:
+- `CodeNotFound`: agent not found, or the agent has no persisted SSH private key
+
+### RenewalDriftReport
+
+Read-only pre-renewal scan (DF-BUNKER-34): reports every reference to a given
+(old) home path across the artifact classes a renewal goes stale in — systemd
+`--user` units, cron entries, shell/env and config files. It reports, it never
+rewrites. `bunker renew` runs this scan as its pre-flight and prints the
+summary verbatim.
+
+```
+rpc RenewalDriftReport(RenewalDriftRequest) returns (RenewalDriftResponse)
+```
+
+Request:
+- `agent_id` (string): the agent whose home is scanned
+- `old_home` (string, required): the path searched for (the previous home
+  path) — a scan with no needle would read as "clean" without proving anything
+- `home` (string, optional): the directory to scan; empty = the agent's own
+  home (`/home/bunker-<agent_id>`)
+
+Response:
+- `agent_id` (string)
+- `home` (string): the home that was scanned
+- `old_home` (string): the path searched for
+- `files_scanned` (uint32)
+- `hits` (repeated RenewalDriftHit): `file` (path relative to the home), `line`
+  (1-based), `text` (the trimmed line content)
+- `unreadable` (repeated string): files that exist but could not be read
+- `summary` (string): the operator-facing one-line-per-hit rendering (what the
+  CLI prints verbatim)
+
+### RotateJWTSecret
+
+Rotates the HS256 JWT **signing secret** without downtime (GAP-132). The new
+secret signs immediately — no restart needed — while the retired secret keeps
+validating existing tokens for a bounded dual-accept overlap window, after
+which they are rejected. The response carries the new secret exactly once; the
+daemon never echoes it again. This is NOT a bearer token: never paste the
+signing secret into a server entry's `token:` field (the static `auth.token`
+from `/etc/bunkerd/config.yaml` is unchanged by rotation, and a generated
+secret that would collide with it is refused).
+
+```
+rpc RotateJWTSecret(RotateJWTSecretRequest) returns (RotateJWTSecretResponse)
+```
+
+Request:
+- `overlap_seconds` (uint32, optional): dual-accept window in seconds; 0 =
+  default (10 minutes), values beyond 1 hour are clamped to 1 hour
+
+Response:
+- `jwt_secret` (string): the NEW signing secret — shown exactly once
+- `rotated_at` (string): RFC3339 timestamp
+- `overlap_seconds` (uint32): the window actually applied
+- `previous_fingerprint` (string): sha256 fingerprint (first 12 hex chars) of
+  the retired secret — fingerprint only, never the value
+
+Error codes:
+- `CodeFailedPrecondition`: JWT auth is not configured on this server
+- `CodeInvalidArgument`: the generated secret collides with the static
+  `auth.token` (credential classes must stay disjoint; retry the rotation)
+
+### RevokeKey
+
+Revokes an API sub-key by key ID. Immediate — the credential stops validating
+before this response is sent — and durable: the revocation marker is persisted
+so it survives a daemon restart. Credentials issued under a revoked key stop
+working with it.
+
+```
+rpc RevokeKey(RevokeKeyRequest) returns (RevokeKeyResponse)
+```
+
+Request:
+- `key_id` (string, required)
+
+Response:
+- `key_id` (string)
+- `status` (string): `"revoked"` on success
+
+Error codes:
+- `CodeInvalidArgument`: empty `key_id`
+- `CodeNotFound`: unknown `key_id`
+
+### KeyList
+
+Lists active API sub-keys — metadata only, no secret material (GAP-132).
+
+```
+rpc KeyList(KeyListRequest) returns (KeyListResponse)
+```
+
+Request:
+- `agent_id` (string, optional): exact filter; empty = all keys
+
+Response:
+- `keys` (repeated KeyInfo): each with `key_id`, `agent_id`, `created_at`
+  (RFC3339), `expires_at` (RFC3339), `revoked` (revoked keys are listed with
+  `revoked=true` until they expire out)
+
 ## Service: Agent
 
 Agent-scoped authentication. Only accessible with a scoped API key or JWT containing the agent's `agent_id`.
@@ -505,6 +626,11 @@ read-style HTTP endpoints.
 | RunAgent | POST | /bunker.v1.Bunkerd/RunAgent |
 | HeartbeatAgent | POST | /bunker.v1.Bunkerd/HeartbeatAgent |
 | QueryAudit | POST | /bunker.v1.Bunkerd/QueryAudit |
+| GetAgentKey | POST | /bunker.v1.Bunkerd/GetAgentKey |
+| RenewalDriftReport | POST | /bunker.v1.Bunkerd/RenewalDriftReport |
+| RotateJWTSecret | POST | /bunker.v1.Bunkerd/RotateJWTSecret |
+| RevokeKey | POST | /bunker.v1.Bunkerd/RevokeKey |
+| KeyList | POST | /bunker.v1.Bunkerd/KeyList |
 
 ### Agent service (scoped sub-key)
 
