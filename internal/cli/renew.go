@@ -3,6 +3,8 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -11,12 +13,56 @@ import (
 	"github.com/spf13/cobra"
 
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
+	bunkerv1connect "github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect"
 )
 
 // renewOperationTimeout is the client-side budget for one renewal. A renewal
 // includes a full spawn (~90s rootless install on a fresh home), not one
 // systemctl hop, so it cannot reuse the surface commands' 30s budget.
 const renewOperationTimeout = 10 * time.Minute
+
+// fetchAndSaveAgentKey fetches an agent's SSH private key through the
+// master-credential-gated GetAgentKey RPC and saves it to the client-local
+// keys dir, shared by spawn (GAP-128) and renew's re-spawn leg (DF-BUNKER-65:
+// a renewal re-keys the agent, so the local copy must be refreshed too or
+// every SSH-family verb dies on auth while RPC verbs keep working).
+//
+// The request authenticates the same way SpawnAgent does — "Bearer "+token —
+// because building a fresh connect.Request without the header made an
+// auth-enforced daemon answer "unauthenticated" (DF-BUNKER-59).
+//
+// Returns the saved key path. On RPC or write error returns ("", err) for the
+// caller to warn about (spawn and renew treat the fetch as NON-FATAL); an
+// empty key returns ("", nil) and writes nothing.
+func fetchAndSaveAgentKey(ctx context.Context, client bunkerv1connect.BunkerdClient, agentID, token string) (string, error) {
+	keyReq := connect.NewRequest(&v1.GetAgentKeyRequest{
+		AgentId: agentID,
+	})
+	if token != "" {
+		keyReq.Header().Set("Authorization", "Bearer "+token)
+	}
+	keyResp, err := client.GetAgentKey(ctx, keyReq)
+	if err != nil {
+		return "", err
+	}
+	key := keyResp.Msg.GetSshPrivateKey()
+	if key == "" {
+		return "", nil
+	}
+	cfgPath, err := configFilePath()
+	if err != nil {
+		return "", err
+	}
+	keyDir := filepath.Join(filepath.Dir(cfgPath), "keys")
+	if err := os.MkdirAll(keyDir, 0700); err != nil {
+		return "", err
+	}
+	keyPath := filepath.Join(keyDir, agentID)
+	if err := os.WriteFile(keyPath, []byte(key), 0600); err != nil {
+		return "", err
+	}
+	return keyPath, nil
+}
 
 // sshfsHomeRE extracts the remote path of an sshfs mount command
 // ("<user>@<host>:<path> <mountpoint>" — the shape buildMountCommand
@@ -187,6 +233,20 @@ Examples:
 			if got := sresp.Msg.GetAgentId(); got != agentID {
 				return fmt.Errorf("renewal: daemon returned agent id %q, want %q — refusing to report a stable renewal", got, agentID)
 			}
+
+			// DF-BUNKER-65: the re-spawned agent carries a FRESH host key pair,
+			// so the client-local key file from the destroyed agent is dead —
+			// without a re-fetch every SSH-family verb (ssh/cp/mount/deploy/
+			// tunnel) fails auth while RPC verbs keep working. Re-fetch through
+			// the same GAP-128 path spawn uses. The fetch is NON-FATAL: the
+			// agent is running, so key recovery must not abort the renewal.
+			if keyPath, kerr := fetchAndSaveAgentKey(ctx, client, agentID, token); kerr != nil {
+				fmt.Fprintf(out, "  (warn: could not fetch SSH key: %v)\n", kerr)
+			} else if keyPath != "" {
+				fmt.Fprintln(out, "  SSH Key:      (saved to ~/.bunker/keys/)")
+				fmt.Fprintf(out, "                %s\n", keyPath)
+			}
+
 			fmt.Fprintf(out, "Renewed: agent %s is running with its original identity (home path unchanged).\n", agentID)
 			fmt.Fprintf(out, "Expires: %s\n", sresp.Msg.GetExpiresAt())
 			return nil

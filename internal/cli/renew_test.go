@@ -5,7 +5,10 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -28,6 +31,14 @@ type renewMockServer struct {
 	spawnErr       error
 	destroyCalled  bool
 	spawnRequested *v1.SpawnAgentRequest
+	// DF-BUNKER-65: GetAgentKey plumbing, mirroring mockSpawnServer's fake.
+	// gotKeyRequested/gotKeyAgentID record whether (and for whom) the CLI
+	// fetched the key after the re-spawn; keyResp/keyErr control the fake
+	// response. When both are unset the mock answers CodeNotFound.
+	gotKeyRequested bool
+	gotKeyAgentID   string
+	keyResp         *v1.GetAgentKeyResponse
+	keyErr          error
 }
 
 func (m *renewMockServer) GetAgent(ctx context.Context, req *connect.Request[v1.GetAgentRequest]) (*connect.Response[v1.GetAgentResponse], error) {
@@ -55,6 +66,23 @@ func (m *renewMockServer) SpawnAgent(ctx context.Context, req *connect.Request[v
 
 func (m *renewMockServer) RenewalDriftReport(ctx context.Context, req *connect.Request[v1.RenewalDriftRequest]) (*connect.Response[v1.RenewalDriftResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
+// GetAgentKey fakes the GAP-128 key-retrieval RPC for the renew re-spawn leg
+// (DF-BUNKER-65), recording the request like mockSpawnServer's fake does.
+func (m *renewMockServer) GetAgentKey(
+	ctx context.Context,
+	req *connect.Request[v1.GetAgentKeyRequest],
+) (*connect.Response[v1.GetAgentKeyResponse], error) {
+	m.gotKeyRequested = true
+	m.gotKeyAgentID = req.Msg.GetAgentId()
+	if m.keyErr != nil {
+		return nil, m.keyErr
+	}
+	if m.keyResp != nil {
+		return connect.NewResponse(m.keyResp), nil
+	}
+	return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("agent %q not found", req.Msg.GetAgentId()))
 }
 
 // runRenew drives the renew command against the mock and returns (stdout,
@@ -222,6 +250,136 @@ func TestRenewCommand_Help(t *testing.T) {
 		if !strings.Contains(output, want) {
 			t.Errorf("help output missing %q, got:\n%s", want, output)
 		}
+	}
+}
+
+// ── DF-BUNKER-65: the re-spawn leg must re-fetch the agent SSH key ──────────
+
+// TestRenewCommand_RespawnFetchesAndSavesAgentKey proves the renewal's
+// re-spawn leg goes through the same GAP-128 key path spawn does: after a
+// successful SpawnAgent, the CLI calls GetAgentKey for the stable id and
+// writes the returned key to ~/.bunker/keys/<agent-id> at 0600 — otherwise
+// every SSH-family verb dies on auth the moment a renewal completes, because
+// the local file still holds the DESTROYED agent's key.
+func TestRenewCommand_RespawnFetchesAndSavesAgentKey(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	mock := &renewMockServer{
+		agent: &v1.AgentSummary{
+			AgentId:    "eduos-agent",
+			SshfsMount: "sshfs -o IdentityFile=/keys/eduos-agent bunker-eduos-agent@host:/home/bunker-eduos-agent /mnt/bunker/eduos-agent",
+		},
+		destroyStatus: "destroyed",
+		spawnAgentID:  "eduos-agent",
+		keyResp: &v1.GetAgentKeyResponse{
+			AgentId:       "eduos-agent",
+			SshPrivateKey: "renewed-private-key-data",
+		},
+	}
+	srv := newRenewTestServer(t, mock)
+	defer srv.Close()
+
+	output, execErr := runRenew(t, srv, "--agent-id", "eduos-agent")
+	if execErr != nil {
+		t.Fatalf("renew failed: %v", execErr)
+	}
+
+	// The fetch must have gone through GetAgentKey for the stable id.
+	if !mock.gotKeyRequested {
+		t.Fatal("renew did not call GetAgentKey after the re-spawn (DF-BUNKER-65)")
+	}
+	if mock.gotKeyAgentID != "eduos-agent" {
+		t.Errorf("GetAgentKey asked for agent %q, want eduos-agent", mock.gotKeyAgentID)
+	}
+
+	// The key file under the test HOME must carry the fetched key at 0600.
+	keyPath := filepath.Join(tmpDir, ".bunker", "keys", "eduos-agent")
+	raw, err := os.ReadFile(keyPath)
+	if err != nil {
+		t.Fatalf("client-local key not written after renewal: %v", err)
+	}
+	if string(raw) != "renewed-private-key-data" {
+		t.Errorf("local key content %q, want the key returned by GetAgentKey", raw)
+	}
+	info, err := os.Stat(keyPath)
+	if err != nil {
+		t.Fatalf("stat key: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0600 {
+		t.Errorf("local key mode %v, want 0600", got)
+	}
+
+	// The renewal output mentions the saved key and still reports success.
+	for _, want := range []string{"SSH Key:", "(saved to ~/.bunker/keys/)", "Renewed: agent eduos-agent"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("output missing %q, got:\n%s", want, output)
+		}
+	}
+}
+
+// TestRenewCommand_KeyFetchFailureStillRenews proves the key fetch is
+// NON-FATAL on the renewal path: a daemon that cannot serve the key (an old
+// daemon, an RPC failure) still completes the renewal — the agent is running,
+// and key recovery must not abort the reported success.
+func TestRenewCommand_KeyFetchFailureStillRenews(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	mock := &renewMockServer{
+		agent:         &v1.AgentSummary{AgentId: "eduos-agent"},
+		destroyStatus: "destroyed",
+		spawnAgentID:  "eduos-agent",
+		keyErr:        connect.NewError(connect.CodeInternal, fmt.Errorf("key store unavailable")),
+	}
+	srv := newRenewTestServer(t, mock)
+	defer srv.Close()
+
+	output, execErr := runRenew(t, srv, "--agent-id", "eduos-agent")
+	if execErr != nil {
+		t.Fatalf("renewal must still succeed when the key fetch fails, got: %v", execErr)
+	}
+	if !mock.gotKeyRequested {
+		t.Fatal("renew did not attempt GetAgentKey")
+	}
+	if !strings.Contains(output, "(warn: could not fetch SSH key:") {
+		t.Errorf("output missing the key-fetch warn line, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Renewed: agent eduos-agent") {
+		t.Errorf("output missing the success line, got:\n%s", output)
+	}
+}
+
+// TestRenewCommand_EmptyKeyWritesNothing proves the empty-key contract: an
+// GetAgentKey answer with NO key material writes no file and prints no key
+// line, but the renewal itself still completes.
+func TestRenewCommand_EmptyKeyWritesNothing(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	mock := &renewMockServer{
+		agent:         &v1.AgentSummary{AgentId: "eduos-agent"},
+		destroyStatus: "destroyed",
+		spawnAgentID:  "eduos-agent",
+		keyResp:       &v1.GetAgentKeyResponse{AgentId: "eduos-agent"},
+	}
+	srv := newRenewTestServer(t, mock)
+	defer srv.Close()
+
+	output, execErr := runRenew(t, srv, "--agent-id", "eduos-agent")
+	if execErr != nil {
+		t.Fatalf("renew failed: %v", execErr)
+	}
+	if !mock.gotKeyRequested {
+		t.Fatal("renew did not attempt GetAgentKey")
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, ".bunker", "keys", "eduos-agent")); err == nil {
+		t.Error("an empty GetAgentKey answer must not write a key file")
+	}
+	if strings.Contains(output, "SSH Key:") || strings.Contains(output, "(saved to ~/.bunker/keys/)") {
+		t.Errorf("output must not carry a key line for an empty key, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Renewed: agent eduos-agent") {
+		t.Errorf("output missing the success line, got:\n%s", output)
 	}
 }
 

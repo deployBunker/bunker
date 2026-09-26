@@ -218,24 +218,17 @@ Examples:
 			// fetches it through the master-credential-gated GetAgentKey RPC
 			// instead, so operators keep a working local key copy without the
 			// spawn body ever carrying the secret. Failure is non-fatal: the
-			// agent exists and is usable, so we warn and continue.
+			// agent exists and is usable, so we warn and continue. The
+			// fetch+save is shared with renew's re-spawn leg (DF-BUNKER-65);
+			// this leg only owns the printing.
+			keyPath := ""
+			savedKeyPath := ""
 			if r.SshPrivateKey == "" {
-				// The key fetch must authenticate the same way SpawnAgent does:
-				// building a fresh connect.Request here used to drop the
-				// Authorization header, so an auth-enforced daemon answered
-				// "unauthenticated: missing Authorization header" and the
-				// spawned agent was left without a client-local key (DF-BUNKER-59).
-				keyReq := connect.NewRequest(&v1.GetAgentKeyRequest{
-					AgentId: r.AgentId,
-				})
-				if token != "" {
-					keyReq.Header().Set("Authorization", "Bearer "+token)
-				}
-				keyResp, err := client.GetAgentKey(ctx, keyReq)
-				if err != nil {
-					fmt.Printf("  (warn: could not fetch SSH key: %v)\n", err)
-				} else {
-					r.SshPrivateKey = keyResp.Msg.GetSshPrivateKey()
+				if p, ferr := fetchAndSaveAgentKey(ctx, client, r.AgentId, token); ferr != nil {
+					fmt.Printf("  (warn: could not fetch SSH key: %v)\n", ferr)
+				} else if p != "" {
+					r.SshPrivateKey = "fetched" // non-empty: the bundle prints the key line
+					savedKeyPath = p
 				}
 			}
 
@@ -251,10 +244,10 @@ Examples:
 			}
 			resolvedHost := resolveSSHHost(entry, serverHost, sshHost)
 
-			// Client-local key path (same one saved below); empty when the
-			// server returned no private key.
-			keyPath := ""
-			if r.SshPrivateKey != "" {
+			// Client-local key path (same one saved by the GetAgentKey fetch
+			// above); empty when the server returned no private key and the
+			// fetch produced none.
+			if keyPath == "" && r.SshPrivateKey != "" {
 				if p, err := defaultSSHKeyPath(r.AgentId); err == nil {
 					keyPath = p
 				}
@@ -269,12 +262,17 @@ Examples:
 			}
 			if r.SshPrivateKey != "" {
 				fmt.Println("  SSH Key:      (saved to ~/.bunker/keys/)")
-				// Save private key
-				keyDir, _ := configFilePath()
-				keyDir = filepath.Join(filepath.Dir(keyDir), "keys")
-				_ = os.MkdirAll(keyDir, 0700)
-				keyPath := filepath.Join(keyDir, r.AgentId)
-				_ = os.WriteFile(keyPath, []byte(r.SshPrivateKey), 0600)
+				// The key was saved by fetchAndSaveAgentKey (GetAgentKey path)
+				// or arrived inline in the spawn response; save the inline case.
+				if savedKeyPath == "" {
+					keyDir, _ := configFilePath()
+					keyDir = filepath.Join(filepath.Dir(keyDir), "keys")
+					_ = os.MkdirAll(keyDir, 0700)
+					keyPath = filepath.Join(keyDir, r.AgentId)
+					_ = os.WriteFile(keyPath, []byte(r.SshPrivateKey), 0600)
+				} else {
+					keyPath = savedKeyPath
+				}
 				fmt.Printf("                %s\n", keyPath)
 			}
 			if r.PublicUrl != "" {
