@@ -694,10 +694,10 @@ bunker list
 bunker exec abc12345 --server bunker-host -- docker run --rm alpine echo hello
 
 # Mount the agent's filesystem locally
-bunker mount abc12345 /mnt/my-agent
+bunker mount abc12345 --server bunker-host /mnt/my-agent
 
 # Forward the agent's Docker socket
-bunker tunnel abc12345
+bunker tunnel abc12345 --server bunker-host
 # In another terminal: DOCKER_HOST=tcp://localhost:2376 docker ps
 
 # See agent details
