@@ -20,6 +20,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -95,7 +96,7 @@ func (f *h3Fixture) base(t *testing.T) string {
 	if !live {
 		t.Fatal("the QUIC endpoint is not live after startH3")
 	}
-	return "https://127.0.0.1:" + itoa(port)
+	return "https://127.0.0.1:" + strconv.Itoa(port)
 }
 
 // h3Client is a real HTTP/3 client: it has no knowledge of Alt-Svc and is not
@@ -128,20 +129,6 @@ func (f *h3Fixture) tcpServer(t *testing.T, handler http.Handler) string {
 	go func() { _ = srv.ServeTLS(ln, "", "") }()
 	t.Cleanup(func() { _ = srv.Close() })
 	return "https://" + ln.Addr().String()
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	i := len(buf)
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(buf[i:])
 }
 
 // getWith performs one request with the given client and returns the response
@@ -282,7 +269,7 @@ func TestAltSvcIsAdvertisedOnlyWhileH3IsLive(t *testing.T) {
 		ForceAttemptHTTP2: true,
 	}}
 	port, _ := f.ep.Port()
-	want := `h3=":` + itoa(port) + `"; ma=2592000`
+	want := `h3=":` + strconv.Itoa(port) + `"; ma=2592000`
 
 	// Live: every h1/h2 response advertises the QUIC socket, and the value names
 	// the socket's own port.
@@ -322,7 +309,7 @@ func TestAltSvcIsAdvertisedOnlyWhileH3IsLive(t *testing.T) {
 	// not the configuration.
 	f.ep.SetLive(port + 1)
 	resp, _ = getWith(t, client, "GET", wrapped+"/dav/README.md", nil)
-	if got, want := resp.Header.Get("Alt-Svc"), `h3=":`+itoa(port+1)+`"; ma=2592000`; got != want {
+	if got, want := resp.Header.Get("Alt-Svc"), `h3=":`+strconv.Itoa(port+1)+`"; ma=2592000`; got != want {
 		t.Fatalf("Alt-Svc after a port change = %q, want %q", got, want)
 	}
 }
