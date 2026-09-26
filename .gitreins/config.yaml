@@ -23,8 +23,10 @@ defaults:
   # 2c1b6bcd + d5a02a07). 45m starved twice on DF-BUNKER-31 (verdict 0b489dc9
   # items:[] + async job-27f8d7f4 re-run, both "Time cap (45m) exceeded",
   # tier1 PASS — a cap, not merits). Two starved runs at one rung license
-  # exactly ONE raise: 45m -> 60m (tick 500).
-  max_time: "60m"
+  # exactly ONE raise: 45m -> 60m (tick 500); tick 544: 60m starved on
+  # INT-CI-042 under sibling-session contention -> 90m (three starved runs
+  # at 45m/60m across the ladder).
+  max_time: "90m"
   # ESCALATION (2M -> 4M -> 8M -> 16M): each rung bought about one tick. Raised to
   # 16M on tick 451 after INT-SPAWN-001's Tier 2 hit "Cap exceeded: Input token budget
   # (8.0M) exceeded (8.0M used)" -> INCOMPLETE verdict 73e7ecae. NO FURTHER RUNG:
@@ -84,10 +86,10 @@ tier1:
 evaluator:
   model: deepseek-v4-flash
   max_iterations: 200
-  max_time: "60m"   # tick 500: 45m starved twice on DF-BUNKER-31 (defaults block)
+  max_time: "90m"  # tick 500: 45m starved twice on DF-BUNKER-31 (defaults block); tick 544: 60m starved on INT-CI-042 under sibling-session contention
   max_input_tokens: "16M"
   max_output_tokens: "384k"
-  cap: "200/60m/16M/384k"
+  cap: "200/90m/16M/384k"
   # ── Context-growth knobs (INT-CI-014, measured 2026-09-17) ────
   # MEASURED (docs/tier2-eval-budget.md, instrumented runs e6d24301 + 616c1d33 on
   # INT-CI-017 at HEAD 848625c): 23 LLM calls, per-call prompt 6,211 -> 29,323
