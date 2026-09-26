@@ -104,6 +104,50 @@ strong{color:#fff} .tag{color:var(--mut);font-size:.85rem}
 <li><strong>HTTP/2 drops effective per-request cost from 384.67 ms to 7.88 ms</strong> — <strong>2.4% of one round trip</strong>, a <strong>49× per-request improvement</strong>, and 100 concurrent requests complete in <strong>0.79 s</strong>.</li>
 </ul>
 <p><strong>Why this is specifically the fix for a filesystem, and not a general &quot;HTTP is fast&quot; observation.</strong> <code>git status</code> and <code>git diff</code> over a tree issue <em>many independent</em> metadata calls — the calls have no ordering dependency on each other. A serialized transport pays <strong>N × RTT</strong> for them; a multiplexed one pays <strong>~1 RTT</strong>. That is precisely the gap between the measured 45 s stalls and the native 0.41 s. And it is precisely the lever sshfs <em>cannot</em> pull: upstream libfuse/sshfs #300 attributes sshfs&#x27;s high-latency penalty to the absence of SFTP pipelining, with OpenSSH capping packets at 256 KiB, which disables TCP window scaling.</p>
+<h3 id="and-an-off-the-shelf-webdav-client-beats-both-and-it-did-it-">And an off-the-shelf WebDAV client beats both — and it did it WITHOUT HTTP/2</h3>
+<p>Before designing anything, the same 14-operation battery was run through rclone&#x27;s WebDAV backend</p>
+<p>(TLS, same host, same fixture) — an off-the-shelf client, not ours:</p>
+<table>
+<tr><th>operation</th><th>sshfs</th><th>NFS</th><th><strong>WebDAV (rclone)</strong></th></tr>
+<tr><td data-label="operation">rev-parse HEAD</td><td data-label="sshfs">4.11 s</td><td data-label="NFS">0.11 s</td><td data-label="WebDAV (rclone)"><strong>0.81 s</strong></td></tr>
+<tr><td data-label="operation">log --oneline -20</td><td data-label="sshfs">7.92 s</td><td data-label="NFS">1.01 s</td><td data-label="WebDAV (rclone)"><strong>0.11 s</strong></td></tr>
+<tr><td data-label="operation">ls-files</td><td data-label="sshfs">2.41 s</td><td data-label="NFS">0.11 s</td><td data-label="WebDAV (rclone)"><strong>0.11 s</strong></td></tr>
+<tr><td data-label="operation">status --porcelain -uno</td><td data-label="sshfs">STALL</td><td data-label="NFS">1.51 s</td><td data-label="WebDAV (rclone)"><strong>0.21 s</strong></td></tr>
+<tr><td data-label="operation">checkout -b</td><td data-label="sshfs">STALL</td><td data-label="NFS">18.83 s</td><td data-label="WebDAV (rclone)"><strong>2.23 s</strong></td></tr>
+<tr><td data-label="operation"><strong>commit</strong></td><td data-label="sshfs">STALL</td><td data-label="NFS">STALL</td><td data-label="WebDAV (rclone)"><strong>1.04 s</strong></td></tr>
+<tr><td data-label="operation"><strong>commit --amend</strong></td><td data-label="sshfs">STALL</td><td data-label="NFS">43.96 s</td><td data-label="WebDAV (rclone)"><strong>0.71 s</strong></td></tr>
+<tr><td data-label="operation"><strong>rebase HEAD~1</strong></td><td data-label="sshfs">STALL</td><td data-label="NFS">8.82 s</td><td data-label="WebDAV (rclone)"><strong>0.41 s</strong></td></tr>
+<tr><td data-label="operation">diff --stat HEAD</td><td data-label="sshfs">STALL</td><td data-label="NFS">32.74 s</td><td data-label="WebDAV (rclone)">STALL (45.09 s)</td></tr>
+<tr><td data-label="operation"><strong>totals</strong></td><td data-label="sshfs"><strong>5 ok / 8 stall</strong></td><td data-label="NFS">11 ok / 1 stall</td><td data-label="WebDAV (rclone)"><strong>11 ok / 1 stall</strong></td></tr>
+</table>
+<p>The <strong>write path</strong> — the operations that stall on every other mechanism, including the kernel one</p>
+<p>— completes in about a second. That is the strongest transparent result in the study.</p>
+<p><strong>But it did NOT use HTTP/2, and this correction matters.</strong> Verified by ALPN: rclone&#x27;s WebDAV server</p>
+<p>offers <strong>no h2</strong>, and <code>curl</code> reports <code>http_version=1.1</code> both by default and with <code>--http2</code> forced.</p>
+<p>The client got its parallelism from <strong>4 concurrent TCP connections</strong> — measured, not inferred.</p>
+<p>So the lever is <strong>concurrent independent requests</strong>, and HTTP/2 is one carrier for them, not the</p>
+<p>mechanism itself. Stated that way the design does not change, but its justification sharpens:</p>
+<ul>
+<li><strong>What parallelism buys</strong> — now proven twice, independently: 25.0× for HTTP/2 multiplexing at</li>
+</ul>
+<p><code>MaxConnsPerHost=1</code>, and 11/14 operations for HTTP/1.1 across 4 connections. Two different stacks,</p>
+<p>one explanation.</p>
+<ul>
+<li><strong>What HTTP/2 adds over HTTP/1.1-with-connections</strong> — one connection instead of N (connection</li>
+</ul>
+<p>setup measured at 1589 ms, 278 ms multiplexed — 5.7×), no per-connection socket/FD cost, no</p>
+<p>connection-level head-of-line blocking. Those are real, and they are <em>efficiency</em>, not the ceiling.</p>
+<ul>
+<li><strong>What the ceiling actually is</strong> — <code>diff --stat</code> stalls <strong>even here</strong>, on the best transparent</li>
+</ul>
+<p>result we have. Whole-tree operations get <em>survivable</em>, never <em>fast</em>, by any transport. That is</p>
+<p>why delegation (C5) is load-bearing rather than an optimisation.</p>
+<ul>
+<li><strong>And the client matters as much as the protocol</strong> — rclone&#x27;s <em>SFTP</em> backend wedged in all three</li>
+</ul>
+<p>variants while its <em>WebDAV</em> backend got 11/14 over the same link. Same vendor, same VFS layer,</p>
+<p>different backend. We are not choosing a protocol alone; we are choosing a client&#x27;s request</p>
+<p>discipline.</p>
 <p><strong>Stated honestly:</strong> this proves the <em>transport</em> mechanism. It does not yet prove a FUSE client that exploits it — that is what AC-1 and AC-2 below are for, and they are the first work items.</p>
 <h2 id="user-stories">User stories</h2>
 <ol>
