@@ -298,7 +298,19 @@ func (a *JWTAuth) authenticate(header http.Header, source, procedure string) (*C
 	if err != nil {
 		return nil, a.denied(source, procedure, newDenyReason(err.Error(), ""), connect.NewError(connect.CodeUnauthenticated, err))
 	}
+	return a.AuthenticateRawToken(rawToken, source, procedure)
+}
 
+// AuthenticateRawToken validates an already-extracted credential through the
+// SAME path the connect interceptors use: the static-token fallback, JWT
+// parsing against the live and overlap secrets, and opaque sub-key validation
+// against the durable key store, plus the throttle and the deny sink.
+//
+// It exists so a plain-HTTP surface (the WebDAV mount, which is not a connect
+// service and therefore has no interceptor to ride) authenticates with the
+// daemon's real credential model instead of a second, weaker comparison of
+// its own. source/procedure are audit labels, exactly as in authenticate.
+func (a *JWTAuth) AuthenticateRawToken(rawToken, source, procedure string) (*Claims, error) {
 	// Optional static-token fallback for migration/compat.
 	if a.staticToken != "" && subtle.ConstantTimeCompare([]byte(rawToken), []byte(a.staticToken)) == 1 {
 		if a.throttle != nil {

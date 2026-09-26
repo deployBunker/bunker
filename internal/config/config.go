@@ -195,6 +195,20 @@ type ServerConfig struct {
 	GRPCAddr       string        `mapstructure:"grpc_addr"`
 	RESTAddr       string        `mapstructure:"rest_addr"`
 	RequestTimeout time.Duration `mapstructure:"request_timeout"`
+	// H2CEnabled turns on the stdlib's cleartext prior-knowledge HTTP/2
+	// (net/http.Protocols.SetUnencryptedHTTP2, Go 1.24+; zero dependencies).
+	// It is OFF by default and is only for loopback/LAN or our own client:
+	// net/http does NOT implement the RFC 7540 `Upgrade: h2c` dance, so a
+	// generic client that tries `curl --http2` over cleartext silently gets
+	// HTTP/1.1. HTTP/1.1 is unaffected either way.
+	H2CEnabled bool `mapstructure:"h2c_enabled"`
+	// WebDAVEnabled mounts the BFS-004 WebDAV surface under /dav on the
+	// existing listeners. OFF by default: it exposes a served tree, so it is
+	// an explicit operator decision.
+	WebDAVEnabled bool `mapstructure:"webdav_enabled"`
+	// WebDAVRoot is the directory served under /dav. Required (and required
+	// to be absolute) when WebDAVEnabled is set.
+	WebDAVRoot string `mapstructure:"webdav_root"`
 }
 
 // TLSConfig holds TLS settings.
@@ -903,6 +917,9 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("server.grpc_addr")
 	v.BindEnv("server.rest_addr")
 	v.BindEnv("server.request_timeout")
+	v.BindEnv("server.h2c_enabled")
+	v.BindEnv("server.webdav_enabled")
+	v.BindEnv("server.webdav_root")
 	v.BindEnv("tls.enabled")
 	v.BindEnv("tls.cert_file")
 	v.BindEnv("tls.key_file")
@@ -1020,6 +1037,19 @@ func Load(path string) (*Config, error) {
 func (c *Config) Validate() error {
 	if c.Server.GRPCAddr == "" {
 		return fmt.Errorf("server.grpc_addr is required")
+	}
+	// BFS-006: the WebDAV surface is opt-in and, once opted in, must have a
+	// served tree. Fail before any listener opens rather than mounting a
+	// surface that answers 500 to every request — and require an absolute
+	// path so the served tree cannot silently depend on the daemon's working
+	// directory (cron and systemd start it from different places).
+	if c.Server.WebDAVEnabled {
+		if c.Server.WebDAVRoot == "" {
+			return fmt.Errorf("server.webdav_root is required when server.webdav_enabled is true")
+		}
+		if !filepath.IsAbs(c.Server.WebDAVRoot) {
+			return fmt.Errorf("server.webdav_root must be an absolute path (got %q)", c.Server.WebDAVRoot)
+		}
 	}
 	if c.TLS.Enabled {
 		if c.TLS.AutoTLS {
@@ -1452,6 +1482,37 @@ func (c *Config) CheckTLS(grpcAddr, restAddr string) (string, error) {
 		"address controls the RPC plane; every audit record is marked %s. Disable tls.insecure_dev "+
 		"and enable TLS for anything reachable beyond this host. ***",
 		"bunkerd:", strings.Join(nonLoopback, ", "), InsecurePlaintextMarker), nil
+}
+
+// CheckH2C is the startup note for the cleartext prior-knowledge HTTP/2 opt-in
+// (BFS-002 §4, BFS-006). It never refuses a start — the opt-in is explicit —
+// but it says what the opt-in does and does not buy, because the failure mode
+// it guards against is a silent downgrade:
+//
+//   - net/http implements h2c as PRIOR KNOWLEDGE only. A client that sends the
+//     RFC 7540 "Upgrade: h2c" request (what `curl --http2` does over cleartext)
+//     is answered over HTTP/1.1 without an error.
+//   - The full HTTP/2 path is TLS + ALPN `h2`, where net/http negotiates it
+//     with no configuration and no dependency.
+//   - h2c therefore belongs on loopback/LAN and on our own client, which can
+//     be written to send the connection preface.
+//
+// It returns "" when the opt-in is off, and a warning naming the effective
+// listeners when it is on.
+func (c *Config) CheckH2C() string {
+	if !c.Server.H2CEnabled {
+		return ""
+	}
+	addrs := c.Server.GRPCAddr
+	if c.Server.RESTAddr != "" && c.Server.RESTAddr != c.Server.GRPCAddr {
+		addrs += ", " + c.Server.RESTAddr
+	}
+	return fmt.Sprintf("%s h2c (cleartext prior-knowledge HTTP/2) is ENABLED on %s. "+
+		"net/http does not implement the RFC 7540 Upgrade dance: a client that sends "+
+		"\"Upgrade: h2c\" (e.g. curl --http2 over cleartext) is answered over HTTP/1.1 with no error. "+
+		"Use it on loopback/LAN or from a client written to send the preface; for anything reachable, "+
+		"HTTP/2 over TLS via ALPN h2 is the path (tls.enabled: true).",
+		"bunkerd:", addrs)
 }
 
 // IsLoopbackAddr reports whether a listener address string binds only the

@@ -12,6 +12,30 @@ server:
   grpc_addr: ":9090"          # gRPC listen address
   rest_addr: ":8080"          # REST (connect-go) listen address
   request_timeout: 300s       # per-request timeout
+  # ── WebDAV surface (BFS-004/BFS-006) — OFF by default ─────────────────────
+  # webdav_enabled: false     # mount the WebDAV surface under /dav
+  # webdav_root: ""           # absolute path of the served tree (required when enabled)
+  #
+  # The surface is served by these same listeners, so it is reachable over every
+  # HTTP version they can negotiate: HTTP/1.1 always, HTTP/2 when TLS is on
+  # (ALPN, stdlib, no configuration and no new dependency), and h2c below. No
+  # WebDAV method, property or extension is gated on the negotiated version; the
+  # version a request actually arrived on is echoed in X-Bunker-Proto. A stock
+  # HTTP/1.1 WebDAV client (davfs2, rclone, Finder) needs no configuration.
+  # Credentials: the mount uses this daemon's own credential model, so any
+  # working client sends `Authorization: Basic <user>:<token>` or a Bearer
+  # token. With auth.enabled: false the served tree is reachable by anyone who
+  # can reach the listener — the daemon warns loudly on startup.
+  #
+  # ── h2c: cleartext prior-knowledge HTTP/2 — OFF by default ────────────────
+  # h2c_enabled: false
+  #
+  # h2c is free (net/http.Protocols, Go 1.24+, zero dependencies) but PRIOR
+  # KNOWLEDGE ONLY: net/http does not implement the RFC 7540 `Upgrade: h2c`
+  # dance, so a generic client that tries `curl --http2` over cleartext is
+  # answered over HTTP/1.1 with no error at all. Use it for loopback/LAN or for
+  # a client written to send the connection preface; for anything reachable,
+  # HTTP/2 over TLS via ALPN is the path. HTTP/1.1 is unaffected either way.
 
 # TLS for the gRPC/REST listeners. Leave disabled for plaintext.
 #

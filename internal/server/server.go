@@ -5,6 +5,7 @@ package server
 import (
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -29,9 +30,11 @@ import (
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/hilo"
 	"github.com/deployBunker/bunker/internal/resource"
+	"github.com/deployBunker/bunker/internal/server/webdav"
 	"github.com/deployBunker/bunker/internal/tailscale"
 	"github.com/deployBunker/bunker/internal/tlsutil"
 	"github.com/deployBunker/bunker/internal/tunnel"
+	"github.com/deployBunker/bunker/internal/version"
 )
 
 // BunkerdServer is the main bunkerd daemon server.
@@ -324,6 +327,64 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	)
 	r.Mount(agentPath, connectStreamingEnvelope(agentHandler))
 
+	// BFS-006: the WebDAV surface, when the operator opted in. It rides the
+	// SAME listeners — and therefore the same HTTP versions — as everything
+	// else, so every version a listener negotiates serves the identical
+	// surface: HTTP/1.1 always, HTTP/2 via TLS ALPN for free (stdlib), and
+	// h2c where server.h2c_enabled opted in (BFS-002 §6/§4). There is no
+	// second server, and HTTP/1.1 keeps working unchanged: no method,
+	// property or extension of this surface is gated on the negotiated
+	// version (§4.3 C-1).
+	//
+	// The handler is NOT mounted on the chi router. chi's method-agnostic
+	// routes cover only the methods in its fixed bitmask (mALL), which has no
+	// PROPFIND/MKCOL/COPY/MOVE/PROPPATCH — and no room for an unknown token
+	// either. Mounted on the router, a PROPFIND would be answered by chi's
+	// own 405 before this surface ever saw it (measured on the live probe
+	// before this comment existed), and a FROBNICATE could never reach the
+	// 501 method_unknown answer §2.1 requires. Serving the /dav subtree ahead
+	// of the router keeps every verb in one handler.
+	var davHandler http.Handler
+	if s.cfg.Server.WebDAVEnabled {
+		h, err := webdav.New(webdav.Config{
+			Root:         s.cfg.Server.WebDAVRoot,
+			Build:        version.Version,
+			TLS:          s.cfg.TLS.Enabled,
+			H2C:          s.cfg.Server.H2CEnabled,
+			Authenticate: webdavAuthenticator(s.jwtAuth, s.cfg.Auth.Enabled),
+		})
+		if err != nil {
+			return fmt.Errorf("webdav surface: %w", err)
+		}
+		davHandler = h
+		s.logger.Info("bunkerd WebDAV surface mounted",
+			"prefix", webdav.Prefix,
+			"root", h.Root(),
+			"auth_required", s.cfg.Auth.Enabled,
+			"h2c", s.cfg.Server.H2CEnabled,
+			"tls", s.cfg.TLS.Enabled,
+		)
+		if !s.cfg.Auth.Enabled {
+			// A served tree with the daemon's auth disabled is reachable by
+			// anyone who can reach the listener. Say so on both streams, the
+			// same way the plaintext gate does.
+			warn := "bunkerd: server.webdav_enabled is true and auth.enabled is false — " +
+				"the served tree is reachable WITHOUT credentials by anyone who can reach the listener"
+			s.logger.Warn(warn)
+			fmt.Fprintln(os.Stderr, warn)
+		}
+	}
+
+	// BFS-006: the WebDAV subtree and the asterisk-form OPTIONS are both
+	// answered ahead of the router (see the note where davHandler is built).
+	// The asterisk wrapper goes outermost so `OPTIONS *` — which has no path
+	// for any router to match and is not under /dav — is answered too.
+	var rootHandler http.Handler = r
+	if davHandler != nil {
+		rootHandler = mountWebDAV(rootHandler, webdav.Prefix, davHandler)
+		rootHandler = asteriskOptions(rootHandler)
+	}
+
 	// Determine TLS config
 	var tlsConfig *tls.Config
 	if s.cfg.TLS.Enabled {
@@ -337,12 +398,33 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	// Start servers
 	errCh := make(chan error, 2)
 
+	// BFS-006/BFS-002: the protocol set for both listeners. nil (the default)
+	// keeps the runtime behaviour: HTTP/1.1 always, plus HTTP/2 whenever TLS
+	// is on. The h2c opt-in adds cleartext prior-knowledge h2 — and states
+	// SetHTTP2(true) explicitly, because a non-nil *http.Protocols REPLACES
+	// the default set and would otherwise switch h2-over-TLS off.
+	protocols := webdav.ServeProtocols(s.cfg.Server.H2CEnabled)
+	if warn := s.cfg.CheckH2C(); warn != "" {
+		s.logger.Warn(warn)
+		fmt.Fprintln(os.Stderr, warn)
+	}
+
+	// net/http answers `OPTIONS *` itself (200 + Content-Length: 0) before any
+	// handler runs, unless this is disabled. With the WebDAV surface mounted
+	// the asterisk-form request is answered by the surface instead, so RFC
+	// 4918 §10.1's "200 without DAV" is joined by the Allow list a WebDAV
+	// client expects; without the surface, the runtime's default handling is
+	// left exactly as it was.
+	disableGeneralOptions := davHandler != nil
+
 	// gRPC listener on Server.GRPCAddr
 	go func() {
 		srv := &http.Server{
-			Addr:      s.cfg.Server.GRPCAddr,
-			Handler:   r,
-			TLSConfig: tlsConfig,
+			Addr:                         s.cfg.Server.GRPCAddr,
+			Handler:                      rootHandler,
+			TLSConfig:                    tlsConfig,
+			Protocols:                    protocols,
+			DisableGeneralOptionsHandler: disableGeneralOptions,
 		}
 		s.logger.Info("bunkerd gRPC listening", "addr", s.cfg.Server.GRPCAddr, "tls", s.cfg.TLS.Enabled)
 		if tlsConfig != nil {
@@ -356,9 +438,11 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	if s.cfg.Server.RESTAddr != "" && s.cfg.Server.RESTAddr != s.cfg.Server.GRPCAddr {
 		go func() {
 			srv := &http.Server{
-				Addr:      s.cfg.Server.RESTAddr,
-				Handler:   r,
-				TLSConfig: tlsConfig,
+				Addr:                         s.cfg.Server.RESTAddr,
+				Handler:                      rootHandler,
+				TLSConfig:                    tlsConfig,
+				Protocols:                    protocols,
+				DisableGeneralOptionsHandler: disableGeneralOptions,
 			}
 			s.logger.Info("bunkerd REST listening", "addr", s.cfg.Server.RESTAddr, "tls", s.cfg.TLS.Enabled)
 			if tlsConfig != nil {
@@ -484,4 +568,103 @@ func (s *BunkerdServer) buildTLSConfig() (*tls.Config, error) {
 		Certificates: []tls.Certificate{cert},
 		MinVersion:   tls.VersionTLS12,
 	}, nil
+}
+
+// mountWebDAV serves the WebDAV surface for prefix and everything under it,
+// ahead of the router.
+//
+// It is deliberately not a chi mount: chi matches method-agnostic routes only
+// for the methods in its fixed bitmask (mALL — CONNECT/DELETE/GET/HEAD/OPTIONS/
+// PATCH/POST/PUT/QUERY/TRACE), so PROPFIND, MKCOL, COPY, MOVE, PROPPATCH and
+// every unknown method token would be answered by chi's own 405 handler before
+// the surface saw them. The prefix test is path-component exact, so /davfoo is
+// not captured.
+func mountWebDAV(next http.Handler, prefix string, dav http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if p := r.URL.Path; p == prefix || strings.HasPrefix(p, prefix+"/") {
+			dav.ServeHTTP(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// asteriskOptions answers the asterisk-form OPTIONS (RFC 4918 §10.1) before
+// the router sees it: there is no path to match, and the answer deliberately
+// carries no DAV header, so a client cannot read whole-server support out of
+// an unper-URI request. Only installed while the WebDAV surface is mounted.
+func asteriskOptions(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions && (r.RequestURI == "*" || r.URL.Path == "*") {
+			webdav.OptionsAsterisk(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// webdavAuthenticator builds the WebDAV mount's credential check out of the
+// daemon's OWN credential model: the same JWTAuth instance the connect
+// interceptors validate against, so a token that authenticates an RPC
+// authenticates the mount and a rotation takes effect on both. Returning nil
+// means "the daemon has auth disabled" — the caller warns loudly about that
+// rather than pretending the mount is protected.
+//
+// Both credential forms a WebDAV client can send are accepted:
+//
+//   - `Authorization: Bearer <token>` — our own client;
+//   - `Authorization: Basic base64(<user>:<token>)` — every stock WebDAV
+//     client (davfs2, rclone, Finder), which is the form the spec's O-6
+//     adopts for v1. The token may travel in either the password or the
+//     username slot, because clients disagree about which one is "secret".
+func webdavAuthenticator(jwtAuth *auth.JWTAuth, enabled bool) func(*http.Request) bool {
+	if !enabled || jwtAuth == nil {
+		return nil
+	}
+	return func(r *http.Request) bool {
+		for _, token := range presentedCredentials(r) {
+			if _, err := jwtAuth.AuthenticateRawToken(token, "webdav", r.Method+" "+r.URL.Path); err == nil {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+// presentedCredentials extracts the credential(s) a WebDAV request carries.
+// The raw token is never logged or returned to the caller — only validated.
+func presentedCredentials(r *http.Request) []string {
+	header := strings.TrimSpace(r.Header.Get("Authorization"))
+	if header == "" {
+		return nil
+	}
+	scheme, value, found := strings.Cut(header, " ")
+	if !found {
+		return nil
+	}
+	value = strings.TrimSpace(value)
+	switch {
+	case strings.EqualFold(scheme, "Bearer"):
+		if value == "" {
+			return nil
+		}
+		return []string{value}
+	case strings.EqualFold(scheme, "Basic"):
+		raw, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return nil
+		}
+		user, pass, ok := strings.Cut(string(raw), ":")
+		if !ok {
+			return nil
+		}
+		out := make([]string, 0, 2)
+		for _, candidate := range []string{pass, user} {
+			if candidate != "" {
+				out = append(out, candidate)
+			}
+		}
+		return out
+	}
+	return nil
 }
