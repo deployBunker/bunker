@@ -58,6 +58,11 @@ guards:
     lint: true
     tests: true
   test_mode: full
+  # 2026-09-26 (BFS-008): test_mode: full fires whenever go.mod changes, and the full
+  # suite measured 195.03s wall on this host - above the 180s default, so commits that
+  # touch go.mod were being blocked on a TIMEOUT rather than on a test result. Raised
+  # to 600s with the measurement recorded rather than a guess.
+  test_timeout: 600
 
 # ── Tier 1 command specifics ───────────────────────────────────
 tier1:

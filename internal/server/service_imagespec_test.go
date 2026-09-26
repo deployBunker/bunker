@@ -20,7 +20,12 @@ import (
 // config. The image-spec gate runs BEFORE anything that needs an agent
 // manager, so a zero-value agentMgr suffices for rejection tests.
 func newImageSpecTestService() *bunkerdService {
-	return &bunkerdService{cfg: config.DefaultConfig()}
+	// logger is REQUIRED, not decorative: SpawnAgent warns via s.logger when host
+	// disk usage is above 90%, so a service built without one panics with a nil
+	// pointer dereference the moment the host disk crosses that line — making this
+	// rejection test's pass/fail depend on the machine's disk state instead of on
+	// the code under test (observed 2026-09-26 on a full root filesystem).
+	return &bunkerdService{cfg: config.DefaultConfig(), logger: testDiscardLogger()}
 }
 
 // TestSpawnAgent_InvalidImageSpecIsInvalidArgument pins the GAP-064 RPC
@@ -68,7 +73,7 @@ func TestSpawnAgent_UnknownBaseIsInvalidArgument(t *testing.T) {
 func TestSpawnAgent_DisabledFeatureIsInvalidArgument(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Agent.ImageSpec.Enabled = false
-	svc := &bunkerdService{cfg: cfg}
+	svc := &bunkerdService{cfg: cfg, logger: testDiscardLogger()}
 	req := connect.NewRequest(&v1.SpawnAgentRequest{
 		AgentId:   "imgspec-off",
 		ImageSpec: &v1.ImageSpec{},
