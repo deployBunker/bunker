@@ -1,0 +1,15 @@
+arm,link,proto,conns,conc,expected_proto,observed_client_proto,observed_server_proto,fixture_dirs,fixture_files,total_wall_ms,stages_ms,cells,cells_ok,cells_failed,stalls,unreliable,notes_failed,warmup_ok,loadavg_before,loadavg_after,cpus,contended,exit_ok,fanout
+h1-loopback-c1x1,loopback,h1,1,1,HTTP/1.1,HTTP/1.1,HTTP/1.1,10,157,165.576,stage0:86.7 stage1:77.4 stage2:1.0 stage3:0.5,15,15,0,0,0,0,true,16.31,16.31,16,true,true,100
+h1-loopback-c1x8,loopback,h1,1,8,HTTP/1.1,HTTP/1.1,HTTP/1.1,10,157,153.893,stage0:66.9 stage1:85.5 stage2:1.0 stage3:0.5,15,15,0,0,0,0,true,16.31,16.31,16,true,true,100
+h1-loopback-c8x8,loopback,h1,8,8,HTTP/1.1,HTTP/1.1,HTTP/1.1,10,157,117.407,stage0:35.1 stage1:80.3 stage2:1.1 stage3:0.9,15,15,0,0,0,0,true,16.31,16.31,16,true,true,100
+h2-loopback-c1x1,loopback,h2,1,1,HTTP/2.0,HTTP/2.0,HTTP/2.0,10,157,190.816,stage0:105.0 stage1:84.1 stage2:1.1 stage3:0.6,15,15,0,0,0,0,true,16.31,16.31,16,true,true,100
+h2-loopback-c1x8,loopback,h2,1,8,HTTP/2.0,HTTP/2.0,HTTP/2.0,10,157,102.951,stage0:29.6 stage1:71.7 stage2:1.1 stage3:0.5,15,15,0,0,0,0,true,16.31,16.31,16,true,true,100
+h3-loopback-c1x1,loopback,h3,1,1,HTTP/3.0,HTTP/3.0,HTTP/3.0,10,157,213.090,stage0:105.3 stage1:105.6 stage2:1.6 stage3:0.7,15,15,0,0,0,0,true,16.31,16.31,16,true,true,100
+h3-loopback-c1x8,loopback,h3,1,8,HTTP/3.0,HTTP/3.0,HTTP/3.0,10,157,132.135,stage0:33.5 stage1:97.0 stage2:1.2 stage3:0.5,15,15,0,0,0,0,true,16.31,16.31,16,true,true,100
+h1-delay20-c1x1,delay20,h1,1,1,HTTP/1.1,HTTP/1.1,HTTP/1.1,10,157,11968.606,stage0:11179.6 stage1:585.2 stage2:122.3 stage3:81.6,15,15,0,0,0,0,true,16.31,15.18,16,true,true,100
+h1-delay20-c1x8,delay20,h1,1,8,HTTP/1.1,HTTP/1.1,HTTP/1.1,10,157,11965.832,stage0:11185.6 stage1:576.1 stage2:122.3 stage3:81.8,15,15,0,0,0,0,true,15.18,15.17,16,false,true,100
+h1-delay20-c8x8,delay20,h1,8,8,HTTP/1.1,HTTP/1.1,HTTP/1.1,10,157,1847.224,stage0:1467.1 stage1:176.0 stage2:122.4 stage3:81.7,15,15,0,0,0,0,true,15.17,14.36,16,false,true,100
+h2-delay20-c1x1,delay20,h2,1,1,HTTP/2.0,HTTP/2.0,HTTP/2.0,10,157,12231.276,stage0:11257.8 stage1:768.8 stage2:122.9 stage3:81.8,15,15,0,0,0,0,true,14.36,13.67,16,false,true,100
+h2-delay20-c1x8,delay20,h2,1,8,HTTP/2.0,HTTP/2.0,HTTP/2.0,10,157,2008.348,stage0:1453.9 stage1:349.4 stage2:123.2 stage3:81.8,15,15,0,0,0,0,true,13.67,13.14,16,false,true,100
+h3-delay20-c1x1,delay20,h3,1,1,HTTP/3.0,HTTP/3.0,HTTP/3.0,10,157,42901.562,stage0:21002.6 stage1:21693.8 stage2:123.3 stage3:81.8,15,15,0,0,0,0,true,13.14,15.32,16,false,true,100
+h3-delay20-c1x8,delay20,h3,1,8,HTTP/3.0,HTTP/3.0,HTTP/3.0,10,157,39003.673,stage0:10252.9 stage1:28542.8 stage2:124.3 stage3:83.8,15,15,0,0,0,0,true,15.32,13.02,16,false,true,100
