@@ -3401,3 +3401,40 @@ tasks:
   status: complete
   created_at: '2026-09-25T23:20:46.392633+00:00'
   completed_at: '2026-09-26T01:00:31.160263+00:00'
+- id: DF-BUNKER-65
+  title: renew re-fetches the agent SSH key after respawn (client-local key save,
+    same as spawn)
+  criteria:
+  - After a successful bunker renew respawn, the CLI fetches the agent private key
+    via the master-credential-gated GetAgentKey RPC (Authorization header attached
+    exactly like spawn/DF-BUNKER-59) and saves it to ~/.bunker/keys/<agent-id> mode
+    0600; on fetch failure renewal still succeeds with a warn line; when the key is
+    empty nothing is written; spawn behavior/output unchanged via the shared helper;
+    unit tests cover fetch+save, warn-on-error, empty-key no-write; go build && go
+    vet && go test -short ./... green; gofmt clean on changed files; changed files
+    limited to internal/cli/renew.go, internal/cli/spawn.go (helper extraction) and
+    their _test.go files; no daemon-side or proto changes
+  status: complete
+  created_at: '2026-09-26T01:23:20.395584+00:00'
+  completed_at: '2026-09-26T02:01:16.365025+00:00'
+- id: DF-BUNKER-62
+  title: README quick start + --server flag help must state the binding rule (mutating
+    commands never fall back to the shared 'bunker use' default)
+  criteria:
+  - '1. Every mutating command''s --server flag description in internal/cli (the 17
+    SessionScopedTarget caller files) no longer claims ''default: active server'';
+    the text states the actual rule: --server flag > BUNKER_SESSION_TARGET env > refuse,
+    and that ''bunker use'' does NOT satisfy mutating commands. Read-only commands
+    (status/list and the other ReadOnlyTarget callers) keep an accurate active-default
+    description. 2. README quick-start lines for mutating verbs carry --server, a
+    binding note near the quick start states the asymmetry (mutating commands never
+    fall back to the shared active default; read-only commands do), and every ''Use
+    the CLI'' section EXAMPLE command line for a mutating verb carries --server (prose
+    paragraphs and the command-summary TABLE are exempt). 3. Zero behavior change:
+    only flag-description string literals and README prose change; no .go logic edits;
+    go build && go vet && go test -short ./... green; gofmt clean on changed files.
+    4. The built binary''s ''bunker spawn --help'' no longer prints ''default: active
+    server'' for mutating commands.'
+  status: complete
+  created_at: '2026-09-26T02:55:38.000696+00:00'
+  completed_at: '2026-09-26T02:56:26.414891+00:00'
