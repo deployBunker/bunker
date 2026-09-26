@@ -1,0 +1,296 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prd Bunker Fs</title>
+<style>
+:root{--bg:#0f1115;--fg:#d7dae0;--mut:#8b93a1;--acc:#5eb0ef;--card:#161a22}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--fg);
+font:17px/1.65 -apple-system,'Segoe UI',Roboto,sans-serif;padding:1.1rem;max-width:46rem;margin-inline:auto}
+h1{font-size:1.45rem;line-height:1.3;color:#fff;margin:.2rem 0 .6rem}
+h2{font-size:1.15rem;color:var(--acc);border-bottom:1px solid #2a3140;padding-bottom:.3rem;margin:1.6rem 0 .5rem}
+h3{font-size:1.02rem;color:#fff;margin:1.2rem 0 .3rem}
+p{margin:.55rem 0} code{background:var(--card);border:1px solid #2a3140;border-radius:5px;
+padding:.08em .35em;font-size:.86em;font-family:ui-monospace,Menlo,monospace;color:#9ecbff}
+pre{background:var(--card);border:1px solid #2a3140;border-radius:8px;padding:.8rem;overflow-x:auto}
+pre code{border:none;background:none;padding:0;color:#c9e2a8}
+table{border-collapse:collapse;width:100%;font-size:.92rem;margin:.6rem 0}
+th,td{text-align:left;padding:.45rem;border-bottom:1px solid #2a3140;vertical-align:top}
+th{color:var(--mut)} a{color:var(--acc)}
+ul,ol{margin:.4rem 0 .8rem;padding-left:1.3rem} li{margin:.3rem 0}
+hr{border:none;border-top:1px solid #2a3140;margin:1.4rem 0}
+strong{color:#fff} .tag{color:var(--mut);font-size:.85rem}
+
+.toc{background:var(--card);border:1px solid #2a3140;border-radius:8px;padding:.7rem .9rem;margin:1rem 0}
+.toc-h{color:var(--mut);font-size:.8rem;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.3rem}
+.toc ul{margin:.2rem 0;padding-left:1.1rem}.toc li{margin:.18rem 0}.toc a{text-decoration:none}
+@media (max-width:640px){
+  body{padding:.8rem;font-size:16px}
+  table,thead,tbody,tr,th,td{display:block;width:100%}
+  thead{display:none}
+  tr{border:1px solid #2a3140;border-radius:8px;padding:.4rem;margin:.6rem 0;background:var(--card)}
+  td{border:none;padding:.3rem .4rem;display:flex;gap:.6rem}
+  td::before{content:attr(data-label);color:var(--mut);flex:0 0 38%;font-size:.82rem;
+             text-transform:uppercase;letter-spacing:.03em}
+  td:empty{display:none}
+  pre{font-size:.82rem}
+}
+</style></head><body>
+<h1>PRD: <code>bunker-fs</code> — a bunker-native remote filesystem (WebDAV + HTTP/2/3 + our own FUSE client)</h1>
+<p><strong>Project:</strong> bunker (owning) · <strong>Author:</strong> Hermes (bunker thread) · <strong>Date:</strong> 2026-09-26</p>
+<p><strong>Status:</strong> proposed · <strong>Effort:</strong> L (five slices, two measurable gates before any build)</p>
+<p><strong>Front door for:</strong> the <em>filesystem</em> path. The editing/verb path has its own front door — see below.</p>
+<p><strong>Inherits from:</strong> <code>docs/prd/PRD-bunker-remote-editing.md</code> — the Path A/Path B split, the &quot;mount gives edits, never execution&quot; rule, the lease registry, the binding rules. Those are <strong>not</strong> restated here; they carry by reference.</p>
+<p><strong>Supersedes:</strong> the <em>Path B transport</em> only. Path B as a <strong>delivery path</strong> survives; what this document replaces is <strong>SFTP/SSHFS as its transport</strong>. <code>PRD-bunker-remote-editing.md</code> remains the front door for Path A (verbs) and for the delivery-path comparison; this document is the front door for the filesystem transport and adds a third path (Path C).</p>
+<hr>
+<nav class="toc"><div class="toc-h">Contents</div><ul><li><a href="#the-one-liner">The one-liner</a></li>
+<li><a href="#the-problem-measured">The problem, measured</a></li>
+<li><a href="#the-mechanism-proven">The mechanism, proven</a></li>
+<li><a href="#user-stories">User stories</a></li>
+<li><a href="#acceptance-criteria">Acceptance criteria</a></li>
+<li><a href="#the-design">The design</a></li>
+<li><a href="#what-already-exists-vs-what-is-missing-audited-2026-09-26">What already exists vs what is missing (audited 2026-09-26)</a></li>
+<li><a href="#scope">Scope</a></li>
+<li><a href="#success-criteria-replayable-proofs">Success criteria (replayable proofs)</a></li>
+<li><a href="#risks">Risks</a></li>
+<li><a href="#cost-sequencing">Cost &amp; sequencing</a></li>
+<li><a href="#what-it-is-not">What it is NOT</a></li>
+<li><a href="#open-questions-the-owner-s-decisions-with-my-recommendation">Open questions — the owner&#x27;s decisions, with my recommendation</a></li>
+<li><a href="#ac-13-blocked">AC-13 (blocked)</a></li></ul></nav>
+<hr>
+<h2 id="the-one-liner">The one-liner</h2>
+<p>A <strong>bunker-native filesystem</strong>: <code>bunkerd</code> serves a WebDAV surface over HTTP/2 (later HTTP/3), and our own FUSE client mounts it pipelined, cached, and hash-guarded — so whole-tree git operations stop being arithmetic at one round trip per file.</p>
+<h2 id="the-problem-measured">The problem, measured</h2>
+<p>The existing filesystem path is <strong>SSHFS over SFTP</strong>, and its cost is not bandwidth — it is that SFTP has no request pipelining, so every metadata operation is one serialized round trip. Measured 2026-09-26 on this control host against two independent Hetzner datacenters:</p>
+<table>
+<tr><th>Fact</th><th>Value</th><th>How measured</th></tr>
+<tr><td data-label="Fact">RTT, control host → dedi-2 (Helsinki, public)</td><td data-label="Value"><strong>185.24 ms</strong> (mdev 0.16 ms)</td><td data-label="How measured"><code>ping -c 20 95.216.12.55</code></td></tr>
+<tr><td data-label="Fact">RTT, control host → bunker-mvp (Falkenstein, public)</td><td data-label="Value"><strong>~198 ms</strong></td><td data-label="How measured"><code>ping -c 20 78.46.173.180</code></td></tr>
+<tr><td data-label="Fact">sshfs operations completing, dedi-2</td><td data-label="Value"><strong>5 of 14</strong></td><td data-label="How measured"><code>probes/git-over-mount-probe.sh &lt;mnt&gt; --timeout 45</code></td></tr>
+<tr><td data-label="Fact">sshfs operations completing, bunker-mvp</td><td data-label="Value"><strong>5 of 14</strong></td><td data-label="How measured">same probe, separate host</td></tr>
+<tr><td data-label="Fact">sshfs operations <strong>stalling</strong> at the 45 s timeout</td><td data-label="Value"><strong>7 (dedi-2) / 8 (mvp)</strong></td><td data-label="How measured">same</td></tr>
+<tr><td data-label="Fact">sshfs <code>rev-parse HEAD</code></td><td data-label="Value">4.52 s / 4.11 s</td><td data-label="How measured">same</td></tr>
+<tr><td data-label="Fact">sshfs <code>log -1</code></td><td data-label="Value">10.32 s / 10.12 s</td><td data-label="How measured">same</td></tr>
+<tr><td data-label="Fact">sshfs <code>log --oneline -20</code></td><td data-label="Value">7.93 s / 7.92 s</td><td data-label="How measured">same</td></tr>
+<tr><td data-label="Fact">sshfs <code>ls-files</code></td><td data-label="Value">2.72 s / 2.41 s</td><td data-label="How measured">same</td></tr>
+<tr><td data-label="Fact">sshfs <code>status --short</code>, <code>diff --stat</code>, <code>commit</code>, <code>checkout -b</code></td><td data-label="Value"><strong>STALL (rc=124)</strong> on every run, both hosts</td><td data-label="How measured">same</td></tr>
+<tr><td data-label="Fact">The same 14 operations with git running <strong>on</strong> the host</td><td data-label="Value"><strong>14/14, 0.41 s flat, zero stalls</strong></td><td data-label="How measured"><code>probe-native.sh dedi-2 /root/fs-fixture</code></td></tr>
+</table>
+<p><strong>The cross-DC agreement is the finding.</strong> Two different countries, different hardware, different datacenters — and the completed operations land within ~10% of each other (<code>rev-parse</code> 4.52 vs 4.11, <code>log -1</code> 10.32 vs 10.12, <code>log -20</code> 7.93 vs 7.92, <code>ls-files</code> 2.72 vs 2.41), stalling the same operations. This is not one bad host. <strong>It is distance, and the operations that stall are exactly the ones that walk the tree.</strong></p>
+<p><strong>And every existing mount alternative fails worse than sshfs:</strong></p>
+<table>
+<tr><th>Option</th><th>Result</th><th>Measured</th></tr>
+<tr><td data-label="Option">sshfs (current default)</td><td data-label="Result">7–8 of 14 operations stall</td><td data-label="Measured">above</td></tr>
+<tr><td data-label="Option"><code>rclone mount</code>, <code>--vfs-cache-mode off</code></td><td data-label="Result"><strong>WEDGE</strong> — no result after <strong>1 h 49 m</strong></td><td data-label="Measured">zero rows; no git process alive; pipeline parked on an unflushed pipe</td></tr>
+<tr><td data-label="Option"><code>rclone mount</code>, <code>--vfs-cache-mode full</code> (bounded 256 MB)</td><td data-label="Result"><strong>WEDGE</strong> — bounded at 900 s, <strong>zero rows</strong></td><td data-label="Measured">rclone log: <code>vfs cache: cleaned: objects 0</code> for 17 straight minutes — <strong>the cache cached nothing</strong></td></tr>
+<tr><td data-label="Option"><code>rclone mount</code> + <code>--sftp-concurrency 128</code></td><td data-label="Result"><strong>WEDGE</strong> — bounded at 900 s, <strong>zero rows</strong></td><td data-label="Measured">same</td></tr>
+<tr><td data-label="Option">NFSv4 (server on dedi-2, <code>nconnect=16</code>)</td><td data-label="Result">set up, not yet measured</td><td data-label="Measured">—</td></tr>
+</table>
+<p>Two things follow, and both matter more than &quot;sshfs is slow&quot;:</p>
+<ol>
+<li><strong>rclone&#x27;s cache never engaged.</strong> Three variants, two cache modes, ~2.5 hours of wall clock, <strong>zero cache objects and zero rows of data</strong>. The wedge is not the mode I originally blamed — it reproduces identically with the cache off <em>and</em> on.</li>
+<li><strong>The hang is worse than the stall.</strong> sshfs returns <code>rc=124</code> — slow, but it <em>tells you</em>. rclone hangs on the first metadata read and never reports. A stall is a measurement you can act on; a hang is an unbounded wait with no signal, and an agent cannot recover from it.</li>
+</ol>
+<p><strong>This fails an acceptance criterion the fleet already wrote.</strong> <code>PRD-bunker-remote-editing.md</code> success criterion 19: <em>&quot;Kill the SSH transport mid-edit … the failure surfaces as a bounded timeout with a named cause, <strong>not</strong> an indefinitely hanging tool.&quot;</em> We measured the indefinitely-hanging tool, three times, on the current path&#x27;s most credible replacement. <strong>Path B&#x27;s transport is the thing that fails; Path C exists because of it.</strong></p>
+<h2 id="the-mechanism-proven">The mechanism, proven</h2>
+<p>The entire design rests on one claim: <strong>a multiplexed protocol makes per-operation cost stop scaling with latency.</strong> So it was measured, not assumed, in a controlled A/B on the real link.</p>
+<p>A single probe binary (<code>h2probe</code>) serves the same 4 KiB object two ways. The client is identical in both cases and <strong>always sets <code>MaxConnsPerHost=1</code></strong> — one connection, forced. With a single connection, high concurrency is only possible if the protocol multiplexes. So the <em>only</em> variable is the protocol.</p>
+<table>
+<tr><th>Case</th><th>Negotiated</th><th>100 sequential</th><th><strong>100 concurrent</strong></th><th>Multiplexing gain</th></tr>
+<tr><td data-label="Case"><strong>A</strong> — HTTP/1.1, plain TCP, 1 conn</td><td data-label="Negotiated"><code>HTTP/1.1</code></td><td data-label="100 sequential">38.37 s (383.72 ms/req)</td><td data-label="100 concurrent"><strong>38.47 s</strong> (384.67 ms/req)</td><td data-label="Multiplexing gain"><strong>1.0×</strong></td></tr>
+<tr><td data-label="Case"><strong>B</strong> — HTTP/2 over TLS, 1 conn</td><td data-label="Negotiated"><code>HTTP/2.0</code></td><td data-label="100 sequential">19.66 s (196.60 ms/req)</td><td data-label="100 concurrent"><strong>0.79 s</strong> (7.88 ms/req)</td><td data-label="Multiplexing gain"><strong>25.0×</strong></td></tr>
+</table>
+<p>Same host, same 185 ms link, same client, same one-connection constraint.</p>
+<ul>
+<li><strong>HTTP/1.1 buys nothing from concurrency.</strong> 100 concurrent requests take exactly as long as 100 sequential ones — 1.0×. One connection serializes; that is the wall sshfs also hits, expressed as a protocol.</li>
+<li><strong>HTTP/2 drops effective per-request cost from 384.67 ms to 7.88 ms</strong> — <strong>2.4% of one round trip</strong>, a <strong>49× per-request improvement</strong>, and 100 concurrent requests complete in <strong>0.79 s</strong>.</li>
+</ul>
+<p><strong>Why this is specifically the fix for a filesystem, and not a general &quot;HTTP is fast&quot; observation.</strong> <code>git status</code> and <code>git diff</code> over a tree issue <em>many independent</em> metadata calls — the calls have no ordering dependency on each other. A serialized transport pays <strong>N × RTT</strong> for them; a multiplexed one pays <strong>~1 RTT</strong>. That is precisely the gap between the measured 45 s stalls and the native 0.41 s. And it is precisely the lever sshfs <em>cannot</em> pull: upstream libfuse/sshfs #300 attributes sshfs&#x27;s high-latency penalty to the absence of SFTP pipelining, with OpenSSH capping packets at 256 KiB, which disables TCP window scaling.</p>
+<p><strong>Stated honestly:</strong> this proves the <em>transport</em> mechanism. It does not yet prove a FUSE client that exploits it — that is what AC-1 and AC-2 below are for, and they are the first work items.</p>
+<h2 id="user-stories">User stories</h2>
+<ol>
+<li><strong>As a Hermes session</strong> editing code on a remote bunker, I run <code>git status</code> / <code>git diff</code> through the mount and get an answer in <strong>seconds, not a 45-second stall</strong>, so I can use the same inspection commands remotely that I use locally.</li>
+<li><strong>As a Hermes session</strong>, when another writer changed a file I am about to overwrite, I get a <strong>refusal naming the current hash</strong> rather than silently losing their work — so a lost update is impossible by default rather than detected later.</li>
+<li><strong>As the owner</strong>, I get a filesystem whose <strong>local disk cost is bounded and reported</strong>, so growing projects does not mean growing my local storage — the constraint that ruled out full-copy sync tools.</li>
+<li><strong>As an agent on a tick</strong> (the machine customer), I can mount a tree, read and patch files with POSIX tools that already work, and know that a <strong>build still never runs on my box</strong> — the mount is edits, never execution.</li>
+<li><strong>As the operator</strong>, I can see and change the protocol in use (<code>h2</code>, later <code>h3</code>) and the cache bound per mount, and a stalled or failed transport surfaces as a <strong>named error within a bounded time</strong>, never an indefinite hang.</li>
+</ol>
+<h2 id="acceptance-criteria">Acceptance criteria</h2>
+<p><code>AC-n: Given &lt;state&gt;, when &lt;action&gt;, then &lt;observable result&gt; — proof: &lt;command / test / artifact / number&gt;. (T|C|M)</code></p>
+<ul>
+<li><strong>AC-1</strong> Given a <code>bunker-fs</code> mount of Fixture A (150 files / 6 dirs) over a ≥180 ms link, when the full 14-operation battery runs, then <strong>0 operations stall</strong> and <code>status --short</code>, <code>diff --stat</code>, <code>commit</code> and <code>checkout -b</code> all <strong>complete</strong> — proof: <code>probes/git-over-mount-probe.sh &lt;mnt&gt; --timeout 45</code> reports <code>STALLS (0)</code>. Baseline to beat, measured: <strong>7 (dedi-2) / 8 (mvp)</strong> stalls. <strong>(T)</strong></li>
+<li><strong>AC-2</strong> Given the same mount, when the battery runs, then total wall time for the 14 operations is <strong>≤ 15 s</strong> — proof: the probe&#x27;s CSV summed; <code>awk -F, &#x27;NR&gt;1{s+=$2}END{print s}&#x27;</code>. Baseline measured: <code>rclone</code> produced <strong>no rows at all</strong>; sshfs&#x27;s completing 5 ops alone take ≈ 25.6 s (dedi-2). <strong>(T)</strong></li>
+<li><strong>AC-3</strong> Given a file written by writer B after reader A cached it, when A writes with the <strong>stale hash</strong>, then the write is <strong>refused</strong> with a message naming the current hash, and the file&#x27;s content is <strong>unchanged</strong> — proof: content sha256 before/after is identical, refusal message contains both hashes; the write is rejected, not merged. <strong>(T)</strong></li>
+<li><strong>AC-4</strong> Given an agent-side edit (a process on the agent appends to a mounted file), when the invalidation path fires, then the client&#x27;s next read returns the <strong>new</strong> content within <strong>≤ 2 s</strong>, without a remount and without a manual cache clear — proof: timestamped read before/after, sha256 matches the agent&#x27;s file. <strong>(T)</strong></li>
+<li><strong>AC-5</strong> Given a mount with <code>--cache-max-size 256M</code>, when a tree larger than the bound is read, then local cache disk usage <strong>never exceeds 256 MB</strong> and is <strong>reported</strong> by <code>bunker fs status</code> — proof: <code>du -sh</code> of the cache dir sampled during the run, plus the reported figure; both ≤ the bound. <strong>(T)</strong></li>
+<li><strong>AC-6</strong> Given a mount, when the transport is killed mid-operation (drop the server listener or the network), then every in-flight operation returns a <strong>named error within ≤ 30 s</strong>, no partial file is left behind, and the mountpoint is recoverable with <strong>one command</strong> — proof: the failure text names the cause; <code>ls</code> on the mountpoint after does not hang; recovery command documented and executed once. Replays <code>PRD-bunker-remote-editing.md</code> criterion 19, which the current path <strong>fails</strong>. <strong>(T)</strong></li>
+<li><strong>AC-7</strong> Given an agent that has been destroyed and re-created under the same name, when a mount bound to the old instance performs a read, then it reports <strong>STALE</strong> and refuses rather than serving the new empty tree — proof: tree-identity probe value differs; the refusal names both identities. <strong>(T)</strong></li>
+<li><strong>AC-8</strong> Given N agents (mount one, destroy another, mount a third), when the offered mount surface is enumerated, then the <strong>tool count and names are byte-identical</strong> before and after; the target is an <strong>argument</strong>, never a global — proof: diff the mounted-target list plus <code>bunker fs --help</code> before and after; <code>git diff</code> empty. <strong>(T)</strong></li>
+<li><strong>AC-9</strong> Given a capability the target lacks (an agent whose build has no inotify watcher), when the mount requests invalidation, then the mount <strong>still mounts</strong> and reports a structured <code>capability_unavailable</code> naming the missing piece, degrading to <strong>poll-based</strong> invalidation with the mode visible in <code>bunker fs status</code> — proof: mount succeeds; <code>bunker fs status --json</code> names the degradation. <strong>(T)</strong></li>
+<li><strong>AC-10</strong> Given the battery results, when the local control host&#x27;s CPU time is measured across a full remote edit-build-test cycle, then the <strong>build&#x27;s CPU is not on the local box</strong> and the mount contributes only its own I/O — proof: <code>/proc/&lt;pid&gt;/stat</code> utime+stime for the local side, plus proof the build ran on the agent. Extends the house PRD&#x27;s criterion 9 (offload). <strong>(T)</strong></li>
+<li><strong>AC-11</strong> <strong>(anti-gaming)</strong> Given a mount that claims pipelining, when the concurrency is <strong>forced to 1</strong> (<code>MaxConnsPerHost=1</code> equivalent / <code>--max-concurrent-requests 1</code>), then the battery <strong>degrades measurably</strong> toward the serialized baseline — proof: the same battery at concurrency 1 vs N differs by ≥2× on the whole-tree operations. A green result that survives concurrency=1 proves nothing was actually pipelined. <strong>(T)</strong></li>
+<li><strong>AC-12</strong> Given the shipped client, when the same battery is re-run with the <strong>exact invocation the design documents</strong>, then the published numbers reproduce within 15% — proof: re-run command printed verbatim in the results file, before/after column. A number whose command is not quoted is unverifiable by construction. <strong>(T)</strong></li>
+</ul>
+<h2 id="the-design">The design</h2>
+<h3 id="shape">Shape</h3>
+<pre><code>
+  CONTROL HOST                                          BUNKER (agent)
+  ┌───────────────────────────┐                         ┌────────────────────────────┐
+  │  local tools / git / IDE  │                         │   the tree (.git etc.)      │
+  │            │              │                         │            ▲               │
+  │      POSIX VFS            │                         │       inotify watcher      │
+  │            │              │                         │            │               │
+  │   bunker-fs FUSE client   │  HTTP/2 (later HTTP/3)  │     bunkerd WebDAV layer    │
+  │   ├ pipeline/coalesce  ───┼──── multiplexed ────────┼──▶  ├ WebDAV verbs          │
+  │   ├ bounded LRU cache     │  streams, one conn      │     ├ X-Bunker-Hash/Rev    │
+  │   └ hash-checked writes   │◀── invalidations ───────┼────  └ batch/op delegation  │
+  └───────────────────────────┘                         └────────────────────────────┘
+</code></pre>
+<p>Three components, and the third is what makes it more than &quot;a better sshfs&quot;:</p>
+<ol>
+<li><strong>Server: WebDAV in <code>bunkerd</code>.</strong> Standard verbs (<code>GET/PUT/DELETE/MKCOL/PROPFIND/LOCK</code>) so existing clients work, plus bunker extension headers. This is the piece you proposed building directly into bunker, and it is the right call: we need to add semantics a generic WebDAV server cannot provide.</li>
+<li><strong>Client: our own FUSE mount.</strong> One binary, target is an argument. Its whole reason to exist is <strong>pipelining</strong> — issuing independent metadata calls as concurrent HTTP/2 streams — plus a bounded cache and hash-checked writes.</li>
+<li><strong>Delegation (the extension that beats every transparent proxy).</strong> Because we own both ends, whole-tree operations whose <em>results</em> are small can be computed <strong>on the agent</strong> and returned in one call: <code>status</code>, <code>diff --stat</code>, <code>rev-parse</code>, <code>ls-files</code> become server-side operations rather than N file reads. This is what the measured 0.41 s native path already demonstrates — the difference is it happens <em>behind a filesystem interface</em>, so unchanged local tools benefit.</li>
+</ol>
+<h3 id="state-model-three-states-two-dangerous-edges">State model — three states, two dangerous edges</h3>
+<table>
+<tr><th>State</th><th>What it is</th><th>Where it lives</th></tr>
+<tr><td data-label="State"><strong>DECLARED</strong></td><td data-label="What it is">what the session believes the tree contains</td><td data-label="Where it lives">session</td></tr>
+<tr><td data-label="State"><strong>CACHED</strong></td><td data-label="What it is">what the client holds locally</td><td data-label="Where it lives">control host cache dir</td></tr>
+<tr><td data-label="State"><strong>ACTUAL</strong></td><td data-label="What it is">what is on the agent&#x27;s disk right now</td><td data-label="Where it lives">the agent</td></tr>
+</table>
+<ul>
+<li><strong>Edge ACTUAL → CACHED</strong> (the cache is stale): another process edited the tree. <strong>Closed by inotify-driven invalidation</strong> on the agent, with poll-based fallback on agents lacking the watcher (AC-9).</li>
+<li><strong>Edge CACHED → ACTUAL</strong> (a write lands on a tree that moved): the agent was destroyed/re-created, or another session wrote the same file first. <strong>Closed by tree-identity probe at bind</strong> (AC-7) and <strong>hash-checked writes</strong> (AC-3).</li>
+</ul>
+<p>A filesystem that reads only CACHED and calls it truth is the narrow shape this document exists to avoid.</p>
+<h3 id="taxonomy-the-staleness-conflict-classes-one-real-case-each">Taxonomy — the staleness/conflict classes, one real case each</h3>
+<table>
+<tr><th>Class</th><th>Real case</th><th>Mechanism</th></tr>
+<tr><td data-label="Class"><strong>Foreign edit, content changed</strong></td><td data-label="Real case">a build on the agent writes <code>dist/</code> while a session has <code>src/</code> cached</td><td data-label="Mechanism">inotify → targeted invalidation</td></tr>
+<tr><td data-label="Class"><strong>Concurrent writer, same file</strong></td><td data-label="Real case">two sessions patch one file; the second has a stale hash</td><td data-label="Mechanism">hash-checked write <strong>refuses</strong>, names the current hash (AC-3)</td></tr>
+<tr><td data-label="Class"><strong>Tree identity changed</strong></td><td data-label="Real case">agent destroyed and re-created under the same name</td><td data-label="Mechanism">bind-time identity probe → STALE (AC-7)</td></tr>
+<tr><td data-label="Class"><strong>Cache eviction</strong></td><td data-label="Real case">tree larger than the cache bound</td><td data-label="Mechanism">bounded LRU; a miss re-fetches; bound is <strong>reported</strong> (AC-5)</td></tr>
+<tr><td data-label="Class"><strong>Touch-without-change</strong></td><td data-label="Real case">a tool rewrites a file with identical bytes</td><td data-label="Mechanism"><strong>content hash decides, never mtime</strong> — mtime-based invalidation would invalidate constantly under a build</td></tr>
+<tr><td data-label="Class"><strong>Capability absent</strong></td><td data-label="Real case">agent image has no inotify watcher</td><td data-label="Mechanism"><code>capability_unavailable</code> + visible poll fallback (AC-9)</td></tr>
+</table>
+<h3 id="the-loops-each-with-its-closure">The loops, each with its closure</h3>
+<ol>
+<li><strong>Invalidation loop.</strong> agent inotify → event → client drops the entry → next read re-fetches → <strong>CLOSED when the client&#x27;s hash equals the agent&#x27;s hash</strong> for that path.</li>
+<li><strong>Conflict loop.</strong> write carries <code>expected-hash</code> → server compares → mismatch → <strong>refuse naming the current hash</strong> → caller re-reads, merges, retries → <strong>CLOSED when a write lands with a matching hash.</strong> Recurrence escalates to the lease registry (lease before write) so the class stops recurring rather than nagging.</li>
+<li><strong>Identity loop.</strong> bind → probe tree UUID → match → proceed | mismatch → <strong>refuse + require re-bind</strong> → <strong>CLOSED when the UUID matches.</strong> Never auto-adopt a fresh tree.</li>
+<li><strong>Cache-bound loop.</strong> sample cache size → evict LRU → <strong>CLOSED when size ≤ bound</strong>, and the figure is reported so the bound is a fact, not a claim.</li>
+</ol>
+<h3 id="interface-and-parameters">Interface and parameters</h3>
+<p><strong>Mount:</strong></p>
+<table>
+<tr><th>Parameter</th><th>Meaning</th><th>Default</th></tr>
+<tr><td data-label="Parameter"><code>target</code></td><td data-label="Meaning"><code>agent[:path]</code> — <strong>always an argument</strong>, never a global</td><td data-label="Default"><em>required</em></td></tr>
+<tr><td data-label="Parameter"><code>mountpoint</code></td><td data-label="Meaning">local path, created 0700</td><td data-label="Default"><em>required</em></td></tr>
+<tr><td data-label="Parameter"><code>--protocol</code></td><td data-label="Meaning"><code>h2</code> \</td><td data-label="Default"><code>h3</code> (h3 gated on AC-13)</td><td data-label=""><code>h2</code></td></tr>
+<tr><td data-label="Parameter"><code>--cache-max-size</code></td><td data-label="Meaning">hard local bound, evicting</td><td data-label="Default"><code>256M</code></td></tr>
+<tr><td data-label="Parameter"><code>--cache-max-age</code></td><td data-label="Meaning">TTL for entries with no invalidation channel</td><td data-label="Default"><code>1h</code></td></tr>
+<tr><td data-label="Parameter"><code>--mode</code></td><td data-label="Meaning"><code>ro</code> \</td><td data-label="Default"><code>rw</code></td><td data-label=""><code>rw</code></td></tr>
+<tr><td data-label="Parameter"><code>--concurrency</code></td><td data-label="Meaning">in-flight streams per connection</td><td data-label="Default"><code>64</code></td></tr>
+<tr><td data-label="Parameter"><code>--on-conflict</code></td><td data-label="Meaning"><code>refuse</code> \</td><td data-label="Default"><code>overwrite-if-unchanged</code></td><td data-label=""><code>refuse</code></td></tr>
+</table>
+<p><strong>Server surface (WebDAV verbs + extensions):</strong></p>
+<table>
+<tr><th>Verb</th><th>Extension headers</th><th>Notes</th></tr>
+<tr><td data-label="Verb"><code>GET</code> / <code>HEAD</code></td><td data-label="Extension headers"><code>ETag</code>, <code>X-Bunker-Hash</code></td><td data-label="Notes">hash is content-addressed, not mtime</td></tr>
+<tr><td data-label="Verb"><code>PUT</code></td><td data-label="Extension headers"><code>If-Match: &lt;hash&gt;</code></td><td data-label="Notes"><strong>mismatch ⇒ 412 refused</strong>, names the current hash</td></tr>
+<tr><td data-label="Verb"><code>DELETE</code> / <code>MKCOL</code></td><td data-label="Extension headers">—</td><td data-label="Notes">—</td></tr>
+<tr><td data-label="Verb"><code>PROPFIND</code></td><td data-label="Extension headers"><code>X-Bunker-Rev</code></td><td data-label="Notes">directory listing <strong>with attributes</strong> (the readdirplus case)</td></tr>
+<tr><td data-label="Verb"><code>LOCK</code> / <code>UNLOCK</code></td><td data-label="Extension headers">—</td><td data-label="Notes">backs onto the <strong>existing lease registry</strong> in the tree — not a second lock system</td></tr>
+<tr><td data-label="Verb"><code>POST</code> (bunker)</td><td data-label="Extension headers">`X-Bunker-Op: status\</td><td data-label="Notes">diff\</td><td data-label="">rev-parse\</td><td data-label="">ls-files`</td><td data-label=""><strong>delegated whole-tree ops</strong>, computed on the agent</td></tr>
+</table>
+<p><strong>Cardinality rule (hard constraint).</strong> The tool count is fixed by the verb count; <strong>the target is always an argument.</strong> Mounting 20 agents must not create 20 tools. A per-instance design means N × M registrations and a surface that mutates every time an agent spawns — explicitly rejected.</p>
+<p><strong>Capability variance is an ERROR, not a dynamic surface.</strong> An agent missing the inotify watcher or on an older build keeps the full surface; the call returns a structured <code>capability_unavailable</code> naming what is absent and the mode in force. A silently missing capability is strictly worse — the caller cannot distinguish &quot;not supported&quot; from &quot;not loaded&quot; from &quot;forgotten.&quot;</p>
+<p><strong>Session-scoped mutability is a separate axis.</strong> The catalog is constant; which verbs <em>this mount</em> exposes (<code>ro</code> vs <code>rw</code>, delegation on/off) is <strong>per-mount state</strong>, never a global config write. A mount&#x27;s mode change must not alter any other mount&#x27;s behaviour.</p>
+<h3 id="your-mechanisms-as-design-authority">Your mechanisms, as design authority</h3>
+<p>Four of these are your calls, and they are specified rather than paraphrased:</p>
+<ol>
+<li><strong>WebDAV as the surface.</strong> Adopted, and for the reason you gave — it is a protocol with enough surface area to build on, with clients that already exist (davfs2, rclone, Finder, Windows) and a place to hang extension headers. Interop is free; the extensions are where the speed comes from.</li>
+<li><strong>HTTP/2 now; HTTP/3/QUIC as a measured follow-on.</strong> HTTP/2 is <strong>proven here</strong> (25.0×, 7.88 ms effective). HTTP/3 adds 0-RTT setup and removes TCP-level head-of-line blocking — genuinely attractive on a <em>lossy</em> path. <strong>Two honest caveats:</strong> Go has <strong>no stdlib HTTP/3</strong> (it needs <code>quic-go</code>, a new dependency; <code>go.mod</code> today carries no QUIC at all), and QUIC&#x27;s benefit on a 185 ms path with mdev <strong>0.16 ms</strong> is <code>AC-13</code> — a measurement, not an assumption. Your instinct that HTTP-family protocols are latency-tolerant is confirmed; which HTTP version is not yet.</li>
+<li><strong>inotify-driven invalidation.</strong> Adopted as the primary invalidation channel (AC-4), with poll as the declared fallback.</li>
+<li><strong>Hash-based write rejection.</strong> Adopted as the conflict rule (AC-3). This is the mechanism that turns a silent lost update into a loud refusal, and it maps onto the lease registry the house PRD already specifies.</li>
+</ol>
+<p><strong>One refinement on hashes, because it changes behaviour:</strong> compare <strong>content hashes, never mtimes</strong>. Under an active build the tree is touched constantly with unchanged bytes; an mtime-keyed check would refuse writes that are actually safe, and the first thing anyone does with a nagging check is disable it.</p>
+<h2 id="what-already-exists-vs-what-is-missing-audited-2026-09-26">What already exists vs what is missing (audited 2026-09-26)</h2>
+<table>
+<tr><th>Capability</th><th>State</th><th>Evidence</th><th>What it means</th></tr>
+<tr><td data-label="Capability"><code>bunkerd</code> HTTP REST on <code>:18080</code></td><td data-label="State"><strong>HTTP/1.1 only</strong></td><td data-label="Evidence"><code>curl</code> → <code>http_version=1.1</code>; <code>--http2-prior-knowledge</code> → code <code>000</code>; <code>/healthz</code> → 200</td><td data-label="What it means"><strong>The existing REST listener cannot multiplex.</strong> A WebDAV surface needs h2 (TLS or h2c) as new work.</td></tr>
+<tr><td data-label="Capability">gRPC listener on <code>:19090</code></td><td data-label="State"><strong>HTTP/2 present</strong></td><td data-label="Evidence">gRPC mandates h2; listener serves</td><td data-label="What it means">An h2 stack is already in the process — the substrate is not entirely new.</td></tr>
+<tr><td data-label="Capability">Go toolchain</td><td data-label="State"><strong>1.26.5</strong></td><td data-label="Evidence"><code>go version</code></td><td data-label="What it means">Modern; h2 via stdlib with TLS, no new dep.</td></tr>
+<tr><td data-label="Capability"><code>quic-go</code> / HTTP/3</td><td data-label="State"><strong>MISSING</strong></td><td data-label="Evidence"><code>go.mod</code>: only <code>golang.org/x/net</code> (indirect); no QUIC anywhere</td><td data-label="What it means">HTTP/3 is a new dependency and its own slice (AC-13).</td></tr>
+<tr><td data-label="Capability">WebDAV server</td><td data-label="State"><strong>MISSING</strong></td><td data-label="Evidence">repo grep: zero <code>webdav</code> hits in non-test code</td><td data-label="What it means">New work — the core of the server slice.</td></tr>
+<tr><td data-label="Capability">FUSE client</td><td data-label="State"><strong>present</strong> (sshfs 3.7.6)</td><td data-label="Evidence"><code>/usr/local/bin/sshfs</code>, FUSE 3.18.2, <code>/dev/fuse</code></td><td data-label="What it means">The mount <em>mechanism</em> exists; we replace the client, not the OS support.</td></tr>
+<tr><td data-label="Capability">Agent-side inotify watcher</td><td data-label="State"><strong>MISSING</strong></td><td data-label="Evidence">no inotify code in the repo</td><td data-label="What it means">New work; AC-9 covers agents that lack it.</td></tr>
+<tr><td data-label="Capability">Lease registry in the tree</td><td data-label="State"><strong>exists</strong></td><td data-label="Evidence">house PRD; <code>toolsd</code> <code>&lt;git-common-dir&gt;/agent-leases.json</code>, CHT-007 live probe (6 procs → 1 grant / 5 refusals)</td><td data-label="What it means"><strong>Reuse — do not build a second lock system.</strong> <code>LOCK</code>/<code>UNLOCK</code> backs onto this.</td></tr>
+</table>
+<p><strong>Resized scope in one line:</strong> the transport substrate and the mount mechanism exist; the build is <strong>a WebDAV layer + a pipelining FUSE client + an invalidation channel</strong>, reusing the lease registry rather than rebuilding it.</p>
+<h2 id="scope">Scope</h2>
+<p><strong>In scope:</strong> WebDAV surface in <code>bunkerd</code>; h2 transport with pipelining; the FUSE client with bounded cache; inotify invalidation + poll fallback; hash-checked writes; delegated whole-tree operations; lease-backed <code>LOCK</code>; capability reporting; the measurement harness.</p>
+<p><strong>Out of scope, with reasons:</strong></p>
+<ul>
+<li><strong>HTTP/3 as a v1 gate.</strong> Proven-in-principle but unmeasured here, and it costs a new dependency. It is <code>AC-13</code>, gated on the HTTP/2 path landing.</li>
+<li><strong>Full local mirroring / sync tools (Mutagen-style).</strong> Ruled out by the standing storage constraint: a mirror&#x27;s local cost grows with the tree, including the mass nobody reads. This design caches what is touched and bounds it (AC-5).</li>
+<li><strong>Execution through the mount.</strong> Unchanged from the house PRD: <strong>the mount gives file-level edits, never execution.</strong> Builds run on the agent.</li>
+<li><strong>A second lock manager.</strong> Leases stay in the tree, keyed by tree, never by mount or agent.</li>
+<li><strong>Windows/macOS clients as a v1 requirement.</strong> WebDAV keeps the door open; v1 targets Linux FUSE.</li>
+</ul>
+<h2 id="success-criteria-replayable-proofs">Success criteria (replayable proofs)</h2>
+<ol>
+<li><strong>Battery replay.</strong> Run the same 14-operation battery used for the baseline through the new mount on both dedi-2 and bunker-mvp. → <strong>0 stalls on both</strong>; before/after published side by side against the measured 7/8.</li>
+<li><strong>Multiplexing replay.</strong> Re-run the <code>h2probe</code> A/B on the shipped transport. → HTTP/2 concurrent remains ≥10× the HTTP/1.1 control at <code>MaxConnsPerHost=1</code>; the 25.0× figure is re-derived, not inherited.</li>
+<li><strong>Delegation replay.</strong> <code>git status --short</code> on a 150-file tree through the mount with delegation on vs off. → the delegated path is measurably faster and returns byte-identical output.</li>
+<li><strong>Conflict replay.</strong> Two writers, one stale hash. → refusal naming the current hash; the file&#x27;s bytes are unchanged (AC-3).</li>
+<li><strong>Invalidation replay.</strong> An agent-side append is visible in the client within 2 s with no remount (AC-4).</li>
+<li><strong>Bound replay.</strong> A tree larger than <code>--cache-max-size</code>. → local cache never exceeds the bound, and the reported figure agrees with <code>du</code> (AC-5).</li>
+<li><strong>Transport-kill replay.</strong> Kill the listener mid-operation. → named error within 30 s, no partial file, one-command recovery. <strong>This is the criterion the current path fails</strong> — the replay is the point.</li>
+<li><strong>Constant-surface replay.</strong> Mount one agent, destroy another, mount a third. → identical mount surface; the target stayed an argument (AC-8).</li>
+<li><strong>Anti-gaming replay.</strong> The battery at <code>--concurrency 1</code>. → it must degrade toward the serialized baseline. A pass that survives concurrency=1 is a false pass (AC-11).</li>
+</ol>
+<h2 id="risks">Risks</h2>
+<table>
+<tr><th>Risk</th><th>Mitigation (design rule)</th></tr>
+<tr><td data-label="Risk">We build a FUSE client and it is <strong>slower</strong> than native delegation</td><td data-label="Mitigation (design rule)">Delegation lands <strong>in the same slice</strong> as the client, not after it; if the client cannot beat &quot;compute it on the agent&quot;, say so and ship the delegation path alone</td></tr>
+<tr><td data-label="Risk">The cache silently grows on the owner&#x27;s box</td><td data-label="Mitigation (design rule)">Hard <code>--cache-max-size</code> with eviction, and the figure is <strong>reported</strong> — a bound that is not visible is not a bound</td></tr>
+<tr><td data-label="Risk">inotify <strong>misses</strong> events (overflow, unmounted, kernel limits)</td><td data-label="Mitigation (design rule)">Watcher reports overflow explicitly; the client falls back to poll and <strong>says which mode is in force</strong></td></tr>
+<tr><td data-label="Risk">Hash checks refuse safe writes under an active build</td><td data-label="Mitigation (design rule)">Compare <strong>content hashes, not mtimes</strong>; a refusal names both hashes</td></tr>
+<tr><td data-label="Risk">A &quot;default mount&quot; creeps in and replaces sshfs unasked</td><td data-label="Mitigation (design rule)">New drivers are <strong>opt-in</strong>; sshfs stays the default until the battery shows 0 stalls on two DCs, and the switch is an owner decision</td></tr>
+<tr><td data-label="Risk">h2 over a middlebox that breaks it</td><td data-label="Mitigation (design rule)"><code>--protocol</code> is explicit and reports what was negotiated; a downgrade is a visible error, never silent</td></tr>
+<tr><td data-label="Risk">Scope creep into HTTP/3 before v1 works</td><td data-label="Mitigation (design rule)">AC-13 gates h3 on the h2 path landing</td></tr>
+</table>
+<h2 id="cost-sequencing">Cost &amp; sequencing</h2>
+<table>
+<tr><th>Slice</th><th>Effort</th><th>Ships</th><th>Depends</th><th>Gate</th></tr>
+<tr><td data-label="Slice"><strong>C0</strong> re-run the harness on the shipped invocation; publish the baseline file</td><td data-label="Effort"><strong>S</strong></td><td data-label="Ships">the number everything is graded against</td><td data-label="Depends">—</td><td data-label="Gate">—</td></tr>
+<tr><td data-label="Slice"><strong>C1</strong> h2/h2c WebDAV surface in <code>bunkerd</code> (<code>GET</code>/<code>HEAD</code>/<code>PROPFIND</code> first, read-only)</td><td data-label="Effort"><strong>M</strong></td><td data-label="Ships">server half; provable with <code>curl --http2</code></td><td data-label="Depends">C0</td><td data-label="Gate">AC-8, AC-12</td></tr>
+<tr><td data-label="Slice"><strong>C2</strong> pipelining FUSE client, read-only mount</td><td data-label="Effort"><strong>M</strong></td><td data-label="Ships"><strong>the core bet</strong> — AC-1, AC-2, AC-11</td><td data-label="Depends">C1</td><td data-label="Gate"><strong>0 stalls</strong></td></tr>
+<tr><td data-label="Slice"><strong>C3</strong> bounded cache + inotify invalidation + poll fallback</td><td data-label="Effort"><strong>M</strong></td><td data-label="Ships">AC-4, AC-5, AC-9</td><td data-label="Depends">C2</td><td data-label="Gate">cache bound held</td></tr>
+<tr><td data-label="Slice"><strong>C4</strong> hash-checked writes + <code>LOCK</code> onto the lease registry</td><td data-label="Effort"><strong>M</strong></td><td data-label="Ships">AC-3, AC-6, AC-7</td><td data-label="Depends">C3</td><td data-label="Gate">refusal proven</td></tr>
+<tr><td data-label="Slice"><strong>C5</strong> delegated whole-tree ops (<code>X-Bunker-Op</code>)</td><td data-label="Effort"><strong>M</strong></td><td data-label="Ships">AC-10 + success 3</td><td data-label="Depends">C2</td><td data-label="Gate">delegated ≥ proxy</td></tr>
+<tr><td data-label="Slice"><strong>C6</strong> HTTP/3 via <code>quic-go</code></td><td data-label="Effort"><strong>M</strong></td><td data-label="Ships">AC-13, only if h3 wins on this path</td><td data-label="Depends">C5</td><td data-label="Gate">measured, not assumed</td></tr>
+</table>
+<p><strong>C2 is the bet.</strong> If a pipelining FUSE client does not beat the serialized baseline on the same host, the design is wrong and C5 (delegation, which is <em>not</em> a filesystem) is the fallback. That is why C0 and C1 come first and why AC-11 exists.</p>
+<p><strong>Repo home:</strong> <code>deployBunker/bunker</code> — <code>internal/fs/</code> for the client and <code>internal/server/webdav/</code> for the surface; the harness belongs in <code>probes/</code> beside the existing probe.</p>
+<h2 id="what-it-is-not">What it is NOT</h2>
+<ul>
+<li><strong>Not a replacement for the verb layer.</strong> <code>bunker_*</code> verbs stay the path for explicitly-targeted, attributed, refuse-on-unbound writes. A mount cannot enforce per-session binding; Path A is where that guarantee lives.</li>
+<li><strong>Not an execution path.</strong> Builds, tests and installs run on the agent. Always.</li>
+<li><strong>Not a synchronizer.</strong> No mirror, no full copy, no growing local footprint.</li>
+<li><strong>Not a new lock manager.</strong> Leases stay in the tree.</li>
+<li><strong>Not a credentials store.</strong> The mount uses the agent&#x27;s own access; per-session credential partitioning stays where the house PRD put it.</li>
+<li><strong>Not a general-purpose WebDAV server.</strong> The WebDAV surface exists to serve this filesystem; it is not offered as a standalone file-sharing product.</li>
+</ul>
+<h2 id="open-questions-the-owner-s-decisions-with-my-recommendation">Open questions — the owner&#x27;s decisions, with my recommendation</h2>
+<ol>
+<li><strong>WebDAV-compatible, or our own protocol with WebDAV as an adapter?</strong> → <strong>Recommend: WebDAV core + bunker extension headers.</strong> Interop costs nothing and the extensions are where the speed is. Revisit only if extension headers prove insufficient.</li>
+<li><strong>HTTP/3 now or after HTTP/2 proves out?</strong> → <strong>Recommend: HTTP/2 first.</strong> It is proven here at 25.0×; HTTP/3 is unmeasured on this path (mdev is 0.16 ms — this link is <em>not</em> lossy, which is exactly where QUIC&#x27;s advantage is smallest) and costs a new dependency. Make h3 an owner call <em>after</em> AC-13&#x27;s measurement, not a v1 assumption.</li>
+<li><strong>Does <code>bunker-fs</code> replace sshfs as the default edit transport?</strong> → <strong>Recommend: no default change</strong> until the battery shows 0 stalls on both DCs. New drivers opt-in; sshfs stays default until a measured win exists.</li>
+<li><strong>Default cache bound?</strong> → <strong>Recommend: 256 MB, reported.</strong> A bound the owner cannot see is not a bound. Per-agent override for big trees.</li>
+<li><strong>Conflict default: refuse or last-write-wins?</strong> → <strong>Recommend: refuse</strong>, with an explicit <code>--on-conflict</code> override. A silent overwrite is a lost update; a refusal is a recoverable event.</li>
+<li><strong>Working name and repo home.</strong> → <code>bunker-fs</code> is a working name. <code>internal/fs/</code> + <code>internal/server/webdav/</code> in <code>deployBunker/bunker</code> unless you want it separate — your call.</li>
+</ol>
+<h2 id="ac-13-blocked">AC-13 (blocked)</h2>
+<p><strong>AC-13</strong> Given the working h2 mount, when the same battery runs over HTTP/3, then h3 is <strong>kept only if</strong> it beats h2 on wall time on this path — proof: same battery, both protocols, side-by-side numbers. <strong>BLOCKED-ON:</strong> C6 (needs <code>quic-go</code> vendored and the h2 path landed). Filed as a dependency, not deleted.</p>
+</body></html>
