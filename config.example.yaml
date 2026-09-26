@@ -36,6 +36,33 @@ server:
   # answered over HTTP/1.1 with no error at all. Use it for loopback/LAN or for
   # a client written to send the connection preface; for anything reachable,
   # HTTP/2 over TLS via ALPN is the path. HTTP/1.1 is unaffected either way.
+  #
+  # ── HTTP/3 (QUIC) — OFF by default, requires tls.enabled: true ────────────
+  # h3_enabled: false
+  # h3_addr: ""              # UDP listen address (default: the REST port number)
+  #
+  # One port NUMBER, two transports, one process (BFS-002/BFS-007). The daemon
+  # keeps the TCP socket it already has — HTTP/1.1 always, HTTP/2 when TLS is
+  # on — and adds a UDP socket on the same port number served by quic-go's
+  # HTTP/3 server. The SAME handler serves all three: no method, property or
+  # extension is gated on the negotiated version, and the version a request
+  # arrived on is echoed in X-Bunker-Proto.
+  #
+  # Two things are worth knowing before switching it on:
+  #
+  #   * QUIC always encrypts, so h3 CANNOT be served without TLS. Setting
+  #     h3_enabled with tls.enabled: false is refused at startup rather than
+  #     silently serving a TCP-only daemon. With a cleartext deployment the
+  #     only HTTP/2 available is h2c above.
+  #   * Clients discover h3 from the `Alt-Svc: h3=":<port>"; ma=2592000` header
+  #     the TCP responses carry — emitted ONLY while the UDP socket is live,
+  #     which is why the daemon fails to start if the UDP port is taken instead
+  #     of advertising an endpoint that is not listening. Nothing in the Go
+  #     stack consumes Alt-Svc on its own: a client either follows it (curl
+  #     with HTTP/3 support, a browser) or opts into QUIC explicitly.
+  #
+  # Cost when enabled: two modules (github.com/quic-go/quic-go + qpack) and
+  # ~2.1 MiB on the daemon binary; no cgo, no toolchain change (BFS-002 §5).
 
 # TLS for the gRPC/REST listeners. Leave disabled for plaintext.
 #

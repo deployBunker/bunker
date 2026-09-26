@@ -383,10 +383,21 @@ func eerr2Mode(e *envelopeError) string {
 // reports reality, not aspiration. The one part that is version-dependent is
 // `server.proto`, which is the version this request actually arrived on.
 func (h *Handler) capabilityDocument(r *http.Request) map[string]any {
-	port := localPort(r)
+	// BFS-007: the authority to advertise is the LIVE QUIC socket when there
+	// is one — it may be an explicit server.h3_addr, i.e. a different port
+	// than the TCP listener this request arrived on. With no live listener the
+	// field still names the authority O-5 gives it (this listener's own port),
+	// which is what a client should dial once h3 is switched on. `available`
+	// is never derived from that: only a bound socket makes it true.
+	port, h3Live := 0, false
+	if p, live := h.cfg.H3.Port(); live {
+		port, h3Live = p, true
+	} else {
+		port = localPort(r)
+	}
 	altSvc := ""
-	if port != "" {
-		altSvc = fmt.Sprintf("h3=\":%s\"; ma=2592000", port)
+	if port > 0 {
+		altSvc = AltSvcValue(port)
 	}
 	ops := make([]string, 0, len(opCatalogue))
 	for _, op := range opCatalogue {
@@ -419,7 +430,7 @@ func (h *Handler) capabilityDocument(r *http.Request) map[string]any {
 			"http/1.1": map[string]any{"alpn": nil, "multiplexed": false, "server_push": false, "available": true},
 			"h2":       map[string]any{"alpn": "h2", "tls": true, "multiplexed": true, "server_push": false, "available": h.cfg.TLS},
 			"h2c":      map[string]any{"mode": "prior-knowledge", "requires_opt_in": true, "upgrade_dance": false, "available": h.cfg.H2C},
-			"h3":       map[string]any{"alpn": "h3", "transport": "quic/udp", "requires_tls": "1.3", "alt_svc": altSvc, "available": false},
+			"h3":       map[string]any{"alpn": "h3", "transport": "quic/udp", "requires_tls": "1.3", "alt_svc": altSvc, "available": h3Live},
 		},
 		"limits": map[string]any{
 			"propfind_depth":          []int{0, 1},
@@ -457,10 +468,17 @@ func (h *Handler) degradations() []map[string]any {
 			"capability": "lock", "scope": "build", "phase": "C4", "mode": "none",
 			"detail": "no lease-backed LOCK in this build; DAV: 1 is advertised, DAV: 2 is not",
 		},
-		{
+	}
+	// BFS-007: h3 is no longer a build-level absence — the listener exists and
+	// is reported when it is live — so the entry appears only while no QUIC
+	// socket is bound. "Anything absent here is available; nothing is implied"
+	// cuts both ways: an entry that stayed after the listener came up would be
+	// a degradation report that no longer describes the running process.
+	if _, live := h.cfg.H3.Port(); !live {
+		out = append(out, map[string]any{
 			"capability": "h3", "scope": "build", "mode": "http/2",
-			"detail": "no HTTP/3 listener in this build (BFS-007): QUIC requires TLS and a UDP socket",
-		},
+			"detail": "no HTTP/3 listener is live in this process: QUIC always encrypts, so h3 needs tls.enabled: true plus server.h3_enabled: true (BFS-007)",
+		})
 	}
 	for _, op := range opCatalogue {
 		if implementedOps[op] {
@@ -487,17 +505,24 @@ func (h *Handler) degradations() []map[string]any {
 }
 
 // localPort is the port this request was served on, used for the h3 Alt-Svc
-// authority the capability document reports.
-func localPort(r *http.Request) string {
+// authority the capability document reports when no QUIC listener is live. It
+// returns 0 when neither the listener address nor the Host header carries a
+// usable port, which the caller reports as "no authority" rather than
+// inventing one.
+func localPort(r *http.Request) int {
 	if addr, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr); ok {
 		if _, port, err := net.SplitHostPort(addr.String()); err == nil {
-			return port
+			if p, err := strconv.Atoi(port); err == nil {
+				return p
+			}
 		}
 	}
 	if _, port, err := net.SplitHostPort(r.Host); err == nil {
-		return port
+		if p, err := strconv.Atoi(port); err == nil {
+			return p
+		}
 	}
-	return ""
+	return 0
 }
 
 // readLimited reads a metadata body, refusing rather than truncating when it

@@ -209,6 +209,36 @@ type ServerConfig struct {
 	// WebDAVRoot is the directory served under /dav. Required (and required
 	// to be absolute) when WebDAVEnabled is set.
 	WebDAVRoot string `mapstructure:"webdav_root"`
+	// H3Enabled adds the HTTP/3 (QUIC) listener: a UDP socket served by
+	// quic-go's HTTP/3 server, carrying the SAME handler as the TCP listeners
+	// — and, by default, the same port NUMBER as the WebDAV/REST listener, so
+	// one port is exposed and one port is firewalled (BFS-002 §3, O-5).
+	// It is OFF by default, and it REQUIRES tls.enabled: QUIC always
+	// encrypts, so h3 cannot exist on a cleartext listener at all (BFS-002
+	// §4). TCP clients are unaffected either way — h3 is a second transport,
+	// announced with Alt-Svc on h1/h2 responses only while its socket is up.
+	H3Enabled bool `mapstructure:"h3_enabled"`
+	// H3Addr is the UDP address the HTTP/3 listener binds. Empty (the
+	// default) derives it from the TCP listeners: server.rest_addr when set,
+	// otherwise server.grpc_addr. It may name a different port — Alt-Svc
+	// carries the authority explicitly — but the default is one port number
+	// for both transports.
+	H3Addr string `mapstructure:"h3_addr"`
+}
+
+// H3ListenAddr is the effective UDP address of the HTTP/3 listener: the
+// explicit server.h3_addr when one is configured, otherwise the same port
+// number as the WebDAV/REST listener (or the gRPC listener when no REST
+// listener exists). It is the address startH3 binds, and the daemon logs it —
+// never a second, independent default that could drift from the header.
+func (c *Config) H3ListenAddr() string {
+	if c.Server.H3Addr != "" {
+		return c.Server.H3Addr
+	}
+	if c.Server.RESTAddr != "" {
+		return c.Server.RESTAddr
+	}
+	return c.Server.GRPCAddr
 }
 
 // TLSConfig holds TLS settings.
@@ -920,6 +950,8 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("server.h2c_enabled")
 	v.BindEnv("server.webdav_enabled")
 	v.BindEnv("server.webdav_root")
+	v.BindEnv("server.h3_enabled")
+	v.BindEnv("server.h3_addr")
 	v.BindEnv("tls.enabled")
 	v.BindEnv("tls.cert_file")
 	v.BindEnv("tls.key_file")
@@ -1049,6 +1081,23 @@ func (c *Config) Validate() error {
 		}
 		if !filepath.IsAbs(c.Server.WebDAVRoot) {
 			return fmt.Errorf("server.webdav_root must be an absolute path (got %q)", c.Server.WebDAVRoot)
+		}
+	}
+	// BFS-007: h3 is the one transport that cannot be offered on an
+	// unencrypted listener — QUIC always encrypts — so the incoherent pair is
+	// refused here, before any socket opens, rather than silently serving a
+	// TCP-only daemon that the operator believes carries HTTP/3 (BFS-002 §4).
+	// The address is validated in the same place: a UDP bind needs host:port,
+	// and a malformed value must fail at config load, not as a bind error
+	// after the other listeners are already up.
+	if c.Server.H3Enabled {
+		if !c.TLS.Enabled {
+			return fmt.Errorf("server.h3_enabled requires tls.enabled: QUIC always encrypts, so HTTP/3 cannot be served on a cleartext listener")
+		}
+		if c.Server.H3Addr != "" {
+			if _, _, err := net.SplitHostPort(c.Server.H3Addr); err != nil {
+				return fmt.Errorf("server.h3_addr must be host:port (got %q)", c.Server.H3Addr)
+			}
 		}
 	}
 	if c.TLS.Enabled {

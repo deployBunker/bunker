@@ -285,6 +285,7 @@ type capabilityJSON struct {
 		Available bool   `json:"available"`
 		Alpn      string `json:"alpn"`
 		Mode      string `json:"mode"`
+		AltSvc    string `json:"alt_svc"`
 	} `json:"transports"`
 	Limits struct {
 		PropfindDepth         []int `json:"propfind_depth"`

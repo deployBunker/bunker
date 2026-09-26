@@ -344,6 +344,17 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	// before this comment existed), and a FROBNICATE could never reach the
 	// 501 method_unknown answer §2.1 requires. Serving the /dav subtree ahead
 	// of the router keeps every verb in one handler.
+	//
+	// BFS-007: the HTTP/3 (QUIC) endpoint record. It is created here — before
+	// the surface and before either listener — because two surfaces read it:
+	// the capability document's `transports.h3` block and the Alt-Svc wrapper
+	// on the TCP listeners. One record, so they cannot disagree; the QUIC
+	// socket bound below is what makes it live.
+	var h3ep *webdav.H3Endpoint
+	if s.cfg.Server.H3Enabled {
+		h3ep = webdav.NewH3Endpoint()
+	}
+
 	var davHandler http.Handler
 	if s.cfg.Server.WebDAVEnabled {
 		h, err := webdav.New(webdav.Config{
@@ -351,6 +362,7 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 			Build:        version.Version,
 			TLS:          s.cfg.TLS.Enabled,
 			H2C:          s.cfg.Server.H2CEnabled,
+			H3:           h3ep,
 			Authenticate: webdavAuthenticator(s.jwtAuth, s.cfg.Auth.Enabled),
 		})
 		if err != nil {
@@ -396,7 +408,9 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	}
 
 	// Start servers
-	errCh := make(chan error, 2)
+	// Capacity 3: the gRPC listener, the REST listener, and (BFS-007) the
+	// HTTP/3 server.
+	errCh := make(chan error, 3)
 
 	// BFS-006/BFS-002: the protocol set for both listeners. nil (the default)
 	// keeps the runtime behaviour: HTTP/1.1 always, plus HTTP/2 whenever TLS
@@ -417,11 +431,44 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	// left exactly as it was.
 	disableGeneralOptions := davHandler != nil
 
+	// BFS-007: bind and start the HTTP/3 (QUIC) listener BEFORE the TCP
+	// listeners open. The order is the point: a taken UDP port is a startup
+	// failure, not a daemon that comes up announcing a transport it does not
+	// serve. `tlsConfig` is non-nil whenever h3 can be enabled — Validate()
+	// refuses the h3-without-TLS pair outright — and the nil guard below keeps
+	// a hand-built config from reaching a QUIC server with no certificate.
+	//
+	// The QUIC listener serves rootHandler itself: the SAME handler as the TCP
+	// listeners, no forked surface, no per-version code path.
+	var h3 *h3Listener
+	if h3ep != nil {
+		if tlsConfig == nil {
+			return fmt.Errorf("server.h3_enabled requires tls.enabled: QUIC always encrypts")
+		}
+		h3Addr := s.cfg.H3ListenAddr()
+		h3, err = startH3(h3ep, h3Addr, tlsConfig, rootHandler, s.logger, errCh)
+		if err != nil {
+			return err
+		}
+		h3Port, _ := h3.ep.Port()
+		s.logger.Info("bunkerd HTTP/3 listening",
+			"addr", h3Addr, "udp_port", h3Port, "alt_svc", h3.ep.AltSvc(), "tls", true)
+	}
+
+	// The TCP listeners answer with the surface plus the Alt-Svc advertisement
+	// for the live QUIC endpoint; the QUIC listener answers with the surface
+	// alone — a client already on h3 needs no advertisement. Nothing else about
+	// the TCP path changes: it is the same rootHandler, wrapped.
+	tcpHandler := rootHandler
+	if h3 != nil {
+		tcpHandler = h3.withAltSvc(rootHandler)
+	}
+
 	// gRPC listener on Server.GRPCAddr
 	go func() {
 		srv := &http.Server{
 			Addr:                         s.cfg.Server.GRPCAddr,
-			Handler:                      rootHandler,
+			Handler:                      tcpHandler,
 			TLSConfig:                    tlsConfig,
 			Protocols:                    protocols,
 			DisableGeneralOptionsHandler: disableGeneralOptions,
@@ -439,7 +486,7 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 		go func() {
 			srv := &http.Server{
 				Addr:                         s.cfg.Server.RESTAddr,
-				Handler:                      rootHandler,
+				Handler:                      tcpHandler,
 				TLSConfig:                    tlsConfig,
 				Protocols:                    protocols,
 				DisableGeneralOptionsHandler: disableGeneralOptions,

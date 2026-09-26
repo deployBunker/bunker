@@ -95,6 +95,13 @@ type Config struct {
 	// the RFC 7540 Upgrade dance — so it is offered to LAN/self-owned clients
 	// and reported as such, never as general HTTP/2 support.
 	H2C bool
+	// H3 is the live HTTP/3 (QUIC) endpoint of the daemon this handler is
+	// served by, or nil when there is none (BFS-007). It exists so the
+	// capability document reports `transports.h3` from the RUNNING process
+	// rather than from the config: available only while a QUIC socket is
+	// bound, with the authority that socket is bound on. A nil endpoint —
+	// a cleartext daemon, or h3 switched off — reports h3 unavailable.
+	H3 *H3Endpoint
 	// Authenticate, when non-nil, must return true for a request to be
 	// served. It exists so the WebDAV mount reuses the daemon's credential
 	// model instead of exposing the tree anonymously; the credential model

@@ -1,20 +1,29 @@
 #!/usr/bin/env bash
 # webdav-h1h2-probe.sh — prove, against a LIVE bunkerd, that the BFS-004 WebDAV
 # surface is served over HTTP/1.1 AND HTTP/2 (TLS ALPN), that h2c is
-# prior-knowledge only, and that HTTP/1.1 is a first-class protocol rather than
-# a fallback.
+# prior-knowledge only, that HTTP/1.1 is a first-class protocol rather than a
+# fallback, and (BFS-007) that the SAME surface is served over HTTP/3 (QUIC) on
+# the SAME port number, discovered through Alt-Svc and advertised only while the
+# UDP socket is live.
 #
 # WHY: the row's acceptance is "the capability exists and is OBSERVABLE". The
 # unit tests assert the surface through httptest; this probe asserts it through
-# a real process and real sockets, using a client that knows nothing about
-# bunker (curl). It also reproduces the two per-version facts that decide the
-# design:
-#   * the SAME request over h1.1 and h2 returns the same status, the same bytes
-#     and the same headers, with the version echoed in X-Bunker-Proto;
+# a real process and real sockets, using clients that know nothing about bunker
+# (curl for h1/h2, the Go h3client in probes/h3client for QUIC — curl on this
+# box has no HTTP/3 support at all, measured in BFS-002 §1). It also reproduces
+# the facts that decide the design:
+#   * the SAME request over h1.1, h2 and h3 returns the same status, the same
+#     bytes and the same headers, with the version echoed in X-Bunker-Proto;
 #   * h2c (cleartext prior knowledge) works with the opt-in, while the RFC 7540
 #     `Upgrade: h2c` dance is answered over HTTP/1.1 with no error — net/http
 #     does not implement it, so the surface reports that as a degradation
-#     instead of implying general h2c support.
+#     instead of implying general h2c support;
+#   * Alt-Svc appears on h1/h2 responses ONLY while the h3 listener is up, and
+#     an h3 client against an h3-less daemon FAILS — the two arms of "advertised
+#     only while listening", measured on the running daemon rather than
+#     asserted;
+#   * h3 without TLS is refused at startup instead of silently serving a
+#     TCP-only daemon (QUIC always encrypts).
 #
 # SAFETY: everything happens in a scratch directory under $TMPDIR (served tree,
 # config, generated self-signed certificate) on loopback ports. No repository
@@ -25,7 +34,7 @@
 #   probes/webdav-h1h2-probe.sh [--binary PATH] [--port N] [--keep]
 #
 #   --binary PATH  use an existing bunkerd binary (default: build one)
-#   --port N       first loopback port to bind (default: 18080; N and N+1)
+#   --port N       first loopback port to bind (default: 18080; N, N+1, N+2)
 #   --keep         keep the scratch directory and the daemon log
 #
 # EXIT: 0 when every cell passed, 1 when any cell failed, 2 on usage error.
@@ -75,8 +84,10 @@ printf '# probe fixture\n' > "$ROOT/README.md"
 # A per-run credential: never a committed literal.
 TOKEN="$(date +%s)-$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 PORT_TLS=$((PORT + 1))
+PORT_H3=$((PORT + 2))
 TREE_URL="http://127.0.0.1:$PORT/dav"
 TLS_URL="https://127.0.0.1:$PORT_TLS/dav"
+H3_URL="https://127.0.0.1:$PORT_H3/dav"
 DAEMON_PID=""
 PASS=0
 FAIL=0
@@ -133,6 +144,10 @@ hdr() { # header name (case-insensitive), first value
 
 body_of() { cat "$BODY"; }
 
+# body_of_h3 is the body the last h3req fetched: the HTTP/3 client writes it to
+# a fixed path so the shell can hash it or read it as text.
+body_of_h3() { cat "$WORK/h3-body"; }
+
 health_wait() { # url prefix (http/https) with port
   local i
   for i in $(seq 1 60); do
@@ -173,6 +188,34 @@ if [ -z "$BIN" ]; then
 fi
 [ -x "$BIN" ] || { echo "not executable: $BIN" >&2; exit 2; }
 
+# The h3 instrument: a real HTTP/3 client. Built from the probe's own directory
+# so it always matches the tree under test.
+H3CLIENT="$WORK/h3client"
+echo "building h3client from $REPO_ROOT ..."
+if ! (cd "$REPO_ROOT" && go build -o "$H3CLIENT" ./probes/h3client); then
+  echo "go build ./probes/h3client failed" >&2
+  exit 2
+fi
+[ -x "$H3CLIENT" ] || { echo "not executable: $H3CLIENT" >&2; exit 2; }
+
+# h3req URL [args...] — drive the HTTP/3 client and fill H3_OUT / H3_PROTO /
+# H3_STATUS / H3_ALPN / H3_SERVER_PROTO / H3_BODY_SHA / H3_BYTES. Returns the
+# client's exit status, which is the point of the negative arm: an h3 request
+# against a daemon with no QUIC listener must FAIL, not be quietly served.
+H3_OUT=""
+H3_EXIT=0
+h3req() {
+  local url="$1"
+  shift
+  H3_OUT="$("$H3CLIENT" -url "$url" -user bunker -token "$TOKEN" -out "$WORK/h3-body" "$@" 2>&1)"
+  H3_EXIT=$?
+}
+
+# h3field KEY — read one key=value field out of the client's report line.
+h3field() {
+  printf '%s\n' "$H3_OUT" | tr ' ' '\n' | sed -n "s/^$1=//p" | head -1
+}
+
 cat > "$WORK/cleartext.yaml" <<YAML
 server:
   grpc_addr: "127.0.0.1:$PORT"
@@ -206,6 +249,54 @@ tls:
   hosts: ["127.0.0.1", "localhost"]
   cert_file: "$WORK/cert.pem"
   key_file: "$WORK/key.pem"
+auth:
+  enabled: true
+  token: "$TOKEN"
+agent:
+  base_data_dir: "$WORK/data"
+  registry:
+    enabled: false
+YAML
+
+# BFS-007: HTTP/3 on the SAME port number as the TCP listener (rest_addr is
+# empty here, so the derived h3 address IS the gRPC address) — one port number,
+# two transports, one process.
+cat > "$WORK/h3.yaml" <<YAML
+server:
+  grpc_addr: "127.0.0.1:$PORT_H3"
+  rest_addr: ""
+  request_timeout: 60s
+  webdav_enabled: true
+  webdav_root: "$ROOT"
+  h3_enabled: true
+tls:
+  enabled: true
+  self_signed: true
+  hosts: ["127.0.0.1", "localhost"]
+  cert_file: "$WORK/cert.pem"
+  key_file: "$WORK/key.pem"
+auth:
+  enabled: true
+  token: "$TOKEN"
+agent:
+  base_data_dir: "$WORK/data"
+  registry:
+    enabled: false
+YAML
+
+# BFS-007: the incoherent pair. QUIC always encrypts, so this must be REFUSED at
+# startup rather than served as a TCP-only daemon the operator believes has h3.
+cat > "$WORK/h3-cleartext.yaml" <<YAML
+server:
+  grpc_addr: "127.0.0.1:$PORT_H3"
+  rest_addr: ""
+  request_timeout: 60s
+  webdav_enabled: true
+  webdav_root: "$ROOT"
+  h3_enabled: true
+tls:
+  enabled: false
+  insecure_dev: true
 auth:
   enabled: true
   token: "$TOKEN"
@@ -361,6 +452,30 @@ expect_eq "Allow is identical over h2" "$(hdr Allow)" "$H1_ALLOW"
 expect_eq "DAV is identical over h2" "$(hdr DAV)" "$H1_DAV"
 expect_eq "X-Bunker-Extensions is identical over h2" "$(hdr X-Bunker-Extensions)" "$H1_EXT"
 
+# ── BFS-007 negative arm: this daemon has NO h3 listener ────────────────────
+# The two-arm test of "advertised only while listening": with server.h3_enabled
+# off, the TCP responses must carry NO Alt-Svc, and the h3 client must FAIL.
+# Without this arm a server that advertised h3 unconditionally, or a client
+# that silently fell back to HTTP/2, would pass every h3 cell below.
+req GET "$TLS_URL/src/main.go" --http2 -k
+if [ -n "$(hdr Alt-Svc)" ]; then
+  no "Alt-Svc [$(hdr Alt-Svc)] was advertised by a daemon with no h3 listener"
+else
+  ok "no Alt-Svc while server.h3_enabled is false"
+fi
+req GET "$TLS_URL/src/main.go" --http1.1 -k
+if [ -n "$(hdr Alt-Svc)" ]; then
+  no "Alt-Svc over HTTP/1.1 without an h3 listener: [$(hdr Alt-Svc)]"
+else
+  ok "no Alt-Svc over HTTP/1.1 either"
+fi
+h3req "$TLS_URL/src/main.go"
+if [ "$H3_EXIT" -ne 0 ]; then
+  ok "an h3 client against a TCP-only daemon fails (exit $H3_EXIT): $H3_OUT"
+else
+  no "the h3 client succeeded against a daemon with no QUIC listener: $H3_OUT"
+fi
+
 stop_daemon
 
 echo
@@ -376,6 +491,118 @@ if start_daemon "$WORK/cleartext.yaml" "$WORK/cleartext2.log" "http://127.0.0.1:
   expect_contains "h3 reported unavailable (BFS-007)" "$CAPS" '"h3":{"alpn":"h3"'
   expect_contains "the absent watcher is enumerated" "$CAPS" '"capability":"watch","detail"'
   stop_daemon
+fi
+
+echo
+echo "== HTTP/3 (QUIC): one port number, two transports, one process (BFS-007) =="
+# The same daemon binary, the same config shape as the TLS section, plus
+# h3_enabled: true. rest_addr is empty, so the derived UDP address is the SAME
+# port number the TCP listener is on — the row's "one port" claim.
+if ! start_daemon "$WORK/h3.yaml" "$WORK/h3.log" "https://127.0.0.1:$PORT_H3"; then
+  echo "cannot continue without the h3 daemon" >&2
+  exit 1
+fi
+
+# ── two transports on one port number, proven at the socket layer ───────────
+PORT_HEX="$(printf '%04X' "$PORT_H3")"
+if awk -v p=":$PORT_HEX" 'NR>1 && $2 ~ p "$" { found=1 } END { exit !found }' /proc/net/udp; then
+  ok "a UDP socket is bound on the same port number as the TCP listener (:$PORT_H3)"
+else
+  no "no UDP socket bound on :$PORT_H3 — the QUIC listener is not up"
+fi
+if command -v ss >/dev/null 2>&1; then
+  if ss -uln 2>/dev/null | grep -q ":$PORT_H3 "; then
+    ok "ss confirms the UDP listener on :$PORT_H3"
+  else
+    no "ss does not show a UDP listener on :$PORT_H3: $(ss -uln 2>/dev/null | grep "$PORT_H3" || echo none)"
+  fi
+else
+  echo "NOTE  ss is not installed; the /proc/net/udp cell above is the socket evidence"
+fi
+
+# ── the advertisement: present on h1 and h2, and it names the QUIC socket ───
+WANT_ALTSVC="h3=\":$PORT_H3\"; ma=2592000"
+# The same value as it appears inside the capability document's JSON string.
+WANT_ALTSVC_JSON="h3=\\\":$PORT_H3\\\"; ma=2592000"
+req GET "$H3_URL/src/main.go" --http1.1 -k
+expect_eq "GET over HTTP/1.1 still works with h3 up" "$STATUS" "200"
+expect_eq "server observed HTTP/1.1" "$(hdr X-Bunker-Proto)" "HTTP/1.1"
+expect_eq "h1 response advertises the live h3 endpoint" "$(hdr Alt-Svc)" "$WANT_ALTSVC"
+cp "$BODY" "$WORK/body-h1-h3"
+
+req GET "$H3_URL/src/main.go" --http2 -k
+expect_eq "GET over HTTP/2 still works with h3 up" "$STATUS" "200"
+expect_eq "h2 negotiated" "$HTTPVER" "2"
+expect_eq "h2 response advertises the live h3 endpoint" "$(hdr Alt-Svc)" "$WANT_ALTSVC"
+cp "$BODY" "$WORK/body-h2-h3"
+
+# ── the same surface over HTTP/3, negotiated on the wire ────────────────────
+h3req "$H3_URL/src/main.go"
+expect_eq "h3 request exits 0" "$H3_EXIT" "0"
+expect_eq "client observed HTTP/3.0" "$(h3field proto)" "HTTP/3.0"
+expect_eq "the QUIC handshake negotiated ALPN h3" "$(h3field alpn)" "h3"
+expect_eq "h3 status" "$(h3field status)" "200"
+expect_eq "server observed HTTP/3.0" "$(h3field server-proto)" "HTTP/3.0"
+expect_eq "an h3 response carries no Alt-Svc" "$(h3field alt-svc)" '""'
+expect_eq "h3 body is the file's bytes" "$(h3field sha256)" "$(sha256sum < "$ROOT/src/main.go" | awk '{print $1}')"
+if cmp -s "$WORK/h3-body" "$WORK/body-h1-h3"; then
+  ok "the HTTP/1.1 and HTTP/3 responses are byte-identical"
+else
+  no "the h1 and h3 bodies differ"
+fi
+if cmp -s "$WORK/h3-body" "$WORK/body-h2-h3"; then
+  ok "the HTTP/2 and HTTP/3 responses are byte-identical"
+else
+  no "the h2 and h3 bodies differ"
+fi
+
+# A WebDAV verb that only exists in this surface, over QUIC: PROPFIND's
+# multistatus is not version-gated either.
+h3req "$H3_URL/src" -method PROPFIND -header 'Depth: 1'
+expect_eq "PROPFIND over h3 exits 0" "$H3_EXIT" "0"
+expect_eq "PROPFIND over h3" "$(h3field status)" "207"
+expect_contains "same multistatus shape over h3" "$(body_of_h3)" "D:multistatus"
+
+# The capability document is served over h3 too, and it reports the LIVE
+# listener: available true, the authority of the bound socket, and no h3
+# degradation (an entry for a capability that now exists would describe a
+# process that is not running).
+h3req "$H3_URL/" -method POST -header 'X-Bunker-Op: capabilities' -header 'Content-Type: application/json'
+expect_eq "capabilities over h3 exits 0" "$H3_EXIT" "0"
+H3_CAPS="$(body_of_h3)"
+# One needle covering the whole h3 block: the ALPN, the authority of the LIVE
+# socket, and availability — in that order, which is the order Go writes a map's
+# keys. A daemon that reported an old authority, or availability without a live
+# socket, fails here.
+expect_contains "the h3 block reports the live UDP authority as available" "$H3_CAPS" \
+  "\"h3\":{\"alpn\":\"h3\",\"alt_svc\":\"$WANT_ALTSVC_JSON\",\"available\":true"
+if printf '%s' "$H3_CAPS" | grep -q '"capability":"h3"'; then
+  no "h3 is live but still enumerated as a degradation: $H3_CAPS"
+else
+  ok "the h3 degradation is gone while the listener is live"
+fi
+expect_contains "transports still lists h1/h2/h2c/h3" "$H3_CAPS" '"h2c"'
+expect_contains "the absent watcher is still enumerated" "$H3_CAPS" '"capability":"watch"'
+
+stop_daemon
+
+echo
+echo "== the incoherent pair is refused: h3 without TLS (BFS-007) =="
+# QUIC always encrypts, so this config must not start at all. A daemon that came
+# up here would be a TCP-only listener the operator believes carries HTTP/3.
+REFUSAL_LOG="$WORK/h3-cleartext.log"
+"$BIN" --config "$WORK/h3-cleartext.yaml" >"$REFUSAL_LOG" 2>&1
+REFUSAL_RC=$?
+if [ "$REFUSAL_RC" -ne 0 ]; then
+  ok "h3_enabled with tls.enabled: false is refused (exit $REFUSAL_RC)"
+else
+  no "the daemon started with server.h3_enabled over a cleartext listener"
+fi
+expect_contains "the refusal names the key that is missing" "$(cat "$REFUSAL_LOG")" "server.h3_enabled requires tls.enabled"
+if awk -v p=":$PORT_HEX" 'NR>1 && $2 ~ p "$" { found=1 } END { exit !found }' /proc/net/udp; then
+  no "a UDP socket was bound on :$PORT_H3 by a refused start"
+else
+  ok "the refused start left no UDP socket behind"
 fi
 
 echo
