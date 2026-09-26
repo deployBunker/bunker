@@ -7,9 +7,13 @@
 schedules as slices `C3`/`C4`/`C5`, §288–298)
 **Builds on:**
 [`docs/investigation/BFS-003-fuse-client-binding.md`](../investigation/BFS-003-fuse-client-binding.md)
-(the binding decision and the capability map — §3 is this spec's substrate) and
+(the binding decision and the capability map — §3 is this spec's substrate),
 [`docs/investigation/BFS-002-multi-protocol-listener.md`](../investigation/BFS-002-multi-protocol-listener.md)
-(the transport the event channel and the delegated calls ride on).
+(the transport the event channel and the delegated calls ride on) and — **the dependency this spec was
+missing when §4 was written; see §4.0** —
+[`docs/spec/BFS-004-webdav-surface.md`](BFS-004-webdav-surface.md)
+(the server surface: its §3 E-6 is the invalidation channel consumed in §4.1, and its §4.2 capability
+document is the handshake §4.4 reads; cited, never restated).
 **Feeds:** `BFS-008` (client), `BFS-009` (implements this spec), `BFS-010` (Windows parity of the same
 policy type), `BFS-012` (the proofs).
 **Inherits by reference, does not restate:** `PRD-bunker-remote-editing.md` — the mount gives edits and
@@ -27,7 +31,7 @@ owner in go-fuse's API surface, and a stated failure mode — not a restatement 
 |---|---|---|
 | 1 | **CACHE** | Content-addressed, whole-file entries under a hard cap of **268,435,456 bytes (256 MiB)**, LRU-evicted by *path entry*, with the kernel's own file cache switched **off** so ours is the only copy and the only figure that matters. Full ⇒ evict, and if nothing is evictable, **bypass** — never grow, never fail, never block. |
 | 2 | **INVALIDATION** | A server-pushed, sequenced event stream drops **both** caches — ours *and* the kernel's, via `InodeNotify`/`EntryNotify`/`DeleteNotify`. A sequence gap is treated as a full resync. Absent watcher ⇒ **DECLARED poll mode** on a 2 s interval that is visible in `bunker fs status`, never a silent difference. |
-| 3 | **CONFLICT** | Writes publish with `If-Match: sha256:<expected>` against the **content hash of the target file** — never mtime. Mismatch ⇒ **412**, target bytes unchanged, caller sees `ESTALE`, the current hash is named. The base hash is taken from the server, never assumed. |
+| 3 | **CONFLICT** | Writes publish with `If-Match: "sha256:<expected>"` (quoted: the value is a strong entity-tag, `BFS-004` §3 E-1) against the **content hash of the target file** — never mtime. Mismatch ⇒ **412**, target bytes unchanged, caller sees `ESTALE`, the current hash is named. The base hash is taken from the server, never assumed. |
 | 4 | **DIFF / DELEGATION** | `status`, `diff`, `rev-parse`, `ls-files`, `log` and the tree **snapshot** are computed on the agent and returned in **one call** from a fixed allow-list — no shell. Measured ceiling of every transparent transport: whole-tree `diff --stat` is **32.74 s on NFS** and **STALL (45.09 s) on WebDAV**, against **0.41 s for all 14 operations run on the host**. |
 
 **The spine of the design, stated once:** *one hash is the currency of reads, writes and invalidation.*
@@ -241,36 +245,128 @@ bytes are fetched only by a read that actually asked for them.
 the fallback when the watcher is absent is a **declared poll mode visible in status**, never a silent
 difference (accepted criterion 2).
 
+### 4.0 Reconciliation with `BFS-004` — what differed, and which side won
+
+**Why this note exists.** `BFS-005` and `BFS-004` were authored in the same wave although this spec depends
+on that one, so this section could not read the surface spec it says it defers to. The hedge it left —
+*"the final URI/verb spelling is `BFS-004`'s to pin"* — covers only **spelling**. The event contract is more
+than spelling: the verb and the path, the framing, the event names, the field names, the sequence scope and
+the transport assumption were all invented here — one of them **mutually exclusive** with `BFS-004` (SSE
+versus newline-delimited JSON: a client cannot ask for both), and one of them **narrowing** a guarantee the
+surface deliberately left open (`BFS-005` assumed the stream rides h2/h3, where `BFS-004` chose a shape that
+also works over HTTP/1.1 chunked, precisely because no Go client API exists to receive h2 push).
+
+**The resolution rule (decided; not re-litigated here).** `BFS-004` **wins on wire shape** — it is the
+server-side contract, its §9 is explicitly the cross-repo contract this client consumes, and this spec
+defers the op list to it. `BFS-005` **keeps its client-side semantics**, which `BFS-004` does not define: the
+ordered drop list (§4.2), the resync-on-any-`seq`-gap closure for the PRD's named inotify risk, the latency
+budget (§4.3) and the declared poll mode (§4.4). This is a **merge**: §4.1 no longer states a wire shape of
+its own — it consumes `BFS-004` §3 E-6 and says what the client does with it.
+
+| # | Axis | What this spec said (before) | What `BFS-004` says (wins) | Disposition |
+|---|---|---|---|---|
+| 1 | Verb + path | `GET <mount-base>/fs/events?mount=<id>&since=<seq>` | `POST /dav/<path>` + request header `X-Bunker-Op: watch` | resolved — §4.1 |
+| 2 | Framing | SSE; `Accept: text/event-stream`; `data:` lines | newline-delimited JSON; `Content-Type: application/x-ndjson` | resolved — §4.1 |
+| 3 | Event names | `inval`, `entry`, `delete`, `resync`, `overflow` | `invalidate`, `heartbeat`, `overflow` | resolved by mapping — §4.1, with two costs named |
+| 4 | Fields | `v`, `op`, `path`, `hash`, `ino`, `ts` | `seq`, `event`, `paths[]`, `rev`, `tree` | resolved by mapping — §4.1 |
+| 5 | Seq scope | per mount | per **tree** | resolved — §4.1 |
+| 6 | Transport | "rides the h2/h3 connection the rest of the mount uses" | h1.1-chunked, h2 streams and h3 streams alike; **not** h2 server push | resolved — §4.1 |
+
+The resolution needed **no change to `BFS-004`**: every client-side semantic this spec owns has a home in
+E-6's three events, and §4.1's mapping table states the two costs it pays for that. Other disagreements found
+while reconciling are reported in §4.5 — they are outside the invalidation channel and are **not** fixed here.
+
 ### 4.1 The server-pushed event
 
-Channel: a long-lived stream on the same connection family as the mount —
-`GET <mount-base>/fs/events?mount=<id>&since=<seq>` with `Accept: text/event-stream`. It rides the
-h2/h3 connection the rest of the mount uses; on a clean close the client reconnects with `since=<last-seq>`.
-*(The final URI/verb spelling is `BFS-004`'s to pin — the semantics below are this spec's.)*
+The wire shape is **not** restated here in a second vocabulary. What this spec fixes is what the **client**
+does with it; the contract is `BFS-004` §3 E-6 (the extension) and `BFS-004` §10.5 (the bytes), and every
+value below is quoted from those two places rather than paraphrased.
 
-One event = one JSON object, one line (SSE `data:`), sequenced **per mount**:
+| Item | Value (all of it `BFS-004`'s) |
+|---|---|
+| Request | `POST /dav/<path>`, headers `X-Bunker-Op: watch`, `Content-Type: application/json`, `X-Bunker-Tree: <token>` |
+| Request body | `{"paths":["src"],"since_seq":41}` — `paths?` (omitted = the whole tree), `since_seq?` (omitted = from now) |
+| Response | `200`, `Content-Type: application/x-ndjson`, `X-Bunker-Verdict: ok`, `X-Bunker-Tree: <token>`; the body is one JSON object per line and does not end until the client closes |
+| Event object | `{"seq":42,"event":"invalidate","paths":["src/main.go"],"rev":"git:9f2c1a…","tree":"<token>"}` |
+| `event` ∈ | `invalidate` (bytes or names moved — `paths` non-empty) · `heartbeat` (liveness only; **no path claims**) · `overflow` (knowledge is lost — drop everything) |
+| `seq` | monotonic **per tree**; the client's cursor is keyed by the tree token, never by the mount id |
+| Reconnect | a fresh `POST` + `X-Bunker-Op: watch` with `{"since_seq": <cursor>}`; the server answers what was missed |
+| Poll form of the same channel | `POST /dav/<path>` + `X-Bunker-Op: events`, body `{"since_seq": N}` → the E-4 envelope, pending events under `result.events` (the same objects, the same field names), `rev`/`tree` on the envelope |
+| Refusal when the watcher is absent | `501` + `X-Bunker-Verdict: capability_unavailable` + `X-Bunker-Capability: watch;scope=target;mode=poll` (§4.4; `BFS-004` §3 E-6, §5.2) |
 
-```json
-{"v":1,"seq":41,"op":"inval","path":"src/main.go",
- "hash":"sha256:<64-lowercase-hex>","ino":1234,"ts":"2026-09-26T12:00:00.000Z"}
-```
+**What the client sends.** `POST` + `X-Bunker-Op: watch` with `{"paths":[…],"since_seq":<cursor>}`, where the
+cursor is the last `seq` seen for this tree; on a clean close it repeats that call with the advanced cursor.
+Two details here come from
+*consuming* `BFS-004` rather than from this spec's invention: the client sends `X-Bunker-Tree: <token>` so a
+re-created tree answers `409 stale_tree` (`BFS-004` §3 E-3, §5) instead of silently streaming a different
+tree's events; and it checks the `X-Bunker-Tree` on the **stream response** against the tree it bound to — a
+mismatch is §7.1's `stale_identity`, never a resync.
 
-| `op` | Meaning | Emitted when |
+**The mapping, so that none of this spec's invented vocabulary is left standing.** Every event this spec used
+to define maps onto one of `BFS-004`'s three, and every field onto one of `BFS-004`'s five:
+
+| This spec (before) | Now | Note |
 |---|---|---|
-| `inval` | file bytes changed (or the file's content hash is now known to differ) | watcher saw a write/close-write/attrib on a path |
-| `entry` | a name appeared, disappeared by rename, or its metadata changed | create/rename/move where parent is known |
-| `delete` | a name is gone | unlink/rmdir |
-| `resync` | the client must drop **everything** and re-snapshot | watcher restart, mount re-bind, or `seq` gap detected by the server |
-| `overflow` | kernel inotify queue overflowed — knowledge is lost | `IN_Q_OVERFLOW` from the agent watcher |
+| `inval` | `invalidate` | same meaning, one name |
+| `entry` (a name appeared; metadata changed) | `invalidate`, with that name's path in `paths[]` | the parent readdir snapshot is derived from the path — exactly what §4.2 step 2 already does |
+| `delete` | `invalidate`, with that name's path in `paths[]` | **cost, named below** |
+| `resync` | `overflow` | identical client action (drop everything, re-snapshot, advance the cursor). The **cause** (watcher restart, mount re-bind, a server-side gap) is not carried — diagnostics only; and the "mount re-bind" trigger dissolves entirely under a per-tree `seq`: a re-bind to the same tree continues the sequence, a re-bind to a different tree is `409 stale_tree` and §7.1's `stale_identity` |
+| `overflow` | `overflow` | unchanged: same meaning, same action |
+| `op` | `event` | renamed field |
+| `path` (singular) | `paths[]` | one event may carry **many** paths at one `seq`: the client applies §4.2's drop sequence **per path** and must not assume one path per event |
+| `hash` (per path) | — (dropped) | **cost, named below** |
+| `ino` | — (dropped) | never needed: the client already holds `EntryOut.NodeId`/`Attr.Ino` for every path it resolved (§4.2 lists where the inode number comes from) |
+| `ts` | — (dropped) | the client stamps receipt time; `last_event_age_ms` is a client-side figure (§3.2) |
+| `v` (per event) | — (dropped) | versioning is `BFS-004` §4.2's capability document: an unknown `surface` means **fail closed**, not "proceed anyway" |
 
-`seq` is monotonic per mount. **A gap in `seq` is treated as `resync`, not as a lost line.** That single
-rule is the closure for the PRD's named risk "inotify misses events (overflow, unmounted, kernel limits)"
-(`PRD-bunker-fs.md:282`): a missed event is not silently a stale byte, it is a full drop and re-snapshot.
-`resync` and `overflow` are also the only events that may arrive without a `hash`.
+**The two costs of the mapping, named rather than buried.** They are the price of consuming E-6 exactly
+instead of keeping a richer event of our own. Both are correctness-neutral, and neither is hidden behind a
+different name.
+
+1. **No per-path hash ⇒ the base hash becomes `unknown` ⇒ one `HEAD` on the next write.** `BFS-004`'s event
+   carries no per-path content hash, and `rev` is tree-level and explicitly **not** a per-resource validator
+   (`BFS-004` §3 E-3). So an invalidated path lands in §4.2 step 4's `unknown` case, and its next write pays
+   §5.3's **fetch-then-check** — one cheap `HEAD`, which `BFS-004` §7.4 describes as the cheap way to fetch a
+   base hash. A client that re-reads the file after the invalidation (the normal case: an editor, a build,
+   `git status`) pays nothing extra, because that re-read *is* the hash.
+2. **No event kind ⇒ `EntryNotify` by default, `DeleteNotify` only where the client itself proved absence.**
+   `invalidate` does not say whether the change was a content write, a rename or an unlink, so §4.2 step 3's
+   `DeleteNotify` refinement (floor 7.18) is used only where the **client** knows the name is gone — its own
+   `unlink`/`rmdir`/`rename` completing, or a `Lookup` it performed answering `ENOENT`. Everything else uses
+   `EntryNotify`, which §4.2 already declares sufficient to stop the kernel serving the name.
+
+**The resync closure survives, re-grounded.** The rule stands unchanged: **a gap in `seq` is not a lost line,
+it is a full resync** — drop everything, re-snapshot, and advance the cursor past the gap (to the `seq` that
+revealed it, or to the `overflow` event's `seq`). The missing range is **never** re-requested: the re-snapshot
+already establishes current truth, and asking for a range the server says it cannot produce only earns
+another `overflow`. That single rule is the closure for the PRD's named risk "inotify misses events
+(overflow, unmounted, kernel limits)" (`PRD-bunker-fs.md:282`) — a missed event is never a silently stale
+byte. The client detects the gap itself from `seq` monotonicity; the case the server *knows* it cannot fill
+arrives as `overflow`.
+
+**Transport: what the stream actually rides.** *Not* HTTP/2 server push: `net/http` exposes a server-side
+`Pusher` (`net/http/h2_bundle.go:7050`) and **no client-side API to receive pushed responses**, so no Go
+client on either end could consume push (`BFS-004` §3 E-6). It is an ordinary request whose response never
+ends, so it works over HTTP/1.1 chunked, HTTP/2 streams and HTTP/3 streams alike, and **nothing may be
+refused because the client is on HTTP/1.1** (`BFS-004` C-1). Two consequences to plan for rather than
+discover:
+
+- On HTTP/1.1 the stream **occupies the single connection**, so the mount needs one extra TCP connection for
+  its other traffic — paid **once per mount session** (1589 ms unmultiplexed vs 278 ms multiplexed, M11), not
+  per event; on HTTP/2 and HTTP/3 it is one stream among many (`BFS-004` §4.3). §4.3's latency budget is
+  unaffected: it is priced from the moment the stream is already open.
+- NDJSON puts a requirement on the server that SSE's framing would have carried differently: each event is
+  written and **flushed as its own line**, or §4.4's 90 s idle rule sees silence where the server believes it
+  is heartbeating.
+
+**One residual here: the heartbeat period is `BFS-004`'s to name.** §4.4's idle rule needs a heartbeat at
+least every 30 s; `BFS-004` defines the `heartbeat` event but names no period (`BFS-004:319`, `BFS-004:909`).
+Recorded as R-1 in §4.5.
 
 ### 4.2 What the client drops, in order (accepted criterion 2)
 
-On `inval`/`entry`/`delete` for a path, the client drops, **in this order**, so that no observer can see a
+On an `invalidate` event, for **every** path in its `paths[]` array (one event may carry many — the server
+batches within a single `seq`), the client drops, **in this order**, so that no observer can see a
 half-invalidated entry:
 
 1. **Our path entry** — the path index entry (and the blob only if refcount reaches zero).
@@ -284,11 +380,17 @@ half-invalidated entry:
    Availability is *runtime-probed*, never assumed: `InitIn.SupportsNotify` (`fuse/server.go:814–825`).
    Both primitives this design needs at its hottest sit at **7.12 — go-fuse's own minimum** (M18), so a
    kernel below 7.18 loses only the `DeleteNotify` refinement and falls back to `EntryNotify`, which is
-   enough to stop the kernel serving the name.
-4. **The write precondition's base hash is refreshed, never dropped.** If the event carries a `hash`, the
-   path's base hash becomes that hash. If it does not, the base hash becomes **`unknown`** — which forces
-   the fetch-then-check rule of §5.3 on the next write. *Deliberately not* "drop it and forget": forgetting
-   the base hash is how a lost update gets silently allowed.
+   enough to stop the kernel serving the name. Under `BFS-004`'s vocabulary the event does not name the kind
+   (§4.1), so `EntryNotify` is the **default** for every name-bearing invalidation and `DeleteNotify` is used
+   only where the **client** proved the absence — its own `unlink`/`rmdir`/`rename` completing, or a `Lookup`
+   answering `ENOENT`. That is a cost of the mapping, stated in §4.1: it costs the refinement, never
+   correctness.
+4. **The write precondition's base hash is refreshed, never kept stale.** `BFS-004`'s event carries no
+   per-path hash (§4.1's mapping), so for an invalidated path the base hash becomes **`unknown`** — which
+   forces the fetch-then-check rule of §5.3 on the next write. *Deliberately not* "keep the hash we last
+   served": a base that no longer describes the file is exactly how a lost update gets silently allowed, and
+   the next write then lands against a hash the server names in the same exchange that decides the write.
+   The invariant is unchanged — a write never lands against a base hash the client made up.
 
 **Where the inode number comes from:** the node tree already holds `fuse.EntryOut.NodeId` /
 `Attr.Ino` for every path the client has resolved (`server.InodeNotify` takes that number, not a path). A
@@ -316,22 +418,32 @@ is named in §8 (`V-2`).
 
 **When poll mode is used** — any of these, and only these:
 
-1. The bind-time capability handshake answers `capability_unavailable` naming the watcher (PRD `AC-9`,
-   `:134`) — an agent image with no inotify watcher.
-2. The event stream cannot be established at all (404/405/501 on the stream resource — an older agent
-   build), or fails **3 consecutive times** with a non-transport error.
-3. The event stream is idle for **90 s** with no heartbeat (the server sends a heartbeat every 30 s, so
-   90 s of silence means the channel is dead) — the client switches to poll **and says so**, rather than
-   pretending the push channel is alive.
+1. The bind-time capability handshake answers `501` + `X-Bunker-Verdict: capability_unavailable` with
+   `X-Bunker-Capability: watch;scope=target;mode=poll` (`BFS-004` §3 E-6 and §5.2; the same fact appears in
+   the capability document's `degradations[]`, `BFS-004` §4.2) — an agent image with no inotify watcher
+   (PRD `AC-9`, `:134`).
+2. The `watch` call cannot be established at all: the op is refused — `400` + `op_unknown` on an agent build
+   that predates the op, `400` + `extension_op_missing` for a bare `POST` (`BFS-004` §2.1) — or it fails
+   **3 consecutive times** with a non-transport error. A `409` + `stale_tree` on the stream is **not** a poll
+   trigger: it is §7.1's `stale_identity`, and the remedy is a re-bind, never a downgrade (§4.1).
+3. The event stream is idle for **90 s** with no heartbeat — under NDJSON "idle" means no line arrived at all
+   (the server sends a heartbeat every 30 s, so 90 s of silence means the channel is dead). The client
+   switches to poll **and says so**, rather than pretending the push channel is alive. `BFS-004` names the
+   `heartbeat` event but not its period, so this rule is only sound against a server that heartbeats at least
+   every 30 s: see §4.5's R-1.
 4. `--invalidation=push|poll|auto` set explicitly (default `auto`).
 
 Transient transport failures are **not** poll triggers: they are `unreachable` (§7) and the client
-reconnects with `since=<seq>`, because a transport blip does not mean the events stopped being generated.
+reconnects with `{"since_seq": <cursor>}`, because a transport blip does not mean the events stopped being
+generated.
 
-**What poll mode is, concretely:** a `changes` call on the delegation surface —
-`POST <mount-base>/fs/op` with `X-Bunker-Op: changes`, body `{"since": <rev>}` — returning the **same event
-list shape** as §4.1 plus the current tree revision. The client polls one call per interval and applies the
-same §4.2 drop sequence.
+**What poll mode is, concretely:** `BFS-004`'s poll form of E-6 — `POST /dav/<path>` with
+`X-Bunker-Op: events` and body `{"since_seq": <last-seq>}` — answering the E-4 envelope whose `result.events`
+carries the **same event objects** as §4.1 (same field names, same per-tree `seq` ordering) and whose
+`rev`/`tree` fields are the current tree revision and token. The client polls one call per interval and
+applies the same §4.2 drop sequence. (The op is `events`, not `changes`: `BFS-004` §4.2's capability document
+pins the name — `extensions.watch.modes.poll` = `"X-Bunker-Op: events"` — and §6.1's op list is aligned to
+match.)
 
 | Poll parameter | Value | Kind |
 |---|---|---|
@@ -343,7 +455,90 @@ same §4.2 drop sequence.
 
 Two modes, one vocabulary. `bunker fs status` never reports "invalidation: ok" without saying **which
 mechanism** answered; a mount silently downgraded to polling would be the exact class of defect `AC-9`
-exists to catch.
+exists to catch. (The `invalidation.seq` figure in §3.2's status JSON is the per-**tree** cursor of §4.1, not
+a per-mount counter.)
+
+### 4.5 Further disagreements found while reconciling (reported, not silently fixed)
+
+Reconciling §4 against `BFS-004` surfaced four more places where this spec's assumptions come from not having
+read it, plus three residuals. Those outside the invalidation channel are **recorded open** rather than
+rewritten under cover of a reconciliation — this row's brief is to report them by name.
+
+**F-1 (OPEN) — the write path: §5.2's staging/publish protocol versus `BFS-004` §6.** §5.2 specifies the
+write as `PUT <base>/fs/stage/<token>` with `X-Bunker-Stage-Offset: N`, then `POST <base>/fs/publish` with
+`{stage,size,hash}` and an `If-Match` header. `BFS-004` §6 specifies it as a plain conditional
+`PUT /dav/<path>` carrying `If-Match` and an optional `X-Bunker-Hash`, refusing with `412` +
+`X-Bunker-Verdict: hash_mismatch` + both hashes in the header **and** the `DAV:error` body. They agree on the
+hard part — the content hash is the identity, a stale base refuses, the refusal names both hashes, the target
+stays byte-identical — and differ on every mechanic: the verb, the resources, the header names, one request
+versus two, and the response fields (`etag`/`rev` in a JSON body versus `ETag`/`X-Bunker-Rev` headers). One
+case is a direct code-level clash: §5.2's "target absent and `If-Match` present" answers
+`"error":"hash_mismatch"` with `"current": null`, while `BFS-004` §3 E-2 answers `412` +
+`precondition_failed` (RFC-plain, no hash) for exactly that state — same status, same client-visible outcome
+(`ESTALE`, §7.1), **different machine code**, and §7.1 branches on codes, so that one has to be settled
+rather than merged.
+**Recommendation:** a follow-up row decides either (a) staging/publish becomes a declared pair of
+`X-Bunker-Op` operations named in `BFS-004`'s catalogue (it is an agent-side delegated operation, like
+`snapshot`), or (b) it is dropped in favour of `BFS-004`'s single conditional `PUT` per `Flush`/`Release`,
+which is what the surface already specifies and is one request instead of 1024.
+
+**F-2 (PARTLY RESOLVED) — the delegated op list: §6.1 versus `BFS-004` §3 E-4's catalogue.** §6.1 lists
+`status`, `diff`, `rev-parse`, `ls-files`, `log`, `snapshot`, `changes`; `BFS-004`'s catalogue is
+`capabilities`, `status`, `diff`, `rev-parse`, `ls-files`, `snapshot`, `events`, `watch`.
+
+- `changes` → **`events`**: resolved here (§4.4 and the §6.1 row). It is the poll form of the invalidation
+  channel, and `BFS-004` §4.2's capability document pins the name —
+  `extensions.watch.modes.poll` = `"X-Bunker-Op: events"`.
+- `log` → **OPEN.** `BFS-004` has no `log` op, so a client built from §6.1 that calls `log` receives
+  `400` + `op_unknown` from a server built from `BFS-004`: the capability the client offers as `bunker fs log`
+  is not reachable. It is genuinely wanted (bounded `-1` / `--oneline -N`; 10.32 s over sshfs, PRD `:27`), so
+  the recommendation is that **`BFS-004`'s catalogue gains `log`** in a follow-up row, rather than this side
+  losing it.
+- `capabilities` and `watch` are absent from §6.1's list although §4.1 and §4.4 item 1 both depend on them — a
+  completeness gap, not a disagreement (the list reads as "the ops this client uses").
+
+**F-3 (OPEN) — the delegated request body: §6.1 versus `BFS-004` §3 E-4.** §6.1 shows
+`{"op":"diff","args":{"stat":true,"cached":false,"refs":["HEAD"]}}` — the op **in the body**, arguments
+nested under `args`. `BFS-004` puts the op in the `X-Bunker-Op` **header** and the arguments **flat** in the
+body (`{"path":"src","short":true}`), from a fixed per-op vocabulary with no wrapper; its `diff` arguments
+are `path?`, `staged?`, `stat_only?` — there is no `refs` argument at all, so §6.1's "over allow-listed refs"
+has no counterpart on the server. Interop impact: **every** delegated call in §6 fails the other side's
+argument parser. Impact on §4/§4.4: **zero** — the `watch` and `events` bodies are `paths?`/`since_seq?`,
+flat on both sides.
+**Recommendation:** one side adopts the other's shape; `BFS-004`'s (header op, flat args) is the documented
+one and needs no second spelling. The `refs` argument is a separate decision: either `BFS-004`'s `diff` gains
+it, or §6.1 drops it.
+
+**F-4 (RESOLVED here, §4.4) — capability discovery and the stream's refusals.** §4.4 item 1 said the
+handshake "answers `capability_unavailable` naming the watcher"; item 2 triggered the fallback on
+"404/405/501 on the stream resource" — a refusal set inherited from the invented `GET …/fs/events` resource,
+and not a set `BFS-004` produces for a DAV resource. Both are retargeted in §4.4 to `BFS-004`'s vocabulary
+(`501` + `capability_unavailable` + `X-Bunker-Capability: watch;scope=target;mode=poll`; `400` + `op_unknown`;
+`400` + `extension_op_missing`), with `409` + `stale_tree` explicitly excluded from the poll triggers.
+
+**F-5 (RESOLVED here) — hash and `ETag` naming.** §0's summary row wrote `If-Match: sha256:<expected>`
+unquoted. `BFS-004` §3 E-1 requires a **strong** `ETag` — `"sha256:<64 lowercase hex>"`, quoted, never a `W/`
+prefix — and `If-Match` compares it under strong comparison, so an unquoted field value is not a valid
+entity-tag; §5.1/§5.2 quote it correctly and §0 is now aligned. The digest itself was never in dispute: both
+specs say `sha256:<64 lowercase hex>` over the **raw file bytes** (never a git blob hash), and both refuse
+mtime as a validator.
+
+**R-1 (recorded) — the heartbeat period is unpinned by `BFS-004`.** §4.4's idle rule needs a heartbeat at
+least every 30 s and switches to poll after 90 s of silence; `BFS-004` §3 E-6 and §10.5 define the `heartbeat`
+event but name no period (`BFS-004:319`, `BFS-004:909`). This spec therefore places a **requirement** on the
+server — heartbeat at ≤ 30 s while a stream is open, ideally named in the capability document's `watch`
+block so the client adapts instead of assuming. Until `BFS-004` pins it, a server that heartbeats slower than
+30 s makes a healthy stream look dead at 90 s.
+
+**R-2 (recorded) — no stated bound on `paths[]` per event.** `BFS-004` caps neither how many paths one
+`invalidate` carries nor how many events may share a `seq`. The client's §4.2 work is per path, so its
+per-event cost is proportional to that list; a stated cap (or a stated batching rule) is what would let it
+size a buffer instead of growing one.
+
+**R-3 (recorded) — `tree` is not on every line.** In `BFS-004` the `tree` field appears on §10.5's
+`heartbeat` and `overflow` examples (`BFS-004:909–910`) but not on §3 E-6's (`BFS-004:319–320`). The client
+must not require `tree` per line: it takes the tree from the stream response header `X-Bunker-Tree`
+(`BFS-004:906`) and treats a differing per-line `tree` as a tree change — never as a parse error.
 
 ---
 
@@ -393,7 +588,7 @@ client                                                      agent / bunkerd
 
 | Case | Server | Client sees |
 |---|---|---|
-| precondition matches | writes, computes new content hash, returns `200` + `ETag: "sha256:<new>"` + new `X-Bunker-Rev`, and emits an `inval` event to **other** mounts of the same tree | success |
+| precondition matches | writes, computes new content hash, returns `200` + `ETag: "sha256:<new>"` + new `X-Bunker-Rev`, and emits an `invalidate` event (`BFS-004` §3 E-6; `seq` is per tree) to other clients of the same tree | success |
 | precondition mismatches | **412**, no byte written, `current` names the server's hash | refusal: `ESTALE`, names both hashes |
 | target path absent and `If-Match` present | **412** with `"current": null` — one refusal class for "the state I expected is not there", so a caller never has to branch on 404-vs-412 | refusal: `ESTALE` |
 | target absent and `If-None-Match: *` | creates | success |
@@ -474,9 +669,9 @@ agent and returned in **one call**.
 | `diff` | `git diff` / `--stat` / `--numstat` / `--cached`, over allow-listed refs | **the ceiling case**: 32.74 s on NFS (M7), **STALL 45.09 s on WebDAV** (M6) |
 | `rev-parse` | `HEAD`, `HEAD~1`, branch names — allow-listed | 4.52 s / 4.11 s on sshfs (PRD `:26`); 0.11 s native-class |
 | `ls-files` | tracked paths | 2.72 s / 2.41 s on sshfs (PRD `:29`) |
-| `log` | **bounded** (`-1`, `--oneline -N`): 10.32 s / 10.12 s on sshfs (PRD `:27`) — unbounded log is refused rather than delegated | walks the commit graph |
+| `log` | **bounded** (`-1`, `--oneline -N`): 10.32 s / 10.12 s on sshfs (PRD `:27`) — unbounded log is refused rather than delegated. **Not in `BFS-004`'s op catalogue** — see §4.5 F-2 | walks the commit graph |
 | `snapshot` | the subtree metadata for `READDIRPLUS`/`Lookup` (§6.3) | the N-round-trips→1 call that makes the walk free (§6.2) |
-| `changes` | the poll-mode event list + current tree revision (§4.4) | one call per interval instead of N stats |
+| `events` | the poll-mode event list + the tree revision from the E-4 envelope (§4.4) | one call per interval instead of N stats |
 
 **Never delegated, by rule:** anything that *executes*. The op list is a **fixed allow-list** executed by
 `bunkerd` on the agent — the request body is a JSON object of structured fields
@@ -666,11 +861,15 @@ of V-9 if the numbers say so — at the cost of a second, unbounded, unreportabl
 
 **D-2 — Event transport for the push channel: SSE on the mount's own connection, or a WebDAV
 `REPORT`-style polling resource?**
-→ **Recommend: SSE (`GET …/fs/events`, `text/event-stream`) over the same h2/h3 connection.** Reason: it is
-the only shape here that is genuinely *push*, it inherits the connection's multiplexing (M10/M11: no second
-setup cost), and its heartbeat gives the client an unambiguous liveness signal for §4.4's 90 s switch. It
-is a **new** resource, and `BFS-004` owns its final spelling; a WebDAV-only client never touches it (the
-`AC-12`/`BFS-012` old-client guarantee is unaffected — old clients poll or ignore).
+→ **CLOSED by the reconciliation (§4.0–§4.1), and neither of the two options was taken.** `BFS-004` §3 E-6
+pins the shape — `POST` + `X-Bunker-Op: watch` answering newline-delimited JSON (`application/x-ndjson`),
+with `X-Bunker-Op: events` as the declared poll form — and the premise this recommendation rested on was
+wrong on its own terms: `net/http` offers **no client-side API to receive h2 pushes** (`BFS-004` §3 E-6), so
+it could never have "inherited the connection's multiplexing" — no Go client could have consumed the push it
+was chosen for. What the option was protecting survives: the stream is cheap on h2/h3 and costs one extra TCP
+connection on h1.1 (`BFS-004` §4.3), and its heartbeats still give the client its liveness signal for §4.4's
+90 s switch, as NDJSON lines. No new resource is introduced, and a WebDAV-only client never touches the op
+(the `AC-12`/`BFS-012` old-client guarantee is unaffected — old clients poll or ignore).
 
 **D-3 — The row's "33–36 s NFS walk" does not exist on the record.**
 → **Recommend: correct the row to the measured 32.74 s** (`PRD-bunker-fs.md:85`) and keep the comparison
