@@ -855,3 +855,68 @@ code.
 in-flight sibling edits breaking a plain `go build` (destroy-probe signature
 mismatch mid-refactor). Building the HEAD CLI for live verification must go
 through `git archive HEAD | tar -x | go build`, never the dirty checkout.
+
+## 21. Dogfood run 2026-09-26 — the image-spec / agent-tools surface (read this before using spawn --image-spec, or before trusting an agent on a CI-runner host)
+
+**What this surface IS.** GAP-064 lets a spawn carry an image spec: the daemon
+renders a Dockerfile from a constrained grammar (`internal/imagespec/spec.go`
+— one renderer per package manager, every token single-quoted so shell
+metacharacters are inert) and builds it through the AGENT'S OWN rootless
+socket (`internal/imagespec/builder.go`), caching per (agent, spec key).
+GAP-069 then routes `bunker exec` on an image-backed agent through a fresh
+`docker run --rm` of that image (`service.go:1322 containerRunPrefix`,
+`buildAgentImageExecCommand`) instead of the plain SSH shell — with only
+$HOME bind-mounted. DF-BUNKER-57's remediation message tells every operator
+who hits the REQUIRED rg/toolsd gap to respawn with a specific spec. This run
+executed that advice end to end.
+
+**How the three layers fail (all live-proven on bunker-mvp, see
+docs/dogfood/2026-09-26-image-spec-surface.md for the A/B table):**
+
+1. **The grammar is safe, the default base is wrong for `go`.** `renderGo`
+   (spec.go:410) emits `RUN go install <pkg>` against
+   `DefaultBaseImage = docker.io/library/ubuntu:24.04` (parse.go:12) — no Go
+   toolchain, so DF-57's own recommended spec fails `go: not found` exit 127
+   and the spawn rolls back (~27s). If you add a `go` directive you must
+   bootstrap the toolchain first (apt `golang-1.22-go` works).
+2. **"Package add" is really "image replacement".** The build starts from bare
+   ubuntu:24.04, NOT the stock agent base — so git, the docker client and the
+   socket wiring that vanilla agents have disappear. rg via apt genuinely
+   lands; the agent's OTHER required tools regress (agent-tools probe on the
+   image agent: git ABSENT REQUIRED).
+3. **Container-mode exec jails the operator out of the agent.** Exec in the
+   image container sees no `/run/bunker/<id>/env` (env set fails, sourcing
+   no-ops), no docker socket (rootless docker unreachable), runs as root, and
+   the agent-tools probe classifies the container instead of the agent. If a
+   spec is in play, EVERY documented workflow that needs docker or env breaks
+   at once. Until fixed (DF-BUNKER-77): treat `--image-spec` as
+   build-a-walled-garden, and get rg by other means.
+4. **A CI runner sharing the daemon host can eat your agent.** The repo's own
+   root-suite cleanup (scripts/root-suite.sh) snapshotted /etc/bunkerd/ssh at
+   suite start and, 20 minutes later, moved a key written 52 seconds before
+   the sweep into its quarantine dir and `userdel -rf`'d the user — while the
+   registry said `running` and heartbeat kept ACKing (DF-BUNKER-78). The
+   daemon serves heartbeat/list/info from its registry with NO host-truth
+   check; reconciliation only runs at boot. Corollary for operators: do not
+   trust `bunker list`/`heartbeat`/`exec` success alone — if SSH-family verbs
+   die `Permission denied` on a fresh agent, check the host for a CI sweep
+   (`journalctl | grep quarantine`).
+5. **Destroy cannot finish on a docker-running home.** The rootless docker
+   data-root lives INSIDE $HOME (`.local/share/docker`, 442M of 688M), the
+   default archive policy tars the whole home, the CLI's 30s context
+   (destroy.go:70) SIGKILLs the gzip at ~28s, and the fail-closed gate
+   (correctly) refuses deletion — but nothing cleans the partial tarball, so
+   five attempts left seven corrupt archives (+500MB) with the agent still
+   `running`. `--force` bypasses the live-process gate only. The right
+   operator move until DF-BUNKER-81 lands: destroy BEFORE the agent does
+   heavy docker work, or do a host-root `userdel -rf` and accept the residue
+   tracker delta deliberately.
+
+**What genuinely works and should stay:** vanilla lifecycle (spawn 7s, exec
+1.04s ± 0.025s warm, env/cp/docker all clean); static toolsd delivery via
+`agent-tools --install --binary <static>` (re-probes present); the
+release-asset installer at 4s cold including its built-in smoke; the
+documented Go-tarball + `install.sh --build` source path on a bare agent
+(35s total, `bunker version` prints the true HEAD commit). Evidence:
+docs/dogfood/2026-09-26-image-spec-surface.md, board rows DF-BUNKER-77..81 +
+GAP-151 + PERF-004 (commit 127e7a5).

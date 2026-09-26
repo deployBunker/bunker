@@ -20,8 +20,11 @@ description: >-
   (docs/dogfood/2026-09-20-integration.md, diagnostics.md §13);
   ops/maintenance surface + release-channel key gap + uid-recycle docker
   failure verified 2026-09-25 against bunker-mvp at 0.1.4/509fc42
-  (docs/dogfood/2026-09-25d-ops-surface.md, diagnostics.md §20).
-version: 1.12.0
+  (docs/dogfood/2026-09-25d-ops-surface.md, diagnostics.md §20);
+  image-spec + agent-tools delivery + CI-race destroy hazards verified
+  2026-09-26 against bunker-mvp/cube-las-00
+  (docs/dogfood/2026-09-26-image-spec-surface.md, diagnostics.md §21).
+version: 1.13.0
 category: software-development
 ---
 
@@ -325,3 +328,11 @@ real-use behavior:
 - **`bunker agent-tools <id>`** prints exactly which remote-editing deps are missing (required vs optional) — run it before using toolsd/rg-dependent verbs.
 - **Install (verified on a bare agent, 6s cold):** the release-asset installer works — `curl -fsSL -o install.sh https://github.com/deployBunker/bunker/releases/latest/download/install.sh && sh install.sh` — but the README raw-URL variant 404s (DF-BUNKER-74) and you must `export PATH=$HOME/.local/bin:$PATH` yourself.
 - **Building a HEAD CLI for live verification:** never `go build` the shared checkout (sibling edits break it); `git archive HEAD | tar -x -C /tmp/src && (cd /tmp/src && go build -o /tmp/bunker-head ./cmd/bunker)`.
+
+## Image-spec + agent-tools delivery (verified live 2026-09-26, bunker-mvp @ 0.1.4/509fc42 + HEAD CLI; docs/dogfood/2026-09-26-image-spec-surface.md, diagnostics.md §21)
+
+- **`--image-spec` is a walled garden until DF-BUNKER-77 lands.** Exec on an image agent runs in a fresh container with ONLY $HOME mounted: env set fails (`cannot create /run/bunker/<id>/env`), docker is unreachable, exec runs as root, and the agent-tools probe classifies the container, not the agent. The apt-only spec (ripgrep + golang-1.22-go + jq, 52s cold build) DOES deliver rg — but drops git (REQUIRED) that the stock agent had.
+- **The DF-57 remediation spec as printed FAILS (DF-BUNKER-79):** `{"manager":"go","packages":["golang.org/x/tools/gopls@latest"]}` renders `RUN go install` on a base with no Go → spawn fails exit 1 after ~27s. If you need a `go` directive, bootstrap the toolchain via apt first (`golang-1.22-go` works).
+- **Static toolsd delivery works:** `bunker agent-tools <id> --install --binary <static toolsd>` → delivered to the agent's `~/bin`, re-probe `present`. The local dynamically-linked toolsd is correctly refused (GAP-151: the refusal names no repo — the static artifact comes from the private coding-hermes-tools `make dist`).
+- **Destroy BEFORE docker work (DF-BUNKER-81):** the rootless docker data-root (`.local/share/docker`, ~450M) lives inside $HOME; the default archive policy tars it, the CLI's 30s ctx kills gzip at ~28s, and each failed attempt LEAKS a partial tarball into `/var/backups/bunker/` (seven corrupt `.tar.gz` from five attempts — verify with `tar -tzf ... >/dev/null`). `--force` does NOT bypass the archive step or the CLI deadline. On hosts where a docker-running agent must go: host-root `userdel -rf` and accept the residue delta.
+- **A CI runner sharing the daemon host can destroy your live agent (DF-BUNKER-78):** root-suite's cleanup quarantines `/etc/bunkerd/ssh/<id>` + `userdel -rf` for agents it classifies as test leaks — a spawn 52s old was swept mid-window while `list`/`heartbeat` kept reporting `running` (heartbeat even EXTENDED the TTL). Signature: SSH-family verbs die `Permission denied (publickey,password)` on a fresh agent while RPC verbs work → check `journalctl | grep -E "quarantine|userdel"` on the host before re-spawning.

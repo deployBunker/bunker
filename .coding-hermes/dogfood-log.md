@@ -239,3 +239,48 @@
 - **Cleanup:** all 5 agents destroyed + verified via list; tunnel process killed; scratch build tree in /tmp
   only. No repo visibility/permission changes; no credentials minted or committed.
 - **Verdict:** 🟡 PROMISING-BUT-ROUGH — HEAD-grade operator experience, release-channel delivery gap.
+2026-09-26 | PROMISING-BUT-ROUGH | 7s t2fs (vanilla spawn) / 52s (image-spec spawn, cold) | friction 6 | 7 findings (DF-BUNKER-77..81, GAP-151, PERF-004)
+
+## 2026-09-26 run detail (22nd run — image-spec / agent-tools surface)
+
+- **Angle:** the surface runs 1-21 never drove: `spawn --image-spec` (GAP-064) used as
+  DF-BUNKER-57's own remediation for the REQUIRED rg/toolsd gap, plus the agent-tools
+  delivery path on live fleet daemons.
+- **Promise:** "spawn with --image-spec to customize the agent image (base + package adds)
+  and close the agent-tools REQUIRED gaps via the package-add path."
+- **What held:** vanilla lifecycle still excellent (spawn 7s, exec 1.037s±0.025s warm,
+  env/cp/docker clean, destroy-with-archive 17s on a small home); apt-only image spec
+  delivers rg 14.1.0; static toolsd delivery via `agent-tools --install --binary` works
+  and re-probes present; release installer 4s cold incl. smoke; source build from zero
+  on a no-toolchain agent 35s (Go tarball per README → install.sh --build, commit prints
+  true HEAD); audit trail + daemon logs pinned every finding to a timestamped line.
+- **What fell apart (all live-proven):** (1) DF-BUNKER-77 P0 — image-spec agents are
+  unusable: container-mode exec mounts only $HOME, so env set fails, docker unreachable,
+  exec runs as root, and the agent-tools probe classifies the container, not the agent;
+  (2) DF-BUNKER-78 P0 — the repo's own root-suite CI cleanup raced a live spawn by one
+  second and swept user+home+keys while list/heartbeat reported the agent running and
+  heartbeat EXTENDED its TTL (no host-truth reconciliation outside boot); (3) DF-BUNKER-79
+  P1 — DF-57's printed remediation spec fails (`RUN go install` on a Go-less base, exit
+  127, rollback); (4) DF-BUNKER-80 P1 — image-spec REPLACES the stock agent userland
+  (git REQUIRED regress); (5) DF-BUNKER-81 P1 — destroy is unfinishable on a
+  rootless-docker home: 30s CLI ctx kills gzip at 28s, fail-closed gate refuses deletion,
+  five attempts left SEVEN partial unreadable tarballs (+500MB) with the agent still
+  'running'; --force bypasses neither the archive step nor the deadline; (6) GAP-151 P2 —
+  the agent-tools --install refusal names 'the toolkit repo' without saying which;
+  (7) PERF-004 P2 — image exec 1.60s vs 1.04s stock (+55%, container-per-exec).
+- **Friction count:** 6 user-visible failure classes across 6 live agents.
+- **Perf (Step 2b):** hyperfine ×10 warm for both exec paths; spawn/install/destroy
+  one-shot timings. Nothing slow enough to profile beyond the exec delta (fully explained
+  by container lifecycle) — recorded as PERF-004, no profile taken.
+- **Artifacts:** board rows DF-BUNKER-77..81 + GAP-151 + PERF-004 (tasks.jsonl + event 779,
+  commit 127e7a5, verified: 464 rows / 0 bad lines / no new dupes), tasks.md section,
+  docs/dogfood/2026-09-26-image-spec-surface.md, diagnostics.md §21,
+  skills/bunker-usage/SKILL.md → v1.13.0.
+- **Cleanup:** dfspec-a + dfsmoke-vanilla destroyed clean and verified; dfspec-d destroyed
+  BY CI mid-window (the finding); dfspec-e + dfinst-bunker undestroyable (DF-BUNKER-81)
+  — left running on 2h/1h TTL, will self-reap; partial archives left as evidence
+  (operator decides retention). No repo visibility/permission changes; no credentials
+  minted or committed.
+- **Verdict:** 🟡 PROMISING-BUT-ROUGH — the stock path is the best it has been; the
+  image-spec path and CI coexistence are the two P0 holes, both newly-discovered surfaces
+  rather than regressions.
