@@ -301,7 +301,7 @@ Examples:
 	// We disabled flag parsing so that Docker flags can pass through. The flags
 	// are still declared for help output and so that flag-aware tooling can see
 	// them; runtime parsing is done manually in RunE.
-	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (default: active server)")
+	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)")
 	cmd.Flags().Uint32Var(&timeout, "timeout", execDefaultTimeoutSeconds, "Command timeout in seconds")
 	cmd.Flags().BoolVar(&rawMode, "raw", false, "Bypass shell interpretation and pass command directly to execve")
 	cmd.Flags().StringVar(&scriptPath, "script", "", "Upload and execute a local script file")

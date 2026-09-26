@@ -110,7 +110,7 @@ func newKeyRotateCommand() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (default: active server)")
+	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)")
 	cmd.Flags().Uint32Var(&overlapSeconds, "overlap-seconds", 600, "Dual-accept window: how long the old secret still validates (capped at 3600)")
 	return cmd
 }
@@ -158,7 +158,7 @@ func newKeyListCommand() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (default: active server)")
+	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)")
 	cmd.Flags().StringVar(&agentID, "agent", "", "Only keys for this agent_id (exact match)")
 	return cmd
 }
@@ -192,6 +192,6 @@ func newKeyRevokeCommand() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (default: active server)")
+	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)")
 	return cmd
 }

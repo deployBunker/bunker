@@ -576,7 +576,7 @@ produces a warning. Pass --sshfs-require-patched to refuse instead of warning.`,
 		},
 	}
 
-	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (default: active server)")
+	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)")
 	cmd.Flags().StringVar(&sshKey, "ssh-key", "", "SSH private key path (default: ~/.bunker/keys/<agent-id>)")
 	cmd.Flags().StringVar(&remotePath, "path", "", "Remote path inside the agent to mount (default: the agent's home)")
 	cmd.Flags().StringVar(&expectWorkspace, "expect-workspace", "", "Refuse to mount unless the resolved workspace matches this git remote (e.g. deployBunker/bunker)")

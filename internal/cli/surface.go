@@ -274,7 +274,7 @@ Examples:
 			return runSurfaceInstall(cmd, ctx, client, entry, agentID, asJSON)
 		},
 	}
-	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (required if no active server; mutating command)")
+	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Emit the resulting state as JSON")
 	cmd.Flags().Uint32Var(&timeout, "timeout", 60, "Overall timeout in seconds")
 	return cmd
@@ -317,7 +317,7 @@ Examples:
 			return runSurfaceRemove(cmd, ctx, client, entry, agentID, asJSON)
 		},
 	}
-	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (required if no active server; mutating command)")
+	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Emit the removal result as JSON")
 	cmd.Flags().Uint32Var(&timeout, "timeout", 60, "Overall timeout in seconds")
 	return cmd

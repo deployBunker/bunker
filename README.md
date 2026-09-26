@@ -126,14 +126,22 @@ sudo ./bunkerd --config /etc/bunkerd/config.yaml
 # 4. In another terminal, point the CLI at it and check it is up. The first
 #    connect PRINTS the certificate fingerprint and pins it; every later
 #    command verifies against that pin (see TLS (trust on first use) below).
-./bunker connect --tls self-signed https://127.0.0.1:8080 --token your-master-token-here
+./bunker connect --tls self-signed https://127.0.0.1:8080 --token your-master-token-here --name bunker-host
 ./bunker status
 
 # 5. First agent: spawn, run a command inside it, tear it down
-./bunker spawn --ttl 1h demo-agent
-./bunker exec demo-agent -- uname -a
-./bunker destroy demo-agent
+#    (--server is required on mutating commands — see the binding note below)
+./bunker spawn --server bunker-host --ttl 1h demo-agent
+./bunker exec demo-agent --server bunker-host -- uname -a
+./bunker destroy demo-agent --server bunker-host
 ```
+
+> **Server binding note:** mutating commands (`spawn`, `exec`, `destroy`,
+> `cp`, `mount`, `deploy`, `tunnel`, `ssh`, `renew`, `run`, `start`, `stop`,
+> `restart`, `keys`, `heartbeat`, `env`, `surface`) never fall back to the
+> shared `bunker use` active default — pass `--server <alias>` or export
+> `BUNKER_SESSION_TARGET=<alias>`. Read-only commands (`status`, `list`) do
+> fall back to the active default and print which target they used.
 
 What to expect on a fresh host:
 
@@ -174,9 +182,9 @@ A public demo instance runs on **bunker-mvp** (`78.46.173.180`, gRPC :19090 / RE
 
 # 1. Request a demo token from the maintainers (request-access only, see above)
 # 2. Connect with your provisioned token:
-bunker connect http://78.46.173.180:18080 --token <your-demo-token>
+bunker connect --name bunker-mvp http://78.46.173.180:18080 --token <your-demo-token>
 bunker status
-bunker spawn --ttl 1h demo-agent
+bunker spawn --server bunker-mvp --ttl 1h demo-agent
 ```
 
 The demo is a shared, resource-limited sandbox (max 50 agents; per-agent CPU/memory caps and a per-file size cap, default 1h TTL) — **do not run production workloads on it**. Auth is enforced: every request needs a bearer token (`bunker connect --token`); an unauthenticated **POST** receives `401` (the REST surface is POST-only — a non-POST request returns `405` before auth runs). See [docs/integration.md](docs/integration.md) for the full client-server protocol.
@@ -656,7 +664,9 @@ bunker connect --tls self-signed https://bunker-host:9090 --token your-master-to
 #   bunker connect http://127.0.0.1:8080 --token your-master-token-here
 
 # Create an agent with 2 CPUs and 4 GB RAM
-bunker spawn --cpu 2.0 --memory 4294967296 --ttl 6h
+# (mutating commands need --server <alias> or BUNKER_SESSION_TARGET — see the
+# binding note under Run it locally; the same alias you registered with connect)
+bunker spawn --server bunker-host --cpu 2.0 --memory 4294967296 --ttl 6h
 # NOTE: the FIRST spawn on a host is slow. It installs rootless Docker into the
 # agent's home (a ~93 MB download) and takes 60-90s+ before dockerd is ready.
 # The CLI prints "Creating agent..." and waits under a 300s deadline, so a
@@ -672,7 +682,7 @@ cat > spec.json <<'EOF'
   ]
 }
 EOF
-bunker spawn --image-spec spec.json --ttl 6h
+bunker spawn --server bunker-host --image-spec spec.json --ttl 6h
 # Rejected specs (curl|sh, base-image swaps, unknown fields, ...) fail fast
 # with invalid_argument and build nothing. Identical specs share one cached
 # build per agent.
@@ -681,7 +691,7 @@ bunker spawn --image-spec spec.json --ttl 6h
 bunker list
 
 # Run a command inside the agent (including Docker)
-bunker exec abc12345 -- docker run --rm alpine echo hello
+bunker exec abc12345 --server bunker-host -- docker run --rm alpine echo hello
 
 # Mount the agent's filesystem locally
 bunker mount abc12345 /mnt/my-agent
@@ -694,16 +704,16 @@ bunker tunnel abc12345
 bunker info abc12345
 
 # Set / read agent environment variables (KEY=VALUE as one argument)
-bunker env set abc12345 KEY=VALUE
-bunker env get abc12345 KEY
+bunker env set abc12345 --server bunker-host KEY=VALUE
+bunker env get abc12345 --server bunker-host KEY
 
 # Extend TTL
-bunker heartbeat abc12345
+bunker heartbeat abc12345 --server bunker-host
 
 # Tear down (also deletes the client-local SSH key ~/.bunker/keys/abc12345)
-bunker destroy abc12345
+bunker destroy abc12345 --server bunker-host
 # Keep the local key for a spawn/destroy/spawn key-reuse cycle:
-bunker destroy abc12345 --keep-key
+bunker destroy abc12345 --server bunker-host --keep-key
 ```
 
 Pause, resume and recover an agent — **requires a build from HEAD** (the newest
@@ -712,14 +722,15 @@ Install):
 
 ```bash
 # Requires a build from HEAD — not in the newest release tag.
+# These are mutating commands: --server required (binding note above).
 # Pause an agent without destroying it (frees CPU, keeps user/home/container/ports)
-bunker stop abc12345
+bunker stop abc12345 --server bunker-host
 
 # Resume a stopped agent
-bunker start abc12345
+bunker start abc12345 --server bunker-host
 
 # Recover a wedged session: stop + start in one call, heartbeat TTL reset
-bunker restart abc12345
+bunker restart abc12345 --server bunker-host
 ```
 
 > **`bunker heartbeat` extends the TTL, it never shortens it — and there is no

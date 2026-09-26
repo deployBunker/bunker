@@ -306,7 +306,7 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (default: active server)")
+	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)")
 	cmd.Flags().StringVar(&agentID, "agent-id", "", "Agent ID (auto-generated if empty; positional [agent-id] is an alias)")
 	cmd.Flags().Float64Var(&cpuQuota, "cpu", 0, "CPU quota in cores (e.g. 2.0)")
 	cmd.Flags().Uint64Var(&memoryMax, "memory", 0, "Memory limit in bytes")

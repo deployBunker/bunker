@@ -123,7 +123,7 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (default: active server)")
+	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)")
 	cmd.Flags().BoolVar(&force, "force", false, "Force destroy even if agent is running")
 	cmd.Flags().BoolVar(&keepKey, "keep-key", false, "Keep the local SSH key (~/.bunker/keys/<id>) after destroy (key rotation)")
 

@@ -189,7 +189,7 @@ Any other flag is rejected before anything is sent to the server:
 		DisableFlagParsing: true,
 	}
 
-	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (default: active server)")
+	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)")
 	cmd.Flags().Uint32Var(&timeout, "timeout", envDefaultTimeoutSeconds, "Command timeout in seconds")
 	return cmd
 }

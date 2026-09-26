@@ -268,7 +268,7 @@ Examples:
 		DisableFlagParsing: true,
 	}
 
-	cmd.Flags().String("server", "", "Server alias (default: active server)")
+	cmd.Flags().String("server", "", "Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)")
 	cmd.Flags().Uint32("timeout", runDefaultTimeoutSeconds, "Command timeout in seconds")
 	cmd.Flags().Bool("detach", false, "Run as a persistent systemd transient unit")
 	cmd.Flags().String("name", "", "Optional name suffix for the run unit")
