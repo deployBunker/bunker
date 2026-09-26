@@ -265,18 +265,29 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	// replayed live agents are restored (with their exact port
 	// reservations), stale records are purged, and orphans are destroyed or
 	// adopted per agent.reconciliation.mode.
-	rep := agentMgr.Reconcile(ctx)
-	s.logger.Info("agent registry reconciliation complete",
+	//
+	// INT-CI-043: restore/purge run synchronously (they gate what may be
+	// served), but the orphan walk is dispatched to a background goroutine —
+	// a daemon starting against a stale registry (live=0, known=709) must
+	// not spend its whole readiness window archiving one orphan's home
+	// before its first listener exists. The TTL reaper still waits for the
+	// full reconciliation (reconcileDone closes only after the walk).
+	rep, reconcileFinal := agentMgr.ReconcileStartup(ctx)
+	s.logger.Info("agent registry reconciliation dispatched",
 		"mode", rep.Mode,
 		"replayed_live", rep.ReplayedLive,
 		"replayed_known", rep.ReplayedKnown,
-		"system_agents", rep.SystemAgents,
 		"restored", rep.Restored,
+		"restored_foreign_pool", rep.RestoredForeignPool,
 		"purged", rep.Purged,
-		"adopted", rep.Adopted,
-		"destroyed", rep.Destroyed,
-		"foreign", rep.Foreign,
+		"orphans_async", true,
 	)
+	go func() {
+		// The final report (orphan counters included) is logged by the
+		// reconciliation goroutine itself when the walk completes; drain the
+		// final-report channel so the buffered send never leaks.
+		<-reconcileFinal
+	}()
 	bunkerdSvc := &bunkerdService{cfg: s.cfg, logger: s.logger, agentMgr: agentMgr, heartbeats: agentMgr, tracker: tracker, tunnelMgr: tunnelMgr, tailscaleMgr: tailscaleMgr, keyMgr: s.keyMgr, jwtAuth: s.jwtAuth, cpuSampler: resource.NewCPUSampler(), auditLog: s.auditLog}
 	// DF-BUNKER-34: the orphan-uid probe rides the info/list surfaces. The
 	// manager carries the /proc probe; the nil check inside the service keeps

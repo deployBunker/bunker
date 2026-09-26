@@ -59,33 +59,46 @@ type ReconcileReport struct {
 	Foreign int
 }
 
-// Reconcile replays the durable registry against system state before the
-// daemon serves traffic. It performs four things, each logged on ONE startup
-// line per agent:
-//
-//  1. restores replayed live records whose system user still exists into the
-//     tracker together with their exact persisted port reservation. A record
-//     whose reservation cannot be re-established exactly is NOT served:
-//     reconciliation fails closed and force-destroys that agent (see
-//     failClosedRestore);
-//  2. purges registry records whose system user is gone (stale);
-//  3. handles orphans — bunker-* users the registry does not know — by
-//     destroying them (default) or adopting them, per reconciliation.mode.
-//     Orphans are classified FOREIGN first: one carrying another daemon
-//     instance's `.bunker/owner` marker (DF-BUNKER-18), or whose persisted
-//     port range lies entirely outside this daemon's pool, belongs to
-//     another daemon instance and is left untouched. The marker check is
-//     what makes OVERLAPPING pools safe, and it works even when the port
-//     metadata is missing or unreadable. Adoption of the rest requires
-//     readable, valid, free port metadata: an orphan that cannot be adopted
-//     with its exact reservation is destroyed instead;
-//  4. unblocks the TTL reaper (which waits for this to finish).
-//
-// It never fails hard: every action is logged and the daemon keeps running.
-// Without a registry (disabled, or unavailable) it only unblocks the reaper.
+// Reconcile replays the durable registry against system state and waits for
+// the whole pass, including the orphan walk. It is the synchronous contract
+// used by tests and the CLI.
 func (m *AgentManager) Reconcile(ctx context.Context) ReconcileReport {
-	defer m.reconcileOnce.Do(func() { close(m.reconcileDone) })
+	_, finalCh := m.reconcile(ctx, false)
+	return <-finalCh
+}
 
+// ReconcileStartup is the daemon-startup entry point (INT-CI-043): the
+// readiness-critical phases (replay checks, restore, purge) run
+// synchronously, but the orphan walk — adopt or destroy, each potentially
+// slow (home archiving tar-to-disk, userdel -rf on multi-GB homes) — is
+// dispatched to a background goroutine so the caller can bind its listeners
+// and serve traffic without waiting on orphan cleanup. The measured failure
+// this fixes: a daemon starting against a stale registry (live=0, known=709)
+// spent the ENTIRE 30s readiness window archiving one orphan's home before
+// its first listener existed (CI regression run 36180131056).
+//
+// DF-BUNKER-33 note: the orphan walk keeps archive-before-delete. Skipping
+// or bounding the archive at startup was considered and rejected — the
+// archive is the data-loss protection that lets destroy delete a home at
+// all; post-ready async execution removes the readiness block without
+// weakening it.
+//
+// The TTL-reaper invariant is preserved: m.reconcileDone still closes only
+// after the orphan walk completes (in either entry point), so the reaper can
+// never destroy an agent before the registry has been fully reconciled
+// against system state.
+//
+// Returns the interim report (replay counts, Restored, Purged — the orphan
+// counters are still zero in the interim snapshot) and a channel that
+// delivers the FINAL report once the orphan walk completes. The interim
+// snapshot and the final report are independent values: the background
+// goroutine owns its copy.
+func (m *AgentManager) ReconcileStartup(ctx context.Context) (ReconcileReport, <-chan ReconcileReport) {
+	return m.reconcile(ctx, true)
+}
+
+func (m *AgentManager) reconcile(ctx context.Context, asyncOrphans bool) (ReconcileReport, <-chan ReconcileReport) {
+	finalCh := make(chan ReconcileReport, 1)
 	rep := ReconcileReport{Mode: m.cfg.Agent.Reconciliation.ModeOrDestroy()}
 	if err := m.cfg.Agent.Reconciliation.Validate(); err != nil {
 		// Validation happens at config load; if a caller built a config by
@@ -93,11 +106,20 @@ func (m *AgentManager) Reconcile(ctx context.Context) ReconcileReport {
 		m.logger.Warn("invalid reconciliation mode, using default", "mode", rep.Mode, "error", err)
 		rep.Mode = config.ReconcileModeDestroy
 	}
+	// earlyFinish ends a reconciliation that never reaches the orphan walk
+	// (registry unavailable, failed system probe): unblock the reaper and
+	// deliver the report exactly once, like a completed pass.
+	earlyFinish := func() {
+		m.reconcileOnce.Do(func() { close(m.reconcileDone) })
+		finalCh <- rep
+		close(finalCh)
+	}
 
 	if m.registry == nil {
 		m.logger.Info("registry reconcile skipped — durable registry unavailable",
 			"reason", registryUnavailableReason(m))
-		return rep
+		earlyFinish()
+		return rep, finalCh
 	}
 
 	rep.ReplayedLive = m.registry.LiveCount()
@@ -108,7 +130,8 @@ func (m *AgentManager) Reconcile(ctx context.Context) ReconcileReport {
 		// A failed probe must not be read as "no agents exist": that would
 		// purge every live record and destroy every orphan in one sweep.
 		m.logger.Error("registry reconcile: cannot enumerate system agents; skipping reconciliation", "error", err)
-		return rep
+		earlyFinish()
+		return rep, finalCh
 	}
 	rep.SystemAgents = len(systemAgents)
 	present := make(map[string]SystemAgent, len(systemAgents))
@@ -188,62 +211,98 @@ func (m *AgentManager) Reconcile(ctx context.Context) ReconcileReport {
 	}
 
 	// (3): orphans — system users the registry does not know as live.
+	//
+	// INT-CI-043: this is the SLOW phase (adopt/destroy per orphan; destroy
+	// archives the home to disk before userdel and a multi-GB home can hold
+	// the walk for tens of seconds), so in startup mode it runs in a
+	// background goroutine and the caller proceeds to listener bind
+	// immediately. The reaper invariant is untouched: reconcileDone — the
+	// channel startTTLReaper waits on — closes only AFTER this walk
+	// completes, in both modes.
+	orphans := make([]SystemAgent, 0, len(systemAgents))
 	for _, sa := range systemAgents {
 		if m.registry.Get(sa.AgentID) != nil || handled[sa.AgentID] {
 			continue // known live agent (handled above) or already handled
 		}
-		// Foreign check BEFORE the mode branch: an orphan whose persisted
-		// ports lie outside this daemon's pool cannot collide with any port
-		// this daemon allocates, so it belongs to another daemon instance
-		// (or an older pool geometry) and must never be destroyed or
-		// adopted here — not even in destroy mode. Unreadable or malformed
-		// metadata is not foreign (the daemon cannot prove it is safe to
-		// leave), so it keeps the fail-closed treatment below.
-		//
-		// DF-BUNKER-18: an orphan carrying ANOTHER daemon instance's
-		// ownership marker is foreign regardless of its persisted range,
-		// which also covers overlapping pools and unreadable port
-		// metadata — the two destructive shapes the port test could not.
-		if foreign, start, end := m.orphanIsForeign(sa); foreign {
-			m.logForeignOrphanSkip(sa, start, end)
-			rep.Foreign++
-			continue
-		}
-		if rep.Mode == config.ReconcileModeAdopt {
-			if err := m.adoptAgent(ctx, sa); err != nil {
-				m.logger.Warn("registry reconcile: adopt failed, destroying orphan instead",
-					"action", "adopt", "agent_id", sa.AgentID, "error", err)
-				// Adoption is exact-port or nothing: drop any residue so a
-				// failed adopt can never leave a tracker record or a port
-				// reservation behind for the orphan.
-				m.dropHalfManagedState(sa.AgentID)
-				if derr := m.destroyOrphan(ctx, sa.AgentID); derr != nil {
-					m.logger.Error("registry reconcile: destroy after failed adopt failed",
-						"agent_id", sa.AgentID, "error", derr)
-					continue
-				}
-				rep.Destroyed++
-				m.logger.Info("registry reconcile: destroyed orphan agent",
-					"action", "destroy", "agent_id", sa.AgentID, "system_user", sa.Username)
+		orphans = append(orphans, sa)
+	}
+	runOrphanWalk := func(list []SystemAgent) ReconcileReport {
+		final := rep
+		for _, sa := range list {
+			// Foreign check BEFORE the mode branch: an orphan whose persisted
+			// ports lie outside this daemon's pool cannot collide with any
+			// port this daemon allocates, so it belongs to another daemon
+			// instance (or an older pool geometry) and must never be
+			// destroyed or adopted here — not even in destroy mode.
+			// Unreadable or malformed metadata is not foreign (the daemon
+			// cannot prove it is safe to leave), so it keeps the fail-closed
+			// treatment below.
+			//
+			// DF-BUNKER-18: an orphan carrying ANOTHER daemon instance's
+			// ownership marker is foreign regardless of its persisted range,
+			// which also covers overlapping pools and unreadable port
+			// metadata — the two destructive shapes the port test could not.
+			if foreign, start, end := m.orphanIsForeign(sa); foreign {
+				m.logForeignOrphanSkip(sa, start, end)
+				final.Foreign++
 				continue
 			}
-			rep.Adopted++
-			start, end, _ := m.portAllocRange(sa.AgentID)
-			m.logger.Info("registry reconcile: adopted orphan agent",
-				"action", "adopt", "agent_id", sa.AgentID, "system_user", sa.Username,
-				"port_start", start, "port_end", end)
-			continue
+			if final.Mode == config.ReconcileModeAdopt {
+				if err := m.adoptAgent(ctx, sa); err != nil {
+					m.logger.Warn("registry reconcile: adopt failed, destroying orphan instead",
+						"action", "adopt", "agent_id", sa.AgentID, "error", err)
+					// Adoption is exact-port or nothing: drop any residue so a
+					// failed adopt can never leave a tracker record or a port
+					// reservation behind for the orphan.
+					m.dropHalfManagedState(sa.AgentID)
+					if derr := m.destroyOrphan(ctx, sa.AgentID); derr != nil {
+						m.logger.Error("registry reconcile: destroy after failed adopt failed",
+							"agent_id", sa.AgentID, "error", derr)
+						continue
+					}
+					final.Destroyed++
+					m.logger.Info("registry reconcile: destroyed orphan agent",
+						"action", "destroy", "agent_id", sa.AgentID, "system_user", sa.Username)
+					continue
+				}
+				final.Adopted++
+				start, end, _ := m.portAllocRange(sa.AgentID)
+				m.logger.Info("registry reconcile: adopted orphan agent",
+					"action", "adopt", "agent_id", sa.AgentID, "system_user", sa.Username,
+					"port_start", start, "port_end", end)
+				continue
+			}
+			if err := m.destroyOrphan(ctx, sa.AgentID); err != nil {
+				m.logger.Error("registry reconcile: destroy orphan failed",
+					"action", "destroy", "agent_id", sa.AgentID, "error", err)
+				continue
+			}
+			final.Destroyed++
+			m.logger.Info("registry reconcile: destroyed orphan agent",
+				"action", "destroy", "agent_id", sa.AgentID, "system_user", sa.Username)
 		}
-		if err := m.destroyOrphan(ctx, sa.AgentID); err != nil {
-			m.logger.Error("registry reconcile: destroy orphan failed",
-				"action", "destroy", "agent_id", sa.AgentID, "error", err)
-			continue
-		}
-		rep.Destroyed++
-		m.logger.Info("registry reconcile: destroyed orphan agent",
-			"action", "destroy", "agent_id", sa.AgentID, "system_user", sa.Username)
+		return final
 	}
-	return rep
+	if asyncOrphans {
+		go func() {
+			final := runOrphanWalk(orphans)
+			m.reconcileOnce.Do(func() { close(m.reconcileDone) })
+			m.logger.Info("agent registry reconciliation complete (async orphan walk)",
+				"mode", final.Mode,
+				"adopted", final.Adopted,
+				"destroyed", final.Destroyed,
+				"foreign", final.Foreign,
+			)
+			finalCh <- final
+			close(finalCh)
+		}()
+		return rep, finalCh
+	}
+	final := runOrphanWalk(orphans)
+	m.reconcileOnce.Do(func() { close(m.reconcileDone) })
+	finalCh <- final
+	close(finalCh)
+	return final, finalCh
 }
 
 // restoreAgent reinstates a replayed registry record in the tracker together
