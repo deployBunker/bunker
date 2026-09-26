@@ -47,13 +47,14 @@ version decides how many requests can be in flight on one connection (measured 1
 `PRD-bunker-fs.md:60–61`), whether a long-lived invalidation stream is cheap (h2/h3) or occupies the single connection
 (h1.1), and whether HTTP/3 exists at all (UDP + TLS 1.3 required).
 
-**Three decisions this document makes that the PRD and the investigations left open:**
+**Four decisions this document makes that the PRD and the investigations left open:**
 
 | # | Decision | Reason (evidence) |
 |---|---|---|
 | D1 | **Content hash is the identity; mtime is never a validator.** `ETag` *is* the content hash (`"sha256:<64 hex>"`, strong), and `If-Match` compares it. | The PRD names touch-without-change as a taxonomy class (`:184`) and the fix as a design rule (`:235`, `:283`). Measured, the kernel's default invalidation is **mtime-driven**: go-fuse's live INIT took `AUTO_INVAL_DATA` and **not** `EXPLICIT_INVAL_DATA` even though the kernel offered both (BFS-003 §7.2, Appendix A.5). |
 | D2 | **`PROPFIND Depth: infinity` is refused** (`403` + the RFC's own `propfind-finite-depth`), with the walk collapse moved into the extension layer (`X-Bunker-Op: snapshot`). | RFC 4918 §9.1 sanctions exactly this refusal ("support for infinite-depth requests MAY be disabled, due to the performance and security concerns"); measurement says whole-tree walks are the stall class (sshfs **7 stalls of 14** on dedi-2 / **8** on mvp, `PRD-bunker-fs.md:25`; `diff --stat` **still stalls at 45.09 s** even on rclone's WebDAV backend, `:85`), while the same work **on** the host is **14/14, 0.41 s flat** (`:31`). |
 | D3 | **A stale-hash write is refused when it would change bytes, and reported as a no-op when it would not.** Mismatched precondition + different bytes ⇒ `412` naming both hashes; mismatched precondition + bytes already identical ⇒ `204` + `X-Bunker-Verdict: identical_content`, disk untouched. | RFC 9110 §13.1.1 explicitly permits the 2xx form when "the change requested by the user agent has already succeeded"; refusing a write that changes nothing is the nagging-check failure the PRD names as the reason people disable checks (`:283`). The refusal case is the one AC-3 grades (`PRD-bunker-fs.md:128`). |
+| D4 | **The write path is one conditional `PUT` (§6). Staging-then-publish — a second protocol proposed by the client spec — is rejected, and the one property it had is absorbed into this one rather than lost.** | BFS-014, recorded in §6.2: staging costs **1024 requests for a 4 MiB file against 1** (the measured write granularity is **1023 WRITE ops**, Appendix A; `BFS-003 Appendix A.6`; and its offset header exists exactly so that it *can* resume, so the request count is not a tuning mistake), it would need a tree-mutating `POST` inside an extension layer that declares itself read-only (§3's invariant and A-9's mutation control), and a naive conditional `PUT` would leave a body-transfer-wide lost-update window — which §6.1 step 5 closes by re-validating the precondition inside the commit. The capability staging alone had (resuming an interrupted large write) is **deferred with a named trigger** (O-12), not deleted. |
 
 ---
 
@@ -108,7 +109,7 @@ success-shaped no-op.
 | `OPTIONS` | §10.1 | **Supported, always** | `200`/`204`; `DAV: 1` (and `2` when `LOCK` is live); `Allow`; the extension capability headers (§4.1) | The RFC requires `DAV` on *all* OPTIONS responses of a WebDAV resource (§18.1). This is the discovery entry point, so it can never be gated on a build. |
 | `GET` | §9.4 | **Supported** (non-collection). Collections: `405` + `Allow` | `200` + bytes; `ETag` = content hash; `206` for a **single** byte range; `304` on a matching `If-None-Match`; `416` for an unsatisfiable range | Collection GET: §9.4 leaves the entity server-defined ("or something else altogether") and we choose 405 — **deviation 1** (§2.3). A caller that wants structure uses `PROPFIND`, which is the standard way to ask. Multi-range: RFC 9110 §14.2 permits a server to ignore `Range`; we answer `200` with the full body (loud enough: the client sees a 200, not a partial 206). |
 | `HEAD` | RFC 9110 | **Supported** | Identical headers to `GET`, no body | The cheap way to fetch a base hash for a conditional write without transferring bytes (§7.4). |
-| `PUT` | §9.7 | **Supported** (slice C4 for the precondition flavour) | `201` created / `204` replaced; `409` when the parent collection is missing; `405` on a collection; `412` on a failed `If-Match`/`If-None-Match`; `413` over the size cap; `507` when the agent cannot store it | §9.7.1 requires `409` for a missing parent — we return it rather than auto-creating (§9.7.1's "MUST fail"). Writes land through a temp file + rename, so a failed or killed request leaves the previous bytes intact; no partial file is ever visible (the guarantee `AC-6:131` grades). |
+| `PUT` | §9.7 | **Supported** (slice C4 for the precondition flavour) | `201` created / `204` replaced; `409` when the parent collection is missing; `405` on a collection; `412` on a failed `If-Match`/`If-None-Match`; `413` over the size cap; `507` when the agent cannot store it | §9.7.1 requires `409` for a missing parent — we return it rather than auto-creating (§9.7.1's "MUST fail"). Writes land through a temp file + rename, so a failed or killed request leaves the previous bytes intact; no partial file is ever visible (the guarantee `AC-6:131` grades). The temp file is a `.davtmp-*` **sibling of the target** (same filesystem, so the rename is atomic) and is excluded from every listing, `GET`, `PROPFIND` and `snapshot` answer — no client ever sees it (§6.2; this is the one property the rejected staging design had for free, by staging outside the tree). |
 | `DELETE` | §9.6 | **Supported** | `204`/`200`; `404` when unmapped; `400` + `invalid_depth` if a `Depth` header other than `infinity` is sent on a collection | §9.6.1: DELETE on a collection *is* `Depth: infinity`, and "a client MUST NOT submit a Depth header … with any value but infinity". Treating a wrong value as infinity would be a silently different behaviour, so it is a loud `400` — **deviation 4** (§2.3). Locks rooted on the deleted resource are destroyed (§9.6), which is the one server-side MUST we must not miss. |
 | `MKCOL` | §9.3 | **Supported** | `201`; `405` when the URL is already mapped; `409` when an ancestor is missing; `415` for any request body; `507` when the agent cannot store it | §9.3: ancestors MUST already exist and "the server MUST NOT create those intermediate collections automatically" — `409` is the RFC's own answer, not a limitation. §9.3's body rule is a MUST: an entity type we do not support ⇒ `415`. v1 supports **no** MKCOL body, so any body is `415`. |
 | `PROPFIND` | §9.1 | **Supported**, `Depth: 0` and `1` | `207` + `DAV:multistatus`; `403` + `propfind-finite-depth` for `Depth: infinity`; `400` + `depth_required` when no `Depth` header is present; `404` when unmapped | `Depth: 0`/`1` are the two values the RFC says servers **MUST** support (§9.1). The `infinity` refusal is §9.1's own "MAY be disabled" with its own precondition code (§9.1.1) — **decision D2**. `depth_required`: §9.1 says servers "SHOULD treat a request without a Depth header as if a `Depth: infinity` … was included" — since *that* is refused, deriving a different default (e.g. 1) would answer a different question than the client asked, so we refuse loudly instead. RFC 4918 also makes the field a client **MUST**, so this costs no conformant client anything. |
@@ -270,7 +271,8 @@ is a test, not a promise (§11 A-9).
 |---|---|---|
 | `capabilities` | — | the capability document (§4.2) verbatim, under `result.capabilities` |
 | `status` | `path?`, `untracked?` | `result.entries`: `[{x, y, path, orig_path?, sub?}]` — the server parses the porcelain output, so no NUL/newline ambiguity crosses the wire; plus `result.count` |
-| `diff` | `path?`, `staged?`, `stat_only?` | `result.text` (unified diff, or the `--stat` form), `result.truncated`; `result.bytes` |
+| `diff` | `path?`, `staged?`, `stat_only?`, `ref?` | `result.text` (unified diff, or the `--stat` form), `result.truncated`; `result.bytes`. `ref` is **one** value from the server's fixed allow-list (`HEAD`, `HEAD~<n≤10>`), resolved server-side like `rev-parse`'s `rev`; absent ⇒ index/worktree comparison; a value outside the list is `400 bad_arguments`, never a best-effort rev-spec |
+| `log` | `path?`, `limit?` (default 20, server maximum 200), `oneline?` | `result.text` (one commit per line), `result.count`, `result.rev` — **bounded only**: an unbounded log is refused rather than delegated (walking the commit graph costs 10.32 s over sshfs, `PRD-bunker-fs.md:27`). Added by BFS-014 (§6.2 note) so `bunker fs log` is reachable; a build without it answers `501 capability_unavailable`, never `400 op_unknown` |
 | `rev-parse` | `rev?` (default `HEAD`) | `result.text` (one line), `result.rev` |
 | `ls-files` | `path?`, `ignored?` | `result.entries`: `[{path, mode, sha, stage}]` (names + index metadata only, no file reads) |
 | `snapshot` | `path?`, `depth` (`1`\|`infinity`), `include_hash` (default **false**) | `result.entries`: `[{path, type, size, mtime_unix_ms, mode, hash?}]` — one call replaces the refused `PROPFIND Depth: infinity` for our own client (and backs the FUSE `READDIRPLUS` collapse BFS-003 §3(d) describes); `hash` is present only when `include_hash` is true |
@@ -314,14 +316,28 @@ extension *every other extension is discovered through*, and it is deliberately 
   `net/http` exposes a server-side `Pusher` (`net/http/h2_bundle.go:7050`, `PushOptions` at `http.go:187`) and **no
   client-side API to receive pushed responses** at all, so no Go client on either end of this link could consume push.
 - **Response shape.**
-  ```
+  ```http
   {"seq":42,"event":"invalidate","paths":["src/main.go"],"rev":"git:9f2c1a…","tree":"<token>"}
-  {"seq":43,"event":"heartbeat","rev":"git:9f2c1a…"}          (keeps the stream alive; no path claims)
-  {"seq":44,"event":"overflow","paths":[],"rev":"…"}          (watcher overran: drop everything, re-snapshot)
+  {"seq":43,"event":"heartbeat","paths":[],"rev":"git:9f2c1a…","tree":"<token>"}    (keeps the stream alive; no path claims)
+  {"seq":44,"event":"overflow","paths":[],"rev":"git:9f2c1a…","tree":"<token>"}     (watcher overran: drop everything, re-snapshot)
   ```
   `seq` is monotonic per tree; a client reconnects with `since_seq` and gets what it missed — which is also how the
   polling form works: `X-Bunker-Op: events` with the same argument returns the pending events as a single envelope and
   then closes.
+
+  **Three declarations BFS-014 added, because the client's own rules depend on them** (BFS-005 §4.4's 90 s idle
+  switch needs a number; §4.2's per-path drop loop needs a bound; a per-line identity lets the client detect a tree
+  change without a second request):
+
+  1. **`heartbeat` at least every 30 s while a stream is open** — pinned here rather than assumed by the client, and
+     declared in the capability document (`extensions.watch.heartbeat_ms`, §4.2) so a client adapts to a slower
+     server instead of declaring it dead. Three missed heartbeats (90 s) is unambiguous silence.
+  2. **`paths[]` carries at most 4096 entries per event** — a **chosen default**, not a measurement. Above the cap the
+     watcher emits `overflow` (drop everything, re-snapshot) rather than a longer list, so no answer is ever a
+     silently truncated one. Declared as `extensions.watch.max_paths_per_event`.
+  3. **`tree` is present on every line** — `invalidate`, `heartbeat` and `overflow` alike (the three examples above
+     and §10.5's bytes agree). A per-line `tree` that differs from the stream response header is a **tree change**,
+     never a parse error.
 - **Error shape, and the mode rule.** When the agent has no watcher, `watch` answers `501` +
   `capability_unavailable` with `scope=target`, `capability=watch` and **`mode=poll`** — the client then uses `events`
   or hash comparison, and `bunker fs status` reports the degradation (AC-9, `PRD-bunker-fs.md:134`). A server that
@@ -358,9 +374,10 @@ old clients keep working unchanged.
     "rev":  {"name":"X-Bunker-Rev","v":1,"kind":"git"},
     "tree": {"name":"X-Bunker-Tree","v":1},
     "op":   {"name":"X-Bunker-Op","v":1,"read_only":true,
-             "ops":["capabilities","status","diff","rev-parse","ls-files","snapshot","events","watch"],
+             "ops":["capabilities","status","diff","rev-parse","ls-files","log","snapshot","events","watch"],
              "default_max_bytes":1048576,"abs_max_bytes":16777216},
-    "watch":{"name":"X-Bunker-Op: watch","v":1,"mode":"push","modes":{"push":"inotify→stream","poll":"X-Bunker-Op: events"}}
+    "watch":{"name":"X-Bunker-Op: watch","v":1,"mode":"push","heartbeat_ms":30000,"max_paths_per_event":4096,
+             "modes":{"push":"inotify→stream","poll":"X-Bunker-Op: events"}}
   },
   "transports": {
     "http/1.1": {"alpn":null,"multiplexed":false,"server_push":false,"available":true},
@@ -474,7 +491,32 @@ Every refusal this surface can produce, with the status, the machine code, and w
 | `unsupported_media_type` | `415` | a `MKCOL` (or other) body of a type we do not support | — |
 | `result_too_large` | `413` | an E-4 result exceeds the cap even after the server truncates | `bytes`, `cap` |
 | `insufficient_storage` | `507` | the agent cannot store the representation (RFC's own code) | — |
+| `propfind_finite_depth` | `403` | `PROPFIND Depth: infinity` (§2.1, deviation 3) — the body carries the RFC's own `propfind-finite-depth` element (§9.1.1) | — |
+| `workspace_invalid` | `403` | the resolved path escapes the workspace root (§6.1 step 1) — the confinement rule, checked before anything else executes | — |
+| `op_unknown` | `400` | a `POST` whose `X-Bunker-Op` is not in §3 E-4's catalogue | the op value |
+| `extension_op_missing` | `400` | a `POST` with no `X-Bunker-Op` header at all | — |
+| `bad_arguments` | `400` | an op body that does not match its argument schema (including a `ref` outside the allow-list, §6.2) | the offending field |
+| `not_found` | `404` | an unmapped URL (RFC-plain) | — |
+| `forbidden` | `403` | an RFC-plain refusal outside the enumerated ones (e.g. `MOVE` with source = destination, §9.9.4) | — |
+| `conflict` | `409` | an RFC-plain conflict: a missing parent collection on `PUT`/`MKCOL` (§9.7.1, §9.3), or a missing intermediate destination on `COPY`/`MOVE` | — |
+| `bad_gateway` | `502` | a `COPY`/`MOVE` destination outside this surface's namespace (a different tree) | — |
+| `unauthenticated` | `401` | no credential, or one this surface rejects (the scheme itself is the house PRD's — O-6) | — |
+| `range_not_satisfiable` | `416` | an unsatisfiable `Range` on `GET` | — |
+| `payload_too_large` | `413` | a **request body** over `max_request_bytes` — the sibling of `result_too_large`, which is about an E-4 *result* | `max_bytes` |
+| `operation_timeout` | `503` | **reserved, not produced in v1**: only if O-3 ever introduces a collection-copy time limit | `Retry-After` |
 | `internal` | `500` | anything unexpected | a correlation id; never a `200` |
+
+**This table is the whole vocabulary — there is no second one, and BFS-014 completed it.** The landed build's
+`internal/server/webdav/verdict.go` already emits these codes and says so in its own header comment ("the spec
+implies but does not tabulate"); tabulating them here is what makes the claim true rather than aspirational, and it
+is what lets a client built from `BFS-005` interpret every refusal this surface can produce. Each code travels in
+both of §3's carriers (the `X-Bunker-Verdict` header and the body). The client spec (`BFS-005` §5.0, §5.2, §7.1)
+consumes this table and branches on these codes, which is why the write path's two refusal classes are separated
+here rather than collapsed into one status: `hash_mismatch` **names the hash the server holds**
+(`X-Bunker-Current-Hash` + `b:hash-mismatch`), so a caller can merge without a second round trip, and
+`precondition_failed` is the absence case, where there is no current hash to name — an explicitly different code,
+never a `current` field set to `null` (the shape BFS-014 removed; a null tells the caller nothing, which is the
+opposite of R4).
 
 ### 5.2 `scope` — the field that separates the two diagnoses
 
@@ -547,9 +589,14 @@ X-Bunker-Hash: sha256:8d0e…44b7
 4. Evaluate the precondition: `If-Match` absent ⇒ unconditional (RFC 9110 §13.1.1 — a stock client is unaffected);
    `If-Match: *` ⇒ true iff the resource exists; `If-Match: "<tag>"` ⇒ true iff the tag equals the current hash
    (strong comparison); `If-None-Match: *` ⇒ true iff the resource does **not** exist.
-5. If the precondition is **true**: hash the arriving body; when `X-Bunker-Hash` was declared and disagrees ⇒
-   `422 body_hash_mismatch`, nothing written; else write atomically (temp file + rename) and answer `201`/`204` with the
-   new `ETag`/`X-Bunker-Hash`.
+5. **Re-validate the precondition inside the commit, then write.** Step 4's evaluation is an *early* refusal, not the
+   decision: immediately before the temp file is renamed into place — in the same critical section as the rename — the
+   current bytes are re-read, re-hashed and the precondition is evaluated again. A base that moved *during* the body
+   transfer is therefore refused with the same `412` + `hash_mismatch` rather than overwritten. (Added by BFS-014: it
+   is the narrow check-to-commit window staging-then-publish had for free, kept here without the second protocol — see
+   §6.2.) When the precondition still holds: hash the arriving body; if `X-Bunker-Hash` was declared and disagrees ⇒
+   `422 body_hash_mismatch`, nothing written; else the rename happens and the reply is `201`/`204` with the new
+   `ETag`/`X-Bunker-Hash`.
 6. If the precondition is **false**: hash the arriving body. If the resulting bytes **differ** from the current bytes
    ⇒ **refuse** (step 3 below). If they are **identical** ⇒ `204` + `X-Bunker-Verdict: identical_content` +
    `X-Bunker-Noop: 1`, **no disk write, mtime preserved, `ETag` unchanged** (D3; RFC 9110 §13.1.1's provision that a
@@ -596,6 +643,52 @@ write per RFC, which is exactly the compatibility guarantee of §8.
 
 **6. The same rule on the other writing methods:** `DELETE`, `MOVE`, `COPY` and `PROPPATCH` accept `If-Match` with the
 same comparison; the same `412` + `hash_mismatch` shape applies, with the refused resource named in the body's `href`.
+
+### 6.2 Why the write path is one conditional `PUT` — and what the rejected alternative was worth
+
+**The decision (BFS-014).** Two designs existed for the same operation: the one specified here — a single conditional
+`PUT /dav/<path>` — and a **staging-then-publish** pair written into the client spec (`PUT /fs/stage/<token>` with
+`X-Bunker-Stage-Offset: N`, then `POST /fs/publish` with `{stage,size,hash}` and an `If-Match`). Staging is
+**rejected**, for four reasons recorded here so the decision is not re-litigated by the next reader (`BFS-005` §5.0 is
+the client-side half of the same record, with the per-axis reconciliation table):
+
+1. **Cost, measured.** Publication granularity is decided by the client's write stream, not by preference: the
+   measured stream is **1023 WRITE ops for one 4 MiB file** (Appendix A, from `BFS-003 Appendix A.6`; per-op
+   94–8,106 B). Staging's offset header exists so that a client *can* append in pieces and resume, so it cannot be one
+   request; with gaps and overlaps forbidden (`409`), the pair is 1023 sequential requests plus one publish —
+   **189.50 s (1023 × 185.24 ms — Appendix A; `PRD-bunker-fs.md:21`)** and **8.06 s even at HTTP/2's most generous
+   measured per-request figure (1023 × 7.88 ms, `PRD-bunker-fs.md:61`)** — against **one** request here. The
+   resumability and the request count are the same mechanism, so this cannot be tuned away.
+2. **This document's extension layer is read-only, deliberately.** §3's first invariant ("No extension operation
+   mutates the tree") is why `POST` is a safe carrier and what A-9's mutation control asserts. `POST /fs/publish` is a
+   mutation: carried as an `X-Bunker-Op` it would falsify the invariant, the capability document's `"read_only": true`,
+   and A-9 itself. A future home for it would have to be a numbered extension with its own retry-safety argument.
+3. **It would be a second protocol where one already exists — and the one that exists is the one in code.** BFS-006
+   landed this surface: `internal/server/webdav/handler.go`'s `PUT` path with its three refusal cases
+   (`hash_mismatch`, `identical_content`, `precondition_failed`) in this document's vocabulary. Nothing implements a
+   staging resource. A second protocol also means a second error vocabulary — the defect this reconciliation exists to
+   remove.
+4. **What staging had, and where each piece lives now.** (a) *Atomicity / no partial file* — already here (§2.1's temp
+   file + rename, step 5 above). (b) *A precondition check adjacent to the commit rather than before a long body
+   transfer* — **absorbed** into step 5's commit-time re-validation, so this design does not pay for its lower request
+   count with a lost-update window. (c) *No artifact inside the served tree* — answered by §2.1's `.davtmp-*`
+   exclusion: a staging object lived outside the tree by construction, and a temp sibling must be invisible to a stock
+   client for the same reason. (d) *Resumption of an interrupted large **write*** — **the one capability with no
+   equivalent here**, and it is **deferred rather than deleted**: it returns only as a **declared numbered extension**
+   (its own request/response/error shapes and its own retry-safety argument, since it cannot be a `read_only` E-4 op)
+   and only against a measurement this row did not have — a mid-write transport failure on a large file where the
+   re-send cost dominates the resumption bookkeeping. Every premise in both documents is round-trip-bound (neither
+   carries a bandwidth figure for this link), so the benefit is currently an assumption, and this document does not
+   add a protocol on an assumption.
+
+**Two catalogue changes came with the same reconciliation** (client-side findings F-2/F-3, recorded in `BFS-005` §4.5):
+E-4's catalogue (§3) and the capability document (§4.2) gain a **bounded `log`** op — a read-only `git log`, the same
+class as `diff` and `rev-parse`, so `bunker fs log` is reachable instead of answering `400 op_unknown` — and `diff`
+gains the bounded **`ref?`** argument that `rev-parse`'s `rev` already spells, so the measured `git diff --stat HEAD`
+case needs no second vocabulary. Both are catalogue entries: a build that does not serve them answers the structured
+`501` + `capability_unavailable` of R3 (graded by A-12), never a silently absent op. The landed C5 slice predates
+these two entries, which is why A-12 — not this row, which changes no code — is where the implementation side is
+graded.
 
 ---
 
@@ -906,7 +999,7 @@ X-Bunker-Verdict: ok
 X-Bunker-Tree: <token>
 
 {"seq":42,"event":"invalidate","paths":["src/main.go"],"rev":"git:9f2c1a…","tree":"<token>"}
-{"seq":43,"event":"heartbeat","rev":"git:9f2c1a…","tree":"<token>"}
+{"seq":43,"event":"heartbeat","paths":[],"rev":"git:9f2c1a…","tree":"<token>"}
 {"seq":44,"event":"overflow","paths":[],"rev":"git:9f2c1a…","tree":"<token>"}
 ```
 And its declared-degradation form when the agent has no watcher:
@@ -940,6 +1033,8 @@ Each is a test with a negative control, because a green result without one prove
 | A-9 | E-4's read-only invariant: every op leaves the tree byte-identical (including the index) — the property that makes a retried `POST` harmless | snapshot the tree (and `.git` index digest) before/after each op; a mutation control (an op deliberately shelling out to a mutating command) must fail the assertion | BFS-006 |
 | A-10 | The capability document reports reality: with the h3 listener down, `transports.h3.available == false` and no `Alt-Svc` is emitted; with it up, both flip | two-arm live test on the running daemon | BFS-007 |
 | A-11 | No truncated answers: no `207` is ever truncated (the refused alternative), and E-4 truncation is always reported in `truncated` + the envelope | a large-collection `PROPFIND` and a large `diff` with a small `X-Bunker-Max-Bytes` | BFS-006 |
+| A-12 | **The catalogue is a vocabulary, not a wish list**: every op named in §4.2's `extensions.op.ops` — including `log` and `diff`'s bounded `ref?`, added by BFS-014 (§6.2) — answers either its result or a structured `501` + `capability_unavailable` naming the slice, **never `400 op_unknown`**; a name outside the catalogue is `400 op_unknown` | one cell per catalogue op against the running build, plus a control cell for a name outside it; the `log` and `ref` cells are the BFS-014 additions and are **currently red** against a build whose op table predates them, which is why this is the row that carries that work | BFS-006 (slice C5) |
+| A-13 | **The watch declarations are honoured, not decorative**: a stream stays alive with `heartbeat` at ≤ 30 s; a single event never carries more than `max_paths_per_event` (4096) path entries, spilling to `overflow` instead of a longer list; `tree` is present on **every** event line | a live stream held open past 60 s (two heartbeats observed), a burst change over a 4096-path tree asserting the `overflow` spill, and a per-line parse of a 3-event stream asserting `tree` on each — the three declarations R-1/R-2/R-3 asked for | BFS-009 |
 
 ---
 
@@ -954,6 +1049,10 @@ Each is a test with a negative control, because a green result without one prove
 - **No content-addressed URLs.** Identity travels as `ETag`/`X-Bunker-Hash`; the URL namespace stays path-shaped, so a
   stock client's assumptions about paths hold.
 - **No dead-property store.** See deviation 2 and O-1.
+- **No second write path and no upload resource.** There is no `/fs/stage`-style resource, no chunked publish and no
+  offset protocol: a write is one conditional `PUT` (§6, and the rejection record in §6.2). Resumable large writes —
+  the one capability the rejected design had — are a **deferred candidate extension** (O-12), not a v1 surface, and
+  they cannot arrive as an `X-Bunker-Op` (§3's read-only invariant).
 - **Not a standalone file-sharing product.** This surface exists to serve the filesystem path; it is not offered as a
   general WebDAV server (`PRD-bunker-fs.md:311`).
 - **No auth design.** Credentials and their partitioning are the house PRD's; the requirement this document places on
@@ -979,6 +1078,7 @@ recommendation and the reason. They are the only inputs an owner needs to change
 | **O-9** | Should a non-git tree still expose `X-Bunker-Rev` as a monotonic counter, or omit the header? | **Expose a counter**, with `rev.kind` in the capability document. | A client cache wants "did anything move?" on every tree; omitting the header would force a client to special-case the tree type, and the header is ignorable by clients that do not care. |
 | **O-10** | Do our writes make an identical-content `PUT` skip the disk write entirely (preserving mtime), or write and let the mtime move? | **Skip** (as specified in §6.1 step 6). | It is the concrete instance of the touch-without-change class, it keeps `DAV:getlastmodified` from moving for a no-op, and it costs one hash comparison we have already computed. The alternative makes our own surface produce the noise the identity rule exists to avoid. |
 | **O-11** | Collection locks (`LOCK` with `Depth: infinity`): do they map onto a subtree lease in the existing registry, or is a collection lock refused? | **Map them if the registry can express a subtree lease; otherwise refuse loudly and advertise `DAV: 1` only.** Decide at C4 with the registry's actual semantics measured, not assumed. | RFC 4918 §9.10.3 makes the Depth header a MUST for a LOCK-supporting resource, and §18.2 makes class 2 a package deal — so a resource that cannot honour a depth lock must not advertise class 2. The lease registry's per-path/one-holder shape (proven: 6 processes → 1 grant / 5 refusals, `PRD-bunker-fs.md:248`) is exactly right for a file lock and unproven for a subtree lock; this document will not advertise a class it cannot enforce, and it will not invent a second lock manager to make the class easy (the PRD forbids that). |
+| **O-12** | **Resumable large writes** — the staging-then-publish design rejected in §6.2 had exactly one capability this surface lacks: an interrupted large `PUT` resumes from an offset instead of re-sending the file. Add it back? | **Deferred, with a trigger — not deleted and not scheduled.** Revisit only when a measurement shows the cost: a mid-write transport failure on a large file where the re-send dominates the resumption bookkeeping. | Every premise in both documents is round-trip-bound — neither carries a bandwidth figure for this link — so "re-sending is expensive" is currently an assumption, and adding a second write protocol on an assumption is the mistake §6.2 exists to record. The capability is also *not* free of design work: it cannot be an E-4 op (§3's read-only invariant, A-9), so it would be a numbered extension with its own request/response/error shapes, its own retry-safety argument, and its own reconciliation with D1/D3 (a staged object is not content-addressed until it is published). Naming the trigger is what keeps the capability available without paying for it now. |
 
 ---
 

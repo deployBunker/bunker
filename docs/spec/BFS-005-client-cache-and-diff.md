@@ -12,8 +12,9 @@ schedules as slices `C3`/`C4`/`C5`, §288–298)
 (the transport the event channel and the delegated calls ride on) and — **the dependency this spec was
 missing when §4 was written; see §4.0** —
 [`docs/spec/BFS-004-webdav-surface.md`](BFS-004-webdav-surface.md)
-(the server surface: its §3 E-6 is the invalidation channel consumed in §4.1, and its §4.2 capability
-document is the handshake §4.4 reads; cited, never restated).
+(the server surface: its §3 E-6 is the invalidation channel consumed in §4.1, its §4.2 capability
+document is the handshake §4.4 reads, its **§6 is the write path consumed in §5.2**, and its **§5.1 is
+the one refusal vocabulary** §5.2 and §7.1 branch on; cited, never restated).
 **Feeds:** `BFS-008` (client), `BFS-009` (implements this spec), `BFS-010` (Windows parity of the same
 policy type), `BFS-012` (the proofs).
 **Inherits by reference, does not restate:** `PRD-bunker-remote-editing.md` — the mount gives edits and
@@ -31,8 +32,8 @@ owner in go-fuse's API surface, and a stated failure mode — not a restatement 
 |---|---|---|
 | 1 | **CACHE** | Content-addressed, whole-file entries under a hard cap of **268,435,456 bytes (256 MiB)**, LRU-evicted by *path entry*, with the kernel's own file cache switched **off** so ours is the only copy and the only figure that matters. Full ⇒ evict, and if nothing is evictable, **bypass** — never grow, never fail, never block. |
 | 2 | **INVALIDATION** | A server-pushed, sequenced event stream drops **both** caches — ours *and* the kernel's, via `InodeNotify`/`EntryNotify`/`DeleteNotify`. A sequence gap is treated as a full resync. Absent watcher ⇒ **DECLARED poll mode** on a 2 s interval that is visible in `bunker fs status`, never a silent difference. |
-| 3 | **CONFLICT** | Writes publish with `If-Match: "sha256:<expected>"` (quoted: the value is a strong entity-tag, `BFS-004` §3 E-1) against the **content hash of the target file** — never mtime. Mismatch ⇒ **412**, target bytes unchanged, caller sees `ESTALE`, the current hash is named. The base hash is taken from the server, never assumed. |
-| 4 | **DIFF / DELEGATION** | `status`, `diff`, `rev-parse`, `ls-files`, `log` and the tree **snapshot** are computed on the agent and returned in **one call** from a fixed allow-list — no shell. Measured ceiling of every transparent transport: whole-tree `diff --stat` is **32.74 s on NFS** and **STALL (45.09 s) on WebDAV**, against **0.41 s for all 14 operations run on the host**. |
+| 3 | **CONFLICT** | A write is **one conditional `PUT /dav/<path>`** carrying `If-Match: "sha256:<expected>"` (quoted: the value is a strong entity-tag, `BFS-004` §3 E-1) and `X-Bunker-Hash` — `BFS-004` §6's protocol, whole-file, **never one request per FUSE WRITE op**. Mismatch ⇒ **412**, target bytes unchanged, caller sees `ESTALE`; the refusal's code is `BFS-004` §5.1's — `hash_mismatch` **with the hash the server holds**, or `precondition_failed` when the base is absent. The base hash is taken from the server, never assumed. (Staging-then-publish was the other candidate; §5.0 records why it lost and what it was worth.) |
+| 4 | **DIFF / DELEGATION** | `status`, `diff`, `rev-parse`, `ls-files`, `log` and the tree **snapshot** are computed on the agent and returned in **one call** from a fixed allow-list — no shell. The verb shape is `BFS-004` §3 E-4's: the op in the `X-Bunker-Op` **header**, its arguments **flat** in the JSON body, and the op list identical to that catalogue (this reconciliation added `log`, and `diff`'s bounded `ref?`, there). Measured ceiling of every transparent transport: whole-tree `diff --stat` is **32.74 s on NFS** and **STALL (45.09 s) on WebDAV**, against **0.41 s for all 14 operations run on the host**. |
 
 **The spine of the design, stated once:** *one hash is the currency of reads, writes and invalidation.*
 A cache entry is keyed by the sha256 of its bytes; a write carries the sha256 it expects to replace; an
@@ -182,7 +183,7 @@ Eviction is triggered at insert when `used_bytes + new_entry > max_bytes`. Order
 1. **Unreferenced path entries, least-recently-used first.** "Unreferenced" = no open FUSE file handle ever
    served from that blob, and the path is not the target of an in-flight operation. LRU key is the
    monotonic timestamp of the last *hit* (read served), not the last insert.
-2. **Entries whose blob is already dirty/being-published** are never candidates (they are the write path's
+2. **Entries whose blob belongs to an in-flight write** are never candidates (they are the write path's
    data, not cache).
 3. **Tie-break at identical timestamps:** largest blob first. Evicting one 64 MiB blob buys the room that
    evicting 400 small ones would, in one step, and keeps the eviction loop short.
@@ -359,9 +360,10 @@ discover:
   written and **flushed as its own line**, or §4.4's 90 s idle rule sees silence where the server believes it
   is heartbeating.
 
-**One residual here: the heartbeat period is `BFS-004`'s to name.** §4.4's idle rule needs a heartbeat at
-least every 30 s; `BFS-004` defines the `heartbeat` event but names no period (`BFS-004:319`, `BFS-004:909`).
-Recorded as R-1 in §4.5.
+**Resolved by the write-path reconciliation (BFS-014).** The heartbeat period is now `BFS-004`'s to name and
+`BFS-004` **names it**: `heartbeat` at **≤ 30 s** while a stream is open, declared in the capability document as
+`extensions.watch.heartbeat_ms` (`BFS-004` §3 E-6, §4.2), with the byte example in §10.5. §4.4's 90 s idle rule
+therefore rests on a number the server *declares* rather than one this client assumes — R-1 in §4.5 is closed.
 
 ### 4.2 What the client drops, in order (accepted criterion 2)
 
@@ -461,53 +463,58 @@ a per-mount counter.)
 ### 4.5 Further disagreements found while reconciling (reported, not silently fixed)
 
 Reconciling §4 against `BFS-004` surfaced four more places where this spec's assumptions come from not having
-read it, plus three residuals. Those outside the invalidation channel are **recorded open** rather than
-rewritten under cover of a reconciliation — this row's brief is to report them by name.
+read it, plus three residuals. **BFS-014 (this row) has since decided all seven** — the three findings outside the
+invalidation channel were left open here deliberately, and each now carries its disposition inline so the audit
+record survives the fix. The write path (`F-1`) turned into §5.0, which is where it is decided.
 
-**F-1 (OPEN) — the write path: §5.2's staging/publish protocol versus `BFS-004` §6.** §5.2 specifies the
-write as `PUT <base>/fs/stage/<token>` with `X-Bunker-Stage-Offset: N`, then `POST <base>/fs/publish` with
-`{stage,size,hash}` and an `If-Match` header. `BFS-004` §6 specifies it as a plain conditional
-`PUT /dav/<path>` carrying `If-Match` and an optional `X-Bunker-Hash`, refusing with `412` +
-`X-Bunker-Verdict: hash_mismatch` + both hashes in the header **and** the `DAV:error` body. They agree on the
+**F-1 (RESOLVED by BFS-014 — the write path; see §5.0) — §5.2's staging/publish protocol versus `BFS-004` §6.**
+§5.2 specified the write as `PUT <base>/fs/stage/<token>` with `X-Bunker-Stage-Offset: N`, then
+`POST <base>/fs/publish` with `{stage,size,hash}` and an `If-Match` header. `BFS-004` §6 specifies it as a plain
+conditional `PUT /dav/<path>` carrying `If-Match` and an optional `X-Bunker-Hash`, refusing with `412` +
+`X-Bunker-Verdict: hash_mismatch` + both hashes in the header **and** the `DAV:error` body. They agreed on the
 hard part — the content hash is the identity, a stale base refuses, the refusal names both hashes, the target
-stays byte-identical — and differ on every mechanic: the verb, the resources, the header names, one request
+stays byte-identical — and differed on every mechanic: the verb, the resources, the header names, one request
 versus two, and the response fields (`etag`/`rev` in a JSON body versus `ETag`/`X-Bunker-Rev` headers). One
-case is a direct code-level clash: §5.2's "target absent and `If-Match` present" answers
+case was a direct code-level clash: §5.2's "target absent and `If-Match` present" answered
 `"error":"hash_mismatch"` with `"current": null`, while `BFS-004` §3 E-2 answers `412` +
 `precondition_failed` (RFC-plain, no hash) for exactly that state — same status, same client-visible outcome
-(`ESTALE`, §7.1), **different machine code**, and §7.1 branches on codes, so that one has to be settled
+(`ESTALE`, §7.1), **different machine code**, and §7.1 branches on codes, so that one had to be settled
 rather than merged.
-**Recommendation:** a follow-up row decides either (a) staging/publish becomes a declared pair of
-`X-Bunker-Op` operations named in `BFS-004`'s catalogue (it is an agent-side delegated operation, like
-`snapshot`), or (b) it is dropped in favour of `BFS-004`'s single conditional `PUT` per `Flush`/`Release`,
-which is what the surface already specifies and is one request instead of 1024.
+**Disposition (BFS-014):** `BFS-004` §6 wins — the staging pair is removed from §5.2 and the error shape is
+aligned to `BFS-004` §5.1; §5.0 carries the per-axis table and the reasoning, including the one capability
+staging had that a single `PUT` does not (resumability of an interrupted large write) and where that capability
+now stands. `BFS-004` §6.2 records the rejection from the server side so it is not re-litigated.
 
-**F-2 (PARTLY RESOLVED) — the delegated op list: §6.1 versus `BFS-004` §3 E-4's catalogue.** §6.1 lists
-`status`, `diff`, `rev-parse`, `ls-files`, `log`, `snapshot`, `changes`; `BFS-004`'s catalogue is
+**F-2 (RESOLVED by BFS-014) — the delegated op list: §6.1 versus `BFS-004` §3 E-4's catalogue.** §6.1 listed
+`status`, `diff`, `rev-parse`, `ls-files`, `log`, `snapshot`, `changes`; `BFS-004`'s catalogue was
 `capabilities`, `status`, `diff`, `rev-parse`, `ls-files`, `snapshot`, `events`, `watch`.
 
-- `changes` → **`events`**: resolved here (§4.4 and the §6.1 row). It is the poll form of the invalidation
-  channel, and `BFS-004` §4.2's capability document pins the name —
-  `extensions.watch.modes.poll` = `"X-Bunker-Op: events"`.
-- `log` → **OPEN.** `BFS-004` has no `log` op, so a client built from §6.1 that calls `log` receives
-  `400` + `op_unknown` from a server built from `BFS-004`: the capability the client offers as `bunker fs log`
-  is not reachable. It is genuinely wanted (bounded `-1` / `--oneline -N`; 10.32 s over sshfs, PRD `:27`), so
-  the recommendation is that **`BFS-004`'s catalogue gains `log`** in a follow-up row, rather than this side
-  losing it.
-- `capabilities` and `watch` are absent from §6.1's list although §4.1 and §4.4 item 1 both depend on them — a
-  completeness gap, not a disagreement (the list reads as "the ops this client uses").
+- `changes` → **`events`**: resolved in §4.4 and the §6.1 row (`BFS-004` §4.2's capability document pinned the
+  name — `extensions.watch.modes.poll` = `"X-Bunker-Op: events"`).
+- `log` → **`BFS-004`'s catalogue gains it** (BFS-014's decision, argued in §5.0). `log` is a read-only git
+  query of exactly the class the other delegated ops are (`diff`, `rev-parse`), its cost is measured
+  (10.32 s over sshfs, PRD `:27`), and dropping it would delete a capability BFS-005's criterion 4 names.
+  `BFS-004` §3 E-4's catalogue and §4.2's document now carry it, **bounded** (`limit?` with a server maximum;
+  an unbounded log stays refused rather than delegated). Because a catalogue entry is not an implemented op,
+  the server still answers a structured `501` + `capability_unavailable` (`scope=build`, `phase=C5`) until C5
+  lands it — never `400 op_unknown`, which is the failure this finding was about. The residual is on the
+  implementation side, and `BFS-004` §11's **A-12** is where it is graded.
+- `capabilities` and `watch` were absent from §6.1's list although §4.1 and §4.4 item 1 both depend on them —
+  a completeness gap, not a disagreement: §6.1's list is now stated as "the ops this client uses" **plus** the
+  two it depends on for the handshake, and it is aligned to `BFS-004`'s catalogue verbatim.
 
-**F-3 (OPEN) — the delegated request body: §6.1 versus `BFS-004` §3 E-4.** §6.1 shows
+**F-3 (RESOLVED by BFS-014) — the delegated request body: §6.1 versus `BFS-004` §3 E-4.** §6.1 showed
 `{"op":"diff","args":{"stat":true,"cached":false,"refs":["HEAD"]}}` — the op **in the body**, arguments
 nested under `args`. `BFS-004` puts the op in the `X-Bunker-Op` **header** and the arguments **flat** in the
-body (`{"path":"src","short":true}`), from a fixed per-op vocabulary with no wrapper; its `diff` arguments
-are `path?`, `staged?`, `stat_only?` — there is no `refs` argument at all, so §6.1's "over allow-listed refs"
-has no counterpart on the server. Interop impact: **every** delegated call in §6 fails the other side's
-argument parser. Impact on §4/§4.4: **zero** — the `watch` and `events` bodies are `paths?`/`since_seq?`,
-flat on both sides.
-**Recommendation:** one side adopts the other's shape; `BFS-004`'s (header op, flat args) is the documented
-one and needs no second spelling. The `refs` argument is a separate decision: either `BFS-004`'s `diff` gains
-it, or §6.1 drops it.
+body (`{"path":"src","short":true}`), from a fixed per-op vocabulary with no wrapper. Interop impact was:
+**every** delegated call in §6 failed the other side's argument parser. Impact on §4/§4.4: **zero** — the
+`watch` and `events` bodies are `paths?`/`since_seq?`, flat on both sides.
+**Disposition:** `BFS-004`'s shape wins (`X-Bunker-Op` header + flat args — it is the documented one, it is
+what the landed server build parses, and no second spelling is needed); §6.1's example and prose are rewritten
+to it. The plural `refs` is **dropped** in favour of the single bounded `ref?` argument `BFS-004`'s `rev-parse`
+already spells — added to `diff` in the same row, so the measured `git diff --stat HEAD` case
+(M6/M7) survives as `{"path":"…","stat_only":true,"ref":"HEAD"}` and no new concept is introduced. The
+allow-list is the server's: a value outside it is `400 bad_arguments`, never a best-effort rev-spec.
 
 **F-4 (RESOLVED here, §4.4) — capability discovery and the stream's refusals.** §4.4 item 1 said the
 handshake "answers `capability_unavailable` naming the watcher"; item 2 triggered the fallback on
@@ -523,22 +530,30 @@ entity-tag; §5.1/§5.2 quote it correctly and §0 is now aligned. The digest it
 specs say `sha256:<64 lowercase hex>` over the **raw file bytes** (never a git blob hash), and both refuse
 mtime as a validator.
 
-**R-1 (recorded) — the heartbeat period is unpinned by `BFS-004`.** §4.4's idle rule needs a heartbeat at
-least every 30 s and switches to poll after 90 s of silence; `BFS-004` §3 E-6 and §10.5 define the `heartbeat`
-event but name no period (`BFS-004:319`, `BFS-004:909`). This spec therefore places a **requirement** on the
-server — heartbeat at ≤ 30 s while a stream is open, ideally named in the capability document's `watch`
-block so the client adapts instead of assuming. Until `BFS-004` pins it, a server that heartbeats slower than
-30 s makes a healthy stream look dead at 90 s.
+**R-1 (CLOSED by BFS-014) — the heartbeat period was unpinned by `BFS-004`.** §4.4's idle rule needs a
+heartbeat at least every 30 s and switches to poll after 90 s of silence; `BFS-004` §3 E-6 and §10.5 defined
+the `heartbeat` event but named no period. This spec had therefore placed a **requirement** on the server —
+heartbeat at ≤ 30 s while a stream is open. `BFS-004` now **pins and declares** it: the period is ≤ 30 s
+(`BFS-004` §3 E-6), it is named in the capability document so the client adapts instead of assuming
+(`extensions.watch.heartbeat_ms`, §4.2), and §10.5's example carries it on the wire. A server that heartbeats
+slower than 30 s can no longer make a healthy stream look dead at 90 s without contradicting its own document;
+a client that reads the declared value adapts to a slower server rather than downgrading it.
 
-**R-2 (recorded) — no stated bound on `paths[]` per event.** `BFS-004` caps neither how many paths one
-`invalidate` carries nor how many events may share a `seq`. The client's §4.2 work is per path, so its
-per-event cost is proportional to that list; a stated cap (or a stated batching rule) is what would let it
-size a buffer instead of growing one.
+**R-2 (FIXED by BFS-014) — no stated bound on `paths[]` per event.** `BFS-004` capped neither how many paths
+one `invalidate` carries nor how many events may share a `seq`. The client's §4.2 work is per path, so its
+per-event cost is proportional to that list, and a stated cap is what lets it size a buffer instead of growing
+one. `BFS-004` §3 E-6 now caps a single event at **4096 path entries** and declares that number
+(`extensions.watch.max_paths_per_event`, §4.2) — a **chosen default**, marked as such, not a measurement; the
+escape above the cap is `overflow` (drop everything, re-snapshot), which is the declared action rather than a
+silently truncated list. The client sizes for the declared bound and treats a longer list as `overflow` —
+never as a partial drop.
 
-**R-3 (recorded) — `tree` is not on every line.** In `BFS-004` the `tree` field appears on §10.5's
-`heartbeat` and `overflow` examples (`BFS-004:909–910`) but not on §3 E-6's (`BFS-004:319–320`). The client
-must not require `tree` per line: it takes the tree from the stream response header `X-Bunker-Tree`
-(`BFS-004:906`) and treats a differing per-line `tree` as a tree change — never as a parse error.
+**R-3 (FIXED by BFS-014) — `tree` was not on every line.** In `BFS-004` the `tree` field appeared on §10.5's
+`heartbeat` and `overflow` examples but not on §3 E-6's. `BFS-004` now states that `tree` is present on
+**every** event line — `invalidate`, `heartbeat` and `overflow` alike — and its §3 E-6 examples match §10.5.
+The client's rule is unchanged and is restated because it is the reason the field is required: it takes the
+tree from the stream response header `X-Bunker-Tree` (`BFS-004` §10.5) and treats a differing per-line `tree`
+as a tree change — never as a parse error.
 
 ---
 
@@ -546,6 +561,102 @@ must not require `tree` per line: it takes the tree from the stream response hea
 
 **Contract:** a write carries an expected content hash; a mismatch **refuses** and names the current hash.
 **Content hash, never mtime** (accepted criterion 3).
+
+### 5.0 Reconciliation with `BFS-004` — the write path, and which side won
+
+**Why this note exists.** The same cause as §4.0: `BFS-005` and `BFS-004` were authored in one wave although
+this spec depends on that one, so §5 was written without the surface spec in hand. §4 reconciled the
+invalidation channel. This section reconciles the **write path**, which `BFS-013`'s audit left open as its
+finding F-1 — deliberately, because it is outside that channel and because it is a *design* disagreement rather
+than a spelling one. Two protocols for one operation is the defect class this repository has now paid for
+twice, and `BFS-008` (the FUSE client) must be built against exactly one of them.
+
+**The two candidates.**
+
+- **A — staging-then-publish** (what this spec had): one `PUT /fs/stage/<token>` per chunk, carrying
+  `X-Bunker-Stage-Offset: N`, then a `POST /fs/publish` carrying `If-Match` and `{stage,size,hash}`.
+- **B — one conditional `PUT /dav/<path>`** (`BFS-004` §6): the whole file in one request, `If-Match` plus an
+  optional `X-Bunker-Hash`, refused `412`.
+
+**`B` wins. Four reasons, each of which is a measurement or a property of the surface it has to live in:**
+
+1. **`A`'s cost *is* what makes it resumable — the two cannot be separated.** `A`'s offset header exists so a
+   client can append in pieces and resume after a failure; that is precisely why `A` cannot be one request.
+   §5.2's own opening sentence said publication must be "a single, whole-file, preconditioned call — never one
+   call per FUSE WRITE op", and the measured granularity is **1023 WRITE ops for one 4 MiB file** (M14, 94–8,106
+   bytes each). Read as one staging request per WRITE op, `A` is 1023 sequential requests — `409` on any offset
+   gap or overlap forbids pipelining them — at one RTT each: **189.50 s (1023 × 185.24 ms, M1)**, and **8.06 s even
+   at h2's most generous measured per-request figure (1023 × 7.88 ms, M10)**; `B` is **one** request. Read instead as
+   "the client batches", the offset header has no purpose left and the client must buffer, contradicting §5.4's
+   own claim that its write memory is one chunk rather than the file. `A` cannot be repaired by batching.
+2. **`B` is the protocol that exists in code; `A` is not.** `BFS-006` landed the surface —
+   `internal/server/webdav/handler.go`'s `handlePut` with `conflict_test.go`'s three refusal cases
+   (`hash_mismatch`, `identical_content`, `precondition_failed`), in `BFS-004`'s verdict vocabulary. Nothing in
+   the repository implements `/fs/stage/<token>` or `/fs/publish`: `A` was a design written into a client spec,
+   never a server behaviour. Choosing `A` would not be choosing a better protocol, it would be commissioning a
+   second one and rewriting shipped refusal tests to a different vocabulary.
+3. **`A` needs a mutation inside an extension layer that declares itself read-only.** `BFS-004` §3's first
+   invariant is "No extension operation mutates the tree. Mutations are performed with the standard methods
+   (`PUT`, `DELETE`, `MKCOL`, `MOVE`, `COPY`, `LOCK`)" — which is *why* `POST` is a safe carrier and *why* A-9
+   can assert that every op leaves the tree byte-identical. `POST /fs/publish` is a mutation: as an `X-Bunker-Op`
+   it would falsify the invariant, the capability document's `"read_only": true`, and A-9's mutation-control
+   test. (This is also why BFS-013's own suggestion — "staging/publish becomes a declared pair of `X-Bunker-Op`
+   operations, like `snapshot`" — does not hold: `snapshot` is read-only; a publish is not. Any future home for
+   `A` has to be a numbered extension with its own retry-safety argument, not an op.)
+4. **`A`'s one real advantage is absorbed, not lost.** `A` evaluated its precondition *after* the bytes were
+   staged and immediately before the commit. A naive reading of `B` — check at the request head, then transfer
+   the body — leaves the entire body-transfer window in which a concurrent writer's edit could be overwritten.
+   That is a genuine lost-update window, and this reconciliation does not hand-wave it: `BFS-004` §6.1 step 5 now
+   requires the precondition to be **re-validated inside the commit**, against the current bytes, immediately
+   before the atomic rename — not merely at the head. Same narrow window as `A`'s, without `A`'s second protocol.
+
+**The losing capability, named (acceptance criterion 2).** `A`'s remaining value is the **resumption of an
+interrupted large write**: bytes already on the agent survive a dropped connection, so a client could continue
+from the last acknowledged offset instead of re-sending the file. It is **not needed for v1**, for three stated
+reasons rather than by assumption:
+
+- **Its value is bounded by a transfer cost nobody has measured.** Every premise in this spec and in `BFS-004` is
+  round-trip-bound (M1 is 185.24 ms RTT; neither document carries a bandwidth figure for this link), so
+  "re-sending the file is expensive" is itself an unmeasured assumption — exactly the shape of premise both
+  specs refuse to build on (§4.3's honest gap; `D-3`'s nonexistent 33–36 s figure).
+- **It buys no correctness.** Under `B` the target is never partially visible (temp file + rename), an
+  interrupted write fails loudly inside the 30 s deadline with a named cause (§7.2), and the caller retries. A
+  mount is a filesystem, not a resumable-upload service; `A` does not remove the caller's error either, it only
+  shortens the client's path back to a consistent state.
+- **Its deferral is recorded, not silent.** If resumption is ever wanted it returns as a **declared numbered
+  extension** in `BFS-004` §3 (request/response/error shapes of its own, plus a retry-safety argument, since it
+  cannot be an `X-Bunker-Op`), triggered by a measurement: a mid-write transport failure on a large file where
+  the re-send cost dominates the resumption bookkeeping. Until that measurement exists, the protocol is one
+  `PUT`.
+
+**What now says the same thing (acceptance criterion 1).** The write protocol is **`BFS-004` §6** — §6.1's
+exchange, §6.2's decision record — with its precondition mechanics in `BFS-004` §3 E-2 and its single `PUT` row
+in §2.1; this spec consumes it in **§5.2** (the exchange, verbatim) and §5.3 (where the base hash comes from).
+The error vocabulary is **`BFS-004` §5.1's single table**, consumed by this spec's **§5.2** and **§7.1**:
+`hash_mismatch` (with both hashes), `precondition_failed` (absence — RFC-plain, no hash detail),
+`identical_content` (`204` + `X-Bunker-Noop`), `body_hash_mismatch` (`422`). There is no second verb, no second
+code, and no `"current": null` anywhere in the pairing: a server that cannot name a current hash says
+`precondition_failed` instead of reporting a null one.
+
+| # | Axis | What this spec said (before) | What `BFS-004` says (wins) | Disposition |
+|---|---|---|---|---|
+| 1 | Verb + resources | `PUT /fs/stage/<token>` per chunk, then `POST /fs/publish` | one `PUT /dav/<path>` | resolved — §5.2 |
+| 2 | Requests per file | 1023 staging requests + 1 publish (1023 WRITE ops, M14) | **1** | resolved — §5.2; §5.0 reason 1 |
+| 3 | Precondition carrier | `If-Match` on the publish call | `If-Match` + optional `X-Bunker-Hash` on the `PUT` | resolved — §5.2 |
+| 4 | Where the precondition is evaluated | after staging, immediately before the commit | at the head **and re-validated inside the commit** (`BFS-004` §6.1 step 5, added by this row) | resolved by **absorbing** the advantage — §5.0 reason 4 |
+| 5 | A landed write | `200 {etag, rev}` in a JSON body | `201` (created) / `204` (replaced) + `ETag` / `X-Bunker-Hash` / `X-Bunker-Rev` headers | resolved — §5.2 |
+| 6 | Failed precondition, base known | `412 {"error":"hash_mismatch","expected":…,"current":…}` | `412` + `X-Bunker-Verdict: hash_mismatch` + `X-Bunker-Current-Hash` + `X-Bunker-Expected-Hash`, body `b:hash-mismatch` | resolved — §5.2 |
+| 7 | Failed precondition, target absent | `412 {"error":"hash_mismatch","current":null}` | `412` + `precondition_failed`, no hash detail | resolved — §5.2; the `null` is gone (criterion 1) |
+| 8 | Hash of the arriving bytes | inside the publish body (`hash`) | `X-Bunker-Hash` request header; mismatch ⇒ `422 body_hash_mismatch` | resolved — §5.2 |
+| 9 | Stale base but identical bytes | not specified | `204` + `identical_content` + `X-Bunker-Noop`, no disk write, mtime preserved (`BFS-004` D3) | adopted as a case — §5.2 |
+| 10 | Offset continuity, staging lifecycle | `X-Bunker-Stage-Offset`, `409` on gap/overlap, staging object deleted or reaped at 10 min idle | no such concept | **removed** — §5.2, §5.4, §7.1 (`stage_protocol`), §7.2, §9 |
+| 11 | Client write memory | one chunk (the staging object is the buffer) | one chunk (streamed `PUT` body; the server buffers to a temp file, not the client) | unchanged in effect — §5.4 restated |
+| 12 | Atomicity / no partial file | target untouched until publish | temp file + rename; a refused or killed request leaves the previous bytes intact | equal — `BFS-004` §2.1, §6.1 step 4 |
+| 13 | Artifacts inside the served tree | none (staging lived outside it) | `.davtmp-*` sibling, excluded from every listing, `GET` and `snapshot` | resolved — `BFS-004` §2.1 now states the exclusion |
+| 14 | Resumption of an interrupted large write | resume from the last acknowledged offset | whole-file retry | **capability deferred, not deleted** — §5.4 names it; a candidate numbered extension in `BFS-004` with a measurement trigger |
+| 15 | Delegated op vocabulary | `status, diff, rev-parse, ls-files, log, snapshot, changes` | `capabilities, status, diff, rev-parse, ls-files, snapshot, events, watch` | resolved — F-2: the catalogue gains a bounded `log`, `changes`→`events`, §6.1 aligned |
+| 16 | Delegated request shape | `{"op":…,"args":{…}}` in the body, incl. `refs:[…]` | `X-Bunker-Op` header + flat args; no plural refs | resolved — F-3: `refs` → the bounded `ref?` `rev-parse` already spells |
+| 17 | Error vocabulary | two vocabularies in one spec (this spec's JSON codes plus `BFS-004` §5.1) | one table (`BFS-004` §5.1), body-carried | resolved — §5.2/§7.1 consume it; criterion 1 |
 
 ### 5.1 Why the hash, and why mtime is only ever a cache key
 
@@ -564,47 +675,66 @@ function, one representation, three uses.
 
 ### 5.2 The exchange (accepted criterion 3)
 
-Publication is a single, whole-file, preconditioned call — never one call per FUSE WRITE op (there are
-**1023** of those for a 4 MiB file: M14).
+Publication is **one whole-file conditional `PUT`** — `BFS-004` §6's protocol, consumed here verbatim — never one
+call per FUSE WRITE op (there are **1023** of those for a 4 MiB file: M14). The client streams each FUSE chunk
+straight into the request body and the server decides the write when the body ends. Nothing below is a second
+spelling of anything.
 
 ```
 client                                                      agent / bunkerd
   │ FUSE WRITE ops (chunks)                                    │
-  ├── PUT  /fs/stage/<token>          X-Bunker-Stage-Offset: N ───────▶  append to staging object
-  │      (0 … 1023 chunks; strict offset continuity, 409 on gap/overlap)
-  │                                                                    │
-  │ FUSE Flush / Fsync / Release                                       │
-  ├── POST /fs/publish  If-Match: "sha256:<expected>" ────────────────▶  compare against current content hash
-  │      {stage:<token>, size:N, hash:"sha256:<new>"}                  │
-  │                                                                    │
-  │◀── 200 {etag:"sha256:<new>", rev:411}  ── write landed, revision bumped
-  │        …or…
-  │◀── 412 {"error":"hash_mismatch",                                   │
-  │          "expected":"sha256:<expected>",                           │
-  │          "current":"sha256:<current>",     ← NAMED, both hashes     │
-  │          "etag":"sha256:<current>"}                                │
-  │     staging object DELETED; target file byte-identical to before    │
+  ├── PUT /dav/<path>                                        ──▶  body streamed in; server writes .davtmp-* ✱
+  │      If-Match: "sha256:<expected>"   (quoted, strong)          precondition evaluated per BFS-004 §6.1 and
+  │      X-Bunker-Hash: sha256:<new>     (the arriving bytes)      re-validated inside the commit
+  │      Content-Type: …                                            │
+  │      (body = the whole file — ONE request, not one per chunk)   │
+  │                                                                 │
+  │◀── 201 Created (path was absent) / 204 No Content (replaced)     │
+  │      ETag: "sha256:<new>"   X-Bunker-Hash: sha256:<new>          │
+  │      X-Bunker-Rev: <opaque>   X-Bunker-Tree: <token>             │
+  │        …or…                                                      │
+  │◀── 412 Precondition Failed                                       │
+  │      X-Bunker-Verdict: hash_mismatch                             │
+  │      X-Bunker-Expected-Hash: sha256:<expected>                   │
+  │      X-Bunker-Current-Hash:  sha256:<current>    ← NAMED         │
+  │      body: <D:error><b:hash-mismatch>…                           │
+  │      temp file removed; target file byte-identical to before      │
 ```
+
+✱ The temp sibling is a `.davtmp-*` file in the target's own directory (same filesystem, so the rename is
+atomic) and is excluded from every listing, `GET` and `snapshot` answer (`BFS-004` §2.1) — no client ever sees it.
 
 | Case | Server | Client sees |
 |---|---|---|
-| precondition matches | writes, computes new content hash, returns `200` + `ETag: "sha256:<new>"` + new `X-Bunker-Rev`, and emits an `invalidate` event (`BFS-004` §3 E-6; `seq` is per tree) to other clients of the same tree | success |
-| precondition mismatches | **412**, no byte written, `current` names the server's hash | refusal: `ESTALE`, names both hashes |
-| target path absent and `If-Match` present | **412** with `"current": null` — one refusal class for "the state I expected is not there", so a caller never has to branch on 404-vs-412 | refusal: `ESTALE` |
-| target absent and `If-None-Match: *` | creates | success |
-| staging offsets gap/overlap | **409**, staging object destroyed | `EIO`, named `stage_protocol` |
-| write to a path outside the mount root | **403** | `EPERM` |
+| precondition true, path replaced | `204` + `ETag`/`X-Bunker-Hash` for the new bytes + the new `X-Bunker-Rev`; emits an `invalidate` event for the path (`BFS-004` §3 E-6; `seq` is per tree) | success |
+| precondition true, path created | `201` + the same headers | success |
+| precondition false, arriving bytes differ | **412** + `hash_mismatch` + **both** hashes in header **and** body; nothing written | refusal: `ESTALE`, both hashes named |
+| precondition false, arriving bytes identical | `204` + `identical_content` + `X-Bunker-Noop: 1`; no disk write, mtime preserved (`BFS-004` D3) | success (a reported no-op) |
+| target path absent and `If-Match` present | **412** + `precondition_failed` — no hash detail, and **no `"current": null`**; the remedy differs from a stale-base refusal, so the code differs (`BFS-004` §3 E-2) | refusal: `ESTALE`, cause `conflict`, the server's code recorded verbatim |
+| target absent and `If-None-Match: *` | creates ⇒ `201` | success |
+| `X-Bunker-Hash` declared and the arriving bytes hash differently | **422** + `body_hash_mismatch`, nothing written | `EIO`, cause `server_error`; the write is refused, not landed |
+| write to a path outside the mount root | **403** (`workspace_invalid`) | `EPERM` |
 
-**What the client does on mismatch** (accepted criterion 3, both halves):
+**What the client does on a `412`** (accepted criterion 3, both halves):
 
-1. It **does not retry blindly, does not merge, does not overwrite.** The staged bytes are discarded.
-2. The caller's write fails with **`ESTALE`** (§7.1); `fsync` fails with `ESTALE`; `Release` records the
-   refusal. *(POSIX `close(2)` ignores errors — which is precisely why the refusal is also written to the
-   mount's conflict log and surfaced in `bunker fs conflicts`, rather than relying on the syscall alone.)*
-3. The path's base hash is **updated to the server's `current`**, so a caller that re-reads and retries
-   starts from truth rather than from its stale belief.
+1. It **does not retry blindly, does not merge, does not overwrite.** The refusal is terminal for that write;
+   the caller's bytes are discarded (there is nothing staged to discard under this protocol — the server's temp
+   file is already gone).
+2. The caller's write fails with **`ESTALE`** (§7.1), cause `conflict`; `fsync` fails with `ESTALE`; `Release`
+   records the refusal. *(POSIX `close(2)` ignores errors — which is precisely why the refusal is also written to
+   the mount's conflict log and surfaced in `bunker fs conflicts`, rather than relying on the syscall alone.)*
+   The **server's own machine code** — `hash_mismatch` or `precondition_failed` — is recorded with it, verbatim.
+   The client must not require a current hash to be present, and never reads its absence as "no information":
+   the two codes exist precisely so absence is *named* rather than reported as a null (`BFS-004` §3 E-2).
+3. The path's base hash is **updated from the refusal, never kept stale**: `hash_mismatch` ⇒ the server's
+   `X-Bunker-Current-Hash` becomes the base (a re-read-and-retry then starts from truth rather than from the
+   caller's stale belief); `precondition_failed` ⇒ the base becomes **absent**, so the next write uses
+   `If-None-Match: *` and the caller learns the file is *gone* rather than that it changed. Both are the
+   §5.3 "no base" case arriving through a refusal instead of through a cache miss.
 4. The refusal is counted and listed: `conflicts.refusals_total`, `conflicts.last` = `{path, expected,
-   current, ts}` in `bunker fs status --json`, and `bunker fs conflicts [--json]` for the full list.
+   current?, code, ts}` in `bunker fs status --json`, and `bunker fs conflicts [--json]` for the full list.
+   `current` is present only when the server named one (`hash_mismatch`); `code` always carries the server's
+   machine code, so the two refusal classes stay distinguishable after the fact.
 5. Recovery is the caller's loop, per the PRD: re-read → merge → retry, **closed when a write lands with a
    matching hash** (`PRD-bunker-fs.md:190`). If the class *recurs on the same path*, the escalation is the
    in-tree **lease registry** — `LOCK`/`UNLOCK` back onto `<git-common-dir>/agent-leases.json`, keyed by
@@ -626,8 +756,8 @@ The precondition's value comes from **our cache, not from the caller** — a FUS
 
 | Situation | Base hash | Result |
 |---|---|---|
-| path was read (cache hit or miss) | the hash of the bytes we served | `If-Match: sha256:<that>` |
-| path never read; target **exists** | **fetch-then-check**: `HEAD`/`GET`-metadata learns the current hash; adopt it as the base | `If-Match: sha256:<just-learned>` |
+| path was read (cache hit or miss) | the hash of the bytes we served | `If-Match: "sha256:<that>"` |
+| path never read; target **exists** | **fetch-then-check**: `HEAD`/`GET`-metadata learns the current hash; adopt it as the base | `If-Match: "sha256:<just-learned>"` |
 | path never read; target **absent** | none | `If-None-Match: *` |
 | base invalidated without a hash in the event | marked `unknown` → same as "never read" | fetch-then-check |
 
@@ -637,22 +767,37 @@ Adopting the server's hash at write time means *"I intend to replace what is the
 still impossible, because the base is read from the server in the same exchange that decides the write. The
 alternative (`PUT` unconditionally) **is** the lost update and is rejected.
 
+The base hash is carried as a **quoted strong entity-tag** (`If-Match: "sha256:<64 hex>"`, `BFS-004` §3 E-1)
+and the server evaluates it both at the request head and again inside the commit (`BFS-004` §6.1 step 5), so
+"the base was valid when I started sending" is not enough for a write to land: it must still be valid when the
+bytes are renamed into place. §5.0 explains why that second evaluation exists — it is the property the rejected
+staging design had, kept without its second protocol.
+
 ### 5.4 What the binding cannot give us here, stated plainly
 
 - **A caller-supplied precondition is impossible.** No FUSE syscall carries "expect hash H"; the base hash
   is always the client's own record. A tool that wants "only write if unchanged since *I* read it" must use
   the verb surface (Path A), not the mount.
 - **The precondition is per file, not per chunk.** The 1023-op chunk stream (M14) is not 1023
-  preconditions; staging + one publish is what makes a content hash meaningful.
+  preconditions. **One whole-file `PUT` carrying one `If-Match` is what makes a content hash meaningful** —
+  and that is exactly the call `BFS-004` §6 specifies; the rejected staging pair was the other way of getting
+  there, at 1024 requests instead of 1 (§5.0).
 - **mmap writers** produce page-granular WRITE ops at offsets we did not choose (`BFS-003 §9.5`, undecided
   there). This spec's recommendation: base hash adopted at the **first** write-open or first WRITE op,
-  publication at `Release` — the same rule as §5.3, and the residual (whether a kernel can leave dirty
-  mmap pages unpublished at Release) is carried as Open decision **D-4** with its check.
-- **Client RAM is not the write buffer.** Chunks stream straight to the agent's staging object, so the
-  client's per-write memory is one chunk (**≤ 8,106 bytes** measured, M14), not the file. An orphaned
-  staging object (client died mid-write) is reaped by the agent after 10 min idle or on mount disconnect;
-  the **target file is untouched until publish**, so an interrupted write can never leave a partial file
-  (which is `AC-6`'s "no partial file is left behind", `PRD-bunker-fs.md:131`).
+  publication (the `PUT`) at `Release` — the same rule as §5.3 — and the residual (whether a kernel can
+  leave dirty mmap pages unpublished at Release) is carried as Open decision **D-4** with its check.
+- **Client RAM is not the write buffer.** Chunks stream straight into the `PUT` request body, so the
+  client's per-write memory is one chunk (**≤ 8,106 bytes** measured, M14), not the file; the server
+  accumulates into the `.davtmp-*` sibling §5.2 names and renames it into place only once the precondition
+  holds. The **target file is untouched until that rename**, so an interrupted write can never leave a partial
+  file (which is `AC-6`'s "no partial file is left behind", `PRD-bunker-fs.md:131`) — the guarantee the staging
+  design existed to provide, kept after its removal.
+- **What is lost, named rather than buried.** An interrupted **large** write is not resumable: `BFS-004` §6 has
+  no staging object, so a client whose transport dies 90 % into a 64 MiB body re-sends the file after the
+  failure instead of continuing from an offset. §5.0 disposes of this deliberately (the failure is loud and
+  bounded, the target is never partial, the retry is the caller's) and records the trigger that would bring the
+  capability back as a **declared numbered extension** in `BFS-004` §3. Until that measurement exists, there is
+  one write protocol — the point of this row.
 
 ---
 
@@ -665,22 +810,32 @@ agent and returned in **one call**.
 
 | Op (`X-Bunker-Op:`) | What it returns | Why it is delegated |
 |---|---|---|
+| `capabilities` | the capability document (`BFS-004` §4.2) | the handshake every other op is discovered through (§4.4); empty body |
 | `status` | `git status --porcelain=v2` (also `--short`, `-uno`) | walks the tree; **STALL on sshfs** (M4), 1.51 s on NFS (M9) |
-| `diff` | `git diff` / `--stat` / `--numstat` / `--cached`, over allow-listed refs | **the ceiling case**: 32.74 s on NFS (M7), **STALL 45.09 s on WebDAV** (M6) |
+| `diff` | `git diff` / `--stat` / `--numstat` / `--cached`, with the bounded `ref?` argument (`BFS-004` §3 E-4) for the `git diff --stat HEAD` case | **the ceiling case**: 32.74 s on NFS (M7), **STALL 45.09 s on WebDAV** (M6) |
 | `rev-parse` | `HEAD`, `HEAD~1`, branch names — allow-listed | 4.52 s / 4.11 s on sshfs (PRD `:26`); 0.11 s native-class |
 | `ls-files` | tracked paths | 2.72 s / 2.41 s on sshfs (PRD `:29`) |
-| `log` | **bounded** (`-1`, `--oneline -N`): 10.32 s / 10.12 s on sshfs (PRD `:27`) — unbounded log is refused rather than delegated. **Not in `BFS-004`'s op catalogue** — see §4.5 F-2 | walks the commit graph |
+| `log` | **bounded** (`limit?`, `--oneline`): 10.32 s / 10.12 s on sshfs (PRD `:27`) — unbounded log is refused rather than delegated. **In `BFS-004`'s catalogue as of this reconciliation** (§4.5 F-2; bounded, and served as a structured `capability_unavailable` until slice C5 lands it) | walks the commit graph |
 | `snapshot` | the subtree metadata for `READDIRPLUS`/`Lookup` (§6.3) | the N-round-trips→1 call that makes the walk free (§6.2) |
 | `events` | the poll-mode event list + the tree revision from the E-4 envelope (§4.4) | one call per interval instead of N stats |
+| `watch` | the stream form of the same channel (§4.1) | the push half of the invalidation channel |
+
+**The op list above is `BFS-004` §3 E-4's catalogue verbatim** — including `capabilities` and `watch`, which
+§4.1 and §4.4 depend on for the handshake. A name that is not in the catalogue is a `400 op_unknown`; a name
+that is in the catalogue but not in the running build answers a structured `501 capability_unavailable` naming
+the slice (`BFS-004` R3, §11's A-12). Nothing here is a second vocabulary.
 
 **Never delegated, by rule:** anything that *executes*. The op list is a **fixed allow-list** executed by
-`bunkerd` on the agent — the request body is a JSON object of structured fields
-(`{"op":"diff","args":{"stat":true,"cached":false,"refs":["HEAD"]}}`), **never a shell command string**, so
-the mount remains "edits, never execution" (`PRD-bunker-fs.md:260`, `PRD-bunker-remote-editing.md`).
-Unknown ops, unknown fields and non-allow-listed refs are **400**, never a best-effort parse.
+`bunkerd` on the agent: the op is carried in the **`X-Bunker-Op` request header** and its arguments are **flat
+fields in the JSON body** — `X-Bunker-Op: diff` with `{"path":"src","stat_only":true,"ref":"HEAD"}` — **never a
+shell command string** and never a nested `{"op":…,"args":{…}}` envelope, so the mount remains "edits, never
+execution" (`PRD-bunker-fs.md:260`, `PRD-bunker-remote-editing.md`). Unknown ops, unknown fields, and a `ref`
+outside the server's allow-list are **400**, never a best-effort parse. (This replaces §6.1's pre-reconciliation
+`{"op":"diff","args":{"stat":true,"cached":false,"refs":["HEAD"]}}`, which no server could parse — §4.5 F-3; the
+plural `refs` becomes the single bounded `ref?` that `BFS-004`'s `rev-parse` already spells.)
 
-*(Wire spelling — verb, base path, header names — is `BFS-004`'s; the semantics and the op list are fixed
-here. The `X-Bunker-*` header family is already this repo's convention: `X-Bunker-TLS-Unverified`
+*(Wire spelling — verb, base path, header names, argument vocabulary — is `BFS-004`'s; the client-side semantics
+are fixed here. The `X-Bunker-*` header family is already this repo's convention: `X-Bunker-TLS-Unverified`
 (`internal/audit/tls_unverified.go:43`), `X-Bunker-Chain-Head` (`internal/audit/ship.go:400`).)*
 
 ### 6.2 What it buys, against the measured ceiling (accepted criterion 4)
@@ -757,9 +912,9 @@ Replays the house PRD's criterion 19 — *"the failure surfaces as a bounded tim
 | in-flight request exceeded its deadline | `ENOTCONN` | `unreachable_deadline` | same; one bounded retry on a stream reset, **never** a second one in the read path |
 | stream reset / GOAWAY mid-op | `ENOTCONN` | `unreachable_reset` | re-dial, then fail the op if the deadline passes |
 | server unbound / destroyed / re-created (tree identity changed) | `EREMOTEIO` | `stale_identity` (names **both** identities) | **never auto-adopt a fresh tree**; requires `--recover` (`AC-7` `:132`) |
-| write precondition mismatch | `ESTALE` | `conflict` (names both hashes) | re-read, merge, retry (§5.2) |
-| malformed / 5xx response | `EIO` | `server_error` | report; do not retry blindly |
-| local staging protocol violation | `EIO` | `stage_protocol` | caller retries the write |
+| write precondition mismatch (`412 hash_mismatch`) | `ESTALE` | `conflict` (names both hashes, and records the server's code) | re-read, merge, retry (§5.2) |
+| write precondition failed by an absent target (`412 precondition_failed`) | `ESTALE` | `conflict` (code `precondition_failed`; base becomes absent, §5.2 step 3) | re-read — the file is gone; a create uses `If-None-Match: *` |
+| malformed / 5xx response, or `422 body_hash_mismatch` | `EIO` | `server_error` | report; do not retry blindly |
 
 `ENOTCONN` for all three transport causes is deliberate: **one errno per *recovery* class** (they recover
 identically) with the *cause* named one level up, where a human and a test can both read it. `EREMOTEIO` is
@@ -772,9 +927,8 @@ not do the same with a re-bound tree.
 | Deadline | Value | Kind |
 |---|---|---|
 | bind/connect at mount time | **5 s** | chosen default; failure ⇒ **the mount is refused**, nothing appears at the mountpoint |
-| any in-flight operation (read, write chunk, publish, delegated op) | **30 s** | `AC-6`'s bound (`PRD-bunker-fs.md:131`) — adopted as the cap |
-| event-stream heartbeat / idle switch to poll | 30 s / **90 s** | §4.4 |
-| staging object reap (client gone) | 10 min idle | §5.4 |
+| any in-flight operation (read, write, the write's commit, delegated op) | **30 s** | `AC-6`'s bound (`PRD-bunker-fs.md:131`) — adopted as the cap |
+| event-stream heartbeat / idle switch to poll | 30 s / **90 s** | §4.4 (the 30 s period is `BFS-004` §3 E-6's, declared as `extensions.watch.heartbeat_ms`) |
 
 At the measured 185.24 ms RTT (M1), 30 s is ~160× a round trip: the deadline is a ceiling on the
 pathological case (a server that accepted the connection and then stopped answering — the shape that made
@@ -813,7 +967,7 @@ rclone unbounded), not a normal-case budget. **No retry may extend an operation 
 | **V-1** | **Bound** (`AC-5`): read a tree larger than `--cache-max-size 256M`; sample `du -s --block-size=1` of the cache dir during the run and read `cache.used_bytes` from `bunker fs status --json` | both ≤ 268,435,456, and the two figures agree up to block rounding; `evictions_total > 0` |
 | **V-2** | **Invalidation** (`AC-4`): append to a mounted file **on the agent**; timestamped read before/after, sha256 compared | new content within **≤ 2 s**, no remount, no manual cache clear |
 | **V-3** | **Declared fallback** (`AC-9`): mount an agent with the watcher disabled | mount **succeeds**; `status --json` reports `capability_unavailable` naming the watcher and `invalidation.mode == "poll"` with a non-null `poll_interval_ms`; agent-side edits still visible within ≤ poll interval + RTT |
-| **V-4** | **Refusal** (`AC-3`): two writers, second carries a stale hash | `ESTALE`; the 412 body names **both** hashes; content sha256 before/after identical; `conflicts.refusals_total == 1`; the path's base hash is now the server's `current` |
+| **V-4** | **Refusal** (`AC-3`): two writers, second carries a stale hash | `ESTALE`; the 412 names **both** hashes and its verdict is `hash_mismatch` (`BFS-004` §5.1); content sha256 before/after identical; `conflicts.refusals_total == 1`; the path's base hash is now the server's `X-Bunker-Current-Hash`. **Second arm:** delete the target between read and write ⇒ `412` + `precondition_failed`, `ESTALE`, cause `conflict`, base becomes absent, and **no null `current` appears anywhere in the exchange** |
 | **V-5** | **Kernel half of invalidation**: with a file open and read (so the kernel holds attributes/dentries), edit on the agent, then `stat` | the client's notify calls fire (`InodeNotify` for the changed inode, `EntryNotify` for a rename) and `stat` reflects the agent's values — **not** a TTL-delayed mtime |
 | **V-6** | **Delegation** (`PRD` success 3): `bunker fs status --short` on the 150-file fixture with delegation on vs off | delegated path is measurably faster, output byte-identical; reported against the 32.74 s (NFS) / 45.09 s (WebDAV) / STALL (sshfs) baselines |
 | **V-7** | **Transport kill** (`AC-6`): drop the listener mid-operation | every in-flight op returns `ENOTCONN` within ≤ 30 s with `cause` named; no partial file; recovery is one command |
@@ -834,8 +988,7 @@ Kept in one table so nothing in this spec can be read as a measured number that 
 | LRU key | last **hit**, not last insert | a hot path that is read often enough stays; a one-shot bulk read leaves |
 | `--poll-interval` | 2 s | 0.5 req/s at 185 ms RTT is cheap, and 2 s is the `AC-4` budget itself |
 | watcher debounce | 250 ms | ~1/8 of the 2 s budget, leaving 1.75 s for one RTT + apply |
-| event heartbeat | 30 s; idle→poll at 90 s | three missed heartbeats is unambiguous silence |
-| pool of staging objects on the agent | reaped at 10 min idle / disconnect | matches the mount lifetime, bounds agent disk |
+| event heartbeat | 30 s; idle→poll at 90 s | three missed heartbeats is unambiguous silence; `BFS-004` §3 E-6 now pins the period and §4.2 declares it |
 | deadline: bind 5 s / op 30 s | see §7.2 | 30 s is AC-6's own number |
 | `--on-conflict` | `refuse` | PRD `:319` |
 | `--invalidation` | `auto` (`push` ⇒ push-only, fail loudly if the watcher is absent; `poll` ⇒ poll from the start) | `auto` is the useful default: prefer push, declare the downgrade |
@@ -877,11 +1030,11 @@ there. Reason: §1.1 — a spec may not invent a range; the NFS column has one w
 32.74 s. If the row's author had a different measurement, it needs a provenance line before it can be used.
 
 **D-4 — mmap writers** (`BFS-003 §9.5`).
-→ **Recommend: adopt the base hash at the first write-open or first WRITE op, and publish the whole file at
-`Release`; verify on a real mmap workload whether the kernel can leave dirty pages unpublished at `Release`**
-(check `V-4` extended with an `mmap` writer). Reason: staging makes a per-chunk precondition impossible
-anyway (§5.4), so the mmap case collapses into the ordinary one; what remains genuinely unknown is the
-kernel's flush timing, which is a measurement, not a design choice.
+→ **Recommend: adopt the base hash at the first write-open or first WRITE op, and publish the whole file with
+the conditional `PUT` of §5.2 at `Release`; verify on a real mmap workload whether the kernel can leave dirty
+pages unpublished at `Release`** (check `V-4` extended with an `mmap` writer). Reason: the precondition is
+whole-file and per-file on both sides of the wire (§5.2, §5.4), so the mmap case collapses into the ordinary
+one; what remains genuinely unknown is the kernel's flush timing, which is a measurement, not a design choice.
 
 **D-5 — Snapshot hashing budget.**
 → **Recommend: hash only files ≤ 1 MiB in the `snapshot` response; report `hash: null` above that, and learn
