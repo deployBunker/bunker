@@ -28,10 +28,10 @@
 #   live-green  the same daemon built from the FIXED tree: it must REFUSE, destroy
 #               nothing, count the refusal, and leave /etc/passwd byte-identical.
 #               THIS HOST CARRIES ONLY TWO unknown bunker-* users, which is BELOW
-#               the shipped default limit of five — so this arm sets the limit to
+#               the shipped default limit of three — so this arm sets the limit to
 #               1 to exercise the guard's refusal at the host's real scale, and
 #               both the limit line and the reason are printed in the transcript.
-#               The shipped boundary (five swept / six refused) is proven
+#               The shipped boundary (three swept / four refused) is proven
 #               deterministically by the cells, not by this two-user host.
 #   live    both live arms in order.
 #
@@ -343,7 +343,7 @@ live-green)
 	live_arms_ready || exit 3
 	mkdir -p "$live_root/bin"
 	# This host carries TWO unknown bunker-* users, below the shipped default of
-	# five, so the limit is set to 1 to exercise the refusal at the host's real
+	# three, so the limit is set to 1 to exercise the refusal at the host's real
 	# scale. The reason is printed with the config, in the same transcript.
 	live_config "    unproven_orphan_limit: 1"
 	go build -o "$live_root/bin/bunkerd-fixed" ./cmd/bunkerd || exit 3

@@ -792,27 +792,35 @@ const (
 	ReconcileModeAdopt   = "adopt"
 )
 
-// DefaultUnprovenOrphanLimit is how many orphans an unproven sweep may
-// destroy before the boot-time bulk-destroy guard refuses the pass
+// DefaultUnprovenOrphanLimit is how many orphans an unproven sweep may destroy
+// before the boot-time bulk-destroy guard refuses the pass
 // (REV-BUNKER-P1-PATCH).
 //
-// The number is derived from the largest population a routine CI/battery host
-// actually leaves behind, not chosen for comfort: e2e-full-battery.sh's
-// section 8 spawns a five-agent burst (e2e-agent-2..5 in parallel next to
-// e2e-main) and asserts "5 agents spawned", so a host whose sweep is
-// legitimate carries at most those five unregistered users. Six is already a
-// population no routine sweep produces — and a host whose registry is
-// empty/fresh while six or more bunker-* users it has never heard of exist is
-// the reproduced incident shape (a scratch daemon booting on a host that runs
-// another deployment's agents), so the guard stops there.
+// The number is derived from the populations on either side, measured rather
+// than chosen for comfort:
 //
-// The trade is deliberate and is stated in the evidence bundle: a host with a
-// LARGER leftover set (a dev box carried 9 stale test users at one point —
-// see the observed-state note in internal/agent/gap070_test.go) now refuses
-// the sweep and names the knob to raise. A refusal costs one explicit,
-// greppable config line — the operator is told which one — while a miss costs
-// the agents.
-const DefaultUnprovenOrphanLimit = 5
+//   - ABOVE the guard must catch a DEPLOYMENT. The production host
+//     (bunker-mvp, measured while this row was open) runs FIVE real bunker-*
+//     agents, and the legacy H4F host ran seven; the pool geometry allows far
+//     more (max_agents). A deployment is therefore a population of 4+ users,
+//     and a limit of 5 — the obvious first guess, since e2e-full-battery.sh's
+//     section 8 spawns a five-agent burst (e2e-agent-2..5 beside e2e-main) —
+//     would leave that very host unprotected: five unknown users, five
+//     allowed, sweep proceeds. A threshold that does not cover the deployment
+//     we can actually point at is not a guard.
+//
+//   - BELOW it must not turn into a blanket refusal. A host with a handful of
+//     genuine leftovers still sweeps: three unknown users on an unproven
+//     registry are removed exactly as before. Four or more now REFUSES, and
+//     that refusal is the deliberate cost — it is loud, counted, and names the
+//     one config line (or one env var) that raises the limit. A refused sweep
+//     costs an operator a restart; a missed one costs the agents.
+//
+// The residual is inherent to a threshold and is stated in the evidence bundle:
+// a deployment SMALLER than the limit (a single-tenant host, say) is not
+// protected by it — that is what unproven_orphan_limit: 0 is for, and it is why
+// the knob has no "unlimited" encoding for anyone to reach by accident.
+const DefaultUnprovenOrphanLimit = 3
 
 // Registry defaults. Kept in sync with internal/registry's documented
 // defaults by TestRegistryConfigDefaultsMatchRegistryPackage.

@@ -7,8 +7,8 @@ package agent
 // behaviour RED lives in reconcile_sweep_guard_arms_test.go, which uses only
 // pre-existing surface.
 //
-// The boundary is pinned here in one place: default limit 5 → five unknown users
-// are swept, six are refused with the refusal COUNTED.
+// The boundary is pinned here in one place: default limit 3 → three unknown users
+// are swept, four are refused with the refusal COUNTED.
 
 import (
 	"bytes"
@@ -39,20 +39,18 @@ func unprovenManager(t *testing.T, buf *bytes.Buffer) (*AgentManager, *destroyRe
 	return m, rec
 }
 
-// TestReconcileSweepGuard_BoundaryIsFiveSweptSixRefused pins the threshold on
-// both sides with the counters a reader can check: five unknown users on an
-// unproven registry are swept (the battery's own concurrency burst), six are
-// refused. This is the cell that makes the "small threshold" claim concrete
-// rather than a comment.
-func TestReconcileSweepGuard_BoundaryIsFiveSweptSixRefused(t *testing.T) {
+// TestReconcileSweepGuard_BoundaryIsThreeSweptFourRefused pins the threshold on
+// both sides with the counters a reader can check: three unknown users on an
+// unproven registry are swept, four are refused.
+func TestReconcileSweepGuard_BoundaryIsThreeSweptFourRefused(t *testing.T) {
 	cases := []struct {
 		name          string
 		orphans       int
 		wantDestroyed int
 		wantRefused   int
 	}{
-		{name: "five unknown users — a normal leftovers sweep", orphans: 5, wantDestroyed: 5, wantRefused: 0},
-		{name: "six unknown users — one above the limit", orphans: 6, wantDestroyed: 0, wantRefused: 6},
+		{name: "three unknown users — a normal leftovers sweep", orphans: 3, wantDestroyed: 3, wantRefused: 0},
+		{name: "four unknown users — one above the limit", orphans: 4, wantDestroyed: 0, wantRefused: 4},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -90,13 +88,13 @@ func TestReconcileSweepGuard_BoundaryIsFiveSweptSixRefused(t *testing.T) {
 func TestReconcileSweepGuard_RefusalIsCountedAndActionable(t *testing.T) {
 	var buf bytes.Buffer
 	m, rec := unprovenManager(t, &buf)
-	m.listSystemAgents = func() ([]SystemAgent, error) { return sweepOrphanHost(t, 6), nil }
+	m.listSystemAgents = func() ([]SystemAgent, error) { return sweepOrphanHost(t, 4), nil }
 
 	rep := m.Reconcile(context.Background())
 	log := buf.String()
 
-	if rep.Refused != 6 || rep.Destroyed != 0 {
-		t.Fatalf("report = %+v, want Refused=6 and Destroyed=0", rep)
+	if rep.Refused != 4 || rep.Destroyed != 0 {
+		t.Fatalf("report = %+v, want Refused=4 and Destroyed=0", rep)
 	}
 	if got := rec.calls(); len(got) != 0 {
 		t.Fatalf("refused sweep still destroyed %v", got)
@@ -106,12 +104,12 @@ func TestReconcileSweepGuard_RefusalIsCountedAndActionable(t *testing.T) {
 		"level=ERROR",
 		"action=refuse",
 		"guard=orphan_sweep_guard",
-		"refused_orphans=6",
-		"unproven_orphan_limit=5",
+		"refused_orphans=4",
+		"unproven_orphan_limit=3",
 		"NOTHING was destroyed",
 		"replayed live=0",
 		"created by this boot=true",
-		"agent.reconciliation.unproven_orphan_limit raised above 6",
+		"agent.reconciliation.unproven_orphan_limit raised above 4",
 		"BUNKERD_AGENT_RECONCILIATION_UNPROVEN_ORPHAN_LIMIT",
 		"restore",
 	} {
@@ -123,7 +121,7 @@ func TestReconcileSweepGuard_RefusalIsCountedAndActionable(t *testing.T) {
 	// the threshold in force is never invisible.
 	for _, want := range []string{
 		"agent reconciliation sweep guard armed",
-		"unproven_orphan_limit=5",
+		"unproven_orphan_limit=3",
 	} {
 		if !strings.Contains(log, want) {
 			t.Errorf("boot line missing %q — log:\n%s", want, log)
@@ -142,7 +140,7 @@ func TestReconcileSweepGuard_RefusalTouchesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read registry before: %v", err)
 	}
-	m.listSystemAgents = func() ([]SystemAgent, error) { return sweepOrphanHost(t, 6), nil }
+	m.listSystemAgents = func() ([]SystemAgent, error) { return sweepOrphanHost(t, 4), nil }
 
 	rep := m.Reconcile(context.Background())
 
@@ -186,16 +184,16 @@ func TestReconcileSweepGuard_ZeroLimitIsTheStrictestSetting(t *testing.T) {
 func TestReconcileSweepGuard_RaisedLimitIsTheOperatorEscapeHatch(t *testing.T) {
 	var buf bytes.Buffer
 	m, rec := unprovenManager(t, &buf)
-	m.cfg.Agent.Reconciliation.UnprovenOrphanLimit = 6
-	m.listSystemAgents = func() ([]SystemAgent, error) { return sweepOrphanHost(t, 6), nil }
+	m.cfg.Agent.Reconciliation.UnprovenOrphanLimit = 4
+	m.listSystemAgents = func() ([]SystemAgent, error) { return sweepOrphanHost(t, 4), nil }
 
 	rep := m.Reconcile(context.Background())
 
-	if rep.Destroyed != 6 || rep.Refused != 0 {
-		t.Errorf("report = %+v, want the 6 swept with the limit raised to 6", rep)
+	if rep.Destroyed != 4 || rep.Refused != 0 {
+		t.Errorf("report = %+v, want the 4 swept with the limit raised to 4", rep)
 	}
-	if len(rec.calls()) != 6 {
-		t.Errorf("destroy calls = %v, want 6", rec.calls())
+	if len(rec.calls()) != 4 {
+		t.Errorf("destroy calls = %v, want 4", rec.calls())
 	}
 }
 
@@ -206,16 +204,16 @@ func TestReconcileSweepGuard_DisableIsExplicitAndLoud(t *testing.T) {
 	var buf bytes.Buffer
 	m, rec := unprovenManager(t, &buf)
 	m.cfg.Agent.Reconciliation.OrphanSweepGuardDisabled = true
-	m.listSystemAgents = func() ([]SystemAgent, error) { return sweepOrphanHost(t, 6), nil }
+	m.listSystemAgents = func() ([]SystemAgent, error) { return sweepOrphanHost(t, 4), nil }
 
 	rep := m.Reconcile(context.Background())
 	log := buf.String()
 
-	if rep.Destroyed != 6 || rep.Refused != 0 {
+	if rep.Destroyed != 4 || rep.Refused != 0 {
 		t.Errorf("report = %+v, want the sweep to proceed with the guard disabled", rep)
 	}
-	if len(rec.calls()) != 6 {
-		t.Errorf("destroy calls = %v, want 6", rec.calls())
+	if len(rec.calls()) != 4 {
+		t.Errorf("destroy calls = %v, want 4", rec.calls())
 	}
 	if !strings.Contains(log, "sweep guard DISABLED") || !strings.Contains(log, "level=WARN") {
 		t.Errorf("disabling the guard must be logged as a warning — log:\n%s", log)
@@ -249,7 +247,7 @@ func TestReconcileSweepGuard_SingleOrphanOnUnprovenRegistryStillSweeps(t *testin
 func TestReconcileSweepGuard_StartupPathRefusesAndStillUnblocksTheReaper(t *testing.T) {
 	var buf bytes.Buffer
 	m, rec := unprovenManager(t, &buf)
-	m.listSystemAgents = func() ([]SystemAgent, error) { return sweepOrphanHost(t, 6), nil }
+	m.listSystemAgents = func() ([]SystemAgent, error) { return sweepOrphanHost(t, 4), nil }
 
 	interim, finalCh := m.ReconcileStartup(context.Background())
 	if interim.Refused != 0 {
@@ -262,8 +260,8 @@ func TestReconcileSweepGuard_StartupPathRefusesAndStillUnblocksTheReaper(t *test
 	case <-time.After(30 * time.Second):
 		t.Fatal("the async orphan walk never delivered a final report")
 	}
-	if final.Refused != 6 || final.Destroyed != 0 {
-		t.Errorf("final report = %+v, want Refused=6 and Destroyed=0", final)
+	if final.Refused != 4 || final.Destroyed != 0 {
+		t.Errorf("final report = %+v, want Refused=4 and Destroyed=0", final)
 	}
 	if len(rec.calls()) != 0 {
 		t.Errorf("the startup path destroyed %v", rec.calls())
@@ -279,7 +277,7 @@ func TestReconcileSweepGuard_StartupPathRefusesAndStillUnblocksTheReaper(t *test
 }
 
 // TestReconcileSweepGuard_ConfigSurface pins the shipped defaults and the
-// validation of the knob: armed by default, limit five, mode still destroy, 0
+// validation of the knob: armed by default, limit three, mode still destroy, 0
 // accepted as the strictest setting, negative rejected rather than read as
 // anything.
 func TestReconcileSweepGuard_ConfigSurface(t *testing.T) {
@@ -293,8 +291,17 @@ func TestReconcileSweepGuard_ConfigSurface(t *testing.T) {
 	if rc.UnprovenOrphanLimit != config.DefaultUnprovenOrphanLimit {
 		t.Errorf("default unproven_orphan_limit = %d, want %d", rc.UnprovenOrphanLimit, config.DefaultUnprovenOrphanLimit)
 	}
-	if config.DefaultUnprovenOrphanLimit != 5 {
-		t.Errorf("the threshold moved to %d — the evidence for 5 (the battery's own five-agent burst) must be re-derived",
+	if config.DefaultUnprovenOrphanLimit != 3 {
+		t.Errorf("the threshold moved to %d — the binary choice behind 3 (below it, a handful of leftovers still sweeps; "+
+			"above it, the five-agent production host is protected) must be re-derived",
+			config.DefaultUnprovenOrphanLimit)
+	}
+	// The threshold must sit BELOW the smallest deployment this project
+	// actually runs, or the guard does not cover it. bunker-mvp was measured
+	// at five real agents while this row was open; a limit that equals or
+	// exceeds that protects nothing on the host that matters.
+	if config.DefaultUnprovenOrphanLimit >= 5 {
+		t.Errorf("unproven_orphan_limit = %d would sweep every agent on a five-agent deployment (bunker-mvp, measured)",
 			config.DefaultUnprovenOrphanLimit)
 	}
 	// A zero-valued struct is the shape a hand-built config has: armed, not

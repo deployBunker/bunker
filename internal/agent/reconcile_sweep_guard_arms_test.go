@@ -77,7 +77,7 @@ func stubUsers(t *testing.T, names ...string) {
 
 // TestReconcileSweepGuardArms_UnprovenMassDestroyIsRefused is the DEFECT cell in
 // its original shape: the registry file does not exist, so Open creates it EMPTY
-// and the daemon believes it has no agents, while the host carries six unknown
+// and the daemon believes it has no agents, while the host carries four unknown
 // bunker-* users. Nothing may be destroyed.
 func TestReconcileSweepGuardArms_UnprovenMassDestroyIsRefused(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "agents.jsonl")
@@ -88,7 +88,7 @@ func TestReconcileSweepGuardArms_UnprovenMassDestroyIsRefused(t *testing.T) {
 	m, rec := foreignManager(t, path, false, &buf)
 	defer m.registry.Close()
 
-	m.listSystemAgents = func() ([]SystemAgent, error) { return sweepOrphanHost(t, 6), nil }
+	m.listSystemAgents = func() ([]SystemAgent, error) { return sweepOrphanHost(t, 4), nil }
 	rep := m.Reconcile(context.Background())
 
 	if got := rec.calls(); len(got) != 0 {
@@ -122,7 +122,7 @@ func TestReconcileSweepGuardArms_EmptyRegistryFileIsRefused(t *testing.T) {
 		t.Fatalf("precondition: the replayed live set must be empty, got %d", m.registry.LiveCount())
 	}
 
-	m.listSystemAgents = func() ([]SystemAgent, error) { return sweepOrphanHost(t, 6), nil }
+	m.listSystemAgents = func() ([]SystemAgent, error) { return sweepOrphanHost(t, 4), nil }
 	rep := m.Reconcile(context.Background())
 
 	if got := rec.calls(); len(got) != 0 {
@@ -136,23 +136,22 @@ func TestReconcileSweepGuardArms_EmptyRegistryFileIsRefused(t *testing.T) {
 
 // TestReconcileSweepGuardArms_SmallUnprovenSweepStillHappens is the control that
 // keeps the guard from becoming a no-op-with-a-clean-conscience: a handful of
-// leftovers (five — the battery's own concurrency burst) on an unproven registry
-// is STILL swept. Without this cell the two defect cells above could be passed by
-// refusing every sweep.
+// leftovers (three) on an unproven registry is STILL swept. Without this cell the
+// two defect cells above could be passed by refusing every sweep.
 func TestReconcileSweepGuardArms_SmallUnprovenSweepStillHappens(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "agents.jsonl")
 	var buf bytes.Buffer
 	m, rec := foreignManager(t, path, false, &buf)
 	defer m.registry.Close()
 
-	m.listSystemAgents = func() ([]SystemAgent, error) { return sweepOrphanHost(t, 5), nil }
+	m.listSystemAgents = func() ([]SystemAgent, error) { return sweepOrphanHost(t, 3), nil }
 	rep := m.Reconcile(context.Background())
 
-	if got := rec.calls(); len(got) != 5 {
-		t.Errorf("destroy calls = %v, want the 5 real leftovers swept", got)
+	if got := rec.calls(); len(got) != 3 {
+		t.Errorf("destroy calls = %v, want the 3 real leftovers swept", got)
 	}
-	if rep.Destroyed != 5 {
-		t.Errorf("Destroyed = %d, want 5 — a handful of genuine leftovers must still be swept", rep.Destroyed)
+	if rep.Destroyed != 3 {
+		t.Errorf("Destroyed = %d, want 3 — a handful of genuine leftovers must still be swept", rep.Destroyed)
 	}
 }
 

@@ -2,7 +2,7 @@ package config
 
 // REV-BUNKER-P1-PATCH: the reconciliation surface grows a boot-time
 // bulk-destroy guard. These tests pin its SHAPE (armed by default, threshold
-// five, disable expressed as a disable) and its fail-closed resolution on a
+// three, disable expressed as a disable) and its fail-closed resolution on a
 // zero-valued struct — the shape a hand-built config has, where a "guard: bool"
 // defaulting to false would have been the hole itself.
 
@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func TestReconciliationSweepGuard_TrueByDefaultAndFiveIsTheThreshold(t *testing.T) {
+func TestReconciliationSweepGuard_TrueByDefaultAndThreeIsTheThreshold(t *testing.T) {
 	rc := DefaultConfig().Agent.Reconciliation
 	if !rc.SweepGuardEnabled() {
 		t.Error("the sweep guard must be armed in the default config")
