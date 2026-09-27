@@ -95,6 +95,87 @@ const (
 // Cached reports whether the outcome left the bytes on disk.
 func (o Outcome) Cached() bool { return o == OutcomeStored || o == OutcomeHit }
 
+// ---------------------------------------------------------------------------
+// BFS-045: the null-reason vocabulary.
+//
+// The standing rule is that a NULL must carry a REASON, and that a reason is a
+// CLASS, not a sentence. Four classes cover every absent figure in the status
+// record; the sentence after the colon is the detail a person reads. An
+// unexplained null on a live route is junk, not data.
+// ---------------------------------------------------------------------------
+const (
+	// ReasonDisabled — the feature is switched off, so the figure has no source
+	// by configuration rather than by failure.
+	ReasonDisabled = "disabled"
+	// ReasonUnknown — the source exists but could not be read, so the figure is
+	// genuinely unknown. Never rendered as 0.
+	ReasonUnknown = "unknown"
+	// ReasonNotPublished — the source does not publish this figure: a build that
+	// predates the field, a document that names no block, or a feature (the
+	// hot-refresh queue, BFS-037) that is not in this build.
+	ReasonNotPublished = "not_published"
+	// ReasonNoSample — nothing has happened yet, so there is no measurement to
+	// report: the figure will be there the moment the event occurs.
+	ReasonNoSample = "no_sample"
+)
+
+// Bypass reason vocabulary: every refusal to store bytes in the cache, by where
+// the decision was made. It is CLOSED — BypassReasons() returns all of it, and
+// the reported map always carries every key — so adding a refusal site without
+// adding its reason is a visible omission rather than an uncounted path.
+const (
+	// BypassReasonOverEntryCap is the LIVE READ PATH's refusal: the served
+	// content is larger than the per-entry cap, so no blob is written. This is
+	// the site BFS-032 proved was uncounted: the read path pre-filtered above
+	// Cache.Insert, so `oversize_bypasses` could never move from a real read.
+	BypassReasonOverEntryCap = "over_entry_cap"
+	// BypassReasonInsertOverEntryCap is Cache.Insert's own oversize branch: a
+	// caller that did NOT pre-filter. It is kept separate from the read path's
+	// reason so the two sites are countable apart — one counter for both would
+	// hide which site is actually refusing.
+	BypassReasonInsertOverEntryCap = "insert_over_entry_cap"
+	// BypassReasonNoRoom is the bound refusing the insert: no room under the
+	// byte or entry bound after eviction.
+	BypassReasonNoRoom = "no_room"
+	// BypassReasonDisabled is --cache-max-size 0: the cache cannot store.
+	BypassReasonDisabled = "cache_disabled"
+)
+
+// BypassReasons returns the closed vocabulary, so the census is readable by a
+// consumer without reading this file.
+func BypassReasons() []string {
+	return []string{
+		BypassReasonOverEntryCap,
+		BypassReasonInsertOverEntryCap,
+		BypassReasonNoRoom,
+		BypassReasonDisabled,
+	}
+}
+
+// The directory classes DirBytesByClass reports: what the independent
+// measurement found, split by the thing that put it there. The split is what
+// makes `dir_unaccounted_bytes` a NAMED delta instead of an unexplained gap.
+const (
+	DirClassIndex     = "index"     // index.json (+ its temp) — the serialised index
+	DirClassBlobs     = "blobs"     // published, indexed blobs
+	DirClassStaged    = "staged"    // staged (unpublished) refresh blobs
+	DirClassOrphan    = "orphan"    // blob files no index entry references
+	DirClassStatus    = "status"    // status.json (+ its temp)
+	DirClassConflicts = "conflicts" // conflicts.jsonl
+	DirClassOther     = "other"     // anything else in the directory
+)
+
+// dirClasses is the closed class vocabulary.
+func dirClasses() []string {
+	return []string{DirClassIndex, DirClassBlobs, DirClassStaged, DirClassOrphan, DirClassStatus, DirClassConflicts, DirClassOther}
+}
+
+// DirMeasureTTL is how long a directory measurement is reused. It is a variable
+// so a test can drive the cadence rather than wait, and so an operator can be
+// told the cost: one walk of the cache directory per TTL, never one per status
+// write. The figure reports its own age beside it (dir_measured_age_ms).
+var DirMeasureTTL = 30 * time.Second
+
 // CacheStats is the reported figure set of BFS-005 §3.2. used_bytes is the
 // figure AC-5 compares with `du`; max_bytes is what it must never exceed.
 //
@@ -120,6 +201,10 @@ type CacheStats struct {
 	// MaxEntries/Entries is the SECOND bound: bytes alone do not bound a
 	// directory (BFS-031), so the entry count is bounded and reported too.
 	MaxEntries int `json:"max_entries"`
+	// MaxEntryBytes is the per-entry cap: the bound whose refusals are counted
+	// below. A bound must be readable next to the counter that moves when it
+	// refuses (BFS-045; SPEC-hot-file-policy §9.1).
+	MaxEntryBytes int64 `json:"max_entry_bytes"`
 	// InFlightBytes are the bytes staged refreshes have written and not yet
 	// published: really on disk, unreachable by any reader.
 	InFlightBytes int64 `json:"in_flight_bytes"`
@@ -141,6 +226,37 @@ type CacheStats struct {
 	// the only way to show the cache actually served anything.
 	Hits   int64 `json:"hits"`
 	Misses int64 `json:"misses"`
+	// StagedStartedTotal is the number of refreshes ADMITTED to the staged
+	// window. It is the denominator of the flow: committed + aborted + (still in
+	// flight) must account for it, so a refresh that vanished without a verdict
+	// is visible as a gap rather than as nothing.
+	StagedStartedTotal int64 `json:"staged_started_total"`
+	// BypassReasons counts every refusal to STORE, by reason, from a closed
+	// vocabulary (BypassReasons()). Every reason is always a key, so a reason
+	// that has never fired reads as 0 and a reason the code cannot reach is
+	// visibly absent from the census rather than silently zero (BFS-032's
+	// lesson: a counter that can never move is a gap, not a green check).
+	//
+	// This is the figure that replaces BFS-032's dead counter: the live read
+	// path pre-filtered above Cache.Insert, so `oversize_bypasses` could never
+	// move; the refusal is now counted WHERE IT IS DECIDED, with its reason.
+	BypassReasons map[string]int64 `json:"bypass_reasons"`
+	// DirBytes is an INDEPENDENT measurement of the cache directory: the bytes
+	// actually on disk, by class, walked from the filesystem rather than derived
+	// from the accounting below. It exists because BFS-031's defect was a
+	// reported figure that described something other than the thing it claimed
+	// to bound: `used_bytes` counts published blobs + the serialised index and
+	// does NOT count status.json, conflicts.jsonl, staged blobs or a temp index,
+	// so the two must be readable side by side.
+	//
+	// It is measured on a bounded cadence (DirMeasureTTL) because a walk per
+	// status write would cost O(files) per second; DirMeasuredAgeMS reports how
+	// long ago the sample was taken, so a stale sample is never read as current.
+	DirBytes            int64            `json:"dir_bytes"`
+	DirBytesByClass     map[string]int64 `json:"dir_bytes_by_class"`
+	DirBytesReason      string           `json:"dir_bytes_reason,omitempty"`
+	DirMeasuredAgeMS    *int64           `json:"dir_measured_age_ms"`
+	DirUnaccountedBytes int64            `json:"dir_unaccounted_bytes"`
 }
 
 // cacheEntry is one path's index record: which blob holds its bytes, and when
@@ -215,6 +331,16 @@ type Cache struct {
 	staged map[*StagedRefresh]struct{}
 	gen    int64
 	stats  CacheStats
+	// bypassReasons is the live census behind CacheStats.BypassReasons. It is
+	// kept as its own map (not inside stats) so recount never has to rebuild it.
+	bypassReasons map[string]int64
+	// The directory measurement (BFS-031's shape, made visible): what an
+	// independent walk of the directory found, when it was taken, and why it is
+	// absent when it could not be taken.
+	dirMeasuredAt time.Time
+	dirBytes      int64
+	dirClasses    map[string]int64
+	dirErr        string
 }
 
 // OpenCache creates (or reopens) the cache directory. The directory is 0700 and
@@ -261,6 +387,13 @@ func OpenCache(cfg CacheConfig) (*Cache, error) {
 		inflight: map[string]bool{},
 		staged:   map[*StagedRefresh]struct{}{},
 		stats:    CacheStats{MaxBytes: cfg.MaxBytes},
+		// Every reason in the closed vocabulary is present from the start: a
+		// zero that is a VALUE and a missing key that is an ABSENCE must never
+		// look the same in the status record (BFS-045).
+		bypassReasons: map[string]int64{},
+	}
+	for _, r := range BypassReasons() {
+		c.bypassReasons[r] = 0
 	}
 	if err := c.load(); err != nil {
 		return nil, err
@@ -501,6 +634,7 @@ func (c *Cache) Stage(path, hash string, expectedBytes int64) (*StagedRefresh, e
 	}
 	s.reserved = expectedBytes + s.entryGrowth
 	c.staged[s] = struct{}{}
+	c.stats.StagedStartedTotal++
 	return s, nil
 }
 
@@ -789,10 +923,12 @@ func (c *Cache) Insert(path, hash string, data []byte) (Outcome, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.disabled() {
+		c.countBypassLocked(BypassReasonDisabled)
 		return OutcomeDisabled, nil
 	}
 	if int64(len(data)) > c.cfg.MaxEntryBytes {
 		c.stats.OversizeBypasses++
+		c.countBypassLocked(BypassReasonInsertOverEntryCap)
 		return OutcomeOversize, nil
 	}
 	if e := c.entries[path]; e != nil && e.Hash == hash && !c.expired(e) {
@@ -817,6 +953,7 @@ func (c *Cache) Insert(path, hash string, data []byte) (Outcome, error) {
 	}
 	if err := c.makeRoomLocked(newBlobBytes, c.indexGrowthLocked(path), newEntries); err != nil {
 		c.stats.BypassEvents++
+		c.countBypassLocked(BypassReasonNoRoom)
 		return OutcomeBypass, nil
 	}
 
@@ -1087,6 +1224,8 @@ func (c *Cache) indexBytesLocked() int64 {
 func (c *Cache) recountLocked() {
 	if c.disabled() {
 		c.stats = CacheStats{MaxBytes: 0}
+		c.stats.BypassReasons = c.bypassCensusLocked()
+		c.measureDirLocked()
 		return
 	}
 	var blobsBytes int64
@@ -1109,10 +1248,250 @@ func (c *Cache) recountLocked() {
 	// (reserved_bytes = published + in-flight + the index the in-flight
 	// refreshes will publish). Both are reported, never merged (F-1 / O-3).
 	c.stats.MaxEntries = c.cfg.MaxEntries
+	c.stats.MaxEntryBytes = c.cfg.MaxEntryBytes
 	c.stats.InFlightBytes = c.inFlightBytesLocked()
 	c.stats.ReservedBytes = c.reservedLocked()
 	c.stats.StagedBlobs = len(c.staged)
 	c.stats.MaxInFlight = c.cfg.MaxInFlight
+	c.stats.BypassReasons = c.bypassCensusLocked()
+	c.measureDirLocked()
+}
+
+// ---------------------------------------------------------------------------
+// BFS-045: counting the refusals, and the independent measurement.
+// ---------------------------------------------------------------------------
+
+// CountBypass records one refusal to keep bytes in the cache, by reason. It is
+// the seam the LIVE READ PATH calls at the point where IT decides not to store
+// (the per-entry cap), which is the decision Cache.Insert's own oversize branch
+// never sees: BFS-032 was exactly that gap, and a counter the live path cannot
+// reach is a gap rather than a green check.
+//
+// An unknown reason is counted under `other`-style honesty: it is added to the
+// map as given rather than silently dropped, because a new refusal site must be
+// VISIBLE in the census (and BypassReasons() is the closed list an operator
+// compares against).
+func (c *Cache) CountBypass(reason string) {
+	if reason == "" {
+		reason = BypassReasonInsertOverEntryCap
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.countBypassLocked(reason)
+}
+
+// AdmitRead is the read path's ONE cache-admission decision: it stores the
+// served bytes when they fit the per-entry cap and COUNTS the refusal (with its
+// reason) when they do not. Every caller that holds the served hash and bytes
+// goes through here, so no caller can pre-filter above the counter again.
+//
+// It deliberately does not Pin — pinning is the reader's own lifetime and
+// belongs to the caller.
+func (c *Cache) AdmitRead(path, hash string, data []byte) bool {
+	if c.MaxEntryBytes() > 0 && int64(len(data)) > c.MaxEntryBytes() {
+		c.CountBypass(BypassReasonOverEntryCap)
+		return false
+	}
+	_, _ = c.Insert(path, hash, data)
+	return true
+}
+
+func (c *Cache) countBypassLocked(reason string) {
+	if c.bypassReasons == nil {
+		c.bypassReasons = map[string]int64{}
+	}
+	c.bypassReasons[reason]++
+	c.stats.BypassReasons = c.bypassCensusLocked()
+}
+
+// bypassCensusLocked returns a COPY of the census: the reported document must
+// never alias live state a caller could mutate.
+func (c *Cache) bypassCensusLocked() map[string]int64 {
+	out := make(map[string]int64, len(c.bypassReasons)+len(BypassReasons()))
+	for _, r := range BypassReasons() {
+		out[r] = c.bypassReasons[r]
+	}
+	for r, n := range c.bypassReasons {
+		if _, known := out[r]; !known {
+			out[r] = n
+		}
+	}
+	return out
+}
+
+// BypassCount reports one reason's count (0 when it has never fired).
+func (c *Cache) BypassCount(reason string) int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.bypassReasons[reason]
+}
+
+// measureDirLocked walks the cache directory and records what is really there.
+//
+// WHY THIS EXISTS (BFS-031): `used_bytes` counts published blobs + the
+// serialised index and NOT status.json, conflicts.jsonl, staged blobs, a temp
+// index, or an orphan blob. A bound reported one way and enforced another is the
+// defect; the cure the owner asked for is that the reported figure agree with an
+// independent measurement. So the measurement is taken from the FILESYSTEM, by
+// class, beside the accounting — and the delta is reported as a named figure
+// (dir_unaccounted_bytes) rather than left for someone to discover with `du`.
+//
+// Cost: one walk per DirMeasureTTL. The age of the sample is reported with it,
+// so a reused measurement is never read as a fresh one.
+func (c *Cache) measureDirLocked() {
+	now := c.cfg.Now()
+	if !c.dirMeasuredAt.IsZero() && DirMeasureTTL > 0 && now.Sub(c.dirMeasuredAt) < DirMeasureTTL {
+		c.publishDirLocked(now)
+		return
+	}
+	classes := map[string]int64{}
+	for _, k := range dirClasses() {
+		classes[k] = 0
+	}
+	var total int64
+	add := func(class string, n int64) {
+		classes[class] += n
+		total += n
+	}
+	// The directory itself, one level: index.json, status.json, the conflict log
+	// and any temp files.
+	entries, err := os.ReadDir(c.cfg.Dir)
+	if err != nil {
+		c.dirErr = fmt.Sprintf("the cache directory %s could not be read: %v", c.cfg.Dir, err)
+		c.dirMeasuredAt = now
+		c.dirBytes, c.dirClasses = 0, classes
+		c.publishDirLocked(now)
+		return
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() {
+			if name != CacheBlobDir {
+				// A subdirectory we did not create: counted as other so its bytes
+				// are still inside the measured total.
+				if n, derr := dirBytesOf(filepath.Join(c.cfg.Dir, name)); derr == nil {
+					add(DirClassOther, n)
+				}
+				continue
+			}
+		}
+		switch {
+		case e.IsDir():
+			continue
+		case name == CacheIndexFile:
+			n, _ := fileSize(filepath.Join(c.cfg.Dir, name))
+			add(DirClassIndex, n)
+		case strings.HasPrefix(name, CacheIndexFile+"."):
+			n, _ := fileSize(filepath.Join(c.cfg.Dir, name))
+			add(DirClassIndex, n)
+		case name == StatusFile:
+			n, _ := fileSize(filepath.Join(c.cfg.Dir, name))
+			add(DirClassStatus, n)
+		case strings.HasPrefix(name, StatusFile+"."):
+			n, _ := fileSize(filepath.Join(c.cfg.Dir, name))
+			add(DirClassStatus, n)
+		case name == ConflictsFile:
+			n, _ := fileSize(filepath.Join(c.cfg.Dir, name))
+			add(DirClassConflicts, n)
+		default:
+			n, _ := fileSize(filepath.Join(c.cfg.Dir, name))
+			add(DirClassOther, n)
+		}
+	}
+	blobs, err := os.ReadDir(filepath.Join(c.cfg.Dir, CacheBlobDir))
+	if err != nil {
+		c.dirErr = fmt.Sprintf("the blob directory %s could not be read: %v", filepath.Join(c.cfg.Dir, CacheBlobDir), err)
+		c.dirMeasuredAt = now
+		c.dirBytes, c.dirClasses = 0, classes
+		c.publishDirLocked(now)
+		return
+	}
+	for _, b := range blobs {
+		if b.IsDir() {
+			continue
+		}
+		n, serr := fileSize(filepath.Join(c.cfg.Dir, CacheBlobDir, b.Name()))
+		if serr != nil {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(b.Name(), CacheStagePrefix):
+			add(DirClassStaged, n)
+		case c.blobs[b.Name()] != nil:
+			add(DirClassBlobs, n)
+		default:
+			// A blob file no index entry references: the residue of an
+			// interrupted insert, really occupying the directory.
+			add(DirClassOrphan, n)
+		}
+	}
+	c.dirErr = ""
+	c.dirMeasuredAt = now
+	c.dirBytes, c.dirClasses = total, classes
+	c.publishDirLocked(now)
+}
+
+// publishDirLocked copies the last measurement (or its absence, with a reason)
+// into the reported figures.
+func (c *Cache) publishDirLocked(now time.Time) {
+	if !c.dirMeasuredAt.IsZero() {
+		age := now.Sub(c.dirMeasuredAt).Milliseconds()
+		c.stats.DirMeasuredAgeMS = &age
+	} else {
+		c.stats.DirMeasuredAgeMS = nil
+	}
+	cp := make(map[string]int64, len(c.dirClasses))
+	for k, v := range c.dirClasses {
+		cp[k] = v
+	}
+	c.stats.DirBytesByClass = cp
+	c.stats.DirBytes = c.dirBytes
+	c.stats.DirBytesReason = ""
+	if c.dirErr != "" {
+		// The measurement could not be taken: absent WITH A REASON, never a zero
+		// that reads as "the directory is empty".
+		c.stats.DirBytes = 0
+		c.stats.DirBytesReason = ReasonUnknown + ": " + c.dirErr
+	}
+	if c.disabled() {
+		c.stats.DirBytesReason = ReasonDisabled + ": the cache is switched off (--cache-max-size 0), so no cache directory is accounted for"
+	}
+	// The named delta: what `used_bytes` does not count. Positive means the
+	// directory holds more than the published figure (the BFS-031 shape);
+	// negative can only mean the accounting is ahead of the disk (a blob
+	// removed out of band), and both directions are worth seeing.
+	if c.stats.DirBytesReason == "" {
+		c.stats.DirUnaccountedBytes = c.stats.DirBytes - c.stats.UsedBytes
+	} else {
+		c.stats.DirUnaccountedBytes = 0
+	}
+}
+
+// fileSize is one file's on-disk logical size.
+func fileSize(path string) (int64, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, err
+	}
+	return info.Size(), nil
+}
+
+// dirBytesOf sums the files under a directory, one level deep (used only for a
+// foreign subdirectory, so it is bounded by what is actually there).
+func dirBytesOf(dir string) (int64, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, e := range entries {
+		n, serr := fileSize(filepath.Join(dir, e.Name()))
+		if serr != nil {
+			continue
+		}
+		total += n
+	}
+	return total, nil
 }
 
 // flushLocked persists the index atomically. A disabled cache writes nothing.
