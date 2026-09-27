@@ -91,6 +91,10 @@ type bfs060Fixture struct {
 	// heartbeatMS is what the capability document declares; 0 means the
 	// document names none (and the client must fall back to its own default).
 	heartbeatMS int
+	// maxEventBytes is what the document declares as the per-frame BYTE bound
+	// (`extensions.watch.max_event_bytes`, BFS-062); 0 means the document
+	// publishes none, which is the shape of a peer that predates the field.
+	maxEventBytes int64
 	// eventsDelay holds the poll's first answer back, so the window in which
 	// the record has declared the channel dead is observable rather than a race.
 	eventsDelay time.Duration
@@ -146,6 +150,12 @@ func (fx *bfs060Fixture) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		if fx.heartbeatMS > 0 {
 			watch["heartbeat_ms"] = fx.heartbeatMS
+		}
+		if fx.maxEventBytes > 0 {
+			// BFS-062's additive field, declared only when the arm declares one:
+			// a document that publishes none must stay indistinguishable from a
+			// peer that predates it.
+			watch["max_event_bytes"] = fx.maxEventBytes
 		}
 		bfs060Envelope(w, 200, "ok", map[string]any{"capabilities": map[string]any{
 			"surface": "stub/1", "document_version": 1,

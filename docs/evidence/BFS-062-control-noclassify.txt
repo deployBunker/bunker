@@ -1,0 +1,21 @@
+BFS-062 arms — mode=noclassify base=064b39f
+go go1.26.5 · 83ab8e1 · 2026-09-27T15:22:51Z
+pre-mutation: internal/fsclient/framelimit.go sha256=a57d33bf012472cfa7d03b8dd2f08d9c84956a61ee819d826c8ceb7e7cdc2dae
+mutated: internal/fsclient/framelimit.go sha256=3e48a3091041fb64e0b0509f89b62a4ef1ac1de81aac9a35599ba585844c1212 via BFS-062-negative-control-classify.patch
+--- CONTROL noclassify (this arm MUST fail): go test ./internal/fsclient -run TestBFS062ALegalOversizedFrameIsNamedCountedAndNotRetried -count=1 -v -timeout 300s
+=== RUN   TestBFS062ALegalOversizedFrameIsNamedCountedAndNotRetried
+    invalidate_bfs062_test.go:139: legal frame: 4096 paths × 4095 bytes = 16810055 bytes on one line (16.0 MiB), against the declared 1048576-byte bound
+    invalidate_bfs062_test.go:163: A LEGAL SERVER FRAME PUT THE MOUNT INTO THE RECONNECT LOOP: a 16810055-byte frame (4096 paths of PATH_MAX), reconnects_total=1, last_failure="watch : errno=ENOTCONN cause=unreachable_connect: bufio.Scanner: token too long", streams served=1. A reconnect on a deterministic input is an outage; the condition must be NAMED, COUNTED and NON-RETRYABLE.
+--- FAIL: TestBFS062ALegalOversizedFrameIsNamedCountedAndNotRetried (0.58s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	0.592s
+FAIL
+--- CONTROL noclassify (this arm MUST fail) exit=1
+--- CONTROL noclassify (attribution: this arm MUST still pass): go test ./internal/fsclient -run TestBFS062TheClassificationDoesNotFireOnOrdinaryFrames -count=1 -v -timeout 300s
+=== RUN   TestBFS062TheClassificationDoesNotFireOnOrdinaryFrames
+--- PASS: TestBFS062TheClassificationDoesNotFireOnOrdinaryFrames (0.32s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.326s
+--- CONTROL noclassify (attribution: this arm MUST still pass) exit=0
+restore: internal/fsclient/framelimit.go sha256=a57d33bf012472cfa7d03b8dd2f08d9c84956a61ee819d826c8ceb7e7cdc2dae (verified against the pre-mutation hash)
+done: mode=noclassify

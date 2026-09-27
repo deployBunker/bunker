@@ -259,6 +259,13 @@ const (
 	fakeDirsWatched     = 3
 	fakeMissingCount    = 1
 	fakeHeartbeatMS     = 30000
+	// fakeMaxEventBytes is the per-frame BYTE bound the document declares
+	// (BFS-062). It is the largest bound the surface's own knob table permits
+	// (invalidation.MaxPushMaxEventBytes), which is also what makes it the
+	// interesting value: the derived reader cap lands exactly on the consumer's
+	// ceiling, so an arm that sized the reader from a constant of its own would
+	// fail rather than pass.
+	fakeMaxEventBytes   = 8 << 20
 	fakeDroppedReason   = "the kernel reports one overflow marker, not how many events it dropped"
 	fakeCountersReason  = "no watcher has run on this target, so no counter has ever moved"
 	fakeUnvouchedReason = "reader stalled"
@@ -277,6 +284,7 @@ func (s *scriptedChannel) capabilityDocument() string {
 	        "modes": {"push": "inotify->stream", "poll": "X-Bunker-Op: events"},
 	        "heartbeat_ms": ` + strconv.Itoa(fakeHeartbeatMS) + `,
 	        "max_paths_per_event": 4096,
+	        "max_event_bytes": ` + strconv.Itoa(fakeMaxEventBytes) + `,
 	        "state": "` + fakeWatchState + `",
 	        "blocks_push": true,
 	        "backend": "` + fakeWatchBackend + `",
@@ -959,6 +967,7 @@ func censusTable() map[string]figureSpec {
 		"invalidation.server.sampled_age_ms":         {kindAppears, 0, "how old the capability sample is"},
 		"invalidation.server.heartbeat_ms":           {kindPassthrough, fakeHeartbeatMS, "the period the server declares"},
 		"invalidation.server.max_paths_per_event":    {kindPassthrough, 4096, "the declared cap on one event's path list: a longer list is an overflow, never a partial drop"},
+		"invalidation.server.max_event_bytes":        {kindPassthrough, fakeMaxEventBytes, "the declared per-frame BYTE bound (BFS-062): the number this consumer sizes its per-line reader from, reported verbatim because a client that derived its own bound would be assuming the other side's limit"},
 		"invalidation.server.overflows_total":        {kindPassthrough, fakeOverflows, "the server's own overflow count, reported verbatim"},
 		"invalidation.server.unvouched_total":        {kindPassthrough, fakeUnvouched, "intervals the server cannot vouch for"},
 		"invalidation.server.rescans_total":          {kindPassthrough, fakeRescans, "full rescans the server performed"},
@@ -976,6 +985,16 @@ func censusTable() map[string]figureSpec {
 		"invalidation.server.coverage_complete":      {kindPassthrough, 0, "false because the document reports a missing directory — a partial watch set is reported, not rounded up"},
 		// dropped_events is NULL with a reason: the kernel reports one overflow
 		// marker, not how many events it dropped. Asserted in its own arm below.
+		// ---- the pushed channel's frame accounting (BFS-062) ------------------
+		// The declared bound is a PASSTHROUGH and the reader is DERIVED from it:
+		// that pair is the row's whole claim ("the reader is sized from the
+		// declaration"), so an implementation that read a constant of its own
+		// here would fail rather than pass.
+		"invalidation.frame_limit.declared_bytes":   {kindPassthrough, fakeMaxEventBytes, "the declaration the pushed channel is read against, reported as the bound in force"},
+		"invalidation.frame_limit.reader_bytes":     {kindBound, fakeMaxEventBytes + 64<<10, "the per-line cap the reader was sized to: the declared bound plus the framing slack the relation requires"},
+		"invalidation.frame_limit.ceiling_bytes":    {kindBound, (8 << 20) + 64<<10, "the largest cap this consumer will allocate, derived from the largest declaration the surface may make plus that slack"},
+		"invalidation.frame_limit.over_limit":       {kindAppears, 0, "an event frame over the declared bound, as a STATE: false in this healthy workload, and driven true by the BFS-062 arms"},
+		"invalidation.frame_limit.over_limit_total": {kindAppears, 0, "an event frame over the declared bound, counted once at the decision: reachable, and 0 here because no frame crossed it"},
 		// ---- the refresh accounting -------------------------------------------
 		"invalidation.refresh.started_total":         {kindMoves, 0, "a refresh admitted to the staged window"},
 		"invalidation.refresh.in_flight":             {kindAppears, 0, "0 at rest: the window is empty once every stage has committed or aborted"},

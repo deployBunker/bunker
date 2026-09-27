@@ -24,6 +24,15 @@ import (
 // not exist.
 const pushNotServedReason = "the push form is not served in this build (BFS-036 owns the wire endpoint), so this value is declared and validated but nothing applies it yet"
 
+// maxEventBytesAppliedReason is why ONE push knob is APPLIED while its siblings
+// are not. `max_event_bytes` is not only a promise about a wire form that does
+// not exist yet: it is the bound the EVENT FRAME the `events` poll form
+// assembles is measured against today (events.go's ledger push, BFS-062), and
+// the number the capability document publishes. A read-back that reported a
+// value the code is enforcing as applied:false would be the same class of
+// dishonesty as a counter that can never move.
+const maxEventBytesAppliedReason = "applied by the event frames the `events` poll form assembles (events.go's ledger push measures each serialized frame against it, BFS-062) and published as the declared bound; the push wire form will obey the same value when BFS-036 lands it"
+
 // invalidationConfigBlock renders the read-back for §8.2's `extensions.watch`
 // block: one row per declared knob, the ceiling in force, the unhonourable pairs,
 // and the place the applied values were read from.
@@ -60,6 +69,9 @@ func (h *Handler) invalidationRows(st watchStatus) ([]map[string]any, string) {
 			switch {
 			case rows[i].Knob == invalidation.KnobWatchEnabled:
 				rows[i].Applied = true
+			case rows[i].Knob == invalidation.KnobPushMaxEventBytes:
+				// BFS-062: the one push knob a value in force exists for today.
+				rows[i].Applied, rows[i].AppliedReason = true, maxEventBytesAppliedReason
 			case isWatchKnob(rows[i].Knob):
 				rows[i].Applied, rows[i].AppliedReason = false, reason
 			default:
@@ -97,6 +109,13 @@ func (h *Handler) invalidationRows(st watchStatus) ([]map[string]any, string) {
 				rows[i].AppliedReason = notEstablished
 			}
 		} else {
+			// BFS-062: `max_event_bytes` is the exception among the push knobs
+			// — the events assembly measures frames against it, so it is in
+			// force whether or not the push wire form exists.
+			if rows[i].Knob == invalidation.KnobPushMaxEventBytes {
+				rows[i].Applied, rows[i].AppliedReason = true, maxEventBytesAppliedReason
+				continue
+			}
 			rows[i].Applied, rows[i].AppliedReason = false, pushNotServedReason
 		}
 	}
