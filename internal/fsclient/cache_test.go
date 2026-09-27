@@ -64,7 +64,13 @@ func TestCacheBoundIsHardAndBypassIsReported(t *testing.T) {
 
 	// Everything pinned and nothing left to evict => bypass, and the read path
 	// still gets its bytes.
-	c2 := newTestCache(t, 700, 700)
+	//
+	// The bound is 1024 rather than 700 because the bound now covers the
+	// directory's PEAK (BFS-031): one 512 B blob costs 512 + TWO copies of the
+	// ~156 B index (the document plus the temp copy flushLocked writes before its
+	// rename), so a 700 B bound could no longer store even one entry — and a
+	// fixture that cannot hold one entry tests nothing.
+	c2 := newTestCache(t, 1024, 1024)
 	h1, d1 := blob(t, 512)
 	if o, err := c2.Insert("a", h1, d1); err != nil || o == OutcomeBypass {
 		t.Fatalf("first insert: outcome=%v err=%v", o, err)
@@ -190,7 +196,9 @@ func mustHash(t *testing.T, path string, c *Cache) string {
 // never evicted, that eviction takes the unpinned neighbour instead, and that a
 // blob pinned past its own path entry is reclaimed at the unpin.
 func TestCachePinBlocksEvictionAndUnpinReclaims(t *testing.T) {
-	c := newTestCache(t, 2600, 2600)
+	// 3200 B rather than 2600: the bound covers the directory's PEAK (BFS-031), so
+	// two 1024 B blobs cost 2048 B + TWO copies of the ~286 B two-entry index.
+	c := newTestCache(t, 3200, 3200)
 	h1, d1 := blob(t, 1024)
 	if _, err := c.Insert("pinned", h1, d1); err != nil {
 		t.Fatal(err)

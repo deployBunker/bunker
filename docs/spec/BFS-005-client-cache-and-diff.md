@@ -130,7 +130,8 @@ blocks; **C-4** the store is **content-addressed** with a path index over it.
 | What the cap counts | `cache_blobs_bytes` **+** `cache_index_bytes` — the bytes actually on the client's disk, so `du` can be compared to a single reported figure | decision C-1 |
 | `--cache-max-entry-bytes`, default | **min(cache_max_size, 67,108,864) = 64 MiB**; a single file larger than this is **never cached** | chosen default |
 | `--cache-max-age`, default | **1 h** — a backstop TTL, not the primary mechanism (invalidation is) | PRD `:204` |
-| Cache dir | `$XDG_CACHE_HOME/bunker/fs/<mount-id>/` (default `~/.cache/bunker/fs/<mount-id>/`), mode 0700 | decision (this spec) |
+| Mount dir | `$XDG_CACHE_HOME/bunker/fs/<mount-id>/` (default `~/.cache/bunker/fs/<mount-id>/`), mode 0700 — the mount's own state: `status.json`, `conflicts.jsonl`, the write-buffer spills. Bounded by `StateMaxBytes()` (BFS-031) | decision (this spec), refined by BFS-031 |
+| Cache dir | `<mount dir>/cache` — THE CACHE DIRECTORY, and the only thing `--cache-max-size` names. It holds `index.json` and `blobs/`, and `du` of it is ≤ the bound at every instant, including the index's temp copy (BFS-031) | BFS-031 |
 | `--cache-max-size 0` | the cache is disabled: every read goes to the server, every figure reports 0 | decision C-1 |
 
 ### 3.2 The store, and why it is content-addressed
@@ -1029,7 +1030,7 @@ Kept in one table so nothing in this spec can be read as a measured number that 
 | deadline: bind 5 s / op 30 s | see §7.2 | 30 s is AC-6's own number |
 | `--on-conflict` | `refuse` | PRD `:319` |
 | `--invalidation` | `auto` (`push` ⇒ push-only, fail loudly if the watcher is absent; `poll` ⇒ poll from the start) | `auto` is the useful default: prefer push, declare the downgrade |
-| cache dir | `$XDG_CACHE_HOME/bunker/fs/<mount-id>/` | per-mount, per-user, 0700 |
+| cache dir | `<mount dir>/cache` (`<mount dir>` = `$XDG_CACHE_HOME/bunker/fs/<mount-id>/`) | per-mount, per-user, 0700; the state beside it is bounded separately (BFS-031) |
 | hash cache key on the agent | `(dev, ino, size, mtime)`; rehash when it moves | mtime may cost a hash, never decide a write |
 | `snapshot` hashes | only for files ≤ 1 MiB; larger files report `hash: null` | keeps the snapshot in the 0.41 s class; a large file's hash is learned by GET on demand (D-5) |
 

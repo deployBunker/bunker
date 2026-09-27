@@ -1,0 +1,166 @@
+BFS-031 GREEN — probes/bfs031-bound-live.sh on the fixed tree: a real FUSE mount,
+du as the outside witness, at a 1 KiB bound and at the default, with the row's own
+reproducer driven inside each arm. Raw transcript follows; it is unedited.
+
+
+== the fixture and the surface
+   worktree    : /home/kara/worktrees/bunker-BFS-031
+   head        : 0f7bece fix(BFS-031): the mount's own state is bounded by its own en
+   host        : karaHermes-mde-7840hs loadavg 26.78 30.32 41.35 26/10205 1691712
+   tools       : go version go1.26.5 linux/amd6
+
+== ARM A: a 1 KiB bound (the row's bound)
+   [tiny] mount dir=/tmp/bfs031-live-deIqKs/cache/bunker/fs/0b98ada17d00
+   [tiny] cache dir=/tmp/bfs031-live-deIqKs/cache/bunker/fs/0b98ada17d00/cache bound=1024B tree=126 B
+   [tiny] the cache directory holds the cache (mount dir): . .. cache status.json 
+   [tiny] ...and the cache directory itself: . .. blobs 
+   0. baseline                  du(cache)=0        reported dir_bytes=0        (age 1020ms) used=26       peak=52       du(mount 1024)=6842
+   PASS  [tiny] the read path served the whole tree (126 B) in 1 requests
+   PASS  [tiny] the read path cached what it served: entries=2 blobs_bytes=99 (peak inside the bound below)
+   [tiny] running the row's reproducer (docs/evidence/BFS-012-probes/small_bound_edge.py) against this mount
+     | bound chose by the caller; files read: the whole tree through the mount
+     | cache dir  : /tmp/bfs031-live-deIqKs/cache/bunker/fs/0b98ada17d00/cache
+     | mount dir  : /tmp/bfs031-live-deIqKs/cache/bunker/fs/0b98ada17d00
+     |   0. baseline (nothing read)         du(cache dir)=       26  reported dir_bytes=      26  used_bytes=       26  max_bytes=     1024  peak=      52  entries=0
+     |                                      (the mount's own state, which the cache bound does NOT name: status.json=6735 conflicts.jsonl=0)
+     |   1. after reading the tree          du(cache dir)=      425  reported dir_bytes=     326  used_bytes=      425  max_bytes=     1024  peak=     751  entries=2
+     |                                      (the mount's own state, which the cache bound does NOT name: status.json=6746 conflicts.jsonl=0)
+     |   write attempts (truncate): 20   refused=20   LANDED=0   in 1.6s
+     |     errno histogram:   20 x errno=116 (Stale file handle)   (ESTALE is the conflict refusal the client raises)
+     |   2. after the refused writes        du(cache dir)=      201  reported dir_bytes=     326  used_bytes=      425  max_bytes=     1024  peak=     751  entries=2
+     |                                      (the mount's own state, which the cache bound does NOT name: status.json=7967 conflicts.jsonl=696)
+     |   conflicts recorded        : 696 bytes / 1 lines in conflicts.jsonl (20 refused writes), status.conflicts={"refusals_total": 1, "last": {"path": "src/target.txt", "expected": "sha256:73536a5a50294d6d7c7e9e4d7428f53a5537ecb4db36d7a0545ac7499153d2a1", "current": "sha256:8df3379e5140b88937b04bc80980a2432691b
+     |   PASS  the client's used_bytes never exceeded max_bytes in any phase (max used=425, bound=1024)
+     |   PASS  THE CACHE DIRECTORY IS INSIDE THE BOUND in every phase (worst du=425, bound=1024)
+     |   PASS  the reported dir_bytes agrees with du of the cache directory within 4096 B in every phase (worst delta=125 B)
+     |   PASS  the peak the bound is enforced against (dir_peak_bytes) is inside it in every phase (worst=751)
+     |   PASS  the mount's own state (status.json + the refusal log) is inside its own bound: 8661 <= 4259840
+     |   PASS  the whole local footprint is inside its bound: 8987 <= 4260864
+   PASS  [tiny] the row's reproducer returns PASS on this tree (its own checks: the directory is inside the bound, the figures agree, the state is bounded)
+   2. after the writes          du(cache)=201      reported dir_bytes=201      (age 0ms) used=201      peak=374      du(mount 1024)=8864
+   PASS  [tiny] THE BOUND BOUNDS THE DIRECTORY: du(cache dir)=201 <= max_bytes=1024
+   PASS  [tiny] the peak the bound is enforced against is inside it: dir_peak_bytes=374
+   PASS  [tiny] the reported dir_bytes=201 agrees with du=201 (delta=0 B, tolerance=4096 B, sample age 0 ms)
+   [tiny] writes: refused=20 landed=0; state: status=7970/7967 conflicts=696/696 dropped=0 footprint=8867/4260864
+   PASS  [tiny] the refusal log recorded the refusals (696 B on disk) and is inside its cap (4194304 B)
+   PASS  [tiny] the state is inside its own bound: 8666 <= 4259840
+   PASS  [tiny] the footprint (cache + state + write-buffer budget) is inside its bound: 8867 <= 4260864
+   PASS  [tiny] the reported status_bytes=7970 describes status.json (7967 B, delta=3: the mount rewrites it once a second)
+     | mount        : 0b98ada17d00
+     | endpoint     : http://127.0.0.1:33883/dav
+     | mountpoint   : /tmp/bfs031-live-deIqKs/mnt-tiny
+     | mode         : poll (mechanism=events)
+     | invalidation : mode=poll seq=2 poll_interval_ms=2000 last_event_age_ms=1995
+     | resume       : seq=2 (the cursor this view was minted at)
+     | content age  : age_ms=1995 evidence_from=poll observations=17 bound_ms=4000 (poll_interval) within_bound=true
+     | server watch : state=absent backend=inotify watched=-/- sampled_age_ms=30025 max_paths_per_event=4096
+     | server counts: overflows=- unvouched=- rescans=- install_failures=- backend_errors=- heartbeats=- loop_ticks=-
+     |   counts why : no watcher has run on this target, so no counter has ever moved
+     | liveness     : - (no pushed channel on this mount)
+     |   why        : disabled: this mount never attempted the pushed channel (mode=poll), so it has no heartbeat to report; the poll mechanism's currency is reported in content_age
+     | requests     : requests_total=15 failures_total=0
+     | refresh      : started=0 in_flight=0/2 committed=0 aborted=0 refused_no_slot=0 refused_no_room=0
+     | refresh queue: - (no figure to report)
+     |   why        : not_published: the hot-refresh queue (BFS-037) is not in this build, so its depth, its bound and its refusals are not countable; the staged window below is the refresh accounting that does exist
+     | cache        : used_bytes=201 max_bytes=1024 (blobs=28 index=173) entries=1 blobs=1
+     | cache bounds : max_entry_bytes=1024 max_age_ms=3600000 entries=1/16384 in_flight_bytes=0 reserved_bytes=201 staged_blobs=0/2
+     | cache dir    : dir_bytes=201 unaccounted_bytes=0 measured_age_ms=0 by_class=blobs=28 conflicts=0 index=173 orphan=0 other=0 staged=0 status=0
+     | cache peak   : dir_peak_bytes=374 (the directory's peak: what max_bytes is enforced against)
+     | cache events : hits=0 misses=0 evictions=2 bypasses=0 oversize_bypasses=0 pinned=0
+     | cache bypass : over_entry_cap=0 insert_over_entry_cap=0 no_room=0 cache_disabled=0
+     | state        : bytes=8666 max_bytes=4259840 (status=7970/65536 conflicts=696/4194304 spill=0 dropped_total=0)
+     | state footpr : footprint_bytes=8867 footprint_max_bytes=4260864 (cache dir + state + the write-buffer budget)
+     | conflicts    : refusals_total=1
+     |   last       : src/target.txt code=hash_mismatch
+     | snapshot     : source=snapshot-op nodes=4 calls=1 truncated=false
+     | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=68 proto=HTTP/1.1
+     |   cause      : PUT src/target.txt: errno=ESTALE cause=conflict verdict=hash_mismatch: refusing to publish src/target.txt: the server already refused a write on this path (code=hash_mismatch, current=sha256:8df3379e5140b88937b04bc80980a2432691b06a6d37a803326c70d7526404de) and that refusal stands until the path is read — publishing now would land the bytes the refusal refused. Re-read the path, then retry
+     | write buffer : handles=0 bytes=0
+     | read bound   : refusals_total=0 corrections_total=0
+     | write shape  : refusals_total=0
+
+== ARM B: the DEFAULT bound (nothing passed: the real default path)
+   [default] mount dir=/tmp/bfs031-live-deIqKs/cache/bunker/fs/0a7311167a0d
+   [default] cache dir=/tmp/bfs031-live-deIqKs/cache/bunker/fs/0a7311167a0d/cache bound=268435456B tree=126 B
+   [default] the cache directory holds the cache (mount dir): . .. cache status.json 
+   [default] ...and the cache directory itself: . .. blobs 
+   0. baseline                  du(cache)=0        reported dir_bytes=0        (age 1010ms) used=26       peak=52       du(mount 268435456)=6658
+   PASS  [default] the read path served the whole tree (126 B) in 1 requests
+   PASS  [default] the read path cached what it served: entries=3 blobs_bytes=126 (peak inside the bound below)
+   [default] running the row's reproducer (docs/evidence/BFS-012-probes/small_bound_edge.py) against this mount
+     | bound chose by the caller; files read: the whole tree through the mount
+     | cache dir  : /tmp/bfs031-live-deIqKs/cache/bunker/fs/0a7311167a0d/cache
+     | mount dir  : /tmp/bfs031-live-deIqKs/cache/bunker/fs/0a7311167a0d
+     |   0. baseline (nothing read)         du(cache dir)=       26  reported dir_bytes=      26  used_bytes=       26  max_bytes=268435456  peak=      52  entries=0
+     |                                      (the mount's own state, which the cache bound does NOT name: status.json=6551 conflicts.jsonl=0)
+     |   1. after reading the tree          du(cache dir)=      600  reported dir_bytes=     474  used_bytes=      600  max_bytes=268435456  peak=    1074  entries=3
+     |                                      (the mount's own state, which the cache bound does NOT name: status.json=6565 conflicts.jsonl=0)
+     |   write attempts (truncate): 20   refused=20   LANDED=0   in 1.5s
+     |     errno histogram:   20 x errno=116 (Stale file handle)   (ESTALE is the conflict refusal the client raises)
+     |   2. after the refused writes        du(cache dir)=      376  reported dir_bytes=     474  used_bytes=      600  max_bytes=268435456  peak=    1074  entries=3
+     |                                      (the mount's own state, which the cache bound does NOT name: status.json=7786 conflicts.jsonl=695)
+     |   conflicts recorded        : 695 bytes / 1 lines in conflicts.jsonl (20 refused writes), status.conflicts={"refusals_total": 1, "last": {"path": "src/target.txt", "expected": "sha256:73536a5a50294d6d7c7e9e4d7428f53a5537ecb4db36d7a0545ac7499153d2a1", "current": "sha256:8df3379e5140b88937b04bc80980a2432691b
+     |   PASS  the client's used_bytes never exceeded max_bytes in any phase (max used=600, bound=268435456)
+     |   PASS  THE CACHE DIRECTORY IS INSIDE THE BOUND in every phase (worst du=600, bound=268435456)
+     |   PASS  the reported dir_bytes agrees with du of the cache directory within 4096 B in every phase (worst delta=126 B)
+     |   PASS  the peak the bound is enforced against (dir_peak_bytes) is inside it in every phase (worst=1074)
+     |   PASS  the mount's own state (status.json + the refusal log) is inside its own bound: 8479 <= 4259840
+     |   PASS  the whole local footprint is inside its bound: 8953 <= 272695296
+   PASS  [default] the row's reproducer returns PASS on this tree (its own checks: the directory is inside the bound, the figures agree, the state is bounded)
+   2. after the writes          du(cache)=376      reported dir_bytes=376      (age 0ms) used=376      peak=697      du(mount 268435456)=8854
+   PASS  [default] THE BOUND BOUNDS THE DIRECTORY: du(cache dir)=376 <= max_bytes=268435456
+   PASS  [default] the peak the bound is enforced against is inside it: dir_peak_bytes=697
+   PASS  [default] the reported dir_bytes=376 agrees with du=376 (delta=0 B, tolerance=4096 B, sample age 0 ms)
+   [default] writes: refused=20 landed=0; state: status=7786/7783 conflicts=695/695 dropped=0 footprint=8857/272695296
+   PASS  [default] the refusal log recorded the refusals (695 B on disk) and is inside its cap (4194304 B)
+   PASS  [default] the state is inside its own bound: 8481 <= 4259840
+   PASS  [default] the footprint (cache + state + write-buffer budget) is inside its bound: 8857 <= 272695296
+   PASS  [default] the reported status_bytes=7786 describes status.json (7783 B, delta=3: the mount rewrites it once a second)
+     | mount        : 0a7311167a0d
+     | endpoint     : http://127.0.0.1:37629/dav
+     | mountpoint   : /tmp/bfs031-live-deIqKs/mnt-default
+     | mode         : poll (mechanism=events)
+     | invalidation : mode=poll seq=2 poll_interval_ms=2000 last_event_age_ms=1994
+     | resume       : seq=2 (the cursor this view was minted at)
+     | content age  : age_ms=1994 evidence_from=poll observations=17 bound_ms=4000 (poll_interval) within_bound=true
+     | server watch : state=absent backend=inotify watched=-/- sampled_age_ms=30015 max_paths_per_event=4096
+     | server counts: overflows=- unvouched=- rescans=- install_failures=- backend_errors=- heartbeats=- loop_ticks=-
+     |   counts why : no watcher has run on this target, so no counter has ever moved
+     | liveness     : - (no pushed channel on this mount)
+     |   why        : disabled: this mount never attempted the pushed channel (mode=poll), so it has no heartbeat to report; the poll mechanism's currency is reported in content_age
+     | requests     : requests_total=15 failures_total=0
+     | refresh      : started=0 in_flight=0/2 committed=0 aborted=0 refused_no_slot=0 refused_no_room=0
+     | refresh queue: - (no figure to report)
+     |   why        : not_published: the hot-refresh queue (BFS-037) is not in this build, so its depth, its bound and its refusals are not countable; the staged window below is the refresh accounting that does exist
+     | cache        : used_bytes=376 max_bytes=268435456 (blobs=55 index=321) entries=2 blobs=2
+     | cache bounds : max_entry_bytes=67108864 max_age_ms=3600000 entries=2/16384 in_flight_bytes=0 reserved_bytes=376 staged_blobs=0/2
+     | cache dir    : dir_bytes=376 unaccounted_bytes=0 measured_age_ms=0 by_class=blobs=55 conflicts=0 index=321 orphan=0 other=0 staged=0 status=0
+     | cache peak   : dir_peak_bytes=697 (the directory's peak: what max_bytes is enforced against)
+     | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+     | cache bypass : over_entry_cap=0 insert_over_entry_cap=0 no_room=0 cache_disabled=0
+     | state        : bytes=8481 max_bytes=4259840 (status=7786/65536 conflicts=695/4194304 spill=0 dropped_total=0)
+     | state footpr : footprint_bytes=8857 footprint_max_bytes=272695296 (cache dir + state + the write-buffer budget)
+     | conflicts    : refusals_total=1
+     |   last       : src/target.txt code=hash_mismatch
+     | snapshot     : source=snapshot-op nodes=4 calls=1 truncated=false
+     | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=68 proto=HTTP/1.1
+     |   cause      : PUT src/target.txt: errno=ESTALE cause=conflict verdict=hash_mismatch: refusing to publish src/target.txt: the server already refused a write on this path (code=hash_mismatch, current=sha256:8df3379e5140b88937b04bc80980a2432691b06a6d37a803326c70d7526404de) and that refusal stands until the path is read — publishing now would land the bytes the refusal refused. Re-read the path, then retry
+     | write buffer : handles=0 bytes=0
+     | read bound   : refusals_total=0 corrections_total=0
+     | write shape  : refusals_total=0
+
+== ARM C: the 40-distinct-path refusal burst — the workload that produced the 29.97x
+   [burst] 40 distinct refused paths; the refusal log on disk: 27023 B (reported 27023 B)
+   [burst] the cache directory : du=26 reported dir_bytes=26 used=26 (bound 1024)
+   [burst] the state + footprint: status.json=7956 du(mount dir)=35005 state=34981/4259840 footprint=35007/4260864
+   PASS  [burst] THE BOUND BOUNDS THE DIRECTORY under the burst: du(cache dir)=26 <= 1024 (the ~27023 B of refusals is in the STATE, not in it)
+   PASS  [burst] the reported dir_bytes=26 agrees with du=26 (delta=0 B)
+   PASS  [burst] the state (34981 <= 4259840) and the footprint (35007 <= 4260864) are inside their bounds: the edit-volume growth is bounded AND visible
+   PASS  [burst] the burst grew the refusal log to 27023 B — the width the row's own fixture reached was 27,836 B — and it is in the STATE, inside its own bound
+
+== VERDICT
+LIVE-PASS: at 1 KiB and at the default the cache directory is INSIDE the bound
+it names, the reported figure agrees with du within 4096 B, and the state whose
+bytes are not the cache is bounded and named in its own right. /tmp/bfs031-live-deIqKs
+artifacts left in /tmp/bfs031-live-deIqKs (a mktemp -d: a probe that leaves its evidence behind can be re-read)
+EXIT=0

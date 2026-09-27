@@ -270,6 +270,18 @@ type CacheStats struct {
 	DirBytesReason      string           `json:"dir_bytes_reason,omitempty"`
 	DirMeasuredAgeMS    *int64           `json:"dir_measured_age_ms"`
 	DirUnaccountedBytes int64            `json:"dir_unaccounted_bytes"`
+	// DirPeakBytes is the directory's byte PEAK as admission sees it: the
+	// published blobs, the staged refreshes' booked bytes, the index TWICE (the
+	// document plus the temp copy flush writes before its rename), and the bytes
+	// an earlier walk found in the directory that this cache did not put there.
+	//
+	// It is the figure the byte bound is ENFORCED against, and it is reported
+	// beside `used_bytes` because the two are different questions: `used_bytes`
+	// is the occupancy at rest (what eviction reasons about and what `du` matches
+	// once the temps are gone), and `dir_peak_bytes` is the most the directory can
+	// hold at any instant. A bound enforced against the peak is what makes
+	// `du ≤ max_bytes` true rather than approximately true (BFS-031).
+	DirPeakBytes int64 `json:"dir_peak_bytes"`
 }
 
 // cacheEntry is one path's index record: which blob holds its bytes, and when
@@ -363,6 +375,12 @@ type Cache struct {
 	// directory held 4230 bytes.
 	dirBlobClasses map[string]int64
 	dirBlobAt      time.Time
+	// dirForeignBytes is the bytes the last walk found in the cache directory
+	// that this cache did not put there: orphan blobs and anything else. They
+	// occupy the directory, so they consume the bound (see dirPeakLocked) —
+	// which is the difference between a bound on the directory and a bound on
+	// the files the cache happens to count.
+	dirForeignBytes int64
 }
 
 // OpenCache creates (or reopens) the cache directory. The directory is 0700 and
@@ -430,6 +448,14 @@ func (c *Cache) load() error {
 	raw, err := os.ReadFile(filepath.Join(c.cfg.Dir, CacheIndexFile))
 	if err != nil {
 		if os.IsNotExist(err) {
+			// BFS-031: an empty cache is still a DIRECTORY, and the bound is a
+			// bound on it. Measuring here is what keeps "the directory is
+			// empty" and "nothing has been measured yet" from looking
+			// identical: a file this cache did not write (a foreign file, the
+			// residue of a crashed stage) is already consuming the bound before
+			// the first insert, and an unmeasured directory would let the first
+			// insert walk straight past it.
+			c.recountLocked()
 			return nil
 		}
 		return fmt.Errorf("fsclient: read cache index: %w", err)
@@ -675,9 +701,9 @@ func (c *Cache) admitStagedLocked(path string, expectedBytes int64) error {
 	if len(c.entries)+newEntries > c.cfg.MaxEntries {
 		return fmt.Errorf("%w: %d entries at the entry bound %d", ErrNoRoom, len(c.entries), c.cfg.MaxEntries)
 	}
-	need := c.reservedLocked() + expectedBytes + c.indexGrowthLocked(path)
+	need := c.dirPeakLocked(expectedBytes, c.indexGrowthLocked(path))
 	if need > c.cfg.MaxBytes {
-		return fmt.Errorf("%w: %d reserved + %d needed exceeds the byte bound %d", ErrNoRoom, c.reservedLocked(), expectedBytes, c.cfg.MaxBytes)
+		return fmt.Errorf("%w: the staged refresh would put %d bytes at the directory's peak, over the byte bound %d", ErrNoRoom, need, c.cfg.MaxBytes)
 	}
 	return nil
 }
@@ -716,18 +742,63 @@ func (c *Cache) stagedReservedLocked() int64 {
 // usedLocked is the PUBLISHED occupancy — what eviction reasons about, and what
 // `used_bytes` reports.
 func (c *Cache) usedLocked() int64 {
+	return c.blobsBytesLocked() + c.indexBytesLocked()
+}
+
+// blobsBytesLocked is the published blob census: the bytes of the blobs an index
+// entry can reach.
+func (c *Cache) blobsBytesLocked() int64 {
 	var blobs int64
 	for _, b := range c.blobs {
 		blobs += b.Size
 	}
-	return blobs + c.indexBytesLocked()
+	return blobs
 }
 
-// reservedLocked is the directory's peak as admission sees it: published bytes
-// plus every in-flight refresh's reservation. This is the figure that must stay
-// under the bound; at rest it equals usedLocked. F-1's arithmetic is why it
-// exists: a cache at 99% plus two 8 MiB refreshes in flight is 16 MiB over the
-// bound while the published figure still reads "inside".
+// dirPeakLocked is the CACHE DIRECTORY's byte peak if `extraBlob` blob bytes and
+// `extraIndex` index bytes were published right now:
+//
+//	published blobs
+//	+ every staged refresh's booked bytes (declared ≥ written: the booking is
+//	  the conservative side of a refresh that is still arriving)
+//	+ extraBlob (the blob this operation is about to write)
+//	+ the index TWICE (the document, plus the index.json.tmp that flushLocked
+//	  writes before its rename — for one instant both files exist on disk)
+//	+ the bytes an earlier walk found in the directory that this cache did not
+//	  put there (orphan blobs, a foreign file, a foreign subdirectory)
+//
+// WHY DOUBLE THE INDEX, AND WHY THE PEAK RATHER THAN THE OCCUPANCY. The bound
+// `--cache-max-size` names a DIRECTORY, so the figure it is enforced against has
+// to cover what the directory can hold at any instant. `used_bytes` is the
+// occupancy at rest: it is what `du` matches after the temps are gone, and it is
+// what BFS-005 §3.2 publishes. It is NOT sufficient as the thing a directory
+// bound is checked against, and BFS-031 is that difference measured: `used_bytes`
+// stayed at 26 B while the directory held 7,965 B at a 1 KiB bound, because the
+// index temp, status.json and the refusal log were all on disk and all outside
+// the figure. The two files this row could not fit under a 1 KiB bound have been
+// moved out of the directory (see layout.go) and given their own bound; the temp
+// copy of the index is reserved here, because it is cache bytes in the cache
+// directory and it is on disk at the same instant as the document it replaces.
+//
+// A STALE SAMPLE ERRS TOWARD THE BOUND HOLDING: the foreign term comes from the
+// walk, which is reused for up to DirMeasureTTL. A file that has since gone keeps
+// consuming its bytes until the next walk, so the cache can refuse an insert it
+// could technically have served. That is the safe direction for a bound, and the
+// error is bounded by the walk's cadence, which the record reports.
+func (c *Cache) dirPeakLocked(extraBlob, extraIndex int64) int64 {
+	index := c.indexBytesLocked() + extraIndex
+	return c.blobsBytesLocked() + c.stagedReservedLocked() + extraBlob + 2*index + c.dirForeignBytes
+}
+
+// reservedLocked is the PUBLISHED + BOOKED occupancy: published bytes plus every
+// in-flight refresh's reservation. F-1's arithmetic is why it exists: a cache at
+// 99% plus two 8 MiB refreshes in flight is 16 MiB over the bound while the
+// published figure still reads "inside".
+//
+// It is NOT the figure the bound is enforced against any more (BFS-031):
+// dirPeakLocked() is, because the directory also holds the index's temp copy and
+// whatever foreign bytes a walk found. `reserved_bytes` stays published for the
+// account it was published for (BFS-038 / F-1) and is a term of the peak.
 func (c *Cache) reservedLocked() int64 {
 	return c.usedLocked() + c.stagedReservedLocked()
 }
@@ -750,7 +821,7 @@ func (c *Cache) reserveStagedLocked(s *StagedRefresh, n int64) bool {
 	if delta <= 0 {
 		return true // already covered by the declared size
 	}
-	if c.reservedLocked()+delta > c.cfg.MaxBytes {
+	if c.dirPeakLocked(0, 0)+delta > c.cfg.MaxBytes {
 		return false
 	}
 	s.reserved += delta
@@ -1046,16 +1117,21 @@ func (c *Cache) indexGrowthLocked(path string) int64 {
 	return int64(len(enc)) + 1
 }
 
-// makeRoomLocked evicts until newBlobBytes (+ pending index growth, + the new
-// entry slots) fit under BOTH bounds. It returns an error when nothing can be
-// freed — the caller then bypasses rather than growing or blocking.
+// makeRoomLocked evicts until the DIRECTORY's peak with the new blob, the index
+// growth and the new entry slots fits under BOTH bounds. It returns an error when
+// nothing can be freed — the caller then bypasses rather than growing or
+// blocking.
+//
+// The figure it reasons about is dirPeakLocked, not the published occupancy
+// (BFS-031): the bound names a directory, and the directory holds the index's
+// temp copy and any foreign bytes beside the blobs.
 //
 // The entry count is a bound of its own because a byte bound alone does not
 // bound a directory (BFS-031): each entry also costs a serialised index record
 // the blob census never sees, so a tree of tiny files reaches the entry bound
 // while the byte figure still reads comfortably low.
 func (c *Cache) makeRoomLocked(newBlobBytes, indexGrowth int64, newEntries int) error {
-	for c.usedLocked()+newBlobBytes+indexGrowth > c.cfg.MaxBytes ||
+	for c.dirPeakLocked(newBlobBytes, indexGrowth) > c.cfg.MaxBytes ||
 		len(c.entries)+newEntries > c.cfg.MaxEntries {
 		if !c.evictOneLocked() {
 			return errors.New("fsclient: cache full and nothing evictable")
@@ -1278,6 +1354,9 @@ func (c *Cache) recountLocked() {
 	c.stats.MaxInFlight = c.cfg.MaxInFlight
 	c.stats.BypassReasons = c.bypassCensusLocked()
 	c.measureDirLocked()
+	// The peak is reported AFTER the walk, so the foreign term it reasons about
+	// is the freshest one available.
+	c.stats.DirPeakBytes = c.dirPeakLocked(0, 0)
 }
 
 // ---------------------------------------------------------------------------
@@ -1435,6 +1514,7 @@ func (c *Cache) measureDirLocked() {
 		for _, k := range []string{DirClassBlobs, DirClassStaged, DirClassOrphan} {
 			add(k, c.dirBlobClasses[k])
 		}
+		c.dirForeignBytes = c.dirBlobClasses[DirClassOrphan] + classes[DirClassOther]
 		c.dirErr = ""
 		c.dirBytes, c.dirClasses = total, classes
 		c.publishDirLocked(now)
@@ -1477,6 +1557,10 @@ func (c *Cache) measureDirLocked() {
 	for k, n := range blobClasses {
 		add(k, n)
 	}
+	// The foreign bytes — what the cache did not put here — are the part of the
+	// directory the published accounting cannot know, so they are carried to the
+	// enforcement (dirPeakLocked) as well as to the report.
+	c.dirForeignBytes = blobClasses[DirClassOrphan] + classes[DirClassOther]
 	c.dirErr = ""
 	c.dirBytes, c.dirClasses = total, classes
 	c.publishDirLocked(now)

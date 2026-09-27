@@ -729,8 +729,11 @@ run_one bound "read 40 files (bound exceeded)" -- sh -c "for f in \$(ls '$L/src'
 say "   cache figures after over-reading the bound (this mount's own status.json):"
 status_fresh "$LCACHE"
 status_of "$LCACHE" | grep -A 12 '"cache"' | sed 's/^/     /'
-say "   du of this mount's own cache directory (compared with used_bytes above):"
-du -s --block-size=1 "$LCACHE" 2>/dev/null | sed 's/^/     /'
+say "   du of this mount's own cache directory (compared with used_bytes above), and"
+say "   of the mount directory beside it (BFS-031: --cache-dir names the MOUNT dir;"
+say "   the directory the byte bound names is its cache/ subdirectory):"
+du -s --block-size=1 "$LCACHE/cache" 2>/dev/null | sed 's/^/     cache dir   /'
+du -s --block-size=1 "$LCACHE" 2>/dev/null | sed 's/^/     mount dir   /'
 say "   NOTE: this cell verifies a LOCAL resource (the client's cache). It is"
 say "   correctly local, and it makes no cross-link claim — stated so it is not"
 say "   read as a same-side verification."

@@ -1,0 +1,54 @@
+BFS-031 RED — the row's own reproducer (docs/evidence/BFS-012-probes/small_bound_edge.py)
+against the tree as it stood BEFORE this row (base 4879343), at a 1 KiB bound.
+Raw transcript follows; it is unedited.
+
+=== BFS-031 RED — the row's own reproducer, 1 KiB bound, current tree ===
+tree        = /home/kara/worktrees/bunker-BFS-031
+head        = 48793434e5f8b67c11e84b0430ac3787c89cea20
+head-subject= board: close BFS-062 - the frame bound is negotiated, and the row magnitude was wrong by 6x
+date        = 2026-09-27T10:45:20-05:00
+loadavg     = 11.52 10.08 9.58 11/9447 3869357
+python      = Python 3.11.15
+workdir     = /tmp/bfs031-red-VW6a56
+fixture     : 3 files, 142 B
+--- building bunker + davserve ---
+endpoint    = http://127.0.0.1:41719/dav (pid 3870915)
+cache-dir   = /tmp/bfs031-red-VW6a56/xdg/bunker/fs/7d60860b275f
+  | mounted http://127.0.0.1:41719/dav on /tmp/bfs031-red-VW6a56/mnt
+  |   cache dir    : /tmp/bfs031-red-VW6a56/xdg/bunker/fs/7d60860b275f (bound 1024 bytes, 16384 entries)
+  |   concurrency  : 4 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : , 1 nodes in 0 call(s)
+  |   config       : cache 1024 B / 16384 entries (entry cap 67108864, staged 2, age 1h0m0s)
+  |   invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=false state=misconfigured share=1/8 slots=1 (foreground 3) refresh_inflight=1 clamped=true reserve=8388608 B
+  |   MISCONFIG   : bunker-fs: --hot.max-file-bytes (8388608) exceeds the cache bound (--cache-max-size 1024); SPEC-hot-file-policy S-9 refuses the mount naming both numbers
+  |   hot weights  : read=1 edit=8 decay=0.9 per 5m0s (half-life 32m54s)
+  |   hot bounds   : tracker 4096 entries / 1048576 B, size<=8388608 B (inclusive=true), queue 256 (score, wait 5m0s), ceiling 10000
+  |   hot timing   : tick=1s yield=250ms stop_deadline=1.5s refresh_deadline=10s reacquire=30s touch_window=5s flush=30s
+--- the row's reproducer ---
+reproducer rc = 0
+  | bound chose by the caller; files read: the whole tree through the mount
+  |   0. baseline (nothing read)         du(cache dir)=     6396  used_bytes=       26  max_bytes=     1024  status.json=  6396  conflicts.jsonl=      0  entries=0
+  |   1. after reading the tree          du(cache dir)=     7137  used_bytes=      616  max_bytes=     1024  status.json=  6521  conflicts.jsonl=      0  entries=3
+  |   write attempts (truncate): 40   refused=40   LANDED=0   in 1.5s
+  |     errno histogram:   40 x errno=116 (Stale file handle)   (ESTALE is the conflict refusal the client raises)
+  |   2. after the refused writes        du(cache dir)=     7965  used_bytes=       26  max_bytes=     1024  status.json=  7243  conflicts.jsonl=    696  entries=0
+  |   conflicts recorded        : 696 bytes / 1 lines in conflicts.jsonl (40 refused writes), status.conflicts={"refusals_total": 1, "last": {"path": "src/target.txt", "expected": "sha256:37ddfba79f0fb34b5597150d607785f3e50d7a53f2eb530425523ac42edc043b", "current": "sha256:8df3379e5140b88937b04bc80980a2432691b06a6d37a803326c70d7526404de", "code": "hash_mismatch", "detail": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<D:error xmlns:D=\"DAV:\" xmlns:b=\"urn:bunker:fs:1\"><b:hash-mismatch><b:expected>sha256:37ddfba79f0fb34b5597150d607785f3e50d7a53f2eb530425523ac42edc043b</b:expected><b:current>sha256:8df3379e5140b88937b04bc80980a2432691b06a6d37a803326c70d7526404de</b:current></b:hash-mismatch></D:error>", "ts": "0001-01-01T00:00:00Z"}}
+  |   PASS  the client's used_bytes never exceeded max_bytes in any phase (max used=616, bound=1024)
+  |   MEASURED (finding F-C): the cache DIRECTORY exceeded the bound in 3 phase(s) — worst 7965 B = 7.78x the bound — because status.json and conflicts.jsonl are outside used_bytes. At a bound this small the unaccounted floor (status.json plus the refusal log) is larger than the bound itself. BFS-012 report §F-C.
+--- independent measurement at the end ---
+du -sb cache dir : 7968
+du -sb mount dir : 7968
+ls -la cache dir:
+  | total 28
+  | drwx------ 3 kara kara 4096 Sep 27 10:45 .
+  | drwx------ 3 kara kara 4096 Sep 27 10:45 ..
+  | drwx------ 2 kara kara 4096 Sep 27 10:45 blobs
+  | -rw------- 1 kara kara  696 Sep 27 10:45 conflicts.jsonl
+  | -rw------- 1 kara kara   26 Sep 27 10:45 index.json
+  | -rw------- 1 kara kara 7246 Sep 27 10:45 status.json
+status document (cache block):
+  | {"max_bytes":1024,"blobs_bytes":0,"index_bytes":26,"used_bytes":26,"entries":0,"blobs":0,"evictions_total":0,"bypass_events":0,"oversize_bypasses":0,"pinned_blobs":0,"max_entries":16384,"max_entry_bytes":1024,"max_age_ms":3600000,"in_flight_bytes":0,"reserved_bytes":26,"staged_blobs":0,"max_inflight":2,"staged_committed_total":0,"staged_aborted_total":0,"staged_no_room_total":0,"staged_no_slot_total":0,"hits":0,"misses":0,"staged_started_total":0,"bypass_reasons":{"cache_disabled":0,"insert_over_entry_cap":0,"no_room":0,"over_entry_cap":0},"dir_bytes":7965,"dir_bytes_by_class":{"blobs":0,"conflicts":696,"index":26,"orphan":0,"other":0,"staged":0,"status":7243},"dir_measured_age_ms":4000,"dir_unaccounted_bytes":7939}
+RED RUN COMPLETE rc=0 out=/tmp/bfs031-red
+EXIT=0
