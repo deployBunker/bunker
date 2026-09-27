@@ -1,0 +1,34 @@
+=== RUN   TestReaderHoldingTheOldBlobReadsTheOldCompleteContent
+--- PASS: TestReaderHoldingTheOldBlobReadsTheOldCompleteContent (0.00s)
+=== RUN   TestEvictionRespectsPinnedInFlightReaders
+--- PASS: TestEvictionRespectsPinnedInFlightReaders (0.01s)
+=== RUN   TestRefreshOfIdenticalContentKeepsTheBlob
+--- PASS: TestRefreshOfIdenticalContentKeepsTheBlob (0.00s)
+=== RUN   TestAbandonedRefreshDiscardsItsBlobAndNeverSwaps
+--- PASS: TestAbandonedRefreshDiscardsItsBlobAndNeverSwaps (0.00s)
+=== RUN   TestEveryStagedRefusalCanMove
+=== RUN   TestEveryStagedRefusalCanMove/committed
+=== RUN   TestEveryStagedRefusalCanMove/aborted
+=== RUN   TestEveryStagedRefusalCanMove/no_room_bytes
+=== RUN   TestEveryStagedRefusalCanMove/no_slot
+=== RUN   TestEveryStagedRefusalCanMove/disabled
+=== RUN   TestEveryStagedRefusalCanMove/malformed
+--- PASS: TestEveryStagedRefusalCanMove (0.00s)
+    --- PASS: TestEveryStagedRefusalCanMove/committed (0.00s)
+    --- PASS: TestEveryStagedRefusalCanMove/aborted (0.00s)
+    --- PASS: TestEveryStagedRefusalCanMove/no_room_bytes (0.00s)
+    --- PASS: TestEveryStagedRefusalCanMove/no_slot (0.00s)
+    --- PASS: TestEveryStagedRefusalCanMove/disabled (0.00s)
+    --- PASS: TestEveryStagedRefusalCanMove/malformed (0.00s)
+=== RUN   TestStagedContentAddressIsVerifiedBeforePublish
+--- PASS: TestStagedContentAddressIsVerifiedBeforePublish (0.00s)
+=== RUN   TestStagedWriteEnforcesBothBounds
+=== RUN   TestStagedWriteEnforcesBothBounds/per_entry_cap
+=== RUN   TestStagedWriteEnforcesBothBounds/reservation_mid_stream
+--- PASS: TestStagedWriteEnforcesBothBounds (0.00s)
+    --- PASS: TestStagedWriteEnforcesBothBounds/per_entry_cap (0.00s)
+    --- PASS: TestStagedWriteEnforcesBothBounds/reservation_mid_stream (0.00s)
+=== RUN   TestStagedCrashResidueIsSweptOnReopen
+--- PASS: TestStagedCrashResidueIsSweptOnReopen (0.00s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.018s

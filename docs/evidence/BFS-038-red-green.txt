@@ -1,0 +1,17 @@
+=== RUN   TestAtomicRefreshHalfFileCell
+=== RUN   TestAtomicRefreshHalfFileCell/staged-new-blob-swap
+    cache_staged_test.go:332: staged-new-blob-swap: reader observed "old" at the half-way checkpoint, "new" after the refresh returned; old content address intact=true
+=== RUN   TestAtomicRefreshHalfFileCell/control-mutate-old-blob
+    cache_staged_test.go:332: control-mutate-old-blob: reader observed "partial(196608 bytes)" at the half-way checkpoint, "absent" after the refresh returned; old content address intact=false
+=== RUN   TestAtomicRefreshHalfFileCell/control-publish-then-stream
+    cache_staged_test.go:332: control-publish-then-stream: reader observed "partial(196608 bytes)" at the half-way checkpoint, "new" after the refresh returned; old content address intact=true
+--- PASS: TestAtomicRefreshHalfFileCell (0.02s)
+    --- PASS: TestAtomicRefreshHalfFileCell/staged-new-blob-swap (0.00s)
+    --- PASS: TestAtomicRefreshHalfFileCell/control-mutate-old-blob (0.01s)
+    --- PASS: TestAtomicRefreshHalfFileCell/control-publish-then-stream (0.01s)
+=== RUN   TestConcurrentRefreshObservationMeasurement
+    cache_staged_test.go:432: MEASUREMENT staged-new-blob-swap: map[miss:48 new:151 old:576]
+    cache_staged_test.go:442: MEASUREMENT control-mutate-old-blob: map[miss:45408 new:129 partial:2028]
+--- PASS: TestConcurrentRefreshObservationMeasurement (0.17s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.191s

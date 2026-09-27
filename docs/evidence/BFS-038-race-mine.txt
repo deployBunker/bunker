@@ -1,0 +1,2 @@
+ok  	github.com/deployBunker/bunker/internal/fsclient	3.650s
+MINE_EXIT=0

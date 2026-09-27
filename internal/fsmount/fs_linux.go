@@ -1157,12 +1157,21 @@ func (h *readHandle) Read(ctx context.Context, dest []byte, off int64) (fuse.Rea
 // for. The reconciliation costs a comparison on the fast path and no request.
 func (h *readHandle) load(ctx context.Context) syscall.Errno {
 	if hash, _, ok := h.m.cache.Lookup(h.p); ok {
-		if data, ok := h.m.cache.Get(h.p, hash); ok && !h.distrustCached(int64(len(data)), hash) {
-			h.data, h.hash, h.loaded = data, hash, true
-			h.m.cache.Pin(hash)
-			h.pinned = true
-			h.m.wp.NoteServed(h.p, hash)
-			return 0
+		// The bytes and the reference on them are taken in ONE critical section
+		// (BFS-038). Between Get and Pin there is a window in which a concurrent
+		// refresh's pointer swap — or a Drop — removes the path entry this
+		// reader just read, and if that was the blob's last reference the file
+		// goes with it: a reference taken after that is a reference to nothing,
+		// and the handle would be holding bytes it can no longer vouch for.
+		if data, ok := h.m.cache.GetPinned(h.p, hash); ok {
+			if !h.distrustCached(int64(len(data)), hash) {
+				h.data, h.hash, h.loaded, h.pinned = data, hash, true, true
+				h.m.wp.NoteServed(h.p, hash)
+				return 0
+			}
+			// Not servable after all: the entry was dropped, so the reference
+			// the read took is given straight back.
+			h.m.cache.Unpin(hash)
 		}
 	}
 	data, meta, err := h.m.client.Get(ctx, h.p, "")

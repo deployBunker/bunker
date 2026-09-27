@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -24,10 +26,32 @@ const (
 	DefaultCacheMaxEntryBytes int64 = 67108864
 	// DefaultCacheMaxAge is the backstop TTL of one entry.
 	DefaultCacheMaxAge = time.Hour
+	// DefaultCacheMaxEntries is the ENTRY bound of the cache directory, and it is
+	// a separate bound from the byte one for a measured reason: a byte bound
+	// alone does not bound a directory (BFS-031: at a 1 KiB byte bound the
+	// directory reached 30,689 B). Every entry also costs a serialised index
+	// record the blob census never sees, so a tree of tiny files reaches the
+	// entry bound while the byte figure still reads comfortably low.
+	//
+	// 16384 entries × the measured ≈180 B record ≈ 2.9 MiB of index, 1.1% of
+	// the 256 MiB byte bound; it pairs with that bound so a uniform blob size at
+	// the entry bound is 16 KiB. BFS-044 owns the flag that exposes this knob;
+	// the enforcement and the reported figure live here.
+	DefaultCacheMaxEntries = 16384
+	// DefaultCacheMaxInFlight is how many STAGED refreshes may hold unpublished
+	// bytes at once. It is what makes the in-flight reservation a bound instead
+	// of a hope: the reservation ceiling is MaxInFlight × MaxEntryBytes, the
+	// 2 × 8 MiB = 16 MiB of the hot-file policy's Q-7 / Appendix A.5.
+	DefaultCacheMaxInFlight = 2
 	// CacheIndexFile is the path index inside the cache directory.
 	CacheIndexFile = "index.json"
 	// CacheBlobDir holds the content-addressed whole-file blobs.
 	CacheBlobDir = "blobs"
+	// CacheStagePrefix names a STAGED (unpublished) blob inside blobs/. It sits
+	// in the blob directory deliberately: those bytes are really on disk, so the
+	// directory's real size — the thing a bound must bound — includes them, and
+	// load's orphan sweep removes the residue of a crashed stage.
+	CacheStagePrefix = ".stage-"
 )
 
 // CacheConfig configures a Cache. MaxBytes = 0 disables the cache entirely:
@@ -36,7 +60,14 @@ type CacheConfig struct {
 	Dir           string
 	MaxBytes      int64
 	MaxEntryBytes int64
-	MaxAge        time.Duration
+	// MaxEntries bounds the directory in ENTRIES. 0 means
+	// DefaultCacheMaxEntries. The bound is always in force: a byte bound alone
+	// does not bound a directory (BFS-031), so there is no unbounded mode.
+	MaxEntries int
+	// MaxInFlight bounds how many staged refreshes may hold unpublished bytes.
+	// 0 means DefaultCacheMaxInFlight.
+	MaxInFlight int
+	MaxAge      time.Duration
 	// Now is the clock seam; nil means time.Now.
 	Now func() time.Time
 }
@@ -66,6 +97,15 @@ func (o Outcome) Cached() bool { return o == OutcomeStored || o == OutcomeHit }
 
 // CacheStats is the reported figure set of BFS-005 §3.2. used_bytes is the
 // figure AC-5 compares with `du`; max_bytes is what it must never exceed.
+//
+// TWO ACCOUNTS, NOT ONE (BFS-038 / F-1). `used_bytes` is the PUBLISHED figure —
+// blobs + index, what eviction reasons about, du-comparable at rest. It is not
+// by itself a bound on the directory, because a staged refresh's bytes are on
+// disk before they are published: `in_flight_bytes` counts those, and
+// `reserved_bytes` (= used + in-flight + the index growth they will publish) is
+// the directory's real peak and the figure admission keeps under max_bytes.
+// Both are reported, separately, because a bound that is only true of the state
+// you chose to count is not a bound (BFS-031's lesson, one layer up).
 type CacheStats struct {
 	MaxBytes         int64 `json:"max_bytes"`
 	BlobsBytes       int64 `json:"blobs_bytes"`
@@ -77,6 +117,26 @@ type CacheStats struct {
 	BypassEvents     int64 `json:"bypass_events"`
 	OversizeBypasses int64 `json:"oversize_bypasses"`
 	PinnedBlobs      int   `json:"pinned_blobs"`
+	// MaxEntries/Entries is the SECOND bound: bytes alone do not bound a
+	// directory (BFS-031), so the entry count is bounded and reported too.
+	MaxEntries int `json:"max_entries"`
+	// InFlightBytes are the bytes staged refreshes have written and not yet
+	// published: really on disk, unreachable by any reader.
+	InFlightBytes int64 `json:"in_flight_bytes"`
+	// ReservedBytes is used + in-flight + the staged index growth: the peak the
+	// bound is enforced against, as opposed to the occupancy it is reported at.
+	ReservedBytes int64 `json:"reserved_bytes"`
+	// StagedBlobs/MaxInFlight report the width of the refresh window whose bytes
+	// the reservation covers; without a width bound the reservation is unbounded.
+	StagedBlobs int `json:"staged_blobs"`
+	MaxInFlight int `json:"max_inflight"`
+	// The staged-refresh flow counters. Each one is reachable from the live path
+	// and each one is proven to move (BFS-032: a counter that cannot move is a
+	// gap, not a green check).
+	StagedCommittedTotal int64 `json:"staged_committed_total"`
+	StagedAbortedTotal   int64 `json:"staged_aborted_total"`
+	StagedNoRoomTotal    int64 `json:"staged_no_room_total"`
+	StagedNoSlotTotal    int64 `json:"staged_no_slot_total"`
 	// Hits/Misses are the read-path counters; not part of the §3.2 minimum but
 	// the only way to show the cache actually served anything.
 	Hits   int64 `json:"hits"`
@@ -110,12 +170,38 @@ type indexDoc struct {
 	Entries []cacheEntry `json:"entries"`
 }
 
+// The staged-refresh refusals. Each is a REFUSAL and never an eviction: eviction
+// reasons about published blobs only, and a refresh may never cause one (Q-8).
+var (
+	// ErrNoRoom is admission refusing a staged refresh: published + in-flight
+	// bytes (or entries) leave no room under the bound. The caller maps it to the
+	// policy's `no_room` skip reason (S-12) and must not evict to make room.
+	ErrNoRoom = errors.New("fsclient: no room for a staged refresh")
+	// ErrNoSlot is the in-flight WIDTH refusal: every stage slot is taken. Unlike
+	// ErrNoRoom this is not a skip — the caller keeps its item queued until a
+	// slot frees.
+	ErrNoSlot = errors.New("fsclient: refresh width reached")
+	// ErrStageClosed is Write/Commit on a stage that already ended.
+	ErrStageClosed = errors.New("fsclient: staged refresh already finished")
+	// ErrOversize is a staged write that would pass the per-entry cap; the caller
+	// maps it to `oversize_after_head` (S-12) and abandons before pulling more.
+	ErrOversize = errors.New("fsclient: staged blob is over the per-entry cap")
+	// ErrCacheDisabled is Stage on a cache switched off by --cache-max-size 0.
+	ErrCacheDisabled = errors.New("fsclient: cache is disabled")
+)
+
 // Cache is a bounded, content-addressed, whole-file cache with a path index.
 //
 // Consequences of the content-addressing (BFS-005 §3.2), all deliberate: two
 // paths with identical content cost ONE blob; the read that fills the cache is
 // the read that decides the conflict (its hash is the write's If-Match base);
 // and whole-file blobs make `blobs_bytes` agree with `du` up to block rounding.
+//
+// The path index is also the ATOMICITY MECHANISM (BFS-038): a reader reaches a
+// blob only through `entries` under `mu`, so a blob that is not indexed is
+// unreachable — not in part, not at all. That is what lets a refresh write a new
+// blob and publish it with one pointer swap instead of mutating bytes a reader
+// may be reading.
 type Cache struct {
 	cfg CacheConfig
 
@@ -123,8 +209,12 @@ type Cache struct {
 	entries  map[string]*cacheEntry // path -> entry
 	blobs    map[string]*blobRef    // hash -> blob
 	inflight map[string]bool        // blobs feeding an in-flight write: never evicted
-	gen      int64
-	stats    CacheStats
+	// staged holds the refreshes that are holding unpublished bytes on disk.
+	// Membership is the in-flight census; each stage's reservation is what
+	// admission reasons about.
+	staged map[*StagedRefresh]struct{}
+	gen    int64
+	stats  CacheStats
 }
 
 // OpenCache creates (or reopens) the cache directory. The directory is 0700 and
@@ -148,6 +238,16 @@ func OpenCache(cfg CacheConfig) (*Cache, error) {
 	if cfg.MaxAge <= 0 {
 		cfg.MaxAge = DefaultCacheMaxAge
 	}
+	// The two bounds that are not about a single blob. Both are always in force:
+	// a cache with no entry bound is a directory the byte bound does not bound
+	// (BFS-031), and a cache with no in-flight bound is a reservation that is not
+	// a bound (F-1). 0 therefore means "the default", never "unlimited".
+	if cfg.MaxEntries <= 0 {
+		cfg.MaxEntries = DefaultCacheMaxEntries
+	}
+	if cfg.MaxInFlight <= 0 {
+		cfg.MaxInFlight = DefaultCacheMaxInFlight
+	}
 	if err := os.MkdirAll(filepath.Join(cfg.Dir, CacheBlobDir), 0o700); err != nil {
 		return nil, fmt.Errorf("fsclient: create cache dir: %w", err)
 	}
@@ -159,6 +259,7 @@ func OpenCache(cfg CacheConfig) (*Cache, error) {
 		entries:  map[string]*cacheEntry{},
 		blobs:    map[string]*blobRef{},
 		inflight: map[string]bool{},
+		staged:   map[*StagedRefresh]struct{}{},
 		stats:    CacheStats{MaxBytes: cfg.MaxBytes},
 	}
 	if err := c.load(); err != nil {
@@ -269,6 +370,387 @@ func (c *Cache) Get(path, hash string) ([]byte, bool) {
 	return data, true
 }
 
+// GetPinned serves path's bytes AND takes the refcount on the blob holding them
+// in ONE critical section; release it with Unpin. Get-then-Pin is two critical
+// sections, and the window between them is a blob a reader is reading with
+// nothing keeping it alive: a Commit that swaps the path's pointer (or a Drop)
+// inside that window removes the entry, and if that was the blob's last
+// reference the file goes with it. The bytes a caller already holds are its own
+// copy either way — the refcount is what keeps the CONTENT ON DISK for the
+// handle's lifetime, which is what "a reader holding the old blob keeps it
+// alive, so eviction must respect in-flight reads" (BFS-038) means.
+func (c *Cache) GetPinned(path, hash string) ([]byte, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.disabled() {
+		c.stats.Misses++
+		return nil, false
+	}
+	e := c.entries[path]
+	if e == nil || !IsHash(hash) || e.Hash != hash {
+		c.stats.Misses++
+		return nil, false
+	}
+	if c.expired(e) {
+		c.dropPathLocked(path)
+		c.stats.Misses++
+		return nil, false
+	}
+	data, err := os.ReadFile(c.blobPath(e.Hash))
+	if err != nil {
+		c.dropPathLocked(path)
+		c.stats.Misses++
+		return nil, false
+	}
+	e.LastHitMS = c.cfg.Now().UnixMilli()
+	c.stats.Hits++
+	if b := c.blobs[e.Hash]; b != nil {
+		b.Pins++
+	}
+	return data, true
+}
+
+// ── the atomic refresh representation (BFS-038, PRD §2.5) ────────────────────
+//
+// A refresh must never be visible half-written, and that is a REPRESENTATION
+// problem, not a locking one: a lock can serialise two writers, it cannot help a
+// reader that is already reading the bytes being rewritten. So a refresh writes
+// to a NEW immutable blob and publishes it with ONE pointer swap.
+//
+// Why the swap is atomic here: `entries` under `mu` is the ONLY path from a
+// reader to a blob. A staged blob is not in `entries`, so it is unreachable —
+// not in part, not at all — until Commit's single map store. The staged FILE is
+// renamed to its content address one step earlier, while nothing references it,
+// so the pointer can never name a partial file. Between "byte written" and
+// "pointer swapped" there is no state a reader can observe.
+//
+// The two corollaries that make this a contract rather than a hope:
+//   - an abandoned or cancelled refresh DISCARDS its blob and never swaps
+//     (Abort; idempotent, so a cancel that never arrives is not corrupting);
+//   - a reader holding the old blob keeps it alive (Pin/Unpin) and eviction
+//     skips it, so the swap can take the old CONTENT away only after the last
+//     reader has released it.
+
+// StagedRefresh is one refresh's unpublished blob, between "bytes are arriving"
+// and "published". Its whole contract: bytes go to a new file no reader can
+// reach; Commit verifies the content address and performs one pointer swap;
+// Abort deletes the file, releases the reservation, and never swaps; the
+// reservation is held for the entire staging window, so the directory's peak is
+// what admission reserved.
+type StagedRefresh struct {
+	c           *Cache
+	path        string
+	hash        string
+	file        *os.File
+	tmpName     string
+	hasher      hash.Hash
+	entryGrowth int64 // index bytes this stage will publish (booked at admission)
+	estimate    int64 // bytes the caller declared it will write (booked at admission)
+	reserved    int64 // bytes booked against the bound, guarded by c.mu
+	written     atomic.Int64
+	mu          sync.Mutex // serialises Write/Commit/Abort on this stage
+	done        bool
+}
+
+// Stage begins a refresh of path: it reserves admission, opens a fresh
+// unpublished blob inside the cache directory, and returns a writer for it.
+// Nothing any reader can observe changes until Commit.
+//
+// expectedBytes is the size the caller expects to write (0 when it does not
+// know). It is what admission books up front; the reservation is also enforced
+// as the bytes arrive, so a caller whose expectation was wrong is refused rather
+// than allowed to overshoot the bound.
+func (c *Cache) Stage(path, hash string, expectedBytes int64) (*StagedRefresh, error) {
+	if path == "" || !IsHash(hash) {
+		return nil, fmt.Errorf("fsclient: a staged refresh needs a path and a well-formed hash")
+	}
+	if expectedBytes < 0 {
+		expectedBytes = 0
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.disabled() {
+		return nil, ErrCacheDisabled
+	}
+	if len(c.staged) >= c.cfg.MaxInFlight {
+		c.stats.StagedNoSlotTotal++
+		return nil, ErrNoSlot
+	}
+	if err := c.admitStagedLocked(path, expectedBytes); err != nil {
+		c.stats.StagedNoRoomTotal++
+		return nil, err
+	}
+	f, err := os.CreateTemp(filepath.Join(c.cfg.Dir, CacheBlobDir), CacheStagePrefix+"*")
+	if err != nil {
+		return nil, fmt.Errorf("fsclient: create staged blob: %w", err)
+	}
+	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close()
+		_ = os.Remove(f.Name())
+		return nil, fmt.Errorf("fsclient: chmod staged blob: %w", err)
+	}
+	s := &StagedRefresh{
+		c:           c,
+		path:        path,
+		hash:        hash,
+		file:        f,
+		tmpName:     f.Name(),
+		hasher:      NewHasher(),
+		entryGrowth: c.indexGrowthLocked(path),
+		estimate:    expectedBytes,
+	}
+	s.reserved = expectedBytes + s.entryGrowth
+	c.staged[s] = struct{}{}
+	return s, nil
+}
+
+// admitStagedLocked is the ADMISSION half of the two accounts (Q-9): the refresh
+// is admitted only if published + in-flight + this blob — and the entry it will
+// add — fit under the bounds. Eviction is deliberately not consulted, and
+// nothing is evicted to make room: eviction reasons about published blobs only
+// and a refresh may never cause one (Q-8).
+func (c *Cache) admitStagedLocked(path string, expectedBytes int64) error {
+	// Every staged refresh that will add an entry consumes an entry slot, and
+	// only a path that is not indexed adds one.
+	newEntries := 0
+	if c.entries[path] == nil && !c.stagedHasPathLocked(path) {
+		newEntries = 1
+	}
+	if len(c.entries)+newEntries > c.cfg.MaxEntries {
+		return fmt.Errorf("%w: %d entries at the entry bound %d", ErrNoRoom, len(c.entries), c.cfg.MaxEntries)
+	}
+	need := c.reservedLocked() + expectedBytes + c.indexGrowthLocked(path)
+	if need > c.cfg.MaxBytes {
+		return fmt.Errorf("%w: %d reserved + %d needed exceeds the byte bound %d", ErrNoRoom, c.reservedLocked(), expectedBytes, c.cfg.MaxBytes)
+	}
+	return nil
+}
+
+// stagedHasPathLocked reports whether another in-flight refresh already targets
+// path (so the second one does not book a second entry slot).
+func (c *Cache) stagedHasPathLocked(path string) bool {
+	for s := range c.staged {
+		if s.path == path {
+			return true
+		}
+	}
+	return false
+}
+
+// inFlightBytesLocked is what the staged refreshes have already written into the
+// cache directory: really on disk (du sees it), unreachable by any reader.
+func (c *Cache) inFlightBytesLocked() int64 {
+	var n int64
+	for s := range c.staged {
+		n += s.written.Load()
+	}
+	return n
+}
+
+// stagedReservedLocked is what the in-flight refreshes have booked: their bytes
+// (written or expected) plus the index growth they will publish.
+func (c *Cache) stagedReservedLocked() int64 {
+	var n int64
+	for s := range c.staged {
+		n += s.reserved
+	}
+	return n
+}
+
+// usedLocked is the PUBLISHED occupancy — what eviction reasons about, and what
+// `used_bytes` reports.
+func (c *Cache) usedLocked() int64 {
+	var blobs int64
+	for _, b := range c.blobs {
+		blobs += b.Size
+	}
+	return blobs + c.indexBytesLocked()
+}
+
+// reservedLocked is the directory's peak as admission sees it: published bytes
+// plus every in-flight refresh's reservation. This is the figure that must stay
+// under the bound; at rest it equals usedLocked. F-1's arithmetic is why it
+// exists: a cache at 99% plus two 8 MiB refreshes in flight is 16 MiB over the
+// bound while the published figure still reads "inside".
+func (c *Cache) reservedLocked() int64 {
+	return c.usedLocked() + c.stagedReservedLocked()
+}
+
+// reserveStagedLocked tops a stage's booking up so that it covers
+// max(declared, written) + the index it will publish, refusing when the booked
+// total would pass the byte bound. It is a top-up rather than an addition on
+// purpose: the declared size is booked at Stage, and re-booking each arriving
+// chunk on top of it would refuse every refresh that declared its size honestly.
+// The booking is monotone — it never falls while the stage lives — so two
+// concurrent writers cannot both be admitted against the same free space.
+func (c *Cache) reserveStagedLocked(s *StagedRefresh, n int64) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	want := s.written.Load() + n
+	if want < s.estimate {
+		want = s.estimate
+	}
+	delta := want + s.entryGrowth - s.reserved
+	if delta <= 0 {
+		return true // already covered by the declared size
+	}
+	if c.reservedLocked()+delta > c.cfg.MaxBytes {
+		return false
+	}
+	s.reserved += delta
+	return true
+}
+
+// releaseStagedLocked ends a stage's reservation and its in-flight membership.
+// Its bytes are published (they are `used_bytes` now) or gone, so neither figure
+// may still count them.
+func (c *Cache) releaseStagedLocked(s *StagedRefresh) {
+	delete(c.staged, s)
+	s.reserved = 0
+}
+
+// Write appends to the staged blob, enforcing both structural bounds as the
+// bytes arrive: the per-entry cap (a blob larger than MaxEntryBytes could never
+// be published, so it is refused before more bandwidth is spent) and the
+// admission reservation (the DIRECTORY's bound, not the published figure).
+func (s *StagedRefresh) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.done {
+		return 0, ErrStageClosed
+	}
+	if s.written.Load()+int64(len(p)) > s.c.cfg.MaxEntryBytes {
+		return 0, fmt.Errorf("%w: %d bytes would exceed %d", ErrOversize, s.written.Load()+int64(len(p)), s.c.cfg.MaxEntryBytes)
+	}
+	if !s.c.reserveStagedLocked(s, int64(len(p))) {
+		return 0, fmt.Errorf("%w: the staged refresh would pass the cache bound", ErrNoRoom)
+	}
+	n, err := s.file.Write(p)
+	if n > 0 {
+		s.written.Add(int64(n))
+		_, _ = s.hasher.Write(p[:n])
+	}
+	if err != nil {
+		return n, fmt.Errorf("fsclient: write staged blob: %w", err)
+	}
+	// A short write needs no correction here: the booking is
+	// max(declared, written) + index growth, so a chunk that did not land simply
+	// does not raise it — and it is deliberately not LOWERED either, because a
+	// reservation that fell mid-stream would admit a second refresh against
+	// bytes that are still coming.
+	return n, nil
+}
+
+// Commit publishes the staged blob with ONE pointer swap, and verifies the
+// content address before it does. It is the only operation in this file that
+// changes what a reader of `path` can see, and it changes it in a single store
+// into the path index. It is single-use: Commit or Abort ends the stage.
+func (s *StagedRefresh) Commit() (Outcome, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.done {
+		return OutcomeBypass, ErrStageClosed
+	}
+	// The content address is verified BEFORE anything is published: bytes that
+	// do not hash to the key they would be filed under are never named as that
+	// content, which is the same refusal Insert makes.
+	if got := HashTag(s.hasher.Sum(nil)); got != s.hash {
+		err := fmt.Errorf("fsclient: refusing to publish %s under %s (content hashes to %s)", s.path, s.hash, got)
+		s.abortLocked()
+		return OutcomeBypass, err
+	}
+	size := s.written.Load()
+	if err := s.file.Close(); err != nil {
+		s.abortLocked()
+		return OutcomeBypass, fmt.Errorf("fsclient: close staged blob: %w", err)
+	}
+	c := s.c
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	// 1. The new blob takes its content address. It is an immutable file that
+	//    nothing references yet, so this step is invisible to every reader: the
+	//    index is the only way to reach a blob.
+	blob := c.blobs[s.hash]
+	if blob == nil {
+		if err := os.Rename(s.tmpName, c.blobPath(s.hash)); err != nil {
+			_ = os.Remove(s.tmpName)
+			c.releaseStagedLocked(s)
+			s.done = true
+			return OutcomeBypass, fmt.Errorf("fsclient: publish staged blob: %w", err)
+		}
+		c.blobs[s.hash] = &blobRef{Hash: s.hash, Size: size}
+		blob = c.blobs[s.hash]
+	} else {
+		// Identical content is already cached: the staged file is redundant, and
+		// the pointer still moves to a complete blob.
+		_ = os.Remove(s.tmpName)
+	}
+	// 2. THE ONE POINTER SWAP, in one critical section, with the reference taken
+	//    before the old entry is dropped so a re-publish of the same content
+	//    cannot reclaim the blob it is about to point at. A reader either holds
+	//    the old entry — and the complete old blob it names, alive for as long as
+	//    its pin is held — or it gets this one. There is no third state.
+	blob.Refs++
+	if old := c.entries[s.path]; old != nil {
+		c.dropPathLocked(s.path)
+	}
+	c.entries[s.path] = &cacheEntry{
+		Path:      s.path,
+		Hash:      s.hash,
+		Size:      blob.Size,
+		LastHitMS: c.cfg.Now().UnixMilli(),
+		Gen:       c.gen,
+	}
+	// 3. The reservation ends exactly where the published figure begins: these
+	//    bytes were in_flight_bytes a moment ago and are used_bytes now, so the
+	//    bound is never briefly unenforced.
+	c.releaseStagedLocked(s)
+	s.done = true
+	c.stats.StagedCommittedTotal++
+	c.recountLocked()
+	_ = c.flushLocked()
+	return OutcomeStored, nil
+}
+
+// Abort discards the staged blob: the file goes, the reservation goes, and the
+// path index is never touched. It is IDEMPOTENT — an abandonment that arrives
+// twice, or after a Commit, is a no-op rather than an error — because an
+// accidental cancel may never arrive at all (PRD §2.8), and a duplicate one must
+// not be corrupting either.
+func (s *StagedRefresh) Abort() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.done {
+		return nil
+	}
+	s.abortLocked()
+	return nil
+}
+
+// abortLocked is Abort's body, called with s.mu held and c.mu NOT held.
+func (s *StagedRefresh) abortLocked() {
+	if s.file != nil {
+		_ = s.file.Close()
+	}
+	_ = os.Remove(s.tmpName)
+	c := s.c
+	c.mu.Lock()
+	if !s.done {
+		c.releaseStagedLocked(s)
+		c.stats.StagedAbortedTotal++
+		s.done = true
+	}
+	c.mu.Unlock()
+}
+
+// Bytes is how many bytes the stage has written so far — the figure a caller
+// reports as downloaded, and the one the in-flight census counts.
+func (s *StagedRefresh) Bytes() int64 { return s.written.Load() }
+
+// Path and Hash name what the stage will publish if it is committed.
+func (s *StagedRefresh) Path() string { return s.path }
+func (s *StagedRefresh) Hash() string { return s.hash }
+
 // Lookup reports whether an entry exists for a path and what hash it holds,
 // without reading the bytes. The mount needs this to decide whether a write has
 // a base hash at all (BFS-005 §5.3).
@@ -321,13 +803,19 @@ func (c *Cache) Insert(path, hash string, data []byte) (Outcome, error) {
 
 	// Project the post-insert size and evict until it fits. indexBytes is
 	// measured from the serialised document, not estimated, so `used_bytes`
-	// stays exact and comparable with `du`.
+	// stays exact and comparable with `du`. The entry dimension is checked with
+	// the byte one: an insert that would add an entry past the entry bound
+	// evicts too (BFS-031).
 	blob := c.blobs[hash]
 	newBlobBytes := int64(0)
 	if blob == nil {
 		newBlobBytes = int64(len(data))
 	}
-	if err := c.makeRoomLocked(newBlobBytes, c.indexGrowthLocked(path)); err != nil {
+	newEntries := 1
+	if c.entries[path] != nil {
+		newEntries = 0
+	}
+	if err := c.makeRoomLocked(newBlobBytes, c.indexGrowthLocked(path), newEntries); err != nil {
 		c.stats.BypassEvents++
 		return OutcomeBypass, nil
 	}
@@ -399,11 +887,17 @@ func (c *Cache) indexGrowthLocked(path string) int64 {
 	return int64(len(enc)) + 1
 }
 
-// makeRoomLocked evicts until newBlobBytes (+ pending index growth) fit under
-// the cap. It returns an error when nothing can be freed — the caller then
-// bypasses rather than growing or blocking.
-func (c *Cache) makeRoomLocked(newBlobBytes, indexGrowth int64) error {
-	for c.usedLocked()+newBlobBytes+indexGrowth > c.cfg.MaxBytes {
+// makeRoomLocked evicts until newBlobBytes (+ pending index growth, + the new
+// entry slots) fit under BOTH bounds. It returns an error when nothing can be
+// freed — the caller then bypasses rather than growing or blocking.
+//
+// The entry count is a bound of its own because a byte bound alone does not
+// bound a directory (BFS-031): each entry also costs a serialised index record
+// the blob census never sees, so a tree of tiny files reaches the entry bound
+// while the byte figure still reads comfortably low.
+func (c *Cache) makeRoomLocked(newBlobBytes, indexGrowth int64, newEntries int) error {
+	for c.usedLocked()+newBlobBytes+indexGrowth > c.cfg.MaxBytes ||
+		len(c.entries)+newEntries > c.cfg.MaxEntries {
 		if !c.evictOneLocked() {
 			return errors.New("fsclient: cache full and nothing evictable")
 		}
@@ -587,16 +1081,6 @@ func (c *Cache) indexBytesLocked() int64 {
 	return int64(len(raw))
 }
 
-// usedLocked is blobs_bytes + index_bytes — the bytes actually on the client's
-// disk (BFS-005 §3.1).
-func (c *Cache) usedLocked() int64 {
-	var blobs int64
-	for _, b := range c.blobs {
-		blobs += b.Size
-	}
-	return blobs + c.indexBytesLocked()
-}
-
 // recountLocked refreshes the reported figures. A DISABLED cache reports zeros
 // for everything including the index: the figures are the client's declared
 // local footprint, and a disabled cache has none.
@@ -620,6 +1104,15 @@ func (c *Cache) recountLocked() {
 	c.stats.Blobs = len(c.blobs)
 	c.stats.PinnedBlobs = pins
 	c.stats.MaxBytes = c.cfg.MaxBytes
+	// The second dimension of the bound, and the two accounts of the first: the
+	// published figure (used_bytes) and the peak admission enforces
+	// (reserved_bytes = published + in-flight + the index the in-flight
+	// refreshes will publish). Both are reported, never merged (F-1 / O-3).
+	c.stats.MaxEntries = c.cfg.MaxEntries
+	c.stats.InFlightBytes = c.inFlightBytesLocked()
+	c.stats.ReservedBytes = c.reservedLocked()
+	c.stats.StagedBlobs = len(c.staged)
+	c.stats.MaxInFlight = c.cfg.MaxInFlight
 }
 
 // flushLocked persists the index atomically. A disabled cache writes nothing.
