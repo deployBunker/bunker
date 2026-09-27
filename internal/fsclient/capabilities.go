@@ -9,6 +9,90 @@ import (
 	"time"
 )
 
+// CapabilityWatch is the capability document's `extensions.watch` block — what
+// the SERVER can honestly claim about watching this target, and what it has
+// counted while doing it (SPEC-watcher-capability §8.2). The client REPORTS this
+// block rather than re-deriving it: the server is the only side that can measure
+// its own watcher, so a client that invented these figures would be guessing at
+// another process's state. Every nullable field is a pointer, because the
+// document publishes `null` WITH a reason and a decoded zero would erase the
+// difference between "absent" and "zero" (BFS-045's null rule).
+type CapabilityWatch struct {
+	Name        string            `json:"name"`
+	V           int               `json:"v"`
+	Mode        string            `json:"mode"`
+	Modes       map[string]string `json:"modes"`
+	HeartbeatMS int               `json:"heartbeat_ms"`
+	MaxPaths    int               `json:"max_paths_per_event"`
+	// State is the runtime state vocabulary: watching|overflow|lost|absent
+	// (§3.2). `absent` is a fact about the TARGET, not a failure of the client.
+	State string `json:"state"`
+	// BlocksPush is the server's own verdict on whether the absence of the push
+	// form blocks the channel. nil when the document does not publish it.
+	BlocksPush *bool  `json:"blocks_push"`
+	Backend    string `json:"backend"`
+	// Reason is the named reason the watcher is absent (§4: watch_unsupported_
+	// platform, watch_limit_exhausted, watch_target_netbacked, watch_partial_
+	// coverage, watch_install_failed, watch_lost, watch_boundary_split). The
+	// document publishes it as null when there is none, so it is a pointer.
+	Reason *string `json:"reason"`
+	Detail string  `json:"detail"`
+	Target struct {
+		MountType     string `json:"mount_type"`
+		MountPoint    string `json:"mount_point"`
+		NetworkBacked bool   `json:"network_backed"`
+		// BoundarySplit is §4.8's THREE-VALUED field: the document publishes the
+		// JSON boolean true/false or the STRING "unknown" (triBool, so a silent
+		// false is never used for an unmeasurable fact). It is decoded as raw
+		// JSON because a typed bool would refuse "unknown" and a typed string
+		// would refuse true — and a decode failure here would take the whole
+		// document with it.
+		BoundarySplit  json.RawMessage `json:"boundary_split"`
+		BoundaryReason string          `json:"boundary_split_reason"`
+	} `json:"target"`
+	Coverage *struct {
+		DirectoriesDesired int      `json:"directories_desired"`
+		DirectoriesWatched int      `json:"directories_watched"`
+		MissingCount       int      `json:"missing_count"`
+		Missing            []string `json:"missing"`
+		MissingReason      string   `json:"missing_reason"`
+		Complete           bool     `json:"complete"`
+		Headroom           int      `json:"headroom"`
+	} `json:"coverage"`
+	// Absence of the whole coverage/counters group is reported with its reason
+	// (§3.3 rule 2: fields that cannot be measured are null WITH a reason).
+	CoverageReason string `json:"coverage_reason"`
+	Counters       *struct {
+		OverflowsTotal        int64  `json:"overflows_total"`
+		UnvouchedTotal        int64  `json:"unvouched_total"`
+		RescansTotal          int64  `json:"rescans_total"`
+		InstallFailuresTotal  int64  `json:"install_failures_total"`
+		BackendErrorsTotal    int64  `json:"backend_errors_total"`
+		OverflowDroppedEvents *int64 `json:"overflow_dropped_events"`
+		OverflowDroppedReason string `json:"overflow_dropped_reason"`
+		UnvouchedReason       string `json:"unvouched_reason"`
+		LastEventAgeMS        *int64 `json:"last_event_age_ms"`
+		ChangedSince          string `json:"changed_since"`
+		HeartbeatsTotal       int64  `json:"heartbeats_total"`
+		EventLoopTicks        int64  `json:"event_loop_ticks"`
+		WatchesAdded          int64  `json:"watches_added"`
+	} `json:"counters"`
+	CountersReason string `json:"counters_reason"`
+	Liveness       *struct {
+		Vouched        bool   `json:"vouched"`
+		Stalled        bool   `json:"stalled"`
+		LivenessSource string `json:"liveness_source"`
+	} `json:"liveness"`
+}
+
+// Present reports whether the document carried a watch block at all. A build
+// that predates the block sends nothing, and "nothing was published" is a
+// different fact from "the watcher is absent" — the client must be able to say
+// which one it is looking at (BFS-045's null reasons).
+func (w *CapabilityWatch) Present() bool {
+	return w != nil && (w.Name != "" || w.State != "")
+}
+
 // Capabilities is the decoded capability document (BFS-004 §4.2). A consumer
 // that does not know DocumentVersion must fail CLOSED rather than proceed
 // (§4.2 rule 3), which is why the version is checked in Handshake.
@@ -20,12 +104,8 @@ type Capabilities struct {
 	Methods    []string `json:"methods"`
 	Protocols  []string `json:"protocols"`
 	Extensions struct {
-		Watch struct {
-			Modes       map[string]string `json:"modes"`
-			HeartbeatMS int               `json:"heartbeat_ms"`
-			MaxPaths    int               `json:"max_paths_per_event"`
-		} `json:"watch"`
-		Ops struct {
+		Watch CapabilityWatch `json:"watch"`
+		Ops   struct {
 			Catalogue []string `json:"catalogue"`
 			Live      []string `json:"live"`
 		} `json:"op"`
@@ -168,6 +248,7 @@ func (c *Client) CapabilitiesDoc(ctx context.Context) (*Capabilities, *OpError) 
 	caps.Raw = env.Raw
 	c.capsMu.Lock()
 	c.caps = &caps
+	c.capsAt = timeNow()
 	c.capsMu.Unlock()
 	return &caps, nil
 }
