@@ -3,7 +3,10 @@ package webdav
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -663,10 +666,33 @@ func TestUnhonouredValueThatDoesNotBindIsAWarningNotARefusal(t *testing.T) {
 	if !found {
 		t.Fatalf("no degradation entry carries the unhonoured value: %v", h.watchDegradations(st))
 	}
-	// The same pair must reach the carrier a client PROBES: the watch op's
-	// refusal. A value that is only visible in a document nobody re-reads is a
-	// value an operator will never see.
-	refusal := readWatchRefusal(t, h)
+	// The same pair must reach the carrier a client PROBES — the op's own refusal.
+	// Where the push form is served (this cell: the watcher is up) that op STREAMS
+	// instead of refusing (BFS-036), so the probe-carrier is asserted on a SECOND
+	// handler with the SAME configuration whose watcher is refused. The pair is
+	// read from the CONFIG, not from the watcher, so which of the two states the
+	// target is in cannot change the numbers a client is told.
+	root2 := fixtureTree(t)
+	h2, err := New(Config{Root: root2, Build: "test-build", Invalidation: &v})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(h2.Close)
+	fw2 := defaultFakeWatch(h2.Root())
+	// The SAME platform ceiling the first handler probed, so the pair the refusal
+	// carries is the same pair. The absence is injected through a REFUSED
+	// DIRECTORY (W-4 partial coverage) rather than through a ceiling, because a
+	// ceiling that does not fit would change the observed number under assertion,
+	// and a backend-level absence never reaches the ceiling arithmetic at all.
+	fw2.ceilings.MaxUserWatches = 4096
+	fw2.failAdd = func(dir string) error {
+		if filepath.Base(dir) == "empty" {
+			return fmt.Errorf("add %s: %w", dir, os.ErrPermission)
+		}
+		return nil
+	}
+	h2.startWatch(fw2.env(), watchOptionsFrom(v))
+	refusal := readWatchRefusal(t, h2)
 	if refusal.Error.Unhonoured == nil || refusal.Error.Unhonoured.Configured != asked || refusal.Error.Unhonoured.Observed != 4096 {
 		t.Fatalf("the refusal does not carry the pair: %+v", refusal.Error)
 	}

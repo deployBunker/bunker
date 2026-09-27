@@ -1140,15 +1140,36 @@ func (i *Invalidator) watchOnce(ctx context.Context) *OpError {
 	if e := i.frameLimitMismatch(); e != nil {
 		return e
 	}
-	i.mu.Lock()
-	since := i.seq
-	i.mu.Unlock()
-
-	body, err := json.Marshal(map[string]any{"paths": i.opt.Paths, "since_seq": since})
+	// The resume point this client PRESENTS is the strongest cursor it can back
+	// (BFS-036): the observation it holds where it holds one — the cursor the
+	// server itself minted for a whole-tree answer — and otherwise the highest seq
+	// it has APPLIED, which is a cursor the server issued on a line this client
+	// really saw (R-1: the cursor advances on every line). With neither, it
+	// presents 0: "my view starts at the beginning", which is TRUE of a client that
+	// has observed nothing, and which the server answers with either the complete
+	// history (when seq 1 is still retained, so no gap is possible) or with the
+	// interval it cannot vouch for.
+	//
+	// WHY THE OBSERVATION COMES FIRST. A mount that bound with a whole-tree
+	// snapshot holds an observation at a minted cursor and has applied no line yet,
+	// so its counter is 0. Presenting 0 tells a server whose journal has rotated
+	// that the client holds nothing, and the server answers — correctly — with the
+	// interval it cannot vouch for: a resync on every bind, which is the cost
+	// BFS-063 removed for the poll. `since_seq` stays PRESENT in every case (the
+	// stream's declared wire form: {paths, since_seq}); what changes is which
+	// cursor it names.
+	since, hold := i.resumePoint()
+	if !hold {
+		i.mu.Lock()
+		since = i.seq
+		i.mu.Unlock()
+	}
+	body := map[string]any{"paths": i.opt.Paths, "since_seq": since}
+	raw, err := json.Marshal(body)
 	if err != nil {
 		return &OpError{Op: "watch", Errno: ErrnoEIO, Cause: CauseServerError, Err: err}
 	}
-	req, rerr := i.client.newRequest(ctx, http.MethodPost, "", bytes.NewReader(body))
+	req, rerr := i.client.newRequest(ctx, http.MethodPost, "", bytes.NewReader(raw))
 	if rerr != nil {
 		return &OpError{Op: "watch", Errno: ErrnoENOTCONN, Cause: CauseUnreachableConnect, Err: rerr}
 	}

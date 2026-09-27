@@ -423,6 +423,13 @@ func (l *eventLog) push(t *tree, name string, paths []string) eventLine {
 		l.journal = append([]eventLine(nil), l.journal[len(l.journal)-eventsJournalEvents:]...)
 	}
 	l.base = l.journal[0].Seq
+	// R-5 (§3.4): every line that advances the counter is delivered to every
+	// attached subscriber. The fan-out happens HERE, in the one funnel, rather
+	// than at each call site, so a line cannot enter the journal without reaching
+	// the stream — and the two mechanisms can never hold two different histories
+	// of one tree. It appends to per-subscriber buffers and performs no I/O, so
+	// the watcher's read loop never blocks on a subscriber (§6.1 B-8).
+	t.broadcast(ev)
 	return ev
 }
 
@@ -564,9 +571,32 @@ func (t *tree) pollEvents(p resumePoint) (eventsAnswer, error) {
 		return eventsAnswer{Events: []eventLine{}, Scanned: len(state), Truncated: truncated, Head: l.seq}, nil
 	}
 
-	// The resume decision, in R-4's order — the advance-past-the-cursor case
-	// first, because an event at or below the client's own seq is one a client is
-	// right to discard as a duplicate.
+	// The resume decision, shared with the stream (resumeLocked below): the poll
+	// and the pushed channel answer the same cursor on the same ledger, so the
+	// two mechanisms cannot drift into two different accounts of one history.
+	events := l.resumeLocked(t, p)
+	return eventsAnswer{Events: events, Scanned: len(state), Truncated: truncated, Head: l.seq}, nil
+}
+
+// resumeLocked answers a resume request from the ledger's own history, WITHOUT
+// observing the tree. It is the single implementation of §3.2's four cases:
+//
+//	cursor inside the retained journal — the retained lines above it, oldest first;
+//	cursor exactly at head          — nothing (the caller's liveness line follows);
+//	cursor behind the retained journal — an `overflow` first, whose seq is a gap;
+//	cursor ahead of the ledger      — the counter advances PAST the cursor and an
+//	                                  `overflow` is pushed, so the notice cannot
+//	                                  be discarded as a duplicate (R-4).
+//
+// A client that presents NO cursor has told the ledger nothing about what it
+// holds, so no interval is vouched for it and it is answered `overflow` rather
+// than a tail it has no way to recognise as partial (R-3; the same rule the poll
+// implements, and the one BFS-063's measurement is about).
+//
+// Callers hold l.mu. The lines it returns are the lines to ANSWER WITH; nothing
+// else is appended to the journal by this function except the R-4 advance, which
+// is a ledger-level correction and is journaled exactly as the poll journals it.
+func (l *eventLog) resumeLocked(t *tree, p resumePoint) []eventLine {
 	switch {
 	case p.Cursor > l.seq:
 		// The cursor is ahead of anything this ledger has issued: a restarted
@@ -575,21 +605,19 @@ func (t *tree) pollEvents(p resumePoint) (eventsAnswer, error) {
 		// the seq is advanced PAST the cursor first, so the notice cannot be
 		// discarded as a duplicate (BFS-041 §3.3 R-4).
 		l.seq = p.Cursor
-		ev := l.push(t, eventOverflow, nil)
-		return eventsAnswer{Events: []eventLine{ev}, Scanned: len(state), Truncated: truncated, Head: l.seq}, nil
+		return []eventLine{l.push(t, eventOverflow, nil)}
 	case !p.Baseline || (p.Cursor == 0 && l.base > 1):
 		// The interval is not vouched for, so nothing may stand in for it: not
 		// an empty tail, not a partial one, and not a tail whose gap this client
 		// has no way to recognise (SPEC-push-channel §3.3 R-3).
 		//
-		// The second form is the narrow one and it is the whole point: a
-		// retained tail is self-describing only because the client's own rule
-		// reads its first seq as a gap — and that rule is disabled at cursor 0.
-		// When seq 1 is still retained (`base <= 1`) the tail IS the whole
-		// history and needs no marker; once it is not, the tail starts above the
-		// interval this client asked about and only an `overflow` says so.
-		ev := l.overflow(t, p)
-		return eventsAnswer{Events: []eventLine{ev}, Scanned: len(state), Truncated: truncated, Head: l.seq}, nil
+		// The second form is the narrow one and it is the whole point: a retained
+		// tail is self-describing only because the client's own rule reads its
+		// first seq as a gap — and that rule is disabled at cursor 0. When seq 1
+		// is still retained (`base <= 1`) the tail IS the whole history and needs
+		// no marker; once it is not, the tail starts above the interval this
+		// client asked about and only an `overflow` says so.
+		return []eventLine{l.overflow(t, p)}
 	}
 	out := make([]eventLine, 0, len(l.journal))
 	for _, ev := range l.journal {
@@ -597,7 +625,31 @@ func (t *tree) pollEvents(p resumePoint) (eventsAnswer, error) {
 			out = append(out, ev)
 		}
 	}
-	return eventsAnswer{Events: out, Scanned: len(state), Truncated: truncated, Head: l.seq}, nil
+	return out
+}
+
+// streamResume is resumeLocked for the pushed channel, and it exists for the one
+// case the poll gets for free: the poll OBSERVES the tree first, so a ledger that
+// has never observed anything is started by that very observation before any
+// resume question is asked. The stream does not observe — it replays what the
+// tree's ledger already knows — so a ledger that holds no history at all cannot
+// answer "nothing moved"; the interval it was asked about was never observed here
+// at all, and that is knowledge lost, not quiet (R-3).
+//
+// It is the same ledger, the same counter and the same case table as the poll:
+// one implementation (resumeLocked) serves both, which is what makes the two
+// mechanisms comparable rather than merely similar (SPEC-push-channel §11.1 O-1).
+func (l *eventLog) streamResume(t *tree, p resumePoint) []eventLine {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if p.Cursor > l.seq {
+		l.seq = p.Cursor
+		return []eventLine{l.push(t, eventOverflow, nil)}
+	}
+	if !l.started {
+		return []eventLine{l.overflow(t, p)}
+	}
+	return l.resumeLocked(t, p)
 }
 
 // overflow returns the `overflow` notice owed to a client whose interval the

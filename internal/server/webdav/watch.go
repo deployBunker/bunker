@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -1341,7 +1342,14 @@ func (w *watcher) statusSnapshot() watchStatus {
 		WatchesAdded:          int64(w.coverage.DirectoriesWatched),
 	}
 	// §8.2: a reason that is a warning never blocks push, and W-7 is the only one.
-	st.BlocksPush = !(st.Reason == WatchReasonBoundarySplit)
+	// BFS-036 TIGHTENED THIS FIELD'S MEANING rather than its shape: it is the
+	// server's own verdict on whether the push form is blocked here, and since the
+	// wire form exists that verdict follows the CHANNEL — an established watcher
+	// means the stream is served and nothing is blocked; every other state is an
+	// absence that blocks it. Reporting `true` for a healthy watcher was true only
+	// while the stream did not exist, and a client reading it would be reading an
+	// absence that is no longer there.
+	st.BlocksPush = !pushServedFrom(st)
 	return st
 }
 
@@ -1529,11 +1537,23 @@ func (h *Handler) watchStatusSnapshot() watchStatus {
 // watchDocumentBlock renders §8.2's `extensions.watch` block from the RUNNING
 // process. Fields that cannot be measured are null WITH a reason, never a clean
 // default (§3.3 rule 2).
-func (h *Handler) watchDocumentBlock(st watchStatus) map[string]any {
+//
+// `mode` is the mode IN FORCE, and since BFS-036 that is a per-target fact
+// rather than a build constant: where a watcher is established the push form is
+// served and the mode is `push`; where none is, the declared poll form carries
+// the channel and the mode is `poll`. F-3 (SPEC-push-channel §9) is the rule a
+// consumer must follow: read `mode`, never the op list — the op list is a
+// declaration of the vocabulary, this is the declaration of the mechanism.
+func (h *Handler) watchDocumentBlock(st watchStatus, w http.ResponseWriter) map[string]any {
+	served := pushServedFrom(st)
+	mode := "poll"
+	if served {
+		mode = "push"
+	}
 	blk := map[string]any{
 		"name":                "X-Bunker-Op: watch",
 		"v":                   1,
-		"mode":                "poll",
+		"mode":                mode,
 		"heartbeat_ms":        st.HeartbeatMS,
 		"max_paths_per_event": eventsMaxPathsPerEvent,
 		// BFS-062: the frame's BYTE bound, declared so a consumer can size its
@@ -1542,12 +1562,19 @@ func (h *Handler) watchDocumentBlock(st watchStatus) map[string]any {
 		// ignores it, and the value published is the one the running surface
 		// obeys (the same field the events assembly measures against).
 		"max_event_bytes": h.inv.Push.MaxEventBytes,
-		"modes":           map[string]any{"push": "inotify\u2192stream", "poll": "X-Bunker-Op: events"},
-		"state":           st.State,
-		"blocks_push":     st.BlocksPush,
-		"backend":         st.Backend,
-		"target":          st.Target,
-		"limits":          st.Limits,
+		"modes": map[string]any{
+			"push": "X-Bunker-Op: watch (NDJSON stream, SPEC-push-channel §2)",
+			"poll": "X-Bunker-Op: events",
+		},
+		"state":       st.State,
+		"blocks_push": st.BlocksPush,
+		"backend":     st.Backend,
+		"target":      st.Target,
+		"limits":      st.Limits,
+		// BFS-036: the channel's own declaration and counters (§6.3). Disjoint
+		// from `counters` below by design: those count what the WATCHER lost,
+		// these count what the CHANNEL dropped.
+		pushCapabilityBlockKey: h.pushBlock(w, served),
 		// BFS-043: the knob surface this process is serving with, read out of the
 		// running watcher rather than out of the config (see invalidationConfigBlock).
 		"config": h.invalidationConfigBlock(st),
@@ -1579,28 +1606,19 @@ func (h *Handler) watchDocumentBlock(st watchStatus) map[string]any {
 	return blk
 }
 
-// watchRefusal is the `watch` op's answer. It keeps the four-field shape an old
-// client branches on (verdict, status, scope=target, mode=poll) and adds `reason`
-// as a NEW FIELD — never a new verdict code (§3.1, §2.3).
+// watchRefusal is the `watch` op's answer where the push form is NOT served. It
+// keeps the four-field shape an old client branches on (verdict, status,
+// scope=target, mode=poll) and adds `reason` as a NEW FIELD — never a new verdict
+// code (§3.1, §2.3).
+//
+// BFS-036 CHANGED ITS PREMISE, NOT ITS SHAPE. Before this row there was a second
+// branch here answering a BUILD-scope refusal for a target whose watcher WAS
+// established, because the push wire form did not exist. The wire form exists
+// now, so that branch is gone: where a watcher is established the op streams, and
+// every refusal this function can produce is about the TARGET (no watcher, no
+// coverage, watch lost, or a deployment that did not enable one). A build-scope
+// refusal surviving here would be a claim that is no longer true.
 func (h *Handler) watchRefusal(st watchStatus) *envelopeError {
-	if st.State == WatchStateWatching || st.State == WatchStateOverflow {
-		// A watcher IS established here. The op still refuses, and the honest
-		// reason is now a BUILD fact, not a target fact: the push wire form is
-		// BFS-036's deliverable and is not in this build. Claiming the target has
-		// no watcher would be the same class of lie as claiming one it does not
-		// have (§3.3).
-		//
-		// BFS-043: an unhonourable value is attached even here. The watcher being
-		// up does not make a configured number that the platform could not give
-		// any less true, and this refusal is the one an operator probing the push
-		// form reads.
-		return &envelopeError{
-			Capability: "watch", Scope: "build", Phase: "C6", Mode: "poll",
-			Unhonoured: st.Unhonoured,
-			Detail: fmt.Sprintf("the push wire form is not in this build; the watcher IS established on this target (state=%s, backend=%s, %d directories watched) and aligns the served revision for out-of-band changes; the declared poll form X-Bunker-Op: events carries the channel (mode=poll)",
-				st.State, st.Backend, coverageWatched(st)),
-		}
-	}
 	return &envelopeError{
 		Capability: "watch", Scope: "target", Mode: "poll",
 		Reason: st.Reason,
@@ -1619,24 +1637,21 @@ func coverageWatched(st watchStatus) int {
 }
 
 // watchDegradations renders the watcher's entries for the document's
-// `degradations[]`. Three shapes, and they are not interchangeable:
+// `degradations[]`. Two shapes remain, and they are not interchangeable:
 //
 //   - an ABSENCE with a reason (blocks_push true): the same reason the refusal
 //     carries, so the two carriers can never disagree;
 //   - a WARNING (W-7, blocks_push false): reported, never a degradation of the
-//     channel — a client that reacts by switching mechanisms changes nothing;
-//   - a BUILD-level entry while a watcher is established: the push wire form is
-//     BFS-036's, and saying so is what stops "the op 501s" reading as "the
-//     target has no watcher".
+//     channel — a client that reacts by switching mechanisms changes nothing.
+//
+// BFS-036 REMOVED A THIRD. While the push wire form did not exist, a
+// BUILD-level entry was emitted on a target whose watcher WAS established, so
+// that "the op 501s" could not read as "the target has no watcher". The wire
+// form is served now, so on such a target there is nothing degraded to report —
+// and keeping the entry would be reporting an absence that is no longer absent.
 func (h *Handler) watchDegradations(st watchStatus) []map[string]any {
 	var out []map[string]any
-	if st.State == WatchStateWatching || st.State == WatchStateOverflow {
-		out = append(out, map[string]any{
-			"capability": "watch", "scope": "build", "phase": "C6", "mode": "poll",
-			"detail": fmt.Sprintf("the push wire form is not in this build (BFS-036); the watcher IS established on this target (state=%s, backend=%s, %d directories watched) and aligns the served revision for out-of-band changes",
-				st.State, st.Backend, coverageWatched(st)),
-		})
-	} else {
+	if !pushServedFrom(st) {
 		entry := map[string]any{
 			"capability": "watch", "scope": "target", "mode": "poll",
 			"detail": fmt.Sprintf("inotify watcher absent on this target: the push form is not served; the declared poll form X-Bunker-Op: events is. %s", st.Detail),
