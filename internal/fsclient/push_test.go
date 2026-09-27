@@ -89,7 +89,11 @@ func TestPushClientSwitchReadsTheDeclarationNotAStreamProbe(t *testing.T) {
 	if oerr != nil {
 		t.Fatalf("handshake: %v", oerr)
 	}
-	if !info.Capabilities.WatchPushDeclared() {
+	if info.Capabilities.WatchMode() != ModePush {
+		// The guard reads the DECLARED MODE, not WatchPushDeclared(): a cell that
+		// skipped because of the very function it is testing would pass by
+		// skipping the moment that function is mutated, which is the "a skip must
+		// not outlive its feature" rule one level down.
 		t.Skipf("this endpoint does not declare the pushed mode (%q), so there is no offer to switch on — the cell says so rather than passing", info.Capabilities.WatchMode())
 	}
 	if !info.WatcherAvailable {
@@ -114,8 +118,8 @@ func TestPushClientAppliesAPushedChangeAndReportsTheWatchMechanism(t *testing.T)
 	if oerr != nil {
 		t.Fatalf("handshake: %v", oerr)
 	}
-	if !info.WatcherAvailable {
-		t.Skipf("no watcher is establishable on this host (source=%q): the push form is not offered, and the cell says so rather than passing", info.WatcherSource)
+	if info.Capabilities.WatchMode() != ModePush {
+		t.Skipf("no watcher is establishable on this host (declared mode %q): the push form is not offered, and the cell says so rather than passing", info.Capabilities.WatchMode())
 	}
 
 	rec := &collectDrops{}
@@ -149,6 +153,8 @@ func TestPushClientAppliesAPushedChangeAndReportsTheWatchMechanism(t *testing.T)
 	if strings.Contains(st.Reason, "poll") {
 		t.Fatalf("the record carries a poll reason while the watch mechanism is in force: %+v", st)
 	}
+	t.Logf("the delivered record: mode=%s available=%t mechanism=%s seq=%d events=%d dropped=%d gaps=%d resyncs=%d stream_ends=%d reconnects=%d reason=%q",
+		st.Mode, st.Available, st.Mechanism, st.Seq, st.Events, st.DroppedPaths, st.Gaps, st.Resyncs, st.StreamEnds, st.Reconnects, st.Reason)
 	// The pushed channel costs O(changes): the poll's O(paths) observation is not
 	// happening behind this delivery, which is the whole point of the row.
 	if st.PollIntervalMS != nil {
@@ -174,7 +180,7 @@ func TestPushClientNeverReportsWatchWhenThePollDelivered(t *testing.T) {
 	if oerr != nil {
 		t.Fatalf("handshake: %v", oerr)
 	}
-	if !info.Capabilities.WatchPushDeclared() {
+	if info.Capabilities.WatchMode() != ModePush {
 		t.Skip("the endpoint does not offer push on this host, so the arm cannot distinguish an offer from a delivery")
 	}
 	rec := &collectDrops{}

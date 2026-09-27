@@ -376,6 +376,22 @@ func TestPushCell02DeadClientIsReleasedAndItsSlotComesBack(t *testing.T) {
 	if c.DisconnectsCtxTotal+c.DisconnectsDeadlineTotal != c.DisconnectsTotal {
 		t.Fatalf("a disconnect was counted outside the declared triggers: %+v", c)
 	}
+	t.Logf("the dead client's release: counters=%+v", c)
+
+	// And the SLOT CAME BACK: a bound that releases the connection but leaks the
+	// slot is not a bound, and the cell's own name is a claim.
+	again := openPushStream(t, base, subscribeBody(cursor))
+	if _, ok := again.next(t, 2*time.Second); !ok {
+		t.Fatal("the channel did not serve a NEW subscriber after the dead one was released")
+	}
+	waitFor(t, 3*time.Second, "the new subscriber to be counted", func() bool {
+		return h.PushCounters().SubscribersActive == 1
+	})
+	again.kill()
+	waitFor(t, 5*time.Second, "the second client to be released", func() bool {
+		return h.PushCounters().SubscribersActive == 0
+	})
+	t.Logf("the slot came back and was released again: counters=%+v", h.PushCounters())
 }
 
 // ---------------------------------------------------------------------------
@@ -412,6 +428,7 @@ func TestPushCell03StalledReaderIsReleasedByTheWriteDeadline(t *testing.T) {
 	if got := h.PushCounters().SubscribersActive; got != 0 {
 		t.Fatalf("subscribers_active = %d after the write-deadline release, want 0", got)
 	}
+	t.Logf("the stalled reader's release: counters=%+v", h.PushCounters())
 }
 
 // singleConnListener hands out one connection and then blocks, so a cell can serve
@@ -538,6 +555,7 @@ func TestPushCell04BackpressureDropsOldestAndCountsOneGap(t *testing.T) {
 	if c.BufferHighWaterBytes == 0 {
 		t.Fatal("subscriber_buffer_high_water_bytes stayed 0 while the buffer was filled")
 	}
+	t.Logf("the counted gap: pushed=%d written=%d counters=%+v", pushed, len(got), c)
 }
 
 // drainSub empties a subscriber's buffer the way the writer goroutine does.

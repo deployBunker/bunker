@@ -1,0 +1,11 @@
+=== RUN   TestPushClientSwitchReadsTheDeclarationNotAStreamProbe
+--- PASS: TestPushClientSwitchReadsTheDeclarationNotAStreamProbe (0.01s)
+=== RUN   TestPushClientAppliesAPushedChangeAndReportsTheWatchMechanism
+    push_test.go:156: the delivered record: mode=push available=true mechanism=watch seq=3 events=2 dropped=1 gaps=0 resyncs=0 stream_ends=0 reconnects=0 reason=""
+--- PASS: TestPushClientAppliesAPushedChangeAndReportsTheWatchMechanism (0.06s)
+=== RUN   TestPushClientNeverReportsWatchWhenThePollDelivered
+--- PASS: TestPushClientNeverReportsWatchWhenThePollDelivered (10.10s)
+=== RUN   TestPushClientStreamPresentsTheObservationCursor
+--- PASS: TestPushClientStreamPresentsTheObservationCursor (0.02s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsclient	10.202s
