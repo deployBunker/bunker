@@ -120,8 +120,10 @@ type JWTAuth struct {
 	// deny (optional) receives every authentication denial, never token
 	// material — only the FingerprintToken fingerprint. Set via SetDenySink.
 	deny DenyFunc
-	// throttle (optional) applies SEC-15 per-source backoff to
-	// unauthenticated requests. Set via SetDenySink.
+	// throttle applies SEC-15 per-source backoff to unauthenticated
+	// requests. Armed by armThrottle (through the constructors or
+	// ArmThrottle) and, for compatibility, by a non-nil SetDenySink — never
+	// DISARMED by detaching the sink (REV-BUNKER-006).
 	throttle *throttleState
 }
 
@@ -269,17 +271,26 @@ func (a *JWTAuth) WrapStreamingHandler(next connect.StreamingHandlerFunc) connec
 	}
 }
 
-// SetDenySink attaches a denial sink and the per-source throttle to this
-// interceptor (GAP-133). Semantics mirror TokenAuth.SetDenySink: every
-// authentication denial is reported with the presented token reduced to a
-// SHA-256 fingerprint, unauthenticated requests become subject to per-source
-// exponential backoff, and a successful auth resets the source. nil detaches.
+// SetDenySink attaches a denial sink to this interceptor (GAP-133). Semantics
+// mirror TokenAuth.SetDenySink: every authentication denial is reported with
+// the presented token reduced to a SHA-256 fingerprint, and a successful auth
+// resets the source's throttle. nil detaches the sink.
+//
+// REV-BUNKER-006: as on TokenAuth, a non-nil deny arms the SEC-15 throttle and
+// a nil deny detaches ONLY the sink — it never disarms the throttle, which is
+// armed by the auth constructors whenever auth is enabled.
 func (a *JWTAuth) SetDenySink(deny DenyFunc) {
 	a.deny = deny
 	if deny != nil {
+		a.armThrottle()
+	}
+}
+
+// armThrottle arms the SEC-15 per-source throttle. Idempotent — see
+// TokenAuth.armThrottle.
+func (a *JWTAuth) armThrottle() {
+	if a.throttle == nil {
 		a.throttle = newThrottleState()
-	} else {
-		a.throttle = nil
 	}
 }
 

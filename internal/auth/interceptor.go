@@ -28,8 +28,10 @@ type TokenAuth struct {
 	// deny (optional) receives every authentication denial, never token
 	// material — only the FingerprintToken fingerprint. Set via SetDenySink.
 	deny DenyFunc
-	// throttle (optional) applies SEC-15 per-source backoff to
-	// unauthenticated requests. Set via SetDenySink.
+	// throttle applies SEC-15 per-source backoff to unauthenticated
+	// requests. Armed by armThrottle (through the constructors or
+	// ArmThrottle) and, for compatibility, by a non-nil SetDenySink — never
+	// DISARMED by detaching the sink (REV-BUNKER-006).
 	throttle *throttleState
 }
 
@@ -38,21 +40,31 @@ func NewTokenAuth(token string) *TokenAuth {
 	return &TokenAuth{token: token}
 }
 
-// SetDenySink attaches a denial sink and the per-source throttle to this
-// interceptor (GAP-133). When deny is non-nil every authentication denial is
-// reported to it (with the presented token reduced to a SHA-256 fingerprint)
-// and unauthenticated requests become subject to per-source exponential
-// backoff: after ThrottleFailureThreshold failures from one source within
-// ThrottleFailureWindow, subsequent unauthenticated requests from that source
-// are refused with CodeUnavailable until the backoff expires. A successful
-// auth resets the source. May be called before or after serving begins; a
-// nil deny detaches the sink and disables throttling.
+// SetDenySink attaches a denial sink to this interceptor (GAP-133). When deny
+// is non-nil every authentication denial is reported to it, with the presented
+// token reduced to a SHA-256 fingerprint. May be called before or after serving
+// begins; a nil deny detaches the sink.
+//
+// REV-BUNKER-006: the SEC-15 per-source throttle is no longer owned by this
+// sink. A non-nil deny still ARMS it (so every existing caller keeps the
+// behaviour it had), but a nil deny no longer DISARMS it: the throttle is armed
+// by the auth constructors whenever auth is enabled, so a daemon running with
+// audit.enabled:false — or whose audit path turned out to be unwritable — keeps
+// its brute-force backoff. Only armThrottle decides whether a throttle exists.
 func (a *TokenAuth) SetDenySink(deny DenyFunc) {
 	a.deny = deny
 	if deny != nil {
+		a.armThrottle()
+	}
+}
+
+// armThrottle arms the SEC-15 per-source throttle. Idempotent: re-arming an
+// interceptor that already carries throttle state keeps its counters, so a
+// second AttachDenySink (or a constructor that arms what a sink already armed)
+// can never hand a throttled source a clean slate.
+func (a *TokenAuth) armThrottle() {
+	if a.throttle == nil {
 		a.throttle = newThrottleState()
-	} else {
-		a.throttle = nil
 	}
 }
 
@@ -193,24 +205,51 @@ func (NoAuth) WrapStreamingClient(next connect.StreamingClientFunc) connect.Stre
 // NewAuthInterceptor returns the appropriate interceptor based on config.
 // If auth is disabled, returns a no-op interceptor.
 // If a static token is set, returns TokenAuth.
+//
+// REV-BUNKER-006: the returned interceptor carries the SEC-15 per-source
+// throttle whenever auth is enabled, independent of the denial sink — a daemon
+// whose audit log is disabled or unwritable still gets the brute-force backoff.
 func NewAuthInterceptor(token string, enabled bool) connect.Interceptor {
 	if !enabled || token == "" {
 		return NoAuth{}
 	}
-	return NewTokenAuth(token)
+	return ArmThrottle(NewTokenAuth(token))
 }
 
-// AttachDenySink attaches the GAP-133 denial sink and per-source throttle to
-// an auth interceptor returned by the New*AuthInterceptor factories, whose
-// concrete type the caller may not know. NoAuth (auth disabled) has nothing
-// to deny and is returned unchanged. The returned interceptor is the same
-// instance, mutated in place — safe to call before serving begins.
+// AttachDenySink attaches the GAP-133 denial sink to an auth interceptor
+// returned by the New*AuthInterceptor factories, whose concrete type the caller
+// may not know. NoAuth (auth disabled) has nothing to deny and is returned
+// unchanged. The returned interceptor is the same instance, mutated in place —
+// safe to call before serving begins.
+//
+// REV-BUNKER-006: this helper attaches the SINK only. The SEC-15 per-source
+// throttle is armed by the constructors (ArmThrottle), so the two are
+// independent: a daemon with no audit sink still throttles.
 func AttachDenySink(i connect.Interceptor, deny DenyFunc) connect.Interceptor {
 	switch a := i.(type) {
 	case *JWTAuth:
 		a.SetDenySink(deny)
 	case *TokenAuth:
 		a.SetDenySink(deny)
+	}
+	return i
+}
+
+// ArmThrottle arms the SEC-15 per-source throttle on an auth interceptor
+// returned by the New*AuthInterceptor factories, independently of any denial
+// sink (REV-BUNKER-006). NoAuth (auth disabled) has nothing to throttle and is
+// returned unchanged — with auth off there is no credential check to fail.
+//
+// The New*AuthInterceptor factories already arm the throttle whenever auth is
+// enabled, so this is the explicit form for a caller that holds an interceptor
+// built some other way. It is idempotent: arming an interceptor that already
+// carries throttle state keeps its counters.
+func ArmThrottle(i connect.Interceptor) connect.Interceptor {
+	switch a := i.(type) {
+	case *JWTAuth:
+		a.armThrottle()
+	case *TokenAuth:
+		a.armThrottle()
 	}
 	return i
 }
@@ -237,10 +276,10 @@ func NewJWTAuthInterceptor(jwtSecret string, keyMgr *apikey.Manager, staticToken
 		return NoAuth{}
 	}
 	if jwtSecret != "" {
-		return NewJWTAuthWithStaticFallback(jwtSecret, staticToken, keyMgr)
+		return ArmThrottle(NewJWTAuthWithStaticFallback(jwtSecret, staticToken, keyMgr))
 	}
 	if staticToken != "" {
-		return NewTokenAuth(staticToken)
+		return ArmThrottle(NewTokenAuth(staticToken))
 	}
 	return NoAuth{}
 }
@@ -257,26 +296,30 @@ func NewMasterOnlyAuthInterceptor(jwtSecret string, keyMgr *apikey.Manager, stat
 		return NoAuth{}
 	}
 	if jwtSecret != "" {
-		return NewMasterOnlyJWTAuthWithStaticFallback(jwtSecret, staticToken, keyMgr)
+		return ArmThrottle(NewMasterOnlyJWTAuthWithStaticFallback(jwtSecret, staticToken, keyMgr))
 	}
 	if staticToken != "" {
-		return NewTokenAuth(staticToken)
+		return ArmThrottle(NewTokenAuth(staticToken))
 	}
 	return NoAuth{}
 }
 
-// NewJWTAuthInterceptorFromAuth wraps an EXISTING *JWTAuth as the permissive
+// NewJWTAuthInterceptorFromAuth is the permissive
 // (agent-scoped-capable) interceptor (DF-BUNKER-45): validation reads the
 // live rotating secret through the shared instance on every request, so
 // RotateSecret's mutation takes effect on this path immediately. The static
 // token fallback must already be carried by the instance (build it with
 // NewJWTAuthWithStaticFallback). Auth disabled or a nil instance yields
 // NoAuth — the same posture the string-based factory produces for those.
+//
+// REV-BUNKER-006: the shared instance is armed with the SEC-15 throttle here,
+// so the throttle exists whenever auth is enabled — the audit sink does not
+// gate it.
 func NewJWTAuthInterceptorFromAuth(jwtAuth *JWTAuth, enabled bool) connect.Interceptor {
 	if !enabled || jwtAuth == nil {
 		return NoAuth{}
 	}
-	return jwtAuth
+	return ArmThrottle(jwtAuth)
 }
 
 // NewMasterOnlyAuthInterceptorFromAuth is the master-only counterpart of
@@ -286,11 +329,15 @@ func NewJWTAuthInterceptorFromAuth(jwtAuth *JWTAuth, enabled bool) connect.Inter
 // (SEC-07/GAP-131 posture). The derivation shares the rotating secret, key
 // manager and static fallback; only the master-only gate differs. Auth
 // disabled or a nil instance yields NoAuth.
+//
+// REV-BUNKER-006: the derived instance is armed with the SEC-15 throttle here,
+// so the master-only mount throttles whenever auth is enabled, with or without
+// an audit sink.
 func NewMasterOnlyAuthInterceptorFromAuth(jwtAuth *JWTAuth, enabled bool) connect.Interceptor {
 	if !enabled || jwtAuth == nil {
 		return NoAuth{}
 	}
-	return NewMasterOnlyJWTAuthFromAuth(jwtAuth)
+	return ArmThrottle(NewMasterOnlyJWTAuthFromAuth(jwtAuth))
 }
 
 // staticTokenClaims returns the Claims attributed to a successful static
