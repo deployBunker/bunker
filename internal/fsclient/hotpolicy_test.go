@@ -176,9 +176,15 @@ func TestHotPolicyEffectiveClampsAndReports(t *testing.T) {
 // between two numbers is what failed, BOTH numbers are in the message. A
 // refusal that says "invalid value" and nothing else sends the operator to the
 // docs to guess which of their two numbers is wrong.
+//
+// The RELATION rows arm the feature (`enabled = true`): a relation failure is
+// refused when the hot path would run and reported when it would not, which is
+// S-11's reading and the reason `--cache-max-entry-bytes 1k` alone must not
+// refuse an unrelated mount (TestNormalizeDoesNotRefuseAPreExistingFlagCombination).
 func TestHotPolicyValidateRefusalsNameBothNumbers(t *testing.T) {
 	cases := []struct {
 		name     string
+		enabled  bool
 		mutate   func(*HotPolicy)
 		env      func(*HotPolicyEnv)
 		wantFlag string
@@ -192,6 +198,7 @@ func TestHotPolicyValidateRefusalsNameBothNumbers(t *testing.T) {
 		},
 		{
 			name:     "edit weight not above read weight",
+			enabled:  true,
 			mutate:   func(p *HotPolicy) { p.WeightEdit = 1 },
 			wantFlag: "--hot.edit-weight",
 			wantSubs: []string{"1", "--hot.read-weight"},
@@ -204,6 +211,7 @@ func TestHotPolicyValidateRefusalsNameBothNumbers(t *testing.T) {
 		},
 		{
 			name:     "size rule above the per-entry cap (S-10)",
+			enabled:  true,
 			mutate:   func(p *HotPolicy) { p.MaxFileBytes = 64 << 20 },
 			env:      func(e *HotPolicyEnv) { e.CacheMaxEntryBytes = 8 << 20 },
 			wantFlag: "--hot.max-file-bytes",
@@ -211,6 +219,7 @@ func TestHotPolicyValidateRefusalsNameBothNumbers(t *testing.T) {
 		},
 		{
 			name:     "size rule above the cache bound (S-9)",
+			enabled:  true,
 			mutate:   func(p *HotPolicy) { p.MaxFileBytes = 4 << 20 },
 			env:      func(e *HotPolicyEnv) { e.CacheMaxBytes, e.CacheMaxEntryBytes = 1<<20, 8<<20 },
 			wantFlag: "--hot.max-file-bytes",
@@ -218,27 +227,37 @@ func TestHotPolicyValidateRefusalsNameBothNumbers(t *testing.T) {
 		},
 		{
 			name:     "backoff cap above the client's own op deadline (A.11)",
+			enabled:  true,
 			mutate:   func(p *HotPolicy) { p.BackoffMax = 45 * time.Second },
 			wantFlag: "--hot.backoff-max-ms",
 			wantSubs: []string{"45s", "30s"},
 		},
 		{
 			name:     "refresh deadline above the client's own op deadline (A.8)",
+			enabled:  true,
 			mutate:   func(p *HotPolicy) { p.RefreshDeadline = time.Minute },
 			wantFlag: "--hot.refresh-deadline",
 			wantSubs: []string{"1m0s", "30s"},
 		},
 		{
 			name:     "stop deadline below tick plus yield (A.6)",
+			enabled:  true,
 			mutate:   func(p *HotPolicy) { p.StopDeadline = 300 * time.Millisecond },
 			wantFlag: "--hot.stop-deadline",
 			wantSubs: []string{"300ms", "1s", "250ms"},
 		},
 		{
 			name:     "backoff cap below its own base",
+			enabled:  true,
 			mutate:   func(p *HotPolicy) { p.BackoffMax = 100 * time.Millisecond },
 			wantFlag: "--hot.backoff-max-ms",
 			wantSubs: []string{"100ms", "250ms"},
+		},
+		{
+			name:     "backoff cap of zero is a range failure on a disabled policy too",
+			mutate:   func(p *HotPolicy) { p.BackoffMax = 0 },
+			wantFlag: "--hot.backoff-max-ms",
+			wantSubs: []string{"0s", "30s"},
 		},
 		{
 			name:     "share above one",
@@ -292,6 +311,7 @@ func TestHotPolicyValidateRefusalsNameBothNumbers(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			p := DefaultHotPolicy()
+			p.Enabled = c.enabled
 			c.mutate(&p)
 			env := defaultTestEnv()
 			if c.env != nil {
@@ -399,36 +419,102 @@ func TestHotPolicyRefusesEveryPartiallySetField(t *testing.T) {
 	env := defaultTestEnv()
 	typ := reflect.TypeOf(HotPolicy{})
 	checked := 0
-	for i := 0; i < typ.NumField(); i++ {
-		f := typ.Field(i)
-		if f.Name == "Enabled" {
-			// false IS the default, so a zero here is legal by construction.
-			continue
-		}
-		checked++
-		p := DefaultHotPolicy()
-		v := reflect.ValueOf(&p).Elem().Field(i)
-		v.Set(reflect.Zero(v.Type()))
-		err := p.Validate(env)
-		if err == nil {
-			t.Errorf("zeroing %s produced no refusal: a partially set policy must be refused, never completed silently", f.Name)
-			continue
-		}
-		msg := err.Error()
-		if !strings.HasPrefix(msg, "bunker-fs: --hot.") {
-			t.Errorf("zeroing %s produced a refusal that does not name the flag: %s", f.Name, msg)
-		}
-		if !strings.Contains(msg, "SPEC-hot-file-policy") {
-			t.Errorf("zeroing %s produced a refusal that does not cite the spec rule: %s", f.Name, msg)
+	for _, enabled := range []bool{false, true} {
+		for i := 0; i < typ.NumField(); i++ {
+			f := typ.Field(i)
+			if f.Name == "Enabled" {
+				// false IS the default, so a zero here is legal by construction.
+				continue
+			}
+			checked++
+			p := DefaultHotPolicy()
+			p.Enabled = enabled
+			v := reflect.ValueOf(&p).Elem().Field(i)
+			v.Set(reflect.Zero(v.Type()))
+			err := p.Validate(env)
+			if err == nil {
+				t.Errorf("zeroing %s (enabled=%v) produced no refusal: a partially set policy must be refused, never completed silently", f.Name, enabled)
+				continue
+			}
+			msg := err.Error()
+			if !strings.HasPrefix(msg, "bunker-fs: --hot.") {
+				t.Errorf("zeroing %s produced a refusal that does not name the flag: %s", f.Name, msg)
+			}
+			if !strings.Contains(msg, "SPEC-hot-file-policy") {
+				t.Errorf("zeroing %s produced a refusal that does not cite the spec rule: %s", f.Name, msg)
+			}
 		}
 	}
-	if checked < 20 {
-		t.Fatalf("reflection walked %d fields: the policy surface has shrunk and this test has stopped covering it", checked)
+	if checked < 40 {
+		t.Fatalf("reflection walked %d field-values: the policy surface has shrunk and this test has stopped covering it", checked)
 	}
 	if DefaultHotPolicy().IsZero() {
 		// A sanity check on the sentinel itself: the default policy must NOT be
 		// mistaken for "no policy configured".
 		t.Fatal("DefaultHotPolicy() reports itself as the zero value")
+	}
+}
+
+// TestHotPolicyRelationFailuresAreReportedWhenDisabled is S-11 stated as a test,
+// and it is a REGRESSION GUARD rather than a nicety: the defaults pin an 8 MiB
+// size rule, so without it any caller who shrinks the CACHE — an existing flag,
+// nothing to do with this row, with the hot path off and never to be armed —
+// would have their mount refused by a bound they never set. Measured before the
+// split: `bunker fs mount … --cache-max-entry-bytes 1024` exited 1 naming
+// --hot.max-file-bytes. S-11: "the mount still works; the hot path is inert and
+// reports itself as such (hot_state: misconfigured, with the two numbers)".
+func TestHotPolicyRelationFailuresAreReportedWhenDisabled(t *testing.T) {
+	env := defaultTestEnv()
+	env.CacheMaxEntryBytes = 1024 // an operator shrinks the per-entry cap only
+	p := DefaultHotPolicy()       // hot path OFF: the stock configuration
+
+	// 1. The mount is NOT refused.
+	if err := p.Validate(env); err != nil {
+		t.Fatalf("a disabled policy was refused over a relation it will never use: %v", err)
+	}
+	// 2. The incoherence is nevertheless REPORTED, with both numbers.
+	problems := p.RelationProblems(env)
+	if len(problems) != 1 {
+		t.Fatalf("a size rule of %d above a per-entry cap of %d produced %d problem(s), want 1", p.MaxFileBytes, env.CacheMaxEntryBytes, len(problems))
+	}
+	for _, want := range []string{"--hot.max-file-bytes", "8388608", "1024", "S-10"} {
+		if !strings.Contains(problems[0], want) {
+			t.Errorf("the reported problem does not name %q: %s", want, problems[0])
+		}
+	}
+	// 3. And the state says so, so a reader of the status document cannot
+	// mistake an inert knob for a silent one.
+	eff := p.Effective(env)
+	if eff.ConfigState != HotConfigMisconfigured {
+		t.Errorf("config_state = %q, want %q (S-11)", eff.ConfigState, HotConfigMisconfigured)
+	}
+	if len(eff.Misconfigured) != 1 {
+		t.Errorf("the effective report carries %d problem(s), want the same list Effective() resolved", len(eff.Misconfigured))
+	}
+	// 4. The moment the feature is ARMED, the same configuration is refused.
+	armed := DefaultHotPolicy()
+	armed.Enabled = true
+	err := armed.Validate(env)
+	if err == nil {
+		t.Fatal("arming the hot path accepted a size rule above the per-entry cap: S-10 must refuse it then")
+	}
+	if !strings.Contains(err.Error(), "S-10") {
+		t.Errorf("the armed refusal does not cite S-10: %v", err)
+	}
+}
+
+// TestHotPolicyRelationProblemsAreEmptyForTheDefaults is the other side of the
+// same guard: the stock configuration must carry no problem at all, or every
+// mount would report itself misconfigured and the state would mean nothing.
+func TestHotPolicyRelationProblemsAreEmptyForTheDefaults(t *testing.T) {
+	for _, env := range []HotPolicyEnv{
+		defaultTestEnv(),
+		{Concurrency: 1, OpTimeout: DefaultOpTimeout, CacheMaxBytes: 16 << 20, CacheMaxEntryBytes: 16 << 20},
+		{Concurrency: 200, OpTimeout: time.Minute, CacheMaxBytes: 1 << 30, CacheMaxEntryBytes: 1 << 30},
+	} {
+		if got := DefaultHotPolicy().RelationProblems(env); len(got) != 0 {
+			t.Errorf("the default policy reports %d problem(s) against %+v: %v", len(got), env, got)
+		}
 	}
 }
 

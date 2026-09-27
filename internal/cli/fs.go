@@ -663,6 +663,13 @@ func printEffectiveConfig(w io.Writer, c fsclient.EffectiveConfig) {
 		c.Hot.Derived.PoolSlots, c.Hot.Derived.PoolSlotsForeground,
 		c.Hot.Derived.RefreshMaxInflight, c.Hot.Derived.RefreshMaxInflightClamped,
 		c.Hot.Derived.MaxInflightBytes)
+	// A configuration that cannot be honoured is REPORTED with both numbers,
+	// never swallowed: an operator must be able to tell an inert knob from a
+	// silent one (S-11). An ARMED policy with the same incoherence never reaches
+	// here — Normalize refuses the mount instead.
+	for _, problem := range c.Hot.Misconfigured {
+		fmt.Fprintf(w, "  MISCONFIG   : %s\n", problem)
+	}
 	p := c.Hot.Configured
 	half := "no decay"
 	if c.Hot.Derived.HalfLifeMS > 0 {

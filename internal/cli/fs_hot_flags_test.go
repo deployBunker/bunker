@@ -116,6 +116,31 @@ func TestHotFlagsToPolicyConversion(t *testing.T) {
 	}
 }
 
+// TestFSMountAcceptsAPreExistingFlagCombinationAndReportsWhy is the live form of
+// the regression the probe found: shrinking the CACHE only, with the hot path
+// off, must NOT be refused. The command proceeds to the bind (which fails here
+// because the test points it at a closed port) — what matters is that the error
+// is the TRANSPORT's and not a hot-file refusal over a knob the operator never
+// set, and that the mount's own output names the incoherence with both numbers.
+func TestFSMountAcceptsAPreExistingFlagCombinationAndReportsWhy(t *testing.T) {
+	cmd := newFSMountCommand()
+	cmd.SilenceUsage, cmd.SilenceErrors = true, true
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{t.TempDir(), "--url", "http://127.0.0.1:1/dav", "--cache-max-entry-bytes", "1024"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("the command did not reach the transport: it should fail to connect, never to validate")
+	}
+	if !strings.Contains(err.Error(), "bind refused") {
+		t.Fatalf("a pre-existing flag combination was refused before any request: %v", err)
+	}
+	if strings.Contains(err.Error(), "--hot.max-file-bytes") {
+		t.Fatalf("the refusal names a hot-file knob the operator never set: %v", err)
+	}
+}
+
 // TestFSMountRefusesAnInvalidHotValueBeforeAnyRequest drives the command the way
 // an operator does. The point is the ORDER as much as the message: the refusal
 // must happen in Normalize, before the mount is attempted, so a misconfigured
@@ -128,7 +153,7 @@ func TestFSMountRefusesAnInvalidHotValueBeforeAnyRequest(t *testing.T) {
 		wantSub  string
 	}{
 		{"decay out of range", []string{"--hot.decay", "2.0"}, "--hot.decay", "0.9"},
-		{"size rule above the entry cap", []string{"--hot.max-file-bytes", "999999999"}, "--hot.max-file-bytes", "67108864"},
+		{"size rule above the entry cap, ARMED", []string{"--hot.enabled", "--hot.max-file-bytes", "999999999"}, "--hot.max-file-bytes", "67108864"},
 		{"negative entry bound", []string{"--cache-max-entries", "-1"}, "--cache-max-entries", "16384"},
 		{"share above one", []string{"--hot.pool-share", "3/2"}, "--hot.pool-share", "3/2"},
 		{"unparseable share", []string{"--hot.pool-share", "an-eighth"}, "--hot.pool-share", "an-eighth"},
@@ -203,6 +228,44 @@ func TestFSStatusPrintsTheEffectiveConfig(t *testing.T) {
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the status view is missing %q\n--- got ---\n%s", want, got)
+		}
+	}
+}
+
+// TestFSStatusPrintsAMisconfigurationWithBothNumbers is S-11 on the screen: a
+// configuration that cannot be honoured is not a broken mount, and it is not a
+// silent one either — the state and the two numbers reach the person reading.
+func TestFSStatusPrintsAMisconfigurationWithBothNumbers(t *testing.T) {
+	o := fsmount.Options{
+		Mountpoint:         t.TempDir(),
+		BaseURL:            "http://127.0.0.1:18481/dav",
+		CacheMaxBytes:      1 << 30,
+		CacheMaxEntries:    16384,
+		CacheMaxEntryBytes: 1024, // shrunk by the operator; the hot path is off
+		CacheMaxInFlight:   2,
+		Concurrency:        25,
+		Invalidation:       "auto",
+		PollInterval:       2 * time.Second,
+		OnConflict:         fsclient.OnConflictRefuse,
+		Hot:                fsclient.DefaultHotPolicy(),
+	}
+	if err := o.Normalize(); err != nil {
+		t.Fatalf("the mount was refused over a feature that is off: %v", err)
+	}
+	st := &fsclient.Status{Mount: "m2", Mode: "auto", Endpoint: o.BaseURL}
+	st.Config = o.EffectiveConfig()
+	var buf bytes.Buffer
+	printStatus(&buf, st)
+	got := buf.String()
+	if !strings.Contains(got, "state=misconfigured") {
+		t.Errorf("the hot policy state does not name the misconfiguration:\n%s", got)
+	}
+	if !strings.Contains(got, "MISCONFIG   : ") {
+		t.Errorf("the misconfiguration's reason is not printed:\n%s", got)
+	}
+	for _, want := range []string{"--hot.max-file-bytes", "8388608", "1024"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the printed misconfiguration does not name %q:\n%s", want, got)
 		}
 	}
 }

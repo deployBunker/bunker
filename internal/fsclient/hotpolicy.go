@@ -199,6 +199,15 @@ const (
 	HotConfigCacheDisabled = "cache_disabled"
 	// HotConfigEnabled — the configuration resolved and the feature is on.
 	HotConfigEnabled = "enabled"
+	// HotConfigMisconfigured — the configuration cannot be honoured as written:
+	// the size rule is above a bound the refreshed bytes could never fit under
+	// (S-9/S-10), or two of the policy's own numbers contradict each other. Per
+	// S-11 this is NOT a broken mount — "the mount still works; the hot path is
+	// inert and reports itself as such" — so the state is reported, with both
+	// numbers, and only an ENABLED policy refuses the mount (see Validate).
+	// Reporting it is the whole difference between an inert knob and a silent
+	// one.
+	HotConfigMisconfigured = "misconfigured"
 )
 
 // DefaultHotPoolShare renders the pinned share in the spelling the flag accepts
@@ -349,28 +358,102 @@ func ParsePoolShare(s string) (num, den int, err error) {
 	return n, d, nil
 }
 
-// Validate checks the policy against the surrounding configuration and returns
-// the FIRST problem it finds as a refusal that names the flag, the value given
-// and the value the spec pins. It never repairs, clamps or defaults a value —
-// with the single, spec-stated exception of P-4's share clamp, which is applied
-// in Effective() and reported as a clamp, not silently.
+// Validate is the mount-time check: it refuses a configuration that cannot be
+// honoured, and it never repairs, clamps or defaults a value — with the single,
+// spec-stated exception of P-4's share clamp, which is applied in Effective()
+// and reported as a clamp, not silently.
 //
-// The refusals are cross-field as well as per-field, because the failures that
-// matter here are relations: a size rule above the per-entry cap can never be
-// stored (S-10), a size rule above the whole cache bound is a misconfiguration
-// (S-9), a backoff cap above the client's own op deadline makes the hot path
-// slower than the cold path (A.11), and a refresh deadline above it is a
-// speculative fetch claiming more patience than a foreground operation (A.8).
+// TWO CLASSES OF PROBLEM, TWO ANSWERS, and the split is load-bearing:
+//
+//   - A RANGE failure says a knob is not a value at all (a zero decay, a
+//     negative depth). It is refused ALWAYS, on a disabled policy as much as on
+//     an armed one: an invalid number is invalid whether or not it is in use,
+//     and a config surface that accepts nonsense because nothing reads it yet is
+//     a surface that will accept it on the day something does.
+//
+//   - A RELATION failure says two configured numbers cannot both hold: the size
+//     rule against a cache bound the refreshed bytes could never fit under
+//     (S-9/S-10), a backoff cap above the client's own operation deadline
+//     (A.11), a refresh deadline above it (A.8), a stop deadline below one tick
+//     plus one yield quantum (A.6), or an edit weight that does not outrank a
+//     read (H-2). Those are refused WHEN THE HOT PATH IS ENABLED — and when it
+//     is not, they are REPORTED as HotConfigMisconfigured with both numbers
+//     instead, which is what S-11 requires: "the mount still works; the hot path
+//     is inert and reports itself as such".
+//
+// That second half is not a softening, it is a measured regression guard. The
+// defaults pin an 8 MiB size rule, so a caller who only shrinks the cache
+// (`--cache-max-entry-bytes 1k`, an existing flag, nothing to do with this row)
+// would otherwise have their mount REFUSED by a knob they never set and a
+// feature that is off. The probe that found it is docs/evidence/BFS-044-probes/.
 func (p HotPolicy) Validate(env HotPolicyEnv) error {
+	if err := p.validateRanges(); err != nil {
+		return err
+	}
+	if !p.Enabled {
+		return nil
+	}
+	if problems := p.RelationProblems(env); len(problems) > 0 {
+		return fmt.Errorf("%s", problems[0])
+	}
+	return nil
+}
+
+// RelationProblems returns every RELATION failure between two configured
+// numbers, each message naming the flag, the value given, the other value and
+// the spec rule — in the same words the refusal uses, so an operator reading the
+// status document reads exactly what an armed mount would have refused.
+//
+// The list is empty for a coherent policy, and it is what makes
+// HotConfigMisconfigured a report rather than a shrug: the state and the reason
+// travel together (an unexplained null is the thing this project keeps filing).
+func (p HotPolicy) RelationProblems(env HotPolicyEnv) []string {
+	var problems []string
+	if p.WeightEdit <= p.WeightRead {
+		problems = append(problems, fmt.Sprintf("bunker-fs: --hot.edit-weight (%v) must be greater than --hot.read-weight (%v); SPEC-hot-file-policy H-2's whole argument is that an edit is the STRONGER signal", p.WeightEdit, p.WeightRead))
+	}
+	if env.CacheMaxBytes > 0 {
+		// S-10: a file above the per-entry cap can never be stored, so a refresh
+		// of it would spend pool share, bandwidth and a reservation to fetch
+		// bytes the cache must discard on arrival.
+		if env.CacheMaxEntryBytes > 0 && p.MaxFileBytes > env.CacheMaxEntryBytes {
+			problems = append(problems, fmt.Sprintf("bunker-fs: --hot.max-file-bytes (%d) exceeds the cache's per-entry cap (--cache-max-entry-bytes %d); SPEC-hot-file-policy S-10 refuses the mount here, because the refreshed bytes could never be stored (the hot path stays inert either way — S-11, P-0 clause 1)", p.MaxFileBytes, env.CacheMaxEntryBytes))
+		}
+		// S-9: a refresh of a file larger than the entire cache bound is not a
+		// policy, it is a misconfiguration.
+		if p.MaxFileBytes > env.CacheMaxBytes {
+			problems = append(problems, fmt.Sprintf("bunker-fs: --hot.max-file-bytes (%d) exceeds the cache bound (--cache-max-size %d); SPEC-hot-file-policy S-9 refuses the mount naming both numbers", p.MaxFileBytes, env.CacheMaxBytes))
+		}
+	}
+	if p.BackoffMax < p.BackoffBase {
+		problems = append(problems, fmt.Sprintf("bunker-fs: --hot.backoff-max-ms (%s) must not be below --hot.backoff-base-ms (%s): SPEC-hot-file-policy P-10/Appendix A.11 states the ladder as a base, a factor and a cap, so a cap below the first delay is not a cap", p.BackoffMax, p.BackoffBase))
+	}
+	if env.OpTimeout > 0 && p.BackoffMax > env.OpTimeout {
+		problems = append(problems, fmt.Sprintf("bunker-fs: --hot.backoff-max-ms (%s) exceeds the client's operation deadline (%s); SPEC-hot-file-policy P-10/Appendix A.11: a speculative fetch must never back off longer than the foreground would wait for the same bytes, or the hot path is slower than the cold path", p.BackoffMax, env.OpTimeout))
+	}
+	if env.OpTimeout > 0 && p.RefreshDeadline > env.OpTimeout {
+		problems = append(problems, fmt.Sprintf("bunker-fs: --hot.refresh-deadline (%s) exceeds the client's operation deadline (%s); SPEC-hot-file-policy P-11/Appendix A.8: a speculative refresh is never worth a full foreground operation's deadline — abandon it instead", p.RefreshDeadline, env.OpTimeout))
+	}
+	// Q-12/Appendix A.6: the stop deadline is one manager tick plus one yield
+	// quantum plus slack. Below that relation the deadline cannot be met by
+	// construction, and `hot_stop_deadline_exceeded_total` would fire on a
+	// healthy client — a counter that fires for a configuration reason tells the
+	// owner nothing about the client.
+	if floor := p.TickInterval + p.YieldAfter; p.StopDeadline < floor {
+		problems = append(problems, fmt.Sprintf("bunker-fs: --hot.stop-deadline (%s) is below one manager tick plus one yield quantum (%s + %s = %s); SPEC-hot-file-policy Q-12/Appendix A.6 derives the deadline from that relation, so a smaller value would make a stop unable to complete inside its own deadline", p.StopDeadline, p.TickInterval, p.YieldAfter, floor))
+	}
+	return problems
+}
+
+// validateRanges checks every knob's OWN value — the half of validation that
+// holds whether or not the feature is enabled.
+func (p HotPolicy) validateRanges() error {
 	// ---- popularity accounting (§3) ----
 	if !(p.WeightRead > 0) || math.IsInf(p.WeightRead, 0) || math.IsNaN(p.WeightRead) {
 		return fmt.Errorf("bunker-fs: --hot.read-weight must be a positive finite number (got %v); SPEC-hot-file-policy H-1 pins %v — a zero weight makes a touch a pure decay step, which is a different feature (Appendix A.1)", p.WeightRead, DefaultHotWeightRead)
 	}
 	if !(p.WeightEdit > 0) || math.IsInf(p.WeightEdit, 0) || math.IsNaN(p.WeightEdit) {
 		return fmt.Errorf("bunker-fs: --hot.edit-weight must be a positive finite number (got %v); SPEC-hot-file-policy H-2 pins %v (a burst of seven reads must not outrank one edit)", p.WeightEdit, DefaultHotWeightEdit)
-	}
-	if p.WeightEdit <= p.WeightRead {
-		return fmt.Errorf("bunker-fs: --hot.edit-weight (%v) must be greater than --hot.read-weight (%v); SPEC-hot-file-policy H-2's whole argument is that an edit is the STRONGER signal", p.WeightEdit, p.WeightRead)
 	}
 	if !(p.Decay > 0) || p.Decay > 1 {
 		return fmt.Errorf("bunker-fs: --hot.decay must be in (0, 1] (got %v); SPEC-hot-file-policy H-3 pins %v. 1.0 is legal and is the NO-DECAY control arm (AC-1)", p.Decay, DefaultHotDecay)
@@ -397,19 +480,6 @@ func (p HotPolicy) Validate(env HotPolicyEnv) error {
 	// ---- the size rule (§4) ----
 	if p.MaxFileBytes < 1 {
 		return fmt.Errorf("bunker-fs: --hot.max-file-bytes must be >= 1 (got %d); SPEC-hot-file-policy S-1 pins %d. A size rule of zero is not \"off\" — use --hot.enabled=false, so the state is named rather than inferred from a bound", p.MaxFileBytes, DefaultHotMaxFileBytes)
-	}
-	if env.CacheMaxBytes > 0 {
-		// S-10: a file above the per-entry cap can never be stored, so a refresh
-		// of it would spend pool share, bandwidth and a reservation to fetch
-		// bytes the cache must discard on arrival.
-		if env.CacheMaxEntryBytes > 0 && p.MaxFileBytes > env.CacheMaxEntryBytes {
-			return fmt.Errorf("bunker-fs: --hot.max-file-bytes (%d) exceeds the cache's per-entry cap (--cache-max-entry-bytes %d); SPEC-hot-file-policy S-10 refuses the mount here, because the refreshed bytes could never be stored (the hot path stays inert either way — S-11, P-0 clause 1)", p.MaxFileBytes, env.CacheMaxEntryBytes)
-		}
-		// S-9: a refresh of a file larger than the entire cache bound is not a
-		// policy, it is a misconfiguration.
-		if p.MaxFileBytes > env.CacheMaxBytes {
-			return fmt.Errorf("bunker-fs: --hot.max-file-bytes (%d) exceeds the cache bound (--cache-max-size %d); SPEC-hot-file-policy S-9 refuses the mount naming both numbers", p.MaxFileBytes, env.CacheMaxBytes)
-		}
 	}
 
 	// ---- the queue (§5) ----
@@ -439,11 +509,8 @@ func (p HotPolicy) Validate(env HotPolicyEnv) error {
 	if p.BackoffFactor < 1 {
 		return fmt.Errorf("bunker-fs: --hot.backoff-factor must be >= 1 (got %v); SPEC-hot-file-policy P-10 pins %v (exponential)", p.BackoffFactor, DefaultHotBackoffFactor)
 	}
-	if p.BackoffMax < p.BackoffBase {
-		return fmt.Errorf("bunker-fs: --hot.backoff-max-ms (%s) must not be below --hot.backoff-base-ms (%s): SPEC-hot-file-policy P-10/Appendix A.11 states the ladder as a base, a factor and a cap, so a cap below the first delay is not a cap", p.BackoffMax, p.BackoffBase)
-	}
-	if env.OpTimeout > 0 && p.BackoffMax > env.OpTimeout {
-		return fmt.Errorf("bunker-fs: --hot.backoff-max-ms (%s) exceeds the client's operation deadline (%s); SPEC-hot-file-policy P-10/Appendix A.11: a speculative fetch must never back off longer than the foreground would wait for the same bytes, or the hot path is slower than the cold path", p.BackoffMax, env.OpTimeout)
+	if p.BackoffMax <= 0 {
+		return fmt.Errorf("bunker-fs: --hot.backoff-max-ms must be > 0 (got %s); SPEC-hot-file-policy P-10/Appendix A.11 pins %s — the ladder's cap is a value, and a cap of zero is not \"no cap\"", p.BackoffMax, DefaultHotBackoffMax)
 	}
 	switch p.BackoffJitter {
 	case HotJitterFull, HotJitterNone:
@@ -454,9 +521,6 @@ func (p HotPolicy) Validate(env HotPolicyEnv) error {
 	// ---- the deadlines (§5.5, §6.4) ----
 	if p.RefreshDeadline <= 0 {
 		return fmt.Errorf("bunker-fs: --hot.refresh-deadline must be > 0 (got %s); SPEC-hot-file-policy P-11 pins %s", p.RefreshDeadline, DefaultHotRefreshDeadline)
-	}
-	if env.OpTimeout > 0 && p.RefreshDeadline > env.OpTimeout {
-		return fmt.Errorf("bunker-fs: --hot.refresh-deadline (%s) exceeds the client's operation deadline (%s); SPEC-hot-file-policy P-11/Appendix A.8: a speculative refresh is never worth a full foreground operation's deadline — abandon it instead", p.RefreshDeadline, env.OpTimeout)
 	}
 	if p.RefreshReacquireWindow <= 0 {
 		return fmt.Errorf("bunker-fs: --hot.refresh-reacquire-window must be > 0 (got %s); SPEC-hot-file-policy P-12 pins %s", p.RefreshReacquireWindow, DefaultHotRefreshReacquireWindow)
@@ -469,14 +533,6 @@ func (p HotPolicy) Validate(env HotPolicyEnv) error {
 	}
 	if p.StopDeadline <= 0 {
 		return fmt.Errorf("bunker-fs: --hot.stop-deadline must be > 0 (got %s); SPEC-hot-file-policy Q-12 pins %s", p.StopDeadline, DefaultHotStopDeadline)
-	}
-	// Q-12/Appendix A.6: the stop deadline is one manager tick plus one yield
-	// quantum plus slack. Below that relation the deadline cannot be met by
-	// construction, and `hot_stop_deadline_exceeded_total` would fire on a
-	// healthy client — a counter that fires for a configuration reason tells the
-	// owner nothing about the client.
-	if floor := p.TickInterval + p.YieldAfter; p.StopDeadline < floor {
-		return fmt.Errorf("bunker-fs: --hot.stop-deadline (%s) is below one manager tick plus one yield quantum (%s + %s = %s); SPEC-hot-file-policy Q-12/Appendix A.6 derives the deadline from that relation, so a smaller value would make a stop unable to complete inside its own deadline", p.StopDeadline, p.TickInterval, p.YieldAfter, floor)
 	}
 	if p.PoolPressureTicks < 1 {
 		return fmt.Errorf("bunker-fs: --hot.pool-pressure-ticks must be >= 1 (got %d); SPEC-hot-file-policy P-19 pins %d", p.PoolPressureTicks, DefaultHotPoolPressureTicks)
@@ -545,6 +601,14 @@ type HotPolicyEffective struct {
 	// visible facts about a running mount rather than prose in a spec.
 	QueueReplacement  string `json:"queue_replacement"`
 	SizeRuleInclusive bool   `json:"size_rule_inclusive"`
+	// Misconfigured lists the RELATION failures this configuration carries,
+	// each naming both numbers. It is empty for a coherent policy. A non-empty
+	// list means the hot path cannot be honoured as written; when the feature is
+	// ENABLED that same list is a mount refusal (Validate), and when it is not,
+	// S-11 requires the mount to work and the hot path to report itself — which
+	// is this list, beside the state. An unreported misconfiguration would be
+	// exactly the kind of bound nobody can see that PRD §2.7 forbids.
+	Misconfigured []string `json:"misconfigured,omitempty"`
 }
 
 // Effective resolves the policy against the surrounding configuration: it
@@ -578,6 +642,7 @@ func (p HotPolicy) Effective(env HotPolicyEnv) HotPolicyEffective {
 		PoolShare:         share,
 		QueueReplacement:  HotQueueReplacementScore,
 		SizeRuleInclusive: HotSizeRuleInclusive,
+		Misconfigured:     p.RelationProblems(env),
 		Derived: HotPolicyDerived{
 			PoolSlots:                    slots,
 			PoolSlotsForeground:          foreground,
@@ -589,6 +654,11 @@ func (p HotPolicy) Effective(env HotPolicyEnv) HotPolicyEffective {
 		},
 	}
 	switch {
+	case len(eff.Misconfigured) > 0:
+		// S-11: this is NOT a broken mount. The state is named and the two
+		// numbers travel with it; an ENABLED policy never reaches here, because
+		// Validate refuses it instead.
+		eff.ConfigState = HotConfigMisconfigured
 	case !p.Enabled:
 		eff.ConfigState = HotConfigDisabled
 	case env.CacheMaxBytes == 0:

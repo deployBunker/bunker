@@ -15,6 +15,17 @@ func baseOptions(t *testing.T) Options {
 	return Options{Mountpoint: t.TempDir(), BaseURL: "http://127.0.0.1:18481/dav"}
 }
 
+// armedHot is the default policy with the feature turned ON, for the cases whose
+// refusal only applies when the hot path would actually run (see
+// HotPolicy.Validate: a relation failure is refused when armed and REPORTED when
+// not, which is what keeps `--cache-max-entry-bytes 1k` from refusing a mount
+// that never asked for the hot path — S-11).
+func armedHot() fsclient.HotPolicy {
+	p := fsclient.DefaultHotPolicy()
+	p.Enabled = true
+	return p
+}
+
 // TestNormalizeFillsTheBoundsWithTheSpecDefaults covers the "every flag has a
 // safe default" half of BFS-044's acceptance. The entry bound is the one that
 // matters most: a byte bound alone does not bound a directory (BFS-031), so a
@@ -96,20 +107,17 @@ func TestNormalizeRefusesInvalidValuesLoudly(t *testing.T) {
 			wantSubs: []string{"-1s"},
 		},
 		{
-			name: "size rule above the per-entry cap (S-10)",
-			mutate: func(o *Options) {
-				o.Hot = fsclient.DefaultHotPolicy()
-				o.Hot.MaxFileBytes = DefaultCacheMaxEntryBytes + 1
-			},
+			name:     "size rule above the per-entry cap, ARMED (S-10)",
+			mutate:   func(o *Options) { o.Hot = armedHot(); o.Hot.MaxFileBytes = DefaultCacheMaxEntryBytes + 1 },
 			wantFlag: "--hot.max-file-bytes",
 			wantSubs: []string{"67108865", "67108864"},
 		},
 		{
-			name: "size rule above the cache bound (S-9)",
+			name: "size rule above the cache bound, ARMED (S-9)",
 			mutate: func(o *Options) {
 				o.CacheMaxBytes = 1 << 20
 				o.CacheMaxEntryBytes = 4 << 20
-				o.Hot = fsclient.DefaultHotPolicy()
+				o.Hot = armedHot()
 				o.Hot.MaxFileBytes = 2 << 20
 			},
 			wantFlag: "--hot.max-file-bytes",
@@ -289,5 +297,51 @@ func TestNormalizeDoesNotChangeTheExistingDefaultSurface(t *testing.T) {
 	}
 	if o.InvalidateIdleTimeout != 0 {
 		t.Errorf("InvalidateIdleTimeout = %s, want 0 (derive from the server's declaration)", o.InvalidateIdleTimeout)
+	}
+}
+
+// TestNormalizeDoesNotRefuseAPreExistingFlagCombination is the regression the
+// BFS-044 probe actually found, kept as a test so it cannot come back.
+//
+// The default policy pins an 8 MiB size rule. A caller who shrinks only the
+// CACHE — `--cache-max-entry-bytes 1024`, a flag that has existed since BFS-005
+// and has nothing to do with the hot path — used to be REFUSED by
+// `--hot.max-file-bytes (8388608) exceeds the cache's per-entry cap`, naming a
+// knob they never set, for a feature that is off. Measured live:
+//
+//	bunker fs mount … --cache-max-entry-bytes 1024   ->  exit 1
+//
+// S-11 forbids exactly this: "Neither refusal is a hot-path feature gate. The
+// mount still works; the hot path is inert and reports itself as such
+// (hot_state: misconfigured, with the two numbers)." So Normalize accepts it and
+// the effective config carries the state AND both numbers, while an ARMED policy
+// with the same incoherence is still refused outright (covered in
+// internal/fsclient's TestHotPolicyRelationFailuresAreReportedWhenDisabled).
+func TestNormalizeDoesNotRefuseAPreExistingFlagCombination(t *testing.T) {
+	o := baseOptions(t)
+	o.CacheMaxEntryBytes = 1024
+	if err := o.Normalize(); err != nil {
+		t.Fatalf("a mount that never asked for the hot path was refused over it: %v", err)
+	}
+	eff := o.EffectiveHotPolicy()
+	if eff.Enabled {
+		t.Fatal("the hot path is armed: this test is about the disabled case")
+	}
+	if eff.ConfigState != fsclient.HotConfigMisconfigured {
+		t.Errorf("config_state = %q, want %q — an inert knob must not be a silent one (S-11)", eff.ConfigState, fsclient.HotConfigMisconfigured)
+	}
+	if len(eff.Misconfigured) != 1 {
+		t.Fatalf("the effective config carries %d problem(s), want 1 naming the two numbers", len(eff.Misconfigured))
+	}
+	for _, want := range []string{"--hot.max-file-bytes", "8388608", "1024"} {
+		if !strings.Contains(eff.Misconfigured[0], want) {
+			t.Errorf("the reported problem does not name %q: %s", want, eff.Misconfigured[0])
+		}
+	}
+	// The same options with the feature ARMED must still refuse the mount.
+	armed := o
+	armed.Hot = armedHot()
+	if err := armed.Normalize(); err == nil {
+		t.Fatal("arming the hot path with a size rule above the per-entry cap was accepted: S-10 must refuse it")
 	}
 }

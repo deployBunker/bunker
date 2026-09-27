@@ -1,0 +1,60 @@
+### arm=all-off mode=cells
+### generated 2026-09-27T14:48:10Z on karaHermes-mde-7840hs, loadavg 11.35 11.25 13.62
+
+arm        = all-off
+tree       = /tmp/bfs044-CMKVYr/tree-all-off  (40 files, 2000 B)
+binaries   = /home/kara/worktrees/bunker-BFS-044/bin/bunker ; /home/kara/worktrees/bunker-BFS-044/bin/davserve
+endpoint   = http://127.0.0.1:39875/dav (pid 2821443)
+mount-args = --url http://127.0.0.1:39875/dav --invalidation poll --poll-interval 2000ms --cache-max-entries 4 --cache-max-entry-bytes 1024 --hot.enabled=false --hot.read-weight 1 --hot.edit-weight 8 --hot.decay 1 --hot.decay-step 1s --hot.score-ceiling 1 --hot.read-touch-window 1s --hot.flush-interval 1s --hot.max-entries 1 --hot.max-tracker-bytes 1 --hot.max-file-bytes 1024 --hot.queue-depth 1 --hot.queue-max-wait 1s --hot.max-concurrent-refresh 1 --hot.pool-share 1/64 --hot.backoff-base-ms 1 --hot.backoff-max-ms 1 --hot.backoff-factor 1 --hot.backoff-jitter none --hot.refresh-deadline 1s --hot.reacquire-window 1s --hot.yield-after 1ms --hot.stop-deadline 150ms --hot.tick-interval 100ms --hot.pool-pressure-ticks 1
+cache-dir  = /tmp/bfs044-CMKVYr/run-all-off/xdg/bunker/fs/7f56afe8d2f9
+--- the mount's own banner (the resolved bounds, BFS-044) ---
+  | mounted http://127.0.0.1:39875/dav on /tmp/bfs044-CMKVYr/run-all-off/mnt
+  |   cache dir    : /tmp/bfs044-CMKVYr/run-all-off/xdg/bunker/fs/7f56afe8d2f9 (bound 268435456 bytes, 4 entries)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : poll
+  |   snapshot     : snapshot-op, 41 nodes in 1 call(s)
+  |   config       : cache 268435456 B / 4 entries (entry cap 1024, staged 2, age 1h0m0s)
+  |   invalidation : mode=poll poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=false state=disabled share=1/64 slots=1 (foreground 24) refresh_inflight=1 clamped=false reserve=1024 B
+  |   hot weights  : read=1 edit=8 decay=1 per 1s (half-life no decay)
+  |   hot bounds   : tracker 1 entries / 1 B, size<=1024 B (inclusive=true), queue 1 (score, wait 1s), ceiling 1
+  |   hot timing   : tick=100ms yield=1ms stop_deadline=150ms refresh_deadline=1s reacquire=1s touch_window=1s flush=1s
+  |   hot backoff  : 1ms x1 cap 1ms jitter=none, pressure_ticks=1
+  |   unmount      : bunker fs umount /tmp/bfs044-CMKVYr/run-all-off/mnt
+  cells over 40 file(s) in /tmp/bfs044-CMKVYr/tree-all-off (mnt=/tmp/bfs044-CMKVYr/run-all-off/mnt)
+  CELL read-cold: PASS  40/40 files byte-identical
+  CELL read-warm: PASS  40/40 files byte-identical on the second read
+  CELL walk: PASS  find sees 40/40 and every size agrees
+  CELL propagation: PASS  the out-of-band edit was observed in 16ms
+  CELL write-create: PASS  the new file is byte-identical in the served tree and through the mount (published within 282ms)
+  CELL write-refused-overwrite: PASS  the O_TRUNC overwrite was refused and f002.txt is still 3fd4bbcbaf26c9650ed49faaf1342ccb0d447aa26516decc796e78875450d956
+  CELL write-large: PASS  262144 B created through the mount, sha256 820e3024469042b394c749e9da1a3bd058aba0e01123f8df55d022aa64744b90 on both views
+  CELL read-after-write: PASS  cmp agrees on the created file
+  CELL unlink: PASS  the unlink reached the served tree immediately
+  CELL cache-census: entries=3 max_entries=4 used_bytes=616 max_bytes=268435456 bypass_events=0
+  CELL cache-census: PASS  the entry census is inside the entry bound the status reports
+  cells verdict: PASS
+reader     = bash /home/kara/worktrees/bunker-BFS-044/docs/evidence/BFS-044-probes/cells.sh --files 40 --propagation visible  (rc=0)
+--- the cache's own figures (the reported bound) ---
+  |     "max_bytes": 268435456,
+  |     "index_bytes": 466,
+  |     "used_bytes": 616,
+  |     "entries": 3,
+  |     "blobs": 3,
+  |     "bypass_events": 0,
+  |     "oversize_bypasses": 0,
+  |     "max_entries": 4,
+  |     "in_flight_bytes": 0,
+  |     "reserved_bytes": 616,
+  |     "max_inflight": 2,
+  |     "hits": 0,
+  |     "misses": 0
+--- the effective config block, read back from the status document ---
+  |   config       : cache 268435456 B / 4 entries (entry cap 1024, staged 2, age 1h0m0s)
+  |   invalidation : mode=poll poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=false state=disabled share=1/64 slots=1 (foreground 24) refresh_inflight=1 clamped=false reserve=1024 B
+  |   hot weights  : read=1 edit=8 decay=1 per 1s (half-life no decay)
+  |   hot bounds   : tracker 1 entries / 1 B, size<=1024 B (inclusive=true), queue 1 (score, wait 1s), ceiling 1
+  |   hot timing   : tick=100ms yield=1ms stop_deadline=150ms refresh_deadline=1s reacquire=1s touch_window=1s flush=1s
+  |   hot backoff  : 1ms x1 cap 1ms jitter=none, pressure_ticks=1
+run dir    : /tmp/bfs044-CMKVYr/run-all-off
