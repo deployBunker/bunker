@@ -1285,15 +1285,17 @@ func (c *Cache) CountBypass(reason string) {
 // reason) when they do not. Every caller that holds the served hash and bytes
 // goes through here, so no caller can pre-filter above the counter again.
 //
-// It deliberately does not Pin — pinning is the reader's own lifetime and
-// belongs to the caller.
+// It returns whether the bytes are IN the cache afterwards (a store or a hit),
+// which is what a caller needs before it pins: a bypass due to the byte bound
+// leaves nothing to pin, and saying so is cheaper than making every caller ask
+// again.
 func (c *Cache) AdmitRead(path, hash string, data []byte) bool {
 	if c.MaxEntryBytes() > 0 && int64(len(data)) > c.MaxEntryBytes() {
 		c.CountBypass(BypassReasonOverEntryCap)
 		return false
 	}
-	_, _ = c.Insert(path, hash, data)
-	return true
+	out, _ := c.Insert(path, hash, data)
+	return out.Cached()
 }
 
 func (c *Cache) countBypassLocked(reason string) {

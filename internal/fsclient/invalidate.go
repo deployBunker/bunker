@@ -199,6 +199,42 @@ type Invalidator struct {
 	streamEnds    int64
 	reconnects    int64
 	idleFallbacks int64
+	// BFS-045's own counting. Each figure is kept where the fact happens, so a
+	// reader can tell "the channel is quiet" from "the channel is dead" from
+	// "the server never answered" instead of inferring one from another.
+	//
+	// requests counts every ATTEMPT to get an invalidation answer (a stream
+	// attempt, a poll call, a revision poll); failures counts the attempts that
+	// produced NO answer — a transport fault, a stalled channel, a channel end,
+	// a 5xx. A declared capability refusal is deliberately NOT a failure: the
+	// server answered, and it answered something true.
+	requests    int64
+	failures    int64
+	lastFailure string
+	// heartbeats counts heartbeat lines received on the push channel and
+	// lastLine is when the last line of any kind arrived: together they are the
+	// LIVENESS evidence, which §5.4 O-2 forbids inferring from the absence of
+	// events.
+	heartbeats int64
+	lastLine   time.Time
+	// stalled records that the channel ended by the IDLE RULE (a silence the
+	// client cannot vouch for) rather than by a fault or by this client closing
+	// it. It is cleared when a stream is established again.
+	stalled bool
+	// vouchedAt/From/OK/Why are the content-age evidence (BFS-045): when the
+	// client last had reason to believe its view of the served tree is current,
+	// from what kind of evidence, and — when it has none — why not. A resync
+	// CLEARS it, because after a knowledge loss the client must re-observe
+	// before it can claim anything (BFS-063's rule, applied to the age).
+	vouchedAt   time.Time
+	vouchedFrom string
+	vouchedOK   bool
+	vouchedWhy  string
+	// lastContent is when this client's knowledge of the served CONTENT was
+	// last established or moved — an observation of the tree, or an event that
+	// carried paths. A heartbeat deliberately does NOT move it: claiming
+	// freshness from a liveness signal is the class of lie this row is about.
+	observations int64
 	// revSeen is the revision the revision poll observed last, so a change is
 	// detectable with one cheap request per interval.
 	revSeen string
@@ -291,6 +327,163 @@ type InvalidationState struct {
 	StreamEnds    int64 `json:"stream_ends_total"`
 	Reconnects    int64 `json:"reconnects_total"`
 	IdleFallbacks int64 `json:"idle_fallbacks_total"`
+	// BFS-045: the invalidation path's own request accounting. `requests_total`
+	// is the denominator (every attempt to get an answer) and `failures_total`
+	// the numerator (attempts that produced none), so "the channel is quiet"
+	// cannot be confused with "the server is not answering".
+	Requests    int64  `json:"requests_total"`
+	Failures    int64  `json:"failures_total"`
+	LastFailure string `json:"last_failure,omitempty"`
+	// Server is what the SERVER's own capability document said about its
+	// watcher — the state, the named reason when it is absent, its counters and
+	// its coverage — with `sampled_age_ms` saying how old the sample is. When it
+	// is absent, ServerReason says which of the three facts that is (no
+	// handshake / block not published / ...), never a bare null.
+	Server       *ServerWatchState `json:"server,omitempty"`
+	ServerReason string            `json:"server_reason,omitempty"`
+	// ContentAge is the CONTENT-AGE BOUND: how old the newest knowledge this
+	// client can vouch for is, and the window the mechanism in force implies.
+	// The client reported no content-age figure at all before BFS-045; a mount
+	// that cannot say how stale it may be is the defect §2.7 names.
+	ContentAge       *ContentAgeState `json:"content_age,omitempty"`
+	ContentAgeReason string           `json:"content_age_reason,omitempty"`
+	// Liveness is the heartbeat/stall state: the declared period, the heartbeats
+	// actually received, how long ago the channel last spoke, and whether the
+	// idle rule declared it dead. Absent WITH a reason when there is no stream
+	// at all (a poll mount has no heartbeat to report).
+	Liveness       *LivenessState `json:"liveness,omitempty"`
+	LivenessReason string         `json:"liveness_reason,omitempty"`
+	// Refresh is the refresh accounting: the staged window this build HAS, and
+	// the hot-refresh queue it does NOT — every field of the absent one null
+	// with a reason rather than a zero that could be mistaken for a measurement.
+	Refresh RefreshState `json:"refresh"`
+}
+
+// ServerWatchState is the server's own watcher block, reported verbatim (the
+// client measures none of it) plus the age of the sample it came from.
+type ServerWatchState struct {
+	State      string `json:"state"`
+	Reason     string `json:"reason,omitempty"`
+	Detail     string `json:"detail,omitempty"`
+	Backend    string `json:"backend,omitempty"`
+	BlocksPush *bool  `json:"blocks_push,omitempty"`
+	Vouched    *bool  `json:"vouched,omitempty"`
+	Stalled    *bool  `json:"stalled,omitempty"`
+	// SampledAgeMS is how long ago the capability document carrying this block
+	// was received. A sample is not the present, and the record says so.
+	SampledAgeMS *int64 `json:"sampled_age_ms"`
+	HeartbeatMS  *int64 `json:"heartbeat_ms,omitempty"`
+	// Coverage — what the watch set actually covers, and what it does not.
+	DirectoriesDesired int    `json:"directories_desired"`
+	DirectoriesWatched int    `json:"directories_watched"`
+	MissingCount       int    `json:"missing_count"`
+	CoverageComplete   *bool  `json:"coverage_complete,omitempty"`
+	CoverageReason     string `json:"coverage_reason,omitempty"`
+	// Counters — the server's own flow figures: overflow events, intervals it
+	// cannot vouch for, rescans, install failures, backend errors, heartbeats
+	// and event-loop ticks. Present ONLY when the server published them, with
+	// CountersReason saying why when it did not.
+	OverflowsTotal       int64  `json:"overflows_total"`
+	UnvouchedTotal       int64  `json:"unvouched_total"`
+	UnvouchedReason      string `json:"unvouched_reason,omitempty"`
+	RescansTotal         int64  `json:"rescans_total"`
+	InstallFailuresTotal int64  `json:"install_failures_total"`
+	BackendErrorsTotal   int64  `json:"backend_errors_total"`
+	// DroppedEvents is null WITH A REASON when the kernel reports one overflow
+	// marker and not how many events it dropped — the null rule with the reason
+	// travelling beside it, never a fabricated count.
+	DroppedEvents       *int64 `json:"overflow_dropped_events"`
+	DroppedEventsReason string `json:"overflow_dropped_reason,omitempty"`
+	LastEventAgeMS      *int64 `json:"last_event_age_ms,omitempty"`
+	HeartbeatsTotal     int64  `json:"heartbeats_total"`
+	EventLoopTicks      int64  `json:"event_loop_ticks"`
+	CountersReason      string `json:"counters_reason,omitempty"`
+}
+
+// ContentAgeState is the content-age bound, reported as a figure AND the window
+// it is measured against.
+type ContentAgeState struct {
+	// AgeMS is how long ago this client last had EVIDENCE for its view of the
+	// served tree: the observation it took, the change event it applied, the
+	// poll that answered, or the line the pushed channel delivered. It is
+	// deliberately not "age of the last change": a quiet tree is not a stale
+	// one, and a figure that conflated the two would alarm on every idle mount.
+	AgeMS int64 `json:"age_ms"`
+	// EvidenceFrom names WHICH kind of evidence the age is measured from, and it
+	// matters because they are not equally strong: `observation` and `event` are
+	// content (the client re-established or learned the tree), `poll` is a
+	// whole-tree answer, and `heartbeat` is LIVENESS — under a live pushed
+	// channel, delivery is what makes the view current, and the label says that
+	// is what is holding the claim up rather than implying a content check
+	// happened (§5.4 O-2: liveness is never inferred from the absence of events,
+	// and it is never reported as content either).
+	EvidenceFrom string `json:"evidence_from"`
+	// Observations counts the times evidence was (re-)established, so the age
+	// has a denominator rather than being a number out of nowhere.
+	Observations int64 `json:"observations_total"`
+	// BoundMS is the window the mechanism in force implies: the idle rule's
+	// deadline for a live pushed channel, or two declared poll intervals (the
+	// interval, plus one missed tick of tolerance) for a poll mechanism. Null
+	// when no mechanism implies one, with BoundReason saying why.
+	BoundMS     *int64 `json:"bound_ms"`
+	BoundSource string `json:"bound_source,omitempty"`
+	BoundReason string `json:"bound_reason,omitempty"`
+	// WithinBound is the comparison, made HERE so no consumer has to make it
+	// differently. Null when there is no bound to compare against.
+	WithinBound *bool `json:"within_bound"`
+}
+
+// LivenessState is the heartbeat/stall state of the push channel.
+type LivenessState struct {
+	HeartbeatsTotal     int64  `json:"heartbeats_total"`
+	LastLineAgeMS       *int64 `json:"last_line_age_ms"`
+	DeclaredHeartbeatMS int64  `json:"declared_heartbeat_ms"`
+	IdleTimeoutMS       int64  `json:"idle_timeout_ms"`
+	// Stalled is the idle rule's verdict: the channel went silent for longer
+	// than the client can vouch for and was declared dead. StallsTotal counts
+	// the times it happened (the same fact as idle_fallbacks_total, reported
+	// here because the heartbeat block must be readable on its own).
+	Stalled     bool  `json:"stalled"`
+	StallsTotal int64 `json:"stalls_total"`
+}
+
+// RefreshState is the refresh accounting.
+//
+// TWO DIFFERENT SUBSYSTEMS, and only one of them exists here. The STAGED WINDOW
+// is landed (BFS-038): the refreshes that hold unpublished bytes, the bound on
+// how many, and the refusals by reason. The HOT-REFRESH QUEUE is BFS-037's and is
+// not in this build, so its figures are NULL WITH A REASON — not zeros, because
+// a zero would read as "the queue was empty", which is a measurement this build
+// cannot make. That distinction is the row's whole point applied to this row's
+// own subject: a figure that cannot be sourced must be absent with a reason
+// rather than estimated.
+type RefreshState struct {
+	// StartedTotal counts the refreshes ADMITTED to the staged window;
+	// Committed + Aborted + the ones still in flight account for it, so a
+	// refresh that vanished without a verdict shows up as a gap.
+	StartedTotal   int64 `json:"started_total"`
+	InFlight       int   `json:"in_flight"`
+	MaxInFlight    int   `json:"max_inflight"`
+	CommittedTotal int64 `json:"committed_total"`
+	AbortedTotal   int64 `json:"aborted_total"`
+	// RefusedNoSlotTotal is the number refused FOR BEING FULL: every slot of
+	// the in-flight window was taken.
+	RefusedNoSlotTotal int64 `json:"refused_no_slot_total"`
+	// RefusedNoRoomTotal is the number refused because published + in-flight
+	// bytes leave no room under the bound. It is a different refusal from
+	// "full", and both are counted.
+	RefusedNoRoomTotal int64 `json:"refused_no_room_total"`
+	// The hot-refresh queue (BFS-037): not in this build.
+	QueueDepth            *int   `json:"queue_depth"`
+	QueueMaxDepth         *int   `json:"queue_max_depth"`
+	QueueRefusedFullTotal *int64 `json:"queue_refused_full_total"`
+	// SkippedOversizeTotal is the number of refreshes skipped because the file
+	// is over the policy's size ceiling. The CACHE's equivalent figure — a read
+	// whose content is over the per-entry cap — is real and moving, and it is
+	// reported in `cache.bypass_reasons{over_entry_cap}`; this one belongs to a
+	// subsystem that does not exist yet, so it is null with the same reason.
+	SkippedOversizeTotal *int64 `json:"skipped_oversize_total"`
+	AbsentReason         string `json:"absent_reason,omitempty"`
 }
 
 // State reports the current invalidation state.
@@ -310,6 +503,71 @@ func (i *Invalidator) State() InvalidationState {
 		StreamEnds:    i.streamEnds,
 		Reconnects:    i.reconnects,
 		IdleFallbacks: i.idleFallbacks,
+		Requests:      i.requests,
+		Failures:      i.failures,
+		LastFailure:   i.lastFailure,
+	}
+	// The server's own watcher block, reported as the server stated it, with the
+	// age of the sample. The three ways it can be absent are three different
+	// facts and are reported as three different reasons (BFS-045's null rule):
+	// no handshake at all is UNKNOWN, a document that carried no block is
+	// NOT PUBLISHED, and a block whose watcher is absent is a VALUE (state=
+	// absent) with the server's own named reason.
+	switch {
+	case i.client == nil:
+		st.ServerReason = ReasonUnknown + ": this mount has no client, so no capability document was ever fetched"
+	default:
+		block, age, present := i.client.WatchObserved()
+		switch {
+		case !present && i.client.Capabilities() == nil:
+			st.ServerReason = ReasonUnknown + ": no capability document has been received, so the server's watcher state is unknown rather than absent"
+		case !present:
+			st.ServerReason = ReasonNotPublished + ": the capability document this server served carries no watch block, so it published no watcher state to report"
+		default:
+			st.Server = serverWatchState(block, age)
+		}
+	}
+	// The content-age bound. Absent WITH A REASON until evidence exists, and
+	// again after a resync drops the view, because a claim the client cannot back
+	// is worse than no claim (BFS-063's rule, applied to the age).
+	if i.vouchedOK {
+		cs := &ContentAgeState{
+			AgeMS:        int64(timeSince(i.vouchedAt).Milliseconds()),
+			EvidenceFrom: i.vouchedFrom,
+			Observations: i.observations,
+		}
+		if bound, source, ok := i.contentAgeWindowLocked(); ok {
+			cs.BoundMS = &bound
+			cs.BoundSource = source
+			within := cs.AgeMS <= bound
+			cs.WithinBound = &within
+		} else {
+			cs.BoundReason = ReasonDisabled + ": no invalidation mechanism is in force on this mount, so it implies no window to compare the age against"
+		}
+		st.ContentAge = cs
+	} else {
+		st.ContentAgeReason = ReasonNoSample + ": this mount has no evidence yet that its view is current" + i.vouchedWhy
+	}
+	// The heartbeat/stall state. A poll mount has no heartbeat to report, and
+	// saying so is part of the record: a reader must not read a missing block as
+	// a dead channel.
+	switch {
+	case i.mode == ModePush || i.mechanism == MechanismWatch || i.streamEnds > 0 || i.reconnects > 0 || i.idleFallbacks > 0:
+		hb := int64(i.clientHeartbeat().Milliseconds())
+		ls := &LivenessState{
+			HeartbeatsTotal:     i.heartbeats,
+			DeclaredHeartbeatMS: hb,
+			IdleTimeoutMS:       i.effectiveIdle().Milliseconds(),
+			Stalled:             i.stalled,
+			StallsTotal:         i.idleFallbacks,
+		}
+		if !i.lastLine.IsZero() {
+			age := int64(timeSince(i.lastLine).Milliseconds())
+			ls.LastLineAgeMS = &age
+		}
+		st.Liveness = ls
+	default:
+		st.LivenessReason = ReasonDisabled + ": this mount never attempted the pushed channel (mode=" + i.mode + "), so it has no heartbeat to report; the poll mechanism's currency is reported in content_age"
 	}
 	if !i.lastEvent.IsZero() {
 		age := int64(timeSince(i.lastEvent).Milliseconds())
@@ -341,6 +599,113 @@ func (i *Invalidator) State() InvalidationState {
 	return st
 }
 
+// clientHeartbeat is the server's declared heartbeat period, and it never panics
+// on a client-less invalidator (a unit-built Invalidator has no client).
+func (i *Invalidator) clientHeartbeat() time.Duration {
+	if i.client == nil {
+		return DefaultIdleTimeout / idleHeartbeats
+	}
+	return i.client.Capabilities().Heartbeat()
+}
+
+// contentAgeWindowLocked reports the window the mechanism in force implies for
+// the age of the client's evidence, and where the number came from.
+//
+// A pushed channel that is ALIVE vouches for its silence up to the idle rule's
+// deadline, so that deadline is its window. A poll mechanism vouches for the
+// interval it declared, plus the tolerance of one missed tick (two intervals) —
+// stated as a relation rather than a number so a server-configured interval is
+// believed. With no mechanism answering there is no window, and the caller
+// reports that absence with a reason instead of inventing one.
+func (i *Invalidator) contentAgeWindowLocked() (int64, string, bool) {
+	if !i.available {
+		return 0, "", false
+	}
+	switch {
+	case i.mode == ModePush && i.mechanism == MechanismWatch:
+		return i.effectiveIdle().Milliseconds(), "idle_timeout", true
+	case i.mode == ModePoll:
+		return 2 * i.opt.PollInterval.Milliseconds(), "poll_interval", true
+	}
+	return 0, "", false
+}
+
+// serverWatchState maps the server's published block onto the record, sampling
+// age included. Nothing here is inferred: a field the document did not publish
+// stays nil rather than becoming a zero (BFS-045's null rule).
+func serverWatchState(w *CapabilityWatch, age time.Duration) *ServerWatchState {
+	out := &ServerWatchState{
+		State:              w.State,
+		Backend:            w.Backend,
+		BlocksPush:         w.BlocksPush,
+		Vouched:            boolPtr(false),
+		CoverageReason:     w.CoverageReason,
+		CountersReason:     w.CountersReason,
+		DirectoriesDesired: 0,
+		DirectoriesWatched: 0,
+	}
+	if w.Reason != nil {
+		out.Reason = *w.Reason
+	}
+	out.Detail = w.Detail
+	ms := int64(age.Milliseconds())
+	out.SampledAgeMS = &ms
+	if w.HeartbeatMS > 0 {
+		hb := int64(w.HeartbeatMS)
+		out.HeartbeatMS = &hb
+	}
+	if w.Liveness != nil {
+		v, s := w.Liveness.Vouched, w.Liveness.Stalled
+		out.Vouched, out.Stalled = &v, &s
+	}
+	if w.Coverage != nil {
+		out.DirectoriesDesired = w.Coverage.DirectoriesDesired
+		out.DirectoriesWatched = w.Coverage.DirectoriesWatched
+		out.MissingCount = w.Coverage.MissingCount
+		complete := w.Coverage.Complete
+		out.CoverageComplete = &complete
+	}
+	if w.Counters != nil {
+		c := w.Counters
+		out.OverflowsTotal = c.OverflowsTotal
+		out.UnvouchedTotal = c.UnvouchedTotal
+		out.UnvouchedReason = c.UnvouchedReason
+		out.RescansTotal = c.RescansTotal
+		out.InstallFailuresTotal = c.InstallFailuresTotal
+		out.BackendErrorsTotal = c.BackendErrorsTotal
+		out.DroppedEvents = c.OverflowDroppedEvents
+		out.DroppedEventsReason = c.OverflowDroppedReason
+		out.LastEventAgeMS = c.LastEventAgeMS
+		out.HeartbeatsTotal = c.HeartbeatsTotal
+		out.EventLoopTicks = c.EventLoopTicks
+	}
+	return out
+}
+
+// RefreshFromCache fills the refresh block from the cache's own counters. It is a
+// free function rather than a method because the staged window belongs to the
+// cache and the queue figures belong to a subsystem this build does not have —
+// the invalidator owns neither, and the two must not be merged into one account
+// (O-3's rule, one layer over).
+func RefreshFromCache(cs CacheStats) RefreshState {
+	return RefreshState{
+		StartedTotal:       cs.StagedStartedTotal,
+		InFlight:           cs.StagedBlobs,
+		MaxInFlight:        cs.MaxInFlight,
+		CommittedTotal:     cs.StagedCommittedTotal,
+		AbortedTotal:       cs.StagedAbortedTotal,
+		RefusedNoSlotTotal: cs.StagedNoSlotTotal,
+		RefusedNoRoomTotal: cs.StagedNoRoomTotal,
+		// The hot-refresh queue is BFS-037's and is not in this build: every one
+		// of its figures is null WITH A REASON, never a zero that could be read
+		// as a measurement (a queue that reads depth=0 while no queue exists is
+		// BFS-032's shape, one subsystem over).
+		AbsentReason: ReasonNotPublished + ": the hot-refresh queue (BFS-037) is not in this build, so its depth, its bound and its refusals are not countable; the staged window below is the refresh accounting that does exist",
+	}
+}
+
+func boolPtr(b bool) *bool { return &b }
+
 // Mode reports push|poll.
 func (i *Invalidator) Mode() string {
 	i.mu.Lock()
@@ -370,6 +735,12 @@ func (i *Invalidator) Resync(reason string) {
 	// point of BFS-063 being that a claim the server cannot check is worse than
 	// no claim at all.
 	i.obsOK = false
+	// The same rule governs the CONTENT-AGE evidence (BFS-045): knowledge was
+	// just declared lost, so this client has no age to report until it has
+	// evidence again. Reporting the pre-drop age would be a figure describing
+	// something other than what it claims — the defect class of this row.
+	i.vouchedOK = false
+	i.vouchedWhy = " (the view was dropped: " + reason + ")"
 	i.mu.Unlock()
 	if i.opt.OnDrop != nil {
 		i.opt.OnDrop(nil, true)
@@ -394,6 +765,10 @@ func (i *Invalidator) Resync(reason string) {
 func (i *Invalidator) Observed(cursor int64, minted bool) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
+	// The caller has just re-established its view of the served tree: this is
+	// the strongest evidence there is, and it is what the content age is
+	// measured from (BFS-045).
+	i.noteEvidenceLocked("observation")
 	switch {
 	case minted:
 		i.obsSeq, i.obsOK = cursor, true
@@ -425,9 +800,19 @@ func (i *Invalidator) resumePoint() (int64, bool) {
 // decision, not an error.
 func (i *Invalidator) apply(ev Event) {
 	i.mu.Lock()
+	// Any line off the channel is the LIVENESS evidence §5.4 O-2 demands, and it
+	// is recorded where it arrives: an idle channel and a dead one look the same
+	// from outside, and only a received line tells them apart.
+	i.lastLine = timeNow()
 	if ev.Event == EventHeartbeat {
 		i.lastEvent = timeNow()
 		i.events++
+		i.heartbeats++
+		// A heartbeat is LIVENESS evidence and it is recorded as exactly that:
+		// under a live pushed channel, delivery is what makes the view current,
+		// and `evidence_from: heartbeat` says so rather than pretending a
+		// content check happened.
+		i.noteEvidenceLocked("heartbeat")
 		i.mu.Unlock()
 		return
 	}
@@ -488,6 +873,9 @@ func (i *Invalidator) apply(ev Event) {
 	}
 	i.mu.Lock()
 	i.dropped += int64(len(ev.Paths))
+	// An event that carried paths told this client what actually moved: that is
+	// content evidence, and it is labelled as such.
+	i.noteEvidenceLocked("event")
 	i.mu.Unlock()
 	if i.opt.OnDrop != nil {
 		i.opt.OnDrop(ev.Paths, false)
@@ -566,6 +954,12 @@ func isDeclaredDegradation(err *OpError) bool {
 // false until one does — so the record never claims a channel it does not have.
 func (i *Invalidator) stallToPoll(ctx context.Context, err *OpError) error {
 	i.countIdleFallback()
+	i.mu.Lock()
+	// The idle rule's verdict, recorded as a STATE and not only as a count: a
+	// reader must be able to tell that the channel went silent for longer than
+	// the client can vouch for, rather than inferring it from a rising number.
+	i.stalled = true
+	i.mu.Unlock()
 	reason := sessionEndReason(err) + " — declared poll fallback"
 	i.setMode(ModePoll, reason)
 	return i.pollLoop(ctx)
@@ -676,6 +1070,10 @@ func (i *Invalidator) watchOnce(ctx context.Context) *OpError {
 	i.mechanism = MechanismWatch
 	i.mode = ModePush
 	i.lastEvent = timeNow()
+	// A stream is established again, so the idle rule's verdict no longer
+	// describes the current channel (the stall COUNT stays where it is: it
+	// happened).
+	i.stalled = false
 	i.mu.Unlock()
 
 	// The read loop runs in its OWN goroutine so the idle rule can be a DEADLINE
@@ -736,6 +1134,7 @@ func (i *Invalidator) watchOnce(ctx context.Context) *OpError {
 			// A line arrived, so the channel is demonstrably turning: the idle
 			// deadline starts again — before the line is even interpreted.
 			resetTimer(timer, idle)
+			i.noteLine()
 			line := bytes.TrimSpace(rd.line)
 			if len(line) == 0 {
 				continue
@@ -862,6 +1261,10 @@ func sessionEndReason(err *OpError) string {
 // channel that is not there.
 func (i *Invalidator) watchSession(ctx context.Context) *OpError {
 	err := i.watchOnce(ctx)
+	// Every stream attempt is counted once, here, so the instrument cannot drift
+	// from the loop that performs it: `requests_total` gains one per attempt and
+	// `failures_total` gains one only when the attempt produced no answer.
+	i.noteAttempt(err)
 	if err != nil {
 		i.markUnavailable(sessionEndReason(err))
 	}
@@ -875,6 +1278,60 @@ func (i *Invalidator) watchSession(ctx context.Context) *OpError {
 func (i *Invalidator) countStreamEnd()    { i.bump(&i.streamEnds) }
 func (i *Invalidator) countReconnect()    { i.bump(&i.reconnects) }
 func (i *Invalidator) countIdleFallback() { i.bump(&i.idleFallbacks) }
+
+// ---------------------------------------------------------------------------
+// BFS-045: evidence and attempts.
+// ---------------------------------------------------------------------------
+
+// The evidence labels of the content-age figure. They are a closed vocabulary
+// because the STRENGTH of the evidence is part of what is being reported: a
+// heartbeat is liveness, an observation is content, and a reader must be able to
+// tell which one is holding the claim up.
+const (
+	EvidenceObservation = "observation"
+	EvidenceEvent       = "event"
+	EvidencePoll        = "poll"
+	EvidenceHeartbeat   = "heartbeat"
+)
+
+// noteEvidenceLocked records that this client has evidence for its view of the
+// served tree, and what kind it is.
+func (i *Invalidator) noteEvidenceLocked(from string) {
+	i.vouchedAt = timeNow()
+	i.vouchedFrom = from
+	i.vouchedOK = true
+	i.vouchedWhy = ""
+	i.observations++
+}
+
+// noteAttempt counts ONE attempt to get an invalidation answer and, when it
+// produced none, the failure itself — with the error verbatim, because "the
+// channel is quiet" and "the server is not answering" must not read alike.
+//
+// A DECLARED capability refusal is an ANSWER and is deliberately not a failure:
+// the server told us something true (it cannot serve this op on this target),
+// and counting that as a backend error would inflate the figure with the one
+// response that is working exactly as designed.
+func (i *Invalidator) noteAttempt(err *OpError) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.requests++
+	if err == nil || isDeclaredDegradation(err) {
+		return
+	}
+	i.failures++
+	i.lastFailure = err.Error()
+}
+
+// noteLine records that a line arrived off the pushed channel. It is the
+// LIVENESS fact (§5.4 O-2) and it is recorded for EVERY line — a heartbeat, a
+// duplicate, an unknown event name or a line this client cannot parse all prove
+// the channel is turning, which is the only thing that can prove it.
+func (i *Invalidator) noteLine() {
+	i.mu.Lock()
+	i.lastLine = timeNow()
+	i.mu.Unlock()
+}
 
 func (i *Invalidator) bump(field *int64) {
 	i.mu.Lock()
@@ -943,6 +1400,7 @@ func (i *Invalidator) pollEventsOnce(ctx context.Context) *OpError {
 		args["since_seq"] = since
 	}
 	env, err := i.client.Op(ctx, "events", args, &out)
+	i.noteAttempt(err)
 	if err != nil {
 		return err
 	}
@@ -950,6 +1408,9 @@ func (i *Invalidator) pollEventsOnce(ctx context.Context) *OpError {
 	i.available = true
 	i.mechanism = MechanismEvents
 	i.lastEvent = timeNow()
+	// A poll answer is a whole-tree statement about the served content, so it is
+	// CONTENT evidence — the strongest kind this mechanism has.
+	i.noteEvidenceLocked(EvidencePoll)
 	i.mu.Unlock()
 	// Events are applied oldest-first: seq ordering is the channel's contract.
 	for _, ev := range out.Events {
@@ -982,17 +1443,20 @@ func (i *Invalidator) pollEventsOnce(ctx context.Context) *OpError {
 func (i *Invalidator) pollRevOnce(ctx context.Context) {
 	req, err := i.client.newRequest(ctx, http.MethodOptions, "", nil)
 	if err != nil {
+		i.noteAttempt(&OpError{Op: "OPTIONS", Errno: ErrnoENOTCONN, Cause: CauseUnreachableConnect, Err: err})
 		return
 	}
 	pollCtx, cancel := context.WithTimeout(ctx, i.client.opt.OpTimeout)
 	defer cancel()
 	resp, derr := i.client.do(pollCtx, req.WithContext(pollCtx))
 	if derr != nil {
+		i.noteAttempt(derr)
 		i.mu.Lock()
 		i.reason = "revision poll failed: " + derr.Error()
 		i.mu.Unlock()
 		return
 	}
+	i.noteAttempt(nil)
 	io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
 	gotTree, gotRev := resp.Header.Get("X-Bunker-Tree"), resp.Header.Get("X-Bunker-Rev")
@@ -1007,6 +1471,11 @@ func (i *Invalidator) pollRevOnce(ctx context.Context) {
 	i.mechanism = MechanismRev
 	i.events++
 	i.lastEvent = timeNow()
+	// The revision poll is a whole-tree answer at the token's granularity, so it
+	// is CONTENT evidence — with the token's own coverage reported beside it
+	// (rev_kind/rev_gap), which is what keeps a git-tree mount from reading as
+	// fully current while it polls HEAD (BFS-048).
+	i.noteEvidenceLocked(EvidencePoll)
 	prev := i.revSeen
 	i.revSeen = gotRev
 	i.mu.Unlock()

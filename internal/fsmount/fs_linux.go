@@ -682,6 +682,11 @@ func (m *Mount) Status() fsclient.Status {
 	// cache's entry bound, the invalidation cadence and every hot-file knob are
 	// readable at runtime instead of only knowable from the command line.
 	st.Config = m.opts.EffectiveConfig()
+	// The refresh block is assembled from the CACHE's own counters and the
+	// invalidator's state, because neither owns both: the staged window is the
+	// cache's, the mechanism is the invalidator's, and the queue belongs to a
+	// subsystem that is not in this build (BFS-045).
+	st.Invalidation.Refresh = fsclient.RefreshFromCache(cs)
 	if snap := m.snapshot(); snap != nil {
 		st.Snapshot = fsclient.SnapshotState{
 			Source:    snap.Source(),
@@ -1219,15 +1224,19 @@ func (h *readHandle) load(ctx context.Context) syscall.Errno {
 		// they are worth keeping: the retry (once the metadata is corrected)
 		// then costs no round trip. They are deliberately NOT recorded as
 		// served: they were never handed to a caller.
-		if len(data) <= int(h.m.cache.MaxEntryBytes()) {
-			_, _ = h.m.cache.Insert(h.p, hash, data)
-		}
+		//
+		// AdmitRead is the ONE admission decision, and it COUNTS the refusal
+		// (reason over_entry_cap) where the decision is made. The previous
+		// `if len(data) <= MaxEntryBytes` pre-filter here is what made
+		// `oversize_bypasses` unreachable from a live read (BFS-032): a
+		// counter above which a filter sits is a counter the live path can
+		// never move.
+		h.m.cache.AdmitRead(h.p, hash, data)
 		return errno
 	}
 	h.data, h.hash, h.loaded = data, hash, true
 	h.m.wp.NoteRead(h.p, hash)
-	if len(data) <= int(h.m.cache.MaxEntryBytes()) {
-		_, _ = h.m.cache.Insert(h.p, hash, data)
+	if h.m.cache.AdmitRead(h.p, hash, data) {
 		h.m.cache.Pin(hash)
 		h.pinned = true
 	}

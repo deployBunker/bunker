@@ -112,6 +112,10 @@ type Client struct {
 
 	capsMu sync.RWMutex
 	caps   *Capabilities
+	// capsAt is when the document above was received. It is reported with every
+	// figure read out of it, so a sample taken at bind is never read as the
+	// server's state right now (BFS-045).
+	capsAt time.Time
 }
 
 // NewClient builds a client. The base URL must be absolute; nothing else here
@@ -199,6 +203,42 @@ func (c *Client) Capabilities() *Capabilities {
 	c.capsMu.RLock()
 	defer c.capsMu.RUnlock()
 	return c.caps
+}
+
+// WatchObserved returns the SERVER's own watcher block — state, refusal reason,
+// counters and coverage — from the last capability document this client
+// received, plus how long ago that sample was taken and whether the document
+// carried the block at all.
+//
+// It exists because the server is the only side that can measure its own
+// watcher (SPEC-watcher-capability §8.1: a capability is learned from the running
+// process's own declaration, never inferred). The three outcomes are kept apart
+// on purpose, because they are three different facts:
+//
+//   - no document at all           → (nil, 0, false): the client has never
+//     completed a handshake, so the server's watcher state is UNKNOWN;
+//   - a document without the block → (nil, age, false): that build does not
+//     publish a watch block, so nothing was published — not "no watcher";
+//   - a document with the block    → (block, age, true), counters and all.
+func (c *Client) WatchObserved() (*CapabilityWatch, time.Duration, bool) {
+	if c == nil {
+		return nil, 0, false
+	}
+	c.capsMu.RLock()
+	caps, at := c.caps, c.capsAt
+	c.capsMu.RUnlock()
+	if caps == nil {
+		return nil, 0, false
+	}
+	var age time.Duration
+	if !at.IsZero() {
+		age = timeSince(at)
+	}
+	if !caps.Extensions.Watch.Present() {
+		return nil, age, false
+	}
+	w := caps.Extensions.Watch
+	return &w, age, true
 }
 
 // RevKind reports the revision kind this surface DECLARED in its capability
