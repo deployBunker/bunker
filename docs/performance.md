@@ -27,7 +27,7 @@ the first while being stuck on the second.
 ## 1. The measured inputs
 
 Measured with `sysctl -n <key>` on 2026-09-27, on the **control host** (this box) and on the two DC hosts
-the client is measured against. Read them all; three of them are not what you would assume.
+the client is measured against. Read them all; **two of them are not what you would assume**, on two hosts.
 
 | key | control host (kernel 7.0.0-31) | dedi-2, Helsinki (6.8.0-90) | bunker-mvp, Falkenstein (6.8.0-117) |
 |---|---|---|---|
