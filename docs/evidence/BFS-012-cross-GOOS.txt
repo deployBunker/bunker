@@ -1,0 +1,44 @@
+host: karaHermes-mde-7840hs 16 cores, go version go1.26.5 linux/amd64
+worktree HEAD: 994b5b84051175fe67f848b6e395b1d70d47e04b
+loadavg at start: 12.50 19.37 24.63 4/9376 3982097
+
+cross-GOOS platform-seam guard (BFS-010)
+go               : go version go1.26.5 linux/amd64
+required targets : linux/amd64 linux/arm64 windows/amd64 windows/arm64
+known gaps (fixed by a named row, printed every run):
+  windows/amd64 -> github.com/deployBunker/bunker/internal/cli   (internal/cli/umount.go:272 syscall.Stat_t; see docs/evidence/BFS-010-windows-mint-decision.md)
+  windows/arm64 -> github.com/deployBunker/bunker/internal/cli   (internal/cli/umount.go:272 syscall.Stat_t; see docs/evidence/BFS-010-windows-mint-decision.md)
+
+TARGET           BUILD      VET internal/fsmount     RESULT
+---------------- ---------- ------------------------ ------
+linux/amd64      PASS       PASS                     ok
+linux/arm64      PASS       PASS                     ok
+windows/amd64    GAP(cli)   PASS                     ok
+windows/arm64    GAP(cli)   PASS                     ok
+
+--- build-windows-amd64 (verbatim) ---
+# github.com/deployBunker/bunker/internal/cli
+internal/cli/umount.go:272:25: undefined: syscall.Stat_t
+internal/cli/umount.go:273:20: undefined: syscall.Stat
+internal/cli/umount.go:277:20: undefined: syscall.Stat
+
+--- build-windows-arm64 (verbatim) ---
+# github.com/deployBunker/bunker/internal/cli
+internal/cli/umount.go:272:25: undefined: syscall.Stat_t
+internal/cli/umount.go:273:20: undefined: syscall.Stat
+internal/cli/umount.go:277:20: undefined: syscall.Stat
+
+== survey (informational; does not affect the exit status) ==
+  darwin/amd64     rc=1 github.com/deployBunker/bunker/internal/fsclient 
+  darwin/arm64     rc=1 github.com/deployBunker/bunker/internal/fsclient 
+  freebsd/amd64    rc=1 github.com/deployBunker/bunker/internal/fsclient 
+  openbsd/amd64    rc=1 github.com/deployBunker/bunker/internal/fsclient github.com/deployBunker/bunker/internal/server 
+  netbsd/amd64     rc=1 github.com/deployBunker/bunker/internal/fsclient github.com/deployBunker/bunker/internal/server 
+  solaris/amd64    rc=1 github.com/deployBunker/bunker/internal/fsclient github.com/deployBunker/bunker/internal/registry 
+  illumos/amd64    rc=1 github.com/deployBunker/bunker/internal/fsclient github.com/deployBunker/bunker/internal/server 
+  plan9/amd64      rc=1 github.com/deployBunker/bunker/internal/fsclient github.com/deployBunker/bunker/internal/mountdriver github.com/deployBunker/bunker/internal/registry 
+  js/wasm          rc=1 github.com/deployBunker/bunker/internal/fsclient github.com/deployBunker/bunker/internal/registry github.com/deployBunker/bunker/internal/tunnel 
+  (a platform outside REQUIRED that fails is a finding to file, not a red guard)
+
+RESULT: PASS — every required target builds; the seam type-checks on all of them
+GUARD EXIT=0

@@ -1,0 +1,86 @@
+
+=== BFS-012 small-bound edge arm, run 4 (FINAL) ===
+arm        = P-smallbound
+host       = karaHermes-mde-7840hs loadavg 28.31 23.95 22.62 14/8928 276515
+tree       = /tmp/bfs012/conflict-tree11  (3 files, 154 B)
+binaries   = /tmp/bfs012/bin/bunker ; /tmp/bfs012/bin/davserve
+endpoint   = http://127.0.0.1:39153/dav (pid 276523)
+mount-args = --url http://127.0.0.1:39153/dav --concurrency 25 --cache-max-size 1024
+mount-timeout = 300s
+cache-dir  = /tmp/bfs012/run-P-smallbound/xdg/bunker/fs/6a855658dc90
+  cache dir    : /tmp/bfs012/run-P-smallbound/xdg/bunker/fs/6a855658dc90 (bound 1024 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 5 nodes in 1 call(s)
+reader     = docs/evidence/BFS-012-probes/small_bound_edge.py --refusals 40  (rc=0)
+  | bound chose by the caller; files read: the whole tree through the mount
+  |   0. baseline (nothing read)         du(cache dir)=     1262  used_bytes=       26  max_bytes=     1024  status.json=  1262  conflicts.jsonl=      0  entries=0
+  |   1. after reading the tree          du(cache dir)=     2003  used_bytes=      636  max_bytes=     1024  status.json=  1367  conflicts.jsonl=      0  entries=3
+  |   write attempts (truncate): 40   refused=0   LANDED=40   in 3.2s
+  |   2. after the refused writes        du(cache dir)=    30689  used_bytes=      636  max_bytes=     1024  status.json=  2217  conflicts.jsonl=  27836  entries=3
+  |   conflicts recorded        : 27836 bytes / 40 lines in conflicts.jsonl (0 refused writes), status.conflicts={"refusals_total": 40, "last": {"path": "src/target.txt", "expected": "sha256:9bb310d485a9f7cf41e98fc09901278c7e35968115fe32b7f12e91e8a3a0f0b1", "current": "sha256:fa431158f008c3b89676191d709c3ac6ee39521e5bd960a6eaa1a8f3f5a19d64", "code": "hash_mismatch", "detail": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<D:error xmlns:D=\"DAV:\" xmlns:b=\"urn:bunker:fs:1\"><b:hash-mismatch><b:expected>sha256:9bb310d485a9f7cf41e98fc09901278c7e35968115fe32b7f12e91e8a3a0f0b1</b:expected><b:current>sha256:fa431158f008c3b89676191d709c3ac6ee39521e5bd960a6eaa1a8f3f5a19d64</b:current></b:hash-mismatch></D:error>", "ts": "0001-01-01T00:00:00Z"}}
+  |   PASS  the client's used_bytes never exceeded max_bytes in any phase (max used=636, bound=1024)
+  |   MEASURED (finding F-C): the cache DIRECTORY exceeded the bound in 3 phase(s) — worst 30689 B = 29.97x the bound — because status.json and conflicts.jsonl are outside used_bytes. At a bound this small the unaccounted floor (status.json plus the refusal log) is larger than the bound itself. BFS-012 report §F-C.
+mount.log  :
+  | mounted http://127.0.0.1:39153/dav on /tmp/bfs012/run-P-smallbound/mnt
+  |   cache dir    : /tmp/bfs012/run-P-smallbound/xdg/bunker/fs/6a855658dc90 (bound 1024 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 5 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs012/run-P-smallbound/mnt
+owner-facing surface (bunker fs status / conflicts, XDG_CACHE_HOME=/tmp/bfs012/run-P-smallbound/xdg):
+  | mount        : 6a855658dc90
+  | endpoint     : http://127.0.0.1:39153/dav
+  | mountpoint   : /tmp/bfs012/run-P-smallbound/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=636 max_bytes=1024 (blobs=154 index=482) entries=3 blobs=3
+  | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=40
+  |   last       : src/target.txt code=hash_mismatch
+  | snapshot     : source=snapshot-op nodes=5 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=211 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+--- conflicts ---
+  | 2026-09-26T21:35:26-05:00  src/target.txt
+  |     code=hash_mismatch expected=sha256:9bb310d485a9f7cf41e98fc09901278c7e35968115fe32b7f12e91e8a3a0f0b1 current=sha256:fa431158f008c3b89676191d709c3ac6ee39521e5bd960a6eaa1a8f3f5a19d64
+  | 2026-09-26T21:35:26-05:00  src/target.txt
+  |     code=hash_mismatch expected=sha256:a0bdc1f215f504d6dd3170db3ad76b3e21fc10e9b3ab478117e23df561d92eed current=sha256:78d063a34dd7309681248d9fe31fb08dc747613facb3e181b0f86df589495972
+  | 2026-09-26T21:35:26-05:00  src/target.txt
+  |     code=hash_mismatch expected=sha256:8d6229ef6991a1df29df779ad409c582577081031c010d552aa4880812260e35 current=sha256:f4a3b9306e498cb02a363b2ef5767dc8ae0a1beb7d7fae063d8ff8090d5d954e
+  | 2026-09-26T21:35:25-05:00  src/target.txt
+  |     code=hash_mismatch expected=sha256:5d30a5850a408ec02b4a66898fc9b114ca50261f21c35783b040b4db5464032d current=sha256:300b57f1c96ad473a21729742aeff87c01ea906ced6b20b88f6feaca6db2bdbd
+  | 2026-09-26T21:35:25-05:00  src/target.txt
+  |     code=hash_mismatch expected=sha256:bd34a1b89d8b7e92a6a1e0b08fd88817f02bd67d71c1552c5065c674501e9603 current=sha256:f2495119b6452a53998e391a3c631a288cc8a31c9e45c6423338d0eef0faea94
+
+run dir                     : /tmp/bfs012/run-P-smallbound
+BOUND
+  max_bytes (reported)      :         1024
+  samples in flight         :           14
+  du -sb cache dir, MAX     :        31192   ratio=30.4609
+  used_bytes, MAX (reported):          636   ratio=0.6211
+  real blob bytes, MAX      :          154
+  samples where the CLIENT'S FIGURE exceeded the bound (used_bytes > max_bytes): 0   OK
+  samples where the CACHE DIRECTORY exceeded the bound (du > max_bytes):          14   the DIRECTORY is over: [('1790476523024', 1262), ('1790476523550', 1898), ('1790476524075', 2003)]
+AGREEMENT (final state, after the reader finished)
+  reported blobs_bytes      :          154
+  du -sb blobs              :          154   delta=0
+  real blob file bytes      :          154   delta=0
+  blob files on disk        :            3   reported blobs=3  entries=3
+  reported index_bytes      :          482
+  index.json on disk        :          482   delta=0
+  reported used_bytes       :          636   == blobs+index: True
+  du -sb cache dir          :        30689   delta vs used_bytes = 30053
+  status.json on disk       :         2217   <- the delta is the mount's own document, a FILE it does not count as cache
+  conflicts.jsonl on disk   :        27836
+  accounted: used_bytes + status.json + conflicts.jsonl == du(cache dir): True
+EVICTION / BYPASS
+  evictions_total           :            0
+  bypass_events             :            0   (full and nothing evictable)
+  oversize_bypasses         :            0   (single entry over --cache-max-entry-bytes)
+  pinned_blobs              :            0
+READS
+  hits / misses             : 0 / 0
+RESULT: the client's own figures stayed inside the bound in every in-flight sample, but the cache DIRECTORY did not: it also holds status.json and conflicts.jsonl, which used_bytes does not count (see the accounting above and the report's finding F-C)
+SMALL-BOUND ARM EXIT=0
+ended 2026-09-26T21:35:30-05:00

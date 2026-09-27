@@ -1,0 +1,25 @@
+file under mutation : /home/kara/worktrees/bunker-BFS-012/internal/server/webdav/tree.go
+sha256 before       : 852bac8d8e0fd28f4243a8aa3f3a9a99f4808ae3104b8c458361fbae9ca695ce
+go root             : /home/kara/worktrees/bunker-BFS-012
+arms                : TestTouchOnlyChangeIsNotAConflict, TestConflictRefusalIgnoresMtimePreservedEdit, TestWriteIdenticalContentIsARecordedNoop
+
+=== 1. GREEN baseline (unmutated tree) ===
+  PASS  TestTouchOnlyChangeIsNotAConflict
+  PASS  TestConflictRefusalIgnoresMtimePreservedEdit
+  PASS  TestWriteIdenticalContentIsARecordedNoop
+
+=== 2. RED: content identity derived from the mtime ===
+  mutated sha256      : 3089b69e8496ec9d9048b0fc6ed5ffa4e9d3cc6cc8df7b22dae14448983fc7da
+  FAIL  TestTouchOnlyChangeIsNotAConflict
+  FAIL  TestConflictRefusalIgnoresMtimePreservedEdit
+  FAIL  TestWriteIdenticalContentIsARecordedNoop
+
+=== 3. RESTORE (from the bytes read before the edit) ===
+  sha256 after restore: 852bac8d8e0fd28f4243a8aa3f3a9a99f4808ae3104b8c458361fbae9ca695ce
+  RESTORE VERIFIED    : True
+  PASS  TestTouchOnlyChangeIsNotAConflict
+  PASS  TestConflictRefusalIgnoresMtimePreservedEdit
+  PASS  TestWriteIdenticalContentIsARecordedNoop
+
+sensitive to a metadata-derived identity: ['TestTouchOnlyChangeIsNotAConflict', 'TestConflictRefusalIgnoresMtimePreservedEdit', 'TestWriteIdenticalContentIsARecordedNoop']
+NON-VACUITY: PROVEN

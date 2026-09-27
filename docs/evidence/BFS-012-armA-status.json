@@ -1,0 +1,60 @@
+{
+  "mount": "6be7e4c3f18a",
+  "mode": "poll",
+  "endpoint": "http://127.0.0.1:42041/dav",
+  "mountpoint": "/tmp/bfs012/run-A-default256/mnt",
+  "concurrency": 25,
+  "on_conflict": "refuse",
+  "cache": {
+    "max_bytes": 268435456,
+    "blobs_bytes": 267446880,
+    "index_bytes": 73135,
+    "used_bytes": 267520015,
+    "entries": 455,
+    "blobs": 455,
+    "evictions_total": 386,
+    "bypass_events": 0,
+    "oversize_bypasses": 0,
+    "pinned_blobs": 0,
+    "hits": 0,
+    "misses": 0
+  },
+  "invalidation": {
+    "mode": "poll",
+    "mechanism": "events",
+    "seq": 0,
+    "last_event_age_ms": null,
+    "poll_interval_ms": 2000,
+    "resyncs_from_gap": 0,
+    "resyncs_total": 0,
+    "events_total": 0,
+    "paths_dropped_total": 0,
+    "reason": "poll call failed: op:events : errno=EOPNOTSUPP cause=server_error status=501 verdict=capability_unavailable: no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff",
+    "channel_available": false
+  },
+  "conflicts": {
+    "refusals_total": 0,
+    "last": null
+  },
+  "transport": {
+    "verdict": "healthy",
+    "last_ok_age_ms": 1807,
+    "cause": "",
+    "in_flight": 0,
+    "in_flight_max": 1,
+    "requests_total": 892,
+    "proto": "HTTP/1.1",
+    "tree": "tree:4fcc1340275b8001",
+    "rev": "rev:0"
+  },
+  "snapshot": {
+    "source": "snapshot-op",
+    "nodes": 845,
+    "calls": 1,
+    "truncated": false,
+    "age_ms": 0
+  },
+  "write_handles_buffered": 0,
+  "write_buffer_bytes": 0,
+  "updated_ms": 1790475721812
+}

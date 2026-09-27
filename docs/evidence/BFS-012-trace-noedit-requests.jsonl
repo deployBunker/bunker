@@ -1,0 +1,12 @@
+{"n": 1, "method": "OPTIONS", "path": "/dav/", "status": 200, "if_match": "", "if_none_match": "", "x_bunker_op": "", "x_bunker_hash": "", "req_bytes": 0, "resp_bytes": 0}
+{"n": 2, "method": "POST", "path": "/dav/", "status": 200, "if_match": "", "if_none_match": "", "x_bunker_op": "capabilities", "x_bunker_hash": "", "req_bytes": 0, "resp_bytes": 2985}
+{"n": 3, "method": "POST", "path": "/dav/", "status": 501, "if_match": "", "if_none_match": "", "x_bunker_op": "watch", "x_bunker_hash": "", "req_bytes": 12, "resp_bytes": 334}
+{"n": 4, "method": "POST", "path": "/dav/", "status": 501, "if_match": "", "if_none_match": "", "x_bunker_op": "events", "x_bunker_hash": "", "req_bytes": 12, "resp_bytes": 336}
+{"n": 5, "method": "POST", "path": "/dav/", "status": 200, "if_match": "", "if_none_match": "", "x_bunker_op": "snapshot", "x_bunker_hash": "", "req_bytes": 40, "resp_bytes": 1050}
+{"n": 6, "method": "POST", "path": "/dav/", "status": 501, "if_match": "", "if_none_match": "", "x_bunker_op": "watch", "x_bunker_hash": "", "req_bytes": 28, "resp_bytes": 334}
+{"n": 7, "method": "GET", "path": "/dav/src/target.txt", "status": 200, "if_match": "", "if_none_match": "", "x_bunker_op": "", "x_bunker_hash": "", "req_bytes": 0, "resp_bytes": 64}
+{"n": 8, "method": "GET", "path": "/dav/src/target.txt", "status": 200, "if_match": "", "if_none_match": "", "x_bunker_op": "", "x_bunker_hash": "", "req_bytes": 0, "resp_bytes": 64}
+{"n": 9, "method": "PUT", "path": "/dav/src/target.txt", "status": 204, "if_match": "\"sha256:0a17f4b16061232c9eb2d72a9f1c8718dfe1a742af37a8d377340833aa9f0cab\"", "if_none_match": "", "x_bunker_op": "", "x_bunker_hash": "", "req_bytes": 32, "resp_bytes": 0}
+{"n": 10, "method": "PROPFIND", "path": "/dav/src/target.txt", "status": 207, "if_match": "", "if_none_match": "", "x_bunker_op": "", "x_bunker_hash": "", "req_bytes": 276, "resp_bytes": 724}
+{"n": 11, "method": "POST", "path": "/dav/", "status": 501, "if_match": "", "if_none_match": "", "x_bunker_op": "events", "x_bunker_hash": "", "req_bytes": 15, "resp_bytes": 336}
+{"n": 12, "method": "POST", "path": "/dav/", "status": 501, "if_match": "", "if_none_match": "", "x_bunker_op": "events", "x_bunker_hash": "", "req_bytes": 15, "resp_bytes": 336}

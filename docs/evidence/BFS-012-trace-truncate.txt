@@ -1,0 +1,211 @@
+=== BFS-012 trace arm A: an accurate base (mode=noedit) ===
+arm        = R-trace-noedit
+host       = karaHermes-mde-7840hs loadavg 26.29 24.08 22.73 15/8656 306455
+tree       = /tmp/bfs012/conflict-tree12  (4 files, 254 B)
+binaries   = /tmp/bfs012/bin/bunker ; /tmp/bfs012/bin/davserve
+endpoint   = http://127.0.0.1:37853/dav (pid 306465)
+trace      = http://127.0.0.1:18477/dav -> http://127.0.0.1:37853/dav (pid 306480, per-request log /tmp/bfs012/run-R-trace-noedit/requests.jsonl)
+mount-args = --url http://127.0.0.1:18477/dav --concurrency 25 
+mount-timeout = 300s
+cache-dir  = /tmp/bfs012/run-R-trace-noedit/xdg/bunker/fs/9d6743af1ff3
+  cache dir    : /tmp/bfs012/run-R-trace-noedit/xdg/bunker/fs/9d6743af1ff3 (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 6 nodes in 1 call(s)
+reader     = docs/evidence/BFS-012-probes/truncate_diag.py --iters 1 --mode noedit  (rc=0)
+  | === step 0: the read through the mount that fixes the client's base ===
+  |   read through the mount : 64 B sha256=0a17f4b16061232c…
+  | === iteration 0 (mode=noedit) ===
+  |   server set out-of-band : 64 B sha256=0a17f4b16061232c… mtime_ns=1790476564179766504
+  |   os.truncate(mnt, 32)   : NONE
+  |   server file after      : 32 B sha256=f815d8b19d324353… mtime_ns=1790476568482560278
+  |   conflicts.jsonl        : 0 -> 0   status.conflicts=0
+  |   reinterpretation       : LANDED (server bytes are now 32 B)
+mount.log  :
+  | mounted http://127.0.0.1:18477/dav on /tmp/bfs012/run-R-trace-noedit/mnt
+  |   cache dir    : /tmp/bfs012/run-R-trace-noedit/xdg/bunker/fs/9d6743af1ff3 (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 6 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs012/run-R-trace-noedit/mnt
+owner-facing surface (bunker fs status / conflicts, XDG_CACHE_HOME=/tmp/bfs012/run-R-trace-noedit/xdg):
+  | mount        : 9d6743af1ff3
+  | endpoint     : http://127.0.0.1:18477/dav
+  | mountpoint   : /tmp/bfs012/run-R-trace-noedit/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=242 max_bytes=268435456 (blobs=64 index=178) entries=1 blobs=1
+  | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=6 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=10 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+--- conflicts ---
+  | no refusals recorded
+
+run dir                     : /tmp/bfs012/run-R-trace-noedit
+BOUND
+  max_bytes (reported)      :    268435456
+  samples in flight         :            8
+  du -sb cache dir, MAX     :         1733   ratio=0.0000
+  used_bytes, MAX (reported):          242   ratio=0.0000
+  real blob bytes, MAX      :           64
+  samples where the CLIENT'S FIGURE exceeded the bound (used_bytes > max_bytes): 0   OK
+  samples where the CACHE DIRECTORY exceeded the bound (du > max_bytes):          0   OK
+AGREEMENT (final state, after the reader finished)
+  reported blobs_bytes      :           64
+  du -sb blobs              :           64   delta=0
+  real blob file bytes      :           64   delta=0
+  blob files on disk        :            1   reported blobs=1  entries=1
+  reported index_bytes      :          178
+  index.json on disk        :          178   delta=0
+  reported used_bytes       :          242   == blobs+index: True
+  du -sb cache dir          :         1733   delta vs used_bytes = 1491
+  status.json on disk       :         1491   <- the delta is the mount's own document, a FILE it does not count as cache
+  conflicts.jsonl on disk   :            0
+  accounted: used_bytes + status.json + conflicts.jsonl == du(cache dir): True
+EVICTION / BYPASS
+  evictions_total           :            0
+  bypass_events             :            0   (full and nothing evictable)
+  oversize_bypasses         :            0   (single entry over --cache-max-entry-bytes)
+  pinned_blobs              :            0
+READS
+  hits / misses             : 0 / 0
+RESULT: the bound held in every in-flight sample, by BOTH instruments; the reported figure and du agree as shown
+
+=== REQUEST TRACE (every HTTP request the mount made, via the logging proxy) ===
+   # method    status  req_bytes  if-match       path
+----------------------------------------------------------------------------------------------------
+   1 OPTIONS   200             0  -              /dav/
+   2 POST      200             0  -              /dav/
+   3 POST      501            12  -              /dav/
+   4 POST      501            12  -              /dav/
+   5 POST      200            40  -              /dav/
+   6 POST      501            28  -              /dav/
+   7 GET       200             0  -              /dav/src/target.txt
+   8 GET       200             0  -              /dav/src/target.txt
+   9 PUT       204            32  "0a17f4b1606   /dav/src/target.txt
+  10 PROPFIND  207           276  -              /dav/src/target.txt
+  11 POST      501            15  -              /dav/
+  12 POST      501            15  -              /dav/
+
+counts by method/status:
+     2 x GET 200
+     1 x OPTIONS 200
+     2 x POST 200
+     5 x POST 501
+     1 x PROPFIND 207
+     1 x PUT 204
+
+write attribution (the question this trace exists for):
+  no refused (412) write in this trace
+  /dav/src/target.txt: landed at request #9 with no refusal before it (an ordinary write)
+TRACE-NOEDIT EXIT=0
+
+=== BFS-012 trace arm B: a stale base (mode=edit) ===
+arm        = S-trace-edit
+host       = karaHermes-mde-7840hs loadavg 25.38 23.93 22.69 7/8561 308865
+tree       = /tmp/bfs012/conflict-tree13  (3 files, 190 B)
+binaries   = /tmp/bfs012/bin/bunker ; /tmp/bfs012/bin/davserve
+endpoint   = http://127.0.0.1:36853/dav (pid 308872)
+trace      = http://127.0.0.1:18478/dav -> http://127.0.0.1:36853/dav (pid 308883, per-request log /tmp/bfs012/run-S-trace-edit/requests.jsonl)
+mount-args = --url http://127.0.0.1:18478/dav --concurrency 25 
+mount-timeout = 300s
+cache-dir  = /tmp/bfs012/run-S-trace-edit/xdg/bunker/fs/5eae912f1f9a
+  cache dir    : /tmp/bfs012/run-S-trace-edit/xdg/bunker/fs/5eae912f1f9a (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 5 nodes in 1 call(s)
+reader     = docs/evidence/BFS-012-probes/truncate_diag.py --iters 1 --mode edit  (rc=0)
+  | === step 0: the read through the mount that fixes the client's base ===
+  |   read through the mount : 64 B sha256=0a17f4b16061232c…
+  | === iteration 0 (mode=edit) ===
+  |   server set out-of-band : 64 B sha256=7b77bb05db5dbcdf… mtime_ns=1790476573417806745
+  |   os.truncate(mnt, 32)   : NONE
+  |   server file after      : 32 B sha256=6b945b1540739147… mtime_ns=1790476573551456540
+  |   conflicts.jsonl        : 0 -> 1   status.conflicts=1
+  |   reinterpretation       : LANDED (server bytes are now 32 B)
+mount.log  :
+  | mounted http://127.0.0.1:18478/dav on /tmp/bfs012/run-S-trace-edit/mnt
+  |   cache dir    : /tmp/bfs012/run-S-trace-edit/xdg/bunker/fs/5eae912f1f9a (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 5 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs012/run-S-trace-edit/mnt
+owner-facing surface (bunker fs status / conflicts, XDG_CACHE_HOME=/tmp/bfs012/run-S-trace-edit/xdg):
+  | mount        : 5eae912f1f9a
+  | endpoint     : http://127.0.0.1:18478/dav
+  | mountpoint   : /tmp/bfs012/run-S-trace-edit/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=242 max_bytes=268435456 (blobs=64 index=178) entries=1 blobs=1
+  | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=1
+  |   last       : src/target.txt code=hash_mismatch
+  | snapshot     : source=snapshot-op nodes=5 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=12 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+--- conflicts ---
+  | 2026-09-26T21:36:13-05:00  src/target.txt
+  |     code=hash_mismatch expected=sha256:0a17f4b16061232c9eb2d72a9f1c8718dfe1a742af37a8d377340833aa9f0cab current=sha256:7b77bb05db5dbcdf32ca306cd9a4053c7b10c6fabc1679df8d11424225bf163c
+
+run dir                     : /tmp/bfs012/run-S-trace-edit
+BOUND
+  max_bytes (reported)      :    268435456
+  samples in flight         :            8
+  du -sb cache dir, MAX     :         3156   ratio=0.0000
+  used_bytes, MAX (reported):          242   ratio=0.0000
+  real blob bytes, MAX      :           64
+  samples where the CLIENT'S FIGURE exceeded the bound (used_bytes > max_bytes): 0   OK
+  samples where the CACHE DIRECTORY exceeded the bound (du > max_bytes):          0   OK
+AGREEMENT (final state, after the reader finished)
+  reported blobs_bytes      :           64
+  du -sb blobs              :           64   delta=0
+  real blob file bytes      :           64   delta=0
+  blob files on disk        :            1   reported blobs=1  entries=1
+  reported index_bytes      :          178
+  index.json on disk        :          178   delta=0
+  reported used_bytes       :          242   == blobs+index: True
+  du -sb cache dir          :         3156   delta vs used_bytes = 2914
+  status.json on disk       :         2218   <- the delta is the mount's own document, a FILE it does not count as cache
+  conflicts.jsonl on disk   :          696
+  accounted: used_bytes + status.json + conflicts.jsonl == du(cache dir): True
+EVICTION / BYPASS
+  evictions_total           :            0
+  bypass_events             :            0   (full and nothing evictable)
+  oversize_bypasses         :            0   (single entry over --cache-max-entry-bytes)
+  pinned_blobs              :            0
+READS
+  hits / misses             : 0 / 0
+RESULT: the bound held in every in-flight sample, by BOTH instruments; the reported figure and du agree as shown
+
+=== REQUEST TRACE (every HTTP request the mount made, via the logging proxy) ===
+   # method    status  req_bytes  if-match       path
+----------------------------------------------------------------------------------------------------
+   1 OPTIONS   200             0  -              /dav/
+   2 POST      200             0  -              /dav/
+   3 POST      501            12  -              /dav/
+   4 POST      501            12  -              /dav/
+   5 POST      200            40  -              /dav/
+   6 POST      501            28  -              /dav/
+   7 GET       200             0  -              /dav/src/target.txt
+   8 GET       200             0  -              /dav/src/target.txt
+   9 PUT       412            32  "0a17f4b1606   /dav/src/target.txt
+  10 GET       200             0  -              /dav/src/target.txt
+  11 PUT       204            32  "7b77bb05db5   /dav/src/target.txt
+  12 PROPFIND  207           276  -              /dav/src/target.txt
+  13 POST      501            15  -              /dav/
+  14 POST      501            15  -              /dav/
+
+counts by method/status:
+     3 x GET 200
+     1 x OPTIONS 200
+     2 x POST 200
+     5 x POST 501
+     1 x PROPFIND 207
+     1 x PUT 204
+     1 x PUT 412
+
+write attribution (the question this trace exists for):
+  /dav/src/target.txt: REFUSED at request #9, then LANDED at request #11 — a refused write did NOT stop the mutation
+TRACE-EDIT EXIT=0

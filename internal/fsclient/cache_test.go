@@ -388,3 +388,110 @@ func TestCacheSurvivesReopen(t *testing.T) {
 		t.Fatalf("phantom bytes counted: %+v", st)
 	}
 }
+
+// TestCacheAllPinnedBypassesWithoutLeaking drives the case the bound exists for and
+// a serial reader never reaches: the cache is at its cap and EVERY entry is pinned,
+// so the eviction loop has no candidate at all. The client must BYPASS — serve the
+// read, cache nothing, grow nothing — and it must do so REPEATEDLY without leaking
+// anything into the cache directory. The single-pin arm of
+// TestCacheBoundIsHardAndBypassIsReported proves one bypass; this proves the state
+// is stable (a leak here is "local storage grows with the tree", the owner's one
+// hard constraint) and that it ends the moment a pin is released.
+func TestCacheAllPinnedBypassesWithoutLeaking(t *testing.T) {
+	const max = 4096
+	c := newTestCache(t, max, max)
+
+	pinned := make([]string, 0, 3)
+	for i := 0; i < 3; i++ {
+		h, data := blob(t, 1000)
+		if _, err := c.Insert(fmt.Sprintf("pin/%d", i), h, data); err != nil {
+			t.Fatalf("seed insert %d: %v", i, err)
+		}
+		c.Pin(h)
+		pinned = append(pinned, h)
+	}
+	seed := c.Stats()
+	if seed.PinnedBlobs != 3 || seed.Entries != 3 {
+		t.Fatalf("fixture: expected 3 pinned entries, got %+v", seed)
+	}
+
+	// The cache is now full of bytes it may not reclaim. Every further insert must
+	// BYPASS: no error, no growth, no entry.
+	bypassed := 0
+	for i := 0; i < 20; i++ {
+		h, data := blob(t, 1000)
+		o, err := c.Insert(fmt.Sprintf("new/%d", i), h, data)
+		if err != nil {
+			t.Fatalf("insert %d: a full cache of unpinned-but-unevictable data must BYPASS, not fail: %v", i, err)
+		}
+		if o == OutcomeBypass {
+			bypassed++
+		}
+		if st := c.Stats(); st.UsedBytes > st.MaxBytes {
+			t.Fatalf("bypass %d grew the cache past its bound: %+v", i, st)
+		}
+	}
+	if bypassed != 20 {
+		t.Fatalf("expected all 20 inserts to bypass, got %d", bypassed)
+	}
+	st := c.Stats()
+	if st.BypassEvents != 20 {
+		t.Fatalf("every bypass must be REPORTED: bypass_events=%d, want 20", st.BypassEvents)
+	}
+	if st.Entries != 3 || st.Blobs != 3 {
+		t.Fatalf("a bypassed insert stored something: %+v", st)
+	}
+	if st.EvictionsTotal != 0 {
+		t.Fatalf("nothing was evictable, so nothing may be counted as evicted: %+v", st)
+	}
+	if st.UsedBytes != seed.UsedBytes {
+		t.Fatalf("20 bypasses changed the footprint: %d -> %d", seed.UsedBytes, st.UsedBytes)
+	}
+
+	// Nothing leaked into the cache directory: it holds the index and exactly the
+	// three pinned blobs, and no temp file from a half-finished insert.
+	allowed := map[string]bool{CacheIndexFile: true}
+	for _, h := range pinned {
+		allowed[filepath.Join(CacheBlobDir, strings.TrimPrefix(h, HashPrefix))] = true
+	}
+	if err := filepath.WalkDir(c.Dir(), func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, rerr := filepath.Rel(c.Dir(), p)
+		if rerr != nil {
+			return rerr
+		}
+		if !allowed[rel] {
+			t.Errorf("unaccounted file in the cache directory after 20 bypasses: %s", rel)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The pinned bytes are still readable, so a bypass never cost a live handle.
+	for i, h := range pinned {
+		if _, ok := c.Get(fmt.Sprintf("pin/%d", i), h); !ok {
+			t.Fatalf("pinned entry %d became unreadable while its handle was live", i)
+		}
+	}
+
+	// Releasing ONE pin makes an eviction possible again: the difference between
+	// "full" and "nothing evictable" is exactly the pin.
+	c.Unpin(pinned[0])
+	h, data := blob(t, 1000)
+	o, err := c.Insert("after/unpin", h, data)
+	if err != nil {
+		t.Fatalf("insert after unpin: %v", err)
+	}
+	if o != OutcomeStored {
+		t.Fatalf("after a pin is released the insert must be stored, not bypassed: outcome=%v", o)
+	}
+	if st := c.Stats(); st.EvictionsTotal != 1 || st.UsedBytes > st.MaxBytes {
+		t.Fatalf("expected exactly one eviction and a bounded cache: %+v", st)
+	}
+}

@@ -1,0 +1,86 @@
+arm        = I-diagverbose
+host       = karaHermes-mde-7840hs loadavg 23.18 19.78 21.38 34/8677 163149
+tree       = /tmp/bfs012/conflict-tree5  (3 files, 190 B)
+binaries   = /tmp/bfs012/bin/bunker ; /tmp/bfs012/bin/davserve
+endpoint   = http://127.0.0.1:33997/dav (pid 163159)
+mount-args = --url http://127.0.0.1:33997/dav --concurrency 25 --verbose
+mount-timeout = 120s
+cache-dir  = /tmp/bfs012/run-I-diagverbose/xdg/bunker/fs/d4357e3ad217
+  cache dir    : /tmp/bfs012/run-I-diagverbose/xdg/bunker/fs/d4357e3ad217 (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 5 nodes in 1 call(s)
+reader     = docs/evidence/BFS-012-probes/truncate_diag.py --iters 2  (rc=0)
+  | === step 0: the read through the mount that fixes the client's base ===
+  |   read through the mount : 64 B sha256=0a17f4b16061232c…
+  | === iteration 0 ===
+  |   server set out-of-band : 64 B sha256=7b77bb05db5dbcdf… mtime_ns=1790476239432879472
+  |   os.truncate(mnt, 32)   : NONE
+  |   server file after      : 32 B sha256=6b945b1540739147… mtime_ns=1790476239451294049
+  |   conflicts.jsonl        : 0 -> 1   status.conflicts=1
+  |   reinterpretation       : LANDED (server bytes are now 32 B)
+  | === iteration 1 ===
+  |   server set out-of-band : 64 B sha256=30c20b6c28bca531… mtime_ns=1790476240667886092
+  |   os.truncate(mnt, 32)   : NONE
+  |   server file after      : 32 B sha256=703a9e093772b4f9… mtime_ns=1790476240674269020
+  |   conflicts.jsonl        : 1 -> 2   status.conflicts=2
+  |   reinterpretation       : LANDED (server bytes are now 32 B)
+mount.log  :
+  | bunker-fs: tightened mountpoint /tmp/bfs012/run-I-diagverbose/mnt to 0700 (it was group/world accessible)
+  | bunker-fs: bound to http://127.0.0.1:33997/dav tree=tree:07a2437bc249dca1 rev=rev:0 proto=HTTP/1.1 extensions="identity,if_match_refuse,rev,tree,op,watch"
+  | bunker-fs: declared degradation: watch (scope=target mode=poll): no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff
+  | mounted http://127.0.0.1:33997/dav on /tmp/bfs012/run-I-diagverbose/mnt
+  |   cache dir    : /tmp/bfs012/run-I-diagverbose/xdg/bunker/fs/d4357e3ad217 (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 5 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs012/run-I-diagverbose/mnt
+  | bunker-fs: readdirplus=true
+owner-facing surface (bunker fs status / conflicts, XDG_CACHE_HOME=/tmp/bfs012/run-I-diagverbose/xdg):
+  | mount        : d4357e3ad217
+  | endpoint     : http://127.0.0.1:33997/dav
+  | mountpoint   : /tmp/bfs012/run-I-diagverbose/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=242 max_bytes=268435456 (blobs=64 index=178) entries=1 blobs=1
+  | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=2
+  |   last       : src/target.txt code=hash_mismatch
+  | snapshot     : source=snapshot-op nodes=5 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=18 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+--- conflicts ---
+  | 2026-09-26T21:30:40-05:00  src/target.txt
+  |     code=hash_mismatch expected=sha256:6b945b15407391473182c9779479bd6c86d2581cb5cf3bf066118e7bbe4b5dc0 current=sha256:30c20b6c28bca5318038f1f2086036224153edf560cfe4a2883e7b752fb16625
+  | 2026-09-26T21:30:39-05:00  src/target.txt
+  |     code=hash_mismatch expected=sha256:0a17f4b16061232c9eb2d72a9f1c8718dfe1a742af37a8d377340833aa9f0cab current=sha256:7b77bb05db5dbcdf32ca306cd9a4053c7b10c6fabc1679df8d11424225bf163c
+
+run dir                     : /tmp/bfs012/run-I-diagverbose
+BOUND
+  max_bytes (reported)      :    268435456
+  samples in flight         :           10
+  du -sb cache dir, MAX     :         3853   ratio=0.0000
+  used_bytes, MAX (reported):          242   ratio=0.0000
+  real blob bytes, MAX      :           64
+  samples where the CLIENT'S FIGURE exceeded the bound (used_bytes > max_bytes): 0   OK
+  samples where the CACHE DIRECTORY exceeded the bound (du > max_bytes):          0   OK
+AGREEMENT (final state, after the reader finished)
+  reported blobs_bytes      :           64
+  du -sb blobs              :           64   delta=0
+  real blob file bytes      :           64   delta=0
+  blob files on disk        :            1   reported blobs=1  entries=1
+  reported index_bytes      :          178
+  index.json on disk        :          178   delta=0
+  reported used_bytes       :          242   == blobs+index: True
+  du -sb cache dir          :         3853   delta vs used_bytes = 3611
+  status.json on disk       :         2219   <- the delta is the mount's own document, a FILE it does not count as cache
+  conflicts.jsonl on disk   :         1392
+  accounted: used_bytes + status.json + conflicts.jsonl == du(cache dir): True
+EVICTION / BYPASS
+  evictions_total           :            0
+  bypass_events             :            0   (full and nothing evictable)
+  oversize_bypasses         :            0   (single entry over --cache-max-entry-bytes)
+  pinned_blobs              :            0
+READS
+  hits / misses             : 0 / 0
+RESULT: the bound held in every in-flight sample, by BOTH instruments; the reported figure and du agree as shown

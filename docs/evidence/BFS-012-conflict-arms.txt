@@ -1,0 +1,144 @@
+=== BFS-012 conflict arms, run 5 (FINAL: mount read fixes the base; trace on; arm C stale read -> named skip) ===
+started 2026-09-26T21:35:15-05:00 loadavg 27.17 23.59 22.49 25/8857 274214
+arm        = O-conflict
+host       = karaHermes-mde-7840hs loadavg 27.17 23.59 22.49 32/8852 274245
+tree       = /tmp/bfs012/conflict-tree11  (3 files, 190 B)
+binaries   = /tmp/bfs012/bin/bunker ; /tmp/bfs012/bin/davserve
+endpoint   = http://127.0.0.1:41793/dav (pid 274257)
+trace      = http://127.0.0.1:18476/dav -> http://127.0.0.1:41793/dav (pid 274321, per-request log /tmp/bfs012/run-O-conflict/requests.jsonl)
+mount-args = --url http://127.0.0.1:18476/dav --concurrency 25 
+mount-timeout = 300s
+cache-dir  = /tmp/bfs012/run-O-conflict/xdg/bunker/fs/c06b29a6b792
+  cache dir    : /tmp/bfs012/run-O-conflict/xdg/bunker/fs/c06b29a6b792 (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 5 nodes in 1 call(s)
+reader     = docs/evidence/BFS-012-probes/conflict-arms.py   (rc=1)
+  | === ARM W: MEASUREMENT — can an existing file be written in place at all? ===
+  |   open(r+b) + write + close : REFUSED — OSError: [Errno 95] Operation not supported (errno=95 Operation not supported)
+  |   server bytes moved        : 0a17f4b16061232c… (was 0a17f4b16061232c…)
+  |   PASS  MEASURED (finding F-A): an in-place write of an existing file is refused with EOPNOTSUPP and the server's bytes do not move — writing an existing file through the mount is unreachable
+  | 
+  | === ARM A: CONTROL — truncate a file NEVER read through the mount (fetch-then-check base) ===
+  |   truncate 63 -> 43: LANDED — returned cleanly
+  |   server size now           : 43
+  |   PASS  the control write LANDED (a path never read resolves its base with fetch-then-check)
+  |   PASS  the control's new size reached the server (want 43, got 43)
+  | 
+  | === ARM B: an edit that preserves SIZE and MTIME must still be REFUSED ===
+  |   read through the mount    : 64 B sha256=0a17f4b16061232c…  (this read fixes the base)
+  |   PASS  FIXTURE: the mount's read did not return the server's bytes
+  |   server edited out-of-band : 64 B sha256=0e215e369e1be3d5…  (size same=True, mtime same=True, bytes differ=True)
+  |   PASS  FIXTURE: the edit changed the size
+  |   PASS  FIXTURE: the edit moved the mtime
+  |   PASS  FIXTURE: the edit did not change the bytes
+  |   truncate to 48      : LANDED — returned cleanly
+  |   server bytes after        : 48 B sha256=aa355b7698f38747…
+  |   FAIL  the write did NOT land over a same-size, mtime-preserved concurrent edit (if this fails, the refusal did not hold — see the request trace below)
+  |   FAIL  the server's bytes were left untouched by the refused write
+  |   conflicts.jsonl entries   : 1
+  |     {"path": "src/target.txt", "expected": "sha256:0a17f4b16061232c9eb2d72a9f1c8718dfe1a742af37a8d377340833aa9f0cab", "current": "sha256:0e215e369e1be3d52c65fc9b82cfff67331a7eb43dfaf8df676bce412bc3e851", 
+  |   status.conflicts          : {"refusals_total": 1, "last": {"path": "src/target.txt", "expected": "sha256:0a17f4b16061232c9eb2d72a9f1c8718dfe1a742af37a8d377340833aa9f0cab", "current": "sha256:0e215e369e1be3d52c65fc9b82cfff67331a7
+  |   PASS  a conflict record names the post-edit hash (the refusal was recorded loudly)
+  |   PASS  status.json counted the refusal
+  | 
+  | === ARM C: bytes IDENTICAL, mtime moved — the write must LAND (never mtime) ===
+  |   read through the mount    : 64 B sha256=0a17f4b16061232c…
+  |   the server's bytes        : 48 B sha256=aa355b7698f38747…
+  |   SKIP (unreliable cell): the mount served STALE bytes for this path, so this arm cannot
+  |      attribute anything to the mtime rule. Known defect, filed as BFS-024/025/026 and
+  |      re-observed here; the touch-only direction is carried by the unit test
+  |      TestTouchOnlyChangeIsNotAConflict (mutation-RED proven in BFS-012-probes).
+  | 
+  | RESULT: AT LEAST ONE ARM FAILED — see FAIL lines above  (arm C: SKIPPED, stale read)
+mount.log  :
+  | mounted http://127.0.0.1:18476/dav on /tmp/bfs012/run-O-conflict/mnt
+  |   cache dir    : /tmp/bfs012/run-O-conflict/xdg/bunker/fs/c06b29a6b792 (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 5 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs012/run-O-conflict/mnt
+owner-facing surface (bunker fs status / conflicts, XDG_CACHE_HOME=/tmp/bfs012/run-O-conflict/xdg):
+  | mount        : c06b29a6b792
+  | endpoint     : http://127.0.0.1:18476/dav
+  | mountpoint   : /tmp/bfs012/run-O-conflict/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=242 max_bytes=268435456 (blobs=64 index=178) entries=1 blobs=1
+  | cache events : hits=1 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=1
+  |   last       : src/target.txt code=hash_mismatch
+  | snapshot     : source=snapshot-op nodes=5 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=17 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+--- conflicts ---
+  | 2026-09-26T21:35:17-05:00  src/target.txt
+  |     code=hash_mismatch expected=sha256:0a17f4b16061232c9eb2d72a9f1c8718dfe1a742af37a8d377340833aa9f0cab current=sha256:0e215e369e1be3d52c65fc9b82cfff67331a7eb43dfaf8df676bce412bc3e851
+
+run dir                     : /tmp/bfs012/run-O-conflict
+BOUND
+  max_bytes (reported)      :    268435456
+  samples in flight         :           12
+  du -sb cache dir, MAX     :         3154   ratio=0.0000
+  used_bytes, MAX (reported):          242   ratio=0.0000
+  real blob bytes, MAX      :           64
+  samples where the CLIENT'S FIGURE exceeded the bound (used_bytes > max_bytes): 0   OK
+  samples where the CACHE DIRECTORY exceeded the bound (du > max_bytes):          0   OK
+AGREEMENT (final state, after the reader finished)
+  reported blobs_bytes      :           64
+  du -sb blobs              :           64   delta=0
+  real blob file bytes      :           64   delta=0
+  blob files on disk        :            1   reported blobs=1  entries=1
+  reported index_bytes      :          178
+  index.json on disk        :          178   delta=0
+  reported used_bytes       :          242   == blobs+index: True
+  du -sb cache dir          :         3154   delta vs used_bytes = 2912
+  status.json on disk       :         2216   <- the delta is the mount's own document, a FILE it does not count as cache
+  conflicts.jsonl on disk   :          696
+  accounted: used_bytes + status.json + conflicts.jsonl == du(cache dir): True
+EVICTION / BYPASS
+  evictions_total           :            0
+  bypass_events             :            0   (full and nothing evictable)
+  oversize_bypasses         :            0   (single entry over --cache-max-entry-bytes)
+  pinned_blobs              :            0
+READS
+  hits / misses             : 1 / 0
+RESULT: the bound held in every in-flight sample, by BOTH instruments; the reported figure and du agree as shown
+
+=== REQUEST TRACE (every HTTP request the mount made, via the logging proxy) ===
+   # method    status  req_bytes  if-match       path
+----------------------------------------------------------------------------------------------------
+   1 OPTIONS   200             0  -              /dav/
+   2 POST      200             0  -              /dav/
+   3 POST      501            12  -              /dav/
+   4 POST      501            12  -              /dav/
+   5 POST      200            40  -              /dav/
+   6 POST      501            28  -              /dav/
+   7 GET       200             0  -              /dav/src/other.txt
+   8 HEAD      200             0  -              /dav/src/other.txt
+   9 PUT       204            43  "41ab32581f7   /dav/src/other.txt
+  10 PROPFIND  207           276  -              /dav/src/other.txt
+  11 GET       200             0  -              /dav/src/target.txt
+  12 GET       200             0  -              /dav/src/target.txt
+  13 PUT       412            48  "0a17f4b1606   /dav/src/target.txt
+  14 GET       200             0  -              /dav/src/target.txt
+  15 PUT       204            48  "0e215e369e1   /dav/src/target.txt
+  16 PROPFIND  207           276  -              /dav/src/target.txt
+  17 POST      501            15  -              /dav/
+  18 POST      501            15  -              /dav/
+  19 POST      501            15  -              /dav/
+
+counts by method/status:
+     4 x GET 200
+     1 x HEAD 200
+     1 x OPTIONS 200
+     2 x POST 200
+     6 x POST 501
+     2 x PROPFIND 207
+     2 x PUT 204
+     1 x PUT 412
+
+write attribution (the question this trace exists for):
+  /dav/src/target.txt: REFUSED at request #13, then LANDED at request #15 — a refused write did NOT stop the mutation
+  /dav/src/other.txt: landed at request #9 with no refusal before it (an ordinary write)
+CONFLICT ARM EXIT=1

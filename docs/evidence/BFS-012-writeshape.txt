@@ -1,0 +1,98 @@
+=== BFS-012 write-shape arm: which writes the mount accepts ===
+arm        = Q-writeshape
+host       = karaHermes-mde-7840hs loadavg 26.22 24.03 22.71 27/8649 304342
+tree       = /tmp/bfs012/conflict-tree12  (3 files, 190 B)
+binaries   = /tmp/bfs012/bin/bunker ; /tmp/bfs012/bin/davserve
+endpoint   = http://127.0.0.1:46795/dav (pid 304368)
+mount-args = --url http://127.0.0.1:46795/dav --concurrency 25 
+mount-timeout = 300s
+cache-dir  = /tmp/bfs012/run-Q-writeshape/xdg/bunker/fs/ba5c6fdd922c
+  cache dir    : /tmp/bfs012/run-Q-writeshape/xdg/bunker/fs/ba5c6fdd922c (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 5 nodes in 1 call(s)
+reader     = docs/evidence/BFS-012-probes/write_shape_probe.py   (rc=0)
+  | mount /tmp/bfs012/run-Q-writeshape/mnt
+  | server tree /tmp/bfs012/conflict-tree12
+  | 
+  | shape                                        rc     errno                  reached the server's disk?
+  | --------------------------------------------------------------------------------------------------------------
+  | open(new,'wb') -> write -> close             ok                            NO
+  | open(existing,'r+b') -> write(same len) -> close error  95 Operation not supported no
+  |     (OSError)
+  | open(existing,'wb') -> write -> close        error  116 Stale file handle  no
+  |     (OSError)
+  | open(existing,'ab') -> write -> close        error  95 Operation not supported no
+  |     (OSError)
+  | truncate(existing, 32)                       error  116 Stale file handle  no
+  |     (OSError)
+  | truncate(existing, 48)  (grow back)          error  116 Stale file handle  no
+  |     (OSError)
+  | 
+  | shapes accepted  : ["open(new,'wb') -> write -> close"]
+  | shapes refused   : ["open(existing,'r+b') -> write(same len) -> close", "open(existing,'wb') -> write -> close", "open(existing,'ab') -> write -> close", 'truncate(existing, 32)', 'truncate(existing, 48)  (grow back)']
+  | sha256 of the server's file after the truncates: 7ce100971f64e700…
+mount.log  :
+  | mounted http://127.0.0.1:46795/dav on /tmp/bfs012/run-Q-writeshape/mnt
+  |   cache dir    : /tmp/bfs012/run-Q-writeshape/xdg/bunker/fs/ba5c6fdd922c (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 5 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs012/run-Q-writeshape/mnt
+owner-facing surface (bunker fs status / conflicts, XDG_CACHE_HOME=/tmp/bfs012/run-Q-writeshape/xdg):
+  | mount        : ba5c6fdd922c
+  | endpoint     : http://127.0.0.1:46795/dav
+  | mountpoint   : /tmp/bfs012/run-Q-writeshape/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=26 max_bytes=268435456 (blobs=0 index=26) entries=0 blobs=0
+  | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=7
+  |   last       : src/probe.txt code=precondition_failed
+  | snapshot     : source=snapshot-op nodes=6 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=2 requests=22 proto=HTTP/1.1
+  |   cause      : PUT src/probe.txt: errno=ESTALE cause=conflict status=412 verdict=precondition_failed: <?xml version="1.0" encoding="utf-8"?>
+  | <D:error xmlns:D="DAV:" xmlns:b="urn:bunker:fs:1"><b:precondition-failed></b:precondition-failed></D:error>
+  | write buffer : handles=0 bytes=0
+--- conflicts ---
+  | 2026-09-26T21:36:04-05:00  src/probe.txt
+  |     code=precondition_failed expected=- current=(not named: the target was absent)
+  | 2026-09-26T21:36:04-05:00  src/probe.txt
+  |     code=precondition_failed expected=- current=(not named: the target was absent)
+  | 2026-09-26T21:36:04-05:00  src/probe.txt
+  |     code=precondition_failed expected=- current=(not named: the target was absent)
+  | 2026-09-26T21:36:04-05:00  src/probe.txt
+  |     code=precondition_failed expected=- current=(not named: the target was absent)
+  | 2026-09-26T21:36:04-05:00  src/probe.txt
+  |     code=precondition_failed expected=- current=(not named: the target was absent)
+
+run dir                     : /tmp/bfs012/run-Q-writeshape
+BOUND
+  max_bytes (reported)      :    268435456
+  samples in flight         :            6
+  du -sb cache dir, MAX     :         4189   ratio=0.0000
+  used_bytes, MAX (reported):           26   ratio=0.0000
+  real blob bytes, MAX      :            0
+  samples where the CLIENT'S FIGURE exceeded the bound (used_bytes > max_bytes): 0   OK
+  samples where the CACHE DIRECTORY exceeded the bound (du > max_bytes):          0   OK
+AGREEMENT (final state, after the reader finished)
+  reported blobs_bytes      :            0
+  du -sb blobs              :            0   delta=0
+  real blob file bytes      :            0   delta=0
+  blob files on disk        :            0   reported blobs=0  entries=0
+  reported index_bytes      :           26
+  index.json on disk        :  ABSENT   <- no entry was ever STORED, so the index was never flushed; the client still reports index_bytes=26 for the document it would write
+  reported used_bytes       :           26   == blobs+index: True
+  du -sb cache dir          :         4305   delta vs used_bytes = 4279
+  status.json on disk       :         1993   <- the delta is the mount's own document, a FILE it does not count as cache
+  conflicts.jsonl on disk   :         2196
+  accounted: used_bytes + status.json + conflicts.jsonl == du(cache dir): False
+EVICTION / BYPASS
+  evictions_total           :            0
+  bypass_events             :            0   (full and nothing evictable)
+  oversize_bypasses         :            0   (single entry over --cache-max-entry-bytes)
+  pinned_blobs              :            0
+READS
+  hits / misses             : 0 / 0
+RESULT: the bound held in every in-flight sample, by BOTH instruments; the reported figure and du agree as shown
+WRITE-SHAPE EXIT=0

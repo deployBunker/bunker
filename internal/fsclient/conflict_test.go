@@ -9,6 +9,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
 
 // TestWriteRefusalOnStaleBase is the refusal path of BFS-004 §6 / BFS-005 §5.2,
@@ -505,5 +506,88 @@ func TestWriteBodyReaderSeesWholeFile(t *testing.T) {
 	}
 	if n != int64(len(body)) || h != HashBytes(body) {
 		t.Fatalf("HashReader: n=%d h=%s", n, h)
+	}
+}
+
+// TestTouchOnlyChangeIsNotAConflict is the OTHER half of BFS-004 §6.1's rule, and
+// the half a metadata-comparing implementation gets wrong in the direction that
+// costs a user their work: the rule is the CONTENT HASH, never the mtime. An edit
+// that preserves size and mtime must be refused (that is
+// TestConflictRefusalIgnoresMtimePreservedEdit, which follows a real refactor to a
+// (size, mtime) shortcut). A change that moves ONLY the mtime, with the bytes
+// identical, must NOT be a conflict: there is nothing to refuse — the base we hold
+// still describes the bytes on the server — and a false refusal here is a build
+// that cannot write a file until someone re-reads it.
+//
+// The test is discriminating rather than decorative: folding the mtime into the
+// served content identity (the mutation recorded in
+// docs/evidence/BFS-012-probes/mutation-mtime-identity.sh) turns this arm RED
+// while the refusal arms stay green.
+func TestTouchOnlyChangeIsNotAConflict(t *testing.T) {
+	c, root, _ := fixtureEndpoint(t)
+	dir := t.TempDir()
+	cache, err := OpenCache(CacheConfig{Dir: dir, MaxBytes: 1 << 20, MaxEntryBytes: 1 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wp := NewWritePath(c, cache, dir, OnConflictRefuse)
+	ctx := context.Background()
+	target := filepath.Join(root, "src", "main.go")
+
+	// The read that fixes the base, then a touch that moves ONLY the mtime.
+	served, _, oerr := c.Get(ctx, "src/main.go", "")
+	if oerr != nil {
+		t.Fatalf("GET: %v", oerr)
+	}
+	base := HashBytes(served)
+	wp.NoteServed("src/main.go", base)
+
+	st, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	touched := st.ModTime().Add(5 * time.Second)
+	if err := os.Chtimes(target, touched, touched); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Assert the fixture is the case it claims to be BEFORE asserting anything
+	// about the write: a "touch-only" arm whose bytes moved proves nothing.
+	if after.Size() != st.Size() {
+		t.Fatalf("fixture: the size moved (%d -> %d)", st.Size(), after.Size())
+	}
+	if after.ModTime().Equal(st.ModTime()) {
+		t.Fatalf("fixture: the touch did not move the mtime (%v)", st.ModTime())
+	}
+	if got := HashBytes(mustRead(t, target)); got != base {
+		t.Fatalf("fixture: the bytes moved (%s -> %s); this is not a touch-only change", base, got)
+	}
+
+	body := []byte("package main\n\n// rewritten after a touch-only change\nfunc main() {}\n")
+	res, werr := wp.PublishBytes(ctx, "src/main.go", body, WriteBase{IfMatch: base, Source: BaseFromServed})
+	if werr != nil {
+		t.Fatalf("a write whose base still matches the CONTENT must land; the mtime is not the identity: %v", werr)
+	}
+	if res.Hash != HashBytes(body) {
+		t.Fatalf("landed hash = %q, want %q", res.Hash, HashBytes(body))
+	}
+	if res.Noop {
+		t.Fatalf("the bodies differ; this must be a real write, not an identical-content noop")
+	}
+	if wp.Refusals() != 0 {
+		t.Fatalf("a touch-only change is not a conflict; refusals=%d", wp.Refusals())
+	}
+	if got := mustRead(t, target); !bytes.Equal(got, body) {
+		t.Fatalf("the write reported success but the bytes on the server are %q", got)
+	}
+	list, err := ReadConflicts(dir, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 0 {
+		t.Fatalf("a refusal was recorded for a touch-only change: %+v", list)
 	}
 }

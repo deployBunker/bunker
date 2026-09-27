@@ -1,0 +1,71 @@
+=== BFS-012 arm A: DEFAULT bound (256 MiB) vs a 640.1 MiB tree ===
+run started: 2026-09-26T21:20:28-05:00
+arm        = A-default256
+host       = karaHermes-mde-7840hs loadavg 12.99 17.59 23.38 8/8494 4054085
+tree       = /tmp/bfs012/armA-tree  (841 files, 671148678 B)
+binaries   = /tmp/bfs012/bin/bunker ; /tmp/bfs012/bin/davserve
+endpoint   = http://127.0.0.1:42041/dav (pid 4054095)
+mount-args = --url http://127.0.0.1:42041/dav --concurrency 25 
+mount-timeout = 1800s
+cache-dir  = /tmp/bfs012/run-A-default256/xdg/bunker/fs/6be7e4c3f18a
+  cache dir    : /tmp/bfs012/run-A-default256/xdg/bunker/fs/6be7e4c3f18a (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 845 nodes in 1 call(s)
+reader     = docs/evidence/BFS-012-probes/read-all.sh   (rc=0)
+  | reading 841 files through the mount (serial cat, one at a time)…
+  | read ok=841 failures=0 wall_ms=91121
+  | tree_bytes_on_disk=671148678 mount_bytes_seen=671148678
+mount.log  :
+  | mounted http://127.0.0.1:42041/dav on /tmp/bfs012/run-A-default256/mnt
+  |   cache dir    : /tmp/bfs012/run-A-default256/xdg/bunker/fs/6be7e4c3f18a (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 845 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs012/run-A-default256/mnt
+owner-facing surface (bunker fs status / conflicts, XDG_CACHE_HOME=/tmp/bfs012/run-A-default256/xdg):
+  | mount        : 6be7e4c3f18a
+  | endpoint     : http://127.0.0.1:42041/dav
+  | mountpoint   : /tmp/bfs012/run-A-default256/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=267520015 max_bytes=268435456 (blobs=267446880 index=73135) entries=455 blobs=455
+  | cache events : hits=0 misses=0 evictions=386 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=845 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=892 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+--- conflicts ---
+  | no refusals recorded
+
+run dir                     : /tmp/bfs012/run-A-default256
+BOUND
+  max_bytes (reported)      :    268435456
+  samples in flight         :          178
+  du -sb cache dir, MAX     :    267521528   ratio=0.9966
+  used_bytes, MAX (reported):    267520015   ratio=0.9966
+  real blob bytes, MAX      :    267446880
+  samples EXCEEDING bound   :            0   OK
+AGREEMENT (final state, after the reader finished)
+  reported blobs_bytes      :    267446880
+  du -sb blobs              :    267446880   delta=0
+  real blob file bytes      :    267446880   delta=0
+  blob files on disk        :          455   reported blobs=455  entries=455
+  reported index_bytes      :        73135
+  index.json on disk        :        73135   delta=0
+  reported used_bytes       :    267520015   == blobs+index: True
+  du -sb cache dir          :    267521528   delta vs used_bytes = 1513
+  status.json on disk       :         1513   <- the delta is the mount's own document, a FILE it does not count as cache
+  conflicts.jsonl on disk   :            0
+  accounted: used_bytes + status.json + conflicts.jsonl == du(cache dir): True
+EVICTION / BYPASS
+  evictions_total           :          386
+  bypass_events             :            0   (full and nothing evictable)
+  oversize_bypasses         :            0   (single entry over --cache-max-entry-bytes)
+  pinned_blobs              :            0
+READS
+  hits / misses             : 0 / 0
+RESULT: the bound held in every in-flight sample; the reported figure and du agree as shown
+ARM EXIT=0
+run ended: 2026-09-26T21:22:03-05:00
+/dev/nvme0n1p2  1.8T  1.6T  161G  91% /

@@ -1,0 +1,179 @@
+=== BFS-012 bypass arms (OVER + PIN) ===
+started 2026-09-26T21:24:02-05:00 loadavg 17.09 17.58 22.12 3/8626 4174791
+########################################################################
+# ARM OVER — a single entry above --cache-max-entry-bytes is never cached,
+# and every read still returns the right bytes.
+########################################################################
+arm        = C-oversize
+host       = karaHermes-mde-7840hs loadavg 17.09 17.58 22.12 9/8628 4174801
+tree       = /tmp/bfs012/small-tree  (15 files, 6293894 B)
+binaries   = /tmp/bfs012/bin/bunker ; /tmp/bfs012/bin/davserve
+endpoint   = http://127.0.0.1:42319/dav (pid 4174808)
+mount-args = --url http://127.0.0.1:42319/dav --concurrency 25 --cache-max-entry-bytes 65536
+mount-timeout = 300s
+cache-dir  = /tmp/bfs012/run-C-oversize/xdg/bunker/fs/ab5a7bb0f18b
+  cache dir    : /tmp/bfs012/run-C-oversize/xdg/bunker/fs/ab5a7bb0f18b (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 19 nodes in 1 call(s)
+reader     = /home/kara/worktrees/bunker-BFS-012/docs/evidence/BFS-012-probes/bypass_check.py --hold 0 --dir src/bulk --settle 1  (rc=0)
+  | files under src/bulk: 6   hold=0
+  | status before: entries=0 blobs=0 used=26 evictions=0 bypass=0 oversize=0 pinned=0
+  |   reads through the mount: 6 (one per file)  ok=6  mismatched=[]
+  | status after : entries=0 blobs=0 used=26 evictions=0 bypass=0 oversize=0 pinned=0
+  | blob files on disk : 0 (0 B)   bound=268435456 used=26
+  |   PASS  every read returned the right bytes (6/6 matched; mismatched=[])
+  |   PASS  6/6 reads that could not be cached left NO blob on disk (uncached=['f0000.dat', 'f0001.dat', 'f0002.dat', 'f0003.dat', 'f0004.dat', 'f0005.dat'])
+  |   PASS  used_bytes 26 <= max_bytes 268435456
+  |   PASS  real blob bytes 0 <= max_bytes 268435456
+  |   PASS  nothing over the entry cap was cached (entries=0 blobs=0 files=0)
+  |   MEASURED (finding F-B): oversize_bypasses=0 while 6 reads exceeded --cache-max-entry-bytes and were not cached — the mount pre-filters at internal/fsmount/fs_linux.go:1053, so the counter can never move
+mount.log  :
+  | mounted http://127.0.0.1:42319/dav on /tmp/bfs012/run-C-oversize/mnt
+  |   cache dir    : /tmp/bfs012/run-C-oversize/xdg/bunker/fs/ab5a7bb0f18b (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 19 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs012/run-C-oversize/mnt
+  | 2026/09/26 21:24:03 trySplice: splice: want 1051264 bytes, max pipe size 1048576
+  | 2026/09/26 21:24:03 trySplice: splice: want 1051264 bytes, max pipe size 1048576
+  | 2026/09/26 21:24:03 trySplice: splice: want 1051264 bytes, max pipe size 1048576
+  | 2026/09/26 21:24:03 trySplice: splice: want 1051264 bytes, max pipe size 1048576
+  | 2026/09/26 21:24:03 trySplice: splice: want 1051264 bytes, max pipe size 1048576
+  | 2026/09/26 21:24:03 trySplice: splice: want 1051264 bytes, max pipe size 1048576
+owner-facing surface (bunker fs status / conflicts, XDG_CACHE_HOME=/tmp/bfs012/run-C-oversize/xdg):
+  | mount        : ab5a7bb0f18b
+  | endpoint     : http://127.0.0.1:42319/dav
+  | mountpoint   : /tmp/bfs012/run-C-oversize/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=26 max_bytes=268435456 (blobs=0 index=26) entries=0 blobs=0
+  | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=19 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=1 in_flight_max=1 requests=13 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+--- conflicts ---
+  | no refusals recorded
+
+run dir                     : /tmp/bfs012/run-C-oversize
+BOUND
+  max_bytes (reported)      :    268435456
+  samples in flight         :            8
+  du -sb cache dir, MAX     :         1485   ratio=0.0000
+  used_bytes, MAX (reported):           26   ratio=0.0000
+  real blob bytes, MAX      :            0
+  samples EXCEEDING bound   :            0   OK
+AGREEMENT (final state, after the reader finished)
+  reported blobs_bytes      :            0
+  du -sb blobs              :            0   delta=0
+  real blob file bytes      :            0   delta=0
+  blob files on disk        :            0   reported blobs=0  entries=0
+  reported index_bytes      :           26
+  index.json on disk        :  ABSENT   <- no entry was ever STORED, so the index was never flushed; the client still reports index_bytes=26 for the document it would write
+  reported used_bytes       :           26   == blobs+index: True
+  du -sb cache dir          :         1485   delta vs used_bytes = 1459
+  status.json on disk       :         1485   <- the delta is the mount's own document, a FILE it does not count as cache
+  conflicts.jsonl on disk   :            0
+  accounted: used_bytes + status.json + conflicts.jsonl == du(cache dir): False
+EVICTION / BYPASS
+  evictions_total           :            0
+  bypass_events             :            0   (full and nothing evictable)
+  oversize_bypasses         :            0   (single entry over --cache-max-entry-bytes)
+  pinned_blobs              :            0
+READS
+  hits / misses             : 0 / 0
+RESULT: the bound held in every in-flight sample; the reported figure and du agree as shown
+
+########################################################################
+# ARM PIN — every cached blob pinned: the cache is full and NOTHING is
+# evictable, so the next read must BYPASS.
+########################################################################
+arm        = D-pinned
+host       = karaHermes-mde-7840hs loadavg 16.92 17.54 22.08 31/8623 4175795
+tree       = /tmp/bfs012/small-tree  (15 files, 6293894 B)
+binaries   = /tmp/bfs012/bin/bunker ; /tmp/bfs012/bin/davserve
+endpoint   = http://127.0.0.1:44585/dav (pid 4175807)
+mount-args = --url http://127.0.0.1:44585/dav --concurrency 25 --cache-max-size 4194304
+mount-timeout = 300s
+cache-dir  = /tmp/bfs012/run-D-pinned/xdg/bunker/fs/80e2a3f3f392
+  cache dir    : /tmp/bfs012/run-D-pinned/xdg/bunker/fs/80e2a3f3f392 (bound 4194304 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 19 nodes in 1 call(s)
+reader     = /home/kara/worktrees/bunker-BFS-012/docs/evidence/BFS-012-probes/bypass_check.py --hold 3 --dir src/bulk --settle 4  (rc=0)
+  | files under src/bulk: 6   hold=3
+  | status before: entries=0 blobs=0 used=26 evictions=0 bypass=0 oversize=0 pinned=0
+  |   held open : f0000.dat (sha256 eb10d95092d9…)
+  |   held open : f0001.dat (sha256 7284bfd50867…)
+  |   held open : f0002.dat (sha256 783b9c563969…)
+  |   reads through the mount: 6 (one per file)  ok=6  mismatched=[]
+  | status while pinned: entries=3 blobs=3 used=3146239 bypass=3 oversize=0 pinned=3 evictions=0
+  | status after : entries=3 blobs=3 used=3146239 evictions=0 bypass=3 oversize=0 pinned=0
+  | blob files on disk : 3 (3145728 B)   bound=4194304 used=3146239
+  |   PASS  every read returned the right bytes (6/6 matched; mismatched=[])
+  |   PASS  3/3 reads that could not be cached left NO blob on disk (uncached=['f0003.dat', 'f0004.dat', 'f0005.dat'])
+  |   PASS  used_bytes 3146239 <= max_bytes 4194304
+  |   PASS  real blob bytes 3145728 <= max_bytes 4194304
+  |   PASS  bypass_events moved (3) — a full cache of pinned blobs bypassed instead of failing
+  |   PASS  pins were real and visible while held (during=3, after=0)
+  |   PASS  no entry was stored for a bypassed read (entries=3, blobs on disk=3, held=3)
+mount.log  :
+  | mounted http://127.0.0.1:44585/dav on /tmp/bfs012/run-D-pinned/mnt
+  |   cache dir    : /tmp/bfs012/run-D-pinned/xdg/bunker/fs/80e2a3f3f392 (bound 4194304 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 19 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs012/run-D-pinned/mnt
+  | 2026/09/26 21:24:08 trySplice: splice: want 1051264 bytes, max pipe size 1048576
+  | 2026/09/26 21:24:08 trySplice: splice: want 1051248 bytes, max pipe size 1048576
+  | 2026/09/26 21:24:08 trySplice: splice: want 1051232 bytes, max pipe size 1048576
+  | 2026/09/26 21:24:08 trySplice: splice: want 1051216 bytes, max pipe size 1048576
+  | 2026/09/26 21:24:08 trySplice: splice: want 1051216 bytes, max pipe size 1048576
+  | 2026/09/26 21:24:08 trySplice: splice: want 1051216 bytes, max pipe size 1048576
+owner-facing surface (bunker fs status / conflicts, XDG_CACHE_HOME=/tmp/bfs012/run-D-pinned/xdg):
+  | mount        : 80e2a3f3f392
+  | endpoint     : http://127.0.0.1:44585/dav
+  | mountpoint   : /tmp/bfs012/run-D-pinned/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=3146239 max_bytes=4194304 (blobs=3145728 index=511) entries=3 blobs=3
+  | cache events : hits=0 misses=0 evictions=0 bypasses=3 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=19 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=14 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+--- conflicts ---
+  | no refusals recorded
+
+run dir                     : /tmp/bfs012/run-D-pinned
+BOUND
+  max_bytes (reported)      :      4194304
+  samples in flight         :           16
+  du -sb cache dir, MAX     :      3147732   ratio=0.7505
+  used_bytes, MAX (reported):      3146239   ratio=0.7501
+  real blob bytes, MAX      :      3145728
+  samples EXCEEDING bound   :            0   OK
+AGREEMENT (final state, after the reader finished)
+  reported blobs_bytes      :      3145728
+  du -sb blobs              :      3145728   delta=0
+  real blob file bytes      :      3145728   delta=0
+  blob files on disk        :            3   reported blobs=3  entries=3
+  reported index_bytes      :          511
+  index.json on disk        :          511   delta=0
+  reported used_bytes       :      3146239   == blobs+index: True
+  du -sb cache dir          :      3147732   delta vs used_bytes = 1493
+  status.json on disk       :         1493   <- the delta is the mount's own document, a FILE it does not count as cache
+  conflicts.jsonl on disk   :            0
+  accounted: used_bytes + status.json + conflicts.jsonl == du(cache dir): True
+EVICTION / BYPASS
+  evictions_total           :            0
+  bypass_events             :            3   (full and nothing evictable)
+  oversize_bypasses         :            0   (single entry over --cache-max-entry-bytes)
+  pinned_blobs              :            0
+READS
+  hits / misses             : 0 / 0
+RESULT: the bound held in every in-flight sample; the reported figure and du agree as shown
+
+bypass-arms aggregate rc=0  (0 = every arm's own assertions held)
+BYPASS ARMS EXIT=0
