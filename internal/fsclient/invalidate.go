@@ -811,6 +811,46 @@ func (i *Invalidator) resumePoint() (int64, bool) {
 	return i.seq, true
 }
 
+// advanceCursorLocked folds one line's seq into the cursor and reports what the
+// advance means: `dup` a line already applied, `gap` an interval that was never
+// observed.
+//
+// SPEC-push-channel §3.1 R-1: the cursor is "the highest seq the client has
+// observed, whatever the line's `event` name was" — so a HEARTBEAT advances it
+// exactly as an `invalidate` does. The defect this closes (H-2) was the
+// opposite: `apply` returned for a heartbeat BEFORE this bookkeeping, so the
+// heartbeat's seq was consumed and never recorded, the next real event then
+// satisfied `Seq > cursor+1`, and the client paid a whole-tree resync for every
+// keep-alive — the mechanism manufacturing the exact condition it exists to
+// prevent.
+//
+// The second half is what keeps that from being a loosening: a jump of more than
+// one is a REAL gap whichever line carried it. Advancing the cursor quietly over
+// an unobserved range would vouch for an interval nobody saw, which is the
+// silent-staleness reading of the same rule (§3.3 R-3) — so a heartbeat that
+// stands over a gap resyncs rather than being recorded as if it were just a
+// keep-alive.
+//
+// A seq of zero (or none) is not a cursor claim at all: it is neither advanced
+// over nor read as a gap, and the guard on a non-zero cursor is BFS-063's.
+func (i *Invalidator) advanceCursorLocked(seq int64) (dup, gap bool) {
+	if seq <= 0 {
+		return false, false
+	}
+	if seq <= i.seq {
+		// A duplicate or a replay: already applied.
+		return true, false
+	}
+	if seq > i.seq+1 && i.seq != 0 {
+		i.gaps++
+		gap = true
+	}
+	// The cursor advances either way: the missing range is never re-requested
+	// (BFS-005 §4.1) — the resync that follows establishes current truth.
+	i.seq = seq
+	return false, gap
+}
+
 // apply handles one event. Returns an error only for an unrecoverable stream
 // fault; every protocol-level oddity (gap, duplicate, unknown event name) is a
 // decision, not an error.
@@ -829,7 +869,17 @@ func (i *Invalidator) apply(ev Event) {
 		// and `evidence_from: heartbeat` says so rather than pretending a
 		// content check happened.
 		i.noteEvidenceLocked("heartbeat")
+		// R-1 (§3.1): a heartbeat's seq is a cursor observation like every other
+		// line's, so it is RECORDED here rather than consumed and discarded
+		// (H-2) — and, for that same reason, a jump over it is a real gap and
+		// resyncs: recording it in SILENCE would vouch for an interval nobody
+		// observed, which is the silent-staleness P0 this row must not trade its
+		// P1 for (§3.3 R-3).
+		_, gap := i.advanceCursorLocked(ev.Seq)
 		i.mu.Unlock()
+		if gap {
+			i.Resync(fmt.Sprintf("sequence gap at seq=%d: the missing range is never re-requested", ev.Seq))
+		}
 		return
 	}
 	// A per-line tree that differs from the stream's own X-Bunker-Tree is a tree
@@ -839,18 +889,11 @@ func (i *Invalidator) apply(ev Event) {
 		i.Resync("tree changed mid-stream (" + ev.Tree + ")")
 		return
 	}
-	gap := false
-	if ev.Seq > 0 {
-		switch {
-		case ev.Seq <= i.seq:
-			// A duplicate or a replay: already applied.
-			i.mu.Unlock()
-			return
-		case ev.Seq > i.seq+1 && i.seq != 0:
-			gap = true
-			i.gaps++
-		}
-		i.seq = ev.Seq
+	dup, gap := i.advanceCursorLocked(ev.Seq)
+	if dup {
+		// A duplicate or a replay: already applied.
+		i.mu.Unlock()
+		return
 	}
 	i.events++
 	i.lastEvent = timeNow()
