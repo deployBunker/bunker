@@ -1,0 +1,87 @@
+=== BFS-061 suites — /home/kara/worktrees/bunker-BFS-061, branch wt/BFS-061, HEAD cd7aa44, 2026-09-27T15:20:48Z ===
+tree under test: internal/fsclient/invalidate.go sha256=69ff511fdc043176224426598601f3c3cc378bde261a4bc7c9812e6b1e7c5d7c
+                 internal/fsclient/invalidate_bfs061_test.go sha256=ee1394ed1a406a01bf5249814122652281a9397cbe7f0242a266acb2485a6028
+--- go version: go version go1.26.5 linux/amd64
+
+--- gofmt -l internal/ cmd/ (no output = clean):
+gofmt rc=0
+
+--- go build ./...:
+build rc=0
+
+--- go vet ./...:
+vet rc=0
+
+--- go test ./... -count=1 -timeout 900s  (complete output, not truncated):
+ok  	github.com/deployBunker/bunker/cmd/bunker	0.030s
+ok  	github.com/deployBunker/bunker/cmd/bunkerd	0.141s
+?   	github.com/deployBunker/bunker/cmd/docs-drift	[no test files]
+ok  	github.com/deployBunker/bunker/internal/agent	53.160s
+ok  	github.com/deployBunker/bunker/internal/apikey	0.005s
+ok  	github.com/deployBunker/bunker/internal/audit	3.445s
+ok  	github.com/deployBunker/bunker/internal/auth	0.339s
+ok  	github.com/deployBunker/bunker/internal/cli	24.671s
+ok  	github.com/deployBunker/bunker/internal/config	0.091s
+?   	github.com/deployBunker/bunker/internal/davserve	[no test files]
+ok  	github.com/deployBunker/bunker/internal/docscheck	3.882s
+ok  	github.com/deployBunker/bunker/internal/fsclient	7.292s
+ok  	github.com/deployBunker/bunker/internal/fsmount	0.281s
+ok  	github.com/deployBunker/bunker/internal/hermes	18.609s
+ok  	github.com/deployBunker/bunker/internal/hilo	0.033s
+ok  	github.com/deployBunker/bunker/internal/hostsetup	2.052s
+ok  	github.com/deployBunker/bunker/internal/imagespec	0.053s
+ok  	github.com/deployBunker/bunker/internal/invalidation	0.006s
+ok  	github.com/deployBunker/bunker/internal/mountdriver	0.007s
+ok  	github.com/deployBunker/bunker/internal/registry	16.765s
+ok  	github.com/deployBunker/bunker/internal/releasecheck	0.190s
+ok  	github.com/deployBunker/bunker/internal/resource	0.024s
+ok  	github.com/deployBunker/bunker/internal/server	11.439s
+ok  	github.com/deployBunker/bunker/internal/server/webdav	26.503s
+ok  	github.com/deployBunker/bunker/internal/sshsig	0.007s
+ok  	github.com/deployBunker/bunker/internal/systemd	0.004s
+ok  	github.com/deployBunker/bunker/internal/tailscale	0.070s
+ok  	github.com/deployBunker/bunker/internal/tlsutil	0.011s
+ok  	github.com/deployBunker/bunker/internal/tunnel	21.321s
+ok  	github.com/deployBunker/bunker/internal/version	0.005s
+?   	github.com/deployBunker/bunker/probes/bfs025-truncated-read	[no test files]
+?   	github.com/deployBunker/bunker/probes/davserve	[no test files]
+?   	github.com/deployBunker/bunker/probes/h3client	[no test files]
+ok  	github.com/deployBunker/bunker/probes/webdav-battery	0.092s
+?   	github.com/deployBunker/bunker/proto/bunker/v1	[no test files]
+?   	github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect	[no test files]
+test rc=0
+
+--- go test ./internal/fsclient -count=1 -race -run TestBFS061 -v -timeout 200s:
+=== RUN   TestBFS061HeartbeatsDoNotManufactureAGap
+--- PASS: TestBFS061HeartbeatsDoNotManufactureAGap (0.05s)
+=== RUN   TestBFS061ARealGapIsStillDetected
+--- PASS: TestBFS061ARealGapIsStillDetected (0.03s)
+=== RUN   TestBFS061AHeartbeatCannotMaskARealGap
+--- PASS: TestBFS061AHeartbeatCannotMaskARealGap (0.03s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsclient	1.126s
+race rc=0
+
+--- the MUST-NOT-REGRESS arms: BFS-060 (liveness: a dead channel is reported dead, a quiet tree is not) and BFS-063 (the resume declaration), -v:
+=== RUN   TestBFS060TheRecordNamesTheRuleAndCountsItsFirings
+=== RUN   TestBFS060TheRecordNamesTheRuleAndCountsItsFirings/the_rule_is_the_relation_the_server_declares
+=== RUN   TestBFS060TheRecordNamesTheRuleAndCountsItsFirings/no_declared_heartbeat_falls_back_to_the_pinned_90s
+=== RUN   TestBFS060TheRecordNamesTheRuleAndCountsItsFirings/a_clean_EOF_is_counted,_and_so_is_the_reconnect
+--- PASS: TestBFS060TheRecordNamesTheRuleAndCountsItsFirings (0.68s)
+=== RUN   TestBFS060CleanEOFIsAChannelEndNotASuccess
+--- PASS: TestBFS060CleanEOFIsAChannelEndNotASuccess (0.54s)
+=== RUN   TestBFS060StalledChannelIsNotAQuietTree
+--- PASS: TestBFS060StalledChannelIsNotAQuietTree (2.57s)
+=== RUN   TestBFS060CancellationIsTheOneCleanClose
+--- PASS: TestBFS060CancellationIsTheOneCleanClose (0.02s)
+=== RUN   TestBFS063AFreshClientIsNeverToldNothingChanged
+--- PASS: TestBFS063AFreshClientIsNeverToldNothingChanged (0.01s)
+=== RUN   TestBFS063ASeededClientIsNotGivenAnUnearnedOverflow
+--- PASS: TestBFS063ASeededClientIsNotGivenAnUnearnedOverflow (0.00s)
+=== RUN   TestBFS063OneUnvouchedAnswerThenConvergence
+--- PASS: TestBFS063OneUnvouchedAnswerThenConvergence (0.00s)
+=== RUN   TestBFS063AStaleCursorThatTheClientCanReadIsStillATail
+--- PASS: TestBFS063AStaleCursorThatTheClientCanReadIsStillATail (0.08s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsclient	3.905s
+bfs060/063/048 rc=0

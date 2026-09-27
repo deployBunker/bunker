@@ -1,0 +1,61 @@
+=== BFS-061 race attribution — the baseline, not this row ===
+control tree: /tmp/bfs061-base-race (fresh clone: 0), checked out at 064b39f
+  internal/fsclient/invalidate.go sha256=14617c6518e69c3335a29ae1ac7cc6aff1c41e67bf24f25aac72e8339056db65
+  (the filed blob BFS-061-arms.sh pins is 14617c6518e69c3335a29ae1ac7cc6aff1c41e67bf24f25aac72e8339056db65)
+  this row's diff touches: internal/fsclient/invalidate.go internal/fsclient/invalidate_bfs061_test.go internal/fsclient/status_census_test.go 
+  revision_poll_contract_test.go is BFS-048's; this row does not touch it.
+
+--- run 1: go test ./internal/fsclient -count=1 -race -run TestRevPollFiresOnlyWhenTheServedRevisionMoves -timeout 120s
+--- run 1 exit=1
+WARNING: DATA RACE
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:128 +0x389
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:113 +0x2e
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:40 +0x451
+WARNING: DATA RACE
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:132 +0x34
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:132 +0x4e6
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:68 +0x46
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:68 +0x476
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:117 +0x245
+WARNING: DATA RACE
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:135 +0x608
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:68 +0x46
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:68 +0x476
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:117 +0x245
+WARNING: DATA RACE
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:139 +0x704
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:68 +0x46
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:68 +0x476
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:117 +0x245
+    testing.go:1712: race detected during execution of test
+--- run 1: (transcript kept at /tmp/tmp.WwV7XQGrOZ)
+--- run 2: go test ./internal/fsclient -count=1 -race -run TestRevPollFiresOnlyWhenTheServedRevisionMoves -timeout 120s
+--- run 2 exit=1
+WARNING: DATA RACE
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:128 +0x389
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:113 +0x2e
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:40 +0x451
+WARNING: DATA RACE
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:132 +0x34
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:132 +0x4e6
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:68 +0x46
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:68 +0x476
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:117 +0x245
+WARNING: DATA RACE
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:135 +0x608
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:68 +0x46
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:68 +0x476
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:117 +0x245
+WARNING: DATA RACE
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:139 +0x704
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:68 +0x46
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:68 +0x476
+      /tmp/bfs061-base-race/internal/fsclient/revision_poll_contract_test.go:117 +0x245
+    testing.go:1712: race detected during execution of test
+--- run 2: (transcript kept at /tmp/tmp.HvLzfm0tOC)
+
+VERDICT: rc=1 on the PRISTINE BASE — the race is the baseline's, reproducible twice
+with none of this row's change present. Cause, from the stacks above: the rev-poll stub
+handler goroutine reads test-local variables (revision_poll_contract_test.go:113 etc.) while
+the test goroutine writes them (:128,:132,:135). It is test-code, in another row's file, and
+this row reports it rather than reaching into it.

@@ -578,10 +578,23 @@ func TestEveryFigureInTheStatusRecordMovesOrIsExplained(t *testing.T) {
 
 	// 3. The declared poll now carries the channel, and it delivers: two change
 	//    events (one of them carrying several paths) and a heartbeat.
+	//
+	//    The seqs are CONTIGUOUS with the cursor the client holds — 1, the
+	//    stream's own heartbeat (§3.2 row 2), because a heartbeat advances the
+	//    cursor like any other line (BFS-061, §3.1 R-1). They have to be: a tail
+	//    whose first seq leaves a hole is a gap the client is REQUIRED to notice
+	//    and resync on (§3.3 R-3), and a real server answers that case with the
+	//    `overflow` marker the landed poll sends (BFS-063) rather than a bare
+	//    tail. This arm is about the counters moving when the poll delivers, not
+	//    about the marker; the deliberate gap and the overflow are steps 4 and 5.
+	//    (Before BFS-061 this fixture could start at 10: the stream's heartbeat
+	//    was consumed and never recorded, so the client's cursor was 0 and the
+	//    non-zero-cursor guard swallowed the hole. That silent gap is exactly
+	//    what BFS-061 removes.)
 	s.pushEvents([]Event{
-		{Seq: 10, Event: EventInvalidate, Paths: []string{"a.go"}},
-		{Seq: 11, Event: EventInvalidate, Paths: []string{"b.go", "c.go"}},
-		{Seq: 12, Event: EventHeartbeat},
+		{Seq: 2, Event: EventInvalidate, Paths: []string{"a.go"}},
+		{Seq: 3, Event: EventInvalidate, Paths: []string{"b.go", "c.go"}},
+		{Seq: 4, Event: EventHeartbeat},
 	})
 	if !waitFor(5*time.Second, func() bool { return inv.State().DroppedPaths >= 3 }) {
 		t.Fatalf("the polled events never landed: %+v", inv.State())

@@ -1,0 +1,259 @@
+BFS-061 arms — mode=unfixed base=064b39f
+go go1.26.5 · 788a588 · 2026-09-27T15:18:11Z
+pre-mutation: internal/fsclient/invalidate.go sha256=69ff511fdc043176224426598601f3c3cc378bde261a4bc7c9812e6b1e7c5d7c
+swapped in 064b39f:internal/fsclient/invalidate.go sha256=14617c6518e69c3335a29ae1ac7cc6aff1c41e67bf24f25aac72e8339056db65
+the filed tree, sha256-verified: the RED below is measured on a named content, not on a memory
+--- RED (tree as filed): go test ./internal/fsclient -run TestBFS061 -count=1 -v -timeout 120s
+=== RUN   TestBFS061HeartbeatsDoNotManufactureAGap
+    invalidate_bfs061_test.go:142: THE HEARTBEAT MANUFACTURED A GAP: 5 heartbeats then ONE change moved resyncs_from_gap 0→1 and resyncs_total 0→1 with 1 full-view drop(s) [seq=7 resyncs_from_gap=1 resyncs_total=1 events_total=7 paths_dropped_total=1 heartbeats_total=5 reason="sequence gap at seq=7: the missing range is never re-requested"] — every keep-alive costs a whole-tree resync on the next change (H-2). Required: no gap, no resync, and the change applied precisely.
+--- FAIL: TestBFS061HeartbeatsDoNotManufactureAGap (0.04s)
+=== RUN   TestBFS061ARealGapIsStillDetected
+--- PASS: TestBFS061ARealGapIsStillDetected (0.03s)
+=== RUN   TestBFS061AHeartbeatCannotMaskARealGap
+    invalidate_bfs061_test.go:226: A HEARTBEAT MASKED A REAL GAP: the keep-alive at seq=3 arrived on a cursor of 1, and the record is seq=1 resyncs_from_gap=0 resyncs_total=0 events_total=2 paths_dropped_total=1 heartbeats_total=1 reason="" — the client now holds a cursor or a silence that vouches for the interval [2] it never observed, and nothing will ever re-request it. A heartbeat must be recorded (SPEC-push-channel §3.1 R-1) AND compared to the cursor (§3.3 R-3), never consumed-and-discarded.
+--- FAIL: TestBFS061AHeartbeatCannotMaskARealGap (3.02s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	3.103s
+FAIL
+--- RED (tree as filed) exit=1
+--- RED (tree as filed) — the census arm, whose FIXTURE this row corrects and whose expectation it does not: go test ./internal/fsclient -run TestEveryFigureInTheStatusRecordMovesOrIsExplained -count=1 -v -timeout 120s
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.max_entry_bytes
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.dir_bytes
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.install_failures_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.blocks_push
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.evictions_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.seq
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.paths_dropped_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.resyncs_from_gap
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.idle_fallbacks_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.idle_timeout_ms
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.content_age.age_ms
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.liveness.heartbeats_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.pinned_blobs
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.dir_bytes_by_class.index
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.dir_bytes_by_class.staged
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.liveness.idle_timeout_ms
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.sampled_age_ms
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.backend_errors_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.heartbeats_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.event_loop_ticks
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.max_inflight
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.index_bytes
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.bypass_reasons.over_entry_cap
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.bypass_reasons.no_room
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.bypass_reasons.cache_disabled
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.dir_unaccounted_bytes
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.dir_measured_age_ms
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.blobs_bytes
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.hits
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.staged_aborted_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.resume_seq
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.channel_available
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.liveness.stalled
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.refresh.in_flight
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.oversize_bypasses
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.dir_bytes_by_class.other
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.directories_watched
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.refresh.committed_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.max_entries
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.bypass_reasons.insert_over_entry_cap
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.dir_bytes_by_class.conflicts
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.events_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.coverage_complete
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.refresh.max_inflight
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.bypass_events
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.dir_bytes_by_class.blobs
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.dir_bytes_by_class.orphan
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.stream_ends_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.heartbeat_ms
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.staged_committed_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.staged_no_slot_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.resyncs_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.rescans_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.missing_count
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.blobs
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.dir_bytes_by_class.status
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.last_event_age_ms
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.liveness.stalls_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.content_age.observations_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.max_paths_per_event
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.last_event_age_ms
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.refresh.started_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.max_bytes
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.max_age_ms
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.refresh.aborted_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.refresh.refused_no_room_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.staged_blobs
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.liveness.last_line_age_ms
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.vouched
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.stalled
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.used_bytes
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.entries
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.staged_no_room_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.directories_desired
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.in_flight_bytes
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.staged_started_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.content_age.bound_ms
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.content_age.within_bound
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.overflows_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.refresh.refused_no_slot_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.misses
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.reserved_bytes
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.reconnects_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.requests_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.failures_total
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.poll_interval_ms
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.liveness.declared_heartbeat_ms
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.unvouched_total
+=== NAME  TestEveryFigureInTheStatusRecordMovesOrIsExplained
+    status_census_test.go:774: figures proven present: 88 of 88 classified; moved/appeared: 47
+    status_census_test.go:776:   moved cache.blobs                                    6
+    status_census_test.go:776:   moved cache.blobs_bytes                              54
+    status_census_test.go:776:   moved cache.bypass_events                            1
+    status_census_test.go:776:   moved cache.bypass_reasons.no_room                   1
+    status_census_test.go:776:   moved cache.bypass_reasons.over_entry_cap            1
+    status_census_test.go:776:   moved cache.dir_bytes                                942
+    status_census_test.go:776:   moved cache.dir_bytes_by_class.blobs                 54
+    status_census_test.go:776:   moved cache.dir_unaccounted_bytes                    11
+    status_census_test.go:776:   moved cache.entries                                  6
+    status_census_test.go:776:   moved cache.evictions_total                          1
+    status_census_test.go:776:   moved cache.hits                                     1
+    status_census_test.go:776:   moved cache.in_flight_bytes                          11
+    status_census_test.go:776:   moved cache.index_bytes                              877
+    status_census_test.go:776:   moved cache.misses                                   1
+    status_census_test.go:776:   moved cache.oversize_bypasses                        1
+    status_census_test.go:776:   moved cache.pinned_blobs                             6
+    status_census_test.go:776:   moved cache.reserved_bytes                           942
+    status_census_test.go:776:   moved cache.staged_aborted_total                     2
+    status_census_test.go:776:   moved cache.staged_blobs                             1
+    status_census_test.go:776:   moved cache.staged_committed_total                   1
+    status_census_test.go:776:   moved cache.staged_no_room_total                     1
+    status_census_test.go:776:   moved cache.staged_no_slot_total                     1
+    status_census_test.go:776:   moved cache.staged_started_total                     4
+    status_census_test.go:776:   moved cache.used_bytes                               931
+    status_census_test.go:776:   moved invalidation.channel_available                 1
+    status_census_test.go:776:   moved invalidation.content_age.age_ms                17
+    status_census_test.go:776:   moved invalidation.content_age.observations_total    9
+    status_census_test.go:776:   moved invalidation.events_total                      6
+    status_census_test.go:776:   moved invalidation.failures_total                    2
+    status_census_test.go:776:   moved invalidation.idle_fallbacks_total              1
+    status_census_test.go:776:   moved invalidation.last_event_age_ms                 17
+    status_census_test.go:776:   moved invalidation.liveness.heartbeats_total         2
+    status_census_test.go:776:   moved invalidation.liveness.last_line_age_ms         17
+    status_census_test.go:776:   moved invalidation.liveness.stalled                  1
+    status_census_test.go:776:   moved invalidation.liveness.stalls_total             1
+    status_census_test.go:776:   moved invalidation.paths_dropped_total               3
+    status_census_test.go:776:   moved invalidation.reconnects_total                  1
+    status_census_test.go:776:   moved invalidation.refresh.aborted_total             2
+    status_census_test.go:776:   moved invalidation.refresh.committed_total           1
+    status_census_test.go:776:   moved invalidation.refresh.refused_no_room_total     1
+    status_census_test.go:776:   moved invalidation.refresh.refused_no_slot_total     1
+    status_census_test.go:776:   moved invalidation.refresh.started_total             4
+    status_census_test.go:776:   moved invalidation.requests_total                    5
+    status_census_test.go:776:   moved invalidation.resyncs_from_gap                  1
+    status_census_test.go:776:   moved invalidation.resyncs_total                     2
+    status_census_test.go:776:   moved invalidation.seq                               100
+    status_census_test.go:776:   moved invalidation.stream_ends_total                 1
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/reason/invalidation.reason
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/reason/invalidation.server.unvouched_reason
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/reason/invalidation.server.overflow_dropped_reason
+=== RUN   TestEveryFigureInTheStatusRecordMovesOrIsExplained/reason/invalidation.refresh.absent_reason
+--- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained (0.73s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.max_entry_bytes (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.dir_bytes (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.install_failures_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.blocks_push (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.evictions_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.seq (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.paths_dropped_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.resyncs_from_gap (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.idle_fallbacks_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.idle_timeout_ms (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.content_age.age_ms (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.liveness.heartbeats_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.pinned_blobs (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.dir_bytes_by_class.index (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.dir_bytes_by_class.staged (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.liveness.idle_timeout_ms (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.sampled_age_ms (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.backend_errors_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.heartbeats_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.event_loop_ticks (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.max_inflight (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.index_bytes (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.bypass_reasons.over_entry_cap (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.bypass_reasons.no_room (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.bypass_reasons.cache_disabled (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.dir_unaccounted_bytes (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.dir_measured_age_ms (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.blobs_bytes (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.hits (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.staged_aborted_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.resume_seq (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.channel_available (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.liveness.stalled (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.refresh.in_flight (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.oversize_bypasses (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.dir_bytes_by_class.other (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.directories_watched (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.refresh.committed_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.max_entries (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.bypass_reasons.insert_over_entry_cap (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.dir_bytes_by_class.conflicts (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.events_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.coverage_complete (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.refresh.max_inflight (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.bypass_events (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.dir_bytes_by_class.blobs (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.dir_bytes_by_class.orphan (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.stream_ends_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.heartbeat_ms (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.staged_committed_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.staged_no_slot_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.resyncs_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.rescans_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.missing_count (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.blobs (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.dir_bytes_by_class.status (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.last_event_age_ms (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.liveness.stalls_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.content_age.observations_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.max_paths_per_event (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.last_event_age_ms (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.refresh.started_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.max_bytes (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.max_age_ms (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.refresh.aborted_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.refresh.refused_no_room_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.staged_blobs (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.liveness.last_line_age_ms (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.vouched (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.stalled (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.used_bytes (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.entries (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.staged_no_room_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.directories_desired (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.in_flight_bytes (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.staged_started_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.content_age.bound_ms (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.content_age.within_bound (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.overflows_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.refresh.refused_no_slot_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.misses (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/cache.reserved_bytes (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.reconnects_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.requests_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.failures_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.poll_interval_ms (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.liveness.declared_heartbeat_ms (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/figure/invalidation.server.unvouched_total (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/reason/invalidation.reason (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/reason/invalidation.server.unvouched_reason (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/reason/invalidation.server.overflow_dropped_reason (0.00s)
+    --- PASS: TestEveryFigureInTheStatusRecordMovesOrIsExplained/reason/invalidation.refresh.absent_reason (0.00s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.739s
+--- RED (tree as filed) — the census arm, whose FIXTURE this row corrects and whose expectation it does not exit=0
+restore: internal/fsclient/invalidate.go sha256=69ff511fdc043176224426598601f3c3cc378bde261a4bc7c9812e6b1e7c5d7c (verified byte-identical against the pre-mutation hash)
+done: mode=unfixed
