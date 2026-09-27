@@ -29,10 +29,12 @@ const (
 	// gitRevCacheTTL bounds how often a git tree's HEAD is re-read to build
 	// X-Bunker-Rev. Mutations clear the cache immediately.
 	gitRevCacheTTL = 500 * time.Millisecond
-	// tempPrefix marks the atomic-write staging files (see writeAtomicFile).
+	// tempPrefix marks the atomic-write staging files (see stageBody).
 	// Names carrying it are filtered out of directory listings so a partial
 	// file is never visible, exactly as AC-6 requires.
 	tempPrefix = ".davtmp-"
+	// commitStripes is the width of the per-path commit lock (§6.1 step 5).
+	commitStripes = 64
 )
 
 type hashEntry struct {
@@ -51,6 +53,14 @@ type tree struct {
 
 	mu    sync.Mutex
 	cache map[string]hashEntry
+
+	// commit holds the per-path critical sections of §6.1 step 5: the
+	// commit-time re-validation and the rename that follows it run under one
+	// of these, so two conditional writes racing on one path cannot both
+	// re-validate a base and then overwrite each other. Striped rather than
+	// keyed so the set is bounded (no map to grow unboundedly on a tree with
+	// many paths).
+	commit [commitStripes]sync.Mutex
 
 	revMu  sync.Mutex
 	revVal string
@@ -178,6 +188,74 @@ func (t *tree) forget(abs string) {
 	t.mu.Lock()
 	delete(t.cache, abs)
 	t.mu.Unlock()
+}
+
+// freshEntry reads the file's bytes as they are on disk RIGHT NOW and returns
+// their hash with the size/mtime of the stat it read them from, bypassing the
+// metadata-keyed cache entirely.
+//
+// §7.3 lets that cache decide only whether the server RECOMPUTES a hash; it
+// must never decide whether a write is safe. The commit-time re-validation of
+// §6.1 step 5 is a safety decision, so it reads bytes — a writer that changed
+// the bytes without moving size and mtime (a restored mtime, an in-place
+// same-size rewrite) is invisible to the cache and must not be invisible to
+// the commit.
+func (t *tree) freshEntry(abs string) (hashEntry, error) {
+	fi, err := os.Stat(abs)
+	if err != nil {
+		return hashEntry{}, err
+	}
+	if !fi.Mode().IsRegular() {
+		return hashEntry{}, fmt.Errorf("%s is not a regular file", abs)
+	}
+	f, err := os.Open(abs)
+	if err != nil {
+		return hashEntry{}, err
+	}
+	defer func() { _ = f.Close() }()
+	hs := sha256.New()
+	if _, err := io.Copy(hs, f); err != nil {
+		return hashEntry{}, err
+	}
+	return hashEntry{
+		size:  fi.Size(),
+		mtime: fi.ModTime().UnixNano(),
+		hash:  "sha256:" + hex.EncodeToString(hs.Sum(nil)),
+	}, nil
+}
+
+// remember records an entry read from the bytes. It is used by the
+// commit-time re-validation, whose read is authoritative: leaving the
+// (size, mtime)-keyed entry that just proved itself insufficient behind would
+// make every later read of that path repeat the mistake.
+func (t *tree) remember(abs string, e hashEntry) {
+	t.mu.Lock()
+	if len(t.cache) >= hashCacheLimit {
+		t.cache = make(map[string]hashEntry)
+	}
+	t.cache[abs] = e
+	t.mu.Unlock()
+}
+
+// lockPath enters §6.1 step 5's critical section for abs — the commit-time
+// re-validation and the rename happen under it, so a second conditional write
+// to the same path cannot re-validate the base the first one is about to
+// replace. It returns the release function; callers defer it.
+func (t *tree) lockPath(abs string) func() {
+	m := &t.commit[fnv32a(abs)%commitStripes]
+	m.Lock()
+	return m.Unlock
+}
+
+// fnv32a is the stripe selector. It is only a hash: two different paths may
+// share a stripe, which costs contention and never correctness.
+func fnv32a(s string) uint32 {
+	h := uint32(2166136261)
+	for i := 0; i < len(s); i++ {
+		h ^= uint32(s[i])
+		h *= 16777619
+	}
+	return h
 }
 
 // bumpRev advances the non-git tree revision counter and invalidates the
@@ -346,10 +424,15 @@ func hashBytes(b []byte) string {
 // in-flight staging files.
 func isTempName(name string) bool { return strings.HasPrefix(name, tempPrefix) }
 
-// writeAtomicFile writes body to abs through a temp file + rename in the same
-// directory, so a failed or killed request leaves the previous bytes intact
-// and no partial file is ever visible (AC-6, §9.7).
-func writeAtomicFile(abs string, body []byte) error {
+// stageBody writes body into a fresh temp file that is a SIBLING of abs (same
+// filesystem, so the rename is atomic) and returns its name. A failed or
+// killed request therefore leaves the previous bytes intact and no partial
+// file is ever visible (AC-6, §9.7): the name carries tempPrefix, which every
+// listing, GET, PROPFIND and snapshot answer filters out.
+//
+// The caller owns the returned file: it is either renamed into place by
+// commitStaged or removed.
+func stageBody(abs string, body []byte) (string, error) {
 	dir := filepath.Dir(abs)
 	mode := os.FileMode(0o644)
 	if fi, err := os.Stat(abs); err == nil {
@@ -357,27 +440,35 @@ func writeAtomicFile(abs string, body []byte) error {
 	}
 	tmp, err := os.CreateTemp(dir, tempPrefix+"*")
 	if err != nil {
-		return err
+		return "", err
 	}
 	name := tmp.Name()
-	defer func() { _ = os.Remove(name) }() // no-op once the rename succeeded
-	if _, err := tmp.Write(body); err != nil {
+	fail := func(err error) (string, error) {
 		_ = tmp.Close()
-		return err
+		_ = os.Remove(name)
+		return "", err
+	}
+	if _, err := tmp.Write(body); err != nil {
+		return fail(err)
 	}
 	if err := tmp.Chmod(mode); err != nil {
-		_ = tmp.Close()
-		return err
+		return fail(err)
 	}
 	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return err
+		return fail(err)
 	}
 	if err := tmp.Close(); err != nil {
-		return err
+		_ = os.Remove(name)
+		return "", err
 	}
-	return os.Rename(name, abs)
+	return name, nil
 }
+
+// commitStaged publishes a staged file over abs. It is the last step of
+// §6.1 step 5's commit and runs under the path's commit lock (see lockPath),
+// so the re-validation that precedes it and the rename itself are one
+// critical section.
+func commitStaged(tmp, abs string) error { return os.Rename(tmp, abs) }
 
 // copyTree copies src to dst. depthInfinity=false copies a collection without
 // its members (RFC 4918 §9.8.3's Depth: 0), which is the only non-infinite

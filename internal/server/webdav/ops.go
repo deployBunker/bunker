@@ -20,7 +20,7 @@ import (
 // capability_unavailable naming the slice that will deliver it, rather than
 // disappearing (R3).
 var (
-	opCatalogue    = []string{"capabilities", "status", "diff", "rev-parse", "ls-files", "snapshot", "events", "watch"}
+	opCatalogue    = []string{"capabilities", "status", "diff", "rev-parse", "ls-files", "log", "snapshot", "events", "watch"}
 	implementedOps = map[string]bool{"capabilities": true, "snapshot": true}
 )
 
@@ -82,7 +82,7 @@ func (h *Handler) handlePost(w http.ResponseWriter, r *http.Request) {
 				Detail: "no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff",
 			})
 
-	case "status", "diff", "rev-parse", "ls-files":
+	case "status", "diff", "rev-parse", "ls-files", "log":
 		// Part of the E-4 catalogue, not in this build (slice C5).
 		h.writeEnvelope(w, r, start, op, 501, VerdictCapabilityUnavailable, false, nil,
 			&envelopeError{

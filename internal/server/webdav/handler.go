@@ -118,6 +118,17 @@ type Config struct {
 type Handler struct {
 	cfg  Config
 	tree *tree
+
+	// testBeforeCommit is a TEST seam and is nil on every production path: it
+	// runs inside §6.1 step 5's critical section, after the body has been
+	// staged and immediately before the precondition is re-validated. It
+	// exists because the window the row is about — a base that changes after
+	// the early precondition evaluation, while the write has not landed yet —
+	// cannot be reached deterministically from a request alone: a mutation
+	// performed while the body is being read lands before the early evaluation
+	// and is caught by it. A test sets this to place the out-of-band write in
+	// the window itself.
+	testBeforeCommit func(abs string)
 }
 
 // New builds the surface over cfg.Root. It fails rather than serving a root it
@@ -441,21 +452,17 @@ func (h *Handler) handlePut(w http.ResponseWriter, r *http.Request) {
 		curHash = hash
 	}
 
-	if f := checkPreconditions(r, exists, curHash); f != nil {
-		// D3: when the requested change has already happened — the base is
-		// stale but the arriving bytes are identical to what is on disk —
-		// this is a reported no-op, not a refusal. Nothing is written and the
-		// mtime does not move.
-		if exists && curHash == bodyHash {
-			w.Header().Set("ETag", etagFor(curHash))
-			w.Header().Set("X-Bunker-Hash", curHash)
-			w.Header().Set("X-Bunker-Noop", "1")
-			w.Header().Set("X-Bunker-Verdict", string(VerdictIdenticalContent))
-			w.Header().Set("Cache-Control", "no-store")
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		h.fail(w, r, *f)
+	// §6.1 step 4 (with step 6's identical-bytes arm): the early evaluation.
+	// It is an EARLY refusal, not the decision — the body has already arrived
+	// by the time it runs, so the base it read may be stale by the time the
+	// write lands. Step 5 re-evaluates the same predicate inside the commit
+	// (writePut), which is what closes that window.
+	switch dec, pf := putPrecondition(r, exists, curHash, bodyHash); dec {
+	case putNoop:
+		answerIdenticalContent(w, curHash)
+		return
+	case putRefuse:
+		h.fail(w, r, *pf)
 		return
 	}
 
@@ -471,7 +478,59 @@ func (h *Handler) handlePut(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := writeAtomicFile(abs, body); err != nil {
+	h.writePut(w, r, abs, body, bodyHash)
+}
+
+// writePut is §6.1 step 5: the commit. The body is staged into a temp sibling
+// of the target, then — in the same critical section as the rename — the
+// current bytes are re-read, re-hashed and the precondition is evaluated
+// again, so a base that moved during the body transfer is refused with the
+// same 412 + hash_mismatch rather than overwritten.
+//
+// The same predicate covers the create-only rule (If-None-Match: *): a
+// resource created out-of-band during the transfer is refused rather than
+// clobbered. R1 is untouched — with neither header sent the predicate is
+// silent at both evaluations, so a stock client's write stays unconditional.
+func (h *Handler) writePut(w http.ResponseWriter, r *http.Request, abs string, body []byte, bodyHash string) {
+	tmp, err := stageBody(abs, body)
+	if err != nil {
+		h.fail(w, r, storageFailure(err))
+		return
+	}
+	defer func() { _ = os.Remove(tmp) }() // no-op once the rename succeeded
+
+	unlock := h.tree.lockPath(abs)
+	defer unlock()
+
+	if hook := h.testBeforeCommit; hook != nil {
+		hook(abs)
+	}
+
+	// The state as of the commit, read from the bytes on disk right now.
+	exists := false
+	curHash := ""
+	if e, err := h.tree.freshEntry(abs); err != nil {
+		if !os.IsNotExist(err) {
+			h.fail(w, r, notFoundOrInternal(err))
+			return
+		}
+	} else {
+		exists, curHash = true, e.hash
+		h.tree.remember(abs, e)
+	}
+
+	switch dec, pf := putPrecondition(r, exists, curHash, bodyHash); dec {
+	case putNoop:
+		// The base moved but the arriving bytes are already there: D3's
+		// reported no-op, answered identically wherever the race landed.
+		answerIdenticalContent(w, curHash)
+		return
+	case putRefuse:
+		h.fail(w, r, *pf)
+		return
+	}
+
+	if err := commitStaged(tmp, abs); err != nil {
 		h.fail(w, r, storageFailure(err))
 		return
 	}
@@ -484,6 +543,49 @@ func (h *Handler) handlePut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
+}
+
+// putDecision is the outcome of evaluating §6.1 step 4's precondition against
+// one observed state of the target.
+type putDecision int
+
+const (
+	// putProceed: the precondition holds, or none was sent — the write may land.
+	putProceed putDecision = iota
+	// putNoop: the precondition is false but the arriving bytes are already on
+	// disk — D3's REPORTED no-op. Nothing is written, the mtime does not move.
+	putNoop
+	// putRefuse: the precondition is false and the bytes differ — 412.
+	putRefuse
+)
+
+// putPrecondition evaluates E-2 / §6.1 step 4 against the state it is handed.
+// It is called twice on one PUT — once as the early evaluation a request
+// answers immediately, and once inside the commit immediately before the
+// rename (§6.1 step 5). One function, so the two evaluations cannot drift.
+func putPrecondition(r *http.Request, exists bool, currentHash, bodyHash string) (putDecision, *failure) {
+	f := checkPreconditions(r, exists, currentHash)
+	switch {
+	case f == nil:
+		return putProceed, nil
+	case exists && currentHash == bodyHash:
+		return putNoop, nil
+	default:
+		return putRefuse, f
+	}
+}
+
+// answerIdenticalContent is D3's reported no-op: the change the caller asked
+// for has already happened, so nothing is written, the mtime does not move,
+// and the answer says so in the header and the verdict code rather than
+// pretending a write occurred.
+func answerIdenticalContent(w http.ResponseWriter, hash string) {
+	w.Header().Set("ETag", etagFor(hash))
+	w.Header().Set("X-Bunker-Hash", hash)
+	w.Header().Set("X-Bunker-Noop", "1")
+	w.Header().Set("X-Bunker-Verdict", string(VerdictIdenticalContent))
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // readBody reads the request body under the configured cap.
