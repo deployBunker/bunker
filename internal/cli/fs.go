@@ -594,6 +594,10 @@ func printStatus(w io.Writer, st *fsclient.Status) {
 	if st.ReadBound.Last != "" {
 		fmt.Fprintf(w, "  last       : %s\n", st.ReadBound.Last)
 	}
+	fmt.Fprintf(w, "write shape  : refusals_total=%d\n", st.WriteShape.RefusalsTotal)
+	if st.WriteShape.Last != "" {
+		fmt.Fprintf(w, "  last       : %s\n", st.WriteShape.Last)
+	}
 }
 
 func printDelegatedRefusal(w io.Writer, res *fsclient.DelegatedResult) {

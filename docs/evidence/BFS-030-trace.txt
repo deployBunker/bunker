@@ -1,0 +1,85 @@
+================================================================================
+BFS-030 TRACE — the destructive half, attributed to one HTTP request
+================================================================================
+
+Instrument: the mount was built from the UNFIXED tree plus a temporary trace
+line in node.Setattr (removed before the commit; the line it printed is below).
+The endpoint is behind the logging reverse proxy, so every request the mount
+made is in the table, with a monotonic timestamp.
+
+### mount.log — what the kernel actually sent for the O_TRUNC open
+BFS030-TRACE setattr path=src/target.txt size=0 fh_nil=true fh_type=<nil> valid=0x208
+
+  valid=0x208 is FATTR_SIZE|FATTR_FH; fh is 0, i.e. the SETATTR names NO handle.
+  That is why the fix's predicate cannot be 'the Setattr carries a handle':
+  the kernel sends the same shape for a deliberate path-based resize.
+
+### the same five truncation shapes, one trace line each (run-shapes4)
+BFS030-TRACE setattr path=shapes/a_path_truncate.txt size=32 fh_nil=true fh_type=<nil> valid=0x208
+BFS030-TRACE setattr path=shapes/b_rplus_ftrunc.txt size=0 fh_nil=false fh_type=*fsmount.readHandle valid=0x248
+BFS030-TRACE setattr path=shapes/c_trunc_open_wr.txt size=0 fh_nil=true fh_type=<nil> valid=0x208
+BFS030-TRACE setattr path=shapes/d_trunc_open_only.txt size=0 fh_nil=true fh_type=<nil> valid=0x208
+BFS030-TRACE setattr path=shapes/a_path_truncate.txt size=0 fh_nil=true fh_type=<nil> valid=0x208
+
+  a = os.truncate(path, 32)      : no handle  -> deliberate, must keep working
+  b = open('r+b') + ftruncate(0) : HANDLE      -> in-place resize (emptied the file on the unfixed tree)
+  c = open('wb') + write         : no handle  -> the shell's '>', the data loss
+  d = open('wb') + nothing       : no handle  -> ': > file' (a deliberate empty)
+  e = os.truncate(path, 0)       : no handle  -> deliberate empty, must keep working
+
+### the RED arm's own run (redtrace.txt): the '>' shape on the UNFIXED tree
+  | SERVER before         : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | SHAPE STARTED         : t_mono=296084.977
+  | SHAPE FINISHED        : t_mono=296085.096
+  |   phase open(O_WRONLY|O_CREAT|O_TRUNC)     rc=ok     errno=
+  |   phase write()                            rc=error  errno=95 Operation not supported
+  |   phase close()                            rc=ok     errno=
+  | SHAPE RESULT          : rc=error at=write() errno=95 Operation not supported
+  | SERVER after          : 0 B  sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  | ORIGINAL INTACT       : False   (server sha256 before == after: df601c57892e9fca… == e3b0c44298fc1c14…)
+  | SERVER EMPTIED        : True  (size 4352 -> 0)
+  | FAILURE REPORTED      : True  (a non-zero rc reached the caller)
+  | VERDICT: the original is GONE after a failed operation (the defect, reproduced)
+
+### every request the mount made during that arm (t_mono seconds)
+     1	296084.508	OPTIONS	200	0	-	/dav/
+     2	296084.51	POST	200	0	-	/dav/
+     3	296084.552	POST	501	12	-	/dav/
+     4	296084.595	POST	200	12	-	/dav/
+     5	296084.637	POST	200	40	-	/dav/
+     6	296084.709	POST	501	28	-	/dav/
+     7	296084.888	PROPFIND	207	276	-	/dav/src
+     8	296084.892	PROPFIND	207	276	-	/dav/src/target.txt
+     9	296084.935	GET	200	0	-	/dav/src/target.txt
+    10	296084.978	GET	200	0	-	/dav/src/target.txt
+    11	296085.053	PUT	204	0	"sha256:df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a"	/dav/src/target.txt
+    12	296085.054	PROPFIND	207	276	-	/dav/src/target.txt
+    13	296085.103	GET	200	0	-	/dav/src/target.txt
+
+  Request 11 is the defect, as one line: PUT, 204, 0 bytes, and If-Match is the
+  hash of the ORIGINAL content (df601c57...) — the truncation was published as a
+  successful conditional write of nothing, INSIDE the open that then reported
+  failure (errno 95) from its write half. The file was 4352 B before and 0 B after.
+
+### the FIXED tree, the same shape (greentime.txt): refused, and cheap
+  | SHAPE STARTED         : t_mono=296112.493
+  | SHAPE FINISHED        : t_mono=296112.494
+  |   phase open(O_WRONLY|O_CREAT|O_TRUNC)     rc=error  errno=95 Operation not supported
+  | SHAPE RESULT          : rc=error at=open(O_WRONLY|O_CREAT|O_TRUNC) errno=95 Operation not supported
+  | SERVER after          : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | ORIGINAL INTACT       : True   (server sha256 before == after: df601c57892e9fca… == df601c57892e9fca…)
+  | VERDICT: the original is byte-identical and the failure was reported (PASS)
+
+### the FIXED tree's requests for that arm: NO PUT at all
+     1	296111.891	OPTIONS	200	0	/dav/
+     2	296111.894	POST	200	0	/dav/
+     3	296111.942	POST	501	12	/dav/
+     4	296111.986	POST	200	12	/dav/
+     5	296112.052	POST	200	40	/dav/
+     6	296112.156	POST	501	28	/dav/
+     7	296112.384	PROPFIND	207	276	/dav/src
+     8	296112.389	PROPFIND	207	276	/dav/src/target.txt
+     9	296112.433	GET	200	0	/dav/src/target.txt
+
+  The refused shape costs 1 ms (t_mono 296112.493 -> 296112.494) against the
+  119 ms of the destructive round trip on the unfixed tree (296084.977 -> .096).

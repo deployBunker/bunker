@@ -92,7 +92,24 @@ type Status struct {
 	// from the content the server served. Both are reported because a rule that
 	// fires silently is not a rule anyone can audit.
 	ReadBound ReadBoundState `json:"read_bound"`
-	UpdatedMS int64          `json:"updated_ms"`
+	// WriteShape is the BFS-030 figure set: how often a write shape this surface
+	// cannot complete was refused BEFORE it published anything — the destructive
+	// half of an in-place rewrite (a resize arriving while a handle opened for
+	// writing is live on the path). Reported for the same reason ReadBound is:
+	// the rule is only auditable if the owner can see it fire.
+	WriteShape WriteShapeState `json:"write_shape"`
+	UpdatedMS  int64           `json:"updated_ms"`
+}
+
+// WriteShapeState is the `write_shape` block of the status document (BFS-030).
+type WriteShapeState struct {
+	// RefusalsTotal counts resizes refused because a write handle was live on
+	// the path: publishing one would have been the destructive half of a write
+	// this surface cannot complete (BFS-030 — `>` emptied the file, then failed).
+	RefusalsTotal int64 `json:"refusals_total"`
+	// Last names the most recent refusal, formatted `<path>: size=<n>`; empty
+	// when none has happened.
+	Last string `json:"last,omitempty"`
 }
 
 // ReadBoundState is the `read_bound` block of the status document (BFS-025).

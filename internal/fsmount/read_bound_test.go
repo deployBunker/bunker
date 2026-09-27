@@ -34,10 +34,13 @@ const (
 	boundTestLong  = "X-REPLACEMENT-CONTENT-0123456789-abcdefghijklmnopqrstuvwxyz-ABCDEFGHIJKLMNOPQRSTUV" // 82 bytes
 )
 
-// testMount wires the mount's own pieces around a davserve endpoint and a fixture
-// tree, with no FUSE mount: nothing here needs /dev/fuse, and nothing here may
-// reach the real user cache (the cache dir is a t.TempDir).
-func testMount(t *testing.T, body string) (*Mount, string) {
+// testMount wires the mount's own pieces around a davserve endpoint and a
+// fixture tree, with no FUSE mount: nothing here needs /dev/fuse, and nothing
+// here may reach the real user cache (the cache dir is a t.TempDir).
+//
+// It takes testing.TB rather than *testing.T so a BENCHMARK can build the same
+// substrate (the BFS-030 guard cost is measured with one); no behaviour changes.
+func testMount(t testing.TB, body string) (*Mount, string) {
 	t.Helper()
 	root := t.TempDir()
 	target := filepath.Join(root, "target.txt")

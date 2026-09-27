@@ -1,0 +1,24 @@
+--- a/internal/fsmount/fs_linux.go
++++ b/internal/fsmount/fs_linux.go
+@@ -1030,18 +1030,9 @@
+ // `os.truncate`) is unaffected, which is the shape BFS-012's truncate
+ // measurements rely on.
+ func (n *node) truncate(ctx context.Context, size uint64) syscall.Errno {
+-	if n.m.writeIntentOn(n.p) {
+-		err := &fsclient.OpError{
+-			Op: "SETATTR", Path: n.p, Errno: fsclient.ErrnoEOPNOTSUPP,
+-			Cause:  fsclient.CauseWriteShapeUnsupported,
+-			Detail: fmt.Sprintf("refusing to resize %s to %d bytes: a handle opened for writing is live on the path, and this surface cannot write an existing file in place — publishing the resize would destroy the original before the write that follows it fails. The file is left byte-identical; use a whole-file write (create the path anew) or `truncate -s` outside a write handle", n.p, int64(size)),
+-		}
+-		n.m.writeShapeRefusals.Add(1)
+-		n.m.writeShapeLast.Store(fmt.Sprintf("%s: size=%d", n.p, int64(size)))
+-		n.m.logf("bunker-fs: refused to resize %s to %d bytes: a write handle is live on the path and this surface cannot write an existing file in place, so the resize would be published before a write that cannot land. The file is unchanged", n.p, int64(size))
+-		n.m.recordFailure(err)
+-		return errnoFor(err)
+-	}
++	// NEGATIVE CONTROL (BFS-030): the write-shape guard is REMOVED here — the
++	// resize is published again whatever the open flags were, which is the
++	// filed defect. The arms and the package tests must go RED.
+ 	// read through the normal path so the cache and the base hash stay in
+ 	// agreement with what we are about to replace
+ 	data, _, cerr := n.m.client.Get(ctx, n.p, "")

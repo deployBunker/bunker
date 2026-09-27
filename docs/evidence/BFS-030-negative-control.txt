@@ -1,0 +1,204 @@
+================================================================================
+BFS-030 NEGATIVE CONTROL — the guard removed: the arms go RED and the package tests fail
+================================================================================
+
+### BFS-030-negctl2-trunc_open.txt
+arm        = negctl2-trunc_open
+host       = karaHermes-mde-7840hs loadavg 39.82 24.29 19.62 22/9634 3994742
+tree       = /tmp/bfs030/tree-negctl2-trunc_open  (0 files, 0 B)
+binaries   = /tmp/bfs030/bin/bunker-nofix ; /tmp/bfs030/bin/davserve
+endpoint   = http://127.0.0.1:36267/dav (pid 3994749)
+trace      = http://127.0.0.1:18497/dav -> http://127.0.0.1:36267/dav (pid 3994769, per-request log /tmp/bfs030/run-negctl2-trunc_open/requests.jsonl)
+mount-args = --url http://127.0.0.1:18497/dav 
+cache-dir  = /tmp/bfs030/run-negctl2-trunc_open/xdg/bunker/fs/c7f47a134d97
+  cache dir    : /tmp/bfs030/run-negctl2-trunc_open/xdg/bunker/fs/c7f47a134d97 (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = python3 docs/evidence/BFS-030-probes/bfs030-arms.py --mode trunc_open --expect intact  (rc=1)
+  | shape                 : trunc_open
+  | file                  : src/target.txt
+  | SERVER before         : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | MOUNT  before (read)  : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | SHAPE STARTED         : t_mono=296018.154
+  | SHAPE FINISHED        : t_mono=296018.259
+  |   phase open(O_WRONLY|O_CREAT|O_TRUNC)     rc=ok     errno=
+  |   phase write()                            rc=error  errno=95 Operation not supported
+  |       OSError: [Errno 95] Operation not supported
+  |   phase close()                            rc=ok     errno=
+  |   NOTE: close() succeeded AFTER write() failed (the shape continued past the failure)
+  | SHAPE RESULT          : rc=error at=write() errno=95 Operation not supported
+  |                         OSError: [Errno 95] Operation not supported
+  | SERVER after          : 0 B  sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  | MOUNT  after (read)   : 0 B  sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  | ORIGINAL INTACT       : False   (server sha256 before == after: df601c57892e9fca… == e3b0c44298fc1c14…)
+  | SERVER EMPTIED        : True  (size 4352 -> 0)
+  | FAILURE REPORTED      : True  (a non-zero rc reached the caller)
+  | VERDICT: DATA LOSS — the original content is GONE after a failed operation
+mount.log  :
+  | mounted http://127.0.0.1:18497/dav on /tmp/bfs030/run-negctl2-trunc_open/mnt
+  |   cache dir    : /tmp/bfs030/run-negctl2-trunc_open/xdg/bunker/fs/c7f47a134d97 (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs030/run-negctl2-trunc_open/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs030/run-negctl2-trunc_open/xdg):
+  | mount        : c7f47a134d97
+  | endpoint     : http://127.0.0.1:18497/dav
+  | mountpoint   : /tmp/bfs030/run-negctl2-trunc_open/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=177 max_bytes=268435456 (blobs=0 index=177) entries=1 blobs=1
+  | cache events : hits=1 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=12 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=1
+  |   last       : src/target.txt: published=0 content=4352 refused=false
+  | write shape  : refusals_total=0
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs030/run-negctl2-trunc_open
+
+### BFS-030-negctl2-ftrunc_fd.txt
+arm        = negctl2-ftrunc_fd
+host       = karaHermes-mde-7840hs loadavg 39.99 24.58 19.74 24/9510 3995653
+tree       = /tmp/bfs030/tree-negctl2-ftrunc_fd  (0 files, 0 B)
+binaries   = /tmp/bfs030/bin/bunker-nofix ; /tmp/bfs030/bin/davserve
+endpoint   = http://127.0.0.1:42565/dav (pid 3995660)
+trace      = http://127.0.0.1:18497/dav -> http://127.0.0.1:42565/dav (pid 3995679, per-request log /tmp/bfs030/run-negctl2-ftrunc_fd/requests.jsonl)
+mount-args = --url http://127.0.0.1:18497/dav 
+cache-dir  = /tmp/bfs030/run-negctl2-ftrunc_fd/xdg/bunker/fs/c7f47a134d97
+  cache dir    : /tmp/bfs030/run-negctl2-ftrunc_fd/xdg/bunker/fs/c7f47a134d97 (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = python3 docs/evidence/BFS-030-probes/bfs030-arms.py --mode ftrunc_fd --expect intact  (rc=1)
+  | shape                 : ftrunc_fd
+  | file                  : src/target.txt
+  | SERVER before         : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | MOUNT  before (read)  : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | SHAPE STARTED         : t_mono=296020.670
+  | SHAPE FINISHED        : t_mono=296020.788
+  |   phase open(O_RDWR)                       rc=ok     errno=
+  |   phase ftruncate(fd, 0)                   rc=ok     errno=
+  |   phase write()                            rc=error  errno=95 Operation not supported
+  |       OSError: [Errno 95] Operation not supported
+  |   phase close()                            rc=ok     errno=
+  |   NOTE: close() succeeded AFTER write() failed (the shape continued past the failure)
+  | SHAPE RESULT          : rc=error at=write() errno=95 Operation not supported
+  |                         OSError: [Errno 95] Operation not supported
+  | SERVER after          : 0 B  sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  | MOUNT  after (read)   : 0 B  sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  | ORIGINAL INTACT       : False   (server sha256 before == after: df601c57892e9fca… == e3b0c44298fc1c14…)
+  | SERVER EMPTIED        : True  (size 4352 -> 0)
+  | FAILURE REPORTED      : True  (a non-zero rc reached the caller)
+  | VERDICT: DATA LOSS — the original content is GONE after a failed operation
+mount.log  :
+  | mounted http://127.0.0.1:18497/dav on /tmp/bfs030/run-negctl2-ftrunc_fd/mnt
+  |   cache dir    : /tmp/bfs030/run-negctl2-ftrunc_fd/xdg/bunker/fs/c7f47a134d97 (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs030/run-negctl2-ftrunc_fd/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs030/run-negctl2-ftrunc_fd/xdg):
+  | mount        : c7f47a134d97
+  | endpoint     : http://127.0.0.1:18497/dav
+  | mountpoint   : /tmp/bfs030/run-negctl2-ftrunc_fd/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=177 max_bytes=268435456 (blobs=0 index=177) entries=1 blobs=1
+  | cache events : hits=1 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=12 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=1
+  |   last       : src/target.txt: published=0 content=4352 refused=false
+  | write shape  : refusals_total=0
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs030/run-negctl2-ftrunc_fd
+
+### BFS-030-negctl2-trunc_path.txt
+arm        = negctl2-trunc_path
+host       = karaHermes-mde-7840hs loadavg 39.99 24.58 19.74 6/9551 3996625
+tree       = /tmp/bfs030/tree-negctl2-trunc_path  (0 files, 0 B)
+binaries   = /tmp/bfs030/bin/bunker-nofix ; /tmp/bfs030/bin/davserve
+endpoint   = http://127.0.0.1:36603/dav (pid 3996654)
+trace      = http://127.0.0.1:18497/dav -> http://127.0.0.1:36603/dav (pid 3996785, per-request log /tmp/bfs030/run-negctl2-trunc_path/requests.jsonl)
+mount-args = --url http://127.0.0.1:18497/dav 
+cache-dir  = /tmp/bfs030/run-negctl2-trunc_path/xdg/bunker/fs/c7f47a134d97
+  cache dir    : /tmp/bfs030/run-negctl2-trunc_path/xdg/bunker/fs/c7f47a134d97 (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = python3 docs/evidence/BFS-030-probes/bfs030-arms.py --mode trunc_path --expect resized  (rc=0)
+  | shape                 : trunc_path
+  | file                  : src/target.txt
+  | SERVER before         : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | MOUNT  before (read)  : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | SHAPE STARTED         : t_mono=296024.451
+  | SHAPE FINISHED        : t_mono=296024.622
+  |   phase truncate(path, 32)                 rc=ok     errno=
+  | SHAPE RESULT          : rc=ok at= errno=
+  | SERVER after          : 32 B  sha256=a411f9d38400ddbdfc40b3069ed460e19b886691280440a99210040a8d03b6c6
+  | MOUNT  after (read)   : 32 B  sha256=a411f9d38400ddbdfc40b3069ed460e19b886691280440a99210040a8d03b6c6
+  | ORIGINAL INTACT       : False   (server sha256 before == after: df601c57892e9fca… == a411f9d38400ddbd…)
+  | SERVER EMPTIED        : False  (size 4352 -> 32)
+  | FAILURE REPORTED      : False  (a non-zero rc reached the caller)
+  | VERDICT: the deliberate resize landed, byte-for-byte (PASS)
+mount.log  :
+  | mounted http://127.0.0.1:18497/dav on /tmp/bfs030/run-negctl2-trunc_path/mnt
+  |   cache dir    : /tmp/bfs030/run-negctl2-trunc_path/xdg/bunker/fs/c7f47a134d97 (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs030/run-negctl2-trunc_path/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs030/run-negctl2-trunc_path/xdg):
+  | mount        : c7f47a134d97
+  | endpoint     : http://127.0.0.1:18497/dav
+  | mountpoint   : /tmp/bfs030/run-negctl2-trunc_path/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=210 max_bytes=268435456 (blobs=32 index=178) entries=1 blobs=1
+  | cache events : hits=1 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=12 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=1
+  |   last       : src/target.txt: published=32 content=4352 refused=false
+  | write shape  : refusals_total=0
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs030/run-negctl2-trunc_path
+
+================================================================================
+### negative-control.sh (re-run by this assembler against the current tree)
+================================================================================
+=== the negative control applies to the FIXED tree ===
+fixed-tree sha256 (before): 83700faed4625b83ce3bae2bd5b1687a513129c7b28a458a380e9da8e593d715
+patch applied; sha256 (disabled): 8cbe79c4802927ef5d0593a6eeb5b8a0309d58658929bfebaab3226cca43f79f
+the working tree differs from HEAD by (all of this row's changes): internal/cli/fs.go internal/fsclient/errors.go internal/fsclient/status.go internal/fsmount/fs_linux.go internal/fsmount/read_bound_test.go 
+
+=== build (the disabled tree must still compile) ===
+go build ./... OK
+
+=== go test ./internal/fsmount/ -count=1  (the guard's tests must FAIL) ===
+--- FAIL: TestResizeThroughAWriteHandleIsRefusedBeforeItPublishes (2.83s)
+--- FAIL: TestFtruncateWithAWriteHandleIsRefusedToo (2.23s)
+--- FAIL: TestResizeIsAllowedAgainOnceTheWriteHandleIsReleased (4.81s)
+--- FAIL: TestRefusedResizeDoesNotPoisonTheTransportVerdict (0.98s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsmount	17.111s
+FAIL
+
+=== restore ===
+restored sha256 : 83700faed4625b83ce3bae2bd5b1687a513129c7b28a458a380e9da8e593d715
+backup sha256   : 83700faed4625b83ce3bae2bd5b1687a513129c7b28a458a380e9da8e593d715
+the tree now differs from HEAD by:  5 files changed, 109 insertions(+), 5 deletions(-)
+
+=== the guard's tests must be GREEN again ===
+ok  	github.com/deployBunker/bunker/internal/fsmount	10.320s

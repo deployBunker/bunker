@@ -1,0 +1,383 @@
+================================================================================
+BFS-030 cost — the SUCCESSFUL path before/after, three runs each way, plus the guard's own benchmark
+================================================================================
+
+### BFS-030-cost-before-buffered.txt
+arm        = cost-before-buffered
+host       = karaHermes-mde-7840hs loadavg 21.69 16.64 16.94 3/9269 3912652
+tree       = /tmp/bfs030/tree-cost-before-buffered  (0 files, 0 B)
+binaries   = /tmp/bfs030/bin/bunker ; /tmp/bfs030/bin/davserve
+endpoint   = http://127.0.0.1:33807/dav (pid 3912663)
+mount-args = --url http://127.0.0.1:33807/dav 
+cache-dir  = /tmp/bfs030/run-cost-before-buffered/xdg/bunker/fs/0fdb92c062e6
+  cache dir    : /tmp/bfs030/run-cost-before-buffered/xdg/bunker/fs/0fdb92c062e6 (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = python3 docs/evidence/BFS-030-probes/successful-path-cost.py --files 200 --bytes 8192  (rc=0)
+  | mode                  : buffered (close only)
+  | files                 : 200  x 8192 B = 1638400 B
+  | per-file mean         : 3.973 ms
+  | per-file median       : 0.498 ms
+  | per-file p95          : 28.197 ms
+  | per-file max          : 73.888 ms
+  | wall time             : 0.795 s
+  | throughput            : 1.966 MiB/s   (251.7 files/s)
+  | verified on the server: 200/200 byte-identical
+  | VERDICT: every file landed byte-identical on the server
+mount.log  :
+  | mounted http://127.0.0.1:33807/dav on /tmp/bfs030/run-cost-before-buffered/mnt
+  |   cache dir    : /tmp/bfs030/run-cost-before-buffered/xdg/bunker/fs/0fdb92c062e6 (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs030/run-cost-before-buffered/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs030/run-cost-before-buffered/xdg):
+  | mount        : 0fdb92c062e6
+  | endpoint     : http://127.0.0.1:33807/dav
+  | mountpoint   : /tmp/bfs030/run-cost-before-buffered/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=26 max_bytes=268435456 (blobs=0 index=26) entries=0 blobs=0
+  | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=2 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=25 requests=608 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs030/run-cost-before-buffered
+
+### BFS-030-cost-after-buffered.txt
+arm        = cost-after-buffered
+host       = karaHermes-mde-7840hs loadavg 21.07 16.60 16.92 7/9283 3914435
+tree       = /tmp/bfs030/tree-cost-after-buffered  (0 files, 0 B)
+binaries   = /tmp/bfs030/bin/bunker-fixed ; /tmp/bfs030/bin/davserve
+endpoint   = http://127.0.0.1:35139/dav (pid 3914443)
+mount-args = --url http://127.0.0.1:35139/dav 
+cache-dir  = /tmp/bfs030/run-cost-after-buffered/xdg/bunker/fs/0fe621e9ec1a
+  cache dir    : /tmp/bfs030/run-cost-after-buffered/xdg/bunker/fs/0fe621e9ec1a (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = python3 docs/evidence/BFS-030-probes/successful-path-cost.py --files 200 --bytes 8192  (rc=0)
+  | mode                  : buffered (close only)
+  | files                 : 200  x 8192 B = 1638400 B
+  | per-file mean         : 2.839 ms
+  | per-file median       : 0.476 ms
+  | per-file p95          : 25.334 ms
+  | per-file max          : 47.727 ms
+  | wall time             : 0.568 s
+  | throughput            : 2.752 MiB/s   (352.3 files/s)
+  | verified on the server: 200/200 byte-identical
+  | VERDICT: every file landed byte-identical on the server
+mount.log  :
+  | mounted http://127.0.0.1:35139/dav on /tmp/bfs030/run-cost-after-buffered/mnt
+  |   cache dir    : /tmp/bfs030/run-cost-after-buffered/xdg/bunker/fs/0fe621e9ec1a (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs030/run-cost-after-buffered/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs030/run-cost-after-buffered/xdg):
+  | mount        : 0fe621e9ec1a
+  | endpoint     : http://127.0.0.1:35139/dav
+  | mountpoint   : /tmp/bfs030/run-cost-after-buffered/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=26 max_bytes=268435456 (blobs=0 index=26) entries=0 blobs=0
+  | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=2 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=25 requests=607 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+  | write shape  : refusals_total=0
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs030/run-cost-after-buffered
+
+### BFS-030-cost2-before-buffered.txt
+arm        = cost2-before-buffered
+host       = karaHermes-mde-7840hs loadavg 22.23 17.27 17.13 3/9316 3932353
+tree       = /tmp/bfs030/tree-cost2-before-buffered  (0 files, 0 B)
+binaries   = /tmp/bfs030/bin/bunker ; /tmp/bfs030/bin/davserve
+endpoint   = http://127.0.0.1:44405/dav (pid 3932362)
+mount-args = --url http://127.0.0.1:44405/dav 
+cache-dir  = /tmp/bfs030/run-cost2-before-buffered/xdg/bunker/fs/66f730a7537b
+  cache dir    : /tmp/bfs030/run-cost2-before-buffered/xdg/bunker/fs/66f730a7537b (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = python3 docs/evidence/BFS-030-probes/successful-path-cost.py --files 200 --bytes 8192  (rc=0)
+  | mode                  : buffered (close only)
+  | files                 : 200  x 8192 B = 1638400 B
+  | per-file mean         : 0.805 ms
+  | per-file median       : 0.498 ms
+  | per-file p95          : 1.950 ms
+  | per-file max          : 22.514 ms
+  | wall time             : 0.161 s
+  | throughput            : 9.702 MiB/s   (1241.9 files/s)
+  | verified on the server: 200/200 byte-identical
+  | VERDICT: every file landed byte-identical on the server
+mount.log  :
+  | mounted http://127.0.0.1:44405/dav on /tmp/bfs030/run-cost2-before-buffered/mnt
+  |   cache dir    : /tmp/bfs030/run-cost2-before-buffered/xdg/bunker/fs/66f730a7537b (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs030/run-cost2-before-buffered/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs030/run-cost2-before-buffered/xdg):
+  | mount        : 66f730a7537b
+  | endpoint     : http://127.0.0.1:44405/dav
+  | mountpoint   : /tmp/bfs030/run-cost2-before-buffered/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=26 max_bytes=268435456 (blobs=0 index=26) entries=0 blobs=0
+  | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=2 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=25 requests=607 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs030/run-cost2-before-buffered
+
+### BFS-030-cost2-after-buffered.txt
+arm        = cost2-after-buffered
+host       = karaHermes-mde-7840hs loadavg 23.41 17.60 17.24 4/9271 3933489
+tree       = /tmp/bfs030/tree-cost2-after-buffered  (0 files, 0 B)
+binaries   = /tmp/bfs030/bin/bunker-fixed ; /tmp/bfs030/bin/davserve
+endpoint   = http://127.0.0.1:39337/dav (pid 3933498)
+mount-args = --url http://127.0.0.1:39337/dav 
+cache-dir  = /tmp/bfs030/run-cost2-after-buffered/xdg/bunker/fs/f4e8cd8013c2
+  cache dir    : /tmp/bfs030/run-cost2-after-buffered/xdg/bunker/fs/f4e8cd8013c2 (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = python3 docs/evidence/BFS-030-probes/successful-path-cost.py --files 200 --bytes 8192  (rc=0)
+  | mode                  : buffered (close only)
+  | files                 : 200  x 8192 B = 1638400 B
+  | per-file mean         : 0.816 ms
+  | per-file median       : 0.447 ms
+  | per-file p95          : 2.671 ms
+  | per-file max          : 20.228 ms
+  | wall time             : 0.163 s
+  | throughput            : 9.569 MiB/s   (1224.8 files/s)
+  | verified on the server: 200/200 byte-identical
+  | VERDICT: every file landed byte-identical on the server
+mount.log  :
+  | mounted http://127.0.0.1:39337/dav on /tmp/bfs030/run-cost2-after-buffered/mnt
+  |   cache dir    : /tmp/bfs030/run-cost2-after-buffered/xdg/bunker/fs/f4e8cd8013c2 (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs030/run-cost2-after-buffered/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs030/run-cost2-after-buffered/xdg):
+  | mount        : f4e8cd8013c2
+  | endpoint     : http://127.0.0.1:39337/dav
+  | mountpoint   : /tmp/bfs030/run-cost2-after-buffered/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=26 max_bytes=268435456 (blobs=0 index=26) entries=0 blobs=0
+  | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=2 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=25 requests=607 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+  | write shape  : refusals_total=0
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs030/run-cost2-after-buffered
+
+### BFS-030-cost3-before-buffered.txt
+arm        = cost3-before-buffered
+host       = karaHermes-mde-7840hs loadavg 23.41 17.60 17.24 2/9282 3934104
+tree       = /tmp/bfs030/tree-cost3-before-buffered  (0 files, 0 B)
+binaries   = /tmp/bfs030/bin/bunker ; /tmp/bfs030/bin/davserve
+endpoint   = http://127.0.0.1:43537/dav (pid 3934111)
+mount-args = --url http://127.0.0.1:43537/dav 
+cache-dir  = /tmp/bfs030/run-cost3-before-buffered/xdg/bunker/fs/3b7c56d7fdbc
+  cache dir    : /tmp/bfs030/run-cost3-before-buffered/xdg/bunker/fs/3b7c56d7fdbc (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = python3 docs/evidence/BFS-030-probes/successful-path-cost.py --files 200 --bytes 8192  (rc=0)
+  | mode                  : buffered (close only)
+  | files                 : 200  x 8192 B = 1638400 B
+  | per-file mean         : 5.974 ms
+  | per-file median       : 0.455 ms
+  | per-file p95          : 13.472 ms
+  | per-file max          : 612.707 ms
+  | wall time             : 1.195 s
+  | throughput            : 1.308 MiB/s   (167.4 files/s)
+  | verified on the server: 200/200 byte-identical
+  | VERDICT: every file landed byte-identical on the server
+mount.log  :
+  | mounted http://127.0.0.1:43537/dav on /tmp/bfs030/run-cost3-before-buffered/mnt
+  |   cache dir    : /tmp/bfs030/run-cost3-before-buffered/xdg/bunker/fs/3b7c56d7fdbc (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs030/run-cost3-before-buffered/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs030/run-cost3-before-buffered/xdg):
+  | mount        : 3b7c56d7fdbc
+  | endpoint     : http://127.0.0.1:43537/dav
+  | mountpoint   : /tmp/bfs030/run-cost3-before-buffered/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=26 max_bytes=268435456 (blobs=0 index=26) entries=0 blobs=0
+  | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=2 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=25 requests=607 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs030/run-cost3-before-buffered
+
+### BFS-030-cost3-after-buffered.txt
+arm        = cost3-after-buffered
+host       = karaHermes-mde-7840hs loadavg 24.58 17.94 17.35 2/9293 3934658
+tree       = /tmp/bfs030/tree-cost3-after-buffered  (0 files, 0 B)
+binaries   = /tmp/bfs030/bin/bunker-fixed ; /tmp/bfs030/bin/davserve
+endpoint   = http://127.0.0.1:46131/dav (pid 3934665)
+mount-args = --url http://127.0.0.1:46131/dav 
+cache-dir  = /tmp/bfs030/run-cost3-after-buffered/xdg/bunker/fs/0b6aae4cced1
+  cache dir    : /tmp/bfs030/run-cost3-after-buffered/xdg/bunker/fs/0b6aae4cced1 (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = python3 docs/evidence/BFS-030-probes/successful-path-cost.py --files 200 --bytes 8192  (rc=0)
+  | mode                  : buffered (close only)
+  | files                 : 200  x 8192 B = 1638400 B
+  | per-file mean         : 0.941 ms
+  | per-file median       : 0.438 ms
+  | per-file p95          : 2.468 ms
+  | per-file max          : 53.058 ms
+  | wall time             : 0.188 s
+  | throughput            : 8.303 MiB/s   (1062.8 files/s)
+  | verified on the server: 200/200 byte-identical
+  | VERDICT: every file landed byte-identical on the server
+mount.log  :
+  | mounted http://127.0.0.1:46131/dav on /tmp/bfs030/run-cost3-after-buffered/mnt
+  |   cache dir    : /tmp/bfs030/run-cost3-after-buffered/xdg/bunker/fs/0b6aae4cced1 (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs030/run-cost3-after-buffered/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs030/run-cost3-after-buffered/xdg):
+  | mount        : 0b6aae4cced1
+  | endpoint     : http://127.0.0.1:46131/dav
+  | mountpoint   : /tmp/bfs030/run-cost3-after-buffered/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=26 max_bytes=268435456 (blobs=0 index=26) entries=0 blobs=0
+  | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=2 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=25 requests=607 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+  | write shape  : refusals_total=0
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs030/run-cost3-after-buffered
+
+### BFS-030-cost-before-fsync.txt
+arm        = cost-before-fsync
+host       = karaHermes-mde-7840hs loadavg 20.50 16.55 16.91 3/9245 3916184
+tree       = /tmp/bfs030/tree-cost-before-fsync  (0 files, 0 B)
+binaries   = /tmp/bfs030/bin/bunker ; /tmp/bfs030/bin/davserve
+endpoint   = http://127.0.0.1:33919/dav (pid 3916194)
+mount-args = --url http://127.0.0.1:33919/dav 
+cache-dir  = /tmp/bfs030/run-cost-before-fsync/xdg/bunker/fs/37a1ee814385
+  cache dir    : /tmp/bfs030/run-cost-before-fsync/xdg/bunker/fs/37a1ee814385 (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = python3 docs/evidence/BFS-030-probes/successful-path-cost.py --files 200 --bytes 8192 --fsync  (rc=0)
+  | mode                  : fsync (publication included)
+  | files                 : 200  x 8192 B = 1638400 B
+  | per-file mean         : 46.741 ms
+  | per-file median       : 37.437 ms
+  | per-file p95          : 115.861 ms
+  | per-file max          : 469.304 ms
+  | wall time             : 9.348 s
+  | throughput            : 0.167 MiB/s   (21.4 files/s)
+  | verified on the server: 200/200 byte-identical
+  | VERDICT: every file landed byte-identical on the server
+mount.log  :
+  | mounted http://127.0.0.1:33919/dav on /tmp/bfs030/run-cost-before-fsync/mnt
+  |   cache dir    : /tmp/bfs030/run-cost-before-fsync/xdg/bunker/fs/37a1ee814385 (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs030/run-cost-before-fsync/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs030/run-cost-before-fsync/xdg):
+  | mount        : 37a1ee814385
+  | endpoint     : http://127.0.0.1:33919/dav
+  | mountpoint   : /tmp/bfs030/run-cost-before-fsync/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=5 poll_interval_ms=2000 last_event_age_ms=1998
+  | cache        : used_bytes=26 max_bytes=268435456 (blobs=0 index=26) entries=0 blobs=0
+  | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=2 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=2 requests=616 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs030/run-cost-before-fsync
+
+### BFS-030-cost-after-fsync.txt
+arm        = cost-after-fsync
+host       = karaHermes-mde-7840hs loadavg 20.12 16.60 16.92 2/9340 3920140
+tree       = /tmp/bfs030/tree-cost-after-fsync  (0 files, 0 B)
+binaries   = /tmp/bfs030/bin/bunker-fixed ; /tmp/bfs030/bin/davserve
+endpoint   = http://127.0.0.1:37445/dav (pid 3920147)
+mount-args = --url http://127.0.0.1:37445/dav 
+cache-dir  = /tmp/bfs030/run-cost-after-fsync/xdg/bunker/fs/83329cf1af17
+  cache dir    : /tmp/bfs030/run-cost-after-fsync/xdg/bunker/fs/83329cf1af17 (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = python3 docs/evidence/BFS-030-probes/successful-path-cost.py --files 200 --bytes 8192 --fsync  (rc=0)
+  | mode                  : fsync (publication included)
+  | files                 : 200  x 8192 B = 1638400 B
+  | per-file mean         : 43.133 ms
+  | per-file median       : 33.318 ms
+  | per-file p95          : 111.365 ms
+  | per-file max          : 250.142 ms
+  | wall time             : 8.627 s
+  | throughput            : 0.181 MiB/s   (23.2 files/s)
+  | verified on the server: 200/200 byte-identical
+  | VERDICT: every file landed byte-identical on the server
+mount.log  :
+  | mounted http://127.0.0.1:37445/dav on /tmp/bfs030/run-cost-after-fsync/mnt
+  |   cache dir    : /tmp/bfs030/run-cost-after-fsync/xdg/bunker/fs/83329cf1af17 (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs030/run-cost-after-fsync/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs030/run-cost-after-fsync/xdg):
+  | mount        : 83329cf1af17
+  | endpoint     : http://127.0.0.1:37445/dav
+  | mountpoint   : /tmp/bfs030/run-cost-after-fsync/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=5 poll_interval_ms=2000 last_event_age_ms=991
+  | cache        : used_bytes=26 max_bytes=268435456 (blobs=0 index=26) entries=0 blobs=0
+  | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=2 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=2 requests=616 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+  | write shape  : refusals_total=0
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs030/run-cost-after-fsync

@@ -56,6 +56,16 @@ const (
 	// write conflict, and a cause string that says "conflict" would tell the next
 	// person the wrong thing happened.
 	CauseStaleBound Cause = "stale_bound"
+	// CauseWriteShapeUnsupported: a write SHAPE this surface cannot complete was
+	// refused BEFORE it published anything, so the target kept its original
+	// content (BFS-030). The measured case: a resize (`O_TRUNC`'s half, or
+	// ftruncate) arriving while a handle opened for writing is live on the path
+	// — the destructive half of an in-place rewrite whose write half cannot land
+	// (Open hands back a read handle whatever the open flags say). Named
+	// separately from CauseLocalCapability because nothing about the local
+	// environment is wrong: the operation itself is one this surface does not
+	// serve, and the recovery is to use a whole-file write instead.
+	CauseWriteShapeUnsupported Cause = "write_shape_unsupported"
 	// CauseStreamEnded: the pushed channel's stream ended on a LIVE context —
 	// the server closed it (a designed event: BFS-040 §4.6 ends the stream on
 	// `watch_lost`) rather than this client cancelling it. Named separately from

@@ -1,0 +1,396 @@
+================================================================================
+BFS-030 RED — the UNFIXED tree: a failed rewrite destroys the original (sha256 on the server's own disk)
+================================================================================
+
+### BFS-030-red-trunc_open.txt
+### arm=trunc_open mode=trunc_open bin=/tmp/bfs030/bin/bunker expect=loss
+arm        = red-trunc_open
+host       = karaHermes-mde-7840hs loadavg 10.50 11.51 15.94 6/9228 3818738
+tree       = /tmp/bfs030/tree-red-trunc_open  (0 files, 0 B)
+binaries   = /tmp/bfs030/bin/bunker ; /tmp/bfs030/bin/davserve
+endpoint   = http://127.0.0.1:44681/dav (pid 3818745)
+trace      = http://127.0.0.1:18491/dav -> http://127.0.0.1:44681/dav (pid 3818758, per-request log /tmp/bfs030/run-red-trunc_open/requests.jsonl)
+mount-args = --url http://127.0.0.1:18491/dav 
+cache-dir  = /tmp/bfs030/run-red-trunc_open/xdg/bunker/fs/08f53ea7f939
+  cache dir    : /tmp/bfs030/run-red-trunc_open/xdg/bunker/fs/08f53ea7f939 (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = python3 /home/kara/worktrees/bunker-BFS-030/docs/evidence/BFS-030-probes/bfs030-arms.py --mode trunc_open --expect loss   (rc=0)
+  | shape                 : trunc_open
+  | file                  : src/target.txt
+  | SERVER before         : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | MOUNT  before (read)  : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  |   phase open(O_WRONLY|O_CREAT|O_TRUNC)     rc=ok     errno=
+  |   phase write()                            rc=error  errno=95 Operation not supported
+  |       OSError: [Errno 95] Operation not supported
+  |   phase close()                            rc=ok     errno=
+  |   NOTE: close() succeeded AFTER write() failed (the shape continued past the failure)
+  | SHAPE RESULT          : rc=error at=write() errno=95 Operation not supported
+  |                         OSError: [Errno 95] Operation not supported
+  | SERVER after          : 0 B  sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  | MOUNT  after (read)   : 0 B  sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  | ORIGINAL INTACT       : False   (server sha256 before == after: df601c57892e9fca… == e3b0c44298fc1c14…)
+  | SERVER EMPTIED        : True  (size 4352 -> 0)
+  | FAILURE REPORTED      : True  (a non-zero rc reached the caller)
+  | VERDICT: the original is GONE after a failed operation (the defect, reproduced)
+mount.log  :
+  | mounted http://127.0.0.1:18491/dav on /tmp/bfs030/run-red-trunc_open/mnt
+  |   cache dir    : /tmp/bfs030/run-red-trunc_open/xdg/bunker/fs/08f53ea7f939 (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs030/run-red-trunc_open/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs030/run-red-trunc_open/xdg):
+  | mount        : 08f53ea7f939
+  | endpoint     : http://127.0.0.1:18491/dav
+  | mountpoint   : /tmp/bfs030/run-red-trunc_open/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=177 max_bytes=268435456 (blobs=0 index=177) entries=1 blobs=1
+  | cache events : hits=1 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=12 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=1
+  |   last       : src/target.txt: published=0 content=4352 refused=false
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs030/run-red-trunc_open
+
+### BFS-030-red-ftrunc_fd.txt
+### arm=ftrunc_fd mode=ftrunc_fd bin=/tmp/bfs030/bin/bunker expect=loss
+arm        = red-ftrunc_fd
+host       = karaHermes-mde-7840hs loadavg 10.50 11.51 15.94 4/9237 3819106
+tree       = /tmp/bfs030/tree-red-ftrunc_fd  (0 files, 0 B)
+binaries   = /tmp/bfs030/bin/bunker ; /tmp/bfs030/bin/davserve
+endpoint   = http://127.0.0.1:45079/dav (pid 3819113)
+trace      = http://127.0.0.1:18491/dav -> http://127.0.0.1:45079/dav (pid 3819126, per-request log /tmp/bfs030/run-red-ftrunc_fd/requests.jsonl)
+mount-args = --url http://127.0.0.1:18491/dav 
+cache-dir  = /tmp/bfs030/run-red-ftrunc_fd/xdg/bunker/fs/08f53ea7f939
+  cache dir    : /tmp/bfs030/run-red-ftrunc_fd/xdg/bunker/fs/08f53ea7f939 (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = python3 /home/kara/worktrees/bunker-BFS-030/docs/evidence/BFS-030-probes/bfs030-arms.py --mode ftrunc_fd --expect loss   (rc=0)
+  | shape                 : ftrunc_fd
+  | file                  : src/target.txt
+  | SERVER before         : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | MOUNT  before (read)  : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  |   phase open(O_RDWR)                       rc=ok     errno=
+  |   phase ftruncate(fd, 0)                   rc=ok     errno=
+  |   phase write()                            rc=error  errno=95 Operation not supported
+  |       OSError: [Errno 95] Operation not supported
+  |   phase close()                            rc=ok     errno=
+  |   NOTE: close() succeeded AFTER write() failed (the shape continued past the failure)
+  | SHAPE RESULT          : rc=error at=write() errno=95 Operation not supported
+  |                         OSError: [Errno 95] Operation not supported
+  | SERVER after          : 0 B  sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  | MOUNT  after (read)   : 0 B  sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  | ORIGINAL INTACT       : False   (server sha256 before == after: df601c57892e9fca… == e3b0c44298fc1c14…)
+  | SERVER EMPTIED        : True  (size 4352 -> 0)
+  | FAILURE REPORTED      : True  (a non-zero rc reached the caller)
+  | VERDICT: the original is GONE after a failed operation (the defect, reproduced)
+mount.log  :
+  | mounted http://127.0.0.1:18491/dav on /tmp/bfs030/run-red-ftrunc_fd/mnt
+  |   cache dir    : /tmp/bfs030/run-red-ftrunc_fd/xdg/bunker/fs/08f53ea7f939 (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs030/run-red-ftrunc_fd/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs030/run-red-ftrunc_fd/xdg):
+  | mount        : 08f53ea7f939
+  | endpoint     : http://127.0.0.1:18491/dav
+  | mountpoint   : /tmp/bfs030/run-red-ftrunc_fd/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=177 max_bytes=268435456 (blobs=0 index=177) entries=1 blobs=1
+  | cache events : hits=1 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=12 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=1
+  |   last       : src/target.txt: published=0 content=4352 refused=false
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs030/run-red-ftrunc_fd
+
+### BFS-030-red-rplus.txt
+### arm=rplus mode=rplus bin=/tmp/bfs030/bin/bunker expect=intact
+arm        = red-rplus
+host       = karaHermes-mde-7840hs loadavg 10.46 11.48 15.91 6/9261 3819745
+tree       = /tmp/bfs030/tree-red-rplus  (0 files, 0 B)
+binaries   = /tmp/bfs030/bin/bunker ; /tmp/bfs030/bin/davserve
+endpoint   = http://127.0.0.1:37575/dav (pid 3819762)
+trace      = http://127.0.0.1:18491/dav -> http://127.0.0.1:37575/dav (pid 3819775, per-request log /tmp/bfs030/run-red-rplus/requests.jsonl)
+mount-args = --url http://127.0.0.1:18491/dav 
+cache-dir  = /tmp/bfs030/run-red-rplus/xdg/bunker/fs/08f53ea7f939
+  cache dir    : /tmp/bfs030/run-red-rplus/xdg/bunker/fs/08f53ea7f939 (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = python3 /home/kara/worktrees/bunker-BFS-030/docs/evidence/BFS-030-probes/bfs030-arms.py --mode rplus --expect intact   (rc=0)
+  | shape                 : rplus
+  | file                  : src/target.txt
+  | SERVER before         : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | MOUNT  before (read)  : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  |   phase open(O_RDWR)                       rc=ok     errno=
+  |   phase write(same len)                    rc=error  errno=95 Operation not supported
+  |       OSError: [Errno 95] Operation not supported
+  |   phase close()                            rc=ok     errno=
+  |   NOTE: close() succeeded AFTER write(same len) failed (the shape continued past the failure)
+  | SHAPE RESULT          : rc=error at=write(same len) errno=95 Operation not supported
+  |                         OSError: [Errno 95] Operation not supported
+  | SERVER after          : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | MOUNT  after (read)   : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | ORIGINAL INTACT       : True   (server sha256 before == after: df601c57892e9fca… == df601c57892e9fca…)
+  | SERVER EMPTIED        : False  (size 4352 -> 4352)
+  | FAILURE REPORTED      : True  (a non-zero rc reached the caller)
+  | VERDICT: the original is byte-identical and the failure was reported (PASS)
+mount.log  :
+  | mounted http://127.0.0.1:18491/dav on /tmp/bfs030/run-red-rplus/mnt
+  |   cache dir    : /tmp/bfs030/run-red-rplus/xdg/bunker/fs/08f53ea7f939 (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs030/run-red-rplus/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs030/run-red-rplus/xdg):
+  | mount        : 08f53ea7f939
+  | endpoint     : http://127.0.0.1:18491/dav
+  | mountpoint   : /tmp/bfs030/run-red-rplus/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=4532 max_bytes=268435456 (blobs=4352 index=180) entries=1 blobs=1
+  | cache events : hits=1 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=8 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs030/run-red-rplus
+
+### BFS-030-red-append.txt
+### arm=append mode=append bin=/tmp/bfs030/bin/bunker expect=intact
+arm        = red-append
+host       = karaHermes-mde-7840hs loadavg 10.46 11.48 15.91 6/9203 3820302
+tree       = /tmp/bfs030/tree-red-append  (0 files, 0 B)
+binaries   = /tmp/bfs030/bin/bunker ; /tmp/bfs030/bin/davserve
+endpoint   = http://127.0.0.1:32789/dav (pid 3820311)
+trace      = http://127.0.0.1:18491/dav -> http://127.0.0.1:32789/dav (pid 3820326, per-request log /tmp/bfs030/run-red-append/requests.jsonl)
+mount-args = --url http://127.0.0.1:18491/dav 
+cache-dir  = /tmp/bfs030/run-red-append/xdg/bunker/fs/08f53ea7f939
+  cache dir    : /tmp/bfs030/run-red-append/xdg/bunker/fs/08f53ea7f939 (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = python3 /home/kara/worktrees/bunker-BFS-030/docs/evidence/BFS-030-probes/bfs030-arms.py --mode append --expect intact   (rc=0)
+  | shape                 : append
+  | file                  : src/target.txt
+  | SERVER before         : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | MOUNT  before (read)  : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  |   phase open(O_WRONLY|O_APPEND)            rc=ok     errno=
+  |   phase write(appended)                    rc=error  errno=95 Operation not supported
+  |       OSError: [Errno 95] Operation not supported
+  |   phase close()                            rc=ok     errno=
+  |   NOTE: close() succeeded AFTER write(appended) failed (the shape continued past the failure)
+  | SHAPE RESULT          : rc=error at=write(appended) errno=95 Operation not supported
+  |                         OSError: [Errno 95] Operation not supported
+  | SERVER after          : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | MOUNT  after (read)   : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | ORIGINAL INTACT       : True   (server sha256 before == after: df601c57892e9fca… == df601c57892e9fca…)
+  | SERVER EMPTIED        : False  (size 4352 -> 4352)
+  | FAILURE REPORTED      : True  (a non-zero rc reached the caller)
+  | VERDICT: the original is byte-identical and the failure was reported (PASS)
+mount.log  :
+  | mounted http://127.0.0.1:18491/dav on /tmp/bfs030/run-red-append/mnt
+  |   cache dir    : /tmp/bfs030/run-red-append/xdg/bunker/fs/08f53ea7f939 (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs030/run-red-append/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs030/run-red-append/xdg):
+  | mount        : 08f53ea7f939
+  | endpoint     : http://127.0.0.1:18491/dav
+  | mountpoint   : /tmp/bfs030/run-red-append/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=4532 max_bytes=268435456 (blobs=4352 index=180) entries=1 blobs=1
+  | cache events : hits=1 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=8 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs030/run-red-append
+
+### BFS-030-red-trunc_path.txt
+### arm=trunc_path mode=trunc_path bin=/tmp/bfs030/bin/bunker expect=resized
+arm        = red-trunc_path
+host       = karaHermes-mde-7840hs loadavg 10.59 11.49 15.89 4/9212 3820690
+tree       = /tmp/bfs030/tree-red-trunc_path  (0 files, 0 B)
+binaries   = /tmp/bfs030/bin/bunker ; /tmp/bfs030/bin/davserve
+endpoint   = http://127.0.0.1:39491/dav (pid 3820697)
+trace      = http://127.0.0.1:18491/dav -> http://127.0.0.1:39491/dav (pid 3820712, per-request log /tmp/bfs030/run-red-trunc_path/requests.jsonl)
+mount-args = --url http://127.0.0.1:18491/dav 
+cache-dir  = /tmp/bfs030/run-red-trunc_path/xdg/bunker/fs/08f53ea7f939
+  cache dir    : /tmp/bfs030/run-red-trunc_path/xdg/bunker/fs/08f53ea7f939 (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = python3 /home/kara/worktrees/bunker-BFS-030/docs/evidence/BFS-030-probes/bfs030-arms.py --mode trunc_path --expect resized   (rc=0)
+  | shape                 : trunc_path
+  | file                  : src/target.txt
+  | SERVER before         : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | MOUNT  before (read)  : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  |   phase truncate(path, 32)                 rc=ok     errno=
+  | SHAPE RESULT          : rc=ok at= errno=
+  | SERVER after          : 32 B  sha256=a411f9d38400ddbdfc40b3069ed460e19b886691280440a99210040a8d03b6c6
+  | MOUNT  after (read)   : 32 B  sha256=a411f9d38400ddbdfc40b3069ed460e19b886691280440a99210040a8d03b6c6
+  | ORIGINAL INTACT       : False   (server sha256 before == after: df601c57892e9fca… == a411f9d38400ddbd…)
+  | SERVER EMPTIED        : False  (size 4352 -> 32)
+  | FAILURE REPORTED      : False  (a non-zero rc reached the caller)
+  | VERDICT: the deliberate resize landed, byte-for-byte (PASS)
+mount.log  :
+  | mounted http://127.0.0.1:18491/dav on /tmp/bfs030/run-red-trunc_path/mnt
+  |   cache dir    : /tmp/bfs030/run-red-trunc_path/xdg/bunker/fs/08f53ea7f939 (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs030/run-red-trunc_path/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs030/run-red-trunc_path/xdg):
+  | mount        : 08f53ea7f939
+  | endpoint     : http://127.0.0.1:18491/dav
+  | mountpoint   : /tmp/bfs030/run-red-trunc_path/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=210 max_bytes=268435456 (blobs=32 index=178) entries=1 blobs=1
+  | cache events : hits=1 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=12 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=1
+  |   last       : src/target.txt: published=32 content=4352 refused=false
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs030/run-red-trunc_path
+
+### BFS-030-red3-serverdown.txt
+### arm=serverdown mode=trunc_open bin=/tmp/bfs030/bin/bunker expect=intact
+arm        = red3-serverdown
+host       = karaHermes-mde-7840hs loadavg 12.33 12.06 15.73 22/9368 3843403
+tree       = /tmp/bfs030/tree-red3-serverdown  (0 files, 0 B)
+binaries   = /tmp/bfs030/bin/bunker ; /tmp/bfs030/bin/davserve
+endpoint   = http://127.0.0.1:41051/dav (pid 3843410)
+trace      = http://127.0.0.1:18491/dav -> http://127.0.0.1:41051/dav (pid 3843425, per-request log /tmp/bfs030/run-red3-serverdown/requests.jsonl)
+mount-args = --url http://127.0.0.1:18491/dav 
+cache-dir  = /tmp/bfs030/run-red3-serverdown/xdg/bunker/fs/08f53ea7f939
+  cache dir    : /tmp/bfs030/run-red3-serverdown/xdg/bunker/fs/08f53ea7f939 (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+/home/kara/worktrees/bunker-BFS-030/docs/evidence/BFS-030-probes/mount-arm.sh: line 97: 3843410 Killed                     "$DS" --root "$TREE" --addr 127.0.0.1:0 > "$OUT/davserve.out" 2>&1
+reader     = python3 /home/kara/worktrees/bunker-BFS-030/docs/evidence/BFS-030-probes/bfs030-arms.py --mode trunc_open --expect intact --kill-server  (rc=0)
+  | shape                 : trunc_open
+  | file                  : src/target.txt
+  | SERVER before         : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | MOUNT  before (read)  : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | TRANSPORT KILL        : SIGKILL to the endpoint (pid 3843410) — still alive: False
+  | SHAPE STARTED         : t_mono=295725.123
+  | SHAPE FINISHED        : t_mono=295725.127
+  |   phase open(O_WRONLY|O_CREAT|O_TRUNC)     rc=error  errno=5 Input/output error
+  |       OSError: [Errno 5] Input/output error: '/tmp/bfs030/run-red3-serverdown/mnt/src/target.txt'
+  | SHAPE RESULT          : rc=error at=open(O_WRONLY|O_CREAT|O_TRUNC) errno=5 Input/output error
+  |                         OSError: [Errno 5] Input/output error: '/tmp/bfs030/run-red3-serverdown/mnt/src/target.txt'
+  | SERVER after          : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | MOUNT  after (read)   : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | ORIGINAL INTACT       : True   (server sha256 before == after: df601c57892e9fca… == df601c57892e9fca…)
+  | SERVER EMPTIED        : False  (size 4352 -> 4352)
+  | FAILURE REPORTED      : True  (a non-zero rc reached the caller)
+  | VERDICT: the original is byte-identical and the failure was reported (PASS)
+mount.log  :
+  | mounted http://127.0.0.1:18491/dav on /tmp/bfs030/run-red3-serverdown/mnt
+  |   cache dir    : /tmp/bfs030/run-red3-serverdown/xdg/bunker/fs/08f53ea7f939 (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs030/run-red3-serverdown/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs030/run-red3-serverdown/xdg):
+  | mount        : 08f53ea7f939
+  | endpoint     : http://127.0.0.1:18491/dav
+  | mountpoint   : /tmp/bfs030/run-red3-serverdown/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=4532 max_bytes=268435456 (blobs=4352 index=180) entries=1 blobs=1
+  | cache events : hits=1 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=9 proto=HTTP/1.1
+  |   cause      : GET src/target.txt: errno=EIO cause=server_error status=502: 502 Bad Gateway
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs030/run-red3-serverdown
+
+### BFS-030-red-noread.txt
+arm        = noread-red
+host       = karaHermes-mde-7840hs loadavg 46.62 36.08 25.30 57/9736 4107099
+tree       = /tmp/bfs030/tree-noread-red  (0 files, 0 B)
+binaries   = /tmp/bfs030/bin/bunker ; /tmp/bfs030/bin/davserve
+endpoint   = http://127.0.0.1:36863/dav (pid 4107115)
+trace      = http://127.0.0.1:18500/dav -> http://127.0.0.1:36863/dav (pid 4107157, per-request log /tmp/bfs030/run-noread-red/requests.jsonl)
+mount-args = --url http://127.0.0.1:18500/dav 
+cache-dir  = /tmp/bfs030/run-noread-red/xdg/bunker/fs/0e296059d5da
+  cache dir    : /tmp/bfs030/run-noread-red/xdg/bunker/fs/0e296059d5da (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = python3 docs/evidence/BFS-030-probes/bfs030-arms.py --mode trunc_open --expect loss --no-prior-read  (rc=0)
+  | shape                 : trunc_open (no prior read)
+  | file                  : src/target.txt
+  | SERVER before         : 4352 B  sha256=df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | SHAPE STARTED         : t_mono=296259.206
+  | SHAPE FINISHED        : t_mono=296259.461
+  |   phase open(O_WRONLY|O_CREAT|O_TRUNC)     rc=ok     errno=
+  |   phase write()                            rc=error  errno=95 Operation not supported
+  |       OSError: [Errno 95] Operation not supported
+  |   phase close()                            rc=ok     errno=
+  |   NOTE: close() succeeded AFTER write() failed (the shape continued past the failure)
+  | SHAPE RESULT          : rc=error at=write() errno=95 Operation not supported
+  |                         OSError: [Errno 95] Operation not supported
+  | SERVER after          : 0 B  sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  | MOUNT  after (read)   : 0 B  sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  | ORIGINAL INTACT       : False   (server sha256 before == after: df601c57892e9fca… == e3b0c44298fc1c14…)
+  | SERVER EMPTIED        : True  (size 4352 -> 0)
+  | FAILURE REPORTED      : True  (a non-zero rc reached the caller)
+  | VERDICT: the original is GONE after a failed operation (the defect, reproduced)
+mount.log  :
+  | mounted http://127.0.0.1:18500/dav on /tmp/bfs030/run-noread-red/mnt
+  |   cache dir    : /tmp/bfs030/run-noread-red/xdg/bunker/fs/0e296059d5da (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs030/run-noread-red/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs030/run-noread-red/xdg):
+  | mount        : 0e296059d5da
+  | endpoint     : http://127.0.0.1:18500/dav
+  | mountpoint   : /tmp/bfs030/run-noread-red/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=177 max_bytes=268435456 (blobs=0 index=177) entries=1 blobs=1
+  | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=12 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs030/run-noread-red

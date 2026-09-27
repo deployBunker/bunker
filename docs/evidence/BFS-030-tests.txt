@@ -1,0 +1,127 @@
+================================================================================
+BFS-030 TESTS — the fix's own tests, BFS-025's read-side tests, BFS-015 under -race,
+               the guard's benchmark, the platform seam, and the whole-module suite
+================================================================================
+
+### sha256 of the tree under test
+internal/fsmount/fs_linux.go     83700faed4625b83ce3bae2bd5b1687a513129c7b28a458a380e9da8e593d715
+internal/fsclient/status.go      59e5cb6ffa6376e36132b6a76156e0bd7b6accef300b049db248100416c11e4b
+
+### 1. the fix's own tests (internal/fsmount), -race -count=1
+=== RUN   TestResizeThroughAWriteHandleIsRefusedBeforeItPublishes
+--- PASS: TestResizeThroughAWriteHandleIsRefusedBeforeItPublishes (0.00s)
+=== RUN   TestFtruncateWithAWriteHandleIsRefusedToo
+--- PASS: TestFtruncateWithAWriteHandleIsRefusedToo (0.00s)
+=== RUN   TestDeliberateResizeWithNoWriteHandleStillPublishes
+--- PASS: TestDeliberateResizeWithNoWriteHandleStillPublishes (2.15s)
+=== RUN   TestReadsThroughAWriteHandleAreUnaffected
+--- PASS: TestReadsThroughAWriteHandleAreUnaffected (0.00s)
+=== RUN   TestResizeIsAllowedAgainOnceTheWriteHandleIsReleased
+--- PASS: TestResizeIsAllowedAgainOnceTheWriteHandleIsReleased (1.85s)
+=== RUN   TestWriteIntentFollowsTheOpenFlags
+=== RUN   TestWriteIntentFollowsTheOpenFlags/read
+=== RUN   TestWriteIntentFollowsTheOpenFlags/write
+=== RUN   TestWriteIntentFollowsTheOpenFlags/read-write
+=== RUN   TestWriteIntentFollowsTheOpenFlags/truncating_write
+=== RUN   TestWriteIntentFollowsTheOpenFlags/append
+=== RUN   TestWriteIntentFollowsTheOpenFlags/create-read
+--- PASS: TestWriteIntentFollowsTheOpenFlags (0.01s)
+=== RUN   TestRefusedResizeDoesNotPoisonTheTransportVerdict
+--- PASS: TestRefusedResizeDoesNotPoisonTheTransportVerdict (0.00s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsmount	5.036s
+
+### 2. the whole fsmount package (BFS-025's read-bound tests included), -race -count=1
+ok  	github.com/deployBunker/bunker/internal/fsmount	7.270s
+
+### 3. BFS-015's commit-window tests, -race -count=1  (the row that must not be weakened)
+=== RUN   TestExpectedHashIsRevalidatedInsideTheCommit
+=== RUN   TestExpectedHashIsRevalidatedInsideTheCommit/while_the_body_arrives
+=== RUN   TestExpectedHashIsRevalidatedInsideTheCommit/inside_the_commit
+=== RUN   TestExpectedHashIsRevalidatedInsideTheCommit/inside_the_commit_with_identical_bytes
+--- PASS: TestExpectedHashIsRevalidatedInsideTheCommit (7.28s)
+=== RUN   TestCreateOnlyRuleIsRevalidatedInsideTheCommit
+=== RUN   TestCreateOnlyRuleIsRevalidatedInsideTheCommit/inside_the_commit
+=== RUN   TestCreateOnlyRuleIsRevalidatedInsideTheCommit/before_the_precondition_is_evaluated
+--- PASS: TestCreateOnlyRuleIsRevalidatedInsideTheCommit (2.14s)
+=== RUN   TestCommitSectionIsExclusive
+--- PASS: TestCommitSectionIsExclusive (0.84s)
+=== RUN   TestConcurrentConditionalWritesCannotBothLand
+--- PASS: TestConcurrentConditionalWritesCannotBothLand (1.89s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/server/webdav	13.177s
+
+### 4. the read path's own package (BFS-025/BFS-026 read-side tests), -race -count=1
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	63.509s
+FAIL
+
+### 5. the server-side surface package, -race -count=1
+ok  	github.com/deployBunker/bunker/internal/server/webdav	41.357s
+
+### 6. the guard's own cost: go test -bench (internal/fsmount)
+BenchmarkWriteIntentOn-16    	   20000	        50.21 ns/op
+BenchmarkRefusedResize-16    	   20000	      3290 ns/op
+--- BENCH: BenchmarkRefusedResize-16
+ok  	github.com/deployBunker/bunker/internal/fsmount	0.077s
+
+### 7. the static gates
+$ go build ./...
+OK
+$ go vet ./...
+OK
+$ gofmt -l (my files)
+OK (no output above)
+
+### 8. the platform seam (non-Linux build of the whole module)
+required targets : linux/amd64 linux/arm64 windows/amd64 windows/arm64
+known gaps (fixed by a named row, printed every run):
+  windows/amd64 -> github.com/deployBunker/bunker/internal/cli   (internal/cli/umount.go:272 syscall.Stat_t; see docs/evidence/BFS-010-windows-mint-decision.md)
+  windows/arm64 -> github.com/deployBunker/bunker/internal/cli   (internal/cli/umount.go:272 syscall.Stat_t; see docs/evidence/BFS-010-windows-mint-decision.md)
+
+TARGET           BUILD      VET internal/fsmount     RESULT
+---------------- ---------- ------------------------ ------
+linux/amd64      PASS       PASS                     ok
+linux/arm64      PASS       PASS                     ok
+windows/amd64    GAP(cli)   PASS                     ok
+windows/arm64    GAP(cli)   PASS                     ok
+
+--- build-windows-amd64 (verbatim) ---
+# github.com/deployBunker/bunker/internal/cli
+internal/cli/umount.go:272:25: undefined: syscall.Stat_t
+internal/cli/umount.go:273:20: undefined: syscall.Stat
+internal/cli/umount.go:277:20: undefined: syscall.Stat
+
+--- build-windows-arm64 (verbatim) ---
+# github.com/deployBunker/bunker/internal/cli
+internal/cli/umount.go:272:25: undefined: syscall.Stat_t
+internal/cli/umount.go:273:20: undefined: syscall.Stat
+internal/cli/umount.go:277:20: undefined: syscall.Stat
+
+RESULT: PASS — every required target builds; the seam type-checks on all of them
+
+### 9. the whole-module suite: go test ./... (count=1)
+go test ./... exit: 1
+time=2026-09-27T02:34:11.685-05:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-09-27T02:34:11.685-05:00 level=INFO msg="agent registry replayed" path=/tmp/TestCgroup_AgentLimitsAccepted1156840634/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false
+time=2026-09-27T02:34:11.685-05:00 level=INFO msg="resolved safety preset" agent_id=cgroup-limits-test preset=standard
+time=2026-09-27T02:34:11.685-05:00 level=INFO msg="resolved mount driver" agent_id=cgroup-limits-test driver=sshfs
+time=2026-09-27T02:34:11.685-05:00 level=INFO msg="allocated port range" agent_id=cgroup-limits-test range=10000-10099
+time=2026-09-27T02:34:11.685-05:00 level=INFO msg="spawning agent" agent_id=cgroup-limits-test
+time=2026-09-27T02:34:11.685-05:00 level=INFO msg="creating user" username=bunker-cgroup-limits-test
+time=2026-09-27T02:34:11.696-05:00 level=WARN msg="shared scratch removal incomplete" agent_id=cgroup-limits-test error="stat /srv/bunker-share/cgroup-limits-test: permission denied"
+time=2026-09-27T02:34:11.696-05:00 level=WARN msg="private /tmp instance removal incomplete" agent_id=cgroup-limits-test error="stat /var/lib/bunkerd/agent-tmp/bunker-cgroup-limits-test: permission denied"
+time=2026-09-27T02:34:11.696-05:00 level=ERROR msg="spawn failed" agent_id=cgroup-limits-test stage=user-create error="spawn cgroup-limits-test failed at stage user-create: useradd bunker-cgroup-limits-test failed: exit status 1 (output: useradd: Permission denied.\nuseradd: cannot lock /etc/passwd; try again later.\n)"
+time=2026-09-27T02:34:11.696-05:00 level=WARN msg="could not append spawn-failure breadcrumb" agent_id=cgroup-limits-test stage=user-create path=/var/lib/bunkerd/spawn-failures.jsonl error="open spawn-failure journal: open /var/lib/bunkerd/spawn-failures.jsonl: permission denied"
+time=2026-09-27T02:34:11.697-05:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-09-27T02:34:11.697-05:00 level=INFO msg="agent registry replayed" path=/tmp/TestConcurrency_PortAllocatorIsolation391674106/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false
+time=2026-09-27T02:34:11.697-05:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-09-27T02:34:11.697-05:00 level=INFO msg="agent registry replayed" path=/tmp/TestConcurrency_TrackerCapacity2000183180/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false
+time=2026-09-27T02:34:11.697-05:00 level=INFO msg="agent registered" agent_id=dummy-0 total=1
+time=2026-09-27T02:34:11.697-05:00 level=INFO msg="agent registered" agent_id=dummy-1 total=2
+time=2026-09-27T02:34:11.697-05:00 level=INFO msg="agent registered" agent_id=dummy-2 total=3
+time=2026-09-27T02:34:11.697-05:00 level=INFO msg="agent registered" agent_id=dummy-3 total=4
+time=2026-09-27T02:34:11.697-05:00 level=INFO msg="agent registered" agent_id=dummy-4 total=5
+(only non-ok lines are shown above; an empty block means every package passed)
+packages ok: 26
+failures:    5

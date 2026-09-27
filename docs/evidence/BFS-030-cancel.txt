@@ -1,0 +1,185 @@
+================================================================================
+BFS-030 x BFS-039 — cancellation: a killed caller, a dead holder, and the errno vocabulary
+================================================================================
+
+### BFS-030-cancel4-killtrunc-unfixed.txt
+arm        = cancel4-killtrunc-unfixed
+host       = karaHermes-mde-7840hs loadavg 23.25 16.66 16.95 3/9271 3905396
+tree       = /tmp/bfs030/tree-cancel4-killtrunc-unfixed  (0 files, 0 B)
+binaries   = /tmp/bfs030/bin/bunker ; /tmp/bfs030/bin/davserve
+endpoint   = http://127.0.0.1:42287/dav (pid 3905403)
+trace      = http://127.0.0.1:18495/dav -> http://127.0.0.1:42287/dav (pid 3905416, per-request log /tmp/bfs030/run-cancel4-killtrunc-unfixed/requests.jsonl)
+mount-args = --url http://127.0.0.1:18495/dav 
+cache-dir  = /tmp/bfs030/run-cancel4-killtrunc-unfixed/xdg/bunker/fs/5710c8557df2
+  cache dir    : /tmp/bfs030/run-cancel4-killtrunc-unfixed/xdg/bunker/fs/5710c8557df2 (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = python3 docs/evidence/BFS-030-probes/cancel-arms.py --mode kill-during-trunc --expect loss  (rc=0)
+  | victim open phase     : 'opened' (then SIGKILL, mid-operation, before its write)
+  | victim said           : 'child: opened with O_TRUNC' (rc=-9)
+  | SERVER before/after   : df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a / e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  | ORIGINAL INTACT       : False
+  | PUTs for the path     : 0 -> 1 (a cancelled write must publish nothing)
+  | read after the kill   : e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  | VERDICT: a caller killed mid-rewrite left the file EMPTY — data loss with no cancel ever delivered (the defect, reproduced)
+mount.log  :
+  | mounted http://127.0.0.1:18495/dav on /tmp/bfs030/run-cancel4-killtrunc-unfixed/mnt
+  |   cache dir    : /tmp/bfs030/run-cancel4-killtrunc-unfixed/xdg/bunker/fs/5710c8557df2 (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs030/run-cancel4-killtrunc-unfixed/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs030/run-cancel4-killtrunc-unfixed/xdg):
+  | mount        : 5710c8557df2
+  | endpoint     : http://127.0.0.1:18495/dav
+  | mountpoint   : /tmp/bfs030/run-cancel4-killtrunc-unfixed/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=177 max_bytes=268435456 (blobs=0 index=177) entries=1 blobs=1
+  | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=12 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs030/run-cancel4-killtrunc-unfixed
+
+### BFS-030-cancel4-killtrunc-fixed.txt
+arm        = cancel4-killtrunc-fixed
+host       = karaHermes-mde-7840hs loadavg 23.25 16.66 16.95 6/9272 3904727
+tree       = /tmp/bfs030/tree-cancel4-killtrunc-fixed  (0 files, 0 B)
+binaries   = /tmp/bfs030/bin/bunker-fixed ; /tmp/bfs030/bin/davserve
+endpoint   = http://127.0.0.1:40885/dav (pid 3904738)
+trace      = http://127.0.0.1:18495/dav -> http://127.0.0.1:40885/dav (pid 3904754, per-request log /tmp/bfs030/run-cancel4-killtrunc-fixed/requests.jsonl)
+mount-args = --url http://127.0.0.1:18495/dav 
+cache-dir  = /tmp/bfs030/run-cancel4-killtrunc-fixed/xdg/bunker/fs/5710c8557df2
+  cache dir    : /tmp/bfs030/run-cancel4-killtrunc-fixed/xdg/bunker/fs/5710c8557df2 (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = python3 docs/evidence/BFS-030-probes/cancel-arms.py --mode kill-during-trunc --expect intact  (rc=0)
+  | victim open phase     : 'refused:95' (then SIGKILL, mid-operation, before its write)
+  | victim said           : 'child: open refused errno=95' (rc=1)
+  | SERVER before/after   : df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a / df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | ORIGINAL INTACT       : True
+  | PUTs for the path     : 0 -> 0 (a cancelled write must publish nothing)
+  | read after the kill   : df601c57892e9fcaa7fbba47be14a84d06b934a269edde4123c5b0071656347a
+  | VERDICT: a cancelled rewrite published nothing and left the file intact (PASS)
+mount.log  :
+  | mounted http://127.0.0.1:18495/dav on /tmp/bfs030/run-cancel4-killtrunc-fixed/mnt
+  |   cache dir    : /tmp/bfs030/run-cancel4-killtrunc-fixed/xdg/bunker/fs/5710c8557df2 (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs030/run-cancel4-killtrunc-fixed/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs030/run-cancel4-killtrunc-fixed/xdg):
+  | mount        : 5710c8557df2
+  | endpoint     : http://127.0.0.1:18495/dav
+  | mountpoint   : /tmp/bfs030/run-cancel4-killtrunc-fixed/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=4532 max_bytes=268435456 (blobs=4352 index=180) entries=1 blobs=1
+  | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=8 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+  | write shape  : refusals_total=1
+  |   last       : src/target.txt: size=0
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs030/run-cancel4-killtrunc-fixed
+
+### BFS-030-cancel4-holder-fixed.txt
+arm        = cancel4-holder-fixed
+host       = karaHermes-mde-7840hs loadavg 23.07 16.73 16.97 35/9375 3906623
+tree       = /tmp/bfs030/tree-cancel4-holder-fixed  (0 files, 0 B)
+binaries   = /tmp/bfs030/bin/bunker-fixed ; /tmp/bfs030/bin/davserve
+endpoint   = http://127.0.0.1:37037/dav (pid 3906648)
+trace      = http://127.0.0.1:18495/dav -> http://127.0.0.1:37037/dav (pid 3906664, per-request log /tmp/bfs030/run-cancel4-holder-fixed/requests.jsonl)
+mount-args = --url http://127.0.0.1:18495/dav 
+cache-dir  = /tmp/bfs030/run-cancel4-holder-fixed/xdg/bunker/fs/5710c8557df2
+  cache dir    : /tmp/bfs030/run-cancel4-holder-fixed/xdg/bunker/fs/5710c8557df2 (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = python3 docs/evidence/BFS-030-probes/cancel-arms.py --mode kill-holder-then-resize --expect intact  (rc=0)
+  | victim open phase     : 'holding' (then SIGKILL while it held the handle)
+  | victim said           : 'child: holding O_RDWR'
+  | resize after the kill : errno=0
+  | SERVER after          : 32 B (want 32)
+  | VERDICT: a dead caller's write handle did not stick — the deliberate resize landed (PASS)
+mount.log  :
+  | mounted http://127.0.0.1:18495/dav on /tmp/bfs030/run-cancel4-holder-fixed/mnt
+  |   cache dir    : /tmp/bfs030/run-cancel4-holder-fixed/xdg/bunker/fs/5710c8557df2 (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs030/run-cancel4-holder-fixed/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs030/run-cancel4-holder-fixed/xdg):
+  | mount        : 5710c8557df2
+  | endpoint     : http://127.0.0.1:18495/dav
+  | mountpoint   : /tmp/bfs030/run-cancel4-holder-fixed/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=26 max_bytes=268435456 (blobs=0 index=26) entries=0 blobs=0
+  | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=11 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+  | write shape  : refusals_total=0
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs030/run-cancel4-holder-fixed
+
+### BFS-030-cancel4-errno-fixed.txt
+arm        = cancel4-errno-fixed
+host       = karaHermes-mde-7840hs loadavg 22.18 16.65 16.94 5/9294 3908262
+tree       = /tmp/bfs030/tree-cancel4-errno-fixed  (0 files, 0 B)
+binaries   = /tmp/bfs030/bin/bunker-fixed ; /tmp/bfs030/bin/davserve
+endpoint   = http://127.0.0.1:36945/dav (pid 3908269)
+trace      = http://127.0.0.1:18495/dav -> http://127.0.0.1:36945/dav (pid 3908329, per-request log /tmp/bfs030/run-cancel4-errno-fixed/requests.jsonl)
+mount-args = --url http://127.0.0.1:18495/dav 
+cache-dir  = /tmp/bfs030/run-cancel4-errno-fixed/xdg/bunker/fs/5710c8557df2
+  cache dir    : /tmp/bfs030/run-cancel4-errno-fixed/xdg/bunker/fs/5710c8557df2 (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = python3 docs/evidence/BFS-030-probes/cancel-arms.py --mode errno-vocabulary --expect intact  (rc=0)
+  | refusal errno         : 95 (Operation not supported)
+  | EINTR (4)?            : False
+  | EIO (5)?              : False
+  | EOPNOTSUPP (95)?      : True
+  | VERDICT: the refusal is EOPNOTSUPP — a capability answer, distinct from both EINTR and EIO (PASS)
+mount.log  :
+  | mounted http://127.0.0.1:18495/dav on /tmp/bfs030/run-cancel4-errno-fixed/mnt
+  |   cache dir    : /tmp/bfs030/run-cancel4-errno-fixed/xdg/bunker/fs/5710c8557df2 (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs030/run-cancel4-errno-fixed/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs030/run-cancel4-errno-fixed/xdg):
+  | mount        : 5710c8557df2
+  | endpoint     : http://127.0.0.1:18495/dav
+  | mountpoint   : /tmp/bfs030/run-cancel4-errno-fixed/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=26 max_bytes=268435456 (blobs=0 index=26) entries=0 blobs=0
+  | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=7 proto=HTTP/1.1
+  |   cause      : SETATTR src/target.txt: errno=EOPNOTSUPP cause=write_shape_unsupported: refusing to resize src/target.txt to 0 bytes: a handle opened for writing is live on the path, and this surface cannot write an existing file in place — publishing the resize would destroy the original before the write that follows it fails. The file is left byte-identical; use a whole-file write (create the path anew) or `truncate -s` outside a write handle
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+  | write shape  : refusals_total=1
+  |   last       : src/target.txt: size=0
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs030/run-cancel4-errno-fixed

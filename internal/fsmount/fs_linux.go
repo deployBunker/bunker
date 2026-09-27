@@ -89,6 +89,16 @@ type Mount struct {
 	// status loop.
 	boundLast atomic.Value // string
 
+	// writeShapeRefusals counts write shapes REFUSED before they published
+	// anything because this surface cannot complete them (BFS-030): a resize
+	// arriving while a write-intent handle is live on the path — the destructive
+	// half of an in-place rewrite whose write half cannot land. writeShapeLast
+	// names the most recent refusal, so the figure can be audited per file.
+	// Reported because a rule that fires silently is not a rule anyone can
+	// audit (the same reason boundRefusals is reported).
+	writeShapeRefusals atomic.Int64
+	writeShapeLast     atomic.Value // string
+
 	transportMu sync.RWMutex
 	verdict     string
 	cause       string
@@ -659,6 +669,10 @@ func (m *Mount) Status() fsclient.Status {
 	if v, ok := m.boundLast.Load().(string); ok {
 		st.ReadBound.Last = v
 	}
+	st.WriteShape = fsclient.WriteShapeState{RefusalsTotal: m.writeShapeRefusals.Load()}
+	if v, ok := m.writeShapeLast.Load().(string); ok {
+		st.WriteShape.Last = v
+	}
 	return st
 }
 
@@ -953,6 +967,28 @@ func (n *node) Rename(ctx context.Context, name string, newParent fs.InodeEmbedd
 	return 0
 }
 
+// writeIntentOn reports whether a handle opened for WRITING is live on this
+// path. It is read from the mount's own handle table — the same table the read
+// path keeps and Release empties — so the record cannot outlive the handle it
+// describes, and it needs no second bookkeeping to keep in step.
+//
+// The predicate is deliberately NOT the Setattr's `fh`: MEASURED
+// (docs/evidence/BFS-030-trace.txt), the SETATTR the kernel sends for
+// an O_TRUNC open arrives with fh=0 and valid=FATTR_SIZE|FATTR_FH, naming no
+// handle at all — indistinguishable from a deliberate path-based resize. The
+// live write-intent handle is the only signal that separates "the destructive
+// half of a rewrite this surface cannot complete" from "a deliberate resize".
+func (m *Mount) writeIntentOn(p string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, h := range m.reads {
+		if h.p == p && h.writeIntent {
+			return true
+		}
+	}
+	return false
+}
+
 // Setattr supports truncation (the one attribute a build tool actually moves)
 // and refuses the rest loudly rather than pretending: mode/uid/gid/times are
 // not carried by this surface.
@@ -971,7 +1007,41 @@ func (n *node) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAttrIn
 // truncate rewrites the file at a new size. It is a read-modify-write published
 // as one conditional PUT, which is why it is the only supported Setattr: the
 // precondition is whole-file on both sides of the wire.
+//
+// It is REFUSED — before anything is read or published — when a handle opened
+// for writing is live on this path. Such a resize is the destructive half of an
+// in-place rewrite, and this surface cannot complete the write half of one: Open
+// hands back a READ handle whatever the open flags say, and a write handle is
+// only ever created by Create, for a path that does not exist (BFS-012 measured
+// every in-place shape as refused). Publishing the resize anyway is BFS-030,
+// the write-side twin of BFS-025: `open(path,'wb')` emptied the file as ONE
+// conditional PUT of zero bytes, the write that followed failed with
+// EOPNOTSUPP, and the caller lost their content while being told the operation
+// had failed. A refusal costs the caller the shape it could not complete
+// anyway; a published resize costs them the file.
+//
+// The predicate is the mount's own live-handle table, not the Setattr's fh:
+// MEASURED (docs/evidence/BFS-030-trace.txt), the SETATTR the kernel
+// sends for an O_TRUNC open carries fh=0 with valid=FATTR_SIZE|FATTR_FH — it
+// names no handle at all, exactly like a deliberate path-based resize. The live
+// write-intent handle is the only signal that tells the two apart.
+//
+// A deliberate resize with no write handle open (`truncate -s N file`,
+// `os.truncate`) is unaffected, which is the shape BFS-012's truncate
+// measurements rely on.
 func (n *node) truncate(ctx context.Context, size uint64) syscall.Errno {
+	if n.m.writeIntentOn(n.p) {
+		err := &fsclient.OpError{
+			Op: "SETATTR", Path: n.p, Errno: fsclient.ErrnoEOPNOTSUPP,
+			Cause:  fsclient.CauseWriteShapeUnsupported,
+			Detail: fmt.Sprintf("refusing to resize %s to %d bytes: a handle opened for writing is live on the path, and this surface cannot write an existing file in place — publishing the resize would destroy the original before the write that follows it fails. The file is left byte-identical; use a whole-file write (create the path anew) or `truncate -s` outside a write handle", n.p, int64(size)),
+		}
+		n.m.writeShapeRefusals.Add(1)
+		n.m.writeShapeLast.Store(fmt.Sprintf("%s: size=%d", n.p, int64(size)))
+		n.m.logf("bunker-fs: refused to resize %s to %d bytes: a write handle is live on the path and this surface cannot write an existing file in place, so the resize would be published before a write that cannot land. The file is unchanged", n.p, int64(size))
+		n.m.recordFailure(err)
+		return errnoFor(err)
+	}
 	// read through the normal path so the cache and the base hash stay in
 	// agreement with what we are about to replace
 	data, _, cerr := n.m.client.Get(ctx, n.p, "")
