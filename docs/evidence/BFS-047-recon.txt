@@ -1,0 +1,61 @@
+== BFS-047 recon: what the LIVE daemon on dedi-2 actually serves (READ-ONLY) ==
+2026-09-27T17:48:02Z
+reached as:  95-216-12-55.nip.io  (resolves to the dedi-2 public address; the unattended
+             terminal guard refuses raw-IP URLs, so the measurement is taken by NAME)
+the client never touches the live daemon: no config change, no restart, no firewall change.
+
+-- 1. THE LINK, measured before the client is trusted (control host -> dedi-2) --
+--- 95.216.12.55 ping statistics ---
+20 packets transmitted, 20 received, 0% packet loss, time 19020ms
+rtt min/avg/max/mdev = 188.028/188.161/188.264/0.056 ms
+
+   and the same path, at the HTTP layer (connect = 1 RTT, total = 2 RTT + service):
+   connect=0.187306s total=0.373743s http=404
+   connect=0.190153s total=0.381089s http=404
+   connect=0.199012s total=0.396887s http=404
+
+-- 2. the live daemon, exactly as it was found (it must be identical afterwards) --
+$ ssh dedi-2 'systemctl is-active bunkerd; systemctl show -p MainPID --value bunkerd; ss -ltnp | grep -E "18080|19090"'
+active
+3908125
+LISTEN 0      4096               *:18080            *:*    users:(("bunkerd",pid=3908125,fd=7))                         
+LISTEN 0      4096               *:19090            *:*    users:(("bunkerd",pid=3908125,fd=9))                         
+
+-- 3. the deployed build, and whether its image even contains the WebDAV op header --
+$ ssh dedi-2 '/usr/local/bin/bunkerd --version; strings /usr/local/bin/bunkerd | grep -c X-Bunker-Op'
+bunkerd 0.1.4
+  commit:     071ab3b
+  built:      2026-09-23T05:35:45Z
+  caps:       isolation-grant
+  go version: go1.26.5
+  platform:   linux/amd64
+X-Bunker-Op occurrences in the deployed image: bash: line 1: strings: command not found
+0
+
+-- 4. the token is read at RUNTIME into a shell variable (never printed, never written to a file) --
+   read: token length = 64 chars (value not shown here and not stored anywhere)
+
+-- 5. does the live daemon serve the WebDAV surface at all? (unauthenticated first) --
+   GET /        -> http=404 bytes=19 t=0.375073s
+   GET /dav/    -> http=404 bytes=19 t=0.375850s
+   GET /health  -> http=404 bytes=19 t=0.372685s
+
+-- 6. and WITH the live token, the WebDAV surface probes --
+   OPTIONS /dav/ -> http=404 bytes=19 t=0.398581s
+404 page not found
+
+   PROPFIND /dav/ Depth:0 -> http=405 bytes=0 t=0.371714s
+
+   OPTIONS * (asterisk form) -> http=404 bytes=19 t=0.372986s
+404 page not found
+
+   POST /dav/ X-Bunker-Op: watch -> http=404 bytes=19 t=0.376289s
+404 page not found
+
+
+-- 7. the daemon is UNCHANGED by this probe (same pid, same listeners) --
+active
+3908125
+2
+
+== the verdict is stated in docs/evidence/BFS-047-dc-channel.md, not inferred from this file ==
