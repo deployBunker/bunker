@@ -43,7 +43,6 @@
 package cli
 
 import (
-	"fmt"
 	"runtime"
 )
 
@@ -53,13 +52,12 @@ import (
 // ONE function serves BOTH the gate in runUmount and isMountPoint below, so the
 // command's refusal and the probe's refusal cannot drift into two sentences
 // that say different things.
+//
+// The sentence itself is umountUnsupportedRefusal, in the untagged umount.go, so
+// it is exercised by tests on every platform; this arm only binds it to the
+// build's own identity.
 func platformUmountRefusal() error {
-	return fmt.Errorf("%w — this build is %s/%s, and `bunker umount` detaches a mount with the platform's own unmount "+
-		"(fusermount3/umount(8), and the kernel mount table to find it), which do not exist here. Nothing was unmounted. "+
-		"Run `bunker umount` from a Linux client, where bunker's mounts live; to detach a path some other tool mounted "+
-		"on this platform, use that tool's own unmount (on Windows a mapped or SSHFS-Win drive comes off with "+
-		"`net use <drive>: /delete`, or from the WinFsp/SSHFS-Win tray)",
-		ErrUmountUnsupported, runtime.GOOS, runtime.GOARCH)
+	return umountUnsupportedRefusal(runtime.GOOS, runtime.GOARCH)
 }
 
 // isMountPoint refuses on this platform instead of answering.

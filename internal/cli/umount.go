@@ -74,6 +74,33 @@ var execCommand = exec.Command
 // need the sentinel to match against.
 var ErrUmountUnsupported = errors.New("bunker umount: no unmount mechanism on this platform")
 
+// umountUnsupportedRefusal builds the refusal `bunker umount` returns on a
+// platform this build has no unmount mechanism for.
+//
+// IT TAKES THE PLATFORM AS ARGUMENTS instead of reading runtime.GOOS itself, and
+// it lives in this untagged file rather than beside the arm that calls it, for the
+// reason internal/fsmount's ErrPlatformUnsupported lives in its untagged
+// options.go: a sentence defined only in a `!unix` file can never be executed on
+// the host that runs the tests, so its wording would be a claim nothing checks.
+// Here the operator-facing text is exercised — and mutation-RED-proved — on any
+// platform, and umount_nonunix.go's arm is one line binding it to the build's own
+// identity.
+//
+// WHAT THE SENTENCE HAS TO CARRY (this repo's standard for a refusal, and the
+// reason it is long): the COMMAND the operator ran, the PLATFORM this build is,
+// the explicit statement that nothing happened, and the WAY OUT. A generic
+// "unsupported" would leave an operator on an unsupported platform with no next
+// step, which is the same dead end as the compile error it replaces.
+func umountUnsupportedRefusal(goos, goarch string) error {
+	return fmt.Errorf("%w — this build is %s/%s, and `bunker umount` detaches a mount with the platform's own unmount "+
+		"(fusermount3/umount(8), and the kernel mount table to find it), which do not exist here. "+
+		"Nothing was unmounted. Run `bunker umount` from a Linux client, where bunker's mounts live; "+
+		"to detach a path some other tool mounted on this platform, use that tool's own unmount "+
+		"(on Windows a mapped or SSHFS-Win drive comes off with `net use <drive>: /delete`, or from the "+
+		"WinFsp/SSHFS-Win tray)",
+		ErrUmountUnsupported, goos, goarch)
+}
+
 // umountPlatformRefusal answers whether THIS BUILD can unmount a filesystem at
 // all: nil when it can, and a named refusal when it cannot.
 //
