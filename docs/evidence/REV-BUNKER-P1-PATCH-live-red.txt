@@ -1,0 +1,38 @@
+REV-BUNKER-P1-PATCH arms — mode=live-red base=4879343
+go go1.26.5 · cece426 · 2026-09-27T16:18:45Z
+pre-swap: internal/agent/reconcile.go sha256=b914c8e46c0252d43f4320ae1cb2a7c8c68ce95f4a32b940dba8a4226ff75335
+pre-swap: internal/agent/manager.go sha256=ee06df5b09378af209b9066e682bef5e6ca41e91d184b612e8bf271c4b173ac9
+pre-swap: internal/config/config.go sha256=24376f04a18f5dab4ae76ac0e9ca3266b57a81dfa790416004e499ff5bafc3c3
+pre-swap: internal/registry/registry.go sha256=216be342a42bf26dfe3e5d6839421e08423a5293e5300483dc243bebd550a6fa
+swapped in base blob: internal/agent/reconcile.go sha256=52b4bfed307facd58e421c1cf98e582458b04a896d3208ea1d07cb8b39885393 (was b914c8e46c0252d43f4320ae1cb2a7c8c68ce95f4a32b940dba8a4226ff75335)
+swapped in base blob: internal/agent/manager.go sha256=2069375e7d31f166c378f7799826d920b9ee384eee297cb4b0cfbddef26decc6 (was ee06df5b09378af209b9066e682bef5e6ca41e91d184b612e8bf271c4b173ac9)
+swapped in base blob: internal/config/config.go sha256=64682eef5b2f0c3942e907987208aa7d95d4e3b2429f9606da3f0d263a768ece (was 24376f04a18f5dab4ae76ac0e9ca3266b57a81dfa790416004e499ff5bafc3c3)
+swapped in base blob: internal/registry/registry.go sha256=6543f97a9642a86ba43201340a2523eee6cef02f31638cbc368df33342a33d9b (was 216be342a42bf26dfe3e5d6839421e08423a5293e5300483dc243bebd550a6fa)
+--- live config:
+      # REV-BUNKER-P1-PATCH live arm: scratch NON-ROOT bunkerd. Every path is under
+      # /tmp/rev-bunker-p1-live. The registry path DOES NOT EXIST on purpose: that is the incident's
+      # precondition (Open fabricates an empty registry; the daemon believes it has no
+        port_range_start: 42000
+        port_range_end: 42999
+        port_range_per_agent: 100
+        registry:
+          path: /tmp/rev-bunker-p1-live/data/agents.jsonl
+        reconciliation:
+          mode: destroy
+--- scratch registry path /tmp/rev-bunker-p1-live/data/agents.jsonl exists before boot: no
+built: /tmp/rev-bunker-p1-live/bin/bunkerd-red sha256=af215abab53b10cb5378481a11b453549fdec6cdb90d7ff6ae2397a62e88f778
+--- LIVE-RED (filed blobs, scratch non-root daemon, empty registry, default limit): daemon pid 1298686, registry /tmp/rev-bunker-p1-live/data/agents.jsonl (absent at boot)
+--- LIVE-RED (filed blobs, scratch non-root daemon, empty registry, default limit): /etc/passwd sha256 before=f5645b6cef6c746d702c4c85c550cff10861b081b38d5db1b24b4199d198d5a7 after=f5645b6cef6c746d702c4c85c550cff10861b081b38d5db1b24b4199d198d5a7
+--- LIVE-RED (filed blobs, scratch non-root daemon, empty registry, default limit): /etc/passwd UNCHANGED (every host user still present)
+--- LIVE-RED (filed blobs, scratch non-root daemon, empty registry, default limit): walk evidence
+destroying_agent_lines=2
+refusal_lines=0
+userdel_permission_denied_lines=2
+    10:{"time":"2026-09-27T11:18:49.041982349-05:00","level":"INFO","msg":"destroying agent","agent_id":"probeok-18967"}
+    26:{"time":"2026-09-27T11:18:49.863317237-05:00","level":"INFO","msg":"destroying agent","agent_id":"probeok-39467"}
+    40:{"time":"2026-09-27T11:18:50.595348628-05:00","level":"INFO","msg":"agent registry reconciliation complete (async orphan walk)","mode":"destroy","adopted":0,"destroyed":2,"foreign":0}
+--- LIVE-RED (filed blobs, scratch non-root daemon, empty registry, default limit) exit=0
+restore: internal/agent/reconcile.go sha256=b914c8e46c0252d43f4320ae1cb2a7c8c68ce95f4a32b940dba8a4226ff75335 (verified against its pre-mode hash)
+restore: internal/agent/manager.go sha256=ee06df5b09378af209b9066e682bef5e6ca41e91d184b612e8bf271c4b173ac9 (verified against its pre-mode hash)
+restore: internal/config/config.go sha256=24376f04a18f5dab4ae76ac0e9ca3266b57a81dfa790416004e499ff5bafc3c3 (verified against its pre-mode hash)
+restore: internal/registry/registry.go sha256=216be342a42bf26dfe3e5d6839421e08423a5293e5300483dc243bebd550a6fa (verified against its pre-mode hash)

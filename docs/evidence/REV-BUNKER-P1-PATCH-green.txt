@@ -1,0 +1,64 @@
+REV-BUNKER-P1-PATCH arms — mode=green base=4879343
+go go1.26.5 · c3f246f · 2026-09-27T16:15:03Z
+tree under test: internal/agent/reconcile.go sha256=b914c8e46c0252d43f4320ae1cb2a7c8c68ce95f4a32b940dba8a4226ff75335
+tree under test: internal/agent/manager.go sha256=ee06df5b09378af209b9066e682bef5e6ca41e91d184b612e8bf271c4b173ac9
+tree under test: internal/config/config.go sha256=24376f04a18f5dab4ae76ac0e9ca3266b57a81dfa790416004e499ff5bafc3c3
+tree under test: internal/registry/registry.go sha256=216be342a42bf26dfe3e5d6839421e08423a5293e5300483dc243bebd550a6fa
+--- GREEN: go test ./internal/agent ./internal/config ./internal/registry -run <sweep guard cells> -count=1 -v -timeout 300s
+=== RUN   TestReconcileSweepGuardArms_UnprovenMassDestroyIsRefused
+--- PASS: TestReconcileSweepGuardArms_UnprovenMassDestroyIsRefused (0.01s)
+=== RUN   TestReconcileSweepGuardArms_EmptyRegistryFileIsRefused
+--- PASS: TestReconcileSweepGuardArms_EmptyRegistryFileIsRefused (0.00s)
+=== RUN   TestReconcileSweepGuardArms_SmallUnprovenSweepStillHappens
+--- PASS: TestReconcileSweepGuardArms_SmallUnprovenSweepStillHappens (0.00s)
+=== RUN   TestReconcileSweepGuardArms_ProvenRegistrySweepsLargeSets
+--- PASS: TestReconcileSweepGuardArms_ProvenRegistrySweepsLargeSets (0.01s)
+=== RUN   TestReconcileSweepGuardArms_AdoptModeStillAdopts
+--- PASS: TestReconcileSweepGuardArms_AdoptModeStillAdopts (0.08s)
+=== RUN   TestReconcileSweepGuard_BoundaryIsThreeSweptFourRefused
+=== RUN   TestReconcileSweepGuard_BoundaryIsThreeSweptFourRefused/three_unknown_users_—_a_normal_leftovers_sweep
+=== RUN   TestReconcileSweepGuard_BoundaryIsThreeSweptFourRefused/four_unknown_users_—_one_above_the_limit
+--- PASS: TestReconcileSweepGuard_BoundaryIsThreeSweptFourRefused (0.00s)
+    --- PASS: TestReconcileSweepGuard_BoundaryIsThreeSweptFourRefused/three_unknown_users_—_a_normal_leftovers_sweep (0.00s)
+    --- PASS: TestReconcileSweepGuard_BoundaryIsThreeSweptFourRefused/four_unknown_users_—_one_above_the_limit (0.00s)
+=== RUN   TestReconcileSweepGuard_RefusalIsCountedAndActionable
+--- PASS: TestReconcileSweepGuard_RefusalIsCountedAndActionable (0.00s)
+=== RUN   TestReconcileSweepGuard_RefusalTouchesNothing
+--- PASS: TestReconcileSweepGuard_RefusalTouchesNothing (0.00s)
+=== RUN   TestReconcileSweepGuard_ZeroLimitIsTheStrictestSetting
+--- PASS: TestReconcileSweepGuard_ZeroLimitIsTheStrictestSetting (0.00s)
+=== RUN   TestReconcileSweepGuard_RaisedLimitIsTheOperatorEscapeHatch
+--- PASS: TestReconcileSweepGuard_RaisedLimitIsTheOperatorEscapeHatch (0.00s)
+=== RUN   TestReconcileSweepGuard_DisableIsExplicitAndLoud
+--- PASS: TestReconcileSweepGuard_DisableIsExplicitAndLoud (0.00s)
+=== RUN   TestReconcileSweepGuard_SingleOrphanOnUnprovenRegistryStillSweeps
+--- PASS: TestReconcileSweepGuard_SingleOrphanOnUnprovenRegistryStillSweeps (0.00s)
+=== RUN   TestReconcileSweepGuard_StartupPathRefusesAndStillUnblocksTheReaper
+--- PASS: TestReconcileSweepGuard_StartupPathRefusesAndStillUnblocksTheReaper (0.00s)
+=== RUN   TestReconcileSweepGuard_ConfigSurface
+--- PASS: TestReconcileSweepGuard_ConfigSurface (0.00s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/agent	0.163s
+=== RUN   TestReconciliationSweepGuard_TrueByDefaultAndThreeIsTheThreshold
+--- PASS: TestReconciliationSweepGuard_TrueByDefaultAndThreeIsTheThreshold (0.00s)
+=== RUN   TestReconciliationSweepGuard_ZeroValueIsArmedNotUnguarded
+--- PASS: TestReconciliationSweepGuard_ZeroValueIsArmedNotUnguarded (0.00s)
+=== RUN   TestReconciliationSweepGuard_NegativeLimitIsRefused
+--- PASS: TestReconciliationSweepGuard_NegativeLimitIsRefused (0.00s)
+=== RUN   TestReconciliationSweepGuard_ZeroLimitValidates
+--- PASS: TestReconciliationSweepGuard_ZeroLimitValidates (0.00s)
+=== RUN   TestReconciliationSweepGuard_OmittedKeysResolveToTheArmedDefaults
+--- PASS: TestReconciliationSweepGuard_OmittedKeysResolveToTheArmedDefaults (0.01s)
+=== RUN   TestReconciliationSweepGuard_FileKeysActuallyBind
+--- PASS: TestReconciliationSweepGuard_FileKeysActuallyBind (0.00s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/config	0.016s
+=== RUN   TestStoreCreatedThisBoot_AbsentFileIsReportedAndPreExistingIsNot
+--- PASS: TestStoreCreatedThisBoot_AbsentFileIsReportedAndPreExistingIsNot (0.00s)
+=== RUN   TestStoreCreatedThisBoot_PreExistingStateIsProven
+--- PASS: TestStoreCreatedThisBoot_PreExistingStateIsProven (0.01s)
+=== RUN   TestStoreCreatedThisBoot_SurvivesReplay
+--- PASS: TestStoreCreatedThisBoot_SurvivesReplay (0.00s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/registry	0.024s
+--- GREEN exit=0

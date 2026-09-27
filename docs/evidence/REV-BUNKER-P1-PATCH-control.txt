@@ -1,0 +1,24 @@
+REV-BUNKER-P1-PATCH arms — mode=noguard base=4879343
+go go1.26.5 · c3f246f · 2026-09-27T16:15:06Z
+pre-mutation: internal/agent/reconcile.go sha256=b914c8e46c0252d43f4320ae1cb2a7c8c68ce95f4a32b940dba8a4226ff75335
+mutation applied: /home/kara/worktrees/bunker-REV-BUNKER-P1-PATCH/docs/evidence/REV-BUNKER-P1-PATCH-negative-control.patch -> internal/agent/reconcile.go sha256=59784f04d1a2e43534218149484d912083eff796ce179ce2b620746c24fbbe5a
+--- NEGATIVE CONTROL (guard neutered on the fixed tree): go test ./internal/agent -run TestReconcileSweepGuardArms -count=1 -v -timeout 300s
+=== RUN   TestReconcileSweepGuardArms_UnprovenMassDestroyIsRefused
+    reconcile_sweep_guard_arms_test.go:95: the unproven sweep destroyed 4 unknown bunker-* users ([host00 host01 host02 host03]): a registry that does not exist on a host this daemon has never seen must destroy NOTHING
+    reconcile_sweep_guard_arms_test.go:99: Destroyed = 4, want 0 — an absent registry is not evidence that the host has no agents
+--- FAIL: TestReconcileSweepGuardArms_UnprovenMassDestroyIsRefused (0.00s)
+=== RUN   TestReconcileSweepGuardArms_EmptyRegistryFileIsRefused
+    reconcile_sweep_guard_arms_test.go:129: an EMPTY (but present) registry destroyed 4 unknown bunker-* users ([host00 host01 host02 host03]): an empty live set is the absence of evidence, not evidence of absence
+    reconcile_sweep_guard_arms_test.go:133: Destroyed = 4, want 0
+--- FAIL: TestReconcileSweepGuardArms_EmptyRegistryFileIsRefused (0.00s)
+=== RUN   TestReconcileSweepGuardArms_SmallUnprovenSweepStillHappens
+--- PASS: TestReconcileSweepGuardArms_SmallUnprovenSweepStillHappens (0.00s)
+=== RUN   TestReconcileSweepGuardArms_ProvenRegistrySweepsLargeSets
+--- PASS: TestReconcileSweepGuardArms_ProvenRegistrySweepsLargeSets (0.13s)
+=== RUN   TestReconcileSweepGuardArms_AdoptModeStillAdopts
+--- PASS: TestReconcileSweepGuardArms_AdoptModeStillAdopts (10.53s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/agent	10.675s
+FAIL
+--- NEGATIVE CONTROL (guard neutered on the fixed tree) exit=1
+restore: internal/agent/reconcile.go sha256=b914c8e46c0252d43f4320ae1cb2a7c8c68ce95f4a32b940dba8a4226ff75335 (verified against the pre-mutation hash)

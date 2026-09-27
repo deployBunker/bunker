@@ -196,6 +196,13 @@ func (m *AgentManager) openRegistry() {
 		"known", rep.Known,
 		"malformed", rep.Malformed,
 		"partial_tail", rep.PartialTail,
+		// REV-BUNKER-P1-PATCH: say whether this boot FABRICATED the durable
+		// state, because the replayed live count means different things in
+		// each case: "the durable state says zero agents" vs "there is no
+		// durable state". The sweep guard refuses on the second, and an
+		// operator reading this line can see which one they are in before
+		// asking why a sweep was refused.
+		"created_this_boot", s.CreatedThisBoot(),
 	)
 }
 

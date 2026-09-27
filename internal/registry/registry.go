@@ -220,6 +220,18 @@ type Store struct {
 	known      map[string]bool
 	knownOrder []string
 	last       Report
+
+	// createdByOpen is true when the ACTIVE log file did not exist before
+	// Open ran, so Open fabricated an empty starting state and this daemon
+	// knows NOTHING about the host it just booted on. It is provenance, not
+	// a replay fact: it is what lets a caller distinguish "the durable state
+	// says there are no agents" from "there is no durable state at all".
+	// Open (and only Open) sets it, once, from a stat taken BEFORE the
+	// O_CREATE; a later Replay/rotation never changes it. A stat that fails
+	// for any reason other than a clean not-exist leaves it false rather
+	// than reading the failure as "fresh" — and Open then fails on that
+	// same path anyway.
+	createdByOpen bool
 }
 
 // Open opens (creating if needed) the registry at opts.Path and replays it.
@@ -246,14 +258,28 @@ func Open(opts Options) (*Store, error) {
 		return nil, fmt.Errorf("registry: create %s: %w", filepath.Dir(path), err)
 	}
 
+	// Provenance, captured BEFORE the O_CREATE below can fabricate the file:
+	// a missing active log is the difference between "this daemon's durable
+	// state says it has no agents" and "this daemon has no durable state",
+	// and only the caller can decide what that difference means. The stat is
+	// taken on the ACTIVE file only — rotated backups are replayed by
+	// Replay, so a store whose active file was lost but whose backups
+	// survive still carries its live set, and the caller sees that set
+	// rather than a provenance flag.
+	createdNow := false
+	if _, statErr := os.Stat(path); errors.Is(statErr, os.ErrNotExist) {
+		createdNow = true
+	}
+
 	s := &Store{
-		path:       path,
-		maxBytes:   opts.MaxBytes,
-		maxBackups: opts.MaxBackups,
-		knownCap:   opts.KnownIDCap,
-		logger:     logger,
-		live:       make(map[string]*Record),
-		known:      make(map[string]bool),
+		path:          path,
+		maxBytes:      opts.MaxBytes,
+		maxBackups:    opts.MaxBackups,
+		knownCap:      opts.KnownIDCap,
+		logger:        logger,
+		live:          make(map[string]*Record),
+		known:         make(map[string]bool),
+		createdByOpen: createdNow,
 	}
 	// Ensure the active file exists with 0600 so replay and rotation have a
 	// defined starting state.
@@ -276,6 +302,19 @@ func Open(opts Options) (*Store, error) {
 
 // Path returns the active registry file path.
 func (s *Store) Path() string { return s.path }
+
+// CreatedThisBoot reports whether the active log file did not exist before
+// this Store's Open ran, i.e. whether the durable state was fabricated empty
+// at boot rather than read. A true result means the store's (empty) live set
+// is NOT evidence that the host has no agents — it is evidence that this
+// daemon has no memory of the host — so callers that act destructively on
+// "unknown" state MUST treat it as unproven. The flag is captured once, at
+// Open, from a stat taken before the file was created, and never changes.
+func (s *Store) CreatedThisBoot() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.createdByOpen
+}
 
 // Report returns the summary of the last replay.
 func (s *Store) Report() Report {
