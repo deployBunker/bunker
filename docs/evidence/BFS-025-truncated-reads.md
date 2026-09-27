@@ -220,6 +220,27 @@ per file in the metadata arm and one per file in the read arm (a reader stats be
 requests on a 40-file tree, 40 000 on a 40 000-file tree, on the exact path the release measured as the
 snapshot op's win.
 
+**And the rule never fires when it should not.** On a normal workload — those same arms, 40 reads and 40
+stats, with the fixture changed only out of band in the other arms — the fixed client reports:
+
+```
+read bound   : refusals_total=0 corrections_total=0
+```
+
+Zero refusals and zero corrections across the whole-tree read and the metadata walk
+(`BFS-025-fastpath.txt`): the guard is a comparison that passes, never a request that validates.
+
+### 6.1 The repo's own mount battery, run against the fixed binary
+
+`probes/bunker-fs-battery.sh` (BFS-008's instrument, the one the release used) completes against a clone of
+this tree served by `davserve`: **rc=0, every op group fully ok, 0 stalls** — 13/13 file ops, 13/13 of the
+14-operation shape, the whole-tree read arms, git over the mount, the conflict case, the cache bound, the
+transport kill. Its three op-level non-ok results are named rather than glossed: `ls src` is a fixture
+mismatch (this repo has no `src/` directory for the battery's 120-entry expectation), and `mv`/`rm` fail on
+the rename-before-publish defect the release already filed as BFS-020. The snapshot arm still reads the tree
+in **0.010 s** against 0.226 s for the PROPFIND walk at the same concurrency, and nothing in the run was
+refused by this change. Raw run: `BFS-025-battery-fixed.txt`, `BFS-025-battery-fixed.csv`.
+
 ---
 
 ## 7. BFS-024 and BFS-026 — left alone, with evidence either way
