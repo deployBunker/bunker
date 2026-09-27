@@ -1319,6 +1319,66 @@ func buildAgentRemoteCmd(command string, args []string) string {
 	return command + " " + strings.Join(quoted, " ")
 }
 
+// errAgentUserUnresolved is the failure mode of the DF-BUNKER-77 image builders
+// when the agent user (bunker-<id>) cannot be resolved at command-build time.
+// Image-backed exec must NOT silently degrade to running as container root —
+// that is exactly the regression this task repairs (the dogfood run showed
+// `whoami` = root inside image execs) — so the exec returns an internal error
+// naming the unresolved agent user instead of building a root run.
+var errAgentUserUnresolved = errors.New("agent user unresolved; refusing to run the image container as root")
+
+// resolveAgentUID resolves the numeric UID of the agent user bunker-<id>
+// through os/user — the same resolution the metrics path uses (user.Lookup of
+// the agent user). It is a variable so tests can pin a UID without a real
+// passwd entry. (uid, true) on success; (0, false) when the user or UID
+// cannot be resolved.
+var resolveAgentUID = func(agentID string) (int, bool) {
+	u, err := user.Lookup("bunker-" + agentID)
+	if err != nil {
+		return 0, false
+	}
+	parsed, err := strconv.Atoi(u.Uid)
+	if err != nil {
+		return 0, false
+	}
+	return parsed, true
+}
+
+// agentUserFlag returns the docker-run `--user <uid>` element that keeps an
+// image-backed exec inside the agent's identity instead of container root
+// (DF-BUNKER-77). ok is false when the agent user cannot be resolved; the
+// caller decides whether that is fatal. agentUserFlag is a variable so tests
+// can drive the failure arm without a real passwd entry.
+var agentUserFlag = func(agentID string) (string, bool) {
+	uid, ok := resolveAgentUID(agentID)
+	if !ok {
+		return "", false
+	}
+	return "--user " + strconv.Itoa(uid), true
+}
+
+// agentRuntimeDirBind returns the docker-run bind that makes the agent runtime
+// directory visible inside an image-backed container at its absolute host
+// path (DF-BUNKER-77): /run/bunker/<id>/ carries the env file the shell path
+// sources and the rootless docker.sock DOCKER_HOST points at. Read/write, as
+// both consumers require (the agent writes env; dockerd serves on the socket).
+func agentRuntimeDirBind(agentID string) []string {
+	rtDir := "/run/bunker/" + agentID
+	return []string{"-v", rtDir + ":" + rtDir}
+}
+
+// applyImageAgentRuntime extends a `docker run` argv with the agent runtime
+// pieces an image-backed exec needs to stay a usable agent (DF-BUNKER-77):
+// --user <agent uid> plus the /run/bunker/<id> bind. userFlag must be the
+// already-resolved `--user <uid>` element ("" for rootless-docker-in-docker
+// mode, which manages its own user namespace and must not be constrained).
+func applyImageAgentRuntime(runArgv []string, userFlag string) []string {
+	if userFlag != "" {
+		runArgv = append(runArgv, strings.Fields(userFlag)...)
+	}
+	return runArgv
+}
+
 // containerRunPrefix returns the leading `docker run` argv for an image-backed
 // exec (GAP-069): --rm so a one-shot exec never leaves a container behind, plus
 // the containment disclosure marker as a container env var when enabled, so the
@@ -1359,8 +1419,22 @@ func buildAgentImageExecCommand(agentID, userHome, command string, args []string
 	// The agent home is bind-mounted at the SAME absolute path and used as the
 	// working directory, so paths that are valid in the host context (the
 	// agent's home, files an operator just copied in) stay valid in-container.
+	// DF-BUNKER-77: the container must be a usable AGENT, not a root jail —
+	// the run carries the agent user's UID (--user) and the agent runtime
+	// directory is bind-mounted at its absolute host path so the env file the
+	// outer shell sources and the rootless docker.sock (DOCKER_HOST) exist
+	// inside the container at the same paths as in the host context. An
+	// unresolvable agent user fails the exec loudly (the old shape silently
+	// executed as container root); empty-user images keep only the bind.
+	userFlag, ok := agentUserFlag(agentID)
+	if !ok {
+		return "printf %s\\n 'image exec refused: agent user bunker-'" + shellQuoteSingle(agentID) + "' could not be resolved' >&2; exit 1"
+	}
 	runArgv := containerRunPrefix(disclosed)
-	runArgv = append(runArgv, "-v", userHome+":"+userHome, "-w", userHome, imageRef, "sh", "-lc",
+	runArgv = append(runArgv, "-v", userHome+":"+userHome, "-w", userHome)
+	runArgv = append(runArgv, agentRuntimeDirBind(agentID)...)
+	runArgv = applyImageAgentRuntime(runArgv, userFlag)
+	runArgv = append(runArgv, imageRef, "sh", "-lc",
 		shellQuoteSingle(remoteCmd))
 
 	return fmt.Sprintf("set -a; [ -f %s ] && . %s 2>/dev/null; set +a; env PATH=%s DOCKER_HOST=unix://%s TMPDIR=%s %ssh -c %s",
@@ -1418,7 +1492,7 @@ func buildAgentRawExecCommand(agentID, userHome, command string, args []string, 
 // so no shell metacharacter is interpreted a layer earlier than it was before.
 // The home directory is NOT bind-mounted in raw mode — raw mode never sourced
 // the agent env file either; use shell mode when host paths are needed.
-func buildAgentImageRawExecCommand(agentID, userHome, command string, args []string, disclosed bool, imageRef string) []string {
+func buildAgentImageRawExecCommand(agentID, userHome, command string, args []string, disclosed bool, imageRef string) ([]string, error) {
 	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
 	// GAP-075: TMPDIR is the enforced private /tmp of the agent's session
 	// (pam_namespace binds the session's own /tmp instance there). The legacy
@@ -1436,9 +1510,24 @@ func buildAgentImageRawExecCommand(agentID, userHome, command string, args []str
 	if disclosed {
 		argv = append(argv, containmentSandboxEnv)
 	}
-	argv = append(argv, containerRunPrefix(disclosed)...)
+	// DF-BUNKER-77: same agent-runtime contract as shell mode — the run carries
+	// the agent UID and the /run/bunker/<id> bind (docker.sock visible for
+	// rootless docker; the env file is inert here because raw mode never
+	// sources it, but the socket bind is required and harmless without it).
+	// Raw mode's no-intermediate-shell contract is unchanged: docker still
+	// receives command+args verbatim after the image ref.
+	userFlag, ok := agentUserFlag(agentID)
+	if !ok {
+		return nil, errAgentUserUnresolved
+	}
+	runArgv := containerRunPrefix(disclosed)
+	// Raw mode still binds NO home (its no-shell contract never needed host
+	// paths); only the agent runtime directory joins the run.
+	runArgv = append(runArgv, agentRuntimeDirBind(agentID)...)
+	runArgv = applyImageAgentRuntime(runArgv, userFlag)
+	argv = append(argv, runArgv...)
 	argv = append(argv, imageRef, command)
-	return append(argv, args...)
+	return argv, nil
 }
 
 // buildAgentScriptCommand writes scriptContent to a remote file and returns the
@@ -1492,8 +1581,20 @@ func buildAgentImageScriptCommand(agentID, userHome, scriptContent string, discl
 	}
 	escaped := strings.ReplaceAll(scriptContent, "'", "'\\''")
 
+	// DF-BUNKER-77: the container must be a usable AGENT — the run carries the
+	// agent user's UID (--user) and the agent runtime directory is bind-mounted
+	// at its absolute host path (env + docker.sock visible in-container). An
+	// unresolvable agent user fails the exec loudly; empty-user images keep
+	// only the bind. The upload flow above is untouched.
+	userFlag, ok := agentUserFlag(agentID)
+	if !ok {
+		return "printf %s\\n 'image exec refused: agent user bunker-'" + shellQuoteSingle(agentID) + "' could not be resolved' >&2; exit 1"
+	}
 	runArgv := containerRunPrefix(disclosed)
-	runArgv = append(runArgv, "-v", userHome+":"+userHome, imageRef, "sh", shellQuoteSingle(scriptPath))
+	runArgv = append(runArgv, "-v", userHome+":"+userHome)
+	runArgv = append(runArgv, agentRuntimeDirBind(agentID)...)
+	runArgv = applyImageAgentRuntime(runArgv, userFlag)
+	runArgv = append(runArgv, imageRef, "sh", shellQuoteSingle(scriptPath))
 
 	return fmt.Sprintf(
 		"mkdir -p %q && cat > %q <<'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %q && set -a; [ -f %s ] && . %s 2>/dev/null; set +a; env PATH=%s DOCKER_HOST=unix://%s TMPDIR=%s %s%s",
@@ -1562,7 +1663,10 @@ func buildExecSSHRawCommandImage(ctx context.Context, agentID, sshKeyPath, userH
 	if imageRef == "" {
 		return buildExecSSHRawCommand(ctx, agentID, sshKeyPath, userHome, command, args, disclosed)
 	}
-	remoteArgv := buildAgentImageRawExecCommand(agentID, userHome, command, args, disclosed, imageRef)
+	remoteArgv, err := buildAgentImageRawExecCommand(agentID, userHome, command, args, disclosed, imageRef)
+	if err != nil {
+		return exec.CommandContext(ctx, "false")
+	}
 	return buildSSHBaseCommand(ctx, agentID, sshKeyPath, remoteArgv...)
 }
 
