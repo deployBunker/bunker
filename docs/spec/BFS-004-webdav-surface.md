@@ -279,7 +279,7 @@ is a test, not a promise (§11 A-9).
 | `rev-parse` | `rev?` (default `HEAD`) | `result.text` (one line), `result.rev` |
 | `ls-files` | `path?`, `ignored?` | `result.entries`: `[{path, mode, sha, stage}]` (names + index metadata only, no file reads) |
 | `snapshot` | `path?`, `depth` (`1`\|`infinity`), `include_hash` (default **false**) | `result.entries`: `[{path, type, size, mtime_unix_ms, mode, hash?}]` — one call replaces the refused `PROPFIND Depth: infinity` for our own client (and backs the FUSE `READDIRPLUS` collapse BFS-003 §3(d) describes); `hash` is present only when `include_hash` is true |
-| `events` | `since_seq?` | `result.events`: the poll form of E-6 |
+| `events` | `since_seq?` — **present**: the cursor this client's view was minted at; **absent**: "I hold no observation" (E-6, BFS-063) | `result.events`: the poll form of E-6 |
 | `watch` | `paths?`, `since_seq?` | **streams** — see E-6; it is the one op whose response is not a single envelope |
 
 - **Error shape (same envelope, non-2xx status):** `400` + `op_unknown` / `extension_op_missing` / `bad_arguments`;
@@ -327,6 +327,18 @@ extension *every other extension is discovered through*, and it is deliberately 
   `seq` is monotonic per tree; a client reconnects with `since_seq` and gets what it missed — which is also how the
   polling form works: `X-Bunker-Op: events` with the same argument returns the pending events as a single envelope and
   then closes.
+
+  **`since_seq` is a resume DECLARATION, not a number (BFS-063).** Present, it says *my view is the tree as of this
+  cursor*, and the cursor is one the server minted — the whole-tree `snapshot` answer carries `result.head_seq`, the
+  ledger's cursor read **before** its observation walk, precisely so that a change the walk raced lands above the
+  cursor and is delivered rather than skipped. Absent, it says *I hold no observation of this tree*, which is a
+  different statement and gets a different answer: `overflow`. The server cannot tell a client that bound with a
+  snapshot from one that has observed nothing by looking at a cursor of `0`, because both used to send it; the
+  declaration is what makes the distinction. Two consequences follow, and both are the honesty rule of §5 rather than
+  a convenience: no answer may stand in for a gap, so a client that has observed nothing is never handed an empty tail
+  that claims coverage it does not have; and a client whose cursor is `0` while the journal has already rotated past
+  `seq 1` is answered `overflow` too, because a retained tail is self-describing only for a client whose own
+  monotonicity check can fire — and that check is guarded on a non-zero cursor.
 
   **Three declarations BFS-014 added, because the client's own rules depend on them** (BFS-005 §4.4's 90 s idle
   switch needs a number; §4.2's per-path drop loop needs a bound; a per-line identity lets the client detect a tree

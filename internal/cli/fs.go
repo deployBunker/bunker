@@ -566,6 +566,19 @@ func printStatus(w io.Writer, st *fsclient.Status) {
 		fmt.Fprintf(w, " last_event_age_ms=%d", *inv.LastEventAgeMS)
 	}
 	fmt.Fprintln(w)
+	// The resume declaration (BFS-063), for the one mechanism whose coverage
+	// rests on it: whether this mount holds an observation of the tree at all,
+	// and the cursor it presents. A mount that holds none is that moment's honest
+	// state — the server is answering the interval it cannot vouch for instead of
+	// a tail that would claim coverage — and a person reading the status must be
+	// able to see it, not only a JSON consumer.
+	if inv.Mechanism == fsclient.MechanismEvents {
+		if inv.ResumeSeq != nil {
+			fmt.Fprintf(w, "resume       : seq=%d (the cursor this view was minted at)\n", *inv.ResumeSeq)
+		} else {
+			fmt.Fprintln(w, "resume       : none — this mount holds no observation yet, so the server answers the interval it cannot vouch for")
+		}
+	}
 	// On the revision tier, say what the revision can and cannot vouch for: a
 	// git-tree mount whose last-resort poll is HEAD-only must not read as
 	// "everything is current" (BFS-048; the gap is a reported fact, not a

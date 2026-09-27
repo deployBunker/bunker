@@ -40,6 +40,13 @@ type Snapshot struct {
 	calls     int
 	truncated bool
 	taken     time.Time
+	// obsSeq/obsOK are the ledger cursor this observation was MINTED at by the
+	// server (`result.head_seq`, BFS-063). They are set only for a whole-tree,
+	// untruncated snapshot-op answer: that is the one observation a client may
+	// declare as its resume point on the events poll, and for the PROPFIND
+	// fallback the server minted nothing, so there is nothing to declare.
+	obsSeq int64
+	obsOK  bool
 }
 
 // Snapshot sources, reported so a caller can tell the one-call path from the
@@ -68,7 +75,15 @@ type SnapshotArgs struct {
 }
 
 type snapshotResult struct {
-	Count   int `json:"count"`
+	Count int `json:"count"`
+	// HeadSeq is the MINTED resume point (BFS-063): the ledger cursor the server
+	// held when this observation began. A client that holds this answer presents
+	// it as `since_seq` on the events poll, which is how the server can tell a
+	// client whose interval is covered from one that has observed nothing —
+	// the distinction a cursor of 0 alone cannot express. It is a pointer
+	// because a build that predates the field does not send it, and a client
+	// must not then claim a cursor it was never issued.
+	HeadSeq *int64 `json:"head_seq"`
 	Entries []struct {
 		Path        string `json:"path"`
 		Type        string `json:"type"`
@@ -118,6 +133,12 @@ func (c *Client) SnapshotTree(ctx context.Context, root string, includeHash bool
 	snap.source = SourceSnapshotOp
 	snap.truncated = env.Truncated
 	snap.calls = int(c.Requests() - before)
+	// The minted resume point (BFS-063). A TRUNCATED answer is not a whole-tree
+	// observation, so it mints nothing a client may declare: claiming coverage
+	// from a view that is missing paths is the same false claim in a new place.
+	if !env.Truncated && res.HeadSeq != nil {
+		snap.obsSeq, snap.obsOK = *res.HeadSeq, true
+	}
 	if !env.Truncated {
 		// A depth=infinity answer is the whole subtree, so every listing in it
 		// is known. A TRUNCATED answer is not: the missing directories' listings
@@ -337,6 +358,23 @@ func (s *Snapshot) Count() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.nodes)
+}
+
+// ObservationCursor reports the ledger cursor this observation was minted at,
+// and whether it was minted at all (BFS-063). It is the resume point a caller
+// reports to its invalidator via Invalidator.Observed: presenting it on the
+// events poll is how a client says "my view is the tree as of this cursor",
+// which is the only thing that buys a quiet answer — a client that presents no
+// cursor at all is told the interval is unvouched, because the server cannot
+// vouch for a view it knows nothing about.
+//
+// false is returned for anything that is not a whole-tree, untruncated
+// snapshot-op answer: the PROPFIND fallback was never minted by the server, and
+// a truncated view is missing paths it does not know are missing.
+func (s *Snapshot) ObservationCursor() (int64, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.obsSeq, s.obsOK
 }
 
 // Source names where this tree came from (SourceSnapshotOp / SourcePropfindWalk).

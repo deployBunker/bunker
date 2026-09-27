@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -64,15 +65,39 @@ func pollEvents(t *testing.T, h *Handler, body string) eventsJSON {
 	return out
 }
 
-// seedWithSnapshot takes the whole-tree snapshot a mount takes at bind. It is
-// the observation the ledger is allowed to adopt as its baseline.
-func seedWithSnapshot(t *testing.T, h *Handler) {
+// seedWithSnapshot takes the whole-tree snapshot a mount takes at bind — the
+// observation the ledger is allowed to adopt as its baseline — and returns the
+// ledger cursor the surface MINTED for it (`result.head_seq`). That cursor is
+// the resume point a client holding this observation presents on every poll
+// (BFS-063); its absence would leave a client with no way to say what its view
+// corresponds to, so it is a failure and not a detail.
+func seedWithSnapshot(t *testing.T, h *Handler) int64 {
 	t.Helper()
 	rec := do(t, h, "POST", "/dav/", map[string]string{"X-Bunker-Op": "snapshot"},
 		`{"depth":"infinity","include_hash":false}`)
 	if rec.Code != 200 {
 		t.Fatalf("snapshot -> %d %s", rec.Code, rec.Body.String())
 	}
+	var env struct {
+		Result struct {
+			HeadSeq *int64 `json:"head_seq"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatalf("snapshot envelope did not parse: %v (%s)", err, rec.Body.String())
+	}
+	if env.Result.HeadSeq == nil {
+		t.Fatalf("the snapshot answer minted no head_seq, so a client that takes it cannot declare what it holds: %s", rec.Body.String())
+	}
+	return *env.Result.HeadSeq
+}
+
+// pollAt is one poll presenting the cursor a client holds. A request with NO
+// since_seq at all is a different request — it declares that the client holds no
+// observation — and the arms that mean the latter write `{}` deliberately.
+func pollAt(t *testing.T, h *Handler, cursor int64) eventsJSON {
+	t.Helper()
+	return pollEvents(t, h, `{"since_seq":`+strconv.FormatInt(cursor, 10)+`}`)
 }
 
 func eventNames(evs []eventLine) []string {
@@ -98,32 +123,54 @@ func TestEventsOpDeclaredBounds(t *testing.T) {
 	}
 }
 
-// TestEventsOpSnapshotSeedMakesTheFirstPollHonest is the seeding rule, with its
-// negative control in the same test: a WHOLE-TREE snapshot is an observation and
-// becomes the baseline (so a quiet first poll honestly answers "nothing
-// changed"), while a SUB-TREE snapshot is not and must not be adopted as one
-// (the ledger has observed nothing, and says so with `overflow`).
+// TestEventsOpSnapshotSeedMakesTheFirstPollHonest is the seeding rule and the
+// case-separation rule in one place (BFS-063). A WHOLE-TREE snapshot is an
+// observation the ledger adopts as its baseline, and the client that took it
+// holds the cursor the surface minted — so its poll is answered the retained
+// tail and a quiet tree honestly answers "nothing changed" (BFS-026's rule, and
+// the arm that must not be traded for a blanket overflow). A SUB-TREE snapshot is
+// not a baseline, and a client that has observed NOTHING presents no cursor at
+// all: the ledger cannot vouch for any interval for it and answers `overflow`.
+//
+// The pair is the point: the same quiet tree, the same request shape, and the
+// answer differs only by the declaration. Delete the declaration's clause in
+// pollEvents and the second arm goes back to the empty tail this row was filed
+// for.
 func TestEventsOpSnapshotSeedMakesTheFirstPollHonest(t *testing.T) {
-	t.Run("whole tree snapshot seeds the baseline", func(t *testing.T) {
+	t.Run("a whole-tree snapshot buys quiet, and nothing else does", func(t *testing.T) {
 		h := newTestHandler(t)
-		seedWithSnapshot(t, h)
+		cursor := seedWithSnapshot(t, h)
 
-		got := pollEvents(t, h, `{}`)
+		// The client that took the snapshot: the interval before it is genuinely
+		// covered, so quiet is CORRECT and an overflow here would be unearned.
+		got := pollAt(t, h, cursor)
 		if len(got.Result.Events) != 0 {
 			t.Fatalf("a quiet tree after a whole-tree snapshot produced events: %+v", got.Result.Events)
 		}
-		if got.Result.HeadSeq != 0 {
-			t.Fatalf("head_seq = %d with a seeded, quiet ledger, want 0", got.Result.HeadSeq)
+		if got.Result.HeadSeq != cursor {
+			t.Fatalf("head_seq = %d with a seeded, quiet ledger, want the minted cursor %d", got.Result.HeadSeq, cursor)
 		}
 		if got.Result.Scanned < 4 {
 			t.Fatalf("scanned = %d, want the fixture tree's entries", got.Result.Scanned)
+		}
+
+		// The client that has observed NOTHING: same tree, same quiet state, and
+		// no cursor to present. It must be told the interval is unvouched —
+		// today's answer is the empty tail, which claims a coverage it does not
+		// have (the freshly-bound client BFS-063 was filed for).
+		fresh := pollEvents(t, h, `{}`)
+		if len(fresh.Result.Events) != 1 || fresh.Result.Events[0].Event != eventOverflow {
+			t.Fatalf("a client that has observed nothing was answered %+v, want one overflow", fresh.Result.Events)
+		}
+		if len(fresh.Result.Events[0].Paths) != 0 {
+			t.Fatalf("the unvouched answer carried paths: %v", fresh.Result.Events[0].Paths)
 		}
 
 		// The edit on the agent. This is the only thing that moves; nothing in
 		// this test touches the surface.
 		mustWrite(t, filepath.Join(h.Root(), "src", "main.go"), "package main\n\nfunc main() { /* edited */ }\n")
 
-		got = pollEvents(t, h, `{"since_seq":0}`)
+		got = pollAt(t, h, cursor)
 		if len(got.Result.Events) != 1 {
 			t.Fatalf("one edited path produced %d events: %+v", len(got.Result.Events), got.Result.Events)
 		}
@@ -146,7 +193,7 @@ func TestEventsOpSnapshotSeedMakesTheFirstPollHonest(t *testing.T) {
 
 		// Catching up is silent: the same cursor must not be served the same
 		// event twice.
-		again := pollEvents(t, h, `{"since_seq":1}`)
+		again := pollAt(t, h, 1)
 		if len(again.Result.Events) != 0 {
 			t.Fatalf("a caught-up cursor was served %d events again: %+v", len(again.Result.Events), again.Result.Events)
 		}
@@ -201,7 +248,7 @@ func TestEventsOpFirstPollDeclaresThePriorRangeLost(t *testing.T) {
 // client has to act on, in one observation.
 func TestEventsOpReportsAddedRemovedAndReplacedPaths(t *testing.T) {
 	h := newTestHandler(t)
-	seedWithSnapshot(t, h)
+	cursor := seedWithSnapshot(t, h)
 
 	mustWrite(t, filepath.Join(h.Root(), "src", "added.go"), "package main\n")
 	mustWrite(t, filepath.Join(h.Root(), "src", "util.go"), "package main\n\nfunc util() { /* replaced */ }\n")
@@ -209,7 +256,7 @@ func TestEventsOpReportsAddedRemovedAndReplacedPaths(t *testing.T) {
 		t.Fatalf("remove: %v", err)
 	}
 
-	got := pollEvents(t, h, `{}`)
+	got := pollAt(t, h, cursor)
 	if len(got.Result.Events) != 1 || got.Result.Events[0].Event != eventInvalidate {
 		t.Fatalf("want one invalidate, got %+v", got.Result.Events)
 	}
@@ -245,7 +292,7 @@ func TestEventsOpReportsAddedRemovedAndReplacedPaths(t *testing.T) {
 func TestEventsOpSeesAnEditThatPreservesSizeAndMtime(t *testing.T) {
 	h := newTestHandler(t)
 	target := filepath.Join(h.Root(), "src", "util.go")
-	seedWithSnapshot(t, h)
+	cursor := seedWithSnapshot(t, h)
 
 	fi, err := os.Stat(target)
 	if err != nil {
@@ -278,7 +325,7 @@ func TestEventsOpSeesAnEditThatPreservesSizeAndMtime(t *testing.T) {
 		t.Fatalf("the trap did not hold: size %d/%d mtime %v/%v", before.Size(), now.Size(), before.ModTime(), now.ModTime())
 	}
 
-	got := pollEvents(t, h, `{}`)
+	got := pollAt(t, h, cursor)
 	if len(got.Result.Events) != 1 || got.Result.Events[0].Event != eventInvalidate {
 		t.Fatalf("a same-size, mtime-preserved edit was not reported: %+v", got.Result.Events)
 	}
@@ -296,11 +343,11 @@ func TestEventsOpSpillsToOverflowAboveThePathCap(t *testing.T) {
 	t.Cleanup(func() { eventsMaxPathsPerEvent = old })
 
 	h := newTestHandler(t)
-	seedWithSnapshot(t, h)
+	cursor := seedWithSnapshot(t, h)
 	for i := 0; i < 5; i++ {
 		mustWrite(t, filepath.Join(h.Root(), "burst", "f"+string(rune('a'+i))+".txt"), "burst\n")
 	}
-	got := pollEvents(t, h, `{}`)
+	got := pollAt(t, h, cursor)
 	if len(got.Result.Events) != 1 || got.Result.Events[0].Event != eventOverflow {
 		t.Fatalf("a burst past the cap produced %+v, want one overflow", got.Result.Events)
 	}
@@ -328,31 +375,103 @@ func TestEventsOpReportsATruncatedObservationAsOverflow(t *testing.T) {
 }
 
 // TestEventsOpStaleCursorGetsTheRetainedEvents pins the journal bound's
-// behaviour: a cursor older than the retained history is answered with what IS
-// retained, whose first seq is a gap the client's own rule already reads as
-// knowledge lost (BFS-005 §4.1). Silence would be the alternative, and silence
-// is a claim that nothing was missed.
+// behaviour for a client that HOLDS a cursor: a cursor older than the retained
+// history is answered with what IS retained, whose first seq is a gap the
+// client's own rule already reads as knowledge lost (BFS-005 §4.1, and
+// SPEC-watcher-capability §2.2/§5.3 document it). Silence would be the
+// alternative, and silence is a claim that nothing was missed.
+//
+// The difference from the cursor-0 case below is deliberate and is the whole of
+// BFS-063's rule: this tail is admissible BECAUSE the client can recognise it as
+// a tail — its first seq is above `cursor+1`, which is exactly what the client's
+// monotonicity check tests. At cursor 0 that check is disabled and the very same
+// bytes are a silent gap.
 func TestEventsOpStaleCursorGetsTheRetainedEvents(t *testing.T) {
 	old := eventsJournalEvents
 	eventsJournalEvents = 2
 	t.Cleanup(func() { eventsJournalEvents = old })
 
 	h := newTestHandler(t)
-	seedWithSnapshot(t, h)
+	cursor := seedWithSnapshot(t, h)
 	target := filepath.Join(h.Root(), "README.md")
 	for i := 0; i < 4; i++ {
 		mustWrite(t, target, "# fixture "+string(rune('a'+i))+"\n")
-		if got := pollEvents(t, h, `{"since_seq":0}`); len(got.Result.Events) == 0 {
+		got := pollAt(t, h, cursor)
+		if len(got.Result.Events) == 0 {
 			t.Fatalf("change %d produced no event", i)
 		}
+		cursor = got.Result.HeadSeq
 	}
 	// The cursor is now far behind the retained window.
-	got := pollEvents(t, h, `{"since_seq":1}`)
+	got := pollAt(t, h, 1)
 	if len(got.Result.Events) == 0 {
 		t.Fatal("a cursor below the retained window was answered with silence")
 	}
 	if got.Result.Events[0].Seq <= 2 {
 		t.Fatalf("the answer's first seq = %d: the missed range is not visible as a gap", got.Result.Events[0].Seq)
+	}
+	if got.Result.Events[0].Event == eventOverflow {
+		t.Fatalf("a client that holds a cursor got %+v; the retained tail IS self-describing for it", got.Result.Events)
+	}
+}
+
+// TestEventsOpCursorZeroBehindTheJournalIsUnvouched is BFS-063's second forced
+// case, measured rather than argued: the client holds the cursor it was minted
+// at bind (0), the journal has since rotated past seq 1, and the retained tail
+// therefore starts ABOVE the interval the client asked about. For every cursor
+// above zero that tail is self-describing; at zero it is the one answer the
+// client has no way to recognise as a gap, because its own rule is guarded on a
+// non-zero cursor (`invalidate.go`: `ev.Seq > i.seq+1 && i.seq != 0`). So the
+// poll must say so itself, and `overflow` is the channel's word for it.
+//
+// The arm states its negative control in the assertion itself: the SAME ledger
+// answers the adjacent cursors from the retained tail, so the overflow is
+// attributable to cursor 0 and not to the rotation.
+func TestEventsOpCursorZeroBehindTheJournalIsUnvouched(t *testing.T) {
+	old := eventsJournalEvents
+	eventsJournalEvents = 2
+	t.Cleanup(func() { eventsJournalEvents = old })
+
+	h := newTestHandler(t)
+	cursor := seedWithSnapshot(t, h)
+	target := filepath.Join(h.Root(), "README.md")
+	for i := 0; i < 4; i++ {
+		mustWrite(t, target, "# fixture "+string(rune('a'+i))+"\n")
+		got := pollAt(t, h, cursor)
+		if len(got.Result.Events) == 0 {
+			t.Fatalf("change %d produced no event", i)
+		}
+		cursor = got.Result.HeadSeq
+	}
+	// The journal now retains seqs 3 and 4: seq 1 — and with it the interval
+	// this client's bind cursor names — is gone.
+	if cursor < 4 {
+		t.Fatalf("the fixture did not rotate the journal: head = %d", cursor)
+	}
+
+	blind := pollAt(t, h, 0)
+	if len(blind.Result.Events) != 1 || blind.Result.Events[0].Event != eventOverflow {
+		t.Fatalf("cursor 0 with a rotated journal was answered %+v, want one overflow", blind.Result.Events)
+	}
+	if len(blind.Result.Events[0].Paths) != 0 {
+		t.Fatalf("the overflow carried paths: %v", blind.Result.Events[0].Paths)
+	}
+	if blind.Result.Events[0].Seq <= 0 {
+		t.Fatalf("the notice is at seq %d: a client presenting 0 is right to discard it as a duplicate", blind.Result.Events[0].Seq)
+	}
+
+	// The control: cursors INSIDE the retained window still get the tail, so
+	// the arm measures the cursor-0 rule and not the rotation.
+	for _, c := range []int64{2, 3} {
+		got := pollAt(t, h, c)
+		if len(got.Result.Events) == 0 {
+			t.Fatalf("cursor %d was answered with silence", c)
+		}
+		for _, ev := range got.Result.Events {
+			if ev.Event == eventOverflow {
+				t.Fatalf("cursor %d got an overflow with no gap above it: %+v", c, got.Result.Events)
+			}
+		}
 	}
 }
 

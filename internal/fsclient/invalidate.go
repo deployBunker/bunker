@@ -202,6 +202,23 @@ type Invalidator struct {
 	// revSeen is the revision the revision poll observed last, so a change is
 	// detectable with one cheap request per interval.
 	revSeen string
+	// obsSeq/obsOK are the observation this client HOLDS (BFS-063): the ledger
+	// cursor a whole-tree answer was minted at, reported by the caller through
+	// Observed. obsOK false is the honest state of a client that has observed
+	// nothing — including one whose resync has dropped the view and whose
+	// re-observation has not answered yet — and it is what makes the poll
+	// present NO cursor, which the server answers with the interval it cannot
+	// vouch for rather than a tail that claims coverage the client does not
+	// have.
+	obsSeq int64
+	obsOK  bool
+	// noticeSeq/noticeOK are the cursor of the last `overflow` the server
+	// declared. An observation the server did NOT mint (the PROPFIND fallback,
+	// or a build that predates the field) adopts this cursor: the notice was
+	// answered before the observation was taken, so the tree that observation
+	// saw is at least as new as the ledger state the notice named.
+	noticeSeq int64
+	noticeOK  bool
 }
 
 // NewInvalidator builds an invalidator. It does not connect: Run does.
@@ -238,6 +255,15 @@ type InvalidationState struct {
 	DroppedPaths   int64         `json:"paths_dropped_total"`
 	Reason         string        `json:"reason,omitempty"`
 	Available      bool          `json:"channel_available"`
+	// ResumeSeq is the resume point this client PRESENTS (BFS-063): the ledger
+	// cursor its view was minted at, or absent when it holds no observation —
+	// the state in which the server answers the interval it cannot vouch for
+	// instead of a tail that would claim coverage the client does not have. It
+	// is reported because the difference between "my view is current" and "I am
+	// being told I cannot be vouched for" must be visible to the owner, and
+	// because a client stuck without an observation is otherwise
+	// indistinguishable from a quiet, healthy channel.
+	ResumeSeq *int64 `json:"resume_seq,omitempty"`
 	// RevKind, RevVouchesFor and RevGap are the revision mechanism's coverage
 	// report (SPEC-watcher-capability §7.2 R-V4): which kind the token in force
 	// is (DECLARED by the capability document, never inferred), which class of
@@ -290,6 +316,13 @@ func (i *Invalidator) State() InvalidationState {
 		st.LastEventAgeMS = &age
 		st.LastEventAge = timeSince(i.lastEvent)
 	}
+	if i.obsOK {
+		cursor := i.obsSeq
+		if i.seq > cursor {
+			cursor = i.seq
+		}
+		st.ResumeSeq = &cursor
+	}
 	if i.mode == ModePoll {
 		ms := i.opt.PollInterval.Milliseconds()
 		st.PollIntervalMS = &ms
@@ -330,6 +363,13 @@ func (i *Invalidator) Resync(reason string) {
 	i.mu.Lock()
 	i.resyncs++
 	i.reason = reason
+	// A resync drops everything and re-establishes the view, so the observation
+	// that was current a moment ago no longer describes what this client holds:
+	// the caller reports the new one through Observed. Until it does, this client
+	// declares NO cursor rather than a claim it can no longer back — the whole
+	// point of BFS-063 being that a claim the server cannot check is worse than
+	// no claim at all.
+	i.obsOK = false
 	i.mu.Unlock()
 	if i.opt.OnDrop != nil {
 		i.opt.OnDrop(nil, true)
@@ -337,6 +377,47 @@ func (i *Invalidator) Resync(reason string) {
 	if i.opt.OnResync != nil {
 		i.opt.OnResync(reason)
 	}
+}
+
+// Observed records that the caller has (re-)established its view of the served
+// tree, and where. The mount calls it after every successful whole-tree snapshot
+// and after the PROPFIND walk that replaces it (BFS-063).
+//
+// `minted` distinguishes the two, because they are not equally knowable: a
+// snapshot-op answer carries a cursor the SERVER minted for this observation, so
+// presenting it is a claim the server can check; the PROPFIND fallback was never
+// minted, so this client adopts the cursor of the `overflow` notice that
+// provoked the re-observation — sound for the one reason that matters, that the
+// observation happened AFTER the notice, so the tree it saw is at least as new
+// as the ledger state the notice named. With neither, the client holds nothing it
+// can declare, and the next poll says exactly that.
+func (i *Invalidator) Observed(cursor int64, minted bool) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	switch {
+	case minted:
+		i.obsSeq, i.obsOK = cursor, true
+	case i.noticeOK:
+		i.obsSeq, i.obsOK = i.noticeSeq, true
+	default:
+		i.obsSeq, i.obsOK = 0, false
+	}
+}
+
+// resumePoint reports the declaration this client presents on the next poll: the
+// cursor it holds, and whether it holds one at all. The cursor is the highest seq
+// this client has observed — the observation's own cursor, or a later event it
+// has already applied (BFS-041 §3.1: the cursor advances on every line).
+func (i *Invalidator) resumePoint() (int64, bool) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if !i.obsOK {
+		return 0, false
+	}
+	if i.obsSeq > i.seq {
+		return i.obsSeq, true
+	}
+	return i.seq, true
 }
 
 // apply handles one event. Returns an error only for an unrecoverable stream
@@ -375,6 +456,15 @@ func (i *Invalidator) apply(ev Event) {
 	i.mu.Unlock()
 
 	if ev.Event == EventOverflow {
+		// The notice names a cursor, and it is recorded BEFORE the resync that
+		// follows: the caller's re-observation may have nothing minted for it
+		// (the PROPFIND fallback), and this notice is the freshest cursor the
+		// server has named at a moment this client can prove it observed past.
+		i.mu.Lock()
+		if ev.Seq > 0 {
+			i.noticeSeq, i.noticeOK = ev.Seq, true
+		}
+		i.mu.Unlock()
 		i.Resync("overflow: the server declared knowledge lost")
 		return
 	}
@@ -835,14 +925,24 @@ func (i *Invalidator) pollLoop(ctx context.Context) error {
 
 // pollEventsOnce is the declared poll form of the channel (X-Bunker-Op: events):
 // the same event objects, the same per-tree seq, one call per interval.
+//
+// The request declares what this client HOLDS (BFS-063): `since_seq` at the
+// highest cursor it has observed, or NO `since_seq` at all when it has observed
+// nothing. The two are different requests and get different answers — a cursor
+// buys the retained tail from that point, while no cursor is answered with the
+// interval the server cannot vouch for. Presenting a cursor this client does not
+// hold would be the dishonest direction: it would buy a quiet answer for a view
+// that does not exist, which is exactly the silent gap BFS-063 was filed for.
 func (i *Invalidator) pollEventsOnce(ctx context.Context) *OpError {
-	i.mu.Lock()
-	since := i.seq
-	i.mu.Unlock()
+	since, hold := i.resumePoint()
 	var out struct {
 		Events []Event `json:"events"`
 	}
-	env, err := i.client.Op(ctx, "events", map[string]any{"since_seq": since}, &out)
+	args := map[string]any{}
+	if hold {
+		args["since_seq"] = since
+	}
+	env, err := i.client.Op(ctx, "events", args, &out)
 	if err != nil {
 		return err
 	}
