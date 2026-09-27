@@ -759,7 +759,7 @@ func (m *Mount) Status() fsclient.Status {
 	st.Append = fsclient.AppendState{
 		PublishedTotal: m.appendPublished.Load(),
 		RefusedTotal:   m.appendRefused.Load(),
-		MaxFileBytes:   appendBaseMax,
+		MaxFileBytes:   appendBound,
 	}
 	if v, ok := m.appendLast.Load().(string); ok {
 		st.Append.Last = v

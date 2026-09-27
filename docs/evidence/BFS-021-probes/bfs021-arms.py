@@ -53,6 +53,10 @@ TARGET = "src/target.txt"
 NEWFILE = "src/fresh.txt"
 BASE = b"BFS-021-BASE-CONTENT-" + b"A" * 60 + b"\n"
 TAIL = b"APPENDED-TAIL-0123456789\n"
+# EXTRA_CHUNKS: the chunks a mode writes AFTER the first one. Only `multi` writes
+# more than one inside a single open, and it is the mode that measures a later
+# publication on the SAME handle.
+EXTRA_CHUNKS = {"multi": [b"SECOND-CHUNK\n", b"THIRD-CHUNK\n"]}
 
 
 def sha(b: bytes) -> str:
@@ -213,7 +217,14 @@ def main() -> int:
     time.sleep(0.6)  # let the publication reach the server
     srv = server()
     srv_sha = sha(srv)
-    want = BASE + TAIL
+    # The chunks this mode writes, in order. `multi` writes three inside ONE open,
+    # and each of them is closed (a `printf >&3` duplicates fd 3 onto fd 1 and
+    # closes it) — which is ALSO a publication point, so this mode is the one that
+    # measures that a later publication on the same handle carries the earlier
+    # one's bytes instead of refusing on a stale precondition.
+    extra = EXTRA_CHUNKS.get(args.mode, [])
+    want = BASE + TAIL + b"".join(extra)
+    want_publications = 1 + len(extra)
     tail_present = srv.find(TAIL) >= 0
     original_intact = srv.startswith(BASE)
     tail_count = srv.count(TAIL)
@@ -262,8 +273,9 @@ def main() -> int:
     check(landed, "the append SUCCEEDS (no error reaches the caller)")
     check(original_intact, "the original prefix is intact byte-for-byte")
     check(tail_present, "the appended bytes ARE in the file")
-    check(srv == want, f"the read-back is byte-for-byte original+tail: got {len(srv)} B {srv_sha[:16]}… want {len(want)} B {sha(want)[:16]}…")
-    check(tail_count == 1, f"the tail appears exactly once (a retry must not double-apply it), saw {tail_count}")
+    check(srv == want, f"the read-back is byte-for-byte original+every chunk: got {len(srv)} B {srv_sha[:16]}… want {len(want)} B {sha(want)[:16]}…")
+    for c in [TAIL] + extra:
+        check(srv.count(c) == 1, f"the chunk {c!r} appears exactly once (a retry must not double-apply it), saw {srv.count(c)}")
     # and the same bytes must be visible THROUGH the mount, not only on disk
     try:
         back = read_back()
@@ -277,9 +289,12 @@ def main() -> int:
         gets = [r for r in mine if r.get("method") == "GET"]
         print(f"  requests for this append  : {len(puts)} PUT, {len(gets)} GET")
         print(f"  PUT details               : {json.dumps([{k: r.get(k) for k in ('status','req_bytes','if_match','noop','verdict')} for r in puts])}")
-        check(len(puts) == 1, f"ONE publication for one append (never one request per chunk), saw {len(puts)}")
+        check(len(puts) == want_publications,
+              f"ONE publication per close ({want_publications} here), never one request per chunk — saw {len(puts)}")
+        check(all(isinstance(r.get("status"), int) and 200 <= r["status"] < 300 for r in puts),
+              f"every publication landed (no 412 on a handle's own later publication): {[r.get('status') for r in puts]}")
     print()
-    print(f"RESULT: append landed — {len(srv)} B sha256={srv_sha[:16]}… , original+tail byte-for-byte, tail once, in {dt:.0f} ms")
+    print(f"RESULT: append landed — {len(srv)} B sha256={srv_sha[:16]}… , original+every chunk byte-for-byte, each chunk once, in {dt:.0f} ms")
     return rc
 
 
@@ -294,7 +309,10 @@ def run_shape(mode: str, path: str, tail: bytes):
         detail = (p.stderr.decode(errors="replace").strip() or p.stdout.decode(errors="replace").strip())
         return False, f"shell rc={p.returncode}: {detail}", None
     if mode == "multi":
-        # THREE writes inside ONE open: one handle, three chunks
+        # THREE writes inside ONE open: one handle, three chunks. Each `printf >&3`
+        # duplicates fd 3 onto fd 1 and closes it again, so the kernel asks for a
+        # publication point PER close — which is why this shape also measures that
+        # a second publication on the same handle carries the FIRST one's bytes.
         script = 'exec 3>>"$1"; printf %s "$2" >&3; printf %s "$3" >&3; printf %s "$4" >&3; exec 3>&-'
         p = subprocess.run(["/bin/sh", "-c", script, "sh", path, tail.decode(),
                             "SECOND-CHUNK\n", "THIRD-CHUNK\n"], capture_output=True)

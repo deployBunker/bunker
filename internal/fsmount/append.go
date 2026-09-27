@@ -93,6 +93,13 @@ import (
 // cannot see is not a bound (PRD-bunker-invalidation.md §2.7).
 const appendBaseMax = writeBufferMaxDefault
 
+// appendBound is the bound the running mount ENFORCES and REPORTS. It is a
+// variable rather than the constant so a test can prove the boundary at a value
+// it can actually reach (a 256 MiB fixture is not a test), and — because the
+// status document reads this same variable — a figure reported one way and
+// enforced another, which this project keeps re-finding, cannot happen here.
+var appendBound int64 = appendBaseMax
+
 // appendHandle is the append state of ONE open file. It is owned by the
 // readHandle of the same open (an append is an `open(O_WRONLY|O_APPEND)`, which
 // this mount answers with the read handle — BFS-030 measured that, and changing it
@@ -168,15 +175,22 @@ func (a *appendHandle) write(ctx context.Context, data []byte, off int64) (uint3
 	if off < 0 {
 		return 0, syscall.EINVAL
 	}
+	// A chunk arriving AFTER a publication point reopens the handle for
+	// publication. The buffer holds the whole content, so the next publication is
+	// the whole content again: an fsync followed by more writes must not leave the
+	// later bytes buffered and never sent.
+	if a.flushed {
+		a.flushed, a.result = false, nil
+	}
 	if errno := a.ensureBaseLocked(ctx); errno != 0 {
 		return 0, errno
 	}
 	// The bound is checked BEFORE the bytes are buffered, so a refused chunk
 	// leaves no hole and no growth behind it.
-	if end := off + int64(len(data)); end > appendBaseMax {
+	if end := off + int64(len(data)); end > appendBound {
 		return 0, a.refuseLocked(&fsclient.OpError{
 			Op: "WRITE", Path: a.p, Errno: fsclient.ErrnoEFBIG, Cause: fsclient.CauseLocalCapability,
-			Detail: fmt.Sprintf("refusing to append to %s: a whole-file publication is bounded by --write-buffer-max-bytes, and this write would make the file %d bytes (bound %d). Nothing was written. Append to this file on the server instead, or write it whole", a.p, end, int64(appendBaseMax)),
+			Detail: fmt.Sprintf("refusing to append to %s: a whole-file publication is bounded by --write-buffer-max-bytes, and this write would make the file %d bytes (bound %d). Nothing was written. Append to this file on the server instead, or write it whole", a.p, end, appendBound),
 		})
 	}
 	n, err := a.tmp.WriteAt(data, off)
@@ -219,10 +233,10 @@ func (a *appendHandle) ensureBaseLocked(ctx context.Context) syscall.Errno {
 	if hash == "" {
 		hash = fsclient.HashBytes(data)
 	}
-	if int64(len(data)) > appendBaseMax {
+	if int64(len(data)) > appendBound {
 		return a.refuseLocked(&fsclient.OpError{
 			Op: "WRITE", Path: a.p, Errno: fsclient.ErrnoEFBIG, Cause: fsclient.CauseLocalCapability,
-			Detail: fmt.Sprintf("refusing to append to %s: the file is %d bytes and this surface publishes an append as ONE whole-file conditional PUT, bounded by --write-buffer-max-bytes (%d). Nothing was written and the file is unchanged. Append to this file on the server instead, or write it whole", a.p, len(data), int64(appendBaseMax)),
+			Detail: fmt.Sprintf("refusing to append to %s: the file is %d bytes and this surface publishes an append as ONE whole-file conditional PUT, bounded by --write-buffer-max-bytes (%d). Nothing was written and the file is unchanged. Append to this file on the server instead, or write it whole", a.p, len(data), appendBound),
 		})
 	}
 	f, errno := anonymousWriteBuffer(a.m.dir)
@@ -300,6 +314,19 @@ func (a *appendHandle) publish(ctx context.Context) syscall.Errno {
 	}
 	a.flushed = true
 	a.result = res
+	// THE BASE ADVANCES WITH THE PUBLICATION. The kernel sends more than one
+	// publication point for one open (measured: FLUSH per close, then RELEASE), and
+	// the buffer holds the WHOLE content, so a later publication carries the bytes
+	// the earlier one landed plus the new ones. Pinning it to the base this handle
+	// started from would make that second publication a stale-precondition refusal
+	// — the bytes would be dropped with the caller told the shape failed, which is
+	// the defect this row exists for, one publication point further in. MEASURED
+	// before this line existed: the three-writes-in-one-open shape landed its first
+	// chunk, was refused 412 on the second, and lost the rest
+	// (docs/evidence/BFS-021-red.txt, arm `multi` on the fixed tree).
+	if res.Hash != "" {
+		a.base = fsclient.WriteBase{IfMatch: res.Hash, Source: fsclient.BaseFromServed}
+	}
 	a.m.recordOK()
 	a.m.noteAppendPublished(a.p, a.size)
 	a.m.snapshot().Drop(a.p)
