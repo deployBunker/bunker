@@ -90,7 +90,7 @@ green** and is not offered as evidence. The final run's version of that arm is.)
    (`BFS-024-probe-final.txt`, "NEG control" section). So the stale reads on mount 1 were **its
    cache**, not a broken fixture, and the fixture itself cannot make a stale answer look fresh.
 3. **The channel's own record.** Three counters move with the work and none of them are inferred:
-   `events_total 6`, `paths_dropped_total 11`, `seq 7`, `resyncs_total 0`, `results_from_gap 0`,
+   `events_total 6`, `paths_dropped_total 11`, `seq 7`, `resyncs_total 0`, `resyncs_from_gap 0`,
    `mechanism=events`, `mode=poll`, `channel_available=true`. The per-arm dumps show each arm's
    own increment (`0→1`, `1→2`, `2→4`, `4→5`).
 4. **BFS-025's shape as a contrast arm (N2).** A path that was only **stat'ed**, never read, then
