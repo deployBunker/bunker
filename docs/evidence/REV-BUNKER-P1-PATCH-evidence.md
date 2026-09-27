@@ -53,6 +53,20 @@ live fleet. The residual is inherent to a threshold and is in §10: a deployment
 *smaller* than the limit (a single-tenant host) is not protected by it, which is what
 `unproven_orphan_limit: 0` is for.
 
+**This guard converts a documented human convention into an enforced one.**
+`docs/dogfood/diagnostics.md` already prescribes the scratch-daemon pattern for
+running this daemon on a shared host, and its second half is a warning plus a manual
+defence:
+
+> private config in /tmp (own ports, own registry/audit paths, own SSH dir),
+> `BUNKER_HOME` pointed at a private CLI home, and reconciliation `adopt` for the
+> first restart if foreign `bunker-*` users exist on the host (**defense against
+> destroying another lane's agents by mistake**).
+
+Until now that defence was a convention an operator had to remember, on exactly the
+hosts where forgetting it is unrecoverable. It is now a refusal in the sweep itself,
+in the default mode, with no configuration required to get it.
+
 `REV-BUNKER-P1-PATCH-red.txt` (filed tree) and `-control.txt` (guard neutered) are
 the two directions of this number; `-green.txt` pins the boundary with the counters.
 
