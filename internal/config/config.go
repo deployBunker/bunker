@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/deployBunker/bunker/internal/hostsetup"
+	"github.com/deployBunker/bunker/internal/invalidation"
 )
 
 // Config is the top-level bunkerd configuration.
@@ -224,6 +225,15 @@ type ServerConfig struct {
 	// carries the authority explicitly — but the default is one port number
 	// for both transports.
 	H3Addr string `mapstructure:"h3_addr"`
+	// Invalidation is the server-side invalidation config surface (BFS-043):
+	// the watcher and push knobs. Every field is a POINTER in the Spec, so an
+	// ABSENT key takes the declared default in internal/invalidation while a
+	// WRITTEN key is validated and refused by name if it is outside its
+	// declared range — an omitted key is a fact about the file, a written one
+	// is an instruction. A nil block (the common case) means every knob keeps
+	// its declared default and the watcher stays off, which is what a
+	// deployment gets today.
+	Invalidation *invalidation.Spec `mapstructure:"invalidation"`
 }
 
 // H3ListenAddr is the effective UDP address of the HTTP/3 listener: the
@@ -1043,6 +1053,21 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("agent.default_io_weight")
 	v.BindEnv("agent.default_io_write_bps")
 
+	// BFS-043: the invalidation surface's env bindings, so the BUNKERD_* surface
+	// is complete for every declared knob (config file OR env, one spelling).
+	v.BindEnv("server.invalidation.watch.enabled")
+	v.BindEnv("server.invalidation.watch.heartbeat_ms")
+	v.BindEnv("server.invalidation.watch.install_headroom")
+	v.BindEnv("server.invalidation.watch.flush_every_ms")
+	v.BindEnv("server.invalidation.watch.flush_max_paths")
+	v.BindEnv("server.invalidation.watch.scan_limit")
+	v.BindEnv("server.invalidation.watch.max_watches")
+	v.BindEnv("server.invalidation.push.subscriber_buffer_bytes")
+	v.BindEnv("server.invalidation.push.subscriber_buffer_events")
+	v.BindEnv("server.invalidation.push.max_subscribers")
+	v.BindEnv("server.invalidation.push.write_deadline_ms")
+	v.BindEnv("server.invalidation.push.max_event_bytes")
+
 	// Read config file if it exists
 	if _, err := os.Stat(path); err == nil {
 		if err := v.ReadInConfig(); err != nil {
@@ -1082,6 +1107,13 @@ func (c *Config) Validate() error {
 		if !filepath.IsAbs(c.Server.WebDAVRoot) {
 			return fmt.Errorf("server.webdav_root must be an absolute path (got %q)", c.Server.WebDAVRoot)
 		}
+	}
+	// BFS-043: the invalidation block is resolved and validated HERE, before any
+	// listener binds. A knob the daemon cannot obey stops the boot with its name,
+	// its value and its range — it is never silently replaced by the declared
+	// default (BFS-031/BFS-032's class: a bound reported and not enforced).
+	if _, err := c.InvalidationValues(); err != nil {
+		return err
 	}
 	// BFS-007: h3 is the one transport that cannot be offered on an
 	// unencrypted listener — QUIC always encrypts — so the incoherent pair is

@@ -357,6 +357,14 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 
 	var davHandler http.Handler
 	if s.cfg.Server.WebDAVEnabled {
+		// BFS-043: the invalidation surface is resolved from the config (the
+		// declared defaults for every absent key) and validated before the surface
+		// is built, so a knob the daemon cannot obey fails the boot rather than
+		// being dropped. webdav.New validates it again — two gates, one table.
+		invValues, err := s.cfg.InvalidationValues()
+		if err != nil {
+			return fmt.Errorf("server.invalidation: %w", err)
+		}
 		h, err := webdav.New(webdav.Config{
 			Root:         s.cfg.Server.WebDAVRoot,
 			Build:        version.Version,
@@ -364,6 +372,7 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 			H2C:          s.cfg.Server.H2CEnabled,
 			H3:           h3ep,
 			Authenticate: webdavAuthenticator(s.jwtAuth, s.cfg.Auth.Enabled),
+			Invalidation: &invValues,
 		})
 		if err != nil {
 			return fmt.Errorf("webdav surface: %w", err)
