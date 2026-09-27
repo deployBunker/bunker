@@ -1,0 +1,106 @@
+BFS-039 — THE RED: the pre-fix tree's outcome for every defect this row fixes.
+================================================================================
+
+PROVENANCE. The captures below were taken on the tree that landed BFS-046
+(e47abec), BEFORE this row's fix, with the cells written for this row and driven
+against that tree. Each entry is REPRODUCIBLE on the fixed tree: the arms script
+applies the named mutation, which restores exactly the pre-fix behaviour, and the
+same cell goes red again (`sh docs/evidence/BFS-039-arms.sh <mode>`, transcript in
+BFS-039-arms.txt). A RED whose tree no longer exists can only be taken on faith;
+this one is re-runnable.
+
+--------------------------------------------------------------------------------
+1. THE DELIBERATE CANCEL IS REPORTED AS A TRANSPORT FAULT (fsclient)
+   capture: /tmp/bfs039-red-1.txt · reproduced by: arms mode `cancel-class`
+--------------------------------------------------------------------------------
+=== RUN   TestBFS039DeliberateCancelIsDistinguishableFromFailure
+    bfs039_cancel_test.go:89: BFS039-MEASURE arm=deliberate-cancel errno=ENOTCONN(107) cause="unreachable_reset" detail=""
+    bfs039_cancel_test.go:101: BFS039-MEASURE arm=server-500 errno=EIO(5) cause="server_error"
+    bfs039_cancel_test.go:119: BFS039-MEASURE arm=transport-reset errno=ENOTCONN(107) cause="unreachable_connect"
+    bfs039_cancel_test.go:126: a DELIBERATE cancel reported errno=ENOTCONN (107), want EINTR (4): the caller's own Ctrl-C is being reported as a transport fault, so it cannot tell a cancel from a fault and cannot retry correctly (PRD §2.8)
+    bfs039_cancel_test.go:130: a DELIBERATE cancel reported cause="unreachable_reset", want "cancelled"
+--- FAIL: TestBFS039DeliberateCancelIsDistinguishableFromFailure (0.25s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	0.256s
+
+READ IT: the day's whole subject is in two lines. A deliberate cancel and a
+connection that died under us got the SAME answer (ENOTCONN / unreachable_reset),
+and the answer the caller needs (EINTR, retry it) did not exist anywhere in the
+tree.
+
+--------------------------------------------------------------------------------
+2. A KILLED WRITER LEAVES AN ORPHAN IN THE CACHE DIRECTORY (fsmount)
+   capture: the pre-fix run of TestBFS039KilledWriterLeavesNoResidueAndThePathUsable
+   reproduced by: arms mode `named-buffer`
+--------------------------------------------------------------------------------
+=== RUN   TestBFS039KilledWriterLeavesNoResidueAndThePathUsable
+    bfs039_cancel_test.go:304: BFS039-MEASURE while the writer is live: buffer files in the cache dir = [writebuf-835548445]
+    bfs039_cancel_test.go:319: a SIGKILLed writer left [writebuf-835548445] in the cache directory (1 file(s)): the bytes have no reader and no bound, and they survive the reopen sweep because the sweep owns blobs/ and not this name
+--- FAIL: TestBFS039KilledWriterLeavesNoResidueAndThePathUsable (0.04s)
+
+Second capture of the same defect, on the fixed tree with only the unlink removed
+(arms mode `named-buffer`, 1 MiB buffered):
+
+    BFS039-MEASURE while the writer is live: 1048576 buffered bytes, 1 named buffer file(s) in the cache dir [writebuf-2148493228]
+    a SIGKILLed writer left [writebuf-2148493228] in the cache directory (1 file(s), 1048576 buffered bytes) ...
+
+READ IT: the file is the writer's whole unpublished buffer, it outlives the
+process that owned it, no reported figure bounds it, and the reopen does not
+remove it (the sweep owns blobs/, and this name belongs to the mount).
+
+--------------------------------------------------------------------------------
+3. A RETRY OF IDENTICAL BYTES IS NOT THE SURFACE'S NO-OP (fsmount + server)
+   capture: the pre-fix run of TestBFS039RetriedWriteDoesNotApplyTwice
+   reproduced by: arms mode `removed-noop-rule`
+--------------------------------------------------------------------------------
+=== RUN   TestBFS039RetriedWriteDoesNotApplyTwice
+    bfs039_cancel_test.go:435: the retry moved the mtime (2026-09-27 10:58:49.536020746 -0500 -05 -> 2026-09-27 10:58:49.581019832 -0500 -05): an identical rewrite must be the surface's REPORTED no-op, not a second write
+--- FAIL: TestBFS039RetriedWriteDoesNotApplyTwice (0.06s)
+
+READ IT: the precondition held, so the surface staged and renamed identical bytes.
+The consequence is not the bytes — they are the same — it is that the mtime moved
+AND (same code path, `tree.bumpRev`) the served revision moved, so every other
+client's poll sees a change that did not happen.
+
+--------------------------------------------------------------------------------
+4. A CANCELLED PUBLICATION CLOSES THE CALLER'S BUFFER (fsmount)
+   capture: the pre-fix run of the cancel/retry cell, and its `-count=12` repeat
+   reproduced by: arms mode `closable-body`
+--------------------------------------------------------------------------------
+=== RUN   TestBFS039DeliberateCancelReturnsEINTRAndTheRetryLandsOnce
+    bfs039_cancel_test.go:485: BFS039-DIAG retry failure=<nil> base={IfNoneMatchStar:true Source:absent} hasBase=true flushed=true size=33
+    bfs039_cancel_test.go:486: the retry after a cancel was refused with errno=input/output error (EIO): a cancellation is not a verdict, and the handle must stay publishable so the EINTR recovery works
+--- FAIL: TestBFS039DeliberateCancelReturnsEINTRAndTheRetryLandsOnce (0.01s)
+...
+--- FAIL: TestBFS039DeliberateCancelReturnsEINTRAndTheRetryLandsOnce   (5 FAIL blocks in a -count=12 run)
+
+READ IT: `flushed=true, failure=<nil>` is the tell. The retry did not take the
+failure branch — its Seek failed, because the first (cancelled) attempt had handed
+the buffer file to net/http, which closes a request body on every failed round
+trip. Whether it fired depended on whether the request had started first, which is
+why 5 of 12 runs failed and 7 passed: an intermittent, byte-shaped defect in a
+write path. The deterministic arm (a server that holds the PUT open until the
+cancel has landed) was written because of this capture.
+
+--------------------------------------------------------------------------------
+5. THE CONTROLS THAT WERE NOT RED, reported as such
+--------------------------------------------------------------------------------
+(a) THE KILLED READER AND THE KILLED REFRESHER (BFS-046 cells 8a/8b) PASS on the
+    pre-fix tree. BFS-038's representation is why: the path index is the only way
+    to a blob, an interrupted refresh is unreachable rather than half-visible, and
+    the reopen sweeps the staged residue. No red was manufactured for the cache's
+    reader half.
+
+(b) THE PER-PATH COMMIT LOCK was not held by anything dead, on either tree: the
+    lock is a striped array of in-process mutexes, so a killed process cannot
+    leave it held. The measurement that would expose the alternative — lock
+    artifacts in the directory at rest and after a SIGKILL — reads 0 on both
+    trees, and the sensor that measures it is exercised by its own control
+    (a real stale lock file must be seen).
+
+(c) THIS ROW'S OWN FIRST IDEMPOTENCE CELL was BLIND, and the arms found it: the
+    `non-positional-write` mutation (WriteAt -> Write) left it GREEN, because a
+    retry from a NEW handle starts from a fresh buffer. The cell was rewritten
+    (same offset twice on ONE handle; a misordered pair) and the mutation now
+    turns it red. Recorded here because a cell that cannot fail proves nothing,
+    and the controls are how that gets caught.

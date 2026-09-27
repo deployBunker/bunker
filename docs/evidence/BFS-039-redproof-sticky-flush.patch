@@ -1,0 +1,12 @@
+diff --git a/internal/fsmount/fs_linux.go b/internal/fsmount/fs_linux.go
+index 22d56e1..8f2fd82 100644
+--- a/internal/fsmount/fs_linux.go
++++ b/internal/fsmount/fs_linux.go
+@@ -1580,6 +1580,7 @@ func (h *writeHandle) publish(ctx context.Context) syscall.Errno {
+ 	res, err := h.m.wp.Publish(ctx, h.p, noCloseReader{h.tmp}, h.size, h.base)
+ 	if err != nil {
+ 		if err.Cause == fsclient.CauseCancelled {
++			h.flushed, h.failure = true, err
+ 			// The caller cancelled: EINTR, and the handle stays publishable so
+ 			// the retry is possible and lands once. The cancellation is counted
+ 			// by the CLIENT (transport.cancels_total), which is where every

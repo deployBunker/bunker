@@ -1,0 +1,13 @@
+diff --git a/internal/fsmount/fs_linux.go b/internal/fsmount/fs_linux.go
+index 22d56e1..508fe92 100644
+--- a/internal/fsmount/fs_linux.go
++++ b/internal/fsmount/fs_linux.go
+@@ -1577,7 +1577,7 @@ func (h *writeHandle) publish(ctx context.Context) syscall.Errno {
+ 		h.flushed = true
+ 		return syscall.EIO
+ 	}
+-	res, err := h.m.wp.Publish(ctx, h.p, noCloseReader{h.tmp}, h.size, h.base)
++	res, err := h.m.wp.Publish(ctx, h.p, h.tmp, h.size, h.base)
+ 	if err != nil {
+ 		if err.Cause == fsclient.CauseCancelled {
+ 			// The caller cancelled: EINTR, and the handle stays publishable so

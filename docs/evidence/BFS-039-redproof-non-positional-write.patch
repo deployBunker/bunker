@@ -1,0 +1,13 @@
+diff --git a/internal/fsmount/fs_linux.go b/internal/fsmount/fs_linux.go
+index 22d56e1..12cf959 100644
+--- a/internal/fsmount/fs_linux.go
++++ b/internal/fsmount/fs_linux.go
+@@ -1494,7 +1494,7 @@ func (h *writeHandle) Write(ctx context.Context, data []byte, off int64) (uint32
+ 	if off < 0 {
+ 		return 0, syscall.EINVAL
+ 	}
+-	n, err := h.tmp.WriteAt(data, off)
++	n, err := h.tmp.Write(data)
+ 	if err != nil {
+ 		return 0, syscall.EIO
+ 	}

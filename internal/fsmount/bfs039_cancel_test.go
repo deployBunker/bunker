@@ -28,6 +28,7 @@ package fsmount
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -38,6 +39,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -501,32 +503,47 @@ func bfs039MountAt(t *testing.T, root, dir string) (*Mount, string, string) {
 // CELL E — IDEMPOTENCE: A RETRIED WRITE MUST NOT APPLY TWICE.
 //
 // THE DEFECT THIS CELL CATCHES: a buffer whose writes are POSITIONAL only by
-// accident. `Write` appends at the current offset; `WriteAt` places the bytes.
-// The kernel retries a write at an offset it already sent — after an interrupt,
-// after a short write, after a duplicate request — and against an appending
-// buffer that retry lands the bytes a SECOND time. That is a mutation applied
-// twice, it is invisible to every counter, and it is exactly what "a retried
-// write must not append twice" means. The mutation in
-// docs/evidence/BFS-039-arms.sh applies it and this cell goes red.
+// accident. `Write` appends at the current file offset; `WriteAt` places the
+// bytes. The kernel retries a write at an offset it already sent — after an
+// interrupt, after a short write, after a duplicate request — and against an
+// appending buffer that retry lands the bytes a SECOND time. That is a mutation
+// applied twice, invisible to every counter, and it is exactly what "a retried
+// write must not append twice" means.
 //
-// The second half of the cell is the retry the errno ASKS FOR: after a
-// cancellation the caller is told EINTR, so it retries — and the retry must
-// land exactly once, whether or not the cancelled attempt reached the server.
+// TWO ARMS, because the FIRST VERSION OF THIS CELL WAS BLIND and the arms
+// script proved it (docs/evidence/BFS-039-arms.md): a retry from a NEW handle
+// starts from a fresh buffer, so an appending buffer cannot double-apply there —
+// the mutation passed. The arms are:
+//
+//	1. THE SAME OFFSET TWICE ON ONE HANDLE. The retry the kernel actually
+//	   issues. This is the definitional arm and it is where an appending buffer
+//	   doubles the bytes.
+//	2. A MISORDERED PAIR. The buffer exists because a chunk stream is not
+//	   guaranteed to be sequential (BFS-005 §5.4's stated deviation), so a late
+//	   chunk can arrive before an early one. Under an appending buffer the bytes
+//	   land in ARRIVAL order instead of at their offsets, and the server ends up
+//	   holding something that is not the file the kernel acknowledged — the
+//	   user-visible shape of the same defect.
+//
+// The third arm is the retry the errno ASKS FOR: after a cancellation the caller
+// is told EINTR, so it retries, and the retry must land exactly once.
 // ---------------------------------------------------------------------------
 
 func TestBFS039RetriedWriteDoesNotApplyTwice(t *testing.T) {
 	m, target, _ := bfs039Mount(t)
+	ctx := context.Background()
+	rootDir := filepath.Dir(target)
 
 	// A first write lands.
 	h1 := bfs039Write(t, m, "idempotent.txt")
 	body := []byte("exactly once\n")
-	if n, errno := h1.Write(context.Background(), body, 0); errno != 0 || int(n) != len(body) {
+	if n, errno := h1.Write(ctx, body, 0); errno != 0 || int(n) != len(body) {
 		t.Fatalf("first write: n=%d errno=%v", n, errno)
 	}
-	if errno := h1.Release(context.Background()); errno != 0 {
+	if errno := h1.Release(ctx); errno != 0 {
 		t.Fatalf("first publish: errno=%v", errno)
 	}
-	path := filepath.Join(filepath.Dir(target), "idempotent.txt")
+	path := filepath.Join(rootDir, "idempotent.txt")
 	if got, _ := os.ReadFile(path); string(got) != string(body) {
 		t.Fatalf("after the first write the target holds %q, want %q", got, body)
 	}
@@ -535,25 +552,74 @@ func TestBFS039RetriedWriteDoesNotApplyTwice(t *testing.T) {
 		t.Fatalf("stat: %v", err)
 	}
 
-	// THE RETRY: the same mutation, applied again, at the same offset. This is
-	// what the kernel does after an interrupt and what a caller does after an
-	// EINTR. It must not double-apply.
+	// ARM 1 — THE SAME MUTATION TWICE AT THE SAME OFFSET, on ONE handle: the
+	// retry the kernel issues after an interrupt. The buffer must hold the bytes
+	// ONCE, and so must the target.
+	hSame := bfs039Write(t, m, "same-offset.txt")
+	if n, errno := hSame.Write(ctx, body, 0); errno != 0 || int(n) != len(body) {
+		t.Fatalf("arm1 first write: n=%d errno=%v", n, errno)
+	}
+	if n, errno := hSame.Write(ctx, body, 0); errno != 0 || int(n) != len(body) {
+		t.Fatalf("arm1 retried write: n=%d errno=%v", n, errno)
+	}
+	// The buffer's own content, before any publication: an appending buffer has
+	// already doubled here, and the published length would hide it — which is
+	// why the buffer is read back rather than only the target.
+	buf := make([]byte, hSame.size+64)
+	read, _ := hSame.tmp.ReadAt(buf, 0)
+	if !bytes.Equal(buf[:read], body) {
+		t.Fatalf("ARM 1 — the handle's buffer holds %d byte(s) %q after the SAME write at the SAME offset twice, want exactly %q (%d byte(s)): the mutation was applied twice",
+			read, buf[:read], body, len(body))
+	}
+	if errno := hSame.Release(ctx); errno != 0 {
+		t.Fatalf("arm1 publish: errno=%v", errno)
+	}
+	gotSame, _ := os.ReadFile(filepath.Join(rootDir, "same-offset.txt"))
+	if !bytes.Equal(gotSame, body) {
+		t.Fatalf("ARM 1 — the target holds %q (%d bytes), want %q (%d bytes)", gotSame, len(gotSame), body, len(body))
+	}
+
+	// ARM 2 — A MISORDERED PAIR (the late chunk first, then the early one). The
+	// expected content is the kernel's own: the early bytes at 0, the gap the
+	// caller never wrote as NULs, the late bytes at their offset.
+	const lateOff = 8
+	early, late := []byte("early"), []byte("LATE")
+	hMis := bfs039Write(t, m, "misordered.txt")
+	if n, errno := hMis.Write(ctx, late, lateOff); errno != 0 || int(n) != len(late) {
+		t.Fatalf("arm2 late write: n=%d errno=%v", n, errno)
+	}
+	if n, errno := hMis.Write(ctx, early, 0); errno != 0 || int(n) != len(early) {
+		t.Fatalf("arm2 early write: n=%d errno=%v", n, errno)
+	}
+	if errno := hMis.Release(ctx); errno != 0 {
+		t.Fatalf("arm2 publish: errno=%v", errno)
+	}
+	want := make([]byte, lateOff+len(late))
+	copy(want, early)
+	copy(want[lateOff:], late)
+	gotMis, _ := os.ReadFile(filepath.Join(rootDir, "misordered.txt"))
+	if !bytes.Equal(gotMis, want) {
+		t.Fatalf("ARM 2 — the server holds %q, want %q: a misordered pair landed in ARRIVAL order instead of at its offsets, so the published file is not the file the kernel acknowledged",
+			gotMis, want)
+	}
+
+	// ARM 3 — THE RETRY FROM A NEW HANDLE (a caller re-doing the write), with
+	// the server-side proof that it was the reported NO-OP rather than a second
+	// write: identical bytes were already there, so the surface answers
+	// `identical_content` and the file's mtime does not move. Without that the
+	// cell would pass on an implementation that rewrote the same bytes twice.
 	h2 := bfs039Write(t, m, "idempotent.txt")
-	if n, errno := h2.Write(context.Background(), body, 0); errno != 0 || int(n) != len(body) {
+	if n, errno := h2.Write(ctx, body, 0); errno != 0 || int(n) != len(body) {
 		t.Fatalf("retried write: n=%d errno=%v", n, errno)
 	}
-	if errno := h2.Release(context.Background()); errno != 0 {
+	if errno := h2.Release(ctx); errno != 0 {
 		t.Fatalf("retried publish: errno=%v", errno)
 	}
 	got, _ := os.ReadFile(path)
 	if string(got) != string(body) {
-		t.Fatalf("a RETRIED write double-applied: the target holds %q (%d bytes), want %q (%d bytes). A mutation applied twice is invisible to every counter and is the corruption an accidental cancel must never produce",
+		t.Fatalf("ARM 3 — a RETRIED write double-applied: the target holds %q (%d bytes), want %q (%d bytes). A mutation applied twice is invisible to every counter and is the corruption an accidental cancel must never produce",
 			got, len(got), body, len(body))
 	}
-	// The server-side proof that the retry was the reported NO-OP rather than a
-	// second write: identical bytes were already there, so the surface answers
-	// `identical_content` and the file's mtime does not move. Without this the
-	// cell would pass on an implementation that rewrote the same bytes twice.
 	fi2, err := os.Stat(path)
 	if err != nil {
 		t.Fatalf("stat after retry: %v", err)
@@ -562,6 +628,35 @@ func TestBFS039RetriedWriteDoesNotApplyTwice(t *testing.T) {
 		t.Fatalf("the retry moved the mtime (%s -> %s): an identical rewrite must be the surface's REPORTED no-op, not a second write",
 			fi1.ModTime(), fi2.ModTime())
 	}
+
+	// THE SUCCESSFUL PATH'S COST, AS A NUMBER. The row requires the successful
+	// path to be unregressed and its cost stated rather than asserted, so five
+	// WHOLE publications are driven through the real surface — Create → Write →
+	// Release, the mount's buffer, ONE conditional PUT, the server's stage +
+	// rename — and reported. No wall-clock threshold is asserted: this box runs
+	// a fleet and a threshold here would be a flake generator. What is asserted
+	// is that every one of them LANDS; the figures are the cost. The code this
+	// row adds to this path is one unlink per handle and one interface hop per
+	// body read.
+	var cost []time.Duration
+	for i := 0; i < 5; i++ {
+		name := fmt.Sprintf("cost-%d.txt", i)
+		start := time.Now()
+		hc := bfs039Write(t, m, name)
+		if n, errno := hc.Write(ctx, body, 0); errno != 0 || int(n) != len(body) {
+			t.Fatalf("cost arm write: n=%d errno=%v", n, errno)
+		}
+		if errno := hc.Release(ctx); errno != 0 {
+			t.Fatalf("cost arm publish: errno=%v", errno)
+		}
+		cost = append(cost, time.Since(start))
+		if got, _ := os.ReadFile(filepath.Join(rootDir, name)); !bytes.Equal(got, body) {
+			t.Fatalf("cost publication %d did not land (%q)", i, got)
+		}
+	}
+	sort.Slice(cost, func(i, j int) bool { return cost[i] < cost[j] })
+	t.Logf("BFS039-MEASURE a successful publication through the real surface: min=%s median=%s max=%s",
+		cost[0].Round(time.Microsecond), cost[len(cost)/2].Round(time.Microsecond), cost[len(cost)-1].Round(time.Microsecond))
 	t.Logf("BFS039-MEASURE retried write: target=%d bytes, mtime unmoved (%s) — the surface reported a no-op", len(got), fi2.ModTime().Format(time.RFC3339Nano))
 }
 

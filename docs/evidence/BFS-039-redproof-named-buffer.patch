@@ -1,0 +1,16 @@
+diff --git a/internal/fsmount/fs_linux.go b/internal/fsmount/fs_linux.go
+index 22d56e1..5052576 100644
+--- a/internal/fsmount/fs_linux.go
++++ b/internal/fsmount/fs_linux.go
+@@ -1447,10 +1447,7 @@ func (h *writeHandle) ensureBuffer() syscall.Errno {
+ 		os.Remove(f.Name())
+ 		return syscall.EIO
+ 	}
+-	if err := os.Remove(f.Name()); err != nil {
+-		f.Close()
+-		return syscall.EIO
+-	}
++	// MUTATION: the buffer keeps its name
+ 	h.tmp = f
+ 	return 0
+ }
