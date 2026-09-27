@@ -14,6 +14,13 @@
 //     of invalidation; availability is probed, never assumed.
 //   - The write precondition is OURS, on the guarantee that no go-fuse option
 //     enables CAP_WRITEBACK_CACHE: every chunk is visible to us.
+//   - THE PUBLICATION POINT IS FLUSH, never RELEASE (BFS-020). FLUSH is the one
+//     request the kernel waits for on close(2) — measured: the RELEASE handler's
+//     PUT completed 4.1 ms after close(2) had already returned, which is the
+//     window in which a following `rename` reached the server as a 404 and came
+//     back to the caller as a bare ENOENT for a file whose close had succeeded.
+//     A name is therefore on the server BEFORE the caller's close(2) returns, and
+//     a following operation on the same mount sees it.
 //   - The node tree is populated from ONE `X-Bunker-Op: snapshot` call, and
 //     READDIRPLUS resolves each entry through OUR Lookup in-process — which is
 //     the whole measurable win, and is explicitly NOT delegation.
@@ -1022,20 +1029,30 @@ func (n *node) Write(ctx context.Context, fh fs.FileHandle, data []byte, off int
 }
 
 // Create starts the write path: the handle buffers the arriving chunks and
-// publishes them as ONE conditional PUT at the first publication point
-// (Flush/Fsync/Release).
+// publishes them at the first publication point (Flush/Fsync/Release).
 func (n *node) Create(ctx context.Context, name string, flags uint32, mode uint32, out *fuse.EntryOut) (*fs.Inode, fs.FileHandle, uint32, syscall.Errno) {
 	cp := joinPath(n.p, name)
 	m := n.m
-	h := m.newWriteHandle(cp, true)
-	nd := fsclient.Node{Path: cp, IsDir: false, Mode: fmt.Sprintf("%04o", mode&0o777), Mtime: time.Now()}
-	m.snapshot().Put(nd)
+	h, nd := m.beginCreate(cp, mode)
 	fillAttr(&out.Attr, nd)
-	m.notePublished(nd)
 	out.SetEntryTimeout(0)
 	out.SetAttrTimeout(0)
 	child := &node{m: m, p: cp}
 	return n.NewInode(ctx, child, fs.StableAttr{Mode: modeOf(nd), Ino: inoFor(cp)}), h, fuse.FOPEN_DIRECT_IO, 0
+}
+
+// beginCreate starts the write path for a path the kernel believes is absent: the
+// write handle, and the metadata entry the create is answerable for. It is the
+// half of Create that does not need a live kernel bridge, so a handler-level cell
+// can start the SAME state — which is what BFS-020's cells do: the defect they
+// pin is entirely in the handle's publication and the rename that follows it, and
+// the inode construction above (n.NewInode) requires a mounted filesystem.
+func (m *Mount) beginCreate(cp string, mode uint32) (*writeHandle, fsclient.Node) {
+	h := m.newWriteHandle(cp, true)
+	nd := fsclient.Node{Path: cp, IsDir: false, Mode: fmt.Sprintf("%04o", mode&0o777), Mtime: time.Now()}
+	m.snapshot().Put(nd)
+	m.notePublished(nd)
+	return h, nd
 }
 
 // Mkdir creates a collection.
@@ -1091,6 +1108,21 @@ func (n *node) Rmdir(ctx context.Context, name string) syscall.Errno {
 
 // Rename moves a name. The destination is a MOVE on the surface, and both
 // parents' readdir answers are dropped.
+//
+// TWO THINGS THIS DOES THAT A BARE MOVE DOES NOT (BFS-020):
+//
+//  1. THE PUBLICATION BARRIER. If this mount is still holding bytes for `src`
+//     that the server does not have yet — a create that has not reached a
+//     publication point, or an O_APPEND open whose append has not been published
+//     — the MOVE would be answered by the SERVER's 404 and reach the caller as a
+//     bare ENOENT for a file whose close(2) succeeded. So the pending publication
+//     is made FIRST, and its refusal (if any) is returned as itself rather than
+//     flattened into ENOENT: the caller is told what actually happened.
+//  2. THE HANDLES FOLLOW THE NAME. The write path is path-addressed, so after a
+//     successful move the live handles for `src` are RE-TARGETED at `dst`.
+//     Without that, a later publication on a still-open handle would publish
+//     under the old name — resurrecting a name the caller moved away, which is a
+//     lie about the file existing (the same class the stale-lock case names).
 func (n *node) Rename(ctx context.Context, name string, newParent fs.InodeEmbedder, newName string, flags uint32) syscall.Errno {
 	np, ok := newParent.(*node)
 	if !ok {
@@ -1098,10 +1130,14 @@ func (n *node) Rename(ctx context.Context, name string, newParent fs.InodeEmbedd
 	}
 	src := joinPath(n.p, name)
 	dst := joinPath(np.p, newName)
+	if errno := n.m.publishPending(ctx, src); errno != 0 {
+		return errno
+	}
 	if err := n.m.client.Move(ctx, src, dst, true); err != nil {
 		n.m.recordFailure(err)
 		return errnoFor(err)
 	}
+	n.m.retargetHandles(src, dst)
 	n.m.snapshot().Drop(src, dst)
 	n.m.snapshot().DropReaddir(n.p, np.p)
 	n.m.cache.Drop(src)
@@ -1131,6 +1167,89 @@ func (m *Mount) writeIntentOn(p string) bool {
 		}
 	}
 	return false
+}
+
+// pendingFor answers the ONE question a following operation has to ask before it
+// acts on a name: is this mount still holding bytes for this path that the SERVER
+// does not have? It reads the mount's own handle table — the same table Release
+// empties — so it cannot describe a handle that no longer exists.
+//
+// It returns the live write handles (a create that has not reached a publication
+// point) and any append state (an O_APPEND open with an unpublished append).
+func (m *Mount) pendingFor(p string) ([]*writeHandle, []*appendHandle) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var ws []*writeHandle
+	for _, h := range m.writes {
+		if h.p == p {
+			ws = append(ws, h)
+		}
+	}
+	var as []*appendHandle
+	for _, h := range m.reads {
+		if h.ap != nil && h.ap.p == p {
+			as = append(as, h.ap)
+		}
+	}
+	return ws, as
+}
+
+// publishPending is THE PUBLICATION BARRIER a following operation on the same
+// mount takes before it acts on a name this mount is holding unpublished bytes
+// for (BFS-020). Publishing is idempotent, so calling it when there is nothing
+// pending is free — one lock and one map walk, no request.
+//
+// It returns the publication's own refusal when there is one, rather than
+// letting the caller see the server's 404 for a file the mount simply had not
+// sent yet: "the file does not exist" and "I have not sent it" are different
+// answers and the caller can act on only one of them.
+func (m *Mount) publishPending(ctx context.Context, p string) syscall.Errno {
+	ws, as := m.pendingFor(p)
+	for _, h := range ws {
+		if errno := h.publish(ctx); errno != 0 {
+			return errno
+		}
+	}
+	for _, a := range as {
+		if errno := a.publish(ctx); errno != 0 {
+			return errno
+		}
+	}
+	return 0
+}
+
+// retargetHandles moves the live handles' OWN PATH from src to dst after a
+// successful rename, so a later publication on a still-open handle lands under
+// the name the file now has. The write path is path-addressed (the snapshot, the
+// cache, the bound registry and the publication's precondition are all keyed by
+// path), so a handle that kept the old path would publish a SECOND name the
+// caller moved away — a resurrected file, and a lie about what exists.
+//
+// The mount lock is taken only to snapshot the handle list, and each handle is
+// then locked on its own: the handlers lock their own mutex before the mount's
+// (writeHandle.Write takes h.mu and then m.mu for the buffer accounting), so
+// holding m.mu across a handle lock would invert that order.
+func (m *Mount) retargetHandles(src, dst string) {
+	m.mu.Lock()
+	var ws []*writeHandle
+	for _, h := range m.writes {
+		if h.p == src {
+			ws = append(ws, h)
+		}
+	}
+	var rs []*readHandle
+	for _, h := range m.reads {
+		if h.p == src {
+			rs = append(rs, h)
+		}
+	}
+	m.mu.Unlock()
+	for _, h := range ws {
+		h.setPath(dst)
+	}
+	for _, h := range rs {
+		h.setPath(dst)
+	}
 }
 
 // Setattr supports truncation (the one attribute a build tool actually moves)
@@ -1258,6 +1377,20 @@ type readHandle struct {
 	hash   string
 	loaded bool
 	pinned bool
+}
+
+// setPath moves this handle's own path after a successful rename (BFS-020), so a
+// later publication — and a later read — uses the name the file now has. The
+// append state's path is a copy for the same reason: an unpublished append on a
+// renamed file must land under the new name.
+func (h *readHandle) setPath(p string) {
+	h.mu.Lock()
+	h.p = p
+	ap := h.ap
+	h.mu.Unlock()
+	if ap != nil {
+		ap.setPath(p)
+	}
 }
 
 func (h *readHandle) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
@@ -1590,6 +1723,18 @@ func (h *writeHandle) Write(ctx context.Context, data []byte, off int64) (uint32
 	if h.failure != nil {
 		return 0, syscall.EIO
 	}
+	// A chunk arriving AFTER a publication point REOPENS the handle for
+	// publication. The kernel sends more than one publication point for one open
+	// (MEASURED: a FLUSH per close(2), and a shell that writes several commands
+	// to one descriptor closes it more than once), and the buffer holds the WHOLE
+	// file — so without this the bytes after the first publication point would be
+	// buffered and never sent, with the caller's close(2) reporting success. That
+	// is the silent-loss class this row exists for, one publication point further
+	// in. It is the same rule the append handle states (append.go, BFS-021).
+	// A sticky failure is NOT cleared: a refusal is a verdict, not a pause.
+	if h.flushed {
+		h.flushed, h.result = false, nil
+	}
 	if errno := h.ensureBuffer(); errno != 0 {
 		return 0, errno
 	}
@@ -1662,12 +1807,18 @@ func (h *writeHandle) publish(ctx context.Context) syscall.Errno {
 		}
 		return 0
 	}
-	if h.tmp == nil {
+	if h.tmp == nil && !h.created {
 		h.flushed = true
 		return 0 // opened for write but nothing was written
 	}
 	if h.failure != nil {
 		h.flushed = true
+		// BFS-020: a handle that never publishes must not leave the mount
+		// claiming a name the server does not have. The create's snapshot entry
+		// is dropped, so the next attrs reply for the path is answered LIVE and
+		// says what is true (the file is not there) rather than repeating a
+		// size-0 entry this mount invented.
+		h.m.snapshot().Drop(h.p)
 		return errnoFor(h.failure)
 	}
 	if !h.hasBase {
@@ -1679,15 +1830,28 @@ func (h *writeHandle) publish(ctx context.Context) syscall.Errno {
 				return errnoFor(err)
 			}
 			h.flushed, h.failure = true, err
+			h.m.snapshot().Drop(h.p)
 			return errnoFor(err)
 		}
 		h.base, h.hasBase = base, true
 	}
-	if _, err := h.tmp.Seek(0, io.SeekStart); err != nil {
-		h.flushed = true
-		return syscall.EIO
+	// THE BODY. A CREATE with NO chunk is a caller asking for an EMPTY FILE, and
+	// an empty file is still a name: `: > f`, `printf '' > f` and `touch f` all
+	// arrive as a create with no WRITE at all, and MEASURED on the tree this row
+	// started from the name was then NEVER sent — the mount claimed it (0 bytes)
+	// while the served tree never had it, so `mv` after close failed ENOENT
+	// forever, not for a window (docs/evidence/BFS-020-empty.txt). Publishing a
+	// zero-byte body is the whole of that repair; for a handle that was never
+	// created nothing is published, exactly as before.
+	var body io.Reader = strings.NewReader("")
+	if h.tmp != nil {
+		if _, err := h.tmp.Seek(0, io.SeekStart); err != nil {
+			h.flushed = true
+			return syscall.EIO
+		}
+		body = noCloseReader{h.tmp}
 	}
-	res, err := h.m.wp.Publish(ctx, h.p, noCloseReader{h.tmp}, h.size, h.base)
+	res, err := h.m.wp.Publish(ctx, h.p, body, h.size, h.base)
 	if err != nil {
 		if err.Cause == fsclient.CauseCancelled {
 			// The caller cancelled: EINTR, and the handle stays publishable so
@@ -1699,6 +1863,10 @@ func (h *writeHandle) publish(ctx context.Context) syscall.Errno {
 		h.flushed = true
 		h.failure = err
 		h.m.recordFailure(err)
+		// A refused publication published NOTHING, so the name the create put in
+		// the snapshot must go: leaving it would make the mount answer "the file
+		// is here" for a file the server refused to create.
+		h.m.snapshot().Drop(h.p)
 		if err.Cause == fsclient.CauseConflict {
 			h.m.conflictCount.Add(1)
 		}
@@ -1706,13 +1874,32 @@ func (h *writeHandle) publish(ctx context.Context) syscall.Errno {
 	}
 	h.flushed = true
 	h.result = res
+	// THE BASE ADVANCES WITH THE PUBLICATION. The kernel sends more than one
+	// publication point for one open (a FLUSH per close, then RELEASE), and a
+	// chunk after one of them reopens the handle — so a later publication carries
+	// the bytes the earlier one landed plus the new ones. Keeping the base this
+	// handle started from (for a create, `If-None-Match: *`) would make that
+	// second publication a stale-precondition refusal and drop the later bytes:
+	// the same defect BFS-021 measured one publication point into the append path
+	// (docs/evidence/BFS-021-red.txt, arm `multi`). The landed hash is truth, and
+	// the client has already adopted it as the path's base.
+	if res.Hash != "" {
+		h.base = fsclient.WriteBase{IfMatch: res.Hash, Source: fsclient.BaseFromServed}
+	} else {
+		// A landed publication whose result names no content identity (a surface
+		// that serves without one): the base this handle holds may no longer
+		// describe the server, so the NEXT publication resolves it again rather
+		// than re-offering a create-only precondition against a file that now
+		// exists.
+		h.hasBase = false
+	}
 	h.m.recordOK()
 	// The write landed: our metadata for the path is stale by construction, and
 	// the bytes we just published are the truth — seed the cache with them so a
 	// read-after-write does not pay a round trip.
 	h.m.snapshot().Drop(h.p)
 	h.m.snapshot().DropReaddir(path.Dir(h.p))
-	if res.Hash != "" && h.size <= cacheSeedWriteMax {
+	if res.Hash != "" && h.tmp != nil && h.size <= cacheSeedWriteMax {
 		if _, err := h.tmp.Seek(0, io.SeekStart); err == nil {
 			if data, rerr := io.ReadAll(io.LimitReader(h.tmp, cacheSeedWriteMax+1)); rerr == nil {
 				if _, ierr := h.m.cache.Insert(h.p, res.Hash, data); ierr == nil {
@@ -1725,6 +1912,30 @@ func (h *writeHandle) publish(ctx context.Context) syscall.Errno {
 }
 
 func (h *writeHandle) Fsync(ctx context.Context, flags uint32) syscall.Errno { return h.publish(ctx) }
+
+// Flush is THE POINT THAT FIXES BFS-020, and it is a FUSE-protocol fact rather
+// than a preference:
+//
+//	FLUSH is sent once per close(2) and the kernel WAITS for its reply, so a
+//	publication made here is complete before close(2) returns to the caller.
+//	RELEASE — where this handle published until now — is (measured) NOT waited
+//	for: the mount's own trace shows the RELEASE handler's PUT completing 4.1 ms
+//	AFTER close(2) had already returned, which is exactly the window in which a
+//	following `rename` reached the server as a 404 and came back as a bare ENOENT
+//	(docs/evidence/BFS-020-mechanism.txt).
+//
+// The publication is idempotent, so the RELEASE that follows answers from the
+// recorded result with no second request. The append path has published here
+// since BFS-021 for the same reason; this makes the write path obey the same
+// rule: the point the caller's close(2) waits for is a publication point.
+func (h *writeHandle) Flush(ctx context.Context) syscall.Errno { return h.publish(ctx) }
+
+// setPath moves this handle's own path after a successful rename (BFS-020).
+func (h *writeHandle) setPath(p string) {
+	h.mu.Lock()
+	h.p = p
+	h.mu.Unlock()
+}
 
 func (h *writeHandle) Release(ctx context.Context) syscall.Errno {
 	// POSIX close(2) ignores the error, which is exactly why a refusal is also
@@ -1762,6 +1973,7 @@ var (
 	_ fs.FileFlusher   = (*readHandle)(nil)
 	_ fs.FileReleaser  = (*readHandle)(nil)
 	_ fs.FileWriter    = (*writeHandle)(nil)
+	_ fs.FileFlusher   = (*writeHandle)(nil)
 	_ fs.FileFsyncer   = (*writeHandle)(nil)
 	_ fs.FileReleaser  = (*writeHandle)(nil)
 	_ fs.NodeGetattrer = (*node)(nil)
