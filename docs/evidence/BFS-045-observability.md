@@ -79,7 +79,7 @@ document are the same set.
 | **`content_age.age_ms`, `.evidence_from`, `.observations_total`, `.bound_ms`, `.bound_source`, `.within_bound`** | **the new content-age bound:** how old this client's evidence for its view is, from what kind of evidence, and the window the mechanism in force implies | every observation, event, poll answer or channel line |
 | `liveness.heartbeats_total`, `.last_line_age_ms`, `.declared_heartbeat_ms`, `.idle_timeout_ms`, `.stalled`, `.stalls_total` | the heartbeat/stall state of the pushed channel | a heartbeat line; the idle rule |
 | `poll_interval_ms`, `idle_timeout_ms` | the declared poll period; the silence deadline | declared bounds |
-| **`server.*`** (state, reason, detail, backend, blocks_push, vouched, stalled, heartbeat_ms, **max_paths_per_event**, coverage, **counters**: overflows, unvouched, rescans, install failures, **backend errors**, dropped events + reason, last event age, heartbeats, loop ticks, sampled_age_ms) | **the server's own capability document, reported verbatim** | nothing the client does — the arms assert the values the document published |
+| **`server.*`** (state, reason, detail, backend, blocks_push, vouched, stalled, heartbeat_ms, **max_paths_per_event**, coverage, **counters**: overflows, unvouched, rescans, install failures, **backend errors**, dropped events + reason, last event age, heartbeats, loop ticks, sampled_age_ms) | **the server's own capability document, reported verbatim** | nothing the client does — the arms assert the values the document published. A figure the document did NOT publish is `null` with the server's own reason, never `0` |
 | `refresh.started_total`, `.in_flight`, `.max_inflight`, `.committed_total`, `.aborted_total`, `.refused_no_slot_total`, `.refused_no_room_total` | the staged window (BFS-038) | the staged flow above |
 | `refresh.queue_depth`, `.queue_max_depth`, `.queue_refused_full_total`, `.skipped_oversize_total`, `.absent_reason` | **not in this build** (BFS-037) | nothing: JSON `null` with the reason `not_published` |
 
@@ -221,6 +221,15 @@ server's own reason beside them (the test asserts the words, not the class):
   many events it dropped". A count here would be a fabricated measurement.
 * `server.unvouched_reason`, `server.counters_reason`, `server.coverage_reason` — the server's
   own probes.
+
+**And the mirror case, found by reading the live rendering rather than by a red test:** on the
+real surface this deployment publishes **no counters block at all** (no watcher has run), and
+the first version of this record printed `overflows=0 unvouched=0 rescans=0 …` — five zeros for
+figures the server never published, which read as "this never happened" instead of "this was
+never measured". Every server-published counter and coverage count is now a pointer: **absent
+(memory: `null`, on screen: `-`) with the server's own sentence beside it**. The
+`TestTheDroppedEventCountIsNullWithAReason` arm asserts both directions — the values the
+document DID publish, and the `null` for the ones it did not.
 
 The hot-refresh queue's figures are `null` **in the JSON**, not omitted and not 0:
 `"queue_depth": null` with `absent_reason`. A `0` there would read as "the queue was empty" —

@@ -994,8 +994,20 @@ func TestTheDroppedEventCountIsNullWithAReason(t *testing.T) {
 		t.Fatalf("the null must carry the server's own reason verbatim: %q", st.Server.DroppedEventsReason)
 	}
 	// And the figures the server DID publish are the server's, not the client's.
-	if st.Server.OverflowsTotal != fakeOverflows || st.Server.State != fakeWatchState {
+	if st.Server.OverflowsTotal == nil || *st.Server.OverflowsTotal != fakeOverflows || st.Server.State != fakeWatchState {
 		t.Fatalf("the server block was not reported verbatim: %+v", st.Server)
+	}
+	// And the figures a document does NOT publish are ABSENT, not zero: without
+	// the counters block there is no measurement to report, and a 0 would read as
+	// "this never happened" (BFS-045's rule, applied to the server's own figures).
+	bare := serverWatchState(&CapabilityWatch{Name: "X-Bunker-Op: watch", State: "absent"}, 0)
+	if bare.OverflowsTotal != nil || bare.RescansTotal != nil || bare.BackendErrorsTotal != nil ||
+		bare.HeartbeatsTotal != nil || bare.EventLoopTicks != nil || bare.DirectoriesWatched != nil {
+		t.Fatalf("a document with no counters/coverage block must publish no counter: %+v", bare)
+	}
+	raw, _ := json.Marshal(bare)
+	if !strings.Contains(string(raw), `"overflows_total":null`) {
+		t.Fatalf("an unpublished counter must be JSON null, not 0 or omitted: %s", raw)
 	}
 }
 

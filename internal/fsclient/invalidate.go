@@ -378,30 +378,38 @@ type ServerWatchState struct {
 	// overflow (drop everything and re-snapshot) rather than a partial drop. It
 	// is reported because a rule whose bound is invisible cannot be audited.
 	MaxPathsPerEvent *int64 `json:"max_paths_per_event,omitempty"`
-	// Coverage — what the watch set actually covers, and what it does not.
-	DirectoriesDesired int    `json:"directories_desired"`
-	DirectoriesWatched int    `json:"directories_watched"`
-	MissingCount       int    `json:"missing_count"`
+	// Coverage — what the watch set actually covers, and what it does not. Also
+	// pointers, for the same reason as the counters: no coverage block means no
+	// coverage figure was published, and CoverageReason says so in the server's
+	// own words.
+	DirectoriesDesired *int   `json:"directories_desired"`
+	DirectoriesWatched *int   `json:"directories_watched"`
+	MissingCount       *int   `json:"missing_count"`
 	CoverageComplete   *bool  `json:"coverage_complete,omitempty"`
 	CoverageReason     string `json:"coverage_reason,omitempty"`
 	// Counters — the server's own flow figures: overflow events, intervals it
 	// cannot vouch for, rescans, install failures, backend errors, heartbeats
-	// and event-loop ticks. Present ONLY when the server published them, with
-	// CountersReason saying why when it did not.
-	OverflowsTotal       int64  `json:"overflows_total"`
-	UnvouchedTotal       int64  `json:"unvouched_total"`
+	// and event-loop ticks.
+	//
+	// THEY ARE POINTERS ON PURPOSE. A build that publishes no counters block has
+	// published no counter — reporting 0 for one would be exactly the figure this
+	// row forbids (a number with no source, indistinguishable from a measured
+	// zero), and the SERVER'S OWN sentence travels beside it in CountersReason.
+	// The same applies to the coverage counts below.
+	OverflowsTotal       *int64 `json:"overflows_total"`
+	UnvouchedTotal       *int64 `json:"unvouched_total"`
 	UnvouchedReason      string `json:"unvouched_reason,omitempty"`
-	RescansTotal         int64  `json:"rescans_total"`
-	InstallFailuresTotal int64  `json:"install_failures_total"`
-	BackendErrorsTotal   int64  `json:"backend_errors_total"`
+	RescansTotal         *int64 `json:"rescans_total"`
+	InstallFailuresTotal *int64 `json:"install_failures_total"`
+	BackendErrorsTotal   *int64 `json:"backend_errors_total"`
 	// DroppedEvents is null WITH A REASON when the kernel reports one overflow
 	// marker and not how many events it dropped — the null rule with the reason
 	// travelling beside it, never a fabricated count.
 	DroppedEvents       *int64 `json:"overflow_dropped_events"`
 	DroppedEventsReason string `json:"overflow_dropped_reason,omitempty"`
 	LastEventAgeMS      *int64 `json:"last_event_age_ms,omitempty"`
-	HeartbeatsTotal     int64  `json:"heartbeats_total"`
-	EventLoopTicks      int64  `json:"event_loop_ticks"`
+	HeartbeatsTotal     *int64 `json:"heartbeats_total"`
+	EventLoopTicks      *int64 `json:"event_loop_ticks"`
 	CountersReason      string `json:"counters_reason,omitempty"`
 }
 
@@ -640,14 +648,11 @@ func (i *Invalidator) contentAgeWindowLocked() (int64, string, bool) {
 // stays nil rather than becoming a zero (BFS-045's null rule).
 func serverWatchState(w *CapabilityWatch, age time.Duration) *ServerWatchState {
 	out := &ServerWatchState{
-		State:              w.State,
-		Backend:            w.Backend,
-		BlocksPush:         w.BlocksPush,
-		Vouched:            boolPtr(false),
-		CoverageReason:     w.CoverageReason,
-		CountersReason:     w.CountersReason,
-		DirectoriesDesired: 0,
-		DirectoriesWatched: 0,
+		State:          w.State,
+		Backend:        w.Backend,
+		BlocksPush:     w.BlocksPush,
+		CoverageReason: w.CoverageReason,
+		CountersReason: w.CountersReason,
 	}
 	if w.Reason != nil {
 		out.Reason = *w.Reason
@@ -668,25 +673,27 @@ func serverWatchState(w *CapabilityWatch, age time.Duration) *ServerWatchState {
 		out.Vouched, out.Stalled = &v, &s
 	}
 	if w.Coverage != nil {
-		out.DirectoriesDesired = w.Coverage.DirectoriesDesired
-		out.DirectoriesWatched = w.Coverage.DirectoriesWatched
-		out.MissingCount = w.Coverage.MissingCount
+		// Every coverage figure is mapped only when the document published the
+		// block: a build with no coverage block has published no coverage, and a
+		// zero here would be a measurement that was never taken.
+		desired, watched, missing := w.Coverage.DirectoriesDesired, w.Coverage.DirectoriesWatched, w.Coverage.MissingCount
 		complete := w.Coverage.Complete
+		out.DirectoriesDesired, out.DirectoriesWatched, out.MissingCount = &desired, &watched, &missing
 		out.CoverageComplete = &complete
 	}
 	if w.Counters != nil {
 		c := w.Counters
-		out.OverflowsTotal = c.OverflowsTotal
-		out.UnvouchedTotal = c.UnvouchedTotal
+		out.OverflowsTotal = &c.OverflowsTotal
+		out.UnvouchedTotal = &c.UnvouchedTotal
 		out.UnvouchedReason = c.UnvouchedReason
-		out.RescansTotal = c.RescansTotal
-		out.InstallFailuresTotal = c.InstallFailuresTotal
-		out.BackendErrorsTotal = c.BackendErrorsTotal
+		out.RescansTotal = &c.RescansTotal
+		out.InstallFailuresTotal = &c.InstallFailuresTotal
+		out.BackendErrorsTotal = &c.BackendErrorsTotal
 		out.DroppedEvents = c.OverflowDroppedEvents
 		out.DroppedEventsReason = c.OverflowDroppedReason
 		out.LastEventAgeMS = c.LastEventAgeMS
-		out.HeartbeatsTotal = c.HeartbeatsTotal
-		out.EventLoopTicks = c.EventLoopTicks
+		out.HeartbeatsTotal = &c.HeartbeatsTotal
+		out.EventLoopTicks = &c.EventLoopTicks
 	}
 	return out
 }

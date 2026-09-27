@@ -756,7 +756,7 @@ func printStatus(w io.Writer, st *fsclient.Status) {
 	// three facts that is (BFS-045's null rule).
 	if inv.Server != nil {
 		sv := inv.Server
-		fmt.Fprintf(w, "server watch : state=%s backend=%s watched=%d/%d", dashIfEmpty(sv.State), dashIfEmpty(sv.Backend), sv.DirectoriesWatched, sv.DirectoriesDesired)
+		fmt.Fprintf(w, "server watch : state=%s backend=%s watched=%s/%s", dashIfEmpty(sv.State), dashIfEmpty(sv.Backend), intOrDash(sv.DirectoriesWatched), intOrDash(sv.DirectoriesDesired))
 		if sv.Reason != "" {
 			fmt.Fprintf(w, " reason=%s", sv.Reason)
 		}
@@ -770,8 +770,7 @@ func printStatus(w io.Writer, st *fsclient.Status) {
 		if sv.Detail != "" {
 			fmt.Fprintf(w, "  detail     : %s\n", sv.Detail)
 		}
-		fmt.Fprintf(w, "server counts: overflows=%d unvouched=%d rescans=%d install_failures=%d backend_errors=%d heartbeats=%d loop_ticks=%d",
-			sv.OverflowsTotal, sv.UnvouchedTotal, sv.RescansTotal, sv.InstallFailuresTotal, sv.BackendErrorsTotal, sv.HeartbeatsTotal, sv.EventLoopTicks)
+		fmt.Fprintf(w, "server counts: %s", serverCounts(sv))
 		if sv.DroppedEvents != nil {
 			fmt.Fprintf(w, " dropped_events=%d", *sv.DroppedEvents)
 		} else if sv.DroppedEventsReason != "" {
@@ -905,6 +904,38 @@ func dashIfEmpty(s string) string {
 		return "-"
 	}
 	return s
+}
+
+// intOrDash renders a figure the server may not have published: `-` when the
+// document carried no such figure, so an absent measurement is never printed as a
+// zero that reads like a measurement.
+func intOrDash(p *int) string {
+	if p == nil {
+		return "-"
+	}
+	return fmt.Sprintf("%d", *p)
+}
+
+// serverCounts renders the server's own watcher figures. A figure the document
+// did not publish is printed as `-`, never as 0: on a build with no watcher the
+// server publishes no counters block at all, and a 0 there would read as "this
+// never happened" rather than "this was never measured" (BFS-045).
+func serverCounts(sv *fsclient.ServerWatchState) string {
+	field := func(name string, p *int64) string {
+		if p == nil {
+			return name + "=-"
+		}
+		return fmt.Sprintf("%s=%d", name, *p)
+	}
+	return strings.Join([]string{
+		field("overflows", sv.OverflowsTotal),
+		field("unvouched", sv.UnvouchedTotal),
+		field("rescans", sv.RescansTotal),
+		field("install_failures", sv.InstallFailuresTotal),
+		field("backend_errors", sv.BackendErrorsTotal),
+		field("heartbeats", sv.HeartbeatsTotal),
+		field("loop_ticks", sv.EventLoopTicks),
+	}, " ")
 }
 
 // classSummary renders the directory measurement's classes in a stable order, so
