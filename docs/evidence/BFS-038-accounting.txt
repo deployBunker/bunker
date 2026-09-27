@@ -1,0 +1,17 @@
+=== RUN   TestPublishedFigureNeverOverstatesTheDirectory
+    cache_staged_test.go:642: residual (BFS-031's row, NOT repaired here): used_bytes=32943, directory=34522, gap=1579 bytes (status.json, outside the blob+index accounting)
+--- PASS: TestPublishedFigureNeverOverstatesTheDirectory (0.00s)
+=== RUN   TestTwoAccountsAreReportedSeparately
+--- PASS: TestTwoAccountsAreReportedSeparately (0.00s)
+=== RUN   TestInFlightBytesDecideAdmission
+    cache_staged_test.go:942: F-1 arithmetic: published used_bytes=461272, in_flight_bytes=579112, reserved_bytes=1040536, max_bytes=1048576; a published-only admission check would admit a second 579112-byte refresh (published+2x = 1619496 bytes on disk, 54.4% over the bound) while the directory reads 'inside'
+--- PASS: TestInFlightBytesDecideAdmission (0.00s)
+=== RUN   TestEntryBoundIsEnforcedAndReported
+    cache_staged_test.go:1025: entry bound: entries=8/8, used_bytes=9401 of max_bytes=8388608 (0.11%), evictions_total=92
+--- PASS: TestEntryBoundIsEnforcedAndReported (0.01s)
+=== RUN   TestSuccessfulRefreshCost
+    cache_staged_test.go:1299: COST successful refresh publish: 12.588043ms per 8 MiB blob (635.5 MiB/s) over 5 publishes
+    cache_staged_test.go:1325: COST read of a 8 MiB blob: GetPinned=1.341447ms, Get+Pin=957.521µs (ratio 1.40)
+--- PASS: TestSuccessfulRefreshCost (0.15s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.173s

@@ -1,0 +1,103 @@
+cache.go before : sha256=508089d6290fe789b851bc65abce752db266af88a381037cfd009dc22a70fb0c
+backup dir      : /tmp/bfs038-mutation-GJOom2
+
+===================================================================
+MUTATION GROUP: M1
+CELL UNDER TEST: TestInFlightBytesDecideAdmission
+===================================================================
+anchor found exactly once; replacement applied
+--- MUTATED: go test -run TestInFlightBytesDecideAdmission ---
+--- FAIL: TestInFlightBytesDecideAdmission (0.04s)
+    cache_staged_test.go:942: F-1 arithmetic: published used_bytes=461272, in_flight_bytes=579112, reserved_bytes=461272, max_bytes=1048576; a published-only admission check would admit a second 579112-byte refresh (published+2x = 1619496 bytes on disk, 54.4% over the bound) while the directory reads 'inside'
+    cache_staged_test.go:955: OVER BOUND: admission admitted a second 579112-byte refresh against used_bytes=461272 (in_flight was 579112, so the directory reached 1619644 bytes against max_bytes=1048576): admission is not accounting for in-flight bytes
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	0.048s
+FAIL
+mutated test exit code = 1 (non-zero = the cell CATCHES the mutation)
+RESTORE VERIFIED: cache.go sha256=508089d6290fe789b851bc65abce752db266af88a381037cfd009dc22a70fb0c (unchanged)
+--- RESTORED: go test -run TestInFlightBytesDecideAdmission ---
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.028s
+restored test exit code = 0 (0 = green on the real tree)
+NON-VACUITY: PROVEN for TestInFlightBytesDecideAdmission
+
+===================================================================
+MUTATION GROUP: M2
+CELL UNDER TEST: TestReaderHoldingTheOldBlobReadsTheOldCompleteContent
+===================================================================
+anchor found exactly once; replacement applied
+--- MUTATED: go test -run TestReaderHoldingTheOldBlobReadsTheOldCompleteContent ---
+--- FAIL: TestReaderHoldingTheOldBlobReadsTheOldCompleteContent (0.10s)
+    cache_staged_test.go:485: the old blob was reclaimed while a reader still held it: stat /tmp/TestReaderHoldingTheOldBlobReadsTheOldCompleteContent2448431861/001/blobs/8be0dd28b3c1353d8d6b638214dab4ef9967087d845f5d63a5c0a8471eb61075: no such file or directory
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	0.102s
+FAIL
+mutated test exit code = 1 (non-zero = the cell CATCHES the mutation)
+RESTORE VERIFIED: cache.go sha256=508089d6290fe789b851bc65abce752db266af88a381037cfd009dc22a70fb0c (unchanged)
+--- RESTORED: go test -run TestReaderHoldingTheOldBlobReadsTheOldCompleteContent ---
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.033s
+restored test exit code = 0 (0 = green on the real tree)
+NON-VACUITY: PROVEN for TestReaderHoldingTheOldBlobReadsTheOldCompleteContent
+
+===================================================================
+MUTATION GROUP: M3
+CELL UNDER TEST: TestEntryBoundIsEnforcedAndReported
+===================================================================
+anchor found exactly once; replacement applied
+--- MUTATED: go test -run TestEntryBoundIsEnforcedAndReported ---
+--- FAIL: TestEntryBoundIsEnforcedAndReported (0.12s)
+    cache_staged_test.go:1018: the directory holds 100 entries against an entry bound of 8
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	0.121s
+FAIL
+mutated test exit code = 1 (non-zero = the cell CATCHES the mutation)
+RESTORE VERIFIED: cache.go sha256=508089d6290fe789b851bc65abce752db266af88a381037cfd009dc22a70fb0c (unchanged)
+--- RESTORED: go test -run TestEntryBoundIsEnforcedAndReported ---
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.085s
+restored test exit code = 0 (0 = green on the real tree)
+NON-VACUITY: PROVEN for TestEntryBoundIsEnforcedAndReported
+
+===================================================================
+MUTATION GROUP: M4
+CELL UNDER TEST: TestAbandonedRefreshDiscardsItsBlobAndNeverSwaps
+===================================================================
+anchor found exactly once; replacement applied
+--- MUTATED: go test -run TestAbandonedRefreshDiscardsItsBlobAndNeverSwaps ---
+--- FAIL: TestAbandonedRefreshDiscardsItsBlobAndNeverSwaps (0.00s)
+    cache_staged_test.go:770: abandonment left residue: the directory grew from 98479 to 196783 bytes
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	0.004s
+FAIL
+mutated test exit code = 1 (non-zero = the cell CATCHES the mutation)
+RESTORE VERIFIED: cache.go sha256=508089d6290fe789b851bc65abce752db266af88a381037cfd009dc22a70fb0c (unchanged)
+--- RESTORED: go test -run TestAbandonedRefreshDiscardsItsBlobAndNeverSwaps ---
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.004s
+restored test exit code = 0 (0 = green on the real tree)
+NON-VACUITY: PROVEN for TestAbandonedRefreshDiscardsItsBlobAndNeverSwaps
+
+===================================================================
+MUTATION GROUP: M5A M5B
+CELL UNDER TEST: TestAtomicRefreshHalfFileCell
+===================================================================
+anchor found exactly once; replacement applied
+anchor found exactly once; replacement applied
+--- MUTATED: go test -run TestAtomicRefreshHalfFileCell ---
+--- FAIL: TestAtomicRefreshHalfFileCell (0.02s)
+    --- FAIL: TestAtomicRefreshHalfFileCell/staged-new-blob-swap (0.00s)
+        cache_staged_test.go:332: staged-new-blob-swap: reader observed "partial(196608 bytes)" at the half-way checkpoint, "new" after the refresh returned; old content address intact=true
+        cache_staged_test.go:340: a reader observed "partial(196608 bytes)" during the refresh: a refreshed file was visible half-written
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	0.018s
+FAIL
+mutated test exit code = 1 (non-zero = the cell CATCHES the mutation)
+RESTORE VERIFIED: cache.go sha256=508089d6290fe789b851bc65abce752db266af88a381037cfd009dc22a70fb0c (unchanged)
+--- RESTORED: go test -run TestAtomicRefreshHalfFileCell ---
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.021s
+restored test exit code = 0 (0 = green on the real tree)
+NON-VACUITY: PROVEN for TestAtomicRefreshHalfFileCell
+
+===================================================================
+cells with a proven negative control: 5 of 5
+cache.go final sha256=508089d6290fe789b851bc65abce752db266af88a381037cfd009dc22a70fb0c
+FINAL RESTORE VERIFIED: the tree is byte-identical to the start
+RESTORE VERIFIED: cache.go sha256=508089d6290fe789b851bc65abce752db266af88a381037cfd009dc22a70fb0c (unchanged)
+EXIT=0

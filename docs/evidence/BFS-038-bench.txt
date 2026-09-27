@@ -1,0 +1,12 @@
+goos: linux
+goarch: amd64
+pkg: github.com/deployBunker/bunker/internal/fsclient
+cpu: AMD Ryzen 7 7840HS w/ Radeon 780M Graphics     
+BenchmarkStagedRefreshPublish8MiB-16    	       5	   6217282 ns/op	1349.24 MB/s
+BenchmarkStagedRefreshPublish8MiB-16    	       5	   5911638 ns/op	1419.00 MB/s
+BenchmarkGetPinned8MiB-16               	       5	   2037841 ns/op	4116.42 MB/s
+BenchmarkGetPinned8MiB-16               	       5	   2128495 ns/op	3941.10 MB/s
+BenchmarkGetAndPin8MiB-16               	       5	   2684548 ns/op	3124.77 MB/s
+BenchmarkGetAndPin8MiB-16               	       5	   2147081 ns/op	3906.98 MB/s
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.301s
