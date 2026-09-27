@@ -1,0 +1,271 @@
+=== RUN   TestInvalidationWireSampleForEvidence
+    invalidation_config_test.go:708: X-Bunker-Verdict: capability_unavailable
+    invalidation_config_test.go:709: X-Bunker-Capability: watch;scope=target;mode=poll;reason=watch_limit_exhausted
+    invalidation_config_test.go:710: refusal: 
+        {
+          "ok": false,
+          "op": "watch",
+          "verdict": "capability_unavailable",
+          "rev": "rev:0",
+          "tree": "tree:2a2f2aa95cc03ad0",
+          "proto": "HTTP/1.1",
+          "duration_ms": 0,
+          "truncated": false,
+          "result": null,
+          "error": {
+            "capability": "watch",
+            "scope": "target",
+            "mode": "poll",
+            "reason": "watch_limit_exhausted",
+            "unhonoured": {
+              "knob": "server.invalidation.watch.max_watches",
+              "configured": 8192,
+              "observed": 128,
+              "detail": "the deployment asked for a watch ceiling of 8192 but the platform's own ceiling is 128, so 128 is the ceiling in force; the per-user watch total in use is not observable, so the platform's ceiling cannot be raised from inside this process (the remedy is an operator action on fs.inotify.max_user_watches)"
+            },
+            "detail": "the watch set needs 515 watches (3 directories plus 512 headroom); the ceiling fs.inotify.max_user_watches in force is 128, which this tree does not fit under, and it is the platform number (requested 8192, platform 128, per-user total in use not observable); the remedy is an operator action on the ceiling"
+          }
+        }
+    invalidation_config_test.go:729: extensions.watch.config: 
+        {
+          "applied_from": "the watcher's own options, read while the install is ABSENT on this target (state=absent): only the knobs the refused install used are in force",
+          "ceiling": {
+            "binding": "platform",
+            "ceiling_in_force": 128,
+            "headroom": 512,
+            "platform_max_user_watches": 128,
+            "requested_max_watches": 8192,
+            "watches_desired": 3
+          },
+          "declared": "the knob table (name, default, range, unit, failure mode) is internal/invalidation.Knobs(); every row above is read from the running watcher when one exists, and no row reports a value the code does not use",
+          "knobs": [
+            {
+              "applied": true,
+              "default": 0,
+              "knob": "server.invalidation.watch.enabled",
+              "max": 1,
+              "min": 0,
+              "source": "operator",
+              "unit": "bool",
+              "value": true
+            },
+            {
+              "applied": false,
+              "applied_reason": "the watcher is not established on this target (state=absent), so the machinery this knob bounds never started",
+              "default": 30000,
+              "knob": "server.invalidation.watch.heartbeat_ms",
+              "max": 30000,
+              "min": 100,
+              "source": "operator",
+              "unit": "ms",
+              "value": 5000
+            },
+            {
+              "applied": true,
+              "default": 512,
+              "knob": "server.invalidation.watch.install_headroom",
+              "max": 1048576,
+              "min": 1,
+              "source": "declared_default",
+              "unit": "count",
+              "value": 512
+            },
+            {
+              "applied": false,
+              "applied_reason": "the watcher is not established on this target (state=absent), so the machinery this knob bounds never started",
+              "default": 50,
+              "knob": "server.invalidation.watch.flush_every_ms",
+              "max": 60000,
+              "min": 1,
+              "source": "declared_default",
+              "unit": "ms",
+              "value": 50
+            },
+            {
+              "applied": false,
+              "applied_reason": "the watcher is not established on this target (state=absent), so the machinery this knob bounds never started",
+              "default": 4096,
+              "knob": "server.invalidation.watch.flush_max_paths",
+              "max": 4096,
+              "min": 1,
+              "source": "declared_default",
+              "unit": "count",
+              "value": 4096
+            },
+            {
+              "applied": true,
+              "default": 100000,
+              "knob": "server.invalidation.watch.scan_limit",
+              "max": 2147483648,
+              "min": 1,
+              "source": "declared_default",
+              "unit": "count",
+              "value": 100000
+            },
+            {
+              "applied": true,
+              "default": 0,
+              "knob": "server.invalidation.watch.max_watches",
+              "max": 2147483648,
+              "min": 0,
+              "source": "operator",
+              "unit": "count",
+              "value": 8192
+            },
+            {
+              "applied": false,
+              "applied_reason": "the push form is not served in this build (BFS-036 owns the wire endpoint), so this value is declared and validated but nothing applies it yet",
+              "default": 4194304,
+              "knob": "server.invalidation.push.subscriber_buffer_bytes",
+              "max": 1073741824,
+              "min": 65536,
+              "source": "declared_default",
+              "unit": "bytes",
+              "value": 4194304
+            },
+            {
+              "applied": false,
+              "applied_reason": "the push form is not served in this build (BFS-036 owns the wire endpoint), so this value is declared and validated but nothing applies it yet",
+              "default": 256,
+              "knob": "server.invalidation.push.subscriber_buffer_events",
+              "max": 65536,
+              "min": 1,
+              "source": "declared_default",
+              "unit": "count",
+              "value": 256
+            },
+            {
+              "applied": false,
+              "applied_reason": "the push form is not served in this build (BFS-036 owns the wire endpoint), so this value is declared and validated but nothing applies it yet",
+              "default": 8,
+              "knob": "server.invalidation.push.max_subscribers",
+              "max": 4096,
+              "min": 1,
+              "source": "declared_default",
+              "unit": "count",
+              "value": 8
+            },
+            {
+              "applied": false,
+              "applied_reason": "the push form is not served in this build (BFS-036 owns the wire endpoint), so this value is declared and validated but nothing applies it yet",
+              "default": 10000,
+              "knob": "server.invalidation.push.write_deadline_ms",
+              "max": 29999,
+              "min": 100,
+              "source": "operator",
+              "unit": "ms",
+              "value": 4000
+            },
+            {
+              "applied": false,
+              "applied_reason": "the push form is not served in this build (BFS-036 owns the wire endpoint), so this value is declared and validated but nothing applies it yet",
+              "default": 1048576,
+              "knob": "server.invalidation.push.max_event_bytes",
+              "max": 8388608,
+              "min": 65536,
+              "source": "declared_default",
+              "unit": "bytes",
+              "value": 1048576
+            }
+          ],
+          "read_at": "2026-09-27T09:47:05-05:00",
+          "surface": "server.invalidation",
+          "unhonoured": [
+            {
+              "configured": 8192,
+              "detail": "the deployment asked for a watch ceiling of 8192 but the platform's own ceiling is 128, so 128 is the ceiling in force; the per-user watch total in use is not observable, so the platform's ceiling cannot be raised from inside this process (the remedy is an operator action on fs.inotify.max_user_watches)",
+              "knob": "server.invalidation.watch.max_watches",
+              "observed": 128
+            }
+          ]
+        }
+    invalidation_config_test.go:730: extensions.watch.limits.watching: 
+        {
+          "instances": {
+            "configured": 1024,
+            "limit_name": "fs.inotify.max_user_instances"
+          },
+          "queued_events": {
+            "configured": 16384,
+            "limit_name": "fs.inotify.max_queued_events"
+          },
+          "watching": {
+            "ceiling_in_force": 128,
+            "configured": 128,
+            "desired": 3,
+            "errno": "",
+            "headroom": 512,
+            "limit_name": "fs.inotify.max_user_watches",
+            "platform_max_user_watches": 128,
+            "requested_max_watches": 8192,
+            "watches_held_by_this_process": 0
+          }
+        }
+    invalidation_config_test.go:744: capabilities.degradations: 
+        [
+          {
+            "capability": "watch",
+            "detail": "inotify watcher absent on this target: the push form is not served; the declared poll form X-Bunker-Op: events is",
+            "mode": "poll",
+            "scope": "target"
+          },
+          {
+            "capability": "lock",
+            "detail": "no lease-backed LOCK in this build; DAV: 1 is advertised, DAV: 2 is not",
+            "mode": "none",
+            "phase": "C4",
+            "scope": "build"
+          },
+          {
+            "capability": "h3",
+            "detail": "no HTTP/3 listener is live in this process: QUIC always encrypts, so h3 needs tls.enabled: true plus server.h3_enabled: true (BFS-007)",
+            "mode": "http/2",
+            "scope": "build"
+          },
+          {
+            "capability": "op:status",
+            "detail": "delegated op not in this build (slice C5)",
+            "phase": "C5",
+            "scope": "build"
+          },
+          {
+            "capability": "op:diff",
+            "detail": "delegated op not in this build (slice C5)",
+            "phase": "C5",
+            "scope": "build"
+          },
+          {
+            "capability": "op:rev-parse",
+            "detail": "delegated op not in this build (slice C5)",
+            "phase": "C5",
+            "scope": "build"
+          },
+          {
+            "capability": "op:ls-files",
+            "detail": "delegated op not in this build (slice C5)",
+            "phase": "C5",
+            "scope": "build"
+          },
+          {
+            "capability": "op:log",
+            "detail": "delegated op not in this build (slice C5)",
+            "phase": "C5",
+            "scope": "build"
+          },
+          {
+            "capability": "op:watch",
+            "detail": "delegated op not in this build (slice C5)",
+            "phase": "C5",
+            "scope": "build"
+          },
+          {
+            "capability": "h2",
+            "detail": "tls.enabled is false and server.h2c_enabled is false: this listener serves HTTP/1.1 only",
+            "mode": "http/1.1",
+            "scope": "transport"
+          }
+        ]
+--- PASS: TestInvalidationWireSampleForEvidence (0.01s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/server/webdav	0.011s
+rc=0

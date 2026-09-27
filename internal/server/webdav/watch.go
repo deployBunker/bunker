@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+
+	"github.com/deployBunker/bunker/internal/invalidation"
 )
 
 // ---------------------------------------------------------------------------
@@ -106,34 +108,16 @@ const (
 // fabricated number (§3.3 rule 2).
 const watchDroppedEventsReason = "the kernel reports one overflow marker, not how many events it dropped"
 
-// Tunables. They are variables rather than constants for one reason: the
-// behaviour they bound (the stall detector, the headroom discipline, the flush
-// cadence) is part of the contract and a test must be able to exercise it
-// without waiting 30 s or building a 1 048 576-directory tree.
-var (
-	// watchHeartbeatPeriod is the period of the watcher's OWN heartbeat (O-2).
-	// It is the period the watcher controls and the only admissible source of
-	// liveness: §8.2 declares heartbeat_ms 30000 for the stream, and the watcher's
-	// own loop must not be slower than the channel it feeds.
-	watchHeartbeatPeriod = 30 * time.Second
+// Tunables. The DECLARED defaults and ranges live in internal/invalidation
+// (BFS-043's knob table) and are passed in per watcher through watchOptions:
+// there is exactly one place a default is written down. watchStallBeats is not
+// a config knob (it is a property of the stall detector's arithmetic, not a
+// bound an operator has a reason to move), so it stays here.
+const (
 	// watchStallBeats is how many consecutive heartbeats may find the event loop
 	// parked before the interval is declared unvouched. One beat is a scheduling
 	// hiccup; two consecutive is a stopped loop.
 	watchStallBeats = 2
-	// watchInstallHeadroom is §4.2's required, reported, non-zero headroom: the
-	// tree grows, other processes of the same uid exist, and the per-user total in
-	// use is not observable, so "we fit exactly" is not a claim this build makes.
-	watchInstallHeadroom = 512
-	// watchFlushEvery coalesces a burst into one path list. The poll's own
-	// ordering rule (§6.2: within one event the list is sorted, and that sortedness
-	// is not causal order) is what makes coalescing admissible.
-	watchFlushEvery = 50 * time.Millisecond
-	// watchFlushMaxPaths bounds one flushed path list; above it the flush is a
-	// full rescan, never a longer or partial list (§5.1 claim 2).
-	watchFlushMaxPaths = 4096
-	// watchScanLimit bounds the install walk and a rescan, exactly as the poll's
-	// own bound does.
-	watchScanLimit = eventsScanLimit
 )
 
 // ---------------------------------------------------------------------------
@@ -219,12 +203,27 @@ type watchEnv struct {
 	readMounts func() []mountRecord
 }
 
-// watchOptions carries the tunables a cell may override on one watcher.
+// watchOptions carries the tunables one watcher runs with. Every numeric field
+// is a knob from internal/invalidation (BFS-043), so the values here are the
+// values the surface declares and reports; a cell may override any of them to
+// exercise the behaviour they bound without waiting 30 s or building a
+// 1 048 576-directory tree.
 type watchOptions struct {
 	heartbeat  time.Duration
 	stallBeats int
 	headroom   int
 	flushEvery time.Duration
+	// flushMaxPaths bounds one flushed path list; above it the flush is a full
+	// rescan, never a longer or partial list (§5.1 claim 2). Default: the
+	// surface's declared max_paths_per_event (4096).
+	flushMaxPaths int
+	// scanLimit bounds the install walk and a rescan, exactly as the poll's own
+	// bound does.
+	scanLimit int
+	// maxWatches is the requested watch ceiling: 0 means AUTO, i.e. the
+	// platform's own ceiling (invalidation.KnobWatchMaxWatches). A value the
+	// platform cannot give is REPORTED, never clamped in silence.
+	maxWatches int64
 
 	// disableDrain is the O-1 NEGATIVE CONTROL. When true the watcher reads ONLY
 	// the event channel — the shape §5.4 measures as silent — so a cell can
@@ -240,13 +239,26 @@ type watchOptions struct {
 	loopGate chan struct{}
 }
 
-func defaultWatchOptions() watchOptions {
+// watchOptionsFrom is the ONE conversion from the declared config surface to the
+// options the watcher runs with. New and the read-back both go through it, so the
+// numbers reported and the numbers obeyed cannot diverge.
+func watchOptionsFrom(v invalidation.Values) watchOptions {
 	return watchOptions{
-		heartbeat:  watchHeartbeatPeriod,
-		stallBeats: watchStallBeats,
-		headroom:   watchInstallHeadroom,
-		flushEvery: watchFlushEvery,
+		heartbeat:     time.Duration(v.Watch.HeartbeatMS) * time.Millisecond,
+		stallBeats:    watchStallBeats,
+		headroom:      v.Watch.InstallHeadroom,
+		flushEvery:    time.Duration(v.Watch.FlushEveryMS) * time.Millisecond,
+		flushMaxPaths: v.Watch.FlushMaxPaths,
+		scanLimit:     v.Watch.ScanLimit,
+		maxWatches:    v.Watch.MaxWatches,
 	}
+}
+
+// defaultWatchOptions is the watcher's options at the DECLARED defaults, which is
+// what a deployment with no invalidation block gets. It is derived from the knob
+// table rather than restated, so a default can only be changed in one place.
+func defaultWatchOptions() watchOptions {
+	return watchOptionsFrom(invalidation.DefaultValues())
 }
 
 // ---------------------------------------------------------------------------
@@ -308,6 +320,12 @@ type watchStatus struct {
 	Vouched     bool
 	Stalled     bool
 	HeartbeatMS int
+	// Ceiling is §4.2's arithmetic (requested vs platform vs need) and
+	// Unhonoured is the configured-vs-observed pair it produced, when any
+	// configured value could not be honoured (BFS-043). Both carriers come from
+	// the same field, so the refusal and the document cannot disagree.
+	Ceiling    *invalidation.WatchCeiling
+	Unhonoured *invalidation.Unhonoured
 }
 
 // triBool is §4.8's three-valued field: `true`, `false`, or the string
@@ -371,7 +389,13 @@ type watcher struct {
 	coverage  watchCoverage
 	limits    watchLimits
 	limitsRaw watchCeilings
-	stalled   bool
+	// ceiling is §4.2's arithmetic as BFS-043 computes it: requested (the
+	// configured watch ceiling), platform (fs.inotify.max_user_watches), what the
+	// tree needs, and the ceiling actually in force. It is recorded before
+	// anything is installed, so the refusal, the document and the degradation
+	// list report the same configured-vs-observed numbers.
+	ceiling invalidation.WatchCeiling
+	stalled bool
 	// stalledNow/wasStalled are the stall detector's state (O-2), guarded by mu.
 	// wasStalled is the PREVIOUS beat's verdict and stalledNow the current one:
 	// one consecutive parked beat is a scheduling hiccup, two is a stopped loop.
@@ -478,20 +502,29 @@ func (w *watcher) install() {
 		// A tree larger than the scan bound cannot be claimed as covered, and a
 		// truncated watch set is exactly the silent-wrong-answer shape of W-4.
 		w.absent(WatchReasonPartialCoverage, fmt.Sprintf(
-			"the served tree exceeds the install walk's bound of %d directories: the watch set would be short and a change under an uncovered directory produces no event", watchScanLimit))
+			"the served tree exceeds the install walk's bound of %d directories: the watch set would be short and a change under an uncovered directory produces no event", w.opts.scanLimit))
 		w.tree.watchLive.Store(false)
 		return
 	}
 
-	// W-2's pre-flight: configured ceiling vs the directories this tree wants,
-	// WITH headroom. It cannot be a proof (the per-user total in use is not
-	// observable) and it is not treated as one: the add loop below classifies
-	// every error, and that classification is the authoritative signal.
-	if probe.ceilings.MaxUserWatches > 0 && int64(desired+w.opts.headroom) > probe.ceilings.MaxUserWatches {
+	// W-2's pre-flight: the ceiling IN FORCE vs the directories this tree wants,
+	// WITH headroom. §4.2 mandates the attempt-and-classify shape, and BFS-043
+	// makes the ceiling a configured value: the knob asks, the platform gives,
+	// and the number actually in force is the smaller of the two. The decision is
+	// recorded on the watcher before anything is installed, so the refusal, the
+	// capability document and the degradation list all carry the SAME
+	// configured-vs-observed pair (§3.1: the carriers can never disagree).
+	//
+	// It cannot be a proof (the per-user total in use is not observable) and it is
+	// not treated as one: the add loop below classifies every error, and that
+	// classification is the authoritative signal.
+	w.setCeiling(watchCeilingFor(probe.ceilings.MaxUserWatches, desired, w.opts))
+	if !w.ceiling.Fits() {
 		w.absent(WatchReasonLimitExhausted, fmt.Sprintf(
-			"the watch set needs %d watches with %d headroom; the configured ceiling %s is %d, which this tree does not fit under; the per-user total in use is not observable, so the remedy is an operator action on that ceiling",
-			desired, w.opts.headroom, limitNameWatches, probe.ceilings.MaxUserWatches))
-		w.setLimitFailure(limitNameWatches, probe.ceilings.MaxUserWatches, 0, desired, -1, "")
+			"the watch set needs %d watches (%d directories plus %d headroom); the ceiling %s in force is %d, which this tree does not fit under, and it is the %s number (requested %s, platform %d, per-user total in use not observable); the remedy is an operator action on the ceiling",
+			w.ceiling.Need(), desired, w.opts.headroom, limitNameWatches, w.ceiling.Effective(),
+			w.ceiling.Binding(), requestedSpelling(w.ceiling), probe.ceilings.MaxUserWatches))
+		w.setLimitFailure(limitNameWatches, w.ceiling.Effective(), 0, desired, -1, "")
 		w.tree.watchLive.Store(false)
 		return
 	}
@@ -883,7 +916,7 @@ func (w *watcher) flush() {
 	}
 	sort.Strings(rels)
 
-	if len(rels) > watchFlushMaxPaths {
+	if len(rels) > w.opts.flushMaxPaths {
 		// Knowledge lost in our own queue: the same consequence as a kernel
 		// overflow, handled identically and counted as one.
 		w.overflows.Add(1)
@@ -944,7 +977,7 @@ func (w *watcher) rescan(cause string) {
 		// larger than any observation this build can take, and the next rescan
 		// says so again rather than pretending.
 		w.absent(WatchReasonPartialCoverage, fmt.Sprintf(
-			"the served tree exceeds the observation bound of %d paths: a rescan cannot vouch for it and no interval is reported as quiet", watchScanLimit))
+			"the served tree exceeds the observation bound of %d paths: a rescan cannot vouch for it and no interval is reported as quiet", w.opts.scanLimit))
 		w.tree.watchLive.Store(false)
 		return
 	}
@@ -1063,9 +1096,9 @@ func (w *watcher) reinstall() bool {
 // Small helpers.
 // ---------------------------------------------------------------------------
 
-// walkDirs collects the directories the watch set must cover, bounded by
-// watchScanLimit. It is the same walk the installer needs, so the ceiling probe
-// costs no extra pass (§4.2(b)).
+// walkDirs collects the directories the watch set must cover, bounded by the
+// configured scan limit. It is the same walk the installer needs, so the ceiling
+// probe costs no extra pass (§4.2(b)).
 func (w *watcher) walkDirs() ([]string, bool, error) {
 	var dirs []string
 	truncated := false
@@ -1084,7 +1117,7 @@ func (w *watcher) walkDirs() ([]string, bool, error) {
 		if isTempName(d.Name()) {
 			return filepath.SkipDir
 		}
-		if len(dirs) >= watchScanLimit {
+		if len(dirs) >= w.opts.scanLimit {
 			truncated = true
 			return fs.SkipAll
 		}
@@ -1176,7 +1209,7 @@ func (w *watcher) absent(reason, detail string) {
 func (w *watcher) setLimitFailure(name string, configured int64, added, desired, watchesAdded int, errno string) {
 	w.mu.Lock()
 	blk := limitsBlock(w.limitsRaw)
-	blk.Watching = map[string]any{
+	entry := map[string]any{
 		"limit_name":                   name,
 		"configured":                   configured,
 		"watches_held_by_this_process": added,
@@ -1184,8 +1217,64 @@ func (w *watcher) setLimitFailure(name string, configured int64, added, desired,
 		"headroom":                     w.opts.headroom,
 		"errno":                        errno,
 	}
+	if name == limitNameWatches {
+		// BFS-043: the requested-vs-platform pair beside the ceiling in force, so
+		// "you asked for 8192 watches and this kernel gives 128" is readable as
+		// numbers rather than inferred from prose. requested is null when the knob
+		// is AUTO (0): a fabricated 0 here would read as "the operator asked for
+		// nothing" (§3.3 rule 2 — a number that is not knowable is null).
+		entry["requested_max_watches"] = requestedOrNil(w.ceiling.Requested)
+		entry["platform_max_user_watches"] = w.ceiling.Platform
+		entry["ceiling_in_force"] = w.ceiling.Effective()
+	}
+	blk.Watching = entry
 	w.limits = blk
 	w.mu.Unlock()
+}
+
+// setCeiling records the ceiling decision (§4.2's arithmetic) on the watcher.
+func (w *watcher) setCeiling(c invalidation.WatchCeiling) {
+	w.mu.Lock()
+	w.ceiling = c
+	w.mu.Unlock()
+}
+
+// unhonoured is the configured-vs-observed pair this watcher recorded, or nil
+// when every configured value was honoured.
+func (w *watcher) unhonoured() *invalidation.Unhonoured {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.ceiling.Unhonoured()
+}
+
+// watchCeilingFor assembles §4.2's arithmetic from the probes and the config:
+// what was requested (the knob; 0 = AUTO), what the platform gives, and what the
+// tree needs with its declared headroom.
+func watchCeilingFor(platform int64, desired int, opts watchOptions) invalidation.WatchCeiling {
+	return invalidation.WatchCeiling{
+		Requested: opts.maxWatches,
+		Platform:  platform,
+		Desired:   int64(desired),
+		Headroom:  int64(opts.headroom),
+	}
+}
+
+// requestedSpelling renders the requested ceiling for a detail line: the AUTO
+// sentinel is a fact to state, never a number to print.
+func requestedSpelling(c invalidation.WatchCeiling) string {
+	if c.Requested <= 0 {
+		return "AUTO (the platform's own ceiling)"
+	}
+	return fmt.Sprintf("%d", c.Requested)
+}
+
+// requestedOrNil is the null-with-a-reason form for the same value in the
+// document: AUTO is reported as null, never as 0.
+func requestedOrNil(v int64) any {
+	if v <= 0 {
+		return nil
+	}
+	return v
 }
 
 // statusSnapshot is the wire-facing picture.
@@ -1205,6 +1294,16 @@ func (w *watcher) statusSnapshot() watchStatus {
 	w.mu.Unlock()
 	st.Backend = w.env.backendName
 	st.HeartbeatMS = int(w.opts.heartbeat / time.Millisecond)
+
+	// The ceiling decision and its configured-vs-observed pair. Reading them off
+	// the running watcher (not off the config) is what makes the read-back
+	// describe what was applied: these are the numbers this process computed from
+	// the probes it actually ran.
+	w.mu.Lock()
+	ceiling := w.ceiling
+	w.mu.Unlock()
+	st.Ceiling = &ceiling
+	st.Unhonoured = ceiling.Unhonoured()
 
 	// §8.2 declares overflow_dropped_events as null and §3.3 rule 2 forbids
 	// inventing the number: the kernel reports ONE overflow marker, not how many
@@ -1390,13 +1489,24 @@ func (h *Handler) watchStatusSnapshot() watchStatus {
 	}
 	h.primeWatchProbe()
 	p := h.watchProbe
+	// The requested-vs-platform pair is knowable WITHOUT a watcher (both numbers
+	// are read facts), so a deployment that has not enabled the watcher still gets
+	// an answer to "did my watch ceiling take effect?". The tree's own need is not
+	// knowable here — no walk has run — so it is not reported (§3.3 rule 2).
+	ceiling := invalidation.WatchCeiling{
+		Requested: h.inv.Watch.MaxWatches,
+		Platform:  p.ceilings.MaxUserWatches,
+		Headroom:  int64(h.inv.Watch.InstallHeadroom),
+	}
 	st := watchStatus{
 		State:       WatchStateAbsent,
 		Backend:     p.backendName,
 		Target:      p.target,
 		Limits:      limitsBlock(p.ceilings),
 		BlocksPush:  true,
-		HeartbeatMS: int(watchHeartbeatPeriod / time.Millisecond),
+		HeartbeatMS: h.inv.Watch.HeartbeatMS,
+		Ceiling:     &ceiling,
+		Unhonoured:  ceiling.RequestedExceedsPlatform(),
 	}
 	switch {
 	case p.backendName == watchBackendNone:
@@ -1432,6 +1542,9 @@ func (h *Handler) watchDocumentBlock(st watchStatus) map[string]any {
 		"backend":             st.Backend,
 		"target":              st.Target,
 		"limits":              st.Limits,
+		// BFS-043: the knob surface this process is serving with, read out of the
+		// running watcher rather than out of the config (see invalidationConfigBlock).
+		"config": h.invalidationConfigBlock(st),
 	}
 	if st.Reason == "" {
 		blk["reason"] = nil
@@ -1470,8 +1583,14 @@ func (h *Handler) watchRefusal(st watchStatus) *envelopeError {
 		// BFS-036's deliverable and is not in this build. Claiming the target has
 		// no watcher would be the same class of lie as claiming one it does not
 		// have (§3.3).
+		//
+		// BFS-043: an unhonourable value is attached even here. The watcher being
+		// up does not make a configured number that the platform could not give
+		// any less true, and this refusal is the one an operator probing the push
+		// form reads.
 		return &envelopeError{
 			Capability: "watch", Scope: "build", Phase: "C6", Mode: "poll",
+			Unhonoured: st.Unhonoured,
 			Detail: fmt.Sprintf("the push wire form is not in this build; the watcher IS established on this target (state=%s, backend=%s, %d directories watched) and aligns the served revision for out-of-band changes; the declared poll form X-Bunker-Op: events carries the channel (mode=poll)",
 				st.State, st.Backend, coverageWatched(st)),
 		}
@@ -1479,7 +1598,10 @@ func (h *Handler) watchRefusal(st watchStatus) *envelopeError {
 	return &envelopeError{
 		Capability: "watch", Scope: "target", Mode: "poll",
 		Reason: st.Reason,
-		Detail: st.Detail,
+		// §4.2's configured-vs-observed pair, when the value that could not be
+		// honoured is why this refusal happened.
+		Unhonoured: st.Unhonoured,
+		Detail:     st.Detail,
 	}
 }
 
@@ -1517,6 +1639,20 @@ func (h *Handler) watchDegradations(st watchStatus) []map[string]any {
 			entry["reason"] = st.Reason
 		}
 		out = append(out, entry)
+	}
+	if st.Unhonoured != nil && (st.State == WatchStateWatching || st.State == WatchStateOverflow) {
+		// BFS-043: a configured value the platform could not give, while the
+		// channel is UP. It is reported as a WARNING (blocks_push:false) for the
+		// same reason W-7 is: the watcher is working, and a client that reacted by
+		// switching mechanisms would have changed nothing. It is NOT a refusal —
+		// the operator's number did not take effect, which is a fact about the
+		// configuration rather than a degradation of the channel.
+		out = append(out, map[string]any{
+			"capability": "watch", "scope": "build", "mode": "push", "blocks_push": false,
+			"knob": st.Unhonoured.Knob, "configured": st.Unhonoured.Configured, "observed": st.Unhonoured.Observed,
+			"unhonoured": true,
+			"detail":     "an invalidation value could not be honoured, and the channel is up regardless: " + st.Unhonoured.Detail,
+		})
 	}
 	if st.Target.BoundarySplit.IsTrue() {
 		// §4.8: a TOPOLOGY warning, never a channel degradation. It appears only

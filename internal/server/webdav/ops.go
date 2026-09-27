@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/deployBunker/bunker/internal/invalidation"
 )
 
 // opCatalogue is E-4's op vocabulary (§3 E-4). implementedOps is what this
@@ -53,7 +55,14 @@ type envelopeError struct {
 	// and omitting it leaves the wire byte-identical for every refusal that has
 	// no probed reason to report.
 	Reason string `json:"reason,omitempty"`
-	Detail string `json:"detail,omitempty"`
+	// Unhonoured is the configured-vs-observed pair for a value this deployment
+	// asked for that the PLATFORM could not give (BFS-043): the knob, what was
+	// configured and what the platform provides. It is what lets an operator tell
+	// "you asked for 8192 watches and this kernel gives 128" from "the watcher is
+	// broken". It is additive, like `reason`: the four fields an old client
+	// branches on (verdict, status, scope, mode) are untouched.
+	Unhonoured *invalidation.Unhonoured `json:"unhonoured,omitempty"`
+	Detail     string                   `json:"detail,omitempty"`
 }
 
 // handlePost is E-4: POST is the carrier because RFC 4918 §9.5 leaves POST
