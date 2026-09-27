@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bankai release — bunker WebDAV layer + FUSE client</title>
+<style>
+:root{--bg:#0f1115;--fg:#e6e9ef;--dim:#9aa4b2;--line:#252a33;--ok:#3fb950;--bad:#f85149;--warn:#d29922;--acc:#58a6ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+.wrap{display:grid;grid-template-columns:260px 1fr;max-width:1180px;margin:0 auto;gap:32px;padding:32px 20px}
+nav{position:sticky;top:32px;align-self:start;font-size:13px}
+nav h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:0 0 10px}
+nav a{display:block;color:var(--dim);text-decoration:none;padding:3px 0;border-left:2px solid transparent;padding-left:10px}
+nav a:hover{color:var(--acc);border-left-color:var(--acc)}
+h1{font-size:26px;margin:0 0 6px;letter-spacing:-.02em}
+.sub{color:var(--dim);font-size:13px;margin-bottom:28px}
+h2{font-size:19px;margin:38px 0 10px;padding-top:14px;border-top:1px solid var(--line)}
+h3{font-size:15px;margin:22px 0 6px;color:var(--acc)}
+p,li{margin:8px 0}
+code{background:#171b22;border:1px solid var(--line);border-radius:4px;padding:1px 5px;font:13px ui-monospace,SFMono-Regular,Menlo,monospace}
+pre{background:#12161c;border:1px solid var(--line);border-radius:8px;padding:14px;overflow-x:auto;font:13px ui-monospace,Menlo,monospace;line-height:1.5}
+table{border-collapse:collapse;width:100%;margin:14px 0;font-size:13.5px}
+th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:#171b22;color:var(--dim);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+.ok{color:var(--ok);font-weight:600}.bad{color:var(--bad);font-weight:600}.warn{color:var(--warn);font-weight:600}
+.kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:18px 0}
+.card{background:#141821;border:1px solid var(--line);border-radius:10px;padding:14px}
+.card .n{font-size:22px;font-weight:700;letter-spacing:-.02em}
+.card .l{font-size:12px;color:var(--dim);margin-top:3px}
+.lede{border-left:3px solid var(--acc);padding-left:14px;color:#cfd6e0;margin:16px 0}
+.warnbox{border-left:3px solid var(--warn);background:#181a12;padding:12px 14px;border-radius:0 8px 8px 0;margin:16px 0}
+.badbox{border-left:3px solid var(--bad);background:#1a1414;padding:12px 14px;border-radius:0 8px 8px 0;margin:16px 0}
+.small{font-size:12.5px;color:var(--dim)}
+@media(max-width:820px){.wrap{grid-template-columns:1fr}nav{position:static}}
+</style></head><body><div class="wrap">
+
+<nav><h2>Contents</h2>
+<a href="#s1">1 · What was asked</a>
+<a href="#s2">2 · Headline results</a>
+<a href="#s3">3 · Findings (P0)</a>
+<a href="#s4">4 · Honest ledger</a>
+<a href="#s5">5 · Release close</a>
+<a href="#s6">6 · Next work</a>
+</nav>
+
+<main>
+<h1>Bankai release</h1>
+<div class="sub">The bunker WebDAV multi-protocol layer and its FUSE client · main <code>c32a609</code> · 2026-09-26 · <strong>20/20 rows closed</strong> · parity 0 throughout</div>
+
+<div class="kpi">
+<div class="card"><div class="n ok">0 stalls</div><div class="l">35 battery cells (sshfs: 7–8 stalls)</div></div>
+<div class="card"><div class="n">0.013–0.051 s</div><div class="l">whole-tree read (NFS: 33–36 s)</div></div>
+<div class="card"><div class="n">12.0×</div><div class="l">snapshot win at 185 ms RTT</div></div>
+<div class="card"><div class="n ok">412</div><div class="l">stock client refused, not clobbered</div></div>
+</div>
+
+<h2 id="s1">1 · What was asked, and what exists</h2>
+<p>Deliver a WebDAV multi-protocol layer inside <code>bunkerd</code> (HTTP/1.1 + HTTP/2 + HTTP/3 on one port) and our own FUSE client (<code>bunker-fs</code>, Linux first), plus Muster's h2/h3 client transports and <code>.proto</code> support — each of the 20 board rows closed with committed, verifiable evidence.</p>
+<table>
+<tr><th>group</th><th>rows</th><th>state</th></tr>
+<tr><td>investigation</td><td>BFS-002, BFS-003, PROTO-010, PROTO-011</td><td class="ok">4/4</td></tr>
+<tr><td>spec</td><td>BFS-004, BFS-005, PROTO-012, PROTO-013</td><td class="ok">4/4</td></tr>
+<tr><td>execution</td><td>BFS-006 … BFS-010, PROTO-014, PROTO-015, PROTO-016</td><td class="ok">8/8</td></tr>
+<tr><td>testing</td><td>BFS-011, BFS-012, PROTO-017, PROTO-018</td><td class="ok">4/4</td></tr>
+</table>
+
+<h2 id="s2">2 · Headline results, each with its evidence</h2>
+
+<h3>The client does not stall where sshfs does</h3>
+<pre>this client    29 of 35 cells rc=0, 6 errors (all attributed), <span class="ok">0 STALLS</span>
+sshfs          5 ok / 7-8 STALLS
+plain WebDAV   11 ok / 1 stall
+no cell hit the 45 s deadline; no rc=124 anywhere</pre>
+
+<h3>Whole-tree reads are ~1000× the NFS band — mechanism measured, not assumed</h3>
+<pre>snapshot op     0.013 – 0.051 s      one call, 421 nodes, ZERO requests during the walk
+NFS             33 – 36 s
+native          0.41 s</pre>
+
+<h3>The win survives WAN latency (the "both DCs" risk, partially de-risked)</h3>
+<p>At dedi-2's own measured <strong>185.2 ms RTT</strong> (delay relay, both arms in one run, delay verified in the path first):</p>
+<pre>snapshot walk     118 ms
+no-snapshot walk  1416 ms      = 12.0×</pre>
+<p>118 ms is <em>below</em> one round trip — and that is the real finding: <strong>the tree is fetched once at mount, and every later whole-tree walk is served locally.</strong> That is why the ratio <em>grows</em> with latency: the no-snapshot arm pays the RTT per request, the snapshot arm pays it once.</p>
+
+<h3>The lever is concurrency; the protocol is only the carrier</h3>
+<pre>h2  conc 1 → 8:   12.231 s → 2.008 s   (7.7449×)
+h1  conc 1 → 8, ONE connection:  0.9995×  (does NOT degrade — correct)
+carrier test at the same conc=8, changing ONLY the connection count:
+    h1  11.966 s (1 conn) → 1.847 s (8 conns)  = 6.4777×  — level with h2</pre>
+<p>BFS-016 refined this: concurrency is the lever for independent requests, the <strong>snapshot</strong> is the lever for a whole-tree walk. Two mechanisms; the client has both.</p>
+
+<h3>Older clients are not broken — proven with a third-party client, not ours</h3>
+<pre>HTTP/1.1 confirmed on the wire            PROPFIND (Depth: 1) → <strong>207</strong>
+GET / HEAD / OPTIONS → 200                plain PUT → <strong>201</strong>, bytes confirmed ON THE SERVER'S DISK
+nested GET → 200                          DELETE → <strong>204</strong>, file gone from disk
+stale If-Match → <strong>412</strong>, target UNMODIFIED     then correct If-Match → 204
+  refusal body: &lt;D:error&gt;&lt;b:hash-mismatch&gt;&lt;b:expected&gt;sha256:000…   ← interoperable, not internal-only
+Mozilla/4.0 UA → 200 · no Accept header → 200</pre>
+
+<h3>The pushed state builds on a machine with no history of it</h3>
+<pre>git clone --no-local →  go build rc=0 · go vet rc=0 · 27 packages ok, 0 FAIL, 62.49 s</pre>
+<p>This closes a gap that already bit this release once: <strong>the commit guard verifies the working tree, not the stored commit.</strong></p>
+
+<h3>Durability under injected failure</h3>
+<pre>server killed MID-WRITE  → 0 bytes server-side, NO partial file left
+interrupted read         → failed loudly in 0 s
+after the kill: mount stayed mounted · cached file still read · uncached file failed loudly</pre>
+
+<h2 id="s3">3 · Findings — the most valuable output of this release</h2>
+<div class="lede">Every item below was found by <em>measurement</em>, most by rows whose job was to test rather than build. All are filed rows with their own acceptance criteria, not footnotes.</div>
+
+<div class="badbox">
+<strong>The client is not yet safe for editing a working tree.</strong> Reproduced independently by the driver, twice.<br><br>
+<strong>BFS-025 (P0) — truncated reads.</strong> A path merely <code>stat</code>ed, then replaced with longer content on the agent, returns a <em>fragment</em> with <code>rc=0</code>: <strong>5 bytes of a 66-byte file</strong>. Not stale bytes — <em>new</em> bytes, truncated, presented as success. A build or checksum gets a wrong answer with no error.<br><br>
+<strong>BFS-024 (P0) — stale reads.</strong> A path already read keeps serving pre-edit bytes after an agent-side replacement.<br><br>
+<strong>BFS-026 (P0) — the root cause.</strong> The client's invalidation depends on server ops that <strong>do not exist</strong>: of 8 declared E-4 ops the server implements 2, and <code>events</code>/<code>watch</code> answer <code>capability_unavailable, "slice C5"</code>. The client detects and reports this honestly (<code>"mechanism": "none"</code>) — but with no third mechanism, nothing ever invalidates.<br><br>
+<strong>BFS-030 (P0) — data loss on a failed rewrite.</strong> <code>&gt;</code> on an <em>existing</em> file truncates it, the O_TRUNC half <strong>lands</strong>, then the write fails — leaving an <strong>empty file</strong> where the content was. In-place <code>r+b</code>/append are unreachable entirely.<br><br>
+<strong>BFS-033 (P0) — the conflict refusal does not hold live.</strong> A unit test passes; through the mount a <strong>412 is recorded in <code>conflicts.jsonl</code> and then a 204 lands</strong>, caller sees success. Attributed <em>below</em> the client's API and specific to the ESTALE verdict (with EIO the refusal holds). The <em>detection</em> is sound and hash-based; the <em>enforcement</em> fails. A logged-then-bypassed refusal is worse than none — it manufactures an audit trail claiming a protection the user did not get.
+</div>
+
+<h3>The bound does not bound</h3>
+<p><strong>BFS-031:</strong> at a 1 KiB bound the cache directory reached <strong>30,689 B = 29.97×</strong> while the client's reported figures stayed inside — <code>status.json</code>/<code>conflicts.jsonl</code> sit outside <code>used_bytes</code>. <strong>BFS-032:</strong> <code>oversize_bypasses</code> <strong>can never move</strong> (pre-filtered before the counter). A counter that cannot move is a gap, not a green check.</p>
+
+<h3>Platform seam</h3>
+<p>The <code>!linux</code> seam <strong>did not compile for any non-Linux platform</strong> — found by the row's own acceptance sentence, fixed, with a committed cross-GOOS guard. <strong>BFS-028</strong> <code>cli/umount.go</code> is POSIX-only, the one site stopping <code>GOOS=windows go build ./...</code>. <strong>BFS-029</strong> <code>fsclient/errors.go</code> reaches for <code>syscall.EREMOTEIO</code>, undefined on darwin/freebsd, despite the package's own portable errno mechanism. Windows decision: <strong>WinFsp via cgofuse, opt-in</strong>; the OS redirector <strong>rejected</strong> because it cannot express the concurrency knob or carry the snapshot op — the two measured things that make the client fast.</p>
+
+<h3>Correctness + hygiene</h3>
+<p><strong>BFS-018</strong> symlinks do not round-trip (a symlink appears as a regular file containing its target — a repo with symlinks is corrupted on first write-back). <strong>BFS-019</strong> readdir can return <strong>empty while entries exist</strong>. <strong>BFS-020</strong> a created file cannot be renamed until published, breaking git's lock-then-rename and leaving <code>&lt;ref&gt;.lock</code> on the tree. <strong>BFS-021</strong> <code>&gt;&gt;</code> loses bytes. <strong>BFS-022/023</strong> the battery instrument carries a +110 ms <code>timeout</code> constant and the op deadline compounds to 60 s against a documented 30 s. <strong>BFS-017</strong> the guard fails on host <strong>load</strong>, not code.</p>
+
+<h2 id="s4">4 · Honest ledger — what this release did NOT establish</h2>
+<ul>
+<li><strong>The both-DCs rule is NOT satisfied.</strong> Every client measurement is loopback or a simulated RTT. The real DC leg is blocked on a Tailscale auth click.</li>
+<li><strong>No Windows anything.</strong> No Windows code written and no Windows result claimed, because none could be run — a stub that cannot compile would make the repo <em>look</em> ported while nothing on Windows had ever run. Mint: <strong>no work</strong>, with reasoning.</li>
+<li><strong>Delegation (PRD slice C5) — the ~80× whole-tree win — is declared and honest but NOT BUILT.</strong> Four of eight E-4 ops answer <code>capability_unavailable</code>. Largest remaining gap; root cause of BFS-026.</li>
+<li><strong>Nothing about stalls at WAN distance.</strong> The WAN measurement is walk <em>time</em> only.</li>
+<li><strong>Named SKIPs, recorded rather than passed:</strong> the live touch-only arm (it served stale bytes), conflict refusal through a plain overwrite, concurrent-write bound arms, the 1 h TTL, whether the FUSE kernel or the VFS issues the retry, and the <code>&gt;</code> data-loss shape reported without being root-caused to a line.</li>
+</ul>
+
+<h2 id="s5">5 · Release close — verified, not asserted</h2>
+<table>
+<tr><th>action</th><th>how it was verified</th></tr>
+<tr><td>worktrees reaped (BFS-008/009/010/012/015/016)</td><td>NOT a blanket sweep: required <strong>0 live workers</strong>; left dirty worktrees alone until their content was shown to be on main; verified by <em>content</em> the two branches that read "unmerged" only because they had been rebased. Pre-existing INT-CI-045 residue deliberately left.</td></tr>
+<tr><td>21 lanes restored</td><td>read back from the DB <em>and</em> independently from the API — <strong>0 still down</strong></td></tr>
+<tr><td>7 pre-existing paused lanes</td><td>re-checked and <strong>untouched</strong> (temple-runner, rabbit-hole, ring-runner, asce, musterflow, escalation-doctrine, Kobayashi-Maru)</td></tr>
+<tr><td>every landing</td><td>parity 0 · guard PASS on every commit</td></tr>
+</table>
+
+<h2 id="s6">6 · Where the next work is</h2>
+<p>The release's deliverable is complete; its <strong>findings are now the work</strong>. Five are P0: <strong>BFS-025</strong> (truncated reads — silent corruption), <strong>BFS-030</strong> (<code>&gt;</code> empties a file — data loss on a failed rewrite), <strong>BFS-033</strong> (refusal logged then bypassed), <strong>BFS-024</strong> (stale reads), <strong>BFS-026</strong> (the slice C5 gap they share a root with).</p>
+<div class="lede"><strong>The one-line verdict:</strong> <code>bunker-fs</code> is fit for <strong>reading immutable data</strong>, and not yet safe for <strong>editing a working tree</strong> — which is exactly the line the next wave should cross, starting with BFS-026 because it is the root cause of three of the five.</div>
+<p class="small">The rows are filed on the bunker board; the restored foremen own them. Full detail: <code>docs/evidence/RELEASE-bankai.md</code>; every claim above has a transcript under <code>docs/evidence/</code>.</p>
+</main></div></body></html>
