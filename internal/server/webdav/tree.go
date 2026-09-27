@@ -51,6 +51,14 @@ type tree struct {
 
 	counter atomic.Uint64
 
+	// watched counts the changes the SERVER-SIDE WATCHER (watch.go, BFS-035) has
+	// vouched for, and watchLive says whether a complete watch set is established
+	// over this tree. Together they are how the served revision moves for a change
+	// nobody made through this surface (SPEC-watcher-capability §7.1 D1/D2, §7.2
+	// R-V1) without paying a stat per read (R-V2).
+	watched   atomic.Uint64
+	watchLive atomic.Bool
+
 	mu    sync.Mutex
 	cache map[string]hashEntry
 
@@ -286,17 +294,55 @@ func (t *tree) bumpRev() {
 }
 
 // revToken implements E-3's X-Bunker-Rev. For a git tree it is the resolved
-// HEAD commit hash ("git:<40 hex>"); otherwise the server-maintained
-// monotonic counter (O-9), bumped by every mutation this surface performs.
-// The kinds promise different things: "counter" moves on any mutation
-// through this surface; "git" moves only when HEAD's ref moves, so an
-// uncommitted working-tree edit moves neither token (BFS-048). The kind in
-// force is declared by the capability document (extensions.rev.kind, ops.go).
+// HEAD commit hash ("git:<40 hex>"); otherwise the server-maintained monotonic
+// counter (O-9), bumped by every mutation this surface performs.
+//
+// The kinds promise different things: "counter" moves on any mutation through
+// this surface; "git" moves only when HEAD's ref moves, so an uncommitted
+// working-tree edit moves neither token (BFS-048). The kind in force is declared
+// by the capability document (extensions.rev.kind, ops.go).
+//
+// BFS-035 EXTENDS THE TOKEN, and only while a watcher is established: the
+// watcher's vouched-change count is appended (`git:<head>@<n>`,
+// `rev:<n>@<m>`), which is how an out-of-band edit moves the served revision for
+// the first time (§7.1 D1/D2, R-V1). R-V2 is what forbids the alternative — a
+// stat-per-read walk — so the move comes from the watcher's own event and costs
+// two atomic loads. R-V3 requires a composite token to be declared under its own
+// kind: revKind reports `git+watch` / `counter+watch` for exactly these, so a
+// client is never left to infer the coverage from the token's shape. With no
+// watcher established the token and its kind are byte-identical to today's.
 func (t *tree) revToken() string {
+	live := t.watchLive.Load()
 	if r := t.cachedGitHead(); r != "" {
+		if live {
+			return fmt.Sprintf("git:%s@%d", r, t.watched.Load())
+		}
 		return "git:" + r
 	}
+	if live {
+		return fmt.Sprintf("rev:%d@%d", t.counter.Load(), t.watched.Load())
+	}
 	return fmt.Sprintf("rev:%d", t.counter.Load())
+}
+
+// revKindBase is the un-extended kind, read from the tree itself: the watcher
+// suffix below is the only thing that can extend it.
+func (t *tree) revKindBase() string {
+	if gitHead(t.rootPath()) != "" {
+		return "git"
+	}
+	return "counter"
+}
+
+// revKind declares which class of change the token in force moves for. The
+// `+watch` suffix is the composite's own kind value (§7.2 R-V3): a client that
+// does not know it reports no coverage claimed rather than guessing (fail-closed,
+// R-V4), which is the honest answer for a value it was not built to read.
+func (t *tree) revKind() string {
+	if t.watchLive.Load() {
+		return t.revKindBase() + "+watch"
+	}
+	return t.revKindBase()
 }
 
 func (t *tree) cachedGitHead() string {

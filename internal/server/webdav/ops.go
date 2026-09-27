@@ -44,7 +44,16 @@ type envelopeError struct {
 	Scope      string `json:"scope,omitempty"`
 	Phase      string `json:"phase,omitempty"`
 	Mode       string `json:"mode,omitempty"`
-	Detail     string `json:"detail,omitempty"`
+	// Reason is the CLOSED reason vocabulary's own name for the refusal
+	// (SPEC-watcher-capability §4: watch_unsupported_platform,
+	// watch_limit_exhausted, watch_target_netbacked, watch_partial_coverage,
+	// watch_install_failed, watch_lost, watch_boundary_split). It is a NEW FIELD
+	// on an existing shape, never a new verdict code (§3.1): an old client that
+	// ignores it keeps branching on verdict/status/scope/mode exactly as before,
+	// and omitting it leaves the wire byte-identical for every refusal that has
+	// no probed reason to report.
+	Reason string `json:"reason,omitempty"`
+	Detail string `json:"detail,omitempty"`
 }
 
 // handlePost is E-4: POST is the carrier because RFC 4918 §9.5 leaves POST
@@ -79,15 +88,15 @@ func (h *Handler) handlePost(w http.ResponseWriter, r *http.Request) {
 		h.handleEvents(w, r, start)
 
 	case "watch":
-		// No watcher on this target: the declared degradation, with the mode
-		// actually in force AND the poll form that carries it named, so
-		// "degraded" can never be mistaken for "quiet" — and so a client is
-		// pointed at a mechanism this build really serves (§3 E-6, AC-9).
+		// The push form is not served in this build (BFS-036 owns the wire
+		// form), and the refusal now says WHY with its own name (§3/§4): an
+		// absent watcher reports the reason its probe produced (unsupported
+		// platform, watch limit, netbacked target, partial coverage, install
+		// failure, lost), and a watcher that IS established says so rather than
+		// denying itself. The verdict, the status, scope=target and mode=poll
+		// are unchanged for an old client; `reason` is a new field (§3.1).
 		h.writeEnvelope(w, r, start, op, 501, VerdictCapabilityUnavailable, false, nil,
-			&envelopeError{
-				Capability: op, Scope: "target", Mode: "poll",
-				Detail: "no inotify watcher on this target; the declared poll form X-Bunker-Op: events carries the channel (mode=poll), or poll with HEAD/ETag",
-			})
+			h.watchOpError())
 
 	case "status", "diff", "rev-parse", "ls-files", "log":
 		// Part of the E-4 catalogue, not in this build (slice C5).
@@ -457,15 +466,7 @@ func (h *Handler) capabilityDocument(r *http.Request) map[string]any {
 				"name": "X-Bunker-Op", "v": 1, "read_only": true, "ops": ops,
 				"default_max_bytes": h.cfg.DefaultMaxBytes, "abs_max_bytes": h.cfg.AbsMaxBytes,
 			},
-			"watch": map[string]any{
-				"name": "X-Bunker-Op: watch", "v": 1, "mode": "poll",
-				// The push form needs a per-target watcher this build does not
-				// have. The poll form is served (events.go), and its per-event
-				// path cap is declared here because a client's drop loop reads it
-				// (BFS-004 §3 E-6 declaration 2).
-				"max_paths_per_event": eventsMaxPathsPerEvent,
-				"modes":               map[string]any{"push": "inotify\u2192stream", "poll": "X-Bunker-Op: events"},
-			},
+			"watch": h.watchDocumentBlock(h.watchStatusSnapshot()),
 		},
 		"transports": map[string]any{
 			"http/1.1": map[string]any{"alpn": nil, "multiplexed": false, "server_push": false, "available": true},
@@ -490,10 +491,10 @@ func (h *Handler) capabilityDocument(r *http.Request) map[string]any {
 }
 
 func (h *Handler) revKind() string {
-	if gitHead(h.tree.rootPath()) != "" {
-		return "git"
-	}
-	return "counter"
+	// The kind is read from the tree, because the watcher is what can extend it
+	// (`git` -> `git+watch`, §7.2 R-V3) and the tree is where the watcher's own
+	// state lives.
+	return h.tree.revKind()
 }
 
 // degradations enumerates every capability this process does not have, with

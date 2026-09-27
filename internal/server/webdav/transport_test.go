@@ -193,10 +193,16 @@ func compareHeaders(t *testing.T, h1, h2 http.Header, mutation bool) {
 	}
 }
 
-// normaliseVersionEcho blanks the JSON fields the spec REQUIRES to differ by
-// version — the E-4 envelope's `proto` and the capability document's
-// `server.proto` (§3 E-4, §4.2) — so the rest of the two bodies can be
-// compared exactly. Only fields literally named "proto" are touched.
+// normaliseVersionEcho blanks the JSON fields that legitimately differ between
+// two otherwise identical requests: the E-4 envelope's `proto` and the
+// capability document's `server.proto` (which the spec REQUIRES to differ by
+// version, §3 E-4/§4.2) AND `duration_ms`, which is a per-request MEASUREMENT
+// the spec never requires to match. Leaving the measurement in the comparison
+// made this cell decide CONTENT by the clock: measured on BFS-035, the larger
+// capability document (the `extensions.watch` block) pushed the first of the two
+// arms just over the 1 ms millisecond boundary while the second stayed at 0, so
+// the h1/h2 bodies were byte-identical after blanking proto and the cell still
+// failed. Everything else is still compared EXACTLY.
 func normaliseVersionEcho(t *testing.T, body []byte) []byte {
 	t.Helper()
 	trimmed := bytes.TrimSpace(body)
@@ -207,7 +213,7 @@ func normaliseVersionEcho(t *testing.T, body []byte) []byte {
 	if err := json.Unmarshal(trimmed, &doc); err != nil {
 		return body
 	}
-	blankProto(doc)
+	blankVolatile(doc)
 	out, err := json.Marshal(doc)
 	if err != nil {
 		return body
@@ -215,7 +221,9 @@ func normaliseVersionEcho(t *testing.T, body []byte) []byte {
 	return out
 }
 
-func blankProto(v any) {
+// blankVolatile blanks the fields the comparison is not about: the version echo
+// and the duration measurement.
+func blankVolatile(v any) {
 	switch typed := v.(type) {
 	case map[string]any:
 		for key, val := range typed {
@@ -223,11 +231,15 @@ func blankProto(v any) {
 				typed[key] = "<version>"
 				continue
 			}
-			blankProto(val)
+			if key == "duration_ms" {
+				typed[key] = "<duration>"
+				continue
+			}
+			blankVolatile(val)
 		}
 	case []any:
 		for _, item := range typed {
-			blankProto(item)
+			blankVolatile(item)
 		}
 	}
 }
