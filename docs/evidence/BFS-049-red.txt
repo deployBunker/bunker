@@ -1,0 +1,69 @@
+BFS-049 arms — mode=unfixed base=4879343
+go go1.26.5 · 58df47c · 2026-09-27T15:54:27Z
+pre-swap: internal/server/webdav/tree.go sha256=7f835740bb323dd3fba8dcf9c16556702bcc2c986ecbc5860748e1ef583d20e0
+          internal/server/webdav/events.go sha256=8ca1c752c205d9c30716adb1ecb9d3f1ef7f8297ced4d62c8eb6d6319560b46c
+swapped in 4879343:internal/server/webdav/tree.go sha256=3c4e95611e51757bab079df93f3d23abfdd1e1466c8edb3a36438a7ec5c09f39
+swapped in 4879343:internal/server/webdav/events.go sha256=61e4bdf123cf98fb51d3f439106f6afa1986f46069730284496ac45c0e2855f2
+the filed tree, sha256-verified: the RED below is measured on a named content, not on a memory
+set aside for this run: internal/server/webdav/identity_report_bfs049_test.go (the filed tree has no IdentityDivergenceCounters)
+--- RED (tree as filed): the divergence MUST be constructed: go test ./internal/server/webdav -run TestBFS049TheTwoObserversCannotDisagreeOnASameSizeMtimePreservedEdit -count=1 -v -timeout 300s
+=== RUN   TestBFS049TheTwoObserversCannotDisagreeOnASameSizeMtimePreservedEdit
+    identity_bfs049_test.go:186: BFS-049: ONE edit on the tree under test — same size (29 bytes), mtime restored to the nanosecond.
+    identity_bfs049_test.go:187:   the bytes on disk:    before=sha256:c42441ab60cd91a4af4005ce39e237d1f9b5b40b9719a5b41d3dc587db846ec1
+    identity_bfs049_test.go:188:                         after =sha256:5b309a8e2d3ff22ea4eafc66e8cd450c24fc50888d5b4324bece4f346ddef5cf   (the served bytes did move)
+    identity_bfs049_test.go:189:   observer D4 (hash cache -> whether content is RE-SENT, a GET's ETag/304): before=sha256:c42441ab60cd91a4af4005ce39e237d1f9b5b40b9719a5b41d3dc587db846ec1 after=sha256:c42441ab60cd91a4af4005ce39e237d1f9b5b40b9719a5b41d3dc587db846ec1 moved=false
+    identity_bfs049_test.go:190:   observer D5 (event ledger -> whether a client is told to DROP):            event="invalidate" paths=[src/util.go] moved=true
+    identity_bfs049_test.go:196: DIVERGENCE: the hash cache still answers sha256:c42441ab60cd91a4af4005ce39e237d1f9b5b40b9719a5b41d3dc587db846ec1 for a path whose bytes are now sha256:5b309a8e2d3ff22ea4eafc66e8cd450c24fc50888d5b4324bece4f346ddef5cf, while the same server reported ["src/util.go"] to a polling client — a GET can answer 304 with the ETag of bytes that are no longer on disk
+--- FAIL: TestBFS049TheTwoObserversCannotDisagreeOnASameSizeMtimePreservedEdit (0.03s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/server/webdav	0.038s
+FAIL
+--- RED (tree as filed): the divergence MUST be constructed exit=1
+--- RED (tree as filed): the isolating arm MUST fail: go test ./internal/server/webdav -run TestBFS049AMetadataOnlyMoveIsNotACacheHit -count=1 -v -timeout 300s
+=== RUN   TestBFS049AMetadataOnlyMoveIsNotACacheHit
+    identity_bfs049_test.go:235: BFS-049: ONE stimulus on the tree under test — a mode change, which moves ctime and nothing else.
+    identity_bfs049_test.go:236:   size and mtime are unchanged by the chmod (asserted inside the stimulus), no byte moved.
+    identity_bfs049_test.go:237:   observer D4 (hash cache): cache HIT — it answered the sentinel it was planted with, i.e. it judged the path current
+    identity_bfs049_test.go:238:   observer D5 (event ledger): event="invalidate" paths=[src/util.go] moved=true
+    identity_bfs049_test.go:241: the cache answered a planted sentinel for a path whose ctime moved: its key cannot see the one field the change moved, so it is not the identity the ledger observes
+    identity_bfs049_test.go:244: the cache recomputed sha256:0000000000000000000000000000000000000000000000000000000000000000 but the file's hash is sha256:c42441ab60cd91a4af4005ce39e237d1f9b5b40b9719a5b41d3dc587db846ec1
+--- FAIL: TestBFS049AMetadataOnlyMoveIsNotACacheHit (0.00s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/server/webdav	0.012s
+FAIL
+--- RED (tree as filed): the isolating arm MUST fail exit=1
+--- RED (tree as filed) attribution: an unchanged read MUST still be a cache hit: go test ./internal/server/webdav -run TestBFS049AnUnchangedReadIsStillACacheHit -count=1 -v -timeout 300s
+=== RUN   TestBFS049AnUnchangedReadIsStillACacheHit
+    identity_bfs049_test.go:272: BFS-049: an untouched path read twice — planted sentinel=sha256:0000000000000000000000000000000000000000000000000000000000000000 returned=sha256:0000000000000000000000000000000000000000000000000000000000000000
+--- PASS: TestBFS049AnUnchangedReadIsStillACacheHit (0.02s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/server/webdav	0.063s
+--- RED (tree as filed) attribution: an unchanged read MUST still be a cache hit exit=0
+--- RED (tree as filed) attribution: the cost ceilings MUST still hold: go test ./internal/server/webdav -run TestBFS049TheSharperIdentityCostsNoExtraSyscall -count=1 -v -timeout 300s
+=== RUN   TestBFS049TheSharperIdentityCostsNoExtraSyscall
+    identity_bfs049_test.go:293: BFS-049 cost: one hash-cache entry = 32 bytes (unsafe.Sizeof)
+    identity_bfs049_test.go:303: BFS-049 cost: hashFile cache HIT = 2.563µs per call (one stat + one identity comparison)
+    identity_bfs049_test.go:315: BFS-049 cost:   snapshot (no hashes) files=1000 run=1 whole_tree_read=43.063404ms entries=1106
+    identity_bfs049_test.go:315: BFS-049 cost:   snapshot (no hashes) files=1000 run=2 whole_tree_read=9.164235ms entries=1106
+    identity_bfs049_test.go:315: BFS-049 cost:   snapshot (no hashes) files=1000 run=3 whole_tree_read=9.297752ms entries=1106
+    identity_bfs049_test.go:320: BFS-049 cost: snapshot (no hashes) files=1000 entries=1106 MIN whole_tree_read=9.164235ms
+    identity_bfs049_test.go:315: BFS-049 cost:   snapshot (no hashes) files=10000 run=1 whole_tree_read=114.134326ms entries=10106
+    identity_bfs049_test.go:315: BFS-049 cost:   snapshot (no hashes) files=10000 run=2 whole_tree_read=122.527745ms entries=10106
+    identity_bfs049_test.go:315: BFS-049 cost:   snapshot (no hashes) files=10000 run=3 whole_tree_read=126.867405ms entries=10106
+    identity_bfs049_test.go:320: BFS-049 cost: snapshot (no hashes) files=10000 entries=10106 MIN whole_tree_read=114.134326ms
+    identity_bfs049_test.go:328: BFS-049 cost:   snapshot (include_hash) files=1000 run=1 =68.506397ms entries=1101
+    identity_bfs049_test.go:328: BFS-049 cost:   snapshot (include_hash) files=1000 run=2 =108.330198ms entries=1101
+    identity_bfs049_test.go:328: BFS-049 cost:   snapshot (include_hash) files=1000 run=3 =84.736366ms entries=1101
+    identity_bfs049_test.go:333: BFS-049 cost: snapshot (include_hash) files=1000 entries=1101 MIN =68.506397ms
+    identity_bfs049_test.go:328: BFS-049 cost:   snapshot (include_hash) files=10000 run=1 =441.674257ms entries=6021
+    identity_bfs049_test.go:328: BFS-049 cost:   snapshot (include_hash) files=10000 run=2 =578.765016ms entries=6021
+    identity_bfs049_test.go:328: BFS-049 cost:   snapshot (include_hash) files=10000 run=3 =471.843275ms entries=6021
+    identity_bfs049_test.go:333: BFS-049 cost: snapshot (include_hash) files=10000 entries=6021 MIN =441.674257ms
+--- PASS: TestBFS049TheSharperIdentityCostsNoExtraSyscall (8.51s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/server/webdav	8.522s
+--- RED (tree as filed) attribution: the cost ceilings MUST still hold exit=0
+restore: internal/server/webdav/tree.go sha256=7f835740bb323dd3fba8dcf9c16556702bcc2c986ecbc5860748e1ef583d20e0 (verified byte-identical against the pre-mutation hash)
+restore: internal/server/webdav/events.go sha256=8ca1c752c205d9c30716adb1ecb9d3f1ef7f8297ced4d62c8eb6d6319560b46c (verified byte-identical against the pre-mutation hash)
+restore: internal/server/webdav/identity_report_bfs049_test.go sha256=0bd01ba78dd241ffae0a0ddd7f43804344b5fd755b41985f1fad1f39b7cafd53 (set aside for the filed-tree run, moved back)
+done: mode=unfixed

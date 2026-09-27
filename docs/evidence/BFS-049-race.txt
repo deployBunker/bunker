@@ -1,0 +1,9 @@
+BFS-049 arms — mode=race base=4879343
+go go1.26.5 · 58df47c · 2026-09-27T16:03:39Z
+tree under test: internal/server/webdav/tree.go sha256=7f835740bb323dd3fba8dcf9c16556702bcc2c986ecbc5860748e1ef583d20e0
+                internal/server/webdav/events.go sha256=8ca1c752c205d9c30716adb1ecb9d3f1ef7f8297ced4d62c8eb6d6319560b46c
+--- race: go test ./internal/server/webdav -count=1 -race -timeout 900s
+ok  	github.com/deployBunker/bunker/internal/server/webdav	152.144s
+--- race exit=0
+done: mode=race
+race-script-exit=0
