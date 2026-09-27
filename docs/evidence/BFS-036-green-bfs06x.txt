@@ -1,1 +1,1 @@
-ok  	github.com/deployBunker/bunker/internal/fsclient	7.216s
+ok  	github.com/deployBunker/bunker/internal/fsclient	30.234s
