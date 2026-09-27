@@ -74,20 +74,20 @@ RED[no-rename-barrier]="^(${C3})$"
 GREEN[no-rename-barrier]="^(${C1}|${C2}|${C4}|${LMALT})$"
 RED[no-retarget]="^(${C4})$"
 GREEN[no-retarget]="^(${C1}|${C3}|${C5}|${LMALT})$"
-RED[write-does-not-reopen]="^(${C5})$"
-GREEN[write-does-not-reopen]="^(${C1}|${C2}|${C4}|${LMALT})$"
+RED[write-does-not-reopen]="^(${C5}|${C4})$"
+GREEN[write-does-not-reopen]="^(${C1}|${C2}|${C3}|${LMALT})$"
 RED[no-base-advance]="^(${C5})$"
 GREEN[no-base-advance]="^(${C1}|${C2}|${LMALT})$"
-RED[path-record-survives-unlink]="^(${C6})$"
-GREEN[path-record-survives-unlink]="^(${C1}|${C5}|${C7}|${LMALT})$"
+RED[path-record-survives-unlink]="^(${C6}|${C7})$"
+GREEN[path-record-survives-unlink]="^(${C1}|${C5}|${LMALT})$"
 RED[rename-keeps-the-path-record]="^(${C7})$"
 GREEN[rename-keeps-the-path-record]="^(${C1}|${C3}|${C6}|${LMALT})$"
 RED[rename-keeps-the-destination-cache]="^(${C8})$"
 GREEN[rename-keeps-the-destination-cache]="^(${C1}|${C2}|${C5}|${LMALT})$"
 RED[refusal-keeps-the-created-name]="^(${C9})$"
 GREEN[refusal-keeps-the-created-name]="^(${C1}|${C5}|${C10}|${LMALT})$"
-RED[flush-swallows-the-refusal]="^(${C10})$"
-GREEN[flush-swallows-the-refusal]="^(${C1}|${C2}|${C9}|${LMALT})$"
+RED[flush-swallows-the-refusal]="^(${C10}|${C9})$"
+GREEN[flush-swallows-the-refusal]="^(${C1}|${C2}|${LMALT})$"
 RED[rmdir-passes-a-non-empty-collection]="^(${C11})$"
 GREEN[rmdir-passes-a-non-empty-collection]="^(${C1}|${C3}|${C5}|${LMALT})$"
 RED[unlink-passes-a-collection]="^(${C12})$"
@@ -127,18 +127,14 @@ run_set() {
   return $rc
 }
 
-# mutate <file> <old-file> <new-file> — exact, exactly-once replacement; refuses
-# otherwise (so a mutation that no longer matches the source is an ABORT, not a
-# silent no-op that would make the arm vacuous).
+# mutate <file> — exact, exactly-once replacement of the fragment in $WORK/old with
+# the one in $WORK/new; refuses otherwise (so a mutation that no longer matches the
+# source is an ABORT, not a silent no-op that would make the arm vacuous). The
+# replacement is done by anchor-replace.pl, a shipped file rather than a `perl -e`
+# one-liner: an arm that cannot be re-run by a reader is not evidence.
 mutate() {
   local f="$REPO/$1"
-  OLDF="$WORK/old" NEWF="$WORK/new" perl -0777 -i -e '
-    BEGIN { local $/; open(my $o, "<", $ENV{OLDF}) or die "open old: $!"; $old = <$o>; close $o;
-            open(my $n, "<", $ENV{NEWF}) or die "open new: $!"; $new = <$n>; close $n; }
-    my $count = () = /\Q$old\E/g;
-    die "MUTATION ANCHOR appears $count time(s), want exactly 1\n" unless $count == 1;
-    s/\Q$old\E/$new/ or die "substitution failed\n";
-  ' "$f"
+  perl "$HERE/BFS-020-probes/anchor-replace.pl" "$WORK/old" "$WORK/new" "$f"
 }
 
 # write_frag FILE — the fragment on stdin.

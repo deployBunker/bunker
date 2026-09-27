@@ -1,31 +1,38 @@
 #!/usr/bin/env bash
-# bfs020-empty.sh — the ZERO-BYTE create: `: > f` (open O_CREAT|O_TRUNC, no write
-# at all) through the mount. It is the same defect one shape further in: if no
-# chunk ever arrives, does the name get published at all?
+# bfs020-empty.sh — the ZERO-BYTE create: `: > f`, `printf '' > f` and `touch f`
+# all arrive as a create with NO WRITE at all. It is the same defect one shape
+# further in, and it does NOT have a window: if nothing publishes the empty body,
+# the name never appears on the served tree at all.
+#
+# Each shape reports, in order:
+#   the create's rc; whether the name is on the SERVED TREE right after the close;
+#   the immediate rename's rc; which name holds which content afterwards; and what
+#   the MOUNT says about the source name afterwards.
 #
 # env: MNT, TREE
 set -uo pipefail
 MNT="${MNT:?MNT required}"
 TREE="${TREE:?TREE required}"
 
-echo "== E1: ': > f' (create + close, ZERO bytes), then rename immediately =="
-( : > "$MNT/e1.lock" ); echo "   create rc=$?"
-mv "$MNT/e1.lock" "$MNT/e1.final" 2>&1 | sed 's/^/   /'; echo "   rename-immediate rc=${PIPESTATUS[0]}"
-sleep 2
-echo "   served tree after 2 s: $(test -e "$TREE/e1.lock" && echo 'e1.lock present' || echo 'e1.lock ABSENT (never published)')"
-mv "$MNT/e1.lock" "$MNT/e1.final" 2>&1 | sed 's/^/   /'; echo "   rename-after-2s rc=${PIPESTATUS[0]}"
-sleep 1
-echo "   served tree: $(test -e "$TREE/e1.final" && echo 'e1.final present' || echo 'e1.final ABSENT')"
-echo "   the name the MOUNT claims: $(stat -c '%s bytes' "$MNT/e1.lock" 2>&1)"
+shape() { # shape LABEL COMMAND...
+  local label="$1"; shift
+  echo "== $label =="
+  "$@"; echo "   create rc=$?"
+  if [ -e "$TREE/$label.lock" ]; then
+    echo "   served tree right after the close : $label.lock PRESENT ($(stat -c '%s' "$TREE/$label.lock") bytes)"
+  else
+    echo "   served tree right after the close : $label.lock ABSENT (nothing was published)"
+  fi
+  mv "$MNT/$label.lock" "$MNT/$label.final" 2>&1 | sed 's/^/   /'
+  echo "   rename immediately rc=${PIPESTATUS[0]}"
+  sleep 0.5
+  echo "   served tree: $(test -e "$TREE/$label.lock" && echo -n "$label.lock PRESENT " || echo -n "$label.lock ABSENT ")"\
+"$(test -e "$TREE/$label.final" && echo "$label.final PRESENT ($(stat -c '%s' "$TREE/$label.final") bytes)" || echo "$label.final ABSENT")"
+  echo "   the mount's view of the source name: $(stat -c '%s bytes' "$MNT/$label.lock" 2>&1)"
+  rm -f "$MNT/$label.lock" "$TREE/$label.lock" "$TREE/$label.final" 2>/dev/null
+}
 
-echo "== E2: the same, one command: printf '' > f =="
-printf '' > "$MNT/e2.lock"; echo "   create rc=$?"
-mv "$MNT/e2.lock" "$MNT/e2.final" 2>&1 | sed 's/^/   /'; echo "   rename rc=${PIPESTATUS[0]}"
-sleep 2
-echo "   served tree: $(test -e "$TREE/e2.lock" && echo 'e2.lock present' || echo 'e2.lock ABSENT') $(test -e "$TREE/e2.final" && echo 'e2.final present' || echo 'e2.final ABSENT')"
-echo "== E3: touch (create, no write, no truncate) =="
-touch "$MNT/e3.lock"; echo "   touch rc=$?"
-sleep 2
-echo "   served tree: $(test -e "$TREE/e3.lock" && echo present || echo ABSENT)"
-rm -f "$MNT/e1.lock" "$MNT/e2.lock" "$MNT/e3.lock" 2>/dev/null
-echo "done"
+shape e1 sh -c ": > \"\$1\"" _ "$MNT/e1.lock"
+shape e2 sh -c "printf '' > \"\$1\"" _ "$MNT/e2.lock"
+shape e3 touch "$MNT/e3.lock"
+echo done

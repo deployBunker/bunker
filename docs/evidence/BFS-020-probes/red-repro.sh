@@ -30,10 +30,13 @@ sleep 2
 mv "$MNT/.git/bfs2.lock" "$MNT/.git/bfs2.out"; echo "   rename-after-2s rc=$?"
 sleep 1; echo "   served .git:"; ls -l "$TREE/.git" | grep bfs | sed 's/^/     /' || true
 
-echo "== A4: what the MOUNT says the name is (the poison check) =="
-stat -c '%n size=%s' "$MNT/.git/bfs.lock" 2>&1 | sed 's/^/     /'
-echo "   and a fresh O_EXCL create of a name the rename above failed to move onto:"
-if : > "$MNT/.git/bfs.lock" 2>/tmp/bfs020-excl.err; then echo "     plain truncate create rc=0"; else echo "     plain truncate create rc=$?"; fi
-cat /tmp/bfs020-excl.err 2>/dev/null | sed 's/^/     /'
-rm -f "$MNT/.git/bfs.lock" "$MNT/f.lock" 2>/dev/null
+echo "== A4: the mount's view of the name the failed rename left behind, against the served tree =="
+echo "   mount  : $(stat -c '%s bytes' "$MNT/.git/bfs.lock" 2>&1)"
+echo "   server : $(stat -c '%s bytes' "$TREE/.git/bfs.lock" 2>&1)"
+if [ "$(stat -c '%s' "$MNT/.git/bfs.lock" 2>/dev/null)" = "$(stat -c '%s' "$TREE/.git/bfs.lock" 2>/dev/null)" ]; then
+  echo "   VERDICT: the mount agrees with the served tree about the name (it does not lie)"
+else
+  echo "   VERDICT: THE MOUNT AND THE SERVED TREE DISAGREE about the same name"
+fi
+rm -f "$MNT/.git/bfs.lock" "$MNT/f.lock" "$MNT/g.final" "$MNT/e1.lock" 2>/dev/null
 echo "done"
