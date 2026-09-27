@@ -1,0 +1,47 @@
+
+================================================================================
+BFS-021 COST — the successful path as numbers: N appends of one tail to one file, through a real mount
+================================================================================
+the arm's own output (verbatim):
+  === mode=cost  expect=ok ===
+    server fixture            : 82 B sha256=66ac40abbf895c38… (written on the server's own disk)
+    PASS  FIXTURE: the first read through the mount serves the baseline byte-for-byte
+  BFS021-MEASURE baseline_size=82
+  BFS021-MEASURE baseline_sha=66ac40abbf895c383fd020e209816a78b322a8f0e23eb4376edbbb77533c874d
+  BFS021-MEASURE mode=cost
+  BFS021-MEASURE appends=50
+  BFS021-MEASURE file_bytes_start=82
+  BFS021-MEASURE file_bytes_final=1332
+  BFS021-MEASURE ms_total=4645
+  BFS021-MEASURE ms_median=93.99
+  BFS021-MEASURE ms_mean=92.90
+  BFS021-MEASURE ms_p95=121.66
+  BFS021-MEASURE ms_min=47.94
+  BFS021-MEASURE ms_max=133.65
+  BFS021-MEASURE requests_put=50
+  BFS021-MEASURE requests_get=51
+  BFS021-MEASURE bytes_put=35975
+  BFS021-MEASURE bytes_get=34807
+    50 appends to one file   : 4645 ms total, 93.99 ms median, 92.90 ms mean
+    file                      : 82 B -> 1332 B, sha256=5b3174710074707e…
+    wire                      : 50 PUT (35975 B published), 51 GET
+    PASS  every append landed: the file grew by exactly N tails
+    PASS  each tail landed exactly once, saw 50
+    PASS  one publication per append, saw 50
+  
+  RESULT: append costs ONE GET + ONE whole-file PUT, 93.99 ms median per append (35975 B published for 1250 B appended)
+
+the mount's own records for the same run:
+--- status.json (the append block, verbatim) ---
+    "append": {
+      "published_total": 50,
+      "refused_total": 0,
+      "max_file_bytes": 268435456,
+      "last": "src/target.txt: published=1332 bytes"
+    },
+    "refusal_holds": {
+
+WHAT TO READ: an append is served by read-modify-publish, so it costs ONE base
+GET plus ONE whole-file conditional PUT. The latency is the two serialized round
+trips; the figure that grows with the file is bytes_put. Both are printed above
+and neither is inferred.

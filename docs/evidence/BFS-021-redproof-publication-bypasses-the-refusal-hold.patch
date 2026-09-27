@@ -1,0 +1,17 @@
+diff --git a/internal/fsmount/append.go b/internal/fsmount/append.go
+index 12e0cf3..9f3e2ec 100644
+--- a/internal/fsmount/append.go
++++ b/internal/fsmount/append.go
+@@ -296,7 +296,11 @@ func (a *appendHandle) publish(ctx context.Context) syscall.Errno {
+ 		a.flushed = true
+ 		return syscall.EIO
+ 	}
+-	res, err := a.m.wp.Publish(ctx, a.p, noCloseReader{a.tmp}, a.size, a.base)
++	// MUTATION (BFS-021 red-proof): the publication goes straight to the surface
++	// with the base it was built on, bypassing the WritePath's refusal hold — a
++	// refused path is then no obstacle to the next append (BFS-033's class).
++	res, err := a.m.client.PutBody(ctx, a.p, noCloseReader{a.tmp}, a.size,
++		fsclient.PutPrecondition{IfMatch: a.base.IfMatch})
+ 	if err != nil {
+ 		if err.Cause == fsclient.CauseCancelled {
+ 			// Nothing was refused and no verdict was given: the handle stays

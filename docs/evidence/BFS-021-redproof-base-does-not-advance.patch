@@ -1,0 +1,16 @@
+diff --git a/internal/fsmount/append.go b/internal/fsmount/append.go
+index 12e0cf3..32d3a7b 100644
+--- a/internal/fsmount/append.go
++++ b/internal/fsmount/append.go
+@@ -324,7 +324,10 @@ func (a *appendHandle) publish(ctx context.Context) syscall.Errno {
+ 	// before this line existed: the three-writes-in-one-open shape landed its first
+ 	// chunk, was refused 412 on the second, and lost the rest
+ 	// (docs/evidence/BFS-021-red.txt, arm `multi` on the fixed tree).
+-	if res.Hash != "" {
++	// MUTATION (BFS-021 red-proof): the base does NOT advance with the publication,
++	// so a later publication on the same handle carries the base the handle started
++	// from and is refused 412 — the caller's later bytes are dropped.
++	if false && res.Hash != "" {
+ 		a.base = fsclient.WriteBase{IfMatch: res.Hash, Source: fsclient.BaseFromServed}
+ 	}
+ 	a.m.recordOK()

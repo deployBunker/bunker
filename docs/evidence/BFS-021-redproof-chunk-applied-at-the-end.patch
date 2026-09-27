@@ -1,0 +1,17 @@
+diff --git a/internal/fsmount/append.go b/internal/fsmount/append.go
+index 12e0cf3..c8a8c7e 100644
+--- a/internal/fsmount/append.go
++++ b/internal/fsmount/append.go
+@@ -193,7 +193,11 @@ func (a *appendHandle) write(ctx context.Context, data []byte, off int64) (uint3
+ 			Detail: fmt.Sprintf("refusing to append to %s: a whole-file publication is bounded by --write-buffer-max-bytes, and this write would make the file %d bytes (bound %d). Nothing was written. Append to this file on the server instead, or write it whole", a.p, end, appendBound),
+ 		})
+ 	}
+-	n, err := a.tmp.WriteAt(data, off)
++	// MUTATION (BFS-021 red-proof): the chunk is applied at the END of the buffer
++	// instead of at the offset the kernel gave it. MEASURED, the kernel re-issues
++	// every chunk of a failing open at the SAME offset, so a retried chunk then
++	// becomes a second copy instead of an overwrite of the same bytes.
++	n, err := a.tmp.WriteAt(data, a.size)
+ 	if err != nil {
+ 		return 0, a.refuseLocked(&fsclient.OpError{
+ 			Op: "WRITE", Path: a.p, Errno: fsclient.ErrnoEIO, Cause: fsclient.CauseLocalCapability,

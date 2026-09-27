@@ -106,6 +106,16 @@ type Mount struct {
 	writeShapeRefusals atomic.Int64
 	writeShapeLast     atomic.Value // string
 
+	// appendPublished/appendRefused are the append figures (BFS-021): an append
+	// that LANDED and an append that was REFUSED before it published anything
+	// (a boundary refusal, a conflict refusal, or a base that could not be
+	// read). appendLast names the most recent event, so the figure can be
+	// audited per file. Reported for the same reason the write-shape refusals
+	// are: a rule that fires silently is not a rule anyone can audit.
+	appendPublished atomic.Int64
+	appendRefused   atomic.Int64
+	appendLast      atomic.Value // string
+
 	transportMu sync.RWMutex
 	verdict     string
 	cause       string
@@ -743,6 +753,17 @@ func (m *Mount) Status() fsclient.Status {
 	if v, ok := m.writeShapeLast.Load().(string); ok {
 		st.WriteShape.Last = v
 	}
+	// The append figures (BFS-021), including the bound the read-modify-publish
+	// obeys: a file at or above it cannot be appended through this surface, and a
+	// bound the owner cannot see is not a bound.
+	st.Append = fsclient.AppendState{
+		PublishedTotal: m.appendPublished.Load(),
+		RefusedTotal:   m.appendRefused.Load(),
+		MaxFileBytes:   appendBound,
+	}
+	if v, ok := m.appendLast.Load().(string); ok {
+		st.Append.Last = v
+	}
 	heldTotal, outstanding, evicted, heldLast := m.wp.Held()
 	st.RefusalHolds = fsclient.RefusalHoldState{
 		HeldTotal:    heldTotal,
@@ -956,14 +977,48 @@ func (n *node) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 
 // Open returns a handle and FOPEN_DIRECT_IO: the kernel keeps no file data, so
 // our cache is the only byte cache (and the only figure comparable with `du`).
+//
+// The handle is a READ handle whatever the flags say — which is the premise
+// BFS-030's refusal rests on (a write handle is only ever created by Create, for a
+// path that does not exist). ONE exception is carried on it rather than created by
+// it: an O_APPEND open gets an append state, so the write half of POSIX append can
+// be served as a whole-file publication (BFS-021). No other write through an
+// existing path is served, and a write through a non-append handle is still
+// answered EOPNOTSUPP by node.Write.
 func (n *node) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
 	n.m.mu.Lock()
 	n.m.nextFh++
 	fh := n.m.nextFh
 	h := &readHandle{m: n.m, p: n.p, fh: fh, writeIntent: flags&(syscall.O_WRONLY|syscall.O_RDWR) != 0}
+	if flags&syscall.O_APPEND != 0 {
+		h.ap = &appendHandle{m: n.m, owner: h, p: n.p, fh: fh}
+	}
 	n.m.reads[fh] = h
 	n.m.mu.Unlock()
 	return h, fuse.FOPEN_DIRECT_IO, 0
+}
+
+// Write is the ONE dispatch point for a FUSE write, and it exists so the kernel's
+// chunk stream reaches the RIGHT handle:
+//
+//   - a CREATE's write handle (`*writeHandle`) is called exactly as the bridge
+//     called it, so the whole existing write path is untouched;
+//   - an O_APPEND handle's append state buffers the chunk at the offset the kernel
+//     gave it (BFS-021);
+//   - anything else is answered EOPNOTSUPP — which is byte-for-byte what
+//     go-fuse's bridge answered before this method existed
+//     (`return 0, fuse.ENOTSUP`, fs/bridge.go), so BFS-012's refusal of in-place
+//     writes through an existing path is unchanged.
+func (n *node) Write(ctx context.Context, fh fs.FileHandle, data []byte, off int64) (uint32, syscall.Errno) {
+	switch h := fh.(type) {
+	case *writeHandle:
+		return h.Write(ctx, data, off)
+	case *readHandle:
+		if h.ap != nil {
+			return h.ap.write(ctx, data, off)
+		}
+	}
+	return 0, syscall.EOPNOTSUPP
 }
 
 // Create starts the write path: the handle buffers the arriving chunks and
@@ -1193,10 +1248,16 @@ type readHandle struct {
 	p           string
 	fh          uint64
 	writeIntent bool
-	data        []byte
-	hash        string
-	loaded      bool
-	pinned      bool
+	// ap is the append state, non-nil exactly when this open carried O_APPEND
+	// (BFS-021). An append is the one write shape an EXISTING path can serve
+	// here, because it can be expressed as a whole-file publication; every other
+	// write through an existing path stays refused, which is BFS-012's rule and
+	// BFS-030's premise.
+	ap     *appendHandle
+	data   []byte
+	hash   string
+	loaded bool
+	pinned bool
 }
 
 func (h *readHandle) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
@@ -1384,8 +1445,14 @@ func (m *Mount) noteBoundDivergence(p string, published, content int64, refused 
 }
 
 // Flush is a publication point for the write path when the handle was opened
-// for writing (POSIX close(2) semantics: the refusal is reported here).
+// for writing (POSIX close(2) semantics: the refusal is reported here). For an
+// O_APPEND open it is the publication point of the buffered append (BFS-021):
+// the kernel sends FLUSH before RELEASE, and the append's publication is
+// idempotent, so the RELEASE that follows is answered without a second request.
 func (h *readHandle) Flush(ctx context.Context) syscall.Errno {
+	if h.ap != nil {
+		return h.ap.publish(ctx)
+	}
 	h.m.mu.Lock()
 	w := h.m.writes[h.fh]
 	h.m.mu.Unlock()
@@ -1397,7 +1464,17 @@ func (h *readHandle) Flush(ctx context.Context) syscall.Errno {
 
 // Release drops the handle: the pin goes, and with it the blob if its path entry
 // was evicted while it was pinned.
+//
+// An O_APPEND handle publishes before anything is dropped (BFS-021): the
+// write-intent record is still live while the append is in flight, so BFS-030's
+// refusal protects a concurrent resize from landing mid-append, and POSIX close(2)
+// gets the publication's own error rather than a silent 0 — the same contract
+// writeHandle.Release has.
 func (h *readHandle) Release(ctx context.Context) syscall.Errno {
+	var errno syscall.Errno
+	if h.ap != nil {
+		errno = h.ap.publish(ctx)
+	}
 	h.mu.Lock()
 	if h.pinned && h.hash != "" {
 		h.m.cache.Unpin(h.hash)
@@ -1413,7 +1490,10 @@ func (h *readHandle) Release(ctx context.Context) syscall.Errno {
 	if w != nil {
 		w.discard()
 	}
-	return 0
+	if h.ap != nil {
+		h.ap.discard()
+	}
+	return errno
 }
 
 // ---------------------------------------------------------------------------
@@ -1470,22 +1550,16 @@ func (m *Mount) newWriteHandle(p string, created bool) *writeHandle {
 // that landed BFS-046: a named buffer left `writebuf-<n>` in the cache
 // directory after every killed writer, and nothing ever removed it
 // (docs/evidence/BFS-039-red.txt).
+//
+// The construction is anonymousWriteBuffer (append.go), shared with the append
+// handle so there is ONE buffer rule rather than two.
 func (h *writeHandle) ensureBuffer() syscall.Errno {
 	if h.tmp != nil {
 		return 0
 	}
-	f, err := os.CreateTemp(h.m.dir, "writebuf-*")
-	if err != nil {
-		return syscall.EIO
-	}
-	if err := f.Chmod(0o600); err != nil {
-		f.Close()
-		os.Remove(f.Name())
-		return syscall.EIO
-	}
-	if err := os.Remove(f.Name()); err != nil {
-		f.Close()
-		return syscall.EIO
+	f, errno := anonymousWriteBuffer(h.m.dir)
+	if errno != 0 {
+		return errno
 	}
 	h.tmp = f
 	return 0
@@ -1701,4 +1775,5 @@ var (
 	_ fs.NodeRenamer   = (*node)(nil)
 	_ fs.NodeSetattrer = (*node)(nil)
 	_ fs.NodeStatfser  = (*node)(nil)
+	_ fs.NodeWriter    = (*node)(nil)
 )

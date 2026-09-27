@@ -1,0 +1,16 @@
+diff --git a/internal/fsmount/append.go b/internal/fsmount/append.go
+index 12e0cf3..f45f2b5 100644
+--- a/internal/fsmount/append.go
++++ b/internal/fsmount/append.go
+@@ -200,6 +200,11 @@ func (a *appendHandle) write(ctx context.Context, data []byte, off int64) (uint3
+ 			Detail: fmt.Sprintf("the local append buffer rejected %d bytes at offset %d; nothing was published and the file is unchanged", len(data), off),
+ 		})
+ 	}
++	// MUTATION (BFS-021 red-proof, second hunk of the same defect): the end of
++	// the content follows the bytes appended rather than the offset they occupy,
++	// which is what makes the mutation above observable instead of masked by a
++	// declared length that hides the doubled buffer.
++	a.size += int64(n)
+ 	if end := off + int64(n); end > a.size {
+ 		a.size = end
+ 	}

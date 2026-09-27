@@ -1,0 +1,15 @@
+diff --git a/internal/fsmount/append.go b/internal/fsmount/append.go
+index 12e0cf3..059a695 100644
+--- a/internal/fsmount/append.go
++++ b/internal/fsmount/append.go
+@@ -187,7 +187,9 @@ func (a *appendHandle) write(ctx context.Context, data []byte, off int64) (uint3
+ 	}
+ 	// The bound is checked BEFORE the bytes are buffered, so a refused chunk
+ 	// leaves no hole and no growth behind it.
+-	if end := off + int64(len(data)); end > appendBound {
++	// MUTATION (BFS-021 red-proof): the boundary is not enforced, so a file this
++	// surface cannot publish whole is accepted and then... published whole.
++	if end := off + int64(len(data)); end > (int64(1) << 62) {
+ 		return 0, a.refuseLocked(&fsclient.OpError{
+ 			Op: "WRITE", Path: a.p, Errno: fsclient.ErrnoEFBIG, Cause: fsclient.CauseLocalCapability,
+ 			Detail: fmt.Sprintf("refusing to append to %s: a whole-file publication is bounded by --write-buffer-max-bytes, and this write would make the file %d bytes (bound %d). Nothing was written. Append to this file on the server instead, or write it whole", a.p, end, appendBound),

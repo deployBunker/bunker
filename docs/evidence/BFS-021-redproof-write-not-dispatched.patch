@@ -1,0 +1,18 @@
+diff --git a/internal/fsmount/fs_linux.go b/internal/fsmount/fs_linux.go
+index a05b8ea..76f9462 100644
+--- a/internal/fsmount/fs_linux.go
++++ b/internal/fsmount/fs_linux.go
+@@ -1014,9 +1014,10 @@ func (n *node) Write(ctx context.Context, fh fs.FileHandle, data []byte, off int
+ 	case *writeHandle:
+ 		return h.Write(ctx, data, off)
+ 	case *readHandle:
+-		if h.ap != nil {
+-			return h.ap.write(ctx, data, off)
+-		}
++		// MUTATION (BFS-021 red-proof): the append is NOT dispatched, i.e. the
++		// tree this row started from, where the bridge answered ENOTSUP and the
++		// caller's bytes were dropped with nothing ever sent.
++		return 0, syscall.EOPNOTSUPP
+ 	}
+ 	return 0, syscall.EOPNOTSUPP
+ }

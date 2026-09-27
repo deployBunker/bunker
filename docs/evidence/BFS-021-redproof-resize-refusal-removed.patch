@@ -1,0 +1,16 @@
+diff --git a/internal/fsmount/fs_linux.go b/internal/fsmount/fs_linux.go
+index a05b8ea..0c22968 100644
+--- a/internal/fsmount/fs_linux.go
++++ b/internal/fsmount/fs_linux.go
+@@ -1174,7 +1174,10 @@ func (n *node) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAttrIn
+ // `os.truncate`) is unaffected, which is the shape BFS-012's truncate
+ // measurements rely on.
+ func (n *node) truncate(ctx context.Context, size uint64) syscall.Errno {
+-	if n.m.writeIntentOn(n.p) {
++	// MUTATION (BFS-021 red-proof): BFS-030's refusal is removed, to show the
++	// append path does not depend on it and that the cells which claim it is
++	// intact are the ones that go red.
++	if false {
+ 		err := &fsclient.OpError{
+ 			Op: "SETATTR", Path: n.p, Errno: fsclient.ErrnoEOPNOTSUPP,
+ 			Cause:  fsclient.CauseWriteShapeUnsupported,

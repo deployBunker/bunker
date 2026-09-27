@@ -1,0 +1,16 @@
+diff --git a/internal/fsmount/append.go b/internal/fsmount/append.go
+index 12e0cf3..837bf38 100644
+--- a/internal/fsmount/append.go
++++ b/internal/fsmount/append.go
+@@ -299,8 +299,9 @@ func (a *appendHandle) publish(ctx context.Context) syscall.Errno {
+ 	res, err := a.m.wp.Publish(ctx, a.p, noCloseReader{a.tmp}, a.size, a.base)
+ 	if err != nil {
+ 		if err.Cause == fsclient.CauseCancelled {
+-			// Nothing was refused and no verdict was given: the handle stays
+-			// publishable and the retry is ONE more attempt at the same content.
++			// MUTATION (BFS-021 red-proof): a cancellation is treated as a verdict,
++			// so the handle is spent and the retry the EINTR asks for cannot land.
++			a.flushed, a.failure = true, err
+ 			return errnoFor(err)
+ 		}
+ 		a.flushed = true

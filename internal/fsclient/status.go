@@ -105,6 +105,13 @@ type Status struct {
 	// writing is live on the path). Reported for the same reason ReadBound is:
 	// the rule is only auditable if the owner can see it fire.
 	WriteShape WriteShapeState `json:"write_shape"`
+	// Append is the BFS-021 figure set: appends that landed, appends refused
+	// before they published anything, and the whole-file bound the append
+	// mechanism obeys. It is the twin of WriteShape for the write shape the
+	// surface DOES serve on an existing path, and it is reported for the same
+	// reason: the owner has to be able to see append working, and see it being
+	// refused, without a debugger.
+	Append AppendState `json:"append"`
 	// RefusalHolds is the BFS-033 figure set: how often a publication was
 	// REFUSED because an earlier conflict refusal on the same path was still
 	// outstanding — the enforcement half of §5.2 rule 1, without which a refused
@@ -193,6 +200,30 @@ type WriteShapeState struct {
 	RefusalsTotal int64 `json:"refusals_total"`
 	// Last names the most recent refusal, formatted `<path>: size=<n>`; empty
 	// when none has happened.
+	Last string `json:"last,omitempty"`
+}
+
+// AppendState is the `append` block of the status document (BFS-021).
+//
+// An append is served by read-modify-publish — the handle reads the content once,
+// buffers the arriving chunks at their own offsets on top of it, and publishes the
+// whole result as ONE conditional PUT. Both directions are counted, and the bound
+// the mechanism obeys is reported beside them, because a bound the owner cannot
+// see is not a bound (PRD-bunker-invalidation.md §2.7).
+type AppendState struct {
+	// PublishedTotal counts appends that LANDED (their bytes are on the server).
+	PublishedTotal int64 `json:"published_total"`
+	// RefusedTotal counts appends refused instead of published: a conflict
+	// refusal (the precondition the append was built on no longer holds), a
+	// boundary refusal, or a base that could not be read. Every one of them
+	// wrote nothing.
+	RefusedTotal int64 `json:"refused_total"`
+	// MaxFileBytes is the bound the mechanism obeys: an append publishes the
+	// whole file, so a file at or above this size cannot be appended through
+	// this surface and is refused loudly rather than dropped.
+	MaxFileBytes int64 `json:"max_file_bytes"`
+	// Last names the most recent append event (published or refused), so the
+	// figures can be audited per file.
 	Last string `json:"last,omitempty"`
 }
 
