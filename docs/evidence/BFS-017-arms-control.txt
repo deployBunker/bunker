@@ -1,0 +1,25 @@
+### BFS-017 arms — mode control
+### host 16 cpu, loadavg 31.70 20.58 19.89, 2026-09-27T17:05:34Z
+BFS-017 arms — mode=control
+host: 16 cpu, loadavg 31.70 20.58 19.89, 2026-09-27T17:05:34Z
+gate: /home/kara/worktrees/bunker-BFS-017/scripts/gitreins-guard.sh
+
+==================================================================
+CONTROL — a genuine failure must still fail, loudly, in every shape
+==================================================================
+-- C1a bare guard: Tier 1 Guards: FAIL  (test mode: full)
+OK   C1a: the guard fails on the genuine failure
+-- C1b wrapper: exit=1 verdict=TEST-FAILURE
+      first failing test: --- FAIL: TestOnlyFailure
+OK   C1b: a genuine failure is TEST-FAILURE (exit 1) through the wrapper
+
+-- C2 both signals in ONE run: a fast genuine failure + a per-binary budget hit
+    wrapper exit=1 verdict=TEST-FAILURE
+      a test or build reported a defect; the run ALSO hit a budget (go test panicked on its own per-binary ceiling (test timed out))
+    (the raw command's exit was 1 for BOTH the timeout and the genuine failure — let us show that:)
+      quiet genuine failure  -> exit 1
+      budget exhaustion only -> exit 1
+OK   C2: with a budget hit in the same run, the real failure is STILL TEST-FAILURE (exit 1)
+
+cells passed: 3  failed: 0
+scratch kept: /tmp/bfs017-arms-gNeGJg

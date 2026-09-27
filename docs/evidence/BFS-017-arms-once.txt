@@ -1,0 +1,27 @@
+### BFS-017 arms — mode once
+### host 16 cpu, loadavg 25.46 16.43 17.52, 2026-09-27T17:28:39Z
+BFS-017 arms — mode=once
+host: 16 cpu, loadavg 25.46 16.43 17.52, 2026-09-27T17:28:39Z
+gate: /home/kara/worktrees/bunker-BFS-017/scripts/gitreins-guard.sh
+
+==================================================================
+ONCE — one run of the gate makes exactly one guard invocation
+==================================================================
+
+-- green run: exit=0 verdict=PASS guard invocations=1
+   one invocation per run is the whole rule: a NOT-FINISHED verdict must
+   send the operator to a quieter box, not to an automatic second attempt.
+OK   ONCE/green: exactly ONE guard invocation, verdict=PASS (exit=0)
+
+-- exhausted run: exit=3 verdict=NOT-FINISHED guard invocations=1
+   one invocation per run is the whole rule: a NOT-FINISHED verdict must
+   send the operator to a quieter box, not to an automatic second attempt.
+OK   ONCE/exhausted: exactly ONE guard invocation, verdict=NOT-FINISHED (exit=3)
+
+-- control: the same cell against a shim that retries a failed run once
+   (this is the retry-hides-a-failure shape; the counter must see 2, and
+    the cell above must be able to fail — otherwise the count is vacuous)
+OK   ONCE/control: the counter sees the retry (2 invocations) — the count is not vacuous
+
+cells passed: 3  failed: 0
+scratch kept: /tmp/bfs017-arms-ZFvPBw

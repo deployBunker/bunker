@@ -49,8 +49,19 @@ defaults:
   # the `evaluator:` block below, where the engine actually reads them.
 
 # ── Static guards (Tier 1) ─────────────────────────────────────
+# These are the ONLY keys the installed gitreins reads for the Go gate
+# (0.15.0: engine/guard_manager.py reads `guards.*`; engine/guards.py:check_go_*
+# runs the lanes). Their ORDER matters, and it is the false-green path:
+#   guards.test_timeout  wall budget of the go_tests lane
+#   guards.hook_timeout  OVERALL budget: when it is exceeded between two lanes,
+#                        run_all returns EARLY and builds its result with
+#                        passed=True — the remaining lanes are not run AND not
+#                        recorded as skipped (measured, BFS-017:
+#                        docs/evidence/BFS-017-guard-verdicts.md).
 guards:
   secrets: true
+  # Go project: the Go-native lanes below grade lint/tests. The Python lanes
+  # (lint/tests) never run here.
   lint: false
   tests: false
   go:
@@ -62,26 +73,49 @@ guards:
   # suite measured 195.03s wall on this host - above the 180s default, so commits that
   # touch go.mod were being blocked on a TIMEOUT rather than on a test result. Raised
   # to 600s with the measurement recorded rather than a guess.
-  test_timeout: 600
+  #
+  # 2026-09-27 (BFS-017): raised from 600 to 1200. Budget decision and its
+  # reasoning are in docs/evidence/BFS-017-guard-verdicts.md §2; the short form:
+  # a package's wall time on this fleet is a function of the CPU it is given
+  # (internal/registry measured 13s quiet to 194s contended — 14.9x), so a
+  # budget derived from a quiet measurement is a budget that lies on a busy box.
+  # 1200s is the measured contended suite wall (BFS-017 times arm) rounded up to
+  # the next 300s rung, and a run that exceeds it is now reported as
+  # NOT-FINISHED by scripts/gitreins-guard.sh instead of as a test failure.
+  test_timeout: 1200
+  # 2026-09-27 (BFS-017): hook_timeout was left at its 300s DEFAULT while
+  # test_timeout was 600 — a pair that cannot hold: the tests lane's own budget
+  # already exceeds the overall budget, so the overall budget can only ever fire
+  # in the WORST place. Measured consequence (fixture, real guard): with the
+  # overall budget crossed after the tests lane ran, the run reported
+  # `Tier 1 Guards: PASS`, exit 0, while the evidence document carried
+  # `go_tests passed: false` and a real `--- FAIL:` — a green over a failing
+  # suite. The value below is set ABOVE the sum of the per-lane budgets
+  # (secrets + go_build 120 + go_lint 120 + go_tests 1200 = 1440s) so that no
+  # lane can ever be dropped by the overall budget: a gate that did not run is
+  # a NOT-FINISHED refusal from the wrapper, never a silent skip.
+  hook_timeout: 1800
 
-# ── Tier 1 command specifics ───────────────────────────────────
-tier1:
-  secrets:
-    enabled: true
-    config: .gitleaks.toml
-  lint:
-    enabled: true
-    commands:
-      - "golangci-lint run ./..."
-      - "go vet ./..."
-  tests:
-    enabled: true
-    commands:
-      - "go test ./... -count=1 -timeout 120s"
-  format:
-    enabled: true
-    commands:
-      - "test -z \"$(gofmt -l .)\""
+# ── The repo's OWN test invocations (NOT read by the guard) ─────
+# There has never been a `tier1:` config SECTION in gitreins: `tier1`/`tier2`
+# are PIPELINE stage ids, and engine/guard_manager.py reads only `guards.*`.
+# The block that used to sit here claimed the guard ran
+# `go test ./... -count=1 -timeout 120s`; it does not. The Go tests lane is
+# hard-coded (`go test -count=1 -short ./...`) with the `guards.test_timeout`
+# wall, and that dead 120s line is what made BFS-017 read a 120s ceiling into a
+# 600s lane. It is deleted rather than re-documented: a knob that is documented,
+# advertised and silently ignored is worse than a missing knob.
+#
+# The repo-owned invocations declare their own ceilings, where they run:
+#   Makefile `test` / `test-short`  (no -timeout: Go's 10m default)
+#   .github/workflows/ci.yml        (GO_TEST_TIMEOUT, default 300s)
+#   scripts/root-suite.sh           (ROOT_SUITE_TIMEOUT, default 1050s)
+# Each one passes an explicit `-timeout`, and the ceiling must exceed the
+# slowest package's CONTENDED wall — 120s is below internal/registry's measured
+# 194s under load, i.e. a ceiling that is structurally guaranteed to lie on a
+# busy box. BFS-017 measures and fixes the guard path; the CI/root-suite
+# ceilings are named here as the remaining declaration sites (see the residual
+# in docs/evidence/BFS-017-guard-verdicts.md §7).
 
 # ── Evaluator caps (Tier 2) ─────────────────────────────────────
 # The evaluator reads its knobs from THIS section only:

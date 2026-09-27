@@ -1,0 +1,31 @@
+### BFS-017 arms — mode green
+### host 16 cpu, loadavg 22.60 17.53 18.92, 2026-09-27T17:04:55Z
+BFS-017 arms — mode=green
+host: 16 cpu, loadavg 22.60 17.53 18.92, 2026-09-27T17:04:55Z
+gate: /home/kara/worktrees/bunker-BFS-017/scripts/gitreins-guard.sh
+
+==================================================================
+GREEN — the same trees, same configs, through the repo's gate
+==================================================================
+
+-- G1: the identical tree S1 failed on
+    wrapper exit=3 verdict=NOT-FINISHED
+      budgets: guards.test_timeout=3s guards.hook_timeout=1800s (from .gitreins/config.yaml)
+      go_tests exhausted its budget (Tests timed out after 3s (guards.test_timeout). Raise it in .gitreins/config.yaml — e.g. test_timeout: 900 for large projects
+OK   G1: the same budget exhaustion is NOT-FINISHED (exit 3), never a code failure
+
+-- G2: the identical tree S2 passed on
+    guard exit=0 lanes=[secrets,go_tests] go_tests.passed=false
+    go_tests summary: --- FAIL: TestGenuineFailure (0.00s)     genuine_test.go:9: BFS-017 control: this failure is real and must be reported as one FAIL FAIL	bfs017fixture/fail	0.010
+    wrapper exit=1 verdict=TEST-FAILURE
+      first failing test: --- FAIL: TestOnlyFailure
+OK   G2: the failure the guard swallowed is restored as TEST-FAILURE (exit 1)
+
+-- G3: the identical tree S3 attempted
+    guard exit=0 lanes=[secrets,go_build] go_tests.passed=
+    wrapper exit=3 verdict=NOT-FINISHED
+      go_tests never ran (absent from the evidence)
+OK   G3: a gate that never ran is NOT-FINISHED (exit 3) — the false green is closed
+
+cells passed: 3  failed: 0
+scratch kept: /tmp/bfs017-arms-6ndtmG

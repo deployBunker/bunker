@@ -1,0 +1,34 @@
+### BFS-017 arms — mode red
+### host 16 cpu, loadavg 17.88 16.09 18.54, 2026-09-27T17:04:12Z
+BFS-017 arms — mode=red
+host: 16 cpu, loadavg 17.88 16.09 18.54, 2026-09-27T17:04:12Z
+gate: /home/kara/worktrees/bunker-BFS-017/scripts/gitreins-guard.sh
+
+==================================================================
+RED — the three shapes of the lie, with the REAL guard (bounded)
+==================================================================
+
+-- S1 timeout: test_timeout: 3, the tests lane burns ~60s of work
+    guard exit=1 lanes=[secrets,go_build,go_lint,go_tests] go_tests.passed=false
+    go_tests summary: Tests timed out after 3s (guards.test_timeout). Raise it in .gitreins/config.yaml — e.g. test_timeout: 900 for large projects with slow integration suites.
+    guard header: Tier 1 Guards: FAIL  (test mode: full)
+    diagnostics line:   first_failing_test: none detected  [NOTE: engine/types.py:parse_first_failing_test is pytest-shaped — it cannot see Go's '--- FAIL:' lines, so 'none detected' is a blind spot, not proof. The proof is the next line.]
+    evidence checks containing a '--- FAIL:' line: 0
+OK   S1 reproduced: exit 1 (FAIL) on a budget exhaustion, with no test verdict
+OK   S1 attribution: NO gate in the evidence carries a failing test — the FAIL has no test behind it
+
+-- S2 swallowed: hook_timeout: 2, the tests lane runs ~2.5s and a package GENUINELY fails
+    guard exit=0 lanes=[secrets,go_tests] go_tests.passed=false
+    go_tests summary: --- FAIL: TestGenuineFailure (0.00s)     genuine_test.go:9: BFS-017 control: this failure is real and must be reported as one FAIL FAIL	bfs017fixture/fail	0.028
+    guard header: Tier 1 Guards: PASS  (test mode: full)
+OK   S2 reproduced: exit 0 / PASS while the evidence says go_tests FAILED (the failure was discarded)
+
+-- S3 dropped: hook_timeout: 1, three attempts (opportunistic shape)
+    guard exit=0 lanes=[secrets,go_build] go_tests.passed=
+    attempt 1 TRIGGERED: exit 0 / PASS with the tests lane ABSENT (lanes: secrets,go_build)
+    guard warning: [33m⚠ Guard timed out after 1s (hook_timeout). Remaining checks skipped — commit allowed to proceed (fail-open).[0m
+    (the --json machine surface drops that warning: 0 mention(s) on stderr)
+OK   S3 reproduced: exit 0 / PASS with the tests lane ABSENT — a gate that never ran reported as green
+
+cells passed: 4  failed: 0
+scratch kept: /tmp/bfs017-arms-bQwHxl

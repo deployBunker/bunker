@@ -44,7 +44,12 @@ bash e2e-full-battery.sh
 
 ## Quality gates
 
-- `gitreins guard` — secrets, build, lint, tests
+- `gitreins guard` — secrets, build, lint, tests. It has TWO verdicts (exit 0 / 1).
+- `bash scripts/gitreins-guard.sh` (or `make guard`) — the same guard, **three** outcomes:
+  PASS (0) / TEST-FAILURE (1) / NOT-FINISHED (3) / GUARD-ERROR (4). A budget exhaustion under
+  load is reported as NOT-FINISHED — exit 3, which still refuses the commit, but says that no
+  test verdict was reached instead of blaming the code. Nothing is retried.
+- `make hooks` — point the pre-commit hook at that gate.
 - `hilo graph impact <file>` — blast radius before changes
 - Server-side E2E battery on `bunker-mvp` for agent/docker lifecycle changes
 

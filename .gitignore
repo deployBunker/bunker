@@ -26,6 +26,11 @@
 # Hilo graph data
 .vfs/
 .gitreins/history/
+# The guard's own run logs (DF-018). The MAIN checkout hides them through
+# .git/info/exclude, which is local and untracked — so a fresh clone, a worktree
+# or a CI checkout shows the guard's own artifact as an untracked file the
+# moment a commit runs, and the next `git add -A` sweeps it in.
+.gitreins/logs/
 bin/
 
 # Environment files (secrets)

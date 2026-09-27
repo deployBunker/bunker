@@ -180,3 +180,24 @@ install: check-go build
 # Full CI-quality check
 .PHONY: ci
 ci: lint test-short docs-check
+
+# Tier 1 gate (BFS-017): the repo's three-verdict wrapper around `gitreins
+# guard`. It runs the guard ONCE, classifies the evidence document, and reports
+# PASS (0) / TEST-FAILURE (1) / NOT-FINISHED (3) / GUARD-ERROR (4) — so a budget
+# exhaustion under load is not reported as a code failure, and a gate that never
+# ran is not reported as a pass. Nothing is retried. Use this instead of a bare
+# `gitreins guard` when you want the verdict to be attributable:
+#   make guard                 # the staged change set
+#   make guard GUARD_ARGS='--full --scope working-tree'
+.PHONY: guard
+guard:
+	bash scripts/gitreins-guard.sh $(GUARD_ARGS)
+
+# Install the pre-commit hook (BFS-017): points the hook at scripts/gitreins-guard.sh
+# so a local refusal says WHICH of the three things happened. It refuses to
+# clobber a foreign hook without --force, and verifies what it wrote.
+#   make hooks              # install
+#   make hooks HOOK_ARGS=--force
+.PHONY: hooks
+hooks:
+	bash scripts/install-git-hooks.sh $(HOOK_ARGS)

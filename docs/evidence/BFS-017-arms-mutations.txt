@@ -1,0 +1,39 @@
+### BFS-017 arms — mode mutations
+### host 16 cpu, loadavg 17.77 18.32 19.69, 2026-09-27T17:18:40Z
+BFS-017 arms — mode=mutations
+host: 16 cpu, loadavg 17.77 18.32 19.69, 2026-09-27T17:18:40Z
+gate: /home/kara/worktrees/bunker-BFS-017/scripts/gitreins-guard.sh
+
+==================================================================
+MUTATIONS — neuter the fix, the cell must go RED (sha256-verified restore)
+==================================================================
+pre-mutation: scripts/gitreins-guard.sh sha256=46e4ecf2b62b8a67e6b17e7d40f97cb94e571c8d0de6f7a0be0ad6f7c15964a3
+
+-- M1: neuter the budget-signature table (the timeout branch)
+   mutated sha256=dfc05351df2aad0130233b065106f9dd4aca060d9d171bfedbecb1d9492942c6
+restore: scripts/gitreins-guard.sh sha256=46e4ecf2b62b8a67e6b17e7d40f97cb94e571c8d0de6f7a0be0ad6f7c15964a3 (verified byte-identical)
+   with the mutation: exit=1 verdict=TEST-FAILURE
+OK   M1 RED: without the budget branch the gate reports a clock as a code failure (the BFS-017 defect)
+
+-- M2: neuter the completeness check (a gate absent from the evidence)
+   mutated sha256=0733d01aef90214454160c2d42ed132528547749b81473023692bec2112562a1
+restore: scripts/gitreins-guard.sh sha256=46e4ecf2b62b8a67e6b17e7d40f97cb94e571c8d0de6f7a0be0ad6f7c15964a3 (verified byte-identical)
+   clean: exit=3 verdict=NOT-FINISHED  |  mutated: exit=0 verdict=PASS
+OK   M2 RED: without the completeness check the wrapper calls a never-ran gate a PASS (exit 0)
+
+-- M3: invert the precedence (budget checked before the defect)
+   mutated sha256=c48c39d98ac75db95ee138d9dff222f1b9d447177c1267ea72e5f7a54ae6185b
+restore: scripts/gitreins-guard.sh sha256=46e4ecf2b62b8a67e6b17e7d40f97cb94e571c8d0de6f7a0be0ad6f7c15964a3 (verified byte-identical)
+   clean: exit=1 verdict=TEST-FAILURE  |  mutated: exit=3 verdict=NOT-FINISHED
+OK   M3 RED: inverted precedence buries a genuine failure behind the budget
+
+-- M4: remove the empty-scope exemption (a gate that graded nothing)
+   mutated sha256=89526c203620c2a9c96df6ae57063941d8e189527cf598266fbba958a4146078
+restore: scripts/gitreins-guard.sh sha256=46e4ecf2b62b8a67e6b17e7d40f97cb94e571c8d0de6f7a0be0ad6f7c15964a3 (verified byte-identical)
+   document: clean=0/PASS  mutated=3/NOT-FINISHED
+   live docs-only run (installed 0.15.0, lanes report 'No Go files staged'): exit=0 verdict=PASS
+OK   M4 RED: without the empty-scope exemption a gate that graded nothing is refused (NOT-FINISHED)
+final: scripts/gitreins-guard.sh sha256=46e4ecf2b62b8a67e6b17e7d40f97cb94e571c8d0de6f7a0be0ad6f7c15964a3
+
+cells passed: 4  failed: 0
+scratch kept: /tmp/bfs017-arms-4qnJUH

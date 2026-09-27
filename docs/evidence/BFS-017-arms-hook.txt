@@ -1,0 +1,26 @@
+### BFS-017 arms — mode hook
+### host 16 cpu, loadavg 14.04 17.39 19.34, 2026-09-27T17:19:08Z
+BFS-017 arms — mode=hook
+host: 16 cpu, loadavg 14.04 17.39 19.34, 2026-09-27T17:19:08Z
+gate: /home/kara/worktrees/bunker-BFS-017/scripts/gitreins-guard.sh
+
+==================================================================
+HOOK — the local commit path, in a SCRATCH CLONE (main tree untouched)
+==================================================================
+clone: /tmp/bfs017-arms-Ax2RnW/clone (branch wt/BFS-017, shared objects — nothing is written back)
+    install-git-hooks: installed .git/hooks/pre-commit
+      it runs: bash scripts/gitreins-guard.sh  (PASS 0 / TEST-FAILURE 1 / NOT-FINISHED 3 / GUARD-ERROR 4)
+      check:   bash -n '.git/hooks/pre-commit' && grep -n gitreins-guard.sh '.git/hooks/pre-commit'
+      undo:    rm '.git/hooks/pre-commit'
+    hook file: .git/hooks/pre-commit
+    clone budget: #   guards.test_timeout  wall budget of the go_tests lane
+    staged: .gitreins/config.yaml internal/registry/compact.go 
+    commit exit: 1 (wall 15391 ms)
+    verdict in the hook output: NOT-FINISHED
+      budgets: guards.test_timeout=8s guards.hook_timeout=1800s (from .gitreins/config.yaml)
+      go_tests exhausted its budget (Tests timed out after 8s (guards.test_timeout). Raise it in .gitreins/config.yaml — e.g. test_timeout: 900 for larg
+OK   HOOK: the commit was REFUSED with a NOT-FINISHED verdict (not a code failure) — the guard still blocks
+    main tree status (must be unchanged by this arm): 1 path(s)
+
+cells passed: 1  failed: 0
+scratch kept: /tmp/bfs017-arms-Ax2RnW

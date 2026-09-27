@@ -1,0 +1,27 @@
+### BFS-017 arms — mode times (BFS017_TIME_RUNS=5)
+### host 16 cpu, loadavg 32.08 18.75 18.25, 2026-09-27T17:29:07Z
+BFS-017 arms — mode=times
+host: 16 cpu, loadavg 32.08 18.75 18.25, 2026-09-27T17:29:07Z
+gate: /home/kara/worktrees/bunker-BFS-017/scripts/gitreins-guard.sh
+
+==================================================================
+TIMES — the green path before and after (wall clock, ms)
+==================================================================
+-- fixture repo, 5 GREEN runs each way (the fixture's suite is ~2s):
+   bare    gitreins guard --json     : 8279 ms (1655 ms/run)
+   wrapper scripts/gitreins-guard.sh : 10813 ms (2162 ms/run)
+   overhead: 2534 ms over 5 runs (506 ms/run)
+
+-- THIS repo (bunker): interleaved A/B/A/B, same staged change
+   (the box is shared: an A-vs-B pair run minutes apart measures the HOST as much
+    as the gate, so the order is interleaved and the spread is reported)
+   staged: internal/registry/bfs017_timing_probe.go 
+   round 1: bare=240962 ms (exit 0)  wrapper=259490 ms (exit 1, TEST-FAILURE)
+   round 2: bare=119115 ms (exit 0)  wrapper=63483 ms (exit 0, PASS)
+   bare walls   : 240962 119115
+   wrapper walls: 259490 63483
+   classifier alone, 5 runs on the real document: 405 ms (81 ms per run)
+   git status after cleanup:  M docs/evidence/BFS-017-arms-times.txt  M docs/evidence/BFS-017-arms.sh  M docs/evidence/BFS-017-guard-verdicts.md ?? docs/evidence/BFS-017-arms-hook.txt ?? do
+
+cells passed: 0  failed: 0
+scratch kept: /tmp/bfs017-arms-uEHtQJ

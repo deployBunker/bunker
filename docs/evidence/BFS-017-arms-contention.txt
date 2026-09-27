@@ -1,0 +1,32 @@
+### BFS-017 arms — mode contention
+### host 16 cpu, loadavg 11.39 16.28 19.20, 2026-09-27T17:16:38Z
+BFS-017 arms — mode=contention
+host: 16 cpu, loadavg 11.39 16.28 19.20, 2026-09-27T17:16:38Z
+gate: /home/kara/worktrees/bunker-BFS-017/scripts/gitreins-guard.sh
+
+==================================================================
+CONTENTION — the same tree, no edit: PASS quiet, did-not-finish busy
+==================================================================
+calibration: overhead 134 ms, 1000000 iterations = 143 ms (work 9 ms)
+             target 1200 ms of work -> 133333333 iterations
+quiet: BFS017_WORK=133333333 -> 515 ms wall; derived budget = 705ms (1.5x the WORK, plus the same fixed overhead)
+-- arm A: quiet, through the gate
+    exit=0 verdict=PASS (loadavg 11.39 16.28 19.20)
+-- arm B: the SAME tree, no edit, under 32 bounded CPU hogs
+docs/evidence/BFS-017-arms.sh: line 549: 3022369 Killed                     ( end=$((SECONDS + HOG_SECONDS)); while [ "$SECONDS" -lt "$end" ]; do
+    :;
+done )
+    exit=3 verdict=NOT-FINISHED (loadavg 15.04 16.96 19.40)
+    wall: quiet 515 ms -> contended 2139 ms; budget 705ms
+      go test panicked on its own per-binary ceiling (test timed out)
+OK   CONTENTION: same tree, no edit — PASS quiet, NOT-FINISHED under bounded contention
+OK   the contention is DELIBERATE and bounded (32 hogs, capped 60s, killed by PID)
+-- arm C: the same contention, same command, with a genuine failure in the run
+docs/evidence/BFS-017-arms.sh: line 566: 3023494 Killed                     ( end=$((SECONDS + HOG_SECONDS)); while [ "$SECONDS" -lt "$end" ]; do
+    :;
+done )
+    exit=1 verdict=TEST-FAILURE
+OK   CONTROL under the SAME contention: a genuine failure is still TEST-FAILURE (exit 1)
+
+cells passed: 3  failed: 0
+scratch kept: /tmp/bfs017-arms-imhBNm
