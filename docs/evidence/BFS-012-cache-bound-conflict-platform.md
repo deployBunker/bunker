@@ -271,11 +271,11 @@ driving writes through a live mount, the shapes were measured (`write_shape_prob
 
 | the caller's shape | result | bytes reached the server? |
 |---|---|---|
-| `open(new,'wb')` → write → close (a path that does not exist) | **ok** (Create) | yes |
+| `open(new,'wb')` → write → close (a path that does not exist) | **ok** (Create) | yes — but see the publication window below |
 | `open(existing,'r+b')` → write (same length) → close | **error 95 EOPNOTSUPP** | no |
-| `open(existing,'wb')` → write → close (the shell's `>` shape) | **error 116 ESTALE** | no |
+| `open(existing,'wb')` → write → close (the shell's `>` shape) | **refused** — 116 ESTALE in the write-shape arm (its own out-of-band edit made the base stale), **95 EOPNOTSUPP** in the create-landing arm (plain case); the file is 0 bytes either way | **the truncation, yes; the content, no** |
 | `open(existing,'ab')` → write → close (append) | **error 95 EOPNOTSUPP** | no |
-| `truncate(existing, 32)` | **error 116 ESTALE** | no |
+| `truncate(existing, 32)` | **error 116 ESTALE** (see §3.3 for why it can land anyway) | no |
 | `truncate(existing, 48)` (grow back) | **error 116 ESTALE** | no |
 
 **Finding F-A: writing an EXISTING file through this mount is unreachable by every ordinary shape.**
@@ -287,9 +287,44 @@ the conflict arms below use **`truncate`** — `Setattr(size)` is the one reacha
 file, and it is a real one: a read-modify-write published as ONE conditional `PUT` through
 `WritePath.ResolveBase`/`PublishBytes` (the same refusal classifier, the same refusal log).
 
+### 3.2b The create path, measured properly — and the expensive one it destroys
+
+`write_shape_probe.py` reported the create shape as accepted and its own "reached the server's disk?" check
+as NO, because that check ran immediately after `close`. Whether the mount delivers the bytes at all is a
+much larger claim than this row is making, so it was re-measured with a dedicated probe
+(`create_landing_probe.py`, transcript `BFS-012-create-landing.txt`):
+
+```
+1. python open('wb') on a NEW path, checked IMMEDIATELY after close
+     server path exists right now : False          <- the publication LAGS the close
+     the mount lists it           : True
+2. the same + fsync, checked after a 3 s settle
+     server bytes : 31 B sha256=e00b2f605b903e5b…  (want 31 B e00b2f605b903e5b…)   MATCHES: True
+3. printf > newfile (a real subprocess, O_CREAT|O_TRUNC), after a 3 s settle
+     server bytes : 17 B sha256=d0c38d62ff9c8b85…  (want 17 B d0c38d62ff9c8b85…)   MATCHES: True
+4. the REWRITE shape — open('wb') on a path that now EXISTS
+     open('wb') on an existing path : REFUSED — errno=95 (Operation not supported)
+     server bytes after the refusal : 0 B sha256=e3b0c44298fc1c14…  (want 10 B …)  MATCHES: False
+```
+
+Three results, and the third is the one that matters:
+
+1. **Creating a file works, and the bytes reach the server** — but **publication lags the close**: without
+   an `fsync`, the path can be absent from the server immediately after `close` (the `PUT 201` follows
+   later, seen in the request trace of `BFS-012-create-landing.txt`). A durability window, not a lost
+   write, and it is why the naive check said NO.
+2. The shell's `printf > newfile` on a **new** path lands byte-exact.
+3. The shell's `>` on an **existing** path is **data loss, measured**: the `O_TRUNC` half is executed
+   through the one reachable write path (`truncate` → the server's file becomes 0 bytes) and the `write(2)`
+   half is then refused with EOPNOTSUPP — so the caller gets an error *and the file it was about to rewrite
+   has already been emptied*. `sed -i`-style rewrites, `tar -x` over an existing tree and any build step
+   that opens with `>` are in this class. It is a sibling of the filed `>>` defect (BFS-020), one shape
+   over and a worse outcome; not fixed here.
+
 *Caveat, stated because it bounds the finding:* BFS-016's mount battery has a write cell
-(`ops,write file (printf>),0.111,0,ok`) — that cell targets a path it creates, which is exactly the shape
-that works. This row's table is the first to separate create-from-overwrite in the live path.
+(`ops,write file (printf>),0.111,0,ok`) — that cell targets a path it creates, and the cell after it reads
+the file back **through the mount**, which is also where the lagging publication is invisible. This row's
+table is the first to separate create-from-rewrite in the live path.
 
 ### 3.3 Live, through the mount: the refusal fires — and the mutation lands anyway
 
@@ -469,15 +504,19 @@ fixed). This row claims **no working Windows build**, for the CLI or the mount.
 
 This row's brief is explicit that these get reported, not fixed. None is fixed here.
 
-### F-A — an in-place write of an existing file is unreachable through the mount
+### F-A — the mount's write path only reaches paths that do not exist yet, and `>` on an existing file destroys it
 `internal/fsmount/fs_linux.go:826` (`node.Open`) returns a `readHandle` whatever the open flags say (it
 records `writeIntent` and nothing else), and `newWriteHandle` is called only from `node.Create`
-(`:839`, a NEW path). Measured: `r+b` → 95 EOPNOTSUPP, `>` on an existing file → 116 ESTALE, `ab` → 95
-EOPNOTSUPP, all with the server's bytes unmoved (`BFS-012-writeshape.txt`). Consequence for the release:
-the client can create files and truncate them, but a build step that rewrites an existing file in place
-(a shell's `>`, an editor save, `sed -i`'s rewrite, `tar -x` over an existing tree) cannot go through the
-mount at all. It also means the conflict refusal cannot be exercised by the overwrite path a real user
-would take — which is why §3.3 had to use `truncate`.
+(`:839`, a NEW path). Measured (`BFS-012-writeshape.txt`, `BFS-012-create-landing.txt`):
+`r+b` → 95 EOPNOTSUPP; `ab` → 95 EOPNOTSUPP; `>` on an existing file → the `O_TRUNC` half lands (the
+server's file is **0 bytes**) and the write half is refused with 95 EOPNOTSUPP, so the caller gets an error
+**and the file is already emptied**; creating a new path works, but without an `fsync` the publication lags
+`close` (the server can still be missing the path immediately afterwards; the `PUT 201` arrives later).
+Consequence for the release: the client can create files and truncate them, but a build step that rewrites
+an existing file in place — a shell's `>`, an editor save, `sed -i`'s rewrite, `tar -x` over an existing
+tree — either fails outright or fails *after* destroying the target's bytes. It also means the conflict
+refusal cannot be exercised by the overwrite path a real user would take, which is why §3.3 had to use
+`truncate`. Sibling of the filed `>>` defect (BFS-020), one shape over and a worse outcome.
 
 ### F-B — the oversize-bypass counter can never move from the live read path
 `internal/fsmount/fs_linux.go:1053` pre-filters `len(data) <= MaxEntryBytes()` before calling
@@ -582,6 +621,7 @@ python3 $P/cleanup-fixture.py /tmp/bfs012 /tmp/bfs012/armA-tree /tmp/bfs012/smal
 | `BFS-012-armA-status.json` | arm A's final status document, as the client wrote it |
 | `BFS-012-bypass-arms.txt` | arm PIN and arm OVER, with their assertions and the F-B measurement |
 | `BFS-012-writeshape.txt` | the write-shape table (F-A) |
+| `BFS-012-create-landing.txt` | the create/rewrite probe: the publication window, and `>` emptying an existing file (F-A) |
 | `BFS-012-conflict-arms.txt` | the live conflict arms, ending in the F-D finding |
 | `BFS-012-trace-truncate.txt`, `BFS-012-trace-edit-requests.jsonl`, `BFS-012-trace-noedit-requests.jsonl` | the two request traces: accurate base (1 PUT) vs stale base (412 → 204) |
 | `BFS-012-truncate-diag.txt` | the step-by-step diagnostic that first exposed the contradiction |
