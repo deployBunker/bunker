@@ -760,6 +760,30 @@ type ReconciliationConfig struct {
 	//             exact persisted port reservation is restored, so a later
 	//             spawn cannot double-allocate the same ports.
 	Mode string `mapstructure:"mode"`
+
+	// OrphanSweepGuardDisabled turns OFF the boot-time bulk-destroy guard
+	// (REV-BUNKER-P1-PATCH). The guard refuses the whole orphan sweep —
+	// destroys nothing — when the durable registry cannot vouch for the
+	// host AND the sweep would remove more than UnprovenOrphanLimit users.
+	//
+	// The knob is expressed as a DISABLE on purpose: a zero-valued struct
+	// (every hand-built config, every test that does not set it) then gets
+	// the guard, not the hole. "Fail closed" has to survive not being
+	// configured at all. Disabling it is logged as a WARNING at boot.
+	OrphanSweepGuardDisabled bool `mapstructure:"orphan_sweep_guard_disabled"`
+
+	// UnprovenOrphanLimit is the largest number of orphans an UNPROVEN
+	// sweep may destroy. Above it, the sweep is refused and counted instead
+	// (see OrphanSweepGuardDisabled). Provenance is unproven when the
+	// replayed live set is EMPTY, or when the registry file did not exist
+	// before this boot created it.
+	//
+	// 0 is meaningful and is the STRICTEST setting — refuse every unproven
+	// sweep, even one that would remove a single user — so there is no
+	// "unlimited" value here and a zero-valued config can never read as
+	// "no limit". There is no upper clamp for the same reason: a large
+	// number is a deliberate, greppable operator decision.
+	UnprovenOrphanLimit int `mapstructure:"unproven_orphan_limit"`
 }
 
 // ReconcileModes are the accepted reconciliation.mode values.
@@ -767,6 +791,28 @@ const (
 	ReconcileModeDestroy = "destroy"
 	ReconcileModeAdopt   = "adopt"
 )
+
+// DefaultUnprovenOrphanLimit is how many orphans an unproven sweep may
+// destroy before the boot-time bulk-destroy guard refuses the pass
+// (REV-BUNKER-P1-PATCH).
+//
+// The number is derived from the largest population a routine CI/battery host
+// actually leaves behind, not chosen for comfort: e2e-full-battery.sh's
+// section 8 spawns a five-agent burst (e2e-agent-2..5 in parallel next to
+// e2e-main) and asserts "5 agents spawned", so a host whose sweep is
+// legitimate carries at most those five unregistered users. Six is already a
+// population no routine sweep produces — and a host whose registry is
+// empty/fresh while six or more bunker-* users it has never heard of exist is
+// the reproduced incident shape (a scratch daemon booting on a host that runs
+// another deployment's agents), so the guard stops there.
+//
+// The trade is deliberate and is stated in the evidence bundle: a host with a
+// LARGER leftover set (a dev box carried 9 stale test users at one point —
+// see the observed-state note in internal/agent/gap070_test.go) now refuses
+// the sweep and names the knob to raise. A refusal costs one explicit,
+// greppable config line — the operator is told which one — while a miss costs
+// the agents.
+const DefaultUnprovenOrphanLimit = 5
 
 // Registry defaults. Kept in sync with internal/registry's documented
 // defaults by TestRegistryConfigDefaultsMatchRegistryPackage.
@@ -880,6 +926,16 @@ func DefaultConfig() *Config {
 			},
 			Reconciliation: ReconciliationConfig{
 				Mode: ReconcileModeDestroy,
+				// REV-BUNKER-P1-PATCH: destroy stays the default — it is
+				// the documented semantic (an unmanaged bunker-* user is a
+				// leftover) and adopt has its own residual (an adopted
+				// orphan carries no TTL, so nothing ever expires it) — but
+				// it is DESTROY BEHIND A GUARD: a sweep the registry
+				// cannot vouch for is refused, not executed. See
+				// DefaultUnprovenOrphanLimit for the threshold's
+				// derivation.
+				OrphanSweepGuardDisabled: false,
+				UnprovenOrphanLimit:      DefaultUnprovenOrphanLimit,
 			},
 			// DF-BUNKER-33: destroy archives the agent home BEFORE the
 			// recursive delete, so a TTL expiry can never again destroy
@@ -1235,6 +1291,16 @@ func (r *ReconciliationConfig) Validate() error {
 	if r.Mode == "" {
 		r.Mode = ReconcileModeDestroy
 	}
+	// REV-BUNKER-P1-PATCH: the guard's limit has no "unlimited" encoding — 0
+	// is the strictest legitimate setting (refuse every unproven sweep) and
+	// a negative value is a typo, not a policy, so it never silently reads
+	// as "large". Turning the guard off is the explicit, greppable
+	// OrphanSweepGuardDisabled.
+	if r.UnprovenOrphanLimit < 0 {
+		return fmt.Errorf("agent.reconciliation.unproven_orphan_limit must be >= 0, got %d "+
+			"(0 refuses every unproven sweep; disable the guard with "+
+			"agent.reconciliation.orphan_sweep_guard_disabled instead)", r.UnprovenOrphanLimit)
+	}
 	switch r.Mode {
 	case ReconcileModeDestroy, ReconcileModeAdopt:
 		return nil
@@ -1242,6 +1308,16 @@ func (r *ReconciliationConfig) Validate() error {
 		return fmt.Errorf("agent.reconciliation.mode must be %q or %q, got %q",
 			ReconcileModeDestroy, ReconcileModeAdopt, r.Mode)
 	}
+}
+
+// SweepGuardEnabled reports whether the boot-time bulk-destroy guard
+// (REV-BUNKER-P1-PATCH) is armed for the orphan sweep. It is the negation of
+// the disable knob, so a zero-valued ReconciliationConfig — the shape a
+// hand-built config or an unconfigured deployment has — reports the guard
+// as ARMED rather than absent: the guard's whole purpose is fail-closed
+// behaviour on a tree that was never configured for it.
+func (r *ReconciliationConfig) SweepGuardEnabled() bool {
+	return !r.OrphanSweepGuardDisabled
 }
 
 // ModeOrDestroy returns the effective reconciliation mode.

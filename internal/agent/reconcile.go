@@ -57,6 +57,16 @@ type ReconcileReport struct {
 	// daemon's pool, or (DF-BUNKER-18) their `.bunker/owner` marker names a
 	// different daemon instance than this one.
 	Foreign int
+	// Refused (REV-BUNKER-P1-PATCH) counts orphans the SWEEP-LEVEL guard
+	// deliberately left alone: the durable registry could not vouch for this
+	// host (empty replayed live set, or a registry file this boot created)
+	// while the walk found more unknown bunker-* users than
+	// agent.reconciliation.unproven_orphan_limit. A refused sweep destroys
+	// NOTHING — the count is the population that survived, not a subset of
+	// Destroyed, and the two are never both incremented by one pass. It is
+	// reported here, in the refusal log line, and in the completion log line
+	// because a bound nobody can read is not a bound.
+	Refused int `json:"refused,omitempty"`
 }
 
 // Reconcile replays the durable registry against system state and waits for
@@ -106,6 +116,13 @@ func (m *AgentManager) reconcile(ctx context.Context, asyncOrphans bool) (Reconc
 		m.logger.Warn("invalid reconciliation mode, using default", "mode", rep.Mode, "error", err)
 		rep.Mode = config.ReconcileModeDestroy
 	}
+	// REV-BUNKER-P1-PATCH: the sweep guard's state is announced at every
+	// boot, so an operator can see whether the boot-time bulk-destroy guard
+	// is armed and where its threshold sits without reading the source —
+	// and so the ONE configuration that turns it off is loud. A guard whose
+	// state is not reported is not a guard (the same law that produced the
+	// counters on this pass).
+	m.logGuardState(rep.Mode)
 	// earlyFinish ends a reconciliation that never reaches the orphan walk
 	// (registry unavailable, failed system probe): unblock the reaper and
 	// deliver the report exactly once, like a completed pass.
@@ -228,6 +245,18 @@ func (m *AgentManager) reconcile(ctx context.Context, asyncOrphans bool) (Reconc
 	}
 	runOrphanWalk := func(list []SystemAgent) ReconcileReport {
 		final := rep
+		// REV-BUNKER-P1-PATCH: the sweep-level guard runs BEFORE the first
+		// per-orphan decision, so a refused pass touches nothing at all —
+		// no destroy, no adopt, no registry write — and counts the
+		// population it withheld. Both entry points (Reconcile,
+		// ReconcileStartup) reach the walk through this one closure, which
+		// is what keeps the runtime path and the startup path from
+		// disagreeing about the guard.
+		if refuse, withheld, reason := m.sweepRefusal(list); refuse {
+			final.Refused = withheld
+			m.logSweepRefused(withheld, reason)
+			return final
+		}
 		for _, sa := range list {
 			// Foreign check BEFORE the mode branch: an orphan whose persisted
 			// ports lie outside this daemon's pool cannot collide with any
@@ -292,6 +321,7 @@ func (m *AgentManager) reconcile(ctx context.Context, asyncOrphans bool) (Reconc
 				"adopted", final.Adopted,
 				"destroyed", final.Destroyed,
 				"foreign", final.Foreign,
+				"refused", final.Refused,
 			)
 			finalCh <- final
 			close(finalCh)
@@ -447,6 +477,130 @@ func (m *AgentManager) logForeignOrphanSkip(sa SystemAgent, start, end uint32) {
 		"agent is owned by another daemon instance (or an older pool geometry): "+
 			"destroy it from the daemon that owns it")
 	m.logger.Warn("registry reconcile: skipping foreign orphan agent", attrs...)
+}
+
+// sweepRefusal is the SWEEP-LEVEL fail-closed guard (REV-BUNKER-P1-PATCH).
+//
+// The per-case guards around the orphan walk each decide about ONE orphan:
+// foreign-orphan classification (DF-BUNKER-18), exact-port-or-nothing
+// adoption, archive-before-delete (DF-BUNKER-33), the live-process gate. All
+// of them are correct, and none of them can see the pass as a whole — which is
+// the shape that reached another deployment's agents: a daemon booted with a
+// registry file that did not exist (Open fabricates an empty one, so the
+// "refuses to start when it cannot open the registry" rule never fired),
+// replayed a live set of ZERO, and therefore recognised every bunker-* user on
+// the host as an orphan of its own. Run as root — the documented deployment —
+// that walk archives each home and deletes the user.
+//
+// The guard asks about PROVENANCE, not per-user guilt: when the durable
+// registry cannot vouch for this host at all AND the pass would remove more
+// than the configured limit of unknown users, the correct action is to remove
+// NOTHING, count the refusal, and say what to do about it.
+//
+// It is deliberately blind to the per-orphan classification, which is what
+// keeps it standing while REV-BUNKER-002 (orphanIsForeign fails OPEN when the
+// ownership/port metadata is missing or unreadable) remains open: the guard
+// counts what the walk was ABOUT to act on, i.e. the classification's own
+// output. A fail-open classification therefore makes the count LARGER and the
+// guard trip SOONER — that defect cannot defeat the guard by under-reporting,
+// which is the only direction in which it could have helped it.
+//
+// Adoption is untouched: adopting re-registers an orphan and deletes nothing,
+// so the mass-destroy shape does not exist in that mode.
+func (m *AgentManager) sweepRefusal(orps []SystemAgent) (refuse bool, withheld int, reason string) {
+	rc := &m.cfg.Agent.Reconciliation
+	if len(orps) == 0 || !rc.SweepGuardEnabled() || !m.registryIsUnproven() {
+		return false, 0, ""
+	}
+	// Only the destroy path can delete; anything else is unguarded by
+	// design, which is what keeps adopt mode byte-for-byte unchanged.
+	if rc.ModeOrDestroy() != config.ReconcileModeDestroy {
+		return false, 0, ""
+	}
+	limit := rc.UnprovenOrphanLimit
+	if len(orps) <= limit {
+		return false, 0, ""
+	}
+	live, created := 0, false
+	if m.registry != nil {
+		live, created = m.registry.LiveCount(), m.registry.CreatedThisBoot()
+	}
+	return true, len(orps), fmt.Sprintf(
+		"the durable registry cannot vouch for this host (replayed live=%d, registry file created by this boot=%t) "+
+			"while the orphan walk found %d unknown bunker-* users, above the limit of %d",
+		live, created, len(orps), limit)
+}
+
+// registryIsUnproven reports whether the durable registry has NO standing to
+// describe this host: either it replayed an EMPTY live set, or the file itself
+// was created by this boot (see registry.Store.CreatedThisBoot). Both mean the
+// same thing to a destructive walk — "no agents" here is not evidence about
+// the host, it is the absence of evidence — and both are the reproduced
+// incident's precondition.
+func (m *AgentManager) registryIsUnproven() bool {
+	if m.registry == nil {
+		// No registry at all: reconcile() never reaches the orphan walk in
+		// that case, and the guard must not claim provenance it has no
+		// source for.
+		return false
+	}
+	return m.registry.LiveCount() == 0 || m.registry.CreatedThisBoot()
+}
+
+// logGuardState announces the sweep guard once per reconciliation. It is a
+// WARNING when the guard is off, because that single line is the difference
+// between "a mass sweep can only happen on proven state" and "nothing stands
+// between this boot and another deployment's agents".
+func (m *AgentManager) logGuardState(mode string) {
+	rc := &m.cfg.Agent.Reconciliation
+	if rc.SweepGuardEnabled() {
+		m.logger.Info("agent reconciliation sweep guard armed",
+			"guard", "orphan_sweep_guard",
+			"enabled", true,
+			"mode", mode,
+			"unproven_orphan_limit", rc.UnprovenOrphanLimit,
+			"refuses", "an unproven sweep (empty replayed live set, or a registry file created by this boot) "+
+				"that would destroy more than the limit")
+		return
+	}
+	if mode != config.ReconcileModeDestroy {
+		// Adopt mode deletes nothing, so the guard is irrelevant here and
+		// a warning would be noise.
+		return
+	}
+	m.logger.Warn("agent reconciliation sweep guard DISABLED — an unproven destroy sweep is NOT bounded",
+		"guard", "orphan_sweep_guard",
+		"enabled", false,
+		"mode", mode,
+		"unproven_orphan_limit", rc.UnprovenOrphanLimit)
+}
+
+// logSweepRefused emits the ONE loud, actionable line a refused sweep gets. It
+// names the population that survived, why the registry could not vouch for it,
+// and both ways out — the operator's next action is in the line itself,
+// because a refusal that does not say what to do is indistinguishable from a
+// hang.
+func (m *AgentManager) logSweepRefused(withheld int, reason string) {
+	path := m.cfg.Agent.Registry.Path
+	if m.registry != nil {
+		path = m.registry.Path()
+	}
+	m.logger.Error("registry reconcile: REFUSING to destroy unproven orphans — NOTHING was destroyed",
+		"action", "refuse",
+		"guard", "orphan_sweep_guard",
+		"refused_orphans", withheld,
+		"unproven_orphan_limit", m.cfg.Agent.Reconciliation.UnprovenOrphanLimit,
+		"reason", reason,
+		"mode", config.ReconcileModeDestroy,
+		"registry_path", path,
+		"remedy", fmt.Sprintf(
+			"NOTHING was destroyed. First check whether the durable registry was lost: if it was, restore %s "+
+				"(or its .1/.2/.3 backups) so bunkerd can recognise its own agents — do NOT raise the limit, that path "+
+				"deletes live agents. If instead these are leftover test/battery users and the registry is intact, "+
+				"restart bunkerd with agent.reconciliation.unproven_orphan_limit raised above %d "+
+				"(env BUNKERD_AGENT_RECONCILIATION_UNPROVEN_ORPHAN_LIMIT), or accept the whole population being "+
+				"removed by setting agent.reconciliation.orphan_sweep_guard_disabled: true.",
+			path, withheld))
 }
 
 // orphanIsForeign reports whether an orphan observed on the host belongs to
