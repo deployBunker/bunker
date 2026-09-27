@@ -1,0 +1,39 @@
+REV-BUNKER-P1-PATCH arms — mode=unfixed base=4879343
+go go1.26.5 · c3f246f · 2026-09-27T16:15:04Z
+pre-swap: internal/agent/reconcile.go sha256=b914c8e46c0252d43f4320ae1cb2a7c8c68ce95f4a32b940dba8a4226ff75335
+pre-swap: internal/agent/manager.go sha256=ee06df5b09378af209b9066e682bef5e6ca41e91d184b612e8bf271c4b173ac9
+pre-swap: internal/config/config.go sha256=24376f04a18f5dab4ae76ac0e9ca3266b57a81dfa790416004e499ff5bafc3c3
+pre-swap: internal/registry/registry.go sha256=216be342a42bf26dfe3e5d6839421e08423a5293e5300483dc243bebd550a6fa
+swapped in base blob: internal/agent/reconcile.go sha256=52b4bfed307facd58e421c1cf98e582458b04a896d3208ea1d07cb8b39885393 (was b914c8e46c0252d43f4320ae1cb2a7c8c68ce95f4a32b940dba8a4226ff75335)
+swapped in base blob: internal/agent/manager.go sha256=2069375e7d31f166c378f7799826d920b9ee384eee297cb4b0cfbddef26decc6 (was ee06df5b09378af209b9066e682bef5e6ca41e91d184b612e8bf271c4b173ac9)
+swapped in base blob: internal/config/config.go sha256=64682eef5b2f0c3942e907987208aa7d95d4e3b2429f9606da3f0d263a768ece (was 24376f04a18f5dab4ae76ac0e9ca3266b57a81dfa790416004e499ff5bafc3c3)
+swapped in base blob: internal/registry/registry.go sha256=6543f97a9642a86ba43201340a2523eee6cef02f31638cbc368df33342a33d9b (was 216be342a42bf26dfe3e5d6839421e08423a5293e5300483dc243bebd550a6fa)
+set aside (GREEN-only, cannot compile against the filed tree): internal/agent/reconcile_sweep_guard_test.go
+set aside (GREEN-only, cannot compile against the filed tree): internal/config/reconciliation_sweep_guard_test.go
+set aside (GREEN-only, cannot compile against the filed tree): internal/registry/registry_provenance_test.go
+--- UNFIXED (tree as filed @ 4879343): go test ./internal/agent -run TestReconcileSweepGuardArms -count=1 -v -timeout 300s
+=== RUN   TestReconcileSweepGuardArms_UnprovenMassDestroyIsRefused
+    reconcile_sweep_guard_arms_test.go:95: the unproven sweep destroyed 4 unknown bunker-* users ([host00 host01 host02 host03]): a registry that does not exist on a host this daemon has never seen must destroy NOTHING
+    reconcile_sweep_guard_arms_test.go:99: Destroyed = 4, want 0 — an absent registry is not evidence that the host has no agents
+--- FAIL: TestReconcileSweepGuardArms_UnprovenMassDestroyIsRefused (0.00s)
+=== RUN   TestReconcileSweepGuardArms_EmptyRegistryFileIsRefused
+    reconcile_sweep_guard_arms_test.go:129: an EMPTY (but present) registry destroyed 4 unknown bunker-* users ([host00 host01 host02 host03]): an empty live set is the absence of evidence, not evidence of absence
+    reconcile_sweep_guard_arms_test.go:133: Destroyed = 4, want 0
+--- FAIL: TestReconcileSweepGuardArms_EmptyRegistryFileIsRefused (0.00s)
+=== RUN   TestReconcileSweepGuardArms_SmallUnprovenSweepStillHappens
+--- PASS: TestReconcileSweepGuardArms_SmallUnprovenSweepStillHappens (0.00s)
+=== RUN   TestReconcileSweepGuardArms_ProvenRegistrySweepsLargeSets
+--- PASS: TestReconcileSweepGuardArms_ProvenRegistrySweepsLargeSets (0.01s)
+=== RUN   TestReconcileSweepGuardArms_AdoptModeStillAdopts
+--- PASS: TestReconcileSweepGuardArms_AdoptModeStillAdopts (0.11s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/agent	0.124s
+FAIL
+--- UNFIXED (tree as filed @ 4879343) exit=1
+restore: internal/agent/reconcile.go sha256=b914c8e46c0252d43f4320ae1cb2a7c8c68ce95f4a32b940dba8a4226ff75335 (verified against its pre-mode hash)
+restore: internal/agent/manager.go sha256=ee06df5b09378af209b9066e682bef5e6ca41e91d184b612e8bf271c4b173ac9 (verified against its pre-mode hash)
+restore: internal/config/config.go sha256=24376f04a18f5dab4ae76ac0e9ca3266b57a81dfa790416004e499ff5bafc3c3 (verified against its pre-mode hash)
+restore: internal/registry/registry.go sha256=216be342a42bf26dfe3e5d6839421e08423a5293e5300483dc243bebd550a6fa (verified against its pre-mode hash)
+restore: internal/agent/reconcile_sweep_guard_test.go (moved back from .setaside)
+restore: internal/config/reconciliation_sweep_guard_test.go (moved back from .setaside)
+restore: internal/registry/registry_provenance_test.go (moved back from .setaside)

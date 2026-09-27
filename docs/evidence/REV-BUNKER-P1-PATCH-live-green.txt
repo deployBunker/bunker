@@ -1,0 +1,26 @@
+REV-BUNKER-P1-PATCH arms — mode=live-green base=4879343
+go go1.26.5 · c3f246f · 2026-09-27T16:16:03Z
+--- live config:
+      # REV-BUNKER-P1-PATCH live arm: scratch NON-ROOT bunkerd. Every path is under
+      # /tmp/rev-bunker-p1-live. The registry path DOES NOT EXIST on purpose: that is the incident's
+      # precondition (Open fabricates an empty registry; the daemon believes it has no
+        port_range_start: 42000
+        port_range_end: 42999
+        port_range_per_agent: 100
+        registry:
+          path: /tmp/rev-bunker-p1-live/data/agents.jsonl
+        reconciliation:
+          mode: destroy
+          unproven_orphan_limit: 1
+--- scratch registry path /tmp/rev-bunker-p1-live/data/agents.jsonl exists before boot: no
+built: /tmp/rev-bunker-p1-live/bin/bunkerd-fixed sha256=880794307b281a65e56376a33390d0879d5cfcfa952cb259c2c70083d7cb9e40
+--- LIVE-GREEN (fixed tree, scratch non-root daemon, empty registry, limit 1): daemon pid 1169106, registry /tmp/rev-bunker-p1-live/data/agents.jsonl (absent at boot)
+--- LIVE-GREEN (fixed tree, scratch non-root daemon, empty registry, limit 1): /etc/passwd sha256 before=f5645b6cef6c746d702c4c85c550cff10861b081b38d5db1b24b4199d198d5a7 after=f5645b6cef6c746d702c4c85c550cff10861b081b38d5db1b24b4199d198d5a7
+--- LIVE-GREEN (fixed tree, scratch non-root daemon, empty registry, limit 1): /etc/passwd UNCHANGED (every host user still present)
+--- LIVE-GREEN (fixed tree, scratch non-root daemon, empty registry, limit 1): walk evidence
+destroying_agent_lines=0
+refusal_lines=1
+userdel_permission_denied_lines=0
+    12:{"time":"2026-09-27T11:16:06.510594916-05:00","level":"ERROR","msg":"registry reconcile: REFUSING to destroy unproven orphans — NOTHING was destroyed","action":"refuse","guard":"orphan_sweep_guard","refused_orphans":2,"unproven_orphan_limit":1,"reason":"the durable registry cannot vouch for this host (replayed live=0, registry file created by this boot=true) while the orphan walk found 2 unknown bunker-* users, above the limit of 1","mode":"destroy","registry_path":"/tmp/rev-bunker-p1-live/data/agents.jsonl","remedy":"NOTHING was destroyed. First check whether the durable registry was lost: if it was, restore /tmp/rev-bunker-p1-live/data/agents.jsonl (or its .1/.2/.3 backups) so bunkerd can recognise its own agents — do NOT raise the limit, that path deletes live agents. If instead these are leftover test/battery users and the registry is intact, restart bunkerd with agent.reconciliation.unproven_orphan_limit raised above 2 (env BUNKERD_AGENT_RECONCILIATION_UNPROVEN_ORPHAN_LIMIT), or accept the whole population being removed by setting agent.reconciliation.orphan_sweep_guard_disabled: true."}
+    13:{"time":"2026-09-27T11:16:06.51063497-05:00","level":"INFO","msg":"agent registry reconciliation complete (async orphan walk)","mode":"destroy","adopted":0,"destroyed":0,"foreign":0,"refused":2}
+--- LIVE-GREEN (fixed tree, scratch non-root daemon, empty registry, limit 1) exit=0
