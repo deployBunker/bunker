@@ -567,8 +567,8 @@ python3 $P/estale_retry_experiment.py --work /tmp/bfs012     # ESTALE vs EIO, re
 # deliverable 3
 bash probes/cross-GOOS-build.sh --survey
 
-# cleanup (the fixture is ~700 MiB)
-python3 /tmp/bfs012/cleanup.py /tmp/bfs012 /tmp/bfs012/armA-tree /tmp/bfs012/small-tree /tmp/bfs012/conflict-tree*
+# cleanup (the fixture is ~950 MiB); prints every path removed and df before/after
+python3 $P/cleanup-fixture.py /tmp/bfs012 /tmp/bfs012/armA-tree /tmp/bfs012/small-tree
 ```
 
 **Artifacts in this evidence set**
@@ -576,7 +576,7 @@ python3 /tmp/bfs012/cleanup.py /tmp/bfs012 /tmp/bfs012/armA-tree /tmp/bfs012/sma
 | file | what it is |
 |---|---|
 | `BFS-012-cache-bound-conflict-platform.md` | this report |
-| `BFS-012-probes/` | every probe: `mkfixture.py`, `mkconflict_tree.py`, `sample.py`, `mount-arm.sh`, `accounting.py`, `read-all.sh`, `bypass-arms.sh`, `bypass_check.py`, `small_bound_edge.py`, `conflict-arms.py`, `write_shape_probe.py`, `truncate_diag.py`, `countproxy.py`, `trace_summary.py`, `mutation_mtime_identity.py`, `estale_retry_experiment.py`, `strace-truncate.sh`, `archive-run-artifacts.sh` |
+| `BFS-012-probes/` | every probe (19 files): `mkfixture.py`, `mkconflict_tree.py`, `sample.py`, `mount-arm.sh`, `accounting.py`, `read-all.sh`, `bypass-arms.sh`, `bypass_check.py`, `small_bound_edge.py`, `conflict-arms.py`, `write_shape_probe.py`, `truncate_diag.py`, `countproxy.py`, `trace_summary.py`, `mutation_mtime_identity.py`, `estale_retry_experiment.py`, `strace-truncate.sh`, `archive-run-artifacts.sh`, `cleanup-fixture.py` |
 | `BFS-012-armA-bound.txt` | arm A, the full transcript (default bound, 640.1 MiB tree) |
 | `BFS-012-armA-sample.csv` | arm A's **178 in-flight samples** (du × 4 measures + every reported counter) |
 | `BFS-012-armA-status.json` | arm A's final status document, as the client wrote it |
@@ -590,8 +590,11 @@ python3 /tmp/bfs012/cleanup.py /tmp/bfs012 /tmp/bfs012/armA-tree /tmp/bfs012/sma
 | `BFS-012-smallbound-edge.txt` | the bound-vs-directory measurement (F-C) |
 | `BFS-012-cross-GOOS.txt` | the platform guard, verbatim |
 
-**Disk.** The row asked for `df` before and after and for the fixture to be cleaned up. Before the
-fixture: `/dev/nvme0n1p2 1.8T 1.6T 160G 91%`. Peak during: ~1.0 GiB under `/tmp/bfs012` (a 671 MB tree
-plus a 267 MB cache). After cleanup: recorded in the commit message. `df` on this host is shared with
-sibling workers, so no single arm's footprint can be attributed from `df` alone — the per-arm numbers above
-are the measurement, and the cleanup is the custody.
+**Disk.** The row asked for `df` before and after and for the fixture to be cleaned up, so both are
+recorded rather than asserted. Before the fixture: `/dev/nvme0n1p2 1.8T 1.6T 160G 91%`. Peak during:
+~950 MiB under `/tmp/bfs012` (a 640.1 MiB tree, a 267 MiB cache full to its bound, the binaries and 21 run
+directories). After cleanup, re-measured: **`/dev/nvme0n1p2 1.8T 1.6T 157G 92%`, 949.4 MiB reclaimed**,
+0 mounts left under `/tmp/bfs012` and no leftover processes — `cleanup.py` prints every path it removes and
+the `df` before and after, so the custody is auditable. `df` on this host is shared with sibling workers,
+so no single arm's footprint can be attributed from `df` alone; the per-arm numbers above are the
+measurement, and this is the cleanup.
