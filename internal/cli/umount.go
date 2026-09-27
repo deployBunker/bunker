@@ -11,6 +11,21 @@ package cli
 // unmounted is SUCCESS, not an error, because the common case is a script or an
 // operator cleaning up after a failure and not knowing how far the previous
 // attempt got.
+//
+// PLATFORM SEAM (BFS-028). Every mechanism above is a unix mount interface:
+// the kernel mount table to FIND the mount, fusermount3/umount(8) to DETACH it,
+// and a device-id comparison to decide whether a path is a mountpoint. This file
+// used to hold that device-id probe with syscall.Stat, which does not exist on
+// Windows — so it was the one site that stopped `GOOS=windows go build ./...`
+// from succeeding, while probes/cross-GOOS-build.sh lists windows/amd64 and
+// windows/arm64 among the targets this repo must build for.
+//
+// The probe and the platform's ANSWER now live in umount_unix.go and
+// umount_nonunix.go; the sentinel, the replaceable var below and the gate at the
+// top of runUmount stay here so they are compiled and testable on every platform.
+// The decision for a platform with none of those mechanisms is a NAMED REFUSAL,
+// not the empty-lookup success above — see umount_nonunix.go, and
+// docs/evidence/BFS-028-windows-umount-seam.md for the measured evidence.
 
 import (
 	"errors"
@@ -20,7 +35,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -44,6 +58,33 @@ const procSelfMountsPath = "/proc/self/mounts"
 // catastrophic if the table ever named something real, so the runner is
 // replaceable and the tests assert the recorded argv instead of executing it.
 var execCommand = exec.Command
+
+// ErrUmountUnsupported is returned by `bunker umount` on a platform this build
+// has no unmount mechanism for. It is a named refusal, not a silent no-op.
+//
+// WHY A SENTINEL OF ITS OWN (and not internal/fsmount's ErrPlatformUnsupported):
+// that one is about MOUNTING, and its text names the sshfs driver and a stock
+// WebDAV client as the way out — neither of which unmounts anything. A refusal
+// has to name the way out of the operation the operator actually ran, so the
+// unmount side carries its own sentence (umount_nonunix.go) and its own advice.
+//
+// It is defined HERE, in the untagged file, rather than beside the refusal: the
+// Microsoft-Windows arm is the only place that RETURNS it, but the tests that
+// exercise the refusal path run on the platform that can run tests, and they
+// need the sentinel to match against.
+var ErrUmountUnsupported = errors.New("bunker umount: no unmount mechanism on this platform")
+
+// umountPlatformRefusal answers whether THIS BUILD can unmount a filesystem at
+// all: nil when it can, and a named refusal when it cannot.
+//
+// It is a package var over the platform's own answer (platformUmountRefusal, in
+// umount_unix.go / umount_nonunix.go) for the same reason execCommand and
+// readMountTable above are seams: a build-tagged arm can only ever be COMPILED on
+// the platform it is written for, and a refusal that is never executed is a
+// claim, not a mechanism. Substituting this var lets a test on a supported
+// platform drive the refusal through runUmount itself — the same
+// assertion-on-the-real-path shape the mount table seam exists for.
+var umountPlatformRefusal = platformUmountRefusal
 
 func NewUmountCommand() *cobra.Command {
 	var (
@@ -99,6 +140,15 @@ Examples:
 // Only when all three find nothing is "already clean" allowed, and it is
 // SUCCESS: cleanup must stay safe to run twice.
 func runUmount(out io.Writer, target string, force bool) error {
+	// 0. Platform gate FIRST — before any resolution and before any local side
+	// effect (os.Stat, and the os.Remove of a leftover directory below). On a
+	// platform with no unmount mechanism every lookup here comes back empty, so
+	// without this the command would report "already clean" over a mount it
+	// cannot see; with it, the operator gets one named sentence instead.
+	if refusal := umountPlatformRefusal(); refusal != nil {
+		return refusal
+	}
+
 	// 1/2. The declared target: an existing path is used as-is, otherwise the
 	// argument is an agent id resolved under the mount roots.
 	mountPoint := ""
@@ -253,32 +303,10 @@ func pathExists(p string) bool {
 	return err == nil
 }
 
-// isMountPoint reports whether path currently has a filesystem mounted on it.
-// It compares the device ids of the path and its parent: a mount changes the
-// device, so differing ids mean something is mounted there. This is used
-// instead of parsing /proc/mounts because it is a single stat and behaves the
-// same on every platform this CLI builds for.
-func isMountPoint(path string) (bool, error) {
-	fi, err := os.Lstat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	if fi.Mode()&os.ModeSymlink != 0 {
-		return false, fmt.Errorf("mountpoint %s is a symlink", path)
-	}
-	var st, parent syscall.Stat_t
-	if err := syscall.Stat(path, &st); err != nil {
-		return false, err
-	}
-	parentPath := filepath.Dir(path)
-	if err := syscall.Stat(parentPath, &parent); err != nil {
-		return false, err
-	}
-	return st.Dev != parent.Dev, nil
-}
+// isMountPoint, and the platform's own answer to "can this build unmount at
+// all", live in umount_unix.go (//go:build unix) and umount_nonunix.go
+// (//go:build !unix). Both arms declare both names, so every call site above —
+// and in the tests — compiles unchanged on every platform (BFS-028).
 
 // unverifiedNote is the parenthetical appended to a clean report when the live
 // mount table could not be read. The claim is still save-to-run-twice SUCCESS,
