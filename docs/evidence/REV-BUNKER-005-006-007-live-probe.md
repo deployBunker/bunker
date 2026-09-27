@@ -39,7 +39,10 @@ Numbers on the wire, not in the code:
 - **GREEN (006):** same six, same single connection (`local_port 46882`, six
   times) → `401 401 401 401 401 503`. The five failures before the threshold are
   still ordinary denials; only the sixth changes code — the throttle *moves*,
-  with the audit sink absent.
+  with the audit sink absent. The daemon's own log for that run records the
+  computed wait (`auth throttle engaged source=127.0.0.1:46882 … retry_in=1.999807283s`),
+  so the sixth code is a consulted backoff and not merely a different constant:
+  see `…-live-throttle-log.txt`.
 - **Wire parallelism:** the RPC plane is untouched — `POST /bunker.v1.Bunkerd/ServerInfo`
   is 200 with a valid token and 401 without it, in both arms.
 - **Non-vacuity:** `/healthz` stays 200 throughout, so a 401 above is the gate and
