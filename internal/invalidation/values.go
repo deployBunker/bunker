@@ -321,13 +321,30 @@ func (c WatchCeiling) Fits() bool {
 	return c.Need() <= eff
 }
 
-// Unhonoured returns the configured-vs-observed pair when the deployment asked
-// for a ceiling the platform cannot give it, and nil when it did not. It is
-// reported whether or not it binds: a value that was not honoured is a fact
-// about the deployment even when the tree happens to still fit, and the
-// operator's question ("did my number take effect?") has to have an answer that
-// does not depend on how big the tree is today.
-func (c WatchCeiling) Unhonoured() *Unhonoured {
+// Binding names which number the ceiling in force came from: the configured
+// value, the platform's own ceiling, or nothing (no ceiling was readable, which
+// never binds). It is reported in prose because "the ceiling is 128" does not
+// tell an operator whether their number took effect.
+func (c WatchCeiling) Binding() string {
+	eff := c.Effective()
+	if eff <= 0 {
+		return "none (no ceiling was readable)"
+	}
+	switch {
+	case c.Requested > 0 && c.Platform > 0 && c.Requested == c.Platform:
+		return "requested (= the platform's own ceiling)"
+	case c.Requested > 0 && (c.Platform <= 0 || c.Requested < c.Platform):
+		return "requested"
+	default:
+		return "platform"
+	}
+}
+
+// RequestedExceedsPlatform is the configured-vs-observed pair for the requested
+// ceiling ALONE. It is knowable without walking the tree — the requested value
+// and the platform's ceiling are both read facts — which is what lets a surface
+// that has established no watcher still answer "did my number take effect?".
+func (c WatchCeiling) RequestedExceedsPlatform() *Unhonoured {
 	if c.Requested > 0 && c.Platform > 0 && c.Requested > c.Platform {
 		return &Unhonoured{
 			Knob:       KnobWatchMaxWatches,
@@ -336,6 +353,20 @@ func (c WatchCeiling) Unhonoured() *Unhonoured {
 			Detail: fmt.Sprintf("the deployment asked for a watch ceiling of %d but the platform's own ceiling is %d, so %d is the ceiling in force; the per-user watch total in use is not observable, so the platform's ceiling cannot be raised from inside this process (the remedy is an operator action on fs.inotify.max_user_watches)",
 				c.Requested, c.Platform, c.Effective()),
 		}
+	}
+	return nil
+}
+
+// Unhonoured returns the configured-vs-observed pair when the deployment asked
+// for a ceiling the platform cannot give it, or when the tree cannot fit under
+// the ceiling in force, and nil when neither is true. It is reported whether or
+// not the pair BINDS: a value that was not honoured is a fact about the
+// deployment even when the tree happens to still fit, and the operator's
+// question ("did my number take effect?") must not depend on how big the tree is
+// today.
+func (c WatchCeiling) Unhonoured() *Unhonoured {
+	if u := c.RequestedExceedsPlatform(); u != nil {
+		return u
 	}
 	if !c.Fits() {
 		// The ceiling in force is what was asked for (the platform gives at
