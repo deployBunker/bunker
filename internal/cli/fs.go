@@ -873,6 +873,14 @@ func printStatus(w io.Writer, st *fsclient.Status) {
 	if st.WriteShape.Last != "" {
 		fmt.Fprintf(w, "  last       : %s\n", st.WriteShape.Last)
 	}
+	// BFS-021. Printed beside the write shape because they are the two halves of
+	// the same question — which write shapes this surface serves — and because
+	// the append bound (max_file_bytes) is a limit the owner cannot otherwise see.
+	fmt.Fprintf(w, "append       : published_total=%d refused_total=%d max_file_bytes=%d\n",
+		st.Append.PublishedTotal, st.Append.RefusedTotal, st.Append.MaxFileBytes)
+	if st.Append.Last != "" {
+		fmt.Fprintf(w, "  last       : %s\n", st.Append.Last)
+	}
 	fmt.Fprintf(w, "refusal holds: held_total=%d outstanding=%d evicted_total=%d\n",
 		st.RefusalHolds.HeldTotal, st.RefusalHolds.Outstanding, st.RefusalHolds.EvictedTotal)
 	if st.RefusalHolds.Last != "" {
