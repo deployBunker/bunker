@@ -121,8 +121,21 @@ type Status struct {
 	// a value that is only knowable by re-reading the command line is neither
 	// auditable nor testable. The record's LAYOUT is BFS-045's; this block is
 	// additive and names its own owner.
-	Config    EffectiveConfig `json:"config"`
-	UpdatedMS int64           `json:"updated_ms"`
+	Config EffectiveConfig `json:"config"`
+	// State is the mount's OWN storage — status.json, the refusal log, the
+	// write-buffer spills — measured beside its own bound (BFS-031). It exists
+	// because the cache directory can only be a directory whose bound is true if
+	// the things that are not the cache live somewhere else: this is where they
+	// live, and this is the bound they obey. `cache.dir_bytes` is the cache
+	// directory; `state.bytes` is this; `state.footprint_bytes` is both.
+	State StateStats `json:"state"`
+	// Reduced/ReducedReason are set when the status document's own bound
+	// (StatusMaxBytes) forced the writer to cap fields or omit blocks. A
+	// document that stops describing the mount has to say so: the alternative is
+	// BFS-031's defect with the client's own report as its subject.
+	Reduced       bool   `json:"reduced,omitempty"`
+	ReducedReason string `json:"reduced_reason,omitempty"`
+	UpdatedMS     int64  `json:"updated_ms"`
 }
 
 // EffectiveConfig is the resolved option set (BFS-044). Every field is the value
@@ -270,25 +283,80 @@ func FindMounts() ([]string, error) {
 	return dirs, nil
 }
 
-// WriteStatus persists the status document atomically. The mount writes it on a
-// cadence and on demand, so `bunker fs status` reads a file rather than talking
-// to the mount — no new server-side requirement, no IPC daemon, and it works
-// from a different terminal than the one holding the mount.
+// WriteStatus persists the status document atomically, enforcing its bound.
+//
+// THE BOUND IS ENFORCED WHERE THE DOCUMENT IS WRITTEN (BFS-031). If the rendered
+// document passes StatusMaxBytes the writer caps its string fields
+// (StatusStringMaxBytes each, marker in the text) and, if that is still not
+// enough, omits the optional passthrough blocks in a stated order — recording
+// what it did IN the document (Reduced/ReducedReason), because a document that
+// quietly stopped describing the mount would be exactly this row's defect one
+// file over: a figure that no longer means what it says.
+//
+// The mount writes it on a cadence and on demand, so `bunker fs status` reads a
+// file rather than talking to the mount — no new server-side requirement, no IPC
+// daemon, and it works from a different terminal than the one holding the mount.
 func WriteStatus(dir string, st Status) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	st.UpdatedMS = timeNow().UnixMilli()
-	raw, err := json.MarshalIndent(st, "", "  ")
+	raw, err := encodeStatus(st)
 	if err != nil {
 		return err
 	}
-	raw = append(raw, '\n')
+	if int64(len(raw)) > StatusMaxBytes {
+		var doc map[string]any
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return err
+		}
+		capped := 0
+		doc["reduced"] = true
+		doc["reduced_reason"] = fmt.Sprintf("%s: the status document was %d bytes, over the declared cap %d, so its string fields were capped at %d bytes each",
+			ReasonUnknown, len(raw), StatusMaxBytes, StatusStringMaxBytes)
+		doc = capStatusStrings(doc, StatusStringMaxBytes, &capped).(map[string]any)
+		raw, err = marshalStatusDoc(doc)
+		if err != nil {
+			return err
+		}
+		dropped := []string{}
+		for int64(len(raw)) > StatusMaxBytes {
+			path, ok := dropOptionalBlock(doc, optionalStatusBlocks)
+			if !ok {
+				break
+			}
+			dropped = append(dropped, path)
+			doc["reduced_reason"] = fmt.Sprintf("%s: the status document was %d bytes, over the declared cap %d; %d string field(s) were capped at %d bytes and the block(s) %s were omitted",
+				ReasonUnknown, len(raw), StatusMaxBytes, capped, StatusStringMaxBytes, strings.Join(dropped, ", "))
+			raw, err = marshalStatusDoc(doc)
+			if err != nil {
+				return err
+			}
+		}
+		if int64(len(raw)) > StatusMaxBytes {
+			// Nothing this build can omit got it under the cap: say so with a
+			// document that is still valid for every consumer, rather than
+			// writing one over the bound.
+			raw, err = marshalStatusDoc(reducedStatusDoc(st, len(raw)))
+			if err != nil {
+				return err
+			}
+		}
+	}
 	tmp := filepath.Join(dir, StatusFile+".tmp")
 	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmp, filepath.Join(dir, StatusFile))
+}
+
+// marshalStatusDoc renders a reduced document in the record's own layout.
+func marshalStatusDoc(doc map[string]any) ([]byte, error) {
+	raw, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(raw, '\n'), nil
 }
 
 // ReadStatus reads one mount's status document.
@@ -313,25 +381,47 @@ var theConflictLog conflictLog
 
 // AppendConflict records one refusal. It is a log, not a counter: the count in
 // the status document can be wrong after a crash, the log is the record.
+//
+// The log is BOUNDED (BFS-031): appending an entry that would take the file past
+// ConflictsMaxBytes drops the oldest entries instead, and the number dropped is
+// kept durably beside it (ConflictsDroppedFile) so a bounded log is still a
+// record — the entries go, the count of them does not. One entry's `detail` is
+// capped first (ConflictDetailMaxBytes), so a single server response can never
+// produce a line that the log's own bound cannot hold.
 func AppendConflict(dir string, c Conflict) error {
 	if c.TS.IsZero() {
 		c.TS = timeNow()
 	}
+	capConflictDetail(&c)
+	raw, err := json.Marshal(c)
+	if err != nil {
+		return err
+	}
+	line := append(raw, '\n')
+
 	theConflictLog.mu.Lock()
 	defer theConflictLog.mu.Unlock()
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(filepath.Join(dir, ConflictsFile), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	path := filepath.Join(dir, ConflictsFile)
+	if info, serr := os.Stat(path); serr == nil && info.Size()+int64(len(line)) > ConflictsMaxBytes {
+		dropped, rerr := rotateConflictLog(path, int64(len(line)))
+		if rerr != nil {
+			return rerr
+		}
+		if dropped > 0 {
+			if err := addConflictsDropped(dir, dropped); err != nil {
+				return err
+			}
+		}
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	raw, err := json.Marshal(c)
-	if err != nil {
-		return err
-	}
-	if _, err := f.Write(append(raw, '\n')); err != nil {
+	if _, err := f.Write(line); err != nil {
 		return err
 	}
 	return f.Sync()

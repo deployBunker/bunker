@@ -3,6 +3,7 @@ package fsclient
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -417,8 +418,10 @@ func newScriptedInvalidator(t *testing.T, s *scriptedChannel, opt InvalidateOpti
 
 // figures walks a status document and returns every NUMERIC leaf under the given
 // prefixes as a dotted path. Scoped to the blocks this row owns: the cache (the
-// invalidation path's storage) and the invalidation record itself. The other
-// blocks (conflicts, read_bound, write_shape, refusal_holds, transport,
+// invalidation path's storage), the invalidation record itself, and — since
+// BFS-031 — the mount's OWN state, which is the storage the cache bound does NOT
+// name and which therefore has to be bounded and visible in its own right. The
+// other blocks (conflicts, read_bound, write_shape, refusal_holds, transport,
 // snapshot) are other rows' subjects with their own drivers.
 func figures(t *testing.T, st Status) map[string]float64 {
 	t.Helper()
@@ -451,7 +454,7 @@ func figures(t *testing.T, st Status) map[string]float64 {
 			}
 		}
 	}
-	for _, block := range []string{"cache", "invalidation"} {
+	for _, block := range []string{"cache", "invalidation", "state"} {
 		if sub, ok := doc[block]; ok {
 			walk(block, sub)
 		}
@@ -485,7 +488,7 @@ func reasons(t *testing.T, st Status) map[string]string {
 			}
 		}
 	}
-	for _, block := range []string{"cache", "invalidation"} {
+	for _, block := range []string{"cache", "invalidation", "state"} {
 		if sub, ok := doc[block]; ok {
 			walk(block, sub)
 		}
@@ -533,6 +536,10 @@ func TestEveryFigureInTheStatusRecordMovesOrIsExplained(t *testing.T) {
 	// Driven first, so the before/after pair straddles real work.
 	before := map[string]float64{}
 	after := map[string]float64{}
+	// The mount's own directory for the state half of the census (BFS-031): the
+	// status document and the refusal log live here, NOT in the cache directory,
+	// and the write-buffer spill lands here too.
+	censusStateDir := t.TempDir()
 
 	// --- the invalidator's half ------------------------------------------------
 	s := &scriptedChannel{t: t}
@@ -717,6 +724,43 @@ func TestEveryFigureInTheStatusRecordMovesOrIsExplained(t *testing.T) {
 	stAfter.Cache = cache.Stats()
 	stAfter.Invalidation = inv.State()
 	stAfter.Invalidation.Refresh = RefreshFromCache(stAfter.Cache)
+	// --- the mount's own state (BFS-031) ---------------------------------------
+	// The cache directory's bound cannot be true unless the things that are not
+	// the cache are bounded too, so the census covers them: a status document, a
+	// refusal log that ROTATES (its cap lowered for the arm, so the enforcement's
+	// own counter moves without 4 MiB of appends), and a write-buffer spill.
+	{
+		st := Status{Mount: "census-state", Mode: "poll", Endpoint: "http://127.0.0.1:1/dav"}
+		if err := WriteStatus(censusStateDir, st); err != nil {
+			t.Fatalf("write status: %v", err)
+		}
+		for i := 0; i < 3; i++ {
+			if err := AppendConflict(censusStateDir, Conflict{Path: fmt.Sprintf("c/%d", i), Code: "hash_mismatch", Detail: strings.Repeat("d", 300)}); err != nil {
+				t.Fatalf("append conflict: %v", err)
+			}
+		}
+		stBefore.State = MeasureState(censusStateDir, stBefore.Cache.DirBytes, stBefore.Cache.MaxBytes, censusSpillBudget)
+		before = figures(t, stBefore)
+
+		// The after phase: a bigger document, a log driven past its cap (so the
+		// rotation's counter moves), and a spill file.
+		restore := swapInt64(&ConflictsMaxBytes, 4096)
+		for i := 0; i < 40; i++ {
+			if err := AppendConflict(censusStateDir, Conflict{Path: fmt.Sprintf("c/after-%d", i), Code: "hash_mismatch", Detail: strings.Repeat("D", 300)}); err != nil {
+				t.Fatalf("append conflict: %v", err)
+			}
+		}
+		restore()
+		if err := os.WriteFile(filepath.Join(censusStateDir, WriteBufPrefix+"1"), []byte(strings.Repeat("w", 512)), 0o600); err != nil {
+			t.Fatalf("spill: %v", err)
+		}
+		bigger := st
+		bigger.ReducedReason = strings.Repeat("r", 1024)
+		if err := WriteStatus(censusStateDir, bigger); err != nil {
+			t.Fatalf("write bigger status: %v", err)
+		}
+		stAfter.State = MeasureState(censusStateDir, stAfter.Cache.DirBytes, stAfter.Cache.MaxBytes, censusSpillBudget)
+	}
 	after = figures(t, stAfter)
 
 	// --- the census ------------------------------------------------------------
@@ -881,6 +925,11 @@ func hasReasonClass(text string) bool {
 	return false
 }
 
+// censusSpillBudget is the write-buffer budget the census measures its state
+// with: the mount reports open buffered handles × the per-handle bound, and a
+// fixed number here keeps the footprint's bound deterministic.
+const censusSpillBudget = 512
+
 // censusTable is THE inventory: every figure the record publishes under
 // `cache.*` and `invalidation.*`, what it is, and what moves it. It is written
 // out rather than derived, because the point is that a human (and the test) can
@@ -931,6 +980,18 @@ func censusTable() map[string]figureSpec {
 		"cache.dir_bytes_by_class.status":    {kindAppears, 0, "status.json: 0 in the CACHE directory since BFS-031 moved the mount's state out of it; the class stays so a foreign status file would still be attributed"},
 		"cache.dir_bytes_by_class.conflicts": {kindAppears, 0, "conflicts.jsonl: 0 in the CACHE directory since BFS-031 moved the refusal log out of it"},
 		"cache.dir_bytes_by_class.other":     {kindAppears, 0, "anything else in the directory"},
+		// ---- the mount's OWN state (BFS-031): the storage the cache bound does
+		// NOT name, with its own bound and its own enforcement.
+		"state.bytes":                   {kindMoves, 0, "the mount directory's own bytes: grows with every status write, refusal and write-buffer spill"},
+		"state.max_bytes":               {kindBound, float64(StateMaxBytes()), "the declared state bound (the log cap + the document cap)"},
+		"state.status_bytes":            {kindMoves, 0, "the status document, measured: grows when the document carries more"},
+		"state.status_max_bytes":        {kindBound, float64(StatusMaxBytes), "the declared cap of the status document"},
+		"state.conflicts_bytes":         {kindMoves, 0, "the refusal log, measured: grows with refusals (and is rotated back under the cap)"},
+		"state.conflicts_max_bytes":     {kindBound, float64(ConflictsMaxBytes), "the declared cap of the refusal log"},
+		"state.conflicts_dropped_total": {kindMoves, 0, "THE ENFORCEMENT'S COUNTER: entries the log's bound forced out, kept durably so a bounded log is still a record"},
+		"state.spill_bytes":             {kindMoves, 0, "one open write handle's spill file on disk"},
+		"state.footprint_bytes":         {kindMoves, 0, "the cache directory plus the state: the mount's whole local footprint"},
+		"state.footprint_max_bytes":     {kindBound, float64(256<<10 + StateMaxBytes() + censusSpillBudget), "the footprint's bound: the cache bound + the state bound + the write-buffer budget the open handles imply"},
 		// ---- the invalidation record ------------------------------------------
 		"invalidation.seq":                  {kindMoves, 0, "the journal cursor advances on every applied event"},
 		"invalidation.events_total":         {kindMoves, 0, "an applied event (a heartbeat counts as one)"},

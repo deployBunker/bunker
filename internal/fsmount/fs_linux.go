@@ -750,6 +750,14 @@ func (m *Mount) Status() fsclient.Status {
 		EvictedTotal: evicted,
 		Last:         heldLast,
 	}
+	// The mount's OWN storage, measured beside its own bound (BFS-031). The
+	// cache directory's bytes and bound come from the cache's own figures; the
+	// state files and the write-buffer spills are measured here, because only
+	// the mount knows where it puts them. The spill budget is what the open
+	// buffered handles may hold on disk, which is bounded per handle and
+	// reported as a count (write_handles_buffered).
+	spillBudget := int64(st.WriteHandlesBuffered) * writeBufferMaxDefault
+	st.State = fsclient.MeasureState(m.dir, st.Cache.DirBytes, st.Cache.MaxBytes, spillBudget)
 	return st
 }
 

@@ -291,9 +291,11 @@ L="$MNT-lowcache"
 run_one bound "read 40 files (bound exceeded)" -- sh -c "for f in \$(ls '$L/src' | head -40); do cat '$L/src/'\$f >/dev/null; done; echo read-40-ok"
 say "   cache figures after over-reading the bound:"
 "$BIN" fs status --json 2>/dev/null | grep -A 12 '"cache"' | sed 's/^/     /'
-say "   du of the cache directory (compared with used_bytes above):"
+say "   du of the cache directory (compared with used_bytes above) and of the mount"
+say "   directory beside it (BFS-031: the state is NOT inside the cache bound):"
 CDIR="$(ls -td "${XDG_CACHE_HOME:-$HOME/.cache}/bunker/fs"/* | head -1)"
-du -s --block-size=1 "$CDIR" 2>/dev/null | sed 's/^/     /'
+du -s --block-size=1 "$CDIR/cache" 2>/dev/null | sed 's/^/     cache dir   /'
+du -s --block-size=1 "$CDIR" 2>/dev/null | sed 's/^/     mount dir   /'
 say "   reads must still succeed; they do (the run above reported success)."
 umount_one lowcache
 CONC=$SAVED_CONC

@@ -161,6 +161,7 @@ within the 30 s deadline with a named cause, and recovery is one command.`,
 			}
 			fmt.Printf("mounted %s on %s\n", o.BaseURL, m.Mountpoint())
 			fmt.Printf("  cache dir    : %s (bound %d bytes, %d entries)\n", m.CacheDir(), o.CacheMaxBytes, o.CacheMaxEntries)
+			fmt.Printf("  mount dir    : %s (the mount's own state: status.json, the refusal log, the write-buffer spills)\n", m.MountDir())
 			fmt.Printf("  concurrency  : %d request(s) in flight max\n", o.Concurrency)
 			fmt.Printf("  invalidation : %s\n", m.Status().Invalidation.Mode)
 			st := m.Status()
@@ -820,21 +821,38 @@ func printStatus(w io.Writer, st *fsclient.Status) {
 		st.Cache.ReservedBytes, st.Cache.StagedBlobs, st.Cache.MaxInFlight)
 	// The independent measurement: what is REALLY in the directory, and the delta
 	// the published figure does not count (BFS-031's shape, made visible).
-	if st.Cache.DirBytesReason == "" {
-		fmt.Fprintf(w, "cache dir    : dir_bytes=%d unaccounted_bytes=%d", st.Cache.DirBytes, st.Cache.DirUnaccountedBytes)
-		if st.Cache.DirMeasuredAgeMS != nil {
-			fmt.Fprintf(w, " measured_age_ms=%d", *st.Cache.DirMeasuredAgeMS)
-		}
-		fmt.Fprintf(w, " by_class=%s\n", classSummary(st.Cache.DirBytesByClass))
-	} else {
-		fmt.Fprintf(w, "cache dir    : - (no measurement to report)\n  why        : %s\n", st.Cache.DirBytesReason)
+	fmt.Fprintf(w, "cache dir    : "+
+		"dir_bytes=%d unaccounted_bytes=%d", st.Cache.DirBytes, st.Cache.DirUnaccountedBytes)
+	if st.Cache.DirMeasuredAgeMS != nil {
+		fmt.Fprintf(w, " measured_age_ms=%d", *st.Cache.DirMeasuredAgeMS)
 	}
+	fmt.Fprintf(w, " by_class=%s\n", classSummary(st.Cache.DirBytesByClass))
+	if st.Cache.DirBytesReason != "" {
+		fmt.Fprintf(w, "  why        : %s\n", st.Cache.DirBytesReason)
+	}
+	// The peak the byte bound is ENFORCED against (BFS-031), beside the occupancy
+	// at rest: a directory bound has to cover the instant the index's temp copy
+	// exists, not only the state after the rename.
+	fmt.Fprintf(w, "cache peak   : dir_peak_bytes=%d (the directory's peak: what max_bytes is enforced against)\n", st.Cache.DirPeakBytes)
 	fmt.Fprintf(w, "cache events : hits=%d misses=%d evictions=%d bypasses=%d oversize_bypasses=%d pinned=%d\n",
 		st.Cache.Hits, st.Cache.Misses, st.Cache.EvictionsTotal, st.Cache.BypassEvents, st.Cache.OversizeBypasses, st.Cache.PinnedBlobs)
 	// Every reason in the closed vocabulary, so a reason that never fires reads
 	// as 0 and a reason the code cannot reach is visibly missing from the census
 	// rather than silently zero (BFS-032).
 	fmt.Fprintf(w, "cache bypass : %s\n", bypassSummary(st.Cache.BypassReasons))
+	// The mount's OWN storage and its own bound (BFS-031): the directory the
+	// cache bound names holds only cache bytes, and these are the bytes that are
+	// not the cache — measured, bounded, and named rather than left outside the
+	// bound by omission.
+	if st.State.Reason == "" {
+		fmt.Fprintf(w, "state        : bytes=%d max_bytes=%d (status=%d/%d conflicts=%d/%d spill=%d dropped_total=%d)\n",
+			st.State.Bytes, st.State.MaxBytes, st.State.StatusBytes, st.State.StatusMaxBytes,
+			st.State.ConflictsBytes, st.State.ConflictsMaxBytes, st.State.SpillBytes, st.State.ConflictsDroppedTotal)
+		fmt.Fprintf(w, "state footpr : footprint_bytes=%d footprint_max_bytes=%d (cache dir + state + the write-buffer budget)\n",
+			st.State.FootprintBytes, st.State.FootprintMaxBytes)
+	} else {
+		fmt.Fprintf(w, "state        : - (no measurement to report)\n  why        : %s\n", st.State.Reason)
+	}
 	fmt.Fprintf(w, "conflicts    : refusals_total=%d\n", st.Conflicts.RefusalsTotal)
 	if st.Conflicts.Last != nil {
 		fmt.Fprintf(w, "  last       : %s code=%s\n", st.Conflicts.Last.Path, st.Conflicts.Last.Code)
