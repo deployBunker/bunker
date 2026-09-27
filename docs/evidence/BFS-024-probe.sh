@@ -92,6 +92,9 @@ inv_of() { # $1 = status file ; prints "events=.. dropped=.. seq=.. mechanism=..
 status_line() { # $1 = status file $2 = group
   python3 "$OUT/group.py" "$1" "$2"
 }
+reqs() { # the mount's own transport request counter
+  python3 "$OUT/reqs.py" "$STATUS"
+}
 
 wait_mount() { # $1 mountpoint  $2 pidvarname  $3 log
   local i
@@ -113,8 +116,18 @@ arm() {
   echo
   echo "=== arm $name  ($rel)  out-of-band write: $how ==="
   echo "  target before    : '$(cat "$f")'  size=$(wc -c <"$f") mtime=$(stat -c %y "$f" | cut -c1-29)"
+  local seed_size; seed_size="$(wc -c <"$f")"
   echo "  mount read (cat) : $(read_mount cat "$MNT" "$rel")"
   echo "  mount read (py)  : $(read_mount py  "$MNT" "$rel")"
+  # THE PREMISE, PROVEN RATHER THAN ASSUMED: the row is about a path the mount
+  # ALREADY SERVES FROM ITS CACHE. Two more reads with the mount's own request
+  # counter around them: costing zero requests is what "already read through the
+  # mount" means here, and an arm that cannot show it is labelled VACUOUS below
+  # rather than counted as stale or fresh.
+  local r0 r1 cached
+  r0="$(reqs)"; read_mount cat "$MNT" "$rel" >/dev/null; read_mount py "$MNT" "$rel" >/dev/null; r1="$(reqs)"
+  cached=$([ "$(( r1 - r0 ))" -eq 0 ] && echo yes || echo no)
+  echo "  cached proof     : two more reads cost $(( r1 - r0 )) request(s) → cached=$cached"
   echo "  channel before   : $before"
 
   # ---- THE OUT-OF-BAND WRITE ------------------------------------------------
@@ -170,8 +183,9 @@ arm() {
   echo "  new mount.log lines naming $rel :"
   tail -n +$(( logstart + 1 )) "$OUT/mount.log" | grep -F "$rel" | sed 's/^/    /' || true
   echo "  NEG native read  : sha=$(sha "$f")  '$(cat "$f" | head -c 70)'"
-  printf 'ARM-RESULT name=%s how=%s size_before=%s size_after=%s first_fresh_ms=%s first_refusal_ms=%s stale_served=%s\n' \
-    "$name" "$how" "$(printf %s "$newbody" | wc -c)" "$newsize" "$served_ms" "$refusal_ms" "$seen_stale"
+  printf 'ARM-RESULT name=%s how=%s cached=%s seed_size=%s new_size=%s first_fresh_ms=%s first_refusal_ms=%s stale_served=%s%s\n' \
+    "$name" "$how" "$cached" "$seed_size" "$newsize" "$served_ms" "$refusal_ms" "$seen_stale" \
+    "$([ "$cached" = yes ] && echo "" || echo " PREMISE-VACUOUS(the path was not served from cache)")"
 }
 
 # ---------- fixture: every arm path exists BEFORE the mount binds ------------
@@ -211,6 +225,13 @@ try:
 except Exception:
     print("UNREADABLE"); raise SystemExit
 print(json.dumps(d.get(sys.argv[2], {}), sort_keys=True))
+PY
+cat > "$OUT/reqs.py" <<'PY'
+import json, sys
+try:
+    print(json.load(open(sys.argv[1]))["transport"]["requests_total"])
+except Exception:
+    print("?")
 PY
 
 # ---------- server + mount ---------------------------------------------------
