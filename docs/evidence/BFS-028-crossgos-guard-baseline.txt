@@ -1,0 +1,80 @@
+BFS-028 — what the cross-GOOS guard said BEFORE the fix, measured at the row's BASE.
+=============================================================================
+Both commands run in a THROWAWAY CLONE of commit 48ab484 (the commit wt/BFS-028
+was cut from), never by reverting the shared worktree.
+Toolchain: go1.26.5 linux/amd64.
+=============================================================================
+
+$ git -C <clone> checkout 48ab48433212b9c7035e540d48bcb0a092c738bb
+
+$ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...
+# github.com/deployBunker/bunker/internal/cli
+internal/cli/umount.go:272:25: undefined: syscall.Stat_t
+internal/cli/umount.go:273:20: undefined: syscall.Stat
+internal/cli/umount.go:277:20: undefined: syscall.Stat
+exit=1
+    ^ THIS IS BFS-028. Fixing it is this row. Contracted: windows/amd64 and
+      windows/arm64 now build (BFS-028-crossgos-guard.txt, BUILD column PASS on
+      all four required targets).
+
+$ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go vet ./internal/fsmount
+# github.com/deployBunker/bunker/internal/fsmount
+# [github.com/deployBunker/bunker/internal/fsmount]
+vet: internal/fsmount/platform_unsupported_test.go:110:5: invalid operation: st != (fsclient.Status{}) (struct containing fsclient.CacheStats cannot be compared)
+exit=1
+    ^ THIS IS **NOT** BFS-028, and it is NOT introduced by this row. It is the
+      guard's OWN vet lane (probes/cross-GOOS-build.sh, item 2), and it is red for
+      both windows targets at the base commit — so the guard script was already
+      exiting FAIL before this row existed.
+
+=============================================================================
+WHY THIS MATTERS FOR READING THE GUARD'S VERDICT
+=============================================================================
+`probes/cross-GOOS-build.sh` reports TWO columns. Read them separately:
+
+  RESULT: FAIL — a required target broke in a package that is not a listed gap
+
+is caused by the VET lane above. The BUILD column — the lane whose KNOWN_GAPS
+ratchet this row contracts — reads PASS for all four required targets:
+
+  TARGET           BUILD      VET internal/fsmount     RESULT
+  linux/amd64      PASS       PASS                     ok
+  linux/arm64      PASS       PASS                     ok
+  windows/amd64    PASS       REFUSED                  UNEXPECTED FAILURE
+  windows/arm64    PASS       REFUSED                  UNEXPECTED FAILURE
+
+So this row moved its own lane from "2 known gaps" to "4/4 PASS" and did not, and
+could not, make the script exit 0: the second failure is a different defect in a
+different package that this row's boundary explicitly excludes (the brief: "must
+not scope-creep into the other POSIX-only sites; name them if you find them in
+your evidence so they can be filed, but fix THIS one"). It is named in §9d of
+BFS-028-windows-umount-seam.md with its one-line fix.
+
+=============================================================================
+THE SECOND DEFECT, PRECISELY (for the row that owns it)
+=============================================================================
+internal/fsmount/platform_unsupported_test.go:110
+
+    st := m.Status()
+    if st != (fsclient.Status{}) {     // <- does not COMPILE for !linux targets
+
+`fsclient.Status` is not a comparable type: its `Cache CacheStats` field
+(internal/fsclient/status.go:86) carries `BypassReasons map[string]int64`
+(internal/fsclient/cache.go:256). Go therefore rejects `!=` on the struct.
+
+- It has never been caught because the file is `//go:build !linux`: on the host
+  that runs every test in this repo it is not compiled at all. Only `go vet` for a
+  non-linux target compiles it — which is exactly the check
+  internal/fsmount/fs_unsupported.go's own header says exists to catch this
+  ("A seam that is only ever compiled on one platform has not been checked").
+- The guard has therefore been red on that lane since `BypassReasons` was added,
+  and the red lane is worth more than the defect: it means item 2 of
+  probes/cross-GOOS-build.sh has NOT been running as a check for that window.
+- The fix is one line, and the choice is the owner's: `reflect.DeepEqual(st,
+  fsclient.Status{})` if the assertion means "the whole document is the zero
+  value", or assert the fields the test actually cares about (the two empty
+  strings and the empty verdict, which the neighbouring assertions already do).
+  Fixing it needs the same RED/GREEN discipline as any other cell: the file
+  compiles for windows/amd64 BEFORE the change only in the failing sense, so the
+  GREEN is `GOOS=windows go vet ./internal/fsmount` exit 0 and the RED is the
+  output above — re-runnable with the two commands in this file.

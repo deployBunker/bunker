@@ -1,0 +1,171 @@
+BFS-028 arms — mode=all
+go go1.26.5 · 4011bbd · 2026-09-27T16:51:20Z
+cell GATE  = TestUmount_UnsupportedPlatformRefusalReachesTheOperator|TestUmountCommand_RefusesAsACommand
+cell TEXT  = TestUmount_UnsupportedRefusalNamesTheCommandPlatformAndWayOut
+cell POSIX = 387 chars of -run filter
+
+==============================================================
+RED — the base commit 48ab48433212b9c7035e540d48bcb0a092c738bb, built for windows/amd64
+  scratch clone: /tmp/tmp.PYVNPXojrO/base (left in place; nothing is deleted)
+==============================================================
+# github.com/deployBunker/bunker/internal/cli
+internal/cli/umount.go:272:25: undefined: syscall.Stat_t
+internal/cli/umount.go:273:20: undefined: syscall.Stat
+internal/cli/umount.go:277:20: undefined: syscall.Stat
+OK   the base tree fails exactly as the row records (exit 1, internal/cli/umount.go)
+
+==============================================================
+GREEN — the tree as committed
+==============================================================
+tree under test:
+  internal/cli/umount.go sha256=699d5db94c1706792fd7748bc9b7fd4a48ab64d10e17b373ee4607b08e5e25e6
+  internal/cli/umount_unix.go sha256=e78c6ba30948e1297da4229ddc527e30a5be260da795cd019ff77d407cf07b64
+--- GREEN (windows/amd64 build of the tree as committed): (cd /home/kara/worktrees/bunker-BFS-028 && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...)
+OK   GREEN (windows/amd64 build of the tree as committed) built (exit 0)
+--- GREEN (windows/arm64 build of the tree as committed)
+OK   windows/arm64 built (exit 0)
+--- GREEN (linux build of the tree as committed)
+OK   linux built (exit 0)
+--- GREEN (the gate cell: the refusal is reachable): go test ./internal/cli -run 'TestUmount_UnsupportedPlatformRefusalReachesTheOperator|TestUmountCommand_RefusesAsACommand' -count=1 -timeout 300s
+ok  	github.com/deployBunker/bunker/internal/cli	0.139s
+--- GREEN (the gate cell: the refusal is reachable) exit=0
+OK   GREEN (the gate cell: the refusal is reachable) PASSED as declared
+--- GREEN (the text cell: the refusal is loud and specific): go test ./internal/cli -run 'TestUmount_UnsupportedRefusalNamesTheCommandPlatformAndWayOut' -count=1 -timeout 300s
+ok  	github.com/deployBunker/bunker/internal/cli	0.149s
+--- GREEN (the text cell: the refusal is loud and specific) exit=0
+OK   GREEN (the text cell: the refusal is loud and specific) PASSED as declared
+--- GREEN (the POSIX cells: behaviour unchanged): go test ./internal/cli -run 'TestUmount_Resolves|TestUmount_Custom|TestUmount_Explicit|TestUmount_Default|TestUmount_Nothing|TestUmount_Empty|TestUmount_Unreadable|TestUmount_Ambiguous|TestUmount_AgentID|TestUmountNothingMountedIsSuccess|TestUmountMissingPathIsSuccess|TestIsMountPoint_FalseForPlainDir|TestMountFault_StrandedMountPointIsDetectable|TestAgentMountpoints_|TestMountTargetHasAgent|TestIsFuseOrNetworkFS' -count=1 -timeout 300s
+ok  	github.com/deployBunker/bunker/internal/cli	0.248s
+--- GREEN (the POSIX cells: behaviour unchanged) exit=0
+OK   GREEN (the POSIX cells: behaviour unchanged) PASSED as declared
+--- GREEN (gofmt + vet on this tree)
+OK   gofmt clean, go vet ./internal/cli clean
+
+==============================================================
+CONTROL no-gate — BFS-028-redproof-no-gate.patch
+==============================================================
+pre-mutation: internal/cli/umount.go sha256=699d5db94c1706792fd7748bc9b7fd4a48ab64d10e17b373ee4607b08e5e25e6
+mutated: internal/cli/umount.go sha256=e5acb6a70143fb641e630a666b9f4ec1d73be92216943fee0abf5e90e5d96959 via BFS-028-redproof-no-gate.patch
+--- CONTROL no-gate (the mutation MUST turn this cell red): go test ./internal/cli -run 'TestUmount_UnsupportedPlatformRefusalReachesTheOperator|TestUmountCommand_RefusesAsACommand' -count=1 -timeout 300s
+--- FAIL: TestUmount_UnsupportedPlatformRefusalReachesTheOperator (0.00s)
+    --- FAIL: TestUmount_UnsupportedPlatformRefusalReachesTheOperator/a_live_mount_for_the_agent_is_refused,_not_detached (0.00s)
+        umount_platform_test.go:131: runUmount reported success on a platform with no unmount mechanism; output was "Resolved /tmp/TestUmount_UnsupportedPlatformRefusalReachesTheOperatora_live_m2312833089/004/custom/f0901fd3 from the live mount table (not the default root)\nUnmounted /tmp/TestUmount_UnsupportedPlatformRefusalReachesTheOperatora_live_m2312833089/004/custom/f0901fd3\n"
+    --- FAIL: TestUmount_UnsupportedPlatformRefusalReachesTheOperator/the_silent_already-clean_shape_is_refused,_and_the_leftover_directory_survives (0.00s)
+        umount_platform_test.go:160: runUmount reported success (output "Nothing mounted at /tmp/TestUmount_UnsupportedPlatformRefusalReachesTheOperatorthe_sile3664201558/001/f0901fd3 (already clean)\n") where the honest answer is that this build cannot look
+--- FAIL: TestUmountCommand_RefusesAsACommand (0.00s)
+    umount_platform_test.go:238: `bunker umount` succeeded on a platform with no unmount mechanism; output was "Nothing mounted for f0901fd3 (mount table checked: /proc/self/mounts)\n"
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/cli	1.179s
+FAIL
+--- CONTROL no-gate (the mutation MUST turn this cell red) exit=1
+OK   CONTROL no-gate (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL no-gate (attribution: this cell MUST be unmoved): go test ./internal/cli -run 'TestUmount_Resolves|TestUmount_Custom|TestUmount_Explicit|TestUmount_Default|TestUmount_Nothing|TestUmount_Empty|TestUmount_Unreadable|TestUmount_Ambiguous|TestUmount_AgentID|TestUmountNothingMountedIsSuccess|TestUmountMissingPathIsSuccess|TestIsMountPoint_FalseForPlainDir|TestMountFault_StrandedMountPointIsDetectable|TestAgentMountpoints_|TestMountTargetHasAgent|TestIsFuseOrNetworkFS' -count=1 -timeout 300s
+ok  	github.com/deployBunker/bunker/internal/cli	0.156s
+--- CONTROL no-gate (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL no-gate (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/cli/umount.go sha256=699d5db94c1706792fd7748bc9b7fd4a48ab64d10e17b373ee4607b08e5e25e6 (verified)
+
+==============================================================
+CONTROL vague-refusal — BFS-028-redproof-vague-refusal.patch
+==============================================================
+pre-mutation: internal/cli/umount.go sha256=699d5db94c1706792fd7748bc9b7fd4a48ab64d10e17b373ee4607b08e5e25e6
+mutated: internal/cli/umount.go sha256=294415e1a360800eb3ae86bcd208b1eef5f3b50f53c9b88521661f84a3eabcdf via BFS-028-redproof-vague-refusal.patch
+--- CONTROL vague-refusal (the mutation MUST turn this cell red): go test ./internal/cli -run 'TestUmount_UnsupportedRefusalNamesTheCommandPlatformAndWayOut' -count=1 -timeout 300s
+--- FAIL: TestUmount_UnsupportedRefusalNamesTheCommandPlatformAndWayOut (0.00s)
+    umount_platform_test.go:205: the refusal does not name the statement that nothing happened (want "Nothing was unmounted" in it), so it names the problem without the next step: "bunker umount: no unmount mechanism on this platform: unsupported build (windows/amd64)"
+    umount_platform_test.go:205: the refusal does not name the WAY OUT (want "Linux client" in it), so it names the problem without the next step: "bunker umount: no unmount mechanism on this platform: unsupported build (windows/amd64)"
+    umount_platform_test.go:205: the refusal does not name the concrete remedy for this platform (want "net use" in it), so it names the problem without the next step: "bunker umount: no unmount mechanism on this platform: unsupported build (windows/amd64)"
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/cli	1.090s
+FAIL
+--- CONTROL vague-refusal (the mutation MUST turn this cell red) exit=1
+OK   CONTROL vague-refusal (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL vague-refusal (attribution: this cell MUST be unmoved): go test ./internal/cli -run 'TestUmount_UnsupportedPlatformRefusalReachesTheOperator|TestUmountCommand_RefusesAsACommand' -count=1 -timeout 300s
+ok  	github.com/deployBunker/bunker/internal/cli	0.136s
+--- CONTROL vague-refusal (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL vague-refusal (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/cli/umount.go sha256=699d5db94c1706792fd7748bc9b7fd4a48ab64d10e17b373ee4607b08e5e25e6 (verified)
+
+==============================================================
+CONTROL unix-refuses — BFS-028-redproof-unix-refuses.patch
+==============================================================
+pre-mutation: internal/cli/umount_unix.go sha256=e78c6ba30948e1297da4229ddc527e30a5be260da795cd019ff77d407cf07b64
+mutated: internal/cli/umount_unix.go sha256=5933cc1bbe2053cf113d45d2b56e81831dd5731f17dcda29c20b32c3a9ab25ed via BFS-028-redproof-unix-refuses.patch
+--- CONTROL unix-refuses (the mutation MUST turn this cell red): go test ./internal/cli -run 'TestUmount_Resolves|TestUmount_Custom|TestUmount_Explicit|TestUmount_Default|TestUmount_Nothing|TestUmount_Empty|TestUmount_Unreadable|TestUmount_Ambiguous|TestUmount_AgentID|TestUmountNothingMountedIsSuccess|TestUmountMissingPathIsSuccess|TestIsMountPoint_FalseForPlainDir|TestMountFault_StrandedMountPointIsDetectable|TestAgentMountpoints_|TestMountTargetHasAgent|TestIsFuseOrNetworkFS' -count=1 -timeout 300s
+Error: bunker umount: no unmount mechanism on this platform — this build is linux/amd64, and `bunker umount` detaches a mount with the platform's own unmount (fusermount3/umount(8), and the kernel mount table to find it), which do not exist here. Nothing was unmounted. Run `bunker umount` from a Linux client, where bunker's mounts live; to detach a path some other tool mounted on this platform, use that tool's own unmount (on Windows a mapped or SSHFS-Win drive comes off with `net use <drive>: /delete`, or from the WinFsp/SSHFS-Win tray)
+Usage:
+  umount <agent-id|mountpoint> [flags]
+
+Flags:
+      --force           Allow a lazy unmount when the filesystem cannot be reached
+  -h, --help            help for umount
+      --server string   Server alias (unused; accepted for symmetry with mount)
+
+--- FAIL: TestUmountNothingMountedIsSuccess (0.00s)
+    mount_lifecycle_test.go:189: umount of an unmounted directory must succeed, got: bunker umount: no unmount mechanism on this platform — this build is linux/amd64, and `bunker umount` detaches a mount with the platform's own unmount (fusermount3/umount(8), and the kernel mount table to find it), which do not exist here. Nothing was unmounted. Run `bunker umount` from a Linux client, where bunker's mounts live; to detach a path some other tool mounted on this platform, use that tool's own unmount (on Windows a mapped or SSHFS-Win drive comes off with `net use <drive>: /delete`, or from the WinFsp/SSHFS-Win tray)
+Error: bunker umount: no unmount mechanism on this platform — this build is linux/amd64, and `bunker umount` detaches a mount with the platform's own unmount (fusermount3/umount(8), and the kernel mount table to find it), which do not exist here. Nothing was unmounted. Run `bunker umount` from a Linux client, where bunker's mounts live; to detach a path some other tool mounted on this platform, use that tool's own unmount (on Windows a mapped or SSHFS-Win drive comes off with `net use <drive>: /delete`, or from the WinFsp/SSHFS-Win tray)
+Usage:
+  umount <agent-id|mountpoint> [flags]
+
+Flags:
+      --force           Allow a lazy unmount when the filesystem cannot be reached
+  -h, --help            help for umount
+      --server string   Server alias (unused; accepted for symmetry with mount)
+
+--- FAIL: TestUmountMissingPathIsSuccess (0.00s)
+    mount_lifecycle_test.go:200: umount of a missing path must succeed (nothing to clean), got: bunker umount: no unmount mechanism on this platform — this build is linux/amd64, and `bunker umount` detaches a mount with the platform's own unmount (fusermount3/umount(8), and the kernel mount table to find it), which do not exist here. Nothing was unmounted. Run `bunker umount` from a Linux client, where bunker's mounts live; to detach a path some other tool mounted on this platform, use that tool's own unmount (on Windows a mapped or SSHFS-Win drive comes off with `net use <drive>: /delete`, or from the WinFsp/SSHFS-Win tray)
+--- FAIL: TestUmount_ResolvesCustomMountpointFromLiveMountTable (0.00s)
+    umount_custom_mountpoint_test.go:144: umount of an agent mounted at a custom path must succeed, got: bunker umount: no unmount mechanism on this platform — this build is linux/amd64, and `bunker umount` detaches a mount with the platform's own unmount (fusermount3/umount(8), and the kernel mount table to find it), which do not exist here. Nothing was unmounted. Run `bunker umount` from a Linux client, where bunker's mounts live; to detach a path some other tool mounted on this platform, use that tool's own unmount (on Windows a mapped or SSHFS-Win drive comes off with `net use <drive>: /delete`, or from the WinFsp/SSHFS-Win tray)
+--- FAIL: TestUmount_CustomMountpointNamespaceStillResolves (0.00s)
+    umount_custom_mountpoint_test.go:186: umount: bunker umount: no unmount mechanism on this platform — this build is linux/amd64, and `bunker umount` detaches a mount with the platform's own unmount (fusermount3/umount(8), and the kernel mount table to find it), which do not exist here. Nothing was unmounted. Run `bunker umount` from a Linux client, where bunker's mounts live; to detach a path some other tool mounted on this platform, use that tool's own unmount (on Windows a mapped or SSHFS-Win drive comes off with `net use <drive>: /delete`, or from the WinFsp/SSHFS-Win tray)
+--- FAIL: TestUmount_ExplicitCustomPathIsHonoured (0.00s)
+    umount_custom_mountpoint_test.go:210: umount of an explicit custom mountpoint must succeed, got: bunker umount: no unmount mechanism on this platform — this build is linux/amd64, and `bunker umount` detaches a mount with the platform's own unmount (fusermount3/umount(8), and the kernel mount table to find it), which do not exist here. Nothing was unmounted. Run `bunker umount` from a Linux client, where bunker's mounts live; to detach a path some other tool mounted on this platform, use that tool's own unmount (on Windows a mapped or SSHFS-Win drive comes off with `net use <drive>: /delete`, or from the WinFsp/SSHFS-Win tray)
+--- FAIL: TestUmount_DefaultRootLayoutUnchanged (0.00s)
+    umount_custom_mountpoint_test.go:238: umount of a default-root mount must succeed, got: bunker umount: no unmount mechanism on this platform — this build is linux/amd64, and `bunker umount` detaches a mount with the platform's own unmount (fusermount3/umount(8), and the kernel mount table to find it), which do not exist here. Nothing was unmounted. Run `bunker umount` from a Linux client, where bunker's mounts live; to detach a path some other tool mounted on this platform, use that tool's own unmount (on Windows a mapped or SSHFS-Win drive comes off with `net use <drive>: /delete`, or from the WinFsp/SSHFS-Win tray)
+--- FAIL: TestUmount_NothingMountedAnywhereIsStillSuccess (0.00s)
+    umount_custom_mountpoint_test.go:266: umount with nothing mounted must succeed, got: bunker umount: no unmount mechanism on this platform — this build is linux/amd64, and `bunker umount` detaches a mount with the platform's own unmount (fusermount3/umount(8), and the kernel mount table to find it), which do not exist here. Nothing was unmounted. Run `bunker umount` from a Linux client, where bunker's mounts live; to detach a path some other tool mounted on this platform, use that tool's own unmount (on Windows a mapped or SSHFS-Win drive comes off with `net use <drive>: /delete`, or from the WinFsp/SSHFS-Win tray)
+--- FAIL: TestUmount_EmptyMountTableIsStillClean (0.00s)
+    --- FAIL: TestUmount_EmptyMountTableIsStillClean/no_lines_at_all (0.00s)
+        umount_custom_mountpoint_test.go:311: umount must stay safe to run twice, got: bunker umount: no unmount mechanism on this platform — this build is linux/amd64, and `bunker umount` detaches a mount with the platform's own unmount (fusermount3/umount(8), and the kernel mount table to find it), which do not exist here. Nothing was unmounted. Run `bunker umount` from a Linux client, where bunker's mounts live; to detach a path some other tool mounted on this platform, use that tool's own unmount (on Windows a mapped or SSHFS-Win drive comes off with `net use <drive>: /delete`, or from the WinFsp/SSHFS-Win tray)
+    --- FAIL: TestUmount_EmptyMountTableIsStillClean/one_blank_line (0.00s)
+        umount_custom_mountpoint_test.go:311: umount must stay safe to run twice, got: bunker umount: no unmount mechanism on this platform — this build is linux/amd64, and `bunker umount` detaches a mount with the platform's own unmount (fusermount3/umount(8), and the kernel mount table to find it), which do not exist here. Nothing was unmounted. Run `bunker umount` from a Linux client, where bunker's mounts live; to detach a path some other tool mounted on this platform, use that tool's own unmount (on Windows a mapped or SSHFS-Win drive comes off with `net use <drive>: /delete`, or from the WinFsp/SSHFS-Win tray)
+    --- FAIL: TestUmount_EmptyMountTableIsStillClean/only_unrelated_mounts (0.00s)
+        umount_custom_mountpoint_test.go:311: umount must stay safe to run twice, got: bunker umount: no unmount mechanism on this platform — this build is linux/amd64, and `bunker umount` detaches a mount with the platform's own unmount (fusermount3/umount(8), and the kernel mount table to find it), which do not exist here. Nothing was unmounted. Run `bunker umount` from a Linux client, where bunker's mounts live; to detach a path some other tool mounted on this platform, use that tool's own unmount (on Windows a mapped or SSHFS-Win drive comes off with `net use <drive>: /delete`, or from the WinFsp/SSHFS-Win tray)
+    --- FAIL: TestUmount_EmptyMountTableIsStillClean/a_truncated_line (0.00s)
+        umount_custom_mountpoint_test.go:311: umount must stay safe to run twice, got: bunker umount: no unmount mechanism on this platform — this build is linux/amd64, and `bunker umount` detaches a mount with the platform's own unmount (fusermount3/umount(8), and the kernel mount table to find it), which do not exist here. Nothing was unmounted. Run `bunker umount` from a Linux client, where bunker's mounts live; to detach a path some other tool mounted on this platform, use that tool's own unmount (on Windows a mapped or SSHFS-Win drive comes off with `net use <drive>: /delete`, or from the WinFsp/SSHFS-Win tray)
+--- FAIL: TestUmount_UnreadableMountTableDoesNotClaimMoreThanItChecked (0.00s)
+    umount_custom_mountpoint_test.go:344: umount: bunker umount: no unmount mechanism on this platform — this build is linux/amd64, and `bunker umount` detaches a mount with the platform's own unmount (fusermount3/umount(8), and the kernel mount table to find it), which do not exist here. Nothing was unmounted. Run `bunker umount` from a Linux client, where bunker's mounts live; to detach a path some other tool mounted on this platform, use that tool's own unmount (on Windows a mapped or SSHFS-Win drive comes off with `net use <drive>: /delete`, or from the WinFsp/SSHFS-Win tray)
+--- FAIL: TestUmount_UnreadableMountTableStillUnmountsARealMountpoint (0.00s)
+    umount_custom_mountpoint_test.go:385: with an unreadable table a real mountpoint must still be unmounted, got: bunker umount: no unmount mechanism on this platform — this build is linux/amd64, and `bunker umount` detaches a mount with the platform's own unmount (fusermount3/umount(8), and the kernel mount table to find it), which do not exist here. Nothing was unmounted. Run `bunker umount` from a Linux client, where bunker's mounts live; to detach a path some other tool mounted on this platform, use that tool's own unmount (on Windows a mapped or SSHFS-Win drive comes off with `net use <drive>: /delete`, or from the WinFsp/SSHFS-Win tray)
+--- FAIL: TestUmount_AmbiguousLiveMountpointsAreRefused (0.00s)
+    umount_custom_mountpoint_test.go:412: the refusal must name both paths, got: bunker umount: no unmount mechanism on this platform — this build is linux/amd64, and `bunker umount` detaches a mount with the platform's own unmount (fusermount3/umount(8), and the kernel mount table to find it), which do not exist here. Nothing was unmounted. Run `bunker umount` from a Linux client, where bunker's mounts live; to detach a path some other tool mounted on this platform, use that tool's own unmount (on Windows a mapped or SSHFS-Win drive comes off with `net use <drive>: /delete`, or from the WinFsp/SSHFS-Win tray)
+--- FAIL: TestUmount_AgentIDSubstringIsNotAMountpoint (0.00s)
+    umount_custom_mountpoint_test.go:434: umount: bunker umount: no unmount mechanism on this platform — this build is linux/amd64, and `bunker umount` detaches a mount with the platform's own unmount (fusermount3/umount(8), and the kernel mount table to find it), which do not exist here. Nothing was unmounted. Run `bunker umount` from a Linux client, where bunker's mounts live; to detach a path some other tool mounted on this platform, use that tool's own unmount (on Windows a mapped or SSHFS-Win drive comes off with `net use <drive>: /delete`, or from the WinFsp/SSHFS-Win tray)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/cli	1.101s
+FAIL
+--- CONTROL unix-refuses (the mutation MUST turn this cell red) exit=1
+OK   CONTROL unix-refuses (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL unix-refuses (attribution: this cell MUST be unmoved): go test ./internal/cli -run 'TestUmount_UnsupportedPlatformRefusalReachesTheOperator|TestUmountCommand_RefusesAsACommand' -count=1 -timeout 300s
+ok  	github.com/deployBunker/bunker/internal/cli	0.110s
+--- CONTROL unix-refuses (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL unix-refuses (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/cli/umount_unix.go sha256=e78c6ba30948e1297da4229ddc527e30a5be260da795cd019ff77d407cf07b64 (verified)
+
+==============================================================
+VET — GOOS=windows go vet ./internal/cli (the seam's own test file)
+  scratch clone: /tmp/tmp.VgYjGA9aXX/vet (left in place; nothing is deleted)
+==============================================================
+the lane is blocked by PRE-EXISTING untagged test files owned by other rows:
+  internal/cli/mount_fault_inject_test.go:116 undefined: newMountTestServer (declared in the unix-tagged mount_test.go)
+  internal/cli/procbuild_test.go:419 undefined: syscall.Flock
+  internal/cli/exit_code_pipe_test.go:184 undefined: buildCLIOnce
+removing ONLY those files in the scratch clone, then re-running:
+OK   GOOS=windows go vet ./internal/cli PASSES once the three pre-existing blockers are excluded
+     => umount_nonunix_test.go (//go:build !unix) and umount_platform_test.go COMPILE and
+        type-check for windows/amd64. That is the strongest check available without a
+        Windows host, and it is the check internal/fsmount/platform_unsupported_test.go
+        relies on too. The three blockers are named above to be filed, not fixed here.
+
+done: mode=all — all declared outcomes held
+ARMS_EXIT=0

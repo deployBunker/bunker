@@ -1,0 +1,28 @@
+BFS-028 — the target as fixed, on the tree as committed.
+=============================================================================
+go go1.26.5   HEAD 4011bbd52a15b2c4b76a9e687b1b4209146d0d75
+date 2026-09-27T16:53:55Z
+=============================================================================
+
+$ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...
+exit=0   (no output above = success; the row's acceptance criterion)
+
+$ GOOS=windows GOARCH=arm64 CGO_ENABLED=0 go build ./...
+exit=0
+
+$ GOOS=linux GOARCH=amd64 go build ./...
+exit=0   (the POSIX target, unchanged)
+
+$ GOOS=linux GOARCH=arm64 go build ./...
+exit=0   (the other released Linux target, Makefile RELEASE_PLATFORMS)
+
+$ gofmt -l internal/cli/
+exit=0   (no output above = nothing needs formatting)
+
+$ go vet ./internal/cli
+exit=0   (host platform = linux)
+
+=============================================================================
+NOTE: an EMPTY build output with exit=0 is a SUCCESS for go build.
+The four targets above are cross-GOOS-build.sh's REQUIRED set, whose two
+windows lines were the KNOWN_GAPS ratchet this row contracts.
