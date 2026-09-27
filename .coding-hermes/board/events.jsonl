@@ -811,3 +811,11 @@
 {"id": 811, "timestamp": "2026-09-27 02:48:23.273940", "event_type": "task_created", "task_id": "REV-BUNKER-009", "actor": "hermes-review", "detail": "{\"id\": \"REV-BUNKER-009\", \"status\": \"pending\"}"}
 {"id": 812, "timestamp": "2026-09-27 02:48:23.273940", "event_type": "task_created", "task_id": "REV-BUNKER-010", "actor": "hermes-review", "detail": "{\"id\": \"REV-BUNKER-010\", \"status\": \"pending\"}"}
 {"id": 813, "timestamp": "2026-09-27T12:22:44+00:00", "event_type": "task_created", "task_id": "QA-BUNKER-34", "actor": "qa-cron", "detail": "QA foreman cycle 2026-09-27-12Z filed QA-BUNKER-34 (P1): bunker-las-03 down ~1d (SSH/ICMP/REST dead, tailscale last-seen 1d; las-01 same) — 3 QA/dogfood lanes double-skipped install legs; fallback las-02/dedi-2 verified green."}
+{"id": 814, "timestamp": "2026-09-27T12:40:12+00:00", "event_type": "task_created", "task_id": "REV-BUNKER-011", "actor": "foreman", "detail": "{\"id\":\"REV-BUNKER-011\",\"status\":\"pending\"}"}
+{"id": 815, "timestamp": "2026-09-27T12:40:12+00:00", "event_type": "task_created", "task_id": "REV-BUNKER-012", "actor": "foreman", "detail": "{\"id\":\"REV-BUNKER-012\",\"status\":\"pending\"}"}
+{"id": 816, "timestamp": "2026-09-27T12:40:12+00:00", "event_type": "task_created", "task_id": "REV-BUNKER-013", "actor": "foreman", "detail": "{\"id\":\"REV-BUNKER-013\",\"status\":\"pending\"}"}
+{"id": 817, "timestamp": "2026-09-27T12:40:25+00:00", "event_type": "task_created", "task_id": "REV-BUNKER-014", "actor": "foreman", "detail": "{\"id\":\"REV-BUNKER-014\",\"status\":\"pending\"}"}
+{"id": 818, "timestamp": "2026-09-27T12:40:25+00:00", "event_type": "task_created", "task_id": "REV-BUNKER-015", "actor": "foreman", "detail": "{\"id\":\"REV-BUNKER-015\",\"status\":\"pending\"}"}
+{"id": 819, "timestamp": "2026-09-27T12:40:25+00:00", "event_type": "task_created", "task_id": "REV-BUNKER-016", "actor": "foreman", "detail": "{\"id\":\"REV-BUNKER-016\",\"status\":\"pending\"}"}
+{"id": 820, "timestamp": "2026-09-27T12:58:10+00:00", "event_type": "task_created", "task_id": "QA-BUNKER-35", "actor": "qa-foreman", "detail": "{\"id\":\"QA-BUNKER-35\",\"status\":\"pending\"}"}
+{"id": 821, "timestamp": "2026-09-27T12:58:10+00:00", "event_type": "task_created", "task_id": "QA-BUNKER-36", "actor": "qa-foreman", "detail": "{\"id\":\"QA-BUNKER-36\",\"status\":\"pending\"}"}
