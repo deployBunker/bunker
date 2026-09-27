@@ -1052,6 +1052,11 @@ func (m *Mount) beginCreate(cp string, mode uint32) (*writeHandle, fsclient.Node
 	nd := fsclient.Node{Path: cp, IsDir: false, Mode: fmt.Sprintf("%04o", mode&0o777), Mtime: time.Now()}
 	m.snapshot().Put(nd)
 	m.notePublished(nd)
+	// A create means the name is absent as far as the kernel is concerned, so any
+	// cached bytes this client still holds for it belong to something else (a file
+	// removed under us, or a name this mount itself moved away): drop them, or a
+	// read of the new file is served the old bytes.
+	m.cache.Drop(cp)
 	return h, nd
 }
 
@@ -1073,8 +1078,18 @@ func (n *node) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.En
 }
 
 // Unlink removes a file.
+//
+// The type is checked against what this mount most recently told the kernel
+// BEFORE the request goes out, because the server's DELETE on a COLLECTION is
+// RECURSIVE: if this mount ever believed a directory was a file, an unlink would
+// take the whole subtree with it. The check costs nothing and needs no request —
+// the kernel only unlinks a path whose attrs it holds, and those attrs are this
+// mount's own.
 func (n *node) Unlink(ctx context.Context, name string) syscall.Errno {
 	cp := joinPath(n.p, name)
+	if nd, ok := n.m.snapshot().Lookup(cp); ok && nd.IsDir {
+		return syscall.EISDIR
+	}
 	if err := n.m.client.Delete(ctx, cp, ""); err != nil {
 		n.m.recordFailure(err)
 		return errnoFor(err)
@@ -1092,8 +1107,35 @@ func (n *node) Unlink(ctx context.Context, name string) syscall.Errno {
 }
 
 // Rmdir removes a collection.
+//
+// POSIX: `rmdir` on a NON-EMPTY directory FAILS with ENOTEMPTY — and that failure
+// is load-bearing. git walks UP the directory chain after deleting a ref and
+// stops at the first level that will not go away (refs/files-backend.c,
+// remove_empty_directories), so a mount that passes the request through turns a
+// ref cleanup into a RECURSIVE DELETE: MEASURED on the tree this row started from,
+// `rmdir <mount>/.git` returned **rc=0** and the served tree's `.git` went from 10
+// entries to 0 — the whole directory, because the surface's DELETE on a
+// collection removes the subtree (docs/evidence/BFS-020-rmdir.txt). Found while
+// running this row's acceptance: the write-lock defect was masking it by failing
+// git one step earlier.
+//
+// The emptiness is asked of the SERVER (one `Depth: 1` PROPFIND), never of this
+// mount's own readdir answer: that listing is exactly what git believed when it
+// decided the directory was empty, and BFS-018 is the open row for its coming
+// back empty while the directory has entries. The cost is one request per rmdir,
+// and it is named rather than implied.
 func (n *node) Rmdir(ctx context.Context, name string) syscall.Errno {
 	cp := joinPath(n.p, name)
+	metas, perr := n.m.client.Propfind(ctx, cp, "1")
+	if perr != nil {
+		n.m.recordFailure(perr)
+		return errnoFor(perr)
+	}
+	for _, meta := range metas {
+		if strings.Trim(meta.Path, "/") != cp {
+			return syscall.ENOTEMPTY
+		}
+	}
 	if err := n.m.client.Delete(ctx, cp, ""); err != nil {
 		n.m.recordFailure(err)
 		return errnoFor(err)
@@ -1101,6 +1143,10 @@ func (n *node) Rmdir(ctx context.Context, name string) syscall.Errno {
 	n.m.snapshot().Drop(cp)
 	n.m.snapshot().DropReaddir(n.p)
 	n.m.cache.Drop(cp)
+	// The name is gone: everything remembered for it goes with it (BFS-033's hold
+	// and BFS-020's base record — a create of this name later must resolve its own
+	// base rather than inherit one that describes a file that is not there).
+	n.m.wp.NoteDeleted(cp)
 	n.m.queueNotify(notifyRequest{paths: []string{cp}, deleted: []string{cp}})
 	n.m.recordOK()
 	return 0
@@ -1140,7 +1186,22 @@ func (n *node) Rename(ctx context.Context, name string, newParent fs.InodeEmbedd
 	n.m.retargetHandles(src, dst)
 	n.m.snapshot().Drop(src, dst)
 	n.m.snapshot().DropReaddir(n.p, np.p)
-	n.m.cache.Drop(src)
+	// BOTH names' CACHED BYTES go, not only the source's (BFS-020): a rename
+	// REPLACES the destination, so the entry this client holds for it describes the
+	// file that was just moved away. Keeping it made the mount serve the OLD
+	// content for a name it had itself just replaced — MEASURED: after
+	// `printf … > .git/HEAD.lock; mv .git/HEAD.lock .git/HEAD` the mount answered
+	// `ref: refs/heads/main` while the served tree held `ref: refs/heads/…`, and a
+	// live `git checkout -b` read its own just-written HEAD back as the old branch
+	// (docs/evidence/BFS-020-content.txt).
+	n.m.cache.Drop(src, dst)
+	// BOTH names' records go (BFS-020): the source name no longer refers to the
+	// file this client remembered (a later create of it would inherit a stale base
+	// and be refused 412 — measured on a live `git checkout -b`), and the
+	// destination name now holds a DIFFERENT file than the one the record
+	// describes.
+	n.m.wp.NoteDeleted(src)
+	n.m.wp.NoteDeleted(dst)
 	n.m.queueNotify(notifyRequest{paths: []string{src}, deleted: []string{src}})
 	n.m.queueNotify(notifyRequest{paths: []string{dst}})
 	n.m.recordOK()

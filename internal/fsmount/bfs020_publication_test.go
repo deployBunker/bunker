@@ -104,6 +104,12 @@ func mustNotExist(t *testing.T, path string, why string) {
 // TestACreatedAndClosedFileCanBeRenamedImmediately is THE cell: create, write,
 // CLOSE (Flush — the point close(2) waits for), then RENAME with no settle at all.
 // Both the rename and the served tree must agree that the file is there.
+//
+// The cell asserts the PROTOCOL FACT first, on its own: after the FLUSH the name is
+// on the served tree — before the RELEASE that follows it, and before any other
+// operation. That is the assertion that distinguishes this fix from publishing at
+// RELEASE: the kernel does not wait for RELEASE (measured), so a publication made
+// there is still in flight when the caller's next syscall arrives.
 func TestACreatedAndClosedFileCanBeRenamedImmediately(t *testing.T) {
 	m, target := testMount(t, boundTestShort)
 
@@ -116,6 +122,10 @@ func TestACreatedAndClosedFileCanBeRenamedImmediately(t *testing.T) {
 	// is the one the kernel waits for.
 	if errno := h.Flush(context.Background()); errno != 0 {
 		t.Fatalf("close: the publication must succeed, got errno=%v", errno)
+	}
+	// THE PROTOCOL FACT. The served tree must already hold the name and the bytes.
+	if got := fileBytes(t, serverPath(target, "f.lock")); string(got) != string(body) {
+		t.Fatalf("THE PUBLICATION POINT MUST BE THE FLUSH CLOSE(2) WAITS FOR: after it, the served tree holds %q, want %q (nothing was published until RELEASE, which the kernel does not wait for)", got, body)
 	}
 	// The RELEASE the kernel sends next must not publish a second time.
 	before := m.client.Requests()
@@ -149,6 +159,15 @@ func TestACreateWithNoChunkStillPublishesTheName(t *testing.T) {
 	h := createThroughMount(t, m, "e.lock")
 	if errno := h.Flush(context.Background()); errno != 0 {
 		t.Fatalf("close of an empty create: errno=%v", errno)
+	}
+	// THE CELL: the name and the (zero-byte) content are on the served tree as soon
+	// as the FLUSH returns. Without this the file exists only in this mount's
+	// imagination — MEASURED on the unfixed tree: `: > f`, `printf '' > f` and
+	// `touch f` all returned 0 and the served tree NEVER had the file, so every
+	// later operation on it failed ENOENT forever
+	// (docs/evidence/BFS-020-empty.txt).
+	if _, err := os.Stat(serverPath(target, "e.lock")); err != nil {
+		t.Fatalf("AN EMPTY FILE CREATED AND CLOSED THROUGH THE MOUNT MUST EXIST ON THE SERVED TREE: %v (the served tree never got the name)", err)
 	}
 	if errno := renameThroughMount(t, m, "e.lock", "e.final"); errno != 0 {
 		t.Fatalf("an EMPTY created file must be renameable immediately too: rename errno=%v", errno)
@@ -240,6 +259,197 @@ func TestAWriteAfterAPublicationPointIsStillPublished(t *testing.T) {
 	}
 	if got := fileBytes(t, serverPath(target, "two.lock")); string(got) != "AAAABBBB" {
 		t.Fatalf("a write after a publication point must still land: got %q, want %q", got, "AAAABBBB")
+	}
+}
+
+// TestACreateAfterAnUnlinkOfTheSameNameResolvesAFreshBase is git's OTHER lock
+// shape, and it is the reason the base record must not outlive the name: git locks
+// `.git/AUTO_MERGE.lock` (empty), unlinks it, and locks the same name AGAIN a few
+// milliseconds later. With the hash of the removed file still remembered as the
+// path's base, the second create is refused 412 — a refusal the caller cannot
+// explain, for a name it has every right to create.
+func TestACreateAfterAnUnlinkOfTheSameNameResolvesAFreshBase(t *testing.T) {
+	m, target := testMount(t, boundTestShort)
+
+	// The lock, written and closed.
+	h := createThroughMount(t, m, "lock.lock")
+	writeThroughMount(t, m, h, []byte("first"), 0)
+	if errno := h.Flush(context.Background()); errno != 0 {
+		t.Fatalf("first lock close: errno=%v", errno)
+	}
+	if errno := h.Release(context.Background()); errno != 0 {
+		t.Fatalf("first lock release: errno=%v", errno)
+	}
+	// Removed (git does this for a lock it only ever held to delete a ref).
+	if errno := (&node{m: m, p: ""}).Unlink(context.Background(), "lock.lock"); errno != 0 {
+		t.Fatalf("unlink: errno=%v", errno)
+	}
+	mustNotExist(t, serverPath(target, "lock.lock"), "the unlinked name")
+
+	// The SAME name, created again — the second lock of the same command.
+	h2 := createThroughMount(t, m, "lock.lock")
+	writeThroughMount(t, m, h2, []byte("second"), 0)
+	if errno := h2.Flush(context.Background()); errno != 0 {
+		t.Fatalf("A CREATE OF A NAME THAT WAS JUST REMOVED MUST RESOLVE ITS OWN BASE: the second lock's close returned errno=%v", errno)
+	}
+	if got := fileBytes(t, serverPath(target, "lock.lock")); string(got) != "second" {
+		t.Fatalf("the second lock's content on the served tree: %q, want %q", got, "second")
+	}
+}
+
+// TestACreateAfterARenameOfTheSameNameResolvesAFreshBase is the same rule for the
+// shape that broke a live `git checkout -b` outright: git writes
+// `.git/index.lock`, closes it, RENAMES it over `.git/index`, and later writes
+// `.git/index.lock` again. The rename moved the file the client remembered, so the
+// old name's base record must go with it — measured, the second create inherited
+// the first one's hash, the server refused it 412, and git died
+// `fatal: unable to write new index file`.
+func TestACreateAfterARenameOfTheSameNameResolvesAFreshBase(t *testing.T) {
+	m, target := testMount(t, boundTestShort)
+
+	h := createThroughMount(t, m, "index.lock")
+	writeThroughMount(t, m, h, []byte("index-v1"), 0)
+	if errno := h.Flush(context.Background()); errno != 0 {
+		t.Fatalf("first close: errno=%v", errno)
+	}
+	if errno := h.Release(context.Background()); errno != 0 {
+		t.Fatalf("first release: errno=%v", errno)
+	}
+	if errno := renameThroughMount(t, m, "index.lock", "index"); errno != 0 {
+		t.Fatalf("rename over the target: errno=%v", errno)
+	}
+	if got := fileBytes(t, serverPath(target, "index")); string(got) != "index-v1" {
+		t.Fatalf("the moved file's content: %q, want %q", got, "index-v1")
+	}
+
+	// The same name again: the index was written a second time.
+	h2 := createThroughMount(t, m, "index.lock")
+	writeThroughMount(t, m, h2, []byte("index-v2"), 0)
+	if errno := h2.Flush(context.Background()); errno != 0 {
+		t.Fatalf("A CREATE OF A NAME THIS MOUNT JUST MOVED AWAY MUST RESOLVE ITS OWN BASE: the second index.lock close returned errno=%v", errno)
+	}
+	if got := fileBytes(t, serverPath(target, "index.lock")); string(got) != "index-v2" {
+		t.Fatalf("the second lock's content: %q, want %q", got, "index-v2")
+	}
+	if errno := renameThroughMount(t, m, "index.lock", "index"); errno != 0 {
+		t.Fatalf("second rename over the target: errno=%v", errno)
+	}
+	if got := fileBytes(t, serverPath(target, "index")); string(got) != "index-v2" {
+		t.Fatalf("the target after the second rename: %q, want %q", got, "index-v2")
+	}
+}
+
+// TestAReadAfterARenameOverTheTargetServesTheMovedContent is the CONTENT half of
+// the same claim the row makes about names: a following operation on the same mount
+// must SEE what this mount itself just did. Measured before this rule existed: a
+// rename REPLACES the destination, the cache entry held for the destination
+// survived it, and every later read through the mount was served the replaced file
+// (docs/evidence/BFS-020-content.txt) — which is how a live `git checkout -b` read
+// its own just-written HEAD back as the branch it had left.
+func TestAReadAfterARenameOverTheTargetServesTheMovedContent(t *testing.T) {
+	m, target := testMount(t, boundTestShort)
+
+	// The read that populates this client's cache for the destination.
+	if got := statThroughMount(t, m, "target.txt"); got != uint64(len(boundTestShort)) {
+		t.Fatalf("stat target.txt: size=%d, want %d", got, len(boundTestShort))
+	}
+	if got := readBytesThroughMount(t, m, "target.txt"); string(got) != boundTestShort {
+		t.Fatalf("the first read: %q, want %q", got, boundTestShort)
+	}
+
+	// Replace the target the way every atomic-save tool does: write a sibling,
+	// close it, rename it over the target.
+	moved := []byte("THE-MOVED-CONTENT-0123456789-abcdefghijklmnopqrstuvwxyz")
+	h := createThroughMount(t, m, "new.lock")
+	writeThroughMount(t, m, h, moved, 0)
+	if errno := h.Flush(context.Background()); errno != 0 {
+		t.Fatalf("close: errno=%v", errno)
+	}
+	if errno := h.Release(context.Background()); errno != 0 {
+		t.Fatalf("release: errno=%v", errno)
+	}
+	if errno := renameThroughMount(t, m, "new.lock", "target.txt"); errno != 0 {
+		t.Fatalf("rename over the target: errno=%v", errno)
+	}
+	if got := fileBytes(t, target); string(got) != string(moved) {
+		t.Fatalf("the served tree after the rename: %q, want %q", got, moved)
+	}
+
+	// THE CELL. The kernel re-stats a name whose attributes it invalidated (an
+	// entry timeout of 0 and a rename both do that), so the read follows a stat —
+	// exactly what the kernel does before `cat`'s read.
+	if got := statThroughMount(t, m, "target.txt"); got != uint64(len(moved)) {
+		t.Fatalf("the post-rename stat must be the server's size: %d, want %d", got, len(moved))
+	}
+	if got := readBytesThroughMount(t, m, "target.txt"); string(got) != string(moved) {
+		t.Fatalf("A READ AFTER THIS MOUNT REPLACED THE FILE MUST SERVE THE NEW CONTENT: got %q, want %q (the cache entry for the replaced destination survived the rename)", got, moved)
+	}
+}
+
+// TestRmdirOfANonEmptyCollectionIsRefused is the POSIX guarantee git's own
+// directory walk depends on: rmdir on a NON-EMPTY directory fails with ENOTEMPTY.
+// Passed through, the request is a RECURSIVE DELETE — the surface's DELETE on a
+// collection removes the subtree — so a caller that only wanted to tidy up an
+// empty directory destroys everything under it. MEASURED before this check
+// existed: `rmdir <mount>/rm` returned rc=0 and every file under it was gone from
+// the served tree (docs/evidence/BFS-020-rmdir.txt).
+func TestRmdirOfANonEmptyCollectionIsRefused(t *testing.T) {
+	m, target := testMount(t, boundTestShort)
+	root := filepath.Dir(target)
+	// A small tree, created on the server (what the caller sees through the mount).
+	if err := os.MkdirAll(filepath.Join(root, "rm", "sub"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	for _, p := range []string{"rm/g.txt", "rm/sub/f.txt"} {
+		if err := os.WriteFile(filepath.Join(root, p), []byte("keep me"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", p, err)
+		}
+	}
+
+	if errno := (&node{m: m, p: ""}).Rmdir(context.Background(), "rm"); errno != syscall.ENOTEMPTY {
+		t.Fatalf("rmdir of a NON-EMPTY directory must fail with ENOTEMPTY, got errno=%v", errno)
+	}
+	// THE DATA: every file under it must still be there on the served tree.
+	for _, p := range []string{"rm/g.txt", "rm/sub/f.txt"} {
+		if _, err := os.Stat(filepath.Join(root, p)); err != nil {
+			t.Fatalf("RMDIR OF A NON-EMPTY DIRECTORY DESTROYED THE SERVED SUBTREE: %s is gone (%v)", p, err)
+		}
+	}
+	// And an EMPTY directory is still removable — the check is not a blanket
+	// refusal of directory removal.
+	if err := os.Remove(filepath.Join(root, "rm", "sub", "f.txt")); err != nil {
+		t.Fatalf("clear the subdir: %v", err)
+	}
+	if errno := (&node{m: m, p: "rm"}).Rmdir(context.Background(), "sub"); errno != 0 {
+		t.Fatalf("rmdir of an EMPTY directory must succeed, got errno=%v", errno)
+	}
+	if _, err := os.Stat(filepath.Join(root, "rm", "sub")); err == nil {
+		t.Fatal("the emptied directory must be gone from the served tree")
+	}
+}
+
+// TestUnlinkOfACollectionIsRefused: the surface's DELETE on a collection is
+// RECURSIVE, so an unlink must never be pointed at a directory. The check is
+// local (the metadata this mount most recently gave the kernel) and costs no
+// request.
+func TestUnlinkOfACollectionIsRefused(t *testing.T) {
+	m, target := testMount(t, boundTestShort)
+	root := filepath.Dir(target)
+	if err := os.MkdirAll(filepath.Join(root, "d", "sub"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "d", "sub", "f.txt"), []byte("keep me"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	// The metadata entry Lookup leaves behind for a collection (the kernel only
+	// unlinks a path whose attrs it holds, and those attrs are this mount's).
+	m.snapshot().Put(fsclient.Node{Path: "d", IsDir: true, Mode: "0755"})
+
+	if errno := (&node{m: m, p: ""}).Unlink(context.Background(), "d"); errno != syscall.EISDIR {
+		t.Fatalf("unlink of a collection must fail with EISDIR, got errno=%v", errno)
+	}
+	if _, err := os.Stat(filepath.Join(root, "d", "sub", "f.txt")); err != nil {
+		t.Fatalf("an unlink pointed at a collection DESTROYED the served subtree: %v", err)
 	}
 }
 
