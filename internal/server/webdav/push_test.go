@@ -32,6 +32,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -867,3 +868,112 @@ func TestPushCell09TheStreamOutlivesAnRPCDeadline(t *testing.T) {
 func treeCursorPath(h *Handler) string { return filepath.Base(h.Root()) }
 
 var _ = treeCursorPath
+
+// ---------------------------------------------------------------------------
+// CELL P-10 — the channel is COMMITTED before any line is waited for.
+//
+// the defect it catches: the headers are written but never FLUSHED, so nothing
+// leaves the server until the first line's flush — up to one heartbeat period
+// (30 s at the default bounds) of a client holding a request whose answer it
+// cannot read. Found by the no-fanout arm, not by a cell: with every line
+// suppressed, openPushStream never returned at all, and the arm HUNG instead of
+// going red. A hang is not a red, so the property gets its own cell.
+//
+// The instrument is a recording writer rather than a socket, because the claim
+// is about what the handler has committed BEFORE the first line exists; on a
+// socket the same defect is only visible as a timeout, which is the thing being
+// measured away.
+// ---------------------------------------------------------------------------
+
+// commitRecorder records the bytes written at each Flush. The FIRST flush is the
+// commit, and it must carry no line.
+type commitRecorder struct {
+	mu      sync.Mutex
+	hdr     http.Header
+	status  int
+	body    []byte
+	flushes int
+	atFlush []string
+}
+
+func (c *commitRecorder) Header() http.Header { return c.hdr }
+
+func (c *commitRecorder) WriteHeader(status int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.status == 0 {
+		c.status = status
+	}
+}
+
+func (c *commitRecorder) Write(p []byte) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.body = append(c.body, p...)
+	return len(p), nil
+}
+
+func (c *commitRecorder) Flush() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.flushes++
+	c.atFlush = append(c.atFlush, string(c.body))
+}
+
+func (c *commitRecorder) count() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.flushes
+}
+
+func (c *commitRecorder) first() (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.atFlush) == 0 {
+		return "", false
+	}
+	return c.atFlush[0], true
+}
+
+func TestPushCell10TheChannelIsCommittedBeforeAnyLineIsWaited(t *testing.T) {
+	h, _ := pushCell(t, nil, nil)
+	rec := &commitRecorder{hdr: http.Header{}}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req := httptest.NewRequest(http.MethodPost, "/dav/", strings.NewReader(`{"paths":[],"since_seq":0}`)).WithContext(ctx)
+	req.Header.Set("X-Bunker-Op", "watch")
+	req.Header.Set("Accept", "application/x-ndjson")
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		h.ServeHTTP(rec, req)
+	}()
+
+	waitFor(t, 3*time.Second, "the channel to be committed", func() bool { return rec.count() >= 1 })
+	first, ok := rec.first()
+	if !ok {
+		t.Fatal("nothing was flushed: the subscriber's answer never left the handler")
+	}
+	if strings.Contains(first, "\n") {
+		t.Fatalf("the FIRST flush carried a line (%q): the commitment is left to the first line, so a client on a quiet tree reads nothing until a line happens to exist — up to one heartbeat period after it subscribed", first)
+	}
+	if rec.status != http.StatusOK {
+		t.Fatalf("status at the commit = %d, want 200", rec.status)
+	}
+	for name, want := range map[string]string{
+		"X-Bunker-Op":          "watch",
+		"Content-Type":         "application/x-ndjson",
+		PushSubscriptionHeader: PushSubscriptionWholeTree,
+		"X-Bunker-Verdict":     string(VerdictOK),
+	} {
+		if got := rec.hdr.Get(name); got != want {
+			t.Fatalf("%s at the commit = %q, want %q", name, got, want)
+		}
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the handler did not return when its request context was cancelled")
+	}
+}

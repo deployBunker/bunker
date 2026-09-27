@@ -579,7 +579,11 @@ func (h *Handler) handleWatch(w http.ResponseWriter, r *http.Request, start time
 	defer release(PushReleaseContext)
 
 	// W-2: headers, then a line, then flush — the channel is committed before any
-	// event is waited for.
+	// event is waited for. The commit is FLUSHED here and not left to the first
+	// line's flush: a subscriber on a quiet tree must see its 200 and the
+	// declared bounds immediately, not after up to one heartbeat period of
+	// nothing (the no-fanout arm is what found this — with every line suppressed,
+	// the headers never left the server's buffer at all).
 	hdr := w.Header()
 	hdr.Set("Content-Type", "application/x-ndjson")
 	hdr.Set("X-Bunker-Op", "watch")
@@ -605,11 +609,27 @@ func (h *Handler) handleWatch(w http.ResponseWriter, r *http.Request, start time
 	// the connection's next one's).
 	defer func() { _ = rc.SetWriteDeadline(time.Time{}) }()
 	deadline := hub.cfg.writeDeadline
+	arm := func() error {
+		if !deadlineOK {
+			return nil
+		}
+		return rc.SetWriteDeadline(time.Now().Add(deadline))
+	}
+	// The commit is not the writer's job: the headers are flushed before the
+	// first line is even computed (W-2), and under the same deadline as every
+	// line — a client that stopped reading is found here too, which is why the
+	// commit cannot be left to the first line's flush.
+	if err := arm(); err != nil {
+		release(PushReleaseWriteDeadline)
+		return
+	}
+	if err := rc.Flush(); err != nil {
+		release(PushReleaseWriteDeadline)
+		return
+	}
 	writeLine := func(raw []byte) error {
-		if deadlineOK {
-			if err := rc.SetWriteDeadline(time.Now().Add(deadline)); err != nil {
-				return err
-			}
+		if err := arm(); err != nil {
+			return err
 		}
 		if _, err := w.Write(append(raw, '\n')); err != nil {
 			return err
