@@ -1,0 +1,88 @@
+BFS-010 PART 2 — what the merged Linux client requires at run time, measured
+===========================================================================
+Row       : BFS-010 (Windows + Mint)
+Date      : 2026-09-26 (host clock 20:44 -05)
+Host      : karaHermes-mde-7840hs, kernel 7.0.0-31-generic, go1.26.5 linux/amd64
+Tree      : worktree /home/kara/worktrees/bunker-BFS-010 at 57b12b7 + this row's edits
+Why       : the Mint question is "does the existing Linux build cover it?". The
+            answer follows from what the client actually needs AT MOUNT TIME, so
+            the mount path is traced rather than recited.
+How       : /tmp/bfs010/mint-evidence.sh — builds cmd/bunker + probes/davserve from
+            the tree, serves a 2-file fixture on loopback (plain HTTP/1.1, no TLS),
+            mounts under strace, lists, unmounts with a bounded `timeout 20
+            fusermount3 -u`, then kills davserve by explicit PID (never `pkill -f`).
+
+--- verbatim transcript -------------------------------------------------------
+
+== build ==
+built ok
+== binary linkage (is libfuse/glibc involved?) ==
+/tmp/bfs010/bin/bunker: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, Go BuildID=LYHwoPZGDqRqlyI2Txiv/TR-NQgqdiAHLgjEHj65k/uIq05WtVLj5WQypl9ZYA/Ana8lFH9j5vVo7r7iGvc, BuildID[sha1]=5759771aa38c79cd9448498a59bc67de9640f3f4, with debug_info, not stripped
+	linux-vdso.so.1 (0x000076c7d83c2000)
+	/usr/lib/x86_64-linux-gnu/libsnoopy.so (0x000076c7d83ab000)
+	libc.so.6 => /usr/lib/x86_64-linux-gnu/libc.so.6 (0x000076c7d8000000)
+	/lib64/ld-linux-x86-64.so.2 (0x000076c7d83c4000)
+== start davserve ==
+davserve pid=2802915
+== mount under strace ==
+-- mount.out --
+/usr/bin/fusermount3: mount failed: Operation not permitted
+bunker: bunker-fs: mount /tmp/bfs010/mnt: fusermount exited with code 256
+
+-- mount table --
+(not in /proc/mounts)
+-- listing through the mount --
+total 0
+== unmount (bounded) ==
+fusermount3: entry for /tmp/bfs010/mnt not found in /etc/mtab
+fusermount rc=1
+mount process rc=1
+== stop davserve by PID ==
+done
+== trace: which helper / device did the mount use? ==
+2802957 20:44:58.450380 execve("/usr/bin/fusermount3", ["/usr/bin/fusermount3", "/tmp/bfs010/mnt", "-o", "fsname=bunker-fs,subtype=bunker-"...], 0x1cc364aaa0d0 /* 1 var */) = 0
+2802957 20:44:58.452231 openat(AT_FDCWD, "/dev/fuse", O_RDWR) = 4
+== trace: mount(2) calls ==
+2802957 20:44:58.459641 mount("bunker-fs", ".", "fuse.bunker-fs", MS_NOSUID|MS_NODEV, "max_read=1048576,fd=4,rootmode=4"...) = -1 EPERM (Operation not permitted)
+
+--- the release build shape (CGO_ENABLED=0), measured separately --------------
+
+$ CGO_ENABLED=0 go build -o /tmp/bfs010/bin/bunker-static ./cmd/bunker
+$ file /tmp/bfs010/bin/bunker-static
+/tmp/bfs010/bin/bunker-static: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, Go BuildID=StxJ_MoBX06uvFOEeQfZ/Aqr-Hn9v0-KD0SY5Gve/xmVZuYfg_prVgzmZ5G-F/LBhdZ979TCKI0xlXWA66, BuildID[sha1]=2ebd79cb464f95bc2d4b1df9be5308285f26abda, with debug_info, not stripped
+$ env -u LD_PRELOAD ldd /tmp/bfs010/bin/bunker-static
+	not a dynamic executable
+
+  NOTE on the two linkage lines above: the FIRST build was `go build` with the
+  default CGO_ENABLED=1 (this host has a C toolchain), which links libc and shows
+  the session's own LD_PRELOAD object (libsnoopy.so — a host artifact, not this
+  binary's dependency). The release shape is CGO_ENABLED=0 (Makefile), and that is
+  the second measurement: STATIC, no libfuse, no libc, no interpreter.
+
+--- environment note (why no live mount in this transcript) -------------------
+
+  fusermount3 ran and the kernel refused the mount(2) with EPERM in THIS worker
+  session, so nothing was mounted and nothing is claimed to have been. Measured
+  about the sandbox: CapEff=0, Seccomp=0, NoNewPrivs=0, AppArmor label
+  `unconfined`, `/` not nosuid, and `unshare -rm` cannot write /proc/self/uid_map
+  either. It is not a client defect: the same mount path mounted successfully on
+  this host hours earlier in BFS-016 (its transcript shows live
+  `fuse.bunker-fs` mounts in /proc/mounts and a full 35-cell battery through
+  them). Attribution is OPEN — it is recorded, not diagnosed, exactly as BFS-011
+  §6.5 recorded its one flaky shutdown.
+
+  What this transcript DOES establish: the client's mount path is
+  /usr/bin/fusermount3 + /dev/fuse + mount(2) fuse.bunker-fs — the three things
+  §3 of the decision document turns the Mint verdict on — and a refused mount
+  leaves NOTHING behind (empty listing, absent from /proc/mounts, exit 1 in ~4 s).
+
+--- host facts the same session measured (for the Mint comparison) -----------
+
+$ ls -l /dev/fuse                 -> crw-rw-rw- 1 root root 10, 229
+$ fusermount3 --version           -> fusermount3 version: 3.18.2
+$ ls -l /usr/bin/fusermount       -> symlink -> fusermount3
+$ /bin/fusermount3                -> -rwsr-xr-x root root   (setuid helper)
+$ dpkg -S /usr/bin/fusermount3    -> fuse3: /usr/bin/fusermount3
+$ apt list --installed            -> fuse3/resolute,now 3.18.2-1 [installed,automatic]
+$ grep fuse /proc/filesystems     -> fuseblk / nodev fuse / nodev fusectl
+$ go version                      -> go version go1.26.5 linux/amd64

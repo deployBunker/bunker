@@ -1,0 +1,183 @@
+BFS-010 — the platform-seam guard, verbatim
+===========================================
+Row     : BFS-010 (Windows + Mint)
+Date    : 2026-09-26, 20:5x -05
+Host    : karaHermes-mde-7840hs, 16 cores, go1.26.5 linux/amd64
+Guard   : probes/cross-GOOS-build.sh (sha256 recorded in the transcript below)
+Why     : internal/fsmount/fs_unsupported.go claims to be "the platform seam
+          (BFS-010)" and did not compile for any non-Linux platform. Every build
+          and every test in this repo runs on Linux, where that file is not
+          compiled at all, so nothing could catch it. This is the check that does.
+Contents:
+  1. the guard's FIRST run, kept because it was WRONG — it reported the same
+     target as FAIL and then as GAP twelve lines apart (a `grep -q`/SIGPIPE race
+     in the guard itself, `pipefail` turning a matched gap into a failure). The
+     bug is fixed and the fix is commented in the script: a guard whose answer
+     depends on which side of a SIGPIPE it lost is worse than no guard.
+  2. three consecutive runs of the fixed guard, the first with --survey.
+  3. the environment note: sibling workers were running `go test` suites on this
+     host throughout (loadavg 30-38 on 16 cores), so no wall time here is a
+     measurement — the reported values are build OUTCOMES.
+
+==============================================================================
+1. THE GUARD'S FIRST RUN (wrong, kept as an instrument finding)
+==============================================================================
+
+cross-GOOS platform-seam guard (BFS-010)
+go               : go version go1.26.5 linux/amd64
+required targets : linux/amd64 linux/arm64 windows/amd64 windows/arm64
+known gaps (fixed by a named row, printed every run):
+  windows/amd64 -> github.com/deployBunker/bunker/internal/cli   (internal/cli/umount.go:272 syscall.Stat_t; see docs/evidence/BFS-010-windows-mint-decision.md)
+  windows/arm64 -> github.com/deployBunker/bunker/internal/cli   (internal/cli/umount.go:272 syscall.Stat_t; see docs/evidence/BFS-010-windows-mint-decision.md)
+
+TARGET           BUILD      VET internal/fsmount     RESULT
+---------------- ---------- ------------------------ ------
+linux/amd64      PASS       PASS                     ok
+linux/arm64      PASS       PASS                     ok
+windows/amd64    FAIL(cli)  PASS                     UNEXPECTED FAILURE
+windows/arm64    GAP(cli)   PASS                     ok
+
+--- build-linux-amd64 (verbatim) ---
+
+--- build-linux-arm64 (verbatim) ---
+
+--- build-windows-amd64 (verbatim) ---
+# github.com/deployBunker/bunker/internal/cli
+internal/cli/umount.go:272:25: undefined: syscall.Stat_t
+internal/cli/umount.go:273:20: undefined: syscall.Stat
+internal/cli/umount.go:277:20: undefined: syscall.Stat
+
+--- build-windows-arm64 (verbatim) ---
+# github.com/deployBunker/bunker/internal/cli
+internal/cli/umount.go:272:25: undefined: syscall.Stat_t
+internal/cli/umount.go:273:20: undefined: syscall.Stat
+internal/cli/umount.go:277:20: undefined: syscall.Stat
+
+== survey (informational; does not affect the exit status) ==
+  darwin/amd64     rc=1 github.com/deployBunker/bunker/internal/fsclient 
+  darwin/arm64     rc=1 github.com/deployBunker/bunker/internal/fsclient 
+  freebsd/amd64    rc=1 github.com/deployBunker/bunker/internal/fsclient 
+  openbsd/amd64    rc=1 github.com/deployBunker/bunker/internal/fsclient github.com/deployBunker/bunker/internal/server 
+  netbsd/amd64     rc=1 github.com/deployBunker/bunker/internal/fsclient github.com/deployBunker/bunker/internal/server 
+  solaris/amd64    rc=1 github.com/deployBunker/bunker/internal/fsclient github.com/deployBunker/bunker/internal/registry 
+  illumos/amd64    rc=1 github.com/deployBunker/bunker/internal/fsclient github.com/deployBunker/bunker/internal/server 
+  plan9/amd64      rc=1 github.com/deployBunker/bunker/internal/fsclient github.com/deployBunker/bunker/internal/mountdriver github.com/deployBunker/bunker/internal/registry 
+  js/wasm          rc=1 github.com/deployBunker/bunker/internal/fsclient github.com/deployBunker/bunker/internal/registry github.com/deployBunker/bunker/internal/tunnel 
+  (a platform outside REQUIRED that fails is a finding to file, not a red guard)
+
+RESULT: FAIL — a required target broke in a package that is not a listed gap
+
+==============================================================================
+2. THE FIXED GUARD: three consecutive runs (run 1 with --survey)
+==============================================================================
+
+registering the guard: probes/cross-GOOS-build.sh
+sha256: 6cb08c6db27c2c60a4c989aa6582d0c0bd68275487d3f2970ae1fd29f72a17bf
+host loadavg at start: 30.09 34.39 24.55 23/9402 3073965
+
+===== run 1: probes/cross-GOOS-build.sh --survey =====
+cross-GOOS platform-seam guard (BFS-010)
+go               : go version go1.26.5 linux/amd64
+required targets : linux/amd64 linux/arm64 windows/amd64 windows/arm64
+known gaps (fixed by a named row, printed every run):
+  windows/amd64 -> github.com/deployBunker/bunker/internal/cli   (internal/cli/umount.go:272 syscall.Stat_t; see docs/evidence/BFS-010-windows-mint-decision.md)
+  windows/arm64 -> github.com/deployBunker/bunker/internal/cli   (internal/cli/umount.go:272 syscall.Stat_t; see docs/evidence/BFS-010-windows-mint-decision.md)
+
+TARGET           BUILD      VET internal/fsmount     RESULT
+---------------- ---------- ------------------------ ------
+linux/amd64      PASS       PASS                     ok
+linux/arm64      PASS       PASS                     ok
+windows/amd64    GAP(cli)   PASS                     ok
+windows/arm64    GAP(cli)   PASS                     ok
+
+--- build-windows-amd64 (verbatim) ---
+# github.com/deployBunker/bunker/internal/cli
+internal/cli/umount.go:272:25: undefined: syscall.Stat_t
+internal/cli/umount.go:273:20: undefined: syscall.Stat
+internal/cli/umount.go:277:20: undefined: syscall.Stat
+
+--- build-windows-arm64 (verbatim) ---
+# github.com/deployBunker/bunker/internal/cli
+internal/cli/umount.go:272:25: undefined: syscall.Stat_t
+internal/cli/umount.go:273:20: undefined: syscall.Stat
+internal/cli/umount.go:277:20: undefined: syscall.Stat
+
+== survey (informational; does not affect the exit status) ==
+  darwin/amd64     rc=1 github.com/deployBunker/bunker/internal/fsclient 
+  darwin/arm64     rc=1 github.com/deployBunker/bunker/internal/fsclient 
+  freebsd/amd64    rc=1 github.com/deployBunker/bunker/internal/fsclient 
+  openbsd/amd64    rc=1 github.com/deployBunker/bunker/internal/fsclient github.com/deployBunker/bunker/internal/server 
+  netbsd/amd64     rc=1 github.com/deployBunker/bunker/internal/fsclient github.com/deployBunker/bunker/internal/server 
+  solaris/amd64    rc=1 github.com/deployBunker/bunker/internal/fsclient github.com/deployBunker/bunker/internal/registry 
+  illumos/amd64    rc=1 github.com/deployBunker/bunker/internal/fsclient github.com/deployBunker/bunker/internal/server 
+  plan9/amd64      rc=1 github.com/deployBunker/bunker/internal/fsclient github.com/deployBunker/bunker/internal/mountdriver github.com/deployBunker/bunker/internal/registry 
+  js/wasm          rc=1 github.com/deployBunker/bunker/internal/fsclient github.com/deployBunker/bunker/internal/registry github.com/deployBunker/bunker/internal/tunnel 
+  (a platform outside REQUIRED that fails is a finding to file, not a red guard)
+
+RESULT: PASS — every required target builds; the seam type-checks on all of them
+run 1 exit=0
+
+===== run 2: probes/cross-GOOS-build.sh (required set, determinism check) =====
+cross-GOOS platform-seam guard (BFS-010)
+go               : go version go1.26.5 linux/amd64
+required targets : linux/amd64 linux/arm64 windows/amd64 windows/arm64
+known gaps (fixed by a named row, printed every run):
+  windows/amd64 -> github.com/deployBunker/bunker/internal/cli   (internal/cli/umount.go:272 syscall.Stat_t; see docs/evidence/BFS-010-windows-mint-decision.md)
+  windows/arm64 -> github.com/deployBunker/bunker/internal/cli   (internal/cli/umount.go:272 syscall.Stat_t; see docs/evidence/BFS-010-windows-mint-decision.md)
+
+TARGET           BUILD      VET internal/fsmount     RESULT
+---------------- ---------- ------------------------ ------
+linux/amd64      PASS       PASS                     ok
+linux/arm64      PASS       PASS                     ok
+windows/amd64    GAP(cli)   PASS                     ok
+windows/arm64    GAP(cli)   PASS                     ok
+
+--- build-windows-amd64 (verbatim) ---
+# github.com/deployBunker/bunker/internal/cli
+internal/cli/umount.go:272:25: undefined: syscall.Stat_t
+internal/cli/umount.go:273:20: undefined: syscall.Stat
+internal/cli/umount.go:277:20: undefined: syscall.Stat
+
+--- build-windows-arm64 (verbatim) ---
+# github.com/deployBunker/bunker/internal/cli
+internal/cli/umount.go:272:25: undefined: syscall.Stat_t
+internal/cli/umount.go:273:20: undefined: syscall.Stat
+internal/cli/umount.go:277:20: undefined: syscall.Stat
+
+RESULT: PASS — every required target builds; the seam type-checks on all of them
+run 2 exit=0
+
+===== run 3: probes/cross-GOOS-build.sh (required set, determinism check) =====
+cross-GOOS platform-seam guard (BFS-010)
+go               : go version go1.26.5 linux/amd64
+required targets : linux/amd64 linux/arm64 windows/amd64 windows/arm64
+known gaps (fixed by a named row, printed every run):
+  windows/amd64 -> github.com/deployBunker/bunker/internal/cli   (internal/cli/umount.go:272 syscall.Stat_t; see docs/evidence/BFS-010-windows-mint-decision.md)
+  windows/arm64 -> github.com/deployBunker/bunker/internal/cli   (internal/cli/umount.go:272 syscall.Stat_t; see docs/evidence/BFS-010-windows-mint-decision.md)
+
+TARGET           BUILD      VET internal/fsmount     RESULT
+---------------- ---------- ------------------------ ------
+linux/amd64      PASS       PASS                     ok
+linux/arm64      PASS       PASS                     ok
+windows/amd64    GAP(cli)   PASS                     ok
+windows/arm64    GAP(cli)   PASS                     ok
+
+--- build-windows-amd64 (verbatim) ---
+# github.com/deployBunker/bunker/internal/cli
+internal/cli/umount.go:272:25: undefined: syscall.Stat_t
+internal/cli/umount.go:273:20: undefined: syscall.Stat
+internal/cli/umount.go:277:20: undefined: syscall.Stat
+
+--- build-windows-arm64 (verbatim) ---
+# github.com/deployBunker/bunker/internal/cli
+internal/cli/umount.go:272:25: undefined: syscall.Stat_t
+internal/cli/umount.go:273:20: undefined: syscall.Stat
+internal/cli/umount.go:277:20: undefined: syscall.Stat
+
+RESULT: PASS — every required target builds; the seam type-checks on all of them
+run 3 exit=0
+
+host loadavg at end: 35.10 35.15 25.06 47/9375 3093801
+NOTE: sibling workers were running go test suites on this host throughout
+      (loadavg ~38 on 16 cores), so build WALL times here are inflated; the
+      results reported are build outcomes, not timings.

@@ -6,9 +6,11 @@
 //
 //   - fs_linux.go        (//go:build linux)  — the go-fuse node tree and Mount().
 //     BFS-003 §2 chose go-fuse (pure Go, CGO_ENABLED=0) for Linux.
-//   - fs_unsupported.go  (//go:build !linux) — Mount() refuses with a named,
-//     non-silent error pointing at BFS-010 (WinFsp driven from Go through
-//     cgofuse), rather than failing to compile or pretending to mount.
+//   - fs_unsupported.go  (//go:build !linux) — MountAt() refuses with a named,
+//     non-silent error naming the platform, rather than failing to compile or
+//     pretending to mount. A Windows binding (decided: WinFsp driven from Go
+//     through cgofuse, docs/evidence/BFS-010-windows-mint-decision.md) plugs in
+//     here; nothing in this build implements it.
 //
 // Everything in THIS file is OS-neutral on purpose — options, the mountpoint
 // posture, the mount identity and the status document — so a future Windows
@@ -96,10 +98,27 @@ type Options struct {
 	Logf func(format string, args ...any)
 }
 
-// ErrPlatformUnsupported is returned by Mount on a platform this build has no
-// binding for. It is a named refusal, not a silent no-op: BFS-010 is the row
-// that delivers Windows (WinFsp via cgofuse).
-var ErrPlatformUnsupported = errors.New("bunker-fs: no FUSE binding on this platform (BFS-010 delivers Windows via WinFsp/cgofuse)")
+// ErrPlatformUnsupported is returned by MountAt on a platform this build has no
+// binding for. It is a named refusal, not a silent no-op.
+//
+// ONE PHRASE IN IT IS LOAD-BEARING: "no fuse binding on this platform" is the
+// fragment internal/mountdriver classifies as a PERMANENT mount failure
+// (bunkerFSpermanentFragments, internal/mountdriver/bunkerfs.go). Only
+// "transient" is retried by the mount loop (internal/mountdriver/mountdriver.go:
+// the FailureClassifier doc), so a reworded sentence would not be retried either —
+// it would fall through to the classifier's `unknown` default, whose stated meaning
+// is "the output carried no recognised signal". That is the difference this phrase
+// buys: an ANSWER ("retrying cannot help") instead of an absence of one. Reword this
+// sentence and that table has to change with it;
+// internal/mountdriver/platform_refusal_test.go asserts the coupling and fails on
+// exactly that mutation.
+//
+// The message states the situation and the way out; it does NOT promise a
+// delivery. The Windows decision — WinFsp driven from Go through cgofuse, opt-in,
+// sshfs stays the default until it lands — is recorded with its costs and
+// verification plan in docs/evidence/BFS-010-windows-mint-decision.md and
+// implements nothing.
+var ErrPlatformUnsupported = errors.New("bunker-fs: no FUSE binding on this platform (use the default sshfs driver, or a stock WebDAV client, until a Windows binding lands)")
 
 // ErrPrivateMountpoint is returned when the mountpoint cannot be made private.
 var ErrPrivateMountpoint = errors.New("bunker-fs: mountpoint must be private (0700)")
