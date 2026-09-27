@@ -118,6 +118,12 @@ op timed exactly as the original times it), the exit **class**, and the **stall 
 against BFS-016's loopback run. Same-side verification cells are recorded in their **own** `verify` section
 so they cannot disturb the measured rows.
 
+**This is checked, not asserted:** `BFS-034-probes/shape-check.sh` extracts every measured cell from both
+files as `section,op` in file order, diffs the two lists, and compares the classifier body. Output in
+`BFS-034-shape-check.txt`: `35` cells each, `IDENTICAL (section, op) list in the SAME ORDER : YES`,
+`classify() (the stall classification) byte-identical : YES`, and the only WAN-only CSV sections are
+`control` and `verify` — both new work, neither a measurement.
+
 ### Changed, deliberately, and named
 * every "server side" read is a read of the **side** (ssh when remote) — the point of the file;
 * each mount gets its **own** `--cache-dir`, and the counters/status/conflict log are read from that

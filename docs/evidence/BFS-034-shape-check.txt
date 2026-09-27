@@ -1,0 +1,11 @@
+original measured cells : 35
+wan      measured cells : 35
+IDENTICAL (section, op) list in the SAME ORDER : YES
+
+the WAN-only CSV sections (new work, NOT measurements):
+  control
+  verify
+
+classify() (the stall classification) byte-identical : YES
+
+verdict: the measured shape is unchanged
