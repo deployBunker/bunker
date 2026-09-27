@@ -201,8 +201,33 @@ agent:
   # a port collision. The startup log line names the reason ("adopt failed,
   # destroying orphan instead" / "no readable port metadata at ...").
   # Env override: BUNKERD_AGENT_RECONCILIATION_MODE.
+  #
+  # REV-BUNKER-P1-PATCH: the boot-time bulk-destroy GUARD. The orphan walk is
+  # correct, but until this guard existed nothing asked whether the pass had any
+  # standing to act: a registry file that does not exist is created EMPTY, so a
+  # daemon booting without durable state replays live=0 and recognises every
+  # bunker-* user on the host as an orphan of its own. Run as root — the
+  # documented deployment — that walk archives each home and deletes the user.
+  #
+  # The guard refuses the whole sweep (destroys NOTHING, counts the refusal,
+  # logs the reason and the remedy) when the registry cannot vouch for the host
+  # AND the sweep would remove more than unproven_orphan_limit users:
+  #   unproven_orphan_limit      how many unproven orphans a sweep may remove.
+  #                              DEFAULT 3 — below it a handful of genuine
+  #                              leftovers still sweeps; at or above it a real
+  #                              deployment is protected (this project's
+  #                              production host runs five agents, so a limit of
+  #                              5 would sweep it). 0 refuses every unproven
+  #                              sweep; there is no "unlimited" value.
+  #   orphan_sweep_guard_disabled  turn the guard OFF entirely (loudly warned at
+  #                              boot). Deliberate and greppable: it is the only
+  #                              way an unproven mass sweep may proceed again.
+  # Env overrides: BUNKERD_AGENT_RECONCILIATION_UNPROVEN_ORPHAN_LIMIT,
+  #                BUNKERD_AGENT_RECONCILIATION_ORPHAN_SWEEP_GUARD_DISABLED.
   reconciliation:
     mode: destroy
+    unproven_orphan_limit: 3
+    # orphan_sweep_guard_disabled: false
 
 # Per-agent image customization (GAP-064): secure package-add specs on spawn.
 # image_spec:
