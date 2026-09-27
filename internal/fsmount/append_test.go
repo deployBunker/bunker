@@ -39,6 +39,19 @@ import (
 
 const appendTarget = "target.txt"
 
+// testMountAppend is testMount with the mount's OWN directory set. The append
+// buffer lives in that directory, and a cell that makes a claim about the buffer
+// has to be able to LOOK at it: with the directory left empty the buffer is created
+// in the default temp directory, the glob finds nothing, and the cell passes no
+// matter what the buffer is called. (The mutation arm `named-buffer` is what caught
+// that — the cell stayed green while the buffer kept its name.)
+func testMountAppend(t *testing.T, body string) (*Mount, string) {
+	t.Helper()
+	m, target := testMount(t, body)
+	m.dir = t.TempDir()
+	return m, target
+}
+
 // openAppend performs what the kernel does for `>>`: Open with O_WRONLY|O_APPEND.
 // The handle it returns is the READ handle (BFS-030 measured that, and changing it
 // would refuse reads through an O_RDWR handle, a capability that works today) —
@@ -82,7 +95,7 @@ func namedWriteBuffers(t *testing.T, dir string) []string {
 // becomes a landed append, and the read-back is byte-for-byte the original plus
 // the tail.
 func TestAppendThroughAnAppendHandleLandsTheBytes(t *testing.T) {
-	m, target := testMount(t, boundTestLong)
+	m, target := testMountAppend(t, boundTestLong)
 	before := m.client.Requests()
 	tail := []byte("\nAPPENDED-TAIL\n")
 
@@ -141,7 +154,7 @@ func TestAppendThroughAnAppendHandleLandsTheBytes(t *testing.T) {
 // content the server already holds, the surface answers its own reported no-op and
 // the mtime does not move (BFS-039's rule).
 func TestARetriedAppendChunkAtTheSameOffsetDoesNotDoubleApply(t *testing.T) {
-	m, target := testMount(t, boundTestLong)
+	m, target := testMountAppend(t, boundTestLong)
 	h := openAppend(t, m, appendTarget)
 	tail := []byte("\nRETRIED-TAIL\n")
 	off := int64(len(boundTestLong))
@@ -196,7 +209,7 @@ func TestARetriedAppendChunkAtTheSameOffsetDoesNotDoubleApply(t *testing.T) {
 // to content the caller never saw. The refusal HOLDS (BFS-033), and the documented
 // recovery (a caller read, then retry) works.
 func TestAStaleBaseRefusesTheAppendAndNothingLands(t *testing.T) {
-	m, target := testMount(t, boundTestLong)
+	m, target := testMountAppend(t, boundTestLong)
 	base := []byte(boundTestLong)
 	tail := []byte("APPENDED\n")
 
@@ -265,7 +278,7 @@ func TestAnAppendAboveTheBoundIsRefusedLoudlyAndWritesNothing(t *testing.T) {
 	t.Run("the write crosses the bound", func(t *testing.T) {
 		appendBound = 20
 		base := []byte("0123456789")
-		m, target := testMount(t, string(base))
+		m, target := testMountAppend(t, string(base))
 		beforeReqs := m.client.Requests()
 		h := openAppend(t, m, appendTarget)
 		// 10 bytes of base fit (one GET), 15 more do not.
@@ -288,7 +301,7 @@ func TestAnAppendAboveTheBoundIsRefusedLoudlyAndWritesNothing(t *testing.T) {
 
 	t.Run("the file is already above the bound", func(t *testing.T) {
 		appendBound = 40
-		m, target := testMount(t, boundTestLong) // 82 bytes
+		m, target := testMountAppend(t, boundTestLong) // 82 bytes
 		before := fileBytes(t, target)
 		beforeReqs := m.client.Requests()
 		h := openAppend(t, m, appendTarget)
@@ -323,10 +336,9 @@ func detailOf(t *testing.T, h *readHandle) string {
 // TestAWriteThroughANonAppendHandleIsStillRefused is the ATTRIBUTION cell for this
 // row's whole change: serving append must not start serving every write. `r+b` on
 // an existing path is refused with EOPNOTSUPP — byte-for-byte the errno go-fuse's
-// bridge answered before node.Write existed — and BFS-030's resize refusal still
-// holds while a write-intent handle (an O_APPEND open is one) is live.
+// bridge answered before node.Write existed — and nothing is sent.
 func TestAWriteThroughANonAppendHandleIsStillRefused(t *testing.T) {
-	m, target := testMount(t, boundTestLong)
+	m, target := testMountAppend(t, boundTestLong)
 	before := fileBytes(t, target)
 	beforeReqs := m.client.Requests()
 
@@ -347,13 +359,17 @@ func TestAWriteThroughANonAppendHandleIsStillRefused(t *testing.T) {
 	if got := fileBytes(t, target); !bytes.Equal(got, before) {
 		t.Fatalf("a refused in-place write changed the target: %q", got)
 	}
-	// BFS-030's rule, unchanged: the destructive half of a rewrite is refused
-	// while a write-intent handle is live on the path.
-	if errno := setattrSize(t, m, appendTarget, fh, 0); errno != fsclient.ErrnoEOPNOTSUPP {
-		t.Fatalf("BFS-030's resize refusal must be unchanged, got errno=%v", errno)
-	}
-	// ...including while an APPEND handle is live, which is the new write-intent
-	// shape this row adds.
+}
+
+// TestAResizeWithAnAppendHandleLiveIsStillRefused keeps BFS-030's rule intact under
+// the NEW write-intent shape this row adds: an append handle is a live handle opened
+// for writing, so the destructive half of an in-place rewrite is still refused on
+// that path — and a refused resize still leaves the file byte-identical.
+func TestAResizeWithAnAppendHandleLiveIsStillRefused(t *testing.T) {
+	m, target := testMountAppend(t, boundTestLong)
+	before := fileBytes(t, target)
+	beforeReqs := m.client.Requests()
+
 	ah := openAppend(t, m, appendTarget)
 	defer func() { _ = ah.Release(context.Background()) }()
 	if errno := setattrSize(t, m, appendTarget, nil, 0); errno != fsclient.ErrnoEOPNOTSUPP {
@@ -361,6 +377,12 @@ func TestAWriteThroughANonAppendHandleIsStillRefused(t *testing.T) {
 	}
 	if got := fileBytes(t, target); !bytes.Equal(got, before) {
 		t.Fatalf("a refused resize changed the target: %q", got)
+	}
+	if delta := m.client.Requests() - beforeReqs; delta != 0 {
+		t.Fatalf("the resize refusal must publish nothing, the client made %d request(s)", delta)
+	}
+	if got := m.Status().WriteShape.RefusalsTotal; got != 1 {
+		t.Fatalf("the resize refusal must be counted on the owner-facing surface, got %d", got)
 	}
 }
 
@@ -377,7 +399,7 @@ func TestAWriteThroughANonAppendHandleIsStillRefused(t *testing.T) {
 // caller's later chunks were dropped, and the shell still exited 0. The base
 // therefore advances with every publication, and this cell pins it.
 func TestALaterPublicationOnTheSameHandleCarriesTheEarlierOnesBytes(t *testing.T) {
-	m, target := testMount(t, boundTestShort)
+	m, target := testMountAppend(t, boundTestShort)
 	h := openAppend(t, m, appendTarget)
 	first := []byte("-one")
 	second := []byte("-two")
@@ -421,7 +443,7 @@ func TestALaterPublicationOnTheSameHandleCarriesTheEarlierOnesBytes(t *testing.T
 func TestAReaderDuringAnAppendSeesAWholeContentNeverATear(t *testing.T) {
 	const appends = 40
 	base := []byte(boundTestLong)
-	m, target := testMount(t, string(base))
+	m, target := testMountAppend(t, string(base))
 
 	// Every complete state is known up front, so a torn read is a hash that is in
 	// no state at all rather than something the assertion has to guess.
@@ -505,7 +527,7 @@ func TestAReaderDuringAnAppendSeesAWholeContentNeverATear(t *testing.T) {
 // directory shows no named buffer even while the handle holds one, which is what
 // makes a killed appender leave nothing behind.
 func TestACancelledAppendIsRetryableAppliesOnceAndLeavesNoResidue(t *testing.T) {
-	m, target := testMount(t, boundTestLong)
+	m, target := testMountAppend(t, boundTestLong)
 	h := openAppend(t, m, appendTarget)
 	tail := []byte("\nCANCELLED-THEN-RETRIED\n")
 	off := int64(len(boundTestLong))
@@ -557,7 +579,7 @@ func TestACancelledAppendIsRetryableAppliesOnceAndLeavesNoResidue(t *testing.T) 
 // publish the destructive half of a rewrite. The trace is the caller's view — the
 // write is accepted, and the file's size only ever grows by the bytes written.
 func TestAppendIsServedWithoutPublishingASizeCarryingSetattr(t *testing.T) {
-	m, target := testMount(t, boundTestShort) // 5 bytes
+	m, target := testMountAppend(t, boundTestShort) // 5 bytes
 	h := openAppend(t, m, appendTarget)
 	tail := []byte("XYZ")
 	before := m.client.Requests()

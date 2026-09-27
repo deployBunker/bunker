@@ -97,7 +97,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", required=True,
                     choices=["sh", "fd", "ab", "rdwr", "multi", "new", "pwrite", "reader",
-                             "rplus", "trunc"])
+                             "rplus", "trunc", "cost"])
     ap.add_argument("--expect", required=True, choices=["loss", "silent", "ok"])
     ap.add_argument("--mount", default=os.environ.get("MNT", ""))
     ap.add_argument("--tree", default=os.environ.get("TREE", ""))
@@ -184,6 +184,52 @@ def main() -> int:
     # ---------------------------------------------------------------- every other mode
     if args.mode == "reader":
         return reader_arm(args, check, report, read_back, server, seed)
+
+    if args.mode == "cost":
+        # THE SUCCESSFUL PATH, as a number: N appends of one small tail to the same
+        # file, each its own open/write/close — the `>>` shape a log or a shell uses.
+        # An append is served by read-modify-publish, so the figure to read beside
+        # the latency is the BYTES PUBLISHED: the whole file per append.
+        n = int(os.environ.get("COST_APPENDS", "50"))
+        t_first = time.monotonic()
+        times: list[float] = []
+        for _ in range(n):
+            t0 = time.monotonic()
+            fd = os.open(mnt_target, os.O_WRONLY | os.O_APPEND)
+            os.write(fd, TAIL)
+            os.close(fd)
+            times.append((time.monotonic() - t0) * 1000)
+        total = (time.monotonic() - t_first) * 1000
+        time.sleep(0.5)
+        srv = server()
+        reqs = [r for r in requests(args.run_dir) if r.get("path", "").endswith(TARGET)]
+        puts = [r for r in reqs if r.get("method") == "PUT"]
+        gets = [r for r in reqs if r.get("method") == "GET"]
+        st = times[len(times) // 2]
+        report("mode", "cost")
+        report("appends", n)
+        report("file_bytes_start", len(BASE))
+        report("file_bytes_final", len(srv))
+        report("ms_total", f"{total:.0f}")
+        report("ms_median", f"{st:.2f}")
+        report("ms_mean", f"{sum(times) / len(times):.2f}")
+        report("ms_p95", f"{sorted(times)[int(len(times) * 0.95)]:.2f}")
+        report("ms_min", f"{min(times):.2f}")
+        report("ms_max", f"{max(times):.2f}")
+        report("requests_put", len(puts))
+        report("requests_get", len(gets))
+        report("bytes_put", sum(int(r.get("req_bytes") or 0) for r in puts))
+        report("bytes_get", sum(int(r.get("resp_bytes") or 0) for r in gets))
+        print(f"  {n} appends to one file   : {total:.0f} ms total, {st:.2f} ms median, {sum(times)/len(times):.2f} ms mean")
+        print(f"  file                      : {len(BASE)} B -> {len(srv)} B, sha256={sha(srv)[:16]}…")
+        print(f"  wire                      : {len(puts)} PUT ({sum(int(r.get('req_bytes') or 0) for r in puts)} B published), {len(gets)} GET")
+        check(len(srv) == len(BASE) + n * len(TAIL), "every append landed: the file grew by exactly N tails")
+        check(srv.count(TAIL) == n, f"each tail landed exactly once, saw {srv.count(TAIL)}")
+        check(len(puts) == n, f"one publication per append, saw {len(puts)}")
+        print()
+        print(f"RESULT: append costs ONE GET + ONE whole-file PUT, {st:.2f} ms median per append "
+              f"({sum(int(r.get('req_bytes') or 0) for r in puts)} B published for {n * len(TAIL)} B appended)")
+        return rc
 
     if args.mode == "pwrite":
         # a second write at the SAME offset: the caller's retry. Reported.

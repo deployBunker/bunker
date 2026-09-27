@@ -1,0 +1,262 @@
+
+================================================================================
+BFS-021 RED-PROOF ARMS — one source mutation per cell, declared RED and declared-green sets
+================================================================================
+================================================================================
+GREEN — the tree as committed: every claiming cell must PASS
+================================================================================
+  ALL     -run ^(TestAppendThroughAnAppendHandleLandsTheBytes|TestARetriedAppendChunkAtTheSameOffsetDoesNotDoubleApply|TestAStaleBaseRefusesTheAppendAndNothingLands|TestAnAppendAboveTheBoundIsRefusedLoudlyAndWritesNothing|TestAWriteThroughANonAppendHandleIsStillRefused|TestAResizeWithAnAppendHandleLiveIsStillRefused|TestALaterPublicationOnTheSameHandleCarriesTheEarlierOnesBytes|TestAReaderDuringAnAppendSeesAWholeContentNeverATear|TestACancelledAppendIsRetryableAppliesOnceAndLeavesNoResidue|TestAppendIsServedWithoutPublishingASizeCarryingSetattr)$ rc=0
+      --- PASS: TestAppendThroughAnAppendHandleLandsTheBytes (0.01s)
+      --- PASS: TestARetriedAppendChunkAtTheSameOffsetDoesNotDoubleApply (0.01s)
+      --- PASS: TestAStaleBaseRefusesTheAppendAndNothingLands (0.01s)
+      --- PASS: TestAnAppendAboveTheBoundIsRefusedLoudlyAndWritesNothing (0.01s)
+      --- PASS: TestAWriteThroughANonAppendHandleIsStillRefused (0.00s)
+      --- PASS: TestAResizeWithAnAppendHandleLiveIsStillRefused (0.00s)
+      --- PASS: TestALaterPublicationOnTheSameHandleCarriesTheEarlierOnesBytes (0.02s)
+      --- PASS: TestAReaderDuringAnAppendSeesAWholeContentNeverATear (0.29s)
+      --- PASS: TestACancelledAppendIsRetryableAppliesOnceAndLeavesNoResidue (0.02s)
+      --- PASS: TestAppendIsServedWithoutPublishingASizeCarryingSetattr (0.02s)
+      PASS
+      ok  	github.com/deployBunker/bunker/internal/fsmount	0.410s
+  BFS-030 -run ^TestResizeThroughAWriteHandleIsRefusedBeforeItPublishes$ rc=0
+      --- PASS: TestResizeThroughAWriteHandleIsRefusedBeforeItPublishes (0.00s)
+      PASS
+      ok  	github.com/deployBunker/bunker/internal/fsmount	0.012s
+
+TOTAL: every declared outcome met (0 arm failures)
+
+================================================================================
+MUTATION write-not-dispatched
+  RED (must FAIL)  = ^(TestAppendThroughAnAppendHandleLandsTheBytes)$
+  GREEN (must PASS)= ^(TestAWriteThroughANonAppendHandleIsStillRefused|TestResizeThroughAWriteHandleIsRefusedBeforeItPublishes)$
+================================================================================
+  applied. changed files: internal/fsmount/append_test.go internal/fsmount/fs_linux.go 
+  the mutated tree compiles
+  RED   -run ^(TestAppendThroughAnAppendHandleLandsTheBytes)$ rc=1
+      --- FAIL: TestAppendThroughAnAppendHandleLandsTheBytes (0.00s)
+      FAIL
+      FAIL	github.com/deployBunker/bunker/internal/fsmount	0.010s
+      FAIL
+  RED confirmed: the mutation reddens the cell it is aimed at
+  GREEN -run ^(TestAWriteThroughANonAppendHandleIsStillRefused|TestResizeThroughAWriteHandleIsRefusedBeforeItPublishes)$ rc=0
+      --- PASS: TestAWriteThroughANonAppendHandleIsStillRefused (0.00s)
+      --- PASS: TestResizeThroughAWriteHandleIsRefusedBeforeItPublishes (0.00s)
+      PASS
+      ok  	github.com/deployBunker/bunker/internal/fsmount	0.011s
+  attribution confirmed: the named cells stay GREEN
+  restore: sha256 byte-identical for 3 file(s)
+
+================================================================================
+MUTATION chunk-applied-at-the-end
+  RED (must FAIL)  = ^(TestARetriedAppendChunkAtTheSameOffsetDoesNotDoubleApply)$
+  GREEN (must PASS)= ^(TestAppendThroughAnAppendHandleLandsTheBytes|TestAWriteThroughANonAppendHandleIsStillRefused)$
+================================================================================
+  applied. changed files: internal/fsmount/append.go internal/fsmount/append_test.go 
+  the mutated tree compiles
+  RED   -run ^(TestARetriedAppendChunkAtTheSameOffsetDoesNotDoubleApply)$ rc=1
+      --- FAIL: TestARetriedAppendChunkAtTheSameOffsetDoesNotDoubleApply (0.03s)
+      FAIL
+      FAIL	github.com/deployBunker/bunker/internal/fsmount	0.038s
+      FAIL
+  RED confirmed: the mutation reddens the cell it is aimed at
+  GREEN -run ^(TestAppendThroughAnAppendHandleLandsTheBytes|TestAWriteThroughANonAppendHandleIsStillRefused)$ rc=0
+      --- PASS: TestAppendThroughAnAppendHandleLandsTheBytes (0.01s)
+      --- PASS: TestAWriteThroughANonAppendHandleIsStillRefused (0.00s)
+      PASS
+      ok  	github.com/deployBunker/bunker/internal/fsmount	0.019s
+  attribution confirmed: the named cells stay GREEN
+  restore: sha256 byte-identical for 3 file(s)
+
+================================================================================
+MUTATION size-follows-the-write-not-the-offset
+  RED (must FAIL)  = ^(TestARetriedAppendChunkAtTheSameOffsetDoesNotDoubleApply)$
+  GREEN (must PASS)= ^(TestAppendThroughAnAppendHandleLandsTheBytes|TestAWriteThroughANonAppendHandleIsStillRefused)$
+================================================================================
+  applied. changed files: internal/fsmount/append.go internal/fsmount/append_test.go 
+  the mutated tree compiles
+  RED   -run ^(TestARetriedAppendChunkAtTheSameOffsetDoesNotDoubleApply)$ rc=1
+      --- FAIL: TestARetriedAppendChunkAtTheSameOffsetDoesNotDoubleApply (0.01s)
+      FAIL
+      FAIL	github.com/deployBunker/bunker/internal/fsmount	0.015s
+      FAIL
+  RED confirmed: the mutation reddens the cell it is aimed at
+  GREEN -run ^(TestAppendThroughAnAppendHandleLandsTheBytes|TestAWriteThroughANonAppendHandleIsStillRefused)$ rc=0
+      --- PASS: TestAppendThroughAnAppendHandleLandsTheBytes (0.03s)
+      --- PASS: TestAWriteThroughANonAppendHandleIsStillRefused (0.00s)
+      PASS
+      ok  	github.com/deployBunker/bunker/internal/fsmount	0.034s
+  attribution confirmed: the named cells stay GREEN
+  restore: sha256 byte-identical for 3 file(s)
+
+================================================================================
+MUTATION publication-bypasses-the-refusal-hold
+  RED (must FAIL)  = ^(TestAStaleBaseRefusesTheAppendAndNothingLands)$
+  GREEN (must PASS)= ^(TestAppendThroughAnAppendHandleLandsTheBytes|TestAWriteThroughANonAppendHandleIsStillRefused)$
+================================================================================
+  applied. changed files: internal/fsmount/append.go internal/fsmount/append_test.go 
+  the mutated tree compiles
+  RED   -run ^(TestAStaleBaseRefusesTheAppendAndNothingLands)$ rc=1
+      --- FAIL: TestAStaleBaseRefusesTheAppendAndNothingLands (0.01s)
+      FAIL
+      FAIL	github.com/deployBunker/bunker/internal/fsmount	0.017s
+      FAIL
+  RED confirmed: the mutation reddens the cell it is aimed at
+  GREEN -run ^(TestAppendThroughAnAppendHandleLandsTheBytes|TestAWriteThroughANonAppendHandleIsStillRefused)$ rc=0
+      --- PASS: TestAppendThroughAnAppendHandleLandsTheBytes (0.02s)
+      --- PASS: TestAWriteThroughANonAppendHandleIsStillRefused (0.00s)
+      PASS
+      ok  	github.com/deployBunker/bunker/internal/fsmount	0.023s
+  attribution confirmed: the named cells stay GREEN
+  restore: sha256 byte-identical for 3 file(s)
+
+================================================================================
+MUTATION bound-not-enforced
+  RED (must FAIL)  = ^(TestAnAppendAboveTheBoundIsRefusedLoudlyAndWritesNothing)$
+  GREEN (must PASS)= ^(TestAppendThroughAnAppendHandleLandsTheBytes|TestAWriteThroughANonAppendHandleIsStillRefused)$
+================================================================================
+  applied. changed files: internal/fsmount/append.go internal/fsmount/append_test.go 
+  the mutated tree compiles
+  RED   -run ^(TestAnAppendAboveTheBoundIsRefusedLoudlyAndWritesNothing)$ rc=1
+      --- FAIL: TestAnAppendAboveTheBoundIsRefusedLoudlyAndWritesNothing (0.01s)
+      FAIL
+      FAIL	github.com/deployBunker/bunker/internal/fsmount	0.013s
+      FAIL
+  RED confirmed: the mutation reddens the cell it is aimed at
+  GREEN -run ^(TestAppendThroughAnAppendHandleLandsTheBytes|TestAWriteThroughANonAppendHandleIsStillRefused)$ rc=0
+      --- PASS: TestAppendThroughAnAppendHandleLandsTheBytes (0.01s)
+      --- PASS: TestAWriteThroughANonAppendHandleIsStillRefused (0.00s)
+      PASS
+      ok  	github.com/deployBunker/bunker/internal/fsmount	0.019s
+  attribution confirmed: the named cells stay GREEN
+  restore: sha256 byte-identical for 3 file(s)
+
+================================================================================
+MUTATION any-write-intent-open-is-an-append
+  RED (must FAIL)  = ^(TestAWriteThroughANonAppendHandleIsStillRefused)$
+  GREEN (must PASS)= ^(TestAppendThroughAnAppendHandleLandsTheBytes|TestAResizeWithAnAppendHandleLiveIsStillRefused|TestResizeThroughAWriteHandleIsRefusedBeforeItPublishes)$
+================================================================================
+  applied. changed files: internal/fsmount/append_test.go internal/fsmount/fs_linux.go 
+  the mutated tree compiles
+  RED   -run ^(TestAWriteThroughANonAppendHandleIsStillRefused)$ rc=1
+      --- FAIL: TestAWriteThroughANonAppendHandleIsStillRefused (0.01s)
+      FAIL
+      FAIL	github.com/deployBunker/bunker/internal/fsmount	0.014s
+      FAIL
+  RED confirmed: the mutation reddens the cell it is aimed at
+  GREEN -run ^(TestAppendThroughAnAppendHandleLandsTheBytes|TestAResizeWithAnAppendHandleLiveIsStillRefused|TestResizeThroughAWriteHandleIsRefusedBeforeItPublishes)$ rc=0
+      --- PASS: TestAppendThroughAnAppendHandleLandsTheBytes (0.01s)
+      --- PASS: TestAResizeWithAnAppendHandleLiveIsStillRefused (0.01s)
+      --- PASS: TestResizeThroughAWriteHandleIsRefusedBeforeItPublishes (0.00s)
+      PASS
+      ok  	github.com/deployBunker/bunker/internal/fsmount	0.026s
+  attribution confirmed: the named cells stay GREEN
+  restore: sha256 byte-identical for 3 file(s)
+
+================================================================================
+MUTATION commit-in-place-instead-of-rename
+  RED (must FAIL)  = ^(TestAReaderDuringAnAppendSeesAWholeContentNeverATear)$
+  GREEN (must PASS)= ^(TestAppendThroughAnAppendHandleLandsTheBytes|TestAWriteThroughANonAppendHandleIsStillRefused)$
+================================================================================
+  applied. changed files: internal/fsmount/append_test.go internal/server/webdav/tree.go 
+  the mutated tree compiles
+  RED   -run ^(TestAReaderDuringAnAppendSeesAWholeContentNeverATear)$ rc=1
+      --- FAIL: TestAReaderDuringAnAppendSeesAWholeContentNeverATear (0.59s)
+      FAIL
+      FAIL	github.com/deployBunker/bunker/internal/fsmount	0.599s
+      FAIL
+  RED confirmed: the mutation reddens the cell it is aimed at
+  GREEN -run ^(TestAppendThroughAnAppendHandleLandsTheBytes|TestAWriteThroughANonAppendHandleIsStillRefused)$ rc=0
+      --- PASS: TestAppendThroughAnAppendHandleLandsTheBytes (0.02s)
+      --- PASS: TestAWriteThroughANonAppendHandleIsStillRefused (0.00s)
+      PASS
+      ok  	github.com/deployBunker/bunker/internal/fsmount	0.029s
+  attribution confirmed: the named cells stay GREEN
+  restore: sha256 byte-identical for 3 file(s)
+
+================================================================================
+MUTATION base-does-not-advance
+  RED (must FAIL)  = ^(TestALaterPublicationOnTheSameHandleCarriesTheEarlierOnesBytes)$
+  GREEN (must PASS)= ^(TestAppendThroughAnAppendHandleLandsTheBytes|TestAWriteThroughANonAppendHandleIsStillRefused)$
+================================================================================
+  applied. changed files: internal/fsmount/append.go internal/fsmount/append_test.go 
+  the mutated tree compiles
+  RED   -run ^(TestALaterPublicationOnTheSameHandleCarriesTheEarlierOnesBytes)$ rc=1
+      --- FAIL: TestALaterPublicationOnTheSameHandleCarriesTheEarlierOnesBytes (0.02s)
+      FAIL
+      FAIL	github.com/deployBunker/bunker/internal/fsmount	0.019s
+      FAIL
+  RED confirmed: the mutation reddens the cell it is aimed at
+  GREEN -run ^(TestAppendThroughAnAppendHandleLandsTheBytes|TestAWriteThroughANonAppendHandleIsStillRefused)$ rc=0
+      --- PASS: TestAppendThroughAnAppendHandleLandsTheBytes (0.01s)
+      --- PASS: TestAWriteThroughANonAppendHandleIsStillRefused (0.00s)
+      PASS
+      ok  	github.com/deployBunker/bunker/internal/fsmount	0.021s
+  attribution confirmed: the named cells stay GREEN
+  restore: sha256 byte-identical for 3 file(s)
+
+================================================================================
+MUTATION cancel-is-terminal
+  RED (must FAIL)  = ^(TestACancelledAppendIsRetryableAppliesOnceAndLeavesNoResidue)$
+  GREEN (must PASS)= ^(TestAppendThroughAnAppendHandleLandsTheBytes|TestAWriteThroughANonAppendHandleIsStillRefused)$
+================================================================================
+  applied. changed files: internal/fsmount/append.go internal/fsmount/append_test.go 
+  the mutated tree compiles
+  RED   -run ^(TestACancelledAppendIsRetryableAppliesOnceAndLeavesNoResidue)$ rc=1
+      --- FAIL: TestACancelledAppendIsRetryableAppliesOnceAndLeavesNoResidue (0.01s)
+      FAIL
+      FAIL	github.com/deployBunker/bunker/internal/fsmount	0.011s
+      FAIL
+  RED confirmed: the mutation reddens the cell it is aimed at
+  GREEN -run ^(TestAppendThroughAnAppendHandleLandsTheBytes|TestAWriteThroughANonAppendHandleIsStillRefused)$ rc=0
+      --- PASS: TestAppendThroughAnAppendHandleLandsTheBytes (0.02s)
+      --- PASS: TestAWriteThroughANonAppendHandleIsStillRefused (0.00s)
+      PASS
+      ok  	github.com/deployBunker/bunker/internal/fsmount	0.024s
+  attribution confirmed: the named cells stay GREEN
+  restore: sha256 byte-identical for 3 file(s)
+
+================================================================================
+MUTATION named-buffer
+  RED (must FAIL)  = ^(TestACancelledAppendIsRetryableAppliesOnceAndLeavesNoResidue)$
+  GREEN (must PASS)= ^(TestAppendThroughAnAppendHandleLandsTheBytes|TestAWriteThroughANonAppendHandleIsStillRefused)$
+================================================================================
+  applied. changed files: internal/fsmount/append.go internal/fsmount/append_test.go 
+  the mutated tree compiles
+  RED   -run ^(TestACancelledAppendIsRetryableAppliesOnceAndLeavesNoResidue)$ rc=1
+      --- FAIL: TestACancelledAppendIsRetryableAppliesOnceAndLeavesNoResidue (0.01s)
+      FAIL
+      FAIL	github.com/deployBunker/bunker/internal/fsmount	0.013s
+      FAIL
+  RED confirmed: the mutation reddens the cell it is aimed at
+  GREEN -run ^(TestAppendThroughAnAppendHandleLandsTheBytes|TestAWriteThroughANonAppendHandleIsStillRefused)$ rc=0
+      --- PASS: TestAppendThroughAnAppendHandleLandsTheBytes (0.01s)
+      --- PASS: TestAWriteThroughANonAppendHandleIsStillRefused (0.00s)
+      PASS
+      ok  	github.com/deployBunker/bunker/internal/fsmount	0.017s
+  attribution confirmed: the named cells stay GREEN
+  restore: sha256 byte-identical for 3 file(s)
+
+================================================================================
+MUTATION resize-refusal-removed
+  RED (must FAIL)  = ^(TestResizeThroughAWriteHandleIsRefusedBeforeItPublishes|TestAResizeWithAnAppendHandleLiveIsStillRefused)$
+  GREEN (must PASS)= ^(TestAppendIsServedWithoutPublishingASizeCarryingSetattr|TestAppendThroughAnAppendHandleLandsTheBytes|TestAWriteThroughANonAppendHandleIsStillRefused)$
+================================================================================
+  applied. changed files: internal/fsmount/append_test.go internal/fsmount/fs_linux.go 
+  the mutated tree compiles
+  RED   -run ^(TestResizeThroughAWriteHandleIsRefusedBeforeItPublishes|TestAResizeWithAnAppendHandleLiveIsStillRefused)$ rc=1
+      --- FAIL: TestAResizeWithAnAppendHandleLiveIsStillRefused (0.02s)
+      --- FAIL: TestResizeThroughAWriteHandleIsRefusedBeforeItPublishes (0.01s)
+      FAIL
+      FAIL	github.com/deployBunker/bunker/internal/fsmount	0.029s
+      FAIL
+  RED confirmed: the mutation reddens the cell it is aimed at
+  GREEN -run ^(TestAppendIsServedWithoutPublishingASizeCarryingSetattr|TestAppendThroughAnAppendHandleLandsTheBytes|TestAWriteThroughANonAppendHandleIsStillRefused)$ rc=0
+      --- PASS: TestAppendThroughAnAppendHandleLandsTheBytes (0.01s)
+      --- PASS: TestAWriteThroughANonAppendHandleIsStillRefused (0.00s)
+      --- PASS: TestAppendIsServedWithoutPublishingASizeCarryingSetattr (0.01s)
+      PASS
+      ok  	github.com/deployBunker/bunker/internal/fsmount	0.027s
+  attribution confirmed: the named cells stay GREEN
+  restore: sha256 byte-identical for 3 file(s)
+
+TOTAL: every declared outcome met (0 arm failures)

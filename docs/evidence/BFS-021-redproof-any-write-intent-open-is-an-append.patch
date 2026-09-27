@@ -1,0 +1,16 @@
+diff --git a/internal/fsmount/fs_linux.go b/internal/fsmount/fs_linux.go
+index a05b8ea..5a869de 100644
+--- a/internal/fsmount/fs_linux.go
++++ b/internal/fsmount/fs_linux.go
+@@ -990,7 +990,10 @@ func (n *node) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, s
+ 	n.m.nextFh++
+ 	fh := n.m.nextFh
+ 	h := &readHandle{m: n.m, p: n.p, fh: fh, writeIntent: flags&(syscall.O_WRONLY|syscall.O_RDWR) != 0}
+-	if flags&syscall.O_APPEND != 0 {
++	// MUTATION (BFS-021 red-proof): EVERY write-intent open carries the append
++	// state, so serving append also starts serving the in-place writes BFS-012
++	// measured as refused and BFS-030 kept refused.
++	if flags&(syscall.O_WRONLY|syscall.O_RDWR) != 0 {
+ 		h.ap = &appendHandle{m: n.m, owner: h, p: n.p, fh: fh}
+ 	}
+ 	n.m.reads[fh] = h

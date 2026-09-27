@@ -1,0 +1,923 @@
+
+================================================================================
+BFS-021 GREEN — the FIXED tree: every append shape lands byte-for-byte, the refusals are unchanged
+================================================================================
+
+### arm green3-sh   (/tmp/bfs021/evidence-green3/BFS-021-green3-sh.txt)
+### arm=sh expect=ok bin=/tmp/bfs021/bin/bunker-fixed3
+arm        = green3-sh
+host       = karaHermes-mde-7840hs loadavg 22.94 20.15 20.66 9/9733 2788543
+tree       = /tmp/bfs021/w-green3/tree-green3-sh  (0 files, 0 B)
+binaries   = /tmp/bfs021/bin/bunker-fixed3 ; /tmp/bfs021/bin/davserve
+endpoint   = http://127.0.0.1:40183/dav (pid 2788550)
+trace      = http://127.0.0.1:18493/dav -> http://127.0.0.1:40183/dav (pid 2788563, per-request log /tmp/bfs021/w-green3/run-green3/run-green3-sh/requests.jsonl)
+mount-args = --url http://127.0.0.1:18493/dav 
+cache-dir  = /tmp/bfs021/w-green3/run-green3/run-green3-sh/xdg/bunker/fs/ab4ab104db92
+  cache dir    : /tmp/bfs021/w-green3/run-green3/run-green3-sh/xdg/bunker/fs/ab4ab104db92/cache (bound 268435456 bytes, 16384 entries)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+reader     = python3 /home/kara/worktrees/bunker-BFS-021/docs/evidence/BFS-021-probes/bfs021-arms.py --mode sh --expect ok  (rc=0)
+  | === mode=sh  expect=ok ===
+  |   server fixture            : 82 B sha256=66ac40abbf895c38… (written on the server's own disk)
+  |   PASS  FIXTURE: the first read through the mount serves the baseline byte-for-byte
+  | BFS021-MEASURE baseline_size=82
+  | BFS021-MEASURE baseline_sha=66ac40abbf895c383fd020e209816a78b322a8f0e23eb4376edbbb77533c874d
+  |   shape returned            : ok — sh -c 'printf ... >> file' returned 0
+  | BFS021-MEASURE mode=sh
+  | BFS021-MEASURE landed=true
+  | BFS021-MEASURE errno=None
+  | BFS021-MEASURE errno_name=
+  | BFS021-MEASURE detail="sh -c 'printf ... >> file' returned 0"
+  | BFS021-MEASURE elapsed_ms=53.2
+  | BFS021-MEASURE server_bytes=107
+  | BFS021-MEASURE server_sha=60cbd86bc803056198122ffb2093f0fb2fb5424dfd85e8ad8d0722e0c133d6d5
+  | BFS021-MEASURE want_sha=60cbd86bc803056198122ffb2093f0fb2fb5424dfd85e8ad8d0722e0c133d6d5
+  | BFS021-MEASURE tail_present=true
+  | BFS021-MEASURE original_intact=true
+  | BFS021-MEASURE tail_count=1
+  |   PASS  the append SUCCEEDS (no error reaches the caller)
+  |   PASS  the original prefix is intact byte-for-byte
+  |   PASS  the appended bytes ARE in the file
+  |   PASS  the read-back is byte-for-byte original+every chunk: got 107 B 60cbd86bc8030561… want 107 B 60cbd86bc8030561…
+  |   PASS  the chunk b'APPENDED-TAIL-0123456789\n' appears exactly once (a retry must not double-apply it), saw 1
+  |   PASS  the mount serves the appended content read-back too (107 B)
+  |   requests for this append  : 1 PUT, 1 GET
+  |   PUT details               : [{"status": 204, "req_bytes": 107, "if_match": "\"sha256:66ac40abbf895c383fd020e209816a78b322a8f0e23eb4376edbbb77533c874d\"", "noop": null, "verdict": null}]
+  |   PASS  ONE publication per close (1 here), never one request per chunk — saw 1
+  |   PASS  every publication landed (no 412 on a handle's own later publication): [204]
+  | 
+  | RESULT: append landed — 107 B sha256=60cbd86bc8030561… , original+every chunk byte-for-byte, each chunk once, in 53 ms
+mount.log  :
+  | mounted http://127.0.0.1:18493/dav on /tmp/bfs021/w-green3/run-green3/run-green3-sh/mnt
+  |   cache dir    : /tmp/bfs021/w-green3/run-green3/run-green3-sh/xdg/bunker/fs/ab4ab104db92/cache (bound 268435456 bytes, 16384 entries)
+  |   mount dir    : /tmp/bfs021/w-green3/run-green3/run-green3-sh/xdg/bunker/fs/ab4ab104db92 (the mount's own state: status.json, the refusal log, the write-buffer spills)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   config       : cache 268435456 B / 16384 entries (entry cap 67108864, staged 2, age 1h0m0s)
+  |   invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=false state=disabled share=1/8 slots=3 (foreground 22) refresh_inflight=2 clamped=false reserve=16777216 B
+  |   hot weights  : read=1 edit=8 decay=0.9 per 5m0s (half-life 32m54s)
+  |   hot bounds   : tracker 4096 entries / 1048576 B, size<=8388608 B (inclusive=true), queue 256 (score, wait 5m0s), ceiling 10000
+  |   hot timing   : tick=1s yield=250ms stop_deadline=1.5s refresh_deadline=10s reacquire=30s touch_window=5s flush=30s
+  |   hot backoff  : 250ms x2 cap 30s jitter=full, pressure_ticks=5
+  |   unmount      : bunker fs umount /tmp/bfs021/w-green3/run-green3/run-green3-sh/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs021/w-green3/run-green3/run-green3-sh/xdg):
+  | mount        : ab4ab104db92
+  | endpoint     : http://127.0.0.1:18493/dav
+  | mountpoint   : /tmp/bfs021/w-green3/run-green3/run-green3-sh/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | resume       : seq=1 (the cursor this view was minted at)
+  | content age  : age_ms=1000 evidence_from=observation observations=1 bound_ms=- within_bound=-(disabled: no invalidation mechanism is in force on this mount, so it implies no window to compare the age against)
+  | server watch : state=absent backend=inotify watched=-/- sampled_age_ms=1147 max_paths_per_event=4096
+  | server counts: overflows=- unvouched=- rescans=- install_failures=- backend_errors=- heartbeats=- loop_ticks=-
+  |   counts why : no watcher has run on this target, so no counter has ever moved
+  | liveness     : - (no pushed channel on this mount)
+  |   why        : disabled: this mount never attempted the pushed channel (mode=poll), so it has no heartbeat to report; the poll mechanism's currency is reported in content_age
+  | requests     : requests_total=1 failures_total=0
+  | refresh      : started=0 in_flight=0/2 committed=0 aborted=0 refused_no_slot=0 refused_no_room=0
+  | refresh queue: - (no figure to report)
+  |   why        : not_published: the hot-refresh queue (BFS-037) is not in this build, so its depth, its bound and its refusals are not countable; the staged window below is the refresh accounting that does exist
+  | cache        : used_bytes=286 max_bytes=268435456 (blobs=107 index=179) entries=1 blobs=1
+  | cache bounds : max_entry_bytes=67108864 max_age_ms=3600000 entries=1/16384 in_flight_bytes=0 reserved_bytes=286 staged_blobs=0/2
+  | cache dir    : dir_bytes=179 unaccounted_bytes=-107 measured_age_ms=1056 by_class=blobs=0 conflicts=0 index=179 orphan=0 other=0 staged=0 status=0
+  | cache peak   : dir_peak_bytes=465 (the directory's peak: what max_bytes is enforced against)
+  | cache events : hits=1 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | cache bypass : over_entry_cap=0 insert_over_entry_cap=0 no_room=0 cache_disabled=0
+  | state        : bytes=6716 max_bytes=4259840 (status=6716/65536 conflicts=0/4194304 spill=0 dropped_total=0)
+  | state footpr : footprint_bytes=6895 footprint_max_bytes=272695296 (cache dir + state + the write-buffer budget)
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=11 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+  | write shape  : refusals_total=0
+  | append       : published_total=1 refused_total=0 max_file_bytes=268435456
+  |   last       : src/target.txt: published=107 bytes
+  | refusal holds: held_total=0 outstanding=0 evicted_total=0
+  |   config       : cache 268435456 B / 16384 entries (entry cap 67108864, staged 2, age 1h0m0s)
+  |   invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=false state=disabled share=1/8 slots=3 (foreground 22) refresh_inflight=2 clamped=false reserve=16777216 B
+  |   hot weights  : read=1 edit=8 decay=0.9 per 5m0s (half-life 32m54s)
+  |   hot bounds   : tracker 4096 entries / 1048576 B, size<=8388608 B (inclusive=true), queue 256 (score, wait 5m0s), ceiling 10000
+  |   hot timing   : tick=1s yield=250ms stop_deadline=1.5s refresh_deadline=10s reacquire=30s touch_window=5s flush=30s
+  |   hot backoff  : 250ms x2 cap 30s jitter=full, pressure_ticks=5
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs021/w-green3/run-green3/run-green3-sh
+
+### arm green3-fd   (/tmp/bfs021/evidence-green3/BFS-021-green3-fd.txt)
+### arm=fd expect=ok bin=/tmp/bfs021/bin/bunker-fixed3
+arm        = green3-fd
+host       = karaHermes-mde-7840hs loadavg 22.94 20.15 20.66 8/9750 2790645
+tree       = /tmp/bfs021/w-green3/tree-green3-fd  (0 files, 0 B)
+binaries   = /tmp/bfs021/bin/bunker-fixed3 ; /tmp/bfs021/bin/davserve
+endpoint   = http://127.0.0.1:38975/dav (pid 2790664)
+trace      = http://127.0.0.1:18493/dav -> http://127.0.0.1:38975/dav (pid 2790951, per-request log /tmp/bfs021/w-green3/run-green3/run-green3-fd/requests.jsonl)
+mount-args = --url http://127.0.0.1:18493/dav 
+cache-dir  = /tmp/bfs021/w-green3/run-green3/run-green3-fd/xdg/bunker/fs/ab4ab104db92
+  cache dir    : /tmp/bfs021/w-green3/run-green3/run-green3-fd/xdg/bunker/fs/ab4ab104db92/cache (bound 268435456 bytes, 16384 entries)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+reader     = python3 /home/kara/worktrees/bunker-BFS-021/docs/evidence/BFS-021-probes/bfs021-arms.py --mode fd --expect ok  (rc=0)
+  | === mode=fd  expect=ok ===
+  |   server fixture            : 82 B sha256=66ac40abbf895c38… (written on the server's own disk)
+  |   PASS  FIXTURE: the first read through the mount serves the baseline byte-for-byte
+  | BFS021-MEASURE baseline_size=82
+  | BFS021-MEASURE baseline_sha=66ac40abbf895c383fd020e209816a78b322a8f0e23eb4376edbbb77533c874d
+  |   shape returned            : ok — os.open(O_WRONLY|O_APPEND)+write returned cleanly
+  | BFS021-MEASURE mode=fd
+  | BFS021-MEASURE landed=true
+  | BFS021-MEASURE errno=None
+  | BFS021-MEASURE errno_name=
+  | BFS021-MEASURE detail="os.open(O_WRONLY|O_APPEND)+write returned cleanly"
+  | BFS021-MEASURE elapsed_ms=50.0
+  | BFS021-MEASURE server_bytes=107
+  | BFS021-MEASURE server_sha=60cbd86bc803056198122ffb2093f0fb2fb5424dfd85e8ad8d0722e0c133d6d5
+  | BFS021-MEASURE want_sha=60cbd86bc803056198122ffb2093f0fb2fb5424dfd85e8ad8d0722e0c133d6d5
+  | BFS021-MEASURE tail_present=true
+  | BFS021-MEASURE original_intact=true
+  | BFS021-MEASURE tail_count=1
+  |   PASS  the append SUCCEEDS (no error reaches the caller)
+  |   PASS  the original prefix is intact byte-for-byte
+  |   PASS  the appended bytes ARE in the file
+  |   PASS  the read-back is byte-for-byte original+every chunk: got 107 B 60cbd86bc8030561… want 107 B 60cbd86bc8030561…
+  |   PASS  the chunk b'APPENDED-TAIL-0123456789\n' appears exactly once (a retry must not double-apply it), saw 1
+  |   PASS  the mount serves the appended content read-back too (107 B)
+  |   requests for this append  : 1 PUT, 1 GET
+  |   PUT details               : [{"status": 204, "req_bytes": 107, "if_match": "\"sha256:66ac40abbf895c383fd020e209816a78b322a8f0e23eb4376edbbb77533c874d\"", "noop": null, "verdict": null}]
+  |   PASS  ONE publication per close (1 here), never one request per chunk — saw 1
+  |   PASS  every publication landed (no 412 on a handle's own later publication): [204]
+  | 
+  | RESULT: append landed — 107 B sha256=60cbd86bc8030561… , original+every chunk byte-for-byte, each chunk once, in 50 ms
+mount.log  :
+  | mounted http://127.0.0.1:18493/dav on /tmp/bfs021/w-green3/run-green3/run-green3-fd/mnt
+  |   cache dir    : /tmp/bfs021/w-green3/run-green3/run-green3-fd/xdg/bunker/fs/ab4ab104db92/cache (bound 268435456 bytes, 16384 entries)
+  |   mount dir    : /tmp/bfs021/w-green3/run-green3/run-green3-fd/xdg/bunker/fs/ab4ab104db92 (the mount's own state: status.json, the refusal log, the write-buffer spills)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   config       : cache 268435456 B / 16384 entries (entry cap 67108864, staged 2, age 1h0m0s)
+  |   invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=false state=disabled share=1/8 slots=3 (foreground 22) refresh_inflight=2 clamped=false reserve=16777216 B
+  |   hot weights  : read=1 edit=8 decay=0.9 per 5m0s (half-life 32m54s)
+  |   hot bounds   : tracker 4096 entries / 1048576 B, size<=8388608 B (inclusive=true), queue 256 (score, wait 5m0s), ceiling 10000
+  |   hot timing   : tick=1s yield=250ms stop_deadline=1.5s refresh_deadline=10s reacquire=30s touch_window=5s flush=30s
+  |   hot backoff  : 250ms x2 cap 30s jitter=full, pressure_ticks=5
+  |   unmount      : bunker fs umount /tmp/bfs021/w-green3/run-green3/run-green3-fd/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs021/w-green3/run-green3/run-green3-fd/xdg):
+  | mount        : ab4ab104db92
+  | endpoint     : http://127.0.0.1:18493/dav
+  | mountpoint   : /tmp/bfs021/w-green3/run-green3/run-green3-fd/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | resume       : seq=1 (the cursor this view was minted at)
+  | content age  : age_ms=1000 evidence_from=observation observations=1 bound_ms=- within_bound=-(disabled: no invalidation mechanism is in force on this mount, so it implies no window to compare the age against)
+  | server watch : state=absent backend=inotify watched=-/- sampled_age_ms=1154 max_paths_per_event=4096
+  | server counts: overflows=- unvouched=- rescans=- install_failures=- backend_errors=- heartbeats=- loop_ticks=-
+  |   counts why : no watcher has run on this target, so no counter has ever moved
+  | liveness     : - (no pushed channel on this mount)
+  |   why        : disabled: this mount never attempted the pushed channel (mode=poll), so it has no heartbeat to report; the poll mechanism's currency is reported in content_age
+  | requests     : requests_total=1 failures_total=0
+  | refresh      : started=0 in_flight=0/2 committed=0 aborted=0 refused_no_slot=0 refused_no_room=0
+  | refresh queue: - (no figure to report)
+  |   why        : not_published: the hot-refresh queue (BFS-037) is not in this build, so its depth, its bound and its refusals are not countable; the staged window below is the refresh accounting that does exist
+  | cache        : used_bytes=286 max_bytes=268435456 (blobs=107 index=179) entries=1 blobs=1
+  | cache bounds : max_entry_bytes=67108864 max_age_ms=3600000 entries=1/16384 in_flight_bytes=0 reserved_bytes=286 staged_blobs=0/2
+  | cache dir    : dir_bytes=179 unaccounted_bytes=-107 measured_age_ms=1059 by_class=blobs=0 conflicts=0 index=179 orphan=0 other=0 staged=0 status=0
+  | cache peak   : dir_peak_bytes=465 (the directory's peak: what max_bytes is enforced against)
+  | cache events : hits=1 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | cache bypass : over_entry_cap=0 insert_over_entry_cap=0 no_room=0 cache_disabled=0
+  | state        : bytes=6716 max_bytes=4259840 (status=6716/65536 conflicts=0/4194304 spill=0 dropped_total=0)
+  | state footpr : footprint_bytes=6895 footprint_max_bytes=272695296 (cache dir + state + the write-buffer budget)
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=11 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+  | write shape  : refusals_total=0
+  | append       : published_total=1 refused_total=0 max_file_bytes=268435456
+  |   last       : src/target.txt: published=107 bytes
+  | refusal holds: held_total=0 outstanding=0 evicted_total=0
+  |   config       : cache 268435456 B / 16384 entries (entry cap 67108864, staged 2, age 1h0m0s)
+  |   invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=false state=disabled share=1/8 slots=3 (foreground 22) refresh_inflight=2 clamped=false reserve=16777216 B
+  |   hot weights  : read=1 edit=8 decay=0.9 per 5m0s (half-life 32m54s)
+  |   hot bounds   : tracker 4096 entries / 1048576 B, size<=8388608 B (inclusive=true), queue 256 (score, wait 5m0s), ceiling 10000
+  |   hot timing   : tick=1s yield=250ms stop_deadline=1.5s refresh_deadline=10s reacquire=30s touch_window=5s flush=30s
+  |   hot backoff  : 250ms x2 cap 30s jitter=full, pressure_ticks=5
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs021/w-green3/run-green3/run-green3-fd
+
+### arm green3-ab   (/tmp/bfs021/evidence-green3/BFS-021-green3-ab.txt)
+### arm=ab expect=ok bin=/tmp/bfs021/bin/bunker-fixed3
+arm        = green3-ab
+host       = karaHermes-mde-7840hs loadavg 22.38 20.09 20.63 16/9728 2792302
+tree       = /tmp/bfs021/w-green3/tree-green3-ab  (0 files, 0 B)
+binaries   = /tmp/bfs021/bin/bunker-fixed3 ; /tmp/bfs021/bin/davserve
+endpoint   = http://127.0.0.1:39617/dav (pid 2792309)
+trace      = http://127.0.0.1:18493/dav -> http://127.0.0.1:39617/dav (pid 2792342, per-request log /tmp/bfs021/w-green3/run-green3/run-green3-ab/requests.jsonl)
+mount-args = --url http://127.0.0.1:18493/dav 
+cache-dir  = /tmp/bfs021/w-green3/run-green3/run-green3-ab/xdg/bunker/fs/ab4ab104db92
+  cache dir    : /tmp/bfs021/w-green3/run-green3/run-green3-ab/xdg/bunker/fs/ab4ab104db92/cache (bound 268435456 bytes, 16384 entries)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+reader     = python3 /home/kara/worktrees/bunker-BFS-021/docs/evidence/BFS-021-probes/bfs021-arms.py --mode ab --expect ok  (rc=0)
+  | === mode=ab  expect=ok ===
+  |   server fixture            : 82 B sha256=66ac40abbf895c38… (written on the server's own disk)
+  |   PASS  FIXTURE: the first read through the mount serves the baseline byte-for-byte
+  | BFS021-MEASURE baseline_size=82
+  | BFS021-MEASURE baseline_sha=66ac40abbf895c383fd020e209816a78b322a8f0e23eb4376edbbb77533c874d
+  |   shape returned            : ok — open(path,'ab')+write returned cleanly
+  | BFS021-MEASURE mode=ab
+  | BFS021-MEASURE landed=true
+  | BFS021-MEASURE errno=None
+  | BFS021-MEASURE errno_name=
+  | BFS021-MEASURE detail="open(path,'ab')+write returned cleanly"
+  | BFS021-MEASURE elapsed_ms=57.7
+  | BFS021-MEASURE server_bytes=107
+  | BFS021-MEASURE server_sha=60cbd86bc803056198122ffb2093f0fb2fb5424dfd85e8ad8d0722e0c133d6d5
+  | BFS021-MEASURE want_sha=60cbd86bc803056198122ffb2093f0fb2fb5424dfd85e8ad8d0722e0c133d6d5
+  | BFS021-MEASURE tail_present=true
+  | BFS021-MEASURE original_intact=true
+  | BFS021-MEASURE tail_count=1
+  |   PASS  the append SUCCEEDS (no error reaches the caller)
+  |   PASS  the original prefix is intact byte-for-byte
+  |   PASS  the appended bytes ARE in the file
+  |   PASS  the read-back is byte-for-byte original+every chunk: got 107 B 60cbd86bc8030561… want 107 B 60cbd86bc8030561…
+  |   PASS  the chunk b'APPENDED-TAIL-0123456789\n' appears exactly once (a retry must not double-apply it), saw 1
+  |   PASS  the mount serves the appended content read-back too (107 B)
+  |   requests for this append  : 1 PUT, 1 GET
+  |   PUT details               : [{"status": 204, "req_bytes": 107, "if_match": "\"sha256:66ac40abbf895c383fd020e209816a78b322a8f0e23eb4376edbbb77533c874d\"", "noop": null, "verdict": null}]
+  |   PASS  ONE publication per close (1 here), never one request per chunk — saw 1
+  |   PASS  every publication landed (no 412 on a handle's own later publication): [204]
+  | 
+  | RESULT: append landed — 107 B sha256=60cbd86bc8030561… , original+every chunk byte-for-byte, each chunk once, in 58 ms
+mount.log  :
+  | mounted http://127.0.0.1:18493/dav on /tmp/bfs021/w-green3/run-green3/run-green3-ab/mnt
+  |   cache dir    : /tmp/bfs021/w-green3/run-green3/run-green3-ab/xdg/bunker/fs/ab4ab104db92/cache (bound 268435456 bytes, 16384 entries)
+  |   mount dir    : /tmp/bfs021/w-green3/run-green3/run-green3-ab/xdg/bunker/fs/ab4ab104db92 (the mount's own state: status.json, the refusal log, the write-buffer spills)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   config       : cache 268435456 B / 16384 entries (entry cap 67108864, staged 2, age 1h0m0s)
+  |   invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=false state=disabled share=1/8 slots=3 (foreground 22) refresh_inflight=2 clamped=false reserve=16777216 B
+  |   hot weights  : read=1 edit=8 decay=0.9 per 5m0s (half-life 32m54s)
+  |   hot bounds   : tracker 4096 entries / 1048576 B, size<=8388608 B (inclusive=true), queue 256 (score, wait 5m0s), ceiling 10000
+  |   hot timing   : tick=1s yield=250ms stop_deadline=1.5s refresh_deadline=10s reacquire=30s touch_window=5s flush=30s
+  |   hot backoff  : 250ms x2 cap 30s jitter=full, pressure_ticks=5
+  |   unmount      : bunker fs umount /tmp/bfs021/w-green3/run-green3/run-green3-ab/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs021/w-green3/run-green3/run-green3-ab/xdg):
+  | mount        : ab4ab104db92
+  | endpoint     : http://127.0.0.1:18493/dav
+  | mountpoint   : /tmp/bfs021/w-green3/run-green3/run-green3-ab/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | resume       : seq=1 (the cursor this view was minted at)
+  | content age  : age_ms=2239 evidence_from=observation observations=1 bound_ms=- within_bound=-(disabled: no invalidation mechanism is in force on this mount, so it implies no window to compare the age against)
+  | server watch : state=absent backend=inotify watched=-/- sampled_age_ms=2392 max_paths_per_event=4096
+  | server counts: overflows=- unvouched=- rescans=- install_failures=- backend_errors=- heartbeats=- loop_ticks=-
+  |   counts why : no watcher has run on this target, so no counter has ever moved
+  | liveness     : - (no pushed channel on this mount)
+  |   why        : disabled: this mount never attempted the pushed channel (mode=poll), so it has no heartbeat to report; the poll mechanism's currency is reported in content_age
+  | requests     : requests_total=1 failures_total=0
+  | refresh      : started=0 in_flight=0/2 committed=0 aborted=0 refused_no_slot=0 refused_no_room=0
+  | refresh queue: - (no figure to report)
+  |   why        : not_published: the hot-refresh queue (BFS-037) is not in this build, so its depth, its bound and its refusals are not countable; the staged window below is the refresh accounting that does exist
+  | cache        : used_bytes=286 max_bytes=268435456 (blobs=107 index=179) entries=1 blobs=1
+  | cache bounds : max_entry_bytes=67108864 max_age_ms=3600000 entries=1/16384 in_flight_bytes=0 reserved_bytes=286 staged_blobs=0/2
+  | cache dir    : dir_bytes=179 unaccounted_bytes=-107 measured_age_ms=2058 by_class=blobs=0 conflicts=0 index=179 orphan=0 other=0 staged=0 status=0
+  | cache peak   : dir_peak_bytes=465 (the directory's peak: what max_bytes is enforced against)
+  | cache events : hits=1 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | cache bypass : over_entry_cap=0 insert_over_entry_cap=0 no_room=0 cache_disabled=0
+  | state        : bytes=6896 max_bytes=4259840 (status=6896/65536 conflicts=0/4194304 spill=0 dropped_total=0)
+  | state footpr : footprint_bytes=7075 footprint_max_bytes=272695296 (cache dir + state + the write-buffer budget)
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=1 in_flight_max=1 requests=12 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+  | write shape  : refusals_total=0
+  | append       : published_total=1 refused_total=0 max_file_bytes=268435456
+  |   last       : src/target.txt: published=107 bytes
+  | refusal holds: held_total=0 outstanding=0 evicted_total=0
+  |   config       : cache 268435456 B / 16384 entries (entry cap 67108864, staged 2, age 1h0m0s)
+  |   invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=false state=disabled share=1/8 slots=3 (foreground 22) refresh_inflight=2 clamped=false reserve=16777216 B
+  |   hot weights  : read=1 edit=8 decay=0.9 per 5m0s (half-life 32m54s)
+  |   hot bounds   : tracker 4096 entries / 1048576 B, size<=8388608 B (inclusive=true), queue 256 (score, wait 5m0s), ceiling 10000
+  |   hot timing   : tick=1s yield=250ms stop_deadline=1.5s refresh_deadline=10s reacquire=30s touch_window=5s flush=30s
+  |   hot backoff  : 250ms x2 cap 30s jitter=full, pressure_ticks=5
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs021/w-green3/run-green3/run-green3-ab
+
+### arm green3-rdwr   (/tmp/bfs021/evidence-green3/BFS-021-green3-rdwr.txt)
+### arm=rdwr expect=ok bin=/tmp/bfs021/bin/bunker-fixed3
+arm        = green3-rdwr
+host       = karaHermes-mde-7840hs loadavg 24.92 20.65 20.81 12/9693 2798370
+tree       = /tmp/bfs021/w-green3/tree-green3-rdwr  (0 files, 0 B)
+binaries   = /tmp/bfs021/bin/bunker-fixed3 ; /tmp/bfs021/bin/davserve
+endpoint   = http://127.0.0.1:46105/dav (pid 2798380)
+trace      = http://127.0.0.1:18493/dav -> http://127.0.0.1:46105/dav (pid 2798403, per-request log /tmp/bfs021/w-green3/run-green3/run-green3-rdwr/requests.jsonl)
+mount-args = --url http://127.0.0.1:18493/dav 
+cache-dir  = /tmp/bfs021/w-green3/run-green3/run-green3-rdwr/xdg/bunker/fs/ab4ab104db92
+  cache dir    : /tmp/bfs021/w-green3/run-green3/run-green3-rdwr/xdg/bunker/fs/ab4ab104db92/cache (bound 268435456 bytes, 16384 entries)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+reader     = python3 /home/kara/worktrees/bunker-BFS-021/docs/evidence/BFS-021-probes/bfs021-arms.py --mode rdwr --expect ok  (rc=0)
+  | === mode=rdwr  expect=ok ===
+  |   server fixture            : 82 B sha256=66ac40abbf895c38… (written on the server's own disk)
+  |   PASS  FIXTURE: the first read through the mount serves the baseline byte-for-byte
+  | BFS021-MEASURE baseline_size=82
+  | BFS021-MEASURE baseline_sha=66ac40abbf895c383fd020e209816a78b322a8f0e23eb4376edbbb77533c874d
+  |   shape returned            : ok — read-back through the same fd: 82 B
+  | BFS021-MEASURE mode=rdwr
+  | BFS021-MEASURE landed=true
+  | BFS021-MEASURE errno=None
+  | BFS021-MEASURE errno_name=
+  | BFS021-MEASURE detail="read-back through the same fd: 82 B"
+  | BFS021-MEASURE elapsed_ms=71.5
+  | BFS021-MEASURE server_bytes=107
+  | BFS021-MEASURE server_sha=60cbd86bc803056198122ffb2093f0fb2fb5424dfd85e8ad8d0722e0c133d6d5
+  | BFS021-MEASURE want_sha=60cbd86bc803056198122ffb2093f0fb2fb5424dfd85e8ad8d0722e0c133d6d5
+  | BFS021-MEASURE tail_present=true
+  | BFS021-MEASURE original_intact=true
+  | BFS021-MEASURE tail_count=1
+  |   PASS  the append SUCCEEDS (no error reaches the caller)
+  |   PASS  the original prefix is intact byte-for-byte
+  |   PASS  the appended bytes ARE in the file
+  |   PASS  the read-back is byte-for-byte original+every chunk: got 107 B 60cbd86bc8030561… want 107 B 60cbd86bc8030561…
+  |   PASS  the chunk b'APPENDED-TAIL-0123456789\n' appears exactly once (a retry must not double-apply it), saw 1
+  |   PASS  the mount serves the appended content read-back too (107 B)
+  |   requests for this append  : 1 PUT, 1 GET
+  |   PUT details               : [{"status": 204, "req_bytes": 107, "if_match": "\"sha256:66ac40abbf895c383fd020e209816a78b322a8f0e23eb4376edbbb77533c874d\"", "noop": null, "verdict": null}]
+  |   PASS  ONE publication per close (1 here), never one request per chunk — saw 1
+  |   PASS  every publication landed (no 412 on a handle's own later publication): [204]
+  | 
+  | RESULT: append landed — 107 B sha256=60cbd86bc8030561… , original+every chunk byte-for-byte, each chunk once, in 71 ms
+mount.log  :
+  | mounted http://127.0.0.1:18493/dav on /tmp/bfs021/w-green3/run-green3/run-green3-rdwr/mnt
+  |   cache dir    : /tmp/bfs021/w-green3/run-green3/run-green3-rdwr/xdg/bunker/fs/ab4ab104db92/cache (bound 268435456 bytes, 16384 entries)
+  |   mount dir    : /tmp/bfs021/w-green3/run-green3/run-green3-rdwr/xdg/bunker/fs/ab4ab104db92 (the mount's own state: status.json, the refusal log, the write-buffer spills)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   config       : cache 268435456 B / 16384 entries (entry cap 67108864, staged 2, age 1h0m0s)
+  |   invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=false state=disabled share=1/8 slots=3 (foreground 22) refresh_inflight=2 clamped=false reserve=16777216 B
+  |   hot weights  : read=1 edit=8 decay=0.9 per 5m0s (half-life 32m54s)
+  |   hot bounds   : tracker 4096 entries / 1048576 B, size<=8388608 B (inclusive=true), queue 256 (score, wait 5m0s), ceiling 10000
+  |   hot timing   : tick=1s yield=250ms stop_deadline=1.5s refresh_deadline=10s reacquire=30s touch_window=5s flush=30s
+  |   hot backoff  : 250ms x2 cap 30s jitter=full, pressure_ticks=5
+  |   unmount      : bunker fs umount /tmp/bfs021/w-green3/run-green3/run-green3-rdwr/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs021/w-green3/run-green3/run-green3-rdwr/xdg):
+  | mount        : ab4ab104db92
+  | endpoint     : http://127.0.0.1:18493/dav
+  | mountpoint   : /tmp/bfs021/w-green3/run-green3/run-green3-rdwr/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | resume       : seq=1 (the cursor this view was minted at)
+  | content age  : age_ms=2000 evidence_from=observation observations=1 bound_ms=- within_bound=-(disabled: no invalidation mechanism is in force on this mount, so it implies no window to compare the age against)
+  | server watch : state=absent backend=inotify watched=-/- sampled_age_ms=2134 max_paths_per_event=4096
+  | server counts: overflows=- unvouched=- rescans=- install_failures=- backend_errors=- heartbeats=- loop_ticks=-
+  |   counts why : no watcher has run on this target, so no counter has ever moved
+  | liveness     : - (no pushed channel on this mount)
+  |   why        : disabled: this mount never attempted the pushed channel (mode=poll), so it has no heartbeat to report; the poll mechanism's currency is reported in content_age
+  | requests     : requests_total=1 failures_total=0
+  | refresh      : started=0 in_flight=0/2 committed=0 aborted=0 refused_no_slot=0 refused_no_room=0
+  | refresh queue: - (no figure to report)
+  |   why        : not_published: the hot-refresh queue (BFS-037) is not in this build, so its depth, its bound and its refusals are not countable; the staged window below is the refresh accounting that does exist
+  | cache        : used_bytes=286 max_bytes=268435456 (blobs=107 index=179) entries=1 blobs=1
+  | cache bounds : max_entry_bytes=67108864 max_age_ms=3600000 entries=1/16384 in_flight_bytes=0 reserved_bytes=286 staged_blobs=0/2
+  | cache dir    : dir_bytes=179 unaccounted_bytes=-107 measured_age_ms=2046 by_class=blobs=0 conflicts=0 index=179 orphan=0 other=0 staged=0 status=0
+  | cache peak   : dir_peak_bytes=465 (the directory's peak: what max_bytes is enforced against)
+  | cache events : hits=2 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | cache bypass : over_entry_cap=0 insert_over_entry_cap=0 no_room=0 cache_disabled=0
+  | state        : bytes=6897 max_bytes=4259840 (status=6897/65536 conflicts=0/4194304 spill=0 dropped_total=0)
+  | state footpr : footprint_bytes=7076 footprint_max_bytes=272695296 (cache dir + state + the write-buffer budget)
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=11 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+  | write shape  : refusals_total=0
+  | append       : published_total=1 refused_total=0 max_file_bytes=268435456
+  |   last       : src/target.txt: published=107 bytes
+  | refusal holds: held_total=0 outstanding=0 evicted_total=0
+  |   config       : cache 268435456 B / 16384 entries (entry cap 67108864, staged 2, age 1h0m0s)
+  |   invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=false state=disabled share=1/8 slots=3 (foreground 22) refresh_inflight=2 clamped=false reserve=16777216 B
+  |   hot weights  : read=1 edit=8 decay=0.9 per 5m0s (half-life 32m54s)
+  |   hot bounds   : tracker 4096 entries / 1048576 B, size<=8388608 B (inclusive=true), queue 256 (score, wait 5m0s), ceiling 10000
+  |   hot timing   : tick=1s yield=250ms stop_deadline=1.5s refresh_deadline=10s reacquire=30s touch_window=5s flush=30s
+  |   hot backoff  : 250ms x2 cap 30s jitter=full, pressure_ticks=5
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs021/w-green3/run-green3/run-green3-rdwr
+
+### arm green3-multi   (/tmp/bfs021/evidence-green3/BFS-021-green3-multi.txt)
+### arm=multi expect=ok bin=/tmp/bfs021/bin/bunker-fixed3
+arm        = green3-multi
+host       = karaHermes-mde-7840hs loadavg 24.92 20.65 20.81 5/9683 2800121
+tree       = /tmp/bfs021/w-green3/tree-green3-multi  (0 files, 0 B)
+binaries   = /tmp/bfs021/bin/bunker-fixed3 ; /tmp/bfs021/bin/davserve
+endpoint   = http://127.0.0.1:38909/dav (pid 2800137)
+trace      = http://127.0.0.1:18493/dav -> http://127.0.0.1:38909/dav (pid 2800155, per-request log /tmp/bfs021/w-green3/run-green3/run-green3-multi/requests.jsonl)
+mount-args = --url http://127.0.0.1:18493/dav 
+cache-dir  = /tmp/bfs021/w-green3/run-green3/run-green3-multi/xdg/bunker/fs/ab4ab104db92
+  cache dir    : /tmp/bfs021/w-green3/run-green3/run-green3-multi/xdg/bunker/fs/ab4ab104db92/cache (bound 268435456 bytes, 16384 entries)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+reader     = python3 /home/kara/worktrees/bunker-BFS-021/docs/evidence/BFS-021-probes/bfs021-arms.py --mode multi --expect ok  (rc=0)
+  | === mode=multi  expect=ok ===
+  |   server fixture            : 82 B sha256=66ac40abbf895c38… (written on the server's own disk)
+  |   PASS  FIXTURE: the first read through the mount serves the baseline byte-for-byte
+  | BFS021-MEASURE baseline_size=82
+  | BFS021-MEASURE baseline_sha=66ac40abbf895c383fd020e209816a78b322a8f0e23eb4376edbbb77533c874d
+  |   shape returned            : ok — three writes inside one `exec 3>>` returned 0
+  | BFS021-MEASURE mode=multi
+  | BFS021-MEASURE landed=true
+  | BFS021-MEASURE errno=None
+  | BFS021-MEASURE errno_name=
+  | BFS021-MEASURE detail="three writes inside one `exec 3>>` returned 0"
+  | BFS021-MEASURE elapsed_ms=78.0
+  | BFS021-MEASURE server_bytes=132
+  | BFS021-MEASURE server_sha=aa1035f58abd484ffdbb3be9bec299b8f7cff8b59e2d0c5ea8b3f3e63c344e59
+  | BFS021-MEASURE want_sha=aa1035f58abd484ffdbb3be9bec299b8f7cff8b59e2d0c5ea8b3f3e63c344e59
+  | BFS021-MEASURE tail_present=true
+  | BFS021-MEASURE original_intact=true
+  | BFS021-MEASURE tail_count=1
+  |   PASS  the append SUCCEEDS (no error reaches the caller)
+  |   PASS  the original prefix is intact byte-for-byte
+  |   PASS  the appended bytes ARE in the file
+  |   PASS  the read-back is byte-for-byte original+every chunk: got 132 B aa1035f58abd484f… want 132 B aa1035f58abd484f…
+  |   PASS  the chunk b'APPENDED-TAIL-0123456789\n' appears exactly once (a retry must not double-apply it), saw 1
+  |   PASS  the chunk b'SECOND-CHUNK\n' appears exactly once (a retry must not double-apply it), saw 1
+  |   PASS  the chunk b'THIRD-CHUNK\n' appears exactly once (a retry must not double-apply it), saw 1
+  |   PASS  the mount serves the appended content read-back too (132 B)
+  |   requests for this append  : 3 PUT, 1 GET
+  |   PUT details               : [{"status": 204, "req_bytes": 107, "if_match": "\"sha256:66ac40abbf895c383fd020e209816a78b322a8f0e23eb4376edbbb77533c874d\"", "noop": null, "verdict": null}, {"status": 204, "req_bytes": 120, "if_match": "\"sha256:60cbd86bc803056198122ffb2093f0fb2fb5424dfd85e8ad8d0722e0c133d6d5\"", "noop": null, "verdict": null}, {"status": 204, "req_bytes": 132, "if_match": "\"sha256:2df2fcddfd5e53e37d72be99189104588892f689e6dac30ab328a823f34c24b3\"", "noop": null, "verdict": null}]
+  |   PASS  ONE publication per close (3 here), never one request per chunk — saw 3
+  |   PASS  every publication landed (no 412 on a handle's own later publication): [204, 204, 204]
+  | 
+  | RESULT: append landed — 132 B sha256=aa1035f58abd484f… , original+every chunk byte-for-byte, each chunk once, in 78 ms
+mount.log  :
+  | mounted http://127.0.0.1:18493/dav on /tmp/bfs021/w-green3/run-green3/run-green3-multi/mnt
+  |   cache dir    : /tmp/bfs021/w-green3/run-green3/run-green3-multi/xdg/bunker/fs/ab4ab104db92/cache (bound 268435456 bytes, 16384 entries)
+  |   mount dir    : /tmp/bfs021/w-green3/run-green3/run-green3-multi/xdg/bunker/fs/ab4ab104db92 (the mount's own state: status.json, the refusal log, the write-buffer spills)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   config       : cache 268435456 B / 16384 entries (entry cap 67108864, staged 2, age 1h0m0s)
+  |   invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=false state=disabled share=1/8 slots=3 (foreground 22) refresh_inflight=2 clamped=false reserve=16777216 B
+  |   hot weights  : read=1 edit=8 decay=0.9 per 5m0s (half-life 32m54s)
+  |   hot bounds   : tracker 4096 entries / 1048576 B, size<=8388608 B (inclusive=true), queue 256 (score, wait 5m0s), ceiling 10000
+  |   hot timing   : tick=1s yield=250ms stop_deadline=1.5s refresh_deadline=10s reacquire=30s touch_window=5s flush=30s
+  |   hot backoff  : 250ms x2 cap 30s jitter=full, pressure_ticks=5
+  |   unmount      : bunker fs umount /tmp/bfs021/w-green3/run-green3/run-green3-multi/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs021/w-green3/run-green3/run-green3-multi/xdg):
+  | mount        : ab4ab104db92
+  | endpoint     : http://127.0.0.1:18493/dav
+  | mountpoint   : /tmp/bfs021/w-green3/run-green3/run-green3-multi/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | resume       : seq=1 (the cursor this view was minted at)
+  | content age  : age_ms=1001 evidence_from=observation observations=1 bound_ms=- within_bound=-(disabled: no invalidation mechanism is in force on this mount, so it implies no window to compare the age against)
+  | server watch : state=absent backend=inotify watched=-/- sampled_age_ms=1137 max_paths_per_event=4096
+  | server counts: overflows=- unvouched=- rescans=- install_failures=- backend_errors=- heartbeats=- loop_ticks=-
+  |   counts why : no watcher has run on this target, so no counter has ever moved
+  | liveness     : - (no pushed channel on this mount)
+  |   why        : disabled: this mount never attempted the pushed channel (mode=poll), so it has no heartbeat to report; the poll mechanism's currency is reported in content_age
+  | requests     : requests_total=1 failures_total=0
+  | refresh      : started=0 in_flight=0/2 committed=0 aborted=0 refused_no_slot=0 refused_no_room=0
+  | refresh queue: - (no figure to report)
+  |   why        : not_published: the hot-refresh queue (BFS-037) is not in this build, so its depth, its bound and its refusals are not countable; the staged window below is the refresh accounting that does exist
+  | cache        : used_bytes=311 max_bytes=268435456 (blobs=132 index=179) entries=1 blobs=1
+  | cache bounds : max_entry_bytes=67108864 max_age_ms=3600000 entries=1/16384 in_flight_bytes=0 reserved_bytes=311 staged_blobs=0/2
+  | cache dir    : dir_bytes=179 unaccounted_bytes=-132 measured_age_ms=1048 by_class=blobs=0 conflicts=0 index=179 orphan=0 other=0 staged=0 status=0
+  | cache peak   : dir_peak_bytes=490 (the directory's peak: what max_bytes is enforced against)
+  | cache events : hits=1 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | cache bypass : over_entry_cap=0 insert_over_entry_cap=0 no_room=0 cache_disabled=0
+  | state        : bytes=6718 max_bytes=4259840 (status=6718/65536 conflicts=0/4194304 spill=0 dropped_total=0)
+  | state footpr : footprint_bytes=6897 footprint_max_bytes=272695296 (cache dir + state + the write-buffer budget)
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=13 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+  | write shape  : refusals_total=0
+  | append       : published_total=3 refused_total=0 max_file_bytes=268435456
+  |   last       : src/target.txt: published=132 bytes
+  | refusal holds: held_total=0 outstanding=0 evicted_total=0
+  |   config       : cache 268435456 B / 16384 entries (entry cap 67108864, staged 2, age 1h0m0s)
+  |   invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=false state=disabled share=1/8 slots=3 (foreground 22) refresh_inflight=2 clamped=false reserve=16777216 B
+  |   hot weights  : read=1 edit=8 decay=0.9 per 5m0s (half-life 32m54s)
+  |   hot bounds   : tracker 4096 entries / 1048576 B, size<=8388608 B (inclusive=true), queue 256 (score, wait 5m0s), ceiling 10000
+  |   hot timing   : tick=1s yield=250ms stop_deadline=1.5s refresh_deadline=10s reacquire=30s touch_window=5s flush=30s
+  |   hot backoff  : 250ms x2 cap 30s jitter=full, pressure_ticks=5
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs021/w-green3/run-green3/run-green3-multi
+
+### arm green3-new   (/tmp/bfs021/evidence-green3/BFS-021-green3-new.txt)
+### arm=new expect=ok bin=/tmp/bfs021/bin/bunker-fixed3
+arm        = green3-new
+host       = karaHermes-mde-7840hs loadavg 24.44 20.62 20.80 6/9693 2801932
+tree       = /tmp/bfs021/w-green3/tree-green3-new  (0 files, 0 B)
+binaries   = /tmp/bfs021/bin/bunker-fixed3 ; /tmp/bfs021/bin/davserve
+endpoint   = http://127.0.0.1:39461/dav (pid 2801939)
+trace      = http://127.0.0.1:18493/dav -> http://127.0.0.1:39461/dav (pid 2801981, per-request log /tmp/bfs021/w-green3/run-green3/run-green3-new/requests.jsonl)
+mount-args = --url http://127.0.0.1:18493/dav 
+cache-dir  = /tmp/bfs021/w-green3/run-green3/run-green3-new/xdg/bunker/fs/ab4ab104db92
+  cache dir    : /tmp/bfs021/w-green3/run-green3/run-green3-new/xdg/bunker/fs/ab4ab104db92/cache (bound 268435456 bytes, 16384 entries)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+reader     = python3 /home/kara/worktrees/bunker-BFS-021/docs/evidence/BFS-021-probes/bfs021-arms.py --mode new --expect ok  (rc=0)
+  | === mode=new  expect=ok ===
+  |   server fixture            : 82 B sha256=66ac40abbf895c38… (written on the server's own disk)
+  |   PASS  FIXTURE: the first read through the mount serves the baseline byte-for-byte
+  | BFS021-MEASURE baseline_size=82
+  | BFS021-MEASURE baseline_sha=66ac40abbf895c383fd020e209816a78b322a8f0e23eb4376edbbb77533c874d
+  | === mode=new  `>>` a path that does not exist (src/fresh.txt) ===
+  | BFS021-MEASURE mode=new
+  | BFS021-MEASURE landed=True
+  | BFS021-MEASURE detail="sh -c 'printf ... >> file' returned 0"
+  | BFS021-MEASURE errno=None
+  |   shape returned            : ok — sh -c 'printf ... >> file' returned 0
+  |   server src/fresh.txt: 25 B sha256=9b4310b78c069d29…
+  |   PASS  `>>` to a NEW path must land (the create path works — this is the control)
+  |   PASS  the new file must hold exactly the appended bytes, got b'APPENDED-TAIL-0123456789\n'
+  | 
+  | RESULT: new-path append landed, 25 B
+mount.log  :
+  | mounted http://127.0.0.1:18493/dav on /tmp/bfs021/w-green3/run-green3/run-green3-new/mnt
+  |   cache dir    : /tmp/bfs021/w-green3/run-green3/run-green3-new/xdg/bunker/fs/ab4ab104db92/cache (bound 268435456 bytes, 16384 entries)
+  |   mount dir    : /tmp/bfs021/w-green3/run-green3/run-green3-new/xdg/bunker/fs/ab4ab104db92 (the mount's own state: status.json, the refusal log, the write-buffer spills)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   config       : cache 268435456 B / 16384 entries (entry cap 67108864, staged 2, age 1h0m0s)
+  |   invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=false state=disabled share=1/8 slots=3 (foreground 22) refresh_inflight=2 clamped=false reserve=16777216 B
+  |   hot weights  : read=1 edit=8 decay=0.9 per 5m0s (half-life 32m54s)
+  |   hot bounds   : tracker 4096 entries / 1048576 B, size<=8388608 B (inclusive=true), queue 256 (score, wait 5m0s), ceiling 10000
+  |   hot timing   : tick=1s yield=250ms stop_deadline=1.5s refresh_deadline=10s reacquire=30s touch_window=5s flush=30s
+  |   hot backoff  : 250ms x2 cap 30s jitter=full, pressure_ticks=5
+  |   unmount      : bunker fs umount /tmp/bfs021/w-green3/run-green3/run-green3-new/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs021/w-green3/run-green3/run-green3-new/xdg):
+  | mount        : ab4ab104db92
+  | endpoint     : http://127.0.0.1:18493/dav
+  | mountpoint   : /tmp/bfs021/w-green3/run-green3/run-green3-new/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | resume       : seq=1 (the cursor this view was minted at)
+  | content age  : age_ms=1000 evidence_from=observation observations=1 bound_ms=- within_bound=-(disabled: no invalidation mechanism is in force on this mount, so it implies no window to compare the age against)
+  | server watch : state=absent backend=inotify watched=-/- sampled_age_ms=1135 max_paths_per_event=4096
+  | server counts: overflows=- unvouched=- rescans=- install_failures=- backend_errors=- heartbeats=- loop_ticks=-
+  |   counts why : no watcher has run on this target, so no counter has ever moved
+  | liveness     : - (no pushed channel on this mount)
+  |   why        : disabled: this mount never attempted the pushed channel (mode=poll), so it has no heartbeat to report; the poll mechanism's currency is reported in content_age
+  | requests     : requests_total=1 failures_total=0
+  | refresh      : started=0 in_flight=0/2 committed=0 aborted=0 refused_no_slot=0 refused_no_room=0
+  | refresh queue: - (no figure to report)
+  |   why        : not_published: the hot-refresh queue (BFS-037) is not in this build, so its depth, its bound and its refusals are not countable; the staged window below is the refresh accounting that does exist
+  | cache        : used_bytes=437 max_bytes=268435456 (blobs=107 index=330) entries=2 blobs=2
+  | cache bounds : max_entry_bytes=67108864 max_age_ms=3600000 entries=2/16384 in_flight_bytes=0 reserved_bytes=437 staged_blobs=0/2
+  | cache dir    : dir_bytes=330 unaccounted_bytes=-107 measured_age_ms=1046 by_class=blobs=0 conflicts=0 index=330 orphan=0 other=0 staged=0 status=0
+  | cache peak   : dir_peak_bytes=767 (the directory's peak: what max_bytes is enforced against)
+  | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | cache bypass : over_entry_cap=0 insert_over_entry_cap=0 no_room=0 cache_disabled=0
+  | state        : bytes=6716 max_bytes=4259840 (status=6716/65536 conflicts=0/4194304 spill=0 dropped_total=0)
+  | state footpr : footprint_bytes=7046 footprint_max_bytes=272695296 (cache dir + state + the write-buffer budget)
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=11 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+  | write shape  : refusals_total=0
+  | append       : published_total=0 refused_total=0 max_file_bytes=268435456
+  | refusal holds: held_total=0 outstanding=0 evicted_total=0
+  |   config       : cache 268435456 B / 16384 entries (entry cap 67108864, staged 2, age 1h0m0s)
+  |   invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=false state=disabled share=1/8 slots=3 (foreground 22) refresh_inflight=2 clamped=false reserve=16777216 B
+  |   hot weights  : read=1 edit=8 decay=0.9 per 5m0s (half-life 32m54s)
+  |   hot bounds   : tracker 4096 entries / 1048576 B, size<=8388608 B (inclusive=true), queue 256 (score, wait 5m0s), ceiling 10000
+  |   hot timing   : tick=1s yield=250ms stop_deadline=1.5s refresh_deadline=10s reacquire=30s touch_window=5s flush=30s
+  |   hot backoff  : 250ms x2 cap 30s jitter=full, pressure_ticks=5
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs021/w-green3/run-green3/run-green3-new
+
+### arm green3-rplus   (/tmp/bfs021/evidence-green3/BFS-021-green3-rplus.txt)
+### arm=rplus expect=loss bin=/tmp/bfs021/bin/bunker-fixed3
+arm        = green3-rplus
+host       = karaHermes-mde-7840hs loadavg 24.44 20.62 20.80 10/9681 2803088
+tree       = /tmp/bfs021/w-green3/tree-green3-rplus  (0 files, 0 B)
+binaries   = /tmp/bfs021/bin/bunker-fixed3 ; /tmp/bfs021/bin/davserve
+endpoint   = http://127.0.0.1:45085/dav (pid 2803095)
+trace      = http://127.0.0.1:18493/dav -> http://127.0.0.1:45085/dav (pid 2803110, per-request log /tmp/bfs021/w-green3/run-green3/run-green3-rplus/requests.jsonl)
+mount-args = --url http://127.0.0.1:18493/dav 
+cache-dir  = /tmp/bfs021/w-green3/run-green3/run-green3-rplus/xdg/bunker/fs/ab4ab104db92
+  cache dir    : /tmp/bfs021/w-green3/run-green3/run-green3-rplus/xdg/bunker/fs/ab4ab104db92/cache (bound 268435456 bytes, 16384 entries)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+reader     = python3 /home/kara/worktrees/bunker-BFS-021/docs/evidence/BFS-021-probes/bfs021-arms.py --mode rplus --expect loss  (rc=0)
+  | === mode=rplus  expect=loss ===
+  |   server fixture            : 82 B sha256=66ac40abbf895c38… (written on the server's own disk)
+  |   PASS  FIXTURE: the first read through the mount serves the baseline byte-for-byte
+  | BFS021-MEASURE baseline_size=82
+  | BFS021-MEASURE baseline_sha=66ac40abbf895c383fd020e209816a78b322a8f0e23eb4376edbbb77533c874d
+  |   shape returned            : ERROR — r+b write failed: [Errno 95] Operation not supported
+  | BFS021-MEASURE mode=rplus
+  | BFS021-MEASURE landed=false
+  | BFS021-MEASURE errno=95
+  | BFS021-MEASURE errno_name=ENOTSUP
+  | BFS021-MEASURE detail="r+b write failed: [Errno 95] Operation not supported"
+  | BFS021-MEASURE elapsed_ms=0.2
+  | BFS021-MEASURE server_bytes=82
+  | BFS021-MEASURE server_sha=66ac40abbf895c383fd020e209816a78b322a8f0e23eb4376edbbb77533c874d
+  | BFS021-MEASURE want_sha=60cbd86bc803056198122ffb2093f0fb2fb5424dfd85e8ad8d0722e0c133d6d5
+  | BFS021-MEASURE tail_present=false
+  | BFS021-MEASURE original_intact=true
+  | BFS021-MEASURE tail_count=0
+  |   PASS  the shape FAILS on this tree (the filed failure)
+  |   PASS  THE LOST BYTES: the appended tail is NOT in the file read back
+  |   PASS  the original prefix survives the failed append (BFS-030's class does not recur)
+  |   PASS  the server file is byte-identical to the fixture, not merely prefix-equal
+  | 
+  | RESULT: append LOST its bytes — shape reported an error, server still holds 82 B sha256=66ac40abbf895c38…, appended 25 B nowhere
+mount.log  :
+  | mounted http://127.0.0.1:18493/dav on /tmp/bfs021/w-green3/run-green3/run-green3-rplus/mnt
+  |   cache dir    : /tmp/bfs021/w-green3/run-green3/run-green3-rplus/xdg/bunker/fs/ab4ab104db92/cache (bound 268435456 bytes, 16384 entries)
+  |   mount dir    : /tmp/bfs021/w-green3/run-green3/run-green3-rplus/xdg/bunker/fs/ab4ab104db92 (the mount's own state: status.json, the refusal log, the write-buffer spills)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   config       : cache 268435456 B / 16384 entries (entry cap 67108864, staged 2, age 1h0m0s)
+  |   invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=false state=disabled share=1/8 slots=3 (foreground 22) refresh_inflight=2 clamped=false reserve=16777216 B
+  |   hot weights  : read=1 edit=8 decay=0.9 per 5m0s (half-life 32m54s)
+  |   hot bounds   : tracker 4096 entries / 1048576 B, size<=8388608 B (inclusive=true), queue 256 (score, wait 5m0s), ceiling 10000
+  |   hot timing   : tick=1s yield=250ms stop_deadline=1.5s refresh_deadline=10s reacquire=30s touch_window=5s flush=30s
+  |   hot backoff  : 250ms x2 cap 30s jitter=full, pressure_ticks=5
+  |   unmount      : bunker fs umount /tmp/bfs021/w-green3/run-green3/run-green3-rplus/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs021/w-green3/run-green3/run-green3-rplus/xdg):
+  | mount        : ab4ab104db92
+  | endpoint     : http://127.0.0.1:18493/dav
+  | mountpoint   : /tmp/bfs021/w-green3/run-green3/run-green3-rplus/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | resume       : seq=1 (the cursor this view was minted at)
+  | content age  : age_ms=1001 evidence_from=observation observations=1 bound_ms=- within_bound=-(disabled: no invalidation mechanism is in force on this mount, so it implies no window to compare the age against)
+  | server watch : state=absent backend=inotify watched=-/- sampled_age_ms=1137 max_paths_per_event=4096
+  | server counts: overflows=- unvouched=- rescans=- install_failures=- backend_errors=- heartbeats=- loop_ticks=-
+  |   counts why : no watcher has run on this target, so no counter has ever moved
+  | liveness     : - (no pushed channel on this mount)
+  |   why        : disabled: this mount never attempted the pushed channel (mode=poll), so it has no heartbeat to report; the poll mechanism's currency is reported in content_age
+  | requests     : requests_total=1 failures_total=0
+  | refresh      : started=0 in_flight=0/2 committed=0 aborted=0 refused_no_slot=0 refused_no_room=0
+  | refresh queue: - (no figure to report)
+  |   why        : not_published: the hot-refresh queue (BFS-037) is not in this build, so its depth, its bound and its refusals are not countable; the staged window below is the refresh accounting that does exist
+  | cache        : used_bytes=260 max_bytes=268435456 (blobs=82 index=178) entries=1 blobs=1
+  | cache bounds : max_entry_bytes=67108864 max_age_ms=3600000 entries=1/16384 in_flight_bytes=0 reserved_bytes=260 staged_blobs=0/2
+  | cache dir    : dir_bytes=178 unaccounted_bytes=-82 measured_age_ms=1048 by_class=blobs=0 conflicts=0 index=178 orphan=0 other=0 staged=0 status=0
+  | cache peak   : dir_peak_bytes=438 (the directory's peak: what max_bytes is enforced against)
+  | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | cache bypass : over_entry_cap=0 insert_over_entry_cap=0 no_room=0 cache_disabled=0
+  | state        : bytes=6718 max_bytes=4259840 (status=6718/65536 conflicts=0/4194304 spill=0 dropped_total=0)
+  | state footpr : footprint_bytes=6896 footprint_max_bytes=272695296 (cache dir + state + the write-buffer budget)
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=8 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+  | write shape  : refusals_total=0
+  | append       : published_total=0 refused_total=0 max_file_bytes=268435456
+  | refusal holds: held_total=0 outstanding=0 evicted_total=0
+  |   config       : cache 268435456 B / 16384 entries (entry cap 67108864, staged 2, age 1h0m0s)
+  |   invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=false state=disabled share=1/8 slots=3 (foreground 22) refresh_inflight=2 clamped=false reserve=16777216 B
+  |   hot weights  : read=1 edit=8 decay=0.9 per 5m0s (half-life 32m54s)
+  |   hot bounds   : tracker 4096 entries / 1048576 B, size<=8388608 B (inclusive=true), queue 256 (score, wait 5m0s), ceiling 10000
+  |   hot timing   : tick=1s yield=250ms stop_deadline=1.5s refresh_deadline=10s reacquire=30s touch_window=5s flush=30s
+  |   hot backoff  : 250ms x2 cap 30s jitter=full, pressure_ticks=5
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs021/w-green3/run-green3/run-green3-rplus
+
+### arm green3-trunc   (/tmp/bfs021/evidence-green3/BFS-021-green3-trunc.txt)
+### arm=trunc expect=loss bin=/tmp/bfs021/bin/bunker-fixed3
+arm        = green3-trunc
+host       = karaHermes-mde-7840hs loadavg 23.20 20.43 20.74 4/9656 2804337
+tree       = /tmp/bfs021/w-green3/tree-green3-trunc  (0 files, 0 B)
+binaries   = /tmp/bfs021/bin/bunker-fixed3 ; /tmp/bfs021/bin/davserve
+endpoint   = http://127.0.0.1:33757/dav (pid 2804347)
+trace      = http://127.0.0.1:18493/dav -> http://127.0.0.1:33757/dav (pid 2804375, per-request log /tmp/bfs021/w-green3/run-green3/run-green3-trunc/requests.jsonl)
+mount-args = --url http://127.0.0.1:18493/dav 
+cache-dir  = /tmp/bfs021/w-green3/run-green3/run-green3-trunc/xdg/bunker/fs/ab4ab104db92
+  cache dir    : /tmp/bfs021/w-green3/run-green3/run-green3-trunc/xdg/bunker/fs/ab4ab104db92/cache (bound 268435456 bytes, 16384 entries)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+reader     = python3 /home/kara/worktrees/bunker-BFS-021/docs/evidence/BFS-021-probes/bfs021-arms.py --mode trunc --expect loss  (rc=0)
+  | === mode=trunc  expect=loss ===
+  |   server fixture            : 82 B sha256=66ac40abbf895c38… (written on the server's own disk)
+  |   PASS  FIXTURE: the first read through the mount serves the baseline byte-for-byte
+  | BFS021-MEASURE baseline_size=82
+  | BFS021-MEASURE baseline_sha=66ac40abbf895c383fd020e209816a78b322a8f0e23eb4376edbbb77533c874d
+  |   shape returned            : ERROR — wb write failed: [Errno 95] Operation not supported: '/tmp/bfs021/w-green3/run-green3/run-green3-trunc/mnt/src/target.txt'
+  | BFS021-MEASURE mode=trunc
+  | BFS021-MEASURE landed=false
+  | BFS021-MEASURE errno=95
+  | BFS021-MEASURE errno_name=ENOTSUP
+  | BFS021-MEASURE detail="wb write failed: [Errno 95] Operation not supported: '/tmp/bfs021/w-green3/run-green3/run-green3-trunc/mnt/src/target.txt'"
+  | BFS021-MEASURE elapsed_ms=1.1
+  | BFS021-MEASURE server_bytes=82
+  | BFS021-MEASURE server_sha=66ac40abbf895c383fd020e209816a78b322a8f0e23eb4376edbbb77533c874d
+  | BFS021-MEASURE want_sha=60cbd86bc803056198122ffb2093f0fb2fb5424dfd85e8ad8d0722e0c133d6d5
+  | BFS021-MEASURE tail_present=false
+  | BFS021-MEASURE original_intact=true
+  | BFS021-MEASURE tail_count=0
+  |   PASS  the shape FAILS on this tree (the filed failure)
+  |   PASS  THE LOST BYTES: the appended tail is NOT in the file read back
+  |   PASS  the original prefix survives the failed append (BFS-030's class does not recur)
+  |   PASS  the server file is byte-identical to the fixture, not merely prefix-equal
+  | 
+  | RESULT: append LOST its bytes — shape reported an error, server still holds 82 B sha256=66ac40abbf895c38…, appended 25 B nowhere
+mount.log  :
+  | mounted http://127.0.0.1:18493/dav on /tmp/bfs021/w-green3/run-green3/run-green3-trunc/mnt
+  |   cache dir    : /tmp/bfs021/w-green3/run-green3/run-green3-trunc/xdg/bunker/fs/ab4ab104db92/cache (bound 268435456 bytes, 16384 entries)
+  |   mount dir    : /tmp/bfs021/w-green3/run-green3/run-green3-trunc/xdg/bunker/fs/ab4ab104db92 (the mount's own state: status.json, the refusal log, the write-buffer spills)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   config       : cache 268435456 B / 16384 entries (entry cap 67108864, staged 2, age 1h0m0s)
+  |   invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=false state=disabled share=1/8 slots=3 (foreground 22) refresh_inflight=2 clamped=false reserve=16777216 B
+  |   hot weights  : read=1 edit=8 decay=0.9 per 5m0s (half-life 32m54s)
+  |   hot bounds   : tracker 4096 entries / 1048576 B, size<=8388608 B (inclusive=true), queue 256 (score, wait 5m0s), ceiling 10000
+  |   hot timing   : tick=1s yield=250ms stop_deadline=1.5s refresh_deadline=10s reacquire=30s touch_window=5s flush=30s
+  |   hot backoff  : 250ms x2 cap 30s jitter=full, pressure_ticks=5
+  |   unmount      : bunker fs umount /tmp/bfs021/w-green3/run-green3/run-green3-trunc/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs021/w-green3/run-green3/run-green3-trunc/xdg):
+  | mount        : ab4ab104db92
+  | endpoint     : http://127.0.0.1:18493/dav
+  | mountpoint   : /tmp/bfs021/w-green3/run-green3/run-green3-trunc/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | resume       : seq=1 (the cursor this view was minted at)
+  | content age  : age_ms=1000 evidence_from=observation observations=1 bound_ms=- within_bound=-(disabled: no invalidation mechanism is in force on this mount, so it implies no window to compare the age against)
+  | server watch : state=absent backend=inotify watched=-/- sampled_age_ms=1136 max_paths_per_event=4096
+  | server counts: overflows=- unvouched=- rescans=- install_failures=- backend_errors=- heartbeats=- loop_ticks=-
+  |   counts why : no watcher has run on this target, so no counter has ever moved
+  | liveness     : - (no pushed channel on this mount)
+  |   why        : disabled: this mount never attempted the pushed channel (mode=poll), so it has no heartbeat to report; the poll mechanism's currency is reported in content_age
+  | requests     : requests_total=1 failures_total=0
+  | refresh      : started=0 in_flight=0/2 committed=0 aborted=0 refused_no_slot=0 refused_no_room=0
+  | refresh queue: - (no figure to report)
+  |   why        : not_published: the hot-refresh queue (BFS-037) is not in this build, so its depth, its bound and its refusals are not countable; the staged window below is the refresh accounting that does exist
+  | cache        : used_bytes=260 max_bytes=268435456 (blobs=82 index=178) entries=1 blobs=1
+  | cache bounds : max_entry_bytes=67108864 max_age_ms=3600000 entries=1/16384 in_flight_bytes=0 reserved_bytes=260 staged_blobs=0/2
+  | cache dir    : dir_bytes=178 unaccounted_bytes=-82 measured_age_ms=1047 by_class=blobs=0 conflicts=0 index=178 orphan=0 other=0 staged=0 status=0
+  | cache peak   : dir_peak_bytes=438 (the directory's peak: what max_bytes is enforced against)
+  | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | cache bypass : over_entry_cap=0 insert_over_entry_cap=0 no_room=0 cache_disabled=0
+  | state        : bytes=6718 max_bytes=4259840 (status=6718/65536 conflicts=0/4194304 spill=0 dropped_total=0)
+  | state footpr : footprint_bytes=6896 footprint_max_bytes=272695296 (cache dir + state + the write-buffer budget)
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=8 proto=HTTP/1.1
+  |   cause      : SETATTR src/target.txt: errno=EOPNOTSUPP cause=write_shape_unsupported: refusing to resize src/target.txt to 0 bytes: a handle opened for writing is live on the path, and this surface cannot write an existing file in place — publishing the resize would destroy the original before the write that follows it fails. The file is left byte-identical; use a whole-file write (create the path anew) or `truncate -s` outside a write handle
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=0 corrections_total=0
+  | write shape  : refusals_total=1
+  |   last       : src/target.txt: size=0
+  | append       : published_total=0 refused_total=0 max_file_bytes=268435456
+  | refusal holds: held_total=0 outstanding=0 evicted_total=0
+  |   config       : cache 268435456 B / 16384 entries (entry cap 67108864, staged 2, age 1h0m0s)
+  |   invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=false state=disabled share=1/8 slots=3 (foreground 22) refresh_inflight=2 clamped=false reserve=16777216 B
+  |   hot weights  : read=1 edit=8 decay=0.9 per 5m0s (half-life 32m54s)
+  |   hot bounds   : tracker 4096 entries / 1048576 B, size<=8388608 B (inclusive=true), queue 256 (score, wait 5m0s), ceiling 10000
+  |   hot timing   : tick=1s yield=250ms stop_deadline=1.5s refresh_deadline=10s reacquire=30s touch_window=5s flush=30s
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs021/w-green3/run-green3/run-green3-trunc
+
+### arm green3-reader   (/tmp/bfs021/evidence-green3/BFS-021-green3-reader.txt)
+### arm=reader expect=ok bin=/tmp/bfs021/bin/bunker-fixed3
+arm        = green3-reader
+host       = karaHermes-mde-7840hs loadavg 23.20 20.43 20.74 6/9695 2805581
+tree       = /tmp/bfs021/w-green3/tree-green3-reader  (0 files, 0 B)
+binaries   = /tmp/bfs021/bin/bunker-fixed3 ; /tmp/bfs021/bin/davserve
+endpoint   = http://127.0.0.1:40725/dav (pid 2805588)
+trace      = http://127.0.0.1:18493/dav -> http://127.0.0.1:40725/dav (pid 2805602, per-request log /tmp/bfs021/w-green3/run-green3/run-green3-reader/requests.jsonl)
+mount-args = --url http://127.0.0.1:18493/dav 
+cache-dir  = /tmp/bfs021/w-green3/run-green3/run-green3-reader/xdg/bunker/fs/ab4ab104db92
+  cache dir    : /tmp/bfs021/w-green3/run-green3/run-green3-reader/xdg/bunker/fs/ab4ab104db92/cache (bound 268435456 bytes, 16384 entries)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+reader     = python3 /home/kara/worktrees/bunker-BFS-021/docs/evidence/BFS-021-probes/bfs021-arms.py --mode reader --expect ok  (rc=0)
+  | === mode=reader  expect=ok ===
+  |   server fixture            : 82 B sha256=66ac40abbf895c38… (written on the server's own disk)
+  |   PASS  FIXTURE: the first read through the mount serves the baseline byte-for-byte
+  | BFS021-MEASURE baseline_size=82
+  | BFS021-MEASURE baseline_sha=66ac40abbf895c383fd020e209816a78b322a8f0e23eb4376edbbb77533c874d
+  | BFS021-MEASURE mode=reader
+  | BFS021-MEASURE appends=12
+  | BFS021-MEASURE reads_served=1063
+  | BFS021-MEASURE reads_refused=2
+  | BFS021-MEASURE writer_errors=[]
+  | BFS021-MEASURE torn_reads=[]
+  |   appends landed            : 12/12  
+  |   reads through the mount   : 1063 served, 2 refused (ESTALE — the documented re-open recovery)
+  |   server final              : 154 B sha256=031cfeddbc48269f…
+  |   torn reads                : 0 []
+  |   PASS  every append landed (12/12)
+  |   PASS  the server holds exactly BASE+T1..Tn (no append was lost or doubled)
+  |   PASS  a concurrent reader was actually served (the arm is not vacuous)
+  |   PASS  NO torn read: every read was one of the 13 complete states
+  | 
+  | RESULT: 12 appends against 1063 concurrent reads, 0 torn
+mount.log  :
+  | mounted http://127.0.0.1:18493/dav on /tmp/bfs021/w-green3/run-green3/run-green3-reader/mnt
+  |   cache dir    : /tmp/bfs021/w-green3/run-green3/run-green3-reader/xdg/bunker/fs/ab4ab104db92/cache (bound 268435456 bytes, 16384 entries)
+  |   mount dir    : /tmp/bfs021/w-green3/run-green3/run-green3-reader/xdg/bunker/fs/ab4ab104db92 (the mount's own state: status.json, the refusal log, the write-buffer spills)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   config       : cache 268435456 B / 16384 entries (entry cap 67108864, staged 2, age 1h0m0s)
+  |   invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=false state=disabled share=1/8 slots=3 (foreground 22) refresh_inflight=2 clamped=false reserve=16777216 B
+  |   hot weights  : read=1 edit=8 decay=0.9 per 5m0s (half-life 32m54s)
+  |   hot bounds   : tracker 4096 entries / 1048576 B, size<=8388608 B (inclusive=true), queue 256 (score, wait 5m0s), ceiling 10000
+  |   hot timing   : tick=1s yield=250ms stop_deadline=1.5s refresh_deadline=10s reacquire=30s touch_window=5s flush=30s
+  |   hot backoff  : 250ms x2 cap 30s jitter=full, pressure_ticks=5
+  |   unmount      : bunker fs umount /tmp/bfs021/w-green3/run-green3/run-green3-reader/mnt
+owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs021/w-green3/run-green3/run-green3-reader/xdg):
+  | mount        : ab4ab104db92
+  | endpoint     : http://127.0.0.1:18493/dav
+  | mountpoint   : /tmp/bfs021/w-green3/run-green3/run-green3-reader/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | resume       : seq=1 (the cursor this view was minted at)
+  | content age  : age_ms=2002 evidence_from=observation observations=1 bound_ms=- within_bound=-(disabled: no invalidation mechanism is in force on this mount, so it implies no window to compare the age against)
+  | server watch : state=absent backend=inotify watched=-/- sampled_age_ms=2138 max_paths_per_event=4096
+  | server counts: overflows=- unvouched=- rescans=- install_failures=- backend_errors=- heartbeats=- loop_ticks=-
+  |   counts why : no watcher has run on this target, so no counter has ever moved
+  | liveness     : - (no pushed channel on this mount)
+  |   why        : disabled: this mount never attempted the pushed channel (mode=poll), so it has no heartbeat to report; the poll mechanism's currency is reported in content_age
+  | requests     : requests_total=1 failures_total=0
+  | refresh      : started=0 in_flight=0/2 committed=0 aborted=0 refused_no_slot=0 refused_no_room=0
+  | refresh queue: - (no figure to report)
+  |   why        : not_published: the hot-refresh queue (BFS-037) is not in this build, so its depth, its bound and its refusals are not countable; the staged window below is the refresh accounting that does exist
+  | cache        : used_bytes=333 max_bytes=268435456 (blobs=154 index=179) entries=1 blobs=1
+  | cache bounds : max_entry_bytes=67108864 max_age_ms=3600000 entries=1/16384 in_flight_bytes=0 reserved_bytes=333 staged_blobs=0/2
+  | cache dir    : dir_bytes=179 unaccounted_bytes=-154 measured_age_ms=2048 by_class=blobs=0 conflicts=0 index=179 orphan=0 other=0 staged=0 status=0
+  | cache peak   : dir_peak_bytes=512 (the directory's peak: what max_bytes is enforced against)
+  | cache events : hits=1066 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | cache bypass : over_entry_cap=0 insert_over_entry_cap=0 no_room=0 cache_disabled=0
+  | state        : bytes=6962 max_bytes=4259840 (status=6962/65536 conflicts=0/4194304 spill=0 dropped_total=0)
+  | state footpr : footprint_bytes=7141 footprint_max_bytes=272695296 (cache dir + state + the write-buffer budget)
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=2 requests=56 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=2 corrections_total=4
+  |   last       : src/target.txt: published=142 content=148 refused=true
+  | write shape  : refusals_total=0
+  | append       : published_total=12 refused_total=0 max_file_bytes=268435456
+  |   last       : src/target.txt: published=154 bytes
+  | refusal holds: held_total=0 outstanding=0 evicted_total=0
+  |   config       : cache 268435456 B / 16384 entries (entry cap 67108864, staged 2, age 1h0m0s)
+  |   invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=false state=disabled share=1/8 slots=3 (foreground 22) refresh_inflight=2 clamped=false reserve=16777216 B
+  |   hot weights  : read=1 edit=8 decay=0.9 per 5m0s (half-life 32m54s)
+  |   hot bounds   : tracker 4096 entries / 1048576 B, size<=8388608 B (inclusive=true), queue 256 (score, wait 5m0s), ceiling 10000
+  |   hot timing   : tick=1s yield=250ms stop_deadline=1.5s refresh_deadline=10s reacquire=30s touch_window=5s flush=30s
+--- conflicts ---
+  | no refusals recorded
+run dir : /tmp/bfs021/w-green3/run-green3/run-green3-reader

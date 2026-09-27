@@ -1,0 +1,42 @@
+diff --git a/internal/server/webdav/tree.go b/internal/server/webdav/tree.go
+index ca1be83..f11eea9 100644
+--- a/internal/server/webdav/tree.go
++++ b/internal/server/webdav/tree.go
+@@ -578,7 +578,36 @@ func stageBody(abs string, body []byte) (string, error) {
+ // §6.1 step 5's commit and runs under the path's commit lock (see lockPath),
+ // so the re-validation that precedes it and the rename itself are one
+ // critical section.
+-func commitStaged(tmp, abs string) error { return os.Rename(tmp, abs) }
++// MUTATION (BFS-021 red-proof): the commit writes the staged bytes INTO the
++// published file instead of swapping it in by rename, so a reader racing the
++// publication can observe a half-written file. The pause WIDENS a window the
++// in-place shape really has and that the rename-based commit does not have at
++// all: without it the arm could pass by never looking at the right microsecond.
++func commitStaged(tmp, abs string) error {
++	body, err := os.ReadFile(tmp)
++	if err != nil {
++		return err
++	}
++	f, err := os.OpenFile(abs, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0o644)
++	if err != nil {
++		return err
++	}
++	half := len(body) / 2
++	if _, err := f.Write(body[:half]); err != nil {
++		f.Close()
++		return err
++	}
++	if err := f.Sync(); err != nil {
++		f.Close()
++		return err
++	}
++	time.Sleep(4 * time.Millisecond)
++	if _, err := f.Write(body[half:]); err != nil {
++		f.Close()
++		return err
++	}
++	return f.Close()
++}
+ 
+ // copyTree copies src to dst. depthInfinity=false copies a collection without
+ // its members (RFC 4918 §9.8.3's Depth: 0), which is the only non-infinite
