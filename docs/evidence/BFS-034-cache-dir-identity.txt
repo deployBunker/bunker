@@ -1,0 +1,23 @@
+cache root: /home/kara/.cache/bunker/fs
+mount dirs before: 10
+
+== new dirs in the default root since BEFORE ==
+  5bdb9bdfb0b7  mount=5bdb9bdfb0b7 max_bytes=268435456 entries=0
+  e76d29e9bb82  mount=e76d29e9bb82 max_bytes=65536 entries=4
+  95f329383593  mount=95f329383593 max_bytes=65536 entries=4
+  b1bf8a0e1b89  mount=b1bf8a0e1b89 max_bytes=65536 entries=261
+  a3d56e175fb6  mount=a3d56e175fb6 max_bytes=268435456 entries=0
+  (dir count before=10, after=10)
+
+== what each mount reports as its cache dir ==
+  m1: /home/kara/.cache/bunker/fs/5bdb9bdfb0b7 (bound 268435456 bytes)
+  m2: /home/kara/.cache/bunker/fs/5bdb9bdfb0b7 (bound 268435456 bytes)
+  m3: /tmp/bfs034-cacheid/explicit-cache (bound 268435456 bytes)
+
+== the SAME document? sha of each mount's status.json ==
+  5bdb9bdfb0b7 c36dd17c9cf0bca2
+  e76d29e9bb82 286e42eee1acf779
+  95f329383593 9e09d4448e7b82c9
+  explicit: 68b8c71033f5f9ae
+docs/evidence/BFS-034-probes/cache-dir-identity.sh: line 50: 2622360 Killed                     "$T/bin/bunker" fs mount "$T/$n" --url "http://127.0.0.1:$PORT/dav" "$@" > "$T/$n.log" 2>&1
+docs/evidence/BFS-034-probes/cache-dir-identity.sh: line 50: 2623465 Killed                     "$T/bin/bunker" fs mount "$T/$n" --url "http://127.0.0.1:$PORT/dav" "$@" > "$T/$n.log" 2>&1

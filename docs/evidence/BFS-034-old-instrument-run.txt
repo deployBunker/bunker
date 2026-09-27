@@ -1,0 +1,51 @@
+== step 1: the SERVED tree (built by the WAN battery's own fixture builder) ==
+   built in place (local side): /tmp/bfs034-old/tree
+   files             : 126 (4.3M)
+────────────────────────────────────────────────────────────────────────────
+fixture-only: the tree is ready at /tmp/bfs034-old/tree; nothing was measured.
+serve it, then point this battery at the endpoint with --tree /tmp/bfs034-old/tree
+keeping the side tree in place (--keep-tree/--fixture-only): /tmp/bfs034-old/tree
+
+== step 2: serve it ==
+davserve pid=2513478 on :38413 serving /tmp/bfs034-old/tree
+
+== step 3: the local tree the old instrument will be given (--tree) ==
+   a copy, PLUS two files the served tree does NOT have, so that anything the
+   old script reports from --tree is provably not the server's state:
+   mirror has newdir/hello.txt + newdir/renamed.txt; the served tree has neither:
+     served: (no newdir)
+     mirror: hello.txt renamed.txt 
+
+== step 4: run the OLD instrument, unmodified, against the served endpoint ==
+old battery rc=0  (transcript: /tmp/bfs034-old/old-transcript.txt)
+
+== step 5: what the old instrument reported AS THE SERVER'S, and the truth ==
+--- the old script's own 'server side' lines (transcript) ---
+      POSIX-level proof of the writes on the SERVER side (the bytes are really there):
+      server-side view of the mount's scratch file (should be empty: it was removed):
+        /tmp/bfs034-old/mirror/newdir/renamed.txt
+        /tmp/bfs034-old/mirror/newdir/hello.txt
+   
+      cache after the ops:
+--- §5's server-hash label ---
+   93:     sha256 on the server: 8f9299f0efa81d3cf015a64b3d965456442b6892ccfc8adf581d83dc22d881f2
+   96:   the file's bytes on the server (must be the AGENT side edit, unchanged):
+
+--- the TRUTH, read on the side (the served tree) ---
+   served  newdir/hello.txt: ABSENT
+   mirror  newdir/hello.txt: present (24 bytes) sha=6aedcc9d98fb
+   served  newdir/renamed.txt: ABSENT
+   mirror  newdir/renamed.txt: present (26 bytes) sha=3cec992d7858
+
+--- the served repo's state after the old run (its git cleanup targets --tree) ---
+   served branch: main
+   served status: ?? .battery-probe.txt ?? conflict.txt 
+   served .battery-probe.txt: PRESENT
+   mirror .battery-probe.txt: absent
+   mirror branch: main
+   mounts left under /tmp/bfs034-old/mnt: 0
+
+== cleanup ==
+docs/evidence/BFS-034-probes/run-old-instrument.sh: line 96: 2513478 Killed                     "$T/bin/davserve" --root "$T/tree" --addr "127.0.0.1:$PORT" > "$T/srv.log" 2>&1
+davserve alive=no; bunker-old procs=0
+0

@@ -1,0 +1,13 @@
+== 64 KiB bound, read 40 x 15 KiB files ==
+   arm A: FRESH endpoint (:38417, no mount has ever used its default dir)
+  bound-fresh-endpoint               bound=65536    used=62081     entries=4     evictions=40   dir=95f329383593 du=81920
+   arm B: same, on the endpoint two other mounts already used (:38416)
+docs/evidence/BFS-034-probes/cache-bound-arms.sh: line 28: 2638813 Killed                     "$T/bin/bunker" fs mount "$m" --url "$url" --concurrency 8 "$@" > "$T/$label.log" 2>&1
+  bound-shared-endpoint              bound=65536    used=62081     entries=4     evictions=40   dir=e76d29e9bb82 du=81920
+docs/evidence/BFS-034-probes/cache-bound-arms.sh: line 45: 2640628 Killed                     "$T/bin/bunker" fs mount "$m" --url "$url" --concurrency 8 "$@" > "$T/$label.log" 2>&1
+   arm C: fresh endpoint again, but with its own --cache-dir
+  bound-own-cachedir                 bound=65536    used=62081     entries=4     evictions=36   dir=cacheC du=81920
+docs/evidence/BFS-034-probes/cache-bound-arms.sh: line 50: 2629601 Killed                     "$T/bin/davserve" --root "$T/tree" --addr "127.0.0.1:$PORT" > "$T/srv1.log" 2>&1
+docs/evidence/BFS-034-probes/cache-bound-arms.sh: line 50: 2629602 Killed                     "$T/bin/davserve" --root "$T/tree" --addr "127.0.0.1:$PORT2" > "$T/srv2.log" 2>&1
+docs/evidence/BFS-034-probes/cache-bound-arms.sh: line 50: 2643039 Killed                     "$T/bin/bunker" fs mount "$m" --url "$url" --concurrency 8 "$@" > "$T/$label.log" 2>&1
+cleanup: servers alive=no/no

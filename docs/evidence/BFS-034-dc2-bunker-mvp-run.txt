@@ -1,0 +1,378 @@
+== pre-flight: what is live on bunker-mvp (must stay untouched) ==
+x86_64
+--- bunkerd ---
+active
+--- listeners 18080/19090 ---
+LISTEN 0      4096               *:19090            *:*          
+LISTEN 0      4096               *:18080            *:*          
+--- spare port  ---
+12
+
+== build + push the probe server (linux/amd64) ==
+  davserve pushed: local md5 d5f637ea6fc37a5acf66fe8798a6e728 / remote md5 d5f637ea6fc37a5acf66fe8798a6e728
+
+== create the fixture ON THE DC (the tree nobody here mirrors) ==
+  ────────────────────────────────────────────────────────────────────────────
+  bunker-fs mount battery — WAN / DATACENTRE variant (BFS-034)
+  ────────────────────────────────────────────────────────────────────────────
+  endpoint      : http://78.46.173.180:18734/dav
+  declared side : ssh:bunker-mvp
+  side tree     : /tmp/bunker-wan-20260926233027/tree
+  client        : /tmp/bfs034-dc-20260926233027/bin/bunker (concurrency=25, per-op timeout=45s)
+  verify mech   : (b) b(server-side over ssh)  +  (a) read back through the mount
+  csv           : /tmp/bfs034-WIKvAg/bunker-fs-battery-wan.csv
+  artifacts     : /tmp/bfs034-WIKvAg
+  
+  BASELINES (recorded, not re-derived): sshfs 5 ok / 7-8 stalls; WebDAV 11 ok / 1 stall;
+  NFS whole-tree diff --stat 32.74 s; native (git on the host) 14/14 in 0.41 s.
+  
+  SECTION MAP: 1-7 and 9 are the original's sections in the original's order; this
+  variant ADDS section 8 (the negative control, which runs before the endpoint kill
+  so the endpoint is still up). The CSV section names (ops/tree-read/git/bound/kill)
+  and every op name are unchanged, so the measured rows stay comparable with
+  BFS-016's loopback run.
+  ────────────────────────────────────────────────────────────────────────────
+  0. FRESH TREE ON THE SIDE (--fresh-tree: created AT --tree, removed on the way out)
+     built locally     : /tmp/bfs034-WIKvAg/stage/tree (126 files, 4.3M)
+     pushing to the side: ssh bunker-mvp tar -C '/tmp/bunker-wan-20260926233027' (mkdir -p first)
+     on the side       : go.mod present
+     git on the side   : 43f969e fixture: third commit aae8a29 fixture: second commit (so rebase HEAD~1 is real) 765894e fixture: base tree 
+     (stderr included above on purpose: a git that refuses the tree — e.g.
+      'dubious ownership' after a uid-preserving extract — must be VISIBLE here,
+      not swallowed by a 2>/dev/null inside a verification cell.)
+  ────────────────────────────────────────────────────────────────────────────
+  fixture-only: the tree is ready at /tmp/bunker-wan-20260926233027/tree; nothing was measured.
+  serve it, then point this battery at the endpoint with --tree /tmp/bunker-wan-20260926233027/tree
+  keeping the side tree in place (--keep-tree/--fixture-only): /tmp/bunker-wan-20260926233027/tree
+
+== start the probe server on the DC (spare port 18734) ==
+pid=4103220
+
+listening=1
+--- log ---
+URL=http://127.0.0.1:18734/dav
+ROOT=/tmp/bunker-wan-20260926233027/tree
+  opening an ssh tunnel 127.0.0.1:39141 -> bunker-mvp:127.0.0.1:18734 (the DC keeps ufw DROP;
+   no firewall change is made on a live host). Tunnel pid is captured, never pattern-killed.
+
+== reachability from the CLIENT side (http://127.0.0.1:39141/dav) ==
+000 0.000122s
+000 0.000144s
+200 1.101981s
+  bind preflight via the client: 405 in 0.576681s
+
+== THE BATTERY (every write verified on the DC side, over ssh) ==
+────────────────────────────────────────────────────────────────────────────
+bunker-fs mount battery — WAN / DATACENTRE variant (BFS-034)
+────────────────────────────────────────────────────────────────────────────
+endpoint      : http://127.0.0.1:39141/dav
+declared side : ssh:bunker-mvp
+side tree     : /tmp/bunker-wan-20260926233027/tree
+client        : /tmp/bfs034-dc-20260926233027/bin/bunker (concurrency=25, per-op timeout=45s)
+verify mech   : (b) b(server-side over ssh)  +  (a) read back through the mount
+csv           : /tmp/bfs034-dc-20260926233027/battery-dc.csv
+artifacts     : /tmp/bfs034-lfe4cC
+
+BASELINES (recorded, not re-derived): sshfs 5 ok / 7-8 stalls; WebDAV 11 ok / 1 stall;
+NFS whole-tree diff --stat 32.74 s; native (git on the host) 14/14 in 0.41 s.
+
+SECTION MAP: 1-7 and 9 are the original's sections in the original's order; this
+variant ADDS section 8 (the negative control, which runs before the endpoint kill
+so the endpoint is still up). The CSV section names (ops/tree-read/git/bound/kill)
+and every op name are unchanged, so the measured rows stay comparable with
+BFS-016's loopback run.
+────────────────────────────────────────────────────────────────────────────
+1. BIND PREFLIGHT + THE ONE-CALL SNAPSHOT
+   endpoint        : http://127.0.0.1:39141/dav
+   proto           : HTTP/1.1 (HTTP/1.1 is supported; nothing here requires h2/h3)
+   dav             : 1
+   extensions      : identity,if_match_refuse,rev,tree,op,watch
+   methods         : OPTIONS, GET, HEAD, PUT, DELETE, MKCOL, PROPFIND, PROPPATCH, COPY, MOVE, POST
+   tree            : tree:ff2caf0571793de5
+   rev             : git:43f969ec0c4fae7c46f657937fd2382e4e978503
+   document version: 1
+   watcher         : false
+   poll form       : false
+   degradation     : watch (scope=target phase=- mode=poll) no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff
+   bind preflight  : OK in 952ms
+
+   snapshot /: 414 nodes in 1 server call(s), source=snapshot-op, 960ms
+     requests total (this client) : 1
+     in-flight high-water mark    : 1
+────────────────────────────────────────────────────────────────────────────
+2. REAL FILE OPERATIONS THROUGH THE MOUNT (snapshot on), each write VERIFIED ON THE SIDE
+   SIDE ASSERTION — is the declared tree really the side these writes land on?
+     nonce written THROUGH the mount, read back on the declared side (ssh:bunker-mvp):
+     MATCH — the declared side IS the write side. Proceeding.
+
+cat go.mod (read)                   0.216s  rc=0    ok
+ls -l (list+stat)                   0.414s  rc=0    ok
+ls src (120 entries)                0.114s  rc=0    ok
+stat go.mod                         0.115s  rc=0    ok
+mkdir newdir                        0.814s  rc=0    ok
+   verify mkdir newdir                   ok        mech=(b) side exp=dir got=dir the mkdir must land on the side
+write file (printf>)                0.413s  rc=0    ok
+   verify write file (printf>)           ok        mech=(b) side exp=hello from bunker-fs got=hello from bunker-fs the bytes must be on the side, not in a local mirror (appeared after 0 poll(s))
+read it back                        0.423s  rc=0    ok
+   verify read it back                   ok        mech=(a) mount vs (b) side exp=hello from bunker-fs got=hello from bunker-fs the mount must agree with the side
+mv (rename)                         0.414s  rc=0    ok
+   verify mv (rename)                    ok        mech=(b) side exp=new=yes old=no got=new=yes old=no a rename must land on the side, both halves
+ls newdir (after rename)            0.214s  rc=0    ok
+append (>>)                         0.113s  rc=1    error(rc=1)
+   verify append (>>)                    MISMATCH! mech=(b) side exp=hello from bunker-fs|second line| got=hello from bunker-fs| the appended bytes must be on the side (BFS-021 says they are not; 0 poll(s))
+read appended                       0.238s  rc=0    ok
+rm (unlink)                         0.220s  rc=0    ok
+   verify rm (unlink)                    ok        mech=(b) side exp=absent got=absent the unlink must land on the side
+rmdir                               0.216s  rc=0    ok
+   verify rmdir                          ok        mech=(b) side exp=absent got=absent the rmdir must land on the side
+
+   POSIX-level proof of the writes on the SIDE (ssh:bunker-mvp) — the bytes are really there:
+   side view of the mount's scratch files (both should be absent: they were removed):
+   (an empty list here means the unlink and rmdir landed on the side — it is not
+    evidence by itself; the per-cell verdicts above are)
+
+   cache after the ops (this mount's own cache dir: /tmp/bfs034-lfe4cC/cache-snap):
+       "cache": {
+         "max_bytes": 268435456,
+         "blobs_bytes": 35,
+         "index_bytes": 170,
+         "used_bytes": 205,
+         "entries": 1,
+         "blobs": 1,
+         "evictions_total": 0,
+         "bypass_events": 0,
+         "oversize_bypasses": 0,
+         "pinned_blobs": 0,
+         "hits": 1,
+         "misses": 0
+────────────────────────────────────────────────────────────────────────────
+3. WHOLE-TREE READ (the proven lever)
+   arm A: snapshot op (ONE call), concurrency 25
+     ls -lR  0.212s rc=0  requests +0  in_flight_max=2
+   arm B: standard PROPFIND walk, concurrency 25 (no snapshot)
+     ls -lR  2.356s rc=0  requests +8  in_flight_max=1
+   arm C: standard PROPFIND walk, concurrency 1 (the serial comparison)
+     ls -lR  1.909s rc=0  requests +5  in_flight_max=1
+────────────────────────────────────────────────────────────────────────────
+4. THE 14-OPERATION BATTERY OVER THE MOUNT (the comparable shape)
+   (the git cells run THROUGH the mount, so they are on the write side by
+    construction; the BASE lookup and the whole cleanup below run ON THE SIDE,
+    which is the fix for the original's local-tree lines 222/239-243)
+   repo=/tmp/bfs034-dc-20260926233027/mnt-snap tracked=126 base=main (side-resolved, never written to)
+rev-parse HEAD                      3.537s  rc=0    ok
+log -1                              5.538s  rc=0    ok
+log --oneline -20                   5.147s  rc=0    ok
+ls-files (count)                    1.039s  rc=0    ok
+diff --stat HEAD                   45.078s  rc=124  STALL(timeout)
+status --short                     37.633s  rc=0    ok
+status --porcelain -uno            14.169s  rc=0    ok
+checkout -b scratch                 3.321s  rc=128  error(rc=128)
+add one file                        0.915s  rc=128  error(rc=128)
+   verify add one file                   MISMATCH! mech=(b) side index exp=1 got=0 1 = the path is in the SIDE repo's index (0 = the add did not land)
+commit                              5.331s  rc=128  error(rc=128)
+commit --amend                      8.322s  rc=128  error(rc=128)
+rebase HEAD~1                      28.240s  rc=0    ok
+symbolic-ref / branch               7.987s  rc=0    ok
+   verify checkout -b scratch            FINDING   mech=(b) side HEAD exp=bunker/battery-20260926233331 got=main the branch created through the mount must be the SIDE repo's HEAD (informational)
+   verify cleanup on the side            ok        mech=(b) side HEAD via git rev-parse exp=main got=main the side repo must be back on main with the scratch branch gone
+────────────────────────────────────────────────────────────────────────────
+5. CONFLICT: A REFUSED WRITE (content hash, never mtime)
+   read through the mount (this read IS the base hash):
+     base content
+   now change it ON THE SIDE, out of band (ssh:bunker-mvp):
+     sha256 on the side: 8f9299f0efa81d3cf015a64b3d965456442b6892ccfc8adf581d83dc22d881f2
+   write through the mount with the stale base:
+     write rc=1 in 1.859s; stderr: probes/bunker-fs-battery-wan.sh: line 676: printf: write error: Operation not supported
+   the file's bytes ON THE SIDE (must be the SIDE-side edit, unchanged):
+   (read after a 0.5 s settle, so an in-flight 204 has had time to land)
+     
+     on the side: present, size=0 byte(s)
+   verify conflict refusal holds         MISMATCH! mech=(b) side content exp=agent side edit got= a refused write must leave the SIDE bytes untouched (BFS-033: a 412 is recorded, then a 204 lands)
+   verify conflict target survives       ok        mech=(b) side existence exp=present got=present a FAILED rewrite must not destroy the target (BFS-030: the truncate half commits and the write half fails)
+   the refusal, as recorded (this mount's own log):
+     {"path":".git/index.lock","expected":"sha256:1f591e0aa3bb2051d48a6d49f9fc5077e70bd59aee9fab441225b6a755a56feb","code":"precondition_failed","detail":"\u003c?xml version=\"1.0\" encoding=\"utf-8\"?\u003e\n\u003cD:error xmlns:D=\"DAV:\" xmlns:b=\"urn:bunker:fs:1\"\u003e\u003cb:precondition-failed\u003e\u003c/b:precondition-failed\u003e\u003c/D:error\u003e","ts":"2026-09-26T23:35:28.368439657-05:00"}
+     {"path":"conflict.txt","expected":"sha256:43545873aa1aac9afd27e090e00911ef2dba2c83eb8b09cab82e3b0e89204664","current":"sha256:8f9299f0efa81d3cf015a64b3d965456442b6892ccfc8adf581d83dc22d881f2","code":"hash_mismatch","detail":"\u003c?xml version=\"1.0\" encoding=\"utf-8\"?\u003e\n\u003cD:error xmlns:D=\"DAV:\" xmlns:b=\"urn:bunker:fs:1\"\u003e\u003cb:hash-mismatch\u003e\u003cb:expected\u003esha256:43545873aa1aac9afd27e090e00911ef2dba2c83eb8b09cab82e3b0e89204664\u003c/b:expected\u003e\u003cb:current\u003esha256:8f9299f0efa81d3cf015a64b3d965456442b6892ccfc8adf581d83dc22d881f2\u003c/b:current\u003e\u003c/b:hash-mismatch\u003e\u003c/D:error\u003e","ts":"2026-09-26T23:38:20.014766564-05:00"}
+   the status document's conflict block (this mount's own status.json):
+       "conflicts": {
+         "refusals_total": 2,
+         "last": {
+           "path": "conflict.txt",
+           "expected": "sha256:43545873aa1aac9afd27e090e00911ef2dba2c83eb8b09cab82e3b0e89204664",
+           "current": "sha256:8f9299f0efa81d3cf015a64b3d965456442b6892ccfc8adf581d83dc22d881f2",
+           "code": "hash_mismatch",
+           "detail": "\u003c?xml version=\"1.0\" encoding=\"utf-8\"?\u003e\n\u003cD:error xmlns:D=\"DAV:\" xmlns:b=\"urn:bunker:fs:1\"\u003e\u003cb:hash-mismatch\u003e\u003cb:expected\u003esha256:43545873aa1aac9afd27e090e00911ef2dba2c83eb8b09cab82e3b0e89204664\u003c/b:expected\u003e\u003cb:current\u003esha256:8f9299f0efa81d3cf015a64b3d965456442b6892ccfc8adf581d83dc22d881f2\u003c/b:current\u003e\u003c/b:hash-mismatch\u003e\u003c/D:error\u003e",
+           "ts": "0001-01-01T00:00:00Z"
+────────────────────────────────────────────────────────────────────────────
+6. INVALIDATION: SIDE-side edit, no remount, DECLARED window
+   read through the mount: one
+   edit ON THE SIDE; waiting the declared poll interval (2 s) + one RTT…
+   read through the mount again: one
+   read on the side            : two
+   verify invalidation window            FINDING   mech=(a) mount vs (b) side exp=two got=one the declared window should make the mount agree with the side (BFS-016 §6 saw it stale)
+   invalidation state (this mount's own status.json):
+       "invalidation": {
+         "mode": "poll",
+         "mechanism": "events",
+         "seq": 0,
+         "last_event_age_ms": null,
+         "poll_interval_ms": 2000,
+         "resyncs_from_gap": 0,
+         "resyncs_total": 0,
+         "events_total": 0,
+         "paths_dropped_total": 0,
+         "reason": "poll call failed: op:events : errno=EOPNOTSUPP cause=server_error status=501 verdict=capability_unavailable: no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff",
+────────────────────────────────────────────────────────────────────────────
+7. THE CACHE BOUND: --cache-max-size 65536 (64 KiB) over a 1.8 MiB tree
+read 40 files (bound exceeded)     13.767s  rc=0    ok
+   cache figures after over-reading the bound (this mount's own status.json):
+       "cache": {
+         "max_bytes": 65536,
+         "blobs_bytes": 61440,
+         "index_bytes": 641,
+         "used_bytes": 62081,
+         "entries": 4,
+         "blobs": 4,
+         "evictions_total": 36,
+         "bypass_events": 0,
+         "oversize_bypasses": 0,
+         "pinned_blobs": 0,
+         "hits": 0,
+         "misses": 0
+   du of this mount's own cache directory (compared with used_bytes above):
+     81920	/tmp/bfs034-lfe4cC/cache-lowcache
+   NOTE: this cell verifies a LOCAL resource (the client's cache). It is
+   correctly local, and it makes no cross-link claim — stated so it is not
+   read as a same-side verification.
+   reads must still succeed; they do (the run above reported success).
+────────────────────────────────────────────────────────────────────────────
+8. NEGATIVE CONTROL — the local-mirror verification vs the SAME-SIDE verification
+   What this proves: given a write that is broken ON THE SIDE (the bytes the
+   client thought it wrote are not the bytes the server has), the verification the
+   original battery performs — a read of a LOCAL tree — reports SUCCESS, while a
+   same-side read detects it. That is the row's premise, demonstrated.
+   The mirror is built from the SIDE's own state right after the write landed, so
+   it is exactly what any local mirror of a healthy link would contain, and it is
+   then made stale by exactly one fault event.
+
+   8a  write through the mount      : rc=0  path=/tmp/bfs034-dc-20260926233027/mnt-ctl/.wan-ctl.txt
+   8b  (b) same-side read           : 'A:AC-NONCE-3513365-6930'  sha=afb5f8890a38
+       (a) mount read                : 'A:AC-NONCE-3513365-6930'
+   verify control: write landed          ok        mech=(b) side exp=A:AC-NONCE-3513365-6930 got=A:AC-NONCE-3513365-6930 the control's own write must be on the side before it can be broken
+   verify control: mount agrees          ok        mech=(a) mount exp=A:AC-NONCE-3513365-6930 got=A:AC-NONCE-3513365-6930 the mount must show what it just wrote
+   8c  mirror (local, = the side now): 'A:AC-NONCE-3513365-6930'  sha=afb5f8890a38
+   8d  FAULT on the side            : 'B:AC-NONCE-3513365-6930'  sha=3f66861ca92e
+       the fault changed the bytes (sha differs) — the control is not vacuous
+   8e  OLD verification (local tree): 'A:AC-NONCE-3513365-6930'  -> PASS(blind)
+       (this is probes/bunker-fs-battery.sh's 'POSIX-level proof of the writes on
+        the SERVER side' and its sha256-on-the-server line, read against --tree)
+   8f  NEW verification (b) side   : 'B:AC-NONCE-3513365-6930'  -> FAIL(detected)
+       (a) existing mount read      : 'A:AC-NONCE-3513365-6930'  <- reported, not trusted
+       (a) FRESH mount read         : 'B:AC-NONCE-3513365-6930'  -> FAIL(detected)
+   verify control: OLD path is blind     ok        mech=(local tree, the wrong side) exp=PASS(blind) got=PASS(blind) the old verification MUST report success on a broken write
+   verify control: NEW path detects      ok        mech=(b) side exp=FAIL(detected) got=FAIL(detected) the same-side verification MUST fail on the same broken write
+   8g  fail-closed check: run the SIDE ASSERTION with the mirror declared as the side
+       MISMATCH — the guard REFUSES to measure against a mirror. Correct.
+   verify control: guard refuses mirror  ok        mech=side assertion exp=refused got=refused a wrong declared side must be refused, not measured
+
+   CONTROL VERDICT: the old path PASSED a broken write ('A:AC-NONCE-3513365-6930'), the same-side
+   path DETECTED it ('B:AC-NONCE-3513365-6930' != 'A:AC-NONCE-3513365-6930'), and the guard refused the mirror.
+   The instrument can fail. That is what makes its green worth something.
+────────────────────────────────────────────────────────────────────────────
+9. TRANSPORT KILL: bounded error, named cause, no hang
+   stopping the endpoint: ssh -o BatchMode=yes bunker-mvp 'kill $(cat /tmp/bunker-wan-20260926233027/pid)'
+   (the mount must STAY mounted; every operation must fail loudly and fast
+    with a named errno — the house rule is a bounded timeout, never a hang)
+stat . (endpoint up)                0.111s  rc=0    ok
+stat . (endpoint DOWN)              0.111s  rc=0    ok
+cat go.mod (endpoint DOWN)          0.110s  rc=0    ok
+ls (endpoint DOWN)                  0.111s  rc=0    ok
+write (endpoint DOWN)               0.211s  rc=2    error(rc=2)
+   verify write against DOWN endpoint    ok        mech=(b) side exp=absent got=absent a write that reports failure must NOT have landed on the side (read after a 1 s settle)
+   mountpoint still mounted (not a phantom, not silently unmounted):
+     bunker-fs /tmp/bfs034-dc-20260926233027/mnt-snap fuse.bunker-fs rw,nosuid,nodev,relatime,user_id=1000,group_id=1000,max_read=1048576 0 0
+   transport verdict + cause from this mount's status.json:
+       "transport": {
+         "verdict": "unreachable",
+         "last_ok_age_ms": 7005,
+         "cause": "PROPFIND /dav/killed.txt: errno=ENOTCONN cause=unreachable_reset: Propfind \"http://127.0.0.1:39141/dav/killed.txt\": read tcp 127.0.0.1:38994-\u003e127.0.0.1:39141: read: connection reset by peer",
+         "in_flight": 0,
+         "in_flight_max": 2,
+         "requests_total": 9,
+         "proto": "HTTP/1.1",
+         "tree": "tree:ff2caf0571793de5",
+────────────────────────────────────────────────────────────────────────────
+SUMMARY
+  [preflight]
+    side-assertion                          0.000s  rc=0    same-side-ok
+  [ops]
+    cat go.mod (read)                       0.216s  rc=0    ok  in_flight_max=1
+    ls -l (list+stat)                       0.414s  rc=0    ok  in_flight_max=1
+    ls src (120 entries)                    0.114s  rc=0    ok  in_flight_max=1
+    stat go.mod                             0.115s  rc=0    ok  in_flight_max=2
+    mkdir newdir                            0.814s  rc=0    ok  in_flight_max=2
+    write file (printf>)                    0.413s  rc=0    ok  in_flight_max=2
+    read it back                            0.423s  rc=0    ok  in_flight_max=2
+    mv (rename)                             0.414s  rc=0    ok  in_flight_max=2
+    ls newdir (after rename)                0.214s  rc=0    ok  in_flight_max=2
+    append (>>)                             0.113s  rc=1    error(rc=1)  in_flight_max=2
+    read appended                           0.238s  rc=0    ok  in_flight_max=2
+    rm (unlink)                             0.220s  rc=0    ok  in_flight_max=2
+    rmdir                                   0.216s  rc=0    ok  in_flight_max=2
+    -> 13/13 ok, 0 stall(s)
+  [tree-read]
+    snapshot-op ls -lR                      0.212s  rc=0    ok  in_flight_max=2
+    propfind-walk ls -lR c=25               2.356s  rc=0    ok  in_flight_max=1
+    propfind-walk ls -lR c=1                1.909s  rc=0    ok  in_flight_max=1
+    -> 3/3 ok, 0 stall(s)
+  [git]
+    rev-parse HEAD                          3.537s  rc=0    ok  in_flight_max=2
+    log -1                                  5.538s  rc=0    ok  in_flight_max=2
+    log --oneline -20                       5.147s  rc=0    ok  in_flight_max=2
+    ls-files (count)                        1.039s  rc=0    ok  in_flight_max=2
+    diff --stat HEAD                       45.078s  rc=124  STALL(timeout)  in_flight_max=2
+    status --short                         37.633s  rc=0    ok  in_flight_max=3
+    status --porcelain -uno                14.169s  rc=0    ok  in_flight_max=3
+    checkout -b scratch                     3.321s  rc=128  error(rc=128)  in_flight_max=3
+    add one file                            0.915s  rc=128  error(rc=128)  in_flight_max=3
+    commit                                  5.331s  rc=128  error(rc=128)  in_flight_max=3
+    commit --amend                          8.322s  rc=128  error(rc=128)  in_flight_max=3
+    rebase HEAD~1                          28.240s  rc=0    ok  in_flight_max=3
+    symbolic-ref / branch                   7.987s  rc=0    ok  in_flight_max=3
+    -> 12/13 ok, 1 stall(s): diff --stat HEAD
+  [bound]
+    read 40 files (bound exceeded)         13.767s  rc=0    ok  in_flight_max=2
+    -> 1/1 ok, 0 stall(s)
+  [control]
+    negative-control                             s  rc=0    control-ok
+  [kill]
+    stat . (endpoint up)                    0.111s  rc=0    ok  in_flight_max=3
+    stat . (endpoint DOWN)                  0.111s  rc=0    ok  in_flight_max=1
+    cat go.mod (endpoint DOWN)              0.110s  rc=0    ok  in_flight_max=1
+    ls (endpoint DOWN)                      0.111s  rc=0    ok  in_flight_max=1
+    write (endpoint DOWN)                   0.211s  rc=2    error(rc=2)  in_flight_max=1
+    -> 5/5 ok, 0 stall(s)
+
+  csv: /tmp/bfs034-dc-20260926233027/battery-dc.csv
+  SAME-SIDE VERIFICATION (the point of this file):
+    verifications run          : 19
+    confirmed on the same side : 14
+    MISMATCH (write not confirmed same-side; named above): 3
+    VACUOUS (the expectation itself was empty — an instrument error): 0
+    findings (known, filed elsewhere; named above)      : 2
+    the stall count above is comparable with BFS-016's loopback run ONLY for the
+    sections the original also measured (ops/tree-read/git/bound/kill).
+    negative control: as required (old path blind, same-side path detects, guard refuses a mirror)
+────────────────────────────────────────────────────────────────────────────
+artifacts: /tmp/bfs034-lfe4cC
+battery complete
+battery rc=0
+
+== teardown (verified, not asserted) ==
+probe port listeners now: 0
+probe pid alive: no
+  remote dir removed: yes
+  live bunkerd still: active
+  live listeners 18080/19090: 2
+  tunnel pid 3512496 alive: no
+  local mounts left: 0
+artifacts: /tmp/bfs034-dc-20260926233027

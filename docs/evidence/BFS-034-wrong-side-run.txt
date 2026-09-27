@@ -1,0 +1,69 @@
+== step 1: build the fixture that will be SERVED, and keep it ==
+────────────────────────────────────────────────────────────────────────────
+0. FRESH TREE ON THE SIDE (--fresh-tree: created AT --tree, removed on the way out)
+   built in place (local side): /tmp/bfs034-wrong/tree
+   files             : 126 (4.3M)
+────────────────────────────────────────────────────────────────────────────
+fixture-only: the tree is ready at /tmp/bfs034-wrong/tree; nothing was measured.
+serve it, then point this battery at the endpoint with --tree /tmp/bfs034-wrong/tree
+keeping the side tree in place (--keep-tree/--fixture-only): /tmp/bfs034-wrong/tree
+
+== step 2: serve it ==
+davserve pid=2487137 on :38412, serving /tmp/bfs034-wrong/tree
+
+== step 3: a local tree that is NOT the served tree (a copy = a stale mirror) ==
+served : /tmp/bfs034-wrong/tree   (go.mod sha 19e0b42ed495)
+mirror : /tmp/bfs034-wrong/mirror (go.mod sha 19e0b42ed495)
+
+== step 4: run the WAN battery declaring the MIRROR as the side ==
+   expected: exit 3, and a refusal instead of a number
+────────────────────────────────────────────────────────────────────────────
+bunker-fs mount battery — WAN / DATACENTRE variant (BFS-034)
+────────────────────────────────────────────────────────────────────────────
+endpoint      : http://127.0.0.1:38412/dav
+declared side : local (same filesystem as the served tree)
+side tree     : /tmp/bfs034-wrong/mirror
+client        : /tmp/bfs034-wrong/bin/bunker (concurrency=25, per-op timeout=45s)
+verify mech   : (b) b(server-side, direct local read)  +  (a) read back through the mount
+csv           : /tmp/bfs034-wrong/wrong.csv
+artifacts     : /tmp/bfs034-rBGtr9
+
+BASELINES (recorded, not re-derived): sshfs 5 ok / 7-8 stalls; WebDAV 11 ok / 1 stall;
+NFS whole-tree diff --stat 32.74 s; native (git on the host) 14/14 in 0.41 s.
+
+SECTION MAP: 1-7 and 9 are the original's sections in the original's order; this
+variant ADDS section 8 (the negative control, which runs before the endpoint kill
+so the endpoint is still up). The CSV section names (ops/tree-read/git/bound/kill)
+and every op name are unchanged, so the measured rows stay comparable with
+BFS-016's loopback run.
+────────────────────────────────────────────────────────────────────────────
+1. BIND PREFLIGHT + THE ONE-CALL SNAPSHOT
+   endpoint        : http://127.0.0.1:38412/dav
+   proto           : HTTP/1.1 (HTTP/1.1 is supported; nothing here requires h2/h3)
+   dav             : 1
+   extensions      : identity,if_match_refuse,rev,tree,op,watch
+   methods         : OPTIONS, GET, HEAD, PUT, DELETE, MKCOL, PROPFIND, PROPPATCH, COPY, MOVE, POST
+   tree            : tree:5eee99f5ec9cfc3e
+   rev             : git:9059eeec8846eae4362fa70211e09cd9eb8e2ce9
+   document version: 1
+   watcher         : false
+   poll form       : false
+   degradation     : watch (scope=target phase=- mode=poll) no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff
+   bind preflight  : OK in 2ms
+
+   snapshot /: 415 nodes in 1 server call(s), source=snapshot-op, 18ms
+     requests total (this client) : 1
+     in-flight high-water mark    : 1
+────────────────────────────────────────────────────────────────────────────
+2. REAL FILE OPERATIONS THROUGH THE MOUNT (snapshot on), each write VERIFIED ON THE SIDE
+   SIDE ASSERTION — is the declared tree really the side these writes land on?
+     nonce written THROUGH the mount, read back on the declared side (local (same filesystem as the served tree)):
+     MISMATCH — the declared tree does NOT see the mount's writes.
+     declared side saw : ''
+     written through M : 'bfs034-2503429-3534-19012'
+     REFUSING TO MEASURE (exit 3): a number from this configuration would
+     be a green that proves nothing — the exact defect this file exists for.
+battery rc=3
+PASS: the instrument refused to measure against a tree that is not the write side.
+docs/evidence/BFS-034-probes/run-wrong-side.sh: line 55: 2487137 Killed                     "$T/bin/davserve" --root "$T/tree" --addr "127.0.0.1:$PORT" > "$T/srv.log" 2>&1
+cleanup: davserve alive=no; mounts left=0
