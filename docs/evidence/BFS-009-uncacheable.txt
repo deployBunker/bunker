@@ -1,0 +1,22 @@
+### bash uncacheable-probe.sh --bin /tmp/bfs009/bin/bunker --davserve /tmp/bfs009/bin/davserve --work /tmp/bfs009 --label 2
+endpoint: http://127.0.0.1:37423/dav
+cache-dir: /tmp/bfs009/run-uncacheable-2/xdg/bunker/fs/b324d0e8f35a
+
+=== ARM 1 (control): a plain never-read file, read through the mount ===
+before : blobs_on_disk=0  control.txt_in_index=index-unreadable
+         entries=0   blobs=0   used=26     blobs_bytes=0      evictions=0   bypass=0   oversize=0   hits=0   misses=0  
+after  : blobs_on_disk=1  control.txt_in_index=present
+         entries=1   blobs=1   used=189    blobs_bytes=14     evictions=0   bypass=0   oversize=0   hits=0   misses=0  
+
+=== ARM 2: the un-cacheable read ===
+agent bytes   : 'STALE-IDENTITY-TARGET'  size=22  mtime=1790474079 (restored)
+surface says  : sha256:1195d8cc066deefc4b5e982105649fb50446cf74a4a0c21c4e158d485be88fa1
+body hashes to: sha256:de7c33de67aeecf3b248993abc0b839cf2854f16802261627b3993e7248aaa58
+before : blobs_on_disk=1  target.txt_in_index=absent
+         entries=1   blobs=1   used=189    blobs_bytes=14     evictions=0   bypass=0   oversize=0   hits=0   misses=0  
+mount served  : 'STALE-IDENTITY-TARGET'  (21 chars — the NEW bytes, so the read was a real cache MISS)
+after  : blobs_on_disk=1  target.txt_in_index=absent
+         entries=1   blobs=1   used=189    blobs_bytes=14     evictions=0   bypass=0   oversize=0   hits=0   misses=0  
+
+READ THIS AS: the control arm moved both the blob count and the index; arm 2
+moved neither and no counter moved, so the refusal is not reported anywhere.

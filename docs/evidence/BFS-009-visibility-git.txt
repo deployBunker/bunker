@@ -1,0 +1,41 @@
+### bash visibility-probe.sh --bin /tmp/bfs009/bin/bunker --davserve /tmp/bfs009/bin/davserve --tree /tmp/bfs009/vistree-git --label git2
+tree: /tmp/bfs009/vistree-git   git=yes
+endpoint: http://127.0.0.1:36111/dav
+
+=== P1. REV MOTION (/tmp/bfs009/vistree-git) ===
+initial                          rev=git:a38d18bf119eaa69e9cb67e81d1e98bc036fe53a
+after an OUT-OF-BAND edit        rev=git:a38d18bf119eaa69e9cb67e81d1e98bc036fe53a  NO MOTION
+after a mutation THROUGH PUT     rev=git:a38d18bf119eaa69e9cb67e81d1e98bc036fe53a  NO MOTION
+after a git COMMIT               rev=git:a38d18bf119eaa69e9cb67e81d1e98bc036fe53a  NO MOTION
+
+=== THE MOUNT ===
+cache-dir: /tmp/bfs009/run-vis-git2/xdg/bunker/fs/a5272d30c4d9
+
+-- P2b. a path ALREADY READ through the mount, replaced on the agent --
+mount (pre-edit) : 'arm-b-original-content'
+status.cache     : entries=1   blobs=1   used=196     blobs_bytes=23      index_bytes=173    evictions=0   bypass=0   oversize=0   hits=0   misses=0  
+agent now        : 'arm-b-REPLACED-with-different-length-content'  size=45
+mount (post-edit): 'arm-b-original-content'  (22 chars)
+NATIVE control   : 'arm-b-REPLACED-with-different-length-content'  (45 bytes)
+VERDICT: STALE — the mount served the pre-edit bytes
+status.cache     : entries=1   blobs=1   used=196     blobs_bytes=23      index_bytes=173    evictions=0   bypass=0   oversize=0   hits=0   misses=0  
+
+-- P2a. a path NEVER READ through the mount, replaced on the agent --
+mount stat (pre) : size=23  (stat only, no read, so nothing is cached)
+agent now        : 'arm-a-REPLACED-with-a-much-longer-content-string-0123456789'  size=60
+mount stat (post): size=23
+mount read       : 'arm-a-REPLACED-with-a-m'  (23 chars)
+NATIVE control   : 'arm-a-REPLACED-with-a-much-longer-content-string-0123456789'  (60 bytes)
+VERDICT: WRONG — the mount returned 23 chars of a 60-byte file
+status.cache     : entries=1   blobs=1   used=196     blobs_bytes=23      index_bytes=173    evictions=0   bypass=0   oversize=0   hits=1   misses=0  
+
+-- P3. the un-cacheable read (same-size, mtime-restored agent edit) --
+agent: size=15 mtime=1790474057
+surface X-Bunker-Hash : sha256:9628693f885b6de972b862e3f4dc2f08b0df6ac09814a09574e88631916bb9a0
+GET body sha256       : 2070916ae3ce72b198323a39ff731dd067bd9fd2dc33921c764cb3745dcb6825
+status.cache before   : entries=1   blobs=1   used=196     blobs_bytes=23      index_bytes=173    evictions=0   bypass=0   oversize=0   hits=1   misses=0  
+mount served          : 'ARM-C-IDENTITY'  (14 chars; the agent's bytes are 15)
+status.cache after    : entries=2   blobs=2   used=404     blobs_bytes=83      index_bytes=321    evictions=0   bypass=0   oversize=0   hits=1   misses=0  
+(§3.4 requires every read the client did NOT cache to be REPORTED; compare the two status lines)
+
+channel: {"channel_available": false, "events_total": 0, "last_event_age_ms": null, "mechanism": "events", "mode": "poll", "paths_dropped_total": 0, "poll_interval_ms": 2000, "reason": "poll call failed: op:events : errno=EOPNOTSUPP cause=server_error status=501 verdict=capability_unavailable: no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff", "resyncs_from_gap": 0, "resyncs_total": 0, "seq": 0}

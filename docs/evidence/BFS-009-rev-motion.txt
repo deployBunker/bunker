@@ -1,0 +1,9 @@
+### bash rev-probe.sh --davserve /tmp/bfs009/bin/davserve --tree /tmp/bfs009/vistree-ng2
+tree: /tmp/bfs009/vistree-ng2   git=no
+initial                          rev=rev:0
+after an OUT-OF-BAND edit        rev=rev:0  NO MOTION
+after a mutation THROUGH PUT     rev=rev:1  moved
+
+SUMMARY: the rev token is HEAD for a git tree and a surface-mutation counter
+otherwise; the question this probe answers is whether an edit made ON THE
+AGENT moves it. Above, that line is the OUT-OF-BAND one.

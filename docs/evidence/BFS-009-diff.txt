@@ -1,0 +1,56 @@
+### bash diff-probe.sh http://127.0.0.1:18491/dav /tmp/bfs009/diff-probe
+=== 1. the E-4 op catalogue, as the running build advertises it ===
+op.ops (implemented)   : ['capabilities', 'snapshot']
+watch.modes            : {"poll": "X-Bunker-Op: events", "push": "inotify\u2192stream"}
+degradations (op:*)    : ['op:status', 'op:diff', 'op:rev-parse', 'op:ls-files', 'op:log', 'op:events', 'op:watch']
+op versions/limits     : 1048576 16777216
+
+=== 2. LIVE: every catalogue op that E-4 declares, one POST each ===
+capabilities 200    verdict=ok                       capability=-            scope=-        phase=-    mode=-     detail=-
+snapshot     200    verdict=ok                       capability=-            scope=-        phase=-    mode=-     detail=-
+status       501    verdict=capability_unavailable   capability=status       scope=build    phase=C5   mode=-     detail=delegated whole-tree op not in this build (slice C5); read the tree wi
+diff         501    verdict=capability_unavailable   capability=diff         scope=build    phase=C5   mode=-     detail=delegated whole-tree op not in this build (slice C5); read the tree wi
+rev-parse    501    verdict=capability_unavailable   capability=rev-parse    scope=build    phase=C5   mode=-     detail=delegated whole-tree op not in this build (slice C5); read the tree wi
+ls-files     501    verdict=capability_unavailable   capability=ls-files     scope=build    phase=C5   mode=-     detail=delegated whole-tree op not in this build (slice C5); read the tree wi
+log          501    verdict=capability_unavailable   capability=log          scope=build    phase=C5   mode=-     detail=delegated whole-tree op not in this build (slice C5); read the tree wi
+events       501    verdict=capability_unavailable   capability=events       scope=target   phase=-    mode=poll  detail=no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-
+watch        501    verdict=capability_unavailable   capability=watch        scope=target   phase=-    mode=poll  detail=no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-
+bogus-op     400    verdict=op_unknown               capability=-            scope=-        phase=-    mode=-     detail=unknown X-Bunker-Op value
+
+=== 3. the CLIENT side: does a local (non-delegated) diff exist? ===
+-- what the client's own command surface offers:
+20:var Catalogue = []string{
+29:var DelegatedOps = []string{"status", "diff", "rev-parse", "ls-files", "log", "snapshot", "events"}
+-- the diff command's own help (the client's user-facing answer):
+bunker-fs is the opt-in FUSE client for the bunkerd WebDAV surface.
+
+Two surfaces, deliberately:
+
+  * THE MOUNT (bunker fs mount) — the filesystem. Its win is the SNAPSHOT: one
+    X-Bunker-Op: snapshot call populates the node tree, and READDIRPLUS then
+    resolves every entry in-process, so `ls -l`, `stat` and a walking tool's lstat
+    cost zero further round trips. git's own content reads for CHANGED files are
+    N reads by construction and no binding changes that.
+
+  * THE VERBS (bunker fs op, bunker fs snapshot) — the delegated surface. These
+    call the agent directly over X-Bunker-Op, with no mount in the picture, which
+    is the only place a whole-tree operation can be computed remotely instead of
+    walked.
+
+It is NOT the default and does not become one until a battery on both DCs shows
+zero stalls.
+
+Usage:
+  bunker fs [command]
+-- source: is there any LOCAL diff implementation (a hunk/@@/patch generator)?
+internal/fsclient/client.go:521:// BFS-004 §6, never one request per FUSE WRITE chunk (there are 1023 of those
+internal/fsclient/client.go:523:// client's write memory is one chunk, not the file.
+internal/fsclient/client.go:765:// buffering it, which is what makes the client's write memory one chunk.
+internal/fsclient/write.go:172:// never one request per FUSE WRITE chunk. body is streamed into the request, so
+internal/fsclient/write.go:173:// the client's write memory is one chunk rather than the file.
+
+=== 4. LIVE through the client CLI: bunker fs diff against the landed server ===
+exit code = 1
+-- stdout:
+-- stderr:
+bunker: unknown flag: --url

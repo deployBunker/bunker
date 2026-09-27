@@ -1,0 +1,48 @@
+endpoint  = http://127.0.0.1:40263/dav
+cache-dir = /tmp/bfs009/run-INV1/xdg/bunker/fs/f8e3ac5d93f1
+
+=== A. the channel's declared state (as the mount reports it) ===
+status.invalidation = {"channel_available": false, "events_total": 0, "last_event_age_ms": null, "mechanism": "events", "mode": "poll", "paths_dropped_total": 0, "poll_interval_ms": 2000, "reason": "poll call failed: op:events : errno=EOPNOTSUPP cause=server_error status=501 verdict=capability_unavailable: no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff", "resyncs_from_gap": 0, "resyncs_total": 0, "seq": 0}
+status.mode         = poll
+mount.log degradation lines:
+  bunker-fs: bound to http://127.0.0.1:40263/dav tree=tree:ddea98289af8a511 rev=rev:0 proto=HTTP/1.1 extensions="identity,if_match_refuse,rev,tree,op,watch"
+  bunker-fs: declared degradation: watch (scope=target mode=poll): no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff
+
+=== B. is the channel trying at all? (quiet window, no I/O of ours) ===
+requests_total 6 -> 10 over 8s  (delta 4 = 0 req/s)
+status.invalidation after the window = {"channel_available": false, "events_total": 0, "last_event_age_ms": null, "mechanism": "events", "mode": "poll", "paths_dropped_total": 0, "poll_interval_ms": 2000, "reason": "poll call failed: op:events : errno=EOPNOTSUPP cause=server_error status=501 verdict=capability_unavailable: no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff", "resyncs_from_gap": 0, "resyncs_total": 0, "seq": 0}
+
+=== C. never-read path edited on the SERVER, then read through the mount ===
+server bytes  : version-1 1790473721   sha256=2843231b99dc13ccc022c8ad6f28201032b4e822dfa3e169374d31e3fd0594db
+mount   bytes : version-1 17904   (read took 108 ms)
+MATCH         : NO
+
+=== D. path ALREADY READ (cached) edited on the SERVER, re-read after the poll interval ===
+mount first read  : cached-version-1
+status.cache after the first read = {"blobs": 0, "blobs_bytes": 0, "bypass_events": 0, "entries": 0, "evictions_total": 0, "hits": 0, "index_bytes": 26, "max_bytes": 268435456, "misses": 0, "oversize_bypasses": 0, "pinned_blobs": 0, "used_bytes": 26}
+server now        : cached-version-2-EDITED-ON-THE-SERVER   sha256=e57afcc45ea0d133fb9d971f695685297c5c8eef19e1bc75c07adaeb7520cd93
+waiting 6 s (declared poll interval is 2 s)…
+mount second read : cached-version-1
+VISIBLE           : NO — the mount served a STALE copy
+status.invalidation after the edit = {"channel_available": false, "events_total": 0, "last_event_age_ms": null, "mechanism": "events", "mode": "poll", "paths_dropped_total": 0, "poll_interval_ms": 2000, "reason": "poll call failed: op:events : errno=EOPNOTSUPP cause=server_error status=501 verdict=capability_unavailable: no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff", "resyncs_from_gap": 0, "resyncs_total": 0, "seq": 0}
+status.cache        after the edit = {"blobs": 2, "blobs_bytes": 38, "bypass_events": 0, "entries": 2, "evictions_total": 0, "hits": 1, "index_bytes": 322, "max_bytes": 268435456, "misses": 0, "oversize_bypasses": 0, "pinned_blobs": 0, "used_bytes": 360}
+
+=== E. stat through the mount on a snapshotted path ===
+before edit: size=15 mtime=1790473586
+server now : size=40 mtime=1790473728
+after edit : size=15 mtime=1790473586
+
+=== F. final channel state ===
+status.invalidation = {"channel_available": false, "events_total": 0, "last_event_age_ms": null, "mechanism": "events", "mode": "poll", "paths_dropped_total": 0, "poll_interval_ms": 2000, "reason": "poll call failed: op:events : errno=EOPNOTSUPP cause=server_error status=501 verdict=capability_unavailable: no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff", "resyncs_from_gap": 0, "resyncs_total": 0, "seq": 0}
+status.transport    = {"cause": "", "in_flight": 1, "in_flight_max": 1, "last_ok_age_ms": 5923, "proto": "HTTP/1.1", "requests_total": 20, "rev": "rev:0", "tree": "tree:ddea98289af8a511", "verdict": "healthy"}
+mount.log (last 15 lines):
+  bunker-fs: tightened mountpoint /tmp/bfs009/run-INV1/mnt to 0700 (it was group/world accessible)
+  bunker-fs: bound to http://127.0.0.1:40263/dav tree=tree:ddea98289af8a511 rev=rev:0 proto=HTTP/1.1 extensions="identity,if_match_refuse,rev,tree,op,watch"
+  bunker-fs: declared degradation: watch (scope=target mode=poll): no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff
+  mounted http://127.0.0.1:40263/dav on /tmp/bfs009/run-INV1/mnt
+    cache dir    : /tmp/bfs009/run-INV1/xdg/bunker/fs/f8e3ac5d93f1 (bound 268435456 bytes)
+    concurrency  : 8 request(s) in flight max
+    invalidation : auto
+    snapshot     : snapshot-op, 5 nodes in 1 call(s)
+    unmount      : bunker fs umount /tmp/bfs009/run-INV1/mnt
+  bunker-fs: readdirplus=true

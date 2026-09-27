@@ -1,0 +1,26 @@
+endpoint  = http://127.0.0.1:40005/dav (pid 2845431, HTTP/1.1, loopback)
+mount-args= --url http://127.0.0.1:40005/dav --concurrency 25 
+cache-dir = /tmp/bfs009/run-A256b/xdg/bunker/fs/9e8a4ce2409a
+  cache dir    : /tmp/bfs009/run-A256b/xdg/bunker/fs/9e8a4ce2409a (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 605 nodes in 1 call(s)
+reading 601 files through the mount…
+read ok=601 failures=0  wall_ms=69616
+tree_bytes_on_disk=419437925  mount_bytes_seen=419437925
+=== FINAL (after the run) ===
+du -sb cache-dir   : 267468617	/tmp/bfs009/run-A256b/xdg/bunker/fs/9e8a4ce2409a
+du -sb blobs       : 267394334	/tmp/bfs009/run-A256b/xdg/bunker/fs/9e8a4ce2409a/blobs
+du -sb index.json  : 72777	/tmp/bfs009/run-A256b/xdg/bunker/fs/9e8a4ce2409a/index.json
+real blobs bytes   : 267394334
+blob files         : 454
+MAX du cache-dir  during run : 267519668
+MAX du blobs      during run : 267394334
+reported max_bytes     = 268435456
+reported used_bytes    = 267467111
+reported blobs/index   = 267394334 / 72777
+reported entries/blobs = 454 / 454
+reported evictions     = 146  bypass=0 oversize=0 pins=0 hits=0 misses=0
+invalidation={"mode": "poll", "mechanism": "events", "seq": 0, "last_event_age_ms": null, "poll_interval_ms": 2000, "resyncs_from_gap": 0, "resyncs_total": 0, "events_total": 0, "paths_dropped_total": 0, "reason": "poll call failed: op:events : errno=EOPNOTSUPP cause=server_error status=501 verdict=capability_unavailable: no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff", "channel_available": false}
+snapshot={"source": "snapshot-op", "nodes": 605, "calls": 1, "truncated": false, "age_ms": 0}
+status_updated_ms=1790473659256

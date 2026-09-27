@@ -1,0 +1,90 @@
+### bfs009-guard-flake-attribution.sh   (arms A/B/C; arm C reproduces the failure under CPU contention)
+=== ARM A: is internal/server/webdav modified relative to HEAD? ===
+git diff HEAD -- internal/server/webdav : EMPTY (untouched)
+files this row changes (staged):
+docs/evidence/BFS-009-armA-bound.txt
+docs/evidence/BFS-009-armB-bound-8MiB.txt
+docs/evidence/BFS-009-bound-accounting.txt
+docs/evidence/BFS-009-cache-invalidation-conflict.md
+docs/evidence/BFS-009-diff.txt
+docs/evidence/BFS-009-invalidation.txt
+docs/evidence/BFS-009-mutation-red.txt
+docs/evidence/BFS-009-probes/bound-accounting.sh
+docs/evidence/BFS-009-probes/bound-arm.sh
+docs/evidence/BFS-009-probes/diff-probe.sh
+docs/evidence/BFS-009-probes/invalidation-arm.sh
+docs/evidence/BFS-009-probes/manifest-sha256.txt
+docs/evidence/BFS-009-probes/mutation-red.sh
+docs/evidence/BFS-009-probes/rev-probe.sh
+docs/evidence/BFS-009-probes/sample.sh
+docs/evidence/BFS-009-probes/uncacheable-probe.sh
+docs/evidence/BFS-009-probes/visibility-probe.sh
+docs/evidence/BFS-009-rev-motion-git.txt
+docs/evidence/BFS-009-rev-motion.txt
+docs/evidence/BFS-009-sample-A256b.csv
+docs/evidence/BFS-009-uncacheable.txt
+docs/evidence/BFS-009-visibility-git.txt
+docs/evidence/BFS-009-visibility-nongit.txt
+internal/fsclient/conflict_test.go
+
+=== ARM B: the test alone, this tree, quiet ===
+ok  	github.com/deployBunker/bunker/internal/server/webdav	0.049s
+
+=== ARM C: the same test under CPU contention (10 burners for 90s) ===
+contended run rc=1  (0 = green under load, non-zero = REPRODUCED)
+FAIL lines: 5
+guard-flake-attribution.sh: line 47: 3328355 Killed                     ( end=$((SECONDS+SECS)); while [ $SECONDS -lt $end ]; do
+    :;
+done )
+guard-flake-attribution.sh: line 47: 3328356 Killed                     ( end=$((SECONDS+SECS)); while [ $SECONDS -lt $end ]; do
+    :;
+done )
+guard-flake-attribution.sh: line 47: 3328357 Killed                     ( end=$((SECONDS+SECS)); while [ $SECONDS -lt $end ]; do
+    :;
+done )
+guard-flake-attribution.sh: line 47: 3328358 Killed                     ( end=$((SECONDS+SECS)); while [ $SECONDS -lt $end ]; do
+    :;
+done )
+guard-flake-attribution.sh: line 47: 3328359 Killed                     ( end=$((SECONDS+SECS)); while [ $SECONDS -lt $end ]; do
+    :;
+done )
+guard-flake-attribution.sh: line 47: 3328360 Killed                     ( end=$((SECONDS+SECS)); while [ $SECONDS -lt $end ]; do
+    :;
+done )
+guard-flake-attribution.sh: line 47: 3328361 Killed                     ( end=$((SECONDS+SECS)); while [ $SECONDS -lt $end ]; do
+    :;
+done )
+guard-flake-attribution.sh: line 47: 3328362 Killed                     ( end=$((SECONDS+SECS)); while [ $SECONDS -lt $end ]; do
+    :;
+done )
+guard-flake-attribution.sh: line 47: 3328363 Killed                     ( end=$((SECONDS+SECS)); while [ $SECONDS -lt $end ]; do
+    :;
+done )
+guard-flake-attribution.sh: line 47: 3328364 Killed                     ( end=$((SECONDS+SECS)); while [ $SECONDS -lt $end ]; do
+    :;
+done )
+cells passed: 499
+
+REPRODUCED. Diffing the two bodies FIELD BY FIELD:
+could not extract the two bodies
+
+### the two bodies the failing cell compared, extracted from the contended run
+    transport_test.go:114: body differs between versions:
+        h1: {"ok":true,"op":"capabilities","verdict":"ok","rev":"rev:0","tree":"tree:f3f5a6f38b98542e","proto":"HTTP/1.1","duration_ms":2,"truncated":false,"result":{"capabilities":{"classes":["1"],"degradations":[{"capability":"watch","detail":"inotify watcher absent on this target; poll with HEAD/ETag","mode":"poll","scope":"target"},{"capability":"lock","detail":"no lease-backed LOCK in this build; DAV: 1 is advertised, DAV: 2 is not","mode":"none","phase":"C4","scope":"build"},{"capability":"h3","detail":"no HTTP/3 listener is live in this process: QUIC always encrypts, so h3 needs tls.enabled: true plus server.h3_enabled: true (BFS-007)","mode":"http/2","scope":"build"},{"capability":"op:status","detail":"delegated op not in this build (slice C5)","phase":"C5","scope":"build"},{"capability":"op:diff","detail":"delegated op not in this build (slice C5)","phase":"C5","scope":"build"},{"capability":"op:rev-parse","detail":"delegated op not in this build (slice C5)","phase":"C5","scope":"build"},{"capability":"op:ls-files","detail":"delegated op not in this build (slice C5)","phase":"C5","scope":"build"},{"capability":"op:log","detail":"delegated op not in this build (slice C5)","phase":"C5","scope":"build"},{"capability":"op:events","detail":"delegated op not in this build (slice C5)","phase":"C5","scope":"build"},{"capability":"op:watch","detail":"delegated op not in this build (slice C5)","phase":"C5","scope":"build"},{"capability":"h2","detail":"tls.enabled is false and server.h2c_enabled is false: this listener serves HTTP/1.1 only","mode":"http/1.1","scope":"transport"}],"document_version":1,"extensions":{"identity":{"alg":"sha256","etag":"strong","format":"sha256:\u003c64 hex\u003e","name":"X-Bunker-Hash","v":1},"if_match_refuse":{"methods":["PUT","DELETE","MOVE","COPY","PROPPATCH","LOCK"],"name":"If-Match/If-None-Match","v":1},"op":{"abs_max_bytes":16777216,"default_max_bytes":1048576,"name":"X-Bunker-Op","ops":["capabilities","snapshot"],"read_only":true,"v":1},"rev":{"kind":"counter","name":"X-Bunker-Rev","v":1},"tree":{"name":"X-Bunker-Tree","v":1},"watch":{"mode":"poll","modes":{"poll":"X-Bunker-Op: events","push":"inotify→stream"},"name":"X-Bunker-Op: watch","v":1}},"limits":{"max_request_bytes":1073741824,"propfind_allprop_hashes":false,"propfind_depth":[0,1],"propfind_depth_infinity":false},"methods":["OPTIONS","GET","HEAD","PUT","DELETE","MKCOL","PROPFIND","PROPPATCH","COPY","MOVE","POST"],"server":{"build":"test-build","proto":"HTTP/1.1","rev":"rev:0","tree":"tree:f3f5a6f38b98542e"},"surface":"bunkerd-webdav/1","transports":{"h2":{"alpn":"h2","available":false,"multiplexed":true,"server_push":false,"tls":true},"h2c":{"available":false,"mode":"prior-knowledge","requires_opt_in":true,"upgrade_dance":false},"h3":{"alpn":"h3","alt_svc":"h3=\":39985\"; ma=2592000","available":false,"requires_tls":"1.3","transport":"quic/udp"},"http/1.1":{"alpn":null,"available":true,"multiplexed":false,"server_push":false}}}},"error":null}
+        
+        h2: {"ok":true,"op":"capabilities","verdict":"ok","rev":"rev:0","tree":"tree:f3f5a6f38b98542e","proto":"HTTP/2.0","duration_ms":0,"truncated":false,"result":{"capabilities":{"classes":["1"],"degradations":[{"capability":"watch","detail":"inotify watcher absent on this target; poll with HEAD/ETag","mode":"poll","scope":"target"},{"capability":"lock","detail":"no lease-backed LOCK in this build; DAV: 1 is advertised, DAV: 2 is not","mode":"none","phase":"C4","scope":"build"},{"capability":"h3","detail":"no HTTP/3 listener is live in this process: QUIC always encrypts, so h3 needs tls.enabled: true plus server.h3_enabled: true (BFS-007)","mode":"http/2","scope":"build"},{"capability":"op:status","detail":"delegated op not in this build (slice C5)","phase":"C5","scope":"build"},{"capability":"op:diff","detail":"delegated op not in this build (slice C5)","phase":"C5","scope":"build"},{"capability":"op:rev-parse","detail":"delegated op not in this build (slice C5)","phase":"C5","scope":"build"},{"capability":"op:ls-files","detail":"delegated op not in this build (slice C5)","phase":"C5","scope":"build"},{"capability":"op:log","detail":"delegated op not in this build (slice C5)","phase":"C5","scope":"build"},{"capability":"op:events","detail":"delegated op not in this build (slice C5)","phase":"C5","scope":"build"},{"capability":"op:watch","detail":"delegated op not in this build (slice C5)","phase":"C5","scope":"build"},{"capability":"h2","detail":"tls.enabled is false and server.h2c_enabled is false: this listener serves HTTP/1.1 only","mode":"http/1.1","scope":"transport"}],"document_version":1,"extensions":{"identity":{"alg":"sha256","etag":"strong","format":"sha256:\u003c64 hex\u003e","name":"X-Bunker-Hash","v":1},"if_match_refuse":{"methods":["PUT","DELETE","MOVE","COPY","PROPPATCH","LOCK"],"name":"If-Match/If-None-Match","v":1},"op":{"abs_max_bytes":16777216,"default_max_bytes":1048576,"name":"X-Bunker-Op","ops":["capabilities","snapshot"],"read_only":true,"v":1},"rev":{"kind":"counter","name":"X-Bunker-Rev","v":1},"tree":{"name":"X-Bunker-Tree","v":1},"watch":{"mode":"poll","modes":{"poll":"X-Bunker-Op: events","push":"inotify→stream"},"name":"X-Bunker-Op: watch","v":1}},"limits":{"max_request_bytes":1073741824,"propfind_allprop_hashes":false,"propfind_depth":[0,1],"propfind_depth_infinity":false},"methods":["OPTIONS","GET","HEAD","PUT","DELETE","MKCOL","PROPFIND","PROPPATCH","COPY","MOVE","POST"],"server":{"build":"test-build","proto":"HTTP/2.0","rev":"rev:0","tree":"tree:f3f5a6f38b98542e"},"surface":"bunkerd-webdav/1","transports":{"h2":{"alpn":"h2","available":false,"multiplexed":true,"server_push":false,"tls":true},"h2c":{"available":false,"mode":"prior-knowledge","requires_opt_in":true,"upgrade_dance":false},"h3":{"alpn":"h3","alt_svc":"h3=\":39985\"; ma=2592000","available":false,"requires_tls":"1.3","transport":"quic/udp"},"http/1.1":{"alpn":null,"available":true,"multiplexed":false,"server_push":false}}}},"error":null}
+
+### field-level diff of those two bodies
+fields that differ (everything else identical):
+  DIFF  /duration_ms             h1=2            h2=0
+  DIFF  /proto                   h1='HTTP/1.1'   h2='HTTP/2.0'
+  DIFF  /result/capabilities/server/proto h1='HTTP/1.1'   h2='HTTP/2.0'
+
+### independent measurement: does the same op return different duration_ms across identical requests?
+requests sampled          : 40
+duration_ms distribution  : {0: 39, 6: 1}
+distinct bodies ignoring duration_ms : 1
+duration_ms values observed          : 2
+
+VERDICT: two identical requests returned DIFFERENT duration_ms values
+         ([0, 6]), so the guard cell's byte comparison can fail on that field

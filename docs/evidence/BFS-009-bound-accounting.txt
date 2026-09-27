@@ -1,0 +1,51 @@
+### bfs009-bound-accounting.sh run-A256b   (default bound 256 MiB, tree 400.0 MiB)
+cache dir                       : /tmp/bfs009/run-A256b/xdg/bunker/fs/9e8a4ce2409a
+
+BOUND       max_bytes (reported) :        268435456
+            du -sb cache dir     :        267468617   OK
+            du -sb cache, MAX during the run :  267519668   OK
+            used_bytes, MAX during the run  :  267467111   OK
+
+AGREEMENT   reported blobs_bytes :        267394334
+            du -sb blobs         :        267394334   delta=0
+            real blob file bytes :        267394334   delta=0
+            reported index_bytes :            72777
+            du -sb index.json    :            72777   delta=0
+            reported used_bytes  :        267467111  (= blobs_bytes + index_bytes: True)
+            du -sb cache dir     :        267468617   delta vs used_bytes = 1506
+            status.json on disk  :             1506   <- the delta, EXACTLY (a file, not the cache)
+            accounted: used_bytes + status.json == du(cache dir): True
+
+EVICTION    reported evictions   :              146   bypass=0 oversize=0
+            entries / blob files :              454 / 454
+            entries == blob files: True
+            max evictions sampled:              146
+
+READS       hits / misses        :                0 / 0
+            samples in the run   :              108
+
+### bfs009-bound-accounting.sh run-B8M     (bound 8 MiB, same tree)
+cache dir                       : /tmp/bfs009/run-B8M/xdg/bunker/fs/db7b340ec8fb
+
+BOUND       max_bytes (reported) :          8388608
+            du -sb cache dir     :          7381779   OK
+            du -sb cache, MAX during the run :    7381779   OK
+            used_bytes, MAX during the run  :    7380281   OK
+
+AGREEMENT   reported blobs_bytes :          7347522
+            du -sb blobs         :          7347522   delta=0
+            real blob file bytes :          7347522   delta=0
+            reported index_bytes :            32759
+            du -sb index.json    :            32759   delta=0
+            reported used_bytes  :          7380281  (= blobs_bytes + index_bytes: True)
+            du -sb cache dir     :          7381779   delta vs used_bytes = 1498
+            status.json on disk  :             1498   <- the delta, EXACTLY (a file, not the cache)
+            accounted: used_bytes + status.json == du(cache dir): True
+
+EVICTION    reported evictions   :              394   bypass=0 oversize=0
+            entries / blob files :              207 / 207
+            entries == blob files: True
+            max evictions sampled:              394
+
+READS       hits / misses        :                0 / 0
+            samples in the run   :              121

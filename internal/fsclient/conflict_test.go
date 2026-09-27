@@ -347,6 +347,152 @@ func TestStreamedBodyIsOneRequest(t *testing.T) {
 	}
 }
 
+// TestConflictRefusalIgnoresMtimePreservedEdit is the case the rest of this file
+// does not reach: an agent-side edit that preserves BOTH the size and the mtime,
+// so every metadata key a (size, mtime) comparison could use is UNCHANGED while
+// the bytes are not.
+//
+// It exists because "hash, never mtime" (BFS-005 §5.1) is only a rule if it is
+// tested where mtime would give the wrong answer. Every other refusal test edits
+// through os.WriteFile, which moves the mtime; an implementation that compared
+// (size, mtime) would pass all of them and still clobber here.
+//
+// Two arms, both with a base the client genuinely holds for the PRE-edit bytes:
+//
+//	arm 1 — the default policy must REFUSE, naming the post-edit hash.
+//	arm 2 — `overwrite-if-unchanged` must ALSO refuse: that policy exists to
+//	        absorb a METADATA-ONLY mismatch (the bytes we served are still the
+//	        bytes on the server), and an edit that leaves size and mtime alone
+//	        but changes the bytes is a real concurrent edit, so retrying it
+//	        would be the silent overwrite the spec forbids.
+//
+// The arms are deliberately not "resolve the base from the server after the
+// edit": that path is a legitimate base==current write whenever the surface
+// answers honestly, so it is not a refusal case. What the surface answers for
+// such an edit is measured in the row's evidence instead.
+func TestConflictRefusalIgnoresMtimePreservedEdit(t *testing.T) {
+	c, root, _ := fixtureEndpoint(t)
+	dir := t.TempDir()
+	cache, err := OpenCache(CacheConfig{Dir: dir, MaxBytes: 1 << 20, MaxEntryBytes: 1 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	target := filepath.Join(root, "src", "main.go")
+
+	// The bytes the client reads, and therefore the base it will carry.
+	before, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := HashBytes(before)
+	// Same length, different bytes: the size key cannot move.
+	edited := append([]byte(nil), before...)
+	for i := range edited {
+		if edited[i] != 'x' {
+			edited[i] = 'x'
+		}
+	}
+	if len(edited) != len(before) {
+		t.Fatalf("fixture: the edit changed the length (%d -> %d)", len(before), len(edited))
+	}
+	if bytes.Equal(edited, before) {
+		t.Fatal("fixture: the edit did not change the bytes")
+	}
+	editedHash := HashBytes(edited)
+
+	// Warm the surface's identity cache the way any real read does, then edit
+	// out of band and RESTORE the mtime exactly: nothing a metadata comparison
+	// can see has moved.
+	if _, _, oerr := c.Get(ctx, "src/main.go", ""); oerr != nil {
+		t.Fatalf("warming GET: %v", oerr)
+	}
+	st, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, edited, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(target, st.ModTime(), st.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Size() != st.Size() || !after.ModTime().Equal(st.ModTime()) {
+		t.Fatalf("fixture: the metadata moved (size %d->%d, mtime %v->%v); the case is not exercised",
+			st.Size(), after.Size(), st.ModTime(), after.ModTime())
+	}
+	if got := HashBytes(mustRead(t, target)); got != editedHash {
+		t.Fatalf("fixture: on-disk bytes are %s, want %s", got, editedHash)
+	}
+
+	assertRefused := func(arm string, wp *WritePath) {
+		t.Helper()
+		_, werr := wp.PublishBytes(ctx, "src/main.go", []byte("client clobber attempt\n"), WriteBase{IfMatch: base, Source: BaseFromServed})
+		if werr == nil {
+			t.Fatalf("%s: the write LANDED; a same-size, mtime-preserved edit must still be refused", arm)
+		}
+		if werr.Cause != CauseConflict || werr.Errno != syscall.ESTALE {
+			t.Fatalf("%s: errno/cause = %v/%s, want ESTALE/conflict", arm, werr.Errno, werr.Cause)
+		}
+		if werr.Verdict != VerdictHashMismatch {
+			t.Fatalf("%s: verdict = %q, want %q", arm, werr.Verdict, VerdictHashMismatch)
+		}
+		if werr.CurrentHash != editedHash {
+			t.Fatalf("%s: the refusal must name the CURRENT hash %s, got %q", arm, editedHash, werr.CurrentHash)
+		}
+		if got := HashBytes(mustRead(t, target)); got != editedHash {
+			t.Fatalf("%s: the refused write changed the file: %s", arm, got)
+		}
+		if wp.LastConflict() == nil {
+			t.Fatalf("%s: the refusal was not recorded (silent refusal)", arm)
+		}
+	}
+
+	t.Run("default policy refuses and names the post-edit hash", func(t *testing.T) {
+		wp := NewWritePath(c, cache, dir, OnConflictRefuse)
+		assertRefused("arm 1", wp)
+		if wp.Refusals() != 1 {
+			t.Fatalf("arm 1: refusals = %d, want 1", wp.Refusals())
+		}
+		last := wp.LastConflict()
+		if last.Code != VerdictHashMismatch || last.Current != editedHash {
+			t.Fatalf("arm 1: the refusal was not recorded loudly: %+v", last)
+		}
+		list, err := ReadConflicts(dir, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(list) != 1 || list[0].Path != "src/main.go" {
+			t.Fatalf("arm 1: conflict log = %+v", list)
+		}
+	})
+
+	t.Run("overwrite-if-unchanged must not treat it as metadata-only", func(t *testing.T) {
+		wp := NewWritePath(c, cache, dir, OnConflictOverwriteIfUnchanged)
+		// We served these exact bytes, which is the ONLY condition under which
+		// that policy may retry. The server's bytes are no longer those, even
+		// though size and mtime say otherwise.
+		wp.NoteServed("src/main.go", base)
+		assertRefused("arm 2", wp)
+		if wp.Refusals() != 1 {
+			t.Fatalf("arm 2: refusals = %d, want 1 (a retry would have been a silent overwrite)", wp.Refusals())
+		}
+	})
+}
+
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
 // TestWriteBodyReaderSeesWholeFile proves the body we stream is the file: a
 // streamed reader is consumed exactly once and cannot be re-read, which is why
 // the mount buffers to a temp file rather than re-sending a reader.

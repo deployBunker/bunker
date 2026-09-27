@@ -1,0 +1,17 @@
+tree.go before : sha256=852bac8d8e0fd28f4243a8aa3f3a9a99f4808ae3104b8c458361fbae9ca695ce
+mutation inserted after freshEntry's regular-file check
+--- MUTATION: go test -run TestConflictRefusalIgnoresMtimePreservedEdit ---
+=== RUN   TestConflictRefusalIgnoresMtimePreservedEdit
+=== RUN   TestConflictRefusalIgnoresMtimePreservedEdit/default_policy_refuses_and_names_the_post-edit_hash
+=== NAME  TestConflictRefusalIgnoresMtimePreservedEdit
+    conflict_test.go:457: arm 1: the write LANDED; a same-size, mtime-preserved edit must still be refused
+=== NAME  TestConflictRefusalIgnoresMtimePreservedEdit/default_policy_refuses_and_names_the_post-edit_hash
+--- FAIL: TestConflictRefusalIgnoresMtimePreservedEdit (0.01s)
+    --- FAIL: TestConflictRefusalIgnoresMtimePreservedEdit/default_policy_refuses_and_names_the_post-edit_hash (0.00s)
+mutation test exit code = 1 (non-zero = the test CATCHES the mutation)
+RESTORE VERIFIED: tree.go sha256=852bac8d8e0fd28f4243a8aa3f3a9a99f4808ae3104b8c458361fbae9ca695ce (unchanged)
+--- RESTORED: go test -run TestConflictRefusalIgnoresMtimePreservedEdit ---
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.152s
+restored test exit code = 0 (0 = green on the real tree)
+NON-VACUITY: PROVEN
+RESTORE VERIFIED: tree.go sha256=852bac8d8e0fd28f4243a8aa3f3a9a99f4808ae3104b8c458361fbae9ca695ce (unchanged)
