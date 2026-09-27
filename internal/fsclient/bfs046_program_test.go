@@ -28,7 +28,10 @@ package fsclient
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,6 +39,26 @@ import (
 	"testing"
 	"time"
 )
+
+// bfs046LockArtifacts lists anything in a client directory that could hold a
+// lock across a process death: a lock file, a pid file, an "in use" marker. The
+// per-path commit lock is not persisted (nothing a dead process can hold), and
+// this is the sensor that says so out loud instead of asserting it.
+func bfs046LockArtifacts(t *testing.T, dir string) []string {
+	t.Helper()
+	var out []string
+	_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		n := strings.ToLower(d.Name())
+		if strings.Contains(n, "lock") || strings.Contains(n, "pid") || strings.Contains(n, "in-use") || strings.Contains(n, "inuse") {
+			out = append(out, p)
+		}
+		return nil
+	})
+	return out
+}
 
 // ---------------------------------------------------------------------------
 // CELL 4 — THE HALF-FILE CELL.
@@ -147,7 +170,8 @@ func TestBFS046Cell04HalfFileCellIsLoadBearing(t *testing.T) {
 // the cache directory are still what they were.
 //
 // The deliberate-cancel half (a FUSE interrupt, and EINTR vs EIO as the
-// kernel-visible distinction) is PENDING-UNTIL-BFS-039 and is gated below.
+// kernel-visible distinction) is COMPLETED below: BFS-039 landed the cancel
+// vocabulary this cell drives.
 // ---------------------------------------------------------------------------
 
 // TestBFS046HelperProcess is the killed reader/refresher itself, re-executed as
@@ -629,24 +653,148 @@ func TestBFS046Cell07PromotionIsSingleFlightExactlyOneFetch(t *testing.T) {
 		"⇒ 32 GETs) is stated above; the pending gate fails when the dependency lands.")
 }
 
-// TestBFS046Cell08DeliberateCancelIsDistinguishableFromFailure — PENDING-UNTIL-BFS-039.
+// TestBFS046Cell08DeliberateCancelIsDistinguishableFromFailure is the
+// DELIBERATE half of the cancel cell, completed when BFS-039 landed.
 //
-// the defect it catches: a deliberate cancel that is indistinguishable from a
+// The defect it catches: a deliberate cancel that is indistinguishable from a
 // failure at the kernel boundary, so a caller cannot retry correctly (PRD §2.8:
 // `EINTR` vs `EIO`), and a cancel that leaves the per-path commit lock held or
-// the previous content half-published. The KILLED halves of the cancel cell are
-// live above (8a/8b) precisely because they need no cancel to arrive at all.
+// the previous content half-published. Both were MEASURED on the tree that
+// landed BFS-046 (docs/evidence/BFS-039-red.txt): the cancel came back as
+// `unreachable_reset`/ENOTCONN — the answer a connection that died under us
+// gets — and the retry it asks for was impossible.
+//
+// What "a FUSE interrupt" is on this side of the binding: go-fuse cancels the
+// request's CONTEXT when the caller goes away (Ctrl-C, a killed process, a
+// timeout at the caller's level), and every operation on the request path takes
+// that context. The arms below therefore drive the same cancellation the kernel
+// sends, without needing a live mount.
 func TestBFS046Cell08DeliberateCancelIsDistinguishableFromFailure(t *testing.T) {
-	if bfs046CancelIOIsWired() {
-		t.Fatal("PENDING CELL NOW DUE: BFS-039 has landed, so this cell must be completed. The claims it " +
-			"must carry: a deliberate FUSE interrupt cancels the operation, releases the striped per-path " +
-			"commit lock, leaves the PREVIOUS content intact (never a half-published state), and the error " +
-			"returned to the kernel distinguishes `EINTR` from `EIO` (PRD §2.8 / R10); a duplicate or late " +
-			"cancel is a no-op rather than an error, because an accidental cancel may never arrive at all.")
+	c, root, _ := fixtureEndpoint(t)
+	dir := t.TempDir()
+	cache, err := OpenCache(CacheConfig{Dir: dir, MaxBytes: 8 << 20, MaxEntryBytes: 4 << 20, MaxEntries: 64, MaxInFlight: 2})
+	if err != nil {
+		t.Fatalf("cache: %v", err)
 	}
-	t.Skip("PENDING-UNTIL-BFS-039: no `EINTR` is produced anywhere in the tree yet, so the deliberate half " +
-		"of the cancel cell cannot be driven. The killed halves (8a the reader, 8b the refresher) are LIVE " +
-		"and are the half that needs no cancel to arrive.")
+	wp := NewWritePath(c, cache, dir, OnConflictRefuse)
+
+	const path = "src/interrupted.txt"
+	body := []byte("the write the caller interrupted\n")
+	neighbour := filepath.Join(root, "src", "main.go")
+	neighbourBefore := bfs046Sha(t, neighbour)
+
+	// --- (a) THE DELIBERATE CANCEL, mid-publication. ---
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, cancelErr := wp.PublishBytes(ctx, path, body, WriteBase{IfNoneMatchStar: true, Source: BaseFromAbsent})
+	if cancelErr == nil {
+		t.Fatal("a cancelled publication reported success")
+	}
+	t.Logf("BFS046-MEASURE cell8 deliberate-cancel errno=%s(%d) cause=%q", ErrnoName(cancelErr.Errno), int(cancelErr.Errno), cancelErr.Cause)
+	if cancelErr.Errno != ErrnoEINTR {
+		t.Errorf("a DELIBERATE cancel returned errno=%s (%d), want EINTR (%d): the caller cannot tell its own interrupt from a failure and cannot retry correctly (PRD §2.8 / R10)",
+			ErrnoName(cancelErr.Errno), int(cancelErr.Errno), int(ErrnoEINTR))
+	}
+	if cancelErr.Cause != CauseCancelled {
+		t.Errorf("a DELIBERATE cancel reported cause=%q, want %q", cancelErr.Cause, CauseCancelled)
+	}
+	// --- (c) THE PREVIOUS CONTENT IS INTACT: a cancelled publication is not a
+	// publication, so nothing was created and nothing was changed. ---
+	if _, err := os.Stat(filepath.Join(root, path)); err == nil {
+		t.Fatal("the cancelled publication left the path on the server: nothing was refused, so nothing may exist")
+	}
+	if got := bfs046Sha(t, neighbour); got != neighbourBefore {
+		t.Fatalf("a cancelled publication changed a neighbouring file: %s -> %s", neighbourBefore, got)
+	}
+
+	// --- (d) THE FAILURE CLASS IS A DIFFERENT ANSWER: a real server failure
+	// reports EIO (the malformed/5xx class), not a cancellation. ---
+	failing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer failing.Close()
+	fc, err := NewClient(Options{BaseURL: failing.URL + "/dav", Concurrency: 4, OpTimeout: 10 * time.Second, BindTimeout: 3 * time.Second})
+	if err != nil {
+		t.Fatalf("failing client: %v", err)
+	}
+	_, failErr := fc.Head(context.Background(), "src/main.go")
+	if failErr == nil {
+		t.Fatal("a 500 reported success")
+	}
+	t.Logf("BFS046-MEASURE cell8 failure errno=%s(%d) cause=%q", ErrnoName(failErr.Errno), int(failErr.Errno), failErr.Cause)
+	if failErr.Errno == ErrnoEINTR || failErr.Cause == CauseCancelled {
+		t.Fatalf("a FAILURE was reported as a cancellation (%s/%s): the two events this cell separates must stay separated, because their recoveries differ",
+			ErrnoName(failErr.Errno), failErr.Cause)
+	}
+	if failErr.Errno != ErrnoEIO {
+		t.Errorf("a 5xx failure reported errno=%s, want EIO: the failure class must be the answer a broken server gets", ErrnoName(failErr.Errno))
+	}
+	if ErrnoEINTR == ErrnoEIO {
+		t.Fatal("EINTR and EIO are the same value: the kernel-visible distinction the PRD requires does not exist")
+	}
+
+	// --- (b) + THE RETRY: the publication the cancel refused lands on the
+	// retry, ONCE, and the per-path commit lock it enters is free again — the
+	// next conditional write on the SAME path proceeds, with the latency
+	// measured rather than asserted. ---
+	start := time.Now()
+	res, retryErr := wp.PublishBytes(context.Background(), path, body, WriteBase{IfNoneMatchStar: true, Source: BaseFromAbsent})
+	if retryErr != nil {
+		t.Fatalf("the retry after a cancel failed with %v (%s): a cancellation is not a verdict", retryErr, ErrnoName(retryErr.Errno))
+	}
+	retryLatency := time.Since(start)
+	written, err := os.ReadFile(filepath.Join(root, path))
+	if err != nil {
+		t.Fatalf("the retry's path is not on the server: %v", err)
+	}
+	if string(written) != string(body) {
+		t.Fatalf("the retry applied %q, want exactly %q once", written, body)
+	}
+
+	start = time.Now()
+	if _, secondErr := wp.PublishBytes(context.Background(), path, []byte("second\n"), WriteBase{IfMatch: res.Hash, Source: BaseFromServed}); secondErr != nil {
+		t.Fatalf("a conditional write on the SAME path after the cancel did not proceed (%v): a cancel must release the per-path commit lock, never leave it held", secondErr)
+	}
+	lockedOut := time.Since(start)
+	t.Logf("BFS046-MEASURE cell8 cancel→retry=%s, next conditional write on the same path=%s, lock artifacts in the client dir=%v",
+		retryLatency.Round(time.Microsecond), lockedOut.Round(time.Microsecond), bfs046LockArtifacts(t, dir))
+
+	// --- (e) A DUPLICATE OR LATE CANCEL IS A NO-OP, not an error: an
+	// accidental cancel may never arrive at all, and its recovery (an
+	// abandonment that arrives twice, or after the work is done) must be safe.
+	// The mutation a cancel can hit here is the cache's staged refresh, whose
+	// Abort is the declared idempotent door (BFS-038). ---
+	payload := stagePayload(4096, 77)
+	hash := HashBytes(payload)
+	s, err := cache.Stage("hot/duplicate-cancel", hash, int64(len(payload)))
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if _, err := s.Write(payload); err != nil {
+		t.Fatalf("write staged: %v", err)
+	}
+	if err := s.Abort(); err != nil {
+		t.Fatalf("the first abandonment errored: %v", err)
+	}
+	if err := s.Abort(); err != nil {
+		t.Fatalf("a DUPLICATE abandonment errored: %v — a duplicate cancel must be a no-op rather than an error, because an accidental cancel may never arrive and a repeated one must not be corrupting", err)
+	}
+	s2, err := cache.Stage("hot/late-cancel", hash, int64(len(payload)))
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if _, err := s2.Write(payload); err != nil {
+		t.Fatalf("write staged: %v", err)
+	}
+	if _, err := s2.Commit(); err != nil {
+		t.Fatalf("commit staged: %v", err)
+	}
+	if err := s2.Abort(); err != nil {
+		t.Fatalf("a LATE abandonment after a commit errored: %v — a cancel that arrives after the mutation landed must be a no-op", err)
+	}
+	if h, _, ok := cache.Lookup("hot/late-cancel"); !ok || h != hash {
+		t.Fatalf("the late abandonment disturbed the published entry (%q/%v): an abandoned refresh must never swap, and a late one must never unpublish", h, ok)
+	}
 }
 
 // TestBFS046Cell09SkipCensusByReasonIsDrivable — PENDING-UNTIL-BFS-037.
@@ -715,9 +863,17 @@ func TestBFS046PendingUntilLandingGate(t *testing.T) {
 			"written against the live path — see the CELL INVENTORY in docs/evidence/BFS-046-*.md for the " +
 			"exact claim each one carries. This gate exists so a pending cell cannot be skipped forever.")
 	}
-	if bfs046CancelIOIsWired() {
-		t.Fatal("BFS-039 has landed (an EINTR vocabulary exists). " +
-			"TestBFS046Cell08DeliberateCancelIsDistinguishableFromFailure must now be completed.")
+	// BFS-039 HAS LANDED and its cell is COMPLETE
+	// (TestBFS046Cell08DeliberateCancelIsDistinguishableFromFailure). The clause
+	// that used to FAIL here — "the dependency landed, so the pending cell must
+	// be completed" — has done its job; it is replaced by the assertion that
+	// keeps the completion honest: the cancel vocabulary the completed cell
+	// drives must still be present, or its arms would silently stop exercising
+	// anything.
+	if !bfs046CancelIOIsWired() {
+		t.Fatal("the EINTR vocabulary BFS-039 landed is GONE (no EINTR/ErrInterrupted anywhere in the tree): " +
+			"TestBFS046Cell08DeliberateCancelIsDistinguishableFromFailure now proves nothing about the " +
+			"deliberate-cancel half of PRD §2.8")
 	}
 	// The other dependency: the push form (BFS-036) is what cell 1's channel half
 	// will become once it is served. Its absence is a named, landed fact today

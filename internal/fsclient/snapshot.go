@@ -166,6 +166,10 @@ func (c *Client) WalkTree(ctx context.Context, root string) (*Snapshot, *OpError
 	var firstErr *OpError
 	var pending sync.WaitGroup
 
+	// The CALLER's context, kept before the walk's own cancel wraps it: the
+	// check at the end of this function is reachable with no firstErr only by
+	// the caller's cancellation, so it can be attributed correctly (BFS-039).
+	parent := ctx
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -210,7 +214,11 @@ func (c *Client) WalkTree(ctx context.Context, root string) (*Snapshot, *OpError
 		return nil, firstErr
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, classifyTransport(err)
+		// No firstErr and the walk context is done: the CALLER cancelled (the
+		// internal cancel is only called once a worker has an error). That is a
+		// cancellation — EINTR, retryable — and not the transport fault this
+		// used to report (BFS-039).
+		return nil, classifyRequest(parent, err, "walk", root)
 	}
 	snap.source = SourcePropfindWalk
 	return snap, nil

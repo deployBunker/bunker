@@ -660,11 +660,12 @@ func (m *Mount) Status() fsclient.Status {
 		OnConflict:  m.wp.OnConflict(),
 		Cache:       cs,
 		Transport: fsclient.TransportState{
-			Verdict:  m.verdictNow(),
-			Requests: m.client.Requests(),
-			Proto:    m.client.Proto(),
-			Tree:     m.client.Tree(),
-			Rev:      m.client.Rev(),
+			Verdict:      m.verdictNow(),
+			Requests:     m.client.Requests(),
+			CancelsTotal: m.client.Cancels(),
+			Proto:        m.client.Proto(),
+			Tree:         m.client.Tree(),
+			Rev:          m.client.Rev(),
 		},
 		Conflicts: fsclient.ConflictState{RefusalsTotal: m.wp.Refusals(), Last: m.wp.LastConflict()},
 	}
@@ -1422,6 +1423,17 @@ func (m *Mount) newWriteHandle(p string, created bool) *writeHandle {
 	return h
 }
 
+// ensureBuffer opens this handle's local buffer.
+//
+// THE BUFFER HAS NO NAME (BFS-039), and that is the whole of its crash safety:
+// the file is unlinked the moment it exists, so the open descriptor is the only
+// reference to its bytes and the kernel reclaims the inode with the last
+// descriptor. A writer killed mid-write therefore leaves NOTHING behind — no
+// cancel message is needed, no sweep is needed, and there is no orphan for a
+// figure the owner cannot see to omit (BFS-031's class). MEASURED on the tree
+// that landed BFS-046: a named buffer left `writebuf-<n>` in the cache
+// directory after every killed writer, and nothing ever removed it
+// (docs/evidence/BFS-039-red.txt).
 func (h *writeHandle) ensureBuffer() syscall.Errno {
 	if h.tmp != nil {
 		return 0
@@ -1435,9 +1447,32 @@ func (h *writeHandle) ensureBuffer() syscall.Errno {
 		os.Remove(f.Name())
 		return syscall.EIO
 	}
+	if err := os.Remove(f.Name()); err != nil {
+		f.Close()
+		return syscall.EIO
+	}
 	h.tmp = f
 	return 0
 }
+
+// noCloseReader hands the transport a READ-ONLY VIEW of the write buffer.
+//
+// net/http CLOSES a request body on every failed round trip ("c._send() always
+// closes req.Body"), so passing the handle's own *os.File as the PUT body meant
+// a CANCELLED or failed publication closed the buffer the retry needs: the
+// next attempt's Seek failed and the caller was told EIO, which is precisely
+// the recovery EINTR exists to make possible (BFS-039). MEASURED: the retry
+// after a cancel failed 5 runs in 12 before this view existed
+// (docs/evidence/BFS-039-red.txt), and the failure depended on whether the
+// request had started — an intermittent byte-shaped defect, which is the worst
+// kind to leave in a write path.
+//
+// The view is an io.Reader and NOT an io.ReadCloser, so net/http wraps it in
+// io.NopCloser and its close is a no-op. Nothing else changes: the file's
+// offset is reset before every attempt.
+type noCloseReader struct{ r io.Reader }
+
+func (n noCloseReader) Read(p []byte) (int, error) { return n.r.Read(p) }
 
 func (h *writeHandle) Write(ctx context.Context, data []byte, off int64) (uint32, syscall.Errno) {
 	h.mu.Lock()
@@ -1487,6 +1522,27 @@ func (h *writeHandle) Write(ctx context.Context, data []byte, off int64) (uint32
 
 // publish performs the file's ONE conditional PUT. It is idempotent: Flush may
 // be called more than once for a duplicated descriptor.
+//
+// TWO EVENTS, TWO ANSWERS (BFS-039, PRD §2.8/R10). A publication can end in
+// three ways and they are not interchangeable:
+//
+//	it LANDED            → the result is kept and every later Flush returns it.
+//	it was REFUSED or it
+//	FAILED               → the failure is recorded and stays terminal: the
+//	                       server gave a verdict, so re-offering the same bytes
+//	                       is re-offering a write it already refused.
+//	the CALLER cancelled → nothing was refused and no verdict was given. The
+//	                       handle is left PUBLISHABLE (`flushed` stays false and
+//	                       no failure is recorded), the cancel is returned as
+//	                       EINTR, and the retry the errno asks for is the same
+//	                       ONE conditional PUT. That retry lands exactly once
+//	                       whether or not the cancelled attempt had reached the
+//	                       server, because a whole-file PUT of bytes the server
+//	                       already holds is its own reported no-op
+//	                       (`identical_content`, nothing written, mtime
+//	                       unmoved) — so a cancel can never double-apply a
+//	                       write, which is the property that makes an
+//	                       ACCIDENTAL cancel safe to not hear about at all.
 func (h *writeHandle) publish(ctx context.Context) syscall.Errno {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -1504,20 +1560,33 @@ func (h *writeHandle) publish(ctx context.Context) syscall.Errno {
 		h.flushed = true
 		return errnoFor(h.failure)
 	}
-	h.flushed = true
 	if !h.hasBase {
 		base, err := h.m.wp.ResolveBase(ctx, h.p)
 		if err != nil {
-			h.failure = err
+			if err.Cause == fsclient.CauseCancelled {
+				// No base was resolved and nothing was published: the retry
+				// re-resolves and publishes once.
+				return errnoFor(err)
+			}
+			h.flushed, h.failure = true, err
 			return errnoFor(err)
 		}
 		h.base, h.hasBase = base, true
 	}
 	if _, err := h.tmp.Seek(0, io.SeekStart); err != nil {
+		h.flushed = true
 		return syscall.EIO
 	}
-	res, err := h.m.wp.Publish(ctx, h.p, h.tmp, h.size, h.base)
+	res, err := h.m.wp.Publish(ctx, h.p, noCloseReader{h.tmp}, h.size, h.base)
 	if err != nil {
+		if err.Cause == fsclient.CauseCancelled {
+			// The caller cancelled: EINTR, and the handle stays publishable so
+			// the retry is possible and lands once. The cancellation is counted
+			// by the CLIENT (transport.cancels_total), which is where every
+			// cancelled request is counted, rather than a second time here.
+			return errnoFor(err)
+		}
+		h.flushed = true
 		h.failure = err
 		h.m.recordFailure(err)
 		if err.Cause == fsclient.CauseConflict {
@@ -1525,6 +1594,7 @@ func (h *writeHandle) publish(ctx context.Context) syscall.Errno {
 		}
 		return errnoFor(err)
 	}
+	h.flushed = true
 	h.result = res
 	h.m.recordOK()
 	// The write landed: our metadata for the path is stale by construction, and

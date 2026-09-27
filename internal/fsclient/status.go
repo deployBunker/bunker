@@ -48,12 +48,19 @@ type TransportState struct {
 	Cause       string `json:"cause"`
 	// InFlight/InFlightMax are the concurrency figures acceptance criterion 5
 	// asks to be stated rather than asserted.
-	InFlight    int64  `json:"in_flight"`
-	InFlightMax int64  `json:"in_flight_max"`
-	Requests    int64  `json:"requests_total"`
-	Proto       string `json:"proto,omitempty"`
-	Tree        string `json:"tree,omitempty"`
-	Rev         string `json:"rev,omitempty"`
+	InFlight    int64 `json:"in_flight"`
+	InFlightMax int64 `json:"in_flight_max"`
+	Requests    int64 `json:"requests_total"`
+	// CancelsTotal counts the operations a CALLER cancelled — a FUSE interrupt,
+	// a caller-side timeout, a Ctrl-C — as opposed to the operations that
+	// failed (BFS-039). It is reported beside Requests because a mount whose
+	// caller is interrupt-happy and one whose transport is flaky look identical
+	// in every other figure, and their recoveries are different: a cancel is a
+	// retry (EINTR), a fault is a backoff.
+	CancelsTotal int64  `json:"cancels_total"`
+	Proto        string `json:"proto,omitempty"`
+	Tree         string `json:"tree,omitempty"`
+	Rev          string `json:"rev,omitempty"`
 }
 
 // SnapshotState is the `snapshot` block: where the node tree came from and what
