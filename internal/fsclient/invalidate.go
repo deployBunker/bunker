@@ -221,6 +221,18 @@ type Invalidator struct {
 	// client cannot vouch for) rather than by a fault or by this client closing
 	// it. It is cleared when a stream is established again.
 	stalled bool
+	// frameOverLimit records that the pushed channel was declared unusable
+	// because an event frame crossed the per-frame bound this mount holds
+	// (BFS-062) — a CONDITION and not only a count, so a reader can tell "these
+	// frames are too big for this mount" from "the network is failing", which
+	// is the distinction the transport misclassification destroyed.
+	// frameLimitDetail names the numbers the verdict was taken from.
+	frameOverLimit   bool
+	framesOverLimit  int64
+	frameLimitDetail string
+	// frameLimitBytes is the per-line cap the reader was actually sized to, so
+	// the bound in force is reportable rather than implied by the declaration.
+	frameLimitBytes int64
 	// vouchedAt/From/OK/Why are the content-age evidence (BFS-045): when the
 	// client last had reason to believe its view of the served tree is current,
 	// from what kind of evidence, and — when it has none — why not. A resync
@@ -357,6 +369,13 @@ type InvalidationState struct {
 	// the hot-refresh queue it does NOT — every field of the absent one null
 	// with a reason rather than a zero that could be mistaken for a measurement.
 	Refresh RefreshState `json:"refresh"`
+	// FrameLimit is the pushed channel's FRAME accounting (BFS-062): the bound
+	// the server declared, the per-line cap this consumer was sized to, and
+	// whether a frame ever crossed it. Absent WITH A REASON when the mount never
+	// attempted the pushed channel — there is then no reader and therefore no
+	// bound, which is a different fact from a bound of zero.
+	FrameLimit       *FrameLimitState `json:"frame_limit,omitempty"`
+	FrameLimitReason string           `json:"frame_limit_reason,omitempty"`
 }
 
 // ServerWatchState is the server's own watcher block, reported verbatim (the
@@ -378,6 +397,13 @@ type ServerWatchState struct {
 	// overflow (drop everything and re-snapshot) rather than a partial drop. It
 	// is reported because a rule whose bound is invisible cannot be audited.
 	MaxPathsPerEvent *int64 `json:"max_paths_per_event,omitempty"`
+	// MaxEventBytes is the declared BYTE bound on one event frame
+	// (SPEC-push-channel §7.2, BFS-062), reported for the same reason and one
+	// more: it is the number this consumer SIZES ITS READER FROM, so a mount
+	// whose frames cannot be read must be able to show which declaration it
+	// honoured. Absent when the document published none — a peer that predates
+	// the additive field — which is a fact and not a bound of zero.
+	MaxEventBytes *int64 `json:"max_event_bytes,omitempty"`
 	// Coverage — what the watch set actually covers, and what it does not. Also
 	// pointers, for the same reason as the counters: no coverage block means no
 	// coverage figure was published, and CoverageReason says so in the server's
@@ -609,6 +635,27 @@ func (i *Invalidator) State() InvalidationState {
 		ms := i.effectiveIdle().Milliseconds()
 		st.IdleTimeoutMS = &ms
 	}
+	// The frame accounting (BFS-062). It is reported whenever a reader was ever
+	// SIZED — an attempt at the pushed channel, whatever then happened to it —
+	// and absent with a reason otherwise, because a mount that never opened the
+	// channel has no bound to report and a 0 there would read as one.
+	if i.frameLimitBytes > 0 || i.framesOverLimit > 0 {
+		fl := &FrameLimitState{
+			ReaderBytes:    i.frameLimitBytes,
+			CeilingBytes:   ClientFrameCeiling,
+			OverLimit:      i.frameOverLimit,
+			OverLimitTotal: i.framesOverLimit,
+			Detail:         i.frameLimitDetail,
+		}
+		if declared := i.declaredMaxEventBytes(); declared > 0 {
+			fl.DeclaredBytes = &declared
+		} else {
+			fl.DeclaredReason = ReasonNotPublished + ": the server's capability document publishes no max_event_bytes, so this mount sized its reader to its own ceiling rather than to a declaration"
+		}
+		st.FrameLimit = fl
+	} else {
+		st.FrameLimitReason = ReasonDisabled + ": this mount never attempted the pushed channel, so no per-frame reader was ever sized and there is no bound to report"
+	}
 	return st
 }
 
@@ -667,6 +714,10 @@ func serverWatchState(w *CapabilityWatch, age time.Duration) *ServerWatchState {
 	if w.MaxPaths > 0 {
 		mp := int64(w.MaxPaths)
 		out.MaxPathsPerEvent = &mp
+	}
+	if w.MaxEventBytes > 0 {
+		mb := w.MaxEventBytes
+		out.MaxEventBytes = &mb
 	}
 	if w.Liveness != nil {
 		v, s := w.Liveness.Vouched, w.Liveness.Stalled
@@ -983,6 +1034,13 @@ func (i *Invalidator) Run(ctx context.Context) error {
 		// is dead, and a dead channel is not a quiet tree. Take the mechanism
 		// that works and say so (§8.1 idle row, §8.3's fifth condition).
 		return i.stallToPoll(ctx, watchErr)
+	case frameLimitDegradation(watchErr):
+		// BFS-062: a frame this mount cannot hold is DETERMINISTIC — the same
+		// bytes arrive on every attempt — so the reconnect loop this error used
+		// to land in was an outage manufactured from a size mismatch. Counted,
+		// named, and taken once to the mechanism that does not read one frame
+		// per line.
+		return i.frameLimitToPoll(ctx, watchErr)
 	case isDeclaredDegradation(watchErr):
 		i.setMode(ModePoll, fmt.Sprintf("capability_unavailable on watch (scope=%s mode=%s): declared poll fallback", orDash(watchErr.Scope), orDash(watchErr.Mode)))
 		return i.pollLoop(ctx)
@@ -1047,6 +1105,12 @@ func (i *Invalidator) reconnectLoop(ctx context.Context, last *OpError) error {
 			return nil
 		}
 		last = err
+		if frameLimitDegradation(err) {
+			// BFS-062: never retried. Both entry points ask the same predicate,
+			// so the first attempt and the retry after a fault cannot drift into
+			// different sets.
+			return i.frameLimitToPoll(ctx, err)
+		}
 		if err.Cause == CauseStreamStalled {
 			return i.stallToPoll(ctx, err)
 		}
@@ -1067,6 +1131,13 @@ func (i *Invalidator) reconnectLoop(ctx context.Context, last *OpError) error {
 // context is a channel end, and reading it as a success is what ended
 // invalidation for the life of the mount (H-1, R-6).
 func (i *Invalidator) watchOnce(ctx context.Context) *OpError {
+	// BFS-062: the relation is checked BEFORE a stream is opened. A declaration
+	// this mount cannot hold is a mismatch between two published documents, not
+	// something to discover one frame at a time — and discovering it frame by
+	// frame is how a size mismatch became a reconnect loop.
+	if e := i.frameLimitMismatch(); e != nil {
+		return e
+	}
 	i.mu.Lock()
 	since := i.seq
 	i.mu.Unlock()
@@ -1151,7 +1222,15 @@ func (i *Invalidator) watchOnce(ctx context.Context) *OpError {
 	lines := make(chan streamRead, 1)
 	stop := make(chan struct{})
 	defer close(stop)
-	go readStream(resp.Body, lines, stop)
+	// The reader is sized from the SERVER'S DECLARATION (BFS-062): the per-line
+	// cap is the declared max_event_bytes plus the framing slack whenever one was
+	// declared, and this client's own ceiling when none was. A cap chosen here
+	// as a constant is what made a legal server frame unreadable.
+	lineCap := i.readCap()
+	i.mu.Lock()
+	i.frameLimitBytes = int64(lineCap)
+	i.mu.Unlock()
+	go readStream(resp.Body, lines, stop, lineCap)
 
 	idle := i.effectiveIdle()
 	timer := time.NewTimer(idle)
@@ -1186,9 +1265,7 @@ func (i *Invalidator) watchOnce(ctx context.Context) *OpError {
 					i.markUnavailable("the channel stopped: its context ended")
 					return nil
 				}
-				e := classifyTransport(rd.err)
-				e.Op = "watch"
-				return e
+				return i.classifyStreamRead(rd.err)
 			}
 			// A line arrived, so the channel is demonstrably turning: the idle
 			// deadline starts again — before the line is even interpreted.
@@ -1224,9 +1301,14 @@ type streamRead struct {
 // closed. Both sends select on stop, so a consumer that leaves early — for the
 // idle rule or for cancellation — cannot leak this goroutine: it unblocks as
 // soon as the caller closes the response body.
-func readStream(body io.Reader, out chan<- streamRead, stop <-chan struct{}) {
+//
+// lineCap is the per-line cap the CALLER sized (BFS-062): the declared
+// max_event_bytes plus slack, or this client's ceiling when the server declared
+// none. A line over it is not a transport failure — the caller classifies it as
+// the named, counted, non-retryable frame condition it is.
+func readStream(body io.Reader, out chan<- streamRead, stop <-chan struct{}, lineCap int) {
 	scanner := bufio.NewScanner(body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 8<<20)
+	scanner.Buffer(make([]byte, 0, 64*1024), lineCap)
 	for scanner.Scan() {
 		line := append([]byte(nil), scanner.Bytes()...)
 		select {
@@ -1337,6 +1419,12 @@ func (i *Invalidator) watchSession(ctx context.Context) *OpError {
 func (i *Invalidator) countStreamEnd()    { i.bump(&i.streamEnds) }
 func (i *Invalidator) countReconnect()    { i.bump(&i.reconnects) }
 func (i *Invalidator) countIdleFallback() { i.bump(&i.idleFallbacks) }
+
+// countFrameOverLimit counts a frame that crossed the per-frame bound this mount
+// holds (BFS-062). It is counted at the DECISION — the mismatch check before a
+// stream is opened, or the classified read failure — so the figure is the number
+// of times the condition was declared, never an inference from a reason string.
+func (i *Invalidator) countFrameOverLimit() { i.bump(&i.framesOverLimit) }
 
 // ---------------------------------------------------------------------------
 // BFS-045: evidence and attempts.

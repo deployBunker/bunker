@@ -1536,12 +1536,18 @@ func (h *Handler) watchDocumentBlock(st watchStatus) map[string]any {
 		"mode":                "poll",
 		"heartbeat_ms":        st.HeartbeatMS,
 		"max_paths_per_event": eventsMaxPathsPerEvent,
-		"modes":               map[string]any{"push": "inotify\u2192stream", "poll": "X-Bunker-Op: events"},
-		"state":               st.State,
-		"blocks_push":         st.BlocksPush,
-		"backend":             st.Backend,
-		"target":              st.Target,
-		"limits":              st.Limits,
+		// BFS-062: the frame's BYTE bound, declared so a consumer can size its
+		// own per-line reader to it instead of assuming a number (SPEC-push-
+		// channel §7.2). Additive to this block: a peer that predates the field
+		// ignores it, and the value published is the one the running surface
+		// obeys (the same field the events assembly measures against).
+		"max_event_bytes": h.inv.Push.MaxEventBytes,
+		"modes":           map[string]any{"push": "inotify\u2192stream", "poll": "X-Bunker-Op: events"},
+		"state":           st.State,
+		"blocks_push":     st.BlocksPush,
+		"backend":         st.Backend,
+		"target":          st.Target,
+		"limits":          st.Limits,
 		// BFS-043: the knob surface this process is serving with, read out of the
 		// running watcher rather than out of the config (see invalidationConfigBlock).
 		"config": h.invalidationConfigBlock(st),

@@ -24,6 +24,11 @@ type CapabilityWatch struct {
 	Modes       map[string]string `json:"modes"`
 	HeartbeatMS int               `json:"heartbeat_ms"`
 	MaxPaths    int               `json:"max_paths_per_event"`
+	// MaxEventBytes is the declared BYTE bound on one serialized event frame
+	// (SPEC-push-channel §7.2, BFS-062). It is additive to this block: a peer
+	// that predates the field publishes nothing here, which decodes as 0 and is
+	// reported as "no bound declared" rather than as a bound of zero.
+	MaxEventBytes int64 `json:"max_event_bytes"`
 	// State is the runtime state vocabulary: watching|overflow|lost|absent
 	// (§3.2). `absent` is a fact about the TARGET, not a failure of the client.
 	State string `json:"state"`
@@ -269,6 +274,26 @@ func (caps *Capabilities) MaxPathsPerEvent() int {
 		return caps.Extensions.Watch.MaxPaths
 	}
 	return 4096
+}
+
+// MaxEventBytes returns the declared byte bound on ONE serialized event frame
+// (SPEC-push-channel §7.2's `max_event_bytes`), or 0 when the document publishes
+// none.
+//
+// It deliberately does NOT fall back to a number of its own the way
+// MaxPathsPerEvent does, and the difference is the point of BFS-062. A path
+// COUNT has a safe default because this client treats a longer list as an
+// overflow — erring on the side of resyncing. A BYTE bound has no safe default:
+// a client that guesses one sizes its reader to the wrong number, which is
+// either a reader that cannot hold a legal frame (the reconnect loop this row
+// removes) or an allocation nobody declared. 0 is therefore a FACT — "this
+// server published no bound" — and the caller declares that state rather than
+// inventing a limit for another process.
+func (caps *Capabilities) MaxEventBytes() int64 {
+	if caps == nil || caps.Extensions.Watch.MaxEventBytes <= 0 {
+		return 0
+	}
+	return caps.Extensions.Watch.MaxEventBytes
 }
 
 // RevKind is the revision kind the document DECLARES ("git" | "counter", or ""

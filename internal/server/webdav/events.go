@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/deployBunker/bunker/internal/invalidation"
 )
 
 // ---------------------------------------------------------------------------
@@ -49,7 +51,9 @@ import (
 // Read-only (E-4's invariant, A-9): a walk and a stat per entry, nothing else.
 // Bounded: the walk stops at eventsScanLimit entries, a path list is capped at
 // eventsMaxPathsPerEvent (spilling to `overflow`, never to a longer or partial
-// list), and the ledger keeps eventsJournalEvents of history.
+// list), a frame is capped at the declared `max_event_bytes` (BFS-062: a COUNT
+// does not bound a frame, and the frame is what a consumer's reader must hold),
+// and the ledger keeps eventsJournalEvents of history.
 //
 // The resume rule (BFS-063, and the reason the ledger cannot delegate the last
 // step). A poll is answered from the retained journal only when the ledger can
@@ -279,18 +283,108 @@ func (l *eventLog) changed(state map[string]identity) []string {
 
 // push appends one event, advancing the seq and pruning the journal to its
 // bound. Callers hold l.mu.
+//
+// The frames this funnel emits respect BOTH bounds, and that is the whole point
+// of measuring here rather than at the path list (BFS-062, the BFS-031 lesson
+// one bound over): a COUNT cannot bound a frame — 4096 paths of PATH_MAX is
+// ~16.8 MiB of JSON on one line — so an `invalidate` whose SERIALIZED frame
+// crosses the declared byte bound is emitted as the `overflow` marker instead
+// of as a path list. The swap is deliberate and it is the spec's rule
+// (SPEC-push-channel §7.2): over either bound ⇒ `overflow` with `paths: []`,
+// never a truncated list and never a partial list presented as complete.
+//
+// Measuring in the funnel is what keeps every answer honest, not just the one
+// that happens to check: the JOURNAL is the tree's event history, and a frame
+// that entered it oversized would be served to every client that reads the
+// retained tail afterwards.
 func (l *eventLog) push(t *tree, name string, paths []string) eventLine {
 	l.seq++
 	if paths == nil {
 		paths = []string{}
 	}
 	ev := eventLine{Seq: l.seq, Event: name, Paths: paths, Rev: t.revToken(), Tree: t.identity()}
+	if name == eventInvalidate {
+		if n, over := frameOverBound(ev, t.eventFrameBound()); over {
+			ev = eventLine{Seq: ev.Seq, Event: eventOverflow, Paths: []string{}, Rev: ev.Rev, Tree: ev.Tree}
+			recordFrameOverBound(n)
+		}
+	}
 	l.journal = append(l.journal, ev)
 	if len(l.journal) > eventsJournalEvents {
 		l.journal = append([]eventLine(nil), l.journal[len(l.journal)-eventsJournalEvents:]...)
 	}
 	l.base = l.journal[0].Seq
 	return ev
+}
+
+// eventFrameBound is the byte bound ONE serialized event frame must respect on
+// this tree. A tree built without a resolved surface answers the DECLARED
+// default (invalidation.DefaultPushMaxEventBytes) rather than zero-means-no-
+// bound: silently disabling a bound because a field was not filled in would be
+// the same defect as a bound the producing side may exceed (BFS-062).
+func (t *tree) eventFrameBound() int64 {
+	if t.eventMaxBytes > 0 {
+		return t.eventMaxBytes
+	}
+	return invalidation.DefaultPushMaxEventBytes
+}
+
+// eventFrameBytes measures one event frame the way the wire form does: the
+// serialized JSON object of the line, which is exactly the bytes a consumer's
+// per-line reader must be able to hold. It is exported to the package's cells
+// so the arithmetic in the evidence is taken from the same encoder the wire
+// uses, never from a hand-counted estimate.
+func eventFrameBytes(ev eventLine) (int64, bool) {
+	raw, err := json.Marshal(ev)
+	if err != nil {
+		return 0, false
+	}
+	return int64(len(raw)), true
+}
+
+// frameOverBound reports an event frame's measured size and whether it crosses
+// the bound. A frame that cannot be MEASURED is reported as over the bound:
+// "unmeasurable" is not admissible, and admitting it would be a bound that
+// fails open.
+func frameOverBound(ev eventLine, maxEventBytes int64) (int64, bool) {
+	n, ok := eventFrameBytes(ev)
+	if !ok {
+		return 0, true
+	}
+	return n, maxEventBytes > 0 && n > maxEventBytes
+}
+
+// frameOverBoundTotal counts, per process, the frames the BYTE bound refused to
+// assemble as a path list. It exists because the two bounds fail for different
+// reasons and an operator reading the record must be able to tell "the tree
+// changed a lot" from "the tree's paths are long" (PRD §2.8: a bound the owner
+// cannot see is not a bound). It is a process-wide count rather than a
+// per-ledger one on purpose: the fact is about frames this SERVER refused, and
+// it must survive the ledger being rebuilt (a tree's ledger is per-tree state,
+// created lazily). A cell that reads it measures the DELTA across its own
+// stimulus, because the counter is deliberately not reset by construction.
+var (
+	frameOverBoundMu    sync.Mutex
+	frameOverBoundTotal int64
+	frameOverBoundLast  int64 // the measured size of the last refused frame, in bytes
+)
+
+// recordFrameOverBound notes one frame the byte bound refused.
+func recordFrameOverBound(bytes int64) {
+	frameOverBoundMu.Lock()
+	defer frameOverBoundMu.Unlock()
+	frameOverBoundTotal++
+	frameOverBoundLast = bytes
+}
+
+// FrameOverBoundCounters reports the byte-bound refusals this process has
+// decided and the measured size of the last one, in bytes. A zero total is the
+// honest "no frame this process assembled ever crossed the bound", which is the
+// state a small tree produces.
+func FrameOverBoundCounters() (total, lastBytes int64) {
+	frameOverBoundMu.Lock()
+	defer frameOverBoundMu.Unlock()
+	return frameOverBoundTotal, frameOverBoundLast
 }
 
 // resumePoint is the position a client presents on the poll. It is two facts and

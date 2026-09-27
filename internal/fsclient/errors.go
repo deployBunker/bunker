@@ -84,6 +84,17 @@ const (
 	// answer (BFS-040 §5.1, §5.4 O-2). Hole H-3: the option and its default
 	// existed and nothing read them.
 	CauseStreamStalled Cause = "stream_stalled"
+	// CauseEventFrameOverLimit: an event frame on the pushed channel was longer
+	// than this client's per-line reader, or the server declared a per-frame
+	// bound this client cannot hold (BFS-062, SPEC-push-channel §7.2's
+	// `max_event_bytes` relation). It is named as its own cause and NOT as a
+	// transport fault for one reason: the input is DETERMINISTIC. The same bytes
+	// arrive on every attempt, so a transport classification puts a legal server
+	// frame into the reconnect loop — an outage manufactured out of a size
+	// mismatch, which is the defect this cause removes. Recovery is the declared
+	// poll (a mechanism that does not read one frame per line) once, with the
+	// condition counted and both numbers named; never a retry of the same read.
+	CauseEventFrameOverLimit Cause = "event_frame_over_limit"
 )
 
 // The server's machine codes this client branches on, quoted verbatim from the

@@ -190,6 +190,11 @@ func New(cfg Config) (*Handler, error) {
 	if err := inv.Validate(); err != nil {
 		return nil, fmt.Errorf("webdav: invalidation config: %w", err)
 	}
+	// BFS-062: the frame's byte bound reaches the ONE site that measures a
+	// frame (events.go's ledger push) from the resolved surface, so the number
+	// the document publishes and the number the assembly obeys are the same
+	// number.
+	t.eventMaxBytes = inv.Push.MaxEventBytes
 	if cfg.MaxRequestBytes <= 0 {
 		cfg.MaxRequestBytes = DefaultMaxRequestBytes
 	}

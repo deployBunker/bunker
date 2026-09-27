@@ -81,6 +81,14 @@ type tree struct {
 	// lazily: a build or a client that never polls never pays for it.
 	evMu sync.Mutex
 	ev   *eventLog
+
+	// eventMaxBytes is the declared byte bound on ONE serialized event frame
+	// (server.invalidation.push.max_event_bytes), set from the resolved
+	// invalidation surface when the surface is built (handler.go, New). Zero
+	// means the tree was built without a surface — a cell, an embedder — and
+	// eventFrameBound resolves that to the DECLARED default rather than to "no
+	// bound": a bound a missing field can switch off is not a bound.
+	eventMaxBytes int64
 }
 
 func newTree(root string) (*tree, error) {
