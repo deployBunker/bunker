@@ -1,0 +1,13 @@
+diff --git a/internal/fsclient/hotrefresh.go b/internal/fsclient/hotrefresh.go
+index cd08c2d..6a7dc27 100644
+--- a/internal/fsclient/hotrefresh.go
++++ b/internal/fsclient/hotrefresh.go
+@@ -597,7 +597,7 @@ func (h *HotManager) enqueue(path string, now time.Time) {
+ 	case closed:
+ 		return
+ 	case state == HotRunStopped:
+-		h.bump(h.skips, HotSkipStopped)
++		// MUTATION: the refusal is not counted (a pre-filter above the counter).
+ 		h.refusedStopped.Add(1)
+ 		return
+ 	case state != HotRunArmed:

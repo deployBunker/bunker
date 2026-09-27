@@ -1,0 +1,15 @@
+diff --git a/internal/fsclient/hotrefresh.go b/internal/fsclient/hotrefresh.go
+index cd08c2d..5e51bb1 100644
+--- a/internal/fsclient/hotrefresh.go
++++ b/internal/fsclient/hotrefresh.go
+@@ -682,7 +682,9 @@ func (h *HotManager) HotRead(ctx context.Context, path, ifNoneMatch string) (dat
+ 	if h == nil {
+ 		return nil, "", nil, false
+ 	}
+-	h.Promote(path)
++	if false {
++		h.Promote(path)
++	}
+ 	f, isJoin := h.beginFetch(path, true)
+ 	if isJoin {
+ 		if d, hh, je := f.Wait(ctx); je == nil && d != nil {

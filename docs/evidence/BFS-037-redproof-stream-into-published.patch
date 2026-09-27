@@ -1,0 +1,27 @@
+diff --git a/internal/fsclient/hotrefresh.go b/internal/fsclient/hotrefresh.go
+index cd08c2d..ad39385 100644
+--- a/internal/fsclient/hotrefresh.go
++++ b/internal/fsclient/hotrefresh.go
+@@ -6,6 +6,7 @@ import (
+ 	"errors"
+ 	"io"
+ 	"net/http"
++	"os"
+ 	"sync"
+ 	"sync/atomic"
+ 	"time"
+@@ -947,7 +948,13 @@ func (h *HotManager) refresh(ctx context.Context, it *hotItem, f *hotFetch) {
+ 	}
+ 	h.refreshesTotal.Add(1)
+ 	cached, _, haveCached := h.ca.Lookup(path)
+-	data, got, stop, gerr := h.cl.GetChecked(rctx, path, cached, h.cfg.MaxFileBytes, func(int) error {
++	data, got, stop, gerr := h.cl.GetChecked(rctx, path, cached, h.cfg.MaxFileBytes, func(n int) error {
++		// BFS-037 RED-PROOF MUTATION (--stream-into-published): the refresh writes
++		// the bytes it has so far INTO THE BLOB A READER CAN REACH, mid-body. This
++		// is the in-place refresh the no-partial-read cell exists to indict.
++		if haveCached {
++			_ = os.WriteFile(h.ca.blobPath(cached), make([]byte, n), 0o600)
++		}
+ 		return h.checkpoint(ctx, f)
+ 	})
+ 	switch {

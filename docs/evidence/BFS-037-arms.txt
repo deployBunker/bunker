@@ -1,0 +1,182 @@
+BFS-037 arms — mode=all
+go go1.26.5 · 7e88283 · 2026-09-27T18:45:09Z
+tree under test:
+  internal/fsclient/hotcache.go   sha256=212d0c11082fb42c31a5a9caf6255974097b2a34a4973164499c2aaa780f84db
+  internal/fsclient/hotrefresh.go sha256=76151e867db9a7ff2d45c7888db15bd37a91bbeba2f6c5c1e14aa782bd62b88c
+  internal/fsclient/cache.go      sha256=bf3e978d446610c7ddb11866fc3ed1948ffd33137758d7035ceed468b47ab016
+--- GREEN (BFS-037: the twelve cells, the census and the probes): go test ./internal/fsclient -run TestBFS037 -count=1 -timeout 600s
+ok  	github.com/deployBunker/bunker/internal/fsclient	24.146s
+--- GREEN (BFS-037: the twelve cells, the census and the probes) exit=0
+OK   GREEN (BFS-037: the twelve cells, the census and the probes) PASSED as declared
+--- GREEN (BFS-046: every cell, including the four completed for 037): go test ./internal/fsclient -run TestBFS046 -count=1 -timeout 600s
+ok  	github.com/deployBunker/bunker/internal/fsclient	5.388s
+--- GREEN (BFS-046: every cell, including the four completed for 037) exit=0
+OK   GREEN (BFS-046: every cell, including the four completed for 037) PASSED as declared
+
+==============================================================
+CONTROL exclusive-size — BFS-037-redproof-exclusive-size.patch
+==============================================================
+pre-mutation: internal/fsclient/hotcache.go sha256=212d0c11082fb42c31a5a9caf6255974097b2a34a4973164499c2aaa780f84db
+mutated: internal/fsclient/hotcache.go sha256=0f2640e9ba3a9f021450a5df7e871ce42d22beebdb487048b6a8c595e76904a9 via BFS-037-redproof-exclusive-size.patch
+--- CONTROL exclusive-size (the mutation MUST turn this cell red): go test ./internal/fsclient -run TestBFS037Cell01|TestBFS046Cell09SizeRuleBoundaryIsInclusiveAndCountedByReason -count=1 -timeout 600s
+--- FAIL: TestBFS037Cell01TheSizeRuleHoldsAtTheBoundary (3.54s)
+    bfs037_program_test.go:85: hotWaitFor(the at-ceiling refresh to fetch): not satisfied within 3s
+    bfs037_program_test.go:88: a file EXACTLY at the ceiling was not refreshed (S-2): gets=1
+--- FAIL: TestBFS046Cell09SizeRuleBoundaryIsInclusiveAndCountedByReason (5.01s)
+    bfs046_program_test.go:542: hotWaitFor(the at-the-bound file to be refreshed): not satisfied within 5s
+    bfs046_program_test.go:548: CELL9 boundary AT the bound (4096 B): refreshed=false hash sha256:c4731bd1baf5dc1a0e0fdf4ae6506eb453d73dac39e0d45a2ca094284645e2f0 → sha256:c4731bd1baf5dc1a0e0fdf4ae6506eb453d73dac39e0d45a2ca094284645e2f0 oversize_skips_delta=1 refreshes_delta=0
+    bfs046_program_test.go:581: a file EXACTLY at hot_max_file_bytes was NOT refreshed: the size rule is exclusive at the bound, which is the off-by-one this cell exists to catch (S-4 is `<=`)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	8.551s
+FAIL
+--- CONTROL exclusive-size (the mutation MUST turn this cell red) exit=1
+OK   CONTROL exclusive-size (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL exclusive-size (attribution: this cell MUST be unmoved): go test ./internal/fsclient -run TestBFS037Cell05NoReaderEverSeesAPartialFile -count=1 -timeout 600s
+ok  	github.com/deployBunker/bunker/internal/fsclient	1.716s
+--- CONTROL exclusive-size (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL exclusive-size (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/fsclient/hotcache.go sha256=212d0c11082fb42c31a5a9caf6255974097b2a34a4973164499c2aaa780f84db (verified)
+
+==============================================================
+CONTROL unbounded-pool — BFS-037-redproof-unbounded-refresh-pool.patch
+==============================================================
+pre-mutation: internal/fsclient/hotrefresh.go sha256=76151e867db9a7ff2d45c7888db15bd37a91bbeba2f6c5c1e14aa782bd62b88c
+mutated: internal/fsclient/hotrefresh.go sha256=82ea73b77e5a4d5121e9b8cbb389c13ba4be2754cf9dd0143880ca70164011ab via BFS-037-redproof-unbounded-refresh-pool.patch
+--- CONTROL unbounded-pool (the mutation MUST turn this cell red): go test ./internal/fsclient -run TestBFS037Cell02TheRefreshPoolIsBoundedAndYields -count=1 -timeout 600s
+--- FAIL: TestBFS037Cell02TheRefreshPoolIsBoundedAndYields (4.29s)
+    bfs037_program_test.go:262: the client's refresh budget has 1024 slot(s) against a governor of 1: the pool share is not the number the requests are actually bounded by (P-3/P-4)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	4.290s
+FAIL
+--- CONTROL unbounded-pool (the mutation MUST turn this cell red) exit=1
+OK   CONTROL unbounded-pool (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL unbounded-pool (attribution: this cell MUST be unmoved): go test ./internal/fsclient -run TestBFS037Cell01TheSizeRuleHoldsAtTheBoundary -count=1 -timeout 600s
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.709s
+--- CONTROL unbounded-pool (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL unbounded-pool (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/fsclient/hotrefresh.go sha256=76151e867db9a7ff2d45c7888db15bd37a91bbeba2f6c5c1e14aa782bd62b88c (verified)
+
+==============================================================
+CONTROL unbounded-launch-governor — BFS-037-redproof-unbounded-launch-governor.patch
+==============================================================
+pre-mutation: internal/fsclient/hotrefresh.go sha256=76151e867db9a7ff2d45c7888db15bd37a91bbeba2f6c5c1e14aa782bd62b88c
+mutated: internal/fsclient/hotrefresh.go sha256=1044d36d3a6a216801d653ee32b00186d39c1880429e9b69e1b3d8a95c4c9be9 via BFS-037-redproof-unbounded-launch-governor.patch
+--- CONTROL unbounded-launch-governor (the mutation MUST turn this cell red): go test ./internal/fsclient -run TestBFS037Cell02TheRefreshPoolIsBoundedAndYields -count=1 -timeout 600s
+--- FAIL: TestBFS037Cell02TheRefreshPoolIsBoundedAndYields (4.17s)
+    bfs037_program_test.go:254: refresh_inflight_max=64 exceeds refresh_max_inflight=1
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	4.170s
+FAIL
+--- CONTROL unbounded-launch-governor (the mutation MUST turn this cell red) exit=1
+OK   CONTROL unbounded-launch-governor (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL unbounded-launch-governor (attribution: this cell MUST be unmoved): go test ./internal/fsclient -run TestBFS037Cell01TheSizeRuleHoldsAtTheBoundary -count=1 -timeout 600s
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.310s
+--- CONTROL unbounded-launch-governor (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL unbounded-launch-governor (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/fsclient/hotrefresh.go sha256=76151e867db9a7ff2d45c7888db15bd37a91bbeba2f6c5c1e14aa782bd62b88c (verified)
+
+==============================================================
+CONTROL stop-lets-in-flight-finish — BFS-037-redproof-stop-never-abandons-in-flight.patch
+==============================================================
+pre-mutation: internal/fsclient/hotrefresh.go sha256=76151e867db9a7ff2d45c7888db15bd37a91bbeba2f6c5c1e14aa782bd62b88c
+mutated: internal/fsclient/hotrefresh.go sha256=f58395ef5ddf3af198566dd5abc27d21019b204cd1882bbba1045081a7f25363 via BFS-037-redproof-stop-never-abandons-in-flight.patch
+--- CONTROL stop-lets-in-flight-finish (the mutation MUST turn this cell red): go test ./internal/fsclient -run TestBFS037Cell03StopInFullWhileItemsAreInFlight|TestBFS046Cell06StopInFullRefusesTheTwoWrongReadings -count=1 -timeout 600s
+--- FAIL: TestBFS037Cell03StopInFullWhileItemsAreInFlight (7.01s)
+    bfs037_program_test.go:371: the stop took 2.001346077s to be in force
+--- FAIL: TestBFS046Cell06StopInFullRefusesTheTwoWrongReadings (3.43s)
+    bfs046_program_test.go:917: the stop took 2.001724457s to be in force
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	10.446s
+FAIL
+--- CONTROL stop-lets-in-flight-finish (the mutation MUST turn this cell red) exit=1
+OK   CONTROL stop-lets-in-flight-finish (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL stop-lets-in-flight-finish (attribution: this cell MUST be unmoved): go test ./internal/fsclient -run TestBFS037Cell01TheSizeRuleHoldsAtTheBoundary -count=1 -timeout 600s
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.312s
+--- CONTROL stop-lets-in-flight-finish (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL stop-lets-in-flight-finish (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/fsclient/hotrefresh.go sha256=76151e867db9a7ff2d45c7888db15bd37a91bbeba2f6c5c1e14aa782bd62b88c (verified)
+
+==============================================================
+CONTROL promotion-noop — BFS-037-redproof-promotion-is-a-noop.patch
+==============================================================
+pre-mutation: internal/fsclient/hotrefresh.go sha256=76151e867db9a7ff2d45c7888db15bd37a91bbeba2f6c5c1e14aa782bd62b88c
+mutated: internal/fsclient/hotrefresh.go sha256=68872997a7e23309cc7098058c0865c6d7d858dc58435b5113d8cd87836ba4c0 via BFS-037-redproof-promotion-is-a-noop.patch
+--- CONTROL promotion-noop (the mutation MUST turn this cell red): go test ./internal/fsclient -run TestBFS046Cell07PromotionIsSingleFlightExactlyOneFetch -count=1 -timeout 600s
+--- FAIL: TestBFS046Cell07PromotionIsSingleFlightExactlyOneFetch (0.02s)
+    bfs046_program_test.go:1153: the queue still holds 1 items after the promotion: the promoted item must LEAVE the queue, not run twice
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	0.025s
+FAIL
+--- CONTROL promotion-noop (the mutation MUST turn this cell red) exit=1
+OK   CONTROL promotion-noop (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL promotion-noop (attribution: this cell MUST be unmoved): go test ./internal/fsclient -run TestBFS037Cell01TheSizeRuleHoldsAtTheBoundary -count=1 -timeout 600s
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.637s
+--- CONTROL promotion-noop (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL promotion-noop (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/fsclient/hotrefresh.go sha256=76151e867db9a7ff2d45c7888db15bd37a91bbeba2f6c5c1e14aa782bd62b88c (verified)
+
+==============================================================
+CONTROL stream-into-published — BFS-037-redproof-stream-into-published.patch
+==============================================================
+pre-mutation: internal/fsclient/hotrefresh.go sha256=76151e867db9a7ff2d45c7888db15bd37a91bbeba2f6c5c1e14aa782bd62b88c
+mutated: internal/fsclient/hotrefresh.go sha256=d537a6dee1933050407fdb1322261d81868042ed2befe61904240d2aa87495a3 via BFS-037-redproof-stream-into-published.patch
+--- CONTROL stream-into-published (the mutation MUST turn this cell red): go test ./internal/fsclient -run TestBFS037Cell05NoReaderEverSeesAPartialFile -count=1 -timeout 600s
+--- FAIL: TestBFS037Cell05NoReaderEverSeesAPartialFile (0.30s)
+    bfs037_program_test.go:623: iteration 0: a reader got 2048 bytes under refresh, want the old COMPLETE 8192 — a reader must never see a partial file
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	0.303s
+FAIL
+--- CONTROL stream-into-published (the mutation MUST turn this cell red) exit=1
+OK   CONTROL stream-into-published (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL stream-into-published (attribution: this cell MUST be unmoved): go test ./internal/fsclient -run TestBFS046Cell09SizeRuleBoundaryIsInclusiveAndCountedByReason -count=1 -timeout 600s
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.241s
+--- CONTROL stream-into-published (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL stream-into-published (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/fsclient/hotrefresh.go sha256=76151e867db9a7ff2d45c7888db15bd37a91bbeba2f6c5c1e14aa782bd62b88c (verified)
+
+==============================================================
+CONTROL feature-off-ignored — BFS-037-redproof-feature-off-ignored.patch
+==============================================================
+pre-mutation: internal/fsclient/hotrefresh.go sha256=76151e867db9a7ff2d45c7888db15bd37a91bbeba2f6c5c1e14aa782bd62b88c
+mutated: internal/fsclient/hotrefresh.go sha256=cb82e6d36b0ebdcb28b8063e9ba77023ebb93157a4bd32c436c5ef97e4286adb via BFS-037-redproof-feature-off-ignored.patch
+--- CONTROL feature-off-ignored (the mutation MUST turn this cell red): go test ./internal/fsclient -run TestBFS037Cell06WithTheFeatureOffTheClientIsCorrect -count=1 -timeout 600s
+--- FAIL: TestBFS037Cell06WithTheFeatureOffTheClientIsCorrect (0.00s)
+    bfs037_program_test.go:700: a disabled policy must produce NO manager: nothing else is a real 'off'
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	0.004s
+FAIL
+--- CONTROL feature-off-ignored (the mutation MUST turn this cell red) exit=1
+OK   CONTROL feature-off-ignored (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL feature-off-ignored (attribution: this cell MUST be unmoved): go test ./internal/fsclient -run TestBFS037Cell01TheSizeRuleHoldsAtTheBoundary -count=1 -timeout 600s
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.554s
+--- CONTROL feature-off-ignored (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL feature-off-ignored (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/fsclient/hotrefresh.go sha256=76151e867db9a7ff2d45c7888db15bd37a91bbeba2f6c5c1e14aa782bd62b88c (verified)
+
+==============================================================
+CONTROL counter-cannot-move — BFS-037-redproof-counter-cannot-move.patch
+==============================================================
+pre-mutation: internal/fsclient/hotrefresh.go sha256=76151e867db9a7ff2d45c7888db15bd37a91bbeba2f6c5c1e14aa782bd62b88c
+mutated: internal/fsclient/hotrefresh.go sha256=e622ec966f7ed62c0b2a3954d1a213340f43894602e0933b0502b9fc1ea380d4 via BFS-037-redproof-counter-cannot-move.patch
+--- CONTROL counter-cannot-move (the mutation MUST turn this cell red): go test ./internal/fsclient -run TestBFS037Cell08EverySkipAndAbandonReasonIsReachable/skip_stopped|TestBFS046Cell09SkipCensusByReasonIsDrivable -count=1 -timeout 600s
+--- FAIL: TestBFS037Cell08EverySkipAndAbandonReasonIsReachable (0.00s)
+    --- FAIL: TestBFS037Cell08EverySkipAndAbandonReasonIsReachable/skip_stopped (0.00s)
+        bfs037_census_test.go:76: skip:stopped did not move: a stop is LEVEL-TRIGGERED: it refuses for as long as it is stopped (Q-13) (delta 0)
+            skips=0
+            abandons=map[abandon:deadline:0 abandon:no_room_after_start:0 abandon:not_found:0 abandon:pinned_eviction:0 abandon:reacquire_window:0 abandon:replaced:0 abandon:shutdown:0 abandon:stopped:0 abandon:tree_mismatch:0 skip:cache_disabled:0 skip:disarmed:0 skip:no_room:0 skip:not_found:0 skip:oversize_after_head:0 skip:oversize_pre:0 skip:pinned_eviction:0 skip:queue_full:0 skip:replaced:0 skip:resync:0 skip:stopped:0 skip:tree_mismatch:0 skip:untracked:0]
+--- FAIL: TestBFS046Cell09SkipCensusByReasonIsDrivable (3.07s)
+    bfs046_program_test.go:1433: hotWaitFor(the stopped skip): not satisfied within 3s
+    bfs046_program_test.go:1436: an invalidation arriving after a stop moved no counter: map[abandon:deadline:0 abandon:no_room_after_start:0 abandon:not_found:0 abandon:pinned_eviction:0 abandon:reacquire_window:0 abandon:replaced:0 abandon:shutdown:0 abandon:stopped:0 abandon:tree_mismatch:0 skip:cache_disabled:0 skip:disarmed:0 skip:no_room:0 skip:not_found:0 skip:oversize_after_head:0 skip:oversize_pre:0 skip:pinned_eviction:0 skip:queue_full:0 skip:replaced:0 skip:resync:0 skip:stopped:0 skip:tree_mismatch:0 skip:untracked:0]
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	3.074s
+FAIL
+--- CONTROL counter-cannot-move (the mutation MUST turn this cell red) exit=1
+OK   CONTROL counter-cannot-move (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL counter-cannot-move (attribution: this cell MUST be unmoved): go test ./internal/fsclient -run TestBFS037Cell08EverySkipAndAbandonReasonIsReachable/skip_untracked -count=1 -timeout 600s
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.004s
+--- CONTROL counter-cannot-move (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL counter-cannot-move (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/fsclient/hotrefresh.go sha256=76151e867db9a7ff2d45c7888db15bd37a91bbeba2f6c5c1e14aa782bd62b88c (verified)
+
+ARMS: every declared outcome held (mode=all)
+ARMS_EXIT=0

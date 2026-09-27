@@ -1,0 +1,13 @@
+diff --git a/internal/fsclient/hotrefresh.go b/internal/fsclient/hotrefresh.go
+index cd08c2d..784bff4 100644
+--- a/internal/fsclient/hotrefresh.go
++++ b/internal/fsclient/hotrefresh.go
+@@ -1430,7 +1430,7 @@ func (c *Client) EnableRefreshBudget(slots int) {
+ 		c.rsem = nil
+ 		return
+ 	}
+-	c.rsem = make(chan struct{}, slots)
++	c.rsem = make(chan struct{}, 1024)
+ }
+ 
+ // RefreshBudget is the size of the refresh budget in slots.
