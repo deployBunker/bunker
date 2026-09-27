@@ -381,7 +381,7 @@ func (h *Handler) writeEnvelope(w http.ResponseWriter, r *http.Request, start ti
 	w.Header().Set("X-Bunker-Verdict", string(code))
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	if v := capabilityHeaderValue(eerr2Capability(eerr), eerr2Scope(eerr), eerr2Phase(eerr), eerr2Mode(eerr)); v != "" {
+	if v := capabilityHeaderValue(eerr2Capability(eerr), eerr2Scope(eerr), eerr2Phase(eerr), eerr2Mode(eerr), eerr2Reason(eerr)); v != "" {
 		w.Header().Set("X-Bunker-Capability", v)
 	}
 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
@@ -393,7 +393,7 @@ func (h *Handler) writeEnvelope(w http.ResponseWriter, r *http.Request, start ti
 // shape, so a POST never answers XML and a consumer never needs two decoders.
 func (h *Handler) failEnvelope(w http.ResponseWriter, r *http.Request, start time.Time, op string, f failure) {
 	h.writeEnvelope(w, r, start, op, f.Status, f.Code, false, nil,
-		&envelopeError{Capability: f.Capability, Scope: f.Scope, Phase: f.Phase, Mode: f.Mode})
+		&envelopeError{Capability: f.Capability, Scope: f.Scope, Phase: f.Phase, Mode: f.Mode, Reason: f.Reason})
 }
 
 func eerr2Capability(e *envelopeError) string {
@@ -422,6 +422,16 @@ func eerr2Mode(e *envelopeError) string {
 		return ""
 	}
 	return e.Mode
+}
+
+// eerr2Reason carries §3.1's new field to the header. It is a separate part of
+// the X-Bunker-Capability value, and an empty one is omitted rather than
+// rendered, so a refusal with no probed reason stays byte-identical to today's.
+func eerr2Reason(e *envelopeError) string {
+	if e == nil {
+		return ""
+	}
+	return e.Reason
 }
 
 // capabilityDocument builds §4.2's document from the RUNNING process: it

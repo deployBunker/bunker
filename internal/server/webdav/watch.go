@@ -607,16 +607,31 @@ func (w *watcher) teardown(backend watchBackend, added int) {
 //	            work on that receive.
 //	heartbeat — the watcher's OWN clock (O-2): the only admissible liveness.
 func (w *watcher) start() {
-	w.wg.Add(3)
+	w.wg.Add(2)
 	go func() { defer w.wg.Done(); w.loop() }()
 	go func() { defer w.wg.Done(); w.heartbeatLoop() }()
+	w.startDrain()
+}
+
+// startDrain launches the O-1 drain for whichever backend is current when it is
+// called, and is called once per backend GENERATION: the first install here, and
+// every successful re-install after a stop. A drain that was only ever started
+// once would leave the second backend's error channel unread — and because
+// sendError blocks until received, that is not a missed notice but a stopped
+// reader (§5.4).
+//
+// The Add happens on the caller's goroutine while the WaitGroup is non-zero
+// (the loop that calls this from onBackendClosed is itself counted), so it can
+// never race a Close's Wait.
+func (w *watcher) startDrain() {
+	w.wg.Add(1)
 	if w.opts.disableDrain {
 		// The negative control. It is deliberately still a goroutine, so the
 		// shape under test is "no one reads Errors", not "the process died".
 		go func() { defer w.wg.Done() }()
-	} else {
-		go func() { defer w.wg.Done(); w.drain() }()
+		return
 	}
+	go func() { defer w.wg.Done(); w.drain() }()
 }
 
 // ---------------------------------------------------------------------------
@@ -748,8 +763,16 @@ func (w *watcher) loop() {
 			return
 		case ev, ok := <-w.backendEvents():
 			if !ok {
-				w.onBackendClosed()
-				return
+				// The backend stopped mid-life (§4.6 W-6). A successful
+				// re-install is a NEW backend with NEW channels, and both the
+				// event read and the drain have to follow it: returning here
+				// would leave a watcher that reports `watching` while nothing is
+				// being read — the silent shape O-1/O-2 exist to prevent. Only a
+				// failed re-install is an absence.
+				if !w.onBackendClosed() {
+					return
+				}
+				continue
 			}
 			w.loopTicks.Add(1)
 			w.recordEvent(ev)
@@ -900,6 +923,19 @@ func (w *watcher) rescan(cause string) {
 		// overflow it is, with no paths at all.
 		changed = nil
 	}
+	// The SERVER's own derived state is aligned BEFORE the line is written, so
+	// the line's `rev` is the revision the tree serves once this interval has
+	// been accounted for. That is the ordering the poll path already has: there,
+	// a mutation through the surface has moved the token by the time its event is
+	// journaled, so a line whose `rev` lagged the tree would be the watcher's
+	// alone and would disagree with the reader beside it. A truncated
+	// observation aligns nothing (nothing can be vouched for).
+	if !truncated {
+		for _, rel := range changed {
+			w.tree.forget(filepath.Join(w.root, filepath.FromSlash(rel)))
+		}
+		w.noteWatchedChanges(uint64(len(changed)))
+	}
 	l.push(w.tree, eventOverflow, nil)
 	l.mu.Unlock()
 
@@ -913,10 +949,6 @@ func (w *watcher) rescan(cause string) {
 		return
 	}
 
-	for _, rel := range changed {
-		w.tree.forget(filepath.Join(w.root, filepath.FromSlash(rel)))
-	}
-	w.noteWatchedChanges(uint64(len(changed)))
 	w.rescans.Add(1)
 	if len(changed) > 0 {
 		w.changedSince.Store(time.Now().UnixNano())
@@ -942,6 +974,12 @@ func (w *watcher) noteWatchedChanges(n uint64) {
 		return
 	}
 	w.watchedChanges.Add(n)
+	// D1/D2: this is the SERVED revision's watcher half. The tree owns the
+	// token, so the count is published to it — the token then moves for a change
+	// nobody made through this surface, which is R-V1. It costs two atomic loads
+	// on a read path and no stat (R-V2), and that is the whole reason the count
+	// lives here rather than being measured on every read.
+	w.tree.watched.Add(n)
 	w.changedSince.Store(time.Now().UnixNano())
 }
 
@@ -958,10 +996,17 @@ func (w *watcher) journal(name string, rels []string) {
 }
 
 // onBackendClosed handles a mid-life stop (§4.6 W-6): the interval is unvouched,
-// a re-install is attempted, and only a failed re-install is an absence.
-func (w *watcher) onBackendClosed() {
+// a re-install is attempted, and only a failed re-install is an absence. It
+// reports whether the watcher is serving again, because the event loop has to
+// know whether to keep reading (a new backend's channels) or to stop.
+func (w *watcher) onBackendClosed() bool {
 	w.markUnvouched(watchCauseReinstall)
 	if w.reinstall() {
+		// The new backend's error channel needs a drain of its OWN: the previous
+		// drain returned when the previous channel closed, and the receive that
+		// unblocks the library must exist from the new backend's first event
+		// (O-1 is a property of the RUNNING watcher, not of its first install).
+		w.startDrain()
 		w.mu.Lock()
 		w.state = WatchStateWatching
 		w.reason = ""
@@ -969,7 +1014,7 @@ func (w *watcher) onBackendClosed() {
 		w.mu.Unlock()
 		w.tree.watchLive.Store(true)
 		w.requestRescan(watchCauseReinstall)
-		return
+		return true
 	}
 	w.mu.Lock()
 	w.state = WatchStateLost
@@ -978,6 +1023,7 @@ func (w *watcher) onBackendClosed() {
 		time.Now().Format(time.RFC3339))
 	w.mu.Unlock()
 	w.tree.watchLive.Store(false)
+	return false
 }
 
 func (w *watcher) reinstall() bool {
