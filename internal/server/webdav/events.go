@@ -143,6 +143,94 @@ func identityOf(fi os.FileInfo) identity {
 	}
 }
 
+// The three comparisons the surface is allowed to make about an observed
+// identity, and the reason they are METHODS ON THE ONE IDENTITY TYPE rather
+// than tuples written out at each call site (BFS-049, SPEC-watcher-capability
+// R-V6: "the derived artifacts must agree about what a change is").
+//
+// Before this row the hash cache compared a private (size, mtime) pair while
+// this ledger compared a whole identity, so the two observers disagreed about a
+// same-size, mtime-restored edit: the ledger reported the path as moved and the
+// cache answered "unchanged". A second copy of the tuple is how that comes
+// back, so the projections below are the only places the question is asked.
+
+// sameIdentity reports whether two observations are the SAME observation of a
+// path, kind included. This is the LEDGER's comparison: the event channel
+// answers "must the client drop what it holds for this path?", so a path that
+// changed from a file to a collection with byte-identical metadata is still a
+// change it must report.
+func (id identity) sameIdentity(other identity) bool { return id == other }
+
+// sameContentKey reports whether two observations agree about the path's
+// CONTENT identity: the fields a metadata-keyed observer of the BYTES may key
+// on. It is what the hash cache decides "unchanged" with (tree.go, hashFile),
+// and it deliberately excludes Dir — hashFile only ever caches a regular file,
+// so the kind is fixed by construction rather than by the comparison.
+//
+// ctime is a member because an edit that preserves size AND mtime is exactly
+// the shape a (size, mtime) key cannot see — the class this release already
+// recorded as a defect (BFS-009 F1), and the shape that made the cache and the
+// ledger disagree.
+func (id identity) sameContentKey(other identity) bool {
+	return id.Size == other.Size && id.Mtime == other.Mtime && id.Ctime == other.Ctime
+}
+
+// sameMetadataKey reports whether two observations agree about the fields the
+// hash cache keyed on BEFORE BFS-049 — (size, mtime) and nothing else. Nothing
+// decides anything with it. It exists to NAME the class this row closes, so
+// that class can be counted in production instead of being a historical
+// anecdote: see the counters below.
+func (id identity) sameMetadataKey(other identity) bool {
+	return id.Size == other.Size && id.Mtime == other.Mtime
+}
+
+// The report of the class this row closes. Until the identity was shared, a
+// path whose size and mtime were restored to the nanosecond was CURRENT to the
+// hash cache and MOVED to this ledger; the two consumers it feeds are different
+// and so is the harm — the cache decides whether content is re-sent (a GET can
+// answer 304 with a stale ETag) while the ledger decides whether a client is
+// told to drop. That is the divergence, and it was silent.
+//
+// It is counted rather than assumed away, because the code fix only makes
+// TODAY's two observers agree: a future observer added with its own tuple would
+// not be caught by any test that only asserts today's pair agrees. A non-zero
+// count says "these paths moved in a way the (size, mtime) key could not see" —
+// which is the sharpest honest statement available, and this is what it is not:
+// it is not a claim that stale bytes were served. A chmod puts a path in this
+// class and changes no bytes at all; only the write path's content-hash
+// re-validation (BFS-004 §6.1 step 5) can tell whether bytes moved in a way no
+// metadata observation sees.
+//
+// It is process-wide rather than per-ledger for the same reason
+// frameOverBoundTotal is: the fact is about this SERVER's observations, and it
+// must survive a tree's lazily-built ledger being rebuilt. A cell measures the
+// DELTA across its own stimulus.
+var (
+	identityDivergenceMu     sync.Mutex
+	metadataKeyBlindMoves    int64
+	lastMetadataKeyBlindPath string
+)
+
+// recordMetadataKeyBlindMove notes one path whose observed identity moved while
+// the (size, mtime) key compared equal.
+func recordMetadataKeyBlindMove(path string) {
+	identityDivergenceMu.Lock()
+	defer identityDivergenceMu.Unlock()
+	metadataKeyBlindMoves++
+	lastMetadataKeyBlindPath = path
+}
+
+// IdentityDivergenceCounters reports how many paths this process has observed
+// move in the class the pre-BFS-049 (size, mtime) hash-cache key could not see,
+// and the last such path (relative, "/"-separated). A zero count is the honest
+// "no observation of this process has produced one", which is the state of a
+// tree nothing restores timestamps on.
+func IdentityDivergenceCounters() (metadataKeyBlindMoves int64, lastPath string) {
+	identityDivergenceMu.Lock()
+	defer identityDivergenceMu.Unlock()
+	return metadataKeyBlindMoves, lastMetadataKeyBlindPath
+}
+
 // eventLog is the per-tree ledger: what this process has observed, and the
 // events it owes a client that polls. It is guarded by its own mutex, held
 // across one observation so two concurrent polls cannot interleave two diffs
@@ -265,12 +353,28 @@ func (t *tree) observe() (map[string]identity, bool, error) {
 
 // changed lists the paths whose observed identity moved, appeared or vanished,
 // sorted so one tree state always produces one path list.
+//
+// A move is judged with the ONE identity comparison (sameIdentity) and the
+// class the pre-BFS-049 (size, mtime) hash-cache key could not see is counted
+// as it is found, so "these two observers no longer disagree" is a fact an
+// operator can read rather than a claim they must take on faith.
 func (l *eventLog) changed(state map[string]identity) []string {
 	var out []string
 	for p, id := range state {
-		if prev, ok := l.observed[p]; !ok || prev != id {
+		prev, ok := l.observed[p]
+		if !ok {
 			out = append(out, p)
+			continue
 		}
+		if prev.sameIdentity(id) {
+			continue
+		}
+		if prev.sameMetadataKey(id) {
+			// Only ctime moved: this path is in the class that made the two
+			// observers disagree before the identity was shared.
+			recordMetadataKeyBlindMove(p)
+		}
+		out = append(out, p)
 	}
 	for p := range l.observed {
 		if _, ok := state[p]; !ok {

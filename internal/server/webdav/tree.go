@@ -37,10 +37,25 @@ const (
 	commitStripes = 64
 )
 
+// hashEntry is one cache entry: the observed IDENTITY of the path at the moment
+// its bytes were hashed, and the hash of those bytes.
+//
+// The identity is `identity` — the same type, produced by the same function
+// (`identityOf`, events.go) that the event ledger observes paths with, and the
+// cache decides "unchanged" with the SAME predicate the rest of the surface
+// derives from it (`sameContentKey`). That is deliberate and it is the whole
+// point of BFS-049: the cache and the ledger are two metadata-keyed observers
+// of one tree, and while they keyed on different tuples they disagreed about a
+// same-size, mtime-restored edit — the ledger reported the path as moved and
+// the cache answered "unchanged", so a GET could answer 304 with the ETag of
+// bytes that were no longer there (SPEC-watcher-capability R-V6).
+//
+// A second copy of the tuple is how that divergence recurs, so there is not
+// one: ctime is not "added to the cache", the cache adopts the identity the
+// ledger already observed.
 type hashEntry struct {
-	size  int64
-	mtime int64
-	hash  string
+	id   identity
+	hash string
 }
 
 // tree is the served directory: path confinement, content identity, the
@@ -169,7 +184,18 @@ func (t *tree) confineSymlinks(abs string) error {
 }
 
 // hashFile returns "sha256:<64 hex>" for the file's bytes, reusing the
-// metadata-keyed cache when size and mtime are unchanged.
+// metadata-keyed cache when the observed identity is unchanged.
+//
+// "Unchanged" is the ledger's own definition of unchanged (identityOf +
+// sameContentKey, events.go), not a private (size, mtime) pair: BFS-049.
+//
+// The sharper identity costs no syscall. ctime is one field of the same
+// `syscall.Stat_t` the `os.Stat` below already returns — the identity is read
+// out of the FileInfo that stat produced, so a cache lookup is still ONE stat
+// and the added work per call is reading two more fields and comparing one more
+// int64. What it buys is that a same-size, mtime-restored rewrite is a MISS
+// rather than a stale ETag: the class the ledger has always reported and this
+// cache used to call current.
 func (t *tree) hashFile(abs string) (string, error) {
 	fi, err := os.Stat(abs)
 	if err != nil {
@@ -178,12 +204,12 @@ func (t *tree) hashFile(abs string) (string, error) {
 	if !fi.Mode().IsRegular() {
 		return "", fmt.Errorf("%s is not a regular file", abs)
 	}
-	size, mtime := fi.Size(), fi.ModTime().UnixNano()
+	id := identityOf(fi)
 
 	t.mu.Lock()
 	e, ok := t.cache[abs]
 	t.mu.Unlock()
-	if ok && e.size == size && e.mtime == mtime {
+	if ok && e.id.sameContentKey(id) {
 		return e.hash, nil
 	}
 
@@ -202,7 +228,7 @@ func (t *tree) hashFile(abs string) (string, error) {
 	if len(t.cache) >= hashCacheLimit {
 		t.cache = make(map[string]hashEntry)
 	}
-	t.cache[abs] = hashEntry{size: size, mtime: mtime, hash: h}
+	t.cache[abs] = hashEntry{id: id, hash: h}
 	t.mu.Unlock()
 	return h, nil
 }
@@ -242,9 +268,8 @@ func (t *tree) freshEntry(abs string) (hashEntry, error) {
 		return hashEntry{}, err
 	}
 	return hashEntry{
-		size:  fi.Size(),
-		mtime: fi.ModTime().UnixNano(),
-		hash:  "sha256:" + hex.EncodeToString(hs.Sum(nil)),
+		id:   identityOf(fi),
+		hash: "sha256:" + hex.EncodeToString(hs.Sum(nil)),
 	}, nil
 }
 
