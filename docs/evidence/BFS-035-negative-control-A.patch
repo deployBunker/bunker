@@ -1,0 +1,18 @@
+diff --git a/internal/server/webdav/watch.go b/internal/server/webdav/watch.go
+index dc35435..b0ad2f4 100644
+--- a/internal/server/webdav/watch.go
++++ b/internal/server/webdav/watch.go
+@@ -680,11 +680,8 @@ func (w *watcher) onBackendError(err error) {
+ }
+ 
+ func (w *watcher) requestRescan(cause string) {
+-	select {
+-	case w.rescanCh <- cause:
+-	default:
+-		// A rescan is already pending: one lost interval is one rescan.
+-	}
++	// MUTATION A (BFS-035 negative control: "the rescan is neutered").
++	_ = cause
+ }
+ 
+ // markUnvouched publishes "this interval cannot be vouched for". It is the only

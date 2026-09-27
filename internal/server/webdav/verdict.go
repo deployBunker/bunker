@@ -68,6 +68,11 @@ type failure struct {
 	Phase      string
 	// Headers are extra response headers, e.g. both hashes on a 412.
 	Headers map[string]string
+	// Reason is the CLOSED reason vocabulary's own name for a capability
+	// refusal (SPEC-watcher-capability §4). Empty means "no probed reason",
+	// which is a fact and not a gap: the header part is omitted entirely
+	// rather than spelled as an empty one.
+	Reason string
 	// Element is the element carried inside DAV:error. An empty Element means
 	// "no XML body" (a status only).
 	Element string
@@ -81,7 +86,14 @@ type failure struct {
 
 // capabilityHeaderValue renders the X-Bunker-Capability value the spec's §10.5
 // example fixes: "<name>;scope=<scope>[;phase=<phase>][;mode=<mode>]".
-func capabilityHeaderValue(capability, scope, phase, mode string) string {
+//
+// SPEC-watcher-capability §3.1 adds a FOURTH part for the watch refusal —
+// `reason=<one of the seven>` — and it is safe for an old client because its own
+// parser (fsclient/invalidate.go) looks only for `mode=` and ignores unknown
+// parts. The part is emitted ONLY when there is a probed reason to report, so
+// every other refusal's header stays byte-identical (A-2) and "no reason probed"
+// can never be spelled as an empty one.
+func capabilityHeaderValue(capability, scope, phase, mode, reason string) string {
 	if capability == "" {
 		return ""
 	}
@@ -91,6 +103,9 @@ func capabilityHeaderValue(capability, scope, phase, mode string) string {
 	}
 	if mode != "" {
 		parts = append(parts, "mode="+mode)
+	}
+	if reason != "" {
+		parts = append(parts, "reason="+reason)
 	}
 	return strings.Join(parts, ";")
 }
@@ -115,7 +130,7 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, f failure) {
 	for k, v := range f.Headers {
 		w.Header().Set(k, v)
 	}
-	if v := capabilityHeaderValue(f.Capability, f.Scope, f.Phase, f.Mode); v != "" {
+	if v := capabilityHeaderValue(f.Capability, f.Scope, f.Phase, f.Mode, f.Reason); v != "" {
 		w.Header().Set("X-Bunker-Capability", v)
 	}
 

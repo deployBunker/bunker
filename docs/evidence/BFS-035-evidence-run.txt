@@ -1,0 +1,17 @@
+=== RUN   TestWatchOverflowForcesCountedFullRescanAndIsNeverQuiet
+--- PASS: TestWatchOverflowForcesCountedFullRescanAndIsNeverQuiet (0.01s)
+=== RUN   TestWatchOverflowRealKernelReproducer
+=== RUN   TestWatchOverflowRealKernelReproducer/the_drain_arm_observes_the_kernel's_overflow_as_the_backlog_drains
+    watch_test.go:1096: BFS-035 kernel reproducer: max_queued_events=16384, 16384 files created, overflows_total=1, unvouched_total=1, rescans_total=0
+=== RUN   TestWatchOverflowRealKernelReproducer/the_no-drain_arm_gets_SILENCE_(the_trap_R-6_names)
+--- PASS: TestWatchOverflowRealKernelReproducer (17.66s)
+    --- PASS: TestWatchOverflowRealKernelReproducer/the_drain_arm_observes_the_kernel's_overflow_as_the_backlog_drains (1.41s)
+    --- PASS: TestWatchOverflowRealKernelReproducer/the_no-drain_arm_gets_SILENCE_(the_trap_R-6_names) (16.25s)
+=== RUN   TestWatchLivenessIsTheHeartbeatNeverSilence
+--- PASS: TestWatchLivenessIsTheHeartbeatNeverSilence (0.14s)
+=== RUN   TestWatchSnapshotFastPathCostWithWatcherLive
+    watch_test.go:1326: BFS-035 fast path (watcher absent): files=4000 token_memo_hit=46ns token_refresh=21.265µs one_call_snapshot=19.046012ms
+    watch_test.go:1326: BFS-035 fast path (watcher live): files=4000 token_memo_hit=175ns token_refresh=21.778µs one_call_snapshot=18.725047ms
+--- PASS: TestWatchSnapshotFastPathCostWithWatcherLive (4.20s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/server/webdav	22.025s

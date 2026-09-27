@@ -1,0 +1,60 @@
+=== RUN   TestWatchRefusalNamesAWorkingFallback
+--- PASS: TestWatchRefusalNamesAWorkingFallback (0.00s)
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/control:_local_ext4_root_is_watched,_and_reports_no_reason
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/W-1_watch_unsupported_platform
+    watch_test.go:501: X-Bunker-Capability carried reason="", want "watch_unsupported_platform" (header "watch;scope=target;mode=poll")
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/W-3_watch_target_netbacked_is_its_own_case,_with_the_mount_type
+    watch_test.go:541: X-Bunker-Capability carried reason="", want "watch_target_netbacked" (header "watch;scope=target;mode=poll")
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/W-2_watch_limit_exhausted_reports_configured_vs_desired
+    watch_test.go:579: X-Bunker-Capability carried reason="", want "watch_limit_exhausted" (header "watch;scope=target;mode=poll")
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/W-2_from_the_add's_errno:_the_partial_set_is_TORN_DOWN
+    watch_test.go:621: X-Bunker-Capability carried reason="", want "watch_limit_exhausted" (header "watch;scope=target;mode=poll")
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/W-2_instance_ceiling_from_newBackend's_errno
+    watch_test.go:643: X-Bunker-Capability carried reason="", want "watch_limit_exhausted" (header "watch;scope=target;mode=poll")
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/W-5_watch_install_failed_names_the_errno_and_the_path
+    watch_test.go:665: X-Bunker-Capability carried reason="", want "watch_install_failed" (header "watch;scope=target;mode=poll")
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/W-4_watch_partial_coverage_keeps_the_set_and_counts_the_missing
+    watch_test.go:704: X-Bunker-Capability carried reason="", want "watch_partial_coverage" (header "watch;scope=target;mode=poll")
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/W-4_bound:_more_missing_than_the_cap_is_an_EMPTY_list_and_a_full_count
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/W-6_watch_lost_when_the_re-install_also_fails
+    watch_test.go:784: X-Bunker-Capability carried reason="", want "watch_lost" (header "watch;scope=target;mode=poll")
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/W-6_transient:_a_successful_re-install_is_NOT_an_absence
+    watch_test.go:820: timed out after 5s waiting for the event from the re-installed backend to move the revision
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/W-7_boundary_split_is_a_WARNING_and_blocks_nothing
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/A-1_control:_a_build_that_ran_no_probe_reports_NO_reason
+--- FAIL: TestWatchProbeMatrixNamesOneReasonPerCase (5.35s)
+    --- PASS: TestWatchProbeMatrixNamesOneReasonPerCase/control:_local_ext4_root_is_watched,_and_reports_no_reason (0.00s)
+    --- FAIL: TestWatchProbeMatrixNamesOneReasonPerCase/W-1_watch_unsupported_platform (0.00s)
+    --- FAIL: TestWatchProbeMatrixNamesOneReasonPerCase/W-3_watch_target_netbacked_is_its_own_case,_with_the_mount_type (0.00s)
+    --- FAIL: TestWatchProbeMatrixNamesOneReasonPerCase/W-2_watch_limit_exhausted_reports_configured_vs_desired (0.00s)
+    --- FAIL: TestWatchProbeMatrixNamesOneReasonPerCase/W-2_from_the_add's_errno:_the_partial_set_is_TORN_DOWN (0.00s)
+    --- FAIL: TestWatchProbeMatrixNamesOneReasonPerCase/W-2_instance_ceiling_from_newBackend's_errno (0.00s)
+    --- FAIL: TestWatchProbeMatrixNamesOneReasonPerCase/W-5_watch_install_failed_names_the_errno_and_the_path (0.00s)
+    --- FAIL: TestWatchProbeMatrixNamesOneReasonPerCase/W-4_watch_partial_coverage_keeps_the_set_and_counts_the_missing (0.00s)
+    --- PASS: TestWatchProbeMatrixNamesOneReasonPerCase/W-4_bound:_more_missing_than_the_cap_is_an_EMPTY_list_and_a_full_count (0.31s)
+    --- FAIL: TestWatchProbeMatrixNamesOneReasonPerCase/W-6_watch_lost_when_the_re-install_also_fails (0.01s)
+    --- FAIL: TestWatchProbeMatrixNamesOneReasonPerCase/W-6_transient:_a_successful_re-install_is_NOT_an_absence (5.01s)
+    --- PASS: TestWatchProbeMatrixNamesOneReasonPerCase/W-7_boundary_split_is_a_WARNING_and_blocks_nothing (0.00s)
+    --- PASS: TestWatchProbeMatrixNamesOneReasonPerCase/A-1_control:_a_build_that_ran_no_probe_reports_NO_reason (0.00s)
+=== RUN   TestWatchOverflowForcesCountedFullRescanAndIsNeverQuiet
+    watch_test.go:984: the revision did not move after a full rescan that saw /tmp/TestWatchOverflowForcesCountedFullRescanAndIsNeverQuiet3862549169/001/src/out-of-band.txt: the rescan counted but did not observe
+--- FAIL: TestWatchOverflowForcesCountedFullRescanAndIsNeverQuiet (0.01s)
+=== RUN   TestWatchOverflowNegativeControlDisablesTheDrain
+--- PASS: TestWatchOverflowNegativeControlDisablesTheDrain (0.50s)
+=== RUN   TestWatchOverflowRealKernelReproducer
+    watch_test.go:1036: the kernel reproducer creates ~15k files; it is skipped under -short
+--- SKIP: TestWatchOverflowRealKernelReproducer (0.00s)
+=== RUN   TestWatchLivenessIsTheHeartbeatNeverSilence
+    watch_test.go:1171: unvouched_total did not move across the stall (1 -> 1)
+--- FAIL: TestWatchLivenessIsTheHeartbeatNeverSilence (0.14s)
+=== RUN   TestWatchOutOfBandEditMovesServedRevision
+    watch_test.go:1211: timed out after 5s waiting for the served revision to move for the out-of-band edit
+--- FAIL: TestWatchOutOfBandEditMovesServedRevision (5.01s)
+=== RUN   TestWatchSnapshotFastPathCostWithWatcherLive
+    watch_test.go:1316: BFS-035 fast path (watcher absent): files=4000 token_memo_hit=44ns token_refresh=17.58µs one_call_snapshot=17.248142ms
+    watch_test.go:1316: BFS-035 fast path (watcher live): files=4000 token_memo_hit=96ns token_refresh=18.702µs one_call_snapshot=20.001266ms
+--- PASS: TestWatchSnapshotFastPathCostWithWatcherLive (4.25s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/server/webdav	15.276s
+FAIL

@@ -1,0 +1,6 @@
+=== RUN   TestWatchOverflowForcesCountedFullRescanAndIsNeverQuiet
+    watch_test.go:967: timed out after 5s waiting for the forced full rescan
+--- FAIL: TestWatchOverflowForcesCountedFullRescanAndIsNeverQuiet (5.01s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/server/webdav	5.014s
+FAIL

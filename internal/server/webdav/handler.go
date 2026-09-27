@@ -32,6 +32,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 )
 
@@ -112,12 +113,37 @@ type Config struct {
 	// DefaultMaxBytes/AbsMaxBytes cap an X-Bunker-Op result.
 	DefaultMaxBytes int64
 	AbsMaxBytes     int64
+	// WatchEnabled turns on the server-side watcher (BFS-035, watch.go): a
+	// per-target inotify watch that sees writers which are NOT WebDAV and aligns
+	// the served revision for them.
+	//
+	// Off by default, and deliberately so: turning it on changes the SERVED
+	// REVISION's kind for a git tree (revKind: `git` -> `git+watch`, §7.1 D1) —
+	// a contract change an operator opts into, not one a deploy gets by accident.
+	// A deployment that leaves it off behaves exactly as it does today:
+	// `X-Bunker-Op: events` is the mechanism, and the watcher's absence is
+	// reported with its own reason (WatchReason*, §4).
+	//
+	// The operator-facing knob names, defaults and validation are BFS-043's; this
+	// field is the seam that row will configure.
+	WatchEnabled bool
 }
 
 // Handler serves the WebDAV surface.
 type Handler struct {
 	cfg  Config
 	tree *tree
+
+	// watch is the server-side watcher (watch.go, BFS-035). It is nil unless the
+	// deployment enabled one, and it is never nil silently: watchStatusSnapshot
+	// reports the PROBED absence with its own reason when it is.
+	watch    *watcher
+	watchEnv watchEnv
+	// watchProbe is the cached target-level probe (backend fact, mount table,
+	// configured ceilings). It is what lets an ABSENT watcher still report its own
+	// named reason without installing anything (§4).
+	watchProbe     watchProbe
+	watchProbeOnce sync.Once
 
 	// testBeforeCommit is a TEST seam and is nil on every production path: it
 	// runs inside §6.1 step 5's critical section, after the body has been
@@ -148,7 +174,59 @@ func New(cfg Config) (*Handler, error) {
 		cfg.AbsMaxBytes = AbsoluteEnvelopeMaxBytes
 	}
 	cfg.Root = t.rootPath()
-	return &Handler{cfg: cfg, tree: t}, nil
+	h := &Handler{cfg: cfg, tree: t, watchEnv: defaultWatchEnv()}
+	// The target-level probe is taken EAGERLY here, not on the first capability
+	// request. It is a per-target fact (mount table + configured inotify
+	// ceilings) that cannot change under a running process, and leaving it lazy
+	// makes whichever client arrives first pay a /proc/self/mountinfo read that
+	// every later request gets for free — a latency cliff that shows up as a
+	// first-request outlier, measured at ~1 ms on this box (see
+	// docs/evidence/BFS-035-*.md, `BenchmarkProbeWatch`).
+	h.primeWatchProbe()
+	if cfg.WatchEnabled {
+		// A watcher that cannot be established is not an error here: it is a
+		// REPORTABLE state (§4), reported by the op, the capability document and
+		// the degradations list — never a daemon that refuses to serve the tree.
+		h.watch = startWatcher(t, h.watchEnv, defaultWatchOptions())
+	}
+	return h, nil
+}
+
+// startWatch is the in-package seam every probe-matrix cell uses: it installs a
+// watcher on an already-built handler with an injected environment and tunables,
+// so each reason of §4 can be exercised on its own (a fake backend that returns
+// ENOSPC, a mount table that says the root is fuse.sshfs, a heartbeat period of
+// milliseconds) while the real probes keep their control arms.
+func (h *Handler) startWatch(env watchEnv, opts watchOptions) *watcher {
+	if h.watch != nil {
+		h.watch.Close()
+	}
+	h.watchEnv = env
+	// The injected environment changes what the target-level probe answers, so
+	// the cached answer is re-taken here. Without this a cell that fakes the
+	// mount table would be served the real host's probe.
+	h.primeWatchProbe()
+	h.watch = startWatcher(h.tree, env, opts)
+	return h.watch
+}
+
+// primeWatchProbe takes the target-level probe (backend fact, mount table,
+// configured ceilings) once and caches it. It is called EAGERLY by New so the
+// request path never pays a first-call probe, and by startWatch after an
+// environment is injected. watchStatusSnapshot calls it too, so a Handler built
+// as a bare literal still self-heals instead of reporting a zero-valued probe.
+func (h *Handler) primeWatchProbe() {
+	h.watchProbeOnce = sync.Once{}
+	h.watchProbeOnce.Do(func() { h.watchProbe = probeWatch(h.tree.rootPath(), h.watchEnv) })
+}
+
+// Close releases the watcher's goroutines and its watch set. It is a no-op when
+// no watcher was established, and it is never required for correctness — a
+// process that exits without it is not serving stale state, it is gone.
+func (h *Handler) Close() {
+	if h.watch != nil {
+		h.watch.Close()
+	}
 }
 
 // Root returns the resolved served root (absolute, symlink-free prefix).
