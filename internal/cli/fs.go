@@ -737,10 +737,99 @@ func printStatus(w io.Writer, st *fsclient.Status) {
 		fmt.Fprintf(w, "rev coverage : kind=%s vouches_for=%s gap=%s\n",
 			inv.RevKind, dashIfEmpty(inv.RevVouchesFor), dashIfEmpty(inv.RevGap))
 	}
+	// The CONTENT-AGE BOUND (BFS-045). Absent WITH ITS REASON when there is no
+	// evidence to age: a blank here would read as "fine", and this is the figure
+	// that says how stale this mount may be.
+	if inv.ContentAge != nil {
+		ca := inv.ContentAge
+		fmt.Fprintf(w, "content age  : age_ms=%d evidence_from=%s observations=%d", ca.AgeMS, dashIfEmpty(ca.EvidenceFrom), ca.Observations)
+		if ca.BoundMS != nil {
+			fmt.Fprintf(w, " bound_ms=%d (%s) within_bound=%v", *ca.BoundMS, dashIfEmpty(ca.BoundSource), *ca.WithinBound)
+		} else {
+			fmt.Fprintf(w, " bound_ms=- within_bound=-(%s)", dashIfEmpty(ca.BoundReason))
+		}
+		fmt.Fprintln(w)
+	} else {
+		fmt.Fprintf(w, "content age  : - (no figure to report)\n  why        : %s\n", dashIfEmpty(inv.ContentAgeReason))
+	}
+	// The server's own watcher state, and — when it is not here — which of the
+	// three facts that is (BFS-045's null rule).
+	if inv.Server != nil {
+		sv := inv.Server
+		fmt.Fprintf(w, "server watch : state=%s backend=%s watched=%d/%d", dashIfEmpty(sv.State), dashIfEmpty(sv.Backend), sv.DirectoriesWatched, sv.DirectoriesDesired)
+		if sv.Reason != "" {
+			fmt.Fprintf(w, " reason=%s", sv.Reason)
+		}
+		if sv.SampledAgeMS != nil {
+			fmt.Fprintf(w, " sampled_age_ms=%d", *sv.SampledAgeMS)
+		}
+		fmt.Fprintln(w)
+		fmt.Fprintf(w, "server counts: overflows=%d unvouched=%d rescans=%d install_failures=%d backend_errors=%d heartbeats=%d loop_ticks=%d",
+			sv.OverflowsTotal, sv.UnvouchedTotal, sv.RescansTotal, sv.InstallFailuresTotal, sv.BackendErrorsTotal, sv.HeartbeatsTotal, sv.EventLoopTicks)
+		if sv.DroppedEvents != nil {
+			fmt.Fprintf(w, " dropped_events=%d", *sv.DroppedEvents)
+		} else if sv.DroppedEventsReason != "" {
+			fmt.Fprintf(w, " dropped_events=- (%s)", sv.DroppedEventsReason)
+		}
+		fmt.Fprintln(w)
+		if sv.UnvouchedReason != "" {
+			fmt.Fprintf(w, "  unvouched  : %s\n", sv.UnvouchedReason)
+		}
+		if sv.CountersReason != "" {
+			fmt.Fprintf(w, "  counts why : %s\n", sv.CountersReason)
+		}
+	} else {
+		fmt.Fprintf(w, "server watch : - (nothing to report)\n  why        : %s\n", dashIfEmpty(inv.ServerReason))
+	}
+	// The heartbeat/stall state (BFS-045): a poll mount has no heartbeat, and
+	// saying so is part of the record.
+	if inv.Liveness != nil {
+		lv := inv.Liveness
+		fmt.Fprintf(w, "liveness     : heartbeats=%d declared_heartbeat_ms=%d idle_timeout_ms=%d stalled=%v stalls=%d",
+			lv.HeartbeatsTotal, lv.DeclaredHeartbeatMS, lv.IdleTimeoutMS, lv.Stalled, lv.StallsTotal)
+		if lv.LastLineAgeMS != nil {
+			fmt.Fprintf(w, " last_line_age_ms=%d", *lv.LastLineAgeMS)
+		}
+		fmt.Fprintln(w)
+	} else {
+		fmt.Fprintf(w, "liveness     : - (no pushed channel on this mount)\n  why        : %s\n", dashIfEmpty(inv.LivenessReason))
+	}
+	fmt.Fprintf(w, "requests     : requests_total=%d failures_total=%d\n", inv.Requests, inv.Failures)
+	if inv.LastFailure != "" {
+		fmt.Fprintf(w, "  last       : %s\n", inv.LastFailure)
+	}
+	// The refresh accounting: the staged window this build HAS, and the hot
+	// queue it does NOT — named as absent rather than shown as zero (BFS-045).
+	rf := inv.Refresh
+	fmt.Fprintf(w, "refresh      : started=%d in_flight=%d/%d committed=%d aborted=%d refused_no_slot=%d refused_no_room=%d\n",
+		rf.StartedTotal, rf.InFlight, rf.MaxInFlight, rf.CommittedTotal, rf.AbortedTotal, rf.RefusedNoSlotTotal, rf.RefusedNoRoomTotal)
+	if rf.AbsentReason != "" {
+		fmt.Fprintf(w, "refresh queue: - (no figure to report)\n  why        : %s\n", rf.AbsentReason)
+	}
 	fmt.Fprintf(w, "cache        : used_bytes=%d max_bytes=%d (blobs=%d index=%d) entries=%d blobs=%d\n",
 		st.Cache.UsedBytes, st.Cache.MaxBytes, st.Cache.BlobsBytes, st.Cache.IndexBytes, st.Cache.Entries, st.Cache.Blobs)
+	// The two accounts, separately (BFS-038's F-1 split), and the entry bound —
+	// a bound the owner cannot see is not a bound.
+	fmt.Fprintf(w, "cache bounds : max_entry_bytes=%d entries=%d/%d in_flight_bytes=%d reserved_bytes=%d staged_blobs=%d/%d\n",
+		st.Cache.MaxEntryBytes, st.Cache.Entries, st.Cache.MaxEntries, st.Cache.InFlightBytes,
+		st.Cache.ReservedBytes, st.Cache.StagedBlobs, st.Cache.MaxInFlight)
+	// The independent measurement: what is REALLY in the directory, and the delta
+	// the published figure does not count (BFS-031's shape, made visible).
+	if st.Cache.DirBytesReason == "" {
+		fmt.Fprintf(w, "cache dir    : dir_bytes=%d unaccounted_bytes=%d", st.Cache.DirBytes, st.Cache.DirUnaccountedBytes)
+		if st.Cache.DirMeasuredAgeMS != nil {
+			fmt.Fprintf(w, " measured_age_ms=%d", *st.Cache.DirMeasuredAgeMS)
+		}
+		fmt.Fprintf(w, " by_class=%s\n", classSummary(st.Cache.DirBytesByClass))
+	} else {
+		fmt.Fprintf(w, "cache dir    : - (no measurement to report)\n  why        : %s\n", st.Cache.DirBytesReason)
+	}
 	fmt.Fprintf(w, "cache events : hits=%d misses=%d evictions=%d bypasses=%d oversize_bypasses=%d pinned=%d\n",
 		st.Cache.Hits, st.Cache.Misses, st.Cache.EvictionsTotal, st.Cache.BypassEvents, st.Cache.OversizeBypasses, st.Cache.PinnedBlobs)
+	// Every reason in the closed vocabulary, so a reason that never fires reads
+	// as 0 and a reason the code cannot reach is visibly missing from the census
+	// rather than silently zero (BFS-032).
+	fmt.Fprintf(w, "cache bypass : %s\n", bypassSummary(st.Cache.BypassReasons))
 	fmt.Fprintf(w, "conflicts    : refusals_total=%d\n", st.Conflicts.RefusalsTotal)
 	if st.Conflicts.Last != nil {
 		fmt.Fprintf(w, "  last       : %s code=%s\n", st.Conflicts.Last.Path, st.Conflicts.Last.Code)
@@ -810,6 +899,39 @@ func dashIfEmpty(s string) string {
 		return "-"
 	}
 	return s
+}
+
+// classSummary renders the directory measurement's classes in a stable order, so
+// two runs of `bunker fs status` on the same state print the same line (a map's
+// iteration order would make the output un-diffable, and an evidence transcript
+// is only useful if it can be diffed).
+func classSummary(classes map[string]int64) string {
+	if len(classes) == 0 {
+		return "-"
+	}
+	keys := make([]string, 0, len(classes))
+	for k := range classes {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%d", k, classes[k]))
+	}
+	return strings.Join(parts, " ")
+}
+
+// bypassSummary renders the cache's refusal census. Every reason in the closed
+// vocabulary is printed, including the ones at zero: a reason that has never
+// fired is a fact, and a reason that is MISSING from this line is a counter the
+// code cannot reach (BFS-032).
+func bypassSummary(reasons map[string]int64) string {
+	names := fsclient.BypassReasons()
+	parts := make([]string, 0, len(names))
+	for _, r := range names {
+		parts = append(parts, fmt.Sprintf("%s=%d", r, reasons[r]))
+	}
+	return strings.Join(parts, " ")
 }
 
 func quoteIfEmpty(s, fallback string) string {

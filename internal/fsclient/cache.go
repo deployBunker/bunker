@@ -68,6 +68,14 @@ type CacheConfig struct {
 	// 0 means DefaultCacheMaxInFlight.
 	MaxInFlight int
 	MaxAge      time.Duration
+	// DirMeasureInterval is how long a directory measurement is reused before it
+	// is taken again. 0 means DirMeasureTTL; a NEGATIVE value measures on every
+	// read. It is a knob because the cost is a walk of the directory (O(files))
+	// and the benefit is an independent figure: a deployment with a very large
+	// cache can trade freshness for cost, and a test can ask for a fresh walk per
+	// read. The reported figure always carries its own age
+	// (dir_measured_age_ms), so a reused sample is never read as a fresh one.
+	DirMeasureInterval time.Duration
 	// Now is the clock seam; nil means time.Now.
 	Now func() time.Time
 }
@@ -1291,7 +1299,14 @@ func (c *Cache) CountBypass(reason string) {
 // again.
 func (c *Cache) AdmitRead(path, hash string, data []byte) bool {
 	if c.MaxEntryBytes() > 0 && int64(len(data)) > c.MaxEntryBytes() {
+		// The aggregate figure BFS-005 §3.2 publishes is kept honest: it counts
+		// single-entry-over-the-cap refusals, and THIS is the site that makes
+		// them, so leaving it to Insert (which never sees this read) is exactly
+		// how the figure stayed at 0 through a live over-cap read (BFS-032).
 		c.CountBypass(BypassReasonOverEntryCap)
+		c.mu.Lock()
+		c.stats.OversizeBypasses++
+		c.mu.Unlock()
 		return false
 	}
 	out, _ := c.Insert(path, hash, data)
@@ -1342,7 +1357,13 @@ func (c *Cache) BypassCount(reason string) int64 {
 // so a reused measurement is never read as a fresh one.
 func (c *Cache) measureDirLocked() {
 	now := c.cfg.Now()
-	if !c.dirMeasuredAt.IsZero() && DirMeasureTTL > 0 && now.Sub(c.dirMeasuredAt) < DirMeasureTTL {
+	ttl := c.cfg.DirMeasureInterval
+	if ttl == 0 {
+		ttl = DirMeasureTTL
+	}
+	// A negative interval means "measure every time": the test seam, and what an
+	// operator asks for when the figure is being audited against `du`.
+	if !c.dirMeasuredAt.IsZero() && ttl > 0 && now.Sub(c.dirMeasuredAt) < ttl {
 		c.publishDirLocked(now)
 		return
 	}
@@ -1419,7 +1440,11 @@ func (c *Cache) measureDirLocked() {
 		switch {
 		case strings.HasPrefix(b.Name(), CacheStagePrefix):
 			add(DirClassStaged, n)
-		case c.blobs[b.Name()] != nil:
+		case c.blobs[HashPrefix+b.Name()] != nil:
+			// The blob FILE is named by the bare digest; the census is keyed by
+			// the tagged one. Getting this wrong attributes every published blob
+			// to the orphan class — measured while writing this arm, which is
+			// why the class assertion exists.
 			add(DirClassBlobs, n)
 		default:
 			// A blob file no index entry references: the residue of an
