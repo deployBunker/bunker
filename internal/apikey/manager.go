@@ -10,6 +10,7 @@ package apikey
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -133,7 +134,13 @@ func (m *Manager) Validate(token string) (*Key, error) {
 	defer m.mu.RUnlock()
 
 	for _, key := range m.keys {
-		if key.TokenHash == tokenHash {
+		// REV-BUNKER-007: constant-time compare of the SHA-256 hex digest.
+		// The digest is already a one-way function of the presented secret,
+		// so this is defence in depth rather than a remotely exploitable
+		// read: it removes the byte-position timing signal from the
+		// comparison itself and keeps this surface consistent with
+		// internal/auth, which compares every credential in constant time.
+		if subtle.ConstantTimeCompare([]byte(key.TokenHash), []byte(tokenHash)) == 1 {
 			if key.Revoked {
 				return nil, fmt.Errorf("key %s revoked", key.KeyID)
 			}

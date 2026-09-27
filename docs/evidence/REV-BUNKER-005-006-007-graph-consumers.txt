@@ -1,0 +1,37 @@
+### REV-BUNKER-005 — /graph consumer sweep (run from the repo root of the worktree)
+
+$ grep -rn "graph/stats\|graph/related\|graph/impact" --include=*.go --include=*.sh --include=*.md --include=*.yaml --include=*.yml --include=*.json . | grep -v "^./.git/"
+./internal/server/server.go:232:				"(/graph/stats, /graph/related, /graph/impact) are reachable WITHOUT credentials " +
+./internal/server/server.go:659:		gr.Get("/graph/stats", func(w http.ResponseWriter, r *http.Request) {
+./internal/server/server.go:666:		gr.Get("/graph/related", func(w http.ResponseWriter, r *http.Request) {
+./internal/server/server.go:685:		gr.Get("/graph/impact", func(w http.ResponseWriter, r *http.Request) {
+./internal/server/rev_bunker_005_006_test.go:101:		for _, path := range []string{"/graph/stats", "/graph/related?path=x", "/graph/impact?path=x"} {
+./internal/server/rev_bunker_005_006_test.go:110:		code, _ := revGet(t, base+"/graph/stats", "Bearer not-the-master-token")
+./internal/server/rev_bunker_005_006_test.go:112:			t.Errorf("GET /graph/stats with a wrong token: status = %d, want 401", code)
+./internal/server/rev_bunker_005_006_test.go:117:		code, _ := revGet(t, base+"/graph/stats", "Bearer "+agentToken)
+./internal/server/rev_bunker_005_006_test.go:119:			t.Errorf("GET /graph/stats with an agent-scoped token: status = %d, want 401 (the surface is daemon-level, like the Bunkerd RPCs)", code)
+./internal/server/rev_bunker_005_006_test.go:124:		code, body := revGet(t, base+"/graph/stats", "Bearer "+revGraphMasterToken)
+./internal/server/rev_bunker_005_006_test.go:126:			t.Fatalf("GET /graph/stats with the master token: status = %d, want 200 (body %q)", code, body)
+./internal/server/rev_bunker_005_006_test.go:137:			t.Fatalf("authenticated /graph/stats body is not the documented JSON shape: %v (body %q)", err, body)
+./internal/server/rev_bunker_005_006_test.go:142:		for _, path := range []string{"/graph/related?path=internal/server/server.go", "/graph/impact?path=internal/server/server.go"} {
+./internal/server/rev_bunker_005_006_test.go:156:		code, body := revGet(t, base+"/graph/stats", "")
+./internal/server/rev_bunker_005_006_test.go:158:			t.Errorf("auth disabled: GET /graph/stats = %d, want 200 (body %q)", code, body)
+./internal/auth/httpware.go:13:// dependency-graph endpoints (/graph/stats, /graph/related, /graph/impact) are
+./.gitreins/tasks.yaml:79:  - Hilo is wired into internal/server/server.go with /graph/stats, /graph/related,
+./.gitreins/tasks.yaml:80:    /graph/impact HTTP endpoints
+./.coding-hermes/evidence/security-panel-2026-09-20/extract-seat-S3-Moonshot-Kimi.md:39:- **No auth bypass on a route**, with one exception worth naming for a floorplan review: `/healthz`, `/graph/stats`, `/graph/related`, `/graph/impact` are registered on the raw chi router (`server.go:114-169`) *outside* both `r.Mount` calls (`server.go:227,236`), so they are unauthenticated for anyone who can reach the port; `/graph/impact?path=` reflects daemon-CWD filesystem paths and dependency edges.
+
+$ grep -rn "graph\|Graph" internal/cli/ --include=*.go   # a CLI command that reads them?
+  (no match: the CLI never calls the /graph routes)
+
+$ grep -rn "NewGraph\|BlastRadius\|hilo\." --include=*.go internal/ | grep -v _test   # in-process consumers
+internal/server/server.go:168:	var hiloGraph *hilo.Graph
+internal/server/server.go:169:	if g, gerr := hilo.NewGraph(".", s.logger); gerr != nil {
+internal/server/server.go:656:func registerGraphRoutes(r chi.Router, graph *hilo.Graph, gate func(http.Handler) http.Handler) {
+internal/hilo/hilo.go:34:// NewGraph creates a new Graph and loads edges from .vfs/graph/edges.jsonl.
+internal/hilo/hilo.go:35:func NewGraph(projectDir string, logger *slog.Logger) (*Graph, error) {
+internal/hilo/hilo.go:146:// BlastRadius returns the transitive closure of files impacted by a change to path.
+internal/hilo/hilo.go:148:func (g *Graph) BlastRadius(path string, maxDepth int) []string {
+
+$ grep -rln "graph/stats" docs/ README.md 2>/dev/null   # documented consumers
+docs/evidence/REV-BUNKER-005-006-007-graph-consumers.txt

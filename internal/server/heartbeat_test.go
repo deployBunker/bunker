@@ -299,11 +299,21 @@ func TestHeartbeatAgent_InterceptorMountsArePinned(t *testing.T) {
 		why    string
 	}{
 		{
+			// REV-BUNKER-005/006: the composition is now defined ONCE in
+			// buildAuthInterceptors(jwtAuth), which Run calls with s.jwtAuth.
+			// The needles below therefore name the helper's body instead of
+			// Run's inline text; the invariants they pin are unchanged and the
+			// call-site needle keeps the chain complete (Run → helper →
+			// derivation → mount).
+			needle: "bunkerdAuthInterceptor, agentAuthInterceptor := s.buildAuthInterceptors(s.jwtAuth)",
+			why:    "Run must compose the interceptors through the single shared helper (buildAuthInterceptors)",
+		},
+		{
 			// DF-BUNKER-45: the master-only interceptor must be derived from
 			// the SAME JWTAuth instance RotateJWTSecret mutates, so a rotation
 			// takes effect on this mount without a restart. A private
 			// string-built interceptor would freeze the boot secret here.
-			needle: "bunkerdAuthInterceptor := auth.NewMasterOnlyAuthInterceptorFromAuth(s.jwtAuth,",
+			needle: "bunkerdAuthInterceptor := auth.NewMasterOnlyAuthInterceptorFromAuth(jwtAuth,",
 			why:    "the Bunkerd service must be built with the master-only interceptor derived from the SHARED jwtAuth instance",
 		},
 		{
@@ -312,7 +322,7 @@ func TestHeartbeatAgent_InterceptorMountsArePinned(t *testing.T) {
 		},
 		{
 			// DF-BUNKER-45: same instance-sharing rule for the permissive mount.
-			needle: "agentAuthInterceptor := auth.NewJWTAuthInterceptorFromAuth(s.jwtAuth,",
+			needle: "agentAuthInterceptor := auth.NewJWTAuthInterceptorFromAuth(jwtAuth,",
 			why:    "the Agent service must keep the permissive (agent-scoped-capable) interceptor derived from the SHARED jwtAuth instance",
 		},
 		{
