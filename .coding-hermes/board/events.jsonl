@@ -800,3 +800,13 @@
 {"id":800,"timestamp":"2026-09-27 06:02:20.226094","event_type":"task_created","task_id":"INT-CI-048","actor":"foreman","detail":"{\"id\":\"INT-CI-048\",\"status\":\"pending\"}","tick_number":null}
 {"id": 801, "timestamp": "2026-09-27 07:10:00.000000", "event_type": "task_created", "task_id": "QA-BUNKER-32", "actor": "qa-cron", "detail": "{\"id\": \"QA-BUNKER-32\", \"status\": \"pending\"}"}
 {"id": 802, "timestamp": "2026-09-27 07:10:05.000000", "event_type": "task_created", "task_id": "QA-BUNKER-33", "actor": "qa-cron", "detail": "{\"id\": \"QA-BUNKER-33\", \"status\": \"pending\"}"}
+{"id": 803, "timestamp": "2026-09-27 02:48:23.273940", "event_type": "task_created", "task_id": "REV-BUNKER-001", "actor": "hermes-review", "detail": "{\"id\": \"REV-BUNKER-001\", \"status\": \"pending\"}"}
+{"id": 804, "timestamp": "2026-09-27 02:48:23.273940", "event_type": "task_created", "task_id": "REV-BUNKER-002", "actor": "hermes-review", "detail": "{\"id\": \"REV-BUNKER-002\", \"status\": \"pending\"}"}
+{"id": 805, "timestamp": "2026-09-27 02:48:23.273940", "event_type": "task_created", "task_id": "REV-BUNKER-003", "actor": "hermes-review", "detail": "{\"id\": \"REV-BUNKER-003\", \"status\": \"pending\"}"}
+{"id": 806, "timestamp": "2026-09-27 02:48:23.273940", "event_type": "task_created", "task_id": "REV-BUNKER-004", "actor": "hermes-review", "detail": "{\"id\": \"REV-BUNKER-004\", \"status\": \"pending\"}"}
+{"id": 807, "timestamp": "2026-09-27 02:48:23.273940", "event_type": "task_created", "task_id": "REV-BUNKER-005", "actor": "hermes-review", "detail": "{\"id\": \"REV-BUNKER-005\", \"status\": \"pending\"}"}
+{"id": 808, "timestamp": "2026-09-27 02:48:23.273940", "event_type": "task_created", "task_id": "REV-BUNKER-006", "actor": "hermes-review", "detail": "{\"id\": \"REV-BUNKER-006\", \"status\": \"pending\"}"}
+{"id": 809, "timestamp": "2026-09-27 02:48:23.273940", "event_type": "task_created", "task_id": "REV-BUNKER-007", "actor": "hermes-review", "detail": "{\"id\": \"REV-BUNKER-007\", \"status\": \"pending\"}"}
+{"id": 810, "timestamp": "2026-09-27 02:48:23.273940", "event_type": "task_created", "task_id": "REV-BUNKER-008", "actor": "hermes-review", "detail": "{\"id\": \"REV-BUNKER-008\", \"status\": \"pending\"}"}
+{"id": 811, "timestamp": "2026-09-27 02:48:23.273940", "event_type": "task_created", "task_id": "REV-BUNKER-009", "actor": "hermes-review", "detail": "{\"id\": \"REV-BUNKER-009\", \"status\": \"pending\"}"}
+{"id": 812, "timestamp": "2026-09-27 02:48:23.273940", "event_type": "task_created", "task_id": "REV-BUNKER-010", "actor": "hermes-review", "detail": "{\"id\": \"REV-BUNKER-010\", \"status\": \"pending\"}"}
