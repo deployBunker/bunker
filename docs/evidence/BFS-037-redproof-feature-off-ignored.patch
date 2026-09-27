@@ -1,0 +1,20 @@
+diff --git a/internal/fsclient/hotrefresh.go b/internal/fsclient/hotrefresh.go
+index cd08c2d..3b5e44c 100644
+--- a/internal/fsclient/hotrefresh.go
++++ b/internal/fsclient/hotrefresh.go
+@@ -216,13 +216,13 @@ type HotManager struct {
+ // `enabled`, or the cache cannot store (D-6: warming a client that cannot store
+ // is bandwidth for a guaranteed discard).
+ func NewHotManager(cfg HotManagerConfig) *HotManager {
+-	if !cfg.Policy.Enabled {
++	if false && !cfg.Policy.Enabled {
+ 		return nil
+ 	}
+ 	if cfg.Client == nil || cfg.Cache == nil {
+ 		return nil
+ 	}
+-	if eff := cfg.Policy.Effective(cfg.envFromCache()); eff.ConfigState != HotConfigEnabled {
++	if eff := cfg.Policy.Effective(cfg.envFromCache()); false && eff.ConfigState != HotConfigEnabled {
+ 		return nil
+ 	}
+ 	now := cfg.Now

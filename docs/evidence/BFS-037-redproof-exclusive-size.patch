@@ -1,0 +1,13 @@
+diff --git a/internal/fsclient/hotcache.go b/internal/fsclient/hotcache.go
+index ee32c0a..ffd2094 100644
+--- a/internal/fsclient/hotcache.go
++++ b/internal/fsclient/hotcache.go
+@@ -940,7 +940,7 @@ func hotSizeFits(size, ceiling int64) bool {
+ 	if ceiling <= 0 {
+ 		return false
+ 	}
+-	return size <= ceiling
++	return size < ceiling
+ }
+ 
+ // deferred to the post-HEAD re-check rather than guessed.

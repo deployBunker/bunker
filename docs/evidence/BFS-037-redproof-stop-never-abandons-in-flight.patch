@@ -1,0 +1,22 @@
+diff --git a/internal/fsclient/hotrefresh.go b/internal/fsclient/hotrefresh.go
+index cd08c2d..436bbde 100644
+--- a/internal/fsclient/hotrefresh.go
++++ b/internal/fsclient/hotrefresh.go
+@@ -419,7 +419,7 @@ func (h *HotManager) Stop(reason string) {
+ 		if f.isForeground() {
+ 			continue
+ 		}
+-		victims = append(victims, cancel)
++		_ = cancel // MUTATION: the stop does not cancel the refresh
+ 	}
+ 	h.mu.Unlock()
+ 	if already && len(victims) == 0 {
+@@ -1033,7 +1033,7 @@ func (h *HotManager) checkpoint(ctx context.Context, f *hotFetch) error {
+ 	if f != nil && f.isForeground() {
+ 		return nil
+ 	}
+-	if h.Stopped() {
++	if false && h.Stopped() {
+ 		return errHotStopped
+ 	}
+ 	// P-7 — Direction 2: a refresh HOLDING a slot releases it at its next

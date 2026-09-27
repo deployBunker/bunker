@@ -253,6 +253,18 @@ func TestBFS037Cell02TheRefreshPoolIsBoundedAndYields(t *testing.T) {
 	if st.RefreshInflightMax > st.RefreshMaxInflight {
 		t.Fatalf("refresh_inflight_max=%d exceeds refresh_max_inflight=%d", st.RefreshInflightMax, st.RefreshMaxInflight)
 	}
+	// THE SHARE IS A SHARE AT THE REQUEST LAYER TOO, not only in the governor's
+	// arithmetic: the client's second budget channel must be sized to exactly the
+	// governor's width. A channel sized to anything else is a share that is not
+	// one — the bound that does not bound (BFS-031) — even when the governor
+	// happens to keep the peak low.
+	if got := s.Client.RefreshBudget(); got != st.RefreshMaxInflight {
+		t.Fatalf("the client's refresh budget has %d slot(s) against a governor of %d: the pool share is not the number the requests are actually bounded by (P-3/P-4)", got, st.RefreshMaxInflight)
+	}
+	// And it is NOT the foreground pool: the two budgets are separate channels.
+	if s.Client.RefreshBudget() >= conc {
+		t.Fatalf("the refresh budget (%d) is not smaller than the foreground pool (%d): the share is not a fraction of it", s.Client.RefreshBudget(), conc)
+	}
 	if d := hotDelta(at, after, "skip:"+HotSkipQueueFull); d != 0 {
 		t.Logf("queue refusals under the burst: %d", d)
 	}

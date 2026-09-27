@@ -1,0 +1,13 @@
+diff --git a/internal/fsclient/hotrefresh.go b/internal/fsclient/hotrefresh.go
+index cd08c2d..5ea3d5b 100644
+--- a/internal/fsclient/hotrefresh.go
++++ b/internal/fsclient/hotrefresh.go
+@@ -830,7 +830,7 @@ func (h *HotManager) onTick() {
+ 	if state != HotRunArmed {
+ 		return
+ 	}
+-	limit := int64(h.governor())
++	limit := int64(1000)
+ 	for h.inflight.Load() < limit {
+ 		it := h.queue.Next(h.now())
+ 		if it == nil {
