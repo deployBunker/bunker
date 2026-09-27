@@ -798,3 +798,5 @@
 {"id":798,"timestamp":"2026-09-27 05:59:10.950387","event_type":"task_created","task_id":"INT-CI-046","actor":"foreman","detail":"{\"id\":\"INT-CI-046\",\"status\":\"pending\"}","tick_number":null}
 {"id":799,"timestamp":"2026-09-27 05:59:18.620374","event_type":"task_created","task_id":"INT-CI-047","actor":"foreman","detail":"{\"id\":\"INT-CI-047\",\"status\":\"pending\"}","tick_number":null}
 {"id":800,"timestamp":"2026-09-27 06:02:20.226094","event_type":"task_created","task_id":"INT-CI-048","actor":"foreman","detail":"{\"id\":\"INT-CI-048\",\"status\":\"pending\"}","tick_number":null}
+{"id": 801, "timestamp": "2026-09-27 07:10:00.000000", "event_type": "task_created", "task_id": "QA-BUNKER-32", "actor": "qa-cron", "detail": "{\"id\": \"QA-BUNKER-32\", \"status\": \"pending\"}"}
+{"id": 802, "timestamp": "2026-09-27 07:10:05.000000", "event_type": "task_created", "task_id": "QA-BUNKER-33", "actor": "qa-cron", "detail": "{\"id\": \"QA-BUNKER-33\", \"status\": \"pending\"}"}
