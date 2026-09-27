@@ -891,6 +891,7 @@ func TestEveryFigureInTheStatusRecordMovesOrIsExplained(t *testing.T) {
 // absent. Every one must open with a vocabulary class.
 var absenceReasons = map[string]bool{
 	"cache.dir_bytes_reason":                true,
+	"state.reason":                          true,
 	"invalidation.server_reason":            true,
 	"invalidation.content_age_reason":       true,
 	"invalidation.content_age.bound_reason": true,

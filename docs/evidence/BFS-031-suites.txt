@@ -1,0 +1,49 @@
+BFS-031 suites — worktree HEAD 0f7bece at 2026-09-27T11:32:56-05:00
+
+BFS-031 suites — worktree HEAD 0f7bece at 2026-09-27T11:26:17-05:00
+host karaHermes-mde-7840hs, loadavg 27.83 40.19 47.52 71/10382 1550852
+
+=== gofmt -l internal cmd probes tools (nothing listed = formatted) ===
+-- end gofmt
+
+=== go vet ./... ===
+go vet exit=0
+
+=== go test ./... -count=1 (full, unfiltered) ===
+ok  	github.com/deployBunker/bunker/cmd/bunker	0.411s
+ok  	github.com/deployBunker/bunker/cmd/bunkerd	0.217s
+?   	github.com/deployBunker/bunker/cmd/docs-drift	[no test files]
+ok  	github.com/deployBunker/bunker/internal/agent	75.487s
+ok  	github.com/deployBunker/bunker/internal/apikey	0.213s
+ok  	github.com/deployBunker/bunker/internal/audit	3.997s
+ok  	github.com/deployBunker/bunker/internal/auth	0.361s
+ok  	github.com/deployBunker/bunker/internal/cli	32.576s
+ok  	github.com/deployBunker/bunker/internal/config	0.113s
+?   	github.com/deployBunker/bunker/internal/davserve	[no test files]
+ok  	github.com/deployBunker/bunker/internal/docscheck	7.481s
+ok  	github.com/deployBunker/bunker/internal/fsclient	13.498s
+ok  	github.com/deployBunker/bunker/internal/fsmount	0.581s
+ok  	github.com/deployBunker/bunker/internal/hermes	28.511s
+ok  	github.com/deployBunker/bunker/internal/hilo	0.125s
+ok  	github.com/deployBunker/bunker/internal/hostsetup	4.948s
+ok  	github.com/deployBunker/bunker/internal/imagespec	0.163s
+ok  	github.com/deployBunker/bunker/internal/invalidation	0.004s
+ok  	github.com/deployBunker/bunker/internal/mountdriver	0.011s
+ok  	github.com/deployBunker/bunker/internal/registry	11.559s
+ok  	github.com/deployBunker/bunker/internal/releasecheck	0.922s
+ok  	github.com/deployBunker/bunker/internal/resource	0.035s
+ok  	github.com/deployBunker/bunker/internal/server	11.956s
+ok  	github.com/deployBunker/bunker/internal/server/webdav	28.264s
+ok  	github.com/deployBunker/bunker/internal/sshsig	0.030s
+ok  	github.com/deployBunker/bunker/internal/systemd	0.035s
+ok  	github.com/deployBunker/bunker/internal/tailscale	0.542s
+ok  	github.com/deployBunker/bunker/internal/tlsutil	0.169s
+ok  	github.com/deployBunker/bunker/internal/tunnel	21.570s
+ok  	github.com/deployBunker/bunker/internal/version	0.071s
+?   	github.com/deployBunker/bunker/probes/bfs025-truncated-read	[no test files]
+?   	github.com/deployBunker/bunker/probes/davserve	[no test files]
+?   	github.com/deployBunker/bunker/probes/h3client	[no test files]
+ok  	github.com/deployBunker/bunker/probes/webdav-battery	0.141s
+?   	github.com/deployBunker/bunker/proto/bunker/v1	[no test files]
+?   	github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect	[no test files]
+go test exit=0

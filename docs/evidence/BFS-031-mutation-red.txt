@@ -1,0 +1,98 @@
+BFS-031 NEGATIVE CONTROL — probes/bfs031-mutation-red.sh: six mutations, each one
+removing the single thing that makes the row's property hold, each owning cell RED
+under the mutation and GREEN after a sha256-verified byte-identical restore.
+Raw transcript follows; it is unedited.
+
+BFS-031 NON-VACUITY BATTERY
+worktree: /home/kara/worktrees/bunker-BFS-031
+backups : /tmp/bfs031-mutation-63eijB
+
+===================================================================
+MUTATION GROUP: M1
+FILE           : internal/fsclient/layout.go
+sha256 before  : 99de165752f6fd01ba932514f6242af0e2e70797bcf862aef33650a0c7867482
+===================================================================
+anchor found exactly once; replacement applied
+--- MUTATED (TestTheReportedDirectoryFigureAgreesWithAnIndependentWalk) ---
+    status_census_test.go:1300: the observability files are inside the cache directory: status=4456 conflicts=99 — BFS-031 moved them out so the bound can bound what it names
+mutated cell exit code = 1 (non-zero = the cell CATCHES the mutation)
+RESTORE VERIFIED: layout.go sha256=99de165752f6fd01ba932514f6242af0e2e70797bcf862aef33650a0c7867482 (byte-identical)
+--- RESTORED (TestTheReportedDirectoryFigureAgreesWithAnIndependentWalk) ---
+ok (rc=0)
+NON-VACUITY: PROVEN for M1
+
+===================================================================
+MUTATION GROUP: M2
+FILE           : internal/fsclient/cache.go
+sha256 before  : f39629c92a4e9a5aa05cf3916866f20aeafe2e1a51adf45f71ae517424dc3780
+===================================================================
+anchor found exactly once; replacement applied
+--- MUTATED (TestTheBoundBoundsTheCacheDirectoryAtATinyBound) ---
+    bound_directory_bfs031_test.go:110: the index's temp copy is not reserved: used_bytes=865 + index_bytes=609 > the 1024 B bound, so a flush would put the directory over it
+mutated cell exit code = 1 (non-zero = the cell CATCHES the mutation)
+RESTORE VERIFIED: cache.go sha256=f39629c92a4e9a5aa05cf3916866f20aeafe2e1a51adf45f71ae517424dc3780 (byte-identical)
+--- RESTORED (TestTheBoundBoundsTheCacheDirectoryAtATinyBound) ---
+ok (rc=0)
+NON-VACUITY: PROVEN for M2
+
+===================================================================
+MUTATION GROUP: M3
+FILE           : internal/fsclient/status.go
+sha256 before  : 474064590c3c9075ddc9e6324f2233e30da03c393c2f88f85f0b82e7544fefc0
+===================================================================
+anchor found exactly once; replacement applied
+--- MUTATED (TestTheRefusalLogIsBoundedAndTheDropIsCounted) ---
+    state_bound_bfs031_test.go:53: after 3 appends the refusal log holds 2367 B, over its 2048 B bound
+mutated cell exit code = 1 (non-zero = the cell CATCHES the mutation)
+RESTORE VERIFIED: status.go sha256=474064590c3c9075ddc9e6324f2233e30da03c393c2f88f85f0b82e7544fefc0 (byte-identical)
+--- RESTORED (TestTheRefusalLogIsBoundedAndTheDropIsCounted) ---
+ok (rc=0)
+NON-VACUITY: PROVEN for M3
+
+===================================================================
+MUTATION GROUP: M4
+FILE           : internal/fsclient/status.go
+sha256 before  : 474064590c3c9075ddc9e6324f2233e30da03c393c2f88f85f0b82e7544fefc0
+===================================================================
+anchor found exactly once; replacement applied
+--- MUTATED (TestTheStatusDocumentIsBoundedByItsOwnCap) ---
+    state_bound_bfs031_test.go:144: the status document on disk is 64355 B, over its declared cap 8192
+mutated cell exit code = 1 (non-zero = the cell CATCHES the mutation)
+RESTORE VERIFIED: status.go sha256=474064590c3c9075ddc9e6324f2233e30da03c393c2f88f85f0b82e7544fefc0 (byte-identical)
+--- RESTORED (TestTheStatusDocumentIsBoundedByItsOwnCap) ---
+ok (rc=0)
+NON-VACUITY: PROVEN for M4
+
+===================================================================
+MUTATION GROUP: M5
+FILE           : internal/fsclient/state.go
+sha256 before  : 8723c7b38a1a268d3ea23c7b04c9107729c584f02c3866c05b9841ec048a1f6f
+===================================================================
+anchor found exactly once; replacement applied
+--- MUTATED (TestTheStateMeasurementNamesEveryResidentAndItsBound) ---
+    state_bound_bfs031_test.go:241: conflict bytes = 0, want the log's 242
+mutated cell exit code = 1 (non-zero = the cell CATCHES the mutation)
+RESTORE VERIFIED: state.go sha256=8723c7b38a1a268d3ea23c7b04c9107729c584f02c3866c05b9841ec048a1f6f (byte-identical)
+--- RESTORED (TestTheStateMeasurementNamesEveryResidentAndItsBound) ---
+ok (rc=0)
+NON-VACUITY: PROVEN for M5
+
+===================================================================
+MUTATION GROUP: M6
+FILE           : internal/fsclient/state.go
+sha256 before  : 8723c7b38a1a268d3ea23c7b04c9107729c584f02c3866c05b9841ec048a1f6f
+===================================================================
+anchor found exactly once; replacement applied
+--- MUTATED (TestTheRefusalLogIsBoundedAndTheDropIsCounted) ---
+    state_bound_bfs031_test.go:63: the bound dropped entries and the count says 0: a bounded log must keep the count of what it dropped
+mutated cell exit code = 1 (non-zero = the cell CATCHES the mutation)
+RESTORE VERIFIED: state.go sha256=8723c7b38a1a268d3ea23c7b04c9107729c584f02c3866c05b9841ec048a1f6f (byte-identical)
+--- RESTORED (TestTheRefusalLogIsBoundedAndTheDropIsCounted) ---
+ok (rc=0)
+NON-VACUITY: PROVEN for M6
+
+===================================================================
+ALL GROUPS: the accounting was neutered six ways, each owning cell went
+RED, and every restore was sha256-verified byte-identical.
+===================================================================
+EXIT=0

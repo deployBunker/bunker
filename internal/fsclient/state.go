@@ -162,7 +162,7 @@ func MeasureState(mountDir string, cacheBytes, cacheMaxBytes, spillBudget int64)
 		case name == StatusFile, strings.HasPrefix(name, StatusFile+"."):
 			st.StatusBytes += size
 			st.Bytes += size
-		case name == ConflictsFile:
+		case name == ConflictsFile, strings.HasPrefix(name, ConflictsFile+"."):
 			st.ConflictsBytes += size
 			st.Bytes += size
 		case strings.HasPrefix(name, WriteBufPrefix):

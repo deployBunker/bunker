@@ -289,6 +289,95 @@ run_arm tiny --cache-max-size 1024
 say "ARM B: the DEFAULT bound (nothing passed: the real default path)"
 run_arm default
 
+say "ARM C: the 40-distinct-path refusal burst — the workload that produced the 29.97x"
+# One refusal line per refused PATH (BFS-033's refusal-hold rule), so the log's width
+# is the number of DISTINCT refused paths: the row's 29.97x came from a burst like
+# this one (27,836 B of log on that tree). This arm runs it against the fixed build
+# and asserts the same property at the same 1 KiB bound.
+run_burst_arm() {
+  local label=burst
+  TREE="$TMP/tree-$label"; MNT="$TMP/mnt-$label"
+  mkdir -p "$TREE/src" "$MNT"
+  local i
+  for i in $(seq -w 0 39); do
+    printf 'BURST-FILE-%s: sixty-four bytes of content for the burst arm xxxxxxxxxxxxx\n' "$i" > "$TREE/src/f$i.txt"
+  done
+  "$TMP/davserve" --root "$TREE" --addr 127.0.0.1:0 > "$TMP/dav-$label.log" 2>&1 &
+  DAV_PID=$!
+  local url=""
+  for _ in $(seq 1 60); do
+    url=$(grep -m1 '^URL=' "$TMP/dav-$label.log" 2>/dev/null | cut -d= -f2-)
+    [ -n "$url" ] && break
+    sleep 0.2
+  done
+  [ -n "$url" ] || { bad "[$label] davserve did not start"; return 1; }
+  "$TMP/bunker" fs mount "$MNT" --url "$url" --concurrency 4 --no-snapshot --cache-max-size 1024 \
+    > "$TMP/mount-$label.log" 2>&1 &
+  MOUNT_PID=$!
+  local mounted=0
+  for _ in $(seq 1 150); do
+    if grep -q "$MNT" /proc/mounts 2>/dev/null; then mounted=1; break; fi
+    sleep 0.2
+  done
+  if [ "$mounted" != 1 ]; then bad "[$label] the mount did not come up"; return 1; fi
+  local mdir cdir
+  mdir=$(ls -td "$XDG_CACHE_HOME"/bunker/fs/* 2>/dev/null | head -1)
+  cdir="$mdir/cache"
+  local maxb; maxb=$(jqf '.cache.max_bytes' "$mdir/status.json")
+  # 40 distinct paths. READ each one through the mount FIRST: that is what gives the
+  # client its base for the path. Then edit the served file out of band, and only
+  # then truncate through the mount — so the write carries a stale base and is
+  # refused on THIS path (one log line per path).
+  for i in $(seq -w 0 39); do
+    head -c 64 "$MNT/src/f$i.txt" > /dev/null 2>&1 || true
+  done
+  sleep 2
+  for i in $(seq -w 0 39); do
+    printf 'SERVER-EDIT-%s: the out-of-band content for this path xxxxxxxxxxxxxxxxxxxx\n' "$i" > "$TREE/src/f$i.txt"
+    timeout 20 python3 -c 'import os,sys; os.truncate(sys.argv[1], 32)' "$MNT/src/f$i.txt" 2>/dev/null || true
+  done
+  sleep 3
+  fresh_status "$TMP/status-$label.json" || bad "[$label] no fresh directory measurement"
+  local du_cache du_mount dirb st_size cf_size cfbytes sbytes smax foot fmax used
+  du_cache=$(du_of "$cdir"); du_mount=$(du_of "$mdir")
+  dirb=$(jqf '.cache.dir_bytes' "$TMP/status-$label.json"); used=$(jqf '.cache.used_bytes' "$TMP/status-$label.json")
+  st_size=$(stat -c %s "$mdir/status.json" 2>/dev/null || echo 0)
+  cf_size=$(stat -c %s "$mdir/conflicts.jsonl" 2>/dev/null || echo 0)
+  cfbytes=$(jqf '.state.conflicts_bytes' "$TMP/status-$label.json")
+  sbytes=$(jqf '.state.bytes' "$TMP/status-$label.json"); smax=$(jqf '.state.max_bytes' "$TMP/status-$label.json")
+  foot=$(jqf '.state.footprint_bytes' "$TMP/status-$label.json"); fmax=$(jqf '.state.footprint_max_bytes' "$TMP/status-$label.json")
+  echo "   [$label] 40 distinct refused paths; the refusal log on disk: $cf_size B (reported $cfbytes B)"
+  echo "   [$label] the cache directory : du=$du_cache reported dir_bytes=$dirb used=$used (bound $maxb)"
+  echo "   [$label] the state + footprint: status.json=$st_size du(mount dir)=$du_mount state=$sbytes/$smax footprint=$foot/$fmax"
+  if [ "${du_cache:-0}" -le "${maxb:-0}" ]; then
+    ok "[$label] THE BOUND BOUNDS THE DIRECTORY under the burst: du(cache dir)=$du_cache <= $maxb (the ~$cf_size B of refusals is in the STATE, not in it)"
+  else
+    bad "[$label] the bound does not bound the directory under the burst: du=$du_cache > $maxb"
+  fi
+  local delta=$(( ${dirb:-0} - ${du_cache:-0 } )); [ "$delta" -lt 0 ] && delta=$((-delta))
+  if [ "${dirb:-0}" -gt 0 ] && [ "$delta" -le 4096 ]; then
+    ok "[$label] the reported dir_bytes=${dirb} agrees with du=${du_cache} (delta=$delta B)"
+  else
+    bad "[$label] reported dir_bytes=${dirb} vs du=${du_cache} (delta=$delta)"
+  fi
+  if [ "${sbytes:-0}" -le "${smax:-0}" ] && [ "${foot:-0}" -le "${fmax:-0}" ]; then
+    ok "[$label] the state ($sbytes <= $smax) and the footprint ($foot <= $fmax) are inside their bounds: the edit-volume growth is bounded AND visible"
+  else
+    bad "[$label] the state or the footprint is over its bound: state=$sbytes/$smax footprint=$foot/$fmax"
+  fi
+  if [ "$cf_size" -gt 20000 ]; then
+    ok "[$label] the burst grew the refusal log to $cf_size B — the width the row's own fixture reached was 27,836 B — and it is in the STATE, inside its own bound"
+  else
+    echo "   [$label] NOTE the refusal log is $cf_size B: this run's burst did not reach the width the row's fixture did (27,836 B), so the multiple it would have produced is smaller"
+  fi
+  if grep -q "$MNT" /proc/mounts 2>/dev/null; then timeout 20 fusermount -u "$MNT" >/dev/null 2>&1 || true; fi
+  kill "$MOUNT_PID" >/dev/null 2>&1; kill "$DAV_PID" >/dev/null 2>&1
+  wait "$MOUNT_PID" 2>/dev/null; sleep 0.5
+  MOUNT_PID=""; DAV_PID=""
+  return 0
+}
+run_burst_arm
+
 say "VERDICT"
 if [ "$FAILED" = 0 ]; then
   echo "LIVE-PASS: at 1 KiB and at the default the cache directory is INSIDE the bound"
