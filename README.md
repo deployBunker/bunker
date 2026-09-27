@@ -37,7 +37,7 @@ Bunker is a **multi-agent hosting platform** — a daemon (`bunkerd`) that runs 
 
 - **Isolated agents** — Each agent is a dedicated Linux user with its own home directory, SSH keypair, and rootless Docker daemon
 - **Resource limits** — CPU, memory, process count, and open file limits enforced via cgroups (systemd user slice); an agent per-file size cap (`--disk`) is enforced via `RLIMIT_FSIZE`
-- **SSHFS native mount** — Mount any agent's filesystem locally: `bunker mount <id> /mnt/agent`
+- **SSHFS native mount** — Mount any agent's filesystem locally: `bunker mount <id> /mnt/agent`. What caps its throughput on a high-latency link — the socket-buffer ceiling, and why HTTP/2 walks straight into it — is in [docs/performance.md](docs/performance.md)
 - **Docker tunnel** — Forward the agent's Docker socket locally: `bunker tunnel <id>` → `docker -H localhost:2376 ps`
 - **Multi-server** — One CLI, many `bunkerd` instances. Switch with `--server`
 - **Scoped API keys** — Master tokens for admin, agent-scoped sub-keys for CI/CD

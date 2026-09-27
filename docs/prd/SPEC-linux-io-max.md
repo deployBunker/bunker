@@ -35,6 +35,9 @@ the throughput claim itself is NOT yet measured, and BFS-057 is what would measu
 deliberately.)* **This matters most for HTTP/2**, because h2 multiplexes every stream onto **one** TCP
 connection: the client's 25 concurrent requests share one 4 MiB send buffer. h3/QUIC is bounded by
 `net.core.wmem_max` (also 4 MiB) for its UDP socket, plus its own flow-control windows.
+*Measured since this spec was written: `wmem_max`/`rmem_max` are 4 MiB on the control host but only
+**208 KiB** on both DC hosts, which caps the QUIC/UDP path at ~1.1 MB/s at 192 ms; the people-facing
+write-up with all three hosts' sysctls is [`../performance.md`](../performance.md).*
 
 **1.2 BBR is installed but unused.** `/lib/modules/7.0.0-31-generic/kernel/net/ipv4/tcp_bbr.ko.zst`
 exists; the running algorithm is **cubic**, and `tcp_available_congestion_control` lists only `reno

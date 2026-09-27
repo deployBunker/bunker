@@ -6,6 +6,8 @@ sshfs security issue that forces an upgrade, because the fix and the driver mode
 touch the same code.
 
 See also: [`both-ways.md`](both-ways.md) (when to use the mount vs the verb path),
+[`performance.md`](performance.md) (what caps throughput on a long path: the socket-buffer
+ceiling, and why HTTP/2 walks straight into it),
 [`prd/ADR-toolsd-integration.md`](prd/ADR-toolsd-integration.md) (the verb path),
 `SECURITY.md`.
 

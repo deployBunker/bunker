@@ -425,6 +425,14 @@ and bodies — verified by comparing one battery run per protocol (BFS-011).
 | Cleartext | **yes** | only as **h2c prior-knowledge** (RFC 7540's `Upgrade: h2c` is **not** implemented by `net/http` — measured: the upgrade attempt returned HTTP/1.1, BFS-002 §4) | **impossible** — QUIC always encrypts, so h3 requires `tls.enabled: true` |
 | h3 discovery | `Alt-Svc: h3=":<port>"; ma=2592000` on TCP responses, emitted only while an h3 listener is up | same header on h2 responses | n/a (the client is already there) |
 
+**A ceiling this table does not show, because it is not about the protocol.** One TCP connection's
+**send buffer** caps the *bytes* it can keep in flight, so **N streams on one connection share it**. On this
+path that is an arithmetic ceiling of **~21.8 MB/s (~175 Mbps)** per connection (`4 MiB / 0.192 s`) — while
+the concurrency figures above are latency-bound *small* requests and therefore never touch it. h3 does not
+escape the family: a QUIC socket's buffers are set explicitly, and both DC hosts cap those at **208 KiB**
+(~1.1 MB/s at 192 ms). Measured sysctls on all three hosts, the arithmetic, and which box's buffer caps
+which direction: [`../performance.md`](../performance.md) (rows `BFS-055`, `BFS-057`).
+
 **The consequences this document commits to (and BFS-006/BFS-007 must implement):**
 
 - **C-1 — HTTP/1.1 is a first-class protocol, not a fallback.** Every method, property and extension in this spec works
@@ -1102,6 +1110,9 @@ documents' evidence indexes (`BFS-002 §10`, `BFS-003 Appendix A`, `PRD-bunker-f
 | rclone WebDAV backend (no h2; 4 concurrent TCP connections) | **11 ok / 1 stall**; `commit` 1.04 s, `amend` 0.71 s, `rebase` 0.41 s, `checkout -b` 2.23 s; `diff --stat` STALL 45.09 s | `:75–86` |
 | rclone mount variants (SFTP) | wedge: off **1 h 49 m**, full **900 s** zero rows, `--sftp-concurrency 128` **900 s** zero rows; `vfs cache: cleaned: objects 0` | `:40–42` |
 | Connection setup | **1589 ms** per connection vs **278 ms** multiplexed (**5.7×**) | `:100` |
+| RTT measured **inside a real transfer**, Helsinki leg | **192–193 ms** (TCP connect `0.1920 / 0.1929 / 0.1927 s`, public path) | `evidence/DC-real-latency-snapshot.md` |
+| One TCP connection's send-buffer ceiling (all three hosts) | **4 MiB** (`net.ipv4.tcp_wmem`, third value) → **~21.8 MB/s ≈ 175 Mbps** at 192 ms — **ARITHMETIC on two measured numbers, not a measurement** (BFS-055 measures it) | `performance.md` §1–2 |
+| QUIC/UDP socket-buffer cap on both DC hosts | **208 KiB** (`net.core.rmem_max`/`wmem_max` = `212992`) → **~1.1 MB/s ≈ 8.9 Mbps** per socket at 192 ms — arithmetic; whether the daemon requests larger buffers with the `FORCE` variant is unread | `performance.md` §5 |
 | Cleartext listener (live deployment) | `:18080` → `http_version=1.1 code=200`; h2c prior-knowledge → `code 000`; `https` → `000`; `tls: {enabled: false, insecure_dev: true}` | BFS-002 §2.3 |
 | h2c | prior-knowledge → `HTTP/2.0 200`; `Upgrade: h2c` → `HTTP/1.1 200` (not implemented by `net/http`) | BFS-002 §4 |
 | TLS ALPN matrix | `h2`→h2; `h2,http/1.1`→h2; `http/1.1`→http/1.1; no ALPN → "No ALPN negotiated" then HTTP/1.1 | BFS-002 §2.2 B |
