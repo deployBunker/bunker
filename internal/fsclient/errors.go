@@ -49,6 +49,13 @@ const (
 	// CauseLocalCapability: the caller's local configuration refused, e.g. a
 	// mountpoint that is not private. No server was contacted.
 	CauseLocalCapability Cause = "local_capability"
+	// CauseStaleBound: the mount's own published size for a path is stale, so a
+	// read bound by it would be silently truncated (BFS-025). Recoverable per
+	// file — re-open the path and retry — which is why it shares ESTALE with the
+	// per-file conflict class and is named separately from it: this is not a
+	// write conflict, and a cause string that says "conflict" would tell the next
+	// person the wrong thing happened.
+	CauseStaleBound Cause = "stale_bound"
 )
 
 // The server's machine codes this client branches on, quoted verbatim from the

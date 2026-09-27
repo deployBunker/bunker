@@ -1,0 +1,107 @@
+=== BFS-025: WHICH READER TRUNCATES (the mount's own view of every read request) ===
+
+Four readers, four fresh mounts, the SAME fixture: 'SHORT' (5 bytes) served, the mount
+stat'ed (planting the stale size), the agent then writing 82 bytes, and one read.
+
+The 'BFS025 ...' lines are DIAGNOSTIC INSTRUMENTATION added temporarily to
+internal/fsmount/fs_linux.go (Getattr/Open/Read) for this measurement only; that code is
+NOT part of the fix and is not in the tree. The bracketed lines are strace(1) of the
+reader itself.
+
+=== reader: cat ===
+reader     = /tmp/bfs025/repro3.sh cat  (rc=0)
+  | server side        : 'SHORT' (5 bytes)
+  | mount stat (no read): size=5
+  | agent now          : 82 bytes
+  | mount stat (post)  : size=5
+  | --- reader: cat (nothing below stats the file except the reader itself) ---
+  | READER-BEGIN
+  | rc=0 bytes=5
+  | READER-END
+  | native truth       : 82 bytes
+--- the mount's own view of the requests ---
+BFS025 GETATTR p=target.txt snap_hit=true size=5 hash=sha256:1bf63c90337ee1c581a8d46616bd59caa437f62670be546e14a19b09f31a082c
+BFS025 GETATTR p=target.txt snap_hit=true size=5 hash=sha256:1bf63c90337ee1c581a8d46616bd59caa437f62670be546e14a19b09f31a082c
+BFS025 GETATTR p=target.txt snap_hit=true size=5 hash=sha256:1bf63c90337ee1c581a8d46616bd59caa437f62670be546e14a19b09f31a082c
+BFS025 OPEN p=target.txt flags=0x8000
+BFS025 GETATTR p=target.txt snap_hit=true size=5 hash=sha256:1bf63c90337ee1c581a8d46616bd59caa437f62670be546e14a19b09f31a082c
+BFS025 READ p=target.txt off=0 dest=4096 have=82
+BFS025 REPL p=target.txt off=0 served=82
+
+=== reader: splice ===
+reader     = /tmp/bfs025/repro3.sh splice  (rc=0)
+  | server side        : 'SHORT' (5 bytes)
+  | mount stat (no read): size=5
+  | agent now          : 82 bytes
+  | mount stat (post)  : size=5
+  | --- reader: splice (nothing below stats the file except the reader itself) ---
+  | READER-BEGIN
+  | python os.splice   : rc=0 bytes=5
+  | READER-END
+  | native truth       : 82 bytes
+--- the mount's own view of the requests ---
+BFS025 GETATTR p=target.txt snap_hit=true size=5 hash=sha256:1bf63c90337ee1c581a8d46616bd59caa437f62670be546e14a19b09f31a082c
+BFS025 GETATTR p=target.txt snap_hit=true size=5 hash=sha256:1bf63c90337ee1c581a8d46616bd59caa437f62670be546e14a19b09f31a082c
+BFS025 OPEN p=target.txt flags=0x8000
+BFS025 READ p=target.txt off=0 dest=4096 have=82
+BFS025 REPL p=target.txt off=0 served=82
+
+=== reader: pyread ===
+reader     = /tmp/bfs025/repro3.sh pyread  (rc=0)
+  | server side        : 'SHORT' (5 bytes)
+  | mount stat (no read): size=5
+  | agent now          : 82 bytes
+  | mount stat (post)  : size=5
+  | --- reader: pyread (nothing below stats the file except the reader itself) ---
+  | READER-BEGIN
+  | python os.read     : rc=0 bytes=82 prefix=b'X-REPLACEMENT-CONTEN'
+  | READER-END
+  | native truth       : 82 bytes
+--- the mount's own view of the requests ---
+BFS025 GETATTR p=target.txt snap_hit=true size=5 hash=sha256:1bf63c90337ee1c581a8d46616bd59caa437f62670be546e14a19b09f31a082c
+BFS025 GETATTR p=target.txt snap_hit=true size=5 hash=sha256:1bf63c90337ee1c581a8d46616bd59caa437f62670be546e14a19b09f31a082c
+BFS025 OPEN p=target.txt flags=0x8000
+BFS025 READ p=target.txt off=0 dest=65536 have=82
+BFS025 REPL p=target.txt off=0 served=82
+
+=== reader: dd ===
+reader     = /tmp/bfs025/repro3.sh dd  (rc=0)
+  | server side        : 'SHORT' (5 bytes)
+  | mount stat (no read): size=5
+  | agent now          : 82 bytes
+  | mount stat (post)  : size=5
+  | --- reader: dd (nothing below stats the file except the reader itself) ---
+  | READER-BEGIN
+  | rc=0 bytes=82
+  | READER-END
+  | native truth       : 82 bytes
+--- the mount's own view of the requests ---
+BFS025 GETATTR p=target.txt snap_hit=true size=5 hash=sha256:1bf63c90337ee1c581a8d46616bd59caa437f62670be546e14a19b09f31a082c
+BFS025 GETATTR p=target.txt snap_hit=true size=5 hash=sha256:1bf63c90337ee1c581a8d46616bd59caa437f62670be546e14a19b09f31a082c
+BFS025 GETATTR p=target.txt snap_hit=true size=5 hash=sha256:1bf63c90337ee1c581a8d46616bd59caa437f62670be546e14a19b09f31a082c
+BFS025 OPEN p=target.txt flags=0x8000
+BFS025 READ p=target.txt off=0 dest=4096 have=82
+BFS025 REPL p=target.txt off=0 served=82
+BFS025 READ p=target.txt off=82 dest=4096 have=82
+
+=== strace of uutils cat's own syscalls (reader: cat) ===
+1152059 statx(AT_FDCWD, "/tmp/bfs025/run-bfs025-C/mnt/target.txt", AT_STATX_SYNC_AS_STAT, STATX_ALL, {stx_mask=STATX_BASIC_STATS|STATX_MNT_ID, stx_attributes=0, stx_mode=S_IFREG|0644, stx_size=5, ...}) = 0
+1152059 openat(AT_FDCWD, "/tmp/bfs025/run-bfs025-C/mnt/target.txt", O_RDONLY|O_CLOEXEC) = 3
+1152059 splice(3, NULL, 1, NULL, 1048576, 0) = -1 EINVAL (Invalid argument)
+1152059 splice(3, NULL, 5, NULL, 1048576, 0) = 5
+1152059 splice(4, NULL, 1, NULL, 5, 0)  = 5
+1152059 splice(3, NULL, 5, NULL, 1048576, 0) = 0
+
+=== CONTROL: the same replacement WITHOUT a prior stat (pre-fix binary) ===
+The file is written on the agent BEFORE the mount ever looks at the path: the lookup
+resolves it live, so the kernel's i_size is the true one and nothing truncates.
+
+reader     = /tmp/bfs025/repro2.sh B  (rc=0)
+  | === arm B on karaHermes-mde-7840hs loadavg 22.29 15.77 12.91 ===
+  | agent (never stat'ed through the mount) : 82 bytes
+  | 
+  | -- the read(s) --
+  | cat                : 82 bytes  prefix='X-REPLACEMENT-CONTENT-0123456789-abcdefg'
+  | py open().read()   : 82 bytes  OK
+  | py one 64K read    : 82 bytes
+  | native truth       : 82 bytes

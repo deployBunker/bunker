@@ -75,6 +75,20 @@ type Mount struct {
 	treePin   string
 	protoSeen string
 
+	// bounds is what the kernel has been told each path's size is — the size a
+	// FUSE read is bounded by (see bound.go). boundRefusals counts reads
+	// refused because the content was longer than that bound (the silent
+	// truncation this row exists for); boundRepairs counts the times the
+	// metadata was corrected from the content a read fetched.
+	bounds        *boundRegistry
+	boundRefusals atomic.Int64
+	boundRepairs  atomic.Int64
+	// boundLast names the most recent bound divergence (path + the two figures
+	// that disagreed), so `bunker fs status` can point at the file rather than
+	// only counting. atomic.Value: written from the read path, read by the
+	// status loop.
+	boundLast atomic.Value // string
+
 	transportMu sync.RWMutex
 	verdict     string
 	cause       string
@@ -143,6 +157,7 @@ func MountAt(opts Options) (*Mount, error) {
 		reads:    map[uint64]*readHandle{},
 		writes:   map[uint64]*writeHandle{},
 		bufDocs:  map[uint64]int64{},
+		bounds:   newBoundRegistry(),
 		verdict:  "healthy",
 		stop:     make(chan struct{}),
 		stopped:  make(chan struct{}),
@@ -581,6 +596,10 @@ func (m *Mount) recordFailure(err *fsclient.OpError) {
 	case fsclient.CauseConflict:
 		// A conflict is per file and the transport is fine.
 		return
+	case fsclient.CauseStaleBound:
+		// A stale published size is per file too: the tree and the transport
+		// are fine, and the recovery (re-open the path) is local.
+		return
 	}
 }
 
@@ -630,6 +649,13 @@ func (m *Mount) Status() fsclient.Status {
 		st.WriteBufferBytes += n
 	}
 	m.mu.Unlock()
+	st.ReadBound = fsclient.ReadBoundState{
+		RefusalsTotal:    m.boundRefusals.Load(),
+		CorrectionsTotal: m.boundRepairs.Load(),
+	}
+	if v, ok := m.boundLast.Load().(string); ok {
+		st.ReadBound.Last = v
+	}
 	return st
 }
 
@@ -755,6 +781,10 @@ func (n *node) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut)
 		n.m.snapshot().Put(nd)
 	}
 	fillAttr(&out.Attr, nd)
+	// This reply IS the kernel's i_size for the path: record what we told it, so
+	// a later read can tell whether it is about to serve longer content than the
+	// kernel will let a reader see (bound.go).
+	n.m.notePublished(nd)
 	out.SetTimeout(0)
 	n.m.opsTotal.Add(1)
 	return 0
@@ -779,6 +809,7 @@ func (n *node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 		n.m.snapshot().Put(nd)
 	}
 	fillAttr(&out.Attr, nd)
+	n.m.notePublished(nd)
 	out.SetEntryTimeout(0)
 	out.SetAttrTimeout(0)
 	n.m.opsTotal.Add(1)
@@ -843,6 +874,7 @@ func (n *node) Create(ctx context.Context, name string, flags uint32, mode uint3
 	nd := fsclient.Node{Path: cp, IsDir: false, Mode: fmt.Sprintf("%04o", mode&0o777), Mtime: time.Now()}
 	m.snapshot().Put(nd)
 	fillAttr(&out.Attr, nd)
+	m.notePublished(nd)
 	out.SetEntryTimeout(0)
 	out.SetAttrTimeout(0)
 	child := &node{m: m, p: cp}
@@ -1026,9 +1058,14 @@ func (h *readHandle) Read(ctx context.Context, dest []byte, off int64) (fuse.Rea
 // load fills the handle's bytes: from our cache when we hold this path, else
 // with ONE GET whose hash is the base hash a later write will carry. The read
 // that fills the cache is the read that decides the conflict.
+//
+// Before anything is served, the bytes are reconciled with the size the kernel
+// is holding for the path (guardServed): a FUSE read is clamped by that size, so
+// serving longer content is a silent truncation — the defect this rule exists
+// for. The reconciliation costs a comparison on the fast path and no request.
 func (h *readHandle) load(ctx context.Context) syscall.Errno {
 	if hash, _, ok := h.m.cache.Lookup(h.p); ok {
-		if data, ok := h.m.cache.Get(h.p, hash); ok {
+		if data, ok := h.m.cache.Get(h.p, hash); ok && !h.distrustCached(int64(len(data)), hash) {
 			h.data, h.hash, h.loaded = data, hash, true
 			h.m.cache.Pin(hash)
 			h.pinned = true
@@ -1048,6 +1085,16 @@ func (h *readHandle) load(ctx context.Context) syscall.Errno {
 	if hash == "" {
 		hash = fsclient.HashBytes(data)
 	}
+	if errno := h.m.guardServed(h.p, int64(len(data)), hash); errno != 0 {
+		// The bytes are fresh and verified — they are the server's answer — so
+		// they are worth keeping: the retry (once the metadata is corrected)
+		// then costs no round trip. They are deliberately NOT recorded as
+		// served: they were never handed to a caller.
+		if len(data) <= int(h.m.cache.MaxEntryBytes()) {
+			_, _ = h.m.cache.Insert(h.p, hash, data)
+		}
+		return errno
+	}
 	h.data, h.hash, h.loaded = data, hash, true
 	h.m.wp.NoteServed(h.p, hash)
 	if len(data) <= int(h.m.cache.MaxEntryBytes()) {
@@ -1057,6 +1104,108 @@ func (h *readHandle) load(ctx context.Context) syscall.Errno {
 	}
 	h.m.recordOK()
 	return 0
+}
+
+// distrustCached reports whether the entry we hold for a path may not be served,
+// and drops it when that is the case. The one disqualifying fact is the length:
+// content LONGER than the size the kernel is holding would be clamped by the
+// kernel mid-copy, so a reader would receive a fragment of bytes we cannot vouch
+// for. Dropping the entry sends the read to the server instead — RE-FETCH, which
+// is what this client does when it cannot trust what it holds.
+//
+// A cached entry SHORTER than the bound is served: every byte it holds reaches
+// the reader (a true EOF at end-of-content), and whether those bytes are the
+// server's current ones is the cache-staleness class of BFS-024/026, which this
+// row does not touch.
+func (h *readHandle) distrustCached(n int64, hash string) bool {
+	bound, known := h.m.bounds.Bound(h.p)
+	if !known || n <= bound {
+		return false
+	}
+	h.m.noteBoundDivergence(h.p, bound, n, false)
+	h.m.logf("bunker-fs: the cache entry for %s (%d bytes) is longer than the size the kernel holds (%d): it is dropped and re-fetched rather than served", h.p, n, bound)
+	h.m.cache.Drop(h.p)
+	return true
+}
+
+// notePublished records what an attrs reply just told the kernel about a path.
+// Only a FILE is recorded: a read is bounded by a regular file's i_size, and a
+// directory is never read through this handle. It is the only source of the
+// bound (see bound.go), so it is called wherever fillAttr replies to the kernel.
+func (m *Mount) notePublished(nd fsclient.Node) {
+	if nd.IsDir {
+		return
+	}
+	m.bounds.Published(nd.Path, nd.Size)
+}
+
+// guardServed reconciles the content a read is about to serve with the size the
+// kernel is holding for that path, and it is the whole of BFS-025's fix:
+//
+//   - content longer than the bound: REFUSE, loudly, with ESTALE. A FUSE read is
+//     clamped by the kernel at that bound, so serving these bytes would hand the
+//     caller a fragment with rc=0 — the one outcome that is not allowed. The
+//     snapshot's entry for the path is corrected from the server's own answer
+//     first, so the retry (a re-open, which is what ESTALE tells a tool to do) is
+//     answered with the true size and succeeds.
+//   - content shorter than the bound: serve. Every byte the resource has reaches
+//     the reader (EOF is our own end-of-content, not the kernel's clamp), but the
+//     metadata we published was demonstrably wrong, so it is corrected and
+//     counted rather than left to be discovered later.
+//   - equal: the fast path. One comparison, no request, nothing recorded.
+func (m *Mount) guardServed(p string, n int64, hash string) syscall.Errno {
+	bound, known := m.bounds.Bound(p)
+	switch judgeServed(bound, known, n) {
+	case servedBoundTooSmall:
+		m.noteBoundDivergence(p, bound, n, true)
+		m.boundRefusals.Add(1)
+		m.correctSnapshot(p, n, hash)
+		err := &fsclient.OpError{
+			Op: "READ", Path: p, Errno: fsclient.ErrnoESTALE, Cause: fsclient.CauseStaleBound,
+			Detail: fmt.Sprintf("refusing to serve %d bytes where the kernel bounds this path at %d: a reader bound by that size would receive a silent fragment. The published size is stale; re-open the path (the metadata has been corrected from this content) and retry", n, bound),
+		}
+		m.recordFailure(err)
+		return errnoFor(err)
+	case servedBoundTooLarge:
+		m.noteBoundDivergence(p, bound, n, false)
+		m.correctSnapshot(p, n, hash)
+		return 0
+	default:
+		return 0
+	}
+}
+
+// correctSnapshot replaces the snapshot's entry for a path with what the SERVER
+// just said the file is, so the next attrs reply for the path publishes a true
+// size — which is what makes the refused read recoverable. It is deliberately
+// not called from a cache hit: our own memory is not evidence about the server,
+// which is the whole reason a cache entry is distrusted by length rather than
+// trusted for a size.
+func (m *Mount) correctSnapshot(p string, n int64, hash string) {
+	snap := m.snapshot()
+	if snap == nil {
+		return
+	}
+	nd, ok := snap.Lookup(p)
+	if !ok || nd.IsDir {
+		// A path the snapshot does not hold is answered live on the next attrs
+		// reply, which is the correction this exists for.
+		return
+	}
+	nd.Size = n
+	if hash != "" {
+		nd.Hash = hash
+	}
+	snap.Put(nd)
+}
+
+// noteBoundDivergence records one read-bound divergence: the counter, the last
+// one by name, and a log line. Both directions and both discovery paths go
+// through here, so the reported figures and the log can never disagree.
+func (m *Mount) noteBoundDivergence(p string, published, content int64, refused bool) {
+	m.boundRepairs.Add(1)
+	m.boundLast.Store(fmt.Sprintf("%s: published=%d content=%d refused=%v", p, published, content, refused))
+	m.logf("bunker-fs: read bound divergence %s: published=%d content=%d refused=%v (the metadata the kernel holds for this path was stale)", p, published, content, refused)
 }
 
 // Flush is a publication point for the write path when the handle was opened
@@ -1190,6 +1339,11 @@ func (h *writeHandle) Write(ctx context.Context, data []byte, off int64) (uint32
 	h.m.mu.Lock()
 	h.m.bufDocs[h.fh] = h.size
 	h.m.mu.Unlock()
+	// The kernel grows the inode's i_size to max(i_size, this end) on every write
+	// it acknowledges, so a read of this path is bounded by at least these bytes
+	// from now on (bound.go). Recorded on the SUCCESS path only: a refused write
+	// never reached the kernel's size.
+	h.m.bounds.Wrote(h.p, h.size)
 	return uint32(n), 0
 }
 

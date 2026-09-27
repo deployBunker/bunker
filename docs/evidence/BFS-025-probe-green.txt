@@ -1,0 +1,37 @@
+endpoint          : http://127.0.0.1:33631/dav (serving /tmp/bfs025/ev-green-probe/tree)
+mount             : http://127.0.0.1:33631/dav on /tmp/bfs025/ev-green-probe/mnt
+  cache dir        : /tmp/bfs025/ev-green-probe/xdg/bunker/fs/6aca1f78fe7b
+
+== arms 1/2/3: stat, replace, read (the driver's reproduction) ==
+  stat (no read)     : size=5  <- this alone is what the kernel will bound a read by
+  agent now          : size=82
+  stat (post)        : size=5  (stale on both trees: the mount's metadata has not moved)
+  splice read        : 0 bytes errno=input/output error
+  ok: the read FAILED LOUDLY (input/output error) instead of returning a fragment with rc=0
+  re-open + reread   : stat=82 splice=82 bytes errno=<nil>
+  ok: recovered: the retry returned all 82 bytes and stat reports the true size
+  ok: the unclamped control read all 82 bytes: the fragment is the kernel's bound, not a lost byte
+
+== arm 4: read, replace, read again (BFS-024's shape; NOT this row's fix) ==
+  phase 1 (before)   : read()=16 bytes "OLD-CONTENT-AAAA"
+  stat (post)        : size=16 (want 40, the live content)
+  phase 2 (after)    : splice=16 bytes errno=<nil> ; read()=16 bytes "OLD-CONTENT-AAAA"
+  -> STALE, unchanged by this row: BFS-024 is a filed row with its own acceptance
+
+== arm 5: the published size LARGER than the live content (the mirror image) ==
+  (a path never read: the content is fetched live, so this arm measures the bound and not the cache)
+  stat (published)   : size=82
+  live content       : 5 bytes "SHORT"
+  splice read        : 5 bytes errno=<nil>
+  read()             : 5 bytes "SHORT" errno=<nil>
+  ok: every byte the resource has was served, then a true EOF (no fragment of the larger published size)
+  status.read_bound  : refusals_total=2 corrections_total=4 last="long-then-short.txt: published=82 content=5 refused=false"
+  ok: the divergence is reported, not silent (corrections_total=4)
+  mount log          : bunker-fs: read bound divergence short-then-long.txt: published=5 content=82 refused=true (the metadata the kernel holds for this path was stale)
+  mount log          : bunker-fs: read bound divergence short-then-long.txt: published=5 content=82 refused=false (the metadata the kernel holds for this path was stale)
+  mount log          : bunker-fs: read bound divergence short-then-long.txt: published=5 content=82 refused=true (the metadata the kernel holds for this path was stale)
+  mount log          : bunker-fs: read bound divergence long-then-short.txt: published=82 content=5 refused=false (the metadata the kernel holds for this path was stale)
+  requests issued    : 11 (in-flight max 1)
+
+BFS-025 ARMS: PASS (work dir /tmp/bfs025/ev-green-probe)
+GREEN_PROBE_RC=0

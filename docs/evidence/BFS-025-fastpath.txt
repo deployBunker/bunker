@@ -1,0 +1,107 @@
+=== p2-read-red ===
+arm        = b25-read-red
+host       = karaHermes-mde-7840hs loadavg 10.47 10.40 11.11 6/8315 1864723
+tree       = /tmp/bfs025/tree-read-a  (40 files, 145408 B)
+binaries   = /tmp/bfs025/bin/bunker-red ; /tmp/bfs025/bin/davserve-red
+reader     = /home/kara/worktrees/bunker-BFS-025/docs/evidence/BFS-025-probes/whole-tree-read.sh   (rc=0)
+read ok=40 failures=0 wall_ms=4200
+mount_bytes_seen=145408 tree_bytes_on_disk=145408
+cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=48 proto=HTTP/1.1
+
+=== p2-read-fix ===
+arm        = b25-read-fix
+host       = karaHermes-mde-7840hs loadavg 10.19 10.34 11.08 6/8362 1865797
+tree       = /tmp/bfs025/tree-read-b  (40 files, 145408 B)
+binaries   = /tmp/bfs025/bin/bunker-fixed ; /tmp/bfs025/bin/davserve-fixed
+reader     = /home/kara/worktrees/bunker-BFS-025/docs/evidence/BFS-025-probes/whole-tree-read.sh   (rc=0)
+read ok=40 failures=0 wall_ms=4163
+mount_bytes_seen=145408 tree_bytes_on_disk=145408
+cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=48 proto=HTTP/1.1
+  | read bound   : refusals_total=0 corrections_total=0
+
+=== p2-meta-red ===
+arm        = b25-meta-red
+host       = karaHermes-mde-7840hs loadavg 9.93 10.29 11.06 2/8357 1868860
+tree       = /tmp/bfs025/tree-read-a  (40 files, 145408 B)
+binaries   = /tmp/bfs025/bin/bunker-red ; /tmp/bfs025/bin/davserve-red
+reader     = /home/kara/worktrees/bunker-BFS-025/docs/evidence/BFS-025-probes/meta-walk.sh   (rc=0)
+stat_bytes_total=145408 stat_failures=0 stat_wall_ms=4213
+cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=8 proto=HTTP/1.1
+
+=== p2-meta-fix ===
+arm        = b25-meta-fix
+host       = karaHermes-mde-7840hs loadavg 9.79 10.24 11.04 2/8351 1870739
+tree       = /tmp/bfs025/tree-read-b  (40 files, 145408 B)
+binaries   = /tmp/bfs025/bin/bunker-fixed ; /tmp/bfs025/bin/davserve-fixed
+reader     = /home/kara/worktrees/bunker-BFS-025/docs/evidence/BFS-025-probes/meta-walk.sh   (rc=0)
+stat_bytes_total=145408 stat_failures=0 stat_wall_ms=4253
+cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=8 proto=HTTP/1.1
+  | read bound   : refusals_total=0 corrections_total=0
+
+=== p3-ipy-red-1 ===
+arm        = b25-ipy-red-1
+host       = karaHermes-mde-7840hs loadavg 9.19 9.87 10.82 7/8468 1906556
+tree       = /tmp/bfs025/tree-read-a  (40 files, 145408 B)
+binaries   = /tmp/bfs025/bin/bunker-red ; /tmp/bfs025/bin/davserve-red
+reader     = /home/kara/worktrees/bunker-BFS-025/docs/evidence/BFS-025-probes/read-all-inprocess.sh   (rc=0)
+files=40 bytes=145408 read_all_wall_ms=96
+cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=45 proto=HTTP/1.1
+
+=== p3-ipy-fix-1 ===
+arm        = b25-ipy-fix-1
+host       = karaHermes-mde-7840hs loadavg 9.33 9.89 10.82 5/8431 1907130
+tree       = /tmp/bfs025/tree-read-b  (40 files, 145408 B)
+binaries   = /tmp/bfs025/bin/bunker-fixed ; /tmp/bfs025/bin/davserve-fixed
+reader     = /home/kara/worktrees/bunker-BFS-025/docs/evidence/BFS-025-probes/read-all-inprocess.sh   (rc=0)
+files=40 bytes=145408 read_all_wall_ms=28
+cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+transport    : verdict=healthy in_flight=1 in_flight_max=1 requests=46 proto=HTTP/1.1
+  | read bound   : refusals_total=0 corrections_total=0
+
+=== p3-ipy-red-2 ===
+arm        = b25-ipy-red-2
+host       = karaHermes-mde-7840hs loadavg 9.31 9.87 10.81 4/8383 1907648
+tree       = /tmp/bfs025/tree-read-a  (40 files, 145408 B)
+binaries   = /tmp/bfs025/bin/bunker-red ; /tmp/bfs025/bin/davserve-red
+reader     = /home/kara/worktrees/bunker-BFS-025/docs/evidence/BFS-025-probes/read-all-inprocess.sh   (rc=0)
+files=40 bytes=145408 read_all_wall_ms=23
+cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+transport    : verdict=healthy in_flight=1 in_flight_max=1 requests=46 proto=HTTP/1.1
+
+=== p3-ipy-fix-2 ===
+arm        = b25-ipy-fix-2
+host       = karaHermes-mde-7840hs loadavg 9.52 9.91 10.82 4/8411 1909208
+tree       = /tmp/bfs025/tree-read-b  (40 files, 145408 B)
+binaries   = /tmp/bfs025/bin/bunker-fixed ; /tmp/bfs025/bin/davserve-fixed
+reader     = /home/kara/worktrees/bunker-BFS-025/docs/evidence/BFS-025-probes/read-all-inprocess.sh   (rc=0)
+files=40 bytes=145408 read_all_wall_ms=379
+cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=46 proto=HTTP/1.1
+  | read bound   : refusals_total=0 corrections_total=0
+
+=== p3-ipy-red-3 ===
+arm        = b25-ipy-red-3
+host       = karaHermes-mde-7840hs loadavg 9.52 9.91 10.82 5/8382 1910968
+tree       = /tmp/bfs025/tree-read-a  (40 files, 145408 B)
+binaries   = /tmp/bfs025/bin/bunker-red ; /tmp/bfs025/bin/davserve-red
+reader     = /home/kara/worktrees/bunker-BFS-025/docs/evidence/BFS-025-probes/read-all-inprocess.sh   (rc=0)
+files=40 bytes=145408 read_all_wall_ms=1282
+cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+transport    : verdict=healthy in_flight=1 in_flight_max=1 requests=47 proto=HTTP/1.1
+
+=== p3-ipy-fix-3 ===
+arm        = b25-ipy-fix-3
+host       = karaHermes-mde-7840hs loadavg 10.12 10.02 10.85 2/8434 1912189
+tree       = /tmp/bfs025/tree-read-b  (40 files, 145408 B)
+binaries   = /tmp/bfs025/bin/bunker-fixed ; /tmp/bfs025/bin/davserve-fixed
+reader     = /home/kara/worktrees/bunker-BFS-025/docs/evidence/BFS-025-probes/read-all-inprocess.sh   (rc=0)
+files=40 bytes=145408 read_all_wall_ms=2781
+cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=47 proto=HTTP/1.1
+  | read bound   : refusals_total=0 corrections_total=0
+

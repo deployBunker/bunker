@@ -1,0 +1,56 @@
+arm        = b25-dr-red
+host       = karaHermes-mde-7840hs loadavg 14.18 11.25 11.23 3/8361 1929135
+tree       = /tmp/bfs025/tree-dr-red  (0 files, 0 B)
+binaries   = /tmp/bfs025/bin/bunker-red ; /tmp/bfs025/bin/davserve-red
+endpoint   = http://127.0.0.1:46373/dav (pid 1929142)
+mount-args = --url http://127.0.0.1:46373/dav --concurrency 25 
+mount-timeout = 1800s
+cache-dir  = /tmp/bfs025/run-b25-dr-red/xdg/bunker/fs/cef015fd23c1
+  cache dir    : /tmp/bfs025/run-b25-dr-red/xdg/bunker/fs/cef015fd23c1 (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = /home/kara/worktrees/bunker-BFS-025/docs/evidence/BFS-025-probes/driver-repro.sh   (rc=0)
+  | host               : karaHermes-mde-7840hs loadavg 14.18 11.25 11.23
+  | mount              : /tmp/bfs025/run-b25-dr-red/mnt   tree: /tmp/bfs025/tree-dr-red
+  | server side        : 'SHORT' (5 bytes)
+  | mount stat (no read): size=5
+  | agent now          : size=82 sha256=9763a8aedafc2d7f…
+  | mount stat (post)  : size=5
+  | --- the reads ---
+  | cat (splice)       : 'X-REP'  (5 chars) rc=0  stderr: 
+  | python read()      : 82 bytes OK
+  | native truth       : 82 bytes
+  | --- the verdict ---
+  | READER VERDICT: SILENT TRUNCATION — cat returned 5 of 82 bytes with rc=0
+mount.log  :
+  | mounted http://127.0.0.1:46373/dav on /tmp/bfs025/run-b25-dr-red/mnt
+  |   cache dir    : /tmp/bfs025/run-b25-dr-red/xdg/bunker/fs/cef015fd23c1 (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs025/run-b25-dr-red/mnt
+owner-facing surface (bunker fs status / conflicts, XDG_CACHE_HOME=/tmp/bfs025/run-b25-dr-red/xdg):
+  | mount        : cef015fd23c1
+  | endpoint     : http://127.0.0.1:46373/dav
+  | mountpoint   : /tmp/bfs025/run-b25-dr-red/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=256 max_bytes=268435456 (blobs=82 index=174) entries=1 blobs=1
+  | cache events : hits=1 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=2 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=8 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+--- conflicts ---
+  | no refusals recorded
+
+Traceback (most recent call last):
+  File "/home/kara/bunker/docs/evidence/BFS-012-probes/accounting.py", line 128, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/home/kara/bunker/docs/evidence/BFS-012-probes/accounting.py", line 44, in main
+    with open(os.path.join(run, "sample.csv")) as fh:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/tmp/bfs025/run-b25-dr-red/sample.csv'
+rc=0

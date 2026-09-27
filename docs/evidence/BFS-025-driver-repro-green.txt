@@ -1,0 +1,59 @@
+arm        = b25-dr-fix
+host       = karaHermes-mde-7840hs loadavg 13.52 11.17 11.20 2/8375 1929585
+tree       = /tmp/bfs025/tree-dr-fix  (0 files, 0 B)
+binaries   = /tmp/bfs025/bin/bunker-fixed ; /tmp/bfs025/bin/davserve-fixed
+endpoint   = http://127.0.0.1:44331/dav (pid 1929592)
+mount-args = --url http://127.0.0.1:44331/dav --concurrency 25 
+mount-timeout = 1800s
+cache-dir  = /tmp/bfs025/run-b25-dr-fix/xdg/bunker/fs/7e526cd0a2d7
+  cache dir    : /tmp/bfs025/run-b25-dr-fix/xdg/bunker/fs/7e526cd0a2d7 (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : poll
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = /home/kara/worktrees/bunker-BFS-025/docs/evidence/BFS-025-probes/driver-repro.sh   (rc=0)
+  | host               : karaHermes-mde-7840hs loadavg 13.52 11.17 11.20
+  | mount              : /tmp/bfs025/run-b25-dr-fix/mnt   tree: /tmp/bfs025/tree-dr-fix
+  | server side        : 'SHORT' (5 bytes)
+  | mount stat (no read): size=5
+  | agent now          : size=82 sha256=9763a8aedafc2d7f…
+  | mount stat (post)  : size=5
+  | --- the reads ---
+  | cat (splice)       : ''  (0 chars) rc=1  stderr: cat: /tmp/bfs025/run-b25-dr-fix/mnt/target.txt: Stale file handle
+  | python read()      : 82 bytes OK
+  | native truth       : 82 bytes
+  | --- the verdict ---
+  | READER VERDICT: LOUD — cat failed (rc=1) instead of returning a fragment
+mount.log  :
+  | mounted http://127.0.0.1:44331/dav on /tmp/bfs025/run-b25-dr-fix/mnt
+  |   cache dir    : /tmp/bfs025/run-b25-dr-fix/xdg/bunker/fs/7e526cd0a2d7 (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : poll
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs025/run-b25-dr-fix/mnt
+owner-facing surface (bunker fs status / conflicts, XDG_CACHE_HOME=/tmp/bfs025/run-b25-dr-fix/xdg):
+  | mount        : 7e526cd0a2d7
+  | endpoint     : http://127.0.0.1:44331/dav
+  | mountpoint   : /tmp/bfs025/run-b25-dr-fix/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=256 max_bytes=268435456 (blobs=82 index=174) entries=1 blobs=1
+  | cache events : hits=4 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=2 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=11 proto=HTTP/1.1
+  |   cause      : READ target.txt: errno=ESTALE cause=stale_bound: refusing to serve 82 bytes where the kernel bounds this path at 5: a reader bound by that size would receive a silent fragment. The published size is stale; re-open the path (the metadata has been corrected from this content) and retry
+  | write buffer : handles=0 bytes=0
+  | read bound   : refusals_total=4 corrections_total=7
+  |   last       : target.txt: published=5 content=82 refused=true
+--- conflicts ---
+  | no refusals recorded
+
+Traceback (most recent call last):
+  File "/home/kara/bunker/docs/evidence/BFS-012-probes/accounting.py", line 128, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/home/kara/bunker/docs/evidence/BFS-012-probes/accounting.py", line 44, in main
+    with open(os.path.join(run, "sample.csv")) as fh:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/tmp/bfs025/run-b25-dr-fix/sample.csv'
+rc=0

@@ -1,0 +1,32 @@
+endpoint          : http://127.0.0.1:39987/dav (serving /tmp/bfs025/ev-red-probe/tree)
+mount             : http://127.0.0.1:39987/dav on /tmp/bfs025/ev-red-probe/mnt
+  cache dir        : /tmp/bfs025/ev-red-probe/xdg/bunker/fs/0ffb4028d03e
+
+== arms 1/2/3: stat, replace, read (the driver's reproduction) ==
+  stat (no read)     : size=5  <- this alone is what the kernel will bound a read by
+  agent now          : size=82
+  stat (post)        : size=5  (stale on both trees: the mount's metadata has not moved)
+  splice read        : 5 bytes errno=<nil>
+  *** FAIL: SILENT TRUNCATION: the splice reader received 5 of 82 bytes with rc=0
+  re-open + reread   : stat=5 splice=5 bytes errno=<nil>
+  ok: the unclamped control read all 82 bytes: the fragment is the kernel's bound, not a lost byte
+
+== arm 4: read, replace, read again (BFS-024's shape; NOT this row's fix) ==
+  phase 1 (before)   : read()=16 bytes "OLD-CONTENT-AAAA"
+  stat (post)        : size=16 (want 40, the live content)
+  phase 2 (after)    : splice=16 bytes errno=<nil> ; read()=16 bytes "OLD-CONTENT-AAAA"
+  -> STALE, unchanged by this row: BFS-024 is a filed row with its own acceptance
+
+== arm 5: the published size LARGER than the live content (the mirror image) ==
+  (a path never read: the content is fetched live, so this arm measures the bound and not the cache)
+  stat (published)   : size=82
+  live content       : 5 bytes "SHORT"
+  splice read        : 5 bytes errno=<nil>
+  read()             : 5 bytes "SHORT" errno=<nil>
+  ok: every byte the resource has was served, then a true EOF (no fragment of the larger published size)
+  status.read_bound  : absent from this build's status document (the pre-fix tree)
+  requests issued    : 10 (in-flight max 1)
+
+BFS-025 ARMS: FAIL
+  - SILENT TRUNCATION: the splice reader received 5 of 82 bytes with rc=0
+RED_PROBE_RC=1

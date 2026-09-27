@@ -582,6 +582,10 @@ func printStatus(w io.Writer, st *fsclient.Status) {
 		fmt.Fprintf(w, "  cause      : %s\n", st.Transport.Cause)
 	}
 	fmt.Fprintf(w, "write buffer : handles=%d bytes=%d\n", st.WriteHandlesBuffered, st.WriteBufferBytes)
+	fmt.Fprintf(w, "read bound   : refusals_total=%d corrections_total=%d\n", st.ReadBound.RefusalsTotal, st.ReadBound.CorrectionsTotal)
+	if st.ReadBound.Last != "" {
+		fmt.Fprintf(w, "  last       : %s\n", st.ReadBound.Last)
+	}
 }
 
 func printDelegatedRefusal(w io.Writer, res *fsclient.DelegatedResult) {

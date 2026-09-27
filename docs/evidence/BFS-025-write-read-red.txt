@@ -1,0 +1,49 @@
+arm        = b25-wr-red
+host       = karaHermes-mde-7840hs loadavg 20.05 16.58 13.42 3/8643 2053125
+tree       = /tmp/bfs025/tree-wr-red  (0 files, 0 B)
+binaries   = /tmp/bfs025/bin/bunker-red ; /tmp/bfs025/bin/davserve-red
+endpoint   = http://127.0.0.1:38957/dav (pid 2053138)
+mount-args = --url http://127.0.0.1:38957/dav --concurrency 25 
+mount-timeout = 1800s
+cache-dir  = /tmp/bfs025/run-b25-wr-red/xdg/bunker/fs/18556fb9103a
+  cache dir    : /tmp/bfs025/run-b25-wr-red/xdg/bunker/fs/18556fb9103a (bound 268435456 bytes)
+  concurrency  : 25 request(s) in flight max
+  invalidation : auto
+  snapshot     : snapshot-op, 1 nodes in 1 call(s)
+reader     = /home/kara/worktrees/bunker-BFS-025/docs/evidence/BFS-025-probes/write-then-read.sh   (rc=0)
+  | == write, then read, through the mount ==
+  | write              : rc=0 
+  | server side        : size=31
+  | read back (cat)    : rc=0 'HELLO-WRITTEN-THROUGH-THE-MOUNT'  (31 chars) 
+  | WRITE-READ VERDICT: OK — the read of our own write was served in full
+mount.log  :
+  | mounted http://127.0.0.1:38957/dav on /tmp/bfs025/run-b25-wr-red/mnt
+  |   cache dir    : /tmp/bfs025/run-b25-wr-red/xdg/bunker/fs/18556fb9103a (bound 268435456 bytes)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+  |   unmount      : bunker fs umount /tmp/bfs025/run-b25-wr-red/mnt
+owner-facing surface (bunker fs status / conflicts, XDG_CACHE_HOME=/tmp/bfs025/run-b25-wr-red/xdg):
+  | mount        : 18556fb9103a
+  | endpoint     : http://127.0.0.1:38957/dav
+  | mountpoint   : /tmp/bfs025/run-b25-wr-red/mnt
+  | mode         : poll (mechanism=events)
+  | invalidation : mode=poll seq=0 poll_interval_ms=2000
+  | cache        : used_bytes=206 max_bytes=268435456 (blobs=31 index=175) entries=1 blobs=1
+  | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+  | conflicts    : refusals_total=0
+  | snapshot     : source=snapshot-op nodes=2 calls=1 truncated=false
+  | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=10 proto=HTTP/1.1
+  | write buffer : handles=0 bytes=0
+--- conflicts ---
+  | no refusals recorded
+
+Traceback (most recent call last):
+  File "/home/kara/bunker/docs/evidence/BFS-012-probes/accounting.py", line 128, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/home/kara/bunker/docs/evidence/BFS-012-probes/accounting.py", line 44, in main
+    with open(os.path.join(run, "sample.csv")) as fh:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/tmp/bfs025/run-b25-wr-red/sample.csv'
+rc=0

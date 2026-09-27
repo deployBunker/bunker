@@ -85,7 +85,31 @@ type Status struct {
 	// than streaming — the one local-capacity figure the write path can grow.
 	WriteHandlesBuffered int   `json:"write_handles_buffered"`
 	WriteBufferBytes     int64 `json:"write_buffer_bytes"`
-	UpdatedMS            int64 `json:"updated_ms"`
+	// ReadBound is the BFS-025 figure set: how often a read found the content it
+	// held inconsistent with the size this mount had published to the kernel.
+	// Refusals are reads that were refused (ESTALE) rather than served short;
+	// corrections are the times the mount repaired metadata it could not trust
+	// from the content the server served. Both are reported because a rule that
+	// fires silently is not a rule anyone can audit.
+	ReadBound ReadBoundState `json:"read_bound"`
+	UpdatedMS int64          `json:"updated_ms"`
+}
+
+// ReadBoundState is the `read_bound` block of the status document (BFS-025).
+type ReadBoundState struct {
+	// RefusalsTotal counts reads refused because the content the client held was
+	// LONGER than the size the kernel was holding for the path: serving it would
+	// have been a silent truncation.
+	RefusalsTotal int64 `json:"refusals_total"`
+	// CorrectionsTotal counts the times the client corrected state it could not
+	// trust — the published size of a path, or a cache entry whose length
+	// contradicted that size — from the content the server served.
+	CorrectionsTotal int64 `json:"corrections_total"`
+	// Last names the most recent divergence, formatted
+	// `<path>: published=<n> content=<m> refused=<bool>`; empty when none has
+	// happened. It is a string, not a struct, so it survives across a version
+	// without a schema change.
+	Last string `json:"last,omitempty"`
 }
 
 // MountRoot returns the per-user root of this client's cache directories:
