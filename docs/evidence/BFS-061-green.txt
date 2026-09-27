@@ -1,0 +1,16 @@
+BFS-061 arms — mode=green base=064b39f
+go go1.26.5 · 788a588 · 2026-09-27T15:18:15Z
+tree under test: internal/fsclient/invalidate.go sha256=69ff511fdc043176224426598601f3c3cc378bde261a4bc7c9812e6b1e7c5d7c
+               internal/fsclient/invalidate_bfs061_test.go sha256=ee1394ed1a406a01bf5249814122652281a9397cbe7f0242a266acb2485a6028
+               internal/fsclient/status_census_test.go sha256=bae8e4e888e5c76d4df79f6f6f0ed17fea8934114552d32977ae4869dafff591
+--- GREEN: go test ./internal/fsclient -run TestBFS061 -count=1 -v -timeout 120s
+=== RUN   TestBFS061HeartbeatsDoNotManufactureAGap
+--- PASS: TestBFS061HeartbeatsDoNotManufactureAGap (0.04s)
+=== RUN   TestBFS061ARealGapIsStillDetected
+--- PASS: TestBFS061ARealGapIsStillDetected (0.03s)
+=== RUN   TestBFS061AHeartbeatCannotMaskARealGap
+--- PASS: TestBFS061AHeartbeatCannotMaskARealGap (0.03s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.111s
+--- GREEN exit=0
+done: mode=green

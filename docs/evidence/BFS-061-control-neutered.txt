@@ -1,0 +1,29 @@
+BFS-061 arms — mode=neutered base=064b39f
+go go1.26.5 · 788a588 · 2026-09-27T15:18:16Z
+pre-mutation: internal/fsclient/invalidate.go sha256=69ff511fdc043176224426598601f3c3cc378bde261a4bc7c9812e6b1e7c5d7c
+mutated (neutered): internal/fsclient/invalidate.go sha256=36968a3c5dfb6be7bf70a1a83ecf77eab29d3340643e34ddd4235333e3c95724
+mutation audit (neutered): mutant text present, pre-image gone, gofmt clean, package builds
+--- CONTROL neutered (arm A MUST fail: the resync returns): go test ./internal/fsclient -run TestBFS061HeartbeatsDoNotManufactureAGap -count=1 -v -timeout 120s
+=== RUN   TestBFS061HeartbeatsDoNotManufactureAGap
+    invalidate_bfs061_test.go:142: THE HEARTBEAT MANUFACTURED A GAP: 5 heartbeats then ONE change moved resyncs_from_gap 0→1 and resyncs_total 0→1 with 1 full-view drop(s) [seq=7 resyncs_from_gap=1 resyncs_total=1 events_total=7 paths_dropped_total=1 heartbeats_total=5 reason="sequence gap at seq=7: the missing range is never re-requested"] — every keep-alive costs a whole-tree resync on the next change (H-2). Required: no gap, no resync, and the change applied precisely.
+--- FAIL: TestBFS061HeartbeatsDoNotManufactureAGap (0.04s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	0.046s
+FAIL
+--- CONTROL neutered (arm A MUST fail: the resync returns) exit=1
+--- CONTROL neutered (attribution: a real gap on a CHANGE line MUST still pass — it does not depend on the heartbeat's seq): go test ./internal/fsclient -run TestBFS061ARealGapIsStillDetected -count=1 -v -timeout 120s
+=== RUN   TestBFS061ARealGapIsStillDetected
+--- PASS: TestBFS061ARealGapIsStillDetected (0.03s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.037s
+--- CONTROL neutered (attribution: a real gap on a CHANGE line MUST still pass — it does not depend on the heartbeat's seq) exit=0
+--- CONTROL neutered (same mutation, same mechanism: arm C MUST also fail — it probes the heartbeat's own seq): go test ./internal/fsclient -run TestBFS061AHeartbeatCannotMaskARealGap -count=1 -v -timeout 120s
+=== RUN   TestBFS061AHeartbeatCannotMaskARealGap
+    invalidate_bfs061_test.go:226: A HEARTBEAT MASKED A REAL GAP: the keep-alive at seq=3 arrived on a cursor of 1, and the record is seq=1 resyncs_from_gap=0 resyncs_total=0 events_total=2 paths_dropped_total=1 heartbeats_total=1 reason="" — the client now holds a cursor or a silence that vouches for the interval [2] it never observed, and nothing will ever re-request it. A heartbeat must be recorded (SPEC-push-channel §3.1 R-1) AND compared to the cursor (§3.3 R-3), never consumed-and-discarded.
+--- FAIL: TestBFS061AHeartbeatCannotMaskARealGap (3.03s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	3.032s
+FAIL
+--- CONTROL neutered (same mutation, same mechanism: arm C MUST also fail — it probes the heartbeat's own seq) exit=1
+restore: internal/fsclient/invalidate.go sha256=69ff511fdc043176224426598601f3c3cc378bde261a4bc7c9812e6b1e7c5d7c (verified byte-identical against the pre-mutation hash)
+done: mode=neutered

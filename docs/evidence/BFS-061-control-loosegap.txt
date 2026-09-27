@@ -1,0 +1,29 @@
+BFS-061 arms — mode=loosegap base=064b39f
+go go1.26.5 · 788a588 · 2026-09-27T15:18:23Z
+pre-mutation: internal/fsclient/invalidate.go sha256=69ff511fdc043176224426598601f3c3cc378bde261a4bc7c9812e6b1e7c5d7c
+mutated (loosegap): internal/fsclient/invalidate.go sha256=6968eface967c3238b8a62f07f1b2d945f36e74f2f066b25f7cdc27d35f8cdb9
+mutation audit (loosegap): mutant text present, pre-image gone, gofmt clean, package builds
+--- CONTROL loosegap (arm B MUST fail: a REAL gap is no longer detected): go test ./internal/fsclient -run TestBFS061ARealGapIsStillDetected -count=1 -v -timeout 120s
+=== RUN   TestBFS061ARealGapIsStillDetected
+    invalidate_bfs061_test.go:180: A REAL GAP WAS NOT DETECTED: a change at seq=3 arrived on a cursor of 1, so the interval [2] was never observed, and the client reported seq=3 resyncs_from_gap=0 resyncs_total=0 events_total=2 paths_dropped_total=2 heartbeats_total=0 reason="" having dropped 2 path(s) — the gap check has been loosened, which trades this row's P1 for a silent-staleness P0.
+--- FAIL: TestBFS061ARealGapIsStillDetected (3.03s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	3.033s
+FAIL
+--- CONTROL loosegap (arm B MUST fail: a REAL gap is no longer detected) exit=1
+--- CONTROL loosegap (arm C MUST fail: a heartbeat now masks a REAL gap): go test ./internal/fsclient -run TestBFS061AHeartbeatCannotMaskARealGap -count=1 -v -timeout 120s
+=== RUN   TestBFS061AHeartbeatCannotMaskARealGap
+    invalidate_bfs061_test.go:226: A HEARTBEAT MASKED A REAL GAP: the keep-alive at seq=3 arrived on a cursor of 1, and the record is seq=3 resyncs_from_gap=0 resyncs_total=0 events_total=2 paths_dropped_total=1 heartbeats_total=1 reason="" — the client now holds a cursor or a silence that vouches for the interval [2] it never observed, and nothing will ever re-request it. A heartbeat must be recorded (SPEC-push-channel §3.1 R-1) AND compared to the cursor (§3.3 R-3), never consumed-and-discarded.
+--- FAIL: TestBFS061AHeartbeatCannotMaskARealGap (3.03s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	3.030s
+FAIL
+--- CONTROL loosegap (arm C MUST fail: a heartbeat now masks a REAL gap) exit=1
+--- CONTROL loosegap (attribution: arm A is the mutant's apparent success — the point of the control): go test ./internal/fsclient -run TestBFS061HeartbeatsDoNotManufactureAGap -count=1 -v -timeout 120s
+=== RUN   TestBFS061HeartbeatsDoNotManufactureAGap
+--- PASS: TestBFS061HeartbeatsDoNotManufactureAGap (0.04s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.046s
+--- CONTROL loosegap (attribution: arm A is the mutant's apparent success — the point of the control) exit=0
+restore: internal/fsclient/invalidate.go sha256=69ff511fdc043176224426598601f3c3cc378bde261a4bc7c9812e6b1e7c5d7c (verified byte-identical against the pre-mutation hash)
+done: mode=loosegap

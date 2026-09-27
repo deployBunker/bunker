@@ -1,0 +1,12 @@
+=== BFS-061 arms under -race (the arms themselves are race-clean) ===
+tree: internal/fsclient/invalidate.go sha256=69ff511fdc043176224426598601f3c3cc378bde261a4bc7c9812e6b1e7c5d7c
+--- go test ./internal/fsclient -count=1 -race -run TestBFS061 -v -timeout 200s
+=== RUN   TestBFS061HeartbeatsDoNotManufactureAGap
+--- PASS: TestBFS061HeartbeatsDoNotManufactureAGap (0.05s)
+=== RUN   TestBFS061ARealGapIsStillDetected
+--- PASS: TestBFS061ARealGapIsStillDetected (0.03s)
+=== RUN   TestBFS061AHeartbeatCannotMaskARealGap
+--- PASS: TestBFS061AHeartbeatCannotMaskARealGap (0.03s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsclient	1.127s
+--- exit=0
