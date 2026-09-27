@@ -213,7 +213,10 @@ answers "is this the same tree I bound to?".
 - **Response shape.**
   - `X-Bunker-Rev: <opaque>` on every response, plus `bunkerd:rev` in `PROPFIND`. For a git tree the token is
     `git:<40-hex>`; otherwise a server-maintained monotonic counter. Callers treat it as opaque; the shape in force is
-    named in the capability document (§4.2).
+    named in the capability document (§4.2). **What the token covers is kind-scoped** (BFS-048): the `counter` kind
+    moves on every mutation through this surface; the `git` kind moves only when the served tree's HEAD ref moves
+    (commit, checkout, reset), so an uncommitted working-tree write — ours or anyone else's — moves nothing. A caller
+    that needs uncommitted edits must use E-6's `events` (or `watch`), never the revision poll.
   - `X-Bunker-Tree: <opaque>` on every response, plus `bunkerd:tree` in `PROPFIND`.
   - `X-Bunker-Proto: HTTP/1.1|HTTP/2.0|HTTP/3.0` on every response: the version the server actually **observed**
     (`r.Proto`), so a downgrade is a visible fact rather than an assumption (§4.4).

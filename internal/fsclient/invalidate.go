@@ -50,10 +50,13 @@ const (
 // pushed NDJSON stream, `events` the declared poll form of the same channel
 // (per-path detail), and `rev` the revision poll this client falls back to when
 // a build serves neither: one cheap request per interval whose X-Bunker-Rev
-// answers for the WHOLE tree, which is all a client that cannot see names needs
-// to know whether its view is still current. The mechanism is reported because
-// the difference between per-path drops and a whole-tree resync is a cost, not
-// a detail.
+// answers for the tree AT THE REVISION'S OWN GRANULARITY. That granularity is
+// declared by the capability document's `extensions.rev.kind` — `counter`
+// moves on every mutation this surface performs, `git` moves only when the
+// served tree's HEAD ref moves, so an uncommitted working-tree edit (ours or
+// anyone else's) moves nothing on a git tree (BFS-048; SPEC-watcher-capability
+// §2.4). The mechanism is reported because the difference between per-path
+// drops and a whole-tree resync is a cost, not a detail.
 const (
 	MechanismWatch  = "watch"
 	MechanismEvents = "events"
@@ -506,10 +509,18 @@ func (i *Invalidator) pollEventsOnce(ctx context.Context) *OpError {
 }
 
 // pollRevOnce is the revision poll. Every response carries X-Bunker-Rev and
-// X-Bunker-Tree, so ONE cheap request per interval answers "is my view still the
-// tree's view?" for the whole tree. A changed revision means the client cannot
-// know WHICH paths moved — under this mechanism every change is a full resync,
-// which is exactly why the mechanism is reported next to the mode.
+// X-Bunker-Tree, so ONE cheap request per interval answers "has the tree moved
+// at the served revision's own granularity?" A changed revision means the
+// client cannot know WHICH paths moved — under this mechanism every change is a
+// full resync, which is exactly why the mechanism is reported next to the mode.
+//
+// What the token covers is the revision's declared kind (extensions.rev.kind),
+// not the whole tree unconditionally: on a git tree the token is the resolved
+// HEAD, so an uncommitted working-tree edit moves nothing and this poll
+// correctly reports quiet (BFS-048). Coverage of uncommitted edits is the
+// `events` mechanism's job (its ledger observes the tree directly); the rev
+// poll is the last resort and must never be read as asserting more than the
+// kind it serves.
 func (i *Invalidator) pollRevOnce(ctx context.Context) {
 	req, err := i.client.newRequest(ctx, http.MethodOptions, "", nil)
 	if err != nil {
@@ -546,7 +557,21 @@ func (i *Invalidator) pollRevOnce(ctx context.Context) {
 	}
 }
 
-// revSeen is the last revision the revision poll observed.
+// lastRevSeen is the last revision the revision poll observed.
+func (i *Invalidator) lastRevSeen() string {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return i.revSeen
+}
+
+// revAnswers reports how many revision-poll requests the server answered, so a
+// test can prove the mechanism's shape: ONE cheap request per interval.
+func (i *Invalidator) revAnswers() int64 {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return i.events
+}
+
 func (i *Invalidator) setMode(mode, reason string) {
 	i.mu.Lock()
 	defer i.mu.Unlock()

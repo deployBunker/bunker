@@ -268,6 +268,16 @@ func fnv32a(s string) uint32 {
 
 // bumpRev advances the non-git tree revision counter and invalidates the
 // cached git revision, so a write is visible to the very next response.
+//
+// Scope (BFS-048): on a non-git tree this makes the served revision move for
+// every mutation this surface performs. On a git tree the served token is the
+// resolved HEAD ("git:<40 hex>", revToken below), so an out-of-band or even
+// an in-band uncommitted write moves nothing the client's revision poll can
+// see — only a commit/checkout/reset moves that ref. That is the token's
+// declared kind (extensions.rev.kind = "git"), not a defect to paper over
+// here: per SPEC-watcher-capability §7 R-V2 the revision must never be
+// advanced by a stat-per-read walk, and aligning it with out-of-band change
+// is the watcher's job (BFS-035, R-V1).
 func (t *tree) bumpRev() {
 	t.counter.Add(1)
 	t.revMu.Lock()
@@ -278,6 +288,10 @@ func (t *tree) bumpRev() {
 // revToken implements E-3's X-Bunker-Rev. For a git tree it is the resolved
 // HEAD commit hash ("git:<40 hex>"); otherwise the server-maintained
 // monotonic counter (O-9), bumped by every mutation this surface performs.
+// The kinds promise different things: "counter" moves on any mutation
+// through this surface; "git" moves only when HEAD's ref moves, so an
+// uncommitted working-tree edit moves neither token (BFS-048). The kind in
+// force is declared by the capability document (extensions.rev.kind, ops.go).
 func (t *tree) revToken() string {
 	if r := t.cachedGitHead(); r != "" {
 		return "git:" + r

@@ -19,7 +19,9 @@ import (
 // The watcher is per-target and this build has none, so `watch` answers
 // capability_unavailable with mode=poll. THIS is the mode it names, and the
 // client's invalidation path depends on it: `events` is the poll form the
-// client prefers over its last-resort revision poll. A build that declares the
+// client prefers over its last-resort revision poll — and the one mechanism
+// that observes uncommitted edits on a git tree, where the revision poll's
+// HEAD token moves on commits only (BFS-048). A build that declares the
 // poll form and does not serve it leaves the mount with no mechanism at all —
 // which is what BFS-026 found: the client reports the dead channel honestly and
 // the cache never invalidates.

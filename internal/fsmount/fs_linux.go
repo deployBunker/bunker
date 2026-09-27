@@ -272,7 +272,10 @@ func MountAt(opts Options) (*Mount, error) {
 
 	// The invalidation channel: push where the target has a watcher, the
 	// declared poll form where it does not, the revision poll where it has
-	// neither — always reporting which one answered.
+	// neither — always reporting which one answered. The revision poll covers
+	// the tree only at the served revision's granularity: on a git tree that
+	// is HEAD, so uncommitted edits move it only on commit (BFS-048); the
+	// events poll is the mechanism that sees uncommitted edits.
 	m.inv = fsclient.NewInvalidator(client, fsclient.InvalidateOptions{
 		Mode:         opts.Invalidation,
 		PollInterval: opts.PollInterval,

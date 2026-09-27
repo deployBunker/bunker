@@ -52,7 +52,7 @@ This section exists because a mandated fallback that does not exist is a lie in 
 |---|---|---|---|
 `watch` (push) | a long-lived NDJSON stream of `invalidate`/`heartbeat`/`overflow` lines | **no** — refused `501 capability_unavailable`, `scope=target`, `mode=poll` | `internal/server/webdav/ops.go:84–90` |
 `events` (poll) | one bounded stat-only observation per call, diffed against the identity last seen, answered as an E-4 envelope | **yes** | `internal/server/webdav/events.go` (BFS-026) |
-`rev` (revision poll) | one cheap request per interval whose `X-Bunker-Rev` answers for the whole tree — the client's last-resort mechanism | **yes** (every response carries it) | `internal/server/webdav/handler.go:233`; client `internal/fsclient/invalidate.go:508–547` |
+`rev` (revision poll) | one cheap request per interval whose `X-Bunker-Rev` answers for the tree at the revision's own granularity — `git:<HEAD>` moves on committed ref movement only, so an uncommitted out-of-band edit moves nothing (§2.4; BFS-048) — the client's last-resort mechanism | **yes** (every response carries it) | `internal/server/webdav/handler.go:233`; client `internal/fsclient/invalidate.go:508–547` |
 
 The client's own vocabulary, verbatim (`internal/fsclient/invalidate.go:44–62`): **mode** ∈ `push` | `poll`; **mechanism** ∈ `watch` | `events` | `rev` | `none`. The mechanism is reported next to the mode because "per-path drops" and "a whole-tree resync" are a cost, not a detail.
 
