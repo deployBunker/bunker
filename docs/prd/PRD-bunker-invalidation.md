@@ -95,6 +95,23 @@ blob or gets the new one; there is no third state. Corollaries:
 - a reader holding the old blob keeps it alive (refcount), so eviction must respect in-flight reads;
 - the size/eviction accounting must count published blobs, not in-flight ones.
 
+**AMENDED 2026-09-27 (BFS-042's F-1, confirmed by the PRD owner).** The bullet above was wrong on its
+own, and the contradiction is worth recording because it is the same defect one layer up: **"count
+published blobs only" and BFS-031's "the bound must bound the whole directory and the reported figure
+must agree with `du`" cannot both hold unamended** once a refresh writes bytes *before* publishing. A
+cache at 99% plus two 8 MiB refreshes in flight is **16 MiB over the bound while every reported figure
+still reads "inside"** — which is exactly BFS-031's shape. **The resolution is to split the accounts,
+not to pick a side:**
+
+- **eviction accounting** reasons about **published blobs only** — that is what the refcount rule protects;
+- **admission** reserves **published + in-flight**, because an in-flight blob's bytes are really on disk
+  and that is what actually bounds the directory;
+- **both figures are reported separately**, so an operator can see the reservation as well as the
+  occupancy.
+
+A bound that is only true of the state you chose to count is not a bound — which is the same lesson as
+BFS-031, arriving from a different direction.
+
 ### 2.6 Promotion must not double-fetch
 R9 has a trap: a queued refresh *and* a direct read of the same path can both fetch it. **Requirement: a
 per-path single-flight map**, so a promotion hands the *existing* in-flight fetch to the reader rather
@@ -123,6 +140,14 @@ You said the data type was off-mind. Concretely, and deliberately simple:
 - **Exponentially decayed counts**, one per path: `score = score*decay + weight`, where a read is a small
   weight and an *edit* a larger one (an edited file is more likely to be wanted again than a merely read
   one). Decay-on-touch, so an old favourite falls out naturally and no sweeper is needed.
+
+  **CORRECTED 2026-09-27 (BFS-042's F-3).** The clause above is **true of the mechanism and insufficient
+  as a displacement rule**, and the gap is subtle enough to be worth stating: an abandoned entry's score
+  **only decays if something touches it — and nothing does.** So decay-on-touch alone lets a full
+  tracker **freeze on stale favourites with nothing looking broken**, which is the silent-stale failure
+  this whole PRD exists to prevent. The rule is therefore **decay applied both on touch and on
+  comparison**, so scores age out because they are *read*, not because they are touched. Still no
+  sweeper — but the mechanism is now complete rather than merely plausible.
 - Kept in a **fixed-size map** — the "small cache" is bounded in **entries** as well as bytes, so a repo
   with 400k files cannot make the tracker grow without limit.
 - **Persisted per endpoint**, keyed the same way the cache dir is keyed, so it survives a remount.
