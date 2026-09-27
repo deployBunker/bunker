@@ -1,0 +1,150 @@
+out       = /tmp/bfs024-UduzB9
+tree      = /tmp/bfs024-f1-PTI6
+binaries  = /home/kara/worktrees/bunker-BFS-024/bunker / /home/kara/worktrees/bunker-BFS-024/bin/davserve
+date      = 2026-09-27T13:54:28Z
+fixture   = inband.txt never.txt stale-w1.txt stale-w2.txt stale-w3.txt stale-w4.txt stale-w5.txt 
+endpoint  = http://127.0.0.1:39099/dav
+cache-dir = /tmp/bfs024-UduzB9/xdg/bunker/fs/367e5d000da7
+mount.log (banner):
+    bunker-fs: tightened mountpoint /tmp/bfs024-UduzB9/mnt to 0700 (it was group/world accessible)
+    bunker-fs: bound to http://127.0.0.1:39099/dav tree=tree:72fe13bd1cae5cda rev=rev:0 proto=HTTP/1.1 extensions="identity,if_match_refuse,rev,tree,op,watch"
+    bunker-fs: declared degradation: watch (scope=target mode=poll): no watcher is established on this target: the server-side watcher is not enabled in this deployment; the declared poll form X-Bunker-Op: events carries the channel (mode=poll), or poll with HEAD/ETag
+    mounted http://127.0.0.1:39099/dav on /tmp/bfs024-UduzB9/mnt
+      cache dir    : /tmp/bfs024-UduzB9/xdg/bunker/fs/367e5d000da7 (bound 268435456 bytes)
+      concurrency  : 8 request(s) in flight max
+      invalidation : auto
+      snapshot     : snapshot-op, 8 nodes in 1 call(s)
+      unmount      : bunker fs umount /tmp/bfs024-UduzB9/mnt
+    bunker-fs: readdirplus=true
+channel at bind = events=0 dropped=0 seq=0 mechanism=events available=True resyncs=0 reason='capability_unavailable on watch (scope=target mode=poll): declared poll fallback'
+cache at bind   = {"blobs": 0, "blobs_bytes": 0, "bypass_events": 0, "entries": 0, "evictions_total": 0, "hits": 0, "in_flight_bytes": 0, "index_bytes": 26, "max_bytes": 268435456, "max_entries": 16384, "max_inflight": 2, "misses": 0, "oversize_bypasses": 0, "pinned_blobs": 0, "reserved_bytes": 26, "staged_aborted_total": 0, "staged_blobs": 0, "staged_committed_total": 0, "staged_no_room_total": 0, "staged_no_slot_total": 0, "used_bytes": 26}
+
+=== arm W1-diff-length  (stale-w1.txt)  out-of-band write: diff-length ===
+  target before    : 'v1-original-content-22'  size=22 mtime=2026-09-27 08:54:28.931695903
+  mount read (cat) : rc=0 bytes=22 sha=ffa7e33f55cea9a4b9865f37db841bc5f5fd7c6c6acab57852f41c82de38e8e7 err= body=v1-original-content-22
+  mount read (py)  : rc=0 bytes=22 sha=ffa7e33f55cea9a4b9865f37db841bc5f5fd7c6c6acab57852f41c82de38e8e7 err= body=v1-original-content-22
+  cached proof     : two more reads cost 0 request(s) → cached=yes
+  channel before   : events=0 dropped=0 seq=0 mechanism=events available=True resyncs=0 reason='capability_unavailable on watch (scope=target mode=poll): declared poll fallback'
+  target after     : 'v2-REPLACED-with-different-length-content'  size=41 mtime=2026-09-27 08:54:33.711634604
+  target sha       : 8ae120723fe5d1396b76dd0e2fd052acbd17e6e17b16c7dedef243cf10a9a19a   (new-bytes sha 8ae120723fe5d1396b76dd0e2fd052acbd17e6e17b16c7dedef243cf10a9a19a)
+  edit at          : t+0 = 1790517273718 ms
+  mount +400 ms    : rc=0 bytes=22 sha=ffa7e33f55cea9a4b9865f37db841bc5f5fd7c6c6acab57852f41c82de38e8e7 err= body=v1-original-content-22
+  mount +500 ms    : rc=0 bytes=22 sha=ffa7e33f55cea9a4b9865f37db841bc5f5fd7c6c6acab57852f41c82de38e8e7 err= body=v1-original-content-22
+  FIRST-FRESH      : 1897 ms after the edit   (1 reads, hold 14s)
+  first REFUSAL    : NEVER ms after the edit
+  channel after    : events=1 dropped=1 seq=2 mechanism=events available=True resyncs=0 reason='capability_unavailable on watch (scope=target mode=poll): declared poll fallback'
+  new mount.log lines naming stale-w1.txt :
+  NEG native read  : sha=8ae120723fe5d1396b76dd0e2fd052acbd17e6e17b16c7dedef243cf10a9a19a  'v2-REPLACED-with-different-length-content'
+ARM-RESULT name=W1-diff-length how=diff-length cached=yes seed_size=22 new_size=41 first_fresh_ms=1897 first_refusal_ms=NEVER stale_served=no
+
+=== arm W2-same-size-same-mtime  (stale-w2.txt)  out-of-band write: same-size-same-mtime ===
+  target before    : 'v1-original-content-22'  size=22 mtime=2026-09-27 08:54:28.931695903
+  mount read (cat) : rc=0 bytes=22 sha=ffa7e33f55cea9a4b9865f37db841bc5f5fd7c6c6acab57852f41c82de38e8e7 err= body=v1-original-content-22
+  mount read (py)  : rc=0 bytes=22 sha=ffa7e33f55cea9a4b9865f37db841bc5f5fd7c6c6acab57852f41c82de38e8e7 err= body=v1-original-content-22
+  cached proof     : two more reads cost 0 request(s) → cached=yes
+  channel before   : events=1 dropped=1 seq=2 mechanism=events available=True resyncs=0 reason='capability_unavailable on watch (scope=target mode=poll): declared poll fallback'
+  target after     : 'v2X-REPLACED-same-size'  size=22 mtime=2026-09-27 08:54:28.931695903
+  target sha       : 221b13539d3dbf10a98a6ac51c6f0cf08b676f105a460458ec09006a26ed2cfe   (new-bytes sha 221b13539d3dbf10a98a6ac51c6f0cf08b676f105a460458ec09006a26ed2cfe)
+  edit at          : t+0 = 1790517276779 ms
+  mount +400 ms    : rc=0 bytes=22 sha=221b13539d3dbf10a98a6ac51c6f0cf08b676f105a460458ec09006a26ed2cfe err= body=v2X-REPLACED-same-size
+  mount +500 ms    : rc=0 bytes=22 sha=221b13539d3dbf10a98a6ac51c6f0cf08b676f105a460458ec09006a26ed2cfe err= body=v2X-REPLACED-same-size
+  FIRST-FRESH      : 1382 ms after the edit   (1 reads, hold 14s)
+  first REFUSAL    : NEVER ms after the edit
+  channel after    : events=2 dropped=2 seq=3 mechanism=events available=True resyncs=0 reason='capability_unavailable on watch (scope=target mode=poll): declared poll fallback'
+  new mount.log lines naming stale-w2.txt :
+  NEG native read  : sha=221b13539d3dbf10a98a6ac51c6f0cf08b676f105a460458ec09006a26ed2cfe  'v2X-REPLACED-same-size'
+ARM-RESULT name=W2-same-size-same-mtime how=same-size-same-mtime cached=yes seed_size=22 new_size=22 first_fresh_ms=1382 first_refusal_ms=NEVER stale_served=no
+
+=== arm W3-same-size-new-mtime  (stale-w3.txt)  out-of-band write: same-size-new-mtime ===
+  target before    : 'v1-original-content-22'  size=22 mtime=2026-09-27 08:54:28.931695903
+  mount read (cat) : rc=0 bytes=22 sha=ffa7e33f55cea9a4b9865f37db841bc5f5fd7c6c6acab57852f41c82de38e8e7 err= body=v1-original-content-22
+  mount read (py)  : rc=0 bytes=22 sha=ffa7e33f55cea9a4b9865f37db841bc5f5fd7c6c6acab57852f41c82de38e8e7 err= body=v1-original-content-22
+  cached proof     : two more reads cost 1 request(s) → cached=no
+  channel before   : events=2 dropped=2 seq=3 mechanism=events available=True resyncs=0 reason='capability_unavailable on watch (scope=target mode=poll): declared poll fallback'
+  target after     : 'v2X-REPLACED-same-size'  size=22 mtime=2026-09-27 08:54:46.656334275
+  target sha       : 221b13539d3dbf10a98a6ac51c6f0cf08b676f105a460458ec09006a26ed2cfe   (new-bytes sha 221b13539d3dbf10a98a6ac51c6f0cf08b676f105a460458ec09006a26ed2cfe)
+  edit at          : t+0 = 1790517279666 ms
+  mount +400 ms    : rc=0 bytes=22 sha=ffa7e33f55cea9a4b9865f37db841bc5f5fd7c6c6acab57852f41c82de38e8e7 err= body=v1-original-content-22
+  mount +500 ms    : rc=0 bytes=22 sha=ffa7e33f55cea9a4b9865f37db841bc5f5fd7c6c6acab57852f41c82de38e8e7 err= body=v1-original-content-22
+  FIRST-FRESH      : 1904 ms after the edit   (1 reads, hold 14s)
+  first REFUSAL    : NEVER ms after the edit
+  channel after    : events=2 dropped=2 seq=3 mechanism=events available=True resyncs=0 reason='capability_unavailable on watch (scope=target mode=poll): declared poll fallback'
+  new mount.log lines naming stale-w3.txt :
+  NEG native read  : sha=221b13539d3dbf10a98a6ac51c6f0cf08b676f105a460458ec09006a26ed2cfe  'v2X-REPLACED-same-size'
+ARM-RESULT name=W3-same-size-new-mtime how=same-size-new-mtime cached=no seed_size=22 new_size=22 first_fresh_ms=1904 first_refusal_ms=NEVER stale_served=no PREMISE-VACUOUS(the path was not served from cache)
+
+=== arm W4-unlink-recreate  (stale-w4.txt)  out-of-band write: unlink-recreate ===
+  target before    : 'v1-original-content-22'  size=22 mtime=2026-09-27 08:54:28.931695903
+  mount read (cat) : rc=0 bytes=22 sha=ffa7e33f55cea9a4b9865f37db841bc5f5fd7c6c6acab57852f41c82de38e8e7 err= body=v1-original-content-22
+  mount read (py)  : rc=0 bytes=22 sha=ffa7e33f55cea9a4b9865f37db841bc5f5fd7c6c6acab57852f41c82de38e8e7 err= body=v1-original-content-22
+  cached proof     : two more reads cost 0 request(s) → cached=yes
+  channel before   : events=2 dropped=2 seq=3 mechanism=events available=True resyncs=0 reason='capability_unavailable on watch (scope=target mode=poll): declared poll fallback'
+  target after     : 'v2-REPLACED-after-unlink-and-recreate'  size=37 mtime=2026-09-27 08:54:42.828412796
+  target sha       : 8a94fe89ecd84922ee5e7620c54922012dc24f0e71f53d7333f59738dec4915a   (new-bytes sha 8a94fe89ecd84922ee5e7620c54922012dc24f0e71f53d7333f59738dec4915a)
+  edit at          : t+0 = 1790517282834 ms
+  mount +400 ms    : rc=0 bytes=37 sha=8a94fe89ecd84922ee5e7620c54922012dc24f0e71f53d7333f59738dec4915a err= body=v2-REPLACED-after-unlink-and-recreate
+  mount +500 ms    : rc=0 bytes=37 sha=8a94fe89ecd84922ee5e7620c54922012dc24f0e71f53d7333f59738dec4915a err= body=v2-REPLACED-after-unlink-and-recreate
+  FIRST-FRESH      : 1234 ms after the edit   (1 reads, hold 14s)
+  first REFUSAL    : NEVER ms after the edit
+  channel after    : events=4 dropped=5 seq=5 mechanism=events available=True resyncs=0 reason='capability_unavailable on watch (scope=target mode=poll): declared poll fallback'
+  new mount.log lines naming stale-w4.txt :
+  NEG native read  : sha=8a94fe89ecd84922ee5e7620c54922012dc24f0e71f53d7333f59738dec4915a  'v2-REPLACED-after-unlink-and-recreate'
+ARM-RESULT name=W4-unlink-recreate how=unlink-recreate cached=yes seed_size=22 new_size=37 first_fresh_ms=1234 first_refusal_ms=NEVER stale_served=no
+
+=== arm W5-rename-over  (stale-w5.txt)  out-of-band write: rename-over ===
+  target before    : 'v1-original-content-22'  size=22 mtime=2026-09-27 08:54:28.931695903
+  mount read (cat) : rc=0 bytes=22 sha=ffa7e33f55cea9a4b9865f37db841bc5f5fd7c6c6acab57852f41c82de38e8e7 err= body=v1-original-content-22
+  mount read (py)  : rc=0 bytes=22 sha=ffa7e33f55cea9a4b9865f37db841bc5f5fd7c6c6acab57852f41c82de38e8e7 err= body=v1-original-content-22
+  cached proof     : two more reads cost 0 request(s) → cached=yes
+  channel before   : events=4 dropped=5 seq=5 mechanism=events available=True resyncs=0 reason='capability_unavailable on watch (scope=target mode=poll): declared poll fallback'
+  target after     : 'v2-REPLACED-by-atomic-rename'  size=28 mtime=2026-09-27 08:54:45.012368305
+  target sha       : 6f28f304ac1b24c032e97ff4aa09e85e135a21f6efdb255d3c5cbf2445aa5b1d   (new-bytes sha 6f28f304ac1b24c032e97ff4aa09e85e135a21f6efdb255d3c5cbf2445aa5b1d)
+  edit at          : t+0 = 1790517285128 ms
+  mount +400 ms    : rc=0 bytes=28 sha=6f28f304ac1b24c032e97ff4aa09e85e135a21f6efdb255d3c5cbf2445aa5b1d err= body=v2-REPLACED-by-atomic-rename
+  mount +500 ms    : rc=0 bytes=28 sha=6f28f304ac1b24c032e97ff4aa09e85e135a21f6efdb255d3c5cbf2445aa5b1d err= body=v2-REPLACED-by-atomic-rename
+  FIRST-FRESH      : 1164 ms after the edit   (1 reads, hold 14s)
+  first REFUSAL    : NEVER ms after the edit
+  channel after    : events=5 dropped=7 seq=6 mechanism=events available=True resyncs=0 reason='capability_unavailable on watch (scope=target mode=poll): declared poll fallback'
+  new mount.log lines naming stale-w5.txt :
+  NEG native read  : sha=6f28f304ac1b24c032e97ff4aa09e85e135a21f6efdb255d3c5cbf2445aa5b1d  'v2-REPLACED-by-atomic-rename'
+ARM-RESULT name=W5-rename-over how=rename-over cached=yes seed_size=22 new_size=28 first_fresh_ms=1164 first_refusal_ms=NEVER stale_served=no
+
+=== arm N1  in-band write THROUGH the mount (a NEW name; this surface cannot overwrite in place) ===
+  seed             : 'n1-v1-on-the-target'
+  mount read       : rc=0 bytes=19 sha=61265bd4b4f763a4b305f1cfe636fae27f2e0d322b5644b550d08b52930d1475 err= body=n1-v1-on-the-target
+  create via mount : rc=0 (a NEW name - in-place overwrite of an existing file is refused by design, BFS-030)
+  mount read back  : rc=0 bytes=38 sha=8d993012a818ed543cf8bdb7adf220528b043fd88fd7c6474e991468168b24ea err= body=n1-v2-written-through-the-mount-itself
+  target read      : 'n1-v2-written-through-the-mount-itself'
+  native sha       : 8d993012a818ed543cf8bdb7adf220528b043fd88fd7c6474e991468168b24ea
+
+=== arm N2  NEVER-READ path, replaced out of band (BFS-025's shape, for contrast) ===
+  stat only, no read: size=23
+  target now       : 'n2-REPLACED-with-much-longer-content-than-before' (48 bytes)
+  mount read       : rc=1 bytes=0 sha=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 err=cat: /tmp/bfs024-UduzB9/mnt/never.txt: Stale file handle body=
+  mount read (py)  : rc=0 bytes=48 sha=340e32a0ff67317226378f8343011720f5f27bba27b2b1f91adf60e364276831 err= body=n2-REPLACED-with-much-longer-content-than-before
+
+=== NEG control: a FRESH mount (own cache dir, bound AFTER the edits) ===
+  cache-dir 2 = /tmp/bfs024-UduzB9/xdg2/bunker/fs/367e5d000da7
+  first read of every arm path through the FRESH mount:
+    stale-w1.txt -> rc=0 bytes=41 sha=8ae120723fe5d1396b76dd0e2fd052acbd17e6e17b16c7dedef243cf10a9a19a err= body=v2-REPLACED-with-different-length-content
+    stale-w2.txt -> rc=0 bytes=22 sha=221b13539d3dbf10a98a6ac51c6f0cf08b676f105a460458ec09006a26ed2cfe err= body=v2X-REPLACED-same-size
+    stale-w3.txt -> rc=0 bytes=22 sha=221b13539d3dbf10a98a6ac51c6f0cf08b676f105a460458ec09006a26ed2cfe err= body=v2X-REPLACED-same-size
+    stale-w4.txt -> rc=0 bytes=37 sha=8a94fe89ecd84922ee5e7620c54922012dc24f0e71f53d7333f59738dec4915a err= body=v2-REPLACED-after-unlink-and-recreate
+    stale-w5.txt -> rc=0 bytes=28 sha=6f28f304ac1b24c032e97ff4aa09e85e135a21f6efdb255d3c5cbf2445aa5b1d err= body=v2-REPLACED-by-atomic-rename
+    never.txt -> rc=0 bytes=48 sha=340e32a0ff67317226378f8343011720f5f27bba27b2b1f91adf60e364276831 err= body=n2-REPLACED-with-much-longer-content-than-before
+    inband.txt -> rc=0 bytes=19 sha=61265bd4b4f763a4b305f1cfe636fae27f2e0d322b5644b550d08b52930d1475 err= body=n1-v1-on-the-target
+  (native shas for the same paths:)
+    stale-w1.txt native sha=8ae120723fe5d1396b76dd0e2fd052acbd17e6e17b16c7dedef243cf10a9a19a size=41
+    stale-w2.txt native sha=221b13539d3dbf10a98a6ac51c6f0cf08b676f105a460458ec09006a26ed2cfe size=22
+    stale-w3.txt native sha=221b13539d3dbf10a98a6ac51c6f0cf08b676f105a460458ec09006a26ed2cfe size=22
+    stale-w4.txt native sha=8a94fe89ecd84922ee5e7620c54922012dc24f0e71f53d7333f59738dec4915a size=37
+    stale-w5.txt native sha=6f28f304ac1b24c032e97ff4aa09e85e135a21f6efdb255d3c5cbf2445aa5b1d size=28
+    never.txt native sha=340e32a0ff67317226378f8343011720f5f27bba27b2b1f91adf60e364276831 size=48
+    inband.txt native sha=61265bd4b4f763a4b305f1cfe636fae27f2e0d322b5644b550d08b52930d1475 size=19
+
+=== FINAL RECORDS ===
+mount1 channel = events=6 dropped=11 seq=7 mechanism=events available=True resyncs=0 reason='capability_unavailable on watch (scope=target mode=poll): declared poll fallback'
+mount1 cache   = {"blobs": 4, "blobs_bytes": 128, "bypass_events": 0, "entries": 4, "evictions_total": 0, "hits": 27, "in_flight_bytes": 0, "index_bytes": 629, "max_bytes": 268435456, "max_entries": 16384, "max_inflight": 2, "misses": 0, "oversize_bypasses": 0, "pinned_blobs": 0, "reserved_bytes": 757, "staged_aborted_total": 0, "staged_blobs": 0, "staged_committed_total": 0, "staged_no_room_total": 0, "staged_no_slot_total": 0, "used_bytes": 757}
+mount1 transport = {"cause": "READ never.txt: errno=ESTALE cause=stale_bound: refusing to serve 48 bytes where the kernel bounds this path at 23: a reader bound by that size would receive a silent fragment. The published size is stale; re-open the path (the metadata has been corrected from this content) and retry", "in_flight": 0, "in_flight_max": 1, "last_ok_age_ms": 3515, "proto": "HTTP/1.1", "requests_total": 42, "rev": "rev:1", "tree": "tree:72fe13bd1cae5cda", "verdict": "healthy"}
+mount2 channel = events=0 dropped=0 seq=0 mechanism=events available=True resyncs=0 reason='capability_unavailable on watch (scope=target mode=poll): declared poll fallback'
+transcripts: /tmp/bfs024-UduzB9

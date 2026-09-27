@@ -1,0 +1,28 @@
+out = /tmp/bfs024fp-u55RGj
+tree = /tmp/bfs024-f2-dnVh   files = 200
+fixture bytes = 804 KiB
+endpoint = http://127.0.0.1:45495/dav
+cache-dir = /tmp/bfs024fp-u55RGj/xdg/bunker/fs/3dc0cf5b477f
+
+=== the fast path, in requests and wall time (200 files) ===
+ls -l (cold, first look)           requests=0    wall_ms=55     -rw-rw-r-- 1 kara kara 50 Sep 27 08:54 f99.txt
+ls -l (again)                      requests=0    wall_ms=44     -rw-rw-r-- 1 kara kara 50 Sep 27 08:54 f99.txt
+ls -lR (a walk)                    requests=0    wall_ms=43     -rw-rw-r-- 1 kara kara 50 Sep 27 08:54 f99.txt
+find -type f | wc -l               requests=0    wall_ms=21     200
+stat one file                      requests=1    wall_ms=16      Birth: -
+read ALL files, cold               requests=135  wall_ms=2822   
+read ALL files, warm (cache)       requests=1    wall_ms=1954   
+read ONE file, warm                requests=0    wall_ms=12     file-001-payload-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+=== the invalidation channel's own cost, over an idle window ===
+  idle 6.3 s: requests 208 -> 211 (delta 3)  means 3 request(s) for 3.1 declared poll intervals of 2000 ms
+  channel = events=0 dropped=0 seq=0 mechanism=events available=True poll_ms=2000 resyncs=0
+
+=== the same fast path with an out-of-band edit in the tree (one file) ===
+ls -l right after an edit          requests=0    wall_ms=40     -rw-rw-r-- 1 kara kara 50 Sep 27 08:54 f99.txt
+read the edited file (cold)        requests=0    wall_ms=20     file-007-payload-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+read the edited file (again)       requests=0    wall_ms=17     EDITED-OUT-OF-BAND
+  channel = events=1 dropped=1 seq=2 mechanism=events available=True poll_ms=2000 resyncs=0
+  cache   = {"blobs": 199, "blobs_bytes": 9950, "bypass_events": 0, "entries": 199, "evictions_total": 0, "hits": 202, "in_flight_bytes": 0, "index_bytes": 29172, "max_bytes": 268435456, "max_entries": 16384, "max_inflight": 2, "misses": 0, "oversize_bypasses": 0, "pinned_blobs": 0, "reserved_bytes": 39122, "staged_aborted_total": 0, "staged_blobs": 0, "staged_committed_total": 0, "staged_no_room_total": 0, "staged_no_slot_total": 0, "used_bytes": 39122}
+
+transcripts: /tmp/bfs024fp-u55RGj
