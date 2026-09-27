@@ -3457,3 +3457,34 @@ tasks:
   status: complete
   created_at: '2026-09-27T03:35:14.004474+00:00'
   completed_at: '2026-09-27T03:35:54.196331+00:00'
+- id: DF-BUNKER-77
+  title: Repair image-spec agent execution surface
+  criteria:
+  - Image-spec agents must execute as the agent user with the agent home, env file,
+    and rootless Docker socket available; tests and live acceptance prove env set,
+    docker info, and agent-tools git visibility.
+  status: complete
+  created_at: '2026-09-27T04:06:35.771754+00:00'
+  completed_at: '2026-09-27T05:37:59.132517+00:00'
+- id: DF-BUNKER-77-R2
+  title: Image exec must run as the agent user (code-level conjuncts; live-host acceptance
+    split to its own row)
+  criteria:
+  - 'internal/server/service.go: the three image-backed exec builders (buildAgentImageExecCommand,
+    buildAgentImageRawExecCommand, buildAgentImageScriptCommand) each add a docker-run
+    ''--user <uid>'' element where the uid is resolved via os/user for the agent user
+    bunker-<id>, and each REFUSES loudly (errAgentUserUnresolved / refusal string,
+    nonzero exit) when that agent user cannot be resolved instead of running the container
+    as root.'
+  - 'internal/server/service.go: the image-backed exec paths bind the agent runtime
+    directory /run/bunker/<id> into the container at its absolute host path (agentRuntimeDirBind),
+    for shell, raw and script modes.'
+  - 'The no-image exec path is byte-identical to before: TestExecBuilders_NonImagePathIsByteIdentical
+    passes.'
+  - internal/server/exec_image_agent_runtime_test.go exists and drives the REAL production
+    builders, pinning '--user' and the /run/bunker/<id> bind for shell, raw and script
+    modes.
+  - go build ./... , go vet ./... and go test ./internal/server -count=1 all pass
+    at the evaluated commit.
+  status: in_progress
+  created_at: '2026-09-27T05:45:03.710076+00:00'
