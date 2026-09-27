@@ -1,0 +1,13 @@
+diff --git a/internal/fsmount/bfs039_cancel_test.go b/internal/fsmount/bfs039_cancel_test.go
+index 8ee39ba..d04caea 100644
+--- a/internal/fsmount/bfs039_cancel_test.go
++++ b/internal/fsmount/bfs039_cancel_test.go
+@@ -664,7 +664,7 @@ func bfs039LockArtifacts(t *testing.T, dir string) []string {
+ 			return nil
+ 		}
+ 		n := strings.ToLower(d.Name())
+-		if strings.Contains(n, "lock") || strings.Contains(n, "pid") || strings.Contains(n, "in-use") || strings.Contains(n, "inuse") {
++		if strings.Contains(n, "pid") || strings.Contains(n, "in-use") || strings.Contains(n, "inuse") {
+ 			out = append(out, p)
+ 		}
+ 		return nil

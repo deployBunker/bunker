@@ -1,0 +1,51 @@
+BFS-039 — the successful-path benchmarks, run separately on both trees.
+
+=== CONTROL TREE (e47abec, pre-fix) ===
+goos: linux
+goarch: amd64
+pkg: github.com/deployBunker/bunker/internal/fsclient
+cpu: AMD Ryzen 7 7840HS w/ Radeon 780M Graphics     
+BenchmarkStagedRefreshPublish8MiB-16    	--- FAIL: BenchmarkStagedRefreshPublish8MiB-16
+    cache_staged_test.go:1350: Stage: fsclient: no room for a staged refresh: 256 entries at the entry bound 256
+BenchmarkGetPinned8MiB-16               	     300	   7538293 ns/op	1112.80 MB/s
+BenchmarkGetAndPin8MiB-16               	     300	   6061261 ns/op	1383.97 MB/s
+BenchmarkCheckHoldMiss-16               	     300	        11.29 ns/op
+BenchmarkCheckHoldMissContended-16      	     300	        24.01 ns/op
+FAIL
+exit status 1
+FAIL	github.com/deployBunker/bunker/internal/fsclient	8.129s
+goos: linux
+goarch: amd64
+pkg: github.com/deployBunker/bunker/internal/fsmount
+cpu: AMD Ryzen 7 7840HS w/ Radeon 780M Graphics     
+BenchmarkWriteIntentOn-16    	     300	        63.42 ns/op
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsmount	0.039s
+FAIL
+
+=== FIXED TREE ===
+goos: linux
+goarch: amd64
+pkg: github.com/deployBunker/bunker/internal/fsclient
+cpu: AMD Ryzen 7 7840HS w/ Radeon 780M Graphics     
+BenchmarkStagedRefreshPublish8MiB-16    	--- FAIL: BenchmarkStagedRefreshPublish8MiB-16
+    cache_staged_test.go:1350: Stage: fsclient: no room for a staged refresh: 256 entries at the entry bound 256
+BenchmarkGetPinned8MiB-16               	     300	   6763865 ns/op	1240.21 MB/s
+BenchmarkGetAndPin8MiB-16               	     300	  11228228 ns/op	 747.10 MB/s
+BenchmarkCheckHoldMiss-16               	     300	        10.99 ns/op
+BenchmarkCheckHoldMissContended-16      	     300	        21.11 ns/op
+FAIL
+exit status 1
+FAIL	github.com/deployBunker/bunker/internal/fsclient	9.036s
+goos: linux
+goarch: amd64
+pkg: github.com/deployBunker/bunker/internal/fsmount
+cpu: AMD Ryzen 7 7840HS w/ Radeon 780M Graphics     
+BenchmarkWriteIntentOn-16    	     300	        55.17 ns/op
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsmount	0.018s
+FAIL
+
+NOTES: host load average 68 on 16 cores during both runs; BenchmarkStagedRefreshPublish8MiB
+FAILS IDENTICALLY on both trees (a pre-existing bench defect, named in BFS-039-cancel-io.md §7);
+internal/fsclient/cache.go has NO DIFF in this change, so the read-path deltas cannot be this row's.

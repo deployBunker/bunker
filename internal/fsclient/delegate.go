@@ -102,7 +102,9 @@ func (c *Client) Op(ctx context.Context, op string, args any, decodeInto any) (*
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, classifyTransport(err)
+		// A cancelled read is a cancellation, not a transport fault: the caller
+		// gets EINTR and retries the same op (BFS-039).
+		return nil, classifyRequest(ctx, err, "op:"+op, "")
 	}
 	env := &Envelope{Status: resp.StatusCode, Raw: raw}
 	if err := json.Unmarshal(raw, env); err != nil {

@@ -1,0 +1,161 @@
+BFS-039 arms — THE FULL RUN: the tree green, then all seven mutations.
+Captured verbatim from: sh docs/evidence/BFS-039-arms.sh all
+generated 2026-09-27T16:29:02Z on wt/BFS-039
+
+BFS-039 arms — mode=all
+go go1.26.5 · 936ae0d · 2026-09-27T16:25:55Z
+tree under test:
+  internal/fsclient/errors.go      sha256=568603b01fdc0b5ca42e28d19bf6dff20d8d9817ec936897667c5fa202bf2213
+  internal/fsmount/fs_linux.go    sha256=e6a3b5ba399cc09eb0d994cafaefd970a8fff8f11ccbba442178452c4c2cc5f7
+  internal/server/webdav/handler.go     sha256=285d033d96e0ab7d37363a7b4dd535c641790be39f4ef40d43064153b2aa8faa
+  internal/fsmount/bfs039_cancel_test.go    sha256=c100701b53de599da34d190efa041829284b71931dc5856f1ecc3d2f64310cba
+--- GREEN (client: the cancel taxonomy and the completed BFS-046 cell 8): go test ./internal/fsclient -run TestBFS039|TestBFS046Cell08|TestBFS046PendingUntilLandingGate -count=1 -timeout 300s
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.301s
+--- GREEN (client: the cancel taxonomy and the completed BFS-046 cell 8) exit=0
+OK   GREEN (client: the cancel taxonomy and the completed BFS-046 cell 8) PASSED as declared
+--- GREEN (mount: kill, idempotence, cancel/retry, lock): go test ./internal/fsmount -run TestBFS039 -count=1 -timeout 300s
+ok  	github.com/deployBunker/bunker/internal/fsmount	0.384s
+--- GREEN (mount: kill, idempotence, cancel/retry, lock) exit=0
+OK   GREEN (mount: kill, idempotence, cancel/retry, lock) PASSED as declared
+
+==============================================================
+CONTROL cancel-class — BFS-039-redproof-cancel-class.patch
+==============================================================
+pre-mutation: internal/fsclient/errors.go sha256=568603b01fdc0b5ca42e28d19bf6dff20d8d9817ec936897667c5fa202bf2213
+mutated: internal/fsclient/errors.go sha256=70a40b3144fc4a6f3f63562d68eefcc1783d8e773dd20402d1c82edf7e148406 via BFS-039-redproof-cancel-class.patch
+--- CONTROL cancel-class (the mutation MUST turn this cell red): go test ./internal/fsclient -run TestBFS039DeliberateCancelIsDistinguishableFromFailure -count=1 -timeout 300s
+--- FAIL: TestBFS039DeliberateCancelIsDistinguishableFromFailure (0.25s)
+    bfs039_cancel_test.go:89: BFS039-MEASURE arm=deliberate-cancel errno=ENOTCONN(107) cause="unreachable_reset" detail=""
+    bfs039_cancel_test.go:101: BFS039-MEASURE arm=server-500 errno=EIO(5) cause="server_error"
+    bfs039_cancel_test.go:119: BFS039-MEASURE arm=transport-reset errno=ENOTCONN(107) cause="unreachable_connect"
+    bfs039_cancel_test.go:126: a DELIBERATE cancel reported errno=ENOTCONN (107), want EINTR (4): the caller's own Ctrl-C is being reported as a transport fault, so it cannot tell a cancel from a fault and cannot retry correctly (PRD §2.8)
+    bfs039_cancel_test.go:130: a DELIBERATE cancel reported cause="unreachable_reset", want "cancelled"
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	0.261s
+FAIL
+--- CONTROL cancel-class (the mutation MUST turn this cell red) exit=1
+OK   CONTROL cancel-class (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL cancel-class (attribution: this cell MUST be unmoved): go test ./internal/fsclient -run TestBFS046Cell08KilledReaderLeavesTheBlobAndThePathIntact -count=1 -timeout 300s
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.012s
+--- CONTROL cancel-class (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL cancel-class (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/fsclient/errors.go sha256=568603b01fdc0b5ca42e28d19bf6dff20d8d9817ec936897667c5fa202bf2213 (verified byte-identical)
+
+==============================================================
+CONTROL sticky-flush — BFS-039-redproof-sticky-flush.patch
+==============================================================
+pre-mutation: internal/fsmount/fs_linux.go sha256=e6a3b5ba399cc09eb0d994cafaefd970a8fff8f11ccbba442178452c4c2cc5f7
+mutated: internal/fsmount/fs_linux.go sha256=55236edca02586610c808f15ec97ec87d220a144f42bc310534ee7ff2a9f8aa3 via BFS-039-redproof-sticky-flush.patch
+--- CONTROL sticky-flush (the mutation MUST turn this cell red): go test ./internal/fsmount -run TestBFS039DeliberateCancelReturnsEINTRAndTheRetryLandsOnce -count=1 -timeout 300s
+--- FAIL: TestBFS039DeliberateCancelReturnsEINTRAndTheRetryLandsOnce (0.01s)
+    bfs039_cancel_test.go:707: BFS039-DIAG retry failure=PUT /dav/cancelled.txt: errno=EINTR cause=cancelled: the operation was cancelled by the caller (EINTR): no verdict was given, so retrying it is safe: Put "http://127.0.0.1:43743/dav/cancelled.txt": context canceled base={IfMatch: IfNoneMatchStar:true Source:absent} hasBase=true flushed=true size=33
+    bfs039_cancel_test.go:708: the retry after a cancel was refused with errno=interrupted system call (EINTR): a cancellation is not a verdict, and the handle must stay publishable so the EINTR recovery works
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsmount	0.013s
+FAIL
+--- CONTROL sticky-flush (the mutation MUST turn this cell red) exit=1
+OK   CONTROL sticky-flush (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL sticky-flush (attribution: this cell MUST be unmoved): go test ./internal/fsmount -run TestBFS039RetriedWriteDoesNotApplyTwice -count=1 -timeout 300s
+ok  	github.com/deployBunker/bunker/internal/fsmount	0.054s
+--- CONTROL sticky-flush (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL sticky-flush (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/fsmount/fs_linux.go sha256=e6a3b5ba399cc09eb0d994cafaefd970a8fff8f11ccbba442178452c4c2cc5f7 (verified byte-identical)
+
+==============================================================
+CONTROL named-buffer — BFS-039-redproof-named-buffer.patch
+==============================================================
+pre-mutation: internal/fsmount/fs_linux.go sha256=e6a3b5ba399cc09eb0d994cafaefd970a8fff8f11ccbba442178452c4c2cc5f7
+mutated: internal/fsmount/fs_linux.go sha256=bfb007f2c7c453025cfa8c90ea1163e83fb548d7dcb21e01eaf0c6cdc969a266 via BFS-039-redproof-named-buffer.patch
+--- CONTROL named-buffer (the mutation MUST turn this cell red): go test ./internal/fsmount -run TestBFS039KilledWriterLeavesNoResidueAndThePathUsable -count=1 -timeout 300s
+--- FAIL: TestBFS039KilledWriterLeavesNoResidueAndThePathUsable (0.01s)
+    bfs039_cancel_test.go:325: BFS039-MEASURE while the writer is live: 1048576 buffered bytes, 1 named buffer file(s) in the cache dir [writebuf-3559824054]
+    bfs039_cancel_test.go:340: a SIGKILLed writer left [writebuf-3559824054] in the cache directory (1 file(s), 1048576 buffered bytes): the bytes have no reader and no bound, and they survive the reopen sweep because the sweep owns blobs/ and not this name
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsmount	0.014s
+FAIL
+--- CONTROL named-buffer (the mutation MUST turn this cell red) exit=1
+OK   CONTROL named-buffer (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL named-buffer (attribution: this cell MUST be unmoved): go test ./internal/fsmount -run TestBFS039LockSensorIsNotBlind -count=1 -timeout 300s
+ok  	github.com/deployBunker/bunker/internal/fsmount	0.004s
+--- CONTROL named-buffer (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL named-buffer (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/fsmount/fs_linux.go sha256=e6a3b5ba399cc09eb0d994cafaefd970a8fff8f11ccbba442178452c4c2cc5f7 (verified byte-identical)
+
+==============================================================
+CONTROL closable-body — BFS-039-redproof-closable-body.patch
+==============================================================
+pre-mutation: internal/fsmount/fs_linux.go sha256=e6a3b5ba399cc09eb0d994cafaefd970a8fff8f11ccbba442178452c4c2cc5f7
+mutated: internal/fsmount/fs_linux.go sha256=a155d2f033a41cdbdfc2cf467700e7e87347558c234d60055dd29bf0e21e7130 via BFS-039-redproof-closable-body.patch
+--- CONTROL closable-body (the mutation MUST turn this cell red): go test ./internal/fsmount -run TestBFS039CancelledPublicationDoesNotCloseTheBuffer -count=1 -timeout 300s
+--- FAIL: TestBFS039CancelledPublicationDoesNotCloseTheBuffer (0.00s)
+    bfs039_cancel_test.go:461: the retry after a mid-request cancel was refused with errno=input/output error (EIO): the cancelled attempt destroyed the buffer the retry has to re-send
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsmount	0.006s
+FAIL
+--- CONTROL closable-body (the mutation MUST turn this cell red) exit=1
+OK   CONTROL closable-body (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL closable-body (attribution: this cell MUST be unmoved): go test ./internal/fsmount -run TestBFS039LockSensorIsNotBlind -count=1 -timeout 300s
+ok  	github.com/deployBunker/bunker/internal/fsmount	0.005s
+--- CONTROL closable-body (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL closable-body (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/fsmount/fs_linux.go sha256=e6a3b5ba399cc09eb0d994cafaefd970a8fff8f11ccbba442178452c4c2cc5f7 (verified byte-identical)
+
+==============================================================
+CONTROL non-positional-write — BFS-039-redproof-non-positional-write.patch
+==============================================================
+pre-mutation: internal/fsmount/fs_linux.go sha256=e6a3b5ba399cc09eb0d994cafaefd970a8fff8f11ccbba442178452c4c2cc5f7
+mutated: internal/fsmount/fs_linux.go sha256=f80a586982526061bba4e6835e31ac3ab799b354b43aaed14af8610a145ba873 via BFS-039-redproof-non-positional-write.patch
+--- CONTROL non-positional-write (the mutation MUST turn this cell red): go test ./internal/fsmount -run TestBFS039RetriedWriteDoesNotApplyTwice -count=1 -timeout 300s
+--- FAIL: TestBFS039RetriedWriteDoesNotApplyTwice (0.01s)
+    bfs039_cancel_test.go:571: ARM 1 — the handle's buffer holds 26 byte(s) "exactly once\nexactly once\n" after the SAME write at the SAME offset twice, want exactly "exactly once\n" (13 byte(s)): the mutation was applied twice
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsmount	0.016s
+FAIL
+--- CONTROL non-positional-write (the mutation MUST turn this cell red) exit=1
+OK   CONTROL non-positional-write (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL non-positional-write (attribution: this cell MUST be unmoved): go test ./internal/fsmount -run TestBFS039LockSensorIsNotBlind -count=1 -timeout 300s
+ok  	github.com/deployBunker/bunker/internal/fsmount	0.003s
+--- CONTROL non-positional-write (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL non-positional-write (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/fsmount/fs_linux.go sha256=e6a3b5ba399cc09eb0d994cafaefd970a8fff8f11ccbba442178452c4c2cc5f7 (verified byte-identical)
+
+==============================================================
+CONTROL removed-noop-rule — BFS-039-redproof-removed-noop-rule.patch
+==============================================================
+pre-mutation: internal/server/webdav/handler.go sha256=285d033d96e0ab7d37363a7b4dd535c641790be39f4ef40d43064153b2aa8faa
+mutated: internal/server/webdav/handler.go sha256=001279223d6da07e501befd68794950b6466faa879a65133021f3624ddb5c545 via BFS-039-redproof-removed-noop-rule.patch
+--- CONTROL removed-noop-rule (the mutation MUST turn this cell red): go test ./internal/fsmount -run TestBFS039RetriedWriteDoesNotApplyTwice -count=1 -timeout 300s
+--- FAIL: TestBFS039RetriedWriteDoesNotApplyTwice (0.02s)
+    bfs039_cancel_test.go:628: the retry moved the mtime (2026-09-27 11:26:04.140038768 -0500 -05 -> 2026-09-27 11:26:04.156071073 -0500 -05): an identical rewrite must be the surface's REPORTED no-op, not a second write
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsmount	0.026s
+FAIL
+--- CONTROL removed-noop-rule (the mutation MUST turn this cell red) exit=1
+OK   CONTROL removed-noop-rule (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL removed-noop-rule (attribution: this cell MUST be unmoved): go test ./internal/fsmount -run TestBFS039CancelledPublicationDoesNotCloseTheBuffer -count=1 -timeout 300s
+ok  	github.com/deployBunker/bunker/internal/fsmount	0.005s
+--- CONTROL removed-noop-rule (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL removed-noop-rule (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/server/webdav/handler.go sha256=285d033d96e0ab7d37363a7b4dd535c641790be39f4ef40d43064153b2aa8faa (verified byte-identical)
+
+==============================================================
+CONTROL blind-lock-sensor — BFS-039-redproof-blind-lock-sensor.patch
+==============================================================
+pre-mutation: internal/fsmount/bfs039_cancel_test.go sha256=c100701b53de599da34d190efa041829284b71931dc5856f1ecc3d2f64310cba
+mutated: internal/fsmount/bfs039_cancel_test.go sha256=ffdf3974ce728808a7bf908c84f55d8e81fc7ce1dfe375ff80fc2c23dd2858bf via BFS-039-redproof-blind-lock-sensor.patch
+--- CONTROL blind-lock-sensor (the mutation MUST turn this cell red): go test ./internal/fsmount -run TestBFS039LockSensorIsNotBlind -count=1 -timeout 300s
+--- FAIL: TestBFS039LockSensorIsNotBlind (0.00s)
+    bfs039_cancel_test.go:781: the lock sensor did not see a stale lock file that exists: the green lock claim in this row would be blind
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsmount	0.003s
+FAIL
+--- CONTROL blind-lock-sensor (the mutation MUST turn this cell red) exit=1
+OK   CONTROL blind-lock-sensor (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL blind-lock-sensor (attribution: this cell MUST be unmoved): go test ./internal/fsmount -run TestBFS039KilledWriterLeavesNoResidueAndThePathUsable -count=1 -timeout 300s
+ok  	github.com/deployBunker/bunker/internal/fsmount	0.019s
+--- CONTROL blind-lock-sensor (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL blind-lock-sensor (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/fsmount/bfs039_cancel_test.go sha256=c100701b53de599da34d190efa041829284b71931dc5856f1ecc3d2f64310cba (verified byte-identical)
+
+BFS-039 arms: OK (every declared outcome matched)
+RC=0

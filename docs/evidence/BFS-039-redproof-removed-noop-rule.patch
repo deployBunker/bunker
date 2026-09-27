@@ -1,0 +1,14 @@
+diff --git a/internal/server/webdav/handler.go b/internal/server/webdav/handler.go
+index 80dbbe1..e2cf16b 100644
+--- a/internal/server/webdav/handler.go
++++ b/internal/server/webdav/handler.go
+@@ -686,9 +686,6 @@ func putPrecondition(r *http.Request, exists bool, currentHash, bodyHash string)
+ 	// caller that asked to create a resource it believed absent must still be
+ 	// told it is not absent (BFS-015's rule-2 arm), whatever the bytes happen
+ 	// to be.
+-	if exists && currentHash == bodyHash && r.Header.Get("If-None-Match") != "*" {
+-		return putNoop, nil
+-	}
+ 	f := checkPreconditions(r, exists, currentHash)
+ 	switch {
+ 	case f == nil:

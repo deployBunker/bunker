@@ -673,6 +673,22 @@ const (
 // answers immediately, and once inside the commit immediately before the
 // rename (§6.1 step 5). One function, so the two evaluations cannot drift.
 func putPrecondition(r *http.Request, exists bool, currentHash, bodyHash string) (putDecision, *failure) {
+	// D3, WIDENED FOR A RETRY (BFS-039). The arriving bytes ARE the current
+	// content, so there is nothing to write and the answer is the reported
+	// no-op — and this now holds when the precondition SUCCEEDS, not only when
+	// the base was stale. The case it adds is the one a cancelled write
+	// produces: the caller retries the same bytes, the base is correct, and
+	// before this rule the surface re-wrote identical content, moving the
+	// mtime and bumping the served revision for a change that did not happen —
+	// a spurious invalidation every other client then acts on.
+	//
+	// The create-only rule (`If-None-Match: *`) is deliberately EXEMPT: a
+	// caller that asked to create a resource it believed absent must still be
+	// told it is not absent (BFS-015's rule-2 arm), whatever the bytes happen
+	// to be.
+	if exists && currentHash == bodyHash && r.Header.Get("If-None-Match") != "*" {
+		return putNoop, nil
+	}
 	f := checkPreconditions(r, exists, currentHash)
 	switch {
 	case f == nil:

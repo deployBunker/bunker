@@ -105,6 +105,13 @@ type Client struct {
 	inflight    atomic.Int64
 	inflightMax atomic.Int64
 	requests    atomic.Int64
+	// cancels counts the operations a CALLER cancelled (BFS-039): a FUSE
+	// interrupt, a caller-side timeout, a Ctrl-C. It is a figure of its own and
+	// not a failure count, because the two have different recoveries — and it
+	// is COUNTED here rather than only returned, so a mount that is being
+	// interrupted on every read says so in its status record instead of looking
+	// merely slow (§2.7).
+	cancels atomic.Int64
 
 	tree  atomic.Value // string
 	rev   atomic.Value // string
@@ -328,6 +335,10 @@ func (b *cancelOnCloseBody) Close() error {
 // do performs one request under the in-flight bound and the operation deadline,
 // records the identity headers, and maps a transport failure through §7.1.
 func (c *Client) do(ctx context.Context, req *http.Request) (*http.Response, *OpError) {
+	// The caller's own context, kept before the operation deadline wraps it: a
+	// cancellation must be attributed to the CALLER and never to our own
+	// deadline (see classifyRequest).
+	parent := ctx
 	var cancel context.CancelFunc
 	if _, ok := ctx.Deadline(); !ok {
 		ctx, cancel = context.WithTimeout(ctx, c.opt.OpTimeout)
@@ -340,9 +351,7 @@ func (c *Client) do(ctx context.Context, req *http.Request) (*http.Response, *Op
 		return nil, e
 	}
 	if err := c.acquire(ctx); err != nil {
-		e := classifyTransport(err)
-		e.Op, e.Path = req.Method, req.URL.Path
-		return fail(e)
+		return fail(c.requestError(parent, err, req))
 	}
 	cur := c.inflight.Add(1)
 	for {
@@ -359,9 +368,7 @@ func (c *Client) do(ctx context.Context, req *http.Request) (*http.Response, *Op
 
 	resp, err := c.hc.Do(req)
 	if err != nil {
-		e := classifyTransport(err)
-		e.Op, e.Path = req.Method, req.URL.Path
-		return fail(e)
+		return fail(c.requestError(parent, err, req))
 	}
 	if cancel != nil {
 		resp.Body = &cancelOnCloseBody{ReadCloser: resp.Body, cancel: cancel}
@@ -369,6 +376,23 @@ func (c *Client) do(ctx context.Context, req *http.Request) (*http.Response, *Op
 	c.observe(resp)
 	return resp, nil
 }
+
+// requestError maps a failed request through §7.1 and COUNTS a cancellation.
+// The counting is not decoration: a cancellation the status record does not
+// show is the BFS-032 shape one layer up (§2.7 — a bound or an event the owner
+// cannot see is not one), because the operation is retried, succeeds, and
+// nothing anywhere says the caller's own interrupt was why it happened twice.
+func (c *Client) requestError(parent context.Context, err error, req *http.Request) *OpError {
+	e := classifyRequest(parent, err, req.Method, req.URL.Path)
+	if e.Cause == CauseCancelled {
+		c.cancels.Add(1)
+	}
+	return e
+}
+
+// Cancels reports how many operations a caller cancelled. The mount reports it
+// in the transport block of its status document.
+func (c *Client) Cancels() int64 { return c.cancels.Load() }
 
 // observe records the identity/version headers every response carries, and
 // enforces the tree pin. It is where a re-created tree becomes visible at all:
@@ -526,7 +550,10 @@ func (c *Client) Get(ctx context.Context, path, ifNoneMatch string) ([]byte, *Fi
 	}
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, nil, classifyTransport(err)
+		// The response body aborts with a cancelled context too, and a caller
+		// that interrupted its own read must be told THAT (EINTR, retryable)
+		// rather than given a transport verdict (BFS-039).
+		return nil, nil, classifyRequest(ctx, err, "GET", path)
 	}
 	meta := &FileMeta{
 		Path:  path,
@@ -705,7 +732,7 @@ func (c *Client) Propfind(ctx context.Context, path, depth string) ([]FileMeta, 
 	}
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, classifyTransport(err)
+		return nil, classifyRequest(ctx, err, "PROPFIND", path)
 	}
 	metas, perr := decodeMultistatus(raw, c.base.Path)
 	if perr != nil {

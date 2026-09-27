@@ -18,9 +18,20 @@ import "syscall"
 // distinct from ESTALE (per-file conflict) because a tool that retries an
 // ESTALE in a loop must not do the same with a re-bound tree.
 const (
-	ErrnoNone       syscall.Errno = 0   // success
-	ErrnoEPERM      syscall.Errno = 1   // a refusal by policy (write outside the mount root)
-	ErrnoENOENT     syscall.Errno = 2   // the path is not there
+	ErrnoNone   syscall.Errno = 0 // success
+	ErrnoEPERM  syscall.Errno = 1 // a refusal by policy (write outside the mount root)
+	ErrnoENOENT syscall.Errno = 2 // the path is not there
+	// ErrnoEINTR (4) is a CANCELLATION, not a failure: the operation was
+	// interrupted — a FUSE interrupt when the caller was killed, timed out or
+	// was Ctrl-C'd — and NOTHING was refused, so the caller's recovery is
+	// "retry", exactly as POSIX EINTR means. It is kept distinct from EIO
+	// (malformed/5xx/hash mismatch) and from every transport errno because the
+	// two events have different recoveries: a caller that retries an EIO is
+	// retrying a verdict the server already gave, and a caller that treats a
+	// retryable cancel as terminal loses the write it was about to make
+	// (PRD-bunker-invalidation.md R10 / §2.8: "cancelled must be
+	// distinguishable from failed in the error returned to the kernel").
+	ErrnoEINTR      syscall.Errno = 4   // the caller cancelled the operation; retry it
 	ErrnoEIO        syscall.Errno = 5   // malformed/5xx response, body hash mismatch
 	ErrnoEACCES     syscall.Errno = 13  // credentials refused
 	ErrnoEEXIST     syscall.Errno = 17  // target exists

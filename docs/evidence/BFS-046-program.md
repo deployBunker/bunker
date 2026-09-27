@@ -29,7 +29,7 @@ builds: the cells exist before the features they judge.
 | 7 | PROMOTION | a promotion that **double-fetches** — N concurrent readers producing N GETs where the invariant is exactly 1 | (pending) | **PENDING-UNTIL-BFS-037** |
 | 8a | CANCEL — killed reader | correctness that depends on the reader's **lifetime**: a persisted pin/lock poisoned by SIGKILL | `--leaked-lock`: the pin becomes a persisted in-use marker | **LIVE** — RED |
 | 8b | CANCEL — killed refresher | an abandoned refresh leaving **unbounded disk growth** (BFS-031's class) | `--no-sweep`: the orphan sweep removes nothing | **LIVE** — RED, residue `.stage-2532603744` |
-| 8c | CANCEL — deliberate (FUSE interrupt, `EINTR` vs `EIO`) | a cancel that is indistinguishable from a failure | (pending) | **PENDING-UNTIL-BFS-039** |
+| 8c | CANCEL — deliberate (FUSE interrupt, `EINTR` vs `EIO`) | a cancel that is indistinguishable from a failure | `--cancel-class`: the cancel is not attributed to the caller | **LIVE** — RED; completed by BFS-039 |
 | 9a | SIZE RULE at the boundary | an **exclusive** comparison at 8 MiB — a one-byte difference no coverage number can see — or a refusal that does not name both numbers | `--exclusive-size`: `>` becomes `>=` at the bound | **LIVE** — RED |
 | 9b | SIZE RULE skip census | a skip that happens **without a reason counter** (the BFS-032 shape), or a reason with no reachable trigger | (pending) | **PENDING-UNTIL-BFS-037** |
 | 10 | COVERAGE FLOOR | coverage drifting below the invalidation surface's measured floor | (a regression; enforced by `BFS-046-coverage.sh`) | **LIVE** — MERGED **75.4%** (floor 75.0) |
@@ -240,15 +240,26 @@ merged figure is the number this row states for the invalidation packages.
 Cells 5, 6, 7 and the two remaining halves of 8 and 9 cannot be written against features that are not in the
 build: **BFS-036 does not serve the push form** (`ops.go` still answers the `watch` op with
 `501 capability_unavailable` — the refusal is correct and is not a bug), **BFS-037 has no refresh** (only the
-policy surface, `hotpolicy.go`, is landed and `DefaultHotEnabled` is `false`), and **BFS-039 has no cancel-IO**
-(no `EINTR` anywhere in the tree). Rather than weaken them into "the vocabulary is listed", the claims are
-recorded here in the form they must take, and they are **gated**:
+policy surface, `hotpolicy.go`, is landed and `DefaultHotEnabled` is `false`), and **BFS-039's cancel-IO has
+LANDED** — it completed cell 8c, so the `EINTR` half of the cancel cell is no longer waiting and the clause
+that guarded it has been retired (see §3's note below). Rather than weaken them into "the vocabulary is listed",
+the claims are recorded here in the form they must take, and they are **gated**:
 
 `fsclient/TestBFS046PendingUntilLandingGate` **fails** the moment BFS-037's vocabulary appears in the package
 (probed by the spec's own identifiers — `singleflight`, `hot.json`, `hot_queue`, … — rather than by "a new file
 appeared", so a sibling landing an unrelated file cannot trip it), and again the moment BFS-039's `EINTR`
 vocabulary appears. A `t.Skip` that outlives its feature is a green that means nothing, which is the class this
 row closes.
+
+**FULFILLED, 2026-09-27 — the BFS-039 clause has FIRED and been retired.** The gate failed the moment BFS-039
+landed the cancel vocabulary, exactly as designed, and
+`…Cell08DeliberateCancelIsDistinguishableFromFailure` was completed in the same change: it now drives the
+deliberate cancel against the landed surface and asserts `EINTR`/`cancelled` for the cancel against
+`EIO`/`server_error` for a 5xx, that the cancelled path does not exist and its neighbour is byte-identical,
+that the retry lands once, and that a conditional write on the SAME path proceeds afterwards (the per-path
+commit lock is free, latency reported). The gate's BFS-039 clause is replaced by its inverse — the namespace
+must still contain the vocabulary, or the completed cell would silently stop exercising anything — and it is
+proven red under the `cancel-class` mutation in `docs/evidence/BFS-039-arms.sh`.
 
 **The pending cells are REAL test functions**, not prose: `TestBFS046Cell05StampedeForegroundLatencyUnderABurst`,
 `…Cell06StopInFullRefusesTheTwoWrongReadings`, `…Cell07PromotionIsSingleFlightExactlyOneFetch`,
@@ -319,7 +330,9 @@ still **two atomic loads** and the one-call snapshot is still one call — no st
 ## 6. What this row did NOT do
 
 - **No push endpoint (BFS-036), no hot-file refresh (BFS-037), no cancel-IO (BFS-039).** This row tests them;
-  where a feature does not exist the cell is written and marked pending, and §3 names it.
+  where a feature does not exist the cell is written and marked pending, and §3 names it. (The BFS-039 clause
+  has since FIRED: that row landed the cancel vocabulary and completed cell 8c — see §3's FULFILLED note. This
+  section is about what BFS-046 itself did, and it did none of the three.)
 - **No cell weakened to make it pass.** Where an assertion could not hold against the landed surface it was
   either re-derived against the surface that *is* landed (cell 9's S-9 edge needed an environment that raises
   the per-entry cap so the edge under test is S-9's alone) or recorded as pending.

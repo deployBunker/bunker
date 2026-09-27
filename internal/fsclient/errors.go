@@ -95,6 +95,18 @@ const (
 	// poll (a mechanism that does not read one frame per line) once, with the
 	// condition counted and both numbers named; never a retry of the same read.
 	CauseEventFrameOverLimit Cause = "event_frame_over_limit"
+	// CauseCancelled: the CALLER cancelled the operation — a FUSE interrupt
+	// after a kill, a timeout at the caller's own level, a Ctrl-C — and the
+	// exchange was abandoned before the server gave any verdict. It is a NAMED
+	// cause and not one of the transport causes on purpose, and that naming is
+	// this row's whole subject (PRD-bunker-invalidation.md R10 / §2.8): a
+	// cancellation is not a fault, the recovery is a RETRY (EINTR), and the
+	// alternative — what the tree did before this cause existed — reported the
+	// caller's own interrupt as `unreachable_reset`/ENOTCONN, indistinguishable
+	// from a connection that died under us. A caller that treats a cancel as a
+	// transport fault backs off instead of retrying; a caller that treats it as
+	// a verdict stops instead of retrying. Both lose the operation.
+	CauseCancelled Cause = "cancelled"
 )
 
 // The server's machine codes this client branches on, quoted verbatim from the
@@ -191,6 +203,13 @@ var ErrConflictRefused = causeError(CauseConflict)
 // ErrUnreachable matches all three transport causes (one recovery class).
 var ErrUnreachable = causeError(CauseUnreachableConnect)
 
+// ErrCancelled matches a cancellation — the caller's own interrupt, which is
+// retryable and is NOT any of the failure classes. It exists so a caller can
+// write `errors.Is(err, fsclient.ErrCancelled)` where it would otherwise have
+// to test an errno, and so the distinction this row lands is available to the
+// mount's own retry logic without re-deriving it.
+var ErrCancelled = causeError(CauseCancelled)
+
 // ErrnoName renders an errno the way the status document and the mount log
 // report it, so one vocabulary is used everywhere.
 func ErrnoName(errno syscall.Errno) string {
@@ -203,6 +222,8 @@ func ErrnoName(errno syscall.Errno) string {
 		return "ESTALE"
 	case syscall.EREMOTEIO:
 		return "EREMOTEIO"
+	case syscall.EINTR:
+		return "EINTR"
 	case syscall.EIO:
 		return "EIO"
 	case syscall.ENOENT:
@@ -234,6 +255,12 @@ func classifyTransport(err error) *OpError {
 	case errors.Is(err, context.DeadlineExceeded):
 		return &OpError{Errno: syscall.ENOTCONN, Cause: CauseUnreachableDeadline, Err: err}
 	case errors.Is(err, context.Canceled):
+		// Reachable only when the CALLER's context is NOT cancelled: a caller
+		// cancel is classified as a cancellation (EINTR) by classifyRequest
+		// BEFORE this table is consulted (BFS-039), so what arrives here is our
+		// own teardown — the response-body cancel, or a request written off
+		// while its context was being rewound. It is a transport fault, not a
+		// cancellation, and it keeps its class.
 		return &OpError{Errno: syscall.ENOTCONN, Cause: CauseUnreachableReset, Err: err}
 	}
 	var netErr net.Error
@@ -260,6 +287,39 @@ func classifyTransport(err error) *OpError {
 		return &OpError{Errno: syscall.ENOTCONN, Cause: CauseUnreachableConnect, Err: err}
 	}
 	return &OpError{Errno: syscall.ENOTCONN, Cause: CauseUnreachableConnect, Err: err}
+}
+
+// classifyRequest answers the one question classifyTransport cannot: did the
+// CALLER cancel this operation?
+//
+// `context.Canceled` reaches a failed request from two different places and
+// only one of them is the caller, so the two must not be given the same answer
+// (PRD-bunker-invalidation.md R10 / §2.8). parent is the context the caller
+// passed in, BEFORE `do` wraps it with the operation deadline — reading the
+// wrapped one would report our own deadline as a caller cancel, which is the
+// same defect pointing the other way.
+//
+//	the parent is done with Canceled → the CALLER cancelled: EINTR, cause
+//	                                     "cancelled", nothing refused, retry it
+//	anything else                    → classifyTransport, unchanged: a real
+//	                                     transport fault keeps its §7.1 class
+//
+// Everything else deliberately keeps its existing classification, including the
+// internal teardown the response-body cancel (cancelOnCloseBody) performs: that
+// request really did end without an answer, and the caller cancelled nothing.
+func classifyRequest(parent context.Context, err error, op, path string) *OpError {
+	if parent != nil && errors.Is(parent.Err(), context.Canceled) {
+		return &OpError{
+			Op: op, Path: path,
+			Errno:  portableErrno(ErrnoEINTR),
+			Cause:  CauseCancelled,
+			Detail: "the operation was cancelled by the caller (EINTR): no verdict was given, so retrying it is safe",
+			Err:    err,
+		}
+	}
+	e := classifyTransport(err)
+	e.Op, e.Path = op, path
+	return e
 }
 
 // The deadlines of BFS-005 §7.2. Both are bound at construction and are

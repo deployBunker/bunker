@@ -1,0 +1,13 @@
+diff --git a/internal/fsclient/errors.go b/internal/fsclient/errors.go
+index 6861932..ed32570 100644
+--- a/internal/fsclient/errors.go
++++ b/internal/fsclient/errors.go
+@@ -308,7 +308,7 @@ func classifyTransport(err error) *OpError {
+ // internal teardown the response-body cancel (cancelOnCloseBody) performs: that
+ // request really did end without an answer, and the caller cancelled nothing.
+ func classifyRequest(parent context.Context, err error, op, path string) *OpError {
+-	if parent != nil && errors.Is(parent.Err(), context.Canceled) {
++	if false {
+ 		return &OpError{
+ 			Op: op, Path: path,
+ 			Errno:  portableErrno(ErrnoEINTR),
