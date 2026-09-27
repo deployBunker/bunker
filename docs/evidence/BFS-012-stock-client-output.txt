@@ -1,0 +1,37 @@
+surface root: http://127.0.0.1:45025/dav   (server pid 1257291)
+
+=== 1. is curl even speaking HTTP/1.1? (prove the client, not just the claim) ===
+    http_version=1.1  code=200
+
+=== 2. the stock verbs a plain client uses ===
+  GET      : code=200 bytes=24
+  GET body : "stock client reads this"
+  HEAD     : code=200
+  OPTIONS  : code=200
+  PROPFIND : code=207
+  nestedGET: code=200
+
+=== 3. a stock client WRITING (no extensions, plain PUT) ===
+  PUT new  : code=201
+  GET back : written by curl, not by our client
+  on the server's disk: written by curl, not by our client
+  DELETE   : code=204
+  after DELETE on disk: GONE (correct)
+
+=== 4. CONFLICT REFUSAL with a stale base (BFS-004 6.1 - the refuse-loudly rule) ===
+  current ETag : "sha256:3cf8e66ae7d7c4e0f6ebae84230e4d3dff507f2cbfbf784b202e03a7eca069ed"
+  PUT with a STALE If-Match: code=412
+  response body (first 200 chars):
+    <?xml version="1.0" encoding="utf-8"?>
+    <D:error xmlns:D="DAV:" xmlns:b="urn:bunker:fs:1"><b:hash-mismatch><b:expected>sha256:0000000000000000000000000000000000000000000000000000000000000000</b:expecte
+  did the file survive unmodified? -> stock client reads this
+  PUT with the CORRECT If-Match: code=204
+  on disk now: legitimately updated
+
+=== 5. older/no-extension compatibility: does it still answer plainly? ===
+  GET with a stock User-Agent and no extension headers: code=200
+  GET with no Accept header at all: code=200
+
+=== cleanup ===
+  server stopped: yes
+  leftover mounts: 0
