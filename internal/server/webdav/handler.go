@@ -34,6 +34,8 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+
+	"github.com/deployBunker/bunker/internal/invalidation"
 )
 
 const (
@@ -113,26 +115,42 @@ type Config struct {
 	// DefaultMaxBytes/AbsMaxBytes cap an X-Bunker-Op result.
 	DefaultMaxBytes int64
 	AbsMaxBytes     int64
-	// WatchEnabled turns on the server-side watcher (BFS-035, watch.go): a
-	// per-target inotify watch that sees writers which are NOT WebDAV and aligns
-	// the served revision for them.
+	// Invalidation is the SERVER-SIDE invalidation config surface (BFS-043):
+	// the watcher and push knobs, each with a declared default and range in
+	// internal/invalidation. nil means "nothing was configured", and every knob
+	// then takes its declared default — a fact about the file rather than a
+	// fallback for a broken value.
 	//
-	// Off by default, and deliberately so: turning it on changes the SERVED
-	// REVISION's kind for a git tree (revKind: `git` -> `git+watch`, §7.1 D1) —
-	// a contract change an operator opts into, not one a deploy gets by accident.
-	// A deployment that leaves it off behaves exactly as it does today:
-	// `X-Bunker-Op: events` is the mechanism, and the watcher's absence is
-	// reported with its own reason (WatchReason*, §4).
-	//
-	// The operator-facing knob names, defaults and validation are BFS-043's; this
-	// field is the seam that row will configure.
-	WatchEnabled bool
+	// A non-nil surface must be VALID: New refuses to build the handler when a
+	// value is outside its declared range, naming the knob, the value and the
+	// range. An invalid value is never replaced by a default (BFS-031's bound
+	// that did not bound, BFS-032's counter that could never move: both are a
+	// value that is reported and not enforced), and a value that is legal but
+	// which the PLATFORM cannot honour is reported as an unhonourable pair with
+	// configured AND observed — never clamped in silence.
+	Invalidation *invalidation.Values
+}
+
+// InvalidationValuesOrDeferred reports the surface this handler will serve with,
+// which is the configured surface when one was given and the declared defaults
+// otherwise. It is exported because the daemon's config layer and the cells both
+// need to ask the same question with the same answer.
+func InvalidationValuesOrDeferred(cfg *invalidation.Values) invalidation.Values {
+	if cfg == nil {
+		return invalidation.DefaultValues()
+	}
+	return *cfg
 }
 
 // Handler serves the WebDAV surface.
 type Handler struct {
 	cfg  Config
 	tree *tree
+	// inv is the RESOLVED invalidation surface this handler serves with: the
+	// configured values when a Config carried them, the declared defaults
+	// otherwise. It is what the watcher was built from and what the read-back
+	// reports when no watcher is running.
+	inv invalidation.Values
 
 	// watch is the server-side watcher (watch.go, BFS-035). It is nil unless the
 	// deployment enabled one, and it is never nil silently: watchStatusSnapshot
@@ -164,6 +182,14 @@ func New(cfg Config) (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
+	// BFS-043: the invalidation surface is validated HERE as well as at config
+	// load. Two gates, one table: a caller that builds a Config programmatically
+	// (a cell, an embedder) cannot slip a value past the surface that the config
+	// file would have refused.
+	inv := InvalidationValuesOrDeferred(cfg.Invalidation)
+	if err := inv.Validate(); err != nil {
+		return nil, fmt.Errorf("webdav: invalidation config: %w", err)
+	}
 	if cfg.MaxRequestBytes <= 0 {
 		cfg.MaxRequestBytes = DefaultMaxRequestBytes
 	}
@@ -174,7 +200,7 @@ func New(cfg Config) (*Handler, error) {
 		cfg.AbsMaxBytes = AbsoluteEnvelopeMaxBytes
 	}
 	cfg.Root = t.rootPath()
-	h := &Handler{cfg: cfg, tree: t, watchEnv: defaultWatchEnv()}
+	h := &Handler{cfg: cfg, tree: t, watchEnv: defaultWatchEnv(), inv: inv}
 	// The target-level probe is taken EAGERLY here, not on the first capability
 	// request. It is a per-target fact (mount table + configured inotify
 	// ceilings) that cannot change under a running process, and leaving it lazy
@@ -183,11 +209,11 @@ func New(cfg Config) (*Handler, error) {
 	// first-request outlier, measured at ~1 ms on this box (see
 	// docs/evidence/BFS-035-*.md, `BenchmarkProbeWatch`).
 	h.primeWatchProbe()
-	if cfg.WatchEnabled {
+	if inv.Watch.Enabled {
 		// A watcher that cannot be established is not an error here: it is a
 		// REPORTABLE state (§4), reported by the op, the capability document and
 		// the degradations list — never a daemon that refuses to serve the tree.
-		h.watch = startWatcher(t, h.watchEnv, defaultWatchOptions())
+		h.watch = startWatcher(t, h.watchEnv, watchOptionsFrom(inv))
 	}
 	return h, nil
 }

@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+
+	"github.com/deployBunker/bunker/internal/invalidation"
 )
 
 // ---------------------------------------------------------------------------
@@ -453,8 +455,8 @@ func TestWatchProbeMatrixNamesOneReasonPerCase(t *testing.T) {
 		if st.Coverage == nil || !st.Coverage.Complete || st.Coverage.DirectoriesWatched != st.Coverage.DirectoriesDesired {
 			t.Fatalf("a successful install must report directories_watched == directories_desired: %+v", st.Coverage)
 		}
-		if st.Coverage.Headroom != watchInstallHeadroom {
-			t.Fatalf("coverage.headroom = %d, want the reported non-zero default %d", st.Coverage.Headroom, watchInstallHeadroom)
+		if st.Coverage.Headroom != invalidation.DefaultWatchInstallHeadroom {
+			t.Fatalf("coverage.headroom = %d, want the reported non-zero default %d", st.Coverage.Headroom, invalidation.DefaultWatchInstallHeadroom)
 		}
 		// The op still refuses (the push WIRE form is BFS-036) but it must not
 		// deny the watcher it has: scope=build, not a target reason.
@@ -566,8 +568,8 @@ func TestWatchProbeMatrixNamesOneReasonPerCase(t *testing.T) {
 		if !ok || desired < 4 {
 			t.Fatalf("limits.watching.desired = %v, want the fixture's own directory count", watching["desired"])
 		}
-		if got := watching["headroom"]; got != watchInstallHeadroom {
-			t.Fatalf("limits.watching.headroom = %v, want %d", got, watchInstallHeadroom)
+		if got := watching["headroom"]; got != invalidation.DefaultWatchInstallHeadroom {
+			t.Fatalf("limits.watching.headroom = %v, want %d", got, invalidation.DefaultWatchInstallHeadroom)
 		}
 		if got := watching["limit_name"]; got != limitNameWatches {
 			t.Fatalf("limit_name = %v, want %q", got, limitNameWatches)
@@ -880,8 +882,8 @@ func TestWatchProbeMatrixNamesOneReasonPerCase(t *testing.T) {
 		if doc.MaxPathsPerEvent != eventsMaxPathsPerEvent {
 			t.Fatalf("max_paths_per_event = %d, want the declared %d", doc.MaxPathsPerEvent, eventsMaxPathsPerEvent)
 		}
-		if doc.HeartbeatMS != int(watchHeartbeatPeriod/time.Millisecond) {
-			t.Fatalf("heartbeat_ms = %d, want the declared %d", doc.HeartbeatMS, int(watchHeartbeatPeriod/time.Millisecond))
+		if doc.HeartbeatMS != invalidation.DefaultWatchHeartbeatMS {
+			t.Fatalf("heartbeat_ms = %d, want the declared %d", doc.HeartbeatMS, invalidation.DefaultWatchHeartbeatMS)
 		}
 		if doc.Coverage != nil || doc.Counters != nil {
 			t.Fatalf("no watcher ran, so coverage/counters must be null WITH a reason: %+v", doc)
