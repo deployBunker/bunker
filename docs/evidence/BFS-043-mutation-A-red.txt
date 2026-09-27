@@ -1,0 +1,5 @@
+--- FAIL: TestInvalidationReadBackFollowsTheRunningWatcher (0.00s)
+    invalidation_config_test.go:320: the read-back reports heartbeat_ms 30000, want the running watcher's 7
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/server/webdav	0.663s
+FAIL

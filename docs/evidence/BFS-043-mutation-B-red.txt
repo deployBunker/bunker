@@ -1,0 +1,46 @@
+=== RUN   TestEveryKnobRefusesAnInvalidValueLoudly
+=== RUN   TestEveryKnobRefusesAnInvalidValueLoudly/server.invalidation.watch.heartbeat_ms
+    knobs_test.go:118: the refusal does not state the range [100, 30000]: server.invalidation.push.write_deadline_ms: 10000 ms is not below server.invalidation.watch.heartbeat_ms (99 ms) — a stalled subscriber must be detected within one heartbeat period (SPEC-push-channel §4.4: push_write_deadline < heartbeat_ms); the pair is refused rather than adjusted
+=== RUN   TestEveryKnobRefusesAnInvalidValueLoudly/server.invalidation.watch.install_headroom
+    knobs_test.go:111: server.invalidation.watch.install_headroom = 0 was ACCEPTED (resolved surface {Watch:{Enabled:false HeartbeatMS:30000 InstallHeadroom:0 FlushEveryMS:50 FlushMaxPaths:4096 ScanLimit:100000 MaxWatches:0} Push:{SubscriberBufferBytes:4194304 SubscriberBufferEvents:256 MaxSubscribers:8 WriteDeadlineMS:10000 MaxEventBytes:1048576}}): an invalid value must fail loudly, not fall back
+=== RUN   TestEveryKnobRefusesAnInvalidValueLoudly/server.invalidation.watch.flush_every_ms
+    knobs_test.go:111: server.invalidation.watch.flush_every_ms = 0 was ACCEPTED (resolved surface {Watch:{Enabled:false HeartbeatMS:30000 InstallHeadroom:512 FlushEveryMS:0 FlushMaxPaths:4096 ScanLimit:100000 MaxWatches:0} Push:{SubscriberBufferBytes:4194304 SubscriberBufferEvents:256 MaxSubscribers:8 WriteDeadlineMS:10000 MaxEventBytes:1048576}}): an invalid value must fail loudly, not fall back
+=== RUN   TestEveryKnobRefusesAnInvalidValueLoudly/server.invalidation.watch.flush_max_paths
+    knobs_test.go:111: server.invalidation.watch.flush_max_paths = 0 was ACCEPTED (resolved surface {Watch:{Enabled:false HeartbeatMS:30000 InstallHeadroom:512 FlushEveryMS:50 FlushMaxPaths:0 ScanLimit:100000 MaxWatches:0} Push:{SubscriberBufferBytes:4194304 SubscriberBufferEvents:256 MaxSubscribers:8 WriteDeadlineMS:10000 MaxEventBytes:1048576}}): an invalid value must fail loudly, not fall back
+=== RUN   TestEveryKnobRefusesAnInvalidValueLoudly/server.invalidation.watch.scan_limit
+    knobs_test.go:111: server.invalidation.watch.scan_limit = 0 was ACCEPTED (resolved surface {Watch:{Enabled:false HeartbeatMS:30000 InstallHeadroom:512 FlushEveryMS:50 FlushMaxPaths:4096 ScanLimit:0 MaxWatches:0} Push:{SubscriberBufferBytes:4194304 SubscriberBufferEvents:256 MaxSubscribers:8 WriteDeadlineMS:10000 MaxEventBytes:1048576}}): an invalid value must fail loudly, not fall back
+=== RUN   TestEveryKnobRefusesAnInvalidValueLoudly/server.invalidation.watch.max_watches
+    knobs_test.go:111: server.invalidation.watch.max_watches = 2147483649 was ACCEPTED (resolved surface {Watch:{Enabled:false HeartbeatMS:30000 InstallHeadroom:512 FlushEveryMS:50 FlushMaxPaths:4096 ScanLimit:100000 MaxWatches:2147483649} Push:{SubscriberBufferBytes:4194304 SubscriberBufferEvents:256 MaxSubscribers:8 WriteDeadlineMS:10000 MaxEventBytes:1048576}}): an invalid value must fail loudly, not fall back
+=== RUN   TestEveryKnobRefusesAnInvalidValueLoudly/server.invalidation.push.subscriber_buffer_bytes
+    knobs_test.go:111: server.invalidation.push.subscriber_buffer_bytes = 65535 was ACCEPTED (resolved surface {Watch:{Enabled:false HeartbeatMS:30000 InstallHeadroom:512 FlushEveryMS:50 FlushMaxPaths:4096 ScanLimit:100000 MaxWatches:0} Push:{SubscriberBufferBytes:65535 SubscriberBufferEvents:256 MaxSubscribers:8 WriteDeadlineMS:10000 MaxEventBytes:1048576}}): an invalid value must fail loudly, not fall back
+=== RUN   TestEveryKnobRefusesAnInvalidValueLoudly/server.invalidation.push.subscriber_buffer_events
+    knobs_test.go:111: server.invalidation.push.subscriber_buffer_events = 0 was ACCEPTED (resolved surface {Watch:{Enabled:false HeartbeatMS:30000 InstallHeadroom:512 FlushEveryMS:50 FlushMaxPaths:4096 ScanLimit:100000 MaxWatches:0} Push:{SubscriberBufferBytes:4194304 SubscriberBufferEvents:0 MaxSubscribers:8 WriteDeadlineMS:10000 MaxEventBytes:1048576}}): an invalid value must fail loudly, not fall back
+=== RUN   TestEveryKnobRefusesAnInvalidValueLoudly/server.invalidation.push.max_subscribers
+    knobs_test.go:111: server.invalidation.push.max_subscribers = 0 was ACCEPTED (resolved surface {Watch:{Enabled:false HeartbeatMS:30000 InstallHeadroom:512 FlushEveryMS:50 FlushMaxPaths:4096 ScanLimit:100000 MaxWatches:0} Push:{SubscriberBufferBytes:4194304 SubscriberBufferEvents:256 MaxSubscribers:0 WriteDeadlineMS:10000 MaxEventBytes:1048576}}): an invalid value must fail loudly, not fall back
+=== RUN   TestEveryKnobRefusesAnInvalidValueLoudly/server.invalidation.push.write_deadline_ms
+    knobs_test.go:111: server.invalidation.push.write_deadline_ms = 99 was ACCEPTED (resolved surface {Watch:{Enabled:false HeartbeatMS:30000 InstallHeadroom:512 FlushEveryMS:50 FlushMaxPaths:4096 ScanLimit:100000 MaxWatches:0} Push:{SubscriberBufferBytes:4194304 SubscriberBufferEvents:256 MaxSubscribers:8 WriteDeadlineMS:99 MaxEventBytes:1048576}}): an invalid value must fail loudly, not fall back
+=== RUN   TestEveryKnobRefusesAnInvalidValueLoudly/server.invalidation.push.max_event_bytes
+    knobs_test.go:111: server.invalidation.push.max_event_bytes = 65535 was ACCEPTED (resolved surface {Watch:{Enabled:false HeartbeatMS:30000 InstallHeadroom:512 FlushEveryMS:50 FlushMaxPaths:4096 ScanLimit:100000 MaxWatches:0} Push:{SubscriberBufferBytes:4194304 SubscriberBufferEvents:256 MaxSubscribers:8 WriteDeadlineMS:10000 MaxEventBytes:65535}}): an invalid value must fail loudly, not fall back
+--- FAIL: TestEveryKnobRefusesAnInvalidValueLoudly (0.00s)
+    --- FAIL: TestEveryKnobRefusesAnInvalidValueLoudly/server.invalidation.watch.heartbeat_ms (0.00s)
+    --- FAIL: TestEveryKnobRefusesAnInvalidValueLoudly/server.invalidation.watch.install_headroom (0.00s)
+    --- FAIL: TestEveryKnobRefusesAnInvalidValueLoudly/server.invalidation.watch.flush_every_ms (0.00s)
+    --- FAIL: TestEveryKnobRefusesAnInvalidValueLoudly/server.invalidation.watch.flush_max_paths (0.00s)
+    --- FAIL: TestEveryKnobRefusesAnInvalidValueLoudly/server.invalidation.watch.scan_limit (0.00s)
+    --- FAIL: TestEveryKnobRefusesAnInvalidValueLoudly/server.invalidation.watch.max_watches (0.00s)
+    --- FAIL: TestEveryKnobRefusesAnInvalidValueLoudly/server.invalidation.push.subscriber_buffer_bytes (0.00s)
+    --- FAIL: TestEveryKnobRefusesAnInvalidValueLoudly/server.invalidation.push.subscriber_buffer_events (0.00s)
+    --- FAIL: TestEveryKnobRefusesAnInvalidValueLoudly/server.invalidation.push.max_subscribers (0.00s)
+    --- FAIL: TestEveryKnobRefusesAnInvalidValueLoudly/server.invalidation.push.write_deadline_ms (0.00s)
+    --- FAIL: TestEveryKnobRefusesAnInvalidValueLoudly/server.invalidation.push.max_event_bytes (0.00s)
+=== RUN   TestZeroIsRefusedForEveryNumericKnob
+    knobs_test.go:147: server.invalidation.watch.install_headroom = 0 was accepted: a written zero is how a bound stops being a bound
+--- FAIL: TestZeroIsRefusedForEveryNumericKnob (0.00s)
+=== RUN   TestRelationBetweenTwoKnobsIsRefused
+--- PASS: TestRelationBetweenTwoKnobsIsRefused (0.00s)
+=== RUN   TestRelationIsRefusedEvenWhenBothValuesAreIndividuallyInRange
+    knobs_test.go:238: a pair that is legal field by field and illegal together was accepted: the relation check must be reached by every path, including one that does not refuse anything else first
+--- FAIL: TestRelationIsRefusedEvenWhenBothValuesAreIndividuallyInRange (0.00s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/invalidation	0.002s
+FAIL

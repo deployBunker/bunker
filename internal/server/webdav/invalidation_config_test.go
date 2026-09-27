@@ -1,6 +1,7 @@
 package webdav
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -600,6 +601,20 @@ func TestUnhonouredValueIsReportedWithBothNumbers(t *testing.T) {
 	if got := asInt(t, knobRow(t, w, invalidation.KnobWatchMaxWatches).Value); got != asked {
 		t.Fatalf("the read-back reports max_watches %d, want the REQUESTED %d: the knob's row is the request, and the platform's number travels beside it", got, asked)
 	}
+	// The read-back must not claim knobs whose machinery never started: an install
+	// that refused (state=absent) still USED the walk bound and the ceiling
+	// arithmetic, and never started the heartbeat or the flush at all.
+	if row := knobRow(t, w, invalidation.KnobWatchScanLimit); !row.Applied {
+		t.Fatalf("scan_limit must be applied: the refused install RAN the walk under it (%+v)", row)
+	}
+	if row := knobRow(t, w, invalidation.KnobWatchHeartbeatMS); row.Applied {
+		t.Fatalf("heartbeat_ms is reported applied while no loop is running: %+v", row)
+	} else if !strings.Contains(row.AppliedReason, "state=absent") {
+		t.Fatalf("the reason must name the state that makes it unapplied: %q", row.AppliedReason)
+	}
+	if !strings.Contains(w.Config.AppliedFrom, "ABSENT") {
+		t.Fatalf("applied_from must say the install is absent: %q", w.Config.AppliedFrom)
+	}
 }
 
 // TestUnhonouredValueThatDoesNotBindIsAWarningNotARefusal: the request is above the
@@ -659,6 +674,94 @@ func TestUnhonouredValueThatDoesNotBindIsAWarningNotARefusal(t *testing.T) {
 	// here through the FUNCTION because the document's degradations[] does not yet
 	// carry the watcher's entries — see docs/evidence/BFS-043-*.md, residual R-2.
 	// The pair IS on the wire regardless: config.unhonoured and the refusal.
+}
+
+// ---------------------------------------------------------------------------
+// 6. THE OPERATOR-FACING SAMPLE
+// ---------------------------------------------------------------------------
+
+// TestInvalidationWireSampleForEvidence emits, verbatim, the two carriers an
+// operator reads — the `watch` refusal and the document's config block — for a
+// deployment whose requested watch ceiling the platform cannot give. It exists so
+// docs/evidence/BFS-043-*.txt can quote real bytes from a runnable cell rather than
+// a hand-written sample: the assertions keep it honest (the pair must be there),
+// and `go test -run TestInvalidationWireSampleForEvidence -v` regenerates it.
+func TestInvalidationWireSampleForEvidence(t *testing.T) {
+	const asked = int64(8192)
+	v := invalidationConfig(t, func(v *invalidation.Values) {
+		v.Watch.Enabled = true
+		v.Watch.MaxWatches = asked
+		v.Watch.HeartbeatMS = 5000
+		v.Push.WriteDeadlineMS = 4000
+	})
+	root := fixtureTree(t)
+	h, err := New(Config{Root: root, Build: "test-build", Invalidation: &v})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(h.Close)
+	fw := defaultFakeWatch(h.Root())
+	fw.ceilings.MaxUserWatches = 128
+	h.startWatch(fw.env(), watchOptionsFrom(v))
+
+	rec := do(t, h, "POST", "/dav/", map[string]string{"X-Bunker-Op": "watch"}, "")
+	t.Logf("X-Bunker-Verdict: %s", rec.Header().Get("X-Bunker-Verdict"))
+	t.Logf("X-Bunker-Capability: %s", rec.Header().Get("X-Bunker-Capability"))
+	t.Logf("refusal: %s", prettyJSON(t, rec.Body.Bytes()))
+
+	w := readInvalidationWire(t, h)
+	if len(w.Config.Unhonoured) != 1 {
+		t.Fatalf("the sample deployment must produce an unhonourable pair, got %+v", w.Config.Unhonoured)
+	}
+	doc := do(t, h, "POST", "/dav/", map[string]string{"X-Bunker-Op": "capabilities"}, "")
+	var caps struct {
+		Result struct {
+			Capabilities struct {
+				Extensions struct {
+					Watch map[string]any `json:"watch"`
+				} `json:"extensions"`
+			} `json:"capabilities"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(doc.Body.Bytes(), &caps); err != nil {
+		t.Fatalf("capabilities envelope is not JSON: %v", err)
+	}
+	t.Logf("extensions.watch.config: %s", prettyJSONValue(t, caps.Result.Capabilities.Extensions.Watch["config"]))
+	t.Logf("extensions.watch.limits.watching: %s", prettyJSONValue(t, caps.Result.Capabilities.Extensions.Watch["limits"]))
+	// The document's degradations list, logged for residual R-1: the WATCHER's own
+	// entries (watchDegradations) are not wired into it, so the reason-carrying
+	// entry §8.2 promises does not reach this list.
+	var degs struct {
+		Result struct {
+			Capabilities struct {
+				Degradations []map[string]any `json:"degradations"`
+			} `json:"capabilities"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(doc.Body.Bytes(), &degs); err != nil {
+		t.Fatalf("capabilities envelope is not JSON: %v", err)
+	}
+	t.Logf("capabilities.degradations: %s", prettyJSONValue(t, degs.Result.Capabilities.Degradations))
+}
+
+// prettyJSON indents a JSON document for a log line.
+func prettyJSON(t *testing.T, raw []byte) string {
+	t.Helper()
+	var out bytes.Buffer
+	if err := json.Indent(&out, raw, "", "  "); err != nil {
+		return string(raw)
+	}
+	return "\n" + out.String()
+}
+
+// prettyJSONValue indents any decoded JSON value for a log line.
+func prettyJSONValue(t *testing.T, v any) string {
+	t.Helper()
+	raw, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return "<unencodable>"
+	}
+	return "\n" + string(raw)
 }
 
 // ---------------------------------------------------------------------------

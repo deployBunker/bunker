@@ -221,6 +221,42 @@ func TestRelationBetweenTwoKnobsIsRefused(t *testing.T) {
 	}
 }
 
+// TestTheRangeCheckAndTheRelationCheckAreIndependent is the arm that keeps the two
+// refusals separate: a value out of range is refused BY THE TABLE (naming the
+// range), while a pair that is legal field by field and illegal together is refused
+// BY THE RELATION (naming both knobs) — and neither refusal can stand in for the
+// other. It also pins the equality edge: the write deadline must be strictly below
+// the heartbeat, so a pair that is merely equal is refused.
+func TestTheRangeCheckAndTheRelationCheckAreIndependent(t *testing.T) {
+	// (a) one value outside its declared range: the table's own refusal.
+	zero := 0
+	spec := Spec{}
+	spec.Watch.InstallHeadroom = &zero
+	_, err := spec.Resolve()
+	if err == nil || !strings.Contains(err.Error(), "outside the declared range") {
+		t.Fatalf("a zeroed headroom must be refused by the table's range check: %v", err)
+	}
+
+	// (b) both values in range, the relation violated by equality: the relation's
+	// refusal, which a range check can never produce.
+	hb, dl := 1000, 1000
+	spec = Spec{}
+	spec.Watch.HeartbeatMS = &hb
+	spec.Push.WriteDeadlineMS = &dl
+	_, err = spec.Resolve()
+	if err == nil {
+		t.Fatal("write_deadline_ms == heartbeat_ms was accepted: a subscriber that stalls is detected no earlier than the client declares the channel dead")
+	}
+	if strings.Contains(err.Error(), "outside the declared range") {
+		t.Fatalf("the refusal misreports a relation violation as a range violation: %v", err)
+	}
+	for _, want := range []string{KnobPushWriteDeadlineMS, KnobWatchHeartbeatMS, "not below"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("the relation refusal must name both knobs and the relation (%q): %s", want, err.Error())
+		}
+	}
+}
+
 // TestSpecIsZero pins the "was the block written at all" question the loader
 // asks before it resolves anything.
 func TestSpecIsZero(t *testing.T) {

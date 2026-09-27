@@ -28,7 +28,7 @@ const pushNotServedReason = "the push form is not served in this build (BFS-036 
 // block: one row per declared knob, the ceiling in force, the unhonourable pairs,
 // and the place the applied values were read from.
 func (h *Handler) invalidationConfigBlock(st watchStatus) map[string]any {
-	rows, source := h.invalidationRows()
+	rows, source := h.invalidationRows(st)
 	return map[string]any{
 		"surface":      "server.invalidation",
 		"read_at":      time.Now().Format(time.RFC3339),
@@ -42,7 +42,7 @@ func (h *Handler) invalidationConfigBlock(st watchStatus) map[string]any {
 
 // invalidationRows builds the per-knob rows for the RUNNING process, and returns
 // the sentence that says where the applied values came from.
-func (h *Handler) invalidationRows() ([]map[string]any, string) {
+func (h *Handler) invalidationRows(st watchStatus) ([]map[string]any, string) {
 	rows := h.inv.Rows()
 
 	if h.watch == nil {
@@ -69,24 +69,56 @@ func (h *Handler) invalidationRows() ([]map[string]any, string) {
 		return renderRows(rows), "the resolved configuration (no watcher is established on this target)"
 	}
 
-	// A watcher IS running: every watcher knob is applied, and the value reported
-	// is read out of the watcher's OWN options rather than out of the config.
+	// A watcher object EXISTS. Which of its knobs are APPLIED depends on whether it
+	// is established: an install that reported an absence never started the
+	// heartbeat loop or the flush, so claiming those as applied would be the same
+	// class of claim as a counter that can never move (BFS-032). The knobs the
+	// refused install DID use are still applied — the walk ran with scan_limit, and
+	// §4.2's ceiling arithmetic ran with the headroom and the requested ceiling.
+	established := st.State == WatchStateWatching || st.State == WatchStateOverflow
 	running := h.watch.runningValues()
+	notEstablished := "the watcher is not established on this target (state=" + st.State + "), so the machinery this knob bounds never started"
 	for i := range rows {
 		if isWatchKnob(rows[i].Knob) {
 			if v, ok := running[rows[i].Knob]; ok {
 				rows[i].Value = v
 			}
-			rows[i].Applied = true
 			rows[i].Source = invalidation.SourceDefault
 			if rows[i].Value != rows[i].Default {
 				rows[i].Source = invalidation.SourceOperator
+			}
+			// watch.enabled is applied whenever a watcher object exists: its
+			// instruction was carried out (one was built and its install attempted),
+			// whatever the install then found. Every other knob bounds machinery
+			// that only exists once the install SUCCEEDS.
+			rows[i].Applied = rows[i].Knob == invalidation.KnobWatchEnabled ||
+				established || knobUsedByARefusedInstall(rows[i].Knob)
+			if !rows[i].Applied {
+				rows[i].AppliedReason = notEstablished
 			}
 		} else {
 			rows[i].Applied, rows[i].AppliedReason = false, pushNotServedReason
 		}
 	}
-	return renderRows(rows), "the running watcher's own options"
+	from := "the running watcher's own options"
+	if !established {
+		from = "the watcher's own options, read while the install is ABSENT on this target (state=" + st.State + "): only the knobs the refused install used are in force"
+	}
+	return renderRows(rows), from
+}
+
+// knobUsedByARefusedInstall reports whether an install that ended in an absence
+// still USED a knob. Three did: the install walk ran under the scan bound, and
+// §4.2's ceiling arithmetic ran under the requested ceiling and the headroom. The
+// rest — the heartbeat period, the flush cadence, the flush path bound — belong to
+// machinery that never started, and a read-back that reported them as applied would
+// be claiming an application nobody can observe.
+func knobUsedByARefusedInstall(knob string) bool {
+	switch knob {
+	case invalidation.KnobWatchScanLimit, invalidation.KnobWatchMaxWatches, invalidation.KnobWatchHeadroom:
+		return true
+	}
+	return false
 }
 
 func isWatchKnob(knob string) bool {

@@ -126,6 +126,32 @@ func TestLoad_InvalidationInvalidValueFailsBeforeListen(t *testing.T) {
 	}
 }
 
+// TestLoad_InvalidationUnknownKeyIsAcceptedGap pins a HOLE this row found, measured
+// rather than assumed, and did not close: config keys are not strict, so a typo'd
+// knob NAME is silently ignored while a typo'd VALUE is refused loudly. The row's
+// law is about values ("a server that quietly ignores a typo'd limit is how a bound
+// stops being a bound") and the value case IS closed; the key case belongs to the
+// loader's strictness, which is wider than this surface (every section of the file
+// has the same behaviour) and is reported as residual R-2 in
+// docs/evidence/BFS-043-*.md rather than fixed here.
+//
+// Both directions of a change are caught: if the loader grows strict key handling
+// this cell fails and must be inverted (the residual then closes); if an unknown key
+// ever starts producing a value, that is a new defect and this cell says so.
+func TestLoad_InvalidationUnknownKeyIsAcceptedGap(t *testing.T) {
+	cfg, err := Load(writeInvalidationConfig(t, "  invalidation:\n    watch:\n      heartbeet_ms: 5000\n"))
+	if err != nil {
+		t.Fatalf("the loader REFUSED an unknown key, which closes residual R-2: invert this cell and update the evidence doc (err=%v)", err)
+	}
+	v, err := cfg.InvalidationValues()
+	if err != nil {
+		t.Fatalf("InvalidationValues: %v", err)
+	}
+	if v.Watch.HeartbeatMS != invalidation.DefaultWatchHeartbeatMS {
+		t.Fatalf("heartbeat_ms = %d: the typo'd key produced a value, which contradicts the gap this cell pins", v.Watch.HeartbeatMS)
+	}
+}
+
 // TestLoad_InvalidationNonBooleanFailsAtDecode: `enabled:` is a bool or a load
 // error. A string that a lenient decoder read as false would be a knob that
 // silently does not do what it says.

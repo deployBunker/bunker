@@ -1,0 +1,635 @@
+=== RUN   TestExpectedHashIsRevalidatedInsideTheCommit
+=== RUN   TestExpectedHashIsRevalidatedInsideTheCommit/while_the_body_arrives
+=== RUN   TestExpectedHashIsRevalidatedInsideTheCommit/inside_the_commit
+=== RUN   TestExpectedHashIsRevalidatedInsideTheCommit/inside_the_commit_with_identical_bytes
+--- PASS: TestExpectedHashIsRevalidatedInsideTheCommit (0.02s)
+    --- PASS: TestExpectedHashIsRevalidatedInsideTheCommit/while_the_body_arrives (0.01s)
+    --- PASS: TestExpectedHashIsRevalidatedInsideTheCommit/inside_the_commit (0.01s)
+    --- PASS: TestExpectedHashIsRevalidatedInsideTheCommit/inside_the_commit_with_identical_bytes (0.01s)
+=== RUN   TestCreateOnlyRuleIsRevalidatedInsideTheCommit
+=== RUN   TestCreateOnlyRuleIsRevalidatedInsideTheCommit/inside_the_commit
+=== RUN   TestCreateOnlyRuleIsRevalidatedInsideTheCommit/before_the_precondition_is_evaluated
+--- PASS: TestCreateOnlyRuleIsRevalidatedInsideTheCommit (0.01s)
+    --- PASS: TestCreateOnlyRuleIsRevalidatedInsideTheCommit/inside_the_commit (0.01s)
+    --- PASS: TestCreateOnlyRuleIsRevalidatedInsideTheCommit/before_the_precondition_is_evaluated (0.00s)
+=== RUN   TestCommitSectionIsExclusive
+--- PASS: TestCommitSectionIsExclusive (0.09s)
+=== RUN   TestConcurrentConditionalWritesCannotBothLand
+--- PASS: TestConcurrentConditionalWritesCannotBothLand (0.01s)
+=== RUN   TestStaleHashWriteIsRefused
+--- PASS: TestStaleHashWriteIsRefused (0.00s)
+=== RUN   TestStaleHashWriteOfIdenticalBytesIsANoop
+--- PASS: TestStaleHashWriteOfIdenticalBytesIsANoop (0.00s)
+=== RUN   TestCreateOnlyPrecondition
+--- PASS: TestCreateOnlyPrecondition (0.01s)
+=== RUN   TestIfMatchAbsentIsUnconditional
+--- PASS: TestIfMatchAbsentIsUnconditional (0.01s)
+=== RUN   TestAtomicWriteIsVisibleWhole
+--- PASS: TestAtomicWriteIsVisibleWhole (0.01s)
+=== RUN   TestWriteVerbsWork
+--- PASS: TestWriteVerbsWork (0.00s)
+=== RUN   TestPreconditionAppliesToDelete
+--- PASS: TestPreconditionAppliesToDelete (0.00s)
+=== RUN   TestWeakTagNeverSatisfiesIfMatch
+--- PASS: TestWeakTagNeverSatisfiesIfMatch (0.00s)
+=== RUN   TestEventsOpDeclaredBounds
+--- PASS: TestEventsOpDeclaredBounds (0.00s)
+=== RUN   TestEventsOpSnapshotSeedMakesTheFirstPollHonest
+=== RUN   TestEventsOpSnapshotSeedMakesTheFirstPollHonest/a_whole-tree_snapshot_buys_quiet,_and_nothing_else_does
+=== RUN   TestEventsOpSnapshotSeedMakesTheFirstPollHonest/a_sub-tree_snapshot_is_not_a_baseline
+--- PASS: TestEventsOpSnapshotSeedMakesTheFirstPollHonest (0.00s)
+    --- PASS: TestEventsOpSnapshotSeedMakesTheFirstPollHonest/a_whole-tree_snapshot_buys_quiet,_and_nothing_else_does (0.00s)
+    --- PASS: TestEventsOpSnapshotSeedMakesTheFirstPollHonest/a_sub-tree_snapshot_is_not_a_baseline (0.00s)
+=== RUN   TestEventsOpFirstPollDeclaresThePriorRangeLost
+--- PASS: TestEventsOpFirstPollDeclaresThePriorRangeLost (0.00s)
+=== RUN   TestEventsOpReportsAddedRemovedAndReplacedPaths
+--- PASS: TestEventsOpReportsAddedRemovedAndReplacedPaths (0.00s)
+=== RUN   TestEventsOpSeesAnEditThatPreservesSizeAndMtime
+--- PASS: TestEventsOpSeesAnEditThatPreservesSizeAndMtime (0.00s)
+=== RUN   TestEventsOpSpillsToOverflowAboveThePathCap
+--- PASS: TestEventsOpSpillsToOverflowAboveThePathCap (0.00s)
+=== RUN   TestEventsOpReportsATruncatedObservationAsOverflow
+--- PASS: TestEventsOpReportsATruncatedObservationAsOverflow (0.00s)
+=== RUN   TestEventsOpStaleCursorGetsTheRetainedEvents
+--- PASS: TestEventsOpStaleCursorGetsTheRetainedEvents (0.00s)
+=== RUN   TestEventsOpCursorZeroBehindTheJournalIsUnvouched
+--- PASS: TestEventsOpCursorZeroBehindTheJournalIsUnvouched (0.00s)
+=== RUN   TestEventsOpCursorAheadOfTheLedgerIsDeclaredLost
+--- PASS: TestEventsOpCursorAheadOfTheLedgerIsDeclaredLost (0.00s)
+=== RUN   TestEventsOpRefusesBadArguments
+=== RUN   TestEventsOpRefusesBadArguments/not_an_object
+=== RUN   TestEventsOpRefusesBadArguments/not_JSON
+=== RUN   TestEventsOpRefusesBadArguments/negative_cursor
+=== RUN   TestEventsOpRefusesBadArguments/wrong_type
+--- PASS: TestEventsOpRefusesBadArguments (0.00s)
+    --- PASS: TestEventsOpRefusesBadArguments/not_an_object (0.00s)
+    --- PASS: TestEventsOpRefusesBadArguments/not_JSON (0.00s)
+    --- PASS: TestEventsOpRefusesBadArguments/negative_cursor (0.00s)
+    --- PASS: TestEventsOpRefusesBadArguments/wrong_type (0.00s)
+=== RUN   TestEventsOpWireShape
+--- PASS: TestEventsOpWireShape (0.00s)
+=== RUN   TestWatchRefusalNamesAWorkingFallback
+--- PASS: TestWatchRefusalNamesAWorkingFallback (0.00s)
+=== RUN   TestCapabilityDocumentDropsTheEventsDegradation
+--- PASS: TestCapabilityDocumentDropsTheEventsDegradation (0.00s)
+=== RUN   TestEventsOpIsBoundedAndNeverHoldsARequestOpen
+--- PASS: TestEventsOpIsBoundedAndNeverHoldsARequestOpen (0.00s)
+=== RUN   TestOpTableMatchesWhatIsServed
+--- PASS: TestOpTableMatchesWhatIsServed (0.01s)
+=== RUN   TestAltSvcValueFormat
+--- PASS: TestAltSvcValueFormat (0.00s)
+=== RUN   TestH3EndpointLifecycle
+--- PASS: TestH3EndpointLifecycle (0.00s)
+=== RUN   TestH3EndpointSetLiveIsLastWriteWins
+--- PASS: TestH3EndpointSetLiveIsLastWriteWins (0.00s)
+=== RUN   TestCapabilityDocumentReportsH3Liveness
+=== RUN   TestCapabilityDocumentReportsH3Liveness/no_endpoint
+=== RUN   TestCapabilityDocumentReportsH3Liveness/live_on_the_same_port
+=== RUN   TestCapabilityDocumentReportsH3Liveness/live_on_an_explicit_other_port
+=== RUN   TestCapabilityDocumentReportsH3Liveness/down_endpoint_is_not_the_live_arm
+--- PASS: TestCapabilityDocumentReportsH3Liveness (0.01s)
+    --- PASS: TestCapabilityDocumentReportsH3Liveness/no_endpoint (0.00s)
+    --- PASS: TestCapabilityDocumentReportsH3Liveness/live_on_the_same_port (0.00s)
+    --- PASS: TestCapabilityDocumentReportsH3Liveness/live_on_an_explicit_other_port (0.00s)
+    --- PASS: TestCapabilityDocumentReportsH3Liveness/down_endpoint_is_not_the_live_arm (0.00s)
+=== RUN   TestInvalidationConfigRefusesInvalidValuesAtConstruction
+=== RUN   TestInvalidationConfigRefusesInvalidValuesAtConstruction/heartbeat_zero
+=== RUN   TestInvalidationConfigRefusesInvalidValuesAtConstruction/headroom_zero
+=== RUN   TestInvalidationConfigRefusesInvalidValuesAtConstruction/scan_limit_zero
+=== RUN   TestInvalidationConfigRefusesInvalidValuesAtConstruction/flush_above_the_declared_path_bound
+=== RUN   TestInvalidationConfigRefusesInvalidValuesAtConstruction/push_buffer_below_the_floor
+=== RUN   TestInvalidationConfigRefusesInvalidValuesAtConstruction/write_deadline_at_the_heartbeat
+=== RUN   TestInvalidationConfigRefusesInvalidValuesAtConstruction/max_subscribers_zero
+=== RUN   TestInvalidationConfigRefusesInvalidValuesAtConstruction/heartbeat_below_the_write_deadline
+--- PASS: TestInvalidationConfigRefusesInvalidValuesAtConstruction (0.00s)
+    --- PASS: TestInvalidationConfigRefusesInvalidValuesAtConstruction/heartbeat_zero (0.00s)
+    --- PASS: TestInvalidationConfigRefusesInvalidValuesAtConstruction/headroom_zero (0.00s)
+    --- PASS: TestInvalidationConfigRefusesInvalidValuesAtConstruction/scan_limit_zero (0.00s)
+    --- PASS: TestInvalidationConfigRefusesInvalidValuesAtConstruction/flush_above_the_declared_path_bound (0.00s)
+    --- PASS: TestInvalidationConfigRefusesInvalidValuesAtConstruction/push_buffer_below_the_floor (0.00s)
+    --- PASS: TestInvalidationConfigRefusesInvalidValuesAtConstruction/write_deadline_at_the_heartbeat (0.00s)
+    --- PASS: TestInvalidationConfigRefusesInvalidValuesAtConstruction/max_subscribers_zero (0.00s)
+    --- PASS: TestInvalidationConfigRefusesInvalidValuesAtConstruction/heartbeat_below_the_write_deadline (0.00s)
+=== RUN   TestInvalidationDefaultsDoNotDisableAnything
+--- PASS: TestInvalidationDefaultsDoNotDisableAnything (0.00s)
+=== RUN   TestInvalidationDefaultsAlignWithTheDeclaredBounds
+--- PASS: TestInvalidationDefaultsAlignWithTheDeclaredBounds (0.00s)
+=== RUN   TestInvalidationReadBackCoversEveryKnobWithItsEnforcedRange
+--- PASS: TestInvalidationReadBackCoversEveryKnobWithItsEnforcedRange (0.00s)
+=== RUN   TestInvalidationReadBackFollowsTheRunningWatcher
+--- PASS: TestInvalidationReadBackFollowsTheRunningWatcher (0.00s)
+=== RUN   TestInvalidationReadBackMarksWhatNothingIsApplying
+--- PASS: TestInvalidationReadBackMarksWhatNothingIsApplying (0.00s)
+=== RUN   TestInvalidationHeadroomKnobReachesTheInstall
+--- PASS: TestInvalidationHeadroomKnobReachesTheInstall (0.00s)
+=== RUN   TestInvalidationHeartbeatKnobIsThePeriodTheWatcherBeats
+--- PASS: TestInvalidationHeartbeatKnobIsThePeriodTheWatcherBeats (0.61s)
+=== RUN   TestInvalidationFlushMaxPathsKnobBoundsOneEvent
+--- PASS: TestInvalidationFlushMaxPathsKnobBoundsOneEvent (0.01s)
+=== RUN   TestInvalidationScanLimitKnobBoundsTheWalk
+--- PASS: TestInvalidationScanLimitKnobBoundsTheWalk (0.00s)
+=== RUN   TestInvalidationEnableKnobIsWhatStartsTheWatcher
+--- PASS: TestInvalidationEnableKnobIsWhatStartsTheWatcher (0.01s)
+=== RUN   TestUnhonouredValueIsReportedWithBothNumbers
+--- PASS: TestUnhonouredValueIsReportedWithBothNumbers (0.01s)
+=== RUN   TestUnhonouredValueThatDoesNotBindIsAWarningNotARefusal
+--- PASS: TestUnhonouredValueThatDoesNotBindIsAWarningNotARefusal (0.01s)
+=== RUN   TestInvalidationWireSampleForEvidence
+    invalidation_config_test.go:708: X-Bunker-Verdict: capability_unavailable
+    invalidation_config_test.go:709: X-Bunker-Capability: watch;scope=target;mode=poll;reason=watch_limit_exhausted
+    invalidation_config_test.go:710: refusal: 
+        {
+          "ok": false,
+          "op": "watch",
+          "verdict": "capability_unavailable",
+          "rev": "rev:0",
+          "tree": "tree:5a97757c5ee095da",
+          "proto": "HTTP/1.1",
+          "duration_ms": 0,
+          "truncated": false,
+          "result": null,
+          "error": {
+            "capability": "watch",
+            "scope": "target",
+            "mode": "poll",
+            "reason": "watch_limit_exhausted",
+            "unhonoured": {
+              "knob": "server.invalidation.watch.max_watches",
+              "configured": 8192,
+              "observed": 128,
+              "detail": "the deployment asked for a watch ceiling of 8192 but the platform's own ceiling is 128, so 128 is the ceiling in force; the per-user watch total in use is not observable, so the platform's ceiling cannot be raised from inside this process (the remedy is an operator action on fs.inotify.max_user_watches)"
+            },
+            "detail": "the watch set needs 515 watches (3 directories plus 512 headroom); the ceiling fs.inotify.max_user_watches in force is 128, which this tree does not fit under, and it is the platform number (requested 8192, platform 128, per-user total in use not observable); the remedy is an operator action on the ceiling"
+          }
+        }
+    invalidation_config_test.go:729: extensions.watch.config: 
+        {
+          "applied_from": "the watcher's own options, read while the install is ABSENT on this target (state=absent): only the knobs the refused install used are in force",
+          "ceiling": {
+            "binding": "platform",
+            "ceiling_in_force": 128,
+            "headroom": 512,
+            "platform_max_user_watches": 128,
+            "requested_max_watches": 8192,
+            "watches_desired": 3
+          },
+          "declared": "the knob table (name, default, range, unit, failure mode) is internal/invalidation.Knobs(); every row above is read from the running watcher when one exists, and no row reports a value the code does not use",
+          "knobs": [
+            {
+              "applied": true,
+              "default": 0,
+              "knob": "server.invalidation.watch.enabled",
+              "max": 1,
+              "min": 0,
+              "source": "operator",
+              "unit": "bool",
+              "value": true
+            },
+            {
+              "applied": false,
+              "applied_reason": "the watcher is not established on this target (state=absent), so the machinery this knob bounds never started",
+              "default": 30000,
+              "knob": "server.invalidation.watch.heartbeat_ms",
+              "max": 30000,
+              "min": 100,
+              "source": "operator",
+              "unit": "ms",
+              "value": 5000
+            },
+            {
+              "applied": true,
+              "default": 512,
+              "knob": "server.invalidation.watch.install_headroom",
+              "max": 1048576,
+              "min": 1,
+              "source": "declared_default",
+              "unit": "count",
+              "value": 512
+            },
+            {
+              "applied": false,
+              "applied_reason": "the watcher is not established on this target (state=absent), so the machinery this knob bounds never started",
+              "default": 50,
+              "knob": "server.invalidation.watch.flush_every_ms",
+              "max": 60000,
+              "min": 1,
+              "source": "declared_default",
+              "unit": "ms",
+              "value": 50
+            },
+            {
+              "applied": false,
+              "applied_reason": "the watcher is not established on this target (state=absent), so the machinery this knob bounds never started",
+              "default": 4096,
+              "knob": "server.invalidation.watch.flush_max_paths",
+              "max": 4096,
+              "min": 1,
+              "source": "declared_default",
+              "unit": "count",
+              "value": 4096
+            },
+            {
+              "applied": true,
+              "default": 100000,
+              "knob": "server.invalidation.watch.scan_limit",
+              "max": 2147483648,
+              "min": 1,
+              "source": "declared_default",
+              "unit": "count",
+              "value": 100000
+            },
+            {
+              "applied": true,
+              "default": 0,
+              "knob": "server.invalidation.watch.max_watches",
+              "max": 2147483648,
+              "min": 0,
+              "source": "operator",
+              "unit": "count",
+              "value": 8192
+            },
+            {
+              "applied": false,
+              "applied_reason": "the push form is not served in this build (BFS-036 owns the wire endpoint), so this value is declared and validated but nothing applies it yet",
+              "default": 4194304,
+              "knob": "server.invalidation.push.subscriber_buffer_bytes",
+              "max": 1073741824,
+              "min": 65536,
+              "source": "declared_default",
+              "unit": "bytes",
+              "value": 4194304
+            },
+            {
+              "applied": false,
+              "applied_reason": "the push form is not served in this build (BFS-036 owns the wire endpoint), so this value is declared and validated but nothing applies it yet",
+              "default": 256,
+              "knob": "server.invalidation.push.subscriber_buffer_events",
+              "max": 65536,
+              "min": 1,
+              "source": "declared_default",
+              "unit": "count",
+              "value": 256
+            },
+            {
+              "applied": false,
+              "applied_reason": "the push form is not served in this build (BFS-036 owns the wire endpoint), so this value is declared and validated but nothing applies it yet",
+              "default": 8,
+              "knob": "server.invalidation.push.max_subscribers",
+              "max": 4096,
+              "min": 1,
+              "source": "declared_default",
+              "unit": "count",
+              "value": 8
+            },
+            {
+              "applied": false,
+              "applied_reason": "the push form is not served in this build (BFS-036 owns the wire endpoint), so this value is declared and validated but nothing applies it yet",
+              "default": 10000,
+              "knob": "server.invalidation.push.write_deadline_ms",
+              "max": 29999,
+              "min": 100,
+              "source": "operator",
+              "unit": "ms",
+              "value": 4000
+            },
+            {
+              "applied": false,
+              "applied_reason": "the push form is not served in this build (BFS-036 owns the wire endpoint), so this value is declared and validated but nothing applies it yet",
+              "default": 1048576,
+              "knob": "server.invalidation.push.max_event_bytes",
+              "max": 8388608,
+              "min": 65536,
+              "source": "declared_default",
+              "unit": "bytes",
+              "value": 1048576
+            }
+          ],
+          "read_at": "2026-09-27T09:48:46-05:00",
+          "surface": "server.invalidation",
+          "unhonoured": [
+            {
+              "configured": 8192,
+              "detail": "the deployment asked for a watch ceiling of 8192 but the platform's own ceiling is 128, so 128 is the ceiling in force; the per-user watch total in use is not observable, so the platform's ceiling cannot be raised from inside this process (the remedy is an operator action on fs.inotify.max_user_watches)",
+              "knob": "server.invalidation.watch.max_watches",
+              "observed": 128
+            }
+          ]
+        }
+    invalidation_config_test.go:730: extensions.watch.limits.watching: 
+        {
+          "instances": {
+            "configured": 1024,
+            "limit_name": "fs.inotify.max_user_instances"
+          },
+          "queued_events": {
+            "configured": 16384,
+            "limit_name": "fs.inotify.max_queued_events"
+          },
+          "watching": {
+            "ceiling_in_force": 128,
+            "configured": 128,
+            "desired": 3,
+            "errno": "",
+            "headroom": 512,
+            "limit_name": "fs.inotify.max_user_watches",
+            "platform_max_user_watches": 128,
+            "requested_max_watches": 8192,
+            "watches_held_by_this_process": 0
+          }
+        }
+    invalidation_config_test.go:744: capabilities.degradations: 
+        [
+          {
+            "capability": "watch",
+            "detail": "inotify watcher absent on this target: the push form is not served; the declared poll form X-Bunker-Op: events is",
+            "mode": "poll",
+            "scope": "target"
+          },
+          {
+            "capability": "lock",
+            "detail": "no lease-backed LOCK in this build; DAV: 1 is advertised, DAV: 2 is not",
+            "mode": "none",
+            "phase": "C4",
+            "scope": "build"
+          },
+          {
+            "capability": "h3",
+            "detail": "no HTTP/3 listener is live in this process: QUIC always encrypts, so h3 needs tls.enabled: true plus server.h3_enabled: true (BFS-007)",
+            "mode": "http/2",
+            "scope": "build"
+          },
+          {
+            "capability": "op:status",
+            "detail": "delegated op not in this build (slice C5)",
+            "phase": "C5",
+            "scope": "build"
+          },
+          {
+            "capability": "op:diff",
+            "detail": "delegated op not in this build (slice C5)",
+            "phase": "C5",
+            "scope": "build"
+          },
+          {
+            "capability": "op:rev-parse",
+            "detail": "delegated op not in this build (slice C5)",
+            "phase": "C5",
+            "scope": "build"
+          },
+          {
+            "capability": "op:ls-files",
+            "detail": "delegated op not in this build (slice C5)",
+            "phase": "C5",
+            "scope": "build"
+          },
+          {
+            "capability": "op:log",
+            "detail": "delegated op not in this build (slice C5)",
+            "phase": "C5",
+            "scope": "build"
+          },
+          {
+            "capability": "op:watch",
+            "detail": "delegated op not in this build (slice C5)",
+            "phase": "C5",
+            "scope": "build"
+          },
+          {
+            "capability": "h2",
+            "detail": "tls.enabled is false and server.h2c_enabled is false: this listener serves HTTP/1.1 only",
+            "mode": "http/1.1",
+            "scope": "transport"
+          }
+        ]
+--- PASS: TestInvalidationWireSampleForEvidence (0.01s)
+=== RUN   TestInvalidationSurfaceLeavesAStockClientAlone
+--- PASS: TestInvalidationSurfaceLeavesAStockClientAlone (0.00s)
+=== RUN   TestPropfindAllProp
+--- PASS: TestPropfindAllProp (0.00s)
+=== RUN   TestPropfindNamedProperties
+--- PASS: TestPropfindNamedProperties (0.00s)
+=== RUN   TestPropfindDepth1ListsMembers
+--- PASS: TestPropfindDepth1ListsMembers (0.00s)
+=== RUN   TestPropfindPropName
+--- PASS: TestPropfindPropName (0.00s)
+=== RUN   TestProppatchRefusesPerProperty
+=== RUN   TestProppatchRefusesPerProperty/dead_property
+=== RUN   TestProppatchRefusesPerProperty/live_property
+--- PASS: TestProppatchRefusesPerProperty (0.00s)
+    --- PASS: TestProppatchRefusesPerProperty/dead_property (0.00s)
+    --- PASS: TestProppatchRefusesPerProperty/live_property (0.00s)
+=== RUN   TestProppatchMalformedBody
+--- PASS: TestProppatchMalformedBody (0.00s)
+=== RUN   TestCapabilityDocumentReportsReality
+--- PASS: TestCapabilityDocumentReportsReality (0.01s)
+=== RUN   TestSnapshotOp
+--- PASS: TestSnapshotOp (0.00s)
+=== RUN   TestOpsAreReadOnly
+--- PASS: TestOpsAreReadOnly (0.02s)
+=== RUN   TestOutOfBandWorkingTreeEditMovesNothingTheRevisionPollCanSee
+    rev_blindness_measure_test.go:57: BFS-048 RED: HEAD=8a85291b4da8ad67d473bc4fd8485d573429bf13 rev=git:8a85291b4da8ad67d473bc4fd8485d573429bf13 file=sha256:55a60bb97151b2b4b680462447ce60ec34511b14fa10d77440c97b9777101566
+    rev_blindness_measure_test.go:79: BFS-048 RED: after the out-of-band edit HEAD=8a85291b4da8ad67d473bc4fd8485d573429bf13 rev=git:8a85291b4da8ad67d473bc4fd8485d573429bf13 file=sha256:212fdd6caf8724f0d14106a0787930dc5d998837dcf6681192aca3fc71558c4f
+    rev_blindness_measure_test.go:108: BFS-048 control: after the commit HEAD=124d1b2a37ced2754da13715e3bd1bd31f6c041b rev=git:124d1b2a37ced2754da13715e3bd1bd31f6c041b file=sha256:212fdd6caf8724f0d14106a0787930dc5d998837dcf6681192aca3fc71558c4f
+--- PASS: TestOutOfBandWorkingTreeEditMovesNothingTheRevisionPollCanSee (1.07s)
+=== RUN   TestRevisionTokenCostIsIndependentOfTreeSize
+    rev_fastpath_cost_test.go:49: BFS-048 cost: files=1000 token_memo_hit=38ns token_refresh=15.327µs whole_tree_read=5.585848ms entries=1106
+    rev_fastpath_cost_test.go:49: BFS-048 cost: files=10000 token_memo_hit=40ns token_refresh=16.371µs whole_tree_read=38.041603ms entries=10106
+--- PASS: TestRevisionTokenCostIsIndependentOfTreeSize (0.44s)
+=== RUN   TestRevTokenGitKindMovesOnlyOnHeadMovement
+--- PASS: TestRevTokenGitKindMovesOnlyOnHeadMovement (0.55s)
+=== RUN   TestRevTokenCounterKindMovesOnSurfaceMutation
+--- PASS: TestRevTokenCounterKindMovesOnSurfaceMutation (0.01s)
+=== RUN   TestMethodMatrix
+=== RUN   TestMethodMatrix/unknown_method
+=== RUN   TestMethodMatrix/REPORT_is_not_allowed
+=== RUN   TestMethodMatrix/ACL_is_not_allowed
+=== RUN   TestMethodMatrix/PATCH_is_not_allowed
+=== RUN   TestMethodMatrix/LOCK_is_not_built_yet
+=== RUN   TestMethodMatrix/UNLOCK_is_not_built_yet
+=== RUN   TestMethodMatrix/GET_on_a_collection
+=== RUN   TestMethodMatrix/HEAD_on_a_collection
+=== RUN   TestMethodMatrix/GET_unmapped
+=== RUN   TestMethodMatrix/DELETE_unmapped
+=== RUN   TestMethodMatrix/PROPFIND_without_Depth
+=== RUN   TestMethodMatrix/PROPFIND_Depth_2
+=== RUN   TestMethodMatrix/PROPFIND_Depth_infinity
+=== RUN   TestMethodMatrix/collection_DELETE_with_Depth_0
+=== RUN   TestMethodMatrix/PUT_on_a_collection
+=== RUN   TestMethodMatrix/PUT_with_a_missing_parent
+=== RUN   TestMethodMatrix/PUT_with_a_declared_hash_that_does_not_match
+=== RUN   TestMethodMatrix/MKCOL_with_a_body
+=== RUN   TestMethodMatrix/MKCOL_with_a_missing_ancestor
+=== RUN   TestMethodMatrix/COPY_with_Overwrite_F_onto_a_mapped_destination
+=== RUN   TestMethodMatrix/COPY_to_a_destination_outside_the_namespace
+=== RUN   TestMethodMatrix/COPY_without_Destination
+=== RUN   TestMethodMatrix/MOVE_onto_itself
+=== RUN   TestMethodMatrix/stale_tree_token
+=== RUN   TestMethodMatrix/POST_without_an_op
+=== RUN   TestMethodMatrix/POST_with_an_unknown_op
+=== RUN   TestMethodMatrix/POST_watch_degrades_to_poll
+=== RUN   TestMethodMatrix/POST_status_is_not_in_this_build
+=== RUN   TestMethodMatrix/OPTIONS
+--- PASS: TestMethodMatrix (0.00s)
+    --- PASS: TestMethodMatrix/unknown_method (0.00s)
+    --- PASS: TestMethodMatrix/REPORT_is_not_allowed (0.00s)
+    --- PASS: TestMethodMatrix/ACL_is_not_allowed (0.00s)
+    --- PASS: TestMethodMatrix/PATCH_is_not_allowed (0.00s)
+    --- PASS: TestMethodMatrix/LOCK_is_not_built_yet (0.00s)
+    --- PASS: TestMethodMatrix/UNLOCK_is_not_built_yet (0.00s)
+    --- PASS: TestMethodMatrix/GET_on_a_collection (0.00s)
+    --- PASS: TestMethodMatrix/HEAD_on_a_collection (0.00s)
+    --- PASS: TestMethodMatrix/GET_unmapped (0.00s)
+    --- PASS: TestMethodMatrix/DELETE_unmapped (0.00s)
+    --- PASS: TestMethodMatrix/PROPFIND_without_Depth (0.00s)
+    --- PASS: TestMethodMatrix/PROPFIND_Depth_2 (0.00s)
+    --- PASS: TestMethodMatrix/PROPFIND_Depth_infinity (0.00s)
+    --- PASS: TestMethodMatrix/collection_DELETE_with_Depth_0 (0.00s)
+    --- PASS: TestMethodMatrix/PUT_on_a_collection (0.00s)
+    --- PASS: TestMethodMatrix/PUT_with_a_missing_parent (0.00s)
+    --- PASS: TestMethodMatrix/PUT_with_a_declared_hash_that_does_not_match (0.00s)
+    --- PASS: TestMethodMatrix/MKCOL_with_a_body (0.00s)
+    --- PASS: TestMethodMatrix/MKCOL_with_a_missing_ancestor (0.00s)
+    --- PASS: TestMethodMatrix/COPY_with_Overwrite_F_onto_a_mapped_destination (0.00s)
+    --- PASS: TestMethodMatrix/COPY_to_a_destination_outside_the_namespace (0.00s)
+    --- PASS: TestMethodMatrix/COPY_without_Destination (0.00s)
+    --- PASS: TestMethodMatrix/MOVE_onto_itself (0.00s)
+    --- PASS: TestMethodMatrix/stale_tree_token (0.00s)
+    --- PASS: TestMethodMatrix/POST_without_an_op (0.00s)
+    --- PASS: TestMethodMatrix/POST_with_an_unknown_op (0.00s)
+    --- PASS: TestMethodMatrix/POST_watch_degrades_to_poll (0.00s)
+    --- PASS: TestMethodMatrix/POST_status_is_not_in_this_build (0.00s)
+    --- PASS: TestMethodMatrix/OPTIONS (0.00s)
+=== RUN   TestHeadHasNoBody
+--- PASS: TestHeadHasNoBody (0.00s)
+=== RUN   TestContentIdentityIsTheBytes
+--- PASS: TestContentIdentityIsTheBytes (0.00s)
+=== RUN   TestConditionalGet
+=== RUN   TestConditionalGet/if-none-match_hit
+=== RUN   TestConditionalGet/if-none-match_miss
+=== RUN   TestConditionalGet/single_prefix_range
+=== RUN   TestConditionalGet/single_suffix_range
+=== RUN   TestConditionalGet/unsatisfiable_range
+=== RUN   TestConditionalGet/multi-range_is_answered_whole
+--- PASS: TestConditionalGet (0.00s)
+    --- PASS: TestConditionalGet/if-none-match_hit (0.00s)
+    --- PASS: TestConditionalGet/if-none-match_miss (0.00s)
+    --- PASS: TestConditionalGet/single_prefix_range (0.00s)
+    --- PASS: TestConditionalGet/single_suffix_range (0.00s)
+    --- PASS: TestConditionalGet/unsatisfiable_range (0.00s)
+    --- PASS: TestConditionalGet/multi-range_is_answered_whole (0.00s)
+=== RUN   TestSymlinkEscapeIsRefused
+--- PASS: TestSymlinkEscapeIsRefused (0.00s)
+=== RUN   TestTreeAndRevisionTokens
+--- PASS: TestTreeAndRevisionTokens (0.00s)
+=== RUN   TestTreeTokenIsPerTree
+--- PASS: TestTreeTokenIsPerTree (0.00s)
+=== RUN   TestOptionsAsteriskHasNoDAVHeader
+--- PASS: TestOptionsAsteriskHasNoDAVHeader (0.00s)
+=== RUN   TestMethodMatrixNoWritesOnRefusal
+--- PASS: TestMethodMatrixNoWritesOnRefusal (0.00s)
+=== RUN   TestHandlerRefusesAnUnusableRoot
+--- PASS: TestHandlerRefusesAnUnusableRoot (0.00s)
+=== RUN   TestSameSurfaceOverHTTP1AndHTTP2
+=== RUN   TestSameSurfaceOverHTTP1AndHTTP2/options
+=== RUN   TestSameSurfaceOverHTTP1AndHTTP2/get_file
+=== RUN   TestSameSurfaceOverHTTP1AndHTTP2/head_file
+=== RUN   TestSameSurfaceOverHTTP1AndHTTP2/get_unmapped
+=== RUN   TestSameSurfaceOverHTTP1AndHTTP2/get_collection_refused
+=== RUN   TestSameSurfaceOverHTTP1AndHTTP2/propfind_depth_0
+=== RUN   TestSameSurfaceOverHTTP1AndHTTP2/propfind_depth_1
+=== RUN   TestSameSurfaceOverHTTP1AndHTTP2/propfind_infinity_refused
+=== RUN   TestSameSurfaceOverHTTP1AndHTTP2/propfind_without_depth
+=== RUN   TestSameSurfaceOverHTTP1AndHTTP2/unknown_method_refused
+=== RUN   TestSameSurfaceOverHTTP1AndHTTP2/report_refused
+=== RUN   TestSameSurfaceOverHTTP1AndHTTP2/stale_tree_refused
+=== RUN   TestSameSurfaceOverHTTP1AndHTTP2/conditional_get
+=== RUN   TestSameSurfaceOverHTTP1AndHTTP2/range_get
+=== RUN   TestSameSurfaceOverHTTP1AndHTTP2/op_capabilities
+=== RUN   TestSameSurfaceOverHTTP1AndHTTP2/op_snapshot
+=== RUN   TestSameSurfaceOverHTTP1AndHTTP2/op_watch_refused
+=== RUN   TestSameSurfaceOverHTTP1AndHTTP2/stale_hash_refused
+=== RUN   TestSameSurfaceOverHTTP1AndHTTP2/create_file
+=== RUN   TestSameSurfaceOverHTTP1AndHTTP2/control:_a_plain_transport_does_not_negotiate_h2
+--- PASS: TestSameSurfaceOverHTTP1AndHTTP2 (0.03s)
+    --- PASS: TestSameSurfaceOverHTTP1AndHTTP2/options (0.00s)
+    --- PASS: TestSameSurfaceOverHTTP1AndHTTP2/get_file (0.00s)
+    --- PASS: TestSameSurfaceOverHTTP1AndHTTP2/head_file (0.00s)
+    --- PASS: TestSameSurfaceOverHTTP1AndHTTP2/get_unmapped (0.00s)
+    --- PASS: TestSameSurfaceOverHTTP1AndHTTP2/get_collection_refused (0.00s)
+    --- PASS: TestSameSurfaceOverHTTP1AndHTTP2/propfind_depth_0 (0.00s)
+    --- PASS: TestSameSurfaceOverHTTP1AndHTTP2/propfind_depth_1 (0.00s)
+    --- PASS: TestSameSurfaceOverHTTP1AndHTTP2/propfind_infinity_refused (0.00s)
+    --- PASS: TestSameSurfaceOverHTTP1AndHTTP2/propfind_without_depth (0.00s)
+    --- PASS: TestSameSurfaceOverHTTP1AndHTTP2/unknown_method_refused (0.00s)
+    --- PASS: TestSameSurfaceOverHTTP1AndHTTP2/report_refused (0.00s)
+    --- PASS: TestSameSurfaceOverHTTP1AndHTTP2/stale_tree_refused (0.00s)
+    --- PASS: TestSameSurfaceOverHTTP1AndHTTP2/conditional_get (0.00s)
+    --- PASS: TestSameSurfaceOverHTTP1AndHTTP2/range_get (0.00s)
+    --- PASS: TestSameSurfaceOverHTTP1AndHTTP2/op_capabilities (0.00s)
+    --- PASS: TestSameSurfaceOverHTTP1AndHTTP2/op_snapshot (0.00s)
+    --- PASS: TestSameSurfaceOverHTTP1AndHTTP2/op_watch_refused (0.00s)
+    --- PASS: TestSameSurfaceOverHTTP1AndHTTP2/stale_hash_refused (0.00s)
+    --- PASS: TestSameSurfaceOverHTTP1AndHTTP2/create_file (0.01s)
+    --- PASS: TestSameSurfaceOverHTTP1AndHTTP2/control:_a_plain_transport_does_not_negotiate_h2 (0.00s)
+=== RUN   TestServeProtocolsKeepsHTTP1AndTLSH2
+=== RUN   TestServeProtocolsKeepsHTTP1AndTLSH2/http/1.1
+=== RUN   TestServeProtocolsKeepsHTTP1AndTLSH2/h2_via_ALPN
+--- PASS: TestServeProtocolsKeepsHTTP1AndTLSH2 (0.01s)
+    --- PASS: TestServeProtocolsKeepsHTTP1AndTLSH2/http/1.1 (0.00s)
+    --- PASS: TestServeProtocolsKeepsHTTP1AndTLSH2/h2_via_ALPN (0.00s)
+=== RUN   TestH2CIsPriorKnowledgeOnly
+=== RUN   TestH2CIsPriorKnowledgeOnly/opt-in_off
+=== RUN   TestH2CIsPriorKnowledgeOnly/opt-in_on
+--- PASS: TestH2CIsPriorKnowledgeOnly (0.00s)
+    --- PASS: TestH2CIsPriorKnowledgeOnly/opt-in_off (0.00s)
+    --- PASS: TestH2CIsPriorKnowledgeOnly/opt-in_on (0.00s)
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/control:_local_ext4_root_is_watched,_and_reports_no_reason
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/W-1_watch_unsupported_platform
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/W-3_watch_target_netbacked_is_its_own_case,_with_the_mount_type
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/W-2_watch_limit_exhausted_reports_configured_vs_desired
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/W-2_from_the_add's_errno:_the_partial_set_is_TORN_DOWN
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/W-2_instance_ceiling_from_newBackend's_errno
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/W-5_watch_install_failed_names_the_errno_and_the_path
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/W-4_watch_partial_coverage_keeps_the_set_and_counts_the_missing
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/W-4_bound:_more_missing_than_the_cap_is_an_EMPTY_list_and_a_full_count
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/W-6_watch_lost_when_the_re-install_also_fails
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/W-6_transient:_a_successful_re-install_is_NOT_an_absence
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/W-7_boundary_split_is_a_WARNING_and_blocks_nothing
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/A-1_control:_a_build_that_ran_no_probe_reports_NO_reason
+--- PASS: TestWatchProbeMatrixNamesOneReasonPerCase (0.32s)
+    --- PASS: TestWatchProbeMatrixNamesOneReasonPerCase/control:_local_ext4_root_is_watched,_and_reports_no_reason (0.00s)
+    --- PASS: TestWatchProbeMatrixNamesOneReasonPerCase/W-1_watch_unsupported_platform (0.00s)
+    --- PASS: TestWatchProbeMatrixNamesOneReasonPerCase/W-3_watch_target_netbacked_is_its_own_case,_with_the_mount_type (0.00s)
+    --- PASS: TestWatchProbeMatrixNamesOneReasonPerCase/W-2_watch_limit_exhausted_reports_configured_vs_desired (0.00s)
+    --- PASS: TestWatchProbeMatrixNamesOneReasonPerCase/W-2_from_the_add's_errno:_the_partial_set_is_TORN_DOWN (0.00s)
+    --- PASS: TestWatchProbeMatrixNamesOneReasonPerCase/W-2_instance_ceiling_from_newBackend's_errno (0.00s)
+    --- PASS: TestWatchProbeMatrixNamesOneReasonPerCase/W-5_watch_install_failed_names_the_errno_and_the_path (0.00s)
+    --- PASS: TestWatchProbeMatrixNamesOneReasonPerCase/W-4_watch_partial_coverage_keeps_the_set_and_counts_the_missing (0.00s)
+    --- PASS: TestWatchProbeMatrixNamesOneReasonPerCase/W-4_bound:_more_missing_than_the_cap_is_an_EMPTY_list_and_a_full_count (0.27s)
+    --- PASS: TestWatchProbeMatrixNamesOneReasonPerCase/W-6_watch_lost_when_the_re-install_also_fails (0.01s)
+    --- PASS: TestWatchProbeMatrixNamesOneReasonPerCase/W-6_transient:_a_successful_re-install_is_NOT_an_absence (0.01s)
+    --- PASS: TestWatchProbeMatrixNamesOneReasonPerCase/W-7_boundary_split_is_a_WARNING_and_blocks_nothing (0.00s)
+    --- PASS: TestWatchProbeMatrixNamesOneReasonPerCase/A-1_control:_a_build_that_ran_no_probe_reports_NO_reason (0.01s)
+=== RUN   TestWatchOverflowForcesCountedFullRescanAndIsNeverQuiet
+--- PASS: TestWatchOverflowForcesCountedFullRescanAndIsNeverQuiet (0.01s)
+=== RUN   TestWatchOverflowNegativeControlDisablesTheDrain
+--- PASS: TestWatchOverflowNegativeControlDisablesTheDrain (0.50s)
+=== RUN   TestWatchOverflowRealKernelReproducer
+=== RUN   TestWatchOverflowRealKernelReproducer/the_drain_arm_observes_the_kernel's_overflow_as_the_backlog_drains
+    watch_test.go:1098: BFS-035 kernel reproducer: max_queued_events=16384, 16384 files created, overflows_total=1, unvouched_total=1, rescans_total=0
+=== RUN   TestWatchOverflowRealKernelReproducer/the_no-drain_arm_gets_SILENCE_(the_trap_R-6_names)
+--- PASS: TestWatchOverflowRealKernelReproducer (17.00s)
+    --- PASS: TestWatchOverflowRealKernelReproducer/the_drain_arm_observes_the_kernel's_overflow_as_the_backlog_drains (1.06s)
+    --- PASS: TestWatchOverflowRealKernelReproducer/the_no-drain_arm_gets_SILENCE_(the_trap_R-6_names) (15.94s)
+=== RUN   TestWatchLivenessIsTheHeartbeatNeverSilence
+--- PASS: TestWatchLivenessIsTheHeartbeatNeverSilence (0.21s)
+=== RUN   TestWatchOutOfBandEditMovesServedRevision
+--- PASS: TestWatchOutOfBandEditMovesServedRevision (0.06s)
+=== RUN   TestWatchSnapshotFastPathCostWithWatcherLive
+    watch_test.go:1328: BFS-035 fast path (watcher absent): files=4000 token_memo_hit=39ns token_refresh=15.713µs one_call_snapshot=14.99679ms
+    watch_test.go:1328: BFS-035 fast path (watcher live): files=4000 token_memo_hit=90ns token_refresh=16.254µs one_call_snapshot=14.788664ms
+--- PASS: TestWatchSnapshotFastPathCostWithWatcherLive (3.27s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/server/webdav	24.398s
+rc=0
