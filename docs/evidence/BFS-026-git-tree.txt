@@ -1,0 +1,22 @@
+tree      = /tmp/bfs026-git.Qf1G28/tree
+files     = 41 (including .git)
+rev       = 20f8232
+endpoint  = http://127.0.0.1:38333/dav
+
+=== 1. seed, then confirm the quiet tree is quiet ===
+  seed           count=1 head_seq=1 scanned=66 truncated=False
+    overflow   seq=1 paths=0 (dot-git paths: 0) 
+  quiet          count=0 head_seq=1 scanned=66 truncated=False
+
+=== 2. an edit made on the agent reaches the channel ===
+  edit           count=1 head_seq=2 scanned=66 truncated=False
+    invalidate seq=2 paths=1 (dot-git paths: 0) README.md
+
+=== 3. a git operation on the agent: how many paths does it move? ===
+  commit         count=1 head_seq=3 scanned=72 truncated=False
+    invalidate seq=3 paths=22 (dot-git paths: 22) .git,.git/COMMIT_EDITMSG,.git/index,.git/logs/HEAD…
+
+=== 4. and the channel is caught up again ===
+  after          count=0 head_seq=3 scanned=72 truncated=False
+
+transcripts: /tmp/bfs026-git.Qf1G28

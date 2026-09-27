@@ -2,13 +2,18 @@ package server
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+
 	"github.com/deployBunker/bunker/internal/apikey"
 	"github.com/deployBunker/bunker/internal/auth"
+	"github.com/deployBunker/bunker/internal/server/webdav"
 )
 
 // TestMountWebDAVReachesEveryMethod proves the /dav subtree is served ahead of
@@ -181,5 +186,81 @@ func TestWebDAVAuthenticatorAcceptsAnIssuedKey(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+token)
 	if !authFn(req) {
 		t.Fatal("an issued daemon key did not authenticate the WebDAV mount")
+	}
+}
+
+// TestWebDAVOpIsAnsweredAheadOfTheRPCTimeout verifies WHERE the E-4 op surface
+// actually sits — the question BFS-026 had to answer before putting the
+// invalidation channel's poll there.
+//
+// The daemon installs `middleware.Timeout(server.request_timeout)` on the chi
+// router (300 s by default, server.go:153) and mounts the WebDAV handler AHEAD
+// of that router (server.go:396). An op never passes through the middleware, so
+// no socket deadline governs it. That is the same structural fact BFS-006
+// recorded for the watch stream: a stream — or, here, the poll the fallback
+// depends on — placed behind the router would be governed by a deadline it must
+// not have.
+//
+// Two controls keep this from being a claim about a router that is not really
+// there: the router answers a non-/dav path, and the deadline in this harness is
+// demonstrably live (a handler that outlives it is refused with 504).
+func TestWebDAVOpIsAnsweredAheadOfTheRPCTimeout(t *testing.T) {
+	var routed int
+	rest := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		routed++
+		if r.URL.Path == "/slowz" {
+			// Deliberately writes nothing: the deadline middleware's own 504 is
+			// then the first write, which is what makes it observable.
+			time.Sleep(150 * time.Millisecond)
+			return
+		}
+		w.WriteHeader(http.StatusTeapot)
+	})
+	r := chi.NewRouter()
+	r.Use(middleware.Timeout(50 * time.Millisecond))
+	r.Handle("/*", rest)
+
+	dav, err := webdav.New(webdav.Config{Root: t.TempDir(), Build: "mount-test"})
+	if err != nil {
+		t.Fatalf("webdav.New: %v", err)
+	}
+	handler := mountWebDAV(r, webdav.Prefix, dav)
+
+	req := httptest.NewRequest("POST", "/dav/", nil)
+	req.Header.Set("X-Bunker-Op", "events")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("op events -> %d %s", rec.Code, rec.Body.String())
+	}
+	var env struct {
+		OK     bool   `json:"ok"`
+		Op     string `json:"op"`
+		Result struct {
+			Events []json.RawMessage `json:"events"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatalf("the surface's answer is not an envelope: %v", err)
+	}
+	if !env.OK || env.Op != "events" || len(env.Result.Events) == 0 {
+		t.Fatalf("the surface did not answer the poll: %s", rec.Body.String())
+	}
+	if routed != 0 {
+		t.Fatalf("the poll reached the router (%d times): the request deadline would then govern the channel", routed)
+	}
+
+	// Control 1: the router IS installed, and it answers everything outside /dav.
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest("GET", "/healthz", nil))
+	if rec.Code != http.StatusTeapot || routed != 1 {
+		t.Fatalf("control: /healthz -> %d routed=%d, want the router to answer", rec.Code, routed)
+	}
+	// Control 2: the deadline in this harness really bites, so "the op never
+	// reached it" is a statement about the mount and not about an inert middleware.
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest("GET", "/slowz", nil))
+	if rec.Code != http.StatusGatewayTimeout {
+		t.Fatalf("control: a handler past the router's deadline -> %d, want 504", rec.Code)
 	}
 }

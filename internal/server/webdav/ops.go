@@ -21,7 +21,7 @@ import (
 // disappearing (R3).
 var (
 	opCatalogue    = []string{"capabilities", "status", "diff", "rev-parse", "ls-files", "log", "snapshot", "events", "watch"}
-	implementedOps = map[string]bool{"capabilities": true, "snapshot": true}
+	implementedOps = map[string]bool{"capabilities": true, "snapshot": true, "events": true}
 )
 
 // envelope is the single JSON shape every E-4 response uses, success or
@@ -72,14 +72,21 @@ func (h *Handler) handlePost(w http.ResponseWriter, r *http.Request) {
 	case "snapshot":
 		h.handleSnapshot(w, r, start)
 
-	case "watch", "events":
+	case "events":
+		// E-6's poll form, which `watch`'s own refusal names as the mode in
+		// force on a target without a watcher. Serving it is what makes the
+		// declared degradation a working channel rather than a label.
+		h.handleEvents(w, r, start)
+
+	case "watch":
 		// No watcher on this target: the declared degradation, with the mode
-		// actually in force, so "degraded" can never be mistaken for "quiet"
-		// (§3 E-6, AC-9).
+		// actually in force AND the poll form that carries it named, so
+		// "degraded" can never be mistaken for "quiet" — and so a client is
+		// pointed at a mechanism this build really serves (§3 E-6, AC-9).
 		h.writeEnvelope(w, r, start, op, 501, VerdictCapabilityUnavailable, false, nil,
 			&envelopeError{
 				Capability: op, Scope: "target", Mode: "poll",
-				Detail: "no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff",
+				Detail: "no inotify watcher on this target; the declared poll form X-Bunker-Op: events carries the channel (mode=poll), or poll with HEAD/ETag",
 			})
 
 	case "status", "diff", "rev-parse", "ls-files", "log":
@@ -154,6 +161,17 @@ func (h *Handler) handleSnapshot(w http.ResponseWriter, r *http.Request, start t
 		}
 		abs = resolved
 	}
+	// A whole-tree snapshot IS an observation of the served tree, so it is
+	// recorded as the poll-form ledger's baseline when the ledger has none yet
+	// (events.go, seedEvents). The identities come off the SAME walk that
+	// produced the answer, so a client that binds with one snapshot has its
+	// baseline recorded from the very state it received — no window between its
+	// view and the channel's, and no first-poll overflow it did not earn.
+	//
+	// A sub-tree, a shallow listing or a truncated walk is not a baseline and is
+	// not offered as one: `whole` is what carries that judgment.
+	whole := depthInfinity && abs == h.tree.rootPath()
+	ids := map[string]identity{}
 	if _, err := os.Stat(abs); err != nil {
 		h.writeEnvelope(w, r, start, "snapshot", 404, VerdictNotFound, false, nil,
 			&envelopeError{Detail: "snapshot path does not exist"})
@@ -165,12 +183,13 @@ func (h *Handler) handleSnapshot(w http.ResponseWriter, r *http.Request, start t
 		h.failEnvelope(w, r, start, "snapshot", *f)
 		return
 	}
-	entries, truncated, err := h.snapshotEntries(abs, depthInfinity, args.IncludeHash, budget)
+	entries, truncated, err := h.snapshotEntries(abs, depthInfinity, args.IncludeHash, budget, ids)
 	if err != nil {
 		h.writeEnvelope(w, r, start, "snapshot", 500, VerdictInternal, false, nil,
 			&envelopeError{Detail: "snapshot walk failed"})
 		return
 	}
+	h.tree.seedEvents(ids, whole && !truncated)
 	if truncated && len(entries) == 0 {
 		h.writeEnvelope(w, r, start, "snapshot", 413, VerdictResultTooLarge, false, nil,
 			&envelopeError{Detail: "a single snapshot entry exceeds the result cap; raise X-Bunker-Max-Bytes"})
@@ -204,7 +223,12 @@ func (h *Handler) envelopeBudget(r *http.Request) (int, *failure) {
 
 // snapshotEntries walks the tree and stops at the budget, reporting whether it
 // had to. A truncated answer is always reported, never silently shortened.
-func (h *Handler) snapshotEntries(abs string, depthInfinity, includeHash bool, budget int) ([]snapshotEntry, bool, error) {
+//
+// ids, when non-nil, collects one observed identity per path off the same walk
+// (events.go): the caller decides whether that observation is a baseline worth
+// recording. Passing a map is how the poll-form ledger gets a baseline from the
+// snapshot op without a second walk of the tree.
+func (h *Handler) snapshotEntries(abs string, depthInfinity, includeHash bool, budget int, ids map[string]identity) ([]snapshotEntry, bool, error) {
 	root := h.tree.rootPath()
 	entries := make([]snapshotEntry, 0, 64)
 	used := 0
@@ -217,6 +241,9 @@ func (h *Handler) snapshotEntries(abs string, depthInfinity, includeHash bool, b
 			Size:        fi.Size(),
 			MtimeUnixMS: fi.ModTime().UnixNano() / int64(time.Millisecond),
 			Mode:        fmt.Sprintf("%04o", fi.Mode().Perm()),
+		}
+		if ids != nil {
+			ids[p] = identityOf(fi)
 		}
 		if includeHash && fi.Mode().IsRegular() {
 			if hash, err := h.tree.hashFile(filepath.Join(root, filepath.FromSlash(p))); err == nil {
@@ -423,7 +450,12 @@ func (h *Handler) capabilityDocument(r *http.Request) map[string]any {
 			},
 			"watch": map[string]any{
 				"name": "X-Bunker-Op: watch", "v": 1, "mode": "poll",
-				"modes": map[string]any{"push": "inotify\u2192stream", "poll": "X-Bunker-Op: events"},
+				// The push form needs a per-target watcher this build does not
+				// have. The poll form is served (events.go), and its per-event
+				// path cap is declared here because a client's drop loop reads it
+				// (BFS-004 §3 E-6 declaration 2).
+				"max_paths_per_event": eventsMaxPathsPerEvent,
+				"modes":               map[string]any{"push": "inotify\u2192stream", "poll": "X-Bunker-Op: events"},
 			},
 		},
 		"transports": map[string]any{
@@ -462,7 +494,7 @@ func (h *Handler) degradations() []map[string]any {
 	out := []map[string]any{
 		{
 			"capability": "watch", "scope": "target", "mode": "poll",
-			"detail": "inotify watcher absent on this target; poll with HEAD/ETag",
+			"detail": "inotify watcher absent on this target: the push form is not served; the declared poll form X-Bunker-Op: events is",
 		},
 		{
 			"capability": "lock", "scope": "build", "phase": "C4", "mode": "none",

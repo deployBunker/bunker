@@ -1,0 +1,73 @@
+label     = RED
+out       = /tmp/bfs026-RED.1SAYH4
+tree      = /tmp/bfs026-red4.sSaCOm
+binaries  = /tmp/bfs026.ZVlekT/base/bin/bunker / /tmp/bfs026.ZVlekT/base/bin/davserve
+endpoint  = http://127.0.0.1:45353/dav
+cache-dir = /tmp/bfs026-RED.1SAYH4/xdg/bunker/fs/1d040f742c2e
+status.invalidation = {"channel_available": false, "events_total": 0, "last_event_age_ms": null, "mechanism": "none", "mode": "auto", "paths_dropped_total": 0, "poll_interval_ms": null, "resyncs_from_gap": 0, "resyncs_total": 0, "seq": 0}
+
+=== A. the declared channel state ===
+status.invalidation = {"channel_available": false, "events_total": 0, "last_event_age_ms": null, "mechanism": "events", "mode": "poll", "paths_dropped_total": 0, "poll_interval_ms": 2000, "reason": "poll call failed: op:events : errno=EOPNOTSUPP cause=server_error status=501 verdict=capability_unavailable: no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff", "resyncs_from_gap": 0, "resyncs_total": 0, "seq": 0}
+  mount.log: bunker-fs: bound to http://127.0.0.1:45353/dav tree=tree:52e8f215312cedc5 rev=rev:0 proto=HTTP/1.1 extensions="identity,if_match_refuse,rev,tree,op,watch"
+  mount.log: bunker-fs: declared degradation: watch (scope=target mode=poll): no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff
+
+=== B. the E-4 op catalogue, probed live ===
+  capabilities 200  verdict=ok                       capability=h2
+  status       501  verdict=capability_unavailable   capability=status
+  diff         501  verdict=capability_unavailable   capability=diff
+  rev-parse    501  verdict=capability_unavailable   capability=rev-parse
+  ls-files     501  verdict=capability_unavailable   capability=ls-files
+  log          501  verdict=capability_unavailable   capability=log
+  snapshot     200  verdict=ok                       capability=-
+  events       501  verdict=capability_unavailable   capability=events
+  watch        501  verdict=capability_unavailable   capability=watch
+  frobnicate   400  verdict=op_unknown               capability=-
+
+=== C. is the declared fallback RUNNING? (quiet window, no I/O of ours) ===
+requests_total 7 -> 11 over 6s  (4 requests)
+status.invalidation after the window = {"channel_available": false, "events_total": 0, "last_event_age_ms": null, "mechanism": "events", "mode": "poll", "paths_dropped_total": 0, "poll_interval_ms": 2000, "reason": "poll call failed: op:events : errno=EOPNOTSUPP cause=server_error status=501 verdict=capability_unavailable: no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff", "resyncs_from_gap": 0, "resyncs_total": 0, "seq": 0}
+
+=== D. a path NEVER READ (BFS-025's shape), edited on the AGENT ===
+    Three facts, separated: the refusal, whether the READ PATH itself repairs
+    it, and when the mount's RECORD reports the change.
+  label            : never.txt
+  record before    : events=0 dropped=0 resyncs=0 seq=0 available=False mechanism=events
+  agent bytes now  : 'never-version-2-EDITED-ON-THE-AGENT' (35 bytes)  [edit at +0 ms]
+  read +   5 ms      : REFUSED: OSError: Stale file handle
+  read + 410 ms      : 'never-version-2-EDITED-ON-THE-AGENT'   (control: still inside the declared window)
+  channel reported : NONE within 12.0 s — the record never moved
+  served fresh at  : +400 ms  (BEFORE the channel: repaired by the read path, not by the channel)
+  record after     : events=0 dropped=0 resyncs=0 seq=0 available=False mechanism=events reason='poll call failed: op:events : errno=EOPNOTSUPP cause=server_error status=501 verdict=capability_unavailable: no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff'
+  SUMMARY never.txt edit=0 control_fresh=True channel_ms=none fresh_ms=none
+  (the mount's own log lines for that read, if any:)
+    bunker-fs: read bound divergence never.txt: published=16 content=35 refused=true (the metadata the kernel holds for this path was stale)
+
+=== E. a path ALREADY READ (cached): the BFS-024 shape, with its control ===
+  mount first read : cached-version-1   (so the path IS cached)
+  label            : cached.txt
+  record before    : events=0 dropped=0 resyncs=0 seq=0 available=False mechanism=events
+  agent bytes now  : 'cached-version-2-EDITED-ON-THE-AGENT' (36 bytes)  [edit at +0 ms]
+  read +   1 ms      : 'cached-version-1\n'
+  read + 401 ms      : 'cached-version-1\n'   (control: still inside the declared window)
+  channel reported : NONE within 12.0 s — the record never moved
+  served fresh at  : NEVER within 12.0 s
+  record after     : events=0 dropped=0 resyncs=0 seq=0 available=False mechanism=events reason='poll call failed: op:events : errno=EOPNOTSUPP cause=server_error status=501 verdict=capability_unavailable: no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff'
+  SUMMARY cached.txt edit=0 control_fresh=False channel_ms=none fresh_ms=none
+
+=== F. the delegated verb, by hand ===
+  OP REFUSED: events status=501 verdict=capability_unavailable errno=EOPNOTSUPP cause=server_error
+    capability : events (scope=target phase=- mode=poll)
+    detail     : no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff
+    (the delegated surface needs the slice the refusal names; the mount is unaffected)
+  bunker: op events refused: op:events : errno=EOPNOTSUPP cause=server_error status=501 verdict=capability_unavailable: no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff
+
+=== G. the final record and the verdict this row turns on ===
+status.invalidation = {"channel_available": false, "events_total": 0, "last_event_age_ms": null, "mechanism": "events", "mode": "poll", "paths_dropped_total": 0, "poll_interval_ms": 2000, "reason": "poll call failed: op:events : errno=EOPNOTSUPP cause=server_error status=501 verdict=capability_unavailable: no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff", "resyncs_from_gap": 0, "resyncs_total": 0, "seq": 0}
+status.transport    : {"cause": "", "in_flight": 0, "in_flight_max": 1, "last_ok_age_ms": 11677, "proto": "HTTP/1.1", "requests_total": 25, "rev": "rev:0", "tree": "tree:52e8f215312cedc5", "verdict": "healthy"}
+status.cache        : {"blobs": 2, "blobs_bytes": 52, "bypass_events": 0, "entries": 2, "evictions_total": 0, "hits": 3, "index_bytes": 322, "max_bytes": 268435456, "misses": 0, "oversize_bypasses": 0, "pinned_blobs": 0, "used_bytes": 374}
+
+VERDICT-LINE label=RED mode=poll mechanism=events channel_available=False events_total=0 paths_dropped_total=0 resyncs_total=0 last_event_age_ms=None
+VERDICT-LINE never-read:  SUMMARY never.txt edit=0 control_fresh=True channel_ms=none fresh_ms=none
+VERDICT-LINE cached-path: SUMMARY cached.txt edit=0 control_fresh=False channel_ms=none fresh_ms=none
+VERDICT-LINE reason=poll call failed: op:events : errno=EOPNOTSUPP cause=server_error status=501 verdict=capability_unavailable: no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff
+transcripts: /tmp/bfs026-RED.1SAYH4

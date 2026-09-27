@@ -1,0 +1,19 @@
+endpoint = http://127.0.0.1:43863/dav
+tree     = /tmp/bfs026-seed.1mTIVD/tree
+
+=== the mount's bind order, step by step ===
+1. the handshake's probes (this client probes 'events' BEFORE it snapshots)
+  events      -> 200 events=[('overflow', 0, 1)] count=1 scanned=10 head_seq=1
+2. the bind snapshot (whole tree) — the ledger already began, so this is not a baseline
+  snapshot    -> 200 verdict=ok keys=['count', 'entries']
+3. the mount's first real poll, with the cursor it actually holds (0)
+  events      -> 200 events=[('overflow', 0, 1)] count=1 scanned=10 head_seq=1
+4. the client applies the overflow and re-snapshots; its next poll is caught up
+  events      -> 200 events=[] count=0 scanned=10 head_seq=1
+
+5. an edit on the agent, and the next poll — the precise, per-path answer
+  events      -> 200 events=[('invalidate', 1, 2)] count=1 scanned=10 head_seq=2
+6. and quiet again once caught up
+  events      -> 200 events=[] count=0 scanned=10 head_seq=2
+
+transcripts: /tmp/bfs026-seed.1mTIVD

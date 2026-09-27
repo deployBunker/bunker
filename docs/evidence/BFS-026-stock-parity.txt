@@ -1,0 +1,46 @@
+out = /tmp/bfs026-parity.zdV2Yu
+base server = http://127.0.0.1:42121/dav
+new  server = http://127.0.0.1:34105/dav
+=== the stock-client battery, base vs new (normalised: tree token, duration_ms) ===
+  OPTIONS   /dav/                -> 200 verdict=ok                    allow=OPTIONS, GET, HEAD, PUT, DELETE, MKCOL, PROPFIND, PROPPATCH, COPY, MOVE, POST dav=1    etag=-            body=e3b0c44298fc1c149afb len=0
+  OPTIONS   *                    -> 200 verdict=-                      allow=-          dav=-     etag=-            body=e3b0c44298fc1c149afb len=0
+  GET       /dav/README.md       -> 200 verdict=ok                    allow=-          dav=-     etag="sha256:cd76050ba3ce24672280bf66b26d3db6aa75e57459b06a5cf5f5efce215faedb" body=cd76050ba3ce24672280 len=17
+  HEAD      /dav/README.md       -> 200 verdict=ok                    allow=-          dav=-     etag="sha256:cd76050ba3ce24672280bf66b26d3db6aa75e57459b06a5cf5f5efce215faedb" body=cd76050ba3ce24672280 len=17
+  GET       /dav/nope.txt        -> 404 verdict=not_found             allow=-          dav=-     etag=-            body=044eeebe8054bd42456f len=126
+  GET       /dav/src             -> 405 verdict=method_not_allowed    allow=OPTIONS, GET, HEAD, PUT, DELETE, MKCOL, PROPFIND, PROPPATCH, COPY, MOVE, POST dav=-     etag=-            body=f9452cede4f65fcfae9f len=214
+  GET       /dav/README.md       -> 206 verdict=ok                    allow=-          dav=-     etag="sha256:cd76050ba3ce24672280bf66b26d3db6aa75e57459b06a5cf5f5efce215faedb" body=5a81667253573b2d78a7 len=5
+  PROPFIND  /dav/                -> 207 verdict=ok                    allow=-          dav=-     etag=-            body=32c5720578994769289b len=512
+  PROPFIND  /dav/                -> 207 verdict=ok                    allow=-          dav=-     etag=-            body=18f10183010982ee2144 len=3299
+  PROPFIND  /dav/src             -> 207 verdict=ok                    allow=-          dav=-     etag=-            body=78fdd0c967ff455dbd57 len=2113
+  PROPFIND  /dav/                -> 403 verdict=propfind_finite_depth allow=-          dav=-     etag=-            body=1e78f276e82e6f120217 len=251
+  PROPFIND  /dav/README.md       -> 400 verdict=depth_required        allow=-          dav=-     etag=-            body=f33532ddb2d436d2167a len=197
+  PUT       /dav/stock.txt       -> 201 verdict=ok                    allow=-          dav=-     etag="sha256:babe41c2db4a06bd6738f8f16c0ccab2779f599a2d11566b48072fba81e8833e" body=e3b0c44298fc1c149afb len=0
+  GET       /dav/stock.txt       -> 200 verdict=ok                    allow=-          dav=-     etag="sha256:babe41c2db4a06bd6738f8f16c0ccab2779f599a2d11566b48072fba81e8833e" body=babe41c2db4a06bd6738 len=23
+  PUT       /dav/stock.txt       -> 412 verdict=hash_mismatch         allow=-          dav=-     etag=-            body=8aa23bca792e4f47b745 len=324
+  PUT       /dav/cond.txt        -> 201 verdict=ok                    allow=-          dav=-     etag="sha256:bc743b082cfaf67690489530ed174fe821e65492aaa4946e9d3d6feb01daaad0" body=e3b0c44298fc1c149afb len=0
+  DELETE    /dav/stock.txt       -> 204 verdict=ok                    allow=-          dav=-     etag=-            body=e3b0c44298fc1c149afb len=0
+  MKCOL     /dav/stockdir        -> 201 verdict=ok                    allow=-          dav=-     etag=-            body=e3b0c44298fc1c149afb len=0
+  COPY      /dav/README.md       -> 201 verdict=ok                    allow=-          dav=-     etag=-            body=e3b0c44298fc1c149afb len=0
+  MOVE      /dav/copy.md         -> 201 verdict=ok                    allow=-          dav=-     etag=-            body=e3b0c44298fc1c149afb len=0
+  PROPPATCH /dav/README.md       -> 207 verdict=dead_properties_unsupported allow=-          dav=-     etag=-            body=b83d77c2237aeee788b3 len=364
+  LOCK      /dav/README.md       -> 501 verdict=not_implemented_yet   allow=OPTIONS, GET, HEAD, PUT, DELETE, MKCOL, PROPFIND, PROPPATCH, COPY, MOVE, POST dav=-     etag=-            body=4f4492f62c2cbc298d98 len=146
+  UNLOCK    /dav/README.md       -> 501 verdict=not_implemented_yet   allow=OPTIONS, GET, HEAD, PUT, DELETE, MKCOL, PROPFIND, PROPPATCH, COPY, MOVE, POST dav=-     etag=-            body=4f4492f62c2cbc298d98 len=146
+  FROBNICATE /dav/                -> 501 verdict=method_unknown        allow=OPTIONS, GET, HEAD, PUT, DELETE, MKCOL, PROPFIND, PROPPATCH, COPY, MOVE, POST dav=-     etag=-            body=3b5876e52aad554048b1 len=136
+  REPORT    /dav/                -> 405 verdict=method_not_allowed    allow=OPTIONS, GET, HEAD, PUT, DELETE, MKCOL, PROPFIND, PROPPATCH, COPY, MOVE, POST dav=-     etag=-            body=a537c5782838ca95ee1d len=144
+  POST      /dav/                -> 400 verdict=extension_op_missing  allow=-          dav=-     etag=-            body=cd5b205d4f0206b85162 len=245
+  POST      /dav/                -> 400 verdict=op_unknown            allow=-          dav=-     etag=-            body=e7cdbfc1404a6eb0504b len=213
+  POST      /dav/                -> 501 verdict=capability_unavailable allow=-          dav=-     etag=-            body=fda3383ee4ea687c45fd len=353
+
+DIFF: EMPTY — every answer a client that ignores the channel can see is unchanged
+
+=== the ONE intended difference, and who can see it ===
+  document_version   : 1 -> 1   (a client that does not know it must fail closed)
+  methods            : unchanged
+  op.ops             : ['capabilities', 'snapshot', 'events']
+  watch block        : {"max_paths_per_event": 4096, "mode": "poll", "modes": {"poll": "X-Bunker-Op: events", "push": "inotify\u2192stream"}, "name": "X-Bunker-Op: watch", "v": 1}
+  degradations base  : ['h2', 'h3', 'lock', 'op:diff', 'op:events', 'op:log', 'op:ls-files', 'op:rev-parse', 'op:status', 'op:watch', 'watch']
+  degradations new   : ['h2', 'h3', 'lock', 'op:diff', 'op:log', 'op:ls-files', 'op:rev-parse', 'op:status', 'op:watch', 'watch']
+  (only a client that sends X-Bunker-Op sees any of this)
+
+PARITY VERDICT: PASS
+transcripts: /tmp/bfs026-parity.zdV2Yu

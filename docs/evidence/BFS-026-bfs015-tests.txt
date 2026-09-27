@@ -1,0 +1,23 @@
+# BFS-026 — re-run of BFS-015's commit-window tests (requirement 3)
+# $ go test ./internal/server/webdav/ -count=1 -run 'TestExpectedHashIsRevalidatedInsideTheCommit|TestCreateOnlyRuleIsRevalidatedInsideTheCommit|TestCommitSectionIsExclusive|TestConcurrentConditionalWritesCannotBothLand' -v
+
+=== RUN   TestExpectedHashIsRevalidatedInsideTheCommit
+=== RUN   TestExpectedHashIsRevalidatedInsideTheCommit/while_the_body_arrives
+=== RUN   TestExpectedHashIsRevalidatedInsideTheCommit/inside_the_commit
+=== RUN   TestExpectedHashIsRevalidatedInsideTheCommit/inside_the_commit_with_identical_bytes
+--- PASS: TestExpectedHashIsRevalidatedInsideTheCommit (0.04s)
+    --- PASS: TestExpectedHashIsRevalidatedInsideTheCommit/while_the_body_arrives (0.02s)
+    --- PASS: TestExpectedHashIsRevalidatedInsideTheCommit/inside_the_commit (0.01s)
+    --- PASS: TestExpectedHashIsRevalidatedInsideTheCommit/inside_the_commit_with_identical_bytes (0.01s)
+=== RUN   TestCreateOnlyRuleIsRevalidatedInsideTheCommit
+=== RUN   TestCreateOnlyRuleIsRevalidatedInsideTheCommit/inside_the_commit
+=== RUN   TestCreateOnlyRuleIsRevalidatedInsideTheCommit/before_the_precondition_is_evaluated
+--- PASS: TestCreateOnlyRuleIsRevalidatedInsideTheCommit (0.01s)
+    --- PASS: TestCreateOnlyRuleIsRevalidatedInsideTheCommit/inside_the_commit (0.01s)
+    --- PASS: TestCreateOnlyRuleIsRevalidatedInsideTheCommit/before_the_precondition_is_evaluated (0.00s)
+=== RUN   TestCommitSectionIsExclusive
+--- PASS: TestCommitSectionIsExclusive (0.09s)
+=== RUN   TestConcurrentConditionalWritesCannotBothLand
+--- PASS: TestConcurrentConditionalWritesCannotBothLand (0.02s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/server/webdav	0.172s

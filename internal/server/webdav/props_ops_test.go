@@ -510,6 +510,8 @@ func TestOpsAreReadOnly(t *testing.T) {
 	}{
 		{"capabilities", ""},
 		{"snapshot", `{"path":".","depth":"infinity","include_hash":true}`},
+		{"events", `{}`},
+		{"events", `{"since_seq":3}`},
 		{"status", `{}`},
 		{"watch", `{}`},
 		{"frobnicate", `{}`},

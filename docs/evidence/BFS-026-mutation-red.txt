@@ -1,0 +1,37 @@
+target      = /home/kara/worktrees/bunker-BFS-026/internal/server/webdav/ops.go
+sha256 before = 90400c31e588b20533e16367a47a21c98fd9658e7f34fff8256633f2cf683cf9
+MUTATION APPLIED: `events` reverted to unserved — table entry dropped, handler case refused
+building the mutated binaries into /tmp/bfs026-mut.LSzd7Z
+
+=== ARM 1 — the live channel arm against the MUTATED build ===
+  VERDICT-LINE label=MUTANT mode=poll mechanism=events channel_available=False events_total=0 paths_dropped_total=0 resyncs_total=0 last_event_age_ms=None
+  VERDICT-LINE never-read:  SUMMARY never.txt edit=0 control_fresh=True channel_ms=none fresh_ms=none
+  VERDICT-LINE cached-path: SUMMARY cached.txt edit=0 control_fresh=False channel_ms=none fresh_ms=none
+  VERDICT-LINE reason=poll call failed: op:events : errno=EOPNOTSUPP cause=server_error status=501 verdict=capability_unavailable: no inotify watcher on this target; poll with HEAD/ETag
+  ARM 1: RED as required (with the mechanism disabled the cached path is never served fresh)
+
+=== ARM 2 — the client-side arm against the MUTATED server source ===
+  --- FAIL: TestInvalidatorDeliversThePollFormOfTheChannel (0.00s)
+      invalidate_test.go:111: the declared poll form is not served, so the channel has no mechanism (BFS-026)
+  FAIL
+  FAIL	github.com/deployBunker/bunker/internal/fsclient	0.005s
+  FAIL
+  ARM 2: RED as required
+
+=== ARM 3 — the server-side event arms against the MUTATED source ===
+  --- FAIL: TestEventsOpIsBoundedAndNeverHoldsARequestOpen (10.01s)
+      events_test.go:551: op events -> 501 {"ok":false,"op":"events","verdict":"capability_unavailable","rev":"rev:0","tree":"tree:98f1f2c0358c0c21","proto":"HTTP/1.1","duration_ms":0,"truncated":false,"result":null,"error":{"capability":"events","scope":"target","mode":"poll","detail":"no inotify watcher on this target; poll with HEAD/ETag"}}
+      events_test.go:561: the poll did not answer within its bound
+  FAIL
+  FAIL	github.com/deployBunker/bunker/internal/server/webdav	10.022s
+  FAIL
+  ARM 3: RED as required
+
+=== the restore ===
+RESTORE VERIFIED: ops.go sha256=90400c31e588b20533e16367a47a21c98fd9658e7f34fff8256633f2cf683cf9 (unchanged)
+RESTORE VERIFIED: events.go sha256=b9a48b33a47e1db8f49f61a1081f660fcdd4507cc440278fdf6eb25053538196 (unchanged)
+
+=== RED control reverted: the client-side arm must be GREEN again ===
+  ok  	github.com/deployBunker/bunker/internal/fsclient	0.051s
+NON-VACUITY: PROVEN — every arm goes RED with the mechanism disabled and GREEN with it restored
+EXIT=0

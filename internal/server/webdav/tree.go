@@ -65,6 +65,14 @@ type tree struct {
 	revMu  sync.Mutex
 	revVal string
 	revAt  time.Time
+
+	// evMu/ev hold E-6's poll-form ledger (events.go): what this process has
+	// observed of the served tree and the events it owes a client that polls.
+	// It lives here rather than in the Handler because it is per-TREE state —
+	// the tree is what a client's cursor refers to — and because it is built
+	// lazily: a build or a client that never polls never pays for it.
+	evMu sync.Mutex
+	ev   *eventLog
 }
 
 func newTree(root string) (*tree, error) {

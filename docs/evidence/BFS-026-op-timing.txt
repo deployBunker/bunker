@@ -1,0 +1,45 @@
+out        = /tmp/bfs026-timing.WA869S
+
+=== 1. the cost of one poll on a quiet tree with 2000 paths (20 polls) ===
+fixture /tmp/bfs026-timing.WA869S/tree1: 2007 files (+2000 burst)
+  endpoint  = http://127.0.0.1:33961/dav   tree = /tmp/bfs026-timing.WA869S/tree1 (2007 files)
+  polls      = 20
+  min/median/mean/max ms = 6.2 / 7.3 / 9.9 / 53.6
+  declared poll interval = 2000 ms (the client's default)
+  headroom   = 275x the median poll cost fits in one interval
+  the first poll (seeds the ledger) and the last (quiet, caught up):
+    events    : overflow(0)@1   (event, path-count, seq)
+    count=1 scanned=2011 head_seq=1 truncated=False status=9 verdict=ok
+    events    : overflow(0)@1   (event, path-count, seq)
+    count=1 scanned=2011 head_seq=1 truncated=False status=8 verdict=ok
+
+=== 2. a LARGE change (1000 new paths), same server ===
+  one poll over the changed tree: 0.009797s
+    events    : overflow(0)@1, invalidate(1002)@2   (event, path-count, seq)
+    count=2 scanned=3012 head_seq=2 truncated=False status=9 verdict=ok
+  PRECISION VERDICT: HELD — the answer names every changed path (1002 paths, including the new directory) rather than re-syncing the tree
+
+=== 3. past the DECLARED per-event path cap (4100 new paths against 4096): a FRESH server ===
+fixture /tmp/bfs026-timing.WA869S/tree3: 7 files
+  seeded the ledger: head_seq=1
+fixture /tmp/bfs026-timing.WA869S/tree3: 4107 files (+4100 burst)
+  one poll after 4100 new paths (cursor=1, as the client sends): 0.019411s
+    events    : overflow(0)@2   (event, path-count, seq)
+    count=1 scanned=4111 head_seq=2 truncated=False status=18 verdict=ok
+  CAP VERDICT: HELD — past the cap the answer is one overflow with no path list (scanned=4111, paths carried=0), never a partial diff
+
+=== 4. the shape of an answer (a single envelope: no stream, nothing held open) ===
+    HTTP/1.1 200 OK
+    Cache-Control: no-store
+    Content-Length: 383
+    Content-Type: application/json; charset=utf-8
+    X-Bunker-Capabilities: 1
+    X-Bunker-Op: events
+    X-Bunker-Proto: HTTP/1.1
+    X-Bunker-Rev: rev:0
+    X-Bunker-Tree: tree:337aebaf47bdc0b6
+    X-Bunker-Verdict: ok
+    Date: Sun, 27 Sep 2026 04:29:39 GMT
+    
+
+transcripts: /tmp/bfs026-timing.WA869S
