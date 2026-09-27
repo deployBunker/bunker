@@ -3448,3 +3448,12 @@ tasks:
   status: complete
   created_at: '2026-09-26T11:17:36.050932+00:00'
   completed_at: '2026-09-26T11:29:02.270100+00:00'
+- id: INT-CI-045
+  title: Close residual SessionProbe CI failure classification
+  criteria:
+  - The committed INT-CI-045 evidence artifact classifies run 36222825143 TestSpawn_SessionProbeSuccessReturnsReady,
+    preserves the bounded runtime-dir convergence and fail-closed behavior, and the
+    existing verified INT-CI-045-R3 verdict remains applicable.
+  status: complete
+  created_at: '2026-09-27T03:35:14.004474+00:00'
+  completed_at: '2026-09-27T03:35:54.196331+00:00'
