@@ -230,7 +230,14 @@ func MountAt(opts Options) (*Mount, error) {
 		Dir:           dir,
 		MaxBytes:      opts.CacheMaxBytes,
 		MaxEntryBytes: opts.CacheMaxEntryBytes,
-		MaxAge:        opts.CacheMaxAge,
+		// The ENTRY bound and the staged-refresh width (BFS-044's
+		// --cache-max-entries / --cache-max-inflight). Both are enforced by the
+		// cache and both are read back by `bunker fs status` from the cache's own
+		// figures, so a flag that did not reach the cache would be visible
+		// rather than assumed.
+		MaxEntries:  opts.CacheMaxEntries,
+		MaxInFlight: opts.CacheMaxInFlight,
+		MaxAge:      opts.CacheMaxAge,
 	})
 	if err != nil {
 		return nil, err
@@ -289,7 +296,13 @@ func MountAt(opts Options) (*Mount, error) {
 	m.inv = fsclient.NewInvalidator(client, fsclient.InvalidateOptions{
 		Mode:         opts.Invalidation,
 		PollInterval: opts.PollInterval,
-		OnDrop:       m.dropPaths,
+		// IdleTimeout is the mount's own declared silence deadline; ZERO (the
+		// default) leaves it to the invalidator to DERIVE from the period the
+		// server's capability document declares — which is that option's
+		// documented contract, not a fallback (BFS-041 §8.1). The armed value is
+		// reported in the status document's invalidation block.
+		IdleTimeout: opts.InvalidateIdleTimeout,
+		OnDrop:      m.dropPaths,
 		OnResync: func(reason string) {
 			m.logf("bunker-fs: resync (%s)", reason)
 			ctx, cancel := context.WithTimeout(context.Background(), opts.OpTimeout)
@@ -665,6 +678,10 @@ func (m *Mount) Status() fsclient.Status {
 	st.Transport.Cause = m.cause
 	m.transportMu.RUnlock()
 	st.Invalidation = m.inv.State()
+	// The resolved option set (BFS-044): what this mount actually obeys, so the
+	// cache's entry bound, the invalidation cadence and every hot-file knob are
+	// readable at runtime instead of only knowable from the command line.
+	st.Config = m.opts.EffectiveConfig()
 	if snap := m.snapshot(); snap != nil {
 		st.Snapshot = fsclient.SnapshotState{
 			Source:    snap.Source(),

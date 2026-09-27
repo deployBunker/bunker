@@ -201,6 +201,18 @@ const (
 	HotConfigEnabled = "enabled"
 )
 
+// DefaultHotPoolShare renders the pinned share in the spelling the flag accepts
+// and the status document reports, derived from the two numbers rather than
+// written a second time — a duplicated literal is how a default and its help
+// text drift apart.
+func DefaultHotPoolShare() string {
+	return strconv.Itoa(DefaultHotPoolShareNum) + "/" + strconv.Itoa(DefaultHotPoolShareDen)
+}
+
+// DefaultHotJitter is the pinned jitter mode (P-10: full jitter, so N mounts
+// stranded by one server restart cannot return together — BFS-041's H-8).
+func DefaultHotJitter() string { return HotJitterFull }
+
 // HotPolicyEnv is the surrounding configuration a hot policy is validated and
 // resolved against. It is passed in rather than stored so the policy cannot
 // carry a stale copy of the pool size or the cache bounds.
