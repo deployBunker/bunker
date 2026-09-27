@@ -1,0 +1,22 @@
+BFS-060 arms — mode=noidle base=5baef51
+go go1.26.5 · 5baef51 · 2026-09-27T06:53:47Z
+pre-mutation: internal/fsclient/invalidate.go sha256=985858df5e7b59314c30cb227006e9b9444169cde57f4997109cb8dd897e6cc3
+mutated: internal/fsclient/invalidate.go sha256=cfc478e164ac391baae8861824e124107ac41a8edaa00347ee8177e27c3e51ad via BFS-060-negative-control-idle.patch
+--- CONTROL noidle (mutant: this arm MUST fail): go test ./internal/fsclient -run TestBFS060StalledChannelIsNotAQuietTree -count=1 -v -timeout 120s
+=== RUN   TestBFS060StalledChannelIsNotAQuietTree
+    invalidate_bfs060_test.go:515: quiet tree (900ms hold): [{mode:push mechanism:watch channel_available:true reason:"" dropped:0 resyncs:0 gaps:0}]
+    invalidate_bfs060_test.go:516: stalled channel (900ms hold): [{mode:push mechanism:watch channel_available:true reason:"" dropped:0 resyncs:0 gaps:0}]
+    invalidate_bfs060_test.go:520: A STALLED CHANNEL AND A QUIET TREE ARE THE SAME OBSERVABLE: both ended the 900ms hold as {mode:push mechanism:watch channel_available:true reason:"" dropped:0 resyncs:0 gaps:0} — the client cannot tell a dead channel from a healthy idle tree, which is exactly the obligation BFS-040 §5.4 O-2 makes and the fourth fallback condition of SPEC-push-channel §8.3 (idle rule = 3 × 40 ms = 120ms)
+--- FAIL: TestBFS060StalledChannelIsNotAQuietTree (2.35s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	2.354s
+FAIL
+--- CONTROL noidle (mutant: this arm MUST fail) exit=1
+--- CONTROL noidle (attribution: this arm MUST still pass): go test ./internal/fsclient -run TestBFS060CleanEOFIsAChannelEndNotASuccess -count=1 -v -timeout 120s
+=== RUN   TestBFS060CleanEOFIsAChannelEndNotASuccess
+--- PASS: TestBFS060CleanEOFIsAChannelEndNotASuccess (0.54s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.545s
+--- CONTROL noidle (attribution: this arm MUST still pass) exit=0
+restore: internal/fsclient/invalidate.go sha256=985858df5e7b59314c30cb227006e9b9444169cde57f4997109cb8dd897e6cc3 (verified against the pre-mutation hash)
+done: mode=noidle

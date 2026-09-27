@@ -146,8 +146,12 @@ type InvalidateOptions struct {
 	// PollInterval is the declared poll period (default 2 s).
 	PollInterval time.Duration
 	// IdleTimeout is how long the stream may be silent before the client
-	// declares the channel dead and switches to poll (default 90 s: three
-	// missed heartbeats of the surface's declared ≤30 s period).
+	// declares the channel dead and switches to poll. ZERO — the default — means
+	// DERIVE it from the server's own declaration: three missed heartbeats of the
+	// period its capability document names (SPEC-push-channel §8.1/§8.3), which
+	// is DefaultIdleTimeout itself when the document names none (the ≤30 s the
+	// surface pins). A non-zero value is the mount's own declared bound and
+	// overrides the relation.
 	IdleTimeout time.Duration
 	// OnDrop is called for every applied invalidation.
 	OnDrop DropFn
@@ -159,8 +163,16 @@ type InvalidateOptions struct {
 // DefaultPollInterval is the declared poll period (BFS-005 §9).
 const DefaultPollInterval = 2 * time.Second
 
-// DefaultIdleTimeout is the 90 s silence rule of §4.4.
+// DefaultIdleTimeout is the 90 s silence rule of §4.4: three missed heartbeats of
+// the ≤30 s period the surface pins when its document names none — exactly what
+// Capabilities.Heartbeat() returns in that case. It is the FALLBACK for a client
+// whose server declared nothing; where the document declares a period, the rule
+// is derived from that period (idleFromHeartbeat) rather than from this number.
 const DefaultIdleTimeout = 90 * time.Second
+
+// idleHeartbeats is §8.1/§8.3's relation, kept as a relation rather than a
+// constant so a server that declares a shorter heartbeat period is believed.
+const idleHeartbeats = 3
 
 // Invalidator runs the client's invalidation channel: the pushed NDJSON stream
 // where the target has a watcher, the declared poll form where it does not, and
@@ -181,6 +193,12 @@ type Invalidator struct {
 	dropped   int64
 	reason    string // why the current mode was chosen / downgraded to
 	available bool
+	// The push path's own counters (§11.1): a channel that ended and came back
+	// must be distinguishable from one that never stopped, and a stall that
+	// forced the poll must stay visible after the poll has answered.
+	streamEnds    int64
+	reconnects    int64
+	idleFallbacks int64
 	// revSeen is the revision the revision poll observed last, so a change is
 	// detectable with one cheap request per interval.
 	revSeen string
@@ -191,9 +209,9 @@ func NewInvalidator(c *Client, opt InvalidateOptions) *Invalidator {
 	if opt.PollInterval <= 0 {
 		opt.PollInterval = DefaultPollInterval
 	}
-	if opt.IdleTimeout <= 0 {
-		opt.IdleTimeout = DefaultIdleTimeout
-	}
+	// IdleTimeout is deliberately NOT defaulted here: zero means "derive it from
+	// the server's declared heartbeat" (effectiveIdle), and a non-zero value is
+	// the mount's own declared bound.
 	if opt.Mode != ModePush && opt.Mode != ModePoll {
 		opt.Mode = "auto"
 	}
@@ -235,6 +253,18 @@ type InvalidationState struct {
 	RevKind       string `json:"rev_kind,omitempty"`
 	RevVouchesFor string `json:"rev_vouches_for,omitempty"`
 	RevGap        string `json:"rev_gap,omitempty"`
+	// IdleTimeoutMS is the silence deadline the read loop arms — three declared
+	// heartbeats. It is reported whenever the push rule is or has been in force,
+	// because a bound the owner cannot see is not a bound (PRD §2.8).
+	IdleTimeoutMS *int64 `json:"idle_timeout_ms"`
+	// The push channel's own counters (§11.1). Each one is a fact the record must
+	// be able to state on its own: the channel ENDED (§8.2 R-6), it was
+	// RE-established, and the idle rule FIRED and forced the declared poll
+	// (§8.1/§8.3). Without them a channel that died and came back is
+	// indistinguishable from one that never died.
+	StreamEnds    int64 `json:"stream_ends_total"`
+	Reconnects    int64 `json:"reconnects_total"`
+	IdleFallbacks int64 `json:"idle_fallbacks_total"`
 }
 
 // State reports the current invalidation state.
@@ -242,15 +272,18 @@ func (i *Invalidator) State() InvalidationState {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	st := InvalidationState{
-		Mode:         i.mode,
-		Mechanism:    i.mechanism,
-		Seq:          i.seq,
-		Gaps:         i.gaps,
-		Resyncs:      i.resyncs,
-		Events:       i.events,
-		DroppedPaths: i.dropped,
-		Reason:       i.reason,
-		Available:    i.available,
+		Mode:          i.mode,
+		Mechanism:     i.mechanism,
+		Seq:           i.seq,
+		Gaps:          i.gaps,
+		Resyncs:       i.resyncs,
+		Events:        i.events,
+		DroppedPaths:  i.dropped,
+		Reason:        i.reason,
+		Available:     i.available,
+		StreamEnds:    i.streamEnds,
+		Reconnects:    i.reconnects,
+		IdleFallbacks: i.idleFallbacks,
 	}
 	if !i.lastEvent.IsZero() {
 		age := int64(timeSince(i.lastEvent).Milliseconds())
@@ -267,6 +300,10 @@ func (i *Invalidator) State() InvalidationState {
 	if i.mechanism == MechanismRev {
 		st.RevKind = i.client.RevKind()
 		st.RevVouchesFor, st.RevGap = revCoverage(st.RevKind)
+	}
+	if i.mode == ModePush || i.mechanism == MechanismWatch || i.idleFallbacks > 0 {
+		ms := i.effectiveIdle().Milliseconds()
+		st.IdleTimeoutMS = &ms
 	}
 	return st
 }
@@ -371,41 +408,84 @@ func (i *Invalidator) apply(ev Event) {
 // meant to be run in its own goroutine, and the mount stays usable (with a
 // declared staleness window) while it retries.
 func (i *Invalidator) Run(ctx context.Context) error {
+	// Whatever ends this call, the channel is NOT running afterwards, so the
+	// record must stop claiming that it is (H-1: a mount kept reporting
+	// `channel_available=true` for the life of the mount after the channel had
+	// returned).
+	defer i.markStopped()
 	if i.opt.Mode == ModePoll {
 		i.setMode(ModePoll, "(--invalidation=poll)")
 		return i.pollLoop(ctx)
 	}
 	// Establish the push channel.
-	watchErr := i.watchOnce(ctx)
+	watchErr := i.watchSession(ctx)
 	if ctx.Err() != nil {
 		return nil
 	}
 	if watchErr == nil {
-		return nil // clean close: the stream ended because we closed it
+		// The one clean close: the context ended the stream, so this client
+		// closed it. Every other ending — a clean EOF included — arrives as an
+		// OpError (R-6), which is why this branch is no longer reachable from a
+		// server-side end.
+		return nil
 	}
 	// The watcher is absent or the stream cannot be established at all.
 	switch {
 	case i.opt.Mode == ModePush:
-		// push-only: fail loudly rather than silently downgrading.
+		// push-only: fail loudly rather than silently downgrading. A stall is no
+		// exception — the mount declared it will not poll, so it is named rather
+		// than absorbed into the declaration it opted out of.
 		i.setReason("--invalidation=push and the pushed channel is unavailable: " + watchErr.Error())
 		return fmt.Errorf("invalidation: push mode requested but the channel is unavailable: %w", watchErr)
 	case watchErr.Verdict == VerdictStaleTree || watchErr.Cause == CauseStaleIdentity:
 		// NOT a poll trigger: the remedy is a re-bind, never a downgrade.
 		i.setReason("stale_identity: the served tree is not the bound tree; re-bind, do not downgrade")
 		return fmt.Errorf("invalidation: %w", ErrDeletedTree)
-	case watchErr.Verdict == VerdictCapabilityUnavailable || watchErr.Status == 501 || watchErr.Verdict == VerdictOpUnknown || watchErr.Verdict == VerdictExtensionOpMissing:
+	case watchErr.Cause == CauseStreamStalled:
+		// H-3's declared degradation: no line for the idle rule means the channel
+		// is dead, and a dead channel is not a quiet tree. Take the mechanism
+		// that works and say so (§8.1 idle row, §8.3's fifth condition).
+		return i.stallToPoll(ctx, watchErr)
+	case isDeclaredDegradation(watchErr):
 		i.setMode(ModePoll, fmt.Sprintf("capability_unavailable on watch (scope=%s mode=%s): declared poll fallback", orDash(watchErr.Scope), orDash(watchErr.Mode)))
 		return i.pollLoop(ctx)
 	default:
 		// A transient transport failure is not a poll trigger: reconnect with
 		// the cursor, because a transport blip does not mean the events stopped
-		// being generated.
+		// being generated. A clean EOF is the same shape — a channel end — and
+		// takes the same path (R-6).
 		return i.reconnectLoop(ctx, watchErr)
 	}
 }
 
+// isDeclaredDegradation is §8.3's set of conditions under which this watcher
+// will not serve this target and the declared poll is the mechanism that works:
+// an absent capability, an op that predates this build, a bare POST with no op.
+// Both entry points — the first attempt and the retry after a fault — ask the
+// same predicate, so the two can never drift into different sets: mapping one of
+// these onto a transport fault is what makes a client reconnect forever against
+// a server that will never serve the op (§8.4 R-7).
+func isDeclaredDegradation(err *OpError) bool {
+	return err.Verdict == VerdictCapabilityUnavailable || err.Status == 501 ||
+		err.Verdict == VerdictOpUnknown || err.Verdict == VerdictExtensionOpMissing
+}
+
+// stallToPoll applies the idle rule's declared degradation (H-3): the channel is
+// reported dead, counted, and the mechanism that works takes over. The mode
+// change is made BEFORE the first poll answers (O-1), and `available` stays
+// false until one does — so the record never claims a channel it does not have.
+func (i *Invalidator) stallToPoll(ctx context.Context, err *OpError) error {
+	i.countIdleFallback()
+	reason := sessionEndReason(err) + " — declared poll fallback"
+	i.setMode(ModePoll, reason)
+	return i.pollLoop(ctx)
+}
+
 // reconnectLoop retries the stream on transient faults, with the cursor, until
-// ctx ends or the fault turns out to be a declared degradation.
+// ctx ends or the fault turns out to be a declared degradation. Every attempt is
+// counted (§11.1) and every attempt is bounded: the delay is capped and the
+// attempt itself carries the idle rule, so a stream that is accepted and then
+// says nothing cannot park here forever.
 func (i *Invalidator) reconnectLoop(ctx context.Context, last *OpError) error {
 	backoff := 500 * time.Millisecond
 	const maxBackoff = 10 * time.Second
@@ -418,12 +498,16 @@ func (i *Invalidator) reconnectLoop(ctx context.Context, last *OpError) error {
 		if backoff < maxBackoff {
 			backoff *= 2
 		}
-		err := i.watchOnce(ctx)
+		i.countReconnect()
+		err := i.watchSession(ctx)
 		if err == nil {
 			return nil
 		}
 		last = err
-		if err.Verdict == VerdictCapabilityUnavailable || err.Status == 501 {
+		if err.Cause == CauseStreamStalled {
+			return i.stallToPoll(ctx, err)
+		}
+		if isDeclaredDegradation(err) {
 			i.setMode(ModePoll, "watcher disappeared mid-session: declared poll fallback")
 			return i.pollLoop(ctx)
 		}
@@ -434,8 +518,11 @@ func (i *Invalidator) reconnectLoop(ctx context.Context, last *OpError) error {
 	}
 }
 
-// watchOnce opens the stream and consumes it until it closes. It returns nil for
-// a clean close (ctx cancelled) and the OpError for anything else.
+// watchOnce opens the stream and consumes it until it closes. It returns nil
+// ONLY when the CONTEXT ended — i.e. this client closed it. Every other ending
+// arrives as an OpError, a clean EOF included: a server-side stream end on a live
+// context is a channel end, and reading it as a success is what ended
+// invalidation for the life of the mount (H-1, R-6).
 func (i *Invalidator) watchOnce(ctx context.Context) *OpError {
 	i.mu.Lock()
 	since := i.seq
@@ -501,32 +588,208 @@ func (i *Invalidator) watchOnce(ctx context.Context) *OpError {
 	i.lastEvent = timeNow()
 	i.mu.Unlock()
 
-	scanner := bufio.NewScanner(resp.Body)
+	// The read loop runs in its OWN goroutine so the idle rule can be a DEADLINE
+	// rather than an inference: with a blocking Scan() there is nothing to select
+	// on, so "no line for N seconds" is not observable at all and a stalled
+	// channel cannot be told from a quiet tree (H-3; BFS-040 §5.4 O-2 makes that
+	// distinction an obligation).
+	//
+	// Liveness keys on the RECEIPT OF A LINE. Not on the absence of events — O-2
+	// forbids that inference, and a quiet tree answers nothing at all — and not
+	// on the cursor: a heartbeat, a duplicate, an unknown event name or a line
+	// this client cannot parse all prove the channel is turning, and `seq` stays
+	// the cursor's own business. So this loop never writes `seq`, and a heartbeat
+	// counts as liveness here whether or not apply() ever records it as one —
+	// the two mechanisms stay independent (H-2/BFS-061 is that row's to fix).
+	lines := make(chan streamRead, 1)
+	stop := make(chan struct{})
+	defer close(stop)
+	go readStream(resp.Body, lines, stop)
+
+	idle := i.effectiveIdle()
+	timer := time.NewTimer(idle)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			// We closed it: the one ending that IS a clean close.
+			i.markUnavailable("the channel stopped: its context ended")
+			return nil
+		case <-timer.C:
+			return &OpError{
+				Op:     "watch",
+				Errno:  ErrnoENOTCONN,
+				Cause:  CauseStreamStalled,
+				Detail: fmt.Sprintf("no line for %s (the idle rule: %d × the declared heartbeat): the channel is stalled, not quiet", idle, idleHeartbeats),
+			}
+		case rd := <-lines:
+			if rd.eof {
+				// A clean EOF on a LIVE context is a channel END, and BFS-040
+				// §4.6 makes a server-side stream end a designed event
+				// (`watch_lost`). Reading it as "we closed it" is what let the
+				// channel die silently and permanently (H-1, R-6).
+				i.countStreamEnd()
+				return &OpError{
+					Op: "watch", Errno: ErrnoENOTCONN, Cause: CauseStreamEnded,
+					Detail: "the channel ended (a clean EOF on a live context) rather than being closed here",
+				}
+			}
+			if rd.err != nil {
+				if ctx.Err() != nil {
+					i.markUnavailable("the channel stopped: its context ended")
+					return nil
+				}
+				e := classifyTransport(rd.err)
+				e.Op = "watch"
+				return e
+			}
+			// A line arrived, so the channel is demonstrably turning: the idle
+			// deadline starts again — before the line is even interpreted.
+			resetTimer(timer, idle)
+			line := bytes.TrimSpace(rd.line)
+			if len(line) == 0 {
+				continue
+			}
+			var ev Event
+			if err := json.Unmarshal(line, &ev); err != nil {
+				// A line that is not an event is a protocol fault: the channel's
+				// contract is one JSON object per line, and guessing would be worse
+				// than resyncing once.
+				i.Resync("unparseable event line: resync rather than guess")
+				continue
+			}
+			i.apply(ev)
+		}
+	}
+}
+
+// streamRead is one outcome of reading the NDJSON stream: a line, the clean end
+// of the stream, or a read failure. Three states on purpose — the landed code
+// collapsed the first two into a nil return, and that collapse is defect H-1.
+type streamRead struct {
+	line []byte
+	eof  bool
+	err  error
+}
+
+// readStream reads lines off body until the body ends, a read fails, or stop is
+// closed. Both sends select on stop, so a consumer that leaves early — for the
+// idle rule or for cancellation — cannot leak this goroutine: it unblocks as
+// soon as the caller closes the response body.
+func readStream(body io.Reader, out chan<- streamRead, stop <-chan struct{}) {
+	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 8<<20)
 	for scanner.Scan() {
-		line := bytes.TrimSpace(scanner.Bytes())
-		if len(line) == 0 {
-			continue
+		line := append([]byte(nil), scanner.Bytes()...)
+		select {
+		case out <- streamRead{line: line}:
+		case <-stop:
+			return
 		}
-		var ev Event
-		if err := json.Unmarshal(line, &ev); err != nil {
-			// A line that is not an event is a protocol fault: the channel's
-			// contract is one JSON object per line, and guessing would be worse
-			// than resyncing once.
-			i.Resync("unparseable event line: resync rather than guess")
-			continue
-		}
-		i.apply(ev)
 	}
+	rd := streamRead{eof: true}
 	if err := scanner.Err(); err != nil {
-		if ctx.Err() != nil {
-			return nil
-		}
-		e := classifyTransport(err)
-		e.Op = "watch"
-		return e
+		rd = streamRead{err: err}
 	}
-	return nil
+	select {
+	case out <- rd:
+	case <-stop:
+	}
+}
+
+// resetTimer restarts the silent-stream deadline, draining a firing that raced
+// the reset.
+func resetTimer(t *time.Timer, d time.Duration) {
+	if !t.Stop() {
+		select {
+		case <-t.C:
+		default:
+		}
+	}
+	t.Reset(d)
+}
+
+// effectiveIdle is the silence deadline the read loop arms (H-3): the mount's
+// own value where it declared one, otherwise THREE MISSED HEARTBEATS of the
+// period the SERVER declares — the heartbeat is the watcher's obligation
+// (BFS-040 §5.4 O-2), so the consumer's deadline is derived from the source's
+// own declaration rather than from a number of ours. Where the document names no
+// period, Capabilities.Heartbeat() answers the ≤30 s the surface pins, which is
+// DefaultIdleTimeout.
+func (i *Invalidator) effectiveIdle() time.Duration {
+	if i.opt.IdleTimeout > 0 {
+		return i.opt.IdleTimeout
+	}
+	if hb := i.client.Capabilities().Heartbeat(); hb > 0 {
+		return idleFromHeartbeat(hb)
+	}
+	return DefaultIdleTimeout
+}
+
+// idleFromHeartbeat is §8.1/§8.3's relation as a relation rather than a number,
+// so a server that declares a shorter heartbeat period is believed rather than
+// tolerated for 90 s.
+func idleFromHeartbeat(hb time.Duration) time.Duration {
+	return time.Duration(idleHeartbeats) * hb
+}
+
+// markUnavailable records that the channel cannot invalidate right now, and why.
+// `available` is a CLAIM about the channel, so it goes false the moment the
+// channel stops being one — the landed code left it `true` through a clean EOF,
+// through a stall, and through every reconnect gap (H-1).
+func (i *Invalidator) markUnavailable(reason string) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.available = false
+	i.reason = reason
+}
+
+// markStopped records that Run is over: no mechanism is running any more. A
+// reason already recorded is KEPT — the reason that ended the channel is the
+// useful thing to still be able to read.
+func (i *Invalidator) markStopped() {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.available = false
+}
+
+// sessionEndReason is what the record says after an attempt at the stream ended.
+// The two named channel faults read as what happened rather than as an errno.
+func sessionEndReason(err *OpError) string {
+	switch err.Cause {
+	case CauseStreamEnded:
+		return "the channel ended (a clean EOF on a live context) — reconnecting with the cursor"
+	case CauseStreamStalled:
+		return "the channel stalled: " + err.Detail
+	}
+	return "the channel is not available: " + err.Error()
+}
+
+// watchSession is one attempt at the pushed channel, with the record kept honest
+// around it: while no stream is established the channel is NOT available,
+// whatever ended the attempt. Every attempt — the first one and every reconnect
+// — goes through here, so no path can leave `available=true` standing over a
+// channel that is not there.
+func (i *Invalidator) watchSession(ctx context.Context) *OpError {
+	err := i.watchOnce(ctx)
+	if err != nil {
+		i.markUnavailable(sessionEndReason(err))
+	}
+	return err
+}
+
+// The push channel's own counters (§11.1). Each is a fact the record must be
+// able to state on its own; they are kept where the event happens rather than
+// derived from anything, so a channel that died and came back cannot be confused
+// with one that never died.
+func (i *Invalidator) countStreamEnd()    { i.bump(&i.streamEnds) }
+func (i *Invalidator) countReconnect()    { i.bump(&i.reconnects) }
+func (i *Invalidator) countIdleFallback() { i.bump(&i.idleFallbacks) }
+
+func (i *Invalidator) bump(field *int64) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	*field++
 }
 
 // pollLoop is the DECLARED poll mode: one call per interval covering the whole

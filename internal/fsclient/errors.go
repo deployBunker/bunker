@@ -56,6 +56,24 @@ const (
 	// write conflict, and a cause string that says "conflict" would tell the next
 	// person the wrong thing happened.
 	CauseStaleBound Cause = "stale_bound"
+	// CauseStreamEnded: the pushed channel's stream ended on a LIVE context —
+	// the server closed it (a designed event: BFS-040 §4.6 ends the stream on
+	// `watch_lost`) rather than this client cancelling it. Named separately from
+	// the transport causes because "it closed on us" and "we closed it" are
+	// different facts and the landed code could not tell them apart: a clean EOF
+	// was read as a success and ENDED invalidation for the life of the mount
+	// (SPEC-push-channel §8.2 R-6, hole H-1). Recovery is the reconnect the
+	// transport causes take: the same channel, with the cursor.
+	CauseStreamEnded Cause = "stream_ended"
+	// CauseStreamStalled: no line arrived for the client's idle rule — three
+	// missed heartbeats of the period the surface declares (BFS-005 §4.4,
+	// SPEC-push-channel §8.1/§8.3). This is the one channel fault that is a POLL
+	// trigger rather than a reconnect: by silence alone the client cannot tell a
+	// stalled channel from a quiet tree, so the declared rule says take the
+	// mechanism that works and REPORT the degradation — silence is never a quiet
+	// answer (BFS-040 §5.1, §5.4 O-2). Hole H-3: the option and its default
+	// existed and nothing read them.
+	CauseStreamStalled Cause = "stream_stalled"
 )
 
 // The server's machine codes this client branches on, quoted verbatim from the

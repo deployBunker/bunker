@@ -1,0 +1,19 @@
+--- a/internal/fsclient/invalidate.go
++++ b/internal/fsclient/invalidate.go
+@@ -524,13 +524,9 @@
+ 			// We closed it: the one ending that IS a clean close.
+ 			i.markUnavailable("the channel stopped: its context ended")
+ 			return nil
+-		case <-timer.C:
+-			return &OpError{
+-				Op:     "watch",
+-				Errno:  ErrnoENOTCONN,
+-				Cause:  CauseStreamStalled,
+-				Detail: fmt.Sprintf("no line for %s (the idle rule: %d × the declared heartbeat): the channel is stalled, not quiet", idle, idleHeartbeats),
+-			}
++		// NEGATIVE CONTROL (BFS-060, control IDLE): the idle deadline is armed
++		// and NOT acted upon — the declared 90 s rule has no implementation
++		// again, which is the filed defect. The arm must go RED.
+ 		case rd := <-lines:
+ 			if rd.eof {
+ 				// A clean EOF on a LIVE context is a channel END, and BFS-040

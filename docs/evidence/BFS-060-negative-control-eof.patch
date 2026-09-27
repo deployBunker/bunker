@@ -1,0 +1,22 @@
+--- a/internal/fsclient/invalidate.go
++++ b/internal/fsclient/invalidate.go
+@@ -533,15 +533,11 @@
+ 			}
+ 		case rd := <-lines:
+ 			if rd.eof {
+-				// A clean EOF on a LIVE context is a channel END, and BFS-040
+-				// §4.6 makes a server-side stream end a designed event
+-				// (`watch_lost`). Reading it as "we closed it" is what let the
+-				// channel die silently and permanently (H-1, R-6).
++				// NEGATIVE CONTROL (BFS-060, control EOF): the EOF detection is
++				// disabled — a clean EOF is read as "we closed it" again, which is
++				// the filed defect. The arm must go RED.
+ 				i.countStreamEnd()
+-				return &OpError{
+-					Op: "watch", Errno: ErrnoENOTCONN, Cause: CauseStreamEnded,
+-					Detail: "the channel ended (a clean EOF on a live context) rather than being closed here",
+-				}
++				return nil
+ 			}
+ 			if rd.err != nil {
+ 				if ctx.Err() != nil {
