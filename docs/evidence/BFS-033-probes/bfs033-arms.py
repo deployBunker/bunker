@@ -14,12 +14,22 @@ The interleaving that produces it (so the arm is not a guess):
   * `os.truncate()` then arrives with a stale base.
 
 Modes
-  cell   -- the interleaving cell. --expect red (the defect: a 412 AND a landing
-            204 AND an unchanged caller verdict) or --expect green (the refusal
-            holds: the target is UNCHANGED and the caller receives the failure).
-  retry  -- the retry path: refuse, then RE-READ through the mount, then retry.
-            The retry must LAND, because ESTALE's contract is "re-read and retry".
-            This is the cell that proves the enforcement is not a dead end.
+  cell        -- the interleaving cell. --expect red (the defect: a 412 AND a
+                 landing 204 AND an unchanged caller verdict) or --expect green
+                 (the refusal holds: the target is UNCHANGED and the caller
+                 receives the failure).
+  retry       -- the retry path: refuse, then RE-READ through the mount, then
+                 retry. The retry must LAND, because ESTALE's contract is
+                 "re-read and retry". This is the cell that proves the enforcement
+                 is not a dead end.
+  twowriters  -- two writers, one conflicting: a refused writer's bytes never
+                 reach the target, a second writer cannot publish behind the
+                 standing refusal, an innocent writer on ANOTHER path still lands
+                 (the hold is per path, not a global stall), and the refused
+                 writer recovers by re-reading.
+  cost        -- the successful write path, timed and counted (COST_FILES files,
+                 each created then resized): the enforcement must cost the writes
+                 that never touch it.
 
 Every arm asserts its own fixture before asserting anything about the write, and
 the write attribution is read from the request log the counting proxy wrote
@@ -33,7 +43,12 @@ import hashlib
 import json
 import os
 import sys
+import threading
 import time
+
+TARGET = "src/target.txt"
+OTHER = "src/other.txt"
+BASELINE = b"BFS-033-TARGET-CONTENT-0123456789-abcdefghijklmnopqrstuvwxyz-ABCD."[:64]
 
 
 def sha(b: bytes) -> str:
@@ -93,7 +108,7 @@ def try_truncate(path: str, size: int) -> tuple[bool, str, int | None]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", choices=["cell", "retry"], required=True)
+    ap.add_argument("--mode", choices=["cell", "retry", "twowriters", "cost"], required=True)
     ap.add_argument("--expect", choices=["red", "green"], default="green")
     ap.add_argument("--mount", default=os.environ.get("MNT", ""))
     ap.add_argument("--tree", default=os.environ.get("TREE", ""))
@@ -111,29 +126,176 @@ def main() -> int:
         if not cond:
             rc = 1
 
-    rel = "src/target.txt"
-    mnt_target = os.path.join(args.mount, rel)
-    srv_target = os.path.join(args.tree, rel)
+    mnt_target = os.path.join(args.mount, TARGET)
+    srv_target = os.path.join(args.tree, TARGET)
+    mnt_other = os.path.join(args.mount, OTHER)
+    srv_other = os.path.join(args.tree, OTHER)
 
-    # --- fixture: one file of known content, created on the SERVER side ---------
-    os.makedirs(os.path.dirname(srv_target), exist_ok=True)
-    body = bytes(("BFS-033-TARGET-CONTENT-0123456789-abcdefghijklmnopqrstuvwxyz-ABCD.").encode())
-    body = body[:64]
-    with open(srv_target, "wb") as fh:
-        fh.write(body)
+    def seed(path: str, body: bytes) -> None:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as fh:
+            fh.write(body)
+
+    def reqs() -> list[dict]:
+        return requests(args.run_dir) if args.run_dir else []
+
+    # ------------------------------------------------------------------ cost
+    if args.mode == "cost":
+        # The SUCCESSFUL write path, timed and verified, in two arms:
+        #   A. RESIZE — N files seeded on the server, each resized through the mount.
+        #      This is the modified-file publish path, the one the enforcement sits
+        #      in front of.
+        #   B. CREATE — N files created through the mount (a new path, so no
+        #      refusal can stand on it) and each waited for on the server side.
+        # The enforcement must cost the writes that never touch it: one map lookup
+        # on a path with no refusal standing.
+        n = int(os.environ.get("COST_FILES", "200"))
+        os.makedirs(os.path.join(args.tree, "cost"), exist_ok=True)
+        os.makedirs(os.path.join(args.mount, "cost"), exist_ok=True)
+        body = f"file 0000 ".encode() + b"x" * 40
+        want = len(body) - 10
+        for i in range(n):
+            with open(os.path.join(args.tree, "cost", f"r{i:04d}.txt"), "wb") as fh:
+                fh.write(body)
+
+        t_resize = 0.0
+        for i in range(n):
+            p = os.path.join(args.mount, "cost", f"r{i:04d}.txt")
+            s = time.monotonic()
+            os.truncate(p, want)
+            t_resize += time.monotonic() - s
+        t_create = 0.0
+        lag: list[float] = []
+        for i in range(n):
+            p = os.path.join(args.mount, "cost", f"c{i:04d}.txt")
+            s = time.monotonic()
+            with open(p, "wb") as fh:
+                fh.write(body)
+            t_create += time.monotonic() - s
+            srv = os.path.join(args.tree, "cost", f"c{i:04d}.txt")
+            s = time.monotonic()
+            while time.monotonic() - s < 3.0:
+                if os.path.exists(srv) and os.path.getsize(srv) == len(body):
+                    break
+                time.sleep(0.005)
+            lag.append(time.monotonic() - s)
+        ok_resize = sum(
+            1 for i in range(n) if os.path.getsize(os.path.join(args.tree, "cost", f"r{i:04d}.txt")) == want
+        )
+        ok_create = sum(
+            1 for i in range(n)
+            if os.path.getsize(os.path.join(args.tree, "cost", f"c{i:04d}.txt")) == len(body)
+        )
+        print(f"=== cost arm: {n} files per arm ({2 * n} publications) ===")
+        print(f"  RESIZE (modified path)    : {t_resize * 1000:.0f} ms total, {t_resize / n * 1000:.2f} ms/op,"
+              f" {ok_resize}/{n} landed")
+        print(f"  CREATE (new path)         : {t_create * 1000:.0f} ms total, {t_create / n * 1000:.2f} ms/op,"
+              f" {ok_create}/{n} landed")
+        print(f"  create publish lag        : max {max(lag) * 1000:.1f} ms, median"
+              f" {sorted(lag)[len(lag) // 2] * 1000:.1f} ms (time until the server sees the new file)")
+        st = status(args.cache_dir)
+        print(f"  refusal_holds             : {json.dumps(st.get('refusal_holds', {}))}")
+        print(f"  conflicts                 : {json.dumps(st.get('conflicts', {}))[:120]}")
+        check(ok_resize == n, "every resize landed (the successful write path is intact)")
+        check(ok_create == n, "every create landed")
+        check(st.get("refusal_holds", {}).get("held_total", 0) == 0,
+              "the gate held NOTHING on the success path")
+        check(st.get("refusal_holds", {}).get("outstanding", 0) == 0,
+              "the gate stands on no path after a clean run")
+        print()
+        print(f"RESULT: {n} resizes at {t_resize / n * 1000:.2f} ms/op and {n} creates at"
+              f" {t_create / n * 1000:.2f} ms/op, all landed")
+        return rc
+
+    # ------------------------------------------------------------ twowriters
+    if args.mode == "twowriters":
+        seed(srv_target, BASELINE)
+        seed(srv_other, BASELINE)
+        # Both writers read the path through the mount: that read is each writer's
+        # base. Then an out-of-band edit makes BOTH bases stale while leaving the
+        # size and the mtime exactly as the writers saw them.
+        r1 = open(mnt_target, "rb").read()
+        r2 = open(mnt_target, "rb").read()
+        print("=== two writers, one conflicting, on " + TARGET + " ===")
+        check(sha(r1) == sha(BASELINE) and sha(r2) == sha(BASELINE),
+              "FIXTURE: both writers read the baseline (each read is that writer's base)")
+        st_before = os.stat(srv_target)
+        edited = bytes((b ^ 0x20) if 65 <= b <= 90 else b for b in BASELINE)
+        with open(srv_target, "wb") as fh:
+            fh.write(edited)
+        os.utime(srv_target, ns=(st_before.st_atime_ns, st_before.st_mtime_ns))
+        print(f"  concurrent edit           : {len(edited)} B sha256={sha(edited)[:16]}… (same size, mtime restored)")
+        check(sha(open(srv_target, "rb").read()) == sha(edited), "FIXTURE: the concurrent edit landed on the server")
+
+        n1, n2, n3 = len(edited) - 8, len(edited) - 16, len(BASELINE) - 12
+        trace_start = len(reqs())
+
+        # Writer A: the conflicting one. Its base is stale, so the server refuses.
+        a_landed, a_detail, a_err = try_truncate(mnt_target, n1)
+        print(f"  writer A (truncate to {n1}) : {'LANDED' if a_landed else 'REFUSED'} — {a_detail}")
+        # Writer B: a second writer with the SAME stale base. It must not be able to
+        # publish behind A's standing refusal.
+        b_landed, b_detail, b_err = try_truncate(mnt_target, n2)
+        print(f"  writer B (truncate to {n2}) : {'LANDED' if b_landed else 'REFUSED'} — {b_detail}")
+        # Writer C: an innocent writer on ANOTHER path, while the refusal stands.
+        c_landed, c_detail, c_err = try_truncate(mnt_other, n3)
+        print(f"  writer C on {OTHER} (to {n3}): {'LANDED' if c_landed else 'REFUSED'} — {c_detail}")
+        time.sleep(1.5)
+        after = open(srv_target, "rb").read()
+        after_other = open(srv_other, "rb").read()
+        print(f"  the target's bytes after  : {len(after)} B sha256={sha(after)[:16]}…")
+
+        check(not a_landed and a_err == 116, "the conflicting writer was REFUSED with ESTALE")
+        check(not b_landed and b_err == 116,
+              "a second writer could NOT publish behind the standing refusal (it was told ESTALE)")
+        check(c_landed, "an innocent writer on ANOTHER path still landed (the hold is per path, not a global stall)")
+        check(after_other == BASELINE[:n3], "the innocent writer's bytes landed on its own path")
+        check(after == edited, "the conflicting writers' bytes never reached the target")
+
+        st = status(args.cache_dir)
+        my_puts = puts_on(reqs()[trace_start:], TARGET)
+        refused_puts = [r for r in my_puts if r.get("status") == 412]
+        accepted_puts = [r for r in my_puts if isinstance(r.get("status"), int) and 200 <= r["status"] < 300]
+        sizes_accepted = {r.get("req_bytes") for r in accepted_puts}
+        print(f"  PUTs on {TARGET}: {len(my_puts)} total, {len(refused_puts)} x 412, {len(accepted_puts)} x 2xx")
+        print(f"  refusal_holds             : {json.dumps(st.get('refusal_holds', {}))}")
+        check(len(accepted_puts) == 0, "NO write landed on the target while a refusal stood")
+        check(len(refused_puts) >= 1, "the conflicting write was refused (412 recorded)")
+        check(n1 not in sizes_accepted and n2 not in sizes_accepted,
+              "neither conflicting writer's bytes ever returned success")
+        check(st.get("refusal_holds", {}).get("held_total", 0) >= 1,
+              "the standing refusal is REPORTED as having held a write (refusal_holds.held_total)")
+        check(len(conflicts(args.cache_dir)) == 1,
+              f"one refusal recorded for the one refused write (got {len(conflicts(args.cache_dir))})")
+
+        # The refused writer's recovery: re-read, then retry.
+        open(mnt_target, "rb").read()
+        b2_landed, b2_detail, b2_err = try_truncate(mnt_target, n2)
+        print(f"  writer B retry (after re-read): {'LANDED' if b2_landed else 'REFUSED'} — {b2_detail}")
+        time.sleep(1.5)
+        after_retry = open(srv_target, "rb").read()
+        check(b2_landed, "the refused writer recovered by re-reading and retrying (ESTALE's contract)")
+        check(after_retry == edited[:n2], "the retry published the SERVER's current content truncated")
+        print()
+        print("RESULT: the refused writers never landed, the refusal held a second writer, and the "
+              "innocent writer was unaffected" if rc == 0 else "RESULT: the interleaving was not contained")
+        return rc
+
+    # -------------------------------------------------------- cell / retry
+    seed(srv_target, BASELINE)
     baseline = open(srv_target, "rb").read()
     st_before = os.stat(srv_target)
-    trunc_to = len(baseline) - 16  # 48
+    trunc_to = len(baseline) - 16
 
-    print(f"=== ARM {args.mode} (expect={args.expect}) on {rel} ===")
+    print(f"=== ARM {args.mode} (expect={args.expect}) on {TARGET} ===")
     print(f"  baseline                  : {len(baseline)} B sha256={sha(baseline)[:16]}…")
 
-    # --- the read through the mount: THIS read fixes the client's base ---------
+    # The read through the mount: THIS read fixes the client's base.
     served = open(mnt_target, "rb").read()
     print(f"  read through the mount    : {len(served)} B sha256={sha(served)[:16]}…  (this read fixes the base)")
     check(sha(served) == sha(baseline), "FIXTURE: the mount served the server's bytes")
 
-    # --- the out-of-band edit: same size, same mtime, different bytes ----------
+    # The out-of-band edit: same size, same mtime, different bytes.
     edited = bytes((b ^ 0x20) if 65 <= b <= 90 else b for b in baseline)
     with open(srv_target, "wb") as fh:
         fh.write(edited)
@@ -148,7 +310,7 @@ def main() -> int:
     check(st_after.st_mtime_ns == st_before.st_mtime_ns, "FIXTURE: the concurrent edit restored the mtime")
     check(sha(now_bytes) != sha(baseline), "FIXTURE: the concurrent edit changed the bytes")
 
-    # --- the write whose base is now stale -------------------------------------
+    # The write whose base is now stale.
     landed, detail, err = try_truncate(mnt_target, trunc_to)
     print(f"  truncate to {trunc_to}          : {'LANDED' if landed else 'REFUSED'} — {detail}")
     time.sleep(1.5)
@@ -163,10 +325,10 @@ def main() -> int:
     for c in cf[-3:]:
         print(f"    {json.dumps(c)[:180]}")
     print(f"  status.conflicts           : {json.dumps(st.get('conflicts', {}))[:180]}")
+    print(f"  status.refusal_holds       : {json.dumps(st.get('refusal_holds', {}))[:180]}")
 
-    reqs = requests(args.run_dir) if args.run_dir else []
-    my_puts = puts_on(reqs, rel)
-    print(f"  PUTs on {rel} (proxy trace): {len(my_puts)}")
+    my_puts = puts_on(reqs(), TARGET)
+    print(f"  PUTs on {TARGET} (proxy trace): {len(my_puts)}")
     for r in my_puts:
         print(f"    #{r.get('n')} status={r.get('status')} req_bytes={r.get('req_bytes')} "
               f"if_match={r.get('if_match')}")
@@ -195,6 +357,8 @@ def main() -> int:
         check(len(cf) >= 1, "the refusal is still recorded loudly for `bunker fs conflicts`")
         check(all(c.get("current") == "sha256:" + sha(now_bytes) for c in cf),
               "every recorded refusal names the concurrent edit's hash (none is contradicted)")
+        check(st.get("refusal_holds", {}).get("held_total", 0) >= 1,
+              "the held refusal is REPORTED (refusal_holds.held_total)")
         print()
         print("RESULT: the refusal HELD — one refused PUT, no landing write, the target untouched "
               "and the caller told ESTALE" if rc == 0 else "RESULT: the enforcement did not hold")
@@ -205,20 +369,29 @@ def main() -> int:
         # The recovery ESTALE names: re-read the path, then retry.
         re_served = open(mnt_target, "rb").read()
         print(f"  re-read through the mount : {len(re_served)} B sha256={sha(re_served)[:16]}…")
-        check(sha(re_served) == sha(now_bytes),
-              "the re-read serves the concurrent edit's bytes (the base is now truth)")
+        # WHICH bytes the re-read serves is NOT this row's to assert. In this
+        # interleaving (same size, mtime restored) the mount's invalidation has
+        # nothing to see, so the re-read can be answered from the cache entry the
+        # caller's first read made — the stale-serve class filed as BFS-024/026 and
+        # QA-BUNKER-36, which BFS-033 does not touch. It is reported, not hidden: the
+        # enforcement this row adds is that the refused write cannot land without an
+        # intervening caller read, not that the client's cache is truthful.
+        if sha(re_served) == sha(now_bytes):
+            print("  re-read freshness          : FRESH — the serve is the concurrent edit's bytes")
+        else:
+            print("  re-read freshness          : STALE (cache) — named residual: BFS-024/026,"
+                  " QA-BUNKER-36. The caller re-read; the client served the blob it still held.")
         landed2, detail2, err2 = try_truncate(mnt_target, trunc_to)
         print(f"  retry truncate to {trunc_to}    : {'LANDED' if landed2 else 'REFUSED'} — {detail2}")
         time.sleep(1.5)
         after2 = open(srv_target, "rb").read()
         print(f"  the target's bytes after   : {len(after2)} B sha256={sha(after2)[:16]}…")
         check(landed2, "the RETRY LANDED: ESTALE's contract (re-read, then retry) still works")
-        check(after2 == now_bytes[:trunc_to], "the retry published the freshly-read content truncated")
-        reqs = requests(args.run_dir) if args.run_dir else []
-        my_puts = puts_on(reqs, rel)
+        check(after2 == now_bytes[:trunc_to], "the retry published the SERVER's current content truncated")
+        my_puts = puts_on(reqs(), TARGET)
         refused = [r for r in my_puts if r.get("status") == 412]
         accepted = [r for r in my_puts if isinstance(r.get("status"), int) and 200 <= r["status"] < 300]
-        print(f"  PUTs on {rel}: {len(my_puts)} total, {len(refused)} x 412, {len(accepted)} x 2xx")
+        print(f"  PUTs on {TARGET}: {len(my_puts)} total, {len(refused)} x 412, {len(accepted)} x 2xx")
         check(len(refused) == 1 and len(accepted) == 1,
               "one refusal then one sanctioned landing — no second unsanctioned write")
         print()

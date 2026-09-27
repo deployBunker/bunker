@@ -1,0 +1,12 @@
+diff --git a/internal/fsclient/write.go b/internal/fsclient/write.go
+index 4f82065..0347eb2 100644
+--- a/internal/fsclient/write.go
++++ b/internal/fsclient/write.go
+@@ -236,6 +236,7 @@ func (w *WritePath) armHold(rec Conflict) {
+ // holding it would make the refusal unrecoverable for a caller that removed the
+ // path and wrote it anew.
+ func (w *WritePath) checkHold(path string, base WriteBase) *OpError {
++	return nil // NEGATIVE CONTROL: the enforcement is neutered.
+ 	if base.IfNoneMatchStar {
+ 		return nil
+ 	}

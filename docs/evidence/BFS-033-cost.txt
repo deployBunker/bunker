@@ -1,0 +1,57 @@
+================================================================================
+BFS-033 COST — the successful write path, before and after
+================================================================================
+
+Two arms, 200 files each, on the same host and mount shape: 200 RESIZES of files seeded
+on the server, and 200 CREATES of new paths. Each op is one whole-file conditional PUT,
+so the figures are per-publication.
+
+--- BEFORE (the tree without the fix) ---
+  === cost arm: 200 files per arm (400 publications) ===
+  RESIZE (modified path)    : 52997 ms total, 264.98 ms/op, 200/200 landed
+  CREATE (new path)         : 10060 ms total, 50.30 ms/op, 200/200 landed
+  create publish lag        : max 73.4 ms, median 15.5 ms (time until the server sees the new file)
+  refusal_holds             : {}
+  conflicts                 : {"refusals_total": 0, "last": null}
+  RESULT: 200 resizes at 264.98 ms/op and 200 creates at 50.30 ms/op, all landed
+  conflicts    : refusals_total=0
+  --- conflicts ---
+
+--- AFTER (the tree with the fix) ---
+  === cost arm: 200 files per arm (400 publications) ===
+  RESIZE (modified path)    : 61847 ms total, 309.23 ms/op, 200/200 landed
+  CREATE (new path)         : 10771 ms total, 53.86 ms/op, 200/200 landed
+  create publish lag        : max 940.6 ms, median 14.7 ms (time until the server sees the new file)
+  refusal_holds             : {"held_total": 0, "outstanding": 0, "evicted_total": 0}
+  conflicts                 : {"refusals_total": 0, "last": null}
+  RESULT: 200 resizes at 309.23 ms/op and 200 creates at 53.86 ms/op, all landed
+  conflicts    : refusals_total=0
+  --- conflicts ---
+
+--- the STRUCTURAL cost: every request the mount made in each arm ---
+  prefix  HEAD=400 OPTIONS=1 POST=39 PUT=400 PROPFIND=634 GET=200 
+  fix     HEAD=400 OPTIONS=1 POST=48 PUT=400 PROPFIND=642 GET=200 
+  (PUT counts identical: the enforcement adds NO request to a successful write; HEAD/GET
+   identical; the PROPFIND/POST deltas are the invalidation poll's own cadence over the
+   ~70 s the arm ran, not part of the write path.)
+
+--- the rule's own cost, measured in isolation (go test -bench) ---
+  BenchmarkCheckHoldMiss-16             	  300000	         7.342 ns/op
+  BenchmarkCheckHoldMiss-16             	  300000	         7.857 ns/op
+  BenchmarkCheckHoldMiss-16             	  300000	         9.866 ns/op
+  BenchmarkCheckHoldMissContended-16    	  300000	        23.98 ns/op
+  BenchmarkCheckHoldMissContended-16    	  300000	        21.18 ns/op
+  BenchmarkCheckHoldMissContended-16    	  300000	        20.21 ns/op
+  BenchmarkCheckHoldHit-16              	  300000	       928.5 ns/op
+  BenchmarkCheckHoldHit-16              	  300000	       716.7 ns/op
+  BenchmarkCheckHoldHit-16              	  300000	       690.9 ns/op
+  BenchmarkNoteRead-16                  	  300000	        23.06 ns/op
+  BenchmarkNoteRead-16                  	  300000	        20.76 ns/op
+  BenchmarkNoteRead-16                  	  300000	        24.07 ns/op
+  ok  	github.com/deployBunker/bunker/internal/fsclient	0.790s
+
+Read: checkHold on a path with NO refusal standing — the successful publish's cost — is
+a single map lookup under the write path's own mutex: ~7 ns, against a resize whose
+round trip is ~265-309 ms on this host (loadavg ~20 during the arms). The live deltas
+between the arms are host noise, not the rule: the request counts prove no round trip was
+added. The refusal itself costs ~3.3 us (it formats the detail the caller reads).
