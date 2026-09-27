@@ -1,0 +1,16 @@
+diff --git a/internal/fsclient/cache.go b/internal/fsclient/cache.go
+index 5579b22..022431f 100644
+--- a/internal/fsclient/cache.go
++++ b/internal/fsclient/cache.go
+@@ -481,7 +481,10 @@ func (c *Cache) sweepOrphanBlobs(keep map[string]bool) {
+ 		if n.IsDir() {
+ 			continue
+ 		}
+-		if !keep[n.Name()] {
++		if false && !keep[n.Name()] {
++			// BFS-046 RED-PROOF MUTATION (--no-sweep): nothing is ever removed,
++			// so the residue of an abandoned refresh survives every reopen.
++			// Cell 8's killed-refresher arm must go RED.
+ 			_ = os.Remove(filepath.Join(dir, n.Name()))
+ 		}
+ 	}

@@ -1,0 +1,10 @@
+=== RUN   TestWatchOverflowRealKernelReproducer
+=== RUN   TestWatchOverflowRealKernelReproducer/the_drain_arm_observes_the_kernel's_overflow_as_the_backlog_drains
+    watch_test.go:1098: BFS-035 kernel reproducer: max_queued_events=16384, 16384 files created, overflows_total=1, unvouched_total=1, rescans_total=0
+=== RUN   TestWatchOverflowRealKernelReproducer/the_no-drain_arm_gets_SILENCE_(the_trap_R-6_names)
+--- PASS: TestWatchOverflowRealKernelReproducer (16.74s)
+    --- PASS: TestWatchOverflowRealKernelReproducer/the_drain_arm_observes_the_kernel's_overflow_as_the_backlog_drains (0.93s)
+    --- PASS: TestWatchOverflowRealKernelReproducer/the_no-drain_arm_gets_SILENCE_(the_trap_R-6_names) (15.81s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/server/webdav	16.745s
+REPRO-EXIT=0

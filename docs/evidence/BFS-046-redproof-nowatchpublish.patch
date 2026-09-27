@@ -1,0 +1,15 @@
+diff --git a/internal/server/webdav/watch.go b/internal/server/webdav/watch.go
+index d94dcc6..041dff8 100644
+--- a/internal/server/webdav/watch.go
++++ b/internal/server/webdav/watch.go
+@@ -1012,7 +1012,9 @@ func (w *watcher) noteWatchedChanges(n uint64) {
+ 	// nobody made through this surface, which is R-V1. It costs two atomic loads
+ 	// on a read path and no stat (R-V2), and that is the whole reason the count
+ 	// lives here rather than being measured on every read.
+-	w.tree.watched.Add(n)
++	// BFS-046 RED-PROOF MUTATION (--nowatchpublish): the watcher observes and
++	// never publishes to the SERVED revision, so an out-of-band change moves
++	// nothing a client can see. Cell 1 and cell 2 must go RED.
+ 	w.changedSince.Store(time.Now().UnixNano())
+ }
+ 

@@ -1,0 +1,23 @@
+diff --git a/internal/server/webdav/ops.go b/internal/server/webdav/ops.go
+index af35d91..ae0cc1d 100644
+--- a/internal/server/webdav/ops.go
++++ b/internal/server/webdav/ops.go
+@@ -91,10 +91,14 @@ func (h *Handler) handlePost(w http.ResponseWriter, r *http.Request) {
+ 		h.handleSnapshot(w, r, start)
+ 
+ 	case "events":
+-		// E-6's poll form, which `watch`'s own refusal names as the mode in
+-		// force on a target without a watcher. Serving it is what makes the
+-		// declared degradation a working channel rather than a label.
+-		h.handleEvents(w, r, start)
++		// BFS-046 RED-PROOF MUTATION (--nochannel): the channel's poll form is
++		// REFUSED, so the watcher comes up and the channel still does not
++		// answer. Cell 1 must go RED (its poll must be a 200 with an `events`
++		// array); cell 2 must stay green, because it drives the LEDGER directly
++		// and never the op — which is what attributes the mutation to the
++		// channel and not to the watcher.
++		h.writeEnvelope(w, r, start, op, 501, VerdictCapabilityUnavailable, false, nil,
++			&envelopeError{Capability: "events", Scope: "target", Detail: "BFS-046 red-proof mutation: the poll form is refused"})
+ 
+ 	case "watch":
+ 		// The push form is not served in this build (BFS-036 owns the wire
