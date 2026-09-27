@@ -618,6 +618,38 @@ func (c *Cache) GetPinned(path, hash string) ([]byte, bool) {
 // Abort deletes the file, releases the reservation, and never swaps; the
 // reservation is held for the entire staging window, so the directory's peak is
 // what admission reserved.
+//
+// StageWouldFit (BFS-037) is the same admission arithmetic asked as a QUESTION,
+// so the hot path can decide not to pull bytes it could never store.
+func (c *Cache) StageWouldFit(path string, expectedBytes int64) (fits bool, pinnedWouldBeEvicted bool) {
+	if expectedBytes < 0 {
+		expectedBytes = 0
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.disabled() {
+		return false, false
+	}
+	if len(c.staged) >= c.cfg.MaxInFlight {
+		return false, false
+	}
+	if err := c.admitStagedLocked(path, expectedBytes); err == nil {
+		return true, false
+	}
+	// Why the refusal: how much of the directory's peak could eviction free? If
+	// even freeing every blob no reader holds leaves the peak over the bound,
+	// then the space is held by content a reader is holding — D-4's case, which
+	// the hot path answers by ABANDONING rather than evicting.
+	var freeable int64
+	for hash, b := range c.blobs {
+		if b.Pins == 0 && !c.inflight[hash] {
+			freeable += b.Size
+		}
+	}
+	need := c.dirPeakLocked(expectedBytes, c.indexGrowthLocked(path))
+	return false, need-freeable > c.cfg.MaxBytes
+}
+
 type StagedRefresh struct {
 	c           *Cache
 	path        string

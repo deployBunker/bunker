@@ -113,6 +113,24 @@ type Client struct {
 	// merely slow (§2.7).
 	cancels atomic.Int64
 
+	// The refresh budget (BFS-037): a request marked as a refresh acquires from
+	// THIS channel and never from `sem`, so a refresh cannot consume a
+	// foreground slot at all (SPEC-hot-file-policy P-3/P-6). It is nil until a
+	// mount arms the hot path, and it is sized to the pool share.
+	rsem chan struct{}
+	rreq atomic.Int64
+	// rreqMax is the high-water mark of concurrent refresh requests: the figure
+	// that proves the share is a share rather than a comment.
+	rreqMax atomic.Int64
+
+	// Foreground slot-wait accounting (BFS-037's yield rule, P-7/P-19). A
+	// refresh yields while a foreground request is WAITING for a slot, and the
+	// hot path stops itself in full under sustained wait. `WaitedMS` is the
+	// measurement: a latency, taken from the real clock.
+	fgWaiters     atomic.Int64
+	fgOldestNS    atomic.Int64
+	fgWaitedMaxMS atomic.Int64
+
 	tree  atomic.Value // string
 	rev   atomic.Value // string
 	proto atomic.Value // string
@@ -285,16 +303,44 @@ func (c *Client) urlFor(path string) string {
 // concurrency knob actually controls. The transport's MaxConnsPerHost bounds
 // connections; this bounds requests, so a semaphore of 1 gives the serial arm of
 // the measurement even when the transport would allow more.
+//
+// BFS-037 adds a SECOND, separate budget: a request marked as a refresh acquires
+// from `rsem` (the pool share) and never from `sem`, so no configuration exists
+// in which a refresh consumes a foreground slot (P-3/P-6). A foreground acquire
+// additionally records its WAIT, because that wait is the signal the yield rule
+// and the self-stop are built on.
 func (c *Client) acquire(ctx context.Context) error {
+	if isRefreshRequest(ctx) && c.rsem != nil {
+		select {
+		case c.rsem <- struct{}{}:
+			c.markRefreshStart()
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	c.markForegroundWait()
 	select {
 	case c.sem <- struct{}{}:
+		c.clearForegroundWait()
 		return nil
 	case <-ctx.Done():
+		c.clearForegroundWait()
 		return ctx.Err()
 	}
 }
 
 func (c *Client) release() { <-c.sem }
+
+// releaseFor returns the slot the request actually held: a refresh's request
+// returns its own budget's slot, a foreground request the semaphore's.
+func (c *Client) releaseFor(ctx context.Context) {
+	if isRefreshRequest(ctx) && c.rsem != nil {
+		<-c.rsem
+		return
+	}
+	c.release()
+}
 
 // newRequest builds one request with the headers every call carries.
 func (c *Client) newRequest(ctx context.Context, method, path string, body io.Reader) (*http.Request, error) {
@@ -362,7 +408,7 @@ func (c *Client) do(ctx context.Context, req *http.Request) (*http.Response, *Op
 	}
 	defer func() {
 		c.inflight.Add(-1)
-		c.release()
+		c.releaseFor(req.Context())
 	}()
 	c.requests.Add(1)
 
@@ -384,7 +430,11 @@ func (c *Client) do(ctx context.Context, req *http.Request) (*http.Response, *Op
 // nothing anywhere says the caller's own interrupt was why it happened twice.
 func (c *Client) requestError(parent context.Context, err error, req *http.Request) *OpError {
 	e := classifyRequest(parent, err, req.Method, req.URL.Path)
-	if e.Cause == CauseCancelled {
+	if e.Cause == CauseCancelled && !isRefreshRequest(parent) {
+		// A cancelled REFRESH is not a caller cancellation: the hot path is the
+		// one that hung up, on purpose (P-14), and counting it here would make
+		// the mount's own `cancels` figure — which reports interruptions a USER
+		// caused — unreadable.
 		c.cancels.Add(1)
 	}
 	return e
