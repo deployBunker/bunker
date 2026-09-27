@@ -1,0 +1,17 @@
+diff --git a/internal/fsclient/hotpolicy.go b/internal/fsclient/hotpolicy.go
+index 25c7019..79be026 100644
+--- a/internal/fsclient/hotpolicy.go
++++ b/internal/fsclient/hotpolicy.go
+@@ -416,7 +416,11 @@ func (p HotPolicy) RelationProblems(env HotPolicyEnv) []string {
+ 		// S-10: a file above the per-entry cap can never be stored, so a refresh
+ 		// of it would spend pool share, bandwidth and a reservation to fetch
+ 		// bytes the cache must discard on arrival.
+-		if env.CacheMaxEntryBytes > 0 && p.MaxFileBytes > env.CacheMaxEntryBytes {
++		// BFS-046 RED-PROOF MUTATION (--exclusive-size): the comparison at the
++		// bound becomes exclusive, so a file EXACTLY at 8 MiB is silently never
++		// refreshed - a one-byte difference no coverage figure can see. Cell 9's
++		// at-the-bound arms must go RED. (S-10 is `>`, not `>=`.)
++		if env.CacheMaxEntryBytes > 0 && p.MaxFileBytes >= env.CacheMaxEntryBytes {
+ 			problems = append(problems, fmt.Sprintf("bunker-fs: --hot.max-file-bytes (%d) exceeds the cache's per-entry cap (--cache-max-entry-bytes %d); SPEC-hot-file-policy S-10 refuses the mount here, because the refreshed bytes could never be stored (the hot path stays inert either way — S-11, P-0 clause 1)", p.MaxFileBytes, env.CacheMaxEntryBytes))
+ 		}
+ 		// S-9: a refresh of a file larger than the entire cache bound is not a

@@ -1,0 +1,7 @@
+=== RUN   TestWatchSnapshotFastPathCostWithWatcherLive
+    watch_test.go:1328: BFS-035 fast path (watcher absent): files=4000 token_memo_hit=58ns token_refresh=17.391µs one_call_snapshot=16.102109ms
+    watch_test.go:1328: BFS-035 fast path (watcher live): files=4000 token_memo_hit=93ns token_refresh=16.662µs one_call_snapshot=16.525201ms
+--- PASS: TestWatchSnapshotFastPathCostWithWatcherLive (3.57s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/server/webdav	3.573s
+FASTPATH-EXIT=0

@@ -1,0 +1,21 @@
+diff --git a/internal/fsclient/cache.go b/internal/fsclient/cache.go
+index 5579b22..3bdb5e9 100644
+--- a/internal/fsclient/cache.go
++++ b/internal/fsclient/cache.go
+@@ -635,7 +635,15 @@ func (c *Cache) Stage(path, hash string, expectedBytes int64) (*StagedRefresh, e
+ 		c.stats.StagedNoRoomTotal++
+ 		return nil, err
+ 	}
+-	f, err := os.CreateTemp(filepath.Join(c.cfg.Dir, CacheBlobDir), CacheStagePrefix+"*")
++	// BFS-046 RED-PROOF MUTATION (--mutate-in-place): Stage reuses the blob the
++	// path entry ALREADY NAMES, so the "staged" writer is the file a reader can
++	// reach and a reader concurrent with a refresh reads a torn file. This is
++	// the mutate-in-place shape cell 4 exists to indict; cell 4 must go RED.
++	target := ""
++	if e := c.entries[path]; e != nil {
++		target = c.blobPath(e.Hash)
++	}
++	f, err := os.OpenFile(target, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0o600)
+ 	if err != nil {
+ 		return nil, fmt.Errorf("fsclient: create staged blob: %w", err)
+ 	}

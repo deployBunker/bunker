@@ -1,0 +1,45 @@
+HEAD=2ce068eb319cef202a9f10b46a6fba03b47372bc  worktree=wt/BFS-046  2026-09-27T15:29:54Z
+=== gofmt -l (the two new program files; empty output = formatted) ===
+gofmt-exit=0
+
+=== go vet ./... ===
+vet-exit=0
+
+=== go test ./... (full) ===
+ok  	github.com/deployBunker/bunker/cmd/bunker	(cached)
+ok  	github.com/deployBunker/bunker/cmd/bunkerd	(cached)
+?   	github.com/deployBunker/bunker/cmd/docs-drift	[no test files]
+ok  	github.com/deployBunker/bunker/internal/agent	(cached)
+ok  	github.com/deployBunker/bunker/internal/apikey	(cached)
+ok  	github.com/deployBunker/bunker/internal/audit	(cached)
+ok  	github.com/deployBunker/bunker/internal/auth	(cached)
+ok  	github.com/deployBunker/bunker/internal/cli	(cached)
+ok  	github.com/deployBunker/bunker/internal/config	(cached)
+?   	github.com/deployBunker/bunker/internal/davserve	[no test files]
+ok  	github.com/deployBunker/bunker/internal/docscheck	(cached)
+ok  	github.com/deployBunker/bunker/internal/fsclient	6.821s
+ok  	github.com/deployBunker/bunker/internal/fsmount	(cached)
+ok  	github.com/deployBunker/bunker/internal/hermes	(cached)
+ok  	github.com/deployBunker/bunker/internal/hilo	(cached)
+ok  	github.com/deployBunker/bunker/internal/hostsetup	(cached)
+ok  	github.com/deployBunker/bunker/internal/imagespec	(cached)
+ok  	github.com/deployBunker/bunker/internal/invalidation	(cached)
+ok  	github.com/deployBunker/bunker/internal/mountdriver	(cached)
+ok  	github.com/deployBunker/bunker/internal/registry	(cached)
+ok  	github.com/deployBunker/bunker/internal/releasecheck	(cached)
+ok  	github.com/deployBunker/bunker/internal/resource	(cached)
+ok  	github.com/deployBunker/bunker/internal/server	(cached)
+ok  	github.com/deployBunker/bunker/internal/server/webdav	(cached)
+ok  	github.com/deployBunker/bunker/internal/sshsig	(cached)
+ok  	github.com/deployBunker/bunker/internal/systemd	(cached)
+ok  	github.com/deployBunker/bunker/internal/tailscale	(cached)
+ok  	github.com/deployBunker/bunker/internal/tlsutil	(cached)
+ok  	github.com/deployBunker/bunker/internal/tunnel	(cached)
+ok  	github.com/deployBunker/bunker/internal/version	(cached)
+?   	github.com/deployBunker/bunker/probes/bfs025-truncated-read	[no test files]
+?   	github.com/deployBunker/bunker/probes/davserve	[no test files]
+?   	github.com/deployBunker/bunker/probes/h3client	[no test files]
+ok  	github.com/deployBunker/bunker/probes/webdav-battery	(cached)
+?   	github.com/deployBunker/bunker/proto/bunker/v1	[no test files]
+?   	github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect	[no test files]
+test-exit=0

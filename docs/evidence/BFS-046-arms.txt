@@ -1,0 +1,295 @@
+BFS-046 arms — mode=all
+go go1.26.5 · 2ce068e · 2026-09-27T15:35:19Z
+tree under test:
+  internal/server/webdav/watch.go     sha256=74211882400483020c2231f9f5197470eb3ee186f50fb793a684fd291396d138
+  internal/fsclient/cache.go     sha256=ff928ac73d7d219232ba49525e66e928b8635bb676316496ed33438e79eabd4e
+  internal/fsclient/hotpolicy.go sha256=0b7538b0a3fba4fcba05a715061bcf3dc704b297b4e286b2c03c4956e16d1e01
+--- GREEN (server cells 1-3): go test ./internal/server/webdav -run TestBFS046 -count=1 -v -timeout 300s
+=== RUN   TestBFS046Cell01SmokeWatcherAndChannelComeUp
+--- PASS: TestBFS046Cell01SmokeWatcherAndChannelComeUp (0.01s)
+=== RUN   TestBFS046Cell02OutOfBandEditOverRealFilesystem
+=== RUN   TestBFS046Cell02OutOfBandEditOverRealFilesystem/a_shell_write_on_the_target
+=== RUN   TestBFS046Cell02OutOfBandEditOverRealFilesystem/a_real_git_checkout
+--- PASS: TestBFS046Cell02OutOfBandEditOverRealFilesystem (0.11s)
+    --- PASS: TestBFS046Cell02OutOfBandEditOverRealFilesystem/a_shell_write_on_the_target (0.07s)
+    --- PASS: TestBFS046Cell02OutOfBandEditOverRealFilesystem/a_real_git_checkout (0.04s)
+=== RUN   TestBFS046Cell03OverflowIsACountedFullRescanAndNeverQuiet
+--- PASS: TestBFS046Cell03OverflowIsACountedFullRescanAndNeverQuiet (0.01s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/server/webdav	0.136s
+--- GREEN (server cells 1-3) exit=0
+OK   GREEN (server cells 1-3) PASSED as declared
+--- GREEN (client cells 4-9 + the pending gate): go test ./internal/fsclient -run TestBFS046 -count=1 -v -timeout 300s
+=== RUN   TestBFS046Cell04HalfFileCellIsLoadBearing
+--- PASS: TestBFS046Cell04HalfFileCellIsLoadBearing (0.00s)
+=== RUN   TestBFS046HelperProcess
+    bfs046_program_test.go:159: the BFS-046 helper process (driven by TestBFS046Cell08*; SIGKILLed mid-read on purpose)
+--- SKIP: TestBFS046HelperProcess (0.00s)
+=== RUN   TestBFS046Cell08KilledReaderLeavesTheBlobAndThePathIntact
+--- PASS: TestBFS046Cell08KilledReaderLeavesTheBlobAndThePathIntact (0.01s)
+=== RUN   TestBFS046Cell08KilledRefresherNeverPublishesAndIsSwept
+--- PASS: TestBFS046Cell08KilledRefresherNeverPublishesAndIsSwept (0.01s)
+=== RUN   TestBFS046Cell09SizeRuleBoundaryIsInclusiveAndCountedByReason
+    bfs046_program_test.go:499: PENDING-UNTIL-BFS-037: the skip-by-reason census (S-12/P-13) and the refresh-side file-size boundary (S-3/S-4, `size <= hot_max_file_bytes`) need the refresh to exist. This cell asserts the pinned number, the declared inclusive rule, and the two mount-time refusals AT THE EDGE — the parts that are landed — and it does not pretend to assert the census.
+--- PASS: TestBFS046Cell09SizeRuleBoundaryIsInclusiveAndCountedByReason (0.00s)
+=== RUN   TestBFS046Cell05StampedeForegroundLatencyUnderABurst
+    bfs046_program_test.go:583: PENDING-UNTIL-BFS-037: the burst of invalidations cannot refresh anything yet (no tracker, no queue, no refresher), so the foreground's latency under a burst is not measurable. The cell exists, its claim is above, and TestBFS046PendingUntilLandingGate fails the moment the dependency lands so it cannot be skipped forever.
+--- SKIP: TestBFS046Cell05StampedeForegroundLatencyUnderABurst (0.00s)
+=== RUN   TestBFS046Cell06StopInFullRefusesTheTwoWrongReadings
+    bfs046_program_test.go:606: PENDING-UNTIL-BFS-037: there is no queue to stop and no in-flight refresh to abandon. The cell exists, both REFUSED readings are named above as assertions rather than prose, and the pending gate fails when the dependency lands.
+--- SKIP: TestBFS046Cell06StopInFullRefusesTheTwoWrongReadings (0.00s)
+=== RUN   TestBFS046Cell07PromotionIsSingleFlightExactlyOneFetch
+    bfs046_program_test.go:627: PENDING-UNTIL-BFS-037: there is no per-path single-flight map and no promotion path to drive, so "exactly one fetch" has nothing to count. The cell exists and its control arm (disable the map ⇒ 32 GETs) is stated above; the pending gate fails when the dependency lands.
+--- SKIP: TestBFS046Cell07PromotionIsSingleFlightExactlyOneFetch (0.00s)
+=== RUN   TestBFS046Cell08DeliberateCancelIsDistinguishableFromFailure
+    bfs046_program_test.go:647: PENDING-UNTIL-BFS-039: no `EINTR` is produced anywhere in the tree yet, so the deliberate half of the cancel cell cannot be driven. The killed halves (8a the reader, 8b the refresher) are LIVE and are the half that needs no cancel to arrive.
+--- SKIP: TestBFS046Cell08DeliberateCancelIsDistinguishableFromFailure (0.00s)
+=== RUN   TestBFS046Cell09SkipCensusByReasonIsDrivable
+    bfs046_program_test.go:670: PENDING-UNTIL-BFS-037: there is no refresh to skip, so no skip reason has a reachable trigger and a census would be counting zeros. Cell 9's LIVE half (the pinned number, the inclusive rule, the two refusals AT THE EDGE) is asserted in TestBFS046Cell09SizeRuleBoundaryIsInclusiveAndCountedByReason and that cell does not claim the census.
+--- SKIP: TestBFS046Cell09SkipCensusByReasonIsDrivable (0.00s)
+=== RUN   TestBFS046PendingUntilLandingGate
+--- PASS: TestBFS046PendingUntilLandingGate (0.00s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.025s
+--- GREEN (client cells 4-9 + the pending gate) exit=0
+OK   GREEN (client cells 4-9 + the pending gate) PASSED as declared
+
+==============================================================
+CONTROL nochannel — BFS-046-redproof-nochannel.patch
+==============================================================
+pre-mutation: internal/server/webdav/ops.go sha256=5dc7f4fe8367fe260ac3ea6b1f95a27c018f592c77ff5999764339af1afc0687
+mutated: internal/server/webdav/ops.go sha256=c497b7253314f4f48e004aa3384906aec1349663203998478a675fe88b8f0253 via BFS-046-redproof-nochannel.patch
+--- CONTROL nochannel (the mutation MUST turn this cell red): go test ./internal/server/webdav -run TestBFS046Cell01 -count=1 -v -timeout 300s
+=== RUN   TestBFS046Cell01SmokeWatcherAndChannelComeUp
+    bfs046_program_test.go:148: the channel's poll form answered 501: {"ok":false,"op":"events","verdict":"capability_unavailable","rev":"git:abababababababababababababababababababab@0","tree":"tree:51cd212d3ace1817","proto":"HTTP/1.1","duration_ms":0,"truncated":false,"result":null,"error":{"capability":"events","scope":"target","detail":"BFS-046 red-proof mutation: the poll form is refused"}}
+--- FAIL: TestBFS046Cell01SmokeWatcherAndChannelComeUp (0.01s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/server/webdav	0.009s
+FAIL
+--- CONTROL nochannel (the mutation MUST turn this cell red) exit=1
+OK   CONTROL nochannel (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL nochannel (attribution: this cell MUST be unmoved): go test ./internal/server/webdav -run TestBFS046Cell02 -count=1 -v -timeout 300s
+=== RUN   TestBFS046Cell02OutOfBandEditOverRealFilesystem
+=== RUN   TestBFS046Cell02OutOfBandEditOverRealFilesystem/a_shell_write_on_the_target
+=== RUN   TestBFS046Cell02OutOfBandEditOverRealFilesystem/a_real_git_checkout
+--- PASS: TestBFS046Cell02OutOfBandEditOverRealFilesystem (0.11s)
+    --- PASS: TestBFS046Cell02OutOfBandEditOverRealFilesystem/a_shell_write_on_the_target (0.07s)
+    --- PASS: TestBFS046Cell02OutOfBandEditOverRealFilesystem/a_real_git_checkout (0.04s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/server/webdav	0.119s
+--- CONTROL nochannel (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL nochannel (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/server/webdav/ops.go sha256=5dc7f4fe8367fe260ac3ea6b1f95a27c018f592c77ff5999764339af1afc0687 (verified)
+
+==============================================================
+CONTROL nowatchpublish — BFS-046-redproof-nowatchpublish.patch
+==============================================================
+pre-mutation: internal/server/webdav/watch.go sha256=74211882400483020c2231f9f5197470eb3ee186f50fb793a684fd291396d138
+mutated: internal/server/webdav/watch.go sha256=96f7e4818bcce8b69621886f213e3f19fb69591ae8fd4f5f5558993c08bb4e3a via BFS-046-redproof-nowatchpublish.patch
+--- CONTROL nowatchpublish (the mutation MUST turn this cell red): go test ./internal/server/webdav -run TestBFS046Cell0[12] -count=1 -v -timeout 300s
+=== RUN   TestBFS046Cell01SmokeWatcherAndChannelComeUp
+    bfs046_program_test.go:165: timed out after 5s waiting for the served revision to move for a real shell write
+--- FAIL: TestBFS046Cell01SmokeWatcherAndChannelComeUp (5.01s)
+=== RUN   TestBFS046Cell02OutOfBandEditOverRealFilesystem
+=== RUN   TestBFS046Cell02OutOfBandEditOverRealFilesystem/a_shell_write_on_the_target
+    bfs046_program_test.go:217: timed out after 5s waiting for the watcher to vouch for the shell write
+=== RUN   TestBFS046Cell02OutOfBandEditOverRealFilesystem/a_real_git_checkout
+    bfs046_program_test.go:272: timed out after 5s waiting for the dirty write to be vouched for
+--- FAIL: TestBFS046Cell02OutOfBandEditOverRealFilesystem (10.03s)
+    --- FAIL: TestBFS046Cell02OutOfBandEditOverRealFilesystem/a_shell_write_on_the_target (5.01s)
+    --- FAIL: TestBFS046Cell02OutOfBandEditOverRealFilesystem/a_real_git_checkout (5.02s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/server/webdav	15.050s
+FAIL
+--- CONTROL nowatchpublish (the mutation MUST turn this cell red) exit=1
+OK   CONTROL nowatchpublish (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL nowatchpublish (attribution: this cell MUST be unmoved): go test ./internal/server/webdav -run TestWatchOverflowNegativeControlDisablesTheDrain -count=1 -v -timeout 300s
+=== RUN   TestWatchOverflowNegativeControlDisablesTheDrain
+--- PASS: TestWatchOverflowNegativeControlDisablesTheDrain (0.50s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/server/webdav	0.506s
+--- CONTROL nowatchpublish (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL nowatchpublish (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/server/webdav/watch.go sha256=74211882400483020c2231f9f5197470eb3ee186f50fb793a684fd291396d138 (verified)
+
+==============================================================
+CONTROL norescan — BFS-046-redproof-norescan.patch
+==============================================================
+pre-mutation: internal/server/webdav/watch.go sha256=74211882400483020c2231f9f5197470eb3ee186f50fb793a684fd291396d138
+mutated: internal/server/webdav/watch.go sha256=2040cb0468ed337ea0eb91553a63478deefbf80ae311399e30ff507b08453104 via BFS-046-redproof-norescan.patch
+--- CONTROL norescan (the mutation MUST turn this cell red): go test ./internal/server/webdav -run TestBFS046Cell03 -count=1 -v -timeout 300s
+=== RUN   TestBFS046Cell03OverflowIsACountedFullRescanAndNeverQuiet
+    bfs046_program_test.go:357: timed out after 5s waiting for the forced full rescan, counted
+--- FAIL: TestBFS046Cell03OverflowIsACountedFullRescanAndNeverQuiet (5.01s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/server/webdav	5.009s
+FAIL
+--- CONTROL norescan (the mutation MUST turn this cell red) exit=1
+OK   CONTROL norescan (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL norescan (attribution: this cell MUST be unmoved): go test ./internal/server/webdav -run TestBFS046Cell02 -count=1 -v -timeout 300s
+=== RUN   TestBFS046Cell02OutOfBandEditOverRealFilesystem
+=== RUN   TestBFS046Cell02OutOfBandEditOverRealFilesystem/a_shell_write_on_the_target
+=== RUN   TestBFS046Cell02OutOfBandEditOverRealFilesystem/a_real_git_checkout
+--- PASS: TestBFS046Cell02OutOfBandEditOverRealFilesystem (0.11s)
+    --- PASS: TestBFS046Cell02OutOfBandEditOverRealFilesystem/a_shell_write_on_the_target (0.07s)
+    --- PASS: TestBFS046Cell02OutOfBandEditOverRealFilesystem/a_real_git_checkout (0.04s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/server/webdav	0.112s
+--- CONTROL norescan (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL norescan (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/server/webdav/watch.go sha256=74211882400483020c2231f9f5197470eb3ee186f50fb793a684fd291396d138 (verified)
+
+==============================================================
+CONTROL mutate-in-place — BFS-046-redproof-mutate-in-place.patch
+==============================================================
+pre-mutation: internal/fsclient/cache.go sha256=ff928ac73d7d219232ba49525e66e928b8635bb676316496ed33438e79eabd4e
+mutated: internal/fsclient/cache.go sha256=1861228ad06b37f43735925c807ff22eb241602776bde3e8829872a968b7908a via BFS-046-redproof-mutate-in-place.patch
+--- CONTROL mutate-in-place (the mutation MUST turn this cell red): go test ./internal/fsclient -run TestBFS046Cell04|TestAtomicRefreshHalfFileCell -count=1 -v -timeout 300s
+=== RUN   TestBFS046Cell04HalfFileCellIsLoadBearing
+    bfs046_program_test.go:104: a reader observed "partial(49152 bytes)" with a stage in flight: a refreshed file was visible half-written
+--- FAIL: TestBFS046Cell04HalfFileCellIsLoadBearing (0.00s)
+=== RUN   TestAtomicRefreshHalfFileCell
+=== RUN   TestAtomicRefreshHalfFileCell/staged-new-blob-swap
+    cache_staged_test.go:332: staged-new-blob-swap: reader observed "partial(196608 bytes)" at the half-way checkpoint, "new" after the refresh returned; old content address intact=true
+    cache_staged_test.go:340: a reader observed "partial(196608 bytes)" during the refresh: a refreshed file was visible half-written
+=== RUN   TestAtomicRefreshHalfFileCell/control-mutate-old-blob
+    cache_staged_test.go:332: control-mutate-old-blob: reader observed "partial(196608 bytes)" at the half-way checkpoint, "absent" after the refresh returned; old content address intact=false
+=== RUN   TestAtomicRefreshHalfFileCell/control-publish-then-stream
+    cache_staged_test.go:332: control-publish-then-stream: reader observed "partial(196608 bytes)" at the half-way checkpoint, "new" after the refresh returned; old content address intact=true
+--- FAIL: TestAtomicRefreshHalfFileCell (0.02s)
+    --- FAIL: TestAtomicRefreshHalfFileCell/staged-new-blob-swap (0.01s)
+    --- PASS: TestAtomicRefreshHalfFileCell/control-mutate-old-blob (0.01s)
+    --- PASS: TestAtomicRefreshHalfFileCell/control-publish-then-stream (0.01s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	0.023s
+FAIL
+--- CONTROL mutate-in-place (the mutation MUST turn this cell red) exit=1
+OK   CONTROL mutate-in-place (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL mutate-in-place (attribution: this cell MUST be unmoved): go test ./internal/fsclient -run TestBFS046Cell09 -count=1 -v -timeout 300s
+=== RUN   TestBFS046Cell09SizeRuleBoundaryIsInclusiveAndCountedByReason
+    bfs046_program_test.go:499: PENDING-UNTIL-BFS-037: the skip-by-reason census (S-12/P-13) and the refresh-side file-size boundary (S-3/S-4, `size <= hot_max_file_bytes`) need the refresh to exist. This cell asserts the pinned number, the declared inclusive rule, and the two mount-time refusals AT THE EDGE — the parts that are landed — and it does not pretend to assert the census.
+--- PASS: TestBFS046Cell09SizeRuleBoundaryIsInclusiveAndCountedByReason (0.00s)
+=== RUN   TestBFS046Cell09SkipCensusByReasonIsDrivable
+    bfs046_program_test.go:670: PENDING-UNTIL-BFS-037: there is no refresh to skip, so no skip reason has a reachable trigger and a census would be counting zeros. Cell 9's LIVE half (the pinned number, the inclusive rule, the two refusals AT THE EDGE) is asserted in TestBFS046Cell09SizeRuleBoundaryIsInclusiveAndCountedByReason and that cell does not claim the census.
+--- SKIP: TestBFS046Cell09SkipCensusByReasonIsDrivable (0.00s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.005s
+--- CONTROL mutate-in-place (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL mutate-in-place (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/fsclient/cache.go sha256=ff928ac73d7d219232ba49525e66e928b8635bb676316496ed33438e79eabd4e (verified)
+
+==============================================================
+CONTROL leaked-lock — BFS-046-redproof-leaked-lock.patch
+==============================================================
+pre-mutation: internal/fsclient/cache.go sha256=ff928ac73d7d219232ba49525e66e928b8635bb676316496ed33438e79eabd4e
+mutated: internal/fsclient/cache.go sha256=b0d6a4b3367dbbcbe3bfb5aab240342e585f98bb8618489476c9b10e25c232ab via BFS-046-redproof-leaked-lock.patch
+--- CONTROL leaked-lock (the mutation MUST turn this cell red): go test ./internal/fsclient -run TestBFS046Cell08KilledReaderLeavesTheBlobAndThePathIntact -count=1 -v -timeout 300s
+=== RUN   TestBFS046Cell08KilledReaderLeavesTheBlobAndThePathIntact
+    bfs046_program_test.go:332: the blob could not be pinned after a killed reader: the pin is being held on the dead process's behalf
+--- FAIL: TestBFS046Cell08KilledReaderLeavesTheBlobAndThePathIntact (0.00s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	0.007s
+FAIL
+--- CONTROL leaked-lock (the mutation MUST turn this cell red) exit=1
+OK   CONTROL leaked-lock (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL leaked-lock (attribution: this cell MUST be unmoved): go test ./internal/fsclient -run TestBFS046Cell08KilledRefresherNeverPublishesAndIsSwept -count=1 -v -timeout 300s
+=== RUN   TestBFS046Cell08KilledRefresherNeverPublishesAndIsSwept
+--- PASS: TestBFS046Cell08KilledRefresherNeverPublishesAndIsSwept (0.01s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.008s
+--- CONTROL leaked-lock (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL leaked-lock (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/fsclient/cache.go sha256=ff928ac73d7d219232ba49525e66e928b8635bb676316496ed33438e79eabd4e (verified)
+
+==============================================================
+CONTROL no-sweep — BFS-046-redproof-no-sweep.patch
+==============================================================
+pre-mutation: internal/fsclient/cache.go sha256=ff928ac73d7d219232ba49525e66e928b8635bb676316496ed33438e79eabd4e
+mutated: internal/fsclient/cache.go sha256=8a38f27fb2630193b1cf6eac704aff020873449e88fcb14bdd0f5d0c26df31be via BFS-046-redproof-no-sweep.patch
+--- CONTROL no-sweep (the mutation MUST turn this cell red): go test ./internal/fsclient -run TestBFS046Cell08KilledRefresherNeverPublishesAndIsSwept -count=1 -v -timeout 300s
+=== RUN   TestBFS046Cell08KilledRefresherNeverPublishesAndIsSwept
+    bfs046_program_test.go:381: the staged residue survived the reopen: [.stage-1975520473] (an unpublished blob left behind is unbounded disk growth)
+--- FAIL: TestBFS046Cell08KilledRefresherNeverPublishesAndIsSwept (0.01s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	0.008s
+FAIL
+--- CONTROL no-sweep (the mutation MUST turn this cell red) exit=1
+OK   CONTROL no-sweep (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL no-sweep (attribution: this cell MUST be unmoved): go test ./internal/fsclient -run TestBFS046Cell08KilledReaderLeavesTheBlobAndThePathIntact -count=1 -v -timeout 300s
+=== RUN   TestBFS046Cell08KilledReaderLeavesTheBlobAndThePathIntact
+--- PASS: TestBFS046Cell08KilledReaderLeavesTheBlobAndThePathIntact (0.00s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.008s
+--- CONTROL no-sweep (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL no-sweep (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/fsclient/cache.go sha256=ff928ac73d7d219232ba49525e66e928b8635bb676316496ed33438e79eabd4e (verified)
+
+==============================================================
+CONTROL exclusive-size — BFS-046-redproof-exclusive-size.patch
+==============================================================
+pre-mutation: internal/fsclient/hotpolicy.go sha256=0b7538b0a3fba4fcba05a715061bcf3dc704b297b4e286b2c03c4956e16d1e01
+mutated: internal/fsclient/hotpolicy.go sha256=59bd747ac6a2f1030279edfa832a6e4bf968da7e8632dba9f8ef2f43e03fcea4 via BFS-046-redproof-exclusive-size.patch
+--- CONTROL exclusive-size (the mutation MUST turn this cell red): go test ./internal/fsclient -run TestBFS046Cell09SizeRuleBoundaryIsInclusiveAndCountedByReason -count=1 -v -timeout 300s
+=== RUN   TestBFS046Cell09SizeRuleBoundaryIsInclusiveAndCountedByReason
+    bfs046_program_test.go:449: a size rule EXACTLY at the per-entry cap was refused (bunker-fs: --hot.max-file-bytes (67108864) exceeds the cache's per-entry cap (--cache-max-entry-bytes 67108864); SPEC-hot-file-policy S-10 refuses the mount here, because the refreshed bytes could never be stored (the hot path stays inert either way — S-11, P-0 clause 1)): the comparison at the bound is exclusive, which is the off-by-one this cell exists to catch (S-10 is `>`, not `>=`)
+--- FAIL: TestBFS046Cell09SizeRuleBoundaryIsInclusiveAndCountedByReason (0.00s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	0.003s
+FAIL
+--- CONTROL exclusive-size (the mutation MUST turn this cell red) exit=1
+OK   CONTROL exclusive-size (the mutation MUST turn this cell red) FAILED as declared (exit 1)
+--- CONTROL exclusive-size (attribution: this cell MUST be unmoved): go test ./internal/fsclient -run TestHotPolicyDefaultsAreThePinnedNumbers -count=1 -v -timeout 300s
+=== RUN   TestHotPolicyDefaultsAreThePinnedNumbers
+--- PASS: TestHotPolicyDefaultsAreThePinnedNumbers (0.00s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.003s
+--- CONTROL exclusive-size (attribution: this cell MUST be unmoved) exit=0
+OK   CONTROL exclusive-size (attribution: this cell MUST be unmoved) PASSED as declared
+restore: internal/fsclient/hotpolicy.go sha256=0b7538b0a3fba4fcba05a715061bcf3dc704b297b4e286b2c03c4956e16d1e01 (verified)
+
+==============================================================
+COVERAGE FLOOR over the invalidation packages
+==============================================================
+BFS-046 coverage floor — go1.26.5 · 2ce068e · 2026-09-27T15:35:46Z
+
+--- per package: go test -cover ./internal/invalidation/... ./internal/fsclient/... ./internal/server/webdav/...
+ok  	github.com/deployBunker/bunker/internal/invalidation	(cached)	coverage: 82.3% of statements
+ok  	github.com/deployBunker/bunker/internal/fsclient	6.011s	coverage: 69.6% of statements
+ok  	github.com/deployBunker/bunker/internal/server/webdav	(cached)	coverage: 81.3% of statements
+
+--- the numbers
+  internal/invalidation   82.3%   floor 82.0%
+  internal/fsclient       69.6%   floor 69.0%
+  internal/server/webdav  81.3%   floor 81.0%
+  MERGED (all three)      75.4%   floor 75.0%
+
+floor held: MERGED 75.4% >= 75.0% and every package is above its own floor
+
+==============================================================
+CELLS LIVE vs PENDING — read from the program itself
+==============================================================
+LIVE (landed code under test today):
+  cell 1  SMOKE          ./internal/server/webdav/TestBFS046Cell01SmokeWatcherAndChannelComeUp
+  cell 2  INTEGRATION    ./internal/server/webdav/TestBFS046Cell02OutOfBandEditOverRealFilesystem (shell write + real git checkout)
+  cell 3  OVERFLOW       ./internal/server/webdav/TestBFS046Cell03OverflowIsACountedFullRescanAndNeverQuiet (+ BFS-035's real-kernel reproducer)
+  cell 4  HALF-FILE      ./internal/fsclient/TestBFS046Cell04HalfFileCellIsLoadBearing (+ TestAtomicRefreshHalfFileCell, both mutate-in-place controls)
+  cell 8  CANCEL         ./internal/fsclient/TestBFS046Cell08* (killed reader; killed refresher)
+  cell 9  SIZE RULE      ./internal/fsclient/TestBFS046Cell09* (pinned number, inclusive rule, both refusals AT THE EDGE)
+  cell 10 COVERAGE FLOOR /home/kara/worktrees/bunker-BFS-046/docs/evidence/BFS-046-coverage.sh
+PENDING (gated, never weakened — the gate FAILS the moment the dependency lands):
+  cell 5  STAMPEDE       pending-until-BFS-037 (foreground latency under a burst)
+  cell 6  STOP           pending-until-BFS-037 (STOP IN FULL, and the two refused readings)
+  cell 7  PROMOTION      pending-until-BFS-037 (EXACTLY 1 fetch per path)
+  cell 8b DELIBERATE     pending-until-BFS-039 (FUSE interrupt; EINTR vs EIO)
+  cell 9b SKIP CENSUS    pending-until-BFS-037 (one cell per reason, driving the LIVE path)
+
+--- the pending gate is still TRUE (no dependency has landed): go test ./internal/fsclient -run TestBFS046PendingUntilLandingGate -count=1 -v -timeout 300s
+=== RUN   TestBFS046PendingUntilLandingGate
+--- PASS: TestBFS046PendingUntilLandingGate (0.00s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.004s
+--- the pending gate is still TRUE (no dependency has landed) exit=0
+OK   the pending gate is still TRUE (no dependency has landed) PASSED as declared
+
+done: mode=all — all declared outcomes held
+ARMS-EXIT=0

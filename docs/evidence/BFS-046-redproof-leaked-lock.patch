@@ -1,0 +1,26 @@
+diff --git a/internal/fsclient/cache.go b/internal/fsclient/cache.go
+index 5579b22..1f41522 100644
+--- a/internal/fsclient/cache.go
++++ b/internal/fsclient/cache.go
+@@ -541,6 +541,21 @@ func (c *Cache) GetPinned(path, hash string) ([]byte, bool) {
+ 		c.stats.Misses++
+ 		return nil, false
+ 	}
++	// BFS-046 RED-PROOF MUTATION (--leaked-lock): the pin becomes a PERSISTED
++	// in-use marker, so a reader killed with SIGKILL leaves it behind and the
++	// blob can never be pinned again. It lives OUTSIDE blobs/ deliberately: a
++	// marker inside the swept directory would be cleared by the orphan sweep on
++	// the next reopen, and a defect that heals itself is not the defect cell 8
++	// exists to catch.
++	lock := filepath.Join(c.cfg.Dir, "pin-"+strings.TrimPrefix(hash, HashPrefix)+".lock")
++	if _, err := os.Stat(lock); err == nil {
++		c.stats.Misses++
++		return nil, false
++	}
++	if lf, err := os.OpenFile(lock, os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
++		_, _ = lf.WriteString("held by a live reader\n")
++		_ = lf.Close()
++	}
+ 	e := c.entries[path]
+ 	if e == nil || !IsHash(hash) || e.Hash != hash {
+ 		c.stats.Misses++

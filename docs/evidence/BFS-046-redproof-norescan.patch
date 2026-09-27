@@ -1,0 +1,21 @@
+diff --git a/internal/server/webdav/watch.go b/internal/server/webdav/watch.go
+index d94dcc6..e77365c 100644
+--- a/internal/server/webdav/watch.go
++++ b/internal/server/webdav/watch.go
+@@ -713,11 +713,11 @@ func (w *watcher) onBackendError(err error) {
+ }
+ 
+ func (w *watcher) requestRescan(cause string) {
+-	select {
+-	case w.rescanCh <- cause:
+-	default:
+-		// A rescan is already pending: one lost interval is one rescan.
+-	}
++	// BFS-046 RED-PROOF MUTATION (--norescan): the request is DROPPED, so the
++	// overflow is counted, the state is `overflow`, and the interval is never
++	// repaired - the counted-but-not-full rescan SPEC-watcher-capability 5
++	// forbids. Cell 3 must go RED.
++	_ = cause
+ }
+ 
+ // markUnvouched publishes "this interval cannot be vouched for". It is the only

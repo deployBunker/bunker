@@ -1,0 +1,15 @@
+BFS-046 coverage floor — go1.26.5 · 2ce068e · 2026-09-27T15:19:29Z
+
+--- per package: go test -cover ./internal/invalidation/... ./internal/fsclient/... ./internal/server/webdav/...
+ok  	github.com/deployBunker/bunker/internal/invalidation	(cached)	coverage: 82.3% of statements
+ok  	github.com/deployBunker/bunker/internal/fsclient	5.979s	coverage: 69.6% of statements
+ok  	github.com/deployBunker/bunker/internal/server/webdav	(cached)	coverage: 81.3% of statements
+
+--- the numbers
+  internal/invalidation   82.3%   floor 82.0%
+  internal/fsclient       69.6%   floor 69.0%
+  internal/server/webdav  81.3%   floor 81.0%
+  MERGED (all three)      75.4%   floor 75.0%
+
+floor held: MERGED 75.4% >= 75.0% and every package is above its own floor
+FLOOR-EXIT=0
