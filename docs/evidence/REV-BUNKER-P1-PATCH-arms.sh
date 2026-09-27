@@ -180,6 +180,12 @@ live_config() {
 	# The incident's precondition is an ABSENT registry file, so every live arm
 	# starts by removing it (the previous arm may have left one behind).
 	rm -f "$live_root/data/agents.jsonl"
+	# The daemon needs auth.enabled with a non-empty token or it refuses to start.
+	# The value is GENERATED per run and never written into this script: no token
+	# value belongs in a committed file, not even a throwaway for a scratch
+	# daemon that authenticates nothing. It is also passed to the CLI-free arms
+	# only through this file, so the transcript never carries it either.
+	live_token="revp1-$(date +%s%N)-$$"
 	{
 		cat <<EOF
 # REV-BUNKER-P1-PATCH live arm: scratch NON-ROOT bunkerd. Every path is under
@@ -197,7 +203,7 @@ tls:
   insecure_dev: true
 auth:
   enabled: true
-  token: "rev-bunker-p1-scratch-token"
+  token: "$live_token"
 agent:
   base_data_dir: $live_root/data
   ssh_dir: $live_root/ssh
