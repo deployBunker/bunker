@@ -1,0 +1,20 @@
+diff --git a/internal/cli/umount.go b/internal/cli/umount.go
+index e0902b1..ed9c5a3 100644
+--- a/internal/cli/umount.go
++++ b/internal/cli/umount.go
+@@ -167,15 +167,6 @@ Examples:
+ // Only when all three find nothing is "already clean" allowed, and it is
+ // SUCCESS: cleanup must stay safe to run twice.
+ func runUmount(out io.Writer, target string, force bool) error {
+-	// 0. Platform gate FIRST — before any resolution and before any local side
+-	// effect (os.Stat, and the os.Remove of a leftover directory below). On a
+-	// platform with no unmount mechanism every lookup here comes back empty, so
+-	// without this the command would report "already clean" over a mount it
+-	// cannot see; with it, the operator gets one named sentence instead.
+-	if refusal := umountPlatformRefusal(); refusal != nil {
+-		return refusal
+-	}
+-
+ 	// 1/2. The declared target: an existing path is used as-is, otherwise the
+ 	// argument is an agent id resolved under the mount roots.
+ 	mountPoint := ""

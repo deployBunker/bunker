@@ -21,6 +21,39 @@
 #   3. a required target that fails in any package NOT in KNOWN_GAPS is a hard
 #      failure (exit 1).
 #
+# NOTE FOR THE NEXT PERSON WHO ADDS A SEAM INSIDE internal/cli (BFS-028). Item 2's
+# vet lane is per-package and only covers internal/fsmount here, so a new seam in
+# another package is NOT type-checked for windows by this script. Extending item 2 to
+# `go vet ./internal/cli` is the right thing to do and is currently BLOCKED by three
+# PRE-EXISTING untagged test files, which reference unix-only symbols (measured, not
+# guessed):
+#
+#   internal/cli/mount_fault_inject_test.go:116  undefined: newMountTestServer  (declared in the //go:build unix mount_test.go)
+#   internal/cli/procbuild_test.go:419           undefined: syscall.Flock
+#   internal/cli/exit_code_pipe_test.go:184      undefined: buildCLIOnce
+#
+# Those are other rows' findings and are NOT fixed from this script. The lane passes
+# the moment they are excluded, which is how BFS-028 verified that its own
+# `//go:build !unix` test file compiles: see docs/evidence/BFS-028-arms.sh mode `vet`
+# (it clones the tree, names the blockers, removes them in the CLONE only, and
+# requires the lane to pass). Land those three tags, then point item 2 at internal/cli.
+#
+# AND ITEM 2 HAS BEEN RED FOR EVERY TARGET BUT ITS OWN — known, measured, NOT yet
+# fixed (BFS-028 §9c, with the base-commit proof in
+# docs/evidence/BFS-028-crossgos-guard-baseline.txt):
+#
+#   GOOS=windows go vet ./internal/fsmount
+#   -> vet: internal/fsmount/platform_unsupported_test.go:110:5: invalid operation:
+#      st != (fsclient.Status{}) (struct containing fsclient.CacheStats cannot be compared)
+#
+# fsclient.Status carries a map (BypassReasons, internal/fsclient/cache.go:256), so it
+# is not comparable and the `!=` in that `//go:build !linux` file has never compiled.
+# THE PRACTICAL CONSEQUENCE, and the reason this note is here: the lane that exists to
+# catch exactly this class of defect has not been running, and this script therefore
+# EXITS 1 ON EVERY RUN regardless of KNOWN_GAPS. Read the BUILD column for the ratchet
+# and the VET column for item 2 — do not read the exit status as being about your
+# change without checking which column moved.
+#
 # KNOWN_GAPS IS A RATCHET, NOT AN EXCUSE. A listed gap is printed every run with
 # the site that owns it; removing a line means the gap is fixed, and adding one
 # needs the same evidence a defect report does (file:line + the exact failing
@@ -40,8 +73,21 @@ REQUIRED="linux/amd64 linux/arm64 windows/amd64 windows/arm64"
 
 # Targets where a required build is known NOT to reach the end, and the package
 # that owns the fix. One entry per line: "<goos>/<goarch>|<import path>".
-KNOWN_GAPS="windows/amd64|github.com/deployBunker/bunker/internal/cli
-windows/arm64|github.com/deployBunker/bunker/internal/cli"
+#
+# EMPTY SINCE BFS-028, which is the second time this list has been the point of the
+# ratchet rather than an excuse. Every run since BFS-010 carried:
+#
+#   windows/amd64|github.com/deployBunker/bunker/internal/cli
+#   windows/arm64|github.com/deployBunker/bunker/internal/cli
+#
+# with the site named as internal/cli/umount.go:272 — `undefined: syscall.Stat_t`,
+# the mountpoint probe's device-id compare, written inline and unchanged since. The
+# row that owned it (BFS-028) moved the probe to internal/cli/umount_unix.go,
+# decided what a platform WITHOUT it does (a named refusal that says the command,
+# the platform and the way out — internal/cli/umount_nonunix.go), and recorded the
+# evidence in docs/evidence/BFS-028-windows-umount-seam.md. Adding a line back needs
+# the same evidence a defect report does.
+KNOWN_GAPS=""
 
 # Informational survey set: what "no FUSE binding off Linux" actually covers.
 SURVEY="darwin/amd64 darwin/arm64 freebsd/amd64 openbsd/amd64 netbsd/amd64 solaris/amd64 illumos/amd64 plan9/amd64 js/wasm"
@@ -103,10 +149,14 @@ echo "cross-GOOS platform-seam guard (BFS-010)"
 echo "go               : $(go version)"
 echo "required targets : $REQUIRED"
 echo "known gaps (fixed by a named row, printed every run):"
-while IFS= read -r gap; do
-  [ -z "$gap" ] && continue
-  echo "  ${gap%%|*} -> ${gap#*|}   (internal/cli/umount.go:272 syscall.Stat_t; see docs/evidence/BFS-010-windows-mint-decision.md)"
-done <<<"$KNOWN_GAPS"
+if [ -z "${KNOWN_GAPS//[[:space:]]/}" ]; then
+  echo "  (none — every REQUIRED target builds ./... to the end)"
+else
+  while IFS= read -r gap; do
+    [ -z "$gap" ] && continue
+    echo "  ${gap%%|*} -> ${gap#*|}"
+  done <<<"$KNOWN_GAPS"
+fi
 echo ""
 printf '%-16s %-10s %-24s %s\n' TARGET BUILD "VET internal/fsmount" RESULT
 printf '%-16s %-10s %-24s %s\n' ---------------- ---------- ------------------------ ------

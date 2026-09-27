@@ -1,0 +1,19 @@
+diff --git a/internal/cli/umount.go b/internal/cli/umount.go
+index e0902b1..182d30c 100644
+--- a/internal/cli/umount.go
++++ b/internal/cli/umount.go
+@@ -92,13 +92,7 @@ var ErrUmountUnsupported = errors.New("bunker umount: no unmount mechanism on th
+ // "unsupported" would leave an operator on an unsupported platform with no next
+ // step, which is the same dead end as the compile error it replaces.
+ func umountUnsupportedRefusal(goos, goarch string) error {
+-	return fmt.Errorf("%w — this build is %s/%s, and `bunker umount` detaches a mount with the platform's own unmount "+
+-		"(fusermount3/umount(8), and the kernel mount table to find it), which do not exist here. "+
+-		"Nothing was unmounted. Run `bunker umount` from a Linux client, where bunker's mounts live; "+
+-		"to detach a path some other tool mounted on this platform, use that tool's own unmount "+
+-		"(on Windows a mapped or SSHFS-Win drive comes off with `net use <drive>: /delete`, or from the "+
+-		"WinFsp/SSHFS-Win tray)",
+-		ErrUmountUnsupported, goos, goarch)
++	return fmt.Errorf("%w: unsupported build (%s/%s)", ErrUmountUnsupported, goos, goarch)
+ }
+ 
+ // umountPlatformRefusal answers whether THIS BUILD can unmount a filesystem at

@@ -1,0 +1,62 @@
+BFS-028 — the defect as filed, reproduced.
+=============================================================================
+Tree:    the row's BASE commit 48ab48433212b9c7035e540d48bcb0a092c738bb
+         (the commit wt/BFS-028 was cut from)
+Command: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...
+Toolchain: go1.26.5
+=============================================================================
+
+# github.com/deployBunker/bunker/internal/cli
+internal/cli/umount.go:272:25: undefined: syscall.Stat_t
+internal/cli/umount.go:273:20: undefined: syscall.Stat
+internal/cli/umount.go:277:20: undefined: syscall.Stat
+
+exit status: 1
+
+=============================================================================
+THREE errors, ONE file, ONE function. All three are the same defect: the
+mountpoint probe at internal/cli/umount.go:261-281 compared the DEVICE ID of a
+path with its parent's using syscall.Stat / syscall.Stat_t, both of which are
+unix-only. Nothing else in the module failed to build for windows — this file was
+the whole target.
+
+HOW THIS WAS REPRODUCED (re-runnable, and re-run by the arms script):
+
+  bash docs/evidence/BFS-028-arms.sh red
+
+  which clones the repo at 48ab484 into a scratch directory and builds it for
+  windows/amd64 there, rather than reverting the worktree: the fleet commits
+  concurrently into the shared tree and a revert would open a window for a
+  sibling's write to land in. The arm FAILS if the base tree builds, and FAILS if
+  it fails for any reason other than the recorded `undefined: syscall.Stat`
+  errors — so this capture cannot go stale silently.
+
+  Recorded run (docs/evidence/BFS-028-arms.txt):
+
+    ==============================================================
+    RED — the base commit 48ab48433212b9c7035e540d48bcb0a092c738bb, built for windows/amd64
+      scratch clone: /tmp/tmp.PYVNPXojrO/base (left in place; nothing is deleted)
+    ==============================================================
+    # github.com/deployBunker/bunker/internal/cli
+    internal/cli/umount.go:272:25: undefined: syscall.Stat_t
+    internal/cli/umount.go:273:20: undefined: syscall.Stat
+    internal/cli/umount.go:277:20: undefined: syscall.Stat
+    OK   the base tree fails exactly as the row records (exit 1, internal/cli/umount.go)
+
+THE OTHER RED, and the one the row is really about: with the platform gate removed
+from the fixed tree (control `no-gate`), the same cells that assert the refusal
+instead observe the ACCIDENTAL behaviour — an unmount of a path the build cannot
+detach, and the quiet one:
+
+  --- FAIL: TestUmount_UnsupportedPlatformRefusalReachesTheOperator/a_live_mount_...
+      runUmount reported success on a platform with no unmount mechanism; output
+      was "Resolved <path> from the live mount table (not the default root)\n
+      Unmounted <path>\n"
+  --- FAIL: TestUmount_UnsupportedPlatformRefusalReachesTheOperator/the_silent_...
+      runUmount reported success (output "Nothing mounted at <root>/f0901fd3
+      (already clean)\n") where the honest answer is that this build cannot look
+
+That second one is the defect this row's decision prevents: a cleanup verb
+reporting success over a mount it cannot see (the DF-BUNKER-50 false positive,
+one platform over). Full transcript: docs/evidence/BFS-028-arms.txt, CONTROL
+no-gate.

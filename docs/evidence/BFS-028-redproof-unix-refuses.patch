@@ -1,0 +1,13 @@
+diff --git a/internal/cli/umount_unix.go b/internal/cli/umount_unix.go
+index 99ecf13..83f9a69 100644
+--- a/internal/cli/umount_unix.go
++++ b/internal/cli/umount_unix.go
+@@ -30,7 +30,7 @@ import (
+ // platformUmountRefusal returns nil: this build has the mechanisms `bunker
+ // umount` is made of (the kernel mount table, fusermount3/umount(8)), so the
+ // command proceeds exactly as it always has.
+-func platformUmountRefusal() error { return nil }
++func platformUmountRefusal() error { return umountUnsupportedRefusal("linux", "amd64") }
+ 
+ // isMountPoint reports whether path currently has a filesystem mounted on it.
+ // It compares the device ids of the path and its parent: a mount changes the

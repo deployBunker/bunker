@@ -1,0 +1,25 @@
+cross-GOOS platform-seam guard (BFS-010)
+go               : go version go1.26.5 linux/amd64
+required targets : linux/amd64 linux/arm64 windows/amd64 windows/arm64
+known gaps (fixed by a named row, printed every run):
+  (none — every REQUIRED target builds ./... to the end)
+
+TARGET           BUILD      VET internal/fsmount     RESULT
+---------------- ---------- ------------------------ ------
+linux/amd64      PASS       PASS                     ok
+linux/arm64      PASS       PASS                     ok
+windows/amd64    PASS       REFUSED                  UNEXPECTED FAILURE
+windows/arm64    PASS       REFUSED                  UNEXPECTED FAILURE
+
+--- vet-windows-amd64 (verbatim) ---
+# github.com/deployBunker/bunker/internal/fsmount
+# [github.com/deployBunker/bunker/internal/fsmount]
+vet: internal/fsmount/platform_unsupported_test.go:110:5: invalid operation: st != (fsclient.Status{}) (struct containing fsclient.CacheStats cannot be compared)
+
+--- vet-windows-arm64 (verbatim) ---
+# github.com/deployBunker/bunker/internal/fsmount
+# [github.com/deployBunker/bunker/internal/fsmount]
+vet: internal/fsmount/platform_unsupported_test.go:110:5: invalid operation: st != (fsclient.Status{}) (struct containing fsclient.CacheStats cannot be compared)
+
+RESULT: FAIL — a required target broke in a package that is not a listed gap
+GUARD_EXIT=1
