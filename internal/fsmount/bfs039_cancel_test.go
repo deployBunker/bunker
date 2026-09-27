@@ -32,10 +32,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -334,6 +338,14 @@ func TestBFS039KilledWriterLeavesNoResidueAndThePathUsable(t *testing.T) {
 		t.Fatalf("a SIGKILLed writer left %v in the cache directory (%d file(s), %d buffered bytes): the bytes have no reader and no bound, and they survive the reopen sweep because the sweep owns blobs/ and not this name",
 			residue, len(residue), buffered)
 	}
+	// (b2) NO LOCK ARTIFACT, on top of the operation below actually proceeding:
+	// the per-path commit lock is not persisted, so a death cannot leave it
+	// held. The sensor has its own control (TestBFS039LockSensorIsNotBlind), so
+	// a green reading here means "there is none" rather than "this cannot see
+	// one".
+	if stale := bfs039LockArtifacts(t, dir); len(stale) != 0 {
+		t.Fatalf("a SIGKILLed writer left a lock artifact %v: a lock that outlives its holder is the stale-lock defect", stale)
+	}
 	// (c) THE PATH IS USABLE FROM A FRESH HANDLE, which is what a mount process
 	// restarting actually does — and it is where a STALE LOCK would show up.
 	m2, _, _ := bfs039MountAt(t, root, dir)
@@ -359,6 +371,105 @@ func TestBFS039KilledWriterLeavesNoResidueAndThePathUsable(t *testing.T) {
 	if residue := bfs039BufferResidue(t, dir); len(residue) != 0 {
 		t.Fatalf("a cleanly released handle left %v behind: the anonymous buffer is not anonymous", residue)
 	}
+}
+
+// TestBFS039CancelledPublicationDoesNotCloseTheBuffer is the DETERMINISTIC arm
+// for the second defect this row found, against a server that holds the request
+// open so the cancel provably lands while the PUT is in flight.
+//
+// THE DEFECT: net/http closes a request body on every failed round trip
+// ("c._send() always closes req.Body"), so handing the transport the handle's
+// own *os.File made a cancelled publication CLOSE the caller's buffer — the
+// retry the EINTR asks for then found a closed file and was refused with EIO.
+// The bytes were never lost from disk; they became unreachable from the code
+// that had to re-send them, which is the same outcome for the caller.
+//
+// The claim measured here is the one that matters: after a cancel, the retry
+// sends the CALLER'S BYTES, byte for byte, and the server sees exactly two
+// attempts (the cancelled one and the retry) — not a truncated second body.
+func TestBFS039CancelledPublicationDoesNotCloseTheBuffer(t *testing.T) {
+	dir := t.TempDir()
+	arrived := make(chan struct{}, 1)
+	release := make(chan struct{})
+	var mu sync.Mutex
+	var got []byte
+	puts := 0
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodHead:
+			http.NotFound(w, r) // the path is new: no base to resolve
+		case http.MethodPut:
+			select {
+			case arrived <- struct{}{}:
+			default:
+			}
+			<-release
+			body, _ := io.ReadAll(r.Body)
+			mu.Lock()
+			got, puts = body, puts+1
+			mu.Unlock()
+			sum := sha256.Sum256(body)
+			w.Header().Set("X-Bunker-Hash", "sha256:"+hex.EncodeToString(sum[:]))
+			w.Header().Set("X-Bunker-Tree", "tree-cancel")
+			w.WriteHeader(http.StatusCreated)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	c, err := fsclient.NewClient(fsclient.Options{
+		BaseURL: srv.URL + "/dav", Concurrency: 4, OpTimeout: 30 * time.Second, BindTimeout: 3 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("client: %v", err)
+	}
+	cache, err := fsclient.OpenCache(fsclient.CacheConfig{
+		Dir: dir, MaxBytes: 64 << 20, MaxEntryBytes: 8 << 20, MaxEntries: 64, MaxInFlight: 2,
+	})
+	if err != nil {
+		t.Fatalf("cache: %v", err)
+	}
+	m := bfs039MountWith(t, c, cache, dir, "", srv.URL)
+	h := bfs039Write(t, m, "cancelled-mid-flight.txt")
+	body := []byte("the bytes the caller had already handed over\n")
+	if n, errno := h.Write(context.Background(), body, 0); errno != 0 || int(n) != len(body) {
+		t.Fatalf("buffer the write: n=%d errno=%v", n, errno)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan syscall.Errno, 1)
+	go func() { done <- h.publish(ctx) }()
+	select {
+	case <-arrived:
+	case <-time.After(20 * time.Second):
+		cancel()
+		t.Fatal("the PUT never reached the server: this arm cannot cancel a request that is in flight, so it would prove nothing")
+	}
+	cancel() // THE DELIBERATE CANCEL, with the request provably in flight
+	if errno := <-done; errno != syscall.EINTR {
+		t.Fatalf("a cancel mid-request returned errno=%v (%s), want EINTR", errno, fsclient.ErrnoName(errno))
+	}
+	close(release)
+
+	// THE RETRY. It must land AND carry the caller's bytes.
+	if errno := h.publish(context.Background()); errno != 0 {
+		t.Fatalf("the retry after a mid-request cancel was refused with errno=%v (%s): the cancelled attempt destroyed the buffer the retry has to re-send",
+			errno, fsclient.ErrnoName(errno))
+	}
+	mu.Lock()
+	sent, attempts := append([]byte(nil), got...), puts
+	mu.Unlock()
+	if string(sent) != string(body) {
+		t.Fatalf("the retry sent %q (%d bytes), want the caller's buffered bytes %q (%d bytes): a cancelled attempt closed the buffer the retry reads",
+			sent, len(sent), body, len(body))
+	}
+	if attempts != 2 {
+		t.Fatalf("the server saw %d PUTs, want 2 (the cancelled attempt and the retry): the retry must be ONE more request, never a silent repeat of it", attempts)
+	}
+	t.Logf("BFS039-MEASURE mid-request cancel: %d PUT attempts, retry carried all %d buffered bytes intact", attempts, len(sent))
 }
 
 // bfs039MountAt builds a fresh mount over an EXISTING cache directory and root,
