@@ -159,56 +159,16 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	// Hilo graph endpoint — dependency analysis for the codebase
+	// Hilo graph endpoint — dependency analysis for the codebase.
+	//
+	// REV-BUNKER-005: registration is extracted so a test can drive the SAME
+	// router the daemon serves, and so the credential gate around it has ONE
+	// definition (see registerGraphRoutes).
 	hiloGraph, err := hilo.NewGraph(".", s.logger)
 	if err != nil {
 		s.logger.Warn("hilo graph init failed", "error", err)
 	} else {
-		r.Get("/graph/stats", func(w http.ResponseWriter, r *http.Request) {
-			stats := hiloGraph.Stats()
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprintf(w, `{"total_edges":%d,"unique_files":%d,"unique_deps":%d,"files_with_edges":%d}`,
-				stats.TotalEdges, stats.UniqueFiles, stats.UniqueDeps, stats.FilesWithEdges)
-		})
-		r.Get("/graph/related", func(w http.ResponseWriter, r *http.Request) {
-			path := r.URL.Query().Get("path")
-			if path == "" {
-				w.WriteHeader(http.StatusBadRequest)
-				w.Write([]byte(`{"error":"path query param required"}`))
-				return
-			}
-			edges := hiloGraph.Related(path)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"edges":[`))
-			for i, e := range edges {
-				if i > 0 {
-					w.Write([]byte(","))
-				}
-				fmt.Fprintf(w, `{"from":"%s","to":"%s","rel":"%s"}`, e.From, e.To, e.Rel)
-			}
-			w.Write([]byte(`]}`))
-		})
-		r.Get("/graph/impact", func(w http.ResponseWriter, r *http.Request) {
-			path := r.URL.Query().Get("path")
-			if path == "" {
-				w.WriteHeader(http.StatusBadRequest)
-				w.Write([]byte(`{"error":"path query param required"}`))
-				return
-			}
-			edges := hiloGraph.Impact(path)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"edges":[`))
-			for i, e := range edges {
-				if i > 0 {
-					w.Write([]byte(","))
-				}
-				fmt.Fprintf(w, `{"from":"%s","to":"%s","rel":"%s"}`, e.From, e.To, e.Rel)
-			}
-			w.Write([]byte(`]}`))
-		})
+		registerGraphRoutes(r, hiloGraph)
 	}
 
 	// Build the Bunkerd service handler with master-only auth interceptor
@@ -240,20 +200,11 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	// as internal/auth implements it. The static token rides the instance so
 	// the fallback behavior matches the old string-based construction.
 	s.jwtAuth = auth.NewJWTAuthWithStaticFallback(s.cfg.Auth.JWTSecret, s.cfg.Auth.Token, s.keyMgr)
-	bunkerdAuthInterceptor := auth.NewMasterOnlyAuthInterceptorFromAuth(s.jwtAuth, s.cfg.Auth.Enabled)
-	agentAuthInterceptor := auth.NewJWTAuthInterceptorFromAuth(s.jwtAuth, s.cfg.Auth.Enabled)
-	// GAP-133: authentication denials are composed BEFORE the audit
-	// interceptor in the chain (auth runs outermost), so they would otherwise
-	// never reach it — exactly why denials were invisible. Attach the deny
-	// sink directly to the auth interceptors instead: each denial is appended
-	// through the SAME AuditLog the audit interceptor uses, so the hash chain
-	// stays intact. The sink maps the denial to the same Record shape, with
-	// the presented token reduced to a SHA-256 fingerprint (never the secret).
-	if s.auditLog != nil {
-		sink := &authDenySink{log: s.auditLog}
-		bunkerdAuthInterceptor = auth.AttachDenySink(bunkerdAuthInterceptor, sink.record)
-		agentAuthInterceptor = auth.AttachDenySink(agentAuthInterceptor, sink.record)
-	}
+	// REV-BUNKER-006: the interceptor composition (GAP-133 deny sink + the
+	// SEC-15 per-source throttle) has ONE definition, extracted from Run so a
+	// test can drive the wiring the daemon actually uses — including the
+	// audit-DISABLED configuration, where this block is the whole story.
+	bunkerdAuthInterceptor, agentAuthInterceptor := s.buildAuthInterceptors(s.jwtAuth)
 	tracker := resource.NewTracker(s.cfg.Agent.MaxAgents, s.logger)
 	tunnelMgr := tunnel.NewTunnelManager(&s.cfg.Tunnel, s.logger)
 	tailscaleMgr := tailscale.NewTailscaleManager(&s.cfg.Tailscale, s.logger)
@@ -657,6 +608,96 @@ func asteriskOptions(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// registerGraphRoutes wires the hilo dependency-graph HTTP endpoints onto r.
+//
+// It is a function (not inline in Run) so a test can build the SAME router the
+// daemon serves and observe the status a real client gets — the credential
+// gate on these routes is then pinned by the daemon's own registration path
+// rather than by a hand-built lookalike.
+//
+// REV-BUNKER-005: these routes are on the raw router, which serves every HTTP
+// version on every listener, so the gate must be here — at registration,
+// where the daemon's router is composed.
+func registerGraphRoutes(r chi.Router, graph *hilo.Graph) {
+	r.Get("/graph/stats", func(w http.ResponseWriter, r *http.Request) {
+		stats := graph.Stats()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"total_edges":%d,"unique_files":%d,"unique_deps":%d,"files_with_edges":%d}`,
+			stats.TotalEdges, stats.UniqueFiles, stats.UniqueDeps, stats.FilesWithEdges)
+	})
+	r.Get("/graph/related", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Query().Get("path")
+		if path == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"error":"path query param required"}`))
+			return
+		}
+		edges := graph.Related(path)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"edges":[`))
+		for i, e := range edges {
+			if i > 0 {
+				w.Write([]byte(","))
+			}
+			fmt.Fprintf(w, `{"from":"%s","to":"%s","rel":"%s"}`, e.From, e.To, e.Rel)
+		}
+		w.Write([]byte(`]}`))
+	})
+	r.Get("/graph/impact", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Query().Get("path")
+		if path == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"error":"path query param required"}`))
+			return
+		}
+		edges := graph.Impact(path)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"edges":[`))
+		for i, e := range edges {
+			if i > 0 {
+				w.Write([]byte(","))
+			}
+			fmt.Fprintf(w, `{"from":"%s","to":"%s","rel":"%s"}`, e.From, e.To, e.Rel)
+		}
+		w.Write([]byte(`]}`))
+	})
+}
+
+// buildAuthInterceptors composes the two request-validation interceptors the
+// daemon mounts (master-only for the Bunkerd service, permissive for the Agent
+// service) and, when the daemon has an audit trail, attaches the GAP-133 deny
+// sink to each of them.
+//
+// GAP-133: authentication denials are composed BEFORE the audit interceptor in
+// the chain (auth runs outermost), so they would otherwise never reach it —
+// exactly why denials were invisible. Attaching the sink directly to the auth
+// interceptors appends each denial through the SAME AuditLog the audit
+// interceptor uses, so the hash chain stays intact. The sink maps the denial
+// to the same Record shape, with the presented token reduced to a SHA-256
+// fingerprint (never the secret).
+//
+// REV-BUNKER-006: the deny sink is OPTIONAL and the SEC-15 throttle is NOT.
+// The sink is what makes denials *visible*; the throttle is what makes them
+// *cost* something. Gating the throttle on the sink meant an operator running
+// with audit.enabled:false — or whose audit path had become unwritable — lost
+// the brute-force backoff at the exact moment they were least able to see
+// denials. The throttle is therefore armed by the auth constructors whenever
+// auth is enabled, and this function only decides whether denial RECORDS ride
+// the sink. It must never re-introduce a sink→throttle dependency.
+func (s *BunkerdServer) buildAuthInterceptors(jwtAuth *auth.JWTAuth) (bunkerd, agent connect.Interceptor) {
+	bunkerdAuthInterceptor := auth.NewMasterOnlyAuthInterceptorFromAuth(jwtAuth, s.cfg.Auth.Enabled)
+	agentAuthInterceptor := auth.NewJWTAuthInterceptorFromAuth(jwtAuth, s.cfg.Auth.Enabled)
+	if s.auditLog != nil {
+		sink := &authDenySink{log: s.auditLog}
+		bunkerdAuthInterceptor = auth.AttachDenySink(bunkerdAuthInterceptor, sink.record)
+		agentAuthInterceptor = auth.AttachDenySink(agentAuthInterceptor, sink.record)
+	}
+	return bunkerdAuthInterceptor, agentAuthInterceptor
 }
 
 // webdavAuthenticator builds the WebDAV mount's credential check out of the

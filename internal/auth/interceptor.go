@@ -159,7 +159,13 @@ func (a *TokenAuth) authenticate(header http.Header, source, procedure string) e
 	}
 
 	token := parts[1]
-	if token != a.token {
+	// REV-BUNKER-007: compare the presented token in CONSTANT TIME, the
+	// discipline this package already follows everywhere else credential
+	// material is compared (jwt.go's static-token fallback and its signing
+	// secrets both go through ConstantTimeCompare). A byte-wise != returns
+	// on the first differing byte, so the compared prefix length is
+	// observable in the timing; ConstantTimeCompare does not short-circuit.
+	if !ConstantTimeCompare(token, a.token) {
 		return a.denied(source, procedure, newDenyReason("invalid token", token), connect.NewError(connect.CodeUnauthenticated, errors.New("invalid token")))
 	}
 
