@@ -1,0 +1,89 @@
+=== readdir: mount vs server, per directory ===
+  /                        MISMATCH
+     mount : . .. 
+     server: . .. CHANGELOG.md .git go.mod pkg README.md scratch src 
+  src                      MATCH   . .. f000.txt f001.txt f002.txt f003.txt f004.txt f005.txt f006.txt f007.txt f008.txt f009.txt f010.txt f011.txt f012.txt f013.txt f014.txt f015.txt f016.txt f017.txt f018.txt f019.txt f020.txt f021.t
+  pkg                      MATCH   . .. deep 
+  pkg/deep                 MATCH   . .. a 
+  pkg/deep/a               MATCH   . .. b 
+  scratch                  MATCH   . .. 
+  .git                     MISMATCH
+     mount : . .. 
+     server: . .. COMMIT_EDITMSG config description HEAD hooks index info logs objects refs 
+  .git/refs                MATCH   . .. heads tags 
+  .git/refs/heads          MISMATCH
+     mount : . .. bfs016-repro.lock 
+     server: . .. bfs016-repro.lock main repro-br.lock 
+  .git/objects             MATCH   . .. 00 01 02 03 05 08 0a 0b 12 15 16 17 1e 1f 24 26 27 29 2b 2d 34 36 3a 3e 40 44 47 48 4f 51 52 57 5b 5c 5f 64 65 67 68 6b 6d 70 72 74 75 76 7c 81 83 84 85 86 88 8a 8d 90 94 95 99 9a 9b 9e a1 a2 a3 
+
+=== repeat the .git/refs/heads listing three times (is it unstable?) ===
+  try 1 mount : . .. bfs016-repro.lock 
+  try 2 mount : . .. bfs016-repro.lock 
+  try 3 mount : . .. bfs016-repro.lock 
+
+=== a file created NATIVELY: visible by lookup AND by readdir? ===
+  lookup (stat)     : 8
+  readdir contains? : 1
+  direct read       : native2
+  after 3s readdir? : 1
+  after 3s lookup   : 8
+
+=== whole-tree walk through the mount vs native (entry counts) ===
+  mount  find count: 0
+  server find count: 420
+  native ls -lR lines: 156
+  mount  ls -lR lines: 2
+  entries the server has that the mount's walk does NOT:
+comm: file 1 is not in sorted order
+./CHANGELOG.md
+./.git
+./.git/COMMIT_EDITMSG
+./.git/config
+./.git/description
+./.git/HEAD
+./.git/hooks
+./.git/hooks/applypatch-msg.sample
+./.git/hooks/commit-msg.sample
+./.git/hooks/fsmonitor-watchman.sample
+./.git/hooks/post-update.sample
+./.git/hooks/pre-applypatch.sample
+./.git/hooks/pre-commit.sample
+./.git/hooks/pre-merge-commit.sample
+./.git/hooks/prepare-commit-msg.sample
+./.git/hooks/pre-push.sample
+./.git/hooks/pre-rebase.sample
+./.git/hooks/pre-receive.sample
+./.git/hooks/push-to-checkout.sample
+./.git/hooks/sendemail-validate.sample
+done
+fresh mount root listing     : [CHANGELOG.md README.md go.mod pkg scratch src ]
+native root listing          : [CHANGELOG.md README.md go.mod pkg scratch src ]
+
+-- trigger 1: create a FILE natively (out of band, agent side)
+   mount root now            : [CHANGELOG.md README.md go.mod pkg scratch src ]
+   after 3s (poll interval)  : [CHANGELOG.md README.md go.mod pkg scratch src ]
+
+-- trigger 2: create a DIRECTORY natively
+   mount root now            : [CHANGELOG.md README.md go.mod pkg scratch src ]
+   after 3s                  : [CHANGELOG.md README.md go.mod pkg scratch src ]
+
+-- trigger 3: DELETE that directory natively (the native-rmdir case)
+   mount root now            : [CHANGELOG.md README.md go.mod pkg scratch src ]
+   after 3s                  : [CHANGELOG.md README.md go.mod pkg scratch src ]
+
+-- trigger 4: a directory created through the MOUNT, then removed natively
+   after mkdir via mount     : [oob.txt ]
+   after native rmdir        : [oob.txt ]
+   after 3s                  : [oob.txt ]
+
+-- trigger 5: a plain through-the-mount write and delete
+   mount root now            : []
+
+-- full walk through the mount vs native
+   mount  find -mindepth 1   : 0
+   native find -mindepth 1   : 421
+
+-- does an unrelated fresh directory still list correctly?
+   mount src entries         : 120  (native: 120)
+   mount .git/objects dirs   : 110  (native: 110)
+   mount pkg/deep/a/b/c      : [n0.txt n1.txt n2.txt ]

@@ -1,0 +1,20 @@
+=== BFS-016 not-hang proof 2026-09-26T19:30:42-05:00 ===
+op deadline per call: 60s   (the client declares BindTimeout=5s, OpTimeout=30s)
+──────────────────────────────────────────────
+ARM A — NOTHING LISTENING (connection refused), no mount involved
+fs probe (dead endpoint)              0.110s  rc=1    error(rc=1)  bunker: OPTIONS /dav/: errno=ENOTCONN cause=unreachable_connect: Options "http://127.0.0.1:38999/dav/": dial tcp 127.0.0.1:38999: connect: connection refused
+fs snapshot (dead)                    0.110s  rc=1    error(rc=1)  bunker: op:snapshot /dav/: errno=ENOTCONN cause=unreachable_connect: Post "http://127.0.0.1:38999/dav/": dial tcp 127.0.0.1:38999: connect: connection refused
+fs mount (dead endpoint)              0.109s  rc=1    error(rc=1)  bunker: bunker-fs: bind refused (ENOTCONN, cause unreachable_connect): OPTIONS /dav/: errno=ENOTCONN cause=unreachable_connect: Options "http://127.0.0.1:38999/
+   mountpoint left behind? 0 entries, mounted=0
+──────────────────────────────────────────────
+ARM B — STALLED LISTENER (accepts TCP, never answers): the relay is SIGSTOPped
+   SIGSTOP sent to relay pid 748812
+fs probe (stalled endpoint)           5.113s  rc=1    error(rc=1)  bunker: OPTIONS /dav/: errno=ENOTCONN cause=unreachable_deadline: Options "http://127.0.0.1:38902/dav/": context deadline exceeded
+fs mount (stalled endpoint)           5.116s  rc=1    error(rc=1)  bunker: bunker-fs: bind refused (ENOTCONN, cause unreachable_deadline): OPTIONS /dav/: errno=ENOTCONN cause=unreachable_deadline: Options "http://127.0.0.1:3890
+   mountpoint left behind? 0 entries
+──────────────────────────────────────────────
+ARM C — MOUNTED, THEN THE SERVER FREEZES (the real stall: it stops answering mid-flight)
+   the mount did NOT come up against the stalled relay — that is itself the bounded answer:
+     bunker: bunker-fs: bind refused (ENOTCONN, cause unreachable_deadline): OPTIONS /dav/: errno=ENOTCONN cause=unreachable_deadline: Options "http://127.0.0.1:38902/dav/": context deadline exceeded
+──────────────────────────────────────────────
+done

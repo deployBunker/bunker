@@ -1,0 +1,13 @@
+=== BFS-016 arm C2 â€” cold reads and repeat failures against a frozen server ===
+relay pid 748812; file under test is src/f042.txt, NEVER touched by this mount
+mounted (no snapshot, no cache). freeze the server:
+stat src/f042.txt (NEVER touched)   30.041s  rc=1    error(rc=1)    stat: cannot stat '/tmp/bfs016/mnt-frozen3/src/f042.txt': Transport endpoint is not connected (os error 107)
+cat  src/f042.txt (NEVER touched)   30.044s  rc=1    error(rc=1)    cat: /tmp/bfs016/mnt-frozen3/src/f042.txt: Transport endpoint is not connected
+ls   src (2nd op after a timeout)   60.095s  rc=2    error(rc=2)    ls: unknown io error: '/tmp/bfs016/mnt-frozen3/src', 'Os { code: 107, kind: NotConnected, message: "Transport endpoint is not connected" }'
+stat . (3rd op after timeouts)      0.110s  rc=0    ok             /tmp/bfs016/mnt-frozen3
+
+client transport block:
+
+RECOVERY: cat src/f042.txt          0.210s  rc=0    ok             ğ×_%ªüÒëˆwóŞ_rC‰ºíYñ¦ÙÜ–ãÜÕ×b¥Ã!ÑN$Ø‘&¨Ï7ÎwxQòKS¢µMŞZ}Éq¼ëôü²~Àík%¯§m‚á~»›sÖšL`”Œ€gšÓ ÈæwEO„cÊ$¤ÇÅ,Â6r“Af¬~ˆDP"f€ãÚŒ¥ûŠóŒcÎ9`º«üQIh|7½m)QÌ¥Òé­Ñ´¬
+unmount rc=0 still-mounted=0
+done

@@ -1,0 +1,37 @@
+=== BFS-016 concurrency measurement 2026-09-26T19:29:12-05:00 ===
+relay      : http://127.0.0.1:38902/dav  (delay 20ms upstream http://127.0.0.1:38901)
+fixture    : /tmp/bfs016/tree  native entries: 420, dirs: 127
+──────────────────────────────────────────────
+ARM 1/2 — serial whole-tree walk, --no-snapshot, concurrency 1
+   find (whole tree)  wall=8.208s  entries=420  native=421
+   relay witness      {"requests": 132, "in_flight": 0, "max_in_flight": 1, "reset_at": 1790468952.765352, "uptime_s": 8.269}
+   client status      "in_flight_max": 1 "requests_total": 129
+   (unmount walk-c1 rc=0, still-mounted=0)
+──────────────────────────────────────────────
+ARM 1/2 — serial whole-tree walk, --no-snapshot, concurrency 8
+   find (whole tree)  wall=8.118s  entries=420  native=421
+   relay witness      {"requests": 132, "in_flight": 0, "max_in_flight": 2, "reset_at": 1790468961.7386594, "uptime_s": 8.181}
+   client status      "in_flight_max": 2 "requests_total": 131
+   (unmount walk-c8 rc=0, still-mounted=0)
+──────────────────────────────────────────────
+ARM 3/4 — 8 parallel COLD reads (--no-snapshot --no-cache), concurrency 1
+   8 x cat 15 KiB      wall=0.584s
+   relay witness      {"requests": 9, "in_flight": 0, "max_in_flight": 1, "reset_at": 1790468970.555866, "uptime_s": 0.604}
+   client status      "in_flight_max": 1 "requests_total": 4
+   (unmount par-c1 rc=0, still-mounted=0)
+──────────────────────────────────────────────
+ARM 3/4 — 8 parallel COLD reads (--no-snapshot --no-cache), concurrency 8
+   8 x cat 15 KiB      wall=0.162s
+   relay witness      {"requests": 17, "in_flight": 0, "max_in_flight": 8, "reset_at": 1790468971.7997105, "uptime_s": 0.178}
+   client status      "in_flight_max": 1 "requests_total": 4
+   (unmount par-c8 rc=0, still-mounted=0)
+──────────────────────────────────────────────
+ARM 5 — serial whole-tree walk WITH the snapshot op, concurrency 8
+   find (whole tree)  wall=0.035s  entries=420
+   relay witness      {"requests": 0, "in_flight": 0, "max_in_flight": 0, "reset_at": 1790468972.8592615, "uptime_s": 0.083}
+   client status      "in_flight_max": 1 "requests_total": 5
+   snapshot block     "source": "snapshot-op" "nodes": 421 "calls": 1
+   (unmount walk-snap rc=0, still-mounted=0)
+──────────────────────────────────────────────
+arms with infrastructure failure: 0
+done

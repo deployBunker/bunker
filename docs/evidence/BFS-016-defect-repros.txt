@@ -1,0 +1,65 @@
+──────────────────────────────────────────────
+A. THE WRITE->RENAME RACE (the .git/index.lock pattern)
+──────────────────────────────────────────────
+A1 write then rename IMMEDIATELY (no settle):
+   create rc=0
+   mv: cannot move '/tmp/bfs016/mnt-r1/rep2/e1.lock' to '/tmp/bfs016/mnt-r1/rep2/e1.final': No such file or directory
+   rename-immediate rc=1
+   server after 2s: total 8 -rw-r--r-- 1 kara kara 2 Sep 26 19:23 a.tmp -rw-r--r-- 1 kara kara 8 Sep 26 19:24 e1.lock 
+A2 write, SETTLE 2s, then rename:
+   create rc=0
+   rename-after-2s rc=0
+   server: total 12 -rw-r--r-- 1 kara kara 2 Sep 26 19:23 a.tmp -rw-r--r-- 1 kara kara 8 Sep 26 19:24 e1.lock -rw-r--r-- 1 kara kara 9 Sep 26 19:24 e1b.final 
+A3 the same shape INSIDE .git (what git does with index.lock -> index):
+   create rc=0
+   mv: cannot move '/tmp/bfs016/mnt-r1/.git/bfs016.lock' to '/tmp/bfs016/mnt-r1/.git/bfs016.out': No such file or directory
+   rename-immediate rc=1
+   rename-after-2s rc=0
+──────────────────────────────────────────────
+B. APPEND (>>) — the battery's op 10, and the explicit O_APPEND case
+──────────────────────────────────────────────
+B1 shell append 'printf >>' on a SETTLED file:
+sh: 1: printf: printf: I/O error
+   rc=1
+   server content: payload2|
+   mount  content: payload2|
+B2 explicit O_APPEND fd (exec 3>>) — no '>>' redirection shorthand:
+sh: 1: printf: printf: I/O error
+   rc=0
+   server content: payload2|
+B3 a plain full-file rewrite still works (the control for B1):
+   rc=0
+   server content: rewritten|
+──────────────────────────────────────────────
+C. FRESH-ATTRIBUTE VIEW AFTER A WRITE (the 0-byte reading)
+──────────────────────────────────────────────
+   wrote 11 bytes; immediate mount stat: 0
+   immediate server stat: 11
+   after settle  mount stat: 11
+──────────────────────────────────────────────
+D. THE BATTERY'S GIT WRITE SEQUENCE, from a CLEAN lock state
+──────────────────────────────────────────────
+D1 index.lock on server before: ls: cannot access '/tmp/bfs016/tree/.git/index.lock': No such file or directory
+   git status --short rc=0 wall=0.175s lock-after=none
+   git diff --stat HEAD rc=0 wall=0.342s lock-after=none
+   git checkout -b rc=128 wall=0.029s lock-after=none
+   lock on server AFTER checkout attempt: ls: cannot access '/tmp/bfs016/tree/.git/index.lock': No such file or directory
+D2 now retry the same checkout with the lock removed and a settle:
+   fatal: cannot lock ref 'refs/heads/bfs016-repro': Unable to create '/tmp/bfs016/mnt-r1/.git/refs/heads/bfs016-repro.lock': File exists.
+   
+   Another git process seems to be running in this repository, e.g.
+   an editor opened by 'git commit'. Please make sure all processes
+   are terminated then try again. If it still fails, a git process
+   may have crashed in this repository earlier:
+   remove the file manually to continue.
+   rc=128
+   server lock after retry: none
+   branch through mount: main
+D3 native control on the SAME tree (no mount in the path):
+   native status rc=0 lock-after=none
+   native diff   rc=0 lock-after=none
+   native branches: * main 
+──────────────────────────────────────────────
+E. CLEANUP
+──────────────────────────────────────────────
+done

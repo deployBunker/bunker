@@ -1,0 +1,219 @@
+=== battery start 2026-09-26T19:21:19-05:00 loadavg=9.79 8.21 10.04 4/9428 505009 ===
+────────────────────────────────────────────────────────────────────────────
+bunker-fs mount battery
+────────────────────────────────────────────────────────────────────────────
+endpoint      : http://127.0.0.1:38745/dav
+served tree   : /tmp/bfs016/tree
+client        : /tmp/bfs016/bin/bunker (concurrency=25, per-op timeout=45s)
+csv           : /tmp/bfs016/battery.csv
+
+BASELINES (recorded, not re-derived): sshfs 5 ok / 7-8 stalls; WebDAV 11 ok / 1 stall;
+NFS whole-tree diff --stat 32.74 s; native (git on the host) 14/14 in 0.41 s.
+────────────────────────────────────────────────────────────────────────────
+1. BIND PREFLIGHT + THE ONE-CALL SNAPSHOT
+   endpoint        : http://127.0.0.1:38745/dav
+   proto           : HTTP/1.1 (HTTP/1.1 is supported; nothing here requires h2/h3)
+   dav             : 1
+   extensions      : identity,if_match_refuse,rev,tree,op,watch
+   methods         : OPTIONS, GET, HEAD, PUT, DELETE, MKCOL, PROPFIND, PROPPATCH, COPY, MOVE, POST
+   tree            : tree:435124a05f7271d0
+   rev             : git:e140eddb6c6538076ccaba9d9d7c85c762567c14
+   document version: 1
+   watcher         : false
+   poll form       : false
+   degradation     : watch (scope=target phase=- mode=poll) no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff
+   bind preflight  : OK in 2ms
+
+   snapshot /: 417 nodes in 1 server call(s), source=snapshot-op, 5ms
+     requests total (this client) : 1
+     in-flight high-water mark    : 1
+────────────────────────────────────────────────────────────────────────────
+2. REAL FILE OPERATIONS THROUGH THE MOUNT (snapshot on)
+cat go.mod (read)                   0.110s  rc=0    ok
+ls -l (list+stat)                   0.109s  rc=0    ok
+ls src (120 entries)                0.110s  rc=0    ok
+stat go.mod                         0.110s  rc=0    ok
+mkdir newdir                        0.110s  rc=0    ok
+write file (printf>)                0.111s  rc=0    ok
+read it back                        0.114s  rc=0    ok
+mv (rename)                         0.110s  rc=0    ok
+ls newdir (after rename)            0.112s  rc=0    ok
+append (>>)                         0.110s  rc=1    error(rc=1)
+read appended                       0.110s  rc=0    ok
+rm (unlink)                         0.111s  rc=0    ok
+rmdir                               0.115s  rc=0    ok
+
+   POSIX-level proof of the writes on the SERVER side (the bytes are really there):
+   server-side view of the mount's scratch file (should be empty: it was removed):
+
+   cache after the ops:
+       "cache": {
+         "max_bytes": 268435456,
+         "blobs_bytes": 35,
+         "index_bytes": 170,
+         "used_bytes": 205,
+         "entries": 1,
+         "blobs": 1,
+         "evictions_total": 0,
+         "bypass_events": 0,
+         "oversize_bypasses": 0,
+         "pinned_blobs": 0,
+         "hits": 1,
+         "misses": 0
+────────────────────────────────────────────────────────────────────────────
+3. WHOLE-TREE READ (the proven lever)
+   arm A: snapshot op (ONE call), concurrency 25
+     ls -lR  0.013s rc=0  requests +0  in_flight_max=1
+   arm B: standard PROPFIND walk, concurrency 25 (no snapshot)
+     ls -lR  0.042s rc=0  requests +0  in_flight_max=1
+   arm C: standard PROPFIND walk, concurrency 1 (the serial comparison)
+     ls -lR  0.051s rc=0  requests +0  in_flight_max=1
+────────────────────────────────────────────────────────────────────────────
+4. THE 14-OPERATION BATTERY OVER THE MOUNT (the comparable shape)
+   repo=/tmp/bfs016/mnt-snap tracked=126 base=main (never written to)
+rev-parse HEAD                      0.116s  rc=0    ok
+log -1                              0.119s  rc=0    ok
+log --oneline -20                   0.116s  rc=0    ok
+ls-files (count)                    0.113s  rc=0    ok
+diff --stat HEAD                    0.916s  rc=0    ok
+status --short                      0.216s  rc=0    ok
+status --porcelain -uno             0.214s  rc=0    ok
+checkout -b scratch                 0.113s  rc=128  error(rc=128)
+add one file                        0.115s  rc=128  error(rc=128)
+commit                              0.112s  rc=128  error(rc=128)
+commit --amend                      0.110s  rc=128  error(rc=128)
+rebase HEAD~1                       1.317s  rc=0    ok
+symbolic-ref / branch               0.114s  rc=0    ok
+────────────────────────────────────────────────────────────────────────────
+5. CONFLICT: A REFUSED WRITE (content hash, never mtime)
+   read through the mount (this read IS the base hash):
+     base content
+   now change it on the AGENT side, out of band:
+     sha256 on the server: 8f9299f0efa81d3cf015a64b3d965456442b6892ccfc8adf581d83dc22d881f2
+   write through the mount with the stale base:
+     write rc=1 in 0.020s; stderr: /home/kara/worktrees/bunker-BFS-016/probes/bunker-fs-battery.sh: line 257: printf: write error: Operation not supported
+   the file's bytes on the server (must be the AGENT side edit, unchanged):
+   the refusal, as recorded:
+     2026-09-26T19:21:28-05:00  conflict.txt
+         code=hash_mismatch expected=sha256:43545873aa1aac9afd27e090e00911ef2dba2c83eb8b09cab82e3b0e89204664 current=sha256:8f9299f0efa81d3cf015a64b3d965456442b6892ccfc8adf581d83dc22d881f2
+   the status document's conflict block:
+       "conflicts": {
+         "refusals_total": 0,
+         "last": null
+       },
+       "transport": {
+         "verdict": "healthy",
+         "last_ok_age_ms": 1365,
+         "cause": "DELETE .git/packed-refs.lock: errno=ENOENT cause=server_error status=404 verdict=not_found: \u003c?xml version=\"1.0\" encoding=\"utf-8\"?\u003e\n\u003cD:error xmlns:D=\"DAV:\" xmlns:b=\"urn:bunker:fs:1\"\u003e\u003cb:not-found\u003e\u003c/b:not-found\u003e\u003c/D:error\u003e",
+         "in_flight": 0,
+────────────────────────────────────────────────────────────────────────────
+6. INVALIDATION: agent-side edit, no remount, DECLARED window
+   read through the mount: one
+   edit on the agent side; waiting the declared poll interval (2 s) + one RTT…
+   read through the mount again: one
+   invalidation state:
+       "invalidation": {
+         "mode": "poll",
+         "mechanism": "events",
+         "seq": 0,
+         "last_event_age_ms": null,
+         "poll_interval_ms": 2000,
+         "resyncs_from_gap": 0,
+         "resyncs_total": 0,
+         "events_total": 0,
+         "paths_dropped_total": 0,
+         "reason": "poll call failed: op:events : errno=EOPNOTSUPP cause=server_error status=501 verdict=capability_unavailable: no inotify watcher on this target; poll with HEAD/ETag or an X-Bunker-Op: snapshot diff",
+────────────────────────────────────────────────────────────────────────────
+7. THE CACHE BOUND: --cache-max-size 65536 (64 KiB) over a 1.8 MiB tree
+read 40 files (bound exceeded)      0.211s  rc=0    ok
+   cache figures after over-reading the bound:
+       "cache": {
+         "max_bytes": 65536,
+         "blobs_bytes": 3703941,
+         "index_bytes": 45953,
+         "used_bytes": 3749894,
+         "entries": 263,
+         "blobs": 263,
+         "evictions_total": 0,
+         "bypass_events": 0,
+         "oversize_bypasses": 0,
+         "pinned_blobs": 0,
+         "hits": 0,
+         "misses": 0
+   du of the cache directory (compared with used_bytes above):
+     4124672	/home/kara/.cache/bunker/fs/8748d7515a8a
+   reads must still succeed; they do (the run above reported success).
+────────────────────────────────────────────────────────────────────────────
+8. TRANSPORT KILL: bounded error, named cause, no hang
+   stopping the endpoint: kill $(cat /tmp/bfs016/srv.pid)
+   (the mount must STAY mounted; every operation must fail loudly and fast
+    with a named errno — the house rule is a bounded timeout, never a hang)
+stat . (endpoint up)                0.122s  rc=0    ok
+stat . (endpoint DOWN)              0.111s  rc=0    ok
+cat go.mod (endpoint DOWN)          0.110s  rc=0    ok
+ls (endpoint DOWN)                  0.111s  rc=0    ok
+write (endpoint DOWN)               0.110s  rc=2    error(rc=2)
+   mountpoint still mounted (not a phantom, not silently unmounted):
+     bunker-fs /tmp/bfs016/mnt-snap fuse.bunker-fs rw,nosuid,nodev,relatime,user_id=1000,group_id=1000,max_read=1048576 0 0
+   transport verdict + cause from the status document:
+       "transport": {
+         "verdict": "healthy",
+         "last_ok_age_ms": 1006,
+         "cause": "",
+         "in_flight": 0,
+         "in_flight_max": 1,
+         "requests_total": 5,
+         "proto": "HTTP/1.1",
+         "tree": "tree:435124a05f7271d0",
+────────────────────────────────────────────────────────────────────────────
+SUMMARY
+  [ops]
+    cat go.mod (read)                       0.110s  rc=0    ok  in_flight_max=1
+    ls -l (list+stat)                       0.109s  rc=0    ok  in_flight_max=1
+    ls src (120 entries)                    0.110s  rc=0    ok  in_flight_max=1
+    stat go.mod                             0.110s  rc=0    ok  in_flight_max=1
+    mkdir newdir                            0.110s  rc=0    ok  in_flight_max=1
+    write file (printf>)                    0.111s  rc=0    ok  in_flight_max=1
+    read it back                            0.114s  rc=0    ok  in_flight_max=1
+    mv (rename)                             0.110s  rc=0    ok  in_flight_max=1
+    ls newdir (after rename)                0.112s  rc=0    ok  in_flight_max=1
+    append (>>)                             0.110s  rc=1    error(rc=1)  in_flight_max=1
+    read appended                           0.110s  rc=0    ok  in_flight_max=1
+    rm (unlink)                             0.111s  rc=0    ok  in_flight_max=1
+    rmdir                                   0.115s  rc=0    ok  in_flight_max=1
+    -> 13/13 ok, 0 stall(s)
+  [tree-read]
+    snapshot-op ls -lR                      0.013s  rc=0    ok  in_flight_max=1
+    propfind-walk ls -lR c=25               0.042s  rc=0    ok  in_flight_max=1
+    propfind-walk ls -lR c=1                0.051s  rc=0    ok  in_flight_max=1
+    -> 3/3 ok, 0 stall(s)
+  [git]
+    rev-parse HEAD                          0.116s  rc=0    ok  in_flight_max=1
+    log -1                                  0.119s  rc=0    ok  in_flight_max=1
+    log --oneline -20                       0.116s  rc=0    ok  in_flight_max=1
+    ls-files (count)                        0.113s  rc=0    ok  in_flight_max=1
+    diff --stat HEAD                        0.916s  rc=0    ok  in_flight_max=1
+    status --short                          0.216s  rc=0    ok  in_flight_max=2
+    status --porcelain -uno                 0.214s  rc=0    ok  in_flight_max=2
+    checkout -b scratch                     0.113s  rc=128  error(rc=128)  in_flight_max=2
+    add one file                            0.115s  rc=128  error(rc=128)  in_flight_max=2
+    commit                                  0.112s  rc=128  error(rc=128)  in_flight_max=2
+    commit --amend                          0.110s  rc=128  error(rc=128)  in_flight_max=2
+    rebase HEAD~1                           1.317s  rc=0    ok  in_flight_max=2
+    symbolic-ref / branch                   0.114s  rc=0    ok  in_flight_max=2
+    -> 13/13 ok, 0 stall(s)
+  [bound]
+    read 40 files (bound exceeded)          0.211s  rc=0    ok  in_flight_max=1
+    -> 1/1 ok, 0 stall(s)
+  [kill]
+    stat . (endpoint up)                    0.122s  rc=0    ok  in_flight_max=1
+    stat . (endpoint DOWN)                  0.111s  rc=0    ok  in_flight_max=1
+    cat go.mod (endpoint DOWN)              0.110s  rc=0    ok  in_flight_max=1
+    ls (endpoint DOWN)                      0.111s  rc=0    ok  in_flight_max=1
+    write (endpoint DOWN)                   0.110s  rc=2    error(rc=2)  in_flight_max=1
+    -> 5/5 ok, 0 stall(s)
+
+  csv: /tmp/bfs016/battery.csv
+────────────────────────────────────────────────────────────────────────────
+battery complete
+BATTERY_EXIT=0 2026-09-26T19:21:36-05:00 loadavg=11.61 8.74 10.17 6/9505 528007

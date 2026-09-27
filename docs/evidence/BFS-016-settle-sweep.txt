@@ -1,0 +1,23 @@
+settle                 mv-rc    server-state-after
+0s                     0        f_0.b 
+0.05s                  0        f_0.05.b 
+0.1s                   0        f_0.1.b 
+0.25s                  0        f_0.25.b 
+0.5s                   0        f_0.5.b 
+1.0s                   0        f_1.0.b 
+1.5s                   0        f_1.5.b 
+2.0s                   0        f_2.0.b 
+3.0s                   0        f_3.0.b 
+
+=== readdir vs lookup consistency (the .git/refs/heads listing) ===
+ls    through mount : . .. bfs016-repro.lock 
+ls -la through mount: drwxrwxr-x 2 kara kara 4096 Sep 26 19:20 . drwxrwxr-x 2 kara kara 4096 Sep 26 19:20 .. -rw-r--r-- 1 kara kara   41 Sep 26 19:24 bfs016-repro.lock 
+ls    server        : . .. bfs016-repro.lock main repro-br.lock 
+stat a .lock through mount: 41 /tmp/bfs016/mnt-r1/.git/refs/heads/bfs016-repro.lock
+find through mount (all files under .git/refs): /tmp/bfs016/mnt-r1/.git/refs /tmp/bfs016/mnt-r1/.git/refs/heads /tmp/bfs016/mnt-r1/.git/refs/heads/bfs016-repro.lock /tmp/bfs016/mnt-r1/.git/refs/tags 
+find server        (all files under .git/refs): /tmp/bfs016/tree/.git/refs /tmp/bfs016/tree/.git/refs/tags /tmp/bfs016/tree/.git/refs/heads /tmp/bfs016/tree/.git/refs/heads/main /tmp/bfs016/tree/.git/refs/heads/bfs016-repro.lock /tmp/bfs016/tree/.git/refs/heads/repro-br.lock 
+
+=== does the mount see a file created NATIVELY (agent-side) promptly? ===
+immediate mount stat: 7  (server: 7)
+after 3s mount stat:  7
+done

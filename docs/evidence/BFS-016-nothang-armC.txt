@@ -1,0 +1,21 @@
+=== BFS-016 arm C: server freezes mid-flight 2026-09-26T19:31:35-05:00 ===
+relay: http://127.0.0.1:38902/dav (pid 748812)   mount: /tmp/bfs016/mnt-frozen2 (--no-snapshot --no-cache)
+relay up: {"requests": 3, "in_flight": 0, "max_in_flight": 3, "reset_at": 1790468972.8592615, "uptime_s": 122.605}mount is up. control ops (server answering):
+control: cat go.mod               0.108s  rc=0    ok               module fixture.local/tree  go 1.22
+control: stat go.mod              0.109s  rc=0    ok               35
+
+now SIGSTOP the relay (pid 748812): the server accepts but answers nothing
+stat (frozen)                     0.109s  rc=0    ok               35
+cat  (frozen)                     0.109s  rc=0    ok               module fixture.local/tree  go 1.22
+ls   (frozen)                    30.038s  rc=1    error(rc=1)      ls: general io error: Transport endpoint is not connected (os error 107)
+write (frozen)                   30.036s  rc=2    error(rc=2)      sh: 1: cannot create /tmp/bfs016/mnt-frozen2/frozen.txt: Transport endpoint is not connected
+
+mount still mounted (not a phantom, not silently unmounted): 1
+proc entry: bunker-fs /tmp/bfs016/mnt-frozen2 fuse.bunker-fs rw,nosuid,nodev,relatime,user_id=1000,group_id=1000,max_read=1048576 0 0
+client transport block:
+
+now SIGCONT (recovery):
+RECOVERY: cat go.mod              0.109s  rc=0    ok               module fixture.local/tree  go 1.22
+
+unmount rc=0 still-mounted=0
+done

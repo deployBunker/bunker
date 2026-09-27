@@ -1,0 +1,35 @@
+mount: /tmp/bfs016/mnt-clean
+
+--- A: the battery's exact expression: out="$(timeout $OP_TIMEOUT $@ 2>&1)" ---
+  run: 0.111s rc=0
+  run: 0.111s rc=0
+  run: 0.110s rc=0
+  run: 0.110s rc=0
+  run: 0.110s rc=0
+  run: 0.109s rc=0
+
+--- B: the same op WITHOUT the command substitution and timeout ---
+  run: 0.010s rc=0
+  run: 0.010s rc=0
+  run: 0.017s rc=0
+  run: 0.010s rc=0
+  run: 0.010s rc=0
+  run: 0.009s rc=0
+
+--- C: a pure local op in the same shell (the harness floor) ---
+  run: 0.010s
+  run: 0.009s
+  run: 0.009s
+  run: 0.009s
+  run: 0.010s
+  run: 0.008s
+
+--- D: NOW() itself, twice, the way run_one does it ---
+  two date calls: 0.005s
+  two date calls: 0.004s
+  two date calls: 0.004s
+
+--- E: stat/ls through the mount, direct ---
+  stat -c %s /tmp/bfs016/mnt-clean/go.mod  0.008s
+  ls /tmp/bfs016/mnt-clean/src             0.010s
+  ls -l /tmp/bfs016/mnt-clean              0.009s
