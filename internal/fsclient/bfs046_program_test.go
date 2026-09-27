@@ -564,6 +564,145 @@ func bfs046HotRefreshIsWired() bool {
 	return false
 }
 
+// TestBFS046Cell05StampedeForegroundLatencyUnderABurst — PENDING-UNTIL-BFS-037.
+//
+// the defect it catches: a refresh policy that looks healthy on an AVERAGE while
+// a single foreground read stalls behind a burst of invalidations. This is why
+// the cell is about the foreground's own LATENCY DISTRIBUTION and not about
+// throughput or a refresh count: an aggregate that improves while one read
+// stalls is exactly the failure the row's STAMPEDE cell is written for.
+func TestBFS046Cell05StampedeForegroundLatencyUnderABurst(t *testing.T) {
+	if bfs046HotRefreshIsWired() {
+		t.Fatal("PENDING CELL NOW DUE: BFS-037 has landed, so this cell must be completed " +
+			"against the live path rather than skipped. The claim it must carry: with a foreground " +
+			"stream against a throttled server, the foreground's latency distribution is UNCHANGED " +
+			"versus a hot-path-disabled build (SPEC-hot-file-policy AC-9) — assert the foreground's " +
+			"own numbers, never a refresh starved/un-starved count. The control that makes it able to " +
+			"fail: remove the yield check (P-7) and the foreground-latency arm must go red.")
+	}
+	t.Skip("PENDING-UNTIL-BFS-037: the burst of invalidations cannot refresh anything yet (no tracker, " +
+		"no queue, no refresher), so the foreground's latency under a burst is not measurable. The cell " +
+		"exists, its claim is above, and TestBFS046PendingUntilLandingGate fails the moment the " +
+		"dependency lands so it cannot be skipped forever.")
+}
+
+// TestBFS046Cell06StopInFullRefusesTheTwoWrongReadings — PENDING-UNTIL-BFS-037.
+//
+// the defect it catches: a "stop" that silently lifts. §5.5 names TWO readings an
+// implementer picks without noticing — *drain-then-idle* (the depth decays while
+// new work is still admitted) and *let-in-flight-finish* (the stop is unbounded
+// in time) — so a cell that asserts only the happy path cannot tell the correct
+// definition from the plausible wrong one. The cell must assert the REFUSAL.
+func TestBFS046Cell06StopInFullRefusesTheTwoWrongReadings(t *testing.T) {
+	if bfs046HotRefreshIsWired() {
+		t.Fatal("PENDING CELL NOW DUE: BFS-037 has landed, so this cell must be completed. The claims it " +
+			"must carry: (i) new work refused AND COUNTED while stopped, level-triggered — a drain-then-idle " +
+			"stop fails this; (ii) queue_depth == 0 within hot_stop_deadline, each dropped item counted by " +
+			"reason `stopped`; (iii) an in-flight refresh abandoned with NO publish — the path's cached hash, " +
+			"used_bytes and the reader's bytes bit-identical, in_flight_bytes back to 0, no temp blob, no slot " +
+			"held — a let-in-flight-finish stop fails this; (iv) a PROMOTED fetch SURVIVES the stop; (v) both " +
+			"stop/promotion orderings produce an identical reader outcome (AC-8 i–v, PR-14).")
+	}
+	t.Skip("PENDING-UNTIL-BFS-037: there is no queue to stop and no in-flight refresh to abandon. The cell " +
+		"exists, both REFUSED readings are named above as assertions rather than prose, and the pending gate " +
+		"fails when the dependency lands.")
+}
+
+// TestBFS046Cell07PromotionIsSingleFlightExactlyOneFetch — PENDING-UNTIL-BFS-037.
+//
+// the defect it catches: a promotion that DOUBLE-FETCHES — the queue's refresh and
+// the direct read both issuing a GET for the same path, so promotion
+// anti-optimises the hottest paths. The invariant is EXACT: N concurrent readers
+// of one path produce exactly 1 bytes-fetching request, counted at the SERVER.
+// "At most one" is NOT the claim.
+func TestBFS046Cell07PromotionIsSingleFlightExactlyOneFetch(t *testing.T) {
+	if bfs046HotRefreshIsWired() {
+		t.Fatal("PENDING CELL NOW DUE: BFS-037 has landed, so this cell must be completed. The claim it " +
+			"must carry: 32 concurrent readers of one cold tracked path with a queued refresh produce " +
+			"EXACTLY 1 GET on the wire, asserted against the SERVER's own request count and not a client " +
+			"counter, with 1 leader + 31 joins (singleflight_leaders_total / singleflight_joins_total) and " +
+			"singleflight_entries back to 0 at rest (AC-11/PR-6/PR-8). The control that makes it able to " +
+			"fail: disable the per-path map and the cell must observe 32 GETs.")
+	}
+	t.Skip("PENDING-UNTIL-BFS-037: there is no per-path single-flight map and no promotion path to drive, " +
+		"so \"exactly one fetch\" has nothing to count. The cell exists and its control arm (disable the map " +
+		"⇒ 32 GETs) is stated above; the pending gate fails when the dependency lands.")
+}
+
+// TestBFS046Cell08DeliberateCancelIsDistinguishableFromFailure — PENDING-UNTIL-BFS-039.
+//
+// the defect it catches: a deliberate cancel that is indistinguishable from a
+// failure at the kernel boundary, so a caller cannot retry correctly (PRD §2.8:
+// `EINTR` vs `EIO`), and a cancel that leaves the per-path commit lock held or
+// the previous content half-published. The KILLED halves of the cancel cell are
+// live above (8a/8b) precisely because they need no cancel to arrive at all.
+func TestBFS046Cell08DeliberateCancelIsDistinguishableFromFailure(t *testing.T) {
+	if bfs046CancelIOIsWired() {
+		t.Fatal("PENDING CELL NOW DUE: BFS-039 has landed, so this cell must be completed. The claims it " +
+			"must carry: a deliberate FUSE interrupt cancels the operation, releases the striped per-path " +
+			"commit lock, leaves the PREVIOUS content intact (never a half-published state), and the error " +
+			"returned to the kernel distinguishes `EINTR` from `EIO` (PRD §2.8 / R10); a duplicate or late " +
+			"cancel is a no-op rather than an error, because an accidental cancel may never arrive at all.")
+	}
+	t.Skip("PENDING-UNTIL-BFS-039: no `EINTR` is produced anywhere in the tree yet, so the deliberate half " +
+		"of the cancel cell cannot be driven. The killed halves (8a the reader, 8b the refresher) are LIVE " +
+		"and are the half that needs no cancel to arrive.")
+}
+
+// TestBFS046Cell09SkipCensusByReasonIsDrivable — PENDING-UNTIL-BFS-037.
+//
+// the defect it catches: a skip that happens WITHOUT incrementing a reason — the
+// BFS-032 shape, where a counter exists, is displayed, and can never move because
+// a pre-filter upstream of it makes its increment unreachable — and dead
+// vocabulary: a reason with no trigger that ships as a permanent zero. The census
+// must drive the LIVE mount, one cell per reason.
+func TestBFS046Cell09SkipCensusByReasonIsDrivable(t *testing.T) {
+	if bfs046HotRefreshIsWired() {
+		t.Fatal("PENDING CELL NOW DUE: BFS-037 has landed, so the census must be written. The claims it " +
+			"must carry: one cell per reason in S-12 (`oversize_pre`, `oversize_after_head`, `untracked`, " +
+			"`disarmed`, `stopped`, `cache_disabled`, `no_room`, `pinned_eviction`, `queue_full`, `resync`, " +
+			"`tree_mismatch`, `not_found`, `replaced`) and per reason in P-13, each driving the LIVE mount " +
+			"(a real read, a real invalidation, a real stop) and asserting the counter MOVED; plus the " +
+			"refresh-side file-size boundary (S-3/S-4, `size <= hot_max_file_bytes`, INCLUSIVE). The single " +
+			"most important control (AC-6): insert a pre-filter above any counter and the affected cell must " +
+			"fail — BFS-032's shape reproduced as a regression arm.")
+	}
+	t.Skip("PENDING-UNTIL-BFS-037: there is no refresh to skip, so no skip reason has a reachable trigger " +
+		"and a census would be counting zeros. Cell 9's LIVE half (the pinned number, the inclusive rule, " +
+		"the two refusals AT THE EDGE) is asserted in TestBFS046Cell09SizeRuleBoundaryIsInclusiveAndCountedByReason " +
+		"and that cell does not claim the census.")
+}
+
+// bfs046CancelIOIsWired reports whether BFS-039's cancel-IO vocabulary is present.
+// The probe is the kernel-visible distinction the spec pins (PRD §2.8).
+func bfs046CancelIOIsWired() bool {
+	dirs := []string{".", "../fsmount"}
+	markers := []string{"EINTR", "ErrInterrupted"}
+	for _, d := range dirs {
+		ents, err := os.ReadDir(d)
+		if err != nil {
+			continue
+		}
+		for _, e := range ents {
+			name := e.Name()
+			if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+				continue
+			}
+			b, err := os.ReadFile(filepath.Join(d, name))
+			if err != nil {
+				continue
+			}
+			src := string(b)
+			for _, m := range markers {
+				if strings.Contains(src, m) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // TestBFS046PendingUntilLandingGate is the gate that keeps the pending cells
 // honest. It FAILS when a dependency of a pending cell lands, because at that
 // moment the pending cell must be completed rather than left skipping forever:
@@ -576,7 +715,12 @@ func TestBFS046PendingUntilLandingGate(t *testing.T) {
 			"written against the live path — see the CELL INVENTORY in docs/evidence/BFS-046-*.md for the " +
 			"exact claim each one carries. This gate exists so a pending cell cannot be skipped forever.")
 	}
+	if bfs046CancelIOIsWired() {
+		t.Fatal("BFS-039 has landed (an EINTR vocabulary exists). " +
+			"TestBFS046Cell08DeliberateCancelIsDistinguishableFromFailure must now be completed.")
+	}
 	// The other dependency: the push form (BFS-036) is what cell 1's channel half
-	// will become once it is served. Its absence is a named, landed fact today.
-	// (Asserted from the server side; see the inventory.)
+	// will become once it is served. Its absence is a named, landed fact today
+	// (ops.go answers the `watch` op 501 capability_unavailable), and it is
+	// asserted from the server side.
 }
