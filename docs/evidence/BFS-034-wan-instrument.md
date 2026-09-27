@@ -136,7 +136,7 @@ so they cannot disturb the measured rows.
 | `BFS-034-local-run.txt` | the full battery on a local server: 13/13 ops, 3/3 tree-read, 13/13 git, 1/1 bound, 5/5 kill — **0 stalls** — with every same-side verdict |
 | `BFS-034-old-instrument-run.txt` + `BFS-034-old-instrument-transcript.txt` | **negative control, part 1**: the committed old instrument pointed at a server it does not own, printing the local tree's files as the server's |
 | `BFS-034-wrong-side-run.txt` | the new instrument on the same wrong-side configuration: **`exit 3`, refuses to measure** |
-| `BFS-034-visibility.txt` | why a side read must poll: a write is visible on the side after **11–41 ms** (loopback) |
+| `BFS-034-visibility.txt` | why a side read must poll: a write is visible on the side after **10–41 ms** (loopback) |
 | `BFS-034-cache-dir-identity.txt` | the default cache directory is keyed **per endpoint**, so two mounts of one URL share one `status.json` |
 | `BFS-034-cache-bound-arms.txt` | the 64 KiB bound **is** enforced when the accounting is per-mount (62,081 B ≤ 65,536; 4 entries; 36 evictions) |
 | `BFS-034-dc1-dedi2-run.txt`, `BFS-034-dc2-bunker-mvp-run.txt` | real-DC runs with side-side verification and the stall counts |
@@ -248,7 +248,7 @@ now a number with a named cause.
 ## 5. Instrument defects found by USING it (this is the part that only a DC run finds)
 
 1. **A single side read is a race, not a verification.** Writes are visible on the side after
-   **11–41 ms** (`BFS-034-visibility.txt`), so a one-shot `cat` reports a false MISMATCH on a healthy link.
+   **10–41 ms** (`BFS-034-visibility.txt`), so a one-shot `cat` reports a false MISMATCH on a healthy link.
    Every side cell now **polls with a bound** (`side_wait_eq`), and a bound that *expires* is the mismatch —
    "not visible yet" and "not there" are told apart by the bound, and the poll count is recorded in the note.
 2. **`mnt-ctl` is a substring of `mnt-ctl2`.** The mount check was `grep -q "$mnt" /proc/mounts`, so the

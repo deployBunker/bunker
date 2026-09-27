@@ -2,9 +2,10 @@
 # probe: at a 64 KiB bound on a FRESH endpoint (no earlier mount has used its
 # default cache dir), does the client's own cache accounting stay inside the bound?
 set -uo pipefail
-T=/tmp/bfs034-bound; WT=/home/kara/worktrees/bunker-BFS-034
+T="${T:-$(mktemp -d /tmp/bfs034-bound-XXXXXX)}"
+WT="${WT:-/home/kara/worktrees/bunker-BFS-034}"
 PORT=38416; PORT2=38417
-rm -rf "$T"; mkdir -p "$T/bin" "$T/tree" "$T/mnt"
+mkdir -p "$T/bin" "$T/tree" "$T/mnt"
 cd "$WT" || exit 1
 go build -o "$T/bin/bunker" ./cmd/bunker || exit 1
 go build -o "$T/bin/davserve" ./probes/davserve || exit 1

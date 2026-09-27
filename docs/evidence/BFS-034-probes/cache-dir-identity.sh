@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # probe: is the DEFAULT cache directory shared between two mounts of the same URL?
 set -uo pipefail
-T=/tmp/bfs034-cacheid; WT=/home/kara/worktrees/bunker-BFS-034; PORT=38415
-rm -rf "$T"; mkdir -p "$T/bin" "$T/tree" "$T/m1" "$T/m2" "$T/m3"
+T="${T:-$(mktemp -d /tmp/bfs034-cacheid-XXXXXX)}"
+WT="${WT:-/home/kara/worktrees/bunker-BFS-034}"
+PORT="${PORT:-38415}"
+mkdir -p "$T/bin" "$T/tree" "$T/m1" "$T/m2" "$T/m3"
 cd "$WT" || exit 1
 go build -o "$T/bin/bunker" ./cmd/bunker || exit 1
 go build -o "$T/bin/davserve" ./probes/davserve || exit 1

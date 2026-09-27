@@ -1,28 +1,28 @@
 == fixture (built by the WAN battery's own builder, --fixture-only) ==
-fixture-only: the tree is ready at /tmp/bfs034-vis/tree; nothing was measured.
-serve it, then point this battery at the endpoint with --tree /tmp/bfs034-vis/tree
-keeping the side tree in place (--keep-tree/--fixture-only): /tmp/bfs034-vis/tree
-davserve pid=2421086 on :38414
+fixture-only: the tree is ready at /tmp/bfs034-visibility-6ywC6e/tree; nothing was measured.
+serve it, then point this battery at the endpoint with --tree /tmp/bfs034-visibility-6ywC6e/tree
+keeping the side tree in place (--keep-tree/--fixture-only): /tmp/bfs034-visibility-6ywC6e/tree
+davserve pid=3966607 on :38414
 mounted: yes
 
 == publication latency, loopback (root-level, subdir, dotfile, and again) ==
-  root create            write_rc=0   side_visible_after=0.041     content=VIS-root create
-  subdir create          write_rc=0   side_visible_after=0.013     content=VIS-subdir create
+  root create            write_rc=0   side_visible_after=0.039     content=VIS-root create
+  subdir create          write_rc=0   side_visible_after=0.010     content=VIS-subdir create
   root dotfile           write_rc=0   side_visible_after=0.039     content=VIS-root dotfile
-  root create #2         write_rc=0   side_visible_after=0.040     content=VIS-root create #2
+  root create #2         write_rc=0   side_visible_after=0.011     content=VIS-root create #2
 
 == overwrite of an EXISTING file (the shape the conflict cell uses) ==
-  overwrite (refused?)   write_rc=0   side_visible_after=0.011     content=VIS-overwrite (refused?)
+  overwrite (refused?)   write_rc=0   side_visible_after=0.040     content=VIS-overwrite (refused?)
   note: the write above goes through the client's conflict rule; rc and the
   resulting bytes on the side are the answer, and they are read on the side.
 
 == the side's own view afterwards ==
-  -rw-r--r-- 1 kara kara   17 Sep 26 22:57 .wsc-dot
-  -rw-r--r-- 1 kara kara   25 Sep 26 22:57 wsc-ow.txt
-  -rw-r--r-- 1 kara kara   16 Sep 26 22:57 wsc-root.txt
-  -rw-r--r-- 1 kara kara   19 Sep 26 22:57 wsc-root2.txt
-  -rw-r--r-- 1 kara kara   18 Sep 26 22:57 wsc-sub.txt
+  -rw-r--r-- 1 kara kara   17 Sep 26 23:47 .wsc-dot
+  -rw-r--r-- 1 kara kara   25 Sep 26 23:47 wsc-ow.txt
+  -rw-r--r-- 1 kara kara   16 Sep 26 23:47 wsc-root.txt
+  -rw-r--r-- 1 kara kara   19 Sep 26 23:47 wsc-root2.txt
+  -rw-r--r-- 1 kara kara   18 Sep 26 23:47 wsc-sub.txt
   stderr from the last write: ''
-docs/evidence/BFS-034-probes/write-visibility.sh: line 78: 2436630 Killed                     "$T/bin/bunker" fs mount "$T/mnt/x" --url "http://127.0.0.1:$PORT/dav" --cache-dir "$T/cache" > "$T/mount.log" 2>&1
-docs/evidence/BFS-034-probes/write-visibility.sh: line 79: 2421086 Killed                     "$T/bin/davserve" --root "$T/tree" --addr "127.0.0.1:$PORT" > "$T/srv.log" 2>&1
+docs/evidence/BFS-034-probes/write-visibility.sh: line 79: 3966607 Killed                     "$T/bin/davserve" --root "$T/tree" --addr "127.0.0.1:$PORT" > "$T/srv.log" 2>&1
+docs/evidence/BFS-034-probes/write-visibility.sh: line 79: 3976586 Killed                     "$T/bin/bunker" fs mount "$T/mnt/x" --url "http://127.0.0.1:$PORT/dav" --cache-dir "$T/cache" > "$T/mount.log" 2>&1
 cleanup: davserve alive=no; mounts=0

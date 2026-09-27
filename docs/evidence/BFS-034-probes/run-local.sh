@@ -11,10 +11,10 @@
 set -uo pipefail
 
 WT="${WT:-/home/kara/worktrees/bunker-BFS-034}"
-T="${T:-/tmp/bfs034-local}"
+T="${T:-$(mktemp -d /tmp/bfs034-local-XXXXXX)}"
 PORT="${PORT:-38411}"
 
-rm -rf "$T"; mkdir -p "$T/bin" "$T/tree" "$T/mnt"
+mkdir -p "$T/bin" "$T/tree" "$T/mnt"
 cd "$WT" || exit 1
 go build -o "$T/bin/bunker" ./cmd/bunker || exit 1
 go build -o "$T/bin/davserve" ./probes/davserve || exit 1

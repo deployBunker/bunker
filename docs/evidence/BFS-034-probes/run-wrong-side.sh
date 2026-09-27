@@ -7,10 +7,10 @@
 set -uo pipefail
 
 WT="${WT:-/home/kara/worktrees/bunker-BFS-034}"
-T="${T:-/tmp/bfs034-wrong}"
+T="${T:-$(mktemp -d /tmp/bfs034-wrong-side-XXXXXX)}"
 PORT="${PORT:-38412}"
 
-rm -rf "$T"; mkdir -p "$T/bin" "$T/mirror" "$T/mnt"
+mkdir -p "$T/bin" "$T/mirror" "$T/mnt"
 cd "$WT" || exit 1
 go build -o "$T/bin/bunker" ./cmd/bunker || exit 1
 go build -o "$T/bin/davserve" ./probes/davserve || exit 1
