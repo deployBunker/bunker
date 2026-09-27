@@ -78,7 +78,7 @@ func TestWriteRefusalOnStaleBase(t *testing.T) {
 	}
 	_ = before
 
-	// The base is updated from the refusal: the next write goes in with truth.
+	// The refusal is counted and recorded with the server's own verdict.
 	if wp.Refusals() != 1 {
 		t.Fatalf("refusals = %d, want 1", wp.Refusals())
 	}
@@ -86,6 +86,30 @@ func TestWriteRefusalOnStaleBase(t *testing.T) {
 	if last == nil || last.Code != VerdictHashMismatch || last.Current != agentHash {
 		t.Fatalf("the refusal was not recorded: %+v", last)
 	}
+
+	// The base is updated from the refusal — and BFS-033: the refusal STANDS on
+	// the path until the CALLER re-reads it (§5.2 rule 5). The retry that skips
+	// the re-read is refused, because the kernel re-issues a refused resize below
+	// the caller and the re-issued dispatch carries exactly this corrected base.
+	if _, again := wp.PublishBytes(ctx, "README.md", []byte("# merged\n"), WriteBase{IfMatch: agentHash, Source: BaseFromFetchCheck}); again == nil {
+		t.Fatal("a publish landed behind an unrecovered refusal (BFS-033: the refusal did not hold)")
+	} else if again.Cause != CauseConflict || again.Errno != syscall.ESTALE {
+		t.Fatalf("the held refusal must keep the refusal's own class (conflict/ESTALE): %v", again)
+	}
+	onDisk, err = os.ReadFile(filepath.Join(root, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := HashBytes(onDisk); got != agentHash {
+		t.Fatalf("the held write changed the file: hash now %s", got)
+	}
+	if held, outstanding, _, last := wp.Held(); held != 1 || outstanding != 1 || !strings.Contains(last, "README.md") {
+		t.Fatalf("the held refusal must be counted and named: held=%d outstanding=%d last=%q", held, outstanding, last)
+	}
+
+	// The caller's re-read is the recovery §5.2 rule 5 names, and the one thing
+	// that clears the hold: "_the caller has been served bytes for this path_".
+	wp.NoteRead("README.md", agentHash)
 	res, werr := wp.PublishBytes(ctx, "README.md", []byte("# merged\n"), WriteBase{IfMatch: agentHash, Source: BaseFromFetchCheck})
 	if werr != nil {
 		t.Fatalf("recovered write: %v", werr)

@@ -692,6 +692,13 @@ func (m *Mount) Status() fsclient.Status {
 	if v, ok := m.writeShapeLast.Load().(string); ok {
 		st.WriteShape.Last = v
 	}
+	heldTotal, outstanding, evicted, heldLast := m.wp.Held()
+	st.RefusalHolds = fsclient.RefusalHoldState{
+		HeldTotal:    heldTotal,
+		Outstanding:  outstanding,
+		EvictedTotal: evicted,
+		Last:         heldLast,
+	}
 	return st
 }
 
@@ -944,6 +951,10 @@ func (n *node) Unlink(ctx context.Context, name string) syscall.Errno {
 	n.m.snapshot().Drop(cp)
 	n.m.snapshot().DropReaddir(n.p)
 	n.m.cache.Drop(cp)
+	// BFS-033: the removal answers the refusal's subject — there is no refused
+	// write left to enforce on a name that no longer exists, so the hold goes
+	// with the file rather than standing on a path nothing can read again.
+	n.m.wp.NoteDeleted(cp)
 	n.m.queueNotify(notifyRequest{paths: []string{cp}, deleted: []string{cp}})
 	n.m.recordOK()
 	return 0
@@ -1166,7 +1177,7 @@ func (h *readHandle) load(ctx context.Context) syscall.Errno {
 		if data, ok := h.m.cache.GetPinned(h.p, hash); ok {
 			if !h.distrustCached(int64(len(data)), hash) {
 				h.data, h.hash, h.loaded, h.pinned = data, hash, true, true
-				h.m.wp.NoteServed(h.p, hash)
+				h.m.wp.NoteRead(h.p, hash)
 				return 0
 			}
 			// Not servable after all: the entry was dropped, so the reference
@@ -1197,7 +1208,7 @@ func (h *readHandle) load(ctx context.Context) syscall.Errno {
 		return errno
 	}
 	h.data, h.hash, h.loaded = data, hash, true
-	h.m.wp.NoteServed(h.p, hash)
+	h.m.wp.NoteRead(h.p, hash)
 	if len(data) <= int(h.m.cache.MaxEntryBytes()) {
 		_, _ = h.m.cache.Insert(h.p, hash, data)
 		h.m.cache.Pin(hash)
