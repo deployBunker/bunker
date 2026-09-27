@@ -641,11 +641,13 @@ func (i *Invalidator) State() InvalidationState {
 	// channel has no bound to report and a 0 there would read as one.
 	if i.frameLimitBytes > 0 || i.framesOverLimit > 0 {
 		fl := &FrameLimitState{
-			ReaderBytes:    i.frameLimitBytes,
 			CeilingBytes:   ClientFrameCeiling,
 			OverLimit:      i.frameOverLimit,
 			OverLimitTotal: i.framesOverLimit,
 			Detail:         i.frameLimitDetail,
+		}
+		if i.frameLimitBytes > 0 {
+			fl.ReaderBytes = &i.frameLimitBytes
 		}
 		if declared := i.declaredMaxEventBytes(); declared > 0 {
 			fl.DeclaredBytes = &declared

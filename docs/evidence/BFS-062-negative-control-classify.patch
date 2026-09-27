@@ -1,0 +1,17 @@
+--- a/internal/fsclient/framelimit.go
++++ b/internal/fsclient/framelimit.go
+@@ -142,7 +142,13 @@
+ // classification turns one deterministic input into an endless reconnect. It is
+ // named instead, with the numbers that decided it.
+ func (i *Invalidator) classifyStreamRead(err error) *OpError {
+-	if errors.Is(err, bufio.ErrTooLong) {
++	// NEGATIVE CONTROL (BFS-062): the classification is neutered — a line over the
++	// reader's cap falls back to the TRANSPORT classifier again, which is the
++	// filed defect and nothing else (the relation check, the reader sizing and
++	// every counter are untouched). The RED arm must go FAIL here; the
++	// non-vacuity control arm must still pass, which is what attributes the
++	// failure to this classification rather than to the harness.
++	if false && errors.Is(err, bufio.ErrTooLong) {
+ 		declared := i.declaredMaxEventBytes()
+ 		detail := fmt.Sprintf("an event frame exceeded this mount's %d-byte per-line cap", i.readCap())
+ 		if declared > 0 {

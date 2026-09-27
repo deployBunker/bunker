@@ -70,7 +70,10 @@ type FrameLimitState struct {
 	DeclaredReason string `json:"declared_reason,omitempty"`
 	// ReaderBytes is the per-line cap the reader was sized to, which is the
 	// declaration plus the framing slack whenever a holdable bound was declared.
-	ReaderBytes int64 `json:"reader_bytes"`
+	// It is ABSENT — not zero — when no reader was ever sized, which is the state
+	// an unholdable declaration produces: no stream was opened, so no cap was
+	// allocated, and a 0 here would read as a reader of zero bytes.
+	ReaderBytes *int64 `json:"reader_bytes,omitempty"`
 	// CeilingBytes is the largest cap this consumer will allocate.
 	CeilingBytes int64 `json:"ceiling_bytes"`
 	// OverLimit is the CONDITION as a state, not only as a count: an event frame

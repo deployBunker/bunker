@@ -1,0 +1,54 @@
+BFS-062 arms — mode=green base=064b39f
+go go1.26.5 · 83ab8e1 · 2026-09-27T15:22:21Z
+tree under test: internal/fsclient/invalidate.go sha256=0fbd32ed0a8242401b1bd97c2de29af6aabe90a935eff73e8b2a1f2d4f72f63c
+tree under test: internal/fsclient/errors.go sha256=05ee3433b28ff44e63d16b408737df52acc18eafcf09b47296f9c661c7c81fd9
+tree under test: internal/fsclient/capabilities.go sha256=9575af49c67dd63674c1d3635945b5f3b31fcf3deb6e0019b5df8c21f1eb85e0
+tree under test: internal/server/webdav/events.go sha256=61e4bdf123cf98fb51d3f439106f6afa1986f46069730284496ac45c0e2855f2
+tree under test: internal/server/webdav/watch.go sha256=15df059637b03f87759c3ec4093bd64832ecce76be69b065aca6d7dcfcc6ef76
+tree under test: internal/server/webdav/handler.go sha256=370a1689240ef3f90933a23e922a19cc3e5c30f1a2469b85a9731ba86c2b84c1
+tree under test: internal/server/webdav/tree.go sha256=3c4e95611e51757bab079df93f3d23abfdd1e1466c8edb3a36438a7ec5c09f39
+tree under test: internal/server/webdav/invalidation_config.go sha256=7fff99418b9f17a35ca4d495d5658ff45916fcfbb733888fc12ed380657533ea
+tree under test: internal/fsclient/framelimit.go sha256=a57d33bf012472cfa7d03b8dd2f08d9c84956a61ee819d826c8ceb7e7cdc2dae
+--- GREEN: go test ./internal/fsclient -run TestBFS062 -count=1 -v -timeout 300s
+=== RUN   TestBFS062TheRecordNamesAndCountsTheFrameLimit
+    invalidate_bfs062_rule_test.go:101: frame_limit: declared=1048576 reader=54545916986176 ceiling=8454144 over_limit=true total=1 detail="an event frame exceeded this mount's 1114112-byte per-line cap (the server declared a 1048576-byte per-frame bound, read with 65536 bytes of framing slack): the frame is rejected once and reported, never retried — the same bytes would arrive again"
+--- PASS: TestBFS062TheRecordNamesAndCountsTheFrameLimit (0.09s)
+=== RUN   TestBFS062AnUnholdableDeclarationRefusesTheChannel
+--- PASS: TestBFS062AnUnholdableDeclarationRefusesTheChannel (0.01s)
+=== RUN   TestBFS062ALegalOversizedFrameIsNamedCountedAndNotRetried
+    invalidate_bfs062_test.go:139: legal frame: 4096 paths × 4095 bytes = 16810055 bytes on one line (16.0 MiB), against the declared 1048576-byte bound
+    invalidate_bfs062_test.go:204: named + non-retried: reconnects_total=0, streams served=1, reason="event frame over the declared bound: an event frame exceeded this mount's 1114112-byte per-line cap (the server declared a 1048576-byte per-frame bound, read with 65536 bytes of framing slack): the frame is rejected once and reported, never retried — the same bytes would arrive again — declared poll fallback, no reconnect (the same frame would be sent again)"
+--- PASS: TestBFS062ALegalOversizedFrameIsNamedCountedAndNotRetried (1.54s)
+=== RUN   TestBFS062TheReaderFollowsTheDeclaration
+--- PASS: TestBFS062TheReaderFollowsTheDeclaration (1.24s)
+=== RUN   TestBFS062TheClassificationDoesNotFireOnOrdinaryFrames
+--- PASS: TestBFS062TheClassificationDoesNotFireOnOrdinaryFrames (0.32s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/fsclient	3.227s
+--- GREEN exit=0
+--- green (producer): go test ./internal/server/webdav -run TestBFS062 -count=1 -v -timeout 300s
+=== RUN   TestBFS062TheCountIsNotASize
+=== RUN   TestBFS062TheCountIsNotASize/the_worst_legal_frame_is_arithmetic,_not_an_estimate
+    events_bfs062_test.go:163: worst legal frame: 4096 paths × 4096 bytes (escaped) = 100651093 bytes = 96.0 MiB
+=== RUN   TestBFS062TheCountIsNotASize/under_the_declared_default_the_change_is_an_invalidate
+    events_bfs062_test.go:183: the same change under the default bound: 86561 bytes, 124 paths (120 files + the directories the change created + the touched root)
+=== RUN   TestBFS062TheCountIsNotASize/at_the_declared_minimum_the_same_change_overflows,_counted
+    events_bfs062_test.go:218: declared floor 65536 bytes refused a 86561-byte frame (refusals 0 -> 1); the answer is an overflow carrying 0 paths
+=== RUN   TestBFS062TheCountIsNotASize/a_frame_that_fits_is_never_rewritten
+--- PASS: TestBFS062TheCountIsNotASize (0.23s)
+    --- PASS: TestBFS062TheCountIsNotASize/the_worst_legal_frame_is_arithmetic,_not_an_estimate (0.21s)
+    --- PASS: TestBFS062TheCountIsNotASize/under_the_declared_default_the_change_is_an_invalidate (0.01s)
+    --- PASS: TestBFS062TheCountIsNotASize/at_the_declared_minimum_the_same_change_overflows,_counted (0.01s)
+    --- PASS: TestBFS062TheCountIsNotASize/a_frame_that_fits_is_never_rewritten (0.00s)
+=== RUN   TestBFS062TheBoundIsDeclaredAndApplied
+=== RUN   TestBFS062TheBoundIsDeclaredAndApplied/the_declared_default
+=== RUN   TestBFS062TheBoundIsDeclaredAndApplied/the_declared_minimum
+=== RUN   TestBFS062TheBoundIsDeclaredAndApplied/an_operator_value
+--- PASS: TestBFS062TheBoundIsDeclaredAndApplied (0.01s)
+    --- PASS: TestBFS062TheBoundIsDeclaredAndApplied/the_declared_default (0.00s)
+    --- PASS: TestBFS062TheBoundIsDeclaredAndApplied/the_declared_minimum (0.00s)
+    --- PASS: TestBFS062TheBoundIsDeclaredAndApplied/an_operator_value (0.00s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/server/webdav	0.273s
+--- producer arms exit=0
+done: mode=green
