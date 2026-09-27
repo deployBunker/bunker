@@ -225,7 +225,12 @@ func recordMetadataKeyBlindMove(path string) {
 // and the last such path (relative, "/"-separated). A zero count is the honest
 // "no observation of this process has produced one", which is the state of a
 // tree nothing restores timestamps on.
-func IdentityDivergenceCounters() (metadataKeyBlindMoves int64, lastPath string) {
+//
+// The result names are deliberately not the variables': a named result that
+// shadows a package variable returns the zero value, and this accessor DID
+// report 0 while the last path was being filled in until the cell below caught
+// it.
+func IdentityDivergenceCounters() (count int64, lastPath string) {
 	identityDivergenceMu.Lock()
 	defer identityDivergenceMu.Unlock()
 	return metadataKeyBlindMoves, lastMetadataKeyBlindPath
