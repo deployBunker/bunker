@@ -213,6 +213,11 @@ type CacheStats struct {
 	// below. A bound must be readable next to the counter that moves when it
 	// refuses (BFS-045; SPEC-hot-file-policy §9.1).
 	MaxEntryBytes int64 `json:"max_entry_bytes"`
+	// MaxAgeMS is the backstop TTL of one entry (--cache-max-age): a bound the
+	// cache expires entries against. Reported for the same reason as the others —
+	// a bound the owner cannot see is not a bound — and as a POSITIVE number so
+	// its presence needs no separate reason.
+	MaxAgeMS int64 `json:"max_age_ms"`
 	// InFlightBytes are the bytes staged refreshes have written and not yet
 	// published: really on disk, unreachable by any reader.
 	InFlightBytes int64 `json:"in_flight_bytes"`
@@ -349,6 +354,15 @@ type Cache struct {
 	dirBytes      int64
 	dirClasses    map[string]int64
 	dirErr        string
+	// dirBlobClasses/dirBlobAt are the BLOB half of that measurement, which is
+	// the expensive half (O(blobs)) and the only half that is reused. The
+	// top-level entries are re-stat'ed on every publish, because a figure that
+	// does not include the file the mount is writing RIGHT NOW would disagree
+	// with `du` at exactly the moment someone checks it — measured on the live
+	// route while writing this row's probe: the reported figure read 0 while the
+	// directory held 4230 bytes.
+	dirBlobClasses map[string]int64
+	dirBlobAt      time.Time
 }
 
 // OpenCache creates (or reopens) the cache directory. The directory is 0700 and
@@ -1257,6 +1271,7 @@ func (c *Cache) recountLocked() {
 	// refreshes will publish). Both are reported, never merged (F-1 / O-3).
 	c.stats.MaxEntries = c.cfg.MaxEntries
 	c.stats.MaxEntryBytes = c.cfg.MaxEntryBytes
+	c.stats.MaxAgeMS = c.cfg.MaxAge.Milliseconds()
 	c.stats.InFlightBytes = c.inFlightBytesLocked()
 	c.stats.ReservedBytes = c.reservedLocked()
 	c.stats.StagedBlobs = len(c.staged)
@@ -1353,20 +1368,22 @@ func (c *Cache) BypassCount(reason string) int64 {
 // class, beside the accounting — and the delta is reported as a named figure
 // (dir_unaccounted_bytes) rather than left for someone to discover with `du`.
 //
-// Cost: one walk per DirMeasureTTL. The age of the sample is reported with it,
-// so a reused measurement is never read as a fresh one.
+// COST, AND WHY THE MEASUREMENT IS SPLIT IN TWO. The blob directory is O(blobs),
+// so it is walked at most once per DirMeasureTTL and the age of THAT half is
+// reported (dir_measured_age_ms). The top level — index.json, status.json, the
+// conflict log, their temps — is a handful of entries and is re-stat'ed on EVERY
+// publish, because the mount rewrites the status document once a second: a
+// figure that ignored the file being written right now would disagree with `du`
+// at exactly the moment someone checks it. That is not hypothetical: on the live
+// route, the first version of this measurement reported dir_bytes=0 while the
+// directory held 4230 bytes (docs/evidence/BFS-045-live-mount.txt).
 func (c *Cache) measureDirLocked() {
 	now := c.cfg.Now()
 	ttl := c.cfg.DirMeasureInterval
 	if ttl == 0 {
 		ttl = DirMeasureTTL
 	}
-	// A negative interval means "measure every time": the test seam, and what an
-	// operator asks for when the figure is being audited against `du`.
-	if !c.dirMeasuredAt.IsZero() && ttl > 0 && now.Sub(c.dirMeasuredAt) < ttl {
-		c.publishDirLocked(now)
-		return
-	}
+	c.dirMeasuredAt = now
 	classes := map[string]int64{}
 	for _, k := range dirClasses() {
 		classes[k] = 0
@@ -1376,12 +1393,11 @@ func (c *Cache) measureDirLocked() {
 		classes[class] += n
 		total += n
 	}
-	// The directory itself, one level: index.json, status.json, the conflict log
-	// and any temp files.
+	// (a) The top level, LIVE: the volatile small files, and any foreign
+	// subdirectory (summed one level deep so its bytes stay inside the total).
 	entries, err := os.ReadDir(c.cfg.Dir)
 	if err != nil {
 		c.dirErr = fmt.Sprintf("the cache directory %s could not be read: %v", c.cfg.Dir, err)
-		c.dirMeasuredAt = now
 		c.dirBytes, c.dirClasses = 0, classes
 		c.publishDirLocked(now)
 		return
@@ -1390,27 +1406,17 @@ func (c *Cache) measureDirLocked() {
 		name := e.Name()
 		if e.IsDir() {
 			if name != CacheBlobDir {
-				// A subdirectory we did not create: counted as other so its bytes
-				// are still inside the measured total.
 				if n, derr := dirBytesOf(filepath.Join(c.cfg.Dir, name)); derr == nil {
 					add(DirClassOther, n)
 				}
-				continue
 			}
+			continue
 		}
 		switch {
-		case e.IsDir():
-			continue
-		case name == CacheIndexFile:
+		case name == CacheIndexFile, strings.HasPrefix(name, CacheIndexFile+"."):
 			n, _ := fileSize(filepath.Join(c.cfg.Dir, name))
 			add(DirClassIndex, n)
-		case strings.HasPrefix(name, CacheIndexFile+"."):
-			n, _ := fileSize(filepath.Join(c.cfg.Dir, name))
-			add(DirClassIndex, n)
-		case name == StatusFile:
-			n, _ := fileSize(filepath.Join(c.cfg.Dir, name))
-			add(DirClassStatus, n)
-		case strings.HasPrefix(name, StatusFile+"."):
+		case name == StatusFile, strings.HasPrefix(name, StatusFile+"."):
 			n, _ := fileSize(filepath.Join(c.cfg.Dir, name))
 			add(DirClassStatus, n)
 		case name == ConflictsFile:
@@ -1421,14 +1427,29 @@ func (c *Cache) measureDirLocked() {
 			add(DirClassOther, n)
 		}
 	}
+	// (b) The blob classes, reused for at most the TTL. A negative interval means
+	// "walk every time": the test seam, and what an operator asks for when the
+	// figure is being audited against `du`.
+	reuse := ttl > 0 && !c.dirBlobAt.IsZero() && now.Sub(c.dirBlobAt) < ttl && c.cfg.DirMeasureInterval >= 0
+	if reuse {
+		for _, k := range []string{DirClassBlobs, DirClassStaged, DirClassOrphan} {
+			add(k, c.dirBlobClasses[k])
+		}
+		c.dirErr = ""
+		c.dirBytes, c.dirClasses = total, classes
+		c.publishDirLocked(now)
+		return
+	}
 	blobs, err := os.ReadDir(filepath.Join(c.cfg.Dir, CacheBlobDir))
 	if err != nil {
 		c.dirErr = fmt.Sprintf("the blob directory %s could not be read: %v", filepath.Join(c.cfg.Dir, CacheBlobDir), err)
-		c.dirMeasuredAt = now
+		c.dirBlobAt = now
+		c.dirBlobClasses = map[string]int64{}
 		c.dirBytes, c.dirClasses = 0, classes
 		c.publishDirLocked(now)
 		return
 	}
+	blobClasses := map[string]int64{DirClassBlobs: 0, DirClassStaged: 0, DirClassOrphan: 0}
 	for _, b := range blobs {
 		if b.IsDir() {
 			continue
@@ -1439,21 +1460,24 @@ func (c *Cache) measureDirLocked() {
 		}
 		switch {
 		case strings.HasPrefix(b.Name(), CacheStagePrefix):
-			add(DirClassStaged, n)
+			blobClasses[DirClassStaged] += n
 		case c.blobs[HashPrefix+b.Name()] != nil:
 			// The blob FILE is named by the bare digest; the census is keyed by
 			// the tagged one. Getting this wrong attributes every published blob
 			// to the orphan class — measured while writing this arm, which is
 			// why the class assertion exists.
-			add(DirClassBlobs, n)
+			blobClasses[DirClassBlobs] += n
 		default:
 			// A blob file no index entry references: the residue of an
 			// interrupted insert, really occupying the directory.
-			add(DirClassOrphan, n)
+			blobClasses[DirClassOrphan] += n
 		}
 	}
+	c.dirBlobAt, c.dirBlobClasses = now, blobClasses
+	for k, n := range blobClasses {
+		add(k, n)
+	}
 	c.dirErr = ""
-	c.dirMeasuredAt = now
 	c.dirBytes, c.dirClasses = total, classes
 	c.publishDirLocked(now)
 }
@@ -1461,8 +1485,11 @@ func (c *Cache) measureDirLocked() {
 // publishDirLocked copies the last measurement (or its absence, with a reason)
 // into the reported figures.
 func (c *Cache) publishDirLocked(now time.Time) {
-	if !c.dirMeasuredAt.IsZero() {
-		age := now.Sub(c.dirMeasuredAt).Milliseconds()
+	// The age reported is the age of the BLOB census — the half that is sampled.
+	// The top-level entries are re-stat'ed on every publish, so reporting their
+	// age would have to be 0 and would say nothing.
+	if !c.dirBlobAt.IsZero() {
+		age := now.Sub(c.dirBlobAt).Milliseconds()
 		c.stats.DirMeasuredAgeMS = &age
 	} else {
 		c.stats.DirMeasuredAgeMS = nil

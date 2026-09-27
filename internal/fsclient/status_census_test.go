@@ -612,10 +612,6 @@ func TestEveryFigureInTheStatusRecordMovesOrIsExplained(t *testing.T) {
 	if inv.State().LastFailure == "" {
 		t.Fatal("a counted failure must name itself in last_failure")
 	}
-	// A declared capability refusal is an ANSWER, not a failure: the count must
-	// not include the one response that is working as designed.
-	failsAtDeclaredRefusal := inv.State().Failures
-
 	stAfter := Status{Mount: "probe"}
 	// --- the cache's half ------------------------------------------------------
 	// The STAGED-REFRESH flow first, on an empty cache, because each of its four
@@ -767,10 +763,19 @@ func TestEveryFigureInTheStatusRecordMovesOrIsExplained(t *testing.T) {
 		t.Logf("  moved %-46s %v", p, after[p])
 	}
 
-	// A counted failure must have moved requests_total too, and the declared
-	// capability refusal must not have been counted as a failure.
-	if got := inv.State().Failures; got != failsAtDeclaredRefusal {
-		t.Fatalf("the failure count moved after the workload stopped: %d -> %d", failsAtDeclaredRefusal, got)
+	// A counted failure must name itself, and the mechanism must have asked at
+	// least once — both are checked while the channel is still running, so the
+	// comparison is an inequality rather than an equality: the invalidator's own
+	// goroutine keeps polling, and an equality here would be a race dressed up as
+	// an assertion. The "a declared capability refusal is NOT a failure" property
+	// has its own deterministic arm below, where the surface answers nothing but
+	// that refusal.
+	stFinal := inv.State()
+	if stFinal.Failures < 1 || stFinal.LastFailure == "" {
+		t.Fatalf("a failed attempt must be counted AND named: failures=%d last_failure=%q", stFinal.Failures, stFinal.LastFailure)
+	}
+	if stFinal.Requests < 1 {
+		t.Fatalf("requests_total=%d: the channel's own attempts are not counted", stFinal.Requests)
 	}
 
 	// --- the null-reason rule --------------------------------------------------
@@ -865,6 +870,7 @@ func censusTable() map[string]figureSpec {
 		// ---- the cache bounds -------------------------------------------------
 		"cache.max_bytes":       {kindBound, 256 << 10, "the declared byte bound (--cache-max-size)"},
 		"cache.max_entry_bytes": {kindBound, 64, "the declared per-entry cap: the bound whose refusal the census below counts"},
+		"cache.max_age_ms":      {kindBound, 3600000, "the backstop TTL one entry expires against (--cache-max-age)"},
 		"cache.max_entries":     {kindBound, 6, "the declared entry bound (BFS-031: bytes alone do not bound a directory)"},
 		"cache.max_inflight":    {kindBound, 1, "the declared staged-window width (BFS-038's reservation bound)"},
 		// ---- the cache figures that move --------------------------------------
@@ -939,6 +945,7 @@ func censusTable() map[string]figureSpec {
 		// ---- the server's own watcher figures (passthrough) -------------------
 		"invalidation.server.sampled_age_ms":         {kindAppears, 0, "how old the capability sample is"},
 		"invalidation.server.heartbeat_ms":           {kindPassthrough, fakeHeartbeatMS, "the period the server declares"},
+		"invalidation.server.max_paths_per_event":    {kindPassthrough, 4096, "the declared cap on one event's path list: a longer list is an overflow, never a partial drop"},
 		"invalidation.server.overflows_total":        {kindPassthrough, fakeOverflows, "the server's own overflow count, reported verbatim"},
 		"invalidation.server.unvouched_total":        {kindPassthrough, fakeUnvouched, "intervals the server cannot vouch for"},
 		"invalidation.server.rescans_total":          {kindPassthrough, fakeRescans, "full rescans the server performed"},
@@ -1016,6 +1023,43 @@ func TestTheAbsentHotQueueIsNullWithAReasonAndNotAZero(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), `"queue_depth":null`) {
 		t.Fatalf("the queue's depth must be JSON null (a null with a reason), not omitted and not 0: %s", raw)
+	}
+}
+
+// TestADeclaredCapabilityRefusalIsAnAnswerAndNotABackendError is the deterministic
+// half of the request accounting: a surface that refuses an op it cannot serve
+// has ANSWERED, and the record must say so. Counting that as a backend error
+// would inflate the figure with the one response that is working exactly as
+// designed — and the row is about figures that must not mislead.
+func TestADeclaredCapabilityRefusalIsAnAnswerAndNotABackendError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Header.Get("X-Bunker-Op") == "events" {
+			w.WriteHeader(http.StatusNotImplemented)
+			_, _ = io.WriteString(w, `{"ok":false,"verdict":"capability_unavailable","error":{"capability":"events","scope":"build","mode":"poll","detail":"this build does not serve the events op"}}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"ok":true,"result":{"capabilities":{"surface":"refuser","document_version":1}}}`)
+	}))
+	defer srv.Close()
+	c, err := NewClient(Options{BaseURL: srv.URL, Concurrency: 2, OpTimeout: 3 * time.Second, BindTimeout: 2 * time.Second})
+	if err != nil {
+		t.Fatalf("client: %v", err)
+	}
+	inv := NewInvalidator(c, InvalidateOptions{Mode: ModePoll, PollInterval: 20 * time.Millisecond})
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { _ = inv.Run(ctx) }()
+	if !waitFor(3*time.Second, func() bool { return inv.State().Requests > 0 }) {
+		t.Fatalf("the poll was never attempted: %+v", inv.State())
+	}
+	cancel()
+	st := inv.State()
+	if st.Requests < 1 {
+		t.Fatalf("requests_total=%d, want at least one attempt", st.Requests)
+	}
+	if st.Failures != 0 || st.LastFailure != "" {
+		t.Fatalf("a declared capability refusal is an ANSWER, not a backend error: failures=%d last_failure=%q",
+			st.Failures, st.LastFailure)
 	}
 }
 

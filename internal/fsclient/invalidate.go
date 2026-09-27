@@ -373,6 +373,11 @@ type ServerWatchState struct {
 	// was received. A sample is not the present, and the record says so.
 	SampledAgeMS *int64 `json:"sampled_age_ms"`
 	HeartbeatMS  *int64 `json:"heartbeat_ms,omitempty"`
+	// MaxPathsPerEvent is the declared cap on one event's path list — a bound the
+	// invalidation path RELIES ON, because a longer list is treated as an
+	// overflow (drop everything and re-snapshot) rather than a partial drop. It
+	// is reported because a rule whose bound is invisible cannot be audited.
+	MaxPathsPerEvent *int64 `json:"max_paths_per_event,omitempty"`
 	// Coverage — what the watch set actually covers, and what it does not.
 	DirectoriesDesired int    `json:"directories_desired"`
 	DirectoriesWatched int    `json:"directories_watched"`
@@ -653,6 +658,10 @@ func serverWatchState(w *CapabilityWatch, age time.Duration) *ServerWatchState {
 	if w.HeartbeatMS > 0 {
 		hb := int64(w.HeartbeatMS)
 		out.HeartbeatMS = &hb
+	}
+	if w.MaxPaths > 0 {
+		mp := int64(w.MaxPaths)
+		out.MaxPathsPerEvent = &mp
 	}
 	if w.Liveness != nil {
 		v, s := w.Liveness.Vouched, w.Liveness.Stalled

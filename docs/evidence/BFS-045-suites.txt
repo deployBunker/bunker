@@ -1,0 +1,46 @@
+BFS-045 — the suites the change touches, and the whole repo, on this commit.
+worktree HEAD 4c49332  run 2026-09-27T14:52:21Z
+
+$ go vet ./...
+vet rc=0
+
+$ gofmt -l internal/ cmd/ probes/
+gofmt rc=0 (no output above = clean)
+
+$ go test ./... -count=1
+ok  	github.com/deployBunker/bunker/cmd/bunker	0.038s
+ok  	github.com/deployBunker/bunker/cmd/bunkerd	0.130s
+?   	github.com/deployBunker/bunker/cmd/docs-drift	[no test files]
+ok  	github.com/deployBunker/bunker/internal/agent	52.716s
+ok  	github.com/deployBunker/bunker/internal/apikey	0.006s
+ok  	github.com/deployBunker/bunker/internal/audit	3.298s
+ok  	github.com/deployBunker/bunker/internal/auth	0.401s
+ok  	github.com/deployBunker/bunker/internal/cli	24.657s
+ok  	github.com/deployBunker/bunker/internal/config	0.055s
+?   	github.com/deployBunker/bunker/internal/davserve	[no test files]
+ok  	github.com/deployBunker/bunker/internal/docscheck	3.784s
+ok  	github.com/deployBunker/bunker/internal/fsclient	7.530s
+ok  	github.com/deployBunker/bunker/internal/fsmount	0.174s
+ok  	github.com/deployBunker/bunker/internal/hermes	19.395s
+ok  	github.com/deployBunker/bunker/internal/hilo	0.013s
+ok  	github.com/deployBunker/bunker/internal/hostsetup	1.860s
+ok  	github.com/deployBunker/bunker/internal/imagespec	0.021s
+ok  	github.com/deployBunker/bunker/internal/mountdriver	0.012s
+ok  	github.com/deployBunker/bunker/internal/registry	13.203s
+ok  	github.com/deployBunker/bunker/internal/releasecheck	0.194s
+ok  	github.com/deployBunker/bunker/internal/resource	0.011s
+ok  	github.com/deployBunker/bunker/internal/server	11.081s
+ok  	github.com/deployBunker/bunker/internal/server/webdav	25.136s
+ok  	github.com/deployBunker/bunker/internal/sshsig	0.003s
+ok  	github.com/deployBunker/bunker/internal/systemd	0.004s
+ok  	github.com/deployBunker/bunker/internal/tailscale	0.075s
+ok  	github.com/deployBunker/bunker/internal/tlsutil	0.008s
+ok  	github.com/deployBunker/bunker/internal/tunnel	21.316s
+ok  	github.com/deployBunker/bunker/internal/version	0.004s
+?   	github.com/deployBunker/bunker/probes/bfs025-truncated-read	[no test files]
+?   	github.com/deployBunker/bunker/probes/davserve	[no test files]
+?   	github.com/deployBunker/bunker/probes/h3client	[no test files]
+ok  	github.com/deployBunker/bunker/probes/webdav-battery	0.057s
+?   	github.com/deployBunker/bunker/proto/bunker/v1	[no test files]
+?   	github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect	[no test files]
+go test rc=0

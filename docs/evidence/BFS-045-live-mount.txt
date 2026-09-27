@@ -1,0 +1,87 @@
+BFS-045 live-mount probe — real FUSE mount, the real read path, du as the
+independent measurement. worktree HEAD 4c49332
+run: 2026-09-27T14:51:34Z
+
+
+== fixture
+   tree        : /tmp/bfs045-live-LAGmGE/tree (small.txt=49 B, big.bin=4000 B)
+   cache home  : /tmp/bfs045-live-LAGmGE/cache (a temp dir: the real user cache is untouched)
+   tools       : go version go1.26.5 linux/amd64
+
+== 1. build and start the landed surface (davserve: the real handler, no agent lifecycle)
+   PASS  surface serving at http://127.0.0.1:35155/dav (pid 2897450)
+
+== 2. mount with --cache-max-entry-bytes 64 (so a normal read IS over the cap)
+   PASS  mounted at /tmp/bfs045-live-LAGmGE/mnt (pid 2897480) — /dev/fuse is real, this is the live read path
+
+== 3. read a file the per-entry cap REFUSES, and one it accepts
+   PASS  the over-cap read SUCCEEDED and served the whole file (4000 bytes): the cap decides what is CACHED, never what is served
+   PASS  the under-cap read served the whole file (49 bytes)
+
+== 4. the status document the mount keeps fresh
+   reported cache block:
+     {"max_bytes":8388608,"blobs_bytes":0,"index_bytes":26,"used_bytes":26,"entries":0,"blobs":0,"evictions_total":0,"bypass_events":0,"oversize_bypasses":1,"pinned_blobs":0,"max_entries":16384,"max_entry_bytes":64,"max_age_ms":3600000,"in_flight_bytes":0,"reserved_bytes":26,"staged_blobs":0,"max_inflight":2,"staged_committed_total":0,"staged_aborted_total":0,"staged_no_room_total":0,"staged_no_slot_total":0,"hits":0,"misses":0,"staged_started_total":0,"bypass_reasons":{"cache_disabled":0,"insert_over_entry_cap":0,"no_room":0,"over_entry_cap":1},"dir_bytes":4350,"dir_bytes_by_class":{"blobs":0,"conflicts":0,"index":26,"orphan":0,"other":0,"staged":0,"status":4324},"dir_measured_age_ms":3000,"dir_unaccounted_bytes":4324}
+   PASS  LIVE: oversize_bypasses=1 (the read path moved it — BFS-032's counter is reachable)
+   PASS  LIVE: bypass_reasons.over_entry_cap=1 (counted BY REASON, at the site that refused)
+   PASS  the bound is reported: max_entry_bytes=64 (the cap the refusal was counted against)
+   PASS  max_bytes=8388608 (the byte bound, reported)
+   independent measurement: du -sb /tmp/bfs045-live-LAGmGE/cache/bunker/fs/254fb722d783 = 4238
+   reported                : dir_bytes=4350 (sample age 3000 ms), used_bytes=26, reserved_bytes=26
+   PASS  the reported dir_bytes and du agree within 8192 B (delta=112)
+   PASS  both accounts are inside the bound: used=26 reserved=26 <= max=8388608
+
+== 5. the invalidation record: every bound visible, a null explained
+     {"mode":"poll","mechanism":"events","channel_available":true,"seq":1,"requests_total":2,"failures_total":0,"content_age":{"age_ms":995,"evidence_from":"observation","observations_total":3,"bound_ms":4000,"bound_source":"poll_interval","within_bound":true},"server":"absent","server_reason":null,"liveness":null,"liveness_reason":"disabled: this mount never attempted the pushed channel (mode=poll), so it has no heartbeat to report; the poll mechanism's currency is reported in content_age","refresh":{"started_total":0,"in_flight":0,"max_inflight":2,"committed_total":0,"aborted_total":0,"refused_no_slot_total":0,"refused_no_room_total":0,"queue_depth":null,"queue_max_depth":null,"queue_refused_full_total":null,"skipped_oversize_total":null,"absent_reason":"not_published: the hot-refresh queue (BFS-037) is not in this build, so its depth, its bound and its refusals are not countable; the staged window below is the refresh accounting that does exist"}}
+   PASS  the mechanism in force is named: events (never an implied watcher)
+   PASS  THE CONTENT-AGE BOUND IS REPORTED: age_ms=995 bound_ms=4000 (observation) within_bound=true
+   PASS  the invalidation path's own requests are counted: requests_total=2 failures_total=0
+   PASS  the absent hot-refresh queue is null with a reason: null — not_published: the hot-refresh queue (BFS-037) is not in this build, so its depth, its bound and its refusals are not countable; the staged window below is the refresh accounting that does exist
+
+== 6. every client-authored reason on the live document opens with a vocabulary class
+   PASS  reason: disabled: this mount never attempted the pushed channel (mode=poll), so it has no heartbeat to report; the poll mechanism's currency is reported in content_age
+   PASS  reason: not_published: the hot-refresh queue (BFS-037) is not in this build, so its depth, its bound and its refusals are not countable; the staged window below is the refresh accounting that does exist
+
+== 6b. the SAME document as a person reads it (bunker fs status)
+     mount        : 254fb722d783
+     endpoint     : http://127.0.0.1:35155/dav
+     mountpoint   : /tmp/bfs045-live-LAGmGE/mnt
+     mode         : poll (mechanism=events)
+     invalidation : mode=poll seq=1 poll_interval_ms=2000 last_event_age_ms=996
+     resume       : seq=1 (the cursor this view was minted at)
+     content age  : age_ms=995 evidence_from=observation observations=3 bound_ms=4000 (poll_interval) within_bound=true
+     server watch : state=absent backend=inotify watched=0/0 sampled_age_ms=3007 max_paths_per_event=4096
+     server counts: overflows=0 unvouched=0 rescans=0 install_failures=0 backend_errors=0 heartbeats=0 loop_ticks=0
+       counts why : no watcher has run on this target, so no counter has ever moved
+     liveness     : - (no pushed channel on this mount)
+       why        : disabled: this mount never attempted the pushed channel (mode=poll), so it has no heartbeat to report; the poll mechanism's currency is reported in content_age
+     requests     : requests_total=2 failures_total=0
+     refresh      : started=0 in_flight=0/2 committed=0 aborted=0 refused_no_slot=0 refused_no_room=0
+     refresh queue: - (no figure to report)
+       why        : not_published: the hot-refresh queue (BFS-037) is not in this build, so its depth, its bound and its refusals are not countable; the staged window below is the refresh accounting that does exist
+     cache        : used_bytes=26 max_bytes=8388608 (blobs=0 index=26) entries=0 blobs=0
+     cache bounds : max_entry_bytes=64 max_age_ms=3600000 entries=0/16384 in_flight_bytes=0 reserved_bytes=26 staged_blobs=0/2
+     cache dir    : dir_bytes=4350 unaccounted_bytes=4324 measured_age_ms=3000 by_class=blobs=0 conflicts=0 index=26 orphan=0 other=0 staged=0 status=4324
+     cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=1 pinned=0
+     cache bypass : over_entry_cap=1 insert_over_entry_cap=0 no_room=0 cache_disabled=0
+     conflicts    : refusals_total=0
+     snapshot     : source=snapshot-op nodes=3 calls=1 truncated=false
+     transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=10 proto=HTTP/1.1
+     write buffer : handles=0 bytes=0
+     read bound   : refusals_total=0 corrections_total=0
+     write shape  : refusals_total=0
+     refusal holds: held_total=0 outstanding=0 evicted_total=0
+
+== 7. an out-of-band edit on the served tree moves the channel's figures
+   seq            : 1 -> 2
+   requests_total : 2 -> 5
+   observations   : 3 -> 7
+   PASS  requests_total moved (2 -> 5): the channel is asking, and it is counted
+   PASS  observations_total moved (3 -> 7): the client re-established evidence
+   PASS  the edit is visible through the mount: edited on the agent at 1790520698
+
+== VERDICT
+LIVE-PASS: the live read path moves the counters, the reported figures agree
+with an independent measurement, every bound is visible, and every null
+carries a reason. /tmp/bfs045-live-LAGmGE
+artifacts left in /tmp/bfs045-live-LAGmGE (nothing is deleted: a probe that leaves its
+evidence behind can be re-read; the directory is a mktemp -d)

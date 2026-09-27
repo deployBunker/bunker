@@ -763,7 +763,13 @@ func printStatus(w io.Writer, st *fsclient.Status) {
 		if sv.SampledAgeMS != nil {
 			fmt.Fprintf(w, " sampled_age_ms=%d", *sv.SampledAgeMS)
 		}
+		if sv.MaxPathsPerEvent != nil {
+			fmt.Fprintf(w, " max_paths_per_event=%d", *sv.MaxPathsPerEvent)
+		}
 		fmt.Fprintln(w)
+		if sv.Detail != "" {
+			fmt.Fprintf(w, "  detail     : %s\n", sv.Detail)
+		}
 		fmt.Fprintf(w, "server counts: overflows=%d unvouched=%d rescans=%d install_failures=%d backend_errors=%d heartbeats=%d loop_ticks=%d",
 			sv.OverflowsTotal, sv.UnvouchedTotal, sv.RescansTotal, sv.InstallFailuresTotal, sv.BackendErrorsTotal, sv.HeartbeatsTotal, sv.EventLoopTicks)
 		if sv.DroppedEvents != nil {
@@ -810,8 +816,8 @@ func printStatus(w io.Writer, st *fsclient.Status) {
 		st.Cache.UsedBytes, st.Cache.MaxBytes, st.Cache.BlobsBytes, st.Cache.IndexBytes, st.Cache.Entries, st.Cache.Blobs)
 	// The two accounts, separately (BFS-038's F-1 split), and the entry bound —
 	// a bound the owner cannot see is not a bound.
-	fmt.Fprintf(w, "cache bounds : max_entry_bytes=%d entries=%d/%d in_flight_bytes=%d reserved_bytes=%d staged_blobs=%d/%d\n",
-		st.Cache.MaxEntryBytes, st.Cache.Entries, st.Cache.MaxEntries, st.Cache.InFlightBytes,
+	fmt.Fprintf(w, "cache bounds : max_entry_bytes=%d max_age_ms=%d entries=%d/%d in_flight_bytes=%d reserved_bytes=%d staged_blobs=%d/%d\n",
+		st.Cache.MaxEntryBytes, st.Cache.MaxAgeMS, st.Cache.Entries, st.Cache.MaxEntries, st.Cache.InFlightBytes,
 		st.Cache.ReservedBytes, st.Cache.StagedBlobs, st.Cache.MaxInFlight)
 	// The independent measurement: what is REALLY in the directory, and the delta
 	// the published figure does not count (BFS-031's shape, made visible).
