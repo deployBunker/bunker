@@ -1,0 +1,287 @@
+### the mount surface, as the binary renders it
+### binary = /home/kara/worktrees/bunker-BFS-044/bin/bunker
+bunker 0.1.4
+  commit:     a9f84bb
+
+--- bunker fs mount --help ---
+Mount the bunkerd WebDAV surface at <mountpoint> using the bunker-fs FUSE client.
+
+The mountpoint is created private (0700) and an existing wider mode is tightened;
+--allow-other is STRIPPED (accepted and ignored), never honoured or refused.
+
+The cache is bounded and content-addressed: 256 MiB by default, evicted
+least-recently-HIT first at insert, and BYPASSED (read straight through, nothing
+cached) when nothing can be evicted — a read never fails for a local-capacity
+reason. The kernel keeps no file data (FOPEN_DIRECT_IO + ExplicitDataCacheControl),
+so the cache figure `bunker fs status` reports is the only local copy.
+
+The mountpoint stays mounted when the transport dies: every operation fails loudly
+within the 30 s deadline with a named cause, and recovery is one command.
+
+Usage:
+  bunker fs mount <mountpoint> [flags]
+
+Flags:
+      --allow-other                        requested and STRIPPED: the mountpoint stays private 0700
+      --cache-dir string                   override the cache directory (default $XDG_CACHE_HOME/bunker/fs/<mount-id>)
+      --cache-max-age duration             backstop TTL for a cache entry (default 1h0m0s)
+      --cache-max-entries int              the ENTRY bound of the cache directory (a byte bound alone does not bound a directory: BFS-031) (default 16384)
+      --cache-max-entry-bytes int          a single file larger than this is never cached (default 67108864)
+      --cache-max-inflight int             how many staged (unpublished) blobs may hold bytes at once (default 2)
+      --cache-max-size int                 hard cap on cache bytes on this client (0 disables the cache) (default 268435456)
+      --concurrency int                    maximum requests in flight (the measured lever: 25x concurrency beat MaxConnsPerHost=1 by 25x) (default 25)
+  -h, --help                               help for mount
+      --hot.backoff-base-ms int            first retry delay in milliseconds (P-10) (default 250)
+      --hot.backoff-factor float           backoff growth factor (P-10) (default 2)
+      --hot.backoff-jitter string          full|none: full jitter by default, so N mounts cannot return together (P-10) (default "full")
+      --hot.backoff-max-ms int             retry delay cap in milliseconds; may not exceed --op-timeout's 30s (P-10) (default 30000)
+      --hot.decay float                    (0,1]: the decay factor applied per step; 1.0 means no decay (H-3) (default 0.9)
+      --hot.decay-step duration            the interval one --hot.decay step covers (H-3) (default 5m0s)
+      --hot.edit-weight float              popularity weight of an EDIT touch; must exceed the read weight (H-2) (default 8)
+      --hot.enabled                        arm the hot-file refresh (performance-only; correctness never depends on it)
+      --hot.flush-interval duration        how often a dirty tracker is persisted (H-21) (default 30s)
+      --hot.max-concurrent-refresh int     maximum concurrent refreshes; clamped to the pool share and reported (Q-7/P-4) (default 2)
+      --hot.max-entries int                the tracker's ENTRY bound (H-7) (default 4096)
+      --hot.max-file-bytes int             the size rule: a file at or below this is refreshable, above it is never pulled (S-1, inclusive per S-2) (default 8388608)
+      --hot.max-tracker-bytes int          the tracker's BYTE bound; both are enforced (H-8) (default 1048576)
+      --hot.pool-pressure-ticks int        consecutive ticks of foreground slot starvation before the hot path stops itself (P-19) (default 5)
+      --hot.pool-share string              the share of the client's pool a refresh may hold, as a fraction (P-3) (default "1/8")
+      --hot.queue-depth int                refresh queue depth; when full the LOWEST-SCORING item is displaced, never the oldest (Q-1/Q-3) (default 256)
+      --hot.queue-max-wait duration        a queued item older than this is dropped (Q-6) (default 5m0s)
+      --hot.reacquire-window duration      how long a yielded refresh may wait for its slot back (P-12) (default 30s)
+      --hot.read-touch-window duration     one read touch per path per window, so chunked reads do not inflate a score (H-9) (default 5s)
+      --hot.read-weight float              popularity weight of a READ touch (H-1) (default 1)
+      --hot.refresh-deadline duration      an upper bound on one refresh's life; it is abandoned at this deadline (P-11) (default 10s)
+      --hot.score-ceiling float            score above which every score is halved in one pass (H-6) (default 10000)
+      --hot.stop-deadline duration         the time within which a stop must be fully in force (Q-12) (default 1.5s)
+      --hot.tick-interval duration         the manager's tick: yield check, expiry sweep and re-arm check (Q-14) (default 1s)
+      --hot.yield-after duration           a refresh holding a slot releases it if a foreground request has waited this long (P-7) (default 250ms)
+      --invalidate-idle-timeout duration   how long the pushed channel may be silent before the mount falls back to the poll (0 derives it from the heartbeat period the server declares)
+      --invalidation string                auto|push|poll (auto prefers the pushed channel and DECLARES a downgrade) (default "auto")
+      --max-conns-per-host int             transport connection cap (0 follows --concurrency; 1 reproduces the serial arm)
+      --no-cache                           disable the cache (same as --cache-max-size 0)
+      --no-snapshot                        disable the one-call node-tree snapshot (every directory read falls back to PROPFIND)
+      --on-conflict string                 refuse|overwrite-if-unchanged (default "refuse")
+      --password string                    HTTP Basic password
+      --poll-interval duration             declared poll period (default 2s)
+      --url string                         WebDAV surface root, e.g. http://127.0.0.1:18481/dav (required)
+      --user string                        HTTP Basic username
+      --verbose                            log the client's decisions to stderr
+      --write-buffer-max-bytes int         bound on one open write handle's local buffer (default 268435456)
+
+Global Flags:
+      --config string          CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+      --daemon-config string   DAEMON config file for the local-file command defaults (audit --path, registry compact --path). Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. An explicit --path on those commands always wins
+
+--- the BFS-044 flags with their defaults (from --help) ---
+  --cache-max-entries int              the ENTRY bound of the cache directory (a byte bound alone does not bound a directory: BFS-031) (default 16384)
+  --cache-max-inflight int             how many staged (unpublished) blobs may hold bytes at once (default 2)
+  --hot.backoff-base-ms int            first retry delay in milliseconds (P-10) (default 250)
+  --hot.backoff-factor float           backoff growth factor (P-10) (default 2)
+  --hot.backoff-jitter string          full|none: full jitter by default, so N mounts cannot return together (P-10) (default "full")
+  --hot.backoff-max-ms int             retry delay cap in milliseconds; may not exceed --op-timeout's 30s (P-10) (default 30000)
+  --hot.decay float                    (0,1]: the decay factor applied per step; 1.0 means no decay (H-3) (default 0.9)
+  --hot.decay-step duration            the interval one --hot.decay step covers (H-3) (default 5m0s)
+  --hot.edit-weight float              popularity weight of an EDIT touch; must exceed the read weight (H-2) (default 8)
+  --hot.enabled                        arm the hot-file refresh (performance-only; correctness never depends on it)
+  --hot.flush-interval duration        how often a dirty tracker is persisted (H-21) (default 30s)
+  --hot.max-concurrent-refresh int     maximum concurrent refreshes; clamped to the pool share and reported (Q-7/P-4) (default 2)
+  --hot.max-entries int                the tracker's ENTRY bound (H-7) (default 4096)
+  --hot.max-file-bytes int             the size rule: a file at or below this is refreshable, above it is never pulled (S-1, inclusive per S-2) (default 8388608)
+  --hot.max-tracker-bytes int          the tracker's BYTE bound; both are enforced (H-8) (default 1048576)
+  --hot.pool-pressure-ticks int        consecutive ticks of foreground slot starvation before the hot path stops itself (P-19) (default 5)
+  --hot.pool-share string              the share of the client's pool a refresh may hold, as a fraction (P-3) (default "1/8")
+  --hot.queue-depth int                refresh queue depth; when full the LOWEST-SCORING item is displaced, never the oldest (Q-1/Q-3) (default 256)
+  --hot.queue-max-wait duration        a queued item older than this is dropped (Q-6) (default 5m0s)
+  --hot.reacquire-window duration      how long a yielded refresh may wait for its slot back (P-12) (default 30s)
+  --hot.read-touch-window duration     one read touch per path per window, so chunked reads do not inflate a score (H-9) (default 5s)
+  --hot.read-weight float              popularity weight of a READ touch (H-1) (default 1)
+  --hot.refresh-deadline duration      an upper bound on one refresh's life; it is abandoned at this deadline (P-11) (default 10s)
+  --hot.score-ceiling float            score above which every score is halved in one pass (H-6) (default 10000)
+  --hot.stop-deadline duration         the time within which a stop must be fully in force (Q-12) (default 1.5s)
+  --hot.tick-interval duration         the manager's tick: yield check, expiry sweep and re-arm check (Q-14) (default 1s)
+  --hot.yield-after duration           a refresh holding a slot releases it if a foreground request has waited this long (P-7) (default 250ms)
+  --invalidate-idle-timeout duration   how long the pushed channel may be silent before the mount falls back to the poll (0 derives it from the heartbeat period the server declares)
+
+--- REFUSAL TRANSCRIPT: every invalid value this surface names, driven live ---
+
+### --hot.decay out of range
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.decay 2.0
+exit=1
+bunker: bunker-fs: --hot.decay must be in (0, 1] (got 2); SPEC-hot-file-policy H-3 pins 0.9. 1.0 is legal and is the NO-DECAY control arm (AC-1)
+CLASSIFIED: refused at configuration time, before any request
+
+### --hot.decay negative
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.decay -0.5
+exit=1
+bunker: bunker-fs: --hot.decay must be in (0, 1] (got -0.5); SPEC-hot-file-policy H-3 pins 0.9. 1.0 is legal and is the NO-DECAY control arm (AC-1)
+CLASSIFIED: refused at configuration time, before any request
+
+### --hot.read-weight zero
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.read-weight 0
+exit=1
+bunker: bunker-fs: --hot.read-weight must be a positive finite number (got 0); SPEC-hot-file-policy H-1 pins 1 — a zero weight makes a touch a pure decay step, which is a different feature (Appendix A.1)
+CLASSIFIED: refused at configuration time, before any request
+
+### --hot.enabled + edit weight not above read weight (H-2)
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.enabled --hot.edit-weight 1 --hot.read-weight 8
+exit=1
+bunker: bunker-fs: --hot.edit-weight (1) must be greater than --hot.read-weight (8); SPEC-hot-file-policy H-2's whole argument is that an edit is the STRONGER signal
+CLASSIFIED: refused at configuration time, before any request
+
+### --hot.max-entries zero
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.max-entries 0
+exit=1
+bunker: bunker-fs: --hot.max-entries must be >= 1 (got 0); SPEC-hot-file-policy H-7 pins 4096 — the tracker is bounded in ENTRIES as well as bytes and both are enforced
+CLASSIFIED: refused at configuration time, before any request
+
+### --hot.max-tracker-bytes zero
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.max-tracker-bytes 0
+exit=1
+bunker: bunker-fs: --hot.max-tracker-bytes must be >= 1 (got 0); SPEC-hot-file-policy H-8 pins 1048576
+CLASSIFIED: refused at configuration time, before any request
+
+### --hot.max-file-bytes zero
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.max-file-bytes 0
+exit=1
+bunker: bunker-fs: --hot.max-file-bytes must be >= 1 (got 0); SPEC-hot-file-policy S-1 pins 8388608. A size rule of zero is not "off" — use --hot.enabled=false, so the state is named rather than inferred from a bound
+CLASSIFIED: refused at configuration time, before any request
+
+### --hot.queue-depth zero
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.queue-depth 0
+exit=1
+bunker: bunker-fs: --hot.queue-depth must be >= 1 (got 0); SPEC-hot-file-policy Q-1 pins 256
+CLASSIFIED: refused at configuration time, before any request
+
+### --hot.max-concurrent-refresh 0
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.max-concurrent-refresh 0
+exit=1
+bunker: bunker-fs: --hot.max-concurrent-refresh must be >= 1 (got 0); SPEC-hot-file-policy Q-7 pins 2. Above the pool share the value is CLAMPED and reported (P-4), never refused — but zero refreshes is not a width
+CLASSIFIED: refused at configuration time, before any request
+
+### --hot.pool-share above one
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.pool-share 3/2
+exit=1
+bunker: bunker-fs: --hot.pool-share must not exceed 1 (got 3/2); SPEC-hot-file-policy P-3 makes the share a FRACTION of the client's own request pool, and refreshes never take a slot from the foreground semaphore
+CLASSIFIED: refused at configuration time, before any request
+
+### --hot.pool-share zero numerator
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.pool-share 0/8
+exit=1
+bunker: bunker-fs: --hot.pool-share numerator must be >= 1 (got 0/8); SPEC-hot-file-policy P-3's floor is max(1, floor(Concurrency × share)), so a zero share is not expressible — use --hot.enabled=false to run without the hot path
+CLASSIFIED: refused at configuration time, before any request
+
+### --hot.pool-share unparseable
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.pool-share eighth
+exit=1
+bunker: bunker-fs: --hot.pool-share wants a fraction like "1/8" (got "eighth")
+CLASSIFIED: refused at configuration time, before any request
+
+### --hot.backoff-base-ms zero
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.backoff-base-ms 0
+exit=1
+bunker: bunker-fs: --hot.backoff-base-ms must be > 0 (got 0s); SPEC-hot-file-policy P-10 pins 250ms
+CLASSIFIED: refused at configuration time, before any request
+
+### --hot.backoff-max-ms below base
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.backoff-max-ms 10
+exit=1
+bunker: bunker-fs: bind refused (ENOTCONN, cause unreachable_connect): OPTIONS /dav/: errno=ENOTCONN cause=unreachable_connect: Options "http://127.0.0.1:1/dav/": dial tcp 127.0.0.1:1: connect: connection refused
+CLASSIFIED: NOT refused at configuration time — the run reached the transport (a relation that is REPORTED, not enforced, on a policy the feature does not run)
+
+### --hot.backoff-factor below one
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.backoff-factor 0.5
+exit=1
+bunker: bunker-fs: --hot.backoff-factor must be >= 1 (got 0.5); SPEC-hot-file-policy P-10 pins 2 (exponential)
+CLASSIFIED: refused at configuration time, before any request
+
+### --hot.backoff-jitter unknown
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.backoff-jitter sometimes
+exit=1
+bunker: bunker-fs: --hot.backoff-jitter must be full or none (got "sometimes"); SPEC-hot-file-policy P-10 pins full (BFS-041's H-8 records the same defect one mechanism over: a jitterless backoff returns every client together)
+CLASSIFIED: refused at configuration time, before any request
+
+### --hot.tick-interval zero
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.tick-interval 0
+exit=1
+bunker: bunker-fs: --hot.tick-interval must be > 0 (got 0s); SPEC-hot-file-policy Q-14 pins 1s
+CLASSIFIED: refused at configuration time, before any request
+
+### --hot.pool-pressure-ticks zero
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.pool-pressure-ticks 0
+exit=1
+bunker: bunker-fs: --hot.pool-pressure-ticks must be >= 1 (got 0); SPEC-hot-file-policy P-19 pins 5
+CLASSIFIED: refused at configuration time, before any request
+
+### --cache-max-entries negative
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --cache-max-entries -1
+exit=1
+bunker: bunker-fs: --cache-max-entries must be >= 1 (got -1); 0 means the default 16384. A byte bound alone does not bound a directory (BFS-031), so there is no value of this flag that turns the entry bound off
+CLASSIFIED: refused at configuration time, before any request
+
+### --cache-max-inflight negative
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --cache-max-inflight -1
+exit=1
+bunker: bunker-fs: --cache-max-inflight must be >= 1 (got -1); 0 means the default 2, and the width of the staged-refresh window is what makes its byte reservation a bound (BFS-038)
+CLASSIFIED: refused at configuration time, before any request
+
+### --invalidate-idle-timeout negative
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --invalidate-idle-timeout -5s
+exit=1
+bunker: bunker-fs: --invalidate-idle-timeout must be >= 0 (got -5s); 0 means DERIVE the silence deadline from the period the server's capability document declares (BFS-041 §8.1: three missed heartbeats), and a negative deadline is not a bound
+CLASSIFIED: refused at configuration time, before any request
+
+### --concurrency negative
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --concurrency -2
+exit=1
+bunker: bunker-fs: --concurrency must be >= 1 (got -2); 0 means the default 25, and a negative pool is not a pool
+CLASSIFIED: refused at configuration time, before any request
+
+### --poll-interval negative
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --poll-interval -1s
+exit=1
+bunker: bunker-fs: --poll-interval must be > 0 (got -1s); 0 means the declared default 2s, and a negative period would make the poll's own cadence a lie
+CLASSIFIED: refused at configuration time, before any request
+
+### ARMED relations: the same shape of value, on a policy the feature actually runs
+
+### --hot.enabled + backoff cap above the op deadline (A.11)
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.enabled --hot.backoff-max-ms 45000
+exit=1
+bunker: bunker-fs: --hot.backoff-max-ms (45s) exceeds the client's operation deadline (30s); SPEC-hot-file-policy P-10/Appendix A.11: a speculative fetch must never back off longer than the foreground would wait for the same bytes, or the hot path is slower than the cold path
+CLASSIFIED: refused at configuration time, before any request
+
+### --hot.enabled + refresh deadline above the op deadline (A.8)
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.enabled --hot.refresh-deadline 45s
+exit=1
+bunker: bunker-fs: --hot.refresh-deadline (45s) exceeds the client's operation deadline (30s); SPEC-hot-file-policy P-11/Appendix A.8: a speculative refresh is never worth a full foreground operation's deadline — abandon it instead
+CLASSIFIED: refused at configuration time, before any request
+
+### --hot.enabled + stop deadline below tick+yield (A.6)
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.enabled --hot.stop-deadline 100ms
+exit=1
+bunker: bunker-fs: --hot.stop-deadline (100ms) is below one manager tick plus one yield quantum (1s + 250ms = 1.25s); SPEC-hot-file-policy Q-12/Appendix A.6 derives the deadline from that relation, so a smaller value would make a stop unable to complete inside its own deadline
+CLASSIFIED: refused at configuration time, before any request
+
+### --hot.enabled + backoff cap below its own base (A.11)
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.enabled --hot.backoff-max-ms 10
+exit=1
+bunker: bunker-fs: --hot.backoff-max-ms (10ms) must not be below --hot.backoff-base-ms (250ms): SPEC-hot-file-policy P-10/Appendix A.11 states the ladder as a base, a factor and a cap, so a cap below the first delay is not a cap
+CLASSIFIED: refused at configuration time, before any request
+
+### --hot.enabled + size rule above the per-entry cap (S-10)
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.enabled --hot.max-file-bytes 999999999
+exit=1
+bunker: bunker-fs: --hot.max-file-bytes (999999999) exceeds the cache's per-entry cap (--cache-max-entry-bytes 67108864); SPEC-hot-file-policy S-10 refuses the mount here, because the refreshed bytes could never be stored (the hot path stays inert either way — S-11, P-0 clause 1)
+CLASSIFIED: refused at configuration time, before any request
+
+### --hot.enabled + size rule above the cache bound (S-9)
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --hot.enabled --cache-max-size 1048576 --cache-max-entry-bytes 4194304 --hot.max-file-bytes 2097152
+exit=1
+bunker: bunker-fs: --hot.max-file-bytes (2097152) exceeds the cache bound (--cache-max-size 1048576); SPEC-hot-file-policy S-9 refuses the mount naming both numbers
+CLASSIFIED: refused at configuration time, before any request
+
+### REPORTED, not refused: a pre-existing flag combination with the hot path OFF (S-11)
+$ bunker fs mount <mp> --url http://127.0.0.1:1/dav --cache-max-entry-bytes 1024
+exit=1 (the TRANSPORT refuses; the configuration did not)
+bunker: bunker-fs: bind refused (ENOTCONN, cause unreachable_connect): OPTIONS /dav/: errno=ENOTCONN cause=unreachable_connect: Options "http://127.0.0.1:1/dav/": dial tcp 127.0.0.1:1: connect: connection refused

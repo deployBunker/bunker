@@ -37,10 +37,26 @@ import (
 const (
 	DefaultCacheMaxBytes      int64 = fsclient.DefaultCacheMaxBytes
 	DefaultCacheMaxEntryBytes int64 = fsclient.DefaultCacheMaxEntryBytes
-	DefaultConcurrency              = fsclient.DefaultConcurrency
-	DefaultWriteBufferMax     int64 = fsclient.DefaultCacheMaxBytes
-	DefaultCacheMaxAge              = fsclient.DefaultCacheMaxAge
-	DefaultPollInterval             = fsclient.DefaultPollInterval
+	// DefaultCacheMaxEntries is the cache directory's ENTRY bound. It is a
+	// SEPARATE bound from the byte one because a byte bound alone does not bound
+	// a directory (BFS-031: at a 1 KiB byte bound the directory reached
+	// 30,689 B), and because a tree of tiny files reaches the entry bound while
+	// the byte figure still reads comfortably low. BFS-038 landed the
+	// enforcement; BFS-044 exposes it as `--cache-max-entries` and validates it.
+	DefaultCacheMaxEntries        = fsclient.DefaultCacheMaxEntries
+	DefaultCacheMaxInFlight       = fsclient.DefaultCacheMaxInFlight
+	DefaultConcurrency            = fsclient.DefaultConcurrency
+	DefaultWriteBufferMax   int64 = fsclient.DefaultCacheMaxBytes
+	DefaultCacheMaxAge            = fsclient.DefaultCacheMaxAge
+	DefaultPollInterval           = fsclient.DefaultPollInterval
+	// DefaultInvalidateIdleTimeout is ZERO, and zero is not "unset" here: it is
+	// the Invalidator's own documented sentinel for DERIVE the silence deadline
+	// from the period the server's capability document declares — three missed
+	// heartbeats of it, which is DefaultIdleTimeout when the document names
+	// none (BFS-041 §8.1/§8.3). A non-zero value is the mount's own declared
+	// bound. Either way the ARMED deadline is reported in the status document's
+	// invalidation block, so the derived value is visible rather than inferred.
+	DefaultInvalidateIdleTimeout time.Duration = 0
 )
 
 // Options configures one mount. Every field is this driver's OWN option set:
@@ -61,6 +77,14 @@ type Options struct {
 	CacheMaxBytes int64
 	// CacheMaxEntryBytes caps one cached file.
 	CacheMaxEntryBytes int64
+	// CacheMaxEntries is the cache directory's ENTRY bound — the second bound,
+	// because a byte bound alone does not bound a directory (BFS-031). 0 means
+	// DefaultCacheMaxEntries.
+	CacheMaxEntries int
+	// CacheMaxInFlight is how many staged (unpublished) blobs may hold bytes at
+	// once, which is what makes the in-flight reservation a bound rather than a
+	// hope (BFS-038). 0 means DefaultCacheMaxInFlight.
+	CacheMaxInFlight int
 	// CacheMaxAge is the backstop TTL.
 	CacheMaxAge time.Duration
 	// Concurrency is the maximum number of requests in flight. It is THE lever:
@@ -77,8 +101,21 @@ type Options struct {
 	Invalidation string
 	// PollInterval is the declared poll period.
 	PollInterval time.Duration
+	// InvalidateIdleTimeout is how long the pushed channel may be silent before
+	// the mount declares it dead and falls back to the poll. ZERO — the
+	// default — DERIVES it from the server's declared heartbeat period
+	// (BFS-041 §8.1: three missed heartbeats), which is the documented contract
+	// of the invalidator's own option rather than a silent fallback, and the
+	// armed deadline is reported in the status document either way.
+	InvalidateIdleTimeout time.Duration
 	// OnConflict is refuse (default) or overwrite-if-unchanged.
 	OnConflict string
+
+	// Hot is the client-side hot-file policy (BFS-044). The zero value means
+	// "the defaults"; a PARTIALLY populated policy is refused rather than
+	// completed silently, so no knob can end up obeying a value the operator
+	// did not ask for. Every field is validated in Normalize.
+	Hot fsclient.HotPolicy
 
 	// AllowOther is the requested allow_other. It is STRIPPED, never honoured:
 	// the field exists so the CLI can say it was stripped rather than
@@ -145,14 +182,40 @@ func (o *Options) Normalize() error {
 			o.CacheMaxEntryBytes = DefaultCacheMaxEntryBytes
 		}
 	}
+	// The ENTRY bound (BFS-031/BFS-044). Zero means unset and takes the
+	// default; a negative value is refused rather than repaired, because
+	// "negative" is not a way to say "no bound": the entry bound is always in
+	// force, on the measured ground that a byte bound alone does not bound a
+	// directory.
+	if o.CacheMaxEntries < 0 {
+		return fmt.Errorf("bunker-fs: --cache-max-entries must be >= 1 (got %d); 0 means the default %d. A byte bound alone does not bound a directory (BFS-031), so there is no value of this flag that turns the entry bound off", o.CacheMaxEntries, DefaultCacheMaxEntries)
+	}
+	if o.CacheMaxEntries == 0 {
+		o.CacheMaxEntries = DefaultCacheMaxEntries
+	}
+	if o.CacheMaxInFlight < 0 {
+		return fmt.Errorf("bunker-fs: --cache-max-inflight must be >= 1 (got %d); 0 means the default %d, and the width of the staged-refresh window is what makes its byte reservation a bound (BFS-038)", o.CacheMaxInFlight, DefaultCacheMaxInFlight)
+	}
+	if o.CacheMaxInFlight == 0 {
+		o.CacheMaxInFlight = DefaultCacheMaxInFlight
+	}
 	if o.CacheMaxAge <= 0 {
 		o.CacheMaxAge = DefaultCacheMaxAge
 	}
-	if o.Concurrency <= 0 {
+	if o.Concurrency < 0 {
+		return fmt.Errorf("bunker-fs: --concurrency must be >= 1 (got %d); 0 means the default %d, and a negative pool is not a pool", o.Concurrency, DefaultConcurrency)
+	}
+	if o.Concurrency == 0 {
 		o.Concurrency = DefaultConcurrency
 	}
-	if o.PollInterval <= 0 {
+	if o.PollInterval < 0 {
+		return fmt.Errorf("bunker-fs: --poll-interval must be > 0 (got %s); 0 means the declared default %s, and a negative period would make the poll's own cadence a lie", o.PollInterval, DefaultPollInterval)
+	}
+	if o.PollInterval == 0 {
 		o.PollInterval = DefaultPollInterval
+	}
+	if o.InvalidateIdleTimeout < 0 {
+		return fmt.Errorf("bunker-fs: --invalidate-idle-timeout must be >= 0 (got %s); 0 means DERIVE the silence deadline from the period the server's capability document declares (BFS-041 §8.1: three missed heartbeats), and a negative deadline is not a bound", o.InvalidateIdleTimeout)
 	}
 	switch o.Invalidation {
 	case "", "auto":
@@ -174,6 +237,18 @@ func (o *Options) Normalize() error {
 	}
 	if o.BindTimeout <= 0 {
 		o.BindTimeout = fsclient.DefaultBindTimeout
+	}
+	// BFS-044: the hot-file policy. An ALL-ZERO policy means "no policy was
+	// configured" and takes the defaults; anything else is validated strictly,
+	// so a half-filled policy is refused instead of being completed with values
+	// the operator never wrote. The validation is done AFTER the cache bounds
+	// and the operation deadline are resolved, because the refusals are
+	// relations against exactly those numbers (S-9, S-10, A.8, A.11).
+	if o.Hot.IsZero() {
+		o.Hot = fsclient.DefaultHotPolicy()
+	}
+	if err := o.Hot.Validate(o.PolicyEnv()); err != nil {
+		return err
 	}
 	abs, err := filepath.Abs(o.Mountpoint)
 	if err != nil {
@@ -225,4 +300,63 @@ func MountDir(o Options) (string, error) {
 func AllowedOtherStripped() string {
 	return "bunker-fs: --allow-other is STRIPPED (the mountpoint stays private 0700); " +
 		"the flag is ignored rather than refused, because a private mount is strictly safer than the one requested"
+}
+
+// ---------------------------------------------------------------------------
+// BFS-044 — the effective configuration, readable at runtime.
+//
+// "A bound the owner cannot see is not a bound" (PRD §2.7), and the failure this
+// project keeps finding is a figure that is reported one way and enforced
+// another (BFS-031) or a counter that can never move (BFS-032). Both are
+// prevented the same way here: the values the mount OBEYS are computed by the
+// same code the mount uses and are written into the status document, so an
+// operator reads what is in force rather than what they think they passed.
+//
+// These methods live in the OS-neutral file on purpose: the Windows driver will
+// reuse this option set and this report verbatim, exactly as it reuses the
+// client.
+// ---------------------------------------------------------------------------
+
+// PolicyEnv is the surrounding configuration the hot policy is validated and
+// resolved against. Call it after Normalize: before then, the pool size, the op
+// deadline and the cache bounds may still be zero, and a cross-check against a
+// zero bound would be a check against nothing.
+func (o Options) PolicyEnv() fsclient.HotPolicyEnv {
+	return fsclient.HotPolicyEnv{
+		Concurrency:        o.Concurrency,
+		OpTimeout:          o.OpTimeout,
+		CacheMaxBytes:      o.CacheMaxBytes,
+		CacheMaxEntryBytes: o.CacheMaxEntryBytes,
+	}
+}
+
+// EffectiveHotPolicy resolves the configured hot-file policy into the numbers
+// the mount obeys, including the derived ones (P-4's clamp, the share's slot
+// arithmetic, the reservation ceiling, the decay half-life). It is what the
+// status document carries.
+func (o Options) EffectiveHotPolicy() fsclient.HotPolicyEffective {
+	return o.Hot.Effective(o.PolicyEnv())
+}
+
+// EffectiveConfig is the whole option set as resolved: the cache's byte AND
+// entry bounds, the staged-refresh width, the pool size, the invalidation
+// mechanism and its cadence, the declared silence deadline, and the entire
+// hot-file policy. It exists so that "the effective values are readable at
+// runtime" is one call rather than a scavenger hunt through the status
+// document's other blocks.
+func (o Options) EffectiveConfig() fsclient.EffectiveConfig {
+	return fsclient.EffectiveConfig{
+		CacheMaxBytes:             o.CacheMaxBytes,
+		CacheMaxEntries:           o.CacheMaxEntries,
+		CacheMaxEntryBytes:        o.CacheMaxEntryBytes,
+		CacheMaxInFlight:          o.CacheMaxInFlight,
+		CacheMaxAgeMS:             o.CacheMaxAge.Milliseconds(),
+		Concurrency:               o.Concurrency,
+		Invalidation:              o.Invalidation,
+		PollIntervalMS:            o.PollInterval.Milliseconds(),
+		InvalidationIdleTimeoutMS: o.InvalidateIdleTimeout.Milliseconds(),
+		OnConflict:                o.OnConflict,
+		Snapshot:                  o.Snapshot,
+		Hot:                       o.EffectiveHotPolicy(),
+	}
 }

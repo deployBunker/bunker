@@ -1,0 +1,59 @@
+### arm=fastpath-armed mode=fastpath
+### generated 2026-09-27T14:47:03Z on karaHermes-mde-7840hs, loadavg 11.82 10.61 13.58
+
+arm        = fastpath-armed
+tree       = /tmp/bfs044-Gc9uUk/tree-fastpath-armed  (200 files, 10000 B)
+binaries   = /home/kara/worktrees/bunker-BFS-044/bin/bunker ; /home/kara/worktrees/bunker-BFS-044/bin/davserve
+endpoint   = http://127.0.0.1:36563/dav (pid 2800394)
+mount-args = --url http://127.0.0.1:36563/dav --hot.enabled --hot.decay 0.85 --hot.decay-step 200ms --hot.score-ceiling 5000 --hot.read-touch-window 2s --hot.flush-interval 15s --hot.max-entries 2048 --hot.max-tracker-bytes 524288 --hot.max-file-bytes 4194304 --hot.queue-depth 128 --hot.queue-max-wait 120s --hot.max-concurrent-refresh 4 --hot.pool-share 1/4 --hot.backoff-base-ms 100 --hot.backoff-max-ms 20000 --hot.backoff-factor 3 --hot.backoff-jitter none --hot.refresh-deadline 5s --hot.reacquire-window 20s --hot.yield-after 100ms --hot.stop-deadline 2s --hot.tick-interval 500ms --hot.pool-pressure-ticks 3
+cache-dir  = /tmp/bfs044-Gc9uUk/run-fastpath-armed/xdg/bunker/fs/c79b27498ed0
+--- the mount's own banner (the resolved bounds, BFS-044) ---
+  | mounted http://127.0.0.1:36563/dav on /tmp/bfs044-Gc9uUk/run-fastpath-armed/mnt
+  |   cache dir    : /tmp/bfs044-Gc9uUk/run-fastpath-armed/xdg/bunker/fs/c79b27498ed0 (bound 268435456 bytes, 16384 entries)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 201 nodes in 1 call(s)
+  |   config       : cache 268435456 B / 16384 entries (entry cap 67108864, staged 2, age 1h0m0s)
+  |   invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=true state=enabled share=1/4 slots=6 (foreground 19) refresh_inflight=4 clamped=false reserve=16777216 B
+  |   hot weights  : read=1 edit=8 decay=0.85 per 200ms (half-life 1s)
+  |   hot bounds   : tracker 2048 entries / 524288 B, size<=4194304 B (inclusive=true), queue 128 (score, wait 2m0s), ceiling 5000
+  |   hot timing   : tick=500ms yield=100ms stop_deadline=2s refresh_deadline=5s reacquire=20s touch_window=2s flush=15s
+  |   hot backoff  : 100ms x3 cap 20s jitter=none, pressure_ticks=3
+  |   unmount      : bunker fs umount /tmp/bfs044-Gc9uUk/run-fastpath-armed/mnt
+  fixture: 200 files, 804 KiB in /tmp/bfs044-Gc9uUk/tree-fastpath-armed
+  ls -l (cold, first look)           requests=1    wall_ms=39    
+  ls -l (again)                      requests=0    wall_ms=34    
+  ls -lR (a walk)                    requests=1    wall_ms=30    
+  find -type f | wc -l               requests=1    wall_ms=10    
+  stat one file                      requests=1    wall_ms=11    
+  read ALL files, cold               requests=201  wall_ms=378   
+  read ALL files, warm               requests=1    wall_ms=166   
+  read ONE file, warm                requests=0    wall_ms=9     
+  idle 6s window                     requests=4   (declared poll interval 2000ms => ~3)
+  channel: mechanism=events poll_ms=2000
+  cache: used_bytes=39425 entries=200 hits=201
+reader     = bash /home/kara/worktrees/bunker-BFS-044/docs/evidence/BFS-044-probes/fastpath.sh --files 200  (rc=0)
+--- the cache's own figures (the reported bound) ---
+  |     "max_bytes": 268435456,
+  |     "index_bytes": 29425,
+  |     "used_bytes": 39425,
+  |     "entries": 200,
+  |     "blobs": 200,
+  |     "bypass_events": 0,
+  |     "oversize_bypasses": 0,
+  |     "max_entries": 16384,
+  |     "in_flight_bytes": 0,
+  |     "reserved_bytes": 39425,
+  |     "max_inflight": 2,
+  |     "hits": 201,
+  |     "misses": 0
+--- the effective config block, read back from the status document ---
+  |   config       : cache 268435456 B / 16384 entries (entry cap 67108864, staged 2, age 1h0m0s)
+  |   invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=true state=enabled share=1/4 slots=6 (foreground 19) refresh_inflight=4 clamped=false reserve=16777216 B
+  |   hot weights  : read=1 edit=8 decay=0.85 per 200ms (half-life 1s)
+  |   hot bounds   : tracker 2048 entries / 524288 B, size<=4194304 B (inclusive=true), queue 128 (score, wait 2m0s), ceiling 5000
+  |   hot timing   : tick=500ms yield=100ms stop_deadline=2s refresh_deadline=5s reacquire=20s touch_window=2s flush=15s
+  |   hot backoff  : 100ms x3 cap 20s jitter=none, pressure_ticks=3
+run dir    : /tmp/bfs044-Gc9uUk/run-fastpath-armed

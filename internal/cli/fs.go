@@ -97,6 +97,9 @@ func newFSMountCommand() *cobra.Command {
 	var url string
 	var allowOther, noCache, noSnapshot, verbose bool
 	var writeBufferMax int64
+	var poolShare string
+	var backoffBaseMS, backoffMaxMS int
+	hot := fsclient.DefaultHotPolicy()
 
 	cmd := &cobra.Command{
 		Use:   "mount <mountpoint>",
@@ -123,6 +126,16 @@ within the 30 s deadline with a named cause, and recovery is one command.`,
 			}
 			o.Snapshot = !noSnapshot
 			o.AllowOther = allowOther
+			// The hot-file policy (BFS-044): the flags were bound onto a copy of
+			// the spec's defaults, so what lands here is the operator's policy
+			// with every unset knob already at the value the spec pins. The two
+			// flags whose NAME declares a unit (ms) and the one whose value is a
+			// fraction are converted here, and a value that cannot be converted
+			// is an error rather than a default.
+			o.Hot = hot
+			if err := hotFlagsToPolicy(&o.Hot, poolShare, backoffBaseMS, backoffMaxMS); err != nil {
+				return err
+			}
 			if writeBufferMax > 0 {
 				// the write buffer bound is a package constant today; the flag
 				// exists so the number is discoverable, and an override beyond the
@@ -147,11 +160,15 @@ within the 30 s deadline with a named cause, and recovery is one command.`,
 				return err
 			}
 			fmt.Printf("mounted %s on %s\n", o.BaseURL, m.Mountpoint())
-			fmt.Printf("  cache dir    : %s (bound %d bytes)\n", m.CacheDir(), o.CacheMaxBytes)
+			fmt.Printf("  cache dir    : %s (bound %d bytes, %d entries)\n", m.CacheDir(), o.CacheMaxBytes, o.CacheMaxEntries)
 			fmt.Printf("  concurrency  : %d request(s) in flight max\n", o.Concurrency)
 			fmt.Printf("  invalidation : %s\n", m.Status().Invalidation.Mode)
 			st := m.Status()
 			fmt.Printf("  snapshot     : %s, %d nodes in %d call(s)\n", st.Snapshot.Source, st.Snapshot.Nodes, st.Snapshot.Calls)
+			// The resolved bounds, at the moment of mount. An operator should not
+			// have to re-read the command line to know what the mount obeys, and
+			// `bunker fs status` prints the same block afterwards.
+			printEffectiveConfig(os.Stdout, st.Config)
 			fmt.Printf("  unmount      : bunker fs umount %s\n", m.Mountpoint())
 
 			sig := make(chan os.Signal, 1)
@@ -171,11 +188,14 @@ within the 30 s deadline with a named cause, and recovery is one command.`,
 	cmd.Flags().StringVar(&o.Password, "password", "", "HTTP Basic password")
 	cmd.Flags().Int64Var(&o.CacheMaxBytes, "cache-max-size", fsmount.DefaultCacheMaxBytes, "hard cap on cache bytes on this client (0 disables the cache)")
 	cmd.Flags().Int64Var(&o.CacheMaxEntryBytes, "cache-max-entry-bytes", fsmount.DefaultCacheMaxEntryBytes, "a single file larger than this is never cached")
+	cmd.Flags().IntVar(&o.CacheMaxEntries, "cache-max-entries", fsmount.DefaultCacheMaxEntries, "the ENTRY bound of the cache directory (a byte bound alone does not bound a directory: BFS-031)")
+	cmd.Flags().IntVar(&o.CacheMaxInFlight, "cache-max-inflight", fsmount.DefaultCacheMaxInFlight, "how many staged (unpublished) blobs may hold bytes at once")
 	cmd.Flags().DurationVar(&o.CacheMaxAge, "cache-max-age", fsmount.DefaultCacheMaxAge, "backstop TTL for a cache entry")
 	cmd.Flags().IntVar(&o.Concurrency, "concurrency", fsmount.DefaultConcurrency, "maximum requests in flight (the measured lever: 25x concurrency beat MaxConnsPerHost=1 by 25x)")
 	cmd.Flags().IntVar(&o.MaxConnsPerHost, "max-conns-per-host", 0, "transport connection cap (0 follows --concurrency; 1 reproduces the serial arm)")
 	cmd.Flags().StringVar(&o.Invalidation, "invalidation", "auto", "auto|push|poll (auto prefers the pushed channel and DECLARES a downgrade)")
 	cmd.Flags().DurationVar(&o.PollInterval, "poll-interval", fsmount.DefaultPollInterval, "declared poll period")
+	cmd.Flags().DurationVar(&o.InvalidateIdleTimeout, "invalidate-idle-timeout", fsmount.DefaultInvalidateIdleTimeout, "how long the pushed channel may be silent before the mount falls back to the poll (0 derives it from the heartbeat period the server declares)")
 	cmd.Flags().StringVar(&o.OnConflict, "on-conflict", fsclient.OnConflictRefuse, "refuse|overwrite-if-unchanged")
 	cmd.Flags().StringVar(&o.CacheDir, "cache-dir", "", "override the cache directory (default $XDG_CACHE_HOME/bunker/fs/<mount-id>)")
 	cmd.Flags().BoolVar(&allowOther, "allow-other", false, "requested and STRIPPED: the mountpoint stays private 0700")
@@ -183,7 +203,65 @@ within the 30 s deadline with a named cause, and recovery is one command.`,
 	cmd.Flags().BoolVar(&noSnapshot, "no-snapshot", false, "disable the one-call node-tree snapshot (every directory read falls back to PROPFIND)")
 	cmd.Flags().Int64Var(&writeBufferMax, "write-buffer-max-bytes", fsmount.DefaultWriteBufferMax, "bound on one open write handle's local buffer")
 	cmd.Flags().BoolVar(&verbose, "verbose", false, "log the client's decisions to stderr")
+
+	// -----------------------------------------------------------------------
+	// THE HOT-FILE POLICY (BFS-044). Every default here is the number
+	// SPEC-hot-file-policy.md pins, read from the ONE place the defaults exist
+	// (fsclient.DefaultHotPolicy), so a flag's help text, its pflag default and
+	// the value the client obeys cannot drift apart. Every value is validated
+	// in Normalize, and an invalid one is refused naming the flag, the value
+	// given and the value the spec pins — nothing falls back silently.
+	//
+	// The feature itself defaults OFF. It is a PERFORMANCE-ONLY subsystem
+	// (P-0), its value is unmeasured, and an existing mount script or any other
+	// WebDAV client must not notice this row landing.
+	// -----------------------------------------------------------------------
+	cmd.Flags().BoolVar(&hot.Enabled, "hot.enabled", fsclient.DefaultHotEnabled, "arm the hot-file refresh (performance-only; correctness never depends on it)")
+	cmd.Flags().Float64Var(&hot.WeightRead, "hot.read-weight", fsclient.DefaultHotWeightRead, "popularity weight of a READ touch (H-1)")
+	cmd.Flags().Float64Var(&hot.WeightEdit, "hot.edit-weight", fsclient.DefaultHotWeightEdit, "popularity weight of an EDIT touch; must exceed the read weight (H-2)")
+	cmd.Flags().Float64Var(&hot.Decay, "hot.decay", fsclient.DefaultHotDecay, "(0,1]: the decay factor applied per step; 1.0 means no decay (H-3)")
+	cmd.Flags().DurationVar(&hot.DecayStep, "hot.decay-step", fsclient.DefaultHotDecayStep, "the interval one --hot.decay step covers (H-3)")
+	cmd.Flags().Float64Var(&hot.ScoreCeiling, "hot.score-ceiling", fsclient.DefaultHotScoreCeiling, "score above which every score is halved in one pass (H-6)")
+	cmd.Flags().DurationVar(&hot.ReadTouchWindow, "hot.read-touch-window", fsclient.DefaultHotReadTouchWindow, "one read touch per path per window, so chunked reads do not inflate a score (H-9)")
+	cmd.Flags().DurationVar(&hot.FlushInterval, "hot.flush-interval", fsclient.DefaultHotFlushInterval, "how often a dirty tracker is persisted (H-21)")
+	cmd.Flags().IntVar(&hot.TrackerMaxEntries, "hot.max-entries", fsclient.DefaultHotTrackerMaxEntries, "the tracker's ENTRY bound (H-7)")
+	cmd.Flags().Int64Var(&hot.TrackerMaxBytes, "hot.max-tracker-bytes", fsclient.DefaultHotTrackerMaxBytes, "the tracker's BYTE bound; both are enforced (H-8)")
+	cmd.Flags().Int64Var(&hot.MaxFileBytes, "hot.max-file-bytes", fsclient.DefaultHotMaxFileBytes, "the size rule: a file at or below this is refreshable, above it is never pulled (S-1, inclusive per S-2)")
+	cmd.Flags().IntVar(&hot.QueueMaxDepth, "hot.queue-depth", fsclient.DefaultHotQueueMaxDepth, "refresh queue depth; when full the LOWEST-SCORING item is displaced, never the oldest (Q-1/Q-3)")
+	cmd.Flags().DurationVar(&hot.QueueMaxWait, "hot.queue-max-wait", fsclient.DefaultHotQueueMaxWait, "a queued item older than this is dropped (Q-6)")
+	cmd.Flags().IntVar(&hot.RefreshMaxInflight, "hot.max-concurrent-refresh", fsclient.DefaultHotRefreshMaxInflight, "maximum concurrent refreshes; clamped to the pool share and reported (Q-7/P-4)")
+	cmd.Flags().StringVar(&poolShare, "hot.pool-share", fsclient.DefaultHotPoolShare(), "the share of the client's pool a refresh may hold, as a fraction (P-3)")
+	cmd.Flags().IntVar(&backoffBaseMS, "hot.backoff-base-ms", int(fsclient.DefaultHotBackoffBase.Milliseconds()), "first retry delay in milliseconds (P-10)")
+	cmd.Flags().IntVar(&backoffMaxMS, "hot.backoff-max-ms", int(fsclient.DefaultHotBackoffMax.Milliseconds()), "retry delay cap in milliseconds; may not exceed --op-timeout's 30s (P-10)")
+	cmd.Flags().Float64Var(&hot.BackoffFactor, "hot.backoff-factor", fsclient.DefaultHotBackoffFactor, "backoff growth factor (P-10)")
+	cmd.Flags().StringVar(&hot.BackoffJitter, "hot.backoff-jitter", fsclient.DefaultHotJitter(), "full|none: full jitter by default, so N mounts cannot return together (P-10)")
+	cmd.Flags().DurationVar(&hot.RefreshDeadline, "hot.refresh-deadline", fsclient.DefaultHotRefreshDeadline, "an upper bound on one refresh's life; it is abandoned at this deadline (P-11)")
+	cmd.Flags().DurationVar(&hot.RefreshReacquireWindow, "hot.reacquire-window", fsclient.DefaultHotRefreshReacquireWindow, "how long a yielded refresh may wait for its slot back (P-12)")
+	cmd.Flags().DurationVar(&hot.YieldAfter, "hot.yield-after", fsclient.DefaultHotYieldAfter, "a refresh holding a slot releases it if a foreground request has waited this long (P-7)")
+	cmd.Flags().DurationVar(&hot.StopDeadline, "hot.stop-deadline", fsclient.DefaultHotStopDeadline, "the time within which a stop must be fully in force (Q-12)")
+	cmd.Flags().DurationVar(&hot.TickInterval, "hot.tick-interval", fsclient.DefaultHotTickInterval, "the manager's tick: yield check, expiry sweep and re-arm check (Q-14)")
+	cmd.Flags().IntVar(&hot.PoolPressureTicks, "hot.pool-pressure-ticks", fsclient.DefaultHotPoolPressureTicks, "consecutive ticks of foreground slot starvation before the hot path stops itself (P-19)")
 	return cmd
+}
+
+// hotFlagsToPolicy folds the three BFS-044 flags whose SPELLING is not the
+// policy's field type into the policy: the two whose name declares its unit
+// (--hot.backoff-base-ms / --hot.backoff-max-ms, integers of milliseconds) and
+// the one whose value is a fraction (--hot.pool-share, "1/8").
+//
+// It is a named function rather than three lines inside RunE so that the
+// conversion — which is the only place a flag's spelling could disagree with the
+// value the client obeys — is directly testable. A value it cannot convert is
+// returned as an error, never replaced by a default.
+func hotFlagsToPolicy(hot *fsclient.HotPolicy, poolShare string, backoffBaseMS, backoffMaxMS int) error {
+	hot.BackoffBase = time.Duration(backoffBaseMS) * time.Millisecond
+	hot.BackoffMax = time.Duration(backoffMaxMS) * time.Millisecond
+	num, den, err := fsclient.ParsePoolShare(poolShare)
+	if err != nil {
+		return err
+	}
+	hot.PoolShareNum, hot.PoolShareDen = num, den
+	return nil
 }
 
 func newFSUmountCommand() *cobra.Command {
@@ -552,6 +630,78 @@ func mustMountRoot() string {
 	return root
 }
 
+// printEffectiveConfig prints the mount's option set AS RESOLVED (BFS-044).
+//
+// It is printed by `bunker fs mount` at the moment of mount and by
+// `bunker fs status` afterwards, from the same block of the same document, so
+// what an operator reads is what the mount obeys — not a second copy of the
+// numbers written out for display. The two derived figures are printed beside
+// the configured ones on purpose: P-4's clamp and the reservation ceiling the
+// size rule implies are the numbers a reader would otherwise have to compute,
+// and a bound nobody can see is not a bound (PRD §2.7).
+func printEffectiveConfig(w io.Writer, c fsclient.EffectiveConfig) {
+	// A status document written before this block existed carries no config at
+	// all, and every field would read zero. Printing a wall of zeros would be an
+	// unexplained null: an operator cannot tell "nothing configured" from "this
+	// mount did not report it". Normalize guarantees a live mount always has
+	// non-zero bounds, so an all-zero block means exactly one thing and it is
+	// said out loud.
+	if !effectiveConfigReported(c) {
+		fmt.Fprintln(w, "  config       : not reported by this mount (its status document predates the effective-config block)")
+		return
+	}
+	fmt.Fprintf(w, "  config       : cache %d B / %d entries (entry cap %d, staged %d, age %s)\n",
+		c.CacheMaxBytes, c.CacheMaxEntries, c.CacheMaxEntryBytes, c.CacheMaxInFlight, msDur(c.CacheMaxAgeMS))
+	idle := "derived from the declared heartbeat"
+	if c.InvalidationIdleTimeoutMS > 0 {
+		idle = msDur(c.InvalidationIdleTimeoutMS).String()
+	}
+	fmt.Fprintf(w, "  invalidation : mode=%s poll_interval=%s idle_timeout=%s\n",
+		c.Invalidation, msDur(c.PollIntervalMS), idle)
+	fmt.Fprintf(w, "  hot policy   : enabled=%v state=%s share=%s slots=%d (foreground %d) refresh_inflight=%d clamped=%v reserve=%d B\n",
+		c.Hot.Enabled, c.Hot.ConfigState, c.Hot.PoolShare,
+		c.Hot.Derived.PoolSlots, c.Hot.Derived.PoolSlotsForeground,
+		c.Hot.Derived.RefreshMaxInflight, c.Hot.Derived.RefreshMaxInflightClamped,
+		c.Hot.Derived.MaxInflightBytes)
+	// A configuration that cannot be honoured is REPORTED with both numbers,
+	// never swallowed: an operator must be able to tell an inert knob from a
+	// silent one (S-11). An ARMED policy with the same incoherence never reaches
+	// here — Normalize refuses the mount instead.
+	for _, problem := range c.Hot.Misconfigured {
+		fmt.Fprintf(w, "  MISCONFIG   : %s\n", problem)
+	}
+	p := c.Hot.Configured
+	half := "no decay"
+	if c.Hot.Derived.HalfLifeMS > 0 {
+		half = msDur(c.Hot.Derived.HalfLifeMS).Round(time.Second).String()
+	}
+	fmt.Fprintf(w, "  hot weights  : read=%v edit=%v decay=%v per %s (half-life %s)\n",
+		p.WeightRead, p.WeightEdit, p.Decay, p.DecayStep, half)
+	fmt.Fprintf(w, "  hot bounds   : tracker %d entries / %d B, size<=%d B (inclusive=%v), queue %d (%s, wait %s), ceiling %v\n",
+		p.TrackerMaxEntries, p.TrackerMaxBytes, p.MaxFileBytes, c.Hot.SizeRuleInclusive,
+		p.QueueMaxDepth, c.Hot.QueueReplacement, p.QueueMaxWait, p.ScoreCeiling)
+	fmt.Fprintf(w, "  hot timing   : tick=%s yield=%s stop_deadline=%s refresh_deadline=%s reacquire=%s touch_window=%s flush=%s\n",
+		p.TickInterval, p.YieldAfter, p.StopDeadline, p.RefreshDeadline, p.RefreshReacquireWindow, p.ReadTouchWindow, p.FlushInterval)
+	fmt.Fprintf(w, "  hot backoff  : %s x%v cap %s jitter=%s, pressure_ticks=%d\n",
+		p.BackoffBase, p.BackoffFactor, p.BackoffMax, p.BackoffJitter, p.PoolPressureTicks)
+}
+
+// msDur renders a millisecond count as a duration, so a reported figure and a
+// flag's value are the same spelling.
+func msDur(ms int64) time.Duration { return time.Duration(ms) * time.Millisecond }
+
+// effectiveConfigReported reports whether a status document carried the
+// effective-config block at all. It is deliberately a whole-block test rather
+// than a per-field one: a live mount's Normalize guarantees a non-zero byte
+// bound, so "every field is zero" cannot be a running mount.
+func effectiveConfigReported(c fsclient.EffectiveConfig) bool {
+	return c.CacheMaxBytes != 0 || c.CacheMaxEntries != 0 || c.CacheMaxEntryBytes != 0 ||
+		c.CacheMaxInFlight != 0 || c.CacheMaxAgeMS != 0 || c.Concurrency != 0 ||
+		c.Invalidation != "" || c.PollIntervalMS != 0 || c.InvalidationIdleTimeoutMS != 0 ||
+		c.OnConflict != "" || c.Snapshot || c.Hot.Enabled || c.Hot.ConfigState != "" ||
+		c.Hot.Configured != (fsclient.HotPolicy{})
+}
+
 func printStatus(w io.Writer, st *fsclient.Status) {
 	fmt.Fprintf(w, "mount        : %s\n", st.Mount)
 	fmt.Fprintf(w, "endpoint     : %s\n", st.Endpoint)
@@ -616,6 +766,11 @@ func printStatus(w io.Writer, st *fsclient.Status) {
 	if st.RefusalHolds.Last != "" {
 		fmt.Fprintf(w, "  last       : %s\n", st.RefusalHolds.Last)
 	}
+	// The resolved option set (BFS-044). Printed last, and printed in full,
+	// because it is the block that answers "what is this mount actually obeying
+	// — including the entry bound, the invalidation cadence and every hot-file
+	// knob" without re-reading the command line that started it.
+	printEffectiveConfig(w, st.Config)
 }
 
 func printDelegatedRefusal(w io.Writer, res *fsclient.DelegatedResult) {

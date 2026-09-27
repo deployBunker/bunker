@@ -1,0 +1,53 @@
+### arm=entries-max mode=census
+### generated 2026-09-27T14:49:06Z on karaHermes-mde-7840hs, loadavg 7.39 10.16 13.11
+
+arm        = entries-max
+tree       = /tmp/bfs044-tPhvO7/tree-entries-max  (40 files, 2000 B)
+binaries   = /home/kara/worktrees/bunker-BFS-044/bin/bunker ; /home/kara/worktrees/bunker-BFS-044/bin/davserve
+endpoint   = http://127.0.0.1:35087/dav (pid 2833949)
+mount-args = --url http://127.0.0.1:35087/dav --cache-max-entries 16384
+cache-dir  = /tmp/bfs044-tPhvO7/run-entries-max/xdg/bunker/fs/a570d7e04bed
+--- the mount's own banner (the resolved bounds, BFS-044) ---
+  | mounted http://127.0.0.1:35087/dav on /tmp/bfs044-tPhvO7/run-entries-max/mnt
+  |   cache dir    : /tmp/bfs044-tPhvO7/run-entries-max/xdg/bunker/fs/a570d7e04bed (bound 268435456 bytes, 16384 entries)
+  |   concurrency  : 25 request(s) in flight max
+  |   invalidation : auto
+  |   snapshot     : snapshot-op, 41 nodes in 1 call(s)
+  |   config       : cache 268435456 B / 16384 entries (entry cap 67108864, staged 2, age 1h0m0s)
+  |   invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=false state=disabled share=1/8 slots=3 (foreground 22) refresh_inflight=2 clamped=false reserve=16777216 B
+  |   hot weights  : read=1 edit=8 decay=0.9 per 5m0s (half-life 32m54s)
+  |   hot bounds   : tracker 4096 entries / 1048576 B, size<=8388608 B (inclusive=true), queue 256 (score, wait 5m0s), ceiling 10000
+  |   hot timing   : tick=1s yield=250ms stop_deadline=1.5s refresh_deadline=10s reacquire=30s touch_window=5s flush=30s
+  |   hot backoff  : 250ms x2 cap 30s jitter=full, pressure_ticks=5
+  |   unmount      : bunker fs umount /tmp/bfs044-tPhvO7/run-entries-max/mnt
+  census: files read through the mount = 40/40 (byte-identical)
+  reported   : entries=40 max_entries=16384   used_bytes=7905 max_bytes=268435456
+  on disk    : blobs=40  index_records=40  dir_du_bytes=11676
+  directory  : used_bytes covers 67% of du; 3771 B are outside the byte accounting (BFS-031's class)
+  cache work : hits=0 misses=0 bypass_events=0 oversize_bypasses=0 evictions=0
+  census verdict: PASS
+reader     = bash /home/kara/worktrees/bunker-BFS-044/docs/evidence/BFS-044-probes/census.sh --files 40  (rc=0)
+--- the cache's own figures (the reported bound) ---
+  |     "max_bytes": 268435456,
+  |     "index_bytes": 5905,
+  |     "used_bytes": 7905,
+  |     "entries": 40,
+  |     "blobs": 40,
+  |     "bypass_events": 0,
+  |     "oversize_bypasses": 0,
+  |     "max_entries": 16384,
+  |     "in_flight_bytes": 0,
+  |     "reserved_bytes": 7905,
+  |     "max_inflight": 2,
+  |     "hits": 0,
+  |     "misses": 0
+--- the effective config block, read back from the status document ---
+  |   config       : cache 268435456 B / 16384 entries (entry cap 67108864, staged 2, age 1h0m0s)
+  |   invalidation : mode=auto poll_interval=2s idle_timeout=derived from the declared heartbeat
+  |   hot policy   : enabled=false state=disabled share=1/8 slots=3 (foreground 22) refresh_inflight=2 clamped=false reserve=16777216 B
+  |   hot weights  : read=1 edit=8 decay=0.9 per 5m0s (half-life 32m54s)
+  |   hot bounds   : tracker 4096 entries / 1048576 B, size<=8388608 B (inclusive=true), queue 256 (score, wait 5m0s), ceiling 10000
+  |   hot timing   : tick=1s yield=250ms stop_deadline=1.5s refresh_deadline=10s reacquire=30s touch_window=5s flush=30s
+  |   hot backoff  : 250ms x2 cap 30s jitter=full, pressure_ticks=5
+run dir    : /tmp/bfs044-tPhvO7/run-entries-max

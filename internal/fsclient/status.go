@@ -105,7 +105,45 @@ type Status struct {
 	// the caller is told it succeeded. Every figure is reported: a refusal the
 	// owner cannot see hold is indistinguishable from no refusal.
 	RefusalHolds RefusalHoldState `json:"refusal_holds"`
-	UpdatedMS    int64            `json:"updated_ms"`
+	// Config is the mount's option set AS RESOLVED (BFS-044): every bound and
+	// everyone knob the client actually obeys, including the ones derived rather
+	// than configured (the cache's entry bound, the hot path's clamped refresh
+	// width, the reservation ceiling its size rule implies). It is here because
+	// the two defects this project keeps re-finding are a figure reported one
+	// way and enforced another (BFS-031) and a bound nobody can see (PRD §2.7):
+	// a value that is only knowable by re-reading the command line is neither
+	// auditable nor testable. The record's LAYOUT is BFS-045's; this block is
+	// additive and names its own owner.
+	Config    EffectiveConfig `json:"config"`
+	UpdatedMS int64           `json:"updated_ms"`
+}
+
+// EffectiveConfig is the resolved option set (BFS-044). Every field is the value
+// the running mount obeys, not the flag that was passed — so a test can assert
+// that `--cache-max-entries 4` reached the cache by reading this block, and an
+// operator can see the same thing without a debugger.
+type EffectiveConfig struct {
+	// The cache's bounds: bytes AND entries. Both are real bounds (BFS-031: a
+	// byte bound alone does not bound a directory) and both are enforced.
+	CacheMaxBytes      int64 `json:"cache_max_bytes"`
+	CacheMaxEntries    int   `json:"cache_max_entries"`
+	CacheMaxEntryBytes int64 `json:"cache_max_entry_bytes"`
+	CacheMaxInFlight   int   `json:"cache_max_inflight"`
+	CacheMaxAgeMS      int64 `json:"cache_max_age_ms"`
+	// The client's request pool and the invalidation mechanism in force.
+	Concurrency    int    `json:"concurrency"`
+	Invalidation   string `json:"invalidation"`
+	PollIntervalMS int64  `json:"poll_interval_ms"`
+	// InvalidationIdleTimeoutMS is the DECLARED silence deadline; 0 means the
+	// mount derives it from the period the server declares (BFS-041 §8.1). The
+	// ARMED deadline is reported in the invalidation block as idle_timeout_ms,
+	// so the derived value is visible too.
+	InvalidationIdleTimeoutMS int64  `json:"invalidation_idle_timeout_ms"`
+	OnConflict                string `json:"on_conflict"`
+	// Snapshot records whether the one-call node-tree snapshot is in use.
+	Snapshot bool `json:"snapshot"`
+	// Hot is the entire hot-file policy, resolved.
+	Hot HotPolicyEffective `json:"hot"`
 }
 
 // RefusalHoldState is the `refusal_holds` block of the status document
