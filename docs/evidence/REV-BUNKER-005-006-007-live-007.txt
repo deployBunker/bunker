@@ -1,0 +1,63 @@
+REV-BUNKER-007 independent verification (second worker) — tree /tmp/sec-trio-base.0XOlaN/repo
+head: 11001d3c2d5c4aa7413ca5304056e9706224c6c2  dirty: 0
+
+--- 1. source assertions (the two credential comparisons)
+interceptor.go:
+168:	if !ConstantTimeCompare(token, a.token) {
+manager.go:
+143:		if subtle.ConstantTimeCompare([]byte(key.TokenHash), []byte(tokenHash)) == 1 {
+
+--- 2. the discipline the repo already had (jwt.go, untouched, same package)
+315:	if a.staticToken != "" && subtle.ConstantTimeCompare([]byte(rawToken), []byte(a.staticToken)) == 1 {
+426:		if subtle.ConstantTimeCompare([]byte(presented), secret) == 1 {
+475:func ConstantTimeCompare(a, b string) bool {
+476:	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+
+--- 3. behaviour: the two packages' existing suites still pass (constant-time
+       compare must be behaviour-identical: same accept, same reject)
+ok  	github.com/deployBunker/bunker/internal/auth	0.425s
+ok  	github.com/deployBunker/bunker/internal/apikey	0.008s
+=== sha256 of the two files (pre-mutation) ===
+52a4af0c445a360be481b52d8c61b09664e2e39c01bd01bca167ca9943ff05bc  internal/auth/interceptor.go
+15e5de4f16c9c707a69f58260cf97f1c073852686959c52f47043e593b4cb937  internal/apikey/manager.go
+
+=== 4. what the control arm changes: ONLY the 007 hunks (base 4879343 -> 11001d3)
+ internal/apikey/manager.go   | 9 ++++++++-
+ internal/auth/interceptor.go | 8 +++++++-
+ 2 files changed, 15 insertions(+), 2 deletions(-)
+    +	"crypto/subtle"
+    -		if key.TokenHash == tokenHash {
+    +		// REV-BUNKER-007: constant-time compare of the SHA-256 hex digest.
+    +		// The digest is already a one-way function of the presented secret,
+    +		// so this is defence in depth rather than a remotely exploitable
+    +		// read: it removes the byte-position timing signal from the
+    +		// comparison itself and keeps this surface consistent with
+    +		// internal/auth, which compares every credential in constant time.
+    +		if subtle.ConstantTimeCompare([]byte(key.TokenHash), []byte(tokenHash)) == 1 {
+    -	if token != a.token {
+    +	// REV-BUNKER-007: compare the presented token in CONSTANT TIME, the
+    +	// discipline this package already follows everywhere else credential
+    +	// material is compared (jwt.go's static-token fallback and its signing
+    +	// secrets both go through ConstantTimeCompare). A byte-wise != returns
+    +	// on the first differing byte, so the compared prefix length is
+    +	// observable in the timing; ConstantTimeCompare does not short-circuit.
+    +	if !ConstantTimeCompare(token, a.token) {
+
+=== 5. NEGATIVE CONTROL — filed blobs restored, in a scratch tree ===
+control tree sha256:
+    8c918af700e8e294cf4a07139de7b2faae22cb9bbcd1a4bf6c7d2b0436330a55  internal/auth/interceptor.go
+    a6350b611ba33968c185e48de894b34041002d3677d6d184032e0de68daed645  internal/apikey/manager.go
+cell A (interceptor.go must use ConstantTimeCompare):
+    [CELL RED] the filed comparison 'token != a.token' is back: 162:	if token != a.token {
+cell B (manager.go must use subtle.ConstantTimeCompare):
+    [CELL RED] the filed comparison 'key.TokenHash == tokenHash' is back: 136:		if key.TokenHash == tokenHash {
+behaviour suites on the control tree (expected: BOTH STILL PASS — the defect is
+not observable through these tests, which is the honest severity statement):
+    ok  	github.com/deployBunker/bunker/internal/auth	0.605s
+    ok  	github.com/deployBunker/bunker/internal/apikey	0.049s
+
+=== 6. restore, sha256-verified byte-identical ===
+    interceptor.go restored byte-identical (52a4af0c445a360be481b52d8c61b09664e2e39c01bd01bca167ca9943ff05bc)
+    manager.go    restored byte-identical (15e5de4f16c9c707a69f58260cf97f1c073852686959c52f47043e593b4cb937)
+    tree dirty paths after restore: 0
+    cells back to GREEN: interceptor=1 manager=1

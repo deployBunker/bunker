@@ -1,0 +1,18 @@
+diff --git a/internal/auth/interceptor.go b/internal/auth/interceptor.go
+index 3037e57..b161ccd 100644
+--- a/internal/auth/interceptor.go
++++ b/internal/auth/interceptor.go
+@@ -245,6 +245,13 @@ func AttachDenySink(i connect.Interceptor, deny DenyFunc) connect.Interceptor {
+ // built some other way. It is idempotent: arming an interceptor that already
+ // carries throttle state keeps its counters.
+ func ArmThrottle(i connect.Interceptor) connect.Interceptor {
++	// NEGATIVE CONTROL (REV-BUNKER-006): the filed behaviour — nothing arms
++	// the throttle except a non-nil deny sink, so an audit-disabled daemon
++	// has no brute-force backoff at all.
++	return i
++}
++
++func armThrottleDisabledForControl(i connect.Interceptor) connect.Interceptor {
+ 	switch a := i.(type) {
+ 	case *JWTAuth:
+ 		a.armThrottle()
