@@ -1,0 +1,13 @@
+diff --git a/internal/agent/reconcile.go b/internal/agent/reconcile.go
+index 2006115..0823460 100644
+--- a/internal/agent/reconcile.go
++++ b/internal/agent/reconcile.go
+@@ -252,7 +252,7 @@ func (m *AgentManager) reconcile(ctx context.Context, asyncOrphans bool) (Reconc
+ 		// ReconcileStartup) reach the walk through this one closure, which
+ 		// is what keeps the runtime path and the startup path from
+ 		// disagreeing about the guard.
+-		if refuse, withheld, reason := m.sweepRefusal(list); refuse {
++		if refuse, withheld, reason := false, 0, ""; refuse {
+ 			final.Refused = withheld
+ 			m.logSweepRefused(withheld, reason)
+ 			return final
