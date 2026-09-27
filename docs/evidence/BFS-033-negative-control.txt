@@ -1,0 +1,133 @@
+================================================================================
+BFS-033 NEGATIVE CONTROL — the cell can FAIL (sha256-verified restore)
+================================================================================
+
+The enforcement is neutered with one added line (docs/evidence/BFS-033-negative-control.patch):
+
+  diff --git a/internal/fsclient/write.go b/internal/fsclient/write.go
+  index 4f82065..0347eb2 100644
+  --- a/internal/fsclient/write.go
+  +++ b/internal/fsclient/write.go
+  @@ -236,6 +236,7 @@ func (w *WritePath) armHold(rec Conflict) {
+   // holding it would make the refusal unrecoverable for a caller that removed the
+   // path and wrote it anew.
+   func (w *WritePath) checkHold(path string, base WriteBase) *OpError {
+  +	return nil // NEGATIVE CONTROL: the enforcement is neutered.
+   	if base.IfNoneMatchStar {
+   		return nil
+   	}
+
+Then the SAME live cell is run against the neutered binary. It must reproduce the defect.
+
+  === BFS-033 negative control: neuter the enforcement, re-run the cell ===
+  fixed write.go sha256     : d2c7c06278b6db47e0d021215f0a5353db7220a7302b5cada2ce0648d082fddd
+  neutered write.go sha256  : 979a916f5604684b2a043a8ccab6878b1d22133f456d6e59377e7a53ee1ad16e
+  the two hashes differ      : OK (the mutation is real)
+  
+  --- building the neutered binary ---
+  built /tmp/bfs033/bin/bunker-neutered
+  
+  --- the UNIT cells under the same neutered tree (they must fail too) ---
+    --- FAIL: TestWriteRefusalOnStaleBase (0.02s)
+        conflict_test.go:95: a publish landed behind an unrecovered refusal (BFS-033: the refusal did not hold)
+    --- FAIL: TestARefusalHoldsAgainstTheReissuedWrite (0.02s)
+        refusal_hold_test.go:97: THE DEFECT: the re-issued write LANDED behind the refusal
+    FAIL
+    FAIL	github.com/deployBunker/bunker/internal/fsclient	0.061s
+    FAIL
+    --- FAIL: TestAReissuedResizeIsRefusedUntilTheCallerReReads (0.02s)
+        refusal_hold_test.go:109: THE DEFECT: the re-issued resize must be refused, got errno=errno 0 (the refusal did not hold)
+    FAIL
+    FAIL	github.com/deployBunker/bunker/internal/fsmount	0.027s
+    FAIL
+    (a FAIL here is the point: the cells can fail, so they catch the bug they exist for)
+  
+  --- the SAME cell, against the neutered binary (it must go RED) ---
+    arm        = negcontrol2
+    host       = karaHermes-mde-7840hs loadavg 46.72 41.93 29.96 9/9418 1765135
+    tree       = /tmp/bfs033/tree-negcontrol2  (0 files, 0 B)
+    binaries   = /tmp/bfs033/bin/bunker-neutered ; /tmp/bfs033/bin/davserve
+    endpoint   = http://127.0.0.1:44387/dav (pid 1765146)
+    trace      = http://127.0.0.1:18510/dav -> http://127.0.0.1:44387/dav (pid 1765163, per-request log /tmp/bfs033/run-negcontrol2/requests.jsonl)
+    mount-args = --url http://127.0.0.1:18510/dav 
+    cache-dir  = /tmp/bfs033/run-negcontrol2/xdg/bunker/fs/3ae1ec2ef7e4
+      cache dir    : /tmp/bfs033/run-negcontrol2/xdg/bunker/fs/3ae1ec2ef7e4 (bound 268435456 bytes)
+      concurrency  : 25 request(s) in flight max
+      invalidation : auto
+      snapshot     : snapshot-op, 1 nodes in 1 call(s)
+    reader     = python3 /home/kara/worktrees/bunker-BFS-033/docs/evidence/BFS-033-probes/bfs033-arms.py --mode cell --expect red  (rc=0)
+      | === ARM cell (expect=red) on src/target.txt ===
+      |   baseline                  : 64 B sha256=4435dba64cd01241…
+      |   read through the mount    : 64 B sha256=4435dba64cd01241…  (this read fixes the base)
+      |   PASS  FIXTURE: the mount served the server's bytes
+      |   concurrent edit (out-of-band): 64 B sha256=2be53d0743bdd0be…  (size same=True, mtime same=True, bytes differ=True)
+      |   PASS  FIXTURE: the concurrent edit kept the size
+      |   PASS  FIXTURE: the concurrent edit restored the mtime
+      |   PASS  FIXTURE: the concurrent edit changed the bytes
+      |   truncate to 48          : LANDED — returned cleanly
+      |   the target's bytes after   : 48 B sha256=a8fbc1331f7daadd…
+      |   target unchanged           : False
+      |   conflicts.jsonl entries    : 1
+      |     {"path": "src/target.txt", "expected": "sha256:4435dba64cd01241ed5200836b30e81f5690bbd145d6483fa935f22fa45472f7", "current": "sha256:2be53d0743bdd0be44d38e264a276eb1da149e60d8920a7
+      |   status.conflicts           : {"refusals_total": 1, "last": {"path": "src/target.txt", "expected": "sha256:4435dba64cd01241ed5200836b30e81f5690bbd145d6483fa935f22fa45472f7", "current": "sha256:2be53d0743bdd0be4
+      |   status.refusal_holds       : {"held_total": 0, "outstanding": 1, "evicted_total": 0}
+      |   PUTs on src/target.txt (proxy trace): 2
+      |     #11 status=412 req_bytes=48 if_match="sha256:4435dba64cd01241ed5200836b30e81f5690bbd145d6483fa935f22fa45472f7"
+      |     #13 status=204 req_bytes=48 if_match="sha256:2be53d0743bdd0be44d38e264a276eb1da149e60d8920a7759b0a397da7e5bf7"
+      |   PUT 412 count=1  PUT 2xx count=1
+      | 
+      |   PASS  DEFECT: the caller saw SUCCESS for the very write that was refused
+      |   PASS  DEFECT: a refusal was recorded for the write (412)
+      |   PASS  DEFECT: a later PUT LANDED on the same path (2xx after the 412)
+      |   PASS  DEFECT: the refused write's bytes are the target's new content
+      |   PASS  DEFECT: conflicts.jsonl carries an entry the landing contradicts
+      | 
+      | RESULT: the refusal DID NOT HOLD — a 412 was recorded and a 204 landed after it, and the caller observed success
+    mount.log  :
+      | mounted http://127.0.0.1:18510/dav on /tmp/bfs033/run-negcontrol2/mnt
+      |   cache dir    : /tmp/bfs033/run-negcontrol2/xdg/bunker/fs/3ae1ec2ef7e4 (bound 268435456 bytes)
+      |   concurrency  : 25 request(s) in flight max
+      |   invalidation : auto
+      |   snapshot     : snapshot-op, 1 nodes in 1 call(s)
+      |   unmount      : bunker fs umount /tmp/bfs033/run-negcontrol2/mnt
+    owner-facing surface (bunker fs status, XDG_CACHE_HOME=/tmp/bfs033/run-negcontrol2/xdg):
+      | mount        : 3ae1ec2ef7e4
+      | endpoint     : http://127.0.0.1:18510/dav
+      | mountpoint   : /tmp/bfs033/run-negcontrol2/mnt
+      | mode         : poll (mechanism=events)
+      | invalidation : mode=poll seq=2 poll_interval_ms=2000 last_event_age_ms=953
+      | resume       : seq=2 (the cursor this view was minted at)
+      | cache        : used_bytes=26 max_bytes=268435456 (blobs=0 index=26) entries=0 blobs=0
+      | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+      | conflicts    : refusals_total=1
+      |   last       : src/target.txt code=hash_mismatch
+      | snapshot     : source=snapshot-op nodes=1 calls=1 truncated=false
+      | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=14 proto=HTTP/1.1
+      | write buffer : handles=0 bytes=0
+      | read bound   : refusals_total=0 corrections_total=0
+      | write shape  : refusals_total=0
+      | refusal holds: held_total=0 outstanding=1 evicted_total=0
+    --- conflicts ---
+      | 2026-09-27T09:06:29-05:00  src/target.txt
+      |     code=hash_mismatch expected=sha256:4435dba64cd01241ed5200836b30e81f5690bbd145d6483fa935f22fa45472f7 current=sha256:2be53d0743bdd0be44d38e264a276eb1da149e60d8920a7759b0a397da7e5bf7
+    run dir : /tmp/bfs033/run-negcontrol2
+  neutered cell rc=0 (0 = the defect was reproduced, which is what the control requires)
+  
+  --- restoring ---
+  restored write.go sha256  : d2c7c06278b6db47e0d021215f0a5353db7220a7302b5cada2ce0648d082fddd
+  RESTORE VERIFIED (sha256 identical)
+  byte-identical to the pre-patch copy: OK
+  unchanged from the tree as found: OK
+  git status for the file   : 0 line(s) (0 = clean)
+  
+  NEGATIVE CONTROL PASSES: with the enforcement neutered the cell reproduces the defect
+  (412 recorded, 204 landed). With the enforcement in place the same cell is green.
+
+--- the unit cells, neutered (same one-line mutation) ---
+  --- FAIL: TestWriteRefusalOnStaleBase (0.02s)
+      conflict_test.go:95: a publish landed behind an unrecovered refusal (BFS-033: the refusal did not hold)
+  --- FAIL: TestARefusalHoldsAgainstTheReissuedWrite (0.02s)
+      refusal_hold_test.go:97: THE DEFECT: the re-issued write LANDED behind the refusal
+  FAIL
+  FAIL	github.com/deployBunker/bunker/internal/fsclient	0.061s
+  FAIL

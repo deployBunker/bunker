@@ -1,0 +1,36 @@
+================================================================================
+BFS-033 TESTS — the arms that pin the rule, and the one that had to be corrected
+================================================================================
+
+handler level, the mount's exact sequence (two size-carrying Setattrs):
+  === RUN   TestAReissuedResizeIsRefusedUntilTheCallerReReads
+      refusal_hold_test.go:145: the re-read served "bunker-fs-bfs033" (server now holds "BUNKER-FS-BFS033"); the hold is cleared either way
+  --- PASS: TestAReissuedResizeIsRefusedUntilTheCallerReReads (0.02s)
+  === RUN   TestTheMountInternalReadIsNotTheCallersRead
+  --- PASS: TestTheMountInternalReadIsNotTheCallersRead (0.01s)
+  PASS
+  ok  	github.com/deployBunker/bunker/internal/fsmount	0.039s
+
+write-path level, driven through the landed server surface:
+  === RUN   TestWriteRefusalOnStaleBase
+  --- PASS: TestWriteRefusalOnStaleBase (0.08s)
+  === RUN   TestARefusalHoldsAgainstTheReissuedWrite
+  --- PASS: TestARefusalHoldsAgainstTheReissuedWrite (0.04s)
+  === RUN   TestOnlyTheCallersReadClearsTheHold
+  --- PASS: TestOnlyTheCallersReadClearsTheHold (0.07s)
+  === RUN   TestACreateOnAHeldPathIsNotTheRefusedWrite
+  --- PASS: TestACreateOnAHeldPathIsNotTheRefusedWrite (0.10s)
+  === RUN   TestTheHoldIsBoundedAndTheEvictionIsReported
+  --- PASS: TestTheHoldIsBoundedAndTheEvictionIsReported (0.00s)
+  PASS
+  ok  	github.com/deployBunker/bunker/internal/fsclient	0.290s
+
+TestWriteRefusalOnStaleBase is the test that ASSERTED THE OLD BEHAVIOUR: it performed a
+'recovered write' with the base the refusal corrected and required it to LAND — without
+the caller's re-read. That is the same omission the live path had, and it is why the unit
+suite was green while the mount refused nothing. It now asserts the enforcement (the
+retry is refused while the refusal is unrecovered) AND the recovery (after the read, the
+write lands).
+
+whole suite + gates, as the commit's guard ran it:
+  (no gofmt output above = clean)

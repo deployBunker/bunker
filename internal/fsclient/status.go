@@ -98,7 +98,33 @@ type Status struct {
 	// writing is live on the path). Reported for the same reason ReadBound is:
 	// the rule is only auditable if the owner can see it fire.
 	WriteShape WriteShapeState `json:"write_shape"`
-	UpdatedMS  int64           `json:"updated_ms"`
+	// RefusalHolds is the BFS-033 figure set: how often a publication was
+	// REFUSED because an earlier conflict refusal on the same path was still
+	// outstanding — the enforcement half of §5.2 rule 1, without which a refused
+	// write lands anyway (the kernel re-issues the resize below the caller) and
+	// the caller is told it succeeded. Every figure is reported: a refusal the
+	// owner cannot see hold is indistinguishable from no refusal.
+	RefusalHolds RefusalHoldState `json:"refusal_holds"`
+	UpdatedMS    int64            `json:"updated_ms"`
+}
+
+// RefusalHoldState is the `refusal_holds` block of the status document
+// (BFS-033): the refusal that STANDS.
+type RefusalHoldState struct {
+	// HeldTotal counts publications refused because an earlier conflict refusal
+	// on their path was unrecovered — the writes that would have landed behind a
+	// recorded refusal.
+	HeldTotal int64 `json:"held_total"`
+	// Outstanding is how many paths a refusal still stands on. Every one of them
+	// is cleared by a read of that path (the re-read §5.2 rule 5 asks for) or by
+	// the path being removed.
+	Outstanding int `json:"outstanding"`
+	// EvictedTotal counts holds dropped by the bound (refusalHoldMax paths), so
+	// the bound is visible rather than silent.
+	EvictedTotal int64 `json:"evicted_total"`
+	// Last names the most recent held publication, formatted
+	// `<path>: held=<n> code=<verdict>`; empty when none has happened.
+	Last string `json:"last,omitempty"`
 }
 
 // WriteShapeState is the `write_shape` block of the status document (BFS-030).

@@ -611,6 +611,11 @@ func printStatus(w io.Writer, st *fsclient.Status) {
 	if st.WriteShape.Last != "" {
 		fmt.Fprintf(w, "  last       : %s\n", st.WriteShape.Last)
 	}
+	fmt.Fprintf(w, "refusal holds: held_total=%d outstanding=%d evicted_total=%d\n",
+		st.RefusalHolds.HeldTotal, st.RefusalHolds.Outstanding, st.RefusalHolds.EvictedTotal)
+	if st.RefusalHolds.Last != "" {
+		fmt.Fprintf(w, "  last       : %s\n", st.RefusalHolds.Last)
+	}
 }
 
 func printDelegatedRefusal(w io.Writer, res *fsclient.DelegatedResult) {

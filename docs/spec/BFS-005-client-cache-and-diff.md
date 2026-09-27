@@ -752,6 +752,32 @@ atomic) and is excluded from every listing, `GET` and `snapshot` answer (`BFS-00
    tree, never by mount or agent (`PRD-bunker-fs.md:217, :248`). **This spec adds no second lock system**,
    and the client **never takes a lease implicitly**: an implicit lease turns one caller's refusal into
    every other writer's deadlock, so leasing is explicit (`bunker fs lock <path>`) or the escalation path.
+   The caller's re-read is also the enforcement's **only release** (below): a refused path is not writable
+   again until the caller has been served bytes for it.
+
+**Rule 1 is enforced, not merely recorded (BFS-033).** A refusal STANDS on its path: while it is outstanding
+and unrecovered, a publication of the same shape on that path is refused again — the same `ESTALE`, the same
+`conflict` cause, the refusing verdict and hashes named — and **publishes nothing at all**. It is released by
+the caller's re-read (rule 5's first step), which is the one thing that distinguishes a retry from the same
+refused write arriving again; a path removed through the mount takes its hold with it. A create
+(`If-None-Match: *`) is **not** the refused write and is never held: it asks the server for a path that must
+be absent, and holding it would make the refusal unrecoverable for a caller that removed the path and wrote
+it anew.
+
+The reason is measured, not theoretical (`docs/evidence/BFS-033-red.txt`): with only rules 3 and 4 in place,
+**one `truncate(2)` syscall produced two size-carrying `SETATTR` dispatches** — the kernel re-issues the
+resize once after the mount answers `ESTALE` — and the re-issued dispatch carried the base rule 3 had just
+adopted from the refusal, so it **published and landed**. The refusal was recorded, the caller was told it
+succeeded, and `conflicts.jsonl` kept an entry the landing contradicted. The verdict is deliberately
+unchanged: `ESTALE` is what names the recovery, and the re-issue is a kernel behaviour to work around rather
+than an errno to change (with `EIO` the kernel does not act at all and the refusal never held — `BFS-012`).
+
+The enforcement is **bounded and reported** like every other bound in this client: at most
+`refusalHoldMax` (1024) paths can carry a standing refusal, evictions past that are counted, and the figures
+appear in `bunker fs status --json` as
+`refusal_holds: {held_total, outstanding, evicted_total, last}` — how many publications a standing refusal
+has turned away, how many paths a refusal still stands on, and the most recent one by name. A refusal the
+owner cannot see hold is indistinguishable from no refusal (PRD-bunker-invalidation §2.7).
 
 `--on-conflict` decides only the narrow case the PRD names (`PRD-bunker-fs.md:207`):
 

@@ -1,0 +1,89 @@
+================================================================================
+BFS-033 RED — the refusal is RECORDED and the write LANDS anyway (the unfixed tree)
+================================================================================
+
+Cell: docs/evidence/BFS-033-probes/bfs033-arms.py --mode cell --expect red
+Binary: /tmp/bfs033/bin/bunker (built from the tree BEFORE the fix)
+Harness: docs/evidence/BFS-033-probes/mount-arm.sh --trace (a per-request logging
+proxy between the mount and the repo's own WebDAV surface, so every request the
+mount made is attributable).
+
+The interleaving: one read through the mount (which IS the client's base hash), then
+an out-of-band edit that preserves SIZE and MTIME, then one truncate(2).
+
+--- the cell, verbatim ---
+  === ARM cell (expect=red) on src/target.txt ===
+    baseline                  : 64 B sha256=4435dba64cd01241…
+    read through the mount    : 64 B sha256=4435dba64cd01241…  (this read fixes the base)
+    PASS  FIXTURE: the mount served the server's bytes
+    concurrent edit (out-of-band): 64 B sha256=2be53d0743bdd0be…  (size same=True, mtime same=True, bytes differ=True)
+    PASS  FIXTURE: the concurrent edit kept the size
+    PASS  FIXTURE: the concurrent edit restored the mtime
+    PASS  FIXTURE: the concurrent edit changed the bytes
+    truncate to 48          : LANDED — returned cleanly
+    the target's bytes after   : 48 B sha256=a8fbc1331f7daadd…
+    target unchanged           : False
+    conflicts.jsonl entries    : 1
+      {"path": "src/target.txt", "expected": "sha256:4435dba64cd01241ed5200836b30e81f5690bbd145d6483fa935f22fa45472f7", "current": "sha256:2be53d0743bdd0be44d38e264a276eb1da149e60d8920a7
+    status.conflicts           : {"refusals_total": 1, "last": {"path": "src/target.txt", "expected": "sha256:4435dba64cd01241ed5200836b30e81f5690bbd145d6483fa935f22fa45472f7", "current": "sha256:2be53d0743bdd0be4
+    PUTs on src/target.txt (proxy trace): 2
+      #11 status=412 req_bytes=48 if_match="sha256:4435dba64cd01241ed5200836b30e81f5690bbd145d6483fa935f22fa45472f7"
+      #17 status=204 req_bytes=48 if_match="sha256:2be53d0743bdd0be44d38e264a276eb1da149e60d8920a7759b0a397da7e5bf7"
+    PUT 412 count=1  PUT 2xx count=1
+  
+    PASS  DEFECT: the caller saw SUCCESS for the very write that was refused
+    PASS  DEFECT: a refusal was recorded for the write (412)
+    PASS  DEFECT: a later PUT LANDED on the same path (2xx after the 412)
+    PASS  DEFECT: the refused write's bytes are the target's new content
+    PASS  DEFECT: conflicts.jsonl carries an entry the landing contradicts
+  
+  RESULT: the refusal DID NOT HOLD — a 412 was recorded and a 204 landed after it, and the caller observed success
+
+--- every PUT the mount made on the path, in order (proxy trace) ---
+  # method   status  req_bytes  if_match                              path
+  11 PUT      412     48         sha256:4435dba64cd01241ed5200836b30e81f5 /dav/src/target.txt
+  17 PUT      204     48         sha256:2be53d0743bdd0be44d38e264a276eb1d /dav/src/target.txt
+
+--- strace: ONE syscall ---
+  syscall lines touching the path: 1
+  1292351 truncate("/tmp/bfs033/run-red-interleave/mnt/src/target.txt", 48) = 0
+
+--- the client's own records in that same run ---
+  status.refusal_holds : (the unfixed tree has no such block — see BFS-033-green.txt)
+  conflicts.jsonl lines: 1
+
+================================================================================
+ATTRIBUTION — why the second PUT exists, measured rather than argued
+================================================================================
+
+Two questions decide the fix: how many times the kernel dispatches the resize for
+ONE syscall, and what the re-issued dispatch publishes against.
+
+1. THE KERNEL RE-ISSUES IT. One truncate(2), TWO size-carrying Setattr dispatches,
+   traced with a temporary line in node.Setattr (BFS033_TRACE=1):
+  BFS033-TRACE setattr path=src/target.txt size=48 fh_nil=true valid=0x208
+  BFS033-TRACE setattr path=src/target.txt size=48 fh_nil=true valid=0x208
+  dispatches: 2
+   The same run's PUTs (compare the If-Match of the second with the first):
+  # method   status  req_bytes  if_match                              path
+  11 PUT      412     48         sha256:4435dba64cd01241ed5200836b30e81f5 /dav/src/target.txt
+  13 PUT      204     48         sha256:2be53d0743bdd0be44d38e264a276eb1d /dav/src/target.txt
+
+   The re-issued dispatch carries the base SPEC BFS-005 §5.2 rule 3 adopted from the
+   refusal (X-Bunker-Current-Hash = the concurrent edit's hash) — which is exactly what
+   the re-read-and-retry loop needs, and exactly why the refused write landed.
+
+2. THE RE-ISSUE IS BOUNDED. With a probe build that refuses EVERY resize (so the
+   refusal cannot be escaped by the re-issue), the kernel dispatches it TWICE and
+   stops: the caller receives ESTALE, no PUT is made, nothing hangs. That is what makes
+   an enforcement that refuses the re-issue safe:
+  dispatches under always-refuse: 2
+    |   truncate to 48          : REFUSED — OSError: [Errno 116] Stale file handle: '/tmp/bfs033/run-always-refuse/mnt/src/target.txt' (errno=116 ESTALE)
+    |   target unchanged           : True
+    |   PUTs on src/target.txt (proxy trace): 0
+    |   PUT 412 count=0  PUT 2xx count=0
+
+3. THE RETRY IS ESTALE-SPECIFIC (BFS-012's experiment, re-stated): with the conflict
+   errno changed to EIO the refusal held with ONE PUT, because the kernel does not act
+   on EIO. The verdict is kept (ESTALE names the recovery: re-read this one file) and
+   the ENFORCEMENT is what this row adds — not a change of errno.

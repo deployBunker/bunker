@@ -1,0 +1,143 @@
+================================================================================
+BFS-033 GREEN — the same interleaving: the refusal HOLDS
+================================================================================
+
+Binary: /tmp/bfs033/bin/bunker-fixed (the tree WITH the fix).
+
+--- cell: expect green ---
+  === ARM cell (expect=green) on src/target.txt ===
+    baseline                  : 64 B sha256=4435dba64cd01241…
+    read through the mount    : 64 B sha256=4435dba64cd01241…  (this read fixes the base)
+    PASS  FIXTURE: the mount served the server's bytes
+    concurrent edit (out-of-band): 64 B sha256=2be53d0743bdd0be…  (size same=True, mtime same=True, bytes differ=True)
+    PASS  FIXTURE: the concurrent edit kept the size
+    PASS  FIXTURE: the concurrent edit restored the mtime
+    PASS  FIXTURE: the concurrent edit changed the bytes
+    truncate to 48          : REFUSED — OSError: [Errno 116] Stale file handle: '/tmp/bfs033/run-green-interleave/mnt/src/target.txt' (errno=116 ESTALE)
+    the target's bytes after   : 64 B sha256=2be53d0743bdd0be…
+    target unchanged           : True
+    conflicts.jsonl entries    : 1
+      {"path": "src/target.txt", "expected": "sha256:4435dba64cd01241ed5200836b30e81f5690bbd145d6483fa935f22fa45472f7", "current": "sha256:2be53d0743bdd0be44d38e264a276eb1da149e60d8920a7
+    status.conflicts           : {"refusals_total": 1, "last": {"path": "src/target.txt", "expected": "sha256:4435dba64cd01241ed5200836b30e81f5690bbd145d6483fa935f22fa45472f7", "current": "sha256:2be53d0743bdd0be4
+    PUTs on src/target.txt (proxy trace): 1
+      #11 status=412 req_bytes=48 if_match="sha256:4435dba64cd01241ed5200836b30e81f5690bbd145d6483fa935f22fa45472f7"
+    PUT 412 count=1  PUT 2xx count=0
+  
+    PASS  the caller received the FAILURE (the refused write is not reported as success)
+    PASS  the failure is ESTALE (116) — re-read and retry is the recovery (got 116)
+    PASS  the target is UNCHANGED by the refused write
+    PASS  exactly one PUT reached the server and it was refused (got 1)
+    PASS  NO write landed on the path after the refusal (got 0 PUT 2xx)
+    PASS  the refusal is still recorded loudly for `bunker fs conflicts`
+    PASS  every recorded refusal names the concurrent edit's hash (none is contradicted)
+  
+  RESULT: the refusal HELD — one refused PUT, no landing write, the target untouched and the caller told ESTALE
+
+--- every PUT the mount made on the path (proxy trace) ---
+  # method   status  req_bytes  if_match                              path
+  11 PUT      412     48         sha256:4435dba64cd01241ed5200836b30e81f5 /dav/src/target.txt
+
+--- the owner-facing surface in that run (bunker fs status) ---
+    |   status.conflicts           : {"refusals_total": 1, "last": {"path": "src/target.txt", "expected": "sha256:4435dba64cd01241ed5200836b30e81f5690bbd145d6483fa935f22fa45472f7", "current": "sha256:2be53d0743bdd0be4
+    | cache events : hits=0 misses=0 evictions=0 bypasses=0 oversize_bypasses=0 pinned=0
+    | conflicts    : refusals_total=1
+    | transport    : verdict=healthy in_flight=0 in_flight_max=1 requests=12 proto=HTTP/1.1
+    | write shape  : refusals_total=0
+    | refusal holds: held_total=1 outstanding=1 evicted_total=0
+  --- conflicts ---
+
+--- the recorded refusal, from the ledger ---
+    |   cause      : PUT src/target.txt: errno=ESTALE cause=conflict verdict=hash_mismatch: refusing to publish src/target.txt: the server already refused a write on this path (code=hash_mismatch, current=sha256:2be53d0743bdd0be44d38e264a276eb1da149e60d8920a7759b0a397da7e5bf7) and that refusal stands until the path is read — publishing now would land the bytes the refusal refused. Re-read the path, then retry
+    |   last       : src/target.txt: held=1 code=hash_mismatch (the refusal stands until the path is read)
+    | 2026-09-27T08:58:39-05:00  src/target.txt
+    |     code=hash_mismatch expected=sha256:4435dba64cd01241ed5200836b30e81f5690bbd145d6483fa935f22fa45472f7 current=sha256:2be53d0743bdd0be44d38e264a276eb1da149e60d8920a7759b0a397da7e5bf7
+
+================================================================================
+THE RETRY PATH — the enforcement is not a dead end
+================================================================================
+
+Cell: --mode retry. The refused writer RE-READS the path (what ESTALE tells it to do)
+and retries; the retry LANDS, and it publishes the SERVER's current content truncated
+because a resize reads what it is about to replace.
+
+  === ARM retry (expect=green) on src/target.txt ===
+    baseline                  : 64 B sha256=4435dba64cd01241…
+    read through the mount    : 64 B sha256=4435dba64cd01241…  (this read fixes the base)
+    PASS  FIXTURE: the mount served the server's bytes
+    concurrent edit (out-of-band): 64 B sha256=2be53d0743bdd0be…  (size same=True, mtime same=True, bytes differ=True)
+    PASS  FIXTURE: the concurrent edit kept the size
+    PASS  FIXTURE: the concurrent edit restored the mtime
+    PASS  FIXTURE: the concurrent edit changed the bytes
+    truncate to 48          : REFUSED — OSError: [Errno 116] Stale file handle: '/tmp/bfs033/run-green-retry2/mnt/src/target.txt' (errno=116 ESTALE)
+    the target's bytes after   : 64 B sha256=2be53d0743bdd0be…
+    target unchanged           : True
+    conflicts.jsonl entries    : 1
+      {"path": "src/target.txt", "expected": "sha256:4435dba64cd01241ed5200836b30e81f5690bbd145d6483fa935f22fa45472f7", "current": "sha256:2be53d0743bdd0be44d38e264a276eb1da149e60d8920a7
+    status.conflicts           : {"refusals_total": 1, "last": {"path": "src/target.txt", "expected": "sha256:4435dba64cd01241ed5200836b30e81f5690bbd145d6483fa935f22fa45472f7", "current": "sha256:2be53d0743bdd0be4
+    PUTs on src/target.txt (proxy trace): 1
+      #11 status=412 req_bytes=48 if_match="sha256:4435dba64cd01241ed5200836b30e81f5690bbd145d6483fa935f22fa45472f7"
+    PUT 412 count=1  PUT 2xx count=0
+  
+    PASS  the first attempt was REFUSED (ESTALE)
+    PASS  the target is UNCHANGED by the refused attempt
+    re-read through the mount : 64 B sha256=4435dba64cd01241…
+    re-read freshness          : STALE (cache) — named residual: BFS-024/026, QA-BUNKER-36. The caller re-read; the client served the blob it still held. Not a BFS-033 cell.
+    retry truncate to 48    : LANDED — returned cleanly
+    the target's bytes after   : 48 B sha256=a8fbc1331f7daadd…
+    PASS  the RETRY LANDED: ESTALE's contract (re-read, then retry) still works
+    PASS  the retry published the SERVER's current content truncated
+    PUTs on src/target.txt: 2 total, 1 x 412, 1 x 2xx
+    PASS  one refusal then one sanctioned landing — no second unsanctioned write
+  
+  RESULT: the enforcement is not a dead end — the refused writer recovered by re-reading
+
+--- every PUT the mount made on the path (proxy trace) ---
+  # method   status  req_bytes  if_match                              path
+  11 PUT      412     48         sha256:4435dba64cd01241ed5200836b30e81f5 /dav/src/target.txt
+  15 PUT      204     48         sha256:2be53d0743bdd0be44d38e264a276eb1d /dav/src/target.txt
+
+Named residual, stated where it shows: the re-read can be answered from the cache entry
+the caller's first read made (this interleaving preserves size and mtime, so the mount's
+invalidation has nothing to see). That is the stale-serve class filed as BFS-024/026 and
+QA-BUNKER-36, which this row does not touch. The enforcement this row adds is that the
+REFUSED write cannot land without an intervening caller read.
+
+================================================================================
+TWO WRITERS, ONE CONFLICTING
+================================================================================
+
+Cell: --mode twowriters. Two writers read the path (both bases are then made stale by an
+out-of-band edit). Writer A is refused; writer B cannot publish behind A's standing
+refusal; writer C, on ANOTHER path, lands (the hold is per path, not a global stall);
+writer B recovers by re-reading and retrying.
+
+  === two writers, one conflicting, on src/target.txt ===
+    PASS  FIXTURE: both writers read the baseline (each read is that writer's base)
+    concurrent edit           : 64 B sha256=2be53d0743bdd0be… (same size, mtime restored)
+    PASS  FIXTURE: the concurrent edit landed on the server
+    writer A (truncate to 56) : REFUSED — OSError: [Errno 116] Stale file handle: '/tmp/bfs033/run-two-writers3/mnt/src/target.txt' (errno=116 ESTALE)
+    writer B (truncate to 48) : REFUSED — OSError: [Errno 116] Stale file handle: '/tmp/bfs033/run-two-writers3/mnt/src/target.txt' (errno=116 ESTALE)
+    writer C on src/other.txt (to 52): LANDED — returned cleanly
+    the target's bytes after  : 64 B sha256=2be53d0743bdd0be…
+    PASS  the conflicting writer was REFUSED with ESTALE
+    PASS  a second writer could NOT publish behind the standing refusal (it was told ESTALE)
+    PASS  an innocent writer on ANOTHER path still landed (the hold is per path, not a global stall)
+    PASS  the innocent writer's bytes landed on its own path
+    PASS  the conflicting writers' bytes never reached the target
+    PUTs on src/target.txt: 1 total, 1 x 412, 0 x 2xx
+    refusal_holds             : {"held_total": 3, "outstanding": 1, "evicted_total": 0, "last": "src/target.txt: held=3 code=hash_mismatch (the refusal stands until the path is read)"}
+    PASS  NO write landed on the target while a refusal stood
+    PASS  the conflicting write was refused (412 recorded)
+    PASS  neither conflicting writer's bytes ever returned success
+    PASS  the standing refusal is REPORTED as having held a write (refusal_holds.held_total)
+    PASS  one refusal recorded for the one refused write (got 1)
+    writer B retry (after re-read): LANDED — returned cleanly
+    PASS  the refused writer recovered by re-reading and retrying (ESTALE's contract)
+    PASS  the retry published the SERVER's current content truncated
+  
+  RESULT: the refused writers never landed, the refusal held a second writer, and the innocent writer was unaffected
+
+--- every PUT the mount made on the target (proxy trace) ---
+  # method   status  req_bytes  if_match                              path
+  11 PUT      412     56         sha256:4435dba64cd01241ed5200836b30e81f5 /dav/src/target.txt
+  25 PUT      204     48         sha256:2be53d0743bdd0be44d38e264a276eb1d /dav/src/target.txt
