@@ -197,7 +197,7 @@ within the 30 s deadline with a named cause, and recovery is one command.`,
 	cmd.Flags().DurationVar(&o.PollInterval, "poll-interval", fsmount.DefaultPollInterval, "declared poll period")
 	cmd.Flags().DurationVar(&o.InvalidateIdleTimeout, "invalidate-idle-timeout", fsmount.DefaultInvalidateIdleTimeout, "how long the pushed channel may be silent before the mount falls back to the poll (0 derives it from the heartbeat period the server declares)")
 	cmd.Flags().StringVar(&o.OnConflict, "on-conflict", fsclient.OnConflictRefuse, "refuse|overwrite-if-unchanged")
-	cmd.Flags().StringVar(&o.CacheDir, "cache-dir", "", "override the cache directory (default $XDG_CACHE_HOME/bunker/fs/<mount-id>)")
+	cmd.Flags().StringVar(&o.CacheDir, "cache-dir", "", "override the MOUNT directory (default $XDG_CACHE_HOME/bunker/fs/<mount-id>); the cache the byte bound names lives in <dir>/cache")
 	cmd.Flags().BoolVar(&allowOther, "allow-other", false, "requested and STRIPPED: the mountpoint stays private 0700")
 	cmd.Flags().BoolVar(&noCache, "no-cache", false, "disable the cache (same as --cache-max-size 0)")
 	cmd.Flags().BoolVar(&noSnapshot, "no-snapshot", false, "disable the one-call node-tree snapshot (every directory read falls back to PROPFIND)")

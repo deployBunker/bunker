@@ -921,14 +921,15 @@ func censusTable() map[string]figureSpec {
 		"cache.bypass_reasons.cache_disabled":        {kindAppears, 0, "--cache-max-size 0: a measured 0 for a cache that is switched on"},
 		// ---- the independent measurement --------------------------------------
 		"cache.dir_bytes":                    {kindMoves, 0, "the filesystem walk: grows with every file the cache writes"},
+		"cache.dir_peak_bytes":               {kindMoves, 0, "the directory's PEAK (blobs + staged booking + TWO index copies + measured foreign bytes): the figure the byte bound is enforced against (BFS-031); it moves when an entry is published"},
 		"cache.dir_unaccounted_bytes":        {kindMoves, 0, "dir_bytes − used_bytes: the delta the published figure does not count (BFS-031's shape, named)"},
 		"cache.dir_measured_age_ms":          {kindAppears, 0, "how old the sample is; present once a walk has happened"},
 		"cache.dir_bytes_by_class.index":     {kindAppears, 0, "index.json — a measured value; the walk arm proves a 0 is real"},
 		"cache.dir_bytes_by_class.blobs":     {kindMoves, 0, "published blobs: moves when a blob is written"},
 		"cache.dir_bytes_by_class.staged":    {kindAppears, 0, "staged blobs on disk at sample time (0 when none is in flight)"},
 		"cache.dir_bytes_by_class.orphan":    {kindAppears, 0, "blob files no index entry references (0 in a healthy cache)"},
-		"cache.dir_bytes_by_class.status":    {kindAppears, 0, "status.json, which used_bytes does NOT count"},
-		"cache.dir_bytes_by_class.conflicts": {kindAppears, 0, "conflicts.jsonl, which used_bytes does NOT count"},
+		"cache.dir_bytes_by_class.status":    {kindAppears, 0, "status.json: 0 in the CACHE directory since BFS-031 moved the mount's state out of it; the class stays so a foreign status file would still be attributed"},
+		"cache.dir_bytes_by_class.conflicts": {kindAppears, 0, "conflicts.jsonl: 0 in the CACHE directory since BFS-031 moved the refusal log out of it"},
 		"cache.dir_bytes_by_class.other":     {kindAppears, 0, "anything else in the directory"},
 		// ---- the invalidation record ------------------------------------------
 		"invalidation.seq":                  {kindMoves, 0, "the journal cursor advances on every applied event"},
@@ -1164,32 +1165,43 @@ func TestTheClientAbsentBlocksCarryTheReasonThatFitsTheFact(t *testing.T) {
 // status.json, conflicts.jsonl, staged blobs or a temp index — so the record now
 // carries BOTH, plus the delta, and this test takes the walk for itself.
 func TestTheReportedDirectoryFigureAgreesWithAnIndependentWalk(t *testing.T) {
-	dir := t.TempDir()
-	cache := newTestCacheWithBounds(t, CacheConfig{Dir: dir, MaxBytes: 1 << 20, MaxEntryBytes: 1 << 16, MaxAge: time.Hour, DirMeasureInterval: -1})
+	// THE LAYOUT IS PART OF THE CONTRACT (BFS-031). The directory the byte bound
+	// names holds the cache and NOTHING ELSE: the mount's own state (status.json
+	// and the refusal log) lives in the MOUNT directory, one level up, with its
+	// own bound. So this arm builds the mount directory the way the mount does and
+	// asserts both halves: the cache directory agrees with an independent walk of
+	// the CACHE, and the state files are in the mount directory and are NOT in the
+	// cache directory.
+	mount := t.TempDir()
+	cacheDir := MountCacheDir(mount)
+	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
+		t.Fatalf("cache dir: %v", err)
+	}
+	cache := newTestCacheWithBounds(t, CacheConfig{Dir: cacheDir, MaxBytes: 1 << 20, MaxEntryBytes: 1 << 16, MaxAge: time.Hour, DirMeasureInterval: -1})
 	for _, p := range []string{"x.go", "y.go"} {
 		body := []byte(p + "-body")
 		if _, err := cache.Insert(p, HashBytes(body), body); err != nil {
 			t.Fatalf("insert %s: %v", p, err)
 		}
 	}
-	// The mount's own directory residents, written the way the mount writes them:
-	// the status document and the refusal log. They are the named constituents of
-	// the unaccounted delta.
+	// The mount's own residents, written where the mount writes them: in the
+	// MOUNT directory, beside the cache directory.
 	st := Status{Mount: "probe", Endpoint: "http://127.0.0.1:1/dav", Cache: cache.Stats()}
-	if err := WriteStatus(dir, st); err != nil {
+	if err := WriteStatus(mount, st); err != nil {
 		t.Fatalf("write status: %v", err)
 	}
-	if err := AppendConflict(dir, Conflict{Path: "x.go", Code: "hash_mismatch", Detail: "probe"}); err != nil {
+	if err := AppendConflict(mount, Conflict{Path: "x.go", Code: "hash_mismatch", Detail: "probe"}); err != nil {
 		t.Fatalf("append conflict: %v", err)
 	}
-	// A fresh Stats() re-measures with those files in place.
+	// A fresh Stats() re-measures with those files in place (and, because they are
+	// NOT in the cache directory, they must not appear in its figures).
 	cs := cache.Stats()
 
 	// THE INDEPENDENT MEASUREMENT: a walk this test performs itself, with no
 	// knowledge of the implementation's classification.
 	var walked int64
 	byClass := map[string]int64{}
-	err := filepathWalk(dir, func(rel string, size int64) {
+	err := filepathWalk(cacheDir, func(rel string, size int64) {
 		walked += size
 		switch {
 		case rel == CacheIndexFile:
@@ -1220,33 +1232,44 @@ func TestTheReportedDirectoryFigureAgreesWithAnIndependentWalk(t *testing.T) {
 	if cs.DirUnaccountedBytes != cs.DirBytes-cs.UsedBytes {
 		t.Fatalf("unaccounted_bytes=%d, want dir_bytes−used_bytes=%d", cs.DirUnaccountedBytes, cs.DirBytes-cs.UsedBytes)
 	}
-	// The delta is NAMED: it is at least the two files used_bytes does not count,
-	// and the class figures say exactly where the bytes are.
-	nameOnly := int64(len(mustJSON(t, Conflict{Path: "x.go", Code: "hash_mismatch", Detail: "probe"})))
-	if cs.DirBytesByClass[DirClassConflicts] < nameOnly {
-		t.Fatalf("the conflict log's bytes are not attributed: class=%d, the file is at least %d",
-			cs.DirBytesByClass[DirClassConflicts], nameOnly)
+	// THE DECISION, ASSERTED: the state files are in the mount directory and are
+	// NOT inside the directory the bound names. If they were, `dir_bytes` would be
+	// the sum of two unrelated things again — which is exactly the defect.
+	if cs.DirBytesByClass[DirClassStatus] != 0 || cs.DirBytesByClass[DirClassConflicts] != 0 {
+		t.Fatalf("the observability files are inside the cache directory: status=%d conflicts=%d — BFS-031 moved them out so the bound can bound what it names",
+			cs.DirBytesByClass[DirClassStatus], cs.DirBytesByClass[DirClassConflicts])
 	}
-	if cs.DirBytesByClass[DirClassStatus] <= 0 {
-		t.Fatal("status.json is in the directory and must be attributed: its own bytes are outside used_bytes")
-	}
-	if cs.DirUnaccountedBytes < cs.DirBytesByClass[DirClassStatus]+cs.DirBytesByClass[DirClassConflicts] {
-		t.Fatalf("the unaccounted delta (%d) is smaller than the files used_bytes does not count (%d + %d)",
-			cs.DirUnaccountedBytes, cs.DirBytesByClass[DirClassStatus], cs.DirBytesByClass[DirClassConflicts])
+	for _, name := range []string{StatusFile, ConflictsFile} {
+		info, err := os.Stat(filepath.Join(mount, name))
+		if err != nil {
+			t.Fatalf("the mount's %s is not in the mount directory (%s): %v", name, mount, err)
+		}
+		if info.Size() <= 0 {
+			t.Fatalf("%s is empty in the mount directory", name)
+		}
 	}
 	if cs.DirBytesByClass[DirClassBlobs] == 0 {
 		t.Fatal("two blobs were written and the walk found none")
 	}
-	// The published figure must stay INSIDE the bound while the measurement is
-	// taken, so the bound remains a bound.
+	// THE ROW'S CLAIM, in the same arm (BFS-031): the directory the bound names is
+	// INSIDE the bound, measured on the filesystem rather than derived.
+	if cs.DirBytes > cs.MaxBytes {
+		t.Fatalf("the cache directory holds %d B, over its %d B bound", cs.DirBytes, cs.MaxBytes)
+	}
+	if cs.DirPeakBytes > cs.MaxBytes {
+		t.Fatalf("the peak the bound is enforced against (%d) exceeds the bound %d", cs.DirPeakBytes, cs.MaxBytes)
+	}
+	if cs.UsedBytes+cs.IndexBytes > cs.MaxBytes {
+		t.Fatalf("the index's temp copy is not reserved: used=%d index=%d max=%d", cs.UsedBytes, cs.IndexBytes, cs.MaxBytes)
+	}
 	if cs.UsedBytes > cs.MaxBytes {
 		t.Fatalf("used_bytes=%d exceeds the bound %d", cs.UsedBytes, cs.MaxBytes)
 	}
 	if cs.DirMeasuredAgeMS == nil {
 		t.Fatal("the sample's age must be reported beside it, so a reused walk is never read as a fresh one")
 	}
-	t.Logf("independent agreement: reported dir_bytes=%d walk=%d (used_bytes=%d, unaccounted=%d) classes=%v",
-		cs.DirBytes, walked, cs.UsedBytes, cs.DirUnaccountedBytes, cs.DirBytesByClass)
+	t.Logf("independent agreement: reported dir_bytes=%d walk=%d (used_bytes=%d, peak=%d, unaccounted=%d) classes=%v",
+		cs.DirBytes, walked, cs.UsedBytes, cs.DirPeakBytes, cs.DirUnaccountedBytes, cs.DirBytesByClass)
 }
 
 // TestTheDirectoryMeasurementReportsItsOwnReasoningWhenTheWalkFails is the null

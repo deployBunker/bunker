@@ -52,12 +52,19 @@ const cacheSeedWriteMax = 8 << 20
 
 // Mount is one mounted bunker-fs filesystem.
 type Mount struct {
-	opts   Options
-	dir    string
-	logf   func(string, ...any)
-	client *fsclient.Client
-	cache  *fsclient.Cache
-	wp     *fsclient.WritePath
+	opts Options
+	// dir is the MOUNT directory: the client's local footprint for this
+	// endpoint. It holds the cache directory (cacheDir) and the mount's own
+	// state (status.json, conflicts.jsonl, the write-buffer spills).
+	dir string
+	// cacheDir is the directory `--cache-max-size` bounds: <dir>/cache. See
+	// fsclient/layout.go for why the bound names a directory that holds only
+	// cache bytes (BFS-031).
+	cacheDir string
+	logf     func(string, ...any)
+	client   *fsclient.Client
+	cache    *fsclient.Cache
+	wp       *fsclient.WritePath
 
 	snap atomic.Pointer[fsclient.Snapshot]
 	inv  *fsclient.Invalidator
@@ -191,9 +198,20 @@ func MountAt(opts Options) (*Mount, error) {
 		return nil, err
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, fmt.Errorf("bunker-fs: create cache dir: %w", err)
+		return nil, fmt.Errorf("bunker-fs: create mount dir: %w", err)
+	}
+	// BFS-031: a cache written by an earlier build sits DIRECTLY in the mount
+	// directory, beside the mount's own state. It is migrated into the cache
+	// subdirectory rather than discarded (the bytes are the owner's cache) or
+	// merged by hand: the move is a rename inside one directory.
+	if mig, merr := fsclient.MigrateMountLayout(dir); merr != nil {
+		m.logf("bunker-fs: cache layout migration: %v", merr)
+	} else if mig.Moved {
+		m.logf("bunker-fs: migrated a pre-BFS-031 cache: %d entr(y|ies), %d B, %d stale temp(s) → %s",
+			mig.Files, mig.Bytes, mig.TempsRemoved, fsclient.MountCacheDir(dir))
 	}
 	m.dir = dir
+	m.cacheDir = fsclient.MountCacheDir(dir)
 
 	client, err := fsclient.NewClient(fsclient.Options{
 		BaseURL:         opts.BaseURL,
@@ -227,7 +245,7 @@ func MountAt(opts Options) (*Mount, error) {
 	}
 
 	cache, err := fsclient.OpenCache(fsclient.CacheConfig{
-		Dir:           dir,
+		Dir:           m.cacheDir,
 		MaxBytes:      opts.CacheMaxBytes,
 		MaxEntryBytes: opts.CacheMaxEntryBytes,
 		// The ENTRY bound and the staged-refresh width (BFS-044's
@@ -366,8 +384,18 @@ func (m *Mount) Server() *fuse.Server { return m.server }
 // Mountpoint returns the resolved mountpoint.
 func (m *Mount) Mountpoint() string { return m.opts.Mountpoint }
 
-// CacheDir returns the resolved cache directory.
-func (m *Mount) CacheDir() string { return m.dir }
+// CacheDir returns the resolved cache directory — the directory the byte bound
+// `--cache-max-size` names and is enforced against (<mount dir>/cache).
+func (m *Mount) CacheDir() string {
+	if m.cacheDir != "" {
+		return m.cacheDir
+	}
+	return m.dir
+}
+
+// MountDir returns the mount's own directory: the client's local footprint for
+// this endpoint, holding the cache directory and the mount's state.
+func (m *Mount) MountDir() string { return m.dir }
 
 // Client exposes the client (measurements read its request and in-flight
 // counters).

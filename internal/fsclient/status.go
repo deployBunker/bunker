@@ -200,8 +200,10 @@ type ReadBoundState struct {
 	Last string `json:"last,omitempty"`
 }
 
-// MountRoot returns the per-user root of this client's cache directories:
-// $XDG_CACHE_HOME/bunker/fs (default ~/.cache/bunker/fs), mode 0700.
+// MountRoot returns the per-user root of this client's mount directories:
+// $XDG_CACHE_HOME/bunker/fs (default ~/.cache/bunker/fs), mode 0700. Each mount
+// directory holds that mount's cache directory (`cache/`, the one
+// `--cache-max-size` bounds) and the mount's own state (BFS-031).
 func MountRoot() (string, error) {
 	base := os.Getenv("XDG_CACHE_HOME")
 	if base == "" {
@@ -221,7 +223,9 @@ func MountID(baseURL string) string {
 	return hex.EncodeToString(sum[:])[:12]
 }
 
-// MountDir is the cache directory of one mount: <root>/<mount-id>, 0700.
+// MountDir is the MOUNT directory of one endpoint: <root>/<mount-id>, 0700. It
+// holds the cache directory (`cache/`, the one the byte bound names) and the
+// mount's own state (BFS-031).
 func MountDir(baseURL string) (string, error) {
 	root, err := MountRoot()
 	if err != nil {
