@@ -1,0 +1,45 @@
+diff --git a/internal/server/webdav/ops.go b/internal/server/webdav/ops.go
+index fc5e155..186094b 100644
+--- a/internal/server/webdav/ops.go
++++ b/internal/server/webdav/ops.go
+@@ -381,7 +381,7 @@ func (h *Handler) writeEnvelope(w http.ResponseWriter, r *http.Request, start ti
+ 	w.Header().Set("X-Bunker-Verdict", string(code))
+ 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+ 	w.Header().Set("Cache-Control", "no-store")
+-	if v := capabilityHeaderValue(eerr2Capability(eerr), eerr2Scope(eerr), eerr2Phase(eerr), eerr2Mode(eerr), eerr2Reason(eerr)); v != "" {
++	if v := capabilityHeaderValue(eerr2Capability(eerr), eerr2Scope(eerr), eerr2Phase(eerr), eerr2Mode(eerr), ""); v != "" {
+ 		w.Header().Set("X-Bunker-Capability", v)
+ 	}
+ 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+diff --git a/internal/server/webdav/watch.go b/internal/server/webdav/watch.go
+index dc35435..a2b26ef 100644
+--- a/internal/server/webdav/watch.go
++++ b/internal/server/webdav/watch.go
+@@ -648,7 +648,10 @@ func (w *watcher) drain() {
+ 			if !ok {
+ 				return
+ 			}
+-			w.onBackendError(err)
++			// MUTATION B (BFS-035 negative control: the QUIET implementation):
++			// the drain receives and throws the classification away, so an
++			// overflow is never counted and the interval never reads unvouched.
++			_ = err
+ 		}
+ 	}
+ }
+@@ -680,11 +683,10 @@ func (w *watcher) onBackendError(err error) {
+ }
+ 
+ func (w *watcher) requestRescan(cause string) {
+-	select {
+-	case w.rescanCh <- cause:
+-	default:
+-		// A rescan is already pending: one lost interval is one rescan.
+-	}
++	// MUTATION A (BFS-035 negative control: "the rescan is neutered"): the
++	// request is dropped, so an overflow is still counted and the interval is
++	// still declared unvouched, but no full rescan ever runs.
++	_ = cause
+ }
+ 
+ // markUnvouched publishes "this interval cannot be vouched for". It is the only

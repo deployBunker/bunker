@@ -1,0 +1,11 @@
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase
+=== RUN   TestWatchProbeMatrixNamesOneReasonPerCase/W-3_watch_target_netbacked_is_its_own_case,_with_the_mount_type
+    watch_test.go:541: X-Bunker-Capability carried reason="", want "watch_target_netbacked" (header "watch;scope=target;mode=poll")
+--- FAIL: TestWatchProbeMatrixNamesOneReasonPerCase (0.01s)
+    --- FAIL: TestWatchProbeMatrixNamesOneReasonPerCase/W-3_watch_target_netbacked_is_its_own_case,_with_the_mount_type (0.01s)
+=== RUN   TestWatchOverflowForcesCountedFullRescanAndIsNeverQuiet
+    watch_test.go:926: timed out after 5s waiting for the overflow to be counted
+--- FAIL: TestWatchOverflowForcesCountedFullRescanAndIsNeverQuiet (5.01s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/server/webdav	5.044s
+FAIL
