@@ -1,0 +1,211 @@
+BFS-049 arms — mode=cost base=4879343
+go go1.26.5 · 58df47c · 2026-09-27T16:01:49Z
+host load at measurement time: 74.35 61.54 36.81 63/10644 362885
+=== fixed tree: internal/server/webdav/tree.go sha256=7f835740bb323dd3fba8dcf9c16556702bcc2c986ecbc5860748e1ef583d20e0
+building the fixed-tree test binary (before any swap, so the two binaries differ ONLY in tree.go)
+--- fixed tree: strace -f -c -e trace=<stat family> … -test.run TestBFS049OneStatPerHashFileLookup
+strace: Process 365107 attached
+strace: Process 365106 attached
+strace: Process 365104 attached
+=== RUN   TestBFS049OneStatPerHashFileLookup
+strace: Process 365112 attached
+    identity_bfs049_test.go:361: BFS-049 syscalls: 500 hashFile cache hits in 20.906036ms (41.812µs per call) — strace this arm and compare the stat-family count between the two trees
+--- PASS: TestBFS049OneStatPerHashFileLookup (0.04s)
+PASS
+strace: Process 365114 attached
+strace: Process 365113 attached
+% time     seconds  usecs/call     calls    errors syscall
+------ ----------- ----------- --------- --------- ----------------
+ 97.84    0.003809           7       511         2 newfstatat
+  2.16    0.000084           9         9           fstat
+------ ----------- ----------- --------- --------- ----------------
+100.00    0.003893           7       520         2 total
+pre-swap: internal/server/webdav/tree.go sha256=7f835740bb323dd3fba8dcf9c16556702bcc2c986ecbc5860748e1ef583d20e0
+          internal/server/webdav/events.go sha256=8ca1c752c205d9c30716adb1ecb9d3f1ef7f8297ced4d62c8eb6d6319560b46c
+=== filed tree: internal/server/webdav/tree.go sha256=3c4e95611e51757bab079df93f3d23abfdd1e1466c8edb3a36438a7ec5c09f39
+building the filed-tree test binary
+--- filed tree: strace -f -c -e trace=<stat family> … -test.run TestBFS049OneStatPerHashFileLookup
+strace: Process 368237 attached
+strace: Process 368238 attached
+strace: Process 368250 attached
+=== RUN   TestBFS049OneStatPerHashFileLookup
+strace: Process 368239 attached
+strace: Process 368251 attached
+    identity_bfs049_test.go:361: BFS-049 syscalls: 500 hashFile cache hits in 26.942507ms (53.885µs per call) — strace this arm and compare the stat-family count between the two trees
+--- PASS: TestBFS049OneStatPerHashFileLookup (0.05s)
+PASS
+% time     seconds  usecs/call     calls    errors syscall
+------ ----------- ----------- --------- --------- ----------------
+ 98.99    0.004125           8       511         2 newfstatat
+  1.01    0.000042           4         9           fstat
+------ ----------- ----------- --------- --------- ----------------
+100.00    0.004167           8       520         2 total
+=== interleaved timing rounds (the same fixture in both trees, both directions)
+--- round 1 (fixed) internal/server/webdav/tree.go sha256=7f835740bb323dd3fba8dcf9c16556702bcc2c986ecbc5860748e1ef583d20e0
+    identity_bfs049_test.go:294: BFS-049 cost: one hash-cache entry = 48 bytes (unsafe.Sizeof)
+    identity_bfs049_test.go:295: BFS-049 cost MIN: metric=entry_bytes value=48
+    identity_bfs049_test.go:305: BFS-049 cost: hashFile cache HIT = 2.626µs per call (one stat + one identity comparison)
+    identity_bfs049_test.go:306: BFS-049 cost MIN: metric=cache_hit_ns value=2626
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=1000 run=1 whole_tree_read=37.009676ms entries=1106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=1000 run=2 whole_tree_read=8.170389ms entries=1106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=1000 run=3 whole_tree_read=61.616682ms entries=1106
+    identity_bfs049_test.go:323: BFS-049 cost: snapshot (no hashes) files=1000 entries=1106 MIN whole_tree_read=8.170389ms
+    identity_bfs049_test.go:324: BFS-049 cost MIN: metric=snapshot_no_hash files=1000 entries=1106 ns=8170389
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=10000 run=1 whole_tree_read=249.467583ms entries=10106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=10000 run=2 whole_tree_read=141.581859ms entries=10106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=10000 run=3 whole_tree_read=186.703968ms entries=10106
+    identity_bfs049_test.go:323: BFS-049 cost: snapshot (no hashes) files=10000 entries=10106 MIN whole_tree_read=141.581859ms
+    identity_bfs049_test.go:324: BFS-049 cost MIN: metric=snapshot_no_hash files=10000 entries=10106 ns=141581859
+    identity_bfs049_test.go:333: BFS-049 cost: paired snapshot files=1000 entries=1101/1101 no_hash=8.661307ms include_hash=17.305805ms per_path_hash_work=8.644498ms
+    identity_bfs049_test.go:335: BFS-049 cost MIN: metric=paired_no_hash files=1000 entries=1101 ns=8661307
+    identity_bfs049_test.go:336: BFS-049 cost MIN: metric=paired_include_hash files=1000 entries=1101 ns=17305805
+    identity_bfs049_test.go:337: BFS-049 cost MIN: metric=per_path_hash_work files=1000 entries=1101 ns=8644498
+    identity_bfs049_test.go:333: BFS-049 cost: paired snapshot files=10000 entries=10101/6021 no_hash=103.839797ms include_hash=370.306116ms per_path_hash_work=266.466319ms
+    identity_bfs049_test.go:335: BFS-049 cost MIN: metric=paired_no_hash files=10000 entries=10101 ns=103839797
+    identity_bfs049_test.go:336: BFS-049 cost MIN: metric=paired_include_hash files=10000 entries=6021 ns=370306116
+    identity_bfs049_test.go:337: BFS-049 cost MIN: metric=per_path_hash_work files=10000 entries=6021 ns=266466319
+--- round 1 (filed) internal/server/webdav/tree.go sha256=3c4e95611e51757bab079df93f3d23abfdd1e1466c8edb3a36438a7ec5c09f39
+    identity_bfs049_test.go:294: BFS-049 cost: one hash-cache entry = 32 bytes (unsafe.Sizeof)
+    identity_bfs049_test.go:295: BFS-049 cost MIN: metric=entry_bytes value=32
+    identity_bfs049_test.go:305: BFS-049 cost: hashFile cache HIT = 2.351µs per call (one stat + one identity comparison)
+    identity_bfs049_test.go:306: BFS-049 cost MIN: metric=cache_hit_ns value=2351
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=1000 run=1 whole_tree_read=21.338948ms entries=1106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=1000 run=2 whole_tree_read=13.268062ms entries=1106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=1000 run=3 whole_tree_read=9.587983ms entries=1106
+    identity_bfs049_test.go:323: BFS-049 cost: snapshot (no hashes) files=1000 entries=1106 MIN whole_tree_read=9.587983ms
+    identity_bfs049_test.go:324: BFS-049 cost MIN: metric=snapshot_no_hash files=1000 entries=1106 ns=9587983
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=10000 run=1 whole_tree_read=225.47778ms entries=10106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=10000 run=2 whole_tree_read=157.84817ms entries=10106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=10000 run=3 whole_tree_read=150.886718ms entries=10106
+    identity_bfs049_test.go:323: BFS-049 cost: snapshot (no hashes) files=10000 entries=10106 MIN whole_tree_read=150.886718ms
+    identity_bfs049_test.go:324: BFS-049 cost MIN: metric=snapshot_no_hash files=10000 entries=10106 ns=150886718
+    identity_bfs049_test.go:333: BFS-049 cost: paired snapshot files=1000 entries=1101/1101 no_hash=11.633138ms include_hash=19.84288ms per_path_hash_work=8.209742ms
+    identity_bfs049_test.go:335: BFS-049 cost MIN: metric=paired_no_hash files=1000 entries=1101 ns=11633138
+    identity_bfs049_test.go:336: BFS-049 cost MIN: metric=paired_include_hash files=1000 entries=1101 ns=19842880
+    identity_bfs049_test.go:337: BFS-049 cost MIN: metric=per_path_hash_work files=1000 entries=1101 ns=8209742
+    identity_bfs049_test.go:333: BFS-049 cost: paired snapshot files=10000 entries=10101/6021 no_hash=106.931999ms include_hash=365.513217ms per_path_hash_work=258.581218ms
+    identity_bfs049_test.go:335: BFS-049 cost MIN: metric=paired_no_hash files=10000 entries=10101 ns=106931999
+    identity_bfs049_test.go:336: BFS-049 cost MIN: metric=paired_include_hash files=10000 entries=6021 ns=365513217
+    identity_bfs049_test.go:337: BFS-049 cost MIN: metric=per_path_hash_work files=10000 entries=6021 ns=258581218
+--- round 2 (filed) internal/server/webdav/tree.go sha256=3c4e95611e51757bab079df93f3d23abfdd1e1466c8edb3a36438a7ec5c09f39
+    identity_bfs049_test.go:294: BFS-049 cost: one hash-cache entry = 32 bytes (unsafe.Sizeof)
+    identity_bfs049_test.go:295: BFS-049 cost MIN: metric=entry_bytes value=32
+    identity_bfs049_test.go:305: BFS-049 cost: hashFile cache HIT = 2.49µs per call (one stat + one identity comparison)
+    identity_bfs049_test.go:306: BFS-049 cost MIN: metric=cache_hit_ns value=2490
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=1000 run=1 whole_tree_read=20.93996ms entries=1106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=1000 run=2 whole_tree_read=10.810064ms entries=1106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=1000 run=3 whole_tree_read=18.758883ms entries=1106
+    identity_bfs049_test.go:323: BFS-049 cost: snapshot (no hashes) files=1000 entries=1106 MIN whole_tree_read=10.810064ms
+    identity_bfs049_test.go:324: BFS-049 cost MIN: metric=snapshot_no_hash files=1000 entries=1106 ns=10810064
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=10000 run=1 whole_tree_read=358.017806ms entries=10106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=10000 run=2 whole_tree_read=157.104824ms entries=10106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=10000 run=3 whole_tree_read=113.401822ms entries=10106
+    identity_bfs049_test.go:323: BFS-049 cost: snapshot (no hashes) files=10000 entries=10106 MIN whole_tree_read=113.401822ms
+    identity_bfs049_test.go:324: BFS-049 cost MIN: metric=snapshot_no_hash files=10000 entries=10106 ns=113401822
+    identity_bfs049_test.go:333: BFS-049 cost: paired snapshot files=1000 entries=1101/1101 no_hash=18.396292ms include_hash=18.541892ms per_path_hash_work=145.6µs
+    identity_bfs049_test.go:335: BFS-049 cost MIN: metric=paired_no_hash files=1000 entries=1101 ns=18396292
+    identity_bfs049_test.go:336: BFS-049 cost MIN: metric=paired_include_hash files=1000 entries=1101 ns=18541892
+    identity_bfs049_test.go:337: BFS-049 cost MIN: metric=per_path_hash_work files=1000 entries=1101 ns=145600
+    identity_bfs049_test.go:333: BFS-049 cost: paired snapshot files=10000 entries=10101/6021 no_hash=126.807429ms include_hash=400.940856ms per_path_hash_work=274.133427ms
+    identity_bfs049_test.go:335: BFS-049 cost MIN: metric=paired_no_hash files=10000 entries=10101 ns=126807429
+    identity_bfs049_test.go:336: BFS-049 cost MIN: metric=paired_include_hash files=10000 entries=6021 ns=400940856
+    identity_bfs049_test.go:337: BFS-049 cost MIN: metric=per_path_hash_work files=10000 entries=6021 ns=274133427
+--- round 2 (fixed) internal/server/webdav/tree.go sha256=7f835740bb323dd3fba8dcf9c16556702bcc2c986ecbc5860748e1ef583d20e0
+    identity_bfs049_test.go:294: BFS-049 cost: one hash-cache entry = 48 bytes (unsafe.Sizeof)
+    identity_bfs049_test.go:295: BFS-049 cost MIN: metric=entry_bytes value=48
+    identity_bfs049_test.go:305: BFS-049 cost: hashFile cache HIT = 2.708µs per call (one stat + one identity comparison)
+    identity_bfs049_test.go:306: BFS-049 cost MIN: metric=cache_hit_ns value=2708
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=1000 run=1 whole_tree_read=43.891051ms entries=1106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=1000 run=2 whole_tree_read=10.328554ms entries=1106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=1000 run=3 whole_tree_read=19.176797ms entries=1106
+    identity_bfs049_test.go:323: BFS-049 cost: snapshot (no hashes) files=1000 entries=1106 MIN whole_tree_read=10.328554ms
+    identity_bfs049_test.go:324: BFS-049 cost MIN: metric=snapshot_no_hash files=1000 entries=1106 ns=10328554
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=10000 run=1 whole_tree_read=212.672523ms entries=10106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=10000 run=2 whole_tree_read=171.700805ms entries=10106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=10000 run=3 whole_tree_read=170.027719ms entries=10106
+    identity_bfs049_test.go:323: BFS-049 cost: snapshot (no hashes) files=10000 entries=10106 MIN whole_tree_read=170.027719ms
+    identity_bfs049_test.go:324: BFS-049 cost MIN: metric=snapshot_no_hash files=10000 entries=10106 ns=170027719
+    identity_bfs049_test.go:333: BFS-049 cost: paired snapshot files=1000 entries=1101/1101 no_hash=10.41352ms include_hash=14.191251ms per_path_hash_work=3.777731ms
+    identity_bfs049_test.go:335: BFS-049 cost MIN: metric=paired_no_hash files=1000 entries=1101 ns=10413520
+    identity_bfs049_test.go:336: BFS-049 cost MIN: metric=paired_include_hash files=1000 entries=1101 ns=14191251
+    identity_bfs049_test.go:337: BFS-049 cost MIN: metric=per_path_hash_work files=1000 entries=1101 ns=3777731
+    identity_bfs049_test.go:333: BFS-049 cost: paired snapshot files=10000 entries=10101/6021 no_hash=108.301844ms include_hash=653.035781ms per_path_hash_work=544.733937ms
+    identity_bfs049_test.go:335: BFS-049 cost MIN: metric=paired_no_hash files=10000 entries=10101 ns=108301844
+    identity_bfs049_test.go:336: BFS-049 cost MIN: metric=paired_include_hash files=10000 entries=6021 ns=653035781
+    identity_bfs049_test.go:337: BFS-049 cost MIN: metric=per_path_hash_work files=10000 entries=6021 ns=544733937
+--- round 3 (fixed) internal/server/webdav/tree.go sha256=7f835740bb323dd3fba8dcf9c16556702bcc2c986ecbc5860748e1ef583d20e0
+    identity_bfs049_test.go:294: BFS-049 cost: one hash-cache entry = 48 bytes (unsafe.Sizeof)
+    identity_bfs049_test.go:295: BFS-049 cost MIN: metric=entry_bytes value=48
+    identity_bfs049_test.go:305: BFS-049 cost: hashFile cache HIT = 2.707µs per call (one stat + one identity comparison)
+    identity_bfs049_test.go:306: BFS-049 cost MIN: metric=cache_hit_ns value=2707
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=1000 run=1 whole_tree_read=16.595851ms entries=1106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=1000 run=2 whole_tree_read=68.962657ms entries=1106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=1000 run=3 whole_tree_read=10.757286ms entries=1106
+    identity_bfs049_test.go:323: BFS-049 cost: snapshot (no hashes) files=1000 entries=1106 MIN whole_tree_read=10.757286ms
+    identity_bfs049_test.go:324: BFS-049 cost MIN: metric=snapshot_no_hash files=1000 entries=1106 ns=10757286
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=10000 run=1 whole_tree_read=222.385006ms entries=10106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=10000 run=2 whole_tree_read=120.832251ms entries=10106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=10000 run=3 whole_tree_read=137.520113ms entries=10106
+    identity_bfs049_test.go:323: BFS-049 cost: snapshot (no hashes) files=10000 entries=10106 MIN whole_tree_read=120.832251ms
+    identity_bfs049_test.go:324: BFS-049 cost MIN: metric=snapshot_no_hash files=10000 entries=10106 ns=120832251
+    identity_bfs049_test.go:333: BFS-049 cost: paired snapshot files=1000 entries=1101/1101 no_hash=15.259187ms include_hash=14.334496ms per_path_hash_work=-924.691µs
+    identity_bfs049_test.go:335: BFS-049 cost MIN: metric=paired_no_hash files=1000 entries=1101 ns=15259187
+    identity_bfs049_test.go:336: BFS-049 cost MIN: metric=paired_include_hash files=1000 entries=1101 ns=14334496
+    identity_bfs049_test.go:337: BFS-049 cost MIN: metric=per_path_hash_work files=1000 entries=1101 ns=-924691
+    identity_bfs049_test.go:333: BFS-049 cost: paired snapshot files=10000 entries=10101/6021 no_hash=88.044678ms include_hash=359.001997ms per_path_hash_work=270.957319ms
+    identity_bfs049_test.go:335: BFS-049 cost MIN: metric=paired_no_hash files=10000 entries=10101 ns=88044678
+    identity_bfs049_test.go:336: BFS-049 cost MIN: metric=paired_include_hash files=10000 entries=6021 ns=359001997
+    identity_bfs049_test.go:337: BFS-049 cost MIN: metric=per_path_hash_work files=10000 entries=6021 ns=270957319
+--- round 3 (filed) internal/server/webdav/tree.go sha256=3c4e95611e51757bab079df93f3d23abfdd1e1466c8edb3a36438a7ec5c09f39
+    identity_bfs049_test.go:294: BFS-049 cost: one hash-cache entry = 32 bytes (unsafe.Sizeof)
+    identity_bfs049_test.go:295: BFS-049 cost MIN: metric=entry_bytes value=32
+    identity_bfs049_test.go:305: BFS-049 cost: hashFile cache HIT = 2.133µs per call (one stat + one identity comparison)
+    identity_bfs049_test.go:306: BFS-049 cost MIN: metric=cache_hit_ns value=2133
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=1000 run=1 whole_tree_read=19.136563ms entries=1106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=1000 run=2 whole_tree_read=23.774384ms entries=1106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=1000 run=3 whole_tree_read=52.78572ms entries=1106
+    identity_bfs049_test.go:323: BFS-049 cost: snapshot (no hashes) files=1000 entries=1106 MIN whole_tree_read=19.136563ms
+    identity_bfs049_test.go:324: BFS-049 cost MIN: metric=snapshot_no_hash files=1000 entries=1106 ns=19136563
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=10000 run=1 whole_tree_read=162.229398ms entries=10106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=10000 run=2 whole_tree_read=209.45046ms entries=10106
+    identity_bfs049_test.go:318: BFS-049 cost:   snapshot (no hashes) files=10000 run=3 whole_tree_read=210.270729ms entries=10106
+    identity_bfs049_test.go:323: BFS-049 cost: snapshot (no hashes) files=10000 entries=10106 MIN whole_tree_read=162.229398ms
+    identity_bfs049_test.go:324: BFS-049 cost MIN: metric=snapshot_no_hash files=10000 entries=10106 ns=162229398
+    identity_bfs049_test.go:333: BFS-049 cost: paired snapshot files=1000 entries=1101/1101 no_hash=8.92706ms include_hash=62.185074ms per_path_hash_work=53.258014ms
+    identity_bfs049_test.go:335: BFS-049 cost MIN: metric=paired_no_hash files=1000 entries=1101 ns=8927060
+    identity_bfs049_test.go:336: BFS-049 cost MIN: metric=paired_include_hash files=1000 entries=1101 ns=62185074
+    identity_bfs049_test.go:337: BFS-049 cost MIN: metric=per_path_hash_work files=1000 entries=1101 ns=53258014
+    identity_bfs049_test.go:333: BFS-049 cost: paired snapshot files=10000 entries=10101/6021 no_hash=349.391453ms include_hash=1.087403805s per_path_hash_work=738.012352ms
+    identity_bfs049_test.go:335: BFS-049 cost MIN: metric=paired_no_hash files=10000 entries=10101 ns=349391453
+    identity_bfs049_test.go:336: BFS-049 cost MIN: metric=paired_include_hash files=10000 entries=6021 ns=1087403805
+    identity_bfs049_test.go:337: BFS-049 cost MIN: metric=per_path_hash_work files=10000 entries=6021 ns=738012352
+=== minimums per tree (min over 3 interleaved rounds; ns unless the metric is entry_bytes)
+metric=paired_include_hash|files=10000 entries=6021|359001997
+metric=paired_include_hash|files=1000 entries=1101|14191251
+metric=paired_no_hash|files=10000 entries=10101|88044678
+metric=paired_no_hash|files=1000 entries=1101|8661307
+metric=per_path_hash_work|files=10000 entries=6021|266466319
+metric=per_path_hash_work|files=1000 entries=1101|3777731
+metric=snapshot_no_hash|files=10000 entries=10106|120832251
+metric=snapshot_no_hash|files=1000 entries=1106|8170389
+metric=paired_include_hash|files=10000 entries=6021|365513217
+metric=paired_include_hash|files=1000 entries=1101|18541892
+metric=paired_no_hash|files=10000 entries=10101|106931999
+metric=paired_no_hash|files=1000 entries=1101|8927060
+metric=per_path_hash_work|files=10000 entries=6021|258581218
+metric=per_path_hash_work|files=1000 entries=1101|145600
+metric=snapshot_no_hash|files=10000 entries=10106|113401822
+metric=snapshot_no_hash|files=1000 entries=1106|9587983
+=== fixed vs filed, MINIMUM over the interleaved rounds
+metric=paired_include_hash files=10000 entries=6021   fixed=359001997      filed=365513217      delta=6511220
+metric=paired_include_hash files=1000 entries=1101    fixed=14191251       filed=18541892       delta=4350641
+metric=paired_no_hash      files=10000 entries=10101  fixed=88044678       filed=106931999      delta=18887321
+metric=paired_no_hash      files=1000 entries=1101    fixed=8661307        filed=8927060        delta=265753
+metric=per_path_hash_work  files=10000 entries=6021   fixed=266466319      filed=258581218      delta=-7885101
+metric=per_path_hash_work  files=1000 entries=1101    fixed=3777731        filed=145600         delta=-3632131
+metric=snapshot_no_hash    files=10000 entries=10106  fixed=120832251      filed=113401822      delta=-7430429
+metric=snapshot_no_hash    files=1000 entries=1106    fixed=8170389        filed=9587983        delta=1417594
+restore: internal/server/webdav/tree.go sha256=7f835740bb323dd3fba8dcf9c16556702bcc2c986ecbc5860748e1ef583d20e0 (verified byte-identical against the pre-mutation hash)
+restore: internal/server/webdav/events.go sha256=8ca1c752c205d9c30716adb1ecb9d3f1ef7f8297ced4d62c8eb6d6319560b46c (verified byte-identical against the pre-mutation hash)
+done: mode=cost
+cost-script-exit=0

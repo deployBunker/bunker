@@ -280,14 +280,19 @@ func TestBFS049AnUnchangedReadIsStillACacheHit(t *testing.T) {
 // syscall because ctime is a field of the same syscall.Stat_t the existing
 // os.Stat already returned, so a cache lookup is still ONE stat. What it can
 // cost is a wider comparison, a wider cache entry and — where ctime moves
-// without the bytes moving — one extra rehash. The first two are measured
-// here; the third is bounded by the arms script's syscall counts.
+// without the bytes moving — one extra rehash. The first two are measured here;
+// the third is bounded by the syscall counts below (strace, same test binary,
+// two trees).
 //
-// The whole-tree read is measured on the SAME fixture BFS-048 used (1000 and
-// 10 000 files), so these numbers are comparable to that row's published
-// figures rather than to a new yardstick.
+// Every figure is the MINIMUM over three passes, and the whole-tree read is
+// measured on the SAME fixture BFS-048 used (1 000 and 10 000 files), so these
+// numbers are comparable to that row's published figures rather than to a new
+// yardstick. This host is shared with the fleet, so a single pass is not
+// evidence of anything.
 func TestBFS049TheSharperIdentityCostsNoExtraSyscall(t *testing.T) {
-	t.Logf("BFS-049 cost: one hash-cache entry = %d bytes (unsafe.Sizeof)", unsafe.Sizeof(hashEntry{}))
+	entryBytes := int(unsafe.Sizeof(hashEntry{}))
+	t.Logf("BFS-049 cost: one hash-cache entry = %d bytes (unsafe.Sizeof)", entryBytes)
+	t.Logf("BFS-049 cost MIN: metric=entry_bytes value=%d", entryBytes)
 
 	h := newTestHandler(t)
 	target := filepath.Join(h.Root(), "src", "util.go")
@@ -298,6 +303,7 @@ func TestBFS049TheSharperIdentityCostsNoExtraSyscall(t *testing.T) {
 	// lookup a response actually pays.
 	hit := minPerCallBFS048(200, func() { _, _ = h.tree.hashFile(target) })
 	t.Logf("BFS-049 cost: hashFile cache HIT = %s per call (one stat + one identity comparison)", hit)
+	t.Logf("BFS-049 cost MIN: metric=cache_hit_ns value=%d", hit.Nanoseconds())
 	if hit > 20*time.Microsecond {
 		t.Fatalf("a cache hit cost %s: a hit is one stat plus a comparison, not a tenth of a millisecond", hit)
 	}
@@ -306,22 +312,57 @@ func TestBFS049TheSharperIdentityCostsNoExtraSyscall(t *testing.T) {
 	// fixture, so the numbers below are directly comparable to its 98.9/119.0/
 	// 167.4 ms at 10 106 entries.
 	for _, n := range []int{1000, 10000} {
-		c := measureTreeCostBFS048(t, n)
-		t.Logf("BFS-049 cost: snapshot (no hashes) files=%d entries=%d whole_tree_read=%s", c.files, c.entries, c.wholeTree)
+		best, entries := time.Duration(1<<62-1), 0
+		for run := 0; run < 3; run++ {
+			c := measureTreeCostBFS048(t, n)
+			t.Logf("BFS-049 cost:   snapshot (no hashes) files=%d run=%d whole_tree_read=%s entries=%d", c.files, run+1, c.wholeTree, c.entries)
+			if c.wholeTree < best {
+				best, entries = c.wholeTree, c.entries
+			}
+		}
+		t.Logf("BFS-049 cost: snapshot (no hashes) files=%d entries=%d MIN whole_tree_read=%s", n, entries, best)
+		t.Logf("BFS-049 cost MIN: metric=snapshot_no_hash files=%d entries=%d ns=%d", n, entries, best.Nanoseconds())
 	}
-	// And the same op WITH hashes, which is the shape that calls hashFile per
-	// path — the only snapshot form where this row's identity is on the path.
+	// The paired form: the per-path hashFile work measured against ONE fixture
+	// in ONE process, both snapshot forms interleaved, so host load cancels out
+	// instead of being the difference between two runs (this host is shared with
+	// the fleet and was at loadavg 55 during these measurements).
 	for _, n := range []int{1000, 10000} {
-		d, entries := measureSnapshotWithHashesBFS049(t, n)
-		t.Logf("BFS-049 cost: snapshot (include_hash) files=%d entries=%d =%s", n, entries, d)
+		noHash, withHash, e1, e2 := measurePairedSnapshotBFS049(t, n)
+		perPath := withHash - noHash
+		t.Logf("BFS-049 cost: paired snapshot files=%d entries=%d/%d no_hash=%s include_hash=%s per_path_hash_work=%s",
+			n, e1, e2, noHash, withHash, perPath)
+		t.Logf("BFS-049 cost MIN: metric=paired_no_hash files=%d entries=%d ns=%d", n, e1, noHash.Nanoseconds())
+		t.Logf("BFS-049 cost MIN: metric=paired_include_hash files=%d entries=%d ns=%d", n, e2, withHash.Nanoseconds())
+		t.Logf("BFS-049 cost MIN: metric=per_path_hash_work files=%d entries=%d ns=%d", n, e2, perPath.Nanoseconds())
 	}
 }
 
-// measureSnapshotWithHashesBFS049 serves a tree of n files and takes the
-// whole-tree snapshot with include_hash, so the per-path hashFile calls this
-// row touched are exercised on the op that matters. It returns the elapsed
-// whole-tree read and the entry count the answer reported.
-func measureSnapshotWithHashesBFS049(t *testing.T, n int) (time.Duration, int) {
+// TestBFS049OneStatPerHashFileLookup is the syscall-shaped arm: it performs N
+// cache hits and nothing else, so the arms script can count the stat family
+// under strace on two builds that differ only in tree.go. A key that needed its
+// own ctime stat per path would show up as N more stat syscalls — which is the
+// price SPEC-watcher-capability R-V2 forbids, and the reason this row had to be
+// about the identity rather than about a second stat.
+func TestBFS049OneStatPerHashFileLookup(t *testing.T) {
+	h := newTestHandler(t)
+	target := filepath.Join(h.Root(), "src", "util.go")
+	if _, err := h.tree.hashFile(target); err != nil {
+		t.Fatalf("hashFile: %v", err)
+	}
+	const n = 500
+	start := time.Now()
+	for i := 0; i < n; i++ {
+		if _, err := h.tree.hashFile(target); err != nil {
+			t.Fatalf("hashFile hit %d: %v", i, err)
+		}
+	}
+	elapsed := time.Since(start)
+	t.Logf("BFS-049 syscalls: %d hashFile cache hits in %s (%s per call) — strace this arm and compare the stat-family count between the two trees", n, elapsed, elapsed/n)
+}
+
+// buildFixtureBFS049 writes n files in 100 directories, the shape BFS-048 used.
+func buildFixtureBFS049(t *testing.T, n int) string {
 	t.Helper()
 	root := t.TempDir()
 	for i := 0; i < n; i++ {
@@ -335,21 +376,48 @@ func measureSnapshotWithHashesBFS049(t *testing.T, n int) (time.Duration, int) {
 			t.Fatalf("write fixture file: %v", err)
 		}
 	}
+	return root
+}
+
+// measurePairedSnapshotBFS049 takes BOTH snapshot forms over ONE fixture in ONE
+// process, three passes each, interleaved, and reports the minimum per form.
+//
+// The pairing is the point. This host is shared with the fleet, and a
+// cross-process comparison of two trees lands wherever the load was: the same
+// unchanged code measured 109 ms and 309 ms for the same 10 106-entry read
+// while this row was being measured. Interleaving the two forms against the
+// same fixture makes their difference the per-path hashFile work and nothing
+// else, which is the only part of the fast path this row's identity touches.
+func measurePairedSnapshotBFS049(t *testing.T, n int) (noHash, withHash time.Duration, noHashEntries, hashEntries int) {
+	t.Helper()
+	root := buildFixtureBFS049(t, n)
 	h := newTestHandler(t, func(c *Config) { c.Root = root })
-	start := time.Now()
-	rec := do(t, h, "POST", "/dav/", map[string]string{"X-Bunker-Op": "snapshot"},
-		`{"path":".","depth":"infinity","include_hash":true}`)
-	elapsed := time.Since(start)
-	if rec.Code != 200 {
-		t.Fatalf("snapshot(include_hash) -> %d %s", rec.Code, rec.Body.String())
+	post := func(body string) (time.Duration, int) {
+		start := time.Now()
+		rec := do(t, h, "POST", "/dav/", map[string]string{"X-Bunker-Op": "snapshot"}, body)
+		elapsed := time.Since(start)
+		if rec.Code != 200 {
+			t.Fatalf("snapshot -> %d %s", rec.Code, rec.Body.String())
+		}
+		var env struct {
+			Result struct {
+				Count int `json:"count"`
+			} `json:"result"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+			t.Fatalf("snapshot envelope: %v", err)
+		}
+		return elapsed, env.Result.Count
 	}
-	var env struct {
-		Result struct {
-			Count int `json:"count"`
-		} `json:"result"`
+
+	noHash, withHash = time.Duration(1<<62-1), time.Duration(1<<62-1)
+	for pass := 0; pass < 3; pass++ {
+		if d, c := post(`{"path":".","depth":"infinity"}`); d < noHash {
+			noHash, noHashEntries = d, c
+		}
+		if d, c := post(`{"path":".","depth":"infinity","include_hash":true}`); d < withHash {
+			withHash, hashEntries = d, c
+		}
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
-		t.Fatalf("snapshot envelope: %v", err)
-	}
-	return elapsed, env.Result.Count
+	return noHash, withHash, noHashEntries, hashEntries
 }
