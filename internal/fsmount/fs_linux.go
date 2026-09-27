@@ -299,6 +299,14 @@ func MountAt(opts Options) (*Mount, error) {
 			}
 		},
 	})
+	// The bind-time observation, reported before the channel starts: the mount
+	// took this tree's view with `--snapshot`, and the channel must be able to
+	// say WHERE that view is from (BFS-063) or every poll would be answered as an
+	// unvouched interval.
+	if snap := m.snapshot(); snap != nil {
+		cursor, minted := snap.ObservationCursor()
+		m.inv.Observed(cursor, minted)
+	}
 	go func() {
 		if err := m.inv.Run(context.Background()); err != nil {
 			m.logf("bunker-fs: invalidation channel stopped: %v", err)
@@ -380,6 +388,17 @@ func (m *Mount) refreshSnapshot(ctx context.Context, root string) *fsclient.OpEr
 	m.snap.Store(snap)
 	m.snapshotCalls.Add(1)
 	m.recordOK()
+	// The observation this mount now holds is reported to the invalidation
+	// channel (BFS-063), so the channel can declare WHERE its view is from: the
+	// whole-tree answer's minted cursor when the snapshot op served it, or the
+	// cursor of the notice that provoked this re-observation when the PROPFIND
+	// fallback did. Without a report the channel presents no cursor and is told
+	// the interval is unvouched — honest, and a resync per poll, which is why
+	// every path that establishes a view reports it.
+	if m.inv != nil {
+		cursor, minted := snap.ObservationCursor()
+		m.inv.Observed(cursor, minted)
+	}
 	return nil
 }
 

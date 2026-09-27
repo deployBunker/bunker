@@ -183,6 +183,15 @@ func (h *Handler) handleSnapshot(w http.ResponseWriter, r *http.Request, start t
 		h.failEnvelope(w, r, start, "snapshot", *f)
 		return
 	}
+	// The cursor is read BEFORE the walk (ledgerCursor, events.go) so that any
+	// event pushed while the walk runs lands above it: the client that takes
+	// this observation presents it as its resume point, and a cursor read after
+	// the walk could silently straddle a change the walk did not see. It is
+	// carried whether or not the ledger adopts this walk as its baseline — the
+	// observation belongs to the client either way — and a client adopts it only
+	// for a whole-tree, untruncated answer (fsclient: Snapshot.ObservationCursor).
+	cursor := h.tree.ledgerCursor()
+
 	entries, truncated, err := h.snapshotEntries(abs, depthInfinity, args.IncludeHash, budget, ids)
 	if err != nil {
 		h.writeEnvelope(w, r, start, "snapshot", 500, VerdictInternal, false, nil,
@@ -196,7 +205,7 @@ func (h *Handler) handleSnapshot(w http.ResponseWriter, r *http.Request, start t
 		return
 	}
 	h.writeEnvelope(w, r, start, "snapshot", 200, VerdictOK, truncated,
-		map[string]any{"count": len(entries), "entries": entries}, nil)
+		map[string]any{"count": len(entries), "entries": entries, "head_seq": cursor}, nil)
 }
 
 // envelopeBudget resolves the effective result cap from X-Bunker-Max-Bytes,

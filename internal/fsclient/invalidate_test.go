@@ -90,6 +90,66 @@ func waitFor(d time.Duration, cond func() bool) bool {
 	return cond()
 }
 
+// mountWiring wires the invalidator the way the MOUNT wires it (fsmount): an
+// optional whole-tree snapshot at bind whose minted cursor is reported as the
+// observation the client holds, and a re-observation inside OnResync.
+//
+// It exists because the resume declaration is part of the channel's contract now
+// (BFS-063): a harness whose OnResync does nothing models a client that can never
+// re-establish a view, and such a client is CORRECTLY told on every poll that its
+// interval cannot be vouched for. The mount always re-observes on a resync
+// (fs_linux.go), so the harness must too, or it would measure a client that does
+// not exist.
+func mountWiring(t *testing.T, c *Client, rec *collectDrops, cache *Cache, bindSnapshot bool) *Invalidator {
+	t.Helper()
+	ctx := context.Background()
+	cursor, minted := int64(0), false
+	if bindSnapshot {
+		snap, err := c.SnapshotTree(ctx, "", false)
+		if err != nil {
+			t.Fatalf("bind snapshot: %v", err)
+		}
+		// The one-call property is a contract of its own (BFS-026): the resume
+		// point must not turn the whole-tree read into a walk.
+		if calls := snap.Calls(); calls != 1 {
+			t.Fatalf("the bind snapshot cost %d server calls, want 1", calls)
+		}
+		cursor, minted = snap.ObservationCursor()
+	}
+	var inv *Invalidator
+	inv = NewInvalidator(c, InvalidateOptions{
+		Mode:         "auto",
+		PollInterval: 20 * time.Millisecond,
+		OnDrop: func(paths []string, full bool) {
+			rec.drop(paths, full)
+			// The mount's own drop (fs_linux.go dropPaths): a full drop empties the
+			// cache, a per-path drop removes those paths. Wired here so an arm can
+			// measure the BYTES rather than the callback.
+			if cache == nil {
+				return
+			}
+			if full {
+				cache.DropAll()
+				return
+			}
+			cache.Drop(paths...)
+		},
+		OnResync: func(reason string) {
+			rec.resync(reason)
+			snap, err := c.SnapshotTree(ctx, "", false)
+			if err != nil {
+				t.Logf("re-observation after %q failed: %v", reason, err)
+				inv.Observed(0, false)
+				return
+			}
+			cur, m := snap.ObservationCursor()
+			inv.Observed(cur, m)
+		},
+	})
+	inv.Observed(cursor, minted)
+	return inv
+}
+
 // TestInvalidatorDeliversThePollFormOfTheChannel is this row's acceptance: with
 // the watcher unavailable on the target, an edit made on the agent reaches the
 // client through the DECLARED POLL FORM, and the record names that mechanism —
@@ -112,12 +172,8 @@ func TestInvalidatorDeliversThePollFormOfTheChannel(t *testing.T) {
 	}
 
 	rec := &collectDrops{}
-	inv := NewInvalidator(c, InvalidateOptions{
-		Mode:         "auto",
-		PollInterval: 20 * time.Millisecond,
-		OnDrop:       rec.drop,
-		OnResync:     rec.resync,
-	})
+	// The mount's own ordering: the bind-time snapshot, then the channel.
+	inv := mountWiring(t, c, rec, nil, true)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() { _ = inv.Run(ctx) }()

@@ -299,7 +299,7 @@ value below is quoted from those two places rather than paraphrased.
 | `event` ∈ | `invalidate` (bytes or names moved — `paths` non-empty) · `heartbeat` (liveness only; **no path claims**) · `overflow` (knowledge is lost — drop everything) |
 | `seq` | monotonic **per tree**; the client's cursor is keyed by the tree token, never by the mount id |
 | Reconnect | a fresh `POST` + `X-Bunker-Op: watch` with `{"since_seq": <cursor>}`; the server answers what was missed |
-| Poll form of the same channel | `POST /dav/<path>` + `X-Bunker-Op: events`, body `{"since_seq": N}` → the E-4 envelope, pending events under `result.events` (the same objects, the same field names), `rev`/`tree` on the envelope |
+| Poll form of the same channel | `POST /dav/<path>` + `X-Bunker-Op: events`, body `{"since_seq": N}` → the E-4 envelope, pending events under `result.events` (the same objects, the same field names), `rev`/`tree` on the envelope. **`since_seq` present is a declaration that this client's view is the tree as of cursor N, and N must be one the server minted** (the whole-tree `snapshot` answer's `result.head_seq`); a poll with **no** `since_seq` declares that the client holds no observation and is answered `overflow` — never a quiet tail (BFS-063) |
 | Refusal when the watcher is absent | `501` + `X-Bunker-Verdict: capability_unavailable` + `X-Bunker-Capability: watch;scope=target;mode=poll` (§4.4; `BFS-004` §3 E-6, §5.2) |
 
 **What the client sends.** `POST` + `X-Bunker-Op: watch` with `{"paths":[…],"since_seq":<cursor>}`, where the

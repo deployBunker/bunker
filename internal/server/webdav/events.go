@@ -49,10 +49,37 @@ import (
 // Read-only (E-4's invariant, A-9): a walk and a stat per entry, nothing else.
 // Bounded: the walk stops at eventsScanLimit entries, a path list is capped at
 // eventsMaxPathsPerEvent (spilling to `overflow`, never to a longer or partial
-// list), and the ledger keeps eventsJournalEvents of history. A client whose
-// cursor is older than that history is answered with the retained events, whose
-// first seq is a gap its own rule already knows how to read (BFS-005 §4.1:
-// "the missing range is never re-requested").
+// list), and the ledger keeps eventsJournalEvents of history.
+//
+// The resume rule (BFS-063, and the reason the ledger cannot delegate the last
+// step). A poll is answered from the retained journal only when the ledger can
+// vouch for the interval the presenting client asked about, and there are two
+// cases in which NO answer may stand in for that gap (SPEC-push-channel §3.3
+// R-3, SPEC-watcher-capability §5.1):
+//
+//   - The client presents NO cursor. It has observed nothing, so no interval is
+//     vouched for it and it has no cursor against which a partial tail could
+//     read as a gap. The answer is `overflow`.
+//   - The client presents cursor 0 while seq 1 is no longer retained. This is
+//     the one case where a retained tail is NOT self-describing, because the
+//     client's own monotonicity rule is disabled at zero (`invalidate.go`: the
+//     gap check is guarded on a non-zero cursor) — exactly the window BFS-041's
+//     hole H-10 measured. The answer is `overflow`.
+//
+// A cursor above zero keeps the documented behaviour (SPEC-watcher-capability
+// §2.2, §5.3): the retained tail is served and its first seq IS a gap the
+// client's own rule reads as knowledge lost, so nothing is silently skipped
+// there.
+//
+// The cursor itself is MINTED by the server: the whole-tree `snapshot` answer
+// carries `head_seq`, the ledger cursor read before the observation walk, and a
+// client that holds that observation presents it here (seedEvents records the
+// same observation as the ledger's own baseline). That is what separates a
+// client whose interval the ledger genuinely covers — a client that bound with a
+// snapshot, and whose snapshot is at the cursor it presents — from a client that
+// has observed nothing. The server cannot tell those two apart from the request
+// alone; the declaration is what makes them distinguishable, and it is
+// checkable because the cursor is one the server itself issued.
 //
 // It is a SINGLE-ENVELOPE request: it observes, answers and closes. There is no
 // long-poll and no stream here, so nothing is held open on a dead client and no
@@ -146,6 +173,25 @@ func (t *tree) eventLedger() *eventLog {
 		t.ev = &eventLog{}
 	}
 	return t.ev
+}
+
+// ledgerCursor is the ledger's seq at the moment a whole-tree observation begins
+// — the cursor the snapshot answer mints (`head_seq`) for the client that takes
+// it.
+//
+// It is read BEFORE the walk and not after, and that direction is the load-
+// bearing one: any event pushed while the walk runs then has a seq ABOVE the
+// minted cursor and is delivered to the client that holds it, so a change the
+// walk raced is reported rather than skipped. Reading it after the walk would
+// mint a cursor that already covers changes the walk may have missed, which is
+// the silent-gap class this row exists to close. The price of reading it first
+// is at most a redundant invalidate for a path the walk already saw — a drop,
+// never a miss.
+func (t *tree) ledgerCursor() int64 {
+	l := t.eventLedger()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.seq
 }
 
 // seedEvents records an observation the ledger did not have to walk for. The
@@ -247,8 +293,27 @@ func (l *eventLog) push(t *tree, name string, paths []string) eventLine {
 	return ev
 }
 
-// pollEvents observes the tree once and answers the events a client at cursor
-// has not seen.
+// resumePoint is the position a client presents on the poll. It is two facts and
+// not one, and the difference is the whole of BFS-063:
+//
+//   - Cursor is the ledger seq the client's view corresponds to.
+//   - Baseline says whether the client HOLDS an observation at that cursor.
+//
+// A request that presents no cursor at all (`since_seq` absent) is the second
+// fact's negative: the client has observed nothing. A request that presents a
+// cursor is a claim about the client's own view, and the only cursor that makes
+// that claim true is one this server minted for an observation the client
+// actually took — the `head_seq` of a whole-tree `snapshot` answer. So the
+// client cannot turn the declaration into a way of asking for quiet it did not
+// earn: a cursor it was never issued either reads as a gap (nothing was
+// retained for it) or, if it is above the ledger, is declared lost outright.
+type resumePoint struct {
+	Cursor   int64
+	Baseline bool
+}
+
+// pollEvents observes the tree once and answers the events a client at p has not
+// seen.
 //
 // The ledger lock is taken BEFORE the observation and held across it, so two
 // clients polling at once are strictly ordered: each diff is against the state
@@ -256,7 +321,7 @@ func (l *eventLog) push(t *tree, name string, paths []string) eventLine {
 // backwards. The price is that a second client's poll waits for one walk
 // (measured at ~7 ms on a 2000-path tree, §8 of the row report) — paid only when
 // two clients poll the same tree in the same instant.
-func (t *tree) pollEvents(cursor int64) (eventsAnswer, error) {
+func (t *tree) pollEvents(p resumePoint) (eventsAnswer, error) {
 	l := t.eventLedger()
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -288,32 +353,82 @@ func (t *tree) pollEvents(cursor int64) (eventsAnswer, error) {
 		}
 	}
 
-	if len(l.journal) == 0 {
-		// Nothing was ever observed here and nothing is owed: an honest empty
-		// answer, not a synthesis of one.
+	// An empty journal with a presented cursor is an honest empty answer: the
+	// ledger has observed this tree and nothing has moved since the cursor the
+	// client holds. With no cursor the client holds nothing to be caught up to,
+	// so the answer falls through to the declaration below instead.
+	if len(l.journal) == 0 && p.Baseline {
 		return eventsAnswer{Events: []eventLine{}, Scanned: len(state), Truncated: truncated, Head: l.seq}, nil
 	}
-	if cursor > l.seq {
+
+	// The resume decision, in R-4's order — the advance-past-the-cursor case
+	// first, because an event at or below the client's own seq is one a client is
+	// right to discard as a duplicate.
+	switch {
+	case p.Cursor > l.seq:
 		// The cursor is ahead of anything this ledger has issued: a restarted
 		// process, or a cursor minted against a different tree instance. The
-		// range in between was never observed here, so it is declared lost —
-		// and the seq is advanced PAST the cursor first, because an event at or
-		// below the client's own seq is one a client is right to discard as a
-		// duplicate (BFS-005 §4.1's replay rule).
-		l.seq = cursor
+		// range in between was never observed here, so it is declared lost — and
+		// the seq is advanced PAST the cursor first, so the notice cannot be
+		// discarded as a duplicate (BFS-041 §3.3 R-4).
+		l.seq = p.Cursor
 		ev := l.push(t, eventOverflow, nil)
+		return eventsAnswer{Events: []eventLine{ev}, Scanned: len(state), Truncated: truncated, Head: l.seq}, nil
+	case !p.Baseline || (p.Cursor == 0 && l.base > 1):
+		// The interval is not vouched for, so nothing may stand in for it: not
+		// an empty tail, not a partial one, and not a tail whose gap this client
+		// has no way to recognise (SPEC-push-channel §3.3 R-3).
+		//
+		// The second form is the narrow one and it is the whole point: a
+		// retained tail is self-describing only because the client's own rule
+		// reads its first seq as a gap — and that rule is disabled at cursor 0.
+		// When seq 1 is still retained (`base <= 1`) the tail IS the whole
+		// history and needs no marker; once it is not, the tail starts above the
+		// interval this client asked about and only an `overflow` says so.
+		ev := l.overflow(t, p)
 		return eventsAnswer{Events: []eventLine{ev}, Scanned: len(state), Truncated: truncated, Head: l.seq}, nil
 	}
 	out := make([]eventLine, 0, len(l.journal))
 	for _, ev := range l.journal {
-		if ev.Seq > cursor {
+		if ev.Seq > p.Cursor {
 			out = append(out, ev)
 		}
 	}
 	return eventsAnswer{Events: out, Scanned: len(state), Truncated: truncated, Head: l.seq}, nil
 }
 
+// overflow returns the `overflow` notice owed to a client whose interval the
+// ledger cannot vouch for. Callers hold l.mu.
+//
+// The notice is NOT appended to the journal, and that is a correctness decision
+// rather than a saving: the journal is the tree's event history, which every
+// client on this tree reads, while this notice is a statement about ONE request
+// ("you have told me nothing about what you hold, so nothing is vouched for
+// you"). Journaling it would put it in every other client's tail, where it would
+// buy them a resync they did not earn — the arm that must stay green.
+//
+// Its seq is the ledger's head. That is above the presented cursor in every case
+// that can reach here except one: a cursor of 0 against a ledger that has issued
+// NOTHING yet (a freshly seeded, quiet tree). There is then no seq above the
+// cursor to name, and the notice cannot be mistaken for a duplicate either — it
+// is the only line that ledger has ever produced — so it is emitted at 0 rather
+// than inventing a seq the next real event would then collide with. A client
+// whose cursor is 0 reads it as the resync it is (invalidate.go: the overflow
+// branch runs whatever the seq is).
+func (l *eventLog) overflow(t *tree, p resumePoint) eventLine {
+	return eventLine{Seq: l.seq, Event: eventOverflow, Paths: []string{}, Rev: t.revToken(), Tree: t.identity()}
+}
+
 // handleEvents serves E-6's poll form: `since_seq?` in, `result.events` out.
+//
+// `since_seq` present is a claim to hold an observation of the tree at that
+// cursor; absent is the claim to hold none, and it is answered `overflow` —
+// never a quiet or partial tail (BFS-063, see the resume rule above). The two
+// are different requests, which is why the field is decoded as a pointer: a
+// client that presents `0` is saying "my view is the tree as of seq 0", and a
+// client that presents nothing is saying "I have no view" — a distinction the
+// server cannot infer, and the reason the whole-tree `snapshot` answer carries
+// the cursor it minted (ops.go, `head_seq`).
 func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request, start time.Time) {
 	body, f := h.readBody(w, r)
 	if f != nil {
@@ -330,16 +445,16 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request, start tim
 			return
 		}
 	}
-	cursor := int64(0)
+	point := resumePoint{}
 	if args.SinceSeq != nil {
-		cursor = *args.SinceSeq
+		if *args.SinceSeq < 0 {
+			h.writeEnvelope(w, r, start, "events", 400, VerdictBadArguments, false, nil,
+				&envelopeError{Detail: "events since_seq must be zero or positive"})
+			return
+		}
+		point = resumePoint{Cursor: *args.SinceSeq, Baseline: true}
 	}
-	if cursor < 0 {
-		h.writeEnvelope(w, r, start, "events", 400, VerdictBadArguments, false, nil,
-			&envelopeError{Detail: "events since_seq must be zero or positive"})
-		return
-	}
-	answer, err := h.tree.pollEvents(cursor)
+	answer, err := h.tree.pollEvents(point)
 	if err != nil {
 		h.writeEnvelope(w, r, start, "events", 500, VerdictInternal, false, nil,
 			&envelopeError{Detail: "the served tree could not be observed"})
