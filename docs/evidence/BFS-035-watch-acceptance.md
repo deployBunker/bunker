@@ -97,9 +97,13 @@ go test -race -run TestWatch -short -count=1     ok  21.8s
 go test -run TestWatch -count=1 (kernel arm on)  ok  22.0s
 ```
 
-The pre-commit guard ran on both commits and passed all four lanes with `test_mode: full`,
-`test_targets: all (full mode)`, `guards: 4 (0 failed, 0 skipped)`, `overall: PASS`
-(`.gitreins/logs/guard-20260927T13*.log`). No `--no-verify` was used at any point.
+The pre-commit guard ran on the two **code** commits and passed all four lanes with
+`test_mode: full`, `test_targets: all (full mode)`, `guards: 4 (0 failed, 0 skipped)`,
+`overall: PASS` (`.gitreins/logs/guard-20260927T132318*.log`, `…T133216*.log`). No
+`--no-verify` was used at any point. The third commit carries only this bundle, so its Go
+lanes report `No Go files staged` — a **vacuous** lane, reported as not-applicable rather
+than as a pass. The code it documents is byte-identical to the code the guard verified:
+`git diff c229377..HEAD -- '*.go'` is empty.
 
 ## 3. The probe matrix — one NAMED reason per case
 
