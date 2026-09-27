@@ -157,9 +157,18 @@ type SurfaceInfo struct {
 	DocVersion   int
 	Capabilities *Capabilities
 	// WatcherAvailable reports whether the push channel can be established at
-	// all: `watch` answering anything other than capability_unavailable (or the
-	// capability document naming a live watcher).
+	// all. Since BFS-036 it is read from the DOCUMENT's declared mode wherever the
+	// document declares one (`mode: push`), and from a probe of the op only where
+	// it does not — because probing a served `watch` op means opening the stream
+	// itself (see Handshake).
 	WatcherAvailable bool
+	// WatcherSource says WHICH of those two carriers answered, because they are
+	// not equally strong evidence: `declared_push` is the server stating its own
+	// mode, `probe_served`/`probe_refused` are this client's measurement. It is
+	// reported for the same reason the invalidation record reports which mechanism
+	// delivered a change (SPEC-push-channel §11.1 O-2): a client must be able to
+	// say how it knows what it claims.
+	WatcherSource string
 	// PollOpAvailable reports whether the poll form (`X-Bunker-Op: events`) is
 	// served by this build.
 	PollOpAvailable bool
@@ -167,6 +176,21 @@ type SurfaceInfo struct {
 	// it sent one: capability + scope + mode, verbatim.
 	Degradation *OpError
 }
+
+// The two carriers a watcher-availability verdict can come from (BFS-036).
+const (
+	// WatchSourceDeclared — the capability document declared the pushed mode, so
+	// no stream was opened to find out. This is the only carrier that costs
+	// nothing, and the only one a served stream can be learned from without
+	// holding a connection open.
+	WatchSourceDeclared = "declared_push"
+	// WatchSourceProbeServed — the document declared no push mode and a probe of
+	// the op answered, so this build serves the op for some other reason.
+	WatchSourceProbeServed = "probe_served"
+	// WatchSourceProbeRefused — the document declared no push mode and the probe
+	// was refused. The refusal (verbatim) travels in Degradation.
+	WatchSourceProbeRefused = "probe_refused"
+)
 
 // Handshake performs the bind-time capability exchange under the 5 s bind
 // deadline (§7.2): OPTIONS for the verb set and the extension header, then the
@@ -221,12 +245,32 @@ func (c *Client) Handshake(ctx context.Context) (*SurfaceInfo, *OpError) {
 			Detail: fmt.Sprintf("unknown capability document version %d; failing closed rather than proceeding", caps.Document),
 		}
 	}
-	// The watcher's availability is probed, never assumed (§4.2 E-6): the
-	// declared degradation is what tells us, and it carries the mode in force.
-	watchErr := c.probeOp(bindCtx, "watch")
-	info.WatcherAvailable = watchErr == nil
-	if watchErr != nil && watchErr.Verdict == VerdictCapabilityUnavailable {
-		info.Degradation = watchErr
+	// The watcher's availability (§4.2 E-6): where the document DECLARES the
+	// pushed mode, the declaration IS the answer and the op is not probed.
+	//
+	// WHY THE DECLARATION AND NOT THE PROBE (BFS-036). `watch` is a STREAM once it
+	// is served, so probing it is not a probe: `Op` applies the operation deadline
+	// (30 s) and holds one of the connection pool's slots, then reads a body that
+	// never ends — so the bind pays the whole bind deadline, the pool loses a slot,
+	// and the decoded "answer" is not an envelope. A client that switched the
+	// mechanism on but kept probing the op would therefore make every mount BIND
+	// SLOWER while reporting the watcher unavailable: the switch's cost measured,
+	// with none of its benefit. The document's `mode` is the carrier the spec fixes
+	// for this decision (SPEC-push-channel §9 F-3: read `mode`, never the op list),
+	// and it is a fact the server can state without being asked to open a stream.
+	if caps.WatchPushDeclared() {
+		info.WatcherAvailable = true
+		info.WatcherSource = WatchSourceDeclared
+	} else {
+		watchErr := c.probeOp(bindCtx, "watch")
+		info.WatcherAvailable = watchErr == nil
+		info.WatcherSource = WatchSourceProbeRefused
+		if watchErr == nil {
+			info.WatcherSource = WatchSourceProbeServed
+		}
+		if watchErr != nil && watchErr.Verdict == VerdictCapabilityUnavailable {
+			info.Degradation = watchErr
+		}
 	}
 	eventsErr := c.probeOp(bindCtx, "events")
 	info.PollOpAvailable = eventsErr == nil
@@ -311,4 +355,27 @@ func (caps *Capabilities) RevKind() string {
 		return ""
 	}
 	return caps.Extensions.Rev.Kind
+}
+
+// WatchMode is the mechanism the capability document declares IN FORCE for this
+// target: `push` where the server serves the pushed stream, `poll` where the
+// declared poll form carries the channel, or "" when the document declares none.
+//
+// It is READ, never inferred — from the op list, from a probe, or from the
+// presence of a `watch` block. SPEC-push-channel §9 F-3 spells out why: the op
+// list is a declaration of the VOCABULARY (a build may list `watch` while
+// answering `mode: poll`), and only `mode` is the declaration of the MECHANISM.
+func (caps *Capabilities) WatchMode() string {
+	if caps == nil {
+		return ""
+	}
+	return caps.Extensions.Watch.Mode
+}
+
+// WatchPushDeclared reports whether the document declares the pushed mode, which
+// is the server OFFERING the channel. It is the signal the handshake and the
+// invalidator switch on: an offer a client can act on without opening a
+// connection to ask.
+func (caps *Capabilities) WatchPushDeclared() bool {
+	return caps.WatchMode() == ModePush
 }

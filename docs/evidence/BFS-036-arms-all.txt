@@ -1,0 +1,81 @@
+=== GREEN: every BFS-036 cell, on the tree as committed ===
+  --- PASS: TestPushCell01AChangeIsPushedWithTheMechanismOnTheWire (0.02s)
+  --- PASS: TestPushCell02DeadClientIsReleasedAndItsSlotComesBack (0.02s)
+  --- PASS: TestPushCell03StalledReaderIsReleasedByTheWriteDeadline (0.12s)
+  --- PASS: TestPushCell04BackpressureDropsOldestAndCountsOneGap (0.02s)
+  --- PASS: TestPushCell05SubscriberCapRefusesRetryably (0.02s)
+  --- PASS: TestPushCell06TheDeclaredHeartbeatBoundIsHonoured (0.92s)
+  --- PASS: TestPushCell07ThePollFormIsUnchanged (0.02s)
+  --- PASS: TestPushCell08ResumeNeverAnswersASilentGap (0.03s)
+      --- PASS: TestPushCell08ResumeNeverAnswersASilentGap/inside_the_retained_journal_replays_the_missed_lines (0.00s)
+      --- PASS: TestPushCell08ResumeNeverAnswersASilentGap/at_head_replays_nothing_(the_establish_line_follows) (0.00s)
+      --- PASS: TestPushCell08ResumeNeverAnswersASilentGap/behind_the_journal_is_an_overflow_FIRST,_never_a_tail_alone (0.00s)
+      --- PASS: TestPushCell08ResumeNeverAnswersASilentGap/no_cursor_at_all_is_not_vouched_for (0.00s)
+      --- PASS: TestPushCell08ResumeNeverAnswersASilentGap/a_cursor_AHEAD_advances_past_it,_then_overflows (0.00s)
+      --- PASS: TestPushCell08ResumeNeverAnswersASilentGap/a_ledger_that_has_observed_nothing_vouches_for_nothing (0.02s)
+  --- PASS: TestPushCell09TheStreamOutlivesAnRPCDeadline (0.38s)
+  --- PASS: TestPushCell10TheChannelIsCommittedBeforeAnyLineIsWaited (0.02s)
+  --- PASS: TestPushClientSwitchReadsTheDeclarationNotAStreamProbe (0.01s)
+  --- PASS: TestPushClientAppliesAPushedChangeAndReportsTheWatchMechanism (0.06s)
+  --- PASS: TestPushClientNeverReportsWatchWhenThePollDelivered (10.10s)
+  --- PASS: TestPushClientStreamPresentsTheObservationCursor (0.02s)
+  ok  	github.com/deployBunker/bunker/internal/fsclient	7.216s
+GREEN: both halves passed, and the landed BFS-060..063 cells still pass
+
+#################### probe-not-declared ####################
+mutation landed and compiles: internal/fsclient/capabilities.go
+RED as claimed: TestPushClientSwitchReadsTheDeclarationNotAStreamProbe
+    --- FAIL: TestPushClientSwitchReadsTheDeclarationNotAStreamProbe (2.00s)
+attribution control green: TestPushClientAppliesAPushedChangeAndReportsTheWatchMechanism
+
+#################### no-fanout ####################
+mutation landed and compiles: internal/server/webdav/events.go
+RED as claimed: TestPushCell01AChangeIsPushedWithTheMechanismOnTheWire
+    --- FAIL: TestPushCell01AChangeIsPushedWithTheMechanismOnTheWire (2.01s)
+attribution control green: TestPushCell08ResumeNeverAnswersASilentGap
+
+#################### no-heartbeat ####################
+mutation landed and compiles: internal/server/webdav/push.go
+RED as claimed: TestPushCell06TheDeclaredHeartbeatBoundIsHonoured
+    --- FAIL: TestPushCell06TheDeclaredHeartbeatBoundIsHonoured (0.91s)
+attribution control green: TestPushCell01AChangeIsPushedWithTheMechanismOnTheWire
+
+#################### no-gap-marker ####################
+mutation landed and compiles: internal/server/webdav/push.go
+RED as claimed: TestPushCell04BackpressureDropsOldestAndCountsOneGap
+    --- FAIL: TestPushCell04BackpressureDropsOldestAndCountsOneGap (0.01s)
+attribution control green: TestPushCell01AChangeIsPushedWithTheMechanismOnTheWire
+
+#################### no-write-deadline ####################
+mutation landed and compiles: internal/server/webdav/push.go
+RED as claimed: TestPushCell03StalledReaderIsReleasedByTheWriteDeadline
+    --- FAIL: TestPushCell03StalledReaderIsReleasedByTheWriteDeadline (10.01s)
+attribution control green: TestPushCell02DeadClientIsReleasedAndItsSlotComesBack
+
+#################### cap-is-degradation ####################
+mutation landed and compiles: internal/server/webdav/push.go
+RED as claimed: TestPushCell05SubscriberCapRefusesRetryably
+    --- FAIL: TestPushCell05SubscriberCapRefusesRetryably (0.01s)
+attribution control green: TestPushCell01AChangeIsPushedWithTheMechanismOnTheWire
+
+#################### silent-gap-resume ####################
+mutation landed and compiles: internal/server/webdav/events.go
+RED as claimed: TestPushCell08ResumeNeverAnswersASilentGap
+    --- FAIL: TestPushCell08ResumeNeverAnswersASilentGap (0.02s)
+        --- FAIL: TestPushCell08ResumeNeverAnswersASilentGap/behind_the_journal_is_an_overflow_FIRST,_never_a_tail_alone (0.00s)
+attribution control green: TestPushCell01AChangeIsPushedWithTheMechanismOnTheWire
+
+#################### no-commit-flush ####################
+mutation landed and compiles: internal/server/webdav/push.go
+RED as claimed: TestPushCell10TheChannelIsCommittedBeforeAnyLineIsWaited
+    --- FAIL: TestPushCell10TheChannelIsCommittedBeforeAnyLineIsWaited (0.01s)
+attribution control green: TestPushCell01AChangeIsPushedWithTheMechanismOnTheWire
+
+#################### mechanism-lie ####################
+mutation landed and compiles: internal/fsclient/invalidate.go
+RED as claimed: TestPushClientNeverReportsWatchWhenThePollDelivered
+    --- FAIL: TestPushClientNeverReportsWatchWhenThePollDelivered (10.04s)
+attribution control green: TestPushClientAppliesAPushedChangeAndReportsTheWatchMechanism
+
+ALL ARMS RUN: every claim backed by a RED, every restore sha256-verified
+RC=0

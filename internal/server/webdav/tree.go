@@ -104,6 +104,15 @@ type tree struct {
 	// eventFrameBound resolves that to the DECLARED default rather than to "no
 	// bound": a bound a missing field can switch off is not a bound.
 	eventMaxBytes int64
+
+	// pushMu/push hold the push channel's subscriber registry (push.go, BFS-036),
+	// built lazily on the first attach: a tree nobody subscribes to pays nothing,
+	// and the hub is per-TREE because the cursor is (one ledger, one counter, one
+	// cadence — §3.4 R-5). pushCfg carries the resolved bounds and cadences the
+	// channel obeys, from the same surface the watcher obeys.
+	pushMu  sync.Mutex
+	push    *pushHub
+	pushCfg pushSettings
 }
 
 func newTree(root string) (*tree, error) {

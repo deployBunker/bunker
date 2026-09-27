@@ -1,10 +1,12 @@
 package webdav
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -355,22 +357,74 @@ type watchDoc struct {
 		Stalled        bool   `json:"stalled"`
 		LivenessSource string `json:"liveness_source"`
 	} `json:"liveness"`
+	// Push is BFS-036's channel block: what the stream obeys and what it has
+	// counted. Read from the wire like everything else here.
+	Push *struct {
+		Subscription         string `json:"subscription"`
+		Served               bool   `json:"served"`
+		MaxSubscribers       int    `json:"max_subscribers"`
+		BufferBytes          int64  `json:"buffer_bytes"`
+		BufferEvents         int    `json:"buffer_events"`
+		WriteDeadlineMS      int64  `json:"write_deadline_ms"`
+		WriteDeadlineSupport bool   `json:"write_deadline_supported"`
+		HeartbeatMS          int64  `json:"heartbeat_ms"`
+		Counters             struct {
+			SubscribersActive        int64 `json:"subscribers_active"`
+			SubscribersActiveMax     int64 `json:"subscribers_active_max"`
+			DropsTotal               int64 `json:"subscriber_drops_total"`
+			GapsTotal                int64 `json:"subscriber_gaps_total"`
+			DisconnectsTotal         int64 `json:"subscriber_disconnects_total"`
+			DisconnectsCtxTotal      int64 `json:"subscriber_disconnects_ctx_total"`
+			DisconnectsDeadlineTotal int64 `json:"subscriber_disconnects_write_deadline_total"`
+			BufferHighWaterBytes     int64 `json:"subscriber_buffer_high_water_bytes"`
+		} `json:"counters"`
+	} `json:"push"`
 }
 
-// watchCarriers drives the `watch` op and the `capabilities` op and returns the
-// three carriers plus the raw refusal, failing if any of them disagrees about
-// the reason.
-func watchCarriers(t *testing.T, h *Handler) (watchErrEnvelope, watchDoc, string) {
+// watchProbe drives the `watch` op once and reports what it did.
+//
+// It exists because the op's ANSWER changed meaning in BFS-036: where a watcher is
+// established the op is now a STREAM that does not return on its own, so a probe
+// that simply called ServeHTTP would park forever instead of reading a refusal.
+// The probe therefore carries its own cancellable context, runs the handler on its
+// own goroutine, and reports which of the two things happened. `streamed` is not a
+// failure: it is the push form being served, which is what several of these cells
+// are about.
+func probeWatchOp(t *testing.T, h *Handler) (env watchErrEnvelope, doc watchDoc, header string, streamed bool) {
 	t.Helper()
-	rec := do(t, h, "POST", "/dav/", map[string]string{"X-Bunker-Op": "watch"}, "")
-	var env watchErrEnvelope
-	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
-		t.Fatalf("watch op envelope is not JSON: %v (%s)", err, rec.Body.String())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req := httptest.NewRequest(http.MethodPost, "/dav/", nil).WithContext(ctx)
+	req.Header.Set("X-Bunker-Op", "watch")
+	rec := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		h.ServeHTTP(rec, req)
+	}()
+	select {
+	case <-done:
+	case <-time.After(250 * time.Millisecond):
+		// Nothing refused within the bound: the op committed a response and is
+		// holding it open, which is the stream. Cancel and let the handler return
+		// before reading the recorder.
+		streamed = true
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Fatal("the watch op did not return after its request context was cancelled: the stream does not honour its context")
+		}
 	}
-	if env.Error == nil {
-		t.Fatalf("the watch op answered without an error object: %s", rec.Body.String())
+	if streamed {
+		// The stream's own carriers are its headers.
+		header = rec.Header().Get(PushSubscriptionHeader)
+	} else {
+		header = rec.Header().Get("X-Bunker-Capability")
+		if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+			t.Fatalf("watch op envelope is not JSON: %v (%s)", err, rec.Body.String())
+		}
 	}
-	header := rec.Header().Get("X-Bunker-Capability")
 	docRaw := do(t, h, "POST", "/dav/", map[string]string{"X-Bunker-Op": "capabilities"}, "")
 	var caps struct {
 		Result struct {
@@ -384,7 +438,20 @@ func watchCarriers(t *testing.T, h *Handler) (watchErrEnvelope, watchDoc, string
 	if err := json.Unmarshal(docRaw.Body.Bytes(), &caps); err != nil {
 		t.Fatalf("capabilities envelope is not JSON: %v", err)
 	}
-	return env, caps.Result.Capabilities.Extensions.Watch, header
+	return env, caps.Result.Capabilities.Extensions.Watch, header, streamed
+}
+
+// watchCarriers is the refusal-and-document probe the probe-matrix cells use. It
+// refuses to hand back a "refusal" that was never made: where the push form is
+// served there is no refusal to decode, and a caller that wants the streamed case
+// asserts it through watchProbe directly.
+func watchCarriers(t *testing.T, h *Handler) (watchErrEnvelope, watchDoc, string) {
+	t.Helper()
+	env, doc, header, streamed := probeWatchOp(t, h)
+	if !streamed && env.Error == nil {
+		t.Fatal("the watch op answered neither a stream nor a refusal with an error object: the two carriers a caller reads are both absent")
+	}
+	return env, doc, header
 }
 
 // headerPart extracts one `k=v` part of the X-Bunker-Capability value.
@@ -458,26 +525,31 @@ func TestWatchProbeMatrixNamesOneReasonPerCase(t *testing.T) {
 		if st.Coverage.Headroom != invalidation.DefaultWatchInstallHeadroom {
 			t.Fatalf("coverage.headroom = %d, want the reported non-zero default %d", st.Coverage.Headroom, invalidation.DefaultWatchInstallHeadroom)
 		}
-		// The op still refuses (the push WIRE form is BFS-036) but it must not
-		// deny the watcher it has: scope=build, not a target reason.
-		env, doc, header := watchCarriers(t, cell.h)
-		if env.Error.Scope != "build" {
-			t.Fatalf("with a watcher established the refusal scope must be `build` (the push form), got %q: %s", env.Error.Scope, env.Error.Detail)
+		// BFS-036: with a watcher established the push form IS served, so the op
+		// no longer refuses at all — it streams. That is the row's whole point,
+		// and the property this arm used to protect (the op must never deny the
+		// watcher it has) is now protected one level up: the document declares
+		// `mode: push` and the stream answers with X-Bunker-Subscription. What
+		// must NOT have changed is that no refusal claims the target has no
+		// watcher: the refusal carriers are asserted for the absent case below.
+		env, doc, sub, streamed := probeWatchOp(t, cell.h)
+		if !streamed {
+			t.Fatalf("with a watcher established the watch op did not stream: it answered %+v", env.Error)
 		}
-		if env.Error.Reason != "" {
-			t.Fatalf("the build-scope refusal must carry no target reason, got %q", env.Error.Reason)
+		if env.Error != nil {
+			t.Fatalf("the streamed arm carried a refusal object: %+v", env.Error)
+		}
+		if sub != PushSubscriptionWholeTree {
+			t.Fatalf("%s = %q, want %q on a streamed response", PushSubscriptionHeader, sub, PushSubscriptionWholeTree)
 		}
 		if doc.State != WatchStateWatching {
 			t.Fatalf("document state = %q, want watching", doc.State)
 		}
-		if doc.Mode != "poll" {
-			t.Fatalf("document mode = %q, want poll", doc.Mode)
+		if doc.Mode != "push" {
+			t.Fatalf("document mode = %q, want push where the channel is served (F-3: a client reads `mode`, not the op list)", doc.Mode)
 		}
-		if got := headerPart(t, header, "scope"); got != "build" {
-			t.Fatalf("header scope = %q, want build", got)
-		}
-		if !strings.Contains(env.Error.Detail, "the watcher IS established") {
-			t.Fatalf("the build refusal must say the watcher exists, else `the op 501s` reads as `no watcher`: %s", env.Error.Detail)
+		if doc.Push == nil || doc.Push.Served != true {
+			t.Fatalf("the document does not declare the channel as served: %+v", doc.Push)
 		}
 	})
 

@@ -1,0 +1,46 @@
+=== RUN   TestPushCell01AChangeIsPushedWithTheMechanismOnTheWire
+    push_test.go:301: wire: {"seq":1,"event":"heartbeat","paths":[],"rev":"rev:0@0","tree":"tree:896b5c64e2c77dab"}
+    push_test.go:301: wire: {"seq":2,"event":"invalidate","paths":["src/main.go"],"rev":"rev:0@1","tree":"tree:896b5c64e2c77dab"}
+    push_test.go:303: channel: subscription=whole_tree heartbeat_ms=300 buffer_bytes=4194304 buffer_events=256 max_subscribers=8 write_deadline_ms=100 counters={SubscribersActive:1 SubscribersActiveMax:1 DropsTotal:0 GapsTotal:0 DisconnectsTotal:0 DisconnectsCtxTotal:0 DisconnectsDeadlineTotal:0 BufferHighWaterBytes:101 WriteDeadlineRefusedTotal:0}
+--- PASS: TestPushCell01AChangeIsPushedWithTheMechanismOnTheWire (0.01s)
+=== RUN   TestPushCell02DeadClientIsReleasedAndItsSlotComesBack
+    push_test.go:379: the dead client's release: counters={SubscribersActive:0 SubscribersActiveMax:1 DropsTotal:0 GapsTotal:0 DisconnectsTotal:1 DisconnectsCtxTotal:1 DisconnectsDeadlineTotal:0 BufferHighWaterBytes:87 WriteDeadlineRefusedTotal:0}
+    push_test.go:394: the slot came back and was released again: counters={SubscribersActive:0 SubscribersActiveMax:1 DropsTotal:0 GapsTotal:0 DisconnectsTotal:2 DisconnectsCtxTotal:2 DisconnectsDeadlineTotal:0 BufferHighWaterBytes:87 WriteDeadlineRefusedTotal:0}
+--- PASS: TestPushCell02DeadClientIsReleasedAndItsSlotComesBack (0.01s)
+=== RUN   TestPushCell03StalledReaderIsReleasedByTheWriteDeadline
+    push_test.go:431: the stalled reader's release: counters={SubscribersActive:0 SubscribersActiveMax:1 DropsTotal:0 GapsTotal:0 DisconnectsTotal:1 DisconnectsCtxTotal:0 DisconnectsDeadlineTotal:1 BufferHighWaterBytes:0 WriteDeadlineRefusedTotal:0}
+--- PASS: TestPushCell03StalledReaderIsReleasedByTheWriteDeadline (0.11s)
+=== RUN   TestPushCell04BackpressureDropsOldestAndCountsOneGap
+    push_test.go:558: the counted gap: pushed=9 written=5 counters={SubscribersActive:1 SubscribersActiveMax:1 DropsTotal:5 GapsTotal:1 DisconnectsTotal:0 DisconnectsCtxTotal:0 DisconnectsDeadlineTotal:0 BufferHighWaterBytes:396 WriteDeadlineRefusedTotal:0}
+--- PASS: TestPushCell04BackpressureDropsOldestAndCountsOneGap (0.01s)
+=== RUN   TestPushCell05SubscriberCapRefusesRetryably
+--- PASS: TestPushCell05SubscriberCapRefusesRetryably (0.01s)
+=== RUN   TestPushCell06TheDeclaredHeartbeatBoundIsHonoured
+    push_test.go:657: liveness on a quiet tree: 4 heartbeat lines in 900.836242ms (declared period 300ms, bound honoured)
+    push_test.go:659: wire: {"seq":1,"event":"heartbeat","paths":[],"rev":"rev:0@0","tree":"tree:d3b13e0a3ec5dd2f"}
+    push_test.go:659: wire: {"seq":2,"event":"heartbeat","paths":[],"rev":"rev:0@0","tree":"tree:d3b13e0a3ec5dd2f"}
+    push_test.go:659: wire: {"seq":3,"event":"heartbeat","paths":[],"rev":"rev:0@0","tree":"tree:d3b13e0a3ec5dd2f"}
+    push_test.go:659: wire: {"seq":4,"event":"heartbeat","paths":[],"rev":"rev:0@0","tree":"tree:d3b13e0a3ec5dd2f"}
+--- PASS: TestPushCell06TheDeclaredHeartbeatBoundIsHonoured (0.91s)
+=== RUN   TestPushCell07ThePollFormIsUnchanged
+--- PASS: TestPushCell07ThePollFormIsUnchanged (0.02s)
+=== RUN   TestPushCell08ResumeNeverAnswersASilentGap
+=== RUN   TestPushCell08ResumeNeverAnswersASilentGap/inside_the_retained_journal_replays_the_missed_lines
+=== RUN   TestPushCell08ResumeNeverAnswersASilentGap/at_head_replays_nothing_(the_establish_line_follows)
+=== RUN   TestPushCell08ResumeNeverAnswersASilentGap/behind_the_journal_is_an_overflow_FIRST,_never_a_tail_alone
+=== RUN   TestPushCell08ResumeNeverAnswersASilentGap/no_cursor_at_all_is_not_vouched_for
+=== RUN   TestPushCell08ResumeNeverAnswersASilentGap/a_cursor_AHEAD_advances_past_it,_then_overflows
+=== RUN   TestPushCell08ResumeNeverAnswersASilentGap/a_ledger_that_has_observed_nothing_vouches_for_nothing
+--- PASS: TestPushCell08ResumeNeverAnswersASilentGap (0.01s)
+    --- PASS: TestPushCell08ResumeNeverAnswersASilentGap/inside_the_retained_journal_replays_the_missed_lines (0.00s)
+    --- PASS: TestPushCell08ResumeNeverAnswersASilentGap/at_head_replays_nothing_(the_establish_line_follows) (0.00s)
+    --- PASS: TestPushCell08ResumeNeverAnswersASilentGap/behind_the_journal_is_an_overflow_FIRST,_never_a_tail_alone (0.00s)
+    --- PASS: TestPushCell08ResumeNeverAnswersASilentGap/no_cursor_at_all_is_not_vouched_for (0.00s)
+    --- PASS: TestPushCell08ResumeNeverAnswersASilentGap/a_cursor_AHEAD_advances_past_it,_then_overflows (0.00s)
+    --- PASS: TestPushCell08ResumeNeverAnswersASilentGap/a_ledger_that_has_observed_nothing_vouches_for_nothing (0.01s)
+=== RUN   TestPushCell09TheStreamOutlivesAnRPCDeadline
+--- PASS: TestPushCell09TheStreamOutlivesAnRPCDeadline (0.37s)
+=== RUN   TestPushCell10TheChannelIsCommittedBeforeAnyLineIsWaited
+--- PASS: TestPushCell10TheChannelIsCommittedBeforeAnyLineIsWaited (0.03s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/server/webdav	1.494s

@@ -1,0 +1,5 @@
+--- FAIL: TestPushClientSwitchReadsTheDeclarationNotAStreamProbe (2.01s)
+    push_test.go:100: the document declares mode=push and the handshake still reports the watcher unavailable (source="probe_refused"): the client asked by opening a stream instead of reading the offer
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	2.009s
+FAIL

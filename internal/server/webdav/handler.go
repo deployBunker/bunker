@@ -34,6 +34,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/deployBunker/bunker/internal/invalidation"
 )
@@ -195,6 +196,17 @@ func New(cfg Config) (*Handler, error) {
 	// the document publishes and the number the assembly obeys are the same
 	// number.
 	t.eventMaxBytes = inv.Push.MaxEventBytes
+	// BFS-036: the push channel's bounds and cadences come from the SAME
+	// resolved surface the watcher obeys, so the numbers the document publishes
+	// and the numbers the channel enforces cannot drift (BFS-043's rule, one
+	// subsystem over).
+	t.pushCfg = pushSettings{
+		bufferBytes:    inv.Push.SubscriberBufferBytes,
+		bufferEvents:   inv.Push.SubscriberBufferEvents,
+		maxSubscribers: inv.Push.MaxSubscribers,
+		writeDeadline:  time.Duration(inv.Push.WriteDeadlineMS) * time.Millisecond,
+		heartbeat:      time.Duration(inv.Watch.HeartbeatMS) * time.Millisecond,
+	}
 	if cfg.MaxRequestBytes <= 0 {
 		cfg.MaxRequestBytes = DefaultMaxRequestBytes
 	}
@@ -254,10 +266,16 @@ func (h *Handler) primeWatchProbe() {
 // Close releases the watcher's goroutines and its watch set. It is a no-op when
 // no watcher was established, and it is never required for correctness — a
 // process that exits without it is not serving stale state, it is gone.
+//
+// BFS-036: it also ends the push channel's heartbeat goroutine. An attached
+// subscriber whose request is still in flight ends with its own request context
+// (the stream is closed by the server shutting down), so nothing here has to wait
+// for one.
 func (h *Handler) Close() {
 	if h.watch != nil {
 		h.watch.Close()
 	}
+	h.tree.closePush()
 }
 
 // Root returns the resolved served root (absolute, symlink-free prefix).

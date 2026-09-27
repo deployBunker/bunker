@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/deployBunker/bunker/internal/invalidation"
 	"github.com/deployBunker/bunker/internal/server/webdav"
 )
 
@@ -49,7 +50,16 @@ type config struct {
 	h2c          bool
 	build        string
 	maxResult    int64
+	// inv is the resolved server-side invalidation surface (BFS-043) this
+	// endpoint serves with, so a client cell can drive a target that really has a
+	// watcher and really offers the push channel (BFS-036) instead of a stub.
+	// nil means the declared defaults (no watcher enabled, push refused).
+	inv *invalidation.Values
 }
+
+// WithInvalidation serves the endpoint with a resolved invalidation surface: the
+// same numbers the daemon would load from its config file.
+func WithInvalidation(v invalidation.Values) Option { return func(c *config) { c.inv = &v } }
 
 // WithBasicAuth requires the given credentials (the daemon's own credential
 // shape: HTTP Basic at the WebDAV layer).
@@ -78,6 +88,7 @@ func Serve(root, addr string, opts ...Option) (*Server, error) {
 		Authenticate:    cfg.authenticate,
 		DefaultMaxBytes: cfg.maxResult,
 		AbsMaxBytes:     cfg.maxResult,
+		Invalidation:    cfg.inv,
 	})
 	if err != nil {
 		return nil, err

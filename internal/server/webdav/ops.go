@@ -85,7 +85,7 @@ func (h *Handler) handlePost(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.writeEnvelope(w, r, start, op, 200, VerdictOK, false,
-			map[string]any{"capabilities": h.capabilityDocument(r)}, nil)
+			map[string]any{"capabilities": h.capabilityDocument(r, w)}, nil)
 
 	case "snapshot":
 		h.handleSnapshot(w, r, start)
@@ -97,15 +97,15 @@ func (h *Handler) handlePost(w http.ResponseWriter, r *http.Request) {
 		h.handleEvents(w, r, start)
 
 	case "watch":
-		// The push form is not served in this build (BFS-036 owns the wire
-		// form), and the refusal now says WHY with its own name (§3/§4): an
-		// absent watcher reports the reason its probe produced (unsupported
-		// platform, watch limit, netbacked target, partial coverage, install
-		// failure, lost), and a watcher that IS established says so rather than
-		// denying itself. The verdict, the status, scope=target and mode=poll
-		// are unchanged for an old client; `reason` is a new field (§3.1).
-		h.writeEnvelope(w, r, start, op, 501, VerdictCapabilityUnavailable, false, nil,
-			h.watchOpError())
+		// BFS-036: the push form. Where an event source exists on this target
+		// the op is served as the NDJSON stream (§2); where none does, the
+		// refusal below is byte-identical to the pre-BFS-036 answer — same
+		// verdict, same scope, same mode, same reason — because a target with no
+		// source must not be handed a channel that reports itself healthy and
+		// carries nothing (§1.2 case 1). The verdict, the status, scope=target
+		// and mode=poll are unchanged for an old client; `reason` is a new field
+		// (§3.1).
+		h.handleWatch(w, r, start)
 
 	case "status", "diff", "rev-parse", "ls-files", "log":
 		// Part of the E-4 catalogue, not in this build (slice C5).
@@ -446,7 +446,12 @@ func eerr2Reason(e *envelopeError) string {
 // capabilityDocument builds §4.2's document from the RUNNING process: it
 // reports reality, not aspiration. The one part that is version-dependent is
 // `server.proto`, which is the version this request actually arrived on.
-func (h *Handler) capabilityDocument(r *http.Request) map[string]any {
+func (h *Handler) capabilityDocument(r *http.Request, w http.ResponseWriter) map[string]any {
+	// ONE watcher snapshot serves this whole document: the op list, the mode, the
+	// degradations and the watcher block are four carriers of the same fact, and
+	// taking them from two snapshots is how four carriers start disagreeing under
+	// a state transition (§3.1).
+	st := h.watchStatusSnapshot()
 	// BFS-007: the authority to advertise is the LIVE QUIC socket when there
 	// is one — it may be an explicit server.h3_addr, i.e. a different port
 	// than the TCP listener this request arrived on. With no live listener the
@@ -465,7 +470,7 @@ func (h *Handler) capabilityDocument(r *http.Request) map[string]any {
 	}
 	ops := make([]string, 0, len(opCatalogue))
 	for _, op := range opCatalogue {
-		if implementedOps[op] {
+		if h.opServed(op, st) {
 			ops = append(ops, op)
 		}
 	}
@@ -485,7 +490,7 @@ func (h *Handler) capabilityDocument(r *http.Request) map[string]any {
 				"name": "X-Bunker-Op", "v": 1, "read_only": true, "ops": ops,
 				"default_max_bytes": h.cfg.DefaultMaxBytes, "abs_max_bytes": h.cfg.AbsMaxBytes,
 			},
-			"watch": h.watchDocumentBlock(h.watchStatusSnapshot()),
+			"watch": h.watchDocumentBlock(st, w),
 		},
 		"transports": map[string]any{
 			"http/1.1": map[string]any{"alpn": nil, "multiplexed": false, "server_push": false, "available": true},
@@ -516,20 +521,63 @@ func (h *Handler) revKind() string {
 	return h.tree.revKind()
 }
 
+// opServed reports whether this build serves one catalogue op for THIS request's
+// tree and watcher state. It is the single predicate behind both the document's
+// op list and the op's own answer, so "listed in the document" and "answers a
+// result" can never disagree (events_test.go's TestOpTableMatchesWhatIsServed
+// pins exactly that).
+//
+// `watch` is the only op whose availability is per-TARGET rather than per-BUILD
+// (BFS-036): the push form is served where a watcher is established and refused
+// with capability_unavailable where none is, so a client reading the op list is
+// reading this process's real answer for this tree rather than a build claim.
+// F-3 (SPEC-push-channel §9) still holds: the document's `mode` is the mode in
+// force, and a client must keep reading `mode`, never the op list.
+func (h *Handler) opServed(op string, st watchStatus) bool {
+	if op == "watch" {
+		return pushServedFrom(st)
+	}
+	return implementedOps[op]
+}
+
+// pushServedFrom is pushServed on an already-taken snapshot, so the op list, the
+// mode, the degradations and the stream's own answer are one read of one state.
+// It is the ONE definition of "the push form is served here": an established
+// watcher (watching, or overflowing — an overflow invalidates an interval, it does
+// not remove the watcher) on a target whose coverage is complete enough to have
+// been established at all.
+func pushServedFrom(st watchStatus) bool {
+	return st.State == WatchStateWatching || st.State == WatchStateOverflow
+}
+
 // degradations enumerates every capability this process does not have, with
 // the scope that says why (§4.2 rule 2, §5.2). Anything absent here is
 // available; nothing is implied.
 func (h *Handler) degradations() []map[string]any {
-	out := []map[string]any{
-		{
+	// BFS-036: the push form is per-TARGET, so this list is built from ONE
+	// snapshot and the watch entry appears only where the channel is not served.
+	// An entry that stayed after the stream came up would be a degradation report
+	// that no longer describes the running process — the same rule the h3 entry
+	// below already follows.
+	st := h.watchStatusSnapshot()
+	out := []map[string]any{}
+	if !pushServedFrom(st) {
+		entry := map[string]any{
 			"capability": "watch", "scope": "target", "mode": "poll",
 			"detail": "inotify watcher absent on this target: the push form is not served; the declared poll form X-Bunker-Op: events is",
-		},
-		{
-			"capability": "lock", "scope": "build", "phase": "C4", "mode": "none",
-			"detail": "no lease-backed LOCK in this build; DAV: 1 is advertised, DAV: 2 is not",
-		},
+		}
+		if st.Reason != "" {
+			// The watcher's own probed reason, when there is one to report. An
+			// absent watcher that was never probed reports none rather than
+			// inventing one of the seven (§3.3).
+			entry["reason"] = st.Reason
+		}
+		out = append(out, entry)
 	}
+	out = append(out, map[string]any{
+		"capability": "lock", "scope": "build", "phase": "C4", "mode": "none",
+		"detail": "no lease-backed LOCK in this build; DAV: 1 is advertised, DAV: 2 is not",
+	})
 	// BFS-007: h3 is no longer a build-level absence — the listener exists and
 	// is reported when it is live — so the entry appears only while no QUIC
 	// socket is bound. "Anything absent here is available; nothing is implied"
@@ -542,7 +590,7 @@ func (h *Handler) degradations() []map[string]any {
 		})
 	}
 	for _, op := range opCatalogue {
-		if implementedOps[op] {
+		if h.opServed(op, st) {
 			continue
 		}
 		out = append(out, map[string]any{
