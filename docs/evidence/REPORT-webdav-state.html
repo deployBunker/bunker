@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bunker WebDAV — where we are</title>
+<style>
+  :root{--bg:#0f1116;--card:#171a21;--ink:#e8eaf0;--dim:#9aa3b2;--line:#262b36;
+        --ok:#39d98a;--warn:#ffb020;--bad:#ff5c5c;--info:#5aa9ff;--acc:#c08cff}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:16px/1.62 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:980px;margin:0 auto;padding:34px 22px 90px}
+  h1{font-size:31px;line-height:1.18;margin:0 0 6px;letter-spacing:-.4px}
+  h2{font-size:21px;margin:44px 0 12px;padding-top:20px;border-top:1px solid var(--line)}
+  h3{font-size:16px;margin:24px 0 8px;color:#fff}
+  .sub{color:var(--dim);font-size:14px;margin-bottom:22px}
+  .verdict{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--warn);
+           border-radius:10px;padding:16px 18px;margin:18px 0}
+  .verdict b{color:#fff}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 17px;margin:12px 0}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:700px){.grid{grid-template-columns:1fr}}
+  code{background:#0b0d12;border:1px solid var(--line);border-radius:5px;padding:1px 5px;
+       font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#cfe3ff}
+  pre{background:#0b0d12;border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow-x:auto;
+      font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#cfe3ff}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14.5px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--dim);font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.5px}
+  .ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}.info{color:var(--info)}.dim{color:var(--dim)}
+  .pill{display:inline-block;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px;
+        border:1px solid var(--line);vertical-align:middle}
+  .p0{background:rgba(255,92,92,.14);color:var(--bad);border-color:rgba(255,92,92,.4)}
+  .p1{background:rgba(255,176,32,.13);color:var(--warn);border-color:rgba(255,176,32,.35)}
+  .p2{background:rgba(90,169,255,.12);color:var(--info);border-color:rgba(90,169,255,.32)}
+  .done{background:rgba(57,217,138,.13);color:var(--ok);border-color:rgba(57,217,138,.35)}
+  .toc{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 20px}
+  .toc ol{margin:0;padding-left:20px}
+  .toc li{margin:5px 0}
+  a{color:var(--info);text-decoration:none}a:hover{text-decoration:underline}
+  .toc a{color:var(--ink)}
+  .big{font-size:26px;font-weight:700;color:#fff}
+  .kpi{font-size:13px;color:var(--dim)}
+  ul{margin:8px 0}li{margin:5px 0}
+  .note{border-left:3px solid var(--info);padding-left:12px;color:var(--dim);font-size:14.5px;margin:12px 0}
+  footer{margin-top:50px;color:var(--dim);font-size:13px;border-top:1px solid var(--line);padding-top:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Bunker WebDAV — where we are</h1>
+<div class="sub">
+  State of the WebDAV server + FUSE client and the Muster transports ·
+  27 September 2026 · <code>bunker@7edc54f</code> · <code>muster@feffb4e7</code> ·
+  both at parity 0 · 20/20 release rows closed
+</div>
+
+<div class="verdict">
+  <b>The one-line answer:</b> the HTTP/WebDAV path <b class="ok">wins decisively for reading</b>
+  — it removes the whole-tree stall class that made sshfs unusable — and it is
+  <b class="bad">not yet safe for editing a working tree</b>. Four open P0 defects, three of which
+  share a single root cause. That root cause is the next thing to fix, and it is also the thing that
+  unlocks the largest remaining speed win.
+</div>
+
+<div class="toc">
+  <b>Contents</b>
+  <ol>
+    <li><a href="#built">What is actually built</a></li>
+    <li><a href="#numbers">The measured numbers</a></li>
+    <li><a href="#rule">The both-datacentre rule — half discharged</a></li>
+    <li><a href="#defects">The open defects, and what each costs a user</a></li>
+    <li><a href="#declared">Declared but not built</a></li>
+    <li><a href="#path">The path to "safe for editing"</a></li>
+    <li><a href="#decisions">The decisions I need from you</a></li>
+    <li><a href="#evidence">Evidence index</a></li>
+  </ol>
+</div>
+
+<h2 id="built">1 · What is actually built</h2>
+
+<div class="grid">
+  <div class="card">
+    <h3 style="margin-top:0">Server — <code>bunkerd</code> WebDAV surface</h3>
+    <ul>
+      <li>One handler across <b>HTTP/1.1, HTTP/2 and HTTP/3</b>; Alt-Svc advertised only while h3 is genuinely listening</li>
+      <li><b>HTTP/1.1 still works</b> — proven with a real <code>curl</code>: GET/HEAD/OPTIONS 200, PROPFIND 207, PUT 201 with bytes confirmed on the server's disk, DELETE 204, stale <code>If-Match</code> → 412 with a parseable interoperable body, old User-Agent 200, no Accept header 200</li>
+      <li>Extensions: <code>identity, if_match_refuse, rev, tree, op, watch</code></li>
+      <li>One-call <b>snapshot</b> op — fetch a whole tree in a single request</li>
+      <li>Conditional <code>PUT</code> (optimistic concurrency) — one request where staging-then-publish cost 1,023</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">Client — <code>bunker-fs</code> (Linux first)</h3>
+    <ul>
+      <li>Full read/write FUSE filesystem, 16 methods</li>
+      <li><b>Bounded cache</b> — 256 MiB, LRU-by-hit</li>
+      <li><b>Concurrency knob</b> — the lever that actually beat sshfs</li>
+      <li><b>One-call snapshot at mount</b> — the lever for a whole tree</li>
+      <li>Own failure classifier and its own not-hang bounds</li>
+      <li class="bad">No symlinks, no xattrs, no readdirplus — and symlinks <b>corrupt</b> on write-back (BFS-018)</li>
+    </ul>
+  </div>
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0">Muster</h3>
+  <ul>
+    <li>HTTP/2 and HTTP/3 client transports, both selectable</li>
+    <li><b>Protocol read from the response, never from the config</b> — the release's trap: a response object alone would have passed and been wrong</li>
+    <li>Real <code>.proto</code> round-trip, asserted on <b>content</b> (names, field numbers, types, nesting), not on shape</li>
+  </ul>
+</div>
+
+<h2 id="numbers">2 · The measured numbers</h2>
+
+<div class="card">
+  <h3 style="margin-top:0">Reading a whole tree — one call instead of a thousand</h3>
+  <table>
+    <tr><th>What</th><th>Number</th><th>Versus</th></tr>
+    <tr><td>Whole-tree read (loopback)</td><td class="big" style="font-size:18px">0.013 – 0.051 s</td><td>NFS <span class="dim">33–36 s</span> · native <span class="dim">0.41 s</span></td></tr>
+    <tr><td>Snapshot walk vs per-request walk</td><td class="ok">232×</td><td>one call, <b>421 nodes, zero requests during the walk</b></td></tr>
+    <tr><td>Snapshot walk, <b>Helsinki</b> DC (192 ms RTT)</td><td class="ok">110 ms</td><td>no-snapshot <span class="dim">1,210 ms</span> = <b>11.0×</b></td></tr>
+    <tr><td>Snapshot walk, <b>Falkenstein</b> DC</td><td class="ok">110 ms</td><td>no-snapshot <span class="dim">1,612 ms</span> = <b>14.7×</b></td></tr>
+  </table>
+  <div class="note">
+    <b>The 110 ms is the interesting part.</b> It is identical at both DCs even though the per-request
+    floor differs by ~200 ms between them — because the tree is fetched <b>once, at mount</b>, so the walk
+    is then served locally and <b>does not move when the link gets slower</b>. That is a property of the
+    design, not of a simulated link: a delay relay predicted 12.0× and the real DC measured 11.0×.
+  </div>
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0">Why it beats sshfs — two separate mechanisms</h3>
+  <table>
+    <tr><th>Lever</th><th>Evidence</th><th>Effect</th></tr>
+    <tr><td><b>Concurrency</b></td><td>8 parallel cold reads</td><td>MAX 8 in flight, <b>3.6×</b> wall — but a <b>serial</b> walk stays 1–2 in flight, <b>1.03×</b></td></tr>
+    <tr><td><b>The snapshot</b></td><td>whole-tree ops</td><td>232× — the only thing that short-circuits a whole tree</td></tr>
+    <tr><td>Protocol choice</td><td>h2 conc=1→8: 12.231→2.008 s</td><td>7.74× — but <b>h1 at one connection did not degrade at all</b> (0.9995×)</td></tr>
+  </table>
+  <div class="note">
+    These are independent, and conflating them is the mistake the release was built to avoid.
+    Concurrency does <b>not</b> rescue a whole-tree operation — NFS is kernel-parallel and still stalls
+    33–36 s. The snapshot does. The client has both.
+  </div>
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0">Baselines, from the same battery</h3>
+  <table>
+    <tr><th>Driver</th><th>Cells ok</th><th>Stalls</th></tr>
+    <tr><td>sshfs</td><td class="bad">5</td><td class="bad">7 – 8</td></tr>
+    <tr><td><b>WebDAV + bunker-fs</b></td><td class="ok">11</td><td class="ok">1</td></tr>
+    <tr><td>NFS (kernel, parallel)</td><td colspan="2">whole-tree <code>diff --stat</code> <b>32.74 s</b></td></tr>
+    <tr><td>native (git on the host)</td><td colspan="2">14/14 in <b>0.41 s</b></td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0">It fails bounded, not by hanging</h3>
+  <pre>dead endpoint          : 0.110 s
+stalled listener       : 5.113 s   (= the declared BindTimeout, honoured)
+server frozen mid-flight:
+  touched file         : 0.109 s
+  cold listing         : 60.095 s  bounded
+  write                : 30.036 s  bounded
+recovery               : no remount needed</pre>
+  <div class="note">
+    Against sshfs's stall class, this is the whole point: an operation ends in bounded time with an
+    error, rather than blocking forever. <b>Acceptance 8 (not-hang) was proven by killing the server
+    live</b> — the mount returned <code>rc=1</code> in 0 s with <i>"Transport endpoint is not connected"</i>
+    and stayed mounted rather than wedging.
+  </div>
+</div>
+
+<h2 id="rule">3 · The both-datacentre rule — half discharged</h2>
+
+<div class="card">
+  <div class="grid">
+    <div>
+      <h3 style="margin-top:0" class="ok">Topology — DONE</h3>
+      <p>Measured on two genuinely different DCs, live <code>bunkerd</code> hosts untouched:</p>
+      <ul>
+        <li><b>Helsinki</b> (dedi-2, direct, 192.9 ms RTT) — snapshot 110 ms / no-snapshot 1,210 ms = 11.0×</li>
+        <li><b>Falkenstein</b> (bunker-mvp) — snapshot 110 ms / no-snapshot 1,612 ms = 14.7×</li>
+        <li>Falkenstein has <code>ufw</code> INPUT DROP, so it was carried over an SSH tunnel rather than opening a hole in a live host's firewall</li>
+      </ul>
+    </div>
+    <div>
+      <h3 style="margin-top:0" class="bad">Stalls — NOT discharged</h3>
+      <p>The "0 stalls" claim still rests on a <b>loopback</b> battery. The DC legs measured <b>walk times</b>, not stalls.</p>
+      <p>And I did not paper over it: the committed battery <b>cannot</b> measure stalls at a DC — its write-verification cells read a <i>local</i> tree, so aimed at a remote server they would verify a stale mirror and <b>go green while proving nothing</b>. Filed as BFS-034, in flight.</p>
+    </div>
+  </div>
+  <div class="note">
+    This is why the rule is stated as <b>topology measured, stalls loopback-only, gap named</b> — rather
+    than "0 stalls on both DCs", which I could have produced in one command and which would have been false.
+  </div>
+</div>
+
+<h2 id="defects">4 · The open defects, and what each costs a user</h2>
+
+<table>
+  <tr><th>Row</th><th>What it means if you edit a tree</th><th>Status</th></tr>
+  <tr>
+    <td><b>BFS-024</b> <span class="pill p0">P0</span></td>
+    <td><b>Stale reads.</b> A path you already read keeps serving pre-edit bytes. You get your teammate's old content and no indication anything is wrong.</td>
+    <td>Open — blocked on 026</td>
+  </tr>
+  <tr>
+    <td><b>BFS-026</b> <span class="pill p0">P0</span></td>
+    <td><b>ROOT CAUSE.</b> The invalidation channel has no working mechanism — no inotify watcher <i>and</i> the declared poll fallback also 501s. So the cache never invalidates. Root of 024 and 033, and the same missing slice blocks the largest remaining speed win.</td>
+    <td><b class="info">In flight</b></td>
+  </tr>
+  <tr>
+    <td><b>BFS-030</b> <span class="pill p0">P0</span></td>
+    <td><b>Data loss.</b> <code>&gt;</code> on an existing file <b>empties it</b> and then fails. A failed rewrite destroys the original.</td>
+    <td>Open — queued</td>
+  </tr>
+  <tr>
+    <td><b>BFS-033</b> <span class="pill p0">P0</span></td>
+    <td><b>The conflict refusal does not hold live.</b> A 412 is recorded and then a 204 lands anyway — the guard logs that it protected you and then doesn't.</td>
+    <td>Open — root is 026</td>
+  </tr>
+  <tr>
+    <td><b>BFS-034</b> <span class="pill p0">P0</span></td>
+    <td><b>The instrument can't measure what we claim.</b> Not a client bug — the reason the last release rule can't be closed yet.</td>
+    <td><b class="info">In flight</b></td>
+  </tr>
+  <tr>
+    <td><b>BFS-025</b> <span class="pill done">FIXED</span></td>
+    <td><b>Truncated reads — silent corruption.</b> Was returning 5 bytes of a 66-byte file with <code>rc=0</code>.</td>
+    <td class="ok">Landed <code>bc1793b</code> — now fails <b>loudly</b> (<code>rc=1</code>, "Stale file handle"). Fast path unchanged: 4200 → 4163 ms, zero refusals on healthy reads.</td>
+  </tr>
+</table>
+
+<div class="card">
+  <h3 style="margin-top:0">The P1/P2 tail (13 rows)</h3>
+  <p>Symlink corruption (018), empty directory listings (019), a created file that can't be renamed until published — breaks git's lock-then-rename (020), append fails and loses bytes (021), the cache bound doesn't bound the directory (031), a counter that can never move (032), POSIX-only code blocking a Windows build (028/029), unreported cache bypass (027), a registry CI flake on load (017), and two instrument-accuracy rows (022/023).</p>
+  <p class="kpi">Each is filed with acceptance criteria. None is a mystery.</p>
+</div>
+
+<h2 id="declared">5 · Declared but not built</h2>
+
+<div class="card">
+  <table>
+    <tr><th>Claim</th><th>Reality</th></tr>
+    <tr>
+      <td>The client's invalidation / watch channel</td>
+      <td class="bad">Advertised in the extension list; <b>no working mechanism</b>. The client reports this honestly in its own status record (<code>channel_available: false</code>) — the honesty is deliberate and I required it be preserved.</td>
+    </tr>
+    <tr>
+      <td>Bunker op catalogue (E-4)</td>
+      <td class="warn"><b>2 of 8 implemented</b> (<code>capabilities</code>, <code>snapshot</code>). <code>status</code>, <code>diff</code>, <code>rev-parse</code>, <code>ls-files</code> answer <code>capability_unavailable, "slice C5"</code>.</td>
+    </tr>
+    <tr>
+      <td>Server-side delegation</td>
+      <td class="warn"><b>Not implemented.</b> This is the ~80× whole-tree win from the PRD, and it is <b>load-bearing, not an optimisation</b> — the FUSE binding alone provably cannot short-circuit a whole tree (BFS-003: NFS is kernel-parallel and still stalls).</td>
+    </tr>
+    <tr>
+      <td>Windows</td>
+      <td class="dim">Decided: <b>WinFsp via cgofuse</b>. The OS redirector was <b>rejected</b> because it cannot express the concurrency knob or carry the snapshot op — i.e. exactly the two things that made the client fast, decided against this release's own measurements. Not built. <b>Mint: no work.</b></td>
+    </tr>
+  </table>
+</div>
+
+<h2 id="path">6 · The path to "safe for editing"</h2>
+
+<div class="card">
+  <p>Ordered by what actually unblocks what — not by priority label:</p>
+  <table>
+    <tr><th>#</th><th>Row</th><th>Why it's here</th></tr>
+    <tr><td>1</td><td><b>026</b> — the channel</td><td>Root of 024 and 033. Either implement the poll op or <b>remove the claim and enforce a bounded, reported staleness window</b>. Everything else is downstream of this decision.</td></tr>
+    <tr><td>2</td><td><b>030</b> — <code>&gt;</code> empties a file</td><td>Pure data loss, independent of 026. The only P0 that isn't about staleness.</td></tr>
+    <tr><td>3</td><td><b>031/032</b> — the bound and the counter</td><td>Cheap, and they make the cache's own guarantees trustworthy. A bound the owner can't see is not a bound.</td></tr>
+    <tr><td>4</td><td><b>018/019/020/021</b> — symlinks, readdir, rename, append</td><td>The POSIX surface a real working tree needs. Until these land, "edit a git repo through the mount" is not a supported claim.</td></tr>
+    <tr><td>5</td><td><b>E-4 slice C5</b> (delegation + the four ops)</td><td>Not needed to be <i>correct</i> — needed to be <i>fast</i> on whole trees without the snapshot at mount.</td></tr>
+  </table>
+  <div class="note">
+    <b>The honest headline:</b> the client is a genuinely good <b>reader</b> today and a risky
+    <b>editor</b>. Reading immutable data is safe. Pointing it at a working tree you care about is not,
+    and will not be until items 1–4 are done.
+  </div>
+</div>
+
+<h2 id="decisions">7 · The decisions I need from you</h2>
+
+<div class="card">
+  <h3 style="margin-top:0">Decision 1 — the invalidation channel <span class="pill p0">blocks 3 rows</span></h3>
+  <p><b>File:</b> <code>docs/prd/PRD-bunker-fs.md</code> §slice C5 + the <code>events</code>/<code>watch</code> op pair.</p>
+  <p>Two defensible answers, and I want your call because they buy different things:</p>
+  <ul>
+    <li><b>(a) Build the server-side poll op</b> — the real fix. The server's own 501 text already names the shape: <i>"poll with HEAD/ETag or an X-Bunker-Op: snapshot diff"</i>. <b>Cost: 1–2 days.</b> Unlocks correct invalidation <i>and</i> starts the slice-C5 family.</li>
+    <li><b>(b) Remove the claim and enforce + report a bounded staleness window</b> (TTL-only). <b>Cost: 2–4 hours.</b> Closes 024/033 as <i>honest bounded behaviour</i> rather than correct behaviour — the client stops lying about a channel it can't have, and you can see the window.</li>
+  </ul>
+  <p class="kpi">My recommendation: <b>(b) now, (a) next</b>. (b) removes a false claim cheaply and makes the failure mode visible and bounded; (a) is the actual unlock and is the same work slice C5 needs.</p>
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0">Decision 2 — the DC stall instrument</h3>
+  <p><b>File:</b> <code>probes/bunker-fs-battery-wan.sh</code> (the in-flight BFS-034 deliverable).</p>
+  <p>To close "0 stalls on both DCs" I need a battery whose write verification <b>crosses the same link as the write</b> — read back server-side over SSH, or compare authoritative hashes over the wire — plus a negative control proving the old approach <i>misses</i> a deliberately broken write. <b>Cost: ~1 day for the instrument, ~1 hour per DC run.</b></p>
+  <p class="kpi">Until then the rule stays honestly half-discharged rather than closed with a number I can't defend.</p>
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0">Standing item — the one thing I can't do without you</h3>
+  <p><b>Host disk.</b> <code>~/.hermes</code> is <b>170 GB</b> and root is at <b>92%</b> (140 GB free). Growing the fleet will hit this before the fleet runs out of room. I've not deleted anything on your behalf. Separately, <b>dedi-2's Tailscale click</b> is still pending — it doesn't block the DC work (I used the public path) but it blocks the P3 tailnet-direct leg.</p>
+</div>
+
+<h2 id="evidence">8 · Evidence index</h2>
+
+<div class="card">
+  <p>Everything above is reproducible from committed evidence under <code>docs/evidence/</code> —
+  <b>116 files</b> on <code>origin/main</code>. The load-bearing ones:</p>
+  <table>
+    <tr><th>Claim</th><th>File</th></tr>
+    <tr><td>Release closure, 20 rows</td><td><code>RELEASE-bankai.md</code> / <code>.html</code></td></tr>
+    <tr><td>Fresh-clone QA (independent of the working tree)</td><td><code>QA-fresh-clone.md</code> + <code>-output.txt</code></td></tr>
+    <tr><td>Both DCs</td><td><code>DC-real-latency-snapshot.md</code>, <code>DC-both-datacentres-snapshot.md</code></td></tr>
+    <tr><td>WAN prediction vs measurement</td><td><code>WAN-latency-snapshot.md</code>, <code>WAN-latency-delayrelay-python.md</code></td></tr>
+    <tr><td>Stock HTTP/1.1 client compat</td><td><code>BFS-012-stock-client-compat.md</code> + <code>-probe.sh</code> + <code>-output.txt</code></td></tr>
+    <tr><td>The battery's numbers</td><td><code>BFS-016-battery-output.txt</code>, <code>-battery.csv</code>, <code>-nothang*.txt</code></td></tr>
+    <tr><td>Truncation, red then green</td><td><code>BFS-025-driver-repro-red.txt</code>, <code>-green.txt</code>, <code>-fastpath.txt</code>, <code>-battery-fixed.txt</code></td></tr>
+    <tr><td>Windows / Mint decision</td><td><code>BFS-010-windows-mint-decision.md</code></td></tr>
+    <tr><td>The instrument gap</td><td><code>BFS-034-old-instrument-run.txt</code>, <code>BFS-034-wrong-side-run.txt</code></td></tr>
+  </table>
+  <p class="kpi">Every row on the board is one id away from its own evidence. Nothing in this report is
+  asserted without a file behind it, and where a claim is <b>not</b> discharged I have said so in the
+  same sentence as the number.</p>
+</div>
+
+<footer>
+  <b>Bankai release:</b> complete — 20/20 rows closed, 36 commits reachability-checked on the remotes, parity 0,
+  21 paused lanes restored (7 pre-existing pauses untouched), release report delivered.<br>
+  <b>Continuing:</b> BFS-026 and BFS-034 in flight · BFS-024, 030, 033 filed and unblocked, queued behind the
+  host load gate rather than fired into a saturated box.<br>
+  <span class="dim">Generated from the boards and committed evidence at <code>bunker@7edc54f</code>. Host load
+  21.4/16 CPUs at time of writing.</span>
+</footer>
+
+</div>
+</body>
+</html>
