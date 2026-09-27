@@ -7,6 +7,7 @@ require (
 	github.com/caddyserver/certmagic v0.25.4
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/hanwen/go-fuse/v2 v2.11.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	go.yaml.in/yaml/v3 v3.0.5

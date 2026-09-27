@@ -162,6 +162,8 @@ Client-side path overrides (persistent flags):
 	root.AddCommand(cli.NewSystemdCommand())
 	root.AddCommand(cli.NewMountCommand())
 	root.AddCommand(cli.NewUmountCommand())
+	// BFS-008: the opt-in bunker-fs client (mount + its own verb surface).
+	root.AddCommand(cli.NewFSCommand())
 	root.AddCommand(cli.NewGuardCommand())
 	root.AddCommand(cli.NewTunnelCommand())
 	root.AddCommand(cli.NewVersionCommand())
