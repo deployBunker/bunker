@@ -173,6 +173,13 @@ bound):
 }
 ```
 
+The `invalidation` block carries three further fields **only while the mechanism in force is the last-resort
+revision poll** — `rev_kind`, `rev_vouches_for` and `rev_gap` (§4.4, the coverage report) — because that is
+the one mechanism whose currency rests on a token whose coverage is kind-scoped. A rev-tier document on a
+git tree therefore reads `"rev_kind": "git", "rev_vouches_for": "commits",
+"rev_gap": "uncommitted_working_tree_writes"`, and an absent group means the mechanism in force is not `rev`
+— never that there is no gap (BFS-048).
+
 `used_bytes = blobs_bytes + index_bytes` is the figure `AC-5` compares with `du`; `max_bytes` is what it
 must never exceed.
 
@@ -451,12 +458,16 @@ match.)
 |---|---|---|
 | `--poll-interval`, default | **2 s** | chosen default |
 | Cost | 1 request per 2 s = **0.5 req/s**, ~185 ms of one link's duty cycle per call | M1 |
-| Scope | one call covers the whole tree revision, not one call per directory | decision (this spec) |
+| Scope | one call covers the whole tree's **revision**, not one call per directory — and that revision is only as wide as the kind the surface DECLARED (`extensions.rev.kind`): `counter` moves on every mutation through the surface, `git` moves only when the served tree's HEAD ref moves, so an **uncommitted** out-of-band edit is not something this poll answers for (BFS-048; `SPEC-watcher-capability` §2.4, §7.1) | decision (this spec) |
 | Staleness window | **≤ poll interval (2 s)** by construction — the figure `status` reports as the client's guaranteed freshness, so the difference from push mode is a *number a caller can read*, not a behaviour nobody can see | decision (this spec) |
-| Mode reporting | `bunker fs status --json` → `invalidation.mode` ∈ `push` \| `poll`, plus `poll_interval_ms` and `last_event_age_ms` | PRD `AC-9` `:134` |
+| Mode reporting | `bunker fs status --json` → `invalidation.mode` ∈ `push` \| `poll`, plus `poll_interval_ms` and `last_event_age_ms`; while the mechanism in force is `rev`, also `rev_kind` / `rev_vouches_for` / `rev_gap` (the coverage report below) | PRD `AC-9` `:134` |
+| Coverage reporting | **on the `rev` tier only**, `invalidation.rev_kind` (the declared kind), `.rev_vouches_for` (the class of change the token moves for) and `.rev_gap` (the class it CANNOT see: `uncommitted_working_tree_writes` for `git`, `writes_not_through_this_surface` for `counter`, `revision_kind_not_declared` when no kind was declared). Empty means "the mechanism in force is not the revision poll", never "no gap" — a mechanism that cannot move for a class of change reports the class instead of reporting "unchanged" (BFS-048; `SPEC-watcher-capability` §7.2 R-V4) | decision (this spec) |
 
 Two modes, one vocabulary. `bunker fs status` never reports "invalidation: ok" without saying **which
-mechanism** answered; a mount silently downgraded to polling would be the exact class of defect `AC-9`
+mechanism** answered — and, on the revision tier, **what that mechanism can and cannot vouch for**: a mount
+whose last-resort poll is a git tree's HEAD is reported as covering `commits` with
+`rev_gap=uncommitted_working_tree_writes`, never as a whole-tree currentness oracle. A mount silently
+downgraded to polling would be the exact class of defect `AC-9`
 exists to catch. (The `invalidation.seq` figure in §3.2's status JSON is the per-**tree** cursor of §4.1, not
 a per-mount counter.)
 

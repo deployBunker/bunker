@@ -566,6 +566,14 @@ func printStatus(w io.Writer, st *fsclient.Status) {
 		fmt.Fprintf(w, " last_event_age_ms=%d", *inv.LastEventAgeMS)
 	}
 	fmt.Fprintln(w)
+	// On the revision tier, say what the revision can and cannot vouch for: a
+	// git-tree mount whose last-resort poll is HEAD-only must not read as
+	// "everything is current" (BFS-048; the gap is a reported fact, not a
+	// footnote).
+	if inv.RevKind != "" {
+		fmt.Fprintf(w, "rev coverage : kind=%s vouches_for=%s gap=%s\n",
+			inv.RevKind, dashIfEmpty(inv.RevVouchesFor), dashIfEmpty(inv.RevGap))
+	}
 	fmt.Fprintf(w, "cache        : used_bytes=%d max_bytes=%d (blobs=%d index=%d) entries=%d blobs=%d\n",
 		st.Cache.UsedBytes, st.Cache.MaxBytes, st.Cache.BlobsBytes, st.Cache.IndexBytes, st.Cache.Entries, st.Cache.Blobs)
 	fmt.Fprintf(w, "cache events : hits=%d misses=%d evictions=%d bypasses=%d oversize_bypasses=%d pinned=%d\n",

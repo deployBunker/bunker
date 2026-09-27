@@ -201,6 +201,18 @@ func (c *Client) Capabilities() *Capabilities {
 	return c.caps
 }
 
+// RevKind reports the revision kind this surface DECLARED in its capability
+// document ("" when no document declared one, or none was fetched). It is the
+// fact the invalidator's coverage report is derived from — read off the
+// document, never inferred from the token's shape (SPEC-watcher-capability
+// §8.1; see Capabilities.RevKind).
+func (c *Client) RevKind() string {
+	if c == nil {
+		return ""
+	}
+	return c.Capabilities().RevKind()
+}
+
 func (c *Client) loadString(v *atomic.Value) string {
 	s, _ := v.Load().(string)
 	return s

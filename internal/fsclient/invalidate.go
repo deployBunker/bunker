@@ -56,13 +56,79 @@ const (
 // served tree's HEAD ref moves, so an uncommitted working-tree edit (ours or
 // anyone else's) moves nothing on a git tree (BFS-048; SPEC-watcher-capability
 // §2.4). The mechanism is reported because the difference between per-path
-// drops and a whole-tree resync is a cost, not a detail.
+// drops and a whole-tree resync is a cost, not a detail. On the `rev` tier the
+// reported state carries that granularity with it — `rev_kind`,
+// `rev_vouches_for` and `rev_gap` (SPEC-watcher-capability §7.2 R-V4) — so a
+// git-tree mount cannot read as fully current while what it polls is HEAD.
 const (
 	MechanismWatch  = "watch"
 	MechanismEvents = "events"
 	MechanismRev    = "rev"
 	MechanismNone   = "none"
 )
+
+// Revision kinds, exactly as a surface DECLARES them (BFS-004 §4.2's
+// `extensions.rev.kind`; SPEC-watcher-capability §7.1 D1/D2). A client reads the
+// kind; it never infers one from the token's shape.
+const (
+	RevKindGit     = "git"
+	RevKindCounter = "counter"
+)
+
+// What a served revision token MOVES for, per declared kind (§7.1). The
+// revision poll is the client's last-resort mechanism, so what it can see is
+// part of its contract rather than a footnote: a caller that needs a class of
+// change NOT named here must be on a mechanism that observes the tree directly.
+const (
+	// RevVouchesForCommits — kind `git`: `.git/HEAD`'s ref moving (a commit,
+	// checkout or reset). NOT an uncommitted working-tree write — not even one
+	// this client made through the surface (BFS-048's measured fact).
+	RevVouchesForCommits = "commits"
+	// RevVouchesForSurfaceWrites — kind `counter`: mutations this surface
+	// performs. NOT a write made by anyone else (§7.1 D2).
+	RevVouchesForSurfaceWrites = "surface_writes"
+	// RevVouchesForNothing — the document named no kind this client knows, so
+	// NO coverage is claimed. It is a report, not a fallback: guessing here
+	// would reintroduce the very defect this vocabulary exists to remove.
+	RevVouchesForNothing = "nothing_declared"
+)
+
+// Revision coverage GAPS (SPEC-watcher-capability §7.2 R-V4): the class of
+// change the mechanism IN FORCE cannot see, reported as a gap instead of being
+// left to read as "unchanged". A mechanism that claims coverage it does not
+// have is the defect class this removes (BFS-048; the same class as BFS-033 and
+// BFS-060). One value per declared kind; there is no default and no empty
+// string that means "fine".
+const (
+	// RevGapUncommittedWrites — kind `git`: a working-tree write that is not
+	// committed, ours or anyone else's, moves nothing the poll can see. Aligning
+	// the token with it is the watcher's job (§7.2 R-V1), never a stat-per-read
+	// walk (R-V2) — so this build reports the gap rather than paying that price.
+	RevGapUncommittedWrites = "uncommitted_working_tree_writes"
+	// RevGapForeignWrites — kind `counter`: a write that does not go through
+	// this surface moves nothing the counter can see (§7.1 D2).
+	RevGapForeignWrites = "writes_not_through_this_surface"
+	// RevGapKindUndeclared — the document named no kind, so the token's coverage
+	// is unknown rather than assumed (§3.3: never report a claim that was not
+	// probed).
+	RevGapKindUndeclared = "revision_kind_not_declared"
+)
+
+// revCoverage maps a DECLARED revision kind onto what the token in force can
+// and cannot see. A table read off the capability document, not a guess from
+// the token's shape: a kind this client does not recognise is reported as no
+// coverage claimed (R-V4) rather than as coverage, which is what keeps a new
+// server-side kind from silently inheriting an old promise.
+func revCoverage(kind string) (vouchesFor, gap string) {
+	switch kind {
+	case RevKindGit:
+		return RevVouchesForCommits, RevGapUncommittedWrites
+	case RevKindCounter:
+		return RevVouchesForSurfaceWrites, RevGapForeignWrites
+	default:
+		return RevVouchesForNothing, RevGapKindUndeclared
+	}
+}
 
 // DropFn applies BFS-005 §4.2's ordered drop: our path entries and metadata,
 // then the kernel's copies. `full` means "drop everything and re-snapshot" (a
@@ -154,6 +220,21 @@ type InvalidationState struct {
 	DroppedPaths   int64         `json:"paths_dropped_total"`
 	Reason         string        `json:"reason,omitempty"`
 	Available      bool          `json:"channel_available"`
+	// RevKind, RevVouchesFor and RevGap are the revision mechanism's coverage
+	// report (SPEC-watcher-capability §7.2 R-V4): which kind the token in force
+	// is (DECLARED by the capability document, never inferred), which class of
+	// change that token moves for, and which class of change it cannot see at
+	// all. They exist so that a mount can never read as fully current when the
+	// mechanism in force is blind to a class of change — the false claim BFS-048
+	// measured, now a reported gap instead of a silence.
+	//
+	// They are populated ONLY while the mechanism in force is `rev` (the last
+	// resort, and the only mechanism whose currency rests on the token), so an
+	// empty group means "the mechanism in force is not the revision poll", never
+	// "no gap".
+	RevKind       string `json:"rev_kind,omitempty"`
+	RevVouchesFor string `json:"rev_vouches_for,omitempty"`
+	RevGap        string `json:"rev_gap,omitempty"`
 }
 
 // State reports the current invalidation state.
@@ -179,6 +260,13 @@ func (i *Invalidator) State() InvalidationState {
 	if i.mode == ModePoll {
 		ms := i.opt.PollInterval.Milliseconds()
 		st.PollIntervalMS = &ms
+	}
+	// The revision tier reports its own coverage (R-V4). Every other mechanism
+	// observes the tree directly, so the field group stays empty and means
+	// exactly that: the mechanism in force is not the revision poll.
+	if i.mechanism == MechanismRev {
+		st.RevKind = i.client.RevKind()
+		st.RevVouchesFor, st.RevGap = revCoverage(st.RevKind)
 	}
 	return st
 }
@@ -521,6 +609,13 @@ func (i *Invalidator) pollEventsOnce(ctx context.Context) *OpError {
 // `events` mechanism's job (its ledger observes the tree directly); the rev
 // poll is the last resort and must never be read as asserting more than the
 // kind it serves.
+//
+// Reporting it, not just documenting it (R-V4): while this mechanism is in
+// force, State() carries `rev_kind`, `rev_vouches_for` and `rev_gap`, so the
+// class of change this poll CANNOT see travels with every status read instead
+// of living only in this comment. An edit that moves the token is still a
+// whole-tree resync (there is no per-path detail here); an edit that does not
+// move it is a gap, and it is reported as one.
 func (i *Invalidator) pollRevOnce(ctx context.Context) {
 	req, err := i.client.newRequest(ctx, http.MethodOptions, "", nil)
 	if err != nil {

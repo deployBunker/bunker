@@ -37,6 +37,14 @@ type Capabilities struct {
 			DepthInfinity bool `json:"depth_infinity"`
 			IncludeHash   bool `json:"include_hash"`
 		} `json:"snapshot"`
+		// Rev is the revision declaration (BFS-004 §4.2's `extensions.rev`).
+		// Only `kind` is decoded, and it is the ONE fact that says what the
+		// served revision token can move for (SPEC-watcher-capability §7.1):
+		// the client reports its coverage from this field, never from the
+		// token's shape or from a config flag (§8.1).
+		Rev struct {
+			Kind string `json:"kind"`
+		} `json:"rev"`
 	} `json:"extensions"`
 	Limits struct {
 		MaxRequestBytes int64 `json:"max_request_bytes"`
@@ -180,4 +188,21 @@ func (caps *Capabilities) MaxPathsPerEvent() int {
 		return caps.Extensions.Watch.MaxPaths
 	}
 	return 4096
+}
+
+// RevKind is the revision kind the document DECLARES ("git" | "counter", or ""
+// when the document names none). It is read, never inferred.
+//
+// This is the fact the invalidator's coverage report is built from: the kind is
+// what says which class of change a served revision token moves for
+// (SPEC-watcher-capability §7.1 — `git` moves when the served tree's HEAD ref
+// moves, `counter` on mutations through the surface), and §8.1 forbids learning
+// a capability from anything but the running process's own declaration. A
+// document that names no kind leaves the client reporting that it claims no
+// coverage, rather than guessing from the token's shape.
+func (caps *Capabilities) RevKind() string {
+	if caps == nil {
+		return ""
+	}
+	return caps.Extensions.Rev.Kind
 }
