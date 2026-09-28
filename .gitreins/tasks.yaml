@@ -3530,3 +3530,13 @@ tasks:
   status: complete
   created_at: '2026-09-28T20:20:08.931101+00:00'
   completed_at: '2026-09-28T21:51:39.891477+00:00'
+- id: INT-CI-050
+  title: 'Fix CI RED on 7c5e70c: root-suite internal/agent FAIL + regression imgspec
+    destroy leak'
+  criteria:
+  - 1. go test -run 'TestSpawn|TestCgroup|TestConcurrency' ./internal/agent/... passes
+    as root; 2. e2e-full-battery.sh section 13 imgspec destroy check passes; 3. Full
+    CI run green
+  status: complete
+  created_at: '2026-09-28T22:05:51.961401+00:00'
+  completed_at: '2026-09-28T22:47:36.113963+00:00'
