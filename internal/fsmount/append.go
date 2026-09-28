@@ -349,6 +349,19 @@ func (a *appendHandle) publish(ctx context.Context) syscall.Errno {
 	return 0
 }
 
+// setPath moves the append state's own path after a successful rename (BFS-020),
+// so an append that had not been published when the name moved lands under the
+// name the file now has rather than resurrecting the old one. It takes only the
+// append handle's own mutex: the owner read handle hands the value over and then
+// unlocks before calling this, so the two locks are never held at once (the
+// append's own publish takes this mutex and then the OWNER's, for the read half's
+// invalidation, which is why the order must not be inverted here).
+func (a *appendHandle) setPath(p string) {
+	a.mu.Lock()
+	a.p = p
+	a.mu.Unlock()
+}
+
 func (a *appendHandle) discard() {
 	a.mu.Lock()
 	defer a.mu.Unlock()

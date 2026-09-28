@@ -197,12 +197,31 @@ func (w *WritePath) NoteRead(path, hash string) {
 	w.NoteServed(path, hash)
 }
 
-// NoteDeleted drops a path's hold: the refusal's subject no longer exists, so
-// there is no refused write left to enforce. Called from the mount's own removal
-// path, where the name is gone rather than superseded.
+// NoteDeleted drops everything this client remembers about a PATH whose name no
+// longer refers to the file it remembered — the refusal's subject is gone, so the
+// hold goes with it (BFS-033); and the remembered BASE and the hash last served go
+// too, because in both cases the name now refers to a different file (or to
+// nothing):
+//
+//   - the name was REMOVED: a later create of it must resolve its own base. A
+//     remembered base for a file that is not there makes the server refuse the
+//     new create 412, and the caller cannot tell why.
+//   - the name was MOVED: our own rename moved the file to another name, and a
+//     later write to the old name addresses a file that is not the one the record
+//     describes. Same refusal, same confusion.
+//
+// MEASURED, and the reason this is not theoretical: a live `git checkout -b`
+// creates `.git/index.lock`, closes it, renames it over `.git/index`, and LATER
+// creates `.git/index.lock` again — and with the stale base the second one was
+// refused 412 and git died `fatal: unable to write new index file`. The same
+// shape through a delete: git locks `.git/AUTO_MERGE.lock` (empty), unlinks it,
+// and locks it again a few milliseconds later
+// (docs/evidence/BFS-020-gitlock.txt).
 func (w *WritePath) NoteDeleted(path string) {
 	w.mu.Lock()
 	delete(w.holds, path)
+	delete(w.bases, path)
+	delete(w.served, path)
 	w.mu.Unlock()
 }
 
