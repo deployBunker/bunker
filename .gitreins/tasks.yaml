@@ -3540,3 +3540,12 @@ tasks:
   status: complete
   created_at: '2026-09-28T22:05:51.961401+00:00'
   completed_at: '2026-09-28T22:47:36.113963+00:00'
+- id: INT-CI-050a
+  title: Raise root-suite go-test budget 1050s->1590s (third budget cliff)
+  criteria:
+  - 'PASS: scripts/root-suite.sh default ROOT_SUITE_TIMEOUT is 1590s with an INT-CI-050
+    comment; ci.yml root-suite step timeout-minutes is 30 and the wrapper comment
+    matches; the changed line prints the budget with ''30m''; bash -n passes'
+  status: complete
+  created_at: '2026-09-28T23:14:02.770584+00:00'
+  completed_at: '2026-09-28T23:14:31.620259+00:00'
