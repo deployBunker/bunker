@@ -50,6 +50,13 @@
 //
 // Hard bounds: spec size, directive count, packages per directive, token
 // length, and a build timeout enforced by the builder.
+//
+// Stock-toolchain preservation (DF-BUNKER-80): the render ALWAYS emits a
+// stock-userland layer (StockToolchainPackages: git, the docker client,
+// python3, make, jq, ca-certificates) between FROM and the spec's package
+// lines. A package add must never read as an image replacement — the
+// customized image keeps every tool a vanilla agent has, plus the spec's
+// packages.
 package imagespec
 
 import (

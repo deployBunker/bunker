@@ -13,6 +13,37 @@ import (
 // re-declare one of the allowed bases, never introduce a new source.
 const DefaultBaseImage = "docker.io/library/ubuntu:24.04"
 
+// StockToolchainPackages is the apt package set every image-spec image
+// provisions BEFORE the spec's own package directives (DF-BUNKER-80). It is
+// the stock agent userland — what a vanilla (non-image-spec) agent has from
+// the host on this product's Ubuntu 24.04 hosts — re-installed inside the
+// customized image, because an image spec ADDS packages to the agent; it must
+// never replace the userland. The membership is the row's named list plus the
+// GAP-092-measured stock extras:
+//
+//	git             — agent-tools REQUIRED ("session, lease"; internal/cli
+//	                  agenttools.go); a stock agent has git 2.43.0
+//	docker.io       — the docker CLIENT (/usr/bin/docker); exec wires
+//	                  DOCKER_HOST at the agent's own rootless socket, so a
+//	                  client-less image makes rootless docker unreachable
+//	python3, make   — the stock build/scripting baseline
+//	jq              — present on a measured fresh stock spawn (GAP-092)
+//	ca-certificates — TLS trust for anything the toolchain fetches
+//
+// All allowed bases are apt-family (ubuntu:24.04/22.04, debian:12/11), and
+// every name here exists in each of those archives, so the rendered layer is
+// valid for any base a spec may declare. The tokens are builder-chosen
+// constants, not spec input: they never pass through the token grammar, and
+// they render through the same single-quoting renderer as spec packages.
+var StockToolchainPackages = []string{
+	"ca-certificates",
+	"git",
+	"python3",
+	"make",
+	"jq",
+	"docker.io",
+}
+
 // allowedBases is the closed set of base images a spec may name. Everything
 // else — private registries, localhost pulls, scratch — is rejected so a spec
 // can never change where the agent image comes from beyond this list.
@@ -174,15 +205,32 @@ func Hash(data []byte) (string, error) {
 // writes. The grammar guarantees every line below is builder-generated — the
 // caller's bytes never reach this text. Rendering is fully registry-driven:
 // each directive's manager row supplies its line renderer.
+//
+// The FIRST layer after FROM is always the stock-toolchain layer
+// (DF-BUNKER-80): a spec is a package-ADD, not an image replacement, so the
+// customized image must retain the stock agent userland (git, the docker
+// client, python3, make, jq — see StockToolchainPackages) before any of the
+// spec's own package lines. Any spec at all flips exec into container mode
+// (GAP-069), so the layer is unconditional — a base-only spec needs it too.
 func (s *Spec) Dockerfile() string {
 	var b strings.Builder
 	b.WriteString("FROM ")
 	b.WriteString(s.Base)
 	b.WriteString("\n")
+	renderStockToolchain(&b)
 	for _, d := range s.Packages {
 		if def := d.Manager.Def(); def != nil {
 			def.Render(&b, d.Packages)
 		}
 	}
 	return b.String()
+}
+
+// renderStockToolchain emits the DF-BUNKER-80 stock-userland layer through
+// the apt renderer: one RUN line installing StockToolchainPackages, emitted
+// immediately after FROM and before every spec directive. It reuses renderAPT
+// verbatim so the layer is byte-identical in style to a spec's own apt line
+// (single-quoted tokens, --no-install-recommends, apt lists cleaned).
+func renderStockToolchain(b *strings.Builder) {
+	renderAPT(b, StockToolchainPackages)
 }
