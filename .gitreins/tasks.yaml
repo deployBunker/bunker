@@ -3489,3 +3489,44 @@ tasks:
   status: complete
   created_at: '2026-09-27T05:45:03.710076+00:00'
   completed_at: '2026-09-27T05:51:58.668050+00:00'
+- id: DF-BUNKER-80
+  title: Image-spec agents must keep the stock agent toolchain (git+docker client+python3+make)
+    while adding spec packages; today the apt package-add path REPLACES the userland
+    and the agent-tools probe shows git ABSENT+REQUIRED, docker gone
+  criteria:
+  - Rendered Dockerfile for a package-add spec on the default base provisions the
+    stock agent toolchain (every agent-tools REQUIRED item a stock agent satisfies)
+    in addition to the spec's packages; proven by updated golden/unit tests in internal/imagespec
+    asserting the rendered text
+  - A real spawned dfspec-e-class image agent (apt package-add spec) passes the same
+    agent-tools probe as a stock agent with NO REQUIRED regressions and the spec package
+    (rg) present; raw probe output for BOTH agents committed as evidence
+  - go build ./... and go vet ./... pass and go test ./... -count=1 is green on the
+    branch
+  - Changes confined to internal/imagespec plus tests (and minimal spawn wiring only
+    if required, each extra file named with its reason); no renderGo toolchain-bootstrap
+    scope creep into DF-BUNKER-79 beyond what is unavoidable
+  - 'Scope honesty: if the live spawn leg could not run, it is stated as an explicit
+    residual and the work is not claimed fully accepted'
+  status: complete
+  created_at: '2026-09-27T23:45:15.034340+00:00'
+  completed_at: '2026-09-28T01:03:54.542879+00:00'
+- id: QA-BUNKER-30
+  title: Fix destroy-path userdel resolution on clean-machine PATHs
+  criteria:
+  - Resolve userdel and useradd without requiring /usr/sbin on PATH; the destroy-path
+    tests pass under a PATH that excludes /usr/sbin; go build ./..., go vet ./...,
+    and go test ./... -count=1 pass; changes stay scoped to the destroy path and its
+    tests.
+  status: complete
+  created_at: '2026-09-28T03:00:14.312650+00:00'
+  completed_at: '2026-09-28T04:34:58.170178+00:00'
+- id: INT-CI-049
+  title: CI root-suite and image-spec regression failures on 9cb4df6
+  criteria:
+  - Attribute and fix the root-suite TestConcurrency_SpawnFiveAgents docker ps signal:killed
+    failure and the regression E2E battery image-spec failure on head 9cb4df6; prove
+    the relevant CI jobs green on the fix.
+  status: complete
+  created_at: '2026-09-28T20:20:08.931101+00:00'
+  completed_at: '2026-09-28T21:51:39.891477+00:00'
