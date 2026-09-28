@@ -400,5 +400,7 @@ jobs:
         # fails mid-way (GAP-007); see scripts/root-suite.sh.
         # INT-CI-031: budget raised to 1050s (scripts/root-suite.sh); 20m here
         # leaves 150s of headroom for the wrapper's leak-cleanup EXIT trap.
+        # INT-CI-050: third cliff — the fix commit grew the suite past 1050s;
+        # budget now 1590s, job timeout 30m leaves 210s of trap headroom.
         run: bash scripts/root-suite.sh
-        timeout-minutes: 20
+        timeout-minutes: 30

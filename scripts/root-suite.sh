@@ -71,7 +71,13 @@ daemon_has_agent() {
 # the GAP-126..142 security wave grew the root-gated suite past 780s. The CI
 # step timeout is now 20m (1200s), so a 1050s budget leaves 150s for this
 # script's EXIT-trap leak cleanup.
-ROOT_SUITE_TIMEOUT="${ROOT_SUITE_TIMEOUT:-1050s}"
+# INT-CI-050 (third cliff): run 36494196879 reddened with the go-test alarm
+# at 1050s while spawns/destroys still flowed (panic at 23:04:01, business
+# lines steady through 23:03:59, next test only 9s old) — INT-CI-050's own
+# cgroup/archive tests each do real spawn+destroy cycles (~20s), growing the
+# suite past 1050s. The CI job timeout is now 30m (1800s), so a 1590s budget
+# leaves 210s of headroom for this script's EXIT-trap leak cleanup.
+ROOT_SUITE_TIMEOUT="${ROOT_SUITE_TIMEOUT:-1590s}"
 
 SNAP_PASSWD="$(mktemp /tmp/root-suite-passwd-XXXXXX)"
 SNAP_KEYS="$(mktemp /tmp/root-suite-keys-XXXXXX)"
@@ -171,7 +177,7 @@ if [ "${ROOT_SUITE_SKIP_SUITE:-}" = "1" ]; then
     exit 0
 fi
 
-echo "root-suite: go test budget $ROOT_SUITE_TIMEOUT (CI step allows 20m; remainder is for leak cleanup)"
+echo "root-suite: go test budget $ROOT_SUITE_TIMEOUT (CI step allows 30m; remainder is for leak cleanup)"
 go test -count=1 -run 'TestSpawn|TestCgroup|TestConcurrency' ./... -timeout "$ROOT_SUITE_TIMEOUT"
 rc=$?
 echo "root-suite: go test finished rc=$rc budget=$ROOT_SUITE_TIMEOUT"
