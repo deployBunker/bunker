@@ -523,7 +523,7 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	}
 
 	// Step 3: Remove the Linux user
-	cmd := exec.CommandContext(ctx, "userdel", "-rf", username)
+	cmd := exec.CommandContext(ctx, userManagementCommand("userdel"), "-rf", username)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		// DF-BUNKER-34: a userdel failure that is NOT "the user is already
 		// gone" means the host is in exactly the partial state this row

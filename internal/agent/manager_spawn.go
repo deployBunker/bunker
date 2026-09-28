@@ -244,7 +244,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// ── Step 2: Create Linux user ──────────────────────────────────
 	username := "bunker-" + agentID
 	m.logger.Info("creating user", "username", username)
-	cmd := exec.CommandContext(ctx, "useradd", "-m", "-s", "/bin/bash", username)
+	cmd := exec.CommandContext(ctx, userManagementCommand("useradd"), "-m", "-s", "/bin/bash", username)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		if strings.Contains(string(out), "already exists") {
 			// Idempotent re-registration: the agent user (home, rootless

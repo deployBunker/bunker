@@ -335,7 +335,7 @@ func removeAgentUser(b *rollbackBudget, agentID string, logger *slog.Logger, res
 func userdelUnderRollbackBudget(b *rollbackBudget, username string, res *rollbackResult) error {
 	var failure error
 	b.runStep("userdel "+username, res, func(ctx context.Context) {
-		out, err := spawnRollbackRunner(ctx, "userdel", "-r", username)
+		out, err := spawnRollbackRunner(ctx, userManagementCommand("userdel"), "-r", username)
 		if err != nil {
 			failure = fmt.Errorf("userdel %s: %w (output: %s)", username, err, strings.TrimSpace(string(out)))
 			res.note("userdel attempt failed: " + failure.Error())
