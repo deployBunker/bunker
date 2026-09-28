@@ -1,0 +1,48 @@
+{
+  "agent": "df80stock",
+  "tools": [
+    {
+      "name": "toolsd",
+      "status": "absent",
+      "version": "",
+      "needed_by": "read, write, list, edit, patch, apply, lease, diff3, narrate",
+      "required": true
+    },
+    {
+      "name": "rg",
+      "status": "present",
+      "version": "ripgrep 15.1.0",
+      "needed_by": "search (content, files-only, count)",
+      "required": true
+    },
+    {
+      "name": "git",
+      "status": "present",
+      "version": "git version 2.53.0",
+      "needed_by": "session, lease (the lease registry lives in .git)",
+      "required": true
+    },
+    {
+      "name": "jq",
+      "status": "present",
+      "version": "jq-1.8.1",
+      "needed_by": "optional: scripted result handling",
+      "required": false
+    },
+    {
+      "name": "gopls",
+      "status": "absent",
+      "version": "",
+      "needed_by": "lsp check for Go (a language server; one per language)",
+      "required": false
+    }
+  ],
+  "missing": [
+    "gopls",
+    "toolsd"
+  ],
+  "missing_required": [
+    "toolsd"
+  ],
+  "exit_code": 0
+}

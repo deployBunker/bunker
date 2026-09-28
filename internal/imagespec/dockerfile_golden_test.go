@@ -20,6 +20,15 @@ import (
 //     quoting and NOTHING else — compare each expectation below against the
 //     unquoted pre-GAP-148 form and the only difference is the surrounding
 //     quotes.
+//   - DF-BUNKER-80 CHANGED every row on purpose AGAIN: Dockerfile() now
+//     emits the stock-toolchain layer (stockToolchainGoldenLine: git, the
+//     docker client, python3, make, jq, ca-certificates) immediately after
+//     FROM, before the spec's package lines. The pre-fix rows encoded the
+//     defect as expected behavior — a package-add spec rendered FROM <bare
+//     base> + ONLY the listed packages, which REPLACED the agent userland
+//     (an apt ripgrep+jq spec produced an agent with rg but NO git/docker/
+//     python3/make; dogfood run 22). Every row below gains exactly that one
+//     line and nothing else; the per-manager render bytes are unchanged.
 //
 // The test stays exact-byte (never a substring check): quoting is a security
 // property of the emitted line, so the line itself is the thing under test.
@@ -32,30 +41,30 @@ func TestDockerfile_Golden(t *testing.T) {
 		{
 			name: "base only",
 			spec: &Spec{Base: DefaultBaseImage},
-			want: "FROM docker.io/library/ubuntu:24.04\n",
+			want: "FROM docker.io/library/ubuntu:24.04\n" + stockToolchainGoldenLine,
 		},
 		{
 			// pre-GAP-148: ...--no-install-recommends jq curl=8.5.0-2ubuntu10 && rm...
 			name: "apt multi",
 			spec: &Spec{Base: DefaultBaseImage, Packages: []PackageAdd{{Manager: ManagerAPT, Packages: []string{"jq", "curl=8.5.0-2ubuntu10"}}}},
-			want: "FROM docker.io/library/ubuntu:24.04\nRUN apt-get update && apt-get install -y --no-install-recommends 'jq' 'curl=8.5.0-2ubuntu10' && rm -rf /var/lib/apt/lists/*\n",
+			want: "FROM docker.io/library/ubuntu:24.04\n" + stockToolchainGoldenLine + "RUN apt-get update && apt-get install -y --no-install-recommends 'jq' 'curl=8.5.0-2ubuntu10' && rm -rf /var/lib/apt/lists/*\n",
 		},
 		{
 			// pre-GAP-148: RUN go install golang.org/x/tools/gopls@v0.17.0
 			name: "go multi",
 			spec: &Spec{Base: DefaultBaseImage, Packages: []PackageAdd{{Manager: ManagerGo, Packages: []string{"golang.org/x/tools/gopls@v0.17.0", "honnef.co/go/tools/cmd/staticcheck@v0.5.1"}}}},
-			want: "FROM docker.io/library/ubuntu:24.04\nRUN go install 'golang.org/x/tools/gopls@v0.17.0'\nRUN go install 'honnef.co/go/tools/cmd/staticcheck@v0.5.1'\n",
+			want: "FROM docker.io/library/ubuntu:24.04\n" + stockToolchainGoldenLine + "RUN go install 'golang.org/x/tools/gopls@v0.17.0'\nRUN go install 'honnef.co/go/tools/cmd/staticcheck@v0.5.1'\n",
 		},
 		{
 			// pre-GAP-148: RUN npm install -g typescript@5.6.3 @types/node@20.14.0
 			name: "npm multi",
 			spec: &Spec{Base: DefaultBaseImage, Packages: []PackageAdd{{Manager: ManagerNPM, Packages: []string{"typescript@5.6.3", "@types/node@20.14.0"}}}},
-			want: "FROM docker.io/library/ubuntu:24.04\nRUN npm install -g 'typescript@5.6.3' '@types/node@20.14.0'\n",
+			want: "FROM docker.io/library/ubuntu:24.04\n" + stockToolchainGoldenLine + "RUN npm install -g 'typescript@5.6.3' '@types/node@20.14.0'\n",
 		},
 		{
 			name: "pip version specifiers and extras",
 			spec: &Spec{Base: DefaultBaseImage, Packages: []PackageAdd{{Manager: ManagerPip, Packages: []string{"requests>=2.31,<3", "flask[async]>=3.0"}}}},
-			want: "FROM docker.io/library/ubuntu:24.04\nRUN pip install --no-cache-dir 'requests>=2.31,<3' 'flask[async]>=3.0'\n",
+			want: "FROM docker.io/library/ubuntu:24.04\n" + stockToolchainGoldenLine + "RUN pip install --no-cache-dir 'requests>=2.31,<3' 'flask[async]>=3.0'\n",
 		},
 		{
 			// pipx installs PyPI applications into isolated venvs; the CLI
@@ -63,12 +72,12 @@ func TestDockerfile_Golden(t *testing.T) {
 			// the token, so the line follows renderPip's shape.
 			name: "pipx applications with version specifiers",
 			spec: &Spec{Base: DefaultBaseImage, Packages: []PackageAdd{{Manager: ManagerPipx, Packages: []string{"black>=24.0,<25", "ruff~=0.6", "poetry[all]"}}}},
-			want: "FROM docker.io/library/ubuntu:24.04\nRUN pipx install 'black>=24.0,<25' 'ruff~=0.6' 'poetry[all]'\n",
+			want: "FROM docker.io/library/ubuntu:24.04\n" + stockToolchainGoldenLine + "RUN pipx install 'black>=24.0,<25' 'ruff~=0.6' 'poetry[all]'\n",
 		},
 		{
 			name: "cargo requirements",
 			spec: &Spec{Base: DefaultBaseImage, Packages: []PackageAdd{{Manager: ManagerCargo, Packages: []string{"ripgrep@^14.1", "cargo-edit@~0.12"}}}},
-			want: "FROM docker.io/library/ubuntu:24.04\nRUN cargo install 'ripgrep@^14.1' 'cargo-edit@~0.12'\n",
+			want: "FROM docker.io/library/ubuntu:24.04\n" + stockToolchainGoldenLine + "RUN cargo install 'ripgrep@^14.1' 'cargo-edit@~0.12'\n",
 		},
 		{
 			// gem takes the requirement as a -v ARGUMENT, so each package
@@ -76,12 +85,12 @@ func TestDockerfile_Golden(t *testing.T) {
 			// quoted.
 			name: "gem requirements per package",
 			spec: &Spec{Base: DefaultBaseImage, Packages: []PackageAdd{{Manager: ManagerGem, Packages: []string{"rake@~>13.0", "puma"}}}},
-			want: "FROM docker.io/library/ubuntu:24.04\nRUN gem install --no-document -v '~>13.0' 'rake'\nRUN gem install --no-document 'puma'\n",
+			want: "FROM docker.io/library/ubuntu:24.04\n" + stockToolchainGoldenLine + "RUN gem install --no-document -v '~>13.0' 'rake'\nRUN gem install --no-document 'puma'\n",
 		},
 		{
 			name: "composer constraints",
 			spec: &Spec{Base: DefaultBaseImage, Packages: []PackageAdd{{Manager: ManagerComposer, Packages: []string{"symfony/console:^7.0", "monolog/monolog:>=3.0,<4.0"}}}},
-			want: "FROM docker.io/library/ubuntu:24.04\nRUN composer global require --no-interaction 'symfony/console:^7.0' 'monolog/monolog:>=3.0,<4.0'\n",
+			want: "FROM docker.io/library/ubuntu:24.04\n" + stockToolchainGoldenLine + "RUN composer global require --no-interaction 'symfony/console:^7.0' 'monolog/monolog:>=3.0,<4.0'\n",
 		},
 		{
 			name: "all managers in declaration order",
@@ -96,6 +105,7 @@ func TestDockerfile_Golden(t *testing.T) {
 				{Manager: ManagerComposer, Packages: []string{"symfony/console:^7.0"}},
 			}},
 			want: "FROM docker.io/library/ubuntu:24.04\n" +
+				stockToolchainGoldenLine +
 				"RUN apt-get update && apt-get install -y --no-install-recommends 'jq' 'curl' && rm -rf /var/lib/apt/lists/*\n" +
 				"RUN go install 'golang.org/x/tools/gopls@v0.17.0'\n" +
 				"RUN npm install -g 'typescript@5.6.3'\n" +
@@ -111,7 +121,7 @@ func TestDockerfile_Golden(t *testing.T) {
 			// the degenerate hand-built shape the pre-registry switch had.)
 			name: "empty package lists degenerate",
 			spec: &Spec{Base: DefaultBaseImage, Packages: []PackageAdd{{Manager: ManagerAPT, Packages: []string{}}, {Manager: ManagerGo, Packages: []string{}}, {Manager: ManagerNPM, Packages: []string{}}}},
-			want: "FROM docker.io/library/ubuntu:24.04\nRUN apt-get update && apt-get install -y --no-install-recommends && rm -rf /var/lib/apt/lists/*\nRUN npm install -g\n",
+			want: "FROM docker.io/library/ubuntu:24.04\n" + stockToolchainGoldenLine + "RUN apt-get update && apt-get install -y --no-install-recommends && rm -rf /var/lib/apt/lists/*\nRUN npm install -g\n",
 		},
 	}
 	for _, tt := range tests {

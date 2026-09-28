@@ -1,0 +1,6 @@
+git	present	/usr/bin/git	git version 2.43.0
+docker	present	/usr/bin/docker	Docker version 29.1.3, build 29.1.3-0ubuntu3~24.04.2
+python3	present	/usr/bin/python3	Python 3.12.3
+make	present	/usr/bin/make	GNU Make 4.3
+rg	present	/usr/bin/rg	ripgrep 14.1.0
+jq	present	/usr/bin/jq	jq-1.7
