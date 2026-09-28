@@ -686,6 +686,11 @@ bunker spawn --server bunker-host --image-spec spec.json --ttl 6h
 # Rejected specs (curl|sh, base-image swaps, unknown fields, ...) fail fast
 # with invalid_argument and build nothing. Identical specs share one cached
 # build per agent.
+#
+# A spec is a package-ADD, never an image replacement: the built image keeps
+# the stock agent userland (git, the docker client, python3, make, jq,
+# ca-certificates) — installed from the same apt archive as the base — and
+# adds the spec's packages on top (DF-BUNKER-80).
 
 # List agents
 bunker list
