@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
@@ -856,14 +857,95 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 // countAgentContainers runs `docker ps -q` against the per-agent docker socket
 // and returns the number of running containers. It is an error if the docker
 // CLI cannot be reached, because enforcement requires a working daemon.
-var countAgentContainers = func(ctx context.Context, dockerSockPath string) (uint32, error) {
-	cmd := exec.CommandContext(ctx, "docker", "--host", "unix://"+dockerSockPath, "ps", "-q")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return 0, fmt.Errorf("docker ps: %w (output: %s)", err, strings.TrimSpace(string(out)))
+//
+// INT-CI-049: on the self-hosted CI runner, a five-way concurrent spawn burst
+// left the fresh rootless daemons and the count helpers contending for
+// CPU/memory/pids, and the host's OOM/pid pressure SIGKILLed helpers mid-run —
+// `docker ps: signal: killed (output: )` (CI runs 36378260696 and earlier on
+// 6a0aee0). The pre-fix code ran exactly ONE helper on the caller's context
+// and treated that transient helper death as a daemon verdict, failing 4/5
+// spawns at stage container-cap.
+//
+// Now each attempt runs on its own FRESH, DETACHED, BOUNDED context:
+//
+//   - detached (context.WithoutCancel): the count is a step of the spawn, not
+//     the caller's request; a caller that already gave up must not turn the
+//     enforcement read into an instant no-op (same lesson as the rollback
+//     budget in spawn_failure.go, INT-CI-005);
+//   - bounded per attempt (containerCapAttemptTimeout): one hung helper cannot
+//     run away with the whole retry budget;
+//   - retried ONLY for transient deaths (killed by a signal, or its own
+//     attempt context expired). A docker CLI that EXITS with a status is a
+//     real daemon verdict (connection refused, missing socket) and is
+//     reported immediately — retrying it would mask a broken daemon.
+//
+// Enforcement stays FAIL-CLOSED: when every attempt dies the error names the
+// attempt budget and preserves the last death, so the spawn still fails at
+// stage container-cap (StageContainerCap attribution unchanged at the call
+// site) with an operator-actionable message.
+//
+// The function and the three budgets below are vars (not consts/func) purely
+// as test seams, matching the rollbackBudget convention in spawn_failure.go;
+// production never writes them.
+var (
+	countAgentContainers = func(ctx context.Context, dockerSockPath string) (uint32, error) {
+		return countAgentContainersImpl(ctx, dockerSockPath)
 	}
-	lines := strings.Fields(string(out))
-	return uint32(len(lines)), nil
+
+	// containerCapAttempts is the bounded retry budget for transient helper
+	// deaths. A var purely as a test seam; production never writes it.
+	containerCapAttempts = 3
+	// containerCapAttemptTimeout bounds ONE `docker ps` invocation.
+	containerCapAttemptTimeout = 20 * time.Second
+	// containerCapAttemptWait is the backoff between transient-death retries,
+	// long enough for the burst that killed the helper to drain.
+	containerCapAttemptWait = 250 * time.Millisecond
+)
+
+// isTransientHelperDeath reports whether err looks like the helper was killed
+// from the outside (signal death) or its own attempt context expired — the
+// two shapes worth retrying. An exec.ExitError that carries a normal exit
+// status is a real daemon/CLI verdict and is never transient.
+func isTransientHelperDeath(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return true
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		ws, ok := exitErr.Sys().(syscall.WaitStatus)
+		return ok && ws.Signaled()
+	}
+	return false
+}
+
+func countAgentContainersImpl(ctx context.Context, dockerSockPath string) (uint32, error) {
+	var lastErr error
+	for attempt := 1; attempt <= containerCapAttempts; attempt++ {
+		if attempt > 1 {
+			select {
+			case <-time.After(containerCapAttemptWait):
+			case <-ctx.Done():
+				// The caller gave up between attempts; report the last
+				// helper death instead of spinning out the backoff.
+				return 0, fmt.Errorf("docker ps: %w (after %d attempts)", lastErr, attempt-1)
+			}
+		}
+		// Fresh, detached, bounded context per attempt (see doc comment).
+		attemptCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), containerCapAttemptTimeout)
+		cmd := exec.CommandContext(attemptCtx, "docker", "--host", "unix://"+dockerSockPath, "ps", "-q")
+		out, err := cmd.CombinedOutput()
+		cancel()
+		if err == nil {
+			lines := strings.Fields(string(out))
+			return uint32(len(lines)), nil
+		}
+		lastErr = fmt.Errorf("docker ps: %w (output: %s)", err, strings.TrimSpace(string(out)))
+		if !isTransientHelperDeath(err) {
+			// A real daemon verdict: report it immediately, never retry.
+			return 0, lastErr
+		}
+	}
+	return 0, fmt.Errorf("%w (after %d attempts)", lastErr, containerCapAttempts)
 }
 
 // resetStaleDockerdUnit clears leftover state from a previous unit with the

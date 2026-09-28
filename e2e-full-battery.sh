@@ -1039,6 +1039,29 @@ EOF
         fail "section 15 host-provision contract violated: bare='$ST_SEC15_BARE' helper_call_sites='$ST_SEC15_HELPER' (expected 0 bare, >=1 helper)"
         ST_FAIL=$((ST_FAIL+1))
     fi
+
+    # (vi) INT-CI-049 — the ERR trap cannot fire inside the bcli function
+    # (no `set -E`), so a bare `bcli ...` line whose CLI call exits non-zero
+    # is a SILENT `set -e` battery death: no failing-cell line, no ERR
+    # diagnostic, no tally, no cleanup diagnostics — exit 1 (observed on CI
+    # run 36378260696, section 13, 62s after the last passing cell, right
+    # where an unguarded destroy sat). Every teardown/tolerant bcli call must
+    # therefore carry `|| true`; genuine assertions use run_capture, whose
+    # status is read into RUN_CAPTURE_EXIT. Scan the same text the run would
+    # execute (ignoring comment lines) for the unguarded shape. The destroy
+    # class is pinned mechanically because it is both the observed defect and
+    # the worst blast radius (a silent death strands the agent's user); the
+    # VAR=$(bcli ...) capture sites were audited one by one and each already
+    # carries an in-substitution guard (|| true, || echo 0, || RC=$?,
+    # a trailing "; echo exit=$?", a set +e window, or || true on the
+    # continuation line) — new capture sites must do the same.
+    ST_BARE_DESTROY_LINES="$(grep -n 'bcli destroy --server' "$ST_SELF" 2>/dev/null | grep -vE ':[[:space:]]*#' | grep -v '|| true' | grep -v 'run_capture' | grep -v 'grep -n' | cut -d: -f1 | tr '\n' ' ' || true)"
+    if [ -z "${ST_BARE_DESTROY_LINES// /}" ]; then
+        assert "no bare bcli destroy calls remain (every teardown destroy carries || true or run_capture — INT-CI-049)"
+    else
+        fail "bare bcli destroy call(s) at line(s) ${ST_BARE_DESTROY_LINES% } — a non-zero destroy there kills the battery silently under set -e (the ERR trap cannot fire inside the bcli function); append '|| true' or route through run_capture"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
     ST_S12_LINES="$(grep -nF 'bash "$REGRESSION_SCRIPT"' "$ST_SELF" 2>/dev/null | grep -vF 'grep -nF' | cut -d: -f1 | tr '\n' ' ' || true)"
     ST_S12_N=0
     ST_S12_BAD=""
@@ -2267,7 +2290,7 @@ else
     fail "no spec cache dir under $GAP064_CACHE_ROOT"
 fi
 
-bcli destroy --server "$BATTERY_TARGET_NAME" e2e-imgspec --force > /dev/null 2>&1
+bcli destroy --server "$BATTERY_TARGET_NAME" e2e-imgspec --force > /dev/null 2>&1 || true
 sleep 2
 # Same spec again: must reuse the cache marker + image inspect (no rebuild).
 bcli spawn --server "$BATTERY_TARGET_NAME" --agent-id "e2e-imgspec" --image-spec "$GAP064_SPEC" > /dev/null 2>&1 || true
@@ -2457,10 +2480,14 @@ else
     fi
     # Idempotent destroy: the FIRST destroy removes the agent, the SECOND must
     # still succeed because the registry remembers it.
-    bcli destroy --server "$BATTERY_TARGET_NAME" gap070-idem --force > /dev/null 2>&1
-    FIRST_EXIT=$?
-    bcli destroy --server "$BATTERY_TARGET_NAME" gap070-idem --force > /dev/null 2>&1
-    SECOND_EXIT=$?
+    # INT-CI-049: run_capture instead of bare-assignment captures — a destroy
+    # that fails under host noise must red THIS CELL with its output, not
+    # silently kill the battery via set -e (the ERR trap cannot fire inside
+    # the bcli function).
+    run_capture "destroy gap070-idem (first)" bcli destroy --server "$BATTERY_TARGET_NAME" gap070-idem --force
+    FIRST_EXIT="$RUN_CAPTURE_EXIT"
+    run_capture "destroy gap070-idem (second)" bcli destroy --server "$BATTERY_TARGET_NAME" gap070-idem --force
+    SECOND_EXIT="$RUN_CAPTURE_EXIT"
     if [ "$SECOND_EXIT" -eq 0 ]; then
         assert "repeated destroy of a known absent agent succeeds (first=$FIRST_EXIT second=$SECOND_EXIT)"
     else
