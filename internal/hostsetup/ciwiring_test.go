@@ -443,19 +443,21 @@ func TestBatteryNestedSuiteRunsCertifiedBinary(t *testing.T) {
 	}
 }
 
-// TestRootSuiteBudgetFitsCIWindow pins the INT-CI-031 budget raise: the
-// root-gated suite's real cost grew past the 780s rung (run 35565852250:
-// internal/agent consumed the FULL 780s with spawns/destroys still flowing —
-// the GAP-126..142 security wave added root-gated spawn tests). Per the
-// INT-CI-006 doctrine the budget rises, never the -run filter: 1050s default
-// under a 20m CI step window (1200s), leaving 150s of headroom so the
+// TestRootSuiteBudgetFitsCIWindow pins the root-suite budget and the CI step
+// window it must fit inside. Two raises so far, both on real measurements:
+// 780s (INT-CI-031, run 35565852250: internal/agent consumed the FULL 780s
+// with spawns/destroys still flowing) and 1050s -> 1590s (INT-CI-050a, run
+// 36494196879: 45 of the 55 root-gated internal/agent tests in 1049s, still
+// progressing, MAX inter-line gap 50.4s — a budget cliff, not a hang).
+// Per the INT-CI-006 doctrine the budget rises, never the -run filter: 1590s
+// default under a 30m CI step window (1800s), leaving 210s of headroom so the
 // wrapper's EXIT-trap leak cleanup (GAP-007: zero leaked users/keys) still
 // runs inside the window.
 func TestRootSuiteBudgetFitsCIWindow(t *testing.T) {
 	script := readRepoFile(t, rootSuiteScriptPath)
-	const budgetSeconds = 1050
-	if !strings.Contains(script, `ROOT_SUITE_TIMEOUT="${ROOT_SUITE_TIMEOUT:-1050s}"`) {
-		t.Errorf("%s does not default ROOT_SUITE_TIMEOUT to %ds — the suite's real cost passed the previous 780s rung (run 35565852250, internal/agent consumed the full budget while progressing)", rootSuiteScriptPath, budgetSeconds)
+	const budgetSeconds = 1590
+	if !strings.Contains(script, `ROOT_SUITE_TIMEOUT="${ROOT_SUITE_TIMEOUT:-1590s}"`) {
+		t.Errorf("%s does not default ROOT_SUITE_TIMEOUT to %ds — the suite's real cost passed the previous 1050s rung (run 36494196879, internal/agent completed 45 of 55 selected tests in the full 1049s while still progressing)", rootSuiteScriptPath, budgetSeconds)
 	}
 
 	workflow := readRepoFile(t, ciWorkflowPath)
@@ -468,11 +470,11 @@ func TestRootSuiteBudgetFitsCIWindow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse timeout-minutes %q: %v", m[1], err)
 	}
-	if minutes != 20 {
-		t.Errorf("the %q step timeout-minutes = %d, want 20 (run 35565852250 reddened at the 15m window; the 1050s budget needs 1200s)", rootSuiteStepName, minutes)
+	if minutes != 30 {
+		t.Errorf("the %q step timeout-minutes = %d, want 30 (the %ds budget needs a 1800s window)", rootSuiteStepName, minutes, budgetSeconds)
 	}
 
-	// The encoded headroom invariant: 1200s window - 1050s budget >= 150s
+	// The encoded headroom invariant: 1800s window - 1590s budget >= 150s
 	// for the leak-cleanup EXIT trap. Expressed against the parsed step
 	// value so a future window edit must keep the math honest.
 	if headroom := minutes*60 - budgetSeconds; headroom < 150 {
