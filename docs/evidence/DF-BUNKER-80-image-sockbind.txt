@@ -1,0 +1,7 @@
+total 4
+drwxr-xr-x 4 root nogroup  100 Sep 28 00:35 .
+drwxr-xr-x 3 root root    4096 Sep 28 00:40 ..
+srw-rw---- 1 root     115    0 Sep 28 00:35 docker.sock
+drwx------ 2 root nogroup   40 Sep 28 00:18 run
+drwx------ 2 root nogroup   40 Sep 28 00:18 tmp
+Docker version 29.1.3, build 29.1.3-0ubuntu3~24.04.2

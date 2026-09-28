@@ -1,0 +1,6 @@
+git	absent
+docker	absent
+python3	absent
+make	absent
+rg	present	/usr/bin/rg
+jq	present	/usr/bin/jq
