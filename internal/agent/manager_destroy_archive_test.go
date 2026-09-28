@@ -502,3 +502,111 @@ func mustSize(t *testing.T, path string) int64 {
 	}
 	return info.Size()
 }
+
+// TestDestroy_InterruptedArchiveLeavesNoPartialFile is the INT-CI-050 arm of
+// the archive contract: an archive that DIES mid-stream (the CI shape — a
+// `tar` SIGKILLed when the caller's context deadline fires, recorded in the
+// daemon log as `archive home …: signal: killed (output: )`) must not leave a
+// truncated tarball in the archive dir. A partial .tar.gz is worse than no
+// file: it is named like a backup, occupies a destroy_archive_keep slot, and
+// an operator's restore fails on it. The fail-closed semantics are unchanged:
+// home retained, no userdel.
+//
+// The tar stub writes a partial file to the path the daemon passed it
+// (argv[2] — `tar czf <archive> -C <dir> <base>`) and then SIGKILLs itself, so
+// the file exists on disk exactly like the CI kill leaves it.
+func TestDestroy_InterruptedArchiveLeavesNoPartialFile(t *testing.T) {
+	m, cfg, userLog := newDestroyArchiveFixture(t)
+	agentID := "df33part"
+	root, home := foreignHome(t, agentID)
+	pointHomeAt(t, root)
+
+	failDir := filepath.Join(t.TempDir(), "bin")
+	if err := os.MkdirAll(failDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stub := "#!/bin/sh\n" +
+		"printf 'partial archive bytes' > \"$2\"\n" +
+		"kill -9 $$\n"
+	if err := os.WriteFile(filepath.Join(failDir, "tar"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", failDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	archiveDir := t.TempDir()
+	cfg.Agent.DestroyArchiveDir = archiveDir
+	cfg.Agent.DestroyHomePolicy = config.DestroyPolicyArchive
+
+	registerArchiveAgent(t, m, agentID)
+
+	resp, derr := m.Destroy(context.Background(), agentID, false)
+	if derr == nil {
+		t.Fatal("Destroy() error = nil, want fail-closed error after an interrupted archive")
+	}
+	if resp == nil || resp.Status != StatusHomeRetained {
+		t.Fatalf("Destroy() status = %v, want home_retained", resp)
+	}
+	if entries, rerr := os.ReadDir(archiveDir); rerr != nil {
+		t.Fatalf("read archive dir: %v", rerr)
+	} else if len(entries) != 0 {
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Errorf("archive dir holds %d entr(y/ies) after an interrupted archive: %v — a partial tarball must not survive as a backup", len(entries), names)
+	}
+	if calls := userdelCalls(t, userLog); len(calls) != 0 {
+		t.Errorf("userdel ran despite the interrupted archive: %v", calls)
+	}
+	if _, serr := os.Stat(home); serr != nil {
+		t.Errorf("home vanished despite the fail-closed destroy: %v", serr)
+	}
+}
+
+// TestDestroy_UnverifiedArchiveIsRemoved covers the verification arm of the
+// same invariant: a tar that EXITS 0 but produces an archive the verifier
+// rejects (a non-empty file that lists no entries) must not be left behind
+// either — the archive dir must only ever hold complete, verified archives.
+func TestDestroy_UnverifiedArchiveIsRemoved(t *testing.T) {
+	m, cfg, userLog := newDestroyArchiveFixture(t)
+	agentID := "df33unver"
+	root, home := foreignHome(t, agentID)
+	pointHomeAt(t, root)
+
+	binDir := filepath.Join(t.TempDir(), "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// writes SOMETHING (so the "exists and is non-empty" probes pass) but
+	// prints nothing on a listing, so verifyArchiveFile rejects it.
+	stub := "#!/bin/sh\nprintf 'not a tarball' > \"$2\"\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(binDir, "tar"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	archiveDir := t.TempDir()
+	cfg.Agent.DestroyArchiveDir = archiveDir
+	cfg.Agent.DestroyHomePolicy = config.DestroyPolicyArchive
+
+	registerArchiveAgent(t, m, agentID)
+
+	resp, derr := m.Destroy(context.Background(), agentID, false)
+	if derr == nil {
+		t.Fatal("Destroy() error = nil, want fail-closed error after an unverified archive")
+	}
+	if resp == nil || resp.Status != StatusHomeRetained {
+		t.Fatalf("Destroy() status = %v, want home_retained", resp)
+	}
+	if entries, rerr := os.ReadDir(archiveDir); rerr != nil {
+		t.Fatalf("read archive dir: %v", rerr)
+	} else if len(entries) != 0 {
+		t.Errorf("archive dir holds %d entr(y/ies) after an unverified archive: %v", len(entries), entries)
+	}
+	if calls := userdelCalls(t, userLog); len(calls) != 0 {
+		t.Errorf("userdel ran despite the unverified archive: %v", calls)
+	}
+	if _, serr := os.Stat(home); serr != nil {
+		t.Errorf("home vanished despite the fail-closed destroy: %v", serr)
+	}
+}

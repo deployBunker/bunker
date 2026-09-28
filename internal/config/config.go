@@ -875,13 +875,27 @@ type TailscaleConfig struct {
 	StartupTimeout time.Duration `mapstructure:"startup_timeout"`
 }
 
+// DefaultServerRequestTimeout is the daemon's default per-request budget
+// (server.request_timeout), and it is ALSO the budget a client must not
+// undercut. Server handlers wrap the request context in chi's
+// middleware.Timeout(server.request_timeout) (internal/server/server.go), and
+// a handler that runs an external command with exec.CommandContext hands that
+// context straight to the child — when the deadline fires, os/exec SIGKILLs
+// the child mid-flight. `bunker destroy`'s fail-closed home archive is exactly
+// that shape (the daemon tars the whole agent home before userdel), so a
+// client deadline SHORTER than this budget kills the archive and turns every
+// destroy of a large home into a home_retained refusal with the agent left
+// behind (INT-CI-050: run 36487719950, section 13, `archive home …: signal:
+// killed` at 25s against a 30s client deadline).
+const DefaultServerRequestTimeout = 300 * time.Second
+
 // DefaultConfig returns a Config with sensible defaults.
 func DefaultConfig() *Config {
 	return &Config{
 		Server: ServerConfig{
 			GRPCAddr:       ":9090",
 			RESTAddr:       ":8080",
-			RequestTimeout: 300 * time.Second,
+			RequestTimeout: DefaultServerRequestTimeout,
 		},
 		TLS: TLSConfig{
 			Enabled:    false,

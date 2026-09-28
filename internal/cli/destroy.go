@@ -5,13 +5,31 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
+	"github.com/deployBunker/bunker/internal/config"
+
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 )
+
+// destroyRequestTimeout bounds the client side of `bunker destroy`.
+//
+// It MUST NOT be shorter than the daemon's per-request budget
+// (config.DefaultServerRequestTimeout, server.request_timeout): the destroy
+// handler archives the agent's whole home before userdel (DF-BUNKER-33) and
+// runs that `tar` with exec.CommandContext(ctx, …) on the REQUEST context, so
+// the client's deadline is the tar's deadline. The old 30s value SIGKILLed a
+// ~300MB image-spec home's archive at 25s (INT-CI-050, CI run 36487719950,
+// battery section 13: `archive home /home/bunker-e2e-imgspec: signal: killed
+// (output: )`), which is fail-closed by design — the destroy is REFUSED with
+// home_retained and the agent (user, home, port range) survives every retry.
+// The runner had leaked bunker-e2e-imgspec users and truncated .tar.gz files
+// in /var/backups/bunker from exactly that kill.
+//
+// A var (not a const) purely as a test seam — production never writes it.
+var destroyRequestTimeout = config.DefaultServerRequestTimeout
 
 // NewDestroyCommand returns the `bunker destroy` cobra command.
 func NewDestroyCommand() *cobra.Command {
@@ -67,7 +85,7 @@ Examples:
 
 			// 3. Build request
 			client := newBunkerdClient(entry)
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), destroyRequestTimeout)
 			defer cancel()
 
 			req := connect.NewRequest(&v1.DestroyAgentRequest{

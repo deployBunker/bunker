@@ -112,6 +112,20 @@ func TestCgroup_CgroupV2FilesWritten(t *testing.T) {
 // TestCgroup_MemoryLimitKillsStressProcess verifies that a memory limit of
 // 256MiB is enforced by the kernel when running a memory stressor in a fresh
 // cgroup. This test requires root and cgroup v2.
+//
+// INT-CI-050: the STRESSOR enrolls itself in the limited cgroup; the TEST
+// BINARY never does. The previous shape wrote this process's own pid into
+// cgroup.procs, which left the test binary — and every helper it forks for
+// the rest of the package run — inside a 256MiB memory cgroup. That slice was
+// already charged to its limit when TestConcurrency_SpawnFiveAgents started,
+// so the kernel OOM-killed that test's `docker ps` helpers inside it
+// (`docker ps: signal: killed`, the INT-CI-049 symptom) and then the test
+// binary itself: CI run 36487719950 died `signal: killed` / `FAIL
+// github.com/deployBunker/bunker/internal/agent 67.901s`, with
+// `oom_memcg=/bunker-cgroup-test … Killed process … (agent.test)` in the
+// kernel log. `os.RemoveAll(slice)` could not undo it — a cgroup directory
+// with member processes cannot be removed and the error was discarded — so
+// the poisoned slice also leaked across runs with its memory.max still set.
 func TestCgroup_MemoryLimitKillsStressProcess(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("test requires root")
@@ -126,24 +140,48 @@ func TestCgroup_MemoryLimitKillsStressProcess(t *testing.T) {
 	if err := os.MkdirAll(slice, 0755); err != nil {
 		t.Fatalf("mkdir cgroup slice: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(slice) })
+	// Cleanup lifts the caps BEFORE removing the directory (so a slice that
+	// cannot be removed can never keep throttling a later test) and reports a
+	// removal failure LOUDLY: the slice leaked by the old shape is exactly
+	// what must not happen again.
+	t.Cleanup(func() {
+		if err := os.WriteFile(filepath.Join(slice, "memory.max"), []byte(cgroupMemoryMaxUnlimited), 0644); err != nil {
+			t.Errorf("lift memory.max on %s: %v", slice, err)
+		}
+		if err := os.WriteFile(filepath.Join(slice, "memory.swap.max"), []byte(cgroupMemoryMaxUnlimited), 0644); err != nil {
+			t.Errorf("lift memory.swap.max on %s: %v", slice, err)
+		}
+		if err := os.Remove(slice); err != nil {
+			t.Errorf("cgroup slice %s was NOT removed: %v — a leaked slice keeps its memory.max and OOM-kills the helpers of every later test in this package", slice, err)
+		}
+	})
 
 	memMax := strconv.FormatUint(256*1024*1024, 10)
 	if err := os.WriteFile(filepath.Join(slice, "memory.max"), []byte(memMax), 0644); err != nil {
 		t.Fatalf("write memory.max: %v", err)
 	}
-	// Allow only the cgroup itself and root to control it.
-	if err := os.WriteFile(filepath.Join(slice, "cgroup.procs"), []byte(fmt.Sprintf("%d\n", os.Getpid())), 0644); err != nil {
-		t.Fatalf("move test process into cgroup: %v", err)
+	// The cap must not be ESCAPABLE via swap: memory.max bounds charged
+	// memory, and an anon-heavy allocation whose pages the kernel can swap
+	// out is reduced instead of OOM-killed (memory.swap.max defaults to
+	// "max"). Without this line the test only reddened on hosts that happen
+	// to have no swap configured — the self-hosted runner has none, this
+	// control host has two swap files, and the assertion below then reads as
+	// a product defect instead of a host property.
+	if err := os.WriteFile(filepath.Join(slice, "memory.swap.max"), []byte("0"), 0644); err != nil {
+		t.Fatalf("write memory.swap.max: %v", err)
 	}
 
 	// Run a memory stressor that allocates 512MiB. With a 256MiB limit it
-	// should be killed by the OOM killer before it finishes.
-	cmd := exec.CommandContext(t.Context(), "python3", "-c", `
+	// should be killed by the OOM killer before it finishes. `echo $$` names
+	// the shell's own pid and `exec` preserves it, so the allocator is a
+	// member of the limited cgroup while this test process is not.
+	stress := fmt.Sprintf(`echo $$ > %s/cgroup.procs
+exec python3 -c '
 import sys
 a = bytearray(512 * 1024 * 1024)
 sys.exit(0)
-`)
+'`, slice)
+	cmd := exec.CommandContext(t.Context(), "sh", "-c", stress)
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		t.Fatalf("expected stress process to be killed, got exit 0: %s", string(out))
@@ -164,6 +202,38 @@ sys.exit(0)
 		t.Logf("stress process output: %s", string(out))
 		t.Errorf("expected OOM kill (MemoryError, exit 137, or SIGKILL), got exit %d (signal %s)", cmd.ProcessState.ExitCode(), sig)
 	}
+
+	// INT-CI-050 regression pin — the assertion that reddens on the old shape:
+	// after this test, membership is read from the kernel, not from state the
+	// test tracked. Before the fix /proc/self/cgroup named the slice here and
+	// every test that ran after this one in the package inherited the 256MiB
+	// cap.
+	selfCgroup := readSelfCgroup(t)
+	if strings.Contains(selfCgroup, filepath.Base(slice)) {
+		t.Errorf("the test process is INSIDE the limited cgroup %s (/proc/self/cgroup = %q): every test after this one in this package would run under its %s cap",
+			slice, strings.TrimSpace(selfCgroup), memMax)
+	}
+	// An occupied slice cannot be removed by Cleanup, so a surviving member
+	// (an escaped stressor, an enrolled helper) is a leak, not a detail.
+	procs, perr := os.ReadFile(filepath.Join(slice, "cgroup.procs"))
+	if perr != nil {
+		t.Errorf("read %s/cgroup.procs: %v", slice, perr)
+	} else if strings.TrimSpace(string(procs)) != "" {
+		t.Errorf("cgroup %s still has member pid(s) after the stressor was killed: %q", slice, strings.TrimSpace(string(procs)))
+	}
+}
+
+// cgroupMemoryMaxUnlimited is the cgroup v2 spelling that removes a memory cap.
+const cgroupMemoryMaxUnlimited = "max"
+
+// readSelfCgroup returns this process's cgroup membership from the kernel.
+func readSelfCgroup(t *testing.T) string {
+	t.Helper()
+	b, err := os.ReadFile("/proc/self/cgroup")
+	if err != nil {
+		t.Fatalf("read /proc/self/cgroup: %v", err)
+	}
+	return string(b)
 }
 
 func contains(ss []string, want string) bool {

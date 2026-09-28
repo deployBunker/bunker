@@ -39,6 +39,12 @@ const StatusLiveProcesses = "live_processes"
 // whole point of the step (DF-BUNKER-33): an archive that does not exist,
 // is zero bytes, or lists no real entries is treated as NO archive, and the
 // caller must fail closed instead of running userdel -rf behind it.
+//
+// Invariant (INT-CI-050): a *.tar.gz file that EXISTS in archiveDir is a
+// complete, verified archive. Any failure after the tar started — a non-zero
+// exit, a SIGKILL from a cancelled request context, a verification failure —
+// removes the file it produced, so a truncated tarball can never be mistaken
+// for a backup (or count against the retention window).
 func (m *AgentManager) archiveAgentHome(ctx context.Context, homeDir, archiveDir string) (string, error) {
 	base := filepath.Base(homeDir)
 	if err := os.MkdirAll(archiveDir, 0o700); err != nil {
@@ -50,9 +56,31 @@ func (m *AgentManager) archiveAgentHome(ctx context.Context, homeDir, archiveDir
 	}
 	cmd := exec.CommandContext(ctx, "tar", "czf", archivePath, "-C", filepath.Dir(homeDir), base)
 	if out, err := cmd.CombinedOutput(); err != nil {
+		// INT-CI-050: an interrupted archive must never leave a truncated
+		// tarball behind. `tar` can be SIGKILLed mid-stream by anything that
+		// cancels the request context (os/exec kills the child when the ctx
+		// the handler handed it is done — the shape that produced
+		// `archive home …: signal: killed` at 25s on CI), and a partial
+		// .tar.gz is worse than no file: it sits in the archive dir, counts
+		// against destroy_archive_keep/max_bytes as a real backup, and an
+		// operator's restore fails on it. The path is provably ours — the
+		// pre-existing-archive check above refuses otherwise — so removing it
+		// is unambiguous. A removal failure is reported (the refusal below
+		// still holds and the home is still retained).
+		if rerr := os.Remove(archivePath); rerr != nil && !os.IsNotExist(rerr) {
+			return "", fmt.Errorf("archive home %s: %w (output: %s; partial archive %s could NOT be removed: %v)",
+				homeDir, err, strings.TrimSpace(string(out)), archivePath, rerr)
+		}
 		return "", fmt.Errorf("archive home %s: %w (output: %s)", homeDir, err, strings.TrimSpace(string(out)))
 	}
 	if err := verifyArchiveFile(archivePath); err != nil {
+		// Same invariant on the verification path: an archive that did not
+		// verify is not a backup, so it must not stay in the archive dir
+		// looking like one. The home is retained either way (the caller
+		// refuses the destroy), so nothing is lost by dropping the file.
+		if rerr := os.Remove(archivePath); rerr != nil && !os.IsNotExist(rerr) {
+			return "", fmt.Errorf("%w (unverified archive %s could NOT be removed: %v)", err, archivePath, rerr)
+		}
 		return "", err
 	}
 	return archivePath, nil
