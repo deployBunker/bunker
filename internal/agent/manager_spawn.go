@@ -897,9 +897,9 @@ var (
 	containerCapAttempts = 3
 	// containerCapAttemptTimeout bounds ONE `docker ps` invocation.
 	containerCapAttemptTimeout = 20 * time.Second
-	// containerCapAttemptWait is the backoff between transient-death retries,
-	// long enough for the burst that killed the helper to drain.
-	containerCapAttemptWait = 250 * time.Millisecond
+	// containerCapAttemptWaitBase is the base backoff for exponential backoff
+	// between transient-death retries (1s, 2s, 4s for attempts 2, 3, 4).
+	containerCapAttemptWaitBase = 1 * time.Second
 )
 
 // isTransientHelperDeath reports whether err looks like the helper was killed
@@ -922,8 +922,10 @@ func countAgentContainersImpl(ctx context.Context, dockerSockPath string) (uint3
 	var lastErr error
 	for attempt := 1; attempt <= containerCapAttempts; attempt++ {
 		if attempt > 1 {
+			// Exponential backoff: 1s, 2s, 4s
+			backoff := containerCapAttemptWaitBase * time.Duration(1<<(attempt-2))
 			select {
-			case <-time.After(containerCapAttemptWait):
+			case <-time.After(backoff):
 			case <-ctx.Done():
 				// The caller gave up between attempts; report the last
 				// helper death instead of spinning out the backoff.

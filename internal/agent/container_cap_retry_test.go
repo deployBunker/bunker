@@ -176,11 +176,11 @@ func TestCountAgentContainersDetachedFromCallerCancellation(t *testing.T) {
 // Shrinks the production seams (vars, never written outside tests) to
 // milliseconds; a slow stub (~500ms) exceeds every attempt budget.
 func TestCountAgentContainersPerAttemptBudgetIsBounded(t *testing.T) {
-	origTimeout, origWait := containerCapAttemptTimeout, containerCapAttemptWait
+	origTimeout, origWait := containerCapAttemptTimeout, containerCapAttemptWaitBase
 	containerCapAttemptTimeout = 100 * time.Millisecond
-	containerCapAttemptWait = 10 * time.Millisecond
+	containerCapAttemptWaitBase = 10 * time.Millisecond
 	t.Cleanup(func() {
-		containerCapAttemptTimeout, containerCapAttemptWait = origTimeout, origWait
+		containerCapAttemptTimeout, containerCapAttemptWaitBase = origTimeout, origWait
 	})
 
 	pathVar, logPath := writeDockerStub(t, `sleep 0.5
