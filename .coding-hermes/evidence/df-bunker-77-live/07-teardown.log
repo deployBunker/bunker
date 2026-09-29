@@ -1,0 +1,30 @@
+########## DF-BUNKER-77-LIVE TEARDOWN  Tue Sep 29 04:57:10 AM UTC 2026 ##########
+-- bunker-* users BEFORE destroy: 9
+-- docker containers BEFORE: 1
+
+===== destroy scratch agent =====
+Agent df77live1 destroyed.
+Removed local SSH key /root/df77-deploy/live/cli-home/keys/df77live1
+destroy_rc=0
+
+===== stop the isolated daemon =====
+stopped pid 1849254 (running=no)
+
+===== post-teardown host state =====
+-- bunker-* users AFTER: 9
+-- bunker-df77live1 user present? no
+-- docker containers AFTER: 1
+-- any container referencing df77live:
+-- my isolated daemon listening ports (must be empty):
+   (none)
+-- agent home dir: removed/absent
+
+===== PRODUCTION DAEMON — health check (must be untouched) =====
+-- pid: 2412904  status: active
+-- running binary sha256: 09934ce4b9e12bd21a031ebea49d4dd1
+bunker: reading server "df77live"
+── df77live ──
+  URL:      http://127.0.0.1:28083
+  Status:   OFFLINE
+  Error:    server info: unavailable: dial tcp 127.0.0.1:28083: connect: connection refused
+########## TEARDOWN DONE ##########

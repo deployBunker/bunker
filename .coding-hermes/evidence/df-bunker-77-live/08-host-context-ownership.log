@@ -1,0 +1,20 @@
+=== HOST-context ownership of the same path shapes (production agent 54c8bf55, read-only) ===
+1069:0 755 /run/bunker/54c8bf55
+stat: cannot statx '/run/bunker/54c8bf55/docker.sock': No such file or directory
+1069:1069 750 /home/bunker-54c8bf55
+1069:1069 755 /home/bunker-54c8bf55/bin
+
+=== named for the record ===
+bunker-54c8bf55:root 755 /run/bunker/54c8bf55
+stat: cannot statx '/run/bunker/54c8bf55/docker.sock': No such file or directory
+bunker-54c8bf55:bunker-54c8bf55 750 /home/bunker-54c8bf55
+
+=== uid/gid of the agent user ===
+bunker-54c8bf55:x:1069:1069::/home/bunker-54c8bf55:/bin/bash
+bunker-54c8bf55:x:1069:
+
+=== the rootless daemon process for that agent (userns owner) ===
+    PID USER     CMD
+  19016 root     /usr/bin/dockerd -H fd:// --containerd=/run/containerd/containerd.sock
+1617169 bunker-+ dockerd
+1871847 bunker-+ dockerd --host=unix:///run/bunker/gap075-b/docker.sock

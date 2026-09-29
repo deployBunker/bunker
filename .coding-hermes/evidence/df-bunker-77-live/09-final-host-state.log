@@ -1,0 +1,29 @@
+Tue Sep 29 05:03:16 AM UTC 2026
+=== FINAL host state after teardown (my run leaves nothing) ===
+bunker-* users: 9
+df77-live users: 0
+docker containers running: 1
+containers matching df77: 0
+my isolated daemon ports still listening (:28083/:29093): 0
+production daemon: active, pid 2412904, started Sun Sep 27 20:11:04 2026
+--- on-disk deployed build ---
+bunkerd 0.1.4
+  commit:     45d7d44
+  built:      2026-09-29T04:47:31Z
+bunker 0.1.4
+  commit:     45d7d44
+  built:      2026-09-29T04:47:31Z
+--- production daemon status ---
+  Hostname: bunker-mvp
+  URL:      http://127.0.0.1:18080
+  Version:  0.1.4
+  Status:   ONLINE
+  Uptime:   1d 8h 52m
+  Agents:   7/50
+  /tmp:     private (per-session pam_namespace instance)
+  Residue:  1 orphan user, 960 orphan homes, 1 orphan key, 718 stale linger entries (7 registered agents)
+            residue present: this host holds agent users/homes/keys/linger entries with no registered agent behind them
+  CPU:      106.3%
+  Memory:   2.2 GB / 15.2 GB
+--- CI still running ---
+1885902 bash -c date -u; echo '=== FINAL host state after teardown (my run leaves nothing) ==='; echo "bunker-* users: $(getent passwd | grep -c '^bunker-')"; echo "df77-live users: $(getent passwd | grep -c df77)"; echo "docker containers running: $(docker ps -q | wc -l)"; echo "containers matching df77: $(docker ps -a --format '{{.Names}}' | grep -c df77)"; echo "my isolated daemon ports still listening (:28083/:29093): $(ss -ltn | grep -cE ':28083|:29093')"; echo "production daemon: $(systemctl is-active bunkerd), pid $(systemctl show bunkerd -p MainPID --value), started $(ps -o lstart= -p $(systemctl show bunkerd -p MainPID --value))"; echo '--- on-disk deployed build ---'; /opt/bunker/bunkerd version | head -3; /usr/local/bin/bunker version | head -3; echo '--- production daemon status ---'; env -u BUNKER_HOME HOME=/root /opt/bunker/bunker status --server mvp-live 2>&1 | sed -n '2,12p'; echo '--- CI still running ---'; pgrep -af 'e2e-full-battery.sh' | head -2

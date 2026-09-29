@@ -1,0 +1,70 @@
+########## DF-BUNKER-77-LIVE DEPLOY  ts=20260929-045024  old=a365eef  new=45d7d44 ##########
+
+===== BEFORE: host census =====
+-- bunker-* users: 8
+-- docker running containers: 1
+-- production daemon pid: 2412904
+-- production daemon exe: /opt/bunker/bunkerd
+-- production daemon started: Sun Sep 27 20:11:04 2026
+-- registry lines: 4250
+-- /home bunker-* dirs: 967
+-- /opt/bunker HEAD: 16fff6d6b80a6b45c27bb66f6dfbf262cc8b8625
+-- /opt/bunker/bunkerd version: a365eef
+-- /usr/local/bin/bunkerd version: 509fc42
+-- tenants:
+  Agent ID       Status     Disk Used      Max File Size  Created                   Public URL
+  ────────       ──────     ─────────      ─────────────  ───────                   ──────────
+  da1b59cb       destroy-refused:home_retained 3.3 GB         20.0 GB        2026-09-29T02:17:38Z      (no URL)
+  54c8bf55       destroy-refused:live_processes 5.4 GB         20.0 GB        2026-09-29T02:53:38Z      (no URL)
+  9b4fe54d       destroy-refused:live_processes 6.5 GB         20.0 GB        2026-09-28T02:51:47Z      (no URL)
+  718bf3d4       destroy-refused:live_processes 5.8 GB         20.0 GB        2026-09-27T13:39:31Z      (no URL)
+  7dfbd5ea       destroy-refused:live_processes 8.5 GB         20.0 GB        2026-09-27T13:50:08Z      (no URL)
+  95f3325a       destroy-refused:live_processes 6.2 GB         20.0 GB        2026-09-27T14:15:46Z      (no URL)
+  a9ebf454       destroy-refused:live_processes 5.7 GB         20.0 GB        2026-09-27T13:39:59Z      (no URL)
+
+Total: 7 agents (server: mvp-live)
+Disk Used is the agent's measured usage; Max File Size (per-file cap — not a total-disk quota)
+
+===== STEP 1: back up the deployed binaries (repo convention: .bak-<sha>-<ts>) =====
+  backed up /opt/bunker/bunker -> /opt/bunker/bunker.bak-a365eef-20260929-045024  (sha256 2434e4b40b7e0997)
+  backed up /opt/bunker/bunkerd -> /opt/bunker/bunkerd.bak-a365eef-20260929-045024  (sha256 09934ce4b9e12bd2)
+  backed up /usr/local/bin/bunker -> /usr/local/bin/bunker.bak-a365eef-20260929-045024  (sha256 cb4b66fb454363d1)
+  backed up /usr/local/bin/bunkerd -> /usr/local/bin/bunkerd.bak-a365eef-20260929-045024  (sha256 3d7e5258ed053997)
+
+===== STEP 2: install the HEAD build (both binaries, both locations) =====
+  installed /opt/bunker/{bunker,bunkerd}  sha256 85d7927c6828d874
+  installed /usr/local/bin/{bunker,bunkerd}  sha256 85d7927c6828d874
+
+===== STEP 3: update the /opt/bunker checkout to the deployed commit =====
+Updating 16fff6d6..45d7d448
+Fast-forward
+ .coding-hermes/board/board.jsonl                   |    2 +-
+ .coding-hermes/board/events.jsonl                  | 1482 +++++++-------
+ .coding-hermes/board/tasks.jsonl                   |  874 ++++++---
+-- /opt/bunker HEAD now: 45d7d448d1de37f605ec69685a54d96985d1f0b3
+-- /opt/bunker branch:    main
+
+===== STEP 4: bin-report certification (AGENTS.md live gate) =====
+==========================================
+ BUNKER END-TO-END TEST BATTERY
+ Tue Sep 29 04:50:28 AM UTC 2026
+==========================================
+
+
+=== BINARY CERTIFICATION ===
+  ── binary certification (DF-BUNKER-3 / QA-BUNKER-3) ──
+  binary under test : /usr/local/bin/bunker
+  commit it reports : 45d7d44
+  repo HEAD         : 45d7d448d1de37f605ec69685a54d96985d1f0b3
+  verdict           : MATCH
+  ✓ battery certifies /usr/local/bin/bunker @ 45d7d44 == repo HEAD
+bin_report_rc=0
+
+===== AFTER: production daemon UNTOUCHED (no restart performed) =====
+-- production daemon pid: 2412904
+-- production daemon status: active
+-- production daemon running-binary sha256: 09934ce4b9e12bd21a031ebea49d4dd1
+-- on-disk /opt/bunker/bunkerd sha256:      85d7927c6828d8740d6c94614d9eecdd
+-- bunker-* users: 8
+-- docker running containers: 1
+########## DEPLOY DONE ##########

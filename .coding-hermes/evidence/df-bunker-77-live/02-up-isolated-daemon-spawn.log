@@ -1,0 +1,95 @@
+===== start isolated daemon (/opt/bunker/bunkerd, HEAD build) =====
+daemon pid=1849254
+daemon ready after 1s (/healthz 200)
+---- daemon binary identity (running process) ----
+exe: /opt/bunker/bunkerd
+85d7927c6828d8740d6c94614d9eecdd28c71917e59e298e60827898145805eb  <running bunkerd>
+deployed: bunker 0.1.4
+deployed:   commit:     45d7d44
+deployed:   built:      2026-09-29T04:47:31Z
+deployed:   go version: go1.26.5
+deployed:   platform:   linux/amd64
+
+---- daemon log (head 30) ----
+bunkerd: *** WARNING: AUTH DISABLED *** — running WITHOUT authentication; any client that can reach this server can spawn/destroy agents. Set auth.enabled: true and auth.token in the config file to enable authentication.
+2026/09/29 04:51:29 WARN audit chain-head recovery skipped error="/var/log/bunkerd/audit.log.3: record 5: prev_hash does not chain (tampered)"
+{"time":"2026-09-29T04:51:29.772817009Z","level":"WARN","msg":"bunkerd: *** INSECURE: serving plaintext on non-loopback listener :29093, :28083 (tls.enabled is false and tls.insecure_dev is true). Any client that can reach this address controls the RPC plane; every audit record is marked [INSECURE-PLAINTEXT]. Disable tls.insecure_dev and enable TLS for anything reachable beyond this host. ***"}
+bunkerd: *** INSECURE: serving plaintext on non-loopback listener :29093, :28083 (tls.enabled is false and tls.insecure_dev is true). Any client that can reach this address controls the RPC plane; every audit record is marked [INSECURE-PLAINTEXT]. Disable tls.insecure_dev and enable TLS for anything reachable beyond this host. ***
+{"time":"2026-09-29T04:51:29.77289119Z","level":"INFO","msg":"bunkerd config loaded","max_agents":10}
+{"time":"2026-09-29T04:51:29.772902533Z","level":"INFO","msg":"containment disclosure disabled (default): agent sessions and exec output are unmodified"}
+{"time":"2026-09-29T04:51:29.772912061Z","level":"INFO","msg":"bunkerd safety preset","preset":"standard"}
+{"time":"2026-09-29T04:51:29.773004797Z","level":"WARN","msg":"hilo edges file not found, graph empty","path":".vfs/graph/edges.jsonl"}
+{"time":"2026-09-29T04:51:29.773202133Z","level":"WARN","msg":"bunkerd: auth.enabled is false — the hilo graph routes (/graph/stats, /graph/related, /graph/impact) are reachable WITHOUT credentials by anyone who can reach the listener"}
+bunkerd: auth.enabled is false — the hilo graph routes (/graph/stats, /graph/related, /graph/impact) are reachable WITHOUT credentials by anyone who can reach the listener
+{"time":"2026-09-29T04:51:29.773399058Z","level":"INFO","msg":"daemon instance identity","instance_id":"5bcde30c2ddb4bd15483a2c9e1974576"}
+{"time":"2026-09-29T04:51:29.773411882Z","level":"INFO","msg":"agent registry disabled — agent state will not survive a restart"}
+{"time":"2026-09-29T04:51:29.773453331Z","level":"INFO","msg":"agent reconciliation sweep guard armed","guard":"orphan_sweep_guard","enabled":true,"mode":"destroy","unproven_orphan_limit":3,"refuses":"an unproven sweep (empty replayed live set, or a registry file created by this boot) that would destroy more than the limit"}
+{"time":"2026-09-29T04:51:29.773466446Z","level":"INFO","msg":"registry reconcile skipped — durable registry unavailable","reason":"registry disabled by configuration"}
+{"time":"2026-09-29T04:51:29.773478409Z","level":"INFO","msg":"agent registry reconciliation dispatched","mode":"destroy","replayed_live":0,"replayed_known":0,"restored":0,"restored_foreign_pool":0,"purged":0,"orphans_async":true}
+{"time":"2026-09-29T04:51:29.774674346Z","level":"INFO","msg":"bunkerd REST listening","addr":":28083","tls":false}
+{"time":"2026-09-29T04:51:29.774717458Z","level":"INFO","msg":"bunkerd gRPC listening","addr":":29093","tls":false}
+2026/09/29 04:51:29 [bunker-mvp/aHS6nAnjJp-000001] "GET http://127.0.0.1:28083/healthz HTTP/1.1" from 127.0.0.1:49466 - 200 15B in 61.237µs
+
+===== connect CLI (isolated BUNKER_HOME=/root/df77-deploy/live/cli-home) =====
+Connected to bunker-mvp (0.1.4)
+  Agents: 0/10
+  Uptime: 0s
+  Server registered as "df77live"
+connect_rc=0
+
+===== spawn image-spec agent (spec: apt ripgrep) =====
+Tue Sep 29 04:51:30 AM UTC 2026
+Creating agent...
+Agent created: df77live1
+
+══════════ Connection Bundle ══════════
+
+  Docker SSH:   DOCKER_HOST=ssh://bunker-df77live1@127.0.0.1
+  SSH Key:      (saved to ~/.bunker/keys/)
+                /root/df77-deploy/live/cli-home/keys/df77live1
+  Port Range:   32000-32099
+  Expires:      2026-09-29T10:53:00Z
+  Image:        bunkerd-imagespec-a056ec2a0b57:latest
+  SSHFS Mount:  sshfs -o IdentityFile=/root/df77-deploy/live/cli-home/keys/df77live1 -o idmap=user -o allow_other bunker-df77live1@127.0.0.1:/home/bunker-df77live1 /mnt/bunker/df77live1
+  Docker Tunnel: ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o IdentitiesOnly=yes -i /root/df77-deploy/live/cli-home/keys/df77live1 -L 2376:/run/bunker/df77live1/docker.sock bunker-df77live1@127.0.0.1 -N
+
+═ Use `bunker exec` to run commands in this agent ═
+spawn_rc=0
+Tue Sep 29 04:53:00 AM UTC 2026
+
+===== agent info =====
+bunker: reading server "df77live"
+
+══════════ Agent: df77live1 ══════════
+
+  Status:           running
+  Created At:       2026-09-29T04:53:00Z
+  Expires At:       2026-09-29T10:53:00Z
+  Port Range:       32000-32099
+  Docker Tunnel:    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o IdentitiesOnly=yes -i /root/df77-deploy/live/cli-home/keys/df77live1 -L 2376:/run/bunker/df77live1/docker.sock bunker-df77live1@127.0.0.1 -N
+  SSHFS Mount:      sshfs -o IdentityFile=/root/df77-deploy/live/cli-home/keys/df77live1 -o idmap=user -o allow_other bunker-df77live1@127.0.0.1:/home/bunker-df77live1 /mnt/bunker/df77live1
+  Limits:
+    CPU Quota:      2.0 cores
+    Memory Limit:   4.0 GB
+    Max File Size:   20.0 GB (per-file cap — not a total-disk quota)
+    Max Containers: 10
+  Safety Preset:    standard
+  Safety Knobs:
+    CPUQuota:       200%
+    MemoryMax:      4294967296
+    LimitFSIZE:     21474836480
+    TasksMax:       4096
+    LimitNOFILE:    65536:65536
+
+===== agent list =====
+bunker: reading server "df77live"
+
+══════════ Agents ══════════
+
+  Agent ID       Status     Disk Used      Max File Size  Created                   Public URL
+  ────────       ──────     ─────────      ─────────────  ───────                   ──────────
+  df77live1      running    880.9 MB       20.0 GB        2026-09-29T04:53:00Z      (no URL)
+
+Total: 1 agents (server: df77live)
+Disk Used is the agent's measured usage; Max File Size (per-file cap — not a total-disk quota)
+===== UP PHASE DONE =====

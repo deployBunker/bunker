@@ -1,0 +1,84 @@
+########## CONTROL + IDENTITY PROBES  Tue Sep 29 04:55:25 AM UTC 2026 ##########
+
+===== A) in-container identity of the image-spec agent =====
+--- id ---
+uid=1071 gid=0(root) groups=0(root)
+--- stat runtime dir + socket (uid:gid mode name, INSIDE the container) ---
+0:65534 755 /run/bunker/df77live1
+0:110 660 /run/bunker/df77live1/docker.sock
+stat: cannot statx '/run/bunker/df77live1/env': No such file or directory
+--- does the image know uid 1071? ---
+no passwd entry for 1071
+--- passwd size ---
+19
+--- socket group names ---
+no group 110
+
+===== B) daemon audit record of the exec (verbatim argv, if logged) =====
+{"ts":"2026-09-29T04:54:54.417428094Z","caller":"unknown","method":"/bunker.v1.Bunkerd/ExecAgent","remote_addr":"127.0.0.1:48516","agent_id":"df77live1","duration_ms":1287,"outcome":"ok","summary":"[INSECURE-PLAINTEXT] ExecAgent agent_id=df77live1","hash":"487c2560d3e18951b20e6fbc41d88df630148bfde8ddc01b48ae7a76625c4600","prev_hash":"29acfb59d4d16744c4dc6176c20959f8dbfade0e344dd2b9f0c186c92ec1e626"}
+{"ts":"2026-09-29T04:55:26.994965415Z","caller":"unknown","method":"/bunker.v1.Bunkerd/ExecAgent/command","remote_addr":"127.0.0.1:48236","agent_id":"df77live1","duration_ms":1696,"outcome":"ok","summary":"[INSECURE-PLAINTEXT] sh -lc echo \"--- id ---\"; id; echo \"--- stat runtime dir + socket (uid:gid mode name, INSIDE the container) ---\"; stat -c %u:[REDACTED:len2] %a %n\" [REDACTED:len21] /run/bunker/df77live1/docker.sock [REDACTED:len25] 2\u003e\u00261; echo \"--- does the image know uid 1071? ---\"; (getent passwd 1071 || echo \"no passwd entry for 1071\"); echo \"--- passwd size ---\"; wc -l \u003c /etc/passwd; echo \"--- socket group names ---\"; (getent group 110 || echo \"no group 110\")","hash":"1b8510e558073ea876acfda0adb1d153d5175baf163b2d0dda94ab01de9385ae","prev_hash":"487c2560d3e18951b20e6fbc41d88df630148bfde8ddc01b48ae7a76625c4600"}
+{"ts":"2026-09-29T04:55:26.995050057Z","caller":"unknown","method":"/bunker.v1.Bunkerd/ExecAgent","remote_addr":"127.0.0.1:48236","agent_id":"df77live1","duration_ms":1696,"outcome":"ok","summary":"[INSECURE-PLAINTEXT] ExecAgent agent_id=df77live1","hash":"9b8ac50f917ffc55bf0d361fd08103b9b505420a7db3ef833a29ae0956f9d4dc","prev_hash":"1b8510e558073ea876acfda0adb1d153d5175baf163b2d0dda94ab01de9385ae"}
+   -- audit log tail (last 3 lines, any agent) --
+{"ts":"2026-09-29T04:54:54.417428094Z","caller":"unknown","method":"/bunker.v1.Bunkerd/ExecAgent","remote_addr":"127.0.0.1:48516","agent_id":"df77live1","duration_ms":1287,"outcome":"ok","summary":"[INSECURE-PLAINTEXT] ExecAgent agent_id=df77live1","hash":"487c2560d3e18951b20e6fbc41d88df630148bfde8ddc01b48ae7a76625c4600","prev_hash":"29acfb59d4d16744c4dc6176c20959f8dbfade0e344dd2b9f0c186c92ec1e626"}
+{"ts":"2026-09-29T04:55:26.994965415Z","caller":"unknown","method":"/bunker.v1.Bunkerd/ExecAgent/command","remote_addr":"127.0.0.1:48236","agent_id":"df77live1","duration_ms":1696,"outcome":"ok","summary":"[INSECURE-PLAINTEXT] sh -lc echo \"--- id ---\"; id; echo \"--- stat runtime dir + socket (uid:gid mode name, INSIDE the container) ---\"; stat -c %u:[REDACTED:len2] %a %n\" [REDACTED:len21] /run/bunker/df77live1/docker.sock [REDACTED:len25] 2\u003e\u00261; echo \"--- does the image know uid 1071? ---\"; (getent passwd 1071 || echo \"no passwd entry for 1071\"); echo \"--- passwd size ---\"; wc -l \u003c /etc/passwd; echo \"--- socket group names ---\"; (getent group 110 || echo \"no group 110\")","hash":"1b8510e558073ea876acfda0adb1d153d5175baf163b2d0dda94ab01de9385ae","prev_hash":"487c2560d3e18951b20e6fbc41d88df630148bfde8ddc01b48ae7a76625c4600"}
+{"ts":"2026-09-29T04:55:26.995050057Z","caller":"unknown","method":"/bunker.v1.Bunkerd/ExecAgent","remote_addr":"127.0.0.1:48236","agent_id":"df77live1","duration_ms":1696,"outcome":"ok","summary":"[INSECURE-PLAINTEXT] ExecAgent agent_id=df77live1","hash":"9b8ac50f917ffc55bf0d361fd08103b9b505420a7db3ef833a29ae0956f9d4dc","prev_hash":"1b8510e558073ea876acfda0adb1d153d5175baf163b2d0dda94ab01de9385ae"}
+
+===== C) DISCRIMINATING CONTROL: spawn a PLAIN agent (no image spec) =====
+
+══════════ Connection Bundle ══════════
+
+  Docker SSH:   DOCKER_HOST=ssh://bunker-df77plain1@127.0.0.1
+  SSH Key:      (saved to ~/.bunker/keys/)
+                /root/df77-deploy/live/cli-home/keys/df77plain1
+  Port Range:   32100-32199
+  Expires:      2026-09-29T06:55:54Z
+  SSHFS Mount:  sshfs -o IdentityFile=/root/df77-deploy/live/cli-home/keys/df77plain1 -o idmap=user -o allow_other bunker-df77plain1@127.0.0.1:/home/bunker-df77plain1 /mnt/bunker/df77plain1
+  Docker Tunnel: ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o IdentitiesOnly=yes -i /root/df77-deploy/live/cli-home/keys/df77plain1 -L 2376:/run/bunker/df77plain1/docker.sock bunker-df77plain1@127.0.0.1 -N
+
+═ Use `bunker exec` to run commands in this agent ═
+spawn_plain_rc=0
+
+--- plain agent: id -u ---
+1074
+--- plain agent: container env has DOCKER_HOST? (expect host-context: full env) ---
+DOCKER_HOST=unix:///run/bunker/df77plain1/docker.sock
+TMPDIR=/tmp
+--- plain agent: docker info (the SAME command that fails on the image agent) ---
+ Version:    29.8.1
+    Version:  2.40.3+ds1-0ubuntu1~24.04.1
+    Version:  29.1.3
+ Server Version: 29.1.3
+ Storage Driver: overlayfs
+ Cgroup Driver: systemd
+ Cgroup Version: 2
+ containerd version: 
+ runc version: 
+ init version: 
+ Security Options:
+  rootless
+plain_docker_info_rc=0
+--- plain agent: env set (the SAME command that fails on the image agent) ---
+plain_env_set_rc=0
+ok
+plain_env_get_rc=0
+--- plain agent: agent-tools (expect rg ABSENT: rg comes only from the image spec) ---
+bunker: reading server "df77live"
+
+Agent tool dependencies (df77plain1)
+
+  TOOL     STATUS   REQUIRED   VERSION / NEEDED BY
+  toolsd   absent   yes        needed by read, write, list, edit, patch, apply, lease, diff3, narrate
+  rg       absent   yes        needed by search (content, files-only, count)
+  git      present  yes        git version 2.43.0
+  jq       absent   no         needed by optional: scripted result handling
+  gopls    absent   no         needed by lsp check for Go (a language server; one per language)
+
+  MISSING on the agent: gopls, jq, rg, toolsd
+  Of those, REQUIRED (a verb is broken without them): rg, toolsd
+  Deliver them onto the agent's PATH (its own $HOME/bin is already on it),
+
+===== D) destroy the control agent =====
+Agent df77plain1 destroyed.
+Removed local SSH key /root/df77-deploy/live/cli-home/keys/df77plain1
+destroy_plain_rc=0
+########## CONTROL PROBES DONE ##########

@@ -1,0 +1,51 @@
+===== PROBE 1: container env — which of PATH/DOCKER_HOST/TMPDIR reached it? =====
+HOME=/
+HOSTNAME=fecabf3e9f24
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+PWD=/home/bunker-df77live1
+--- uid ---
+1071
+--- hostname (container id) ---
+fecabf3e9f24
+
+===== PROBE 2: is the agent runtime dir + rootless socket visible inside the container? =====
+total 4
+drwxr-xr-x 4 root nogroup  100 Sep 29 04:51 .
+drwxr-xr-x 3 root root    4096 Sep 29 04:54 ..
+srw-rw---- 1 root     110    0 Sep 29 04:51 docker.sock
+drwx------ 2 root nogroup   40 Sep 29 04:51 run
+drwx------ 2 root nogroup   40 Sep 29 04:51 tmp
+--- socket? ---
+srw-rw---- 1 root 110 0 Sep 29 04:51 /run/bunker/df77live1/docker.sock
+--- /var/run/docker.sock? ---
+ls: cannot access '/var/run/docker.sock': No such file or directory
+
+===== PROBE 3: can the container write the agent runtime dir (what env set needs)? =====
+touch: cannot touch '/run/bunker/df77live1/writeprobe': Permission denied
+NOT-WRITABLE
+TMP-WRITABLE
+touch: cannot touch '//writeprobe': Permission denied
+
+===== PROBE 4: same docker info, but with DOCKER_HOST supplied explicitly =====
+Client:
+ Version:    29.1.3
+ Context:    default
+ Debug Mode: false
+ Plugins:
+  trust: Manage trust on Docker images (Docker Inc.)
+    Version:  29.1.3
+    Path:     /usr/libexec/docker/cli-plugins/docker-trust
+
+Server:
+permission denied while trying to connect to the docker API at unix:///run/bunker/df77live1/docker.sock
+
+===== PROBE 5: does the HOST-context path (no image) have both? (agent env file + DOCKER_HOST) =====
+
+===== PROBE 6: env set with a raised-privilege target — /tmp and $HOME instead =====
+sh: 1: cannot create /run/bunker/df77live1/env: Permission denied
+bunker: exit code 2
+env_set_again_rc=1
+
+===== PROBE 7: does exec see an env var set earlier (had A succeeded)? =====
+DF77_LIVE=[<unset>]
+===== DIAG DONE =====
