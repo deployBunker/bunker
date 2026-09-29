@@ -1035,3 +1035,170 @@ func TestSpawnCommand_GetAgentKeyCarriesAuthHeader(t *testing.T) {
 		})
 	}
 }
+
+// extractSpawnAgentID mirrors regression-tests.sh section 4b's parser byte for
+// byte:
+//
+//	grep "Agent created:" | awk '{print $NF}'
+//
+// — the FIRST line containing the marker, last whitespace-separated field.
+// Empty string when no such line exists. Keeping the mirror here means a
+// future change to the printed bundle (a second field, a marker split across
+// lines, the id moving to a different stream) fails THIS test instead of
+// silently red-ing the live suite's cell.
+func extractSpawnAgentID(output string) string {
+	for _, line := range strings.Split(output, "\n") {
+		if !strings.Contains(line, "Agent created:") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			return ""
+		}
+		return fields[len(fields)-1]
+	}
+	return ""
+}
+
+// TestSpawnCommand_AutoIDOutputContract pins the output contract the
+// regression suite's auto-ID cell consumes (INT-CI-048).
+//
+// The cell runs `bunker spawn --server <target> 2>&1` with NO agent id and
+// parses the id out of the printed bundle. Run 36292076555 reded it with
+// "got empty — output: Creating agent..." and two candidate culprits were
+// named: the extractor, or the CLI. Neither: a spawn REFUSED by the daemon
+// (capacity full on a runner carrying registered residue) prints its
+// GAP-023 progress banner first — the banner is printed before the RPC — and
+// then the error, so no id can exist. The distinguishing property is the
+// error text, which main.go prints to stderr as "bunker: <err>" (cmd/bunker
+// /main.go: SilenceErrors is true on the root command, so cobra prints
+// nothing and the entry point owns the line).
+//
+// This table therefore asserts BOTH halves of the contract: a successful
+// auto-ID spawn yields an extractable id, and a refused one yields none
+// while the captured output still CARRIES the cause (which is what
+// regression-tests.sh section 4b's diagnostic must report — a first-line-only
+// diagnostic hides it).
+func TestSpawnCommand_AutoIDOutputContract(t *testing.T) {
+	// The refusal the daemon returned in run 36292076555: manager_spawn.go
+	// Step 1.5 (capacity, checked before any side effect), wrapped by
+	// spawnStageErr around the id the manager GENERATED at Step 1 (see
+	// internal/agent/intci048_test.go for the native assertion on that text),
+	// then mapped to CodeInternal by the service.
+	capacityRefusal := connect.NewError(connect.CodeInternal,
+		fmt.Errorf("spawn 9eb02c7c failed at stage capacity: capacity full: 10/10 agents"))
+
+	tests := []struct {
+		name string
+		// spawnResp is the bundle the daemon answers with on success.
+		spawnResp *v1.SpawnAgentResponse
+		// spawnErr, when set, is what the daemon answers instead of a bundle.
+		spawnErr error
+		// wantExtracted is what the suite's extractor must read out of the
+		// captured (stdout+stderr) output.
+		wantExtracted string
+		// wantCause must appear in the captured output when the spawn was
+		// refused — the evidence a first-line-only diagnostic loses.
+		wantCause string
+	}{
+		{
+			name: "auto-generated id is extractable from the bundle",
+			spawnResp: &v1.SpawnAgentResponse{
+				AgentId:        "8c954723",
+				DockerHostSsh:  "DOCKER_HOST=ssh://8c954723@127.0.0.1 -p 20022",
+				PortRangeStart: 20000,
+				PortRangeEnd:   20099,
+			},
+			wantExtracted: "8c954723",
+		},
+		{
+			name:          "refused spawn has no id but the output carries the cause",
+			spawnErr:      capacityRefusal,
+			wantExtracted: "",
+			wantCause:     "capacity full: 10/10 agents",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			t.Setenv("HOME", tmpDir)
+
+			mock := &mockSpawnServer{
+				mockBunkerdServer: mockBunkerdServer{
+					info: &v1.ServerInfoResponse{
+						Hostname: "bunker-autoid",
+						Version:  "v0.2.0",
+						// 10/10: the state run 36292076555 reded on.
+						AgentCount: 10,
+						MaxAgents:  10,
+					},
+				},
+				spawnResp: tt.spawnResp,
+				spawnErr:  tt.spawnErr,
+			}
+			srv := newSpawnTestServer(t, mock)
+			defer srv.Close()
+
+			writeSpawnTestConfig(t, tmpDir, srv.URL)
+
+			cmd := NewSpawnCommand()
+			// No positional and no --agent-id: the AUTO path.
+			cmd.SetArgs([]string{"--server", "default"})
+			var execErr error
+			stdout := captureStdout(t, func() { execErr = cmd.Execute() })
+
+			// The empty id must actually reach the server — otherwise this
+			// test would be proving something about the explicit-ID path.
+			if mock.gotAgentID != "" {
+				t.Errorf("SpawnAgent got agent_id %q, want empty (the auto-ID path must send no id)", mock.gotAgentID)
+			}
+
+			// Mirror the cell's `2>&1` capture: stdout, then the entry
+			// point's stderr line when the command failed.
+			output := stdout
+			if execErr != nil {
+				output += "bunker: " + execErr.Error() + "\n"
+			}
+
+			if got := extractSpawnAgentID(output); got != tt.wantExtracted {
+				t.Errorf("extractor read %q, want %q; output:\n%s", got, tt.wantExtracted, output)
+			}
+
+			if tt.wantCause != "" {
+				if execErr == nil {
+					t.Fatalf("spawn succeeded, want the daemon's refusal; output:\n%s", output)
+				}
+				if !strings.Contains(execErr.Error(), tt.wantCause) {
+					t.Errorf("error %q does not carry %q", execErr, tt.wantCause)
+				}
+				// The refusal names the id the daemon GENERATED for this
+				// auto-ID request (not a placeholder) — the shape a live log
+				// shows.
+				if !strings.Contains(execErr.Error(), "failed at stage capacity") {
+					t.Errorf("error %q does not name the capacity stage", execErr)
+				}
+				if !strings.Contains(output, tt.wantCause) {
+					t.Errorf("captured output does not carry the cause %q; output:\n%s", tt.wantCause, output)
+				}
+				// The banner is still reported: a diagnostic that showed ONLY
+				// the banner is exactly what made the CI red unattributable.
+				if !strings.Contains(output, "Creating agent...") {
+					t.Errorf("captured output lost the progress banner; output:\n%s", output)
+				}
+				return
+			}
+
+			if execErr != nil {
+				t.Fatalf("Execute: %v", execErr)
+			}
+			// GAP-023 ordering: the banner precedes the id, so a first-line
+			// diagnostic can never see the id on a slow spawn.
+			banner := strings.Index(output, "Creating agent...")
+			created := strings.Index(output, "Agent created:")
+			if banner < 0 || created < 0 || banner > created {
+				t.Errorf("want banner before the Agent created line (banner=%d created=%d); output:\n%s", banner, created, output)
+			}
+		})
+	}
+}

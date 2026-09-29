@@ -39,6 +39,17 @@ set -uo pipefail
 # Registered agents are never this suite's to destroy (INT-CI-012).
 # A pristine host is a no-op: 'pre-clean: 0 leftover agents', and the
 # early cells pass exactly as before.
+#
+# Residue also consumes CAPACITY (INT-CI-048): the scratch daemon REPLAYS
+# the shared registry, so every replayed live agent occupies a tracker slot
+# (agent.max_agents) and its persisted port range (agent.port_range_*). A
+# daemon sized for a pristine runner therefore refuses this suite's OWN
+# spawns once the runner carries 9 registered leftovers (9 + regr-alpha =
+# 10/10, run 36292076555 — the auto-ID cell reded on "got empty" while the
+# real reason, a capacity refusal at Step 1.5 before any side effect, was
+# hidden on the next output line). The generated config is now sized from
+# the residue measured before boot, and section 4b reports every line of a
+# refused spawn's output.
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -196,6 +207,56 @@ if [ -n "${BUNKER_SESSION_TARGET:-}" ] && [ "${BUNKER_SESSION_TARGET}" != "$REGR
     echo "       A stale binding would re-target every mutating call below. Unset it and re-run."
     exit 2
 fi
+# ── Scratch-daemon sizing for shared-runner residue (INT-CI-048) ───────
+# TWO limits must both clear the residue this daemon is about to REPLAY, not
+# just the agents this suite spawns:
+#   * agent.max_agents — the in-memory tracker ceiling. manager_spawn.go
+#     checks HasCapacity(1) at Step 1.5, BEFORE port allocation, user
+#     creation, or any other side effect.
+#   * agent.port_range_* — the in-memory port pool. Every replayed live
+#     agent RESTORES its persisted range (internal/agent/reconcile.go:
+#     portAlloc.Restore), and the pool only holds
+#     (port_range_end - port_range_start + 1) / port_range_per_agent ranges,
+#     so a fixed 20000-20999 pool with per_agent=100 silently caps THIS
+#     DAEMON at 10 agents no matter what max_agents says.
+# Run 36292076555 reded section 4b exactly here: the runner carried 9
+# registered leftover agents (INT-CI-012 keeps them by design), so
+# 9 + regr-alpha = 10/10 and the AUTO-ID spawn was refused in ~40 ms with
+# "spawn 9eb02c7c failed at stage capacity: capacity full: 10/10 agents" — the
+# id in that line is the one the manager GENERATED (Step 1 UUID short id), so
+# the CLI had an id but no agent to report. No side effect either, so the CLI
+# printed its "Creating agent..." banner and no "Agent created:" line and the
+# cell reported "got empty". Correlation across the regression job:
+# residue ≤ 8 → cell green, residue 9 → cell red.
+# Size the daemon for the residue it will replay PLUS this suite's spawns,
+# so a dirty runner can never starve it. A pristine host derives exactly the
+# historical numbers (10 agents, 20000-20999) and behaves identically.
+REGRESSION_RESIDUE_USERS=0
+if [ -r /etc/passwd ]; then
+    # Upper bound on the agents the daemon will replay LIVE: every adopted
+    # agent has a bunker-<id> user, so users ⊇ tracker records.
+    REGRESSION_RESIDUE_USERS=$(grep -c '^bunker-' /etc/passwd 2>/dev/null || true)
+fi
+case "$REGRESSION_RESIDUE_USERS" in ''|*[!0-9]*) REGRESSION_RESIDUE_USERS=0 ;; esac
+# +6 = this suite's 2 spawns (regr-alpha + the auto-ID agent) plus slack for
+# agents that appear between this measurement and the daemon's boot. Floor 10
+# preserves the historical config byte-for-byte on a pristine host.
+REGRESSION_MAX_AGENTS=$((REGRESSION_RESIDUE_USERS + 6))
+if [ "$REGRESSION_MAX_AGENTS" -lt 10 ]; then
+    REGRESSION_MAX_AGENTS=10
+fi
+REGRESSION_PORT_START=20000
+REGRESSION_PORT_PER_AGENT=100
+# Derived, never hand-written: with an even division the pool holds exactly
+# max_agents ranges, so the two limits cannot drift apart again.
+REGRESSION_PORT_END=$((REGRESSION_PORT_START + REGRESSION_PORT_PER_AGENT * REGRESSION_MAX_AGENTS - 1))
+if [ "$REGRESSION_PORT_END" -gt 65000 ]; then
+    # An absurd residue count would push the pool past the usable port space;
+    # clamp the CAPACITY (never the pool) so the two stay consistent.
+    REGRESSION_MAX_AGENTS=$(((65000 - REGRESSION_PORT_START + 1) / REGRESSION_PORT_PER_AGENT))
+    REGRESSION_PORT_END=$((REGRESSION_PORT_START + REGRESSION_PORT_PER_AGENT * REGRESSION_MAX_AGENTS - 1))
+fi
+
 if [ -n "$BUNKERD_COEXIST" ]; then
     export HOME="$(mktemp -d /tmp/bunker-regression-home-XXXXXX)"
     REGRESSION_CONFIG="$(mktemp /tmp/bunkerd-regression-XXXXXX.yaml)"
@@ -216,10 +277,16 @@ tls:
   insecure_dev: true
 agent:
   ssh_dir: /etc/bunkerd/ssh
-  max_agents: 10
-  port_range_start: 20000
-  port_range_end: 20999
-  port_range_per_agent: 100
+  # INT-CI-048: SIZED for the residue this daemon replays (see the sizing
+  # block near the top) — the historical bare "max_agents: 10" plus a
+  # 20000-20999 pool (10 ranges) starves the suite's SECOND spawn the moment
+  # the shared runner carries 9 registered leftovers (INT-CI-012). Both
+  # numbers come from one derivation, so the capacity ceiling and the port
+  # pool can no longer disagree.
+  max_agents: $REGRESSION_MAX_AGENTS
+  port_range_start: $REGRESSION_PORT_START
+  port_range_end: $REGRESSION_PORT_END
+  port_range_per_agent: $REGRESSION_PORT_PER_AGENT
 EOF
 else
     # INT-CI-012: pin HOME in standalone too. The CLI prefers BUNKER_HOME, but a
@@ -518,6 +585,13 @@ echo ""
 
 # ── 2. Server startup ─────────────────────────────────────────
 echo "── 2. Server startup ──"
+# INT-CI-048: name the sizing whenever it differs from the historical
+# defaults, so a runner-residue refusal can never again be read as a bad
+# extractor. A pristine host (residue 0) prints nothing extra and uses
+# max_agents 10 / ports 20000-20999 exactly as before.
+if [ "$REGRESSION_RESIDUE_USERS" -gt 0 ]; then
+    echo "  daemon sized for residue: ${REGRESSION_RESIDUE_USERS} agent user(s) already on this host → max_agents ${REGRESSION_MAX_AGENTS}, port pool ${REGRESSION_PORT_START}-${REGRESSION_PORT_END} (${REGRESSION_MAX_AGENTS} ranges of ${REGRESSION_PORT_PER_AGENT})"
+fi
 
 if [ -n "$BUNKERD_COEXIST" ]; then
     # Temp config on isolated ports — never touches the live daemon's ports.
@@ -543,10 +617,16 @@ tls:
   insecure_dev: true
 agent:
   ssh_dir: /etc/bunkerd/ssh
-  max_agents: 10
-  port_range_start: 20000
-  port_range_end: 20999
-  port_range_per_agent: 100
+  # INT-CI-048: SIZED for the residue this daemon replays (see the sizing
+  # block near the top) — the historical bare "max_agents: 10" plus a
+  # 20000-20999 pool (10 ranges) starves the suite's SECOND spawn the moment
+  # the shared runner carries 9 registered leftovers (INT-CI-012). Both
+  # numbers come from one derivation, so the capacity ceiling and the port
+  # pool can no longer disagree.
+  max_agents: $REGRESSION_MAX_AGENTS
+  port_range_start: $REGRESSION_PORT_START
+  port_range_end: $REGRESSION_PORT_END
+  port_range_per_agent: $REGRESSION_PORT_PER_AGENT
 EOF
     bunkerd -c "$REGRESSION_CONFIG" > /var/log/bunkerd-regression.log 2>&1 &
 fi
@@ -752,13 +832,23 @@ assert 'echo "$OUT" | grep -q "Port Range:"' "returns port range"
 AGENT_IDS+=("regr-alpha")
 
 # 4b. Spawn with auto-generated ID (bound via --server, same defense in depth)
+# INT-CI-048: a REFUSED spawn prints its "Creating agent..." banner FIRST and
+# the server's error AFTER it, so a diagnostic that reports only the first
+# line hides the cause. Run 36292076555 reded here with "got empty — output:
+# Creating agent..." while the real line — "bunker: spawn agent: internal:
+# spawn 9eb02c7c failed at stage capacity: capacity full: 10/10 agents" —
+# sat on the next line (runner residue 9 + regr-alpha = 10/10 in a daemon sized
+# for a pristine runner; the id in that line is the one the manager generated
+# at Step 1, which is why the refusal is identifiable as the auto-ID path).
+# Report EVERY line of the captured output, one per " | ", so the next red of
+# this cell names its own cause.
 OUT=$(bunker spawn --server "$REGRESSION_TARGET_NAME" 2>&1 || true)
 AUTO_ID=$(echo "$OUT" | grep "Agent created:" | awk '{print $NF}' || echo "")
 if [ -n "$AUTO_ID" ]; then
     pass "spawn auto-generates ID (got: $AUTO_ID)"
     AGENT_IDS+=("$AUTO_ID")
 else
-    fail "spawn auto-generates ID (got empty — output: $(echo "$OUT" | head -1))"
+    fail "spawn auto-generates ID (got empty — output: $(echo "$OUT" | awk 'BEGIN {ORS=" | "} {print}' | sed 's/ | $//'))"
     AUTO_ID="regr-auto-fallback"
 fi
 
