@@ -241,36 +241,79 @@ accumulate.
 - `waitAgentProcessesExit` polls up to 10s, SIGKILLing lingering
   `dockerd`/`rootlesskit` processes, so `userdel` can succeed
 
-### 4. User Removal (step 3)
+### 4. Home Archive and Verification (step 2.5, DF-BUNKER-33)
+
+Before the user is removed, `archiveAgentHome` copies the home out from under
+the delete: the home directory is tarred into `agent.destroy_archive_dir`
+(default `/var/backups/bunker`, root-owned, created on demand as 0700) as
+`<agent-id>-<UTC timestamp>.tar.gz`, and the archive is VERIFIED — it must
+exist, be non-empty, and list real entries — before anything is deleted.
+
+- **Default policy is `archive`** (`agent.destroy_home_policy`): any value
+  other than an explicit `purge` resolves to `archive`, so a typo or a
+  pre-DF-BUNKER-33 config can never silently re-enable the unrecoverable
+  delete. `purge` restores the historical delete-without-archive behavior.
+- The operator can also skip the archive **per request** with
+  `--archive=false` / `--purge` (DF-BUNKER-81); the home is then deleted with
+  NO copy, logged at Warn, irreversibly.
+- The archive budget is derived from the home's SIZE
+  (`config.ArchiveBudgetForHomeSize`) and detached from the request deadline,
+  so a disconnecting client cannot kill it half-written. A tarball that fails
+  or is interrupted is removed, so a truncated archive can never sit in the
+  archive dir posing as a backup.
+- The agent's rootless docker data-root (`<home>/.local/share/docker`) is
+  EXCLUDED from every archive: it is runtime state, not user data.
+- **Failure is fail-closed**: an archive or verification failure REFUSES the
+  destroy — the user, home, tracker record and port range all survive, and the
+  response status is `home_retained`. The TTL reaper backs off instead of
+  retrying (DF-BUNKER-63).
+- **Retention is bounded** (INFRA-BACKUP-01), pruned after each successful
+  destroy:
+  - `agent.destroy_archive_keep` — default 20; only the newest 20 archives
+    remain. An explicit `0` disables pruning entirely; negative values behave
+    as 0.
+  - `agent.destroy_archive_max_bytes` — default 0 (disabled); when set, the
+    oldest archives are pruned oldest-first until the total is under the cap,
+    always retaining the single newest archive.
+  - Env overrides: `BUNKERD_AGENT_DESTROY_ARCHIVE_DIR`,
+    `BUNKERD_AGENT_DESTROY_ARCHIVE_KEEP`,
+    `BUNKERD_AGENT_DESTROY_ARCHIVE_MAX_BYTES`.
+  - Pruning is best-effort: losing an old archive is acceptable, failing a
+    destroy is not.
+
+### 5. User Removal (step 3)
 
 ```bash
 userdel -rf bunker-<id>
 ```
-- `-rf`: Remove home directory (and force). Home is deleted — container-mode's
-  "home survives destroy" default is a planned deviation, not current behavior.
+- `-rf`: Remove home directory (and force). Under the default `archive` policy
+  the home was already copied and verified in the step above, so `userdel -rf`
+  removes the live `/home/bunker-<id>` tree but the data survives in the
+  archive; under `purge` (or `--archive=false`) there is no copy anywhere and
+  the delete is total.
 - Cleans up `/home/bunker-<id>/`, subuid/subgid entries
 - A non-force `userdel` failure returns `not_found` (and still frees the port
   range + tracker slot)
 
-### 5. Runtime Cleanup (step 4)
+### 6. Runtime Cleanup (step 4)
 
 ```bash
 rm -rf /run/bunker/<id>/
 rm /run/user/<UID>/docker.sock      # the real rootless socket
 ```
 
-### 6. Persisted SSH Key (step 4.5)
+### 7. Persisted SSH Key (step 4.5)
 
 ```bash
 rm <agent.ssh_dir>/<agent-id>       # default /etc/bunkerd/ssh/<agent-id>
 ```
 
-### 7. Network Teardown
+### 8. Network Teardown
 
 - **cloudflared** tunnel stop (best-effort)
 - **tailscale** stop (best-effort)
 
-### 8. Tracker / Port Reclamation
+### 9. Tracker / Port Reclamation
 
 ```
 tracker.Unregister(agentID)
