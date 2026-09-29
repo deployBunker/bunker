@@ -111,6 +111,28 @@ from HEAD*.
 
 ### Fixed
 
+- **`bunker destroy` is finishable on a rootless-docker home (DF-BUNKER-81).**
+  An agent home whose bulk is the rootless docker data-root
+  (`<home>/.local/share/docker` — 442M of a 688M home on the dogfood host) could
+  not be destroyed: the archive `tar` was bounded by a fixed budget (the CLI's
+  30s deadline, later a 15s compensating-step budget), its `gzip` child was
+  SIGKILLed at ~28s, and the fail-closed archive gate correctly refused the
+  delete — five attempts, five `home_retained` refusals, agent still `running`,
+  and each attempt leaking a truncated tarball. Three changes fix it. (1) The
+  archive budget is derived from the home's SIZE
+  (`config.ArchiveBudgetForHomeSize`: base + bytes/4MiB/s, floor 10m, cap 4h) and
+  the CLI's deadline follows it with a margin and a printed
+  `home <size>; archiving before delete, deadline <d>` progress line, so no
+  fixed literal can race a large archive again. (2) The agent's own rootless
+  docker data-root is EXCLUDED from every archive — it is runtime state
+  (container/overlay layers) the daemon rebuilds, not user data — which both
+  shrinks the artifact and removes the bytes that made it slow; a docker-only
+  home still produces a verified archive. (3) The archive is still fail-closed
+  and still removes a partial tarball on any failure (including a `tar` that
+  writes and then exits non-zero), and `bunker destroy` now surfaces the
+  operator opt-out `--archive=false` / `--purge` (wire field `skip_archive`) to
+  skip the archive for ONE destroy — the per-destroy equivalent of
+  `destroy_home_policy: purge`, deleting the home with NO copy.
 - `.github/workflows/release.yml` (INT-CI-021): a `workflow_dispatch` re-run of
   an existing tag took its workflow *definition* from the dispatching ref (main)
   while checking out the tag's *tree*, so `make release-binaries` was invoked in

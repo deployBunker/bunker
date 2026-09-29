@@ -90,7 +90,7 @@ type heartbeatManager interface {
 // It exists primarily to make service-layer tests not require root.
 type agentManager interface {
 	Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v1.SpawnAgentResponse, error)
-	Destroy(ctx context.Context, agentID string, force bool) (*v1.DestroyAgentResponse, error)
+	Destroy(ctx context.Context, agentID string, force bool, opts ...agent.DestroyOption) (*v1.DestroyAgentResponse, error)
 	// GAP-071 lifecycle control: pause/resume/restart without destroying.
 	StopAgent(ctx context.Context, agentID string) (*v1.StopAgentResponse, error)
 	StartAgent(ctx context.Context, agentID string) (*v1.StartAgentResponse, error)
@@ -396,7 +396,18 @@ func (s *bunkerdService) SpawnAgent(ctx context.Context, req *connect.Request[v1
 
 // DestroyAgent tears down an agent environment.
 func (s *bunkerdService) DestroyAgent(ctx context.Context, req *connect.Request[v1.DestroyAgentRequest]) (*connect.Response[v1.DestroyAgentResponse], error) {
-	resp, err := s.agentMgr.Destroy(ctx, req.Msg.AgentId, req.Msg.Force)
+	// DF-BUNKER-81: skip_archive is the operator's per-request archive
+	// opt-out (the CLI's --archive=false / --purge). It is passed as a
+	// manager option rather than through daemon config so ONE destroy can
+	// bypass the fail-closed archive without changing the policy every other
+	// destroy (and the TTL reaper) runs under.
+	var opts []agent.DestroyOption
+	if req.Msg.GetSkipArchive() {
+		opts = append(opts, agent.SkipHomeArchive())
+		s.logger.Warn("destroy requested WITHOUT a home archive (skip_archive); the home will be deleted with no copy",
+			"agent_id", req.Msg.AgentId, "force", req.Msg.Force)
+	}
+	resp, err := s.agentMgr.Destroy(ctx, req.Msg.AgentId, req.Msg.Force, opts...)
 	if err != nil {
 		s.logger.Error("destroy agent failed", "agent_id", req.Msg.AgentId, "error", err)
 		// Map "not_found" to NotFound, other errors to Internal

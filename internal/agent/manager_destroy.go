@@ -4,6 +4,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -34,6 +35,138 @@ const StatusHomeRetained = "home_retained"
 // reporting not_found (the cube-las-00 incident).
 const StatusLiveProcesses = "live_processes"
 
+// ── DF-BUNKER-81: archive SCOPE and archive BUDGET ──────────────────────────
+//
+// Two defects live in this section, on the same step of the destroy path:
+//
+//   - SCOPE. A rootless-docker agent's data-root is INSIDE its home
+//     ($HOME/.local/share/docker — 442M of a 688M home on the dogfood host).
+//     It is runtime state (container/overlay layers the daemon rebuilds on
+//     demand), so archiving it bloats the artifact with hundreds of MB of
+//     layers AND is what made the archive slow enough to be killed. It is
+//     excluded here, by anchored path, from every destroy archive.
+//   - BUDGET. The archive used to draw a generic compensating-step budget
+//     (rollbackStepTimeout, 15s) — before that, the CLI's fixed 30s deadline.
+//     Either way a ~688M home's tar+gzip was SIGKILLed mid-stream (~28s on the
+//     live run), the fail-closed gate correctly refused the delete, and the
+//     destroy was UNFINISHABLE: attempt after attempt, agent still running.
+//     The archive now draws its own context from the SIZE of the home it is
+//     about to write (config.ArchiveBudgetForHomeSize) and — like every other
+//     compensating action (BNK-DF-001) — detached from the request
+//     cancellation, so a disconnecting client cannot kill it half-written.
+
+// archiveExcludedHomeSubdirs lists the home-relative directories that are NOT
+// part of the destroy archive. They are RUNTIME STATE, not user data: the
+// rootless docker data-root (container + overlay layers, image store) is
+// rebuilt on demand by whatever runs next, while the archive exists to
+// preserve what cannot be rebuilt (cloned repos, unmerged work, dotfiles,
+// tooling — the DF-BUNKER-33 incident).
+//
+// Paths are home-relative and platform-separated (filepath.Join), so the walk
+// (homeArchiveBytes) and the tar patterns (archiveExcludePatterns) derive from
+// ONE spelling and cannot drift apart.
+func archiveExcludedHomeSubdirs() []string {
+	return []string{filepath.Join(".local", "share", "docker")}
+}
+
+// archiveExcludePatterns renders the `--exclude` patterns for a tar run of the
+// form `tar czf <archive> -C <parent> <base>`. GNU tar stores the members of a
+// named operand as `<base>/<path>`, so every pattern is ANCHORED at the
+// archived base: a bare `.local/share/docker` pattern would also drop a user's
+// project directory of the same name anywhere in the tree. Both the bare and
+// the `./`-prefixed spelling are emitted — GNU tar 1.35 matches the bare one
+// (measured), other implementations store `./`-prefixed members for the same
+// invocation.
+//
+// A trailing-slash spelling is deliberately NOT emitted: measured on GNU tar
+// 1.35, `--exclude=<base>/.local/share/docker/` does NOT match, and the whole
+// data-root lands in the archive.
+func archiveExcludePatterns(homeBase string) []string {
+	var patterns []string
+	for _, rel := range archiveExcludedHomeSubdirs() {
+		slashed := filepath.ToSlash(rel)
+		patterns = append(patterns, homeBase+"/"+slashed, "./"+homeBase+"/"+slashed)
+	}
+	return patterns
+}
+
+// archiveExcludeArgs renders archiveExcludePatterns as tar arguments.
+func archiveExcludeArgs(homeBase string) []string {
+	patterns := archiveExcludePatterns(homeBase)
+	args := make([]string, 0, len(patterns))
+	for _, p := range patterns {
+		args = append(args, "--exclude="+p)
+	}
+	return args
+}
+
+// homeArchiveBytes returns the number of bytes the archive will actually read
+// from homeDir: every file's size with the excluded directories skipped
+// entirely, so the figure sizes the ARCHIVE rather than the directory tree. It
+// is best-effort and read-only — an unreadable path contributes 0, and the
+// caller treats 0 as "unknown size" (the floor budget), because an
+// unmeasurable home must never block its own destroy.
+func homeArchiveBytes(homeDir string) int64 {
+	excluded := archiveExcludedHomeSubdirs()
+	var total int64
+	_ = filepath.WalkDir(homeDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil // best-effort: skip what cannot be read
+		}
+		rel, rerr := filepath.Rel(homeDir, path)
+		if rerr != nil {
+			return nil
+		}
+		if d.IsDir() {
+			for _, ex := range excluded {
+				if rel == ex {
+					return fs.SkipDir
+				}
+			}
+			return nil
+		}
+		if info, ierr := d.Info(); ierr == nil {
+			total += info.Size()
+		}
+		return nil
+	})
+	return total
+}
+
+// archiveExecContextFn builds the context the archive `tar` runs under.
+// Package-level seam: tests capture the budget handed to the archive — the
+// property DF-BUNKER-81 is about — without waiting out a production budget.
+//
+// The context is DETACHED from the request cancellation
+// (context.WithoutCancel: a client that gives up must not SIGKILL the archive)
+// and bounded by the home's own size (config.ArchiveBudgetForHomeSize).
+// Production never swaps this.
+var archiveExecContextFn = func(requestCtx context.Context, homeBytes int64) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(requestCtx), config.ArchiveBudgetForHomeSize(homeBytes))
+}
+
+// DestroyOption customizes ONE destroy invocation. Options are variadic so
+// every existing caller (the TTL reaper, reconciliation, the lifecycle paths
+// and their tests) keeps its exact call shape.
+type DestroyOption func(*destroyOptions)
+
+// destroyOptions is the resolved option set of one Destroy call.
+type destroyOptions struct {
+	// skipArchive is the operator's per-request archive opt-out
+	// (DF-BUNKER-81 criterion 4): the home is deleted with NO copy, exactly as
+	// the daemon-wide `destroy_home_policy: purge` policy does.
+	skipArchive bool
+}
+
+// SkipHomeArchive returns the option that skips the fail-closed home archive
+// for this destroy. It is the per-request equivalent of
+// `agent.destroy_home_policy: purge`, and it is IRREVERSIBLE: userdel -rf then
+// deletes the home with no copy anywhere. Callers must surface it as an
+// explicit operator choice (the CLI's --archive=false / --purge).
+func SkipHomeArchive() DestroyOption {
+	return func(o *destroyOptions) { o.skipArchive = true }
+}
+
 // archiveAgentHome tars homeDir into archiveDir and VERIFIES the archive
 // before the caller is allowed to delete anything. The verification is the
 // whole point of the step (DF-BUNKER-33): an archive that does not exist,
@@ -56,8 +189,14 @@ func (m *AgentManager) archiveAgentHome(execCtx context.Context, homeDir, archiv
 	}
 	// execCtx is the CALLER'S budgeted step context (BNK-DF-001): the tar is
 	// a compensating exec and must not borrow the (already cancelled)
-	// request deadline.
-	cmd := exec.CommandContext(execCtx, "tar", "czf", archivePath, "-C", filepath.Dir(homeDir), base)
+	// request deadline. The caller sizes that budget from the home itself
+	// (config.ArchiveBudgetForHomeSize) — see archiveExecContextFn.
+	//
+	// DF-BUNKER-81 (criterion 3): the agent's own rootless docker data-root is
+	// EXCLUDED — it is runtime state (container/overlay layers), not user data.
+	args := append([]string{"czf", archivePath}, archiveExcludeArgs(base)...)
+	args = append(args, "-C", filepath.Dir(homeDir), base)
+	cmd := exec.CommandContext(execCtx, "tar", args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		// INT-CI-050: an interrupted archive must never leave a truncated
 		// tarball behind. `tar` can be SIGKILLed mid-stream by anything that
@@ -335,7 +474,16 @@ func disableAgentLinger(execCtx context.Context, username string, logger *slog.L
 	return true
 }
 
-func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) (*v1.DestroyAgentResponse, error) {
+func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool, opts ...DestroyOption) (*v1.DestroyAgentResponse, error) {
+	// DF-BUNKER-81: the resolved options of THIS destroy (today: the
+	// operator's archive opt-out). Zero value = today's behaviour.
+	var dOpts destroyOptions
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&dOpts)
+		}
+	}
+
 	// BNK-DF-001: the compensating actions of a destroy must never borrow the
 	// request deadline. The server hands Destroy the RPC request context,
 	// which chi's middleware.Timeout (config request_timeout, default 300s)
@@ -581,35 +729,31 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 			homeExists = true
 		}
 	}
-	if homeExists && m.cfg.Agent.DestroyHomePolicyOrDefault() == config.DestroyPolicyArchive {
+	// DF-BUNKER-81: the ARCHIVE decision combines the daemon policy with the
+	// operator's per-request opt-out (--archive=false / --purge). Splitting it
+	// out here keeps one place where "no archive happened" is decided, so a
+	// skipped archive can never be reported as an archived one.
+	archiveHome := homeExists &&
+		!dOpts.skipArchive &&
+		m.cfg.Agent.DestroyHomePolicyOrDefault() == config.DestroyPolicyArchive
+	switch {
+	case archiveHome:
 		archiveDir := m.cfg.Agent.DestroyArchiveDirOrDefault()
+		// DF-BUNKER-81 criterion 1: the archive's budget is derived from the
+		// SIZE of the home it is about to write, not from a fixed
+		// compensating-step budget (rollbackStepTimeout, 15s) or a fixed
+		// client deadline (30s). homeArchiveBytes excludes exactly what tar
+		// excludes, so the figure sizes the ARTIFACT and not the tree.
+		homeBytes := homeArchiveBytes(homeDir)
+		actx, acancel := archiveExecContextFn(ctx, homeBytes)
 		m.logger.Info("archiving agent home before delete",
 			"agent_id", agentID,
 			"policy", config.DestroyPolicyArchive,
 			"home", homeDir,
-			"archive_dir", archiveDir)
-		// The archive tar is a compensating exec too (BNK-DF-001): on the
-		// request ctx it was SIGKILLed mid-stream by the request timeout
-		// (the INT-CI-050 note below), which fail-closes the destroy — the
-		// archive must instead draw its own budgeted, live context so a slow
-		// archive of a big home survives a dead request. If the budget step
-		// itself is unavailable the failure closes exactly as before.
-		actx, acancel, _ := rb.step()
-		if actx == nil || acancel == nil {
-			aerr := fmt.Errorf("destroy rollback budget unavailable; refusing to userdel without an archive")
-			m.logger.Error("agent home archive failed; home RETAINED, userdel NOT run",
-				"agent_id", agentID,
-				"policy", config.DestroyPolicyArchive,
-				"home", homeDir,
-				"archive_dir", archiveDir,
-				"error", aerr)
-			if m.recordDestroyRefusalFn != nil {
-				m.recordDestroyRefusalFn(agentID, StatusHomeRetained,
-					fmt.Errorf("destroy aborted: agent home %s could not be archived to %s (home retained, nothing deleted)", homeDir, archiveDir))
-			}
-			return &v1.DestroyAgentResponse{AgentId: agentID, Status: StatusHomeRetained},
-				fmt.Errorf("destroy aborted: agent home %s could not be archived to %s: %w (home retained, nothing deleted)", homeDir, archiveDir, aerr)
-		}
+			"archive_dir", archiveDir,
+			"home_bytes", homeBytes,
+			"archive_budget", config.ArchiveBudgetForHomeSize(homeBytes).String(),
+			"excluded", strings.Join(archiveExcludedHomeSubdirs(), string(filepath.ListSeparator)))
 		archivePath, aerr := m.archiveAgentHome(actx, homeDir, archiveDir)
 		acancel()
 		if aerr != nil {
@@ -648,7 +792,16 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 			m.logger.Info("archive prune removed old archives",
 				"archive_dir", archiveDir, "removed", len(removed))
 		}
-	} else if homeExists {
+	case homeExists && dOpts.skipArchive:
+		// DF-BUNKER-81 criterion 4: the operator chose to skip the archive.
+		// This is IRREVERSIBLE and it is logged at Warn for that reason — the
+		// next thing that happens to the home is `userdel -rf`.
+		m.logger.Warn("destroy archive SKIPPED by operator request; the home will be deleted with NO copy",
+			"agent_id", agentID,
+			"policy", m.cfg.Agent.DestroyHomePolicyOrDefault(),
+			"home", homeDir,
+			"force", force)
+	case homeExists:
 		m.logger.Info("destroy_home_policy purge: deleting agent home WITHOUT archiving",
 			"agent_id", agentID,
 			"policy", config.DestroyPolicyPurge,
