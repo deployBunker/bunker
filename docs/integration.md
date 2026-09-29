@@ -317,14 +317,24 @@ auditing — audit failure never blocks startup.
 | `ServerInfo` | unary | hostname, version, uptime, agent count/capacity, total & available resources, residue inventory (orphan users/homes/keys/stale linger entries + probe status) |
 | `ServerMetrics` | unary | live CPU %, memory used/total, disk used/total, plus an `agents[]` array of per-agent summaries (see below) |
 | `SpawnAgent` | unary | create an agent (`agent_id` handle, TTL, resource limits, network mode, SSH key, labels, image spec) |
+| `RenewalDriftReport` | unary | read-only scan of an agent home for references to an old (previous) home path — systemd `--user` units, cron entries, shell/env and config files; it reports, it never rewrites |
 | `DestroyAgent` | unary | tear down an agent — idempotent in TWO distinct cases, see the note below the tables |
+| `StopAgent` | unary | pause an agent without destroying it — session units and processes stop, but the user, home, container and allocated port range all survive (status `stopped`); exec/run/heartbeat against it then fail with the distinct `agent_stopped` precondition, never `NotFound` |
+| `StartAgent` | unary | re-arm a stopped agent (status back to `running`); the existing heartbeat expiry is left untouched |
+| `RestartAgent` | unary | stop + start in one call **and reset the heartbeat expiry** to `now + default_ttl` — the recovery path for a wedged session |
 | `ListAgents` | unary | all agents with status, resources, endpoints |
 | `GetAgent` | unary | one agent's details |
+| `GetAgentKey` | unary | fetch an agent's persisted SSH private key (GAP-128: `SpawnAgent` no longer returns key material by default) |
 | `AgentMetrics` | unary | one agent's live resource usage |
 | `ExecAgent` | **server-streaming** | run a command, stream stdout/stderr + exit code |
 | `RunAgent` | unary | run a command in the agent's environment (`--detach` for background) |
 | `HeartbeatAgent` | unary | extend an agent's TTL |
 | `QueryAudit` | unary | read the audit trail (filters: agent/method/since/until/limit; see [audit.md](audit.md)) |
+| `RotateJWTSecret` | unary | rotate the HS256 signing secret with no downtime — the new secret signs immediately while the retired one keeps validating existing tokens for a bounded overlap window, and the new value is returned exactly once |
+| `RevokeKey` | unary | revoke an API sub-key by key id — immediate (it stops validating before this response is sent) and durable across daemon restarts |
+| `KeyList` | unary | active API sub-keys, metadata only — no secret material |
+
+Full request/response shapes, status values and error codes for every RPC in this table are in [specs/api.md](../specs/api.md).
 
 ### `bunkerd.Agent` — scoped sub-key access
 
@@ -711,7 +721,7 @@ spawn ──▶ exec/run ──▶ cp/deploy ──▶ mount/tunnel ──▶ me
 | TTL | 6h (`agent.default_ttl`) when `--ttl` is omitted | `\d+[hmd]`, heartbeat-extendable |
 | Network mode | direct port range | `--network cloudflare` (TryCloudflare/named), `--network tailscale`, or direct |
 
-Server capacity defaults: `max_agents: 50`, port range 10000–19999. All
+Server capacity defaults: `max_agents: 100` (the live demo instance caps at 50), port range 10000–19999. All
 overridable in `config.yaml` (see `config.example.yaml` at the repo root).
 
 ## 8. Integration checklist
