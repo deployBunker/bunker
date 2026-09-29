@@ -455,8 +455,8 @@ $ curl -s http://127.0.0.1:8080/bunker.v1.Bunkerd/GetAgent \
 
 The bodies are abbreviated to the fields that matter here; `SpawnAgentResponse`
 also carries the connection bundle — `dockerHostSsh`, `dockerHostTunnel`,
-`sshfsMount`, `publicUrl`, `portRangeStart`/`portRangeEnd`, `sshPrivateKey`,
-`limits`, `expiresAt`, `tailnetIp`, `apiKey`, `image` — and the live capture of
+`sshfsMount`, `publicUrl`, `portRangeStart`/`portRangeEnd`, `limits`,
+`expiresAt`, `tailnetIp`, `apiKey`, `image` — plus `sshPrivateKey` (GAP-128: empty by default — the wire default ships no key material, so the key is fetched via the master-credential-gated `GetAgentKey` RPC, or `return_ssh_private_key=true` on the spawn request opts in to return it inline) — and the live capture of
 this round trip (named spawn → `agentId` echoed → `404` on the dropped name) is
 in [dogfood/2026-09-18-integration.md](dogfood/2026-09-18-integration.md) §4.4.
 
