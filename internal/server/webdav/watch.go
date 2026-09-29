@@ -949,9 +949,9 @@ func (w *watcher) rescan(cause string) {
 	}
 	l := w.tree.eventLedger()
 	l.mu.Lock()
-	changed := l.changed(state)
+	changed, next := w.tree.ledgerDiff(l.observed, state, time.Now())
 	l.started = true
-	l.observed = state
+	l.observed = next
 	if truncated {
 		// An incomplete observation cannot be presented as complete: it is the
 		// overflow it is, with no paths at all.

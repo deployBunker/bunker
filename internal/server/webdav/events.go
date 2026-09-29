@@ -31,24 +31,40 @@ import (
 // What this op can know decides the events it emits, and the difference is not
 // cosmetic:
 //
-//   - It OBSERVES the served tree (one bounded walk, stat-only, no reads) and
+//   - It OBSERVES the served tree (one bounded walk, one stat per entry) and
 //     compares each path against the identity it recorded last. That identity
 //     is (size, mtime, ctime): ctime is in it because an edit that preserves
 //     size AND mtime is exactly the shape a metadata-keyed observer would
 //     otherwise miss, and this release has already recorded that class as a
 //     defect (BFS-009 F1). Where the platform exposes no ctime the identity
 //     falls back to (size, mtime) and that gap is real (see filetime_other.go).
+//   - METADATA IS NOT TRUSTED WHERE IT CANNOT BE TRUSTED (QA-BUNKER-36). The
+//     kernel stamps filesystem metadata from the COARSE clock (CONFIG_HZ), so an
+//     edit performed within one tick of the write that came before it carries
+//     the SAME mtime and the SAME ctime. A same-size, mtime-preserving rewrite
+//     landing in such a tick is then identical to the observation recorded just
+//     before it in every field of the identity — measured at CONFIG_HZ=250 (a
+//     4 ms tick, no sleep between the seed write and the edit): ctime did not
+//     move, 5 times out of 5, on ext4 and on tmpfs — and a metadata-only diff
+//     would answer "unchanged" for bytes that moved. The ledger therefore reads
+//     the BYTES of a regular file whose recorded metadata cannot rule that out
+//     (see coarseClockAmbiguous) and compares content digests: the edit is
+//     reported from the bytes, not from a clock the filesystem never advanced.
+//     The read is narrow by construction — see the block comment above
+//     eventsCoarseClockWindow — so a settled tree still costs one stat per path.
 //   - It CANNOT see anything between two observations, and it holds no history
 //     from before its first one. Both are why a cursor it cannot vouch for is
 //     answered `overflow` — the channel's own word for "knowledge lost, drop
 //     everything and re-snapshot" — rather than an empty list, which would be a
 //     claim that nothing happened.
-//   - It cannot see a change the filesystem itself does not report (a rewriter
-//     that restores size, mtime AND ctime is invisible to any observer that
-//     does not read the bytes). The write path's content-hash re-validation
-//     (§6.1) is what covers that case; a change channel is not.
+//   - What remains outside it is a change the filesystem does not record at all:
+//     a rewrite that restores size, mtime, ctime AND the bytes. That is not an
+//     edit to report (nothing moved), and the write path's content-hash
+//     re-validation (§6.1) is what refuses the case where it matters.
 //
-// Read-only (E-4's invariant, A-9): a walk and a stat per entry, nothing else.
+// Read-only (E-4's invariant, A-9): a walk, a stat per entry, and — only for the
+// paths whose metadata cannot vouch for their bytes — a streamed read. Nothing
+// is ever written or created.
 // Bounded: the walk stops at eventsScanLimit entries, a path list is capped at
 // eventsMaxPathsPerEvent (spilling to `overflow`, never to a longer or partial
 // list), a frame is capped at the declared `max_event_bytes` (BFS-062: a COUNT
@@ -127,19 +143,25 @@ type eventLine struct {
 
 // identity is what the filesystem reports about one path. It is comparable, so
 // a diff is a map comparison and not a second interpretation of the tree.
+//
+// Regular says whether the path is a regular file. It is a member because the
+// content-verified fallback below needs exactly that fact: only a regular file
+// has bytes that can move while every metadata field stands still.
 type identity struct {
-	Size  int64
-	Mtime int64 // unix nanoseconds
-	Ctime int64 // unix nanoseconds, or 0 where the platform has none
-	Dir   bool
+	Size    int64
+	Mtime   int64 // unix nanoseconds
+	Ctime   int64 // unix nanoseconds, or 0 where the platform has none
+	Dir     bool
+	Regular bool
 }
 
 func identityOf(fi os.FileInfo) identity {
 	return identity{
-		Size:  fi.Size(),
-		Mtime: fi.ModTime().UnixNano(),
-		Ctime: ctimeUnixNano(fi),
-		Dir:   fi.IsDir(),
+		Size:    fi.Size(),
+		Mtime:   fi.ModTime().UnixNano(),
+		Ctime:   ctimeUnixNano(fi),
+		Dir:     fi.IsDir(),
+		Regular: fi.Mode().IsRegular(),
 	}
 }
 
@@ -236,6 +258,250 @@ func IdentityDivergenceCounters() (count int64, lastPath string) {
 	return metadataKeyBlindMoves, lastMetadataKeyBlindPath
 }
 
+// ---------------------------------------------------------------------------
+// QA-BUNKER-36 — THE CONTENT-VERIFIED FALLBACK.
+//
+// The identity above is enough on a kernel whose clock can separate two writes.
+// It is NOT enough on a kernel that cannot: the filesystem stamps metadata from
+// the COARSE clock (one tick of CONFIG_HZ), so a write landing within the same
+// tick as the write before it is stamped with the SAME mtime and the SAME ctime.
+// A same-size rewrite inside one such tick — the class BFS-009 F1 filed, and a
+// shape `git checkout`, an editor or a restore tool can all produce — is then
+// indistinguishable from the observation recorded just before it in EVERY field
+// of the identity, and a metadata-only diff answers "unchanged" for bytes that
+// moved. Measured on the host this row was filed from (Debian, CONFIG_HZ=250, a
+// 4 ms tick): seed write, edit, `os.Chtimes` restoring the mtime, with no sleep
+// between them, left ctime delta = 0 ns on 5/5 iterations, on ext4 and on tmpfs.
+//
+// The fallback is deliberately narrow, because its price is reading bytes:
+//
+//   - ONLY A REGULAR FILE is ever verified. Nothing else has content that can
+//     move under a standing metadata observation, so a collection, a symlink or
+//     a device is taken at its metadata exactly as before.
+//   - ONLY A RECORD WHOSE METADATA CANNOT VOUCH FOR IT is verified. A record
+//     taken when an invisible edit was impossible — the observation is more than
+//     one coarse-clock window after the path's own ctime — is trusted on its
+//     metadata, and not one byte is read. That is the whole cheapness rule, and
+//     it is what keeps a settled tree at one stat per path: the window expires
+//     and the read expires with it.
+//   - METADATA THAT MOVED is never re-read to decide anything: the move IS the
+//     change, and that path is reported on its own evidence. The one read a
+//     moved path can pay is the BASELINE read (ledgerRecord), and only while its
+//     new metadata can still be masked: without it the next observation would
+//     have no bytes to compare against, and would have to choose between a
+//     redundant event and a silent one.
+//
+// The digest is also what keeps the two observers of this tree — this ledger and
+// the hash cache (tree.go, BFS-049/R-V6) — agreeing in this class: both consult
+// the same window, so neither can call a frozen edit "unchanged" while the other
+// reports it.
+// ---------------------------------------------------------------------------
+
+// eventsCoarseClockWindow bounds how long after a path's last metadata change an
+// edit can still hide inside the filesystem's own timestamps. The filesystem
+// stamps from the coarse clock, whose granularity is one tick (1/HZ): 1 ms at
+// CONFIG_HZ=1000, 4 ms at 250, 10 ms at 100 — so 50 ms is conservative for every
+// HZ a Linux kernel ships. It is a variable rather than a constant for the same
+// reason the declared bounds above are: a cell must be able to drive both sides
+// of it without waiting, and the DECLARED value is pinned by a test so lowering
+// it in a cell cannot move the default.
+var eventsCoarseClockWindow = 50 * time.Millisecond
+
+// coarseClockAmbiguous reports whether an observation taken at `at` of a path
+// whose metadata carries `ctimeNano` can be masked by an edit that leaves every
+// metadata field identical.
+//
+// The derivation is exact rather than a guess. A filesystem timestamp is
+// quantised to the tick, so a value C is the start of the tick that produced it
+// and an edit at wall time t is stamped coarse(t). An edit is invisible to a
+// metadata comparison exactly when coarse(t) == C — that is the only way the
+// ctime can stand still — which requires t < C + J for a tick J. So an edit
+// after an observation made at `at` can be invisible iff `at < C + J`, and with
+// the window standing in for J (window >= J) that is `at-C < window`.
+func coarseClockAmbiguous(at time.Time, ctimeNano int64) bool {
+	if ctimeNano == 0 {
+		// No change time at all (filetime_other.go): there is no window to
+		// reason about, because the field never moves — the metadata can never
+		// vouch for the bytes on its own, so every regular file is verified.
+		// bunkerd serves Linux, where this does not arise; it is the honest
+		// reading of the same rule on a build that has no ctime, and it is
+		// stated rather than papered over, exactly as filetime_other.go states
+		// the weaker identity.
+		return true
+	}
+	return at.UnixNano()-ctimeNano < int64(eventsCoarseClockWindow)
+}
+
+// observedEntry is the ledger's record of one path: the metadata identity it
+// observed, the digest of the bytes as of that observation — empty when the
+// bytes were never read — and when the observation was taken.
+type observedEntry struct {
+	id         identity
+	digest     string
+	recordedAt time.Time
+}
+
+// vouched reports whether this record can be trusted WITHOUT reading the bytes:
+// an edit after `recordedAt` cannot leave every metadata field identical, so the
+// metadata alone proves the content did not move. It is a fixed property of the
+// pair (recordedAt, ctime), which is why a quiet tree stops paying for reads
+// instead of paying for them forever.
+func (e observedEntry) vouched() bool {
+	return !coarseClockAmbiguous(e.recordedAt, e.id.Ctime)
+}
+
+// The report of the fallback, in the same shape as the divergence counter above:
+// how many times this process has had to read a path's bytes because its
+// metadata could not vouch for it, and the last such path. It is the number that
+// answers "what does the fallback cost this tree?" from production rather than
+// from a benchmark, and it is process-wide for the same reason
+// metadataKeyBlindMoves is: the fact is about this server's observations, and it
+// must survive a tree's lazily-built ledger being rebuilt.
+var (
+	contentVerifyMu       sync.Mutex
+	contentVerifyTotal    int64
+	lastContentVerifyPath string
+)
+
+// recordContentVerification notes one path whose bytes the ledger had to read.
+func recordContentVerification(path string) {
+	contentVerifyMu.Lock()
+	defer contentVerifyMu.Unlock()
+	contentVerifyTotal++
+	lastContentVerifyPath = path
+}
+
+// ContentVerificationCounters reports how many paths this process has had to
+// verify BY CONTENT — their metadata could not vouch for their bytes — and the
+// last such path (relative, "/"-separated).
+//
+// A zero count is the honest "every observation this process took was vouchable
+// on metadata alone", which is the state of a tree whose paths were last touched
+// longer ago than the coarse-clock window. Like IdentityDivergenceCounters, a
+// cell measures the DELTA across its own stimulus.
+func ContentVerificationCounters() (count int64, lastPath string) {
+	contentVerifyMu.Lock()
+	defer contentVerifyMu.Unlock()
+	return contentVerifyTotal, lastContentVerifyPath
+}
+
+// ledgerRecord builds the record the ledger keeps for one observed path.
+//
+// It reads the bytes of a regular file exactly when the record it is building
+// cannot be vouched for on its own: the observation lands inside the coarse
+// window opened by the path's own ctime, so a same-size, mtime-preserving edit
+// could have happened and left every metadata field standing. Everything else —
+// every settled path, and every path with no bytes to compare — is metadata-only,
+// and that is what keeps a quiet poll a walk and a stat per entry.
+//
+// The read is streamed (contentDigest) and never buffered: this is a poll path,
+// and a 4 GiB file must not become a 4 GiB allocation to be observed.
+func (t *tree) ledgerRecord(rel string, id identity, now time.Time) observedEntry {
+	e := observedEntry{id: id, recordedAt: now}
+	if !id.Regular || !coarseClockAmbiguous(now, id.Ctime) {
+		return e
+	}
+	digest, err := contentDigest(filepath.Join(t.rootPath(), filepath.FromSlash(rel)))
+	if err != nil {
+		// A path whose bytes cannot be read cannot be vouched for either. The
+		// digest stays empty, and an empty digest compares unequal to any real
+		// one, so the next observation reports the path rather than claiming a
+		// quiet that was never established.
+		return e
+	}
+	recordContentVerification(rel)
+	e.digest = digest
+	return e
+}
+
+// ledgerDiff compares one observation against the ledger's recorded baseline and
+// returns the paths whose identity moved, sorted, together with the records the
+// next observation diffs against.
+//
+// A move is judged with the ONE identity comparison (sameIdentity) — plus, for
+// the paths whose metadata cannot vouch for their bytes, that path's content
+// digest. The class the pre-BFS-049 (size, mtime) hash-cache key could not see
+// is counted as it is found, so "these two observers no longer disagree" is a
+// fact an operator can read rather than a claim they must take on faith. A
+// digest-only move lands in that class too, and it is its sharpest instance: the
+// whole identity stood still while the bytes moved.
+//
+// A nil prev is the ledger's FIRST observation (a fresh ledger, or one being
+// seeded from a whole-tree snapshot): nothing is a "change" there — there is no
+// baseline it could have changed from — but every record is built, which is
+// where a baseline's content digests come from. Callers that need no path list
+// (the seed) ignore it; the watcher's rescan uses it exactly as the old
+// whole-map comparison did, where an empty baseline reported every path.
+func (t *tree) ledgerDiff(prev map[string]observedEntry, state map[string]identity, now time.Time) ([]string, map[string]observedEntry) {
+	next := make(map[string]observedEntry, len(state))
+	var out []string
+	for p, id := range state {
+		before, known := prev[p]
+		switch {
+		case !known:
+			// A path the ledger has never observed: its whole content is new
+			// knowledge for the client, and there is nothing to compare against.
+			out = append(out, p)
+			next[p] = t.ledgerRecord(p, id, now)
+		case !before.id.sameIdentity(id):
+			// The metadata moved, so the path is a change on its own evidence.
+			if before.id.sameMetadataKey(id) {
+				// (size, mtime) compare equal: this path is in the class the
+				// pre-BFS-049 hash-cache key could not see.
+				recordMetadataKeyBlindMove(p)
+			}
+			out = append(out, p)
+			next[p] = t.ledgerRecord(p, id, now)
+		default:
+			// The metadata is identical, so the metadata alone decides nothing.
+			if before.vouched() {
+				// No edit after the record was taken can leave the metadata
+				// identical, so the bytes cannot have moved: the record stands,
+				// and no byte is read. This is the path a settled tree takes.
+				next[p] = before
+				continue
+			}
+			// Inside the coarse window the metadata may be standing still over
+			// bytes that moved. A regular file is verified by content; a path
+			// with no content to compare is taken at its metadata, because
+			// nothing under it can move without moving the metadata.
+			cur := t.ledgerRecord(p, id, now)
+			if id.Regular && cur.digest == "" {
+				// The bytes could not be read (they vanished mid-observation,
+				// or the read failed). That is NOT evidence of a change: a
+				// comparison that never happened may not produce an event, and
+				// the record is left exactly as it was — so the verification is
+				// RETRIED rather than renewed — instead of being renewed into a
+				// record that nobody verified. A path whose bytes cannot be read
+				// here is one the client cannot read either, and the observation
+				// that can see the change (a later walk, which sees the path
+				// gone or its metadata moved) is the one that reports it.
+				next[p] = before
+				continue
+			}
+			// A verdict from the bytes requires bytes on BOTH sides. When the
+			// previous record carries no digest — its own read failed — there is
+			// nothing to compare against, so the path is quietly recorded with
+			// the digest just taken and reported only if a LATER observation
+			// finds the bytes moved away from it.
+			if id.Regular && before.digest != "" && before.digest != cur.digest {
+				if before.id.sameMetadataKey(id) {
+					recordMetadataKeyBlindMove(p)
+				}
+				out = append(out, p)
+			}
+			next[p] = cur
+		}
+	}
+	for p := range prev {
+		if _, ok := state[p]; !ok {
+			out = append(out, p)
+		}
+	}
+	sort.Strings(out)
+	return out, next
+}
+
 // eventLog is the per-tree ledger: what this process has observed, and the
 // events it owes a client that polls. It is guarded by its own mutex, held
 // across one observation so two concurrent polls cannot interleave two diffs
@@ -245,7 +511,7 @@ type eventLog struct {
 	seq      int64
 	base     int64 // seq of the oldest retained journal entry
 	started  bool
-	observed map[string]identity
+	observed map[string]observedEntry
 	journal  []eventLine
 }
 
@@ -297,18 +563,34 @@ func (t *tree) ledgerCursor() int64 {
 // received: the first poll then answers a diff against the client's own view
 // instead of declaring the interval before it lost. A partial observation
 // (a subtree, a truncated result) is not a baseline and is ignored.
+//
+// The records are built with the content-verified fallback (ledgerDiff), which
+// is where a baseline's digests come from: without them the first poll would
+// have no bytes to compare an identical-metadata path against, and the baseline
+// would be exactly as blind as the diff it exists to make honest.
+//
+// The reads the fallback pays happen BEFORE the ledger lock is taken, so a
+// binding client's snapshot cannot park a concurrent poll behind them; a ledger
+// that has already started is left exactly as it was.
 func (t *tree) seedEvents(state map[string]identity, whole bool) {
 	if !whole || len(state) == 0 {
 		return
 	}
 	l := t.eventLedger()
 	l.mu.Lock()
+	started := l.started
+	l.mu.Unlock()
+	if started {
+		return
+	}
+	_, entries := t.ledgerDiff(nil, state, time.Now())
+	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.started {
 		return
 	}
 	l.started = true
-	l.observed = state
+	l.observed = entries
 }
 
 // observe walks the served tree and records one identity per path. Paths are
@@ -354,40 +636,6 @@ func (t *tree) observe() (map[string]identity, bool, error) {
 		return nil, truncated, err
 	}
 	return state, truncated, nil
-}
-
-// changed lists the paths whose observed identity moved, appeared or vanished,
-// sorted so one tree state always produces one path list.
-//
-// A move is judged with the ONE identity comparison (sameIdentity) and the
-// class the pre-BFS-049 (size, mtime) hash-cache key could not see is counted
-// as it is found, so "these two observers no longer disagree" is a fact an
-// operator can read rather than a claim they must take on faith.
-func (l *eventLog) changed(state map[string]identity) []string {
-	var out []string
-	for p, id := range state {
-		prev, ok := l.observed[p]
-		if !ok {
-			out = append(out, p)
-			continue
-		}
-		if prev.sameIdentity(id) {
-			continue
-		}
-		if prev.sameMetadataKey(id) {
-			// Only ctime moved: this path is in the class that made the two
-			// observers disagree before the identity was shared.
-			recordMetadataKeyBlindMove(p)
-		}
-		out = append(out, p)
-	}
-	for p := range l.observed {
-		if _, ok := state[p]; !ok {
-			out = append(out, p)
-		}
-	}
-	sort.Strings(out)
-	return out
 }
 
 // push appends one event, advancing the seq and pruning the journal to its
@@ -529,8 +777,11 @@ type resumePoint struct {
 // clients polling at once are strictly ordered: each diff is against the state
 // the previous observation recorded, and the recorded baseline can never move
 // backwards. The price is that a second client's poll waits for one walk
-// (measured at ~7 ms on a 2000-path tree, §8 of the row report) — paid only when
-// two clients poll the same tree in the same instant.
+// (measured at ~7 ms on a 2000-path tree, §8 of the row report) plus whatever
+// content verification the coarse-clock fallback has to pay for the paths the
+// walk could not vouch for — paid only when two clients poll the same tree in
+// the same instant, and bounded by the paths whose metadata is younger than the
+// coarse-clock window rather than by the tree.
 func (t *tree) pollEvents(p resumePoint) (eventsAnswer, error) {
 	l := t.eventLedger()
 	l.mu.Lock()
@@ -540,6 +791,7 @@ func (t *tree) pollEvents(p resumePoint) (eventsAnswer, error) {
 	if err != nil {
 		return eventsAnswer{}, err
 	}
+	now := time.Now()
 
 	if !l.started {
 		// The ledger's knowledge begins here, and the interval before it is
@@ -547,12 +799,14 @@ func (t *tree) pollEvents(p resumePoint) (eventsAnswer, error) {
 		// channel's own vocabulary, and it makes the client re-establish its
 		// view — which is also what closes the window between a client's own
 		// snapshot and this first observation.
+		// The records are built even though no diff is owed: this observation
+		// IS the baseline the next poll diffs against, digests included.
 		l.started = true
-		l.observed = state
+		_, l.observed = t.ledgerDiff(nil, state, now)
 		l.push(t, eventOverflow, nil)
 	} else {
-		changed := l.changed(state)
-		l.observed = state
+		changed, next := t.ledgerDiff(l.observed, state, now)
+		l.observed = next
 		switch {
 		case truncated || len(changed) > eventsMaxPathsPerEvent:
 			// Past the cap (or an incomplete observation): knowledge lost, not a
