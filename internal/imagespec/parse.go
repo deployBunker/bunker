@@ -44,6 +44,39 @@ var StockToolchainPackages = []string{
 	"docker.io",
 }
 
+// GoToolchainPackages is the apt package set the `go` directive's TOOLCHAIN
+// BOOTSTRAP installs before its first `go install` line (DF-BUNKER-79).
+//
+// It exists because the default base (DefaultBaseImage, ubuntu:24.04) ships no
+// Go toolchain: the pre-fix render went straight to `RUN go install <pkg>`,
+// which failed EVERY go-manager image build with `/bin/sh: 1: go: not found`
+// (exit 127) — including the spec `bunker agent-tools --install` itself prints
+// as the remediation for tools it cannot deliver (DF-BUNKER-57). The advertised
+// path could not build.
+//
+// golang-go is the distribution metapackage: it exists in the archive of every
+// ALLOWED base (ubuntu:24.04/22.04, debian:12/11), and on the default base it
+// provides Go 1.22, which understands module-aware `go install pkg@version`
+// (Go >= 1.16). It is deliberately ONE unversioned name — a versioned name such
+// as golang-1.22-go exists in a single release's archive only. Known limit: the
+// apt route bootstraps whatever Go the base's archive carries, so a base whose
+// golang-go predates module-aware install (debian:11's is 1.15) would still
+// refuse `pkg@version`; the default base and the other allowed bases are fine.
+//
+// The tokens are builder-chosen constants, not spec input: like
+// StockToolchainPackages they never pass through the token grammar, and they
+// render through the same single-quoting apt renderer as every other apt step.
+var GoToolchainPackages = []string{"golang-go"}
+
+// GoBinDir is the GOBIN the go renderer installs into (DF-BUNKER-79). It is the
+// first component of internal/server's agentExecBasePath (and $HOME/bin is
+// prepended to that), so a tool `go install`ed here is on the PATH of every
+// subsequent agent exec — `bunker agent-tools`' probe included. Without it,
+// module-aware `go install` writes to $GOPATH/bin (/root/go/bin for the image's
+// root user), which no exec PATH contains: the tool would build and install
+// correctly and still read as ABSENT to every consumer.
+const GoBinDir = "/usr/local/bin"
+
 // allowedBases is the closed set of base images a spec may name. Everything
 // else — private registries, localhost pulls, scratch — is rejected so a spec
 // can never change where the agent image comes from beyond this list.

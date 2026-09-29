@@ -57,6 +57,15 @@
 // lines. A package add must never read as an image replacement — the
 // customized image keeps every tool a vanilla agent has, plus the spec's
 // packages.
+//
+// Go-toolchain bootstrap (DF-BUNKER-79): a `go` directive renders its own
+// toolchain bootstrap (GoToolchainPackages) immediately before its install
+// lines, because the allowed bases ship no Go compiler — a bare
+// `RUN go install <pkg>` failed every go-manager build with `go: not found`
+// (exit 127). The bootstrap is an apt line rendered by the same apt renderer as
+// the stock layer, and the install lines pin GOBIN to GoBinDir (/usr/local/bin,
+// the first component of the agent exec PATH) so the installed tool is actually
+// reachable. apt-only and other managers' renders are untouched by this.
 package imagespec
 
 import (
@@ -412,9 +421,37 @@ func renderAPT(b *strings.Builder, pkgs []string) {
 	b.WriteString(" && rm -rf /var/lib/apt/lists/*\n")
 }
 
+// renderGo emits the TOOLCHAIN BOOTSTRAP first, then one `go install` line per
+// package.
+//
+// DF-BUNKER-79: the previous render went straight to `RUN go install <pkg>`
+// against DefaultBaseImage (ubuntu:24.04), which has no Go toolchain, so every
+// go-manager build died at that step with `/bin/sh: 1: go: not found`
+// (exit 127). The bootstrap is the apt toolchain layer GoToolchainPackages,
+// rendered by the SAME apt renderer the stock-userland layer uses — one apt
+// step, byte-consistent with every other apt line (single-quoted tokens,
+// --no-install-recommends, apt lists cleaned) — rather than a second image
+// stage, because a `golang:<ver>` builder stage would add a FROM the spec never
+// declared and a COPY of a ~250 MB toolchain to every customized image.
+//
+// The bootstrap is emitted ONCE per directive (a spec may declare at most one
+// go directive) and only when there is something to install, so an empty go
+// directive renders nothing at all — no toolchain is pulled for no package.
+//
+// GOBIN is pinned to GoBinDir so the installed binaries land on the agent's exec
+// PATH (see GoBinDir). The package tokens stay single-quoted: the bootstrap line
+// carries only builder constants, and the install lines are unchanged except for
+// the GOBIN prefix, so the grammar guarantee (no token can reach the shell
+// unquoted) is untouched.
 func renderGo(b *strings.Builder, pkgs []string) {
+	if len(pkgs) == 0 {
+		return
+	}
+	renderAPT(b, GoToolchainPackages)
 	for _, p := range pkgs {
-		b.WriteString("RUN go install ")
+		b.WriteString("RUN GOBIN=")
+		b.WriteString(GoBinDir)
+		b.WriteString(" go install ")
 		writeQuoted(b, p)
 		b.WriteString("\n")
 	}

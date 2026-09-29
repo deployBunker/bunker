@@ -119,11 +119,20 @@ func installAgentTools(cmd *cobra.Command, ctx context.Context, client bunkerv1c
 	if len(remaining) > 0 {
 		fmt.Fprintf(errOut, "\nbunker: NOT delivered here (no vendored binary; install via the image-spec package-add path): %s\n",
 			strings.Join(remaining, ", "))
-		fmt.Fprintln(errOut, `  spawn with: {"packages":[{"manager":"apt","packages":["ripgrep"]},`+
-			`{"manager":"go","packages":["golang.org/x/tools/gopls@latest"]}]}`)
+		fmt.Fprintln(errOut, "  spawn with: "+agentToolsRemediationSpec)
 	}
 	return nil
 }
+
+// agentToolsRemediationSpec is the image spec this command prints for the tools
+// it cannot deliver (DF-BUNKER-57). It is a CONSTANT, not an inline string,
+// because it must be a spec that actually BUILDS: a test in this package parses
+// this exact JSON through imagespec.Parse and asserts the render is buildable
+// (the go directive carries its own toolchain bootstrap — DF-BUNKER-79, and the
+// installed binary lands on the agent's exec PATH), so the CLI can never
+// advertise a spec the image builder would refuse.
+const agentToolsRemediationSpec = `{"packages":[{"manager":"apt","packages":["ripgrep"]},` +
+	`{"manager":"go","packages":["golang.org/x/tools/gopls@latest"]}]}`
 
 // resolveDeliverableBinary finds the artifact to ship: an explicit --binary
 // wins, otherwise the tool is looked up on PATH. A clear failure here is much

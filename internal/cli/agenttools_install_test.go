@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/deployBunker/bunker/internal/imagespec"
 )
 
 // TestCommandNameParsesVersionToken: the drift check compares BUILDS, so it has
@@ -114,6 +116,65 @@ func TestAssertStaticallyLinkedAgreesWithLdd(t *testing.T) {
 	}
 	if !isDynamic && gotErr != nil {
 		t.Errorf("ldd reports a static binary (%s) but the guard refused it: %v", self, gotErr)
+	}
+}
+
+// TestAgentToolsRemediationSpecBuilds is DF-BUNKER-79 at the surface the
+// operator actually touches: the spec `agent-tools --install` prints as the
+// remediation for the tools it cannot deliver (DF-BUNKER-57) must be a spec the
+// IMAGE BUILDER can build. Before the fix it was not — the go directive rendered
+// `RUN go install ...` against a base with no Go toolchain, so following the
+// CLI's own advice failed the spawn with `go: not found` (exit 127).
+//
+// This parses the printed constant through the real parser and asserts the
+// render the builder would feed docker: both tools are installed, the go
+// directive bootstraps the toolchain BEFORE the install line, and the installed
+// binary lands on the agent's exec PATH.
+func TestAgentToolsRemediationSpecBuilds(t *testing.T) {
+	spec, err := imagespec.Parse([]byte(agentToolsRemediationSpec))
+	if err != nil {
+		t.Fatalf("the spec the CLI prints does not parse, so it can never be spawned: %v\n%s", err, agentToolsRemediationSpec)
+	}
+	got := spec.Dockerfile()
+
+	// Both advertised tools are actually installed by the render: rg via apt,
+	// gopls via go.
+	if !strings.Contains(got, "'ripgrep'") {
+		t.Errorf("remediation render does not install ripgrep:\n%s", got)
+	}
+	installLine := "go install 'golang.org/x/tools/gopls@latest'"
+	installAt := strings.Index(got, installLine)
+	if installAt < 0 {
+		t.Fatalf("remediation render does not install gopls:\n%s", got)
+	}
+
+	// The go toolchain bootstrap precedes the install: without this the build
+	// dies `go: not found` and the remediation is a lie.
+	bootAt := strings.Index(got, "'golang-go'")
+	if bootAt < 0 {
+		t.Fatalf("remediation render has no Go toolchain bootstrap:\n%s", got)
+	}
+	if bootAt > installAt {
+		t.Errorf("Go toolchain bootstrap is rendered AFTER the install line (boot at %d, install at %d):\n%s", bootAt, installAt, got)
+	}
+
+	// And the installed binary is reachable: GOBIN is the first component of the
+	// server's agent exec PATH.
+	if !strings.Contains(got, "GOBIN="+imagespec.GoBinDir+" "+installLine) {
+		t.Errorf("remediation render installs gopls off the agent's PATH:\n%s", got)
+	}
+}
+
+// TestAgentToolsRemediationSpecIsSingleLine pins the paste-ability of the
+// printed spec: it is emitted inside a one-line CLI hint, so it must contain no
+// newline and no whitespace that a shell would split on (an operator copies this
+// into a spec file verbatim).
+func TestAgentToolsRemediationSpecIsSingleLine(t *testing.T) {
+	if strings.ContainsAny(agentToolsRemediationSpec, "\n\r\t ") {
+		t.Errorf("the printed remediation spec contains whitespace: %q", agentToolsRemediationSpec)
+	}
+	if !strings.HasPrefix(agentToolsRemediationSpec, "{") || !strings.HasSuffix(agentToolsRemediationSpec, "}") {
+		t.Errorf("the printed remediation spec is not a bare JSON object: %q", agentToolsRemediationSpec)
 	}
 }
 
