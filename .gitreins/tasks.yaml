@@ -3549,3 +3549,12 @@ tasks:
   status: complete
   created_at: '2026-09-28T23:14:02.770584+00:00'
   completed_at: '2026-09-28T23:14:31.620259+00:00'
+- id: DOC-32
+  title: 'CONTRIBUTING.md rot: Go version, board path, gitreins command'
+  criteria:
+  - grep 'Go 1.24' CONTRIBUTING.md returns 0; board link points to .coding-hermes/board/tasks.jsonl
+    which exists on disk; gitreins command is 'gitreins guard' not 'gitreins guard
+    run'
+  status: complete
+  created_at: '2026-09-29T00:47:28.836967+00:00'
+  completed_at: '2026-09-29T00:47:43.464461+00:00'
