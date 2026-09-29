@@ -1,0 +1,29 @@
+===== FINAL MECHANISM PROBE  Tue Sep 29 04:56:50 AM UTC 2026 =====
+--- effective ids ---
+1071
+0
+--- /proc/self/uid_map ---
+         0       1071          1
+         1     296608      65536
+--- /proc/self/gid_map ---
+         0       1071          1
+         1     296608      65536
+--- ownership as seen from the HOST-context path (same paths, host exec) ---
+--- inside-container stats ---
+0:65534 755 /run/bunker/df77live1
+0:110 660 /run/bunker/df77live1/docker.sock
+0:0 750 /home/bunker-df77live1
+0:0 755 /home/bunker-df77live1/bin
+--- can we write the agent HOME (yes expected: -v home:home, same uid) ---
+touch: cannot touch '/home/bunker-df77live1/.writeprobe_df77': Permission denied
+HOME-NOT-WRITABLE
+--- can we read the agent runtime env file if it existed (parent dir perms) ---
+drwxr-xr-x 3 root root 4096 Sep 29 04:56 /run/bunker
+--- group 110 / 65534 membership for our process ---
+Uid:	1071	1071	1071	1071
+Gid:	0	0	0	0
+Groups:	0 
+
+===== and the HOST-context view of the same paths (no image agent) =====
+(captured separately in the evidence doc from the spawn-time listing)
+===== DONE =====

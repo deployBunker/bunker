@@ -1,0 +1,74 @@
+########## DF-BUNKER-77-LIVE CONJUNCTS  agent=df77live1  server=df77live  Tue Sep 29 04:53:29 AM UTC 2026 ##########
+
+===== CONJUNCT A: bunker env set <id> K=V -> rc 0 =====
+sh: 1: cannot create /run/bunker/df77live1/env: Permission denied
+bunker: exit code 2
+conjunct_a_rc=1
+--- read it back ---
+awk: cannot open "/run/bunker/df77live1/env" (No such file or directory)
+env_get_rc=0
+
+===== CONJUNCT B: bunker exec <id> -- id -u (must NOT be 0) =====
+1071
+conjunct_b_rc=0
+--- also: whoami / uname (context) ---
+uid=1071 gid=0(root) groups=0(root)
+Linux 3be154c17071 6.8.0-117-generic #117-Ubuntu SMP PREEMPT_DYNAMIC Tue May  5 19:26:24 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+
+===== CONJUNCT C: bunker exec <id> -- docker info (rootless 29.x) =====
+failed to connect to the docker API at unix:///var/run/docker.sock; check if the path is correct and if the daemon is running: dial unix /var/run/docker.sock: connect: no such file or directory
+Client:
+ Version:    29.1.3
+ Context:    default
+ Debug Mode: false
+ Plugins:
+  trust: Manage trust on Docker images (Docker Inc.)
+    Version:  29.1.3
+    Path:     /usr/libexec/docker/cli-plugins/docker-trust
+
+Server:
+conjunct_c_rc=1
+--- docker info: rootless / server version lines ---
+
+===== CONJUNCT D: agent-tools probe -> git PRESENT (real agent userland) =====
+bunker: reading server "df77live"
+
+Agent tool dependencies (df77live1)
+
+  TOOL     STATUS   REQUIRED   VERSION / NEEDED BY
+  toolsd   absent   yes        needed by read, write, list, edit, patch, apply, lease, diff3, narrate
+  rg       present  yes        ripgrep 14.1.0
+  git      present  yes        git version 2.43.0
+  jq       present  no         jq-1.7
+  gopls    absent   no         needed by lsp check for Go (a language server; one per language)
+
+  MISSING on the agent: gopls, toolsd
+  Of those, REQUIRED (a verb is broken without them): toolsd
+  Deliver them onto the agent's PATH (its own $HOME/bin is already on it),
+  or spawn with the image-spec package-add / host-provision extras path.
+conjunct_d_rc=0
+
+===== SPEC-SPECIFIC BONUS: the image's own package + stock userland INSIDE the exec context =====
+--- which rg / rg --version (proves the apt package from the image spec is reachable) ---
+/usr/bin/rg
+ripgrep 14.1.0
+
+features:-simd-accel,+pcre2
+simd(compile):+SSE2,-SSSE3,-AVX2
+simd(runtime):+SSE2,+SSSE3,+AVX2
+
+PCRE2 10.42 is available (JIT is available)
+--- which git / git --version / docker --version / python3 (proves stock userland survived, DF-BUNKER-80) ---
+/usr/bin/git
+git version 2.43.0
+/usr/bin/docker
+Docker version 29.1.3, build 29.1.3-0ubuntu3~24.04.2
+/usr/bin/python3
+Python 3.12.3
+--- the recorded image ref on the agent record (why exec is container-wrapped) ---
+  Status:           running
+  Docker Tunnel:    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o IdentitiesOnly=yes -i /root/df77-deploy/live/cli-home/keys/df77live1 -L 2376:/run/bunker/df77live1/docker.sock bunker-df77live1@127.0.0.1 -N
+  SSHFS Mount:      sshfs -o IdentityFile=/root/df77-deploy/live/cli-home/keys/df77live1 -o idmap=user -o allow_other bunker-df77live1@127.0.0.1:/home/bunker-df77live1 /mnt/bunker/df77live1
+    Max Containers: 10
+
+########## CONJUNCTS DONE ##########
