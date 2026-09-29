@@ -189,7 +189,13 @@ func (b *Builder) BuildValidated(ctx context.Context, agentID string, spec *Spec
 	}
 	buildOut, err := b.runner.Run(buildCtx, "docker", buildArgs...)
 	if err != nil {
-		return "", fmt.Errorf("rootless build for %s failed: %w (output: %s)", agentID, err, strings.TrimSpace(string(buildOut)))
+		// DF-BUNKER-79: name the spec step that died. The raw docker error
+		// ("The command '/bin/sh -c go install ...' returned a non-zero code:
+		// 127") never said which directive was at fault, so the operator had to
+		// guess. The attribution is derived from the SAME render that produced
+		// the Dockerfile (see BuildFailureNote), so it cannot drift from it.
+		return "", fmt.Errorf("rootless build for %s failed: %w; %s (output: %s)",
+			agentID, err, spec.BuildFailureNote(string(buildOut)), strings.TrimSpace(string(buildOut)))
 	}
 
 	// Only a successful build creates the cache marker — failed builds are

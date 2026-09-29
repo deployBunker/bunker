@@ -254,7 +254,11 @@ func TestDockerfile_PackageAdds(t *testing.T) {
 	want := "FROM " + DefaultBaseImage + "\n" +
 		stockToolchainGoldenLine +
 		"RUN apt-get update && apt-get install -y --no-install-recommends 'jq' 'curl' && rm -rf /var/lib/apt/lists/*\n" +
-		"RUN go install 'golang.org/x/tools/gopls@v0.17.0'\n" +
+		// DF-BUNKER-79: the go directive renders its toolchain bootstrap (the
+		// base ships no Go) before the install line, and pins GOBIN so the
+		// installed binary reaches the agent's exec PATH.
+		goToolchainGoldenLine +
+		"RUN GOBIN=/usr/local/bin go install 'golang.org/x/tools/gopls@v0.17.0'\n" +
 		"RUN npm install -g 'typescript@5.6.3'\n"
 	if got != want {
 		t.Errorf("Dockerfile() =\n%s\nwant\n%s", got, want)

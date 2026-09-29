@@ -29,6 +29,14 @@ import (
 //     (an apt ripgrep+jq spec produced an agent with rg but NO git/docker/
 //     python3/make; dogfood run 22). Every row below gains exactly that one
 //     line and nothing else; the per-manager render bytes are unchanged.
+//   - DF-BUNKER-79 CHANGED the go rows on purpose: a `go` directive now renders
+//     its toolchain bootstrap (goToolchainGoldenLine — the apt layer that makes
+//     `go install` runnable on a Go-less base) before its install lines, and
+//     pins GOBIN=/usr/local/bin on each install line. The go rows below are the
+//     ONLY rows that changed; every apt/npm/pip/... row is byte-identical to the
+//     DF-BUNKER-80 expectation, which is exactly the property the fix must have
+//     (it is confined to the go manager — see
+//     TestDockerfile_APTSpecsUnchangedByGoBootstrap).
 //
 // The test stays exact-byte (never a substring check): quoting is a security
 // property of the emitted line, so the line itself is the thing under test.
@@ -51,9 +59,12 @@ func TestDockerfile_Golden(t *testing.T) {
 		},
 		{
 			// pre-GAP-148: RUN go install golang.org/x/tools/gopls@v0.17.0
+			// DF-BUNKER-79: the go directive now renders its toolchain
+			// bootstrap (goToolchainGoldenLine) before the install lines, and
+			// pins GOBIN so the installed binary is on the agent exec PATH.
 			name: "go multi",
 			spec: &Spec{Base: DefaultBaseImage, Packages: []PackageAdd{{Manager: ManagerGo, Packages: []string{"golang.org/x/tools/gopls@v0.17.0", "honnef.co/go/tools/cmd/staticcheck@v0.5.1"}}}},
-			want: "FROM docker.io/library/ubuntu:24.04\n" + stockToolchainGoldenLine + "RUN go install 'golang.org/x/tools/gopls@v0.17.0'\nRUN go install 'honnef.co/go/tools/cmd/staticcheck@v0.5.1'\n",
+			want: "FROM docker.io/library/ubuntu:24.04\n" + stockToolchainGoldenLine + goToolchainGoldenLine + "RUN GOBIN=/usr/local/bin go install 'golang.org/x/tools/gopls@v0.17.0'\nRUN GOBIN=/usr/local/bin go install 'honnef.co/go/tools/cmd/staticcheck@v0.5.1'\n",
 		},
 		{
 			// pre-GAP-148: RUN npm install -g typescript@5.6.3 @types/node@20.14.0
@@ -107,7 +118,8 @@ func TestDockerfile_Golden(t *testing.T) {
 			want: "FROM docker.io/library/ubuntu:24.04\n" +
 				stockToolchainGoldenLine +
 				"RUN apt-get update && apt-get install -y --no-install-recommends 'jq' 'curl' && rm -rf /var/lib/apt/lists/*\n" +
-				"RUN go install 'golang.org/x/tools/gopls@v0.17.0'\n" +
+				goToolchainGoldenLine +
+				"RUN GOBIN=/usr/local/bin go install 'golang.org/x/tools/gopls@v0.17.0'\n" +
 				"RUN npm install -g 'typescript@5.6.3'\n" +
 				"RUN pip install --no-cache-dir 'requests>=2.31,<3'\n" +
 				"RUN pipx install 'black>=24.0,<25'\n" +
