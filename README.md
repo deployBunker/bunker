@@ -254,13 +254,13 @@ official tarball into `/usr/local/go` — **not into `$HOME`**:
 
 ```bash
 # 1. The tarball for this host: linux-amd64 (use linux-arm64 on arm64).
-curl -fsSL https://go.dev/dl/go1.26.5.linux-amd64.tar.gz -o /tmp/go.tar.gz
+curl -fsSL https://go.dev/dl/go1.26.5.linux-amd64.tar.gz -o "$HOME/go-install.tgz"
 
 # 2. Extract under /usr/local, NOT under $HOME: a tarball unpacked into $HOME
 #    makes GOPATH == GOROOT and every go command then prints
 #    "warning: both GOPATH and GOROOT are the same directory".
 sudo rm -rf /usr/local/go
-sudo tar -C /usr/local -xzf /tmp/go.tar.gz
+sudo tar -C /usr/local -xzf "$HOME/go-install.tgz"
 
 # 3. Put it on PATH for this shell and for future logins.
 export PATH=/usr/local/go/bin:$PATH
