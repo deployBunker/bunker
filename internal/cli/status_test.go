@@ -2,9 +2,12 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/go-chi/chi/v5"
@@ -1015,5 +1018,191 @@ func TestFormatResidue(t *testing.T) {
 				t.Errorf("formatResidue() =\n%q\nwant\n%q", got, tt.want)
 			}
 		})
+	}
+}
+
+// fanoutBarrierHandler is a BunkerdHandler whose ServerInfo blocks until every
+// participating server has been reached, the barrier deadline elapses, or the
+// request context is cancelled.
+//
+// It turns "did the --all fan-out run concurrently?" into a deterministic
+// assertion instead of a timing measurement: a SERIAL fan-out reaches only the
+// first server, which waits for peers that are never dialled, hits the
+// deadline, and is reported OFFLINE — failing the test. A concurrent fan-out
+// releases every server within milliseconds.
+//
+// The deadline must stay well below queryServer's 30s per-server timeout: it
+// is the proof's failure bound, not a production behaviour.
+type fanoutBarrierHandler struct {
+	*statusMockServer
+	arrive   func()
+	release  <-chan struct{}
+	deadline time.Duration
+}
+
+func (h *fanoutBarrierHandler) ServerInfo(
+	ctx context.Context,
+	req *connect.Request[v1.ServerInfoRequest],
+) (*connect.Response[v1.ServerInfoResponse], error) {
+	h.arrive()
+
+	timer := time.NewTimer(h.deadline)
+	defer timer.Stop()
+	select {
+	case <-h.release:
+		return h.statusMockServer.ServerInfo(ctx, req)
+	case <-timer.C:
+		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf(
+			"waited %s for the other servers to be queried: status --all is not running the fan-out concurrently", h.deadline))
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// TestStatusCommand_AllServers_QueriesConcurrently proves the fan-out is
+// concurrent (PERF-009): every server must be dialled before any of them
+// answers, which a serial walk (one queryServer at a time) cannot satisfy.
+//
+// The barrier is the assertion. Each server blocks inside ServerInfo until all
+// of them have arrived; the last arrival releases the rest. Under the previous
+// serial implementation only one server is ever in flight, so the barrier is
+// never satisfied, the first server's query fails, and it prints OFFLINE.
+func TestStatusCommand_AllServers_QueriesConcurrently(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	const (
+		serverCount = 4
+		// Must exceed the slowest realistic in-process round trip, and stay far
+		// below queryServer's 30s per-server timeout so a regression fails fast
+		// instead of hanging the suite.
+		barrierDeadline = 5 * time.Second
+	)
+
+	release := make(chan struct{})
+	var (
+		mu      sync.Mutex
+		arrived int
+	)
+	arrive := func() {
+		mu.Lock()
+		defer mu.Unlock()
+		arrived++
+		if arrived == serverCount {
+			close(release)
+		}
+	}
+
+	servers := make(map[string]ServerEntry, serverCount)
+	for i := 0; i < serverCount; i++ {
+		name := fmt.Sprintf("srv-%d", i)
+		srv := newStatusTestServer(t, &fanoutBarrierHandler{
+			statusMockServer: &statusMockServer{
+				info: &v1.ServerInfoResponse{Hostname: name + "-host", Version: "v1.0.0"},
+			},
+			arrive:   arrive,
+			release:  release,
+			deadline: barrierDeadline,
+		})
+		defer srv.Close()
+		servers[name] = ServerEntry{Name: name, URL: srv.URL}
+	}
+
+	cfg := &CLIConfig{ActiveServer: "srv-0", Servers: servers}
+	if err := SaveCLIConfig(cfg); err != nil {
+		t.Fatalf("SaveCLIConfig: %v", err)
+	}
+
+	cmd := NewStatusCommand()
+	cmd.SetArgs([]string{"--server", "default", "--all"})
+	output := captureStdout(t, func() {
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+	})
+
+	if strings.Contains(output, "OFFLINE") {
+		t.Fatalf("a server was reported OFFLINE: the %d queries were not run concurrently\n%s", serverCount, output)
+	}
+	for i := 0; i < serverCount; i++ {
+		want := fmt.Sprintf("srv-%d-host", i)
+		if !strings.Contains(output, want) {
+			t.Errorf("output missing %q (barrier released but the server did not answer), got:\n%s", want, output)
+		}
+	}
+}
+
+// delayedStatusHandler serves ServerInfo after a per-server delay, so the order
+// servers COMPLETE in is the reverse of their sorted name order.
+type delayedStatusHandler struct {
+	*statusMockServer
+	delay time.Duration
+}
+
+func (h *delayedStatusHandler) ServerInfo(
+	ctx context.Context,
+	req *connect.Request[v1.ServerInfoRequest],
+) (*connect.Response[v1.ServerInfoResponse], error) {
+	select {
+	case <-time.After(h.delay):
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	return h.statusMockServer.ServerInfo(ctx, req)
+}
+
+// TestStatusCommand_AllServers_OutputOrdering pins the print order to the
+// sorted server names (PERF-009 acceptance criterion 2). The servers are
+// configured to answer in the REVERSE of that order, so an implementation that
+// prints results as they arrive — or that shares one output buffer between
+// goroutines — fails here even though every line is present.
+func TestStatusCommand_AllServers_OutputOrdering(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	// Sorted order is alpha, bravo, charlie; the delays invert completion order.
+	delays := map[string]time.Duration{
+		"alpha":   300 * time.Millisecond,
+		"bravo":   150 * time.Millisecond,
+		"charlie": 10 * time.Millisecond,
+	}
+
+	servers := make(map[string]ServerEntry, len(delays))
+	for name, delay := range delays {
+		srv := newStatusTestServer(t, &delayedStatusHandler{
+			statusMockServer: &statusMockServer{
+				info: &v1.ServerInfoResponse{Hostname: name + "-host", Version: "v1.0.0"},
+			},
+			delay: delay,
+		})
+		defer srv.Close()
+		servers[name] = ServerEntry{Name: name, URL: srv.URL}
+	}
+
+	cfg := &CLIConfig{ActiveServer: "alpha", Servers: servers}
+	if err := SaveCLIConfig(cfg); err != nil {
+		t.Fatalf("SaveCLIConfig: %v", err)
+	}
+
+	cmd := NewStatusCommand()
+	cmd.SetArgs([]string{"--server", "default", "--all"})
+	output := captureStdout(t, func() {
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+	})
+
+	var positions []int
+	for _, name := range []string{"alpha", "bravo", "charlie"} {
+		idx := strings.Index(output, "── "+name+" ──")
+		if idx < 0 {
+			t.Fatalf("output missing the %q section, got:\n%s", name, output)
+		}
+		positions = append(positions, idx)
+	}
+	for i := 1; i < len(positions); i++ {
+		if positions[i] < positions[i-1] {
+			t.Errorf("sections out of sorted-name order: offsets %v — output must be sorted by server name, got:\n%s",
+				positions, output)
+			break
+		}
 	}
 }

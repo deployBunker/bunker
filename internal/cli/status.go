@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
@@ -139,6 +140,17 @@ func queryServer(entry ServerEntry) serverStatus {
 
 // printAllServerStatus queries every server in the config and prints
 // a per-server status overview.
+//
+// The fan-out is CONCURRENT (PERF-009). An unreachable server burns its whole
+// per-server timeout inside queryServer, so a serial walk costs the SUM of
+// every server's latency: 14 servers with 2 offline measured 68.3-69.1s wall,
+// where the two 30s timeouts alone were ~60s of it. Querying every server in
+// its own goroutine bounds the wall time by the SLOWEST single server instead,
+// without touching the per-server timeout or any per-server result.
+//
+// Each goroutine owns its positionally indexed slot — no shared append and no
+// mutex — and the caller renders the slots in sorted-name order afterwards, so
+// the output is byte-identical to the previous serial implementation.
 func printAllServerStatus(cfg *CLIConfig) error {
 	if len(cfg.Servers) == 0 {
 		return fmt.Errorf("no servers configured; run 'bunker connect' first")
@@ -155,10 +167,22 @@ func printAllServerStatus(cfg *CLIConfig) error {
 	fmt.Printf("══════════ Bunker Server Status (%d servers) ══════════\n", len(names))
 	fmt.Println()
 
+	// One goroutine per configured server, each writing its own slot; the wait
+	// happens-before the print loop's reads of results.
+	results := make([]serverStatus, len(names))
+	var wg sync.WaitGroup
+	wg.Add(len(names))
 	for i, name := range names {
-		entry := cfg.Servers[name]
-		result := queryServer(entry)
-		fmt.Print(formatServerStatus(result))
+		go func(i int, entry ServerEntry) {
+			defer wg.Done()
+			results[i] = queryServer(entry)
+		}(i, cfg.Servers[name])
+	}
+	wg.Wait()
+
+	// Print in sorted order — the order responses arrived in is irrelevant.
+	for i := range names {
+		fmt.Print(formatServerStatus(results[i]))
 		if i < len(names)-1 {
 			fmt.Println()
 		}
