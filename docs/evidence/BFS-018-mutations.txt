@@ -1,0 +1,75 @@
+=== mutation mutate-1-server-type-classifier.py on internal/server/webdav/props.go (sha256 before 7a92ba95b8f59e170be7923be65d9c3d2e672cf9a54b94a2ca637c124bb05122) ===
+mutated: entryTypeOf no longer classifies a symlink (props.go)
+ARM PASS: mutate-1-server-type-classifier.py: cell TestSymlinkTypeIsDeclaredOnTheWire goes RED
+--- FAIL: TestSymlinkTypeIsDeclaredOnTheWire (0.00s)
+    bfs018_symlink_test.go:140: b:type = "file" (present=true), want "symlink"; a client cannot tell a link from a file
+ARM PASS: mutate-1-server-type-classifier.py: attribution cell TestSymlinkChangeAttributionCell stays GREEN
+ARM PASS: mutate-1-server-type-classifier.py: restored byte-identically (sha256 7a92ba95b8f59e170be7923be65d9c3d2e672cf9a54b94a2ca637c124bb05122)
+ARM PASS: mutate-1-server-type-classifier.py: the cell is GREEN again after the restore
+
+=== mutation mutate-2-snapshot-link-target.py on internal/server/webdav/ops.go (sha256 before f9c5dcbcd2bb59a7fef79224a542182654a12b56d4f6fb3b1c9765f89e2654fb) ===
+mutated: the snapshot entry carries no link_target (ops.go)
+ARM PASS: mutate-2-snapshot-link-target.py: cell TestSnapshotCarriesTheLinkTarget goes RED
+--- FAIL: TestSnapshotCarriesTheLinkTarget (0.00s)
+    bfs018_symlink_test.go:370: snapshot link_target = "", want "a.txt" (this is the field the client reads instead of the bytes)
+ARM PASS: mutate-2-snapshot-link-target.py: attribution cell TestSymlinkChangeAttributionCell stays GREEN
+ARM PASS: mutate-2-snapshot-link-target.py: restored byte-identically (sha256 f9c5dcbcd2bb59a7fef79224a542182654a12b56d4f6fb3b1c9765f89e2654fb)
+ARM PASS: mutate-2-snapshot-link-target.py: the cell is GREEN again after the restore
+
+=== mutation mutate-3-get-refusal.py on internal/server/webdav/handler.go (sha256 before a7cd62e8475c22d295f9f6a4b4c408f2225d77ec08737b4f10e28437f19ad89a) ===
+mutated: GET/HEAD no longer refuses a link (handler.go)
+ARM PASS: mutate-3-get-refusal.py: cell TestSymlinkGetIsRefusedByNameAndTheTargetStillReads goes RED
+--- FAIL: TestSymlinkGetIsRefusedByNameAndTheTargetStillReads (0.00s)
+    bfs018_symlink_test.go:182: GET on a link -> 200, want 405 (this surface will not serve a link as its target's bytes)
+ARM PASS: mutate-3-get-refusal.py: attribution cell TestSymlinkChangeAttributionCell stays GREEN
+ARM PASS: mutate-3-get-refusal.py: restored byte-identically (sha256 a7cd62e8475c22d295f9f6a4b4c408f2225d77ec08737b4f10e28437f19ad89a)
+ARM PASS: mutate-3-get-refusal.py: the cell is GREEN again after the restore
+
+=== mutation mutate-4-put-over-link.py on internal/server/webdav/handler.go (sha256 before a7cd62e8475c22d295f9f6a4b4c408f2225d77ec08737b4f10e28437f19ad89a) ===
+mutated: PUT with a body over a link is no longer refused (handler.go)
+ARM PASS: mutate-4-put-over-link.py: cell TestUndeclaredSymlinkReplaceIsRefusedAndNothingLands goes RED
+--- FAIL: TestUndeclaredSymlinkReplaceIsRefusedAndNothingLands (0.01s)
+    bfs018_symlink_test.go:305: PUT body over a link -> 204, want 409
+ARM PASS: mutate-4-put-over-link.py: attribution cell TestSymlinkChangeAttributionCell stays GREEN
+ARM PASS: mutate-4-put-over-link.py: restored byte-identically (sha256 a7cd62e8475c22d295f9f6a4b4c408f2225d77ec08737b4f10e28437f19ad89a)
+ARM PASS: mutate-4-put-over-link.py: the cell is GREEN again after the restore
+
+=== mutation mutate-5-client-kind-collapse.py on internal/fsclient/snapshot.go (sha256 before a75e9b50fd57416c98d6aae63fac704a02e63b1270d887c92a861b6eefe77b7f) ===
+mutated: the client resolves a declared symlink to a file (snapshot.go)
+ARM PASS: mutate-5-client-kind-collapse.py: cell TestSymlinkThroughTheMountIsALinkNotAFile goes RED
+--- FAIL: TestSymlinkThroughTheMountIsALinkNotAFile (0.01s)
+    bfs018_symlink_test.go:136: the mount reports the link as a REGULAR FILE (mode 0100644, size 5) — the defect as filed
+ARM PASS: mutate-5-client-kind-collapse.py: attribution cell TestSymlinkChangeMountAttributionCell stays GREEN
+ARM PASS: mutate-5-client-kind-collapse.py: restored byte-identically (sha256 a75e9b50fd57416c98d6aae63fac704a02e63b1270d887c92a861b6eefe77b7f)
+ARM PASS: mutate-5-client-kind-collapse.py: the cell is GREEN again after the restore
+
+=== mutation mutate-6-modeof-siflnk.py on internal/fsmount/fs_linux.go (sha256 before 0d9b2c1cc1700761cfb994fe6e0ebaf57c4f316a4a81bfa062201d90a800b279) ===
+mutated: modeOf renders a symlink as a regular file (fs_linux.go)
+ARM PASS: mutate-6-modeof-siflnk.py: cell TestSymlinkThroughTheMountIsALinkNotAFile goes RED
+--- FAIL: TestSymlinkThroughTheMountIsALinkNotAFile (0.01s)
+    bfs018_symlink_test.go:136: the mount reports the link as a REGULAR FILE (mode 0100644, size 5) — the defect as filed
+ARM PASS: mutate-6-modeof-siflnk.py: attribution cell TestSymlinkChangeMountAttributionCell stays GREEN
+ARM PASS: mutate-6-modeof-siflnk.py: restored byte-identically (sha256 0d9b2c1cc1700761cfb994fe6e0ebaf57c4f316a4a81bfa062201d90a800b279)
+ARM PASS: mutate-6-modeof-siflnk.py: the cell is GREEN again after the restore
+
+=== mutation mutate-7-link-target-as-body.py on internal/fsclient/client.go (sha256 before 11ea6973a09f1c8bc496fc5fc87eeb73ec4a3faf0679f0fb5c78a4240156abf7) ===
+mutated: the link target travels as the PUT body (client.go)
+ARM PASS: mutate-7-link-target-as-body.py: cell TestSymlinkCreatedThroughTheMountIsASymlinkOnTheServer goes RED
+--- FAIL: TestSymlinkCreatedThroughTheMountIsASymlinkOnTheServer (0.03s)
+    bfs018_symlink_test.go:225: the server holds file (target ""); want a symlink to "a.txt"
+ARM PASS: mutate-7-link-target-as-body.py: attribution cell TestSymlinkChangeMountAttributionCell stays GREEN
+ARM PASS: mutate-7-link-target-as-body.py: restored byte-identically (sha256 11ea6973a09f1c8bc496fc5fc87eeb73ec4a3faf0679f0fb5c78a4240156abf7)
+ARM PASS: mutate-7-link-target-as-body.py: the cell is GREEN again after the restore
+
+=== mutation mutate-8-refusal-not-counted.py on internal/fsmount/fs_linux.go (sha256 before 0d9b2c1cc1700761cfb994fe6e0ebaf57c4f316a4a81bfa062201d90a800b279) ===
+mutated: recordRefusal no longer counts (fs_linux.go)
+ARM PASS: mutate-8-refusal-not-counted.py: cell TestHardlinkIsRefusedByNameAndReported goes RED
+--- FAIL: TestHardlinkIsRefusedByNameAndReported (0.01s)
+    bfs018_symlink_test.go:247: refusals_total = 0, want 1: the refusal is not reported
+ARM PASS: mutate-8-refusal-not-counted.py: attribution cell TestSymlinkChangeMountAttributionCell stays GREEN
+ARM PASS: mutate-8-refusal-not-counted.py: restored byte-identically (sha256 0d9b2c1cc1700761cfb994fe6e0ebaf57c4f316a4a81bfa062201d90a800b279)
+ARM PASS: mutate-8-refusal-not-counted.py: the cell is GREEN again after the restore
+
+WORK kept at /tmp/bfs018-arms-BOyBuE
+ARMS: ALL PASS
+RC=0

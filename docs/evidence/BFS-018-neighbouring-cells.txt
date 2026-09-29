@@ -1,0 +1,10 @@
+ARM PASS: AppendThrough|BFS-021 append (whole-file publication): cells passed=2 failed=0
+ARM PASS: TestACreatedAndClosed|TestARenameOfAFile|TestAHandleFollows|TestAWriteAfterAPublication|BFS-020 created-name publication + rename/handle rules: cells passed=4 failed=0
+ARM PASS: TestFtruncateWith|TestDeliberateResize|TestResizeIsAllowedAgain|TestWriteIntentFollows|BFS-030/033 in-place rewrite + refusal hold: cells passed=1 failed=0
+ARM PASS: TestRmdirOfANonEmpty|BFS-020 recursive-delete refusals: cells passed=1 failed=0
+ARM PASS: TestReadBound|TestAReader|BFS-025 published-size bound: cells passed=1 failed=0
+ARM PASS: TestCreateOnlyRuleIsRevalidated|TestCommitSectionIsExclusive|TestConcurrentConditionalWrites|BFS-020/038 commit-time revalidation + exclusive commit: cells passed=1 failed=0
+ARM PASS: TestCreateOnlyPrecondition|TestIfMatchAbsent|TestPreconditionAppliesToDelete|TestWeakTagNeverSatisfies|BFS-004 §6 conditional PUT + refusals: cells passed=2 failed=0
+ARM PASS: TestMethodMatrixNoWritesOnRefusal|BFS-038 atomic publish + refused-write-does-not-land: cells passed=1 failed=0
+WORK kept at /tmp/bfs018-arms-OiEnOK
+ARMS: ALL PASS

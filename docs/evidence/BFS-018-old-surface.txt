@@ -1,0 +1,27 @@
+=== [old-surface] BASE davserve (pid 3957410) at http://127.0.0.1:34061/dav, NEW client ===
+--- ls -l through the mount ---
+ls: unknown io error: '/tmp/bfs018-arms-YeNn0x/oldsurface/mnt/link-to-a', 'Os { code: 95, kind: Unsupported, message: "Operation not supported" }'
+total 0
+-rw-rw-r-- 1 kara kara 26 Sep 28 19:23 a.txt
+lrwxrwxrwx 1 kara kara  0 Sep 28 19:23 link-to-a
+--- readlink (must be refused BY NAME, never an invented target) ---
+readlink rc=1 out=
+--- ln -s through the mount (must be refused: the surface declares no extension) ---
+ln -s rc=1 out=ln: Operation not supported
+--- the mount's own report (the status document the mount keeps) ---
+mountpoint   : /tmp/bfs018-arms-YeNn0x/oldsurface/mnt
+symlink      : declared=false type_property=- target_property=-
+             : readlinks_total=0 created_total=0 refusals_total=4
+  refusal    : READLINK link-to-a: this surface declares the entry a symlink but published no target for it (b:link-target / link_target absent): the link cannot be read without inventing a target, so the read is refused
+  refusal    : READLINK link-to-a: this surface declares the entry a symlink but published no target for it (b:link-target / link_target absent): the link cannot be read without inventing a target, so the read is refused
+  refusal    : READLINK link-to-a: this surface declares the entry a symlink but published no target for it (b:link-target / link_target absent): the link cannot be read without inventing a target, so the read is refused
+  refusal    : SYMLINK created: this surface did not declare the symlink extension (extensions.symlink), so it cannot be told to create a symlink; creating a file whose content is the target path is refused instead
+--- what the server holds (nothing new may be there) ---
+total 4
+-rw-rw-r-- 1 kara kara 26 Sep 28 19:23 a.txt
+lrwxrwxrwx 1 kara kara  5 Sep 28 19:23 link-to-a -> a.txt
+[old-surface] SUMMARY server_kind=symlink readlink_rc=1 ln_rc=1 materialised=0
+ARM PASS: old-surface: typed correctly, refusals by name, nothing materialised
+
+WORK kept at /tmp/bfs018-arms-YeNn0x
+ARMS: ALL PASS

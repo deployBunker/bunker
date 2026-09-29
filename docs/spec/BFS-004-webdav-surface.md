@@ -132,9 +132,11 @@ success-shaped no-op.
 | `bunkerd:hash` (E-1) | live, computed, **expensive** | **no** | Content hash of the resource. Returned when named in `<prop>`, or via `<include>`. Never in `allprop`: see the reason and the measurement in §7.3. |
 | `bunkerd:rev` (E-3) | live, computed, cheap | **yes** | Tree-level revision (opaque string). One read of `HEAD` for a git tree, so it is cheap enough for `allprop`. |
 | `bunkerd:tree` (E-3) | live, computed, cheap | **yes** | Tree identity (opaque string). The value a mount binds to (AC-7). |
+| `bunkerd:type` (E-7) | live, computed, cheap | **no** | The directory entry's declared kind: `file`, `dir` or `symlink` — the same vocabulary the E-4 snapshot op's `type` field carries. Never in `allprop`: an old client's `allprop` response stays byte-identical (§8). |
+| `bunkerd:link-target` (E-7) | live, computed, cheap | **no** | The target path of a `symlink` entry, and present for **exactly** those entries. It is the link's entity: a link has no content bytes, so a link carries **no** `DAV:getetag` and **no** `bunkerd:hash` (the only hash available for a link is its target's, which is a dereference committed in metadata). |
 | dead properties (client-chosen names) | — | no | **Refused on write** (deviation 2, §2.3) and reported in `propstat` as `403`. There is no dead-property store in v1. |
 
-### 2.3 The declared deviations — four, all loud
+### 2.3 The declared deviations — six, all loud
 
 Every line below is a place a stock client can observe behaviour that differs from a plain reading of RFC 4918. They
 are enumerated here (and mirrored into the old-client section, §8.3) so the compatibility battery in BFS-012 tests them
@@ -146,10 +148,12 @@ deliberately rather than discovering them.
 | **2** | `PROPPATCH` of a dead property ⇒ `403` per property in a `207` | §9.2 "SHOULD support the setting of arbitrary dead properties" | A `SHOULD`, not a `MUST`; the method itself is fully implemented (`MUST`), so class 1 holds; the per-property `403` is the RFC's own shape for a refused property; and the client is told the property was not stored rather than discovering it on a later read. The reason v1 has no store: the only place a side store could live is inside the served tree, and an in-tree metadata file would appear in the tree's own `git status` — the exact fidelity this product exists to protect. See Open decision O-1. |
 | **3** | `PROPFIND Depth: infinity` ⇒ `403` + `propfind-finite-depth` | §9.1: "in practice, support for infinite-depth requests MAY be disabled, due to the performance and security concerns"; §9.1.1 names this code | The RFC prescribes both the refusal and its code; `PROPFIND` is safe and idempotent so no state can be half-read; the caller recurses with `Depth: 1` (the standard client behaviour) or uses E-4's `snapshot` for one call. Measurement is the reason it is worth doing at all (§0, D2). |
 | **4** | Wrong `Depth` on a collection `DELETE` ⇒ `400` + `invalid_depth` | §9.6.1: a client "MUST NOT" send a Depth other than `infinity` | The client's request is non-conformant; treating it as `infinity` would delete a tree the client asked to delete *shallowly* — the one thing a DELETE must not get wrong. `400` is atomic and unambiguous. |
+| **5** | `GET`/`HEAD` on a **symlink** ⇒ `405` + `symlink_not_a_file` (E-7) | §9.4: `GET` "means retrieve whatever information (in the form of an entity) is identified by the Request-URI". RFC 4918 has no link entity, so a server may serve the target's representation instead | Serving the target's bytes under the link's name is **a copy, not a link**: a caller that asked for the link receives its target's content with no way to tell, and a client that then writes it back replaces the link with a file. `PROPFIND` is unaffected and carries the target (`bunkerd:link-target`), so the information a caller actually asked for is available — loud, complete, and in the standard place. |
+| **6** | A body-bearing `PUT` onto a **symlink** ⇒ `409` + `symlink_undeclared_replace` (E-7) | §9.7: `PUT` replaces the entity at the URI | A link's entity is its target path, so a body here is a **type change**, not a write: it is the exact request a client makes when it materialised a link as a small file and writes it back — the corruption this surface must not accept. The refusal names the link's current target and both remedies (declare a link with `X-Bunker-Link-Target`, or `DELETE` the link first, or `MOVE` a file over it). |
 
 ---
 
-## 3. The extension layer — six extensions, numbered (acceptance criterion 2)
+## 3. The extension layer — seven extensions, numbered (acceptance criterion 2)
 
 Every extension below is additive: none of them is required for a standard operation, and none of them changes the
 meaning of a standard request. Header names use the registered `X-` form the PRD already fixes
@@ -296,7 +300,7 @@ extension *every other extension is discovered through*, and it is deliberately 
 - **Request shape.** `OPTIONS /dav/<path>` (standard, no extension header required) for the cheap summary; and
   `POST` + `X-Bunker-Op: capabilities` (E-4) with an empty body for the full document.
 - **Response shape.** On `OPTIONS`: `200` with `DAV: 1` (`1, 2` when `LOCK` is live), `Allow`,
-  `X-Bunker-Capabilities: <integer document version>`, `X-Bunker-Extensions: identity,if_match_refuse,rev,tree,op,watch`,
+  `X-Bunker-Capabilities: <integer document version>`, `X-Bunker-Extensions: identity,if_match_refuse,rev,tree,op,watch,symlink`,
   `X-Bunker-Verdict: ok`, and the standard `Alt-Svc` while an h3 listener is up (exact bytes in
   §10.1). On the `POST`: the JSON document of §4.2 in the E-4 envelope. `OPTIONS *` answers without `DAV`
   (RFC 4918 §10.1), so per-URI discovery stays honest.
@@ -359,6 +363,54 @@ extension *every other extension is discovered through*, and it is deliberately 
   silently served a heartbeat-only stream would be indistinguishable from a quiet tree; that is exactly the "silently
   different behaviour" this spec forbids.
 
+### E-7 — Directory-entry TYPE, and the symlink (BFS-018)
+
+**What it is.** One declared vocabulary for the kind of a directory entry — `file`, `dir`, `symlink` — carried by
+**both** metadata carriers, plus the one write shape a symlink needs. Without it a symlink is expressible only as the
+target path it happens to contain, which is not a link at all: that is the defect this extension exists to remove.
+
+Why an extension and not a mutation of the standard surface: RFC 4918 has no link entity and no type property
+(`DAV:resourcetype` distinguishes one collection from everything else), so a surface that carries links must declare
+how. The vocabulary is **not new** — the E-4 `snapshot` op has always carried `type` per entry — and this section is
+what makes it a contract rather than a convention one client understands.
+
+- **Read shapes.**
+  - `PROPFIND`: the live property `bunkerd:type` on **every** entry (`file`|`dir`|`symlink`), and
+    `bunkerd:link-target` on exactly the `symlink` entries. Neither is in `allprop`.
+  - E-4 `snapshot`: each entry's existing `type` field, plus the additive `link_target` on exactly the `symlink`
+    entries. A client that does not know the new field still reads `type`/`size`/`mode` unchanged.
+  - A `symlink` entry carries **no** `DAV:getetag` and **no** `bunkerd:hash`: the only hash available for a link is its
+    target's, and publishing it would hand a client the target's identity as the link's.
+  - A `symlink` entry's `DAV:getcontentlength` is the link's own size — the length of its target path (the `lstat`
+    fact) — never the target's content length.
+- **The type agrees with the standard property.** `bunkerd:type=dir` and
+  `<D:resourcetype><D:collection/></D:resourcetype>` are two spellings of one fact, and a `symlink` reports an empty
+  `resourcetype`: `DAV:resourcetype` has no link member, and inventing one would be a private convention in a standard
+  property.
+- **Write shape.** `PUT` with the request header `X-Bunker-Link-Target: <target path>` creates (or replaces) a
+  **symlink** at the request URI. The body **MUST** be empty (a link's entity is its target path, and a surface that
+  accepted a body here would have two competing answers to "what is this entry's content"); a non-empty body is
+  `400` + `bad_arguments`. The target must be non-empty, at most `target_max_bytes` (4096) bytes and free of NUL
+  (`400` + `symlink_target_invalid`). The publication is one atomic rename of a staged sibling — the same publication
+  point a staged body uses (§6.1 step 5, E-1) — so a failed or killed request never leaves a half-created entry.
+- **Preconditions still apply**, with one honest limit: a link has no content hash, so `If-Match: *` works
+  (existence) but no tag can name a link's entity. An `If-Match: <tag>` against a target URI that is a symlink is
+  `412` + `precondition_failed` with a detail saying why (the caller's remedy is `If-Match: *`, or `DELETE` first).
+  Re-declaring an existing link's **same** target is D3's reported no-op (`204` + `identical_content` +
+  `X-Bunker-Noop: 1`) and writes nothing.
+- **Error shape.** `GET`/`HEAD` on a link: `405` + `symlink_not_a_file` (§2.3 deviation 5). A body-bearing `PUT` onto
+  a link: `409` + `symlink_undeclared_replace`, naming the current target (§2.3 deviation 6). A bad declared target:
+  `400` + `symlink_target_invalid`.
+- **What a client must do when this extension is not declared.** Fail **closed** on link operations and never
+  substitute a file: a client that writes the target path as content corrupts a tree in a way that survives a
+  checkout, which is strictly worse than refusing. §4.2's `extensions.symlink` block is the declaration to read.
+- **The residual, stated plainly.** On a surface that serves no `bunkerd:type` (a build predating this extension) a
+  client cannot distinguish a link from a file, and none may be inferred: no standard property expresses a link, and
+  the two wrong guesses — the target path as content, or the target's bytes — are both corruptions. The client must
+  report that gap (its own mount record does: the `symlink` block, `declared=false`) rather than paper over it. What
+  *is* covered against such a surface: the E-4 `type` field has always been carried, so the one-call snapshot path
+  still types a link correctly, and the link's target is refused by name because no carrier published one.
+
 ---
 
 ## 4. Capability discovery, and what changes per HTTP version (acceptance criterion 3)
@@ -392,7 +444,10 @@ old clients keep working unchanged.
              "ops":["capabilities","status","diff","rev-parse","ls-files","log","snapshot","events","watch"],
              "default_max_bytes":1048576,"abs_max_bytes":16777216},
     "watch":{"name":"X-Bunker-Op: watch","v":1,"mode":"push","heartbeat_ms":30000,"max_paths_per_event":4096,
-             "modes":{"push":"inotify→stream","poll":"X-Bunker-Op: events"}}
+             "modes":{"push":"inotify→stream","poll":"X-Bunker-Op: events"}},
+    "symlink":{"name":"X-Bunker-Link-Target","v":1,"type_property":"b:type","target_property":"b:link-target",
+               "types":["file","dir","symlink"],"creates_with":"PUT + X-Bunker-Link-Target (empty body)",
+               "get_on_link":"405 symlink_not_a_file","target_max_bytes":4096}
   },
   "transports": {
     "http/1.1": {"alpn":null,"multiplexed":false,"server_push":false,"available":true},
@@ -516,6 +571,9 @@ Every refusal this surface can produce, with the status, the machine code, and w
 | `insufficient_storage` | `507` | the agent cannot store the representation (RFC's own code) | — |
 | `propfind_finite_depth` | `403` | `PROPFIND Depth: infinity` (§2.1, deviation 3) — the body carries the RFC's own `propfind-finite-depth` element (§9.1.1) | — |
 | `workspace_invalid` | `403` | the resolved path escapes the workspace root (§6.1 step 1) — the confinement rule, checked before anything else executes | — |
+| `symlink_not_a_file` | `405` + `Allow` | `GET`/`HEAD` on a **symlink** (E-7, deviation 5): a link has no entity bytes of its own, and serving its target's bytes under the link's name would turn a link into a copy | — |
+| `symlink_undeclared_replace` | `409` | a body-bearing `PUT` onto a URL that is a **symlink** (E-7, deviation 6): it would replace the link with a regular file, which is the type change an undeclared client makes | `b:link-target` (the link's current target) |
+| `symlink_target_invalid` | `400` | `PUT` with `X-Bunker-Link-Target` whose value is empty, longer than `target_max_bytes` (4096), or carries a NUL | `limit`, `got` (on the length refusal) |
 | `op_unknown` | `400` | a `POST` whose `X-Bunker-Op` is not in §3 E-4's catalogue | the op value |
 | `extension_op_missing` | `400` | a `POST` with no `X-Bunker-Op` header at all | — |
 | `bad_arguments` | `400` | an op body that does not match its argument schema (including a `ref` outside the allow-list, §6.2) | the offending field |
@@ -785,7 +843,7 @@ Hashing is O(bytes), which is why it appears exactly where bytes are already mov
 | Extension headers are ignorable | Every `X-Bunker-*` **request** header is optional; the only ones validated are the enumerated ones (`X-Bunker-Op`, `X-Bunker-Tree`, `X-Bunker-Hash`, `X-Bunker-Max-Bytes`). An unrecognised `X-Bunker-*` header not in this vocabulary is **ignored**, per HTTP's field-name rule, so another client's or a future client's header cannot break an old one. Conversely, an unrecognised **value** of an enumerated header is refused loudly (`400 op_unknown`) — asking for a specific thing and getting a different thing is the silent-difference failure this spec forbids. |
 | Failure bodies do not require extension knowledge | Standard-method failures use `DAV:error` (RFC 4918 §14.5); a client that ignores bodies still sees the correct status code. `X-Bunker-Verdict` is an ignorable header. |
 
-### 8.3 The four declared deviations an old client can observe
+### 8.3 The six declared deviations an old client can observe
 
 Listed once in §2.3 and again here because a compatibility battery must test them deliberately, and because they are
 the complete list:
@@ -794,8 +852,13 @@ the complete list:
 2. `PROPPATCH` of a dead property ⇒ `403` inside a `207` (`dead_properties_unsupported`).
 3. `PROPFIND Depth: infinity` ⇒ `403` + `propfind-finite-depth`.
 4. Wrong `Depth` on a collection `DELETE` ⇒ `400` + `invalid_depth`.
+5. `GET`/`HEAD` on a symlink ⇒ `405` + `symlink_not_a_file` (a link has no entity bytes: serving the target's would
+   be a copy).
+6. A body-bearing `PUT` onto a symlink ⇒ `409` + `symlink_undeclared_replace` (a type change is not a write).
 
-Each is loud, atomic and standard-shaped; none can silently change a result.
+Each is loud, atomic and standard-shaped; none can silently change a result. Deviations 5 and 6 are the only two
+whose subject is a **directory-entry type**, and both fire only for a URL that is a symlink: every other request shape
+an old client can send is answered exactly as before.
 
 ### 8.4 The interop ceiling that must be named (not a defect, a limit)
 
@@ -943,10 +1006,28 @@ X-Bunker-Verdict: ok
         <D:getetag>"sha256:1b2c…a7f0"</D:getetag>
         <D:getcontentlength>4096</D:getcontentlength>
         <D:resourcetype/>
+        <b:type>file</b:type>
         <b:hash>sha256:1b2c…a7f0</b:hash>
         <b:rev>git:9f2c1a…</b:rev>
       </D:prop>
       <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/dav/link-to-main</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:getcontentlength>12</D:getcontentlength>                <!-- the LINK's own size: sizeof("src/main.go") -->
+        <D:resourcetype/>                                          <!-- no link member exists in DAV:resourcetype -->
+        <b:type>symlink</b:type>
+        <b:link-target>src/main.go</b:link-target>
+        <b:rev>git:9f2c1a…</b:rev>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+    <D:propstat>
+      <D:prop><D:getetag/><b:hash/></D:prop>
+      <D:status>HTTP/1.1 404 Not Found</D:status>   ← a link has no content hash; the only one available is its TARGET's
     </D:propstat>
   </D:response>
 </D:multistatus>
@@ -954,7 +1035,8 @@ X-Bunker-Verdict: ok
 Notes an implementer must honour: per-property `404` is not an error for the request (RFC 4918 §9.1.2); a member's
 failure gets its own `propstat`; the response never carries a truncated member list (a lie by omission). An
 **empty-bodied** `PROPFIND` is the `allprop` request and must be accepted (`bunkerd:rev` and `bunkerd:tree` appear;
-`bunkerd:hash` does not — §7.4); a `PROPFIND` with **no `Depth` header** is `400 depth_required` (§2.1).
+`bunkerd:hash` does not — §7.4); a `PROPFIND` with **no `Depth` header** is `400 depth_required` (§2.1). A `GET` of
+`/dav/link-to-main` is `405` + `symlink_not_a_file` (§2.3 deviation 5) rather than the target's bytes.
 
 ### 10.3 `PROPPATCH` — atomic, per-property refusal
 
