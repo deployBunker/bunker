@@ -3586,3 +3586,12 @@ tasks:
   status: pending
   created_at: '2026-09-29T02:50:14.698194+00:00'
   completed_at: '2026-09-29T00:47:43.464461+00:00'
+- id: QA-BUNKER-34
+  title: "bunker-las-03 down ~1d \u2014 battery server unreachable"
+  criteria:
+  - Re-probe from control host shows SSH/ICMP/REST all answering; evidence committed
+    to docs/dogfood/2026-09-29-las03-recovery.md (commit aa311d3); uptime places recovery
+    at host reboot ~1d10h ago; zero-code verified-and-closed
+  status: complete
+  created_at: '2026-09-29T07:34:58.976339+00:00'
+  completed_at: '2026-09-29T07:37:19.569354+00:00'
