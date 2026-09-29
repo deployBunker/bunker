@@ -2,7 +2,9 @@
 
 **Status:** v1 (2026-09-20). Covers the top operational security scenarios. Every command
 below exists in the shipped CLI (`bunker audit status|verify|list|export`, `bunker list`,
-`bunker destroy`, `bunker registry`, `bunker config`); paths are the documented defaults
+`bunker status`, `bunker destroy`, `bunker registry`); there is no configuration subcommand —
+capture the effective configuration with `bunker status`, `bunker audit status --path` and
+the `--daemon-config` root flag; paths are the documented defaults
 (`/etc/bunkerd/config.yaml`, `/var/lib/bunkerd`, `/etc/systemd/system/bunkerd.service`).
 
 > **Read this first.** Until the P1/P2 controls land (`docs/prd/security-readiness.md` §6),
