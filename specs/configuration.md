@@ -16,6 +16,8 @@ Related: [architecture.md](architecture.md) (where each setting lands on the hos
 
 ---
 
+> Note: internal/config/config.go also defines an `APIKey` struct (mapstructure keys `key_id`, `token_hash`, `agent_id`, `created_at`, `expires_at`). These are fields of the generated API-key record persisted at runtime, NOT operator-settable config knobs — they cannot appear in config.yaml or as BUNKERD_* env vars and are therefore omitted from the tables above.
+
 ## 1. The file, the defaults and the env overrides
 
 `bunkerd` reads a single YAML file, `/etc/bunkerd/config.yaml` by default
