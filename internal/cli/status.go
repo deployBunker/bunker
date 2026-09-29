@@ -3,6 +3,8 @@ package cli
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/http"
 	"sort"
 	"strings"
 	"sync"
@@ -12,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
+	bunkerv1connect "github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect"
 )
 
 // NewStatusCommand returns the `bunker status` cobra command.
@@ -99,6 +102,52 @@ type serverStatus struct {
 	err     error
 }
 
+// statusDialTimeout bounds the TCP CONNECT phase on the status path only.
+// Offline hosts do not all refuse connections: the perf-lane measurement
+// (PERF-011, 2026-09-29) showed both offline hosts SILENTLY DROP the TCP
+// handshake, so connect hangs exactly until whatever deadline applies — with
+// only queryServer's 30s per-server context, one silent-drop server pinned the
+// `bunker status --all` wall at 30s even though connect would have taken any
+// timeout offered (curl --connect-timeout T errors at exactly T for T=2,5,8,
+// while the online control connects in 0.35s). A 5s dial bound is ~6x the
+// observed online connect latency and cuts the offline path to ~5s.
+//
+// The overall 30s context.WithTimeout in queryServer is UNCHANGED: once a
+// connection is established, a slow-but-alive server still gets its full 30s
+// of request time. The documented trade-off: a server that takes >5s to ACCEPT
+// (but is alive) now flips OFFLINE at the dial bound where it previously
+// waited 30s — accepted because real daemons answer connect in well under 1s
+// and the status path is a read-only health overview.
+const statusDialTimeout = 5 * time.Second
+
+// newStatusBunkerdClient is newBunkerdClient for the status path only. It
+// applies the same trust decision (resolveClientTLS) but swaps in a transport
+// whose DialContext bounds the TCP connect phase at statusDialTimeout, so a
+// silent-drop offline host fails fast instead of burning the full 30s
+// per-server context on the handshake. Other newBunkerdClient callers
+// (agenttools, audit, ...) are untouched and keep the default dial behaviour.
+func newStatusBunkerdClient(entry ServerEntry) bunkerv1connect.BunkerdClient {
+	httpClient := &http.Client{Timeout: 300 * time.Second}
+
+	tlsCfg, err := resolveClientTLS(entry)
+	if err != nil {
+		httpClient.Transport = refusingTransport{err: fmt.Errorf("refusing to dial %s: %w", entry.URL, err)}
+		return bunkerv1connect.NewBunkerdClient(httpClient, entry.URL)
+	}
+	dialer := statusDialer
+	transport := &http.Transport{DialContext: dialer.DialContext}
+	if tlsCfg != nil {
+		transport.TLSClientConfig = tlsCfg
+	}
+	httpClient.Transport = transport
+	return bunkerv1connect.NewBunkerdClient(httpClient, entry.URL, clientOptions(entry)...)
+}
+
+// statusDialer is the dialer newStatusBunkerdClient builds its transport from,
+// kept as a package-level var so tests can assert the bound is actually wired
+// (the DialContext closure hides the dialer value at runtime).
+var statusDialer = &net.Dialer{Timeout: statusDialTimeout}
+
 // queryServer contacts a single bunkerd server and collects its info and
 // metrics. If ServerInfo fails the server is considered offline. If
 // ServerMetrics fails (e.g. not implemented on older servers) the metrics
@@ -106,7 +155,7 @@ type serverStatus struct {
 func queryServer(entry ServerEntry) serverStatus {
 	st := serverStatus{entry: entry}
 
-	client := newBunkerdClient(entry)
+	client := newStatusBunkerdClient(entry)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

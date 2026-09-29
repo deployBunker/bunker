@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http/httptest"
 	"strings"
 	"sync"
@@ -834,6 +835,106 @@ func TestFormatUptime(t *testing.T) {
 				t.Errorf("formatUptime(%d) = %q, want %q", tt.seconds, got, tt.want)
 			}
 		})
+	}
+}
+
+// ── PERF-011: bounded TCP connect on the status path ─────────────────────────
+
+// TestQueryServer_ConnectionRefused_FastFail (PERF-011 AC1): a
+// connection-REFUSED endpoint is reported offline by queryServer in well under
+// 2s. This is the fast-fail path; the silent-drop shape is bounded by the
+// dialer asserted in TestStatusDialerIdentity /
+// TestStatusDialTimeoutBlackholedDial.
+func TestQueryServer_ConnectionRefused_FastFail(t *testing.T) {
+	closed := acquireClosedPort(t)
+
+	start := time.Now()
+	st := queryServer(ServerEntry{Name: "dead", URL: "http://127.0.0.1:" + closed})
+	elapsed := time.Since(start)
+
+	if st.err == nil {
+		t.Fatal("expected an error (offline) for a connection-refused endpoint")
+	}
+	if st.info != nil {
+		t.Errorf("offline server must have no ServerInfo, got %+v", st.info)
+	}
+	if elapsed >= 2*time.Second {
+		t.Errorf("connection-refused endpoint took %s to report offline; want well under 2s", elapsed)
+	}
+}
+
+// acquireClosedPort returns a loopback port with nothing listening on it, so a
+// dial to it gets an immediate ECONNREFUSED: bind, learn the port, close.
+func acquireClosedPort(t *testing.T) string {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("acquireClosedPort: %v", err)
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	if err := l.Close(); err != nil {
+		t.Fatalf("acquireClosedPort close: %v", err)
+	}
+	return fmt.Sprintf("%d", port)
+}
+
+// TestStatusDialTimeoutPinned (PERF-011 AC2): the named constant carries the
+// 5s bound and statusDialer is built from it.
+func TestStatusDialTimeoutPinned(t *testing.T) {
+	if statusDialTimeout != 5*time.Second {
+		t.Errorf("statusDialTimeout = %s, want 5s", statusDialTimeout)
+	}
+	if statusDialer.Timeout != statusDialTimeout {
+		t.Errorf("statusDialer.Timeout = %s, want statusDialTimeout %s", statusDialer.Timeout, statusDialTimeout)
+	}
+}
+
+// TestStatusDialerIdentity proves newStatusBunkerdClient's transport is wired
+// to the package-level statusDialer rather than a fresh dialer: swapping the
+// var out for a sentinel dialer must make a request through the status client
+// fail with the sentinel's bound, not the production one. The sentinel target
+// is a blackholed address (SYN dropped), so the only thing that can return the
+// call is the dialer's own Timeout — the sentinel's 100ms vs production 5s is
+// an unambiguous 50x window.
+func TestStatusDialerIdentity(t *testing.T) {
+	sentinel := &net.Dialer{Timeout: 100 * time.Millisecond}
+	orig := statusDialer
+	statusDialer = sentinel
+	defer func() { statusDialer = orig }()
+
+	// queryServer through the status client against a silent-drop address:
+	// with the sentinel wired in, ServerInfo fails in ~100ms; if the
+	// constructor built its own 5s dialer (identity broken), the query burns
+	// the full production bound and fails the elapsed assertion below.
+	start := time.Now()
+	st := queryServer(ServerEntry{Name: "x", URL: "http://10.255.255.1:1"})
+	elapsed := time.Since(start)
+	if st.err == nil {
+		t.Skip("blackhole address unexpectedly reachable in this environment")
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("status query with sentinel dialer took %s; the transport is not wired to statusDialer", elapsed)
+	}
+}
+
+// TestStatusDialTimeoutBlackholedDial proves the production bound is enforced
+// in real time: 10.255.255.1:1 is an RFC1918 address this network blackholes,
+// so the TCP SYN is silently dropped — exactly the offline shape the constant
+// exists for. The dial must return within statusDialTimeout plus generous
+// scheduling slack, far below the old 30s context floor. Skipped when the
+// environment responds to the address instead of dropping it.
+func TestStatusDialTimeoutBlackholedDial(t *testing.T) {
+	start := time.Now()
+	conn, err := statusDialer.DialContext(context.Background(), "tcp", "10.255.255.1:1")
+	elapsed := time.Since(start)
+	if conn != nil {
+		conn.Close()
+	}
+	if err == nil {
+		t.Skip("blackhole address unexpectedly reachable in this environment")
+	}
+	if elapsed > statusDialTimeout+2500*time.Millisecond {
+		t.Errorf("silent-drop dial took %s; want ≤ %s + slack (bound not enforced)", elapsed, statusDialTimeout)
 	}
 }
 
