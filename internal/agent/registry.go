@@ -137,28 +137,54 @@ func registryPropertiesToProto(props []registry.SystemdProperty) []*v1.SystemdPr
 	return out
 }
 
-// readPersistedPortRange reads an agent's persisted port sub-range from its
-// home directory. Returns ok=false when the file is missing or malformed —
-// the caller then adopts the agent without a pinned reservation.
-func readPersistedPortRange(home string) (start, end uint32, ok bool) {
+// metadataReadState classifies the outcome of reading one persisted metadata
+// file (REV-BUNKER-002). Reconciliation must tell a MISSING file and an
+// UNREADABLE file apart from a file that read fine but did not parse: missing
+// or unreadable metadata means the daemon cannot prove an orphan is its own,
+// so destroying it is fail-open data loss, while a readable-but-malformed file
+// is this daemon's own corrupted write and keeps its fail-closed treatment.
+type metadataReadState int
+
+const (
+	metadataValid      metadataReadState = iota // read OK, content parsed
+	metadataMalformed                           // read OK, content did not parse
+	metadataMissing                             // os.IsNotExist
+	metadataUnreadable                          // any other read error
+)
+
+// readPersistedPortRangeState reads an agent's persisted port sub-range and
+// reports WHICH outcome happened (REV-BUNKER-002). readPersistedPortRange is
+// the legacy two-state wrapper over it.
+func readPersistedPortRangeState(home string) (start, end uint32, state metadataReadState) {
 	if home == "" {
-		return 0, 0, false
+		return 0, 0, metadataMissing
 	}
 	data, err := os.ReadFile(persistedPortsPath(home))
 	if err != nil {
-		return 0, 0, false
+		if os.IsNotExist(err) {
+			return 0, 0, metadataMissing
+		}
+		return 0, 0, metadataUnreadable
 	}
 	line := strings.TrimSpace(string(data))
 	parts := strings.SplitN(line, "-", 2)
 	if len(parts) != 2 {
-		return 0, 0, false
+		return 0, 0, metadataMalformed
 	}
 	s, err1 := strconv.ParseUint(strings.TrimSpace(parts[0]), 10, 32)
 	e, err2 := strconv.ParseUint(strings.TrimSpace(parts[1]), 10, 32)
 	if err1 != nil || err2 != nil {
-		return 0, 0, false
+		return 0, 0, metadataMalformed
 	}
-	return uint32(s), uint32(e), true
+	return uint32(s), uint32(e), metadataValid
+}
+
+// readPersistedPortRange reads an agent's persisted port sub-range from its
+// home directory. Returns ok=false when the file is missing, unreadable or
+// malformed — the caller then adopts the agent without a pinned reservation.
+func readPersistedPortRange(home string) (start, end uint32, ok bool) {
+	start, end, state := readPersistedPortRangeState(home)
+	return start, end, state == metadataValid
 }
 
 // readPersistedAgentRecord reads an agent's durable lifecycle record for the
@@ -320,31 +346,37 @@ func persistedOwnerPath(home string) string {
 	return filepath.Join(home, ".bunker", ownerMarkerFilename)
 }
 
-// readPersistedOwner reads an agent's daemon-ownership marker.
+// readPersistedOwnerState reads an agent's daemon-ownership marker and reports
+// WHICH outcome happened (REV-BUNKER-002): a usable marker (non-empty instance
+// id), an empty/malformed marker (readable but no id), a missing file, or an
+// unreadable file. readPersistedOwner is the legacy two-state wrapper over it.
 //
 // The file has two lines, newline-terminated:
 //
 //	<daemon-instance-id>
 //	<pool-start>-<pool-end>
 //
-// ok is true only when line 1 carries a non-empty instance id; an unreadable
-// file, an empty file, or an empty line 1 all mean "no marker", and the
-// caller then falls back to its legacy (marker-absent) handling. Line 2 is
+// A missing file, an unreadable file, an empty file, or an empty line 1 all
+// mean "no usable marker" (missing / unreadable / malformed respectively), and
+// the caller then falls back to its legacy (marker-absent) handling. Line 2 is
 // parsed leniently and is INFORMATIONAL ONLY — a missing or unparseable pool
-// line still yields ok=true with the instance id, because the pool geometry
+// line still yields a usable instance id, because the pool geometry
 // deliberately plays no part in the ownership decision.
-func readPersistedOwner(home string) (instanceID string, poolStart, poolEnd uint32, ok bool) {
+func readPersistedOwnerState(home string) (instanceID string, poolStart, poolEnd uint32, state metadataReadState) {
 	if home == "" {
-		return "", 0, 0, false
+		return "", 0, 0, metadataMissing
 	}
 	data, err := os.ReadFile(persistedOwnerPath(home))
 	if err != nil {
-		return "", 0, 0, false
+		if os.IsNotExist(err) {
+			return "", 0, 0, metadataMissing
+		}
+		return "", 0, 0, metadataUnreadable
 	}
 	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
 	id := strings.TrimSpace(lines[0])
 	if id == "" {
-		return "", 0, 0, false
+		return "", 0, 0, metadataMalformed
 	}
 	if len(lines) > 1 {
 		line := strings.TrimSpace(lines[1])
@@ -357,7 +389,14 @@ func readPersistedOwner(home string) (instanceID string, poolStart, poolEnd uint
 			}
 		}
 	}
-	return id, poolStart, poolEnd, true
+	return id, poolStart, poolEnd, metadataValid
+}
+
+// readPersistedOwner reads an agent's daemon-ownership marker. ok is true only
+// when line 1 carries a non-empty instance id (see readPersistedOwnerState).
+func readPersistedOwner(home string) (instanceID string, poolStart, poolEnd uint32, ok bool) {
+	instanceID, poolStart, poolEnd, state := readPersistedOwnerState(home)
+	return instanceID, poolStart, poolEnd, state == metadataValid
 }
 
 // poolFingerprint renders this daemon's pool geometry ("<start>-<end>") for

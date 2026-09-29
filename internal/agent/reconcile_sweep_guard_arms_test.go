@@ -40,7 +40,11 @@ import (
 
 // sweepOrphanHost fabricates n unknown bunker-* users with real home
 // directories under one temp root. Real homes (not bare structs) matter: the
-// adopt/adopt-failure paths read `<home>/.bunker/ports` off them.
+// adopt/adopt-failure paths read `<home>/.bunker/ports` off them. Each user is
+// given readable in-pool port metadata (REV-BUNKER-002): a bare home with no
+// metadata is now UNPROVEN and skipped, so these sweep cells — which exercise
+// the sweep-level guard, not the per-orphan unproven skip — need destroyable
+// orphans.
 func sweepOrphanHost(t *testing.T, n int) []SystemAgent {
 	t.Helper()
 	root := t.TempDir()
@@ -51,6 +55,7 @@ func sweepOrphanHost(t *testing.T, n int) []SystemAgent {
 		if err := os.MkdirAll(home, 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", home, err)
 		}
+		writePortMetadata(t, home, fmt.Sprintf("%d-%d\n", 10000+i*100, 10099+i*100))
 		out = append(out, SystemAgent{AgentID: id, Username: "bunker-" + id, Home: home})
 	}
 	return out

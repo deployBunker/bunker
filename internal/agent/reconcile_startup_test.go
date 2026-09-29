@@ -78,8 +78,13 @@ func TestReconcileStartup_ReturnsBeforeOrphanWalk(t *testing.T) {
 		destroyFinished <- agentID
 		return &v1.DestroyAgentResponse{AgentId: agentID, Status: "destroyed"}, nil
 	}
+	// REV-BUNKER-002: the orphan must be destroyable (readable in-pool
+	// metadata), not UNPROVEN, or the walk skips it and the async-destroy
+	// property this test pins never runs.
+	home := t.TempDir()
+	writePortMetadata(t, home, "12300-12399\n")
 	m.listSystemAgents = func() ([]SystemAgent, error) {
-		return []SystemAgent{{AgentID: "orphan", Username: "bunker-orphan", Home: "/home/bunker-orphan"}}, nil
+		return []SystemAgent{{AgentID: "orphan", Username: "bunker-orphan", Home: home}}, nil
 	}
 
 	rep, finalCh := m.ReconcileStartup(context.Background())
@@ -141,8 +146,12 @@ func TestReconcileStartup_StaleRegistryReadyWithinWindow(t *testing.T) {
 		destroyFinished <- agentID
 		return &v1.DestroyAgentResponse{AgentId: agentID, Status: "destroyed"}, nil
 	}
+	// REV-BUNKER-002: the orphan must be destroyable (readable in-pool
+	// metadata), not UNPROVEN, or the walk skips it post-ready.
+	home := t.TempDir()
+	writePortMetadata(t, home, "12300-12399\n")
 	m.listSystemAgents = func() ([]SystemAgent, error) {
-		return []SystemAgent{{AgentID: "orphan", Username: "bunker-orphan", Home: "/home/bunker-orphan"}}, nil
+		return []SystemAgent{{AgentID: "orphan", Username: "bunker-orphan", Home: home}}, nil
 	}
 
 	rep, finalCh := m.ReconcileStartup(context.Background())
