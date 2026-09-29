@@ -3558,19 +3558,14 @@ tasks:
   status: complete
   created_at: '2026-09-29T00:47:28.836967+00:00'
   completed_at: '2026-09-29T00:47:43.464461+00:00'
-- id: PERF-009
-  title: Parallelize bunker status --all server queries
+- id: DF-BUNKER-77-IMGEXEC
+  title: image-exec path passes live on a real image-spec agent (env set write + docker
+    namespace)
   criteria:
-  - bunker status --all queries servers in parallel instead of serially; wall time
-    for 14 servers (2 offline) drops from ~68s to ~max(per-server latency); output
-    ordering preserved
+  - 1) go build/vet/test green; 2) image-exec containers join the agent's user namespace
+    identity (no host-uid demotion) with DOCKER_HOST carried into the container and
+    the env file re-sourced in-container; 3) unit tests fail on the pre-fix host-uid
+    behavior and pass on HEAD
   status: complete
-  created_at: '2026-09-29T02:50:14.058733+00:00'
-  completed_at: '2026-09-29T02:52:47.069954+00:00'
-- id: GAP-089
-  title: Clean up lingering test-account bunker users
-  criteria:
-  - Throwaway bunker-<id> users created during tests/development are cleaned up; no
-    lingering systemd --user instances or home directories from test runs
-  status: pending
-  created_at: '2026-09-29T02:50:14.698194+00:00'
+  created_at: '2026-09-29T06:55:15.685146+00:00'
+  completed_at: '2026-09-29T06:55:21.011088+00:00'
