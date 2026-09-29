@@ -160,7 +160,7 @@ func TestExecBuilders_NonImagePathIsByteIdentical(t *testing.T) {
 func TestExecBuilders_ImageShellMode(t *testing.T) {
 	ctx := context.Background()
 
-	wrapPrefix := "docker run --rm -v " + imgTestHome + ":" + imgTestHome + " -w " + imgTestHome + " -v /run/bunker/" + imgTestAgentID + ":/run/bunker/" + imgTestAgentID + " --user 1001 " + imgTestRef + " sh -lc"
+	wrapPrefix := "docker run --rm -v " + imgTestHome + ":" + imgTestHome + " -w " + imgTestHome + " -v /run/bunker/" + imgTestAgentID + ":/run/bunker/" + imgTestAgentID + " --user 0 -e DOCKER_HOST=unix:///run/bunker/" + imgTestAgentID + "/docker.sock " + imgTestRef + " sh -lc"
 
 	off := buildExecSSHCommandImage(ctx, imgTestAgentID, imgTestKeyPath, imgTestHome, "which", []string{"jq"}, false, imgTestRef).Args
 	remote := off[len(off)-1]
@@ -199,12 +199,12 @@ func TestExecImageCommand_RunsInsideImageContainer(t *testing.T) {
 		{
 			name:      "disclosure-off",
 			disclosed: false,
-			wantArgs:  []string{"run", "--rm", "-v", "/AGENTHOME:/AGENTHOME", "-w", "/AGENTHOME", "-v", "/run/bunker/abc123:/run/bunker/abc123", "--user", "1001", imgTestRef, "sh", "-lc", "echo 'it'\\''s' 'a b'"},
+			wantArgs:  []string{"run", "--rm", "-v", "/AGENTHOME:/AGENTHOME", "-w", "/AGENTHOME", "-v", "/run/bunker/abc123:/run/bunker/abc123", "--user", "0", "-e", "DOCKER_HOST=unix:///run/bunker/abc123/docker.sock", imgTestRef, "sh", "-lc", "set -a; [ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env 2>/dev/null; set +a; echo 'it'\\''s' 'a b'"},
 		},
 		{
 			name:      "disclosure-on",
 			disclosed: true,
-			wantArgs:  []string{"run", "--rm", "-e", containmentSandboxEnv, "-v", "/AGENTHOME:/AGENTHOME", "-w", "/AGENTHOME", "-v", "/run/bunker/abc123:/run/bunker/abc123", "--user", "1001", imgTestRef, "sh", "-lc", "echo 'it'\\''s' 'a b'"},
+			wantArgs:  []string{"run", "--rm", "-e", containmentSandboxEnv, "-v", "/AGENTHOME:/AGENTHOME", "-w", "/AGENTHOME", "-v", "/run/bunker/abc123:/run/bunker/abc123", "--user", "0", "-e", "DOCKER_HOST=unix:///run/bunker/abc123/docker.sock", imgTestRef, "sh", "-lc", "set -a; [ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env 2>/dev/null; set +a; echo 'it'\\''s' 'a b'"},
 		},
 	}
 	for _, c := range cases {
@@ -277,7 +277,7 @@ func TestExecBuilders_ImageRawMode(t *testing.T) {
 	if !reflect.DeepEqual(got[:offPrefixLen], goldenRawOff[:offPrefixLen]) {
 		t.Errorf("raw mode env prefix changed:\n got: %q\nwant: %q", got[:offPrefixLen], goldenRawOff[:offPrefixLen])
 	}
-	wantTail := []string{"docker", "run", "--rm", "-v", "/run/bunker/abc123:/run/bunker/abc123", "--user", "1001", imgTestRef, "which"}
+	wantTail := []string{"docker", "run", "--rm", "-v", "/run/bunker/abc123:/run/bunker/abc123", "--user", "0", "-e", "DOCKER_HOST=unix:///run/bunker/abc123/docker.sock", imgTestRef, "which"}
 	if !reflect.DeepEqual(got[offPrefixLen:], wantTail) {
 		t.Errorf("raw mode container argv = %q, want %q", got[offPrefixLen:], wantTail)
 	}
@@ -290,7 +290,7 @@ func TestExecBuilders_ImageRawMode(t *testing.T) {
 	if !reflect.DeepEqual(gotOn[:onPrefixLen], goldenRawOn[:onPrefixLen]) {
 		t.Errorf("raw mode env prefix (disclosure) changed:\n got: %q\nwant: %q", gotOn[:onPrefixLen], goldenRawOn[:onPrefixLen])
 	}
-	wantOnTail := []string{"docker", "run", "--rm", "-e", containmentSandboxEnv, "-v", "/run/bunker/abc123:/run/bunker/abc123", "--user", "1001", imgTestRef, "which"}
+	wantOnTail := []string{"docker", "run", "--rm", "-e", containmentSandboxEnv, "-v", "/run/bunker/abc123:/run/bunker/abc123", "--user", "0", "-e", "DOCKER_HOST=unix:///run/bunker/abc123/docker.sock", imgTestRef, "which"}
 	if !reflect.DeepEqual(gotOn[onPrefixLen:], wantOnTail) {
 		t.Errorf("raw mode container argv (disclosure) = %q, want %q", gotOn[onPrefixLen:], wantOnTail)
 	}
@@ -316,7 +316,7 @@ func TestExecBuilders_ImageScriptMode(t *testing.T) {
 	}
 	rest := strings.TrimPrefix(remote, head)
 	scriptPath := imgTestHome + "/.bunker/exec-script.sh"
-	wantWrap := "docker run --rm -v " + imgTestHome + ":" + imgTestHome + " -v /run/bunker/" + imgTestAgentID + ":/run/bunker/" + imgTestAgentID + " --user 1001 " + imgTestRef + " sh "
+	wantWrap := "docker run --rm -v " + imgTestHome + ":" + imgTestHome + " -v /run/bunker/" + imgTestAgentID + ":/run/bunker/" + imgTestAgentID + " --user 0 -e DOCKER_HOST=unix:///run/bunker/" + imgTestAgentID + "/docker.sock " + imgTestRef + " sh "
 	if !strings.HasPrefix(rest, wantWrap) {
 		t.Errorf("script exec not container-wrapped:\n got: %q\nwant prefix: %q", rest, wantWrap)
 	}
@@ -359,7 +359,7 @@ func TestExecAgent_ConsultsAgentRecordImage(t *testing.T) {
 			check: func(t *testing.T, id string, argv []string) {
 				home := "/home/bunker-" + id
 				remote := argv[len(argv)-1]
-				wantWrap := "docker run --rm -v " + home + ":" + home + " -w " + home + " -v /run/bunker/" + id + ":/run/bunker/" + id + " --user 1001 " + imgTestRef + " sh -lc"
+				wantWrap := "docker run --rm -v " + home + ":" + home + " -w " + home + " -v /run/bunker/" + id + ":/run/bunker/" + id + " --user 0 -e DOCKER_HOST=unix:///run/bunker/" + id + "/docker.sock " + imgTestRef + " sh -lc"
 				if !strings.Contains(remote, wantWrap) {
 					t.Errorf("image agent exec is not container-wrapped:\n got: %q\nwant substring: %q", remote, wantWrap)
 				}

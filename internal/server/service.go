@@ -1331,7 +1331,9 @@ var errAgentUserUnresolved = errors.New("agent user unresolved; refusing to run 
 // through os/user — the same resolution the metrics path uses (user.Lookup of
 // the agent user). It is a variable so tests can pin a UID without a real
 // passwd entry. (uid, true) on success; (0, false) when the user or UID
-// cannot be resolved.
+// cannot be resolved. The UID is an EXISTENCE check for the loud-refusal arm;
+// it is deliberately NOT the container identity any more (DF-BUNKER-77-IMGEXEC:
+// see agentContainerIdentityFlag for why the host uid must never reach --user).
 var resolveAgentUID = func(agentID string) (int, bool) {
 	u, err := user.Lookup("bunker-" + agentID)
 	if err != nil {
@@ -1344,17 +1346,54 @@ var resolveAgentUID = func(agentID string) (int, bool) {
 	return parsed, true
 }
 
-// agentUserFlag returns the docker-run `--user <uid>` element that keeps an
-// image-backed exec inside the agent's identity instead of container root
-// (DF-BUNKER-77). ok is false when the agent user cannot be resolved; the
-// caller decides whether that is fatal. agentUserFlag is a variable so tests
-// can drive the failure arm without a real passwd entry.
-var agentUserFlag = func(agentID string) (string, bool) {
-	uid, ok := resolveAgentUID(agentID)
-	if !ok {
+// agentContainerIdentityFlag returns the docker-run `--user` element that
+// keeps an image-backed exec inside the AGENT's identity inside the agent's
+// own rootless user namespace (DF-BUNKER-77-IMGEXEC, live gate
+// bunker-2026-09-29-04-42-35): the exec container joins the agent's user
+// namespace, where /proc/self/uid_map is "0 <host agent uid> 1" — the agent
+// IS namespace uid 0. The previous fix passed the HOST uid (--user 1071),
+// which inside that namespace is an unmapped subordinate id that owns none of
+// the agent's paths: the runtime dir was unwritable (env set EACCES) and the
+// docker.sock owner bits matched nobody. Namespace uid 0 owns exactly what
+// the agent owns — no new host privilege exists here, because the container
+// is already run BY the agent's own rootless dockerd, which could map any id
+// in this namespace; the flag merely stops demoting the exec BELOW its own
+// agent. The host uid stays in resolveAgentUID purely as the existence check:
+// an unresolvable agent user still fails the exec loudly instead of silently
+// running as plain container root on a host without the agent identity.
+// agentContainerIdentityFlag is a variable so tests can drive the failure arm
+// without a real passwd entry.
+var agentContainerIdentityFlag = func(agentID string) (string, bool) {
+	if _, ok := resolveAgentUID(agentID); !ok {
 		return "", false
 	}
-	return "--user " + strconv.Itoa(uid), true
+	return "--user 0", true
+}
+
+// agentDockerHostEnv returns the `-e DOCKER_HOST=…` ARGV ELEMENTS that carry
+// the agent's rootless docker socket INTO the container (DF-BUNKER-77-IMGEXEC).
+// The outer env(1) prefix of the built command applies to the docker CLI on
+// the agent host side; without a `-e`, the container process never sees the
+// variable and `docker` inside the image probes the default /var/run/docker.sock
+// (live gate conjunct C: client printed, server unreachable). The pair is kept
+// argv-shaped (two elements) because the raw-mode builder hands its argv to
+// docker verbatim with no shell to split a joined token; the shell/script
+// builders join the argv with spaces, which reproduces the same bytes.
+func agentDockerHostEnv(agentID string) []string {
+	return []string{"-e", "DOCKER_HOST=unix:///run/bunker/" + agentID + "/docker.sock"}
+}
+
+// imageInnerSourcePrefix returns the shell snippet that re-sources the agent
+// env file INSIDE the container shell (DF-BUNKER-77-IMGEXEC). The env file
+// vars are sourced on the host side only, so `bunker env set` injections were
+// invisible to image-backed commands; with the runtime dir bind mounted
+// read/write and the exec running as the agent's namespace identity, the same
+// file is writable and sourceable in-container. Same shape as the outer
+// source: set -a (allexport) around the dot-source, [ -f ] guard so a fresh
+// agent without an env file is not an error.
+func imageInnerSourcePrefix(agentID string) string {
+	envFile := "/run/bunker/" + agentID + "/env"
+	return "set -a; [ -f " + envFile + " ] && . " + envFile + " 2>/dev/null; set +a; "
 }
 
 // agentRuntimeDirBind returns the docker-run bind that makes the agent runtime
@@ -1362,6 +1401,9 @@ var agentUserFlag = func(agentID string) (string, bool) {
 // path (DF-BUNKER-77): /run/bunker/<id>/ carries the env file the shell path
 // sources and the rootless docker.sock DOCKER_HOST points at. Read/write, as
 // both consumers require (the agent writes env; dockerd serves on the socket).
+// DF-BUNKER-77-IMGEXEC: the bind is writable by the exec because the run now
+// carries the agent's namespace identity (--user 0) — the pre-IMGEXEC run
+// passed the unmapped host uid and could not write the directory at all.
 func agentRuntimeDirBind(agentID string) []string {
 	rtDir := "/run/bunker/" + agentID
 	return []string{"-v", rtDir + ":" + rtDir}
@@ -1369,14 +1411,18 @@ func agentRuntimeDirBind(agentID string) []string {
 
 // applyImageAgentRuntime extends a `docker run` argv with the agent runtime
 // pieces an image-backed exec needs to stay a usable agent (DF-BUNKER-77):
-// --user <agent uid> plus the /run/bunker/<id> bind. userFlag must be the
-// already-resolved `--user <uid>` element ("" for rootless-docker-in-docker
-// mode, which manages its own user namespace and must not be constrained).
-func applyImageAgentRuntime(runArgv []string, userFlag string) []string {
-	if userFlag != "" {
-		runArgv = append(runArgv, strings.Fields(userFlag)...)
+// the namespace-resolved agent identity (--user 0) plus the DOCKER_HOST env
+// injection that reaches the CONTAINER (DF-BUNKER-77-IMGEXEC). Callers run
+// their own agentContainerIdentityFlag check first when an unresolvable agent
+// user must fail the exec loudly; here a failed identity resolution is
+// skipped silently so the runtime-dir bind and the socket env survive on
+// empty-user images (the pre-IMGEXEC "empty-user images keep only the bind"
+// contract, extended by the env the socket consumer needs).
+func applyImageAgentRuntime(runArgv []string, agentID string) []string {
+	if identity, ok := agentContainerIdentityFlag(agentID); ok {
+		runArgv = append(runArgv, strings.Fields(identity)...)
 	}
-	return runArgv
+	return append(runArgv, agentDockerHostEnv(agentID)...)
 }
 
 // containerRunPrefix returns the leading `docker run` argv for an image-backed
@@ -1420,22 +1466,28 @@ func buildAgentImageExecCommand(agentID, userHome, command string, args []string
 	// working directory, so paths that are valid in the host context (the
 	// agent's home, files an operator just copied in) stay valid in-container.
 	// DF-BUNKER-77: the container must be a usable AGENT, not a root jail —
-	// the run carries the agent user's UID (--user) and the agent runtime
-	// directory is bind-mounted at its absolute host path so the env file the
-	// outer shell sources and the rootless docker.sock (DOCKER_HOST) exist
-	// inside the container at the same paths as in the host context. An
-	// unresolvable agent user fails the exec loudly (the old shape silently
-	// executed as container root); empty-user images keep only the bind.
-	userFlag, ok := agentUserFlag(agentID)
-	if !ok {
+	// the run carries the agent's namespace-resolved identity and the agent
+	// runtime directory is bind-mounted at its absolute host path so the env
+	// file the shell sources and the rootless docker.sock (DOCKER_HOST) exist
+	// inside the container at the same paths as in the host context.
+	// DF-BUNKER-77-IMGEXEC: the identity is the AGENT's uid INSIDE the agent's
+	// rootless user namespace (--user 0; the host uid is an unmapped id in
+	// that namespace — see agentContainerIdentityFlag), DOCKER_HOST is pushed
+	// into the container with -e (the outer env(1) reaches only the docker
+	// CLI), and the user command runs behind imageInnerSourcePrefix so
+	// `bunker env set` injections are visible in-container too. An
+	// unresolvable agent user still fails the exec loudly (the old shape
+	// silently executed as container root); empty-user images keep the bind
+	// plus the socket env.
+	if _, ok := agentContainerIdentityFlag(agentID); !ok {
 		return "printf %s\\n 'image exec refused: agent user bunker-'" + shellQuoteSingle(agentID) + "' could not be resolved' >&2; exit 1"
 	}
 	runArgv := containerRunPrefix(disclosed)
 	runArgv = append(runArgv, "-v", userHome+":"+userHome, "-w", userHome)
 	runArgv = append(runArgv, agentRuntimeDirBind(agentID)...)
-	runArgv = applyImageAgentRuntime(runArgv, userFlag)
+	runArgv = applyImageAgentRuntime(runArgv, agentID)
 	runArgv = append(runArgv, imageRef, "sh", "-lc",
-		shellQuoteSingle(remoteCmd))
+		shellQuoteSingle(imageInnerSourcePrefix(agentID)+remoteCmd))
 
 	return fmt.Sprintf("set -a; [ -f %s ] && . %s 2>/dev/null; set +a; env PATH=%s DOCKER_HOST=unix://%s TMPDIR=%s %ssh -c %s",
 		envFile, envFile, agentPath, dockerSockPath, tmpDir, sandboxEnv,
@@ -1511,20 +1563,25 @@ func buildAgentImageRawExecCommand(agentID, userHome, command string, args []str
 		argv = append(argv, containmentSandboxEnv)
 	}
 	// DF-BUNKER-77: same agent-runtime contract as shell mode — the run carries
-	// the agent UID and the /run/bunker/<id> bind (docker.sock visible for
-	// rootless docker; the env file is inert here because raw mode never
-	// sources it, but the socket bind is required and harmless without it).
-	// Raw mode's no-intermediate-shell contract is unchanged: docker still
-	// receives command+args verbatim after the image ref.
-	userFlag, ok := agentUserFlag(agentID)
-	if !ok {
+	// the agent's namespace-resolved identity and the /run/bunker/<id> bind
+	// (docker.sock visible for rootless docker; the env file is inert here
+	// because raw mode never sources it, but the socket bind is required and
+	// harmless without it). Raw mode's no-intermediate-shell contract is
+	// unchanged: docker still receives command+args verbatim after the image
+	// ref.
+	// DF-BUNKER-77-IMGEXEC: the identity is the agent's uid INSIDE the agent's
+	// rootless user namespace (--user 0; the host uid was an unmapped id there
+	// — see agentContainerIdentityFlag), and DOCKER_HOST is pushed into the
+	// container with -e so `docker` inside a raw exec reaches the agent's own
+	// socket without an intermediate shell to source anything.
+	if _, ok := agentContainerIdentityFlag(agentID); !ok {
 		return nil, errAgentUserUnresolved
 	}
 	runArgv := containerRunPrefix(disclosed)
 	// Raw mode still binds NO home (its no-shell contract never needed host
 	// paths); only the agent runtime directory joins the run.
 	runArgv = append(runArgv, agentRuntimeDirBind(agentID)...)
-	runArgv = applyImageAgentRuntime(runArgv, userFlag)
+	runArgv = applyImageAgentRuntime(runArgv, agentID)
 	argv = append(argv, runArgv...)
 	argv = append(argv, imageRef, command)
 	return argv, nil
@@ -1582,19 +1639,24 @@ func buildAgentImageScriptCommand(agentID, userHome, scriptContent string, discl
 	escaped := strings.ReplaceAll(scriptContent, "'", "'\\''")
 
 	// DF-BUNKER-77: the container must be a usable AGENT — the run carries the
-	// agent user's UID (--user) and the agent runtime directory is bind-mounted
-	// at its absolute host path (env + docker.sock visible in-container). An
-	// unresolvable agent user fails the exec loudly; empty-user images keep
-	// only the bind. The upload flow above is untouched.
-	userFlag, ok := agentUserFlag(agentID)
-	if !ok {
+	// agent's namespace-resolved identity and the agent runtime directory is
+	// bind-mounted at its absolute host path (env + docker.sock visible
+	// in-container). An unresolvable agent user fails the exec loudly;
+	// empty-user images keep the bind plus the socket env. The upload flow
+	// above is untouched.
+	// DF-BUNKER-77-IMGEXEC: the identity is the agent's uid INSIDE the agent's
+	// rootless user namespace (--user 0; the host uid was an unmapped id there
+	// — see agentContainerIdentityFlag), DOCKER_HOST is pushed into the
+	// container with -e, and the script runs behind imageInnerSourcePrefix so
+	// `bunker env set` injections reach script mode in-container too.
+	if _, ok := agentContainerIdentityFlag(agentID); !ok {
 		return "printf %s\\n 'image exec refused: agent user bunker-'" + shellQuoteSingle(agentID) + "' could not be resolved' >&2; exit 1"
 	}
 	runArgv := containerRunPrefix(disclosed)
 	runArgv = append(runArgv, "-v", userHome+":"+userHome)
 	runArgv = append(runArgv, agentRuntimeDirBind(agentID)...)
-	runArgv = applyImageAgentRuntime(runArgv, userFlag)
-	runArgv = append(runArgv, imageRef, "sh", shellQuoteSingle(scriptPath))
+	runArgv = applyImageAgentRuntime(runArgv, agentID)
+	runArgv = append(runArgv, imageRef, "sh", shellQuoteSingle("set -e; "+imageInnerSourcePrefix(agentID)+". "+shellQuoteSingle(scriptPath)))
 
 	return fmt.Sprintf(
 		"mkdir -p %q && cat > %q <<'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %q && set -a; [ -f %s ] && . %s 2>/dev/null; set +a; env PATH=%s DOCKER_HOST=unix://%s TMPDIR=%s %s%s",
