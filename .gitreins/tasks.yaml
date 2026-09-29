@@ -3619,3 +3619,26 @@ tasks:
   status: complete
   created_at: '2026-09-29T08:13:05.708188+00:00'
   completed_at: '2026-09-29T08:25:31.506501+00:00'
+- id: BNK-DF-001
+  title: "destroy deadline-cancels userdel mid-destroy \u2014 orphaned agent user\
+    \ survives"
+  criteria:
+  - All destroy-path compensating execs (userdel -rf, loginctl terminate-user, pgrep/kill
+    dockerd, and any other exec.CommandContext in manager_destroy.go) run on contexts
+    derived via the rollbackBudget/spawn_failure.go detached pattern (context.WithoutCancel
+    + own bounded budget), NOT the raw request ctx; a unit test reproduces the defect
+    by handing Destroy an already-cancelled request ctx and proving userdel's seam
+    is STILL invoked (pre-fix it is not); full go test ./... green; go vet clean.
+  status: complete
+  created_at: '2026-09-29T08:53:53.680841+00:00'
+  completed_at: '2026-09-29T09:54:23.351669+00:00'
+- id: PERF-011
+  title: status --all offline dial bound at 5s
+  criteria:
+  - queryServer uses a status-only client whose TCP connect is bounded at 5s (statusDialTimeout);
+    the 30s overall context is unchanged; connection-refused fails fast (<2s) per
+    unit test; other newBunkerdClient callers unchanged; go build/vet/test ./internal/cli/...
+    -count=1 green
+  status: complete
+  created_at: '2026-09-29T11:11:31.892565+00:00'
+  completed_at: '2026-09-29T11:13:58.823020+00:00'
