@@ -656,6 +656,66 @@ read-style HTTP endpoints.
 
 Content-Type: `application/json` or `application/proto`.
 
+## Non-RPC routes
+
+The daemon registers four plain-HTTP routes on the same router as the connect
+handlers, so they are served by **every** listener — gRPC `:9090`, REST `:8080`,
+and the HTTP/3 (QUIC) socket when `server.h3_enabled` is on — with the same
+paths and no version-specific behaviour. They are not RPCs: they are absent from
+`proto/bunker/v1/bunker.proto`, they do not use the connect envelope, and they
+are not affected by the POST-only rule above.
+
+| Method | Path | Auth posture | Response |
+|---|---|---|---|
+| GET | `/healthz` | **none — always unauthenticated** | `200`, `Content-Type: application/json`, body `{"status":"ok"}` |
+| GET | `/graph/stats` | master token (see below) | `200` `application/json` `{"total_edges":N,"unique_files":N,"unique_deps":N,"files_with_edges":N}` |
+| GET | `/graph/related?path=<file>` | master token | `200` `{"edges":[{"from":"…","to":"…","rel":"…"}]}`; missing/empty `path` → `400` `{"error":"path query param required"}` |
+| GET | `/graph/impact?path=<file>` | master token | same shape as `/graph/related` — the transitive (impact) direction of the same edge set |
+
+### `GET /healthz` — liveness
+
+Registered on the router before any credential gate, so it needs no
+`Authorization` header on any configuration and is the surface a readiness or
+liveness probe should use. It is a **liveness** answer only: the handler does
+nothing but write `{"status":"ok"}` — it does not touch the registry, dockerd,
+the tracker or any agent, so a `200` means the HTTP server is serving, not that
+the host is ready to spawn. There is no `/readyz`.
+
+### `/graph/*` — the host codebase's dependency graph
+
+These three routes expose the hilo graph of the **daemon host's working
+directory** (`hilo.NewGraph(".")` at boot). Two properties matter to a client:
+
+- **They exist only when the graph loads.** If `hilo.NewGraph` fails at boot the
+  daemon logs `hilo graph init failed` and the routes are never registered — a
+  request then gets the router's plain-text `404 page not found`, which is the
+  same answer an unknown RPC path gets and is *not* an auth rejection.
+- **They are gated by the daemon's own credential model, master-only.** The gate
+  is the same validator instance the RPC interceptors use, with the master-only
+  derivation, so a token that authenticates a `Bunkerd` RPC authenticates these
+  routes and a secret rotation takes effect on both without a restart. Details:
+
+  | Situation | Answer |
+  |---|---|
+  | `auth.enabled: true` (default), valid master token in `Authorization: Bearer <token>` | `200` with the JSON body above |
+  | `auth.enabled: true`, missing/invalid token — or an **agent-scoped sub-key** | `401` `{"code":"unauthenticated","message":"valid credentials required"}` |
+  | `auth.enabled: true`, per-source failed-auth throttle tripped (SEC-15) | `503` `{"code":"unavailable","message":"too many failed authentications from this source; retry later"}` |
+  | `auth.enabled: false` | the gate is a pass-through: the routes are **reachable WITHOUT credentials** by anyone who can reach the listener, and the daemon logs that warning naming all three paths |
+  | any non-GET method | `405` from the router (the routes are GET-only) |
+
+  **`X-API-Key` is not accepted on these routes** — the gate reads only the
+  `Authorization: Bearer …` header, unlike the RPC paths where §Auth Headers
+  lists both. Gating (rather than a default-off config flag) was chosen because
+  the graph describes host-CWD structure — anything that can reach the port could
+  otherwise map the host — and nothing in this repo reads these routes: the CLI,
+  the in-process code and the scripts all stop at `/healthz`.
+
+Two more non-RPC surfaces exist on the same listeners and are documented with
+their own features, not here: the WebDAV tree mounted under `/dav` when
+`server.webdav_enabled` is true (its own credential check, `internal/server/webdav`;
+see [../docs/integration.md](../docs/integration.md) and `config.example.yaml`),
+and the `/bunker.v1.*` RPC paths above, which are POST-only.
+
 ## Error Model
 
 All RPCs return connect-go errors with:

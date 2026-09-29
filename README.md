@@ -392,6 +392,39 @@ Rules the daemon enforces:
   rotate` command (see [CLI Commands](#cli-commands)) with the RPC
   contract in [specs/api.md](specs/api.md) (RotateJWTSecret).
 
+#### Safety presets (GAP-116/117)
+
+Every agent spawn resolves one **safety preset** — a named bundle of containment
+settings applied to the agent's user slice and its rootless-dockerd unit. The
+resolved preset and the systemd knob set actually applied are shown by
+`bunker info <agent-id>` (`Safety Preset:` / `Safety Knobs:`).
+
+Precedence, first match wins: the per-spawn `--preset` flag (or
+`SpawnAgentRequest.safety_preset` over REST/gRPC) beats `BUNKERD_SAFETY_PRESET`
+in the environment, which beats the `safety.preset` config key, which beats the
+built-in default `standard`.
+
+```bash
+# Per spawn (highest precedence)
+bunker spawn build-1 --ttl 2h --preset hardened
+
+# Daemon-wide, via the environment
+#   Environment=BUNKERD_SAFETY_PRESET=hardened   (systemd unit)
+
+# Daemon-wide, via the config file
+#   safety:
+#     preset: hardened
+```
+
+Tier names are `open`, `standard` (the shipped, built-in default: today's
+five-knob baseline) and `hardened`; `open` and `hardened` are accepted names that
+currently resolve to the same knob set as `standard`. An unknown name is a hard
+error — the daemon refuses to start on a bad `safety.preset`, and a bad flag or
+env name refuses the spawn. No source ever silently falls back. The full operator
+guide, including the measured per-tier knob table and the override envelope, is
+in [docs/presets/README.md](docs/presets/README.md); the config surface is in
+[specs/configuration.md](specs/configuration.md).
+
 #### TLS: the secure path is the easy path (GAP-127)
 
 A self-signed daemon is the normal way to run Bunker on a host you control: you

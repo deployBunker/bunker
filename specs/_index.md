@@ -1,6 +1,6 @@
 # Bunker — Specifications Index
 
-Landing page for the `specs/` directory. Six specs cover the Bunker platform
+Landing page for the `specs/` directory. Ten specs cover the Bunker platform
 (a daemon, `bunkerd`, that hosts isolated agent environments; a CLI, `bunker`,
 that controls it). Start here, pick your audience below, and follow its reading
 order.
@@ -16,7 +16,8 @@ Last verified against repo HEAD `9ee17c6` (2026-09-16).
 | [agent-lifecycle.md](agent-lifecycle.md) | The state machine | contributor, operator | implemented |
 | [agent-tmp-isolation.md](agent-tmp-isolation.md) | The isolation boundary | operator, contributor | implemented (GAP-075) |
 | [containment-disclosure.md](containment-disclosure.md) | The disclosure contract | operator, integrator | implemented (GAP-067), config-gated |
-| [safety-presets.md](safety-presets.md) | The trust-tier preset system | operator, contributor | not implemented (design authority, GAP-113) |
+| [configuration.md](configuration.md) | The config surface | operator, integrator | implemented |
+| [safety-presets.md](safety-presets.md) | The trust-tier preset system | operator, contributor | shipped plumbing (GAP-116/117); tier differentiation pending (GAP-118..122) |
 | [preset-acceptance-harness.md](preset-acceptance-harness.md) | The preset verification battery | contributor, operator | not implemented (design, GAP-115) |
 | [knob-safety-matrix.md](knob-safety-matrix.md) | The measured knob evidence | contributor | methodology (GAP-114), findings pending measurement |
 | [container-mode.md](container-mode.md) | The proposed execution mode | contributor | not implemented (design draft) |
@@ -107,6 +108,24 @@ guarantee.
   internal/config/config.go:46, exec-path injection at
   internal/server/service.go:736.
 
+### [configuration.md](configuration.md) — Configuration Reference (`bunkerd`)
+
+The complete `bunkerd` config surface, generated from
+`internal/config/config.go`: one table per config block with the key, its
+default, its `BUNKERD_<KEY>` env override, and the semantics the code
+implements — plus the GAP-118 containment override envelope (`-1` =
+release the tier knob to the host default; a **20 MiB/s floor** on the IO
+write bound) and a key-census recipe that diffs the page against the Go
+source.
+
+- **Who should read it:** operators writing `/etc/bunkerd/config.yaml` or
+  setting `BUNKERD_*` env overrides, and integrators who need to know which
+  knobs are env-overridable at all.
+- **Status: implemented** — every key is read from the live `Config` struct
+  tree (see internal/config/config.go:24) and every default from
+  `DefaultConfig` (internal/config/config.go:893); the
+  `server.invalidation.*` block is pinned by internal/invalidation/knobs.go.
+
 ### [safety-presets.md](safety-presets.md) — Safety Presets Specification (v1.0.0, GAP-113)
 
 The trust-tier preset system: four tiers by trust (`open`, `standard`, `guarded`,
@@ -119,9 +138,14 @@ the **no-silent-no-op rule** (every knob is read back from the live cgroup or sp
 
 - **Who should read it:** operators choosing a trust posture per agent, and contributors
   implementing GAP-116..122.
-- **Status: not implemented — design authority (GAP-113)** — no `safety` config key exists
-  yet; the tier→knob matrix is the contract the implementation rows build to, and `standard`
-  is pinned to today's shipped defaults (`internal/config/config.go:394-398`).
+- **Status: shipped plumbing (GAP-116), shipped tier naming (GAP-117)** — the `safety.preset`
+  config key, the `--preset` flag, the `BUNKERD_SAFETY_PRESET` env override and the single
+  precedence resolver are live (`internal/config/config.go:41`), and `standard` resolves to
+  today's shipped five-knob baseline through one tier lookup used by BOTH enforcement points
+  (`internal/agent/isolation.go:102`). The GAP-118 containment table is live on the slice
+  drop-in (`internal/agent/isolation.go:173`). Tier differentiation for `open`/`hardened` and
+  GAP-119..122 remain unimplemented — see the operator guide at
+  [../docs/presets/README.md](../docs/presets/README.md).
 
 ### [preset-acceptance-harness.md](preset-acceptance-harness.md) — Preset Acceptance Harness Specification (v1.0.0, GAP-115)
 
@@ -205,6 +229,9 @@ instead, which is a different, already-shipped feature.
   other spec defers to. Proto changes start there.
 - [architecture.md](architecture.md) is **the components** — how CLI,
   `bunkerd`, and agent instances compose, and what lives where on disk.
+- [configuration.md](configuration.md) is **the config surface** — every key the
+  daemon reads, with its default and env override, beneath the behaviors the
+  other specs describe.
 - [agent-lifecycle.md](agent-lifecycle.md) is **the state machine** — the
   behavioral detail behind `SpawnAgent`/`DestroyAgent` from api.md and the
   Agent Manager box in architecture.md.

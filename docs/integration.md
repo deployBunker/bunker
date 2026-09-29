@@ -55,6 +55,17 @@ which serves the same RPCs over **gRPC and REST** from a single listener pair.
   copy-pasteable `ExecAgent` client.
 - TLS: optional per listener (`tls.*` config: cert/key files, certmagic
   auto-TLS/Let's Encrypt, self-signed, or mTLS). Plaintext is the default.
+- **Readiness probe — `GET /healthz`, and no credentials needed:** the daemon
+  serves a plain-HTTP health route on **both** listeners and on the HTTP/3 socket
+  when it is enabled, answering `200 application/json` with `{"status":"ok"}`
+  without any `Authorization` header (`auth.enabled: true` does not gate it). Poll
+  `curl -sf http://<host>:8080/healthz` (or the gRPC port) before the first RPC,
+  and treat a `200` as *the HTTP server is up* — it is a liveness answer only: it
+  does not check the registry, dockerd or agent state, and there is no `/readyz`.
+  The daemon also registers `/graph/stats`, `/graph/related`, `/graph/impact`
+  (the host codebase's dependency graph) on the same router; those **are**
+  credentialed with the master token and exist only when the graph loads — see
+  the *Non-RPC routes* section of [../specs/api.md](../specs/api.md).
 - The CLI resolves the endpoint from the server registry in `~/.bunker/config.yaml`
   (see §3) or an explicit `--server` flag — one CLI can drive many daemons.
 
