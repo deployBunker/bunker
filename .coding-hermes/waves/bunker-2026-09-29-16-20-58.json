@@ -1,0 +1,12 @@
+{
+  "tick": "bunker-2026-09-29-16-20-58",
+  "composed_at": "2026-09-29T16:30:00-05:00",
+  "budget": 3,
+  "workers": [
+    {"task_id": "DOC-28", "worktree": "/home/kara/worktrees/bunker-DOC-28", "branch": "wt/DOC-28", "base_sha": "0ad3789", "brief": "/tmp/foreman-worker-DOC-28.txt", "log": "/tmp/foreman-worker-DOC-28.log"},
+    {"task_id": "DOC-29", "worktree": "/home/kara/worktrees/bunker-DOC-29", "branch": "wt/DOC-29", "base_sha": "0ad3789", "brief": "/tmp/foreman-worker-DOC-29.txt", "log": "/tmp/foreman-worker-DOC-29.log"},
+    {"task_id": "DOC-40", "worktree": "/home/kara/worktrees/bunker-DOC-40", "branch": "wt/DOC-40", "base_sha": "0ad3789", "brief": "/tmp/foreman-worker-DOC-40.txt", "log": "/tmp/foreman-worker-DOC-40.log"}
+  ],
+  "independence": "docs-only fixes in three different files (specs/agent-lifecycle.md, docs/incident-runbook.md, docs/integration.md); no shared file, no depends_on edges, no E2E gate",
+  "merge_plan": "serial merge wt/DOC-28 -> wt/DOC-29 -> wt/DOC-40 into main, gate each merge with gitreins guard"
+}

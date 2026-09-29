@@ -1,0 +1,11 @@
+{
+  "scheduler_tick_id": "bunker-2026-09-29-13-13-15",
+  "tick_number": 537,
+  "budget": 4,
+  "dispatched": [
+    {"task_id": "DF-BUNKER-79", "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-79", "branch": "wt/DF-BUNKER-79", "base_sha": "d774b99", "worker_model": "deepseek-v4-flash", "worker_provider": "deepseek"},
+    {"task_id": "DF-BUNKER-81", "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-81", "branch": "wt/DF-BUNKER-81", "base_sha": "d774b99", "worker_model": "deepseek-v4-flash", "worker_provider": "deepseek"}
+  ],
+  "independence_check": "internal/imagespec vs internal/agent+internal/cli destroy/archive paths — disjoint files, no depends_on edges between rows",
+  "created_at": "2026-09-29 13:40:00"
+}

@@ -3642,3 +3642,56 @@ tasks:
   status: complete
   created_at: '2026-09-29T11:11:31.892565+00:00'
   completed_at: '2026-09-29T11:13:58.823020+00:00'
+- id: DF-BUNKER-79
+  title: image-spec go directive has no Go toolchain in the default base
+  criteria:
+  - Rendered Dockerfile for a go-manager package bootstraps a Go toolchain before
+    'go install'; apt-only specs unchanged; build failures name the failing spec directive;
+    go build/vet/test green
+  status: complete
+  created_at: '2026-09-29T13:19:50.584088+00:00'
+  completed_at: '2026-09-29T14:00:24.588501+00:00'
+- id: DF-BUNKER-81
+  title: destroy of large rootless-docker homes is unfinishedable
+  criteria:
+  - Large home destroy no longer races the 30s CLI deadline; archive failure removes
+    partial archives; .local/share/docker excluded from archives; destroy --help documents
+    an archive-skip operator choice; go build/vet/test green
+  status: complete
+  created_at: '2026-09-29T13:19:57.733583+00:00'
+  completed_at: '2026-09-29T14:00:33.131614+00:00'
+- id: QA-BUNKER-36
+  title: webdav events miss same-size mtime-preserved edits on coarse-clock kernels
+  criteria:
+  - identity (size,mtime,ctime) unchanged within one jiffy window falls back to content
+    verification; tests cross the jiffy boundary; go test ./internal/server/webdav
+    green on dev box
+  status: complete
+  created_at: '2026-09-29T15:14:50.199833+00:00'
+  completed_at: '2026-09-29T15:54:14.873532+00:00'
+- id: DOC-28
+  title: specs agent-lifecycle destroy flow rot
+  criteria:
+  - "specs/agent-lifecycle.md \xA7Destroy documents the archive-and-verify step before\
+    \ user removal with destroy_home_policy default archive and retention bounds matching\
+    \ internal/agent code; only that file changed"
+  status: complete
+  created_at: '2026-09-29T16:29:06.853623+00:00'
+  completed_at: '2026-09-29T16:34:38.412340+00:00'
+- id: DOC-29
+  title: runbook bunker config wrong-reference
+  criteria:
+  - docs/incident-runbook.md contains zero 'bunker config' references and names only
+    real CLI surfaces; only that file changed
+  status: complete
+  created_at: '2026-09-29T16:29:07.277157+00:00'
+  completed_at: '2026-09-29T16:35:44.633969+00:00'
+- id: DOC-40
+  title: integration.md sshPrivateKey stale
+  criteria:
+  - docs/integration.md spawn-response sshPrivateKey entry carries the GAP-128 note
+    (key-free default, GetAgentKey, return_ssh_private_key opt-in) matching proto;
+    only that file changed
+  status: complete
+  created_at: '2026-09-29T16:29:07.693977+00:00'
+  completed_at: '2026-09-29T16:36:16.669396+00:00'
