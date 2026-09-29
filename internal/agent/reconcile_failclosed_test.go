@@ -168,10 +168,11 @@ func TestReconcile_AdoptFailsClosedWithoutPortMetadata(t *testing.T) {
 		name  string
 		write func(t *testing.T, home string)
 	}{
-		{
-			name:  "metadata file missing",
-			write: func(t *testing.T, home string) {},
-		},
+		// NOTE(REV-BUNKER-002): the former "metadata file missing" and
+		// "metadata path is a directory" rows moved to
+		// reconcile_unproven_test.go — a MISSING or UNREADABLE port file is now
+		// UNPROVEN (skipped, never destroyed), not fail-closed. Malformed-but-
+		// readable metadata keeps the destroyed treatment here.
 		{
 			name: "metadata file empty",
 			write: func(t *testing.T, home string) {
@@ -194,14 +195,6 @@ func TestReconcile_AdoptFailsClosedWithoutPortMetadata(t *testing.T) {
 			name: "metadata non-numeric",
 			write: func(t *testing.T, home string) {
 				writePortMetadata(t, home, "abc-def\n")
-			},
-		},
-		{
-			name: "metadata path is a directory",
-			write: func(t *testing.T, home string) {
-				if err := os.MkdirAll(filepath.Join(home, ".bunker", "ports"), 0o755); err != nil {
-					t.Fatalf("mkdir over metadata path: %v", err)
-				}
 			},
 		},
 	}

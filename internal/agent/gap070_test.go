@@ -168,8 +168,13 @@ func TestReconcile_DestroysOrphanByDefault(t *testing.T) {
 		destroyed = append(destroyed, agentID)
 		return &v1.DestroyAgentResponse{AgentId: agentID, Status: "destroyed"}, nil
 	}
+	// REV-BUNKER-002: an orphan with NO metadata is now UNPROVEN (skipped), so
+	// the "destroyed by default" contract needs a destroyable orphan — one with
+	// readable in-pool metadata (a real leftover of our own).
+	home := t.TempDir()
+	writePortMetadata(t, home, "12300-12399\n")
 	m.listSystemAgents = func() ([]SystemAgent, error) {
-		return []SystemAgent{{AgentID: "orphan", Username: "bunker-orphan", Home: "/home/bunker-orphan"}}, nil
+		return []SystemAgent{{AgentID: "orphan", Username: "bunker-orphan", Home: home}}, nil
 	}
 
 	rep := m.Reconcile(context.Background())

@@ -163,9 +163,15 @@ func TestOrphanIsForeignClassification(t *testing.T) {
 }
 
 // TestReconcile_FailClosedOrphansAreStillDestroyed is the no-regression
-// contract (AC3): orphans the daemon cannot prove safe — missing/malformed
-// metadata, in-pool ranges that cannot be reserved — are STILL destroyed
-// exactly as before, in both modes. Foreign must stay 0 for them.
+// contract (AC3): orphans the daemon cannot prove safe — MALFORMED metadata
+// (readable but not a range) and in-pool ranges that cannot be reserved — are
+// STILL destroyed exactly as before, in both modes. Foreign must stay 0 for
+// them.
+//
+// NOTE(REV-BUNKER-002): the former "missing metadata" rows (missing port file,
+// both modes) moved to reconcile_unproven_test.go — a MISSING or UNREADABLE
+// port file is now UNPROVEN (skipped, never destroyed), not fail-closed.
+// Malformed-but-readable metadata keeps the destroyed treatment here.
 func TestReconcile_FailClosedOrphansAreStillDestroyed(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -174,12 +180,10 @@ func TestReconcile_FailClosedOrphansAreStillDestroyed(t *testing.T) {
 		heldRange string
 		wantHeld  bool
 	}{
-		{name: "missing metadata, adopt mode", adoptMode: true},
 		{name: "malformed metadata, adopt mode", adoptMode: true, metadata: "not-a-range\n"},
 		{name: "in-pool range already held, adopt mode", adoptMode: true,
 			metadata: "12300-12399\n", heldRange: "12300-12399", wantHeld: true},
 		{name: "in-pool misaligned range, adopt mode", adoptMode: true, metadata: "10050-10149\n"},
-		{name: "missing metadata, destroy mode"},
 		{name: "malformed metadata, destroy mode", metadata: "abc-def\n"},
 		{name: "in-pool range already held, destroy mode",
 			metadata: "12300-12399\n", heldRange: "12300-12399", wantHeld: true},
