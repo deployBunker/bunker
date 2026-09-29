@@ -7,11 +7,17 @@ package agent
 // its first listener existed. These tests scale that fingerprint down: the
 // destroy seam sleeps slowOrphanDestroy (a stand-in for tar+userdel on a
 // multi-GB home) and the readiness assertion requires ReconcileStartup to
-// return far inside it. The property scales with the constant: if the
-// synchronous phase returns before a 500ms orphan destroy, it returns before
-// a 29s one.
+// return while that destroy is still in flight. The property scales with the
+// constant: if the synchronous phase returns before a 500ms orphan destroy,
+// it returns before a 29s one.
+//
+// Readiness is asserted by SIGNAL (the destroy must not have completed when
+// ReconcileStartup returns), never by a fixed wall-clock budget: the previous
+// 150ms compare measured the synchronous phase against a constant and failed
+// under parallel package load (864ms at HEAD) even though the semantics held.
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -24,8 +30,37 @@ import (
 
 const (
 	slowOrphanDestroy = 500 * time.Millisecond
-	startupDeadline   = 150 * time.Millisecond
 )
+
+// startupReadinessDeadline bounds how long the DEFERRED orphan cleanup may
+// take to deliver the final report after startup returns. It is deliberately
+// generous and is NOT a measure of the synchronous phase (readiness is
+// asserted by SIGNAL, not wall-clock). Override with
+// BUNKERD_TEST_STARTUP_DEADLINE for pathological CI hosts.
+func startupReadinessDeadline() time.Duration {
+	if v := os.Getenv("BUNKERD_TEST_STARTUP_DEADLINE"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			return d
+		}
+	}
+	return 5 * time.Second
+}
+
+// waitFinalReport blocks for the final reconcile report, failing the test if
+// the deferred orphan cleanup does not complete within the bounded readiness
+// deadline (deferred must never become skipped or stalled).
+func waitFinalReport(t *testing.T, finalCh <-chan ReconcileReport) ReconcileReport {
+	t.Helper()
+	timer := time.NewTimer(startupReadinessDeadline())
+	defer timer.Stop()
+	select {
+	case final := <-finalCh:
+		return final
+	case <-timer.C:
+		t.Fatal("final reconcile report not delivered within the bounded deadline: deferred orphan cleanup stalled")
+		return ReconcileReport{}
+	}
+}
 
 // TestReconcileStartup_ReturnsBeforeOrphanWalk proves startup mode hands
 // control back while a slow orphan destroy is still in flight, and that the
@@ -47,12 +82,7 @@ func TestReconcileStartup_ReturnsBeforeOrphanWalk(t *testing.T) {
 		return []SystemAgent{{AgentID: "orphan", Username: "bunker-orphan", Home: "/home/bunker-orphan"}}, nil
 	}
 
-	start := time.Now()
 	rep, finalCh := m.ReconcileStartup(context.Background())
-	elapsed := time.Since(start)
-	if elapsed >= startupDeadline {
-		t.Fatalf("ReconcileStartup returned after %s (>= deadline %s): the orphan walk blocked startup readiness", elapsed, startupDeadline)
-	}
 	// Deterministic ordering check: the destroy must not have completed when
 	// startup returned (if it had, the walk ran synchronously — the exact
 	// regression this row forbids).
@@ -65,7 +95,7 @@ func TestReconcileStartup_ReturnsBeforeOrphanWalk(t *testing.T) {
 		t.Errorf("interim Destroyed = %d, want 0 (walk still pending at return)", rep.Destroyed)
 	}
 
-	final := <-finalCh
+	final := waitFinalReport(t, finalCh)
 	if final.Destroyed != 1 {
 		t.Errorf("final Destroyed = %d, want 1 (orphan destroyed post-ready)", final.Destroyed)
 	}
@@ -84,7 +114,7 @@ func TestReconcileStartup_ReturnsBeforeOrphanWalk(t *testing.T) {
 // TestReconcileStartup_StaleRegistryReadyWithinWindow is the readiness
 // criterion from the board row: a daemon starting with a stale registry
 // (live=0 after purge, known>0) plus an orphan home present becomes ready
-// within the readiness window, and the orphan is still destroyed
+// without waiting on the orphan walk, and the orphan is still destroyed
 // post-ready (cleanup is deferred, never skipped).
 func TestReconcileStartup_StaleRegistryReadyWithinWindow(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "agents.jsonl")
@@ -105,19 +135,24 @@ func TestReconcileStartup_StaleRegistryReadyWithinWindow(t *testing.T) {
 	}
 
 	m := newRegistryManager(t, path)
+	destroyFinished := make(chan string, 1)
 	m.destroyAgent = func(ctx context.Context, agentID string, force bool) (*v1.DestroyAgentResponse, error) {
 		time.Sleep(slowOrphanDestroy)
+		destroyFinished <- agentID
 		return &v1.DestroyAgentResponse{AgentId: agentID, Status: "destroyed"}, nil
 	}
 	m.listSystemAgents = func() ([]SystemAgent, error) {
 		return []SystemAgent{{AgentID: "orphan", Username: "bunker-orphan", Home: "/home/bunker-orphan"}}, nil
 	}
 
-	start := time.Now()
 	rep, finalCh := m.ReconcileStartup(context.Background())
-	ready := time.Since(start)
-	if ready >= startupDeadline {
-		t.Fatalf("startup synchronous phase took %s (>= deadline %s): stale-registry startup blocked readiness", ready, startupDeadline)
+	// Readiness is a SIGNAL assertion, not a wall-clock budget: the destroy
+	// must still be in flight when startup returned, or the stale-registry
+	// walk ran synchronously on the startup path.
+	select {
+	case <-destroyFinished:
+		t.Fatal("orphan destroy completed before ReconcileStartup returned — the stale-registry walk ran on the startup path")
+	default:
 	}
 	if rep.Purged != 1 {
 		t.Errorf("interim Purged = %d, want 1 (the stale record's purge is a synchronous phase)", rep.Purged)
@@ -126,7 +161,7 @@ func TestReconcileStartup_StaleRegistryReadyWithinWindow(t *testing.T) {
 		t.Errorf("live count = %d after startup, want 0 (stale-registry shape)", m.registry.LiveCount())
 	}
 
-	final := <-finalCh
+	final := waitFinalReport(t, finalCh)
 	if final.Destroyed != 1 {
 		t.Errorf("final Destroyed = %d, want 1 (orphan destroyed post-ready)", final.Destroyed)
 	}
