@@ -1,0 +1,59 @@
+=== [red] the committed tree ===
+100644 f2a8d3cb98e4276c4a76949957c9d148582b2632 0	a.txt
+120000 8d14cbf983b3fad683171c9418998d9f68340823 0	link-to-a
+100644 79c53955ef856f16f2107446bc721c8879a1bd2e 0	vendored/nested.txt
+120000 d8b329f3df485f7a4f27c3cf2896bbc75c528585 0	vendored/sibling-link
+
+[red] DAVSERVE_PID=116599 URL=http://127.0.0.1:40715/dav
+=== [red] ls -l through the mount (the TYPE line) ===
+/tmp/bfs018-arms-r7vxFy/red/mnt:
+total 4
+-rw-rw-r-- 1 kara kara   26 Sep 28 19:38 a.txt
+-rwxrwxrwx 1 kara kara    5 Sep 28 19:38 link-to-a
+drwxrwxr-x 2 kara kara 4096 Sep 28 19:38 vendored
+
+/tmp/bfs018-arms-r7vxFy/red/mnt/vendored:
+total 0
+-rw-rw-r-- 1 kara kara 7 Sep 28 19:38 nested.txt
+-rwxrwxrwx 1 kara kara 8 Sep 28 19:38 sibling-link
+=== [red] readlink through the mount ===
+readlink link-to-a -> '' (rc=1)
+readlink vendored/sibling-link -> '' (rc=1)
+=== [red] the type change, made THROUGH the mount ===
+rm link-to-a rc=0
+wrote a regular file over the name rc=0
+[red] server: now a regular file
+=== [red] git status through the mount (the type change a developer never made) ===
+ T link-to-a
+ T vendored/sibling-link
+[red] status lines before checkout: 2
+=== [red] git checkout -f HEAD THROUGH the mount ===
+checkout rc=1
+error: unable to create symlink link-to-a: Operation not supported
+error: unable to create symlink vendored/sibling-link: Operation not supported
+=== [red] git status through the mount, after the checkout ===
+ D link-to-a
+ D vendored/sibling-link
+[red] status lines after checkout: 2
+=== [red] what the SERVER holds now ===
+<served>:
+total 8
+-rw-rw-r-- 1 kara kara   26 Sep 28 19:38 a.txt
+drwxrwxr-x 2 kara kara 4096 Sep 28 19:38 vendored
+
+<served>/vendored:
+total 4
+-rw-rw-r-- 1 kara kara 7 Sep 28 19:38 nested.txt
+=== [red] materialisation scan (a regular file holding a link target) ===
+[red] materialised_regular_files=0
+=== [red] the mount's own report (its kept status document) ===
+--- read 1 ---
+(the status document carries no symlink block: this build has no symlink awareness at all — which is the finding)
+--- read 2 ---
+(the status document carries no symlink block: this build has no symlink awareness at all — which is the finding)
+[red] SUMMARY ls_type=- server_kind=not-a-symlink status_after=2 materialised=0 checkout_rc=1
+ARM PASS: red: the filed defect reproduces (the tree is not a symlink tree through the mount)
+[red] unmounted (rc=0), stage kept at /tmp/bfs018-arms-r7vxFy/red
+
+WORK kept at /tmp/bfs018-arms-r7vxFy
+ARMS: ALL PASS

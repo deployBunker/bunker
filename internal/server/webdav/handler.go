@@ -48,7 +48,16 @@ const (
 	// consumer that does not know this value must fail closed).
 	DocumentVersion = 1
 	// ExtensionsHeader is the X-Bunker-Extensions value on OPTIONS (§10.1).
-	ExtensionsHeader = "identity,if_match_refuse,rev,tree,op,watch"
+	// `symlink` was added by BFS-018: an extension a client must be told about
+	// before it can rely on the declared type vocabulary, because the failure
+	// mode of guessing is not a missing feature — it is a corrupted tree.
+	ExtensionsHeader = "identity,if_match_refuse,rev,tree,op,watch,symlink"
+	// LinkTargetHeader is the declared request header that creates a symlink
+	// (spec §3 E-7). Its value is the link's target path; a PUT that carries it
+	// creates a link and takes no body. It is a header rather than a
+	// delegated op on purpose: E-4's ops are read-only by invariant, and a
+	// mutation must travel on a standard method (§3).
+	LinkTargetHeader = "X-Bunker-Link-Target"
 	// NSDav is the DAV: namespace; NSBunker is the extension namespace (§3).
 	NSDav    = "DAV:"
 	NSBunker = "urn:bunker:fs:1"
@@ -460,6 +469,26 @@ func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, *f)
 		return
 	}
+	// LSTAT first (BFS-018). A Stat here reports a symlink as a regular file of
+	// its target's size and serves the TARGET's bytes under the link's URI: a
+	// caller that asked for the link receives a COPY of what it points at, with
+	// no way to tell. Two answers are honest and this surface gives the loud
+	// one — the link has no bytes of its own to serve, so the request is
+	// refused by name and the target travels as the declared b:link-target
+	// property of PROPFIND instead.
+	lfi, lerr := os.Lstat(abs)
+	if lerr == nil && lfi.Mode()&os.ModeSymlink != 0 {
+		w.Header().Set("Allow", strings.Join(servedMethods, ", "))
+		h.fail(w, r, failure{
+			Status:  405,
+			Code:    VerdictSymlinkNotAFile,
+			Element: "symlink-not-a-file",
+			Pairs: [][2]string{
+				{"detail", "this URL is a symlink, not a file: it has no entity bytes of its own, and reading it would return its target's bytes (a copy) under the link's name. PROPFIND this URL and read b:link-target for the link's target path"},
+			},
+		})
+		return
+	}
 	fi, err := os.Stat(abs)
 	if err != nil {
 		h.fail(w, r, notFoundOrInternal(err))
@@ -541,15 +570,34 @@ func (h *Handler) writeFileSegment(w http.ResponseWriter, r *http.Request, abs s
 
 // handlePut implements §6.1's ordered algorithm, including D3's identical
 // content case and E-1's declared-body-hash verification.
+//
+// Since BFS-018 it also implements §3 E-7: a PUT that carries the declared
+// X-Bunker-Link-Target header creates a SYMLINK (and takes no body), and a
+// body-bearing PUT onto a URL that is currently a symlink is REFUSED by name
+// rather than silently replacing the link with a regular file. That second
+// rule is the server-side half of the row: a client that materialised a link as
+// a file and writes it back cannot corrupt a tree through this surface even if
+// it never learned about the extension.
 func (h *Handler) handlePut(w http.ResponseWriter, r *http.Request) {
 	abs, f := h.resolveOrFail(w, r)
 	if f != nil {
 		h.fail(w, r, *f)
 		return
 	}
-	if fi, err := os.Stat(abs); err == nil && fi.IsDir() {
+	// LSTAT, not Stat: the entry's OWN kind decides this write's shape, and a
+	// Stat would report a symlink as whatever it points at (BFS-018).
+	lfi, lerr := os.Lstat(abs)
+	if lerr == nil && lfi.IsDir() {
 		h.fail(w, r, failure{Status: 405, Code: VerdictMethodNotAllowed, Element: "method-not-allowed",
 			Pairs: [][2]string{{"detail", "PUT targets a non-collection resource"}}})
+		return
+	}
+	if target := r.Header.Get(LinkTargetHeader); target != "" {
+		h.writeLinkPut(w, r, abs, target)
+		return
+	}
+	if lerr == nil && lfi.Mode()&os.ModeSymlink != 0 {
+		h.refuseUndeclaredSymlinkReplace(w, r, abs, lfi)
 		return
 	}
 	// RFC 4918 §9.7.1: a missing parent collection MUST fail; it is never
@@ -670,6 +718,170 @@ func (h *Handler) writePut(w http.ResponseWriter, r *http.Request, abs string, b
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
+}
+
+// linkBase is the state of the entry a link PUT is about to replace, read from
+// the entry ITSELF. It exists so the early evaluation and the commit-time
+// re-validation observe the same three facts through one function (writePut's
+// rule, one shape over).
+//
+// `hash` is intentionally empty for a symlink: a link has no content bytes, so
+// it has no content hash, and hashing here would publish the TARGET's hash as
+// this link's identity — the dereference BFS-018 is about, committed in the
+// precondition path instead of the read path.
+func (h *Handler) linkBase(abs string) (exists, isLink bool, target, hash string) {
+	fi, err := os.Lstat(abs)
+	if err != nil {
+		return false, false, "", ""
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		t, rerr := os.Readlink(abs)
+		if rerr != nil {
+			return true, true, "", ""
+		}
+		return true, true, t, ""
+	}
+	if !fi.Mode().IsRegular() {
+		return true, false, "", ""
+	}
+	if got, herr := h.tree.hashFile(abs); herr == nil {
+		hash = got
+	}
+	return true, false, "", hash
+}
+
+// answerIdenticalLink is D3's reported no-op for the one entity that has no
+// content hash: the URL already holds a link with exactly this target, so
+// nothing is written and the answer says so. No ETag and no X-Bunker-Hash ride
+// on it — forging an empty one would claim an identity this resource does not
+// have.
+func answerIdenticalLink(w http.ResponseWriter) {
+	w.Header().Set("X-Bunker-Noop", "1")
+	w.Header().Set("X-Bunker-Verdict", string(VerdictIdenticalContent))
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// writeLinkPut implements §3 E-7: PUT + X-Bunker-Link-Target creates a symlink
+// whose target is the header's value. The body MUST be empty — a link's entity
+// is its target path, and a surface that accepted a body here would have two
+// competing answers to "what is this entry's content", one of which is the
+// materialisation BFS-018 removes.
+//
+// The commit is one rename of a staged symlink (stageLink + commitStaged), the
+// SAME publication point a staged body uses, under the SAME per-path lock —
+// so BFS-020's created-name publication and BFS-038's one-pointer-swap hold for
+// this shape too, and a failed or killed request cannot leave a half-created
+// entry.
+func (h *Handler) writeLinkPut(w http.ResponseWriter, r *http.Request, abs, target string) {
+	if target == "" {
+		h.fail(w, r, failure{Status: 400, Code: VerdictSymlinkTargetInvalid, Element: "symlink-target-invalid",
+			Pairs: [][2]string{{"detail", "X-Bunker-Link-Target is empty: an empty target is not a link this surface can store (the header must carry the link's target path)"}}})
+		return
+	}
+	if len(target) > linkTargetMaxBytes {
+		h.fail(w, r, failure{Status: 400, Code: VerdictSymlinkTargetInvalid, Element: "symlink-target-invalid",
+			Pairs: [][2]string{{"limit", strconv.Itoa(linkTargetMaxBytes)}, {"got", strconv.Itoa(len(target))},
+				{"detail", "the declared link target is longer than this surface stores; a truncated target would be a different link"}}})
+		return
+	}
+	if strings.ContainsRune(target, 0x00) {
+		h.fail(w, r, failure{Status: 400, Code: VerdictSymlinkTargetInvalid, Element: "symlink-target-invalid",
+			Pairs: [][2]string{{"detail", "the declared link target carries a NUL byte"}}})
+		return
+	}
+	if hasBody(r) {
+		h.fail(w, r, failure{Status: 400, Code: VerdictBadArguments, Element: "bad-arguments",
+			Pairs: [][2]string{{"detail", "X-Bunker-Link-Target creates a symlink from the declared target, so the request body must be empty: a symlink's entity is its target path and never bytes"}}})
+		return
+	}
+	dir := filepath.Dir(abs)
+	if dfi, err := os.Stat(dir); err != nil || !dfi.IsDir() {
+		h.fail(w, r, failure{Status: 409, Code: VerdictConflict, Element: "conflict",
+			Pairs: [][2]string{{"detail", "parent collection does not exist"}}})
+		return
+	}
+
+	exists, isLink, curTarget, curHash := h.linkBase(abs)
+	// The early evaluation (§6.1 step 4). A tag can never name a link, so an
+	// If-Match tag against one is answered with the diagnosis rather than with
+	// an empty current hash; the commit re-evaluates what it can.
+	if isLink {
+		if ifMatch := strings.TrimSpace(r.Header.Get("If-Match")); ifMatch != "" && ifMatch != "*" {
+			h.fail(w, r, failure{Status: 412, Code: VerdictPreconditionFailed, Element: "precondition-failed",
+				Pairs: [][2]string{{"detail", "If-Match names a content hash and this URL is a symlink: a symlink has no content bytes to hash, so no tag can name it. Use If-Match: * , or DELETE the link first"}}})
+			return
+		}
+	}
+	if isLink && curTarget == target && strings.TrimSpace(r.Header.Get("If-None-Match")) != "*" {
+		answerIdenticalLink(w)
+		return
+	}
+	if f := checkPreconditions(r, exists, curHash); f != nil {
+		h.fail(w, r, *f)
+		return
+	}
+
+	unlock := h.tree.lockPath(abs)
+	defer unlock()
+	if hook := h.testBeforeCommit; hook != nil {
+		hook(abs)
+	}
+	// The base as of the commit, re-read inside the critical section: a link
+	// that already holds this target is the reported no-op, and a resource
+	// created out-of-band during this request is refused rather than clobbered
+	// (writePut's rule for the create-only case).
+	cExists, cIsLink, cTarget, cHash := h.linkBase(abs)
+	if cIsLink && cTarget == target && strings.TrimSpace(r.Header.Get("If-None-Match")) != "*" {
+		answerIdenticalLink(w)
+		return
+	}
+	if f := checkPreconditions(r, cExists, cHash); f != nil {
+		h.fail(w, r, *f)
+		return
+	}
+
+	tmp, err := stageLink(abs, target)
+	if err != nil {
+		h.fail(w, r, storageFailure(err))
+		return
+	}
+	defer func() { _ = os.Remove(tmp) }() // no-op once the rename succeeded
+	if err := commitStaged(tmp, abs); err != nil {
+		h.fail(w, r, storageFailure(err))
+		return
+	}
+	h.tree.forget(abs)
+	h.tree.bumpRev()
+	w.Header().Set(LinkTargetHeader, target)
+	if exists {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+}
+
+// refuseUndeclaredSymlinkReplace refuses a body-bearing PUT onto a URL that is
+// a symlink (BFS-018). It is the corruption guard, not a convenience: the
+// client defect this row was filed for materialises a link as a small file
+// whose content is the link's target path, and the write-back of that file is
+// exactly this request — a PUT with a body onto a link, which would replace the
+// link with a regular file and turn a type change into a commit.
+//
+// The caller's own create-only precondition is answered first: "the base
+// exists" is the answer `If-None-Match: *` asks for, and it is not a
+// type-change question.
+func (h *Handler) refuseUndeclaredSymlinkReplace(w http.ResponseWriter, r *http.Request, abs string, lfi os.FileInfo) {
+	if strings.TrimSpace(r.Header.Get("If-None-Match")) == "*" {
+		h.fail(w, r, failure{Status: 412, Code: VerdictPreconditionFailed, Element: "precondition-failed"})
+		return
+	}
+	target, _ := h.linkTargetOf(abs, lfi)
+	pairs := [][2]string{{"detail", "this URL is a symlink, and a PUT with a body would replace it with a regular file whose content is the body — the type change a client that materialised the link as a file writes back. To create or replace a link, PUT it with X-Bunker-Link-Target; to put a file here, DELETE the link first (or MOVE a file over it)"}}
+	if target != "" {
+		pairs = append(pairs, [2]string{"link_target", target})
+	}
+	h.fail(w, r, failure{Status: 409, Code: VerdictSymlinkUndeclaredReplace, Element: "symlink-undeclared-replace", Pairs: pairs})
 }
 
 // putDecision is the outcome of evaluating §6.1 step 4's precondition against
@@ -928,7 +1140,11 @@ func (h *Handler) handleCopyMove(w http.ResponseWriter, r *http.Request, move bo
 // hashIfRegular returns the content hash for a regular file and "" otherwise,
 // so a conditional DELETE on a collection is not mistaken for a hash failure.
 func (h *Handler) hashIfRegular(abs string) string {
-	fi, err := os.Stat(abs)
+	// LSTAT (BFS-018): a symlink is not a regular file, so it has no content
+	// hash. A Stat here would hand the TARGET's hash to a conditional request
+	// aimed at the link — a caller could then name a.txt's hash and delete the
+	// link, having never looked at the link at all.
+	fi, err := os.Lstat(abs)
 	if err != nil || !fi.Mode().IsRegular() {
 		return ""
 	}

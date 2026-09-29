@@ -1,0 +1,115 @@
+############ base (/tmp/bfs018/basebin/davserve), surface at http://127.0.0.1:33583/dav ############
+--- OPTIONS: the declared extension list ---
+HTTP/1.1 200 OK
+Dav: 1
+X-Bunker-Extensions: identity,if_match_refuse,rev,tree,op,watch
+--- PROPFIND Depth: 0 on the LINK, with the client's exact body ---
+>>> request body:
+<?xml version="1.0" encoding="utf-8"?>
+<D:propfind xmlns:D="DAV:" xmlns:b="urn:bunker:fs:1">
+  <D:prop>
+    <D:resourcetype/>
+    <D:getcontentlength/>
+    <D:getlastmodified/>
+    <D:getetag/>
+    <b:type/>
+    <b:mode/>
+    <b:mtime/>
+    <b:hash/>
+  </D:prop>
+</D:propfind>
+>>> response:
+HTTP/1.1 207 Multi-Status
+Content-Length: 719
+Content-Type: application/xml; charset=utf-8
+X-Bunker-Capabilities: 1
+X-Bunker-Proto: HTTP/1.1
+X-Bunker-Rev: rev:0
+X-Bunker-Tree: tree:357c9a595d3628df
+X-Bunker-Verdict: ok
+Date: Tue, 29 Sep 2026 00:23:59 GMT
+
+<?xml version="1.0" encoding="utf-8"?>
+<D:multistatus xmlns:D="DAV:" xmlns:b="urn:bunker:fs:1"><D:response><D:href>/dav/link-to-a</D:href><D:propstat><D:prop><D:resourcetype></D:resourcetype><D:getcontentlength>26</D:getcontentlength><D:getlastmodified>Tue, 29 Sep 2026 00:23:59 GMT</D:getlastmodified><D:getetag>&#34;sha256:183ecc9cc7ce6ce571ba01775af5b624301c7111052ecd1fa7ab77afbdac2fa8&#34;</D:getetag><b:hash>sha256:183ecc9cc7ce6ce571ba01775af5b624301c7111052ecd1fa7ab77afbdac2fa8</b:hash></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat><D:propstat><D:prop><b:type></b:type><b:mode></b:mode><b:mtime></b:mtime></D:prop><D:status>HTTP/1.1 404 Not Found</D:status></D:propstat></D:response></D:multistatus>--- E-4 snapshot op: the entry for the link ---
+"path":"link-to-a","type":"symlink","size":5,"mtime_unix_ms":1790641439037,"mode":"0777"}
+--- GET on the LINK ---
+HTTP/1.1 200 OK
+Accept-Ranges: bytes
+Content-Length: 26
+Content-Type: application/octet-stream
+Etag: "sha256:183ecc9cc7ce6ce571ba01775af5b624301c7111052ecd1fa7ab77afbdac2fa8"
+Last-Modified: Tue, 29 Sep 2026 00:23:59 GMT
+X-Bunker-Capabilities: 1
+X-Bunker-Hash: sha256:183ecc9cc7ce6ce571ba01775af5b624301c7111052ecd1fa7ab77afbdac2fa8
+X-Bunker-Proto: HTTP/1.1
+X-Bunker-Rev: rev:0
+X-Bunker-Tree: tree:357c9a595d3628df
+X-Bunker-Verdict: ok
+--- GET on the link's TARGET (the control: the target reads) ---
+HTTP/1.1 200 OK
+Accept-Ranges: bytes
+Content-Length: 26
+Content-Type: text/plain; charset=utf-8
+Etag: "sha256:183ecc9cc7ce6ce571ba01775af5b624301c7111052ecd1fa7ab77afbdac2fa8"
+Last-Modified: Tue, 29 Sep 2026 00:23:59 GMT
+X-Bunker-Capabilities: 1
+X-Bunker-Hash: sha256:183ecc9cc7ce6ce571ba01775af5b624301c7111052ecd1fa7ab77afbdac2fa8
+
+############ fixed (/tmp/bfs018/bin/davserve), surface at http://127.0.0.1:40105/dav ############
+--- OPTIONS: the declared extension list ---
+HTTP/1.1 200 OK
+Dav: 1
+X-Bunker-Extensions: identity,if_match_refuse,rev,tree,op,watch,symlink
+--- PROPFIND Depth: 0 on the LINK, with the client's exact body ---
+>>> request body:
+<?xml version="1.0" encoding="utf-8"?>
+<D:propfind xmlns:D="DAV:" xmlns:b="urn:bunker:fs:1">
+  <D:prop>
+    <D:resourcetype/>
+    <D:getcontentlength/>
+    <D:getlastmodified/>
+    <D:getetag/>
+    <b:type/>
+    <b:mode/>
+    <b:mtime/>
+    <b:hash/>
+  </D:prop>
+</D:propfind>
+>>> response:
+HTTP/1.1 207 Multi-Status
+Content-Length: 573
+Content-Type: application/xml; charset=utf-8
+X-Bunker-Capabilities: 1
+X-Bunker-Proto: HTTP/1.1
+X-Bunker-Rev: rev:0
+X-Bunker-Tree: tree:357c9a595d3628df
+X-Bunker-Verdict: ok
+Date: Tue, 29 Sep 2026 00:24:00 GMT
+
+<?xml version="1.0" encoding="utf-8"?>
+<D:multistatus xmlns:D="DAV:" xmlns:b="urn:bunker:fs:1"><D:response><D:href>/dav/link-to-a</D:href><D:propstat><D:prop><D:resourcetype></D:resourcetype><D:getcontentlength>5</D:getcontentlength><D:getlastmodified>Tue, 29 Sep 2026 00:23:59 GMT</D:getlastmodified><b:type>symlink</b:type></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat><D:propstat><D:prop><D:getetag></D:getetag><b:mode></b:mode><b:mtime></b:mtime><b:hash></b:hash></D:prop><D:status>HTTP/1.1 404 Not Found</D:status></D:propstat></D:response></D:multistatus>--- E-4 snapshot op: the entry for the link ---
+"path":"link-to-a","type":"symlink","size":5,"mtime_unix_ms":1790641439037,"mode":"0777","link_target":"a.txt"}
+--- GET on the LINK ---
+HTTP/1.1 405 Method Not Allowed
+Allow: OPTIONS, GET, HEAD, PUT, DELETE, MKCOL, PROPFIND, PROPPATCH, COPY, MOVE, POST
+Cache-Control: no-store
+Content-Length: 393
+Content-Type: application/xml; charset=utf-8
+X-Bunker-Capabilities: 1
+X-Bunker-Proto: HTTP/1.1
+X-Bunker-Rev: rev:0
+X-Bunker-Tree: tree:357c9a595d3628df
+X-Bunker-Verdict: symlink_not_a_file
+Date: Tue, 29 Sep 2026 00:24:00 GMT
+
+--- GET on the link's TARGET (the control: the target reads) ---
+HTTP/1.1 200 OK
+Accept-Ranges: bytes
+Content-Length: 26
+Content-Type: text/plain; charset=utf-8
+Etag: "sha256:183ecc9cc7ce6ce571ba01775af5b624301c7111052ecd1fa7ab77afbdac2fa8"
+Last-Modified: Tue, 29 Sep 2026 00:23:59 GMT
+X-Bunker-Capabilities: 1
+X-Bunker-Hash: sha256:183ecc9cc7ce6ce571ba01775af5b624301c7111052ecd1fa7ab77afbdac2fa8
+
+STAGE=/tmp/bfs018-wireprobe-Kxyey8

@@ -1,0 +1,20 @@
+# The packages this change touches, and the ones that gate docs, run once on the
+# final tree (go1.26.5 linux/amd64, -count=1, nothing else running):
+
+===== ./internal/server/webdav/
+ok  	github.com/deployBunker/bunker/internal/server/webdav	30.917s
+===== ./internal/fsclient/
+ok  	github.com/deployBunker/bunker/internal/fsclient	44.522s
+===== ./internal/fsmount/
+ok  	github.com/deployBunker/bunker/internal/fsmount	0.947s
+===== ./internal/cli/
+ok  	github.com/deployBunker/bunker/internal/cli	29.261s
+===== ./internal/docscheck/
+ok  	github.com/deployBunker/bunker/internal/docscheck	3.742s
+SUITES_DONE
+
+# gofmt -l internal/ (must print nothing):
+# (empty above = clean)
+
+# go vet ./...:
+VET_RC=0

@@ -68,6 +68,15 @@ type FileMeta struct {
 	Mode      string // 4 octal digits, e.g. "0644"
 	MtimeUnix int64  // milliseconds
 	Mtime     time.Time
+	// Kind is the surface's DECLARED type for the entry (BFS-018): file, dir
+	// or symlink. It is resolved from the extension property where the surface
+	// serves one, and from the standard resourcetype where it does not — a
+	// missing property can only ever mean the standard file/collection
+	// distinction, because that is all the standard surface can express.
+	Kind string
+	// LinkTarget is the target of a symlink, when the surface served one. It
+	// is never inferred.
+	LinkTarget string
 }
 
 // PutPrecondition is the conditional-write precondition of BFS-004 §6. Exactly
@@ -792,7 +801,10 @@ func (c *Client) Propfind(ctx context.Context, path, depth string) ([]FileMeta, 
 }
 
 // propfindBody asks for exactly the properties the metadata path needs, so the
-// response stays in the small-payload class.
+// response stays in the small-payload class. `b:type` and `b:link-target` are
+// part of that set since BFS-018: a client that walks the standard surface must
+// be able to tell a symlink from a file, and the standard surface has no
+// property that can say so.
 const propfindBody = `<?xml version="1.0" encoding="utf-8"?>
 <D:propfind xmlns:D="DAV:" xmlns:b="urn:bunker:fs:1">
   <D:prop>
@@ -801,6 +813,7 @@ const propfindBody = `<?xml version="1.0" encoding="utf-8"?>
     <D:getlastmodified/>
     <D:getetag/>
     <b:type/>
+    <b:link-target/>
     <b:mode/>
     <b:mtime/>
     <b:hash/>
@@ -837,6 +850,11 @@ type multistatusProp struct {
 	BMode         string `xml:"urn:bunker:fs:1 mode"`
 	BMtime        string `xml:"urn:bunker:fs:1 mtime"`
 	BHash         string `xml:"urn:bunker:fs:1 hash"`
+	// BLinkTarget is E-7's declared `b:link-target` (BFS-018). The property is
+	// absent for every entry that is not a link, so an empty value here is not
+	// "a link with no target" unless b:type says symlink — the two are read
+	// together and never one without the other.
+	BLinkTarget string `xml:"urn:bunker:fs:1 link-target"`
 }
 
 // decodeMultistatus turns the XML into FileMeta values, stripping the surface
@@ -873,6 +891,32 @@ func decodeMultistatus(raw []byte, prefix string) ([]FileMeta, error) {
 			m.MtimeUnix = m.Mtime.UnixMilli()
 			m.Mode = p.BMode
 			m.Hash = firstNonEmpty(p.BHash, ParseETag(p.ETag))
+			// The declared type (BFS-018). A surface that does not serve
+			// b:type leaves it unreported, and the STANDARD properties are
+			// then the only description available — which is exactly why the
+			// standard file/collection distinction is what an unreported type
+			// resolves to, and why a link can never be inferred from it.
+			m.Kind = normaliseKind(p.BType)
+			if m.Kind == KindUnreported {
+				if p.ResourceType.Collection != nil {
+					m.Kind = KindDir
+				} else {
+					m.Kind = KindFile
+				}
+			}
+			m.LinkTarget = p.BLinkTarget
+			// The two descriptions cannot disagree: the standard boolean is
+			// derived from the resolved kind, so a surface that declares
+			// `dir` in the extension and nothing in resourcetype (or the
+			// reverse) still yields ONE answer.
+			m.IsDir = m.Kind == KindDir
+			// A link has no content bytes, so it has no content hash: an
+			// ETag served for a link would be the TARGET's, and using it as
+			// this path's cache key would serve the target's bytes under the
+			// link's name.
+			if m.Kind == KindSymlink {
+				m.Hash = ""
+			}
 		}
 		out = append(out, m)
 	}
@@ -889,6 +933,105 @@ func headerTime(v string) time.Time {
 	}
 	return time.Time{}
 }
+
+// ---------------------------------------------------------------------------
+// Symlinks (BFS-018, spec §3 E-7)
+// ---------------------------------------------------------------------------
+
+// LinkTargetHeader is the declared request header that creates a symlink: its
+// value is the link's target path and the request body must be empty. The name
+// is the surface's own (capability document `extensions.symlink.name`), not a
+// client-side convention.
+const LinkTargetHeader = "X-Bunker-Link-Target"
+
+// SymlinkDeclared records what the surface's capability document said about the
+// symlink extension, so a caller can see WHY a link operation is refused
+// instead of reading a bare errno.
+type SymlinkDeclared struct {
+	// Present is true when the surface declared `extensions.symlink` v>=1.
+	Present bool
+	// Name/TypeProperty/TargetProperty are the declared names, echoed so the
+	// mount can report the contract it is obeying.
+	Name           string
+	TypeProperty   string
+	TargetProperty string
+	// V is the declared version; 0 when nothing was declared.
+	V int
+}
+
+// SymlinkCapability reports the symlink declaration of the LAST capability
+// document this client received. It reads the same cached document every other
+// capability question reads (Capabilities), so there is one source of truth for
+// "what does this surface say it does" — and a `false` here means the surface
+// published no declaration, never that a probe failed.
+func (c *Client) SymlinkCapability() SymlinkDeclared {
+	if c == nil {
+		return SymlinkDeclared{}
+	}
+	caps := c.Capabilities()
+	if caps == nil || !caps.Extensions.Symlink.Present() {
+		return SymlinkDeclared{}
+	}
+	s := caps.Extensions.Symlink
+	return SymlinkDeclared{Present: true, Name: s.Name, TypeProperty: s.TypeProperty,
+		TargetProperty: s.TargetProperty, V: s.V}
+}
+
+// PutLink creates (or replaces) a SYMLINK at path whose target is target, with
+// an empty body, through the declared header. It never writes the target string
+// as file content — that is the whole point of the header: the target is a
+// DECLARED argument, not bytes, so no carrier of this request can turn a link
+// into a file that contains its own target path.
+//
+// The caller is expected to have checked the declaration (SymlinkCapability);
+// this method refuses locally when the surface never declared the extension, so
+// a build that would ignore the header cannot silently create a 5-byte file.
+func (c *Client) PutLink(ctx context.Context, path, target string, pre PutPrecondition) (*PutResult, *OpError) {
+	if !c.SymlinkCapability().Present {
+		return nil, &OpError{
+			Op: "SYMLINK", Path: path, Errno: ErrnoEOPNOTSUPP, Cause: CauseLocalCapability,
+			Verdict: VerdictCapabilityUnavailable,
+			Detail:  "this surface did not declare the symlink extension (extensions.symlink), so it cannot be told to create a symlink; creating a file whose content is the target path is refused instead",
+		}
+	}
+	if target == "" {
+		return nil, &OpError{Op: "SYMLINK", Path: path, Errno: portableErrno(22), Cause: CauseLocalCapability,
+			Detail: "a symlink needs a target: the declared target must not be empty"}
+	}
+	req, err := c.newRequest(ctx, http.MethodPut, path, nil)
+	if err != nil {
+		return nil, &OpError{Op: "PUT", Path: path, Errno: portableErrno(5), Cause: CauseServerError, Err: err}
+	}
+	req.ContentLength = 0
+	req.Header.Set(LinkTargetHeader, target)
+	switch {
+	case pre.IfNoneMatchStar:
+		req.Header.Set("If-None-Match", "*")
+	case pre.IfMatch != "":
+		req.Header.Set("If-Match", ETagFor(pre.IfMatch))
+	}
+	resp, oerr := c.do(ctx, req)
+	if oerr != nil {
+		return nil, oerr
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusNoContent {
+		return nil, c.failureFrom("PUT", path, resp, respBody)
+	}
+	if oerr := c.checkTree(resp); oerr != nil {
+		return nil, oerr
+	}
+	return &PutResult{
+		Status:  resp.StatusCode,
+		Noop:    resp.Header.Get("X-Bunker-Noop") == "1",
+		Verdict: resp.Header.Get("X-Bunker-Verdict"),
+	}, nil
+}
+
+// Delete can already remove a link (DELETE names the entry itself), so no new
+// verb is needed for link removal; the comment is here so the next reader does
+// not look for one.
 
 // BodyReader lets a caller stream a file into a conditional PUT without
 // buffering it, which is what makes the client's write memory one chunk.

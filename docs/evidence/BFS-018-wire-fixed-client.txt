@@ -1,0 +1,123 @@
+=== OPTIONS /dav/
+>>> hdr {"Host": "127.0.0.1:18933", "User-Agent": "curl/8.18.0", "Accept": "*/*"}
+<<< status 200
+<<< hdr {"Allow": "OPTIONS, GET, HEAD, PUT, DELETE, MKCOL, PROPFIND, PROPPATCH, COPY, MOVE, POST", "Dav": "1", "X-Bunker-Capabilities": "1", "X-Bunker-Extensions": "identity,if_match_refuse,rev,tree,op,watch,symlink", "X-Bunker-Proto": "HTTP/1.1", "X-Bunker-Rev": "rev:0", "X-Bunker-Tree": "tree:3a56b7f16048252f", "X-Bunker-Verdict": "ok", "Date": "Tue, 29 Sep 2026 00:14:02 GMT", "Content-Length": "0", "Connection": "close"}
+=== OPTIONS /dav/
+>>> hdr {"Host": "127.0.0.1:18933", "User-Agent": "bunker-fs/1 (Linux; go-fuse)", "Accept-Encoding": "gzip"}
+<<< status 200
+<<< hdr {"Allow": "OPTIONS, GET, HEAD, PUT, DELETE, MKCOL, PROPFIND, PROPPATCH, COPY, MOVE, POST", "Dav": "1", "X-Bunker-Capabilities": "1", "X-Bunker-Extensions": "identity,if_match_refuse,rev,tree,op,watch,symlink", "X-Bunker-Proto": "HTTP/1.1", "X-Bunker-Rev": "rev:0", "X-Bunker-Tree": "tree:3a56b7f16048252f", "X-Bunker-Verdict": "ok", "Date": "Tue, 29 Sep 2026 00:14:02 GMT", "Content-Length": "0", "Connection": "close"}
+=== POST /dav/
+>>> hdr {"Host": "127.0.0.1:18933", "User-Agent": "bunker-fs/1 (Linux; go-fuse)", "Content-Length": "0", "Accept": "application/json", "Content-Type": "application/json", "X-Bunker-Max-Bytes": "16777216", "X-Bunker-Op": "capabilities", "Accept-Encoding": "gzip"}
+<<< status 200
+<<< hdr {"Cache-Control": "no-store", "Content-Length": "9427", "Content-Type": "application/json; charset=utf-8", "X-Bunker-Capabilities": "1", "X-Bunker-Op": "capabilities", "X-Bunker-Proto": "HTTP/1.1", "X-Bunker-Rev": "rev:0", "X-Bunker-Tree": "tree:3a56b7f16048252f", "X-Bunker-Verdict": "ok", "Date": "Tue, 29 Sep 2026 00:14:02 GMT", "Connection": "close"}
+<<< body {"ok":true,"op":"capabilities","verdict":"ok","rev":"rev:0","tree":"tree:3a56b7f16048252f","proto":"HTTP/1.1","duration_ms":2,"truncated":false,"result":{"capabilities":{"classes":["1"],"degradations":[{"capability":"watch","detail":"inotify watcher absent on this target: the push form is not served; the declared poll form X-Bunker-Op: events is","mode":"poll","scope":"target"},{"capability":"lock","detail":"no lease-backed LOCK in this build; DAV: 1 is advertised, DAV: 2 is not","mode":"none","phase":"C4","scope":"build"},{"capability":"h3","detail":"no HTTP/3 listener is live in this process: QUIC always encrypts, so h3 needs tls.enabled: true plus server.h3_enabled: true (BFS-007)","mode":"http/2","scope":"build"},{"capability":"op:status","detail":"delegated op not in this build (slice C5)","phase":"C5","scope":"build"},{"capability":"op:diff","detail":"delegated op not in this build (slice C5)","phase":"C5","scope":"build"},{"capability":"op:rev-parse","detail":"delegated op not in this build (slice C5)","phase":"C5","scope":"build"},{"capability":"op:ls-files","detail":"delegated op not in this build (slice C5)","phase":"C5","scope":"build"},{"capability":"op:log","detail":"delegated op not in this build (slice C5)","phase":"C5","scope":"build"},{"capability":"op:watch","detail":"delegated op not in this build (slice C5)","phase":"C5","scope":"build"},{"capability":"h2","detail":"tls.enabled is false and server.h2c_enabled is false: this listener serves HTTP/1.1 only","mode":"http/1.1","scope":"transport"}],"document_version":1,"extensions":{"identity":{"alg":"sha256","etag":"strong","format":"sha256:\u003c64 hex\u003e","name":"X-Bunker-Hash","v":1},"if_match_refuse":{"methods":["PUT","DELETE","MOVE","COPY","PROPPATCH","LOCK"],"name":"If-Match/If-None-Match","v":1},"op":{"abs_max_bytes":16777216,"default_max_bytes":1048576,"name":"X-Bunker-Op","ops":["capabilities","snapshot","events"],"read_only":true,"v":1},"rev":{"kind":"counter","name":"X-Bunker-Rev","v":1
+=== POST /dav/
+>>> hdr {"Host": "127.0.0.1:18933", "User-Agent": "bunker-fs/1 (Linux; go-fuse)", "Content-Length": "12", "Accept": "application/json", "Content-Type": "application/json", "X-Bunker-Max-Bytes": "16777216", "X-Bunker-Op": "watch", "Accept-Encoding": "gzip"}
+>>> body {"paths":[]}
+<<< status 501
+<<< hdr {"Cache-Control": "no-store", "Content-Length": "446", "Content-Type": "application/json; charset=utf-8", "X-Bunker-Capabilities": "1", "X-Bunker-Capability": "watch;scope=target;mode=poll", "X-Bunker-Op": "watch", "X-Bunker-Proto": "HTTP/1.1", "X-Bunker-Rev": "rev:0", "X-Bunker-Tree": "tree:3a56b7f16048252f", "X-Bunker-Verdict": "capability_unavailable", "Date": "Tue, 29 Sep 2026 00:14:02 GMT", "Connection": "close"}
+<<< body {"ok":false,"op":"watch","verdict":"capability_unavailable","rev":"rev:0","tree":"tree:3a56b7f16048252f","proto":"HTTP/1.1","duration_ms":2,"truncated":false,"result":null,"error":{"capability":"watch","scope":"target","mode":"poll","detail":"no watcher is established on this target: the server-side watcher is not enabled in this deployment; the declared poll form X-Bunker-Op: events carries the channel (mode=poll), or poll with HEAD/ETag"}}
+
+=== POST /dav/
+>>> hdr {"Host": "127.0.0.1:18933", "User-Agent": "bunker-fs/1 (Linux; go-fuse)", "Content-Length": "12", "Accept": "application/json", "Content-Type": "application/json", "X-Bunker-Max-Bytes": "16777216", "X-Bunker-Op": "events", "Accept-Encoding": "gzip"}
+>>> body {"paths":[]}
+<<< status 200
+<<< hdr {"Cache-Control": "no-store", "Content-Length": "294", "Content-Type": "application/json; charset=utf-8", "X-Bunker-Capabilities": "1", "X-Bunker-Op": "events", "X-Bunker-Proto": "HTTP/1.1", "X-Bunker-Rev": "rev:0", "X-Bunker-Tree": "tree:3a56b7f16048252f", "X-Bunker-Verdict": "ok", "Date": "Tue, 29 Sep 2026 00:14:02 GMT", "Connection": "close"}
+<<< body {"ok":true,"op":"events","verdict":"ok","rev":"rev:0","tree":"tree:3a56b7f16048252f","proto":"HTTP/1.1","duration_ms":0,"truncated":false,"result":{"count":1,"events":[{"seq":1,"event":"overflow","paths":[],"rev":"rev:0","tree":"tree:3a56b7f16048252f"}],"head_seq":1,"scanned":3},"error":null}
+
+=== POST /dav/
+>>> hdr {"Host": "127.0.0.1:18933", "User-Agent": "bunker-fs/1 (Linux; go-fuse)", "Content-Length": "40", "Accept": "application/json", "Content-Type": "application/json", "X-Bunker-Max-Bytes": "16777216", "X-Bunker-Op": "snapshot", "X-Bunker-Tree": "tree:3a56b7f16048252f", "Accept-Encoding": "gzip"}
+>>> body {"depth":"infinity","include_hash":true}
+<<< status 200
+<<< hdr {"Cache-Control": "no-store", "Content-Length": "561", "Content-Type": "application/json; charset=utf-8", "X-Bunker-Capabilities": "1", "X-Bunker-Op": "snapshot", "X-Bunker-Proto": "HTTP/1.1", "X-Bunker-Rev": "rev:0", "X-Bunker-Tree": "tree:3a56b7f16048252f", "X-Bunker-Verdict": "ok", "Date": "Tue, 29 Sep 2026 00:14:02 GMT", "Connection": "close"}
+<<< body {"ok":true,"op":"snapshot","verdict":"ok","rev":"rev:0","tree":"tree:3a56b7f16048252f","proto":"HTTP/1.1","duration_ms":0,"truncated":false,"result":{"count":3,"entries":[{"path":".","type":"dir","size":4096,"mtime_unix_ms":1790640841730,"mode":"0775"},{"path":"a.txt","type":"file","size":26,"mtime_unix_ms":1790640841728,"mode":"0664","hash":"sha256:183ecc9cc7ce6ce571ba01775af5b624301c7111052ecd1fa7ab77afbdac2fa8"},{"path":"link-to-a","type":"symlink","size":5,"mtime_unix_ms":1790640841730,"mode":"0777","link_target":"a.txt"}],"head_seq":1},"error":null}
+
+=== GET /dav/a.txt
+>>> hdr {"Host": "127.0.0.1:18933", "User-Agent": "bunker-fs/1 (Linux; go-fuse)", "X-Bunker-Tree": "tree:3a56b7f16048252f", "Accept-Encoding": "gzip"}
+<<< status 200
+<<< hdr {"Accept-Ranges": "bytes", "Content-Length": "26", "Content-Type": "text/plain; charset=utf-8", "Etag": "\"sha256:183ecc9cc7ce6ce571ba01775af5b624301c7111052ecd1fa7ab77afbdac2fa8\"", "Last-Modified": "Tue, 29 Sep 2026 00:14:01 GMT", "X-Bunker-Capabilities": "1", "X-Bunker-Hash": "sha256:183ecc9cc7ce6ce571ba01775af5b624301c7111052ecd1fa7ab77afbdac2fa8", "X-Bunker-Proto": "HTTP/1.1", "X-Bunker-Rev": "rev:0", "X-Bunker-Tree": "tree:3a56b7f16048252f", "X-Bunker-Verdict": "ok", "Date": "Tue, 29 Sep 2026 00:14:04 GMT", "Connection": "close"}
+<<< body hello from the source tree
+=== PROPFIND /dav/link-created
+>>> hdr {"Host": "127.0.0.1:18933", "User-Agent": "bunker-fs/1 (Linux; go-fuse)", "Content-Length": "297", "Content-Type": "application/xml; charset=utf-8", "Depth": "0", "X-Bunker-Tree": "tree:3a56b7f16048252f", "Accept-Encoding": "gzip"}
+>>> body <?xml version="1.0" encoding="utf-8"?>
+<D:propfind xmlns:D="DAV:" xmlns:b="urn:bunker:fs:1">
+  <D:prop>
+    <D:resourcetype/>
+    <D:getcontentlength/>
+    <D:getlastmodified/>
+    <D:getetag/>
+    <b:type/>
+    <b:link-target/>
+    <b:mode/>
+    <b:mtime/>
+    <b:hash/>
+  </D:prop>
+</D:propfind>
+<<< status 404
+<<< hdr {"Cache-Control": "no-store", "Content-Length": "126", "Content-Type": "application/xml; charset=utf-8", "X-Bunker-Capabilities": "1", "X-Bunker-Proto": "HTTP/1.1", "X-Bunker-Rev": "rev:0", "X-Bunker-Tree": "tree:3a56b7f16048252f", "X-Bunker-Verdict": "not_found", "Date": "Tue, 29 Sep 2026 00:14:04 GMT", "Connection": "close"}
+<<< body <?xml version="1.0" encoding="utf-8"?>
+<D:error xmlns:D="DAV:" xmlns:b="urn:bunker:fs:1"><b:not-found></b:not-found></D:error>
+=== PROPFIND /dav/link-created
+>>> hdr {"Host": "127.0.0.1:18933", "User-Agent": "bunker-fs/1 (Linux; go-fuse)", "Content-Length": "297", "Content-Type": "application/xml; charset=utf-8", "Depth": "0", "X-Bunker-Tree": "tree:3a56b7f16048252f", "Accept-Encoding": "gzip"}
+>>> body <?xml version="1.0" encoding="utf-8"?>
+<D:propfind xmlns:D="DAV:" xmlns:b="urn:bunker:fs:1">
+  <D:prop>
+    <D:resourcetype/>
+    <D:getcontentlength/>
+    <D:getlastmodified/>
+    <D:getetag/>
+    <b:type/>
+    <b:link-target/>
+    <b:mode/>
+    <b:mtime/>
+    <b:hash/>
+  </D:prop>
+</D:propfind>
+<<< status 404
+<<< hdr {"Cache-Control": "no-store", "Content-Length": "126", "Content-Type": "application/xml; charset=utf-8", "X-Bunker-Capabilities": "1", "X-Bunker-Proto": "HTTP/1.1", "X-Bunker-Rev": "rev:0", "X-Bunker-Tree": "tree:3a56b7f16048252f", "X-Bunker-Verdict": "not_found", "Date": "Tue, 29 Sep 2026 00:14:04 GMT", "Connection": "close"}
+<<< body <?xml version="1.0" encoding="utf-8"?>
+<D:error xmlns:D="DAV:" xmlns:b="urn:bunker:fs:1"><b:not-found></b:not-found></D:error>
+=== PROPFIND /dav/link-created
+>>> hdr {"Host": "127.0.0.1:18933", "User-Agent": "bunker-fs/1 (Linux; go-fuse)", "Content-Length": "297", "Content-Type": "application/xml; charset=utf-8", "Depth": "0", "X-Bunker-Tree": "tree:3a56b7f16048252f", "Accept-Encoding": "gzip"}
+>>> body <?xml version="1.0" encoding="utf-8"?>
+<D:propfind xmlns:D="DAV:" xmlns:b="urn:bunker:fs:1">
+  <D:prop>
+    <D:resourcetype/>
+    <D:getcontentlength/>
+    <D:getlastmodified/>
+    <D:getetag/>
+    <b:type/>
+    <b:link-target/>
+    <b:mode/>
+    <b:mtime/>
+    <b:hash/>
+  </D:prop>
+</D:propfind>
+<<< status 404
+<<< hdr {"Cache-Control": "no-store", "Content-Length": "126", "Content-Type": "application/xml; charset=utf-8", "X-Bunker-Capabilities": "1", "X-Bunker-Proto": "HTTP/1.1", "X-Bunker-Rev": "rev:0", "X-Bunker-Tree": "tree:3a56b7f16048252f", "X-Bunker-Verdict": "not_found", "Date": "Tue, 29 Sep 2026 00:14:04 GMT", "Connection": "close"}
+<<< body <?xml version="1.0" encoding="utf-8"?>
+<D:error xmlns:D="DAV:" xmlns:b="urn:bunker:fs:1"><b:not-found></b:not-found></D:error>
+=== PROPFIND /dav/link-created
+>>> hdr {"Host": "127.0.0.1:18933", "User-Agent": "bunker-fs/1 (Linux; go-fuse)", "Content-Length": "297", "Content-Type": "application/xml; charset=utf-8", "Depth": "0", "X-Bunker-Tree": "tree:3a56b7f16048252f", "Accept-Encoding": "gzip"}
+>>> body <?xml version="1.0" encoding="utf-8"?>
+<D:propfind xmlns:D="DAV:" xmlns:b="urn:bunker:fs:1">
+  <D:prop>
+    <D:resourcetype/>
+    <D:getcontentlength/>
+    <D:getlastmodified/>
+    <D:getetag/>
+    <b:type/>
+    <b:link-target/>
+    <b:mode/>
+    <b:mtime/>
+    <b:hash/>
+  </D:prop>
+</D:propfind>
+<<< status 404
+<<< hdr {"Cache-Control": "no-store", "Content-Length": "126", "Content-Type": "application/xml; charset=utf-8", "X-Bunker-Capabilities": "1", "X-Bunker-Proto": "HTTP/1.1", "X-Bunker-Rev": "rev:0", "X-Bunker-Tree": "tree:3a56b7f16048252f", "X-Bunker-Verdict": "not_found", "Date": "Tue, 29 Sep 2026 00:14:04 GMT", "Connection": "close"}
+<<< body <?xml version="1.0" encoding="utf-8"?>
+<D:error xmlns:D="DAV:" xmlns:b="urn:bunker:fs:1"><b:not-found></b:not-found></D:error>
+=== PUT /dav/link-created
+>>> hdr {"Host": "127.0.0.1:18933", "User-Agent": "bunker-fs/1 (Linux; go-fuse)", "Content-Length": "0", "X-Bunker-Link-Target": "a.txt", "X-Bunker-Tree": "tree:3a56b7f16048252f", "Accept-Encoding": "gzip"}
+<<< status 201
+<<< hdr {"X-Bunker-Capabilities": "1", "X-Bunker-Link-Target": "a.txt", "X-Bunker-Proto": "HTTP/1.1", "X-Bunker-Rev": "rev:0", "X-Bunker-Tree": "tree:3a56b7f16048252f", "X-Bunker-Verdict": "ok", "Date": "Tue, 29 Sep 2026 00:14:04 GMT", "Content-Length": "0", "Connection": "close"}

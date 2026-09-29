@@ -603,6 +603,40 @@ func stageBody(abs string, body []byte) (string, error) {
 	return name, nil
 }
 
+// stageLink creates a fresh symlink holding target at a temp name that is a
+// SIBLING of abs, and returns that name (BFS-018). It is stageBody's twin for
+// the one directory-entry kind whose entity is not written bytes: the link is
+// created under tempPrefix — which every listing, GET, PROPFIND and snapshot
+// answer already filters out — and the caller publishes it with the SAME
+// rename that publishes a staged body. One publication point for both shapes.
+//
+// The temp entry is created with symlink(2), never by writing the target
+// string into a file: an implementation that wrote first and linked second
+// would have to materialise the target path as content, which is exactly the
+// wrong answer this row exists to remove.
+func stageLink(abs, target string) (string, error) {
+	dir := filepath.Dir(abs)
+	tmp, err := os.CreateTemp(dir, tempPrefix+"*")
+	if err != nil {
+		return "", err
+	}
+	name := tmp.Name()
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(name)
+		return "", err
+	}
+	// CreateTemp made a regular file, and symlink(2) will not take a name that
+	// already exists: the placeholder goes before the link is created.
+	if err := os.Remove(name); err != nil {
+		return "", err
+	}
+	if err := os.Symlink(target, name); err != nil {
+		_ = os.Remove(name)
+		return "", err
+	}
+	return name, nil
+}
+
 // commitStaged publishes a staged file over abs. It is the last step of
 // §6.1 step 5's commit and runs under the path's commit lock (see lockPath),
 // so the re-validation that precedes it and the rename itself are one

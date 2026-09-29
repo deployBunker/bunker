@@ -247,14 +247,26 @@ func TestSymlinkEscapeIsRefused(t *testing.T) {
 			t.Fatalf("GET %s verdict = %q, want workspace_invalid", target, got)
 		}
 	}
-	// Control: a symlink that stays INSIDE the tree is served normally, so the
-	// refusal above is about the escape and not about symlinks as such.
+	// Control: an IN-TREE symlink is refused for a DIFFERENT reason — it is a
+	// link, not an escape — so the refusal above is about the escape and not
+	// about symlinks as such. The distinguishing fact is the verdict: an escape
+	// is workspace_invalid (the §6.1 step-1 confinement rule), an in-tree link
+	// is symlink_not_a_file (the link has no bytes of its own to serve).
 	if err := os.Symlink(filepath.Join(h.Root(), "README.md"), filepath.Join(h.Root(), "inside")); err != nil {
 		t.Fatalf("symlink: %v", err)
 	}
 	rec := do(t, h, "GET", "/dav/inside", nil, "")
-	if rec.Code != 200 || rec.Body.String() != fixtureReadme {
-		t.Fatalf("in-tree symlink GET = %d %q, want the target's bytes", rec.Code, rec.Body.String())
+	if got := rec.Header().Get("X-Bunker-Verdict"); got != string(VerdictSymlinkNotAFile) {
+		t.Fatalf("in-tree symlink GET verdict = %q, want %q (a link, not an escape)", got, VerdictSymlinkNotAFile)
+	}
+	if strings.Contains(rec.Body.String(), fixtureReadme) {
+		t.Fatalf("an in-tree link served its target's bytes: %q", rec.Body.String())
+	}
+	// The target the link points at is still served normally, so nothing about
+	// reading files changed.
+	ctrl := do(t, h, "GET", "/dav/README.md", nil, "")
+	if ctrl.Code != 200 || ctrl.Body.String() != fixtureReadme {
+		t.Fatalf("the link's target GET = %d %q, want the target's bytes", ctrl.Code, ctrl.Body.String())
 	}
 }
 

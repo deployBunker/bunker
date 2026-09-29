@@ -1,0 +1,26 @@
+# TestSuccessfulRefreshCost (the fsclient staged-cache COST cell, BFS-038) — attribution
+#
+# The cell asserts a TIMING ratio (an 8 MiB blob read through GetPinned vs Get+Pin).
+# It failed twice during a loadavg-24 window in which two other Hermes workers were
+# running their own full suites on this 16-core host, and passed on the base tree in
+# that window. Two independent attributions say it is the host, not this change:
+#
+# 1. STATIC. The assertion measures internal/fsclient/cache.go (Get/GetPinned/Pin/
+#    Unpin). 644499d..HEAD for internal/fsclient/ touches only bfs018_symlink_test.go,
+#    capabilities.go, client.go, snapshot.go and status.go; client.go's hunks are
+#    FileMeta, Propfind, propfindBody, multistatusProp, decodeMultistatus, headerTime.
+#    Show with: git diff --name-only 644499d..HEAD -- internal/fsclient/
+#
+# 2. MEASURED, alternating base/mine on one host, stamping loadavg per run:
+
+host: 16 cores, loadavg now: 18.03
+
+round 1  base  started=19:34:09  wall=0.44s  FAIL=0  ok  loadavg=18.03
+round 1  mine  started=19:34:09  wall=0.44s  FAIL=0  ok  loadavg=18.03
+round 2  base  started=19:34:10  wall=0.41s  FAIL=0  ok  loadavg=18.03
+round 2  mine  started=19:34:10  wall=0.85s  FAIL=0  ok  loadavg=18.03
+round 3  base  started=19:34:11  wall=0.42s  FAIL=0  ok  loadavg=18.03
+round 3  mine  started=19:34:11  wall=0.44s  FAIL=0  ok  loadavg=18.03
+DONE
+
+# FAIL=0 on every run of both trees, base and mine alike.

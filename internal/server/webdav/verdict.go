@@ -40,17 +40,27 @@ const (
 	VerdictResultTooLarge            Verdict = "result_too_large"
 	VerdictInsufficientStorage       Verdict = "insufficient_storage"
 	VerdictWorkspaceInvalid          Verdict = "workspace_invalid"
-	VerdictExtensionOpMissing        Verdict = "extension_op_missing"
-	VerdictOpUnknown                 Verdict = "op_unknown"
-	VerdictBadArguments              Verdict = "bad_arguments"
-	VerdictUnauthenticated           Verdict = "unauthenticated"
-	VerdictPayloadTooLarge           Verdict = "payload_too_large"
-	VerdictRangeNotSatisfiable       Verdict = "range_not_satisfiable"
-	VerdictInternal                  Verdict = "internal"
-	VerdictNotFound                  Verdict = "not_found"
-	VerdictForbidden                 Verdict = "forbidden"
-	VerdictConflict                  Verdict = "conflict"
-	VerdictBadGateway                Verdict = "bad_gateway"
+	// The BFS-018 symlink vocabulary. A symlink is a directory entry whose
+	// entity is its target path, not bytes, so this surface has three refusals
+	// to name rather than one silent answer: GET/HEAD on a link (the surface
+	// will not serve a link as its target's bytes — that is a copy, not a
+	// link), a body-bearing PUT that would REPLACE a link with a regular file
+	// (the undeclared type change a materialised pseudo-file writes back), and
+	// a link create whose declared target cannot be a link target.
+	VerdictSymlinkNotAFile          Verdict = "symlink_not_a_file"
+	VerdictSymlinkUndeclaredReplace Verdict = "symlink_undeclared_replace"
+	VerdictSymlinkTargetInvalid     Verdict = "symlink_target_invalid"
+	VerdictExtensionOpMissing       Verdict = "extension_op_missing"
+	VerdictOpUnknown                Verdict = "op_unknown"
+	VerdictBadArguments             Verdict = "bad_arguments"
+	VerdictUnauthenticated          Verdict = "unauthenticated"
+	VerdictPayloadTooLarge          Verdict = "payload_too_large"
+	VerdictRangeNotSatisfiable      Verdict = "range_not_satisfiable"
+	VerdictInternal                 Verdict = "internal"
+	VerdictNotFound                 Verdict = "not_found"
+	VerdictForbidden                Verdict = "forbidden"
+	VerdictConflict                 Verdict = "conflict"
+	VerdictBadGateway               Verdict = "bad_gateway"
 )
 
 // failure is one refusal in the shape §5.3 requires: a standard HTTP status, a

@@ -1,0 +1,58 @@
+=== [live] the committed tree ===
+100644 f2a8d3cb98e4276c4a76949957c9d148582b2632 0	a.txt
+120000 8d14cbf983b3fad683171c9418998d9f68340823 0	link-to-a
+100644 79c53955ef856f16f2107446bc721c8879a1bd2e 0	vendored/nested.txt
+120000 d8b329f3df485f7a4f27c3cf2896bbc75c528585 0	vendored/sibling-link
+
+[live] DAVSERVE_PID=122528 URL=http://127.0.0.1:42889/dav
+=== [live] ls -l through the mount (the TYPE line) ===
+/tmp/bfs018-arms-M6Q7fd/live/mnt:
+total 4
+-rw-rw-r-- 1 kara kara   26 Sep 28 19:38 a.txt
+lrwxrwxrwx 1 kara kara    5 Sep 28 19:38 link-to-a -> a.txt
+drwxrwxr-x 2 kara kara 4096 Sep 28 19:38 vendored
+
+/tmp/bfs018-arms-M6Q7fd/live/mnt/vendored:
+total 0
+-rw-rw-r-- 1 kara kara 7 Sep 28 19:38 nested.txt
+lrwxrwxrwx 1 kara kara 8 Sep 28 19:38 sibling-link -> ../a.txt
+=== [live] readlink through the mount ===
+readlink link-to-a -> 'a.txt' (rc=0)
+readlink vendored/sibling-link -> '../a.txt' (rc=0)
+=== [live] the type change, made THROUGH the mount ===
+rm link-to-a rc=0
+wrote a regular file over the name rc=0
+[live] server: now a regular file
+=== [live] git status through the mount (the type change a developer never made) ===
+ T link-to-a
+[live] status lines before checkout: 1
+=== [live] git checkout -f HEAD THROUGH the mount ===
+checkout rc=0
+=== [live] git status through the mount, after the checkout ===
+[live] status lines after checkout: 0
+=== [live] what the SERVER holds now ===
+<served>:
+total 8
+-rw-rw-r-- 1 kara kara   26 Sep 28 19:38 a.txt
+lrwxrwxrwx 1 kara kara    5 Sep 28 19:38 link-to-a -> a.txt
+drwxrwxr-x 2 kara kara 4096 Sep 28 19:38 vendored
+
+<served>/vendored:
+total 4
+-rw-rw-r-- 1 kara kara 7 Sep 28 19:38 nested.txt
+lrwxrwxrwx 1 kara kara 8 Sep 28 19:38 sibling-link -> ../a.txt
+=== [live] materialisation scan (a regular file holding a link target) ===
+[live] materialised_regular_files=0
+=== [live] the mount's own report (its kept status document) ===
+--- read 1 ---
+symlink      : declared=v1 (X-Bunker-Link-Target) type_property=b:type target_property=b:link-target
+             : readlinks_total=0 created_total=0 refusals_total=0
+--- read 2 ---
+symlink      : declared=v1 (X-Bunker-Link-Target) type_property=b:type target_property=b:link-target
+             : readlinks_total=12 created_total=1 refusals_total=0
+[live] SUMMARY ls_type=l server_kind=symlink status_after=0 materialised=0 checkout_rc=0
+ARM PASS: live: a real symlink through the mount, a clean status after the checkout, nothing materialised
+[live] unmounted (rc=0), stage kept at /tmp/bfs018-arms-M6Q7fd/live
+
+WORK kept at /tmp/bfs018-arms-M6Q7fd
+ARMS: ALL PASS

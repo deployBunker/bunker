@@ -1,0 +1,10 @@
+ARM PASS: BFS-021 append (whole-file publication): cells passed=2 failed=0 (selector names 2)
+ARM PASS: BFS-020 created-name publication + rename/handle rules: cells passed=7 failed=0 (selector names 7)
+ARM PASS: BFS-030/033 in-place rewrite + refusal hold: cells passed=5 failed=0 (selector names 5)
+ARM PASS: BFS-020 recursive-delete refusals: cells passed=2 failed=0 (selector names 2)
+ARM PASS: BFS-025 published-size bound: cells passed=2 failed=0 (selector names 2)
+ARM PASS: BFS-020/038 commit-time revalidation + exclusive commit: cells passed=4 failed=0 (selector names 4)
+ARM PASS: BFS-004 §6 conditional PUT + refusals: cells passed=6 failed=0 (selector names 6)
+ARM PASS: BFS-038 atomic publish + refused-write-does-not-land: cells passed=2 failed=0 (selector names 2)
+WORK kept at /tmp/bfs018-arms-ikStio
+ARMS: ALL PASS

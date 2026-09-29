@@ -1,0 +1,44 @@
+# The mount's own report: how fast it catches up (BFS-018 instrument note)
+#
+# The report is a DOCUMENT the mount rewrites on a ~1 s cadence, so a single read
+# can land inside the window before the activity is folded in. Measured: three
+# readlinks + an ls -l through the mount, then CLI and document polled every 0.5 s.
+
+DOC=/home/kara/.cache/bunker/fs/2d1423fd03a3/status.json
+--- 3 readlinks + an ls -l through the mount at 19:42:51 ---
+a.txt
+a.txt
+a.txt
+
+== t+0.0s 19:42:51 ==
+CLI:  : readlinks_total=0 created_total=0 refusals_total=0 
+DOC:  .symlink.readlinks_total = 0  .symlink.created_total = 0  (mtime 19:42:51)
+
+== t+0.5s 19:42:52 ==
+CLI:  : readlinks_total=0 created_total=0 refusals_total=0 
+DOC:  .symlink.readlinks_total = 0  .symlink.created_total = 0  (mtime 19:42:51)
+
+== t+1.0s 19:42:53 ==
+CLI:  : readlinks_total=5 created_total=0 refusals_total=0 
+DOC:  .symlink.readlinks_total = 5  .symlink.created_total = 0  (mtime 19:42:52)
+
+== t+1.5s 19:42:53 ==
+CLI:  : readlinks_total=5 created_total=0 refusals_total=0 
+DOC:  .symlink.readlinks_total = 5  .symlink.created_total = 0  (mtime 19:42:53)
+
+== t+2.0s 19:42:54 ==
+CLI:  : readlinks_total=5 created_total=0 refusals_total=0 
+DOC:  .symlink.readlinks_total = 5  .symlink.created_total = 0  (mtime 19:42:53)
+
+== t+2.5s 19:42:55 ==
+CLI:  : readlinks_total=5 created_total=0 refusals_total=0 
+DOC:  .symlink.readlinks_total = 5  .symlink.created_total = 0  (mtime 19:42:54)
+
+== t+3.0s 19:42:55 ==
+CLI:  : readlinks_total=5 created_total=0 refusals_total=0 
+DOC:  .symlink.readlinks_total = 5  .symlink.created_total = 0  (mtime 19:42:55)
+
+== t+3.5s 19:42:56 ==
+CLI:  : readlinks_total=5 created_total=0 refusals_total=0 
+DOC:  .symlink.readlinks_total = 5  .symlink.created_total = 0  (mtime 19:42:55)
+STAGE=/tmp/bfs018-lag3-bu1Q6S

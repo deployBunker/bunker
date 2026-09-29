@@ -1,0 +1,72 @@
+### POSIX surface through the mount ###
+MOUNTED=yes
+--- cat a.txt ---
+hello from the source tree rc=0
+--- cat link-to-a (kernel resolves the link) ---
+hello from the source tree rc=0
+--- cat sub/up-link ---
+hello from the source tree rc=0
+--- stat -c %F link-to-a ---
+symbolic link
+ rc=0
+--- readlink -f link-to-a ---
+/tmp/bfs018-posix-nLPIv0/mnt/a.txt
+ rc=0
+--- find -type l ---
+/tmp/bfs018-posix-nLPIv0/mnt/link-to-a
+/tmp/bfs018-posix-nLPIv0/mnt/sub/up-link
+ rc=0
+--- find -type f ---
+/tmp/bfs018-posix-nLPIv0/mnt/a.txt
+/tmp/bfs018-posix-nLPIv0/mnt/sub/other.txt
+ rc=0
+--- ls -lR ---
+/tmp/bfs018-posix-nLPIv0/mnt:
+total 4
+-rw-rw-r-- 1 kara kara   26 Sep 28 19:15 a.txt
+lrwxrwxrwx 1 kara kara    5 Sep 28 19:15 link-to-a -> a.txt
+drwxrwxr-x 2 kara kara 4096 Sep 28 19:15 sub
+
+/tmp/bfs018-posix-nLPIv0/mnt/sub:
+total 0
+-rw-rw-r-- 1 kara kara 6 Sep 28 19:15 other.txt
+lrwxrwxrwx 1 kara kara 8 Sep 28 19:15 up-link -> ../a.txt
+--- ln -s relative, then read it back ---
+ln rc=0
+a.txt
+ readlink rc=0
+hello from the source tree cat rc=0
+--- an append through the symlink (kernel follows to a.txt) ---
+append rc=0
+server a.txt: [hello from the source tree MORE]
+--- a plain write over an existing link (kernel follows; a.txt changes, the link stays) ---
+sh: 1: cannot create /tmp/bfs018-posix-nLPIv0/mnt/link-to-a: Operation not supported
+write rc=2
+server a.txt: [hello from the source tree MORE] link-to-a: [a.txt]
+--- and the shape that IS a type change: rm then create ---
+relink rc=0
+server new-link: [sub/up-link]
+--- rm a link (DELETE names the entry) ---
+rm rc=0
+total 8
+-rw-rw-r-- 1 kara kara   31 Sep 28 19:15 a.txt
+lrwxrwxrwx 1 kara kara    5 Sep 28 19:15 link-to-a -> a.txt
+drwxrwxr-x 2 kara kara 4096 Sep 28 19:15 sub
+--- materialisation scan ---
+materialised=0
+unmount rc=0
+STAGE=/tmp/bfs018-posix-nLPIv0
+
+### transparency control ###
+### transparency control ###
+=== the same '>' shape on the TARGET FILE (no link involved) ===
+sh: 1: cannot create /tmp/bfs018-trans-FpknaV/mnt/a.txt: Operation not supported
+  rc=2
+=== the same '>' shape THROUGH the link ===
+sh: 1: cannot create /tmp/bfs018-trans-FpknaV/mnt/link-to-a: Operation not supported
+  rc=2
+=== the shape BFS-030/020 DOES serve: create a new name, then rename over ===
+  rc=0
+server a.txt: [rewritten]  link: [a.txt]
+STAGE=/tmp/bfs018-trans-FpknaV
+RC=0

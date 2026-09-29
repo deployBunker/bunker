@@ -119,6 +119,13 @@ type Status struct {
 	// the caller is told it succeeded. Every figure is reported: a refusal the
 	// owner cannot see hold is indistinguishable from no refusal.
 	RefusalHolds RefusalHoldState `json:"refusal_holds"`
+	// Symlink is the BFS-018 figure set: what the surface declared about
+	// symlinks, how many targets were answered, how many links this mount
+	// created, and every operation it refused by name. Reported for the same
+	// reason the blocks above are — and for one more: this row's defect was a
+	// SILENT wrong answer, so a mount that cannot do links must say so in its
+	// own report instead of letting the caller discover it as a corrupt tree.
+	Symlink SymlinkState `json:"symlink"`
 	// Config is the mount's option set AS RESOLVED (BFS-044): every bound and
 	// everyone knob the client actually obeys, including the ones derived rather
 	// than configured (the cache's entry bound, the hot path's clamped refresh
@@ -242,6 +249,38 @@ type ReadBoundState struct {
 	// happened. It is a string, not a struct, so it survives across a version
 	// without a schema change.
 	Last string `json:"last,omitempty"`
+}
+
+// SymlinkState is the `symlink` block of the status document (BFS-018): what
+// this mount's surface DECLARED about symlinks, what the mount did with them,
+// and what it REFUSED by name. It is here because the defect this block belongs
+// to was a silently wrong answer — a link presented as a file — and the cure
+// has two halves that must both be visible: the round-trip that now works
+// (readlinks_total, created_total) and the operations that are refused with a
+// reason instead of guessed at (refusals_total, last_refusals).
+type SymlinkState struct {
+	// Declared reports whether the surface's capability document declared the
+	// symlink extension. When it is false, link operations are refused by name
+	// and an entry the surface types as a symlink cannot be read — a fact the
+	// operator must be able to see rather than infer.
+	Declared        bool   `json:"declared"`
+	DeclaredVersion int    `json:"declared_version,omitempty"`
+	DeclaredName    string `json:"declared_name,omitempty"`
+	TypeProperty    string `json:"type_property,omitempty"`
+	TargetProperty  string `json:"target_property,omitempty"`
+	// ReadlinksTotal counts link targets answered from the surface's declared
+	// target (never from a fetch of the path's bytes).
+	ReadlinksTotal int64 `json:"readlinks_total"`
+	// CreatedTotal counts symlinks created through this mount.
+	CreatedTotal int64 `json:"created_total"`
+	// RefusalsTotal counts operations refused with a named cause: an undeclared
+	// surface, a link whose target was not published, a hardlink, or an entry
+	// whose declared type this client cannot present.
+	RefusalsTotal int64 `json:"refusals_total"`
+	// LastRefusals is a BOUNDED, oldest-first sample of the most recent
+	// refusals (at most 8). The count is the figure; this is the sample, and it
+	// is named as a sample so it cannot be read as the whole history.
+	LastRefusals []string `json:"last_refusals,omitempty"`
 }
 
 // MountRoot returns the per-user root of this client's mount directories:
