@@ -3595,3 +3595,13 @@ tasks:
   status: complete
   created_at: '2026-09-29T07:34:58.976339+00:00'
   completed_at: '2026-09-29T07:37:19.569354+00:00'
+- id: DOC-23
+  title: "docs/integration.md \xA75 RPC table missing 8 of proto's 20 RPCs"
+  criteria:
+  - "A1: all 8 missing RPC names (StopAgent StartAgent RestartAgent GetAgentKey RenewalDriftReport\
+    \ RotateJWTSecret RevokeKey KeyList) appear in docs/integration.md \xA75 table;\
+    \ A2: only docs/integration.md changed; A3: kinds match proto (all unary); A4:\
+    \ no existing rows deleted"
+  status: complete
+  created_at: '2026-09-29T07:48:42.510361+00:00'
+  completed_at: '2026-09-29T07:55:06.518830+00:00'
