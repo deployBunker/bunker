@@ -284,3 +284,42 @@
 - **Verdict:** 🟡 PROMISING-BUT-ROUGH — the stock path is the best it has been; the
   image-spec path and CI coexistence are the two P0 holes, both newly-discovered surfaces
   rather than regressions.
+
+## 2026-09-29 run detail (23rd run — release-channel / fresh-user install surface)
+
+Angle picked by the repeat-run rule: 22 prior runs tar-streamed the dev
+checkout; this run installed the way a fresh user would — README Option 1
+(release installer from GitHub Releases) and Option 2 (clone + Go tarball +
+make build) on a bare ephemeral agent (dfinst-rel @ bunker-las-03, TTL 2h,
+destroyed and verified).
+
+- **Promise tested:** "a fresh user on a clean machine can install bunker
+  from scratch following the README, then use the CLI."
+- **What held up:** Option 1 = 12s cold, sha256-verified, prefix fallback +
+  PATH warning exactly as documented; unconfigured-server error is good
+  first-run UX. Option 2 = 48s cold build, RC 0, commit-stamped 3cc8f73,
+  install.sh --dry-run plan correct. Warm spawn 40s (inside the documented
+  60–90s first-spawn envelope). Spawn/destroy lifecycle clean, list back
+  to 0.
+- **What fell apart:** (1) BUNKER-INST-001 P1 — the release channel serves
+  v0.1.4, 879 commits behind HEAD: the prebuilt CLI is missing
+  stop/start/restart, homes, linger, host-provision entirely; a fresh user
+  following the README feature list hits "unknown command". (2)
+  BUNKER-INST-002 P2 — the README's Go recipe uses literal /tmp/go.tar.gz;
+  on the shared host that path was owned by another agent (curl RC 23
+  write error ×2), a live reproduction of the HOST-SHARED /tmp class the
+  README itself warns about.
+- **Friction count:** 1 real blocker-class finding, 1 docs finding; both
+  install paths otherwise behaved exactly as documented.
+- **Perf (Step 2b):** installer cold 12s one-shot; source build cold 48s;
+  spawn warm 40s. Nothing slow enough to profile — recorded as PERF-012,
+  no profile taken.
+- **Artifacts:** board rows BUNKER-INST-001/002 + PERF-012 (tasks.jsonl,
+  619 rows / 0 dupes, verified by id census), tasks.md run-23 section,
+  docs/dogfood/2026-09-29-release-channel-install.md, diagnostics §22,
+  skills/bunker-usage freshness note.
+- **Cleanup:** dfinst-rel destroyed and verified absent from `bunker list`.
+  No repo visibility/permission changes; no credentials minted or committed.
+- **Verdict:** ✅ SHIPPABLE (install surface) — both documented paths work
+  on a bare machine; the one real gap is release-channel staleness
+  (BUNKER-INST-001), not a bug.

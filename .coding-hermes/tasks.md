@@ -396,3 +396,18 @@ diagnostics §21; skill v1.13.0.
 | DF-BUNKER-81 | Destroy with default archive policy is unfinishable on a rootless-docker home: 30s CLI ctx SIGKILLs gzip at ~28s, fail-closed gate refuses deletion, five attempts left SEVEN partial tarballs (+500MB, tar: Unexpected EOF) with the agent still 'running'; --force bypasses only the live-process gate. DF-75's mechanism, sharpened with the partial-archive leak + the docker-data-root-in-$HOME cause. | P1 | 3 | — | +destroy, +archive, +cli, +disk | Size-proportional (or 600s+) destroy deadline; delete partial archives on failure; exclude the agent's own docker data-root from the archive; surface an archive opt-out in destroy --help. PASS: a 700M docker home destroys in one call with zero partial archives. |
 | GAP-151 | agent-tools --install refusal says "make dist in the toolkit repo" without naming it — the static binary lives in a private repo bunker never mentions; a fresh operator hits a dead end. | P2 | 1 | — | +agent-tools, +dx, +docs | Name the repo + exact commands in the refusal (or vendor the static artifact into bunker releases). PASS: the refusal text alone leads to a successful install. |
 | PERF-004 | Image-backed exec +55% vs stock (1.60s±0.045 vs 1.04s±0.025, hyperfine ×10 warm, same host same minute) — container-per-exec cost (service.go:1322). Baseline recorded for re-measuring the DF-BUNKER-77 fix. | P2 | 1 | — | +perf, +exec | Re-measure with the same hyperfine command after DF-BUNKER-77 lands; fix target is a persistent container or host-context fallback. |
+
+## Dogfood Findings (2026-09-29 — run 23, release-channel/fresh-user install surface)
+
+Angle: the README's real install channel (Option 1 release installer,
+Option 2 make build from a real clone) — 22 prior runs tar-streamed the dev
+checkout and never touched it. Fresh agent dfinst-rel on bunker-las-03,
+installed from scratch both ways, then one warm spawn. Full report:
+docs/dogfood/2026-09-29-release-channel-install.md.
+
+| ID | Task | Pri | Cpx | Deps | Tags | Reasoning |
+|----|------|-----|-----|------|------|-----------|
+| BUNKER-INST-001 | Release channel serves 879 commits of stale surface (v0.1.4 vs HEAD): installer, go-install @latest and tag builds all miss stop/start/restart, homes, linger, host-provision. README discloses the lag; a fresh user still hits 'unknown command' on described features. | P1 | 2 | — | +release, +install, +docs | Cut v0.1.5 (CHANGELOG Unreleased is the checklist) or auto-update the freshness note at release time. PASS: release-asset commit == HEAD, or disclosure auto-updates. |
+| BUNKER-INST-002 | README's Go recipe uses literal /tmp/go.tar.gz — on a shared host that path was owned by another agent's leftover (curl RC 23 write error ×2); $HOME download succeeded first try. Live proof of the HOST-SHARED /tmp class. | P2 | 1 | — | +docs, +tmp-isolation | Collision-safe path (mktemp/$HOME) in README + scripts. PASS: verbatim README recipe succeeds on a shared host with a foreign /tmp/go.tar.gz. |
+| PERF-012 | Installer cold 12s; source build cold 48s; spawn warm 40s (documented envelope 60-90s). Nothing a user would notice — no profile, no fix row. | P2 | 1 | — | +perf, +install | Re-measure after any installer/spawn change; command + numbers in docs/dogfood/2026-09-29-release-channel-install.md. |
+

@@ -920,3 +920,46 @@ documented Go-tarball + `install.sh --build` source path on a bare agent
 (35s total, `bunker version` prints the true HEAD commit). Evidence:
 docs/dogfood/2026-09-26-image-spec-surface.md, board rows DF-BUNKER-77..81 +
 GAP-151 + PERF-004 (commit 127e7a5).
+
+## 22. Dogfood run 2026-09-29 — the release-channel / fresh-user install surface (read this before cutting a release, or before assuming "installed" means "current")
+
+**How this run differs from the 22 before it:** every prior install leg
+tar-streamed the dev checkout into an ephemeral agent — which proves the
+code builds, but never exercises what a real fresh user touches: GitHub
+Releases, SHA256SUMS, the install.sh prefix fallback, `go install @latest`,
+and the version stamp in the binary. This run drove exactly that channel on
+a bare agent.
+
+**What the release channel actually is (and why it matters):** the installer
+downloads v0.1.4 binaries and verifies them against SHA256SUMS *before*
+writing anything — a genuinely good fresh-user experience (12s cold, clear
+prefix-fallback message, PATH warning when ~/.local/bin is not on PATH). The
+CLI on a bare agent with no config says "no servers configured; run 'bunker
+connect' first" instead of erroring cryptically. This is the surface new
+users meet, and it holds up.
+
+**The lesson — install testing hides channel staleness:** a checkout-based
+install always carries HEAD; a release-based install carries the newest tag.
+With bunker, that gap is currently 879 commits and includes whole command
+families (stop/start/restart, homes, linger, host-provision). The README's
+"Freshness check" block discloses this honestly, and a release build stamps
+the tagged commit in `commit:` by design so you can tell which one you run —
+the right way to check is `bunker --version` and compare `commit:` to
+`git rev-parse HEAD`. The fix is a release cut, not docs; CHANGELOG's
+Unreleased section is already the checklist.
+
+**The /tmp collision, live:** the README's Go-install recipe says
+`curl -o /tmp/go.tar.gz`. On a shared bunker host before host-provision,
+agent /tmp IS host /tmp, and another agent's leftover `/tmp/go.tar.gz` owned
+by uid 1006 made curl fail twice with RC 23 ("client returned ERROR on
+write") — curl cannot truncate a file it cannot open for writing. Downloading
+into $HOME succeeded first try. This is the exact HOST-SHARED /tmp class
+specs/agent-tmp-isolation.md documents, reproduced by the README's own
+command — recipes should use mktemp or $HOME paths.
+
+**Right way to reproduce this run:** spawn a 2h agent on bunker-las-03; on
+it run `curl -fsSL https://github.com/deployBunker/bunker/releases/latest/download/install.sh | sh`;
+then clone, install Go per the README into $HOME (not /tmp), `make build`
+(48s cold), `./bunker --version` must print HEAD's commit. Warm-spawn timing
+(40s) is your perf baseline. Destroy the agent and verify `bunker list` is
+empty.
