@@ -123,6 +123,21 @@ type Mount struct {
 	appendRefused   atomic.Int64
 	appendLast      atomic.Value // string
 
+	// The symlink figures (BFS-018). readlinks counts targets answered from the
+	// surface's DECLARED target, symlinkCreated counts links created through
+	// this mount, and refusals/lastRefusal name every operation this mount
+	// refused with a reason (an undeclared surface, a link whose target the
+	// surface did not publish, a hardlink, or an entry whose declared type this
+	// client cannot present). Every one of them is reported for the same reason
+	// the figures above are: a refusal the owner cannot see is indistinguishable
+	// from one that never happened, and this row's whole subject is a wrong
+	// answer that used to be silent.
+	readlinks      atomic.Int64
+	symlinkCreated atomic.Int64
+	typeRefusals   atomic.Int64
+	typeRefusalMu  sync.Mutex
+	typeRefusalAt  []string // bounded ring of the most recent refusals
+
 	transportMu sync.RWMutex
 	verdict     string
 	cause       string
@@ -693,6 +708,72 @@ func (m *Mount) recordFailure(err *fsclient.OpError) {
 	}
 }
 
+// refusalRingMax bounds the refusal ring `bunker fs status` can show. It is a
+// ring, not a log: the COUNTS are unbounded (a figure), the recent entries are
+// bounded (a sample), and the bound is named so the sample cannot be read as
+// the whole history.
+const refusalRingMax = 8
+
+// recordRefusal records an operation this mount REFUSED with a named cause
+// (BFS-018): a link create or read against a surface that did not declare the
+// extension, a hardlink, or an entry whose declared type this client cannot
+// present. It is the audit surface for a refusal that used to be a wrong
+// answer — counting it and naming the most recent few is what makes "the mount
+// refused" distinguishable from "the mount silently did something else".
+//
+// It delegates to recordFailure for a SERVER-side failure (a real 409/412, a
+// transport fault) and deliberately does NOT for a local-capability refusal: a
+// surface that cannot express a link has not made the transport unhealthy, and
+// recording it as a transport verdict would send the operator to the wrong
+// subsystem.
+func (m *Mount) recordRefusal(err *fsclient.OpError) {
+	if err == nil {
+		return
+	}
+	m.typeRefusals.Add(1)
+	m.typeRefusalMu.Lock()
+	entry := fmt.Sprintf("%s %s: %s", err.Op, err.Path, err.Detail)
+	if entry == fmt.Sprintf("%s %s: ", err.Op, err.Path) || err.Detail == "" {
+		entry = fmt.Sprintf("%s %s: %s", err.Op, err.Path, err.Error())
+	}
+	m.typeRefusalAt = append(m.typeRefusalAt, entry)
+	if len(m.typeRefusalAt) > refusalRingMax {
+		m.typeRefusalAt = m.typeRefusalAt[len(m.typeRefusalAt)-refusalRingMax:]
+	}
+	m.typeRefusalMu.Unlock()
+	if err.Cause != fsclient.CauseLocalCapability {
+		m.recordFailure(err)
+	}
+}
+
+// symlinkState is the `symlink` block of the status document (BFS-018): the
+// surface's own declaration, what this mount did with it, and what it refused
+// by name.
+func (m *Mount) symlinkState() fsclient.SymlinkState {
+	caps := m.client.SymlinkCapability()
+	st := fsclient.SymlinkState{
+		Declared:        caps.Present,
+		DeclaredVersion: caps.V,
+		DeclaredName:    caps.Name,
+		TypeProperty:    caps.TypeProperty,
+		TargetProperty:  caps.TargetProperty,
+		ReadlinksTotal:  m.readlinks.Load(),
+		CreatedTotal:    m.symlinkCreated.Load(),
+	}
+	st.LastRefusals, st.RefusalsTotal = m.RefusalRing()
+	return st
+}
+
+// RefusalRing returns the most recent refusals, oldest first, and the total
+// count: the two figures `bunker fs status` reports.
+func (m *Mount) RefusalRing() ([]string, int64) {
+	m.typeRefusalMu.Lock()
+	defer m.typeRefusalMu.Unlock()
+	out := make([]string, len(m.typeRefusalAt))
+	copy(out, m.typeRefusalAt)
+	return out, m.typeRefusals.Load()
+}
+
 // Status builds the reported state document.
 func (m *Mount) Status() fsclient.Status {
 	cs := m.cache.Stats()
@@ -713,6 +794,7 @@ func (m *Mount) Status() fsclient.Status {
 			Rev:          m.client.Rev(),
 		},
 		Conflicts: fsclient.ConflictState{RefusalsTotal: m.wp.Refusals(), Last: m.wp.LastConflict()},
+		Symlink:   m.symlinkState(),
 	}
 	cur, high := m.client.InFlight()
 	st.Transport.InFlight, st.Transport.InFlightMax = cur, high
@@ -847,7 +929,24 @@ func inoFor(p string) uint64 {
 }
 
 // modeOf renders a node's mode bits.
+//
+// THE TYPE IS THE WHOLE POINT (BFS-018). A node the surface declared a symlink
+// becomes S_IFLNK, and that single bit is what makes the kernel resolve the
+// link ITSELF — so an open of a link path reaches the target instead of being
+// served, as the defect did, a regular file of mode 0777 whose content was the
+// link's own target path. The permission bits of a symlink are 0777 by
+// convention and Linux ignores them (there is no chmod on a link), so a link's
+// mode is the convention and not the surface's octal value: reporting the
+// wire's 0777 as a REGULAR file's permissions is exactly the shape that was
+// filed, and reporting it under S_IFLNK is what the same number means.
+//
+// A node whose declared kind this client does not know is refused by
+// typeRefusal at every site that would have to describe it: it never falls
+// through to S_IFREG, because "a type I cannot present" is not "a file".
 func modeOf(nd fsclient.Node) uint32 {
+	if nd.IsSymlink() {
+		return syscall.S_IFLNK | 0o777
+	}
 	var perm uint32 = 0o644
 	if nd.IsDir {
 		perm = 0o755
@@ -864,9 +963,28 @@ func modeOf(nd fsclient.Node) uint32 {
 	return syscall.S_IFREG | perm
 }
 
+// typeRefusal is the named refusal for a node whose DECLARED kind this client
+// cannot present (BFS-018). It exists so that "the surface said something I do
+// not know" is a loud, specific error rather than a plausible-looking regular
+// file: reporting an unhonoured type as a file is the same defect one type
+// over, and a caller that has to be told has to be told BY NAME.
+func typeRefusal(nd fsclient.Node, op string) *fsclient.OpError {
+	return &fsclient.OpError{
+		Op: op, Path: nd.Path, Errno: fsclient.ErrnoEIO, Cause: fsclient.CauseLocalCapability,
+		Detail: fmt.Sprintf("this surface declares the entry type %q, which this client cannot present; refusing rather than describing it as a regular file (a link, or any other non-file entry, must never be materialised as a file)", nd.Kind),
+	}
+}
+
 func fillAttr(a *fuse.Attr, nd fsclient.Node) {
 	a.Mode = modeOf(nd)
 	a.Size = uint64(nd.Size)
+	if nd.IsSymlink() {
+		// lstat(2) reports a symlink's size as the length of its target path,
+		// and that is what the surface sends. A surface that sent no size is
+		// answered from the target this client actually holds, so st_size and
+		// readlink cannot disagree about the link.
+		a.Size = uint64(len(nd.LinkTarget))
+	}
 	a.Ino = inoFor(nd.Path)
 	a.Nlink = 1
 	if nd.IsDir {
@@ -910,6 +1028,11 @@ func (n *node) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut)
 		nd = *live
 		n.m.snapshot().Put(nd)
 	}
+	if !nd.KindHonoured() {
+		err := typeRefusal(nd, "GETATTR")
+		n.m.recordRefusal(err)
+		return errnoFor(err)
+	}
 	fillAttr(&out.Attr, nd)
 	// This reply IS the kernel's i_size for the path: record what we told it, so
 	// a later read can tell whether it is about to serve longer content than the
@@ -938,6 +1061,11 @@ func (n *node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 		nd = *live
 		n.m.snapshot().Put(nd)
 	}
+	if !nd.KindHonoured() {
+		err := typeRefusal(nd, "LOOKUP")
+		n.m.recordRefusal(err)
+		return nil, errnoFor(err)
+	}
 	fillAttr(&out.Attr, nd)
 	n.m.notePublished(nd)
 	out.SetEntryTimeout(0)
@@ -963,7 +1091,8 @@ func (n *node) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 			if p == n.p {
 				continue
 			}
-			snap.Put(fsclient.Node{Path: p, IsDir: meta.IsDir, Size: meta.Size, Mode: meta.Mode, Mtime: meta.Mtime, Hash: meta.Hash})
+			snap.Put(fsclient.Node{Path: p, IsDir: meta.IsDir, Size: meta.Size, Mode: meta.Mode, Mtime: meta.Mtime, Hash: meta.Hash,
+				Kind: meta.Kind, LinkTarget: meta.LinkTarget})
 		}
 		// Only NOW is this directory's listing known: the PROPFIND above is what
 		// read it.
@@ -1049,7 +1178,7 @@ func (n *node) Create(ctx context.Context, name string, flags uint32, mode uint3
 // the inode construction above (n.NewInode) requires a mounted filesystem.
 func (m *Mount) beginCreate(cp string, mode uint32) (*writeHandle, fsclient.Node) {
 	h := m.newWriteHandle(cp, true)
-	nd := fsclient.Node{Path: cp, IsDir: false, Mode: fmt.Sprintf("%04o", mode&0o777), Mtime: time.Now()}
+	nd := fsclient.Node{Path: cp, IsDir: false, Mode: fmt.Sprintf("%04o", mode&0o777), Mtime: time.Now(), Kind: fsclient.KindFile}
 	m.snapshot().Put(nd)
 	m.notePublished(nd)
 	// A create means the name is absent as far as the kernel is concerned, so any
@@ -1067,7 +1196,7 @@ func (n *node) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.En
 		n.m.recordFailure(err)
 		return nil, errnoFor(err)
 	}
-	nd := fsclient.Node{Path: cp, IsDir: true, Mode: fmt.Sprintf("%04o", mode&0o777), Mtime: time.Now()}
+	nd := fsclient.Node{Path: cp, IsDir: true, Mode: fmt.Sprintf("%04o", mode&0o777), Mtime: time.Now(), Kind: fsclient.KindDir}
 	n.m.snapshot().Put(nd)
 	n.m.snapshot().DropReaddir(n.p) // the parent's readdir answer changed
 	n.m.recordOK()
@@ -1075,6 +1204,117 @@ func (n *node) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.En
 	out.SetEntryTimeout(0)
 	out.SetAttrTimeout(0)
 	return n.NewInode(ctx, &node{m: n.m, p: cp}, fs.StableAttr{Mode: modeOf(nd), Ino: inoFor(cp)}), 0
+}
+
+// Symlink creates a symlink THROUGH the mount (BFS-018). It is the write half
+// of the row: with Readlink answering the target and this creating a link, a
+// git checkout of a tree carrying symlinks produces real symlinks on the server
+// instead of regular files holding a target path.
+//
+// The target is sent as a DECLARED request header (X-Bunker-Link-Target) with an
+// empty body, never as file content: the surface has no way to spell "this entry
+// is a link" in bytes, and every attempt to do so is the defect — a file whose
+// content is the target path. When the surface never declared the extension the
+// operation is REFUSED by name (EOPNOTSUPP) rather than attempted: a build that
+// ignored the header would answer 201 for a file, and the caller would be told a
+// link was created.
+func (n *node) Symlink(ctx context.Context, target, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	cp := joinPath(n.p, name)
+	if errno := n.m.createLink(ctx, cp, target); errno != 0 {
+		return nil, errno
+	}
+	nd, _ := n.m.snapshot().Lookup(cp)
+	fillAttr(&out.Attr, nd)
+	out.SetEntryTimeout(0)
+	out.SetAttrTimeout(0)
+	return n.NewInode(ctx, &node{m: n.m, p: cp}, fs.StableAttr{Mode: modeOf(nd), Ino: inoFor(cp)}), 0
+}
+
+// createLink is the mount-side half of symlink(2): the declared request, the
+// snapshot entry, the counters and the notification bookkeeping — everything
+// except the inode construction, which needs a live kernel bridge.
+//
+// It is a method for the same reason beginCreate is (BFS-020): a cell can drive
+// the SAME half a live mount drives, so the rule can be asserted exactly
+// without a mounted filesystem, and a live arm only adds the kernel's own path.
+func (n *Mount) createLink(ctx context.Context, cp, target string) syscall.Errno {
+	if _, err := n.client.PutLink(ctx, cp, target, fsclient.PutPrecondition{}); err != nil {
+		n.recordRefusal(err)
+		return errnoFor(err)
+	}
+	nd := fsclient.Node{Path: cp, Mode: "0777", Mtime: time.Now(),
+		Kind: fsclient.KindSymlink, LinkTarget: target}
+	n.symlinkCreated.Add(1)
+	n.snapshot().Put(nd)
+	n.snapshot().DropReaddir(path.Dir(cp)) // the parent's readdir answer changed
+	// A name that now holds a LINK holds no bytes of its own: anything cached
+	// under it belongs to whatever the name used to be.
+	n.cache.Drop(cp)
+	n.recordOK()
+	return 0
+}
+
+// Readlink answers the target of a symlink.
+//
+// THE TARGET IS NOT THE BYTES (BFS-018). This method reads the target the
+// surface DECLARED (b:link-target, or the snapshot entry's link_target) and
+// never fetches the path's bytes: fetching them is the dereference-and-copy
+// answer, and there is no code path in this client that could turn a link into
+// a copy of its target. Where the surface gave a type of symlink but published
+// no target — an older build — the read is REFUSED by name rather than guessed:
+// an empty target would be a link to nowhere, which would corrupt the tree just
+// as surely as a file holding the target path.
+func (n *node) Readlink(ctx context.Context) ([]byte, syscall.Errno) {
+	nd, ok := n.m.snapshot().Lookup(n.p)
+	if !ok || nd.Kind == fsclient.KindUnreported {
+		// An entry with no declared type cannot be a link as far as this client
+		// knows (no standard property expresses one), so the live lookup is what
+		// tells us: one PROPFIND, named and bounded.
+		live, err := n.m.client.LookupLive(ctx, n.p)
+		if err != nil {
+			n.m.recordFailure(err)
+			return nil, errnoFor(err)
+		}
+		nd, ok = *live, true
+		n.m.snapshot().Put(nd)
+	}
+	if !ok || !nd.IsSymlink() {
+		// The kernel resolves links itself, so a readlink on a path this
+		// surface did not declare a link is a stale dentry; EINVAL is what
+		// Linux answers for that.
+		return nil, syscall.EINVAL
+	}
+	if nd.LinkTarget == "" {
+		err := &fsclient.OpError{Op: "READLINK", Path: n.p, Errno: fsclient.ErrnoEOPNOTSUPP, Cause: fsclient.CauseLocalCapability,
+			Detail: "this surface declares the entry a symlink but published no target for it (b:link-target / link_target absent): the link cannot be read without inventing a target, so the read is refused"}
+		n.m.recordRefusal(err)
+		return nil, errnoFor(err)
+	}
+	n.m.readlinks.Add(1)
+	n.m.opsTotal.Add(1)
+	return []byte(nd.LinkTarget), 0
+}
+
+// Link (a HARDLINK) is refused, and the refusal is argued from the wire rather
+// than from effort: the surface describes a directory entry per PATH
+// (`path, type, size, mtime_unix_ms, mode, hash`), and it carries no inode
+// number and no link count, so two names for one inode are not expressible.
+// A client that accepted the request would hold two independent cache entries
+// and two independent write records for one file, and a write through one name
+// would leave the other name's cached bytes looking current — a stale read this
+// client has no way to detect, because nothing on the wire would ever tell it
+// the two names are one file.
+//
+// EOPNOTSUPP is the answer Linux gives for a filesystem without hard links, and
+// `ln` reports it as "Operation not supported" — loud, specific, and never a
+// silently-made copy.
+func (n *node) Link(ctx context.Context, target fs.InodeEmbedder, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	cp := joinPath(n.p, name)
+	err := &fsclient.OpError{Op: "LINK", Path: cp, Errno: fsclient.ErrnoEOPNOTSUPP, Cause: fsclient.CauseLocalCapability,
+		Detail: "this surface describes one directory entry per path and carries no inode or link count, so a hardlink cannot be represented: two names for one file would get two independent metadata and cache records and a write through one name would leave the other stale. Use a symlink (supported) or a copy"}
+	n.m.recordFailure(err)
+	n.m.recordRefusal(err)
+	return nil, syscall.EOPNOTSUPP
 }
 
 // Unlink removes a file.
@@ -2046,7 +2286,14 @@ var (
 	_ fs.NodeUnlinker  = (*node)(nil)
 	_ fs.NodeRmdirer   = (*node)(nil)
 	_ fs.NodeRenamer   = (*node)(nil)
-	_ fs.NodeSetattrer = (*node)(nil)
-	_ fs.NodeStatfser  = (*node)(nil)
-	_ fs.NodeWriter    = (*node)(nil)
+	// The three BFS-018 interfaces. Their ABSENCE was the client's half of the
+	// defect: with no NodeSymlinker the kernel's symlink(2) reached go-fuse's
+	// bridge, which answers ENOTSUP; with no NodeReadlinker a `readlink` did
+	// too, so a link could only ever be described as a file.
+	_ fs.NodeSymlinker  = (*node)(nil)
+	_ fs.NodeReadlinker = (*node)(nil)
+	_ fs.NodeLinker     = (*node)(nil)
+	_ fs.NodeSetattrer  = (*node)(nil)
+	_ fs.NodeStatfser   = (*node)(nil)
+	_ fs.NodeWriter     = (*node)(nil)
 )

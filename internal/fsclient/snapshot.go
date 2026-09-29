@@ -13,6 +13,14 @@ import (
 // Node is one path's metadata as the server describes it. It is deliberately
 // metadata-only: no bytes live here, which is what keeps a whole-tree read off
 // the byte path (BFS-005 §6.3).
+//
+// Kind is the server's DECLARED type for the entry (BFS-018): the vocabulary
+// the surface publishes as `b:type` and as the snapshot op's `type` field, one
+// name for one kind of directory entry on both carriers. It is carried rather
+// than collapsed into IsDir because the two are not the same question: a
+// SYMLINK is neither a file nor a directory, and a client that folds it into
+// "not a directory" reports a regular file the surface never described — which
+// is how a link became a 5-byte file whose content was its own target path.
 type Node struct {
 	Path  string // in-tree path, "/"-separated, no leading slash ("" is the root)
 	IsDir bool
@@ -20,6 +28,69 @@ type Node struct {
 	Mode  string // 4 octal digits
 	Mtime time.Time
 	Hash  string // "" when the server reported none (a collection, or a file above the snapshot hash budget)
+	// Kind is one of KindFile, KindDir or KindSymlink — or KindUnknown, when
+	// the surface named a type this client does not know. KindUnknown is a
+	// FIRST-CLASS value and never a synonym for "file": see Node.KindHonoured.
+	Kind string
+	// LinkTarget is the target of a symlink. It is populated only for
+	// KindSymlink; a link whose target the surface did not report leaves this
+	// empty and is refused by the operations that need it, never guessed at.
+	LinkTarget string
+}
+
+// The declared entry-type vocabulary (BFS-018). The values are the surface's
+// own (`b:type`, the snapshot op's `type`), including the older spellings the
+// snapshot op has been seen to accept for a collection.
+const (
+	KindFile    = "file"
+	KindDir     = "dir"
+	KindSymlink = "symlink"
+	// KindUnknown is "the surface said something this client cannot honour".
+	// It is deliberately not the empty string: "" means the server published no
+	// type at all (an older surface), which is a different fact from a type
+	// this build does not know how to present.
+	KindUnknown = "unknown"
+	// KindUnreported is what a carrier that published no type leaves behind.
+	// It is resolved to a file or a directory from the standard properties,
+	// because an absent type on the standard surface is exactly a standard
+	// file/collection distinction — never a link, which no standard property
+	// can express.
+	KindUnreported = ""
+)
+
+// KindHonoured reports whether this client knows how to present the entry to a
+// caller. A node whose kind is not honoured must FAIL loudly in every operation
+// that would have to describe it: reporting an unknown kind as a regular file
+// is the class of defect BFS-018 is about, one type over.
+func (n Node) KindHonoured() bool {
+	switch n.Kind {
+	case KindFile, KindDir, KindSymlink, KindUnreported:
+		return true
+	}
+	return false
+}
+
+// IsSymlink reports whether the surface declared this entry a symlink.
+func (n Node) IsSymlink() bool { return n.Kind == KindSymlink }
+
+// normaliseKind maps a wire type name onto this client's vocabulary. It is the
+// ONE place the two carriers' spellings are reconciled, so a `dir` from the
+// snapshot op and a `dir` from `b:type` cannot be read differently.
+func normaliseKind(wire string) string {
+	switch strings.ToLower(strings.TrimSpace(wire)) {
+	case "":
+		return KindUnreported
+	case KindFile:
+		return KindFile
+	case KindDir, "collection", "directory":
+		return KindDir
+	case KindSymlink:
+		return KindSymlink
+	default:
+		// A type this build does not know. It is named, not discarded: the
+		// caller refuses rather than describing it as something it is not.
+		return KindUnknown
+	}
 }
 
 // Snapshot is the node tree BFS-005 §6.3 describes: the metadata of a whole
@@ -91,6 +162,11 @@ type snapshotResult struct {
 		MtimeUnixMS int64  `json:"mtime_unix_ms"`
 		Mode        string `json:"mode"`
 		Hash        string `json:"hash"`
+		// LinkTarget is the E-7 addition (BFS-018): the target of a
+		// `type: "symlink"` entry. A surface that predates it simply does not
+		// send it, which is why the client must never infer a target from
+		// anything else.
+		LinkTarget string `json:"link_target"`
 	} `json:"entries"`
 }
 
@@ -118,12 +194,27 @@ func (c *Client) SnapshotTree(ctx context.Context, root string, includeHash bool
 	}
 	snap := NewSnapshot(root)
 	for _, e := range res.Entries {
+		kind := normaliseKind(e.Type)
 		n := Node{
 			Path:  strings.Trim(normalisePath(e.Path), "/"),
-			IsDir: e.Type == "collection" || e.Type == "dir" || e.Type == "directory",
+			IsDir: kind == KindDir,
 			Size:  e.Size,
 			Mode:  e.Mode,
 			Hash:  e.Hash,
+			Kind:  kind,
+			// A link's target is the entry's entity (BFS-018). It is copied
+			// verbatim when the surface reports one, and left empty when it
+			// does not — an empty target is never fabricated from the size or
+			// from the bytes, because the only thing that could produce it
+			// would be the materialisation this field exists to replace.
+			LinkTarget: e.LinkTarget,
+		}
+		// A link has no content hash, and the surface must not send one: a hash
+		// here would be the target's, which is identity borrowed from another
+		// resource. If a surface sends both, the hash is dropped rather than
+		// kept as a cache key for a link.
+		if kind == KindSymlink {
+			n.Hash = ""
 		}
 		if e.MtimeUnixMS != 0 {
 			n.Mtime = time.UnixMilli(e.MtimeUnixMS)
@@ -193,7 +284,8 @@ func (c *Client) WalkTree(ctx context.Context, root string) (*Snapshot, *OpError
 				if p == j.dir {
 					continue // the collection itself is already in the tree
 				}
-				snap.put(Node{Path: p, IsDir: m.IsDir, Size: m.Size, Mode: m.Mode, Mtime: m.Mtime, Hash: m.Hash})
+				snap.put(Node{Path: p, IsDir: m.IsDir, Size: m.Size, Mode: m.Mode, Mtime: m.Mtime, Hash: m.Hash,
+					Kind: m.Kind, LinkTarget: m.LinkTarget})
 				if m.IsDir {
 					pending.Add(1)
 					go func(d string) { defer pending.Done(); queue <- job{dir: d} }(p)
@@ -237,7 +329,8 @@ func (c *Client) LookupLive(ctx context.Context, p string) (*Node, *OpError) {
 		if strings.Trim(normalisePath(m.Path), "/") != want {
 			continue
 		}
-		return &Node{Path: want, IsDir: m.IsDir, Size: m.Size, Mode: m.Mode, Mtime: m.Mtime, Hash: m.Hash}, nil
+		return &Node{Path: want, IsDir: m.IsDir, Size: m.Size, Mode: m.Mode, Mtime: m.Mtime, Hash: m.Hash,
+			Kind: m.Kind, LinkTarget: m.LinkTarget}, nil
 	}
 	return nil, &OpError{Op: "PROPFIND", Path: p, Status: 404, Errno: ErrnoENOENT, Cause: CauseServerError,
 		Detail: "the server did not report the requested path"}

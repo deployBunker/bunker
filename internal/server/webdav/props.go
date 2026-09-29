@@ -69,6 +69,13 @@ func (reg *nsRegistry) qualifiedName(n xml.Name) string {
 // returned only when a client names it (§7.4). supportedlock/lockdiscovery are
 // absent because LOCK is not live in this build — an empty supportedlock would
 // read as "supports no locks" while the DAV header says 1.
+//
+// b:type and b:link-target are absent for a second reason (BFS-018): they are
+// the DECLARED extension properties that make a symlink a symlink on the wire,
+// and they are served only to a client that names them. An `allprop` response
+// therefore stays byte-identical to the four-deviation surface a stock client
+// was written against, while a client that needs the type vocabulary asks for
+// it the same way it asks for the hash.
 var (
 	allPropFile = []string{
 		"D:resourcetype", "D:displayname", "D:getcontentlength", "D:getlastmodified",
@@ -79,6 +86,56 @@ var (
 		"b:rev", "b:tree",
 	}
 )
+
+// The declared `b:type` vocabulary (BFS-018). It is the SAME vocabulary the
+// E-4 snapshot op has always carried (`ops.go: entryType`), deliberately: one
+// tree described by two carriers must not have two names for one kind of
+// directory entry. `dir` agrees with `D:resourcetype=<D:collection/>` for the
+// same resource, so a client that knows only the standard property and a
+// client that reads the extension cannot disagree about a directory.
+const (
+	TypeProperty       = "type"
+	LinkTargetProperty = "link-target"
+	TypeFile           = "file"
+	TypeDir            = "dir"
+	TypeSymlink        = "symlink"
+)
+
+// linkTargetMaxBytes bounds the link target this surface will store. Linux caps
+// a symlink's target at PATH_MAX (4096) in practice; a target longer than that
+// is refused loudly rather than truncated into a different link.
+const linkTargetMaxBytes = 4096
+
+// entryTypeOf names one directory entry's kind from an LSTAT of it. It is the
+// single classifier behind both carriers: the extension property below and the
+// snapshot op (ops.go). A SYMLINK IS NOT ITS TARGET — this is the whole of
+// BFS-018's server side, and it is why every caller passes Lstat-derived info.
+func entryTypeOf(fi os.FileInfo) string {
+	switch {
+	case fi.Mode()&os.ModeSymlink != 0:
+		return TypeSymlink
+	case fi.IsDir():
+		return TypeDir
+	default:
+		return TypeFile
+	}
+}
+
+// linkTargetOf reads the target of a symlink. It is called only for an entry
+// Lstat already reported as a symlink, so a read failure is a refusal-worthy
+// fact (the entry changed under us) and never something to paper over with an
+// empty target — an empty target is a legal link target shape, so "" cannot be
+// used to mean "unknown".
+func (h *Handler) linkTargetOf(abs string, fi os.FileInfo) (string, bool) {
+	if fi.Mode()&os.ModeSymlink == 0 {
+		return "", false
+	}
+	target, err := os.Readlink(abs)
+	if err != nil {
+		return "", false
+	}
+	return target, true
+}
 
 type propfindMode int
 
@@ -177,7 +234,12 @@ func (h *Handler) handlePropfind(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, failure{Status: 400, Code: VerdictInvalidDepth, Element: "invalid-depth"})
 		return
 	}
-	fi, err := os.Stat(abs)
+	// LSTAT, not Stat (BFS-018). This is the entry the request NAMES, and it
+	// must be described as what it IS: a Stat here would report a symlink as
+	// its target (a collection for a link to a directory, its target's size and
+	// hash for a link to a file), and the two carriers would then disagree —
+	// the Depth: 1 listing below already uses the Lstat-derived `e.Info()`.
+	fi, err := os.Lstat(abs)
 	if err != nil {
 		h.fail(w, r, notFoundOrInternal(err))
 		return
@@ -204,6 +266,10 @@ func (h *Handler) handlePropfind(w http.ResponseWriter, r *http.Request) {
 			if isTempName(e.Name()) {
 				continue
 			}
+			// e.Info() is the LSTAT of the entry (os.ReadDir does not follow
+			// links), which is what makes the b:type of a child link correct
+			// (BFS-018). It is the same information the named entry above is
+			// now described from.
 			childInfo, err := e.Info()
 			if err != nil {
 				continue
@@ -334,9 +400,20 @@ func allPropNames(isDir bool) []string {
 
 // liveValues computes the live properties of one resource, keyed by the name
 // the response uses. Values are already XML-escaped inner markup.
+//
+// fi MUST be the LSTAT of abs. It is the whole difference between a surface
+// that can describe a symlink and the defect BFS-018 filed: with a Stat-derived
+// FileInfo, a link is described as a 5-byte regular file, which is what a
+// client then materialises — as a file whose content is the link's target path.
 func (h *Handler) liveValues(abs string, fi os.FileInfo) map[string]string {
-	v := make(map[string]string, len(allPropFile))
-	isDir := fi.IsDir()
+	v := make(map[string]string, len(allPropFile)+2)
+	kind := entryTypeOf(fi)
+	isDir := kind == TypeDir
+	// The declared type is served for EVERY entry, not only links: a client
+	// that names the property must be able to tell "this surface says file"
+	// from "this surface said nothing", and only the second is a reason to
+	// distrust what it is looking at.
+	v["b:"+TypeProperty] = kind
 	if isDir {
 		v["D:resourcetype"] = "<D:collection></D:collection>"
 	} else {
@@ -348,6 +425,18 @@ func (h *Handler) liveValues(abs string, fi os.FileInfo) map[string]string {
 	v["b:rev"] = escapeXML(h.tree.revToken())
 	v["b:tree"] = escapeXML(h.tree.identity())
 	if isDir {
+		return v
+	}
+	if kind == TypeSymlink {
+		// A link's entity is its TARGET PATH, and it is carried as the
+		// declared property below. There is no content hash of a link: hashing
+		// here would hash the TARGET's bytes (hashFile follows links), which is
+		// a dereference committed in metadata — the same wrong answer as
+		// dereferencing the read. Absent getetag/b:hash, not a forged one.
+		v["D:getcontentlength"] = strconv.FormatInt(fi.Size(), 10)
+		if target, ok := h.linkTargetOf(abs, fi); ok {
+			v["b:"+LinkTargetProperty] = escapeXML(target)
+		}
 		return v
 	}
 	v["D:getcontentlength"] = strconv.FormatInt(fi.Size(), 10)

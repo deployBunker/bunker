@@ -137,6 +137,13 @@ type snapshotEntry struct {
 	MtimeUnixMS int64  `json:"mtime_unix_ms"`
 	Mode        string `json:"mode"`
 	Hash        string `json:"hash,omitempty"`
+	// LinkTarget is the target of a `type: "symlink"` entry, and it is
+	// present for EXACTLY those entries (BFS-018). It is the link's entity: a
+	// symlink has no content bytes to hash, so an entry cannot carry both a
+	// hash and a link_target — the field is additive to this declared result
+	// shape, and a client that does not know it still reads type/size/mode
+	// exactly as before.
+	LinkTarget string `json:"link_target,omitempty"`
 }
 
 // handleSnapshot serves one call that replaces the refused
@@ -264,10 +271,19 @@ func (h *Handler) snapshotEntries(abs string, depthInfinity, includeHash bool, b
 	add := func(p string, fi os.FileInfo) bool {
 		e := snapshotEntry{
 			Path:        p,
-			Type:        entryType(fi),
+			Type:        entryTypeOf(fi),
 			Size:        fi.Size(),
 			MtimeUnixMS: fi.ModTime().UnixNano() / int64(time.Millisecond),
 			Mode:        fmt.Sprintf("%04o", fi.Mode().Perm()),
+		}
+		// A link's entity is its target path (BFS-018). It is read with
+		// Readlink and never with a Stat/Open: those would follow the link and
+		// describe — or serve — the TARGET, which is one of the two wrong
+		// answers this row separates itself from.
+		if e.Type == TypeSymlink {
+			if target, err := os.Readlink(filepath.Join(root, filepath.FromSlash(p))); err == nil {
+				e.LinkTarget = target
+			}
 		}
 		if ids != nil {
 			ids[p] = identityOf(fi)
@@ -353,16 +369,10 @@ func (h *Handler) snapshotEntries(abs string, depthInfinity, includeHash bool, b
 	return entries, truncated, nil
 }
 
-func entryType(fi os.FileInfo) string {
-	switch {
-	case fi.Mode()&os.ModeSymlink != 0:
-		return "symlink"
-	case fi.IsDir():
-		return "dir"
-	default:
-		return "file"
-	}
-}
+// entryType is retained as the name the snapshot op's own cells use; it is the
+// shared Lstat classifier (props.go: entryTypeOf), so the two carriers cannot
+// name one directory entry two different ways.
+func entryType(fi os.FileInfo) string { return entryTypeOf(fi) }
 
 // writeEnvelope renders the E-4 envelope: identical keys on success and
 // failure, the verdict in the header AND the body, and no-store caching
@@ -491,6 +501,24 @@ func (h *Handler) capabilityDocument(r *http.Request, w http.ResponseWriter) map
 				"default_max_bytes": h.cfg.DefaultMaxBytes, "abs_max_bytes": h.cfg.AbsMaxBytes,
 			},
 			"watch": h.watchDocumentBlock(st, w),
+			// The symlink extension (BFS-018, spec §3 E-7). It is DECLARED
+			// here because it is the one extension a client cannot do without
+			// knowing about: a client that reads b:type/b:link-target or sends
+			// X-Bunker-Link-Target against a surface that does not declare it
+			// would be inventing a convention rather than using a contract. A
+			// client that finds no block here must refuse link operations
+			// LOUDLY instead of falling back to writing the target path as
+			// file content.
+			"symlink": map[string]any{
+				"name":             LinkTargetHeader,
+				"v":                1,
+				"type_property":    "b:" + TypeProperty,
+				"target_property":  "b:" + LinkTargetProperty,
+				"types":            []string{TypeFile, TypeDir, TypeSymlink},
+				"creates_with":     "PUT + " + LinkTargetHeader + " (empty body); the link target is declared, never written as content",
+				"get_on_link":      "refused 405 " + string(VerdictSymlinkNotAFile),
+				"target_max_bytes": linkTargetMaxBytes,
+			},
 		},
 		"transports": map[string]any{
 			"http/1.1": map[string]any{"alpn": nil, "multiplexed": false, "server_push": false, "available": true},

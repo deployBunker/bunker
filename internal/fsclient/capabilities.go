@@ -98,6 +98,29 @@ func (w *CapabilityWatch) Present() bool {
 	return w != nil && (w.Name != "" || w.State != "")
 }
 
+// CapabilitySymlink is the declared `extensions.symlink` block (BFS-018, spec
+// §3 E-7). Its PRESENCE is the client's licence to use the type vocabulary and
+// the link-create header; its absence is a surface where a link cannot be
+// described at all, and the mount refuses link operations there by name rather
+// than writing the target path as file content.
+//
+// It is a POINTER in Capabilities so "the server declared nothing" is not
+// spelled the same way as "the server declared an empty block": the first is
+// the old surface, the second would be a document this client refuses to guess
+// about.
+type CapabilitySymlink struct {
+	Name           string   `json:"name"`
+	V              int      `json:"v"`
+	TypeProperty   string   `json:"type_property"`
+	TargetProperty string   `json:"target_property"`
+	Types          []string `json:"types"`
+	CreatesWith    string   `json:"creates_with"`
+	TargetMaxBytes int      `json:"target_max_bytes"`
+}
+
+// Present reports whether this surface declared the symlink extension.
+func (s *CapabilitySymlink) Present() bool { return s != nil && s.Name != "" && s.V > 0 }
+
 // Capabilities is the decoded capability document (BFS-004 §4.2). A consumer
 // that does not know DocumentVersion must fail CLOSED rather than proceed
 // (§4.2 rule 3), which is why the version is checked in Handshake.
@@ -122,6 +145,10 @@ type Capabilities struct {
 			DepthInfinity bool `json:"depth_infinity"`
 			IncludeHash   bool `json:"include_hash"`
 		} `json:"snapshot"`
+		// Symlink is E-7's declaration (BFS-018). nil means the surface did
+		// not declare it — an older build — and that is a fact this client
+		// acts on rather than a detail it ignores.
+		Symlink *CapabilitySymlink `json:"symlink"`
 		// Rev is the revision declaration (BFS-004 §4.2's `extensions.rev`).
 		// Only `kind` is decoded, and it is the ONE fact that says what the
 		// served revision token can move for (SPEC-watcher-capability §7.1):

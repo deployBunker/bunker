@@ -886,6 +886,23 @@ func printStatus(w io.Writer, st *fsclient.Status) {
 	if st.RefusalHolds.Last != "" {
 		fmt.Fprintf(w, "  last       : %s\n", st.RefusalHolds.Last)
 	}
+	// BFS-018. Printed beside the refusal blocks above because it is the same
+	// question one type over: what this mount DID with the entry types the
+	// surface declares, and what it refused instead of guessing. `declared` is
+	// the surface's own answer — a mount that says declared=false cannot read a
+	// link target and will refuse to create one, which the owner must be able
+	// to see rather than discover as a corrupt tree.
+	declared := "false"
+	if st.Symlink.Declared {
+		declared = fmt.Sprintf("v%d (%s)", st.Symlink.DeclaredVersion, dashIfEmpty(st.Symlink.DeclaredName))
+	}
+	fmt.Fprintf(w, "symlink      : declared=%s type_property=%s target_property=%s\n",
+		declared, dashIfEmpty(st.Symlink.TypeProperty), dashIfEmpty(st.Symlink.TargetProperty))
+	fmt.Fprintf(w, "             : readlinks_total=%d created_total=%d refusals_total=%d\n",
+		st.Symlink.ReadlinksTotal, st.Symlink.CreatedTotal, st.Symlink.RefusalsTotal)
+	for _, r := range st.Symlink.LastRefusals {
+		fmt.Fprintf(w, "  refusal    : %s\n", r)
+	}
 	// The resolved option set (BFS-044). Printed last, and printed in full,
 	// because it is the block that answers "what is this mount actually obeying
 	// — including the entry bound, the invalidation cadence and every hot-file
