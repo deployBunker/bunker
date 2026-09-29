@@ -45,7 +45,7 @@ const StatusLiveProcesses = "live_processes"
 // exit, a SIGKILL from a cancelled request context, a verification failure —
 // removes the file it produced, so a truncated tarball can never be mistaken
 // for a backup (or count against the retention window).
-func (m *AgentManager) archiveAgentHome(ctx context.Context, homeDir, archiveDir string) (string, error) {
+func (m *AgentManager) archiveAgentHome(execCtx context.Context, homeDir, archiveDir string) (string, error) {
 	base := filepath.Base(homeDir)
 	if err := os.MkdirAll(archiveDir, 0o700); err != nil {
 		return "", fmt.Errorf("create archive dir %s: %w", archiveDir, err)
@@ -54,7 +54,10 @@ func (m *AgentManager) archiveAgentHome(ctx context.Context, homeDir, archiveDir
 	if _, err := os.Stat(archivePath); err == nil {
 		return "", fmt.Errorf("archive %s already exists (second destroy within the same second?); refusing to overwrite", archivePath)
 	}
-	cmd := exec.CommandContext(ctx, "tar", "czf", archivePath, "-C", filepath.Dir(homeDir), base)
+	// execCtx is the CALLER'S budgeted step context (BNK-DF-001): the tar is
+	// a compensating exec and must not borrow the (already cancelled)
+	// request deadline.
+	cmd := exec.CommandContext(execCtx, "tar", "czf", archivePath, "-C", filepath.Dir(homeDir), base)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		// INT-CI-050: an interrupted archive must never leave a truncated
 		// tarball behind. `tar` can be SIGKILLed mid-stream by anything that
@@ -225,9 +228,11 @@ func verifyArchiveFile(archivePath string) error {
 // disableUserUnit runs `systemctl --user disable <unit>` and returns its
 // combined output. Package-level seam: tests inject fake systemctl results
 // so the destroy path is exercised without touching ambient host state;
-// production code never swaps it.
-var disableUserUnit = func(ctx context.Context, unit string) ([]byte, error) {
-	return exec.CommandContext(ctx, "systemctl", "--user", "disable", unit).CombinedOutput()
+// production code never swaps it. execCtx is the CALLER'S budgeted step
+// context (BNK-DF-001) — destroy hands a rollback-budget context, not the
+// request context.
+var disableUserUnit = func(execCtx context.Context, unit string) ([]byte, error) {
+	return exec.CommandContext(execCtx, "systemctl", "--user", "disable", unit).CombinedOutput()
 }
 
 // normalizeUnitOutput lowercases systemctl output and strips `$` characters
@@ -301,8 +306,8 @@ var lookupUser = func(username string) (*user.User, error) {
 // combined output. Package-level seam (mirrors disableUserUnit above): tests
 // inject a fake loginctl so the destroy path is exercised without touching
 // the host's systemd state; production code never swaps it.
-var disableLinger = func(ctx context.Context, username string) ([]byte, error) {
-	return exec.CommandContext(ctx, "loginctl", "disable-linger", username).CombinedOutput()
+var disableLinger = func(execCtx context.Context, username string) ([]byte, error) {
+	return exec.CommandContext(execCtx, "loginctl", "disable-linger", username).CombinedOutput()
 }
 
 // disableAgentLinger runs `loginctl disable-linger <username>` and returns
@@ -311,7 +316,7 @@ var disableLinger = func(ctx context.Context, username string) ([]byte, error) {
 // does not resolve, and loginctl would only report the absence. Callers treat
 // every outcome as best-effort: an error is logged (WARN) and the destroy
 // proceeds exactly as before (INT-HOST-001).
-func disableAgentLinger(ctx context.Context, username string, logger *slog.Logger) bool {
+func disableAgentLinger(execCtx context.Context, username string, logger *slog.Logger) bool {
 	if username == "" {
 		return false
 	}
@@ -320,7 +325,7 @@ func disableAgentLinger(ctx context.Context, username string, logger *slog.Logge
 			"username", username, "error", err)
 		return false
 	}
-	out, err := disableLinger(ctx, username)
+	out, err := disableLinger(execCtx, username)
 	if err != nil {
 		logger.Warn("loginctl disable-linger failed (continuing destroy)",
 			"username", username, "error", err, "output", string(out))
@@ -331,6 +336,32 @@ func disableAgentLinger(ctx context.Context, username string, logger *slog.Logge
 }
 
 func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) (*v1.DestroyAgentResponse, error) {
+	// BNK-DF-001: the compensating actions of a destroy must never borrow the
+	// request deadline. The server hands Destroy the RPC request context,
+	// which chi's middleware.Timeout (config request_timeout, default 300s)
+	// cancels on slow destroys — and every exec below ran on that ctx, so on
+	// an already-cancelled context exec.CommandContext REFUSED to start the
+	// command at all: `userdel -rf` silently never ran, the destroy still
+	// reported success from the registry's view, and the bunker-<id> user +
+	// home survived ssh-able. This is the compensating-action side of the
+	// DF-BUNKER-21 spawn-rollback defect class, so it uses the SAME machinery:
+	// every compensating stage below draws its own context from the rollback
+	// budget (rb) — detached from the request cancellation, bounded on its
+	// own, and never already expired (the reserved rollbackStepFloor keeps
+	// the late steps, userdel above all, ATTEMPTED). Error handling, logging,
+	// force/non-force semantics and evidence paths are unchanged: this is a
+	// context-wiring change, not a behavior redesign.
+	//
+	// Deliberately NOT re-wired: destroyFailureEvidence and the DF-34 gate's
+	// process probe (destroyProcessProbe → listUserProcesses) read /proc and
+	// the user database directly — they take no context and spawn no
+	// processes, so cancellation cannot stop them. The pgrep-based dockerd
+	// probe lives INSIDE stopDockerdDirect, which runs on its own budget
+	// step below. The DF-63 force kill escalation
+	// (m.forceKillUserProcessesFn) already ran on context.Background()
+	// before this change (manager.go) — already detached.
+	rb := newRollbackBudget(ctx)
+
 	// Step 0: validate agent_id
 	if agentID == "" || !validAgentID.MatchString(agentID) {
 		// Free is unconditional and idempotent (no-ops for IDs that never
@@ -349,21 +380,37 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	// Step 0.4: Stop and remove the agent's own container through ONLY that
 	// agent's rootless socket — BEFORE the dockerd stop below, so no
 	// container leaks past the daemon (specs/container-mode.md §4). Best-
-	// effort: a daemon that already died has nothing to clean up.
-	if err := cleanupAgentContainers(ctx, agentID, force, m.logger); err != nil {
+	// effort: a daemon that already died has nothing to clean up. Budgeted
+	// step (BNK-DF-001): the docker stop/rm CLI calls are compensating execs
+	// that used to no-op on a dead request ctx, leaking the container.
+	cctx, ccancel, _ := rb.step()
+	if cctx == nil || ccancel == nil {
+		cctx, ccancel = context.WithoutCancel(ctx), func() {}
+		m.logger.Warn("destroy rollback budget unavailable; container cleanup runs detached", "agent_id", agentID)
+	}
+	if err := cleanupAgentContainers(cctx, agentID, force, m.logger); err != nil {
 		m.logger.Warn("agent container cleanup incomplete", "agent_id", agentID, "error", err)
 	}
+	ccancel()
 
 	// Step 0.5: Remove user slice cgroup drop-in so stale limits don't
-	// accumulate after the agent is destroyed.
-	removeUserSliceLimits(ctx, agentID, m.logger)
+	// accumulate after the agent is destroyed. Budgeted: the daemon-reload
+	// inside is a compensating exec too (BNK-DF-001).
+	if sctx, scancel, _ := rb.step(); scancel != nil {
+		removeUserSliceLimits(sctx, agentID, m.logger)
+		scancel()
+	}
 
 	// Step 0.6 (GAP-075): unmount and remove the bounded shared-scratch
 	// directory and the private-/tmp instance directory. Idempotent, so a
 	// partially provisioned agent still destroys cleanly. Best-effort here
-	// (the spawn rollback is the caller that records the outcome).
-	if err := m.removeIsolation(ctx, agentID); err != nil {
-		m.logger.Warn("isolation removal incomplete", "agent_id", agentID, "error", err)
+	// (the spawn rollback is the caller that records the outcome). Budgeted:
+	// the unmount/removal host commands are compensating execs (BNK-DF-001).
+	if ictx, icancel, _ := rb.step(); icancel != nil {
+		if err := m.removeIsolation(ictx, agentID); err != nil {
+			m.logger.Warn("isolation removal incomplete", "agent_id", agentID, "error", err)
+		}
+		icancel()
 	}
 
 	// Step 1: Stop the dockerd systemd user unit
@@ -381,18 +428,38 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 		m.logger.Warn("cannot lookup user before destroy", "username", username, "error", err)
 	}
 
+	// BNK-DF-001: stopDockerdDirect is SHARED with the spawn rollback
+	// (manager_spawn.go resetStaleDockerdUnit) and the lifecycle stop path
+	// (manager_lifecycle.go terminateAgentProcesses), so its signature and
+	// semantics are unchanged — destroy hands it a properly-budgeted context
+	// instead of the request context.
+	bctx, bcancel, _ := rb.step()
+	if bctx == nil || bcancel == nil {
+		bctx, bcancel = context.WithoutCancel(ctx), func() {}
+		m.logger.Warn("destroy rollback budget unavailable; dockerd stop runs detached", "unit", unitName)
+	}
+	defer bcancel()
+
 	// The dockerd unit was started via systemd-run --user, so it runs under
 	// the agent's user session. systemctl --user from the root foreman session
 	// targets the wrong user manager. We must either:
 	//   (a) use systemctl --user --machine=<user>@.host, or
 	//   (b) find the dockerd PID and kill it directly.
 	// Option (b) is simpler and avoids DBus/machined dependencies.
-	if err := stopDockerdDirect(ctx, username, unitName, m.logger); err != nil {
+	if err := stopDockerdDirect(bctx, username, unitName, m.logger); err != nil {
 		m.logger.Warn("direct dockerd stop failed", "unit", unitName, "error", err)
-		// Fallback: try systemctl --user (may work if user linger is enabled)
-		cmd := exec.CommandContext(ctx, "systemctl", "--user", "stop", unitName)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			m.logger.Warn("systemctl stop failed (may not exist)", "unit", unitName, "error", err, "output", string(out))
+		// Fallback: try systemctl --user (may work if user linger is enabled).
+		// Budgeted step (BNK-DF-001): on a dead request ctx this exec used to
+		// be silently refused.
+		sctx, scancel, _ := rb.step()
+		if sctx == nil || scancel == nil {
+			m.logger.Warn("destroy budget unavailable; systemctl stop skipped", "unit", unitName)
+		} else {
+			cmd := exec.CommandContext(sctx, "systemctl", "--user", "stop", unitName)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				m.logger.Warn("systemctl stop failed (may not exist)", "unit", unitName, "error", err, "output", string(out))
+			}
+			scancel()
 		}
 	}
 
@@ -427,8 +494,13 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	// and stopDockerdDirect only SIGKILLs the pids from its first scan —
 	// stragglers (an orphaned dockerd reparented after rootlesskit died, or
 	// respawned children) can still be alive here. Waiting keeps the non-force
-	// path below from treating a slow-shutdown agent as not_found.
-	waitAgentProcessesExit(ctx, username, m.logger)
+	// path below from treating a slow-shutdown agent as not_found. Budgeted
+	// step (BNK-DF-001): the pgrep probes and the kill -KILL reap inside are
+	// compensating execs that used to no-op on a dead request ctx.
+	if wctx, wcancel, _ := rb.step(); wcancel != nil {
+		waitAgentProcessesExit(wctx, username, m.logger)
+		wcancel()
+	}
 
 	// Step 2b.05 (DF-BUNKER-56): end the agent's systemd user session BEFORE
 	// the live-process gate. Spawn enables linger, so the uid always owns its
@@ -438,7 +510,12 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	// all refused because the pair was alive). Best-effort: a logind without
 	// the session only warns, the gate's pair absorption below is the
 	// load-bearing tolerance, and any operator process still refuses loudly.
-	terminateAgentUserManager(ctx, username, m.logger)
+	// Budgeted step (BNK-DF-001): the loginctl terminate-user exec is
+	// compensating and used to be silently refused on a dead request ctx.
+	if tctx, tcancel, _ := rb.step(); tcancel != nil {
+		terminateAgentUserManager(tctx, username, m.logger)
+		tcancel()
+	}
 
 	// Step 2b.1 (DF-BUNKER-34): verify the agent's uid is process-free before
 	// anything destructive. waitAgentProcessesExit only SIGKILLs the dockerd
@@ -479,8 +556,13 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 	// users on the demo host; user-manager starts starved host-wide). This
 	// must run BEFORE userdel -rf (Step 3) because the username must still
 	// resolve, and it is best-effort: a failure is logged (WARN) and the
-	// destroy proceeds exactly as before.
-	disableAgentLinger(ctx, username, m.logger)
+	// destroy proceeds exactly as before. Budgeted step (BNK-DF-001): the
+	// loginctl disable-linger exec is compensating and used to be silently
+	// refused on a dead request ctx.
+	if lctx, lcancel, _ := rb.step(); lcancel != nil {
+		disableAgentLinger(lctx, username, m.logger)
+		lcancel()
+	}
 
 	// Step 2.5 (DF-BUNKER-33): archive the agent home BEFORE userdel -rf.
 	// The cube-las-00 incident: a scheduled renewal destroyed an agent whose
@@ -506,7 +588,30 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 			"policy", config.DestroyPolicyArchive,
 			"home", homeDir,
 			"archive_dir", archiveDir)
-		archivePath, aerr := m.archiveAgentHome(ctx, homeDir, archiveDir)
+		// The archive tar is a compensating exec too (BNK-DF-001): on the
+		// request ctx it was SIGKILLed mid-stream by the request timeout
+		// (the INT-CI-050 note below), which fail-closes the destroy — the
+		// archive must instead draw its own budgeted, live context so a slow
+		// archive of a big home survives a dead request. If the budget step
+		// itself is unavailable the failure closes exactly as before.
+		actx, acancel, _ := rb.step()
+		if actx == nil || acancel == nil {
+			aerr := fmt.Errorf("destroy rollback budget unavailable; refusing to userdel without an archive")
+			m.logger.Error("agent home archive failed; home RETAINED, userdel NOT run",
+				"agent_id", agentID,
+				"policy", config.DestroyPolicyArchive,
+				"home", homeDir,
+				"archive_dir", archiveDir,
+				"error", aerr)
+			if m.recordDestroyRefusalFn != nil {
+				m.recordDestroyRefusalFn(agentID, StatusHomeRetained,
+					fmt.Errorf("destroy aborted: agent home %s could not be archived to %s (home retained, nothing deleted)", homeDir, archiveDir))
+			}
+			return &v1.DestroyAgentResponse{AgentId: agentID, Status: StatusHomeRetained},
+				fmt.Errorf("destroy aborted: agent home %s could not be archived to %s: %w (home retained, nothing deleted)", homeDir, archiveDir, aerr)
+		}
+		archivePath, aerr := m.archiveAgentHome(actx, homeDir, archiveDir)
+		acancel()
 		if aerr != nil {
 			m.logger.Error("agent home archive failed; home RETAINED, userdel NOT run",
 				"agent_id", agentID,
@@ -550,9 +655,37 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 			"home", homeDir)
 	}
 
-	// Step 3: Remove the Linux user
-	cmd := exec.CommandContext(ctx, userManagementCommand("userdel"), "-rf", username)
+	// Step 3: Remove the Linux user. Budgeted step (BNK-DF-001): THIS is the
+	// defect's headline site — on the request ctx, a destroy whose request
+	// deadline had expired handed userdel a dead context, exec.CommandContext
+	// refused to start it, the destroy still reported success, and the
+	// bunker-<id> user + home survived ssh-able. On its own budget step the
+	// userdel is always ATTEMPTED and reports its real outcome.
+	uctx, ucancel, ufloored := rb.step()
+	if ufloored {
+		m.logger.Info("destroy rollback anchor spent: userdel runs on the reserved floor",
+			"agent_id", agentID, "floor", rollbackStepFloor)
+	}
+	if uctx == nil || ucancel == nil {
+		// Unreachable today (rollbackBudget.step never returns nils), but
+		// the non-force path must not userdel without a live context —
+		// treat it exactly like a userdel failure with absent evidence.
+		m.logger.Error("userdel skipped: destroy rollback budget unavailable", "agent_id", agentID)
+		if m.portAlloc != nil {
+			m.portAlloc.Free(agentID)
+			m.logger.Info("freed port range", "agent_id", agentID)
+		}
+		m.tracker.Unregister(agentID)
+		if perr := m.persistDestroy(agentID); perr != nil {
+			m.logger.Warn("registry destroy append failed", "agent_id", agentID, "error", perr)
+		}
+		m.removeAgentSSHKeyBestEffort(agentID, m.logger)
+		return &v1.DestroyAgentResponse{AgentId: agentID, Status: StatusUserdelFailed},
+			fmt.Errorf("destroy of %s failed: userdel not attempted (destroy rollback budget unavailable)", agentID)
+	}
+	cmd := exec.CommandContext(uctx, userManagementCommand("userdel"), "-rf", username)
 	if out, err := cmd.CombinedOutput(); err != nil {
+		ucancel()
 		// DF-BUNKER-34: a userdel failure that is NOT "the user is already
 		// gone" means the host is in exactly the partial state this row
 		// exists to prevent — userdel -rf fails on a busy home (processes
@@ -648,6 +781,7 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool) 
 			m.logger.Warn("userdel failed in force mode (user absent)", "username", username, "error", err, "output", string(out))
 		}
 	}
+	ucancel() // userdel's step context: released on the success path too
 
 	// Step 4: Clean up /run/bunker/<id>/ directory
 	runDir := fmt.Sprintf("/run/bunker/%s", agentID)
@@ -854,8 +988,8 @@ var terminateUserManagerGrace = 2 * time.Second
 // gate's pair absorption is the tolerance that keeps every environment
 // working, the terminate is the fast path that makes the gate's probe come
 // back empty instead of waiting out the grace window.
-func terminateAgentUserManager(ctx context.Context, username string, logger *slog.Logger) {
-	out, err := exec.CommandContext(ctx, "loginctl", "terminate-user", username).CombinedOutput()
+func terminateAgentUserManager(execCtx context.Context, username string, logger *slog.Logger) {
+	out, err := exec.CommandContext(execCtx, "loginctl", "terminate-user", username).CombinedOutput()
 	if err != nil {
 		logger.Warn("loginctl terminate-user failed (continuing destroy; the live-process gate absorbs the session pair)",
 			"user", username, "error", err, "output", strings.TrimSpace(string(out)))
@@ -881,7 +1015,7 @@ func terminateAgentUserManager(ctx context.Context, username string, logger *slo
 			return
 		}
 		select {
-		case <-ctx.Done():
+		case <-execCtx.Done():
 			return
 		case <-time.After(200 * time.Millisecond):
 		}
@@ -995,13 +1129,14 @@ func (m *AgentManager) destroyFailureEvidence(username string) string {
 // agent's port range until the whole pool was exhausted (QA-BUNKER-4).
 // pgrep exits non-zero when nothing matches, so an unknown or already-deleted
 // user returns immediately.
-func waitAgentProcessesExit(ctx context.Context, username string, logger *slog.Logger) {
+func waitAgentProcessesExit(execCtx context.Context, username string, logger *slog.Logger) {
 	const pollInterval = 200 * time.Millisecond
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		// pgrep -f treats the pattern as an extended regex: match the
-		// dockerd daemon and its rootlesskit supervisor.
-		cmd := exec.CommandContext(ctx, "pgrep", "-u", username, "-f", "dockerd|rootlesskit")
+		// dockerd daemon and its rootlesskit supervisor. execCtx is the
+		// CALLER'S budgeted step context (BNK-DF-001).
+		cmd := exec.CommandContext(execCtx, "pgrep", "-u", username, "-f", "dockerd|rootlesskit")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			return // no matching processes — safe to userdel
@@ -1019,10 +1154,10 @@ func waitAgentProcessesExit(ctx context.Context, username string, logger *slog.L
 			// Anything still alive here already survived stopDockerdDirect's
 			// SIGTERM and 5s grace, so escalate immediately.
 			logger.Info("killing lingering agent process", "user", username, "pid", pid)
-			_ = exec.CommandContext(ctx, "kill", "-KILL", pid).Run()
+			_ = exec.CommandContext(execCtx, "kill", "-KILL", pid).Run()
 		}
 		select {
-		case <-ctx.Done():
+		case <-execCtx.Done():
 			return
 		case <-time.After(pollInterval):
 		}
