@@ -3669,3 +3669,23 @@ tasks:
   status: complete
   created_at: '2026-09-29T15:14:50.199833+00:00'
   completed_at: '2026-09-29T15:54:14.873532+00:00'
+- id: DF-BUNKER-67
+  title: containment landing convergence budget raised; renew --preset passthrough
+  criteria:
+  - go build/vet/test green; unit tests prove convergence succeeds inside the new
+    ~2s budget and fails under an overridden small budget; renew has a --preset flag
+    with passthrough tested; gofmt clean; changed files limited to internal/agent/isolation.go
+    and internal/cli/renew.go plus their _test.go
+  status: complete
+  created_at: '2026-09-29T17:26:05.836546+00:00'
+  completed_at: '2026-09-29T17:53:08.793749+00:00'
+- id: BUNKER-INST-002
+  title: README Go-install recipe uses a per-user tarball path
+  criteria:
+  - 'Commit fc497a4 (Addresses BUNKER-INST-002) exists on main and touches README.md
+    ONLY (git show --stat fc497a4: 1 file, README.md); grep -n /tmp/go.tar.gz README.md
+    on current main returns nothing; README.md Go-install recipe lines use the same
+    variable for curl -o and tar -xzf'
+  status: complete
+  created_at: '2026-09-29T19:04:05.633540+00:00'
+  completed_at: '2026-09-29T19:04:45.475102+00:00'

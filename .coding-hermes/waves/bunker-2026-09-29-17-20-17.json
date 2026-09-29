@@ -1,0 +1,12 @@
+{
+  "tick": "bunker-2026-09-29-17-20-17",
+  "wave_budget": 3,
+  "workers": [
+    {"task_id": "DF-BUNKER-67", "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-67", "branch": "wt/DF-BUNKER-67", "base_sha": "f2b8b3e", "class": "code"},
+    {"task_id": "BUNKER-INST-002", "worktree": "/home/kara/worktrees/bunker-BUNKER-INST-002", "branch": "wt/BUNKER-INST-002", "base_sha": "f2b8b3e", "class": "docs"}
+  ],
+  "zero_code_closures": [
+    {"task_id": "DF-BUNKER-65", "evidence": "fix 4a035bd in main; gitreins DF-BUNKER-65 status complete; go test ./internal/cli green; live repro row predates fix"}
+  ],
+  "merge_plan": "serial merge wt/DF-BUNKER-67 then wt/BUNKER-INST-002, no-ff, guard each"
+}
