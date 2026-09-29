@@ -5,12 +5,12 @@ Thanks for your interest in contributing! Bunker is a multi-agent coding platfor
 ## Before you start
 
 1. **Read the CLA.** All contributors must sign the [Individual Contributor License Agreement](CLA.md). Our CLA bot checks PRs automatically.
-2. **Check existing work.** Browse [open issues](https://github.com/deployBunker/bunker/issues) and the [task board](.coding-hermes/tasks.md) to avoid duplication.
+2. **Check existing work.** Browse [open issues](https://github.com/deployBunker/bunker/issues) and the [task board](.coding-hermes/board/tasks.jsonl) to avoid duplication.
 
 ## Development environment
 
 ```bash
-# Prerequisites: Go 1.24+, Docker, systemd (Linux)
+# Prerequisites: Go 1.26.5+, Docker, systemd (Linux)
 git clone https://github.com/deployBunker/bunker.git
 cd bunker
 go build ./...
@@ -32,7 +32,7 @@ Every commit must pass:
 | Vet | `go vet ./...` |
 | Tests | `go test ./... -short -count=1 -timeout 120s` |
 | Format | `gofmt -w .` |
-| GitReins | `gitreins guard run` |
+| GitReins | `gitreins guard` |
 | Hilo | `hilo graph impact <changed-file>` |
 
 ## Pull request process
