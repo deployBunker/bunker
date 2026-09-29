@@ -41,6 +41,26 @@ import (
 // from a recomputation.
 const probeSentinelBFS049 = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 
+// settleForCacheHitBFS049 waits out the window inside which the hash cache
+// refuses to take a metadata-only hit.
+//
+// The fixed tree trusts a cached hash only while the path's metadata can vouch
+// for its bytes. An edit that restores the mtime and lands in the filesystem's
+// own coarse-clock tick (CONFIG_HZ) leaves size, mtime AND ctime identical, so a
+// memo taken inside that window must be re-derived from the bytes rather than
+// answered from metadata (QA-BUNKER-36) — the fix for the coarse-clock false
+// red this file's sibling row filed. The arms below are about the cache's KEY,
+// not about that window, so they wait it out first: without the settle they
+// would measure a re-read of a just-written fixture and report it as a cache
+// hit.
+//
+// This file is written against surface that existed BEFORE that row — it must
+// compile and run against the filed production blob too — so it cannot name the
+// window; the settle is a literal. content_identity_fallback_test.go pins the
+// declared window and asserts this literal is larger than it, so the two cannot
+// drift apart silently.
+const settleForCacheHitBFS049 = 200 * time.Millisecond
+
 // plantHashCacheBFS049 overwrites the stored hash of the cache entry for abs.
 // It fails loudly when there is no entry: a probe on a cold path would measure
 // nothing and pass vacuously.
@@ -209,6 +229,11 @@ func TestBFS049AMetadataOnlyMoveIsNotACacheHit(t *testing.T) {
 	target := filepath.Join(h.Root(), "src", "util.go")
 	cursor := seedWithSnapshot(t, h)
 
+	// Let the fixture's metadata age past the window the cache declines to trust
+	// (see settleForCacheHitBFS049): this arm is about the KEY, and a memo taken
+	// inside that window is deliberately not answerable from metadata.
+	time.Sleep(settleForCacheHitBFS049)
+
 	trueHash, err := h.tree.hashFile(target)
 	if err != nil {
 		t.Fatalf("hashFile: %v", err)
@@ -260,6 +285,11 @@ func TestBFS049AnUnchangedReadIsStillACacheHit(t *testing.T) {
 	h := newTestHandler(t)
 	target := filepath.Join(h.Root(), "src", "util.go")
 
+	// The fixture is younger than the window the cache declines to trust, so let
+	// it settle first (see settleForCacheHitBFS049): this arm asserts the KEY
+	// still hits, and the window is the other row's subject.
+	time.Sleep(settleForCacheHitBFS049)
+
 	trueHash, err := h.tree.hashFile(target)
 	if err != nil {
 		t.Fatalf("hashFile: %v", err)
@@ -296,6 +326,10 @@ func TestBFS049TheSharperIdentityCostsNoExtraSyscall(t *testing.T) {
 
 	h := newTestHandler(t)
 	target := filepath.Join(h.Root(), "src", "util.go")
+	// Settle the fixture past the cache's trust window (settleForCacheHitBFS049)
+	// so the calls measured below are the HIT a response actually pays, not the
+	// re-read a just-written path is deliberately subject to.
+	time.Sleep(settleForCacheHitBFS049)
 	if _, err := h.tree.hashFile(target); err != nil {
 		t.Fatalf("hashFile: %v", err)
 	}
@@ -347,6 +381,11 @@ func TestBFS049TheSharperIdentityCostsNoExtraSyscall(t *testing.T) {
 func TestBFS049OneStatPerHashFileLookup(t *testing.T) {
 	h := newTestHandler(t)
 	target := filepath.Join(h.Root(), "src", "util.go")
+	// The strace comparison below is only meaningful if every call is a HIT, so
+	// the fixture is settled past the cache's trust window first
+	// (settleForCacheHitBFS049): otherwise a just-written path pays a re-read,
+	// and this arm's stat family count would measure the wrong thing.
+	time.Sleep(settleForCacheHitBFS049)
 	if _, err := h.tree.hashFile(target); err != nil {
 		t.Fatalf("hashFile: %v", err)
 	}

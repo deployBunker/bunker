@@ -66,6 +66,7 @@ prod_tree=internal/server/webdav/tree.go
 prod_events=internal/server/webdav/events.go
 arms_file=internal/server/webdav/identity_bfs049_test.go
 report_file=internal/server/webdav/identity_report_bfs049_test.go
+fallback_file=internal/server/webdav/content_identity_fallback_test.go
 pkg=./internal/server/webdav
 
 # The filed blobs of the base commit — the content the RED is measured on. A
@@ -107,11 +108,13 @@ restore() {
 		fi
 	fi
 	if [ "$report_was_moved" = 1 ] && [ -n "$stash_dir" ]; then
-		mv "$stash_dir/$(basename "$report_file")" "$report_file" || status=1
-		if [ -f "$report_file" ]; then
-			say "restore: $report_file sha256=$(hash "$report_file") (set aside for the filed-tree run, moved back)"
+		for f in "$report_file" "$fallback_file"; do
+			mv "$stash_dir/$(basename "$f")" "$f" || status=1
+		done
+		if [ -f "$report_file" ] && [ -f "$fallback_file" ]; then
+			say "restore: $report_file sha256=$(hash "$report_file") and $fallback_file sha256=$(hash "$fallback_file") (set aside for this run, both moved back)"
 		else
-			say "RESTORE FAILED: $report_file was not moved back"
+			say "RESTORE FAILED: a file set aside for this run was not moved back"
 			status=1
 		fi
 	fi
@@ -131,11 +134,14 @@ stash() {
 	say "          $prod_events sha256=$before_events"
 }
 
-set_aside_report() {
+set_aside_new_surface() {
 	stash_dir=$(mktemp -d)
-	mv "$report_file" "$stash_dir/" || exit 5
+	for f in "$report_file" "$fallback_file"; do
+		mv "$f" "$stash_dir/" || exit 5
+	done
 	report_was_moved=1
 	say "set aside for this run: $report_file (the filed tree has no IdentityDivergenceCounters)"
+	say "set aside for this run: $fallback_file (the filings have no content-verified fallback: observedEntry, ledgerDiff, coarseClockAmbiguous, ContentVerificationCounters)"
 }
 
 run_arm() {
@@ -207,7 +213,7 @@ unfixed)
 		exit 4
 	fi
 	say "the filed tree, sha256-verified: the RED below is measured on a named content, not on a memory"
-	set_aside_report
+	set_aside_new_surface
 	run_arm "RED (tree as filed): the divergence MUST be constructed" 'TestBFS049TheTwoObserversCannotDisagreeOnASameSizeMtimePreservedEdit'
 	run_arm "RED (tree as filed): the isolating arm MUST fail" 'TestBFS049AMetadataOnlyMoveIsNotACacheHit'
 	run_arm "RED (tree as filed) attribution: an unchanged read MUST still be a cache hit" 'TestBFS049AnUnchangedReadIsStillACacheHit'
@@ -219,9 +225,22 @@ neutered)
 	# One substitution, on text this row added: the shared projection drops
 	# ctime again — the filed key, with everything else this row did in place.
 	mutate neutered \
-		's/\treturn id\.Size == other\.Size && id\.Mtime == other\.Mtime && id\.Ctime == other\.Ctime/\treturn id.Size == other.Size \&\& id.Mtime == other.Mtime \/\/ CONTROL (BFS-049 neutered)/' \
+		's/	return id\.Size == other\.Size && id\.Mtime == other\.Mtime && id\.Ctime == other\.Ctime/	return id.Size == other.Size \&\& id.Mtime == other.Mtime \/\/ CONTROL (BFS-049 neutered)/' \
 		'// CONTROL (BFS-049 neutered)' \
 		'return id.Size == other.Size && id.Mtime == other.Mtime && id.Ctime == other.Ctime'
+	# A SECOND substitution is needed now, and it is the point of it: since
+	# QA-BUNKER-36 the identity is no longer the only thing standing between a
+	# same-size, mtime-preserved rewrite and both observers — the coarse-clock
+	# window re-derives the bytes whenever the metadata cannot vouch for them. A
+	# control that neutered only the shared projection would therefore measure a
+	# fix that is still in place and report the class as closed. So the window's
+	# own rule is neutered with it, and the control proves what it always did:
+	# with BOTH mechanisms gone the divergence is back, and each arm's verdict
+	# still attributes to the identity rather than to a dead cache.
+	mutate neutered-window \
+		's/	return at\.UnixNano\(\)-ctimeNano < int64\(eventsCoarseClockWindow\)/	return false \/\/ CONTROL (QA-BUNKER-36 neutered-window)/' \
+		'// CONTROL (QA-BUNKER-36 neutered-window)' \
+		'return at.UnixNano()-ctimeNano < int64(eventsCoarseClockWindow)'
 	run_arm "CONTROL neutered: the divergence MUST be back" 'TestBFS049TheTwoObserversCannotDisagreeOnASameSizeMtimePreservedEdit'
 	run_arm "CONTROL neutered: the isolating arm MUST fail" 'TestBFS049AMetadataOnlyMoveIsNotACacheHit'
 	run_arm "CONTROL neutered attribution: the cache still MISSES nothing that moved — the arm that must stay green" 'TestBFS049AnUnchangedReadIsStillACacheHit'

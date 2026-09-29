@@ -56,6 +56,12 @@ const (
 type hashEntry struct {
 	id   identity
 	hash string
+	// verified is when the bytes were read. It is what lets this memo be taken
+	// on metadata alone: the memo is only valid while an edit cannot have
+	// changed the bytes without moving the metadata, and that is exactly the
+	// property coarseClockAmbiguous decides (QA-BUNKER-36). A zero value is
+	// never trusted — an entry with no read behind it cannot vouch for anything.
+	verified time.Time
 }
 
 // tree is the served directory: path confinement, content identity, the
@@ -218,10 +224,38 @@ func (t *tree) hashFile(abs string) (string, error) {
 	t.mu.Lock()
 	e, ok := t.cache[abs]
 	t.mu.Unlock()
-	if ok && e.id.sameContentKey(id) {
+	// A cache HIT is a metadata-only judgement, and it is taken only when the
+	// metadata can carry it: the same content key AND a read recent enough that
+	// no edit could have changed the bytes under a standing metadata
+	// observation. Inside the coarse-clock window the memo is re-derived from
+	// the bytes, because on a CONFIG_HZ<=250 kernel a same-size rewrite that
+	// restores the mtime is stamped identically to the write before it — the
+	// class BFS-049 closed between this cache and the event ledger, closed here
+	// for the same reason and by the same window.
+	if ok && e.id.sameContentKey(id) && !coarseClockAmbiguous(e.verified, id.Ctime) {
 		return e.hash, nil
 	}
 
+	h, err := contentDigest(abs)
+	if err != nil {
+		return "", err
+	}
+
+	t.mu.Lock()
+	if len(t.cache) >= hashCacheLimit {
+		t.cache = make(map[string]hashEntry)
+	}
+	t.cache[abs] = hashEntry{id: id, hash: h, verified: time.Now()}
+	t.mu.Unlock()
+	return h, nil
+}
+
+// contentDigest returns "sha256:<64 hex>" for the file's bytes.
+//
+// It streams (io.Copy) and never buffers the file: its callers are poll and read
+// paths that may be pointed at arbitrarily large files, and a digest is not a
+// reason to hold one in memory.
+func contentDigest(abs string) (string, error) {
 	f, err := os.Open(abs)
 	if err != nil {
 		return "", err
@@ -231,15 +265,7 @@ func (t *tree) hashFile(abs string) (string, error) {
 	if _, err := io.Copy(hs, f); err != nil {
 		return "", err
 	}
-	h := "sha256:" + hex.EncodeToString(hs.Sum(nil))
-
-	t.mu.Lock()
-	if len(t.cache) >= hashCacheLimit {
-		t.cache = make(map[string]hashEntry)
-	}
-	t.cache[abs] = hashEntry{id: id, hash: h}
-	t.mu.Unlock()
-	return h, nil
+	return "sha256:" + hex.EncodeToString(hs.Sum(nil)), nil
 }
 
 // forget drops a path from the hash cache after a mutation writes it.
@@ -279,6 +305,9 @@ func (t *tree) freshEntry(abs string) (hashEntry, error) {
 	return hashEntry{
 		id:   identityOf(fi),
 		hash: "sha256:" + hex.EncodeToString(hs.Sum(nil)),
+		// The read is authoritative AND dated: a memo taken from these bytes may
+		// only be reused once the metadata can vouch for them again.
+		verified: time.Now(),
 	}, nil
 }
 

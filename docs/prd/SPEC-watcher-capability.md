@@ -51,7 +51,7 @@ This section exists because a mandated fallback that does not exist is a lie in 
 | mechanism | what it is | served? | where |
 |---|---|---|---|
 `watch` (push) | a long-lived NDJSON stream of `invalidate`/`heartbeat`/`overflow` lines | **no** — refused `501 capability_unavailable`, `scope=target`, `mode=poll` | `internal/server/webdav/ops.go:84–90` |
-`events` (poll) | one bounded stat-only observation per call, diffed against the identity last seen, answered as an E-4 envelope | **yes** | `internal/server/webdav/events.go` (BFS-026) |
+`events` (poll) | one bounded observation per call — a stat per entry, plus a **streamed content read** for the regular files whose metadata cannot rule an edit out (§2.2, QA-BUNKER-36) — diffed against the identity last seen, answered as an E-4 envelope | **yes** | `internal/server/webdav/events.go` (BFS-026) |
 `rev` (revision poll) | one cheap request per interval whose `X-Bunker-Rev` answers for the tree at the revision's own granularity — `git:<HEAD>` moves on committed ref movement only, so an uncommitted out-of-band edit moves nothing (§2.4; BFS-048) — the client's last-resort mechanism | **yes** (every response carries it) | `internal/server/webdav/handler.go:233`; client `internal/fsclient/invalidate.go:508–547` |
 
 The client's own vocabulary, verbatim (`internal/fsclient/invalidate.go:44–62`): **mode** ∈ `push` | `poll`; **mechanism** ∈ `watch` | `events` | `rev` | `none`. The mechanism is reported next to the mode because "per-path drops" and "a whole-tree resync" are a cost, not a detail.
@@ -60,8 +60,9 @@ The client's own vocabulary, verbatim (`internal/fsclient/invalidate.go:44–62`
 
 | property | served value | consequence a client may rely on |
 |---|---|---|
-observation | one `filepath.WalkDir` of the served root, stat-only, no reads | cost is O(paths) per poll, not O(changes) |
-identity | `(size, mtime, ctime)`, ctime deliberately included | an edit that preserves size **and** mtime still moves ctime → is reported |
+observation | one `filepath.WalkDir` of the served root, one stat per entry, **plus** a streamed read (io.Copy, never buffered) of each regular file whose metadata cannot vouch for its bytes — the coarse-clock row below | cost is O(paths) per poll, plus O(bytes) for the paths last written inside the coarse-clock window; a settled tree reads nothing |
+identity | `(size, mtime, ctime)`, ctime deliberately included | an edit that preserves size **and** mtime still moves ctime wherever the kernel can separate the two writes → is reported; where it cannot (a coarse clock) the content digest below is what reports it (QA-BUNKER-36) |
+coarse clock | the kernel stamps filesystem metadata from the COARSE clock, so an edit landing in the same tick (1/HZ) as the write before it is stamped identically; a record whose `(size, mtime, ctime)` cannot rule that out is verified by streamed sha256, bounded by `eventsCoarseClockWindow = 50ms` | a same-size, mtime-restored rewrite is reported even where ctime was frozen — measured at CONFIG_HZ=250 (a 4 ms tick): ctime delta 0 ns, 5/5, on ext4 and tmpfs — and a record older than the window is still taken on metadata alone, so no post-window rewrite is ever silently dropped either |
 scan bound | `eventsScanLimit = 100000`; a truncated observation is answered `overflow`, never a diff of the part that fit | no partial diff is ever presented as complete |
 path-list cap | `eventsMaxPathsPerEvent = 4096`; above it, `overflow` | a client's drop loop needs a bound and has one |
 journal | `eventsJournalEvents = 256`; a cursor **above zero** that is older than the retained journal is answered with the retained events whose first `seq` is a gap; a cursor **of zero** in that state is answered `overflow` | the missing range is never re-requested (BFS-005 §4.1); the cursor-0 case is BFS-063: the tail's gap IS visible to a client with a cursor, and is invisible to one without (the client's own rule is guarded on a non-zero cursor), so the server says it itself |
