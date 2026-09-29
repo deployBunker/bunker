@@ -125,7 +125,13 @@ func NewAgentManager(cfg *config.Config, logger *slog.Logger, tracker *resource.
 		reconcileDone: make(chan struct{}),
 	}
 	am.listSystemAgents = defaultListSystemAgents
-	am.destroyAgent = am.Destroy
+	// DF-BUNKER-81: Destroy grew a variadic option list (the per-request
+	// archive opt-out). The reconciliation seam keeps its 3-argument shape —
+	// orphan cleanup has no operator to take an option from, so it runs under
+	// the configured policy — and adapts through this closure.
+	am.destroyAgent = func(ctx context.Context, agentID string, force bool) (*v1.DestroyAgentResponse, error) {
+		return am.Destroy(ctx, agentID, force)
+	}
 	// DF-BUNKER-63: wire the destroy-gate refusal recorder and the --force
 	// kill escalation. The gate dereferences these through the receiver (m),
 	// so every NewAgentManager-built manager has them.

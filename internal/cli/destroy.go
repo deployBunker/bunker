@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
@@ -12,24 +13,95 @@ import (
 	"github.com/deployBunker/bunker/internal/config"
 
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
+	bunkerv1connect "github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect"
 )
 
-// destroyRequestTimeout bounds the client side of `bunker destroy`.
+// destroyRequestTimeout is the client-side deadline `bunker destroy` uses when
+// it CANNOT resolve the agent's home size.
 //
-// It MUST NOT be shorter than the daemon's per-request budget
-// (config.DefaultServerRequestTimeout, server.request_timeout): the destroy
-// handler archives the agent's whole home before userdel (DF-BUNKER-33) and
-// runs that `tar` with exec.CommandContext(ctx, …) on the REQUEST context, so
-// the client's deadline is the tar's deadline. The old 30s value SIGKILLed a
-// ~300MB image-spec home's archive at 25s (INT-CI-050, CI run 36487719950,
-// battery section 13: `archive home /home/bunker-e2e-imgspec: signal: killed
-// (output: )`), which is fail-closed by design — the destroy is REFUSED with
-// home_retained and the agent (user, home, port range) survives every retry.
-// The runner had leaked bunker-e2e-imgspec users and truncated .tar.gz files
-// in /var/backups/bunker from exactly that kill.
+// DF-BUNKER-81: the deadline is SIZE-DERIVED — the daemon archives the whole
+// home before userdel (DF-BUNKER-33) and runs that `tar` under its own budget
+// (config.ArchiveBudgetForHomeSize), so the client must outlive the archive it
+// is waiting on. A fixed literal cannot do that: the historical 30s value
+// SIGKILLed a ~300MB image-spec home's archive at 25s (INT-CI-050, CI run
+// 36487719950: `archive home /home/bunker-e2e-imgspec: signal: killed`), and
+// on a rootless-docker home the docker data-root lives INSIDE $HOME, so the
+// archive got slower still and the destroy became UNFINISHABLE — five
+// attempts, five fail-closed refusals (home_retained), agent still running.
 //
-// A var (not a const) purely as a test seam — production never writes it.
-var destroyRequestTimeout = config.DefaultServerRequestTimeout
+// This var is the FLOOR (size unknown: a probe that failed, an unreachable
+// daemon, a daemon too old to answer AgentMetrics). When the probe below
+// succeeds, the deadline grows with the home (destroyDeadlineForHomeSize). A
+// var (not a const) purely as a test seam — production never writes it.
+var destroyRequestTimeout = config.DestroyRequestTimeoutForHomeSize(0)
+
+// destroyHomeSizeProbeTimeout bounds the pre-destroy size probe. It is
+// deliberately short: the probe is an OPTIMISATION (it buys a deadline sized to
+// the home), and a daemon that cannot answer within it must not delay the
+// destroy — the size-unknown floor above is already safe.
+var destroyHomeSizeProbeTimeout = 15 * time.Second
+
+// destroyHomeSizeProbe resolves the agent's on-disk footprint in bytes. The
+// daemon serves it from its per-agent disk-usage snapshot cache
+// (internal/server diskusage.go: one home walk per agent per 5m TTL), so a
+// destroy following a `bunker list`/`bunker info` pays nothing. It is
+// BEST-EFFORT: any error means "size unknown" and the caller falls back to
+// destroyRequestTimeout. Var (not a func) purely as a test seam.
+var destroyHomeSizeProbe = func(ctx context.Context, client bunkerv1connect.BunkerdClient, token, agentID string) (uint64, error) {
+	req := connect.NewRequest(&v1.AgentMetricsRequest{AgentId: agentID})
+	if token != "" {
+		req.Header().Set("Authorization", "Bearer "+token)
+	}
+	resp, err := client.AgentMetrics(ctx, req)
+	if err != nil {
+		return 0, err
+	}
+	return resp.Msg.GetDiskUsedBytes(), nil
+}
+
+// destroyDeadlineForHomeSize returns the client deadline for destroying an
+// agent whose home holds homeBytes bytes. An unknown size (0) keeps the
+// configured floor — never a shorter deadline than the seam already holds, so
+// a test that shrinks destroyRequestTimeout keeps control of the RPC budget.
+func destroyDeadlineForHomeSize(homeBytes uint64) time.Duration {
+	if homeBytes == 0 {
+		return destroyRequestTimeout
+	}
+	deadline := config.DestroyRequestTimeoutForHomeSize(int64(homeBytes))
+	if deadline < destroyRequestTimeout {
+		return destroyRequestTimeout
+	}
+	return deadline
+}
+
+// destroyProgressLine renders what the operator is about to wait for: the
+// home's measured size, whether it will be archived (or deleted outright), and
+// the deadline the client will allow. DF-BUNKER-81 prints the size because the
+// size IS the reason a destroy takes minutes, and the operator needs to be
+// able to tell "slow because the home is 700M" from "slow because something
+// is wrong".
+func destroyProgressLine(agentID string, homeBytes uint64, deadline time.Duration, skipArchive bool) string {
+	size := "home size unknown"
+	if homeBytes > 0 {
+		size = "home " + humanBytes(homeBytes)
+	}
+	if skipArchive {
+		return fmt.Sprintf("Destroying agent %s (%s) — archive skipped: the home will be deleted with NO copy; deadline %s…",
+			agentID, size, deadline)
+	}
+	return fmt.Sprintf("Destroying agent %s (%s; archiving before delete, deadline %s)…",
+		agentID, size, deadline)
+}
+
+// resolveArchiveChoice folds the two operator spellings — --archive (default
+// true) and its shorthand --purge — into ONE decision, and refuses the
+// contradictory combination instead of silently picking a side.
+func resolveArchiveChoice(cmd *cobra.Command, archive, purge bool) (bool, error) {
+	if purge && cmd.Flags().Changed("archive") && archive {
+		return false, fmt.Errorf("--purge and --archive=true contradict each other: pass one of them")
+	}
+	return purge || !archive, nil
+}
 
 // NewDestroyCommand returns the `bunker destroy` cobra command.
 func NewDestroyCommand() *cobra.Command {
@@ -37,6 +109,8 @@ func NewDestroyCommand() *cobra.Command {
 		serverName string
 		force      bool
 		keepKey    bool
+		archive    bool
+		purge      bool
 	)
 
 	cmd := &cobra.Command{
@@ -53,9 +127,25 @@ deleted; if archiving fails, the destroy is refused and the home is
 retained (destroy_home_policy: purge restores the historical
 delete-without-archive behavior).
 
+ARCHIVING (DF-BUNKER-81). The client deadline and the daemon's archive
+budget are derived from the home's SIZE, and this command prints the
+measured size and its deadline before sending the request — a large home
+is slow because it is large, not because the destroy is stuck. The
+agent's own rootless docker data-root (<home>/.local/share/docker —
+container and overlay layers) is EXCLUDED from every archive: it is
+runtime state, not user data, and the daemon rebuilds it on demand.
+
+--archive=false (or --purge) SKIPS the archive for THIS destroy: the home
+is deleted with NO copy anywhere. Use it when the archive is the blocker —
+for example a home dominated by runtime state — and the contents are
+expendable. It is a per-destroy choice: every other destroy (and the TTL
+reaper) still runs under the configured policy.
+
 Examples:
   bunker destroy abc12345
   bunker destroy abc12345 --force
+  bunker destroy abc12345 --archive=false
+  bunker destroy abc12345 --purge
   bunker destroy abc12345 --server staging
   bunker destroy abc12345 --keep-key`,
 
@@ -83,23 +173,45 @@ Examples:
 				return fmt.Errorf("server %q not found in config", serverName)
 			}
 
-			// 3. Build request
+			// 3. Operator's archive choice (DF-BUNKER-81 criterion 4)
+			skipArchive, aerr := resolveArchiveChoice(cmd, archive, purge)
+			if aerr != nil {
+				return aerr
+			}
+
+			// 4. Build request
 			client := newBunkerdClient(entry)
-			ctx, cancel := context.WithTimeout(context.Background(), destroyRequestTimeout)
+			token := resolveToken(entry)
+
+			// DF-BUNKER-81 criterion 1: size the deadline from the agent's
+			// actual footprint. The probe is best-effort — a daemon that
+			// cannot answer leaves homeBytes at 0 and the floor deadline
+			// applies — and it never fails the destroy.
+			homeBytes := uint64(0)
+			sizeCtx, sizeCancel := context.WithTimeout(context.Background(), destroyHomeSizeProbeTimeout)
+			if size, serr := destroyHomeSizeProbe(sizeCtx, client, token, agentID); serr == nil {
+				homeBytes = size
+			}
+			sizeCancel()
+
+			deadline := destroyDeadlineForHomeSize(homeBytes)
+			fmt.Println(destroyProgressLine(agentID, homeBytes, deadline, skipArchive))
+
+			ctx, cancel := context.WithTimeout(context.Background(), deadline)
 			defer cancel()
 
 			req := connect.NewRequest(&v1.DestroyAgentRequest{
-				AgentId: agentID,
-				Force:   force,
+				AgentId:     agentID,
+				Force:       force,
+				SkipArchive: skipArchive,
 			})
 
 			// Auth token
-			token := resolveToken(entry)
 			if token != "" {
 				req.Header().Set("Authorization", "Bearer "+token)
 			}
 
-			// 4. Call RPC
+			// 5. Call RPC
 			resp, err := client.DestroyAgent(ctx, req)
 			if err != nil {
 				// A not-found agent is an idempotent success, not an error:
@@ -124,7 +236,7 @@ Examples:
 				return fmt.Errorf("destroy agent: %w", err)
 			}
 
-			// 5. Print result
+			// 6. Print result
 			if resp.Msg.Status == "not_found" {
 				fmt.Printf("Agent %s not found.\n", agentID)
 				return removeLocalSSHKey(agentID, keepKey)
@@ -144,6 +256,8 @@ Examples:
 	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)")
 	cmd.Flags().BoolVar(&force, "force", false, "Force destroy even if agent is running")
 	cmd.Flags().BoolVar(&keepKey, "keep-key", false, "Keep the local SSH key (~/.bunker/keys/<id>) after destroy (key rotation)")
+	cmd.Flags().BoolVar(&archive, "archive", true, "Archive the agent home to the daemon's destroy_archive_dir before deletion (default). --archive=false deletes the home with NO copy — the per-destroy equivalent of destroy_home_policy: purge (see also --purge)")
+	cmd.Flags().BoolVar(&purge, "purge", false, "Shorthand for --archive=false: delete the home with NO archive and NO copy kept")
 
 	return cmd
 }

@@ -752,6 +752,8 @@ bunker heartbeat abc12345 --server bunker-host
 bunker destroy abc12345 --server bunker-host
 # Keep the local key for a spawn/destroy/spawn key-reuse cycle:
 bunker destroy abc12345 --server bunker-host --keep-key
+# Skip the home archive for this one destroy (the home is deleted with NO copy)
+bunker destroy abc12345 --server bunker-host --archive=false
 ```
 
 Pause, resume and recover an agent — **requires a build from HEAD** (the newest
@@ -792,6 +794,21 @@ bunker restart abc12345 --server bunker-host
 > carries key material, GAP-128); destroy deletes it after a successful
 > teardown (including the `not_found` path) unless `--keep-key` is passed. If
 > you reuse keys across spawn/destroy cycles, pass `--keep-key`.
+
+> **`bunker destroy` sizes its deadline from the home, and prints it.** Under
+> the default policy the daemon archives the whole home before `userdel`, and
+> that archive is the slow part of a destroy on a large home — so both the
+> daemon's archive budget and the client deadline are derived from the home's
+> measured size, and destroy prints `home <size>; archiving before delete,
+> deadline <d>` before it sends the request (DF-BUNKER-81). The agent's own
+> rootless docker data-root (`<home>/.local/share/docker`, i.e. container and
+> overlay layers) is **excluded from every archive**: it is runtime state the
+> daemon rebuilds on demand, not user data. `--archive=false` (or its
+> shorthand `--purge`) **skips the archive for THIS destroy only** — the home
+> is then deleted with NO copy anywhere, so use it when the archive is the
+> blocker and the home's contents are expendable. It is a per-destroy choice:
+> every other destroy, and the TTL reaper, still run under the configured
+> `destroy_home_policy`.
 
 > **`bunker stop` pauses an agent, it does not destroy it.** Stop returns the
 > CPU (the agent's units and processes are stopped) while keeping everything

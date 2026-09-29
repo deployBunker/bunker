@@ -1483,9 +1483,15 @@ func (x *GetAgentKeyResponse) GetSshPrivateKey() string {
 }
 
 type DestroyAgentRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
-	Force         bool                   `protobuf:"varint,2,opt,name=force,proto3" json:"force,omitempty"` // Force destroy even if running
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	AgentId string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Force   bool                   `protobuf:"varint,2,opt,name=force,proto3" json:"force,omitempty"` // Force destroy even if running
+	// DF-BUNKER-81: skip the fail-closed home archive for THIS destroy — the
+	// per-request equivalent of `agent.destroy_home_policy: purge`. The home is
+	// still deleted, with NO copy kept, so only an explicit operator choice
+	// sets it (the CLI's --archive=false / --purge). Additive: a client that
+	// never sets it gets the archive policy unchanged.
+	SkipArchive   bool `protobuf:"varint,3,opt,name=skip_archive,json=skipArchive,proto3" json:"skip_archive,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1530,6 +1536,13 @@ func (x *DestroyAgentRequest) GetAgentId() string {
 func (x *DestroyAgentRequest) GetForce() bool {
 	if x != nil {
 		return x.Force
+	}
+	return false
+}
+
+func (x *DestroyAgentRequest) GetSkipArchive() bool {
+	if x != nil {
+		return x.SkipArchive
 	}
 	return false
 }
@@ -3858,10 +3871,11 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\"X\n" +
 	"\x13GetAgentKeyResponse\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12&\n" +
-	"\x0fssh_private_key\x18\x02 \x01(\tR\rsshPrivateKey\"F\n" +
+	"\x0fssh_private_key\x18\x02 \x01(\tR\rsshPrivateKey\"i\n" +
 	"\x13DestroyAgentRequest\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x14\n" +
-	"\x05force\x18\x02 \x01(\bR\x05force\"I\n" +
+	"\x05force\x18\x02 \x01(\bR\x05force\x12!\n" +
+	"\fskip_archive\x18\x03 \x01(\bR\vskipArchive\"I\n" +
 	"\x14DestroyAgentResponse\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\"_\n" +

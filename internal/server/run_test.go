@@ -27,7 +27,7 @@ func (m *runAgentMockManager) Spawn(ctx context.Context, req *v1.SpawnAgentReque
 	return nil, nil
 }
 
-func (m *runAgentMockManager) Destroy(ctx context.Context, agentID string, force bool) (*v1.DestroyAgentResponse, error) {
+func (m *runAgentMockManager) Destroy(ctx context.Context, agentID string, force bool, opts ...agent.DestroyOption) (*v1.DestroyAgentResponse, error) {
 	m.destroyCalled = true
 	return nil, nil
 }

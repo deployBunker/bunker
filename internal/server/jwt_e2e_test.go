@@ -203,7 +203,7 @@ func (m *stubAgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest)
 	return m.resp, m.err
 }
 
-func (m *stubAgentManager) Destroy(ctx context.Context, agentID string, force bool) (*v1.DestroyAgentResponse, error) {
+func (m *stubAgentManager) Destroy(ctx context.Context, agentID string, force bool, opts ...agent.DestroyOption) (*v1.DestroyAgentResponse, error) {
 	return &v1.DestroyAgentResponse{AgentId: agentID, Status: "destroyed"}, nil
 }
 

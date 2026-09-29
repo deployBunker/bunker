@@ -326,6 +326,12 @@ message GetAgentKeyResponse {
 message DestroyAgentRequest {
   string agent_id = 1;
   bool force = 2;                // Force destroy even if running
+  // DF-BUNKER-81: skip the fail-closed home archive for THIS destroy — the
+  // per-request equivalent of `agent.destroy_home_policy: purge`. The home is
+  // still deleted, with NO copy kept, so only an explicit operator choice
+  // sets it (the CLI's --archive=false / --purge). Additive: a client that
+  // never sets it gets the archive policy unchanged.
+  bool skip_archive = 3;
 }
 
 message DestroyAgentResponse {

@@ -907,13 +907,16 @@ func presetForRecord(persisted *registry.Record, hasRecord bool) string {
 	return ""
 }
 
-// destroyOrphan removes an orphan through the manager's destroy path.
+// destroyOrphan removes an orphan through the manager's destroy path. The
+// seam (m.destroyAgent) keeps its 3-argument shape — orphan cleanup runs under
+// the configured destroy policy, with no operator to take a per-request
+// archive opt-out from (DF-BUNKER-81).
 func (m *AgentManager) destroyOrphan(ctx context.Context, agentID string) error {
-	fn := m.destroyAgent
-	if fn == nil {
-		fn = m.Destroy
+	if fn := m.destroyAgent; fn != nil {
+		_, err := fn(ctx, agentID, true)
+		return err
 	}
-	_, err := fn(ctx, agentID, true)
+	_, err := m.Destroy(ctx, agentID, true)
 	return err
 }
 

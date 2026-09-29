@@ -874,6 +874,9 @@ type fakeAgentManager struct {
 	destroyResp   *v1.DestroyAgentResponse
 	destroyErr    error
 	destroyCalled bool
+	// destroyOpts records the options the handler passed through, so the
+	// DF-BUNKER-81 skip_archive plumbing is asserted at the service boundary.
+	destroyOpts []agent.DestroyOption
 
 	// GAP-071 lifecycle control. lifecycleStatus/lifecycleErr drive all three
 	// RPCs (they share the same not_found/already_* mapping); lifecycleCalled
@@ -893,8 +896,9 @@ func (f *fakeAgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest)
 	return nil, nil
 }
 
-func (f *fakeAgentManager) Destroy(ctx context.Context, agentID string, force bool) (*v1.DestroyAgentResponse, error) {
+func (f *fakeAgentManager) Destroy(ctx context.Context, agentID string, force bool, opts ...agent.DestroyOption) (*v1.DestroyAgentResponse, error) {
 	f.destroyCalled = true
+	f.destroyOpts = opts
 	if f.destroyErr != nil {
 		return f.destroyResp, f.destroyErr
 	}
