@@ -3605,3 +3605,17 @@ tasks:
   status: complete
   created_at: '2026-09-29T07:48:42.510361+00:00'
   completed_at: '2026-09-29T07:55:06.518830+00:00'
+- id: DOC-DOC-1
+  title: 'Operator docs: config surface, non-RPC routes, safety presets (DOC-25/26/27)'
+  criteria:
+  - '1) specs/configuration.md exists and lists every mapstructure key in internal/config/config.go
+    with default + env override + semantics, and states the -1-swap and MinContainmentIOWriteBps
+    floor in prose. 2) specs/api.md has a Non-RPC routes section listing /healthz
+    and the /graph/* routes with auth posture; docs/integration.md carries a readiness-probe
+    line. 3) An operator doc states the preset precedence (--preset > BUNKERD_SAFETY_PRESET
+    > safety.preset > standard) and tier names; README contains --preset at least
+    once. 4) specs/_index.md:19 no longer labels safety-presets.md ''not implemented''.
+    Docs-only diff: no .go/proto file touched.'
+  status: complete
+  created_at: '2026-09-29T08:13:05.708188+00:00'
+  completed_at: '2026-09-29T08:25:31.506501+00:00'
