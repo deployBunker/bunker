@@ -783,16 +783,24 @@ var sliceApplySystemctl = func(ctx context.Context, name string, args ...string)
 // drop-in slightly asynchronously even after daemon-reload returns — the very
 // first read can still observe the untouched cgroup (memory.swap.max="max")
 // on a slow manager. The verify half therefore re-reads the cgroup a bounded
-// number of times before giving up. The bound is deliberately small and the
-// poll short: this is convergence tolerance, not a retry-the-enforcement
-// loop — a knob that has not landed after the bounds is a FAILED spawn, with
-// the requested-versus-observed pair in the error. Var (not const) so a test
-// can prove the bound two-way-matches the loop.
-var containmentConvergeAttempts = 5
+// number of times before giving up. The bound is a convergence TOLERANCE, not
+// a retry-the-enforcement loop — a knob that has not landed after the bounds
+// is a FAILED spawn, with the requested-versus-observed pair in the error.
+// Var (not const) so a test can prove the bound two-way-matches the loop.
+//
+// The budget (DF-BUNKER-67): systemd must both reload and write
+// MemorySwapMax=0 into the slice's cgroup, and on bunker-las-03
+// (systemd 257.13) that landing latency was MEASURED at up to 349ms after
+// daemon-reload returns — the original 5×25ms = 125ms budget failed every
+// standard/hardened spawn there (3/3 full rollbacks) despite a correctly
+// written drop-in. 40×50ms = 2s gives the worst measured latency ~5.7x
+// headroom while keeping exhaustion sub-ttl and still fail-loud: a landing
+// that genuinely never happens fails in 2s with the same error shape.
+var containmentConvergeAttempts = 40
 
 // containmentConvergePoll is the wait BETWEEN convergence re-reads. Var so a
 // test can drive exhaustion/cancellation without real waits.
-var containmentConvergePoll = 25 * time.Millisecond
+var containmentConvergePoll = 50 * time.Millisecond
 
 // verifyContainmentLandingConverged runs verifyContainmentLanding with the
 // bounded re-read convergence described above. Context cancellation and
