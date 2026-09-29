@@ -12,6 +12,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
+	"github.com/deployBunker/bunker/internal/config"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 	bunkerv1connect "github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect"
 )
@@ -95,6 +96,7 @@ func NewRenewCommand() *cobra.Command {
 		serverName string
 		agentID    string
 		ttl        string
+		preset     string
 	)
 	cmd := &cobra.Command{
 		Use:   "renew --agent-id <agent-id>",
@@ -140,6 +142,19 @@ Examples:
 			}
 			if !agentIDRe.MatchString(agentID) {
 				return fmt.Errorf("invalid agent id %q: must match ^[a-z0-9-]{1,64}$ (lowercase letters, digits, hyphens only)", agentID)
+			}
+
+			// DF-BUNKER-67: validate --preset LOCALLY, exactly like spawn's
+			// step 0.7 (GAP-116): an unknown preset name fails fast with the
+			// accepted vocabulary, before the destroy ever runs. Empty defers
+			// to BUNKERD_SAFETY_PRESET, then the daemon's config global, then
+			// the built-in default — the daemon re-validates the resolved
+			// value regardless. Without the flag a renewal re-spawns with an
+			// empty preset and inherits whatever default the daemon resolves,
+			// so an agent pinned to a containment preset must pass --preset
+			// again at renew time.
+			if preset != "" && !config.ValidSafetyPreset(preset) {
+				return fmt.Errorf("invalid --preset %q (valid: %v)", preset, config.ValidSafetyPresets())
 			}
 
 			// 1. Load CLI config + resolve server (fail-closed, like spawn).
@@ -217,11 +232,15 @@ Examples:
 			// 5. Re-spawn the SAME id. The spawn request carries agent_id —
 			// the wire field spawn has always had — so the home path, the
 			// system user and every stored path stay stable across the
-			// renewal.
+			// renewal. DF-BUNKER-67: it now also carries the safety preset,
+			// so renewing an agent that runs under a containment preset
+			// re-spawns under the SAME preset instead of silently inheriting
+			// the daemon's default (empty = daemon resolution, unchanged).
 			fmt.Fprintf(out, "Re-spawning agent %s (stable identity)...\n", agentID)
 			sReq := connect.NewRequest(&v1.SpawnAgentRequest{
-				AgentId: agentID,
-				Ttl:     ttl,
+				AgentId:      agentID,
+				Ttl:          ttl,
+				SafetyPreset: preset,
 			})
 			if token != "" {
 				sReq.Header().Set("Authorization", "Bearer "+token)
@@ -255,6 +274,7 @@ Examples:
 	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)")
 	cmd.Flags().StringVar(&agentID, "agent-id", "", "REQUIRED: the stable agent id to renew (the home path /home/bunker-<id> and every stored path follow it)")
 	cmd.Flags().StringVar(&ttl, "ttl", "", "TTL for the re-spawn (6h, 24h, 7d); empty = the daemon default")
+	cmd.Flags().StringVar(&preset, "preset", "", "Safety preset for the re-spawn: open, standard, hardened (default: BUNKERD_SAFETY_PRESET, then the server's config, then open)")
 	return cmd
 }
 
