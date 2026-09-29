@@ -1,0 +1,198 @@
+# REV-BUNKER-005/006/007 — RED + NEGATIVE CONTROL battery
+# graded revision: HEAD = dbd9e143433590714af84387f6e84da04abaac17  (fix(REV-BUNKER-005,006,007): RESCUED WORK - the security trio, recover)
+# date: 2026-09-27T11:00:19-05:00
+#
+# committed blob sha256 (the revision every phase below mutates and restores):
+#   8e3b880a679722bcc62a7e721576f0655556707bf3a7873aca5cc014e8089850  internal/server/server.go
+#   490c7f351a62dc70525dabb45b2915e94e3132dc017d121eec5c0b9000fb5a9c  internal/auth/interceptor.go
+#   bff96df5cd6c6e46c83ba654a53a59bc1a29303eaeafb05c6d73fb3a71ca586b  internal/auth/jwt.go
+#   0e76ec955b0fe0208e8528d66dbb43af7a04ecb60f2bba49a1faa7f22246e657  internal/auth/httpware.go
+#   25d1282909427ffeeaa589d39a43dcc613a961666223a73f323cd5f24f8f8a27  internal/auth/throttle.go
+#   15e5de4f16c9c707a69f58260cf97f1c073852686959c52f47043e593b4cb937  internal/apikey/manager.go
+#
+
+==================== 005-RED: the credential gate is never applied to the registration ====================
+The pre-fix tree registered these routes on the raw router with no credential check at all; the mutation
+below leaves the gate object handed to registerGraphRoutes unapplied, i.e. behaviourally the filed defect.
+before:  8e3b880a679722bcc62a7e721576f0655556707bf3a7873aca5cc014e8089850
+mutated: a2dde6a5a0481ab6ce25da71c036344d089fb07f0f0cb736a76f56e2dfc46ea3
+--- FAIL: TestREVBUNKER005_GraphRoutesRequireCredentials (0.03s)
+    --- FAIL: TestREVBUNKER005_GraphRoutesRequireCredentials/unauthenticated_is_refused_on_every_route (0.00s)
+        rev_bunker_005_006_test.go:104: GET /graph/stats without credentials: status = 200, want 401 (body "{\"total_edges\":0,\"unique_files\":0,\"unique_deps\":0,\"files_with_edges\":0}")
+        rev_bunker_005_006_test.go:104: GET /graph/related?path=x without credentials: status = 200, want 401 (body "{\"edges\":[]}")
+        rev_bunker_005_006_test.go:104: GET /graph/impact?path=x without credentials: status = 200, want 401 (body "{\"edges\":[]}")
+    --- FAIL: TestREVBUNKER005_GraphRoutesRequireCredentials/a_wrong_token_is_refused (0.00s)
+        rev_bunker_005_006_test.go:112: GET /graph/stats with a wrong token: status = 200, want 401
+    --- FAIL: TestREVBUNKER005_GraphRoutesRequireCredentials/an_agent-scoped_sub-key_is_refused (0.00s)
+        rev_bunker_005_006_test.go:119: GET /graph/stats with an agent-scoped token: status = 200, want 401 (the surface is daemon-level, like the Bunkerd RPCs)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/server	0.108s
+FAIL
+RESTORE: git diff --quiet HEAD is CLEAN for internal/server/server.go -> byte-identical to the committed revision
+after:   8e3b880a679722bcc62a7e721576f0655556707bf3a7873aca5cc014e8089850
+
+==================== 005-CONTROL: the gate IS applied, but the validator admits anything ====================
+A different layer from the RED above: the registration is untouched, and the middleware's own
+enabled/validator check is bypassed -- so the surface is gated by name and open in fact.
+before:  0e76ec955b0fe0208e8528d66dbb43af7a04ecb60f2bba49a1faa7f22246e657
+mutated: d53b40ecef64b099fffa57d663e31b19c6a297e13063c974a7a74fecf02c4a6c
+--- FAIL: TestREVBUNKER005_GraphRoutesRequireCredentials (0.00s)
+    --- FAIL: TestREVBUNKER005_GraphRoutesRequireCredentials/unauthenticated_is_refused_on_every_route (0.00s)
+        rev_bunker_005_006_test.go:104: GET /graph/stats without credentials: status = 200, want 401 (body "{\"total_edges\":0,\"unique_files\":0,\"unique_deps\":0,\"files_with_edges\":0}")
+        rev_bunker_005_006_test.go:104: GET /graph/related?path=x without credentials: status = 200, want 401 (body "{\"edges\":[]}")
+        rev_bunker_005_006_test.go:104: GET /graph/impact?path=x without credentials: status = 200, want 401 (body "{\"edges\":[]}")
+    --- FAIL: TestREVBUNKER005_GraphRoutesRequireCredentials/a_wrong_token_is_refused (0.00s)
+        rev_bunker_005_006_test.go:112: GET /graph/stats with a wrong token: status = 200, want 401
+    --- FAIL: TestREVBUNKER005_GraphRoutesRequireCredentials/an_agent-scoped_sub-key_is_refused (0.00s)
+        rev_bunker_005_006_test.go:119: GET /graph/stats with an agent-scoped token: status = 200, want 401 (the surface is daemon-level, like the Bunkerd RPCs)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/server	0.068s
+FAIL
+RESTORE: git diff --quiet HEAD is CLEAN for internal/auth/httpware.go -> byte-identical to the committed revision
+after:   0e76ec955b0fe0208e8528d66dbb43af7a04ecb60f2bba49a1faa7f22246e657
+
+==================== 006-RED: the throttle is not armed by the interceptors ====================
+Reverts BOTH arming sites to their pre-fix form (the FromAuth helpers returning the raw instance), which
+is exactly the template the daemon used when the audit sink was absent: no sink -> AttachDenySink never
+called -> throttle nil. Driven with audit.enabled:false through the daemon's own buildAuthInterceptors.
+before:  490c7f351a62dc70525dabb45b2915e94e3132dc017d121eec5c0b9000fb5a9c
+mutated: 100ef305c36f6f9c7cf2e24a354261d0731a2054dceb67ea6a389b52e0bf5039
+--- FAIL: TestREVBUNKER006_ThrottleArmedWithoutAuditSink (0.01s)
+    --- FAIL: TestREVBUNKER006_ThrottleArmedWithoutAuditSink/audit_disabled_in_config (0.01s)
+        rev_bunker_005_006_test.go:255: 6th request: code = unauthenticated, want Unavailable (throttled) — the throttle did not arm without an audit sink
+    --- FAIL: TestREVBUNKER006_ThrottleArmedWithoutAuditSink/audit_enabled_but_the_path_is_unwritable (0.00s)
+        rev_bunker_005_006_test.go:255: 6th request: code = unauthenticated, want Unavailable (throttled) — the throttle did not arm without an audit sink
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/server	0.046s
+FAIL
+RESTORE: git diff --quiet HEAD is CLEAN for internal/auth/interceptor.go -> byte-identical to the committed revision
+after:   490c7f351a62dc70525dabb45b2915e94e3132dc017d121eec5c0b9000fb5a9c
+
+==================== 006-CONTROL: the throttle is armed but never CONSULTED ====================
+A different layer from the RED above: the arming is left intact (the interceptors still carry throttle
+state) and the backoff decision itself is neutered, so a counter that moves yet never refuses the
+request is shown to be insufficient -- both 'arm it' and 'consult it' are load-bearing.
+before:  25d1282909427ffeeaa589d39a43dcc613a961666223a73f323cd5f24f8f8a27
+mutated: 98db33391348ed7cf885268e410b5227ccc93f6bdc7f774d393050685795dc53
+--- FAIL: TestREVBUNKER006_ThrottleArmedWithoutAuditSink (0.10s)
+    --- FAIL: TestREVBUNKER006_ThrottleArmedWithoutAuditSink/audit_disabled_in_config (0.00s)
+        rev_bunker_005_006_test.go:255: 6th request: code = unauthenticated, want Unavailable (throttled) — the throttle did not arm without an audit sink
+    --- FAIL: TestREVBUNKER006_ThrottleArmedWithoutAuditSink/audit_enabled_but_the_path_is_unwritable (0.10s)
+        rev_bunker_005_006_test.go:255: 6th request: code = unauthenticated, want Unavailable (throttled) — the throttle did not arm without an audit sink
+--- FAIL: TestREVBUNKER006_AuditSinkStillRecordsWhenPresent (0.01s)
+    rev_bunker_005_006_test.go:331: 6th request: code = unauthenticated, want Unavailable (throttled)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/server	0.158s
+FAIL
+RESTORE: git diff --quiet HEAD is CLEAN for internal/auth/throttle.go -> byte-identical to the committed revision
+after:   25d1282909427ffeeaa589d39a43dcc613a961666223a73f323cd5f24f8f8a27
+
+==================== 007-RED: both compares return to their pre-fix byte-wise form ====================
+interceptor.go: ConstantTimeCompare(token, a.token) -> token != a.token.
+manager.go: the subtle compare -> key.TokenHash == tokenHash, with the now-unused crypto/subtle import
+dropped, which is the base blob's exact form. The cell asserts the SOURCE, because the two forms are
+behaviourally identical by design (proved separately by the admission-equivalence tables).
+before interceptor.go: 490c7f351a62dc70525dabb45b2915e94e3132dc017d121eec5c0b9000fb5a9c
+before manager.go:     15e5de4f16c9c707a69f58260cf97f1c073852686959c52f47043e593b4cb937
+mutated interceptor.go: 30978edbb226791ea9c6249d6341c43394e7c4012587e4bcc0ba5c8e3a8c6235
+mutated manager.go:     ae3ba9fa0e4345ba193f0a05357598ae9b0f26f29e63f59a0732d0283de67150
+--- FAIL: TestREVBUNKER007_TokenAuthComparesInConstantTime (0.00s)
+    rev_bunker_007_test.go:83: TokenAuth.authenticate must compare the presented token with the constant-time helper (want a call to ConstantTimeCompare(token, a.token)); body:
+        func (a *TokenAuth) authenticate(header http.Header, source, procedure string) error {
+        	authHeader := header.Get("Authorization")
+        	if authHeader == "" {
+        		return a.denied(source, procedure, newDenyReason("missing authorization header", ""), connect.NewError(connect.CodeUnauthenticated, errors.New("missing Authorization header")))
+        	}
+        
+        	parts := strings.SplitN(authHeader, " ", 2)
+        	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+        		return a.denied(source, procedure, newDenyReason("invalid authorization header format", ""), connect.NewError(connect.CodeUnauthenticated, errors.New("invalid Authorization header format, expected 'Bearer <token>'")))
+        	}
+        
+        	token := parts[1]
+        	// REV-BUNKER-007: compare the presented token in CONSTANT TIME, the
+        	// discipline this package already follows everywhere else credential
+        	// material is compared (jwt.go's static-token fallback and its signing
+        	// secrets both go through ConstantTimeCompare). A byte-wise != returns
+        	// on the first differing byte, so the compared prefix length is
+        	// observable in the timing; ConstantTimeCompare does not short-circuit.
+        	if token != a.token {
+        		return a.denied(source, procedure, newDenyReason("invalid token", token), connect.NewError(connect.CodeUnauthenticated, errors.New("invalid token")))
+        	}
+        
+        	if a.throttle != nil {
+        		a.throttle.recordSuccess(source)
+        	}
+        	return nil
+        }
+    rev_bunker_007_test.go:88: TokenAuth.authenticate still compares credential material with "token != a.token" — a byte-wise compare returns at the first differing byte, leaking the matching prefix length in the response timing
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/auth	0.013s
+--- FAIL: TestREVBUNKER007_ValidateComparesInConstantTime (0.00s)
+    rev_bunker_007_test.go:71: Manager.Validate must compare token digests in constant time (want crypto/subtle); body:
+        func (m *Manager) Validate(token string) (*Key, error) {
+        	if m.masterKey == "" {
+        		return nil, fmt.Errorf("master key not configured")
+        	}
+        	if token == "" {
+        		return nil, fmt.Errorf("token is empty")
+        	}
+        
+        	hash := sha256.Sum256([]byte(token))
+        	tokenHash := hex.EncodeToString(hash[:])
+        
+        	m.mu.RLock()
+        	defer m.mu.RUnlock()
+        
+        	for _, key := range m.keys {
+        		// REV-BUNKER-007: constant-time compare of the SHA-256 hex digest.
+        		// The digest is already a one-way function of the presented secret,
+        		// so this is defence in depth rather than a remotely exploitable
+        		// read: it removes the byte-position timing signal from the
+        		// comparison itself and keeps this surface consistent with
+        		// internal/auth, which compares every credential in constant time.
+        		if key.TokenHash == tokenHash {
+        			if key.Revoked {
+        				return nil, fmt.Errorf("key %s revoked", key.KeyID)
+        			}
+        			if time.Now().After(key.ExpiresAt) {
+        				return nil, fmt.Errorf("key %s expired", key.KeyID)
+        			}
+        			return key, nil
+        		}
+        	}
+        	return nil, fmt.Errorf("invalid token")
+        }
+    rev_bunker_007_test.go:74: Manager.Validate still compares the token digest with == — a byte-wise compare returns at the first differing byte, and this surface is the one every opaque sub-key passes through
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/apikey	0.006s
+FAIL
+RESTORE: git diff --quiet HEAD is CLEAN for internal/auth/interceptor.go internal/apikey/manager.go -> byte-identical to the committed revision
+after interceptor.go: 490c7f351a62dc70525dabb45b2915e94e3132dc017d121eec5c0b9000fb5a9c
+after manager.go:     15e5de4f16c9c707a69f58260cf97f1c073852686959c52f47043e593b4cb937
+
+==================== 007-CONTROL: the wiring is constant-time by NAME, the helper is not ====================
+A different layer from the RED above: the call sites still say ConstantTimeCompare (so a name-level check
+would pass) while the shared helper itself returns a == comparison -- the control proves the cell reaches
+THROUGH the helper to crypto/subtle instead of trusting the identifier.
+before:  bff96df5cd6c6e46c83ba654a53a59bc1a29303eaeafb05c6d73fb3a71ca586b
+mutated: 26d088de40d1260dbf9728e3b304a730bc00fbb20678a50f104d69f3f2df2ebc
+--- FAIL: TestREVBUNKER007_TokenAuthComparesInConstantTime (0.00s)
+    rev_bunker_007_test.go:95: ConstantTimeCompare must be backed by crypto/subtle; body:
+        func ConstantTimeCompare(a, b string) bool {
+        	return a == b
+        }
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/auth	0.015s
+FAIL
+RESTORE: git diff --quiet HEAD is CLEAN for internal/auth/jwt.go -> byte-identical to the committed revision
+after:   bff96df5cd6c6e46c83ba654a53a59bc1a29303eaeafb05c6d73fb3a71ca586b
+
+==================== final state ====================
+CLEAN  8e3b880a679722bcc62a7e721576f0655556707bf3a7873aca5cc014e8089850  internal/server/server.go
+CLEAN  490c7f351a62dc70525dabb45b2915e94e3132dc017d121eec5c0b9000fb5a9c  internal/auth/interceptor.go
+CLEAN  bff96df5cd6c6e46c83ba654a53a59bc1a29303eaeafb05c6d73fb3a71ca586b  internal/auth/jwt.go
+CLEAN  0e76ec955b0fe0208e8528d66dbb43af7a04ecb60f2bba49a1faa7f22246e657  internal/auth/httpware.go
+CLEAN  25d1282909427ffeeaa589d39a43dcc613a961666223a73f323cd5f24f8f8a27  internal/auth/throttle.go
+CLEAN  15e5de4f16c9c707a69f58260cf97f1c073852686959c52f47043e593b4cb937  internal/apikey/manager.go
+worktree clean vs HEAD: 0 modified tracked file(s) under test

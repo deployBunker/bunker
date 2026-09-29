@@ -1,0 +1,36 @@
+REV-BUNKER-006 — the backoff is CONSULTED, not merely a different status code
+
+Source: the daemon's own log from the GREEN probe run
+(`REV-BUNKER-005-006-007-live-probe.sh` on frozen commit dbd9e14), audit.enabled
+FALSE, six bad-token requests issued in ONE curl invocation. The scratch dir is
+kept (the probe no longer deletes it), so this line is re-derivable by re-running
+the probe and grepping its daemon-b.log.
+
+The probe's cell table shows the wire effect (401 401 401 401 401 503). This file
+shows WHY the sixth is 503: the throttle computed a wait and reported it.
+
+  2026/09/27 10:58:51 WARN auth throttle engaged source=127.0.0.1:46882
+    procedure=/bunker.v1.Bunkerd/ServerInfo retry_in=1.999807283s
+
+Cross-checks, all from the same transcript:
+
+  - `source=127.0.0.1:46882` is the SAME source the probe's six requests came
+    from: the green transcript records `local_port` 46882 for all six
+    (`401:46882 401:46882 401:46882 401:46882 401:46882 503:46882`), so the
+    per-source accounting accumulated on ONE connection, as the throttle's
+    contract requires.
+  - `retry_in=1.999807283s` is the threshold backoff (2^1 s, capped at 30 s) —
+    the counter reached ThrottleFailureThreshold (5) and armed the backoff, so
+    the sixth request was refused with CodeUnavailable, rendered 503 over HTTP.
+  - The audit sink is ABSENT in this run (audit.enabled:false, no audit file
+    written — asserted by a probe cell), which is exactly the configuration the
+    row is about: the throttle is armed with the sink gone.
+
+Contrast (filed tree, frozen at 11001d3): the same six requests returned
+401 401 401 401 401 401 and the daemon log contains NO throttle line at all —
+there was nothing to consult.
+
+RESIDUAL, restated because this file makes it concrete: the key is the full peer
+address including the ephemeral port, so a client that opens a fresh connection
+per attempt gets a fresh key and is never throttled. That is why all six requests
+had to ride one connection to be throttled at all, and it is worth its own row.

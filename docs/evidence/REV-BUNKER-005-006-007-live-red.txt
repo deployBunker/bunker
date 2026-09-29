@@ -1,0 +1,40 @@
+REV-BUNKER-005/006 live probe
+  date        : 2026-09-27T10:52:13-05:00
+  tree        : /tmp/sec-trio-base.0XOlaN/repo
+  head        : 11001d3c2d5c4aa7413ca5304056e9706224c6c2
+  worktree    : 0 uncommitted path(s)
+  scratch     : /tmp/sec-trio-probe.EXZ2wn
+
+--- building bunkerd from the tree under test
+    bunkerd sha256=79c8c8dd89f44c5e794616d749a13e656ceef31e163c50849edfd1c635b3a5cf
+
+=== ARM 005 — /graph, auth.enabled=true (audit enabled) ===
+  daemon a: pid 4117205 on http://127.0.0.1:29700 (audit on)
+  [CELL] GET /graph/stats, no credentials: got 200, want 401
+        body: {"total_edges":3,"unique_files":4,"unique_deps":2,"files_with_edges":2}
+  [CELL] GET /graph/stats, wrong token: got 200, want 401
+  [ok]   GET /graph/stats, valid token: got 200, want 200
+        body: {"total_edges":3,"unique_files":4,"unique_deps":2,"files_with_edges":2}
+  [ok]   GET /graph/impact?path=..., valid token: got 200, want 200
+  [CELL] GET /graph/impact?path=..., no credentials: got 200, want 401
+  [CELL] GET /graph/related?path=..., no credentials: got 200, want 401
+  [ok]   GET /healthz, no credentials (non-vacuity): got 200, want 200
+  [ok]   POST /bunker.v1.Bunkerd/ServerInfo, valid token: got 200, want 200
+  [ok]   POST /bunker.v1.Bunkerd/ServerInfo, no credentials: got 401, want 401
+
+=== ARM 006 — repeated failed auths with audit.enabled=false ===
+  daemon b: pid 4117819 on http://127.0.0.1:27310 (audit OFF — no deny sink attached)
+  six bad-token requests on ONE connection (http_code:local_port): 401:48620 401:48620 401:48620 401:48620 401:48620 401:48620 
+  distinct local ports used: 6 requests on 1 connection(s)
+  http codes in order: 401 401 401 401 401 401 
+  [ok]   1st failed auth is an ordinary denial: got 401, want 401
+  [CELL] 6th failed auth is THROTTLED (auth on, audit off): got 401, want 503
+  [note] the five failures before the throttle were all 401 — the
+         threshold behaviour is intact, only the 6th changes code.
+=== 006 non-vacuity: a DIFFERENT source is not affected ===
+  [ok]   fresh connection (new source) is not throttled: got 401, want 401
+=== 006 bonus: a valid credential still authenticates on this daemon ===
+  [ok]   valid token on the audit-off daemon: got 200, want 200
+  [ok]   audit.enabled=false wrote no audit file
+
+RESULT: FILED-BEHAVIOUR PRESENT — at least one cell is the defect

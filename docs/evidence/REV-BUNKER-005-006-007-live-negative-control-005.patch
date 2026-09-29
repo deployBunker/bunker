@@ -1,0 +1,13 @@
+diff --git a/internal/server/server.go b/internal/server/server.go
+index 360253c..a402847 100644
+--- a/internal/server/server.go
++++ b/internal/server/server.go
+@@ -222,7 +222,7 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
+ 	// in-process code and the scripts in this repo all stop at /healthz — so a
+ 	// flag would leave a dead surface while gating removes no capability.
+ 	if hiloGraph != nil {
+-		registerGraphRoutes(r, hiloGraph, graphAuthMiddleware(auth.NewMasterOnlyJWTAuthFromAuth(s.jwtAuth), s.cfg.Auth.Enabled))
++		registerGraphRoutes(r, hiloGraph, func(next http.Handler) http.Handler { return next }) // NEGATIVE CONTROL (REV-BUNKER-005): the filed registration — routes with the router middleware only, no credential gate
+ 		if !s.cfg.Auth.Enabled {
+ 			// Same shape as the WebDAV warn below: with auth off there is no
+ 			// credential check anywhere on this daemon, so these routes are no

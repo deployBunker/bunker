@@ -1,0 +1,40 @@
+REV-BUNKER-005/006 live probe
+  date        : 2026-09-27T10:58:40-05:00
+  tree        : /tmp/sec-trio-final.UpRTQQ/repo
+  head        : dbd9e143433590714af84387f6e84da04abaac17
+  worktree    : 0 uncommitted path(s)
+  scratch     : /tmp/sec-trio-probe.PvPIpb
+
+--- building bunkerd from the tree under test
+    bunkerd sha256=4ad6ca0fb54603125867f63b3ab447de1fcfbed8f225b081e89d111fee658e6e
+
+=== ARM 005 — /graph, auth.enabled=true (audit enabled) ===
+  daemon a: pid 190842 on http://127.0.0.1:20660 (audit on)
+  [ok]   GET /graph/stats, no credentials: got 401, want 401
+        body: {"code":"unauthenticated","message":"valid credentials required"}
+  [ok]   GET /graph/stats, wrong token: got 401, want 401
+  [ok]   GET /graph/stats, valid token: got 200, want 200
+        body: {"total_edges":3,"unique_files":4,"unique_deps":2,"files_with_edges":2}
+  [ok]   GET /graph/impact?path=..., valid token: got 200, want 200
+  [ok]   GET /graph/impact?path=..., no credentials: got 401, want 401
+  [ok]   GET /graph/related?path=..., no credentials: got 401, want 401
+  [ok]   GET /healthz, no credentials (non-vacuity): got 200, want 200
+  [ok]   POST /bunker.v1.Bunkerd/ServerInfo, valid token: got 200, want 200
+  [ok]   POST /bunker.v1.Bunkerd/ServerInfo, no credentials: got 401, want 401
+
+=== ARM 006 — repeated failed auths with audit.enabled=false ===
+  daemon b: pid 191963 on http://127.0.0.1:30774 (audit OFF — no deny sink attached)
+  six bad-token requests on ONE connection (http_code:local_port): 401:46882 401:46882 401:46882 401:46882 401:46882 503:46882 
+  distinct local ports used: 6 requests on 1 connection(s)
+  http codes in order: 401 401 401 401 401 503 
+  [ok]   1st failed auth is an ordinary denial: got 401, want 401
+  [ok]   6th failed auth is THROTTLED (auth on, audit off): got 503, want 503
+  [note] the five failures before the throttle were all 401 — the
+         threshold behaviour is intact, only the 6th changes code.
+=== 006 non-vacuity: a DIFFERENT source is not affected ===
+  [ok]   fresh connection (new source) is not throttled: got 401, want 401
+=== 006 bonus: a valid credential still authenticates on this daemon ===
+  [ok]   valid token on the audit-off daemon: got 200, want 200
+  [ok]   audit.enabled=false wrote no audit file
+
+RESULT: FIXED-BEHAVIOUR — every cell matches the row's acceptance

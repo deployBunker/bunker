@@ -1,38 +1,43 @@
-### full suite at 2026-09-27T10:54:03-05:00
-ok  	github.com/deployBunker/bunker/cmd/bunker	0.097s
-ok  	github.com/deployBunker/bunker/cmd/bunkerd	0.130s
+# full suite on the GRADED revision 3587219bc500f21303804c5f5dec410214fff99c (2026-09-27T11:03:10-05:00)
+# NOTE: exactly one unrelated, load-sensitive flake appears below (internal/agent TestSpawnRollbackSurvivesStuckCleanupStep); attributed on both sides in REV-BUNKER-005-006-007-evidence.md section 5a. It is not this row's.
+# go test ./... -count=1
+ok  	github.com/deployBunker/bunker/cmd/bunker	1.655s
+ok  	github.com/deployBunker/bunker/cmd/bunkerd	1.728s
 ?   	github.com/deployBunker/bunker/cmd/docs-drift	[no test files]
-ok  	github.com/deployBunker/bunker/internal/agent	73.196s
-ok  	github.com/deployBunker/bunker/internal/apikey	0.005s
-ok  	github.com/deployBunker/bunker/internal/audit	3.636s
-ok  	github.com/deployBunker/bunker/internal/auth	0.380s
-ok  	github.com/deployBunker/bunker/internal/cli	26.872s
-ok  	github.com/deployBunker/bunker/internal/config	0.127s
+--- FAIL: TestSpawnRollbackSurvivesStuckCleanupStep (1.09s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/agent	99.956s
+ok  	github.com/deployBunker/bunker/internal/apikey	0.205s
+ok  	github.com/deployBunker/bunker/internal/audit	12.754s
+ok  	github.com/deployBunker/bunker/internal/auth	1.209s
+ok  	github.com/deployBunker/bunker/internal/cli	61.283s
+ok  	github.com/deployBunker/bunker/internal/config	1.154s
 ?   	github.com/deployBunker/bunker/internal/davserve	[no test files]
-ok  	github.com/deployBunker/bunker/internal/docscheck	4.584s
-ok  	github.com/deployBunker/bunker/internal/fsclient	11.289s
-ok  	github.com/deployBunker/bunker/internal/fsmount	0.410s
-ok  	github.com/deployBunker/bunker/internal/hermes	28.300s
-ok  	github.com/deployBunker/bunker/internal/hilo	0.045s
-ok  	github.com/deployBunker/bunker/internal/hostsetup	2.686s
-ok  	github.com/deployBunker/bunker/internal/imagespec	0.033s
+ok  	github.com/deployBunker/bunker/internal/docscheck	41.927s
+ok  	github.com/deployBunker/bunker/internal/fsclient	27.262s
+ok  	github.com/deployBunker/bunker/internal/fsmount	4.679s
+ok  	github.com/deployBunker/bunker/internal/hermes	95.276s
+ok  	github.com/deployBunker/bunker/internal/hilo	0.428s
+ok  	github.com/deployBunker/bunker/internal/hostsetup	41.827s
+ok  	github.com/deployBunker/bunker/internal/imagespec	0.126s
 ok  	github.com/deployBunker/bunker/internal/invalidation	0.016s
-ok  	github.com/deployBunker/bunker/internal/mountdriver	0.015s
-ok  	github.com/deployBunker/bunker/internal/registry	16.009s
-ok  	github.com/deployBunker/bunker/internal/releasecheck	0.301s
-ok  	github.com/deployBunker/bunker/internal/resource	0.030s
-ok  	github.com/deployBunker/bunker/internal/server	16.727s
-ok  	github.com/deployBunker/bunker/internal/server/webdav	38.792s
-ok  	github.com/deployBunker/bunker/internal/sshsig	0.005s
-ok  	github.com/deployBunker/bunker/internal/systemd	0.017s
-ok  	github.com/deployBunker/bunker/internal/tailscale	0.088s
-ok  	github.com/deployBunker/bunker/internal/tlsutil	0.009s
-ok  	github.com/deployBunker/bunker/internal/tunnel	21.385s
-ok  	github.com/deployBunker/bunker/internal/version	0.014s
+ok  	github.com/deployBunker/bunker/internal/mountdriver	0.045s
+ok  	github.com/deployBunker/bunker/internal/registry	62.368s
+ok  	github.com/deployBunker/bunker/internal/releasecheck	2.680s
+ok  	github.com/deployBunker/bunker/internal/resource	0.026s
+ok  	github.com/deployBunker/bunker/internal/server	31.396s
+ok  	github.com/deployBunker/bunker/internal/server/webdav	69.800s
+ok  	github.com/deployBunker/bunker/internal/sshsig	0.071s
+ok  	github.com/deployBunker/bunker/internal/systemd	0.227s
+ok  	github.com/deployBunker/bunker/internal/tailscale	0.981s
+ok  	github.com/deployBunker/bunker/internal/tlsutil	0.098s
+ok  	github.com/deployBunker/bunker/internal/tunnel	25.185s
+ok  	github.com/deployBunker/bunker/internal/version	0.205s
 ?   	github.com/deployBunker/bunker/probes/bfs025-truncated-read	[no test files]
 ?   	github.com/deployBunker/bunker/probes/davserve	[no test files]
 ?   	github.com/deployBunker/bunker/probes/h3client	[no test files]
-ok  	github.com/deployBunker/bunker/probes/webdav-battery	0.173s
+ok  	github.com/deployBunker/bunker/probes/webdav-battery	1.358s
 ?   	github.com/deployBunker/bunker/proto/bunker/v1	[no test files]
 ?   	github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect	[no test files]
-SUITE EXIT=0
+FAIL
+SUITE_RC=1

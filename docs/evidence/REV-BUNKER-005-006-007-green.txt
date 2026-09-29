@@ -1,0 +1,63 @@
+# REV-BUNKER-005/006/007 — GREEN: all three cells on the committed revision, after every phase of
+# REV-BUNKER-005-006-007-controls.sh was restored byte-identically.
+# revision: 3587219bc500f21303804c5f5dec410214fff99c
+# date: 2026-09-27T11:02:50-05:00
+# blob sha256 (must equal the values at the top of controls.txt):
+8e3b880a679722bcc62a7e721576f0655556707bf3a7873aca5cc014e8089850  internal/server/server.go
+490c7f351a62dc70525dabb45b2915e94e3132dc017d121eec5c0b9000fb5a9c  internal/auth/interceptor.go
+bff96df5cd6c6e46c83ba654a53a59bc1a29303eaeafb05c6d73fb3a71ca586b  internal/auth/jwt.go
+0e76ec955b0fe0208e8528d66dbb43af7a04ecb60f2bba49a1faa7f22246e657  internal/auth/httpware.go
+25d1282909427ffeeaa589d39a43dcc613a961666223a73f323cd5f24f8f8a27  internal/auth/throttle.go
+15e5de4f16c9c707a69f58260cf97f1c073852686959c52f47043e593b4cb937  internal/apikey/manager.go
+
+--- go test ./internal/server/ -run 'TestREVBUNKER005|TestREVBUNKER006' -count=1 -v ---
+=== RUN   TestREVBUNKER005_GraphRoutesRequireCredentials
+=== RUN   TestREVBUNKER005_GraphRoutesRequireCredentials/unauthenticated_is_refused_on_every_route
+=== RUN   TestREVBUNKER005_GraphRoutesRequireCredentials/a_wrong_token_is_refused
+=== RUN   TestREVBUNKER005_GraphRoutesRequireCredentials/an_agent-scoped_sub-key_is_refused
+=== RUN   TestREVBUNKER005_GraphRoutesRequireCredentials/the_master_credential_still_reads_the_graph
+=== RUN   TestREVBUNKER005_GraphRoutesRequireCredentials/auth_disabled_keeps_the_pre-existing_open_posture
+--- PASS: TestREVBUNKER005_GraphRoutesRequireCredentials (0.01s)
+    --- PASS: TestREVBUNKER005_GraphRoutesRequireCredentials/unauthenticated_is_refused_on_every_route (0.00s)
+    --- PASS: TestREVBUNKER005_GraphRoutesRequireCredentials/a_wrong_token_is_refused (0.00s)
+    --- PASS: TestREVBUNKER005_GraphRoutesRequireCredentials/an_agent-scoped_sub-key_is_refused (0.00s)
+    --- PASS: TestREVBUNKER005_GraphRoutesRequireCredentials/the_master_credential_still_reads_the_graph (0.00s)
+    --- PASS: TestREVBUNKER005_GraphRoutesRequireCredentials/auth_disabled_keeps_the_pre-existing_open_posture (0.00s)
+=== RUN   TestREVBUNKER006_ThrottleArmedWithoutAuditSink
+=== RUN   TestREVBUNKER006_ThrottleArmedWithoutAuditSink/audit_disabled_in_config
+    rev_bunker_005_006_test.go:296: audit sink absent (audit disabled in config): throttled at 2^1=1.999825777s then 2^2=3.999841076s
+=== RUN   TestREVBUNKER006_ThrottleArmedWithoutAuditSink/audit_enabled_but_the_path_is_unwritable
+    rev_bunker_005_006_test.go:296: audit sink absent (audit enabled but the path is unwritable): throttled at 2^1=1.999845013s then 2^2=3.998771306s
+--- PASS: TestREVBUNKER006_ThrottleArmedWithoutAuditSink (4.87s)
+    --- PASS: TestREVBUNKER006_ThrottleArmedWithoutAuditSink/audit_disabled_in_config (2.36s)
+    --- PASS: TestREVBUNKER006_ThrottleArmedWithoutAuditSink/audit_enabled_but_the_path_is_unwritable (2.51s)
+=== RUN   TestREVBUNKER006_AuditSinkStillRecordsWhenPresent
+--- PASS: TestREVBUNKER006_AuditSinkStillRecordsWhenPresent (0.00s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/server	4.939s
+
+--- go test ./internal/auth/ ./internal/apikey/ -run TestREVBUNKER007 -count=1 -v ---
+=== RUN   TestREVBUNKER007_TokenAuthComparesInConstantTime
+--- PASS: TestREVBUNKER007_TokenAuthComparesInConstantTime (0.00s)
+=== RUN   TestREVBUNKER007_TokenAuthAdmissionUnchanged
+=== RUN   TestREVBUNKER007_TokenAuthAdmissionUnchanged/the_correct_token_is_admitted
+=== RUN   TestREVBUNKER007_TokenAuthAdmissionUnchanged/same-length_wrong_token_is_denied
+=== RUN   TestREVBUNKER007_TokenAuthAdmissionUnchanged/one_byte_shorter_is_denied
+=== RUN   TestREVBUNKER007_TokenAuthAdmissionUnchanged/one_byte_longer_is_denied
+=== RUN   TestREVBUNKER007_TokenAuthAdmissionUnchanged/a_matching_prefix_is_denied
+=== RUN   TestREVBUNKER007_TokenAuthAdmissionUnchanged/an_empty_token_is_denied
+--- PASS: TestREVBUNKER007_TokenAuthAdmissionUnchanged (0.00s)
+    --- PASS: TestREVBUNKER007_TokenAuthAdmissionUnchanged/the_correct_token_is_admitted (0.00s)
+    --- PASS: TestREVBUNKER007_TokenAuthAdmissionUnchanged/same-length_wrong_token_is_denied (0.00s)
+    --- PASS: TestREVBUNKER007_TokenAuthAdmissionUnchanged/one_byte_shorter_is_denied (0.00s)
+    --- PASS: TestREVBUNKER007_TokenAuthAdmissionUnchanged/one_byte_longer_is_denied (0.00s)
+    --- PASS: TestREVBUNKER007_TokenAuthAdmissionUnchanged/a_matching_prefix_is_denied (0.00s)
+    --- PASS: TestREVBUNKER007_TokenAuthAdmissionUnchanged/an_empty_token_is_denied (0.00s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/auth	0.011s
+=== RUN   TestREVBUNKER007_ValidateComparesInConstantTime
+--- PASS: TestREVBUNKER007_ValidateComparesInConstantTime (0.00s)
+=== RUN   TestREVBUNKER007_ValidateAdmissionUnchanged
+--- PASS: TestREVBUNKER007_ValidateAdmissionUnchanged (0.00s)
+PASS
+ok  	github.com/deployBunker/bunker/internal/apikey	0.010s
