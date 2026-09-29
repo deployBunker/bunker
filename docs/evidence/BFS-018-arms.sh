@@ -125,7 +125,13 @@ git_flow() {
   local attempt
   for attempt in 1 2; do
     say "--- read $attempt ---"
-    timeout 30 "$CBIN" fs status 2>&1 | grep -E "^symlink|readlinks_total|refusal    :" | head -6
+    local REPORT
+    REPORT="$(timeout 30 "$CBIN" fs status 2>&1 | grep -E "^symlink|readlinks_total|refusal    :" | head -6)"
+    if [ -n "$REPORT" ]; then
+      printf '%s\n' "$REPORT"
+    else
+      say "(the status document carries no symlink block: this build has no symlink awareness at all — which is the finding)"
+    fi
     sleep 2
   done
 
@@ -221,30 +227,38 @@ mutations() {
 # ---------------------------------------------------------------------------
 suites() {
   local line
-  # pkg|regex|label — the regexes are the NEIGHBOURING rows' own cells, named by
+  # pkg@regex@label — the regexes are the NEIGHBOURING rows' own cells, named by
   # their test-function prefix (the repo's naming is descriptive, so the prefix
-  # IS the row).
+  # IS the row). '@' is the field separator BECAUSE the regexes are alternations:
+  # a '|' separator silently truncates each regex to its first alternative, which
+  # would make a four-cell row report one passing cell.
   local TABLE=(
-    "./internal/fsmount/|TestAppend|AppendThrough|BFS-021 append (whole-file publication)"
-    "./internal/fsmount/|TestACreate|TestACreatedAndClosed|TestARenameOfAFile|TestAHandleFollows|TestAWriteAfterAPublication|BFS-020 created-name publication + rename/handle rules"
-    "./internal/fsmount/|TestAResize|TestFtruncateWith|TestDeliberateResize|TestResizeIsAllowedAgain|TestWriteIntentFollows|BFS-030/033 in-place rewrite + refusal hold"
-    "./internal/fsmount/|TestUnlinkOfACollection|TestRmdirOfANonEmpty|BFS-020 recursive-delete refusals"
-    "./internal/fsmount/|TestBound|TestReadBound|TestAReader|BFS-025 published-size bound"
-    "./internal/server/webdav/|TestExpectedHashIsRevalidated|TestCreateOnlyRuleIsRevalidated|TestCommitSectionIsExclusive|TestConcurrentConditionalWrites|BFS-020/038 commit-time revalidation + exclusive commit"
-    "./internal/server/webdav/|TestStaleHashWrite|TestCreateOnlyPrecondition|TestIfMatchAbsent|TestPreconditionAppliesToDelete|TestWeakTagNeverSatisfies|BFS-004 §6 conditional PUT + refusals"
-    "./internal/server/webdav/|TestAtomicWriteIsVisibleWhole|TestMethodMatrixNoWritesOnRefusal|BFS-038 atomic publish + refused-write-does-not-land"
+    "./internal/fsmount/@TestAppend|AppendThrough@BFS-021 append (whole-file publication)"
+    "./internal/fsmount/@TestACreate|TestACreatedAndClosed|TestARenameOfAFile|TestAHandleFollows|TestAWriteAfterAPublication@BFS-020 created-name publication + rename/handle rules"
+    "./internal/fsmount/@TestAResize|TestFtruncateWith|TestDeliberateResize|TestResizeIsAllowedAgain|TestWriteIntentFollows@BFS-030/033 in-place rewrite + refusal hold"
+    "./internal/fsmount/@TestUnlinkOfACollection|TestRmdirOfANonEmpty@BFS-020 recursive-delete refusals"
+    "./internal/fsmount/@TestBound|TestReadBound|TestAReader@BFS-025 published-size bound"
+    "./internal/server/webdav/@TestExpectedHashIsRevalidated|TestCreateOnlyRuleIsRevalidated|TestCommitSectionIsExclusive|TestConcurrentConditionalWrites@BFS-020/038 commit-time revalidation + exclusive commit"
+    "./internal/server/webdav/@TestStaleHashWrite|TestCreateOnlyPrecondition|TestIfMatchAbsent|TestPreconditionAppliesToDelete|TestWeakTagNeverSatisfies@BFS-004 §6 conditional PUT + refusals"
+    "./internal/server/webdav/@TestAtomicWriteIsVisibleWhole|TestMethodMatrixNoWritesOnRefusal@BFS-038 atomic publish + refused-write-does-not-land"
   )
   local row pkg re label
   for row in "${TABLE[@]}"; do
-    IFS='|' read -r pkg re label <<< "$row"
+    IFS='@' read -r pkg re label <<< "$row"
+    # How many cells the selector CAN name (no run): the pass count must equal it,
+    # or a cell was silently skipped and the count would prove nothing.
+    local named
+    named=$( cd "$REPO" && go test -list "$re" $pkg 2>/dev/null | grep -c '^Test' )
     line=$( cd "$REPO" && go test -count=1 -run "$re" $pkg -v 2>&1 )
     local p f
     p=$(printf '%s' "$line" | grep -c '^--- PASS')
     f=$(printf '%s' "$line" | grep -c '^--- FAIL')
-    if [ "$f" = 0 ] && [ "$p" != 0 ]; then
-      pass "$label: cells passed=$p failed=$f"
+    if [ "$f" = 0 ] && [ "$p" != 0 ] && [ "$p" = "$named" ]; then
+      pass "$label: cells passed=$p failed=$f (selector names $named)"
     elif [ "$p" = 0 ] && [ "$f" = 0 ]; then
       fail "$label: NO cell matched the selector — a count of zero proves nothing"
+    elif [ "$p" != "$named" ]; then
+      fail "$label: cells passed=$p failed=$f but the selector names $named — a cell did not run"
     else
       fail "$label: cells passed=$p failed=$f"
       printf '%s\n' "$line" | grep '^--- FAIL' | head -5

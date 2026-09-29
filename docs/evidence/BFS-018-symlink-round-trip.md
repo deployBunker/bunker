@@ -19,7 +19,7 @@ sides of the wire, and it is false in a way that **fails loudly rather than plau
 | Rounded-trip or refusal — measured? | **Round-trip**: `ls -l` through the mount prints `lrwxrwxrwx … link-to-a -> a.txt`; `readlink` returns the target; `ln -s` through the mount lands a real symlink on the server; `git checkout -f HEAD` **through the mount** of a tree carrying two links returns `rc=0` and `git status --porcelain` is **empty**. |
 | Is the corruption path closed? | Yes, on both sides. The mount's type bit is `S_IFLNK` (the kernel resolves the link, so `>`/`>>` reach the target and never replace the link), and the **server** refuses the write-back shape itself (`409` + the link's current target), so even a client that never learned the extension cannot replace a link with a file. |
 | What is refused by name, with a named cause? | `GET`/`HEAD` on a link (405 `symlink_not_a_file`); a body-bearing `PUT` onto a link (409 `symlink_undeclared_replace`); a bad declared target (400 `symlink_target_invalid`); a **hardlink** (`EOPNOTSUPP` — the wire has no inode or link count, so it cannot be represented); an entry whose declared type this client cannot present (`EIO`, never a regular file); a link operation against a surface that never declared the extension (`EOPNOTSUPP`, and **nothing is sent**); a link whose target the surface did not publish (`EOPNOTSUPP`, never an invented target). Every one of them is counted and named in the mount's own report. |
-| Neighbouring semantics (BFS-020/021/025/030/033/038)? | Unchanged, with their own cells run and counted: `BFS-018-neighbouring-cells.txt`. |
+| Neighbouring semantics (BFS-020/021/025/030/033/038)? | Unchanged, with their own cells run and counted — **30 cells over 8 rows**, every row's pass count equal to the number of cells its selector names, so no cell can be silently skipped: `BFS-018-neighbouring-cells.txt`. The one neighbouring cell that failed in the first full-suite run (`TestSuccessfulRefreshCost`, a timing ratio in `internal/fsclient/cache.go`) is attributed in `BFS-018-cost-cell-attribution.txt`: that file takes no hunk from this change, and run alternately the cell passes 6/6 on both trees at loadavg 18. |
 
 ---
 
@@ -30,8 +30,8 @@ Two independent reproductions: the dogfooding flow (mount a work tree, `ls -l`, 
 **(i) The filed line, live, with the base binaries** (`BFS-018-red.txt`, the `ls -l` block):
 
 ```
--rw-rw-r-- 1 kara kara   26 Sep 28 19:23 a.txt
--rwxrwxrwx 1 kara kara    5 Sep 28 19:23 link-to-a
+-rw-rw-r-- 1 kara kara   26 Sep 28 19:35 a.txt
+-rwxrwxrwx 1 kara kara    5 Sep 28 19:35 link-to-a
 ```
 
 A **regular file** (type `-`), mode **0777**, size **5** — 5 being `len("a.txt")`. Not the link, and not the 26-byte
@@ -100,6 +100,21 @@ link is typed correctly (from the snapshot's `type`, which the base server alway
 (`READLINK … published no target for it … the read is refused`), `ln -s` is refused with nothing sent, the mount reports
 `declared=false … refusals_total=4`, and `materialised=0`.
 
+What the residual looks like at the surface, verbatim (`BFS-018-old-surface.txt`) — the type is right, only the target
+is refused, and `ls` itself reports the refusal rather than showing a wrong file:
+
+```
+--- ls -l through the mount ---
+ls: unknown io error: '/tmp/…/oldsurface/mnt/link-to-a', 'Os { code: 95, kind: Unsupported, message: "Operation not supported" }'
+total 0
+-rw-rw-r-- 1 kara kara 26 Sep 28 19:39 a.txt
+lrwxrwxrwx 1 kara kara  0 Sep 28 19:39 link-to-a
+--- readlink (must be refused BY NAME, never an invented target) ---
+readlink rc=1 out=
+--- ln -s through the mount (must be refused: the surface declares no extension) ---
+ln -s rc=1 out=ln: Operation not supported
+```
+
 ---
 
 ## 3. What changed
@@ -138,6 +153,21 @@ link is typed correctly (from the snapshot's `type`, which the base server alway
 shape, the precondition limit, the "fail closed" rule and the named residual); §2.3 deviations **5** and **6**; §2.2's
 property table; §5.1's verdict table; §4.2's capability document; §8.3; §10.1/§10.2's wire shapes.
 
+**BFS-008's REMAINING, discharged.** That row closed complete and named, verbatim, what the client did **not** have:
+*"no Symlink/Readlink/Link (a git worktree uses symlinks), no xattr methods, no mmap/fallocate, and Readdirplus is NOT
+implemented"*. Of those three, `Readlink` and `Symlink` are now implemented end to end (below), `Link` is implemented
+and **refuses by name** (§3, argued from the wire — it exposes no inode identity and no link count, so a hardlink
+cannot be honoured and a copy would be the corruption this row is about), and `Readdir` now reports the link
+type; xattrs and `mmap`/`fallocate` remain out of scope and unclaimed.
+
+**The cells** (25, all in the tree's own suites; `go test -run` selectors quoted where the arms use them):
+
+| Package | Cells |
+|---|---|
+| `internal/server/webdav` | `TestSymlinkTypeIsDeclaredOnTheWire`, `TestSymlinkGetIsRefusedByNameAndTheTargetStillReads`, `TestSymlinkCreateIsDeclaredAndLandsAsASymlink`, `TestSymlinkCreateRefusalsAreSpecific`, `TestUndeclaredSymlinkReplaceIsRefusedAndNothingLands`, `TestSnapshotCarriesTheLinkTarget`, `TestSymlinkExtensionIsDeclared`, `TestSymlinkChangeAttributionCell` |
+| `internal/fsclient` | `TestMultistatusCarriesTheDeclaredType`, `TestSurfaceWithoutTheTypePropertyIsResolvedFromTheStandardProperties`, `TestUnknownDeclaredTypeIsNotAFile`, `TestSnapshotCarriesTheLinkTargetAndDropsItsHash`, `TestSymlinkNodeNeverKeepsAHash`, `TestPutLinkRefusesAnUndeclaredSurfaceWithoutSendingAnything`, `TestPutLinkSendsTheDeclaredHeaderWithNoBody`, `TestSymlinkCapabilityReadsTheDeclaredBlock` |
+| `internal/fsmount` | `TestSymlinkThroughTheMountIsALinkNotAFile`, `TestReadlinkAnswersTheDeclaredTargetWithoutFetchingBytes`, `TestReaddirReportsTheLinkType`, `TestSymlinkCreatedThroughTheMountIsASymlinkOnTheServer`, `TestHardlinkIsRefusedByNameAndReported`, `TestUnhonouredDeclaredTypeIsRefusedNotPresentedAsAFile`, `TestSymlinkRefusesWithoutTheDeclarationAndWorksWithIt`, `TestSymlinkChangeMountAttributionCell` |
+
 ---
 
 ## 4. The round-trip and the TYPE assertion (live)
@@ -147,11 +177,11 @@ From `BFS-018-live-through-the-mount.txt` — a real mount, a real work tree car
 
 ```
 === [live] ls -l through the mount (the TYPE line) ===
--rw-rw-r-- 1 kara kara   26 Sep 28 19:23 a.txt
-lrwxrwxrwx 1 kara kara    5 Sep 28 19:23 link-to-a -> a.txt
-drwxrwxr-x 2 kara kara 4096 Sep 28 19:23 vendored
+-rw-rw-r-- 1 kara kara   26 Sep 28 19:38 a.txt
+lrwxrwxrwx 1 kara kara    5 Sep 28 19:38 link-to-a -> a.txt
+drwxrwxr-x 2 kara kara 4096 Sep 28 19:38 vendored
 …
-lrwxrwxrwx 1 kara kara    8 Sep 28 19:23 sibling-link -> ../a.txt
+lrwxrwxrwx 1 kara kara    8 Sep 28 19:38 sibling-link -> ../a.txt
 === [live] readlink through the mount ===
 readlink link-to-a -> 'a.txt' (rc=0)
 readlink vendored/sibling-link -> '../a.txt' (rc=0)
@@ -165,25 +195,48 @@ exactly that cell RED with the filed shape (`mode 0100644, size 5`). A correct `
 ignores them — there is no `chmod` on a link), and reporting that same octet under `S_IFREG` is precisely what was
 filed.
 
-The ordinary POSIX surface through the same mount (`BFS-018-posix-and-transparency.txt`):
+The ordinary POSIX surface through the same mount (`BFS-018-posix-and-transparency.txt`), verbatim:
 
 ```
-cat link-to-a                     -> hello from the source tree            rc=0
-cat sub/up-link                   -> hello from the source tree            rc=0
-stat -c %F link-to-a              -> symbolic link                         rc=0
-readlink -f link-to-a             -> /…/mnt/a.txt                          rc=0
-find -type l / find -type f       -> the two links / the two files
-ln -s a.txt new-link              -> rc=0, readlink 'a.txt', cat follows it
-printf ' MORE' >> link-to-a       -> rc=0 (the kernel followed to a.txt; the LINK stayed a link)
+--- cat link-to-a (kernel resolves the link) ---
+hello from the source tree rc=0
+--- cat sub/up-link ---
+hello from the source tree rc=0
+--- stat -c %F link-to-a ---
+symbolic link
+ rc=0
+--- find -type l ---
+/tmp/…/mnt/link-to-a
+/tmp/…/mnt/sub/up-link
+ rc=0
+--- find -type f ---
+/tmp/…/mnt/a.txt
+/tmp/…/mnt/sub/other.txt
+ rc=0
+--- ln -s relative, then read it back ---
+ln rc=0
+a.txt
+ readlink rc=0
+--- an append through the symlink (kernel follows to a.txt) ---
+append rc=0
+server a.txt: [hello from the source tree MORE]
 ```
 
 and the transparency control, which is the comparison that matters for the one shape the surface refuses:
 
 ```
-printf 'rewritten' > a.txt        -> Operation not supported  (rc=2)   ← BFS-030's pre-existing in-place-rewrite rule
-printf 'rewritten' > link-to-a    -> Operation not supported  (rc=2)   ← the SAME answer: the link is transparent
-printf x > tmp.new && mv tmp.new a.txt -> rc=0; a.txt = 'rewritten'; link-to-a STILL -> a.txt
+=== the same '>' shape on the TARGET FILE (no link involved) ===
+sh: 1: cannot create /tmp/…/mnt/a.txt: Operation not supported
+  rc=2
+=== the same '>' shape THROUGH the link ===
+sh: 1: cannot create /tmp/…/mnt/link-to-a: Operation not supported
+  rc=2
+=== the shape BFS-030/020 DOES serve: create a new name, then rename over ===
+  rc=0
+server a.txt: [rewritten]  link: [a.txt]
 ```
+
+i.e. a plain `>` over a link is refused with **exactly** the answer the same shell gets over the link's target — BFS-030's pre-existing in-place-rewrite rule — so the link is transparent to the kernel, and the remedy the refusal implies (create a new name, `rename` over) works and leaves the link a link pointing at the new content.
 
 ---
 
@@ -243,7 +296,15 @@ symlink      : declared=false type_property=- target_property=-
 ```
 
 and on the fixed surface the same block reports the work that *was* done
-(`declared=v1 (X-Bunker-Link-Target)`, `readlinks_total=10`, `created_total=1`, `refusals_total=0`).
+(`declared=v1 (X-Bunker-Link-Target)`, `readlinks_total=12`, `created_total=1`, `refusals_total=0` on the second read —
+the first read of the same block caught the document inside its write window, see the instrument note below).
+
+**Instrument note, because the report is evidence and must be read correctly.** The report is not a live query: the
+mount rewrites a document on roughly a 1 s cadence, so a single read can land inside that window and show the previous
+second's figures. Measured in `BFS-018-status-report-lag.txt` — three `readlink`s plus an `ls -l` through a fresh
+mount, then the CLI and the document polled every 0.5 s: `t+0s` reads `readlinks_total=0`, `t+1.0s` reads `5`, and it
+holds at `5` from then on, with the CLI and the document agreeing at every sample. The arms therefore read the report
+**twice**; a lone zero is a stale document, not a mount that did nothing.
 
 ---
 
@@ -271,12 +332,36 @@ mode and hash are unchanged and no link activity is reported when none happened)
 
 ---
 
+## 7.1 The one neighbouring cell that failed in a full-suite run (attributed, not waved away)
+
+The first full-suite run of this tree failed `TestSuccessfulRefreshCost` in `internal/fsclient` —
+`GetPinned=26.9 ms` vs `Get+Pin=1.6 ms (ratio 16.68)`, against a `pinned > 10*twoCall` assertion — during a window in
+which this host's `loadavg` was 24 with two other Hermes workers running their own full suites. Two independent
+attributions, both in `BFS-018-cost-cell-attribution.txt`:
+
+1. **Static.** The assertion measures `internal/fsclient/cache.go` (`Get`/`GetPinned`/`Pin`/`Unpin`).
+   `644499d..HEAD` takes **no hunk** in that file — the diff's fsclient files are `bfs018_symlink_test.go`,
+   `capabilities.go`, `client.go`, `snapshot.go`, `status.go`, and `client.go`'s hunks are `FileMeta`, `Propfind`,
+   `propfindBody`, `multistatusProp`, `decodeMultistatus`, `headerTime`. A ratio computed inside `cache.go` cannot
+   move because of a metadata field on `FileMeta`.
+2. **Measured.** The cell run alternately on the base tree and this tree, three rounds each, both trees `FAIL=0` on
+   all six runs (0.41–0.85 s wall) at loadavg 18 — the same binary, the same host, the same conditions.
+
+Stated plainly: in the loadavg-24 window the base tree passed 3/3 and this tree passed 1/3. I could not reproduce a
+failure on either tree once the other workers' suites finished, and the code path the assertion measures is untouched
+by this change — so I record the asymmetry rather than explain it away.
+
+---
+
 ## 8. What this does not do (residuals, named)
 
 1. **A surface that publishes no `b:type`** (a build predating E-7): the mount cannot distinguish a link from a file on
    the `PROPFIND` fallback path and reports `declared=false` rather than guessing. Measured in
    `BFS-018-old-surface.txt`. This is the one hole the wire genuinely cannot close, and it is a named degradation, not
-   a silent one.
+   a silent one. On that surface a link whose **type** is declared (the base surface has always sent `type` in its
+   snapshot) but whose **target** is not published is typed `lrwxrwxrwx` with **size 0**, and `ls`/`readlink` on it
+   answer `EOPNOTSUPP` — the type is never wrong and the entry is never presented as a file; the size is the one field
+   that has no honest value there.
 2. **`MOVE`/`COPY` with overwrite onto a link** still replaces it (an explicit tree operation — the deliberate remedy
    the `409` names for a caller that wants a file there). Not refused, by decision: refusing it would break the
    lock-rename shape atomic writers use.
@@ -302,11 +387,28 @@ docs/evidence/BFS-018-wire-fixed-client.txt       the fixed client's captured wi
 docs/evidence/BFS-018-posix-and-transparency.txt  the ordinary POSIX surface + the transparency control
 docs/evidence/BFS-018-old-surface.txt             the new client against the base surface (the named residual)
 docs/evidence/BFS-018-mutations.txt               the mutation table with restores and attribution
-docs/evidence/BFS-018-neighbouring-cells.txt      BFS-020/021/025/030/033/038 cells, counted
+docs/evidence/BFS-018-neighbouring-cells.txt      BFS-020/021/025/030/033/038 cells, counted (30 cells / 8 rows)
+docs/evidence/BFS-018-cost-cell-attribution.txt   the one timing cell that failed under external load, attributed
+docs/evidence/BFS-018-suites.txt                  the five packages on the final tree + gofmt + go vet
+docs/evidence/BFS-018-status-report-lag.txt       how fast the mount's own report catches up (the report is evidence)
 ```
 
+Every arm in that list was re-run from the **committed** instrument after its last edit, so no transcript predates an
+edit to the script; each arm's transcript carries the arm's own verdict line (`ARM PASS` / `ARM FAIL`) and the arms
+refuse a zero count as evidence (`a count of zero proves nothing`). Final tree: `gofmt -l internal/` empty,
+`go vet ./...` rc=0, and five packages green — `internal/server/webdav` 30.9 s, `internal/fsclient` 44.5 s,
+`internal/fsmount` 0.9 s, `internal/cli` 29.3 s, `internal/docscheck` 3.7 s (`BFS-018-suites.txt`).
+
 ```sh
-REPO=<tree> BIN=/tmp/bfs018/bin bash docs/evidence/BFS-018-arms.sh all
+# From the tree under test (REPO defaults to the tree that holds the script, BIN to
+# /tmp/bfs018/bin). The `live` / `mutations` / `suites` arms need nothing else:
+bash docs/evidence/BFS-018-arms.sh live
+
+# The `red` and `old-surface` arms compare against the commit this row started at,
+# which must exist at /tmp/bfs018/base-repo:
+git clone --shared /home/kara/bunker /tmp/bfs018/base-repo
+git -C /tmp/bfs018/base-repo checkout -q 644499d
+bash docs/evidence/BFS-018-arms.sh all
 ```
 
 The base binaries the `red` and `old-surface` arms compare against are built from the commit this row started at

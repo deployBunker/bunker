@@ -55,7 +55,7 @@ ARM PASS: mutate-6-modeof-siflnk.py: the cell is GREEN again after the restore
 === mutation mutate-7-link-target-as-body.py on internal/fsclient/client.go (sha256 before 11ea6973a09f1c8bc496fc5fc87eeb73ec4a3faf0679f0fb5c78a4240156abf7) ===
 mutated: the link target travels as the PUT body (client.go)
 ARM PASS: mutate-7-link-target-as-body.py: cell TestSymlinkCreatedThroughTheMountIsASymlinkOnTheServer goes RED
---- FAIL: TestSymlinkCreatedThroughTheMountIsASymlinkOnTheServer (0.03s)
+--- FAIL: TestSymlinkCreatedThroughTheMountIsASymlinkOnTheServer (0.02s)
     bfs018_symlink_test.go:225: the server holds file (target ""); want a symlink to "a.txt"
 ARM PASS: mutate-7-link-target-as-body.py: attribution cell TestSymlinkChangeMountAttributionCell stays GREEN
 ARM PASS: mutate-7-link-target-as-body.py: restored byte-identically (sha256 11ea6973a09f1c8bc496fc5fc87eeb73ec4a3faf0679f0fb5c78a4240156abf7)
@@ -70,6 +70,5 @@ ARM PASS: mutate-8-refusal-not-counted.py: attribution cell TestSymlinkChangeMou
 ARM PASS: mutate-8-refusal-not-counted.py: restored byte-identically (sha256 0d9b2c1cc1700761cfb994fe6e0ebaf57c4f316a4a81bfa062201d90a800b279)
 ARM PASS: mutate-8-refusal-not-counted.py: the cell is GREEN again after the restore
 
-WORK kept at /tmp/bfs018-arms-BOyBuE
+WORK kept at /tmp/bfs018-arms-TWfsJk
 ARMS: ALL PASS
-RC=0
