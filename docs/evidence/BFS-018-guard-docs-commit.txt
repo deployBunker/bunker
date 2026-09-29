@@ -1,0 +1,38 @@
+# The guard run that accompanied the DOCS commit (0ac3737) — quoted because its Go
+# lanes are VACUOUS, not green: a docs-only diff stages no .go file, so go_build,
+# go_lint and go_tests each report "No Go files staged". Read as: not applicable.
+
+GitReins guard run log — full output (the console summary is bounded)
+run_utc: 2026-09-29T00:45:59Z
+workdir: /home/kara/worktrees/bunker-BFS-018
+test_mode: full
+test_targets: all (full mode)
+overall: PASS
+guards: 4 (0 failed, 0 skipped)
+diagnostics:
+  first_failing_test: none detected
+  secrets_scanners: clean (gitleaks + builtin cross-check)
+
+==============================================================================
+[PASS] secrets  passed=true  exit_code=n/a
+==============================================================================
+--- output (untruncated) ---
+gitleaks: clean
+
+==============================================================================
+[PASS] go_build  passed=true  exit_code=n/a
+==============================================================================
+--- output (untruncated) ---
+No Go files staged
+
+==============================================================================
+[PASS] go_lint  passed=true  exit_code=n/a
+==============================================================================
+--- output (untruncated) ---
+No Go files staged
+
+==============================================================================
+[PASS] go_tests  passed=true  exit_code=n/a
+==============================================================================
+--- output (untruncated) ---
+No Go files staged

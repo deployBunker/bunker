@@ -391,6 +391,8 @@ docs/evidence/BFS-018-neighbouring-cells.txt      BFS-020/021/025/030/033/038 ce
 docs/evidence/BFS-018-cost-cell-attribution.txt   the one timing cell that failed under external load, attributed
 docs/evidence/BFS-018-suites.txt                  the five packages on the final tree + gofmt + go vet
 docs/evidence/BFS-018-status-report-lag.txt       how fast the mount's own report catches up (the report is evidence)
+docs/evidence/BFS-018-guard-verdict.txt           the guard pass on the code commit + the refusal before it
+docs/evidence/BFS-018-guard-docs-commit.txt       the docs commit's guard run (Go lanes vacuous: no staged .go)
 ```
 
 Every arm in that list was re-run from the **committed** instrument after its last edit, so no transcript predates an
@@ -398,6 +400,16 @@ edit to the script; each arm's transcript carries the arm's own verdict line (`A
 refuse a zero count as evidence (`a count of zero proves nothing`). Final tree: `gofmt -l internal/` empty,
 `go vet ./...` rc=0, and five packages green — `internal/server/webdav` 30.9 s, `internal/fsclient` 44.5 s,
 `internal/fsmount` 0.9 s, `internal/cli` 29.3 s, `internal/docscheck` 3.7 s (`BFS-018-suites.txt`).
+
+**The guard verdict, and which of the two runs can be read.** `.gitreins/logs` is gitignored, so both logs are copied
+here. `BFS-018-guard-verdict.txt` is the run that graded the tree the code commit stored: `overall: PASS`, 4 guards 0
+failed, `go build: ok`, `go vet: clean`, `gitleaks: clean`, and the **full** suite with its own package list
+(`internal/fsclient ok 55.6s`). The same file carries the refusal that preceded it — at 18:48:32 the guard FAILED
+`go_tests` because the tree was mid-edit (a test named `Node.LinkTarget` before the field landed); the guard refused,
+no commit was made in that state, and the commit followed the field landing. `BFS-018-guard-docs-commit.txt` is the run
+attached to the docs commit: it reports `No Go files staged` in all three Go lanes, which is **vacuous, not green** —
+a docs-only diff cannot exercise a Go lane — so that run is quoted here as *not applicable*, never as "the Go gates
+passed on the docs commit".
 
 ```sh
 # From the tree under test (REPO defaults to the tree that holds the script, BIN to

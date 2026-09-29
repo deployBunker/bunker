@@ -1,0 +1,78 @@
+# Guard verdict on the CODE commit's content (GitReins tier-1, full test mode).
+# .gitreins/logs is gitignored, so the log is copied here verbatim.
+# This run graded the tree that the code commit (3238efa) stored: go build ok,
+# go vet clean, gitleaks clean, full suite green (internal/fsclient ok 55.6s).
+
+GitReins guard run log — full output (the console summary is bounded)
+run_utc: 2026-09-29T00:02:40Z
+workdir: /home/kara/worktrees/bunker-BFS-018
+test_mode: full
+test_targets: all (full mode)
+overall: PASS
+guards: 4 (0 failed, 0 skipped)
+diagnostics:
+  first_failing_test: none detected
+  secrets_scanners: clean (gitleaks + builtin cross-check)
+
+==============================================================================
+[PASS] secrets  passed=true  exit_code=n/a
+==============================================================================
+--- output (untruncated) ---
+gitleaks: clean
+
+==============================================================================
+[PASS] go_build  passed=true  exit_code=n/a
+==============================================================================
+--- output (untruncated) ---
+go build: ok
+
+==============================================================================
+[PASS] go_lint  passed=true  exit_code=n/a
+==============================================================================
+--- output (untruncated) ---
+go vet: clean
+
+==============================================================================
+[PASS] go_tests  passed=true  exit_code=n/a
+==============================================================================
+--- output (untruncated) ---
+nker/bunker/internal/apikey	0.023s
+ok  	github.com/deployBunker/bunker/internal/audit	3.342s
+ok  	github.com/deployBunker/bunker/internal/auth	0.335s
+ok  	github.com/deployBunker/bunker/internal/cli	26.830s
+ok  	github.com/deployBunker/bunker/internal/config	0.079s
+?   	github.com/deployBunker/bunker/internal/davserve	[no test files]
+ok  	github.com/deployBunker/bunker/internal/docscheck	4.644s
+ok  	github.com/deployBunker/bunker/internal/fsclient	55.639s
+ok  	github.com/deployBunker/bunker/inte
+
+# And the refusal that came BEFORE it, unchanged and un-hidden: at 18:48:32 the guard
+# FAILED go_tests because the tree was mid-edit (a test referenced Node.LinkTarget
+# before the field landed in internal/fsclient). The guard refused, no commit was made
+# in that state, and the code commit at 19:01 followed the field landing.
+
+GitReins guard run log — full output (the console summary is bounded)
+run_utc: 2026-09-28T23:48:32Z
+workdir: /home/kara/worktrees/bunker-BFS-018
+test_mode: full
+test_targets: all (full mode)
+overall: FAIL
+guards: 4 (1 failed, 0 skipped)
+diagnostics:
+  first_failing_test: none detected
+  secrets_scanners: clean (gitleaks + builtin cross-check)
+
+==============================================================================
+[FAIL] go_tests  passed=false  exit_code=n/a
+==============================================================================
+--- output (untruncated) ---
+ MtimeUnixMS int64 "json:\"mtime_unix_ms\""; Mode string "json:\"mode\""; Hash string "json:\"hash\""} has no field or method LinkTarget)
+
+FAIL	github.com/deployBunker/bunker/internal/cli	2.061s
+ok  	github.com/deployBunker/bunker/internal/config	0.144s
+?   	github.com/deployBunker/bunker/internal/davserve	[no test files]
+ok  	github.com/deployBunker/bunker/internal/docscheck	7.213s
+FAIL	github.com/deployBunker/bunker/internal/fsclient [build failed]
+ok  	github.com/deployBunker/bunker/internal/fsmount	7.321s
+ok  	github.com/deployBunker/bunker/internal/hermes	35.720s
+ok  	github.com/deployBunker/bunker/internal/hilo	0.018s
