@@ -2192,6 +2192,15 @@ if [ -n "$REGRESSION_SCRIPT" ]; then
     REG_TALLY="$(nested_tally "$REG_OUT" || true)"
     REG_PASS="${REG_TALLY%% *}"
     REG_FAIL="${REG_TALLY##* }"
+    # INT-CI-051: name the nested failing cells in the battery output — CI
+    # then shows WHICH cells went red without re-running the battery (run
+    # 36599500106 printed only 'PASS=N FAIL=M' and forced a local repro).
+    # `|| true` guards pipefail: a fully green transcript matches no ✗.
+    NESTED_FAIL_CELLS="$(echo "$REG_OUT" | grep '✗' || true)"
+    if [ -n "$NESTED_FAIL_CELLS" ]; then
+        echo "  nested failing cells:"
+        echo "$NESTED_FAIL_CELLS"
+    fi
     echo "$REG_OUT" | tail -10
     echo "  nested suite tally: PASS=${REG_PASS:-?} FAIL=${REG_FAIL:-?} (exit $REG_EXIT)"
     REG_VERDICT="$(nested_verdict "$REG_EXIT" "$REG_TALLY")"

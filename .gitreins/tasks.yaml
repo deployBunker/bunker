@@ -3739,5 +3739,18 @@ tasks:
     and non-zero exit; 2) two sessions with different explicit targets touch different
     servers with zero cross-writes; 3) read-only output names its resolved target;
     4) full suite + guard green; evidence doc committed
-  status: in_progress
+  status: complete
   created_at: '2026-09-30T02:05:47.599047+00:00'
+  completed_at: '2026-09-30T02:59:02.942548+00:00'
+- id: INT-CI-051
+  title: 'Harness fixes from CI red 36599500106: failing-cell echo in nested leg +
+    delta-count dedup in regression section 5'
+  criteria:
+  - "1) e2e-full-battery.sh nested leg echoes every nested '\u2717' line before the\
+    \ tally; 2) regression-tests.sh section 5 delta assertion dedups by suite-spawned\
+    \ agent IDs (regr-alpha + AUTO_ID) instead of Total==LIST_BEFORE+2, keeps pristine-host\
+    \ absolute contract, prints both numbers on failure; 3) go build/vet/test green;\
+    \ 4) coexist section-14 skip semantics unchanged"
+  status: complete
+  created_at: '2026-09-30T05:17:51.539159+00:00'
+  completed_at: '2026-09-30T05:34:25.442381+00:00'
