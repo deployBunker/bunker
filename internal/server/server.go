@@ -276,8 +276,11 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	bunkerdSvc := &bunkerdService{cfg: s.cfg, logger: s.logger, agentMgr: agentMgr, heartbeats: agentMgr, tracker: tracker, tunnelMgr: tunnelMgr, tailscaleMgr: tailscaleMgr, keyMgr: s.keyMgr, jwtAuth: s.jwtAuth, cpuSampler: resource.NewCPUSampler(), auditLog: s.auditLog}
 	// DF-BUNKER-34: the orphan-uid probe rides the info/list surfaces. The
 	// manager carries the /proc probe; the nil check inside the service keeps
-	// tests and unwired services probe-free.
+	// tests and unwired services probe-free. PERF-008: the list surface goes
+	// through the batch summarizer so one /proc sweep answers the whole
+	// fleet; GetAgent keeps the single-id method.
 	bunkerdSvc.orphanUIDSummarizer = agentMgr.OrphanUIDSummary
+	bunkerdSvc.orphanUIDBatchSummarizer = agentMgr.OrphanUIDSummaries
 
 	// Audit interceptor: composed INSIDE the auth interceptor (auth listed
 	// first, so it runs outermost) so only authenticated requests reach it —

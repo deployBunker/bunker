@@ -217,6 +217,95 @@ func statusFileOwnedByUID(status []byte, uid uint32) bool {
 	return false
 }
 
+// statusOwnerUIDs returns the DISTINCT uids a /proc/<pid>/status body's Uid
+// line attributes the process to (real, effective, saved-set, fs). This is
+// the grouping twin of statusFileOwnedByUID's membership rule: a process
+// lands in every listed uid's bucket, so each bucket holds exactly the
+// processes the per-uid single probe (listUserProcesses) would have returned
+// for that uid — including the exotic setuid shape where only one of the
+// four fields matches. A body with no parseable Uid line contributes
+// nothing, exactly as the membership probe rejects it.
+func statusOwnerUIDs(status []byte) []uint32 {
+	for _, line := range strings.Split(string(status), "\n") {
+		if !strings.HasPrefix(line, "Uid:") {
+			continue
+		}
+		var uids []uint32
+		for _, f := range strings.Fields(strings.TrimPrefix(line, "Uid:")) {
+			v, err := strconv.ParseUint(f, 10, 32)
+			if err != nil {
+				continue
+			}
+			u := uint32(v)
+			dup := false
+			for _, seen := range uids {
+				if seen == u {
+					dup = true
+					break
+				}
+			}
+			if !dup {
+				uids = append(uids, u)
+			}
+		}
+		return uids // the Uid line was there; its parseable fields (maybe none)
+	}
+	return nil
+}
+
+// listUserProcessesByUID is listUserProcesses across EVERY uid at once: one
+// /proc sweep that groups each live process under its owning uid (same Uid:
+// line rule as statusFileOwnedByUID), PIDs sorted within each uid. The batch
+// shape is what a multi-agent surface needs (PERF-008): one directory walk
+// answers every agent's probe instead of one walk per agent. Failure
+// semantics match listUserProcesses: unreadable or vanished entries are
+// skipped; only an unlistable /proc is an error.
+func listUserProcessesByUID() (map[uint32][]userProcess, error) {
+	entries, err := os.ReadDir(procStatusPath)
+	if err != nil {
+		return nil, fmt.Errorf("list %s: %w", procStatusPath, err)
+	}
+	out := make(map[uint32][]userProcess)
+	scanned := 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		pid, perr := strconv.Atoi(e.Name())
+		if perr != nil {
+			continue // not a pid directory
+		}
+		scanned++
+		if scanned > maxProcScan {
+			break
+		}
+		status, rerr := os.ReadFile(filepath.Join(procStatusPath, e.Name(), "status"))
+		if rerr != nil {
+			continue // vanished mid-scan, or unreadable: not a failure
+		}
+		for _, uid := range statusOwnerUIDs(status) {
+			out[uid] = append(out[uid], userProcess{PID: pid, Cmd: procCmdlineHead(e.Name())})
+		}
+	}
+	for _, procs := range out {
+		sort.Slice(procs, func(i, j int) bool { return procs[i].PID < procs[j].PID })
+	}
+	return out, nil
+}
+
+// listUserProcessesByUIDFn is the /proc-sweep seam the batch classifier goes
+// through (var, mirroring lookupUser): tests count sweeps or substitute a
+// fixture scanner without touching production call sites.
+var listUserProcessesByUIDFn = listUserProcessesByUID
+
+// ListUserProcessesByUID is the exported entry to the batch sweep: one /proc
+// walk grouped by owning uid (PERF-008). Test support: fixtures that swap
+// the seam delegate here to keep counting real while serving real data; no
+// production path bypasses the seam.
+func ListUserProcessesByUID() (map[uint32][]userProcess, error) {
+	return listUserProcessesByUID()
+}
+
 // procCmdlineHead reads /proc/<pid>/cmdline and renders the command head.
 // NUL-separated argv becomes spaces; a zombie or kernel thread with no
 // cmdline falls back to the (bracketed) comm from the status body — the
@@ -328,6 +417,27 @@ func (c orphanUIDCheck) Describe() string {
 //   - user gone + live uid processes: the orphan (row consequence (c)/(d));
 //   - no readable uid source: UIDKnown=false, unknown, never clean.
 func (m *AgentManager) checkOrphanUID(agentID string) orphanUIDCheck {
+	c := m.resolveOrphanUIDMetadata(agentID)
+	if c.ProbeErr != "" {
+		return c
+	}
+	procs, err := listUserProcesses(c.UID)
+	if err != nil {
+		c.ProbeErr = err.Error()
+		return c
+	}
+	c.Processes = procs
+	return c
+}
+
+// resolveOrphanUIDMetadata is checkOrphanUID's uid-resolution half: it
+// determines UserExists and the agent's uid from persisted state (the user
+// record, else the home's on-disk owner) WITHOUT touching /proc, and fills
+// ProbeErr (fail-closed) when no uid source is readable. Extracted so the
+// batch classifier can resolve every agent's metadata first and pay for
+// exactly ONE /proc sweep for the whole fleet (PERF-008) instead of one
+// sweep per agent.
+func (m *AgentManager) resolveOrphanUIDMetadata(agentID string) orphanUIDCheck {
 	username := agentUserPrefix + agentID
 	_, uerr := lookupUser(username)
 	check := orphanUIDCheck{UserExists: uerr == nil}
@@ -358,15 +468,76 @@ func (m *AgentManager) checkOrphanUID(agentID string) orphanUIDCheck {
 	if !check.UIDKnown {
 		check.ProbeErr = "uid unknown: user record gone and no readable persisted metadata at " +
 			filepath.Join(agentHomeRoot, username)
-		return check
 	}
-	procs, err := listUserProcesses(check.UID)
-	if err != nil {
-		check.ProbeErr = err.Error()
-		return check
-	}
-	check.Processes = procs
 	return check
+}
+
+// checkOrphanUIDBatch is checkOrphanUID across MANY agents from ONE /proc
+// sweep (PERF-008): per-agent metadata is resolved first (cheap: user DB +
+// one stat each), then a single listUserProcessesByUID walk groups every
+// live process by owning uid once, and each resolved agent is classified
+// against that one snapshot. Agents whose uid is unknown (fail-closed
+// ProbeErr) keep exactly the per-agent probe's error text; a sweep failure
+// marks every resolved agent's ProbeErr instead of ever reading as clean.
+// Output order matches the input order (summaries[i] classifies ids[i]).
+func (m *AgentManager) checkOrphanUIDBatch(ids []string) []orphanUIDCheck {
+	checks := make([]orphanUIDCheck, len(ids))
+	byUID := make(map[uint32][]int) // uid -> indexes of agents carrying it
+	for i, id := range ids {
+		c := m.resolveOrphanUIDMetadata(id)
+		checks[i] = c
+		if c.UIDKnown {
+			byUID[c.UID] = append(byUID[c.UID], i)
+		}
+	}
+	if len(byUID) == 0 {
+		return checks // nothing resolvable: zero /proc sweeps, all fail-closed
+	}
+	procsByUID, err := listUserProcessesByUIDFn()
+	if err != nil {
+		for i := range checks {
+			if checks[i].UIDKnown && checks[i].ProbeErr == "" {
+				checks[i].ProbeErr = err.Error()
+			}
+		}
+		return checks
+	}
+	for uid, idxs := range byUID {
+		for _, i := range idxs {
+			checks[i].Processes = procsByUID[uid] // absent uid = no live processes
+		}
+	}
+	return checks
+}
+
+// OrphanUIDSummaries is the batch shape of OrphanUIDSummary: the one-line
+// orphan-uid verdict for every agent id, classified from ONE /proc sweep.
+// It is what the list surface (ListAgents) wires in (PERF-008) — the
+// per-call cost is one sweep total, not one sweep per agent. Output order
+// matches the input order; per-id rules (empty/invalid id -> "") are
+// identical to the single-agent method.
+func (m *AgentManager) OrphanUIDSummaries(ids []string) []string {
+	// Drop empty/invalid ids up front: they never probe and never classify,
+	// so they must not consume a bucket in the batch either.
+	valid := make([]string, 0, len(ids))
+	validIdx := make([]int, 0, len(ids))
+	out := make([]string, len(ids))
+	for i, id := range ids {
+		if id == "" || !validAgentID.MatchString(id) {
+			continue // out[i] stays ""
+		}
+		valid = append(valid, id)
+		validIdx = append(validIdx, i)
+	}
+	checks := m.checkOrphanUIDBatch(valid)
+	for j, c := range checks {
+		if !c.IsOrphan() {
+			continue
+		}
+		out[validIdx[j]] = fmt.Sprintf("ORPHANED UID: user record bunker-%s is GONE from the host but %s — these processes survive every destroy and hold the home (and possibly ports) under a user that no longer exists",
+			valid[j], c.Describe())
+	}
+	return out
 }
 
 // OrphanUIDSummary is the one-line orphan-uid verdict for one agent, as the
@@ -401,5 +572,30 @@ func SwapProcStatusPath(root string) string {
 func SwapLookupUser(fn func(username string) (*user.User, error)) func(string) (*user.User, error) {
 	prev := lookupUser
 	lookupUser = fn
+	return prev
+}
+
+// UserProcess aliases the package's process record so out-of-package test
+// fixtures can construct sweep results through the SwapProcSweep seam
+// (PERF-008). It is the SAME type as the internal userProcess — no copy, no
+// conversion — and its fields are exported, so a fixture can build one.
+type UserProcess = userProcess
+
+// SwapProcSweep replaces the batch /proc-sweep seam the orphan classifier
+// goes through (listUserProcessesByUIDFn) and returns the previous value.
+// Test seam for out-of-package fixtures and invocation counting (PERF-008's
+// "one sweep per list call" pin counts through this).
+func SwapProcSweep(fn func() (map[uint32][]userProcess, error)) func() (map[uint32][]userProcess, error) {
+	prev := listUserProcessesByUIDFn
+	listUserProcessesByUIDFn = fn
+	return prev
+}
+
+// SwapAgentHomeRoot replaces the root under which agent homes are resolved
+// (the orphan arm's on-disk uid source) and returns the previous value.
+// Test seam: lets an out-of-package fixture own the home tree without root.
+func SwapAgentHomeRoot(root string) string {
+	prev := agentHomeRoot
+	agentHomeRoot = root
 	return prev
 }
