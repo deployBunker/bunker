@@ -3689,3 +3689,61 @@ tasks:
   status: complete
   created_at: '2026-09-29T19:04:05.633540+00:00'
   completed_at: '2026-09-29T19:04:45.475102+00:00'
+- id: PERF-010
+  title: ListAgents/AgentMetrics must never block on the TTL-expired disk-usage cold
+    walk
+  criteria:
+  - On TTL-expired diskUsageCache entries, usageFor serves the stale value immediately
+    and triggers exactly one background refresh; no request goroutine calls diskUsageWalk
+    synchronously. go build/vet pass, new table-driven tests cover expire->stale-serve->background-refresh->new-value
+    and single-flight dedupe, full go test ./... green, gofmt clean.
+  status: complete
+  created_at: '2026-09-29T20:01:35.591672+00:00'
+  completed_at: '2026-09-29T20:42:56.334662+00:00'
+- id: REV-BUNKER-017
+  title: Reconcile startup readiness test has a 150ms wall-clock deadline that fails
+    under load
+  criteria:
+  - go test ./internal/agent/ -run TestReconcileStartup -count=1 passes; the readiness
+    deadline is driven by a signal/poll-with-bounded-deadline or is configurable,
+    not a fixed 150ms constant; no destructive reset of the fresh path; full package
+    suite ./internal/agent/ green -count=1
+  status: complete
+  created_at: '2026-09-29T20:59:26.243264+00:00'
+  completed_at: '2026-09-29T21:19:34.973320+00:00'
+- id: REV-BUNKER-002
+  title: 'Orphan classification fails open: unreadable/missing .bunker ownership metadata
+    treated as ours and destroyed'
+  criteria:
+  - reconcile classifies an orphan whose <home>/.bunker owner/ports metadata is missing
+    or unreadable as UNPROVEN (skipped + counted + ONE warning naming agent id and
+    cause), NOT destroyed; in-pool-but-unaligned and malformed metadata keep their
+    fail-closed destroyed treatment (table rows preserved); a table-driven test covers
+    readable-foreign / missing / unreadable / in-pool-unaligned; full ./internal/agent/
+    suite green
+  status: complete
+  created_at: '2026-09-29T20:59:32.844193+00:00'
+  completed_at: '2026-09-29T21:34:30.836354+00:00'
+- id: PM-BUNKER-20260929-STRANDED
+  title: merge stranded complete branches
+  criteria:
+  - Both wt/REV-BUNKER-SEC-TRIO and wt/DF-BUNKER-78 are ancestors of origin/main with
+    green build/test
+  status: complete
+  created_at: '2026-09-29T22:58:08.935599+00:00'
+  completed_at: '2026-09-29T23:08:25.630410+00:00'
+- id: PERF-013
+  title: 'destroy size probe tolerates a stale-cold cache: poll DiskUsedBytes before
+    falling back to the 10-min floor'
+  criteria:
+  - '1) internal/cli/destroy.go size-probe path polls AgentMetrics until DiskUsedBytes
+    > 0 with a bounded deadline inside the existing 15s probe budget before giving
+    up, so a cold disk-usage cache does not silently shrink a >2GB destroy deadline
+    to the 10-min floor; 2) a genuinely-unknown size (probe errors / still 0 after
+    the window) keeps the fail-closed floor exactly as today; 3) new tests drive the
+    var seam destroyHomeSizeProbe (or the poller) covering: cold cache serving 0 then
+    >0 -> sized deadline; always-0 within window -> floor; immediate error -> floor;
+    4) go build ./... && go vet ./... && gofmt clean && go test ./internal/cli/...
+    -count=1 green'
+  status: in_progress
+  created_at: '2026-09-29T23:52:10.164902+00:00'
