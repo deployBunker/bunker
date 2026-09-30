@@ -3732,18 +3732,3 @@ tasks:
   status: complete
   created_at: '2026-09-29T22:58:08.935599+00:00'
   completed_at: '2026-09-29T23:08:25.630410+00:00'
-- id: PERF-013
-  title: 'destroy size probe tolerates a stale-cold cache: poll DiskUsedBytes before
-    falling back to the 10-min floor'
-  criteria:
-  - '1) internal/cli/destroy.go size-probe path polls AgentMetrics until DiskUsedBytes
-    > 0 with a bounded deadline inside the existing 15s probe budget before giving
-    up, so a cold disk-usage cache does not silently shrink a >2GB destroy deadline
-    to the 10-min floor; 2) a genuinely-unknown size (probe errors / still 0 after
-    the window) keeps the fail-closed floor exactly as today; 3) new tests drive the
-    var seam destroyHomeSizeProbe (or the poller) covering: cold cache serving 0 then
-    >0 -> sized deadline; always-0 within window -> floor; immediate error -> floor;
-    4) go build ./... && go vet ./... && gofmt clean && go test ./internal/cli/...
-    -count=1 green'
-  status: in_progress
-  created_at: '2026-09-29T23:52:10.164902+00:00'
