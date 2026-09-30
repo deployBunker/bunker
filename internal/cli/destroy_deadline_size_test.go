@@ -28,6 +28,11 @@ type destroySizeMockServer struct {
 	mockBunkerdServer
 	destroyReq   *v1.DestroyAgentRequest
 	metricsBytes uint64
+	// metricsSeq, when non-empty, is consumed one entry per AgentMetrics
+	// call and its last entry repeats (the PERF-013 cold-cache script:
+	// leading 0s from an unwarmed disk-usage snapshot, then the real
+	// footprint once the daemon's background walk lands).
+	metricsSeq   []uint64
 	metricsErr   error
 	metricsCalls int
 }
@@ -48,16 +53,36 @@ func (m *destroySizeMockServer) AgentMetrics(
 	if m.metricsErr != nil {
 		return nil, m.metricsErr
 	}
+	if len(m.metricsSeq) > 0 {
+		used := len(m.metricsSeq) - 1
+		if m.metricsCalls-1 < used {
+			used = m.metricsCalls - 1
+		}
+		return connect.NewResponse(&v1.AgentMetricsResponse{
+			AgentId:       req.Msg.GetAgentId(),
+			DiskUsedBytes: m.metricsSeq[used],
+		}), nil
+	}
 	return connect.NewResponse(&v1.AgentMetricsResponse{
 		AgentId:       req.Msg.GetAgentId(),
 		DiskUsedBytes: m.metricsBytes,
 	}), nil
 }
 
-// newDestroySizeServer wires the mock into a CLI config the command can load.
+// newDestroySizeServer wires the mock into a CLI config the command can load,
+// and shrinks the PERF-013 poll seams so the tests never wait out the
+// production 15s probe budget.
 func newDestroySizeServer(t *testing.T, mock *destroySizeMockServer) {
 	t.Helper()
 	t.Setenv(SessionTargetEnvVar, "default")
+	origWindow := destroyHomeSizePollWindow
+	origBackoff := destroyHomeSizePollBackoff
+	destroyHomeSizePollWindow = 40 * time.Millisecond
+	destroyHomeSizePollBackoff = 5 * time.Millisecond
+	t.Cleanup(func() {
+		destroyHomeSizePollWindow = origWindow
+		destroyHomeSizePollBackoff = origBackoff
+	})
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 	srv := newDestroyTestServer(t, mock)

@@ -41,6 +41,46 @@ var destroyRequestTimeout = config.DestroyRequestTimeoutForHomeSize(0)
 // destroy — the size-unknown floor above is already safe.
 var destroyHomeSizeProbeTimeout = 15 * time.Second
 
+// PERF-013 poll knobs, INSIDE the destroyHomeSizeProbeTimeout budget above
+// (never on top of it): destroyHomeSizePollWindow is how long the size probe
+// may keep polling past a cold disk-usage snapshot cache (internal/server
+// diskusage.go answers DiskUsedBytes=0 until the daemon's first per-agent home
+// walk lands, within its 5-minute TTL), and destroyHomeSizePollBackoff is the
+// sleep between polls. Vars (not consts) purely as test seams — production
+// never writes them.
+var (
+	destroyHomeSizePollWindow  = 10 * time.Second
+	destroyHomeSizePollBackoff = 250 * time.Millisecond
+)
+
+// destroyHomeSizeProbeWithRetry polls probe until it reports a usable size or
+// the poll window expires. A cold cache serves 0 for a moment before the
+// daemon's background walk lands, so a 0 answer is treated as "not yet known"
+// and retried — but a probe ERROR means the daemon cannot answer metrics at
+// all, so that is fail-closed single-attempt (one try, no hammering). The
+// window is subdivided out of destroyHomeSizeProbeTimeout's budget, so the
+// probe as a whole still never delays the destroy beyond it.
+func destroyHomeSizeProbeWithRetry(ctx context.Context, probe func(context.Context) (uint64, error)) (uint64, error) {
+	deadline := time.Now().Add(destroyHomeSizePollWindow)
+	for {
+		size, err := probe(ctx)
+		if err == nil && size > 0 {
+			return size, nil
+		}
+		if err != nil || !time.Now().Before(deadline) || ctx.Err() != nil {
+			if err != nil {
+				return 0, err
+			}
+			return 0, fmt.Errorf("home size still unknown after %s of polling: %w", destroyHomeSizePollWindow, context.DeadlineExceeded)
+		}
+		select {
+		case <-time.After(destroyHomeSizePollBackoff):
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		}
+	}
+}
+
 // destroyHomeSizeProbe resolves the agent's on-disk footprint in bytes. The
 // daemon serves it from its per-agent disk-usage snapshot cache
 // (internal/server diskusage.go: one home walk per agent per 5m TTL), so a
@@ -184,15 +224,19 @@ Examples:
 			token := resolveToken(entry)
 
 			// DF-BUNKER-81 criterion 1: size the deadline from the agent's
-			// actual footprint. The probe is best-effort — a daemon that
-			// cannot answer leaves homeBytes at 0 and the floor deadline
-			// applies — and it never fails the destroy.
+			// actual footprint. PERF-013: the probe polls past a cold
+			// disk-usage snapshot cache (an immediate 0 is "not yet known",
+			// not "known empty") inside the existing probe budget; a probe
+			// error or a window that expires still leaves homeBytes at 0
+			// and the floor deadline applies. It never fails the destroy.
 			homeBytes := uint64(0)
 			sizeCtx, sizeCancel := context.WithTimeout(context.Background(), destroyHomeSizeProbeTimeout)
-			if size, serr := destroyHomeSizeProbe(sizeCtx, client, token, agentID); serr == nil {
+			defer sizeCancel()
+			if size, serr := destroyHomeSizeProbeWithRetry(sizeCtx, func(ctx context.Context) (uint64, error) {
+				return destroyHomeSizeProbe(ctx, client, token, agentID)
+			}); serr == nil {
 				homeBytes = size
 			}
-			sizeCancel()
 
 			deadline := destroyDeadlineForHomeSize(homeBytes)
 			fmt.Println(destroyProgressLine(agentID, homeBytes, deadline, skipArchive))
