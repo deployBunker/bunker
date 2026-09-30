@@ -1,0 +1,1 @@
+{"tick":"bunker-2026-09-29-23-50-55","wave_budget":1,"workers":1,"tasks":[{"id":"PERF-013","worktree":"/home/kara/worktrees/bunker-PERF-013","branch":"wt/PERF-013","base":"origin/main","base_sha":"e2b9c0e","model":"glm-5.3-flash","provider":"zai-glm-default","brief":"/tmp/foreman-worker-PERF-013.txt"}],"manifest_written_at":"2026-09-29T23:55:00-05:00"}

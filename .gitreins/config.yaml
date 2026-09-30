@@ -18,7 +18,7 @@ defaults:
   # cross-compile four binaries, drive a Go-less PATH probe and run a shell suite).
   # Pre-solve class gitreins-judge-tier2-evaluator-time-cap-incomplete (corpus 1464)
   # prescribes an isolated chore raise + a re-judge on the UNCHANGED commit.
-  max_iterations: 200
+  max_iterations: 250 # ESCALATION 200 -> 250 (tick 538): 200 starved once on PERF-013 (verdict 654bcbf3, "Iteration cap (200) reached (200.9 used)", tier1 PASS — a cap, not a merits failure); single starved run licenses ONE raise.
   # ESCALATION (25m -> 45m -> 60m): 25m starved twice on DF-BUNKER-25 (verdicts
   # 2c1b6bcd + d5a02a07). 45m starved twice on DF-BUNKER-31 (verdict 0b489dc9
   # items:[] + async job-27f8d7f4 re-run, both "Time cap (45m) exceeded",
@@ -124,11 +124,11 @@ guards:
 #   max_file_bytes                                         -> evaluator_cfg.get("max_file_bytes", 131072)
 evaluator:
   model: deepseek-v4-flash
-  max_iterations: 200
+  max_iterations: 250 # tick 538 PERF-013: 200 starved once (654bcbf3, 200.9 used) -> one rung.
   max_time: "90m"  # tick 500: 45m starved twice on DF-BUNKER-31 (defaults block); tick 544: 60m starved on INT-CI-042 under sibling-session contention
   max_input_tokens: "16M"
   max_output_tokens: "384k"
-  cap: "200/90m/16M/384k"
+  cap: "250/90m/16M/384k"
   # ── Context-growth knobs (INT-CI-014, measured 2026-09-17) ────
   # MEASURED (docs/tier2-eval-budget.md, instrumented runs e6d24301 + 616c1d33 on
   # INT-CI-017 at HEAD 848625c): 23 LLM calls, per-call prompt 6,211 -> 29,323
