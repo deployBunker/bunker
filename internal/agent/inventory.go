@@ -2,8 +2,11 @@ package agent
 
 import (
 	"os"
+	"os/user"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 )
 
 // ── DF-BUNKER-21 (AC5): the residue inventory ──────────────────────────────
@@ -170,7 +173,21 @@ func (m *AgentManager) ResidueInventory() ResidueInventory {
 			// (manager_destroy.go treats err != nil as the user being
 			// gone; internal/cli lingerUserExists maps it to the prune's
 			// target class). Error = user absent = stale linger.
-			if _, lookupErr := lookupUser(name); lookupErr != nil {
+			//
+			// PERF-007: the classification goes through the manager's
+			// short-TTL cache (lingerUserCache) rather than calling
+			// lookupUser directly. ResidueInventory is served on every
+			// ServerInfo (bunker connect, health checks, preflights), and
+			// one uncached getpwnam_r per entry (~0.32ms) put a measured
+			// ~230ms on every call at 724 linger entries — 100x AgentMetrics
+			// for a read-only status RPC. DATA SEMANTICS: within
+			// residueLingerCacheTTL the linger-plane verdicts may be up to
+			// TTL stale — a user created or deleted mid-window is observed
+			// on the first probe after expiry, not at the flip. The first
+			// probe always pays full price (freshness at call 1). The other
+			// three planes (users/homes/keys) stay uncached: they read the
+			// live directory and tracker state, which is cheap.
+			if !m.lingerUsers.userExists(name, lookupUser) {
 				inv.StaleLinger++
 			}
 		}
@@ -218,6 +235,90 @@ func lingerRawDirNames(dir string) ([]string, error) {
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+// lingerUserCache memoises one name's user-existence verdict for
+// residueLingerCacheTTL (PERF-007). It is the linger plane's replacement for
+// the per-entry getpwnam_r: ServerInfo resolves through ResidueInventory on
+// every call, and at bunker-mvp scale (724 linger entries) the uncached lookups
+// alone measured ~230ms per call for a read-only status RPC.
+//
+// Contract:
+//   - A cached verdict is trusted until its own TTL expires; a name seen for
+//     the first time is looked up immediately, so the FIRST probe after daemon
+//     start always reports fresh data.
+//   - Within the TTL the verdict may be stale by up to residueLingerCacheTTL:
+//     a user created or deleted mid-window is observed on the first probe
+//     after expiry. The stale linger count is an operator status signal, not a
+//     mutation input — every writer (destroy/rollback/prune) resolves through
+//     the live seam.
+//   - The nil receiver disables the cache entirely: every lookup is fresh, the
+//     exact pre-PERF-007 behaviour. Degradation, never a panic.
+//
+// Safe for concurrent use: ServerInfo, the CLI status surface and any future
+// caller may probe from different goroutines.
+type lingerUserCache struct {
+	mu      sync.Mutex
+	entries map[string]lingerUserVerdict
+	// clock returns the time the TTL is measured against. Production leaves
+	// it nil (time.Now); tests pin it so expiry is deterministic.
+	clock func() time.Time
+}
+
+// residueLingerCacheTTL bounds how long a linger plane's user-existence verdict
+// may be served without a fresh lookup. Chosen inside the task's 1-5s window:
+// long enough that a burst of ServerInfo calls (bunker connect = info +
+// preflight + health) pays the plane once, short enough that the documented
+// staleness never misleads an operator for long.
+const residueLingerCacheTTL = 3 * time.Second
+
+// lingerUserVerdict is one cached user-existence classification: whether the
+// user database resolved the name (exists=false means stale linger) and when
+// the verdict stops being trustworthy.
+type lingerUserVerdict struct {
+	exists    bool
+	expiresAt time.Time
+}
+
+// userExists reports whether username resolves in the user database, serving a
+// verdict from the cache when one is still young and paying a real lookup
+// (through lookup, normally the package seam) when it is not. The error/exists
+// translation is the caller's classification rule and is NOT cached in shape —
+// only the boolean verdict is, which is the only fact the linger plane consumes.
+func (c *lingerUserCache) userExists(username string, lookup func(string) (*user.User, error)) bool {
+	if c == nil {
+		_, err := lookup(username)
+		return err == nil
+	}
+	nowFn := c.clock
+	if nowFn == nil {
+		nowFn = time.Now
+	}
+	now := nowFn()
+
+	c.mu.Lock()
+	if c.entries != nil {
+		if v, ok := c.entries[username]; ok && now.Before(v.expiresAt) {
+			c.mu.Unlock()
+			return v.exists
+		}
+	}
+	c.mu.Unlock()
+
+	// The lookup runs OUTSIDE the lock: getpwnam_r is the cost we are
+	// memoising, and holding the mutex through it would serialise concurrent
+	// probes behind the very expense this cache exists to avoid. A thundering
+	// herd on one cold name costs at most one redundant lookup per goroutine —
+	// the same price the uncached code paid on every call.
+	_, err := lookup(username)
+
+	c.mu.Lock()
+	if c.entries == nil {
+		c.entries = make(map[string]lingerUserVerdict)
+	}
+	c.entries[username] = lingerUserVerdict{exists: err == nil, expiresAt: now.Add(residueLingerCacheTTL)}
+	c.mu.Unlock()
+	return err == nil
 }
 
 // residuePlaneCount is the number of independently probed planes; the status is

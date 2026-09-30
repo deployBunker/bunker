@@ -81,6 +81,14 @@ type AgentManager struct {
 	// production; a nil seam skips the stage like the slice seam above.
 	runAdoptedDockerUnit func(ctx context.Context, unitName, uid, gid string, unitKnobs []SystemdKnob) error
 
+	// lingerUsers memoises the linger plane's user-existence classifications
+	// for residueLingerCacheTTL (PERF-007): ServerInfo serves ResidueInventory
+	// on every call and the uncached per-entry getpwnam_r measured ~230ms per
+	// call at 724 linger entries. Nil (hand-built test managers) disables the
+	// cache — the exact pre-PERF-007 uncached classification; NewAgentManager
+	// wires the production cache.
+	lingerUsers *lingerUserCache
+
 	// reconcileDone is closed once Reconcile has run (or been given up on).
 	// The TTL reaper waits for it so it can never destroy an agent before
 	// the registry has been replayed and reconciled against system state.
@@ -123,6 +131,10 @@ func NewAgentManager(cfg *config.Config, logger *slog.Logger, tracker *resource.
 		tunnelMgr: tunnelMgr, tailscaleMgr: tailscaleMgr,
 		ttlStop:       make(chan struct{}),
 		reconcileDone: make(chan struct{}),
+		// PERF-007: the production linger-plane user-existence cache (see
+		// lingerUserCache). Tests that build AgentManager literals leave it
+		// nil and get the uncached pre-PERF-007 classification.
+		lingerUsers: &lingerUserCache{},
 	}
 	am.listSystemAgents = defaultListSystemAgents
 	// DF-BUNKER-81: Destroy grew a variadic option list (the per-request
