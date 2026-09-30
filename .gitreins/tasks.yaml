@@ -3754,3 +3754,12 @@ tasks:
   status: complete
   created_at: '2026-09-30T05:17:51.539159+00:00'
   completed_at: '2026-09-30T05:34:25.442381+00:00'
+- id: QA-BUNKER-40
+  title: Load-timing flake in TestDiskUsageCacheStale_ConcurrentExpiredCallersTriggerExactlyOneWalk
+  criteria:
+  - go test -race -count=20 -run TestDiskUsageCacheStale ./internal/server/ passes;
+    the test deterministically awaits the in-flight walk (no fixed sleep) before the
+    exactly-1 assertion; diskusage.go product code untouched; go build ./... and go
+    vet ./... green
+  status: in_progress
+  created_at: '2026-09-30T06:43:14.121934+00:00'
