@@ -3791,3 +3791,20 @@ tasks:
   status: complete
   created_at: '2026-09-30T13:00:45.620973+00:00'
   completed_at: '2026-09-30T13:01:10.444604+00:00'
+- id: GAP-094
+  title: 'S3 exec live-half verification: CLI must surface truncation_notice'
+  criteria:
+  - 'CLI exec prints the server truncation notice when exec-cap truncates; live proof:
+    stdin sha256 round-trip, base64 binary survival, cap notice visible'
+  status: complete
+  created_at: '2026-09-30T14:38:57.913129+00:00'
+  completed_at: '2026-09-30T14:43:44.227230+00:00'
+- id: QA-BUNKER-39
+  title: qa collect destroy retry + honest FAIL on deadline_exceeded
+  criteria:
+  - bunker-qa.sh collect retries destroy with backoff, re-checks bunker list, and
+    on final failure prints agent id + server + TTL reap time instead of 'temp agent
+    destroyed'; capacity refusal hint added; bash -n green; stubbed proof
+  status: complete
+  created_at: '2026-09-30T14:52:15.429423+00:00'
+  completed_at: '2026-09-30T15:37:38.591689+00:00'
