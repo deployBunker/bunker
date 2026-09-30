@@ -61,7 +61,16 @@ type bunkerdService struct {
 	// orphanUIDSummarizer is the DF-BUNKER-34 orphan probe (nil in tests and
 	// unwired services: no probe, no fabricated "healthy"). The production
 	// wiring (server.go) sets it to the agent manager's OrphanUIDSummary.
+	// GetAgent goes through it one id at a time.
 	orphanUIDSummarizer func(agentID string) string
+	// orphanUIDBatchSummarizer is the PERF-008 batch shape of the same
+	// probe: one verdict per agent id from a SINGLE /proc sweep, instead of
+	// one sweep per agent (list sweeps paid ~10ms per agent per call at 231
+	// pids — linear in fleet size, on every list/poll). The production
+	// wiring (server.go) sets it to the agent manager's OrphanUIDSummaries;
+	// ListAgents falls back to per-agent calls when only the single field is
+	// set (tests constructing plain bunkerdService values).
+	orphanUIDBatchSummarizer func(agentIDs []string) []string
 	// auditLog is the daemon's audit trail writer (nil when audit logging
 	// is disabled). QueryAudit reads from it; the audit interceptor writes
 	// to it. It is only used for read access here — the interceptor owns
@@ -555,7 +564,23 @@ func (s *bunkerdService) ListAgents(ctx context.Context, req *connect.Request[v1
 	// state the status planes cannot see (the cube-las-00 shape: a
 	// "healthy" fleet ticking against a deleted home for 20+ hours); without
 	// this field list/info read exactly as healthy.
-	if s.orphanUIDSummarizer != nil {
+	//
+	// PERF-008: the check is served from ONE batch verdict — a single /proc
+	// sweep classifies the whole fleet, instead of the per-agent sweeps that
+	// made every list/poll linear in agent count. The per-agent fallback
+	// keeps hand-built services (single summarizer only) working unchanged;
+	// freshness is per-request either way: every response reflects the
+	// process table as of this call, nothing is cached across calls.
+	if s.orphanUIDBatchSummarizer != nil {
+		ids := make([]string, len(summaries))
+		for i, sum := range summaries {
+			ids[i] = sum.GetAgentId()
+		}
+		verdicts := s.orphanUIDBatchSummarizer(ids)
+		for i, sum := range summaries {
+			sum.OrphanUidDetail = verdicts[i]
+		}
+	} else if s.orphanUIDSummarizer != nil {
 		for _, sum := range summaries {
 			sum.OrphanUidDetail = s.orphanUIDSummarizer(sum.GetAgentId())
 		}
