@@ -64,6 +64,19 @@ func newPerf010Fixture(t *testing.T) *perf010Fixture {
 	return fix
 }
 
+// awaitWalk deterministically waits for the background walk to actually
+// begin: the walker closes started as its first act, so reading the counter
+// is ordered after the walk's start rather than racing it. This closes the
+// loaded-scheduler window that hit QA-BUNKER-40 (all 16 callers had returned
+// while the freshly spawned walk goroutine was still unscheduled — walks read
+// 0). Blocking forever is correct here: the walk is spawned unconditionally
+// before callers return, so a timeout would only ever misfire under a loaded
+// scheduler (the exact defect) by abandoning a walk that is about to start;
+// go test -timeout remains the ultimate bound.
+func (fix *perf010Fixture) awaitWalk() {
+	<-fix.started
+}
+
 // blockWalk installs the walker every PERF-010 test uses: it counts itself,
 // announces it started, then blocks until the test releases it. A call that
 // returns while the walker is still blocked therefore did not wait for it.
@@ -204,6 +217,16 @@ func TestDiskUsageCacheStale_ConcurrentExpiredCallersTriggerExactlyOneWalk(t *te
 
 	// All callers have returned while the walk is still blocked on release:
 	// exactly one walk was started, none duplicated it, none waited on it.
+	// Count only AFTER deterministically awaiting the walk: all callers
+	// returning does not imply the background walk goroutine has been
+	// scheduled yet — on a loaded box (QA-BUNKER-40) it was still sitting
+	// in the run queue and walks read 0. The walker closes fix.started as
+	// its first act, so this await is a happens-before edge on the real
+	// synchronization, not a sleep. It weakens nothing: when awaitWalk
+	// returns, the walk has begun but is still parked on fix.release (it
+	// cannot have completed or published), and a caller that had blocked
+	// on the walk could never have reached wg.Wait's return.
+	fix.awaitWalk()
 	if got := atomic.LoadInt32(fix.walks); got != 1 {
 		t.Fatalf("walks=%d while the walk is still in flight, want exactly 1 (single-flight must dedupe expired callers)", got)
 	}
