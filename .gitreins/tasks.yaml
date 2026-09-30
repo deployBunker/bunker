@@ -3732,3 +3732,12 @@ tasks:
   status: complete
   created_at: '2026-09-29T22:58:08.935599+00:00'
   completed_at: '2026-09-29T23:08:25.630410+00:00'
+- id: GAP-093-LIVE
+  title: 'GAP-093 live half: fail-closed binding verified on bunker-mvp'
+  criteria:
+  - 1) With no binding, every mutating bunker command refuses with the named message
+    and non-zero exit; 2) two sessions with different explicit targets touch different
+    servers with zero cross-writes; 3) read-only output names its resolved target;
+    4) full suite + guard green; evidence doc committed
+  status: in_progress
+  created_at: '2026-09-30T02:05:47.599047+00:00'
