@@ -345,8 +345,10 @@ const (
 // persisted in, and the permission bits the daemon creates (dir 0700, file
 // 0600 — owner-only, never group/world readable).
 const (
-	// DefaultSecretsDir is where generated secrets are persisted when
-	// BUNKER_SECRETS_DIR is unset.
+	// DefaultSecretsDir is the legacy ambient location, relative to $HOME,
+	// where generated secrets are persisted when NO config-derived location
+	// exists (no agent.base_data_dir / agent.registry.path) and
+	// BUNKER_SECRETS_DIR is unset (REV-BUNKER-SECRET-PATH).
 	DefaultSecretsDir = ".config/bunkerd/secrets"
 	// JWTSecretFileName is the persisted auto-generated JWT signing secret.
 	JWTSecretFileName = "jwt_secret"
@@ -359,19 +361,91 @@ const (
 	GeneratedJWTSecretBytes = 32
 )
 
+// errAmbientSecretOutsideStateTree marks the REV-BUNKER-SECRET-PATH
+// fail-closed refusal: a persisted jwt_secret was found OUTSIDE the
+// configured state tree and was not adopted. Tests assert on it to keep the
+// ambient refusal distinct from the unreadable-file error.
+type errAmbientSecretOutsideStateTree struct{}
+
+func (errAmbientSecretOutsideStateTree) Error() string {
+	return "ambient jwt_secret outside the configured state tree"
+}
+
 // SecretsDirOrDefault returns the directory the daemon persists generated
-// secrets in: BUNKER_SECRETS_DIR when set, otherwise $HOME/<DefaultSecretsDir>.
-// It is a lookup, not a create — the caller creates it 0700 on write. A host
-// with no HOME yields the relative default, which fails loudly at write time
-// rather than silently scattering secrets into the process CWD.
-func SecretsDirOrDefault() string {
+// secrets in, resolved with config containment first (REV-BUNKER-SECRET-PATH):
+//
+//  1. BUNKER_SECRETS_DIR when set — the operator named the location
+//     explicitly, it wins over everything;
+//  2. otherwise a dir derived from the CONFIGURED state tree —
+//     <agent.base_data_dir>/secrets, or, when only the registry path is
+//     configured, <registry parent>/secrets. Never os.UserHomeDir: a
+//     config that names a state tree keeps every daemon-scoped file inside
+//     it, so the same config file yields the same secret location on every
+//     host and every HOME;
+//  3. otherwise the legacy ambient default $HOME/<DefaultSecretsDir> —
+//     preserved for configs that name no state tree at all: generation
+//     still lands there (with a loud startup WARN, see
+//     ResolveSecretsLocation), but a PRE-EXISTING secret at an ambient
+//     location is never silently adopted (REV-BUNKER-SECRET-PATH).
+//
+// It is a lookup, not a create — the caller creates it 0700 on write. With no
+// HOME and no tree it yields the relative default, which fails loudly at
+// write time rather than silently scattering secrets into the process CWD.
+func SecretsDirOrDefault(baseDataDir, registryPath string) string {
 	if env := strings.TrimSpace(os.Getenv(SecretsDirEnv)); env != "" {
 		return env
+	}
+	if dir := strings.TrimSpace(baseDataDir); dir != "" {
+		return filepath.Join(dir, "secrets")
+	}
+	if reg := strings.TrimSpace(registryPath); reg != "" {
+		return filepath.Join(filepath.Dir(reg), "secrets")
 	}
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		return filepath.Join(home, DefaultSecretsDir)
 	}
 	return DefaultSecretsDir
+}
+
+// SecretsDirOrDefault returns the directory the daemon persists generated
+// secrets in for THIS config (the method form of SecretsDirOrDefault).
+func (c *Config) SecretsDirOrDefault() string {
+	return SecretsDirOrDefault(c.Agent.BaseDataDir, c.Agent.Registry.Path)
+}
+
+// SecretsSourceKind says which resolution rule produced the secrets dir:
+// "env" (BUNKER_SECRETS_DIR), "config" (derived from the configured state
+// tree) or "home" (the ambient $HOME default — no config tree was named).
+type SecretsSourceKind string
+
+const (
+	// SecretsSourceEnv: BUNKER_SECRETS_DIR named the location explicitly.
+	SecretsSourceEnv SecretsSourceKind = "env"
+	// SecretsSourceConfig: derived from agent.base_data_dir /
+	// agent.registry.path — inside the configured state tree.
+	SecretsSourceConfig SecretsSourceKind = "config"
+	// SecretsSourceHome: the ambient $HOME/<DefaultSecretsDir> fallback.
+	SecretsSourceHome SecretsSourceKind = "home"
+)
+
+// ResolveSecretsLocation resolves WHERE this config's generated secrets live
+// and WHY that location was chosen: the dir, the jwt_secret path inside it,
+// the source kind, and — for the ambient fallback — the config/env keys the
+// operator can set to contain it. Every startup notice about generated
+// secrets names these paths, so a location that surprises the operator is
+// visible instead of discovered after an incident.
+func (c *Config) ResolveSecretsLocation() (dir, path string, kind SecretsSourceKind, hintKeys []string) {
+	switch {
+	case strings.TrimSpace(os.Getenv(SecretsDirEnv)) != "":
+		kind = SecretsSourceEnv
+	case strings.TrimSpace(c.Agent.BaseDataDir) != "" || strings.TrimSpace(c.Agent.Registry.Path) != "":
+		kind = SecretsSourceConfig
+	default:
+		kind = SecretsSourceHome
+		hintKeys = []string{"agent.base_data_dir", "agent.registry.path", SecretsDirEnv}
+	}
+	dir = c.SecretsDirOrDefault()
+	return dir, filepath.Join(dir, JWTSecretFileName), kind, hintKeys
 }
 
 // AuditConfig holds the daemon-side audit trail settings. When enabled, every
@@ -1428,7 +1502,13 @@ func (c *Config) ResolveSecrets() error {
 //     used as-is — nothing is written;
 //  2. otherwise <secrets-dir>/jwt_secret is loaded if it exists (this is what
 //     keeps API keys and issued JWTs valid across restarts, and across ticks
-//     that re-run the binary);
+//     that re-run the binary). The secrets dir resolves config-first
+//     (REV-BUNKER-SECRET-PATH): BUNKER_SECRETS_DIR, then the configured
+//     state tree (agent.base_data_dir / agent.registry.path), and only for a
+//     config naming no tree the ambient $HOME default. At an AMBIENT
+//     location a pre-existing secret is NOT adopted — that file belongs to
+//     some other run/deployment, and adopting it silently flips the daemon
+//     identity between runs — the daemon refuses instead;
 //  3. only when NO secret exists anywhere is one generated (32 crypto-random
 //     bytes, hex), persisted to <secrets-dir>/jwt_secret with mode 0600 (dir
 //     0700), read back, and reported in the returned message.
@@ -1444,7 +1524,7 @@ func (c *Config) ResolveSecrets() error {
 // see at boot ("" when nothing happened); each notice names its node and
 // reason so a dead record is visible rather than silent.
 func (c *Config) EnsureJWTSecret() (string, error) {
-	dir := SecretsDirOrDefault()
+	dir := c.SecretsDirOrDefault()
 	path := filepath.Join(dir, JWTSecretFileName)
 
 	if c.Auth.JWTSecret != "" {
@@ -1468,19 +1548,42 @@ func (c *Config) EnsureJWTSecret() (string, error) {
 		return "", nil
 	}
 
-	// Source 2: an already-persisted secret. Signature continuity: existing
-	// API keys were derived from this value, so it must be reused verbatim.
-	if persisted, err := readSecretFile("auth.jwt_secret", path); err == nil {
+	// REV-BUNKER-SECRET-PATH: WHERE the secret lives is decided by the
+	// resolution above (env > configured state tree > ambient $HOME), and a
+	// pre-existing file is only ever adopted at a location the OPERATOR
+	// named (env or the configured tree). At the AMBIENT location a
+	// pre-existing file is refused: the old code adopted it silently, so
+	// the same config produced different secret locations and a different
+	// daemon identity depending on HOME (the reviewer's Run A/Run B), and
+	// on a shared host could adopt another deployment's signing key
+	// outright. Generating over it would rotate a live signing key out from
+	// under issued agent keys, so neither silent branch is allowed —
+	// BUNKER_SECRETS_DIR is the explicit opt-in that reclaims a legacy
+	// ambient location, and the refusal says so.
+	//
+	// Order matters: the ambient refusal only fires when the ambient file is
+	// READABLE, so the actionable unreadable-file refusal at the resolved
+	// location is never masked by it.
+	_, _, locKind, _ := c.ResolveSecretsLocation()
+	persisted, perr := readSecretFile("auth.jwt_secret", path)
+	switch {
+	case perr == nil && locKind == SecretsSourceHome:
+		return "", fmt.Errorf("%w: refusing to start: %s exists but was resolved from the AMBIENT HOME default (no config/env location was set) — adopting it silently changes the daemon identity between runs, and generating over it would rotate a live signing key. Point BUNKER_SECRETS_DIR at %s to use it explicitly, or set agent.base_data_dir / agent.registry.path so the secret lives inside the configured state tree", errAmbientSecretOutsideStateTree{}, path, dir)
+	case perr == nil:
+		// Source 2: an already-persisted secret at a location the
+		// operator named (env or the configured tree). Signature
+		// continuity: existing API keys were derived from this value, so
+		// it must be reused verbatim.
 		c.Auth.JWTSecret = persisted
 		// Record where it came from so CheckAuth does not misreport a
 		// file-backed secret as legacy inline storage (and so an operator
 		// reading the effective config sees the real location).
 		c.Auth.JWTSecretFile = path
-		return fmt.Sprintf("bunkerd: loaded auth.jwt_secret from %s", path), nil
-	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Sprintf("bunkerd: loaded auth.jwt_secret from %s%s", path, c.ambientHomeWarn()), nil
+	case !errors.Is(perr, os.ErrNotExist):
 		// Present but unreadable/empty: do NOT generate a replacement over
 		// it — that would rotate a live secret out from under issued keys.
-		return "", fmt.Errorf("refusing to start: %s exists but cannot be read (%w) — fix its permissions (mode 0600, owner-readable) or remove it to have a new secret generated", path, err)
+		return "", fmt.Errorf("refusing to start: %s exists but cannot be read (%w) — fix its permissions (mode 0600, owner-readable) or remove it to have a new secret generated", path, perr)
 	}
 
 	// Source 3: first boot — generate, persist, load back.
@@ -1491,7 +1594,7 @@ func (c *Config) EnsureJWTSecret() (string, error) {
 	if err := writeSecretFile(dir, path, secret); err != nil {
 		return "", fmt.Errorf("persist generated jwt_secret: %w", err)
 	}
-	persisted, err := readSecretFile("auth.jwt_secret", path)
+	persisted, err = readSecretFile("auth.jwt_secret", path)
 	if err != nil {
 		return "", fmt.Errorf("reload generated jwt_secret: %w", err)
 	}
@@ -1500,7 +1603,42 @@ func (c *Config) EnsureJWTSecret() (string, error) {
 	}
 	c.Auth.JWTSecret = persisted
 	c.Auth.JWTSecretFile = path
-	return fmt.Sprintf("bunkerd: *** GENERATED a new auth.jwt_secret *** (no secret was configured) and persisted it to %s (mode 0600, dir %s mode 0700) — existing agent API keys remain valid until this file is replaced", path, dir), nil
+	return fmt.Sprintf("bunkerd: *** GENERATED a new auth.jwt_secret *** (no secret was configured) and persisted it to %s (mode 0600, dir %s mode 0700) — existing agent API keys remain valid until this file is replaced%s%s", path, dir, c.ambientHomeWarn(), c.outsideTreeNote(dir)), nil
+}
+
+// ambientHomeWarn returns the containment warning appended to every startup
+// notice whose secrets dir resolved from the AMBIENT HOME default rather than
+// the config or the env (REV-BUNKER-SECRET-PATH criterion 3): it names the
+// resolved dir and the config/env keys an operator can set to pin the secret
+// inside the configured state tree. Empty for env- and config-derived
+// locations — those are exactly where the operator asked the secret to live.
+func (c *Config) ambientHomeWarn() string {
+	if _, _, kind, hints := c.ResolveSecretsLocation(); kind == SecretsSourceHome {
+		return fmt.Sprintf(" — WARNING: %s resolved from the AMBIENT HOME default, not the config; set one of [%s] to pin it inside the configured state tree", c.SecretsDirOrDefault(), strings.Join(hints, ", "))
+	}
+	return ""
+}
+
+// outsideTreeNote returns a NOTE appended to the first-boot generation notice
+// when the config names a state tree but a pre-existing jwt_secret ALSO sits
+// at the legacy ambient location: the daemon did not adopt it (its identity
+// comes from the tree now), and saying so keeps the Run A/Run B identity flip
+// visible instead of discovered. The foreign file's existence is checked with
+// a stat only — its content is never read. Empty unless the resolved dir is
+// config-derived and differs from the ambient one.
+func (c *Config) outsideTreeNote(dir string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	ambient := filepath.Join(home, DefaultSecretsDir)
+	if filepath.Clean(ambient) == filepath.Clean(dir) {
+		return ""
+	}
+	if _, err := os.Stat(filepath.Join(ambient, JWTSecretFileName)); err != nil {
+		return ""
+	}
+	return fmt.Sprintf(" — NOTE: a pre-existing auth.jwt_secret was found at %s, OUTSIDE the configured state tree (%s); it is NOT in use — set BUNKER_SECRETS_DIR=%s explicitly to adopt it", filepath.Join(ambient, JWTSecretFileName), dir, ambient)
 }
 
 // secretSourceLabel names where the configured jwt_secret came from, for the
@@ -1588,7 +1726,7 @@ func (c *Config) CheckAuth() (string, error) {
 	}
 	if inline := c.inlineSecrets(); len(inline) > 0 {
 		return fmt.Sprintf("bunkerd: *** WARNING: legacy secret storage *** — %s is set inline in the config file; the config file is copied, backed up and read by tooling, so the credential travels with it. Move it to a file: %s=\"<path>\" (file mode 0600, e.g. under %s) or auth.token_file/auth.jwt_secret_file. Precedence: inline < file path < env-file.",
-			strings.Join(inline, ", "), AuthTokenFileEnv, SecretsDirOrDefault()), nil
+			strings.Join(inline, ", "), AuthTokenFileEnv, c.SecretsDirOrDefault()), nil
 	}
 	return "", nil
 }

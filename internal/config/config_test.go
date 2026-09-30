@@ -1005,23 +1005,26 @@ func TestCheckAuth_WarnsOnInlineSecrets(t *testing.T) {
 	})
 }
 
-// TestSecretsDirOrDefault: env wins, otherwise $HOME/.config/bunkerd/secrets.
+// TestSecretsDirOrDefault: env wins; with no env the legacy test pins the
+// method form for a DefaultConfig (which carries base_data_dir, so the
+// config-derived dir wins over HOME — REV-BUNKER-SECRET-PATH). The
+// ambient-HOME branch itself is pinned by TestSecretsDirOrDefaultIsPure.
 func TestSecretsDirOrDefault(t *testing.T) {
 	clearSecretEnv(t)
 
 	t.Setenv(SecretsDirEnv, "/tmp/custom-secrets")
-	if got := SecretsDirOrDefault(); got != "/tmp/custom-secrets" {
+	cfg := DefaultConfig()
+	if got := cfg.SecretsDirOrDefault(); got != "/tmp/custom-secrets" {
 		t.Errorf("SecretsDirOrDefault() = %q, want /tmp/custom-secrets", got)
 	}
 
 	_ = os.Unsetenv(SecretsDirEnv)
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	want := filepath.Join(home, DefaultSecretsDir)
-	if got := SecretsDirOrDefault(); got != want {
+	t.Setenv("HOME", t.TempDir())
+	// DefaultConfig carries agent.base_data_dir, so with no env override the
+	// config-derived dir wins over HOME (REV-BUNKER-SECRET-PATH). Pin the
+	// precedence itself with the pure form instead of the method.
+	want := "/var/lib/bunkerd/secrets"
+	if got := SecretsDirOrDefault(cfg.Agent.BaseDataDir, ""); got != want {
 		t.Errorf("SecretsDirOrDefault() = %q, want %q", got, want)
-	}
-	if !strings.HasSuffix(want, filepath.Join(".config", "bunkerd", "secrets")) {
-		t.Errorf("default secrets dir %q is not the documented location", want)
 	}
 }
