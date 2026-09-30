@@ -876,17 +876,37 @@ echo ""
 echo "── 5. List ──"
 
 OUT=$(bunker list 2>&1 || true)
+# INT-CI-051: capture the printed Total ONCE — the floor cells below read
+# the number, and their failure messages quote the line verbatim. `|| true`
+# guards pipefail when no Total line exists (list's zero-agent early return).
+TOTAL_LINE="$(echo "$OUT" | grep '^Total:' | head -1 || true)"
+TOTAL_NOW="$(echo "$TOTAL_LINE" | sed -n 's/^Total: \([0-9][0-9]*\) agents.*/\1/p')"
 assert 'echo "$OUT" | grep -q "regr-alpha"' "list shows regr-alpha"
 if [ -n "$AUTO_ID" ] && [ "$AUTO_ID" != "regr-auto-fallback" ]; then
     assert 'echo "$OUT" | grep -q "'"$AUTO_ID"'"' "list shows $AUTO_ID"
-    # INT-CI-030: delta-based — the baseline (section 3b) absorbs any
-    # registry residue the shared runner carried in; this cell asserts
-    # exactly the two spawns THIS suite performed. Absolute expectation on a
-    # pristine host is unchanged (0 + 2 = 2).
-    assert 'echo "$OUT" | grep -q "Total: '"$((LIST_BEFORE + 2))"' agents"' "list shows 2 more agents than the pre-spawn baseline (baseline $LIST_BEFORE + 2)"
+    # INT-CI-030, refined by INT-CI-051: delta-by-PRESENCE with a numeric
+    # floor. The section-3b baseline absorbs residue present at connect,
+    # but registry-protected agents outside this suite's control can also
+    # appear or disappear BETWEEN that baseline and this section, so raw
+    # Total==LIST_BEFORE+2 arithmetic was flaky (run 36599500106: the
+    # suite's two agents were listed while the Total no longer matched
+    # baseline+2). This section asserts what the suite OWNS — a Total line
+    # exists and reads at least its own two spawns — and keeps the absolute
+    # count only on a pristine baseline (LIST_BEFORE=0 → exactly
+    # 'Total: 2 agents').
+    if [ "$LIST_BEFORE" -eq 0 ]; then
+        assert 'echo "$OUT" | grep -q "Total: 2 agents"' "list shows exactly 2 agents (pristine baseline 0 + 2)"
+    else
+        assert '[ -n "$TOTAL_NOW" ] && [ "$TOTAL_NOW" -ge 2 ]' "suite agents present but Total drifted (baseline $LIST_BEFORE, saw: ${TOTAL_LINE:-<no Total line>})"
+    fi
 else
-    # Same delta contract when the auto-spawn cell failed: baseline + 1.
-    assert 'echo "$OUT" | grep -q "Total: '"$((LIST_BEFORE + 1))"' agents"' "list shows 1 more agent than the pre-spawn baseline (baseline $LIST_BEFORE + 1)"
+    # Same contract with one suite agent (the auto-spawn cell failed
+    # above): floor 1, exact 'Total: 1 agents' on a pristine baseline.
+    if [ "$LIST_BEFORE" -eq 0 ]; then
+        assert 'echo "$OUT" | grep -q "Total: 1 agents"' "list shows exactly 1 agent (pristine baseline 0 + 1)"
+    else
+        assert '[ -n "$TOTAL_NOW" ] && [ "$TOTAL_NOW" -ge 1 ]' "suite agent present but Total drifted (baseline $LIST_BEFORE, saw: ${TOTAL_LINE:-<no Total line>})"
+    fi
 fi
 
 echo ""
