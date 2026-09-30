@@ -282,6 +282,9 @@ Examples:
 				if msg.GetStderr() != nil {
 					fmt.Fprint(cmd.ErrOrStderr(), string(msg.GetStderr()))
 				}
+				if notice := msg.GetTruncationNotice(); notice != "" {
+					fmt.Fprintf(cmd.ErrOrStderr(), "\nWARNING: output truncated by --exec-cap: %s\n", notice)
+				}
 				if msg.ExitCode != 0 {
 					exitCode = msg.ExitCode
 				}
