@@ -234,6 +234,10 @@ func (s *Store) writeAtomic(events []Event) error {
 	if err := syncDir(dir); err != nil {
 		return err
 	}
+	// The rewrite replaced the active file's inode; the store's persistent
+	// handles must not keep pointing at the old one (QA-BUNKER-43). The
+	// next append re-opens against the compacted file.
+	s.dropAppendHandlesLocked()
 	return nil
 }
 

@@ -199,7 +199,11 @@ func TestReplay_TolerantParsing(t *testing.T) {
 }
 
 func TestRotation_SizeCapAndBackups(t *testing.T) {
-	dir := t.TempDir()
+	// QA-BUNKER-43: 60 fsync'd spawns + rotations on the loaded ext4 root
+	// ran multiple seconds per append; this test pins retention semantics,
+	// not fsync latency, so it shares the tmpfs-capable test root (the real
+	// fs is covered by TestAppendFsyncBudgetCanary).
+	dir := fsyncHeavyTestRoot(t)
 	path := filepath.Join(dir, "agents.jsonl")
 	s := testStore(t, Options{Path: path, MaxBytes: 512, MaxBackups: 3})
 
@@ -252,7 +256,11 @@ func TestRotation_SizeCapAndBackups(t *testing.T) {
 }
 
 func TestCompact_ThousandEvents(t *testing.T) {
-	dir := t.TempDir()
+	// QA-BUNKER-43: ~1250 fsync'd events; on the loaded ext4 root this test
+	// stalled >15min inside syscall.Fsync (per-append open/close amplifying
+	// slow syncs). Run on a tmpfs root when available; the append path's
+	// own wall budget on the real fs is pinned by TestAppendFsyncBudgetCanary.
+	dir := fsyncHeavyTestRoot(t)
 	path := filepath.Join(dir, "agents.jsonl")
 	s := testStore(t, Options{Path: path, MaxBytes: 1 << 20, MaxBackups: 3})
 
@@ -331,7 +339,11 @@ func TestCompact_ThousandEvents(t *testing.T) {
 // TestCompact_RemovesRotatedBackups proves compaction cannot be undone by the
 // backups it superseded.
 func TestCompact_RemovesRotatedBackups(t *testing.T) {
-	dir := t.TempDir()
+	// QA-BUNKER-43: 40 fsync'd spawns + rotation + compaction on the loaded
+	// ext4 root stalls inside a single syscall.Fsync; retention semantics
+	// only, so it shares the tmpfs-capable test root (real-fs latency is
+	// pinned by TestAppendFsyncBudgetCanary).
+	dir := fsyncHeavyTestRoot(t)
 	path := filepath.Join(dir, "agents.jsonl")
 	s := testStore(t, Options{Path: path, MaxBytes: 400, MaxBackups: 3})
 	for i := 0; i < 40; i++ {

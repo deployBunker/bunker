@@ -221,6 +221,19 @@ type Store struct {
 	knownOrder []string
 	last       Report
 
+	// Persistent log handles (QA-BUNKER-43). appendF is the O_APPEND
+	// handle event lines are written and fsync'd through; repairF is the
+	// separate O_RDWR handle used to inspect and repair a torn tail
+	// (ReadAt/WriteAt need explicit offsets, which O_APPEND forbids).
+	// Both are opened lazily on first use and reused across appends, so
+	// the hot path is one write+fsync on an existing fd instead of a
+	// full open/stat/fsync/close cycle per event — under host load that
+	// churn amplified a single slow fsync into a 15-minute append stall.
+	// Rotation, compaction and the external-replacement check drop them;
+	// see dropAppendHandlesLocked and refreshHandlesLocked. Guarded by mu.
+	appendF *os.File
+	repairF *os.File
+
 	// createdByOpen is true when the ACTIVE log file did not exist before
 	// Open ran, so Open fabricated an empty starting state and this daemon
 	// knows NOTHING about the host it just booted on. It is provenance, not
@@ -271,6 +284,19 @@ func Open(opts Options) (*Store, error) {
 		createdNow = true
 	}
 
+	// Ensure the active file exists with 0600 so replay and rotation have a
+	// defined starting state — and keep the handle: it becomes the store's
+	// persistent append handle (QA-BUNKER-43), so the first append does not
+	// have to re-open the file.
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("registry: open %s: %w", path, err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("registry: chmod %s: %w", path, err)
+	}
+
 	s := &Store{
 		path:          path,
 		maxBytes:      opts.MaxBytes,
@@ -280,21 +306,10 @@ func Open(opts Options) (*Store, error) {
 		live:          make(map[string]*Record),
 		known:         make(map[string]bool),
 		createdByOpen: createdNow,
+		appendF:       f,
 	}
-	// Ensure the active file exists with 0600 so replay and rotation have a
-	// defined starting state.
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		return nil, fmt.Errorf("registry: open %s: %w", path, err)
-	}
-	if err := f.Close(); err != nil {
-		return nil, fmt.Errorf("registry: close %s: %w", path, err)
-	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		return nil, fmt.Errorf("registry: chmod %s: %w", path, err)
-	}
-
 	if _, err := s.Replay(); err != nil {
+		f.Close()
 		return nil, err
 	}
 	return s, nil
@@ -675,6 +690,10 @@ func (s *Store) Forget(agentID string) {
 }
 
 // append serializes, locks, rotates if needed, writes and fsyncs one event.
+// Durability contract (QA-BUNKER-43): every event line is fsync'd exactly
+// once before append returns, through the store's persistent O_APPEND
+// handle — the handle reuse removes the per-append open/close and the
+// per-append torn-tail repair open, not the sync.
 func (s *Store) append(ev Event, apply func()) error {
 	line, err := json.Marshal(ev)
 	if err != nil {
@@ -697,24 +716,112 @@ func (s *Store) append(ev Event, apply func()) error {
 	if err := s.rotateIfNeededLocked(int64(len(line))); err != nil {
 		return err
 	}
-
-	f, err := os.OpenFile(s.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		return fmt.Errorf("registry: open %s: %w", s.path, err)
+	// Another process (e.g. `bunker registry compact`) may have replaced
+	// the active file since our last append; the flock serializes the
+	// writers but does not keep our handle pointing at the same inode.
+	// A replaced file is detected here and the handles are re-established
+	// against the new active file.
+	if err := s.refreshHandlesLocked(); err != nil {
+		return err
 	}
-	if _, err := f.Write(line); err != nil {
-		f.Close()
+
+	if _, err := s.appendF.Write(line); err != nil {
+		s.dropAppendHandlesLocked()
 		return fmt.Errorf("registry: append %s event: %w", ev.Kind, err)
 	}
-	if err := f.Sync(); err != nil {
-		f.Close()
+	if err := s.appendF.Sync(); err != nil {
+		s.dropAppendHandlesLocked()
 		return fmt.Errorf("registry: sync %s: %w", s.path, err)
-	}
-	if err := f.Close(); err != nil {
-		return fmt.Errorf("registry: close %s: %w", s.path, err)
 	}
 	if apply != nil {
 		apply()
+	}
+	return nil
+}
+
+// appendHandleLocked returns the persistent O_APPEND handle for the active
+// log, opening it lazily (a zero-value Store — the lock-helper test builds
+// one directly — never appends, so a nil handle outside append is fine).
+// Caller holds s.mu (and the cross-process lock).
+func (s *Store) appendHandleLocked() (*os.File, error) {
+	if s.appendF != nil {
+		return s.appendF, nil
+	}
+	f, err := os.OpenFile(s.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("registry: open %s: %w", s.path, err)
+	}
+	if err := os.Chmod(s.path, 0o600); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("registry: chmod %s: %w", s.path, err)
+	}
+	s.appendF = f
+	return f, nil
+}
+
+// repairHandleLocked returns the persistent O_RDWR handle used to inspect
+// and repair a torn tail. ReadAt/WriteAt need explicit offsets, which an
+// O_APPEND handle forbids (WriteAt on it returns ErrInvalid), so the repair
+// path keeps its own handle. Caller holds s.mu (and the cross-process lock).
+func (s *Store) repairHandleLocked() (*os.File, error) {
+	if s.repairF != nil {
+		return s.repairF, nil
+	}
+	f, err := os.OpenFile(s.path, os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	s.repairF = f
+	return f, nil
+}
+
+// dropAppendHandlesLocked closes and forgets the persistent handles. Used
+// when the active file is replaced (rotation, compaction) or a write/sync
+// fails, so the next append re-establishes them. Close errors are logged,
+// not returned: the handle is discarded either way and the next open
+// surfaces any real problem. Caller holds s.mu.
+func (s *Store) dropAppendHandlesLocked() {
+	if s.appendF != nil {
+		if err := s.appendF.Close(); err != nil {
+			s.logger.Warn("registry: closing append handle", "path", s.path, "error", err)
+		}
+		s.appendF = nil
+	}
+	if s.repairF != nil {
+		if err := s.repairF.Close(); err != nil {
+			s.logger.Warn("registry: closing repair handle", "path", s.path, "error", err)
+		}
+		s.repairF = nil
+	}
+}
+
+// refreshHandlesLocked re-establishes the persistent handles when the active
+// log file was replaced out from under them (rotation here, compaction in
+// another process). Identity is checked between the current handle's fd and
+// a fresh stat of the path; a missing file counts as replaced (rotation or
+// compaction may have just unlinked it and the next handle open recreates
+// it). Caller holds s.mu (and the cross-process lock).
+func (s *Store) refreshHandlesLocked() error {
+	if s.appendF == nil {
+		_, err := s.appendHandleLocked()
+		return err
+	}
+	hInfo, err := s.appendF.Stat()
+	if err != nil {
+		// The handle itself is dead (file unlinked mid-flight); rebuild.
+		s.dropAppendHandlesLocked()
+		_, err := s.appendHandleLocked()
+		return err
+	}
+	pInfo, statErr := os.Stat(s.path)
+	if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
+		return fmt.Errorf("registry: stat %s: %w", s.path, statErr)
+	}
+	if errors.Is(statErr, os.ErrNotExist) || !os.SameFile(hInfo, pInfo) {
+		s.dropAppendHandlesLocked()
+		if _, err := s.appendHandleLocked(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -724,16 +831,18 @@ func (s *Store) append(ev Event, apply func()) error {
 // writing some bytes but before the trailing newline, and replay correctly
 // ignores that partial line — but a plain append would then GLUE the next
 // event onto it, producing one malformed line and silently dropping the new
-// event. Caller holds s.mu (and the cross-process lock).
+// event. The inspection runs through the store's persistent O_RDWR handle
+// (QA-BUNKER-43); when the active file does not exist yet there is nothing
+// to repair and no handle is created. Caller holds s.mu (and the
+// cross-process lock).
 func (s *Store) terminatePartialLineLocked() error {
-	f, err := os.OpenFile(s.path, os.O_RDWR, 0o600)
+	f, err := s.repairHandleLocked()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
 		return fmt.Errorf("registry: open %s for tail repair: %w", s.path, err)
 	}
-	defer f.Close()
 
 	info, err := f.Stat()
 	if err != nil {
@@ -772,6 +881,10 @@ func (s *Store) rotateIfNeededLocked(incoming int64) error {
 	if info.Size()+incoming <= s.maxBytes {
 		return nil
 	}
+	// Drop the persistent handles BEFORE the renames: after rotation the
+	// append handle would keep pointing at the renamed-away inode, and the
+	// next append re-opens the fresh active path (QA-BUNKER-43).
+	s.dropAppendHandlesLocked()
 	// Shift .N-1 → .N, dropping the oldest backup.
 	oldest := fmt.Sprintf("%s.%d", s.path, s.maxBackups)
 	if err := os.Remove(oldest); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -794,11 +907,13 @@ func (s *Store) rotateIfNeededLocked(incoming int64) error {
 	return nil
 }
 
-// Close releases the store. The store keeps no persistent handles, so this
-// only drops in-memory state; it exists for symmetry and future use.
+// Close releases the store: it closes the persistent log handles and drops
+// the in-memory state (QA-BUNKER-43 — the store no longer keeps handles
+// after Close).
 func (s *Store) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.dropAppendHandlesLocked()
 	s.live = make(map[string]*Record)
 	s.known = make(map[string]bool)
 	s.knownOrder = nil
