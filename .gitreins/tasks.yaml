@@ -3830,3 +3830,11 @@ tasks:
   status: complete
   created_at: '2026-10-01T08:00:28.541632+00:00'
   completed_at: '2026-10-01T09:24:40.947281+00:00'
+- id: QA-BUNKER-43
+  title: Registry TestCompact_ThousandEvents hangs in Fsync loop
+  criteria:
+  - Test completes <60s isolated at loadavg<=5 and full guard green on unrelated diff;
+    fsync behavior in Store.append diagnosed and remediated (batching/interval or
+    test tmpfs) without weakening durability guarantees silently
+  status: in_progress
+  created_at: '2026-10-01T13:48:40.165079+00:00'
