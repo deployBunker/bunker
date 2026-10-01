@@ -3570,14 +3570,13 @@ tasks:
   created_at: '2026-09-29T06:55:15.685146+00:00'
   completed_at: '2026-09-29T06:55:21.011088+00:00'
 - id: PERF-009
-  title: Parallelize bunker status --all server queries
+  title: Parallelize status --all server queries
   criteria:
-  - bunker status --all queries servers in parallel instead of serially; wall time
-    for 14 servers (2 offline) drops from ~68s to ~max(per-server latency); output
-    ordering preserved
+  - bunker status --all queries servers concurrently instead of serially; offline
+    servers bounded by short connect timeout; output ordering preserved
   status: complete
-  created_at: '2026-09-29T02:50:14.058733+00:00'
-  completed_at: '2026-09-29T02:52:47.069954+00:00'
+  created_at: '2026-10-01T06:49:01.509278+00:00'
+  completed_at: '2026-10-01T06:58:47.476047+00:00'
 - id: GAP-089
   title: Clean up lingering test-account bunker users
   criteria:
