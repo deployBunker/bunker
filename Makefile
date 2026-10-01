@@ -19,7 +19,7 @@ SHA256SUM ?= $(shell if command -v sha256sum >/dev/null 2>&1; then echo sha256su
 
 # Build metadata injected via -ldflags into internal/version.
 # VERSION is overridable on the command line (make build VERSION=v0.2.0).
-VERSION ?= 0.1.4
+VERSION ?= 0.2.0
 COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILDDATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
 LDFLAGS := -X github.com/deployBunker/bunker/internal/version.Version=$(VERSION) \

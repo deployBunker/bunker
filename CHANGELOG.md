@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+Nothing yet. Changes since the `v0.2.0` release tag land here.
+
+## 0.2.0 (2026-10-01)
+
 Commits after the `v0.1.4` release tag. Everything below is in the tree but not
 in the newest release tag, so it is what the README marks as *requires a build
 from HEAD*.
