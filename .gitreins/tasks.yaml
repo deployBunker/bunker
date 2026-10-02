@@ -3868,3 +3868,15 @@ tasks:
     \ next tick)."
   status: in_progress
   created_at: '2026-10-02T12:09:28.727876+00:00'
+- id: INT-CI-55
+  title: "README docs-drift red after v0.2.0 cut \u2014 7 stale findings activated"
+  criteria:
+  - "C1: go run ./cmd/docs-drift exits 0 with 'docs OK ... match v0.2.0'. C2: README.md\
+    \ no longer contains 'Requires a build from HEAD' markers nor stale v0.1.4 newest-release\
+    \ references (grep -c 'v0.1.4' README.md counts only historical/pin examples is\
+    \ NOT acceptable \u2014 zero stale-release findings in the checker). C3: CI run\
+    \ on the fix commit has build-and-test job green including the 'Docs release-drift\
+    \ check (GAP-081)' step, unblocking downstream jobs. C4: no .go files touched\
+    \ \u2014 docs-only diff."
+  status: in_progress
+  created_at: '2026-10-02T12:25:53.687954+00:00'
