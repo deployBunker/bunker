@@ -229,7 +229,7 @@ prefix is a message telling you what to do, not a silent escalation.
 
 ```bash
 # Installer flags — `sh install.sh --help` prints the full text
-sh install.sh --version v0.1.4           # pin a release tag instead of the latest
+sh install.sh --version v0.2.0           # pin a release tag instead of the latest
 sh install.sh --from-dir ./dist          # install local binaries (offline/air-gapped)
 sh install.sh --build                    # build from this checkout with go build
 sh install.sh --dir "$HOME/.local/bin"   # choose the install prefix
@@ -293,18 +293,17 @@ make build          # or: ./scripts/install.sh --build
 > the full commit/build metadata.
 
 > **Freshness check — what the release assets and `@latest` both carry.** The
-> newest release tag (`git describe --tags --abbrev=0`) is **v0.1.4**, which lags
-> this repo's HEAD: `go install ...@latest`, the release binaries the installer
-> downloads, and a build of that tag all carry that tag's surface. Every command
-> this README marks *requires a build from HEAD* — the lifecycle commands
-> (`stop`, `start`, `restart`) and the host-maintenance commands (`homes`,
-> `linger`, `host-provision`) — is in this tree but not in that tag; the
-> post-release work is listed under *Unreleased* in the
-> [CHANGELOG](CHANGELOG.md). Build from this checkout (`make build`) to get them.
+> newest release tag (`git describe --tags --abbrev=0`) is **v0.2.0**:
+> `go install ...@latest`, the release binaries the installer downloads, and a
+> build of that tag all carry that tag's surface — including the lifecycle
+> commands (`stop`, `start`, `restart`) and the host-maintenance commands
+> (`homes`, `linger`, `host-provision`). Commands that land after a release are
+> listed under *Unreleased* in the [CHANGELOG](CHANGELOG.md) and need a build
+> from this checkout (`make build`) until the next tag.
 > A release asset or a tag build reports the tagged commit in `commit:` by
 > design, so only a HEAD build's `commit:` equals the repo's
 > `git rev-parse HEAD` — a `commit:` that does not match HEAD means you are
-> running a release build, and the HEAD-only commands need a build from HEAD.
+> running a release build.
 
 ### Configure
 
@@ -609,10 +608,6 @@ rules, and safety boundaries.
 
 ### Provision host isolation before spawning
 
-**Requires a build from HEAD.** `host-provision` is not in the newest release
-tag, so `go install ...@latest` cannot install the host-side boundary — build the
-CLI and daemon from this checkout (see the freshness note under Install).
-
 **Required for private `/tmp`:** building or starting `bunkerd` does not install
 its host-side SSH/PAM configuration. A fresh unprovisioned host leaves agent SSH
 sessions sharing the host `/tmp`. Run these commands on the **daemon host**, as
@@ -620,7 +615,6 @@ root, from the checkout where `make build` produced both binaries. This is local
 host administration, not an RPC to the server selected by `bunker connect`.
 
 ```bash
-# Requires a build from HEAD — host-provision is not in the newest release tag.
 # Inspect the plan first; no host changes without --apply.
 sudo ./bunker host-provision --daemon-binary "$(pwd)/bunkerd"
 # After reviewing the plan, install the host-side boundary.
@@ -756,12 +750,10 @@ bunker destroy abc12345 --server bunker-host --keep-key
 bunker destroy abc12345 --server bunker-host --archive=false
 ```
 
-Pause, resume and recover an agent — **requires a build from HEAD** (the newest
-release tag has no `stop`/`start`/`restart`; see the freshness note under
+Pause, resume and recover an agent (see the freshness note under
 Install):
 
 ```bash
-# Requires a build from HEAD — not in the newest release tag.
 # These are mutating commands: --server required (binding note above).
 # Pause an agent without destroying it (frees CPU, keeps user/home/container/ports)
 bunker stop abc12345 --server bunker-host
@@ -826,11 +818,6 @@ bunker restart abc12345 --server bunker-host
 > `agent_stopped` (not `not_found`) — the agent exists, so start or restart it
 > instead. A stopped agent still expires on its TTL like a running one, so a
 > pause longer than its remaining TTL ends in TTL destruction.
->
-> **Requires a build from HEAD.** `stop`, `start` and `restart` are not in the
-> newest release tag, so `go install ...@latest` cannot pause, resume or recover
-> an agent — build the CLI from this checkout (see the freshness note under
-> Install).
 
 > **Expiry timestamps are daemon-local, TTL math is UTC.** The `Expires:` line
 > in the spawn bundle (and `bunker info` / `bunker heartbeat` output) is
@@ -993,7 +980,6 @@ It changes host SSH/PAM configuration, so review its plan before applying it.
 **Teardown only — do not run this as part of installation:**
 
 ```bash
-# Requires a build from HEAD — host-provision is not in the newest release tag.
 sudo ./bunker host-provision --daemon-binary "$(pwd)/bunkerd" --uninstall --apply
 ```
 
@@ -1025,7 +1011,7 @@ Defaults, limits and the exact verification steps are in
 
 ## CLI Commands
 
-Commands in the newest release tag (`git describe --tags --abbrev=0` → **v0.1.4**)
+Commands in the newest release tag (`git describe --tags --abbrev=0` → **v0.2.0**)
 — these are what `go install github.com/deployBunker/bunker/cmd/bunker@latest`
 gives you:
 
@@ -1054,12 +1040,11 @@ bunker registry    Maintain the durable agent registry (compact)
 bunker version     Print version/commit/build metadata (also --version)
 ```
 
-Requires a build from HEAD — these commands are in this tree but not in the
-newest release tag, so `go install ...@latest` cannot run them (see the
-freshness note under Install and the *Unreleased* CHANGELOG section):
+Commands released after v0.2.0 are listed under the *Unreleased* section in the
+[CHANGELOG](CHANGELOG.md) and need a build from this checkout (see the
+freshness note under Install):
 
 ```
-# Requires a build from HEAD — not in the newest release tag.
 bunker stop        Pause an agent without destroying it (start/restart resume it)
 bunker start       Resume a stopped agent
 bunker restart     Stop + start in one call and reset the heartbeat TTL
