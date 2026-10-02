@@ -3910,3 +3910,65 @@ tasks:
   status: complete
   created_at: '2026-10-02T12:54:07.469755+00:00'
   completed_at: '2026-10-02T13:10:49.895309+00:00'
+- id: NET-BUNKER-010
+  title: 'SURFACE: select the isolation mode per agent and REPORT the boundary it
+    provides'
+  criteria:
+  - 1. A mode vocabulary exists with exactly two valid values, shared (default) and
+    systemd, defined in ONE place so a third mode is a one-line addition.
+  - 2. A daemon-level config key AND a per-agent selector exist, following the existing
+    AgentConfig mapstructure/env conventions, and the key defaults to shared when
+    unset.
+  - 3. An unknown or unsupported mode FAILS the spawn with a named error naming the
+    offending value AND the valid set, before systemd-run creates anything, and NEVER
+    falls back to shared reporting success.
+  - 4. The active mode and its declared boundary string are exposed on the agent record
+    so status/list/GetAgent can show them, and an in-band system-info marker reuses
+    the GAP-067 containment-disclosure idiom.
+  - 5. An ABSENT mode field renders as unknown and never as safe, and the three meanings
+    (empty / unknown / explicit value) stay distinct.
+  - 6. Table-driven tests prove the refusal, the shared default, and the reported
+    strings.
+  status: in_progress
+  created_at: '2026-10-02T13:19:26.071290+00:00'
+- id: NET-BUNKER-002
+  title: 'MODE: systemd PrivateNetwork= on the agent''s existing unit'
+  criteria:
+  - 1. When the mode is systemd, the agent's unit is created with --property=PrivateNetwork=yes
+    in addition to the properties it already receives, following the existing PrivateTmp=yes
+    pattern in buildRootlessDockerdArgs.
+  - 2. shared mode produces byte-for-byte the SAME systemd-run arg list as before
+    this change, proven by a regression test rather than asserted.
+  - 3. systemd mode adds --property=PrivateNetwork=yes exactly once and adds nothing
+    else.
+  - '4. The exec/socket contract is unchanged in both modes: DOCKER_HOST unix socket,
+    the ssh -L 2376 tunnel and sshfs still work, because unix sockets cross network
+    namespaces.'
+  - 5. The reported boundary string for systemd states plainly that all outbound is
+    lost by design and that the mode covers only processes inside the unit.
+  - 6. No other mode is implemented; an unimplemented enum value is refused rather
+    than silently accepted.
+  status: in_progress
+  created_at: '2026-10-02T13:19:26.488483+00:00'
+- id: TESTHEALTH-001
+  title: Make the guard's suite reliably green under load so code commits are possible
+    again
+  criteria:
+  - 1. internal/hostsetup GrantMinTag is set to v0.2.0 and its doc comment no longer
+    claims the constant is empty, so TestGrantFloorMatchesReality passes deterministically.
+  - 2. TestQA36ThePollReportsAFrozenEditTheKernelCouldNotStamp is de-flaked by driving
+    its observation from the outcome with a bounded polling deadline rather than a
+    fixed wait, and it still fails when the QA-BUNKER-36 production fix is reverted.
+  - 3. TestBFS063AStaleCursorThatTheClientCanReadIsStillATail bounds its loop by the
+    outcome with a bounded maximum instead of a fixed 300 iterations, without raising
+    the package timeout or narrowing the test.
+  - 4. The internal/agent failure is attributed and either fixed or reported honestly.
+  - 5. go test -count=1 -short ./... is green at least 3 consecutive times with the
+    wall time reported for each.
+  - 6. No test was weakened, skipped, deleted, loosened or narrowed; every modified
+    test still reddens for the defect it was written to catch.
+  - 7. The commit lands through the pre-commit hook WITHOUT --no-verify, which is
+    itself the proof the block is lifted.
+  status: complete
+  created_at: '2026-10-02T16:14:54.578194+00:00'
+  completed_at: '2026-10-02T20:07:17.749824+00:00'
