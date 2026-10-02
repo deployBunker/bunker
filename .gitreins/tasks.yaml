@@ -3882,3 +3882,31 @@ tasks:
   status: complete
   created_at: '2026-10-02T12:25:53.687954+00:00'
   completed_at: '2026-10-02T12:51:51.176244+00:00'
+- id: NET-BUNKER-001
+  title: 'SPEC: the network/tenant-isolation mode surface'
+  criteria:
+  - '1. specs/network-isolation.md exists and defines a named mode taxonomy covering:
+    shared, systemd (PrivateNetwork=), rootlesskit+slirp4netns, pasta, ip netns+veth,
+    container, plus the orthogonal per-uid firewall layer, plus the process/path visibility
+    dimension (hidepid=2 or PID namespace; restricted /run or mount namespace).'
+  - 2. Every mode carries an explicit contract stating what it protects against, what
+    it explicitly does NOT protect against, whether it needs a new dependency, whether
+    it needs privilege, and what it does to the port space.
+  - 3. A compatibility matrix states what BREAKS under each mode, covering tunnel
+    ingress, port publishing, the daemon exec path, DNS/outbound, and the existing
+    port-block accounting.
+  - 4. The default is declared shared and unchanged until measured, and the spec states
+    that a failed isolation request must refuse loudly rather than silently fall back.
+  - '5. The reporting law is stated: the active mode and the boundary it actually
+    provides must be announced per agent, in status output and in a system-info marker,
+    cross-referencing the GAP-067 containment-disclosure spec.'
+  - 6. Repo claims carry file:line citations that are TRUE and grep-verifiable, and
+    the spec cross-references specs/container-mode.md and specs/agent-tmp-isolation.md
+    without contradicting them.
+  - 7. specs/_index.md lists the new spec in its table and its per-spec entries, and
+    the prose no longer says 'Ten specs'.
+  - 8. git diff --stat shows exactly 2 files, both Markdown, with no .go file touched,
+    and go build ./... still succeeds.
+  status: complete
+  created_at: '2026-10-02T12:54:07.469755+00:00'
+  completed_at: '2026-10-02T13:10:49.895309+00:00'
