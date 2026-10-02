@@ -1,0 +1,6 @@
+--- FAIL: TestQA36TheFallbackComparesDigestsNotWholeFiles (1.12s)
+    content_identity_fallback_test.go:534: the 1 MiB same-size edit was not reported: [. README.md empty src src/main.go src/util.go]
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/server/webdav	126.423s
+FAIL
+RC=1

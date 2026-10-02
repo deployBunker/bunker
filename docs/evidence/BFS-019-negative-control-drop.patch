@@ -1,0 +1,42 @@
+--- a/internal/fsclient/snapshot.go
++++ b/internal/fsclient/snapshot.go
+@@ -551,39 +551,15 @@
+ 			// An unknown path still kills its parent's cached child set: the
+ 			// event says the name may have appeared.
+ 			s.dropChildLocked(p)
+-			s.dropListingLocked(parentOf(p))
+ 			continue
+ 		}
+ 		s.dropSubtreeLocked(p)
+ 		s.dropChildLocked(p)
+-		s.dropListingLocked(parentOf(p))
+ 		n++
+ 	}
+ 	return n
+ }
+ 
+-// parentOf is the in-tree parent of a path ("" for a root-level name, and "" for
+-// the root itself — dropping the root's listing means "re-read the whole root").
+-func parentOf(p string) string {
+-	parent := path.Dir(p)
+-	if parent == "." {
+-		return ""
+-	}
+-	return parent
+-}
+-
+-// dropListingLocked forgets that a directory's LISTING has been read. It is the
+-// half of every drop that keeps `Known(dir)` meaning "this listing is the
+-// server's truth as of the last read": once a name has been removed from the
+-// index the set is no longer vouched for, so the next readdir must re-read it
+-// rather than answer short. The last observed child set is left in place (only
+-// the read flag goes): a caller that ignored `Known` would then see a stale set
+-// rather than an empty one, and no reader has to be told about a directory it
+-// has just been told to re-read.
+-func (s *Snapshot) dropListingLocked(dir string) {
+-	delete(s.read, strings.Trim(normalisePath(dir), "/"))
+-}
+-
+ func (s *Snapshot) dropSubtreeLocked(p string) {
+ 	if p == "" {
+ 		return // the root is always part of the tree; dropping it is never implied

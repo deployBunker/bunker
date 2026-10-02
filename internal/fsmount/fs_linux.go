@@ -1192,18 +1192,33 @@ func (m *Mount) beginCreate(cp string, mode uint32) (*writeHandle, fsclient.Node
 // Mkdir creates a collection.
 func (n *node) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
 	cp := joinPath(n.p, name)
-	if err := n.m.client.Mkcol(ctx, cp); err != nil {
-		n.m.recordFailure(err)
-		return nil, errnoFor(err)
+	nd, errno := n.m.beginMkdir(ctx, cp, mode)
+	if errno != 0 {
+		return nil, errno
 	}
-	nd := fsclient.Node{Path: cp, IsDir: true, Mode: fmt.Sprintf("%04o", mode&0o777), Mtime: time.Now(), Kind: fsclient.KindDir}
-	n.m.snapshot().Put(nd)
-	n.m.snapshot().DropReaddir(n.p) // the parent's readdir answer changed
-	n.m.recordOK()
 	fillAttr(&out.Attr, nd)
 	out.SetEntryTimeout(0)
 	out.SetAttrTimeout(0)
 	return n.NewInode(ctx, &node{m: n.m, p: cp}, fs.StableAttr{Mode: modeOf(nd), Ino: inoFor(cp)}), 0
+}
+
+// beginMkdir is the mount-side half of mkdir(2): the request, the snapshot
+// entry, the invalidation of the collection it appeared in, the counters — and
+// nothing that needs a live kernel bridge. It exists for the same reason
+// beginCreate and createLink do: a handler-level cell can drive the SAME state a
+// mounted filesystem drives, so a rule about what a mutation does to the
+// directory it was made in can be asserted exactly rather than only through a
+// kernel (BFS-019).
+func (n *Mount) beginMkdir(ctx context.Context, cp string, mode uint32) (fsclient.Node, syscall.Errno) {
+	if err := n.client.Mkcol(ctx, cp); err != nil {
+		n.recordFailure(err)
+		return fsclient.Node{}, errnoFor(err)
+	}
+	nd := fsclient.Node{Path: cp, IsDir: true, Mode: fmt.Sprintf("%04o", mode&0o777), Mtime: time.Now(), Kind: fsclient.KindDir}
+	n.snapshot().Put(nd)
+	n.snapshot().DropReaddir(path.Dir(cp)) // the parent's readdir answer changed
+	n.recordOK()
+	return nd, 0
 }
 
 // Symlink creates a symlink THROUGH the mount (BFS-018). It is the write half

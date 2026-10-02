@@ -1,0 +1,44 @@
+# BFS-019 transcript: general
+# produced by: bash docs/evidence/BFS-019-arms.sh general   (suites: go test of the three packages)
+# tree: wt/BFS-019 @ 56afadb94fb0ce557dac09f9fcaa61259720b061 (the committed fix)
+#
+WATCH=true heartbeat_ms=30000 write_deadline_ms=10000 max_subscribers=8 subscriber_buffer_events=256
+[arm] DAVSERVE_PID=2828836 URL=http://127.0.0.1:40449/dav
+[general] SRC=/tmp/bfs019-general-dcFIax/src MNT=/tmp/bfs019-general-dcFIax/mnt server flags='--watch'
+ARM PASS: [general] fresh: mount listing == server listing (7 names)
+
+--- [general G1] a directory mutated REPEATEDLY through the mount
+ARM PASS: [general G1] after mkdir #1: mount listing == server listing (8 names)
+ARM PASS: [general G1] after mkdir #2: mount listing == server listing (9 names)
+ARM PASS: [general G1] after mkdir #3: mount listing == server listing (10 names)
+
+--- [general G2] a NESTED directory mutated through the mount
+    mkdir pkg/inner rc=0
+ARM PASS: [general G2] root after nested mkdir: mount listing == server listing (10 names)
+ARM PASS: [general G2] pkg after nested mkdir: mount listing == server listing (2 names)
+ARM PASS: [general G2] pkg/inner after a write inside it: mount listing == server listing (1 names)
+ARM PASS: [general G2] pkg after a write inside its child: mount listing == server listing (2 names)
+
+--- [general G3] a name that appears while the directory is NOT re-read (the short answer)
+    refs/heads before: mount=[dev,main,release,] server=[dev,main,release,]
+    create refs/heads/feature through the mount rc=0
+ARM PASS: [general G3] .git/refs/heads: mount listing == server listing (4 names)
+
+--- [general G4] a directory mutated by the SERVER (another writer), then listed
+    the surface is serving with: WATCH=true heartbeat_ms=30000 write_deadline_ms=10000 max_subscribers=8 subscriber_buffer_events=256
+    (written natively in the served tree; the mount's invalidation mode is poll)
+    settled after 2s
+    mount  root = [CHANGELOG.md,.git,go.mod,pkg,README.md,repeat-1,repeat-2,repeat-3,scratch,server-dir,server-made.txt,src,]
+    server root = [CHANGELOG.md,.git,go.mod,pkg,README.md,repeat-1,repeat-2,repeat-3,scratch,server-dir,server-made.txt,src,]
+ARM PASS: [general G4] root after a server-side write: mount listing == server listing (12 names)
+ARM PASS: [general G4] src after a server-side write: mount listing == server listing (121 names)
+
+--- [general] lookups/reads still correct (attribution)
+    stat go.mod=2 cat src/f000.txt=2 bytes
+    stat src/server-nested.txt=19
+
+[arm] fusermount -u rc=0
+[general] stage kept at /tmp/bfs019-general-dcFIax
+
+ARMS: PASSES=11 FAILED=0
+EXIT=0

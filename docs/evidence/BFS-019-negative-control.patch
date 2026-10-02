@@ -1,0 +1,41 @@
+--- a/internal/fsclient/snapshot.go
++++ b/internal/fsclient/snapshot.go
+@@ -357,6 +357,7 @@
+ }
+ 
+ func (s *Snapshot) putLocked(n Node) {
++	old, existed := s.nodes[n.Path]
+ 	s.nodes[n.Path] = n
+ 	if n.Path == "" {
+ 		return
+@@ -365,25 +366,12 @@
+ 	if parent == "." {
+ 		parent = ""
+ 	}
+-	// THE PARENT'S CHILD INDEX IS MAINTAINED FOR EVERY NODE THE TREE HOLDS, not
+-	// only for nodes that are new (BFS-019). The index is derived state that
+-	// `DropReaddir` deletes WHOLE while the nodes it named stay in the tree, and
+-	// the re-read that follows a mutation (Readdir's Depth:1 PROPFIND, the
+-	// snapshot op, the walk) feeds the observed entries back through here — every
+-	// entry that survived the mutation is already known, so an insert conditional
+-	// on the node being NEW rebuilds NOTHING and `Children` then serves only the
+-	// subset the mount happened to create since the drop. That was a silent wrong
+-	// answer: a listing that came back empty (or short) with rc 0 while every
+-	// entry existed on the server.
+-	//
+-	// The cost is one map write per put — the price of the index and the node set
+-	// never disagreeing. `Children` intersects the two, so an index that names a
+-	// node the tree does not hold is harmless; a node the tree holds and the
+-	// index does not name is a listing that is wrong by construction.
+-	if s.children[parent] == nil {
+-		s.children[parent] = map[string]struct{}{}
++	if !existed || old.IsDir != n.IsDir {
++		if s.children[parent] == nil {
++			s.children[parent] = map[string]struct{}{}
++		}
++		s.children[parent][path.Base(n.Path)] = struct{}{}
+ 	}
+-	s.children[parent][path.Base(n.Path)] = struct{}{}
+ 	if n.IsDir && s.children[n.Path] == nil {
+ 		s.children[n.Path] = map[string]struct{}{}
+ 	}

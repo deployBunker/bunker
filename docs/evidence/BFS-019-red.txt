@@ -1,0 +1,49 @@
+# BFS-019 transcript: red
+# produced by: bash docs/evidence/BFS-019-arms.sh red
+# tree: wt/BFS-019 @ 570ae248c746cbc05d8884ce3ad57977f8d439db
+#
+[arm] DAVSERVE_PID=1452054 URL=http://127.0.0.1:43519/dav
+[red] SRC=/tmp/bfs019-red-2IoLEP/src MNT=/tmp/bfs019-red-2IoLEP/mnt
+--- [red step 0: fresh mount]
+    find <mount>  -mindepth 1 | wc -l = 135   (find rc=0)
+    find <server> -mindepth 1 | wc -l = 135
+    ls -lR <mount>  | wc -l = 139
+    ls -lR <server> | wc -l = 139
+    mount  root names: CHANGELOG.md .git go.mod pkg README.md scratch src 
+    server root names: CHANGELOG.md .git go.mod pkg README.md scratch src 
+ARM PASS: red step 0: mount listing == server listing (7 names)
+
+--- [red step 1] ONE mkdir through the mount
+    mkdir rc=0
+--- [red step 1: after one mkdir]
+    find <mount>  -mindepth 1 | wc -l = 0   (find rc=0)
+    find <server> -mindepth 1 | wc -l = 136
+    ls -lR <mount>  | wc -l = 2
+    ls -lR <server> | wc -l = 143
+    mount  root names: 
+    server root names: CHANGELOG.md .git go.mod oob-dir pkg README.md scratch src 
+ARM FAIL: red step 1: mount=[] server=[CHANGELOG.md,.git,go.mod,oob-dir,pkg,README.md,scratch,src]
+
+--- [red step 2] a through-mount write + unlink
+    write rc=0
+    unlink rc=0
+--- [red step 2: after write + unlink]
+    find <mount>  -mindepth 1 | wc -l = 1   (find rc=0)
+    find <server> -mindepth 1 | wc -l = 136
+    ls -lR <mount>  | wc -l = 6
+    ls -lR <server> | wc -l = 143
+    mount  root names: oob-dir 
+    server root names: CHANGELOG.md .git go.mod oob-dir pkg README.md scratch src 
+ARM FAIL: red step 2: mount=[oob-dir] server=[CHANGELOG.md,.git,go.mod,oob-dir,pkg,README.md,scratch,src]
+
+--- [red] lookups still work (the mount is not dead)
+    stat go.mod      : size=2
+    stat src/f000.txt: size=2
+    cat src/f000.txt through the mount: 2 bytes
+ARM PASS: red src subdir: mount listing == server listing (120 names)
+ARM PASS: red pkg subdir: mount listing == server listing (1 names)
+
+[arm] fusermount -u rc=0
+[red] stage kept at /tmp/bfs019-red-2IoLEP
+
+ARMS: PASSES=3 FAILED=1

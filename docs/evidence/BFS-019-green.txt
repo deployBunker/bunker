@@ -1,0 +1,51 @@
+# BFS-019 transcript: green
+# produced by: bash docs/evidence/BFS-019-arms.sh green   (suites: go test of the three packages)
+# tree: wt/BFS-019 @ 56afadb94fb0ce557dac09f9fcaa61259720b061 (the committed fix)
+#
+WATCH=false (no watcher configured: the push form will be refused on this endpoint)
+[arm] DAVSERVE_PID=2827875 URL=http://127.0.0.1:37547/dav
+[green] SRC=/tmp/bfs019-green-hLUogm/src MNT=/tmp/bfs019-green-hLUogm/mnt
+--- [green step 0: fresh mount]
+    find <mount>  -mindepth 1 | wc -l = 135   (find rc=0)
+    find <server> -mindepth 1 | wc -l = 135
+    ls -lR <mount>  | wc -l = 139
+    ls -lR <server> | wc -l = 139
+    mount  root names: CHANGELOG.md .git go.mod pkg README.md scratch src 
+    server root names: CHANGELOG.md .git go.mod pkg README.md scratch src 
+ARM PASS: green step 0: mount listing == server listing (7 names)
+
+--- [green step 1] ONE mkdir through the mount
+    mkdir rc=0
+--- [green step 1: after one mkdir]
+    find <mount>  -mindepth 1 | wc -l = 136   (find rc=0)
+    find <server> -mindepth 1 | wc -l = 136
+    ls -lR <mount>  | wc -l = 143
+    ls -lR <server> | wc -l = 143
+    mount  root names: CHANGELOG.md .git go.mod oob-dir pkg README.md scratch src 
+    server root names: CHANGELOG.md .git go.mod oob-dir pkg README.md scratch src 
+ARM PASS: green step 1: mount listing == server listing (8 names)
+
+--- [green step 2] a through-mount write + unlink
+    write rc=0
+    unlink rc=0
+--- [green step 2: after write + unlink]
+    find <mount>  -mindepth 1 | wc -l = 136   (find rc=0)
+    find <server> -mindepth 1 | wc -l = 136
+    ls -lR <mount>  | wc -l = 143
+    ls -lR <server> | wc -l = 143
+    mount  root names: CHANGELOG.md .git go.mod oob-dir pkg README.md scratch src 
+    server root names: CHANGELOG.md .git go.mod oob-dir pkg README.md scratch src 
+ARM PASS: green step 2: mount listing == server listing (8 names)
+
+--- [green] lookups still work (the mount is not dead)
+    stat go.mod      : size=2
+    stat src/f000.txt: size=2
+    cat src/f000.txt through the mount: 2 bytes
+ARM PASS: green src subdir: mount listing == server listing (120 names)
+ARM PASS: green pkg subdir: mount listing == server listing (1 names)
+
+[arm] fusermount -u rc=0
+[green] stage kept at /tmp/bfs019-green-hLUogm
+
+ARMS: PASSES=5 FAILED=0
+EXIT=0
