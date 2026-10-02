@@ -52,9 +52,7 @@ Bunker is a **multi-agent hosting platform** — a daemon (`bunkerd`) that runs 
   strictly opt-in through one bounded directory (`/srv/bunker-share`, setgid to
   the agent group and NOT writable by it — mode 2750 — with a kernel-enforced
   per-agent size cap). Install the host half with
-  `bunker host-provision --apply` (requires a build from HEAD — the newest
-  release tag has no `host-provision` command, see the freshness note under
-  Install); see
+  `bunker host-provision --apply` (included in the v0.2.0 release); see
   [specs/agent-tmp-isolation.md](specs/agent-tmp-isolation.md).
   `bunker status` reports the /tmp policy a daemon ACTUALLY enforces
   (`private`, `HOST-SHARED` with a warning, or `not reported` for a daemon
@@ -945,12 +943,11 @@ server: `private` when the per-session `pam_namespace` instance is provisioned
 and enforced, `HOST-SHARED` (with a prominent warning) when agent sessions see
 the host `/tmp`, `unknown` when the state cannot be verified (e.g. the daemon
 is not root), and `not reported` when the daemon predates capability
-reporting. The isolation feature is **build-dependent**: the newest release tag
-predates both the isolation implementation and capability reporting, which is why
-`host-provision` (requires a build from HEAD, see the freshness note under
-Install) requires the daemon to report the `isolation-grant` capability
-rather than a version number. Build and run a daemon from the same current
-checkout as the CLI; do not infer isolation from a version number alone.
+reporting. The isolation feature is **capability-gated**: the daemon must
+report the `isolation-grant` capability — do not infer isolation from a
+version number alone. Daemons that predate capability reporting never report
+it, so build and run a daemon from the same current
+checkout as the CLI.
 
 `bunker status` also reports the daemon's **residue inventory**: orphan users,
 orphan homes, orphan keys and stale `systemd` linger entries — host state left
@@ -962,8 +959,7 @@ line is never a clean host. `Residue:` showing counts while `Agents: 0/N` shows
 nothing registered is the leak fingerprint: check the daemon's
 `/var/lib/bunkerd/spawn-failures.jsonl` breadcrumb journal, remove the leftover
 state, and only then spawn again. Two of those planes have a local-only
-maintenance command (requires a build from HEAD, see the freshness note under
-Install) — run them on the daemon host, as root: `bunker homes`
+maintenance command — run them on the daemon host, as root: `bunker homes`
 reports every `/home/bunker-*` entry as STALE (its user no longer exists) or
 KEPT (its user still exists) with the stale set's on-disk size, and
 `bunker homes prune` removes exactly the stale ones — never a home whose user
