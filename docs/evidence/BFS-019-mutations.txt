@@ -1,6 +1,6 @@
 # BFS-019 transcript: mutations
 # produced by: bash docs/evidence/BFS-019-arms.sh mutations
-# tree: wt/BFS-019 @ 570ae248c746cbc05d8884ce3ad57977f8d439db
+# tree: wt/BFS-019 @ 56afadb94fb0ce557dac09f9fcaa61259720b061 (the mutation is applied and restored inside this run)
 #
 MUTATION baseline: internal/fsclient/snapshot.go sha256=5df41b546a9a916e55b391101d0d59a46590f97add2876435008c3e90749a355
 MUTATION patch: /home/kara/worktrees/bunker-BFS-019/docs/evidence/BFS-019-negative-control.patch (the fix's one hunk, reversed)

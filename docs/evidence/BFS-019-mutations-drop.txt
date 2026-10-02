@@ -1,6 +1,6 @@
 # BFS-019 transcript: mutations-drop
 # produced by: bash docs/evidence/BFS-019-arms.sh mutations-drop
-# tree: wt/BFS-019 @ 570ae248c746cbc05d8884ce3ad57977f8d439db
+# tree: wt/BFS-019 @ 56afadb94fb0ce557dac09f9fcaa61259720b061 (the mutation is applied and restored inside this run)
 #
 MUTATION(baseline) internal/fsclient/snapshot.go sha256=5df41b546a9a916e55b391101d0d59a46590f97add2876435008c3e90749a355
 MUTATION applied: sha256=63c28c372063d1cc7c2beed44c243722d227c2d331cdffaa32befe10d5771a4d (baseline 5df41b546a9a916e55b391101d0d59a46590f97add2876435008c3e90749a355)

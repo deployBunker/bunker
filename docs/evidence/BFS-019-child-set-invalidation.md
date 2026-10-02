@@ -239,15 +239,25 @@ the fsclient cells (120-entry collection, repeated mutations, all shapes) run in
   them, the affected listings are un-read, and the next readdir re-reads them.
   **Guaranteed correct**, shown by `foreign` (F1 append and F2 new names, in the
   same output as the server's own `ls`) and `general` G4 (12/12 root, 121/121 src).
-* **A surface with no watcher on a non-git tree**: the token in force is
-  `rev:<counter>`, whose declared coverage is *"moves on every mutation this
-  surface performs"* — another process's native edit does not move it. The mount
-  declares that gap in its own status (`rev_kind`/`rev_gap`, BFS-048/BFS-061)
-  rather than pretending; the listing then remains at the last observed state.
-  **NOT covered by this row's fix**, and not silently: `general-nowatch` prints the
-  surface's `WATCH=false` line and both listings.
+* **A surface with NO watcher** (the declared `rev:<counter>` mechanism, which by
+  its own declaration moves only on mutations *the surface itself performs*):
+  another process's native edit is not announced to the mount, so nothing in
+  particular un-reads the directory. The arm `general-nowatch` happens to end
+  green — "settled after 2s" — and the mechanism is worth naming rather than
+  reading as a guarantee: the mount's OWN earlier mutations (G1–G3) were still
+  being journalled and polled when the foreign write landed, so the root and
+  `inner` were dropped and re-read for their own reasons, and the re-read saw the
+  foreign names. **What this row guarantees is a listing that matches the server
+  whenever the mount is TOLD something changed or performed the change itself.**
+  What it does not manufacture is knowledge the surface never declared: a mount
+  bound to a surface that announces nothing about foreign writes keeps the last
+  observed listing, and the surface's own `rev_kind`/`rev_gap` (BFS-048/BFS-061)
+  is where that limitation is declared. Before this fix the same situation was
+  WORSE in a way the row filed: a directory could be dropped by hand and then
+  serve a short listing forever.
 * Every other cell in §4 is about a mutation the mount PERFORMED or was TOLD about,
   which is what this row's fix is for.
+
 
 ---
 
@@ -291,19 +301,48 @@ of `README.md`, `CHANGELOG.md`, `pkg/one.txt`, `src/fa.txt` must still answer, w
 the size the served tree holds) — green under BOTH mutations, because the defect is
 a wrong LISTING, not a dead tree. That is what makes the cells independent.
 
-**Neighbouring rows, none regressed** — `docs/evidence/BFS-019-suites.txt`:
-`internal/server/webdav` (BFS-018's symlink cells, BFS-046/049/061/062/063),
-`internal/fsclient` (BFS-018, BFS-020, BFS-021, BFS-031, BFS-037, BFS-039, BFS-060..063)
-and `internal/fsmount` (BFS-018 symlink, BFS-020 publication, BFS-021 append,
-BFS-030/033 refusals, BFS-025 bounds, BFS-039 cancel). The `webdav` package is RED
-at the base commit too, on the same tests, in a pristine clone of `e33c6bf`
-(`suites-base.txt`) — pre-existing, attributed, not this diff: the package is
-untouched by it.
+**Neighbouring rows, none regressed** — `docs/evidence/BFS-019-suites.txt`, taken on
+the committed fix (`56afadb`):
 
-**`putLocked` is shared code**, so those suites are the argument that making the
-index total changes nothing the neighbouring rows rely on. The one refactor in
-`fs_linux.go` (`Mkdir` → `beginMkdir`, the mount-side half extracted for the same
-reason `beginCreate`/`createLink` exist) is behaviour-preserving.
+```
+ok  github.com/deployBunker/bunker/internal/server/webdav   33.404s
+ok  github.com/deployBunker/bunker/internal/fsclient        42.580s
+ok  github.com/deployBunker/bunker/internal/fsmount          0.470s
+```
+
+That is BFS-018's symlink cells, BFS-020's publication cells, BFS-021's append
+cells, BFS-025's bounds, BFS-030/033's refusals, BFS-031's state bound, BFS-037's
+hot cache, BFS-039's cancel cells, BFS-046/049/060-063 on the server — all green,
+plus this row's new cells. **`putLocked` is shared code**, so those suites are the
+argument that making the index total changes nothing the neighbouring rows rely on.
+The one refactor in `fs_linux.go` (`Mkdir` → `beginMkdir`, the mount-side half
+extracted for the same reason `beginCreate`/`createLink` exist) is
+behaviour-preserving.
+
+The same full-suite guard the repo's pre-commit hook runs came back `PASS
+(test mode: full)` with `go_tests — passed` on the committed tree
+(`.gitreins/logs/guard-20261002T014839.865974Z.log`).
+
+**A pre-existing flake, named rather than absorbed:** `internal/server/webdav` is
+red at the BASE commit too on `TestQA36TheFallbackComparesDigestsNotWholeFiles` —
+same test, same subtests, in a pristine clone of `e33c6bf`
+(`docs/evidence/BFS-019-suites-base.txt`), and green again in another run. The
+package is untouched by this diff, and the test is a same-size/mtime-preserved
+1 MiB edit, i.e. one of the cells that is sensitive to how much machine it is
+given. A second one-off red (`internal/fsclient`, `TestBFS037Cell05NoReaderEver
+SeesAPartialFile`, "the refresh to publish: not satisfied within 5s") reproduced
+at the base commit as well and passes in isolation on both trees (14.5 s base,
+14.0 s fixed) — a 5-second wall-clock wait on a box at loadavg ~30.
+
+**Environment note — the guard's `go_tests` lane is bound to `TMPDIR`**
+(`docs/evidence/BFS-019-env-tmpdir.txt`). Two commit attempts failed on
+`internal/registry` at exactly Go's 10-minute per-package ceiling while
+`TMPDIR=/mnt/bulk/scratch`, a volume that fsyncs at 404 kB/s against /tmp's
+46 MB/s; the same package passes in **4.9 s** with `TMPDIR` on a working volume,
+and so does the same full-suite guard. The pristine base clone hung the same way
+at 15m34s (test binary sleeping on futex, 0.0% CPU, holding `agents.jsonl.lock`),
+so it is not this diff. The commit that landed used `TMPDIR=/tmp` for the
+invoking shell only: no test skipped, no `--no-verify`, no repo file changed.
 
 ---
 
@@ -320,5 +359,8 @@ reason `beginCreate`/`createLink` exist) is behaviour-preserving.
   foreign | mutations | mutations-drop | suites`.
 * `docs/evidence/BFS-019-negative-control.patch` (round 1) and
   `BFS-019-negative-control-drop.patch` (round 2).
-* Transcripts: `BFS-019-red.txt`, `-green.txt`, `-general.txt`, `-general-nowatch.txt`,
-  `-foreign.txt`, `-mutations.txt`, `-mutations-drop.txt`, `-suites.txt`, `-suites-base.txt`.
+* Transcripts: `BFS-019-red.txt`, `-green.txt`, `-general.txt`,
+  `-general-nowatch.txt`, `-foreign.txt`, `-mutations.txt`, `-mutations-drop.txt`,
+  `-suites.txt` (on the committed fix), `-suites-base.txt` (the pre-existing
+  `webdav` flake at the base commit), `-env-tmpdir.txt` (the guard/TMPDIR
+  environment note).

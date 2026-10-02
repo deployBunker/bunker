@@ -1,10 +1,10 @@
 # BFS-019 transcript: general
-# produced by: bash docs/evidence/BFS-019-arms.sh general
-# tree: wt/BFS-019 @ 570ae248c746cbc05d8884ce3ad57977f8d439db
+# produced by: bash docs/evidence/BFS-019-arms.sh general   (suites: go test of the three packages)
+# tree: wt/BFS-019 @ 56afadb94fb0ce557dac09f9fcaa61259720b061 (the committed fix)
 #
 WATCH=true heartbeat_ms=30000 write_deadline_ms=10000 max_subscribers=8 subscriber_buffer_events=256
-[arm] DAVSERVE_PID=2042627 URL=http://127.0.0.1:42899/dav
-[general] SRC=/tmp/bfs019-general-CeJXlq/src MNT=/tmp/bfs019-general-CeJXlq/mnt server flags='--watch'
+[arm] DAVSERVE_PID=2828836 URL=http://127.0.0.1:40449/dav
+[general] SRC=/tmp/bfs019-general-dcFIax/src MNT=/tmp/bfs019-general-dcFIax/mnt server flags='--watch'
 ARM PASS: [general] fresh: mount listing == server listing (7 names)
 
 --- [general G1] a directory mutated REPEATEDLY through the mount
@@ -38,7 +38,7 @@ ARM PASS: [general G4] src after a server-side write: mount listing == server li
     stat src/server-nested.txt=19
 
 [arm] fusermount -u rc=0
-[general] stage kept at /tmp/bfs019-general-CeJXlq
+[general] stage kept at /tmp/bfs019-general-dcFIax
 
 ARMS: PASSES=11 FAILED=0
 EXIT=0

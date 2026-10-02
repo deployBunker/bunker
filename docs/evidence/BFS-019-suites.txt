@@ -1,0 +1,8 @@
+# BFS-019 transcript: suites
+# produced by: bash docs/evidence/BFS-019-arms.sh suites   (suites: go test of the three packages)
+# tree: wt/BFS-019 @ 56afadb94fb0ce557dac09f9fcaa61259720b061 (the committed fix)
+#
+ok  	github.com/deployBunker/bunker/internal/server/webdav	33.404s
+ok  	github.com/deployBunker/bunker/internal/fsclient	42.580s
+ok  	github.com/deployBunker/bunker/internal/fsmount	0.470s
+RC=0

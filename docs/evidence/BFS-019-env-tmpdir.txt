@@ -1,0 +1,69 @@
+# BFS-019 environment note: the guard's go_tests lane is bound to TMPDIR, and
+# TMPDIR was on a degraded volume. This is why two commit attempts failed on a
+# package this row does not touch, and why the same suite passes in seconds once
+# the scratch volume is a working one.
+#
+# Not a BFS-019 finding and not fixed here — recorded because it turned every
+# commit into a coin flip and would mislead the next reader of
+# .gitreins/logs/guard-*.log.
+
+# --- the observation, on the host (2026-10-01, local -05) -------------------
+$ echo "TMPDIR=[${TMPDIR:-<unset>}] GOTMPDIR=[${GOTMPDIR:-<unset>}]"
+TMPDIR=[/mnt/bulk/scratch] GOTMPDIR=[/mnt/bulk/go-tmp]
+$ go env GOCACHE GOTMPDIR TMPDIR
+/home/kara/.cache/go-build
+/mnt/bulk/go-tmp
+/mnt/bulk/scratch
+$ df -h /mnt/bulk | tail -1
+/dev/sdc2       3.6T  104G  3.5T   3% /mnt/bulk
+/dev/sdc2 on /mnt/bulk type ext4 (rw,noatime)
+
+# --- fsync cost, same file size, same box, same minute ---------------------
+$ timeout 30 dd if=/dev/zero of=/mnt/bulk/go-tmp/bfs019-probe bs=4096 count=100 conv=fsync
+409600 bytes (410 kB, 400 KiB) copied, 1.01342 s, 404 kB/s          <- /mnt/bulk
+$ timeout 30 dd if=/dev/zero of=/tmp/bfs019-probe bs=4096 count=100 conv=fsync
+409600 bytes (410 kB, 400 KiB) copied, 0.00924582 s, 46 MB/s        <- /tmp (NVMe)
+
+# --- what that does to a test that fsyncs per append -----------------------
+# internal/registry's TestCompact_ThousandEvents appends ~1750 records to a
+# t.TempDir() store (so: under TMPDIR), each an fsync.
+#
+# With TMPDIR=/mnt/bulk/scratch (the default), twice in the guard:
+#   FAIL  github.com/deployBunker/bunker/internal/registry  604.302s   (guard run 20261002T011443)
+#   FAIL  github.com/deployBunker/bunker/internal/registry  600.479s   (guard run 20261002T012540)
+#   -> Go's own per-package default ceiling (10m0s): `panic: test timed out after 10m0s`.
+#      The lane's own budget (guards.test_timeout: 1200) is never reached; the
+#      inner `go test -count=1 -short ./...` (engine/guards.py:check_go_tests)
+#      passes no -timeout, so Go's default is the ceiling.
+# An isolated run of the same package in a PRISTINE CLONE of e33c6bf (no BFS-019
+# changes at all), same TMPDIR, was still running at 15m34s with the test binary
+# in state S (sleeping) on futex, holding agents.jsonl.lock and burning 0.0% CPU.
+#
+# With TMPDIR on a working volume, the same package, the same tree:
+$ cd /home/kara/worktrees/bunker-BFS-019 && time env TMPDIR=/tmp GOTMPDIR=/tmp/bfs019-gotmp go test ./internal/registry/ -count=1
+ok  	github.com/deployBunker/bunker/internal/registry	4.935s
+real	0m4.9s   (20:47:19 -> 20:47:24)
+#
+# And the three packages this row touches, on the committed fix:
+$ env TMPDIR=/tmp GOTMPDIR=/tmp/bfs019-gotmp go test ./internal/server/webdav/ ./internal/fsclient/ ./internal/fsmount/ -count=1
+ok  	github.com/deployBunker/bunker/internal/server/webdav	33.404s
+ok  	github.com/deployBunker/bunker/internal/fsclient	42.580s
+ok  	github.com/deployBunker/bunker/internal/fsmount	0.470s
+#
+# (the same three packages, earlier, with the default TMPDIR: webdav 128s,
+#  fsclient >900s -- killed on its own ceiling, fsmount 206s-410s.)
+#
+# The commit that landed (56afadb) ran the SAME full-suite guard with the scratch
+# volume moved:
+$ env TMPDIR=/tmp GOTMPDIR=/tmp/bfs019-gotmp git commit ...
+Running GitReins Tier 1 guards...
+Tier 1 Guards: PASS  (test mode: full)
+  ✓ secrets — clean (gitleaks + builtin cross-check)
+  ✓ go_build — ok
+  ✓ go_lint — ok
+  ✓ go_tests — passed
+  guard log: .gitreins/logs/guard-20261002T014839.865974Z.log
+✓ Commit attestation — PASS
+#
+# No test was skipped, no --no-verify was used, and nothing in the repo was
+# changed for this: only TMPDIR/GOTMPDIR of the invoking shell.
