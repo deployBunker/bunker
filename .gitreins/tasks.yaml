@@ -3838,3 +3838,16 @@ tasks:
     test tmpfs) without weakening durability guarantees silently
   status: in_progress
   created_at: '2026-10-01T13:48:40.165079+00:00'
+- id: GAP-181
+  title: Secrets and state resolve to documented absolute paths (path diagnostic +
+    fail-closed + backup set)
+  criteria:
+  - go build/vet clean and go test ./... -count=1 green; a test runs the binary from
+    a temp repo-free cwd and asserts ZERO cwd artifacts; a paths diagnostic (bunker
+    paths / bunkerd --show-paths) prints location+mode+resolution-rule for every secret/state
+    path and prints NO secret material; with a required secret removed each component
+    fails closed naming the exact path searched; the backup set (paths, purpose, restore
+    order) is documented in docs/
+  status: complete
+  created_at: '2026-10-02T05:23:12.108077+00:00'
+  completed_at: '2026-10-02T09:32:58.657583+00:00'
