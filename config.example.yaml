@@ -188,6 +188,23 @@ agent:
     shared_scratch_per_agent_bytes: 268435456        # 256 MiB cap per agent (tmpfs)
     private_tmp_root: /var/lib/bunkerd/agent-tmp      # pam_namespace /tmp instances
 
+  # Network-isolation mode (NET-BUNKER-010/002; specs/network-isolation.md).
+  # The DEFAULT mode for agents spawned on this host when the spawn request
+  # does not name one — so a host can run mixed modes while migrating.
+  #   shared (default): the agent runs in the host network namespace — no
+  #     network isolation (shared loopback, global port space). The declared
+  #     default, unchanged until measured (spec §5.1; NET-BUNKER-008).
+  #   systemd: the agent's dockerd unit gets PrivateNetwork=yes — a private
+  #     network namespace containing only loopback. Genuinely private
+  #     127.0.0.1 and port space. COST, BY DESIGN: ALL outbound is lost —
+  #     dockerd cannot pull images in this mode (pre-pull or build images
+  #     another way). Unix-socket control is UNCHANGED: docker.sock, exec,
+  #     the SSH tunnel and sshfs all keep working.
+  # An unknown value REFUSES TO START (fail loud — never a silent fallback
+  # to shared; spec §5.2). Per-spawn selection: `bunker spawn
+  # --network-mode <mode>`. Env override: BUNKERD_NETWORK_MODE.
+  network_mode: shared
+
   # Startup reconciliation between the replayed registry and system users.
   #   destroy (default): a bunker-* user the registry does not know is removed.
   #   adopt:             it is re-registered and its EXACT persisted port

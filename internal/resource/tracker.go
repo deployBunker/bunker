@@ -46,6 +46,16 @@ type AgentRecord struct {
 	SliceProperties  []*v1.SystemdProperty
 	SliceDropIn      string // exact drop-in content when written; empty otherwise
 	SliceDropInState string // "written" or "failed" (best-effort step)
+	// NetworkMode is the resolved network-isolation mode (NET-BUNKER-010)
+	// the agent was spawned under: netmode.ModeShared or netmode.ModeSystemd.
+	// Empty on pre-surface records (replay/adopt of an older daemon's agent)
+	// — the empty state must never render as "shared" (§5.2 three-state
+	// vocabulary).
+	NetworkMode string
+	// NetworkIsolation is the §5.2 reporting payload (mode + actually-
+	// provided boundary) handed to the wire verbatim by ToAgentSummary. Nil
+	// on pre-surface records; never fabricated for them.
+	NetworkIsolation *v1.NetworkIsolation
 }
 
 // Tracker manages agent state, capacity, and resource allocation.
@@ -161,5 +171,9 @@ func (r *AgentRecord) ToAgentSummary() *v1.AgentSummary {
 		// CLI renders the built-in default.
 		SafetyPreset:      r.SafetyPreset,
 		SystemdProperties: r.UnitProperties,
+		// NET-BUNKER-010 §5.2: the mode + boundary the daemon actually
+		// provides. Nil (pre-surface record) stays nil — absence is the
+		// distinct "predates reporting" state, never upgraded to a claim.
+		NetworkIsolation: r.NetworkIsolation,
 	}
 }

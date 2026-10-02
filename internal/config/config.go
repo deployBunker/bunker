@@ -18,6 +18,7 @@ import (
 
 	"github.com/deployBunker/bunker/internal/hostsetup"
 	"github.com/deployBunker/bunker/internal/invalidation"
+	"github.com/deployBunker/bunker/internal/netmode"
 )
 
 // Config is the top-level bunkerd configuration.
@@ -36,6 +37,78 @@ type Config struct {
 	// the environment names one. Empty (the zero value) is the built-in
 	// default — exactly today's behavior, byte for byte.
 	Safety SafetyConfig `mapstructure:"safety"`
+}
+
+// Network-isolation mode config vocabulary (NET-BUNKER-010;
+// specs/network-isolation.md is the design authority). The daemon-level key
+// is agent.network_mode — the DEFAULT for agents on this host, so a host can
+// run mixed modes while migrating by flipping it per spawn. The valid set is
+// OWNED by internal/netmode (one place; a third mode is a one-line addition
+// there); the config layer re-exports the vocabulary for validation and
+// error text, it never invents its own list.
+const (
+	// NetworkModeShared is the declared default (spec §5.1): the agent runs
+	// in the host network namespace with no network isolation. Default
+	// unchanged until measured (NET-BUNKER-008).
+	NetworkModeShared = netmode.ModeShared
+	// NetworkModeSystemd is the `systemd` mode (NET-BUNKER-002): the agent's
+	// dockerd unit gets --property=PrivateNetwork=yes — a private network
+	// namespace with loopback only. All outbound is lost BY DESIGN (docker
+	// image pulls fail in this mode); unix-socket control is unchanged.
+	NetworkModeSystemd = netmode.ModeSystemd
+	// NetworkModeEnv is the env override between the per-spawn flag and the
+	// config global (the GAP-116 precedence shape: flag > env > config >
+	// default).
+	NetworkModeEnv = "BUNKERD_NETWORK_MODE"
+)
+
+// ValidNetworkModes lists the accepted network-isolation mode names — the
+// netmode vocabulary, verbatim. Display/error order follows netmode's slice.
+func ValidNetworkModes() []string {
+	return netmode.ValidModes()
+}
+
+// ValidNetworkMode reports whether name is an implemented mode.
+func ValidNetworkMode(name string) bool {
+	return netmode.ValidMode(name)
+}
+
+// errUnknownNetworkMode builds the shared unknown-mode error (same shape as
+// errUnknownSafetyPreset): it names the offending value and the valid set.
+func errUnknownNetworkMode(name string) error {
+	return fmt.Errorf("unknown network isolation mode %q (valid: %v)", name, ValidNetworkModes())
+}
+
+// ResolveNetworkMode is the SINGLE precedence resolver for the network mode
+// (NET-BUNKER-010): per-spawn flag > BUNKERD_NETWORK_MODE env > the config
+// global > the declared default (netmode.DefaultMode = "shared", spec §5.1).
+// Every spawn-shaped code path resolves through this function so the sources
+// can never disagree.
+//
+// An unknown name from ANY source is a hard error naming the source — never a
+// silent fallback to shared (spec §5.2 refuse-loudly; the GAP-116 preset
+// precedent). Precedence is first-WIN: a valid flag short-circuits even when
+// a lower source holds an invalid name.
+func (c *Config) ResolveNetworkMode(flagMode string) (string, error) {
+	if m := strings.TrimSpace(flagMode); m != "" {
+		if !ValidNetworkMode(m) {
+			return "", fmt.Errorf("--network-mode: %w", errUnknownNetworkMode(m))
+		}
+		return m, nil
+	}
+	if m := strings.TrimSpace(os.Getenv(NetworkModeEnv)); m != "" {
+		if !ValidNetworkMode(m) {
+			return "", fmt.Errorf("%s: %w", NetworkModeEnv, errUnknownNetworkMode(m))
+		}
+		return m, nil
+	}
+	if c.Agent.NetworkMode == "" {
+		return netmode.DefaultMode, nil
+	}
+	if !ValidNetworkMode(c.Agent.NetworkMode) {
+		return "", fmt.Errorf("agent.network_mode: %w", errUnknownNetworkMode(c.Agent.NetworkMode))
+	}
+	return c.Agent.NetworkMode, nil
 }
 
 // Safety preset vocabulary and defaults (GAP-116 plumbing; GAP-117 naming).
@@ -472,11 +545,23 @@ type AuditConfig struct {
 
 // AgentConfig holds agent lifecycle settings.
 type AgentConfig struct {
-	BaseDataDir        string  `mapstructure:"base_data_dir"`
-	SSHDir             string  `mapstructure:"ssh_dir"`
-	PortRangeStart     uint32  `mapstructure:"port_range_start"`
-	PortRangeEnd       uint32  `mapstructure:"port_range_end"`
-	PortRangePerAgent  uint32  `mapstructure:"port_range_per_agent"`
+	BaseDataDir       string `mapstructure:"base_data_dir"`
+	SSHDir            string `mapstructure:"ssh_dir"`
+	PortRangeStart    uint32 `mapstructure:"port_range_start"`
+	PortRangeEnd      uint32 `mapstructure:"port_range_end"`
+	PortRangePerAgent uint32 `mapstructure:"port_range_per_agent"`
+	// NetworkMode is the daemon-wide DEFAULT network-isolation mode
+	// (NET-BUNKER-010) new spawns resolve to when the spawn request does not
+	// name one: "shared" (the declared default, spec §5.1) or "systemd"
+	// (NET-BUNKER-002, PrivateNetwork=yes on the dockerd unit). Empty =
+	// unset = the built-in default (netmode.DefaultMode), which keeps every
+	// spawn byte-identical to pre-surface behavior. Per-agent selection
+	// rides SpawnAgentRequest.network_mode; precedence flag > env
+	// (BUNKERD_NETWORK_MODE) > this config > default via
+	// Config.ResolveNetworkMode. An unknown value fails config Validate
+	// (refuse to start) and re-fails loudly in the resolver — a typo can
+	// never silently resolve to a different boundary.
+	NetworkMode        string  `mapstructure:"network_mode"`
 	MaxAgents          uint32  `mapstructure:"max_agents"`
 	DefaultCPUQuota    float64 `mapstructure:"default_cpu_quota"`
 	DefaultMemoryBytes uint64  `mapstructure:"default_memory_bytes"`
@@ -1138,6 +1223,7 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("agent.port_range_start")
 	v.BindEnv("agent.port_range_end")
 	v.BindEnv("agent.port_range_per_agent")
+	v.BindEnv("agent.network_mode")
 	v.BindEnv("agent.max_agents")
 	v.BindEnv("agent.default_cpu_quota")
 	v.BindEnv("agent.default_memory_bytes")
@@ -1328,6 +1414,14 @@ func (c *Config) Validate() error {
 	// set at spawn time.
 	if err := c.Safety.Validate(); err != nil {
 		return err
+	}
+	// NET-BUNKER-010: an unknown agent.network_mode must refuse to start
+	// (fail loud, spec §5.2 refuse-loudly) — a typoed mode name can never
+	// silently resolve to a different network boundary at spawn time. Empty
+	// is the unset default (netmode.DefaultMode = "shared") and always
+	// passes.
+	if c.Agent.NetworkMode != "" && !ValidNetworkMode(c.Agent.NetworkMode) {
+		return fmt.Errorf("agent.network_mode must be one of %v, got %q", ValidNetworkModes(), c.Agent.NetworkMode)
 	}
 	// GAP-118: the DoS-containment admin overrides are validated where they
 	// are configured, so a typoed knob value fails at load — never as a

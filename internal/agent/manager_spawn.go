@@ -94,6 +94,23 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	}
 	m.logger.Info("resolved mount driver", "agent_id", agentID, "driver", mountDriver.Name)
 
+	// ── Step 1d: Resolve the network-isolation mode BEFORE any side effect ──
+	// NET-BUNKER-010 (specs/network-isolation.md §5.2 refuse-loudly): the
+	// requested mode (req.NetworkMode, empty = the daemon's agent.network_mode
+	// config, then the declared default "shared") must be a mode this host can
+	// provide. An unknown or unimplemented name REFUSES here — before user
+	// creation, port allocation, dockerd start, or ANY systemd-run state —
+	// with a named error carrying the offending value and the valid set. It
+	// NEVER falls back to shared and reports success: a silent fallback is a
+	// manufactured bound, which §5.2 forbids. The resolved mode is stamped on
+	// the agent record so `bunker info`/`list` report the boundary actually
+	// provided (§5.2 reporting law).
+	networkMode, networkModeErr := m.cfg.ResolveNetworkMode(req.GetNetworkMode())
+	if networkModeErr != nil {
+		return nil, spawnStageErr(ctx, agentID, StageValidate, networkModeErr)
+	}
+	m.logger.Info("resolved network isolation mode", "agent_id", agentID, "mode", networkMode)
+
 	// ── Step 1.7: Validate the image spec BEFORE any side effect ──
 	// GAP-064: an invalid or disallowed image spec must fail with a
 	// validation error (mapped to CodeInvalidArgument by the server) without
@@ -555,6 +572,11 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		MaxProcesses:   maxProcs,
 		MaxOpenFiles:   maxFiles,
 		UnitKnobs:      unitKnobs,
+		// NET-BUNKER-010/002: the resolved network-isolation mode. "shared"
+		// (and the empty zero value) leaves the argv byte-identical;
+		// "systemd" adds --property=PrivateNetwork=yes (see
+		// buildRootlessDockerdArgs for the mode's contract).
+		NetworkMode: networkMode,
 	})
 
 	// Clear any leftover state from a previous unit with this name BEFORE
@@ -767,6 +789,14 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		SliceProperties:  systemdKnobsToProto(sliceKnobs),
 		SliceDropIn:      dropinContent,
 		SliceDropInState: sliceDropInState(createdUserSlice),
+		// NET-BUNKER-010 §5.2 (the reporting law): the resolved mode and the
+		// boundary it ACTUALLY provides ride the record so `bunker
+		// info`/`list`/GetAgent can show them. A bound that is not reported
+		// is not a bound. "requested" and "provided" differ only when the
+		// spawn failed — this record exists only on success, so requested ==
+		// provided here by construction.
+		NetworkMode:      networkMode,
+		NetworkIsolation: networkIsolationForSummary(networkMode),
 	}
 	if err := m.tracker.Register(rec); err != nil {
 		// This shouldn't happen (we checked capacity above), but handle gracefully

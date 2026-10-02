@@ -111,6 +111,10 @@ Examples:
 				}
 				fmt.Printf("  %-14s %-10s %-14s %-14s %-25s %s\n",
 					a.AgentId, a.Status, humanBytes(a.DiskUsedBytes), formatPerFileCap(diskCap), a.CreatedAt, publicURL)
+				// NET-BUNKER-010 §5.2: the mode + boundary per agent, directly
+				// under its row — `bunker list` shows the boundary each agent
+				// actually has (three-state vocabulary: empty = not reported).
+				fmt.Printf("    └ net: %s\n", formatNetworkIsolation(a.GetNetworkIsolation()))
 			}
 			fmt.Println()
 			fmt.Printf("Total: %d agents (server: %s)\n", resp.Msg.TotalCount, serverName)

@@ -72,6 +72,10 @@ func recordToRegistry(rec *resource.AgentRecord) *registry.Record {
 		SafetyPreset:    rec.SafetyPreset,
 		UnitProperties:  protoToRegistryProperties(rec.UnitProperties),
 		SliceProperties: protoToRegistryProperties(rec.SliceProperties),
+		// NET-BUNKER-010 §5.2: the mode + actually-provided boundary ride the
+		// durable record so a replayed/adopted agent keeps reporting them.
+		NetworkMode:     rec.NetworkMode,
+		NetworkBoundary: networkBoundaryOf(rec.NetworkIsolation),
 	}
 }
 
@@ -121,6 +125,11 @@ func registryToRecord(rec *registry.Record) *resource.AgentRecord {
 		SafetyPreset:    rec.SafetyPreset,
 		UnitProperties:  registryPropertiesToProto(rec.UnitProperties),
 		SliceProperties: registryPropertiesToProto(rec.SliceProperties),
+		// NET-BUNKER-010 §5.2: restore the mode/boundary reporting. A
+		// pre-surface record (empty mode) stays empty — absence is preserved,
+		// never upgraded to a "shared" claim.
+		NetworkMode:      rec.NetworkMode,
+		NetworkIsolation: networkIsolationForRecord(rec.NetworkMode, rec.NetworkBoundary),
 	}
 }
 

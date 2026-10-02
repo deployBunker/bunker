@@ -150,6 +150,14 @@ Examples:
 					fmt.Printf("    %-14s  %s\n", p.GetName()+":", p.GetValue())
 				}
 			}
+			// NET-BUNKER-010 §5.2 (the reporting law): the network-isolation
+			// mode and the boundary it ACTUALLY provides. Three states stay
+			// distinct — an explicit mode states its boundary; "unknown"
+			// means the daemon could not verify (never claims shared); an
+			// EMPTY mode means this record predates mode reporting and must
+			// never render as safe. A bound that is not reported is not a
+			// bound.
+			fmt.Println("  Network Isolation: " + formatNetworkIsolation(a.GetNetworkIsolation()))
 			// DF-BUNKER-34: the orphan-uid verdict. Non-empty means the
 			// agent's user record is GONE from the host while processes
 			// still run under its uid — the state that made a destroyed

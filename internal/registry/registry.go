@@ -124,6 +124,14 @@ type Event struct {
 	UnitProperties  []SystemdProperty `json:"unit_properties,omitempty"`
 	SliceProperties []SystemdProperty `json:"slice_properties,omitempty"`
 
+	// NET-BUNKER-010 §5.2: the resolved network-isolation mode and the
+	// boundary it actually provides. Persisted so a replayed or adopted
+	// agent keeps reporting its mode. Empty mode on a pre-surface record —
+	// the three-state vocabulary (explicit / unknown / empty) is preserved
+	// by keeping the field omitempty, never defaulting it.
+	NetworkMode     string `json:"network_mode,omitempty"`
+	NetworkBoundary string `json:"network_boundary,omitempty"`
+
 	// KnownIDs is set only on KindKnown index records.
 	KnownIDs []string `json:"known_ids,omitempty"`
 }
@@ -176,6 +184,12 @@ type Record struct {
 	SafetyPreset    string
 	UnitProperties  []SystemdProperty
 	SliceProperties []SystemdProperty
+
+	// NET-BUNKER-010 §5.2: the resolved network-isolation mode and the
+	// boundary it actually provides (see Event — empty mode = pre-surface
+	// record, never rendered as shared).
+	NetworkMode     string
+	NetworkBoundary string
 
 	// Refusal is the folded destroy-refusal state (DF-BUNKER-63); nil when
 	// the agent has no refusal on record.
@@ -561,6 +575,10 @@ func (s *Store) AppendSpawn(rec *Record) error {
 		SafetyPreset:    rec.SafetyPreset,
 		UnitProperties:  rec.UnitProperties,
 		SliceProperties: rec.SliceProperties,
+		// NET-BUNKER-010 §5.2: the mode + boundary ride the spawn event so a
+		// replayed agent keeps reporting the boundary actually provided.
+		NetworkMode:     rec.NetworkMode,
+		NetworkBoundary: rec.NetworkBoundary,
 	}
 	return s.append(ev, func() {
 		clone := *rec
@@ -939,6 +957,10 @@ func eventToRecord(ev *Event) *Record {
 		SafetyPreset:     ev.SafetyPreset,
 		UnitProperties:   ev.UnitProperties,
 		SliceProperties:  ev.SliceProperties,
+		// NET-BUNKER-010 §5.2: restore the mode/boundary reporting so a
+		// replayed or adopted agent keeps reporting its enforced boundary.
+		NetworkMode:     ev.NetworkMode,
+		NetworkBoundary: ev.NetworkBoundary,
 		// DF-BUNKER-63: a refusal rides the record when the event carries
 		// one (a KindRefusal fold, or a compacted spawn event preserving
 		// the live record's refusal). A plain spawn event has none and

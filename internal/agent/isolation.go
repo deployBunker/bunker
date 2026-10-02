@@ -15,6 +15,7 @@ import (
 
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/hostsetup"
+	"github.com/deployBunker/bunker/internal/netmode"
 )
 
 // ── Safety preset knob table (GAP-116) ────────────────────────────────
@@ -952,6 +953,15 @@ type dockerdUnitArgs struct {
 	// set from the limits above — the derivation is identical to pre-GAP-116,
 	// so both paths produce the same argv for the same limits.
 	UnitKnobs []SystemdKnob
+	// NetworkMode is the resolved network-isolation mode for this unit
+	// (NET-BUNKER-010/002; specs/network-isolation.md §1.2). Must be a
+	// netmode-valid name — callers resolve through config.ResolveNetworkMode
+	// BEFORE any side effect, and the builder re-refuses an invalid name
+	// (fail loud, never a silent fallback to shared). "shared" (and empty,
+	// the zero value) adds NO property — the argv is byte-identical to the
+	// pre-surface spawn, the §5.1 zero-delta law. "systemd" adds exactly one
+	// property: PrivateNetwork=yes.
+	NetworkMode string
 }
 
 // buildRootlessDockerdArgs builds the exact `systemd-run` argv and the
@@ -964,6 +974,27 @@ type dockerdUnitArgs struct {
 // the preset resolves to the same five properties with the same values as
 // pre-GAP-116, so a default-preset argv is byte-identical (pinned by the
 // zero-delta test).
+//
+// NET-BUNKER-010/002 (specs/network-isolation.md §1.2): the network-isolation
+// mode adds its own property to the SAME list — it is one more property, not
+// a new mechanism. `systemd` mode (PrivateNetwork=yes) puts the unit in a
+// private network namespace containing ONLY loopback:
+//
+//   - a genuinely private 127.0.0.1 and a private port space (co-tenant
+//     reach and bind-squatting die — spec §2 T2/T3), and
+//   - ALL OUTBOUND IS LOST, BY DESIGN. dockerd cannot pull images in this
+//     mode; that is the accepted cost, never a bug, and it is stated in the
+//     reported boundary string (netmode.BoundaryFor) rather than hidden.
+//   - UNIX SOCKETS ARE FILESYSTEM OBJECTS AND CROSS NETWORK NAMESPACES, so
+//     /run/bunker/<id>/docker.sock KEEPS WORKING — the exec/socket contract
+//     (DOCKER_HOST=unix://..., the ssh -L 2376: tunnel, sshfs) is UNCHANGED
+//     (spec §3, non-negotiable composition rule 1). The rootlesskit
+//     container-networking env below is untouched: it governs the agent's
+//     CONTAINERS, not the agent's host-level unit.
+//
+// The mode is resolved and validated by the caller BEFORE this builder runs
+// (spawn Step 1b, before any side effect); an invalid NetworkMode here is a
+// programming error and fails loud rather than degrading to shared.
 //
 // DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns avoids needing a separate
 // bridge, and the per-agent socket path is passed through DOCKER_HOST so the
@@ -979,6 +1010,14 @@ type dockerdUnitArgs struct {
 // enforced at spawn time by counting the just-started dockerd's containers,
 // and the limit is carried on the agent record for that policy check.
 func buildRootlessDockerdArgs(a dockerdUnitArgs) (args []string, env []string) {
+	// NET-BUNKER-010: resolve the mode's extra unit properties up front so an
+	// invalid name fails BEFORE anything is built (the refusal happens before
+	// systemd-run creates any state — the spec's refuse-loudly point; the
+	// spawn path resolves earlier still, at Step 1b).
+	modeProps, err := netmode.PropertiesFor(a.NetworkMode)
+	if err != nil {
+		panic("buildRootlessDockerdArgs: " + err.Error() + " — the caller must resolve the mode first (spawn Step 1b)")
+	}
 	// systemd-run --system with --uid does not inherit the caller's
 	// environment, so every variable the rootless stack needs is passed with
 	// --setenv.
@@ -1012,6 +1051,12 @@ func buildRootlessDockerdArgs(a dockerdUnitArgs) (args []string, env []string) {
 		// host's (root's) /tmp or with another agent's.
 		"--property=PrivateTmp=yes",
 	}
+	// NET-BUNKER-010/002: the network-isolation mode's properties ride the
+	// SAME property list (the GAP-075 pattern — one more property, not a new
+	// mechanism). `shared`/empty adds nothing here (byte-identical argv);
+	// `systemd` adds exactly --property=PrivateNetwork=yes, immediately after
+	// the PrivateTmp boundary and before the limit block.
+	args = append(args, modeProps...)
 	// GAP-116: the limit property block is table-driven (same values, same
 	// order, same conditional as pre-GAP-116 — pinned byte-for-byte by the
 	// zero-delta test). The preset name itself carries no knob information in

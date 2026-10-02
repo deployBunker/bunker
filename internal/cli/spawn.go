@@ -39,6 +39,10 @@ func NewSpawnCommand() *cobra.Command {
 		imageSpecFile string
 		preset        string
 		mountDriver   string
+		// networkIsolationMode is the requested network-isolation mode
+		// (NET-BUNKER-010): "shared" or "systemd". Empty defers to the
+		// daemon's resolution chain.
+		networkIsolationMode string
 	)
 
 	cmd := &cobra.Command{
@@ -129,6 +133,17 @@ Examples:
 				return fmt.Errorf("invalid --preset %q (valid: %v)", preset, config.ValidSafetyPresets())
 			}
 
+			// 0.75 Validate --network-mode LOCALLY, before the progress line
+			// and the RPC (NET-BUNKER-010 §5.2 refuse-loudly): an unknown
+			// mode name fails fast with the accepted vocabulary, exactly like
+			// --preset. Empty defers to BUNKERD_NETWORK_MODE, then the
+			// daemon's agent.network_mode config, then the declared default
+			// ("shared") — the daemon re-validates the resolved value
+			// regardless and never silently falls back.
+			if networkIsolationMode != "" && !config.ValidNetworkMode(networkIsolationMode) {
+				return fmt.Errorf("invalid --network-mode %q (valid: %v)", networkIsolationMode, config.ValidNetworkModes())
+			}
+
 			// 1. Load CLI config
 			cfg, err := LoadCLIConfig()
 			if err != nil {
@@ -163,6 +178,12 @@ Examples:
 				Ttl:          ttl,
 				ImageSpec:    imageSpecPB,
 				SafetyPreset: preset,
+				// NET-BUNKER-010: the requested network-isolation mode.
+				// Empty = the daemon's resolution chain (flag env > config >
+				// the declared default "shared"); an unknown name is refused
+				// by the server (CodeInvalidArgument) — never a silent
+				// fallback to shared (spec §5.2).
+				NetworkMode: networkIsolationMode,
 				// MOUNT-006: the requested mount driver. Empty = the
 				// server's sshfs default; an unknown name is refused by
 				// the server (CodeInvalidArgument) — never a silent
@@ -319,6 +340,7 @@ Examples:
 	cmd.Flags().StringVar(&imageSpecFile, "image-spec", "", "JSON file with an image customization spec (base + apt/go/npm package adds)")
 	cmd.Flags().StringVar(&preset, "preset", "", "Safety preset for this agent: open, standard, hardened (default: BUNKERD_SAFETY_PRESET, then the server's config, then open)")
 	cmd.Flags().StringVar(&mountDriver, "mount-driver", "", "Mount driver for this agent (default: sshfs; an unknown name is refused by the server)")
+	cmd.Flags().StringVar(&networkIsolationMode, "network-mode", "", "Network isolation mode for this agent: shared, systemd (default: BUNKERD_NETWORK_MODE, then the server's config, then shared). systemd = private network namespace (loopback only; NO outbound — image pulls fail in this mode)")
 
 	return cmd
 }

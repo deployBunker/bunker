@@ -129,6 +129,14 @@ message ServerInfoResponse {
   // UNSET (nil) means the daemon predates residue reporting — an older CLI must
   // not read absence of the field as "the host is clean".
   ResidueInventory residue = 10;
+  // NET-BUNKER-010 §5.2: the daemon-wide DEFAULT network-isolation mode new
+  // spawns resolve to when the spawn request does not name one. ADDITIVE:
+  // an EMPTY value means the daemon predates the mode surface — the CLI
+  // renders it like "unknown" (never as "shared"), because absence of the
+  // field is not an affirmative statement. Same shape as tmp_isolation:
+  // the default mode plus its declared boundary line.
+  string default_network_mode = 11;
+  string default_network_boundary = 12;
 }
 
 // ResidueInventory reports host residue counts probed from the host itself
@@ -202,6 +210,12 @@ message AgentSummary {
   // process (pid + command head). Empty = healthy, unknown, or not
   // applicable (the home does not exist). ADDITIVE: older clients ignore it.
   string orphan_uid_detail = 16;
+  // NET-BUNKER-010 §5.2: the network-isolation mode the daemon resolved for
+  // this agent and the boundary it ACTUALLY provides. ADDITIVE: a nil (or
+  // empty-mode) message means the record predates mode reporting — an
+  // operator must never read that absence as "shared"; see the
+  // NetworkIsolation message's three-state vocabulary.
+  NetworkIsolation network_isolation = 17;
 }
 
 // One resolved systemd property of an agent's effective knob set (GAP-116):
@@ -230,6 +244,13 @@ message SpawnAgentRequest {
   // default (sshfs). An unknown driver name REFUSES the spawn with a named
   // error (CodeInvalidArgument) — never a silent fallback to sshfs.
   string mount_driver = 10;
+  // NET-BUNKER-010: requested network-isolation mode ("shared" | "systemd").
+  // Empty = defer to the daemon's agent.network_mode config (default
+  // "shared" — specs/network-isolation.md §5.1). An unknown name REFUSES the
+  // spawn with a named error (CodeInvalidArgument) — never a silent fallback
+  // to shared (specs/network-isolation.md §5.2). A mode the daemon cannot
+  // provide refuses the same way: a silent fallback is a manufactured bound.
+  string network_mode = 11;
 }
 
 // ── Image specification (GAP-064) ─────────────────────────────
@@ -427,7 +448,29 @@ message ListAgentsRequest {
 message ListAgentsResponse {
   repeated AgentSummary agents = 1;
   string next_page_token = 2;
+  // DF-BUNKER-34 orphan-uid surfacing: when NON-EMPTY, the agent's user
+  // record (bunker-<agent_id>) is GONE from the host while processes are
   uint32 total_count = 3;
+}
+
+// Network-isolation reporting vocabulary (NET-BUNKER-010, the §5.2 reporting
+// law of specs/network-isolation.md). "A bound that is not reported is not a
+// bound": the three states are DISTINCT and must never be merged —
+//   empty          the record PREDATES mode reporting (an older daemon);
+//                  it must never render as safe;
+//   "unknown"      the daemon could not verify what it actually enforced;
+//                  it must not claim "shared";
+//   explicit value the only affirmative statement ("shared" or "systemd").
+// The boundary string is the plain-language contract of what the mode
+// actually provides (see internal/netmode for the canonical strings).
+message NetworkIsolation {
+  // The mode the daemon resolved for this agent: "shared" or "systemd".
+  // Empty = pre-surface record (never render it as "shared").
+  string mode = 1;
+  // What the mode ACTUALLY provides, in one greppable line — e.g. for
+  // systemd: "private network namespace (loopback only); NO outbound
+  // networking: image pulls unavailable". Empty when mode is empty.
+  string boundary = 2;
 }
 
 message GetAgentRequest {

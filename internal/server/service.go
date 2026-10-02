@@ -27,6 +27,7 @@ import (
 	"github.com/deployBunker/bunker/internal/hostsetup"
 	"github.com/deployBunker/bunker/internal/imagespec"
 	"github.com/deployBunker/bunker/internal/mountdriver"
+	"github.com/deployBunker/bunker/internal/netmode"
 	"github.com/deployBunker/bunker/internal/resource"
 	"github.com/deployBunker/bunker/internal/tailscale"
 	"github.com/deployBunker/bunker/internal/tunnel"
@@ -133,6 +134,23 @@ func (s *bunkerdService) ServerInfo(ctx context.Context, req *connect.Request[v1
 	// breadcrumb. Read-only; a daemon without a manager reports nothing rather
 	// than inventing zeroes.
 	resp.Residue = s.residueInventory()
+	// NET-BUNKER-010 §5.2: advertise the daemon-wide DEFAULT network mode new
+	// spawns resolve to (and its declared boundary), the same
+	// capability-report shape as tmp_isolation. A pre-surface CLI sees empty
+	// fields and must render them as "not reported", never as "shared". A
+	// nil configuration (tests construct the service without one) reports
+	// unknown — the same degrade-to-unknown rule tmpIsolation follows; it
+	// never fails the RPC and never asserts a boundary it cannot verify.
+	if s.cfg == nil {
+		resp.DefaultNetworkMode = netmode.ModeUnknown
+	} else if defaultMode, derr := s.cfg.ResolveNetworkMode(""); derr == nil {
+		resp.DefaultNetworkMode = defaultMode
+		resp.DefaultNetworkBoundary = netmode.BoundaryFor(defaultMode)
+	} else {
+		// A misconfigured agent.network_mode (Validate normally refuses it
+		// at boot): report unknown rather than an affirmative default.
+		resp.DefaultNetworkMode = netmode.ModeUnknown
+	}
 	return connect.NewResponse(resp), nil
 }
 
@@ -374,6 +392,17 @@ func (s *bunkerdService) SpawnAgent(ctx context.Context, req *connect.Request[v1
 	if req.Msg.GetMountDriver() != "" && !mountdriver.Known(req.Msg.GetMountDriver()) {
 		_, derr := mountdriver.Resolve(req.Msg.GetMountDriver())
 		return nil, connect.NewError(connect.CodeInvalidArgument, derr)
+	}
+
+	// NET-BUNKER-010 §5.2: an unknown network-isolation mode surfaces as
+	// CodeInvalidArgument at the RPC boundary — a spawn naming a mode this
+	// daemon cannot provide must REFUSE BY NAME (naming the offending value
+	// and the valid set), never silently fall back to shared and report
+	// success: a silent fallback is a manufactured bound. The manager
+	// re-resolves (and would fail at spawn Step 1d, before any side effect)
+	// but the code mapping happens here, like the preset check above.
+	if _, nerr := s.cfg.ResolveNetworkMode(req.Msg.GetNetworkMode()); nerr != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, nerr)
 	}
 
 	resp, err := s.agentMgr.Spawn(ctx, req.Msg)
@@ -1003,6 +1032,21 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 		if frame := markerFrameForStream(stdoutSent, stdoutEndsNewline, true); frame != "" {
 			sender.send("send containment marker", &v1.ExecAgentResponse{
 				Output: &v1.ExecAgentResponse_Stdout{Stdout: []byte(frame)},
+			})
+		}
+		// NET-BUNKER-010 §5.2: the in-band network-isolation marker rides the
+		// SAME probe frame (the GAP-067 idiom — one extra greppable line, on
+		// its own line, exit code untouched). The mode comes from the agent's
+		// tracker record: an explicit mode states its boundary; an
+		// empty/unknown state renders the UNKNOWN marker — never a shared or
+		// affirmative claim. A bound that is not reported is not a bound.
+		if rec != nil {
+			mode := rec.NetworkMode
+			if rec.NetworkIsolation != nil && rec.NetworkIsolation.GetMode() != "" {
+				mode = rec.NetworkIsolation.GetMode()
+			}
+			sender.send("send network-isolation marker", &v1.ExecAgentResponse{
+				Output: &v1.ExecAgentResponse_Stdout{Stdout: []byte(netmode.ContainmentMarker(mode) + "\n")},
 			})
 		}
 	}

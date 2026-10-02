@@ -277,6 +277,10 @@ func formatServerStatus(st serverStatus) string {
 	b.WriteString(fmt.Sprintf("  Uptime:   %s\n", formatUptime(info.GetUptimeSeconds())))
 	b.WriteString(fmt.Sprintf("  Agents:   %d/%d\n", info.GetAgentCount(), info.GetMaxAgents()))
 	b.WriteString(formatTmpIsolation(info.GetTmpIsolation(), info.GetTmpIsolationDetail()))
+	// NET-BUNKER-010 §5.2: the daemon-wide default network-isolation mode —
+	// same honesty contract as the /tmp line (empty = predates the surface,
+	// never rendered as "shared").
+	b.WriteString(formatDefaultNetworkMode(info.GetDefaultNetworkMode(), info.GetDefaultNetworkBoundary()))
 	b.WriteString(formatResidue(info.GetResidue()))
 
 	// Metrics (best-effort).
