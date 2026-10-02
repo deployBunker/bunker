@@ -9,9 +9,17 @@ package cli
 //  1. pinSentinelTestHome points the test process's HOME at a disposable
 //     sentinel directory for the entire run, so even a future un-isolated
 //     config write lands in the sentinel instead of the operator's home.
+//     It also neutralizes the rest of the GAP-181 resolution chain's env
+//     tiers — XDG_CONFIG_HOME, BUNKER_HOME, BUNKER_CONFIG_HOME — because a
+//     hosted runner exports XDG_CONFIG_HOME and the chain prefers it over
+//     $HOME/.config: with only HOME pinned, every HOME-only test resolved
+//     the config to one fixed runner-level dir OUTSIDE its t.TempDir(),
+//     writes vanished there, and later tests read the leaked file (the
+//     INT-CI-56 hosted-CI failure class).
 //  2. checkSentinelTestHome fails the run when anything appeared under
-//     <sentinel>/.bunker — a leaky test must not pass just because the
-//     sentinel absorbed the damage.
+//     <sentinel>/.bunker (legacy) or <sentinel>/.config/bunker (the
+//     documented post-GAP-181 config dir) — a leaky test must not pass just
+//     because the sentinel absorbed the damage.
 //
 // The pin happens in TestMain (procbuild_test.go) around m.Run(); the
 // GOCACHE/GOPATH mirroring keeps `go` child processes (the shared test-CLI
@@ -63,6 +71,21 @@ func pinSentinelTestHome() string {
 		}
 	}
 
+	// INT-CI-56: neutralize the ambient resolution seams alongside HOME. A
+	// hosted runner exports XDG_CONFIG_HOME and the GAP-181 chain prefers it
+	// over $HOME/.config; with only HOME pinned, the per-test t.Setenv pins
+	// below stopped matching where the chain actually resolved — every test
+	// shared one fixed runner-level config dir OUTSIDE its t.TempDir(),
+	// writes vanished there (ENOENT at the test's hand-built path) and later
+	// tests read the leaked file (live dials to leaked servers). Point the
+	// XDG base at the sentinel and blank the explicit BUNKER_* tiers so the
+	// per-test HOME pins are, again, the only resolution variable a test
+	// must set. GOCACHE/GOPATH are mirrored first on purpose: they must keep
+	// following the ambient home while HOME itself is pointed at the
+	// sentinel.
+	for _, k := range []string{"XDG_CONFIG_HOME", "BUNKER_HOME", "BUNKER_CONFIG_HOME"} {
+		_ = os.Setenv(k, "")
+	}
 	if err := os.Setenv("HOME", sentinel); err != nil {
 		fmt.Fprintf(os.Stderr, "qabunker23: cannot pin test HOME: %v\n", err)
 		os.Exit(1)
@@ -71,36 +94,49 @@ func pinSentinelTestHome() string {
 }
 
 // checkSentinelTestHome fails the run (exit 1) when the sentinel HOME gained
-// a .bunker directory — proof that some test resolved the config path from
-// HOME instead of its own t.TempDir()/BUNKER_HOME isolation. A clean sentinel
-// is removed; a dirty one is kept on disk for inspection.
+// a .bunker directory (legacy layout) or a .config/bunker directory (the
+// documented post-GAP-181 config dir) — proof that some test resolved the
+// config path outside its own t.TempDir()/BUNKER_HOME isolation. A clean
+// sentinel is removed; a dirty one is kept on disk for inspection.
 func checkSentinelTestHome(sentinel string) {
 	if sentinel == "" {
 		return // helper child: never pinned, nothing to check
 	}
-	bunkerDir := filepath.Join(sentinel, ".bunker")
+	for _, bunkerDir := range []string{
+		filepath.Join(sentinel, ".bunker"),
+		filepath.Join(sentinel, ".config", "bunker"),
+	} {
+		if names, dirty := sentinelDirEntries(bunkerDir); dirty {
+			fmt.Fprintf(os.Stderr,
+				"qabunker23: FAIL — a test wrote outside its isolated HOME: %s contains %v. "+
+					"Every config-writing test must isolate via t.Setenv(\"HOME\", t.TempDir()) "+
+					"(or BUNKER_HOME) before its first config write.\n", bunkerDir, names)
+			os.Exit(1)
+		}
+	}
+	removeCleanSentinel(sentinel)
+}
+
+// sentinelDirEntries reports the entries of one leak-detector directory under
+// the sentinel HOME; dirty=true means the run cannot inspect the directory
+// (treated as a leak, fail-closed) or the directory is non-empty (a leak).
+func sentinelDirEntries(bunkerDir string) ([]string, bool) {
 	entries, err := os.ReadDir(bunkerDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			removeCleanSentinel(sentinel)
-			return
+			return nil, false
 		}
-		fmt.Fprintf(os.Stderr, "qabunker23: cannot inspect sentinel HOME %s: %v\n", sentinel, err)
-		os.Exit(1)
+		fmt.Fprintf(os.Stderr, "qabunker23: cannot inspect sentinel dir %s: %v\n", bunkerDir, err)
+		return nil, true
 	}
 	if len(entries) == 0 {
-		removeCleanSentinel(sentinel)
-		return
+		return nil, false
 	}
 	names := make([]string, 0, len(entries))
 	for _, e := range entries {
 		names = append(names, e.Name())
 	}
-	fmt.Fprintf(os.Stderr,
-		"qabunker23: FAIL — a test wrote outside its isolated HOME: %s contains %v. "+
-			"Every config-writing test must isolate via t.Setenv(\"HOME\", t.TempDir()) "+
-			"(or BUNKER_HOME) before its first config write.\n", bunkerDir, names)
-	os.Exit(1)
+	return names, true
 }
 
 // removeCleanSentinel deletes a sentinel that stayed clean. A failed removal
