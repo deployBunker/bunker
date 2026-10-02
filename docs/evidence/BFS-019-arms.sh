@@ -61,14 +61,15 @@ make_tree() { # make_tree <dir>
 # start_serve <tree> <stagedir>  -> sets DPID, URL
 # ---------------------------------------------------------------------------
 start_serve() {
-  local SRC=$1 ST=$2 SBIN=$3
-  "$SBIN" --root "$SRC" --addr 127.0.0.1:0 > "$ST/davserve.log" 2>&1 &
+  local SRC=$1 ST=$2 SBIN=$3 EXTRA=${4:-}
+  "$SBIN" --root "$SRC" --addr 127.0.0.1:0 $EXTRA > "$ST/davserve.log" 2>&1 &
   DPID=$!
   URL=""
   local _
   for _ in $(seq 1 100); do grep -q '^URL=' "$ST/davserve.log" 2>/dev/null && break; sleep 0.1; done
   URL=$(grep '^URL=' "$ST/davserve.log" | head -1 | cut -d= -f2-)
   [ -n "$URL" ] || { fail "davserve produced no URL"; return 1; }
+  grep '^WATCH=' "$ST/davserve.log" | head -1
   say "[arm] DAVSERVE_PID=$DPID URL=$URL"
 }
 
@@ -126,11 +127,30 @@ expect_equal() {
   fi
 }
 
+# expect_differ is the NEGATIVE CONTROL's assertion: on the mutated tree the two
+# listings MUST disagree — an arm that cannot go red proves nothing.
+expect_differ() {
+  local label=$1 MD=$2 SD=$3 mn sn
+  mn=$(names_of "$MD"); sn=$(names_of "$SD")
+  if [ "$mn" != "$sn" ]; then
+    pass "$label: the mount listing DISAGREES with the server, as the filed defect says (mount=[$(printf '%s' "$mn" | tr '\n' ',')] server $(printf '%s' "$sn" | grep -c . ) names)"
+  else
+    fail "$label: the listings agree — this arm cannot see the mutation, so it is not a control"
+  fi
+}
+
+# expect_listing <equal|differ> <label> <mount-dir> <server-dir>
+expect_listing() {
+  if [ "$1" = differ ]; then expect_differ "$2" "$3" "$4"; else expect_equal "$2" "$3" "$4"; fi
+}
+
 # ---------------------------------------------------------------------------
 # the filed RED, exactly as filed
 # ---------------------------------------------------------------------------
 arm_red() { # arm_red <bunker> <davserve> <tag> <expect: filed|fixed>
   local CBIN=$1 SBIN=$2 TAG=$3 EXPECT=$4
+  local MUT_MODE=equal
+  [ "$EXPECT" = filed ] && MUT_MODE=differ
   local WORK; WORK=$(mktemp -d "/tmp/bfs019-$TAG-XXXXXX")
   local SRC=$WORK/src MNT=$WORK/mnt
   mkdir -p "$SRC" "$MNT"
@@ -146,14 +166,14 @@ arm_red() { # arm_red <bunker> <davserve> <tag> <expect: filed|fixed>
   say "--- [$TAG step 1] ONE mkdir through the mount"
   timeout 30 mkdir "$MNT/oob-dir" 2>&1; say "    mkdir rc=$?"
   side_by_side "$TAG step 1: after one mkdir" "$MNT" "$SRC"
-  expect_equal "$TAG step 1" "$MNT" "$SRC"
+  expect_listing "$MUT_MODE" "$TAG step 1" "$MNT" "$SRC"
 
   say
   say "--- [$TAG step 2] a through-mount write + unlink"
   printf 'hello\n' | timeout 30 tee "$MNT/written.txt" > /dev/null 2>&1; say "    write rc=$?"
   timeout 30 rm -f "$MNT/written.txt" 2>&1; say "    unlink rc=$?"
   side_by_side "$TAG step 2: after write + unlink" "$MNT" "$SRC"
-  expect_equal "$TAG step 2" "$MNT" "$SRC"
+  expect_listing "$MUT_MODE" "$TAG step 2" "$MNT" "$SRC"
 
   say
   say "--- [$TAG] lookups still work (the mount is not dead)"
@@ -171,15 +191,15 @@ arm_red() { # arm_red <bunker> <davserve> <tag> <expect: filed|fixed>
 # ---------------------------------------------------------------------------
 # the general case: repeated mutation, nested directories, server-side writer
 # ---------------------------------------------------------------------------
-arm_general() { # arm_general <bunker> <davserve> <tag>
-  local CBIN=$1 SBIN=$2 TAG=$3
+arm_general() { # arm_general <bunker> <davserve> <tag> <server-extra-flags>
+  local CBIN=$1 SBIN=$2 TAG=$3 SERVER_EXTRA=${4:-}
   local WORK; WORK=$(mktemp -d "/tmp/bfs019-$TAG-XXXXXX")
   local SRC=$WORK/src MNT=$WORK/mnt
   mkdir -p "$SRC" "$MNT"
   make_tree "$SRC"
-  start_serve "$SRC" "$WORK" "$SBIN" || return 1
+  start_serve "$SRC" "$WORK" "$SBIN" "$SERVER_EXTRA" || return 1
   mount_it "$CBIN" "$MNT" "$WORK" || { kill "$DPID" 2>/dev/null; return 1; }
-  say "[$TAG] SRC=$SRC MNT=$MNT"
+  say "[$TAG] SRC=$SRC MNT=$MNT server flags='${SERVER_EXTRA:-<none>}'"
   expect_equal "[$TAG] fresh" "$MNT" "$SRC"
 
   say
@@ -207,6 +227,7 @@ arm_general() { # arm_general <bunker> <davserve> <tag>
 
   say
   say "--- [$TAG G4] a directory mutated by the SERVER (another writer), then listed"
+  say "    the surface is serving with: $(grep '^WATCH=' "$WORK/davserve.log" | head -1)"
   printf 'server-side\n' > "$SRC/server-made.txt"
   mkdir -p "$SRC/server-dir"
   printf 'nested server-side\n' > "$SRC/src/server-nested.txt"
@@ -218,6 +239,8 @@ arm_general() { # arm_general <bunker> <davserve> <tag>
     sleep 1
   done
   say "    settled after ${w}s"
+  say "    mount  root = [$(names_of "$MNT" | tr '\n' ',')]"
+  say "    server root = [$(names_of "$SRC" | tr '\n' ',')]"
   expect_equal "[$TAG G4] root after a server-side write" "$MNT" "$SRC"
   expect_equal "[$TAG G4] src after a server-side write" "$MNT/src" "$SRC/src"
 
@@ -239,81 +262,132 @@ arm_general() { # arm_general <bunker> <davserve> <tag>
 # conditional on the NODE being new again (the pre-fix text).
 # ---------------------------------------------------------------------------
 SNAP=internal/fsclient/snapshot.go
+NEGCTL=$HERE/BFS-019-negative-control.patch
 
 arm_mutations() {
   local TREE=${1:-$REPO}
-  local BK="/tmp/bfs019-snapshot-$$.orig"
+  local BK; BK=$(mktemp /tmp/bfs019-snapshot-XXXXXX.orig)
   cp -p "$TREE/$SNAP" "$BK" || { fail "no snapshot.go to back up"; return 1; }
   local ORIG; ORIG=$(sha "$BK")
   say "MUTATION baseline: $SNAP sha256=$ORIG"
+  say "MUTATION patch: $NEGCTL (the fix's one hunk, reversed)"
 
-  say "--- mutation: the child-index insert is conditional on the NODE being new"
-  python3 - "$TREE/$SNAP" <<'PY'
-import sys
-p = sys.argv[1]
-s = open(p, encoding="utf-8").read()
-old = """	parent := path.Dir(n.Path)
-	if parent == "." {
-		parent = ""
-	}
-	if s.children[parent] == nil {
-		s.children[parent] = map[string]struct{}{}
-	}
-	s.children[parent][path.Base(n.Path)] = struct{}{}
-"""
-new = """	parent := path.Dir(n.Path)
-	if parent == "." {
-		parent = ""
-	}
-	if !existed || old.IsDir != n.IsDir {
-		if s.children[parent] == nil {
-			s.children[parent] = map[string]struct{}{}
-		}
-		s.children[parent][path.Base(n.Path)] = struct{}{}
-	}
-"""
-if old not in s:
-    print("MUTATION PATCH DID NOT APPLY (the fixed text is not on disk)")
-    sys.exit(3)
-if new in s:
-    print("MUTATION PATCH: the pre-fix text is already on disk")
-    sys.exit(3)
-open(p, "w", encoding="utf-8").write(s.replace(old, new, 1))
-print("MUTATION APPLIED")
-PY
-  local mrc=$?
-  if [ $mrc -ne 0 ]; then
-    fail "mutation patch did not apply (rc=$mrc)"
+  if ! ( cd "$TREE" && patch -p1 --dry-run < "$NEGCTL" ) > /tmp/bfs019-mut-dryrun.txt 2>&1; then
+    fail "the negative-control patch does not apply (see /tmp/bfs019-mut-dryrun.txt)"
+    return 1
+  fi
+  if ! ( cd "$TREE" && patch -p1 < "$NEGCTL" ) > /tmp/bfs019-mut-apply.txt 2>&1; then
+    fail "applying the negative-control patch failed"
     cp -p "$BK" "$TREE/$SNAP"
     return 1
   fi
   local MUT; MUT=$(sha "$TREE/$SNAP")
-  say "MUTATION applied: sha256=$MUT (baseline $ORIG)"
+  if [ "$MUT" = "$ORIG" ]; then fail "the patch applied but changed nothing"; fi
+  say "MUTATION applied: sha256=$MUT"
 
-  say "--- the unit cells under the mutation (must FAIL)"
-  ( cd "$TREE" && go test ./internal/fsclient/ -run 'BFS019' -count=1 ) > "/tmp/bfs019-mut-unit.txt" 2>&1
+  say
+  say "--- CELL 1 (unit, fsclient) under the mutation: must go RED"
+  ( cd "$TREE" && go test ./internal/fsclient/ -run 'BFS019' -count=1 ) > /tmp/bfs019-mut-unit.txt 2>&1
   local urc=$?
-  tail -12 /tmp/bfs019-mut-unit.txt
-  if [ $urc -ne 0 ]; then pass "mutation reddens the unit cells (go test rc=$urc)"; else fail "the unit cells PASS under the mutation (they are blind)"; fi
+  grep -E "^--- FAIL|^ok|^FAIL" /tmp/bfs019-mut-unit.txt | head -12
+  if [ $urc -ne 0 ]; then pass "the unit cells are RED under the mutation (go test rc=$urc)"; else fail "the unit cells PASS under the mutation (they are blind)"; fi
 
-  say "--- the ATTRIBUTION cell under the mutation (must stay GREEN)"
-  ( cd "$TREE" && go test ./internal/fsclient/ -run 'BFS019Attribution' -count=1 ) > "/tmp/bfs019-mut-attr.txt" 2>&1
+  say
+  say "--- CELL 2 (handler, fsmount) under the mutation: must go RED"
+  ( cd "$TREE" && go test ./internal/fsmount/ -run 'BFS019OneMkdir|BFS019ACreateVisitAndUnlink' -count=1 ) > /tmp/bfs019-mut-mount.txt 2>&1
+  local mrc=$?
+  grep -E "^--- FAIL|^ok|^FAIL|BFS-019" /tmp/bfs019-mut-mount.txt | head -6
+  if [ $mrc -ne 0 ]; then pass "the handler cells are RED under the mutation (go test rc=$mrc)"; else fail "the handler cells PASS under the mutation (they are blind)"; fi
+
+  say
+  say "--- ATTRIBUTION CELL under the mutation: must stay GREEN"
+  ( cd "$TREE" && go test ./internal/fsclient/ ./internal/fsmount/ -run 'BFS019Attribution' -count=1 ) > /tmp/bfs019-mut-attr.txt 2>&1
   local arc=$?
-  tail -5 /tmp/bfs019-mut-attr.txt
-  if [ $arc -eq 0 ]; then pass "the attribution cell stays green under the mutation"; else fail "the attribution cell went red under the mutation (not independent)"; fi
+  grep -E "^--- FAIL|^ok|^FAIL" /tmp/bfs019-mut-attr.txt | head -6
+  if [ $arc -eq 0 ]; then pass "the attribution cell stays GREEN under the mutation"; else fail "the attribution cell went RED under the mutation (the cells are not independent)"; fi
 
+  say
+  say "--- CELL 3 (the LIVE acceptance) under the mutation: must go RED"
+  if build "$TREE" mut; then
+    arm_red "$BINBASE/mut-bunker" "$BINBASE/mut-davserve" mut filed
+  else
+    fail "could not build the mutated binaries"
+  fi
+
+  say
   say "--- restore from the byte copy, sha256-verified"
   cp -p "$BK" "$TREE/$SNAP"
   local BACK; BACK=$(sha "$TREE/$SNAP")
-  if [ "$BACK" = "$ORIG" ]; then pass "restored byte-identical ($BACK)"; else fail "the restore is NOT byte-identical ($BACK vs $ORIG)"; fi
-  say "--- the same unit cells after the restore (must PASS)"
-  ( cd "$TREE" && go test ./internal/fsclient/ -run 'BFS019' -count=1 ) > "/tmp/bfs019-rest-unit.txt" 2>&1
+  if [ "$BACK" = "$ORIG" ]; then pass "the file is byte-identical to the baseline again ($BACK)"; else fail "the restore is NOT byte-identical ($BACK vs $ORIG)"; fi
+
+  say "--- the same cells after the restore: must be GREEN again"
+  ( cd "$TREE" && go test ./internal/fsclient/ ./internal/fsmount/ -run 'BFS019' -count=1 ) > /tmp/bfs019-rest-unit.txt 2>&1
   local rrc=$?
-  tail -5 /tmp/bfs019-rest-unit.txt
-  if [ $rrc -eq 0 ]; then pass "the cells pass again after the byte-identical restore"; else fail "still red after the restore (rc=$rrc)"; fi
+  grep -E "^ok|^FAIL" /tmp/bfs019-rest-unit.txt | head -6
+  if [ $rrc -eq 0 ]; then pass "the cells are GREEN again after the byte-identical restore"; else fail "still red after the restore (rc=$rrc)"; fi
 }
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# ROUND 2: the OTHER half — the drop's listing invalidation (the invalidation
+# channel's arm). Its own patch, its own cells, its own restore.
+# ---------------------------------------------------------------------------
+SNAP_DROP_PATCH=$HERE/BFS-019-negative-control-drop.patch
+
+arm_mutations_drop() {
+  local TREE=${1:-$REPO}
+  local BK; BK=$(mktemp /tmp/bfs019-snapshot2-XXXXXX.orig)
+  cp -p "$TREE/$SNAP" "$BK" || { fail "no snapshot.go to back up"; return 1; }
+  local ORIG; ORIG=$(sha "$BK")
+  say "MUTATION(baseline) $SNAP sha256=$ORIG"
+  if ! ( cd "$TREE" && patch -p1 --dry-run < "$SNAP_DROP_PATCH" ) > /tmp/bfs019-mut2-dryrun.txt 2>&1; then
+    fail "the drop negative-control patch does not apply (see /tmp/bfs019-mut2-dryrun.txt)"
+    return 1
+  fi
+  ( cd "$TREE" && patch -p1 < "$SNAP_DROP_PATCH" ) > /tmp/bfs019-mut2-apply.txt 2>&1
+  local MUT; MUT=$(sha "$TREE/$SNAP")
+  say "MUTATION applied: sha256=$MUT (baseline $ORIG)"
+
+  say
+  say "--- the DROP cell under the mutation: must go RED"
+  ( cd "$TREE" && go test ./internal/fsclient/ -run 'BFS019ADropInvalidates' -count=1 ) > /tmp/bfs019-mut2-unit.txt 2>&1
+  local urc=$?
+  grep -E "^--- FAIL|^ok|^FAIL|BFS-019" /tmp/bfs019-mut2-unit.txt | head -6
+  if [ $urc -ne 0 ]; then pass "the drop cell is RED under the mutation (go test rc=$urc)"; else fail "the drop cell PASSES under the mutation (it is blind)"; fi
+
+  say
+  say "--- the OTHER unit cells under the mutation: must stay GREEN (independence)"
+  ( cd "$TREE" && go test ./internal/fsclient/ -run 'BFS019ReReadAfterAMutation|BFS019EveryMutationShape|BFS019ARepeatedly' -count=1 ) > /tmp/bfs019-mut2-others.txt 2>&1
+  local orc=$?
+  grep -E "^--- FAIL|^ok|^FAIL" /tmp/bfs019-mut2-others.txt | head -6
+  if [ $orc -eq 0 ]; then pass "the child-index cells stay GREEN under the drop mutation (the two mutations are independent)"; else fail "the child-index cells went RED under the drop mutation"; fi
+
+  say
+  say "--- the ATTRIBUTION cell under the mutation: must stay GREEN"
+  ( cd "$TREE" && go test ./internal/fsclient/ ./internal/fsmount/ -run 'BFS019Attribution' -count=1 ) > /tmp/bfs019-mut2-attr.txt 2>&1
+  local arc=$?
+  if [ $arc -eq 0 ]; then pass "the attribution cell stays GREEN under the drop mutation"; else fail "the attribution cell went RED under the drop mutation"; fi
+
+  say
+  say "--- the LIVE foreign-writer arm under the mutation: must go RED"
+  if build "$TREE" mut2; then
+    arm_foreign "$BINBASE/mut2-bunker" "$BINBASE/mut2-davserve" mut2 differ append
+  else
+    fail "could not build the mutated binaries"
+  fi
+
+  say
+  say "--- restore from the byte copy, sha256-verified"
+  cp -p "$BK" "$TREE/$SNAP"
+  local BACK; BACK=$(sha "$TREE/$SNAP")
+  if [ "$BACK" = "$ORIG" ]; then pass "the file is byte-identical to the baseline again ($BACK)"; else fail "the restore is NOT byte-identical ($BACK vs $ORIG)"; fi
+  say "--- the drop cell after the restore: must be GREEN again"
+  ( cd "$TREE" && go test ./internal/fsclient/ ./internal/fsmount/ -run 'BFS019' -count=1 ) > /tmp/bfs019-rest2-unit.txt 2>&1
+  local rrc=$?
+  grep -E "^ok|^FAIL" /tmp/bfs019-rest2-unit.txt | head -6
+  if [ $rrc -eq 0 ]; then pass "the cells are GREEN again after the byte-identical restore"; else fail "still red after the restore (rc=$rrc)"; fi
+}
+
 # restore_base_binaries copies the PRE-FIX binaries into $BINBASE/base-*, built
 # once from this tree before the fix (the tree state the row was measured on).
 restore_base_binaries() {
@@ -322,16 +396,84 @@ restore_base_binaries() {
   return 1
 }
 
+# ---------------------------------------------------------------------------
+# the FOREIGN writer: another process edits the served tree directly (not
+# through the mount). On a surface WITH a watcher the client is told, per path,
+# what changed — and the surface's own event names the changed COLLECTIONS as
+# well as the changed names. This arm asserts the listing after each, and prints
+# the events the surface carries, which is what the client acts on.
+#
+# arm_foreign <bunker> <davserve> <tag> <expect: equal|differ>
+# ---------------------------------------------------------------------------
+arm_foreign() { # arm_foreign <bunker> <davserve> <tag> <expect> [steps: all|append]
+  local CBIN=$1 SBIN=$2 TAG=$3 EXPECT=$4
+  local STEPS=${5:-all}
+  local WORK; WORK=$(mktemp -d "/tmp/bfs019-$TAG-XXXXXX")
+  local SRC=$WORK/src MNT=$WORK/mnt
+  mkdir -p "$SRC/inner" "$MNT"
+  printf 'x\n' > "$SRC/a.txt"
+  printf 'x\n' > "$SRC/inner/f000.txt"
+  printf 'x\n' > "$SRC/inner/f001.txt"
+  start_serve "$SRC" "$WORK" "$SBIN" "--watch" || return 1
+  mount_it "$CBIN" "$MNT" "$WORK" || { kill "$DPID" 2>/dev/null; return 1; }
+  say "[$TAG] SRC=$SRC MNT=$MNT"
+  expect_equal "[$TAG] fresh" "$MNT" "$SRC"
+
+  say
+  say "--- [$TAG F1] another writer APPENDS to an existing file inside inner/"
+  printf 'more\n' >> "$SRC/inner/f000.txt"
+  sleep 4
+  say "    mount  inner = [$(names_of "$MNT/inner" | tr '\n' ',')]"
+  say "    server inner = [$(names_of "$SRC/inner" | tr '\n' ',')]"
+  expect_listing "$EXPECT" "[$TAG F1] inner after a foreign append" "$MNT/inner" "$SRC/inner"
+
+  say
+  if [ "$STEPS" = append ]; then
+    say "--- [$TAG] (append step only: the mutation control)"
+    unmount_it "$MNT" "$MPID" "$DPID"
+    say "[$TAG] stage kept at $WORK"
+    return 0
+  fi
+  say "--- [$TAG F2] another writer creates NEW names (root + inside inner/)"
+  printf 'n\n' > "$SRC/oob-root.txt"
+  printf 'n\n' > "$SRC/inner/oob-inner.txt"
+  sleep 4
+  say "    mount  root  = [$(names_of "$MNT" | tr '\n' ',')]"
+  say "    server root  = [$(names_of "$SRC" | tr '\n' ',')]"
+  say "    mount  inner = [$(names_of "$MNT/inner" | tr '\n' ',')]"
+  say "    server inner = [$(names_of "$SRC/inner" | tr '\n' ',')]"
+  expect_listing "$EXPECT" "[$TAG F2] root after foreign names appeared" "$MNT" "$SRC"
+  expect_listing "$EXPECT" "[$TAG F2] inner after foreign names appeared" "$MNT/inner" "$SRC/inner"
+
+  say
+  say "--- [$TAG] the events the surface carries for those edits (its own poll form)"
+  timeout 20 curl -s -X POST "$URL" -H 'X-Bunker-Op: events' -H 'Content-Type: application/json' \
+    -d '{"paths":[],"since_seq":0}' -o "$WORK/events.out" -w '    http=%{http_code} bytes=%{size_download}\n' || true
+  head -c 1200 "$WORK/events.out" | tr ',' '\n' | grep -E 'paths|event' | head -20
+
+  say
+  say "--- [$TAG] lookups/reads still correct (attribution)"
+  say "    stat a.txt=$(timeout 30 stat -c '%s' "$MNT/a.txt" 2>&1) cat inner/f000.txt=$(timeout 30 cat "$MNT/inner/f000.txt" 2>/dev/null | wc -c) bytes (server $(wc -c < "$SRC/inner/f000.txt"))"
+
+  say
+  unmount_it "$MNT" "$MPID" "$DPID"
+  say "[$TAG] stage kept at $WORK"
+}
+
+# ---------------------------------------------------------------------------
 case "${1:-all}" in
   red)       restore_base_binaries && arm_red  "$BINBASE/base-bunker" "$BINBASE/base-davserve" red filed ;;
   green)     build "$REPO" fixed && arm_red "$BINBASE/fixed-bunker" "$BINBASE/fixed-davserve" green fixed ;;
-  general)   build "$REPO" fixed && arm_general "$BINBASE/fixed-bunker" "$BINBASE/fixed-davserve" general ;;
+  general)   build "$REPO" fixed && arm_general "$BINBASE/fixed-bunker" "$BINBASE/fixed-davserve" general --watch ;;
+  general-nowatch) build "$REPO" fixed && arm_general "$BINBASE/fixed-bunker" "$BINBASE/fixed-davserve" general-nowatch "" ;;
+  foreign)   build "$REPO" fixed && arm_foreign "$BINBASE/fixed-bunker" "$BINBASE/fixed-davserve" foreign equal ;;
   mutations) arm_mutations "$REPO" ;;
+  mutations-drop) arm_mutations_drop "$REPO" ;;
   suites)
     ( cd "$REPO" && go test ./internal/server/webdav/ ./internal/fsclient/ ./internal/fsmount/ -count=1 ) 2>&1 | tail -20
     ;;
-  all)       build "$REPO" fixed && arm_red "$BINBASE/fixed-bunker" "$BINBASE/fixed-davserve" green fixed && arm_general "$BINBASE/fixed-bunker" "$BINBASE/fixed-davserve" general ;;
-  *)         echo "usage: $0 red|green|general|mutations|suites|all"; exit 2 ;;
+  all)       build "$REPO" fixed && arm_red "$BINBASE/fixed-bunker" "$BINBASE/fixed-davserve" green fixed && arm_general "$BINBASE/fixed-bunker" "$BINBASE/fixed-davserve" general --watch && arm_foreign "$BINBASE/fixed-bunker" "$BINBASE/fixed-davserve" foreign equal ;;
+  *)         echo "usage: $0 red|green|general|general-nowatch|foreign|mutations|mutations-drop|suites|all"; exit 2 ;;
 esac
 
 say

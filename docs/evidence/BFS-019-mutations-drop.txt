@@ -1,0 +1,46 @@
+# BFS-019 transcript: mutations-drop
+# produced by: bash docs/evidence/BFS-019-arms.sh mutations-drop
+# tree: wt/BFS-019 @ 570ae248c746cbc05d8884ce3ad57977f8d439db
+#
+MUTATION(baseline) internal/fsclient/snapshot.go sha256=5df41b546a9a916e55b391101d0d59a46590f97add2876435008c3e90749a355
+MUTATION applied: sha256=63c28c372063d1cc7c2beed44c243722d227c2d331cdffaa32befe10d5771a4d (baseline 5df41b546a9a916e55b391101d0d59a46590f97add2876435008c3e90749a355)
+
+--- the DROP cell under the mutation: must go RED
+--- FAIL: TestBFS019ADropInvalidatesTheDirectoryItTookANameFrom (0.00s)
+    bfs019_child_index_test.go:350: BFS-019: a drop took a name out of src's child index and left the directory marked READ: the next readdir serves the short set (the file still exists on the server) and never re-reads
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	0.004s
+FAIL
+ARM PASS: the drop cell is RED under the mutation (go test rc=1)
+
+--- the OTHER unit cells under the mutation: must stay GREEN (independence)
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.008s
+ARM PASS: the child-index cells stay GREEN under the drop mutation (the two mutations are independent)
+
+--- the ATTRIBUTION cell under the mutation: must stay GREEN
+ARM PASS: the attribution cell stays GREEN under the drop mutation
+
+--- the LIVE foreign-writer arm under the mutation: must go RED
+WATCH=true heartbeat_ms=30000 write_deadline_ms=10000 max_subscribers=8 subscriber_buffer_events=256
+[arm] DAVSERVE_PID=2096097 URL=http://127.0.0.1:44411/dav
+[mut2] SRC=/tmp/bfs019-mut2-mthtJN/src MNT=/tmp/bfs019-mut2-mthtJN/mnt
+ARM PASS: [mut2] fresh: mount listing == server listing (2 names)
+
+--- [mut2 F1] another writer APPENDS to an existing file inside inner/
+    mount  inner = [f001.txt,]
+    server inner = [f000.txt,f001.txt,]
+ARM PASS: [mut2 F1] inner after a foreign append: the mount listing DISAGREES with the server, as the filed defect says (mount=[f001.txt] server 2 names)
+
+--- [mut2] (append step only: the mutation control)
+[arm] fusermount -u rc=0
+[mut2] stage kept at /tmp/bfs019-mut2-mthtJN
+
+--- restore from the byte copy, sha256-verified
+ARM PASS: the file is byte-identical to the baseline again (5df41b546a9a916e55b391101d0d59a46590f97add2876435008c3e90749a355)
+--- the drop cell after the restore: must be GREEN again
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.016s
+ok  	github.com/deployBunker/bunker/internal/fsmount	8.780s
+ARM PASS: the cells are GREEN again after the byte-identical restore
+
+ARMS: PASSES=7 FAILED=0
+EXIT=0

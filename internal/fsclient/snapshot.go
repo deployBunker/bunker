@@ -357,7 +357,6 @@ func (s *Snapshot) put(n Node) {
 }
 
 func (s *Snapshot) putLocked(n Node) {
-	old, existed := s.nodes[n.Path]
 	s.nodes[n.Path] = n
 	if n.Path == "" {
 		return
@@ -366,12 +365,25 @@ func (s *Snapshot) putLocked(n Node) {
 	if parent == "." {
 		parent = ""
 	}
-	if !existed || old.IsDir != n.IsDir {
-		if s.children[parent] == nil {
-			s.children[parent] = map[string]struct{}{}
-		}
-		s.children[parent][path.Base(n.Path)] = struct{}{}
+	// THE PARENT'S CHILD INDEX IS MAINTAINED FOR EVERY NODE THE TREE HOLDS, not
+	// only for nodes that are new (BFS-019). The index is derived state that
+	// `DropReaddir` deletes WHOLE while the nodes it named stay in the tree, and
+	// the re-read that follows a mutation (Readdir's Depth:1 PROPFIND, the
+	// snapshot op, the walk) feeds the observed entries back through here — every
+	// entry that survived the mutation is already known, so an insert conditional
+	// on the node being NEW rebuilds NOTHING and `Children` then serves only the
+	// subset the mount happened to create since the drop. That was a silent wrong
+	// answer: a listing that came back empty (or short) with rc 0 while every
+	// entry existed on the server.
+	//
+	// The cost is one map write per put — the price of the index and the node set
+	// never disagreeing. `Children` intersects the two, so an index that names a
+	// node the tree does not hold is harmless; a node the tree holds and the
+	// index does not name is a listing that is wrong by construction.
+	if s.children[parent] == nil {
+		s.children[parent] = map[string]struct{}{}
 	}
+	s.children[parent][path.Base(n.Path)] = struct{}{}
 	if n.IsDir && s.children[n.Path] == nil {
 		s.children[n.Path] = map[string]struct{}{}
 	}
@@ -388,6 +400,13 @@ func (s *Snapshot) Lookup(p string) (Node, bool) {
 
 // Children returns a directory's entries sorted by name — the answer to one
 // READDIRPLUS, served from memory.
+//
+// It answers for a directory whose LISTING the tree has read. A caller must ask
+// `Known` first (Readdir does): an invalidated directory has no child set at all
+// until it is re-read, and serving from the empty index would be the silent wrong
+// answer BFS-019 is about — a listing that comes back empty while the entries
+// exist. The index and the node set are kept consistent by putLocked, so a
+// directory that HAS been read lists every one of its children the tree holds.
 func (s *Snapshot) Children(dir string) []Node {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -504,9 +523,24 @@ func (s *Snapshot) Truncated() bool {
 func (s *Snapshot) Root() string { return s.root }
 
 // Drop removes paths from the node tree, and with each path its parent's
-// readdir entry — a new name must appear in the next readdir/READDIRPLUS answer
+// readdir answer — a new name must appear in the next readdir/READDIRPLUS answer
 // (BFS-005 §4.2 step 2). Dropping a directory drops its whole subtree: the
 // subtree's metadata is stale by construction once the collection changed.
+//
+// BOTH HALVES ARE REQUIRED, and the second one is BFS-019's other arm. Removing
+// the name from the parent's child index is not enough: an index that has lost a
+// name is no longer a listing anyone may serve from memory — the event that
+// provoked the drop may have been a CHANGE rather than a removal, in which case
+// the name still exists on the server, and the directory's own listing no longer
+// names it. Measured on a watched surface, whose events name the changed
+// names AND the changed collections (`["."]`, `["src"]`): an append to
+// `src/f000.txt` by another writer removed `f000.txt` from the mount's listing of
+// `src`, and a new root-level file removed `src` from the mount's listing of the
+// root — a SHORT listing with rc 0, in the same class as the empty one. So the
+// drop clears the READ flag of the affected directory as well, and the next
+// readdir re-reads it from the server (one Depth:1 PROPFIND, the same cost the
+// mount's own mutations already pay), instead of answering from a set the server
+// has already contradicted.
 func (s *Snapshot) Drop(paths ...string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -517,13 +551,37 @@ func (s *Snapshot) Drop(paths ...string) int {
 			// An unknown path still kills its parent's cached child set: the
 			// event says the name may have appeared.
 			s.dropChildLocked(p)
+			s.dropListingLocked(parentOf(p))
 			continue
 		}
 		s.dropSubtreeLocked(p)
 		s.dropChildLocked(p)
+		s.dropListingLocked(parentOf(p))
 		n++
 	}
 	return n
+}
+
+// parentOf is the in-tree parent of a path ("" for a root-level name, and "" for
+// the root itself — dropping the root's listing means "re-read the whole root").
+func parentOf(p string) string {
+	parent := path.Dir(p)
+	if parent == "." {
+		return ""
+	}
+	return parent
+}
+
+// dropListingLocked forgets that a directory's LISTING has been read. It is the
+// half of every drop that keeps `Known(dir)` meaning "this listing is the
+// server's truth as of the last read": once a name has been removed from the
+// index the set is no longer vouched for, so the next readdir must re-read it
+// rather than answer short. The last observed child set is left in place (only
+// the read flag goes): a caller that ignored `Known` would then see a stale set
+// rather than an empty one, and no reader has to be told about a directory it
+// has just been told to re-read.
+func (s *Snapshot) dropListingLocked(dir string) {
+	delete(s.read, strings.Trim(normalisePath(dir), "/"))
 }
 
 func (s *Snapshot) dropSubtreeLocked(p string) {

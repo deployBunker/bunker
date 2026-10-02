@@ -1,0 +1,44 @@
+# BFS-019 transcript: foreign
+# produced by: bash docs/evidence/BFS-019-arms.sh foreign
+# tree: wt/BFS-019 @ 570ae248c746cbc05d8884ce3ad57977f8d439db
+#
+WATCH=true heartbeat_ms=30000 write_deadline_ms=10000 max_subscribers=8 subscriber_buffer_events=256
+[arm] DAVSERVE_PID=2039893 URL=http://127.0.0.1:33937/dav
+[foreign] SRC=/tmp/bfs019-foreign-KGcAUG/src MNT=/tmp/bfs019-foreign-KGcAUG/mnt
+ARM PASS: [foreign] fresh: mount listing == server listing (2 names)
+
+--- [foreign F1] another writer APPENDS to an existing file inside inner/
+    mount  inner = [f000.txt,f001.txt,]
+    server inner = [f000.txt,f001.txt,]
+ARM PASS: [foreign F1] inner after a foreign append: mount listing == server listing (2 names)
+
+--- [foreign F2] another writer creates NEW names (root + inside inner/)
+    mount  root  = [a.txt,inner,oob-root.txt,]
+    server root  = [a.txt,inner,oob-root.txt,]
+    mount  inner = [f000.txt,f001.txt,oob-inner.txt,]
+    server inner = [f000.txt,f001.txt,oob-inner.txt,]
+ARM PASS: [foreign F2] root after foreign names appeared: mount listing == server listing (3 names)
+ARM PASS: [foreign F2] inner after foreign names appeared: mount listing == server listing (3 names)
+
+--- [foreign] the events the surface carries for those edits (its own poll form)
+    http=200 bytes=770
+"op":"events"
+"events":[{"seq":1
+"event":"overflow"
+"paths":[]
+"event":"invalidate"
+"paths":["inner/f000.txt"]
+"event":"invalidate"
+"paths":["inner/f000.txt"]
+"event":"invalidate"
+"paths":["inner/oob-inner.txt"
+"event":"invalidate"
+"paths":["."
+
+--- [foreign] lookups/reads still correct (attribution)
+    stat a.txt=2 cat inner/f000.txt=7 bytes (server 7)
+
+[arm] fusermount -u rc=0
+[foreign] stage kept at /tmp/bfs019-foreign-KGcAUG
+
+ARMS: PASSES=4 FAILED=0

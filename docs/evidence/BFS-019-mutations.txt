@@ -1,0 +1,86 @@
+# BFS-019 transcript: mutations
+# produced by: bash docs/evidence/BFS-019-arms.sh mutations
+# tree: wt/BFS-019 @ 570ae248c746cbc05d8884ce3ad57977f8d439db
+#
+MUTATION baseline: internal/fsclient/snapshot.go sha256=5df41b546a9a916e55b391101d0d59a46590f97add2876435008c3e90749a355
+MUTATION patch: /home/kara/worktrees/bunker-BFS-019/docs/evidence/BFS-019-negative-control.patch (the fix's one hunk, reversed)
+MUTATION applied: sha256=2fd3e174c9ea73271b6ddeeed3a4efd9490ac865dc24159f6376a71068342c55
+
+--- CELL 1 (unit, fsclient) under the mutation: must go RED
+--- FAIL: TestBFS019ReReadAfterAMutationRebuildsTheListing (0.00s)
+--- FAIL: TestBFS019EveryMutationShapeLeavesAListableDirectory (0.00s)
+--- FAIL: TestBFS019ARepeatedlyMutatedDirectoryStaysListable (0.00s)
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsclient	0.005s
+FAIL
+ARM PASS: the unit cells are RED under the mutation (go test rc=1)
+
+--- CELL 2 (handler, fsmount) under the mutation: must go RED
+--- FAIL: TestBFS019OneMkdirDoesNotEmptyItsParentsListing (0.01s)
+    bfs019_readdir_test.go:187: BFS-019 [after one mkdir] readdir of "" through the mount answers 0 names [], while the served tree holds 7 names [CHANGELOG.md README.md go.mod oob-dir pkg scratch src] — rc was 0 and nothing reported a fault
+--- FAIL: TestBFS019ACreateVisitAndUnlinkLeaveTheListingCorrect (2.87s)
+    bfs019_readdir_test.go:205: BFS-019 [after the create + write + close] readdir of "" through the mount answers 1 names [written.txt], while the served tree holds 7 names [CHANGELOG.md README.md go.mod pkg scratch src written.txt] — rc was 0 and nothing reported a fault
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/fsmount	2.880s
+ARM PASS: the handler cells are RED under the mutation (go test rc=1)
+
+--- ATTRIBUTION CELL under the mutation: must stay GREEN
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.003s
+ok  	github.com/deployBunker/bunker/internal/fsmount	0.009s
+ARM PASS: the attribution cell stays GREEN under the mutation
+
+--- CELL 3 (the LIVE acceptance) under the mutation: must go RED
+WATCH=false (no watcher configured: the push form will be refused on this endpoint)
+[arm] DAVSERVE_PID=2045332 URL=http://127.0.0.1:42355/dav
+[mut] SRC=/tmp/bfs019-mut-WxUafi/src MNT=/tmp/bfs019-mut-WxUafi/mnt
+--- [mut step 0: fresh mount]
+    find <mount>  -mindepth 1 | wc -l = 135   (find rc=0)
+    find <server> -mindepth 1 | wc -l = 135
+    ls -lR <mount>  | wc -l = 139
+    ls -lR <server> | wc -l = 139
+    mount  root names: CHANGELOG.md .git go.mod pkg README.md scratch src 
+    server root names: CHANGELOG.md .git go.mod pkg README.md scratch src 
+ARM PASS: mut step 0: mount listing == server listing (7 names)
+
+--- [mut step 1] ONE mkdir through the mount
+    mkdir rc=0
+--- [mut step 1: after one mkdir]
+    find <mount>  -mindepth 1 | wc -l = 0   (find rc=0)
+    find <server> -mindepth 1 | wc -l = 136
+    ls -lR <mount>  | wc -l = 2
+    ls -lR <server> | wc -l = 143
+    mount  root names: 
+    server root names: CHANGELOG.md .git go.mod oob-dir pkg README.md scratch src 
+ARM PASS: mut step 1: the mount listing DISAGREES with the server, as the filed defect says (mount=[] server 8 names)
+
+--- [mut step 2] a through-mount write + unlink
+    write rc=0
+    unlink rc=0
+--- [mut step 2: after write + unlink]
+    find <mount>  -mindepth 1 | wc -l = 1   (find rc=0)
+    find <server> -mindepth 1 | wc -l = 136
+    ls -lR <mount>  | wc -l = 6
+    ls -lR <server> | wc -l = 143
+    mount  root names: oob-dir 
+    server root names: CHANGELOG.md .git go.mod oob-dir pkg README.md scratch src 
+ARM PASS: mut step 2: the mount listing DISAGREES with the server, as the filed defect says (mount=[oob-dir] server 8 names)
+
+--- [mut] lookups still work (the mount is not dead)
+    stat go.mod      : size=2
+    stat src/f000.txt: size=2
+    cat src/f000.txt through the mount: 2 bytes
+ARM PASS: mut src subdir: mount listing == server listing (120 names)
+ARM PASS: mut pkg subdir: mount listing == server listing (1 names)
+
+[arm] fusermount -u rc=0
+[mut] stage kept at /tmp/bfs019-mut-WxUafi
+
+--- restore from the byte copy, sha256-verified
+ARM PASS: the file is byte-identical to the baseline again (5df41b546a9a916e55b391101d0d59a46590f97add2876435008c3e90749a355)
+--- the same cells after the restore: must be GREEN again
+ok  	github.com/deployBunker/bunker/internal/fsclient	0.005s
+ok  	github.com/deployBunker/bunker/internal/fsmount	5.046s
+ARM PASS: the cells are GREEN again after the byte-identical restore
+
+ARMS: PASSES=10 FAILED=0
+EXIT=0
