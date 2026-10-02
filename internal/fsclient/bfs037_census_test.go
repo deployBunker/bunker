@@ -449,8 +449,12 @@ func TestBFS037Cell08EverySkipAndAbandonReasonIsReachable(t *testing.T) {
 
 	run("abandon_no_room_after_start", func(t *testing.T) censusArm {
 		stub := newHotStub(t)
-		s := censusSetup(t, stub, WithCeiling(4096), WithCacheBounds(16<<10, 4096), WithPolicy(func(p *HotPolicy) {
-			p.RefreshDeadline = 20 * time.Second
+		s := censusSetup(t, stub, WithCeiling(4096), WithCacheBounds(16<<10, 4096), WithOpTimeout(320*time.Second), WithPolicy(func(p *HotPolicy) {
+			// 300 s: the deadline is not what this arm proves (the specific
+			// abandon reason is), and at fleet-host load the parked refresh
+			// outran a 20 s deadline into abandon:deadline (QA-BUNKER-53).
+			// WithOpTimeout keeps the fixture coherent (P-11).
+			p.RefreshDeadline = 300 * time.Second
 		}))
 		target := "tight.txt"
 		stub.Set(target, hotBody(3000, 't'))
@@ -493,8 +497,12 @@ func TestBFS037Cell08EverySkipAndAbandonReasonIsReachable(t *testing.T) {
 
 	run("abandon_pinned_eviction", func(t *testing.T) censusArm {
 		stub := newHotStub(t)
-		s := censusSetup(t, stub, WithCeiling(4096), WithCacheBounds(16<<10, 4096), WithPolicy(func(p *HotPolicy) {
-			p.RefreshDeadline = 20 * time.Second
+		s := censusSetup(t, stub, WithCeiling(4096), WithCacheBounds(16<<10, 4096), WithOpTimeout(320*time.Second), WithPolicy(func(p *HotPolicy) {
+			// 300 s: the deadline is not what this arm proves (the pinned-eviction
+			// abandon is), and at fleet-host load the parked refresh outran a 20 s
+			// deadline into abandon:deadline (QA-BUNKER-53). WithOpTimeout keeps
+			// the fixture coherent (P-11).
+			p.RefreshDeadline = 300 * time.Second
 		}))
 		target := "tight2.txt"
 		stub.Set(target, hotBody(3000, 't'))
