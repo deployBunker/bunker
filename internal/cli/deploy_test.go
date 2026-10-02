@@ -299,7 +299,7 @@ func setupDeployFailureTest(t *testing.T) string {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
-	keyPath := filepath.Join(tmpDir, ".bunker", "keys", "test-agent")
+	keyPath := filepath.Join(tmpDir, ".config", "bunker", "keys", "test-agent")
 	if err := os.MkdirAll(filepath.Dir(keyPath), 0700); err != nil {
 		t.Fatalf("mkdir keys: %v", err)
 	}

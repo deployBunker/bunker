@@ -81,7 +81,7 @@ func safeDefaultMountPoint(agentID string) string {
 	if run := os.Getenv("XDG_RUNTIME_DIR"); run != "" {
 		return filepath.Join(run, "bunker", "mnt", agentID)
 	}
-	return filepath.Join("~", ".bunker", "mnt", agentID)
+	return filepath.Join("~", ".config", "bunker", "mnt", agentID)
 }
 
 // defaultMountPoint resolves the mountpoint used when the operator does not
@@ -92,7 +92,10 @@ func safeDefaultMountPoint(agentID string) string {
 // Preference order, each validated as writable before it is returned:
 //  1. $BUNKER_MOUNT_ROOT (explicit operator override)
 //  2. $XDG_RUNTIME_DIR/bunker/mnt/<agent-id> (per-user, per-boot, private)
-//  3. ~/.bunker/mnt/<agent-id> (per-user, persistent)
+//  3. ${XDG_CONFIG_HOME:-~/.config}/bunker/mnt/<agent-id> (per-user,
+//     persistent — GAP-181 moved the legacy ~/.bunker/mnt fallback to the
+//     per-user config dir so nothing state-bearing resolves under a
+//     dot-dir the documented chain no longer owns)
 //
 // A root-owned /mnt path is never chosen: an operator who wants it can pass it
 // explicitly, and then the error names the cause instead of failing obscurely.
@@ -108,8 +111,8 @@ func defaultMountPoint(agentID string) (string, error) {
 	if run := os.Getenv("XDG_RUNTIME_DIR"); run != "" {
 		candidates = append(candidates, filepath.Join(run, "bunker", "mnt", agentID))
 	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		candidates = append(candidates, filepath.Join(home, ".bunker", "mnt", agentID))
+	if base, err := bunkerConfigBaseDir(); err == nil {
+		candidates = append(candidates, filepath.Join(base, "mnt", agentID))
 	}
 	return firstWritableMountPoint(candidates)
 }
@@ -146,8 +149,8 @@ func defaultMountPointForServer(server, agentID string) (string, error) {
 	if run := os.Getenv("XDG_RUNTIME_DIR"); run != "" {
 		candidates = append(candidates, filepath.Join(run, "bunker", "mnt", srv, agent))
 	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		candidates = append(candidates, filepath.Join(home, ".bunker", "mnt", srv, agent))
+	if base, err := bunkerConfigBaseDir(); err == nil {
+		candidates = append(candidates, filepath.Join(base, "mnt", srv, agent))
 	}
 	return firstWritableMountPoint(candidates)
 }

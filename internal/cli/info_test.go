@@ -158,7 +158,7 @@ func TestInfoCommand_Success(t *testing.T) {
 	cfg := &CLIConfig{
 		ActiveServer: "test",
 		Servers: map[string]ServerEntry{
-			"test": {URL: srv.URL},
+			"test": {URL: srv.URL, Token: "test-cli-token"},
 		},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
@@ -218,7 +218,7 @@ func TestInfoCommand_AgentNotFound(t *testing.T) {
 	cfg := &CLIConfig{
 		ActiveServer: "test",
 		Servers: map[string]ServerEntry{
-			"test": {URL: srv.URL},
+			"test": {URL: srv.URL, Token: "test-cli-token"},
 		},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
@@ -246,7 +246,7 @@ func TestInfoCommand_ServerError(t *testing.T) {
 	cfg := &CLIConfig{
 		ActiveServer: "test",
 		Servers: map[string]ServerEntry{
-			"test": {URL: srv.URL},
+			"test": {URL: srv.URL, Token: "test-cli-token"},
 		},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
@@ -281,7 +281,7 @@ func TestInfoCommand_MinimalAgent(t *testing.T) {
 	cfg := &CLIConfig{
 		ActiveServer: "test",
 		Servers: map[string]ServerEntry{
-			"test": {URL: srv.URL},
+			"test": {URL: srv.URL, Token: "test-cli-token"},
 		},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {

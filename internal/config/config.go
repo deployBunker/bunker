@@ -1495,6 +1495,25 @@ func (c *Config) ResolveSecrets() error {
 	return c.Auth.ResolveSecrets()
 }
 
+// EmitInlineSecret is the generator-side guard for GAP-181 deliverable 6:
+// any code that WRITES a config file, unit, template or export must never
+// emit a credential inline. Writers pass the artifact text (or the value
+// they are about to embed) here with the credential's name; a non-empty
+// return is the refusal to print to the operator, an empty return means the
+// value carried no inline-secret risk (empty value, or a path reference).
+//
+// The rule is value-shaped, not name-shaped: a writer that references
+// /etc/bunkerd/secrets/token emits nothing secret and passes; a writer that
+// would inline the token string itself is refused with the *_FILE remedy
+// named. Existing configs that already carry an inline secret keep loading
+// (resolveSecret + CheckAuth stay backward-compatible: warn, never crash).
+func EmitInlineSecret(name, value string) error {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return fmt.Errorf("%s: refusing to write the credential inline — write a %s=<path> reference instead (file mode 0600, e.g. under the secrets dir); inline storage in generated artifacts is not part of the backup set (GAP-181)", name, name+"_file")
+}
+
 // EnsureJWTSecret makes auth.jwt_secret available without ever rotating a
 // secret that already exists:
 //

@@ -170,6 +170,11 @@ func queryRemoteAudit(cmd *cobra.Command, serverName string, filter audit.Filter
 	if !ok {
 		return nil, fmt.Errorf("server %q not found in config", serverName)
 	}
+	// GAP-181: fail closed on a missing per-host token BEFORE the dial —
+	// the refusal names the exact config path searched.
+	if err := RequireTokenFor(entry, serverName); err != nil {
+		return nil, err
+	}
 
 	client := newBunkerdClient(entry)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

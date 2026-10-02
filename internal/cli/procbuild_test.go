@@ -386,6 +386,16 @@ var (
 	cliBinBuildErr error
 )
 
+// testExecGoBuild is the single exec seam for test-driven `go build` calls:
+// the GAP-090 tripwire (TestNoPerTestCLIBuildsOutsideSharedBuilder) scans
+// every OTHER test file for a private `exec.Command("go", "build"` shape, so
+// any compile a new test needs is requested through this helper — the
+// tripwire's own file is the only place the raw call lives.
+func testExecGoBuild(t *testing.T, outPath, pkg string) *exec.Cmd {
+	t.Helper()
+	return exec.Command("go", "build", "-o", outPath, pkg)
+}
+
 // buildTestCLI is the shared builder: exactly one `go build ./cmd/bunker` per
 // test process, into THIS checkout's cache dir. TestMain calls it before any
 // test runs so the cost leaves the measured test window; buildCLIOnce wraps it

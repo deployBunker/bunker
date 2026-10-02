@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,24 +65,25 @@ func writeDaemonConfig(t *testing.T, auditPath, registryPath string) string {
 }
 
 // TestConfigFilePath_Precedence pins the CLI config path resolution rules:
-// --config > BUNKER_HOME > $HOME/.bunker/config.yaml, with empty or
-// whitespace-only values treated as unset. The default row is the A5
-// guarantee: byte-identical to $HOME/.bunker/config.yaml.
+// --config > BUNKER_HOME > ${XDG_CONFIG_HOME:-~/.config}/bunker/config.yaml
+// (GAP-181; the legacy ~/.bunker stays a read alias with adoption), with
+// empty or whitespace-only values treated as unset.
 func TestConfigFilePath_Precedence(t *testing.T) {
 	home := t.TempDir()
 	bhDir := t.TempDir()
 	cfgFile := filepath.Join(t.TempDir(), "elsewhere", "bunker.yaml")
+	wantDefault := filepath.Join(home, ".config", "bunker", "config.yaml")
 
 	tests := []struct {
 		name        string
 		bunkerHome  string // "" = unset the variable
 		flagValue   string // "" = no override (reset)
 		want        string
-		wantDefault bool // want must equal $HOME/.bunker/config.yaml exactly
+		wantDefault bool // want must equal the documented XDG default exactly
 	}{
 		{
-			name:        "default is HOME/.bunker/config.yaml",
-			want:        filepath.Join(home, ".bunker", "config.yaml"),
+			name:        "default is the per-user config dir",
+			want:        wantDefault,
 			wantDefault: true,
 		},
 		{
@@ -96,14 +98,16 @@ func TestConfigFilePath_Precedence(t *testing.T) {
 			want:       cfgFile,
 		},
 		{
-			name:       "blank BUNKER_HOME treated as unset",
-			bunkerHome: "   ",
-			want:       filepath.Join(home, ".bunker", "config.yaml"),
+			name:        "blank BUNKER_HOME treated as unset",
+			bunkerHome:  "   ",
+			want:        wantDefault,
+			wantDefault: true,
 		},
 		{
-			name:      "blank flag treated as unset (falls to BUNKER_HOME)",
-			flagValue: "   ",
-			want:      filepath.Join(home, ".bunker", "config.yaml"),
+			name:        "blank flag treated as unset (falls to the default)",
+			flagValue:   "   ",
+			want:        wantDefault,
+			wantDefault: true,
 		},
 		{
 			name:       "blank flag treated as unset (falls to BUNKER_HOME)",
@@ -117,6 +121,7 @@ func TestConfigFilePath_Precedence(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("HOME", home)
 			setenvForTest(t, "BUNKER_HOME", tt.bunkerHome)
+			setenvForTest(t, "XDG_CONFIG_HOME", "") // pin the XDG tier to HOME/.config
 			resetPathOverrides(t)
 			SetConfigPathOverride(tt.flagValue)
 
@@ -128,12 +133,146 @@ func TestConfigFilePath_Precedence(t *testing.T) {
 				t.Errorf("configFilePath = %q, want %q", got, tt.want)
 			}
 			if tt.wantDefault {
-				// A5: byte-identical to the historical path builder.
-				if want := filepath.Join(home, ".bunker", "config.yaml"); got != want {
-					t.Errorf("default changed: got %q, want byte-identical %q", got, want)
+				// A5: the default is exactly the documented per-user dir.
+				if want := filepath.Join(home, ".config", "bunker", "config.yaml"); got != want {
+					t.Errorf("default changed: got %q, want %q", got, want)
 				}
 			}
 		})
+	}
+}
+
+// TestConfigFilePath_XDGOverride pins the env tier between flag and the XDG
+// default: BUNKER_CONFIG_HOME relocates the per-user config dir without
+// becoming the whole state tree the way BUNKER_HOME does.
+func TestConfigFilePath_XDGOverride(t *testing.T) {
+	home := t.TempDir()
+	xdg := t.TempDir()
+	t.Setenv("HOME", home)
+	setenvForTest(t, "BUNKER_HOME", "")
+	setenvForTest(t, "BUNKER_CONFIG_HOME", xdg)
+	resetPathOverrides(t)
+
+	got, err := configFilePath()
+	if err != nil {
+		t.Fatalf("configFilePath: %v", err)
+	}
+	if want := filepath.Join(xdg, "bunker", "config.yaml"); got != want {
+		t.Errorf("configFilePath = %q, want %q (BUNKER_CONFIG_HOME tier)", got, want)
+	}
+
+	// XDG_CONFIG_HOME itself feeds the documented default.
+	setenvForTest(t, "BUNKER_CONFIG_HOME", "")
+	setenvForTest(t, "XDG_CONFIG_HOME", filepath.Join(home, "xdgbase"))
+	got, err = configFilePath()
+	if err != nil {
+		t.Fatalf("configFilePath: %v", err)
+	}
+	if want := filepath.Join(home, "xdgbase", "bunker", "config.yaml"); got != want {
+		t.Errorf("configFilePath = %q, want %q (XDG_CONFIG_HOME tier)", got, want)
+	}
+}
+
+// TestLegacyConfigAdoption pins the GAP-181 adoption contract: a config that
+// only exists at the legacy ~/.bunker location is COPIED into the documented
+// config dir on the first resolution (byte-identical, legacy file left in
+// place at 0600, config dir 0700), and the next resolution reads the adopted
+// copy.
+func TestLegacyConfigAdoption(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	setenvForTest(t, "BUNKER_HOME", "")
+	setenvForTest(t, "XDG_CONFIG_HOME", "")
+	resetPathOverrides(t)
+
+	// Capture the migration notice instead of printing it.
+	noticeBuf := &strings.Builder{}
+	prevNotice := recordLegacyMigration
+	recordLegacyMigration = func(legacyPath, adoptedPath string) {
+		fmt.Fprintf(noticeBuf, "adopted %s -> %s\n", legacyPath, adoptedPath)
+	}
+	t.Cleanup(func() { recordLegacyMigration = prevNotice })
+
+	const legacyYAML = "servers:\n  legacy-host:\n    name: legacy-host\n    url: http://legacy:9090\n    token: tok-legacy-g\n    connected_at: \"2026-09-01T12:00:00Z\"\nactive_server: legacy-host\n"
+	legacyDir := filepath.Join(home, ".bunker")
+	if err := os.MkdirAll(legacyDir, 0o700); err != nil {
+		t.Fatalf("MkdirAll legacy: %v", err)
+	}
+	legacyPath := filepath.Join(legacyDir, "config.yaml")
+	if err := os.WriteFile(legacyPath, []byte(legacyYAML), 0o600); err != nil {
+		t.Fatalf("write legacy config: %v", err)
+	}
+
+	cfg, err := LoadCLIConfig()
+	if err != nil {
+		t.Fatalf("LoadCLIConfig: %v", err)
+	}
+	if cfg.ActiveServer != "legacy-host" || cfg.Servers["legacy-host"].Token != "tok-legacy-g" {
+		t.Fatalf("legacy config not read through adoption: %+v", cfg)
+	}
+
+	adoptedPath := filepath.Join(home, ".config", "bunker", "config.yaml")
+	adopted, err := os.ReadFile(adoptedPath)
+	if err != nil {
+		t.Fatalf("adopted config missing: %v", err)
+	}
+	if string(adopted) != legacyYAML {
+		t.Errorf("adoption is not byte-identical:\nadopted:%s\nlegacy: %s", adopted, legacyYAML)
+	}
+	// The legacy file is LEFT in place (a downgrade keeps working).
+	legacyNow, err := os.ReadFile(legacyPath)
+	if err != nil || string(legacyNow) != legacyYAML {
+		t.Errorf("legacy file was moved or altered (err=%v): %s", err, legacyNow)
+	}
+	// Modes: adopted file 0600, config dir 0700.
+	if fi, err := os.Stat(adoptedPath); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Errorf("adopted config mode = %v (err=%v), want 0600", fi, err)
+	}
+	if fi, err := os.Stat(filepath.Dir(adoptedPath)); err != nil || fi.Mode().Perm() != 0o700 {
+		t.Errorf("config dir mode = %v (err=%v), want 0700", fi, err)
+	}
+	if !strings.Contains(noticeBuf.String(), "adopted") {
+		t.Errorf("adoption notice missing, got %q", noticeBuf.String())
+	}
+
+	// Second resolution reads the adopted copy: corrupt the legacy file and
+	// prove the config dir is now authoritative.
+	if err := os.WriteFile(legacyPath, []byte("servers: {}\n"), 0o600); err != nil {
+		t.Fatalf("corrupt legacy: %v", err)
+	}
+	cfg2, err := LoadCLIConfig()
+	if err != nil {
+		t.Fatalf("LoadCLIConfig (second): %v", err)
+	}
+	if cfg2.Servers["legacy-host"].Token != "tok-legacy-g" {
+		t.Errorf("second resolution did not read the adopted copy: %+v", cfg2)
+	}
+}
+
+// TestLegacyDirWithoutConfigStaysStateDir pins the fresh-operator shape: a
+// legacy ~/.bunker with keys/ but no config.yaml keeps being the state dir
+// (so the keys tree does not split across two locations) until a config
+// exists in the documented config dir.
+func TestLegacyDirWithoutConfigStaysStateDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	setenvForTest(t, "BUNKER_HOME", "")
+	setenvForTest(t, "XDG_CONFIG_HOME", "")
+	resetPathOverrides(t)
+
+	if err := os.MkdirAll(filepath.Join(home, ".bunker", "keys"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := bunkerStateDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(home, ".bunker"); dir != want {
+		t.Errorf("bunkerStateDir = %q, want the legacy dir %q (keys/ present, no config yet)", dir, want)
+	}
+	// Nothing was created in the documented dir yet.
+	if _, err := os.Stat(filepath.Join(home, ".config", "bunker")); !os.IsNotExist(err) {
+		t.Errorf("config dir created without a config write (err=%v)", err)
 	}
 }
 
@@ -187,6 +326,7 @@ func TestUseCommand_WritesConfigAtOverrideLocation(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	setenvForTest(t, "BUNKER_HOME", "") // unset
+	setenvForTest(t, "XDG_CONFIG_HOME", "")
 	resetPathOverrides(t)
 
 	cfgFile := filepath.Join(t.TempDir(), "override", "bunker.yaml")
@@ -233,7 +373,7 @@ active_server: alpha
 	}
 
 	// Nothing leaked into the real default location.
-	if _, err := os.Stat(filepath.Join(home, ".bunker", "config.yaml")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(home, ".config", "bunker", "config.yaml")); !os.IsNotExist(err) {
 		t.Errorf("default-location config exists after overridden run (err=%v) — leak", err)
 	}
 }

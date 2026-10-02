@@ -161,7 +161,7 @@ func TestMountFault_StrandedMountPointIsDetectable(t *testing.T) {
 	}
 
 	// Premise: the directory exists.
-	if !dirExists(stranded) {
+	if !faultTestDirExists(stranded) {
 		t.Fatal("premise failed: stranded mountpoint was not created")
 	}
 
@@ -268,7 +268,9 @@ func TestMountFault_NoFaultKeepsRealBehaviour(t *testing.T) {
 	_ = before
 }
 
-func dirExists(p string) bool {
+// GAP-181: the non-test dirExists/existsFile helpers live in paths_diag.go;
+// this test-file helper keeps its own name to avoid a redeclaration.
+func faultTestDirExists(p string) bool {
 	fi, err := os.Stat(p)
 	return err == nil && fi.IsDir()
 }

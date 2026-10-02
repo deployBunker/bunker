@@ -42,7 +42,9 @@ func (m *mockListServer) ListAgents(
 }
 
 // writeListTestConfig writes a CLIConfig with a single server entry
-// pointing at the given URL, and sets it as the active server.
+// pointing at the given URL, and sets it as the active server. The entry
+// carries the mock-server token (GAP-181: the CLI refuses a tokenless
+// entry before dialing) — the mock BunkerdHandler does not check it.
 func writeListTestConfig(t *testing.T, home, serverURL string) {
 	t.Helper()
 	cfg := &CLIConfig{
@@ -50,6 +52,7 @@ func writeListTestConfig(t *testing.T, home, serverURL string) {
 			"default": {
 				Name:        "default",
 				URL:         serverURL,
+				Token:       "test-cli-token",
 				ConnectedAt: "2026-06-28T00:00:00Z",
 			},
 		},

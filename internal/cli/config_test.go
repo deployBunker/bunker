@@ -31,8 +31,8 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		t.Fatalf("SaveCLIConfig: %v", err)
 	}
 
-	// Verify file exists.
-	cfgPath := filepath.Join(tmpDir, ".bunker", "config.yaml")
+	// Verify file exists (the documented per-user config dir).
+	cfgPath := filepath.Join(tmpDir, ".config", "bunker", "config.yaml")
 	if _, err := os.Stat(cfgPath); err != nil {
 		t.Fatalf("config file not found: %v", err)
 	}

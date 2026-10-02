@@ -251,7 +251,7 @@ func TestStatusCommand_SingleServer_Online(t *testing.T) {
 	cfg := &CLIConfig{
 		ActiveServer: "default",
 		Servers: map[string]ServerEntry{
-			"default": {Name: "default", URL: srv.URL},
+			"default": {Name: "default", URL: srv.URL, Token: "test-cli-token"},
 		},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
@@ -308,7 +308,7 @@ func TestStatusCommand_SingleServer_MetricsNA(t *testing.T) {
 	cfg := &CLIConfig{
 		ActiveServer: "default",
 		Servers: map[string]ServerEntry{
-			"default": {Name: "default", URL: srv.URL},
+			"default": {Name: "default", URL: srv.URL, Token: "test-cli-token"},
 		},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
@@ -350,7 +350,7 @@ func TestStatusCommand_OfflineServer(t *testing.T) {
 	cfg := &CLIConfig{
 		ActiveServer: "dead",
 		Servers: map[string]ServerEntry{
-			"dead": {Name: "dead", URL: "http://127.0.0.1:19999"},
+			"dead": {Name: "dead", URL: "http://127.0.0.1:19999", Token: "test-cli-token"},
 		},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
@@ -466,7 +466,7 @@ func TestStatusCommand_AllServers_AliasFlag(t *testing.T) {
 	cfg := &CLIConfig{
 		ActiveServer: "default",
 		Servers: map[string]ServerEntry{
-			"default": {Name: "default", URL: srv.URL},
+			"default": {Name: "default", URL: srv.URL, Token: "test-cli-token"},
 		},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
@@ -526,7 +526,7 @@ func TestStatusCommand_WithServerFlag(t *testing.T) {
 		ActiveServer: "other",
 		Servers: map[string]ServerEntry{
 			"other":  {Name: "other", URL: "http://127.0.0.1:19997"},
-			"target": {Name: "target", URL: srv.URL},
+			"target": {Name: "target", URL: srv.URL, Token: "test-cli-token"},
 		},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
@@ -593,7 +593,7 @@ func TestStatusCommand_HighDiskWarning(t *testing.T) {
 			cfg := &CLIConfig{
 				ActiveServer: "default",
 				Servers: map[string]ServerEntry{
-					"default": {Name: "default", URL: srv.URL},
+					"default": {Name: "default", URL: srv.URL, Token: "test-cli-token"},
 				},
 			}
 			if err := SaveCLIConfig(cfg); err != nil {
@@ -686,7 +686,7 @@ func TestStatusCommand_TmpIsolationReporting(t *testing.T) {
 			cfg := &CLIConfig{
 				ActiveServer: "default",
 				Servers: map[string]ServerEntry{
-					"default": {Name: "default", URL: srv.URL},
+					"default": {Name: "default", URL: srv.URL, Token: "test-cli-token"},
 				},
 			}
 			if err := SaveCLIConfig(cfg); err != nil {
@@ -734,7 +734,7 @@ func TestStatusCommand_AllServers_TmpIsolation(t *testing.T) {
 	cfg := &CLIConfig{
 		ActiveServer: "default",
 		Servers: map[string]ServerEntry{
-			"default": {Name: "default", URL: srv.URL},
+			"default": {Name: "default", URL: srv.URL, Token: "test-cli-token"},
 		},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
@@ -961,7 +961,7 @@ func runStatusSingle(t *testing.T, info *v1.ServerInfoResponse) string {
 	defer srv.Close()
 	cfg := &CLIConfig{
 		ActiveServer: "default",
-		Servers:      map[string]ServerEntry{"default": {Name: "default", URL: srv.URL}},
+		Servers:      map[string]ServerEntry{"default": {Name: "default", URL: srv.URL, Token: "test-cli-token"}},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
 		t.Fatalf("SaveCLIConfig: %v", err)
@@ -1048,7 +1048,7 @@ func TestStatusCommand_AllServers_Residue(t *testing.T) {
 	defer srv.Close()
 	cfg := &CLIConfig{
 		ActiveServer: "default",
-		Servers:      map[string]ServerEntry{"default": {Name: "default", URL: srv.URL}},
+		Servers:      map[string]ServerEntry{"default": {Name: "default", URL: srv.URL, Token: "test-cli-token"}},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
 		t.Fatalf("SaveCLIConfig: %v", err)
@@ -1205,7 +1205,7 @@ func TestStatusCommand_AllServers_QueriesConcurrently(t *testing.T) {
 			deadline: barrierDeadline,
 		})
 		defer srv.Close()
-		servers[name] = ServerEntry{Name: name, URL: srv.URL}
+		servers[name] = ServerEntry{Name: name, URL: srv.URL, Token: "test-cli-token"}
 	}
 
 	cfg := &CLIConfig{ActiveServer: "srv-0", Servers: servers}
@@ -1275,7 +1275,7 @@ func TestStatusCommand_AllServers_OutputOrdering(t *testing.T) {
 			delay: delay,
 		})
 		defer srv.Close()
-		servers[name] = ServerEntry{Name: name, URL: srv.URL}
+		servers[name] = ServerEntry{Name: name, URL: srv.URL, Token: "test-cli-token"}
 	}
 
 	cfg := &CLIConfig{ActiveServer: "alpha", Servers: servers}

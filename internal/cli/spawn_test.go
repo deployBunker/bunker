@@ -99,7 +99,9 @@ func (m *mockSpawnServer) GetAgentKey(
 }
 
 // writeSpawnTestConfig writes a CLIConfig with a single server entry
-// pointing at the given URL, and sets it as the active server.
+// pointing at the given URL, and sets it as the active server. The entry
+// carries a token (GAP-181: the CLI refuses a tokenless entry before
+// dialing) — the mock BunkerdHandler records but does not check it.
 func writeSpawnTestConfig(t *testing.T, home, serverURL string) {
 	t.Helper()
 	t.Setenv(SessionTargetEnvVar, "default")
@@ -108,6 +110,7 @@ func writeSpawnTestConfig(t *testing.T, home, serverURL string) {
 			"default": {
 				Name:        "default",
 				URL:         serverURL,
+				Token:       "test-cli-token",
 				ConnectedAt: "2026-06-28T00:00:00Z",
 			},
 		},
@@ -286,7 +289,7 @@ func TestSpawnCommand_BundleHostRewrite(t *testing.T) {
 		}
 	})
 
-	keyPath := filepath.Join(tmpDir, ".bunker", "keys", "abc12345")
+	keyPath := filepath.Join(tmpDir, ".config", "bunker", "keys", "abc12345")
 	for _, want := range []string{
 		"DOCKER_HOST=ssh://bunker-abc12345@127.0.0.1",
 		"-i " + keyPath,
@@ -825,7 +828,7 @@ func TestSpawnCommand_FetchesKeyViaGetAgentKey(t *testing.T) {
 	}
 
 	// Criterion 3: the operator still ends up with a working local key file.
-	keyPath := filepath.Join(tmpDir, ".bunker", "keys", "gap128agent")
+	keyPath := filepath.Join(tmpDir, ".config", "bunker", "keys", "gap128agent")
 	raw, err := os.ReadFile(keyPath)
 	if err != nil {
 		t.Fatalf("client-local key not written via the GetAgentKey path: %v", err)
@@ -882,7 +885,7 @@ func TestSpawnCommand_KeyFetchFailureIsNonFatal(t *testing.T) {
 	if !strings.Contains(output, "could not fetch SSH key") {
 		t.Errorf("expected a warn line about the key fetch, stdout:\n%s", output)
 	}
-	if _, err := os.Stat(filepath.Join(tmpDir, ".bunker", "keys", "gap128fail")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(tmpDir, ".config", "bunker", "keys", "gap128fail")); !os.IsNotExist(err) {
 		t.Errorf("no key file must be written when the fetch failed (stat err: %v)", err)
 	}
 }
@@ -922,7 +925,7 @@ func TestSpawnCommand_OptInResponseStillWritesLocalKey(t *testing.T) {
 	if mock.gotKeyRequested {
 		t.Error("GetAgentKey must not be called when the spawn response already carried the key")
 	}
-	raw, err := os.ReadFile(filepath.Join(tmpDir, ".bunker", "keys", "gap128optin"))
+	raw, err := os.ReadFile(filepath.Join(tmpDir, ".config", "bunker", "keys", "gap128optin"))
 	if err != nil {
 		t.Fatalf("client-local key not saved from the opt-in response: %v", err)
 	}
@@ -972,6 +975,10 @@ func TestSpawnCommand_GetAgentKeyCarriesAuthHeader(t *testing.T) {
 		configured bool
 	}{
 		{name: "token_configured_bearer_sent", configured: true},
+		// GAP-181: a tokenless entry is refused before the dial unless the
+		// documented BUNKER_ALLOW_NO_TOKEN=1 opt-in is set — that opt-in is
+		// exactly the old "no token, no header" behavior, so the arm runs
+		// under it.
 		{name: "no_token_no_header", configured: false},
 	}
 	for _, tc := range cases {
@@ -979,6 +986,9 @@ func TestSpawnCommand_GetAgentKeyCarriesAuthHeader(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
 			t.Setenv("HOME", tmpDir)
+			if !tc.configured {
+				t.Setenv(EnvAllowNoToken, "1")
+			}
 
 			mock := &mockSpawnServer{
 				mockBunkerdServer: mockBunkerdServer{
@@ -1002,7 +1012,23 @@ func TestSpawnCommand_GetAgentKeyCarriesAuthHeader(t *testing.T) {
 			if tc.configured {
 				writeSpawnTestConfigWithToken(t, tmpDir, srv.URL, testToken)
 			} else {
-				writeSpawnTestConfig(t, tmpDir, srv.URL)
+				// Tokenless entry under the documented opt-in: save a config
+				// with NO token anywhere (the gate passes because
+				// BUNKER_ALLOW_NO_TOKEN=1 was set above).
+				t.Setenv(SessionTargetEnvVar, "default")
+				cfg := &CLIConfig{
+					Servers: map[string]ServerEntry{
+						"default": {
+							Name:        "default",
+							URL:         srv.URL,
+							ConnectedAt: "2026-06-28T00:00:00Z",
+						},
+					},
+					ActiveServer: "default",
+				}
+				if err := SaveCLIConfig(cfg); err != nil {
+					t.Fatalf("SaveCLIConfig: %v", err)
+				}
 			}
 
 			cmd := NewSpawnCommand()
@@ -1029,7 +1055,7 @@ func TestSpawnCommand_GetAgentKeyCarriesAuthHeader(t *testing.T) {
 			if strings.Contains(output, "could not fetch SSH key") {
 				t.Errorf("spawn warned about a key fetch failure despite a valid token, stdout:\n%s", output)
 			}
-			if _, err := os.Stat(filepath.Join(tmpDir, ".bunker", "keys", "authfetch")); err != nil {
+			if _, err := os.Stat(filepath.Join(tmpDir, ".config", "bunker", "keys", "authfetch")); err != nil {
 				t.Errorf("client-local key not written via the authenticated GetAgentKey path: %v", err)
 			}
 		})

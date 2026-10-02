@@ -150,6 +150,36 @@ func resolveToken(entry ServerEntry) string {
 	return token
 }
 
+// EnvAllowNoToken is the explicit opt-out for deployments that run the
+// daemon with auth disabled: set it to 1 and a tokenless CLI entry dials
+// without an Authorization header exactly as before GAP-181. Without it, a
+// tokenless entry is refused before any network activity — a generic
+// "unauthenticated" from the daemon never tells the operator WHERE the
+// credential was supposed to come from; the refusal below names the exact
+// config path searched.
+const EnvAllowNoToken = "BUNKER_ALLOW_NO_TOKEN"
+
+// RequireTokenFor is the CLI's fail-closed per-host-token gate (GAP-181).
+// It returns nil when entry carries a credential (entry token > viper config
+// > BUNKER_TOKEN, the resolveToken precedence), and otherwise an error
+// naming the EXACT config file path searched and the server alias — never a
+// generic "no token". BUNKER_ALLOW_NO_TOKEN=1 is the documented escape
+// hatch for auth-disabled daemons; any other value keeps the refusal.
+func RequireTokenFor(entry ServerEntry, serverName string) error {
+	if resolveToken(entry) != "" {
+		return nil
+	}
+	if trimToUnset(os.Getenv(EnvAllowNoToken)) == "1" {
+		return nil
+	}
+	cfgPath := "(unresolved)"
+	if p, err := configFilePath(); err == nil {
+		cfgPath = p
+	}
+	return fmt.Errorf("no per-host token for server %q: %s carries no token for it and BUNKER_TOKEN is unset — re-run `bunker connect --token ...` to store one, export BUNKER_TOKEN, or set %s=1 if this daemon runs with auth disabled",
+		serverName, cfgPath, EnvAllowNoToken)
+}
+
 // CheckServerCertificate probes a TLS daemon and compares its observed leaf
 // certificate with what the CLI already knows: a pin stored on the entry, or an
 // entry registered under the same name/URL.

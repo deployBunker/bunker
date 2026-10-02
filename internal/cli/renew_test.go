@@ -105,7 +105,7 @@ func writeRenewTestConfig(t *testing.T, serverURL string) {
 	t.Helper()
 	cfg := &CLIConfig{
 		Servers: map[string]ServerEntry{
-			"default": {Name: "default", URL: serverURL, ConnectedAt: "2026-06-28T00:00:00Z"},
+			"default": {Name: "default", URL: serverURL, Token: "test-cli-token", ConnectedAt: "2026-06-28T00:00:00Z"},
 		},
 		ActiveServer: "default",
 	}
@@ -294,7 +294,7 @@ func TestRenewCommand_RespawnFetchesAndSavesAgentKey(t *testing.T) {
 	}
 
 	// The key file under the test HOME must carry the fetched key at 0600.
-	keyPath := filepath.Join(tmpDir, ".bunker", "keys", "eduos-agent")
+	keyPath := filepath.Join(tmpDir, ".config", "bunker", "keys", "eduos-agent")
 	raw, err := os.ReadFile(keyPath)
 	if err != nil {
 		t.Fatalf("client-local key not written after renewal: %v", err)
@@ -372,7 +372,7 @@ func TestRenewCommand_EmptyKeyWritesNothing(t *testing.T) {
 	if !mock.gotKeyRequested {
 		t.Fatal("renew did not attempt GetAgentKey")
 	}
-	if _, err := os.Stat(filepath.Join(tmpDir, ".bunker", "keys", "eduos-agent")); err == nil {
+	if _, err := os.Stat(filepath.Join(tmpDir, ".config", "bunker", "keys", "eduos-agent")); err == nil {
 		t.Error("an empty GetAgentKey answer must not write a key file")
 	}
 	if strings.Contains(output, "SSH Key:") || strings.Contains(output, "(saved to ~/.bunker/keys/)") {
@@ -446,7 +446,7 @@ func writeInfoConfig(t *testing.T, serverURL string) {
 	t.Helper()
 	cfg := &CLIConfig{
 		ActiveServer: "test",
-		Servers:      map[string]ServerEntry{"test": {URL: serverURL}},
+		Servers:      map[string]ServerEntry{"test": {URL: serverURL, Token: "test-cli-token"}},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
 		t.Fatalf("SaveCLIConfig: %v", err)

@@ -220,7 +220,7 @@ func TestCpCommand_AgentNotFound(t *testing.T) {
 	cfg := &CLIConfig{
 		ActiveServer: "test",
 		Servers: map[string]ServerEntry{
-			"test": {URL: srv.URL},
+			"test": {URL: srv.URL, Token: "test-cli-token"},
 		},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
@@ -253,7 +253,7 @@ func TestCpCommand_ServerError(t *testing.T) {
 	cfg := &CLIConfig{
 		ActiveServer: "test",
 		Servers: map[string]ServerEntry{
-			"test": {URL: srv.URL},
+			"test": {URL: srv.URL, Token: "test-cli-token"},
 		},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
@@ -290,7 +290,7 @@ func TestCpCommand_MissingSSHKey(t *testing.T) {
 	cfg := &CLIConfig{
 		ActiveServer: "test",
 		Servers: map[string]ServerEntry{
-			"test": {URL: srv.URL},
+			"test": {URL: srv.URL, Token: "test-cli-token"},
 		},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
@@ -327,7 +327,7 @@ func TestCpCommand_EmptySshfsMount(t *testing.T) {
 	cfg := &CLIConfig{
 		ActiveServer: "test",
 		Servers: map[string]ServerEntry{
-			"test": {URL: srv.URL},
+			"test": {URL: srv.URL, Token: "test-cli-token"},
 		},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
@@ -364,7 +364,7 @@ func TestCpCommand_ServerResolvedFromConfig(t *testing.T) {
 	cfg := &CLIConfig{
 		ActiveServer: "custom-server",
 		Servers: map[string]ServerEntry{
-			"custom-server": {URL: srv.URL},
+			"custom-server": {URL: srv.URL, Token: "test-cli-token"},
 		},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
@@ -454,7 +454,7 @@ func TestDefaultSSHKeyPath(t *testing.T) {
 		t.Fatalf("defaultSSHKeyPath: %v", err)
 	}
 
-	expected := filepath.Join(tmpDir, ".bunker", "keys", "test-agent")
+	expected := filepath.Join(tmpDir, ".config", "bunker", "keys", "test-agent")
 	if path != expected {
 		t.Errorf("got %q, want %q", path, expected)
 	}
@@ -469,7 +469,7 @@ func setupCpFailureTest(t *testing.T, sshfsMount string) string {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
-	keyPath := filepath.Join(tmpDir, ".bunker", "keys", "test-agent")
+	keyPath := filepath.Join(tmpDir, ".config", "bunker", "keys", "test-agent")
 	if err := os.MkdirAll(filepath.Dir(keyPath), 0700); err != nil {
 		t.Fatalf("mkdir keys: %v", err)
 	}
@@ -495,7 +495,7 @@ func setupCpFailureTest(t *testing.T, sshfsMount string) string {
 	cfg := &CLIConfig{
 		ActiveServer: "custom-server",
 		Servers: map[string]ServerEntry{
-			"custom-server": {URL: srv.URL},
+			"custom-server": {URL: srv.URL, Token: "test-cli-token"},
 		},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
@@ -710,7 +710,7 @@ func TestCpCommand_OwnershipProbeRunsThroughRealSSHPath(t *testing.T) {
 	}
 	got := string(argv)
 	for _, want := range []string{
-		"-i\n" + filepath.Join(os.Getenv("HOME"), ".bunker", "keys", "test-agent"),
+		"-i\n" + filepath.Join(os.Getenv("HOME"), ".config", "bunker", "keys", "test-agent"),
 		"-p\n22",
 		// The mount's host is rewritten to the server URL's hostname.
 		"bunker-test-agent@127.0.0.1",

@@ -65,7 +65,7 @@ func TestSSHCommand_AgentNotFound(t *testing.T) {
 
 	cfg := &CLIConfig{
 		ActiveServer: "test",
-		Servers:      map[string]ServerEntry{"test": {URL: srv.URL}},
+		Servers:      map[string]ServerEntry{"test": {URL: srv.URL, Token: "test-cli-token"}},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
 		t.Fatalf("SaveCLIConfig: %v", err)
@@ -96,7 +96,7 @@ func TestSSHCommand_MissingSSHKey(t *testing.T) {
 
 	cfg := &CLIConfig{
 		ActiveServer: "test",
-		Servers:      map[string]ServerEntry{"test": {URL: srv.URL}},
+		Servers:      map[string]ServerEntry{"test": {URL: srv.URL, Token: "test-cli-token"}},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
 		t.Fatalf("SaveCLIConfig: %v", err)
@@ -130,7 +130,7 @@ func TestSSHCommand_EmptySshfsMount(t *testing.T) {
 
 	cfg := &CLIConfig{
 		ActiveServer: "test",
-		Servers:      map[string]ServerEntry{"test": {URL: srv.URL}},
+		Servers:      map[string]ServerEntry{"test": {URL: srv.URL, Token: "test-cli-token"}},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
 		t.Fatalf("SaveCLIConfig: %v", err)
@@ -153,7 +153,7 @@ func TestSSHCommand_ValidKeyRunsSSH(t *testing.T) {
 	t.Setenv("HOME", tmpDir)
 
 	// Place the agent key where defaultSSHKeyPath expects it.
-	keysDir := filepath.Join(tmpDir, ".bunker", "keys")
+	keysDir := filepath.Join(tmpDir, ".config", "bunker", "keys")
 	if err := os.MkdirAll(keysDir, 0755); err != nil {
 		t.Fatalf("mkdir keys: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestSSHCommand_ValidKeyRunsSSH(t *testing.T) {
 
 	cfg := &CLIConfig{
 		ActiveServer: "test",
-		Servers:      map[string]ServerEntry{"test": {URL: srv.URL}},
+		Servers:      map[string]ServerEntry{"test": {URL: srv.URL, Token: "test-cli-token"}},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
 		t.Fatalf("SaveCLIConfig: %v", err)

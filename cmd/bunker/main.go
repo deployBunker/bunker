@@ -178,6 +178,9 @@ Client-side path overrides (persistent flags):
 	root.AddCommand(cli.NewLingerCommand())
 	root.AddCommand(cli.NewHomesCommand())
 	root.AddCommand(cli.NewSurfaceCommand())
+	// GAP-181: the paths diagnostic — every resolved secret/state path with
+	// its mode and the rule that produced it (locations only, never values).
+	root.AddCommand(cli.NewPathsCommand())
 	root.AddCommand(cli.NewHostProvisionCommand())
 	root.AddCommand(cli.NewSubIDMigrateCommand())
 

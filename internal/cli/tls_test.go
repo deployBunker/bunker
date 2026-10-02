@@ -1265,11 +1265,12 @@ func configEntry(t *testing.T, name string) ServerEntry {
 
 func testBunkerHome(t *testing.T) string {
 	t.Helper()
+	// GAP-181: the CLI config now lives in the per-user config dir.
 	home := os.Getenv("HOME")
 	if home == "" {
 		t.Fatal("HOME is not set")
 	}
-	return filepath.Join(home, ".bunker")
+	return filepath.Join(home, ".config", "bunker")
 }
 
 func writeConfigFile(t *testing.T, contents string) {

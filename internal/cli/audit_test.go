@@ -289,9 +289,10 @@ func TestAuditListCommand_Remote(t *testing.T) {
 	srv := newTestServer(t, mock)
 	defer srv.Close()
 
-	// Register the mock daemon as a server entry in the temp HOME config.
+	// Register the mock daemon as a server entry in the temp HOME config
+	// (with the token the gate requires; the mock does not check it).
 	connectCmd := NewConnectCommand()
-	connectCmd.SetArgs([]string{"--name", "audit-test", srv.URL})
+	connectCmd.SetArgs([]string{"--name", "audit-test", "--token", "test-cli-token", srv.URL})
 	if err := connectCmd.Execute(); err != nil {
 		t.Fatalf("bunker connect: %v", err)
 	}
@@ -327,7 +328,7 @@ func TestAuditExportCommand_Remote(t *testing.T) {
 	defer srv.Close()
 
 	connectCmd := NewConnectCommand()
-	connectCmd.SetArgs([]string{"--name", "audit-test", srv.URL})
+	connectCmd.SetArgs([]string{"--name", "audit-test", "--token", "test-cli-token", srv.URL})
 	if err := connectCmd.Execute(); err != nil {
 		t.Fatalf("bunker connect: %v", err)
 	}

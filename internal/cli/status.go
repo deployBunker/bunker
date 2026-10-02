@@ -80,6 +80,11 @@ Examples:
 			if !ok {
 				return fmt.Errorf("server %q not found in config", serverName)
 			}
+			// GAP-181: fail closed on a missing per-host token BEFORE the
+			// dial — the refusal names the exact config path searched.
+			if err := RequireTokenFor(entry, serverName); err != nil {
+				return err
+			}
 
 			result := queryServer(entry)
 			fmt.Print(formatServerStatus(result))

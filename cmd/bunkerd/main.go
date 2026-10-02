@@ -20,6 +20,7 @@ import (
 	"syscall"
 
 	"github.com/deployBunker/bunker/internal/agent"
+	"github.com/deployBunker/bunker/internal/cli"
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/server"
 	"github.com/deployBunker/bunker/internal/version"
@@ -58,6 +59,7 @@ func run() error {
 	var (
 		showHelp    bool
 		showVersion bool
+		showPaths   bool
 		cfgPath     string
 	)
 
@@ -66,6 +68,11 @@ func run() error {
 	fs.BoolVar(&showHelp, "h", false, "Show help (shorthand)")
 	fs.BoolVar(&showVersion, "version", false, "Print version")
 	fs.BoolVar(&showVersion, "v", false, "Print version (shorthand)")
+	// GAP-181: print the resolved secret/state path surface (locations and
+	// modes only, never values) and exit — the daemon-side twin of the
+	// `bunker paths` diagnostic. Runs after config load so the entries show
+	// what THIS daemon actually resolves; never binds a port.
+	fs.BoolVar(&showPaths, "show-paths", false, "Print resolved secret/state paths (locations/modes/rules, no values) and exit")
 	fs.StringVar(&cfgPath, "config", defaultConfigPath, "Config file path")
 	fs.StringVar(&cfgPath, "c", defaultConfigPath, "Config file path (shorthand)")
 
@@ -74,12 +81,15 @@ func run() error {
 
 Usage:
   bunkerd [flags]
+  bunkerd --show-paths Print resolved secret/state paths (locations/modes only) and exit
   bunkerd version      Print version (same as --version)
   bunkerd help         Show this help (same as --help)
 
 Flags:
   -h, --help       Show help
   -v, --version    Print version
+      --show-paths Print resolved secret/state paths (locations/modes/rules,
+                   no values) and exit
   -c, --config     Config file path (default: %s)
                    Also settable via BUNKERD_CONFIG env var
                    Example: cp config.example.yaml /etc/bunkerd/config.yaml
@@ -131,6 +141,23 @@ Docker agent hosts. Send SIGINT/SIGTERM for graceful shutdown.
 		if envPath := os.Getenv("BUNKERD_CONFIG"); envPath != "" {
 			cfgPath = envPath
 		}
+	}
+
+	// GAP-181: config is loaded FIRST so the diagnostic shows what THIS
+	// daemon actually resolves (the *_FILE secrets already resolved by
+	// Load), then the path surface is printed — locations and modes only —
+	// and the process exits before anything binds a listener. The cfgPath
+	// env tier (BUNKERD_CONFIG) has been applied above, so --show-paths
+	// follows the same precedence as a real boot.
+	if showPaths {
+		cfg, err := config.Load(cfgPath)
+		if err != nil {
+			return fmt.Errorf("load config: %w", err)
+		}
+		res := cli.ResolveDaemonPaths(cfg, cfgPath)
+		cli.PrintPaths(os.Stdout, res,
+			"bunkerd --show-paths — resolved secret/state locations (GAP-181)")
+		return nil
 	}
 
 	cfg, err := config.Load(cfgPath)

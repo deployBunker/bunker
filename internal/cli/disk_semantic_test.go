@@ -156,7 +156,7 @@ func TestInfoCommand_DiskCapIsLabelledPerFile(t *testing.T) {
 
 	cfg := &CLIConfig{
 		ActiveServer: "test",
-		Servers:      map[string]ServerEntry{"test": {URL: srv.URL}},
+		Servers:      map[string]ServerEntry{"test": {URL: srv.URL, Token: "test-cli-token"}},
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
 		t.Fatalf("SaveCLIConfig: %v", err)

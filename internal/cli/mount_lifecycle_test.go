@@ -67,7 +67,7 @@ func TestDefaultMountPoint_FallsBackToHomeWhenNoRuntimeDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("defaultMountPoint: %v", err)
 	}
-	if want := filepath.Join(home, ".bunker", "mnt", "agent-2"); got != want {
+	if want := filepath.Join(home, ".config", "bunker", "mnt", "agent-2"); got != want {
 		t.Fatalf("got %s, want %s", got, want)
 	}
 }
