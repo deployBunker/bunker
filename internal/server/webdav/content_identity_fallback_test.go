@@ -343,9 +343,16 @@ func TestQA36ThePollReportsAFrozenEditTheKernelCouldNotStamp(t *testing.T) {
 	frozenRecord := func() {
 		l.mu.Lock()
 		l.observed["src/util.go"] = observedEntry{
-			id:         frozenID,
-			digest:     preEdit,
-			recordedAt: time.Unix(0, frozenID.Ctime+int64(eventsCoarseClockWindow/2)),
+			id:     frozenID,
+			digest: preEdit,
+			// Anchored to NOW, not to the file's ctime. The record must sit INSIDE the
+			// coarse-clock window at the moment of the poll, and ctime+window/2 is a FIXED
+			// instant: once the wall clock passes ctime+window the record is outside its own
+			// window for every later attempt, so no deadline — however generous — could ever
+			// observe the verdict. That is what "not reported within 500ms (8176 polls)"
+			// measured. Re-anchoring keeps every attempt the same honest trial of the same
+			// defect instead of a race against an expiring timestamp.
+			recordedAt: time.Now(),
 		}
 		l.mu.Unlock()
 	}

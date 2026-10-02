@@ -10,10 +10,13 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 
@@ -203,8 +206,33 @@ func TestStreamingEnvelope_UnaryJSONOnStreamingRPC(t *testing.T) {
 
 // TestStreamingEnvelope_LeavesOtherPathsAlone diffs the wrapped server against
 // the raw connect handler for every exchange that must not change.
+//
+// Determinism: the first case POSTs a real ServerInfo on both arms, and
+// ServerInfo computes uptimeSeconds PER REQUEST from the package-global
+// serverStartTime (service.go). Two sequential POSTs that straddle an
+// integer second of process uptime legitimately produce different bodies —
+// INT-CI-016's class of wall-clock-at-assertion flakes (CI run 35253802213
+// is the same disease in TestServerInfo). The injected start time is the
+// repo's own convention (service_test.go pins the same var); every other
+// test in this package that reads ServerInfo is sequential, and the only
+// parallel readers (this file's auth-denial case) are refused by an
+// interceptor BEFORE the handler, so their bodies never contain uptime.
+// The diff comparator below additionally allows the uptimeSeconds field to
+// differ ONLY as a whole number of seconds (both arms parsed as JSON,
+// payload identical) while every other byte of every case stays strictly
+// bytes.Equal — loosening nothing the wrapper could hide behind.
 func TestStreamingEnvelope_LeavesOtherPathsAlone(t *testing.T) {
 	t.Parallel()
+	// INT-CI-016: freeze the daemon start time this package's ServerInfo
+	// computes from, so no case can straddle an integer-second boundary
+	// between its wrapped and raw POST. t.Parallel() runs this test only
+	// against the other tests in THIS file (package-level tests not marked
+	// parallel finish first), all of which are pinned above or never reach
+	// the handler on serverInfoPath.
+	origStart := serverStartTime
+	serverStartTime = time.Now()
+	t.Cleanup(func() { serverStartTime = origStart })
+
 	wrapped, raw := newEnvelopeTestHandlers(t)
 
 	// A connect+json streaming request body: one envelope,
@@ -238,7 +266,7 @@ func TestStreamingEnvelope_LeavesOtherPathsAlone(t *testing.T) {
 			if wStatus != rStatus {
 				t.Errorf("status = %d, raw = %d", wStatus, rStatus)
 			}
-			if !bytes.Equal(wBody, rBody) {
+			if !bodiesEqualModuloUptime(t, c.path, wBody, rBody) {
 				t.Errorf("body differs:\n wrapped: %s\n raw:     %s", wBody, rBody)
 			}
 			if got, want := wHeader.Get("Content-Type"), rHeader.Get("Content-Type"); got != want {
@@ -246,6 +274,124 @@ func TestStreamingEnvelope_LeavesOtherPathsAlone(t *testing.T) {
 			}
 		})
 	}
+}
+
+// bodiesEqualModuloUptime is the diff comparator for the passthrough table:
+// byte-for-byte equality everywhere, with one carve-out on the ServerInfo
+// procedure only — its uptimeSeconds field is computed per request by the
+// production handler (time.Since(serverStartTime) at RPC entry), so two
+// sequential POSTs that straddle an integer second legitimately differ in
+// exactly that field by exactly one second. The carve-out splices the
+// uptimeSeconds VALUE bytes out by JSON token offset and compares everything
+// else — every other byte of the body, including key order, spacing and
+// encoding — strictly. It applies only when both arms parse as ServerInfo
+// objects whose uptimes sit within one second of each other; any other
+// difference (a wrapper rewriting, re-serializing or dropping the body) is a
+// strict inequality nothing can hide behind.
+func bodiesEqualModuloUptime(t *testing.T, path string, wrapped, raw []byte) bool {
+	t.Helper()
+	if bytes.Equal(wrapped, raw) {
+		return true
+	}
+	if path != serverInfoPath {
+		return false
+	}
+	wVal, wKeyStart, wKeyEnd, wValEnd, okw := serverInfoUptimeSplice(t, wrapped)
+	rVal, rKeyStart, rKeyEnd, rValEnd, okr := serverInfoUptimeSplice(t, raw)
+	if !okw || !okr {
+		return false
+	}
+	// Both uptimes parsed; they must sit within one second of each other
+	// (two sequential requests can straddle exactly one integer boundary).
+	if math.Abs(wVal-rVal) > 1 {
+		return false
+	}
+	// Byte-strict everywhere except the uptime VALUE token: the bytes before
+	// the key (field order, every earlier field) and the bytes after the
+	// value (every later field) must be identical; the key bytes must be
+	// identical; only the separator+value region may differ, and only by the
+	// one second.
+	if !bytes.Equal(wrapped[:wKeyStart], raw[:rKeyStart]) {
+		return false
+	}
+	if !bytes.Equal(wrapped[wKeyStart:wKeyEnd], raw[rKeyStart:rKeyEnd]) {
+		return false
+	}
+	if !bytes.Equal(wrapped[wValEnd:], raw[rValEnd:]) {
+		return false
+	}
+	wMid := trimJSONSeparators(string(wrapped[wKeyEnd:wValEnd]))
+	rMid := trimJSONSeparators(string(raw[rKeyEnd:rValEnd]))
+	if wMid == rMid {
+		return true
+	}
+	// Differing value tokens are accepted ONLY as digit-only integers one
+	// second apart (the production encoding of uint64 seconds). A quoted
+	// number, a float, an exponent or any other re-encoding is a difference.
+	if !allDigits(wMid) || !allDigits(rMid) {
+		return false
+	}
+	wd, werr := strconv.ParseInt(wMid, 10, 64)
+	rd, rerr := strconv.ParseInt(rMid, 10, 64)
+	if werr != nil || rerr != nil {
+		return false
+	}
+	return math.Abs(float64(wd-rd)) == 1
+}
+
+// trimJSONSeparators strips the JSON name-separator and optional whitespace
+// from both ends of a `separator+value` region so only the value token's
+// bytes remain.
+func trimJSONSeparators(s string) string {
+	return strings.Trim(s, ": 	")
+}
+
+// allDigits reports whether s is a non-empty ASCII digit run.
+func allDigits(s string) bool {
+	return s != "" && strings.IndexFunc(s, func(r rune) bool { return r < '0' || r > '9' }) < 0
+}
+
+// serverInfoUptimeSplice locates the uptimeSeconds member in a ServerInfo
+// JSON body and returns its VALUE as a float, plus the byte offsets needed to
+// cut the value out: [keyStart,keyEnd) is the raw key token bytes,
+// [keyEnd,valEnd) spans the name separator and the raw value token, so
+// body[:keyStart], the key bytes, and body[valEnd:] together carry every
+// other byte of the body. protojson may encode a 64-bit integer as a JSON
+// number or a decimal string, so both value shapes parse. ok is false for any
+// body that is not a JSON object carrying an uptimeSeconds member.
+func serverInfoUptimeSplice(t *testing.T, body []byte) (val float64, keyStart, keyEnd, valEnd int, ok bool) {
+	t.Helper()
+	dec := json.NewDecoder(bytes.NewReader(body))
+	tok, err := dec.Token()
+	if err != nil {
+		return 0, 0, 0, 0, false // not JSON at all
+	}
+	if d, isDelim := tok.(json.Delim); !isDelim || d != '{' {
+		return 0, 0, 0, 0, false // not an object
+	}
+	for dec.More() {
+		keyStart = int(dec.InputOffset())
+		keyTok, err := dec.Token()
+		if err != nil {
+			return 0, 0, 0, 0, false
+		}
+		keyEnd = int(dec.InputOffset())
+		key, _ := keyTok.(string)
+		if key != "uptimeSeconds" {
+			// Skip this member's value entirely (objects/arrays included).
+			var skip json.RawMessage
+			if err := dec.Decode(&skip); err != nil {
+				return 0, 0, 0, 0, false
+			}
+			continue
+		}
+		if err := dec.Decode(&val); err != nil {
+			return 0, 0, 0, 0, false // value not a JSON number
+		}
+		valEnd = int(dec.InputOffset())
+		return val, keyStart, keyEnd, valEnd, true
+	}
+	return 0, 0, 0, 0, false // no uptimeSeconds member
 }
 
 // TestStreamingEnvelope_StreamingStillWorks proves the wrapper did not break
