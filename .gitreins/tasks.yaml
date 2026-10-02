@@ -3866,8 +3866,9 @@ tasks:
     \ with log latest tag v0.1.4 vs version 0.2.0 \u2014 i.e. the missing tag, now\
     \ fixed; the next main-branch push is expected to pass that step (verified job-level\
     \ next tick)."
-  status: in_progress
+  status: complete
   created_at: '2026-10-02T12:09:28.727876+00:00'
+  completed_at: '2026-10-02T12:51:50.342505+00:00'
 - id: INT-CI-55
   title: "README docs-drift red after v0.2.0 cut \u2014 7 stale findings activated"
   criteria:
@@ -3878,5 +3879,6 @@ tasks:
     \ on the fix commit has build-and-test job green including the 'Docs release-drift\
     \ check (GAP-081)' step, unblocking downstream jobs. C4: no .go files touched\
     \ \u2014 docs-only diff."
-  status: in_progress
+  status: complete
   created_at: '2026-10-02T12:25:53.687954+00:00'
+  completed_at: '2026-10-02T12:51:51.176244+00:00'
