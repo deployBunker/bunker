@@ -3851,3 +3851,20 @@ tasks:
   status: complete
   created_at: '2026-10-02T05:23:12.108077+00:00'
   completed_at: '2026-10-02T09:32:58.657583+00:00'
+- id: INT-CI-54
+  title: "v0.2.0 tag cut \u2014 version-authority CI recovery (RELEASE-001 final step)"
+  criteria:
+  - "C1: origin carries annotated tag v0.2.0 on commit 149411c (refs/tags/v0.2.0 ->\
+    \ 91e2b06 -> 149411c; git cat-file -t v0.2.0 == tag). C2: version parity in-tree\
+    \ at HEAD: git describe --tags --abbrev=0 == v0.2.0, internal/version/version.go\
+    \ Version == 0.2.0, Makefile VERSION ?= 0.2.0, CHANGELOG top release heading ==\
+    \ 0.2.0 with Unreleased reopened, version_test asserts 0.2.0. C3: the tag push\
+    \ fired the release workflow and run 37004146114 completed with conclusion success\
+    \ (its release job green). C4: GOPROXY=direct go install github.com/deployBunker/bunker/cmd/bunker@latest\
+    \ serves v0.2.0 and bunker --version reports 0.2.0. C5: the pre-fix red run 37001249813\
+    \ (63d1ad9) is attributed to ONLY the Version authority check step of build-and-test\
+    \ with log latest tag v0.1.4 vs version 0.2.0 \u2014 i.e. the missing tag, now\
+    \ fixed; the next main-branch push is expected to pass that step (verified job-level\
+    \ next tick)."
+  status: in_progress
+  created_at: '2026-10-02T12:09:28.727876+00:00'
