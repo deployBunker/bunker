@@ -1,6 +1,6 @@
 # Bunker — Specifications Index
 
-Landing page for the `specs/` directory. Ten specs cover the Bunker platform
+Landing page for the `specs/` directory. Eleven specs cover the Bunker platform
 (a daemon, `bunkerd`, that hosts isolated agent environments; a CLI, `bunker`,
 that controls it). Start here, pick your audience below, and follow its reading
 order.
@@ -21,6 +21,7 @@ Last verified against repo HEAD `9ee17c6` (2026-09-16).
 | [preset-acceptance-harness.md](preset-acceptance-harness.md) | The preset verification battery | contributor, operator | not implemented (design, GAP-115) |
 | [knob-safety-matrix.md](knob-safety-matrix.md) | The measured knob evidence | contributor | methodology (GAP-114), findings pending measurement |
 | [container-mode.md](container-mode.md) | The proposed execution mode | contributor | not implemented (design draft) |
+| [network-isolation.md](network-isolation.md) | The network-isolation mode surface | contributor, operator | not implemented (design draft, NET-BUNKER-001..012) |
 
 This file is `_index.md`; every link above is relative and resolves from
 inside `specs/`.
@@ -178,6 +179,32 @@ instead, which is a different, already-shipped feature.
 - **Status: not implemented — design draft** — `SpawnAgentRequest` carries
   no container-mode field (see proto/bunker/v1/bunker.proto:107); README.md:64
   labels container mode "(not implemented yet)".
+
+### [network-isolation.md](network-isolation.md) — Network Isolation Mode Surface Specification (v0.1.0, draft, NET-BUNKER-001)
+
+The network-isolation option surface: six named modes (`shared` — today's
+default, `systemd` PrivateNetwork, `rootlesskit`+slirp4netns, `pasta`,
+`netns-veth`, `container` via container-mode.md) plus one orthogonal per-UID
+firewall layer, and the process/path visibility dimension (hidepid vs PID
+namespace for ISO-001; restricted `/run/bunker` vs per-agent mount namespace
+for ISO-002). Each mode declares what it does NOT protect; the compatibility
+matrix names what breaks (tunnel ingress, port publishing into the right
+namespace, DNS/outbound, port-block accounting); the default stays `shared`
+until measured; and the reporting law holds that the mode and the boundary
+actually provided are announced per agent (GAP-067 disclosure idiom) with
+loud refusal instead of silent fallback. Grounded in the demonstrated leaks
+(SEC-BUNKER-001/002, ISO-001/002) and the existing substrate (slirp4netns
+already a required prerequisite, agents already systemd units, unix sockets
+crossing namespaces).
+
+- **Who should read it:** contributors implementing NET-BUNKER-002..012, and
+  operators choosing a per-agent isolation posture.
+- **Status: not implemented — design draft (NET-BUNKER-001)** — no isolation
+  mode exists in code today: `SpawnAgentRequest` carries no mode field (see
+  proto/bunker/v1/bunker.proto:215), the dockerd unit argv has no
+  `PrivateNetwork=` (see internal/agent/isolation.go:1004), and the socket
+  directory is created 0755, not 0700 (see
+  internal/agent/manager_spawn.go:406).
 
 ## Recommended reading order
 
