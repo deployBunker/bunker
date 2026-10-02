@@ -574,7 +574,14 @@ func TestBFS037Cell04bPromotionJoinsAnInFlightFetchInsteadOfRefetching(t *testin
 func TestBFS037Cell05NoReaderEverSeesAPartialFile(t *testing.T) {
 	stub := newHotStub(t)
 	stub.Throttle(0)
-	s := newHotSetup(t, stub, WithTick(2*time.Millisecond), WithPolicy(func(p *HotPolicy) { p.RefreshDeadline = 25 * time.Second }))
+	s := newHotSetup(t, stub, WithTick(2*time.Millisecond), WithOpTimeout(320*time.Second), WithPolicy(func(p *HotPolicy) {
+		// 300 s: the deadline is not what this cell proves (the atomic publish
+		// and the byte-for-byte old-content guarantees are), and at fleet-host
+		// load a parked refresh can outrun a 25 s deadline into a legitimate
+		// abandon:deadline that would make the publish arm unmeasurable
+		// (QA-BUNKER-53). WithOpTimeout keeps the fixture coherent (P-11).
+		p.RefreshDeadline = 300 * time.Second
+	}))
 	target := "src/main.go"
 	oldBody := hotBody(8192, 'o')
 	newBody := hotBody(8192, 'n')
@@ -596,7 +603,10 @@ func TestBFS037Cell05NoReaderEverSeesAPartialFile(t *testing.T) {
 	// already served this path's bytes, so "served > 0" alone would be satisfied
 	// before the refresh ever started and the whole cell would be measuring
 	// nothing. Only a PARTIAL delta belongs to the in-flight refresh.
-	if !hotWaitHeld(t, stub, target, len(newBody), servedBase, 5*time.Second) {
+	// The wait is bounded by the cell's own armed deadline, not by a fixed
+	// 5 s: under load the refresh goroutine can take longer than that to be
+	// scheduled and serve its first half at all (QA-BUNKER-53 class).
+	if !hotWaitHeld(t, stub, target, len(newBody), servedBase, s.Policy.RefreshDeadline) {
 		t.Fatalf("the refresh never reached its mid-body window: served=%d (base %d) inflight=%d",
 			stub.BytesServed(target), servedBase, s.Manager.Stats().RefreshInflight)
 	}
@@ -647,15 +657,26 @@ func TestBFS037Cell05NoReaderEverSeesAPartialFile(t *testing.T) {
 
 	// Release: the refresh completes, and NOW the new content is what a reader
 	// gets — complete, and only after the pointer swap.
+	//
+	// The wait is bounded by the cell's own armed deadline (300 s, the policy
+	// this cell arms above) rather than by a fixed 5 s: publish happens after
+	// the refresh's last byte lands, and on a loaded host — where this suite is
+	// expected to stay green (QA-BUNKER-53 class) — the goroutine can sit
+	// unscheduled far longer than an idle box would make it wait, long enough
+	// to even outrun a 25 s bound. The condition is still the outcome itself
+	// (the new content's hash visible through a lookup), so a refresh that
+	// never publishes fails here exactly as before, with the observed hash in
+	// the message.
 	stub.Release()
-	if !hotWaitFor(t, "the refresh to publish", 5*time.Second, func() bool {
+	wantHash := HashBytes(newBody)
+	if !hotWaitFor(t, "the refresh to publish", 300*time.Second, func() bool {
 		h, _, ok := s.Cache.Lookup(target)
-		return ok && h == HashBytes(newBody)
+		return ok && h == wantHash
 	}) {
-		t.Fatalf("the refresh never published the new content: hash=%q want %q", func() string {
+		t.Fatalf("the refresh never published the new content within the refresh deadline: hash=%q want %q", func() string {
 			h, _, _ := s.Cache.Lookup(target)
 			return h
-		}(), HashBytes(newBody))
+		}(), wantHash)
 	}
 	data, ok := s.Cache.Get(target, HashBytes(newBody))
 	if !ok || HashBytes(data) != HashBytes(newBody) || len(data) != len(newBody) {

@@ -128,7 +128,14 @@ func TestQA36ASameMetadataRewriteIsReportedFromTheBytes(t *testing.T) {
 		t.Fatalf("the fixture is not the trap it claims to be: the bytes did not move (%s)", postEdit)
 	}
 	frozen := identityOf(after)
-	now := time.Now()
+	// The records' clock is CONSTRUCTED inside the window (half a window past
+	// the edit's own ctime), not sampled: a time.Now() here is born vouched
+	// whenever the scheduler lets more than eventsCoarseClockWindow pass
+	// between the Chtimes above and the sample — exactly what a loaded host
+	// does (QA-BUNKER-53) — and a born-vouched frozen record legitimately
+	// keeps the path quiet, which measures the scheduler, not the fallback.
+	// The vouched arm (case 3) adds a whole window on top, so it stays vouched.
+	now := time.Unix(0, frozen.Ctime+int64(eventsCoarseClockWindow/2))
 
 	state, truncated, err := h.tree.observe()
 	if err != nil {
@@ -316,18 +323,56 @@ func TestQA36ThePollReportsAFrozenEditTheKernelCouldNotStamp(t *testing.T) {
 	// Install the frozen record: the identity the filesystem reports NOW (so the
 	// poll's own stat agrees with it field for field) and the digest of the bytes
 	// as they were BEFORE the edit.
+	//
+	// recordedAt is placed INSIDE the coarse window the mechanism itself
+	// declares — half a window past the edit's own ctime — instead of at a bare
+	// time.Now(): ctime cannot be restored from userspace, so the rewrite above
+	// stamped it with the wall clock, and a record stamped `time.Now()` is born
+	// VOUCHED whenever the scheduler lets more than eventsCoarseClockWindow
+	// (50 ms) pass between the Chtimes and the stamp — exactly what a loaded
+	// host does to this test (QA-BUNKER-53). Born vouched, the fallback
+	// legitimately keeps the path quiet and the cell measures the scheduler
+	// rather than the fallback. The window value itself is NOT widened and no
+	// sleep is added: the record is constructed in the ambiguous interval, which
+	// is the hostile condition the row is about.
 	after, err := os.Stat(target)
 	if err != nil {
 		t.Fatalf("stat: %v", err)
 	}
+	frozenID := identityOf(after)
+	frozenRecord := func() {
+		l.mu.Lock()
+		l.observed["src/util.go"] = observedEntry{
+			id:         frozenID,
+			digest:     preEdit,
+			recordedAt: time.Unix(0, frozenID.Ctime+int64(eventsCoarseClockWindow/2)),
+		}
+		l.mu.Unlock()
+	}
 	verifyBefore, _ := ContentVerificationCounters()
-	l.mu.Lock()
-	l.observed["src/util.go"] = observedEntry{id: identityOf(after), digest: preEdit, recordedAt: time.Now()}
-	l.mu.Unlock()
+	frozenRecord()
 
-	got := pollAt(t, h, cursor)
-	if len(got.Result.Events) != 1 || got.Result.Events[0].Event != eventInvalidate {
-		t.Fatalf("a same-size, mtime-preserved edit the coarse clock could not stamp was not reported: %+v", got.Result.Events)
+	// Drive the observation from the OUTCOME with a bounded deadline rather than
+	// from a single poll taken at a fixed moment: under load one poll can land
+	// anywhere, and the cell must observe the verdict while the frozen record
+	// sits inside the window. A poll that answers quiet has re-diffed and
+	// refreshed the ledger's record for this path with verified current state,
+	// so each attempt re-installs the frozen record first — every attempt is the
+	// same honest trial of the same defect. The deadline bounds the wait; the
+	// failure still names the observed events.
+	var got eventsJSON
+	polls := 0
+	deadline := time.Now().Add(10 * eventsCoarseClockWindow)
+	for {
+		got = pollAt(t, h, cursor)
+		if len(got.Result.Events) == 1 && got.Result.Events[0].Event == eventInvalidate {
+			break
+		}
+		polls++
+		if time.Now().After(deadline) {
+			t.Fatalf("a same-size, mtime-preserved edit the coarse clock could not stamp was not reported within %s (%d polls): %+v", 10*eventsCoarseClockWindow, polls, got.Result.Events)
+		}
+		frozenRecord()
 	}
 	if paths := got.Result.Events[0].Paths; len(paths) != 1 || paths[0] != "src/util.go" {
 		t.Fatalf("paths = %v, want [src/util.go]: the quiet paths must stay quiet", paths)
@@ -521,7 +566,13 @@ func TestQA36TheFallbackComparesDigestsNotWholeFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("observe: %v", err)
 	}
-	now := time.Now()
+	// The record's clock is CONSTRUCTED inside the window (half a window past
+	// the edit's own ctime), not sampled: a time.Now() here is born vouched
+	// whenever the scheduler lets more than eventsCoarseClockWindow pass
+	// between the Chtimes above and the sample — exactly what a loaded host
+	// does (QA-BUNKER-53) — and a born-vouched frozen record legitimately
+	// keeps the path quiet, which measures the scheduler, not the fallback.
+	now := time.Unix(0, identityOf(after).Ctime+int64(eventsCoarseClockWindow/2))
 	prev := map[string]observedEntry{"big.bin": {id: identityOf(after), digest: first, recordedAt: now}}
 	changed, _ := h.tree.ledgerDiff(prev, state, now)
 	found := false
@@ -557,7 +608,14 @@ func TestQA36AReadThatCannotBeTakenFabricatesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("digest: %v", err)
 	}
-	now := time.Now()
+	// The records' clock is CONSTRUCTED inside the window (half a window past
+	// the record's own ctime), not sampled: a time.Now() here can leave the
+	// record under test born VOUCHED on a loaded host (QA-BUNKER-53), and a
+	// vouched record takes the no-read path for the wrong reason — every
+	// assertion below would then pass vacuously. Inside the window the
+	// verification is genuinely attempted (and genuinely fails, which is what
+	// this cell is about).
+	now := time.Unix(0, identityOf(before).Ctime+int64(eventsCoarseClockWindow/2))
 	state, _, err := h.tree.observe()
 	if err != nil {
 		t.Fatalf("observe: %v", err)

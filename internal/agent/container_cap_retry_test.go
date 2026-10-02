@@ -175,6 +175,19 @@ func TestCountAgentContainersDetachedFromCallerCancellation(t *testing.T) {
 // bounded context, so exhausted attempts still terminate the loop quickly.
 // Shrinks the production seams (vars, never written outside tests) to
 // milliseconds; a slow stub (~500ms) exceeds every attempt budget.
+//
+// INT-CI-049 regression test (this file) under fleet-build-host load: the
+// stub's per-invocation log line is written by its FIRST instruction, so a
+// helper that is still starting — fork+exec of /bin/sh on a box whose load
+// average sits above 40 — has logged nothing when its 100 ms attempt budget
+// expires, and the exhausted run legitimately shows fewer log lines than
+// attempts. The BUDGET (elapsed ≪ shared-deadline shape) and the DEADLINE
+// ERROR SHAPE are what this test exists to pin, and both are observable in
+// the returned error alone; the stub log is the count of STARTS, not of
+// attempts dispatched, so on a loaded host the test measures the budget
+// against the error and keeps the log only as a loud upper bound — an
+// invocation count ABOVE the attempt budget would mean the loop is not
+// bounded at all, and still fails here.
 func TestCountAgentContainersPerAttemptBudgetIsBounded(t *testing.T) {
 	origTimeout, origWait := containerCapAttemptTimeout, containerCapAttemptWaitBase
 	containerCapAttemptTimeout = 100 * time.Millisecond
@@ -193,8 +206,19 @@ printf 'ctr1\n'`)
 	if err == nil {
 		t.Fatal("every attempt exceeding its budget must fail the count")
 	}
-	if n := countLogLines(t, logPath); n != containerCapAttempts {
-		t.Fatalf("helper invocations = %d, want %d (each attempt bounded, not one shared deadline)", n, containerCapAttempts)
+	if n := countLogLines(t, logPath); n > containerCapAttempts {
+		t.Fatalf("helper invocations = %d, want <= %d: the retry loop is not bounded — a slow helper must be abandoned by its per-attempt budget, never allowed to start more attempts", n, containerCapAttempts)
+	}
+	// The shared-deadline shape, detected where the stub log cannot see it: with
+	// ONE deadline shared across attempts, attempt 1 consumes the whole budget
+	// and every later attempt starts on an already-expired context — the helper
+	// is never started, so the stub log undercounts and the total collapses to
+	// roughly one budget. Honest per-attempt exhaustion can never be FASTER
+	// than attempts×budget (+ backoffs): each attempt's kill timer is its own
+	// and cannot fire early. Half the floor leaves room for attempts killed
+	// early by outside pressure without letting a shared deadline through.
+	if min := time.Duration(containerCapAttempts)*containerCapAttemptTimeout/2 + time.Duration(containerCapAttempts-1)*containerCapAttemptWaitBase; elapsed < min {
+		t.Fatalf("exhaustion took %s, below attempts×budget/2 (%s): the attempts did not each consume their own bounded context (shared-deadline shape)", elapsed, min)
 	}
 	if elapsed > 5*time.Second {
 		t.Fatalf("exhaustion took %s, want ≪ per-attempt-budget × attempts (shared-deadline shape)", elapsed)

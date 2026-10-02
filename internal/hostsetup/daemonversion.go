@@ -79,16 +79,23 @@ const MinDaemonVersion = "0.1.4"
 const GrantCapability = "isolation-grant"
 
 // GrantMinTag is the first RELEASE TAG whose tree carries the spawn-side grant
-// (the token above). It is EMPTY because no released tag carries it today: the
-// newest tag v0.1.4 (2026-09-12) predates internal/hostsetup (added in
-// 207e0e5, 2026-09-16), which README.md states in the same words ("the
-// `v0.1.4` tag predates the isolation implementation").
+// (the token above). It is v0.2.0: every v0.1.x tag (v0.1.0..v0.1.4, the newest
+// 2026-09-12) predates internal/agent's isolation-grant capability, and v0.2.0
+// (cut 2026-10-02) is the first tag whose tree carries it.
+//
+// It must move in the SAME atomic commit that cuts a tag carrying the token.
+// Leaving it behind does not fail CI (hosted CI checks out with fetch-depth 1,
+// so no tags are visible and the test correctly skips) and does not fail
+// board-only or docs-only commits either (the guard's go_tests lane
+// short-circuits on non-code paths) - it fails every CODE commit through the
+// pre-commit hook, silently, which is how the v0.2.0 cut left this repo unable
+// to commit Go changes until INT-CI-057.
 //
 // Set it to the tag name when such a tag is cut. TestGrantFloorMatchesReality
 // fails while this constant and the tag list disagree in EITHER direction: with
 // the constant empty no visible tag may contain the token, and with a name set
 // that tag must exist and carry it.
-const GrantMinTag = ""
+const GrantMinTag = "v0.2.0"
 
 // DaemonProbeTimeout bounds ONE --version probe of the installed daemon. The
 // probe must never hang the installer: a wedged binary (or a hung filesystem)

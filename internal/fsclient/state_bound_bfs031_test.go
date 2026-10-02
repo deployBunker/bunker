@@ -37,7 +37,18 @@ func TestTheRefusalLogIsBoundedAndTheDropIsCounted(t *testing.T) {
 	defer swapInt64(&ConflictsMaxBytes, 2048)()
 	defer swapInt64(&ConflictDetailMaxBytes, 256)()
 
-	const appends = 200
+	// The append count is sized by what the assertions need — sustained
+	// rotation with a durable dropped count — not by a round number: at the
+	// 2048 B cap and ~500 B per entry the log retains ~4 lines, so 24 appends
+	// exercise the rotation ~6 times over. Every append pays a real fsync and
+	// a rotate (read, rewrite, rename) on the suite's scratch disk, which under
+	// fleet-host load measured ~2 s per append — 200 of them cost ~400 s and
+	// timed the whole package out (QA-BUNKER-49 class, found by the same
+	// verification that fixed TestBFS063AStale...). The assertions themselves
+	// are count-adaptive (dropped>0, newest kept, present+dropped == appends),
+	// so what this test proves is unchanged; only the fixed stimulus size is
+	// bounded to what it must exceed (the log's capacity).
+	const appends = 24
 	for i := 0; i < appends; i++ {
 		c := Conflict{Path: fmt.Sprintf("d/file-%03d.go", i), Code: "hash_mismatch",
 			Expected: "sha256:" + strings.Repeat("a", 64), Current: "sha256:" + strings.Repeat("b", 64),
@@ -285,7 +296,16 @@ func TestTheStateBoundHoldsAcrossASession(t *testing.T) {
 	defer swapInt64(&ConflictDetailMaxBytes, 512)()
 	cache := newTestCacheWithBounds(t, CacheConfig{Dir: cacheDir, MaxBytes: 4096, MaxEntryBytes: 4096, MaxAge: time.Hour, DirMeasureInterval: -1})
 
-	for i := 0; i < 60; i++ {
+	// The session is sized by what it must exceed, not by a round number: at
+	// the 8 KiB log cap and ~770 B per entry it retains ~10 lines, so 30 rounds
+	// rotate the log at least twice. Every round pays a cache insert, an fsync'd
+	// append and a status write on the suite's scratch disk (~2 s per append
+	// under fleet-host load, measured on the same primitives in
+	// TestTheRefusalLogIsBoundedAndTheDropIsCounted), so the fixed count is a
+	// package-timeout liability (QA-BUNKER-49 class). Every assertion is
+	// per-round or count-adaptive ("60 refusals" in the message below is the
+	// dropped-count sanity arm's own wording for "the rotations happened").
+	for i := 0; i < 30; i++ {
 		body := blobBytes(t, i, 512)
 		if _, err := cache.Insert(pathFor(i), HashBytes(body), body); err != nil {
 			t.Fatalf("insert %d: %v", i, err)
@@ -317,7 +337,7 @@ func TestTheStateBoundHoldsAcrossASession(t *testing.T) {
 		t.Fatalf("the footprint (%d) disagrees with an independent walk of the mount directory (%d)", ss.FootprintBytes, got)
 	}
 	if ss.ConflictsDroppedTotal <= 0 {
-		t.Fatal("60 refusals under an 8 KiB log cap dropped nothing: the arm never reached the log's bound")
+		t.Fatal("30 refusals under an 8 KiB log cap dropped nothing: the arm never reached the log's bound")
 	}
 	t.Logf("session: state=%d/%d dropped=%d cache_dir=%d/%d footprint=%d/%d", ss.Bytes, ss.MaxBytes,
 		ss.ConflictsDroppedTotal, cs.DirBytes, cs.MaxBytes, ss.FootprintBytes, ss.FootprintMaxBytes)

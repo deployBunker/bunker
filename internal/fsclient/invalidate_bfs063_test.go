@@ -312,14 +312,45 @@ func TestBFS063AStaleCursorThatTheClientCanReadIsStillATail(t *testing.T) {
 	before := inv.State()
 
 	// Rotate the journal out from under it, through another client's observations.
+	//
+	// The loop is bounded by the OUTCOME it exists to reach — the client's cursor
+	// provably behind the retained journal — and not by an iteration count
+	// (QA-BUNKER-49): the rotation is a property of the LEDGER's state, so the
+	// loop watches for it and stops the moment it holds. Each burst iteration
+	// writes one change and polls the ledger once, which pushes exactly one
+	// invalidate onto the journal, so the structural minimum is the journal's
+	// declared 256-line capacity plus the lines the fixture already spent; the
+	// probe reads that state directly instead of counting: a poll at
+	// since_seq 0 (a presented, zero cursor) is answered the retained tail while
+	// seq 1 is still retained, and exactly one positive-seq `overflow` marker
+	// once the rotation has dropped it (the ledger's cursor-0 rule, the same
+	// resumeLocked table this row's client rule reads). The bound stays far
+	// above the structural minimum as a runaway guard — a lost push or a quiet
+	// poll now fails LOUDLY here instead of silently under- or over-rotating.
 	other := seedThroughAnotherClient(t, srv.URL)
-	for i := 0; i < 300; i++ {
+	const burstMax = 3 * 256 // ≫ the journal's declared 256-line capacity: a guard, not the target count
+	rotated := false
+	for i := 0; i < burstMax && !rotated; i++ {
 		if err := os.WriteFile(filepath.Join(root, "burst.txt"), []byte("burst "+strings.Repeat("x", i%7)+"\n"), 0o644); err != nil {
-			t.Fatalf("burst write: %v", err)
+			t.Fatalf("burst write %d: %v", i, err)
 		}
-		if _, oerr := other.Op(ctx, "events", map[string]any{}, nil); oerr != nil {
+		var probe struct {
+			Events []struct {
+				Seq   int64  `json:"seq"`
+				Event string `json:"event"`
+			} `json:"events"`
+		}
+		if _, oerr := other.Op(ctx, "events", map[string]any{"since_seq": 0}, &probe); oerr != nil {
 			t.Fatalf("burst poll %d: %v", i, oerr)
 		}
+		for _, ev := range probe.Events {
+			if ev.Event == EventOverflow && ev.Seq > 0 {
+				rotated = true
+			}
+		}
+	}
+	if !rotated {
+		t.Fatalf("the journal never rotated past the client's cursor within %d burst iterations: the cursor cannot be proven stale, so the arms below would measure nothing", burstMax)
 	}
 	if err := os.WriteFile(filepath.Join(root, "src", "util.go"), []byte("package main\n\nfunc util() { /* moved */ }\n"), 0o644); err != nil {
 		t.Fatalf("edit: %v", err)

@@ -743,9 +743,16 @@ func TestEveryFigureInTheStatusRecordMovesOrIsExplained(t *testing.T) {
 		before = figures(t, stBefore)
 
 		// The after phase: a bigger document, a log driven past its cap (so the
-		// rotation's counter moves), and a spill file.
+		// rotation's counter moves), and a spill file. The append count is sized
+		// by what the arm needs — the rotation counter MOVING — not by a round
+		// number: at the 4096 B cap and ~380 B per entry the log retains ~9
+		// lines, so 18 appends rotate it at least twice. Each append pays a real
+		// fsync plus a rotate (read, rewrite, rename) on the suite's scratch
+		// disk, ~2 s each under fleet-host load (measured on the same primitives
+		// in TestTheRefusalLogIsBoundedAndTheDropIsCounted), so the fixed count
+		// is a package-timeout liability, not extra coverage.
 		restore := swapInt64(&ConflictsMaxBytes, 4096)
-		for i := 0; i < 40; i++ {
+		for i := 0; i < 18; i++ {
 			if err := AppendConflict(censusStateDir, Conflict{Path: fmt.Sprintf("c/after-%d", i), Code: "hash_mismatch", Detail: strings.Repeat("D", 300)}); err != nil {
 				t.Fatalf("append conflict: %v", err)
 			}
