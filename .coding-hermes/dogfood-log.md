@@ -323,3 +323,16 @@ destroyed and verified).
 - **Verdict:** ✅ SHIPPABLE (install surface) — both documented paths work
   on a bare machine; the one real gap is release-channel staleness
   (BUNKER-INST-001), not a bug.
+
+## 2026-10-02 run 24 (isolation boundary probe)
+
+Angle: tenant isolation — can agent A see agent B's state?
+
+- **Promise tested:** "Each agent is a fully isolated Linux user with its own rootless Docker daemon, SSH access, resource limits, and optional public networking."
+- **What held up:** Agents get separate UIDs (bunker-df-iso-a=1004, bunker-df-iso-b=1005), separate /home dirs, separate /run/bunker/<id>/docker.sock paths, separate port ranges (30500-30599 vs 30900-30999). Docker socket access is correctly permissioned (agent-a cannot access agent-b's socket). Environment variables don't leak across agents.
+- **What fell apart:** (1) ISO-001 P2 — agent-a can run `ps aux` and see agent-b's rootlesskit/containerd processes with full command lines including the agent's username, leaking tenant identity and runtime topology. (2) ISO-002 P2 — agent-a can list /run/bunker/ and see directories for all other agents (23 entries on this host), exposing the set of active tenants and their runtime socket paths.
+- **Friction count:** 2 real findings, both information disclosure via shared /proc and /run/bunker visibility.
+- **Perf (Step 2b):** spawn ~40s warm (inside documented 60-90s first-spawn envelope for cold); nothing slow enough to profile.
+- **Artifacts:** board rows ISO-001/002 (tasks.jsonl, 663 rows / 0 dupes, verified by id census), commit 2c8c119.
+- **Cleanup:** df-iso-a and df-iso-b destroyed and verified absent from `bunker list`. No repo visibility/permission changes; no credentials minted or committed.
+- **Verdict:** 🟡 PROMISING-BUT-ROUGH — core isolation (uid, home, docker socket, ports) works, but /proc and /run/bunker leak tenant metadata. Fix directions: hidepid=2 on /proc mount, restrict /run/bunker to mode 0700 root-only or use per-agent /run subdirectories.
