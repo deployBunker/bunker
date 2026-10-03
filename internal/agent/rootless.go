@@ -1653,8 +1653,25 @@ func ensureUserRuntimeDir(ctx context.Context, username string, uid int, stdRunt
 		// Non-recursive on purpose: on desktop-flavoured hosts the previous manager
 		// may have left a gvfsd-fuse mount under the directory, and a FUSE mount
 		// without allow_other denies even root (see removeMountsUnder).
-		if out, err := userManagerRunner(ctx, "chown", username+":", stdRuntimeDir); err != nil {
-			return fmt.Errorf("chown runtime dir %s: %w (output: %s)", stdRuntimeDir, err, string(out))
+		out, chownErr := userManagerRunner(ctx, "chown", username+":", stdRuntimeDir)
+		if chownErr != nil {
+			isENOENT := errors.Is(chownErr, os.ErrNotExist) ||
+				strings.Contains(chownErr.Error()+" "+string(out), "No such file or directory")
+			if !isENOENT {
+				return fmt.Errorf("chown runtime dir %s: %w (output: %s)", stdRuntimeDir, chownErr, string(out))
+			}
+			// The teardown race (INT-CI-035/038, CI run 37118229042): logind
+			// removed the runtime dir between this attempt's MkdirAll and
+			// its chown. Record it and let the next attempt recreate and
+			// re-own — the SAME convergence the install path applies —
+			// instead of failing the spawn on the first ENOENT.
+			lastErr = fmt.Errorf("chown runtime dir %s: %w (output: %s)", stdRuntimeDir, chownErr, string(out))
+			if attempt < runtimeDirOwnershipAttempts && logger != nil {
+				logger.Warn("runtime dir vanished mid-chown; re-asserting",
+					"dir", stdRuntimeDir, "attempt", attempt,
+					"attempts", runtimeDirOwnershipAttempts, "error", lastErr)
+			}
+			continue
 		}
 		info, probeErr := runtimeDirProbe(stdRuntimeDir)
 		if lastErr = verifyRuntimeDir(stdRuntimeDir, info, probeErr, uid); lastErr == nil {
