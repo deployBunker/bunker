@@ -288,7 +288,7 @@ func TestEnsureAgentSocketDir_SetsModeExplicitly(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if err := EnsureAgentSocketDir("bunker-a1", dir); err != nil {
+			if err := EnsureAgentSocketDir(context.Background(), "bunker-a1", dir); err != nil {
 				t.Fatalf("EnsureAgentSocketDir: %v", err)
 			}
 			// THE ASSERTION — read back from the real filesystem. The
@@ -560,8 +560,8 @@ func TestSpawnSocketDirContractByteLevel(t *testing.T) {
 	if strings.Contains(code, "MkdirAll(sockDir, 0755)") {
 		t.Fatal("manager_spawn.go still creates the agent socket directory 0755 — the ISO-002 hole is back")
 	}
-	if !strings.Contains(code, "EnsureAgentSocketDir(username, sockDir)") {
-		t.Fatal("manager_spawn.go does not set the socket dir through EnsureAgentSocketDir (explicit 0700 + chown)")
+	if !strings.Contains(code, "EnsureAgentSocketDir(ctx, username, sockDir)") {
+		t.Fatal("manager_spawn.go does not set the socket dir through EnsureAgentSocketDir (explicit 0700 + chown on the spawn ctx)")
 	}
 	if !strings.Contains(code, "AssertAgentSocketDir(sockDir, uint32(uid))") {
 		t.Fatal("manager_spawn.go does not ASSERT the socket dir mode/ownership back (spec §6.3)")

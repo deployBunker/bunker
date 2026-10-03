@@ -3,6 +3,7 @@
 package agent
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -21,7 +22,7 @@ var ErrSocketDirMode = errors.New("agent socket directory mode/ownership asserti
 
 // EnsureAgentSocketDir fails closed on non-Linux builds (no Stat_t owner, no
 // honest ownership assertion).
-func EnsureAgentSocketDir(username, dir string) error {
+func EnsureAgentSocketDir(ctx context.Context, username, dir string) error {
 	return fmt.Errorf("%w: not implemented on this platform (refusing to create %s without an assertable owner)", ErrSocketDirMode, dir)
 }
 

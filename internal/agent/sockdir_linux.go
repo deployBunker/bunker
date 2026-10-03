@@ -24,9 +24,12 @@ const SocketDirMode os.FileMode = 0700
 var ErrSocketDirMode = errors.New("agent socket directory mode/ownership assertion failed")
 
 // chownForTests can be swapped by tests to observe the chown call without a
-// real agent user on the host.
+// real agent user on the host. The default execs the REAL `chown` through
+// CommandContext — the spawn's cancellation must be able to kill it exactly
+// like the pre-NET-BUNKER-007 inline call did (the rollback-budget tests pin
+// that a blocked chown dies with the request instead of outliving it).
 var chownForTests = func(ctx context.Context, username, path string) error {
-	out, err := exec.Command("chown", username, path).CombinedOutput()
+	out, err := exec.CommandContext(ctx, "chown", username, path).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("chown %s %s: %w (output: %s)", username, path, err, string(out))
 	}
@@ -39,15 +42,16 @@ var chownForTests = func(ctx context.Context, username, path string) error {
 // a pre-existing directory AND strips umask/group/world bits MkdirAll may
 // have left (the umask only REMOVES bits it does not add them, but the point
 // of the assertion law is that nothing is left implied). The chown mirrors
-// the spawn path it replaces.
-func EnsureAgentSocketDir(username, dir string) error {
+// the spawn path it replaces — same ctx, so cancellation semantics are
+// byte-identical to the call it replaced.
+func EnsureAgentSocketDir(ctx context.Context, username, dir string) error {
 	if err := os.MkdirAll(dir, SocketDirMode); err != nil {
 		return fmt.Errorf("%w: mkdir %s: %v", ErrSocketDirMode, dir, err)
 	}
 	if err := os.Chmod(dir, SocketDirMode); err != nil {
 		return fmt.Errorf("%w: chmod %s: %v", ErrSocketDirMode, dir, err)
 	}
-	if err := chownForTests(context.Background(), username, dir); err != nil {
+	if err := chownForTests(ctx, username, dir); err != nil {
 		return fmt.Errorf("%w: chown %s: %v", ErrSocketDirMode, dir, err)
 	}
 	return nil

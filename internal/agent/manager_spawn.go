@@ -433,7 +433,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// itself needs only its OWN directory (owner rwx), so 0700 + chown to
 	// the agent is the contract — group and world keep zero bits.
 	sockDir := filepath.Dir(dockerSockPath)
-	if err := EnsureAgentSocketDir(username, sockDir); err != nil {
+	if err := EnsureAgentSocketDir(ctx, username, sockDir); err != nil {
 		return nil, fail(StageRootlessInstall, fmt.Errorf("create docker sock dir %s: %w", sockDir, err))
 	}
 	if err := AssertAgentSocketDir(sockDir, uint32(uid)); err != nil {
