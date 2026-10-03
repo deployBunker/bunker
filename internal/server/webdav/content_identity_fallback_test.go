@@ -277,8 +277,21 @@ func TestQA36ASameMetadataRewriteIsReportedFromTheBytes(t *testing.T) {
 //
 // The freeze is installed the way a CONFIG_HZ<=250 kernel installs it — by
 // REPLACING the ledger's record for one path with the metadata the filesystem
-// reports now and the digest the bytes had before — rather than by sleeping, so
-// the cell measures the same thing on every host.
+// reports now and the digest the bytes had before — rather than by waiting for
+// a tick, so the cell measures the same thing on every host. Two arms then
+// cover the two places this wiring can lie, and the second is what makes the
+// cell deterministic instead of load-lucky:
+//
+//   - inside the window: the poll lands while the record sits in the
+//     ambiguous interval, the shape a quiet host produces;
+//   - three windows late: the shape a CONTENDED host produces (the scheduler
+//     reaches the poll long after the Chtimes), injected with a bounded sleep
+//     so the condition is simulated on purpose. The injected delay is the
+//     red-proof: with the server's verification refusing its own read past
+//     the window (the QA-BUNKER-53 defect), this arm fails with an empty
+//     event list on a box that could never reproduce the failure by being
+//     busy; with the verification reading the bytes, it passes on the same
+//     box in the same run.
 func TestQA36ThePollReportsAFrozenEditTheKernelCouldNotStamp(t *testing.T) {
 	h := newTestHandler(t)
 	target := filepath.Join(h.Root(), "src", "util.go")
@@ -324,17 +337,33 @@ func TestQA36ThePollReportsAFrozenEditTheKernelCouldNotStamp(t *testing.T) {
 	// poll's own stat agrees with it field for field) and the digest of the bytes
 	// as they were BEFORE the edit.
 	//
-	// recordedAt is placed INSIDE the coarse window the mechanism itself
-	// declares — half a window past the edit's own ctime — instead of at a bare
-	// time.Now(): ctime cannot be restored from userspace, so the rewrite above
-	// stamped it with the wall clock, and a record stamped `time.Now()` is born
-	// VOUCHED whenever the scheduler lets more than eventsCoarseClockWindow
-	// (50 ms) pass between the Chtimes and the stamp — exactly what a loaded
-	// host does to this test (QA-BUNKER-53). Born vouched, the fallback
-	// legitimately keeps the path quiet and the cell measures the scheduler
-	// rather than the fallback. The window value itself is NOT widened and no
-	// sleep is added: the record is constructed in the ambiguous interval, which
-	// is the hostile condition the row is about.
+	// recordedAt is CONSTRUCTED inside the coarse window the mechanism itself
+	// declares — half a window past the edit's own ctime — never sampled from
+	// the wall clock. Two facts make the construction load-bearing rather than
+	// cosmetic (QA-BUNKER-53):
+	//
+	//   1. `vouched` is a property of the FIXED pair (recordedAt, ctime): both
+	//      fields are frozen the moment this record is installed, and the
+	//      diff's verdict on it never depends on when a poll happens to run.
+	//      A bare time.Now() is inside the window only if the scheduler
+	//      reaches the first poll within eventsCoarseClockWindow of the
+	//      Chtimes above; under load it usually does not, the record is born
+	//      VOUCHED, and the fallback legitimately keeps the path quiet — the
+	//      cell then measures the scheduler (thousands of quiet polls, an
+	//      empty list, FAIL at any deadline). Constructed, the record is the
+	//      hostile condition itself — a record the coarse clock could not
+	//      have distinguished from the edit — on every host, at any delay.
+	//      ctime cannot be restored from userspace, so the rewrite above
+	//      stamped it with the wall clock, and ctime+window/2 is a fixed
+	//      instant that stays inside its own window forever: no deadline can
+	//      expire it and no load can push it out.
+	//   2. Entering the verify branch is the cell's JOB; what the branch does
+	//      with the read is the SERVER's contract, pinned separately by the
+	//      delay arm below and by TestQA36AReadThatCannotBeTakenFabricates
+	//      Nothing. The window value is NOT widened and no sleep is added.
+	//
+	// The vouched arm of TestQA36ASameMetadataRewriteIsReportedFromTheBytes
+	// adds a whole window on top of the same construction, so it stays vouched.
 	after, err := os.Stat(target)
 	if err != nil {
 		t.Fatalf("stat: %v", err)
@@ -345,54 +374,78 @@ func TestQA36ThePollReportsAFrozenEditTheKernelCouldNotStamp(t *testing.T) {
 		l.observed["src/util.go"] = observedEntry{
 			id:     frozenID,
 			digest: preEdit,
-			// Anchored to NOW, not to the file's ctime. The record must sit INSIDE the
-			// coarse-clock window at the moment of the poll, and ctime+window/2 is a FIXED
-			// instant: once the wall clock passes ctime+window the record is outside its own
-			// window for every later attempt, so no deadline — however generous — could ever
-			// observe the verdict. That is what "not reported within 500ms (8176 polls)"
-			// measured. Re-anchoring keeps every attempt the same honest trial of the same
-			// defect instead of a race against an expiring timestamp.
-			recordedAt: time.Now(),
+			// See above: constructed inside the window, never sampled.
+			recordedAt: time.Unix(0, frozenID.Ctime+int64(eventsCoarseClockWindow/2)),
 		}
 		l.mu.Unlock()
 	}
-	verifyBefore, _ := ContentVerificationCounters()
-	frozenRecord()
-
-	// Drive the observation from the OUTCOME with a bounded deadline rather than
-	// from a single poll taken at a fixed moment: under load one poll can land
-	// anywhere, and the cell must observe the verdict while the frozen record
-	// sits inside the window. A poll that answers quiet has re-diffed and
-	// refreshed the ledger's record for this path with verified current state,
-	// so each attempt re-installs the frozen record first — every attempt is the
-	// same honest trial of the same defect. The deadline bounds the wait; the
-	// failure still names the observed events.
-	var got eventsJSON
-	polls := 0
-	deadline := time.Now().Add(10 * eventsCoarseClockWindow)
-	for {
-		got = pollAt(t, h, cursor)
-		if len(got.Result.Events) == 1 && got.Result.Events[0].Event == eventInvalidate {
-			break
-		}
-		polls++
-		if time.Now().After(deadline) {
-			t.Fatalf("a same-size, mtime-preserved edit the coarse clock could not stamp was not reported within %s (%d polls): %+v", 10*eventsCoarseClockWindow, polls, got.Result.Events)
-		}
+	// frozenTrial drives ONE honest trial of the same defect — the freeze is
+	// installed, the trial's scheduler gap is simulated, and the poll must
+	// report the edit from the bytes — and returns the head the trial left the
+	// ledger at, so the next trial composes. The deadline bounds the wait; the
+	// failure still names the observed events. A poll that answers quiet has
+	// re-diffed and refreshed the ledger's record for this path, so the loop
+	// re-installs the frozen record before retrying: every attempt is the same
+	// honest trial.
+	frozenTrial := func(t *testing.T, atCursor int64, schedulerDelay time.Duration) int64 {
+		t.Helper()
 		frozenRecord()
+		if schedulerDelay > 0 {
+			// The hostile condition, INJECTED rather than hoped for: a loaded
+			// host lets whole windows pass between the Chtimes and the first
+			// poll. The record's verdict must not depend on which side of the
+			// window a poll lands on — (recordedAt, ctime) was frozen at
+			// install — so this arm holds on a quiet box and on a busy one
+			// alike, and it is the arm that catches the server refusing the
+			// verification read because the OBSERVATION's own clock drifted
+			// past the path's ctime (the QA-BUNKER-53 defect).
+			time.Sleep(schedulerDelay)
+		}
+		verifyBefore, _ := ContentVerificationCounters()
+		var got eventsJSON
+		polls := 0
+		deadline := time.Now().Add(10 * eventsCoarseClockWindow)
+		for {
+			got = pollAt(t, h, atCursor)
+			if len(got.Result.Events) == 1 && got.Result.Events[0].Event == eventInvalidate {
+				break
+			}
+			polls++
+			if time.Now().After(deadline) {
+				t.Fatalf("a same-size, mtime-preserved edit the coarse clock could not stamp was not reported within %s (%d polls): %+v", 10*eventsCoarseClockWindow, polls, got.Result.Events)
+			}
+			frozenRecord()
+		}
+		if paths := got.Result.Events[0].Paths; len(paths) != 1 || paths[0] != "src/util.go" {
+			t.Fatalf("paths = %v, want [src/util.go]: the quiet paths must stay quiet", paths)
+		}
+		verifyAfter, _ := ContentVerificationCounters()
+		if verifyAfter <= verifyBefore {
+			t.Fatal("the poll reported the edit without verifying any content: on this record the metadata alone is indistinguishable from a quiet tree, so the verdict must have come from the bytes")
+		}
+		// And the ledger is caught up: the same cursor answered twice must be
+		// quiet.
+		again := pollAt(t, h, got.Result.HeadSeq)
+		if len(again.Result.Events) != 0 {
+			t.Fatalf("the caught-up cursor was served the event again: %+v", again.Result.Events)
+		}
+		return again.Result.HeadSeq
 	}
-	if paths := got.Result.Events[0].Paths; len(paths) != 1 || paths[0] != "src/util.go" {
-		t.Fatalf("paths = %v, want [src/util.go]: the quiet paths must stay quiet", paths)
-	}
-	verifyAfter, _ := ContentVerificationCounters()
-	if verifyAfter <= verifyBefore {
-		t.Fatal("the poll reported the edit without verifying any content: on this record the metadata alone is indistinguishable from a quiet tree, so the verdict must have come from the bytes")
-	}
-	// And the ledger is caught up: the same cursor answered twice must be quiet.
-	again := pollAt(t, h, got.Result.HeadSeq)
-	if len(again.Result.Events) != 0 {
-		t.Fatalf("the caught-up cursor was served the event again: %+v", again.Result.Events)
-	}
+
+	// The cursor threads through the arms exactly as a client's does: each
+	// trial presents the head the previous one ended at, so a retry can never
+	// re-read an event the client has already consumed — presenting the
+	// snapshot cursor forever would eventually re-read a pruned journal and
+	// be answered `overflow` (the ledger's own BFS-063 rule), which measures
+	// the harness and not the fallback. The subtests are sequential and the
+	// cursor is captured, so the second arm is the same trial carried out on
+	// the ledger state the first left behind.
+	t.Run("the first poll lands inside the window", func(t *testing.T) {
+		cursor = frozenTrial(t, cursor, 0)
+	})
+	t.Run("the poll lands three windows late: the contended host, simulated on purpose", func(t *testing.T) {
+		cursor = frozenTrial(t, cursor, 3*eventsCoarseClockWindow)
+	})
 }
 
 // TestQA36TheFallbackNeverReadsASettledTreeOrAMovedPath is the cheapness rule,

@@ -414,6 +414,53 @@ func (t *tree) ledgerRecord(rel string, id identity, now time.Time) observedEntr
 	return e
 }
 
+// verifyRecord builds the record a verification is judged against: the CURRENT
+// state of one regular path, bytes included.
+//
+// It differs from ledgerRecord in the question it answers, and the difference
+// is the whole of QA-BUNKER-53. ledgerRecord's coarse-clock gate decides
+// whether an OBSERVATION can be masked — it asks about `now`, the moment the
+// observation was taken, because that is the question a baseline build has to
+// answer. The verify branch of ledgerDiff answers a different question: the
+// record under test has ALREADY been established unverifiable (its
+// (recordedAt, ctime) pair cannot rule out an invisible edit), and the only
+// way to judge it is against the bytes as they stand now. Gating THAT read on
+// now-Ctime is the defect the load-stressed suite found: a record taken (or
+// constructible) inside the window stays unverifiable forever — recAt-Ctime
+// never grows — so on the first poll that arrives after the window has
+// drifted past, ledgerRecord refused the read, returned an empty digest, and
+// the diff's own no-evidence rule misread "the read was never attempted" as
+// "the read failed", kept the stale record, and retried a read the same
+// condition would refuse on every later poll. The frozen edit was then
+// unreportable at any deadline: measured live, thousands of polls, every one
+// quiet while the path's bytes differed from the ledger's own digest.
+//
+// So: no gate here. The caller reaches this function only for a record whose
+// metadata cannot vouch for its bytes, which is the only licence the
+// fallback's read needs. The price is unchanged and still bounded — one
+// streamed read for a regular file whose record cannot vouch for it — and the
+// record this returns is stamped `now`, so once the verdict is in, the renewed
+// record is past the window and vouched, and the tree goes back to paying one
+// stat per path.
+func (t *tree) verifyRecord(rel string, id identity, now time.Time) observedEntry {
+	e := observedEntry{id: id, recordedAt: now}
+	if !id.Regular {
+		return e
+	}
+	digest, err := contentDigest(filepath.Join(t.rootPath(), filepath.FromSlash(rel)))
+	if err != nil {
+		// The bytes could not be read: no verdict is available and the empty
+		// digest says so, exactly as ledgerRecord reports a failed read. The
+		// caller's no-evidence rule (keep the record, retry later) is correct
+		// for a read that was ATTEMPTED and failed; the defect was feeding it
+		// a read that was never attempted.
+		return e
+	}
+	recordContentVerification(rel)
+	e.digest = digest
+	return e
+}
+
 // ledgerDiff compares one observation against the ledger's recorded baseline and
 // returns the paths whose identity moved, sorted, together with the records the
 // next observation diffs against.
@@ -464,8 +511,14 @@ func (t *tree) ledgerDiff(prev map[string]observedEntry, state map[string]identi
 			// Inside the coarse window the metadata may be standing still over
 			// bytes that moved. A regular file is verified by content; a path
 			// with no content to compare is taken at its metadata, because
-			// nothing under it can move without moving the metadata.
-			cur := t.ledgerRecord(p, id, now)
+			// nothing under it can move without moving the metadata. The read
+			// goes through verifyRecord, not ledgerRecord: the record under
+			// test was chosen here precisely because its metadata cannot
+			// vouch for its bytes, so re-asking the coarse-clock question
+			// about the OBSERVATION would refuse the read whenever this poll
+			// arrived after the window drifted past the path's ctime — the
+			// frozen edit then stayed unreportable forever (QA-BUNKER-53).
+			cur := t.verifyRecord(p, id, now)
 			if id.Regular && cur.digest == "" {
 				// The bytes could not be read (they vanished mid-observation,
 				// or the read failed). That is NOT evidence of a change: a
