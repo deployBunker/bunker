@@ -1013,7 +1013,10 @@ func buildRootlessDockerdArgs(a dockerdUnitArgs) (args []string, env []string) {
 	// NET-BUNKER-010: resolve the mode's extra unit properties up front so an
 	// invalid name fails BEFORE anything is built (the refusal happens before
 	// systemd-run creates any state — the spec's refuse-loudly point; the
-	// spawn path resolves earlier still, at Step 1b).
+	// spawn path resolves earlier still, at Step 1b). This is the PURE
+	// vocabulary table: the procvis host verification happened at the daemon
+	// gates (spawn Step 1d / RunAgent), which are the only callers of this
+	// unexported builder.
 	modeProps, err := netmode.PropertiesFor(a.NetworkMode)
 	if err != nil {
 		panic("buildRootlessDockerdArgs: " + err.Error() + " — the caller must resolve the mode first (spawn Step 1b)")

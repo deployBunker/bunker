@@ -176,14 +176,15 @@ func BoundaryFor(mode string) string {
 // order. `shared` adds none (byte-identical spawn — spec §5.1 zero-delta);
 // `systemd` adds exactly one: --property=PrivateNetwork=yes (NET-BUNKER-002);
 // `procvis` adds exactly one: --property=ProtectProc=invisible
-// (NET-BUNKER-011). A future mode teaches this table its property and the
-// whole spawn path follows.
+// (NET-BUNKER-011 — through the VERIFIED path in the agent package, never
+// directly from a unit builder). A future mode teaches this table its
+// property and the whole spawn path follows.
 func systemdProperties(mode string) []string {
 	switch mode {
 	case ModeSystemd:
 		return []string{"--property=" + PropertyPrivateNetworkYes}
 	case ModeProcVis:
-		return []string{"--property=" + PropertyProtectProcInvisible}
+		return ProcVisUnitProperties()
 	default:
 		return nil
 	}
@@ -196,6 +197,12 @@ func systemdProperties(mode string) []string {
 // error — callers resolve the mode first (Resolve refuses unknown names), so
 // the builder error is a programming-error guard, and in
 // buildRootlessDockerdArgs it fires BEFORE any systemd-run state is created.
+//
+// This function is the PURE vocabulary view: for procvis it returns the
+// property without checking the host. The DAEMON must not build procvis
+// units through this path — the verified dispatch is the agent package's
+// procVisPropertiesForMode (verify-then-build, cached once per process);
+// the builder uses that, never this.
 func PropertiesFor(mode string) ([]string, error) {
 	if mode == "" {
 		return nil, nil
@@ -204,6 +211,14 @@ func PropertiesFor(mode string) ([]string, error) {
 		return nil, fmt.Errorf("unknown network isolation mode %q (valid: %v)", mode, ValidModes())
 	}
 	return systemdProperties(mode), nil
+}
+
+// ProcVisUnitProperties returns the procvis mode's exact --property
+// elements. It is the verified path's producer: callers that passed
+// VerifyProcVisHost use this to build the argv, so the property string has
+// exactly one producer next to its vocabulary.
+func ProcVisUnitProperties() []string {
+	return []string{"--property=" + PropertyProtectProcInvisible}
 }
 
 // containmentMarker renders the in-band system-info marker line (NET-BUNKER-010

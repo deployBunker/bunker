@@ -19,6 +19,7 @@ import (
 
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/imagespec"
+	"github.com/deployBunker/bunker/internal/netmode"
 	"github.com/deployBunker/bunker/internal/resource"
 )
 
@@ -108,6 +109,19 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	networkMode, networkModeErr := m.cfg.ResolveNetworkMode(req.GetNetworkMode())
 	if networkModeErr != nil {
 		return nil, spawnStageErr(ctx, agentID, StageValidate, networkModeErr)
+	}
+	// NET-BUNKER-011 (specs/network-isolation.md §1.8/§5.2): the procvis
+	// mode's boundary is kernel-dependent (mount namespaces + procfs that
+	// honors hidepid), and a kernel without it would make the mode a SILENT
+	// NO-OP. The host is therefore verified HERE, at the validate stage,
+	// before any side effect (user, ports, unit state) — a failing host
+	// refuses the spawn with the probe's named reason and NEVER degrades to
+	// shared. The verdict is cached once per daemon process; the probe is a
+	// read-only throwaway-namespace experiment.
+	if networkMode == netmode.ModeProcVis {
+		if perr := procVisVerifyOnce(); perr != nil {
+			return nil, spawnStageErr(ctx, agentID, StageValidate, perr)
+		}
 	}
 	m.logger.Info("resolved network isolation mode", "agent_id", agentID, "mode", networkMode)
 

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/deployBunker/bunker/internal/config"
+	"github.com/deployBunker/bunker/internal/netmode"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 )
 
@@ -29,6 +30,17 @@ func (m *AgentManager) RunAgent(ctx context.Context, req *v1.RunAgentRequest) (*
 	rec := m.tracker.Get(agentID)
 	if rec == nil {
 		return nil, fmt.Errorf("agent %q not found", agentID)
+	}
+
+	// NET-BUNKER-011: a detached run under the procvis mode gets the same
+	// process-visibility boundary as the spawn's units. The host is
+	// verified before ANY systemd-run state (cached once per process; the
+	// spawn path verifies at its own validate stage), and the property is
+	// inserted below — refuse loudly, never degrade.
+	if rec.NetworkMode == netmode.ModeProcVis {
+		if perr := procVisVerifyOnce(); perr != nil {
+			return nil, fmt.Errorf("procvis mode unavailable for detached run: %w", perr)
+		}
 	}
 
 	username := "bunker-" + agentID
@@ -66,7 +78,10 @@ func (m *AgentManager) RunAgent(ctx context.Context, req *v1.RunAgentRequest) (*
 	_ = containmentForPreset(preset)                    // GAP-118 containment table answers the same names
 	_ = resolveContainmentKnobs(preset, 0, m.cfg.Agent) // and the merged resolution is total over the vocabulary
 
-	cmdArgs := buildRunAgentArgs(agentID, u.Uid, u.Gid, unitName, req.GetCommand(), req.GetArgs(), req.GetEnv(), limits, m.cfg != nil && m.cfg.Containment.Disclosure)
+	cmdArgs, buildErr := buildRunAgentArgsForMode(agentID, u.Uid, u.Gid, unitName, req.GetCommand(), req.GetArgs(), req.GetEnv(), limits, m.cfg != nil && m.cfg.Containment.Disclosure, rec.NetworkMode)
+	if buildErr != nil {
+		return nil, buildErr
+	}
 	cmd := exec.CommandContext(ctx, "systemd-run", cmdArgs...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -81,7 +96,23 @@ func (m *AgentManager) RunAgent(ctx context.Context, req *v1.RunAgentRequest) (*
 	}, nil
 }
 
-// buildRunAgentArgs constructs the systemd-run argument list for a detached
+// buildRunAgentArgs is the pre-NET-BUNKER-011 signature, kept for the
+// existing call sites: it is exactly the empty (pre-surface) mode — which
+// provably cannot fail (netmode.PropertiesFor(empty) is nil-nil, pinned by
+// TestPropertiesForSharedIsNil) — so the wrapper discards the error and
+// hands back the argv, byte-identical to the pre-surface behavior.
+func buildRunAgentArgs(agentID, uid, gid, unitName, command string, args []string, envOverrides map[string]string, limits *v1.ResourceLimits, disclosure bool) []string {
+	cmdArgs, err := buildRunAgentArgsForMode(agentID, uid, gid, unitName, command, args, envOverrides, limits, disclosure, "")
+	if err != nil {
+		// Unreachable for the empty mode (PropertiesFor(empty) is
+		// nil-nil by the vocabulary's own pin), but fail loud rather
+		// than return a silently unisolated argv.
+		panic("buildRunAgentArgs: " + err.Error())
+	}
+	return cmdArgs
+}
+
+// buildRunAgentArgsForMode builds the systemd-run argument list for a detached
 // agent run. It is a pure function so it can be unit-tested without an actual
 // system user or systemd.
 //
@@ -93,7 +124,16 @@ func (m *AgentManager) RunAgent(ctx context.Context, req *v1.RunAgentRequest) (*
 // disclosure (GAP-067): when true, BUNKER_SANDBOX=1 is added to the unit's
 // environment so detached sessions disclose the managed sandbox like every
 // other exec mode. When false the argv is byte-identical to pre-GAP-067.
-func buildRunAgentArgs(agentID, uid, gid, unitName, command string, args []string, envOverrides map[string]string, limits *v1.ResourceLimits, disclosure bool) []string {
+//
+// networkMode (NET-BUNKER-011) is the AGENT'S resolved network-isolation
+// mode from its record (empty/shared/systemd/procvis). procvis adds
+// --property=ProtectProc=invisible — the detached run gets the same private
+// /proc as the spawn's dockerd unit, so a detached process cannot enumerate
+// other agents' processes either. The parameter is appended (last) rather
+// than inserted mid-signature. An unknown mode name is an ERROR (a record
+// replayed from a foreign daemon can carry one): the run refuses loudly
+// rather than launching an unisolated unit.
+func buildRunAgentArgsForMode(agentID, uid, gid, unitName, command string, args []string, envOverrides map[string]string, limits *v1.ResourceLimits, disclosure bool, networkMode string) ([]string, error) {
 	userHome := "/home/bunker-" + agentID
 	dockerSockPath := fmt.Sprintf("/run/bunker/%s/docker.sock", agentID)
 	agentBinPath := filepath.Join(userHome, "bin")
@@ -111,6 +151,20 @@ func buildRunAgentArgs(agentID, uid, gid, unitName, command string, args []strin
 		// with another agent's.
 		"--property=PrivateTmp=yes",
 	}
+	// NET-BUNKER-011: the agent's mode rides the SAME property list (the
+	// GAP-075 pattern — one more property, not a new mechanism). The PURE
+	// table renders it; the procvis host verification happened at the
+	// daemon gate above. shared/empty adds nothing (byte-identical argv);
+	// procvis adds exactly --property=ProtectProc=invisible, immediately
+	// after the PrivateTmp boundary — the same position the dockerd unit
+	// uses for its mode property.
+	modeProps, err := netmode.PropertiesFor(networkMode)
+	if err != nil {
+		// Unreachable from RunAgent (the record's mode was resolved at
+		// spawn), but fail loud rather than launch an unisolated unit.
+		return nil, fmt.Errorf("build detached-run unit: %w", err)
+	}
+	cmdArgs = append(cmdArgs, modeProps...)
 
 	if limits != nil {
 		if limits.CpuQuota > 0 {
@@ -179,5 +233,5 @@ func buildRunAgentArgs(agentID, uid, gid, unitName, command string, args []strin
 	// set -a exports injected vars to the exec'd process.
 	cmdArgs = append(cmdArgs, "sh", "-c", fmt.Sprintf("set -a; [ -f %s ] && . %s 2>/dev/null; set +a; exec \"$@\"", envFile, envFile), "--", command)
 	cmdArgs = append(cmdArgs, args...)
-	return cmdArgs
+	return cmdArgs, nil
 }

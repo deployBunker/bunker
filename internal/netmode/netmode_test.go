@@ -41,8 +41,11 @@ func TestResolve(t *testing.T) {
 		{name: "empty defers to the default", requested: "", want: ModeShared},
 		{name: "shared is valid", requested: ModeShared, want: ModeShared},
 		{name: "systemd is valid", requested: ModeSystemd, want: ModeSystemd},
+		{name: "procvis is valid", requested: ModeProcVis, want: ModeProcVis},
 		{name: "unknown rootlesskit is refused (unimplemented)", requested: "rootlesskit", wantErr: true},
 		{name: "unknown pasta is refused (unimplemented)", requested: "pasta", wantErr: true},
+		{name: "unknown hidepid is refused (unimplemented)", requested: "hidepid", wantErr: true},
+		{name: "unknown pidns is refused (unimplemented)", requested: "pidns", wantErr: true},
 		{name: "typo systemd2 is refused", requested: "systemd2", wantErr: true},
 		{name: "surrounding whitespace is trimmed (GAP-116 convention)", requested: " systemd ", want: ModeSystemd},
 		{name: "whitespace-only is refused, not treated as unset", requested: "   ", wantErr: true},
@@ -115,6 +118,22 @@ func TestPropertiesForSystemdAddsExactlyPrivateNetwork(t *testing.T) {
 	}
 }
 
+// TestPropertiesForProcVisAddsExactlyProtectProcInvisible pins NET-BUNKER-011:
+// procvis adds --property=ProtectProc=invisible exactly once and NOTHING
+// else. Reverting the mode reddens this (the property disappears).
+func TestPropertiesForProcVisAddsExactlyProtectProcInvisible(t *testing.T) {
+	props, err := PropertiesFor(ModeProcVis)
+	if err != nil {
+		t.Fatalf("PropertiesFor(procvis): %v", err)
+	}
+	if len(props) != 1 {
+		t.Fatalf("PropertiesFor(procvis) = %v, want exactly [ProtectProc=invisible]", props)
+	}
+	if props[0] != "--property="+PropertyProtectProcInvisible {
+		t.Fatalf("property = %q, want %q", props[0], "--property="+PropertyProtectProcInvisible)
+	}
+}
+
 // TestPropertiesForUnknownRefuses keeps the builder's guard honest: an
 // unknown mode is an error, not nil-and-success.
 func TestPropertiesForUnknownRefuses(t *testing.T) {
@@ -159,6 +178,36 @@ func TestBoundaryFor(t *testing.T) {
 			name:        "systemd scopes the claim to the unit's processes",
 			mode:        ModeSystemd,
 			wantSubstr:  []string{"only processes"},
+			wantNonZero: true,
+		},
+		{
+			name:        "procvis states the private /proc and the hidepid semantics",
+			mode:        ModeProcVis,
+			wantSubstr:  []string{"private /proc", "hidepid=2", "own user's processes"},
+			wantNonZero: true,
+		},
+		{
+			name:        "procvis does NOT claim to cover SSH/exec sessions",
+			mode:        ModeProcVis,
+			wantSubstr:  []string{"does NOT cover the agent's SSH/exec sessions"},
+			wantNonZero: true,
+		},
+		{
+			name:        "procvis does NOT claim network isolation",
+			mode:        ModeProcVis,
+			wantSubstr:  []string{"NOT a network boundary"},
+			wantNonZero: true,
+		},
+		{
+			name:        "procvis admits the /proc/<pid>/root/proc enumeration path stays open",
+			mode:        ModeProcVis,
+			wantSubstr:  []string{"/proc/<unit-pid>/root/proc"},
+			wantNonZero: true,
+		},
+		{
+			name:        "procvis does NOT claim per-unit host remount (it must stay per-unit)",
+			mode:        ModeProcVis,
+			forbidden:   []string{"host-wide", "remount"},
 			wantNonZero: true,
 		},
 		{
@@ -215,6 +264,11 @@ func TestContainmentMarker(t *testing.T) {
 			name:       "systemd marker names the mode and boundary",
 			mode:       ModeSystemd,
 			wantSubstr: []string{"[bunker:", "network isolation mode systemd", "NO outbound", "]"},
+		},
+		{
+			name:       "procvis marker names the mode and boundary",
+			mode:       ModeProcVis,
+			wantSubstr: []string{"[bunker:", "network isolation mode procvis", "private /proc", "does NOT cover the agent's SSH/exec sessions", "]"},
 		},
 		{
 			name:       "empty renders the UNKNOWN marker, never shared",
