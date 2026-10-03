@@ -60,6 +60,10 @@ defaults:
 #                        docs/evidence/BFS-017-guard-verdicts.md).
 guards:
   secrets: true
+  # TRUST-001 (gitreins 0.15.0): board-only qa-cron commits stage no Go files,
+  # so every substantive gate skips -> DEGRADED PASS -> rc=2 refusal. Accept
+  # skips so board/annotation commits land; product commits still grade full.
+  allow_skips: true
   # Go project: the Go-native lanes below grade lint/tests. The Python lanes
   # (lint/tests) never run here.
   lint: false
