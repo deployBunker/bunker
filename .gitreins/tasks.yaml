@@ -3983,3 +3983,13 @@ tasks:
   status: complete
   created_at: '2026-10-02T22:57:53.283683+00:00'
   completed_at: '2026-10-02T23:03:43.996451+00:00'
+- id: INT-CI-059
+  title: Load-sensitive fixed deadline on bfs037 census abandon_tree_mismatch arm
+    (CI run 37094143124)
+  criteria:
+  - 'The abandon_tree_mismatch arm''s two bounded waits carry a wall-clock budget
+    that must survive a loaded self-hosted runner: (1) both hotWaitFor calls in the
+    arm use a 10s budget with a comment naming run 37094143124; (2) go test ./internal/fsclient/
+    -run TestBFS037Cell08 -count=3 passes; (3) no .go non-test file changed.'
+  status: in_progress
+  created_at: '2026-10-03T07:53:06.939721+00:00'
