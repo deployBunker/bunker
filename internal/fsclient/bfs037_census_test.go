@@ -411,7 +411,11 @@ func TestBFS037Cell08EverySkipAndAbandonReasonIsReachable(t *testing.T) {
 		trackedPath(t, s, "moves.txt", 4000)
 		stub.Hold()
 		s.Manager.NoteInvalidation([]string{"moves.txt"})
-		if !hotWaitFor(t, "the refresh to be mid-body", 5*time.Second, func() bool {
+		// 10s not 5s: on a loaded self-hosted runner the mid-body wait raced
+		// its 5s budget and never reached the abandon it proves
+		// (CI run 37094143124, unit-tests job; the 10s reacquire arm above
+		// is the precedent). Both waits here get the same room.
+		if !hotWaitFor(t, "the refresh to be mid-body", 10*time.Second, func() bool {
 			return s.Manager.Stats().RefreshInflight == 1 && stub.BytesServed("moves.txt") > 0
 		}) {
 			t.Fatalf("no refresh in flight: %+v", s.Manager.Stats())
@@ -422,7 +426,7 @@ func TestBFS037Cell08EverySkipAndAbandonReasonIsReachable(t *testing.T) {
 		stub.SetTree("tree:BBBB")
 		_, _, _, _ = s.Manager.HotRead(context.Background(), "observer.txt", "")
 		stub.Release()
-		if !hotWaitFor(t, "the tree-mismatch abandon", 5*time.Second, func() bool {
+		if !hotWaitFor(t, "the tree-mismatch abandon", 10*time.Second, func() bool {
 			return hotDelta(before, hotCensus(s.Manager), "abandon:"+HotAbandonTreeMismatch) >= 1
 		}) {
 			t.Fatalf("bytes from a tree this mount is no longer bound to were not refused: %v", hotCensus(s.Manager))
