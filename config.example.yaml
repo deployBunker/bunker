@@ -200,6 +200,14 @@ agent:
   #     dockerd cannot pull images in this mode (pre-pull or build images
   #     another way). Unix-socket control is UNCHANGED: docker.sock, exec,
   #     the SSH tunnel and sshfs all keep working.
+  #   procvis (NET-BUNKER-011): the agent's units get ProtectProc=invisible —
+  #     a private /proc (hidepid=2 semantics) in the unit's own mount
+  #     namespace, so unit processes see only their own user's processes.
+  #     NOT covered: the agent's SSH/exec sessions, the network axis, and
+  #     the /proc/<pid>/root/proc enumeration path (that is NET-BUNKER-012).
+  #     The daemon VERIFIES the kernel semantics (a live throwaway-namespace
+  #     experiment, once per process) and REFUSES the mode when the host
+  #     cannot prove them — never a silent no-op.
   # An unknown value REFUSES TO START (fail loud — never a silent fallback
   # to shared; spec §5.2). Per-spawn selection: `bunker spawn
   # --network-mode <mode>`. Env override: BUNKERD_NETWORK_MODE.

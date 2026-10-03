@@ -340,7 +340,7 @@ Examples:
 	cmd.Flags().StringVar(&imageSpecFile, "image-spec", "", "JSON file with an image customization spec (base + apt/go/npm package adds)")
 	cmd.Flags().StringVar(&preset, "preset", "", "Safety preset for this agent: open, standard, hardened (default: BUNKERD_SAFETY_PRESET, then the server's config, then open)")
 	cmd.Flags().StringVar(&mountDriver, "mount-driver", "", "Mount driver for this agent (default: sshfs; an unknown name is refused by the server)")
-	cmd.Flags().StringVar(&networkIsolationMode, "network-mode", "", "Network isolation mode for this agent: shared, systemd (default: BUNKERD_NETWORK_MODE, then the server's config, then shared). systemd = private network namespace (loopback only; NO outbound — image pulls fail in this mode)")
+	cmd.Flags().StringVar(&networkIsolationMode, "network-mode", "", "Network isolation mode for this agent: shared, systemd, procvis (default: BUNKERD_NETWORK_MODE, then the server's config, then shared). systemd = private network namespace (loopback only; NO outbound — image pulls fail in this mode). procvis = private /proc in the unit's mount namespace (hidepid=2 semantics; unit processes see only their own user's processes; does NOT cover SSH/exec sessions)")
 
 	return cmd
 }
