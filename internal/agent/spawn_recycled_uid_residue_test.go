@@ -170,6 +170,14 @@ func newRecycledResidueHost(t *testing.T, agentID string) *recycledResidueHost {
 		return &user.User{Username: name, Uid: strconv.Itoa(h.uid), Gid: strconv.Itoa(h.uid), HomeDir: filepath.Join(homeRoot, name)}, nil
 	}
 	t.Cleanup(func() { lookupAgentUser = restoreAgentUser })
+	// NET-BUNKER-007: the socket-dir ownership assertion reads the directory
+	// owner back. This harness models a stub uid (h.uid) that can never own
+	// a real file, and its PATH stub makes `chown` pretend to succeed — so
+	// the read-back seam models exactly that effect. The 0700 MODE half of
+	// the assertion stays real (the harness's real directory is checked).
+	prevStatOwner := statOwnerForTests
+	statOwnerForTests = func(string) (uint32, bool) { return uint32(h.uid), true }
+	t.Cleanup(func() { statOwnerForTests = prevStatOwner })
 	// DF-BUNKER-63: the spawn's uid-collision precheck must not depend on the
 	// ambient /proc — the fake uid this test models has no real processes.
 	// (On hosts where a REAL process runs under the stubbed uid — measured:

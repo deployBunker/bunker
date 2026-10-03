@@ -419,14 +419,28 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 
 	m.logger.Info("spawn entering stage", "agent_id", agentID, "stage", StageRootlessInstall)
 	// Create the socket directory.
+	//
+	// NET-BUNKER-007 (specs/network-isolation.md §6.1): this is the agent's
+	// entire docker control channel. A `chown` does NOT set the mode, so the
+	// 0700 mode is set EXPLICITLY here (never the umask), and the spawn
+	// STATS THE MODE BACK before proceeding — a chmod that exited 0 is not
+	// proof. Siblings were already 0700 (legacy tmp below, the rootless
+	// runtime dir below that); this directory was the lone 0755, which is
+	// exactly why ISO-002's `ls /run/bunker/` enumerates every tenant: 0755
+	// let any agent list and traverse every other agent's runtime directory
+	// and socket path. No caller needs broader access on this path: the
+	// daemon does its socket/symlink work as root (spec §1.8) and the agent
+	// itself needs only its OWN directory (owner rwx), so 0700 + chown to
+	// the agent is the contract — group and world keep zero bits.
 	sockDir := filepath.Dir(dockerSockPath)
-	if err := os.MkdirAll(sockDir, 0755); err != nil {
+	if err := EnsureAgentSocketDir(username, sockDir); err != nil {
 		return nil, fail(StageRootlessInstall, fmt.Errorf("create docker sock dir %s: %w", sockDir, err))
 	}
-	// Chown the socket directory to the agent user so dockerd can create the socket
-	// and the SSH transport can access it.
-	if out, err := exec.CommandContext(ctx, "chown", username, sockDir).CombinedOutput(); err != nil {
-		return nil, fail(StageRootlessInstall, fmt.Errorf("chown socket dir: %w (output: %s)", err, string(out)))
+	if err := AssertAgentSocketDir(sockDir, uint32(uid)); err != nil {
+		// The read-back is the ASSERTION (§6.3): ownership or mode not as
+		// claimed is a failed spawn, never a warn-and-continue — a boundary
+		// that was not verified is not a boundary (§5.2).
+		return nil, fail(StageRootlessInstall, fmt.Errorf("socket dir %s failed the 0700/ownership assertion: %w", sockDir, err))
 	}
 
 	// Legacy per-agent scratch under /run/bunker/<id>/tmp (mode 0700) for
