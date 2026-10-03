@@ -87,6 +87,29 @@ guards:
   # the next 300s rung, and a run that exceeds it is now reported as
   # NOT-FINISHED by scripts/gitreins-guard.sh instead of as a test failure.
   test_timeout: 1200
+  # 2026-10-03 (INT-CI-058): test_timeout above is only the lane's WALL budget.
+  # The lane's invocation until now carried no `-timeout`, so Go's per-binary
+  # panic alarm (default 600s) applied to any ONE package: a single package
+  # slower than 600s panicked the lane while this 1200s budget said it was
+  # fine — the budget was unreachable for exactly the runs it was sized for.
+  # Measured internal/fsclient walls on this tree: 371s / 601s / 164s
+  # (2026-10-02, INT-CI-058 row) and 395.2s (2026-10-03, loadavg ~26,
+  # `go test -count=1 -short ./internal/fsclient/` exit 0) — the 601s run
+  # FAILED the lane and the 164s run passed it, same tree, same command.
+  # guards.test_command (gitreins 0.15.0 knob, DF-GITREINS-POC-45:
+  # engine/guard_manager.py:_check_go_tests -> engine/guards.py:_resolve_go_test_argv)
+  # replaces the hard-coded lane argv when set, and the lane prints
+  # "go_tests graded by the configured guards.test_command: ..." as provenance.
+  # The command below passes an explicit `-timeout` EQUAL to test_timeout, so
+  # the per-binary alarm and the lane budget are the SAME number and can no
+  # longer contradict: go panics a package only at/above the wall the lane
+  # already declares. ORDERING INVARIANT: -timeout == guards.test_timeout.
+  # If test_timeout is raised, raise this -timeout with it; if this line is
+  # removed, the lane reverts to the argv without -timeout and the 600s
+  # contradiction returns. A run past either number is reported NOT-FINISHED
+  # by scripts/gitreins-guard.sh (a budget), never dressed up as a test
+  # failure — both timeout shapes are classified as unfinished there.
+  test_command: "go test -count=1 -short -timeout 1200s ./..."
   # 2026-09-27 (BFS-017): hook_timeout was left at its 300s DEFAULT while
   # test_timeout was 600 — a pair that cannot hold: the tests lane's own budget
   # already exceeds the overall budget, so the overall budget can only ever fire
@@ -104,11 +127,15 @@ guards:
 # There has never been a `tier1:` config SECTION in gitreins: `tier1`/`tier2`
 # are PIPELINE stage ids, and engine/guard_manager.py reads only `guards.*`.
 # The block that used to sit here claimed the guard ran
-# `go test ./... -count=1 -timeout 120s`; it does not. The Go tests lane is
-# hard-coded (`go test -count=1 -short ./...`) with the `guards.test_timeout`
-# wall, and that dead 120s line is what made BFS-017 read a 120s ceiling into a
-# 600s lane. It is deleted rather than re-documented: a knob that is documented,
-# advertised and silently ignored is worse than a missing knob.
+# `go test ./... -count=1 -timeout 120s`; it does not. That dead 120s line is
+# what made BFS-017 read a 120s ceiling into a 600s lane; it is deleted rather
+# than re-documented: a knob that is documented, advertised and silently
+# ignored is worse than a missing knob.
+#
+# INT-CI-058 update: the Go tests lane is no longer invoked bare. The lane's
+# invocation is the configured guards.test_command above (an explicit
+# `-timeout` matching guards.test_timeout); with that key removed the lane
+# reverts to the historical hard-coded `go test -count=1 -short ./...`.
 #
 # The repo-owned invocations declare their own ceilings, where they run:
 #   Makefile `test` / `test-short`  (no -timeout: Go's 10m default)
