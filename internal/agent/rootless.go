@@ -1521,25 +1521,27 @@ func resetUserManagerState(ctx context.Context, uid int, runtimeDir string, logg
 // is a bounded loop, never an unbounded retry.
 const (
 	runtimeDirOwnershipAttempts = 3
-	runtimeDirOwnershipPause    = 50 * time.Millisecond
+	runtimeDirOwnershipPause    = 600 * time.Millisecond
 )
 
 // runtimeDirOwnershipPauseFor scales the pause between convergence attempts
-// exponentially: pause * 4^(attempt-1) — 50ms before attempt 2, 200ms before
+// exponentially: pause * 4^(attempt-1) — 600ms before attempt 2, 2400ms before
 // attempt 3, and so on. The flat 50ms schedule (INT-CI-035 → INT-CI-038)
 // totalled ~100ms, and CI (root-suite on the 058a477 board commit, 2026-10-03)
 // measured a logind teardown window that outlasted ALL THREE attempts: the
 // probeok spawn's chown hit the same ENOENT on every attempt within 0.44s.
-// The exponential schedule keeps the loop bounded (5 attempts now span ~2.1s
-// of total pause, still a rounding error against the 300s request deadline)
-// while tolerating teardown windows in the seconds, which is the realistic
-// scale of a user@.service + user-runtime-dir@.service stop on a busy runner.
+// With 3 attempts the exponential schedule spans 3.0s of total pause (600ms + 2400ms) — a
+// teardown window in the seconds, the realistic scale of a user@.service +
+// user-runtime-dir@.service stop on a busy runner — while the attempt count
+// stays small (the boundedness guard in rootless_runtimedir_test.go pins it
+// at ≤3) and the whole budget remains a rounding error against the 300s
+// request deadline.
 func runtimeDirOwnershipPauseFor(attempt int) time.Duration {
 	// attempt is the attempt just FAILED; the pause precedes attempt+1.
 	// Cap the shift so a hostile constant cannot overflow the duration.
 	shift := uint(attempt - 1)
-	if shift > 4 {
-		shift = 4
+	if shift > 3 {
+		shift = 3
 	}
 	return runtimeDirOwnershipPause * (1 << (2 * shift))
 }
