@@ -4013,3 +4013,11 @@ tasks:
   status: complete
   created_at: '2026-10-03T16:31:53.191555+00:00'
   completed_at: '2026-10-03T16:40:53.334279+00:00'
+- id: GAP-B1
+  title: 'S1 zero-code proof: toolsd remote verb contract'
+  criteria:
+  - Evidence doc docs/prd/evidence-gap092-toolsd-remote-contract.md exists on main
+    covering all 7 GAP-B1 criteria with raw command/exit-code pairs, row status complete
+  status: complete
+  created_at: '2026-10-03T18:33:33.628432+00:00'
+  completed_at: '2026-10-03T18:33:49.134733+00:00'
