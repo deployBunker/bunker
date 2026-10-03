@@ -5,17 +5,17 @@ import (
 	"testing"
 )
 
-// TestValidModesIsTheTwoModeVocabulary pins the vocabulary: exactly shared
-// and systemd today (spec §1.1/§1.2). A future mode (NET-BUNKER-003/004/005/
-// 011/012) extends validModes — this test then changes WITH that row, never
-// silently before it.
-func TestValidModesIsTheTwoModeVocabulary(t *testing.T) {
+// TestValidModesIsTheThreeModeVocabulary pins the vocabulary: exactly shared,
+// systemd and procvis today (spec §1.1/§1.2/§1.8; NET-BUNKER-010/002/011).
+// A future mode (NET-BUNKER-003/004/005/012) extends validModes — this test
+// then changes WITH that row, never silently before it.
+func TestValidModesIsTheThreeModeVocabulary(t *testing.T) {
 	got := ValidModes()
-	if len(got) != 2 {
-		t.Fatalf("ValidModes() = %v, want exactly 2 entries (shared, systemd)", got)
+	if len(got) != 3 {
+		t.Fatalf("ValidModes() = %v, want exactly 3 entries (shared, systemd, procvis)", got)
 	}
-	if got[0] != ModeShared || got[1] != ModeSystemd {
-		t.Fatalf("ValidModes() = %v, want [%s %s]", got, ModeShared, ModeSystemd)
+	if got[0] != ModeShared || got[1] != ModeSystemd || got[2] != ModeProcVis {
+		t.Fatalf("ValidModes() = %v, want [%s %s %s]", got, ModeShared, ModeSystemd, ModeProcVis)
 	}
 }
 

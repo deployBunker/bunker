@@ -3,15 +3,15 @@
 // design authority.
 //
 // The valid set lives in exactly ONE place (ValidModes): NET-BUNKER-003/004/
-// 005/011/012 add future modes by extending that slice and teaching
+// 005/012 add future modes by extending that slice and teaching
 // PropertiesFor the new mode's unit property — everything else (validation,
 // refusals, reporting, boundary strings) reads from here.
 //
 // The reporting law (spec §5.2): A BOUND THAT IS NOT REPORTED IS NOT A BOUND.
-// Three meanings stay distinct — ModeShared/ModeSystemd are affirmative
-// statements, ModeUnknown means the daemon could not verify, and EMPTY means
-// the record predates the field. Empty must never render as safe, and
-// unknown must never be upgraded to "shared".
+// Three meanings stay distinct — ModeShared/ModeSystemd/ModeProcVis are
+// affirmative statements, ModeUnknown means the daemon could not verify, and
+// EMPTY means the record predates the field. Empty must never render as safe,
+// and unknown must never be upgraded to "shared".
 //
 // Refusal law (spec §5.2, refuse-loudly): an unknown or unimplemented mode is
 // a named error naming the offending value and the valid set — it NEVER falls
@@ -34,9 +34,19 @@ import (
 //     with --property=PrivateNetwork=yes — its own network namespace
 //     containing only loopback. A genuinely private 127.0.0.1 and a private
 //     port space (protects against co-tenant reach T2 and bind-squat T3).
+//   - procvis (NET-BUNKER-011): the agent's dockerd transient unit AND every
+//     detached-run unit are created with --property=ProtectProc=invisible —
+//     inside the unit's own mount namespace /proc carries hidepid=2
+//     semantics, so the unit's processes see only their own user's
+//     processes. Process-identity reconnaissance (spec §2 T4 / ISO-001: one
+//     agent enumerating another agent's rootlesskit/containerd command lines
+//     through the global /proc) dies at the unit boundary. It is
+//     per-UNIT, not the host-wide hidepid remount — the host's /proc mount
+//     and every other process's view are untouched.
 const (
 	ModeShared  = "shared"
 	ModeSystemd = "systemd"
+	ModeProcVis = "procvis"
 
 	// ModeUnknown is the "the daemon cannot verify" state (spec §5.2, the
 	// tmp_isolation="unknown" precedent). It is NOT a valid spawn request
@@ -54,14 +64,23 @@ const (
 	// PropertyPrivateNetworkYes is the exact --property argv element the
 	// `systemd` mode adds. Pinned by the mode tests; byte-for-byte.
 	PropertyPrivateNetworkYes = "PrivateNetwork=yes"
+
+	// PropertyProtectProcInvisible is the exact --property argv element the
+	// `procvis` mode (NET-BUNKER-011) adds. ProtectProc=invisible (systemd
+	// ≥247, system units) remounts /proc inside the unit's own mount
+	// namespace with hidepid=2 semantics, so the unit's processes see only
+	// their own user's processes. It is PER-UNIT — the host's /proc mount
+	// and every other process's view are untouched — which is exactly the
+	// per-agent property the spec's host-wide-hidepid option (§1.8) lacks.
+	PropertyProtectProcInvisible = "ProtectProc=invisible"
 )
 
-// validModes is THE list of modes this build implements. A third mode is a
+// validModes is THE list of modes this build implements. A new mode is a
 // one-line addition here plus its PropertiesFor/systemdProperty entry — the
 // refusal text, validation, reporting vocabulary and CLI all derive from this
 // slice, so a new mode cannot half-ship (named in the set but unimplemented,
 // or implemented but unreportable).
-var validModes = []string{ModeShared, ModeSystemd}
+var validModes = []string{ModeShared, ModeSystemd, ModeProcVis}
 
 // DefaultMode is the declared default (spec §5.1): shared, unchanged, until
 // NET-BUNKER-008 measures otherwise. Any change to this constant is a new
@@ -124,7 +143,16 @@ func Resolve(requested string) (string, error) {
 //     manufacturing comfort;
 //   - systemd gives a private loopback + port space and loses ALL outbound
 //     (docker image pulls fail in this mode — that is the accepted cost, not
-//     a bug), and covers only processes inside the unit.
+//     a bug), and covers only processes inside the unit;
+//   - procvis (NET-BUNKER-011) gives the unit's processes a private /proc
+//     and says PLAINLY what that is not: it does not cover the agent's
+//     SSH/exec sessions (they keep the host's global /proc view —
+//     sessions have no /proc visibility knob), it is not a network
+//     boundary, and it does NOT stop another agent from enumerating this
+//     unit's processes through /proc/<unit-pid>/root/proc — path
+//     visibility is NET-BUNKER-012, not this mode. (systemd scopes each
+//     service to its own /proc/PID; hidepid only restricts readdir of /
+//     — the enumeration is not stopped by design.)
 //
 // An empty or unknown mode has NO boundary string: the boundary of an
 // unverified state is not knowable, and inventing one would be the exact
@@ -135,6 +163,8 @@ func BoundaryFor(mode string) string {
 		return "host network namespace (no network isolation: shared loopback, global port space)"
 	case ModeSystemd:
 		return "private network namespace (loopback only): private 127.0.0.1 and port space; NO outbound networking (image pulls unavailable); covers only processes in the agent's dockerd unit"
+	case ModeProcVis:
+		return "private /proc in the unit's mount namespace (hidepid=2 semantics): unit processes see only their own user's processes; does NOT cover the agent's SSH/exec sessions (host /proc view unchanged there), is NOT a network boundary, and does NOT stop another agent enumerating this unit via /proc/<unit-pid>/root/proc"
 	default:
 		// ModeUnknown and the empty pre-surface state report no boundary —
 		// see the func comment.
@@ -144,13 +174,16 @@ func BoundaryFor(mode string) string {
 
 // systemdProperties lists the EXTRA unit properties the mode adds, in argv
 // order. `shared` adds none (byte-identical spawn — spec §5.1 zero-delta);
-// `systemd` adds exactly one: --property=PrivateNetwork=yes (NET-BUNKER-002).
-// A future mode teaches this table its property and the whole spawn path
-// follows.
+// `systemd` adds exactly one: --property=PrivateNetwork=yes (NET-BUNKER-002);
+// `procvis` adds exactly one: --property=ProtectProc=invisible
+// (NET-BUNKER-011). A future mode teaches this table its property and the
+// whole spawn path follows.
 func systemdProperties(mode string) []string {
 	switch mode {
 	case ModeSystemd:
 		return []string{"--property=" + PropertyPrivateNetworkYes}
+	case ModeProcVis:
+		return []string{"--property=" + PropertyProtectProcInvisible}
 	default:
 		return nil
 	}
@@ -182,7 +215,7 @@ func PropertiesFor(mode string) ([]string, error) {
 // reads as safe.
 func containmentMarker(mode string) string {
 	switch mode {
-	case ModeShared, ModeSystemd:
+	case ModeShared, ModeSystemd, ModeProcVis:
 		return fmt.Sprintf("[bunker: network isolation mode %s — %s]", mode, BoundaryFor(mode))
 	default:
 		return "[bunker: network isolation mode unknown — not reported by this daemon; the boundary is NOT verified]"
