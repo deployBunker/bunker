@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -162,19 +163,69 @@ func reapFixture(cli *exec.Cmd, pids ...*int) func() {
 // writeFakeChildBinary installs a fake long-lived child (scp/ssh/sshfs) that
 // records its own pid, spawns a grandchild that outlives any sane grace period,
 // and waits for it — so it stays alive until it is killed.
+//
+// QA-BUNKER-55 determinism: the script's FIRST action is an atomic pid write
+// (write .tmp + rename — a reader never sees a torn or half-written pid), and
+// the pid-file PATHS are pre-created here, before the CLI is even started, so
+// the stub's write is never an unlink-and-create that a concurrent reader
+// could miss. Nothing is removed on write: an existing file is only ever
+// appended to. The test still creates real readiness synchronisation: the
+// stub's pid write is its first action, and the poll side (waitForPIDFile)
+// derives its budget from the test's own deadline instead of a fixed constant,
+// so a loaded host that delays the stub's start stretches the poll with the
+// test instead of exhausting a constant while the test still has time left.
 func writeFakeChildBinary(t *testing.T, binDir, name string) (pidFile, grandchildPIDFile string) {
 	t.Helper()
 	pidFile = filepath.Join(binDir, name+".pid")
 	grandchildPIDFile = filepath.Join(binDir, name+"-grandchild.pid")
+	pidTmp := pidFile + ".tmp"
 	script := "#!/bin/sh\n" +
-		"echo \"$$\" > \"" + pidFile + "\"\n" +
+		"echo \"$$\" > \"" + pidTmp + "\" && mv \"" + pidTmp + "\" \"" + pidFile + "\"\n" +
 		"sleep 300 &\n" +
-		"echo \"$!\" > \"" + grandchildPIDFile + "\"\n" +
+		"echo \"$!\" > \"" + grandchildPIDFile + ".tmp\" && mv \"" + grandchildPIDFile + ".tmp\" \"" + grandchildPIDFile + "\"\n" +
 		"wait\n"
 	if err := os.WriteFile(filepath.Join(binDir, name), []byte(script), 0o755); err != nil {
 		t.Fatalf("write fake %s: %v", name, err)
 	}
+	// Pre-create the readiness paths the stub will overwrite. They exist
+	// before the CLI starts, so the stub's first action is a rename onto an
+	// existing inode — never a create-in-a-directory-the-reader-is-racing.
+	// The placeholder is not a valid pid, so it is never mistaken for
+	// readiness (waitForPIDFile only accepts a positive integer).
+	for _, path := range []string{pidFile, grandchildPIDFile} {
+		if err := os.WriteFile(path, []byte("pending\n"), 0o644); err != nil {
+			t.Fatalf("pre-create %s: %v", path, err)
+		}
+	}
 	return pidFile, grandchildPIDFile
+}
+
+// procTestPollBudget derives the pid-file poll deadline from the test's own
+// deadline (QA-BUNKER-55): under a package-parallel run on a loaded host the
+// stub child's start — fork+exec of /bin/sh, a shared-lib mapped cold — can
+// legally be delayed for many seconds, so a fixed 15s budget can be exhausted
+// by latencies the host is entitled to produce while the test binary still has
+// most of its own allowance left. The budget therefore rides the test's
+// deadline instead of a constant: proportional when the test carries a
+// deadline (½, clamped to [30s, 60s]), and 60s when the test has none. The
+// floor keeps one 15s-class hiccup from failing a deadline-less run; the cap
+// keeps the real-hang property tight (a stub that never writes the pid still
+// fails, within the bound, exactly as before).
+func procTestPollBudget(t *testing.T) time.Duration {
+	t.Helper()
+	deadline, hasDeadline := t.Deadline()
+	if !hasDeadline {
+		return 60 * time.Second
+	}
+	remaining := time.Until(deadline)
+	budget := remaining / 2
+	if budget < 30*time.Second {
+		return 30 * time.Second
+	}
+	if budget > 60*time.Second {
+		return 60*time.Second + 100*time.Millisecond
+	}
+	return budget + 100*time.Millisecond
 }
 
 // assertAlive fails when pid is not running: the premise check that keeps every
@@ -214,6 +265,83 @@ func waitForGone(t *testing.T, name string, pid int, within time.Duration) {
 	}
 }
 
+// procTestGate collects the two readiness pids of one stub pair (QA-BUNKER-55).
+// It closes bothReady the moment BOTH files have reported a positive pid, so
+// the interval between the child's pid write and the grandchild's belongs
+// entirely to the poll budget instead of being a second, independent window
+// the test can lose. Values are stable once bothReady is closed: each stub
+// writes its pid exactly once (one rename), and reapFixture kills processes —
+// it never clears the files.
+type procTestGate struct {
+	mu        sync.Mutex
+	child     int
+	grandch   int
+	bothReady chan struct{}
+	closeOnce sync.Once
+}
+
+func newProcTestGate() *procTestGate {
+	return &procTestGate{bothReady: make(chan struct{})}
+}
+
+func (g *procTestGate) report(child, grandchild int) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if child > 0 {
+		g.child = child
+	}
+	if grandchild > 0 {
+		g.grandch = grandchild
+	}
+	if g.child > 0 && g.grandch > 0 {
+		g.closeOnce.Do(func() { close(g.bothReady) })
+	}
+}
+
+func (g *procTestGate) pids() (child, grandchild int) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.child, g.grandch
+}
+
+// awaitStubPair waits for both readiness files of one stub pair — the child
+// and the grandchild its pid write announces — and returns their pids. The
+// budget is derived from the test's own deadline (procTestPollBudget), not a
+// fixed constant, so a loaded host that delays the stub's fork+exec stretches
+// the wait with the test instead of exhausting 15s while the test still has
+// most of its allowance left. The real-hang property is kept: a stub that
+// never writes the pid still fails the test — the individual pollers'
+// waitForPIDFile Fatalf fires at the budget, and this bounded select is the
+// backstop that names both files and the CLI log.
+func awaitStubPair(t *testing.T, childPIDFile, grandchildPIDFile string, cliLog string) (int, int) {
+	t.Helper()
+	budget := procTestPollBudget(t)
+	gate := newProcTestGate()
+	for _, path := range []string{childPIDFile, grandchildPIDFile} {
+		path := path
+		go func() {
+			// waitForPIDFile Fatalfs (runtime.Goexit) on its own budget
+			// expiry, which is the failure path; the gate simply never
+			// fires and the select below reports the failure.
+			if path == childPIDFile {
+				gate.report(waitForPIDFile(t, path, budget, cliLog), 0)
+			} else {
+				gate.report(0, waitForPIDFile(t, path, budget, cliLog))
+			}
+		}()
+	}
+	select {
+	case <-gate.bothReady:
+		return gate.pids()
+	case <-time.After(budget + 15*time.Second):
+		t.Fatalf("GAP-084 fixtures never became ready within %s (pid files %s, %s; CLI log:\n%s)",
+			budget+15*time.Second, childPIDFile, grandchildPIDFile, readFileOr(cliLog))
+	}
+	// Unreachable: both arms above Fatalf. Present for the compiler, which
+	// does not treat Fatalf as a terminating statement.
+	return 0, 0
+}
+
 // TestCpCommand_SIGTERMReapsSCPChild is the GAP-084 acceptance test for
 // `bunker cp`: a SIGTERM to the CLI in the middle of a transfer must end the
 // transfer (the scp child and everything it spawned) instead of leaving it
@@ -231,8 +359,7 @@ func TestCpCommand_SIGTERMReapsSCPChild(t *testing.T) {
 	scpPID, scpGrandchildPID := 0, 0
 	t.Cleanup(reapFixture(cli, &scpPID, &scpGrandchildPID))
 
-	scpPID = waitForPIDFile(t, scpPIDFile, 15*time.Second, h.cliLog)
-	scpGrandchildPID = waitForPIDFile(t, scpGrandchildPIDFile, 15*time.Second, h.cliLog)
+	scpPID, scpGrandchildPID = awaitStubPair(t, scpPIDFile, scpGrandchildPIDFile, h.cliLog)
 	assertAlive(t, "the scp child", scpPID)
 	assertAlive(t, "the scp grandchild", scpGrandchildPID)
 
@@ -267,8 +394,7 @@ func TestDeployCommand_SIGTERMReapsSCPChild(t *testing.T) {
 	scpPID, scpGrandchildPID := 0, 0
 	t.Cleanup(reapFixture(cli, &scpPID, &scpGrandchildPID))
 
-	scpPID = waitForPIDFile(t, scpPIDFile, 15*time.Second, h.cliLog)
-	scpGrandchildPID = waitForPIDFile(t, scpGrandchildPIDFile, 15*time.Second, h.cliLog)
+	scpPID, scpGrandchildPID = awaitStubPair(t, scpPIDFile, scpGrandchildPIDFile, h.cliLog)
 	assertAlive(t, "the scp -r child", scpPID)
 	assertAlive(t, "the scp -r grandchild", scpGrandchildPID)
 
@@ -297,8 +423,7 @@ func TestMountCommand_SIGINTReapsSSHFSAttempt(t *testing.T) {
 	sshfsPID, sshfsGrandchildPID := 0, 0
 	t.Cleanup(reapFixture(cli, &sshfsPID, &sshfsGrandchildPID))
 
-	sshfsPID = waitForPIDFile(t, sshfsPIDFile, 15*time.Second, h.cliLog)
-	sshfsGrandchildPID = waitForPIDFile(t, sshfsGrandchildPIDFile, 15*time.Second, h.cliLog)
+	sshfsPID, sshfsGrandchildPID = awaitStubPair(t, sshfsPIDFile, sshfsGrandchildPIDFile, h.cliLog)
 	assertAlive(t, "the sshfs attempt", sshfsPID)
 	assertAlive(t, "the sshfs attempt's ssh descendant", sshfsGrandchildPID)
 
@@ -526,6 +651,14 @@ func TestLongLivedChild_PdeathsigBackstopReapsDirectChild(t *testing.T) {
 	pidFile := filepath.Join(t.TempDir(), "grandchild-of-helper.pid")
 	helperLog := filepath.Join(t.TempDir(), "helper.log")
 
+	// QA-BUNKER-55: the readiness path exists before the helper starts, so
+	// the helper's pid write is a rename onto an existing inode — never a
+	// create the poller can miss mid-create. The placeholder is not a valid
+	// pid, so it is never mistaken for readiness.
+	if err := os.WriteFile(pidFile, []byte("pending\n"), 0o644); err != nil {
+		t.Fatalf("pre-create %s: %v", pidFile, err)
+	}
+
 	logFile, err := os.Create(helperLog)
 	if err != nil {
 		t.Fatalf("create %s: %v", helperLog, err)
@@ -544,7 +677,11 @@ func TestLongLivedChild_PdeathsigBackstopReapsDirectChild(t *testing.T) {
 		}
 	})
 
-	childPID := waitForPIDFile(t, pidFile, 15*time.Second, helperLog)
+	// QA-BUNKER-55: the budget rides the test's own deadline (procTestPollBudget)
+	// instead of a fixed 15s constant — the helper process's own start
+	// (fork+exec of the test binary, re-initialising the runtime) is the slow
+	// step under load, and it is exactly the latency a loaded host may stretch.
+	childPID := waitForPIDFile(t, pidFile, procTestPollBudget(t), helperLog)
 	t.Cleanup(func() { _ = syscall.Kill(childPID, syscall.SIGKILL) })
 	assertAlive(t, "the helper's child", childPID)
 
@@ -574,10 +711,11 @@ func TestLongLivedChildHelperProcess(t *testing.T) {
 		os.Exit(2)
 	}
 
-	// `exec sleep 300` replaces the shell, so the recorded pid IS the direct
-	// child — the process the kernel's Pdeathsig is armed on.
+	// QA-BUNKER-55: the pid write is ATOMIC (tmp + rename), so the poller
+	// never sees a torn or half-written pid, and it replaces the pre-created
+	// placeholder file in place.
 	cmd := newLongLivedCommand(context.Background(), "sh", "-c",
-		fmt.Sprintf("echo $$ > '%s'; exec sleep 300", pidFile))
+		fmt.Sprintf("echo $$ > '%s.tmp' && mv '%s.tmp' '%s'; exec sleep 300", pidFile, pidFile, pidFile))
 	err := runDetachedChildCommand(cmd)
 	fmt.Fprintf(os.Stderr, "helper: runDetachedChildCommand returned %v\n", err)
 	os.Exit(0)
