@@ -3993,3 +3993,23 @@ tasks:
     -run TestBFS037Cell08 -count=3 passes; (3) no .go non-test file changed.'
   status: in_progress
   created_at: '2026-10-03T07:53:06.939721+00:00'
+- id: INT-CI-060
+  title: runtime-dir teardown convergence budget outlasted again on CI (run on 058a477)
+  criteria:
+  - chown-ENOENT convergence loop rides out a teardown window of at least 3s via an
+    exponential pause schedule, bounded; no test skipped/narrowed; internal/agent
+    race tests green
+  status: complete
+  created_at: '2026-10-03T09:53:06.494686+00:00'
+  completed_at: '2026-10-03T10:13:17.284512+00:00'
+- id: QA-BUNKER-55
+  title: Load-sensitive proc-lifecycle pid-file polls in internal/cli (pass isolated,
+    fail under package-parallel load with empty CLI log)
+  criteria:
+  - 'waitForPIDFile poll deadline derives from t.Deadline() when available (bounded,
+    keeps fixed floor); stub that never writes the pid still fails (real-hang property
+    kept); go test ./internal/cli/ -count=3 green on a loaded host; red-proof: shrink
+    budget and watch failure; no t.Skip, no assertion removal, test-only diff'
+  status: complete
+  created_at: '2026-10-03T16:31:53.191555+00:00'
+  completed_at: '2026-10-03T16:40:53.334279+00:00'
