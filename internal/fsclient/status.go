@@ -143,6 +143,17 @@ type Status struct {
 	// live, and this is the bound they obey. `cache.dir_bytes` is the cache
 	// directory; `state.bytes` is this; `state.footprint_bytes` is both.
 	State StateStats `json:"state"`
+	// Fuse is the mount's own FUSE capability negotiation (BFS-052): what the
+	// mount requested from the kernel, what the kernel is actually running —
+	// read from the kernel's own observables (/proc/self/mountinfo,
+	// /sys/fs/fuse/connections/<id>, /sys/class/bdi) — and one degradation
+	// per capability where the two differ or the probe cannot say. SPEC
+	// linux-io-max §6's law: a knob the kernel cannot honour is reported as
+	// a negotiated-value mismatch with requested and effective both printed,
+	// and the effective values appear in this status document. The field is
+	// the zero value (omitted by omitempty) only where no probe ran: a
+	// non-Linux build, or a mount handle with no mount behind it.
+	Fuse any `json:"fuse,omitempty"`
 	// Reduced/ReducedReason are set when the status document's own bound
 	// (StatusMaxBytes) forced the writer to cap fields or omit blocks. A
 	// document that stops describing the mount has to say so: the alternative is

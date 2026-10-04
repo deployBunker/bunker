@@ -89,6 +89,14 @@ type Mount struct {
 	treePin   string
 	protoSeen string
 
+	// The negotiated MaxWrite (BFS-052): the figure the INIT reply carried,
+	// stored at the point the mount code still has it in hand — go-fuse's
+	// KernelSettings view does not retain the reply's own MaxWrite field, so
+	// this is the mount's record of what the kernel agreed to. Read by the
+	// capability probe under fuseMu (the probe runs after it is set; the
+	// field is never written again).
+	negotiatedMaxWrite atomic.Int64
+
 	// bounds is what the kernel has been told each path's size is — the size a
 	// FUSE read is bounded by (see bound.go). boundRefusals counts reads
 	// refused because the content was longer than that bound (the silent
@@ -158,6 +166,13 @@ type Mount struct {
 	notifyMu     sync.Mutex
 	notifyProbed bool
 	notifyFlags  [3]bool
+
+	// The FUSE capability negotiation (BFS-052): what this mount requested
+	// versus what the kernel granted, probed AFTER fs.Mount succeeds and
+	// reported in the status document's fuse block. Guarded by its own
+	// mutex: the probe writes once, the status loop reads every tick.
+	fuseMu    sync.RWMutex
+	fuseState FuseState
 
 	// notifyCh carries kernel invalidation to a DEDICATED goroutine. It must
 	// never be issued from inside a FUSE request handler: the write to
@@ -330,12 +345,32 @@ func MountAt(opts Options) (*Mount, error) {
 		NullPermissions: false,
 	}
 	root := &node{m: m, p: ""}
+	// The negotiated MaxWrite is recorded BEFORE fs.Mount: the value goes to
+	// the kernel inside the INIT exchange fs.Mount drives, and the probe that
+	// runs right after needs it as the effective figure (go-fuse retains the
+	// kernel's request, not its own reply, on KernelSettings). What is
+	// recorded is the figure AS THE LIBRARY CAPS IT — a request above
+	// MAX_KERNEL_WRITE never reaches the kernel, and the probe reports that
+	// divergence rather than the request.
+	if fsOpts.MaxWrite > fuse.MAX_KERNEL_WRITE {
+		fsOpts.MaxWrite = fuse.MAX_KERNEL_WRITE
+	}
+	m.negotiatedMaxWrite.Store(int64(fsOpts.MaxWrite))
 	server, err := fs.Mount(opts.Mountpoint, root, fsOpts)
 	if err != nil {
 		return nil, fmt.Errorf("bunker-fs: mount %s: %w", opts.Mountpoint, err)
 	}
 	m.server = server
 	m.rootInode = root.EmbeddedInode()
+
+	// THE CAPABILITY PROBE (BFS-052): the mount now exists, so the kernel's
+	// per-connection observables are readable and the INIT exchange has
+	// happened. Requested vs effective is compared per capability and the
+	// result is reported in the status document's fuse block — a requested
+	// cap the kernel clamped, lacks, or exposes no evidence for is a named
+	// degradation, never a silent success. Read-only; it never fails the
+	// mount.
+	m.probeFuseState(fsOpts.MountOptions)
 
 	// The invalidation channel: push where the target has a watcher, the
 	// declared poll form where it does not, the revision poll where it has
@@ -852,6 +887,17 @@ func (m *Mount) Status() fsclient.Status {
 	}
 	if v, ok := m.appendLast.Load().(string); ok {
 		st.Append.Last = v
+	}
+	// The FUSE capability negotiation (BFS-052): the requested-vs-effective
+	// figure set, with one degradation per capability the kernel clamped,
+	// lacks, or gave no evidence for. SPEC-linux-io-max §6's law — the
+	// EFFECTIVE values appear in the mount's status output.
+	if skipped, reason := fuseProbeSkipped(); skipped {
+		// Unreachable on Linux builds; the shape exists so every build's
+		// status document answers the same question with the same fields.
+		st.Fuse = FuseState{Source: reason}
+	} else {
+		st.Fuse = m.FuseState()
 	}
 	heldTotal, outstanding, evicted, heldLast := m.wp.Held()
 	st.RefusalHolds = fsclient.RefusalHoldState{
