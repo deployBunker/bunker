@@ -42,6 +42,11 @@ const (
 	ErrnoENOTCONN   syscall.Errno = 107 // transport: connect, deadline or reset
 	ErrnoESTALE     syscall.Errno = 116 // write precondition refused: re-read and retry
 	ErrnoEREMOTEIO  syscall.Errno = 121 // the served tree identity changed
+
+	// BFS-029: every switch that NAMES an errno must read the value from these
+	// constants, never from `syscall.EREMOTEIO` — the darwin and freebsd syscall
+	// packages do not define it, and a platform constant in a name table breaks
+	// exactly the cross-compile this file exists to keep building.
 )
 
 // portableErrno is the single seam where a named errno becomes the value the

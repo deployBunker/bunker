@@ -220,7 +220,7 @@ func ErrnoName(errno syscall.Errno) string {
 		return "ENOTCONN"
 	case syscall.ESTALE:
 		return "ESTALE"
-	case syscall.EREMOTEIO:
+	case ErrnoEREMOTEIO:
 		return "EREMOTEIO"
 	case syscall.EINTR:
 		return "EINTR"
