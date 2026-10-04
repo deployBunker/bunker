@@ -157,7 +157,9 @@ func TestCheckUnixSocketPeer_LiveConnectTable(t *testing.T) {
 	self := uint32(syscall.Geteuid())
 
 	t.Run("real connect as owning uid is accepted", func(t *testing.T) {
-		sockPath := filepath.Join(t.TempDir(), "docker.sock")
+		// The live bind path must fit sockaddr_un.sun_path on ANY machine:
+		// short fixed-prefix scratch dir, never t.TempDir() (QA-BUNKER-62).
+		sockPath := shortSocketPath(t)
 		feed := startUnixAcceptFeed(t, sockPath)
 		client := connect(t, sockPath)
 		defer client.Close()
@@ -170,7 +172,9 @@ func TestCheckUnixSocketPeer_LiveConnectTable(t *testing.T) {
 	})
 
 	t.Run("real connect judged against a foreign owner is refused", func(t *testing.T) {
-		sockPath := filepath.Join(t.TempDir(), "docker.sock")
+		// The live bind path must fit sockaddr_un.sun_path on ANY machine:
+		// short fixed-prefix scratch dir, never t.TempDir() (QA-BUNKER-62).
+		sockPath := shortSocketPath(t)
 		feed := startUnixAcceptFeed(t, sockPath)
 		client := connect(t, sockPath)
 		defer client.Close()
@@ -196,7 +200,9 @@ func TestCheckUnixSocketPeer_LiveConnectTable(t *testing.T) {
 // anything on the connection — the refused peer's bytes are still buffered,
 // untouched, after the gate ran.
 func TestCheckUnixSocketPeer_RefusesBeforeAnyIO(t *testing.T) {
-	sockPath := filepath.Join(t.TempDir(), "docker.sock")
+	// The live bind path must fit sockaddr_un.sun_path on ANY machine:
+	// short fixed-prefix scratch dir, never t.TempDir() (QA-BUNKER-62).
+	sockPath := shortSocketPath(t)
 	feed := startUnixAcceptFeed(t, sockPath)
 	client := connect(t, sockPath)
 	defer client.Close()
@@ -371,7 +377,9 @@ func TestAssertAgentSocketDir_Bites(t *testing.T) {
 // §6.1 on a REAL socket: a socket at 0755 reddens, and Ensure tightens it
 // to owner-only (never widens).
 func TestAssertSocketFileNotGroupWorld_Bites(t *testing.T) {
-	sockPath := filepath.Join(t.TempDir(), "docker.sock")
+	// The live bind path must fit sockaddr_un.sun_path on ANY machine:
+	// short fixed-prefix scratch dir, never t.TempDir() (QA-BUNKER-62).
+	sockPath := shortSocketPath(t)
 	ln, err := net.Listen("unix", sockPath)
 	if err != nil {
 		t.Fatal(err)
@@ -405,7 +413,9 @@ func TestAssertSocketFileNotGroupWorld_Bites(t *testing.T) {
 // read-back on a REAL socket: a socket owned by anyone but the expected uid
 // is refused with ErrForeignPeerUID (and an owned socket passes).
 func TestVerifySocketOwnership_RefusesForeignOwner(t *testing.T) {
-	sockPath := filepath.Join(t.TempDir(), "docker.sock")
+	// The live bind path must fit sockaddr_un.sun_path on ANY machine:
+	// short fixed-prefix scratch dir, never t.TempDir() (QA-BUNKER-62).
+	sockPath := shortSocketPath(t)
 	ln, err := net.Listen("unix", sockPath)
 	if err != nil {
 		t.Fatal(err)
@@ -586,4 +596,31 @@ func stubPeerCredential(t *testing.T, uid uint32, err error) func() {
 	prev := peerCredentialFor
 	peerCredentialFor = func(net.Conn) (uint32, error) { return uid, err }
 	return func() { peerCredentialFor = prev }
+}
+
+// maxSockaddrUnPathLen is the usable length of sockaddr_un.sun_path on
+// Linux: 108-byte struct minus the NUL terminator a pathname bind needs.
+const maxSockaddrUnPathLen = 107
+
+// shortSocketPath returns a real socket bind path under a SHORT
+// fixed-prefix scratch directory (not t.TempDir(), whose path derives from
+// the machine's TMPDIR and the test name and can overflow sun_path —
+// QA-BUNKER-62: a 111-byte path made the live peer-cred connect table fail
+// with "bind: invalid argument" on long-TMPDIR hosts, silently dropping the
+// NET-BUNKER-007 live coverage). The scratch dir is created and removed via
+// t.Cleanup. Fails LOUDLY if the constructed path cannot fit sockaddr_un,
+// so a hostile machine's prefix surfaces as an explicit failure instead of
+// a listen error or (worse) a silently skipped live bind.
+func shortSocketPath(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("/tmp", "bkr")
+	if err != nil {
+		t.Fatalf("MkdirTemp(/tmp, bkr): %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	sockPath := filepath.Join(dir, "docker.sock")
+	if n := len(sockPath); n > maxSockaddrUnPathLen {
+		t.Fatalf("constructed socket path is %d bytes, exceeds sockaddr_un.sun_path limit of %d (%s) — live peer-cred coverage would be silently dropped on this machine", n, maxSockaddrUnPathLen, sockPath)
+	}
+	return sockPath
 }
