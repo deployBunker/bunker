@@ -4047,3 +4047,28 @@ tasks:
     surface change.'
   status: pending
   created_at: '2026-10-04T10:50:18.470862+00:00'
+- id: QA-BUNKER-62
+  title: sun_path overflow kills live peer-cred live-connect test on long-TMPDIR hosts
+  criteria:
+  - 'con1: the live-connect table in internal/agent/sockdir_test.go builds socket
+    paths that fit within the 108-byte sockaddr_un limit on ANY host TMPDIR (short
+    fixed prefix, not t.TempDir-derived long paths) so TestCheckUnixSocketPeer_LiveConnectTable
+    passes regardless of machine; con2: an assertion fails loudly if a constructed
+    path exceeds the sun_path limit so coverage loss can never be silent; con3: go
+    test ./internal/agent/ -count=1 green with a long /var/tmp/hermes-go-tmp-style
+    TMPDIR AND with TMPDIR=/tmp; con4: go vet ./... clean and full go build ./...
+    green; con5: no test assertion weakened or removed - only path construction plus
+    a guard added; con6: only sockdir_test.go (or a small test helper) changed, no
+    product .go file'
+  status: complete
+  created_at: '2026-10-04T17:52:29.291412+00:00'
+  completed_at: '2026-10-04T18:36:34.850911+00:00'
+- id: QA-BUNKER-57
+  title: qa-bootstrap pip resilience
+  criteria:
+  - bunker-qa.sh grades pip-dependent cells UNVERIFIED when pip is absent, and bootstrap
+    verifies pip with a fallback instead of assuming it; go build ./... && go vet
+    ./... pass
+  status: complete
+  created_at: '2026-10-04T18:01:47.908773+00:00'
+  completed_at: '2026-10-04T18:20:43.752847+00:00'
