@@ -4072,3 +4072,31 @@ tasks:
   status: complete
   created_at: '2026-10-04T18:01:47.908773+00:00'
   completed_at: '2026-10-04T18:20:43.752847+00:00'
+- id: QA-BUNKER-63
+  title: E2BIG argv kill in bunker-qa.sh launch/run ship path
+  criteria:
+  - bunker-qa.sh ships the generated remote script via ssh STDIN (cat > ~/qa-run.sh),
+    not base64-in-argv; generated script >97KB plain survives launch path; parity
+    commit on origin/main
+  status: complete
+  created_at: '2026-10-05T04:18:37.853476+00:00'
+  completed_at: '2026-10-05T04:18:43.785973+00:00'
+- id: QA-BUNKER-44
+  title: Full-suite red at HEAD across registry/cli/destroy
+  criteria:
+  - go test ./... -count=1 at HEAD is GREEN (all packages ok); internal/registry and
+    internal/cli and internal/fsclient package suites pass with -count=1 under real
+    host load (loadavg>=7); no package named 'internal/destroy' fails setup; TestCompact_ThousandEvents
+    completes in seconds
+  status: complete
+  created_at: '2026-10-05T04:25:32.226161+00:00'
+  completed_at: '2026-10-05T04:25:39.221393+00:00'
+- id: QA-BUNKER-49
+  title: 'internal/fsclient package timeout: load-sensitive BFS063AStaleCursor test'
+  criteria:
+  - internal/fsclient full package suite passes -count=1 within a 240s cap under real
+    host load (loadavg>=7); TestBFS063AStaleCursorThatTheClientCanReadIsStillATail
+    completes in seconds isolated; the load-window offenders named in 3ffb480/822d508
+    are removed from the tree
+  status: in_progress
+  created_at: '2026-10-05T04:25:32.645360+00:00'
