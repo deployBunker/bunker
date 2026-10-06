@@ -1739,15 +1739,21 @@ else
     elif [ "\$ci_rc" = "skip" ]; then
       cell ci-pass OK "act: no triggerable workflow\$QA_ACT_NOTE — native suite PASS"
     else
-      # QA-CHIMERA-V2-39 (2026-10-04): an act leg that FAILED (e.g. every job
-      # dying at 'Set up Python' inside act) must NOT be folded into a single
-      # OK cell — a stage that did not genuinely run is UNVERIFIED, not part of
-      # a pass. Emit the native verdict on ci-pass and the act leg separately
-      # as ci-act, so an act-leg failure can never read OK.
+      # QA-CHIMERA-V2-39 (2026-10-04) + QA-BUNKER-B1 (2026-10-06): an act leg
+      # that FAILED must NOT be folded into a single OK cell. The 10-04 change
+      # split the leg out as ci-act, but still graded ci-pass OK "native suite
+      # PASS (see ci-act ...)" — so a CI simulation that died rc=1
+      # (level=fatal msg=EOF, las-03 2026-08-31; recurred on batteries since)
+      # read OK against its own ci.log. act is this cell's PRIMARY check: a
+      # non-zero act rc is a FAIL, and the native suite (which DID run) is
+      # carried as detail only — never a status flipper. act SKIPPED entirely
+      # (no triggerable workflow) is not a failed act and keeps the
+      # native-suite OK. The ci-act row below keeps the act leg's own
+      # UNVERIFIED detail; it is never graded OK either.
       if [ "\$ci_rc" = "skip" ]; then
         cell ci-pass OK "act: no triggerable workflow\$QA_ACT_NOTE — native suite PASS"
       else
-        cell ci-pass OK "native suite PASS (see ci-act for the act leg)"
+        cell ci-pass FAIL "act rc=\$ci_rc: \$(act_failure_context \$LOGD/ci.log)\$ACTCTXOK — act CI simulation FAILED (native suite PASS is detail only)"
         cell ci-act UNVERIFIED "act failed rc=\$ci_rc: \$(act_failure_context \$LOGD/ci.log)\$ACTCTXOK — a failed act leg is never graded OK; hosted CI is authoritative for the workflow verdict"
       fi
     fi
