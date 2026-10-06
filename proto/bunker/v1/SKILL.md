@@ -3,7 +3,7 @@
 ## Public API
 
 - `bunker.proto` — the source of truth for the Bunker API. Defines two services:
-  - `Bunkerd` — server daemon API (`ServerInfo`, `ServerMetrics`, `SpawnAgent`, `DestroyAgent`, `ListAgents`, `GetAgent`, `AgentMetrics`, `ExecAgent`, `HeartbeatAgent`).
+  - `Bunkerd` — server daemon API (`ServerInfo`, `ServerMetrics`, `SpawnAgent`, `DestroyAgent`, `ListAgents`, `GetAgent`, `AgentMetrics`, `ExecAgent`, `AttachAgent`, `HeartbeatAgent`).
   - `Agent` — scoped sub-key API (`GetInfo`, `Metrics`, `Heartbeat`).
 - Generated Go types (`bunker.pb.go`) and connect-go handler/client code (`bunkerv1connect/bunker.connect.go`).
 - Key messages: `ResourceLimits`, `NetworkConfig`, `AgentSummary`, `SpawnAgentRequest`, `SpawnAgentResponse`, `DestroyAgentRequest`, `DestroyAgentResponse`, `ListAgentsRequest`, `ListAgentsResponse`, `GetAgentRequest`, `GetAgentResponse`, `AgentMetricsRequest`, `AgentMetricsResponse`, `HeartbeatAgentRequest`, `HeartbeatAgentResponse`, `ExecAgentRequest`, `ExecAgentResponse`, `ServerInfoRequest`, `ServerInfoResponse`, `ServerMetricsRequest`, `ServerMetricsResponse`, `GetInfoRequest`, `GetInfoResponse`.
@@ -16,6 +16,7 @@
 - `NetworkConfig.Mode` is a proto enum: `MODE_UNSPECIFIED`, `MODE_CLOUDFLARE_TUNNEL`, `MODE_TAILSCALE`, `MODE_DIRECT`.
 - `SpawnAgentResponse` includes generated connection strings (`docker_host_ssh`, `docker_host_tunnel`, `sshfs_mount`) and the agent-scoped `api_key` when JWT auth is enabled.
 - `ExecAgentResponse` uses a `oneof output { stdout, stderr }` so the server streams mixed output; `exit_code` is only meaningful in the final message.
+- `AttachAgent` (GAP-072) is the only BIDIRECTIONAL RPC: `AttachAgentRequest` carries a `oneof payload { start, stdin, resize, stdin_eof }` (the first frame MUST be `start`) and `AttachAgentResponse` a `oneof payload { stdout, stderr, exit }` with exactly one final `exit`. Because connect serves bidirectional streams over HTTP/2 only, a daemon reached over HTTP/1.1 answers 505 — cleartext daemons need `server.h2c_enabled: true` (or TLS/ALPN h2).
 - `AgentSummary` carries both limits and runtime connection metadata (`public_url`, `tailnet_ip`, `port_range_start`, `port_range_end`).
 
 ## Dependencies

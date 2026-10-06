@@ -40,6 +40,14 @@ service Bunkerd {
   // Agent actions
   rpc AgentMetrics(AgentMetricsRequest) returns (AgentMetricsResponse);
   rpc ExecAgent(ExecAgentRequest) returns (stream ExecAgentResponse);
+  // GAP-072: AttachAgent is ExecAgent's interactive counterpart. One
+  // bidirectional stream carries the whole session: the client sends exactly
+  // one AttachStart frame, then stdin bytes and terminal-resize messages as
+  // the operator types; the server streams stdout/stderr frames and one final
+  // AttachExit frame. The command runs in the SAME agent session as exec --
+  // same user, PAM namespace, cgroup and resource limits -- so an attach is an
+  // operator surface, never a bypass. `bunker attach <id>` drives it.
+  rpc AttachAgent(stream AttachAgentRequest) returns (stream AttachAgentResponse);
   rpc RunAgent(RunAgentRequest) returns (RunAgentResponse);
   rpc HeartbeatAgent(HeartbeatAgentRequest) returns (HeartbeatAgentResponse);
 
@@ -547,6 +555,80 @@ message ExecAgentResponse {
   // Set on the FINAL frame when any output was truncated: names the cap in
   // bytes and the remedy. Never set when nothing was dropped.
   string truncation_notice = 4;
+}
+
+// ---- GAP-072: interactive attach -------------------------------------------
+//
+// AttachAgentRequest is one client-to-server frame of an interactive attach.
+// The FIRST frame on the stream MUST be `start`; every later frame is either
+// stdin data or a terminal window-change. There is deliberately no frame
+// carrying raw screen state: the client never sends anything but the bytes and
+// the size the operator produced, so nothing an operator types can be
+// reconstructed from anything the CLI sends.
+message AttachAgentRequest {
+  oneof payload {
+    AttachStart start = 1;
+    bytes stdin = 2;
+    AttachResize resize = 3;
+    // stdin_eof half-closes the session's stdin: the child sees EOF on its
+    // stdin while its output keeps streaming. A piped, non-tty attach sends it
+    // when the local stdin ends; with a tty the terminal's own EOF (Ctrl-D) is
+    // sent as stdin data and handled by the remote terminal driver instead.
+    bool stdin_eof = 4;
+  }
+}
+
+// AttachStart opens the session. Exactly one per stream, and it must be the
+// first frame.
+message AttachStart {
+  string agent_id = 1;
+  // Command to run inside the agent. Empty means the agent user's login shell
+  // -- the interactive REPL `bunker attach <id>` opens by default. With a
+  // command set the session runs that process instead (one-shot attach).
+  string command = 2;
+  repeated string args = 3;
+  // Allocate a pseudo-terminal for the session. tty=true makes the remote
+  // command see a PTY (vi/less/stty/resize work) and merges stderr into
+  // stdout, exactly as a terminal does; tty=false streams the two pipes
+  // separately with no PTY, which is what a piped/non-interactive attach gets.
+  bool tty = 4;
+  // Initial terminal size. Ignored when tty=false; 0 means the server default
+  // (80x24).
+  uint32 cols = 5;
+  uint32 rows = 6;
+  // Idle budget in seconds: the session is closed once neither a client frame
+  // nor any child output has been seen for this long, so an abandoned attach
+  // cannot leak a session. 0 means the server default (attachIdleTimeout).
+  uint32 idle_timeout_seconds = 7;
+}
+
+// AttachResize is a terminal window-change, forwarded to the session's PTY.
+// Only meaningful when the session was started with tty=true; a resize on a
+// non-tty session is ignored (there is no terminal to resize).
+message AttachResize {
+  uint32 cols = 1;
+  uint32 rows = 2;
+}
+
+// AttachAgentResponse is one server-to-client frame of an attach.
+message AttachAgentResponse {
+  oneof payload {
+    bytes stdout = 1;
+    bytes stderr = 2;
+    AttachExit exit = 3;
+  }
+}
+
+// AttachExit is the FINAL frame of a completed or aborted attach. It is sent
+// exactly once; the stream then closes.
+message AttachExit {
+  // The command's exit status. 124 when the session was closed on the idle
+  // bound, -1 when it was closed because the client went away.
+  int32 exit_code = 1;
+  // Why the session ended: "exited" (the command finished on its own),
+  // "idle_timeout" (the idle bound above closed it) or "client_gone" (the
+  // client's stream was cancelled before the command finished).
+  string reason = 2;
 }
 
 message RunAgentRequest {

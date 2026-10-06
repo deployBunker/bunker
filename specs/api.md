@@ -8,6 +8,11 @@ Last Updated: 2026-09-12
 
 Bunker uses Protocol Buffers with connect-go, providing both gRPC and REST (JSON+Protobuf codecs) on a single port.
 
+Bidirectional streaming RPCs (AttachAgent) require HTTP/2, which connect serves
+only over TLS (ALPN `h2`) or over cleartext prior-knowledge h2c
+(`server.h2c_enabled: true`). Unary and server-streaming RPCs work over
+HTTP/1.1 as well.
+
 - gRPC: `:9090` (h2c or TLS)
 - REST: `:8080` (HTTP/1.1 + HTTP/2) — the daemon's configured default (see config.example.yaml); the public demo instance (bunker-mvp, 78.46.173.180) exposes REST on `:18080` and gRPC on `:19090` — demo-instance ports, not defaults.
 
@@ -239,8 +244,8 @@ resets the TTL clock — an agent whose expiry was further out ends up at
 
 ### Stopped agents: the `agent_stopped` error
 
-ExecAgent, RunAgent and HeartbeatAgent against a **stopped** agent fail with
-`CodeFailedPrecondition` and a message containing the stable token
+ExecAgent, AttachAgent, RunAgent and HeartbeatAgent against a **stopped** agent
+fail with `CodeFailedPrecondition` and a message containing the stable token
 `agent_stopped`, e.g.:
 
 ```
@@ -338,6 +343,53 @@ Response (streamed):
 - `exit_code` (int32): Command exit code (only in final message)
 
 Implementation: SSH into agent via private key, run `DOCKER_HOST=unix:///run/bunker/<id>/docker.sock <command>`.
+
+### AttachAgent
+
+Attach an interactive terminal to an agent session (GAP-072). This is
+ExecAgent's bidirectional counterpart: one stream carries the whole session —
+the client sends its start frame, stdin bytes and terminal window-changes; the
+server streams stdout/stderr and finishes with one exit frame.
+
+```
+rpc AttachAgent(stream AttachAgentRequest) returns (stream AttachAgentResponse)
+```
+
+Request (streamed; the FIRST frame MUST be `start`):
+- `start` (AttachStart): `agent_id` (string), `command` (string; empty = the
+  agent user's login shell), `args` (repeated string), `tty` (bool; allocate a
+  pseudo-terminal — stderr is then merged into stdout, as a terminal does),
+  `cols`/`rows` (uint32; initial window size, 0 = 80x24),
+  `idle_timeout_seconds` (uint32; close the session after this much silence,
+  0 = the server default of 30 minutes, never more than 24h)
+- `stdin` (bytes): terminal input / piped stdin
+- `resize` (AttachResize): `cols`, `rows` for a window-change (ignored without
+  a PTY)
+- `stdin_eof` (bool): half-close the session's stdin; the child sees EOF while
+  its output keeps streaming (a PTY session sends Ctrl-D as data instead)
+
+Response (streamed):
+- `stdout` (bytes), `stderr` (bytes): output chunks
+- `exit` (AttachExit): the FINAL frame — `exit_code` (int32; 124 on the idle
+  bound, -1 when the client went away) and `reason` (string: `exited`,
+  `idle_timeout` or `client_gone`)
+
+Transport: **HTTP/2 is required.** connect serves bidirectional streams over
+HTTP/2 only and answers a bidi request that arrives over HTTP/1.x with
+`505 HTTP Version Not Supported`. Reach a daemon over TLS (ALPN negotiates
+`h2`), or set `server.h2c_enabled: true` and dial cleartext with h2c
+(prior-knowledge HTTP/2). `bunker attach` does the latter automatically for
+`http://` servers and reports the requirement instead of a bare protocol error.
+
+Session semantics: the command runs in the SAME agent session an exec uses —
+same Linux user, PAM namespace (private `/tmp`), cgroup and resource limits —
+so an attach is an operator surface, never a bypass. An attach against a
+**stopped** agent fails exactly like exec (see below).
+
+Audit: each session appends two records to the same hash-chained audit log as
+every other record, on the `AttachAgent` procedure's sub-kinds (`attach-open`
+and `attach-close`), carrying the redacted command, the tty posture, the close
+reason, the exit code and the duration. Terminal input is never recorded.
 
 ### RunAgent
 
@@ -628,6 +680,7 @@ read-style HTTP endpoints.
 | GetAgent | POST | /bunker.v1.Bunkerd/GetAgent |
 | AgentMetrics | POST | /bunker.v1.Bunkerd/AgentMetrics |
 | ExecAgent | POST | /bunker.v1.Bunkerd/ExecAgent |
+| AttachAgent | POST | /bunker.v1.Bunkerd/AttachAgent |
 | RunAgent | POST | /bunker.v1.Bunkerd/RunAgent |
 | HeartbeatAgent | POST | /bunker.v1.Bunkerd/HeartbeatAgent |
 | QueryAudit | POST | /bunker.v1.Bunkerd/QueryAudit |

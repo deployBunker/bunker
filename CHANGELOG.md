@@ -2,7 +2,31 @@
 
 ## Unreleased
 
-Nothing yet. Changes since the `v0.2.0` release tag land here.
+### Added
+
+- **Interactive attach (GAP-072): `bunker attach <id>`.** The agent surface
+  gains a bidirectional `AttachAgent` RPC and a CLI that attaches your terminal
+  to a session the way `docker attach`/`ssh` does: a live PTY (vi/less/htop,
+  `stty size`, window resizes), stdin in both directions, `--command` for a
+  one-shot session, and `--no-tty` for a piped, non-interactive attach. The
+  session is the SAME one an exec gets — the agent user, the PAM namespace
+  (private `/tmp`), the cgroup and the resource limits — so attach is an
+  operator surface, never a bypass.
+  - **Audit:** one `attach open` and one `attach close` record per session in
+    the same hash chain as every other record (`bunker audit query
+    --agent-id <id>`), carrying the redacted command, the tty posture, the
+    close reason, the exit code and the duration — and never a keystroke.
+  - **No leaked sessions:** a session with no input and no output is closed on
+    an idle bound (30m default, `--idle-timeout` to lower it), and teardown
+    signals the session's whole process group, so no child outlives the
+    handler; a client that vanishes mid-session kills the session too.
+  - **Transport:** `AttachAgent` is bidirectional, which connect serves over
+    HTTP/2 only — TLS (ALPN h2) or `server.h2c_enabled: true` on a cleartext
+    daemon. The CLI speaks h2c prior-knowledge for `http://` servers and
+    refuses a daemon that cannot carry the session with an actionable message
+    instead of a bare protocol error.
+  - **Agent lifecycle:** attaching to a stopped agent fails with
+    `CodeFailedPrecondition` + the `agent_stopped` token, exactly like exec.
 
 ## 0.2.0 (2026-10-01)
 

@@ -1392,6 +1392,13 @@ if [ -n "$BUNKERD_COEXIST" ]; then
 server:
   grpc_addr: "$BUNKERD_GRPC_ADDR"
   rest_addr: "$BUNKERD_REST_ADDR"
+  # GAP-072: AttachAgent is a BIDIRECTIONAL RPC, and connect serves
+  # bidirectional streams over HTTP/2 only (an HTTP/1.x bidi request is
+  # answered `505 HTTP Version Not Supported`). This cleartext battery daemon
+  # therefore opts into h2c (cleartext PRIOR-KNOWLEDGE HTTP/2) so section 16
+  # can exercise an attach end to end. HTTP/1.1 stays enabled — ServeProtocols
+  # sets HTTP1 + HTTP2 + UnencryptedHTTP2 — so no other cell changes protocol.
+  h2c_enabled: true
 auth:
   enabled: false
 # INT-CI-028: the battery ports are WILDCARD binds (:29091/:28081 — an empty
@@ -3176,6 +3183,88 @@ if [ -d "$GAP075_ADIR" ]; then
     note "scratch dir $GAP075_ADIR survived destroy (unmounted later by the daemon or left for inspection)"
 else
     assert "destroy removed the agent's bounded scratch directory"
+fi
+echo ""
+
+# ── 16. Interactive attach (GAP-072) ───────────────────────────────────────
+# AttachAgent is the daemon's bidirectional session RPC (stdin + stdout/stderr
+# + terminal resize over one stream); these cells drive the REAL CLI against
+# the REAL daemon. Only a live leg can prove these: a pseudo-terminal reaches
+# the remote side, stdin/stdout flow both ways through the daemon's SSH
+# transport, a stopped agent is refused, and the session is audit-recorded.
+# The daemon must serve HTTP/2 for this RPC (h2c here — see the generated
+# config); an HTTP/1.1-only daemon cannot carry a bidirectional stream at all.
+ATTACH_AGENT="e2e-main"
+echo ""
+echo "--- Section 16: interactive attach (GAP-072) ---"
+
+# 16.1 a PTY session. `script` gives the CLI a terminal, so it requests
+# tty=true, the daemon allocates a PTY, and the remote `stty size` prints the
+# negotiated geometry. A session without a terminal would print "0 0" or fail
+# outright, so any two non-zero integers is the proof. The raw binary is used
+# inside `script` because `bcli` is a function of THIS shell (a subshell run by
+# `script` cannot see it); the state-dir env is applied explicitly.
+if ! command -v script > /dev/null 2>&1; then
+    note "section 16 (attach): 'script' is unavailable, so the PTY cell was skipped"
+else
+    ATTACH_INNER="HOME=$BATTERY_CLI_HOME BUNKER_HOME=$BATTERY_CLI_HOME $BUNKER attach --server $BATTERY_TARGET_NAME $ATTACH_AGENT --command 'stty size'"
+    ATTACH_TTY_OUT="$(script -qec "$ATTACH_INNER" /dev/null 2>&1 || true)"
+    ATTACH_TTY_SIZE="$(printf '%s\n' "$ATTACH_TTY_OUT" | grep -E '^[0-9]+ [0-9]+$' | grep -v '^0 0$' | head -1)"
+    if [ -n "$ATTACH_TTY_SIZE" ]; then
+        assert "attach allocated a remote PTY (stty size: $ATTACH_TTY_SIZE)"
+    elif printf '%s' "$ATTACH_TTY_OUT" | grep -qi 'h2c\|HTTP/2'; then
+        fail "attach needs HTTP/2 and this daemon did not carry the bidirectional stream: $(printf '%s' "$ATTACH_TTY_OUT" | head -1)"
+    else
+        fail "attach did not allocate a remote PTY (output: $(printf '%s' "$ATTACH_TTY_OUT" | head -3 | tr '\n' ' '))"
+    fi
+fi
+
+# 16.2 piped stdin -> session -> stdout, with no terminal on this side.
+ATTACH_PIPE_OUT="$(printf 'ATTACH-PIPE-OK\n' | bcli attach --server "$BATTERY_TARGET_NAME" "$ATTACH_AGENT" --no-tty --command 'cat' 2>&1 || true)"
+if printf '%s' "$ATTACH_PIPE_OUT" | grep -q 'ATTACH-PIPE-OK'; then
+    assert "attach streams stdin into the session and its output back (piped, --no-tty)"
+else
+    fail "attach piped round trip produced: $(printf '%s' "$ATTACH_PIPE_OUT" | head -3 | tr '\n' ' ')"
+fi
+
+# 16.3 the session's exit status reaches the caller's shell (ssh-style).
+run_capture "attach one-shot exit status" bcli attach --server "$BATTERY_TARGET_NAME" "$ATTACH_AGENT" --no-tty --command 'exit 7' < /dev/null
+if [ "$RUN_CAPTURE_EXIT" -eq 7 ]; then
+    assert "attach propagates the session's exit status (7)"
+else
+    fail "attach exit status = $RUN_CAPTURE_EXIT, want 7 (output: $(printf '%s' "$RUN_CAPTURE_OUT" | head -2 | tr '\n' ' '))"
+fi
+
+# 16.4 an idle session is closed instead of leaking: --idle-timeout 2 against a
+# 120s sleep must return promptly as a timeout (exit 124), not hang.
+ATTACH_IDLE_START="$SECONDS"
+run_capture "attach idle timeout" bcli attach --server "$BATTERY_TARGET_NAME" "$ATTACH_AGENT" --no-tty --idle-timeout 2 --command 'sleep 120' < /dev/null
+ATTACH_IDLE_ELAPSED=$((SECONDS - ATTACH_IDLE_START))
+if [ "$RUN_CAPTURE_EXIT" -eq 124 ] && [ "$ATTACH_IDLE_ELAPSED" -lt 60 ]; then
+    assert "attach closed an idle session after ${ATTACH_IDLE_ELAPSED}s (exit 124)"
+else
+    fail "attach idle close: exit=$RUN_CAPTURE_EXIT elapsed=${ATTACH_IDLE_ELAPSED}s (want exit 124 within 60s; output: $(printf '%s' "$RUN_CAPTURE_OUT" | head -2 | tr '\n' ' '))"
+fi
+
+# 16.5 a STOPPED agent is refused with the agent_stopped token (not not_found).
+# The battery's own agent is stopped for the cell and restarted immediately
+# after — every later cell (and the teardown) sees it running again.
+bcli stop --server "$BATTERY_TARGET_NAME" "$ATTACH_AGENT" > /dev/null 2>&1 || note "section 16: could not stop $ATTACH_AGENT for the stopped-agent cell"
+run_capture "attach to a stopped agent" bcli attach --server "$BATTERY_TARGET_NAME" "$ATTACH_AGENT" --no-tty --command 'true' < /dev/null
+bcli start --server "$BATTERY_TARGET_NAME" "$ATTACH_AGENT" > /dev/null 2>&1 || note "section 16: could not restart $ATTACH_AGENT after the stopped-agent cell"
+if printf '%s' "$RUN_CAPTURE_OUT" | grep -q 'agent_stopped'; then
+    assert "attach to a stopped agent fails with the agent_stopped token"
+else
+    fail "attach to a stopped agent did not report agent_stopped: $(printf '%s' "$RUN_CAPTURE_OUT" | head -2 | tr '\n' ' ')"
+fi
+
+# 16.6 the session is audit-recorded: an attach-open and an attach-close record
+# for the agent, in the daemon's trail.
+ATTACH_AUDIT="$(bcli audit list --server "$BATTERY_TARGET_NAME" --agent "$ATTACH_AGENT" --method AttachAgent 2>&1 || true)"
+if printf '%s' "$ATTACH_AUDIT" | grep -q 'attach open' && printf '%s' "$ATTACH_AUDIT" | grep -q 'attach close'; then
+    assert "attach sessions are audit-recorded (attach open + attach close)"
+else
+    fail "attach audit records missing: $(printf '%s' "$ATTACH_AUDIT" | head -3 | tr '\n' ' ')"
 fi
 echo ""
 

@@ -763,6 +763,49 @@ bunker start abc12345 --server bunker-host
 bunker restart abc12345 --server bunker-host
 ```
 
+#### Attach an interactive session
+
+`bunker exec` streams a command's output but has no stdin; `bunker attach`
+gives you the terminal itself — `docker attach`/`ssh`-style — through the
+daemon's own SSH transport. This command requires a build from HEAD.
+
+```bash
+# An interactive login shell in the agent (Ctrl-D or `exit` ends it)
+bunker attach abc12345 --server bunker-host
+
+# A one-shot session running a specific command
+bunker attach abc12345 --server bunker-host --command 'cd /srv && bash'
+bunker attach abc12345 --server bunker-host -- htop
+
+# No terminal on this side (piped stdin, scripts): --no-tty keeps stderr separate
+echo 'uname -a' | bunker attach abc12345 --server bunker-host --no-tty
+```
+
+What the session is, and is not:
+
+- **The same session an exec gets.** The command runs as `bunker-<id>`, inside
+  the agent's PAM namespace (so the same private `/tmp`), cgroup and resource
+  limits. Attach is an operator surface, not a way around them.
+- **A real terminal.** With a terminal on stdin the CLI puts it in raw mode and
+  forwards window resizes, and the daemon allocates a PTY for the session, so
+  `vi`, `less`, `htop` and `stty size` behave. A piped stdin gets the plain
+  stream instead (no PTY, stderr separate).
+- **Audit-recorded without keystrokes.** One `attach open` record is written
+  when the session starts and one `attach close` when it ends (with the close
+  reason, exit code and duration); the trail never carries what you typed.
+  `bunker audit query --agent-id abc12345` shows them.
+- **Idle-bounded.** A session with no input and no output for 30 minutes is
+  closed by the daemon (`--idle-timeout` sets a shorter bound), so an abandoned
+  client cannot leak a session.
+- **HTTP/2 on the wire.** `AttachAgent` is a bidirectional stream and connect
+  serves those over HTTP/2 only, so the daemon must speak it: either TLS (ALPN
+  negotiates h2) or `server.h2c_enabled: true` for a cleartext daemon. Against
+  a cleartext daemon without h2c the CLI refuses with that instruction instead
+  of a bare protocol error.
+- **Image-backed agents:** a command-less attach opens the agent's host login
+  shell — an exec container is created per command and is not a session you can
+  attach to — so pass `--command` to run something inside the image.
+
 > **`bunker heartbeat` extends the TTL, it never shortens it — and there is no
 > duration flag.** The heartbeat request carries only the agent ID, so the
 > daemon always applies its own default TTL (6h unless the daemon config sets
@@ -1037,13 +1080,16 @@ bunker version     Print version/commit/build metadata (also --version)
 ```
 
 Commands released after v0.2.0 are listed under the *Unreleased* section in the
-[CHANGELOG](CHANGELOG.md) and need a build from this checkout (see the
+[CHANGELOG](CHANGELOG.md); each one requires a build from HEAD (see the
 freshness note under Install):
 
 ```
 bunker stop        Pause an agent without destroying it (start/restart resume it)
 bunker start       Resume a stopped agent
 bunker restart     Stop + start in one call and reset the heartbeat TTL
+bunker attach      Attach an interactive terminal to an agent session (stdin,
+                   resize, raw mode; --command for a one-shot session — see
+                   "Attach an interactive session" below)
 bunker renew       Renew an agent under its STABLE identity (destroy + re-spawn the
                    same id; refuses without --agent-id — see docs/renewal.md)
 bunker homes       Inspect orphaned agent home directories (prune removes the stale ones)

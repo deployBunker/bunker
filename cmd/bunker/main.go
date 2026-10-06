@@ -153,6 +153,9 @@ Client-side path overrides (persistent flags):
 	root.AddCommand(cli.NewEnvCommand())
 	root.AddCommand(cli.NewMetricsCommand())
 	root.AddCommand(cli.NewExecCommand())
+	// GAP-072: the interactive counterpart of exec - a bidirectional
+	// stdin/stdout/stderr attach into the agent's own session/cgroup.
+	root.AddCommand(cli.NewAttachCommand())
 	root.AddCommand(cli.NewRunCommand())
 	root.AddCommand(cli.NewInfoCommand())
 	// The agent-side dependency probe: the remote editing verbs execute in the
