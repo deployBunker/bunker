@@ -155,7 +155,7 @@ guards:
 #   max_file_bytes                                         -> evaluator_cfg.get("max_file_bytes", 131072)
 evaluator:
   model: deepseek-v4-flash
-  max_iterations: 250 # tick 538 PERF-013: 200 starved once (654bcbf3, 200.9 used) -> one rung.
+  max_iterations: 320 # tick 566: 250 starved on QA-BUNKER-53 (250.5 used, verdict ee5cb740, tier1 PASS — a cap, not merits); single starved run licenses ONE raise.
   max_time: "120m"  # tick 565: 90m starved on QA-BUNKER-44 (time cap 1h30m exceeded); tick 500: 45m starved twice on DF-BUNKER-31 (defaults block); tick 544: 60m starved on INT-CI-042 under sibling-session contention
   max_input_tokens: "16M"
   max_output_tokens: "384k"
