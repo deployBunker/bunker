@@ -145,6 +145,16 @@ var archiveExecContextFn = func(requestCtx context.Context, homeBytes int64) (co
 	return context.WithTimeout(context.WithoutCancel(requestCtx), config.ArchiveBudgetForHomeSize(homeBytes))
 }
 
+// userdelRunner runs ONE `userdel -rf <username>`. Package-level seam
+// (QA-BUNKER-61) mirroring archiveExecContextFn: tests inject a stub so the
+// transient-failure retry path is provable without root or a real host user;
+// production code never swaps it. Call semantics are unchanged from the
+// inline exec it replaced.
+var userdelRunner = func(ctx context.Context, username string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, userManagementCommand("userdel"), "-rf", username)
+	return cmd.CombinedOutput()
+}
+
 // DestroyOption customizes ONE destroy invocation. Options are variadic so
 // every existing caller (the TTL reaper, reconciliation, the lifecycle paths
 // and their tests) keeps its exact call shape.
@@ -836,8 +846,9 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool, 
 		return &v1.DestroyAgentResponse{AgentId: agentID, Status: StatusUserdelFailed},
 			fmt.Errorf("destroy of %s failed: userdel not attempted (destroy rollback budget unavailable)", agentID)
 	}
-	cmd := exec.CommandContext(uctx, userManagementCommand("userdel"), "-rf", username)
-	if out, err := cmd.CombinedOutput(); err != nil {
+	out, uerr := userdelRunner(uctx, username)
+	userdelRecovered := false
+	if uerr != nil {
 		ucancel()
 		// DF-BUNKER-34: a userdel failure that is NOT "the user is already
 		// gone" means the host is in exactly the partial state this row
@@ -857,29 +868,61 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool, 
 				// surviving-process evidence is logged at Error, never
 				// swallowed.
 				m.logger.Error("userdel failed in force mode; agent state is partially removed",
-					"username", username, "error", err, "output", string(out), "evidence", evidence)
+					"username", username, "error", uerr, "output", string(out), "evidence", evidence)
 			} else {
 				m.logger.Error("userdel failed; destroy aborted with evidence",
-					"username", username, "error", err, "output", string(out), "evidence", evidence)
-				// Free the port range first — the in-memory allocator leaks
-				// permanently if a destroy path returns without releasing it.
-				// The TTL reaper hit this on bunker-las-03: userdel failed
-				// against a still-running rootless dockerd, the tracker slot
-				// was freed, and the range stayed allocated until the whole
-				// pool was exhausted. Free is unconditional and idempotent —
-				// it no-ops for IDs with no allocated range.
-				if m.portAlloc != nil {
-					m.portAlloc.Free(agentID)
-					m.logger.Info("freed port range", "agent_id", agentID)
+					"username", username, "error", uerr, "output", string(out), "evidence", evidence)
+				// QA-BUNKER-61: ONE transient userdel failure (busy home, a
+				// straggler the teardown's grace missed, EBUSY) used to go
+				// straight to the leak path below — agent unregistered + port
+				// freed, user + home leaked with NO registry record,
+				// invisible to `bunker list`, never reaped (the 4fd101f3
+				// incident). Bounded recovery first: reap the uid's
+				// stragglers and retry userdel EXACTLY ONCE on a fresh
+				// budget step.
+				if rerr := m.retryUserdelOnceAfterReap(rb, agentID, username, out, uerr); rerr == nil {
+					// The retry removed the user: flow into the NORMAL
+					// success path (Step 4 cleanup, tracker teardown,
+					// "destroyed") — not an error return.
+					m.logger.Info("userdel retry succeeded; continuing destroy on the normal success path",
+						"agent_id", agentID, "username", username)
+					userdelRecovered = true
+				} else {
+					m.logger.Error("userdel retry failed; destroy aborted with evidence",
+						"username", username, "retry_error", rerr, "evidence", evidence)
+					// The residue must be VISIBLE before the teardown folds
+					// the records away: the refusal goes on the durable
+					// registry record (which still exists here — the destroy
+					// append below is what deletes the folded view; the
+					// refusal EVENT survives in the journal for replay) and
+					// on the tracker status (which still exists here — the
+					// Unregister below removes it), so the reaper backs off
+					// and `bunker list` shows the leak instead of nothing.
+					if m.recordDestroyRefusalFn != nil {
+						m.recordDestroyRefusalFn(agentID, StatusUserdelFailed,
+							fmt.Errorf("destroy of %s failed: userdel error: %v (output: %s). %s",
+								agentID, uerr, strings.TrimSpace(string(out)), evidence))
+					}
+					// Free the port range first — the in-memory allocator leaks
+					// permanently if a destroy path returns without releasing it.
+					// The TTL reaper hit this on bunker-las-03: userdel failed
+					// against a still-running rootless dockerd, the tracker slot
+					// was freed, and the range stayed allocated until the whole
+					// pool was exhausted. Free is unconditional and idempotent —
+					// it no-ops for IDs with no allocated range.
+					if m.portAlloc != nil {
+						m.portAlloc.Free(agentID)
+						m.logger.Info("freed port range", "agent_id", agentID)
+					}
+					m.tracker.Unregister(agentID)
+					if perr := m.persistDestroy(agentID); perr != nil {
+						m.logger.Warn("registry destroy append failed", "agent_id", agentID, "error", perr)
+					}
+					m.removeAgentSSHKeyBestEffort(agentID, m.logger)
+					return &v1.DestroyAgentResponse{AgentId: agentID, Status: StatusUserdelFailed},
+						fmt.Errorf("destroy of %s failed: userdel error: %v (output: %s). %s",
+							agentID, uerr, strings.TrimSpace(string(out)), evidence)
 				}
-				m.tracker.Unregister(agentID)
-				if perr := m.persistDestroy(agentID); perr != nil {
-					m.logger.Warn("registry destroy append failed", "agent_id", agentID, "error", perr)
-				}
-				m.removeAgentSSHKeyBestEffort(agentID, m.logger)
-				return &v1.DestroyAgentResponse{AgentId: agentID, Status: StatusUserdelFailed},
-					fmt.Errorf("destroy of %s failed: userdel error: %v (output: %s). %s",
-						agentID, err, strings.TrimSpace(string(out)), evidence)
 			}
 		} else if !force {
 			// The historical "user already gone" path (idempotent destroy or
@@ -920,7 +963,12 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool, 
 			// Raw userdel output stays in the server log for diagnostics;
 			// the user-facing error must stay clean so the CLI can present
 			// a tidy "agent not found" without leaking command output.
-			m.logger.Warn("userdel failed, treating agent as not found", "username", username, "error", err, "output", string(out))
+			// QA-BUNKER-61: the surviving-state evidence rides the same line
+			// — a leak in this class ("user record REMOVED ... home still
+			// exists") is diagnosable from the journal alone.
+			m.logger.Warn("userdel failed, treating agent as not found",
+				"username", username, "error", uerr, "output", string(out),
+				"evidence", m.destroyFailureEvidence(username))
 			// DF-BUNKER-24: a never-seen ID with a persisted key means the
 			// registry is unavailable (or compacted) while the host state is
 			// already gone — the reported not_found must still not leave a
@@ -931,10 +979,15 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool, 
 				fmt.Errorf("agent %q not found", agentID)
 		} else {
 			// Force mode, user-absent class: historical behavior.
-			m.logger.Warn("userdel failed in force mode (user absent)", "username", username, "error", err, "output", string(out))
+			m.logger.Warn("userdel failed in force mode (user absent)", "username", username, "error", uerr, "output", string(out))
 		}
 	}
-	ucancel() // userdel's step context: released on the success path too
+	if !userdelRecovered {
+		// The first userdel attempt's step context is released on the
+		// success path too. The retry-success path skips this: its fresh
+		// step context is cancelled inside the retry helper.
+		ucancel()
+	}
 
 	// Step 4: Clean up /run/bunker/<id>/ directory
 	runDir := fmt.Sprintf("/run/bunker/%s", agentID)
@@ -1272,6 +1325,64 @@ func (m *AgentManager) destroyFailureEvidence(username string) string {
 		parts = append(parts, "home directory "+home+" is gone")
 	}
 	return "surviving state: " + strings.Join(parts, "; ")
+}
+
+// retryUserdelOnceAfterReap is the bounded recovery QA-BUNKER-61 adds to the
+// destroy path (non-force, non-absent-output userdel failure only): reap the
+// uid's stragglers with the bounded SIGTERM → SIGKILL escalation, then retry
+// userdel EXACTLY ONCE on a fresh rollback-budget step. The budgets prevent
+// "context canceled" userdel on today's code (BNK-DF-001), but the transient
+// failure class — a busy home, a straggler process, EBUSY — went straight
+// from ONE attempt to the leak path (agent unregistered, user + home left
+// with no registry record). Bounded: at most one TERM/KILL pass and one
+// extra userdel attempt per destroy; any second failure (or an unresolvable
+// uid, or a re-scan that cannot prove the uid clear) returns the retry error
+// and the caller keeps its hard-error behavior.
+func (m *AgentManager) retryUserdelOnceAfterReap(rb *rollbackBudget, agentID, username string, firstOut []byte, firstErr error) error {
+	// The stale-marker trap, the fail-closed way: "user is currently used by
+	// process" in the FIRST attempt's output is NOT proof of live stragglers
+	// (the field case — a stale report while the processes had already
+	// exited) and its absence is not proof of none. The reap decision comes
+	// from a FRESH uid scan, not from parsing attempt #1's output.
+	uid, ok := resolveUsernameUID(username)
+	if !ok {
+		// Unresolvable uid (or the user record is already gone): the reap
+		// is skipped, the retry runs anyway — userdel is idempotent on an
+		// already-removed user and succeeds through the retry.
+		m.logger.Warn("userdel failed once; uid unresolvable, retrying userdel without a reap",
+			"agent_id", agentID, "username", username,
+			"first_error", firstErr, "first_output", strings.TrimSpace(string(firstOut)))
+	}
+	if ok {
+		procs, serr := listUserProcesses(uid)
+		switch {
+		case serr != nil:
+			// "Cannot look" must never read as "nothing there": no reap
+			// without a scan that can prove the uid clear.
+			m.logger.Warn("userdel failed once; uid process re-scan failed, retrying WITHOUT a reap",
+				"agent_id", agentID, "username", username, "uid", uid, "scan_error", serr)
+		case len(procs) > 0:
+			// A stale-marker failure without live processes skips the kill
+			// pass entirely — one bounded pass only when processes remain.
+			m.logger.Warn("userdel failed once; reaped stragglers and retrying on fresh budget step",
+				"agent_id", agentID, "username", username, "uid", uid, "processes", len(procs))
+			m.killUserProcessesForDestroyRetry(context.Background(), username, uid, procs)
+		default:
+			m.logger.Warn("userdel failed once; re-scan shows no uid processes, retrying without a kill pass",
+				"agent_id", agentID, "username", username, "uid", uid)
+		}
+	}
+	// The retry draws its own fresh step: detached from the request
+	// cancellation (WithoutCancel) and never already-expired (the reserved
+	// rollbackStepFloor) — the exact property the incident's first CLI
+	// attempt violated on the request context.
+	rctx, rcancel, _ := rb.step()
+	if rctx == nil || rcancel == nil {
+		return fmt.Errorf("userdel retry not attempted (destroy rollback budget unavailable)")
+	}
+	defer rcancel()
+	_, err := userdelRunner(rctx, username)
+	return err
 }
 
 // waitAgentProcessesExit polls until the agent user owns no rootlesskit or

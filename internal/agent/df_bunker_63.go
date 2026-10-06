@@ -119,18 +119,25 @@ func (m *AgentManager) checkSpawnUIDCollision(ctx context.Context, username stri
 	return err
 }
 
-// killUserProcessesForce terminates every process owned by uid with a BOUNDED
-// escalation: SIGTERM to all, wait up to forceKillGrace for exits, SIGKILL to
-// the survivors (DF-BUNKER-63 limb 2). The destroy's own process (and the
-// kernel's pid-wrap window around it) is excluded — the escalation must never
-// signal the destroy that is running it. The kill list is logged: every
-// signalled pid, with its command head, at Info, and the survivors after
-// SIGKILL at Warn. A liveness re-probe decides the escalation's outcome, not
-// the exit status of the kill commands.
+// reapUIDProcessesBounded terminates every process owned by uid with a
+// BOUNDED escalation: SIGTERM to all, wait up to forceKillGrace for exits,
+// SIGKILL to the survivors (DF-BUNKER-63 limb 2). The destroy's own process
+// (and the kernel's pid-wrap window around it) is excluded — the escalation
+// must never signal the destroy that is running it. The kill list is logged:
+// every signalled pid, with its command head, at Info, and the survivors
+// after SIGKILL at Warn. A liveness re-probe decides the escalation's
+// outcome, not the exit status of the kill commands. scope is the log
+// prefix identifying the caller ("destroy --force" for the operator hatch,
+// "destroy userdel retry" for the QA-BUNKER-61 straggler reap) — the journal
+// must never mislabel a non-forced teardown as a forced one. It reports
+// nothing itself — the caller decides how the final state is logged
+// (reportUIDKillVerdict).
 //
-// This is ONLY called with force=true from the destroy path — never from the
-// non-force gate, which keeps today's refusal semantics byte-identical.
-func (m *AgentManager) killUserProcessesForce(ctx context.Context, username string, uid uint32, procs []userProcess) {
+// Callers: the destroy --force hatch (killUserProcessesForce) and, since
+// QA-BUNKER-61, the bounded straggler reap before the single userdel retry
+// (killUserProcessesForDestroyRetry). The non-force destroy gate itself
+// still refuses without any kill pass — that semantics is unchanged.
+func (m *AgentManager) reapUIDProcessesBounded(ctx context.Context, scope, username string, uid uint32, procs []userProcess) {
 	self := os.Getpid()
 	excluded := func(pid int) bool {
 		d := pid - self
@@ -144,10 +151,10 @@ func (m *AgentManager) killUserProcessesForce(ctx context.Context, username stri
 			if excluded(p.PID) {
 				continue
 			}
-			m.logger.Info("destroy --force signalling uid process",
+			m.logger.Info(scope+" signalling uid process",
 				"username", username, "uid", uid, "pid", p.PID, "signal", sig, "cmd", p.Cmd)
 			if _, err := gateForceKillRunner(ctx, "kill", "-"+sig, strconv.Itoa(p.PID)); err != nil {
-				m.logger.Warn("destroy --force signal failed (process may have already exited)",
+				m.logger.Warn(scope+" signal failed (process may have already exited)",
 					"username", username, "pid", p.PID, "signal", sig, "error", err)
 			}
 		}
@@ -216,19 +223,24 @@ func (m *AgentManager) killUserProcessesForce(ctx context.Context, username stri
 	}
 
 verdict:
-	// The verdict is the evidence, never an assumption: report whatever the
-	// uid still owns after the full escalation. The gate's caller proceeds
-	// either way — force is the operator's explicit exit hatch — but the
-	// surviving processes are ON THE RECORD.
+	m.reportUIDKillVerdict(username, uid)
+}
+
+// reportUIDKillVerdict logs the escalation's outcome: whatever the uid still
+// owns after the full TERM→KILL pass, with the destroy's own pid window
+// excluded. Shared by the --force hatch (QA-BUNKER-61 rework) and the
+// userdel-retry reap wrapper so both report the same evidence vocabulary.
+func (m *AgentManager) reportUIDKillVerdict(username string, uid uint32) {
 	final, err := spawnProcessScanner(uid)
 	if err != nil {
 		m.logger.Warn("destroy --force final liveness probe failed; surviving state unobservable",
 			"username", username, "uid", uid, "error", err)
 		return
 	}
+	self := os.Getpid()
 	var stillAlive []userProcess
 	for _, p := range final {
-		if !excluded(p.PID) {
+		if d := p.PID - self; d > forceKillSelfExclusionSlack || d < -forceKillSelfExclusionSlack {
 			stillAlive = append(stillAlive, p)
 		}
 	}
@@ -242,12 +254,47 @@ verdict:
 		"username", username, "uid", uid)
 }
 
+// killUserProcessesForce terminates the uid's processes with the bounded
+// SIGTERM → SIGKILL escalation (DF-BUNKER-63 limb 2), logged under the
+// destroy --force scope.
+func (m *AgentManager) killUserProcessesForce(ctx context.Context, username string, uid uint32, procs []userProcess) {
+	m.reapUIDProcessesBounded(ctx, forceKillScope, username, uid, procs)
+	m.reportUIDKillVerdict(username, uid)
+}
+
+// killUserProcessesForDestroyRetry is the NON-force reap the userdel retry
+// runs (QA-BUNKER-61): the same bounded SIGTERM → SIGKILL escalation as the
+// --force hatch, logged under retry-specific wording so the journal
+// distinguishes an operator-forced teardown from a straggler reap before a
+// single retry. The final verdict goes through the shared reporter — the
+// surviving-process evidence is ON THE RECORD either way.
+func (m *AgentManager) killUserProcessesForDestroyRetry(ctx context.Context, username string, uid uint32, procs []userProcess) {
+	m.logger.Info("destroy userdel retry: reaping uid processes still holding the agent",
+		"username", username, "uid", uid, "processes", len(procs))
+	m.reapUIDProcessesBounded(ctx, retryReapScope, username, uid, procs)
+	m.reportUIDKillVerdict(username, uid)
+}
+
+// forceKillScope is the destroy --force escalation's log scope: every line
+// the TERM→KILL pass emits carries it so the journal always shows an
+// operator-forced teardown as forced (the guard string forceKillMarker is
+// built from it and pinned by tests).
+const forceKillScope = "destroy --force"
+
+// retryReapScope is the QA-BUNKER-61 straggler reap's log scope: the same
+// escalation before the single userdel retry, but distinguishable in the
+// journal from an operator-forced teardown.
+const retryReapScope = "destroy userdel retry"
+
 // isDestroyRefusalStatus reports whether a destroy-path response status is a
-// REFUSAL the reaper must back off from (DF-BUNKER-63 limb 3): the destroy
-// deleted nothing and a blind retry every minute would loop forever.
+// REFUSAL the reaper must back off from (DF-BUNKER-63): the destroy deleted
+// nothing and a blind retry every minute would loop forever. QA-BUNKER-61
+// adds StatusUserdelFailed: after the agent is unregistered a userdel
+// failure leaks the user + home, and the reaper must come back for them
+// instead of the agent silently vanishing from view.
 func isDestroyRefusalStatus(status string) bool {
 	switch status {
-	case StatusLiveProcesses, StatusHomeRetained:
+	case StatusLiveProcesses, StatusHomeRetained, StatusUserdelFailed:
 		return true
 	}
 	return false

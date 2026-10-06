@@ -534,8 +534,11 @@ func TestAppendRefusalUnknownAgentFails(t *testing.T) {
 	}
 }
 
-// TestIsDestroyRefusalStatus pins the refusal vocabulary: exactly the two
+// TestIsDestroyRefusalStatus pins the refusal vocabulary: exactly the
 // refuse-but-keep statuses back the reaper off; everything else does not.
+// QA-BUNKER-61 adds StatusUserdelFailed — a leaked user + home after the
+// agent is unregistered is exactly the state the reaper must come back for
+// instead of the agent silently vanishing from view.
 func TestIsDestroyRefusalStatus(t *testing.T) {
 	for _, tc := range []struct {
 		status string
@@ -543,9 +546,9 @@ func TestIsDestroyRefusalStatus(t *testing.T) {
 	}{
 		{StatusLiveProcesses, true},
 		{StatusHomeRetained, true},
+		{StatusUserdelFailed, true},
 		{"destroyed", false},
 		{"not_found", false},
-		{StatusUserdelFailed, false},
 		{"", false},
 	} {
 		if got := isDestroyRefusalStatus(tc.status); got != tc.want {
