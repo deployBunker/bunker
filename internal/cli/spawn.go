@@ -226,9 +226,26 @@ Examples:
 			// key write); print a progress line immediately so the user doesn't
 			// see a silent wait and Ctrl-C into a half-created agent.
 			fmt.Println("Creating agent...")
+			spawnStarted := time.Now()
 			resp, err := client.SpawnAgent(ctx, req)
 			if err != nil {
-				return fmt.Errorf("spawn agent: %w", err)
+				// QA-BUNKER-58: an ambiguous failure (deadline/unavailable/
+				// transport-class) may still end in a healthy agent — the
+				// daemon's spawn stages do NOT abort when the request ctx dies,
+				// and measured lag was 20-42s past the client failure. Refusal-
+				// class errors (invalid argument, unauthenticated, not found,
+				// failed precondition, permission denied) and any server-side
+				// rollback verdict fail exactly as before, without probing.
+				// classifySpawnRPCError / reconcileLostSpawn own the vocabulary.
+				if classifySpawnRPCError(err) == spawnErrAmbiguous {
+					rresp, rerr := reconcileLostSpawn(ctx, client, agentID, spawnStarted, err)
+					if rerr != nil {
+						return rerr
+					}
+					resp = rresp
+				} else {
+					return fmt.Errorf("spawn agent: %w", err)
+				}
 			}
 
 			// 5. Print connection bundle
