@@ -4143,3 +4143,13 @@ tasks:
   status: complete
   created_at: '2026-10-06T14:24:36.088934+00:00'
   completed_at: '2026-10-06T14:32:14.769724+00:00'
+- id: QA-BUNKER-58
+  title: "bunker spawn races its own client deadline \u2014 daemon finishes spawn\
+    \ after CLI returned failure; callers destroy healthy agents"
+  criteria:
+  - internal/cli/spawn.go runs a bounded ListAgents reconciliation probe on deadline/unavailable/transport-class
+    SpawnAgent errors and treats agent-appears as success; refusal-class errors fail
+    fast with zero probe calls; table-driven mock-client tests cover appears/never-appears/refusal-fast
+    paths; go build+vet+test pass
+  status: in_progress
+  created_at: '2026-10-06T15:12:37.395415+00:00'
