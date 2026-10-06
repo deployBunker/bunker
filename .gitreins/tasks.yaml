@@ -4198,3 +4198,13 @@ tasks:
   status: complete
   created_at: '2026-10-06T19:25:33.189511+00:00'
   completed_at: '2026-10-06T19:32:06.935236+00:00'
+- id: QA-BUNKER-69
+  title: 'Verify-and-close 10-04 regression kex-reset flake (run 37217377973): no
+    recurrence, fingerprint absent from all post-red regression logs'
+  criteria:
+  - grep -c kex_exchange_identification across every completed regression job log
+    in the 10-02..10-06 window returns 0; run-level census shows exactly one red (the
+    filed run) with all 5 later completed runs green; nested suite tally FAIL=0
+  status: complete
+  created_at: '2026-10-06T20:03:43.572641+00:00'
+  completed_at: '2026-10-06T20:06:01.727987+00:00'
