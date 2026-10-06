@@ -4100,3 +4100,21 @@ tasks:
     are removed from the tree
   status: in_progress
   created_at: '2026-10-05T04:25:32.645360+00:00'
+- id: QA-BUNKER-53
+  title: Fix load-sensitive webdav QA36 content-identity-fallback tests
+  criteria:
+  - go test ./internal/server/webdav/ -run TestQA36 -count=3 passes under load; tests
+    drive completion from an observable signal with bounded deadline; assertions unchanged;
+    tests still redden for the original defect when the fallback is disabled; full
+    package -count=2 green
+  status: complete
+  created_at: '2026-10-06T11:56:06.698924+00:00'
+  completed_at: '2026-10-06T12:10:57.826034+00:00'
+- id: REV-BUNKER-014
+  title: Normalize board priority vocabulary to P0-P3 strings
+  criteria:
+  - Every tasks.jsonl row priority in {P0,P1,P2,P3} or absent; untouched rows byte-identical;
+    only tasks.jsonl modified
+  status: complete
+  created_at: '2026-10-06T11:56:07.655924+00:00'
+  completed_at: '2026-10-06T12:19:11.642646+00:00'

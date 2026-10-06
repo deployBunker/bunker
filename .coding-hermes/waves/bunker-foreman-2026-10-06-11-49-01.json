@@ -1,0 +1,27 @@
+{
+  "tick": "bunker-foreman-2026-10-06-11-49-01",
+  "created_at": "2026-10-06 11:55 -05",
+  "wave_budget": 6,
+  "workers": [
+    {
+      "task_id": "QA-BUNKER-53",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-53",
+      "branch": "wt/QA-BUNKER-53",
+      "brief": "/tmp/foreman-worker-QA-BUNKER-53.txt",
+      "log": "/tmp/foreman-worker-QA-BUNKER-53.log",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default"
+    },
+    {
+      "task_id": "REV-BUNKER-014",
+      "worktree": "/home/kara/worktrees/bunker-REV-BUNKER-014",
+      "branch": "wt/REV-BUNKER-014",
+      "brief": "/tmp/foreman-worker-REV-BUNKER-014.txt",
+      "log": "/tmp/foreman-worker-REV-BUNKER-014.log",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default"
+    }
+  ],
+  "independence": "QA-BUNKER-53 touches internal/server/webdav/ (Go tests); REV-BUNKER-014 touches .coding-hermes/board/tasks.jsonl only — disjoint file sets, no depends_on edges",
+  "merge_order": ["QA-BUNKER-53", "REV-BUNKER-014"]
+}
