@@ -28,6 +28,7 @@ import (
 	"github.com/deployBunker/bunker/internal/imagespec"
 	"github.com/deployBunker/bunker/internal/mountdriver"
 	"github.com/deployBunker/bunker/internal/netmode"
+	"github.com/deployBunker/bunker/internal/programalias"
 	"github.com/deployBunker/bunker/internal/resource"
 	"github.com/deployBunker/bunker/internal/tailscale"
 	"github.com/deployBunker/bunker/internal/tunnel"
@@ -77,6 +78,15 @@ type bunkerdService struct {
 	// to it. It is only used for read access here — the interceptor owns
 	// the write path.
 	auditLog *audit.AuditLog
+	// programAliases is the GAP-066 docker-as-installer alias store. It is
+	// nil on a service built without one (unit tests, and any deployment that
+	// never wires the store): alias resolution is then a complete no-op and
+	// execs are byte-identical to the pre-GAP-066 path.
+	programAliases *programalias.Registry
+	// programAliasImages caches the images this daemon process has already
+	// confirmed present on an agent, so a repeat run of an alias skips the
+	// `docker image inspect` round trip entirely.
+	programAliasImages programalias.ImageCache
 	// tmpIsolationOnce guards the one-time host probe behind ServerInfo's
 	// /tmp isolation report (DF-BUNKER-9). TmpNamespaceStatus stats the
 	// host's PAM/sshd configuration and runs getent, so it must not run on
@@ -908,17 +918,59 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 	// bare host user context. An empty ref (no image spec) is delegated
 	// unchanged to the pre-GAP-069 host-context builders.
 	imageRef := rec.Image
+	// GAP-066 (docker-as-installer): a command that names a REGISTERED program
+	// alias is resolved into a `docker run` of the alias's image instead of a
+	// native invocation. Resolution considers only a bare program name, so an
+	// explicit path is still the native binary and a `--script` upload (which
+	// has no single command token) is untouched. When no alias matches, every
+	// branch below is exactly the pre-GAP-066 path.
+	aliasRec, aliasOK := programalias.Alias{}, false
+	// A script payload has no single command token to resolve — and the
+	// command field is ignored on that path — so alias resolution (and its
+	// image pull) is skipped entirely for a script exec.
+	if req.Msg.GetScriptContent() == "" {
+		aliasRec, aliasOK = s.lookupProgramAlias(req.Msg.Command)
+	}
+	var aliasLimits programalias.Limits
+	if aliasOK {
+		aliasLimits = programAliasLimits(rec)
+	}
 	// DF-BUNKER-27: the builders are reached through package-level seams so a
 	// test can substitute the command ExecAgent runs; the defaults are the
 	// three image-aware builders, selected below by exactly the same
 	// raw/script/plain conditions as before.
 	var cmd *exec.Cmd
-	if req.Msg.GetRaw() {
+	switch {
+	case req.Msg.GetRaw() && aliasOK:
+		cmd, err = execSSHRawCommandAliasBuilder(ctx, agentID, rec.SshPrivateKeyPath, userHome, aliasRec, req.Msg.Args, aliasLimits, disclosed)
+		if err != nil {
+			return connect.NewError(connect.CodeFailedPrecondition, err)
+		}
+	case req.Msg.GetRaw():
 		cmd = execSSHRawCommandBuilder(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args, disclosed, imageRef)
-	} else if req.Msg.GetScriptContent() != "" {
+	case req.Msg.GetScriptContent() != "":
 		cmd = execSSHScriptCommandBuilder(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.GetScriptContent(), disclosed, imageRef)
-	} else {
+	case aliasOK:
+		cmd, err = execSSHCommandAliasBuilder(ctx, agentID, rec.SshPrivateKeyPath, userHome, aliasRec, req.Msg.Args, aliasLimits, disclosed)
+		if err != nil {
+			return connect.NewError(connect.CodeFailedPrecondition, err)
+		}
+	default:
 		cmd = execSSHCommandBuilder(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args, disclosed, imageRef)
+	}
+
+	// GAP-066: the image is made present AFTER the command is built, so a
+	// request the builder refuses (an unresolvable agent identity, a mount
+	// outside the agent's home) never triggers a pull. The pull itself is the
+	// DAEMON's job through the agent's own rootless dockerd: the agent's own
+	// command line never carries one, and the first-run latency is logged here
+	// rather than being invisible inside a container start.
+	if aliasOK {
+		pullDur, pulled, perr := s.ensureProgramAliasImage(ctx, agentID, rec.SshPrivateKeyPath, aliasRec.Image)
+		if perr != nil {
+			return connect.NewError(connect.CodeInternal, perr)
+		}
+		s.logProgramAliasRun(agentID, aliasRec, pulled, pullDur, aliasLimits)
 	}
 
 	// GAP-094: optional stdin. The payload rides a TEMP FILE, not a pipe:

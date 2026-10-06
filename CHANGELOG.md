@@ -2,7 +2,39 @@
 
 ## Unreleased
 
-Nothing yet. Changes since the `v0.2.0` release tag land here.
+### Added
+
+- **Docker-as-installer program aliases (GAP-066).** An agent host has no
+  compilers and no apt rights, so `bunker alias set <name> --image <ref>` now
+  registers a program name against a container image and the daemon resolves it
+  for agent execs:
+
+  ```
+  bunker alias set yq --image mikefarah/yq:4
+  bunker run <agent-id> -- yq --version
+  ```
+
+  The daemon pulls the image on first use (logging the first-run pull latency;
+  repeat runs are served from an in-process cache), installs the alias as a shim
+  at `<agent home>/bin/<name>`, and runs that same shim — so a shell script
+  inside the agent that calls `yq` gets byte-identical stdout and the same exit
+  code as the daemon-mediated invocation. Resources come from the agent's own
+  spawn-time envelope; the container gets the agent's home and nothing else (no
+  docker socket, no host path outside the home — a non-home `--mount` is
+  refused); the network is `--network none` unless the alias opts in with
+  `--network`. `--entrypoint` maps onto docker's own `--entrypoint` flag (empty =
+  the image's own `ENTRYPOINT`/`CMD`). `bunker alias list` and
+  `bunker alias delete <name>` complete the CRUD surface (master-credential
+  gated, `CodeInvalidArgument` on a malformed name/image/mount, `CodeNotFound` on
+  a delete of an unknown name). New RPCs: `ListProgramAliases`, `PutProgramAlias`,
+  `DeleteProgramAlias`. Store: `/var/lib/bunkerd/program-aliases.json` (relocate
+  with `BUNKERD_PROGRAM_ALIASES_PATH`). Guidance on when to use a program alias
+  vs a host package: `docs/program-aliases.md`.
+
+  Scope: aliases resolve on the `ExecAgent` path (`bunker exec`, synchronous
+  `bunker run`). A `--detach` systemd run and a `--script` upload (which has no
+  single command token) are not alias-resolved; the installed shim is what makes
+  the program reachable from a script.
 
 ## 0.2.0 (2026-10-01)
 

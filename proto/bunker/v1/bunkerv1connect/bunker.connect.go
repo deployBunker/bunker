@@ -74,6 +74,14 @@ const (
 	BunkerdRevokeKeyProcedure = "/bunker.v1.Bunkerd/RevokeKey"
 	// BunkerdKeyListProcedure is the fully-qualified name of the Bunkerd's KeyList RPC.
 	BunkerdKeyListProcedure = "/bunker.v1.Bunkerd/KeyList"
+	// BunkerdListProgramAliasesProcedure is the fully-qualified name of the Bunkerd's
+	// ListProgramAliases RPC.
+	BunkerdListProgramAliasesProcedure = "/bunker.v1.Bunkerd/ListProgramAliases"
+	// BunkerdPutProgramAliasProcedure is the fully-qualified name of the Bunkerd's PutProgramAlias RPC.
+	BunkerdPutProgramAliasProcedure = "/bunker.v1.Bunkerd/PutProgramAlias"
+	// BunkerdDeleteProgramAliasProcedure is the fully-qualified name of the Bunkerd's
+	// DeleteProgramAlias RPC.
+	BunkerdDeleteProgramAliasProcedure = "/bunker.v1.Bunkerd/DeleteProgramAlias"
 	// AgentGetInfoProcedure is the fully-qualified name of the Agent's GetInfo RPC.
 	AgentGetInfoProcedure = "/bunker.v1.Agent/GetInfo"
 	// AgentMetricsProcedure is the fully-qualified name of the Agent's Metrics RPC.
@@ -133,6 +141,20 @@ type BunkerdClient interface {
 	RotateJWTSecret(context.Context, *connect.Request[v1.RotateJWTSecretRequest]) (*connect.Response[v1.RotateJWTSecretResponse], error)
 	RevokeKey(context.Context, *connect.Request[v1.RevokeKeyRequest]) (*connect.Response[v1.RevokeKeyResponse], error)
 	KeyList(context.Context, *connect.Request[v1.KeyListRequest]) (*connect.Response[v1.KeyListResponse], error)
+	// Program aliases (GAP-066, docker-as-installer). Master-auth-gated like the
+	// other Bunkerd RPCs: an operator registers a name -> image mapping once, and
+	// the daemon then resolves that name in an agent exec into a `docker run` of
+	// the image (auto-pull on first use). The CLI aliases are
+	// `bunker alias list|set|delete`.
+	//
+	// The alias is a DAEMON-side authority: the agent never chooses an image,
+	// a mount or a resource limit. Every extra mount's host path must be inside
+	// the target agent's home directory (non-home mounts are refused with
+	// CodeInvalidArgument), and a container started this way is given no docker
+	// socket.
+	ListProgramAliases(context.Context, *connect.Request[v1.ListProgramAliasesRequest]) (*connect.Response[v1.ListProgramAliasesResponse], error)
+	PutProgramAlias(context.Context, *connect.Request[v1.PutProgramAliasRequest]) (*connect.Response[v1.PutProgramAliasResponse], error)
+	DeleteProgramAlias(context.Context, *connect.Request[v1.DeleteProgramAliasRequest]) (*connect.Response[v1.DeleteProgramAliasResponse], error)
 }
 
 // NewBunkerdClient constructs a client for the bunker.v1.Bunkerd service. By default, it uses the
@@ -260,6 +282,24 @@ func NewBunkerdClient(httpClient connect.HTTPClient, baseURL string, opts ...con
 			connect.WithSchema(bunkerdMethods.ByName("KeyList")),
 			connect.WithClientOptions(opts...),
 		),
+		listProgramAliases: connect.NewClient[v1.ListProgramAliasesRequest, v1.ListProgramAliasesResponse](
+			httpClient,
+			baseURL+BunkerdListProgramAliasesProcedure,
+			connect.WithSchema(bunkerdMethods.ByName("ListProgramAliases")),
+			connect.WithClientOptions(opts...),
+		),
+		putProgramAlias: connect.NewClient[v1.PutProgramAliasRequest, v1.PutProgramAliasResponse](
+			httpClient,
+			baseURL+BunkerdPutProgramAliasProcedure,
+			connect.WithSchema(bunkerdMethods.ByName("PutProgramAlias")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteProgramAlias: connect.NewClient[v1.DeleteProgramAliasRequest, v1.DeleteProgramAliasResponse](
+			httpClient,
+			baseURL+BunkerdDeleteProgramAliasProcedure,
+			connect.WithSchema(bunkerdMethods.ByName("DeleteProgramAlias")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -284,6 +324,9 @@ type bunkerdClient struct {
 	rotateJWTSecret    *connect.Client[v1.RotateJWTSecretRequest, v1.RotateJWTSecretResponse]
 	revokeKey          *connect.Client[v1.RevokeKeyRequest, v1.RevokeKeyResponse]
 	keyList            *connect.Client[v1.KeyListRequest, v1.KeyListResponse]
+	listProgramAliases *connect.Client[v1.ListProgramAliasesRequest, v1.ListProgramAliasesResponse]
+	putProgramAlias    *connect.Client[v1.PutProgramAliasRequest, v1.PutProgramAliasResponse]
+	deleteProgramAlias *connect.Client[v1.DeleteProgramAliasRequest, v1.DeleteProgramAliasResponse]
 }
 
 // ServerInfo calls bunker.v1.Bunkerd.ServerInfo.
@@ -381,6 +424,21 @@ func (c *bunkerdClient) KeyList(ctx context.Context, req *connect.Request[v1.Key
 	return c.keyList.CallUnary(ctx, req)
 }
 
+// ListProgramAliases calls bunker.v1.Bunkerd.ListProgramAliases.
+func (c *bunkerdClient) ListProgramAliases(ctx context.Context, req *connect.Request[v1.ListProgramAliasesRequest]) (*connect.Response[v1.ListProgramAliasesResponse], error) {
+	return c.listProgramAliases.CallUnary(ctx, req)
+}
+
+// PutProgramAlias calls bunker.v1.Bunkerd.PutProgramAlias.
+func (c *bunkerdClient) PutProgramAlias(ctx context.Context, req *connect.Request[v1.PutProgramAliasRequest]) (*connect.Response[v1.PutProgramAliasResponse], error) {
+	return c.putProgramAlias.CallUnary(ctx, req)
+}
+
+// DeleteProgramAlias calls bunker.v1.Bunkerd.DeleteProgramAlias.
+func (c *bunkerdClient) DeleteProgramAlias(ctx context.Context, req *connect.Request[v1.DeleteProgramAliasRequest]) (*connect.Response[v1.DeleteProgramAliasResponse], error) {
+	return c.deleteProgramAlias.CallUnary(ctx, req)
+}
+
 // BunkerdHandler is an implementation of the bunker.v1.Bunkerd service.
 type BunkerdHandler interface {
 	// Server management
@@ -432,6 +490,20 @@ type BunkerdHandler interface {
 	RotateJWTSecret(context.Context, *connect.Request[v1.RotateJWTSecretRequest]) (*connect.Response[v1.RotateJWTSecretResponse], error)
 	RevokeKey(context.Context, *connect.Request[v1.RevokeKeyRequest]) (*connect.Response[v1.RevokeKeyResponse], error)
 	KeyList(context.Context, *connect.Request[v1.KeyListRequest]) (*connect.Response[v1.KeyListResponse], error)
+	// Program aliases (GAP-066, docker-as-installer). Master-auth-gated like the
+	// other Bunkerd RPCs: an operator registers a name -> image mapping once, and
+	// the daemon then resolves that name in an agent exec into a `docker run` of
+	// the image (auto-pull on first use). The CLI aliases are
+	// `bunker alias list|set|delete`.
+	//
+	// The alias is a DAEMON-side authority: the agent never chooses an image,
+	// a mount or a resource limit. Every extra mount's host path must be inside
+	// the target agent's home directory (non-home mounts are refused with
+	// CodeInvalidArgument), and a container started this way is given no docker
+	// socket.
+	ListProgramAliases(context.Context, *connect.Request[v1.ListProgramAliasesRequest]) (*connect.Response[v1.ListProgramAliasesResponse], error)
+	PutProgramAlias(context.Context, *connect.Request[v1.PutProgramAliasRequest]) (*connect.Response[v1.PutProgramAliasResponse], error)
+	DeleteProgramAlias(context.Context, *connect.Request[v1.DeleteProgramAliasRequest]) (*connect.Response[v1.DeleteProgramAliasResponse], error)
 }
 
 // NewBunkerdHandler builds an HTTP handler from the service implementation. It returns the path on
@@ -555,6 +627,24 @@ func NewBunkerdHandler(svc BunkerdHandler, opts ...connect.HandlerOption) (strin
 		connect.WithSchema(bunkerdMethods.ByName("KeyList")),
 		connect.WithHandlerOptions(opts...),
 	)
+	bunkerdListProgramAliasesHandler := connect.NewUnaryHandler(
+		BunkerdListProgramAliasesProcedure,
+		svc.ListProgramAliases,
+		connect.WithSchema(bunkerdMethods.ByName("ListProgramAliases")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bunkerdPutProgramAliasHandler := connect.NewUnaryHandler(
+		BunkerdPutProgramAliasProcedure,
+		svc.PutProgramAlias,
+		connect.WithSchema(bunkerdMethods.ByName("PutProgramAlias")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bunkerdDeleteProgramAliasHandler := connect.NewUnaryHandler(
+		BunkerdDeleteProgramAliasProcedure,
+		svc.DeleteProgramAlias,
+		connect.WithSchema(bunkerdMethods.ByName("DeleteProgramAlias")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/bunker.v1.Bunkerd/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case BunkerdServerInfoProcedure:
@@ -595,6 +685,12 @@ func NewBunkerdHandler(svc BunkerdHandler, opts ...connect.HandlerOption) (strin
 			bunkerdRevokeKeyHandler.ServeHTTP(w, r)
 		case BunkerdKeyListProcedure:
 			bunkerdKeyListHandler.ServeHTTP(w, r)
+		case BunkerdListProgramAliasesProcedure:
+			bunkerdListProgramAliasesHandler.ServeHTTP(w, r)
+		case BunkerdPutProgramAliasProcedure:
+			bunkerdPutProgramAliasHandler.ServeHTTP(w, r)
+		case BunkerdDeleteProgramAliasProcedure:
+			bunkerdDeleteProgramAliasHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -678,6 +774,18 @@ func (UnimplementedBunkerdHandler) RevokeKey(context.Context, *connect.Request[v
 
 func (UnimplementedBunkerdHandler) KeyList(context.Context, *connect.Request[v1.KeyListRequest]) (*connect.Response[v1.KeyListResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.KeyList is not implemented"))
+}
+
+func (UnimplementedBunkerdHandler) ListProgramAliases(context.Context, *connect.Request[v1.ListProgramAliasesRequest]) (*connect.Response[v1.ListProgramAliasesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.ListProgramAliases is not implemented"))
+}
+
+func (UnimplementedBunkerdHandler) PutProgramAlias(context.Context, *connect.Request[v1.PutProgramAliasRequest]) (*connect.Response[v1.PutProgramAliasResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.PutProgramAlias is not implemented"))
+}
+
+func (UnimplementedBunkerdHandler) DeleteProgramAlias(context.Context, *connect.Request[v1.DeleteProgramAliasRequest]) (*connect.Response[v1.DeleteProgramAliasResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.DeleteProgramAlias is not implemented"))
 }
 
 // AgentClient is a client for the bunker.v1.Agent service.

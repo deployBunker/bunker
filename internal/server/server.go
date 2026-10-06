@@ -29,6 +29,7 @@ import (
 	"github.com/deployBunker/bunker/internal/auth"
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/hilo"
+	"github.com/deployBunker/bunker/internal/programalias"
 	"github.com/deployBunker/bunker/internal/resource"
 	"github.com/deployBunker/bunker/internal/server/webdav"
 	"github.com/deployBunker/bunker/internal/tailscale"
@@ -274,6 +275,17 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 		<-reconcileFinal
 	}()
 	bunkerdSvc := &bunkerdService{cfg: s.cfg, logger: s.logger, agentMgr: agentMgr, heartbeats: agentMgr, tracker: tracker, tunnelMgr: tunnelMgr, tailscaleMgr: tailscaleMgr, keyMgr: s.keyMgr, jwtAuth: s.jwtAuth, cpuSampler: resource.NewCPUSampler(), auditLog: s.auditLog}
+	// GAP-066: the docker-as-installer program-alias store. It lives beside
+	// the agent registry (so a daemon's durable state stays in one directory),
+	// and an operator can relocate it with BUNKERD_PROGRAM_ALIASES_PATH. The
+	// CLI reaches it through the Bunkerd alias RPCs.
+	{
+		agentsPath := config.DefaultRegistryPath
+		if s.cfg != nil && s.cfg.Agent.Registry.Path != "" {
+			agentsPath = s.cfg.Agent.Registry.Path
+		}
+		bunkerdSvc.programAliases = programalias.NewRegistry(programalias.DefaultPath(agentsPath))
+	}
 	// DF-BUNKER-34: the orphan-uid probe rides the info/list surfaces. The
 	// manager carries the /proc probe; the nil check inside the service keeps
 	// tests and unwired services probe-free. PERF-008: the list surface goes

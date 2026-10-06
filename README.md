@@ -825,6 +825,42 @@ bunker restart abc12345 --server bunker-host
 > ahead of the daemon host's current local time — it is not a UTC clock
 > reading, even though the wall-clock hour may differ from UTC by the offset.
 
+## Program aliases — docker-as-installer (GAP-066)
+
+An agent host has no compilers and no apt rights. A **program alias** maps a
+program name to a container image so an agent can *run* a program it never
+installed:
+
+```bash
+bunker alias set yq --image mikefarah/yq:4                  # requires a build from HEAD
+bunker alias list                                            # requires a build from HEAD
+bunker run  <agent-id> -- yq --version                       # requires a build from HEAD
+bunker alias delete yq                                       # requires a build from HEAD
+```
+
+(`mikefarah/yq` already enters through `yq`, so the alias needs no
+`--entrypoint`; `--entrypoint <program>` maps onto docker's own `--entrypoint`
+and is for images with no entrypoint of their own, e.g. `--entrypoint go` for
+`golang:1.26-alpine`.)
+
+The daemon resolves the bare program name, pulls the image on first use (logging
+how long the pull cost; repeat runs hit an in-process cache), installs the alias
+as a shim at `<agent home>/bin/<name>`, and runs that same shim — so a shell
+script inside the agent that calls `yq` gets the same stdout and the same exit
+code as the daemon-mediated invocation. The container is given the agent's home
+at its own absolute path and nothing else: no docker socket, no host path outside
+the home (a non-home `--mount` is refused with `CodeInvalidArgument`), and
+resource limits taken from the agent's own spawn-time envelope. The network is
+`--network none` unless the alias opts in with `--network`.
+
+Use a program alias for a CLI tool or toolchain an agent needs *sometimes* and
+you want versioned per registry entry (`yq`, `jq`, a Go/Rust/Node toolchain). Use
+apt / the host image for host plumbing the session depends on before any exec
+runs (shells, `sshd`, PAM artifacts, cron) — a program alias never replaces a
+host package. All three verbs are master-credential gated; the full guidance,
+the container contract and the raw-mode/script caveats are in
+[docs/program-aliases.md](docs/program-aliases.md).
+
 ## Architecture
 
 ```
@@ -1069,6 +1105,11 @@ bunker subid-migrate  Rewrite overlapping subordinate-id (subuid/subgid)
                    ranges for managed agents (dry run by default; --apply
                    rewrites)
 ```
+
+`bunker`'s `alias` command group (docker-as-installer program aliases —
+`list` / `set` / `delete`) is documented in
+[Program aliases](#program-aliases--docker-as-installer-gap-066) above and in
+[docs/program-aliases.md](docs/program-aliases.md); it needs a build from HEAD.
 
 ### Exit codes
 

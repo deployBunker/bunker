@@ -60,6 +60,21 @@ service Bunkerd {
   rpc RotateJWTSecret(RotateJWTSecretRequest) returns (RotateJWTSecretResponse);
   rpc RevokeKey(RevokeKeyRequest) returns (RevokeKeyResponse);
   rpc KeyList(KeyListRequest) returns (KeyListResponse);
+
+  // Program aliases (GAP-066, docker-as-installer). Master-auth-gated like the
+  // other Bunkerd RPCs: an operator registers a name -> image mapping once, and
+  // the daemon then resolves that name in an agent exec into a `docker run` of
+  // the image (auto-pull on first use). The CLI aliases are
+  // `bunker alias list|set|delete`.
+  //
+  // The alias is a DAEMON-side authority: the agent never chooses an image,
+  // a mount or a resource limit. Every extra mount's host path must be inside
+  // the target agent's home directory (non-home mounts are refused with
+  // CodeInvalidArgument), and a container started this way is given no docker
+  // socket.
+  rpc ListProgramAliases(ListProgramAliasesRequest) returns (ListProgramAliasesResponse);
+  rpc PutProgramAlias(PutProgramAliasRequest) returns (PutProgramAliasResponse);
+  rpc DeleteProgramAlias(DeleteProgramAliasRequest) returns (DeleteProgramAliasResponse);
 }
 
 // ── Agent Service (scoped sub-key access) ─────────────────────
@@ -670,4 +685,57 @@ message KeyInfo {
 
 message KeyListResponse {
   repeated KeyInfo keys = 1;
+}
+
+// ── Program aliases (GAP-066: docker-as-installer) ──────────────
+
+// ProgramAliasMount is one extra bind mount for an alias-managed container.
+// host MUST be inside the target agent's home directory; a container path is
+// optional (empty = same absolute path as host, which is what keeps
+// host-absolute paths valid in-container).
+message ProgramAliasMount {
+  string host = 1;
+  string container = 2;
+  bool read_only = 3;
+}
+
+// ProgramAlias is a durable name -> container-image mapping. Entrypoint is the
+// container's entrypoint program (docker's own --entrypoint); empty means "use
+// the image's own ENTRYPOINT/CMD" and the caller's arguments pass through.
+message ProgramAlias {
+  string name = 1;
+  string image = 2;
+  repeated string entrypoint = 3;
+  repeated ProgramAliasMount mounts = 4;
+  // network=false (the default) runs the container with `--network none`.
+  bool network = 5;
+  string description = 6;
+}
+
+message ListProgramAliasesRequest {}
+
+message ListProgramAliasesResponse {
+  repeated ProgramAlias aliases = 1;
+  // Path of the daemon's alias store (operator diagnostics).
+  string store_path = 2;
+}
+
+message PutProgramAliasRequest {
+  ProgramAlias alias = 1;
+}
+
+message PutProgramAliasResponse {
+  ProgramAlias alias = 1;
+  // "created" or "updated".
+  string status = 2;
+}
+
+message DeleteProgramAliasRequest {
+  string name = 1;
+}
+
+message DeleteProgramAliasResponse {
+  string name = 1;
+  // True when the alias existed and was removed.
+  bool deleted = 2;
 }

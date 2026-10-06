@@ -3859,6 +3859,441 @@ func (x *KeyListResponse) GetKeys() []*KeyInfo {
 	return nil
 }
 
+// ProgramAliasMount is one extra bind mount for an alias-managed container.
+// host MUST be inside the target agent's home directory; a container path is
+// optional (empty = same absolute path as host, which is what keeps
+// host-absolute paths valid in-container).
+type ProgramAliasMount struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Host          string                 `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`
+	Container     string                 `protobuf:"bytes,2,opt,name=container,proto3" json:"container,omitempty"`
+	ReadOnly      bool                   `protobuf:"varint,3,opt,name=read_only,json=readOnly,proto3" json:"read_only,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProgramAliasMount) Reset() {
+	*x = ProgramAliasMount{}
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[52]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProgramAliasMount) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProgramAliasMount) ProtoMessage() {}
+
+func (x *ProgramAliasMount) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[52]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProgramAliasMount.ProtoReflect.Descriptor instead.
+func (*ProgramAliasMount) Descriptor() ([]byte, []int) {
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{52}
+}
+
+func (x *ProgramAliasMount) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *ProgramAliasMount) GetContainer() string {
+	if x != nil {
+		return x.Container
+	}
+	return ""
+}
+
+func (x *ProgramAliasMount) GetReadOnly() bool {
+	if x != nil {
+		return x.ReadOnly
+	}
+	return false
+}
+
+// ProgramAlias is a durable name -> container-image mapping. Entrypoint is the
+// container's entrypoint program (docker's own --entrypoint); empty means "use
+// the image's own ENTRYPOINT/CMD" and the caller's arguments pass through.
+type ProgramAlias struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Name       string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Image      string                 `protobuf:"bytes,2,opt,name=image,proto3" json:"image,omitempty"`
+	Entrypoint []string               `protobuf:"bytes,3,rep,name=entrypoint,proto3" json:"entrypoint,omitempty"`
+	Mounts     []*ProgramAliasMount   `protobuf:"bytes,4,rep,name=mounts,proto3" json:"mounts,omitempty"`
+	// network=false (the default) runs the container with `--network none`.
+	Network       bool   `protobuf:"varint,5,opt,name=network,proto3" json:"network,omitempty"`
+	Description   string `protobuf:"bytes,6,opt,name=description,proto3" json:"description,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProgramAlias) Reset() {
+	*x = ProgramAlias{}
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[53]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProgramAlias) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProgramAlias) ProtoMessage() {}
+
+func (x *ProgramAlias) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[53]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProgramAlias.ProtoReflect.Descriptor instead.
+func (*ProgramAlias) Descriptor() ([]byte, []int) {
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{53}
+}
+
+func (x *ProgramAlias) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ProgramAlias) GetImage() string {
+	if x != nil {
+		return x.Image
+	}
+	return ""
+}
+
+func (x *ProgramAlias) GetEntrypoint() []string {
+	if x != nil {
+		return x.Entrypoint
+	}
+	return nil
+}
+
+func (x *ProgramAlias) GetMounts() []*ProgramAliasMount {
+	if x != nil {
+		return x.Mounts
+	}
+	return nil
+}
+
+func (x *ProgramAlias) GetNetwork() bool {
+	if x != nil {
+		return x.Network
+	}
+	return false
+}
+
+func (x *ProgramAlias) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+type ListProgramAliasesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListProgramAliasesRequest) Reset() {
+	*x = ListProgramAliasesRequest{}
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[54]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListProgramAliasesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListProgramAliasesRequest) ProtoMessage() {}
+
+func (x *ListProgramAliasesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[54]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListProgramAliasesRequest.ProtoReflect.Descriptor instead.
+func (*ListProgramAliasesRequest) Descriptor() ([]byte, []int) {
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{54}
+}
+
+type ListProgramAliasesResponse struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Aliases []*ProgramAlias        `protobuf:"bytes,1,rep,name=aliases,proto3" json:"aliases,omitempty"`
+	// Path of the daemon's alias store (operator diagnostics).
+	StorePath     string `protobuf:"bytes,2,opt,name=store_path,json=storePath,proto3" json:"store_path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListProgramAliasesResponse) Reset() {
+	*x = ListProgramAliasesResponse{}
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[55]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListProgramAliasesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListProgramAliasesResponse) ProtoMessage() {}
+
+func (x *ListProgramAliasesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[55]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListProgramAliasesResponse.ProtoReflect.Descriptor instead.
+func (*ListProgramAliasesResponse) Descriptor() ([]byte, []int) {
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{55}
+}
+
+func (x *ListProgramAliasesResponse) GetAliases() []*ProgramAlias {
+	if x != nil {
+		return x.Aliases
+	}
+	return nil
+}
+
+func (x *ListProgramAliasesResponse) GetStorePath() string {
+	if x != nil {
+		return x.StorePath
+	}
+	return ""
+}
+
+type PutProgramAliasRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Alias         *ProgramAlias          `protobuf:"bytes,1,opt,name=alias,proto3" json:"alias,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PutProgramAliasRequest) Reset() {
+	*x = PutProgramAliasRequest{}
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[56]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PutProgramAliasRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PutProgramAliasRequest) ProtoMessage() {}
+
+func (x *PutProgramAliasRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[56]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PutProgramAliasRequest.ProtoReflect.Descriptor instead.
+func (*PutProgramAliasRequest) Descriptor() ([]byte, []int) {
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{56}
+}
+
+func (x *PutProgramAliasRequest) GetAlias() *ProgramAlias {
+	if x != nil {
+		return x.Alias
+	}
+	return nil
+}
+
+type PutProgramAliasResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Alias *ProgramAlias          `protobuf:"bytes,1,opt,name=alias,proto3" json:"alias,omitempty"`
+	// "created" or "updated".
+	Status        string `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PutProgramAliasResponse) Reset() {
+	*x = PutProgramAliasResponse{}
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[57]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PutProgramAliasResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PutProgramAliasResponse) ProtoMessage() {}
+
+func (x *PutProgramAliasResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[57]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PutProgramAliasResponse.ProtoReflect.Descriptor instead.
+func (*PutProgramAliasResponse) Descriptor() ([]byte, []int) {
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{57}
+}
+
+func (x *PutProgramAliasResponse) GetAlias() *ProgramAlias {
+	if x != nil {
+		return x.Alias
+	}
+	return nil
+}
+
+func (x *PutProgramAliasResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+type DeleteProgramAliasRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteProgramAliasRequest) Reset() {
+	*x = DeleteProgramAliasRequest{}
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[58]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteProgramAliasRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteProgramAliasRequest) ProtoMessage() {}
+
+func (x *DeleteProgramAliasRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[58]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteProgramAliasRequest.ProtoReflect.Descriptor instead.
+func (*DeleteProgramAliasRequest) Descriptor() ([]byte, []int) {
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{58}
+}
+
+func (x *DeleteProgramAliasRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type DeleteProgramAliasResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// True when the alias existed and was removed.
+	Deleted       bool `protobuf:"varint,2,opt,name=deleted,proto3" json:"deleted,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteProgramAliasResponse) Reset() {
+	*x = DeleteProgramAliasResponse{}
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[59]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteProgramAliasResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteProgramAliasResponse) ProtoMessage() {}
+
+func (x *DeleteProgramAliasResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[59]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteProgramAliasResponse.ProtoReflect.Descriptor instead.
+func (*DeleteProgramAliasResponse) Descriptor() ([]byte, []int) {
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{59}
+}
+
+func (x *DeleteProgramAliasResponse) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *DeleteProgramAliasResponse) GetDeleted() bool {
+	if x != nil {
+		return x.Deleted
+	}
+	return false
+}
+
 var File_proto_bunker_v1_bunker_proto protoreflect.FileDescriptor
 
 const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
@@ -4167,10 +4602,38 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"expires_at\x18\x04 \x01(\tR\texpiresAt\x12\x18\n" +
 	"\arevoked\x18\x05 \x01(\bR\arevoked\"9\n" +
 	"\x0fKeyListResponse\x12&\n" +
-	"\x04keys\x18\x01 \x03(\v2\x12.bunker.v1.KeyInfoR\x04keys*@\n" +
+	"\x04keys\x18\x01 \x03(\v2\x12.bunker.v1.KeyInfoR\x04keys\"b\n" +
+	"\x11ProgramAliasMount\x12\x12\n" +
+	"\x04host\x18\x01 \x01(\tR\x04host\x12\x1c\n" +
+	"\tcontainer\x18\x02 \x01(\tR\tcontainer\x12\x1b\n" +
+	"\tread_only\x18\x03 \x01(\bR\breadOnly\"\xca\x01\n" +
+	"\fProgramAlias\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
+	"\x05image\x18\x02 \x01(\tR\x05image\x12\x1e\n" +
+	"\n" +
+	"entrypoint\x18\x03 \x03(\tR\n" +
+	"entrypoint\x124\n" +
+	"\x06mounts\x18\x04 \x03(\v2\x1c.bunker.v1.ProgramAliasMountR\x06mounts\x12\x18\n" +
+	"\anetwork\x18\x05 \x01(\bR\anetwork\x12 \n" +
+	"\vdescription\x18\x06 \x01(\tR\vdescription\"\x1b\n" +
+	"\x19ListProgramAliasesRequest\"n\n" +
+	"\x1aListProgramAliasesResponse\x121\n" +
+	"\aaliases\x18\x01 \x03(\v2\x17.bunker.v1.ProgramAliasR\aaliases\x12\x1d\n" +
+	"\n" +
+	"store_path\x18\x02 \x01(\tR\tstorePath\"G\n" +
+	"\x16PutProgramAliasRequest\x12-\n" +
+	"\x05alias\x18\x01 \x01(\v2\x17.bunker.v1.ProgramAliasR\x05alias\"`\n" +
+	"\x17PutProgramAliasResponse\x12-\n" +
+	"\x05alias\x18\x01 \x01(\v2\x17.bunker.v1.ProgramAliasR\x05alias\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\"/\n" +
+	"\x19DeleteProgramAliasRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"J\n" +
+	"\x1aDeleteProgramAliasResponse\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
+	"\adeleted\x18\x02 \x01(\bR\adeleted*@\n" +
 	"\fExecEncoding\x12\x16\n" +
 	"\x12EXEC_ENCODING_TEXT\x10\x00\x12\x18\n" +
-	"\x14EXEC_ENCODING_BASE64\x10\x012\xc3\v\n" +
+	"\x14EXEC_ENCODING_BASE64\x10\x012\xe3\r\n" +
 	"\aBunkerd\x12I\n" +
 	"\n" +
 	"ServerInfo\x12\x1c.bunker.v1.ServerInfoRequest\x1a\x1d.bunker.v1.ServerInfoResponse\x12R\n" +
@@ -4195,7 +4658,10 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"QueryAudit\x12\x1c.bunker.v1.QueryAuditRequest\x1a\x1d.bunker.v1.QueryAuditResponse\x12X\n" +
 	"\x0fRotateJWTSecret\x12!.bunker.v1.RotateJWTSecretRequest\x1a\".bunker.v1.RotateJWTSecretResponse\x12F\n" +
 	"\tRevokeKey\x12\x1b.bunker.v1.RevokeKeyRequest\x1a\x1c.bunker.v1.RevokeKeyResponse\x12@\n" +
-	"\aKeyList\x12\x19.bunker.v1.KeyListRequest\x1a\x1a.bunker.v1.KeyListResponse2\xe7\x01\n" +
+	"\aKeyList\x12\x19.bunker.v1.KeyListRequest\x1a\x1a.bunker.v1.KeyListResponse\x12a\n" +
+	"\x12ListProgramAliases\x12$.bunker.v1.ListProgramAliasesRequest\x1a%.bunker.v1.ListProgramAliasesResponse\x12X\n" +
+	"\x0fPutProgramAlias\x12!.bunker.v1.PutProgramAliasRequest\x1a\".bunker.v1.PutProgramAliasResponse\x12a\n" +
+	"\x12DeleteProgramAlias\x12$.bunker.v1.DeleteProgramAliasRequest\x1a%.bunker.v1.DeleteProgramAliasResponse2\xe7\x01\n" +
 	"\x05Agent\x12@\n" +
 	"\aGetInfo\x12\x19.bunker.v1.GetInfoRequest\x1a\x1a.bunker.v1.GetInfoResponse\x12J\n" +
 	"\aMetrics\x12\x1e.bunker.v1.AgentMetricsRequest\x1a\x1f.bunker.v1.AgentMetricsResponse\x12P\n" +
@@ -4214,64 +4680,72 @@ func file_proto_bunker_v1_bunker_proto_rawDescGZIP() []byte {
 }
 
 var file_proto_bunker_v1_bunker_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_proto_bunker_v1_bunker_proto_msgTypes = make([]protoimpl.MessageInfo, 54)
+var file_proto_bunker_v1_bunker_proto_msgTypes = make([]protoimpl.MessageInfo, 62)
 var file_proto_bunker_v1_bunker_proto_goTypes = []any{
-	(ExecEncoding)(0),               // 0: bunker.v1.ExecEncoding
-	(NetworkConfig_Mode)(0),         // 1: bunker.v1.NetworkConfig.Mode
-	(*ResourceLimits)(nil),          // 2: bunker.v1.ResourceLimits
-	(*NetworkConfig)(nil),           // 3: bunker.v1.NetworkConfig
-	(*ServerInfoRequest)(nil),       // 4: bunker.v1.ServerInfoRequest
-	(*ServerInfoResponse)(nil),      // 5: bunker.v1.ServerInfoResponse
-	(*ResidueInventory)(nil),        // 6: bunker.v1.ResidueInventory
-	(*ServerMetricsRequest)(nil),    // 7: bunker.v1.ServerMetricsRequest
-	(*ServerMetricsResponse)(nil),   // 8: bunker.v1.ServerMetricsResponse
-	(*AgentSummary)(nil),            // 9: bunker.v1.AgentSummary
-	(*SystemdProperty)(nil),         // 10: bunker.v1.SystemdProperty
-	(*SpawnAgentRequest)(nil),       // 11: bunker.v1.SpawnAgentRequest
-	(*ImageSpec)(nil),               // 12: bunker.v1.ImageSpec
-	(*PackageAdd)(nil),              // 13: bunker.v1.PackageAdd
-	(*MountSpec)(nil),               // 14: bunker.v1.MountSpec
-	(*SpawnAgentResponse)(nil),      // 15: bunker.v1.SpawnAgentResponse
-	(*GetAgentKeyRequest)(nil),      // 16: bunker.v1.GetAgentKeyRequest
-	(*GetAgentKeyResponse)(nil),     // 17: bunker.v1.GetAgentKeyResponse
-	(*DestroyAgentRequest)(nil),     // 18: bunker.v1.DestroyAgentRequest
-	(*DestroyAgentResponse)(nil),    // 19: bunker.v1.DestroyAgentResponse
-	(*RenewalDriftRequest)(nil),     // 20: bunker.v1.RenewalDriftRequest
-	(*RenewalDriftResponse)(nil),    // 21: bunker.v1.RenewalDriftResponse
-	(*RenewalDriftHit)(nil),         // 22: bunker.v1.RenewalDriftHit
-	(*StopAgentRequest)(nil),        // 23: bunker.v1.StopAgentRequest
-	(*StopAgentResponse)(nil),       // 24: bunker.v1.StopAgentResponse
-	(*StartAgentRequest)(nil),       // 25: bunker.v1.StartAgentRequest
-	(*StartAgentResponse)(nil),      // 26: bunker.v1.StartAgentResponse
-	(*RestartAgentRequest)(nil),     // 27: bunker.v1.RestartAgentRequest
-	(*RestartAgentResponse)(nil),    // 28: bunker.v1.RestartAgentResponse
-	(*ListAgentsRequest)(nil),       // 29: bunker.v1.ListAgentsRequest
-	(*ListAgentsResponse)(nil),      // 30: bunker.v1.ListAgentsResponse
-	(*NetworkIsolation)(nil),        // 31: bunker.v1.NetworkIsolation
-	(*GetAgentRequest)(nil),         // 32: bunker.v1.GetAgentRequest
-	(*GetAgentResponse)(nil),        // 33: bunker.v1.GetAgentResponse
-	(*AgentMetricsRequest)(nil),     // 34: bunker.v1.AgentMetricsRequest
-	(*AgentMetricsResponse)(nil),    // 35: bunker.v1.AgentMetricsResponse
-	(*HeartbeatAgentRequest)(nil),   // 36: bunker.v1.HeartbeatAgentRequest
-	(*HeartbeatAgentResponse)(nil),  // 37: bunker.v1.HeartbeatAgentResponse
-	(*ExecAgentRequest)(nil),        // 38: bunker.v1.ExecAgentRequest
-	(*ExecAgentResponse)(nil),       // 39: bunker.v1.ExecAgentResponse
-	(*RunAgentRequest)(nil),         // 40: bunker.v1.RunAgentRequest
-	(*RunAgentResponse)(nil),        // 41: bunker.v1.RunAgentResponse
-	(*GetInfoRequest)(nil),          // 42: bunker.v1.GetInfoRequest
-	(*GetInfoResponse)(nil),         // 43: bunker.v1.GetInfoResponse
-	(*QueryAuditRequest)(nil),       // 44: bunker.v1.QueryAuditRequest
-	(*AuditRecord)(nil),             // 45: bunker.v1.AuditRecord
-	(*QueryAuditResponse)(nil),      // 46: bunker.v1.QueryAuditResponse
-	(*RotateJWTSecretRequest)(nil),  // 47: bunker.v1.RotateJWTSecretRequest
-	(*RotateJWTSecretResponse)(nil), // 48: bunker.v1.RotateJWTSecretResponse
-	(*RevokeKeyRequest)(nil),        // 49: bunker.v1.RevokeKeyRequest
-	(*RevokeKeyResponse)(nil),       // 50: bunker.v1.RevokeKeyResponse
-	(*KeyListRequest)(nil),          // 51: bunker.v1.KeyListRequest
-	(*KeyInfo)(nil),                 // 52: bunker.v1.KeyInfo
-	(*KeyListResponse)(nil),         // 53: bunker.v1.KeyListResponse
-	nil,                             // 54: bunker.v1.SpawnAgentRequest.LabelsEntry
-	nil,                             // 55: bunker.v1.RunAgentRequest.EnvEntry
+	(ExecEncoding)(0),                  // 0: bunker.v1.ExecEncoding
+	(NetworkConfig_Mode)(0),            // 1: bunker.v1.NetworkConfig.Mode
+	(*ResourceLimits)(nil),             // 2: bunker.v1.ResourceLimits
+	(*NetworkConfig)(nil),              // 3: bunker.v1.NetworkConfig
+	(*ServerInfoRequest)(nil),          // 4: bunker.v1.ServerInfoRequest
+	(*ServerInfoResponse)(nil),         // 5: bunker.v1.ServerInfoResponse
+	(*ResidueInventory)(nil),           // 6: bunker.v1.ResidueInventory
+	(*ServerMetricsRequest)(nil),       // 7: bunker.v1.ServerMetricsRequest
+	(*ServerMetricsResponse)(nil),      // 8: bunker.v1.ServerMetricsResponse
+	(*AgentSummary)(nil),               // 9: bunker.v1.AgentSummary
+	(*SystemdProperty)(nil),            // 10: bunker.v1.SystemdProperty
+	(*SpawnAgentRequest)(nil),          // 11: bunker.v1.SpawnAgentRequest
+	(*ImageSpec)(nil),                  // 12: bunker.v1.ImageSpec
+	(*PackageAdd)(nil),                 // 13: bunker.v1.PackageAdd
+	(*MountSpec)(nil),                  // 14: bunker.v1.MountSpec
+	(*SpawnAgentResponse)(nil),         // 15: bunker.v1.SpawnAgentResponse
+	(*GetAgentKeyRequest)(nil),         // 16: bunker.v1.GetAgentKeyRequest
+	(*GetAgentKeyResponse)(nil),        // 17: bunker.v1.GetAgentKeyResponse
+	(*DestroyAgentRequest)(nil),        // 18: bunker.v1.DestroyAgentRequest
+	(*DestroyAgentResponse)(nil),       // 19: bunker.v1.DestroyAgentResponse
+	(*RenewalDriftRequest)(nil),        // 20: bunker.v1.RenewalDriftRequest
+	(*RenewalDriftResponse)(nil),       // 21: bunker.v1.RenewalDriftResponse
+	(*RenewalDriftHit)(nil),            // 22: bunker.v1.RenewalDriftHit
+	(*StopAgentRequest)(nil),           // 23: bunker.v1.StopAgentRequest
+	(*StopAgentResponse)(nil),          // 24: bunker.v1.StopAgentResponse
+	(*StartAgentRequest)(nil),          // 25: bunker.v1.StartAgentRequest
+	(*StartAgentResponse)(nil),         // 26: bunker.v1.StartAgentResponse
+	(*RestartAgentRequest)(nil),        // 27: bunker.v1.RestartAgentRequest
+	(*RestartAgentResponse)(nil),       // 28: bunker.v1.RestartAgentResponse
+	(*ListAgentsRequest)(nil),          // 29: bunker.v1.ListAgentsRequest
+	(*ListAgentsResponse)(nil),         // 30: bunker.v1.ListAgentsResponse
+	(*NetworkIsolation)(nil),           // 31: bunker.v1.NetworkIsolation
+	(*GetAgentRequest)(nil),            // 32: bunker.v1.GetAgentRequest
+	(*GetAgentResponse)(nil),           // 33: bunker.v1.GetAgentResponse
+	(*AgentMetricsRequest)(nil),        // 34: bunker.v1.AgentMetricsRequest
+	(*AgentMetricsResponse)(nil),       // 35: bunker.v1.AgentMetricsResponse
+	(*HeartbeatAgentRequest)(nil),      // 36: bunker.v1.HeartbeatAgentRequest
+	(*HeartbeatAgentResponse)(nil),     // 37: bunker.v1.HeartbeatAgentResponse
+	(*ExecAgentRequest)(nil),           // 38: bunker.v1.ExecAgentRequest
+	(*ExecAgentResponse)(nil),          // 39: bunker.v1.ExecAgentResponse
+	(*RunAgentRequest)(nil),            // 40: bunker.v1.RunAgentRequest
+	(*RunAgentResponse)(nil),           // 41: bunker.v1.RunAgentResponse
+	(*GetInfoRequest)(nil),             // 42: bunker.v1.GetInfoRequest
+	(*GetInfoResponse)(nil),            // 43: bunker.v1.GetInfoResponse
+	(*QueryAuditRequest)(nil),          // 44: bunker.v1.QueryAuditRequest
+	(*AuditRecord)(nil),                // 45: bunker.v1.AuditRecord
+	(*QueryAuditResponse)(nil),         // 46: bunker.v1.QueryAuditResponse
+	(*RotateJWTSecretRequest)(nil),     // 47: bunker.v1.RotateJWTSecretRequest
+	(*RotateJWTSecretResponse)(nil),    // 48: bunker.v1.RotateJWTSecretResponse
+	(*RevokeKeyRequest)(nil),           // 49: bunker.v1.RevokeKeyRequest
+	(*RevokeKeyResponse)(nil),          // 50: bunker.v1.RevokeKeyResponse
+	(*KeyListRequest)(nil),             // 51: bunker.v1.KeyListRequest
+	(*KeyInfo)(nil),                    // 52: bunker.v1.KeyInfo
+	(*KeyListResponse)(nil),            // 53: bunker.v1.KeyListResponse
+	(*ProgramAliasMount)(nil),          // 54: bunker.v1.ProgramAliasMount
+	(*ProgramAlias)(nil),               // 55: bunker.v1.ProgramAlias
+	(*ListProgramAliasesRequest)(nil),  // 56: bunker.v1.ListProgramAliasesRequest
+	(*ListProgramAliasesResponse)(nil), // 57: bunker.v1.ListProgramAliasesResponse
+	(*PutProgramAliasRequest)(nil),     // 58: bunker.v1.PutProgramAliasRequest
+	(*PutProgramAliasResponse)(nil),    // 59: bunker.v1.PutProgramAliasResponse
+	(*DeleteProgramAliasRequest)(nil),  // 60: bunker.v1.DeleteProgramAliasRequest
+	(*DeleteProgramAliasResponse)(nil), // 61: bunker.v1.DeleteProgramAliasResponse
+	nil,                                // 62: bunker.v1.SpawnAgentRequest.LabelsEntry
+	nil,                                // 63: bunker.v1.RunAgentRequest.EnvEntry
 }
 var file_proto_bunker_v1_bunker_proto_depIdxs = []int32{
 	1,  // 0: bunker.v1.NetworkConfig.mode:type_name -> bunker.v1.NetworkConfig.Mode
@@ -4285,7 +4759,7 @@ var file_proto_bunker_v1_bunker_proto_depIdxs = []int32{
 	31, // 8: bunker.v1.AgentSummary.network_isolation:type_name -> bunker.v1.NetworkIsolation
 	2,  // 9: bunker.v1.SpawnAgentRequest.limits:type_name -> bunker.v1.ResourceLimits
 	3,  // 10: bunker.v1.SpawnAgentRequest.network:type_name -> bunker.v1.NetworkConfig
-	54, // 11: bunker.v1.SpawnAgentRequest.labels:type_name -> bunker.v1.SpawnAgentRequest.LabelsEntry
+	62, // 11: bunker.v1.SpawnAgentRequest.labels:type_name -> bunker.v1.SpawnAgentRequest.LabelsEntry
 	12, // 12: bunker.v1.SpawnAgentRequest.image_spec:type_name -> bunker.v1.ImageSpec
 	13, // 13: bunker.v1.ImageSpec.packages:type_name -> bunker.v1.PackageAdd
 	2,  // 14: bunker.v1.SpawnAgentResponse.limits:type_name -> bunker.v1.ResourceLimits
@@ -4294,59 +4768,69 @@ var file_proto_bunker_v1_bunker_proto_depIdxs = []int32{
 	9,  // 17: bunker.v1.ListAgentsResponse.agents:type_name -> bunker.v1.AgentSummary
 	9,  // 18: bunker.v1.GetAgentResponse.agent:type_name -> bunker.v1.AgentSummary
 	0,  // 19: bunker.v1.ExecAgentRequest.response_encoding:type_name -> bunker.v1.ExecEncoding
-	55, // 20: bunker.v1.RunAgentRequest.env:type_name -> bunker.v1.RunAgentRequest.EnvEntry
+	63, // 20: bunker.v1.RunAgentRequest.env:type_name -> bunker.v1.RunAgentRequest.EnvEntry
 	2,  // 21: bunker.v1.GetInfoResponse.limits:type_name -> bunker.v1.ResourceLimits
 	45, // 22: bunker.v1.QueryAuditResponse.records:type_name -> bunker.v1.AuditRecord
 	52, // 23: bunker.v1.KeyListResponse.keys:type_name -> bunker.v1.KeyInfo
-	4,  // 24: bunker.v1.Bunkerd.ServerInfo:input_type -> bunker.v1.ServerInfoRequest
-	7,  // 25: bunker.v1.Bunkerd.ServerMetrics:input_type -> bunker.v1.ServerMetricsRequest
-	11, // 26: bunker.v1.Bunkerd.SpawnAgent:input_type -> bunker.v1.SpawnAgentRequest
-	20, // 27: bunker.v1.Bunkerd.RenewalDriftReport:input_type -> bunker.v1.RenewalDriftRequest
-	18, // 28: bunker.v1.Bunkerd.DestroyAgent:input_type -> bunker.v1.DestroyAgentRequest
-	23, // 29: bunker.v1.Bunkerd.StopAgent:input_type -> bunker.v1.StopAgentRequest
-	25, // 30: bunker.v1.Bunkerd.StartAgent:input_type -> bunker.v1.StartAgentRequest
-	27, // 31: bunker.v1.Bunkerd.RestartAgent:input_type -> bunker.v1.RestartAgentRequest
-	29, // 32: bunker.v1.Bunkerd.ListAgents:input_type -> bunker.v1.ListAgentsRequest
-	32, // 33: bunker.v1.Bunkerd.GetAgent:input_type -> bunker.v1.GetAgentRequest
-	16, // 34: bunker.v1.Bunkerd.GetAgentKey:input_type -> bunker.v1.GetAgentKeyRequest
-	34, // 35: bunker.v1.Bunkerd.AgentMetrics:input_type -> bunker.v1.AgentMetricsRequest
-	38, // 36: bunker.v1.Bunkerd.ExecAgent:input_type -> bunker.v1.ExecAgentRequest
-	40, // 37: bunker.v1.Bunkerd.RunAgent:input_type -> bunker.v1.RunAgentRequest
-	36, // 38: bunker.v1.Bunkerd.HeartbeatAgent:input_type -> bunker.v1.HeartbeatAgentRequest
-	44, // 39: bunker.v1.Bunkerd.QueryAudit:input_type -> bunker.v1.QueryAuditRequest
-	47, // 40: bunker.v1.Bunkerd.RotateJWTSecret:input_type -> bunker.v1.RotateJWTSecretRequest
-	49, // 41: bunker.v1.Bunkerd.RevokeKey:input_type -> bunker.v1.RevokeKeyRequest
-	51, // 42: bunker.v1.Bunkerd.KeyList:input_type -> bunker.v1.KeyListRequest
-	42, // 43: bunker.v1.Agent.GetInfo:input_type -> bunker.v1.GetInfoRequest
-	34, // 44: bunker.v1.Agent.Metrics:input_type -> bunker.v1.AgentMetricsRequest
-	36, // 45: bunker.v1.Agent.Heartbeat:input_type -> bunker.v1.HeartbeatAgentRequest
-	5,  // 46: bunker.v1.Bunkerd.ServerInfo:output_type -> bunker.v1.ServerInfoResponse
-	8,  // 47: bunker.v1.Bunkerd.ServerMetrics:output_type -> bunker.v1.ServerMetricsResponse
-	15, // 48: bunker.v1.Bunkerd.SpawnAgent:output_type -> bunker.v1.SpawnAgentResponse
-	21, // 49: bunker.v1.Bunkerd.RenewalDriftReport:output_type -> bunker.v1.RenewalDriftResponse
-	19, // 50: bunker.v1.Bunkerd.DestroyAgent:output_type -> bunker.v1.DestroyAgentResponse
-	24, // 51: bunker.v1.Bunkerd.StopAgent:output_type -> bunker.v1.StopAgentResponse
-	26, // 52: bunker.v1.Bunkerd.StartAgent:output_type -> bunker.v1.StartAgentResponse
-	28, // 53: bunker.v1.Bunkerd.RestartAgent:output_type -> bunker.v1.RestartAgentResponse
-	30, // 54: bunker.v1.Bunkerd.ListAgents:output_type -> bunker.v1.ListAgentsResponse
-	33, // 55: bunker.v1.Bunkerd.GetAgent:output_type -> bunker.v1.GetAgentResponse
-	17, // 56: bunker.v1.Bunkerd.GetAgentKey:output_type -> bunker.v1.GetAgentKeyResponse
-	35, // 57: bunker.v1.Bunkerd.AgentMetrics:output_type -> bunker.v1.AgentMetricsResponse
-	39, // 58: bunker.v1.Bunkerd.ExecAgent:output_type -> bunker.v1.ExecAgentResponse
-	41, // 59: bunker.v1.Bunkerd.RunAgent:output_type -> bunker.v1.RunAgentResponse
-	37, // 60: bunker.v1.Bunkerd.HeartbeatAgent:output_type -> bunker.v1.HeartbeatAgentResponse
-	46, // 61: bunker.v1.Bunkerd.QueryAudit:output_type -> bunker.v1.QueryAuditResponse
-	48, // 62: bunker.v1.Bunkerd.RotateJWTSecret:output_type -> bunker.v1.RotateJWTSecretResponse
-	50, // 63: bunker.v1.Bunkerd.RevokeKey:output_type -> bunker.v1.RevokeKeyResponse
-	53, // 64: bunker.v1.Bunkerd.KeyList:output_type -> bunker.v1.KeyListResponse
-	43, // 65: bunker.v1.Agent.GetInfo:output_type -> bunker.v1.GetInfoResponse
-	35, // 66: bunker.v1.Agent.Metrics:output_type -> bunker.v1.AgentMetricsResponse
-	37, // 67: bunker.v1.Agent.Heartbeat:output_type -> bunker.v1.HeartbeatAgentResponse
-	46, // [46:68] is the sub-list for method output_type
-	24, // [24:46] is the sub-list for method input_type
-	24, // [24:24] is the sub-list for extension type_name
-	24, // [24:24] is the sub-list for extension extendee
-	0,  // [0:24] is the sub-list for field type_name
+	54, // 24: bunker.v1.ProgramAlias.mounts:type_name -> bunker.v1.ProgramAliasMount
+	55, // 25: bunker.v1.ListProgramAliasesResponse.aliases:type_name -> bunker.v1.ProgramAlias
+	55, // 26: bunker.v1.PutProgramAliasRequest.alias:type_name -> bunker.v1.ProgramAlias
+	55, // 27: bunker.v1.PutProgramAliasResponse.alias:type_name -> bunker.v1.ProgramAlias
+	4,  // 28: bunker.v1.Bunkerd.ServerInfo:input_type -> bunker.v1.ServerInfoRequest
+	7,  // 29: bunker.v1.Bunkerd.ServerMetrics:input_type -> bunker.v1.ServerMetricsRequest
+	11, // 30: bunker.v1.Bunkerd.SpawnAgent:input_type -> bunker.v1.SpawnAgentRequest
+	20, // 31: bunker.v1.Bunkerd.RenewalDriftReport:input_type -> bunker.v1.RenewalDriftRequest
+	18, // 32: bunker.v1.Bunkerd.DestroyAgent:input_type -> bunker.v1.DestroyAgentRequest
+	23, // 33: bunker.v1.Bunkerd.StopAgent:input_type -> bunker.v1.StopAgentRequest
+	25, // 34: bunker.v1.Bunkerd.StartAgent:input_type -> bunker.v1.StartAgentRequest
+	27, // 35: bunker.v1.Bunkerd.RestartAgent:input_type -> bunker.v1.RestartAgentRequest
+	29, // 36: bunker.v1.Bunkerd.ListAgents:input_type -> bunker.v1.ListAgentsRequest
+	32, // 37: bunker.v1.Bunkerd.GetAgent:input_type -> bunker.v1.GetAgentRequest
+	16, // 38: bunker.v1.Bunkerd.GetAgentKey:input_type -> bunker.v1.GetAgentKeyRequest
+	34, // 39: bunker.v1.Bunkerd.AgentMetrics:input_type -> bunker.v1.AgentMetricsRequest
+	38, // 40: bunker.v1.Bunkerd.ExecAgent:input_type -> bunker.v1.ExecAgentRequest
+	40, // 41: bunker.v1.Bunkerd.RunAgent:input_type -> bunker.v1.RunAgentRequest
+	36, // 42: bunker.v1.Bunkerd.HeartbeatAgent:input_type -> bunker.v1.HeartbeatAgentRequest
+	44, // 43: bunker.v1.Bunkerd.QueryAudit:input_type -> bunker.v1.QueryAuditRequest
+	47, // 44: bunker.v1.Bunkerd.RotateJWTSecret:input_type -> bunker.v1.RotateJWTSecretRequest
+	49, // 45: bunker.v1.Bunkerd.RevokeKey:input_type -> bunker.v1.RevokeKeyRequest
+	51, // 46: bunker.v1.Bunkerd.KeyList:input_type -> bunker.v1.KeyListRequest
+	56, // 47: bunker.v1.Bunkerd.ListProgramAliases:input_type -> bunker.v1.ListProgramAliasesRequest
+	58, // 48: bunker.v1.Bunkerd.PutProgramAlias:input_type -> bunker.v1.PutProgramAliasRequest
+	60, // 49: bunker.v1.Bunkerd.DeleteProgramAlias:input_type -> bunker.v1.DeleteProgramAliasRequest
+	42, // 50: bunker.v1.Agent.GetInfo:input_type -> bunker.v1.GetInfoRequest
+	34, // 51: bunker.v1.Agent.Metrics:input_type -> bunker.v1.AgentMetricsRequest
+	36, // 52: bunker.v1.Agent.Heartbeat:input_type -> bunker.v1.HeartbeatAgentRequest
+	5,  // 53: bunker.v1.Bunkerd.ServerInfo:output_type -> bunker.v1.ServerInfoResponse
+	8,  // 54: bunker.v1.Bunkerd.ServerMetrics:output_type -> bunker.v1.ServerMetricsResponse
+	15, // 55: bunker.v1.Bunkerd.SpawnAgent:output_type -> bunker.v1.SpawnAgentResponse
+	21, // 56: bunker.v1.Bunkerd.RenewalDriftReport:output_type -> bunker.v1.RenewalDriftResponse
+	19, // 57: bunker.v1.Bunkerd.DestroyAgent:output_type -> bunker.v1.DestroyAgentResponse
+	24, // 58: bunker.v1.Bunkerd.StopAgent:output_type -> bunker.v1.StopAgentResponse
+	26, // 59: bunker.v1.Bunkerd.StartAgent:output_type -> bunker.v1.StartAgentResponse
+	28, // 60: bunker.v1.Bunkerd.RestartAgent:output_type -> bunker.v1.RestartAgentResponse
+	30, // 61: bunker.v1.Bunkerd.ListAgents:output_type -> bunker.v1.ListAgentsResponse
+	33, // 62: bunker.v1.Bunkerd.GetAgent:output_type -> bunker.v1.GetAgentResponse
+	17, // 63: bunker.v1.Bunkerd.GetAgentKey:output_type -> bunker.v1.GetAgentKeyResponse
+	35, // 64: bunker.v1.Bunkerd.AgentMetrics:output_type -> bunker.v1.AgentMetricsResponse
+	39, // 65: bunker.v1.Bunkerd.ExecAgent:output_type -> bunker.v1.ExecAgentResponse
+	41, // 66: bunker.v1.Bunkerd.RunAgent:output_type -> bunker.v1.RunAgentResponse
+	37, // 67: bunker.v1.Bunkerd.HeartbeatAgent:output_type -> bunker.v1.HeartbeatAgentResponse
+	46, // 68: bunker.v1.Bunkerd.QueryAudit:output_type -> bunker.v1.QueryAuditResponse
+	48, // 69: bunker.v1.Bunkerd.RotateJWTSecret:output_type -> bunker.v1.RotateJWTSecretResponse
+	50, // 70: bunker.v1.Bunkerd.RevokeKey:output_type -> bunker.v1.RevokeKeyResponse
+	53, // 71: bunker.v1.Bunkerd.KeyList:output_type -> bunker.v1.KeyListResponse
+	57, // 72: bunker.v1.Bunkerd.ListProgramAliases:output_type -> bunker.v1.ListProgramAliasesResponse
+	59, // 73: bunker.v1.Bunkerd.PutProgramAlias:output_type -> bunker.v1.PutProgramAliasResponse
+	61, // 74: bunker.v1.Bunkerd.DeleteProgramAlias:output_type -> bunker.v1.DeleteProgramAliasResponse
+	43, // 75: bunker.v1.Agent.GetInfo:output_type -> bunker.v1.GetInfoResponse
+	35, // 76: bunker.v1.Agent.Metrics:output_type -> bunker.v1.AgentMetricsResponse
+	37, // 77: bunker.v1.Agent.Heartbeat:output_type -> bunker.v1.HeartbeatAgentResponse
+	53, // [53:78] is the sub-list for method output_type
+	28, // [28:53] is the sub-list for method input_type
+	28, // [28:28] is the sub-list for extension type_name
+	28, // [28:28] is the sub-list for extension extendee
+	0,  // [0:28] is the sub-list for field type_name
 }
 
 func init() { file_proto_bunker_v1_bunker_proto_init() }
@@ -4364,7 +4848,7 @@ func file_proto_bunker_v1_bunker_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_bunker_v1_bunker_proto_rawDesc), len(file_proto_bunker_v1_bunker_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   54,
+			NumMessages:   62,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

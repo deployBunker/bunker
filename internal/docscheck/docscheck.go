@@ -51,9 +51,11 @@ type GroupDocCoverageRule struct {
 }
 
 // GroupDocCoverageRules is the registry of documented groups checked by the
-// group-doc-coverage rule. Currently: the audit trail group (docs/audit.md).
+// group-doc-coverage rule. Currently: the audit trail group (docs/audit.md)
+// and the docker-as-installer program aliases (docs/program-aliases.md).
 var GroupDocCoverageRules = []GroupDocCoverageRule{
 	{Group: "audit", DocPath: "docs/audit.md"},
+	{Group: "alias", DocPath: "docs/program-aliases.md"},
 }
 
 // Rule names reported on Problem.Rule.

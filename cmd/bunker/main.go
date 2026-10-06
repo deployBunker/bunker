@@ -183,6 +183,9 @@ Client-side path overrides (persistent flags):
 	root.AddCommand(cli.NewPathsCommand())
 	root.AddCommand(cli.NewHostProvisionCommand())
 	root.AddCommand(cli.NewSubIDMigrateCommand())
+	// GAP-066: docker-as-installer program aliases (name -> container image),
+	// resolved by the daemon for agent execs.
+	root.AddCommand(cli.NewAliasCommand())
 
 	return root
 }
