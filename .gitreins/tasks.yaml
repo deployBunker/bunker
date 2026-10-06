@@ -4185,3 +4185,15 @@ tasks:
   status: complete
   created_at: '2026-10-06T19:09:00.243108+00:00'
   completed_at: '2026-10-06T19:12:53.522587+00:00'
+- id: INT-CI-52
+  title: "root-suite + regression red 09-30: TestSpawn_SessionProbeFailureNeverReportsReady\
+    \ 1590s hang + 'enable linger: Connection timed out' \u2014 runner systemd user\
+    \ manager unhealthy, not a code defect"
+  criteria:
+  - 'PASS iff: (1) the latest completed push run on main shows job-level success for
+    root-suite AND regression AND build-and-test (gh run view <id> --json jobs); (2)
+    go test ./internal/agent/ -run ''TestSpawn_SessionProbeFailureNeverReportsReady''
+    compiles and runs to completion (no 1590s hang) in the working tree; (3) no new
+    CI run in the 2026-10-02..06 window shows the linger Connection-timed-out fingerprint.'
+  status: in_progress
+  created_at: '2026-10-06T19:25:33.189511+00:00'
