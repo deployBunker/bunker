@@ -4195,5 +4195,6 @@ tasks:
     go test ./internal/agent/ -run ''TestSpawn_SessionProbeFailureNeverReportsReady''
     compiles and runs to completion (no 1590s hang) in the working tree; (3) no new
     CI run in the 2026-10-02..06 window shows the linger Connection-timed-out fingerprint.'
-  status: in_progress
+  status: complete
   created_at: '2026-10-06T19:25:33.189511+00:00'
+  completed_at: '2026-10-06T19:32:06.935236+00:00'
