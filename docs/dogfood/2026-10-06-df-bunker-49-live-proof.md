@@ -20,7 +20,28 @@ Verified by foreman tick #571 via SSH (root@78.46.173.180):
   works; the error is the expected client-side missing key for a not-spawned-from-this-CLI agent.
 - The pre-v0.2.0 default-form failure ('mount preflight: no remote path to check') is no longer reproducible.
 
+## The installable release binary (what install.sh serves)
+- GitHub Release v0.2.0 asset `bunker-linux-amd64` downloaded 2026-10-06 and checksum-verified:
+  sha256 982c57fcf2290168c82b24b89e32cf3477c9ecf33c9c66dc2ab401ee3e278088 == SHA256SUMS entry.
+- `./bunker-v020 version` → `bunker 0.2.0`, `commit: 149411c` = the v0.2.0 TAG COMMIT itself
+  (`git rev-parse v0.2.0^{commit}` / tag 91e2b07 → tree 149411c). `git tag --contains 653d763` → v0.2.0,
+  so the binary a user installs from the release channel contains fix 653d763.
+
+## Demo-host deployed binary (context, not this row's defect)
+- `/usr/local/bin/bunker version` → `bunker 0.2.0`, `commit: 365ac56` — a dirty local build
+  (vcs.modified=true) whose sha256 = e10a64cf36cac919f6b4b0410a2c5fa5cf473f1bb9eca46319f1c32180982c3d.
+  Its provenance/staleness is the RELEASE-003/008 deploy-freshness family, NOT DF-BUNKER-49.
+
+## Live behavior of the demo-host binary
+- `bunker mount d3962808 --server mvp-live /tmp/mnt-t571` (demo daemon) → the OLD failure signature
+  "mount preflight: no remote path to check" does NOT appear; the command proceeds past path resolution to
+  `SSH key not found at /root/.config/bunker/keys/d3962808` — i.e. remote path resolution (the 653d763 fix)
+  works; the error is the expected client-side missing key for a not-spawned-from-this-CLI agent.
+- The pre-v0.2.0 default-form failure ('mount preflight: no remote path to check') is no longer reproducible.
+
 ## Conclusion
-The DF-BUNKER-49 defect (installed CLI predates mount fix 653d763) is resolved by the v0.2.0 release:
-RELEASE-007's precondition is satisfied. Both rows are verified-and-closed (no code change required).
-ch:trace row=DF-BUNKER-49 row=RELEASE-007 spec=.coding-hermes/board/tasks.jsonl#DF-BUNKER-49 evidence=docs/dogfood/2026-10-06-df-bunker-49-live-proof.md witness=live:ssh://root@78.46.173.180/usr/local/bin/bunker witness=tag:v0.2.0@origin verdict=none:verified-and-closed commit=a4165de memory=none:not-applicable
+DF-BUNKER-49's defect (installed CLI predates mount fix 653d763) is resolved by the v0.2.0 release channel:
+the released, checksum-verifiable, install.sh-served binary is built from the v0.2.0 tag commit which
+contains 653d763. RELEASE-007's precondition is satisfied. Both rows are verified-and-closed (no code change
+required). RELEASE-003/008 (deployed-binary staleness on hosts) remain OPEN and are unaffected by this closure.
+ch:trace row=DF-BUNKER-49 row=RELEASE-007 spec=.coding-hermes/board/tasks.jsonl#DF-BUNKER-49 evidence=docs/dogfood/2026-10-06-df-bunker-49-live-proof.md witness=release:v0.2.0 witness=tag:v0.2.0@origin witness=live:ssh://root@78.46.173.180/usr/local/bin/bunker verdict=none:verified-and-closed commit=1fe8971 memory=none:not-applicable
