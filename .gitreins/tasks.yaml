@@ -4118,3 +4118,28 @@ tasks:
   status: complete
   created_at: '2026-10-06T11:56:07.655924+00:00'
   completed_at: '2026-10-06T12:19:11.642646+00:00'
+- id: BFS-027
+  title: Report cache refusals when content hash doesn't match declared hash
+  criteria:
+  - The un-cacheable arm (content hashes to a different value than declared) changes
+    at least one reported counter in bypass_reasons that names the reason (e.g. 'hash_mismatch'
+    or 'content_mismatch'). The probe from docs/evidence/BFS-009-uncacheable.txt shows
+    the counter moving where it previously moved nothing. No existing counters are
+    weakened. go test ./internal/fsclient/... -count=1 passes.
+  status: complete
+  created_at: '2026-10-06T13:10:52.744818+00:00'
+  completed_at: '2026-10-06T13:26:30.319482+00:00'
+- id: QA-BUNKER-B1R
+  title: ci-pass grades act EOF as FAIL, not OK (QA-BUNKER-B1)
+  criteria:
+  - The ci-pass cell block in .hermes/scripts/bunker-qa.sh grades the cell FAIL when
+    the act leg exits non-zero, carrying act_failure_context output, and never grades
+    ci-pass OK on the strength of the native suite alone; act SKIPPED (no triggerable
+    workflow) and the vacuous/missing-runner arms keep their existing grades. Regression
+    tests in internal/hostsetup/qacell_test.go execute the real extracted block with
+    stubbed act rc values and assert the matrix (rc=0 OK, rc=1 FAIL regardless of
+    native outcome, rc=2 FAIL). go test ./... -count=1 passes; go build ./... passes.
+    Committed as 7a6dcbc and merged to main.
+  status: complete
+  created_at: '2026-10-06T14:24:36.088934+00:00'
+  completed_at: '2026-10-06T14:32:14.769724+00:00'

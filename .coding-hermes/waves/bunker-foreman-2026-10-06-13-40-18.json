@@ -1,0 +1,52 @@
+{
+  "tick_id": "bunker-foreman-2026-10-06-13-40-18",
+  "project": "bunker",
+  "workdir": "/home/kara/deployBunker/bunker",
+  "base_sha": "b9777ad",
+  "tasks": [
+    {
+      "id": "QA-BUNKER-B1",
+      "title": "[P1] CI check via act fails with fatal EOF but cell marked OK",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-B1",
+      "branch": "wt/QA-BUNKER-B1",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek-foreman"
+    },
+    {
+      "id": "QA-BUNKER-11",
+      "title": "[P1] Battery cells FAILED but model judged ? (guard override)",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-11",
+      "branch": "wt/QA-BUNKER-11",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek-foreman"
+    },
+    {
+      "id": "GAP-066",
+      "title": "P2 \u2014 Docker-as-installer execution mode",
+      "worktree": "/home/kara/worktrees/bunker-GAP-066",
+      "branch": "wt/GAP-066",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek-foreman"
+    },
+    {
+      "id": "GAP-072",
+      "title": "P2 \u2014 Interactive attach mode: bidirectional streaming",
+      "worktree": "/home/kara/worktrees/bunker-GAP-072",
+      "branch": "wt/GAP-072",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek-foreman"
+    }
+  ],
+  "created_at": "2026-10-06T13:40:18-05:00",
+  "finished_at": "2026-10-06T14:35:00-05:00",
+  "recovery": {
+    "merged": [
+      "QA-BUNKER-B1 (7a6dcbc, merge da46f5f)"
+    ],
+    "prelaunch_dead_zero_diff": [
+      "QA-BUNKER-11",
+      "GAP-066",
+      "GAP-072"
+    ]
+  }
+}
