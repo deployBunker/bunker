@@ -4153,3 +4153,24 @@ tasks:
     paths; go build+vet+test pass
   status: in_progress
   created_at: '2026-10-06T15:12:37.395415+00:00'
+- id: RELEASE-009
+  title: Pre-cut v0.2.0 version-prep commit
+  criteria:
+  - git tag v0.2.0 exists and points at commit 149411c whose subject names RELEASE-011
+    step 2; internal/version/version.go Version == 0.2.0 AND version_test.go asserts
+    0.2.0 AND Makefile VERSION ?= 0.2.0 AND CHANGELOG.md top numeric heading is '##
+    0.2.0' with an empty Unreleased section above it
+  status: complete
+  created_at: '2026-10-06T18:18:54.961368+00:00'
+  completed_at: '2026-10-06T18:20:01.427611+00:00'
+- id: RELEASE-P0SWEEP
+  title: "RELEASE-010 + RELEASE-011 P0 blocker rows stale \u2014 v0.2.0 cut landed"
+  criteria:
+  - GitHub Release v0.2.0 exists marked Latest with binary assets (amd64+arm64 bunker/bunkerd);
+    release workflow run 37004146114 conclusion success; CI version-authority parity
+    holds at HEAD (git describe --tags --abbrev=0 == v0.2.0, bunker version 0.2.0,
+    CHANGELOG top 0.2.0); board rows RELEASE-010 and RELEASE-011 closed with foreman_note
+    citing the evidence
+  status: complete
+  created_at: '2026-10-06T18:19:03.183813+00:00'
+  completed_at: '2026-10-06T18:20:20.120367+00:00'
