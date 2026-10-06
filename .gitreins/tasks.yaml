@@ -4208,3 +4208,13 @@ tasks:
   status: complete
   created_at: '2026-10-06T20:03:43.572641+00:00'
   completed_at: '2026-10-06T20:06:01.727987+00:00'
+- id: QA-BUNKER-61
+  title: 'destroy: retry userdel after unregister + report leak residue'
+  criteria:
+  - grep shows userdel-after-unregister path retries with context.Background instead
+    of 'treasing as not found'; a destroy ending in user/home leak returns a distinct
+    verdict naming the leaked resources; go build ./... && go vet ./... && go test
+    ./... pass
+  status: complete
+  created_at: '2026-10-06T20:21:00.548880+00:00'
+  completed_at: '2026-10-06T21:30:32.278022+00:00'
