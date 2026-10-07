@@ -102,8 +102,11 @@ func TestMountCommand_ExplicitSSHFSMountSpecMounts(t *testing.T) {
 // back to sshfs.
 func TestMountCommand_UnknownDriverIsLoudRefusal(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	// "doesnotexist" is the fixture for an UNREGISTERED driver. (MOUNT-007:
+	// this test originally used "rclone", which is now a registered driver,
+	// so the fixture moved to a name that stays unregistered.)
 	newMountSpecTestServer(t, &v1.MountSpec{
-		Driver:  "rclone",
+		Driver:  "doesnotexist",
 		Command: mountFixtureSshfsMount,
 	}, mountFixtureSshfsMount)
 	writeMountClientKey(t)
@@ -120,7 +123,7 @@ func TestMountCommand_UnknownDriverIsLoudRefusal(t *testing.T) {
 	if !errors.Is(err, mountdriver.ErrUnknownDriver) {
 		t.Errorf("error does not match mountdriver.ErrUnknownDriver: %v", err)
 	}
-	if !strings.Contains(err.Error(), "rclone") {
+	if !strings.Contains(err.Error(), "doesnotexist") {
 		t.Errorf("refusal does not name the offending driver: %v", err)
 	}
 }

@@ -332,6 +332,19 @@ produces a warning. Pass --sshfs-require-patched to refuse instead of warning.`,
 				return fmt.Errorf("agent %s has no %s mount command; ensure it was spawned with mount support", agentID, mountDriver.Name)
 			}
 
+			// MOUNT-007: an agent whose MountSpec names the rclone driver mounts
+			// through the rclone arm and never reaches the sshfs-shaped steps
+			// below (user@host parsing, sshfs version guard, -o option surgery,
+			// the sshfs classifier retry loop — none of which parse or apply to
+			// an `rclone mount :sftp:...` command). The steps already shared —
+			// server binding, server-namespaced mountpoint resolution, the
+			// MountSpec dispatch with the loud unknown-driver refusal — ran
+			// above. rclone's stored command carries --daemon, so the CLI does
+			// not block on the VFS loop.
+			if mountDriver.Name == mountdriver.DriverRclone {
+				return runRcloneMountCommand(cmd.Context(), mountCmd, entry, agentID, mountPoint, sshKey)
+			}
+
 			// 3. Resolve the client-side connection details. The stored
 			// command is generated on the daemon host: it embeds the
 			// daemon-local key path (/etc/bunkerd/ssh/<agent-id>) and the

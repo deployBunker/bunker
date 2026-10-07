@@ -27,7 +27,10 @@ import (
 func TestSpawnAgent_UnknownMountDriverIsInvalidArgument(t *testing.T) {
 	svc, _, spawnCalled := gap116TestService(t)
 
-	req := connect.NewRequest(&v1.SpawnAgentRequest{AgentId: "mount006-bad", MountDriver: "rclone"})
+	// "doesnotexist" is the fixture for an UNREGISTERED driver. (MOUNT-007:
+	// this test originally used "rclone", which is now a registered driver,
+	// so the fixture moved to a name that stays unregistered.)
+	req := connect.NewRequest(&v1.SpawnAgentRequest{AgentId: "mount006-bad", MountDriver: "doesnotexist"})
 	_, err := svc.SpawnAgent(context.Background(), req)
 	if err == nil {
 		t.Fatal("unknown mount driver accepted at the RPC boundary")
@@ -35,7 +38,7 @@ func TestSpawnAgent_UnknownMountDriverIsInvalidArgument(t *testing.T) {
 	if connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Errorf("code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodeInvalidArgument, err)
 	}
-	if !strings.Contains(err.Error(), "rclone") {
+	if !strings.Contains(err.Error(), "doesnotexist") {
 		t.Errorf("error should name the offending driver: %v", err)
 	}
 	if *spawnCalled {
