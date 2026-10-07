@@ -395,6 +395,43 @@ func TestRecordExecCommand_DropsUnredactedSummary(t *testing.T) {
 	}
 }
 
+func TestRecordExecCommand_SessionIDAttributionAndRedaction(t *testing.T) {
+	tests := []struct {
+		name      string
+		sessionID string
+		want      string
+		leak      string
+	}{
+		{name: "present", sessionID: "hermes-session-42", want: "hermes-session-42"},
+		{name: "absent", want: "not captured"},
+		{name: "credential-shaped id is redacted", sessionID: "sk-1234567890abcdef1234567890abcdef", want: "[REDACTED:len35]", leak: "sk-1234567890abcdef1234567890abcdef"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			log, path := newTestLog(t)
+			RecordExecCommand(context.Background(), log, nil, ExecRecord{
+				Procedure: "/bunker.v1.Bunkerd/ExecAgent", AgentID: "agent-1",
+				SessionID: tc.sessionID, Outcome: "ok",
+				Summary: RedactCommandSummary("echo", []string{"ok"}),
+			})
+			line := readLog(t, path)
+			if tc.leak != "" && strings.Contains(string(line), tc.leak) {
+				t.Fatalf("audit log leaked credential-shaped session id: %s", line)
+			}
+			records := parseRecords(t, line)
+			if len(records) != 1 {
+				t.Fatalf("record count = %d, want 1", len(records))
+			}
+			if got := records[0]["session_id"]; got != tc.want {
+				t.Errorf("session_id = %v, want %q", got, tc.want)
+			}
+			if count, bad, err := Verify(path); err != nil || bad != 0 || count != 1 {
+				t.Errorf("Verify(session_id record) = (%d, %d, %v), want (1, 0, nil)", count, bad, err)
+			}
+		})
+	}
+}
+
 // TestRecordExecCommand_NilLogIsNoop proves a daemon with auditing disabled
 // records nothing and does not panic.
 func TestRecordExecCommand_NilLogIsNoop(t *testing.T) {

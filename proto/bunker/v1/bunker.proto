@@ -543,6 +543,8 @@ message ExecAgentRequest {
   // default (512MiB). Lets a cautious caller lower the cap without a server
   // config change; can never RAISE it past the server ceiling.
   uint64 response_cap_bytes = 9;
+  // Opaque client session identifier for audit attribution; never a credential.
+  string session_id = 10;
 }
 
 // How the response carries stdout/stderr. TEXT (zero) is the default and is
@@ -577,6 +579,8 @@ message RunAgentRequest {
   // GAP-116 per-spawn safety preset override (same grammar and precedence as
   // SpawnAgentRequest.safety_preset). Empty = defer to env > config > default.
   string safety_preset = 8;
+  // Opaque client session identifier for audit attribution; never a credential.
+  string session_id = 9;
 }
 
 message RunAgentResponse {

@@ -793,11 +793,23 @@ func (s *bunkerdService) recordExecAudit(ctx context.Context, started time.Time,
 	rec := audit.ExecRecord{
 		Procedure:  procedure,
 		AgentID:    agentID,
+		SessionID:  execAuditSessionID(msg),
 		Outcome:    execAuditOutcome(st, err),
 		Summary:    execCommandSummary(msg),
 		DurationMS: time.Since(started).Milliseconds(),
 	}
 	audit.RecordExecCommand(ctx, s.auditLog, s.logger, rec)
+}
+
+func execAuditSessionID(msg any) string {
+	switch req := msg.(type) {
+	case *v1.ExecAgentRequest:
+		return req.GetSessionId()
+	case *v1.RunAgentRequest:
+		return req.GetSessionId()
+	default:
+		return ""
+	}
 }
 
 // execAuditOutcome derives the command record's outcome from what the handler
@@ -860,6 +872,7 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 	// (DOGFOOD-012). Must happen before any early return so error paths are
 	// covered too.
 	audit.StampStreamAgentID(ctx, agentID)
+	audit.StampStreamSessionID(ctx, req.Msg.GetSessionId())
 
 	// GAP-142: the interceptor's streaming record cannot see this request's
 	// message, so it records the RPC but never the COMMAND — the forensic core

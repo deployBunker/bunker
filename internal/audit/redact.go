@@ -516,6 +516,16 @@ func RedactCommandSummary(command string, args []string) string {
 	return capCommandSummary(redactCommandLine(commandLine(command, args)))
 }
 
+// redactSessionID preserves ordinary opaque identifiers but masks values
+// matching the credential patterns used by command redaction. Empty IDs have
+// one canonical representation in every audit row.
+func redactSessionID(sessionID string) string {
+	if strings.TrimSpace(sessionID) == "" {
+		return "not captured"
+	}
+	return capCommandSummary(redactCommandLine(sessionID))
+}
+
 // RedactScriptSummary summarizes an uploaded script body. A script is
 // arbitrary multi-line content and is NOT token-scanned like a command line:
 // recording it is both unsafe (it is the most likely carrier of an embedded

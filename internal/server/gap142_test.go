@@ -174,9 +174,10 @@ func TestGAP142_ExecCommandReachesTheChain(t *testing.T) {
 	client := gap142Server(t, log)
 
 	exit, err := gap142RunExec(t, client, &v1.ExecAgentRequest{
-		AgentId: gap142AgentID,
-		Command: "deploy",
-		Args:    []string{"--region", "eu-1", "--token", "abcdef123456"},
+		AgentId:   gap142AgentID,
+		SessionId: "hermes-session-gap095",
+		Command:   "deploy",
+		Args:      []string{"--region", "eu-1", "--token", "abcdef123456"},
 	})
 	if err != nil {
 		t.Fatalf("ExecAgent: %v", err)
@@ -197,6 +198,9 @@ func TestGAP142_ExecCommandReachesTheChain(t *testing.T) {
 	}
 	if rec.Caller != "master" {
 		t.Errorf("caller = %q, want master (the authenticated static-token identity)", rec.Caller)
+	}
+	if rec.SessionID != "hermes-session-gap095" {
+		t.Errorf("session_id = %q, want hermes-session-gap095", rec.SessionID)
 	}
 	if !strings.Contains(rec.Summary, "deploy") || !strings.Contains(rec.Summary, "--region eu-1") {
 		t.Errorf("summary %q does not carry the command", rec.Summary)
@@ -224,6 +228,9 @@ func TestGAP142_ExecCommandReachesTheChain(t *testing.T) {
 		}
 		if r.Caller != "master" {
 			t.Errorf("record %q does not agree on the caller: %q", r.Method, r.Caller)
+		}
+		if r.SessionID != "hermes-session-gap095" {
+			t.Errorf("record %q session_id = %q, want hermes-session-gap095", r.Method, r.SessionID)
 		}
 	}
 	if !sawRPC {

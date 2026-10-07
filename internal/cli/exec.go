@@ -55,6 +55,7 @@ func NewExecCommand() *cobra.Command {
 	var (
 		serverName string
 		agentID    string
+		sessionID  string
 		timeout    uint32
 		rawMode    bool
 		scriptPath string
@@ -74,7 +75,8 @@ func NewExecCommand() *cobra.Command {
 	// PersistentPreRun transfer runs with an empty value and a peeled
 	// --config would otherwise be accepted and silently ignored.
 	execGrammar := flagGrammar{name: "exec", specs: map[string]flagGrammarSpec{
-		"--server": {apply: func(v string) error { serverName = v; return nil }},
+		"--server":  {apply: func(v string) error { serverName = v; return nil }},
+		"--session": {apply: func(v string) error { sessionID = v; return nil }},
 		"--timeout": {apply: func(v string) error {
 			if n, err := strconv.ParseUint(v, 10, 32); err == nil {
 				timeout = uint32(n)
@@ -109,6 +111,8 @@ flags such as --rm, --format, -d, and --name are not intercepted by the CLI.
 Use --raw to bypass shell interpretation and pass the command and arguments
 directly to execve on the remote host. This is useful for commands with
 quotes, parentheses, or pipes that would otherwise need shell escaping.
+
+Use --session <id> to attach an opaque client session identifier to audit records.
 
 Use --script <file> to upload a local script and execute it inside the agent.
 
@@ -250,6 +254,7 @@ Examples:
 			}
 			req := connect.NewRequest(&v1.ExecAgentRequest{
 				AgentId:          agentID,
+				SessionId:        sessionID,
 				Command:          command,
 				Args:             commandArgs,
 				TimeoutSeconds:   timeout,

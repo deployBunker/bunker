@@ -57,6 +57,7 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 // implementation).
 type streamSink struct {
 	agentID    string
+	sessionID  string
 	remoteAddr string
 }
 
@@ -96,8 +97,12 @@ func (i *Interceptor) record(ctx context.Context, procedure string, err error, s
 	// Streaming handlers stamp the target agent id into the per-request sink;
 	// prefer it over the claims fallback (master tokens carry no agent scope).
 	agentID := ""
+	sessionID := requestSessionID(msg)
 	if sink, _ := ctx.Value(streamSinkKey{}).(*streamSink); sink != nil && sink.agentID != "" {
 		agentID = sink.agentID
+		if sink.sessionID != "" {
+			sessionID = sink.sessionID
+		}
 	} else {
 		agentID = targetAgentID(msg, claims)
 	}
@@ -123,6 +128,7 @@ func (i *Interceptor) record(ctx context.Context, procedure string, err error, s
 		Method:     procedure,
 		RemoteAddr: remote,
 		AgentID:    agentID,
+		SessionID:  sessionID,
 		DurationMS: time.Since(start).Milliseconds(),
 		Outcome:    outcome,
 		Summary:    summarize(procedure, agentID),
@@ -151,6 +157,14 @@ func StampStreamAgentID(ctx context.Context, agentID string) {
 	}
 }
 
+// StampStreamSessionID attaches the opaque exec session identifier to the
+// current streaming audit record. AuditLog sanitizes it before writing.
+func StampStreamSessionID(ctx context.Context, sessionID string) {
+	if sink, ok := ctx.Value(streamSinkKey{}).(*streamSink); ok {
+		sink.sessionID = sessionID
+	}
+}
+
 // ExecRecordMethod is the audit Method stamped on the ONE correlated
 // command-content record an exec/run appends (GAP-142). The per-RPC record the
 // interceptor writes keeps the bare connect procedure
@@ -174,6 +188,9 @@ type ExecRecord struct {
 	// AgentID is the exec target — the same value StampStreamAgentID gives the
 	// interceptor's record, so the two records correlate on agent_id.
 	AgentID string
+	// SessionID is the opaque client session id; AuditLog redacts credential-like
+	// values and supplies "not captured" when absent.
+	SessionID string
 	// Outcome is the exec result: "ok", "exit_<code>" (the command ran and
 	// returned non-zero), or the connect error code string when the handler
 	// failed before/around the command.
@@ -238,6 +255,7 @@ func RecordExecCommand(ctx context.Context, log *AuditLog, logger *slog.Logger, 
 		Method:     ev.Procedure + ExecRecordMethod,
 		RemoteAddr: remoteAddr(ctx),
 		AgentID:    ev.AgentID,
+		SessionID:  ev.SessionID,
 		DurationMS: ev.DurationMS,
 		Outcome:    ev.Outcome,
 		Summary:    summary,
@@ -328,6 +346,17 @@ func targetAgentID(msg any, claims *auth.Claims) string {
 		return claims.AgentID
 	}
 	return ""
+}
+
+func requestSessionID(msg any) string {
+	switch m := msg.(type) {
+	case *v1.ExecAgentRequest:
+		return m.GetSessionId()
+	case *v1.RunAgentRequest:
+		return m.GetSessionId()
+	default:
+		return ""
+	}
 }
 
 func remoteAddr(ctx context.Context) string {
