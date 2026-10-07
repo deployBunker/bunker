@@ -1344,6 +1344,38 @@ func (s *bunkerdService) QueryAudit(ctx context.Context, req *connect.Request[v1
 // hosts where /usr/bin/env is uutils coreutils.
 const agentExecBasePath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
+// shellEnvPATHOperand returns the PATH=... operand for command -p env(1) at
+// the shell exec sites — the ones whose command string runs in the shell that
+// sources /run/bunker/<id>/env via `unset PATH; set -a; . env; set +a`.
+// Before DF-BUNKER-48 these sites hardcoded PATH=<agentPath>, silently
+// clobbering a PATH the user had set via `bunker env set PATH=...`. The
+// operand is now a shell parameter expansion evaluated by the sourcing
+// shell: when the env file exported a PATH, it is preserved AFTER the agent
+// bin dir (agent bin stays first so bunker-managed tooling keeps
+// precedence); when the env file set no PATH, ${PATH:+:$PATH} expands empty
+// and PATH is exactly the historical hardcoded agentPath. The `unset PATH`
+// before sourcing guarantees the expansion only ever sees the env file's
+// PATH (never sshd's ambient session PATH), which also makes the fallback
+// byte-deterministic. command -p resolves env(1) from the OS default path
+// while PATH is unset (POSIX command -p); on the target systems /bin/env
+// and /usr/bin/env both exist, so the leading agent-bin entry of the
+// operand then provides env's own exec context with the final PATH.
+// Byte-identical output when the env file sets no PATH: the built string is
+// a superset of the pre-fix bytes (the unset + command -p additions are the
+// only delta), and the EXECUTED PATH is identical for fresh agents.
+// testScriptPathOverride, when non-empty, replaces the derived
+// <home>/.bunker/exec-script.sh path in the script exec builders. It is nil
+// (empty) in production and exists only so tests can point the script path
+// at a writable temp location — the script builders bake the path into
+// heredoc write, chmod, and exec, so a fixed /home fixture would make the
+// behavioral half of the DF-BUNKER-48 table test impossible as a non-root
+// user.
+var testScriptPathOverride string
+
+func shellEnvPATHOperand(agentPath string) string {
+	return "PATH=\"" + agentPath + "${PATH:+:$PATH}\""
+}
+
 // buildAgentExecCommand constructs the shell command that runs inside the agent
 // via SSH.  It prefixes the user command with env(1) so PATH, DOCKER_HOST, and
 // TMPDIR are set regardless of sshd PermitUserEnvironment/AcceptEnv settings,
@@ -1381,8 +1413,8 @@ func buildAgentExecCommand(agentID, userHome, command string, args []string, dis
 	// shell variables, invisible to the wrapped command. The [ -f ] guard
 	// keeps a fresh agent (no env file yet) from making dash exit 2 on the
 	// failed dot-source.
-	return fmt.Sprintf("set -a; [ -f %s ] && . %s 2>/dev/null; set +a; env PATH=%s DOCKER_HOST=unix://%s TMPDIR=%s %ssh -c %s",
-		envFile, envFile, agentPath, dockerSockPath, tmpDir, sandboxEnv, shellQuoteSingle(remoteCmd))
+	return fmt.Sprintf("unset PATH; set -a; [ -f %s ] && . %s 2>/dev/null; set +a; command -p env %s DOCKER_HOST=unix://%s TMPDIR=%s %ssh -c %s",
+		envFile, envFile, shellEnvPATHOperand(agentPath), dockerSockPath, tmpDir, sandboxEnv, shellQuoteSingle(remoteCmd))
 }
 
 // buildAgentRemoteCmd joins the user command with its shell-quoted args into
@@ -1569,8 +1601,8 @@ func buildAgentImageExecCommand(agentID, userHome, command string, args []string
 	runArgv = append(runArgv, imageRef, "sh", "-lc",
 		shellQuoteSingle(imageInnerSourcePrefix(agentID)+remoteCmd))
 
-	return fmt.Sprintf("set -a; [ -f %s ] && . %s 2>/dev/null; set +a; env PATH=%s DOCKER_HOST=unix://%s TMPDIR=%s %ssh -c %s",
-		envFile, envFile, agentPath, dockerSockPath, tmpDir, sandboxEnv,
+	return fmt.Sprintf("unset PATH; set -a; [ -f %s ] && . %s 2>/dev/null; set +a; command -p env %s DOCKER_HOST=unix://%s TMPDIR=%s %ssh -c %s",
+		envFile, envFile, shellEnvPATHOperand(agentPath), dockerSockPath, tmpDir, sandboxEnv,
 		shellQuoteSingle(strings.Join(runArgv, " ")))
 }
 
@@ -1678,7 +1710,10 @@ func buildAgentScriptCommand(agentID, userHome, scriptContent string, disclosed 
 	tmpDir := config.IsolationTmpDir
 	agentBinPath := filepath.Join(userHome, "bin")
 	agentPath := agentBinPath + ":" + agentExecBasePath
-	scriptPath := filepath.Join(userHome, ".bunker", "exec-script.sh")
+	scriptPath := testScriptPathOverride
+	if scriptPath == "" {
+		scriptPath = filepath.Join(userHome, ".bunker", "exec-script.sh")
+	}
 	envFile := fmt.Sprintf("/run/bunker/%s/env", agentID)
 	// GAP-067 containment disclosure: same env(1) injection as the shell
 	// exec path. Empty string when disabled — byte-identical output.
@@ -1690,8 +1725,8 @@ func buildAgentScriptCommand(agentID, userHome, scriptContent string, disclosed 
 	// We quote the EOF delimiter to prevent expansion of the script body.
 	escaped := strings.ReplaceAll(scriptContent, "'", "'\\''")
 	return fmt.Sprintf(
-		"mkdir -p %q && cat > %q <<'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %q && set -a; [ -f %s ] && . %s 2>/dev/null; set +a; env PATH=%s DOCKER_HOST=unix://%s TMPDIR=%s %s%q",
-		filepath.Dir(scriptPath), scriptPath, escaped, scriptPath, envFile, envFile, agentPath, dockerSockPath, tmpDir, sandboxEnv, scriptPath,
+		"mkdir -p %q && cat > %q <<'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %q && unset PATH; set -a; [ -f %s ] && . %s 2>/dev/null; set +a; command -p env %s DOCKER_HOST=unix://%s TMPDIR=%s %s%q",
+		filepath.Dir(scriptPath), scriptPath, escaped, scriptPath, envFile, envFile, shellEnvPATHOperand(agentPath), dockerSockPath, tmpDir, sandboxEnv, scriptPath,
 	)
 }
 
@@ -1710,7 +1745,10 @@ func buildAgentImageScriptCommand(agentID, userHome, scriptContent string, discl
 	tmpDir := config.IsolationTmpDir
 	agentBinPath := filepath.Join(userHome, "bin")
 	agentPath := agentBinPath + ":" + agentExecBasePath
-	scriptPath := filepath.Join(userHome, ".bunker", "exec-script.sh")
+	scriptPath := testScriptPathOverride
+	if scriptPath == "" {
+		scriptPath = filepath.Join(userHome, ".bunker", "exec-script.sh")
+	}
 	envFile := fmt.Sprintf("/run/bunker/%s/env", agentID)
 	sandboxEnv := ""
 	if disclosed {
@@ -1739,8 +1777,8 @@ func buildAgentImageScriptCommand(agentID, userHome, scriptContent string, discl
 	runArgv = append(runArgv, imageRef, "sh", shellQuoteSingle("set -e; "+imageInnerSourcePrefix(agentID)+". "+shellQuoteSingle(scriptPath)))
 
 	return fmt.Sprintf(
-		"mkdir -p %q && cat > %q <<'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %q && set -a; [ -f %s ] && . %s 2>/dev/null; set +a; env PATH=%s DOCKER_HOST=unix://%s TMPDIR=%s %s%s",
-		filepath.Dir(scriptPath), scriptPath, escaped, scriptPath, envFile, envFile, agentPath, dockerSockPath, tmpDir, sandboxEnv,
+		"mkdir -p %q && cat > %q <<'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %q && unset PATH; set -a; [ -f %s ] && . %s 2>/dev/null; set +a; command -p env %s DOCKER_HOST=unix://%s TMPDIR=%s %s%s",
+		filepath.Dir(scriptPath), scriptPath, escaped, scriptPath, envFile, envFile, shellEnvPATHOperand(agentPath), dockerSockPath, tmpDir, sandboxEnv,
 		strings.Join(runArgv, " "),
 	)
 }

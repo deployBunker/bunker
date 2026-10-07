@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -515,7 +517,7 @@ func TestBuildAgentExecCommand(t *testing.T) {
 		// from aborting the shell. set -a exports the injected vars to the
 		// child sh -c below.
 		"set -a; [ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env",
-		"set +a; env PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+		"unset PATH; set -a; [ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env 2>/dev/null; set +a; command -p env PATH=\"/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:$PATH}\"",
 		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
 		"TMPDIR=/tmp",
 		// The user command is always wrapped in sh -c '<joined>' so compound
@@ -671,13 +673,143 @@ func TestBuildAgentScriptCommand(t *testing.T) {
 	wantParts := []string{
 		"DOCKER_HOST=unix:///run/bunker/abc123/docker.sock",
 		"TMPDIR=/tmp",
-		"env PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+		"command -p env PATH=\"/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:$PATH}\"",
 		// Env file source line for `bunker env set` propagation.
 		". /run/bunker/abc123/env",
 	}
 	for _, want := range wantParts {
 		if !strings.Contains(got, want) {
 			t.Errorf("buildAgentScriptCommand() = %q, missing %q", got, want)
+		}
+	}
+}
+
+// TestShellSitesEnvPATH_TableDriven is the DF-BUNKER-48 acceptance test:
+// the shell exec sites (buildAgentExecCommand, buildAgentImageExecCommand,
+// buildAgentScriptCommand, buildAgentImageScriptCommand) must preserve a
+// PATH set via `bunker env set PATH=...` (agent bin dir prepended), and fall
+// back to the hardcoded agentPath when the env file sets no PATH. Both arms
+// are verified two ways: (a) the built string carries the ${PATH:+:$PATH}
+// expansion after the agent path, and (b) the built string actually
+// round-trips through a real shell with a sourced env file, producing the
+// expected final PATH.
+func TestShellSitesEnvPATH_TableDriven(t *testing.T) {
+	const agentID = "abc123"
+	const home = "/home/bunker-abc123"
+	const agentPath = home + "/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+	// builders covers every shell-sourcing exec site; each returns the
+	// built remote command string. The script builders' baked-in script
+	// path is pointed at a writable temp location (see
+	// testScriptPathOverride); `home` remains the PATH base exactly as
+	// production builds it.
+	var scriptPath string
+	builders := map[string]func() string{
+		"shell exec": func() string {
+			return buildAgentExecCommand(agentID, home, "echo", []string{"hi"}, false)
+		},
+		"script exec": func() string {
+			dir, err := os.MkdirTemp("", "dfb48-script-*")
+			if err != nil {
+				t.Fatalf("mkdir temp script dir: %v", err)
+			}
+			t.Cleanup(func() { _ = os.RemoveAll(dir) })
+			scriptPath = filepath.Join(dir, "exec-script.sh")
+			testScriptPathOverride = scriptPath
+			return buildAgentScriptCommand(agentID, home, "#!/bin/sh\necho hi\n", false)
+		},
+	}
+
+	// shRunner runs the built command through a real shell with envFile
+	// pre-created from contents ("" = no env file), and prints the PATH the
+	// wrapped command sees. The user command is replaced by a PATH probe so
+	// no docker/network dependency exists — the shell-form sites end in
+	// `sh -c '<cmd>'`, the script-form sites end in a quoted script path,
+	// so the probe replaces the site's own trailing target per shape. The
+	// child runs with an EMPTY environment: with an inherited PATH the
+	// ${PATH:+:$PATH} expansion would append the test runner's own PATH and
+	// the fallback arms would never equal the bare agentPath. On a real
+	// agent sshd starts the session shell with a controlled env, and when
+	// the env file exports a PATH the sourcing shell's PATH is that value
+	// before the expansion runs — exactly the user-PRESERVED arm.
+	shRunner := func(t *testing.T, built string, envFile string, contents string) string {
+		t.Helper()
+		// Rewrite the /run/bunker/<id>/env path to our temp fixture.
+		built = strings.ReplaceAll(built, "/run/bunker/"+agentID+"/env", envFile)
+		if contents != "" {
+			if err := os.WriteFile(envFile, []byte(contents), 0o600); err != nil {
+				t.Fatalf("write env fixture: %v", err)
+			}
+		}
+		// Shell form wraps the probe in sh -c so the INNER shell expands
+		// $PATH (that is the value the wrapped command would see). Script
+		// form has no inner shell: env(1) execs the final operand directly,
+		// so the probe must be two separately quoted argv words with $PATH
+		// literal.
+		probeShell := shellQuoteSingle("/bin/echo PATH_IS_$PATH")
+		// env(1) passes argv verbatim (no expansion), so the script-form
+		// probe execs /bin/sh -c and lets THAT shell expand $PATH.
+		probeEnv := "'/bin/sh' '-c' 'echo PATH_IS_$PATH'"
+		var run string
+		if idx := strings.LastIndex(built, "sh -c "); idx >= 0 {
+			run = built[:idx] + "sh -c " + probeShell
+		} else if strings.HasSuffix(built, strconv.Quote(scriptPath)) {
+			// Script form: the built command ends with the %q-quoted script
+			// path; replace that final operand with the probe.
+			run = built[:len(built)-len(strconv.Quote(scriptPath))] + probeEnv
+		} else {
+			t.Fatalf("built command has no sh -c wrapper or script terminator: %s", built)
+		}
+		cmd := exec.Command("sh", "-c", run)
+		// EMPTY child environment: see the shRunner comment above.
+		cmd.Env = []string{}
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("sh -c failed: %v, output: %s", err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	cases := []struct {
+		name        string
+		envContents string // "" simulates an absent env file
+		wantPATH    string
+	}{
+		{
+			name:        "env file sets PATH -> user PATH preserved, agent bin prepended",
+			envContents: "PATH=/opt/user/bin:/usr/games\n",
+			wantPATH:    agentPath + ":/opt/user/bin:/usr/games",
+		},
+		{
+			name:        "env file has no PATH -> hardcoded agentPath fallback",
+			envContents: "SOME_OTHER_VAR=1\n",
+			wantPATH:    agentPath,
+		},
+		{
+			name:        "no env file at all -> hardcoded agentPath fallback",
+			envContents: "",
+			wantPATH:    agentPath,
+		},
+	}
+
+	for name, build := range builders {
+		for _, tc := range cases {
+			tc := tc
+			t.Run(name+"/"+tc.name, func(t *testing.T) {
+				built := build()
+				// (a) string-level: the operand must carry the expansion
+				// after the agent path — this is what makes a user PATH
+				// survive while keeping the agent bin dir first.
+				wantOperand := `env PATH="` + agentPath + `${PATH:+:$PATH}"`
+				if !strings.Contains(built, wantOperand) {
+					t.Errorf("built command missing %q: %s", wantOperand, built)
+				}
+				// (b) behavior-level: run it through a real shell.
+				envFile := filepath.Join(t.TempDir(), "env")
+				got := shRunner(t, built, envFile, tc.envContents)
+				if got != "PATH_IS_"+tc.wantPATH {
+					t.Errorf("final PATH = %q, want %q (built: %s)", got, "PATH_IS_"+tc.wantPATH, built)
+				}
+			})
 		}
 	}
 }
@@ -724,7 +856,7 @@ func TestBuildExecSSHCommand(t *testing.T) {
 	if !strings.HasPrefix(last, "sh -c '") {
 		t.Errorf("last ssh arg should be sh -c '...', got %q", last)
 	}
-	if !strings.Contains(last, "env PATH=/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin") {
+	if !strings.Contains(last, "command -p env PATH=\"/home/bunker-abc123/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:$PATH}\"") {
 		t.Errorf("ssh remote command missing PATH prefix: %q", last)
 	}
 	// The ssh argument is the EXACT string the remote shell receives. Executing
