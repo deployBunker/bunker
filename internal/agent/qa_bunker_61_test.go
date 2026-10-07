@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -337,11 +338,21 @@ func TestQA61_ReapBeforeRetry(t *testing.T) {
 			var buf bytes.Buffer
 			m, _ := df63Manager(t, &buf)
 			const id = "qa61-reap"
+			// The fixture pid must sit deterministically OUTSIDE the
+			// self-exclusion window of reapUIDProcessesBounded (a pid-wrap
+			// safety band around os.Getpid()); a pid inside it is silently
+			// skipped and the kill.log is never created — the exact CI-only
+			// failure this test once hit.
+			pid := os.Getpid() + forceKillSelfExclusionSlack + 1000
+			if d := pid - os.Getpid(); d <= forceKillSelfExclusionSlack {
+				t.Fatalf("fixture pid %d is inside the self-exclusion window (distance %d <= slack %d); the reap would silently skip it",
+					pid, d, forceKillSelfExclusionSlack)
+			}
 			username := "bunker-" + id
 			presentUserWithUID(t, username, "61003")
 			if tc.straggler {
 				procDirFixture(t, []procFixtureEntry{
-					{PID: "4242", UID: 61003, Name: "schedulerd", Cmd: "/home/bunker-qa61-reap/bin/schedulerd"},
+					{PID: strconv.Itoa(pid), UID: 61003, Name: "schedulerd", Cmd: "/home/bunker-qa61-reap/bin/schedulerd"},
 				})
 			}
 
@@ -379,8 +390,8 @@ func TestQA61_ReapBeforeRetry(t *testing.T) {
 			}
 			kills, kerr := os.ReadFile(killLog)
 			if tc.straggler {
-				if kerr != nil || !strings.Contains(string(kills), "kill -TERM 4242") || !strings.Contains(string(kills), "kill -KILL 4242") {
-					t.Errorf("straggler case: kill recorder = %q (err %v), want TERM then KILL of pid 4242", kills, kerr)
+				if kerr != nil || !strings.Contains(string(kills), fmt.Sprintf("kill -TERM %d", pid)) || !strings.Contains(string(kills), fmt.Sprintf("kill -KILL %d", pid)) {
+					t.Errorf("straggler case: kill recorder = %q (err %v), want TERM then KILL of pid %d", kills, kerr, pid)
 				}
 			} else if kerr == nil && len(kills) > 0 {
 				t.Errorf("stale-marker case must not run a kill pass, got %q", kills)
