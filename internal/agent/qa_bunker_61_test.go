@@ -277,9 +277,17 @@ func TestQA61_AbsentUser_NoRetry(t *testing.T) {
 	}
 }
 
-// TestQA61_ForceMode_NoRetry pins force mode: the loud continue-on-failure
-// log, NO retry (exactly one userdel call), and the destroy completes.
-func TestQA61_ForceMode_NoRetry(t *testing.T) {
+// TestQA61_ForceMode_RetrySucceeds_FlowsIntoSuccessPath pins the force-mode
+// contract REV-BUNKER-003 rebuilt on top of QA-BUNKER-61: a transient force
+// userdel failure now runs the SAME bounded recovery as the non-force path —
+// exactly two userdel calls — and a retry success flows into the normal
+// success path ("destroyed", no error, no refusal). (The pre-REV-BUNKER-003
+// shape this test used to pin — one call, loud log, silent fall-through to
+// success — is the defect REV-BUNKER-003 removed.)
+func TestQA61_ForceMode_RetrySucceeds_FlowsIntoSuccessPath(t *testing.T) {
+	restore := shrinkRollbackBudgets(t, time.Second, 400*time.Millisecond, 100*time.Millisecond)
+	defer restore()
+
 	var buf bytes.Buffer
 	m, _ := df63Manager(t, &buf)
 	const id = "qa61-force"
@@ -296,22 +304,28 @@ func TestQA61_ForceMode_NoRetry(t *testing.T) {
 	var calls int
 	stubUserdelRunner(t, func(_ context.Context, uname string) ([]byte, error) {
 		calls++
-		return []byte("userdel: user " + uname + " is currently used by process 1234\n"),
-			errors.New("exit status 1")
+		if calls == 1 {
+			return []byte("userdel: user " + uname + " is currently used by process 1234\n"),
+				errors.New("exit status 1")
+		}
+		return nil, nil
 	})
 
 	resp, derr := m.Destroy(context.Background(), id, true)
 	if derr != nil {
-		t.Fatalf("force-mode destroy must keep its continue-on-failure semantics: %v", derr)
+		t.Fatalf("force-mode destroy with a once-failing userdel must recover through the retry: %v", derr)
 	}
 	if resp == nil || resp.Status != "destroyed" {
 		t.Fatalf("status = %v, want destroyed", resp)
 	}
-	if calls != 1 {
-		t.Errorf("userdel calls = %d, want exactly 1 (force mode must NOT retry)", calls)
+	if calls != 2 {
+		t.Errorf("userdel calls = %d, want exactly 2 (force attempt + the single bounded retry)", calls)
 	}
-	if !strings.Contains(buf.String(), "userdel failed in force mode; agent state is partially removed") {
-		t.Errorf("journal missing the loud force-mode failure line — got:\n%s", buf.String())
+	if r := m.registry.RefusalOf(id); r != nil {
+		t.Errorf("a recovered force destroy must record no refusal, got %+v", r)
+	}
+	if !strings.Contains(buf.String(), "userdel retry succeeded; continuing destroy on the normal success path") {
+		t.Errorf("journal missing the retry-success line — got:\n%s", buf.String())
 	}
 }
 

@@ -52,6 +52,17 @@ type ReconcileReport struct {
 	Adopted int
 	// Destroyed counts orphans removed from the host.
 	Destroyed int
+	// Failed (REV-BUNKER-003) counts orphans whose forced destroy RETURNED
+	// AN ERROR. Before this counter, destroyOrphan's error paths logged and
+	// `continue`d, and the only orphan counters were Adopted/Destroyed — so
+	// a failed destroy read as "neither adopted nor destroyed", and a
+	// non-zero Destroyed was ambiguous about whether every orphan had been
+	// handled. An error from the destroy path means the system user likely
+	// SURVIVED (the destroy seam refuses rather than leaks, REV-BUNKER-003),
+	// so it must never be counted under Destroyed; it lands here instead.
+	// The three counts stay disjoint: an orphan adds to exactly one of
+	// Adopted, Destroyed, Failed (Foreign/Unproven/Refused as before).
+	Failed int `json:"failed,omitempty"`
 	// Foreign counts orphans left untouched because they belong to another
 	// daemon instance: either their persisted ports lie outside this
 	// daemon's pool, or (DF-BUNKER-18) their `.bunker/owner` marker names a
@@ -302,6 +313,11 @@ func (m *AgentManager) reconcile(ctx context.Context, asyncOrphans bool) (Reconc
 					if derr := m.destroyOrphan(ctx, sa.AgentID); derr != nil {
 						m.logger.Error("registry reconcile: destroy after failed adopt failed",
 							"agent_id", sa.AgentID, "error", derr)
+						// REV-BUNKER-003: an error return is NOT a destroyed
+						// orphan — the user likely survived (the destroy path
+						// refuses rather than leaks). Count the residue, never
+						// fold it into Destroyed.
+						final.Failed++
 						continue
 					}
 					final.Destroyed++
@@ -319,6 +335,10 @@ func (m *AgentManager) reconcile(ctx context.Context, asyncOrphans bool) (Reconc
 			if err := m.destroyOrphan(ctx, sa.AgentID); err != nil {
 				m.logger.Error("registry reconcile: destroy orphan failed",
 					"action", "destroy", "agent_id", sa.AgentID, "error", err)
+				// REV-BUNKER-003: an error return is NOT a destroyed orphan —
+				// the user likely survived (the destroy path refuses rather
+				// than leaks). Count the residue, never fold it into Destroyed.
+				final.Failed++
 				continue
 			}
 			final.Destroyed++
@@ -335,6 +355,7 @@ func (m *AgentManager) reconcile(ctx context.Context, asyncOrphans bool) (Reconc
 				"mode", final.Mode,
 				"adopted", final.Adopted,
 				"destroyed", final.Destroyed,
+				"failed", final.Failed,
 				"foreign", final.Foreign,
 				"unproven", final.Unproven,
 				"refused", final.Refused,

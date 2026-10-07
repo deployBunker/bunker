@@ -879,12 +879,65 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool, 
 		if !destroyUserAbsentOutput(out) {
 			evidence := m.destroyFailureEvidence(username)
 			if force {
-				// Force mode keeps its historical continue-on-failure
-				// semantics, but the failure is now LOUD on the record: the
-				// surviving-process evidence is logged at Error, never
-				// swallowed.
-				m.logger.Error("userdel failed in force mode; agent state is partially removed",
-					"username", username, "error", uerr, "output", string(out), "evidence", evidence)
+				// REV-BUNKER-003: force mode used to keep a silent
+				// continue-on-failure semantic — the failure was logged at
+				// Error and execution FELL THROUGH to the normal success
+				// path, so a force destroy reported "destroyed" while the
+				// user + home survived (exactly the leak shape this file
+				// exists to prevent, reached through the --force and the
+				// reconcile orphan walk, which always destroys with
+				// force=true). Force now runs the SAME bounded recovery the
+				// non-force path has (QA-BUNKER-61's single reap + retry),
+				// and when the retry ALSO fails it fails VISIBLE: refusal
+				// on the durable record, teardown, hard userdel_failed
+				// error — never a fall-through to success. Recovery is
+				// appropriate for force, not redundant: the force gate's
+				// kill escalation has already run by the time userdel is
+				// reached, so a force userdel failure is precisely the
+				// transient class (busy home, EBUSY, a straggler that died
+				// between the probe and the userdel) the retry exists for.
+				if rerr := m.retryUserdelOnceAfterReap(rb, agentID, username, out, uerr); rerr == nil {
+					// The retry removed the user: flow into the NORMAL
+					// success path (Step 4 cleanup, tracker teardown,
+					// "destroyed") — not an error return.
+					m.logger.Info("userdel retry succeeded; continuing destroy on the normal success path",
+						"agent_id", agentID, "username", username)
+					userdelRecovered = true
+				} else {
+					m.logger.Error("userdel failed in force mode; retry failed; destroy refused",
+						"username", username, "error", uerr, "retry_error", rerr,
+						"output", string(out), "evidence", evidence)
+					// REV-BUNKER-003 give-up path — the mirror of the
+					// non-force block below. The residue must be VISIBLE
+					// before the teardown folds the records away: the
+					// refusal goes on the durable registry record (the
+					// destroy append below deletes the folded view; the
+					// refusal EVENT survives in the journal for replay) so
+					// the reaper backs off and `bunker list` shows the
+					// leak instead of a completed destroy.
+					if m.recordDestroyRefusalFn != nil {
+						m.recordDestroyRefusalFn(agentID, StatusUserdelFailed,
+							fmt.Errorf("destroy of %s failed: userdel error: %v (output: %s). %s",
+								agentID, uerr, strings.TrimSpace(string(out)), evidence))
+					}
+					// Free the port range first — the in-memory allocator
+					// leaks permanently if a destroy path returns without
+					// releasing it (the bunker-las-03 pool exhaustion). Free
+					// is unconditional and idempotent — it no-ops for IDs
+					// with no allocated range.
+					if m.portAlloc != nil {
+						m.portAlloc.Free(agentID)
+						m.logger.Info("freed port range", "agent_id", agentID)
+					}
+					m.tracker.Unregister(agentID)
+					if perr := m.persistDestroy(agentID); perr != nil {
+						m.logger.Warn("registry destroy append failed", "agent_id", agentID, "error", perr)
+					}
+					m.removeAgentSSHKeyBestEffort(agentID, m.logger)
+					return &v1.DestroyAgentResponse{AgentId: agentID, Status: StatusUserdelFailed},
+						fmt.Errorf("destroy of %s failed: userdel error: %v (output: %s). %s",
+							agentID, uerr, strings.TrimSpace(string(out)), evidence)
+				}
 			} else {
 				m.logger.Error("userdel failed; destroy aborted with evidence",
 					"username", username, "error", uerr, "output", string(out), "evidence", evidence)
