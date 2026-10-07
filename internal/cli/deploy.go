@@ -181,6 +181,9 @@ Examples:
 				"-o", "LogLevel=ERROR",
 				"-o", "ConnectTimeout=10",
 				"-o", "IdentitiesOnly=yes",
+			)
+			chownCmd.Args = append(chownCmd.Args, sshMultiplexArgs(keyPath, port, userAtHost)...)
+			chownCmd.Args = append(chownCmd.Args,
 				"-i", keyPath,
 				"-p", fmt.Sprintf("%d", port),
 				userAtHost,

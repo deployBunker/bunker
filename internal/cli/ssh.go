@@ -169,16 +169,18 @@ Examples:
 // the connection before the correct -i key is tried), and any remote command
 // arguments are appended verbatim.
 func buildSSHArgs(keyPath string, port uint32, userAtHost string, remoteCmd []string) []string {
-	args := []string{
+	args := append([]string{
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "LogLevel=ERROR",
 		"-o", "ConnectTimeout=10",
 		"-o", "IdentitiesOnly=yes",
+	}, sshMultiplexArgs(keyPath, port, userAtHost)...)
+	args = append(args,
 		"-i", keyPath,
 		"-p", fmt.Sprintf("%d", port),
 		userAtHost,
-	}
+	)
 	args = append(args, remoteCmd...)
 	return args
 }

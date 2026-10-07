@@ -221,6 +221,8 @@ func TestSSHCommand_ValidKeyRunsSSH(t *testing.T) {
 }
 
 func TestBuildSSHArgs(t *testing.T) {
+	// MOUNT-012: mux options create ~/.bunker/mux — isolate HOME first.
+	t.Setenv("HOME", t.TempDir())
 	got := buildSSHArgs("/home/u/.bunker/keys/abc123", 22, "bunker-abc123@10.0.0.5", nil)
 	want := []string{
 		"-o", "StrictHostKeyChecking=no",
@@ -228,6 +230,9 @@ func TestBuildSSHArgs(t *testing.T) {
 		"-o", "LogLevel=ERROR",
 		"-o", "ConnectTimeout=10",
 		"-o", "IdentitiesOnly=yes",
+		"-o", "ControlMaster=auto",
+		"-o", "ControlPath=" + findMuxControlPath(t, "/home/u/.bunker/keys/abc123", 22, "bunker-abc123@10.0.0.5"),
+		"-o", "ControlPersist=10m",
 		"-i", "/home/u/.bunker/keys/abc123",
 		"-p", "22",
 		"bunker-abc123@10.0.0.5",
@@ -238,6 +243,8 @@ func TestBuildSSHArgs(t *testing.T) {
 }
 
 func TestBuildSSHArgs_RemoteCommand(t *testing.T) {
+	// MOUNT-012: mux options create ~/.bunker/mux — isolate HOME first.
+	t.Setenv("HOME", t.TempDir())
 	got := buildSSHArgs("/k", 2222, "u@h", []string{"docker", "ps"})
 	want := []string{
 		"-o", "StrictHostKeyChecking=no",
@@ -245,6 +252,9 @@ func TestBuildSSHArgs_RemoteCommand(t *testing.T) {
 		"-o", "LogLevel=ERROR",
 		"-o", "ConnectTimeout=10",
 		"-o", "IdentitiesOnly=yes",
+		"-o", "ControlMaster=auto",
+		"-o", "ControlPath=" + findMuxControlPath(t, "/k", 2222, "u@h"),
+		"-o", "ControlPersist=10m",
 		"-i", "/k",
 		"-p", "2222",
 		"u@h",

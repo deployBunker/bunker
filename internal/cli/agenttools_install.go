@@ -233,6 +233,9 @@ func deliverFile(cmd *cobra.Command, entry ServerEntry,
 		"-o", "LogLevel=ERROR",
 		"-o", "ConnectTimeout=10",
 		"-o", "IdentitiesOnly=yes",
+	)
+	postCmd.Args = append(postCmd.Args, sshMultiplexArgs(keyPath, port, userAtHost)...)
+	postCmd.Args = append(postCmd.Args,
 		"-i", keyPath,
 		"-p", fmt.Sprintf("%d", port),
 		userAtHost,

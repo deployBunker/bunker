@@ -357,6 +357,9 @@ func runDeployCommand(t *testing.T, args ...string) (string, string, error) {
 // that is not "other owner" must stay silent rather than invent advice.
 func TestDeployCommand_ScpFailureOwnershipHint(t *testing.T) {
 	t.Setenv(SessionTargetEnvVar, "custom-server")
+	// MOUNT-012: buildSSHProbeArgs now emits mux options that create
+	// ~/.bunker/mux — isolate HOME so no config is written to the shared test home.
+	t.Setenv("HOME", t.TempDir())
 	const remotePath = "/tmp/payload"
 
 	tests := []struct {

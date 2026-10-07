@@ -584,6 +584,8 @@ func TestCpOwnershipHint(t *testing.T) {
 // scp used (same key, port, user@host) and ask for the destination's
 // owner:group.
 func TestBuildSSHProbeArgs(t *testing.T) {
+	// MOUNT-012: mux options create ~/.bunker/mux — isolate HOME first.
+	t.Setenv("HOME", t.TempDir())
 	args := buildSSHProbeArgs("/home/kara/.bunker/keys/test-agent", 2222, "bunker-test-agent@bunker-host", "/tmp/test.txt")
 	joined := strings.Join(args, " ")
 	for _, want := range []string{

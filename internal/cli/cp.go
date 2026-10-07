@@ -245,15 +245,17 @@ func parseSSHUserHost(sshfsMount string) (string, error) {
 
 // buildSCPArgs constructs the arguments for the scp command.
 func buildSCPArgs(keyPath string, port uint32, localPath, userAtHost, remotePath string, recursive bool) []string {
-	args := []string{
+	args := append([]string{
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "LogLevel=ERROR",
 		"-o", "ConnectTimeout=10",
 		"-o", "IdentitiesOnly=yes",
+	}, sshMultiplexArgs(keyPath, port, userAtHost)...)
+	args = append(args,
 		"-i", keyPath,
 		"-P", fmt.Sprintf("%d", port),
-	}
+	)
 	if recursive {
 		args = append(args, "-r")
 	}
@@ -307,18 +309,19 @@ func probeRemoteOwnership(keyPath string, port uint32, userAtHost, remotePath st
 // command instead of a file transfer. The remote path is single-quoted for
 // the remote POSIX shell; a missing path prints nothing and still exits 0.
 func buildSSHProbeArgs(keyPath string, port uint32, userAtHost, remotePath string) []string {
-	return []string{
+	return append([]string{
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "LogLevel=ERROR",
 		"-o", "ConnectTimeout=10",
 		"-o", "IdentitiesOnly=yes",
+	}, append(sshMultiplexArgs(keyPath, port, userAtHost),
 		"-i", keyPath,
 		"-p", fmt.Sprintf("%d", port),
 		userAtHost,
 		// %% escapes the literal % of stat's format string.
 		fmt.Sprintf("stat -c '%%U:%%G' -- %s 2>/dev/null || true", quotePOSIX(remotePath)),
-	}
+	)...)
 }
 
 // quotePOSIX single-quotes s for a remote POSIX shell.
