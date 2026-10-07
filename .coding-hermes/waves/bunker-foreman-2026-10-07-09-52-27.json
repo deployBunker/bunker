@@ -1,0 +1,27 @@
+{
+  "wave_id": "bunker-foreman-2026-10-07-09-52-27",
+  "scheduler_tick": "bunker-foreman-2026-10-07-09-52-27",
+  "project": "bunker",
+  "budget": 2,
+  "workers": [
+    {
+      "task_id": "QA-BUNKER-24",
+      "priority": "P1",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-24",
+      "branch": "wt/QA-BUNKER-24",
+      "base": "7e3cab7b",
+      "scope": ".hermes/scripts/bunker-qa.sh detect_cmds pytest.ini/conftest.py arm (line ~411): pipeline the venv pytest path as done for the pyproject arm so detection stops falling through to no-test-path",
+      "independence": "touches detect_cmds only; disjoint from QA-BUNKER-64 (new test file + cell grading)"
+    },
+    {
+      "task_id": "QA-BUNKER-64",
+      "priority": "P3",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-64",
+      "branch": "wt/QA-BUNKER-64",
+      "base": "7e3cab7b",
+      "scope": "add .hermes/scripts/test_bunker_qa_stdin_ship.sh to the repo (already green locally at HEAD, 23 passed) so the stdin-ship transport locked by QA-BUNKER-63's fix is regression-tested in-tree",
+      "independence": "new file only; disjoint from QA-BUNKER-24 (detect_cmds edit)"
+    }
+  ],
+  "created_at": "2026-10-07T09:55:00-05:00"
+}
