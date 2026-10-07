@@ -1062,7 +1062,10 @@ bunker key         Manage API keys and the JWT signing secret (master only):
                    RPC contract lives in specs/api.md (RotateJWTSecret)
 bunker agent-tools  Probe the agent (not the client) for the executables the
                    remote editing verbs need; --install delivers the vendored
-                   toolsd onto the agent's own PATH (see
+                   toolsd onto the agent's own PATH and prints the delivered
+                   version (a local/remote version difference is a named
+                   warning); --uninstall removes the delivered toolsd and
+                   re-probes to prove absence (see
                    docs/prd/SPEC-agent-tool-delivery.md)
 bunker surface     Manage the agent's toolsd socket surface (systemd user
                    units; install/remove)

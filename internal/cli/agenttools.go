@@ -103,6 +103,7 @@ func NewAgentToolsCommand() *cobra.Command {
 	var timeout uint32
 	var install bool
 	var binaryPath string
+	var uninstall bool
 
 	cmd := &cobra.Command{
 		Use:   "agent-tools AGENT_ID",
@@ -132,15 +133,30 @@ version difference is a named warning (an operator testing one build while an
 agent runs another is a silent behaviour split). Spec:
 docs/prd/SPEC-agent-tool-delivery.md.
 
+With --uninstall the delivered tools are REMOVED from the agent's $HOME/bin and
+the removal is proven the same way: the agent is re-probed through the same
+audited exec path, and a toolsd still reachable on its PATH fails the command
+with the surviving path named. Removing an already-absent file is reported by
+name, not an error — an idempotent teardown mirroring "bunker surface remove".
+Tools installed through the image-spec package-add path (ripgrep, language
+servers) belong to their package managers and are out of scope here.
+
 Examples:
   bunker agent-tools abc12345
   bunker agent-tools abc12345 --json
   bunker agent-tools abc12345 --install
   bunker agent-tools abc12345 --install --binary ./dist/toolsd-linux-amd64
+  bunker agent-tools abc12345 --uninstall
   bunker agent-tools abc12345 --server staging`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			agentID := args[0]
+			// Cheap local validation before any RPC or config read: a command
+			// asked to install AND uninstall in one breath has a contradiction
+			// for a spec, and refusing it by name is cheaper than a surprise.
+			if install && uninstall {
+				return fmt.Errorf("--install and --uninstall are mutually exclusive; run them separately")
+			}
 
 			cfg, err := LoadCLIConfig()
 			if err != nil {
@@ -170,6 +186,9 @@ Examples:
 			if install {
 				return installAgentTools(cmd, ctx, client, entry, agentID, binaryPath)
 			}
+			if uninstall {
+				return uninstallAgentTools(cmd, ctx, client, entry, agentID)
+			}
 
 			report, err := probeAgentTools(ctx, client, entry, agentID)
 			if err != nil {
@@ -195,6 +214,8 @@ Examples:
 	cmd.Flags().Uint32Var(&timeout, "timeout", 60, "Probe timeout in seconds")
 	cmd.Flags().BoolVar(&install, "install", false,
 		"Deliver the vendored tools (toolsd) onto the agent's PATH, then re-probe")
+	cmd.Flags().BoolVar(&uninstall, "uninstall", false,
+		"Remove the delivered tools (toolsd) from the agent's PATH, then re-probe")
 	cmd.Flags().StringVar(&binaryPath, "binary", "",
 		"Artifact to deliver with --install (default: the local toolsd on PATH)")
 	return cmd

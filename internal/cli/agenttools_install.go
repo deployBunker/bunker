@@ -102,8 +102,7 @@ func installAgentTools(cmd *cobra.Command, ctx context.Context, client bunkerv1c
 	// 6. Check local/remote drift (GAP-096 criterion 2): a silent behaviour split
 	//    between the CLI an operator tests and the binary an agent runs is worse
 	//    than a loud version mismatch.
-	if localVersion := localToolsdVersion(local); localVersion != "" && toolsd.Version != "" &&
-		!strings.Contains(toolsd.Version, commandName(localVersion)) {
+	if localVersion := localToolsdVersion(local); reportVersionDrift(localVersion, toolsd.Version) {
 		fmt.Fprintf(errOut, "bunker: WARNING version drift — local %q vs agent %q; "+
 			"the agent will run the delivered build, not the one you tested\n",
 			localVersion, toolsd.Version)
@@ -313,4 +312,18 @@ func agentSSHFSMount(entry ServerEntry, agentID string) string {
 		return ""
 	}
 	return resp.Msg.GetAgent().GetSshfsMount()
+}
+
+// reportVersionDrift decides whether a local/remote version difference must be
+// named. An empty side means "could not ask" — the artifact refused --version,
+// or the agent's probe could not read one — and silence is the honest verdict
+// there: warning on unreadable versions would make every warning ignorable.
+// A difference is drift; containment (the agent's line embedding the local
+// token) is the same build. Never a failure: an operator may be rolling a new
+// build out deliberately, and the warning exists to be seen, not to block.
+func reportVersionDrift(localVersion, agentVersion string) bool {
+	if localVersion == "" || agentVersion == "" {
+		return false
+	}
+	return !strings.Contains(agentVersion, commandName(localVersion))
 }

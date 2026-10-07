@@ -40,6 +40,14 @@ already allows it by default (`agent.image_spec.enabled: true`, managers
 The command therefore does **not** claim to have fully provisioned an agent. On
 every run it names what it did not deliver and prints the directive above.
 
+The boundary has a flip side worth stating plainly: **toolsd never appears in a
+package-add directive.** It is a self-built artifact with no registry presence
+(`apt`/`npm`/`go`-install cannot fetch it), so the image-spec grammar has
+nothing to pin and nothing to verify — a copied binary is the only honest
+mechanism. It reaches an agent either at runtime via `bunker agent-tools
+--install`, or baked into an image ahead of spawn. Package-add owns registry
+tools only (ripgrep, gopls); the two paths do not overlap.
+
 ## The artifact has to be shippable
 
 `toolsd` was described as a static binary while nothing built one: `make build`
@@ -65,6 +73,7 @@ bad artifact is stopped where it can be, not discovered on the agent.
 | Static-link, client side | Refuses a dynamic binary; asks ldd then `file`; **refuses when neither confirms** | The failure it prevents is remote, delayed and confusing, so a false refusal is cheaper than a false pass |
 | Only-vendored | Only tools we build are copied; registry tools are named and handed to the package path | A binary copy bypasses version pinning and signatures |
 | Version drift | A named WARNING when the local artifact and the agent's copy differ | Testing one build while an agent runs another is a silent behaviour split |
+| Uninstall proves absence | `--uninstall` re-probes after removal; a toolsd still on the agent's PATH fails the command with the survivor named, and an already-absent file is a named success | Rollback that is not evidenced is a claim, not a fact — removal must satisfy the same "result is evidence" contract as delivery |
 | `--binary` validation | Nonexistent, directory, or non-executable refused; absent-from-PATH names the remedy | A clear failure here is cheaper than a mystery downstream |
 | Home directory | Asked of the **agent** (`$HOME`), never assumed | The home layout is the daemon's choice |
 | Result is evidence | After copying, the agent is RE-PROBED; the delivery fails if the tool still is not reachable | "Copied the file" is not "the tool works" |
@@ -97,7 +106,12 @@ On the agent, with the workspace root created first:
 - **`--install` is a supported command, not yet an automatic spawn step.** A
   fresh agent still needs it run once. Making it automatic touches the spawn
   path, which requires the live E2E battery, and is filed separately.
-- **No uninstall/rollback yet** (GAP-096 criterion 3).
+- **Uninstall/rollback is supported** (GAP-096 criterion 3): `bunker
+  agent-tools --uninstall` removes the delivered toolsd from `$HOME/bin`,
+  names each file's outcome (`was-present` / `already-absent`), and re-probes
+  so "uninstalled" is proven, not asserted. Tools installed through
+  package-add belong to their package managers and are deliberately out of
+  scope.
 
 ## Remaining work
 
@@ -105,5 +119,5 @@ On the agent, with the workspace root created first:
    prove a fresh spawn reports them present (TOOLS-002's open half).
 2. Make the delivery part of spawn so it is a property of an agent rather than a
    command someone remembers to run (GAP-096's "by design").
-3. Uninstall/rollback, so removing a delivered tool is as supported as adding
-   one (GAP-096 criterion 3).
+3. ~~Uninstall/rollback~~ Done (GAP-096 criterion 3): `agent-tools
+   --uninstall` proves absence with the same probe machinery install uses.
