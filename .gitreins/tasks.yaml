@@ -4278,3 +4278,15 @@ tasks:
   status: complete
   created_at: '2026-10-07T06:37:42.374136+00:00'
   completed_at: '2026-10-07T07:23:35.026146+00:00'
+- id: FEAT-CLI-PULL-001
+  title: 'bunker pull: copy files from agent to local'
+  criteria:
+  - 1) internal/cli/pull.go implements 'bunker pull <agent> <remote-path> [local-dir]'
+    over the existing SSH/SCP transport, mirroring cp.go patterns (resolveUserAtHost,
+    scp exec with source-first args) 2) registered in the root command set with help
+    text 3) table-driven unit tests internal/cli/pull_test.go cover arg parsing, recursive
+    flag, missing-arg refusals 4) gofmt -w applied 5) go build ./... go vet ./...
+    go test ./internal/cli/ -run Pull all pass
+  status: complete
+  created_at: '2026-10-07T10:21:03.025492+00:00'
+  completed_at: '2026-10-07T10:39:32.900059+00:00'
