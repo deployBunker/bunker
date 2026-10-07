@@ -4218,3 +4218,22 @@ tasks:
   status: complete
   created_at: '2026-10-06T20:21:00.548880+00:00'
   completed_at: '2026-10-06T21:30:32.278022+00:00'
+- id: QA-BUNKER-64
+  title: Harness test locks stdin-ship of qa-run.sh (no echo-b64 argv)
+  criteria:
+  - A harness test (new file or extension of test_bunker_qa_classifier.sh under ~/.hermes/scripts/)
+    fails if bunker-qa.sh launch() or run() ships the remote script via an echo/base64
+    argv word, and passes when shipping via ssh stdin (cat > ~/qa-run.sh); the test
+    drives the REAL launch()/run() paths with a PATH-shimmed agent_ssh capturing stdin/argv,
+    and both the new test and the existing test_bunker_qa_classifier.sh exit 0.
+  status: in_progress
+  created_at: '2026-10-06T21:51:23.479251+00:00'
+- id: INT-CI-061
+  title: CI unit-tests failing on QA-BUNKER-61 commits
+  criteria:
+  - Investigate why CI unit-tests job fails on QA-BUNKER-61 commits (runs 37534471819
+    + 37534396635) while local go test passes. Root cause identified and fixed, or
+    documented as environmental/flaky with evidence. CI green on the fix commit.
+  status: complete
+  created_at: '2026-10-07T01:27:44.903733+00:00'
+  completed_at: '2026-10-07T01:35:54.183040+00:00'
