@@ -67,9 +67,19 @@ func TestExecFlagGrammar(t *testing.T) {
 		wantScript    string // expected ScriptContent; "" = expect empty
 		wantStdinRel  string // expected StdinPayload; "{CONFIG}" = the custom config file's bytes
 		wantExecCap   uint64
+		wantSession   string
 		wantCfgApp    bool // after Execute: configPathOverride must be the custom config path
 		wantDaemonApp bool // after Execute: daemonConfigPathOverride must be the custom config path
 	}{
+		{
+			name:        "session id reaches exec request",
+			args:        []string{"agent1", "--session", "hermes-cli-7", "--", "echo", "ok"},
+			sessionEnv:  "default",
+			wantCommand: "echo",
+			wantArgs:    []string{"ok"},
+			wantTimeout: execDefaultTimeoutSeconds,
+			wantSession: "hermes-cli-7",
+		},
 		// -- Acceptance A: the dogfood bug — --config before the agent-id.
 		{
 			name:        "config space form before agent-id reaches server",
@@ -409,7 +419,10 @@ func TestExecFlagGrammar(t *testing.T) {
 				t.Fatalf("server received %d request(s), want 1", requests)
 			}
 			if got == nil {
-				t.Fatal("request not captured")
+				t.Fatal("ExecAgent request not captured")
+			}
+			if got.SessionId != tt.wantSession {
+				t.Errorf("SessionId = %q, want %q", got.SessionId, tt.wantSession)
 			}
 			if got.Command != tt.wantCommand {
 				t.Errorf("command = %q, want %q", got.Command, tt.wantCommand)

@@ -63,7 +63,7 @@ func serveUnary[Req, Res any](
 }
 
 // requiredFields are the keys every audit record must carry on the wire.
-var requiredFields = []string{"ts", "caller", "method", "remote_addr", "agent_id", "duration_ms", "outcome", "summary"}
+var requiredFields = []string{"ts", "caller", "method", "remote_addr", "agent_id", "session_id", "duration_ms", "outcome", "summary"}
 
 // newTestLog creates an AuditLog in a temp dir, registered for cleanup.
 func newTestLog(t *testing.T) (*AuditLog, string) {

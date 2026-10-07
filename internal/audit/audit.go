@@ -37,6 +37,7 @@ type Record struct {
 	Method     string `json:"method"`      // full connect procedure, e.g. /bunker.v1.Bunkerd/SpawnAgent
 	RemoteAddr string `json:"remote_addr"` // client address as seen by the server
 	AgentID    string `json:"agent_id"`    // target agent of the request ("" when none)
+	SessionID  string `json:"session_id"`  // opaque client session id, or "not captured"
 	DurationMS int64  `json:"duration_ms"` // wall time from request start to completion
 	Outcome    string `json:"outcome"`     // "ok" or the connect error code, e.g. "not_found"
 	Summary    string `json:"summary"`     // human-readable request summary
@@ -394,6 +395,7 @@ func prependMarker(marker, summary string) string {
 // re-entrant — this is the only sanctioned way for the rotation path to
 // append records). All locking discipline lives in Log and rotateLocked.
 func (l *AuditLog) logLocked(rec Record) error {
+	rec.SessionID = redactSessionID(rec.SessionID)
 	// GAP-126: stamp the transport of record BEFORE hashing so the marker is
 	// covered by the chain digest like every other field.
 	rec = l.markInsecureRecord(rec)

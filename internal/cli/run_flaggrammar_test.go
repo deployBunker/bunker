@@ -65,8 +65,29 @@ func TestRunFlagGrammar(t *testing.T) {
 		wantDetach    bool
 		wantName      string
 		wantEnv       map[string]string
+		wantSession   string
 		wantCfgApp    bool // after Execute: configPathOverride must be the custom config path
 	}{
+		{
+			name:        "session id reaches synchronous exec request",
+			args:        []string{"agent1", "--session", "hermes-run-8", "--", "echo", "hi"},
+			sessionEnv:  "default",
+			wantCommand: "echo",
+			wantArgs:    []string{"hi"},
+			wantTimeout: runDefaultTimeoutSeconds,
+			wantSession: "hermes-run-8",
+		},
+		{
+			name:        "session id reaches detached run request",
+			args:        []string{"agent1", "--session=hermes-run-9", "--detach", "--", "echo", "hi"},
+			sessionEnv:  "default",
+			detach:      true,
+			wantCommand: "echo",
+			wantArgs:    []string{"hi"},
+			wantTimeout: runDefaultTimeoutSeconds,
+			wantDetach:  true,
+			wantSession: "hermes-run-9",
+		},
 		// -- Acceptance A: the DF-BUNKER-41 bug — --server before the agent-id.
 		{
 			name:        "server space form before agent-id reaches server",
@@ -326,6 +347,9 @@ func TestRunFlagGrammar(t *testing.T) {
 				if gotRun == nil {
 					t.Fatal("RunAgent request not captured")
 				}
+				if gotRun.SessionId != tt.wantSession {
+					t.Errorf("RunAgent SessionId = %q, want %q", gotRun.SessionId, tt.wantSession)
+				}
 				if gotRun.Command != tt.wantCommand {
 					t.Errorf("command = %q, want %q", gotRun.Command, tt.wantCommand)
 				}
@@ -354,6 +378,9 @@ func TestRunFlagGrammar(t *testing.T) {
 			} else {
 				if got == nil {
 					t.Fatal("ExecAgent request not captured")
+				}
+				if got.SessionId != tt.wantSession {
+					t.Errorf("ExecAgent SessionId = %q, want %q", got.SessionId, tt.wantSession)
 				}
 				if got.Command != tt.wantCommand {
 					t.Errorf("command = %q, want %q", got.Command, tt.wantCommand)

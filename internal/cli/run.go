@@ -24,6 +24,7 @@ const runDefaultTimeoutSeconds uint32 = 1800
 type runArgs struct {
 	agentID     string
 	serverName  string
+	sessionID   string
 	timeout     uint32
 	detach      bool
 	name        string
@@ -52,6 +53,7 @@ func parseRunArgs(args []string) (runArgs, error) {
 
 	var (
 		serverName string
+		sessionID  string
 		timeout    uint32 = runDefaultTimeoutSeconds
 		detach     bool
 		name       string
@@ -59,7 +61,8 @@ func parseRunArgs(args []string) (runArgs, error) {
 		preset     string
 	)
 	grammar := flagGrammar{name: "run", specs: map[string]flagGrammarSpec{
-		"--server": {apply: func(v string) error { serverName = v; return nil }},
+		"--server":  {apply: func(v string) error { serverName = v; return nil }},
+		"--session": {apply: func(v string) error { sessionID = v; return nil }},
 		"--timeout": {apply: func(v string) error {
 			n, err := parseUint32(v)
 			if err != nil {
@@ -120,6 +123,7 @@ func parseRunArgs(args []string) (runArgs, error) {
 	return runArgs{
 		agentID:     agentID,
 		serverName:  serverName,
+		sessionID:   sessionID,
 		timeout:     timeout,
 		detach:      detach,
 		name:        name,
@@ -147,7 +151,7 @@ printed on success.
 Use -- to separate bunker flags from the command to execute, so that Docker
 flags such as --rm, --format, -d, and --name are not intercepted by the CLI.
 
-The run flags (--server, --timeout, --detach, --name, --env) and the global
+The run flags (--server, --session, --timeout, --detach, --name, --env) and the global
 persistent flags --config and --daemon-config are accepted in BOTH
 positions, before and after the agent-id, in the space form (--server prod)
 and the inline form (--server=prod):
@@ -210,6 +214,7 @@ Examples:
 			if parsed.detach {
 				req := connect.NewRequest(&v1.RunAgentRequest{
 					AgentId:        parsed.agentID,
+					SessionId:      parsed.sessionID,
 					Command:        parsed.command,
 					Args:           parsed.commandArgs,
 					Env:            envMap,
@@ -233,6 +238,7 @@ Examples:
 			// Synchronous mode: stream via ExecAgent like `bunker exec`.
 			req := connect.NewRequest(&v1.ExecAgentRequest{
 				AgentId:        parsed.agentID,
+				SessionId:      parsed.sessionID,
 				Command:        parsed.command,
 				Args:           parsed.commandArgs,
 				TimeoutSeconds: parsed.timeout,

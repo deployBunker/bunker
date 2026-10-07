@@ -2767,8 +2767,10 @@ type ExecAgentRequest struct {
 	// default (512MiB). Lets a cautious caller lower the cap without a server
 	// config change; can never RAISE it past the server ceiling.
 	ResponseCapBytes uint64 `protobuf:"varint,9,opt,name=response_cap_bytes,json=responseCapBytes,proto3" json:"response_cap_bytes,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Opaque client session identifier for audit attribution; never a credential.
+	SessionId     string `protobuf:"bytes,10,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ExecAgentRequest) Reset() {
@@ -2862,6 +2864,13 @@ func (x *ExecAgentRequest) GetResponseCapBytes() uint64 {
 		return x.ResponseCapBytes
 	}
 	return 0
+}
+
+func (x *ExecAgentRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
 }
 
 type ExecAgentResponse struct {
@@ -2975,7 +2984,9 @@ type RunAgentRequest struct {
 	Name           string                 `protobuf:"bytes,7,opt,name=name,proto3" json:"name,omitempty"` // Optional name suffix for the run unit
 	// GAP-116 per-spawn safety preset override (same grammar and precedence as
 	// SpawnAgentRequest.safety_preset). Empty = defer to env > config > default.
-	SafetyPreset  string `protobuf:"bytes,8,opt,name=safety_preset,json=safetyPreset,proto3" json:"safety_preset,omitempty"`
+	SafetyPreset string `protobuf:"bytes,8,opt,name=safety_preset,json=safetyPreset,proto3" json:"safety_preset,omitempty"`
+	// Opaque client session identifier for audit attribution; never a credential.
+	SessionId     string `protobuf:"bytes,9,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3062,6 +3073,13 @@ func (x *RunAgentRequest) GetName() string {
 func (x *RunAgentRequest) GetSafetyPreset() string {
 	if x != nil {
 		return x.SafetyPreset
+	}
+	return ""
+}
+
+func (x *RunAgentRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
 	}
 	return ""
 }
@@ -4110,7 +4128,7 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x1d\n" +
 	"\n" +
 	"expires_at\x18\x02 \x01(\tR\texpiresAt\x12\"\n" +
-	"\facknowledged\x18\x03 \x01(\bR\facknowledged\"\xd6\x02\n" +
+	"\facknowledged\x18\x03 \x01(\bR\facknowledged\"\xf5\x02\n" +
 	"\x10ExecAgentRequest\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x18\n" +
 	"\acommand\x18\x02 \x01(\tR\acommand\x12\x12\n" +
@@ -4120,13 +4138,16 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\x0escript_content\x18\x06 \x01(\tR\rscriptContent\x12#\n" +
 	"\rstdin_payload\x18\a \x01(\fR\fstdinPayload\x12D\n" +
 	"\x11response_encoding\x18\b \x01(\x0e2\x17.bunker.v1.ExecEncodingR\x10responseEncoding\x12,\n" +
-	"\x12response_cap_bytes\x18\t \x01(\x04R\x10responseCapBytes\"\x9b\x01\n" +
+	"\x12response_cap_bytes\x18\t \x01(\x04R\x10responseCapBytes\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\n" +
+	" \x01(\tR\tsessionId\"\x9b\x01\n" +
 	"\x11ExecAgentResponse\x12\x18\n" +
 	"\x06stdout\x18\x01 \x01(\fH\x00R\x06stdout\x12\x18\n" +
 	"\x06stderr\x18\x02 \x01(\fH\x00R\x06stderr\x12\x1b\n" +
 	"\texit_code\x18\x03 \x01(\x05R\bexitCode\x12+\n" +
 	"\x11truncation_notice\x18\x04 \x01(\tR\x10truncationNoticeB\b\n" +
-	"\x06output\"\xc3\x02\n" +
+	"\x06output\"\xe2\x02\n" +
 	"\x0fRunAgentRequest\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x18\n" +
 	"\acommand\x18\x02 \x01(\tR\acommand\x12\x12\n" +
@@ -4135,7 +4156,9 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\x06detach\x18\x05 \x01(\bR\x06detach\x12'\n" +
 	"\x0ftimeout_seconds\x18\x06 \x01(\rR\x0etimeoutSeconds\x12\x12\n" +
 	"\x04name\x18\a \x01(\tR\x04name\x12#\n" +
-	"\rsafety_preset\x18\b \x01(\tR\fsafetyPreset\x1a6\n" +
+	"\rsafety_preset\x18\b \x01(\tR\fsafetyPreset\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\t \x01(\tR\tsessionId\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"{\n" +
