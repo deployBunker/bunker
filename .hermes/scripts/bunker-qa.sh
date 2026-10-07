@@ -2438,10 +2438,12 @@ run() {
   # QA-OFF-BY-ONE-22: stream the previous release's tree for the upgrade cell
   ship_prev_tag_tree "$repo" "$PROJ"
 
-  # ship the remote script base64 (the ONLY quoting-safe path through ssh)
-  local b64
-  b64=$(build_remote_script "$PROJ" "$install_cmd" "$ci_cmd" "$native_cmd" | base64 -w0)
-  agent_ssh "echo '$b64' | base64 -d > ~/qa-run.sh && bash ~/qa-run.sh" | tail -1
+  # ship the remote script via ssh STDIN (QA-BUNKER-40, 2026-10-05): the old
+  # `echo '$b64' | base64 -d` embedded the whole script in one ssh argv word —
+  # past ~131KB base64 that exceeds the kernel MAX_ARG_STRLEN (E2BIG:
+  # "Argument list too long"). stdin is quoting-safe AND argv-unbounded.
+  build_remote_script "$PROJ" "$install_cmd" "$ci_cmd" "$native_cmd" \
+    | agent_ssh "cat > ~/qa-run.sh && bash ~/qa-run.sh" | tail -1
 
   # pull evidence back
   agent_ssh "cat ~/qa-evidence.jsonl 2>/dev/null" >> "$EVIDENCE" || true
@@ -2550,9 +2552,17 @@ launch() {
   #    LAUNCHED over an empty ~/qa-run.sh), and `wc -c` records the shipped size;
   #  * the start is grouped `( ... & )` with </dev/null so the battery is fully
   #    orphaned (setsid + nohup + no stdin) and the ssh channel closes at once.
-  local b64 launch_out launch_rc
-  b64=$(build_remote_script "$PROJ" "$DETECT_INSTALL" "$DETECT_CI" "$DETECT_NATIVE" | base64 -w0)
-  launch_out=$(agent_ssh "echo '$b64' | base64 -d > ~/qa-run.sh && echo SCRIPT_BYTES=\$(wc -c < ~/qa-run.sh) && ( nohup setsid bash ~/qa-run.sh </dev/null >~/qa-run.log 2>&1 & ) && echo LAUNCHED" 2>&1)
+  #  * 2026-10-05 (QA-BUNKER-40): the script is piped over ssh via STDIN, not
+  #    embedded in the ssh COMMAND LINE — the generated script has grown past
+  #    ~97KB plain (~131KB base64), and a b64 that large as a single argv word
+  #    exceeds the kernel per-argument limit MAX_ARG_STRLEN (131072, ~128KB),
+  #    dying `/usr/bin/timeout: Argument list too long` (E2BIG) on the agent
+  #    side for every repo whose DETECT_* block pushed the script over the
+  #    line. stdin carries no argv-size limit and is still quoting-safe.
+  local b64 launch_out launch_rc script_bytes
+  script_bytes=$(build_remote_script "$PROJ" "$DETECT_INSTALL" "$DETECT_CI" "$DETECT_NATIVE" | wc -c)
+  launch_out=$(build_remote_script "$PROJ" "$DETECT_INSTALL" "$DETECT_CI" "$DETECT_NATIVE" \
+    | agent_ssh "cat > ~/qa-run.sh && echo SCRIPT_BYTES=\$(wc -c < ~/qa-run.sh) && ( nohup setsid bash ~/qa-run.sh </dev/null >~/qa-run.log 2>&1 & ) && echo LAUNCHED" 2>&1)
   launch_rc=$?
   if ! printf '%s' "$launch_out" | grep -q 'LAUNCHED'; then
     echo "ERROR: could not start the battery on agent=$agent ($SERVER): $(printf '%s' "$launch_out" | tail -1)" >&2
