@@ -403,12 +403,22 @@ detect_cmds() {
     else
       native_cmd="pytest -x -q"
     fi
+  # Mirror the pyproject arm (QA-BUNKER-24, 2026-10-07): the venv-pytest guard
+  # must apply here too — a toolchain-bootstrap'd agent whose PATH lacks pytest
+  # but has ~/tools/venv/bin/pytest otherwise gets no pytest at all, and the
+  # cell grades FAIL/native-runner-missing for an environment gap the harness
+  # already solved for pyproject repos.
   # QA-FOREMAN-2026-09-26 (auger): pytest.ini/conftest.py-only repos matched NO
   # shape and got the vacuous `echo no-test-path` — the battery graded
   # ci-pass OK in 57ms with zero tests run while the repo carries 210 tests.
-  # Mirror the pyproject arm; if pytest itself is absent the suite NEVER RAN
+  # If pytest itself is absent (both PATH and venv) the suite NEVER RAN
   # and native_runner_missing grades UNVERIFIED (honest), never OK.
-  elif [ -f "$repo/pytest.ini" ] || [ -f "$repo/conftest.py" ]; then native_cmd="python3 -m pytest -q"
+  elif [ -f "$repo/pytest.ini" ] || [ -f "$repo/conftest.py" ]; then
+    if ! command -v pytest >/dev/null 2>&1 && [ -x "$HOME/tools/venv/bin/pytest" ]; then
+      native_cmd="$HOME/tools/venv/bin/pytest -x -q"
+    else
+      native_cmd="python3 -m pytest -q"
+    fi
   elif [ -f "$repo/Cargo.toml" ]; then native_cmd="cargo test --workspace"
   elif [ -f "$repo/Makefile" ]; then
     # QA-H3-14: native leg mirrors the install-leg target probe — a Makefile
