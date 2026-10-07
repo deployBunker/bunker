@@ -164,6 +164,9 @@ Client-side path overrides (persistent flags):
 	root.AddCommand(cli.NewUmountCommand())
 	// BFS-008: the opt-in bunker-fs client (mount + its own verb surface).
 	root.AddCommand(cli.NewFSCommand())
+	// BFS-057: the I/O measurement battery — every perf lever is judged by
+	// this harness, never by assumption.
+	root.AddCommand(cli.NewIOBatteryCommand())
 	root.AddCommand(cli.NewGuardCommand())
 	root.AddCommand(cli.NewTunnelCommand())
 	root.AddCommand(cli.NewVersionCommand())
