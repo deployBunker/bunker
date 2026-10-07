@@ -274,7 +274,7 @@ Examples:
 	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)")
 	cmd.Flags().StringVar(&agentID, "agent-id", "", "REQUIRED: the stable agent id to renew (the home path /home/bunker-<id> and every stored path follow it)")
 	cmd.Flags().StringVar(&ttl, "ttl", "", "TTL for the re-spawn (6h, 24h, 7d); empty = the daemon default")
-	cmd.Flags().StringVar(&preset, "preset", "", "Safety preset for the re-spawn: open, standard, hardened (default: BUNKERD_SAFETY_PRESET, then the server's config, then open)")
+	cmd.Flags().StringVar(&preset, "preset", "", "Safety preset for the re-spawn: open, standard, hardened (default: BUNKERD_SAFETY_PRESET, then the server's config, then the built-in default standard (GAP-117))")
 	return cmd
 }
 

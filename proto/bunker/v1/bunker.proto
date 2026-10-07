@@ -195,7 +195,7 @@ message AgentSummary {
   string tailnet_ip = 11;
   uint64 disk_used_bytes = 12;   // per-agent disk usage in bytes
   // GAP-116 effective safety preset: the resolved preset name (flag > env >
-  // config global > built-in default "open") and the effective systemd knob
+  // config global > built-in default "standard") and the effective systemd knob
   // set the agent was spawned under. Additive: older clients ignore both.
   string safety_preset = 13;
   repeated SystemdProperty systemd_properties = 14;

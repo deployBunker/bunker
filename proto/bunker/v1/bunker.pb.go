@@ -712,7 +712,7 @@ type AgentSummary struct {
 	TailnetIp        string                 `protobuf:"bytes,11,opt,name=tailnet_ip,json=tailnetIp,proto3" json:"tailnet_ip,omitempty"`
 	DiskUsedBytes    uint64                 `protobuf:"varint,12,opt,name=disk_used_bytes,json=diskUsedBytes,proto3" json:"disk_used_bytes,omitempty"` // per-agent disk usage in bytes
 	// GAP-116 effective safety preset: the resolved preset name (flag > env >
-	// config global > built-in default "open") and the effective systemd knob
+	// config global > built-in default "standard") and the effective systemd knob
 	// set the agent was spawned under. Additive: older clients ignore both.
 	SafetyPreset      string             `protobuf:"bytes,13,opt,name=safety_preset,json=safetyPreset,proto3" json:"safety_preset,omitempty"`
 	SystemdProperties []*SystemdProperty `protobuf:"bytes,14,rep,name=systemd_properties,json=systemdProperties,proto3" json:"systemd_properties,omitempty"`
