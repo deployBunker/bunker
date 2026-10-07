@@ -4237,3 +4237,20 @@ tasks:
   status: complete
   created_at: '2026-10-07T01:27:44.903733+00:00'
   completed_at: '2026-10-07T01:35:54.183040+00:00'
+- id: INT-CI-061-R2
+  title: 'Fix CI-only TestQA61_ReapBeforeRetry failure: fixture pid inside forceKillSelfExclusionSlack
+    window is silently excluded from the TERM-KILL reap'
+  criteria:
+  - 1. internal/agent/qa_bunker_61_test.go TestQA61_ReapBeforeRetry picks its fixture
+    pid deterministically OUTSIDE the self-exclusion window relative to the REAL process
+    pid (distance > forceKillSelfExclusionSlack on both sides of pid space), so the
+    test passes regardless of runner pid assignment; a guard assertion inside the
+    test fails loudly if the picked pid lands inside the window. 2. The straggler
+    subtest still asserts kill -TERM <pid> and kill -KILL <pid> appear in the recorder
+    log. 3. go test ./internal/agent -run TestQA61 -count=1 passes locally. 4. go
+    build ./... and go vet ./... pass. 5. No production behavior change beyond what
+    is strictly required (an optional seam override is acceptable if the test needs
+    it; the excluded-pid safety window itself must remain).
+  status: complete
+  created_at: '2026-10-07T02:07:12.441102+00:00'
+  completed_at: '2026-10-07T02:16:36.707965+00:00'
