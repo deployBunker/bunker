@@ -63,6 +63,68 @@ if [ -z "${BUNKER_QA_EVIDENCE:-}" ] && [ "${BUNKER_QA_ALLOW_SHARED_EVIDENCE:-0}"
   EVIDENCE="/tmp/bunker-qa-evidence-$(date -u +%Y%m%dT%H%M%SZ)-$$.jsonl"
 fi
 
+# ─── QA-BUNKER-60 (2026-10-07): slice sizing + repo-weight preflight ───
+# JIT QA agents spawned with the DEFAULT slice (2 of 16 host cores, 4G) took
+# ~5% CPU per rustc process on a heavy workspace (wasmtime + arrow + tree-sitter
+# C parsers): the fresh-install leg ran 2h+ and the battery was salvaged at ~3h
+# with cells unwritten — the TTL window cannot fit heavy workspaces on a 2-CPU
+# slice. Three levers, all opt-in-by-shape (default slice preserved for light
+# repos; nothing else about the spawn contract changes):
+#   1. qa_slice_args(): BUNKER_QA_CPUS (default 4.0 ONLY for cargo/go
+#      workspaces) + BUNKER_QA_MEM (bytes, only when set) → `bunker spawn
+#      --cpu/--memory` (flags verified against internal/cli/spawn.go:369-370:
+#      --cpu float64 cores, --memory uint64 bytes).
+#   2. qa_repo_dep_count(): dependency weight for the preflight WARN
+#      (Cargo.lock `name = ` rows; go.mod `=>` indirect arrows).
+#   3. qa_repo_weight_warn(): fires the slice-too-small WARN (stderr + a
+#      launch-evidence note cell) when the repo is heavy AND the resolved CPU
+#      quota is still the 2-CPU host default.
+# Both entry paths (run/launch) call qa_preflight_repo_weight() so a heavy repo
+# warns BEFORE any spawn burns a TTL on an undersized slice.
+qa_slice_cpus() { # stdout: resolved CPU quota string, "" = keep bunkerd default
+  if [ -n "${BUNKER_QA_CPUS:-}" ]; then printf '%s' "$BUNKER_QA_CPUS"; return 0; fi
+  # Only cargo/go workspaces get an automatic bump — the 2-CPU default slice is
+  # the right size for everything else (npm/pip/make repos measured fine).
+  if [ -f "$1/Cargo.toml" ] || [ -f "$1/go.mod" ]; then printf '4.0'; fi
+  return 0
+}
+qa_slice_args() { # <repo-dir> — stdout: spawn flags ("" = none; keep contract)
+  local cpus; cpus=$(qa_slice_cpus "$1")
+  [ -n "$cpus" ] && printf -- '--cpu %s' "$cpus"
+  [ -n "${BUNKER_QA_MEM:-}" ] && printf ' --memory %s' "$BUNKER_QA_MEM"
+  return 0
+}
+qa_repo_dep_count() { # <repo-dir> — stdout: dependency count, "" = not counted
+  if [ -f "$1/Cargo.lock" ]; then grep -c 'name = ' "$1/Cargo.lock" || true
+  # go.mod direct+indirect: count tab-indented `module vX.Y.Z` require lines.
+  # (A `grep -c '=>'` counts only `replace a => b` directives — near-zero on a
+  # normal go.mod — so the WARN would never fire for go workspaces. The pattern
+  # is ANSI-C quoted: glibc grep ERE treats a literal-backslash `\t` as `t`,
+  # which matches nothing — probe-verified 2026-10-07, QA-BUNKER-60.)
+  elif [ -f "$1/go.mod" ]; then grep -cE $'^\t\\S+ v[0-9]' "$1/go.mod" || true; fi
+  return 0
+}
+qa_repo_weight_warn() { # <repo-dir> <evidence-file> — WARN when heavy AND 2-CPU default
+  local repo="$1" evfile="$2" deps cpus
+  deps=$(qa_repo_dep_count "$repo")
+  [ -n "$deps" ] || return 0
+  [ "$deps" -gt 200 ] || return 0
+  cpus=$(qa_slice_cpus "$repo")
+  # Warn only when the resolved quota is still the 2-CPU HOST default — an
+  # explicit BUNKER_QA_CPUS (even 2.0) is an operator decision, not an oversight.
+  [ -n "${BUNKER_QA_CPUS:-}" ] && return 0
+  [ "$cpus" = "4.0" ] && return 0
+  echo "WARN: slice too small for this workspace ($deps deps) — set BUNKER_QA_CPUS>=4" >&2
+  if [ -n "$evfile" ] && [ -f "$evfile" ]; then
+    printf '{"project":"%s","cell":"launch-note","status":"INFO","detail":"slice too small for this workspace (%s deps) — set BUNKER_QA_CPUS>=4 (cargo/go workspaces need more than the 2-CPU default slice; heavy rust builds measured 2h+ on fresh-install)","ts":"%s"}\n' \
+      "$(basename "$repo")" "$deps" "$(date -u +%FT%TZ)" >> "$evfile"
+  fi
+  return 0
+}
+qa_preflight_repo_weight() { # <repo-dir> — evidence not yet open here: stderr only
+  qa_repo_weight_warn "$1" ""
+}
+
 log()  { echo "→ $*"; }
 
 # ─── qa_destroy_agent <id> <evidence-file|''> (QA-BUNKER-19 b+c, 2026-09-21) ───
@@ -140,9 +202,14 @@ spawn_agent() {
   # fails), DESTROY that id before retrying or failing.
   # stdout contract unchanged: success prints ONLY the agent id, rc 0;
   # total failure prints nothing on stdout, rc 1.
-  local out id drc
+  local out id drc slice_args
+  # QA-BUNKER-60 (2026-10-07): a cargo/go workspace builds on 4 CPUs by default
+  # (BUNKER_QA_CPUS/BUNKER_QA_MEM override; empty = the 2-CPU/4G host default,
+  # flags omitted — see qa_slice_args()). stdout contract unchanged: success
+  # still prints ONLY the agent id (spawn output is captured, never relayed).
+  slice_args=$(qa_slice_args "$repo")
   for attempt in 1 2 3; do
-    out=$(bunker spawn --server "$SERVER" --ttl "$TTL" 2>&1)
+    out=$(bunker spawn --server "$SERVER" --ttl "$TTL" $slice_args 2>&1)
     id=$(echo "$out" | grep -oP 'keys/\K[a-f0-9]+' | head -1)
     if [ -z "$id" ]; then
       [ $attempt -lt 3 ] && { echo "  spawn attempt $attempt failed: $(echo "$out" | tail -1)" >&2; sleep "${BUNKER_QA_RETRY_SLEEP:-5}"; }
@@ -1432,7 +1499,18 @@ command -v go >/dev/null 2>&1 && command -v node >/dev/null 2>&1 && cell toolcha
 if printf '%s' "$install_cmd" | grep -q pip && ! qa_have_pip; then
   cell fresh-install UNVERIFIED "pip absent on agent (ensurepip failed; no sudo) — the install step was never run, so the repo is untested by this cell"
 else
-( $install_cmd ) >\$LOGD/inst.log 2>&1; inst_rc=\$?
+# QA-BUNKER-60 (2026-10-07): the install leg is bounded by a host-tunable
+# ceiling (BUNKER_QA_INSTALL_TIMEOUT_S, default 3600) instead of running
+# unbounded — a heavy workspace (wasmtime + arrow + tree-sitter C parsers) on
+# the 2-CPU default slice measured 2h+ on fresh-install, so the battery TTL
+# expired before later cells could write and the run was salvaged UNVERIFIED.
+# rc=124 grades SKIP (UNVERIFIED upstream), never OK/FAIL: a timeout is a
+# slice/window outcome, not a repo verdict. bash -c (not a bare eval) keeps the
+# compound installer a single killable child; the agent has bash by definition
+# (qa-run.sh itself runs under it), and coreutils timeout is already a
+# dependency of the chaos cells below.
+INST_TIMEOUT_S="\${BUNKER_QA_INSTALL_TIMEOUT_S:-${BUNKER_QA_INSTALL_TIMEOUT_S:-3600}}"
+( timeout "\$INST_TIMEOUT_S" bash -c '$install_cmd' ) >\$LOGD/inst.log 2>&1; inst_rc=\$?
 # FIX 2 / QA-WARPFS-9 rework 3 (2026-09-19): the condition above catches the bare
 # C toolchain. The OTHER environment failure the live agent produced is a rust
 # repo whose crates link a system library (openssl via git2, fuse3 via hilo-fuse):
@@ -1441,7 +1519,10 @@ else
 # ENV-BLOCKED fires only when BOTH halves hold — the probe found missing system
 # deps (RUST_MISSING_SYS_DEPS) AND the log carries the *-sys build-script shape —
 # and the INFO detail names the missing list so the row is actionable.
-if [ \$inst_rc -eq 0 ]; then cell fresh-install OK "\$(tail -1 \$LOGD/inst.log)"
+# rc=124 = timeout(1)'s own exit code — grade BEFORE the OK branch so a ceiling
+# hit can never fall through to OK/FAIL (QA-BUNKER-60).
+if [ \$inst_rc -eq 124 ]; then cell fresh-install SKIP "install exceeded \${INST_TIMEOUT_S}s timeout (slice/cpu too small for this workspace or genuine hang) — grade UNVERIFIED upstream"
+elif [ \$inst_rc -eq 0 ]; then cell fresh-install OK "\$(tail -1 \$LOGD/inst.log)"
 elif [ \$inst_rc -eq 127 ] || grep -qi 'command not found' \$LOGD/inst.log; then cell fresh-install INFO "ENV-BLOCKED: the agent lacks a build tool the install step calls (\$(grep -m1 -oE '[a-zA-Z0-9_.-]+: command not found' \$LOGD/inst.log || echo rc=\$inst_rc)) and has no sudo to install it — harness env, not a repo defect: \$(tail -1 \$LOGD/inst.log)"
 elif build_env_failure \$LOGD/inst.log; then cell fresh-install INFO "ENV-BLOCKED: agent has no C toolchain (build-script link failure) — not a repo defect; README documents build-essential"
 elif [ -n "\$RUST_MISSING_SYS_DEPS" ] && build_sys_dep_failure \$LOGD/inst.log; then cell fresh-install INFO "ENV-BLOCKED: agent is missing system deps [\$RUST_MISSING_SYS_DEPS] and the build died in a *-sys build script — no sudo to apt install, not a repo defect; README documents the full dependency set: \$( { grep -m1 -E 'failed to run custom build command' \$LOGD/inst.log 2>/dev/null || grep -m1 'development packages' \$LOGD/inst.log 2>/dev/null; } | cut -c1-200 )"
@@ -2381,6 +2462,10 @@ run() {
   # Deterministic-failure preflights (config / ssh / capacity) — SHARED with
   # launch(); see preflights() for the record-one-FAIL-row + rc=2 contract.
   preflights
+  # QA-BUNKER-60 (2026-10-07): repo-weight preflight — WARN (stderr only; no
+  # evidence file is open here yet) when the workspace is heavy AND the
+  # resolved slice is still the 2-CPU default, BEFORE a spawn burns a TTL on it.
+  qa_preflight_repo_weight "$repo"
 
   local agent key spawn_err
   spawn_err=$(mktemp)
@@ -2501,6 +2586,10 @@ launch() {
 
   log "QA LAUNCH project: $PROJ — detached battery on $SERVER (ttl $TTL)"
   preflights
+  # QA-BUNKER-60 (2026-10-07): repo-weight preflight — WARN (stderr only; no
+  # evidence file is open here yet) when the workspace is heavy AND the
+  # resolved slice is still the 2-CPU default, BEFORE a spawn burns a TTL on it.
+  qa_preflight_repo_weight "$repo"
 
   local spawn_err
   spawn_err=$(mktemp)
@@ -2575,8 +2664,11 @@ launch() {
   launched=$(date -u +%FT%TZ)
   script_bytes=$(printf '%s' "$launch_out" | sed -n 's/^SCRIPT_BYTES=//p' | tail -1)
   write_meta "$agent" "$SERVER" "$launched" "$keep" "$PROJ"
-  printf '{"project":"%s","cell":"launch","status":"OK","detail":"agent=%s server=%s ttl=%s script_bytes=%s — battery started detached (qa-run.sh); phase B: bunker-qa.sh collect --evidence %s","ts":"%s"}\n' \
-    "$PROJ" "$agent" "$SERVER" "$TTL" "${script_bytes:-unknown}" "$EVIDENCE" "$launched" >> "$EVIDENCE"
+  # QA-BUNKER-60 (2026-10-07): the evidence names its slice — a 3h battery is
+  # unreadable after the fact without knowing whether it ran on the 2-CPU
+  # default or a bumped quota. agent= stays first (evidence contract).
+  printf '{"project":"%s","cell":"launch","status":"OK","detail":"agent=%s server=%s ttl=%s cpu=%s memory=%s script_bytes=%s — battery started detached (qa-run.sh); phase B: bunker-qa.sh collect --evidence %s","ts":"%s"}\n' \
+    "$PROJ" "$agent" "$SERVER" "$TTL" "${BUNKER_QA_CPUS:-$(qa_slice_cpus "$repo")}" "${BUNKER_QA_MEM:-default}" "${script_bytes:-unknown}" "$EVIDENCE" "$launched" >> "$EVIDENCE"
   log "QA launch complete — no cells waited on locally (phase B: collect --evidence $EVIDENCE)"
   echo "LAUNCHED agent=$agent evidence=$EVIDENCE"
 }
