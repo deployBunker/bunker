@@ -67,7 +67,7 @@ func TestResolveMountDriverDefaultsToSSHFS(t *testing.T) {
 // TestResolveMountDriverUnknownNamesRefused pins the named refusal shape
 // resolveMountDriver produces for the server and manager paths.
 func TestResolveMountDriverUnknownNamesRefused(t *testing.T) {
-	for _, name := range []string{"rclone", "io_uring", "Rclone"} {
+	for _, name := range []string{"io_uring", "Rclone", "doesnotexist"} {
 		d, err := resolveMountDriver(name)
 		if err == nil {
 			t.Errorf("resolveMountDriver(%q) returned driver %+v; must refuse", name, d)
