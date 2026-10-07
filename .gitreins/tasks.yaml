@@ -3649,7 +3649,7 @@ tasks:
     go build/vet/test green
   status: complete
   created_at: '2026-09-29T13:19:50.584088+00:00'
-  completed_at: '2026-09-29T14:00:24.588501+00:00'
+  completed_at: '2026-10-07T05:22:52.524180+00:00'
 - id: DF-BUNKER-81
   title: destroy of large rootless-docker homes is unfinishedable
   criteria:
@@ -4270,3 +4270,19 @@ tasks:
   status: complete
   created_at: '2026-10-07T04:55:45.804308+00:00'
   completed_at: '2026-10-07T05:09:24.222539+00:00'
+- id: BFS-057-TICK575
+  title: I/O measurement battery for the mount-chain lever spec
+  criteria:
+  - harness committed and battery runnable per row criteria; merge on origin/main
+  status: complete
+  created_at: '2026-10-07T05:42:46.257188+00:00'
+  completed_at: '2026-10-07T06:32:03.453440+00:00'
+- id: MOUNT-012
+  title: SSH connection multiplexing (ControlMaster) for CLI ssh paths
+  criteria:
+  - buildSSHArgs and cp/deploy/agenttools ssh paths emit ControlMaster=auto + per-target
+    ControlPath + ControlPersist; sshfs/tunnel builders untouched; go build/vet/tests
+    pass; guard Tier 1 PASS
+  status: complete
+  created_at: '2026-10-07T06:37:42.374136+00:00'
+  completed_at: '2026-10-07T07:23:35.026146+00:00'
