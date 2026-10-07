@@ -4303,3 +4303,27 @@ tasks:
   status: complete
   created_at: '2026-10-07T11:12:26.524731+00:00'
   completed_at: '2026-10-07T13:13:41.470962+00:00'
+- id: GAP-095
+  title: 'S4 attribution: session id on exec path into audit chain'
+  criteria:
+  - 'Pass criteria: (1) unit test for the audit session_id field and absent-value
+    rendering as ''not captured''; (2) live: two sessions each perform an operation
+    and produce two audit rows with two distinct session ids while ''bunker audit
+    verify'' still passes; (3) no token value is ever written to the audit log (redaction
+    re-asserted); (4) go build/vet/test green; battery VERIFY-PASS if exec handler
+    shape changes.'
+  status: complete
+  created_at: '2026-10-07T14:56:01.801991+00:00'
+  completed_at: '2026-10-07T15:21:29.647537+00:00'
+- id: MOUNT-007
+  title: rclone SFTP opt-in mount driver
+  criteria:
+  - 'internal/mountdriver registers an rclone SFTP driver that: (1) is NOT the default
+    (DefaultDriver stays sshfs); (2) declares explicitly it has no sshfs-shaped classifier
+    (NoClassifier reason, registry invariant test passes); (3) server-side buildMountCommand
+    produces an rclone mount SFTP command for driver=rclone (registry currently refuses
+    non-sshfs); (4) go build ./... && go vet ./... && go test ./internal/mountdriver/...
+    ./internal/agent/... ./internal/cli/... pass'
+  status: complete
+  created_at: '2026-10-07T15:32:04.467610+00:00'
+  completed_at: '2026-10-07T16:41:30.118247+00:00'
