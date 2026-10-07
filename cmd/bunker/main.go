@@ -169,6 +169,7 @@ Client-side path overrides (persistent flags):
 	root.AddCommand(cli.NewVersionCommand())
 	root.AddCommand(cli.NewUseCommand())
 	root.AddCommand(cli.NewCpCommand())
+	root.AddCommand(cli.NewPullCommand())
 	root.AddCommand(cli.NewDeployCommand())
 	root.AddCommand(cli.NewSSHCommand())
 	root.AddCommand(cli.NewKeysCommand())
