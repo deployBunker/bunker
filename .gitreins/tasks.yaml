@@ -4278,11 +4278,3 @@ tasks:
   status: complete
   created_at: '2026-10-07T06:37:42.374136+00:00'
   completed_at: '2026-10-07T07:23:35.026146+00:00'
-- id: DOC-35
-  title: Fix safety-preset default drift in help text/proto comments
-  criteria:
-  - grep -rn 'built-in default' config.example.yaml internal/cli/spawn.go shows the
-    same tier name (standard); go build/vet/test pass
-  status: complete
-  created_at: '2026-10-07T09:28:04.131822+00:00'
-  completed_at: '2026-10-07T09:30:39.121935+00:00'
