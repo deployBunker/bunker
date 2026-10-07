@@ -3830,14 +3830,6 @@ tasks:
   status: complete
   created_at: '2026-10-01T08:00:28.541632+00:00'
   completed_at: '2026-10-01T09:24:40.947281+00:00'
-- id: QA-BUNKER-43
-  title: Registry TestCompact_ThousandEvents hangs in Fsync loop
-  criteria:
-  - Test completes <60s isolated at loadavg<=5 and full guard green on unrelated diff;
-    fsync behavior in Store.append diagnosed and remediated (batching/interval or
-    test tmpfs) without weakening durability guarantees silently
-  status: in_progress
-  created_at: '2026-10-01T13:48:40.165079+00:00'
 - id: GAP-181
   title: Secrets and state resolve to documented absolute paths (path diagnostic +
     fail-closed + backup set)
@@ -4286,3 +4278,11 @@ tasks:
   status: complete
   created_at: '2026-10-07T06:37:42.374136+00:00'
   completed_at: '2026-10-07T07:23:35.026146+00:00'
+- id: DOC-35
+  title: Fix safety-preset default drift in help text/proto comments
+  criteria:
+  - grep -rn 'built-in default' config.example.yaml internal/cli/spawn.go shows the
+    same tier name (standard); go build/vet/test pass
+  status: complete
+  created_at: '2026-10-07T09:28:04.131822+00:00'
+  completed_at: '2026-10-07T09:30:39.121935+00:00'
