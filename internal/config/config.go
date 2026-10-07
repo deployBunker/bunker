@@ -628,6 +628,12 @@ type AgentConfig struct {
 	DefaultIOWriteBps int64 `mapstructure:"default_io_write_bps"`
 	// ImageSpec holds the GAP-064 image-customization policy.
 	ImageSpec ImageSpecConfig `mapstructure:"image_spec"`
+	// Egress holds the GAP-134 per-agent egress policy defaults (the
+	// daemon-wide mode + the admin-managed allowlist). Zero value = open =
+	// exactly the pre-GAP-134 behavior, byte for byte. The per-spawn
+	// override rides SpawnAgentRequest.egress_mode; the vocabulary and the
+	// firewall mechanics live in internal/egress.
+	Egress EgressConfig `mapstructure:"egress"`
 	// RootlessInstallerCacheDir is the host-level directory where downloaded
 	// rootless Docker installers are cached between spawns (GAP-091). On a
 	// cache hit a fresh-agent spawn skips the ~93MB get.docker.com download
@@ -1422,6 +1428,13 @@ func (c *Config) Validate() error {
 	// passes.
 	if c.Agent.NetworkMode != "" && !ValidNetworkMode(c.Agent.NetworkMode) {
 		return fmt.Errorf("agent.network_mode must be one of %v, got %q", ValidNetworkModes(), c.Agent.NetworkMode)
+	}
+	// GAP-134: an unknown agent.egress.mode (or a malformed allowlist
+	// entry) must refuse to start — a typoed egress mode can never
+	// silently resolve to a different (weaker or stronger) network policy
+	// at spawn time. Empty is the unset default (open) and always passes.
+	if err := c.Agent.Egress.Validate(); err != nil {
+		return err
 	}
 	// GAP-118: the DoS-containment admin overrides are validated where they
 	// are configured, so a typoed knob value fails at load — never as a

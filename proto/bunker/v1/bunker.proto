@@ -216,6 +216,12 @@ message AgentSummary {
   // operator must never read that absence as "shared"; see the
   // NetworkIsolation message's three-state vocabulary.
   NetworkIsolation network_isolation = 17;
+  // GAP-134 (REQ-E1): the egress policy mode the agent was ACTUALLY
+  // spawned under ("open" | "allowlist" | "none"). Empty = the record
+  // predates egress reporting; a bound that is not reported is not a
+  // bound, so absence must never render as a claim. ADDITIVE: older
+  // clients ignore it.
+  string egress_mode = 18;
 }
 
 // One resolved systemd property of an agent's effective knob set (GAP-116):
@@ -251,6 +257,17 @@ message SpawnAgentRequest {
   // to shared (specs/network-isolation.md §5.2). A mode the daemon cannot
   // provide refuses the same way: a silent fallback is a manufactured bound.
   string network_mode = 11;
+  // GAP-134 (REQ-E1): requested egress policy mode for this agent
+  // ("open" | "allowlist" | "none"). Empty = defer to the daemon's
+  // agent.egress.mode config (default "open" — the SAFE default: no
+  // enforcement, no firewall interaction). An unknown name REFUSES the
+  // spawn with a named error (CodeInvalidArgument) — never a silent
+  // fallback to open. The allowlist itself is daemon config
+  // (agent.egress.allowlist); a spawn request does not carry its own
+  // accept list. In allowlist/none modes a failed rule installation
+  // FAILS the spawn loudly — an agent never runs unenforced while its
+  // config claims it is restricted. ADDITIVE: older clients ignore it.
+  string egress_mode = 12;
 }
 
 // ── Image specification (GAP-064) ─────────────────────────────

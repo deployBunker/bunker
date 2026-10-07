@@ -56,6 +56,13 @@ type AgentRecord struct {
 	// provided boundary) handed to the wire verbatim by ToAgentSummary. Nil
 	// on pre-surface records; never fabricated for them.
 	NetworkIsolation *v1.NetworkIsolation
+	// EgressMode is the GAP-134 (REQ-E1) egress policy mode the agent was
+	// ACTUALLY spawned under: egress.ModeOpen / ModeAllowlist / ModeNone.
+	// Empty on pre-GAP-134 records (replay/adopt of an older daemon's
+	// agent) — absence must never render as a claim (the netmode §5.2
+	// three-state law). The honest boundary string for a non-empty mode is
+	// egress.BoundaryFor(mode).
+	EgressMode string
 }
 
 // Tracker manages agent state, capacity, and resource allocation.
@@ -175,5 +182,9 @@ func (r *AgentRecord) ToAgentSummary() *v1.AgentSummary {
 		// provides. Nil (pre-surface record) stays nil — absence is the
 		// distinct "predates reporting" state, never upgraded to a claim.
 		NetworkIsolation: r.NetworkIsolation,
+		// GAP-134: the egress policy the agent was spawned under. Empty
+		// (pre-GAP-134 record) stays empty — absence is never upgraded to
+		// an "open" claim.
+		EgressMode: r.EgressMode,
 	}
 }

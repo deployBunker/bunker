@@ -586,6 +586,22 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool, 
 		m.logger.Warn("cannot lookup user before destroy", "username", username, "error", err)
 	}
 
+	// Step 0.7 (GAP-134): remove the agent's egress chain while the uid is
+	// still resolvable (the chain is keyed on the uid, so a post-userdel
+	// removal could no longer name it). The user's processes are already
+	// stopped, so no outbound traffic raced the removal. Best-effort
+	// compensating step: a failure is logged and the periodic sweep is the
+	// backstop (a stale chain keeps enforcing against a uid that no longer
+	// exists — fail safe, never fail open).
+	if _, ecancel, _ := rb.step(); ecancel != nil {
+		if err := m.egressRemove(username); err != nil {
+			m.logger.Warn("egress chain removal incomplete", "agent_id", agentID, "error", err)
+		} else {
+			m.logger.Info("egress chain removed", "agent_id", agentID)
+		}
+		ecancel()
+	}
+
 	// BNK-DF-001: stopDockerdDirect is SHARED with the spawn rollback
 	// (manager_spawn.go resetStaleDockerdUnit) and the lifecycle stop path
 	// (manager_lifecycle.go terminateAgentProcesses), so its signature and
