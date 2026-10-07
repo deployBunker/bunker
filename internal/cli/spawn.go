@@ -43,6 +43,10 @@ func NewSpawnCommand() *cobra.Command {
 		// (NET-BUNKER-010): "shared" or "systemd". Empty defers to the
 		// daemon's resolution chain.
 		networkIsolationMode string
+		// egressMode is the requested egress policy mode (GAP-134):
+		// "open", "allowlist", or "none". Empty defers to the daemon's
+		// resolution chain (config global, then the safe default open).
+		egressMode string
 	)
 
 	cmd := &cobra.Command{
@@ -144,6 +148,16 @@ Examples:
 				return fmt.Errorf("invalid --network-mode %q (valid: %v)", networkIsolationMode, config.ValidNetworkModes())
 			}
 
+			// 0.8 Validate --egress-mode LOCALLY, before the RPC (GAP-134,
+			// same fail-fast shape as --network-mode): an unknown mode name
+			// fails fast with the accepted vocabulary. Empty defers to the
+			// daemon's agent.egress.mode config, then the declared safe
+			// default "open" — the daemon re-validates the resolved value
+			// regardless and never silently falls back.
+			if egressMode != "" && !config.ValidEgressMode(egressMode) {
+				return fmt.Errorf("invalid --egress-mode %q (valid: %v)", egressMode, config.ValidEgressModes())
+			}
+
 			// 1. Load CLI config
 			cfg, err := LoadCLIConfig()
 			if err != nil {
@@ -184,6 +198,12 @@ Examples:
 				// by the server (CodeInvalidArgument) — never a silent
 				// fallback to shared (spec §5.2).
 				NetworkMode: networkIsolationMode,
+				// GAP-134: the requested egress policy mode. Empty = the
+				// daemon's resolution chain (config global, then the safe
+				// default "open"); an unknown name is refused by the
+				// server (CodeInvalidArgument) — never a silent fallback
+				// to open.
+				EgressMode: egressMode,
 				// MOUNT-006: the requested mount driver. Empty = the
 				// server's sshfs default; an unknown name is refused by
 				// the server (CodeInvalidArgument) — never a silent
@@ -358,6 +378,7 @@ Examples:
 	cmd.Flags().StringVar(&preset, "preset", "", "Safety preset for this agent: open, standard, hardened (default: BUNKERD_SAFETY_PRESET, then the server's config, then the built-in default standard (GAP-117))")
 	cmd.Flags().StringVar(&mountDriver, "mount-driver", "", "Mount driver for this agent (default: sshfs; an unknown name is refused by the server)")
 	cmd.Flags().StringVar(&networkIsolationMode, "network-mode", "", "Network isolation mode for this agent: shared, systemd, procvis (default: BUNKERD_NETWORK_MODE, then the server's config, then shared). systemd = private network namespace (loopback only; NO outbound — image pulls fail in this mode). procvis = private /proc in the unit's mount namespace (hidepid=2 semantics; unit processes see only their own user's processes; does NOT cover SSH/exec sessions)")
+	cmd.Flags().StringVar(&egressMode, "egress-mode", "", "Egress policy for this agent (GAP-134): open (unrestricted outbound; the default), allowlist (default-deny chain; only loopback, established connections and the server's agent.egress.allowlist destinations are accepted), none (deny-all except the control channel). Default: the server's agent.egress.mode config, then open. A failed rule installation fails the spawn — the agent is never left unenforced")
 
 	return cmd
 }

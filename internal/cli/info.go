@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/deployBunker/bunker/internal/config"
+	"github.com/deployBunker/bunker/internal/egress"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 )
 
@@ -158,6 +159,13 @@ Examples:
 			// never render as safe. A bound that is not reported is not a
 			// bound.
 			fmt.Println("  Network Isolation: " + formatNetworkIsolation(a.GetNetworkIsolation()))
+			// GAP-134: the egress policy the agent was spawned under.
+			// Empty = the record predates egress reporting (never rendered
+			// as a claim — the reporting law). A non-empty mode reports
+			// the honest boundary string from internal/egress.
+			if eg := a.GetEgressMode(); eg != "" {
+				fmt.Println("  Egress Policy:    " + eg + " — " + egress.BoundaryFor(eg))
+			}
 			// DF-BUNKER-34: the orphan-uid verdict. Non-empty means the
 			// agent's user record is GONE from the host while processes
 			// still run under its uid — the state that made a destroyed

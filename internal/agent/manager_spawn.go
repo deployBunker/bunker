@@ -125,6 +125,21 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	}
 	m.logger.Info("resolved network isolation mode", "agent_id", agentID, "mode", networkMode)
 
+	// ── Step 1e: Resolve the egress policy BEFORE any side effect ────
+	// GAP-134 (REQ-E1): the requested mode (req.EgressMode, empty = the
+	// daemon's agent.egress.mode config, then the declared safe default
+	// "open") must be a mode this build can enforce. An unknown name
+	// REFUSES here — before user creation, ports, dockerd, or any firewall
+	// state — with a named error carrying the offending value and the valid
+	// set. It NEVER falls back to open: a silent fallback is a manufactured
+	// bound (the netmode §5.2 law). The allowlist always rides the daemon
+	// config (agent.egress.allowlist).
+	egressPolicy, egressErr := m.egressResolve(req.GetEgressMode())
+	if egressErr != nil {
+		return nil, spawnStageErr(ctx, agentID, StageValidate, egressErr)
+	}
+	m.logger.Info("resolved egress policy", "agent_id", agentID, "mode", egressPolicy.Mode)
+
 	// ── Step 1.7: Validate the image spec BEFORE any side effect ──
 	// GAP-064: an invalid or disallowed image spec must fail with a
 	// validation error (mapped to CodeInvalidArgument by the server) without
@@ -704,6 +719,24 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		createdUserSlice = true
 	}
 
+	// ── Step 5d.5: Install the egress policy (GAP-134) ──────────────
+	// The agent's uid is known and dockerd is verified up, but the agent is
+	// NOT yet registered or reported ready: a failed install in
+	// allowlist/none mode fails the spawn HERE — the standard rollback
+	// (user, keys, ports, isolation) runs — so an agent is never left
+	// running unenforced while its config claims it is restricted
+	// (requirement 4). In open mode Install is a no-op that performs ZERO
+	// firewall invocations (pinned by TestEgressInstall_OpenModeZeroFirewallCalls).
+	if egressPolicy.Enforced() {
+		m.logger.Info("spawn entering stage", "agent_id", agentID, "stage", StageEgress)
+		installErr := m.egressInstall(egressPolicy, uint32(uid))
+		if installErr != nil {
+			return nil, fail(StageEgress, installErr)
+		}
+		m.logger.Info("egress policy installed",
+			"agent_id", agentID, "mode", egressPolicy.Mode, "uid", uid)
+	}
+
 	// ── Clean up temporary key files (keys are in memory + authorized_keys) ──
 	os.Remove(keyFile)
 	os.Remove(pubKeyFile)
@@ -825,6 +858,11 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		// provided here by construction.
 		NetworkMode:      networkMode,
 		NetworkIsolation: networkIsolationForSummary(networkMode),
+		// GAP-134: the egress policy the agent was ACTUALLY spawned under.
+		// Enforced modes reached here only after Install succeeded, so the
+		// stamp is truthful; open is stamped as open (an affirmative
+		// "no egress enforcement" report, never an absence).
+		EgressMode: egressPolicy.Mode,
 	}
 	if err := m.tracker.Register(rec); err != nil {
 		// This shouldn't happen (we checked capacity above), but handle gracefully

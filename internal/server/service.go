@@ -405,6 +405,14 @@ func (s *bunkerdService) SpawnAgent(ctx context.Context, req *connect.Request[v1
 		return nil, connect.NewError(connect.CodeInvalidArgument, nerr)
 	}
 
+	// GAP-134 (REQ-E1): an unknown egress mode surfaces as
+	// CodeInvalidArgument at the RPC boundary — same refusal law as the
+	// network mode above. The manager re-resolves (spawn Step 1e) but the
+	// code mapping happens here.
+	if _, eerr := s.cfg.ResolveEgressMode(req.Msg.GetEgressMode()); eerr != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, eerr)
+	}
+
 	resp, err := s.agentMgr.Spawn(ctx, req.Msg)
 	if err != nil {
 		s.logger.Error("spawn agent failed", "error", err)

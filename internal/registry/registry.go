@@ -132,6 +132,12 @@ type Event struct {
 	NetworkMode     string `json:"network_mode,omitempty"`
 	NetworkBoundary string `json:"network_boundary,omitempty"`
 
+	// GAP-134 (REQ-E1): the egress policy mode ("open" | "allowlist" |
+	// "none") the agent was spawned under. Same omitempty vocabulary
+	// preservation as network_mode: absence = pre-GAP-134 record, never
+	// defaulted.
+	EgressMode string `json:"egress_mode,omitempty"`
+
 	// KnownIDs is set only on KindKnown index records.
 	KnownIDs []string `json:"known_ids,omitempty"`
 }
@@ -190,6 +196,12 @@ type Record struct {
 	// record, never rendered as shared).
 	NetworkMode     string
 	NetworkBoundary string
+
+	// GAP-134 (REQ-E1): the egress policy mode the agent was spawned
+	// under. Persisted so a replayed or adopted agent keeps reporting (and
+	// the egress sweep keeps tracking) its policy. Empty mode = pre-GAP-134
+	// record — absence is never rendered as a claim.
+	EgressMode string
 
 	// Refusal is the folded destroy-refusal state (DF-BUNKER-63); nil when
 	// the agent has no refusal on record.
@@ -579,6 +591,9 @@ func (s *Store) AppendSpawn(rec *Record) error {
 		// replayed agent keeps reporting the boundary actually provided.
 		NetworkMode:     rec.NetworkMode,
 		NetworkBoundary: rec.NetworkBoundary,
+		// GAP-134: the egress policy rides the spawn event so a replayed
+		// agent keeps reporting (and the sweep keeps tracking) it.
+		EgressMode: rec.EgressMode,
 	}
 	return s.append(ev, func() {
 		clone := *rec
@@ -961,6 +976,10 @@ func eventToRecord(ev *Event) *Record {
 		// replayed or adopted agent keeps reporting its enforced boundary.
 		NetworkMode:     ev.NetworkMode,
 		NetworkBoundary: ev.NetworkBoundary,
+		// GAP-134: restore the egress policy reporting. A pre-GAP-134
+		// record (empty mode) stays empty — absence is preserved, never
+		// upgraded to an "open" claim.
+		EgressMode: ev.EgressMode,
 		// DF-BUNKER-63: a refusal rides the record when the event carries
 		// one (a KindRefusal fold, or a compacted spawn event preserving
 		// the live record's refusal). A plain spawn event has none and

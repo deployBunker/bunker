@@ -14,6 +14,7 @@ import (
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 
 	"github.com/deployBunker/bunker/internal/config"
+	"github.com/deployBunker/bunker/internal/egress"
 	"github.com/deployBunker/bunker/internal/hostsetup"
 	"github.com/deployBunker/bunker/internal/imagespec"
 	"github.com/deployBunker/bunker/internal/registry"
@@ -108,6 +109,13 @@ type AgentManager struct {
 	// forceKillUserProcessesFn is the destroy --force kill escalation
 	// (SIGTERM, wait, SIGKILL, kill list logged).
 	forceKillUserProcessesFn func(username string, uid uint32, procs []userProcess)
+
+	// egressMgr is the GAP-134 per-agent egress policy manager (the
+	// Executor seam lives inside it). Production: NewAgentManager wires a
+	// real-command manager. Nil (hand-built test managers) disables the
+	// egress lifecycle — which is exactly OPEN-mode behavior, the declared
+	// safe default: install/destroy/sweep all no-op through the nil guards.
+	egressMgr *egress.Manager
 }
 
 // NewAgentManager creates a new AgentManager.
@@ -137,6 +145,11 @@ func NewAgentManager(cfg *config.Config, logger *slog.Logger, tracker *resource.
 		lingerUsers: &lingerUserCache{},
 	}
 	am.listSystemAgents = defaultListSystemAgents
+	// GAP-134: the per-agent egress policy manager (real commands, system
+	// resolver). The Executor seam inside it is what keeps every firewall
+	// claim testable; the nil-egressMgr degradation for hand-built test
+	// managers is open-mode behavior by construction.
+	am.egressMgr = egress.NewManager()
 	// DF-BUNKER-81: Destroy grew a variadic option list (the per-request
 	// archive opt-out). The reconciliation seam keeps its 3-argument shape —
 	// orphan cleanup has no operator to take an option from, so it runs under
@@ -179,6 +192,10 @@ func NewAgentManager(cfg *config.Config, logger *slog.Logger, tracker *resource.
 	// no agent can be reaped out of a half-restored registry.
 	am.openRegistry()
 	am.startTTLReaper()
+	// GAP-134: start the egress stale-chain sweeper (requirement 2). It
+	// waits for reconciliation like the reaper and rides the same stop
+	// channel, so daemon shutdown ends both loops.
+	am.startEgressSweeper()
 	return am
 }
 

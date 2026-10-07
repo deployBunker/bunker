@@ -733,8 +733,14 @@ type AgentSummary struct {
 	// operator must never read that absence as "shared"; see the
 	// NetworkIsolation message's three-state vocabulary.
 	NetworkIsolation *NetworkIsolation `protobuf:"bytes,17,opt,name=network_isolation,json=networkIsolation,proto3" json:"network_isolation,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// GAP-134 (REQ-E1): the egress policy mode the agent was ACTUALLY
+	// spawned under ("open" | "allowlist" | "none"). Empty = the record
+	// predates egress reporting; a bound that is not reported is not a
+	// bound, so absence must never render as a claim. ADDITIVE: older
+	// clients ignore it.
+	EgressMode    string `protobuf:"bytes,18,opt,name=egress_mode,json=egressMode,proto3" json:"egress_mode,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *AgentSummary) Reset() {
@@ -886,6 +892,13 @@ func (x *AgentSummary) GetNetworkIsolation() *NetworkIsolation {
 	return nil
 }
 
+func (x *AgentSummary) GetEgressMode() string {
+	if x != nil {
+		return x.EgressMode
+	}
+	return ""
+}
+
 // One resolved systemd property of an agent's effective knob set (GAP-116):
 // a NAME=VALUE pair as written into the spawn unit / slice drop-in, so
 // `bunker info` reports exactly what systemd enforces.
@@ -966,7 +979,18 @@ type SpawnAgentRequest struct {
 	// spawn with a named error (CodeInvalidArgument) — never a silent fallback
 	// to shared (specs/network-isolation.md §5.2). A mode the daemon cannot
 	// provide refuses the same way: a silent fallback is a manufactured bound.
-	NetworkMode   string `protobuf:"bytes,11,opt,name=network_mode,json=networkMode,proto3" json:"network_mode,omitempty"`
+	NetworkMode string `protobuf:"bytes,11,opt,name=network_mode,json=networkMode,proto3" json:"network_mode,omitempty"`
+	// GAP-134 (REQ-E1): requested egress policy mode for this agent
+	// ("open" | "allowlist" | "none"). Empty = defer to the daemon's
+	// agent.egress.mode config (default "open" — the SAFE default: no
+	// enforcement, no firewall interaction). An unknown name REFUSES the
+	// spawn with a named error (CodeInvalidArgument) — never a silent
+	// fallback to open. The allowlist itself is daemon config
+	// (agent.egress.allowlist); a spawn request does not carry its own
+	// accept list. In allowlist/none modes a failed rule installation
+	// FAILS the spawn loudly — an agent never runs unenforced while its
+	// config claims it is restricted. ADDITIVE: older clients ignore it.
+	EgressMode    string `protobuf:"bytes,12,opt,name=egress_mode,json=egressMode,proto3" json:"egress_mode,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1074,6 +1098,13 @@ func (x *SpawnAgentRequest) GetMountDriver() string {
 func (x *SpawnAgentRequest) GetNetworkMode() string {
 	if x != nil {
 		return x.NetworkMode
+	}
+	return ""
+}
+
+func (x *SpawnAgentRequest) GetEgressMode() string {
+	if x != nil {
+		return x.EgressMode
 	}
 	return ""
 }
@@ -3914,7 +3945,7 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\x0fdisk_used_bytes\x18\x04 \x01(\x04R\rdiskUsedBytes\x12(\n" +
 	"\x10disk_total_bytes\x18\x05 \x01(\x04R\x0ediskTotalBytes\x126\n" +
 	"\x17docker_containers_total\x18\x06 \x01(\rR\x15dockerContainersTotal\x12/\n" +
-	"\x06agents\x18\a \x03(\v2\x17.bunker.v1.AgentSummaryR\x06agents\"\xd2\x05\n" +
+	"\x06agents\x18\a \x03(\v2\x17.bunker.v1.AgentSummaryR\x06agents\"\xf3\x05\n" +
 	"\fAgentSummary\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x121\n" +
@@ -3939,10 +3970,12 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\n" +
 	"mount_spec\x18\x0f \x01(\v2\x14.bunker.v1.MountSpecR\tmountSpec\x12*\n" +
 	"\x11orphan_uid_detail\x18\x10 \x01(\tR\x0forphanUidDetail\x12H\n" +
-	"\x11network_isolation\x18\x11 \x01(\v2\x1b.bunker.v1.NetworkIsolationR\x10networkIsolation\";\n" +
+	"\x11network_isolation\x18\x11 \x01(\v2\x1b.bunker.v1.NetworkIsolationR\x10networkIsolation\x12\x1f\n" +
+	"\vegress_mode\x18\x12 \x01(\tR\n" +
+	"egressMode\";\n" +
 	"\x0fSystemdProperty\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value\"\x9f\x04\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\"\xc0\x04\n" +
 	"\x11SpawnAgentRequest\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x121\n" +
 	"\x06limits\x18\x02 \x01(\v2\x19.bunker.v1.ResourceLimitsR\x06limits\x122\n" +
@@ -3956,7 +3989,9 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\rsafety_preset\x18\t \x01(\tR\fsafetyPreset\x12!\n" +
 	"\fmount_driver\x18\n" +
 	" \x01(\tR\vmountDriver\x12!\n" +
-	"\fnetwork_mode\x18\v \x01(\tR\vnetworkMode\x1a9\n" +
+	"\fnetwork_mode\x18\v \x01(\tR\vnetworkMode\x12\x1f\n" +
+	"\vegress_mode\x18\f \x01(\tR\n" +
+	"egressMode\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"R\n" +

@@ -35,6 +35,11 @@ const (
 	StageSliceLimits        = "slice-limits"
 	StageSessionProbe       = "session-probe"
 	StageRegister           = "register"
+	// StageEgress is the GAP-134 rule-installation stage: it runs after the
+	// dockerd verification and before registration, so a failed install in
+	// allowlist/none mode fails the spawn (never an agent running
+	// unenforced while its config claims it is restricted).
+	StageEgress = "egress"
 )
 
 // ── the rollback budget (DF-BUNKER-21) ──────────────────────────────────────

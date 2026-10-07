@@ -65,6 +65,7 @@ Bunker is a **multi-agent hosting platform** — a daemon (`bunkerd`) that runs 
   restart. Size-capped (5 MiB × 3 rotation), compactable offline with
   `bunker registry compact`, and reconciled against system users on boot
   (orphans destroyed or adopted). See [specs/agent-lifecycle.md](specs/agent-lifecycle.md)
+- **Egress policy (safe default: open)** — Per-agent outbound network control (`allowlist`/`none` modes install a default-deny nftables/iptables chain keyed on the agent's uid; a failed install fails the spawn). See [docs/egress-policy.md](docs/egress-policy.md)
 - **Networking** — Cloudflare tunnels (named or TryCloudflare), Tailscale mesh, or direct port ranges
 - **gRPC + REST** — Dual protocol via connect-go, single binary
 - **TLS/mTLS** — Self-signed, Let's Encrypt (certmagic), or mutual TLS
