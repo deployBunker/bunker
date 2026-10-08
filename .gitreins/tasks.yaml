@@ -4218,8 +4218,9 @@ tasks:
     argv word, and passes when shipping via ssh stdin (cat > ~/qa-run.sh); the test
     drives the REAL launch()/run() paths with a PATH-shimmed agent_ssh capturing stdin/argv,
     and both the new test and the existing test_bunker_qa_classifier.sh exit 0.
-  status: in_progress
+  status: complete
   created_at: '2026-10-06T21:51:23.479251+00:00'
+  completed_at: '2026-10-08T06:16:14.223323+00:00'
 - id: INT-CI-061
   title: CI unit-tests failing on QA-BUNKER-61 commits
   criteria:
@@ -4355,3 +4356,14 @@ tasks:
   status: complete
   created_at: '2026-10-08T04:24:09.424522+00:00'
   completed_at: '2026-10-08T04:55:57.374110+00:00'
+- id: QA-BUNKER-65
+  title: Uncommitted QA-harness changes break the QA-BUNKER-64 stdin-ship regression
+    test
+  criteria:
+  - Running .hermes/scripts/test_bunker_qa_stdin_ship.sh against the CURRENT committed
+    bunker-qa.sh exits 0 (23 passed 0 failed); if the harness render path changes
+    (e.g. new env vars like QA_HEAD_SHA referenced inside build_remote_script's unquoted
+    heredoc), the test must still pass against the dirty/merged tree before that work
+    merges
+  status: pending
+  created_at: '2026-10-08T06:17:28.614789+00:00'
