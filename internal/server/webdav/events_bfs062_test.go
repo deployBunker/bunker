@@ -88,15 +88,18 @@ func bfs062Handler(t *testing.T, root string, bound int64) *Handler {
 	return h
 }
 
-// bfs062ChangeFrame drives one change and returns the answer plus the serialized
-// size of every event frame in it, measured with the wire encoder.
-func bfs062ChangeFrame(t *testing.T, h *Handler, create func(n, segLen int) []string, n, segLen int) (eventsJSON, []int64) {
+// bfs062ChangeFrame drives one change and returns the answer, the serialized
+// size of every event frame in it (measured with the wire encoder), and the
+// paths the change created. The paths come back because the change MUST happen
+// after the seed snapshot (it is the diff against that snapshot), so a caller
+// that needs the path list cannot create the files first.
+func bfs062ChangeFrame(t *testing.T, h *Handler, create func(n, segLen int) []string, n, segLen int) (eventsJSON, []int64, []string) {
 	t.Helper()
 	// The snapshot the mount takes at bind is what gives the ledger a baseline;
 	// the cursor it mints is 0 on a freshly-seeded ledger, which is a value and
 	// not an absence, so the arm does not treat it as a failure.
 	_ = seedWithSnapshot(t, h)
-	create(n, segLen)
+	created := create(n, segLen)
 	answer := pollEvents(t, h, `{"since_seq":0}`)
 	sizes := make([]int64, 0, len(answer.Result.Events))
 	for _, ev := range answer.Result.Events {
@@ -106,7 +109,7 @@ func bfs062ChangeFrame(t *testing.T, h *Handler, create func(n, segLen int) []st
 		}
 		sizes = append(sizes, size)
 	}
-	return answer, sizes
+	return answer, sizes, created
 }
 
 // TestBFS062TheCountIsNotASize is the row's own arithmetic and the producing
@@ -184,23 +187,25 @@ func TestBFS062TheCountIsNotASize(t *testing.T) {
 	})
 
 	t.Run("at the declared minimum the same change overflows, counted", func(t *testing.T) {
-		// Measure the frame on a tree the default bound admits, so the size
-		// compared against the floor comes from the surface's own encoder.
+		// Measure the frame on a tree the default bound admits, so the sizes
+		// compared against the floor come from the surface's own encoder, and
+		// keep the ledger's own path list: the refused frame below is rebuilt
+		// from it.
 		rootA, createA := bfs062LongTree(t)
 		hA := bfs062Handler(t, rootA, invalidation.DefaultPushMaxEventBytes)
-		_, sizes := bfs062ChangeFrame(t, hA, createA, 120, 230)
-		frame := sizes[0]
-		if frame <= floor {
-			t.Fatalf("the change's frame measured %d bytes, which is not over the declared minimum %d: this arm needs a frame the floor refuses", frame, floor)
+		answerA, _, _ := bfs062ChangeFrame(t, hA, createA, 120, 230)
+		if got := eventNames(answerA.Result.Events); len(got) != 1 || got[0] != eventInvalidate {
+			t.Fatalf("the measuring change answered %v, want one invalidate: the arm has no frame to rebuild the refusal from", got)
 		}
+		pathsA := answerA.Result.Events[0].Paths
 
 		before, _ := FrameOverBoundCounters()
 		rootB, createB := bfs062LongTree(t)
 		hB := bfs062Handler(t, rootB, floor)
-		answer, sizesB := bfs062ChangeFrame(t, hB, createB, 120, 230)
+		answer, sizesB, createdB := bfs062ChangeFrame(t, hB, createB, 120, 230)
 
 		if got := eventNames(answer.Result.Events); len(got) != 1 || got[0] != eventOverflow {
-			t.Fatalf("a change whose frame measures %d bytes under a declared bound of %d answered %v, want one overflow: the count bound alone admitted an over-bound frame", frame, floor, got)
+			t.Fatalf("a change whose frame measures %d bytes under a declared bound of %d answered %v, want one overflow: the count bound alone admitted an over-bound frame", sizesB[0], floor, got)
 		}
 		if n := len(answer.Result.Events[0].Paths); n != 0 {
 			t.Fatalf("the overflow carried %d paths, want none — the rule is `overflow` with paths: [] and never a truncated or partial list", n)
@@ -212,10 +217,53 @@ func TestBFS062TheCountIsNotASize(t *testing.T) {
 		if after != before+1 {
 			t.Fatalf("byte-bound refusals went %d -> %d, want exactly one: an over-bound frame must be COUNTED", before, after)
 		}
-		if lastBytes != frame {
-			t.Fatalf("the counted frame's size is %d, want the measured %d: the count must carry the measurement that decided it", lastBytes, frame)
+		// The measurement the refusal carries must be the one IT decided on.
+		// The funnel (events.go push) measures the would-be `invalidate` — its
+		// serialized size against this tree's declared bound — records that
+		// measurement, and only then swaps the frame for the `overflow` marker,
+		// which keeps Seq, Rev and Tree verbatim and drops only Paths. So the
+		// refused frame is this answer's own frame with its path list restored,
+		// and the equality below pins the count to handler B's OWN decision.
+		//
+		// Why the path list may come from handler A (pathsA): the ledger's diff
+		// list is tree-RELATIVE — the created files, the directories the change
+		// made, and the touched root as "." — so two trees built the same way
+		// (same n, same segment length) produce byte-identical lists, and an
+		// array's serialized size does not care about member order. The guard
+		// below ties pathsA to handler B's own change (every created path is
+		// held), and the abs-path check pins the tree-independence this reuse
+		// rests on. The invalidate arm above already proved the ledger carries
+		// exactly this list for this change shape.
+		//
+		// The REV is the one field that carries live state — revToken appends
+		// the watcher's change count (`rev:<ledger>@<watched>`), a counter that
+		// advances independently per tree while this test runs — so the Rev
+		// taken here is handler B's OWN (from the overflow event), never
+		// handler A's. That live counter is exactly why the old cross-handler
+		// comparison of whole frame sizes (`lastBytes != frameA`) was
+		// load-sensitive: two machines deliver different numbers of extra
+		// watcher ticks between the two measurements, and the digit width of
+		// `@<watched>` alone moves the serialized size by a few bytes (clean
+		// CI: 86557 vs 86561, 4 bytes). Same-n paths have the same length; the
+		// Rev's live counter does not.
+		if !bfs062HoldsAll(pathsA, createdB) {
+			t.Fatalf("the measuring tree's path list does not hold the change under test (%d list paths, %d created): the reconstruction below would rebuild a different frame", len(pathsA), len(createdB))
 		}
-		t.Logf("declared floor %d bytes refused a %d-byte frame (refusals %d -> %d); the answer is an overflow carrying 0 paths", floor, frame, before, after)
+		for _, p := range pathsA {
+			if filepath.IsAbs(p) {
+				t.Fatalf("the ledger path list carries the absolute path %q: it could not stand in for another tree's list", p)
+			}
+		}
+		refused := eventLine{Seq: answer.Result.Events[0].Seq, Event: eventInvalidate, Paths: pathsA, Rev: answer.Result.Events[0].Rev, Tree: answer.Result.Events[0].Tree}
+		refusedBytes, ok := eventFrameBytes(refused)
+		if !ok {
+			t.Fatal("the refused frame could not be reconstructed for measurement")
+		}
+		if lastBytes != refusedBytes {
+			t.Fatalf("the counted frame's size is %d, want the measured %d: the count must carry the measurement that decided it (refused frame: seq %d, rev %q, %d paths)",
+				lastBytes, refusedBytes, refused.Seq, refused.Rev, len(refused.Paths))
+		}
+		t.Logf("declared floor %d bytes refused a %d-byte frame (refusals %d -> %d); the answer is an overflow carrying 0 paths", floor, refusedBytes, before, after)
 	})
 
 	t.Run("a frame that fits is never rewritten", func(t *testing.T) {
