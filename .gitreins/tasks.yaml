@@ -4315,15 +4315,43 @@ tasks:
   status: complete
   created_at: '2026-10-07T14:56:01.801991+00:00'
   completed_at: '2026-10-07T15:21:29.647537+00:00'
-- id: MOUNT-007
-  title: rclone SFTP opt-in mount driver
+- id: GAP-096
+  title: 'toolsd on agents: version pinning in verify, uninstall, image-spec docs'
   criteria:
-  - 'internal/mountdriver registers an rclone SFTP driver that: (1) is NOT the default
-    (DefaultDriver stays sshfs); (2) declares explicitly it has no sshfs-shaped classifier
-    (NoClassifier reason, registry invariant test passes); (3) server-side buildMountCommand
-    produces an rclone mount SFTP command for driver=rclone (registry currently refuses
-    non-sshfs); (4) go build ./... && go vet ./... && go test ./internal/mountdriver/...
-    ./internal/agent/... ./internal/cli/... pass'
+  - 1) bunker agent-tools --install reports the delivered toolsd's pinned version
+    and the binding/verify path surfaces that version so a local/remote mismatch is
+    a named warning, not silent; 2) an uninstall/rollback path removes toolsd cleanly
+    and the re-probe proves absence; 3) documented in specs (image-spec / README)
+    ; 4) go build/vet/test green
   status: complete
-  created_at: '2026-10-07T15:32:04.467610+00:00'
-  completed_at: '2026-10-07T16:41:30.118247+00:00'
+  created_at: '2026-10-07T17:16:06.788885+00:00'
+  completed_at: '2026-10-07T18:25:03.752513+00:00'
+- id: QA-BUNKER-60
+  title: JIT agent slice too small + unbounded fresh-install leg
+  criteria:
+  - bunker-qa.sh passes --cpu/--memory to bunker spawn (BUNKER_QA_CPUS default >=4
+    for cargo/go workspaces), records granted slice in launch cell; fresh-install
+    leg runs under a timeout with graded SKIP cell on expiry; repo-weight preflight
+    warns when slice too small for workspace; bash -n green; ./scripts/gitreins-guard.sh
+    backgrounded and green
+  status: complete
+  created_at: '2026-10-07T19:10:02.556893+00:00'
+  completed_at: '2026-10-08T05:46:14.930124+00:00'
+- id: QA-BUNKER-52
+  title: 'TestBFS062 clean-machine failure: premise treats counter-varying Rev token
+    as stable'
+  criteria:
+  - "Fix the TestBFS062TheCountIsNotASize load-sensitivity: the test assumes two runs\
+    \ with the same n produce identical frame sizes, but the frame's Rev token embeds\
+    \ live counters (rev:<counter>@<watched>, tree.go:385-394) whose digit width varies\
+    \ with machine timing. The count assertion lastBytes==frame compares handler A's\
+    \ measured frame against handler B's recorded refusal \u2014 these can differ\
+    \ by counter digits on a fast clean machine (observed 86561 vs 86557). Fix must\
+    \ preserve the contract being tested (the counter carries the measurement that\
+    \ decided it): normalize the comparison (e.g. compare the overflow event's own\
+    \ measured frame size, or hold Rev constant) rather than weakening the overflow/paths/counter-delta\
+    \ assertions. go test ./internal/server/webdav/ -run TestBFS062 -count=3 passes\
+    \ locally and go build/vet clean"
+  status: complete
+  created_at: '2026-10-08T04:24:09.424522+00:00'
+  completed_at: '2026-10-08T04:55:57.374110+00:00'
