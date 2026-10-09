@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-Nothing yet. Changes since the `v0.2.0` release tag land here.
+- `bunker pull <agent-id> <remote-path> [local-dir]` copies a file FROM an
+  agent's environment to the local machine (`bunker cp` is push-only);
+  `--recursive` copies directories (FEAT-CLI-PULL-001, commit 558f8956)
 
 ## 0.2.0 (2026-10-01)
 

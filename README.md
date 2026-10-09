@@ -1027,9 +1027,6 @@ bunker mount       Mount agent filesystem via SSHFS
 bunker tunnel      Forward agent Docker socket
 bunker ssh         Open an interactive SSH session into an agent
 bunker cp          Copy a file into an agent's environment
-bunker pull        Copy a file from an agent's environment; use --recursive for directories
-                   Usage: pull <agent-id> <remote-path> [local-dir]
-                   Flags: --server, --ssh-port, --ssh-key, --ssh-host, --recursive
 bunker deploy      Deploy a directory into an agent's environment
 bunker systemd     Manage the bunkerd systemd service (install/uninstall/status)
 bunker metrics     Show resource usage
@@ -1053,6 +1050,10 @@ bunker renew       Renew an agent under its STABLE identity (destroy + re-spawn 
 bunker homes       Inspect orphaned agent home directories (prune removes the stale ones)
 bunker linger      Inspect the systemd linger directory (prune removes the stale entries)
 bunker umount      Unmount a mountpoint (idempotent, clears stranded mounts)
+bunker pull        Copy a file FROM an agent's environment (cp is push-only);
+                   Usage: pull <agent-id> <remote-path> [local-dir]
+                   Flags: --server, --ssh-port, --ssh-key, --ssh-host, --recursive
+                   # requires a build from HEAD (shipped after v0.2.0)
 bunker guard       Do-not-build guard for SSHFS mounts (check/install — see docs/both-ways.md)
 bunker host-provision  Provision the per-agent isolation boundary on this host
                    (dry run by default; --apply installs, --status reports,
