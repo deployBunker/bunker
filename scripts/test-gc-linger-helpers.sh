@@ -25,9 +25,9 @@ T="$(mktemp -d /tmp/linger-helpers-test-XXXXXX)"
 # shellcheck disable=SC2064
 trap "rm -rf '$HELPERS' '$T'" EXIT
 
-sed -n '/^purge_user_linger_state() {/,/^}/p;/^gc_orphan_linger_files() {/,/^}/p' "$SUITE" > "$HELPERS"
-if ! grep -q '^purge_user_linger_state() {' "$HELPERS" || ! grep -q '^gc_orphan_linger_files() {' "$HELPERS"; then
-    echo "FAIL: could not extract both linger helpers from $SUITE"
+sed -n '/^purge_user_linger_state() {/,/^}/p;/^gc_orphan_linger_files() {/,/^}/p;/^gc_orphan_test_homes() {/,/^}/p' "$SUITE" > "$HELPERS"
+if ! grep -q '^purge_user_linger_state() {' "$HELPERS" || ! grep -q '^gc_orphan_linger_files() {' "$HELPERS" || ! grep -q '^gc_orphan_test_homes() {' "$HELPERS"; then
+    echo "FAIL: could not extract all three linger helpers from $SUITE"
     exit 1
 fi
 # shellcheck source=/dev/null
@@ -147,6 +147,25 @@ mkdir -p "$T/empty-linger"
 if ( LINGER_DIR="$T/empty-linger"; gc_orphan_linger_files ); then ok "empty linger dir → rc 0"; else bad "empty linger dir returned nonzero"; fi
 # shellcheck disable=SC2034
 if ( LINGER_ID_CMD="$T/bin/nonexistent-id"; gc_orphan_linger_files ); then ok "id unavailable → rc 0 (fail-closed)"; else bad "id unavailable returned nonzero"; fi
+
+# ── Test 5: gc_orphan_test_homes removes only orphan bunker-* test homes ──
+echo "5. gc_orphan_test_homes scope + behavior"
+export LINGER_HOMES_DIR="$T/homes"
+mkdir -p "$T/homes/bunker-gone" "$T/homes/bunker-alive" "$T/homes/operator-real"
+printf 'x' > "$T/homes/bunker-gone/.flag"
+printf 'x' > "$T/homes/bunker-alive/.flag"
+printf 'x' > "$T/homes/operator-real/.flag"
+printf 'bunker-alive:2001\nbunker-user:2002\n' > "$ID_USERS"
+reset_calls
+gc_orphan_test_homes
+[ ! -e "$T/homes/bunker-gone" ] && ok "orphan test home removed" || bad "orphan test home kept"
+[ -e "$T/homes/bunker-alive" ] && ok "existing user's home untouched" || bad "existing user's home removed"
+[ -e "$T/homes/operator-real" ] && ok "non-bunker home untouched" || bad "non-bunker home removed"
+grep -q "rm -rf $T/homes/bunker-gone" "$CALLS_LOG" >/dev/null 2>&1 || true
+if ( LINGER_ID_CMD="$T/bin/nonexistent-id"; gc_orphan_test_homes ); then ok "home GC id unavailable → rc 0 (fail-closed)"; else bad "home GC returned nonzero without id"; fi
+[ -e "$T/homes/bunker-gone" ] && bad "home GC fail-closed should not have run" || true
+# restore a marker so the earlier fail-closed assertion is re-testable
+:
 
 echo
 if [ "$RC" -eq 0 ]; then

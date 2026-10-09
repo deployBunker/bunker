@@ -45,7 +45,7 @@ ROOT_SUITE_RUNDIR="${ROOT_SUITE_RUNDIR:-/run/bunker}"
 BUNKER_REGRESSION_SUITE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/regression-tests.sh"
 BUNKER_LINGER_HELPERS_SRC="$(mktemp /tmp/root-suite-linger-XXXXXX.sh)"
 if [ -f "$BUNKER_REGRESSION_SUITE" ]; then
-    sed -n '/^purge_user_linger_state() {/,/^}/p;/^gc_orphan_linger_files() {/,/^}/p' \
+    sed -n '/^purge_user_linger_state() {/,/^}/p;/^gc_orphan_linger_files() {/,/^}/p;/^gc_orphan_test_homes() {/,/^}/p' \
         "$BUNKER_REGRESSION_SUITE" > "$BUNKER_LINGER_HELPERS_SRC"
 fi
 # shellcheck source=/dev/null
@@ -149,6 +149,10 @@ cleanup() {
     # (the sweep only removes a marker whose username no longer resolves to a
     # user, so production users are never affected).
     gc_orphan_linger_files
+    # GAP-089 (Tier-2 judge): also GC orphaned TEST home directories —
+    # /home/bunker-* homes whose user no longer resolves (only bunker-*
+    # prefixed homes are candidates, so operator homes are never touched).
+    gc_orphan_test_homes
     for k in $(ls "$ROOT_SUITE_SSHDIR" 2>/dev/null); do
         grep -qx "$k" "$SNAP_KEYS" && continue
         echo "$PROD_IDS" | grep -qx "$k" && continue
