@@ -1,0 +1,12 @@
+{
+  "tick": "bunker-foreman-2026-10-09-21-34-42",
+  "budget": 4,
+  "workers": [
+    {"task": "QA-BUNKER-66", "mode": "foreman-direct", "reason": "fix already present uncommitted in fleet-shared master ~/.hermes/scripts/bunker-qa.sh; commit+verify, no worker needed"},
+    {"task": "QA-BUNKER-32", "mode": "worker", "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-32", "branch": "wt/QA-BUNKER-32"},
+    {"task": "QA-BUNKER-26", "mode": "worker", "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-26", "branch": "wt/QA-BUNKER-26"},
+    {"task": "QA-BUNKER-48", "mode": "worker", "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-48", "branch": "wt/QA-BUNKER-48"}
+  ],
+  "independence_note": "each task touches disjoint regions of .hermes/scripts/bunker-qa.sh / qa_discover.py; no depends_on edges; verified from rows",
+  "base_sha": "18d0abe4"
+}
