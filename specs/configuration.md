@@ -3,15 +3,17 @@
 Version: 1.0.0
 Status: implemented — generated from `internal/config/config.go` (source of truth) and
 `internal/invalidation` for the `server.invalidation.*` block.
-Last Updated: 2026-09-29
+Last Updated: 2026-10-09
 Related: [architecture.md](architecture.md) (where each setting lands on the host),
 [agent-lifecycle.md](agent-lifecycle.md) (the spawn path the `agent.*` keys drive),
 [containment-disclosure.md](containment-disclosure.md) (`containment.disclosure`),
-[safety-presets.md](safety-presets.md) (`safety.preset` and the trust tiers).
+[safety-presets.md](safety-presets.md) (`safety.preset` and the trust tiers),
+[../docs/egress-policy.md](../docs/egress-policy.md) (`agent.egress.*`, the GAP-134
+per-agent egress policy).
 
 > **Every key on this page is read from the Go source, not from memory.** The
 > reader-facing surface is `config.example.yaml` (the worked example); this page
-> is the complete surface. §12 documents how to re-derive the key set and diff it
+> is the complete surface. §13 documents how to re-derive the key set and diff it
 > against this page.
 
 ---
@@ -28,7 +30,7 @@ Related: [architecture.md](architecture.md) (where each setting lands on the hos
 2. overlay the file when it exists (a **missing file is not an error** — every
    key falls back to its default),
 3. overlay environment variables for every **bound** key,
-4. resolve credentials (`ResolveSecrets` — the `*_FILE` indirection, §10),
+4. resolve credentials (`ResolveSecrets` — the `*_FILE` indirection, §11),
 5. `Validate()` — **fail loud, fail before any listener binds**. A value outside
    its declared range or outside the vocabulary stops the daemon; it is never
    replaced by a default.
@@ -49,13 +51,14 @@ Examples: `server.grpc_addr` → `BUNKERD_SERVER_GRPC_ADDR`;
 `BUNKERD_AGENT_ISOLATION_SHARED_SCRATCH_PER_AGENT_BYTES`.
 
 **Only keys explicitly bound in `Load` (`config.go:1035-1147`) are honoured as
-env overrides.** Six keys are not bound — `tls.hosts`, the three
-`agent.image_spec.*` keys, and the two limit-style keys
+env overrides.** Eight keys are not bound — `tls.hosts`, the three
+`agent.image_spec.*` keys, the two limit-style keys
 `agent.reconciliation.orphan_sweep_guard_disabled` /
-`agent.reconciliation.unproven_orphan_limit` — and their tables below say so.
+`agent.reconciliation.unproven_orphan_limit`, and the two `agent.egress.*`
+keys — and their tables below say so.
 The `server.invalidation.*` leaves are bound individually (`config.go:1136-1147`),
 one env var per leaf. A handful of credentials use a `BUNKER_` (no `D`) prefix on
-purpose; those are listed in §10 and are not part of the `BUNKERD_*` namespace.
+purpose; those are listed in §11 and are not part of the `BUNKERD_*` namespace.
 
 ### 1.2 Reading the tables
 
@@ -144,7 +147,7 @@ The push block is resolved and reported but nothing in this build consumes it ye
 ## 5. `auth.*`
 
 Secret storage has three sources resolved by `ResolveSecrets` in the order
-inline < config-file path < env-file path; see §10 for the `*_FILE` env names and
+inline < config-file path < env-file path; see §11 for the `*_FILE` env names and
 the fail-loud rules.
 
 | Key | Default | Env override | Semantics |
@@ -158,7 +161,7 @@ the fail-loud rules.
 
 ---
 
-## 6. `agent.*` — lifecycle, limits and the containment override seam
+## 6. `agent.*` — lifecycle, limits, network boundaries and the containment override seam
 
 | Key | Default | Env override | Semantics |
 |---|---|---|---|
@@ -175,15 +178,18 @@ the fail-loud rules.
 | `agent.default_max_open_files` | `65536` | `BUNKERD_AGENT_DEFAULT_MAX_OPEN_FILES` | Default `LimitNOFILE` (emitted as `<n>:<n>`). |
 | `agent.default_max_docker_containers` | `10` | `BUNKERD_AGENT_DEFAULT_MAX_DOCKER_CONTAINERS` | Default container count per agent. |
 | `agent.default_ttl` | `6h` | `BUNKERD_AGENT_DEFAULT_TTL` | Default lifetime when a spawn carries no `ttl`; heartbeat-extendable, then the agent auto-destroys. |
-| `agent.default_memory_swap_max_bytes` | `0` | `BUNKERD_AGENT_DEFAULT_MEMORY_SWAP_MAX_BYTES` | Flat GAP-118 override of the tier table (systemd `MemorySwapMax` / `memory.swap.max`). See §7 for the envelope. |
+| `agent.default_memory_swap_max_bytes` | `0` | `BUNKERD_AGENT_DEFAULT_MEMORY_SWAP_MAX_BYTES` | Flat GAP-118 override of the tier table (systemd `MemorySwapMax` / `memory.swap.max`). See §8 for the envelope. |
 | `agent.default_memory_high_bytes` | `0` | `BUNKERD_AGENT_DEFAULT_MEMORY_HIGH_BYTES` | Flat override of the soft throttle (systemd `MemoryHigh` / `memory.high`). |
 | `agent.default_memory_oom_group` | `false` | `BUNKERD_AGENT_DEFAULT_MEMORY_OOM_GROUP` | Break-glass flag; **`true` is REFUSED by validation** — the GAP-114 matrix measured the knob UNMEASURED on this host (the systemd 259 user manager refuses the property, delegated cgroupfs writes `EACCES`), so it is blocked from any default-on and can only be armed by a tier that requests it. |
 | `agent.default_io_weight` | `0` | `BUNKERD_AGENT_DEFAULT_IO_WEIGHT` | Flat override of `IOWeight` / `io.weight`. The matrix measured the knob **inert** on uncontended NVMe, so no tier defaults it; a positive value opts this daemon in for every tier (spinning-disk or shared-bus hosts). Range 1..10000. |
-| `agent.default_io_write_bps` | `0` | `BUNKERD_AGENT_DEFAULT_IO_WRITE_BPS` | Flat override of `IOWriteBandwidthMax` / `io.max` `wbps`, applied to the **whole disk device** (`io.max` rejects partitions — measured). See §7 for the floor. |
+| `agent.default_io_write_bps` | `0` | `BUNKERD_AGENT_DEFAULT_IO_WRITE_BPS` | Flat override of `IOWriteBandwidthMax` / `io.max` `wbps`, applied to the **whole disk device** (`io.max` rejects partitions — measured). See §8 for the floor. |
+| `agent.egress.mode` | `""` → `open` | — (not bound) | GAP-134 daemon-wide default egress policy for new spawns. Vocabulary (owned by `internal/egress`, verbatim): `open` (unrestricted outbound, no firewall interaction — the safe default: a config that does not mention egress runs byte-identically to a pre-GAP-134 daemon), `allowlist` (per-agent default-deny chain keyed on the agent uid; accepted = loopback, established/related return traffic, and the `agent.egress.allowlist` destinations), `none` (deny-all except loopback and established/related return traffic — the control channel only). An unknown name **refuses to start** (§10-style fail-closed: a typoed mode never silently resolves to a different, weaker or stronger boundary). Whitespace is trimmed before validation (`" none "` is valid); an empty/absent value is the unset default and always passes. Runtime precedence (single resolver, `ResolveEgressMode`): per-spawn `--egress-mode` / `SpawnAgentRequest.egress_mode` > this key > `open`. A failed rule installation fails the spawn — an agent is never left unenforced. See [../docs/egress-policy.md](../docs/egress-policy.md). |
+| `agent.egress.allowlist` | `[]` (empty) | — (not bound) | Admin-managed accept list used when the resolved mode is `allowlist` (ignored by `open` and `none`). Entries: CIDRs (`10.0.0.0/8`), bare IPs (`203.0.113.7`), or hostnames (`corp.example.com` — resolved to IPs at rule-install time, so a rotating DNS answer goes stale until the next reinstall; DNS itself must be allowed explicitly by adding your resolver's addresses). IPv4-lookalikes that do not parse (`10.0.0.999`) are refused as typos, and hostnames must pass the label grammar (≤253 chars, labels ≤63, alnum + inner hyphens). Entries are validated at config load (fail-closed — see above); a syntactically valid but empty allowlist with `mode: allowlist` still fails the SPAWN at install time, never an accept-nothing chain reported as enforced. |
+| `agent.network_mode` | `""` → `shared` | `BUNKERD_AGENT_NETWORK_MODE` | NET-BUNKER-010 daemon-wide default network-isolation mode. Vocabulary (owned by `internal/netmode`): `shared` (host network namespace, no isolation — the default), `systemd` (private network namespace, loopback only; **all outbound is lost by design** — docker image pulls fail in this mode), `procvis` (private `/proc`, hidepid=2 semantics). An unknown name **refuses to start**. Runtime precedence (single resolver, `ResolveNetworkMode`): per-spawn `--network-mode` / `SpawnAgentRequest.network_mode` > `BUNKERD_NETWORK_MODE` > this key > `shared`. See specs/network-isolation.md. |
 | `agent.image_spec.enabled` | `true` | — (not bound) | GAP-064 per-agent image customization on spawn; when false, a spawn carrying an `image_spec` is rejected with `CodeInvalidArgument` before any side effect. |
 | `agent.image_spec.cache_dir` | `/var/cache/bunkerd/imagespec` | — (not bound) | Where canonicalized spec builds are cached (one directory per spec cache key). |
 | `agent.image_spec.build_timeout` | `20m` | — (not bound) | Hard bound on a single rootless image build. |
-| `agent.rootless_installer_cache_dir` | `/var/cache/bunker/rootless-installer` | `BUNKERD_AGENT_ROOTLESS_INSTALLER_CACHE_DIR` | Host-level cache of the downloaded rootless Docker installer (~93 MB). A cache hit makes a fresh-agent spawn skip the `get.docker.com` download entirely; `""` restores the legacy uncached path. `cmd/bunkerd` arms this at startup with `env > config > default` precedence, and the env var it reads there is **`BUNKER_ROOTLESS_INSTALLER_CACHE_DIR` (no `D`)** — which therefore wins over this key; an empty env value counts as unset and never clobbers the file. See §10. |
+| `agent.rootless_installer_cache_dir` | `/var/cache/bunker/rootless-installer` | `BUNKERD_AGENT_ROOTLESS_INSTALLER_CACHE_DIR` | Host-level cache of the downloaded rootless Docker installer (~93 MB). A cache hit makes a fresh-agent spawn skip the `get.docker.com` download entirely; `""` restores the legacy uncached path. `cmd/bunkerd` arms this at startup with `env > config > default` precedence, and the env var it reads there is **`BUNKER_ROOTLESS_INSTALLER_CACHE_DIR` (no `D`)** — which therefore wins over this key; an empty env value counts as unset and never clobbers the file. See §11. |
 | `agent.registry.enabled` | `true` | `BUNKERD_AGENT_REGISTRY_ENABLED` | GAP-070 durable agent registry (append-only JSONL replayed at startup). When false the daemon behaves as pre-GAP-070 (in-memory tracker only). **A daemon that cannot open this file refuses to start** — every spawn it accepted would otherwise be forgotten by the next replay. |
 | `agent.registry.path` | `/var/lib/bunkerd/agents.jsonl` | `BUNKERD_AGENT_REGISTRY_PATH` | Active registry file (mode 0600); rotated backups are `<path>.1` … `.max_backups`. Required when the registry is enabled. |
 | `agent.registry.max_bytes` | `5242880` (5 MiB) | `BUNKERD_AGENT_REGISTRY_MAX_BYTES` | Rotation threshold for the active file; must be `> 0` when enabled. |
@@ -210,7 +216,30 @@ the fail-loud rules.
 
 ---
 
-## 7. The containment override envelope (GAP-118)
+## 7. `agent.egress.*` — the per-agent egress policy (GAP-134)
+
+Two keys under `agent.egress` set the daemon-wide default egress policy for
+newly spawned agents; the vocabulary is owned by `internal/egress` (the
+netmode-ownership rule) and the firewall mechanics are documented in
+[../docs/egress-policy.md](../docs/egress-policy.md). Summary:
+
+| Key | Default | Env override | Semantics |
+|---|---|---|---|
+| `agent.egress.mode` | `""` → `open` | — (not bound) | One of `open` / `allowlist` / `none`. `open` = unrestricted outbound, no firewall interaction (zero behavior change vs. pre-GAP-134); `allowlist` = per-agent default-deny chain (loopback, established/related return traffic and the allowlist entries are accepted); `none` = deny-all except loopback and established/related return traffic. |
+| `agent.egress.allowlist` | `[]` | — (not bound) | The admin-managed accept list for `allowlist` mode: CIDRs, bare IPs, or hostnames (resolved at rule-install time). Empty list + `mode: allowlist` passes config load but fails the spawn at install time — never an accept-nothing chain reported as enforced. |
+
+**Fail-closed startup validation (GAP-134):** `Validate()` runs during
+daemon start (`config.go:1432-1436`) — an unknown `agent.egress.mode`
+(`agent.egress.mode must be one of [open allowlist none], got "…"`), a
+malformed allowlist entry (`agent.egress.allowlist[N]: …`), or an
+IPv4-lookalike typo (`10.0.0.999`) each **refuse daemon start**. An empty
+mode is the unset default (`open`) and always passes, so a config that does
+not mention egress gets exactly the pre-GAP-134 daemon. At spawn time the
+per-request mode wins over this default through the single resolver
+`ResolveEgressMode`; an unknown name from either source is a hard error,
+never a silent fallback to `open`.
+
+## 8. The containment override envelope (GAP-118)
 
 The five containment knobs above are **admin-override inputs to the tier table**
 (`internal/agent/isolation.go` `containmentForPreset`), not a second source of
@@ -249,7 +278,7 @@ one (containment.* wins)`, `config.go:605`).
 
 ---
 
-## 8. `tunnel.*`, `named_tunnel.*`, `tailscale.*`
+## 9. `tunnel.*`, `named_tunnel.*`, `tailscale.*`
 
 | Key | Default | Env override | Semantics |
 |---|---|---|---|
@@ -269,7 +298,7 @@ one (containment.* wins)`, `config.go:605`).
 
 ---
 
-## 9. `audit.*`, `containment.*`, `safety.*`
+## 10. `audit.*`, `containment.*`, `safety.*`
 
 | Key | Default | Env override | Semantics |
 |---|---|---|---|
@@ -282,7 +311,7 @@ one (containment.* wins)`, `config.go:605`).
 
 ---
 
-## 10. Credential-bearing env vars outside the `BUNKERD_*` namespace
+## 11. Credential-bearing env vars outside the `BUNKERD_*` namespace
 
 These are read directly (not via viper) and keep credentials out of the config
 file entirely. The precedence for `auth.token` / `auth.jwt_secret` is **inline <
@@ -296,19 +325,22 @@ listener binds, never a silent fallback to a weaker source.
 | `BUNKER_AUTH_JWT_SECRET_FILE` | Path to a file holding the JWT secret; wins over `auth.jwt_secret_file` and inline `auth.jwt_secret`. |
 | `BUNKER_SECRETS_DIR` | Where generated secrets are persisted. Default `$HOME/.config/bunkerd/secrets`; dir created 0700, files 0600. An auto-generated `jwt_secret` lives at `<dir>/jwt_secret`. |
 | `BUNKER_ROOTLESS_INSTALLER_CACHE_DIR` | Read by `cmd/bunkerd` at startup for the rootless-installer cache, with `env > agent.rootless_installer_cache_dir > default` precedence (an empty value counts as unset and never clobbers the file). The same key is also bound as `BUNKERD_AGENT_ROOTLESS_INSTALLER_CACHE_DIR`, so both env spellings exist and this one wins. |
-| `BUNKERD_SAFETY_PRESET` | The GAP-116 preset env override (§9). Named here because it is read directly by the precedence resolver as well as bound to `safety.preset`. |
+| `BUNKERD_SAFETY_PRESET` | The GAP-116 preset env override (§10). Named here because it is read directly by the precedence resolver as well as bound to `safety.preset`. |
 
 ---
 
-## 11. Complete key census
+## 12. Complete key census
 
-`internal/config/config.go` declares **110** `mapstructure` fields. They decompose
-as: **89 leaf keys** reachable from `Config`, **6** nested-block placeholders
-(`server.invalidation`, `agent.image_spec`, `agent.registry`,
-`agent.reconciliation`, `agent.isolation`, `agent.containment`), **10** top-level
-block names, and **5** fields of `APIKey` (a stored record type, not an operator
-key). The twelve `server.invalidation.*` leaves live in `internal/invalidation`
-and are bound one env var each by `Load`.
+`internal/config/config.go` declares **112** `mapstructure` fields, and
+`internal/config/egress.go` (the GAP-134 `EgressConfig` block) adds **2**. They
+decompose as: **92 leaf keys** reachable from `Config` (90 in `config.go` — the
+DOC-25 set plus `agent.network_mode` — plus the 2 `EgressConfig` leaves),
+**7** nested-block placeholders (`server.invalidation`, `agent.image_spec`,
+`agent.registry`, `agent.reconciliation`, `agent.isolation`,
+`agent.containment`, `agent.egress`), **10** top-level block names, and **5**
+fields of `APIKey` (a stored record type, not an operator key). The twelve
+`server.invalidation.*` leaves live in `internal/invalidation` and are bound
+one env var each by `Load`.
 
 | Block | Keys on this page |
 |---|---|
@@ -316,15 +348,15 @@ and are bound one env var each by `Load`.
 | `server.invalidation.*` (§3) | 12 |
 | `tls.*` | 11 |
 | `auth.*` | 6 |
-| `agent.*` top-level (incl. the 5 flat containment mirrors) | 23 |
-| `agent.image_spec.*` + `agent.registry.*` + `agent.reconciliation.*` + `agent.isolation.*` + `agent.containment.*` | 3 + 5 + 3 + 6 + 5 = 22 |
+| `agent.*` top-level (incl. the 5 flat containment mirrors) | 24 |
+| `agent.image_spec.*` + `agent.registry.*` + `agent.reconciliation.*` + `agent.isolation.*` + `agent.containment.*` + `agent.egress.*` | 3 + 5 + 3 + 6 + 5 + 2 = 24 |
 | `tunnel.*` + `named_tunnel.*` + `tailscale.*` | 5 + 4 + 4 = 13 |
 | `audit.*` | 4 |
 | `containment.*` | 1 |
 | `safety.*` | 1 |
-| **Total dotted keys documented** | **89 config.go leaves + 12 invalidation leaves = 101** |
+| **Total dotted keys documented** | **90 config.go leaves + 2 egress.go leaves + 12 invalidation leaves = 104** |
 
-## 12. Re-deriving the key set (verification recipe)
+## 13. Re-deriving the key set (verification recipe)
 
 The census above is checkable from the repo root. Save the extractor (it parses
 the `Config` struct tree and follows nested block types), then diff it against
@@ -355,9 +387,11 @@ grep -oE '`[a-z_]+\.[a-z0-9_.]+`' specs/configuration.md | tr -d '`' | sort -u >
 comm -23 /tmp/keys.txt /tmp/doc.txt   # empty output = every key is documented
 ```
 
-The walk yields **90** paths — the 89 leaf keys plus the `server.invalidation`
-block placeholder (§2), whose twelve leaves are in §3. At the time of writing
-`comm -23` prints nothing.
+The walk reads only `config.go`, so it yields **92** paths — the 90 leaf keys
+plus **2** block placeholders: `server.invalidation` (§2), whose twelve leaves
+are in §3, and `agent.egress` (§7), whose two leaves (`agent.egress.mode`,
+`agent.egress.allowlist`) live in `internal/config/egress.go` and are
+documented in §6/§7. At the time of writing `comm -23` prints nothing.
 
 The `server.invalidation.*` leaves are additionally pinned by the table in
 `internal/invalidation/knobs.go` (`Knobs()`), which also carries each knob's

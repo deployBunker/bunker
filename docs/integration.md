@@ -735,6 +735,11 @@ spawn ──▶ exec/run ──▶ cp/deploy ──▶ mount/tunnel ──▶ me
 Server capacity defaults: `max_agents: 100` (the live demo instance caps at 50), port range 10000–19999. All
 overridable in `config.yaml` (see `config.example.yaml` at the repo root).
 
+Outbound traffic from each agent is additionally governed by the daemon-wide egress policy
+(`agent.egress.mode`: `open` (default) / `allowlist` / `none`, with destinations in
+`agent.egress.allowlist`), overridable per spawn with `--egress-mode` — see
+[egress-policy.md](egress-policy.md) and the `agent.egress.*` block of `specs/configuration.md`.
+
 ## 8. Integration checklist
 
 - [ ] Auth: master token provisioned; never hardcode it in client code — read

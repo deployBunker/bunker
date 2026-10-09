@@ -116,8 +116,10 @@ The complete `bunkerd` config surface, generated from
 default, its `BUNKERD_<KEY>` env override, and the semantics the code
 implements — plus the GAP-118 containment override envelope (`-1` =
 release the tier knob to the host default; a **20 MiB/s floor** on the IO
-write bound) and a key-census recipe that diffs the page against the Go
-source.
+write bound), the GAP-134 `agent.egress.*` egress-policy block (firewall
+mechanics detailed in
+[../docs/egress-policy.md](../docs/egress-policy.md)), and a key-census
+recipe that diffs the page against the Go source.
 
 - **Who should read it:** operators writing `/etc/bunkerd/config.yaml` or
   setting `BUNKERD_*` env overrides, and integrators who need to know which
