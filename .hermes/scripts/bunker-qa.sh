@@ -1338,7 +1338,13 @@ fi
 # created before this fix or on agents where the fresh install could not
 # reach the network: offline agents log a WARN and the native-runner guard
 # in the ci-pass cell grades the affected legs UNVERIFIED.
-if [ -f pyproject.toml ] && [ -x ~/tools/venv/bin/python ] && [ ! -x ~/tools/venv/bin/pytest ]; then
+# QA-BUNKER-26 (2026-10-09): detection also selects pytest.ini/conftest.py-only
+# repos (QA-FOREMAN-2026-09-26), so the top-up guard must arm for those too —
+# a venv created before that fix or offline at venv-build time left such repos
+# with no pytest at all and every suite leg died 'No module named pytest'
+# (auger chaos-resource UNVERIFIED 2026-09-27).
+if { [ -f pyproject.toml ] || [ -f pytest.ini ] || [ -f conftest.py ]; } \
+   && [ -x ~/tools/venv/bin/python ] && [ ! -x ~/tools/venv/bin/pytest ]; then
   ( ~/tools/venv/bin/pip install pytest ) >\$LOGD/venv-pytest.log 2>&1 \
     && cell toolchain-bootstrap OK "pytest topped up into ~/tools/venv (QA-TERMINAL-JAIL-9)" \
     || echo "WARN: pytest top-up failed (offline agent?) - native/chaos legs will grade UNVERIFIED 'runner missing': \$(tail -1 \$LOGD/venv-pytest.log 2>/dev/null)" >&2
