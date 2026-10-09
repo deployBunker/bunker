@@ -4399,3 +4399,12 @@ tasks:
   status: complete
   created_at: '2026-10-09T17:12:57.397322+00:00'
   completed_at: '2026-10-09T17:22:10.133334+00:00'
+- id: TOOLS-B2
+  title: Deliver rg and language server via image-spec package-add path
+  criteria:
+  - A fresh spawn's bunker agent-tools output shows toolsd and rg (and the chosen
+    language server) as PRESENT with versions, and the delivered set is documented
+    in README + the image-spec spec.
+  status: complete
+  created_at: '2026-10-09T18:51:03.250505+00:00'
+  completed_at: '2026-10-09T20:03:04.225106+00:00'
