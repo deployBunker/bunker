@@ -4367,3 +4367,19 @@ tasks:
     merges
   status: pending
   created_at: '2026-10-08T06:17:28.614789+00:00'
+- id: DOC-43
+  title: Fix docs/mount-drivers.md:3 header rot (MOUNT-007 landed)
+  criteria:
+  - 'PASS: grep -c ''only implemented driver today'' docs/mount-drivers.md = 0 AND
+    ''--mount-driver'' appears in the doc'
+  status: complete
+  created_at: '2026-10-09T16:14:52.565984+00:00'
+  completed_at: '2026-10-09T16:26:04.815155+00:00'
+- id: DOC-42
+  title: document bunker pull CLI verb (copy FROM agent)
+  criteria:
+  - grep -c 'bunker pull' README.md >= 1 and the pull flag list appears once outside
+    --help
+  status: complete
+  created_at: '2026-10-09T16:21:33.185495+00:00'
+  completed_at: '2026-10-09T16:27:04.334165+00:00'
