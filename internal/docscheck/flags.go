@@ -27,7 +27,15 @@ var (
 	// their own flags before the `--` separator, so a source-level registry
 	// that misses them would report documented `--detach`/`--env` usage as
 	// unknown.
-	reFlagPeel = regexp.MustCompile(`case\s+(?:rest|args)\[i\]\s*==\s*"(--[A-Za-z0-9][A-Za-z0-9-]*)"`)
+	reFlagPeel = regexp.MustCompile(`case\s+(?:rest|args)\[i\]\s*==\s*"(-[A-Za-z0-9-][A-Za-z0-9-]*)"`)
+
+	// reSpecFlag matches the grammar-spec map-literal shape used by the
+	// DisableFlagParsing commands (exec, run, env): their accepted flags live
+	// in `flagGrammar{specs: map[string]flagGrammarSpec{"--flag": {apply: ...}}}`
+	// tables, not cobra Flags() calls — a registry built from reFlagCall and
+	// reFlagPeel alone under-approximates these and false-reports documented
+	// usage (e.g. exec/run --session, GAP-095) as unknown.
+	reSpecFlag = regexp.MustCompile(`"(--[A-Za-z0-9][A-Za-z0-9-]*)":\s*\{`)
 	// reCallName matches an identifier followed by `(` — the shape of a call
 	// to a helper function (e.g. addAuditQueryFlags(cmd, f)) whose body may
 	// carry flag registrations.
@@ -103,6 +111,9 @@ func collectFlagLiterals(body string, into map[string]bool) {
 		addFlagName(into, body[locs[4]:nameEnd])
 	}
 	for _, m := range reFlagPeel.FindAllStringSubmatch(body, -1) {
+		addFlagName(into, strings.TrimPrefix(m[1], "--"))
+	}
+	for _, m := range reSpecFlag.FindAllStringSubmatch(body, -1) {
 		addFlagName(into, strings.TrimPrefix(m[1], "--"))
 	}
 }
