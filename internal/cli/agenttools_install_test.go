@@ -198,3 +198,73 @@ func TestFindingForAndStatusOf(t *testing.T) {
 		t.Errorf("statusOf(nil) = %q, want \"not reported\"", got)
 	}
 }
+
+// TestProvisionedAgentReportsDeliveredToolsPresent is the TOOLS-B2 acceptance
+// reading at the probe contract: a provisioned agent (spawned with the
+// remediation spec, plus a toolsd delivery) reports rg and gopls PRESENT with
+// versions, they appear in NEITHER missing list, and the remaining-missing
+// computation (what --install offers to fix) is empty. The exact report shape
+// is what `bunker agent-tools` parses — tab-separated name/status/version —
+// fed through the real parser, not a hand-built report struct.
+func TestProvisionedAgentReportsDeliveredToolsPresent(t *testing.T) {
+	probeOut := "toolsd\tpresent\ttoolsd version 98c75fa-dirty (built 2026-10-09T00:00:00Z)\n" +
+		"rg\tpresent\tripgrep 14.1.0\n" +
+		"git\tpresent\tgit version 2.43.0\n" +
+		"jq\tpresent\tjq-1.7\n" +
+		"gopls\tpresent\tgolang.org/x/tools/gopls v0.22.0\n"
+
+	r := parseAgentToolOutput("toolsb2", probeOut, 0)
+	if len(r.Missing) != 0 || len(r.MissingRequired) != 0 {
+		t.Fatalf("provisioned agent reports missing %v / required-missing %v, want none",
+			r.Missing, r.MissingRequired)
+	}
+	for _, want := range []struct{ name, versionWant string }{
+		{"rg", "ripgrep 14.1.0"},
+		{"gopls", "golang.org/x/tools/gopls"},
+	} {
+		f := findingFor(r, want.name)
+		if f == nil {
+			t.Fatalf("%s absent from the report entirely", want.name)
+		}
+		if f.Status != "present" {
+			t.Errorf("%s status = %q, want present", want.name, f.Status)
+		}
+		if !strings.Contains(f.Version, want.versionWant) {
+			t.Errorf("%s version = %q, want it to contain %q", want.name, f.Version, want.versionWant)
+		}
+	}
+
+	// The absent-shaped control: drop exactly the two delivered tools and the
+	// parser must name them both as missing (and only them) — the test cannot
+	// pass vacuously by feeding a report where everything is present.
+	degraded := parseAgentToolOutput("toolsb2",
+		strings.ReplaceAll(strings.ReplaceAll(probeOut,
+			"rg\tpresent\tripgrep 14.1.0\n", "rg\tabsent\t\n"),
+			"gopls\tpresent\tgolang.org/x/tools/gopls v0.22.0\n", "gopls\tabsent\t\n"), 0)
+	if got := strings.Join(degraded.Missing, ","); got != "gopls,rg" {
+		t.Errorf("degraded agent missing = %q, want \"gopls,rg\"", got)
+	}
+	// rg is REQUIRED (search breaks without it); gopls is not, so only rg may
+	// land in the required-missing list.
+	if got := strings.Join(degraded.MissingRequired, ","); got != "rg" {
+		t.Errorf("degraded agent missing_required = %q, want \"rg\"", got)
+	}
+}
+
+// TestRemainingAfterDeliveryExcludesPackagePathTools pins what --install says
+// about its own limits: rg and gopls are package-path tools, so they must never
+// be offered the copy remedy even when a report carries them as missing (a copy
+// of a registry tool would bypass version pinning and signatures — the boundary
+// the vendored-only classifier owns).
+func TestRemainingAfterDeliveryExcludesPackagePathTools(t *testing.T) {
+	r := parseAgentToolOutput("a", "rg\tabsent\t\ngopls\tabsent\t\n", 0)
+	remaining := []string{}
+	for _, name := range r.Missing {
+		if !isVendoredDeliverable(name) {
+			remaining = append(remaining, name)
+		}
+	}
+	if got := strings.Join(remaining, ","); got != "gopls,rg" {
+		t.Errorf("remaining = %q, want \"gopls,rg\" (both named for the package-add path, neither copyable)", got)
+	}
+}

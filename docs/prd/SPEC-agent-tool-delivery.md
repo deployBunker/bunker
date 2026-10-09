@@ -113,10 +113,43 @@ On the agent, with the workspace root created first:
   package-add belong to their package managers and are deliberately out of
   scope.
 
+## The delivered set (TOOLS-B2)
+
+The registry half of the division of labour is **delivered**: a fresh spawn with
+the directive below reports `rg` and `gopls` PRESENT with versions via
+`bunker agent-tools` (live-verified on bunker-mvp, 2026-10-09, agent `toolsb2b`,
+image `bunkerd-imagespec-80a9a4f0bea2` — `rg` ripgrep 14.1.0 from the apt
+archive, `gopls` v0.23.0 from module-aware `go install`, and the stock userland
+intact; probe verbatim: "Every catalogued tool is present on the agent"):
+
+```json
+{"packages":[{"manager":"apt","packages":["ripgrep"]},
+             {"manager":"go","packages":["golang.org/x/tools/gopls@latest"]}]}
+```
+
+How each half arrives, and why:
+
+| Tool | Path | Mechanism |
+|---|---|---|
+| `toolsd` | copy | `bunker agent-tools --install` → `$HOME/bin` (self-built; no registry to install from) |
+| `rg` | package-add | apt directive → `ripgrep` (Ubuntu 24.04 archive, e.g. 14.1.0) |
+| `gopls` | package-add | go directive → `golang.org/x/tools/gopls@latest` (module-aware `go install`, GOBIN pinned to `/usr/local/bin` so the binary is on the agent exec PATH) |
+
+The go directive carries its own toolchain bootstrap (internal/imagespec
+installs `golang-go` from apt before the first `go install` line —
+DF-BUNKER-79), and every image-spec render re-installs the stock userland
+(git, docker client, python3, make, jq, ca-certificates — DF-BUNKER-80), so the
+customized image is the stock agent PLUS the delivered tools, never a
+replacement. `rg` and `gopls` are deliberately **not** in the stock layer: they
+arrive only when a spec asks for them, and never as copied binaries — the
+package managers keep version pinning and signature verification.
+
 ## Remaining work
 
-1. Deliver `rg` + a language server through the image-spec package-add path, and
-   prove a fresh spawn reports them present (TOOLS-002's open half).
+1. ~~Deliver `rg` + a language server through the image-spec package-add path,
+   and prove a fresh spawn reports them present~~ Done (TOOLS-B2): the directive
+   above builds and a fresh spawn probes rg/gopls PRESENT (see "The delivered
+   set").
 2. Make the delivery part of spawn so it is a property of an agent rather than a
    command someone remembers to run (GAP-096's "by design").
 3. ~~Uninstall/rollback~~ Done (GAP-096 criterion 3): `agent-tools
