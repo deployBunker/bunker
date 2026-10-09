@@ -717,6 +717,20 @@ bunker spawn --server bunker-host --image-spec spec.json --ttl 6h
 # the stock agent userland (git, the docker client, python3, make, jq,
 # ca-certificates) — installed from the same apt archive as the base — and
 # adds the spec's packages on top (DF-BUNKER-80).
+#
+# Delivered tool set for the remote-editing verbs (TOOLS-B2): a fresh stock
+# agent has git and jq but NOT rg or a language server (GAP-092 measurement),
+# so search has no working mode and `toolsd lsp check` has nothing to serve.
+# The canonical remediation spec below delivers both through their package
+# managers (apt pins + verifies ripgrep; go installs gopls onto the agent's
+# PATH) — it is what `bunker agent-tools` prints when a probe finds them
+# missing:
+#   {"packages":[{"manager":"apt","packages":["ripgrep"]},{"manager":"go","packages":["golang.org/x/tools/gopls@latest"]}]}
+#
+# What an agent ends up with, per delivery path:
+#   - stock (every spawn):        git, jq, the docker client, python3, make
+#   - vendored copy on install:   toolsd            (bunker agent-tools --install)
+#   - package-add (this spec):    rg (ripgrep), gopls (Go language server)
 
 # List agents
 bunker list
@@ -1070,7 +1084,10 @@ bunker agent-tools  Probe the agent (not the client) for the executables the
                    version (a local/remote version difference is a named
                    warning); --uninstall removes the delivered toolsd and
                    re-probes to prove absence (see
-                   docs/prd/SPEC-agent-tool-delivery.md)
+                   docs/prd/SPEC-agent-tool-delivery.md). Missing registry
+                   tools (rg, the language server) are named and printed as
+                   the delivered image-spec (ripgrep via apt, gopls via
+                   go — specs/image-spec.md)
 bunker surface     Manage the agent's toolsd socket surface (systemd user
                    units; install/remove)
 bunker subid-migrate  Rewrite overlapping subordinate-id (subuid/subgid)

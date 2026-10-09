@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Delivered tool set for the remote-editing verbs (TOOLS-B2): `rg` via apt
+  `ripgrep` and the Go language server via `go golang.org/x/tools/gopls@latest`
+  ship through the image-spec package-add path, recorded canonically in
+  `internal/imagespec` (`AgentToolPackages` / `AgentToolSpec` — the exact
+  directive `bunker agent-tools` prints), pinned by tests, and documented in
+  README + specs/image-spec.md. See specs/image-spec.md §3 for the full
+  delivered set.
+
 - `bunker pull <agent-id> <remote-path> [local-dir]` copies a file FROM an
   agent's environment to the local machine (`bunker cp` is push-only);
   `--recursive` copies directories (FEAT-CLI-PULL-001, commit 558f8956)

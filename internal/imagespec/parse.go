@@ -68,6 +68,64 @@ var StockToolchainPackages = []string{
 // render through the same single-quoting apt renderer as every other apt step.
 var GoToolchainPackages = []string{"golang-go"}
 
+// AgentToolPackages is the DELIVERED SET (TOOLS-B2): the verb-dependency tools
+// a fresh agent is measured to LACK (GAP-092 findings F-2/F-3: rg absent, a
+// language server absent), recorded here as the image-spec package-add
+// directives that deliver them — the remediation the repo canonically prints,
+// tests against, and documents.
+//
+//   - rg → apt `ripgrep`: distribution-owned, version-pinned and
+//     signature-verified by apt on every allowed base. A binary copy would
+//     silently discard both, which is why agent-tools refuses to ship it.
+//   - gopls → go `golang.org/x/tools/gopls@latest`: the go manager already
+//     bootstraps the toolchain (GoToolchainPackages) and pins GOBIN to
+//     GoBinDir, so the installed server is on every agent exec PATH.
+//
+// This is the OPT-IN spec surfaced by tooling, not an automatic spawn step: a
+// spec change here re-keys every spec-derived image build (Spec.CacheKey), so
+// making it default-at-spawn is a live-E2E change filed separately (the
+// delivery spec's "Remaining work" #2). Until that lands, `bunker agent-tools`
+// prints these exact directives and the JSON form below parses through Parse —
+// a test in internal/cli pins both, so the printed remediation can never drift
+// from what the builder accepts.
+var AgentToolPackages = []PackageAdd{
+	{Manager: ManagerAPT, Packages: []string{"ripgrep"}},
+	{Manager: ManagerGo, Packages: []string{"golang.org/x/tools/gopls@latest"}},
+}
+
+// AgentToolSpec is the canonical wire form of AgentToolPackages: the single-line
+// JSON `bunker agent-tools` prints and the operator pastes into a spec file.
+// It must stay byte-equal to a Parse of the struct's canonical JSON (pinned by
+// TestAgentToolSpecRoundTrip), so the printed string and the struct form can
+// never disagree.
+const AgentToolSpec = `{"packages":[{"manager":"apt","packages":["ripgrep"]},` +
+	`{"manager":"go","packages":["golang.org/x/tools/gopls@latest"]}]}`
+
+// AgentToolSpecSpec returns the delivered set as a validated Spec (base +
+// directives, declaration order). It fails the build loudly if the constant
+// above ever stops parsing — the same guarantee the CLI's pin asserts at test
+// time, enforced here at construction time for every caller.
+func AgentToolSpecSpec() *Spec {
+	spec, err := Parse([]byte(AgentToolSpec))
+	if err != nil {
+		// Unreachable while the pinned constant stays valid; a panic here is
+		// the loudest possible statement that the printed remediation broke.
+		panic(fmt.Sprintf("imagespec: AgentToolSpec does not parse: %v", err))
+	}
+	return spec
+}
+
+// AgentToolPackageNames returns every package name the delivered set installs,
+// in directive order. Test-facing (membership assertions) and doc-facing
+// (the delivered-set table is generated from this list, not hand-copied).
+func AgentToolPackageNames() []string {
+	names := make([]string, 0, 2)
+	for _, d := range AgentToolPackages {
+		names = append(names, d.Packages...)
+	}
+	return names
+}
+
 // GoBinDir is the GOBIN the go renderer installs into (DF-BUNKER-79). It is the
 // first component of internal/server's agentExecBasePath (and $HOME/bin is
 // prepended to that), so a tool `go install`ed here is on the PATH of every

@@ -1,6 +1,6 @@
 # Bunker — Specifications Index
 
-Landing page for the `specs/` directory. Eleven specs cover the Bunker platform
+Landing page for the `specs/` directory. Twelve specs cover the Bunker platform
 (a daemon, `bunkerd`, that hosts isolated agent environments; a CLI, `bunker`,
 that controls it). Start here, pick your audience below, and follow its reading
 order.
@@ -17,6 +17,7 @@ Last verified against repo HEAD `9ee17c6` (2026-09-16).
 | [agent-tmp-isolation.md](agent-tmp-isolation.md) | The isolation boundary | operator, contributor | implemented (GAP-075) |
 | [containment-disclosure.md](containment-disclosure.md) | The disclosure contract | operator, integrator | implemented (GAP-067), config-gated |
 | [configuration.md](configuration.md) | The config surface | operator, integrator | implemented |
+| [image-spec.md](image-spec.md) | The package-add image customization + delivered tool set | contributor, operator | implemented (GAP-064, TOOLS-B2) |
 | [safety-presets.md](safety-presets.md) | The trust-tier preset system | operator, contributor | shipped plumbing (GAP-116/117); tier differentiation pending (GAP-118..122) |
 | [preset-acceptance-harness.md](preset-acceptance-harness.md) | The preset verification battery | contributor, operator | not implemented (design, GAP-115) |
 | [knob-safety-matrix.md](knob-safety-matrix.md) | The measured knob evidence | contributor | methodology (GAP-114), findings pending measurement |
@@ -128,6 +129,21 @@ recipe that diffs the page against the Go source.
   tree (see internal/config/config.go:24) and every default from
   `DefaultConfig` (internal/config/config.go:893); the
   `server.invalidation.*` block is pinned by internal/invalidation/knobs.go.
+
+### [image-spec.md](image-spec.md) — Image Specification (package-add customization, GAP-064 / TOOLS-B2)
+
+The per-agent image-customization surface: what a spec may contain (package-add
+directives only, per-manager token grammar, closed base allowlist), what every
+built image always retains (the stock userland layer, DF-BUNKER-80), and the
+**delivered tool set** for the remote-editing verbs (TOOLS-B2): rg via apt
+`ripgrep` and gopls via `go install`, alongside the stock git/jq and the
+vendored-copy toolsd — with the boundary between the two delivery paths.
+
+- **Who should read it:** contributors touching `internal/imagespec`, and
+  operators provisioning agents for the remote-editing verbs.
+- **Status: implemented** — the surface is the live
+  `internal/imagespec` parser/registry/builder; the delivered set is pinned by
+  internal/imagespec/agent_tools_test.go and printed by `bunker agent-tools`.
 
 ### [safety-presets.md](safety-presets.md) — Safety Presets Specification (v1.0.0, GAP-113)
 

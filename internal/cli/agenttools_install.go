@@ -12,6 +12,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
+	"github.com/deployBunker/bunker/internal/imagespec"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 	bunkerv1connect "github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect"
 )
@@ -124,14 +125,13 @@ func installAgentTools(cmd *cobra.Command, ctx context.Context, client bunkerv1c
 }
 
 // agentToolsRemediationSpec is the image spec this command prints for the tools
-// it cannot deliver (DF-BUNKER-57). It is a CONSTANT, not an inline string,
-// because it must be a spec that actually BUILDS: a test in this package parses
-// this exact JSON through imagespec.Parse and asserts the render is buildable
-// (the go directive carries its own toolchain bootstrap — DF-BUNKER-79, and the
-// installed binary lands on the agent's exec PATH), so the CLI can never
-// advertise a spec the image builder would refuse.
-const agentToolsRemediationSpec = `{"packages":[{"manager":"apt","packages":["ripgrep"]},` +
-	`{"manager":"go","packages":["golang.org/x/tools/gopls@latest"]}]}`
+// it cannot deliver (DF-BUNKER-57). It is ALIASED to the canonical delivered
+// set in internal/imagespec (TOOLS-B2) rather than re-declared here, so the
+// printed remediation, the parser's own pin and the docs can never drift apart:
+// imagespec.AgentToolSpec is pinned by TestAgentToolSpecRoundTrip to parse into
+// exactly the AgentToolPackages directives, and this package's tests pin the
+// print path to a render the builder accepts.
+const agentToolsRemediationSpec = imagespec.AgentToolSpec
 
 // resolveDeliverableBinary finds the artifact to ship: an explicit --binary
 // wins, otherwise the tool is looked up on PATH. A clear failure here is much
