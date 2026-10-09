@@ -1,9 +1,8 @@
 # Mount drivers — sshfs (default), rclone, and FUSE over io_uring
 
-**Status:** sshfs is the default and only implemented driver today. `rclone` and
-`fuse-io_uring` are planned **opt-in** drivers. This document also records the
-sshfs security issue that forces an upgrade, because the fix and the driver model
-touch the same code.
+**Status:** sshfs default; rclone opt-in implemented (MOUNT-007); `fuse-io_uring`
+planned. This document also records the sshfs security issue that forces an
+upgrade, because the fix and the driver model touch the same code.
 
 See also: [`both-ways.md`](both-ways.md) (when to use the mount vs the verb path),
 [`performance.md`](performance.md) (what caps throughput on a long path: the socket-buffer
@@ -96,7 +95,10 @@ Design rules for every driver:
 ### 3.2 rclone mount, SFTP backend — opt-in
 
 Speaks SFTP over the same SSH service, so rule 1 holds: **nothing to install on the
-agent.** The client needs the `rclone` binary.
+agent.** The `rclone` binary is a **client-side prerequisite** — it must be present
+on the host that runs the mount, never on the agent. Select the driver per agent at
+spawn with `--mount-driver rclone` (an agent spawned without it keeps the sshfs
+default; an unknown name is refused by the server).
 
 - **No config file required.** Use an inline backend spec so there is no
   `rclone.conf` and no credential file to manage:
@@ -111,7 +113,9 @@ agent.** The client needs the `rclone` binary.
   host) — pin the version explicitly and prefer the current official static
   binary; rclone has its **own** retry/backoff, which overlaps the sshfs-shaped
   classifier and must be reconciled rather than stacked.
-- Tracked as `MOUNT-007`.
+- Implemented as `MOUNT-007` (commit `10760912`) — registered in
+  `internal/mountdriver/rclone.go`, selected with the `--mount-driver rclone`
+  spawn flag above.
 
 ### 3.3 FUSE over io_uring — opt-in
 
