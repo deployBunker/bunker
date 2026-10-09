@@ -294,3 +294,52 @@ through `bunkerdService.recordExecAudit`). A future exec-capture feature
 (GAP-074) is expected to extend that recorder — one writer, one call shape —
 rather than add a second one beside it.
 
+## 7. Session attribution (GAP-095)
+
+Every ExecAgent/RunAgent request may carry a caller-supplied **session id** —
+an opaque identifier whose only job is audit attribution: it lets an
+integrator group all the audit records produced by one client session. The
+field is declared on `ExecAgentRequest.session_id` and
+`RunAgentRequest.session_id` (`proto/bunker/v1/bunker.proto`, GAP-095), and
+the CLI sets it with `--session <id>`:
+
+```bash
+bunker exec --session deploy-run-42 my-agent ./deploy.sh
+bunker run  --session deploy-run-42 my-agent -- docker compose up -d
+```
+
+What lands in the trail (`internal/audit/interceptor.go:100-131` and
+`requestSessionID`, interceptor.go:351-360):
+
+- The audit interceptor stamps `session_id` on **every record it writes for
+  those two procedures** — both the per-RPC record and, via
+  `bunkerdService.recordExecAudit`, the correlated `/command` record of
+  section 6 — so `session_id` is a third correlation key beside
+  `agent_id` + `caller` (it survives even where adjacency does not: a session
+  interleaved with other agents' work still groups by id).
+- No other procedure reads a session id; their records carry the empty value,
+  which `AuditLog` normalizes to **`"not captured"`** when written
+  (`redactSessionID`, internal/audit/redact.go). Records predating this
+  feature likewise show `"not captured"`.
+- **It is never a credential.** Before a record is written the value passes
+  through the same scrubber as command summaries: a credential-shaped value
+  (bearer token, `sk-…`, long hex blob, …) is masked to `[REDACTED:len<n>]`,
+  and ordinary opaque identifiers pass through byte-for-byte. Pick ids that
+  are meaningful to you (a build id, an operator handle, a ticket number) —
+  the server never interprets the value and the client never sends secret
+  material in it.
+
+Querying by session (local trail — `bunker audit export` is lossless JSONL,
+so `session_id` is one of the exported keys):
+
+```bash
+# everything one client session did, RPC records and commands alike
+bunker audit export | jq -r 'select(.session_id=="deploy-run-42") |
+  [.ts,.method,.agent_id,.outcome,.summary] | @tsv'
+```
+
+> Note: the QueryAudit RPC's `AuditRecord` message predates GAP-095 and does
+> not carry the field, so `bunker audit list --server <alias>` / `export
+> --server <alias>` (remote query) omit it. Correlate sessions on the host
+> that owns the log, or via `agent_id` + `caller` remotely.
+

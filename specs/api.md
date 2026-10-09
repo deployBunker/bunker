@@ -331,6 +331,12 @@ Request:
 - `timeout_seconds` (uint32): Execution timeout
 - `raw` (bool): If true, exec directly (no shell interpretation)
 - `script_content` (string, optional): Upload + execute script file
+- `session_id` (string, optional): Opaque caller-supplied session id for audit
+  attribution (GAP-095) — never a credential, and it must not carry secret
+  material: the audit interceptor stamps it on every ExecAgent audit record
+  (`internal/audit/interceptor.go`) as the correlation key for one client
+  session, and credential-shaped values are redacted before the record is
+  written. Empty when omitted (stored as `not captured`).
 
 Response (streamed):
 - `stdout` (bytes): Standard output chunk
@@ -354,6 +360,11 @@ Request:
 - `detach` (bool): Start as persistent background unit
 - `timeout_seconds` (uint32)
 - `name` (string, optional): Suffix for systemd unit name
+- `session_id` (string, optional): Opaque caller-supplied session id for audit
+  attribution (GAP-095) — never a credential; same semantics as
+  ExecAgentRequest.session_id: stamped on the RunAgent RPC record and its
+  correlated `/command` record, redacted if credential-shaped, empty when
+  omitted (`not captured` in the trail).
 
 Response:
 - `run_id` (string): Unique run identifier
