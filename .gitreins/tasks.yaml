@@ -4027,18 +4027,6 @@ tasks:
   status: complete
   created_at: '2026-10-04T10:41:13.660449+00:00'
   completed_at: '2026-10-04T14:01:22.753163+00:00'
-- id: INT-CI-026
-  title: "root-suite TestSpawn_GeneratesAgentID flake \u2014 chown /run/user/<uid>\
-    \ race"
-  criteria:
-  - '1) go build ./... && go vet ./... && go test ./internal/agent/... pass. 2) Regression
-    test: simulate the race (delete /run/user/<uid> between create and chown) and
-    assert the fix retries or pre-creates. 3) N consecutive root-suite runs green
-    with no ''chown runtime dir ... No such file or directory'' in the log. 4) Fix
-    isolated to internal/agent/rootless.go (or equivalent), no spawn/destroy/exec
-    surface change.'
-  status: pending
-  created_at: '2026-10-04T10:50:18.470862+00:00'
 - id: QA-BUNKER-62
   title: sun_path overflow kills live peer-cred live-connect test on long-TMPDIR hosts
   criteria:
