@@ -1027,6 +1027,9 @@ bunker mount       Mount agent filesystem via SSHFS
 bunker tunnel      Forward agent Docker socket
 bunker ssh         Open an interactive SSH session into an agent
 bunker cp          Copy a file into an agent's environment
+bunker pull        Copy a file from an agent's environment; use --recursive for directories
+                   Usage: pull <agent-id> <remote-path> [local-dir]
+                   Flags: --server, --ssh-port, --ssh-key, --ssh-host, --recursive
 bunker deploy      Deploy a directory into an agent's environment
 bunker systemd     Manage the bunkerd systemd service (install/uninstall/status)
 bunker metrics     Show resource usage

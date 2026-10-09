@@ -7,6 +7,7 @@ One page, so you don't have to rediscover which side fits which job.
 | | **Mount** (`bunker mount`) | **Verb layer** (`bunker exec`, and the file verbs as they land) |
 |---|---|---|
 | How it works | The agent's workspace appears as a local directory over SSHFS | RPC to the agent; every call is targeted and attributed |
+| Copy from agent | — | `bunker pull <agent-id> <remote-path> [local-dir]` uses SCP over SSH to copy files from the agent; `--recursive` handles directories |
 | Best at | Reading, grepping, diffing, inspecting git history, small edits — highest fidelity because it **is** a filesystem | Writes that must be targeted; anything that must not be able to wander to another tree |
 | Bad at | **Builds/tests** — the toolchain reads thousands of small files over SFTP; locally it is 10–100× slower and burns the very CPU offloading was meant to save | Bulk reading; output is capped and encoded, so a huge grep is a bad fit |
 | Failure shape | A dropped transport becomes **visible at the next syscall** (bounded, named); nothing silently half-applies | Refusals are explicit (`no target bound: pass --server/--agent`) and binding is per-session |

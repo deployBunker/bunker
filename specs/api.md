@@ -658,6 +658,11 @@ Content-Type: `application/json` or `application/proto`.
 
 ## Non-RPC routes
 
+`bunker pull <agent-id> <remote-path> [local-dir]` is not a file-transfer RPC:
+the CLI calls the `Bunkerd.GetAgent` RPC to resolve the agent's SSH connection
+details, then transfers the remote file to the local machine with `scp` over
+SSH. Directory copies use `--recursive` (`-r`).
+
 The daemon registers four plain-HTTP routes on the same router as the connect
 handlers, so they are served by **every** listener — gRPC `:9090`, REST `:8080`,
 and the HTTP/3 (QUIC) socket when `server.h3_enabled` is on — with the same
