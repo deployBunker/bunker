@@ -336,3 +336,35 @@ Angle: tenant isolation — can agent A see agent B's state?
 - **Artifacts:** board rows ISO-001/002 (tasks.jsonl, 663 rows / 0 dupes, verified by id census), commit 2c8c119.
 - **Cleanup:** df-iso-a and df-iso-b destroyed and verified absent from `bunker list`. No repo visibility/permission changes; no credentials minted or committed.
 - **Verdict:** 🟡 PROMISING-BUT-ROUGH — core isolation (uid, home, docker socket, ports) works, but /proc and /run/bunker leak tenant metadata. Fix directions: hidepid=2 on /proc mount, restrict /run/bunker to mode 0700 root-only or use per-agent /run subdirectories.
+
+## Dogfood Findings (2026-10-09 — run 24, lifecycle + egress + agent-tools surface)
+
+Angle: prior runs covered install channels (23), isolation/proc (ISO), image-spec,
+renewal, TLS, release channel. This run took the DAY-TO-DAY lifecycle a real user
+touches every hour — spawn/stop/start/restart, exec, cp AND the new `pull`,
+heartbeat, destroy — plus the two fleet features shipped since the last lifecycle
+run: `--egress-mode` (GAP-134) and `agent-tools --install` (GAP-096). Client HEAD
+7b3fecbc vs deployed bunker-mvp daemon d2b4b98 (v0.2.0, 2026-10-06). Install leg:
+fresh ephemeral agent on bunker-mvp, install.sh v0.2.0 release channel, smoke OK.
+
+| ID | Task | Pri | Cpx | Deps | Tags | Reasoning |
+|----|------|-----|-----|------|------|-----------|
+| DF-BUNKER-82 | --egress-mode none/allowlist silently serves an OPEN agent on the fleet daemon (flag accepted rc=0, no refusal, no nft rule, agent curl succeeds; egress commit fd974b51 10-07 postdates daemon build d2b4b98) — scripted consumers believe their agent is firewalled. | P2 | 2 | — | +egress, +security, +spawn | Client capability probe / server echo of resolved enforcement mode + battery cell proving a none-mode agent cannot reach the internet. PASS: loud client refusal vs old daemon; enforced curl timeout vs current daemon. |
+| DF-BUNKER-83 | `bunker pull` with an existing FILE at [local-dir] clobbers it and prints 'Copied ... to <file>' rc=0 — silent data loss via leaked scp semantics. | P2 | 1 | — | +cli, +pull | Stat the destination: refuse or create a dir when it exists as a file. PASS: non-dir destination exits 1 with actionable message. |
+| DF-BUNKER-84 | `cp --help` has no positional usage line; actual contract `cp <local> <agent-id>:<path>` cost 2 wrong-form attempts (3-arg, reversed direction) before success. Failures fail loudly — the gap is pure doc friction. | P2 | 1 | — | +cli, +docs, +cp | Usage/Args block in cp + pull long help. PASS: fresh-user probe gets cp right first try. |
+| DF-BUNKER-85 | `agent-tools --install` dead-ends: correctly refuses the dynamic host toolsd, but no static toolsd ships in the release channel and no image-spec directive exists — 6 required verbs stay broken with only a build hint naming a repo the user does not have. | P2 | 2 | — | +agent-tools, +tooling | Ship static toolsd asset / image-spec wiring; error names the concrete next CLI action. PASS: fresh agent toolsd present + re-probe OK from release assets. |
+| PERF-013b | Re-measure: spawn 17s (documented envelope 60-90s), list warm 361.6ms ±15.6ms (hyperfine 10 runs), pull 5s cold / ~1s warm, cp ~2s, exec ~1s, stop 1s, start/restart ~2s, destroy ~25s; fresh release-channel install <90s incl. download+SHA256+smoke. Nothing user-noticeable — no profile, no action. | P2 | 1 | — | +perf | See PERF-013 series; re-measure after spawn-path changes only. |
+
+What held up: full lifecycle green from HEAD client against the v0.2.0 daemon —
+spawn 17s, stop→exec correctly refused (agent_stopped + remediation hint in the
+error), start/restart resume state (file written pre-stop readable post-restart),
+heartbeat extends TTL, destroy ~25s clean (archive policy), list/info/registry
+consistent, exit-code contract matches the README table (remote code propagated
+from exec). Install leg PASSED: install.sh on a bare ephemeral agent fell back to
+~/.local/bin with a PATH warning, verified SHA256SUMS, smoke OK — the only trip
+was my own invented --prefix flag (real flag is --dir); docs-correct invocation
+worked first try.
+
+Cleanup: all three ephemeral agents (df runs + instprobe) destroyed, verified
+'No agents found'. No repo visibility/permission changes; no credentials
+committed. Board rows committed bcc1607c (708→712 rows, 0 duplicate ids).
