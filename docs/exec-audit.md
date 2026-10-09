@@ -300,13 +300,9 @@ Every ExecAgent/RunAgent request may carry a caller-supplied **session id** —
 an opaque identifier whose only job is audit attribution: it lets an
 integrator group all the audit records produced by one client session. The
 field is declared on `ExecAgentRequest.session_id` and
-`RunAgentRequest.session_id` (`proto/bunker/v1/bunker.proto`, GAP-095), and
-the CLI sets it with `--session <id>`:
-
-```bash
-bunker exec --session deploy-run-42 my-agent ./deploy.sh
-bunker run  --session deploy-run-42 my-agent -- docker compose up -d
-```
+`RunAgentRequest.session_id` (`proto/bunker/v1/bunker.proto`, GAP-095).
+The CLI does not currently expose this flag; session attribution is set
+via the proto/API field directly by integrators.
 
 What lands in the trail (`internal/audit/interceptor.go:100-131` and
 `requestSessionID`, interceptor.go:351-360):
