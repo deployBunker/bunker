@@ -34,6 +34,24 @@ ROOT_SUITE_PASSWD="${ROOT_SUITE_PASSWD:-/etc/passwd}"
 ROOT_SUITE_SSHDIR="${ROOT_SUITE_SSHDIR:-/etc/bunkerd/ssh}"
 ROOT_SUITE_RUNDIR="${ROOT_SUITE_RUNDIR:-/run/bunker}"
 
+# GAP-089: the linger-cleanup helpers (purge_user_linger_state,
+# gc_orphan_linger_files) have ONE canonical definition — in
+# regression-tests.sh, where the hermetic test sed-extracts them. This suite
+# reuses the same definitions (never a copy) by extracting them the same way
+# at startup. The functions self-default their external commands inline via
+# LINGER_* vars, so sourcing here is side-effect free; if the extraction is
+# ever empty the call sites degrade to `command not found` (non-fatal under
+# `set -uo pipefail`) rather than failing the cleanup trap.
+BUNKER_REGRESSION_SUITE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/regression-tests.sh"
+BUNKER_LINGER_HELPERS_SRC="$(mktemp /tmp/root-suite-linger-XXXXXX.sh)"
+if [ -f "$BUNKER_REGRESSION_SUITE" ]; then
+    sed -n '/^purge_user_linger_state() {/,/^}/p;/^gc_orphan_linger_files() {/,/^}/p' \
+        "$BUNKER_REGRESSION_SUITE" > "$BUNKER_LINGER_HELPERS_SRC"
+fi
+# shellcheck source=/dev/null
+[ -s "$BUNKER_LINGER_HELPERS_SRC" ] && source "$BUNKER_LINGER_HELPERS_SRC"
+rm -f "$BUNKER_LINGER_HELPERS_SRC"
+
 refresh_live_agent_ids() {
     "$BUNKER_BIN" list --status all 2>/dev/null \
         | awk '/^  [a-z0-9]/{print $1}' || true
@@ -124,8 +142,13 @@ cleanup() {
         echo "removing leaked test user $u"
         pkill -u "$u" -9 2>/dev/null || true
         sleep 1
+        purge_user_linger_state "$u"
         userdel -rf "$u" 2>/dev/null || true
     done
+    # GAP-089: GC orphan linger markers left by users deleted in earlier runs
+    # (the sweep only removes a marker whose username no longer resolves to a
+    # user, so production users are never affected).
+    gc_orphan_linger_files
     for k in $(ls "$ROOT_SUITE_SSHDIR" 2>/dev/null); do
         grep -qx "$k" "$SNAP_KEYS" && continue
         echo "$PROD_IDS" | grep -qx "$k" && continue

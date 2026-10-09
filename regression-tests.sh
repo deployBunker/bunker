@@ -122,6 +122,76 @@ kill_stray_bunkerd() {
     pkill bunkerd 2>/dev/null || true
 }
 
+# GAP-089: linger-cleanup helpers. Test-harness teardown deletes throwaway
+# bunker-* users with userdel, which never disables systemd linger — the
+# user@UID.service manager keeps running for a deleted user and the
+# /var/lib/systemd/linger/<user> marker file is orphaned (measured: 41 stray
+# --user managers, ~3.1GB RSS, 68 orphan linger files with no user behind
+# them). These helpers close the leak. Every external command routes through
+# an overridable LINGER_* variable (defaulted inline) so the hermetic test
+# scripts/test-gc-linger-helpers.sh can stub them, and every action is
+# best-effort — teardown must never fail the run.
+
+# purge_user_linger_state <username> — disable linger, remove the linger
+# marker, and stop + reset-failed the user manager for ONE user, immediately
+# BEFORE userdel (the UID is resolved here while the user still exists). The
+# SSSD cache is flushed only when the host's nsswitch actually uses sss.
+# Never returns nonzero.
+purge_user_linger_state() {
+    local user="$1"
+    [ -n "$user" ] || return 0
+    local uid=""
+    uid="$("${LINGER_ID_CMD:-id}" -u "$user" 2>/dev/null || true)"
+    case "$uid" in ''|*[!0-9]*) uid="" ;; esac
+    echo "  linger: disable-linger $user"
+    "${LINGER_LOGINCTL_CMD:-loginctl}" disable-linger "$user" >/dev/null 2>&1 || true
+    rm -f "${LINGER_DIR:-/var/lib/systemd/linger}/$user" || true
+    if [ -n "$uid" ]; then
+        echo "  linger: stop user@$uid.service"
+        "${LINGER_SYSTEMCTL_CMD:-systemctl}" stop "user@$uid.service" >/dev/null 2>&1 || true
+        "${LINGER_SYSTEMCTL_CMD:-systemctl}" reset-failed "user@$uid.service" >/dev/null 2>&1 || true
+    fi
+    if grep -q sss "${LINGER_NSSWITCH_FILE:-/etc/nsswitch.conf}" 2>/dev/null; then
+        echo "  linger: sss_cache -u $user"
+        "${LINGER_SSS_CACHE_CMD:-sss_cache}" -u "$user" >/dev/null 2>&1 || true
+    fi
+    return 0
+}
+
+# gc_orphan_linger_files — sweep /var/lib/systemd/linger and remove any
+# marker whose username no longer resolves to an existing user (the orphan
+# files this leak accumulates), best-effort stopping that user's manager by
+# a unit name derived from the username (a deleted user's numeric UID is
+# unresolvable, so the stop is name-derived and failure-tolerant). A user
+# that still exists is NEVER touched. Never returns nonzero.
+gc_orphan_linger_files() {
+    local d="${LINGER_DIR:-/var/lib/systemd/linger}"
+    [ -d "$d" ] || return 0
+    # Fail closed: without `id` we cannot prove a name is orphaned, so touch
+    # nothing rather than remove a possibly-live user's linger marker.
+    if ! command -v "${LINGER_ID_CMD:-id}" >/dev/null 2>&1; then
+        echo "  linger: GC skipped (id unavailable)"
+        return 0
+    fi
+    local f user esc unit
+    for f in "$d"/*; do
+        [ -e "$f" ] || continue
+        [ -f "$f" ] || continue
+        user="$(basename "$f")"
+        if "${LINGER_ID_CMD:-id}" -nG "$user" >/dev/null 2>&1; then
+            continue
+        fi
+        echo "  linger: GC removing orphan linger file $user"
+        rm -f "$f" || true
+        esc="$("${LINGER_SYSTEMD_ESCAPE_CMD:-systemd-escape}" --user="$user" 2>/dev/null || printf '%s' "$user")"
+        unit="user@${esc}.service"
+        echo "  linger: GC stop $unit"
+        "${LINGER_SYSTEMCTL_CMD:-systemctl}" stop "$unit" >/dev/null 2>&1 || true
+        "${LINGER_SYSTEMCTL_CMD:-systemctl}" reset-failed "$unit" >/dev/null 2>&1 || true
+    done
+    return 0
+}
+
 # The operator's own HOME, captured BEFORE this suite reassigns it: an agent
 # dockerd unit directory under it belongs to the operator's home, and this
 # suite only ever removes what it created (INT-CI-012).
@@ -336,9 +406,11 @@ cleanup() {
     fi
     # Kill leftover users. Standalone: every bunker- user is fair game.
     # Coexist: only this battery's own agents (regr-alpha + the auto ID) —
-    # NEVER touch production users.
+    # NEVER touch production users. GAP-089: disable linger before userdel so
+    # the user@UID manager stops and no orphan linger marker is left behind.
     if [ -z "$BUNKERD_COEXIST" ]; then
         for u in $(grep '^bunker-' /etc/passwd 2>/dev/null | cut -d: -f1); do
+            purge_user_linger_state "$u"
             userdel -r "$u" 2>/dev/null || true
         done
     else
@@ -347,8 +419,17 @@ cleanup() {
             PAT="$PAT\|^bunker-$AUTO_ID"
         fi
         for u in $(grep "$PAT" /etc/passwd 2>/dev/null | cut -d: -f1); do
+            purge_user_linger_state "$u"
             userdel -r "$u" 2>/dev/null || true
         done
+    fi
+    # GAP-089: GC orphan linger markers left by PREVIOUS runs' userdel (a
+    # deleted user's user@UID manager keeps running and its linger file
+    # accumulates). Standalone only — the sweep walks host-wide
+    # /var/lib/systemd/linger, which is never this suite's to touch in
+    # coexist mode.
+    if [ -z "$BUNKERD_COEXIST" ]; then
+        gc_orphan_linger_files
     fi
     # Stop bunkerd
     if [ -n "$BUNKERD_PID" ]; then
@@ -554,6 +635,7 @@ if [ -z "$BUNKERD_COEXIST" ]; then
     kill_stray_bunkerd
     sleep 1
     for u in $(grep '^bunker-' /etc/passwd 2>/dev/null | cut -d: -f1); do
+        purge_user_linger_state "$u"
         userdel -r "$u" 2>/dev/null || true
     done
     # Clean stale systemd user units
@@ -795,7 +877,8 @@ for u in $(grep '^bunker-' /etc/passwd 2>/dev/null | cut -d: -f1); do
         PRECLEAN_LEFT=$((PRECLEAN_LEFT + 1))
         PRECLEAN_LEFT_NAMES="$PRECLEAN_LEFT_NAMES $u"
     else
-        bunker destroy --server "$REGRESSION_TARGET_NAME" "$id" --force >/dev/null 2>&1 || userdel -r "$u" >/dev/null 2>&1 || true
+        bunker destroy --server "$REGRESSION_TARGET_NAME" "$id" --force >/dev/null 2>&1 \
+            || { purge_user_linger_state "$u"; userdel -r "$u" >/dev/null 2>&1 || true; }
         PRECLEAN_REMOVED=$((PRECLEAN_REMOVED + 1))
         PRECLEAN_REMOVED_NAMES="$PRECLEAN_REMOVED_NAMES $u"
     fi
