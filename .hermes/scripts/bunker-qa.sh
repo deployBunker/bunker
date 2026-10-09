@@ -387,7 +387,14 @@ detect_cmds() {
   # escape hatches when the auto-detect guesses wrong (e.g. suite needs extras)
   DETECT_INSTALL="${BUNKER_QA_INSTALL_CMD:-}"
   if [ -z "$DETECT_INSTALL" ]; then
-  if [ -f "$repo/pnpm-lock.yaml" ]; then DETECT_INSTALL="corepack enable 2>/dev/null; corepack prepare --activate 2>/dev/null; pnpm install --frozen-lockfile"
+  # QA-BUNKER-32 (2026-10-10): go.mod is checked BEFORE package.json/pnpm-lock
+  # in both ladders below. A Go repo carrying any root package.json (docs
+  # tooling, heredoc generators) is primarily Go; the npm manifest is
+  # incidental. The old order graded such repos 'npm ci' + 'npm test' and the
+  # real Go suite never ran (dexdat-memory: 479 _test.go files, native.log
+  # 'npm error Missing script: "test"').
+  if [ -f "$repo/go.mod" ]; then DETECT_INSTALL="go build ./..."
+  elif [ -f "$repo/pnpm-lock.yaml" ]; then DETECT_INSTALL="corepack enable 2>/dev/null; corepack prepare --activate 2>/dev/null; pnpm install --frozen-lockfile"
   elif [ -f "$repo/package.json" ]; then
     # QA-9ROUTER-26 (2026-09-21): the old branch installed ONLY the root
     # package, so a repo with an INDEPENDENT test package (tests/ or test/
@@ -408,7 +415,6 @@ detect_cmds() {
         break
       fi
     done
-  elif [ -f "$repo/go.mod" ]; then DETECT_INSTALL="go build ./..."
   elif [ -f "$repo/pyproject.toml" ]; then DETECT_INSTALL="pip install -e .[dev] 2>/dev/null || pip install -e ."
   elif [ -f "$repo/Cargo.toml" ]; then DETECT_INSTALL="cargo build --workspace"
   # QA-H3-14 (2026-09-21): a Makefile-only repo (no package manifest) gets a
@@ -443,7 +449,11 @@ detect_cmds() {
   [ "$branch_name" = "HEAD" ] && branch_name="master"
   [ -n "$branch_name" ] || branch_name="master"
   if [ -z "$native_cmd" ]; then
-  if [ -f "$repo/pnpm-lock.yaml" ]; then native_cmd="pnpm test"
+  # QA-BUNKER-32: same go-first precedence as the install ladder above — a
+  # go.mod + package.json repo must get its Go suite, not an npm test that
+  # doesn't exist.
+  if [ -f "$repo/go.mod" ]; then native_cmd="go test ./... -count=1"
+  elif [ -f "$repo/pnpm-lock.yaml" ]; then native_cmd="pnpm test"
   elif [ -f "$repo/package.json" ]; then
   # --runInBand is a Jest flag; vitest dies with CACError on it (proven 9router
   # 2026-09-15: `cd tests && npx vitest run --runInBand` rc=1, zero tests ran).
@@ -456,7 +466,6 @@ detect_cmds() {
   else
     native_cmd="npm test -- --runInBand"
   fi
-  elif [ -f "$repo/go.mod" ]; then native_cmd="go test ./... -count=1"
   elif [ -f "$repo/pyproject.toml" ]; then
     # QA-DIGEST-022 (2026-10-03, digest chaos-resource): a pyproject repo whose
     # pytest lives in a PEP-735 dependency-group gets rc=127 'pytest: command
