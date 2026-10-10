@@ -1,0 +1,16 @@
+{
+  "id": "bunker-foreman-2026-10-10-08-02-38",
+  "tick": "bunker-foreman-2026-10-10-08-02-38",
+  "mode": "serial-fallback",
+  "tasks": [
+    {
+      "task_id": "INT-CI-044",
+      "worktree": "/home/kara/worktrees/bunker-INT-CI-044",
+      "branch": "wt/INT-CI-044",
+      "base": "origin/main",
+      "base_sha": "77cb3924",
+      "dispatched_at": "2026-10-10T08:30:00-05:00",
+      "worker": "deepseek-v4-flash via hermes chat -q (background)"
+    }
+  ]
+}
