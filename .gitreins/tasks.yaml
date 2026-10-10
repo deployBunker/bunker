@@ -4421,5 +4421,6 @@ tasks:
   criteria:
   - unknown host refused pre-flight with named cause; zero-audited run never prints
     SUCCESS; regression test test_bunker_qa_preflight.sh green; bash -n clean
-  status: in_progress
+  status: complete
   created_at: '2026-10-10T15:32:45.609294+00:00'
+  completed_at: '2026-10-10T16:22:26.946819+00:00'
