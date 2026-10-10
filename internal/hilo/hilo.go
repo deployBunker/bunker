@@ -1,6 +1,39 @@
 // Package hilo provides integration with the Hilo codebase knowledge graph.
 // It reads pre-computed graph data from .vfs/ and exposes dependency analysis
 // APIs for the bunkerd server and CLI.
+//
+// # Graph state files
+//
+// The graph state lives under <projectDir>/.vfs/graph/:
+//
+//   - edges.jsonl — the ONLY file bunkerd reads. One JSON edge object
+//     ("from"/"to"/"rel") per line, written by the Hilo CLI.
+//   - graph.db — the Hilo CLI's own store. NO code in this repository reads
+//     or writes it; truncating or corrupting it cannot affect bunkerd.
+//     (QA-BUNKER-B12/QA-BUNKER-9: the QA chaos cell truncated graph.db, which
+//     is why the daemon was unaffected.)
+//
+// Defined loader outcomes for damaged edges.jsonl (pinned by
+// hilo_corruption_test.go):
+//
+//   - Missing file: logged warning, empty graph, nil error.
+//   - Empty file: empty graph, nil error, no warning.
+//   - Truncated mid-line (partial final JSON object) or any malformed /
+//     blank line: that line is skipped with a warning
+//     ("skipping malformed edge line"); every complete line still loads and
+//     NewGraph returns nil error.
+//   - Unreadable file (permissions/IO, but NOT missing): NewGraph returns an
+//     "open edges.jsonl" error and a nil graph.
+//   - A single line beyond bufio.Scanner's 64KiB token buffer: NewGraph
+//     returns a "scan edges.jsonl" error and a nil graph.
+//
+// Callers own the failure posture: internal/server/server.go (Run, the
+// "hilo graph init failed" branch, server.go:168-173) logs a warning and
+// keeps serving with a nil graph; graph routes are only registered when the
+// graph loaded (server.go:224-225). Reload() resets all in-memory state
+// before re-reading, so after any corruption it converges on the fresh file
+// state (empty on garbage/deletion) without panicking; a FAILED Reload
+// leaves the graph empty, never stale.
 package hilo
 
 import (
