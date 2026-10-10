@@ -1709,7 +1709,17 @@ func (c *Config) EnsureJWTSecret() (string, error) {
 	case !errors.Is(perr, os.ErrNotExist):
 		// Present but unreadable/empty: do NOT generate a replacement over
 		// it — that would rotate a live secret out from under issued keys.
-		return "", fmt.Errorf("refusing to start: %s exists but cannot be read (%w) — fix its permissions (mode 0600, owner-readable) or remove it to have a new secret generated", path, perr)
+		//
+		// DF-BUNKER-88: the classic advice ("fix its permissions") is
+		// impossible for the case that actually produces it in the field —
+		// a non-root daemon resolving the same defaults as an existing root
+		// daemon, meeting a root-owned 0600 jwt_secret under
+		// /var/lib/bunkerd. The refusal therefore names the working escape
+		// hatches too (the same keys ResolveSecretsLocation advertises):
+		// repoint the secrets dir at something this uid owns via
+		// SecretsDirEnv or agent.base_data_dir / agent.registry.path. The
+		// behavior is unchanged and still fail-closed — message only.
+		return "", fmt.Errorf("refusing to start: %s exists but cannot be read (%w) — if this file is yours (or you are root), fix its permissions (mode 0600, owner-readable) or remove it to have a new secret generated; if it belongs to another user (typically the root daemon's state under /var/lib/bunkerd), do not touch it — run this daemon against a secrets location you own instead: set "+SecretsDirEnv+"=<dir> owned by this user, or set agent.base_data_dir (or agent.registry.path) in the config so the secret resolves inside your own state tree", path, perr)
 	}
 
 	// Source 3: first boot — generate, persist, load back.

@@ -515,3 +515,76 @@ func TestEnsureJWTSecret_RefusalDoesNotMaskUnreadableError(t *testing.T) {
 		t.Errorf("the ambient refusal masked the actionable unreadable-file error: %v", err)
 	}
 }
+
+// TestEnsureJWTSecret_UnreadableRefusalNamesOverrideKeys (DF-BUNKER-88): the
+// unreadable-secret refusal keeps its fail-closed behavior but its MESSAGE
+// must work for the case that produces it in the field — a non-root daemon
+// resolving the same defaults as an existing root daemon and meeting the
+// root-owned jwt_secret under /var/lib/bunkerd. "Fix its permissions" is
+// impossible there, so the message must ALSO name every working escape hatch
+// (the same keys ResolveSecretsLocation advertises via hintKeys): the
+// BUNKER_SECRETS_DIR env override and the agent.base_data_dir /
+// agent.registry.path config keys — while keeping the root-case advice.
+func TestEnsureJWTSecret_UnreadableRefusalNamesOverrideKeys(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: an unreadable file is still readable")
+	}
+
+	tests := []struct {
+		name    string
+		useEnv  bool // point SecretsDirEnv at the tree instead of base_data_dir
+		regPath bool
+	}{
+		{name: "env override", useEnv: true},
+		{name: "base_data_dir override"},
+		{name: "registry_path override", regPath: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			secretsTestEnv(t)
+			data := t.TempDir()
+
+			cfg := baseDataCfg(data)
+			switch {
+			case tt.useEnv:
+				t.Setenv(SecretsDirEnv, filepath.Join(data, "env-secrets"))
+			case tt.regPath:
+				cfg.Agent.BaseDataDir = ""
+				cfg.Agent.Registry.Path = filepath.Join(data, "agents.jsonl")
+			}
+
+			secretsDir := cfg.SecretsDirOrDefault()
+			if err := os.MkdirAll(secretsDir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			unreadable := writeSecret(t, secretsDir, JWTSecretFileName, "root-daemons-secret")
+			if err := os.Chmod(unreadable, 0o000); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err := cfg.EnsureJWTSecret()
+			if err == nil {
+				t.Fatal("EnsureJWTSecret() = nil error, want the unreadable-secret refusal (must stay fail-closed)")
+			}
+			if !strings.Contains(err.Error(), "exists but cannot be read") {
+				t.Errorf("error %q is not the unreadable-persisted-secret error", err)
+			}
+			// The new, additive escape hatches — every location knob a
+			// non-root operator can actually use.
+			if !strings.Contains(err.Error(), SecretsDirEnv) {
+				t.Errorf("error %q does not name the %s env override", err, SecretsDirEnv)
+			}
+			if !strings.Contains(err.Error(), "agent.base_data_dir") {
+				t.Errorf("error %q does not name the agent.base_data_dir override", err)
+			}
+			// The existing root-case advice survives (additive change only).
+			if !strings.Contains(err.Error(), "mode 0600") {
+				t.Errorf("error %q no longer carries the root-case permissions advice", err)
+			}
+			// Fail-closed is unchanged: nothing was seeded, nothing rotated.
+			if cfg.Auth.JWTSecret != "" {
+				t.Errorf("config was seeded with a secret despite the refusal: %q", cfg.Auth.JWTSecret)
+			}
+		})
+	}
+}
