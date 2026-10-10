@@ -1,8 +1,10 @@
 package egress
 
 import (
+	"bytes"
 	"fmt"
 	"net/netip"
+	"os"
 	"os/exec"
 	"sort"
 	"strconv"
@@ -30,6 +32,22 @@ type ExecExecutor struct{}
 func (ExecExecutor) Run(argv []string) ([]byte, error) {
 	if len(argv) == 0 {
 		return nil, fmt.Errorf("egress: empty command argv")
+	}
+	if len(argv) >= 3 && argv[0] == "nft" && argv[1] == "-f" {
+		// File-based `nft -f <path>` loads: pipe the file in as stdin via
+		// `nft -f -` (the documented stdin form) instead of handing the
+		// secret-bearing path to the nft process, where it would sit in
+		// argv for the lifetime of the command — visible to any local
+		// process listing (ps, /proc/<pid>/cmdline) while nft parses a
+		// file it can just as well read from the pipe.
+		data, err := os.ReadFile(argv[2])
+		if err != nil {
+			return nil, fmt.Errorf("egress: read nft payload %s: %w", argv[2], err)
+		}
+		stdin := bytes.NewReader(data)
+		cmd := exec.Command("nft", "-f", "-")
+		cmd.Stdin = stdin
+		return cmd.CombinedOutput()
 	}
 	cmd := exec.Command(argv[0], argv[1:]...)
 	return cmd.CombinedOutput()
