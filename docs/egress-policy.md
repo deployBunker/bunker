@@ -58,6 +58,71 @@ silently resolves to a different boundary.
   mode, the spawn FAILS and rolls back — an agent is never left running
   unenforced while its config claims it is restricted.
 
+## Verifying enforcement
+
+The daemon owns every rule, so verification runs on the daemon host as root.
+The chain name is a pure function of the agent's uid — `id -u
+bunker-<agent-id>` gives the uid, and the same uid names the chain in both
+backends' spellings: `bunker-egress-<uid>` (nftables, the default backend)
+or `BUNKER-EGRESS-<uid>` (the iptables fallback, used only when the `nft`
+binary is absent from the daemon's PATH).
+
+nftables host — confirm the shared table, the jump rule, and the per-agent
+chain (the `counter drop` line's counters are the "how much did policy
+block" read):
+
+```bash
+# Shared table: shows the output_hook chain and every per-agent chain.
+sudo nft list table ip bunker_egress
+
+# The jump that routes this agent's uid — look for
+# `meta skuid <uid> jump bunker-egress-<uid>` inside output_hook:
+sudo nft list chain ip bunker_egress output_hook
+
+# The per-agent chain: loopback + established/related accepts, any
+# allowlist accepts, then the final `counter drop`.
+sudo nft list chain ip bunker_egress bunker-egress-<uid>
+```
+
+iptables-fallback host:
+
+```bash
+sudo iptables -S | grep BUNKER-EGRESS      # chain declarations + the OUTPUT jump
+sudo iptables -nL BUNKER-EGRESS-<uid>      # per-agent rules with packet counters
+```
+
+Nothing listed means nothing is enforced. In `open` mode that is the correct
+state (open never invokes a firewall command); in `allowlist`/`none` mode a
+missing chain means the agent was destroyed, the stale-chain sweep removed
+it, or the spawn that should have installed it failed loudly — check the
+daemon log before trusting the boundary.
+
+Prove the policy actually bites from inside the agent. `bunker exec` runs
+its command as the agent's uid, so its traffic is exactly the traffic the
+jump routes into the chain. Spawn an enforced agent first
+(`--egress-mode none` for the strongest demo), then run a deny/allow pair:
+
+```bash
+# DENY: a non-loopback destination hangs and times out (packets are DROPPED,
+# not refused) — use an IP literal so the probe fails at connect, not at the
+# also-dropped DNS step; the chain's drop counter above ticks up while it hangs
+# (192.0.2.1 is RFC 5737 TEST-NET-1: nothing answers it anywhere):
+bunker exec demo-agent --server bunker-host -- curl -m 5 -sS http://192.0.2.1/ -o /dev/null; echo "exit=$?"   # exit=28 (timeout)
+
+# ALLOW: loopback is accepted in every enforced mode, so a local target
+# answers immediately — the daemon's own REST endpoint is a convenient one:
+bunker exec demo-agent --server bunker-host -- curl -m 5 -sS http://127.0.0.1:8080/healthz; echo   # {"status":"ok"}
+
+# Under `allowlist`, the allow side is a DESTINATION you allowlisted
+# (deny a non-allowlisted one instead); under `none`, loopback is the only
+# allow target. Remember outbound DNS is dropped unless your resolver is
+# allowlisted — probe IP literals so the deny side fails at connect.
+```
+
+A denied `curl` timing out (exit 28) plus an answering loopback probe, with
+the chain's drop counter advancing between the two, is end-to-end proof that
+the policy is installed, hooked to this agent's uid, and enforcing.
+
 ## The control channel stays open
 
 In every enforced mode, the agent's connection back to the bunker control

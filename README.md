@@ -133,6 +133,15 @@ sudo ./bunkerd --config /etc/bunkerd/config.yaml
 ./bunker spawn --server bunker-host --ttl 1h demo-agent
 ./bunker exec demo-agent --server bunker-host -- uname -a
 ./bunker destroy demo-agent --server bunker-host
+
+# 6. REST probe (optional): the daemon also speaks JSON over HTTP. /healthz is
+#    unauthenticated by design; everything else needs the bearer token:
+curl -sf http://127.0.0.1:8080/healthz
+curl -s http://127.0.0.1:8080/bunker.v1.Bunkerd/ServerInfo \
+    -H 'Content-Type: application/json' -H 'Authorization: Bearer your-master-token-here' \
+    -d '{}'
+# An unauthenticated POST to an RPC endpoint receives 401; the surface is
+# POST-only, so a plain GET returns 405 before auth even runs.
 ```
 
 > **Server binding note:** mutating commands (`spawn`, `exec`, `destroy`,
@@ -670,6 +679,42 @@ for the mechanisms and teardown precautions.
 ```bash
 sudo ./bunkerd --config /etc/bunkerd/config.yaml
 ```
+
+**Running a non-root `bunkerd` alongside (or instead of) the root daemon.** A
+daemon started as an ordinary user still boots and serves the read-only
+endpoints (`status`, `list`, `info` — spawn fails: it needs `useradd`), but it
+must NOT share the root daemon's state. The first thing it hits is the
+jwt_secret: the defaults resolve secrets under
+`agent.base_data_dir: /var/lib/bunkerd`, where the root daemon has persisted a
+root-owned mode-0600 `secrets/jwt_secret`. Reading it fails, and startup
+refuses fail-closed by design — a daemon must never generate a replacement
+over a signing key it cannot read, since that would silently invalidate every
+issued agent API key. `chmod`-ing the root daemon's secret is the one thing
+NOT to do (it weakens the root deployment and still isn't yours to touch);
+instead, give the non-root daemon a config of its own that repoints every
+state key into a directory that user owns:
+
+```yaml
+agent:
+  base_data_dir: /home/alice/bunkerd-state   # secrets/, instance id, API-key store
+  registry:
+    path: /home/alice/bunkerd-state/agents.jsonl   # defaults INDEPENDENTLY to /var/lib/bunkerd/agents.jsonl
+audit:
+  enabled: false                             # or set audit.path inside your own tree
+```
+
+Two details that bite if skipped: `agent.registry.path` does not follow
+`agent.base_data_dir`, and an unwritable registry is a hard fail-before-listen
+error (`agent registry unavailable`) — set both. And with TLS enabled, any
+`tls.cert_file`/`key_file` paths from the example config must live in your own
+tree too (or use `tls.self_signed: true` with your own paths). For the secrets
+directory alone, `BUNKER_SECRETS_DIR=<dir>` is the narrow override (it wins
+over every config key). The audit-log warning you may still see on such an
+install is harmless: `audit.enabled` defaults to true with
+`audit.path: /var/log/bunkerd/audit.log`, which a non-root user cannot write —
+the daemon logs `audit logging disabled` once and keeps serving without a
+local audit trail. Set `audit.enabled: false` to silence it deliberately, or
+`audit.path` to route the trail into your own tree.
 
 To run `bunkerd` as a managed systemd service instead (auto-start on boot, logrotate, status via systemd), use the built-in helper:
 
