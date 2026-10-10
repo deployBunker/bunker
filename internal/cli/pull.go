@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"strings"
 	"time"
@@ -40,6 +42,11 @@ If [local-dir] is omitted, the file is copied into the current working
 directory (mirroring scp's default destination behavior). Use --recursive
 (-r) to copy a remote directory tree.
 
+A [local-dir] that does not exist is created as a directory so the file is
+pulled INTO it. A [local-dir] that exists as a FILE is refused instead of
+overwritten: scp would write onto that path (silently clobbering it) and
+still report success, so pass a directory or remove the file first.
+
 Examples:
   bunker pull abc12345 /home/bunker-abc12345/config.yaml
   bunker pull abc12345 /home/bunker-abc12345/logs ./out
@@ -60,6 +67,17 @@ Examples:
 					return fmt.Errorf("resolve current directory: %w", err)
 				}
 				localDir = wd
+			}
+
+			// scp destination semantics are the hazard (DF-BUNKER-83):
+			// an existing FILE at the destination is written ONTO (the
+			// transfer still succeeds, so the success message masks the
+			// loss), and a missing path is created as a file — the
+			// pulled bytes must land INSIDE a directory. Refuse the
+			// file case before touching the network; create a missing
+			// directory so the file lands at <local-dir>/<basename>.
+			if err := ensurePullDestination(localDir); err != nil {
+				return err
 			}
 
 			// Load CLI config
@@ -186,6 +204,34 @@ func buildPullSCPArgs(keyPath string, port uint32, userAtHost, remotePath, local
 	}
 	args = append(args, fmt.Sprintf("%s:%s", userAtHost, remotePath), localDir)
 	return args
+}
+
+// ensurePullDestination makes sure the local destination argument of
+// `bunker pull` is a directory BEFORE scp runs.
+//
+// An existing directory is left untouched (the long-standing behavior: the
+// file lands inside it). A path that does not exist yet is created as a
+// directory, so the pulled file is written INTO it instead of becoming that
+// path itself. A path that exists as a non-directory (regular file, device,
+// symlink to a file) is refused with an actionable error and never
+// overwritten: scp would clobber it in place and exit 0, which is the silent
+// data loss DF-BUNKER-83 reproduced.
+func ensurePullDestination(localDir string) error {
+	info, err := os.Stat(localDir)
+	switch {
+	case err == nil:
+		if !info.IsDir() {
+			return fmt.Errorf("local target exists and is not a directory: %s; pass a directory or remove the file", localDir)
+		}
+		return nil
+	case errors.Is(err, fs.ErrNotExist):
+		if mkErr := os.MkdirAll(localDir, 0o755); mkErr != nil {
+			return fmt.Errorf("create local directory %s: %w", localDir, mkErr)
+		}
+		return nil
+	default:
+		return fmt.Errorf("inspect local target %s: %w", localDir, err)
+	}
 }
 
 // pullRequiresConnectImport is a compile-time guard removed in the same
