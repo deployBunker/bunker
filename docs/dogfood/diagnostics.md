@@ -963,3 +963,50 @@ then clone, install Go per the README into $HOME (not /tmp), `make build`
 (48s cold), `./bunker --version` must print HEAD's commit. Warm-spawn timing
 (40s) is your perf baseline. Destroy the agent and verify `bunker list` is
 empty.
+
+## 23. Egress policy — the feature that never enforced anywhere (2026-10-09, run 25)
+
+**How it is built.** GAP-134 (2026-10-07) added per-agent outbound network
+control. Enforcement lives entirely in the ROOT daemon: at spawn, an
+`egress.Manager` renders an nftables (or iptables fallback) rule set keyed on
+the agent's uid — a shared `bunker_egress` table with an `output_hook` base
+chain and one `bunker-egress-<uid>` chain per agent, jumped to via
+`meta skuid <uid>`. Agents get no firewall capability at all; a failed install
+fails the spawn and rolls it back. `open` mode (the default) never touches the
+firewall — pinned by test and re-pinned live this run.
+
+**The error we hit, and what it actually was.** First enforced spawn on a HEAD
+daemon: `spawn failed at stage egress: egress allowlist install for uid 1264
+failed at "nft -f table ip bunker_egress...": Could not open file`. The
+dumped argv shows the whole story: `nft -f` received the DECLARATION STRING as
+its filename argument. internal/egress/manager.go:251 appends
+`NFTHookDeclFile()` — a string builder at :266-268 — straight into argv, and
+the executor (:162) has no stdin path, so the payload can never reach nft.
+Right way: temp file (0600, removed after) or `nft -f -`. The rule-level argv
+builder (firewall.go:335-350) is correct; only the one-shot hook declaration
+is broken. Unit tests pass because the command runner is faked — the argv was
+never validated against a real binary.
+
+**The second failure was organizational, not code.** The flag silently does
+nothing on daemons built before fd974b51 — and BOTH reachable fleet daemons
+(bunker-las-02 v0.1.4; bunker-mvp's daemon built 04:50 UTC on 10-07, ~8h
+before the merge) predate it. rc=0, no chain, no warning: a user who wires
+containment gets an open agent. The /tmp-policy version gate taught the codebase
+the pattern (status reporting + loud warning); egress shipped without its twin.
+And since the GAP-134 close note says "live battery deferred", this tick was
+the first time ANY host attempted enforcement — 2 days after merge.
+
+**The lesson — the fail-loud contract carried the feature.** Every broken path
+refused visibly: zero-destination allowlist → precise error + rollback; broken
+nft invocation → spawn failure + rollback. Not once did an agent run
+unenforced. That is the difference between "feature broken" (this) and
+"feature dangerous" (avoided). The right way to ship flag-gated isolation:
+fail-closed by default, capability-report in ServerInfo so the CLI can warn
+across version skew, and one integration test that runs the REAL argvs against
+`nft -c -f` — fake runners validate logic, not argument contracts.
+
+**Fresh-user ergonomics found on the way:** a non-root daemon start beside a
+root-installed one collides with /var/lib/bunkerd/secrets and the error tells
+the user to chmod root's file (impossible) instead of naming the
+`agent.base_data_dir` override; docs/egress-policy.md promises enforcement but
+ships no user-verification recipe. Both filed (DF-BUNKER-88).

@@ -368,3 +368,41 @@ worked first try.
 Cleanup: all three ephemeral agents (df runs + instprobe) destroyed, verified
 'No agents found'. No repo visibility/permission changes; no credentials
 committed. Board rows committed bcc1607c (708→712 rows, 0 duplicate ids).
+
+## 2026-10-09 run 25 (egress enforcement surface — deep probe)
+
+Angle: run 24 (same day) swept the day-to-day lifecycle and TOUCHED egress only
+as a version-skew flag observation (DF-BUNKER-82). This run went after the thing
+no run has proven: does enforcement actually WORK anywhere? GAP-134's close note
+says "live battery deferred".
+
+- **Promise tested:** "allowlist/none modes install a default-deny nftables/iptables
+  chain keyed on the agent's uid; a failed install fails the spawn."
+- **What held up:** the fail-loud contract (broken installs always refuse + roll
+  back — no agent ever ran unenforced); zero-destination allowlist refusal; open-mode
+  zero-firewall law re-pinned live; lifecycle exit codes on a fresh box (ttl rc=1
+  actionable, exec-missing rc=1, destroy-missing rc=0 idempotent).
+- **What fell apart:** (1) DF-BUNKER-86 P0 — on nft hosts EVERY allowlist/none spawn
+  fails: `nft -f` receives the declaration string as the FILE arg
+  (internal/egress/manager.go:251; executor :162 has no stdin). Reproduced twice on
+  a HEAD ae13f7c8 root daemon (coexist mode, scratch ports) on bunker-mvp.
+  (2) DF-BUNKER-87 filed then closed as DUPLICATE of run-24's DF-BUNKER-82 — my
+  independent reproduction adds the missing iptables/nft zero-chain proof on
+  bunker-las-02 v0.1.4. (3) DF-BUNKER-88 P2 — docs/egress-policy.md has no
+  user-verification recipe; non-root daemon start collides with root's
+  /var/lib/bunkerd/secrets and the error tells the user to chmod root's file.
+- **Install leg (PASSED, not skipped):** ephemeral agent 6b3a0ca5 on bunker-las-02
+  (las-03 offline → sibling substitution), git clone of the documented origin at
+  HEAD 7b3fecb, `go build ./cmd/bunker` 55s cold + ./cmd/bunkerd 14s, fresh-daemon
+  lifecycle probes green.
+- **Perf (Step 2b):** spawn 16.3s cold / 16.3s warm, destroy 18.1s (archive
+  included) — inside every documented envelope, nothing a user feels, no PERF row.
+- **Artifacts:** docs/dogfood/2026-10-09-egress-enforcement.md,
+  docs/dogfood/egress-known-state.md, diagnostics.md §23, skills/bunker-usage
+  egress section, board rows DF-BUNKER-86/88 (87 = dup-close).
+- **Cleanup:** both las-02 agents destroyed + verified absent; HEAD daemon on mvp
+  killed, scratch wiped, 0 leaked users/keys/chains. No visibility/permission
+  changes; no credentials minted/committed.
+- **Verdict:** 🔴 DOES-NOT-DELIVER (egress surface only) — the flagship isolation
+  feature has never enforced on any host; open mode and the rest of the lifecycle
+  remain ✅ SHIPPABLE.
