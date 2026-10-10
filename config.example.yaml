@@ -9,8 +9,30 @@
 # BUNKERD_SERVER_GRPC_ADDR, BUNKERD_AUTH_TOKEN).
 
 server:
-  grpc_addr: ":9090"          # gRPC listen address
-  rest_addr: ":8080"          # REST (connect-go) listen address
+  # ── Bind discipline (SEC-BUNKER-001) ──────────────────────────────────────
+  # A BARE ":PORT" listen address — equivalently "0.0.0.0:PORT" or "[::]:PORT"
+  # — binds EVERY interface on the host. On a host with a public interface that
+  # publishes the whole control plane (gRPC, the REST/connect surface, and the
+  # WebDAV mount served by these same listeners) to the open internet, where
+  # the only barrier left is the static master token (auth.token).
+  #
+  # Rule: on any host that has a public interface, bind the tailnet/private
+  # address instead — e.g. "100.x.y.z:19090", or an interface-local form — and
+  # narrow the host firewall to the tailnet CIDR 100.64.0.0/10. Use loopback
+  # ("127.0.0.1:PORT") for a single-host or scratch daemon. Bind the wildcard
+  # ONLY when the operator has deliberately chosen public exposure of the
+  # control plane: the bind decides which interfaces listen and the firewall
+  # decides who can reach them, so the safe posture needs both.
+  #
+  # The shipped values below bind loopback so this example stays valid for a
+  # scratch local run and publishes nothing. The daemon's built-in defaults are
+  # still ":9090"/":8080" (internal/config/config.go) — set these keys
+  # explicitly in any real deployment.
+  # See docs/threat-model.md §9 (SEC-BUNKER-001) for the exposure, the fix
+  # direction, and the §9.3 runbook for an existing deployment, and
+  # specs/network-isolation.md (Constraint A) where the posture is discussed.
+  grpc_addr: "127.0.0.1:9090"   # gRPC listen address (loopback for a scratch run)
+  rest_addr: "127.0.0.1:8080"   # REST (connect-go) listen address (loopback for a scratch run)
   request_timeout: 300s       # per-request timeout
   # ── WebDAV surface (BFS-004/BFS-006) — OFF by default ─────────────────────
   # webdav_enabled: false     # mount the WebDAV surface under /dav

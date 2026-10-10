@@ -174,6 +174,163 @@ control changes state, so it never claims a protection that has not shipped.
 
 ---
 
+## 9. SEC-BUNKER-001 — Control-plane exposure: wildcard binds (2026-10-10)
+
+*Status:* the exposure below was **verified live on `bunker-mvp`
+(78.46.173.180) on 2026-10-10**. The repository-side response (example
+guidance, pinned by a test) ships with this section; the live host's bind and
+firewall change is a deployment step tracked separately — §9.3 is the runbook
+for it. Nothing here claims the host has already been changed.
+
+### 9.1 The exposure
+
+`server.grpc_addr` / `server.rest_addr` are listen addresses, and the daemon's
+**built-in default is the bare wildcard** — `:9090` / `:8080`
+(`internal/config/config.go`, `DefaultConfig`) — which binds *every* interface
+the host has, public ones included. `config.example.yaml` shipped the same
+wildcard form as copy-paste guidance, so nothing in the repository made the
+safe choice obvious.
+
+Verified live on `bunker-mvp` (2026-10-10):
+
+- `/etc/bunkerd/config.yaml`: `grpc_addr: ":19090"`, `rest_addr: ":18080"` —
+  wildcard binds.
+- `ufw` carried explicit **`Anywhere`** allow rules for `18080/tcp`,
+  `19090/tcp` and `10000:10003/tcp`, so address scoping was not compensating.
+- `GET http://78.46.173.180:18080/healthz` from the open internet returned
+  **200**, unauthenticated.
+
+Two consequences, and they are separable:
+
+- **Reachability.** Every control-plane RPC — spawn/destroy/exec,
+  `GetAgentKey`, the audit surfaces — is reachable from anywhere on the
+  internet. The only thing in front of it is the credential.
+- **Authorization.** That credential is the single static master token (BT2,
+  §5). §7 already states what is missing around it: no per-operator identity,
+  no rotation, no revocation, no failed-auth detection.
+
+`/healthz` is *deliberately* unauthenticated — a liveness answer on both
+listeners, no credentials, no state behind it (`internal/server/server.go`;
+`docs/integration.md` §"Readiness probe"). It leaks nothing but liveness. It is
+nonetheless the strongest *proof* of this exposure, because it is reachable,
+and because the transport gate does not stop it: `CheckTLS` (GAP-126 / REQ-T1)
+refuses a **plaintext non-loopback** bind unless `tls.insecure_dev: true`, but
+it classifies by loopback-ness only — so a running wildcard listener is already
+either TLS-enabled or an explicit insecure-dev opt-in, and the gate answers
+"are these bytes encrypted", never "who can reach this port".
+
+### 9.2 Fix direction
+
+Two independent layers. Either one alone removes the internet exposure; the
+posture is to apply both.
+
+1. **Bind the tailnet/private interface instead of the wildcard.** On any host
+   with a public interface the listener should name the address it serves —
+   the host's own tailnet address (`tailscale ip -4`, the `100.64.0.0/10`
+   range), another private interface, or loopback for a single-host daemon.
+   The fleet's standby boxes already do this; the wildcard stays a deliberate
+   choice to publish the control plane. The bind decides which interfaces
+   listen.
+2. **Narrow the firewall to the tailnet CIDR `100.64.0.0/10`.** The `Anywhere`
+   rules become `from 100.64.0.0/10` rules, so the firewall decides who can
+   reach the ports even if a future change re-widens a bind.
+
+Repo-side (shipped with this section): `config.example.yaml` binds loopback and
+carries the bind-discipline rule with a pointer here, and a test in
+`internal/config` pins the example to loopback *and* to the presence of that
+warning, so the guidance cannot silently regress to bind-any advice. The
+built-in code default is deliberately **not** changed by this row — see §9.4.
+
+### 9.3 Runbook — an existing deployment
+
+Run as root on the host. `$TS` is the host's own tailnet address
+(`tailscale ip -4`). Nothing below touches SSH — keep your management path.
+
+```bash
+TS=$(tailscale ip -4)        # the host's tailnet address, e.g. 100.x.y.z
+```
+
+1. Snapshot the config, then edit the two bind addresses (adjust the
+   indentation if your file differs):
+
+```bash
+sudo cp /etc/bunkerd/config.yaml /etc/bunkerd/config.yaml.bak-$(date +%F)
+sudo sed -i "s|^  grpc_addr:.*|  grpc_addr: \"${TS}:19090\"|" /etc/bunkerd/config.yaml
+sudo sed -i "s|^  rest_addr:.*|  rest_addr: \"${TS}:18080\"|" /etc/bunkerd/config.yaml
+grep -E '^  (grpc_addr|rest_addr):' /etc/bunkerd/config.yaml   # expect $TS:19090 / $TS:18080, not ":PORT"
+```
+
+2. Narrow the firewall — **add the tailnet rules first, then delete the
+   `Anywhere` ones** (no window, and the SSH rule is untouched):
+
+```bash
+sudo ufw status numbered     # note the 18080/tcp, 19090/tcp, 10000:10003/tcp Anywhere rules
+sudo ufw limit from 100.64.0.0/10 to any port 18080 proto tcp
+sudo ufw limit from 100.64.0.0/10 to any port 19090 proto tcp
+sudo ufw limit from 100.64.0.0/10 to any port 10000:10003 proto tcp
+sudo ufw delete allow 18080/tcp
+sudo ufw delete allow 19090/tcp
+sudo ufw delete allow 10000:10003/tcp
+sudo ufw status numbered     # expect: no Anywhere rule left on these ports
+```
+
+`ufw limit` rather than `allow` is deliberate: it is the network-level throttle
+available here (≈6 new connections / 30 s per source, excess dropped), because
+the daemon applies no per-source rate limit of its own (§9.4).
+
+3. Restart, and confirm the **bind** — this is the step that actually removes
+   internet reachability:
+
+```bash
+sudo systemctl restart bunkerd
+sudo systemctl status bunkerd --no-pager | head -5
+sudo ss -tlnp | grep -E ':(18080|19090) '   # expect $TS:18080 / $TS:19090 — NOT 0.0.0.0 or [::]
+```
+
+If the daemon refuses to start with `refusing to bind non-loopback plaintext
+listener`, that is the REQ-T1 gate and it means TLS is off and
+`tls.insecure_dev` is unset. Prefer enabling TLS (BT1, §5); the explicit
+`tls.insecure_dev: true` opt-in is what an existing wildcard plaintext
+deployment already carries.
+
+4. Verify both directions:
+
+```bash
+# tailnet side — from another tailnet node (or the host itself, using $TS):
+curl -sf "http://${TS}:18080/healthz"; echo " tailnet exit=$?"   # expect {"status":"ok"}, exit=0
+
+# public side — from a host OFF the tailnet:
+curl -sS -m 5 http://78.46.173.180:18080/healthz; echo " public exit=$?"
+# expect NO 200: connection refused (nothing is bound on the public address) or a
+# timeout (the firewall DROPs). Either is the pass; the ss line in step 3 is the proof.
+```
+
+### 9.4 What this does not fix
+
+- **The master token stays the authorization boundary** (BT2). Removing
+  internet reachability shrinks the attacker set; it adds no per-operator
+  identity, no rotation, no revocation, and no failed-auth detection. §6.3's
+  credential-stuffing stays cheap and invisible *from inside the tailnet* —
+  and a single leaked token still owns the fleet.
+- **No application-level rate limiting was added.** `ufw limit` is a coarse
+  network throttle on the control ports; it is not auth throttling and it does
+  not exist in the request path.
+- **Transport is unchanged** (BT1). A tailnet bind encrypts nothing: with TLS
+  off, an on-path peer *inside* the tailnet can still lift the token, and every
+  tailnet address is non-loopback, so the REQ-T1 gate treats it like any other
+  reachable address.
+- **The built-in default is still the wildcard.** `DefaultConfig()` returns
+  `:9090`/`:8080`, so a deployment that simply omits these keys, or reuses an
+  older config file, still binds every interface. This row hardens the shipped
+  example and pins the guidance; changing the code default is a separate and
+  louder decision (it would break existing remote connectivity for every
+  deployment that relies on it) and is not claimed here.
+- **Agent-facing ingress is a different surface.** The `10000:10003` rule and
+  the agent port pool / tunnel-Tailscale ingress path (Constraint A,
+  `specs/network-isolation.md`) are not addressed by this section.
+
+---
+
 ## Appendix — provenance
 
 Derived from a six-seat, six-model-family security panel (2026-09-20): Zhipu GLM-5.3,
