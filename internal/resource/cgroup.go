@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -263,13 +264,65 @@ func CgroupMemoryLimitPath(uid int, agentID string) string {
 	return filepath.Join(agentCgroupBase(uid, agentID), "memory.max")
 }
 
+// ErrCgroupKillUnavailable reports that the kernel does not expose cgroup v2
+// (or the directory is not a cgroup v2 filesystem), so the atomic
+// cgroup.kill write cannot be attempted. The destroy path treats this as the
+// "older kernel" fallback case: log a warning and continue with the existing
+// stop/userdel sequence — never an abort.
+var ErrCgroupKillUnavailable = errors.New("cgroup v2 unavailable: cgroup.kill not attempted")
+
+// agentUserKillSlicePath returns the cgroup v2 path of an agent user's slice —
+// the subtree that holds EVERY process the agent owns: the systemd-run
+// rootless dockerd unit, its containers, and every SSH session scope for the
+// agent user. Writing "1" to the slice's cgroup.kill atomically SIGKILLs the
+// entire subtree, so no process forked between the kill and the later userdel
+// can survive to hold a mapped port or a busy home. The path is derived from
+// the same layout the metrics readers use (agentUserSliceFn); it is a
+// convenience for the destroy path, not an independent spelling.
+func AgentUserKillSlicePath(uid int) string {
+	return agentUserSliceFn(uid)
+}
+
+// KillCgroup writes "1" to <cgroupDir>/cgroup.kill, atomically SIGKILLing
+// every process in that cgroup subtree (cgroup v2, kernel 4.14+).
+//
+// Return contract, deliberately three-valued:
+//
+//   - nil: the kill file was written — the subtree is dead or dying.
+//   - ErrCgroupKillUnavailable: the target directory is not a live cgroup v2
+//     directory (no cgroup.controllers — an older kernel without cgroup2, or
+//     an already-torn-down slice). Callers log a warning and fall through to
+//     their existing teardown; never silently, never fatal.
+//   - any other error: the cgroup exists but the kill could not be written
+//     (EACCES/EPERM — not privileged, EIO). Callers log loudly and continue
+//     their teardown; a failed best-effort kill must never abort a destroy.
+//
+// agentDir must name the agent's OWN cgroup subtree (see
+// AgentUserKillSlicePath); nothing here ever writes to the host root cgroup.
+// The write is ordered-before the caller's stop/userdel steps by call order.
+func KillCgroup(agentDir string) error {
+	// Every directory in a cgroup v2 hierarchy carries cgroup.controllers
+	// (the controllers enabled in that subtree); no other filesystem does.
+	// Probing the TARGET directory (not the mount root) proves in one stat
+	// both that the host runs cgroup v2 AND that this agent's slice exists.
+	if _, err := os.Stat(filepath.Join(agentDir, "cgroup.controllers")); err != nil {
+		return fmt.Errorf("%w (no cgroup v2 directory at %s: %v)", ErrCgroupKillUnavailable, agentDir, err)
+	}
+	// The kill file only exists on real cgroup v2 directories; writing "1"
+	// (not any non-zero value) is the documented API. A plain WriteFile —
+	// never O_APPEND: the fd must point at the file, not grow a stale offset.
+	if err := os.WriteFile(filepath.Join(agentDir, "cgroup.kill"), []byte("1"), 0o644); err != nil {
+		return fmt.Errorf("write %s/cgroup.kill: %w", agentDir, err)
+	}
+	return nil
+}
+
 // ReadAgentCgroupLimits reads the cgroup v2 controller files for the agent's
 // systemd user unit and returns the parsed limits. This is a best-effort read;
 // the authoritative limits are the systemd unit properties. If the cgroup files
 // cannot be read, a zero-valued CgroupMetrics is returned without error.
 func ReadAgentCgroupLimits(uid int, agentID string) (*CgroupMetrics, error) {
 	m := &CgroupMetrics{}
-
 	cpuRaw, err := os.ReadFile(CgroupCPUPath(uid, agentID))
 	if err == nil {
 		fields := strings.Fields(strings.TrimSpace(string(cpuRaw)))

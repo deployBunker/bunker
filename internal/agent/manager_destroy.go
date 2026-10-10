@@ -3,6 +3,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/deployBunker/bunker/internal/config"
+	"github.com/deployBunker/bunker/internal/resource"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 )
 
@@ -484,6 +486,66 @@ func disableAgentLinger(execCtx context.Context, username string, logger *slog.L
 	return true
 }
 
+// agentKillSlicePath resolves the agent user slice's cgroup v2 path through
+// the SAME fixture-overridable function the metrics readers use
+// (resource.agentUserSliceFn), so tests can point the kill step at a fixture
+// directory and the production layout has exactly one spelling.
+// Production code never swaps it.
+var agentKillSlicePath = func(uid int) string {
+	return resource.AgentUserKillSlicePath(uid)
+}
+
+// killAgentCgroupSubtree writes "1" to the agent user slice's cgroup.kill
+// (GAP-120), atomically SIGKILLing EVERY process the agent owns — the
+// rootless dockerd unit, its containers and proxy children, and every SSH
+// session scope — BEFORE the stop/userdel sequence runs. This closes the
+// destroy race where an orphaned docker-proxy forked between the stop
+// stages and the process probe keeps a mapped port open and the home busy,
+// leaving userdel to fail (or --force to paper over the error).
+//
+// Best-effort BY DESIGN, every outcome logged, none fatal:
+//
+//   - nil: subtree killed; the following steps see an already-quiet uid.
+//   - resource.ErrCgroupKillUnavailable: no cgroup v2 on this host (older
+//     kernel) — WARN and fall through to the existing path, never silently.
+//   - other error: slice absent (already torn down / unknown uid) or the
+//     write was refused — WARN and continue; the existing stop/userdel
+//     sequence and the DF-34 live-process gate remain the correctness
+//     backstops.
+//
+// The uid is looked up through the shared lookupUser seam; an unresolvable
+// user skips the kill (nothing owns a slice). The path is the agent's OWN
+// user slice (resource.AgentUserKillSlicePath) — never the host root cgroup.
+// Called from Destroy BEFORE stopDockerdDirect/userdel, so the write is
+// ordered before the delete.
+func (m *AgentManager) killAgentCgroupSubtree(execCtx context.Context, username, agentID string, logger *slog.Logger) {
+	if _, err := lookupUser(username); err != nil {
+		// User record gone: no uid owns a slice — the idempotent path.
+		logger.Debug("skipping cgroup.kill: user absent",
+			"agent_id", agentID, "username", username, "error", err)
+		return
+	}
+	uidNum, ok := resolveUsernameUID(username)
+	if !ok {
+		logger.Warn("cgroup.kill skipped: uid of agent user unresolvable (continuing destroy)",
+			"agent_id", agentID, "username", username)
+		return
+	}
+	slice := agentKillSlicePath(int(uidNum))
+	if err := resource.KillCgroup(slice); err != nil {
+		if errors.Is(err, resource.ErrCgroupKillUnavailable) {
+			logger.Warn("cgroup.kill unavailable (no live cgroup v2 directory for the agent uid); falling back to the stop/userdel destroy sequence",
+				"agent_id", agentID, "uid", uidNum, "error", err)
+			return
+		}
+		logger.Warn("cgroup.kill failed; continuing destroy through the existing stop/userdel sequence",
+			"agent_id", agentID, "username", username, "uid", uidNum, "slice", slice, "error", err)
+		return
+	}
+	logger.Info("agent cgroup subtree killed atomically (cgroup.kill)",
+		"agent_id", agentID, "username", username, "uid", uidNum, "slice", slice)
+}
+
 func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool, opts ...DestroyOption) (*v1.DestroyAgentResponse, error) {
 	// DF-BUNKER-81: the resolved options of THIS destroy (today: the
 	// operator's archive opt-out). Zero value = today's behaviour.
@@ -600,6 +662,19 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool, 
 			m.logger.Info("egress chain removed", "agent_id", agentID)
 		}
 		ecancel()
+	}
+
+	// Step 0.75 (GAP-120): kill the agent's ENTIRE cgroup subtree BEFORE any
+	// stop/userdel step. cgroup.kill atomically SIGKILLs every process in the
+	// user-<uid>.slice subtree — the rootless dockerd, its containers and
+	// docker-proxy children, and every exec session scope — so no process can
+	// fork its way past the teardown and hold a mapped port or a busy home
+	// against the userdel below. Best-effort and additive: an unavailable or
+	// refused kill is warned and the historical destroy sequence proceeds
+	// unchanged (the stop stages and the DF-34 gate stay the backstops).
+	if kctx, kcancel, _ := rb.step(); kcancel != nil {
+		m.killAgentCgroupSubtree(kctx, username, agentID, m.logger)
+		kcancel()
 	}
 
 	// BNK-DF-001: stopDockerdDirect is SHARED with the spawn rollback
