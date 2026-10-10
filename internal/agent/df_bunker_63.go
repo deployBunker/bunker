@@ -4,8 +4,10 @@ package agent
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/deployBunker/bunker/internal/registry"
@@ -73,17 +75,136 @@ const forceKillPollInterval = 100 * time.Millisecond
 // the kill sweep, which the post-sweep probe reports honestly).
 const forceKillSelfExclusionSlack = 32768
 
-// buildSpawnUIDCollisionError renders the operator-facing stage error for a
-// collided uid (DF-BUNKER-63). It is the single construction for the spawn
-// precheck's error, so the returned error and the log line cannot drift.
-func buildSpawnUIDCollisionError(username string, uid uint32, procs []userProcess) error {
+// uidCollisionRefusal is the spawn precheck's refusal (DF-BUNKER-63 limb 1)
+// carried as a distinct TYPE. The message is rendered by the shared
+// spawnUIDCollisionMessage below, so the operator-facing text is byte-identical
+// to what the plain error has always produced — the type exists so the spawn's
+// bounded uid-candidate walk (INT-CI-044) can tell a RETRYABLE uid collision
+// from an UNOBSERVABLE scan (which must fail closed on the spot) without
+// parsing error text.
+type uidCollisionRefusal struct {
+	username string
+	uid      uint32
+	procs    []userProcess
+}
+
+func (e *uidCollisionRefusal) Error() string {
+	return spawnUIDCollisionMessage(e.username, e.uid, e.procs)
+}
+
+// spawnUIDCollisionMessage renders the operator-facing refusal text for a
+// collided uid. It is the single construction for that text: the refusal error,
+// the precheck's log line and the retry classifier all read from here.
+func spawnUIDCollisionMessage(username string, uid uint32, procs []userProcess) string {
 	summary := (&orphanUIDCheck{UID: uid, UIDKnown: true, UserExists: true, Processes: procs}).Describe()
-	return fmt.Errorf(
+	return fmt.Sprintf(
 		"uid collision: user %s was assigned uid %d, which already owns live processes on this host. %s. "+
 			"Refusing to spawn an agent into a uid that carries same-uid signal privilege over foreign processes "+
 			"(DF-BUNKER-63); the just-created user was rolled back. Retrying the spawn will fail again until the "+
 			"foreign processes exit or the uid range is recycled past them",
 		username, uid, summary)
+}
+
+// buildSpawnUIDCollisionError renders the operator-facing stage error for a
+// collided uid (DF-BUNKER-63). It is the single construction for the spawn
+// precheck's error, so the returned error, its message and the retry classifier
+// cannot drift.
+func buildSpawnUIDCollisionError(username string, uid uint32, procs []userProcess) error {
+	return &uidCollisionRefusal{username: username, uid: uid, procs: procs}
+}
+
+// ── INT-CI-044: bounded uid-candidate retry for the spawn precheck ──────────
+//
+// CI run 36198102167: spawn conctest-0-87636 was assigned uid 1029 — the
+// LOWEST free uid in the passwd database — which is exactly the uid a LEAKED
+// CI-residue user was still holding (bunker-b430959d: passwd entry long gone,
+// its systemd --user manager and python process still running). The precheck
+// refused correctly; the spawn then FAILED at the named uid-collision stage,
+// and TestConcurrency_SpawnFiveAgents reads that as a spawn failure. The same
+// code was 5/5 green in adjacent runs, because the trigger is host state the
+// runner mutates between runs. Refusing to hand out that uid is right; failing
+// the spawn over residue it can step over is not.
+//
+// The spawn therefore retries CANDIDATE SELECTION, bounded. The refusal itself
+// is untouched:
+//
+//   - a uid that carries foreign live processes is SKIPPED, never handed out;
+//   - an UNOBSERVABLE scan (the process scanner itself failed) still fails
+//     closed IMMEDIATELY — it is not a collision and is never retried;
+//   - a PRE-EXISTING agent user (the idempotent re-registration path) is never
+//     touched: only a user THIS spawn created may be released for a retry;
+//   - an exhausted walk still fails loudly with the DF-BUNKER-63 refusal naming
+//     the colliding pids, at the same stage, wrapped with the candidates tried.
+//
+// Retrying is safe because every new candidate goes through the same scan
+// before the spawn proceeds: the walk only ever advances PAST a refused uid.
+
+// uidCollisionCandidateRetries bounds how many ADDITIONAL uid candidates the
+// spawn tries after the first one is refused (so at most
+// 1+uidCollisionCandidateRetries useradd attempts per spawn). A var, not a
+// const, purely as a test seam (the containerCapAttempts convention);
+// production never writes it.
+var uidCollisionCandidateRetries = 5
+
+// spawnFreshUserReleaseTimeout bounds the single `userdel -rf` that releases a
+// just-created candidate user so the walk can bind another uid. A var, not a
+// const, purely as a test seam; production never writes it.
+var spawnFreshUserReleaseTimeout = 30 * time.Second
+
+// nextUIDCandidate returns the uid the walk pins after uid was refused: the
+// next uid in the space, so a refused candidate can never be revisited.
+// ok=false at the top of the uint32 range — there is no next candidate.
+func nextUIDCandidate(uid uint32) (uint32, bool) {
+	if uid == math.MaxUint32 {
+		return 0, false
+	}
+	return uid + 1, true
+}
+
+// isUseraddUIDTaken reports whether a failed `useradd -u <uid>` refused the uid
+// because an ACCOUNT already holds it ("UID 1030 is not unique"): a candidate
+// the walk must skip, never a spawn failure. Matched by message because useradd
+// reports it with no distinguishing exit status — the same convention the
+// idempotent "already exists" reuse at the spawn site already relies on.
+func isUseraddUIDTaken(out []byte) bool {
+	return strings.Contains(string(out), "is not unique")
+}
+
+// uidCandidatesExhaustedError wraps the LAST refusal (a collision refusal, or a
+// pinned candidate the host already uses) with the candidate walk that ran out
+// (INT-CI-044). A DF-BUNKER-63 refusal rides inside it unchanged — colliding
+// pids, uid, rationale — and the operator additionally learns which uids were
+// tried before the spawn gave up.
+func uidCandidatesExhaustedError(last error, candidates []uint32) error {
+	return fmt.Errorf("uid-candidate walk exhausted after %d refused candidate(s) %v: %w",
+		len(candidates), candidates, last)
+}
+
+// removeFreshAgentUser releases the user THIS spawn just created so the walk can
+// create it again bound to another uid (INT-CI-044).
+//
+// It runs `userdel -rf` ON PURPOSE: the refused uid is owned by FOREIGN live
+// processes, so userdel's busy check (uid-based — shadow's lib/user_busy.c scans
+// /proc for the uid) matches them, and a plain `userdel -r` exits E_USER_BUSY
+// with "user <name> is currently used by process <pid>" WITHOUT deleting
+// anything. `-f` lets the deletion proceed, and it is safe here because the only
+// account removed is the one this spawn created moments ago (empty home, no
+// processes of its own) — userdel never signals a process, so the foreign
+// processes the refusal protects are left exactly as they were. Note that
+// `usermod -u` is NOT an alternative: shadow's usermod exits E_USER_BUSY on a
+// busy user and has no force escape.
+//
+// The context is detached and bounded: releasing the candidate is part of the
+// spawn, not of the caller's request, and it must not be able to run away
+// (spawnRollbackRunner is the seam every spawn-side compensating command uses).
+func removeFreshAgentUser(ctx context.Context, username string) error {
+	releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), spawnFreshUserReleaseTimeout)
+	defer cancel()
+	out, err := spawnRollbackRunner(releaseCtx, userManagementCommand("userdel"), "-rf", username)
+	if err != nil {
+		return fmt.Errorf("userdel -rf %s: %w (output: %s)", username, err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 // checkSpawnUIDCollision is the create-then-verify-then-rollback precheck
