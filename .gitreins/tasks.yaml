@@ -4425,6 +4425,16 @@ tasks:
   created_at: '2026-10-10T15:32:45.609294+00:00'
   completed_at: '2026-10-10T16:22:26.946819+00:00'
 - id: GAP-083
-  title: 'Fleet inventory coverage hole: bunker-las-01 active but absent from client registry'
+  title: 'Fleet inventory coverage hole: bunker-las-01 active but absent from client
+    registry'
   status: in_progress
   created_at: '2026-10-10T16:48:29.696738+00:00'
+- id: SEC-BUNKER-001
+  title: Bind bunker control plane to the tailnet, not the public internet
+  criteria:
+  - 'bunkerd on bunker-mvp serves 18080/19090 ONLY on the tailnet address (public
+    connect refused); ufw narrowed to 100.64.0.0/10; healthz 200 via tailnet; repo-side:
+    bind-discipline docs+example+anchor test landed 79f1f1e9; go build/vet/test green'
+  status: complete
+  created_at: '2026-10-10T18:23:20.051288+00:00'
+  completed_at: '2026-10-10T18:29:06.559438+00:00'
