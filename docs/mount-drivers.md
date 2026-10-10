@@ -8,7 +8,10 @@ See also: [`both-ways.md`](both-ways.md) (when to use the mount vs the verb path
 [`performance.md`](performance.md) (what caps throughput on a long path: the socket-buffer
 ceiling, and why HTTP/2 walks straight into it),
 [`prd/ADR-toolsd-integration.md`](prd/ADR-toolsd-integration.md) (the verb path),
-`SECURITY.md`.
+`SECURITY.md`,
+[`mount-watchlist.md`](mount-watchlist.md) (mount technologies we are
+*watching*, not building: what each is, why it is or is not relevant here, and
+the named trigger that would make us pick it up).
 
 ---
 
