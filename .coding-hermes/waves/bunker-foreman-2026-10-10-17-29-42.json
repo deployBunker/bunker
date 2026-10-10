@@ -1,0 +1,14 @@
+{
+  "tick_id": "bunker-foreman-2026-10-10-17-29-42",
+  "base_sha": "62bfa3dd",
+  "tasks": [
+    {
+      "id": "SEC-BUNKER-001",
+      "worktree": "/home/kara/worktrees/bunker-SEC-BUNKER-001",
+      "branch": "wt/SEC-BUNKER-001",
+      "brief": "/tmp/brief-sec-bunker-001.md",
+      "worker_model": "deepseek-v4-flash",
+      "worker_provider": "deepseek-foreman"
+    }
+  ]
+}
