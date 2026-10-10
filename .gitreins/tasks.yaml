@@ -4427,6 +4427,7 @@ tasks:
 - id: GAP-083
   title: 'Fleet inventory coverage hole: bunker-las-01 active but absent from client
     registry'
+  criteria: []
   status: in_progress
   created_at: '2026-10-10T16:48:29.696738+00:00'
 - id: SEC-BUNKER-001
@@ -4438,3 +4439,35 @@ tasks:
   status: complete
   created_at: '2026-10-10T18:23:20.051288+00:00'
   completed_at: '2026-10-10T18:29:06.559438+00:00'
+- id: QA-BUNKER-B12
+  title: Pin graph-state corruption/truncation behavior (QA-BUNKER-B12 + QA-BUNKER-9
+    recovery half)
+  criteria:
+  - 'Conjuncts: (1) internal/hilo tests pin defined behavior when .vfs/graph/edges.jsonl
+    is truncated mid-line: the partial line is skipped with a warning and the remaining
+    edges load with no crash and no error; (2) tests pin missing-file and empty-file
+    behavior: empty graph, warning, no error; (3) tests pin an unreadable edges.jsonl
+    surfaces as a NewGraph error and the internal/server graph-init path keeps serving
+    without the graph (warn, nil graph) rather than crashing; (4) a Reload after state
+    corruption re-reads fresh state (recovery proven); (5) the behavior is documented
+    in internal/hilo (or a doc named in the commit) including that .vfs/graph/graph.db
+    is the hilo CLI store not read by bunkerd; (6) go test ./... passes and gofmt
+    is clean on touched files.'
+  status: complete
+  created_at: '2026-10-10T20:17:08.294386+00:00'
+  completed_at: '2026-10-10T20:49:16.078129+00:00'
+- id: MOUNT-005
+  title: 'Mount watch-list doc: FUSE passthrough, io_uring zero-copy, SMB over QUIC,
+    JuiceFS/SeaweedFS'
+  criteria:
+  - "Conjuncts: (1) docs/mount-watchlist.md records all four items \u2014 FUSE passthrough\
+    \ (CONFIG_FUSE_PASSTHROUGH, local-stack only, not sshfs), the FUSE io_uring buffer/zero-copy\
+    \ patch series plus vfs_fadvise forwarding, SMB over QUIC (kernel cifs/ksmbd,\
+    \ UDP/443), and JuiceFS/SeaweedFS POSIX shared workspaces \u2014 each with a source\
+    \ and a named trigger condition; (2) the doc states plainly that none of these\
+    \ are to be built now and why each is or is not relevant to bunker mounts; (3)\
+    \ docs/mount-drivers.md carries a pointer to the watch-list; (4) the commit changes\
+    \ only docs/ files (no .go changes)."
+  status: complete
+  created_at: '2026-10-10T20:17:09.348411+00:00'
+  completed_at: '2026-10-10T20:49:21.153386+00:00'

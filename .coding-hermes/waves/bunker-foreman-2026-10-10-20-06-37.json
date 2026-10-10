@@ -1,0 +1,39 @@
+{
+  "tick_id": "bunker-foreman-2026-10-10-20-06-37",
+  "tick_number": 577,
+  "base_sha": "f7e22a15",
+  "wave_budget": 12,
+  "workers_dispatched": 2,
+  "composition_note": "2 of 12 budget: the board's heavy rows (GAP-065/066/072/074/076/15x container-mode, GAP-10x plus-ultra, SURF/NET/BFS families) are multi-hour feature or live-E2E rows that cannot land in one tick; only QA-BUNKER-B12 (internal/hilo tests+doc) and MOUNT-005 (docs) were mutually independent, in-repo and rail-tight. QA-BUNKER-8 is foreman-direct re-verify/close (zero code), so it consumes no worker slot.",
+  "tasks": [
+    {
+      "id": "QA-BUNKER-B12",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-B12",
+      "branch": "wt/QA-BUNKER-B12",
+      "brief": "/tmp/bunker-t577-brief-qa-bunker-b12.md",
+      "worker_model": "glm-5.3-flash",
+      "worker_provider": "zai-glm-default",
+      "folds": [
+        "QA-BUNKER-9 (same graph-state corruption finding family; recovery half covered by the same tests)"
+      ]
+    },
+    {
+      "id": "MOUNT-005",
+      "worktree": "/home/kara/worktrees/bunker-MOUNT-005",
+      "branch": "wt/MOUNT-005",
+      "brief": "/tmp/bunker-t577-brief-mount-005.md",
+      "worker_model": "glm-5.3-flash",
+      "worker_provider": "zai-glm-default",
+      "folds": []
+    }
+  ],
+  "status": "finished",
+  "finished_at": "2026-10-10 16:03:38",
+  "outcome": {
+    "QA-BUNKER-B12": "merged 8d5b560a (b1226fc3), judge PASS 7648a7e3, folds QA-BUNKER-9",
+    "MOUNT-005": "merged d12712bd (584ca730), judge PASS 9c2daa2b",
+    "QA-BUNKER-8": "foreman-direct verified-and-closed (capped suite green x2)",
+    "gates": "merged-tree full suite green (exit 0); capped 3GiB suite green (exit 0); guard secrets clean (Go stages diff-skipped, see event)",
+    "push": "f7e22a15..d12712bd pushed, 0 unpushed"
+  }
+}

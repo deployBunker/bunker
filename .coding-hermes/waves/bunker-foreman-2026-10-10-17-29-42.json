@@ -10,5 +10,8 @@
       "worker_model": "deepseek-v4-flash",
       "worker_provider": "deepseek-foreman"
     }
-  ]
+  ],
+  "status": "finished",
+  "finished_at": "2026-10-10 15:15:47",
+  "recovery_note": "Recovered by tick bunker-foreman-2026-10-10-20-06-37: 0 workers dispatched in the crashed tick; single manifest task SEC-BUNKER-001 landed on main (79f1f1e9 + board closes 527e92e9/c0589c3f/f7e22a15); worktree/branch already removed; board row SEC-BUNKER-001 status=complete commit_hash=79f1f1e9. Nothing left to recover."
 }
