@@ -289,60 +289,130 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	}
 
 	// ── Step 2: Create Linux user ──────────────────────────────────
+	// INT-CI-044: user creation and the DF-BUNKER-63 precheck run as ONE
+	// BOUNDED uid-candidate walk. The first attempt is unchanged (useradd picks
+	// the next free uid); when the precheck refuses that uid, the just-created
+	// user is released and the walk pins the NEXT candidate explicitly, so a uid
+	// carrying foreign live processes is SKIPPED instead of failing the spawn.
+	// Nothing about the refusal is weakened: an unobservable scan still fails
+	// closed at once, a pre-existing agent user is never touched, and an
+	// exhausted walk still fails loudly with the DF-BUNKER-63 collision error.
 	username := "bunker-" + agentID
-	m.logger.Info("creating user", "username", username)
-	cmd := exec.CommandContext(ctx, userManagementCommand("useradd"), "-m", "-s", "/bin/bash", username)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		if strings.Contains(string(out), "already exists") {
+	var (
+		u        *user.User
+		uid, gid int
+	)
+	var walkedCandidates []uint32 // candidate uids this walk used, oldest first
+	var pinUID uint32             // 0 = let useradd pick the next free uid
+	var cmd *exec.Cmd
+	for attempt := 0; ; attempt++ {
+		m.logger.Info("creating user", "username", username, "uid_candidate", pinUID, "attempt", attempt+1)
+		useraddArgs := []string{"-m", "-s", "/bin/bash"}
+		if pinUID != 0 {
+			useraddArgs = append(useraddArgs, "-u", strconv.FormatUint(uint64(pinUID), 10))
+		}
+		useraddArgs = append(useraddArgs, username)
+		cmd = exec.CommandContext(ctx, userManagementCommand("useradd"), useraddArgs...)
+		out, useraddErr := cmd.CombinedOutput()
+		switch {
+		case useraddErr == nil:
+			createdUser = true
+		case strings.Contains(string(out), "already exists"):
 			// Idempotent re-registration: the agent user (home, rootless
 			// dockerd data, running containers) survived a bunkerd restart /
 			// registry wipe. Reuse it instead of failing — createdUser stays
 			// false so failure cleanup never userdels an existing user.
 			// The keypair + authorized_keys below are refreshed, so the
 			// spawn response carries a working key for the same agent id.
+			createdUser = false
 			m.logger.Info("user already exists; reusing for re-registration", "username", username)
-		} else {
-			return nil, fail(StageUserCreate, fmt.Errorf("useradd %s failed: %w (output: %s)", username, err, string(out)))
+		case pinUID != 0 && isUseraddUIDTaken(out):
+			// INT-CI-044: the pinned candidate is already an ACCOUNT on this
+			// host (a uid hole above the lowest free one — the shape the walk
+			// meets once a previous spawn has taken a uid). The account is
+			// untouched and the walk moves to the next candidate.
+			uidTaken := fmt.Errorf("useradd -u %d %s failed: %w (output: %s)",
+				pinUID, username, useraddErr, strings.TrimSpace(string(out)))
+			walkedCandidates = append(walkedCandidates, pinUID)
+			next, ok := nextUIDCandidate(pinUID)
+			if !ok || attempt >= uidCollisionCandidateRetries {
+				return nil, fail(StageUserCreate, uidCandidatesExhaustedError(uidTaken, walkedCandidates))
+			}
+			pinUID = next
+			continue
+		default:
+			return nil, fail(StageUserCreate, fmt.Errorf("useradd %s failed: %w (output: %s)", username, useraddErr, string(out)))
 		}
-	} else {
-		createdUser = true
-	}
 
-	// ── Step 2.5: Provision the GAP-075 isolation boundary ─────────
-	// The agent's membership in the isolation group must be in place BEFORE
-	// its first login: supplementary groups come from the session and the sshd
-	// pam_exec precondition verifies that membership, so an agent without it
-	// has every session DENIED (it never falls back to the host's shared
-	// /tmp). That step is therefore fatal — the spawn is rolled back rather
-	// than leaving an agent that cannot open a session — and the private-/tmp
-	// instance directory is created with explicit ownership so the boundary
-	// exists before any session opens.
-	u, err := lookupAgentUser(username)
-	if err != nil {
-		return nil, fail(StageIsolationProvision, fmt.Errorf("look up agent user %s for isolation provisioning: %w", username, err))
-	}
-	uid, atoiErr := strconv.Atoi(u.Uid)
-	if atoiErr != nil {
-		// DF-BUNKER-63: the collision precheck cannot verify a uid it cannot
-		// parse, and scanning uid 0 would be nonsense — fail closed at the
-		// collision stage rather than handing out an unverifiable identity.
-		return nil, fail(StageUIDCollision, fmt.Errorf("uid of agent user %s is not numeric (%q): the uid-collision precheck cannot verify it (fail closed)", username, u.Uid))
-	}
-	gid, _ := strconv.Atoi(u.Gid)
+		// ── Step 2.5: Provision the GAP-075 isolation boundary ─────────
+		// The agent's membership in the isolation group must be in place BEFORE
+		// its first login: supplementary groups come from the session and the
+		// sshd pam_exec precondition verifies that membership, so an agent
+		// without it has every session DENIED (it never falls back to the
+		// host's shared /tmp). That step is therefore fatal — the spawn is
+		// rolled back rather than leaving an agent that cannot open a session —
+		// and the private-/tmp instance directory is created with explicit
+		// ownership so the boundary exists before any session opens.
+		var (
+			lookupErr error
+			atoiErr   error
+		)
+		u, lookupErr = lookupAgentUser(username)
+		if lookupErr != nil {
+			return nil, fail(StageIsolationProvision, fmt.Errorf("look up agent user %s for isolation provisioning: %w", username, lookupErr))
+		}
+		uid, atoiErr = strconv.Atoi(u.Uid)
+		if atoiErr != nil {
+			// DF-BUNKER-63: the collision precheck cannot verify a uid it cannot
+			// parse, and scanning uid 0 would be nonsense — fail closed at the
+			// collision stage rather than handing out an unverifiable identity.
+			return nil, fail(StageUIDCollision, fmt.Errorf("uid of agent user %s is not numeric (%q): the uid-collision precheck cannot verify it (fail closed)", username, u.Uid))
+		}
+		gid, _ = strconv.Atoi(u.Gid)
 
-	// ── Step 2.6 (DF-BUNKER-63): verify the new uid owns NO live process ──
-	// The agent itself has no processes yet, so ANY hit is foreign — the
-	// fad4b89a shape: the uid an unrelated production container still runs
-	// as. Handing the uid out anyway would grant the agent same-uid signal
-	// privilege over that process, breaking the per-user isolation promise.
-	// Fail closed through the standard rollback: the just-created user is
-	// removed, the spawn fails with a named stage error listing the
-	// colliding pids, and the JSONL breadcrumb records it. The probe is
-	// seam-isolated (spawnProcessScanner) so tests drive both branches
-	// without root.
-	m.logger.Info("spawn entering stage", "agent_id", agentID, "stage", StageUIDCollision)
-	if err := m.checkSpawnUIDCollision(ctx, username, uint32(uid)); err != nil {
-		return nil, fail(StageUIDCollision, err)
+		// ── Step 2.6 (DF-BUNKER-63): verify the new uid owns NO live process ──
+		// The agent itself has no processes yet, so ANY hit is foreign — the
+		// fad4b89a shape: the uid an unrelated production container still runs
+		// as. Handing the uid out anyway would grant the agent same-uid signal
+		// privilege over that process, breaking the per-user isolation promise.
+		// Fail closed through the standard rollback: the just-created user is
+		// removed, the spawn fails with a named stage error listing the
+		// colliding pids, and the JSONL breadcrumb records it. The probe is
+		// seam-isolated (spawnProcessScanner) so tests drive both branches
+		// without root.
+		m.logger.Info("spawn entering stage", "agent_id", agentID, "stage", StageUIDCollision)
+		collisionErr := m.checkSpawnUIDCollision(ctx, username, uint32(uid))
+		if collisionErr == nil {
+			break // a clean candidate: the precheck passed and the spawn proceeds
+		}
+		var refusal *uidCollisionRefusal
+		if !errors.As(collisionErr, &refusal) || !createdUser {
+			// Two refusals are NEVER retried: an UNOBSERVABLE scan (the
+			// precheck could not look — fail closed on the spot) and a
+			// PRE-EXISTING agent user (the idempotent re-registration path:
+			// its uid is not ours to change and the account must never be
+			// removed). Both keep the exact DF-BUNKER-63 behavior.
+			return nil, fail(StageUIDCollision, collisionErr)
+		}
+		// INT-CI-044: the candidate that was just refused is recorded, and the
+		// walk advances — the release below is what makes the retry possible,
+		// so a failed release still refuses loudly, unchanged.
+		walkedCandidates = append(walkedCandidates, uint32(uid))
+		next, ok := nextUIDCandidate(uint32(uid))
+		if !ok || attempt >= uidCollisionCandidateRetries {
+			return nil, fail(StageUIDCollision, uidCandidatesExhaustedError(collisionErr, walkedCandidates))
+		}
+		if releaseErr := removeFreshAgentUser(ctx, username); releaseErr != nil {
+			return nil, fail(StageUIDCollision, fmt.Errorf("%w (uid-candidate retry impossible: %v)", collisionErr, releaseErr))
+		}
+		createdUser = false
+		m.logger.Info("uid candidate refused by the collision precheck; retrying with the next candidate uid",
+			"agent_id", agentID,
+			"refused_uid", uid,
+			"next_uid", next,
+			"attempt", attempt+1,
+		)
+		pinUID = next
 	}
 
 	if err := m.provisionIsolation(ctx, agentID, username, uid, gid); err != nil {
