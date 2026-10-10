@@ -41,8 +41,10 @@ set -uo pipefail
 # 27+ re-files — QA-DAGGER-GUARD 2026-09-10), then re-registered 2026-09-10
 # and live-probe-verified 2026-09-22 (spawn/exec/destroy green, tick 547
 # QA-HERMES-CANOPY-19). bunker-las-02 remains the verified default.
-# Override with BUNKER_QA_SERVER.
-SERVER="${BUNKER_QA_SERVER:-bunker-mvp}"
+# Override with BUNKER_QA_SERVER; BUNKER_QA_HOST is accepted as an alias
+# (QA-BUNKER-B20, 2026-10-10) so callers that name the variable after the
+# CONCEPT (host) rather than the bunker CLI's config key get the same lever.
+SERVER="${BUNKER_QA_SERVER:-${BUNKER_QA_HOST:-bunker-mvp}}"
 # QA-keyfix 2026-09-30: ~/.ssh/id_ed25519_bunker was clobbered by an ELF binary
 # (2026-09-28), so any ssh carrying it as the ONLY IdentitiesOnly identity fails
 # auth and every preflight graded its server "unreachable". BUNKER_QA_HOST_KEY
@@ -123,6 +125,57 @@ qa_repo_weight_warn() { # <repo-dir> <evidence-file> — WARN when heavy AND 2-C
 }
 qa_preflight_repo_weight() { # <repo-dir> — evidence not yet open here: stderr only
   qa_repo_weight_warn "$1" ""
+}
+
+# ─── qa_run_summary (QA-BUNKER-B20, 2026-10-10) — the HONEST verdict line ───
+# The old run printed ONLY wrapper-step counts, so "all steps passed" could
+# coexist with "audited nothing" (the dropped-default-server class this task
+# files): every fleet-side parser (dagger-role-report.py greps
+# `Total time: .* | Passed: (\d+) | Failed: (\d+)` from pipeline logs) then
+# reported SUCCESS over a run that audited zero cells. Pure (text in → text +
+# rc out) so the regression test drives the REAL accounting without a host:
+#   * audited  = AUDIT cells with an actual verdict: PASS/OK/FAIL + INFO
+#                (ENV-BLOCKED/"agent lacks X" grades audit the ENVIRONMENT —
+#                discarding them would re-open the audited-nothing hole);
+#   * findings = FAIL verdicts on AUDIT cells (wrapper FAILs — spawn/sync/
+#                collect refusals — are refusal bookkeeping, not repo
+#                findings; they stay visible in the evidence file and, when
+#                they leave zero audit cells, drive the NOTHING-AUDITED rc);
+#   * wrapper cells (run_battery, launch, launch-note, collect,
+#     destroy-verify) are excluded BY NAME — a wrapper-only evidence file is
+#     exactly the "audited nothing" shape, whatever its statuses say;
+#   * not-verified = UNVERIFIED/SKIP/unknown statuses (never findings, never
+#                audited);
+#   * ZERO audited rows ⇒ nonzero rc + the line still carries
+#     "NOTHING AUDITED" — a caller that ignores the rc can no longer read a
+#     success from the text. Additive format; "Passed:"/"Failed:" fields keep
+#     their positions and meanings (existing consumers survive).
+# Per-row cell+status extraction is line-scoped (cell() writes one JSON object
+# per line; the collect merge re-serializes json.dumps → one line per row), so
+# a status string quoted inside a detail of ANOTHER row can never cross rows.
+qa_run_summary() { # <evidence-jsonl> — prints summary; rc 0 = honest PASS verdict
+  local ev="$1" audited=0 findings=0 nv=0 line pair cell status
+  while IFS= read -r line; do
+    pair=$(printf '%s\n' "$line" | sed -nE 's/.*"cell":"([a-z_-]+)".*"status":"([A-Za-z-]+)".*/\1 \2/p' | head -1)
+    [ -n "$pair" ] || continue
+    cell="${pair%% *}"; status="${pair#* }"
+    case "$cell" in
+      run_battery|launch|launch-note|collect|destroy-verify) continue ;;
+    esac
+    case "$status" in
+      FAIL) findings=$((findings+1)); audited=$((audited+1)) ;;
+      PASS|OK|INFO) audited=$((audited+1)) ;;
+      *) nv=$((nv+1)) ;;   # UNVERIFIED / SKIP / anything unknown: no verdict
+    esac
+  done < "$ev" 2>/dev/null
+  printf 'Total time: ? | Passed: %d | Failed: %d | Audited: %d | Findings: %d | NotVerified: %d' \
+    "$((audited - findings))" "$findings" "$audited" "$findings" "$nv"
+  if [ "$audited" -eq 0 ]; then
+    printf ' — NOTHING AUDITED (0 cells with a verdict; wrapper steps do not count)\n'
+    return 1
+  fi
+  printf '\n'
+  [ "$findings" -eq 0 ]
 }
 
 log()  { echo "→ $*"; }
@@ -330,17 +383,54 @@ write_fail_if_empty() {
 #   ssh     : the host must answer over tailscale before any spawn
 #   capacity: a FULL pool fails spawn deterministically (QA-OFF-BY-ONE-9 09-15);
 #             BUNKER_QA_SKIP_PREFLIGHT=1 bypasses THIS probe only.
-preflights() {
-  if ! grep -qE "^ +$SERVER:" "$HOME/.bunker/config.yaml" 2>/dev/null; then
-    printf '{"cell":"run_battery","status":"FAIL","detail":"server %s not present in ~/.bunker/config.yaml — stale BUNKER_QA_SERVER default; run bunker config / pick a live server (no spawn attempted)","ts":"%s"}\n' \
-      "$SERVER" "$(date -u +%FT%TZ)" >> "$EVIDENCE"
-    echo "ERROR: server '$SERVER' not in ~/.bunker/config.yaml — refusing to spawn (deterministic config error)" >&2
-    exit 2
+# QA-BUNKER-B20 (2026-10-10): the target-host gates (config + ssh) moved into
+# qa_target_preflight() — a PURE function that PRINTS its named cause and
+# returns nonzero on failure — so run()/launch() call ONE gate before any step
+# and the regression test can exercise the real refusal logic without a live
+# host. Cause strings (task-named, stable for parsers):
+#   "target host <name> not configured in ~/.bunker/config.yaml"
+#   "SSH probe failed: target host <name> unreachable (exit=N)"
+qa_target_preflight() { # [server] — 0 = reachable; nonzero = refusal (cause on stdout)
+  local srv="${1:-$SERVER}"
+  # A missing/blank server name is the same refusal as an unknown one: there is
+  # no target to probe, so continuing would be the QA-BUNKER-B20 silent-drift
+  # class with no name to print.
+  if [ -z "$srv" ]; then
+    echo "target host <empty> not configured in ~/.bunker/config.yaml (set BUNKER_QA_SERVER)"
+    return 1
   fi
-  if ! timeout 30 ssh -i "$BUNKER_QA_HOST_KEY" -o IdentitiesOnly=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=no -o BatchMode=yes "$SERVER" 'true' 2>/dev/null; then
-    printf '{"cell":"run_battery","status":"FAIL","detail":"server %s unreachable via ssh (tailscale) preflight — no spawn attempted","ts":"%s"}\n' \
-      "$SERVER" "$(date -u +%FT%TZ)" >> "$EVIDENCE"
-    echo "ERROR: server '$SERVER' unreachable — refusing to spawn (deterministic reachability error)" >&2
+  # The host must exist in the bunker CLI's config (or be passed explicitly) —
+  # grep is anchored like the original preflights() arm: an indented `name:`
+  # key, so comment/substring matches cannot sneak a dead name past the gate.
+  if ! grep -qE "^ +$srv:" "$HOME/.bunker/config.yaml" 2>/dev/null; then
+    echo "target host $srv not configured in ~/.bunker/config.yaml"
+    return 1
+  fi
+  # SSH probe: same invocation the harness has always used (IdentitiesOnly +
+  # BatchMode + 20s ConnectTimeout, hard-bounded at 30s), so a configured-but-
+  # dead box cannot eat the battery's TTL on retry ladders. rc is captured via
+  # `|| prc=$?` — inside `if ! cmd; then`, `$?` would report the INVERTED
+  # status (always 0) and the named cause would lie about the failure mode.
+  local prc=0
+  timeout 30 ssh -i "$BUNKER_QA_HOST_KEY" -o IdentitiesOnly=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=no -o BatchMode=yes "$srv" 'true' 2>/dev/null || prc=$?
+  if [ "$prc" -ne 0 ]; then
+    echo "SSH probe failed: target host $srv unreachable (exit=$prc)"
+    return 1
+  fi
+  return 0
+}
+
+preflights() {
+  # QA-BUNKER-B20: prove the target host exists AND answers BEFORE any step
+  # runs — a dropped/stale default must be a NAMED refusal, never a silent
+  # continuation onto a dead box (the harness audited nothing while printing
+  # pass counts for wrapper steps). One FAIL row + exit 2, same contract as
+  # the other deterministic gates.
+  local tgt_err
+  if ! tgt_err=$(qa_target_preflight); then
+    printf '{"cell":"run_battery","status":"FAIL","detail":"%s — no spawn attempted","ts":"%s"}\n' \
+      "$tgt_err" "$(date -u +%FT%TZ)" >> "$EVIDENCE"
+    echo "ERROR: $tgt_err — refusing to run (deterministic config/reachability error)" >&2
     exit 2
   fi
   # Capacity preflight: a FULL pool is a deterministic spawn failure, so the
@@ -2548,6 +2638,17 @@ run() {
   # pull evidence back
   agent_ssh "cat ~/qa-evidence.jsonl 2>/dev/null" >> "$EVIDENCE" || true
 
+  # QA-BUNKER-B20: the run ends with an HONEST verdict line — wrapper steps
+  # (spawn/sync/launch/collect) never counted as audit signal, so the old
+  # "4 wrapper steps ok" shape could read as SUCCESS over a run that audited
+  # nothing. Zero verdict-bearing cells ⇒ the summary carries "NOTHING
+  # AUDITED" and run() exits nonzero (rc=3 = verdicts verdict, not a refusal
+  # class like preflight's rc=2).
+  local summary
+  summary=$(qa_run_summary "$EVIDENCE")
+  qa_run_summary_rc=$?
+  echo "$summary"
+  [ "$qa_run_summary_rc" -eq 0 ] || exit 3
   log "QA pass complete — evidence: $EVIDENCE"
   echo "EVIDENCE=$EVIDENCE"
 }
@@ -2682,9 +2783,18 @@ launch() {
   # QA-BUNKER-60 (2026-10-07): the evidence names its slice — a 3h battery is
   # unreadable after the fact without knowing whether it ran on the 2-CPU
   # default or a bumped quota. agent= stays first (evidence contract).
+  # QA-BUNKER-B20: summary computed AFTER the launch row is appended (the row
+  # is wrapper bookkeeping and intentionally not audit signal).
   printf '{"project":"%s","cell":"launch","status":"OK","detail":"agent=%s server=%s ttl=%s cpu=%s memory=%s script_bytes=%s — battery started detached (qa-run.sh); phase B: bunker-qa.sh collect --evidence %s","ts":"%s"}\n' \
     "$PROJ" "$agent" "$SERVER" "$TTL" "${BUNKER_QA_CPUS:-$(qa_slice_cpus "$repo")}" "${BUNKER_QA_MEM:-default}" "${script_bytes:-unknown}" "$EVIDENCE" "$launched" >> "$EVIDENCE"
+  local summary
+  summary=$(qa_run_summary "$EVIDENCE")
   log "QA launch complete — no cells waited on locally (phase B: collect --evidence $EVIDENCE)"
+  # QA-BUNKER-B20: additive honest verdict line at the END of the log. Zero
+  # verdict-bearing cells is the EXPECTED shape for a detached launch (the
+  # battery runs on the agent; collect merges them later), so launch never
+  # fails the run for it — the line names the count and the phase split.
+  echo "$summary"
   echo "LAUNCHED agent=$agent evidence=$EVIDENCE"
 }
 
