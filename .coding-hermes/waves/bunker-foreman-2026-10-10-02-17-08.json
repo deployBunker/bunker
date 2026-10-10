@@ -2,7 +2,7 @@
   "tick_id": "bunker-foreman-2026-10-10-02-17-08",
   "created_at": "2026-10-10T02:50:00-05:00",
   "wave_composed": false,
-  "reason": "serial fallback: orphaned in-flight worker work for GAP-120 (board event 8610a6be — worker stalled, zero work committed) left a verified-in-progress implementation in the shared main tree; completing and landing it takes precedence over spawning a wave on top of uncommitted sibling changes. Only this task was actionable this tick; remaining pending rows are P2/P3 backlog or blocked on host access.",
+  "reason": "serial fallback: orphaned in-flight worker work for GAP-120 (board event 8610a6be \u2014 worker stalled, zero work committed) left a verified-in-progress implementation in the shared main tree; completing and landing it takes precedence over spawning a wave on top of uncommitted sibling changes. Only this task was actionable this tick; remaining pending rows are P2/P3 backlog or blocked on host access.",
   "mode": "serial-foreman-direct",
   "tasks": [
     {
@@ -14,5 +14,6 @@
       "guard": "Tier 1 PASS (guard-20261010T024710)",
       "pushed": true
     }
-  ]
+  ],
+  "finished_at": "2026-10-10T05:55:00-05:00"
 }

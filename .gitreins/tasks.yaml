@@ -4398,3 +4398,28 @@ tasks:
   status: complete
   created_at: '2026-10-10T01:02:38.803439+00:00'
   completed_at: '2026-10-10T01:36:02.838353+00:00'
+- id: DF-BUNKER-83
+  title: bunker pull clobbers existing FILE at local-dir destination
+  criteria:
+  - pull with an existing non-directory local target must error non-zero and leave
+    the file byte-identical; non-existent target is created as a directory; existing-dir
+    behavior unchanged; go build/vet/test green
+  status: complete
+  created_at: '2026-10-10T05:41:59.277675+00:00'
+  completed_at: '2026-10-10T06:00:29.114618+00:00'
+- id: DF-BUNKER-88
+  title: egress verification docs + readable secrets-dir override in refusal error
+  criteria:
+  - unreadable-secret refusal names base_data_dir/BUNKERD_SECRETS_DIR override; egress-policy.md
+    gains Verifying-enforcement section matching internal/egress chain names; config
+    test asserts message; go build/vet/test green
+  status: complete
+  created_at: '2026-10-10T15:32:44.741004+00:00'
+  completed_at: '2026-10-10T16:17:36.969148+00:00'
+- id: QA-BUNKER-B20
+  title: qa harness target-host preflight and honest zero-audit verdict
+  criteria:
+  - unknown host refused pre-flight with named cause; zero-audited run never prints
+    SUCCESS; regression test test_bunker_qa_preflight.sh green; bash -n clean
+  status: in_progress
+  created_at: '2026-10-10T15:32:45.609294+00:00'
