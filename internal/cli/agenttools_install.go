@@ -23,6 +23,12 @@ import (
 // transfer killed at the wire looks exactly like a hung agent.
 const deliverChildBudget = 120 * time.Second
 
+// deliverFileFunc is the seam through which installAgentTools performs the
+// vendored binary transfer (DF-BUNKER-27's builder-seam pattern: production
+// wires deliverFile; the flow tests substitute a no-op so the package half can
+// be driven end to end without SSH).
+var deliverFileFunc = deliverFile
+
 // deliverableVendoredTools are the tools this command SHIPS by copying a binary.
 // Only tools we build ourselves belong here: there is no registry to install
 // from, so a copy is the only honest mechanism.
@@ -39,14 +45,19 @@ var deliverableVendoredTools = []string{"toolsd"}
 // reachable without touching shell profiles.
 const agentToolInstallDir = "bin"
 
-// installAgentTools delivers the vendored tools onto the agent and reports the
-// result. It fails loudly and early at each step rather than reporting a partial
+// installAgentTools delivers the tools onto the agent and reports the result.
+// It fails loudly and early at each step rather than reporting a partial
 // success: a delivery that silently half-lands leaves an agent that looks
 // provisioned and is not.
+//
+// probeBefore is the pre-install probe (the caller runs it before the vendored
+// scp so the package stages know which tools were ALREADY present — the
+// idempotency and "what did this run actually deliver" decisions both read it).
 func installAgentTools(cmd *cobra.Command, ctx context.Context, client bunkerv1connect.BunkerdClient,
-	entry ServerEntry, agentID string, binaryPath string) error {
+	entry ServerEntry, agentID string, probeBefore agentToolReport, binaryPath string) error {
 
 	errOut := cmd.ErrOrStderr()
+	out := cmd.OutOrStdout()
 
 	// 1. Resolve the LOCAL artifact to ship.
 	local, err := resolveDeliverableBinary("toolsd", binaryPath)
@@ -84,7 +95,22 @@ func installAgentTools(cmd *cobra.Command, ctx context.Context, client bunkerv1c
 	// 4. Transfer, then fix mode and ownership — the same two steps `bunker cp`
 	//    performs, and for the same reason: scp lands the file as the SSH user
 	//    it authenticated as, which is not necessarily the agent user.
-	if err := deliverFile(cmd, entry, agentID, local, filepath.Join(destDir, "toolsd")); err != nil {
+	//    deliverFileFunc is a package-level seam (DF-BUNKER-27's pattern) so
+	//    the flow tests can stub the scp leg; production always uses
+	//    deliverFile.
+	if err := deliverFileFunc(cmd, entry, agentID, local, filepath.Join(destDir, "toolsd")); err != nil {
+		return err
+	}
+
+	// 4b. DF-BUNKER-57: deliver the registry tools the vendored-only rule
+	//     used to refuse. On SSH-based agents no image-spec path exists, yet
+	//     the probe names rg REQUIRED there — the runtime delivery pulls the
+	//     same pinned, signature-verified archives the package managers own
+	//     and unpacks them into $HOME/bin. Each stage's verdict is judged by
+	//     the re-probe below; stage failures are collected and named at the
+	//     end, so one broken tool does not hide the ones that delivered.
+	var packageFailures []string
+	if _, packageFailures, err = deliverMissingPackageTools(cmd, ctx, client, entry, agentID, probeBefore); err != nil {
 		return err
 	}
 
@@ -109,17 +135,41 @@ func installAgentTools(cmd *cobra.Command, ctx context.Context, client bunkerv1c
 			localVersion, toolsd.Version)
 	}
 
-	// 7. Say what this command did NOT deliver, and which path owns it.
-	remaining := []string{}
+	// 7. DF-BUNKER-57 verdict: every package-path tool the command attempted
+	//    must now read present on the FRESH probe — "the stage printed
+	//    INSTALLED" is not "the tool works". A stage failure or a tool still
+	//    absent after delivery fails the install with the causes named, after
+	//    the human report has shown everything that did land.
+	unknownHow := []string{}
 	for _, name := range report.Missing {
-		if !isVendoredDeliverable(name) {
-			remaining = append(remaining, name)
+		if !isPackagePathTool(name) && !isVendoredDeliverable(name) {
+			unknownHow = append(unknownHow, name)
 		}
 	}
-	if len(remaining) > 0 {
-		fmt.Fprintf(errOut, "\nbunker: NOT delivered here (no vendored binary; install via the image-spec package-add path): %s\n",
-			strings.Join(remaining, ", "))
-		fmt.Fprintln(errOut, "  spawn with: "+agentToolsRemediationSpec)
+	if len(packageFailures) > 0 {
+		writeAgentToolReport(out, report)
+		return fmt.Errorf("install incomplete on agent %q — some tools could not be delivered:\n  %s",
+			agentID, strings.Join(packageFailures, "\n  "))
+	}
+	for _, inst := range packageToolInstallers {
+		before := findingFor(probeBefore, inst.CatalogName)
+		if before != nil && before.Status == "present" {
+			continue
+		}
+		f := findingFor(report, inst.CatalogName)
+		if f == nil || f.Status != "present" {
+			return fmt.Errorf("install FAILED: %s was delivered to the agent's $HOME/%s but the verifying "+
+				"probe still reports %s — \"copied the file\" is not \"the tool works\"",
+				inst.CatalogName, agentPackageInstallDir, statusOf(f))
+		}
+		_, _ = fmt.Fprintf(out, "delivered %s: %s\n", inst.CatalogName, f.Version)
+	}
+
+	// 8. Say what this command did NOT attempt, and which path owns it.
+	if len(unknownHow) > 0 {
+		_, _ = fmt.Fprintf(errOut, "\nbunker: NOT delivered here (no delivery stage for: %s); "+
+			"spawn with the image-spec package-add path: %s\n",
+			strings.Join(unknownHow, ", "), agentToolsRemediationSpec)
 	}
 	return nil
 }

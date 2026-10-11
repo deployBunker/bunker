@@ -1,11 +1,14 @@
 package cli
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/deployBunker/bunker/internal/imagespec"
 )
@@ -29,16 +32,17 @@ func TestCommandNameParsesVersionToken(t *testing.T) {
 	}
 }
 
-// TestIsVendoredDeliverable: only tools we build ourselves may be copied onto an
-// agent. ripgrep and the language servers are in distribution registries and
-// must go through the package-add path instead, so the classifier has to say no.
+// TestIsVendoredDeliverable: only tools we build ourselves are COPIED onto an
+// agent. ripgrep and the language servers are in distribution registries; they
+// reach the agent through their registry (DF-BUNKER-57 runtime delivery, or the
+// image-spec package-add path at spawn), never as an unverified binary copy.
 func TestIsVendoredDeliverable(t *testing.T) {
 	if !isVendoredDeliverable("toolsd") {
 		t.Error("toolsd must be deliverable by copy")
 	}
 	for _, name := range []string{"rg", "gopls", "git", "jq", ""} {
 		if isVendoredDeliverable(name) {
-			t.Errorf("%q must NOT be a copied deliverable (it belongs to the package-add path)", name)
+			t.Errorf("%q must NOT be a copied deliverable (it belongs to the package path)", name)
 		}
 	}
 }
@@ -178,6 +182,77 @@ func TestAgentToolsRemediationSpecIsSingleLine(t *testing.T) {
 	}
 }
 
+// TestPackageToolInstallersMatchAgentToolPackages is the DF-BUNKER-57 drift
+// guard: the tools `agent-tools --install` delivers at runtime must be exactly
+// the set the image-spec package-add path delivers at spawn
+// (imagespec.AgentToolPackages). A registry tool added to one path without the
+// other would leave an agent class where the tool is REQUIRED and installable
+// by NO documented path — the exact defect this file's stage builders close.
+func TestPackageToolInstallersMatchAgentToolPackages(t *testing.T) {
+	want := imagespec.AgentToolPackageNames()
+	got := make([]string, 0, len(packageToolInstallers))
+	for _, inst := range packageToolInstallers {
+		got = append(got, inst.PackageToken)
+	}
+	sort.Strings(want)
+	sort.Strings(got)
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("runtime delivery set %v != spawn-time delivered set %v", got, want)
+	}
+
+	// Every catalog name that a stage delivers must exist in the probe
+	// catalog, and every stage must have a Parse that names its own tool.
+	// Both legs fail loudly if the registry and the catalog drift apart.
+	for _, inst := range packageToolInstallers {
+		f := findingFor(parseAgentToolOutput(inst.CatalogName, inst.CatalogName+"\tabsent\t", 0), inst.CatalogName)
+		if f == nil {
+			t.Errorf("stage delivers %q, which the agent-tool catalog does not contain", inst.CatalogName)
+		}
+		if got := inst.Parse(inst.CatalogName + "\tINSTALLED\t1.2.3\n"); got.Status != "INSTALLED" || got.Detail != "1.2.3" {
+			t.Errorf("stage Parse misreads its own INSTALLED line: %+v", got)
+		}
+		if got := inst.Parse(inst.CatalogName + "\tFAILED\tboom\n"); got.Status != "FAILED" || got.Detail != "boom" {
+			t.Errorf("stage Parse misreads its own FAILED line: %+v", got)
+		}
+		if got := inst.Parse("something went wrong\n"); got.Status != "FAILED" ||
+			!strings.Contains(got.Detail, "unparsable output") {
+			t.Errorf("stage Parse must classify a no-verdict stage as FAILED, got %+v", got)
+		}
+	}
+
+	// The REQUIRED tool (rg) must have a delivery stage: a REQUIRED tool
+	// without one is the DF-BUNKER-57 shape returning through the back door.
+	rgStage := false
+	for _, inst := range packageToolInstallers {
+		if inst.CatalogName == "rg" {
+			rgStage = true
+		}
+	}
+	if !rgStage {
+		t.Error("rg is REQUIRED by the catalog but has no runtime delivery stage")
+	}
+}
+
+// TestStageBudgetSecondsNeverExceedsTheContext: a stage is capped by its
+// budget AND by what the parent command's context has left — it must not
+// outlive the RPC that carries it. The no-deadline case has no context cap, so
+// the stage budget itself decides (ctxDeadlineSeconds floors at 60 there).
+func TestStageBudgetSecondsNeverExceedsTheContext(t *testing.T) {
+	if got := stageBudgetSeconds(context.Background(), 5*time.Minute); got != 60 {
+		t.Errorf("stageBudgetSeconds(no deadline, 5m) = %d, want 60 (no deadline: the 60s exec default)", got)
+	}
+	ctxLong, cancelLong := context.WithTimeout(context.Background(), time.Hour)
+	defer cancelLong()
+	if got := stageBudgetSeconds(ctxLong, 90*time.Second); got != 90 {
+		t.Errorf("stageBudgetSeconds(1h left, 90s cap) = %d, want 90 (cap wins under a long deadline)", got)
+	}
+	ctxShort, cancel := context.WithTimeout(context.Background(), 7*time.Second)
+	defer cancel()
+	if got := stageBudgetSeconds(ctxShort, 5*time.Minute); got < 5 || got > 7 {
+		t.Errorf("stageBudgetSeconds(7s left, 5m) = %d, want within the 7s context window", got)
+	}
+}
+
 // TestFindingForAndStatusOf: the post-delivery verdict reads the probe result,
 // and a tool absent from the report must not read as present.
 func TestFindingForAndStatusOf(t *testing.T) {
@@ -252,19 +327,87 @@ func TestProvisionedAgentReportsDeliveredToolsPresent(t *testing.T) {
 }
 
 // TestRemainingAfterDeliveryExcludesPackagePathTools pins what --install says
-// about its own limits: rg and gopls are package-path tools, so they must never
-// be offered the copy remedy even when a report carries them as missing (a copy
-// of a registry tool would bypass version pinning and signatures — the boundary
-// the vendored-only classifier owns).
+// about its own limits: rg and gopls have package-path delivery stages
+// (DF-BUNKER-57), so they must never be offered the COPY remedy nor named as
+// "no delivery stage" even when a report carries them as missing — a copy of a
+// registry tool would bypass version pinning and signatures, which the
+// vendored-only classifier owns.
 func TestRemainingAfterDeliveryExcludesPackagePathTools(t *testing.T) {
-	r := parseAgentToolOutput("a", "rg\tabsent\t\ngopls\tabsent\t\n", 0)
+	r := parseAgentToolOutput("a", "rg	absent	\ngopls	absent	\n", 0)
 	remaining := []string{}
 	for _, name := range r.Missing {
-		if !isVendoredDeliverable(name) {
+		if !isPackagePathTool(name) && !isVendoredDeliverable(name) {
 			remaining = append(remaining, name)
 		}
 	}
-	if got := strings.Join(remaining, ","); got != "gopls,rg" {
-		t.Errorf("remaining = %q, want \"gopls,rg\" (both named for the package-add path, neither copyable)", got)
+	if got := strings.Join(remaining, ","); got != "" {
+		t.Errorf("remaining = %q, want \"\" (both have delivery stages; neither is a copy candidate)", got)
 	}
 }
+
+// TestPackageDeliveryStageScriptsAreExecutedAsShell runs both stage builders'
+// scripts under a real /bin/sh against a fake $HOME, in the states a bare
+// agent can produce WITHOUT network or root:
+//   - already-present: the stage must short-circuit INSTALLED (idempotent
+//     re-run), never touching the network;
+//   - missing with no fetcher/toolchain: the stage must print a FAILED line
+//     carrying its own words, never a bare non-zero exit.
+//
+// This is the same discipline as TestAgentToolsRemoveScriptByExecution: a
+// script builder that was never run proves nothing about the shell.
+func TestPackageDeliveryStageScriptsAreExecutedAsShell(t *testing.T) {
+	for _, inst := range packageToolInstallers {
+		t.Run(inst.CatalogName, func(t *testing.T) {
+			// Already-present: fake the tool on PATH inside the fake HOME.
+			home := t.TempDir()
+			if err := os.MkdirAll(filepath.Join(home, agentPackageInstallDir), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(home, agentPackageInstallDir, inst.CatalogName),
+				[]byte("#!/bin/sh\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			out := runScriptWithHome(t, inst.Script(), home)
+			if !strings.HasPrefix(out, inst.CatalogName+"	INSTALLED	already-present") {
+				t.Errorf("already-present run = %q, want the INSTALLED/already-present line", out)
+			}
+
+			// Missing + unfetchable: PATH stripped of everything but
+			// stub sh/uname/mktemp (mkdir etc. unreachable), so the
+			// stage must fail at its first primitive with a FAILED
+			// line carrying its own words — never a bare non-zero
+			// exit and never a success claim.
+			home2 := t.TempDir()
+			stub := filepath.Join(home2, ".stub-bin")
+			if err := os.MkdirAll(stub, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			for _, b := range []string{"sh", "uname", "mktemp"} {
+				if err := os.Symlink("/bin/sh", filepath.Join(stub, b)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			out = runScriptWithEnv(t, inst.Script(), home2, []string{"PATH=" + stub})
+			if !strings.HasPrefix(out, inst.CatalogName+"	FAILED	") {
+				t.Errorf("unfetchable run = %q, want a FAILED line", out)
+			}
+		})
+	}
+}
+
+// runScriptWithEnv executes a script under sh with $HOME and PATH overridden,
+// simulating both the agent exec environment and a bare, tool-less one.
+func runScriptWithEnv(t *testing.T, script, home string, extraEnv []string) string {
+	t.Helper()
+	cmd := exec.Command("sh", "-c", script)
+	env := []string{"HOME=" + home}
+	env = append(env, extraEnv...)
+	cmd.Env = env
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("sh -c failed: %v\noutput: %s", err, out)
+	}
+	return string(out)
+}
+
+// TestFindingForAndStatusOf: the post-delivery verdict reads the probe result,
