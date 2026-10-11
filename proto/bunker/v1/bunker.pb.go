@@ -341,8 +341,18 @@ type ServerInfoResponse struct {
 	// the default mode plus its declared boundary line.
 	DefaultNetworkMode     string `protobuf:"bytes,11,opt,name=default_network_mode,json=defaultNetworkMode,proto3" json:"default_network_mode,omitempty"`
 	DefaultNetworkBoundary string `protobuf:"bytes,12,opt,name=default_network_boundary,json=defaultNetworkBoundary,proto3" json:"default_network_boundary,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	// GAP-134 / DF-BUNKER-82: the egress modes THIS daemon build implements,
+	// verbatim from internal/egress (the netmode ownership rule — the list is
+	// not restated here). ADDITIVE CAPABILITY REPORT, same empty-means-predates
+	// convention as tmp_isolation (field 8) and default_network_mode (field
+	// 11): an EMPTY value means the daemon predates the egress surface
+	// (pre-fd974b51 builds) — absence of the field is not an affirmative
+	// statement that egress is open, and a client MUST NOT read it as "all
+	// modes supported". A current daemon reports e.g. "open", "allowlist",
+	// "none" (the full internal/egress vocabulary, in declaration order).
+	EgressModesSupported []string `protobuf:"bytes,13,rep,name=egress_modes_supported,json=egressModesSupported,proto3" json:"egress_modes_supported,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *ServerInfoResponse) Reset() {
@@ -457,6 +467,13 @@ func (x *ServerInfoResponse) GetDefaultNetworkBoundary() string {
 		return x.DefaultNetworkBoundary
 	}
 	return ""
+}
+
+func (x *ServerInfoResponse) GetEgressModesSupported() []string {
+	if x != nil {
+		return x.EgressModesSupported
+	}
+	return nil
 }
 
 // ResidueInventory reports host residue counts probed from the host itself
@@ -4342,7 +4359,7 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\x16MODE_CLOUDFLARE_TUNNEL\x10\x01\x12\x12\n" +
 	"\x0eMODE_TAILSCALE\x10\x02\x12\x0f\n" +
 	"\vMODE_DIRECT\x10\x03\"\x13\n" +
-	"\x11ServerInfoRequest\"\xbb\x04\n" +
+	"\x11ServerInfoRequest\"\xf1\x04\n" +
 	"\x12ServerInfoResponse\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12%\n" +
@@ -4358,7 +4375,8 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\aresidue\x18\n" +
 	" \x01(\v2\x1b.bunker.v1.ResidueInventoryR\aresidue\x120\n" +
 	"\x14default_network_mode\x18\v \x01(\tR\x12defaultNetworkMode\x128\n" +
-	"\x18default_network_boundary\x18\f \x01(\tR\x16defaultNetworkBoundary\"\x88\x02\n" +
+	"\x18default_network_boundary\x18\f \x01(\tR\x16defaultNetworkBoundary\x124\n" +
+	"\x16egress_modes_supported\x18\r \x03(\tR\x14egressModesSupported\"\x88\x02\n" +
 	"\x10ResidueInventory\x12!\n" +
 	"\forphan_users\x18\x01 \x01(\rR\vorphanUsers\x12!\n" +
 	"\forphan_homes\x18\x02 \x01(\rR\vorphanHomes\x12\x1f\n" +

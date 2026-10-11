@@ -45,6 +45,10 @@ type mockSpawnServer struct {
 	// gotImageSpec captures the ImageSpec from the last SpawnAgent request
 	// (GAP-064 request propagation).
 	gotImageSpec *v1.ImageSpec
+	// gotEgressMode captures the EgressMode from the last SpawnAgent request
+	// (DF-BUNKER-82: the CLI gate must let a supported enforced mode reach
+	// the wire verbatim).
+	gotEgressMode string
 	// capturedDeadline/capturedDeadlineOK record the deadline of the context
 	// the CLI passed to SpawnAgent, so tests can assert the RPC timeout
 	// (SPAWN-TIMEOUT-001: must be ~300s, not the old 30s).
@@ -74,6 +78,7 @@ func (m *mockSpawnServer) SpawnAgent(
 	m.gotTTL = req.Msg.Ttl
 	m.gotImageSpec = req.Msg.GetImageSpec()
 	m.gotReturnKey = req.Msg.GetReturnSshPrivateKey()
+	m.gotEgressMode = req.Msg.GetEgressMode()
 	m.gotSpawnAuth = req.Header().Get("Authorization")
 	if m.spawnErr != nil {
 		return nil, m.spawnErr

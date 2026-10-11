@@ -157,6 +157,16 @@ func (s *bunkerdService) ServerInfo(ctx context.Context, req *connect.Request[v1
 		// at boot): report unknown rather than an affirmative default.
 		resp.DefaultNetworkMode = netmode.ModeUnknown
 	}
+	// GAP-134 / DF-BUNKER-82: advertise the egress modes this daemon build
+	// implements, verbatim from the internal/egress vocabulary (the netmode
+	// ownership rule — this is a re-export, never a restated list). The
+	// empty-means-predates convention lives on the proto field: a daemon
+	// without the egress surface (pre-fd974b51 builds) leaves the field
+	// empty, and the spawn CLI treats that as a refusal condition when the
+	// operator asks for an enforced mode, instead of letting the old daemon
+	// silently drop req.EgressMode and run the agent unfiltered. Population
+	// never fails the RPC (it is a constant read of the build's vocabulary).
+	resp.EgressModesSupported = config.ValidEgressModes()
 	return connect.NewResponse(resp), nil
 }
 

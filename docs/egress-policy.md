@@ -16,6 +16,18 @@ owned by `internal/egress`; unknown names refuse at config load, at the RPC
 boundary (`CodeInvalidArgument`), and in the spawn path — a typo never
 silently resolves to a different boundary.
 
+**Capability probe (DF-BUNKER-82).** An *enforced* mode (`allowlist`,
+`none`) is only sent to daemons that report an egress surface: the spawn CLI
+consults `ServerInfo` first, and `egress_modes_supported` follows the
+additive capability convention (empty = the daemon build predates the
+capability — absence is never an affirmative statement). A pre-egress
+daemon would otherwise accept the flag, exit 0, silently drop it, and run
+the agent fully unfiltered while the caller believes it is firewalled — so
+the CLI refuses the spawn client-side instead. `open` and an unset flag
+need no capability (neither invokes the firewall), and a daemon that
+reports a vocabulary that lacks the requested mode refuses with the
+supported list.
+
 | Mode | Behavior |
 | --- | --- |
 | `open` (default) | Unrestricted outbound. **Zero behavior change**: no firewall command is ever invoked — a fleet that never configures egress runs byte-identically to a pre-GAP-134 daemon (pinned by test). |

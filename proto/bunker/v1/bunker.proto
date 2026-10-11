@@ -154,6 +154,16 @@ message ServerInfoResponse {
   // the default mode plus its declared boundary line.
   string default_network_mode = 11;
   string default_network_boundary = 12;
+  // GAP-134 / DF-BUNKER-82: the egress modes THIS daemon build implements,
+  // verbatim from internal/egress (the netmode ownership rule — the list is
+  // not restated here). ADDITIVE CAPABILITY REPORT, same empty-means-predates
+  // convention as tmp_isolation (field 8) and default_network_mode (field
+  // 11): an EMPTY value means the daemon predates the egress surface
+  // (pre-fd974b51 builds) — absence of the field is not an affirmative
+  // statement that egress is open, and a client MUST NOT read it as "all
+  // modes supported". A current daemon reports e.g. "open", "allowlist",
+  // "none" (the full internal/egress vocabulary, in declaration order).
+  repeated string egress_modes_supported = 13;
 }
 
 // ResidueInventory reports host residue counts probed from the host itself

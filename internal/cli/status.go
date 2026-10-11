@@ -281,6 +281,9 @@ func formatServerStatus(st serverStatus) string {
 	// same honesty contract as the /tmp line (empty = predates the surface,
 	// never rendered as "shared").
 	b.WriteString(formatDefaultNetworkMode(info.GetDefaultNetworkMode(), info.GetDefaultNetworkBoundary()))
+	// DF-BUNKER-82: the daemon's egress vocabulary — empty means it predates
+	// the egress surface, which the spawn CLI now refuses enforced modes on.
+	b.WriteString(formatEgressModes(info.GetEgressModesSupported()))
 	b.WriteString(formatResidue(info.GetResidue()))
 
 	// Metrics (best-effort).

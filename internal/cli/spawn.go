@@ -187,6 +187,24 @@ Examples:
 			ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 			defer cancel()
 
+			// 2.5 Egress capability probe (DF-BUNKER-82): an enforced
+			// --egress-mode may only be sent to a daemon that REPORTS an
+			// egress surface. A pre-egress daemon (pre-fd974b51 builds)
+			// accepts the flag, exits 0, and silently drops the field — the
+			// agent runs fully unfiltered while the caller believes it is
+			// firewalled. ServerInfo now carries egress_modes_supported;
+			// empty means the daemon predates the capability (absence is
+			// never an affirmative statement — the proto field's contract),
+			// so an enforced mode is refused client-side instead of being
+			// silently ignored. The probe carries the spawn's own
+			// credentials so an auth-enforced daemon answers it the same
+			// way it would answer the spawn.
+			probeEntry := entry
+			probeEntry.Token = resolveToken(entry)
+			if err := ensureDaemonSupportsEgressMode(egressMode, probeEntry); err != nil {
+				return err
+			}
+
 			req := connect.NewRequest(&v1.SpawnAgentRequest{
 				AgentId:      agentID,
 				Ttl:          ttl,
