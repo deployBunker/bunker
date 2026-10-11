@@ -72,7 +72,7 @@ Not "retry forever" — a **bounded, idempotent recovery ladder** whose steps ar
 | Verdict | Recovery |
 |---|---|
 | `unreachable` (transport) | wait for the built-in `reconnect` window; if the health probe recovers, continue with **no operator action**; if not, attempt unmount + remount **once**, then stop and report |
-| `stale` (wrong tree) | **never auto-remount silently** — a stale mount may hold unflushed writes. Report, refuse writes, and require an explicit `bunker mount --recover` |
+| `stale` (wrong tree) | **never auto-remount silently** — a stale mount may hold unflushed writes. Report, refuse writes, and require an explicit recovery command |
 | `stranded` mountpoint (no live FUSE) | clear it automatically (normal unmount, falling back to lazy) then remount — bounded to one attempt |
 | `busy` mountpoint (live consumer) | **never** touch it; report the holder (pid/process) by name |
 

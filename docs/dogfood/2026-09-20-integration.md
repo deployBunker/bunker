@@ -171,7 +171,7 @@ on `bunker-las-01` (`750 root:root`) and the directory does not exist at all on 
   Verified against the agent: `K1=v1 K2= K3=`.
 * **Failures exit 0 when stdout is piped.** `bunker audit list --server X` prints
   `bunker: open /var/log/bunkerd/audit.log: permission denied`, and reports exit 0; so does
-  `bunker status --json` (unknown flag). README §Exit codes promises `1`. This harness was fooled by it
+  `bunker status` with a non-existent flag. README §Exit codes promises `1`. This harness was fooled by it
   (`| head -8` → `RC=0` next to the error line). The audit `--server` also silently fell back to the local
   path instead of querying the daemon, per a second message inconsistency in the same area.
 

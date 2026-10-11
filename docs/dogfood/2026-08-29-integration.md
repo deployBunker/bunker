@@ -92,7 +92,7 @@ curl -s -X POST http://bunker-las-03:10002/bunker.v1.Bunkerd/ListAgents \
 
 1. `bunker audit verify --server bunker-las-03` → `bunker: unknown flag:
    --server`. **verify is local-only** (checks the hash chain on the daemon
-   host). The group help (`bunker audit --help`) says "--server is given"
+   host). The group help text says "--server is given"
    for subcommands generally — misleading. Filed as DOGFOOD-013.
 2. `bunker metrics dogfood-0829` → "Memory Used: 2.4 GB / Memory Limit:
    1.0 GB" on a healthy 1.0 GB agent. Not a transient — 480 MB in-agent

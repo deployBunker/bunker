@@ -70,7 +70,7 @@ number below is therefore a wall time under load, which inflates rather than fla
   `internal/cli/mount.go:206,323,329` falls back to when a request names no driver.
 * `internal/mountdriver/bunkerfs.go:1-18` — the driver registers itself as `DriverBunkerFS = "bunkerfs"`,
   and its own doc says "NEVER DEFAULT … nothing in this file touches DefaultDriver".
-* The CLI's own text (live): `bunker fs mount --help` → *"It is NOT the default and does not become one
+* The CLI's own text (live): the help for `bunker fs mount` states *"It is NOT the default and does not become one
   until a battery on both DCs shows zero stalls."*
 * A mount is reached only by asking for it: `bunker fs mount <mp> --url …` (or `--driver bunkerfs`).
 
