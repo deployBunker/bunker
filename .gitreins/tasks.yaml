@@ -4471,3 +4471,33 @@ tasks:
   status: complete
   created_at: '2026-10-10T20:17:09.348411+00:00'
   completed_at: '2026-10-10T20:49:21.153386+00:00'
+- id: DF-BUNKER-72
+  title: Recycled UID rootless Docker runtime cleanup and liveness
+  criteria:
+  - Recycled agent UIDs cannot inherit stale rootless runtime state; Docker liveness
+    is surfaced as degraded when unavailable; targeted tests pass.
+  status: in_progress
+  created_at: '2026-10-10T21:27:30.435384+00:00'
+- id: DOC-042
+  title: Cover docs/spec in documentation drift gate
+  criteria:
+  - Existing docs drift tooling checks docs/spec references/coverage with focused
+    tests and the current gate remains green.
+  status: in_progress
+  created_at: '2026-10-10T21:27:31.669944+00:00'
+- id: GAP-175
+  title: Add unit tests for three probe packages
+  criteria:
+  - bfs025-truncated-read, davserve, and h3client have meaningful tests and package
+    tests pass.
+  status: in_progress
+  created_at: '2026-10-10T21:27:33.083167+00:00'
+- id: INT-CI-062
+  title: 'CI docs-drift failure: 5 documentation files reference non-existent CLI
+    flags'
+  criteria:
+  - docs-drift check passes with exit 0; all 5 docs files no longer reference --help/--json/--recover
+    flags
+  status: complete
+  created_at: '2026-10-11T04:47:52.109422+00:00'
+  completed_at: '2026-10-11T04:48:17.625833+00:00'
