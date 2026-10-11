@@ -106,8 +106,8 @@ func aptDeliverScript(catalogName, aptPackage string) func() string {
 		b.WriteString("pkg=" + quoteSh(aptPackage) + "\n")
 		b.WriteString(`b="$HOME/` + agentPackageInstallDir + `"
 mkdir -p "$b" 2>/dev/null || { printf '%s	FAILED	cannot create %s\n' "$name" "$b"; exit 0; }
-if command -v "$name" >/dev/null 2>&1; then
-  printf '%s	INSTALLED	already-present\n' "$name"; exit 0
+if [ -x "$b/$name" ]; then
+  printf '%s\tINSTALLED\talready-present\n' "$name"; exit 0
 fi
 if command -v apt-get >/dev/null 2>&1; then
   fetcher=apt-get
@@ -127,13 +127,13 @@ tmp=$(mktemp -d 2>/dev/null) || { printf '%s	FAILED	mktemp failed\n' "$name"; ex
    printf '%s\tFAILED\tno apt-get or apt on the agent\n' "$name"; exit 0
  fi
  "$fetcher" download "$pkg" >"$log" 2>&1 || {
-   printf '%s\tFAILED\t%s download: %s\n' "$name" "$fetcher" "$(tail -n 1 "$log")"; exit 1
+   printf '%s\tFAILED\t%s download: %s\n' "$name" "$fetcher" "stage-failed"; exit 1
  }
  extracted=0
  for d in ./*.deb; do
    [ -e "$d" ] || continue
    dpkg-deb -x "$d" "$tmp/x" >>"$log" 2>&1 || {
-     printf '%s\tFAILED\tdpkg-deb -x: %s\n' "$name" "$(tail -n 1 "$log")"; exit 1
+     printf '%s\tFAILED\tdpkg-deb -x: %s\n' "$name" "stage-failed"; exit 1
    }
    extracted=1
  done
@@ -141,13 +141,13 @@ tmp=$(mktemp -d 2>/dev/null) || { printf '%s	FAILED	mktemp failed\n' "$name"; ex
  bin="$tmp/x/usr/bin/$name"
  [ -f "$bin" ] || { printf '%s\tFAILED\tunexpected deb layout: no usr/bin/%s\n' "$name" "$name"; exit 1; }
  cp "$bin" "$b/$name.new" >>"$log" 2>&1 || {
-   printf '%s\tFAILED\tcopy into %s: %s\n' "$name" "$b" "$(tail -n 1 "$log")"; exit 1
+   printf '%s\tFAILED\tcopy into %s: %s\n' "$name" "$b" "stage-failed"; exit 1
  }
  chmod 0755 "$b/$name.new" 2>>"$log"
  mv -f "$b/$name.new" "$b/$name" 2>>"$log" || {
-   printf '%s\tFAILED\tfinalize in %s: %s\n' "$name" "$b" "$(tail -n 1 "$log")"; exit 1
+   printf '%s\tFAILED\tfinalize in %s: %s\n' "$name" "$b" "stage-failed"; exit 1
  }
- v=$("$b/$name" --version 2>/dev/null | head -n 1)
+ v=$("$b/$name" --version 2>/dev/null | awk 'NR==1 {print; exit}')
  printf '%s\tINSTALLED\t%s\n' "$name" "$v"
 )
 rc=$?
@@ -171,8 +171,8 @@ func goDeliverScript(catalogName, goPackage string) func() string {
 		b.WriteString("gpkg=" + quoteSh(goPackage) + "\n")
 		b.WriteString(`b="$HOME/` + agentPackageInstallDir + `"
 mkdir -p "$b" 2>/dev/null || { printf '%s	FAILED	cannot create %s\n' "$name" "$b"; exit 0; }
-if command -v "$name" >/dev/null 2>&1; then
-  printf '%s	INSTALLED	already-present\n' "$name"; exit 0
+if [ -x "$b/$name" ]; then
+  printf '%s\tINSTALLED\talready-present\n' "$name"; exit 0
 fi
 if command -v go >/dev/null 2>&1; then
   goroot=""
@@ -186,13 +186,13 @@ else
   ( cd "$tmp" || exit 1
     log="$tmp/go-bootstrap.log"
     curl -fsSL "https://dl.google.com/go/` + goBootstrapVersion + `.linux-$garch.tar.gz" -o go.tgz >"$log" 2>&1 || {
-      printf '%s\tFAILED\ttoolchain download: %s\n' "$name" "$(tail -n 1 "$log")"; exit 1
+      printf '%s\tFAILED\ttoolchain download: %s\n' "$name" "stage-failed"; exit 1
     }
     echo "$gsha  go.tgz" | sha256sum -c - >>"$log" 2>&1 || {
       printf '%s\tFAILED\ttoolchain checksum mismatch (expected %s for %s)\n' "$name" "$gsha" "$garch"; exit 1
     }
     tar -xzf go.tgz >>"$log" 2>&1 || {
-      printf '%s\tFAILED\ttoolchain extract: %s\n' "$name" "$(tail -n 1 "$log")"; exit 1
+      printf '%s\tFAILED\ttoolchain extract: %s\n' "$name" "stage-failed"; exit 1
     }
     printf '%s\n' "$tmp/go"
   )
@@ -209,10 +209,10 @@ work=$(mktemp -d 2>/dev/null) || { printf '%s\tFAILED\tmktemp failed\n' "$name";
   } >"$env_file"
   unset PATH; set -a; . "$env_file"; set +a
   go install "$gpkg" >"$log" 2>&1 || {
-    printf '%s\tFAILED\tgo install: %s\n' "$name" "$(tail -n 1 "$log")"; exit 1
+    printf '%s\tFAILED\tgo install: %s\n' "$name" "stage-failed"; exit 1
   }
   [ -x "$b/$name" ] || { printf '%s\tFAILED\tgo install finished but %s/%s is not there\n' "$name" "$b" "$name"; exit 1; }
-  v=$("$b/$name" version 2>/dev/null | head -n 1)
+  v=$("$b/$name" version 2>/dev/null | awk 'NR==1 {print; exit}')
   printf '%s\tINSTALLED\t%s\n' "$name" "$v"
 )
 rc=$?
