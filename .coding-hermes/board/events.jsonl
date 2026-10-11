@@ -1036,3 +1036,4 @@
 {"id": 964, "timestamp": "2026-10-11 21:17:35.761435", "event_type": "task_updated", "task_id": "INTEG-002", "actor": "foreman", "detail": "{\"status\":\"in_progress\"}", "tick_number": null}
 {"id": 965, "timestamp": "2026-10-11 21:45:24.988235", "event_type": "task_completed", "task_id": "INTEG-002", "actor": "foreman", "detail": "{\"status\":\"complete\"}", "tick_number": null}
 {"id": 966, "timestamp": "2026-10-11 22:13:12.685923", "event_type": "task_completed", "task_id": "DF-BUNKER-66", "actor": "foreman", "detail": "{\"status\":\"complete\"}", "tick_number": null}
+{"id": 967, "timestamp": "2026-10-11 23:20:56.65229", "event_type": "task_updated", "task_id": "DF-BUNKER-57", "actor": "foreman", "detail": "{\"status\":\"in_progress\"}", "tick_number": null}
