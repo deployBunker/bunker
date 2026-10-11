@@ -276,6 +276,24 @@ Auth is **secure-by-default** (`auth.enabled: true` in `config.example.yaml`):
   only the **Agent** service, scoped to that `agent_id` (`GetInfo`, `Metrics`,
   `Heartbeat`) — CI/CD and agent-side tooling use these instead of the master
   token. The server-side `Bunkerd` service accepts **master tokens only**.
+- **Operator identities with RBAC roles (GAP-130)**: named credentials for
+  humans and automations that should not hold the master token. Created by an
+  admin via `bunker operator create <name> --role <role>` (or the
+  `OperatorCreate` RPC); only a SHA-256 hash of the token is stored, and the
+  token itself is returned exactly once. Three roles:
+
+  | Role | May do |
+  |---|---|
+  | `admin` | Everything, including managing other operators and rotating the JWT secret. |
+  | `operator` | Agent lifecycle only (spawn/destroy/exec/run/list/metrics/stop/start/restart). Operator management, key/secret lifecycle, audit query and host-level server info are denied with `permission_denied`. |
+  | `agent:self` | Its own agent only (the identity's name IS the agent id). Rejected on the Bunkerd surface, admitted on the Agent service under the usual ownership guards. |
+
+  Credentials without a role (master token, master JWT, agent sub-key) keep
+  their exact pre-GAP-130 behavior. Enforcement runs after authentication and
+  after the audit interceptor, so a denial is itself hash-chained into the
+  trail naming the operator (`op:<name>` in the record's `caller` field).
+  Identities live in `<base_data_dir>/operators/operators.jsonl` (mode 0600)
+  and survive daemon restarts; deletion is immediate and durable.
 
 Example (REST):
 

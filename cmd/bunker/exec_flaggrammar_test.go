@@ -99,6 +99,18 @@ func (s *rootExecStubServer) RenewalDriftReport(context.Context, *connect.Reques
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }
 
+// GAP-130 operator-lifecycle RPCs joined the handler surface; this stub
+// stays unimplemented for them.
+func (s *rootExecStubServer) OperatorCreate(context.Context, *connect.Request[v1.OperatorCreateRequest]) (*connect.Response[v1.OperatorCreateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+func (s *rootExecStubServer) OperatorList(context.Context, *connect.Request[v1.OperatorListRequest]) (*connect.Response[v1.OperatorListResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+func (s *rootExecStubServer) OperatorDelete(context.Context, *connect.Request[v1.OperatorDeleteRequest]) (*connect.Response[v1.OperatorDeleteResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
 // newRootExecStub starts an httptest server serving the stub handler.
 func newRootExecStub(t *testing.T) (*httptest.Server, *rootExecStubServer) {
 	t.Helper()

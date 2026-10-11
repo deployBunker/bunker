@@ -74,6 +74,12 @@ const (
 	BunkerdRevokeKeyProcedure = "/bunker.v1.Bunkerd/RevokeKey"
 	// BunkerdKeyListProcedure is the fully-qualified name of the Bunkerd's KeyList RPC.
 	BunkerdKeyListProcedure = "/bunker.v1.Bunkerd/KeyList"
+	// BunkerdOperatorCreateProcedure is the fully-qualified name of the Bunkerd's OperatorCreate RPC.
+	BunkerdOperatorCreateProcedure = "/bunker.v1.Bunkerd/OperatorCreate"
+	// BunkerdOperatorListProcedure is the fully-qualified name of the Bunkerd's OperatorList RPC.
+	BunkerdOperatorListProcedure = "/bunker.v1.Bunkerd/OperatorList"
+	// BunkerdOperatorDeleteProcedure is the fully-qualified name of the Bunkerd's OperatorDelete RPC.
+	BunkerdOperatorDeleteProcedure = "/bunker.v1.Bunkerd/OperatorDelete"
 	// AgentGetInfoProcedure is the fully-qualified name of the Agent's GetInfo RPC.
 	AgentGetInfoProcedure = "/bunker.v1.Agent/GetInfo"
 	// AgentMetricsProcedure is the fully-qualified name of the Agent's Metrics RPC.
@@ -96,11 +102,13 @@ type BunkerdClient interface {
 	RenewalDriftReport(context.Context, *connect.Request[v1.RenewalDriftRequest]) (*connect.Response[v1.RenewalDriftResponse], error)
 	DestroyAgent(context.Context, *connect.Request[v1.DestroyAgentRequest]) (*connect.Response[v1.DestroyAgentResponse], error)
 	// GAP-071: pause / resume / restart an agent WITHOUT destroying it.
-	//   stop    — SIGTERM the agent's session units + processes; the Linux user,
-	//             home directory, container and allocated port range all SURVIVE
-	//             (status becomes "stopped"; the tracker record is kept);
-	//   start   — re-arm a stopped agent (status back to "running");
-	//   restart — stop + start in one call and reset the heartbeat expiry.
+	//
+	//	stop    — SIGTERM the agent's session units + processes; the Linux user,
+	//	          home directory, container and allocated port range all SURVIVE
+	//	          (status becomes "stopped"; the tracker record is kept);
+	//	start   — re-arm a stopped agent (status back to "running");
+	//	restart — stop + start in one call and reset the heartbeat expiry.
+	//
 	// Exec/Run/Heartbeat against a stopped agent fail with a DISTINCT
 	// FailedPrecondition carrying the token "agent_stopped" — never NotFound.
 	StopAgent(context.Context, *connect.Request[v1.StopAgentRequest]) (*connect.Response[v1.StopAgentResponse], error)
@@ -133,6 +141,22 @@ type BunkerdClient interface {
 	RotateJWTSecret(context.Context, *connect.Request[v1.RotateJWTSecretRequest]) (*connect.Response[v1.RotateJWTSecretResponse], error)
 	RevokeKey(context.Context, *connect.Request[v1.RevokeKeyRequest]) (*connect.Response[v1.RevokeKeyResponse], error)
 	KeyList(context.Context, *connect.Request[v1.KeyListRequest]) (*connect.Response[v1.KeyListResponse], error)
+	// Operator lifecycle (GAP-130). All three sit on the Bunkerd service, so
+	// they are gated by the SAME master-only interceptor as every other
+	// admin-capable RPC: only the master credential and operators holding the
+	// `admin` role reach these handlers (the RBAC interceptor denies
+	// `operator`-role callers with CodePermissionDenied, and agent-scoped
+	// credentials are rejected upstream with CodeUnauthenticated).
+	//
+	// OperatorCreate provisions a named identity with an explicit role and
+	// returns its bearer token EXACTLY ONCE (only the SHA-256 hash is stored).
+	// OperatorList reports operator metadata without any secret material.
+	// OperatorDelete removes the identity immediately: its token stops
+	// validating before this response is sent, and the removal survives a
+	// daemon restart (the registry is durable).
+	OperatorCreate(context.Context, *connect.Request[v1.OperatorCreateRequest]) (*connect.Response[v1.OperatorCreateResponse], error)
+	OperatorList(context.Context, *connect.Request[v1.OperatorListRequest]) (*connect.Response[v1.OperatorListResponse], error)
+	OperatorDelete(context.Context, *connect.Request[v1.OperatorDeleteRequest]) (*connect.Response[v1.OperatorDeleteResponse], error)
 }
 
 // NewBunkerdClient constructs a client for the bunker.v1.Bunkerd service. By default, it uses the
@@ -260,6 +284,24 @@ func NewBunkerdClient(httpClient connect.HTTPClient, baseURL string, opts ...con
 			connect.WithSchema(bunkerdMethods.ByName("KeyList")),
 			connect.WithClientOptions(opts...),
 		),
+		operatorCreate: connect.NewClient[v1.OperatorCreateRequest, v1.OperatorCreateResponse](
+			httpClient,
+			baseURL+BunkerdOperatorCreateProcedure,
+			connect.WithSchema(bunkerdMethods.ByName("OperatorCreate")),
+			connect.WithClientOptions(opts...),
+		),
+		operatorList: connect.NewClient[v1.OperatorListRequest, v1.OperatorListResponse](
+			httpClient,
+			baseURL+BunkerdOperatorListProcedure,
+			connect.WithSchema(bunkerdMethods.ByName("OperatorList")),
+			connect.WithClientOptions(opts...),
+		),
+		operatorDelete: connect.NewClient[v1.OperatorDeleteRequest, v1.OperatorDeleteResponse](
+			httpClient,
+			baseURL+BunkerdOperatorDeleteProcedure,
+			connect.WithSchema(bunkerdMethods.ByName("OperatorDelete")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -284,6 +326,9 @@ type bunkerdClient struct {
 	rotateJWTSecret    *connect.Client[v1.RotateJWTSecretRequest, v1.RotateJWTSecretResponse]
 	revokeKey          *connect.Client[v1.RevokeKeyRequest, v1.RevokeKeyResponse]
 	keyList            *connect.Client[v1.KeyListRequest, v1.KeyListResponse]
+	operatorCreate     *connect.Client[v1.OperatorCreateRequest, v1.OperatorCreateResponse]
+	operatorList       *connect.Client[v1.OperatorListRequest, v1.OperatorListResponse]
+	operatorDelete     *connect.Client[v1.OperatorDeleteRequest, v1.OperatorDeleteResponse]
 }
 
 // ServerInfo calls bunker.v1.Bunkerd.ServerInfo.
@@ -381,6 +426,21 @@ func (c *bunkerdClient) KeyList(ctx context.Context, req *connect.Request[v1.Key
 	return c.keyList.CallUnary(ctx, req)
 }
 
+// OperatorCreate calls bunker.v1.Bunkerd.OperatorCreate.
+func (c *bunkerdClient) OperatorCreate(ctx context.Context, req *connect.Request[v1.OperatorCreateRequest]) (*connect.Response[v1.OperatorCreateResponse], error) {
+	return c.operatorCreate.CallUnary(ctx, req)
+}
+
+// OperatorList calls bunker.v1.Bunkerd.OperatorList.
+func (c *bunkerdClient) OperatorList(ctx context.Context, req *connect.Request[v1.OperatorListRequest]) (*connect.Response[v1.OperatorListResponse], error) {
+	return c.operatorList.CallUnary(ctx, req)
+}
+
+// OperatorDelete calls bunker.v1.Bunkerd.OperatorDelete.
+func (c *bunkerdClient) OperatorDelete(ctx context.Context, req *connect.Request[v1.OperatorDeleteRequest]) (*connect.Response[v1.OperatorDeleteResponse], error) {
+	return c.operatorDelete.CallUnary(ctx, req)
+}
+
 // BunkerdHandler is an implementation of the bunker.v1.Bunkerd service.
 type BunkerdHandler interface {
 	// Server management
@@ -395,11 +455,13 @@ type BunkerdHandler interface {
 	RenewalDriftReport(context.Context, *connect.Request[v1.RenewalDriftRequest]) (*connect.Response[v1.RenewalDriftResponse], error)
 	DestroyAgent(context.Context, *connect.Request[v1.DestroyAgentRequest]) (*connect.Response[v1.DestroyAgentResponse], error)
 	// GAP-071: pause / resume / restart an agent WITHOUT destroying it.
-	//   stop    — SIGTERM the agent's session units + processes; the Linux user,
-	//             home directory, container and allocated port range all SURVIVE
-	//             (status becomes "stopped"; the tracker record is kept);
-	//   start   — re-arm a stopped agent (status back to "running");
-	//   restart — stop + start in one call and reset the heartbeat expiry.
+	//
+	//	stop    — SIGTERM the agent's session units + processes; the Linux user,
+	//	          home directory, container and allocated port range all SURVIVE
+	//	          (status becomes "stopped"; the tracker record is kept);
+	//	start   — re-arm a stopped agent (status back to "running");
+	//	restart — stop + start in one call and reset the heartbeat expiry.
+	//
 	// Exec/Run/Heartbeat against a stopped agent fail with a DISTINCT
 	// FailedPrecondition carrying the token "agent_stopped" — never NotFound.
 	StopAgent(context.Context, *connect.Request[v1.StopAgentRequest]) (*connect.Response[v1.StopAgentResponse], error)
@@ -432,6 +494,22 @@ type BunkerdHandler interface {
 	RotateJWTSecret(context.Context, *connect.Request[v1.RotateJWTSecretRequest]) (*connect.Response[v1.RotateJWTSecretResponse], error)
 	RevokeKey(context.Context, *connect.Request[v1.RevokeKeyRequest]) (*connect.Response[v1.RevokeKeyResponse], error)
 	KeyList(context.Context, *connect.Request[v1.KeyListRequest]) (*connect.Response[v1.KeyListResponse], error)
+	// Operator lifecycle (GAP-130). All three sit on the Bunkerd service, so
+	// they are gated by the SAME master-only interceptor as every other
+	// admin-capable RPC: only the master credential and operators holding the
+	// `admin` role reach these handlers (the RBAC interceptor denies
+	// `operator`-role callers with CodePermissionDenied, and agent-scoped
+	// credentials are rejected upstream with CodeUnauthenticated).
+	//
+	// OperatorCreate provisions a named identity with an explicit role and
+	// returns its bearer token EXACTLY ONCE (only the SHA-256 hash is stored).
+	// OperatorList reports operator metadata without any secret material.
+	// OperatorDelete removes the identity immediately: its token stops
+	// validating before this response is sent, and the removal survives a
+	// daemon restart (the registry is durable).
+	OperatorCreate(context.Context, *connect.Request[v1.OperatorCreateRequest]) (*connect.Response[v1.OperatorCreateResponse], error)
+	OperatorList(context.Context, *connect.Request[v1.OperatorListRequest]) (*connect.Response[v1.OperatorListResponse], error)
+	OperatorDelete(context.Context, *connect.Request[v1.OperatorDeleteRequest]) (*connect.Response[v1.OperatorDeleteResponse], error)
 }
 
 // NewBunkerdHandler builds an HTTP handler from the service implementation. It returns the path on
@@ -555,6 +633,24 @@ func NewBunkerdHandler(svc BunkerdHandler, opts ...connect.HandlerOption) (strin
 		connect.WithSchema(bunkerdMethods.ByName("KeyList")),
 		connect.WithHandlerOptions(opts...),
 	)
+	bunkerdOperatorCreateHandler := connect.NewUnaryHandler(
+		BunkerdOperatorCreateProcedure,
+		svc.OperatorCreate,
+		connect.WithSchema(bunkerdMethods.ByName("OperatorCreate")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bunkerdOperatorListHandler := connect.NewUnaryHandler(
+		BunkerdOperatorListProcedure,
+		svc.OperatorList,
+		connect.WithSchema(bunkerdMethods.ByName("OperatorList")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bunkerdOperatorDeleteHandler := connect.NewUnaryHandler(
+		BunkerdOperatorDeleteProcedure,
+		svc.OperatorDelete,
+		connect.WithSchema(bunkerdMethods.ByName("OperatorDelete")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/bunker.v1.Bunkerd/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case BunkerdServerInfoProcedure:
@@ -595,6 +691,12 @@ func NewBunkerdHandler(svc BunkerdHandler, opts ...connect.HandlerOption) (strin
 			bunkerdRevokeKeyHandler.ServeHTTP(w, r)
 		case BunkerdKeyListProcedure:
 			bunkerdKeyListHandler.ServeHTTP(w, r)
+		case BunkerdOperatorCreateProcedure:
+			bunkerdOperatorCreateHandler.ServeHTTP(w, r)
+		case BunkerdOperatorListProcedure:
+			bunkerdOperatorListHandler.ServeHTTP(w, r)
+		case BunkerdOperatorDeleteProcedure:
+			bunkerdOperatorDeleteHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -678,6 +780,18 @@ func (UnimplementedBunkerdHandler) RevokeKey(context.Context, *connect.Request[v
 
 func (UnimplementedBunkerdHandler) KeyList(context.Context, *connect.Request[v1.KeyListRequest]) (*connect.Response[v1.KeyListResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.KeyList is not implemented"))
+}
+
+func (UnimplementedBunkerdHandler) OperatorCreate(context.Context, *connect.Request[v1.OperatorCreateRequest]) (*connect.Response[v1.OperatorCreateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.OperatorCreate is not implemented"))
+}
+
+func (UnimplementedBunkerdHandler) OperatorList(context.Context, *connect.Request[v1.OperatorListRequest]) (*connect.Response[v1.OperatorListResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.OperatorList is not implemented"))
+}
+
+func (UnimplementedBunkerdHandler) OperatorDelete(context.Context, *connect.Request[v1.OperatorDeleteRequest]) (*connect.Response[v1.OperatorDeleteResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.OperatorDelete is not implemented"))
 }
 
 // AgentClient is a client for the bunker.v1.Agent service.

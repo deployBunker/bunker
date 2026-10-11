@@ -60,6 +60,23 @@ service Bunkerd {
   rpc RotateJWTSecret(RotateJWTSecretRequest) returns (RotateJWTSecretResponse);
   rpc RevokeKey(RevokeKeyRequest) returns (RevokeKeyResponse);
   rpc KeyList(KeyListRequest) returns (KeyListResponse);
+
+  // Operator lifecycle (GAP-130). All three sit on the Bunkerd service, so
+  // they are gated by the SAME master-only interceptor as every other
+  // admin-capable RPC: only the master credential and operators holding the
+  // `admin` role reach these handlers (the RBAC interceptor denies
+  // `operator`-role callers with CodePermissionDenied, and agent-scoped
+  // credentials are rejected upstream with CodeUnauthenticated).
+  //
+  // OperatorCreate provisions a named identity with an explicit role and
+  // returns its bearer token EXACTLY ONCE (only the SHA-256 hash is stored).
+  // OperatorList reports operator metadata without any secret material.
+  // OperatorDelete removes the identity immediately: its token stops
+  // validating before this response is sent, and the removal survives a
+  // daemon restart (the registry is durable).
+  rpc OperatorCreate(OperatorCreateRequest) returns (OperatorCreateResponse);
+  rpc OperatorList(OperatorListRequest) returns (OperatorListResponse);
+  rpc OperatorDelete(OperatorDeleteRequest) returns (OperatorDeleteResponse);
 }
 
 // ── Agent Service (scoped sub-key access) ─────────────────────
@@ -691,4 +708,62 @@ message KeyInfo {
 
 message KeyListResponse {
   repeated KeyInfo keys = 1;
+}
+
+// ── Operators & RBAC (GAP-130) ─────────────────────────────────
+
+// OperatorCreateRequest provisions a new named operator identity.
+// name must be unique and non-empty ([a-zA-Z0-9._-]{1,64}); role must be one
+// of the OperatorRole values. For RoleAgentSelf, name IS the agent id the
+// identity is bound to (the token can then only operate on that agent).
+// ttl_seconds bounds the credential: 0 selects the daemon default, and the
+// effective TTL is reported in the response.
+message OperatorCreateRequest {
+  string name = 1;
+  string role = 2;         // OperatorRole value: "admin" | "operator" | "agent:self"
+  uint32 ttl_seconds = 3;  // 0 = daemon default
+}
+
+// OperatorCreateResponse carries the new bearer token EXACTLY ONCE — only a
+// SHA-256 hash is stored server-side, so losing this output means re-creating
+// the operator. expires_at is RFC3339 UTC.
+message OperatorCreateResponse {
+  string name = 1;
+  string role = 2;
+  string token = 3;
+  string expires_at = 4;
+  uint32 ttl_seconds = 5;  // the effective TTL actually applied
+}
+
+// OperatorListRequest lists operator identities. agent_id filters to the
+// operator bound to one agent (agent:self identities); "" lists all.
+message OperatorListRequest {
+  string agent_id = 1;
+}
+
+// OperatorInfo is one operator in an OperatorListResponse. Metadata only —
+// never a token or any other secret material.
+message OperatorInfo {
+  string name = 1;
+  string role = 2;
+  string agent_id = 3;      // non-empty for agent:self identities
+  string created_at = 4;    // RFC3339
+  string expires_at = 5;    // RFC3339 (zero value = "0001-01-01T00:00:00Z")
+}
+
+message OperatorListResponse {
+  repeated OperatorInfo operators = 1;
+}
+
+// OperatorDeleteRequest removes an operator identity by name. Deletion is
+// immediate: the operator's token stops validating before the response is
+// sent, and the removal persists across daemon restarts.
+message OperatorDeleteRequest {
+  string name = 1;
+}
+
+message OperatorDeleteResponse {
+  string name = 1;
+  // "deleted" on success.
+  string status = 2;
 }

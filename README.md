@@ -432,6 +432,50 @@ guide, including the measured per-tier knob table and the override envelope, is
 in [docs/presets/README.md](docs/presets/README.md); the config surface is in
 [specs/configuration.md](specs/configuration.md).
 
+#### Operators and RBAC (GAP-130)
+
+Before GAP-130 every human and every automation shared the master token: one
+all-powerful secret, no way to say who did what. An **operator identity** is a
+named credential with an explicit role, so people and CI stop sharing the master
+token and the audit trail names the actor (`op:<name>`) instead of `master`.
+
+```bash
+# All `bunker operator` verbs ship after v0.2.0 — requires a build from HEAD.
+
+# An operator for a teammate: agent lifecycle, nothing else.
+bunker operator create kelly --role operator
+#   operator kelly created (role=operator)
+#   <token>
+#   # The token above is shown EXACTLY ONCE — the daemon stores only its SHA-256 hash.
+
+# A machine identity for one agent: name IS the agent id.
+bunker operator create agent-77 --role agent:self --ttl-seconds 2592000
+
+# List and remove.
+bunker operator list
+bunker operator list --agent-id agent-77
+bunker operator delete kelly
+```
+
+Roles, and what each may call on the Bunkerd RPC surface:
+
+| Role | May do |
+|---|---|
+| *(no role — master token, master JWT, agent sub-key)* | Everything, exactly as before GAP-130. Full backward compatibility. |
+| `admin` | Everything the master token can do, **including** creating/deleting operators and rotating the JWT secret. Provision sparingly. |
+| `operator` | Agent lifecycle only: spawn, destroy, exec, run, list, get, metrics, stop/start/restart, renewal drift, agent-key retrieval. Operator management (`OperatorCreate/List/Delete`), key/secret lifecycle (`RotateJWTSecret/RevokeKey/KeyList`), audit query, and host-level `ServerInfo/ServerMetrics` are **denied** with `permission_denied`. The allow-list is closed: any future unclassified RPC is admin-only by default. |
+| `agent:self` | One agent only — its own. The identity's name IS the agent id; the token carries that `agent_id`, so it is rejected by the master-only interceptor on the Bunkerd surface and admitted on the Agent service (`GetInfo`/`Metrics`/`Heartbeat`), where the existing ownership guards (claims agent id must equal the target agent) are the enforcement. |
+
+The enforcement runs as a second interceptor **after** authentication and
+**after** the audit interceptor, so an RBAC denial is itself authenticated and
+hash-chained into the audit trail naming the operator who was denied. Operator
+credentials ride the same validation path as every other credential (static
+token → JWT → sub-key → operator registry, last), so they can never shadow a
+legacy credential class; the registry is a durable `operators.jsonl` (0600,
+under `<base_data_dir>/operators/`), so identities and deletions survive daemon
+restarts. Tokens default to a 30-day TTL (`--ttl-seconds` to set another) and
+expired identities stop validating but stay listed until deleted.
+
 #### TLS: the secure path is the easy path (GAP-127)
 
 A self-signed daemon is the normal way to run Bunker on a host you control: you
@@ -1123,6 +1167,11 @@ bunker key         Manage API keys and the JWT signing secret (master only):
                    is the runtime twin of the jwt_secret handling described
                    in "Control-plane secrets (GAP-129 / SEC-14)" above; the
                    RPC contract lives in specs/api.md (RotateJWTSecret)
+bunker operator    Manage operator identities and their RBAC roles (admin
+                   only; GAP-130): operator create (role admin | operator |
+                   agent:self; the bearer token is printed exactly once),
+                   operator list, operator delete. See "Operators and RBAC
+                   (GAP-130)" above
 bunker agent-tools  Probe the agent (not the client) for the executables the
                    remote editing verbs need; --install delivers the vendored
                    toolsd onto the agent's own PATH and prints the delivered

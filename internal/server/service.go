@@ -28,6 +28,7 @@ import (
 	"github.com/deployBunker/bunker/internal/imagespec"
 	"github.com/deployBunker/bunker/internal/mountdriver"
 	"github.com/deployBunker/bunker/internal/netmode"
+	"github.com/deployBunker/bunker/internal/operator"
 	"github.com/deployBunker/bunker/internal/resource"
 	"github.com/deployBunker/bunker/internal/tailscale"
 	"github.com/deployBunker/bunker/internal/tunnel"
@@ -58,7 +59,12 @@ type bunkerdService struct {
 	tailscaleMgr *tailscale.TailscaleManager
 	keyMgr       *apikey.Manager
 	jwtAuth      *auth.JWTAuth
-	cpuSampler   cpuSampler
+	// opMgr is the GAP-130 operator registry (nil when the daemon has no
+	// operator directory configured). The operator RPCs refuse with
+	// CodeFailedPrecondition when nil; the credential path treats nil as
+	// "no operator identities exist", so legacy behavior is unchanged.
+	opMgr      *operator.Manager
+	cpuSampler cpuSampler
 	// orphanUIDSummarizer is the DF-BUNKER-34 orphan probe (nil in tests and
 	// unwired services: no probe, no fabricated "healthy"). The production
 	// wiring (server.go) sets it to the agent manager's OrphanUIDSummary.

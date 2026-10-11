@@ -298,6 +298,14 @@ func CallerFromClaims(claims *auth.Claims) string {
 	if claims == nil {
 		return "unknown" // auth disabled — no identity available
 	}
+	// GAP-130: operator identities render as "op:<name>" — they are named
+	// credentials, not sub-keys, and the trail must let a forensics reader
+	// tell an operator's action from a machine sub-key's. agent:self
+	// operators render the same way (their name IS the agent id, so the
+	// record still names the agent it acted for).
+	if claims.OpName != "" {
+		return "op:" + claims.OpName
+	}
 	if claims.AgentID != "" {
 		if claims.KeyID != "" {
 			return "agent:" + claims.AgentID + " key:" + claims.KeyID

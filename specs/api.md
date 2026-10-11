@@ -516,6 +516,91 @@ Response:
   (RFC3339), `expires_at` (RFC3339), `revoked` (revoked keys are listed with
   `revoked=true` until they expire out)
 
+### OperatorCreate
+
+Provisions a named operator identity with an RBAC role (GAP-130). The bearer
+token is returned **exactly once** — only its SHA-256 hash is stored
+(`internal/operator`, durable JSONL registry under
+`<base_data_dir>/operators/`, mode 0600). Identities and deletions survive
+daemon restarts. Roles: `admin` (everything, including operator management),
+`operator` (agent lifecycle only — operator management, key/secret lifecycle,
+audit query and host-level server info are denied with `permission_denied`;
+the allow-list is closed, so any future unclassified RPC is admin-only),
+`agent:self` (a machine identity whose name IS the agent id; rejected on the
+Bunkerd surface by the master-only interceptor, admitted on the Agent service
+under the ownership guards). The operator-facing command is `bunker operator
+create` (admin only).
+
+```
+rpc OperatorCreate(OperatorCreateRequest) returns (OperatorCreateResponse)
+```
+
+Request:
+- `name` (string, required): 1..64 chars `[a-zA-Z0-9._-]`, unique; for
+  `agent:self` it IS the agent id
+- `role` (string, required): `admin` | `operator` | `agent:self`
+- `ttl_seconds` (uint32, optional): credential lifetime; 0 = daemon default
+  (30 days)
+
+Response:
+- `name` (string), `role` (string)
+- `token` (string): the bearer credential — shown exactly once
+- `expires_at` (string): RFC3339 UTC
+- `ttl_seconds` (uint32): the effective TTL actually applied
+
+Error codes:
+- `CodeInvalidArgument`: invalid role, or invalid/empty name for the role
+- `CodeFailedPrecondition`: the operator registry is not configured, the
+  name is already taken, or the name fails the grammar
+
+### OperatorList
+
+Lists operator identities — metadata only, never a token or hash (GAP-130).
+
+```
+rpc OperatorList(OperatorListRequest) returns (OperatorListResponse)
+```
+
+Request:
+- `agent_id` (string, optional): only the `agent:self` identity bound to this
+  agent; empty = all operators
+
+Response:
+- `operators` (repeated OperatorInfo): each with `name`, `role`, `agent_id`,
+  `created_at` (RFC3339), `expires_at` (RFC3339)
+
+Error codes:
+- `CodeFailedPrecondition`: the operator registry is not configured
+
+### OperatorDelete
+
+Removes an operator identity by name. Immediate — the token stops validating
+before this response is sent — and durable: the removal survives a daemon
+restart. The operator-facing command is `bunker operator delete` (admin
+only).
+
+```
+rpc OperatorDelete(OperatorDeleteRequest) returns (OperatorDeleteResponse)
+```
+
+Request:
+- `name` (string, required)
+
+Response:
+- `name` (string), `status` (string): `"deleted"` on success
+
+Error codes:
+- `CodeInvalidArgument`: empty `name`
+- `CodeFailedPrecondition`: the operator registry is not configured
+- `CodeNotFound`: unknown `name`
+
+RBAC enforcement (GAP-130) runs as a second interceptor **after**
+authentication and **after** the audit interceptor on the Bunkerd mount, so a
+denial is itself authenticated and hash-chained into the audit trail naming
+the denied operator (`op:<name>` in the record's `caller` field). Credentials
+without a role (master static token, unscoped master JWTs, agent sub-keys)
+pass unchanged — full pre-GAP-130 behavior.
+
 ## Service: Agent
 
 Agent-scoped authentication. Only accessible with a scoped API key or JWT containing the agent's `agent_id`.
@@ -647,6 +732,9 @@ read-style HTTP endpoints.
 | RotateJWTSecret | POST | /bunker.v1.Bunkerd/RotateJWTSecret |
 | RevokeKey | POST | /bunker.v1.Bunkerd/RevokeKey |
 | KeyList | POST | /bunker.v1.Bunkerd/KeyList |
+| OperatorCreate | POST | /bunker.v1.Bunkerd/OperatorCreate |
+| OperatorList | POST | /bunker.v1.Bunkerd/OperatorList |
+| OperatorDelete | POST | /bunker.v1.Bunkerd/OperatorDelete |
 
 ### Agent service (scoped sub-key)
 

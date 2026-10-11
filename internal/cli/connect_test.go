@@ -109,6 +109,18 @@ func (m *mockBunkerdServer) KeyList(context.Context, *connect.Request[v1.KeyList
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }
 
+// GAP-130 operator-lifecycle RPCs joined the handler surface; this generic
+// mock stays unimplemented for them (the operator tests supply their own).
+func (m *mockBunkerdServer) OperatorCreate(context.Context, *connect.Request[v1.OperatorCreateRequest]) (*connect.Response[v1.OperatorCreateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+func (m *mockBunkerdServer) OperatorList(context.Context, *connect.Request[v1.OperatorListRequest]) (*connect.Response[v1.OperatorListResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+func (m *mockBunkerdServer) OperatorDelete(context.Context, *connect.Request[v1.OperatorDeleteRequest]) (*connect.Response[v1.OperatorDeleteResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
 // DF-BUNKER-34: the renewal drift RPC joined the handler surface; this
 // generic mock stays unimplemented for it (the renew tests supply their own).
 func (m *mockBunkerdServer) RenewalDriftReport(context.Context, *connect.Request[v1.RenewalDriftRequest]) (*connect.Response[v1.RenewalDriftResponse], error) {

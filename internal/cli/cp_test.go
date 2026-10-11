@@ -39,6 +39,18 @@ func (m *cpMockServer) KeyList(context.Context, *connect.Request[v1.KeyListReque
 func (m *cpMockServer) RenewalDriftReport(context.Context, *connect.Request[v1.RenewalDriftRequest]) (*connect.Response[v1.RenewalDriftResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }
+
+// cpMockServer operator-lifecycle RPCs are unimplemented in this mock
+// (GAP-130 handler surface; the operator CLI tests supply their own).
+func (m *cpMockServer) OperatorCreate(context.Context, *connect.Request[v1.OperatorCreateRequest]) (*connect.Response[v1.OperatorCreateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+func (m *cpMockServer) OperatorList(context.Context, *connect.Request[v1.OperatorListRequest]) (*connect.Response[v1.OperatorListResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+func (m *cpMockServer) OperatorDelete(context.Context, *connect.Request[v1.OperatorDeleteRequest]) (*connect.Response[v1.OperatorDeleteResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
 func (m *cpMockServer) ServerInfo(ctx context.Context, req *connect.Request[v1.ServerInfoRequest]) (*connect.Response[v1.ServerInfoResponse], error) {
 	return connect.NewResponse(&v1.ServerInfoResponse{}), nil
 }

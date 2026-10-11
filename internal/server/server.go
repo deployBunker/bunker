@@ -29,6 +29,7 @@ import (
 	"github.com/deployBunker/bunker/internal/auth"
 	"github.com/deployBunker/bunker/internal/config"
 	"github.com/deployBunker/bunker/internal/hilo"
+	"github.com/deployBunker/bunker/internal/operator"
 	"github.com/deployBunker/bunker/internal/resource"
 	"github.com/deployBunker/bunker/internal/server/webdav"
 	"github.com/deployBunker/bunker/internal/tailscale"
@@ -44,6 +45,10 @@ type BunkerdServer struct {
 	keyMgr   *apikey.Manager
 	jwtAuth  *auth.JWTAuth
 	auditLog *audit.AuditLog
+	// opMgr is the GAP-130 operator registry, opened in Run next to the key
+	// store (nil until then — Run is fail-before-listen when it cannot be
+	// opened).
+	opMgr *operator.Manager
 }
 
 // New creates a new BunkerdServer with the given configuration.
@@ -188,6 +193,17 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 		return fmt.Errorf("api key store unavailable: %w", err)
 	}
 	s.keyMgr = keyMgr
+	// GAP-130: the operator registry lives under the daemon data directory
+	// too, so operator identities (and their deletions) survive a restart.
+	// Failure to OPEN it is fail-before-listen, the same posture as the key
+	// store: silently running without the registry would make every
+	// operator credential stop validating after a restart while the CLI
+	// still believes the identities exist.
+	opMgr, err := operator.NewManagerAt(filepath.Join(s.cfg.Agent.BaseDataDir, "operators"))
+	if err != nil {
+		return fmt.Errorf("operator registry unavailable: %w", err)
+	}
+	s.opMgr = opMgr
 	// DF-BUNKER-45: ONE JWTAuth instance is shared between the key-lifecycle
 	// RPCs (RotateJWTSecret mutates s.jwtAuth via RotateSecret) and BOTH
 	// request-validation interceptors. The previous wiring passed the raw
@@ -201,6 +217,14 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	// as internal/auth implements it. The static token rides the instance so
 	// the fallback behavior matches the old string-based construction.
 	s.jwtAuth = auth.NewJWTAuthWithStaticFallback(s.cfg.Auth.JWTSecret, s.cfg.Auth.Token, s.keyMgr)
+	// GAP-130: operator identities ride the SAME credential path — the
+	// registry is consulted last (static token → JWT → apikey sub-key →
+	// operator), so it can never shadow a legacy credential class. The
+	// master-only rule then applies to operators through claims.AgentID
+	// exactly as it does to agent-scoped sub-keys: an agent:self operator
+	// works on the Agent service for its own agent and is rejected on the
+	// Bunkerd mount.
+	s.jwtAuth.SetOperatorSource(opMgr)
 	// REV-BUNKER-006: the interceptor composition (GAP-133 deny sink + the
 	// SEC-15 per-source throttle) has ONE definition, extracted from Run so a
 	// test can drive the wiring the daemon actually uses — including the
@@ -273,7 +297,7 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 		// final-report channel so the buffered send never leaks.
 		<-reconcileFinal
 	}()
-	bunkerdSvc := &bunkerdService{cfg: s.cfg, logger: s.logger, agentMgr: agentMgr, heartbeats: agentMgr, tracker: tracker, tunnelMgr: tunnelMgr, tailscaleMgr: tailscaleMgr, keyMgr: s.keyMgr, jwtAuth: s.jwtAuth, cpuSampler: resource.NewCPUSampler(), auditLog: s.auditLog}
+	bunkerdSvc := &bunkerdService{cfg: s.cfg, logger: s.logger, agentMgr: agentMgr, heartbeats: agentMgr, tracker: tracker, tunnelMgr: tunnelMgr, tailscaleMgr: tailscaleMgr, keyMgr: s.keyMgr, jwtAuth: s.jwtAuth, cpuSampler: resource.NewCPUSampler(), auditLog: s.auditLog, opMgr: s.opMgr}
 	// DF-BUNKER-34: the orphan-uid probe rides the info/list surfaces. The
 	// manager carries the /proc probe; the nil check inside the service keeps
 	// tests and unwired services probe-free. PERF-008: the list surface goes
@@ -294,6 +318,15 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 		bunkerdInterceptors = append(bunkerdInterceptors, auditInterceptor)
 		agentInterceptors = append(agentInterceptors, auditInterceptor)
 	}
+	// GAP-130: RBAC runs LAST — after auth (identity established) and after
+	// audit (so a denial is authenticated and hash-chained, naming the
+	// operator who was denied). Legacy claims carry no role and pass
+	// through unchanged; the interceptor only gates role-carrying operator
+	// credentials on the Bunkerd mount. The Agent service needs no RBAC
+	// interceptor: its ownership guards (claims.AgentID must equal the
+	// target agent) ARE the agent:self enforcement, and master/operator
+	// credentials never carry a foreign AgentID.
+	bunkerdInterceptors = append(bunkerdInterceptors, auth.NewRBACInterceptor())
 	bunkerdPath, bunkerdHandler := bunkerv1connect.NewBunkerdHandler(
 		bunkerdSvc,
 		connect.WithInterceptors(bunkerdInterceptors...),

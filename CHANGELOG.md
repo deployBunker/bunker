@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **Operators & RBAC (GAP-130): per-operator identities with roles.** New
+  `bunker operator create|list|delete` (admin only) provisions named
+  credentials with one of three roles — `admin` (everything, incl. operator
+  management), `operator` (agent lifecycle only; operator management, key
+  and secret lifecycle, audit query and host-level server info are denied
+  with `permission_denied`), and `agent:self` (a machine identity bound to
+  one agent: name IS the agent id). Legacy credentials (master token, master
+  JWT, agent sub-keys) keep their exact pre-GAP-130 behavior. Enforcement
+  runs as an RBAC interceptor after auth and audit (denials are
+  hash-chained, naming the denied operator `op:<name>`); identities persist
+  in `<base_data_dir>/operators/operators.jsonl` (0600); tokens are shown
+  exactly once and stored only as SHA-256 hashes. See README
+  "Operators and RBAC (GAP-130)" and docs/integration.md §4.
+
 - Delivered tool set for the remote-editing verbs (TOOLS-B2): `rg` via apt
   `ripgrep` and the Go language server via `go golang.org/x/tools/gopls@latest`
   ship through the image-spec package-add path, recorded canonically in

@@ -26,6 +26,13 @@ type Claims struct {
 	jwt.RegisteredClaims
 	AgentID string `json:"agent_id,omitempty"`
 	KeyID   string `json:"key_id,omitempty"`
+	// Role carries the RBAC role of an operator identity (GAP-130):
+	// "admin", "operator" or "agent:self" (see rbac.go for the enforcement
+	// semantics). Empty means a legacy credential — master static token,
+	// unscoped master JWT, or opaque apikey sub-key — whose admission is
+	// unchanged from pre-GAP-130 behavior.
+	Role   string `json:"role,omitempty"`
+	OpName string `json:"op_name,omitempty"`
 }
 
 // DefaultRotateOverlap is the dual-accept window applied when a rotation
@@ -117,6 +124,16 @@ type JWTAuth struct {
 	staticToken   string // optional fallback static bearer token
 	masterKeyOnly bool   // when true, reject agent-scoped tokens
 
+	// opMgr is the GAP-130 operator registry (nil = no operator identities
+	// configured). When set, a bearer credential that is not the static
+	// token, not a valid JWT and not an apikey sub-key is finally validated
+	// against the registry; a match yields claims carrying the operator's
+	// name and RBAC role. Operators are admitted on BOTH mounts by this
+	// validator: the master-only interceptor then applies its usual
+	// agent-credentials rule to them (an agent:self operator carries an
+	// AgentID and is therefore Bunkerd-rejected, Agent-service-allowed for
+	// its own agent), and the RBAC interceptor gates admin-only surfaces.
+	opMgr OperatorSource
 	// deny (optional) receives every authentication denial, never token
 	// material — only the FingerprintToken fingerprint. Set via SetDenySink.
 	deny DenyFunc
@@ -125,6 +142,22 @@ type JWTAuth struct {
 	// ArmThrottle) and, for compatibility, by a non-nil SetDenySink — never
 	// DISARMED by detaching the sink (REV-BUNKER-006).
 	throttle *throttleState
+}
+
+// OperatorSource is the seam the GAP-130 operator registry exposes to the
+// credential path: validate a raw bearer token, return the operator's
+// stable identity. Declared here (not as a concrete *operator.Manager) to
+// keep internal/auth importable from internal/operator without a cycle.
+type OperatorSource interface {
+	// ValidateToken checks a raw bearer token and returns
+	// (name, role, agentID) for the matching identity, or an error.
+	ValidateToken(token string) (name, role, agentID string, err error)
+}
+
+// SetOperatorSource attaches the operator registry to this validator
+// (GAP-130). nil detaches it. Safe to call before serving begins.
+func (a *JWTAuth) SetOperatorSource(src OperatorSource) {
+	a.opMgr = src
 }
 
 // NewJWTAuth creates a JWTAuth using the given HS256 secret.
@@ -361,6 +394,33 @@ func (a *JWTAuth) AuthenticateRawToken(rawToken, source, procedure string) (*Cla
 				},
 				AgentID: key.AgentID,
 				KeyID:   key.KeyID,
+			}, nil
+		}
+	}
+
+	// GAP-130: finally try the operator registry. Operator identities are
+	// ordered LAST so they can never shadow a legacy credential class; a
+	// match yields claims carrying the operator's name and RBAC role (no
+	// KeyID — operators are not sub-keys). The masterKeyOnly rule applies
+	// to them through the SAME claims.AgentID field as every other
+	// credential: an agent:self operator is admitted on the permissive
+	// (Agent service) mount and rejected on master-only mounts, exactly
+	// like an agent-scoped sub-key — which IS the role's semantics.
+	if a.opMgr != nil {
+		if name, role, agentID, opErr := a.opMgr.ValidateToken(rawToken); opErr == nil {
+			if a.masterKeyOnly && agentID != "" {
+				return nil, a.denied(source, procedure, newDenyReason("agent-scoped tokens are not allowed for this endpoint", rawToken), connect.NewError(connect.CodeUnauthenticated, errors.New("agent-scoped tokens are not allowed for this endpoint")))
+			}
+			if a.throttle != nil {
+				a.throttle.recordSuccess(source)
+			}
+			return &Claims{
+				RegisteredClaims: jwt.RegisteredClaims{
+					Subject: name,
+				},
+				AgentID: agentID,
+				Role:    role,
+				OpName:  name,
 			}, nil
 		}
 	}

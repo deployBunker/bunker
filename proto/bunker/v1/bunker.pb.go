@@ -3908,6 +3908,419 @@ func (x *KeyListResponse) GetKeys() []*KeyInfo {
 	return nil
 }
 
+// OperatorCreateRequest provisions a new named operator identity.
+// name must be unique and non-empty ([a-zA-Z0-9._-]{1,64}); role must be one
+// of the OperatorRole values. For RoleAgentSelf, name IS the agent id the
+// identity is bound to (the token can then only operate on that agent).
+// ttl_seconds bounds the credential: 0 selects the daemon default, and the
+// effective TTL is reported in the response.
+type OperatorCreateRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Role          string                 `protobuf:"bytes,2,opt,name=role,proto3" json:"role,omitempty"`                                // OperatorRole value: "admin" | "operator" | "agent:self"
+	TtlSeconds    uint32                 `protobuf:"varint,3,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"` // 0 = daemon default
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OperatorCreateRequest) Reset() {
+	*x = OperatorCreateRequest{}
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[52]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OperatorCreateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OperatorCreateRequest) ProtoMessage() {}
+
+func (x *OperatorCreateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[52]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OperatorCreateRequest.ProtoReflect.Descriptor instead.
+func (*OperatorCreateRequest) Descriptor() ([]byte, []int) {
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{52}
+}
+
+func (x *OperatorCreateRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *OperatorCreateRequest) GetRole() string {
+	if x != nil {
+		return x.Role
+	}
+	return ""
+}
+
+func (x *OperatorCreateRequest) GetTtlSeconds() uint32 {
+	if x != nil {
+		return x.TtlSeconds
+	}
+	return 0
+}
+
+// OperatorCreateResponse carries the new bearer token EXACTLY ONCE — only a
+// SHA-256 hash is stored server-side, so losing this output means re-creating
+// the operator. expires_at is RFC3339 UTC.
+type OperatorCreateResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Role          string                 `protobuf:"bytes,2,opt,name=role,proto3" json:"role,omitempty"`
+	Token         string                 `protobuf:"bytes,3,opt,name=token,proto3" json:"token,omitempty"`
+	ExpiresAt     string                 `protobuf:"bytes,4,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	TtlSeconds    uint32                 `protobuf:"varint,5,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"` // the effective TTL actually applied
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OperatorCreateResponse) Reset() {
+	*x = OperatorCreateResponse{}
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[53]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OperatorCreateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OperatorCreateResponse) ProtoMessage() {}
+
+func (x *OperatorCreateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[53]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OperatorCreateResponse.ProtoReflect.Descriptor instead.
+func (*OperatorCreateResponse) Descriptor() ([]byte, []int) {
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{53}
+}
+
+func (x *OperatorCreateResponse) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *OperatorCreateResponse) GetRole() string {
+	if x != nil {
+		return x.Role
+	}
+	return ""
+}
+
+func (x *OperatorCreateResponse) GetToken() string {
+	if x != nil {
+		return x.Token
+	}
+	return ""
+}
+
+func (x *OperatorCreateResponse) GetExpiresAt() string {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return ""
+}
+
+func (x *OperatorCreateResponse) GetTtlSeconds() uint32 {
+	if x != nil {
+		return x.TtlSeconds
+	}
+	return 0
+}
+
+// OperatorListRequest lists operator identities. agent_id filters to the
+// operator bound to one agent (agent:self identities); "" lists all.
+type OperatorListRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OperatorListRequest) Reset() {
+	*x = OperatorListRequest{}
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[54]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OperatorListRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OperatorListRequest) ProtoMessage() {}
+
+func (x *OperatorListRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[54]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OperatorListRequest.ProtoReflect.Descriptor instead.
+func (*OperatorListRequest) Descriptor() ([]byte, []int) {
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{54}
+}
+
+func (x *OperatorListRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+// OperatorInfo is one operator in an OperatorListResponse. Metadata only —
+// never a token or any other secret material.
+type OperatorInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Role          string                 `protobuf:"bytes,2,opt,name=role,proto3" json:"role,omitempty"`
+	AgentId       string                 `protobuf:"bytes,3,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`       // non-empty for agent:self identities
+	CreatedAt     string                 `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"` // RFC3339
+	ExpiresAt     string                 `protobuf:"bytes,5,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"` // RFC3339 (zero value = "0001-01-01T00:00:00Z")
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OperatorInfo) Reset() {
+	*x = OperatorInfo{}
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[55]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OperatorInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OperatorInfo) ProtoMessage() {}
+
+func (x *OperatorInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[55]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OperatorInfo.ProtoReflect.Descriptor instead.
+func (*OperatorInfo) Descriptor() ([]byte, []int) {
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{55}
+}
+
+func (x *OperatorInfo) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *OperatorInfo) GetRole() string {
+	if x != nil {
+		return x.Role
+	}
+	return ""
+}
+
+func (x *OperatorInfo) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *OperatorInfo) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
+}
+
+func (x *OperatorInfo) GetExpiresAt() string {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return ""
+}
+
+type OperatorListResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Operators     []*OperatorInfo        `protobuf:"bytes,1,rep,name=operators,proto3" json:"operators,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OperatorListResponse) Reset() {
+	*x = OperatorListResponse{}
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[56]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OperatorListResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OperatorListResponse) ProtoMessage() {}
+
+func (x *OperatorListResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[56]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OperatorListResponse.ProtoReflect.Descriptor instead.
+func (*OperatorListResponse) Descriptor() ([]byte, []int) {
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{56}
+}
+
+func (x *OperatorListResponse) GetOperators() []*OperatorInfo {
+	if x != nil {
+		return x.Operators
+	}
+	return nil
+}
+
+// OperatorDeleteRequest removes an operator identity by name. Deletion is
+// immediate: the operator's token stops validating before the response is
+// sent, and the removal persists across daemon restarts.
+type OperatorDeleteRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OperatorDeleteRequest) Reset() {
+	*x = OperatorDeleteRequest{}
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[57]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OperatorDeleteRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OperatorDeleteRequest) ProtoMessage() {}
+
+func (x *OperatorDeleteRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[57]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OperatorDeleteRequest.ProtoReflect.Descriptor instead.
+func (*OperatorDeleteRequest) Descriptor() ([]byte, []int) {
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{57}
+}
+
+func (x *OperatorDeleteRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type OperatorDeleteResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// "deleted" on success.
+	Status        string `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OperatorDeleteResponse) Reset() {
+	*x = OperatorDeleteResponse{}
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[58]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OperatorDeleteResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OperatorDeleteResponse) ProtoMessage() {}
+
+func (x *OperatorDeleteResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bunker_v1_bunker_proto_msgTypes[58]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OperatorDeleteResponse.ProtoReflect.Descriptor instead.
+func (*OperatorDeleteResponse) Descriptor() ([]byte, []int) {
+	return file_proto_bunker_v1_bunker_proto_rawDescGZIP(), []int{58}
+}
+
+func (x *OperatorDeleteResponse) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *OperatorDeleteResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
 var File_proto_bunker_v1_bunker_proto protoreflect.FileDescriptor
 
 const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
@@ -4225,10 +4638,40 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"expires_at\x18\x04 \x01(\tR\texpiresAt\x12\x18\n" +
 	"\arevoked\x18\x05 \x01(\bR\arevoked\"9\n" +
 	"\x0fKeyListResponse\x12&\n" +
-	"\x04keys\x18\x01 \x03(\v2\x12.bunker.v1.KeyInfoR\x04keys*@\n" +
+	"\x04keys\x18\x01 \x03(\v2\x12.bunker.v1.KeyInfoR\x04keys\"`\n" +
+	"\x15OperatorCreateRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
+	"\x04role\x18\x02 \x01(\tR\x04role\x12\x1f\n" +
+	"\vttl_seconds\x18\x03 \x01(\rR\n" +
+	"ttlSeconds\"\x96\x01\n" +
+	"\x16OperatorCreateResponse\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
+	"\x04role\x18\x02 \x01(\tR\x04role\x12\x14\n" +
+	"\x05token\x18\x03 \x01(\tR\x05token\x12\x1d\n" +
+	"\n" +
+	"expires_at\x18\x04 \x01(\tR\texpiresAt\x12\x1f\n" +
+	"\vttl_seconds\x18\x05 \x01(\rR\n" +
+	"ttlSeconds\"0\n" +
+	"\x13OperatorListRequest\x12\x19\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\"\x8f\x01\n" +
+	"\fOperatorInfo\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
+	"\x04role\x18\x02 \x01(\tR\x04role\x12\x19\n" +
+	"\bagent_id\x18\x03 \x01(\tR\aagentId\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x04 \x01(\tR\tcreatedAt\x12\x1d\n" +
+	"\n" +
+	"expires_at\x18\x05 \x01(\tR\texpiresAt\"M\n" +
+	"\x14OperatorListResponse\x125\n" +
+	"\toperators\x18\x01 \x03(\v2\x17.bunker.v1.OperatorInfoR\toperators\"+\n" +
+	"\x15OperatorDeleteRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"D\n" +
+	"\x16OperatorDeleteResponse\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status*@\n" +
 	"\fExecEncoding\x12\x16\n" +
 	"\x12EXEC_ENCODING_TEXT\x10\x00\x12\x18\n" +
-	"\x14EXEC_ENCODING_BASE64\x10\x012\xc3\v\n" +
+	"\x14EXEC_ENCODING_BASE64\x10\x012\xc2\r\n" +
 	"\aBunkerd\x12I\n" +
 	"\n" +
 	"ServerInfo\x12\x1c.bunker.v1.ServerInfoRequest\x1a\x1d.bunker.v1.ServerInfoResponse\x12R\n" +
@@ -4253,7 +4696,10 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"QueryAudit\x12\x1c.bunker.v1.QueryAuditRequest\x1a\x1d.bunker.v1.QueryAuditResponse\x12X\n" +
 	"\x0fRotateJWTSecret\x12!.bunker.v1.RotateJWTSecretRequest\x1a\".bunker.v1.RotateJWTSecretResponse\x12F\n" +
 	"\tRevokeKey\x12\x1b.bunker.v1.RevokeKeyRequest\x1a\x1c.bunker.v1.RevokeKeyResponse\x12@\n" +
-	"\aKeyList\x12\x19.bunker.v1.KeyListRequest\x1a\x1a.bunker.v1.KeyListResponse2\xe7\x01\n" +
+	"\aKeyList\x12\x19.bunker.v1.KeyListRequest\x1a\x1a.bunker.v1.KeyListResponse\x12U\n" +
+	"\x0eOperatorCreate\x12 .bunker.v1.OperatorCreateRequest\x1a!.bunker.v1.OperatorCreateResponse\x12O\n" +
+	"\fOperatorList\x12\x1e.bunker.v1.OperatorListRequest\x1a\x1f.bunker.v1.OperatorListResponse\x12U\n" +
+	"\x0eOperatorDelete\x12 .bunker.v1.OperatorDeleteRequest\x1a!.bunker.v1.OperatorDeleteResponse2\xe7\x01\n" +
 	"\x05Agent\x12@\n" +
 	"\aGetInfo\x12\x19.bunker.v1.GetInfoRequest\x1a\x1a.bunker.v1.GetInfoResponse\x12J\n" +
 	"\aMetrics\x12\x1e.bunker.v1.AgentMetricsRequest\x1a\x1f.bunker.v1.AgentMetricsResponse\x12P\n" +
@@ -4272,7 +4718,7 @@ func file_proto_bunker_v1_bunker_proto_rawDescGZIP() []byte {
 }
 
 var file_proto_bunker_v1_bunker_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_proto_bunker_v1_bunker_proto_msgTypes = make([]protoimpl.MessageInfo, 54)
+var file_proto_bunker_v1_bunker_proto_msgTypes = make([]protoimpl.MessageInfo, 61)
 var file_proto_bunker_v1_bunker_proto_goTypes = []any{
 	(ExecEncoding)(0),               // 0: bunker.v1.ExecEncoding
 	(NetworkConfig_Mode)(0),         // 1: bunker.v1.NetworkConfig.Mode
@@ -4328,8 +4774,15 @@ var file_proto_bunker_v1_bunker_proto_goTypes = []any{
 	(*KeyListRequest)(nil),          // 51: bunker.v1.KeyListRequest
 	(*KeyInfo)(nil),                 // 52: bunker.v1.KeyInfo
 	(*KeyListResponse)(nil),         // 53: bunker.v1.KeyListResponse
-	nil,                             // 54: bunker.v1.SpawnAgentRequest.LabelsEntry
-	nil,                             // 55: bunker.v1.RunAgentRequest.EnvEntry
+	(*OperatorCreateRequest)(nil),   // 54: bunker.v1.OperatorCreateRequest
+	(*OperatorCreateResponse)(nil),  // 55: bunker.v1.OperatorCreateResponse
+	(*OperatorListRequest)(nil),     // 56: bunker.v1.OperatorListRequest
+	(*OperatorInfo)(nil),            // 57: bunker.v1.OperatorInfo
+	(*OperatorListResponse)(nil),    // 58: bunker.v1.OperatorListResponse
+	(*OperatorDeleteRequest)(nil),   // 59: bunker.v1.OperatorDeleteRequest
+	(*OperatorDeleteResponse)(nil),  // 60: bunker.v1.OperatorDeleteResponse
+	nil,                             // 61: bunker.v1.SpawnAgentRequest.LabelsEntry
+	nil,                             // 62: bunker.v1.RunAgentRequest.EnvEntry
 }
 var file_proto_bunker_v1_bunker_proto_depIdxs = []int32{
 	1,  // 0: bunker.v1.NetworkConfig.mode:type_name -> bunker.v1.NetworkConfig.Mode
@@ -4343,7 +4796,7 @@ var file_proto_bunker_v1_bunker_proto_depIdxs = []int32{
 	31, // 8: bunker.v1.AgentSummary.network_isolation:type_name -> bunker.v1.NetworkIsolation
 	2,  // 9: bunker.v1.SpawnAgentRequest.limits:type_name -> bunker.v1.ResourceLimits
 	3,  // 10: bunker.v1.SpawnAgentRequest.network:type_name -> bunker.v1.NetworkConfig
-	54, // 11: bunker.v1.SpawnAgentRequest.labels:type_name -> bunker.v1.SpawnAgentRequest.LabelsEntry
+	61, // 11: bunker.v1.SpawnAgentRequest.labels:type_name -> bunker.v1.SpawnAgentRequest.LabelsEntry
 	12, // 12: bunker.v1.SpawnAgentRequest.image_spec:type_name -> bunker.v1.ImageSpec
 	13, // 13: bunker.v1.ImageSpec.packages:type_name -> bunker.v1.PackageAdd
 	2,  // 14: bunker.v1.SpawnAgentResponse.limits:type_name -> bunker.v1.ResourceLimits
@@ -4352,59 +4805,66 @@ var file_proto_bunker_v1_bunker_proto_depIdxs = []int32{
 	9,  // 17: bunker.v1.ListAgentsResponse.agents:type_name -> bunker.v1.AgentSummary
 	9,  // 18: bunker.v1.GetAgentResponse.agent:type_name -> bunker.v1.AgentSummary
 	0,  // 19: bunker.v1.ExecAgentRequest.response_encoding:type_name -> bunker.v1.ExecEncoding
-	55, // 20: bunker.v1.RunAgentRequest.env:type_name -> bunker.v1.RunAgentRequest.EnvEntry
+	62, // 20: bunker.v1.RunAgentRequest.env:type_name -> bunker.v1.RunAgentRequest.EnvEntry
 	2,  // 21: bunker.v1.GetInfoResponse.limits:type_name -> bunker.v1.ResourceLimits
 	45, // 22: bunker.v1.QueryAuditResponse.records:type_name -> bunker.v1.AuditRecord
 	52, // 23: bunker.v1.KeyListResponse.keys:type_name -> bunker.v1.KeyInfo
-	4,  // 24: bunker.v1.Bunkerd.ServerInfo:input_type -> bunker.v1.ServerInfoRequest
-	7,  // 25: bunker.v1.Bunkerd.ServerMetrics:input_type -> bunker.v1.ServerMetricsRequest
-	11, // 26: bunker.v1.Bunkerd.SpawnAgent:input_type -> bunker.v1.SpawnAgentRequest
-	20, // 27: bunker.v1.Bunkerd.RenewalDriftReport:input_type -> bunker.v1.RenewalDriftRequest
-	18, // 28: bunker.v1.Bunkerd.DestroyAgent:input_type -> bunker.v1.DestroyAgentRequest
-	23, // 29: bunker.v1.Bunkerd.StopAgent:input_type -> bunker.v1.StopAgentRequest
-	25, // 30: bunker.v1.Bunkerd.StartAgent:input_type -> bunker.v1.StartAgentRequest
-	27, // 31: bunker.v1.Bunkerd.RestartAgent:input_type -> bunker.v1.RestartAgentRequest
-	29, // 32: bunker.v1.Bunkerd.ListAgents:input_type -> bunker.v1.ListAgentsRequest
-	32, // 33: bunker.v1.Bunkerd.GetAgent:input_type -> bunker.v1.GetAgentRequest
-	16, // 34: bunker.v1.Bunkerd.GetAgentKey:input_type -> bunker.v1.GetAgentKeyRequest
-	34, // 35: bunker.v1.Bunkerd.AgentMetrics:input_type -> bunker.v1.AgentMetricsRequest
-	38, // 36: bunker.v1.Bunkerd.ExecAgent:input_type -> bunker.v1.ExecAgentRequest
-	40, // 37: bunker.v1.Bunkerd.RunAgent:input_type -> bunker.v1.RunAgentRequest
-	36, // 38: bunker.v1.Bunkerd.HeartbeatAgent:input_type -> bunker.v1.HeartbeatAgentRequest
-	44, // 39: bunker.v1.Bunkerd.QueryAudit:input_type -> bunker.v1.QueryAuditRequest
-	47, // 40: bunker.v1.Bunkerd.RotateJWTSecret:input_type -> bunker.v1.RotateJWTSecretRequest
-	49, // 41: bunker.v1.Bunkerd.RevokeKey:input_type -> bunker.v1.RevokeKeyRequest
-	51, // 42: bunker.v1.Bunkerd.KeyList:input_type -> bunker.v1.KeyListRequest
-	42, // 43: bunker.v1.Agent.GetInfo:input_type -> bunker.v1.GetInfoRequest
-	34, // 44: bunker.v1.Agent.Metrics:input_type -> bunker.v1.AgentMetricsRequest
-	36, // 45: bunker.v1.Agent.Heartbeat:input_type -> bunker.v1.HeartbeatAgentRequest
-	5,  // 46: bunker.v1.Bunkerd.ServerInfo:output_type -> bunker.v1.ServerInfoResponse
-	8,  // 47: bunker.v1.Bunkerd.ServerMetrics:output_type -> bunker.v1.ServerMetricsResponse
-	15, // 48: bunker.v1.Bunkerd.SpawnAgent:output_type -> bunker.v1.SpawnAgentResponse
-	21, // 49: bunker.v1.Bunkerd.RenewalDriftReport:output_type -> bunker.v1.RenewalDriftResponse
-	19, // 50: bunker.v1.Bunkerd.DestroyAgent:output_type -> bunker.v1.DestroyAgentResponse
-	24, // 51: bunker.v1.Bunkerd.StopAgent:output_type -> bunker.v1.StopAgentResponse
-	26, // 52: bunker.v1.Bunkerd.StartAgent:output_type -> bunker.v1.StartAgentResponse
-	28, // 53: bunker.v1.Bunkerd.RestartAgent:output_type -> bunker.v1.RestartAgentResponse
-	30, // 54: bunker.v1.Bunkerd.ListAgents:output_type -> bunker.v1.ListAgentsResponse
-	33, // 55: bunker.v1.Bunkerd.GetAgent:output_type -> bunker.v1.GetAgentResponse
-	17, // 56: bunker.v1.Bunkerd.GetAgentKey:output_type -> bunker.v1.GetAgentKeyResponse
-	35, // 57: bunker.v1.Bunkerd.AgentMetrics:output_type -> bunker.v1.AgentMetricsResponse
-	39, // 58: bunker.v1.Bunkerd.ExecAgent:output_type -> bunker.v1.ExecAgentResponse
-	41, // 59: bunker.v1.Bunkerd.RunAgent:output_type -> bunker.v1.RunAgentResponse
-	37, // 60: bunker.v1.Bunkerd.HeartbeatAgent:output_type -> bunker.v1.HeartbeatAgentResponse
-	46, // 61: bunker.v1.Bunkerd.QueryAudit:output_type -> bunker.v1.QueryAuditResponse
-	48, // 62: bunker.v1.Bunkerd.RotateJWTSecret:output_type -> bunker.v1.RotateJWTSecretResponse
-	50, // 63: bunker.v1.Bunkerd.RevokeKey:output_type -> bunker.v1.RevokeKeyResponse
-	53, // 64: bunker.v1.Bunkerd.KeyList:output_type -> bunker.v1.KeyListResponse
-	43, // 65: bunker.v1.Agent.GetInfo:output_type -> bunker.v1.GetInfoResponse
-	35, // 66: bunker.v1.Agent.Metrics:output_type -> bunker.v1.AgentMetricsResponse
-	37, // 67: bunker.v1.Agent.Heartbeat:output_type -> bunker.v1.HeartbeatAgentResponse
-	46, // [46:68] is the sub-list for method output_type
-	24, // [24:46] is the sub-list for method input_type
-	24, // [24:24] is the sub-list for extension type_name
-	24, // [24:24] is the sub-list for extension extendee
-	0,  // [0:24] is the sub-list for field type_name
+	57, // 24: bunker.v1.OperatorListResponse.operators:type_name -> bunker.v1.OperatorInfo
+	4,  // 25: bunker.v1.Bunkerd.ServerInfo:input_type -> bunker.v1.ServerInfoRequest
+	7,  // 26: bunker.v1.Bunkerd.ServerMetrics:input_type -> bunker.v1.ServerMetricsRequest
+	11, // 27: bunker.v1.Bunkerd.SpawnAgent:input_type -> bunker.v1.SpawnAgentRequest
+	20, // 28: bunker.v1.Bunkerd.RenewalDriftReport:input_type -> bunker.v1.RenewalDriftRequest
+	18, // 29: bunker.v1.Bunkerd.DestroyAgent:input_type -> bunker.v1.DestroyAgentRequest
+	23, // 30: bunker.v1.Bunkerd.StopAgent:input_type -> bunker.v1.StopAgentRequest
+	25, // 31: bunker.v1.Bunkerd.StartAgent:input_type -> bunker.v1.StartAgentRequest
+	27, // 32: bunker.v1.Bunkerd.RestartAgent:input_type -> bunker.v1.RestartAgentRequest
+	29, // 33: bunker.v1.Bunkerd.ListAgents:input_type -> bunker.v1.ListAgentsRequest
+	32, // 34: bunker.v1.Bunkerd.GetAgent:input_type -> bunker.v1.GetAgentRequest
+	16, // 35: bunker.v1.Bunkerd.GetAgentKey:input_type -> bunker.v1.GetAgentKeyRequest
+	34, // 36: bunker.v1.Bunkerd.AgentMetrics:input_type -> bunker.v1.AgentMetricsRequest
+	38, // 37: bunker.v1.Bunkerd.ExecAgent:input_type -> bunker.v1.ExecAgentRequest
+	40, // 38: bunker.v1.Bunkerd.RunAgent:input_type -> bunker.v1.RunAgentRequest
+	36, // 39: bunker.v1.Bunkerd.HeartbeatAgent:input_type -> bunker.v1.HeartbeatAgentRequest
+	44, // 40: bunker.v1.Bunkerd.QueryAudit:input_type -> bunker.v1.QueryAuditRequest
+	47, // 41: bunker.v1.Bunkerd.RotateJWTSecret:input_type -> bunker.v1.RotateJWTSecretRequest
+	49, // 42: bunker.v1.Bunkerd.RevokeKey:input_type -> bunker.v1.RevokeKeyRequest
+	51, // 43: bunker.v1.Bunkerd.KeyList:input_type -> bunker.v1.KeyListRequest
+	54, // 44: bunker.v1.Bunkerd.OperatorCreate:input_type -> bunker.v1.OperatorCreateRequest
+	56, // 45: bunker.v1.Bunkerd.OperatorList:input_type -> bunker.v1.OperatorListRequest
+	59, // 46: bunker.v1.Bunkerd.OperatorDelete:input_type -> bunker.v1.OperatorDeleteRequest
+	42, // 47: bunker.v1.Agent.GetInfo:input_type -> bunker.v1.GetInfoRequest
+	34, // 48: bunker.v1.Agent.Metrics:input_type -> bunker.v1.AgentMetricsRequest
+	36, // 49: bunker.v1.Agent.Heartbeat:input_type -> bunker.v1.HeartbeatAgentRequest
+	5,  // 50: bunker.v1.Bunkerd.ServerInfo:output_type -> bunker.v1.ServerInfoResponse
+	8,  // 51: bunker.v1.Bunkerd.ServerMetrics:output_type -> bunker.v1.ServerMetricsResponse
+	15, // 52: bunker.v1.Bunkerd.SpawnAgent:output_type -> bunker.v1.SpawnAgentResponse
+	21, // 53: bunker.v1.Bunkerd.RenewalDriftReport:output_type -> bunker.v1.RenewalDriftResponse
+	19, // 54: bunker.v1.Bunkerd.DestroyAgent:output_type -> bunker.v1.DestroyAgentResponse
+	24, // 55: bunker.v1.Bunkerd.StopAgent:output_type -> bunker.v1.StopAgentResponse
+	26, // 56: bunker.v1.Bunkerd.StartAgent:output_type -> bunker.v1.StartAgentResponse
+	28, // 57: bunker.v1.Bunkerd.RestartAgent:output_type -> bunker.v1.RestartAgentResponse
+	30, // 58: bunker.v1.Bunkerd.ListAgents:output_type -> bunker.v1.ListAgentsResponse
+	33, // 59: bunker.v1.Bunkerd.GetAgent:output_type -> bunker.v1.GetAgentResponse
+	17, // 60: bunker.v1.Bunkerd.GetAgentKey:output_type -> bunker.v1.GetAgentKeyResponse
+	35, // 61: bunker.v1.Bunkerd.AgentMetrics:output_type -> bunker.v1.AgentMetricsResponse
+	39, // 62: bunker.v1.Bunkerd.ExecAgent:output_type -> bunker.v1.ExecAgentResponse
+	41, // 63: bunker.v1.Bunkerd.RunAgent:output_type -> bunker.v1.RunAgentResponse
+	37, // 64: bunker.v1.Bunkerd.HeartbeatAgent:output_type -> bunker.v1.HeartbeatAgentResponse
+	46, // 65: bunker.v1.Bunkerd.QueryAudit:output_type -> bunker.v1.QueryAuditResponse
+	48, // 66: bunker.v1.Bunkerd.RotateJWTSecret:output_type -> bunker.v1.RotateJWTSecretResponse
+	50, // 67: bunker.v1.Bunkerd.RevokeKey:output_type -> bunker.v1.RevokeKeyResponse
+	53, // 68: bunker.v1.Bunkerd.KeyList:output_type -> bunker.v1.KeyListResponse
+	55, // 69: bunker.v1.Bunkerd.OperatorCreate:output_type -> bunker.v1.OperatorCreateResponse
+	58, // 70: bunker.v1.Bunkerd.OperatorList:output_type -> bunker.v1.OperatorListResponse
+	60, // 71: bunker.v1.Bunkerd.OperatorDelete:output_type -> bunker.v1.OperatorDeleteResponse
+	43, // 72: bunker.v1.Agent.GetInfo:output_type -> bunker.v1.GetInfoResponse
+	35, // 73: bunker.v1.Agent.Metrics:output_type -> bunker.v1.AgentMetricsResponse
+	37, // 74: bunker.v1.Agent.Heartbeat:output_type -> bunker.v1.HeartbeatAgentResponse
+	50, // [50:75] is the sub-list for method output_type
+	25, // [25:50] is the sub-list for method input_type
+	25, // [25:25] is the sub-list for extension type_name
+	25, // [25:25] is the sub-list for extension extendee
+	0,  // [0:25] is the sub-list for field type_name
 }
 
 func init() { file_proto_bunker_v1_bunker_proto_init() }
@@ -4422,7 +4882,7 @@ func file_proto_bunker_v1_bunker_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_bunker_v1_bunker_proto_rawDesc), len(file_proto_bunker_v1_bunker_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   54,
+			NumMessages:   61,
 			NumExtensions: 0,
 			NumServices:   2,
 		},
