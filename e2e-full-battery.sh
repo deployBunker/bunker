@@ -9,7 +9,11 @@ set -euo pipefail
 #   sudo bash e2e-full-battery.sh
 # EXIT CODES:
 #   0   = success (final line "STATUS: ALL CORE TESTS PASS" / "VERIFY-PASS",
-#         or the --self-test diagnostics check completed)
+#         or the --self-test diagnostics check completed). A PASS verdict
+#         carries the daemon-reported HOSTNAME (QA-BUNKER-B14): a VERIFY-PASS
+#         line names the host it certifies and a VERIFY-FAIL line names the
+#         host that failed, so "E2E VERIFY-PASS" can never be quoted as
+#         covering a host the battery never ran on.
 #   42  = preflight refusal (not root, or the daemon log path is not
 #         writable, or — standalone mode only — the daemon rejected
 #         BUNKER_TOKEN, probed up front via a read-only `bcli list` BEFORE
@@ -134,6 +138,80 @@ BUNKERD_BIN="${BUNKERD_BIN:-/usr/local/bin/bunkerd}"
 # --name <name>` created. This is the same shape regression-tests.sh uses
 # (INT-CI-025, commits 9f58928 + 6aac7f8).
 BATTERY_TARGET_NAME="${BUNKER_E2E_TARGET:-e2e-local}"
+
+# ── Host identity (QA-BUNKER-B14) ──────────────────────────────────────
+# A VERIFY-PASS/VERIFY-FAIL verdict is only meaningful for the host it was
+# produced ON. Commits like "E2E VERIFY-PASS" and "CI closure" have been read
+# as covering a fleet host (bunker-las-03) while the battery actually ran
+# somewhere else (bunker-mvp, per AGENTS.md) — green here is not green there.
+# From the connect (section 2) onward the battery therefore records the
+# HOSTNAME THE DAEMON ITSELF reports (ServerInfo, the same value `bcli status`
+# renders) and the verdict must carry it. The hostname is compared against
+# the runner's own `hostname` ONLY as a default (BATTERY_EXPECTED_HOST
+# overrides it for pinned-host CI), and a mismatch is a NOTE, never a fail:
+# a coexist daemon on a renamed host, a remote BUNKER_DAEMON_URL, or a
+# containerized runner all legitimately differ. Failure modes stay LOUD:
+#
+#   BATTERY_HOST_UNKNOWN   the daemon answered no hostname — the summary
+#                          prints "VERIFY-PASS (host UNKNOWN...)" so the
+#                          verdict can never read as host-proven
+#   BATTERY_HOST_MISMATCH  the daemon's hostname differs from the expected
+#                          host — noted in the verdict line itself
+BATTERY_DAEMON_HOSTNAME=""
+BATTERY_HOST_EXPECTED=""
+BATTERY_HOST_STATUS=""
+# The verdict-line suffix, computed by battery_host_connect_probe. A VARIABLE,
+# not a function: the summary block is extracted and executed on its own by
+# internal/hostsetup TestBatterySummaryExitCodeTracksFailures with only
+# PASS/FAIL/NOTE supplied — an undefined function there would abort the block
+# under set -e, while an unset variable degrades to the bare legacy marker
+# ("VERIFY-PASS") exactly as the pre-B14 contract expects.
+BATTERY_HOST_SUFFIX=""
+
+# battery_host_record DAEMON_HOSTNAME SUFFIX — store the daemon-reported
+# hostname and the verdict suffix that goes with it.
+battery_host_record() {
+    BATTERY_DAEMON_HOSTNAME="$1"
+    BATTERY_HOST_SUFFIX="$2"
+}
+
+# battery_host_connect_probe — probe the daemon's OWN view of its host right
+# after the section-2 connect. Uses `bcli status` (read-only) and extracts the
+# "Hostname:" line the CLI renders from ServerInfo.GetHostname()
+# (internal/server/service.go ServerInfo). Read-only, never aborts the run:
+# a probe failure records UNKNOWN (the verdict then says so) instead of
+# failing a section the daemon gate already covers.
+battery_host_connect_probe() {
+    local out="" rc=0
+    set +e
+    trap - ERR
+    out="$(bcli status --server "$BATTERY_TARGET_NAME" 2>&1)"
+    rc=$?
+    trap 'diag_err $? $LINENO "$BASH_COMMAND"' ERR
+    set -e
+    if [ "$rc" -eq 0 ]; then
+        battery_host_record "$(printf '%s' "$out" | sed -n 's/^[[:space:]]*Hostname:[[:space:]]*//p' | head -1)" ""
+    else
+        battery_host_record "" ""
+    fi
+    if [ -z "$BATTERY_DAEMON_HOSTNAME" ]; then
+        BATTERY_HOST_STATUS="unknown"
+        battery_host_record "" " (host UNKNOWN — not host-proven)"
+        note "host identity (QA-BUNKER-B14): the daemon at $BUNKER_DAEMON_URL reported NO hostname — the verdict below will read 'host UNKNOWN', which is NOT host-proven"
+        return 0
+    fi
+    BATTERY_HOST_EXPECTED="${BATTERY_EXPECTED_HOST:-$(hostname 2>/dev/null || true)}"
+    if [ -n "$BATTERY_HOST_EXPECTED" ] && [ "$BATTERY_DAEMON_HOSTNAME" != "$BATTERY_HOST_EXPECTED" ]; then
+        BATTERY_HOST_STATUS="mismatch"
+        battery_host_record "$BATTERY_DAEMON_HOSTNAME" " (host: $BATTERY_DAEMON_HOSTNAME — EXPECTED $BATTERY_HOST_EXPECTED)"
+        note "host identity (QA-BUNKER-B14): the daemon reports hostname '$BATTERY_DAEMON_HOSTNAME' but this runner is '$BATTERY_HOST_EXPECTED' — the verdict is certified FOR '$BATTERY_DAEMON_HOSTNAME' (set BATTERY_EXPECTED_HOST to pin the expected host; a remote BUNKER_DAEMON_URL legitimately differs)"
+        return 0
+    fi
+    BATTERY_HOST_STATUS="ok"
+    battery_host_record "$BATTERY_DAEMON_HOSTNAME" " (host: $BATTERY_DAEMON_HOSTNAME)"
+    assert "host identity proven: the daemon at $BUNKER_DAEMON_URL reports hostname '$BATTERY_DAEMON_HOSTNAME' — the verdict below is certified FOR this host (QA-BUNKER-B14)"
+    return 0
+}
 
 # ── Resolved inputs + CLI-state isolation (INT-CI-010) ─────────────────
 # Every input is optional and an explicitly exported value ALWAYS wins over
@@ -1340,6 +1418,7 @@ if [ "${1:-}" = "--show-plan" ]; then
     echo "  gRPC port             : :$GRPC_PORT  (BUNKERD_GRPC_ADDR=$BUNKERD_GRPC_ADDR${BUNKERD_GRPC_ADDR_EXPLICIT:+, explicit})"
     echo "  token source          : $BUNKER_TOKEN_SOURCE (fingerprint $(token_fingerprint "$BUNKER_TOKEN"); the token itself is never printed)"
     echo "  session target        : $BATTERY_TARGET_NAME  (registered by the section-2 connect --name, bound as BUNKER_SESSION_TARGET; every mutating call also passes --server explicitly — GAP-093)"
+    echo "  verdict host identity : the VERIFY verdict will name the host the DAEMON reports (bcli status Hostname, QA-BUNKER-B14); expected on this runner: ${BATTERY_EXPECTED_HOST:-$(hostname 2>/dev/null || echo unknown)}${BATTERY_EXPECTED_HOST:+ (pinned)}"
     echo "  nested suite binding  : the child runs with BUNKER_SESSION_TARGET cleared (env -u) and binds its own target name"
     echo "  battery CLI state dir : $PLAN_CLI_HOME  (BUNKER_HOME and HOME for every CLI call; removed on exit)"
     echo "  battery CLI config    : $PLAN_CLI_CONFIG  ($([ -f "$PLAN_CLI_CONFIG" ] && echo exists || echo 'created on the first CLI call'))"
@@ -1744,6 +1823,14 @@ if [ -n "$CONNECT_CFG" ]; then
 else
     fail "no CLI registration for $BUNKER_DAEMON_URL under the battery's own state dir ($BATTERY_CLI_HOME)"
 fi
+
+# QA-BUNKER-B14: the run's host identity, proven from the daemon ITSELF
+# (ServerInfo.GetHostname via `bcli status`). From here to the summary the
+# verdict carries it: VERIFY-PASS/VERIFY-FAIL print "host: NAME", the summary
+# prints a CERTIFIED HOST line, and an unprobed/unknown host degrades to the
+# loud "(host UNKNOWN — not host-proven)" suffix instead of an unqualified
+# verdict. Read-only; every failure mode is a note, never a crash.
+battery_host_connect_probe
 echo ""
 
 # =============================================
@@ -3216,11 +3303,12 @@ echo ""
 # internal/hostsetup TestBatterySummaryExitCodeTracksFailures, which supplies
 # only PASS/FAIL/NOTE.
 echo "  CERTIFIED BINARY: ${BUNKER:-<standalone-summary-fixture>} (commit reported: ${BIN_CERT_BIN_COMMIT:-<none>}; verdict: ${BIN_CERT_VERDICT:-UNKNOWN})"
+echo "  CERTIFIED HOST: ${BATTERY_DAEMON_HOSTNAME:-UNKNOWN}${BATTERY_HOST_STATUS:+ (${BATTERY_HOST_STATUS})} — the VERIFY verdict above covers THIS host only (QA-BUNKER-B14)"
 echo ""
 
 if [ "$FAIL" -eq 0 ]; then
     echo "  STATUS: ALL CORE TESTS PASS"
-    echo "  VERIFY-PASS"
+    echo "  VERIFY-PASS${BATTERY_HOST_SUFFIX:-}"
     if [ "$NOTE" -gt 0 ]; then
         echo "  ($NOTE issues documented — see notes above)"
     fi
@@ -3228,7 +3316,7 @@ if [ "$FAIL" -eq 0 ]; then
     exit 0
 else
     echo "  STATUS: $FAIL FAILURES — review above"
-    echo "  VERIFY-FAIL"
+    echo "  VERIFY-FAIL${BATTERY_HOST_SUFFIX:-}"
     echo ""
     # A failing battery MUST exit non-zero: the previous revision ended with a
     # bare `exit 0`, so the CI E2E step stayed green while VERIFY-PASS was
