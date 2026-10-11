@@ -1,0 +1,84 @@
+{
+  "tick_id": "bunker-foreman-2026-10-11-07-29-14",
+  "wave_budget": 7,
+  "tasks": [
+    {
+      "id": "QA-BUNKER-B13",
+      "title": "run_battery failure filed under wrong project id in qa-findings ledger",
+      "worktree": "wt/QA-BUNKER-B13",
+      "branch": "wt/QA-BUNKER-B13"
+    },
+    {
+      "id": "QA-BUNKER-B14",
+      "title": "E2E VERIFY-PASS and CI closure claims do not cover the failing cell's host",
+      "worktree": "wt/QA-BUNKER-B14",
+      "branch": "wt/QA-BUNKER-B14"
+    },
+    {
+      "id": "QA-BUNKER-16",
+      "title": "QA-BUNKER ids are reused across cycles with different titles",
+      "worktree": "wt/QA-BUNKER-16",
+      "branch": "wt/QA-BUNKER-16"
+    },
+    {
+      "id": "QA-BUNKER-17",
+      "title": "qa-cron commit claims 5 new findings but appends 4 board rows",
+      "worktree": "wt/QA-BUNKER-17",
+      "branch": "wt/QA-BUNKER-17"
+    },
+    {
+      "id": "QA-BUNKER-18",
+      "title": "bunker is absent from the QA ledger \u2014 coverage for this target is never recorded",
+      "worktree": "wt/QA-BUNKER-18",
+      "branch": "wt/QA-BUNKER-18"
+    },
+    {
+      "id": "CLN-1",
+      "title": "Repo hygiene: clean up project folder structure",
+      "worktree": "wt/CLN-1",
+      "branch": "wt/CLN-1"
+    },
+    {
+      "id": "DF-BUNKER-10",
+      "title": "Daemon fleet runs a major version behind the repo",
+      "worktree": "wt/DF-BUNKER-10",
+      "branch": "wt/DF-BUNKER-10"
+    }
+  ],
+  "created_at": "2026-10-11T07:29:14-05:00",
+  "finished_at": "2026-10-11T02:49:06.438772",
+  "results": {
+    "DF-BUNKER-10": {
+      "status": "merged",
+      "commits": [
+        "97ffadca",
+        "ace31b1e"
+      ],
+      "pushed": true
+    },
+    "QA-BUNKER-B13": {
+      "status": "dispatch-failed",
+      "reason": "worker exited immediately, 1-line log"
+    },
+    "QA-BUNKER-B14": {
+      "status": "dispatch-failed",
+      "reason": "worker exited immediately, 1-line log"
+    },
+    "QA-BUNKER-16": {
+      "status": "dispatch-failed",
+      "reason": "worker exited immediately, 1-line log"
+    },
+    "QA-BUNKER-17": {
+      "status": "dispatch-failed",
+      "reason": "worker exited immediately, 1-line log"
+    },
+    "QA-BUNKER-18": {
+      "status": "dispatch-failed",
+      "reason": "worker exited immediately, 1-line log"
+    },
+    "CLN-1": {
+      "status": "dispatch-failed",
+      "reason": "worker exited immediately, 1-line log"
+    }
+  }
+}
