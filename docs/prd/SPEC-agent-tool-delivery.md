@@ -107,11 +107,43 @@ On the agent, with the workspace root created first:
   fresh agent still needs it run once. Making it automatic touches the spawn
   path, which requires the live E2E battery, and is filed separately.
 - **Uninstall/rollback is supported** (GAP-096 criterion 3): `bunker
-  agent-tools --uninstall` removes the delivered toolsd from `$HOME/bin`,
-  names each file's outcome (`was-present` / `already-absent`), and re-probes
-  so "uninstalled" is proven, not asserted. Tools installed through
-  package-add belong to their package managers and are deliberately out of
-  scope.
+  agent-tools --uninstall` removes the delivered tools from `$HOME/bin` —
+  toolsd AND the registry tools the runtime stages unpacked there — names each
+  file's outcome (`was-present` / `already-absent`), and re-probes so
+  "uninstalled" is proven, not asserted. Tools installed through spawn-time
+  package-add live in the image's own paths and belong to their package
+  managers.
+
+## The runtime delivery of the registry tools (DF-BUNKER-57)
+
+The first fix shaped the boundary as "copy toolsd, advise image-spec for the
+rest" — which dead-ended on SSH-based agents (las-03's class): no image-spec
+path exists there, yet the probe correctly names rg REQUIRED. The registry
+tools are therefore DELIVERED AT RUNTIME by the same command, with the
+registry-owned guarantees kept by changing the mechanism, not the ownership:
+
+- **rg** — `apt-get download ripgrep` on the agent (apt's own fetcher; the
+  SAME pinned, signature-verified archive the package manager would install)
+  extracted with `dpkg-deb -x` into `$HOME/bin`. No root, no extra RPC; a
+  copied-from-elsewhere binary is still never shipped.
+- **gopls** — the image-spec go directive's own mechanism, at runtime: a Go
+  toolchain bootstrapped from dl.google.com with the tarball's SHA-256 PINNED
+  in the client (both amd64 and arm64), then module-aware `go install
+  golang.org/x/tools/gopls@latest` with `GOBIN=$HOME/bin` and a
+  work-scoped GOCACHE/GOMODCACHE/GOPATH. The pins dodge the go1.25.4
+  checksum re-upload incident (golang/go#76246/#76257) — the checksum is
+  pinned in code precisely because the download page's changed mid-flight.
+
+Contract, unchanged in kind: every stage prints a machine-verdict line
+(INSTALLED/FAILED), the install re-probes the agent and FAILS if a delivered
+tool is still unreachable, stage failures are collected and named, and an
+already-present tool short-circuits (idempotent re-runs are cheap and
+network-free). On agents WITH an image-spec path the spawn-time spec remains
+the better road — it bakes the tools into the image — and the command still
+prints that directive. The runtime delivery registry is PINNED to
+`imagespec.AgentToolPackages` by test: the spawn-time delivered set and the
+runtime-deliverable set cannot drift apart. `--uninstall` removes the runtime
+stages' files too, with the survivor check scoped to the names it removes.
 
 ## The delivered set (TOOLS-B2)
 

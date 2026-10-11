@@ -119,27 +119,33 @@ search has no working output mode and lsp refuses with nothing to serve.
 A missing tool is DATA (exit 0 with a named list), matching bunker probe's
 contract. Only a probe that could not run exits non-zero.
 
-With --install the vendored tools are DELIVERED onto the agent's own PATH
-($HOME/bin, which the server already puts on every exec), then re-probed so the
-result is evidence rather than a claim. Only tools we build ourselves are copied
-that way; ripgrep and the language servers are in distribution registries and
-belong to the image-spec package-add path, which pins versions and verifies
-signatures. A dynamically linked artifact is REFUSED, because it would depend on
-this machine's libc. The command names what it did NOT deliver and prints the
-image-spec directive for those, so it never claims a fully provisioned agent.
-After copying, the agent is re-probed and the delivery FAILS if the tool is
+With --install the tools are DELIVERED onto the agent's own PATH ($HOME/bin,
+which the server already puts on every exec), then re-probed so the result is
+evidence rather than a claim:
+  - toolsd is copied from a locally built binary (only tools we build are
+    shipped that way; a dynamically linked artifact is REFUSED, because it
+    would depend on this machine's libc);
+  - rg and gopls are registry tools: the delivery pulls the SAME pinned,
+    signature-verified archives their package managers install (apt-get
+    download + dpkg-deb -x for ripgrep; a checksum-verified Go toolchain and
+    module-aware "go install" for gopls) and unpacks them into the agent's
+    $HOME/bin — no root is needed and no registry trust is bypassed.
+After each delivery the agent is re-probed and the install FAILS if a tool is
 still unreachable — "copied the file" is not "the tool works". A local/remote
-version difference is a named warning (an operator testing one build while an
-agent runs another is a silent behaviour split). Spec:
+version difference on toolsd is a named warning (an operator testing one build
+while an agent runs another is a silent behaviour split). On agents WITH the
+image-spec path (spawn-time package-add), the same set is baked into the image
+by the directive the install tail prints. Spec:
 docs/prd/SPEC-agent-tool-delivery.md.
 
-With --uninstall the delivered tools are REMOVED from the agent's $HOME/bin and
-the removal is proven the same way: the agent is re-probed through the same
-audited exec path, and a toolsd still reachable on its PATH fails the command
-with the surviving path named. Removing an already-absent file is reported by
+With --uninstall the delivered tools are REMOVED from the agent's $HOME/bin
+(the vendored toolsd AND the registry tools the runtime stages unpacked there)
+and the removal is proven the same way: the agent is re-probed through the same
+audited exec path, and any removed tool still reachable on its PATH fails the
+command with the survivor named. Removing an already-absent file is reported by
 name, not an error — an idempotent teardown mirroring "bunker surface remove".
-Tools installed through the image-spec package-add path (ripgrep, language
-servers) belong to their package managers and are out of scope here.
+Tools that arrived through the image-spec package-add path live in the image's
+own paths and are out of scope here.
 
 Examples:
   bunker agent-tools abc12345
@@ -184,7 +190,15 @@ Examples:
 			defer cancel()
 
 			if install {
-				return installAgentTools(cmd, ctx, client, entry, agentID, binaryPath)
+				// DF-BUNKER-57: probe FIRST, so the package delivery
+				// stages know which tools were already present (the
+				// idempotent re-run goes home-probe only) and the final
+				// verdict can name what THIS run delivered.
+				before, err := probeAgentTools(ctx, client, entry, agentID)
+				if err != nil {
+					return err
+				}
+				return installAgentTools(cmd, ctx, client, entry, agentID, before, binaryPath)
 			}
 			if uninstall {
 				return uninstallAgentTools(cmd, ctx, client, entry, agentID)
@@ -213,9 +227,9 @@ Examples:
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Emit the report as JSON")
 	cmd.Flags().Uint32Var(&timeout, "timeout", 60, "Probe timeout in seconds")
 	cmd.Flags().BoolVar(&install, "install", false,
-		"Deliver the vendored tools (toolsd) onto the agent's PATH, then re-probe")
+		"Deliver the verb tools onto the agent's PATH (toolsd copied; rg and gopls pulled from their registries), then re-probe")
 	cmd.Flags().BoolVar(&uninstall, "uninstall", false,
-		"Remove the delivered tools (toolsd) from the agent's PATH, then re-probe")
+		"Remove the delivered tools (toolsd, rg, gopls) from the agent's PATH, then re-probe")
 	cmd.Flags().StringVar(&binaryPath, "binary", "",
 		"Artifact to deliver with --install (default: the local toolsd on PATH)")
 	return cmd
