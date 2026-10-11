@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net/netip"
 	"os/exec"
-	"strings"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 // ── Executor seam ────────────────────────────────────────────────────────

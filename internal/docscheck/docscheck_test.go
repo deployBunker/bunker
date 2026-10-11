@@ -613,6 +613,7 @@ func stripStatusCoverage(doc string) string {
 	re := regexp.MustCompile(`(?i)bunker\s+audit\s+status`)
 	return re.ReplaceAllString(doc, "")
 }
+
 // working tree's group tree (so a subcommand shipped after the newest tag is
 // still checked against the docs that ship with it).
 func TestTreeSurfaceSeesSubcommandsTheTagLacks(t *testing.T) {
