@@ -1,0 +1,23 @@
+{
+  "tick_id": "bunker-foreman-2026-10-11-21-56-45",
+  "project": "bunker",
+  "workdir": "/home/kara/deployBunker/bunker",
+  "base_sha": "7c2501ca",
+  "wave_budget": 9,
+  "mode": "recovery-serial-merge",
+  "wave_composed": false,
+  "reason": "Existing recovered worker commits are present for the prior wave, but the prompt-mode bunker foreman permits one worker/landing path per tick. Land the highest-value P1 recovery first; no new worker is dispatched.",
+  "tasks": [
+    {
+      "id": "DF-BUNKER-66",
+      "priority": "P1",
+      "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-66",
+      "branch": "wt/DF-BUNKER-66",
+      "commit": "9b4a0720",
+      "worker_model": "glm-5.3-flash",
+      "worker_provider": "zai-glm-default",
+      "recovery": true
+    }
+  ],
+  "created_at": "2026-10-11T21:56:45-05:00"
+}
