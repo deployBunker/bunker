@@ -1,0 +1,39 @@
+{
+  "tick_id": "bunker-foreman-2026-10-10-21-18-23",
+  "base_sha": "697f5a9b",
+  "wave_budget": 5,
+  "wave_composed": true,
+  "composition": "Three pending independent rows with no dependency edges and disjoint source scopes: DF-BUNKER-72 (rootless runtime lifecycle), DOC-042 (docs/spec drift gate), GAP-175 (probe package tests).",
+  "tasks": [
+    {
+      "id": "DF-BUNKER-72",
+      "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-72",
+      "branch": "wt/DF-BUNKER-72",
+      "base": "origin/main",
+      "base_sha": "697f5a9b",
+      "worker_model": "glm-5.3-flash",
+      "worker_provider": "zai-glm-default"
+    },
+    {
+      "id": "DOC-042",
+      "worktree": "/home/kara/worktrees/bunker-DOC-042",
+      "branch": "wt/DOC-042",
+      "base": "origin/main",
+      "base_sha": "697f5a9b",
+      "worker_model": "glm-5.3-flash",
+      "worker_provider": "zai-glm-default"
+    },
+    {
+      "id": "GAP-175",
+      "worktree": "/home/kara/worktrees/bunker-GAP-175",
+      "branch": "wt/GAP-175",
+      "base": "origin/main",
+      "base_sha": "697f5a9b",
+      "worker_model": "glm-5.3-flash",
+      "worker_provider": "zai-glm-default"
+    }
+  ],
+  "status": "closed",
+  "finished_at": "2026-10-11T04:25:00Z",
+  "recovery_notes": "DOC-042 merged (038fbfc5, guard failure pre-existing on main). GAP-175 rejected (worker test broken — WebDAV handler setup issue). DF-BUNKER-72 rejected (zero diff = phantom)."
+}
