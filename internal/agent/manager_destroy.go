@@ -766,6 +766,25 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool, 
 		tcancel()
 	}
 
+	// Step 2b.06 (DF-BUNKER-66): stop the rootless login session's OWN
+	// default.target services (dbus-daemon, pipewire, wireplumber,
+	// mpris-proxy, …) BEFORE the live-process gate counts them. The user
+	// manager is what respawns them, so the terminate above runs FIRST —
+	// with the manager gone a stop sticks, and whatever survives the
+	// bounded grace is SIGKILLed by pid. Without this step the gate refused
+	// on session infrastructure no agent-side remedy could clear (dogfood
+	// run 20, docs/dogfood/2026-09-25c): `bunker exec` cannot stop the
+	// services (the exec's session close reaps its children) and a detached
+	// stop inside the agent is respawned. Best-effort: every failure is
+	// logged and the destroy proceeds — the gate remains the backstop, and
+	// a real operator process still refuses exactly as before. Budgeted
+	// step (BNK-DF-001): the sweep's execs are compensating and used to
+	// have no home on the request ctx at all.
+	if sctx, scancel, _ := rb.step(); scancel != nil {
+		m.stopRootlessSessionServices(sctx, username, m.logger)
+		scancel()
+	}
+
 	// Step 2b.1 (DF-BUNKER-34): verify the agent's uid is process-free before
 	// anything destructive. waitAgentProcessesExit only SIGKILLs the dockerd
 	// and rootlesskit pids its first scan saw; ANY other process still running
@@ -1189,11 +1208,15 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool, 
 
 // gateDestroyOnLiveProcesses verifies the agent user's uid owns NO live
 // process before destroy may run userdel -rf (DF-BUNKER-34, criterion 2).
-// It runs AFTER the dockerd/rootlesskit reap, so the processes it finds are
-// exactly the ones the normal teardown could not kill — long-lived user
-// services the agent's operator installed (a scheduler daemon, a node
-// server, a forward script), which survive SIGTERM/SIGKILL rounds aimed at
-// the docker stack and keep the home busy.
+// It runs AFTER the dockerd/rootlesskit reap, the user-manager terminate and
+// the rootless session-service stop (DF-BUNKER-66), so the processes it
+// finds are exactly the ones the normal teardown could not kill — long-lived
+// OPERATOR services the agent's operator installed (a scheduler daemon, a
+// node server, a forward script), which survive SIGTERM/SIGKILL rounds aimed
+// at the docker stack and keep the home busy. The session infrastructure
+// every rootless agent legitimately carries — the systemd session pair
+// (DF-BUNKER-56) and the rootless login session's default.target services
+// (DF-BUNKER-66) — is absorbed, never counted.
 //
 // The refusal is loud and complete: the error names the username, the uid,
 // every live process (pid + command head) and the remedy. No deletion has
@@ -1247,19 +1270,17 @@ func (m *AgentManager) gateDestroyOnLiveProcesses(_ context.Context, agentID, us
 	if len(procs) == 0 {
 		return nil
 	}
-	// DF-BUNKER-56: the agent's OWN session pair (systemd --user + (sd-pam))
-	// is lifecycle infrastructure, not an orphanable operator process — the
-	// reap above never kills it and terminateAgentUserManager may have had no
-	// logind session to terminate. Whatever pair processes survive the grace
-	// window are absorbed; ONLY the remainder refuses the destroy.
-	var foreign []userProcess
-	for _, p := range procs {
-		if !isAgentSessionProcess(p) {
-			foreign = append(foreign, p)
-		}
-	}
+	// DF-BUNKER-56 + DF-BUNKER-66: the agent uid's OWN session
+	// infrastructure is absorbed — the systemd session pair (DF-56) and the
+	// rootless login session's default.target services (DF-66: the
+	// dbus/pipewire/wireplumber/mpris-proxy set every rootless-docker agent
+	// legitimately carries and the destroy path stops at the source in step
+	// 2b.06). Whatever survives the grace windows is lifecycle
+	// infrastructure, not an orphanable operator process; ONLY the
+	// remainder refuses the destroy.
+	_, foreign := splitSessionAndForeign(procs)
 	if len(foreign) == 0 {
-		logger.Debug("destroy proceeding: only the agent's own systemd session pair remains",
+		logger.Debug("destroy proceeding: only the agent's own session infrastructure remains",
 			"username", username, "uid", uid)
 		return nil
 	}
@@ -1287,12 +1308,7 @@ func (m *AgentManager) gateDestroyOnLiveProcesses(_ context.Context, agentID, us
 			}
 			return refusal
 		}
-		var survivors []userProcess
-		for _, p := range remaining {
-			if !isAgentSessionProcess(p) {
-				survivors = append(survivors, p)
-			}
-		}
+		_, survivors := splitSessionAndForeign(remaining)
 		if len(survivors) > 0 {
 			// The escalation could not clear the uid: refuse loudly, exactly
 			// like the non-force path (nothing has been deleted yet — the
@@ -1350,13 +1366,8 @@ func terminateAgentUserManager(execCtx context.Context, username string, logger 
 		if perr != nil || !ok {
 			return
 		}
-		remaining := 0
-		for _, p := range procs {
-			if !isAgentSessionProcess(p) {
-				remaining++
-			}
-		}
-		if remaining > 0 {
+		_, remaining := splitSessionAndForeign(procs)
+		if len(remaining) > 0 {
 			// Non-session processes are none of this step's business: the
 			// gate owns them. Stop waiting and let it refuse loudly.
 			return
@@ -1399,8 +1410,11 @@ func buildDestroyLiveProcessRefusal(username string, uid uint32, procs []userPro
 	summary := (&orphanUIDCheck{UID: uid, UIDKnown: true, UserExists: true, Processes: procs}).Describe()
 	return fmt.Sprintf(
 		"destroy refused: user %s (uid %d) still owns live processes that userdel -rf would orphan. %s. "+
-			"Stop those processes on the host (they are NOT killed by bunker destroy — a previous destroy "+
-			"that orphaned them is exactly the failure this gate exists to prevent), then retry the destroy",
+			"These are operator processes bunker destroy does not kill (a previous destroy that "+
+			"orphaned them is exactly the failure this gate exists to prevent). The destroy path "+
+			"already stops the rootless-docker session's own services (dbus/pipewire and the "+
+			"systemd user manager) automatically — whatever remains was started by the agent's "+
+			"operator: stop those processes on the host, then retry the destroy",
 		username, uid, summary)
 }
 

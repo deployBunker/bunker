@@ -16,6 +16,22 @@
   exactly once and stored only as SHA-256 hashes. See README
   "Operators and RBAC (GAP-130)" and docs/integration.md §4.
 
+- **Destroy gate remedy made self-satisfying for rootless agents
+  (DF-BUNKER-66):** `bunker destroy` (and `bunker renew`) used to refuse with
+  `live_processes` while counting the rootless-docker login session's OWN
+  `default.target` services — dbus-daemon, pipewire, wireplumber,
+  mpris-proxy — that no agent-side action could stop (the user manager
+  respawns them; `bunker exec` reaps its children on session close), so
+  renewing any agent that had ever run rootless-docker required a host-root
+  maintenance window. The destroy path now stops that session infrastructure
+  itself — the systemd user manager first (the respawner), then the session
+  services, with a bounded SIGKILL pass over anything that survives — and the
+  live-process gate absorbs whatever session-infrastructure remainder
+  survives the grace windows (extending DF-BUNKER-56's session-pair
+  absorption). A refusal now names ONLY real operator processes (a
+  scheduler daemon, a node server), and its remedy text says so. Reported
+  in docs/dogfood/2026-09-25c; recipe updated in docs/renewal.md.
+
 - Delivered tool set for the remote-editing verbs (TOOLS-B2): `rg` via apt
   `ripgrep` and the Go language server via `go golang.org/x/tools/gopls@latest`
   ship through the image-spec package-add path, recorded canonically in

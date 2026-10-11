@@ -67,16 +67,37 @@ the uid and every process:
 destroy refused: user bunker-eduos-agent (uid 1002) still owns live processes
 that userdel -rf would orphan. 2 live process(es) under uid 1002: pid 1220620:
 /home/bunker-eduos-agent/bin/schedulerd ...; pid 477038: python
-offbyone_forward.py. Stop those processes on the host (they are NOT killed by
-bunker destroy — a previous destroy that orphaned them is exactly the failure
-this gate exists to prevent), then retry the destroy
+offbyone_forward.py. These are operator processes bunker destroy does not
+kill (a previous destroy that orphaned them is exactly the failure this gate
+exists to prevent). The destroy path already stops the rootless-docker
+session's own services (dbus/pipewire and the systemd user manager)
+automatically — whatever remains was started by the agent's operator: stop
+those processes on the host, then retry the destroy
 ```
 
-Nothing is deleted when this fires. `--force` does NOT bypass the gate: the
-historical alternative is the partial state userdel -rf leaves when it fails
-on a busy home — user record gone, ~35 uid processes alive for 20+ hours,
-one of them holding port 3000 and shadowing the next agent's daemon — while
-the destroy reported not_found and the fleet looked healthy.
+### What destroy clears by itself (DF-BUNKER-66)
+
+Before the gate runs, the destroy path stops the rootless login session's OWN
+infrastructure at the source — the systemd user manager first (it is what
+respawns the services), then the session's `default.target` services:
+dbus-daemon/dbus-broker, pipewire, pipewire-pulse, wireplumber, mpris-proxy
+and the xdg-desktop-portal set. Anything that survives a bounded stop grace
+is SIGKILLed by pid. These processes were the finding of dogfood run 20
+(docs/dogfood/2026-09-25c): every rootless-docker agent carries them (the
+install enables linger and pulls in dbus-user-session), no agent-side
+remedy could stop them (`bunker exec` cannot — the session close reaps its
+children — and a detached stop is respawned by the user manager), and they
+are not the operator payload the gate exists to protect.
+
+So the refusal means: a REAL operator process (scheduler daemon, node
+server, forward script) is still alive under the uid. Stop that process on
+the host, then retry. Nothing else is required.
+
+Nothing is deleted when the refusal fires. `--force` does NOT bypass the
+gate: the historical alternative is the partial state userdel -rf leaves
+when it fails on a busy home — user record gone, ~35 uid processes alive
+for 20+ hours, one of them holding port 3000 and shadowing the next agent's
+daemon — while the destroy reported not_found and the fleet looked healthy.
 
 If userdel itself fails on anything other than an already-gone user, the
 destroy now reports it as a hard error (`userdel_failed`) carrying the
