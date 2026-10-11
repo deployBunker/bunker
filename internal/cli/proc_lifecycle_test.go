@@ -687,12 +687,20 @@ func TestLongLivedChild_PdeathsigBackstopReapsDirectChild(t *testing.T) {
 
 	// The uncatchable kill: nothing in the helper can run afterwards, so the
 	// child's death can only come from the kernel.
+	//
+	// QA-BUNKER-54: the two waits after the kill ride the test's deadline
+	// (procTestPollBudget) instead of fixed 10s/5s constants. The helper's
+	// exit and the kernel's pdeathsig delivery are both scheduling events a
+	// loaded host may stretch — the same start-latency class that
+	// QA-BUNKER-55 moved onto the deadline for the pid-file poll above. The
+	// waits stay bounded: a real defect (a missing backstop leaving the
+	// child alive, a helper that never exits) still fails within the bound.
 	if err := helper.Process.Kill(); err != nil {
 		t.Fatalf("SIGKILL the helper: %v", err)
 	}
-	waitCLIExit(t, helper, 10*time.Second, helperLog)
+	waitCLIExit(t, helper, procTestPollBudget(t), helperLog)
 
-	waitForGone(t, "the helper's child", childPID, 5*time.Second)
+	waitForGone(t, "the helper's child", childPID, procTestPollBudget(t))
 }
 
 // TestLongLivedChildHelperProcess is not a test: it is the child-process entry
