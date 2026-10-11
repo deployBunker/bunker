@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- `bunker agent-tools --install` now DELIVERS `rg` and `gopls` at runtime
+  (DF-BUNKER-57): on SSH-based agents no image-spec path exists, yet the probe
+  names rg REQUIRED — the install pulls the same pinned, signature-verified
+  apt archive (`apt-get download` + `dpkg-deb -x` into the agent's `$HOME/bin`)
+  and bootstraps a checksum-pinned Go toolchain for module-aware
+  `go install golang.org/x/tools/gopls@latest` (GOBIN on the agent PATH). Every
+  stage is re-probed; the install fails naming any tool it could not prove
+  installed. `--uninstall` removes the runtime-delivered files too. The
+  runtime-deliverable set is pinned to the spawn-time `AgentToolPackages` by
+  test.
+
 - Delivered tool set for the remote-editing verbs (TOOLS-B2): `rg` via apt
   `ripgrep` and the Go language server via `go golang.org/x/tools/gopls@latest`
   ship through the image-spec package-add path, recorded canonically in

@@ -145,10 +145,20 @@ func TestUninstallAgentToolsRemovesAndProvesAbsence(t *testing.T) {
 	if fake.scripts[1] != wantProbe {
 		t.Errorf("exec #2 is not the verifying catalog probe:\n got: %q\nwant: %q", fake.scripts[1], wantProbe)
 	}
-	if !strings.Contains(out, "removed toolsd") || !strings.Contains(out, "was-present") {
-		t.Errorf("stdout must name the removed file and its prior state, got:\n%s", out)
+	// DF-BUNKER-57: the removal now targets every deliverable name, so the
+	// script must name toolsd AND the registry tools, and the success line
+	// carries the re-probe verdict for the removal set.
+	for _, want := range []string{"removed toolsd", "was-present"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("stdout must name the removed file and its prior state (%q), got:\n%s", want, out)
+		}
 	}
-	if !strings.Contains(out, "toolsd absent") {
+	for _, name := range agentToolsRemovalNames() {
+		if !strings.Contains(fake.scripts[0], " "+name+";") && !strings.Contains(fake.scripts[0], " "+name+" ") {
+			t.Errorf("removal script must target %q, got:\n%s", name, fake.scripts[0])
+		}
+	}
+	if !strings.Contains(out, "verifying re-probe") {
 		t.Errorf("stdout must carry the re-probe verdict, got:\n%s", out)
 	}
 	if strings.Contains(errOut, "WARNING") {
@@ -258,7 +268,9 @@ func TestAgentToolsRemoveScriptByExecution(t *testing.T) {
 	}
 	homes := t.TempDir()
 
-	// 1. Present file: removed, reported was-present.
+	// 1. Present file: removed, reported was-present (and the DF-BUNKER-57
+	//    registry tools are named as already-absent — the loop covers the
+	//    whole removal set).
 	home1 := filepath.Join(homes, "present")
 	if err := os.MkdirAll(filepath.Join(home1, agentToolInstallDir), 0o755); err != nil {
 		t.Fatal(err)
@@ -268,17 +280,28 @@ func TestAgentToolsRemoveScriptByExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := runScriptWithHome(t, agentToolsRemoveScript(), home1)
-	if out != "toolsd\tREMOVED\twas-present\n" {
-		t.Errorf("removal of a present file = %q, want the was-present line", out)
+	want := "toolsd	REMOVED	was-present\n"
+	for _, name := range agentToolsRemovalNames() {
+		if name == "toolsd" {
+			continue
+		}
+		want += name + "	REMOVED	already-absent\n"
+	}
+	if out != want {
+		t.Errorf("removal of a present file = %q, want %q", out, want)
 	}
 	if _, err := os.Stat(bin); !os.IsNotExist(err) {
 		t.Errorf("the file must be gone after the script ran, stat err: %v", err)
 	}
 
-	// 2. Already absent: named, still REMOVED.
+	// 2. Already absent: every name named, still REMOVED.
 	out = runScriptWithHome(t, agentToolsRemoveScript(), home1)
-	if out != "toolsd\tREMOVED\talready-absent\n" {
-		t.Errorf("idempotent re-run = %q, want the already-absent line", out)
+	want = ""
+	for _, name := range agentToolsRemovalNames() {
+		want += name + "	REMOVED	already-absent\n"
+	}
+	if out != want {
+		t.Errorf("idempotent re-run = %q, want %q", out, want)
 	}
 
 	// 3. Unremovable: the FAILED line carries rm's own words.

@@ -775,6 +775,8 @@ bunker spawn --server bunker-host --image-spec spec.json --ttl 6h
 # What an agent ends up with, per delivery path:
 #   - stock (every spawn):        git, jq, the docker client, python3, make
 #   - vendored copy on install:   toolsd            (bunker agent-tools --install)
+#   - registry via install:       rg (apt archive), gopls (Go module proxy)
+#                                 — same command, runtime delivery (DF-BUNKER-57)
 #   - package-add (this spec):    rg (ripgrep), gopls (Go language server)
 
 # List agents
@@ -1124,14 +1126,17 @@ bunker key         Manage API keys and the JWT signing secret (master only):
                    in "Control-plane secrets (GAP-129 / SEC-14)" above; the
                    RPC contract lives in specs/api.md (RotateJWTSecret)
 bunker agent-tools  Probe the agent (not the client) for the executables the
-                   remote editing verbs need; --install delivers the vendored
-                   toolsd onto the agent's own PATH and prints the delivered
-                   version (a local/remote version difference is a named
-                   warning); --uninstall removes the delivered toolsd and
+                   remote editing verbs need; --install delivers them onto
+                   the agent's own PATH and prints the delivered versions
+                   (toolsd copied from a static build; rg and gopls pulled
+                   from their own registries — the apt archive and the Go
+                   module proxy — so pinning and signatures survive; a
+                   local/remote version difference on toolsd is a named
+                   warning); --uninstall removes the delivered tools and
                    re-probes to prove absence (see
-                   docs/prd/SPEC-agent-tool-delivery.md). Missing registry
-                   tools (rg, the language server) are named and printed as
-                   the delivered image-spec (ripgrep via apt, gopls via
+                   docs/prd/SPEC-agent-tool-delivery.md). The same set can be
+                   baked into an image at spawn instead via the image-spec
+                   directive the command prints (ripgrep via apt, gopls via
                    go — specs/image-spec.md)
 bunker surface     Manage the agent's toolsd socket surface (systemd user
                    units; install/remove)

@@ -21,11 +21,27 @@ import (
 // naming the surviving path. The probe is the evidence, not the rm's exit
 // code, because "result is evidence" is the contract in both directions.
 //
-// Only files this command family DELIVERS are removed ($HOME/bin/toolsd); tools
-// that arrived through the image-spec package-add path (rg, gopls) belong to
-// their package managers and are deliberately out of scope.
+// Only files this command family DELIVERS are removed: the vendored copies
+// (toolsd) plus the registry tools its DF-BUNKER-57 runtime stages unpack into
+// the same $HOME/bin (rg, gopls). Tools that arrived through the image-spec
+// package-add path live in the image's own paths (/usr/bin, the Go toolchain's
+// GOBIN) and are deliberately out of scope — they belong to their package
+// managers.
 
-// agentToolsRemoveScript removes the vendored binaries from the agent's
+// agentToolsRemovalNames is everything this command family can DELIVER and
+// therefore must be able to REMOVE: the vendored copies plus the registry
+// tools the DF-BUNKER-57 runtime stages unpack into the same $HOME/bin. A
+// spawn-time image-spec install lives in the image's own paths (/usr/bin),
+// which the removal never touches.
+func agentToolsRemovalNames() []string {
+	names := append([]string{}, deliverableVendoredTools...)
+	for _, inst := range packageToolInstallers {
+		names = append(names, inst.CatalogName)
+	}
+	return names
+}
+
+// agentToolsRemoveScript removes the delivered binaries from the agent's
 // $HOME/bin and reports each file as one tab-separated line:
 //
 //	<name>	REMOVED	<was-present|already-absent>
@@ -38,7 +54,7 @@ import (
 func agentToolsRemoveScript() string {
 	var b strings.Builder
 	b.WriteString("for t in")
-	for _, name := range deliverableVendoredTools {
+	for _, name := range agentToolsRemovalNames() {
 		b.WriteString(" " + name)
 	}
 	b.WriteString(`; do
@@ -108,16 +124,24 @@ func uninstallAgentTools(cmd *cobra.Command, ctx context.Context, client bunkerv
 	removals := parseAgentToolsRemovalOutput(removeOut)
 
 	// 2. Re-probe: the verdict is the agent's PATH, not the rm's exit code.
+	//    The survivor check is scoped to the names this removal targeted: a
+	//    tool on the agent's PATH that arrived by another road (image-spec
+	//    package-add in the image, the host install) is not this command's
+	//    removal failing.
 	report, err := probeAgentTools(ctx, client, entry, agentID)
 	if err != nil {
 		return fmt.Errorf("removal ran, but the verifying probe failed: %w", err)
 	}
-	toolsd := findingFor(report, "toolsd")
-	if toolsd != nil && toolsd.Status == "present" {
-		return fmt.Errorf("uninstall FAILED: toolsd is still reachable on the agent's PATH "+
-			"(probe reports version %q after removing $HOME/%s/toolsd) — the removal did not "+
-			"take effect; inspect the agent's $HOME/%s directory",
-			toolsd.Version, agentToolInstallDir, agentToolInstallDir)
+	survivors := []string{}
+	for _, name := range agentToolsRemovalNames() {
+		if f := findingFor(report, name); f != nil && f.Status == "present" {
+			survivors = append(survivors, name)
+		}
+	}
+	if len(survivors) > 0 {
+		return fmt.Errorf("uninstall FAILED: still reachable on the agent's PATH after removing "+
+			"$HOME/%s/{%s}: %s — the removal did not take effect; inspect the agent's $HOME/%s directory",
+			agentToolInstallDir, strings.Join(agentToolsRemovalNames(), ","), strings.Join(survivors, ", "), agentToolInstallDir)
 	}
 
 	// 3. Report each file by name, tolerantly: already-absent is data, not an
@@ -150,7 +174,7 @@ func uninstallAgentTools(cmd *cobra.Command, ctx context.Context, client bunkerv
 			"nothing is claimed uninstalled beyond what the re-probe proves absent", agentID, failed)
 	}
 
-	_, _ = fmt.Fprintf(out, "uninstalled delivered tools for agent %s; verifying re-probe reports toolsd %s\n",
-		agentID, statusOf(toolsd))
+	_, _ = fmt.Fprintf(out, "uninstalled delivered tools for agent %s; verifying re-probe reports all of {%s} %s\n",
+		agentID, strings.Join(agentToolsRemovalNames(), ","), statusOf(findingFor(report, agentToolsRemovalNames()[0])))
 	return nil
 }
