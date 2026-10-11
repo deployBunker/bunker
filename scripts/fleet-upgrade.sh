@@ -94,7 +94,10 @@ HOSTS=${HOSTS:-${BUNKER_FLEET_HOSTS:-"bunker3 bunker4"}}
 
 # ── preflight: clean tree ────────────────────────────────────────────────────
 cd "$REPO_DIR"
-if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+# Tracked modifications only: untracked scratch/board files (sibling workers'
+# waves, evidence dumps) do not affect the built binaries and must not block a
+# fleet upgrade; a MODIFIED tracked file does.
+if [ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]; then
 	refuse "working tree is dirty — a fleet upgrade must ship a committed, tested build (commit or stash first)"
 fi
 [ -f go.mod ] || die "no go.mod in $REPO_DIR — set BUNKER_REPO_DIR"
