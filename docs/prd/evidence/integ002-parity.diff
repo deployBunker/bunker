@@ -1,0 +1,17 @@
+# INTEG-002 host-vs-agent parity diff (normalized)
+#
+# Normalization: whoami/toolsd_path/uname preserved only in the raw transcripts;
+# this diff compares the run skeleton — every section header, command line,
+# stderr line and exit code — with identity-specific strings mapped to ROOT
+# and 'toolsd'. The single remaining difference class is lease expiry
+# timestamps (wall-clock time of the run), the same class GAP-092 recorded.
+#
+# host transcript: docs/prd/evidence/integ002-host.out
+# agent transcript: docs/prd/evidence/integ002-agent.out
+# agent: bunker-mvp (100.115.67.116) agent integ002-evidence, uid bunker-integ002-evidence
+
+52c52
+< toolsd: lease: path "lines.txt" is held by holder-A (pid 0, expires 2026-10-11T22:11:20Z)
+---
+> toolsd: lease: path "lines.txt" is held by holder-A (pid 0, expires 2026-10-11T22:12:56Z)
+diff_rc=1

@@ -1,0 +1,240 @@
+
+===== ENVIRONMENT =====
+whoami=bunker-integ002-evidence
+uname=x86_64
+toolsd_path=/home/bunker-integ002-evidence/bin/toolsd
+$ sha256sum /home/bunker-integ002-evidence/bin/toolsd
+293c8071fc4005d57d73950bb8e3e5fd816b6039157af866b9b0d730345e91c5  /home/bunker-integ002-evidence/bin/toolsd
+--- toolsd version
+$ /home/bunker-integ002-evidence/bin/toolsd version
+toolsd version dev
+rc=0
+tool git: PRESENT (/usr/bin/git)
+tool rg: ABSENT
+tool jq: ABSENT
+tool python3: PRESENT (/usr/bin/python3)
+
+===== FIXTURE (deterministic; seeded in place, no transfer needed) =====
+$ wc -c big5.txt lines.txt
+1601 big5.txt
+1812 lines.txt
+3413 total
+
+===== PRE-HASHES (sha256 before any mutation) =====
+$ sha256sum patchme.txt
+b6285c57e8797db5d4c51c80d6f11938afda9b11c6a003549709189e9b4b92a2  patchme.txt
+$ sha256sum editme.txt
+4fdbc441ea7b546100e086ac1e4fc5ae6749b7314311c99db05be450eca12996  editme.txt
+$ sha256sum a1.txt
+4677942dfa3e74b5dea7484661a2485bb73ba422eb72d311fdb39372c019c615  a1.txt
+$ sha256sum big5.txt
+d8b453b3269032b2f9674dd33d2062f7d171fa69c06e4b78fb0b06e594cbae26  big5.txt
+$ sha256sum lines.txt
+5a59a64df0610b4542c8b072e5ea7a33584668b2ba80ca2abda2d8eb5eb4a97e  lines.txt
+
+===== S1 PATCH: inexact diff must REFUSE with a named reason, target byte-identical =====
+--- toolsd patch bad.diff (expect refusal + rollback, rc!=0)
+$ /home/bunker-integ002-evidence/bin/toolsd patch bad.diff
+--- stdout ---
+
+--- stderr ---
+toolsd: patch: hunk 0: does not apply: no exact match for its 3 context/removal line(s) at line 1 within an offset window of 0
+toolsd: patch: rolled back - no files in the tree were modified
+rc=1
+$ sha256sum patchme.txt
+b6285c57e8797db5d4c51c80d6f11938afda9b11c6a003549709189e9b4b92a2  patchme.txt
+
+===== S2 APPLY: multi-file edit-set, failure AFTER the first write, must roll back =====
+--- toolsd apply es-control.json (positive control, expect rc=0)
+$ /home/bunker-integ002-evidence/bin/toolsd apply es-control.json
+applied 2 file(s) atomically
+rc=0
+$ sha256sum a1.txt
+eb6f09c69e5e4b1dae158340da17a9c13204e988f27dcc3ea964a5f9fdd9436c  a1.txt
+$ sha256sum big5.txt
+d8b453b3269032b2f9674dd33d2062f7d171fa69c06e4b78fb0b06e594cbae26  big5.txt
+--- toolsd apply es-refuse.json (expect commit failure naming d2 + rollback, rc!=0)
+$ /home/bunker-integ002-evidence/bin/toolsd apply es-refuse.json
+--- stdout ---
+
+--- stderr ---
+toolsd: apply: multifile: commit: snapshot /home/bunker-integ002-evidence/probe-root/d2: read /home/bunker-integ002-evidence/probe-root/d2: is a directory
+toolsd: apply: rolled back - no files in the tree were modified
+rc=1
+$ sha256sum a1.txt
+eb6f09c69e5e4b1dae158340da17a9c13204e988f27dcc3ea964a5f9fdd9436c  a1.txt
+$ sha256sum big5.txt
+d8b453b3269032b2f9674dd33d2062f7d171fa69c06e4b78fb0b06e594cbae26  big5.txt
+--- ls d2 (still an empty directory, nothing written into it)
+$ ls d2
+
+rc=0
+
+===== S3 REPLACE: ambiguous needle must refuse naming the match count =====
+--- toolsd replace editme.txt beta BETA (positive control)
+$ /home/bunker-integ002-evidence/bin/toolsd replace editme.txt beta BETA
+--- stdout ---
+replaced 1 occurrence in editme.txt
+--- stderr ---
+
+rc=0
+--- cat editme.txt
+$ cat editme.txt
+alpha
+BETA
+gamma
+rc=0
+--- toolsd replace editme.txt a X (expect named ambiguous refusal, rc!=0)
+$ /home/bunker-integ002-evidence/bin/toolsd replace editme.txt a X
+--- stdout ---
+
+--- stderr ---
+toolsd: replace: editme.txt: textedit: ambiguous match: 4 occurrences (replace exactly one by narrowing the needle, or use --all / replace-all semantics for every occurrence)
+toolsd: replace: re-run with --all to replace every occurrence
+rc=1
+--- toolsd replace editme.txt zzzz X (expect no-match refusal, rc!=0)
+$ /home/bunker-integ002-evidence/bin/toolsd replace editme.txt zzzz X
+--- stdout ---
+
+--- stderr ---
+toolsd: replace: editme.txt: textedit: no match
+rc=1
+$ sha256sum editme.txt
+b0d5fcac7492427d0767380786c6d7843c342299a8a447ac2ccc8deaa78ca153  editme.txt
+
+===== S4 LEASE: two acquires on one path -> exactly one grant, one refusal naming the holder =====
+--- git rev-parse --is-inside-work-tree
+$ git rev-parse --is-inside-work-tree
+true
+rc=0
+--- lease acquire holder-A
+$ /home/bunker-integ002-evidence/bin/toolsd lease acquire --holder holder-A --ttl 45m --note INTEG-002 lines.txt
+--- stdout ---
+{
+  "holder": "holder-A",
+  "pid": 0,
+  "paths": [
+    "lines.txt"
+  ],
+  "expires_at": "2026-10-11T22:12:56.939982228Z",
+  "reclaimed": []
+}
+--- stderr ---
+
+rc=0
+--- lease acquire holder-B (expect refusal naming holder-A, rc!=0)
+$ /home/bunker-integ002-evidence/bin/toolsd lease acquire --holder holder-B --ttl 45m lines.txt
+--- stdout ---
+
+--- stderr ---
+toolsd: lease: path "lines.txt" is held by holder-A (pid 0, expires 2026-10-11T22:12:56Z)
+rc=1
+--- lease status
+$ /home/bunker-integ002-evidence/bin/toolsd lease status
+{
+  "registry": ".git/agent-leases.json",
+  "now": "2026-10-11T21:27:56.987907124Z",
+  "active": [
+    {
+      "holder": "holder-A",
+      "pid": 0,
+      "paths": [
+        "lines.txt"
+      ],
+      "acquired_at": "2026-10-11T21:27:56.939982228Z",
+      "expires_at": "2026-10-11T22:12:56.939982228Z",
+      "note": "INTEG-002"
+    }
+  ],
+  "stale": [],
+  "overlaps": []
+}
+rc=0
+--- registry cat .git/agent-leases.json
+$ cat .git/agent-leases.json
+[
+  {
+    "holder": "holder-A",
+    "pid": 0,
+    "paths": [
+      "lines.txt"
+    ],
+    "acquired_at": "2026-10-11T21:27:56.939982228Z",
+    "expires_at": "2026-10-11T22:12:56.939982228Z",
+    "note": "INTEG-002"
+  }
+]
+rc=0
+$ sha256sum .git/agent-leases.json
+ff413dff08bb73f02a99fcd2f77d216ed8408355ed8ac76cfad0cd9d1a9f89e0  .git/agent-leases.json
+--- lease release holder-A
+$ /home/bunker-integ002-evidence/bin/toolsd lease release --holder holder-A
+{
+  "holder": "holder-A",
+  "released": [
+    "lines.txt"
+  ]
+}
+rc=0
+--- registry after release
+$ cat .git/agent-leases.json
+[]
+rc=0
+
+===== S5 STDIN edit-set: quotes, newlines and a NUL byte must apply or refuse BY NAME =====
+$ wc -c editset-nul.json
+108 editset-nul.json
+--- toolsd apply - < editset-nul.json (expect rc=0 and a real NUL byte)
+$ sh -c /home/bunker-integ002-evidence/bin/toolsd apply - < /home/bunker-integ002-evidence/probe-root/editset-nul.json
+--- stdout ---
+applied 1 file(s) atomically
+--- stderr ---
+
+rc=0
+--- od -c nul.txt (expect a literal \0 in the first line)
+$ sh -c od -c nul.txt | head -6
+0000000   l   i   n   e       o   n   e       w   i   t   h      \0    
+0000020   N   U   L       i   n   s   i   d   e  \n   l   i   n   e    
+0000040   t   w   o       h   a   s       "   q   u   o   t   e   s   "
+0000060       a   n   d       \       b   a   c   k   s   l   a   s   h
+0000100  \n
+0000101
+rc=0
+$ sha256sum nul.txt
+68f4b33e9e317aeaf15a5e9119783aab67aad6ac6ac361919fa376a589a3ed79  nul.txt
+--- expected-content hash (printf emits a real NUL)
+$ sh -c printf 'line one with \0 NUL inside\nline two has "quotes" and \\ backslash\n' | sha256sum
+68f4b33e9e317aeaf15a5e9119783aab67aad6ac6ac361919fa376a589a3ed79  -
+rc=0
+$ od -An -tx1 editset-rawnul.json (raw NUL = byte 0x00 mid-string)
+ 5b 7b 22 70 61 74 68 22 3a 22 6e 75 6c 5f 62 61
+ 64 2e 74 78 74 22 2c 22 63 6f 6e 74 65 6e 74 22
+ 3a 22 70 72 65 66 69 78 20 22 00 22 20 73 75 66
+ 66 69 78 20 61 6e 64 20 74 65 78 74 20 61 66 74
+--- toolsd apply editset-rawnul.json (expect parse refusal naming NUL, rc!=0)
+$ /home/bunker-integ002-evidence/bin/toolsd apply editset-rawnul.json
+--- stdout ---
+
+--- stderr ---
+toolsd: apply: parse the edit-set as a JSON array: invalid character '\x00' after object key:value pair
+rc=1
+--- ls nul_bad.txt (expect: not found - nothing written)
+$ sh -c ls nul_bad.txt 2>&1
+ls: cannot access 'nul_bad.txt': No such file or directory
+rc=2
+
+===== POST-HASHES (all mutation targets, final state) =====
+$ sha256sum patchme.txt
+b6285c57e8797db5d4c51c80d6f11938afda9b11c6a003549709189e9b4b92a2  patchme.txt
+$ sha256sum editme.txt
+b0d5fcac7492427d0767380786c6d7843c342299a8a447ac2ccc8deaa78ca153  editme.txt
+$ sha256sum a1.txt
+eb6f09c69e5e4b1dae158340da17a9c13204e988f27dcc3ea964a5f9fdd9436c  a1.txt
+$ sha256sum big5.txt
+d8b453b3269032b2f9674dd33d2062f7d171fa69c06e4b78fb0b06e594cbae26  big5.txt
+$ sha256sum lines.txt
+5a59a64df0610b4542c8b072e5ea7a33584668b2ba80ca2abda2d8eb5eb4a97e  lines.txt
+$ sha256sum nul.txt
+68f4b33e9e317aeaf15a5e9119783aab67aad6ac6ac361919fa376a589a3ed79  nul.txt
+
+===== PROBE COMPLETE =====
