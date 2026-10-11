@@ -78,6 +78,11 @@ const (
 	// see subcommand gaps inside a documented group). GroupDocCoverageRules
 	// registers which groups' doc pages are checked.
 	RuleGroupDocCoverage = "group-doc-coverage"
+	// RuleSpecRefDrift marks a docs/spec/*.md drift (DOC-042): a path the
+	// page names that no docs page provides, or a spec page no other docs
+	// page cites. Both are reported against the spec page itself, with the
+	// offending token (or the page to link/retire) named.
+	RuleSpecRefDrift = "spec-ref-drift"
 	// RuleDocsFlagSurface marks a long flag used in a docs/*.md invocation
 	// that the parsed CLI surface cannot accept for that command (GAP-087:
 	// the integration walkthrough documented `spawn --name/--mem`, which the
@@ -160,6 +165,13 @@ type Input struct {
 	// accepted by the tree that ships the docs. Keyed by top-level command
 	// name; the empty key holds the root command's flags.
 	TreeFlags map[string]map[string]bool
+	// KnownDocs maps EVERY markdown document the corpus provides (relative
+	// to the repo root, e.g. "docs/spec/BFS-004-webdav-surface.md") to its
+	// contents. The spec-ref-drift rule (DOC-042) reads it two ways: spec
+	// pages' path tokens must resolve to a page the corpus provides, and
+	// every spec page must be cited by another corpus page. Verify fills
+	// it; Check callers that set no docs are unaffected.
+	KnownDocs map[string]string
 }
 
 // Problem is one drift finding.
@@ -262,6 +274,7 @@ func Check(in Input) []Problem {
 	}
 
 	problems = append(problems, checkGroupDocCoverage(in)...)
+	problems = append(problems, checkSpecRefs(in)...)
 	problems = append(problems, checkDocsFlagSurface(in)...)
 	return problems
 }

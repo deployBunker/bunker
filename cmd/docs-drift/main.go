@@ -13,7 +13,11 @@
 //   - every long flag used in a docs/*.md example invocation is one the
 //     working tree's CLI can accept for that command (GAP-087: the
 //     integration walkthrough documented `spawn --name/--mem`, which the
-//     shipped CLI rejects — that class of drift used to be invisible to CI).
+//     shipped CLI rejects — that class of drift used to be invisible to CI);
+//   - every docs/spec/*.md path reference resolves to a page the repository
+//     provides, and every spec page is cited by another docs page (DOC-042:
+//     the spec pages are design authority — PRDs, sibling specs and evidence
+//     docs cite them — so a broken path or an uncited page is drift too).
 //
 // A tag-less checkout (shallow clone, `act` run, source tarball) skips with a
 // warning instead of failing, matching the CI version-authority and tag-build

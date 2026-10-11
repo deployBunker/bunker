@@ -120,28 +120,58 @@ func Verify(root string, facts GitFacts) ([]Problem, error) {
 		}
 		groupDocs[rule.Group] = string(b)
 	}
-	// Doc pages: docs/*.md carry runnable example invocations (GAP-087).
-	// Read them all so the docs-flag-surface rule sees them; a page that
-	// disappears is simply not checked. Read errors other than not-exist
-	// surface loudly.
-	docs := map[string]string{}
-	docMatches, err := filepath.Glob(filepath.Join(root, "docs", "*.md"))
-	if err != nil {
-		return nil, fmt.Errorf("list docs/*.md: %w", err)
-	}
-	for _, docPath := range docMatches {
-		b, err := os.ReadFile(docPath)
+	// Doc pages: docs/*.md carry runnable example invocations (GAP-087) and
+	// docs/spec/*.md carry design-authority references (DOC-042). Read every
+	// markdown document the repository provides (one walk, one corpus — no
+	// second checker): the docs-flag-surface rule uses the docs/ pages, the
+	// spec-ref-drift rule uses the whole set. A page that disappears is
+	// simply not checked; read errors other than not-exist surface loudly.
+	known := map[string]string{}
+	walkErr := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
-			if os.IsNotExist(err) {
-				continue
+			return err
+		}
+		if d.IsDir() {
+			if p == root {
+				return nil
 			}
-			return nil, fmt.Errorf("read %s: %w", docPath, err)
+			// Prune nothing inside docs/: evidence/ prd/ spec/ subdirs are
+			// part of the corpus. Everything outside it is not this gate's
+			// business (skills/, examples/, .git/ — and their sizes).
+			rel, relErr := filepath.Rel(root, p)
+			if relErr != nil {
+				return relErr
+			}
+			if rel != "docs" && !strings.HasPrefix(rel, "docs"+string(filepath.Separator)) {
+				return filepath.SkipDir
+			}
+			return nil
 		}
-		rel, err := filepath.Rel(root, docPath)
+		if !strings.HasSuffix(d.Name(), ".md") {
+			return nil
+		}
+		b, readErr := os.ReadFile(p)
+		if readErr != nil {
+			if os.IsNotExist(readErr) {
+				return nil
+			}
+			return readErr
+		}
+		rel, err := filepath.Rel(root, p)
 		if err != nil {
-			rel = docPath
+			rel = p
 		}
-		docs[filepath.ToSlash(rel)] = string(b)
+		known[filepath.ToSlash(rel)] = string(b)
+		return nil
+	})
+	if walkErr != nil {
+		return nil, fmt.Errorf("walk docs tree: %w", walkErr)
+	}
+	docs := map[string]string{}
+	for rel, body := range known {
+		if strings.HasPrefix(rel, "docs/") && !strings.HasPrefix(rel, "docs/spec/") {
+			docs[rel] = body
+		}
 	}
 	return Check(Input{
 		ReadmePath:     "README.md",
@@ -155,6 +185,7 @@ func Verify(root string, facts GitFacts) ([]Problem, error) {
 		TreeSurface:    facts.TreeSurface,
 		Docs:           docs,
 		TreeFlags:      facts.TreeFlags,
+		KnownDocs:      known,
 	}), nil
 }
 
