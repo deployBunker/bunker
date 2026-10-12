@@ -27,5 +27,12 @@
       "scope": ["specs/agent-lifecycle.md"]
     }
   ],
-  "started_at": "2026-10-12T10:42:59-05:00"
+  "started_at": "2026-10-12T10:42:59-05:00",
+  "finished_at": "2026-10-12T11:29:25-05:00",
+  "outcomes": {
+    "DOC-30": {"worker_commit": "bdb67006e59facb8cc562206d18dfea5640b5947", "merge_commit": "908d7452", "verdict": "6023e928 PASS", "result": "merged-and-closed"},
+    "DOC-31": {"worker_commit": "1c2b2e924d0a21fb6d7f8efbb060b320cdcc8e17", "merge_commit": "51afaa86", "verdict": "6637f464 PASS", "result": "merged-and-closed"},
+    "DOC-47": {"worker_commit": "1169438e69456ffd1811054a8d3553d3b844fec1", "merge_commit": "a378f388", "verdict": "28376a66 PASS", "result": "merged-and-closed"}
+  },
+  "closeout_commit": "9c6007e543ce8c0d99b8eb3908c33ddaf46e5891"
 }
