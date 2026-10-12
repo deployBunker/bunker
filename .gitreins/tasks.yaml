@@ -4511,3 +4511,26 @@ tasks:
   status: complete
   created_at: '2026-10-11T21:17:35.012029+00:00'
   completed_at: '2026-10-11T21:39:14.129796+00:00'
+- id: DOC-30
+  title: Document mount and agent summary API fields
+  criteria:
+  - specs/api.md documents mount_driver and all four AgentSummary fields; docs/mount-drivers.md
+    documents spawn driver selection
+  status: complete
+  created_at: '2026-10-12T11:05:01.359350+00:00'
+  completed_at: '2026-10-12T11:23:30.337483+00:00'
+- id: DOC-31
+  title: Document end-user isolation guarantees
+  criteria:
+  - README-reachable documentation explains agent isolation guarantees with proof
+    pointers in <=30 lines
+  status: complete
+  created_at: '2026-10-12T11:05:02.368763+00:00'
+  completed_at: '2026-10-12T11:23:21.342622+00:00'
+- id: DOC-47
+  title: Document forced destroy failure semantics
+  criteria:
+  - Destroy section documents visible force-mode userdel failure and reconcile recovery
+  status: complete
+  created_at: '2026-10-12T11:05:03.340577+00:00'
+  completed_at: '2026-10-12T11:23:25.993856+00:00'

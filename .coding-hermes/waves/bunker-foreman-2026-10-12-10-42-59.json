@@ -1,0 +1,31 @@
+{
+  "tick": "bunker-foreman-2026-10-12-10-42-59",
+  "project": "bunker",
+  "base": "origin/main",
+  "base_sha": "1af47dff7ab9066bf5e033434f1fb72a3ce434d1",
+  "wave_budget": 8,
+  "tasks": [
+    {
+      "id": "DOC-30",
+      "worktree": "/home/kara/worktrees/bunker-DOC-30",
+      "branch": "wt/DOC-30",
+      "base_sha": "1af47dff7ab9066bf5e033434f1fb72a3ce434d1",
+      "scope": ["specs/api.md", "docs/mount-drivers.md"]
+    },
+    {
+      "id": "DOC-31",
+      "worktree": "/home/kara/worktrees/bunker-DOC-31",
+      "branch": "wt/DOC-31",
+      "base_sha": "1af47dff7ab9066bf5e033434f1fb72a3ce434d1",
+      "scope": ["README.md", "docs/security-model.md"]
+    },
+    {
+      "id": "DOC-47",
+      "worktree": "/home/kara/worktrees/bunker-DOC-47",
+      "branch": "wt/DOC-47",
+      "base_sha": "1af47dff7ab9066bf5e033434f1fb72a3ce434d1",
+      "scope": ["specs/agent-lifecycle.md"]
+    }
+  ],
+  "started_at": "2026-10-12T10:42:59-05:00"
+}
