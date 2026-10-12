@@ -82,6 +82,14 @@ Design rules for every driver:
    A new driver must bring its own equivalent, or the durability guarantees
    silently do not apply to it.
 
+To request a driver when creating an agent, set `SpawnAgentRequest.mount_driver`
+(the CLI equivalent is `bunker spawn --mount-driver <name>`). An empty value
+selects the server's `sshfs` default; a name that is not registered is refused
+with `CodeInvalidArgument` rather than silently falling back. The selected
+driver is persisted with the generated mount command and returned in
+`MountSpec`, while the legacy `sshfs_mount` field remains available for older
+clients.
+
 ## 3. Drivers
 
 ### 3.1 sshfs — default
