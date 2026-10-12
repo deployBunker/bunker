@@ -4090,17 +4090,6 @@ tasks:
   status: complete
   created_at: '2026-10-06T11:56:07.655924+00:00'
   completed_at: '2026-10-06T12:19:11.642646+00:00'
-- id: BFS-027
-  title: Report cache refusals when content hash doesn't match declared hash
-  criteria:
-  - The un-cacheable arm (content hashes to a different value than declared) changes
-    at least one reported counter in bypass_reasons that names the reason (e.g. 'hash_mismatch'
-    or 'content_mismatch'). The probe from docs/evidence/BFS-009-uncacheable.txt shows
-    the counter moving where it previously moved nothing. No existing counters are
-    weakened. go test ./internal/fsclient/... -count=1 passes.
-  status: complete
-  created_at: '2026-10-06T13:10:52.744818+00:00'
-  completed_at: '2026-10-06T13:26:30.319482+00:00'
 - id: QA-BUNKER-B1R
   title: ci-pass grades act EOF as FAIL, not OK (QA-BUNKER-B1)
   criteria:
