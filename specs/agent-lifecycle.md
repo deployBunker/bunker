@@ -295,6 +295,26 @@ userdel -rf bunker-<id>
 - A non-force `userdel` failure returns `not_found` (and still frees the port
   range + tracker slot)
 
+**Force mode (`--force`) does not guarantee completion.** In
+`internal/agent/manager_destroy.go`, a force-mode `userdel` failure is never
+silently absorbed into a success: force first runs a SIGTERM→SIGKILL escalation
+against the uid's live processes and REFUSES with status `live_processes` if
+any survive (force never bypasses an unobservable probe); on a `userdel` error
+it then runs the same bounded recovery as the non-force path — one reap of
+straggler processes plus exactly one `userdel` retry — and if the retry also
+fails the destroy is refused and REPORTED: response status `userdel_failed`,
+a hard error carrying the raw `userdel` output and the surviving-state
+evidence, and a refusal recorded on the durable registry record so `bunker
+list` shows the residue and the TTL reaper backs off instead of marking the
+agent destroyed. Treat that report as a PARTIAL teardown: containers,
+processes, the tracker slot, the port range and the persisted SSH key are
+already released, but the system user, `/home/bunker-<id>` and its
+subuid/subgid entries may still exist. Recovery is reconcile or retry: run
+reconcile (its orphan walk always destroys with force=true) or repeat the
+destroy until it reports `destroyed`. The one exception is `userdel`
+reporting the user already absent, which force mode treats as success
+(idempotent destroy).
+
 ### 6. Runtime Cleanup (step 4)
 
 ```bash
