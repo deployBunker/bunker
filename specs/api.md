@@ -104,6 +104,10 @@ Request:
     `; & | $ ` \ ' "` and newlines are refused for EVERY manager.
     Unknown fields (FROM/USER/EXPOSE/VOLUME/ENV/RUN
     lookalikes) are rejected. Validation happens BEFORE any side effect.
+- `mount_driver` (string, optional): Requested registered mount driver, such
+  as `sshfs` or `rclone`. Empty uses the server default (`sshfs`). An unknown
+  driver name is rejected with `CodeInvalidArgument`; the server never
+  silently falls back to `sshfs`.
 
 Response:
 - `agent_id` (string): Assigned agent ID
@@ -653,6 +657,10 @@ Same schema as Bunkerd.HeartbeatAgent, scoped to the calling agent.
 | port_range_end | uint32 | Last port in agent's allocation |
 | tailnet_ip | string | Tailscale IP address |
 | disk_used_bytes | uint64 | Per-agent disk usage in bytes |
+| safety_preset | string | Effective safety preset used to spawn the agent; empty on pre-GAP-116 records |
+| systemd_properties | repeated SystemdProperty | Effective systemd knob set applied to the agent; each property carries its name and value |
+| mount_spec | MountSpec | Explicit mount-driver identity and stored mount command; pre-seam records derive the `sshfs` default when a command exists |
+| orphan_uid_detail | string | Non-empty only when the `bunker-<agent_id>` user record is gone while live processes still run under its uid; includes the uid and process details |
 
 ### NetworkConfig
 
