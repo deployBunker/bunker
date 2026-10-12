@@ -60,6 +60,8 @@ Bunker is a **multi-agent hosting platform** — a daemon (`bunkerd`) that runs 
   daemon built from a tagged release before the isolation work reports
   `HOST-SHARED`/`not reported` even though these docs describe isolation —
   build and run a daemon from the same commit as the CLI.
+  **Can one agent see another?** Start with the one-screen
+  [security model](#can-one-agent-see-another-security-model).
 - **Durable registry** — Agent lifecycle state (spawn/heartbeat/destroy) is an
   append-only JSONL log replayed at startup, so agents survive a `bunkerd`
   restart. Size-capped (5 MiB × 3 rotation), compactable offline with
@@ -1006,6 +1008,26 @@ unreadable (e.g. a dead agent user) it falls back to **host-level** values and
 prints an explicit `NOTE: host-level fallback` line, and the wire response sets
 `host_level_fallback` (proto field 10). Treat those numbers as host figures, not
 the agent's.
+
+## Can one agent see another? (security model)
+
+**Short answer: no — not by default.** Each Bunker agent is a separate thing
+from every other agent on the same host:
+
+| Guarantee | What separates two agents | Proof pointer |
+|-----------|---------------------------|---------------|
+| Per-user Linux account | Each agent is its own OS user (`bunker-<id>`) with its own home, SSH keypair, and uid — file ownership stops cross-agent reads | [specs/agent-lifecycle.md](specs/agent-lifecycle.md) |
+| Rootless dockerd | Each agent runs its own unprivileged Docker daemon (userns-mapped, no root) — no shared container engine, no root containers | [specs/agent-lifecycle.md](specs/agent-lifecycle.md) |
+| cgroup caps | CPU / memory / process / fd limits enforced per agent via its systemd slice; a runaway agent cannot exhaust the host for the others | [specs/agent-lifecycle.md](specs/agent-lifecycle.md), [README → Resource Limits](#resource-limits) |
+| Private `/tmp` (needs host provisioning) | `pam_namespace` gives each agent SSH session its own `/tmp` (rootless dockerd units: `PrivateTmp=yes`); the scope is **per-session**, and only after `bunker host-provision --apply` + `isolation-grant` daemon + `bunker status` reports `private` | [specs/agent-tmp-isolation.md](specs/agent-tmp-isolation.md) |
+| No cross-agent exchange outside one directory | Agents share nothing by default; the only sanctioned exchange point is the root-owned, setgid, per-agent-capped `/srv/bunker-share` (mode 2750) — always opt-in | [specs/agent-tmp-isolation.md](specs/agent-tmp-isolation.md) |
+| TTL auto-destroy | Agents are destroyed at their TTL (heartbeat extends); no agent outlives its window | [specs/agent-lifecycle.md](specs/agent-lifecycle.md) |
+
+**Honest limits:** private `/tmp` is host-provisioned and per-session (an
+unprovisioned host shares the host `/tmp`), the daemon needs root, and the
+kernel is shared — userns/rootless is defence-in-depth, not a hypervisor.
+Details: [Agent isolation](#agent-isolation-tmp-and-cross-agent-exchange),
+[docs/threat-model.md](docs/threat-model.md).
 
 ## Agent isolation (`/tmp` and cross-agent exchange)
 
