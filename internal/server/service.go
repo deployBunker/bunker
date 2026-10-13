@@ -65,6 +65,10 @@ type bunkerdService struct {
 	// "no operator identities exist", so legacy behavior is unchanged.
 	opMgr      *operator.Manager
 	cpuSampler cpuSampler
+	// peaks is the GAP-121 daemon-observed usage peak tracker. Nil in tests
+	// and unwired services — the read path then reports the cgroup peak (or
+	// none) and never fabricates a daemon value.
+	peaks *resource.PeakTracker
 	// orphanUIDSummarizer is the DF-BUNKER-34 orphan probe (nil in tests and
 	// unwired services: no probe, no fabricated "healthy"). The production
 	// wiring (server.go) sets it to the agent manager's OrphanUIDSummary.
@@ -766,6 +770,16 @@ func (s *bunkerdService) AgentMetrics(ctx context.Context, req *connect.Request[
 	// Read per-agent disk usage (best-effort). PERF-001: served from the TTL
 	// snapshot cache — a request inside the TTL window never walks the home.
 	resp.DiskUsedBytes = agentDiskUsageCache.usageFor(rec.AgentID)
+
+	// GAP-121: the agent's resource-ceiling events (memory.events /
+	// pids.events) and observed peaks. eventsUID is -1 when the agent user
+	// did not resolve, so the helper reports "unavailable" instead of
+	// reading user-0's slice as if it were this agent's.
+	eventsUID := uid
+	if !userResolved {
+		eventsUID = -1
+	}
+	fillAgentResourceEvents(resp, eventsUID, rec.AgentID, s.peaks, s.logger)
 
 	return connect.NewResponse(resp), nil
 }
@@ -1916,6 +1930,9 @@ type agentService struct {
 	logger     *slog.Logger
 	tracker    *resource.Tracker
 	heartbeats heartbeatManager
+	// peaks is the GAP-121 daemon-observed usage peak tracker (nil when the
+	// daemon is unwired or a test builds the service by hand).
+	peaks *resource.PeakTracker
 }
 
 // GetInfo returns info about the authenticated agent.
@@ -2025,6 +2042,15 @@ func (s *agentService) Metrics(ctx context.Context, req *connect.Request[v1.Agen
 			resp.HostLevelFallback = true
 		}
 	}
+	// GAP-121: the agent's own resource-ceiling events + peaks. Serving them
+	// here too (not only on the master-gated Bunkerd.AgentMetrics) is what
+	// lets an agent answer "was I OOM-killed?" about itself; the ownership
+	// guard above already confined this call to the caller's own agent.
+	eventsUID := uid
+	if !userResolved {
+		eventsUID = -1
+	}
+	fillAgentResourceEvents(resp, eventsUID, rec.AgentID, s.peaks, s.logger)
 	return connect.NewResponse(resp), nil
 }
 

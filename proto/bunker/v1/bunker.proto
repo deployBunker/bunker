@@ -545,6 +545,96 @@ message AgentMetricsResponse {
   uint32 docker_containers = 8;
   string uptime = 9;
   bool host_level_fallback = 10;  // true when metrics are HOST values, not the agent's own cgroup
+  // GAP-121: per-agent resource-ceiling events and peaks. Absent (nil) on any
+  // daemon that predates the surface — a caller must render that as
+  // "not reported", never as "no ceiling was ever hit".
+  ResourceEvents resource_events = 11;
+}
+
+// ── Resource-ceiling observability (GAP-121) ──────────────────
+//
+// The cgroup v2 filesystem records ceiling events per cgroup; nothing in the
+// daemon's older surfaces exposed them, so an operator could not tell whether
+// an agent hit its memory / pids limit, or how close it came. These messages
+// carry that view for ONE agent.
+//
+// Every counter here is CUMULATIVE since the agent's cgroup was created — the
+// values are event counts, not rates, and they are never reset by the daemon.
+// A non-zero value is therefore a durable fact about the agent's lifetime:
+// "this agent hit its memory.max ceiling 3 times", not "it is over the limit
+// right now".
+
+// MemoryEvents mirrors the cgroup v2 `memory.events` counters of the agent's
+// own cgroup slice.
+message MemoryEvents {
+  // max: times the cgroup's memory usage reached memory.max and reclaim was
+  // attempted — a direct ceiling hit.
+  uint64 max = 1;
+  // high: times usage exceeded memory.high (the throttle threshold, when set).
+  uint64 high = 2;
+  // low: times usage dropped below memory.low (best-effort protection).
+  uint64 low = 3;
+  // oom: times the cgroup entered an OOM state.
+  uint64 oom = 4;
+  // oom_kill: times the kernel killed a process in the cgroup to satisfy a
+  // memory limit. This is the "your workload was shot" counter.
+  uint64 oom_kill = 5;
+  // oom_group_kill: times the whole cgroup was killed at once
+  // (memory.oom.group = 1).
+  uint64 oom_group_kill = 6;
+  // available: false when memory.events could not be read (absent cgroup —
+  // e.g. a stopped or destroyed agent — or an unreadable file). When false,
+  // every counter above is zero because nothing was measured, NOT because
+  // nothing happened.
+  bool available = 7;
+}
+
+// PidsEvents mirrors the cgroup v2 `pids.events` counters of the agent's own
+// cgroup slice.
+message PidsEvents {
+  // max: times a fork/clone was refused because pids.max (the agent's
+  // process/thread ceiling) was already reached.
+  uint64 max = 1;
+  // available: false when pids.events could not be read. Same zero-is-not-
+  // evidence rule as MemoryEvents.available.
+  bool available = 2;
+}
+
+// ResourceEvents is the per-agent resource-ceiling observability view:
+// the cgroup event counters, the live usage, and the observed peaks.
+message ResourceEvents {
+  MemoryEvents memory = 1;
+  PidsEvents pids = 2;
+  // memory_current_bytes / pids_current are the live readings at the moment
+  // the RPC was served (memory.current / pids.current).
+  uint64 memory_current_bytes = 3;
+  uint64 pids_current = 4;
+  // memory_peak_bytes / pids_peak are the highest usage observed for this
+  // agent. The cgroup exposes memory.peak (kernel >= 5.19) and pids.peak
+  // (kernel >= 6.1); where the kernel does not, the daemon's own sampler
+  // supplies the peak — so the peak SOURCE is reported alongside each value
+  // and must not be assumed.
+  uint64 memory_peak_bytes = 5;
+  uint64 pids_peak = 6;
+  // memory_peak_source / pids_peak_source are one of:
+  //   "cgroup"  — read from memory.peak / pids.peak (authoritative, survives
+  //               the agent's own lifetime and the daemon's restarts);
+  //   "daemon"  — the highest value the daemon sampled since it started
+  //               (a LOWER BOUND: it cannot see usage between samples);
+  //   ""        — no peak available at all.
+  string memory_peak_source = 7;
+  string pids_peak_source = 8;
+  // cgroup_path is the agent's cgroup slice the readings came from, so an
+  // operator can read the files directly.
+  string cgroup_path = 9;
+  // available: true when the agent's cgroup was located and at least one
+  // event file was read. A false block (MemoryEvents.available /
+  // PidsEvents.available) means THAT counter set was not measured — a
+  // different statement from "measured zero".
+  bool available = 10;
+  // detail names exactly which reads failed, when available is false (or when
+  // a non-fatal read failed). Empty when everything was read.
+  string detail = 11;
 }
 
 message HeartbeatAgentRequest {

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -175,9 +176,38 @@ func printAgentMetrics(ctx context.Context, client bunkerv1connect.BunkerdClient
 	if msg.HostLevelFallback {
 		fmt.Println("  NOTE: host-level fallback (agent cgroup unavailable — metrics are HOST values, not agent values)")
 	}
+	// GAP-121: one-liner pointer to the ceiling events, so the operator sees
+	// the hit while reading usage and knows where the detail lives. Absent
+	// (nil) on a pre-GAP-121 daemon, and unmeasured vs clean is preserved.
+	if ev := msg.GetResourceEvents(); ev != nil {
+		fmt.Printf("  Ceiling events: %s\n", resourceEventsBrief(ev))
+	}
 	fmt.Println()
 
 	return nil
+}
+
+// resourceEventsBrief is the compact ceiling-event verdict used by
+// `bunker metrics <agent-id>`; the full breakdown (and the peak sources)
+// live in `bunker resource-events <agent-id>`.
+func resourceEventsBrief(ev *v1.ResourceEvents) string {
+	if !ev.GetAvailable() {
+		return "UNAVAILABLE — not measured (see 'bunker resource-events <agent-id>')"
+	}
+	var parts []string
+	if n := ev.GetMemory().GetMax(); n > 0 {
+		parts = append(parts, fmt.Sprintf("memory.max ×%d", n))
+	}
+	if n := ev.GetMemory().GetOomKill(); n > 0 {
+		parts = append(parts, fmt.Sprintf("oom_kill ×%d", n))
+	}
+	if n := ev.GetPids().GetMax(); n > 0 {
+		parts = append(parts, fmt.Sprintf("pids.max ×%d", n))
+	}
+	if len(parts) == 0 {
+		return "none recorded"
+	}
+	return strings.Join(parts, ", ")
 }
 
 // humanBytes converts bytes to a human-readable string (KB, MB, GB, TB).
