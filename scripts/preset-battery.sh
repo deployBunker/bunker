@@ -223,14 +223,20 @@ sweep_active() {
     return 1
 }
 
-# agent_alive AGENT — the agent's Linux user AND home must still exist. A
-# vanished home is the signature of an external `userdel -rf` sweep: the agent
-# still renders as "running" in the daemon's list, but every exec into it fails
-# at the SSH layer.
+# agent_alive AGENT — the agent's Linux user, its home AND its slice drop-in
+# must all still exist. Any of the three vanishing is the signature of an
+# external `userdel -rf` sweep: the agent still renders as "running" in the
+# daemon's list, but its exec sessions fail at the SSH layer and, worse, the
+# slice is recreated UNCONFIGURED by the next session — so a counter read then
+# returns host defaults (memory.max=max, pids.max=<host>) and a containment
+# verdict would describe a slice that never had the tier's limits.
 agent_alive() {
-    local agent="$1"
+    local agent="$1" uid
     id "bunker-$agent" >/dev/null 2>&1 || return 1
     [ -d "/home/bunker-$agent" ] || return 1
+    uid=$(id -u "bunker-$agent" 2>/dev/null) || return 1
+    [ -n "$uid" ] || return 1
+    [ -f "/etc/systemd/system/user-${uid}.slice.d/50-bunker.conf" ] || return 1
     return 0
 }
 
@@ -401,6 +407,13 @@ aexec() {
     AEXEC_OUT=$(bcli exec --server "$PRESET_TARGET" "$agent" -- bash -lc "$cmd" 2>&1)
     AEXEC_RC=$?
     set -e
+    # An exec that fails with NO output while the agent is gone is the sweep's
+    # signature (SSH auth fails against a deleted home). Record the tier as
+    # ABORTED here so every caller short-circuits instead of asserting on a
+    # corpse.
+    if [ "$AEXEC_RC" -ne 0 ] && [ -z "$AEXEC_OUT" ] && ! agent_alive "$agent"; then
+        tier_abort "$agent"
+    fi
     return 0
 }
 
@@ -735,6 +748,7 @@ tier_begin() {
     TIER="$1"
     T_PASS=0; T_FAIL=0; T_NOTE=0; T_FINDING=0
     TIER_FAILS=0
+    TIER_DEAD=0
     echo ""
     echo "TIER $TIER"
 }
@@ -743,14 +757,23 @@ tier_begin() {
 # honestly and record the tier as ABORTED: it fails (so it can never be read as
 # a pass) but the reason is named, because "the agent was deleted out from
 # under the run" is a measurement-integrity fact, not a containment property.
+# Sets TIER_DEAD so every later case short-circuits instead of emitting verdicts
+# about a corpse (measured: an A2 'ESCAPED — memory.max=max' verdict was really
+# the recreated slice of an agent the sweep had just deleted).
 tier_abort() {
     local agent="$1"
+    if [ "${TIER_DEAD:-0}" = "1" ]; then return 0; fi
+    TIER_DEAD=1
     bad "ABORTED: agent $agent was destroyed mid-tier by an external actor — its Linux user and/or its home no longer exist (a host-wide battery sweep does 'userdel -rf' for every ^bunker- user). Every measurement past this point would describe a dead agent, so the tier is ABORTED rather than reported as containment failures."
     TIER_FAILS=$((TIER_FAILS+1))
     echo "TIER $TIER VERDICT: ABORTED   (pass=$T_PASS fail=$T_FAIL findings=$T_FINDING — agent lost to an external sweep)"
     TIER_FAIL=$((TIER_FAIL+1))
     FAILED_TIERS="$FAILED_TIERS $TIER"
 }
+
+# tier_dead — true once the tier's agent has been lost; cases call this first
+# and return without emitting a verdict.
+tier_dead() { [ "${TIER_DEAD:-0}" = "1" ]; }
 
 # claim_* — read the daemon's OWN claims for this agent.
 #   E1 claim: the slice drop-in the daemon wrote.
@@ -1130,6 +1153,8 @@ w5_docker_load() {
 A1_REFUSED=""
 a1_fork_bomb() {
     local agent="$1" uid="$2"
+    if tier_dead; then return 0; fi
+    if ! agent_alive "$agent"; then tier_abort "$agent"; return 0; fi
     stage_dir_ensure
     # The counters are read from INSIDE the session that holds the slice open:
     # the exec session's scope is what creates the slice cgroup, so a read from
@@ -1271,6 +1296,8 @@ DRIVER
 A2_WHO_PAID=""
 a2_memory_bomb() {
     local agent="$1" uid="$2"
+    if tier_dead; then return 0; fi
+    if ! agent_alive "$agent"; then tier_abort "$agent"; return 0; fi
     stage_dir_ensure
     # Size the attempt against the tier's OWN declared ceiling (the E1 claim),
     # never above twice it: the point is to make the tier's cap fire, not to
@@ -1639,6 +1666,26 @@ echo "  coexist : ${BUNKERD_COEXIST:-0}   ports REST ${BUNKERD_REST_ADDR} gRPC $
 echo ""
 
 preflight
+
+# ── single-run lock ─────────────────────────────────────────────────────────
+# Two concurrent preset batteries on one host fight over the same agent ids and
+# ports: the second run's pre-clean destroys the first run's agent mid-tier.
+# Measured 2026-10-13 — two launchers 90s apart produced an interleaved log and
+# bogus ABORTED/ESCAPED verdicts. Refuse rather than interleave.
+LOCK_FILE="${PRESET_LOCK_FILE:-/var/lock/preset-battery.lock}"
+if command -v flock >/dev/null 2>&1; then
+    if ! exec 9>"$LOCK_FILE"; then
+        echo "REFUSING: cannot open the run lock $LOCK_FILE" >&2
+        exit 42
+    fi
+    if ! flock -n 9; then
+        echo "REFUSING: another preset-battery run holds $LOCK_FILE — wait for it to finish." >&2
+        echo "          (two concurrent runs fight over the same agent ids; see the guard comment in the script)" >&2
+        exit 42
+    fi
+    echo "  run lock held: $LOCK_FILE"
+fi
+
 trap cleanup EXIT
 start_daemon
 
