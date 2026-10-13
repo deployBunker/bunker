@@ -10,7 +10,7 @@ path, plus a same-file exec-bit parity probe against sshfs.
 
 docs/mount-drivers.md §3.2: "rclone is OPT-IN … an agent spawned with `--mount-driver rclone`
 mounts through the rclone arm; the agent needs NOTHING installed — only the client needs the
-rclone binary." And `bunker spawn --help` documents the flag at HEAD.
+rclone binary." The flag is registered in the CLI at HEAD.
 
 ## What worked (evidence)
 
