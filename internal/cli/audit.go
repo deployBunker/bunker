@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -56,7 +57,17 @@ func NewAuditCommand() *cobra.Command {
 		Long: `Inspect the bunkerd audit trail: an append-only JSONL log of every
 authenticated RPC (one record per request; file mode 0600; token values are
 never written). Records are hash-chained (SHA-256) across the live file and
-rotated backups (.1-.3).
+rotated backups (.1-.3) and the chain is ANCHORED by default: every record
+refreshes an HMAC-authenticated anchor file next to the log, so removing
+trailing records is detectable and a rewritten chain cannot silently
+re-anchor itself. See ` + "`bunker audit verify`" + ` for the integrity check and
+` + "`bunker audit status`" + ` for the anchor state.
+
+The anchor is tamper-evidence against anything that can write the log but
+cannot read the key; it is NOT protection against root on this host, which can
+rewrite the log, the anchor and the key together. Only an off-host anchor
+(audit.ship_to) survives that, and ` + "`bunker audit status`" + ` says plainly when
+none is configured.
 
 Reading the local audit log requires root: the file (default
 /var/log/bunkerd/audit.log) is mode 0600 and owned by root, so a non-root
@@ -226,32 +237,89 @@ func queryRemoteAudit(cmd *cobra.Command, serverName string, filter audit.Filter
 // or unparseable line). Rotated backups (.1-.3) are verified as part of the
 // chain. Local-log only: verification of a remote trail is performed by the
 // daemon's operator on the host.
+//
+// GAP-136: as well as the chain, verify checks the log's ANCHOR (GAP-136) —
+// the HMAC-authenticated record of how far the chain had got. A truncated
+// tail and a recomputed (forged) chain both fail here, which is what the bare
+// hash chain could not see. The anchor key is audit.seal_key when the daemon
+// config describes this log, else the auto-provisioned <path>.sealkey; when no
+// key is reachable the command still verifies the chain and the truncation
+// check and reports the anchor as unverified rather than assuming it is good.
 func newAuditVerifyCommand() *cobra.Command {
 	var path string
 	cmd := &cobra.Command{
 		Use:   "verify",
-		Short: "Verify the audit log hash chain",
+		Short: "Verify the audit log hash chain and its anchor",
 		Long: `Verify checks every record of the audit log, including rotated backups
 (.1-.3), against its SHA-256 hash chain: each record's hash must match its
 line bytes and chain to the previous record. Any tampering is reported with
 the first bad record index and exits non-zero; an untouched log prints
-"OK (N records)" and exits 0. Local log only — the daemon host's operator
-runs this on the host.`,
+"OK (N records)" and exits 0.
+
+It also checks the log's anchor (the HMAC-authenticated record of the chain
+head written after every record). That is what catches a TRUNCATED tail and a
+recomputed (forged) chain, neither of which a bare hash chain can see. The
+anchor verdict is printed on the line after the chain verdict: keyed (MAC
+validated), unkeyed, unverified, or none — a chain that verified but is not
+anchored is reported as such rather than as fully verified.
+
+Local log only — the daemon host's operator runs this on the host.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path = defaultAuditPathFlag(cmd, "path")
-			records, firstBad, err := audit.Verify(path)
+			anchorKey, _ := AuditDeploymentFacts(path)
+			res, err := audit.VerifyDetailed(path, anchorKey)
 			if err != nil {
-				if firstBad > 0 {
-					fmt.Fprintf(cmd.ErrOrStderr(), "audit log %s: tamper detected at record %d\n", path, firstBad)
+				if res != nil && res.FirstBad > 0 {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "audit log %s: tamper detected at record %d\n", path, res.FirstBad)
 				}
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "audit log %s: OK (%d records)\n", path, records)
+			if _, werr := fmt.Fprintf(cmd.OutOrStdout(), "audit log %s: OK (%d records)\n", path, res.Records); werr != nil {
+				return ExitOnBrokenPipe(werr)
+			}
+			// GAP-136: the chain verdict is not the whole verdict. Say what the
+			// anchor proved, and when it proved less than everything.
+			line, ok := anchorVerdictLine(res)
+			if _, werr := fmt.Fprintln(cmd.OutOrStdout(), line); werr != nil {
+				return ExitOnBrokenPipe(werr)
+			}
+			if !ok {
+				// The chain is intact and the anchor is weaker than keyed: exit
+				// 0 (the trail verifies) but make sure the operator sees it —
+				// on stderr, without reprinting the whole verdict line.
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+					"warning: audit anchor state is %s — the chain did not verify under a key (see the anchor line above)\n",
+					res.AnchorState)
+			}
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&path, "path", defaultAuditLogPath, "audit log file to verify (default: the daemon config's audit.path, else /var/log/bunkerd/audit.log; rotated backups .1-.3 are checked as part of the chain)")
 	return cmd
+}
+
+// anchorVerdictLine renders the anchor half of a verification result as one
+// operator-readable line, and reports whether the anchor is as strong as this
+// host can make it (keyed, with a validated MAC).
+func anchorVerdictLine(res *audit.VerifyResult) (string, bool) {
+	switch res.AnchorState {
+	case audit.AnchorStateKeyed:
+		head, ts, kid := "", "", ""
+		if a := res.Anchor; a != nil {
+			head, ts, kid = a.Head, a.TS, a.KeyID
+		}
+		return fmt.Sprintf("anchor %s: keyed, MAC validated (key id %s), head %s, written %s",
+			res.AnchorPath, kid, head, ts), true
+	case audit.AnchorStateUnkeyed:
+		return fmt.Sprintf("anchor %s: UNKEYED — %s (truncation detectable, forgery not)",
+			res.AnchorPath, res.AnchorNote), false
+	case audit.AnchorStateUnverified:
+		return fmt.Sprintf("anchor %s: UNVERIFIED — %s", res.AnchorPath, res.AnchorNote), false
+	default:
+		// The note already states what an unanchored chain costs (see
+		// checkAnchor); repeating it here printed the same clause twice.
+		return fmt.Sprintf("anchor %s: NONE — %s", res.AnchorPath, res.AnchorNote), false
+	}
 }
 
 // newAuditListCommand returns `bunker audit list`, which prints matching
@@ -360,9 +428,16 @@ Examples:
 // of the audit log's on-disk state plus the GAP-073 retention-hardening
 // state: chain head, file/backup sizes, rotation-count lower bound, and —
 // read from the daemon-written ship-state file — the last remote-ship
-// result and retry queue depth when shipping is configured. Verify history
-// is intentionally not tracked and reported as n/a. Like verify, this reads
-// only the local files; run it on the host that owns the log.
+// result and retry queue depth when shipping is configured.
+//
+// GAP-136 / SEC-16 made it SELF-CRITICAL. It verifies the retained chain on
+// the pass that produces the report (rather than printing "last verify: n/a"),
+// reports the local anchor state (keyed / unkeyed / unverified / none) and the
+// off-host anchor state, and derives a one-word health verdict that can only be
+// "healthy" with a verified chain, a validated anchor MAC and an off-host
+// anchor. A truncated or edited chain is reported as broken, with the gap named
+// — never as healthy. Like verify, this reads only the local files; run it on
+// the host that owns the log.
 func newAuditStatusCommand() *cobra.Command {
 	var (
 		path     string
@@ -370,19 +445,45 @@ func newAuditStatusCommand() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Show audit log state (chain head, sizes, shipping)",
-		Long: `Status prints a one-glance summary of the local audit log: the current
-chain head (hash of the last record of the live file), the live file and
-rotated backup sizes (.1-.3), a lower bound on rotation count, and the
-GAP-073 retention state (remote shipping result/queue from the ship-state
-file the daemon writes at <path>.shipstate, rotation sealing).
+		Short: "Show audit log state, chain integrity and anchor state",
+		Long: `Status prints a one-glance summary of the local audit log and — unlike a
+stored "last run" field — a VERDICT it computed just now:
+
+  chain status / gaps   the retained chain (live file + backups .1-.3) is
+                        verified on this pass; a break, an edited record, a
+                        truncated tail or a damaged anchor is reported here,
+                        with health: broken
+  chain length          records in the retained chain
+  last anchor hash      the hash the anchor names (hash of the last record)
+  local anchor          keyed (MAC validated under the anchor key), unkeyed,
+                        unverified, or none — how strongly the anchor could
+                        actually be checked
+  off-host anchor       whether audit.ship_to ships segments off this host; the
+                        exact words "no off-host anchor configured" when not
+  health                healthy | degraded | broken | disabled. "healthy"
+                        requires a verified chain, a validated anchor MAC AND
+                        an off-host anchor; anything weaker says so
+  storage location      printed as the audit log path
+
+The tamper-evidence claim is conditional, and this command states the
+condition rather than assuming it: the anchor and its key live on this host, so
+an attacker with root here could rewrite all of them. Only an off-host anchor
+survives that.
+
+Retention state (remote shipping result/queue from the ship-state file the
+daemon writes at <path>.shipstate, rotation sealing) is also reported.
 
 Local log only — like verify, run it on the host that owns the log. Works
-on an unconfigured/disabled audit too (reports enabled=false). Verify
-history is not tracked: last verify is reported as n/a.`,
+on an unconfigured/disabled audit too (reports enabled=false, health=disabled).
+Status always exits 0: it is a report, not a gate. Scripts that need a boolean
+should read ` + "`--json`" + ` and check .Health / .ChainOK.
+
+Verify history is not tracked and is reported as n/a; the chain status line is
+the verification, performed now.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path = defaultAuditPathFlag(cmd, "path")
-			st, err := audit.LocalStatus(path)
+			anchorKey, shipTo := AuditDeploymentFacts(path)
+			st, err := audit.LocalStatusWith(path, audit.StatusOptions{AnchorKey: anchorKey, ShipTo: shipTo})
 			if err != nil {
 				return err
 			}
@@ -400,76 +501,125 @@ history is not tracked: last verify is reported as n/a.`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&path, "path", defaultAuditLogPath, "audit log file to inspect (default: the daemon config's audit.path, else /var/log/bunkerd/audit.log; rotated backups .1-.3 are included)")
-	cmd.Flags().BoolVar(&wantJSON, "json", false, "emit machine-readable JSON instead of plain text")
+	cmd.Flags().StringVar(&path, "path", defaultAuditLogPath, "audit log file to inspect (default: the daemon config's audit.path, else /var/log/bunkerd/audit.log; rotated backups .1-.3, the anchor and the ship-state file are included)")
+	cmd.Flags().BoolVar(&wantJSON, "json", false, "emit machine-readable JSON instead of plain text (check .Health and .ChainOK for scripting)")
 	return cmd
 }
 
-// printAuditStatus renders the status fields as plain text, one per line.
-// Write errors are returned (DF-BUNKER-44): a truncated status report must
-// reach ExitOnBrokenPipe like every other audit read path.
+// printAuditStatus renders the status fields as plain text, one per line. The
+// label column is 22 characters wide ("%-21s "), matching the historical
+// layout byte-for-byte so existing parsers and golden expectations keep
+// working. Write errors are returned (DF-BUNKER-44): a truncated status report
+// must reach ExitOnBrokenPipe like every other audit read path.
 func printAuditStatus(w io.Writer, path string, st *audit.StatusReport) error {
-	if _, err := fmt.Fprintf(w, "audit log:            %s\n", path); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "enabled:              %v\n", st.Enabled); err != nil {
-		return err
+	lines := [][2]string{
+		{"audit log:", path},
+		{"enabled:", fmt.Sprintf("%v", st.Enabled)},
 	}
 	if !st.Enabled {
-		return nil
+		lines = append(lines,
+			[2]string{"chain length:", "0 (no audit trail on this host)"},
+			[2]string{"chain status:", "n/a — no audit log at this path"},
+			[2]string{"gaps:", "n/a"},
+			[2]string{"local anchor:", "n/a — nothing is written, so nothing is anchored"},
+			[2]string{"off-host anchor:", st.AnchorStatement()},
+			[2]string{"health:", st.Health + " — " + st.HealthReason},
+		)
+		return writeStatusLines(w, lines)
 	}
-	if _, err := fmt.Fprintf(w, "chain head:           %s\n", st.ChainHead); err != nil {
-		return err
+
+	anchorHead := st.LastAnchorHash
+	if anchorHead == "" {
+		anchorHead = "(none: live file is empty)"
 	}
-	if _, err := fmt.Fprintf(w, "records:              %d (retained chain)\n", st.Records); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "live size:            %d bytes\n", st.LiveSize); err != nil {
-		return err
-	}
+	lines = append(lines,
+		[2]string{"chain head:", st.ChainHead},
+		[2]string{"chain length:", fmt.Sprintf("%d records (retained chain)", st.ChainLength)},
+		[2]string{"last anchor hash:", anchorHead},
+		[2]string{"records:", fmt.Sprintf("%d (retained chain)", st.Records)},
+		[2]string{"live size:", fmt.Sprintf("%d bytes", st.LiveSize)},
+	)
 	for i, sz := range st.BackupSizes {
 		if sz < 0 {
 			continue // backup not present
 		}
-		if _, err := fmt.Fprintf(w, "backup .%d size:       %d bytes\n", i+1, sz); err != nil {
-			return err
-		}
+		lines = append(lines, [2]string{fmt.Sprintf("backup .%d size:", i+1), fmt.Sprintf("%d bytes", sz)})
 	}
-	if _, err := fmt.Fprintf(w, "rotations:            >= %d (lower bound; files rotated beyond the %d-backup budget are gone)\n", st.RotationsLowerBound, audit.MaxBackups); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprint(w, "last verify:          n/a\n"); err != nil {
-		return err
-	}
+	lines = append(lines,
+		[2]string{"rotations:", fmt.Sprintf(">= %d (lower bound; files rotated beyond the %d-backup budget are gone)", st.RotationsLowerBound, audit.MaxBackups)},
+		[2]string{"chain status:", chainStatusLine(st)},
+		[2]string{"gaps:", gapsLine(st)},
+		[2]string{"local anchor:", localAnchorLine(st)},
+		[2]string{"off-host anchor:", st.AnchorStatement()},
+		[2]string{"health:", st.Health + " — " + st.HealthReason},
+		[2]string{"last verify:", "n/a (verify history is not recorded; the chain status line above is this run's verification)"},
+	)
 	if st.Shipping != nil {
-		if _, err := fmt.Fprintf(w, "shipping:             enabled (%s)\n", st.Shipping.ShipTo); err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintf(w, "last ship attempt:    %s\n", st.Shipping.LastAttempt); err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintf(w, "last ship result:     %s\n", st.Shipping.LastResult); err != nil {
-			return err
-		}
+		lines = append(lines,
+			[2]string{"shipping:", fmt.Sprintf("enabled (%s)", st.Shipping.ShipTo)},
+			[2]string{"last ship attempt:", st.Shipping.LastAttempt},
+			[2]string{"last ship result:", st.Shipping.LastResult},
+		)
 		if st.Shipping.LastSuccess != "" {
-			if _, err := fmt.Fprintf(w, "last ship success:    %s\n", st.Shipping.LastSuccess); err != nil {
-				return err
-			}
+			lines = append(lines, [2]string{"last ship success:", st.Shipping.LastSuccess})
 		} else {
-			if _, err := fmt.Fprint(w, "last ship success:    never\n"); err != nil {
-				return err
-			}
+			lines = append(lines, [2]string{"last ship success:", "never"})
 		}
-		if _, err := fmt.Fprintf(w, "ship retry queue:     %d segment(s)\n", st.Shipping.QueueDepth); err != nil {
-			return err
-		}
+		lines = append(lines, [2]string{"ship retry queue:", fmt.Sprintf("%d segment(s)", st.Shipping.QueueDepth)})
 	} else {
-		if _, err := fmt.Fprint(w, "shipping:             disabled\n"); err != nil {
+		lines = append(lines, [2]string{"shipping:", "disabled"})
+	}
+	lines = append(lines, [2]string{"rotation sealing:", fmt.Sprintf("%v", st.SealingEnabled)})
+	return writeStatusLines(w, lines)
+}
+
+// writeStatusLines emits the label/value rows, stopping at the first failed
+// write (a reader that walked away mid-report must surface as a broken pipe,
+// not as success).
+func writeStatusLines(w io.Writer, lines [][2]string) error {
+	for _, l := range lines {
+		if _, err := fmt.Fprintf(w, "%-21s %s\n", l[0], l[1]); err != nil {
 			return err
 		}
 	}
-	_, err := fmt.Fprintf(w, "rotation sealing:     %v\n", st.SealingEnabled)
-	return err
+	return nil
+}
+
+// chainStatusLine is the verdict of the verification this run performed.
+func chainStatusLine(st *audit.StatusReport) string {
+	if st.ChainOK {
+		return fmt.Sprintf("OK — %d records verified against the hash chain", st.ChainLength)
+	}
+	if st.FirstBadRecord > 0 {
+		return fmt.Sprintf("BROKEN at record %d — %s", st.FirstBadRecord, st.ChainError)
+	}
+	return "BROKEN — " + st.ChainError
+}
+
+// gapsLine lists the chain breaks found; "none" is the only healthy value.
+func gapsLine(st *audit.StatusReport) string {
+	if len(st.Gaps) == 0 {
+		return "none"
+	}
+	return strings.Join(st.Gaps, "; ")
+}
+
+// localAnchorLine describes the local anchor and how strongly it was checked.
+func localAnchorLine(st *audit.StatusReport) string {
+	a := st.Anchor
+	if a == nil {
+		return "unknown"
+	}
+	switch a.State {
+	case audit.AnchorStateKeyed:
+		return fmt.Sprintf("keyed — MAC validated, key id %s, head %s, written %s", a.KeyID, a.Head, a.TS)
+	case audit.AnchorStateUnkeyed:
+		return "unkeyed — " + a.Note + " (truncation detectable, forgery not)"
+	case audit.AnchorStateUnverified:
+		return "unverified — " + a.Note
+	default:
+		return fmt.Sprintf("none — %s; the chain is unanchored and a truncated tail verifies", a.Note)
+	}
 }
 
 // printAuditTable renders records as a fixed-width table on w. Every write

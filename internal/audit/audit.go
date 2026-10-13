@@ -82,6 +82,14 @@ type AuditLog struct {
 	shipper *Shipper
 	logger  *slog.Logger
 
+	// GAP-136: the anchor key. Always non-empty in practice — New(path) with
+	// no options auto-provisions <path>.sealkey — so anchoring is ON by
+	// default with no config flag. It stays a field rather than a constant so
+	// a host that cannot create the key file degrades to an unkeyed anchor
+	// (warned, and reported as the unkeyed state by every verifier) instead of
+	// refusing to open the audit trail.
+	anchorKey string
+
 	// insecurePlaintext, when true, marks EVERY record written through this
 	// log as having been served over a non-loopback PLAINTEXT listener
 	// (GAP-126 / REQ-T1). Default false: a daemon that never opts in (or
@@ -93,8 +101,13 @@ type AuditLog struct {
 // Missing parent directories are created with mode 0700. GAP-073 retention
 // hardening (remote shipping, rotation seals) is OFF: use NewWithOptions or
 // SetShipper to enable it.
+//
+// GAP-136 anchoring, by contrast, is ON: New provisions the anchor key at
+// <path>.sealkey (mode 0600) when it does not exist and refreshes the anchor
+// file <path>.anchor after every record, so tamper-evidence and truncation
+// detection need no configuration at all.
 func New(path string) (*AuditLog, error) {
-	return newAuditLog(path)
+	return newAuditLog(path, "")
 }
 
 // Options are the GAP-073 retention-hardening knobs for NewWithOptions.
@@ -122,7 +135,7 @@ type Options struct {
 // error: callers must WARN and fall back (server.go disables shipping), never
 // crash the daemon or block the write path.
 func NewWithOptions(path string, opts Options) (*AuditLog, error) {
-	l, err := newAuditLog(path)
+	l, err := newAuditLog(path, opts.SealKey)
 	if err != nil {
 		return nil, err
 	}
@@ -133,8 +146,11 @@ func NewWithOptions(path string, opts Options) (*AuditLog, error) {
 	return l, nil
 }
 
-// newAuditLog is the shared constructor body.
-func newAuditLog(path string) (*AuditLog, error) {
+// newAuditLog is the shared constructor body. explicitAnchorKey is
+// audit.seal_key when the caller has one (New passes ""): it wins over the
+// auto-provisioned key file so an explicitly configured deployment is anchored
+// under the key the operator already owns.
+func newAuditLog(path, explicitAnchorKey string) (*AuditLog, error) {
 	if path == "" {
 		return nil, fmt.Errorf("audit log path is empty")
 	}
@@ -158,7 +174,45 @@ func newAuditLog(path string) (*AuditLog, error) {
 	// untouched log. lastHash is process state; the file is the durable truth.
 	// Best-effort: the append path never blocks on recovery.
 	l.reseedChainHead()
+	l.initAnchoring(explicitAnchorKey)
 	return l, nil
+}
+
+// initAnchoring resolves the key anchors are authenticated with. It is called
+// from the constructor, so no caller has to remember to arm it: a log opened
+// with plain New(path) is keyed and anchored.
+//
+// An unusable key is a warning, never a failure: the log opens with unkeyed
+// anchors (still truncation-detectable) and the state is reported as unkeyed
+// by every verifier rather than silently claimed as keyed.
+func (l *AuditLog) initAnchoring(explicitKey string) {
+	key, err := resolveAnchorKey(l.path, explicitKey)
+	if err != nil {
+		l.logWarn("audit anchoring key unavailable: anchors will be unkeyed (truncation-detectable, forgery not)",
+			"path", AnchorKeyPath(l.path), "error", err)
+		return
+	}
+	l.anchorKey = key
+}
+
+// writeAnchorLocked refreshes the anchor file for the current chain head.
+// Called from logLocked with l.mu held, after the record is durably appended:
+// the anchor always names a record that exists on disk, and a failed anchor
+// write can leave the previous (still valid) anchor in place but can never
+// lose or fail the audit record itself.
+func (l *AuditLog) writeAnchorLocked() {
+	head := l.lastHash
+	if head == "" {
+		return // genesis: nothing to anchor yet
+	}
+	a, err := newAnchor(l.anchorKey, head)
+	if err != nil {
+		l.logWarn("audit anchor build failed", "error", err)
+		return
+	}
+	if err := writeAnchorFile(l.path, a); err != nil {
+		l.logWarn("audit anchor write failed (previous anchor left in place)", "error", err)
+	}
 }
 
 // reseedChainHead initializes lastHash from the tail of the existing log file
@@ -429,6 +483,11 @@ func (l *AuditLog) logLocked(rec Record) error {
 		return fmt.Errorf("write audit record: %w", err)
 	}
 	l.lastHash = rec.Hash
+	// GAP-136: refresh the anchor now that this record is on disk, so the
+	// anchor names a head that exists. Best-effort by design (see
+	// writeAnchorLocked): a failed anchor write warns and leaves the previous
+	// anchor in place; it never fails the record.
+	l.writeAnchorLocked()
 	return nil
 }
 
@@ -525,6 +584,27 @@ func (l *AuditLog) Path() string {
 	return l.path
 }
 
+// AnchorPath returns the anchor file path this log refreshes after every
+// record (GAP-136). It exists for operator tooling that has to report or copy
+// the anchor alongside the log — an anchor without its log proves nothing.
+func (l *AuditLog) AnchorPath() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return AnchorPath(l.path)
+}
+
+// AnchorKeyID returns the public identifier of the key this log authenticates
+// anchors with, or "" when anchoring is running unkeyed because no key could be
+// resolved. The key itself is never exposed.
+func (l *AuditLog) AnchorKeyID() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.anchorKey == "" {
+		return ""
+	}
+	return keyID(l.anchorKey)
+}
+
 // logWarn emits a warning on the GAP-073 logger configured at construction
 // (nil logger = slog.Default()).
 func (l *AuditLog) logWarn(msg string, args ...any) {
@@ -541,9 +621,18 @@ func (l *AuditLog) logWarn(msg string, args ...any) {
 // false — the accessor exists for `bunker audit status` and daemon tooling.
 func (l *AuditLog) StatusSnapshot() AuditStatus {
 	l.mu.Lock()
-	shipper, sealing := l.shipper, l.sealKey != ""
+	shipper, sealing, keyed := l.shipper, l.sealKey != "", l.anchorKey != ""
+	kid := ""
+	if keyed {
+		kid = keyID(l.anchorKey)
+	}
 	l.mu.Unlock()
-	st := AuditStatus{SealingEnabled: sealing}
+	st := AuditStatus{
+		SealingEnabled: sealing,
+		AnchoringKeyed: keyed,
+		AnchorKeyID:    kid,
+		AnchorPath:     AnchorPath(l.path),
+	}
 	if shipper == nil {
 		return st
 	}
