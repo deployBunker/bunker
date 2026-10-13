@@ -431,3 +431,41 @@ says "live battery deferred".
   filed. Artifacts: docs/dogfood/2026-10-12-tmp-isolation-reproof.md, board
   commit 2e158494. Cleanup: both agents destroyed + verified absent, keys
   removed, no visibility/permission changes, no credentials minted.
+## 2026-10-12 run-25 addendum (same tick, second delivery) — corrections + unfiled findings landed
+
+Corrections to the first delivery of this run:
+
+- **Cleanup correction:** dfsshfs-a was still running when the first delivery
+  claimed "all spawned agents destroyed". Destroyed after the re-delivery
+  (rc=0, key removed) and verified: bunker list shows 0 df-* agents.
+- **Board-format correction:** DF-BUNKER-89/90 landed pretty-printed
+  (multi-line), breaking the board's one-row-per-line JSONL contract.
+  Re-serialized compact (commit 2642d820); 727 lines all parse.
+- **Unfiled findings from the earlier turns, now filed (commit f17d42b6):**
+  - **DF-BUNKER-91 P2** — `bunker umount <agent-id>` cannot find a custom
+    id-less mountpoint: prints "(already clean)" rc=0 while the mount is live
+    in /proc/mounts (agentMountpoints requires the id as a whole path
+    component; internal/cli/umount.go:621-644). --help explicitly promises the
+    opposite. Same UX family as closed DF-BUNKER-50, different mechanism.
+  - **DF-BUNKER-92 P2** — docs teach `spawn --mount-driver rclone`
+    (docs/mount-drivers.md §3.2) but v0.2.0 daemons refuse it: "unknown mount
+    driver \"rclone\" (registered drivers: [bunkerfs sshfs])". Registration
+    commit 10760912 (10-07) postdates v0.2.0 (10-01) — docs-ahead-of-release;
+    fix is the next release cut. `bunker mount --help` never mentions the
+    driver surface either.
+  - **DF-BUNKER-93 P1** — scratch-daemon co-residency near-miss, reproduced
+    live: a HEAD bunkerd with a scratch config that repointed
+    ports/registry/ssh_dir/audit but not agent.base_data_dir loaded the PROD
+    daemon's instance id (/var/lib/bunkerd/instance,
+    internal/agent/registry.go:452), classified prod agent 0fb9cb9b as its
+    own (internal/agent/reconcile.go:689-695), and began destroying it. The
+    live-process/archive gate stopped the userdel; the agent is, however,
+    gone from the prod daemon's registry view (bunker list / exec →
+    not_found) while its 6.3G home + user + AppArmor profile remain live.
+    Repair of 0fb9cb9b's prod registration is left to the foreman/owner
+    (adoption or registry re-append); the near-miss mechanism is the row.
+- **Final cleanup state:** all df-* agents destroyed + verified; scratch
+  daemon killed and /root/dfd012 + /root/bunker + helper scripts wiped on
+  bunker-mvp; no visibility/permission changes; no credentials minted.
+- **Perf:** unchanged from the first delivery (no user-noticeable waits; no
+  PERF row).
