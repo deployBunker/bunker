@@ -170,9 +170,9 @@ How each half arrives, and why:
 The go directive carries its own toolchain bootstrap (internal/imagespec
 installs `golang-go` from apt before the first `go install` line —
 DF-BUNKER-79), and every image-spec render re-installs the stock userland
-(git, docker client, python3, make, jq, ca-certificates — DF-BUNKER-80), so the
-customized image is the stock agent PLUS the delivered tools, never a
-replacement. `rg` and `gopls` are deliberately **not** in the stock layer: they
+(git, docker client, python3, make, jq, ca-certificates, plus the Go toolchain
+since DF-BUNKER-52 — DF-BUNKER-80), so the customized image is the stock agent
+PLUS the delivered tools, never a replacement. `rg` and `gopls` are deliberately **not** in the stock layer: they
 arrive only when a spec asks for them, and never as copied binaries — the
 package managers keep version pinning and signature verification.
 

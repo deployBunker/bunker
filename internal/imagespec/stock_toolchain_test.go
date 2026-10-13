@@ -75,6 +75,13 @@ func TestDockerfile_StockToolchainSetIsTheStockUserland(t *testing.T) {
 	if !set["docker.io"] {
 		t.Error("stock toolchain lost the docker client (docker.io provides /usr/bin/docker)")
 	}
+	// The Go TOOLCHAIN (DF-BUNKER-52): the promised userland now ships a
+	// compiler, so `go build` works in a fresh agent without a `go`
+	// directive. This assertion is what fails if Go is silently trimmed
+	// from the stock set — the regression the row was filed for.
+	if !set["golang-go"] {
+		t.Error("stock toolchain lost golang-go (DF-BUNKER-52: the Go toolchain is part of the promised userland)")
+	}
 	// The row's remaining named items plus the GAP-092-measured stock jq.
 	for _, pkg := range []string{"python3", "make", "jq", "ca-certificates"} {
 		if !set[pkg] {
@@ -118,8 +125,10 @@ func TestDockerfile_StockToolchainLineIsExact(t *testing.T) {
 
 // stockToolchainGoldenLine is the exact DF-BUNKER-80 stock-toolchain RUN
 // line: renderAPT over StockToolchainPackages. Shared by every golden row so
-// the byte expectation has one source.
-const stockToolchainGoldenLine = "RUN apt-get update && apt-get install -y --no-install-recommends 'ca-certificates' 'git' 'python3' 'make' 'jq' 'docker.io' && rm -rf /var/lib/apt/lists/*\n"
+// the byte expectation has one source. DF-BUNKER-52 added 'golang-go' to the
+// set on purpose — the stock userland now ships the Go toolchain — so this
+// line and every row that embeds it changed deliberately, never silently.
+const stockToolchainGoldenLine = "RUN apt-get update && apt-get install -y --no-install-recommends 'ca-certificates' 'golang-go' 'git' 'python3' 'make' 'jq' 'docker.io' && rm -rf /var/lib/apt/lists/*\n"
 
 // TestDockerfile_StockToolchainSurvivesNoPackageSpec pins the boundary case:
 // even a spec with NO package directives (base only) flips exec into

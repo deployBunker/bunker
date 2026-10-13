@@ -158,11 +158,21 @@ func TestDockerfile_GoBootstrapIsEmittedOnce(t *testing.T) {
 	}
 }
 
-// TestDockerfile_OnlyTheGoDirectivePullsTheToolchain is the negative half: no
-// other manager may drag a Go toolchain into the image (a package add stays the
-// package add it claims to be, and apt-only images stay small). An EMPTY go
-// directive renders nothing at all rather than bootstrapping Go for no package.
-func TestDockerfile_OnlyTheGoDirectivePullsTheToolchain(t *testing.T) {
+// TestDockerfile_OnlyTheGoDirectiveRunsGoInstall is the negative half: no
+// other manager may render a `go install` step (a package add stays the
+// package add it claims to be), and an EMPTY go directive renders nothing at
+// all rather than installing anything for no package.
+//
+// DF-BUNKER-52 changed WHAT this test can assert. The stock userland layer now
+// ships the Go toolchain on purpose (`golang-go`), so "the render never
+// contains golang-go" is deliberately false for every spec — a non-go spec
+// gets a compiler, but never an install of its own. The contract that survives
+// is the one that was really meant: no NON-go manager RUNS `go install`. A
+// plain substring search for "go install" would still be wrong —
+// `cargo install 'ripgrep@^14.1'` contains it — so the assertion looks for
+// `go install` as the COMMAND WORD of a rendered RUN line, after any leading
+// VAR=VALUE assignments (the go renderer's own `GOBIN=… go install` shape).
+func TestDockerfile_OnlyTheGoDirectiveRunsGoInstall(t *testing.T) {
 	for i := range managerDefs {
 		def := &managerDefs[i]
 		if def.Name == ManagerGo {
@@ -170,14 +180,27 @@ func TestDockerfile_OnlyTheGoDirectivePullsTheToolchain(t *testing.T) {
 		}
 		token := pickAcceptedName(t, def)
 		spec := &Spec{Base: DefaultBaseImage, Packages: []PackageAdd{{Manager: def.Name, Packages: []string{token}}}}
-		if got := spec.Dockerfile(); strings.Contains(got, "golang-go") {
-			t.Errorf("manager %q render pulls a Go toolchain it never uses:\n%s", def.Name, got)
+		if got := spec.Dockerfile(); runsGoInstall(got) {
+			t.Errorf("manager %q render runs `go install` it never uses:\n%s", def.Name, got)
 		}
 	}
 	empty := &Spec{Base: DefaultBaseImage, Packages: []PackageAdd{{Manager: ManagerGo, Packages: []string{}}}}
-	if got := empty.Dockerfile(); strings.Contains(got, "golang-go") {
-		t.Errorf("an empty go directive bootstraps a toolchain for no package:\n%s", got)
+	if got := empty.Dockerfile(); runsGoInstall(got) {
+		t.Errorf("an empty go directive runs `go install` for no package:\n%s", got)
 	}
+}
+
+// runsGoInstall reports whether a render invokes `go install` as the command
+// word of some RUN line. The stock layer's apt package list (which carries
+// golang-go since DF-BUNKER-52) is not an install invocation, and a bare
+// substring search would false-positive on `cargo install 'x'`.
+func runsGoInstall(render string) bool {
+	for _, line := range strings.Split(render, "\n") {
+		if strings.HasPrefix(commandSignature(commandOf(line)), "go install ") {
+			return true
+		}
+	}
+	return false
 }
 
 // TestDockerfile_APTSpecsUnchangedByGoBootstrap is DF-BUNKER-79 criterion 2: the
@@ -186,6 +209,12 @@ func TestDockerfile_OnlyTheGoDirectivePullsTheToolchain(t *testing.T) {
 // package apt spec, and the always-on DF-BUNKER-80 stock layer — and they must
 // stay byte-identical, because the change was supposed to affect exactly one
 // manager's render and nothing else.
+//
+// DF-BUNKER-52 changed the STOCK layer on purpose ('golang-go' joined the
+// promised userland), so the shared stockLine constant below moved with it.
+// The property this test owns is unchanged and still enforced: every
+// per-manager apt/npm line is byte-identical to the DF-BUNKER-79 capture, and
+// only the stock layer differs — never a manager's own render.
 func TestDockerfile_APTSpecsUnchangedByGoBootstrap(t *testing.T) {
 	const (
 		baseLine     = "FROM " + "docker.io/library/ubuntu:24.04" + "\n"

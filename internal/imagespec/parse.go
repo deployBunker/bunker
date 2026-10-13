@@ -29,6 +29,15 @@ const DefaultBaseImage = "docker.io/library/ubuntu:24.04"
 //	python3, make   — the stock build/scripting baseline
 //	jq              — present on a measured fresh stock spawn (GAP-092)
 //	ca-certificates — TLS trust for anything the toolchain fetches
+//	golang-go       — the Go TOOLCHAIN (DF-BUNKER-52). A remote developer's
+//	                  first act inside an agent is `go build`, and the stock
+//	                  userland shipped no Go at all (`go: not found`). Ubuntu
+//	                  24.04's archive carries Go 1.22+ (module-aware), and the
+//	                  go-manager path already proved the name exists in every
+//	                  allowed apt base (GoToolchainPackages, DF-BUNKER-79). An
+//	                  image spec must never replace the userland, and Go is now
+//	                  part of the promised userland — a `go` directive is no
+//	                  longer the only way an image gets a compiler.
 //
 // All allowed bases are apt-family (ubuntu:24.04/22.04, debian:12/11), and
 // every name here exists in each of those archives, so the rendered layer is
@@ -37,6 +46,7 @@ const DefaultBaseImage = "docker.io/library/ubuntu:24.04"
 // they render through the same single-quoting renderer as spec packages.
 var StockToolchainPackages = []string{
 	"ca-certificates",
+	"golang-go",
 	"git",
 	"python3",
 	"make",
@@ -300,9 +310,10 @@ func Hash(data []byte) (string, error) {
 // The FIRST layer after FROM is always the stock-toolchain layer
 // (DF-BUNKER-80): a spec is a package-ADD, not an image replacement, so the
 // customized image must retain the stock agent userland (git, the docker
-// client, python3, make, jq — see StockToolchainPackages) before any of the
-// spec's own package lines. Any spec at all flips exec into container mode
-// (GAP-069), so the layer is unconditional — a base-only spec needs it too.
+// client, python3, make, jq, golang-go — see StockToolchainPackages) before any
+// of the spec's own package lines. Any spec at all flips exec into container
+// mode (GAP-069), so the layer is unconditional — a base-only spec needs it
+// too.
 func (s *Spec) Dockerfile() string {
 	var b strings.Builder
 	b.WriteString("FROM ")

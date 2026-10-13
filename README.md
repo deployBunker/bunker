@@ -806,8 +806,9 @@ bunker spawn --server bunker-host --image-spec spec.json --ttl 6h
 #
 # A spec is a package-ADD, never an image replacement: the built image keeps
 # the stock agent userland (git, the docker client, python3, make, jq,
-# ca-certificates) — installed from the same apt archive as the base — and
-# adds the spec's packages on top (DF-BUNKER-80).
+# ca-certificates, and the Go toolchain since DF-BUNKER-52) — installed from
+# the same apt archive as the base — and adds the spec's packages on top
+# (DF-BUNKER-80).
 #
 # Delivered tool set for the remote-editing verbs (TOOLS-B2): a fresh stock
 # agent has git and jq but NOT rg or a language server (GAP-092 measurement),
@@ -819,7 +820,8 @@ bunker spawn --server bunker-host --image-spec spec.json --ttl 6h
 #   {"packages":[{"manager":"apt","packages":["ripgrep"]},{"manager":"go","packages":["golang.org/x/tools/gopls@latest"]}]}
 #
 # What an agent ends up with, per delivery path:
-#   - stock (every spawn):        git, jq, the docker client, python3, make
+#   - stock (every spawn):        git, jq, the docker client, python3, make,
+#                                 the Go toolchain (golang-go, DF-BUNKER-52)
 #   - vendored copy on install:   toolsd            (bunker agent-tools --install)
 #   - registry via install:       rg (apt archive), gopls (Go module proxy)
 #                                 — same command, runtime delivery (DF-BUNKER-57)
