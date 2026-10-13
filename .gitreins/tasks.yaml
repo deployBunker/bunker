@@ -4539,3 +4539,14 @@ tasks:
   status: complete
   created_at: '2026-10-13T06:26:22.301997+00:00'
   completed_at: '2026-10-13T06:26:38.090370+00:00'
+- id: DF-BUNKER-95
+  title: 'instance identity collision: refuse boot when base_data_dir default collides
+    with existing daemon'
+  criteria:
+  - 'Boot refuses when agent.base_data_dir is at default /var/lib/bunkerd AND a foreign
+    instance identity file exists there (prevents scratch daemon from inheriting prod
+    identity and destroying prod agents). Test: TestBootRefusesForeignInstanceIdentity
+    asserts refusal with named error.'
+  status: complete
+  created_at: '2026-10-13T06:39:17.663313+00:00'
+  completed_at: '2026-10-13T06:56:30.393662+00:00'
