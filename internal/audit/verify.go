@@ -9,6 +9,37 @@ import (
 	"os"
 )
 
+// VerifyResult is the full verdict of one verification pass: the chain walk
+// (records/FirstBad), plus the anchor state (GAP-136). It is what
+// `bunker audit status` reports from, so a status report can never claim more
+// than the verification it just performed.
+type VerifyResult struct {
+	// Records is the retained-chain record count (live file + backups .1-.3).
+	Records int
+	// FirstBad is the 1-based index of the first bad record, 0 when the chain
+	// itself is clean. An anchor failure reports 0 here: the failure is not in
+	// a record.
+	FirstBad int
+	// Anchor is the anchor that was read (nil when the log is unanchored).
+	Anchor *Anchor
+	// AnchorState is one of the AnchorState* constants.
+	AnchorState string
+	// AnchorNote explains anything weaker than a verified keyed anchor
+	// (missing anchor file, unkeyed anchor, uncheckable MAC). Empty when the
+	// anchor validated under its key.
+	AnchorNote string
+	// AnchorPath is the anchor file path that was consulted, so a report can
+	// name what is missing rather than just asserting it is.
+	AnchorPath string
+}
+
+// Verified reports whether the chain verified AND the anchor is as strong as
+// this host can make it (keyed, with a validated MAC). It is the honest
+// predicate `bunker audit status` gates its "healthy" claim on.
+func (r *VerifyResult) Verified() bool {
+	return r.FirstBad == 0 && r.AnchorState == AnchorStateKeyed
+}
+
 // Verify checks the integrity of the audit log at path together with its
 // rotated backups (path.1 .. path.MaxBackups, oldest first) and returns the
 // total number of records in the chain and the 1-based index of the first bad
@@ -34,7 +65,69 @@ import (
 // unverifiable and accepted as-is (its other end no longer exists). A file
 // whose predecessor existed (e.g. a truncated backup hole) fails the head
 // check, which is what catches mid-chain backup tampering.
+//
+// GAP-136: Verify ALSO checks the anchor (path.anchor) when one exists, and
+// fails on a tampered anchor or on an anchored head that has vanished from the
+// chain (tail truncation — the case a bare hash chain cannot see). Use
+// VerifyDetailed to obtain the anchor verdict alongside the verdict on the
+// chain, and VerifyWithKey when the anchor key is not at the default location.
 func Verify(path string) (records int, firstBad int, err error) {
+	return VerifyWithKey(path, "")
+}
+
+// VerifyWithKey is Verify with an explicit anchor key (audit.seal_key), for a
+// deployment whose key is configured rather than auto-provisioned next to the
+// log.
+func VerifyWithKey(path, anchorKey string) (records int, firstBad int, err error) {
+	res, err := VerifyDetailed(path, anchorKey)
+	if res == nil {
+		return 0, 0, err
+	}
+	return res.Records, res.FirstBad, err
+}
+
+// VerifyDetailed runs the full verification: the chain walk, then the anchor
+// check (GAP-136). The returned result is always non-nil; err is the integrity
+// failure (chain break, tamper, truncation, damaged anchor), nil when the
+// retained chain and its anchor are both acceptable. A weaker-than-keyed
+// anchor is reported through the result, not as an error: an unavailable key
+// must not make the verifier unusable.
+func VerifyDetailed(path, anchorKey string) (*VerifyResult, error) {
+	records, firstBad, err := verifyChain(path)
+	res := &VerifyResult{
+		Records:     records,
+		FirstBad:    firstBad,
+		AnchorState: AnchorStateNone,
+		AnchorPath:  AnchorPath(path),
+	}
+	if err != nil {
+		// The chain itself failed. Still report the anchor's PRESENCE and its
+		// MAC state — a broken chain must not be described as "unanchored",
+		// which would understate what is on disk. The truncation check is
+		// skipped (its meaning assumes a consistent chain), and the chain error
+		// remains the returned verdict.
+		v, aerr := checkAnchor(path, anchorKey, nil)
+		res.Anchor, res.AnchorState = v.Anchor, v.State
+		res.AnchorNote = v.Note
+		if aerr != nil {
+			res.AnchorState = AnchorStateNone
+			res.AnchorNote = "anchor unreadable or invalid: " + aerr.Error()
+		}
+		if res.AnchorNote != "" {
+			res.AnchorNote += " (not checked: the chain failed verification)"
+		}
+		return res, err
+	}
+	v, aerr := checkAnchor(path, anchorKey, func(head string) (bool, error) {
+		return chainContainsHash(path, head)
+	})
+	res.Anchor, res.AnchorState, res.AnchorNote = v.Anchor, v.State, v.Note
+	return res, aerr
+}
+
+// verifyChain is the original record-chain walk: backups oldest first, then the
+// live file. It knows nothing about anchors.
+func verifyChain(path string) (records int, firstBad int, err error) {
 	// Walk the chain from the oldest retained backup to the live file:
 	// .3 -> .2 -> .1 -> path. Each file's records must be internally
 	// consistent, and each file's head must chain to the next-older file's
@@ -122,6 +215,65 @@ func countRecords(path string) (int, error) {
 		n++
 	}
 	return n, sc.Err()
+}
+
+// chainContainsHash reports whether the retained chain at path declares a
+// record whose "hash" is want — the GAP-136 truncation check: an anchor names
+// the head of the chain at the moment it was taken, so a head that is no
+// longer present anywhere in the retained chain means records were removed.
+//
+// The live file is scanned first because the anchor normally names its last
+// record (the anchor is refreshed per record); the rotated backups follow. The
+// declaration is enough here: the caller has already walked the chain and
+// re-digested every declared hash, so a declared hash that matches is a record
+// that exists.
+func chainContainsHash(path, want string) (bool, error) {
+	if want == "" {
+		return false, nil
+	}
+	files := make([]string, 0, MaxBackups+1)
+	files = append(files, path)
+	for i := 1; i <= MaxBackups; i++ {
+		files = append(files, fmt.Sprintf("%s.%d", path, i))
+	}
+	for _, p := range files {
+		ok, err := fileContainsHash(p, want)
+		if err != nil {
+			return false, err
+		}
+		if ok {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// fileContainsHash streams one audit file looking for a declared hash. A
+// missing file is not an error (it is simply not a place the record can be).
+func fileContainsHash(path, want string) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, pathError(path, err)
+	}
+	defer func() { _ = f.Close() }()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	for sc.Scan() {
+		var rec Record
+		if err := json.Unmarshal(sc.Bytes(), &rec); err != nil {
+			continue // unparseable lines are the walk's verdict, not membership's
+		}
+		if rec.Hash == want {
+			return true, nil
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return false, fmt.Errorf("read %s: %w", path, err)
+	}
+	return false, nil
 }
 
 // verifyFile verifies one audit file's records. The first record's prev_hash

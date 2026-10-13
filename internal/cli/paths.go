@@ -281,6 +281,36 @@ func DefaultAuditLogPath() string {
 	return defaultAuditLogPath
 }
 
+// AuditDeploymentFacts returns the daemon config's audit.seal_key and
+// audit.ship_to for the log at path — but ONLY when the config actually
+// describes that log (its audit.path resolves to path). Never fails.
+//
+// The path guard matters in both directions. A config for a DIFFERENT log says
+// nothing about the tree being inspected, and applying it would make the report
+// claim an off-host anchor (or a key) that belongs to someone else — the exact
+// class of confident-but-false status SEC-16 was filed about.
+//
+// The two values answer the two questions the log tree alone cannot:
+//   - seal_key: an explicitly configured anchor key is deliberately not copied
+//     next to the log, so a verifier that knows it must be told;
+//   - ship_to: a configured off-host anchor that has not shipped anything yet
+//     leaves no ship-state file behind, and "no off-host anchor configured"
+//     would then be a false statement.
+func AuditDeploymentFacts(path string) (anchorKey, shipTo string) {
+	cfg, ok := loadDaemonConfig()
+	if !ok {
+		return "", ""
+	}
+	cfgPath := trimToUnset(cfg.Audit.Path)
+	if cfgPath == "" {
+		cfgPath = defaultAuditLogPath
+	}
+	if cfgPath != path {
+		return "", ""
+	}
+	return trimToUnset(cfg.Audit.SealKey), trimToUnset(cfg.Audit.ShipTo)
+}
+
 // DefaultRegistryPath returns the registry default for the --path flag of
 // registry compact: the daemon config's agent.registry.path when the daemon
 // config file exists and parses, otherwise the documented constant

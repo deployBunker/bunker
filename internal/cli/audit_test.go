@@ -348,10 +348,18 @@ func TestAuditExportCommand_Remote(t *testing.T) {
 
 // TestAuditStatusCommandOnPopulatedLog exercises `bunker audit status` on a
 // log dir with records, backups, a ship-state file, and a seal record.
+//
+// GAP-136: status verifies the retained chain on the pass that produces the
+// report, and this fixture is TWO INDEPENDENT chains (a live file of 3 records,
+// plus a second file written next to it) — a mid-chain hole. The report says so
+// instead of the old "last verify: n/a", which is the point: the sizes,
+// rotations and shipping lines below are still reported, AND the integrity
+// verdict is honest.
 func TestAuditStatusCommandOnPopulatedLog(t *testing.T) {
 	path := newVerifyLog(t, 3)
-	// A rotated backup, created the way any JSONL writer would (status only
-	// reports sizes/counts — it does not verify chains; verify does that).
+
+	// A second, independent file next to the live one, the way a rotated backup
+	// looks on disk.
 	bak, err := audit.New(path + ".1")
 	if err != nil {
 		t.Fatalf("create backup log: %v", err)
@@ -359,7 +367,9 @@ func TestAuditStatusCommandOnPopulatedLog(t *testing.T) {
 	if err := bak.Log(audit.Record{TS: "t0", Caller: "master", Method: "/m0", Outcome: "ok", Summary: "rec-0"}); err != nil {
 		t.Fatalf("Log(rec-0): %v", err)
 	}
-	_ = bak.Close()
+	if err := bak.Close(); err != nil {
+		t.Fatalf("close backup log: %v", err)
+	}
 
 	// Ship-state file as the daemon's shipper would write it.
 	wantState := audit.ShipState{
@@ -390,6 +400,14 @@ func TestAuditStatusCommandOnPopulatedLog(t *testing.T) {
 		"shipping:             enabled (https://collector.example.net/v1)",
 		"last ship result:     ok",
 		"ship retry queue:     2 segment(s)",
+		// GAP-136: the verdict and the gap list are part of the report. This
+		// tree has a mid-chain hole (record 1 of the live file does not chain
+		// to the file next to it), so the verdict is BROKEN — reported, not
+		// hidden, and never dressed up as healthy.
+		statusLine("chain status:", "BROKEN at record 2 — "+path+": record 1: prev_hash does not chain (tampered)"),
+		statusLine("gaps:", path+": record 1: prev_hash does not chain (tampered)"),
+		statusLine("health:", "broken — chain integrity failure:"),
+		statusLine("off-host anchor:", "off-host anchor configured (https://collector.example.net/v1), last shipped 2026-09-14T12:00:00Z"),
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("status output missing %q:\n%s", want, out)
@@ -397,6 +415,12 @@ func TestAuditStatusCommandOnPopulatedLog(t *testing.T) {
 	}
 	if !strings.Contains(out, "chain head:") {
 		t.Errorf("status output missing chain head line:\n%s", out)
+	}
+	if !strings.Contains(out, statusLine("last anchor hash:", lastHashOf(t, path))) {
+		t.Errorf("status output missing the last anchor hash %q:\n%s", lastHashOf(t, path), out)
+	}
+	if !strings.Contains(out, statusLine("local anchor:", "keyed — MAC validated,")) {
+		t.Errorf("status output does not report a validated keyed anchor:\n%s", out)
 	}
 
 	// JSON output: machine-readable, contains the same state.

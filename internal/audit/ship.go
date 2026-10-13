@@ -183,6 +183,14 @@ type AuditStatus struct {
 	LastShipResult  string    // "" = no attempt yet
 	ShipQueueDepth  int
 	SealingEnabled  bool
+	// GAP-136 anchoring. AnchoringKeyed is false when the anchor key could not
+	// be resolved: anchors are then written unkeyed (truncation-detectable,
+	// forgery not) and every verifier reports the unkeyed state rather than a
+	// keyed one. AnchorKeyID identifies the key; the key itself is never
+	// exposed.
+	AnchoringKeyed bool
+	AnchorKeyID    string
+	AnchorPath     string
 }
 
 // shipItem is one rotated segment awaiting shipment.
