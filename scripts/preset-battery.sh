@@ -234,6 +234,35 @@ agent_alive() {
     return 0
 }
 
+# spawn_retry AGENT TIER — spawn, retrying a bounded number of times.
+# On a host shared with other spawners, `spawn` can fail at stage
+# dockerd-start for a reason that has nothing to do with the tier: a
+# concurrent battery's `userdel -rf` sweep frees a uid whose processes and
+# /run/user/<uid> state are still live, so the NEXT spawn reuses that uid and
+# rootlesskit cannot start inside a state dir owned by another agent
+# (measured 2026-10-13 08:06Z: uid 1274 was simultaneously owned by a CI
+# conctest agent and this battery's peer). A retry costs one uid allocation and
+# is the cheapest honest fix; the reason is printed when it finally fails.
+SPAWN_OUT=""
+spawn_retry() {
+    local agent="$1" tier="$2" attempt=1 max="${PRESET_SPAWN_ATTEMPTS:-3}"
+    while [ "$attempt" -le "$max" ]; do
+        set +e
+        SPAWN_OUT=$(bcli spawn --server "$PRESET_TARGET" --agent-id "$agent" --preset "$tier" 2>&1)
+        local rc=$?
+        set -e
+        if [ "$rc" -eq 0 ]; then return 0; fi
+        echo "  · spawn attempt $attempt/$max for $agent failed: $(printf '%s' "$SPAWN_OUT" | tail -2 | tr '\n' ' ')"
+        if [ "$attempt" -lt "$max" ]; then
+            # Clear the half-created agent so the retry gets a fresh uid.
+            bcli destroy --server "$PRESET_TARGET" "$agent" --force >/dev/null 2>&1 || true
+            sleep "${PRESET_SPAWN_RETRY_WAIT:-20}"
+        fi
+        attempt=$((attempt+1))
+    done
+    return 1
+}
+
 usage() { sed -n '2,120p' "$0" | sed 's/^# \{0,1\}//'; }
 
 # =============================================================================
@@ -1369,13 +1398,8 @@ run_tier() {
     tier_begin "$tier"
 
     local agent="${PRESET_AGENT_PREFIX}${tier}"
-    local spawn_args=(spawn --server "$PRESET_TARGET" --agent-id "$agent" --preset "$tier")
-    set +e
-    local out; out=$(bcli "${spawn_args[@]}" 2>&1)
-    local rc=$?
-    set -e
-    if [ "$rc" -ne 0 ]; then
-        bad "spawn failed for preset '$tier': $(printf '%s' "$out" | tail -3)"
+    if ! spawn_retry "$agent" "$tier"; then
+        bad "spawn failed for preset '$tier' after ${PRESET_SPAWN_ATTEMPTS:-3} attempts: $(printf '%s' "$SPAWN_OUT" | tail -3 | tr '\n' ' ')"
         TIER_FAILS=$((TIER_FAILS+1))
         echo "TIER $tier VERDICT: FAIL"
         return 0
@@ -1438,14 +1462,22 @@ run_tier() {
 
     if ! agent_alive "$agent"; then tier_abort "$agent"; return 0; fi
 
-    a1_fork_bomb "$agent" "$uid"
-    a2_memory_bomb "$agent" "$uid"
-    a3_io_hog "$agent" "$PEER_AGENT"
+    if [ "${PEER_OK:-0}" = "1" ]; then
+        a1_fork_bomb "$agent" "$uid"
+        a2_memory_bomb "$agent" "$uid"
+        a3_io_hog "$agent" "$PEER_AGENT"
 
-    if ! agent_alive "$agent"; then tier_abort "$agent"; return 0; fi
+        if ! agent_alive "$agent"; then tier_abort "$agent"; return 0; fi
 
-    i1_peer_isolation "$agent" "$PEER_AGENT" "$PEER_UID"
-    i2_cgroup_escape "$agent" "$uid" "$PEER_UID"
+        i1_peer_isolation "$agent" "$PEER_AGENT" "$PEER_UID"
+        i2_cgroup_escape "$agent" "$uid" "$PEER_UID"
+    else
+        bad "A1/A2 .................... SKIP-FAIL (no peer agent was available; see the peer-spawn message — SKIP is never counted as PASS)"
+        bad "A3 io-hog ................ SKIP-FAIL (no peer agent to measure against)"
+        bad "I1 peer-isolation ........ SKIP-FAIL (no peer agent to isolate from)"
+        bad "I2 cgroup-escape ......... SKIP-FAIL (no peer agent slice to test against)"
+        TIER_FAILS=$((TIER_FAILS+4))
+    fi
     i3_usability "$agent"
 
     local v; v="$(tier_verdict "$TIER_FAILS")"
@@ -1553,20 +1585,21 @@ PEER_AGENT="${PRESET_AGENT_PREFIX}peer"
 set +e
 bcli destroy --server "$PRESET_TARGET" "$PEER_AGENT" --force >/dev/null 2>&1
 set -e
-set +e
-bcli spawn --server "$PRESET_TARGET" --agent-id "$PEER_AGENT" --preset standard >/dev/null 2>&1
-peer_rc=$?
-set -e
+PEER_OK=0
+if spawn_retry "$PEER_AGENT" standard; then peer_rc=0; else peer_rc=1; fi
 PEER_UID=""
 if [ "$peer_rc" -eq 0 ]; then
     CLEANUP_AGENTS="$CLEANUP_AGENTS $PEER_AGENT"
     PEER_UID="$(agent_uid "$PEER_AGENT")"
     # A read source the peer can time: 256 MiB of zeros in its own home.
     aexec "$PEER_AGENT" "dd if=/dev/zero of=\$HOME/.preset-peer-src bs=1M count=$(( PRESET_PEER_READ_BYTES / 1048576 )) 2>/dev/null; sync; echo PEER_SRC_OK" >/dev/null
+    PEER_OK=1
     echo "  peer agent $PEER_AGENT (uid ${PEER_UID:-?}) ready"
 else
-    echo "REFUSING: could not spawn the peer agent — A3 and I1/I2 need it." >&2
-    exit 42
+    # Not fatal for the run: A3/I1/I2 need a second agent, so they are reported
+    # as SKIP-FAIL (a skip is never a pass) while the rest of the battery still
+    # produces its measurements.
+    echo "  ‼ the peer agent could not be spawned after ${PRESET_SPAWN_ATTEMPTS:-3} attempts — A3 and I1/I2 will report SKIP-FAIL" >&2
 fi
 echo ""
 
