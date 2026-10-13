@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- **Per-agent resource events (GAP-121): see what an agent HIT, not just what
+  it is using.** `bunker resource-events <agent-id>` surfaces the cgroup v2
+  ceiling events — `memory.events` (`max`, `high`, `low`, `oom`, `oom_kill`,
+  `oom_group_kill`) and `pids.events` (`max`) — plus the observed memory and
+  pids peaks. `bunker metrics <agent-id>` gains a one-line `Ceiling events:`
+  summary pointing at it. Counters are cumulative for the cgroup's life (an
+  event count, not a rate). Honesty rules are built in and tested: an
+  unreadable cgroup renders as `UNAVAILABLE`, and a daemon predating the
+  surface as `NOT REPORTED` — neither is ever rendered as a clean zero; a peak
+  carries its source, because a kernel `memory.peak`/`pids.peak` and the new
+  daemon sampler (30s, running agents only, pruned with the live set) are not
+  interchangeable — the daemon value is labelled `a LOWER BOUND`. Wire surface:
+  `ResourceEvents` on `AgentMetricsResponse` (field 11), served by both the
+  `Bunkerd` and `Agent` services (an agent-scoped credential can read its own
+  events). Reference: docs/resource-events.md. Proto codegen is now
+  reproducible: `buf.gen.yaml` pins `protocolbuffers/go:v1.36.12` and
+  `connectrpc/go:v1.19.0`, the versions that reproduce the committed generated
+  code byte-for-byte.
+
 - **Operators & RBAC (GAP-130): per-operator identities with roles.** New
   `bunker operator create|list|delete` (admin only) provisions named
   credentials with one of three roles — `admin` (everything, incl. operator

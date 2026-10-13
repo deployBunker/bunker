@@ -1009,6 +1009,41 @@ prints an explicit `NOTE: host-level fallback` line, and the wire response sets
 `host_level_fallback` (proto field 10). Treat those numbers as host figures, not
 the agent's.
 
+### Did the agent hit its ceiling? (resource events)
+
+Usage is not the same question as *"did it hit the limit?"*. The kernel answers
+the second one in the agent's cgroup — `memory.events` and `pids.events` — and
+the `resource-events` verb surfaces it (requires a build from HEAD), together
+with the observed peaks:
+
+```bash
+# requires a build from HEAD
+bunker resource-events abc12345            # memory.events + pids.events + peaks
+```
+
+Every counter is **cumulative since the agent's cgroup was created** (an event
+count, not a rate): `max` counts the times usage reached `memory.max`, `oom`
+the times the cgroup entered OOM, `oom_kill` the times the kernel killed a
+process inside it, and `pids.max` the times a fork was refused. A non-zero
+`oom_kill` means the agent's workload was shot, which `bunker metrics` alone
+cannot tell you. `bunker metrics <id>` now prints a one-line
+`Ceiling events:` summary too.
+
+Two honesty rules are built into the surface, because a zero here is easy to
+misread:
+
+* **Unavailable is not clean.** When the counters cannot be read (a stopped or
+  destroyed agent, a deleted agent user, a pre-GAP-121 daemon) the output says
+  `UNAVAILABLE`/`NOT REPORTED` and states that nothing was measured — it never
+  renders an unmeasured zero as "no ceiling was ever hit".
+* **The peak carries its source.** Peaks come from the kernel
+  (`memory.peak`, kernel ≥ 5.19; `pids.peak`, kernel ≥ 6.1) when it exposes
+  them. Otherwise the daemon samples usage itself and the value is labelled
+  `daemon-observed, a LOWER BOUND` — usage between two samples is invisible,
+  and the daemon's peak is lost across a restart.
+
+Full reference: [docs/resource-events.md](docs/resource-events.md).
+
 ## Can one agent see another? (security model)
 
 **Short answer: no — not by default.** Each Bunker agent is a separate thing
@@ -1172,6 +1207,9 @@ freshness note under Install):
 bunker stop        Pause an agent without destroying it (start/restart resume it)
 bunker start       Resume a stopped agent
 bunker restart     Stop + start in one call and reset the heartbeat TTL
+bunker resource-events  Show an agent's resource-ceiling events and observed peaks
+                   (memory.events / pids.events — see docs/resource-events.md)
+                   Usage: resource-events <agent-id>   Flag: --server
 bunker renew       Renew an agent under its STABLE identity (destroy + re-spawn the
                    same id; refuses without --agent-id — see docs/renewal.md)
 bunker homes       Inspect orphaned agent home directories (prune removes the stale ones)

@@ -309,6 +309,12 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 		<-reconcileFinal
 	}()
 	bunkerdSvc := &bunkerdService{cfg: s.cfg, logger: s.logger, agentMgr: agentMgr, heartbeats: agentMgr, tracker: tracker, tunnelMgr: tunnelMgr, tailscaleMgr: tailscaleMgr, keyMgr: s.keyMgr, jwtAuth: s.jwtAuth, cpuSampler: resource.NewCPUSampler(), auditLog: s.auditLog, opMgr: s.opMgr}
+	// GAP-121: the daemon-observed usage peak tracker, shared by the Bunkerd
+	// and Agent services and fed by the background sampler below. Kernels
+	// without memory.peak/pids.peak and operators asking about usage between
+	// their own calls otherwise have no peak to read at all.
+	peaks := resource.NewPeakTracker()
+	bunkerdSvc.peaks = peaks
 	// DF-BUNKER-34: the orphan-uid probe rides the info/list surfaces. The
 	// manager carries the /proc probe; the nil check inside the service keeps
 	// tests and unwired services probe-free. PERF-008: the list surface goes
@@ -349,7 +355,7 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 
 	// Also mount the Agent service with a permissive auth interceptor
 	// that accepts both master tokens and agent-scoped sub-keys.
-	agentSvc := &agentService{logger: s.logger, tracker: tracker, heartbeats: agentMgr}
+	agentSvc := &agentService{logger: s.logger, tracker: tracker, heartbeats: agentMgr, peaks: peaks}
 	agentPath, agentHandler := bunkerv1connect.NewAgentHandler(
 		agentSvc,
 		connect.WithInterceptors(agentInterceptors...),
@@ -537,6 +543,13 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 			}
 		}()
 	}
+
+	// GAP-121: the daemon-observed resource peak sampler. Its lifetime is
+	// Run's — the derived context is cancelled when Run returns — so the
+	// goroutine never outlives the server.
+	samplerCtx, stopSampler := context.WithCancel(ctx)
+	defer stopSampler()
+	startPeakSampler(samplerCtx, tracker, peaks, s.logger)
 
 	// Wait for shutdown signal or error
 	sigCh := make(chan os.Signal, 1)

@@ -152,6 +152,9 @@ Client-side path overrides (persistent flags):
 	root.AddCommand(cli.NewRestartCommand())
 	root.AddCommand(cli.NewEnvCommand())
 	root.AddCommand(cli.NewMetricsCommand())
+	// GAP-121: the resource-ceiling event surface (memory.events / pids.events
+	// + observed peaks) — `metrics` shows usage, this shows what the agent hit.
+	root.AddCommand(cli.NewResourceEventsCommand())
 	root.AddCommand(cli.NewExecCommand())
 	root.AddCommand(cli.NewRunCommand())
 	root.AddCommand(cli.NewInfoCommand())
