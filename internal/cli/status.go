@@ -243,6 +243,12 @@ func printAllServerStatus(cfg *CLIConfig) error {
 	if err != nil {
 		return fmt.Errorf("load fleet inventory: %w", err)
 	}
+	if inv == nil {
+		// A loader that returns (nil, nil) would otherwise panic on the first
+		// field access; an absent declaration is an empty one, and the empty
+		// declaration simply declares nothing.
+		inv = &fleet.Inventory{}
+	}
 
 	// Every declared host needs a section; every registered server keeps its
 	// own. Union both name sets, deduplicated and sorted (deterministic

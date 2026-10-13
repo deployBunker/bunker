@@ -465,6 +465,44 @@ func TestStatusCommand_AllServers_FleetBrokenInventoryFailsLoudly(t *testing.T) 
 	}
 }
 
+// TestStatusCommand_AllServers_FleetNilInventoryDoesNotPanic pins the defensive
+// path: a loader that answers (nil, nil) — a broken stub today, a real
+// possibility for a future loader — must render the registry half rather than
+// panic the overview a scheduler depends on.
+func TestStatusCommand_AllServers_FleetNilInventoryDoesNotPanic(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	srv := newStatusTestServer(t, &statusMockServer{
+		info: &v1.ServerInfoResponse{Hostname: "solo-host", Version: "0.1.4"},
+	})
+	defer srv.Close()
+
+	saved := loadFleetInventory
+	loadFleetInventory = func() (*fleet.Inventory, error) { return nil, nil }
+	t.Cleanup(func() { loadFleetInventory = saved })
+
+	cfg := &CLIConfig{
+		ActiveServer: "solo",
+		Servers:      map[string]ServerEntry{"solo": {Name: "solo", URL: srv.URL, Token: "t"}},
+	}
+	if err := SaveCLIConfig(cfg); err != nil {
+		t.Fatalf("SaveCLIConfig: %v", err)
+	}
+
+	cmd := NewStatusCommand()
+	cmd.SetArgs([]string{"--server", "default", "--all"})
+	var execErr error
+	output := captureStdout(t, func() { execErr = cmd.Execute() })
+	if execErr != nil {
+		t.Fatalf("an absent declaration is not a failure: %v\n%s", execErr, output)
+	}
+	for _, want := range []string{"solo-host", "0 declared in the fleet inventory"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("output missing %q, got:\n%s", want, output)
+		}
+	}
+}
+
 // portOfTestServer returns the port an httptest server listens on, which is
 // what a declaration must name for the host to be "covered".
 func portOfTestServer(t *testing.T, srv *httptest.Server) int {
