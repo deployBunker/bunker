@@ -1350,35 +1350,51 @@ target = int(sys.argv[1])
 chunk = b'x' * (1024 * 1024)
 buf = []
 try:
-    for _ in range(max(1, target // (1024 * 1024))):
+    for i in range(max(1, target // (1024 * 1024))):
         buf.append(bytearray(chunk))
+        if i % 256 == 255:
+            print("PROGRESS", len(buf), flush=True)
 except MemoryError:
     pass
 print("ALLOC_MIB", len(buf), flush=True)
 PY
 # The allocator is a CHILD so this supervisor survives the OOM kill and can
-# still read the post-mortem counters.
-timeout -s KILL 180 python3 /tmp/.pbomb.py "$target" > /tmp/.pbomb.out 2>&1 &
-pid=$!
-wait "$pid"; rc=$?
-sleep 2
+# still read the post-mortem counters. It prints PROGRESS every 256 MiB, so a
+# run the kernel kills still leaves a measured high-water mark (before this, an
+# OOM-killed allocator produced NO line at all and the case read as 'the cap
+# did not fire'). Two attempts: a case that cannot be MEASURED must not be
+# reported as a containment failure.
+attempts=0
+for attempt in 1 2; do
+    attempts="$attempt"
+    : > /tmp/.pbomb.out
+    timeout -s KILL 180 python3 /tmp/.pbomb.py "$target" > /tmp/.pbomb.out 2>&1 &
+    pid=$!
+    wait "$pid"; rc=$?
+    sleep 2
+    if grep -qE '^(ALLOC_MIB|PROGRESS) ' /tmp/.pbomb.out 2>/dev/null; then break; fi
+done
 oa="$(ev oom_kill)"; oa="${oa:-0}"
 ha="$(ev high)";     ha="${ha:-0}"
 peak="$(cat "$cg/memory.peak" 2>/dev/null)"
 alloc="$(sed -n 's/^ALLOC_MIB //p' /tmp/.pbomb.out 2>/dev/null | head -1)"
+[ -n "$alloc" ] || alloc="$(sed -n 's/^PROGRESS //p' /tmp/.pbomb.out 2>/dev/null | tail -1)"
+alloc_raw="$(tail -2 /tmp/.pbomb.out 2>/dev/null | tr '\n' '|')"
 rm -f /tmp/.pbomb.py /tmp/.pbomb.out
-echo "A2_MAX=$max A2_START_MEM=$start_mem A2_OOM_BEFORE=$ob A2_OOM_AFTER=$oa A2_HIGH_BEFORE=$hb A2_HIGH_AFTER=$ha A2_PEAK=$peak A2_ALLOC=${alloc:-0} A2_RC=$rc"
+echo "A2_MAX=$max A2_START_MEM=$start_mem A2_OOM_BEFORE=$ob A2_OOM_AFTER=$oa A2_HIGH_BEFORE=$hb A2_HIGH_AFTER=$ha A2_PEAK=$peak A2_ALLOC=${alloc:-none} A2_ATTEMPTS=$attempts A2_RC=$rc A2_RAW=$alloc_raw"
 DRIVER
     arun_sh "$agent" "$drv" "$uid" "$target"
 
-    local max ob oa hb ha peak alloc
+    local max ob oa hb ha peak alloc alloc_raw attempts
     max="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A2_MAX=\([^ ]*\).*/\1/p')"
     ob="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A2_OOM_BEFORE=\([0-9]*\).*/\1/p')"
     oa="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A2_OOM_AFTER=\([0-9]*\).*/\1/p')"
     hb="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A2_HIGH_BEFORE=\([0-9]*\).*/\1/p')"
     ha="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A2_HIGH_AFTER=\([0-9]*\).*/\1/p')"
     peak="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A2_PEAK=\([^ ]*\).*/\1/p')"
-    alloc="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A2_ALLOC=\([0-9]*\).*/\1/p')"
+    alloc="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A2_ALLOC=\([^ ]*\).*/\1/p')"
+    attempts="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A2_ATTEMPTS=\([0-9]*\).*/\1/p')"
+    alloc_raw="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A2_RAW=\(.*\)$/\1/p')"
     ob="${ob:-0}"; oa="${oa:-0}"; hb="${hb:-0}"; ha="${ha:-0}"
     local oom_delta=$(( oa - ob )) high_delta=$(( ha - hb ))
 
@@ -1387,19 +1403,23 @@ DRIVER
         ok "A2 memory-bomb ........... CONTAINED (oom_kill +$oom_delta, high +$high_delta, memory.peak=${peak:-?}, allocated ${alloc:-?}MiB — the AGENT paid; the tier's cap memory.max=$max fired)"
     elif [ "$high_delta" -gt 0 ]; then
         A2_WHO_PAID="agent(throttled)"
-        ok "A2 memory-bomb ........... CONTAINED (memory.high throttling +$high_delta, no kills, memory.peak=${peak:-?} — the AGENT paid by slowing)"
+        ok "A2 memory-bomb ........... CONTAINED (memory.high throttling +$high_delta, no kills, memory.peak=${peak:-?}, allocated ${alloc:-?}MiB — the AGENT paid by slowing)"
     elif [ -z "$max" ]; then
         A2_WHO_PAID="unreadable"
-        bad "A2 memory-bomb ........... FAIL (could not read memory.max — the agent's slice cgroup is not there)"
+        bad "A2 memory-bomb ........... FAIL (could not read memory.max; driver said: $(last_lines "$AEXEC_OUT" 2))"
         TIER_FAILS=$((TIER_FAILS+1))
     elif [ "$max" = "max" ]; then
         A2_WHO_PAID="host"
         bad "A2 memory-bomb ........... ESCAPED (memory.max=max — no cgroup ceiling; allocated ${alloc:-?}MiB uncapped, the HOST paid)"
         TIER_FAILS=$((TIER_FAILS+1))
+    elif [ "$alloc" = "none" ] || [ -z "$alloc" ] || [ "$alloc" = "0" ]; then
+        A2_WHO_PAID="unmeasured"
+        bad "A2 memory-bomb ........... FAIL (UNMEASURED: the allocator produced no allocation after ${attempts:-?} attempts — the tier's cap was never exercised. driver raw: ${alloc_raw:-<none>})"
+        TIER_FAILS=$((TIER_FAILS+1))
     else
         A2_WHO_PAID="none"
-        note "A2 memory-bomb: neither oom_kill nor memory.high moved (allocated ${alloc:-0}MiB of a ${target}-byte attempt under memory.max=$max, peak=${peak:-?})"
-        bad "A2 memory-bomb ........... FAIL (the tier's memory cap did not fire on a ${target}-byte bomb)"
+        note "A2 memory-bomb: neither oom_kill nor memory.high moved (allocated ${alloc}MiB of a ${target}-byte attempt under memory.max=$max, peak=${peak:-?})"
+        bad "A2 memory-bomb ........... FAIL (the tier's memory cap did not fire on a ${target}-byte bomb that reached ${alloc}MiB)"
         TIER_FAILS=$((TIER_FAILS+1))
     fi
 }
