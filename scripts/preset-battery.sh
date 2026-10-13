@@ -892,8 +892,12 @@ landing_e2() {
         TIER_FAILS=$((TIER_FAILS+1))
         return 0
     fi
+    # The transient unit's cgroup appears when systemd starts the unit; give it
+    # a bounded chance rather than failing on the first read.
+    local wt=0
+    while [ ! -d "$cg" ] && [ "$wt" -lt 30 ]; do sleep 2; wt=$((wt+2)); done
     if [ ! -d "$cg" ]; then
-        bad "LANDING E2: the transient unit cgroup $cg does not exist — the dockerd unit is not running under this tier"
+        bad "LANDING E2: the transient unit cgroup $cg does not exist after ${wt}s — the dockerd unit is not running under this tier"
         TIER_FAILS=$((TIER_FAILS+1))
         return 0
     fi
@@ -1104,14 +1108,18 @@ w5_docker_load() {
     chown "${uid}:${uid}" "/home/bunker-${agent}/w5.tar" 2>/dev/null || true
     local t0 t1
     t0=$(date +%s)
-    aexec "$agent" "timeout $PRESET_W5_TIMEOUT docker load -i \$HOME/w5.tar >/dev/null 2>&1 && echo W5_OK"
+    aexec "$agent" "out=\$(timeout $PRESET_W5_TIMEOUT docker load -i \$HOME/w5.tar 2>&1); rc=\$?; echo W5_LOAD_RC=\$rc; printf '%s\n' \"\$out\" | tail -3; [ \$rc -eq 0 ] && echo W5_OK"
     t1=$(date +%s)
     local wall=$(( t1 - t0 ))
+    # Capture the load's own result BEFORE the cleanup exec, which overwrites
+    # the AEXEC_* globals (the first version checked after the rm and therefore
+    # always saw rc=0 with no output — a false FAIL that certified nothing).
+    local load_rc="$AEXEC_RC" load_out="$AEXEC_OUT"
     aexec "$agent" "rm -f \$HOME/w5.tar" || true
-    if [ "$AEXEC_RC" -eq 0 ] && printf '%s' "$AEXEC_OUT" | grep -q W5_OK; then
+    if [ "$load_rc" -eq 0 ] && printf '%s' "$load_out" | grep -q W5_OK; then
         ok "W5 docker-load-1.4G ...... PASS (wall time: ${wall}s, artifact $(( size / 1048576 ))MiB)"
     else
-        bad "W5 docker-load-1.4G ...... FAIL (rc=$AEXEC_RC, wall ${wall}s, timeout ${PRESET_W5_TIMEOUT}s): $(last_lines "$AEXEC_OUT")"
+        bad "W5 docker-load-1.4G ...... FAIL (rc=$load_rc, wall ${wall}s, timeout ${PRESET_W5_TIMEOUT}s): $(last_lines "$load_out")"
         TIER_FAILS=$((TIER_FAILS+1))
     fi
 }
@@ -1511,15 +1519,23 @@ run_tier() {
     fi
     info "spawned $agent (uid $uid) with --preset $tier"
 
-    # The dockerd unit must be up before E2/landing and before any docker load.
-    local tries=0
-    until systemctl is-active --quiet "bunker-docker-${agent}.service" 2>/dev/null; do
-        tries=$((tries+1))
-        [ "$tries" -gt 30 ] && break
-        sleep 2
+    # Readiness: wait until the agent's docker actually answers. The unit state
+    # is not the right signal — `systemctl is-active` is FALSE while the unit is
+    # still "activating" (rootlesskit + dockerd coming up), and on a loaded host
+    # that window exceeded the first version's 60s budget even though the
+    # daemon's own spawn stage had already seen the socket (measured: E2
+    # reported "unit is not active" and a missing unit cgroup, then W1..W4 all
+    # ran docker successfully seconds later).
+    local dw="${PRESET_DOCKER_WAIT:-180}" waited=0
+    while [ "$waited" -lt "$dw" ]; do
+        aexec "$agent" "docker info >/dev/null 2>&1 && echo DOCKER_READY"
+        printf '%s' "$AEXEC_OUT" | grep -q DOCKER_READY && break
+        sleep 5; waited=$((waited+5))
     done
-    if ! systemctl is-active --quiet "bunker-docker-${agent}.service" 2>/dev/null; then
-        note "dockerd unit is not active for $agent — E2 landing and docker workloads will report their own failures"
+    if printf '%s' "$AEXEC_OUT" | grep -q DOCKER_READY; then
+        info "agent docker is answering (ready after ~${waited}s)"
+    else
+        note "docker did not answer within ${dw}s for $agent — E2 landing and the docker workloads will report their own failures"
     fi
 
     read_claims "$agent" "$uid"
