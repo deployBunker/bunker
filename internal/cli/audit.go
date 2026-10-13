@@ -285,8 +285,11 @@ Local log only — the daemon host's operator runs this on the host.`,
 			}
 			if !ok {
 				// The chain is intact and the anchor is weaker than keyed: exit
-				// 0 (the trail verifies) but make sure the operator sees it.
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", line)
+				// 0 (the trail verifies) but make sure the operator sees it —
+				// on stderr, without reprinting the whole verdict line.
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+					"warning: audit anchor state is %s — the chain did not verify under a key (see the anchor line above)\n",
+					res.AnchorState)
 			}
 			return nil
 		},
@@ -313,8 +316,9 @@ func anchorVerdictLine(res *audit.VerifyResult) (string, bool) {
 	case audit.AnchorStateUnverified:
 		return fmt.Sprintf("anchor %s: UNVERIFIED — %s", res.AnchorPath, res.AnchorNote), false
 	default:
-		return fmt.Sprintf("anchor %s: NONE — %s (the chain is unanchored: a truncated tail verifies)",
-			res.AnchorPath, res.AnchorNote), false
+		// The note already states what an unanchored chain costs (see
+		// checkAnchor); repeating it here printed the same clause twice.
+		return fmt.Sprintf("anchor %s: NONE — %s", res.AnchorPath, res.AnchorNote), false
 	}
 }
 
