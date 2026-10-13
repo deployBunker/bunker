@@ -1133,53 +1133,126 @@ a1_fork_bomb() {
 #!/bin/bash
 uid="$1"; cap="$2"
 cg="/sys/fs/cgroup/user.slice/user-${uid}.slice"
-read_max() { awk '/^max /{print $2}' "$cg/pids.events" 2>/dev/null; }
-max="$(cat "$cg/pids.max" 2>/dev/null)"
-before="$(read_max)"; before="${before:-0}"
-# Bounded twice over: by the attempt cap AND by a wall clock. The loop is NOT
-# wrapped in `timeout` on purpose — GNU timeout signals the whole process
-# GROUP, which would reap the very children whose count is the evidence.
+own="$(awk -F: '/^0::/{print $3}' /proc/self/cgroup 2>/dev/null | head -1)"
+case "$own" in
+  *"/user-"*".slice"*)
+      own="${own#/user.slice/}"; own="${own%%/*}"
+      [ -d "/sys/fs/cgroup/user.slice/${own}" ] && cg="/sys/fs/cgroup/user.slice/${own}" ;;
+esac
+for _ in 1 2 3 4 5; do
+    max="$(cat "$cg/pids.max" 2>/dev/null)"
+    [ -n "$max" ] && break
+    sleep 1
+done
+read_max()  { awk '/^max /{print $2}' "$cg/pids.events" 2>/dev/null; }
+read_cur()  { cat "$cg/pids.current" 2>/dev/null; }
+# The refused fork is counted on the cgroup whose limit was actually hit. The
+# slice carries pids.max, but the kernel charges the refusal to the cgroup the
+# task was being added to — the session scope the exec ran in — so BOTH are
+# read and their deltas summed (measured: 4039 threads admitted at a 4096 cap
+# with the slice counter flat while the limit was demonstrably reached).
+selfc="$(awk -F: '/^0::/{print $3}' /proc/self/cgroup 2>/dev/null | head -1)"
+scg="/sys/fs/cgroup${selfc}"
+read_max_self() { awk '/^max /{print $2}' "$scg/pids.events" 2>/dev/null; }
+mem_max="$(cat "$cg/memory.max" 2>/dev/null)"
+mem_guard=0
+case "$mem_max" in ''|max) mem_guard=0 ;; *) mem_guard=$(( mem_max / 100 * 75 )) ;; esac
+
+# ── PHASE 1: bounded fork storm (the spec's literal case) ───────────────────
+# MEMORY-GUARDED: 4096 `sleep` children is ~4 GiB of RSS, which on a 4 GiB
+# slice triggers the tier's OWN memory.max and lets the OOM killer take the
+# driver — the first version of this probe did exactly that (the run reported
+# an empty pids.max and poisoned the memory-bomb case with an oom_kill it did
+# not cause). Stop forking well before the memory ceiling.
+bf="$(read_max)"; bf="${bf:-0}"
+bfs="$(read_max_self)"; bfs="${bfs:-0}"
 j=0
-end=$(( SECONDS + 20 ))
+end=$(( SECONDS + 15 ))
 while [ "$j" -lt "$cap" ] && [ "$SECONDS" -lt "$end" ]; do
+    if [ "$mem_guard" -gt 0 ]; then
+        cur_mem="$(cat "$cg/memory.current" 2>/dev/null)"
+        case "$cur_mem" in ''|max) : ;; *) [ "$cur_mem" -gt "$mem_guard" ] && break ;; esac
+    fi
     sleep 300 &
     j=$(( j + 1 ))
 done
-sleep 5
-cur="$(cat "$cg/pids.current" 2>/dev/null)"
-after="$(read_max)"; after="${after:-0}"
-# Reap our own storm (bounded: only this uid's sleepers).
+sleep 3
+af="$(read_max)"; af="${af:-0}"
+afs="$(read_max_self)"; afs="${afs:-0}"
+fcur="$(read_cur)"
 pkill -KILL -x sleep >/dev/null 2>&1
-echo "A1_MAX=$max A1_BEFORE=$before A1_AFTER=$after A1_CUR=$cur A1_LOOP=$j A1_CAP=$cap"
+# Let the slice drain before the next case reads its counters.
+for _ in $(seq 1 20); do
+    c="$(cat "$cg/memory.current" 2>/dev/null)"
+    case "$c" in ''|max) break ;; esac
+    [ "$mem_guard" -gt 0 ] && [ "$c" -lt "$(( mem_guard / 2 ))" ] && break
+    sleep 1
+done
+
+# ── PHASE 2: bounded THREAD storm (memory-safe, same controller) ────────────
+# pids.max counts TASKS, so threads trip the same controller with the same
+# pids.events 'max' refusal and ~1/1000th of the memory. This is what makes
+# the refusal assertion reachable on a tier whose memory ceiling would
+# otherwise be the thing that fails first.
+cat > /tmp/.pthreads.py <<'PY'
+import sys, threading, time
+threading.stack_size(65536)
+cap = int(sys.argv[1])
+n = 0
+def hold(): time.sleep(600)
+try:
+    while n < cap:
+        threading.Thread(target=hold, daemon=True).start()
+        n += 1
+except (RuntimeError, OSError):
+    pass
+print("THREADS", n, flush=True)
+time.sleep(3)
+PY
+bt="$(read_max)"; bt="${bt:-0}"
+bts="$(read_max_self)"; bts="${bts:-0}"
+timeout -s KILL 90 python3 /tmp/.pthreads.py "$cap" > /tmp/.pthreads.out 2>&1
+rc=$?
+sleep 1
+at="$(read_max)"; at="${at:-0}"
+ats="$(read_max_self)"; ats="${ats:-0}"
+tcur="$(read_cur)"
+threads="$(sed -n 's/^THREADS //p' /tmp/.pthreads.out 2>/dev/null | head -1)"
+rm -f /tmp/.pthreads.py /tmp/.pthreads.out
+echo "A1_CG=$cg A1_MAX=$max A1_FORK_BEFORE=$bf A1_FORK_AFTER=$af A1_FORK_SELF_BEFORE=$bfs A1_FORK_SELF_AFTER=$afs A1_FORK_LOOP=$j A1_THREAD_BEFORE=$bt A1_THREAD_AFTER=$at A1_THREAD_SELF_BEFORE=$bts A1_THREAD_SELF_AFTER=$ats A1_THREADS=${threads:-0} A1_RC=$rc A1_CUR=$fcur A1_TCUR=$tcur"
 DRIVER
     arun_sh "$agent" "$drv" "$uid" "$PRESET_FORK_ATTEMPTS"
 
-    local m b a cur
+    local m bf af bt at threads bfs afs bts ats
     m="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A1_MAX=\([^ ]*\).*/\1/p')"
-    b="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A1_BEFORE=\([0-9]*\).*/\1/p')"
-    a="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A1_AFTER=\([0-9]*\).*/\1/p')"
-    cur="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A1_CUR=\([0-9]*\).*/\1/p')"
-    b="${b:-0}"; a="${a:-0}"; cur="${cur:-0}"
+    bf="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A1_FORK_BEFORE=\([0-9]*\).*/\1/p')"
+    af="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A1_FORK_AFTER=\([0-9]*\).*/\1/p')"
+    bfs="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A1_FORK_SELF_BEFORE=\([0-9]*\).*/\1/p')"
+    afs="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A1_FORK_SELF_AFTER=\([0-9]*\).*/\1/p')"
+    bt="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A1_THREAD_BEFORE=\([0-9]*\).*/\1/p')"
+    at="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A1_THREAD_AFTER=\([0-9]*\).*/\1/p')"
+    bts="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A1_THREAD_SELF_BEFORE=\([0-9]*\).*/\1/p')"
+    ats="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A1_THREAD_SELF_AFTER=\([0-9]*\).*/\1/p')"
+    threads="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A1_THREADS=\([0-9]*\).*/\1/p')"
+    bf="${bf:-0}"; af="${af:-0}"; bt="${bt:-0}"; at="${at:-0}"; threads="${threads:-0}"
+    bfs="${bfs:-0}"; afs="${afs:-0}"; bts="${bts:-0}"; ats="${ats:-0}"
 
-    if [ "$a" -gt "$b" ]; then
-        A1_REFUSED="yes"
-        ok "A1 fork-bomb ............. CONTAINED (pids.events max +$((a-b)) — the pids controller REFUSED forks at pids.max=$m; live count reached $cur)"
-    elif [ -z "$m" ]; then
+    local refusals=$(( (af - bf) + (at - bt) + (afs - bfs) + (ats - bts) ))
+    if [ -z "$m" ]; then
         A1_REFUSED="unreadable"
-        bad "A1 fork-bomb ............. FAIL (could not read pids.max — the agent's slice cgroup is not there)"
+        bad "A1 fork-bomb ............. FAIL (could not read pids.max; driver said: $(last_lines "$AEXEC_OUT" 2))"
         TIER_FAILS=$((TIER_FAILS+1))
     elif [ "$m" = "max" ]; then
         A1_REFUSED="no"
-        bad "A1 fork-bomb ............. ESCAPED (pids.max=max — no process ceiling to refuse at)"
+        bad "A1 fork-bomb ............. ESCAPED (pids.max=max — no process/task ceiling to refuse at)"
         TIER_FAILS=$((TIER_FAILS+1))
-    elif [ "$cur" -ge "$m" ] 2>/dev/null; then
-        A1_REFUSED="saturated"
-        note "A1 fork-bomb: the slice saturated at pids.current=$cur (pids.max=$m) but pids.events 'max' did not increment — the ceiling held, the refusal counter did not register on this kernel"
-        ok "A1 fork-bomb ............. CONTAINED (saturated at pids.max=$m, live count $cur)"
+    elif [ "$refusals" -gt 0 ]; then
+        A1_REFUSED="yes"
+        ok "A1 fork-bomb ............. CONTAINED (pids controller REFUSED forks/tasks at pids.max=$m: slice pids.events max +$((af-bf))+$((at-bt)), session-scope +$((afs-bfs))+$((ats-bts)); ${threads} threads admitted)"
     else
         A1_REFUSED="not-exercised"
-        note "A1 fork-bomb: the ${PRESET_FORK_ATTEMPTS}-fork attempt cap is BELOW the tier ceiling (pids.max=$m), so no refusal was exercised; the ceiling is finite and the live count peaked at $cur"
-        ok "A1 fork-bomb ............. CONTAINED (ceiling pids.max=$m finite; refusal path NOT exercised — cap $PRESET_FORK_ATTEMPTS < ceiling)"
+        note "A1 fork-bomb: the ceiling pids.max=$m is finite but neither storm registered a refusal on pids.events (fork loop $PRESET_FORK_ATTEMPTS attempts, ${threads} threads) — the cap sits above what the bounded storms reach"
+        ok "A1 fork-bomb ............. CONTAINED (ceiling pids.max=$m finite; refusal path NOT exercised)"
     fi
     # Reap stragglers WITHOUT touching the slice unit: `systemctl kill` on a
     # slice tears the cgroup down, which would blank every later counter read.
@@ -1208,8 +1281,32 @@ a2_memory_bomb() {
 #!/bin/bash
 uid="$1"; target="$2"
 cg="/sys/fs/cgroup/user.slice/user-${uid}.slice"
+own="$(awk -F: '/^0::/{print $3}' /proc/self/cgroup 2>/dev/null | head -1)"
+case "$own" in
+  *"/user-"*".slice"*)
+      own="${own#/user.slice/}"; own="${own%%/*}"
+      [ -d "/sys/fs/cgroup/user.slice/${own}" ] && cg="/sys/fs/cgroup/user.slice/${own}" ;;
+esac
 ev() { awk -v k="$1" '$1==k {print $2}' "$cg/memory.events" 2>/dev/null; }
-max="$(cat "$cg/memory.max" 2>/dev/null)"
+for _ in 1 2 3 4 5; do
+    max="$(cat "$cg/memory.max" 2>/dev/null)"
+    [ -n "$max" ] && break
+    sleep 1
+done
+# Wait for the slice to DRAIN before bombing it: a preceding case (the fork
+# storm in A1) can leave the slice near its memory ceiling, in which case this
+# bomb's oom_kill would be attributed to it wrongly (measured: A2 reported
+# oom_kill +1 and 'allocated 0MiB' because A1's storm had already filled it).
+case "$max" in
+  ''|max) : ;;
+  *) for _ in $(seq 1 30); do
+         c="$(cat "$cg/memory.current" 2>/dev/null)"
+         case "$c" in ''|max) break ;; esac
+         [ "$c" -lt "$(( max / 2 ))" ] && break
+         sleep 1
+     done ;;
+esac
+start_mem="$(cat "$cg/memory.current" 2>/dev/null)"
 ob="$(ev oom_kill)"; ob="${ob:-0}"
 hb="$(ev high)";     hb="${hb:-0}"
 cat > /tmp/.pbomb.py <<'PY'
@@ -1235,7 +1332,7 @@ ha="$(ev high)";     ha="${ha:-0}"
 peak="$(cat "$cg/memory.peak" 2>/dev/null)"
 alloc="$(sed -n 's/^ALLOC_MIB //p' /tmp/.pbomb.out 2>/dev/null | head -1)"
 rm -f /tmp/.pbomb.py /tmp/.pbomb.out
-echo "A2_MAX=$max A2_OOM_BEFORE=$ob A2_OOM_AFTER=$oa A2_HIGH_BEFORE=$hb A2_HIGH_AFTER=$ha A2_PEAK=$peak A2_ALLOC=${alloc:-0} A2_RC=$rc"
+echo "A2_MAX=$max A2_START_MEM=$start_mem A2_OOM_BEFORE=$ob A2_OOM_AFTER=$oa A2_HIGH_BEFORE=$hb A2_HIGH_AFTER=$ha A2_PEAK=$peak A2_ALLOC=${alloc:-0} A2_RC=$rc"
 DRIVER
     arun_sh "$agent" "$drv" "$uid" "$target"
 
