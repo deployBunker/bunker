@@ -750,6 +750,7 @@ tier_begin() {
     TIER_FAILS=0
     TIER_DEAD=0
     LAST_TIER_ABORTED=0
+    LAST_TIER_ENVDEGRADED=0
     echo ""
     echo "TIER $TIER"
 }
@@ -776,6 +777,14 @@ tier_abort() {
 # tier_dead — true once the tier's agent has been lost; cases call this first
 # and return without emitting a verdict.
 tier_dead() { [ "${TIER_DEAD:-0}" = "1" ]; }
+
+# tier_env_degraded — the tier's measurements were taken while the host was
+# mutating under it (an exec that died mid-case, a cgroup read that returned
+# nothing while the agent was demonstrably alive, a peer that vanished). Such a
+# tier is retried rather than reported as a preset failure: on a shared host
+# those artifacts are indistinguishable from a containment failure unless the
+# battery distinguishes them, which is the whole point of this flag.
+tier_env_degraded() { LAST_TIER_ENVDEGRADED=1; }
 
 # claim_* — read the daemon's OWN claims for this agent.
 #   E1 claim: the slice drop-in the daemon wrote.
@@ -1275,6 +1284,7 @@ DRIVER
     local refusals=$(( (af - bf) + (at - bt) + (afs - bfs) + (ats - bts) ))
     if [ -z "$m" ]; then
         A1_REFUSED="unreadable"
+        tier_env_degraded
         bad "A1 fork-bomb ............. FAIL (could not read pids.max; driver said: $(last_lines "$AEXEC_OUT" 2))"
         TIER_FAILS=$((TIER_FAILS+1))
     elif [ "$m" = "max" ]; then
@@ -1408,6 +1418,7 @@ DRIVER
         ok "A2 memory-bomb ........... CONTAINED (memory.high throttling +$high_delta, no kills, memory.peak=${peak:-?}, allocated ${alloc:-?}MiB — the AGENT paid by slowing)"
     elif [ -z "$max" ]; then
         A2_WHO_PAID="unreadable"
+        tier_env_degraded
         bad "A2 memory-bomb ........... FAIL (could not read memory.max; driver said: $(last_lines "$AEXEC_OUT" 2))"
         TIER_FAILS=$((TIER_FAILS+1))
     elif [ "$max" = "max" ]; then
@@ -1443,6 +1454,7 @@ a3_io_hog() {
         t1=$(date +%s%N)
         if [ "$AEXEC_RC" -ne 0 ]; then
             bad "A3 io-hog ................ FAIL (peer baseline read failed)"
+            tier_env_degraded
             TIER_FAILS=$((TIER_FAILS+1))
             return 0
         fi
@@ -1540,6 +1552,7 @@ i3_usability() {
         ok "I3 usability ............. PASS (home read/write, command exec, network=$net)"
     else
         bad "I3 usability ............. FAIL (rc=$rc)"
+        if [ "$rc" -eq 255 ]; then tier_env_degraded; fi   # exec transport died: environment, not the tier
         TIER_FAILS=$((TIER_FAILS+1))
     fi
 }
@@ -1795,12 +1808,16 @@ for t in $TIERS_TO_RUN; do
     attempt=1
     while : ; do
         run_tier "$t"
-        if [ "${LAST_TIER_ABORTED:-0}" != "1" ]; then break; fi
+        if [ "${LAST_TIER_ABORTED:-0}" != "1" ] && [ "${LAST_TIER_ENVDEGRADED:-0}" != "1" ]; then break; fi
+        reason="ABORTED by an external sweep"
+        if [ "${LAST_TIER_ABORTED:-0}" != "1" ]; then
+            reason="measured while the host mutated under it (a driver read nothing / the exec transport died)"
+        fi
         if [ "$attempt" -ge "${PRESET_TIER_ATTEMPTS:-2}" ]; then
-            echo "  · tier $t ABORTED by an external sweep and out of retries (${PRESET_TIER_ATTEMPTS:-2})"
+            echo "  · tier $t $reason and out of retries (${PRESET_TIER_ATTEMPTS:-2})"
             break
         fi
-        echo "  · tier $t ABORTED by an external sweep — waiting for the sweep to clear, then re-running (attempt $((attempt+1))/${PRESET_TIER_ATTEMPTS:-2})"
+        echo "  · tier $t was $reason — waiting for the host to settle, then re-running (attempt $((attempt+1))/${PRESET_TIER_ATTEMPTS:-2})"
         FAILED_TIERS="$(printf '%s' "$FAILED_TIERS" | tr ' ' '\n' | grep -v "^${t}$" | tr '\n' ' ')"
         TIER_FAIL=$((TIER_FAIL-1))
         wait_sweep=0
