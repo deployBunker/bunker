@@ -91,7 +91,7 @@ jobs:
             ls -la bunker bunkerd >&2
             exit 1
           fi
-          head_commit=$(git rev-parse --short HEAD)
+          head_commit=$(git rev-parse --short=7 HEAD)
           bin_commit=$(/tmp/bunker-smoke version | awk 'NR==2 {print $2}')
           echo "HEAD commit: ${head_commit} | built binary commit: ${bin_commit}"
           test "${bin_commit}" = "${head_commit}"
