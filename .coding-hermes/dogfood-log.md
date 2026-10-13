@@ -406,3 +406,28 @@ says "live battery deferred".
 - **Verdict:** 🔴 DOES-NOT-DELIVER (egress surface only) — the flagship isolation
   feature has never enforced on any host; open mode and the rest of the lifecycle
   remain ✅ SHIPPABLE.
+## 2026-10-12 run-25 — private-/tmp re-proof + install PASS (bunker-dogfood)
+
+- **Promise tested:** README:55 / specs/agent-tmp-isolation.md — host-provision
+  isolation chain gives every agent session a private, session-persistent /tmp.
+- **What held up (fresh, live, v0.2.0 daemon 3f66c4e6 on bunker-mvp):**
+  status reports `private` + `isolation-grant`; exec sees `drwx------` agent-owned
+  /tmp (1.26s); **cross-session persistence proven for the first time** (file+dir
+  created in exec #1 present in exec #2 — spec line 182).
+- **Install leg (PASSED, not skipped):** las-03/las-02 offline → bunker-mvp;
+  fresh agent df-tick1012b, clone + documented `make build` verbatim rc=0,
+  binaries report 0.2.0/ae82178 + isolation-grant. Warm rebuild 5.8s, cold
+  go build 15.2s, spawn 22.8s warm, destroy clean, residue reconciled to 0 in ≤80s.
+- **Egress zero-chain re-proof (DF-BUNKER-86 premise, no new row):** v0.2.0 daemon
+  open mode → 0 bunker-egress chains in nft+iptables.
+- **Perf (Step 2b):** spawn 22.8s warm, exec 1.26-1.30s, make build warm 5.8s,
+  cold go build 15.2s, destroy ~15s — all inside documented envelopes; nothing a
+  user feels; no PERF row filed.
+- **Rows filed:** DF-BUNKER-89 P2 (isolation chain proven; exec surface cannot
+  distinguish pam_namespace /tmp from a plain per-agent dir from inside —
+  suggest a mountinfo probe), DF-BUNKER-90 P3 (README sudo ladder vs no-sudo
+  installer path never resolves for the isolation chain).
+- **Verdict:** isolation chain ✅ SHIPPABLE on v0.2.0; evidence-shape roughness
+  filed. Artifacts: docs/dogfood/2026-10-12-tmp-isolation-reproof.md, board
+  commit 2e158494. Cleanup: both agents destroyed + verified absent, keys
+  removed, no visibility/permission changes, no credentials minted.
