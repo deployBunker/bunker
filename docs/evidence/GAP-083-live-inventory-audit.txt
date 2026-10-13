@@ -1,0 +1,251 @@
+
+GAP-083 — live inventory audit, raw transcript
+=============================================
+
+Command : bunker status --all        (CLI built from the GAP-083 working tree)
+Host    : karaHermes-mde-7840hs (control host), registry = the resolved
+          ~/.config/bunker/config.yaml (15 servers registered)
+Date    : 2026-10-13
+Exit    : 1  (non-zero because declared hosts are failing — the point of the audit)
+
+What to read here:
+
+  * `── bunker-las-01 ──` HAS a section. Before this change the host was simply
+    absent from the overview: it was not in the registry path that this run uses
+    and nothing else tracked the fleet.
+  * Its `Fleet: FAILED — registry URL http://100.78.165.52:19090 uses port 19090,
+    which is not a declared port for this host (declared: 10001, 10002)` line is
+    the still-live defect: the registered port is one the host has never listened
+    on (measured 2026-09-18: a single listener on :18080). The line carries the
+    documented discrepancy with it.
+  * `Fleet: OK` lines for bunker-mvp (0.2.0) and cube-las-00 (0.1.4) show the
+    coverage check passing with the daemon version printed.
+  * The closing `Fleet inventory coverage (6 declared, 4 failing)` table is the
+    audit result; the `bunker:` line after it is the non-zero exit message.
+  * Servers the operator registered that the inventory does not declare
+    (dedi-2, hermes-fleet-0x, judgebox, ...) keep their own sections and are not
+    policed — the audit is additive.
+
+══════════ Bunker Server Status (15 servers registered, 6 declared in the fleet inventory) ══════════
+
+── bunker-las-01 ──
+  URL:      http://100.78.165.52:19090
+  Status:   OFFLINE
+  Error:    server info: deadline_exceeded: Post "http://100.78.165.52:19090/bunker.v1.Bunkerd/ServerInfo": dial tcp 100.78.165.52:19090: i/o timeout
+  Fleet:    FAILED — registry URL http://100.78.165.52:19090 uses port 19090, which is not a declared port for this host (declared: 10001, 10002) — and it did not answer there either — PORT DISCREPANCY (GAP-083, measured live 2026-09-18 and re-probed 2026-09-19): this host's daemon serves a SINGLE listener on :18080 (the demo-layout REST port) — it never listened on the fleet's :10001/:10002. The client registry entry for this host points at :19090, a port this host has never listened on, so a client that selects it by name cannot connect even while the daemon is up. Either normalize the daemon to :10001/:10002 or amend this declaration with a deliberate, documented exception — until then the mismatch is reported loudly.
+            declared in the committed fleet inventory (internal/fleet/inventory.yaml); the local registry does not satisfy that declaration
+
+── bunker-las-02 ──
+  URL:      http://100.116.99.35:10001
+  Status:   OFFLINE
+  Error:    server info: deadline_exceeded: Post "http://100.116.99.35:10001/bunker.v1.Bunkerd/ServerInfo": dial tcp 100.116.99.35:10001: i/o timeout
+  Fleet:    FAILED — registered at http://100.116.99.35:10001 on a declared port but its daemon did not answer
+            declared in the committed fleet inventory (internal/fleet/inventory.yaml); the local registry does not satisfy that declaration
+
+── bunker-las-03 ──
+  URL:      http://100.69.3.13:10001
+  Status:   OFFLINE
+  Error:    server info: deadline_exceeded: Post "http://100.69.3.13:10001/bunker.v1.Bunkerd/ServerInfo": dial tcp 100.69.3.13:10001: i/o timeout
+  Fleet:    FAILED — registered at http://100.69.3.13:10001 on a declared port but its daemon did not answer
+            declared in the committed fleet inventory (internal/fleet/inventory.yaml); the local registry does not satisfy that declaration
+
+── bunker-las-04 ──
+  URL:      http://100.95.199.98:10001
+  Status:   OFFLINE
+  Error:    server info: deadline_exceeded: Post "http://100.95.199.98:10001/bunker.v1.Bunkerd/ServerInfo": dial tcp 100.95.199.98:10001: i/o timeout
+  Fleet:    FAILED — registered at http://100.95.199.98:10001 on a declared port but its daemon did not answer
+            declared in the committed fleet inventory (internal/fleet/inventory.yaml); the local registry does not satisfy that declaration
+
+── bunker-mvp ──
+  Hostname: bunker-mvp
+  URL:      http://100.115.67.116:19090
+  Version:  0.2.0
+  Status:   ONLINE
+  Uptime:   2d 13h 2m
+  Agents:   3/50
+  /tmp:     private (per-session pam_namespace instance)
+  Net mode: shared — host network namespace (no network isolation: shared loopback, global port space)
+  Egress:   not reported by this daemon — it predates egress reporting; --egress-mode allowlist/none spawns are REFUSED by this CLI
+  Residue:  7 orphan users, 7 orphan homes, 12 orphan keys, 0 stale linger entries (9 registered agents)
+            residue present: this host holds agent users/homes/keys/linger entries with no registered agent behind them
+  CPU:      151.7%
+  Memory:   2.3 GB / 15.2 GB
+  Disk:     23% (33.9 GB/149.9 GB)
+  Docker:   17 containers
+  Fleet:    OK — registered at http://100.115.67.116:19090, reachable, port 19090 declared, version 0.2.0 at or above the 0.1.4 floor
+
+── cube-las-00 ──
+  Hostname: cube-las-00
+  URL:      http://100.84.195.43:18080
+  Version:  0.1.4
+  Status:   ONLINE
+  Uptime:   22d 11h 50m
+  Agents:   1/8
+  /tmp:     HOST-SHARED — agent sessions see the host /tmp
+
+  ╔══════════════════════════════════════════════════════════╗
+  ║  ⚠  WARNING: Private /tmp is NOT active on this host.           ║
+  ║  Agent exec sessions share the host /tmp; the README's        ║
+  ║  'Private /tmp per agent' promise does not hold here.         ║
+  ╚══════════════════════════════════════════════════════════╝
+  Reason:   the pam_namespace drop-in configuration is missing
+  Net mode: not reported by this daemon — it predates network-isolation reporting
+  Egress:   not reported by this daemon — it predates egress reporting; --egress-mode allowlist/none spawns are REFUSED by this CLI
+  Residue:  0 orphan users, 1 orphan home, 1 orphan key, 4 stale linger entries (1 registered agent)
+            residue present: this host holds agent users/homes/keys/linger entries with no registered agent behind them
+  CPU:      650.1%
+  Memory:   39.4 GB / 94.2 GB
+  Disk:     11% (183.9 GB/1.6 TB)
+  Docker:   1 containers
+  Fleet:    OK — registered at http://100.84.195.43:18080, reachable, port 18080 declared, version 0.1.4 at or above the 0.1.4 floor
+
+── dedi-2 ──
+  Hostname: dev
+  URL:      http://95.216.12.55:18080
+  Version:  0.1.4
+  Status:   ONLINE
+  Uptime:   20d 0h 30m
+  Agents:   0/50
+  /tmp:     HOST-SHARED — agent sessions see the host /tmp
+
+  ╔══════════════════════════════════════════════════════════╗
+  ║  ⚠  WARNING: Private /tmp is NOT active on this host.           ║
+  ║  Agent exec sessions share the host /tmp; the README's        ║
+  ║  'Private /tmp per agent' promise does not hold here.         ║
+  ╚══════════════════════════════════════════════════════════╝
+  Reason:   the pam_namespace drop-in configuration is missing
+  Net mode: not reported by this daemon — it predates network-isolation reporting
+  Egress:   not reported by this daemon — it predates egress reporting; --egress-mode allowlist/none spawns are REFUSED by this CLI
+  Residue:  0 orphan users, 0 orphan homes, 0 orphan keys, 0 stale linger entries (3 registered agents)
+  CPU:      84.7%
+  Memory:   21.9 GB / 503.6 GB
+  Disk:     14% (282.7 GB/1.9 TB)
+
+── dfhead ──
+  URL:      http://127.0.0.1:28080
+  Status:   OFFLINE
+  Error:    server info: unavailable: dial tcp 127.0.0.1:28080: connect: connection refused
+
+── hermes-fleet-01 ──
+  URL:      https://100.79.83.6:10001
+  Status:   OFFLINE
+  Error:    server info: deadline_exceeded: Post "https://100.79.83.6:10001/bunker.v1.Bunkerd/ServerInfo": dial tcp 100.79.83.6:10001: i/o timeout
+
+── hermes-fleet-02 ──
+  Hostname: coding-hermes-remote-bunker-02
+  URL:      https://100.66.160.77:10001
+  Version:  0.1.4
+  Status:   ONLINE
+  Uptime:   15d 0h 45m
+  Agents:   4/20
+  /tmp:     private (per-session pam_namespace instance)
+  Net mode: not reported by this daemon — it predates network-isolation reporting
+  Egress:   not reported by this daemon — it predates egress reporting; --egress-mode allowlist/none spawns are REFUSED by this CLI
+  Residue:  0 orphan users, 0 orphan homes, 0 orphan keys, 0 stale linger entries (4 registered agents)
+  CPU:      4.7%
+  Memory:   2.3 GB / 30.6 GB
+  Disk:     11% (32.0 GB/300.1 GB)
+  Docker:   4 containers
+
+── hermes-fleet-03 ──
+  Hostname: coding-hermes-remote-bunker-03
+  URL:      https://100.100.29.114:10001
+  Version:  0.1.4
+  Status:   ONLINE
+  Uptime:   15d 1h 4m
+  Agents:   4/20
+  /tmp:     private (per-session pam_namespace instance)
+  Net mode: not reported by this daemon — it predates network-isolation reporting
+  Egress:   not reported by this daemon — it predates egress reporting; --egress-mode allowlist/none spawns are REFUSED by this CLI
+  Residue:  0 orphan users, 0 orphan homes, 0 orphan keys, 0 stale linger entries (6 registered agents)
+  CPU:      8.8%
+  Memory:   2.4 GB / 30.6 GB
+  Disk:     14% (40.9 GB/300.1 GB)
+  Docker:   4 containers
+
+── hermes-fleet-04 ──
+  Hostname: coding-hermes-remote-bunker-04
+  URL:      https://100.106.74.73:10001
+  Version:  0.1.4
+  Status:   ONLINE
+  Uptime:   15d 0h 31m
+  Agents:   4/20
+  /tmp:     private (per-session pam_namespace instance)
+  Net mode: not reported by this daemon — it predates network-isolation reporting
+  Egress:   not reported by this daemon — it predates egress reporting; --egress-mode allowlist/none spawns are REFUSED by this CLI
+  Residue:  0 orphan users, 0 orphan homes, 0 orphan keys, 0 stale linger entries (4 registered agents)
+  CPU:      6.7%
+  Memory:   2.3 GB / 30.6 GB
+  Disk:     11% (32.1 GB/300.1 GB)
+  Docker:   4 containers
+
+── hermes4friends ──
+  Hostname: hermes-demo
+  URL:      http://37.27.250.128:19090
+  Version:  0.1.4
+  Status:   ONLINE
+  Uptime:   16d 5h 10m
+  Agents:   4/12
+  /tmp:     private (per-session pam_namespace instance)
+  Net mode: not reported by this daemon — it predates network-isolation reporting
+  Egress:   not reported by this daemon — it predates egress reporting; --egress-mode allowlist/none spawns are REFUSED by this CLI
+  Residue:  0 orphan users, 0 orphan homes, 0 orphan keys, 0 stale linger entries (4 registered agents)
+  CPU:      9.5%
+  Memory:   4.6 GB / 15.2 GB
+  Disk:     32% (48.2 GB/149.9 GB)
+  Docker:   4 containers
+
+── judgebox ──
+  Hostname: karaHermes-mde-7840hs
+  URL:      http://localhost:10001
+  Version:  0.2.0
+  Status:   ONLINE
+  Uptime:   3d 6h 39m
+  Agents:   0/20
+  /tmp:     HOST-SHARED — agent sessions see the host /tmp
+
+  ╔══════════════════════════════════════════════════════════╗
+  ║  ⚠  WARNING: Private /tmp is NOT active on this host.           ║
+  ║  Agent exec sessions share the host /tmp; the README's        ║
+  ║  'Private /tmp per agent' promise does not hold here.         ║
+  ╚══════════════════════════════════════════════════════════╝
+  Reason:   the pam_namespace drop-in configuration is missing
+  Net mode: shared — host network namespace (no network isolation: shared loopback, global port space)
+  Egress:   not reported by this daemon — it predates egress reporting; --egress-mode allowlist/none spawns are REFUSED by this CLI
+  Residue:  0 orphan users, 0 orphan homes, 13 orphan keys, 0 stale linger entries (0 registered agents)
+            residue present: this host holds agent users/homes/keys/linger entries with no registered agent behind them
+  CPU:      8333.3%
+  Memory:   20.6 GB / 59.6 GB
+  Disk:     71% (1.3 TB/1.8 TB)
+
+── karaHermes-mde-7840hs ──
+  Hostname: karaHermes-mde-7840hs
+  URL:      http://localhost:10001
+  Version:  0.2.0
+  Status:   ONLINE
+  Uptime:   3d 6h 39m
+  Agents:   0/20
+  /tmp:     HOST-SHARED — agent sessions see the host /tmp
+
+  ╔══════════════════════════════════════════════════════════╗
+  ║  ⚠  WARNING: Private /tmp is NOT active on this host.           ║
+  ║  Agent exec sessions share the host /tmp; the README's        ║
+  ║  'Private /tmp per agent' promise does not hold here.         ║
+  ╚══════════════════════════════════════════════════════════╝
+  Reason:   the pam_namespace drop-in configuration is missing
+  Net mode: shared — host network namespace (no network isolation: shared loopback, global port space)
+  Egress:   not reported by this daemon — it predates egress reporting; --egress-mode allowlist/none spawns are REFUSED by this CLI
+  Residue:  0 orphan users, 0 orphan homes, 13 orphan keys, 0 stale linger entries (0 registered agents)
+            residue present: this host holds agent users/homes/keys/linger entries with no registered agent behind them
+  CPU:      504.6%
+  Memory:   20.6 GB / 59.6 GB
+  Disk:     71% (1.3 TB/1.8 TB)
+
+══════════ Fleet inventory coverage (6 declared, 4 failing) ══════════
+  FAIL bunker-las-01    PORT_MISMATCH      registry URL http://100.78.165.52:19090 uses port 19090, which is not a declared port for this host (declared: 10001, 10002) — and it did not answer there either — PORT DISCREPANCY (GAP-083, measured live 2026-09-18 and re-probed 2026-09-19): this host's daemon serves a SINGLE listener on :18080 (the demo-layout REST port) — it never listened on the fleet's :10001/:10002. The client registry entry for this host points at :19090, a port this host has never listened on, so a client that selects it by name cannot connect even while the daemon is up. Either normalize the daemon to :10001/:10002 or amend this declaration with a deliberate, documented exception — until then the mismatch is reported loudly.
+  FAIL bunker-las-02    UNREACHABLE        registered at http://100.116.99.35:10001 on a declared port but its daemon did not answer
+  FAIL bunker-las-03    UNREACHABLE        registered at http://100.69.3.13:10001 on a declared port but its daemon did not answer
+  FAIL bunker-las-04    UNREACHABLE        registered at http://100.95.199.98:10001 on a declared port but its daemon did not answer
+  OK   bunker-mvp       OK                 registered at http://100.115.67.116:19090, reachable, port 19090 declared, version 0.2.0 at or above the 0.1.4 floor
+  OK   cube-las-00      OK                 registered at http://100.84.195.43:18080, reachable, port 18080 declared, version 0.1.4 at or above the 0.1.4 floor
+bunker: fleet inventory coverage: 4 of 6 declared hosts failing (bunker-las-01 PORT_MISMATCH, bunker-las-02 UNREACHABLE, bunker-las-03 UNREACHABLE, bunker-las-04 UNREACHABLE) — see the Fleet lines above

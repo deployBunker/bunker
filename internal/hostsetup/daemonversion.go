@@ -374,6 +374,13 @@ func daemonSkewState(build DaemonBuild) DaemonProbeState {
 	return DaemonSkewOK
 }
 
+// VersionAtLeast is versionAtLeast exported for callers outside this package
+// that must apply the SAME floor the installer does — currently the fleet
+// inventory audit (internal/fleet), whose whole point is to report a daemon
+// below this floor. Exported rather than re-implemented so the two comparisons
+// cannot drift apart: one implementation, one floor.
+func VersionAtLeast(have, min string) bool { return versionAtLeast(have, min) }
+
 // versionAtLeast reports whether semver-ish string have >= min. It compares
 // dot-separated numeric components (a leading "v" is ignored); a
 // non-numeric or empty have is "not comparable" and returns false, which is

@@ -86,3 +86,7 @@ daemons to repo HEAD — install.sh ships release tags, not HEAD.
 4. Commit — `fix(ops): address daemon fleet version gap (DF-BUNKER-10)`.
 5. `go build ./...` / `go vet ./...` — shell-only change; both run clean (no Go
    source touched).
+
+Related: [fleet-inventory.md](fleet-inventory.md) (GAP-083 — the committed
+declaration of which hosts exist, on which ports, at which version floor, and
+the `bunker status --all` audit that reconciles the client registry against it).

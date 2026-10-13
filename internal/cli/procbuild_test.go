@@ -458,6 +458,14 @@ func TestMain(m *testing.M) {
 	// test's own isolation, never the operator's home. The sentinel HOME
 	// absorbs any leak; checkSentinelTestHome fails the run if it happens.
 	sentinelHome := pinSentinelTestHome()
+	// GAP-083: `bunker status --all` also reconciles the committed fleet
+	// inventory, whose declared hosts are live fleet machines. The package's
+	// per-registry rendering tests pin what a config listing alpha/bravo/dead
+	// produces, so the suite works against an empty declaration; the coverage
+	// contract is pinned by the cells in status_fleet_test.go, which supply
+	// their own declarations, and the production default (the embedded
+	// inventory) is asserted through the loader captured here.
+	disableFleetInventoryForSuite()
 	code := m.Run()
 	checkSentinelTestHome(sentinelHome)
 	os.Exit(code)

@@ -15,7 +15,16 @@ import (
 
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 	bunkerv1connect "github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect"
+
+	"github.com/deployBunker/bunker/internal/fleet"
 )
+
+// loadFleetInventory reads the committed fleet inventory the `--all` overview
+// reconciles against (GAP-083). It is a package-level seam — the same
+// convention as statusDialer and the other injected dependencies in this
+// package — so the overview's per-registry rendering can be tested without the
+// fleet's live hosts, and the coverage tests can supply their own declaration.
+var loadFleetInventory = func() (*fleet.Inventory, error) { return fleet.Load() }
 
 // NewStatusCommand returns the `bunker status` cobra command.
 // Without flags it shows the active server. With --all it iterates
@@ -33,6 +42,13 @@ func NewStatusCommand() *cobra.Command {
 
 Without flags, shows the active server. Use --all to query every registered
 server and produce an aggregated cross-host overview.
+
+--all also reconciles the committed fleet inventory (the declared fleet hosts,
+their ports and the daemon version floor) against your client registry, so a
+declared host that is missing from the registry, unreachable, answering on an
+undeclared port, or below the version floor is reported as a loud FAILED line
+and the command exits non-zero. Servers you registered that the inventory does
+not declare are still reported, unchanged. See docs/ops/fleet-inventory.md.
 
 Examples:
   bunker status
@@ -93,7 +109,7 @@ Examples:
 	}
 
 	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (default: active server)")
-	cmd.Flags().BoolVar(&allServers, "all", false, "Query all registered servers")
+	cmd.Flags().BoolVar(&allServers, "all", false, "Query all registered servers and audit fleet-inventory coverage (non-zero exit on a coverage hole)")
 	cmd.Flags().Bool("all-servers", false, "Alias for --all")
 
 	return cmd
@@ -205,45 +221,196 @@ func queryServer(entry ServerEntry) serverStatus {
 // Each goroutine owns its positionally indexed slot — no shared append and no
 // mutex — and the caller renders the slots in sorted-name order afterwards, so
 // the output is byte-identical to the previous serial implementation.
+//
+// GAP-083: the sections printed are the UNION of the local registry and the
+// committed fleet inventory (internal/fleet), and every declared host is
+// reconciled against what was observed. Before this, the overview showed only
+// what the operator happened to have registered: bunker-las-01 served agents
+// for 32+ days while `bunker status --all` omitted it entirely, and the one
+// registry entry it did have pointed at a port its daemon never listened on.
+// A declared host that is missing from the registry, unreachable, on an
+// undeclared port, or below the daemon version floor now prints a loud FAILED
+// line and makes the command exit non-zero, so a coverage hole is a failure a
+// scheduler notices instead of an absent section nobody can see.
 func printAllServerStatus(cfg *CLIConfig) error {
 	if len(cfg.Servers) == 0 {
 		return fmt.Errorf("no servers configured; run 'bunker connect' first")
 	}
 
-	// Collect sorted server names for deterministic output.
-	names := make([]string, 0, len(cfg.Servers))
+	// The fleet's own declaration. A malformed embedded inventory is a broken
+	// build artifact, not a runtime condition to degrade past.
+	inv, err := loadFleetInventory()
+	if err != nil {
+		return fmt.Errorf("load fleet inventory: %w", err)
+	}
+
+	// Every declared host needs a section; every registered server keeps its
+	// own. Union both name sets, deduplicated and sorted (deterministic
+	// output, and the order is independent of which results arrive first).
+	seen := make(map[string]bool, len(cfg.Servers)+len(inv.Hosts))
+	names := make([]string, 0, len(cfg.Servers)+len(inv.Hosts))
 	for name := range cfg.Servers {
-		names = append(names, name)
+		if !seen[name] {
+			seen[name] = true
+			names = append(names, name)
+		}
+	}
+	for _, name := range inv.Names() {
+		if !seen[name] {
+			seen[name] = true
+			names = append(names, name)
+		}
 	}
 	sort.Strings(names)
 
 	fmt.Println()
-	fmt.Printf("══════════ Bunker Server Status (%d servers) ══════════\n", len(names))
+	fmt.Printf("══════════ Bunker Server Status (%d servers registered, %d declared in the fleet inventory) ══════════\n",
+		len(cfg.Servers), len(inv.Hosts))
 	fmt.Println()
 
-	// One goroutine per configured server, each writing its own slot; the wait
+	// One goroutine per REGISTERED server, each writing its own slot; declared
+	// hosts with no registry entry have nothing to query. The wait
 	// happens-before the print loop's reads of results.
 	results := make([]serverStatus, len(names))
+	registered := make([]bool, len(names))
 	var wg sync.WaitGroup
-	wg.Add(len(names))
 	for i, name := range names {
+		entry, ok := cfg.Servers[name]
+		registered[i] = ok
+		if !ok {
+			continue
+		}
+		wg.Add(1)
 		go func(i int, entry ServerEntry) {
 			defer wg.Done()
 			results[i] = queryServer(entry)
-		}(i, cfg.Servers[name])
+		}(i, entry)
 	}
 	wg.Wait()
 
+	// What the registry + the live query know, per declared host.
+	observed := make(map[string]fleet.Observation, len(names))
+	for i, name := range names {
+		if !registered[i] {
+			continue
+		}
+		st := results[i]
+		o := fleet.Observation{Registered: true, URL: st.entry.URL, Reachable: st.err == nil}
+		if o.Reachable && st.info != nil {
+			o.Version = st.info.GetVersion()
+		}
+		observed[name] = o
+	}
+
+	verdicts := inv.Reconcile(observed)
+	byName := make(map[string]fleet.Verdict, len(verdicts))
+	failing := make([]fleet.Verdict, 0, len(verdicts))
+	for _, v := range verdicts {
+		byName[v.Host.Name] = v
+		if v.Failed() {
+			failing = append(failing, v)
+		}
+	}
+
 	// Print in sorted order — the order responses arrived in is irrelevant.
-	for i := range names {
-		fmt.Print(formatServerStatus(results[i]))
+	for i, name := range names {
+		if !registered[i] {
+			// A declared host the registry does not know. The section exists
+			// precisely because the alternative is an overview that silently
+			// omits a host which serves agents.
+			fmt.Print(formatFleetGapSection(byName[name]))
+		} else {
+			fmt.Print(formatServerStatus(results[i]))
+			if v, ok := byName[name]; ok {
+				fmt.Print(formatFleetVerdict(v))
+			}
+		}
 		if i < len(names)-1 {
 			fmt.Println()
 		}
 	}
 
+	if len(verdicts) > 0 {
+		fmt.Println()
+		fmt.Print(formatFleetCoverageSummary(verdicts, failing))
+	}
+	if len(failing) > 0 {
+		return fmt.Errorf("fleet inventory coverage: %d of %d declared hosts failing (%s) — see the Fleet lines above",
+			len(failing), len(verdicts), describeFailures(failing))
+	}
+
 	return nil
 }
+
+// describeFailures renders "name STATUS, name STATUS" for the exit message.
+func describeFailures(failing []fleet.Verdict) string {
+	parts := make([]string, 0, len(failing))
+	for _, v := range failing {
+		parts = append(parts, fmt.Sprintf("%s %s", v.Host.Name, v.Status))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// formatFleetVerdict renders the fleet-inventory line for a host that is both
+// declared and present in the registry. The OK line carries the coverage
+// evidence (endpoint, port, version against the floor) so a reader of the
+// overview can see that the declaration was actually CHECKED rather than
+// assumed.
+func formatFleetVerdict(v fleet.Verdict) string {
+	switch {
+	case v.Status == fleet.StatusRetired:
+		return "  Fleet:    RETIRED — " + v.Detail + "\n"
+	case v.OK():
+		return "  Fleet:    OK — " + v.Detail + "\n"
+	}
+	var b strings.Builder
+	b.WriteString("  Fleet:    FAILED — " + v.Detail + "\n")
+	b.WriteString("            declared in the committed fleet inventory (internal/fleet/inventory.yaml); the local registry does not satisfy that declaration\n")
+	return b.String()
+}
+
+// formatFleetGapSection renders a section for a DECLARED host that has no
+// registry entry on this host: no client can select it by name, which is the
+// exact shape the fleet inventory exists to make visible (GAP-083 —
+// bunker-las-01 ran an active daemon while this overview omitted it).
+func formatFleetGapSection(v fleet.Verdict) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "── %s ──\n", v.Host.Name)
+	fmt.Fprintf(&b, "  Declared: %s (%s) at %s, ports %s\n",
+		v.Host.Name, v.Host.Role, v.Host.Address, v.Host.PortList())
+	if v.Status == fleet.StatusRetired {
+		b.WriteString("  Fleet:    RETIRED — " + v.Detail + "\n")
+		return b.String()
+	}
+	fmt.Fprintf(&b, "  Status:   %s\n", v.Status)
+	b.WriteString("  Fleet:    FAILED — " + v.Detail + "\n")
+	b.WriteString("  Impact:   a host that serves agents but is missing from the registry is invisible to `bunker list`,\n")
+	b.WriteString("            `bunker status --server <name>` and every client that selects a server by name\n")
+	if v.Host.Note != "" {
+		b.WriteString("  Note:     " + oneLine(v.Host.Note) + "\n")
+	}
+	return b.String()
+}
+
+// formatFleetCoverageSummary renders the audit table: one line per declared
+// host with its verdict, so the overview ends with the fleet's coverage state
+// rather than with whichever server happened to sort last.
+func formatFleetCoverageSummary(verdicts, failing []fleet.Verdict) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "══════════ Fleet inventory coverage (%d declared, %d failing) ══════════\n",
+		len(verdicts), len(failing))
+	for _, v := range verdicts {
+		mark := "OK  "
+		if v.Failed() {
+			mark = "FAIL"
+		}
+		fmt.Fprintf(&b, "  %s %-16s %-18s %s\n", mark, v.Host.Name, v.Status, v.Detail)
+	}
+	return b.String()
+}
+
+// oneLine folds a multi-line note into one line for a status row.
+func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
 
 // formatServerStatus renders a single serverStatus as a human-readable section.
 func formatServerStatus(st serverStatus) string {

@@ -1,0 +1,97 @@
+# Committed fleet inventory — who is in the fleet, on which ports, at which floor.
+#
+# WHY THIS FILE IS COMMITTED (GAP-083). The CLI's server registry
+# (~/.config/bunker/config.yaml) is per-operator state. A host that serves
+# agents but was never registered — or was registered on a port its daemon does
+# not listen on — was therefore invisible to every status surface:
+# bunker-las-01 ran an ACTIVE daemon for 32+ days (re-probed live 2026-09-19)
+# while `bunker status --all`, the documented cross-host overview, silently
+# omitted it. This file is the fleet's CONTRACT; `bunker status --all`
+# reconciles the local registry against it, so a hole is a loud failure and a
+# non-zero exit instead of a missing section.
+#
+# THE DECLARATION IS THE CONTRACT, NOT A SNAPSHOT. A declared port is the port
+# the host is SUPPOSED to answer on. A daemon that answers somewhere else is
+# drift to report (and fix at the source or by amending this file), never a
+# reason to loosen the check.
+#
+# ADDING A HOST: add it here AND register it (`bunker connect`), or the audit
+# reports a NOT_REGISTERED hole naming the host. RETIRING A HOST: set
+# retired: true with the reason — a retired declaration is reported as
+# information, not as a failure, so a decommissioned host stops being a hole
+# without deleting the record of it.
+#
+# See docs/ops/fleet-inventory.md for the port layouts, the las-01 port
+# discrepancy, and the evidence behind every field here.
+
+version: 1
+
+# The port convention for fleet agent hosts (not the daemon's built-in
+# defaults, which are REST :8080 / gRPC :9090): REST :10001, gRPC :10002.
+# bunker-mvp and cube-las-00 are the documented exceptions (demo layout,
+# REST :18080 / gRPC :19090) and declare that layout per host below.
+port_convention: 10001
+
+# The daemon version floor every declared host must meet. It is the repo's own
+# floor (internal/hostsetup.MinDaemonVersion, pinned equal by a test), so the
+# inventory audit and `bunker host-provision` cannot drift apart.
+default_min_daemon_version: "0.1.4"
+
+hosts:
+  - name: bunker-las-01
+    address: 100.78.165.52
+    role: agent-host
+    ports: [10001, 10002]
+    port_note: >-
+      PORT DISCREPANCY (GAP-083, measured live 2026-09-18 and re-probed
+      2026-09-19): this host's daemon serves a SINGLE listener on :18080 (the
+      demo-layout REST port) — it never listened on the fleet's :10001/:10002.
+      The client registry entry for this host points at :19090, a port this
+      host has never listened on, so a client that selects it by name cannot
+      connect even while the daemon is up. Either normalize the daemon to
+      :10001/:10002 or amend this declaration with a deliberate, documented
+      exception — until then the mismatch is reported loudly.
+    note: >-
+      Deployed 2026-09-19 by the crier ops lane to bunkerd 0.1.4 / 198f6b4
+      (pre-redeploy it ran v0.1.2 / ee6a2dc, two minor versions behind HEAD).
+
+  - name: bunker-las-02
+    address: 100.116.99.35
+    role: agent-host
+    ports: [10001, 10002]
+
+  - name: bunker-las-03
+    address: 100.69.3.13
+    role: agent-host
+    ports: [10001, 10002]
+    note: >-
+      Repeated multi-day tailnet outages are environmental (host power /
+      provider), outside what a repo change can fix — but the outage is only
+      visible because the host is declared here.
+
+  - name: bunker-las-04
+    address: 100.95.199.98
+    role: agent-host
+    ports: [10001, 10002]
+    note: >-
+      Tracked by DF-BUNKER-10 for version skew (served v0.1.3 while HEAD was
+      66d4150+ on 2026-09-16).
+
+  - name: bunker-mvp
+    address: 100.115.67.116
+    role: demo
+    ports: [18080, 19090]
+    port_note: >-
+      Demo instance: docs/specs/api.md documents REST :18080 / gRPC :19090 as
+      demo-instance ports, not daemon defaults. Public address 78.46.173.180.
+      AGENTS.md quality-gate #3 (the live E2E battery) targets this host.
+
+  - name: cube-las-00
+    address: 100.84.195.43
+    role: agent-host
+    ports: [18080, 19090]
+    port_note: >-
+      Deployed in the demo layout (REST :18080 / gRPC :19090), not the fleet
+      :10001/:10002 convention; the registry entry matches and the host is
+      live (v0.1.4, verified 2026-10-13). Declared here so the layout is a
+      recorded decision rather than an untracked deviation.
