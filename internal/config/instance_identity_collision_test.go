@@ -472,3 +472,52 @@ func TestDetectForeignInstanceCollisionUnreadableDefaultDir(t *testing.T) {
 		t.Errorf("gate refused on an UNREADABLE tree (must fail open): %v", err)
 	}
 }
+
+// TestBootRefusesForeignInstanceIdentity is the criterion-named entry point for
+// DF-BUNKER-95 acceptance 1: with agent.base_data_dir at the default dir, this
+// daemon's registry elsewhere, and a foreign daemon's state tree (registry +
+// instance identity + secrets) already in that default dir, boot is REFUSED
+// with a *ForeignInstanceCollisionError.
+//
+// It drives the gate through the injectable default-dir seam rather than the
+// exported method, because the exported method compares against the host's real
+// /var/lib/bunkerd — root-owned on every deployed host and never seeded by a
+// test. The seam takes the default dir as an argument, so this proves the same
+// predicate hermetically; TestDetectForeignInstanceCollisionDefaultsAndDelegation
+// pins the exported method's delegation to it.
+func TestBootRefusesForeignInstanceIdentity(t *testing.T) {
+	clearSecretEnv(t)
+
+	root := t.TempDir()
+	// The directory standing in for the default agent.base_data_dir, seeded the
+	// way a daemon that has been running from it leaves it.
+	defaultDir := filepath.Join(root, "var", "lib", "bunkerd")
+	foreignTree(t, defaultDir)
+
+	// This daemon's own registry lives elsewhere, so the tree at the default
+	// location is not this daemon's tree.
+	cfg := &Config{Agent: AgentConfig{
+		BaseDataDir: defaultDir,
+		Registry:    RegistryConfig{Path: filepath.Join(root, "scratch", "agents.jsonl")},
+	}}
+
+	err := detectForeignInstanceCollision(defaultDir, cfg)
+	if err == nil {
+		t.Fatal("gate returned nil, want a foreign-instance refusal")
+	}
+	var collision *ForeignInstanceCollisionError
+	if !errors.As(err, &collision) {
+		t.Fatalf("error type = %T, want *ForeignInstanceCollisionError", err)
+	}
+	if want := filepath.Join(defaultDir, InstanceIdentityFileName); collision.InstancePath != want {
+		t.Errorf("refusal names instance=%s, want the identity file boot would have adopted (%s)",
+			collision.InstancePath, want)
+	}
+	// The hazard the refusal must state: the identity it would have inherited,
+	// and the agents that would then be destroyed as its own orphans.
+	for _, want := range []string{"instance identity", "destroying them"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal message %q does not name %q", err.Error(), want)
+		}
+	}
+}
