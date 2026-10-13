@@ -176,6 +176,22 @@ Docker agent hosts. Send SIGINT/SIGTERM for graceful shutdown.
 	}
 	agent.SetRootlessInstallerCacheDir(cacheDir)
 
+	// DF-BUNKER-95: refuse to boot when the DEFAULT agent.base_data_dir
+	// already holds another daemon's state tree while this daemon's own
+	// registry lives elsewhere. Without this gate a scratch daemon that
+	// repointed ports/registry/ssh_dir but left agent.base_data_dir at the
+	// default READS the production daemon's instance identity
+	// (loadOrCreateDaemonInstanceID), so startup reconciliation classifies
+	// every production agent as its own orphan and destroys live agents.
+	//
+	// It runs BEFORE EnsureJWTSecret below, because that step can WRITE a
+	// generated secret into whatever tree it resolves — never into a foreign
+	// one — and it runs long before the agent manager resolves (and would
+	// adopt) the identity file. Read-only: it creates nothing.
+	if err := cfg.DetectForeignInstanceCollision(); err != nil {
+		return fmt.Errorf("refusing to start: %w", err)
+	}
+
 	// Authentication gate: refuse to start when auth is enabled but no
 	// credential is configured; warn loudly when auth is explicitly disabled.
 	//

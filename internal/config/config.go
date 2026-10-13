@@ -469,7 +469,7 @@ func SecretsDirOrDefault(baseDataDir, registryPath string) string {
 		return env
 	}
 	if dir := strings.TrimSpace(baseDataDir); dir != "" {
-		return filepath.Join(dir, "secrets")
+		return filepath.Join(dir, secretsDirName)
 	}
 	if reg := strings.TrimSpace(registryPath); reg != "" {
 		return filepath.Join(filepath.Dir(reg), "secrets")
@@ -484,6 +484,165 @@ func SecretsDirOrDefault(baseDataDir, registryPath string) string {
 // secrets in for THIS config (the method form of SecretsDirOrDefault).
 func (c *Config) SecretsDirOrDefault() string {
 	return SecretsDirOrDefault(c.Agent.BaseDataDir, c.Agent.Registry.Path)
+}
+
+// InstanceIdentityFileName is the daemon-scoped file under agent.base_data_dir
+// holding this daemon's restart-stable instance identity. internal/agent
+// declares the same name as instanceIDFile (config cannot import that package,
+// which imports config); the two MUST stay equal, because DF-BUNKER-95's boot
+// gate detects an already-occupied default tree by this file's presence and
+// loadOrCreateDaemonInstanceID reads it to ADOPT that tree's identity.
+const InstanceIdentityFileName = "instance"
+
+// secretsDirName is the subdirectory of agent.base_data_dir holding generated
+// secrets (<base_data_dir>/secrets). Declared once so the resolver above and
+// the DF-BUNKER-95 collision gate cannot drift apart.
+const secretsDirName = "secrets"
+
+// ForeignInstanceCollisionError reports the DF-BUNKER-95 boot refusal: this
+// daemon is configured with the DEFAULT agent.base_data_dir, another daemon's
+// state tree already lives there, and this daemon's own durable registry lives
+// somewhere else — i.e. the daemon would borrow another daemon's identity while
+// writing its state into its own tree.
+//
+// The failure it prevents: loadOrCreateDaemonInstanceID (internal/agent)
+// READS <base_data_dir>/instance whenever the file already exists, so a
+// scratch daemon that repointed ports/registry/ssh_dir but left
+// agent.base_data_dir at the default inherits the production daemon's instance
+// id. classifyOrphan (internal/agent/reconcile.go) then reads every production
+// agent's ownership marker as this daemon's own (orphanOurs) and the boot
+// sweep destroys LIVE production agents (observed live as a 662 MB archive of
+// a production agent plus its imminent destroy). The refusal is fail-closed at
+// boot and names every path plus the one-line fix.
+type ForeignInstanceCollisionError struct {
+	// BaseDataDir is the colliding (default) agent.base_data_dir.
+	BaseDataDir string
+	// RegistryPath is the foreign tree's registry file.
+	RegistryPath string
+	// InstancePath is the foreign tree's instance identity file — the exact
+	// file loadOrCreateDaemonInstanceID would have adopted.
+	InstancePath string
+	// SecretsDir is the foreign tree's generated-secrets directory.
+	SecretsDir string
+}
+
+// Error names the conflict (all three paths) and the fix. Kept free of the
+// "refusing to start: " prefix so both call sites (cmd/bunkerd and
+// server.Run) can add it once, the same way the auth and TLS gates do.
+func (e *ForeignInstanceCollisionError) Error() string {
+	return fmt.Sprintf(
+		"agent.base_data_dir is at the default %s but a foreign daemon's state tree already exists there "+
+			"(registry=%s, instance=%s, secrets=%s): this daemon would INHERIT that daemon's instance identity "+
+			"and classify its live agents as its own, destroying them during startup reconciliation. "+
+			"Fix: set agent.base_data_dir to a path this daemon owns (e.g. %s-daemon2)",
+		e.BaseDataDir, e.RegistryPath, e.InstancePath, e.SecretsDir, e.BaseDataDir)
+}
+
+// DetectForeignInstanceCollision reports, as a non-nil error, the boot-time
+// collision between this config's DEFAULT agent.base_data_dir and another
+// daemon's state tree (DF-BUNKER-95); nil means "safe to continue". It is a
+// READ-ONLY probe — no directory is created and no file content is read — so
+// it is safe to call before EnsureJWTSecret (which can WRITE a generated
+// secret into the tree) and before the agent manager resolves the instance
+// identity.
+func (c *Config) DetectForeignInstanceCollision() error {
+	return detectForeignInstanceCollision(DefaultAgentBaseDataDir, c)
+}
+
+// detectForeignInstanceCollision is the gate behind
+// DetectForeignInstanceCollision. defaultBaseDataDir is a parameter (rather
+// than the constant read inline) so the refusal is provable against a scratch
+// tree instead of the host's real /var/lib/bunkerd.
+//
+// A collision requires ALL of:
+//
+//  1. agent.base_data_dir IS the default dir (trailing slashes and other
+//     cosmetic spellings normalised). Any other value means the operator gave
+//     this daemon its own tree to hold the instance identity, the registry and
+//     the secrets: nothing is shared, nothing to refuse (DF-BUNKER-95
+//     acceptance 2).
+//  2. this daemon's own durable registry lives OUTSIDE that default dir, so
+//     the tree at the default location is NOT this daemon's tree. A config
+//     whose registry sits in the default dir is claiming that tree — the
+//     ordinary production restart, whose own registry/agents/secrets are all
+//     in it — and there is then no FOREIGN tree to collide with, so the daemon
+//     must start. (A SECOND daemon that shares the whole default tree is
+//     indistinguishable from that restart in config alone; it collides on the
+//     listen ports instead.)
+//  3. the default dir already holds a COMPLETE daemon state tree: its registry
+//     file, its instance identity file and its generated-secrets directory.
+//     Any subset is not proof of another daemon — a first boot creates the dir
+//     empty, and the identity file alone is written by the very boot that
+//     misconfigures this — so a partial tree fails OPEN (acceptance 3).
+//
+// The secrets signal is the DEFAULT tree's own <dir>/secrets, deliberately not
+// this config's resolved secrets dir: the question is what already exists at
+// the default location, and BUNKER_SECRETS_DIR pointing this daemon's secrets
+// elsewhere must not hide a foreign tree.
+//
+// Residual (stated, not hidden): a config with agent.base_data_dir at the
+// default whose registry path still resolves INSIDE the default dir is exempt
+// by rule 2 even when the registry is disabled, so that shape is not gated
+// here.
+func detectForeignInstanceCollision(defaultBaseDataDir string, c *Config) error {
+	base := strings.TrimSpace(c.Agent.BaseDataDir)
+	if base == "" {
+		return nil
+	}
+	defaultDir := filepath.Clean(defaultBaseDataDir)
+	if filepath.Clean(base) != defaultDir {
+		return nil
+	}
+
+	// The registry this daemon will actually use. config.Load may leave it
+	// empty until Validate() applies RegistryConfig.Defaults, so a hand-built
+	// Config gets the documented default here too.
+	registryPath := strings.TrimSpace(c.Agent.Registry.Path)
+	if registryPath == "" {
+		registryPath = DefaultRegistryPath
+	}
+	if pathWithinDir(defaultDir, registryPath) {
+		// This daemon's registry is part of the default tree: the tree is
+		// OURS to adopt, so it is not foreign.
+		return nil
+	}
+
+	foreign := ForeignInstanceCollisionError{
+		BaseDataDir: defaultDir,
+		// The foreign tree's registry file is the documented production
+		// registry name inside the default dir; the name comes from
+		// DefaultRegistryPath so the two cannot drift.
+		RegistryPath: filepath.Join(defaultDir, filepath.Base(DefaultRegistryPath)),
+		InstancePath: filepath.Join(defaultDir, InstanceIdentityFileName),
+		SecretsDir:   filepath.Join(defaultDir, secretsDirName),
+	}
+	// Every check may only refuse on POSITIVE evidence: an unreadable path
+	// (EACCES for a non-root daemon) is "not proven", never a foreign tree.
+	if !statePathExists(foreign.RegistryPath) ||
+		!statePathExists(foreign.InstancePath) ||
+		!statePathExists(foreign.SecretsDir) {
+		return nil
+	}
+	return &foreign
+}
+
+// statePathExists reports whether path exists at all (file, dir or symlink).
+// An error of any kind — including a permission error on a root-owned tree
+// read by a non-root daemon — reports false, so the DF-BUNKER-95 gate fails
+// OPEN: it may only refuse on evidence it could actually observe.
+func statePathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// pathWithinDir reports whether path is dir itself or lives underneath it.
+func pathWithinDir(dir, path string) bool {
+	dir = filepath.Clean(dir)
+	path = filepath.Clean(path)
+	if path == dir {
+		return true
+	}
+	return strings.HasPrefix(path, dir+string(filepath.Separator))
 }
 
 // SecretsSourceKind says which resolution rule produced the secrets dir:
@@ -987,9 +1146,18 @@ const (
 // the knob has no "unlimited" encoding for anyone to reach by accident.
 const DefaultUnprovenOrphanLimit = 3
 
-// Registry defaults. Kept in sync with internal/registry's documented
-// defaults by TestRegistryConfigDefaultsMatchRegistryPackage.
+// Agent base-data-dir and registry defaults. Kept in sync with
+// internal/registry's documented defaults by
+// TestRegistryConfigDefaultsMatchRegistryPackage.
 const (
+	// DefaultAgentBaseDataDir is the production default for
+	// agent.base_data_dir: the directory holding this daemon's instance
+	// identity, durable registry, API-key store, operator registry and
+	// generated secrets. A SECOND daemon on the same host must point
+	// agent.base_data_dir at a path of its own — sharing it makes the two
+	// daemons share one instance identity, which is what DF-BUNKER-95's boot
+	// gate refuses (see DetectForeignInstanceCollision).
+	DefaultAgentBaseDataDir = "/var/lib/bunkerd"
 	// DefaultRegistryPath is the production registry file.
 	DefaultRegistryPath = "/var/lib/bunkerd/agents.jsonl"
 	// DefaultRegistryMaxBytes caps the active file at 5 MiB.

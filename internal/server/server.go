@@ -108,6 +108,17 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	if err := s.cfg.Validate(); err != nil {
 		return fmt.Errorf("invalid config: %w", err)
 	}
+	// DF-BUNKER-95: refuse to serve when the DEFAULT agent.base_data_dir holds
+	// another daemon's state tree while this daemon's registry lives
+	// elsewhere. It must run HERE — before any state is opened — because
+	// agent.NewAgentManager below resolves (and would ADOPT) this daemon's
+	// instance identity from <base_data_dir>/instance and then starts the
+	// reconciliation sweep that destroys orphans of that identity. Checked
+	// before the key/operator stores too, so a colliding config writes nothing
+	// into the foreign tree.
+	if err := s.cfg.DetectForeignInstanceCollision(); err != nil {
+		return fmt.Errorf("refusing to start: %w", err)
+	}
 	// GAP-126 / REQ-T1 transport gate: refuse to serve a NON-loopback
 	// PLAINTEXT listener unless the operator made the explicit
 	// tls.insecure_dev opt-in. Mirrors the CheckAuth pattern — it runs here,
