@@ -1,0 +1,31 @@
+{
+  "tick_id": "bunker-foreman-2026-10-13-09-00-57",
+  "wave_id": "wave-2026-10-13-090057-recovery",
+  "created_at": "2026-10-13T09:00:57-05:00",
+  "type": "wave-recovery + one dispatch",
+  "recovered": {
+    "wave_tick": "bunker-foreman-2026-10-13-07-13-46",
+    "note": "5 branches from the 07:13 wave; GAP-083 had already landed in ffe40dfd (earlier tick). Remaining 4 merged serially with --no-ff after gates.",
+    "merges": [
+      {"task": "GAP-121", "branch": "wt/GAP-121-resource-events", "commit": "94abac36", "merge": "bd7b5324"},
+      {"task": "GAP-136", "branch": "wt/GAP-136-anchored-audit", "commit": "0891e763", "merge": "b248744b"},
+      {"task": "GAP-112", "branch": "wt/GAP-112-mount-live-proof", "commit": "bb880d17", "merge": "fd64f4cb"},
+      {"task": "GAP-122", "branch": "wt/GAP-122-preset-e2e-battery", "commit": "3e783fd1", "merge": "7e2b8c5a"}
+    ],
+    "gates": "go build/vet/test ./... full suite PASS on merged tree; board rows closed with commit hashes; worktrees removed, branches deleted"
+  },
+  "new_work": {
+    "task": "DF-BUNKER-52",
+    "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-52",
+    "branch": "wt/DF-BUNKER-52",
+    "worker": "deepseek-v4-flash@deepseek-foreman",
+    "commit": "ebad9ba2",
+    "merge": "94c55d32",
+    "judge": "c6748fb3 PASS (Tier 2)",
+    "board_close": "d53cb96f"
+  },
+  "ci_health": "2 red runs on main (freshness guard + 1/34 regression dockerd-start flake); logged to events.jsonl id 1064",
+  "status": "closed",
+  "finished_at": "2026-10-13T05:35:00-05:00",
+  "closed_at": "2026-10-13T05:35:00-05:00"
+}
