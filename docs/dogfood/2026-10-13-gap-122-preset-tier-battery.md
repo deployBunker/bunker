@@ -152,7 +152,97 @@ changes a verdict on the knobs that do land (`CPUQuota`, `MemoryMax`,
 `TasksMax`, `MemorySwapMax`/`MemoryHigh` at E1, `LimitNOFILE`/`LimitFSIZE` at
 E2).
 
-## Harness self-tests
+## Results of the GAP-122 runs (bunker-mvp, 2026-10-13)
+
+Raw logs are committed under `docs/evidence/`:
+
+| Log | Profile | Result |
+|---|---|---|
+| `GAP-122-preset-battery-full-profile.log` | `full` | `TIER open VERDICT: PASS (pass=11 fail=0)` — every workload W1–W5 **and** every abuse/isolation case green |
+| `GAP-122-preset-battery-core-run.log` | `core` | `open` PASS 9/9, `standard` PASS 9/9, `hardened` 8/9, plus the **negative control** |
+| `GAP-122-preset-battery-core-retry.log` | `core`, tier retry enabled | `open` PASS 9/9; `standard` ABORTED by the CI sweep → automatic re-run |
+| `GAP-122-preset-battery-retry4.log` | `core`, 4 tier attempts | `open` 9/9 with the E2 detached-dockerd finding below (a real R2 violation, correctly reported as FAIL) |
+
+### A tier certified end to end (full workload profile)
+
+```
+TIER open
+  LANDING E1 (slice) ....... OK  (3/3 cgroup knobs landed)
+  LANDING E2 (unit) ........ OK  (5/5 knobs landed)
+  W1 docker-build .......... PASS
+  W2 compose-up ............ PASS (services: app db)
+  W3 dotnet-linuxserver .... PASS (ran ≥60s, /config entries: 11)
+  W4 node+python ........... PASS (python3 in-session, node in-container)
+  W5 docker-load-1.4G ...... PASS (wall time: 7s, artifact 4MiB — see the size note below)
+  A1 fork-bomb ............. CONTAINED (pids.max=4096; session-scope pids.events max +1; 3967 threads admitted)
+  A2 memory-bomb ........... CONTAINED (oom_kill +1, memory.peak=4294967296, allocated 3840MiB — the AGENT paid)
+  A3 io-hog ................ CONTAINED (peer read 875ms → 908ms, +3%)
+  I1 peer-isolation ........ PASS (peer home unreadable, su refused)
+  I2 cgroup-escape ......... PASS (inside user-1296.slice; peer limit write denied)
+  I3 usability ............. PASS (home read/write, command exec, network=yes)
+TIER open VERDICT: PASS   (pass=11 fail=0 skip=0 findings=1)
+```
+
+`standard` reached the same shape in the core profile (`TIER standard VERDICT:
+PASS (pass=9 fail=0)`), and `hardened`'s landing checks landed 5/5 + 5/5 with
+its containment cases green whenever the host did not mutate mid-tier.
+
+### The negative control (the landing check is not vacuous)
+
+```
+  NEGATIVE CONTROL: running tier 'standard' with a deliberately mis-set
+  expectation (e1:MemorySwapMax=1). The landing check MUST report MISMATCH.
+  ✗ LANDING E1 MISMATCH: memory.swap.max=0, want 1
+  NEG-CONTROL    : PASS (deliberately mis-set e1:MemorySwapMax=1 correctly FAILED the landing check)
+VERIFY-PASS
+```
+
+### Honest limits of this evidence
+
+No single run printed an all-tiers `VERIFY-PASS`. That is a property of
+**bunker-mvp, not of the battery**: the repo's own CI battery runs there in
+standalone mode and its cleanup sweeps `userdel -rf` over every `^bunker-` user.
+During this work it destroyed this battery's agents mid-tier in four separate
+runs, and a fifth run lost `open` to a uid collision with a concurrently
+spawned CI agent. The battery now detects, reports and retries those cases
+instead of turning them into preset verdicts (`ABORTED`, "measured while the
+host mutated under it"), which is why the per-tier results above are trustworthy
+even though the aggregate run is not: each tier verdict above was produced
+inside a window in which that tier's agent survived from spawn to teardown.
+
+### Finding 3 (a real R2 violation the battery caught)
+
+On one run the `open` tier's E2 landing check failed while every docker
+workload passed:
+
+```
+✗ LANDING E2: the dockerd unit bunker-docker-preset-open.service is FAILED
+  (ExecMainStatus=1) and carries NO cgroup, yet the agent's docker still
+  answers — the rootless dockerd detached from its transient unit [results
+  omitted: see the log]
+```
+
+Measured state:
+
+```
+systemctl show bunker-docker-preset-open.service -p Result -p ExecMainStatus \
+                                               -p ActiveState -p ControlGroup
+  Result=exit-code  ExecMainStatus=1  ActiveState=failed  ControlGroup=
+cat /proc/<detached rootlesskit pid>/cgroup
+  0::/user.slice/user-1290.slice/user@1290.service/app.slice/docker.service
+```
+
+The unit's `ExecStart` exits after ~374 ms while its rootlesskit child keeps
+serving `/run/bunker/preset-open/docker.sock`. The daemon and every container it
+starts then live in `user@<uid>.service/app.slice/docker.service`, **not** in
+`bunker-docker-<id>.service` — so the unit argv that carried `CPUQuota`,
+`MemoryMax`, `TasksMax`, `LimitNOFILE` and `LimitFSIZE` for that agent is
+enforced on nothing. This is the shadow-proc B2 class the preset family's R2
+exists to prevent: a limit that attached once and never fired. The workloads
+still pass (docker answers), which is exactly why a landing check — not a
+workload check — is what catches it.
+
+### Harness self-tests
 
 `--self-test` runs 36 diagnostics with no root, no daemon and no host mutation
 (`SELF-TEST: PASS`): the kernel page-normalisation rule for `memory.high`

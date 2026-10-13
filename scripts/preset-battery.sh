@@ -931,7 +931,24 @@ landing_e2() {
     local wt=0
     while [ ! -d "$cg" ] && [ "$wt" -lt 30 ]; do sleep 2; wt=$((wt+2)); done
     if [ ! -d "$cg" ]; then
-        bad "LANDING E2: the transient unit cgroup $cg does not exist after ${wt}s — the dockerd unit is not running under this tier"
+        # Distinguish the two ways this happens, because they mean different
+        # things: (a) the unit never started, or (b) the unit FAILED while its
+        # rootless dockerd kept serving from OUTSIDE the unit's cgroup — which
+        # is the no-silent-no-op case in its purest form: docker answers, the
+        # workloads pass, and every limit the tier asked for at E2 is simply
+        # not in effect. Measured 2026-10-13: bunker-docker-preset-open.service
+        # `Result=exit-code ExecMainStatus=1` after 374ms while the live
+        # dockerd sat in user.slice/user-<uid>.slice/user@<uid>.service/
+        # app.slice/docker.service.
+        local astat esec
+        astat="$(systemctl show "$unit" -p ActiveState --value 2>/dev/null | tr -d '\n')"
+        esec="$(systemctl show "$unit" -p ExecMainStatus --value 2>/dev/null | tr -d '\n')"
+        if [ "$astat" = "failed" ]; then
+            bad "LANDING E2: the dockerd unit $unit is FAILED (ExecMainStatus=$esec) and carries NO cgroup, yet the agent's docker still answers — the rootless dockerd detached from its transient unit, so every knob this tier asked for at E2 (CPUQuota, MemoryMax, TasksMax, LimitNOFILE, LimitFSIZE) is NOT in effect for its daemon or its containers. R2 violation (a limit that attached and never fired)."
+            finding "E2 enforcement is absent for this agent: $unit is in state '$astat' (exit $esec) with an empty ControlGroup, while a live rootless dockerd serves the agent's socket. Containers started by this agent run outside the unit whose argv carried the tier's limits."
+        else
+            bad "LANDING E2: the transient unit cgroup $cg does not exist after ${wt}s (unit ActiveState='${astat:-unknown}') — the dockerd unit is not running under this tier"
+        fi
         TIER_FAILS=$((TIER_FAILS+1))
         return 0
     fi
@@ -1152,6 +1169,13 @@ w5_docker_load() {
     aexec "$agent" "rm -f \$HOME/w5.tar" || true
     if [ "$load_rc" -eq 0 ] && printf '%s' "$load_out" | grep -q W5_OK; then
         ok "W5 docker-load-1.4G ...... PASS (wall time: ${wall}s, artifact $(( size / 1048576 ))MiB)"
+        # The artifact is generated from a `dd` of PRESET_W5_BYTES zeros, but a
+        # sparse-aware layer can shrink it: measured 2026-10-13, a 1433 MiB
+        # request produced a 4 MiB save (7s load), so the IO class was NOT
+        # exercised at the intended size. Say so instead of certifying it.
+        if [ "$size" -lt "$(( PRESET_W5_BYTES * 9 / 10 ))" ]; then
+            note "W5 docker-load: the staged artifact was $(( size / 1048576 ))MiB, not the ${PRESET_W5_BYTES} bytes requested — the load path ran, but the IO class was not exercised at the intended size (the builder's zero-filled file was stored sparsely)"
+        fi
     else
         bad "W5 docker-load-1.4G ...... FAIL (rc=$load_rc, wall ${wall}s, timeout ${PRESET_W5_TIMEOUT}s): $(last_lines "$load_out")"
         TIER_FAILS=$((TIER_FAILS+1))

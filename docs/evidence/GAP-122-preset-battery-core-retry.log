@@ -1,0 +1,183 @@
+final run starting at 2026-10-13T09:38:43Z
+=== Bunker preset acceptance battery v1.0.0 (GAP-122) ===
+  binary  : /root/gap122-bin/bunker (bunker 0.2.0)
+  daemon  : /root/gap122-bin/bunkerd (bunkerd 0.2.0)
+  workloads profile: core
+  coexist : 1   ports REST :38081 gRPC :39091
+
+  WARNING: a host-wide bunker battery is running — PRESET_ALLOW_SHARED_HOST=1 was set,
+           so this run proceeds; the per-tier ABORT guard will report any agent it loses.
+  preflight OK: root, cgroup2fs, controllers present (cpuset cpu io memory hugetlb pids rdma misc)
+  run lock held: /var/lock/preset-battery.lock
+  battery daemon ready: REST :38081 (pid 456403), registry disabled
+  battery CLI state dir: /tmp/preset-battery-cli-AOUyHd (BUNKER_HOME and HOME for every CLI call)
+  battery daemon log   : /tmp/preset-battery-bunkerd.log
+  connected: preset-battery → http://127.0.0.1:38081
+
+  tiers under test: open standard hardened
+
+  peer agent preset-peer (uid 1313) ready
+
+
+TIER open
+  · spawned preset-open (uid 1315) with --preset open
+  · agent docker is answering (ready after ~0s)
+  LANDING E1 (user-<uid>.slice drop-in → live slice cgroup)
+  · E1 coverage: a live exec session sits inside user-1315.slice (0::/user.slice/user-1315.slice/session-49905.scope)
+  · E1 CPUQuota=200% → landed (200000 100000)
+  · E1 MemoryMax=4294967296 → landed (4294967296)
+  · E1 TasksMax=4096 → landed (4096)
+  · E1 LimitNOFILE=65536:65536 declared in the drop-in, but systemd applies RLIMITs per unit at fork — a .slice forks nothing, so this property is INERT at E1 (verified at E2 instead)
+  · E1 LimitFSIZE=21474836480 declared in the drop-in, but systemd applies RLIMITs per unit at fork — a .slice forks nothing, so this property is INERT at E1 (verified at E2 instead)
+  ‼ FINDING: the drop-in declares RLIMIT knob(s)[ LimitNOFILE=65536:65536 LimitFSIZE=21474836480] on user-1315.slice, but systemd applies RLIMITs per unit at fork and a .slice forks nothing — so those properties are inert at E1. An exec session was measured at: E1_SESSION_NOFILE=1024 E1_SESSION_FSIZE_BLOCKS=unlimited. The enforceable surface for them is E2 (the dockerd unit + the containers it starts), where they are verified.
+  LANDING E1 (slice) ....... OK  (3/3 cgroup knobs landed)
+  LANDING E2 (rootless dockerd unit)
+  · E2 CPUQuota=200% → landed (200000 100000)
+  · E2 MemoryMax=4294967296 → landed (4294967296)
+  · E2 LimitFSIZE=21474836480 → landed (21474836480)
+  · E2 TasksMax=4096 → landed (4096)
+  · E2 LimitNOFILE=65536:65536 → landed (65536)
+  LANDING E2 (unit) ........ OK  (5/5 knobs landed)
+  SURFACE COVERAGE (matrix E1+E2 requirement vs what the daemon applied)
+  · coverage CPUQuota: E1=yes E2=yes
+  · coverage MemoryMax: E1=yes E2=yes
+  · coverage TasksMax: E1=yes E2=yes
+  · coverage LimitNOFILE: E1=yes E2=yes
+  · coverage LimitFSIZE: E1=yes E2=yes
+  ⚠ W3 dotnet-linuxserver .... SKIP (profile 'core' — run PRESET_WORKLOADS=full for the release gate)
+  ⚠ W5 docker-load-1.4G ...... SKIP (profile 'core' — run PRESET_WORKLOADS=full for the release gate)
+  ✓ W1 docker-build .......... PASS
+  ✓ W2 compose-up ............ PASS (services: app db)
+  ✓ W4 node+python ........... PASS (python3 in-session, node in-container)
+  ✓ A1 fork-bomb ............. CONTAINED (pids controller REFUSED forks/tasks at pids.max=4096: slice pids.events max +0+0, session-scope +0+1; 4005 threads admitted)
+  ✓ A2 memory-bomb ........... CONTAINED (oom_kill +1, high +0, memory.peak=4294967296, allocated 3840MiB — the AGENT paid; the tier's cap memory.max=4294967296 fired)
+  ✓ A3 io-hog ................ CONTAINED (no IO bound claimed by this tier — peer read best-of-3 baseline 875ms → best-of-2 under load 876ms, +0% recorded, not asserted)
+  ✓ I1 peer-isolation ........ PASS (peer home unreadable rc=1, su refused)
+  ✓ I2 cgroup-escape ......... PASS (in user-1315.slice before AND after a move attempt [I2_MOVE_DENIED]; peer slice visible=yes, peer limit write denied)
+  ✓ I3 usability ............. PASS (home read/write, command exec, network=yes)
+TIER open VERDICT: PASS   (pass=9 fail=0 skip=0 findings=1)
+
+TIER standard
+  · spawned preset-standard (uid 1316) with --preset standard
+  · agent docker is answering (ready after ~0s)
+  LANDING E1 (user-<uid>.slice drop-in → live slice cgroup)
+  · E1 coverage: a live exec session sits inside user-1316.slice (0::/user.slice/user-1316.slice/session-49930.scope)
+  · E1 CPUQuota=200% → landed (200000 100000)
+  · E1 MemoryMax=4294967296 → landed (4294967296)
+  · E1 TasksMax=4096 → landed (4096)
+  · E1 LimitNOFILE=65536:65536 declared in the drop-in, but systemd applies RLIMITs per unit at fork — a .slice forks nothing, so this property is INERT at E1 (verified at E2 instead)
+  · E1 LimitFSIZE=21474836480 declared in the drop-in, but systemd applies RLIMITs per unit at fork — a .slice forks nothing, so this property is INERT at E1 (verified at E2 instead)
+  · E1 MemorySwapMax=0 → landed (0)
+  · E1 MemoryHigh=3865470480 → landed (3865468928)
+  ‼ FINDING: the drop-in declares RLIMIT knob(s)[ LimitNOFILE=65536:65536 LimitFSIZE=21474836480] on user-1316.slice, but systemd applies RLIMITs per unit at fork and a .slice forks nothing — so those properties are inert at E1. An exec session was measured at: E1_SESSION_NOFILE=1024 E1_SESSION_FSIZE_BLOCKS=unlimited. The enforceable surface for them is E2 (the dockerd unit + the containers it starts), where they are verified.
+  LANDING E1 (slice) ....... OK  (5/5 cgroup knobs landed)
+  LANDING E2 (rootless dockerd unit)
+  · E2 CPUQuota=200% → landed (200000 100000)
+  · E2 MemoryMax=4294967296 → landed (4294967296)
+  · E2 LimitFSIZE=21474836480 → landed (21474836480)
+  · E2 TasksMax=4096 → landed (4096)
+  · E2 LimitNOFILE=65536:65536 → landed (65536)
+  LANDING E2 (unit) ........ OK  (5/5 knobs landed)
+  SURFACE COVERAGE (matrix E1+E2 requirement vs what the daemon applied)
+  · coverage CPUQuota: E1=yes E2=yes
+  · coverage MemoryMax: E1=yes E2=yes
+  · coverage TasksMax: E1=yes E2=yes
+  · coverage LimitNOFILE: E1=yes E2=yes
+  · coverage LimitFSIZE: E1=yes E2=yes
+  · coverage MemorySwapMax: E1=yes E2=no
+  ‼ FINDING: MemorySwapMax is claimed at E1 (user slice) only — the spec's §3 matrix marks it E1+E2, and the transient dockerd unit is NOT inside user-<uid>.slice (it lives in system.slice), so containers started by this agent are not covered by that knob
+  · coverage MemoryHigh: E1=yes E2=no
+  ‼ FINDING: MemoryHigh is claimed at E1 (user slice) only — the spec's §3 matrix marks it E1+E2, and the transient dockerd unit is NOT inside user-<uid>.slice (it lives in system.slice), so containers started by this agent are not covered by that knob
+  ⚠ W3 dotnet-linuxserver .... SKIP (profile 'core' — run PRESET_WORKLOADS=full for the release gate)
+  ⚠ W5 docker-load-1.4G ...... SKIP (profile 'core' — run PRESET_WORKLOADS=full for the release gate)
+  ✓ W1 docker-build .......... PASS
+  ✓ W2 compose-up ............ PASS (services: app db)
+  ✓ W4 node+python ........... PASS (python3 in-session, node in-container)
+  ✓ A1 fork-bomb ............. CONTAINED (pids controller REFUSED forks/tasks at pids.max=4096: slice pids.events max +0+0, session-scope +0+1; 4009 threads admitted)
+  ✗ A2 memory-bomb ........... FAIL (could not read memory.max; driver said: Connection to localhost closed by remote host.)
+  ✗ A3 io-hog ................ FAIL (peer baseline read failed)
+  ✗ ABORTED: agent preset-standard was destroyed mid-tier by an external actor — its Linux user and/or its home no longer exist (a host-wide battery sweep does 'userdel -rf' for every ^bunker- user). Every measurement past this point would describe a dead agent, so the tier is ABORTED rather than reported as containment failures.
+TIER standard VERDICT: ABORTED   (pass=4 fail=3 findings=3 — agent lost to an external sweep)
+  · tier standard was ABORTED by an external sweep — waiting for the host to settle, then re-running (attempt 2/2)
+
+TIER standard
+  · spawn attempt 1/3 for preset-standard failed: Creating agent... bunker: spawn agent: internal: spawn preset-standard failed at stage port-alloc: port range allocation: agent "preset-standard" already has a port range allocated
+  · spawned preset-standard (uid 1284) with --preset standard
+  · agent docker is answering (ready after ~0s)
+  LANDING E1 (user-<uid>.slice drop-in → live slice cgroup)
+  · E1 coverage: a live exec session sits inside user-1284.slice (0::/user.slice/user-1284.slice/session-49989.scope)
+  · E1 CPUQuota=200% → landed (200000 100000)
+  · E1 MemoryMax=4294967296 → landed (4294967296)
+  · E1 TasksMax=4096 → landed (4096)
+  · E1 LimitNOFILE=65536:65536 declared in the drop-in, but systemd applies RLIMITs per unit at fork — a .slice forks nothing, so this property is INERT at E1 (verified at E2 instead)
+  · E1 LimitFSIZE=21474836480 declared in the drop-in, but systemd applies RLIMITs per unit at fork — a .slice forks nothing, so this property is INERT at E1 (verified at E2 instead)
+  · E1 MemorySwapMax=0 → landed (0)
+  · E1 MemoryHigh=3865470480 → landed (3865468928)
+  ‼ FINDING: the drop-in declares RLIMIT knob(s)[ LimitNOFILE=65536:65536 LimitFSIZE=21474836480] on user-1284.slice, but systemd applies RLIMITs per unit at fork and a .slice forks nothing — so those properties are inert at E1. An exec session was measured at: E1_SESSION_NOFILE=1024 E1_SESSION_FSIZE_BLOCKS=unlimited. The enforceable surface for them is E2 (the dockerd unit + the containers it starts), where they are verified.
+  LANDING E1 (slice) ....... OK  (5/5 cgroup knobs landed)
+  LANDING E2 (rootless dockerd unit)
+  · E2 CPUQuota=200% → landed (200000 100000)
+  · E2 MemoryMax=4294967296 → landed (4294967296)
+  · E2 LimitFSIZE=21474836480 → landed (21474836480)
+  · E2 TasksMax=4096 → landed (4096)
+  · E2 LimitNOFILE=65536:65536 → landed (65536)
+  LANDING E2 (unit) ........ OK  (5/5 knobs landed)
+  SURFACE COVERAGE (matrix E1+E2 requirement vs what the daemon applied)
+  · coverage CPUQuota: E1=yes E2=yes
+  · coverage MemoryMax: E1=yes E2=yes
+  · coverage TasksMax: E1=yes E2=yes
+  · coverage LimitNOFILE: E1=yes E2=yes
+  · coverage LimitFSIZE: E1=yes E2=yes
+  · coverage MemorySwapMax: E1=yes E2=no
+  ‼ FINDING: MemorySwapMax is claimed at E1 (user slice) only — the spec's §3 matrix marks it E1+E2, and the transient dockerd unit is NOT inside user-<uid>.slice (it lives in system.slice), so containers started by this agent are not covered by that knob
+  · coverage MemoryHigh: E1=yes E2=no
+  ‼ FINDING: MemoryHigh is claimed at E1 (user slice) only — the spec's §3 matrix marks it E1+E2, and the transient dockerd unit is NOT inside user-<uid>.slice (it lives in system.slice), so containers started by this agent are not covered by that knob
+  ⚠ W3 dotnet-linuxserver .... SKIP (profile 'core' — run PRESET_WORKLOADS=full for the release gate)
+  ⚠ W5 docker-load-1.4G ...... SKIP (profile 'core' — run PRESET_WORKLOADS=full for the release gate)
+  ✓ W1 docker-build .......... PASS
+  ✓ W2 compose-up ............ PASS (services: app db)
+  ✓ W4 node+python ........... PASS (python3 in-session, node in-container)
+  ✓ A1 fork-bomb ............. CONTAINED (pids controller REFUSED forks/tasks at pids.max=4096: slice pids.events max +0+0, session-scope +0+1; 4004 threads admitted)
+  ✓ A2 memory-bomb ........... CONTAINED (memory.high throttling +60937, no kills, memory.peak=4088356864, allocated 3584MiB — the AGENT paid by slowing)
+  ✗ A3 io-hog ................ FAIL (peer baseline read failed)
+  ✓ I1 peer-isolation ........ PASS (peer home unreadable rc=1, su refused)
+  ✓ I2 cgroup-escape ......... PASS (in user-1284.slice before AND after a move attempt [I2_MOVE_DENIED]; peer slice visible=no, peer limit write denied)
+  ✓ I3 usability ............. PASS (home read/write, command exec, network=yes)
+TIER standard VERDICT: FAIL   (pass=8 fail=1 skip=0 findings=3)
+  · tier standard measured while the host mutated under it (a driver read nothing / the exec transport died) and out of retries (2)
+
+TIER hardened
+  · spawned preset-hardened (uid 1286) with --preset hardened
+  · agent docker is answering (ready after ~0s)
+  LANDING E1 (user-<uid>.slice drop-in → live slice cgroup)
+  · E1 coverage: a live exec session sits inside user-1286.slice (0::/user.slice/user-1286.slice/session-50039.scope)
+  · E1 CPUQuota=200% → landed (200000 100000)
+  · E1 MemoryMax=4294967296 → landed (4294967296)
+  · E1 TasksMax=4096 → landed (4096)
+  · E1 LimitNOFILE=65536:65536 declared in the drop-in, but systemd applies RLIMITs per unit at fork — a .slice forks nothing, so this property is INERT at E1 (verified at E2 instead)
+  · E1 LimitFSIZE=21474836480 declared in the drop-in, but systemd applies RLIMITs per unit at fork — a .slice forks nothing, so this property is INERT at E1 (verified at E2 instead)
+  · E1 MemorySwapMax=0 → landed (0)
+  · E1 MemoryHigh=3865470480 → landed (3865468928)
+  ‼ FINDING: the drop-in declares RLIMIT knob(s)[ LimitNOFILE=65536:65536 LimitFSIZE=21474836480] on user-1286.slice, but systemd applies RLIMITs per unit at fork and a .slice forks nothing — so those properties are inert at E1. An exec session was measured at: E1_SESSION_NOFILE=1024 E1_SESSION_FSIZE_BLOCKS=unlimited. The enforceable surface for them is E2 (the dockerd unit + the containers it starts), where they are verified.
+  LANDING E1 (slice) ....... OK  (5/5 cgroup knobs landed)
+  LANDING E2 (rootless dockerd unit)
+  · E2 CPUQuota=200% → landed (200000 100000)
+  · E2 MemoryMax=4294967296 → landed (4294967296)
+  · E2 LimitFSIZE=21474836480 → landed (21474836480)
+  · E2 TasksMax=4096 → landed (4096)
+  · E2 LimitNOFILE=65536:65536 → landed (65536)
+  LANDING E2 (unit) ........ OK  (5/5 knobs landed)
+  SURFACE COVERAGE (matrix E1+E2 requirement vs what the daemon applied)
+  · coverage CPUQuota: E1=yes E2=yes
+  · coverage MemoryMax: E1=yes E2=yes
+  · coverage TasksMax: E1=yes E2=yes
+  · coverage LimitNOFILE: E1=yes E2=yes
+  · coverage LimitFSIZE: E1=yes E2=yes
+  · coverage MemorySwapMax: E1=yes E2=no
+  ‼ FINDING: MemorySwapMax is claimed at E1 (user slice) only — the spec's §3 matrix marks it E1+E2, and the transient dockerd unit is NOT inside user-<uid>.slice (it lives in system.slice), so containers started by this agent are not covered by that knob
+  · coverage MemoryHigh: E1=yes E2=no
+  ‼ FINDING: MemoryHigh is claimed at E1 (user slice) only — the spec's §3 matrix marks it E1+E2, and the transient dockerd unit is NOT inside user-<uid>.slice (it lives in system.slice), so containers started by this agent are not covered by that knob
+  ⚠ W3 dotnet-linuxserver .... SKIP (profile 'core' — run PRESET_WORKLOADS=full for the release gate)
+  ⚠ W5 docker-load-1.4G ...... SKIP (profile 'core' — run PRESET_WORKLOADS=full for the release gate)
+  ✓ W1 docker-build .......... PASS
+  ✓ W2 compose-up ............ PASS (services: app db)
