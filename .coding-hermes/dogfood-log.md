@@ -469,3 +469,63 @@ Corrections to the first delivery of this run:
   bunker-mvp; no visibility/permission changes; no credentials minted.
 - **Perf:** unchanged from the first delivery (no user-noticeable waits; no
   PERF row).
+
+## 2026-10-12 run-26 — rclone SFTP mount driver (MOUNT-007): first real use
+
+- **Promise tested:** docs/mount-drivers.md §3.2 — "an agent spawned with
+  `--mount-driver rclone` mounts through the rclone arm; the agent needs
+  NOTHING installed — only the client needs the rclone binary."
+- **What held up (HEAD daemon ae821785 on a local scratch install, isolated
+  base_data_dir; HEAD client):** spawn accepts the driver; the stored command
+  rewrite is correct (server key path → client key, host → the address the
+  client uses, server-namespaced private mountpoint); mount 0.60s cold /
+  459.8ms ±55.9ms warm (hyperfine ×3) vs 4.8s sshfs cold on the same client;
+  two-way file round-trips exact; gcc build on the agent through a
+  client-written source; umount by id and by path both clean, no rclone
+  process survives; umount-when-clean exits 0 per the documented contract;
+  unknown-driver/unknown-agent refusals fail loud rc=1.
+- **What broke:** DF-BUNKER-92 P2 (docs-ahead-of-release: v0.2.0 daemon
+  refuses `--mount-driver rclone` — registration commit 10760912 is NOT in
+  the tag; the 0.2.0 client already sends the flag), DF-BUNKER-93 P2
+  (rclone's default --dir-cache-time 5m unpinned → agent-side writes
+  invisible via the mount ~4-5 min; a compiled binary read as missing while
+  exec showed it), DF-BUNKER-94 P2 (exec bits lost over rclone: chmod 755
+  reads rw-rw-r-- vs rwxr-xr-x over sshfs — same-probe parity; running a
+  built binary off the mount = Permission denied).
+- **Rows filed:** 94 + 95 (mine, this run) — 92/93 were already filed by the
+  sibling run-25 follow-up tick while this run was in flight (independent
+  discoveries; my duplicates were refused by the id check, their rows stand).
+  DF-BUNKER-95 P1 (base_data_dir default makes a second daemon inherit the
+  prod instance identity and classify prod agents as its own orphans —
+  near-miss destroyed agent 0fb9cb9b's archive step before the scratch
+  daemon was killed; run-25's addendum recorded the same incident from the
+  earlier turns of this shared tick; my row carries the full
+  classifyOrphan mechanism + the one-line config fix that makes the foreign
+  classification fire correctly).
+- **Perf (Step 2b):** mount rclone 0.60s cold / 460ms warm (nothing
+  user-noticeable — no PERF row); the 4-5 min readdir staleness (93) is a
+  correctness/UX row, not a perf row.
+- **Install leg (SUBSTITUTED, not a silent pass):** every bunker host except
+  mvp unreachable (TCP timeouts); mvp mid-E2E-battery AND unsafe for a
+  scratch daemon (see 95). The HEAD-daemon leg ran on the local control host
+  instead (isolated base_data_dir, ports 29090/28080, auth on, its own
+  instance id). What remains unproven: the rclone driver against a released
+  daemon — moot until 92's release gap closes.
+- **Verdict:** 🟡 PROMISING-BUT-ROUGH (rclone surface) — the driver delivers
+  its promise and the client rewrite path is genuinely good; the release-gap
+  refusal and the read-back semantics (staleness + exec-bit loss) are what a
+  fresh user trips on first.
+- **Artifacts:** docs/dogfood/2026-10-12-rclone-mount-driver.md, this entry,
+  board rows DF-BUNKER-94/95.
+- **Cleanup:** dfrclone-a destroyed + verified absent, mounts unmounted, no
+  rclone processes, local scratch daemon stopped, scratch dir intact at
+  /tmp/dfd012-loc for the foreman to inspect or delete; dfsshfs-b (parity
+  probe) destroyed on mvp; dfsshfs-a was destroyed by the mvp E2E battery's
+  monitor mid-run (NOT by this run — audit: caller=master, 100.97.236.14,
+  00:10:13Z). No visibility/permission changes; no credentials minted or
+  committed.
+- **Cross-run hazard recorded:** the mvp host's wipe-df-scratch.sh automation
+  deleted this run's first scratch tree (/root/dfd012) 2s after boot; the
+  battery's monitor destroyed a live 6h-TTL agent spawned by this run.
+  Future ephemeral legs on mvp should use fresh per-run path prefixes and
+  expect mid-run agent reaping while a battery is active.
