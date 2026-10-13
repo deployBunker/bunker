@@ -22,7 +22,8 @@ import (
 //     quotes.
 //   - DF-BUNKER-80 CHANGED every row on purpose AGAIN: Dockerfile() now
 //     emits the stock-toolchain layer (stockToolchainGoldenLine: git, the
-//     docker client, python3, make, jq, ca-certificates) immediately after
+//     docker client, python3, make, jq, ca-certificates, and — since
+//     DF-BUNKER-52 — the Go toolchain) immediately after
 //     FROM, before the spec's package lines. The pre-fix rows encoded the
 //     defect as expected behavior — a package-add spec rendered FROM <bare
 //     base> + ONLY the listed packages, which REPLACED the agent userland
@@ -37,6 +38,11 @@ import (
 //     DF-BUNKER-80 expectation, which is exactly the property the fix must have
 //     (it is confined to the go manager — see
 //     TestDockerfile_APTSpecsUnchangedByGoBootstrap).
+//   - DF-BUNKER-52 CHANGED every row on purpose ONE more time: the stock
+//     userland layer now ships the Go toolchain ('golang-go', see
+//     StockToolchainPackages), so a fresh agent can `go build` without any
+//     spec directive. Every row below moves with stockToolchainGoldenLine and
+//     NOTHING else changes — the per-manager render bytes are untouched.
 //
 // The test stays exact-byte (never a substring check): quoting is a security
 // property of the emitted line, so the line itself is the thing under test.

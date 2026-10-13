@@ -76,10 +76,17 @@ func TestBuildFailureNote_NamesTheFailingDirective(t *testing.T) {
 			notWant: []string{`directive "go"`},
 		},
 		{
-			name:   "output names only the failing package",
-			spec:   remediationSpec,
-			output: "E: Unable to locate package golang-go",
-			want:   []string{`directive "go"`, "golang-go"},
+			// DF-BUNKER-52: 'golang-go' is now in BOTH the go directive's
+			// bootstrap layer and the stock userland layer, and the stock
+			// layer is rendered first — so an apt failure that names only
+			// that package dies at the stock layer (the tie rule: earliest
+			// layer wins). The attribution follows what the builder would
+			// actually fail on; it is not merely deterministic.
+			name:    "output names only the failing package (installed by both the stock layer and the go directive)",
+			spec:    remediationSpec,
+			output:  "E: Unable to locate package golang-go",
+			want:    []string{"stock toolchain layer", "golang-go"},
+			notWant: []string{`directive "go"`},
 		},
 		{
 			name:   "output names only a package the stock layer owns",
@@ -141,7 +148,7 @@ func TestBuildFailureNote_NamesTheFailingDirective(t *testing.T) {
 			spec: &Spec{Base: DefaultBaseImage, Packages: []PackageAdd{
 				{Manager: ManagerGo, Packages: []string{"example.invalid/nonexistent-tool@latest"}},
 			}},
-			output: `#5 [2/4] RUN apt-get update && apt-get install -y --no-install-recommends 'ca-certificates' 'git' 'python3' 'make' 'jq' 'docker.io' && rm -rf /var/lib/apt/lists/*
+			output: `#5 [2/4] RUN apt-get update && apt-get install -y --no-install-recommends 'ca-certificates' 'golang-go' 'git' 'python3' 'make' 'jq' 'docker.io' && rm -rf /var/lib/apt/lists/*
 #5 CACHED
 #6 [3/4] RUN apt-get update && apt-get install -y --no-install-recommends 'golang-go' && rm -rf /var/lib/apt/lists/*
 #6 CACHED
@@ -163,7 +170,7 @@ func TestBuildFailureNote_NamesTheFailingDirective(t *testing.T) {
 			}},
 			output: `Dockerfile.broken-go:4
 --------------------
-   2 |     RUN apt-get update && apt-get install -y --no-install-recommends 'ca-certificates' 'git' 'python3' 'make' 'jq' 'docker.io' && rm -rf /var/lib/apt/lists/*
+   2 |     RUN apt-get update && apt-get install -y --no-install-recommends 'ca-certificates' 'golang-go' 'git' 'python3' 'make' 'jq' 'docker.io' && rm -rf /var/lib/apt/lists/*
    3 |     RUN apt-get update && apt-get install -y --no-install-recommends 'golang-go' && rm -rf /var/lib/apt/lists/*
    4 | >>> RUN GOBIN=/usr/local/bin go install 'example.invalid/nonexistent-tool@latest'
    5 |     

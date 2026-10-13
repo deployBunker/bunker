@@ -46,8 +46,11 @@ func TestDockerfile_DeliveredToolsRenderIsBuildable(t *testing.T) {
 	}
 	// Layer-order sanity, independent of the golden text: the stock userland
 	// precedes everything, and the Go bootstrap precedes its install.
+	// bootAt takes the LAST 'golang-go' on purpose (DF-BUNKER-52): the stock
+	// layer installs golang-go too, so the first occurrence is the stock
+	// layer — the bootstrap is the one that must precede the install.
 	stockAt := strings.Index(got, "'git'")
-	bootAt := strings.Index(got, "'golang-go'")
+	bootAt := strings.LastIndex(got, "'golang-go'")
 	installAt := strings.Index(got, "go install")
 	ordered := 0 <= stockAt && stockAt < bootAt && bootAt < installAt
 	if !ordered {

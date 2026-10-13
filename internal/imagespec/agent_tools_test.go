@@ -87,9 +87,11 @@ func TestAgentToolSpecRenderInstallsBothTools(t *testing.T) {
 	if !strings.Contains(got, installLine) {
 		t.Errorf("delivered-set render does not install gopls onto %s:\n%s", GoBinDir, got)
 	}
-	// The go toolchain bootstrap must precede the install (DF-BUNKER-79): the
-	// allowed bases ship no Go compiler.
-	bootAt := strings.Index(got, "'golang-go'")
+	// The go toolchain bootstrap must precede the install (DF-BUNKER-79).
+	// bootAt takes the LAST 'golang-go': since DF-BUNKER-52 the stock layer
+	// installs it too, so the first occurrence would not prove the bootstrap
+	// layer exists — the bootstrap is the last one before the install.
+	bootAt := strings.LastIndex(got, "'golang-go'")
 	installAt := strings.Index(got, "go install 'golang.org/x/tools/gopls@latest'")
 	if bootAt < 0 || installAt < 0 || bootAt > installAt {
 		t.Errorf("delivered-set render lost the go toolchain bootstrap ordering (boot at %d, install at %d):\n%s", bootAt, installAt, got)

@@ -40,10 +40,11 @@ the agent's own rootless socket and cached per spec identity
 A spec is a package-ADD, never an image replacement. The render always emits a
 stock-userland apt layer between FROM and the spec's own lines —
 `StockToolchainPackages`: **git, the docker client (docker.io), python3, make,
-jq, ca-certificates**. A `go` directive additionally bootstraps the Go
-toolchain (`golang-go`) before its install lines (DF-BUNKER-79) and pins
-`GOBIN=/usr/local/bin` (the first component of the agent exec PATH), so
-installed tools are reachable.
+jq, ca-certificates**, plus — since DF-BUNKER-52 — **the Go toolchain
+(`golang-go`)**, so a fresh agent can `go build` without any spec directive. A
+`go` directive additionally bootstraps the Go toolchain (`golang-go`) before
+its install lines (DF-BUNKER-79) and pins `GOBIN=/usr/local/bin` (the first
+component of the agent exec PATH), so installed tools are reachable.
 
 ## 3. The delivered tool set (TOOLS-B2)
 

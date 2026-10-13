@@ -153,8 +153,11 @@ func TestAgentToolsRemediationSpecBuilds(t *testing.T) {
 	}
 
 	// The go toolchain bootstrap precedes the install: without this the build
-	// dies `go: not found` and the remediation is a lie.
-	bootAt := strings.Index(got, "'golang-go'")
+	// dies `go: not found` and the remediation is a lie. bootAt takes the LAST
+	// 'golang-go' (DF-BUNKER-52): the stock userland layer installs it too, so
+	// the first occurrence would satisfy this check even if the bootstrap layer
+	// disappeared.
+	bootAt := strings.LastIndex(got, "'golang-go'")
 	if bootAt < 0 {
 		t.Fatalf("remediation render has no Go toolchain bootstrap:\n%s", got)
 	}
