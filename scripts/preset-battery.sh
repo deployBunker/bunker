@@ -749,6 +749,7 @@ tier_begin() {
     T_PASS=0; T_FAIL=0; T_NOTE=0; T_FINDING=0
     TIER_FAILS=0
     TIER_DEAD=0
+    LAST_TIER_ABORTED=0
     echo ""
     echo "TIER $TIER"
 }
@@ -764,6 +765,7 @@ tier_abort() {
     local agent="$1"
     if [ "${TIER_DEAD:-0}" = "1" ]; then return 0; fi
     TIER_DEAD=1
+    LAST_TIER_ABORTED=1
     bad "ABORTED: agent $agent was destroyed mid-tier by an external actor — its Linux user and/or its home no longer exist (a host-wide battery sweep does 'userdel -rf' for every ^bunker- user). Every measurement past this point would describe a dead agent, so the tier is ABORTED rather than reported as containment failures."
     TIER_FAILS=$((TIER_FAILS+1))
     echo "TIER $TIER VERDICT: ABORTED   (pass=$T_PASS fail=$T_FAIL findings=$T_FINDING — agent lost to an external sweep)"
@@ -1784,8 +1786,28 @@ fi
 echo ""
 
 # ── run ─────────────────────────────────────────────────────────────────────
+# A tier ABORTED by an external sweep (measured repeatedly on this shared host:
+# the CI battery's `userdel -rf` takes the agent mid-tier) is re-run once, after
+# the sweep clears, instead of failing the release gate for a reason that has
+# nothing to do with a preset. A tier that fails for its OWN reasons is never
+# retried.
 for t in $TIERS_TO_RUN; do
-    run_tier "$t"
+    attempt=1
+    while : ; do
+        run_tier "$t"
+        if [ "${LAST_TIER_ABORTED:-0}" != "1" ]; then break; fi
+        if [ "$attempt" -ge "${PRESET_TIER_ATTEMPTS:-2}" ]; then
+            echo "  · tier $t ABORTED by an external sweep and out of retries (${PRESET_TIER_ATTEMPTS:-2})"
+            break
+        fi
+        echo "  · tier $t ABORTED by an external sweep — waiting for the sweep to clear, then re-running (attempt $((attempt+1))/${PRESET_TIER_ATTEMPTS:-2})"
+        FAILED_TIERS="$(printf '%s' "$FAILED_TIERS" | tr ' ' '\n' | grep -v "^${t}$" | tr '\n' ' ')"
+        TIER_FAIL=$((TIER_FAIL-1))
+        wait_sweep=0
+        while sweep_active && [ "$wait_sweep" -lt 1800 ]; do sleep 30; wait_sweep=$((wait_sweep+30)); done
+        sleep 20
+        attempt=$((attempt+1))
+    done
 done
 
 # ── roll-up ─────────────────────────────────────────────────────────────────
