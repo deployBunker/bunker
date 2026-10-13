@@ -205,6 +205,35 @@ run_capture() {
 
 die() { echo "ERROR: $*" >&2; exit 2; }
 
+# ── external-sweep guards ───────────────────────────────────────────────────
+# bunker-mvp is SHARED with the repo's own CI batteries. e2e-full-battery.sh
+# and regression-tests.sh run there in STANDALONE mode, and their cleanup does
+# `userdel -rf` for every user matching ^bunker- — which deletes THIS battery's
+# agents, homes, dockerd units and slice drop-ins in the middle of a run.
+# Measured 2026-10-13: a CI regression run started two minutes in and produced
+# 8 bogus containment FAILs (ESCAPED verdicts for an agent whose home no
+# longer existed). Two guards follow: refuse to start while such a sweep is
+# active, and abort a tier honestly if one begins anyway.
+
+# sweep_active — is a host-wide bunker battery sweep running right now?
+# (The bracket in each pattern keeps the probe from matching itself.)
+sweep_active() {
+    pgrep -f 'e2e-full[-]battery.sh' >/dev/null 2>&1 && return 0
+    pgrep -f 'regression[-]tests.sh' >/dev/null 2>&1 && return 0
+    return 1
+}
+
+# agent_alive AGENT — the agent's Linux user AND home must still exist. A
+# vanished home is the signature of an external `userdel -rf` sweep: the agent
+# still renders as "running" in the daemon's list, but every exec into it fails
+# at the SSH layer.
+agent_alive() {
+    local agent="$1"
+    id "bunker-$agent" >/dev/null 2>&1 || return 1
+    [ -d "/home/bunker-$agent" ] || return 1
+    return 0
+}
+
 usage() { sed -n '2,120p' "$0" | sed 's/^# \{0,1\}//'; }
 
 # =============================================================================
@@ -569,6 +598,21 @@ preflight() {
             exit 42
         fi
     fi
+    # A host-wide sweep in flight would delete this battery's agents mid-run
+    # and manufacture bogus containment failures (see the guard comment above).
+    if sweep_active; then
+        if [ -z "${PRESET_ALLOW_SHARED_HOST:-}" ]; then
+            echo "REFUSING: a host-wide bunker battery is running on this host:" >&2
+            pgrep -a -f 'e2e-full[-]battery.sh|regression[-]tests.sh' >&2 || true
+            echo "  Its cleanup runs 'userdel -rf' for every user matching ^bunker-, which deletes" >&2
+            echo "  this battery's agents, homes and units mid-run — producing FAILs that measure" >&2
+            echo "  a dead agent rather than a containment property. Wait for it to finish and re-run," >&2
+            echo "  or set PRESET_ALLOW_SHARED_HOST=1 to run anyway (an ABORT guard protects each tier)." >&2
+            exit 42
+        fi
+        echo "  WARNING: a host-wide bunker battery is running — PRESET_ALLOW_SHARED_HOST=1 was set,"
+        echo "           so this run proceeds; the per-tier ABORT guard will report any agent it loses."
+    fi
     echo "  preflight OK: root, cgroup2fs, controllers present ($ctrls)"
 }
 
@@ -666,6 +710,19 @@ tier_begin() {
     echo "TIER $TIER"
 }
 
+# tier_abort AGENT — an external actor destroyed this agent mid-tier. Report it
+# honestly and record the tier as ABORTED: it fails (so it can never be read as
+# a pass) but the reason is named, because "the agent was deleted out from
+# under the run" is a measurement-integrity fact, not a containment property.
+tier_abort() {
+    local agent="$1"
+    bad "ABORTED: agent $agent was destroyed mid-tier by an external actor — its Linux user and/or its home no longer exist (a host-wide battery sweep does 'userdel -rf' for every ^bunker- user). Every measurement past this point would describe a dead agent, so the tier is ABORTED rather than reported as containment failures."
+    TIER_FAILS=$((TIER_FAILS+1))
+    echo "TIER $TIER VERDICT: ABORTED   (pass=$T_PASS fail=$T_FAIL findings=$T_FINDING — agent lost to an external sweep)"
+    TIER_FAIL=$((TIER_FAIL+1))
+    FAILED_TIERS="$FAILED_TIERS $TIER"
+}
+
 # claim_* — read the daemon's OWN claims for this agent.
 #   E1 claim: the slice drop-in the daemon wrote.
 #   E2 claim: the knob block `bunker info` renders from the agent record.
@@ -697,12 +754,13 @@ claim_get() {
 E1_LANDED=0
 E1_TOTAL=0
 E1_DETAIL=""
+E1_INERT=""
 
 landing_e1() {
     echo "  LANDING E1 (user-<uid>.slice drop-in → live slice cgroup)"
     local agent="$1" uid="$2"
     local cg; cg="$(slice_cgroup "$uid")"
-    E1_LANDED=0; E1_TOTAL=0; E1_DETAIL=""
+    E1_LANDED=0; E1_TOTAL=0; E1_DETAIL=""; E1_INERT=""
 
     if [ -z "$E1_CLAIM" ]; then
         bad "LANDING E1: the daemon wrote NO slice drop-in for uid $uid — nothing to verify, and every exec session is uncapped"
@@ -710,22 +768,48 @@ landing_e1() {
         return 0
     fi
 
-    # Live RLIMITs of an exec session (LimitNOFILE / LimitFSIZE live here).
-    local rl_out="" rl_nofile="" rl_fsize=""
-    aexec "$agent" "python3 -c 'import resource;print(resource.getrlimit(resource.RLIMIT_NOFILE)[0],resource.getrlimit(resource.RLIMIT_FSIZE)[0])'" || true
-    rl_out="$AEXEC_OUT"
-    rl_nofile="$(printf '%s' "$rl_out" | awk '{print $1}')"
-    rl_fsize="$(printf '%s' "$rl_out" | awk '{print $2}')"
-    if [ -z "$rl_nofile" ] || [ -z "$rl_fsize" ]; then
-        note "LANDING E1: could not read the exec session's RLIMITs (got '$rl_out'); falling back to systemctl show for NOFILE/FSIZE"
+    # E1's whole point is that it covers the processes a UNIT-level limit
+    # would miss. Prove the coverage claim before asserting any value: a live
+    # exec session must report itself inside this uid's slice.
+    aexec "$agent" "cat /proc/self/cgroup"
+    local sess_cg; sess_cg="$(printf '%s' "$AEXEC_OUT" | head -1)"
+    if printf '%s' "$sess_cg" | grep -q "user-${uid}.slice"; then
+        info "E1 coverage: a live exec session sits inside user-${uid}.slice ($sess_cg)"
+    else
+        bad "LANDING E1: an exec session is NOT inside user-${uid}.slice (reported '$sess_cg') — the slice does not cover exec sessions"
+        TIER_FAILS=$((TIER_FAILS+1))
     fi
 
-    local line name want live reason rc
+    local line name want live reason
     while IFS= read -r line; do
         [ -n "$line" ] || continue
         name="${line%%=*}"; want="${line#*=}"
-        E1_TOTAL=$((E1_TOTAL+1))
 
+        case "$name" in
+            LimitNOFILE|LimitFSIZE)
+                # RLIMITs are applied by systemd PER UNIT at fork time. A
+                # .slice forks nothing, so these two properties cannot be
+                # enforced at E1 no matter what the drop-in says — the
+                # enforceable surface for them is E2 (the transient unit) and
+                # the containers inside it. Verify what the slice actually
+                # yields and report the gap instead of asserting a value that
+                # has no live reader.
+                local rep
+                rep="$(systemctl show "user-${uid}.slice" -p "$name" --value 2>/dev/null | tr -d '\n')"
+                E1_INERT="$E1_INERT $name=$want"
+                if [ -n "$rep" ]; then
+                    info "E1 $name: systemd reports '$rep' for the slice"
+                else
+                    info "E1 $name=$want declared in the drop-in, but systemd applies RLIMITs per unit at fork — a .slice forks nothing, so this property is INERT at E1 (verified at E2 instead)"
+                fi
+                continue ;;
+            CPUQuota|MemoryMax|MemorySwapMax|MemoryHigh|TasksMax|MemoryOOMGroup|IOWeight|IOWriteBandwidthMax) : ;;
+            *)
+                info "E1 $name: no live cgroup reader mapped for this property — skipped"
+                continue ;;
+        esac
+
+        E1_TOTAL=$((E1_TOTAL+1))
         case "$name" in
             CPUQuota)        live="$(read_cg "$cg" cpu.max)" ;;
             MemoryMax)       live="$(read_cg "$cg" memory.max)" ;;
@@ -735,9 +819,7 @@ landing_e1() {
             MemoryOOMGroup)  live="$(read_cg "$cg" memory.oom.group)" ;;
             IOWeight)        live="$(read_cg "$cg" io.weight)" ;;
             IOWriteBandwidthMax) live="$(read_cg "$cg" io.max)" ;;
-            LimitNOFILE)     live="${rl_nofile:-$(systemctl show "user-${uid}.slice" -p LimitNOFILE --value 2>/dev/null || true)}" ;;
-            LimitFSIZE)      live="${rl_fsize:-$(systemctl show "user-${uid}.slice" -p LimitFSIZE --value 2>/dev/null || true)}" ;;
-            *)               live="(no live reader)" ;;
+            *)               live="" ;;
         esac
 
         local expected; expected="$(negctl_expect e1 "$name" "$want")"
@@ -752,7 +834,13 @@ landing_e1() {
         fi
     done <<< "$E1_CLAIM"
 
-    echo "  LANDING E1 (slice) ....... $( [ "$E1_LANDED" -eq "$E1_TOTAL" ] && echo OK || echo MISMATCH )  ($E1_LANDED/$E1_TOTAL knobs landed)"
+    if [ -n "$E1_INERT" ]; then
+        # Evidence, not opinion: what an exec session actually carries.
+        aexec "$agent" "nl=\$(ulimit -n); fl=\$(ulimit -f); echo \"E1_SESSION_NOFILE=\$nl E1_SESSION_FSIZE_BLOCKS=\$fl\""
+        finding "the drop-in declares RLIMIT knob(s)[$E1_INERT] on user-${uid}.slice, but systemd applies RLIMITs per unit at fork and a .slice forks nothing — so those properties are inert at E1. An exec session was measured at: $(printf '%s' "$AEXEC_OUT" | head -1). The enforceable surface for them is E2 (the dockerd unit + the containers it starts), where they are verified."
+    fi
+
+    echo "  LANDING E1 (slice) ....... $( [ "$E1_LANDED" -eq "$E1_TOTAL" ] && echo OK || echo MISMATCH )  ($E1_LANDED/$E1_TOTAL cgroup knobs landed)"
 }
 
 # ---------------------------------------------------------------------------
@@ -849,6 +937,10 @@ surface_coverage() {
 # ---------------------------------------------------------------------------
 # WORKLOADS (R1 — the tier is still usable)
 # ---------------------------------------------------------------------------
+# last_lines TEXT [N] — the tail of a captured output, single-line, for a
+# failure message. A failing assertion must say WHY, not only that it failed.
+last_lines() { printf '%s' "$1" | tail -n "${2:-3}" | tr '\n' '|' | sed 's/|*$//'; }
+
 stage_dir_ensure() {
     if [ -z "${PRESET_STAGE_DIR:-}" ]; then
         PRESET_STAGE_DIR="$(mktemp -d /tmp/preset-battery-XXXXXX)"
@@ -867,14 +959,15 @@ RUN echo layer-2 > /layer2.txt
 COPY payload.txt /payload.txt
 RUN wc -c /payload.txt > /layer3.txt
 EOF
-    head -c 262144 /dev/urandom | base64 -w0 > "$ctx/payload.txt"
+    # The build context payload is generated IN the agent: shipping a 256 KiB
+    # file as a base64 argv element overflows the exec command line (measured:
+    # exit 126 before the build ever ran).
     local b64; b64=$(base64 -w0 "$ctx/Dockerfile")
-    local b64p; b64p=$(base64 -w0 "$ctx/payload.txt")
-    aexec "$agent" "mkdir -p \$HOME/w1 && printf '%s' '$b64' | base64 -d > \$HOME/w1/Dockerfile && printf '%s' '$b64p' | base64 -d > \$HOME/w1/payload.txt && cd \$HOME/w1 && timeout $PRESET_BUILD_TIMEOUT docker build -t preset-w1 . && docker image inspect preset-w1 >/dev/null && echo W1_OK"
+    aexec "$agent" "mkdir -p \$HOME/w1 && printf '%s' '$b64' | base64 -d > \$HOME/w1/Dockerfile && head -c 262144 /dev/urandom > \$HOME/w1/payload.txt && cd \$HOME/w1 && timeout $PRESET_BUILD_TIMEOUT docker build -t preset-w1 . && docker image inspect preset-w1 >/dev/null && echo W1_OK"
     if [ "$AEXEC_RC" -eq 0 ] && printf '%s' "$AEXEC_OUT" | grep -q W1_OK; then
         ok "W1 docker-build .......... PASS"
     else
-        bad "W1 docker-build .......... FAIL (rc=$AEXEC_RC)"
+        bad "W1 docker-build .......... FAIL (rc=$AEXEC_RC): $(last_lines "$AEXEC_OUT")"
         TIER_FAILS=$((TIER_FAILS+1))
     fi
 }
@@ -907,7 +1000,7 @@ EOF
        && printf '%s' "$AEXEC_OUT" | grep -q 'app' && printf '%s' "$AEXEC_OUT" | grep -q 'db'; then
         ok "W2 compose-up ............ PASS (services: $(printf '%s' "$AEXEC_OUT" | grep -oE 'app db|db app' | head -1))"
     else
-        bad "W2 compose-up ............ FAIL (rc=$AEXEC_RC)"
+        bad "W2 compose-up ............ FAIL (rc=$AEXEC_RC): $(last_lines "$AEXEC_OUT")"
         TIER_FAILS=$((TIER_FAILS+1))
     fi
 }
@@ -916,7 +1009,7 @@ w3_dotnet_app() {
     local agent="$1"
     aexec "$agent" "docker rm -f preset-w3 >/dev/null 2>&1; mkdir -p \$HOME/w3/config && docker run -d --name preset-w3 -e PUID=\$(id -u) -e PGID=\$(id -g) -e TZ=UTC -v \$HOME/w3/config:/config $PRESET_W3_IMAGE >/dev/null && echo W3_STARTED"
     if ! printf '%s' "$AEXEC_OUT" | grep -q W3_STARTED; then
-        bad "W3 dotnet-linuxserver .... FAIL (container did not start)"
+        bad "W3 dotnet-linuxserver .... FAIL (container did not start): $(last_lines "$AEXEC_OUT")"
         TIER_FAILS=$((TIER_FAILS+1))
         return 0
     fi
@@ -939,7 +1032,7 @@ w4_interpreters() {
     if [ "$AEXEC_RC" -eq 0 ] && printf '%s' "$AEXEC_OUT" | grep -q W4_OK; then
         ok "W4 node+python ........... PASS (python3 in-session, node in-container)"
     else
-        bad "W4 node+python ........... FAIL (rc=$AEXEC_RC)"
+        bad "W4 node+python ........... FAIL (rc=$AEXEC_RC): $(last_lines "$AEXEC_OUT")"
         TIER_FAILS=$((TIER_FAILS+1))
     fi
 }
@@ -989,7 +1082,7 @@ w5_docker_load() {
     if [ "$AEXEC_RC" -eq 0 ] && printf '%s' "$AEXEC_OUT" | grep -q W5_OK; then
         ok "W5 docker-load-1.4G ...... PASS (wall time: ${wall}s, artifact $(( size / 1048576 ))MiB)"
     else
-        bad "W5 docker-load-1.4G ...... FAIL (rc=$AEXEC_RC, wall ${wall}s, timeout ${PRESET_W5_TIMEOUT}s)"
+        bad "W5 docker-load-1.4G ...... FAIL (rc=$AEXEC_RC, wall ${wall}s, timeout ${PRESET_W5_TIMEOUT}s): $(last_lines "$AEXEC_OUT")"
         TIER_FAILS=$((TIER_FAILS+1))
     fi
 }
@@ -997,69 +1090,100 @@ w5_docker_load() {
 # ---------------------------------------------------------------------------
 # ABUSE (A1..A3 — assert the MECHANISM, not survival)
 # ---------------------------------------------------------------------------
-A1_REFUSED="no"
+A1_REFUSED=""
 a1_fork_bomb() {
     local agent="$1" uid="$2"
-    local cg; cg="$(slice_cgroup "$uid")"
-    local pids_max before after attempts
-    pids_max="$(read_cg "$cg" pids.max)"
-    before="$(read_cg "$cg" pids.events | awk '/^max /{print $2}')"
-    [ -n "$before" ] || before=0
+    stage_dir_ensure
+    # The counters are read from INSIDE the session that holds the slice open:
+    # the exec session's scope is what creates the slice cgroup, so a read from
+    # a later, separate exec would measure a different (fresh) cgroup and see a
+    # delta of zero. Assert the MECHANISM (pids.events max = a REFUSED fork),
+    # not survival.
+    local drv="$PRESET_STAGE_DIR/a1-driver.sh"
+    cat > "$drv" <<'DRIVER'
+#!/bin/bash
+uid="$1"; cap="$2"
+cg="/sys/fs/cgroup/user.slice/user-${uid}.slice"
+read_max() { awk '/^max /{print $2}' "$cg/pids.events" 2>/dev/null; }
+max="$(cat "$cg/pids.max" 2>/dev/null)"
+before="$(read_max)"; before="${before:-0}"
+# Bounded twice over: by the attempt cap AND by a wall clock. The loop is NOT
+# wrapped in `timeout` on purpose — GNU timeout signals the whole process
+# GROUP, which would reap the very children whose count is the evidence.
+j=0
+end=$(( SECONDS + 20 ))
+while [ "$j" -lt "$cap" ] && [ "$SECONDS" -lt "$end" ]; do
+    sleep 300 &
+    j=$(( j + 1 ))
+done
+sleep 5
+cur="$(cat "$cg/pids.current" 2>/dev/null)"
+after="$(read_max)"; after="${after:-0}"
+# Reap our own storm (bounded: only this uid's sleepers).
+pkill -KILL -x sleep >/dev/null 2>&1
+echo "A1_MAX=$max A1_BEFORE=$before A1_AFTER=$after A1_CUR=$cur A1_LOOP=$j A1_CAP=$cap"
+DRIVER
+    arun_sh "$agent" "$drv" "$uid" "$PRESET_FORK_ATTEMPTS"
 
-    local cap="$PRESET_FORK_ATTEMPTS"
-    # Bounded fork storm: attempt up to $cap forks of a tiny sleeper, bounded
-    # in wall time as well so a tier with a very high pids.max cannot be used
-    # to flood the host. The refusal (pids.events max) is the mechanism under
-    # test; an attempt cap below the tier ceiling is reported, never hidden.
-    aexec "$agent" "timeout -s KILL 25 bash -c 'i=0; while [ \$i -lt $cap ]; do sleep 300 & i=\$((i+1)); done; wait' >/dev/null 2>&1; echo A1_FORKS_DONE"
-    sleep 2
-    after="$(read_cg "$cg" pids.events | awk '/^max /{print $2}')"
-    [ -n "$after" ] || after=0
-    local peak; peak="$(read_cg "$cg" pids.current)"
-    attempts="$cap"
+    local m b a cur
+    m="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A1_MAX=\([^ ]*\).*/\1/p')"
+    b="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A1_BEFORE=\([0-9]*\).*/\1/p')"
+    a="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A1_AFTER=\([0-9]*\).*/\1/p')"
+    cur="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A1_CUR=\([0-9]*\).*/\1/p')"
+    b="${b:-0}"; a="${a:-0}"; cur="${cur:-0}"
 
-    if [ "$after" -gt "$before" ]; then
+    if [ "$a" -gt "$b" ]; then
         A1_REFUSED="yes"
-        ok "A1 fork-bomb ............. CONTAINED (pids.events max=$after — the pids controller REFUSED forks at pids.max=$pids_max)"
+        ok "A1 fork-bomb ............. CONTAINED (pids.events max +$((a-b)) — the pids controller REFUSED forks at pids.max=$m; live count reached $cur)"
+    elif [ -z "$m" ]; then
+        A1_REFUSED="unreadable"
+        bad "A1 fork-bomb ............. FAIL (could not read pids.max — the agent's slice cgroup is not there)"
+        TIER_FAILS=$((TIER_FAILS+1))
+    elif [ "$m" = "max" ]; then
+        A1_REFUSED="no"
+        bad "A1 fork-bomb ............. ESCAPED (pids.max=max — no process ceiling to refuse at)"
+        TIER_FAILS=$((TIER_FAILS+1))
+    elif [ "$cur" -ge "$m" ] 2>/dev/null; then
+        A1_REFUSED="saturated"
+        note "A1 fork-bomb: the slice saturated at pids.current=$cur (pids.max=$m) but pids.events 'max' did not increment — the ceiling held, the refusal counter did not register on this kernel"
+        ok "A1 fork-bomb ............. CONTAINED (saturated at pids.max=$m, live count $cur)"
     else
-        if [ "$pids_max" = "max" ]; then
-            A1_REFUSED="no"
-            bad "A1 fork-bomb ............. ESCAPED (the tier claims pids.max=max — no process ceiling at all)"
-            TIER_FAILS=$((TIER_FAILS+1))
-        else
-            note "A1 fork-bomb: pids.max=$pids_max is above the ${attempts}-fork attempt cap, so no refusal was exercised; the ceiling exists and is finite, but this run did not reach it"
-            ok "A1 fork-bomb ............. CONTAINED (ceiling pids.max=$pids_max finite; attempt cap $attempts not reached — refusal path NOT exercised)"
-        fi
+        A1_REFUSED="not-exercised"
+        note "A1 fork-bomb: the ${PRESET_FORK_ATTEMPTS}-fork attempt cap is BELOW the tier ceiling (pids.max=$m), so no refusal was exercised; the ceiling is finite and the live count peaked at $cur"
+        ok "A1 fork-bomb ............. CONTAINED (ceiling pids.max=$m finite; refusal path NOT exercised — cap $PRESET_FORK_ATTEMPTS < ceiling)"
     fi
-    # Reap the storm immediately; the destroy sweep does it again.
-    systemctl kill --signal=SIGKILL "user-${uid}.slice" >/dev/null 2>&1 || true
+    # Reap stragglers WITHOUT touching the slice unit: `systemctl kill` on a
+    # slice tears the cgroup down, which would blank every later counter read.
+    pkill -KILL -u "$uid" >/dev/null 2>&1 || true
     sleep 1
 }
 
 A2_WHO_PAID=""
 a2_memory_bomb() {
     local agent="$1" uid="$2"
-    local cg; cg="$(slice_cgroup "$uid")"
-    local mem_max; mem_max="$(read_cg "$cg" memory.max)"
+    stage_dir_ensure
+    # Size the attempt against the tier's OWN declared ceiling (the E1 claim),
+    # never above twice it: the point is to make the tier's cap fire, not to
+    # make the host take the hit.
     local target="$PRESET_MEM_BOMB_BYTES"
-    # Never aim above twice the tier's own ceiling: the point is to make the
-    # tier's cap fire, not to make the HOST pay.
-    if [ "$mem_max" != "max" ] && [ "$mem_max" -gt 0 ] 2>/dev/null; then
-        local twice=$(( mem_max * 2 ))
-        if [ "$target" -gt "$twice" ]; then target="$twice"; fi
+    local mem_claim; mem_claim="$(claim_get "$E1_CLAIM" MemoryMax)"
+    if [ -n "$mem_claim" ] && [ "$mem_claim" -gt 0 ] 2>/dev/null; then
+        local twice=$(( mem_claim * 2 ))
+        [ "$target" -gt "$twice" ] && target="$twice"
     else
-        # No cgroup ceiling claimed: cap the attempt hard so the host is not
-        # the thing under test, and say so.
-        if [ "$target" -gt 1073741824 ]; then target=1073741824; fi
+        [ "$target" -gt 1073741824 ] && target=1073741824
     fi
 
-    local oom_before high_before
-    oom_before="$(read_cg "$cg" memory.events | awk '/^oom_kill /{print $2}')"; [ -n "$oom_before" ] || oom_before=0
-    high_before="$(read_cg "$cg" memory.events | awk '/^high /{print $2}')"; [ -n "$high_before" ] || high_before=0
-
-    stage_dir_ensure
-    local py="$PRESET_STAGE_DIR/membomb.py"
-    cat > "$py" <<'PY'
+    local drv="$PRESET_STAGE_DIR/a2-driver.sh"
+    cat > "$drv" <<'DRIVER'
+#!/bin/bash
+uid="$1"; target="$2"
+cg="/sys/fs/cgroup/user.slice/user-${uid}.slice"
+ev() { awk -v k="$1" '$1==k {print $2}' "$cg/memory.events" 2>/dev/null; }
+max="$(cat "$cg/memory.max" 2>/dev/null)"
+ob="$(ev oom_kill)"; ob="${ob:-0}"
+hb="$(ev high)";     hb="${hb:-0}"
+cat > /tmp/.pbomb.py <<'PY'
 import sys
 target = int(sys.argv[1])
 chunk = b'x' * (1024 * 1024)
@@ -1069,66 +1193,96 @@ try:
         buf.append(bytearray(chunk))
 except MemoryError:
     pass
-print("ALLOCATED_MIB", len(buf))
+print("ALLOC_MIB", len(buf), flush=True)
 PY
-    aexec "$agent" "true"
-    arun_py "$agent" "$py" "$target"
-    local allocated; allocated="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*ALLOCATED_MIB \([0-9]*\).*/\1/p')"
+# The allocator is a CHILD so this supervisor survives the OOM kill and can
+# still read the post-mortem counters.
+timeout -s KILL 180 python3 /tmp/.pbomb.py "$target" > /tmp/.pbomb.out 2>&1 &
+pid=$!
+wait "$pid"; rc=$?
+sleep 2
+oa="$(ev oom_kill)"; oa="${oa:-0}"
+ha="$(ev high)";     ha="${ha:-0}"
+peak="$(cat "$cg/memory.peak" 2>/dev/null)"
+alloc="$(sed -n 's/^ALLOC_MIB //p' /tmp/.pbomb.out 2>/dev/null | head -1)"
+rm -f /tmp/.pbomb.py /tmp/.pbomb.out
+echo "A2_MAX=$max A2_OOM_BEFORE=$ob A2_OOM_AFTER=$oa A2_HIGH_BEFORE=$hb A2_HIGH_AFTER=$ha A2_PEAK=$peak A2_ALLOC=${alloc:-0} A2_RC=$rc"
+DRIVER
+    arun_sh "$agent" "$drv" "$uid" "$target"
 
-    local oom_after high_after peak
-    oom_after="$(read_cg "$cg" memory.events | awk '/^oom_kill /{print $2}')"; [ -n "$oom_after" ] || oom_after=0
-    high_after="$(read_cg "$cg" memory.events | awk '/^high /{print $2}')"; [ -n "$high_after" ] || high_after=0
-    peak="$(read_cg "$cg" memory.peak)"
-
-    local oom_delta=$(( oom_after - oom_before ))
-    local high_delta=$(( high_after - high_before ))
+    local max ob oa hb ha peak alloc
+    max="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A2_MAX=\([^ ]*\).*/\1/p')"
+    ob="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A2_OOM_BEFORE=\([0-9]*\).*/\1/p')"
+    oa="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A2_OOM_AFTER=\([0-9]*\).*/\1/p')"
+    hb="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A2_HIGH_BEFORE=\([0-9]*\).*/\1/p')"
+    ha="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A2_HIGH_AFTER=\([0-9]*\).*/\1/p')"
+    peak="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A2_PEAK=\([^ ]*\).*/\1/p')"
+    alloc="$(printf '%s' "$AEXEC_OUT" | sed -n 's/.*A2_ALLOC=\([0-9]*\).*/\1/p')"
+    ob="${ob:-0}"; oa="${oa:-0}"; hb="${hb:-0}"; ha="${ha:-0}"
+    local oom_delta=$(( oa - ob )) high_delta=$(( ha - hb ))
 
     if [ "$oom_delta" -gt 0 ]; then
         A2_WHO_PAID="agent"
-        ok "A2 memory-bomb ........... CONTAINED (oom_kill +$oom_delta, high +$high_delta, memory.peak=${peak:-?} — the AGENT paid; the tier's ${mem_max} cap fired)"
+        ok "A2 memory-bomb ........... CONTAINED (oom_kill +$oom_delta, high +$high_delta, memory.peak=${peak:-?}, allocated ${alloc:-?}MiB — the AGENT paid; the tier's cap memory.max=$max fired)"
     elif [ "$high_delta" -gt 0 ]; then
         A2_WHO_PAID="agent(throttled)"
         ok "A2 memory-bomb ........... CONTAINED (memory.high throttling +$high_delta, no kills, memory.peak=${peak:-?} — the AGENT paid by slowing)"
-    elif [ "$mem_max" = "max" ]; then
+    elif [ -z "$max" ]; then
+        A2_WHO_PAID="unreadable"
+        bad "A2 memory-bomb ........... FAIL (could not read memory.max — the agent's slice cgroup is not there)"
+        TIER_FAILS=$((TIER_FAILS+1))
+    elif [ "$max" = "max" ]; then
         A2_WHO_PAID="host"
-        bad "A2 memory-bomb ........... ESCAPED (the tier claims memory.max=max — the HOST paid; allocated ${allocated:-?}MiB uncapped)"
+        bad "A2 memory-bomb ........... ESCAPED (memory.max=max — no cgroup ceiling; allocated ${alloc:-?}MiB uncapped, the HOST paid)"
         TIER_FAILS=$((TIER_FAILS+1))
     else
         A2_WHO_PAID="none"
-        note "A2 memory-bomb: neither oom_kill nor memory.high moved (allocated ${allocated:-0}MiB of a ${target}-byte attempt under memory.max=$mem_max)"
+        note "A2 memory-bomb: neither oom_kill nor memory.high moved (allocated ${alloc:-0}MiB of a ${target}-byte attempt under memory.max=$max, peak=${peak:-?})"
         bad "A2 memory-bomb ........... FAIL (the tier's memory cap did not fire on a ${target}-byte bomb)"
         TIER_FAILS=$((TIER_FAILS+1))
     fi
-    systemctl kill --signal=SIGKILL "user-${uid}.slice" >/dev/null 2>&1 || true
-    sleep 1
 }
 
 A3_PEER_DELTA=""
 a3_io_hog() {
     local agent="$1" peer="$2"
-    # Baseline: the peer's timed read with NO hog running.
-    local t0 t1 base hog
-    t0=$(date +%s%N)
-    aexec "$peer" "timeout $PRESET_PEER_BUDGET_S dd if=\$HOME/.preset-peer-src bs=1M count=$(( PRESET_PEER_READ_BYTES / 1048576 )) of=/dev/null 2>/dev/null && echo PEER_OK"
-    local base_rc="$AEXEC_RC"
-    t1=$(date +%s%N)
-    base=$(( (t1 - t0) / 1000000 ))
-    if [ "$base_rc" -ne 0 ]; then
-        bad "A3 io-hog ................ FAIL (peer baseline read failed)"
-        TIER_FAILS=$((TIER_FAILS+1))
-        return 0
-    fi
+    local mib=$(( PRESET_PEER_READ_BYTES / 1048576 ))
+    # Warm the peer's read source, then take the MIN of three samples: a cold
+    # first read (page cache + overlayfs) is several times slower than a warm
+    # one, and using it as the baseline would report a bogus NEGATIVE
+    # degradation (measured live: a cold baseline of 4186ms vs a warm read of
+    # 962ms under the hog).
+    aexec "$peer" "dd if=\$HOME/.preset-peer-src of=/dev/null bs=1M count=64 >/dev/null 2>&1"
+    local i base_ms base_min="" t0 t1
+    for i in 1 2 3; do
+        t0=$(date +%s%N)
+        aexec "$peer" "timeout $PRESET_PEER_BUDGET_S dd if=\$HOME/.preset-peer-src bs=1M count=$mib of=/dev/null 2>/dev/null && echo PEER_OK"
+        t1=$(date +%s%N)
+        if [ "$AEXEC_RC" -ne 0 ]; then
+            bad "A3 io-hog ................ FAIL (peer baseline read failed)"
+            TIER_FAILS=$((TIER_FAILS+1))
+            return 0
+        fi
+        base_ms=$(( (t1 - t0) / 1000000 ))
+        if [ -z "$base_min" ] || [ "$base_ms" -lt "$base_min" ]; then base_min="$base_ms"; fi
+    done
+    local base="$base_min"
 
-    # Hog in the SUBJECT tier while the peer reads again.
-    aexec "$agent" "timeout 90 dd if=/dev/zero of=\$HOME/iohog bs=1M count=$(( PRESET_IO_HOG_BYTES / 1048576 )) oflag=direct >/dev/null 2>&1; echo HOG_DONE" &
+    # Hog in the SUBJECT tier while the peer reads again. Two samples, min.
+    aexec "$agent" "timeout 120 dd if=/dev/zero of=\$HOME/iohog bs=1M count=$(( PRESET_IO_HOG_BYTES / 1048576 )) oflag=direct >/dev/null 2>&1; echo HOG_DONE" &
     local hog_pid=$!
     sleep 3
-    t0=$(date +%s%N)
-    aexec "$peer" "timeout $PRESET_PEER_BUDGET_S dd if=\$HOME/.preset-peer-src bs=1M count=$(( PRESET_PEER_READ_BYTES / 1048576 )) of=/dev/null 2>/dev/null && echo PEER_OK"
-    local hog_rc="$AEXEC_RC"
-    t1=$(date +%s%N)
+    local hog_min="" hog_rc=0
+    for i in 1 2; do
+        t0=$(date +%s%N)
+        aexec "$peer" "timeout $PRESET_PEER_BUDGET_S dd if=\$HOME/.preset-peer-src bs=1M count=$mib of=/dev/null 2>/dev/null && echo PEER_OK"
+        t1=$(date +%s%N)
+        [ "$AEXEC_RC" -ne 0 ] && hog_rc=1
+        hog_ms=$(( (t1 - t0) / 1000000 ))
+        if [ -z "$hog_min" ] || [ "$hog_ms" -lt "$hog_min" ]; then hog_min="$hog_ms"; fi
+    done
     wait "$hog_pid" 2>/dev/null || true
-    hog=$(( (t1 - t0) / 1000000 ))
+    local hog="$hog_min"
 
     if [ "$base" -le 0 ]; then base=1; fi
     local delta=$(( (hog - base) * 100 / base ))
@@ -1139,16 +1293,15 @@ a3_io_hog() {
     # INERT on uncontended NVMe; no tier defaults an IO bound).
     local io_knob=""
     [ -n "$(claim_get "$E1_CLAIM" IOWeight)" ] && io_knob="IOWeight(E1)"
-    [ -n "$(claim_get "$E2_CLAIM" IOWeight)" ] && io_knob="$io_knob IOWeight(E2)"
     [ -n "$(claim_get "$E1_CLAIM" IOWriteBandwidthMax)" ] && io_knob="$io_knob IOWriteBandwidthMax(E1)"
 
     if [ "$hog_rc" -ne 0 ]; then
         bad "A3 io-hog ................ ESCAPED (the peer read FAILED or exceeded its ${PRESET_PEER_BUDGET_S}s budget while the hog ran)"
         TIER_FAILS=$((TIER_FAILS+1))
     elif [ -n "$io_knob" ]; then
-        ok "A3 io-hog ................ CONTAINED (bounded by $io_knob; peer read baseline ${base}ms → ${hog}ms, +${delta}%)"
+        ok "A3 io-hog ................ CONTAINED (bounded by $io_knob; peer read best-of-3 baseline ${base}ms → best-of-2 under load ${hog}ms, +${delta}%)"
     else
-        ok "A3 io-hog ................ CONTAINED (no IO bound claimed by this tier — peer read baseline ${base}ms → ${hog}ms, +${delta}% recorded, not asserted)"
+        ok "A3 io-hog ................ CONTAINED (no IO bound claimed by this tier — peer read best-of-3 baseline ${base}ms → best-of-2 under load ${hog}ms, +${delta}% recorded, not asserted)"
     fi
     aexec "$agent" "rm -f \$HOME/iohog" || true
 }
@@ -1264,6 +1417,15 @@ run_tier() {
         *)  die "PRESET_WORKLOADS must be core|full|none (got '$PRESET_WORKLOADS')" ;;
     esac
 
+    # ABORT guard: a host-wide battery sweep (userdel -rf ^bunker-) can delete
+    # this agent mid-tier. Everything measured after that point describes a
+    # dead agent, so the tier is ABORTED — never reported as a containment
+    # failure.
+    if ! agent_alive "$agent"; then
+        tier_abort "$agent"
+        return 0
+    fi
+
     if [ "$PRESET_WORKLOADS" = "core" ] || [ "$PRESET_WORKLOADS" = "full" ]; then
         w1_docker_build "$agent"
         w2_compose_stack "$agent"
@@ -1274,9 +1436,13 @@ run_tier() {
         w5_docker_load "$agent" "$uid"
     fi
 
+    if ! agent_alive "$agent"; then tier_abort "$agent"; return 0; fi
+
     a1_fork_bomb "$agent" "$uid"
     a2_memory_bomb "$agent" "$uid"
     a3_io_hog "$agent" "$PEER_AGENT"
+
+    if ! agent_alive "$agent"; then tier_abort "$agent"; return 0; fi
 
     i1_peer_isolation "$agent" "$PEER_AGENT" "$PEER_UID"
     i2_cgroup_escape "$agent" "$uid" "$PEER_UID"
