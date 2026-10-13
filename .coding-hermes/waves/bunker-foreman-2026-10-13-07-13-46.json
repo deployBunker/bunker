@@ -1,0 +1,63 @@
+{
+  "tick_id": "bunker-foreman-2026-10-13-07-13-46",
+  "wave_id": "wave-2026-10-13-071346",
+  "created_at": "2026-10-13T07:13:46-05:00",
+  "tasks": [
+    {
+      "id": "GAP-112",
+      "title": "MOUNT LIVE PROOF — transport durability criteria on real agent",
+      "priority": "P1",
+      "complexity": 2,
+      "worktree": "~/.hermes/worktrees/bunker-GAP-112",
+      "branch": "wt/GAP-112-mount-live-proof",
+      "worker_model": "deepseek-v4-flash",
+      "worker_provider": "deepseek-foreman"
+    },
+    {
+      "id": "GAP-083",
+      "title": "Fleet inventory coverage hole — bunker-las-01 absent from client registry",
+      "priority": "P2",
+      "complexity": 3,
+      "worktree": "~/.hermes/worktrees/bunker-GAP-083",
+      "branch": "wt/GAP-083-fleet-inventory",
+      "worker_model": "deepseek-v4-flash",
+      "worker_provider": "deepseek-foreman"
+    },
+    {
+      "id": "GAP-121",
+      "title": "Per-agent resource-event observability — memory.events, pids.events, peaks",
+      "priority": "P2",
+      "complexity": 4,
+      "worktree": "~/.hermes/worktrees/bunker-GAP-121",
+      "branch": "wt/GAP-121-resource-events",
+      "worker_model": "deepseek-v4-flash",
+      "worker_provider": "deepseek-foreman"
+    },
+    {
+      "id": "GAP-136",
+      "title": "Anchored audit by default + honest audit status",
+      "priority": "P2",
+      "complexity": 4,
+      "worktree": "~/.hermes/worktrees/bunker-GAP-136",
+      "branch": "wt/GAP-136-anchored-audit",
+      "worker_model": "deepseek-v4-flash",
+      "worker_provider": "deepseek-foreman"
+    },
+    {
+      "id": "GAP-122",
+      "title": "Preset live E2E battery on bunker-mvp — prove every tier safe+usable",
+      "priority": "P2",
+      "complexity": 5,
+      "worktree": "~/.hermes/worktrees/bunker-GAP-122",
+      "branch": "wt/GAP-122-preset-e2e-battery",
+      "worker_model": "deepseek-v4-flash",
+      "worker_provider": "deepseek-foreman"
+    }
+  ],
+  "status": "closed",
+  "workers_dispatched": 0,
+  "workers_completed": 0,
+  "workers_failed": 0,
+  "closed_at": "2026-10-13T07:24:18-05:00",
+  "close_reason": "wave-recovery: 0 workers dispatched, 0 commits on any branch — phantom wave, nothing to recover"
+}
