@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -1208,30 +1209,207 @@ func stopDockerdDirect(ctx context.Context, username, unitName string, logger *s
 	return nil
 }
 
-// waitForDockerd polls briefly for a dockerd process owned by the agent user and
-// for the Docker socket to exist. It also captures systemd unit status on failure
-// so callers get actionable error messages instead of "spawn succeeded".
-func waitForDockerd(ctx context.Context, username, dockerSockPath, actualDockerSockPath, unitName string, logger *slog.Logger) error {
-	poll := 200 * time.Millisecond
-	deadline := time.Now().Add(5 * time.Second)
+// ── dockerd readiness budget (INT-CI-070) ──────────────────────────────────
+//
+// CI run 2026-10-14T12:40:27Z (the root-gated suite on main) failed
+// TestConcurrency_SpawnFiveAgents at stage dockerd-start: five concurrent
+// rootless dockerd starts contended for CPU, one unit was ACTIVE for 29s before
+// its socket appeared, and the readiness wait granted every start the same flat
+// 5s socket deadline — so the spawn failed, and tore its agent down, over a
+// daemon that was coming up fine.
+//
+// The wait therefore grants a readiness budget that scales with the number of
+// dockerd starts THIS PROCESS has in flight, because the burst is what stretches
+// one unit's socket latency:
+//
+//	budget(n) = min(max(base, perStart × n), max)
+//
+// A lone start keeps the fast path (30s), five concurrent starts get 50s
+// (comfortably past the 29s observed), and the hard cap (120s) keeps a wedged
+// daemon — and any leaked wait — bounded. The budget is re-derived on every poll
+// and LATCHED (it only ever grows), so a wait that began alone inherits the
+// headroom of the peers that joined it a moment later, and a peer leaving never
+// shortens a wait that is legitimately mid-burst.
+//
+// Fail-fast is preserved on the axis that matters for a genuinely broken
+// daemon: a dockerd PROCESS that never appears at all (missing AppArmor profile,
+// unmappable subuids, systemd refusing the unit) still fails the spawn after a
+// short grace — 5s for a lone start, the legacy deadline — instead of burning
+// the socket budget on a socket that can never come.
+//
+// Residuals, stated plainly: the in-flight count is per PROCESS, so concurrent
+// starts in sibling test binaries on a loaded runner are not counted (the 30s
+// base floor covers the 29s lag CI actually showed); and the wait still honors
+// the CALLER's context, so an already-deadlined request caps the effective
+// budget exactly as it did before INT-CI-070. A daemon that appears and then
+// dies is bounded by the readiness budget rather than reported at the process
+// grace: continuous presence is not re-asserted, because a single transient
+// pgrep miss must never fail a living daemon.
+//
+// The budgets below are vars purely as test seams (the containerCapAttempts /
+// lingerEnableAttempts convention); production never writes them.
+var (
+	// dockerdReadyBudgetBase is the total readiness budget for a LONE dockerd
+	// start: the floor a single slow-but-alive daemon is granted before the
+	// spawn gives up. 30s replaces the flat 5s socket deadline that made
+	// INT-CI-070 flake.
+	dockerdReadyBudgetBase = 30 * time.Second
+	// dockerdReadyBudgetPerStart is the budget share each concurrent dockerd
+	// start contributes: five concurrent starts grant 50s, past the 29s socket
+	// lag CI observed.
+	dockerdReadyBudgetPerStart = 10 * time.Second
+	// dockerdReadyBudgetMax is the HARD CAP on the readiness budget: no wait
+	// can hold a spawn open longer than this, however many starts are in
+	// flight.
+	dockerdReadyBudgetMax = 120 * time.Second
+	// dockerdReadyProcessGraceBase is the fail-fast window for the dockerd
+	// PROCESS. No dockerd process seen within it means the unit itself is
+	// broken, so the spawn fails immediately instead of waiting out the socket
+	// budget. 5s is the legacy deadline: a lone broken start still reports
+	// exactly as fast as it did before INT-CI-070.
+	dockerdReadyProcessGraceBase = 5 * time.Second
+	// dockerdReadyProcessGracePerStart is the process-grace share added per
+	// concurrent start — systemd forks N daemons under contention, so the
+	// process itself can be slower to appear in a burst.
+	dockerdReadyProcessGracePerStart = 2 * time.Second
+	// dockerdReadyPollInterval is the readiness poll cadence (the legacy
+	// 200ms). Var so tests need not sleep in real time.
+	dockerdReadyPollInterval = 200 * time.Millisecond
+	// dockerdUnitDiagnosticsTimeout bounds the best-effort systemctl/journalctl
+	// attribution on the failure paths. It is DETACHED from the caller's
+	// context (context.WithoutCancel), so attribution still works when the
+	// caller already gave up, and bounded, so a wedged systemctl can never
+	// extend a failure report. Var as a test seam.
+	dockerdUnitDiagnosticsTimeout = 5 * time.Second
+)
 
-	for time.Now().Before(deadline) {
+// dockerdReadyWaitsInFlight counts the dockerd readiness waits this process
+// currently has in flight — the contention signal dockerdReadyBudget scales
+// with (INT-CI-070).
+var dockerdReadyWaitsInFlight int32
+
+// dockerdReadyWaitEntered registers one in-flight readiness wait and returns the
+// count including it.
+func dockerdReadyWaitEntered() int { return int(atomic.AddInt32(&dockerdReadyWaitsInFlight, 1)) }
+
+// dockerdReadyWaitLeft deregisters a readiness wait.
+func dockerdReadyWaitLeft() { atomic.AddInt32(&dockerdReadyWaitsInFlight, -1) }
+
+// dockerdReadyWaitsActive reports how many readiness waits are in flight right
+// now.
+func dockerdReadyWaitsActive() int { return int(atomic.LoadInt32(&dockerdReadyWaitsInFlight)) }
+
+// dockerdReadyBudget is the total readiness budget for a wait that observes
+// inFlight concurrent dockerd starts:
+// min(max(base, perStart × inFlight), max) — see the INT-CI-070 block above.
+func dockerdReadyBudget(inFlight int) time.Duration {
+	if inFlight < 1 {
+		inFlight = 1
+	}
+	budget := dockerdReadyBudgetBase
+	if scaled := time.Duration(inFlight) * dockerdReadyBudgetPerStart; scaled > budget {
+		budget = scaled
+	}
+	if budget > dockerdReadyBudgetMax {
+		budget = dockerdReadyBudgetMax
+	}
+	return budget
+}
+
+// dockerdReadyProcessGrace is the fail-fast window for the dockerd process
+// itself under inFlight concurrent starts. It never exceeds the readiness
+// budget it is carved out of.
+func dockerdReadyProcessGrace(inFlight int) time.Duration {
+	if inFlight < 1 {
+		inFlight = 1
+	}
+	grace := dockerdReadyProcessGraceBase + time.Duration(inFlight-1)*dockerdReadyProcessGracePerStart
+	if budget := dockerdReadyBudget(inFlight); grace > budget {
+		grace = budget
+	}
+	return grace
+}
+
+// dockerdUnreadyError renders a readiness failure so an operator can tell "the
+// daemon is slow under a burst" from "the daemon never came up" without opening
+// the CI log: it names the user, the systemd UNIT, the socket that was looked
+// for, the cause, how long the wait actually spent, the budget it was granted
+// and how many dockerd starts were in flight.
+func dockerdUnreadyError(username, unitName, dockerSockPath, cause string, elapsed, budget time.Duration, concurrent int) error {
+	return fmt.Errorf("dockerd did not start for user %s (unit %s, socket %s): %s; elapsed %s (readiness budget %s, %d concurrent dockerd start(s))",
+		username, unitName, dockerSockPath, cause,
+		elapsed.Round(time.Millisecond), budget.Round(time.Millisecond), concurrent)
+}
+
+// dockerdUnitDiagnostics captures the systemd unit status and the recent journal
+// for one unit, so a failed readiness wait reports WHY the daemon is not up
+// rather than only that it is not. Best-effort: the outputs are diagnostic text,
+// the whole capture runs on its own detached, bounded context (see
+// dockerdUnitDiagnosticsTimeout), and nothing here can fail the caller.
+func dockerdUnitDiagnostics(ctx context.Context, unitName string) (status, journal string) {
+	dctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), dockerdUnitDiagnosticsTimeout)
+	defer cancel()
+	statusOut, _ := exec.CommandContext(dctx, "systemctl", "status", unitName, "--no-pager", "-l", "-n", "20").CombinedOutput()
+	journalOut, _ := exec.CommandContext(dctx, "journalctl", "-u", unitName, "--no-pager", "-n", "20").CombinedOutput()
+	return string(statusOut), string(journalOut)
+}
+
+// waitForDockerd polls for a dockerd process owned by the agent user and for the
+// Docker socket to exist. It also captures systemd unit status on failure so
+// callers get actionable error messages instead of "spawn succeeded".
+//
+// The readiness budget scales with the number of concurrent dockerd starts this
+// process has in flight, and a dockerd process that never appears fails fast —
+// see the INT-CI-070 block above for both rules and their bounds.
+func waitForDockerd(ctx context.Context, username, dockerSockPath, actualDockerSockPath, unitName string, logger *slog.Logger) error {
+	started := time.Now()
+	// This wait IS one of the dockerd starts in flight; that count is the
+	// contention signal the budget scales with.
+	concurrent := dockerdReadyWaitEntered()
+	defer dockerdReadyWaitLeft()
+
+	budget := dockerdReadyBudget(concurrent)
+	deadline := started.Add(budget)
+	processGrace := dockerdReadyProcessGrace(concurrent)
+	processDeadline := started.Add(processGrace)
+	processSeen := false
+	lastRunning := false
+
+	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
 
+		// Peers that joined after this wait began stretch the budget: the
+		// burst, not this single start, is what delays the socket. Both
+		// deadlines LATCH (they only ever grow), so losing a peer never
+		// shortens a wait that is legitimately mid-burst.
+		if active := dockerdReadyWaitsActive(); active > concurrent {
+			concurrent = active
+			budget = dockerdReadyBudget(active)
+			if d := started.Add(budget); d.After(deadline) {
+				deadline = d
+			}
+			if d := started.Add(dockerdReadyProcessGrace(active)); d.After(processDeadline) {
+				processDeadline = d
+			}
+		}
+
 		// Check for a dockerd process owned by this user.
 		running, _ := dockerdProcessChecker(ctx, username)
-		if running {
+		lastRunning = running
+		switch {
+		case running:
+			processSeen = true
 			// Process is up; now wait for the socket to appear. Rootless dockerd
 			// may create the socket at the configured Bunker path or under the
 			// systemd user runtime directory (/run/user/<uid>). When the real
 			// socket is under /run/user/<uid>, create a symlink from the Bunker
 			// path so authorized_keys, .profile, and docker tunnels keep working.
 			if _, statErr := os.Stat(dockerSockPath); statErr == nil {
-				logger.Info("dockerd ready", "user", username, "sock", dockerSockPath)
+				logger.Info("dockerd ready", "user", username, "sock", dockerSockPath, "elapsed", time.Since(started).Round(time.Millisecond))
 				return nil
 			}
 			if _, statErr := os.Stat(actualDockerSockPath); statErr == nil {
@@ -1242,28 +1420,62 @@ func waitForDockerd(ctx context.Context, username, dockerSockPath, actualDockerS
 					logger.Error("dockerd socket under /run/user but symlink failed", "expected", dockerSockPath, "actual", actualDockerSockPath, "error", err)
 					return fmt.Errorf("dockerd socket at %s but could not symlink to %s: %w", actualDockerSockPath, dockerSockPath, err)
 				}
-				logger.Info("dockerd ready", "user", username, "expected_sock", dockerSockPath, "actual_sock", actualDockerSockPath)
+				logger.Info("dockerd ready", "user", username, "expected_sock", dockerSockPath, "actual_sock", actualDockerSockPath, "elapsed", time.Since(started).Round(time.Millisecond))
 				return nil
 			}
+		case !processSeen && !time.Now().Before(processDeadline):
+			// FAIL FAST: the unit produced no dockerd process at all — the
+			// broken-unit shapes (missing AppArmor profile, unmappable subuids,
+			// systemd refusing the unit). No socket can appear for a daemon that
+			// is not running, so burning the readiness budget here would only
+			// delay the report.
+			elapsed := time.Since(started)
+			// The grace reported is the one actually in force: a peer that
+			// joined mid-wait may have extended it (see the latch above).
+			grace := processDeadline.Sub(started)
+			cause := fmt.Sprintf("no dockerd process appeared within the %s process grace", grace.Round(time.Millisecond))
+			statusOut, journalOut := dockerdUnitDiagnostics(ctx, unitName)
+			logger.Error("dockerd process never appeared for the unit",
+				"user", username,
+				"unit", unitName,
+				"sock", dockerSockPath,
+				"elapsed", elapsed.Round(time.Millisecond),
+				"process_grace", grace.Round(time.Millisecond),
+				"systemctl_status", statusOut,
+				"journal", journalOut,
+			)
+			return dockerdUnreadyError(username, unitName, dockerSockPath, cause, elapsed, budget, concurrent)
+		}
+
+		if !time.Now().Before(deadline) {
+			break
 		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(poll):
+		case <-time.After(dockerdReadyPollInterval):
 		}
 	}
 
-	// Deadline exceeded — capture unit status and recent journal output for diagnostics.
-	statusOut, _ := exec.CommandContext(ctx, "systemctl", "status", unitName, "--no-pager", "-l", "-n", "20").CombinedOutput()
-	journalOut, _ := exec.CommandContext(ctx, "journalctl", "-u", unitName, "--no-pager", "-n", "20").CombinedOutput()
+	// Deadline exceeded — capture unit status and recent journal output for
+	// diagnostics.
+	elapsed := time.Since(started)
+	cause := "no dockerd process was running at the end of the wait"
+	if lastRunning {
+		cause = fmt.Sprintf("dockerd process is running but no socket appeared at %s", dockerSockPath)
+	}
+	statusOut, journalOut := dockerdUnitDiagnostics(ctx, unitName)
 	logger.Error("dockerd did not start within deadline",
 		"user", username,
 		"unit", unitName,
 		"sock", dockerSockPath,
-		"systemctl_status", string(statusOut),
-		"journal", string(journalOut),
+		"elapsed", elapsed.Round(time.Millisecond),
+		"readiness_budget", budget.Round(time.Millisecond),
+		"concurrent_starts", concurrent,
+		"systemctl_status", statusOut,
+		"journal", journalOut,
 	)
-	return fmt.Errorf("dockerd did not start for user %s (unit %s, socket %s)", username, unitName, dockerSockPath)
+	return dockerdUnreadyError(username, unitName, dockerSockPath, cause, elapsed, budget, concurrent)
 }
 
 // dockerdProcessChecker abstracts the pgrep check so tests can substitute a

@@ -150,12 +150,22 @@ Environment variables:
 ### 9. Da Readiness Wait
 
 ```
-waitForDockerd(agentID, UID, 5s timeout):
+waitForDockerd(agentID, UID, readiness budget = min(max(30s, 10s × concurrent
+                                           starts), 120s hard cap)):
   poll every 200ms:
     1. Check for dockerd process owned by agent UID
+       - no dockerd process at all after the process grace (5s + 2s per
+         concurrent start) → fail fast: the unit itself is broken
     2. Check /run/user/<UID>/docker.sock exists
+  the budget scales with the number of dockerd starts this process has in flight,
+  is re-derived on every poll and only ever grows (a latch, so a wait that began
+  alone inherits peers that join it). INT-CI-070: a five-way concurrent spawn
+  burst left a unit ACTIVE for 29s before its socket appeared, longer than the
+  previous flat 5s deadline.
   on success: create symlink /run/bunker/<id>/docker.sock → /run/user/<UID>/docker.sock
-  on failure: capture systemctl status + journalctl logs, trigger cleanup
+  on failure: capture systemctl status + journalctl logs (bounded, detached from
+              the caller's context), report the unit and the elapsed time,
+              trigger cleanup
 ```
 
 ### 10. Runtime Directory Setup
