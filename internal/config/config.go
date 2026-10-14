@@ -805,6 +805,26 @@ type AgentConfig struct {
 	Reconciliation ReconciliationConfig `mapstructure:"reconciliation"`
 	// Isolation holds the GAP-075 per-agent /tmp + shared-scratch policy.
 	Isolation IsolationConfig `mapstructure:"isolation"`
+	// HardenedUnitProperties arms the GAP-119 unit-sandboxing property set on
+	// every agent spawn unit (the per-agent rootless-dockerd transient unit).
+	// It is the guarded/hostile-deployment opt-in and it is OFF by default:
+	// with it off no property is added and the systemd-run argv stays
+	// byte-identical to a daemon without the feature.
+	//
+	// The set is not a menu — the daemon renders exactly the properties
+	// MEASURED to leave the rootless userns start path working
+	// (RestrictSUIDSGID, ProtectKernelTunables, ProtectKernelModules,
+	// ProtectClock, ProtectHostname), and it deliberately omits the candidates
+	// measured to break that path (NoNewPrivileges, CapabilityBoundingSet=,
+	// RestrictNamespaces, SystemCallFilter, ProtectSystem=strict,
+	// ProtectHome) — see internal/agent/unit_hardening.go for the per-property
+	// classification, risk line and re-runnable evidence
+	// (probes/knob-safety/probe-h-unit-hardening.sh). A knob that cannot be
+	// applied safely is not a weaker knob, it is a spawn failure: rootlesskit
+	// cannot map uids and dockerd never starts.
+	//
+	// Env override: BUNKERD_AGENT_HARDENED_UNIT_PROPERTIES.
+	HardenedUnitProperties bool `mapstructure:"hardened_unit_properties"`
 	// DestroyHomePolicy selects what destroy does with an agent's home
 	// directory before the Linux user is removed (DF-BUNKER-33):
 	// "archive" (the default) tars the home into DestroyArchiveDir and
@@ -1428,6 +1448,14 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("agent.isolation.shared_scratch_group")
 	v.BindEnv("agent.isolation.shared_scratch_per_agent_bytes")
 	v.BindEnv("agent.isolation.private_tmp_root")
+	// GAP-119: the guarded/hostile unit-sandboxing opt-in. Off unless an
+	// operator sets it (file or env); the set itself is code-owned (see
+	// internal/agent/unit_hardening.go) — there is no config knob for the
+	// individual properties, because the measured-breaker classification is
+	// not something a config typo should be able to override.
+	// The result is assigned explicitly (errcheck): the only failure mode is a
+	// malformed key, and this key is a literal, so the error cannot occur.
+	_ = v.BindEnv("agent.hardened_unit_properties")
 	v.BindEnv("tunnel.enabled")
 	v.BindEnv("tunnel.binary_path")
 	v.BindEnv("tunnel.tunnel_port")
