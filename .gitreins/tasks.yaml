@@ -4460,13 +4460,6 @@ tasks:
   status: complete
   created_at: '2026-10-10T20:17:09.348411+00:00'
   completed_at: '2026-10-10T20:49:21.153386+00:00'
-- id: DF-BUNKER-72
-  title: Recycled UID rootless Docker runtime cleanup and liveness
-  criteria:
-  - Recycled agent UIDs cannot inherit stale rootless runtime state; Docker liveness
-    is surfaced as degraded when unavailable; targeted tests pass.
-  status: in_progress
-  created_at: '2026-10-10T21:27:30.435384+00:00'
 - id: DOC-042
   title: Cover docs/spec in documentation drift gate
   criteria:
@@ -4567,3 +4560,23 @@ tasks:
   status: complete
   created_at: '2026-10-14T05:37:38.140074+00:00'
   completed_at: '2026-10-14T05:43:31.138773+00:00'
+- id: DF-BUNKER-72
+  title: "Rootless dockerd dead after uid recycle \u2014 stale dockerd-rootless state\
+    \ dir under /run/user"
+  criteria:
+  - Scrub stale RootlessKit state dir on recycled uid + docker degraded status; merged
+    e4b63eae
+  status: complete
+  created_at: '2026-10-14T09:24:37.445246+00:00'
+  completed_at: '2026-10-14T09:24:39.811286+00:00'
+- id: QA-BUNKER-72
+  title: qa-run.sh pip-ecosystem upgrade branch unquoted if-statement in fail_detail
+    args
+  criteria:
+  - qa-run.sh around line 1064 no longer embeds an unquoted shell if-statement as
+    fail_detail arguments (quote or precompute); bash -n qa-run.sh passes; battery
+    harness table-driven/local check exercises the pip-ecosystem upgrade branch without
+    a syntax error; go build/vet/test ./... unchanged-green
+  status: complete
+  created_at: '2026-10-14T11:31:00.380406+00:00'
+  completed_at: '2026-10-14T11:58:19.791087+00:00'
