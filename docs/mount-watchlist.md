@@ -8,7 +8,8 @@ the record instead of rediscovered, and so picking one up later is a decision
 against a written trigger, not a new research project.
 
 See also: [`mount-drivers.md`](mount-drivers.md) — the drivers we actually
-ship (sshfs default, rclone opt-in, FUSE-over-io_uring planned).
+ship (sshfs default, rclone opt-in, FUSE-over-io_uring an opt-in verified
+transport).
 
 ---
 
@@ -34,7 +35,7 @@ inside the agent, this stays a note, not work.
 
 ## 2. FUSE io_uring buffer/zero-copy series — still landing upstream
 
-**What it is.** Beyond the io_uring *transport* already planned as
+**What it is.** Beyond the io_uring *transport* implemented as
 [`mount-drivers.md`](mount-drivers.md) §3.3 (tracked as `MOUNT-008`), two
 further series are in flight upstream: a buffer/zero-copy patch series for
 FUSE over io_uring (posted to linux-fsdevel, Apr 2026) and `vfs_fadvise`
@@ -50,10 +51,16 @@ libfuse/kernel upgrades, not new code of ours.
 `vfs_fadvise` forwarding series (Sep 2026).
 
 **Trigger.** *"The packaged libfuse exposes the io_uring transport AND the
-target kernel has the FUSE io_uring series."* That is exactly MOUNT-008's
-verification probe going green on a stock install — at that point this entry
-graduates into the driver work, and each later kernel/libfuse upgrade should
-be re-checked against the zero-copy and fadvise series.
+target kernel has the FUSE io_uring series."* **Both halves of the libfuse/
+kernel precondition are already true on the control host** — re-measured
+2026-10-14, the bundled `libfuse3.so.3.18.2` carries `fuse_req_is_uring` and
+`-o io_uring`, and the `7.0.0-31-generic` kernel has `CONFIG_FUSE_IO_URING=y`;
+the only unmet gate is the runtime switch
+(`/sys/module/fuse/parameters/enable_uring` reads `N`). See
+[`mount-drivers.md`](mount-drivers.md) §3.3 — that section also corrects the
+earlier, wrong "libfuse exposes nothing" reading that this trigger was written
+against. Each later kernel/libfuse upgrade should be re-checked against the
+zero-copy and fadvise series.
 
 ## 3. SMB over QUIC — wrong problem for us
 

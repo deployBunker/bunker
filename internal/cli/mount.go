@@ -236,6 +236,7 @@ func NewMountCommand() *cobra.Command {
 		remotePath          string
 		expectWorkspace     string
 		sshfsRequirePatched bool
+		fuseDriver          string
 	)
 
 	cmd := &cobra.Command{
@@ -254,12 +255,29 @@ Examples:
   bunker mount abc12345 /tmp/bunker-mnt
   bunker mount abc12345 --ssh-key ~/.ssh/custom_key
   bunker mount abc12345 --sshfs-require-patched
+  bunker mount abc12345 --driver=fuse            # plain FUSE transport, never probes
+  bunker mount abc12345 --driver=fuse-iouring    # require the io_uring transport
 
 sshfs older than 3.7.6 is vulnerable to CVE-2026-47187 / CVE-2026-48711; by
 default the version is probed once and an affected or unverifiable sshfs only
-produces a warning. Pass --sshfs-require-patched to refuse instead of warning.`,
+produces a warning. Pass --sshfs-require-patched to refuse instead of warning.
+
+--driver selects the FUSE transport (how the kernel talks to the filesystem),
+not the mount driver (sshfs vs rclone, which the agent's MountSpec carries).
+auto is the default and only uses the io_uring transport when this host can
+actually provide it (libfuse3 built with it, kernel >= 6.14, and the fuse
+module parameter enable_uring enabled); otherwise it mounts exactly as it did
+before the flag existed.`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// MOUNT-008: the transport flag is validated before anything else
+			// — before the config load, the server call, the preflight and any
+			// exec — so a typo is a cheap named refusal rather than a mount
+			// that goes half-way and then fails.
+			if !isValidFuseDriver(fuseDriver) {
+				return errInvalidFuseDriver(fuseDriver)
+			}
+
 			agentID := args[0]
 			if len(args) > 1 {
 				mountPoint = args[1]
@@ -342,6 +360,17 @@ produces a warning. Pass --sshfs-require-patched to refuse instead of warning.`,
 			// above. rclone's stored command carries --daemon, so the CLI does
 			// not block on the VFS loop.
 			if mountDriver.Name == mountdriver.DriverRclone {
+				// MOUNT-008: the io_uring transport selection belongs to the
+				// sshfs arm, which is where the option is understood and where
+				// this CLI owns the argv. Asking for it against the rclone
+				// driver is a named refusal rather than an option silently
+				// dropped (rclone builds its own mount call). `auto` and
+				// `fuse` are unaffected — an rclone mount still never probes
+				// this host, exactly as before.
+				if fuseDriver == FuseTransportFuseIOUring {
+					return fmt.Errorf("--driver=%s is not supported with the %s mount driver (this CLI does not build that driver's argv): re-run with --driver=%s, or spawn the agent with --mount-driver %s",
+						FuseTransportFuseIOUring, mountDriver.Name, FuseTransportFuse, mountdriver.DefaultDriver)
+				}
 				return runRcloneMountCommand(cmd.Context(), mountCmd, entry, agentID, mountPoint, sshKey)
 			}
 
@@ -457,6 +486,32 @@ produces a warning. Pass --sshfs-require-patched to refuse instead of warning.`,
 				return err
 			}
 
+			// 3d. Transport selection (MOUNT-008). Resolved HERE — after every
+			// validation step (key, workspace preflight, sshfs version) and
+			// before any side effect — so:
+			//
+			//   - `--driver=fuse-iouring` on a host that cannot provide the
+			//     transport is a named refusal that creates no mountpoint and
+			//     executes nothing;
+			//   - `--driver=auto` (default) adds the io_uring option only when
+			//     the probe says this host supports it (libfuse3 exposes the
+			//     transport AND kernel >= 6.14 AND enable_uring is on), and on
+			//     a host without support prints nothing and changes nothing;
+			//   - `--driver=fuse` never probes the host at all.
+			//
+			// The argv mutation itself happens at step 5b, once the argv is
+			// otherwise final, which is what makes "plain transport" a
+			// byte-for-byte identical argv.
+			transport, terr := resolveFuseTransport(fuseDriver)
+			if terr != nil {
+				return terr
+			}
+			iouringActive := transport.ioUringActive()
+			if iouringActive {
+				fmt.Fprintf(os.Stderr, "bunker: FUSE io_uring transport: will pass `-o %s` to sshfs — %s\n",
+					iouringMountOption, transport.Capability.String())
+			}
+
 			// 4. Ensure mount point exists (private to this user).
 			if err := os.MkdirAll(mountPoint, 0o700); err != nil {
 				return fmt.Errorf("create mount point %s: %w", mountPoint, err)
@@ -511,6 +566,13 @@ produces a warning. Pass --sshfs-require-patched to refuse instead of warning.`,
 				fmt.Fprintf(os.Stderr, "bunker: note: dropped %q from the agent's stored SSHFS command — this mountpoint is private (0700) to your user, so the option would gain nothing and would expose the agent's files to other local users\n", offender)
 			}
 
+			// 5b. Transport application (MOUNT-008): the argv is final except
+			// for this, so `-o io_uring` is the last option added and the
+			// plain transport stays byte-identical to the pre-MOUNT-008 argv.
+			if iouringActive {
+				sshfsArgs = withFuseIOUringOption(sshfsArgs)
+			}
+
 			// 6. Run sshfs with bounded retry. Transient failures
 			// (connection resets and similar) are retried with backoff
 			// while permanent causes fail immediately. The final
@@ -537,7 +599,17 @@ produces a warning. Pass --sshfs-require-patched to refuse instead of warning.`,
 				combined.Reset()
 				stdoutCap := &bytes.Buffer{}
 				stderrCap := &bytes.Buffer{}
-				attemptCtx, attemptCancel := context.WithTimeout(mountCtx, sshfsAttemptTimeout)
+				// MOUNT-008: the io_uring attempt is also the transport's
+				// ACCEPTANCE probe — the kernel's real answer to "does this
+				// host mount over io_uring?" — so it runs under its own named
+				// deadline (iouringAcceptanceProbeTimeout) rather than being
+				// allowed to sit on the sshfs attempt budget. Bounded either
+				// way; never a hang.
+				attemptTimeout := sshfsAttemptTimeout
+				if iouringActive {
+					attemptTimeout = iouringAcceptanceProbeTimeout
+				}
+				attemptCtx, attemptCancel := context.WithTimeout(mountCtx, attemptTimeout)
 				err := sshfsRun(attemptCtx, parts[0], sshfsArgs, stdoutCap, stderrCap)
 				attemptCancel()
 				_, _ = combined.Write(stdoutCap.Bytes())
@@ -551,6 +623,29 @@ produces a warning. Pass --sshfs-require-patched to refuse instead of warning.`,
 					// manager): the attempt's group was already reaped, so
 					// report the interruption and never retry.
 					return fmt.Errorf("sshfs: interrupted by a shutdown signal — the mount attempt was stopped (last output: %s)", trimSSHFSOutput(combined.String()))
+				}
+				// MOUNT-008: a failure whose output names the io_uring
+				// transport is PERMANENT, and its remedy is a different
+				// transport rather than another attempt. Explicitly
+				// requested (`--driver=fuse-iouring`): stop here with a named
+				// bounded error that suggests the fallback — one attempt, its
+				// own named deadline, no hang and no retry storm. `auto`: warn
+				// and continue on the plain transport (the mount then behaves
+				// exactly as it would have without this row).
+				if iouringActive {
+					if named, reason := classifyIOUringMountFailure(combined.String()); named {
+						if fuseDriver != FuseTransportAuto {
+							return fmt.Errorf("--driver=%s: the mount attempt with `-o %s` failed and the output names that transport — %s (output: %s). Not retrying: the transport, not the attempt, is the problem. Re-run with --driver=%s to mount over the plain FUSE transport (%s)",
+								FuseTransportFuseIOUring, iouringMountOption, reason,
+								trimSSHFSOutput(combined.String()), FuseTransportFuse, enableCondition())
+						}
+						fmt.Fprintf(os.Stderr, "bunker: WARNING: the FUSE io_uring mount attempt failed (%s) — falling back to the plain FUSE transport for the remaining attempts\n", reason)
+						sshfsArgs = withoutFuseIOUringOption(sshfsArgs)
+						iouringActive = false
+						lastErr = err
+						lastClass, lastReason = classifySSHFSFailure(combined.String(), err)
+						continue
+					}
 				}
 				lastErr = err
 				lastClass, lastReason = classifySSHFSFailure(combined.String(), err)
@@ -594,5 +689,6 @@ produces a warning. Pass --sshfs-require-patched to refuse instead of warning.`,
 	cmd.Flags().StringVar(&remotePath, "path", "", "Remote path inside the agent to mount (default: the agent's home)")
 	cmd.Flags().StringVar(&expectWorkspace, "expect-workspace", "", "Refuse to mount unless the resolved workspace matches this git remote (e.g. deployBunker/bunker)")
 	cmd.Flags().BoolVar(&sshfsRequirePatched, "sshfs-require-patched", false, "Refuse to mount (before any mount attempt) when the local sshfs is older than "+sshfsPatchedVersion+" or its version cannot be verified — CVE-2026-47187 / CVE-2026-48711. Default: warn and proceed")
+	cmd.Flags().StringVar(&fuseDriver, "driver", FuseTransportAuto, "FUSE transport for this mount: "+FuseTransportAuto+" (use the io_uring transport when this host supports it, otherwise mount exactly as before), "+FuseTransportFuse+" (always the plain FUSE transport — the pre-MOUNT-008 behaviour, never probes the host), or "+FuseTransportFuseIOUring+" (require the io_uring transport; refuse with a named error when this host cannot provide it). This selects the FUSE TRANSPORT only — not the sshfs-vs-rclone mount driver, which comes from the agent's MountSpec")
 	return cmd
 }
