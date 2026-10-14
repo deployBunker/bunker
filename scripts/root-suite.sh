@@ -34,6 +34,52 @@ ROOT_SUITE_PASSWD="${ROOT_SUITE_PASSWD:-/etc/passwd}"
 ROOT_SUITE_SSHDIR="${ROOT_SUITE_SSHDIR:-/etc/bunkerd/ssh}"
 ROOT_SUITE_RUNDIR="${ROOT_SUITE_RUNDIR:-/run/bunker}"
 
+# INT-CI-071: the per-candidate membership query was ONE-SHOT, so a daemon
+# that was momentarily saturated at CLEANUP time was indistinguishable from a
+# genuine outage. CI runs 38590365280 / 38590390418 / 38590627192 /
+# 38597655288 reddened TestConcurrency_SpawnFiveAgents (70.85s) with
+# "'/usr/local/bin/bunker list --status all' unavailable while classifying user
+# bunker-conctest-* — PRESERVING candidate" fired for EVERY candidate (19
+# FAIL-CLOSED lines, 0 removals): under five concurrent spawns the local
+# daemon is churning (dockerd handshakes, systemd unit writes) and a single
+# query fails or returns empty, so rc=2 preserved all candidates and the
+# suite's "no leftover bunker-* state" invariants broke on the follow-up runs.
+# INT-CI-050 scaled the dockerd readiness budget at START (aa3f152e); this
+# closes the same class at the classification end.
+#
+# The query therefore gets a BOUNDED retry budget — default 4 attempts,
+# backoff 1 2 4 (~7s total) — spent BEFORE the rc=2 fail-closed decision, so a
+# transient hiccup recovers while a real outage still fails closed once the
+# budget is exhausted. The rc contract (0 registered / 1 not registered /
+# 2 fail-closed) and every rc=0/rc=1 behaviour are unchanged, and only a
+# SUCCESSFUL query can authorize removal: a candidate that stays ambiguous
+# after the whole budget is still preserved.
+ROOT_SUITE_QUERY_ATTEMPTS="${ROOT_SUITE_QUERY_ATTEMPTS:-4}"
+ROOT_SUITE_QUERY_BACKOFF="${ROOT_SUITE_QUERY_BACKOFF:-1 2 4}"
+# A mangled seam must degrade to ONE attempt (still fail-closed) rather than
+# turn the retry arithmetic into a shell error that aborts the sweep.
+case "$ROOT_SUITE_QUERY_ATTEMPTS" in
+    '' | *[!0-9]* | 0) ROOT_SUITE_QUERY_ATTEMPTS=1 ;;
+esac
+# A SUSTAINED outage must not eat the job's cleanup headroom (INT-CI-050: 210s
+# between the 1590s go-test budget and the 30m CI step). Once this much retry
+# sleep has been spent across the whole sweep, the remaining attempts run
+# back-to-back: the attempt count, the rc contract, and fail-closed for every
+# candidate all stay exactly as above — only the waiting is skipped.
+ROOT_SUITE_QUERY_SWEEP_SLEEP="${ROOT_SUITE_QUERY_SWEEP_SLEEP:-60}"
+case "$ROOT_SUITE_QUERY_SWEEP_SLEEP" in
+    '' | *[!0-9]*) ROOT_SUITE_QUERY_SWEEP_SLEEP=0 ;;
+esac
+ROOT_SUITE_QUERY_DELAYS=()
+read -r -a ROOT_SUITE_QUERY_DELAYS <<<"$ROOT_SUITE_QUERY_BACKOFF"
+QUERY_SWEEP_SLEPT=0
+QUERY_SWEEP_NOTE_EMITTED=0
+# Read by the callers' fail-closed diagnostics (set on every daemon_has_agent
+# return so a stale value can never be reported): the rendered retry budget
+# ("4 attempts / 3 retries") and the elapsed seconds.
+DHA_BUDGET_TEXT=""
+DHA_ELAPSED=0
+
 # GAP-089: the linger-cleanup helpers (purge_user_linger_state,
 # gc_orphan_linger_files) have ONE canonical definition — in
 # regression-tests.sh, where the hermetic test sed-extracts them. This suite
@@ -57,24 +103,75 @@ refresh_live_agent_ids() {
         | awk '/^  [a-z0-9]/{print $1}' || true
 }
 
+# query_retry_delay <attempt>: backoff before the NEXT attempt, read from
+# ROOT_SUITE_QUERY_BACKOFF (1 2 4 by default). Past the configured sequence the
+# last value repeats, a non-numeric/absent value is 0 (a mangled env seam must
+# not turn a retry into an arithmetic error), and an empty sequence means the
+# attempts run back-to-back.
+# shellcheck disable=SC2329  # called from daemon_has_agent, itself called from
+#                            # the EXIT trap — invisible to shellcheck's scan.
+query_retry_delay() {
+    local attempt="$1" idx delay
+    idx=$((attempt - 1))
+    [ "$idx" -ge "${#ROOT_SUITE_QUERY_DELAYS[@]}" ] && idx=$((${#ROOT_SUITE_QUERY_DELAYS[@]} - 1))
+    [ "$idx" -ge 0 ] || idx=0
+    delay="${ROOT_SUITE_QUERY_DELAYS[$idx]:-0}"
+    case "$delay" in
+        '' | *[!0-9]*) delay=0 ;;
+    esac
+    echo "$delay"
+}
+
 # daemon_has_agent <id>: authoritative membership check against the live
 # daemon, made IMMEDIATELY before any destructive removal of <id>'s state.
+# INT-CI-071: the query is retried up to ROOT_SUITE_QUERY_ATTEMPTS times
+# (backoff ROOT_SUITE_QUERY_BACKOFF) before it is judged unavailable, so a
+# daemon that is briefly saturated — five concurrent spawns churning dockerd —
+# still yields a definitive answer instead of a fail-closed preserve. Only a
+# SUCCESSFUL query can authorize removal; every attempt failing (or answering
+# empty) still fails closed.
 # Returns:
 #   0 — daemon answered, id IS registered: preserve, it is production state.
 #   1 — daemon answered, id is NOT registered: genuine leak, safe to remove.
-#   2 — query failed or was empty/ambiguous: FAIL CLOSED, preserve.
+#   2 — query failed or was empty/ambiguous on EVERY attempt: FAIL CLOSED,
+#       preserve. Sets DHA_BUDGET_TEXT / DHA_ELAPSED for the caller's
+#       diagnostic.
+# shellcheck disable=SC2329  # called from cleanup(), which the EXIT trap runs.
 daemon_has_agent() {
-    local id="$1" out
-    if ! out="$("$BUNKER_BIN" list --status all 2>/dev/null)"; then
-        return 2
-    fi
-    # A reachable daemon prints at least its header; completely empty stdout
-    # is ambiguous (transport hiccup, truncated reply) — fail closed.
-    [ -n "$out" ] || return 2
-    if echo "$out" | awk '/^  [a-z0-9]/{print $1}' | grep -qx "$id"; then
-        return 0
-    fi
-    return 1
+    local id="$1" out attempt=0 delay t0=$SECONDS att_word=attempts ret_word=retries
+    DHA_BUDGET_TEXT=""
+    DHA_ELAPSED=0
+    while :; do
+        attempt=$((attempt + 1))
+        if out="$("$BUNKER_BIN" list --status all 2>/dev/null)" && [ -n "$out" ]; then
+            # Reached only on a successful, non-empty answer: the retry loop
+            # can never classify on a failed/ambiguous query — a recovered
+            # hiccup is reported for BOTH outcomes (registered / not).
+            if [ "$attempt" -gt 1 ]; then
+                echo "root-suite: note: '$BUNKER_BIN list --status all' recovered on attempt $attempt for '$id' after $((SECONDS - t0))s — the first $((attempt - 1)) attempt(s) failed transiently, classification proceeded (INT-CI-071)" >&2
+            fi
+            if echo "$out" | awk '/^  [a-z0-9]/{print $1}' | grep -qx "$id"; then
+                return 0
+            fi
+            return 1
+        fi
+        [ "$attempt" -ge "$ROOT_SUITE_QUERY_ATTEMPTS" ] && break
+        delay="$(query_retry_delay "$attempt")"
+        if [ "$delay" -gt 0 ] && [ "$QUERY_SWEEP_SLEPT" -lt "$ROOT_SUITE_QUERY_SWEEP_SLEEP" ]; then
+            sleep "$delay"
+            QUERY_SWEEP_SLEPT=$((QUERY_SWEEP_SLEPT + delay))
+        elif [ "$QUERY_SWEEP_NOTE_EMITTED" -eq 0 ] && [ "$delay" -gt 0 ]; then
+            QUERY_SWEEP_NOTE_EMITTED=1
+            echo "root-suite: note: retry sleep budget ${ROOT_SUITE_QUERY_SWEEP_SLEEP}s is exhausted after ${QUERY_SWEEP_SLEPT}s — remaining membership checks retry back-to-back (attempt count, rc contract and fail-closed unchanged; INT-CI-071)" >&2
+        fi
+    done
+    # Rendered once, here, so all three call sites print the same budget text
+    # with correct grammar.
+    [ "$attempt" -eq 1 ] && att_word=attempt
+    [ "$((attempt - 1))" -eq 1 ] && ret_word=retry
+    DHA_BUDGET_TEXT="$attempt $att_word / $((attempt - 1)) $ret_word"
+    DHA_ELAPSED=$((SECONDS - t0))
+    return 2
 }
 
 # INT-CI-006: the hardcoded 300s go-test budget equaled the suite's real cost
@@ -136,7 +233,7 @@ cleanup() {
             continue
         fi
         if [ "$drc" -eq 2 ]; then
-            echo "root-suite: FAIL-CLOSED: '$BUNKER_BIN list --status all' unavailable while classifying user $u — PRESERVING candidate. Investigate the daemon, then remove manually only if '$BUNKER_BIN list' confirms $id_short is not registered." >&2
+            echo "root-suite: FAIL-CLOSED: '$BUNKER_BIN list --status all' unavailable after $DHA_BUDGET_TEXT over ${DHA_ELAPSED}s while classifying user $u — PRESERVING candidate. Investigate the daemon, then remove manually only if '$BUNKER_BIN list' confirms $id_short is not registered." >&2
             continue
         fi
         echo "removing leaked test user $u"
@@ -166,7 +263,7 @@ cleanup() {
             continue
         fi
         if [ "$krc" -eq 2 ]; then
-            echo "root-suite: FAIL-CLOSED: daemon membership query unavailable for key $k — PRESERVING candidate. Investigate the daemon before manual removal." >&2
+            echo "root-suite: FAIL-CLOSED: daemon membership query unavailable after $DHA_BUDGET_TEXT over ${DHA_ELAPSED}s for key $k — PRESERVING candidate. Investigate the daemon before manual removal." >&2
             continue
         fi
         echo "quarantining leaked test key $k"
@@ -184,7 +281,7 @@ cleanup() {
             continue
         fi
         if [ "$drc2" -eq 2 ]; then
-            echo "root-suite: FAIL-CLOSED: daemon membership query unavailable for run dir $d — PRESERVING candidate. Investigate the daemon before manual removal." >&2
+            echo "root-suite: FAIL-CLOSED: daemon membership query unavailable after $DHA_BUDGET_TEXT over ${DHA_ELAPSED}s for run dir $d — PRESERVING candidate. Investigate the daemon before manual removal." >&2
             continue
         fi
         # Run dirs are ephemeral tmpfs (docker.sock + empty run/tmp) — delete
