@@ -351,6 +351,14 @@ jobs:
           # CI builds BUNKER_BIN from the pushed commit, so a certification
           # MISMATCH here is a real defect, not a deployment mode.
           BUNKER_STRICT_BIN: "1"
+          # QA-BUNKER-B14: the battery's VERIFY verdict names the host the
+          # DAEMON reports (bcli status Hostname). Pin the EXPECTED host per
+          # runner so the verdict line — and any "E2E VERIFY-PASS" or
+          # "CI closure" claim quoted from this run — states which host it
+          # certifies, and a verdict produced on some other box is visible as
+          # such in the transcript. This host is NOT the whole fleet: a green
+          # run here covers this runner (bunker-mvp) only.
+          BATTERY_EXPECTED_HOST: bunker-mvp
         run: bash e2e-full-battery.sh
         # INT-CI-065: battery runtime grew past 15m (measured 15m13s on run
         # 38432328297 while every cell stayed green). Raised to 25m to match
