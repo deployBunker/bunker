@@ -466,6 +466,14 @@ func TestMain(m *testing.M) {
 	// their own declarations, and the production default (the embedded
 	// inventory) is asserted through the loader captured here.
 	disableFleetInventoryForSuite()
+	// MOUNT-008: the mount command gained a FUSE-transport axis
+	// (`--driver=auto|fuse|fuse-iouring`). Pin the plain transport for the
+	// whole suite so every pre-existing argv-shape assertion stays
+	// deterministic: without it, a test host whose kernel has the io_uring
+	// transport enabled would gain `-o io_uring` and fail cells that predate
+	// this row. Cells that exercise the probe stub it and opt back in with
+	// stubIOUringHost.
+	pinPlainFuseTransportForSuite()
 	code := m.Run()
 	checkSentinelTestHome(sentinelHome)
 	os.Exit(code)

@@ -1,8 +1,11 @@
 # Mount drivers — sshfs (default), rclone, and FUSE over io_uring
 
-**Status:** sshfs default; rclone opt-in implemented (MOUNT-007); `fuse-io_uring`
-planned. This document also records the sshfs security issue that forces an
-upgrade, because the fix and the driver model touch the same code.
+**Status:** sshfs default; rclone opt-in implemented (MOUNT-007);
+`fuse-io_uring` implemented as a verified, opt-in FUSE *transport* (MOUNT-008) —
+see §3.3, which also corrects the earlier measurement that wrongly reported the
+packaged libfuse as lacking the transport. This document also records the sshfs
+security issue that forces an upgrade, because the fix and the driver model
+touch the same code.
 
 See also: [`both-ways.md`](both-ways.md) (when to use the mount vs the verb path),
 [`performance.md`](performance.md) (what caps throughput on a long path: the socket-buffer
@@ -128,24 +131,99 @@ default; an unknown name is refused by the server).
   `internal/mountdriver/rclone.go`, selected with the `--mount-driver rclone`
   spawn flag above.
 
-### 3.3 FUSE over io_uring — opt-in
+### 3.3 FUSE over io_uring — opt-in, verify-then-enable (MOUNT-008)
 
 A transport change for FUSE itself, not a filesystem: it moves the
-kernel↔userspace channel onto io_uring and cuts per-request overhead (measured
-gains on the order of 1.4–2.8x on relevant workloads).
+kernel↔userspace request channel onto io_uring and cuts per-request overhead
+(measured gains on the order of 1.4–2.8x on relevant workloads).
 
-- **Requires all three:** a kernel with `CONFIG_FUSE_IO_URING` (>= 6.14), a
-  **libfuse built with io_uring support**, and the module parameter enabled.
-- **Enablement:** `echo 1 > /sys/module/fuse/parameters/enableuring`, then mount
-  with the `-o iouring` option.
-- **Measured state on our hosts (2026-09-20):**
-  - control host: kernel `7.0.0-30-generic` with `CONFIG_FUSE_IO_URING=y` — kernel side **ready**;
-  - **but** the packaged libfuse `3.18.2` exposes **no** io_uring transport (no
-    `io_uring`/`iouring` strings in `libfuse3.so.3`, `fusermount3`, `mount.fuse3`
-    or `sshfs`), so it is **not available in the current build**;
-  - daemon host `78.46.173.180`: kernel `6.8.0-117-generic` — no io_uring FUSE.
-- **Therefore this driver starts with a verification step, not an enablement:**
-  probe the libfuse build for the option, and if it is absent, **fail with a named
-  reason** rather than silently mounting without it. It applies where the mount
-  happens (the client), so it is a client-host property.
-- Tracked as `MOUNT-008`.
+- **Requires all three:**
+  1. a kernel with `CONFIG_FUSE_IO_URING` (>= 6.14);
+  2. a **libfuse built with io_uring support**;
+  3. the module parameter enabled: `echo 1 > /sys/module/fuse/parameters/enable_uring` (root).
+- **Mount option:** `-o io_uring` — spelled with an **underscore**. It travels
+  `sshfs → libfuse3 → fusermount3 → mount(2)`, which is where it is consumed;
+  libfuse's own help text is `    -o io_uring            enable io-uring`.
+  `--driver=fuse-iouring` adds exactly this option (and nothing else) to the
+  argv.
+- **Client-host property.** It applies where the mount happens, so the probe
+  runs on the client, not on the agent.
+
+**How to select it:**
+
+```sh
+bunker mount <agent-id>                      # --driver=auto (default)
+bunker mount <agent-id> --driver=fuse        # plain FUSE transport, never probes
+bunker mount <agent-id> --driver=fuse-iouring  # require it, refuse if unavailable
+```
+
+`auto` (the default) uses the io_uring transport **only** when all three
+conditions hold, and otherwise mounts exactly as it did before this row — no
+extra output, no argv change. `fuse-iouring` is a *requirement*, not a
+preference: on a host that cannot provide the transport the command refuses
+with a named error before it creates a mountpoint or executes anything.
+Setting `BUNKER_FUSE_IOURING=off` pins the plain transport every time.
+
+#### Corrected measurement — the earlier record in this section was wrong
+
+The first version of this section (2026-09-20) claimed the packaged libfuse
+"exposes **no** io_uring transport ... so it is not available in the current
+build". **That reading was wrong**, and it was wrong because of a probe-path
+bug rather than a missing feature: the check ran
+
+```
+nm -D /usr/lib/x86_64-linux-gnu/libfuse3.so.3
+```
+
+and on this host that file **does not exist** — the SONAME here is
+`libfuse3.so.4` (real file `libfuse3.so.3.18.2`, package version 3.18.2). `nm`
+failed with `No such file`, grep found nothing, and "no output" was read as "no
+support". Re-measured 2026-10-14 on the control host (kernel
+`7.0.0-31-generic`):
+
+| check | command | result |
+|---|---|---|
+| libfuse3 transport | `nm -D /usr/lib/x86_64-linux-gnu/libfuse3.so.3.18.2` | `T fuse_req_is_uring@@FUSE_3.18` — **present** |
+| libfuse3 option table | `strings …/libfuse3.so.3.18.2 \| grep -i uring` | `io_uring`, `io_uring_q_depth=%u`, `-o io_uring            enable io-uring` — **present** |
+| kernel | `uname -r` + `grep CONFIG_FUSE_IO_URING /boot/config-$(uname -r)` | `7.0.0-31-generic`, `CONFIG_FUSE_IO_URING=y` — ready |
+| kernel switch | `cat /sys/module/fuse/parameters/enable_uring` | **`N`** — the transport is DISABLED |
+| sshfs | `strings $(which sshfs) \| grep -i uring` | none — expected: sshfs is the filesystem, the option belongs to libfuse |
+| fusermount3 | `strings $(command -v fusermount3) \| grep -i uring` | none — it forwards mount options opaquely, so its silence is not evidence |
+
+**Finding:** on the control host the library and the kernel are both ready and
+**the only unmet condition is the runtime switch**:
+
+```sh
+# root
+echo 1 > /sys/module/fuse/parameters/enable_uring
+bunker mount <agent-id> --driver=fuse-iouring
+```
+
+**Daemon host `78.46.173.180` (re-measured 2026-10-14):** kernel
+`6.8.0-142-generic` — below the 6.14 floor and with no
+`enable_uring` parameter at all — and libfuse3 `3.14.0` (no `uring` symbol or
+string in it). Both halves are absent there, so its verdict is a plain
+`unsupported` (no io_uring FUSE), not `unknown`.
+
+#### What the probe does (and why it is three-valued)
+
+`internal/cli/mount_iouring.go` implements a runtime probe that answers "can
+someone here mount over io_uring?" by checking the same three conditions, then
+classifying each as `supported` / `unsupported` / **`unknown`**:
+
+1. **libfuse3 transport** — the library is *resolved* at runtime (`ldconfig
+   -p`, then the standard lib directories globbed, then `$BUNKER_LIBFUSE3`)
+   rather than hard-coded, and surveyed with `nm -D` + `strings`.
+2. **kernel release** >= 6.14.
+3. **`enable_uring`** = enabled.
+
+The third value matters: a *failed read* (missing file, missing tool, unreadable
+`/sys`) is `unknown`, never `unsupported`. Collapsing those two is exactly the
+bug that produced the wrong record above. The probe is also bounded
+(`iouringProbeCommandTimeout`) so a wedged survey tool cannot stall a mount, and
+a failed attempt is bounded separately by the named
+`iouringAcceptanceProbeTimeout` — the transport's live acceptance probe is the
+first mount attempt that carries `-o io_uring`, not a separate throwaway mount.
+
+Tracked as `MOUNT-008`.
+
