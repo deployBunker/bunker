@@ -216,8 +216,10 @@ func runsGoInstall(render string) bool {
 // per-manager apt/npm line is byte-identical to the DF-BUNKER-79 capture, and
 // only the stock layer differs — never a manager's own render.
 func TestDockerfile_APTSpecsUnchangedByGoBootstrap(t *testing.T) {
-	const (
-		baseLine     = "FROM " + "docker.io/library/ubuntu:24.04" + "\n"
+	// var, not const: baseLine (and therefore noDirectives) is derived from the
+	// supply-chain pin through pinnedFrom, which is a function call.
+	var (
+		baseLine     = pinnedFrom(DefaultBaseImage)
 		stockLine    = stockToolchainGoldenLine
 		aptSingle    = "RUN apt-get update && apt-get install -y --no-install-recommends 'ripgrep' && rm -rf /var/lib/apt/lists/*\n"
 		aptMulti     = "RUN apt-get update && apt-get install -y --no-install-recommends 'jq' 'curl=8.5.0-2ubuntu10' && rm -rf /var/lib/apt/lists/*\n"
@@ -256,7 +258,7 @@ func TestDockerfile_APTSpecsUnchangedByGoBootstrap(t *testing.T) {
 		{
 			name: "explicit ubuntu 22.04 base, apt only",
 			raw:  `{"base":"docker.io/library/ubuntu:22.04","packages":[{"manager":"apt","packages":["ripgrep"]}]}`,
-			want: "FROM docker.io/library/ubuntu:22.04\n" + stockLine + aptSingle,
+			want: pinnedFrom("docker.io/library/ubuntu:22.04") + stockLine + aptSingle,
 		},
 	}
 	for _, tt := range tests {

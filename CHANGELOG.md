@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+- **Supply-chain pinning (GAP-135): the installer's downloads and the base
+  images are pinned by version + sha256/digest.** The rootless install path
+  used to fetch its inputs by MOVING URLs and execute them:
+  `https://get.docker.com/rootless` (run as the agent user, writing executables
+  into its `~/bin`) and `https://github.com/<project>/releases/latest/download/
+  <binary>` for slirp4netns / fuse-overlayfs (installed on the agent's `PATH`);
+  customized agent images built `FROM docker.io/library/ubuntu:24.04` — a tag,
+  i.e. whatever that tag pointed at on the day of each build. All of them now
+  come from a manifest checked into the repo and embedded in the binary
+  (`internal/supplychain/manifest.json`), and every consumer VERIFIES before it
+  executes, extracts or builds: a mismatch is a named error
+  (`supplychain.ErrChecksumMismatch`, `*MismatchError` with expected vs actual
+  digest) that removes the artifact and fails the spawn — never a warning, and
+  never a fallback to the unverified bytes. The prebuilt binaries are pinned to
+  release assets (`v1.3.6`, `v1.18`), the installer script by the
+  docker-install commit it was built from, and each base image by the digest of
+  its multi-arch manifest list, which the `FROM` line now carries as
+  `name@sha256:<digest>` (docker verifies it, so a substituted image fails the
+  pull). Two pins are structural rather than conventional: the host installer
+  cache key embeds the pinned digest, so a re-pin can never be served the
+  artifact the previous pin downloaded, and `Spec.CacheKey()` hashes the pinned
+  reference, so a re-pin invalidates the per-agent image cache. Re-pinning is a
+  reviewed manifest edit with a documented procedure and a live upstream probe
+  (`BUNKER_LIVE_PIN_PROBE=1`) — see docs/supply-chain-pinning.md.
+
 - **Per-agent resource events (GAP-121): see what an agent HIT, not just what
   it is using.** `bunker resource-events <agent-id>` surfaces the cgroup v2
   ceiling events — `memory.events` (`max`, `high`, `low`, `oom`, `oom_kill`,

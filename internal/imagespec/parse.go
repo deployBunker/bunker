@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/deployBunker/bunker/internal/supplychain"
 )
 
 // DefaultBaseImage is the base image every agent uses today; a spec may only
@@ -148,12 +150,40 @@ const GoBinDir = "/usr/local/bin"
 // allowedBases is the closed set of base images a spec may name. Everything
 // else — private registries, localhost pulls, scratch — is rejected so a spec
 // can never change where the agent image comes from beyond this list.
+//
+// Every entry here MUST also be pinned in the supply-chain manifest
+// (GAP-135): a base image is only buildable through its digest, and
+// TestEveryAllowedBaseIsDigestPinned fails the build if that stops being true.
 var allowedBases = map[string]bool{
 	DefaultBaseImage:                 true,
 	"docker.io/library/ubuntu:22.04": true,
 	"docker.io/library/debian:12":    true,
 	"docker.io/library/debian:11":    true,
 }
+
+// pinnedBaseRef resolves a base image to the immutable reference a FROM line
+// must carry (GAP-135): `name@sha256:<digest>` from the supply-chain manifest.
+//
+// The spec still NAMES its base by tag — the tag is the human handle, and the
+// allowed set above is unchanged — but the render never hands docker a mutable
+// pointer. A tag is a moving target: `ubuntu:24.04` resolved to whatever the
+// tag pointed at on the day of each build, so two builds of the same spec were
+// not the same image. The digest makes the base a fixed input, and re-pinning
+// (docs/supply-chain-pinning.md) is the documented upgrade path.
+//
+// The fallback to the bare reference is reachable ONLY for a Spec built
+// outside Parse (a hand-constructed value in a test); Parse refuses a base the
+// manifest does not pin, so every spec the server accepts is digest-pinned.
+func pinnedBaseRef(base string) string {
+	if ref, ok := supplychain.PinnedImageRef(base); ok {
+		return ref
+	}
+	return base
+}
+
+// BaseReference is the reference the spec's FROM line renders: the spec's base
+// resolved to its pinned digest.
+func (s *Spec) BaseReference() string { return pinnedBaseRef(s.Base) }
 
 // tokenAllowed matches a constrained package name/version token. The class
 // ranges deliberately exclude EVERY shell metacharacter: whitespace, | & ; < >
@@ -197,6 +227,13 @@ func fromWire(raw *wireImageSpec) (*Spec, error) {
 	if raw.Base != "" {
 		if !allowedBases[raw.Base] {
 			return nil, fmt.Errorf("base image %q is not allowed (allowed: %v)", raw.Base, AllowedBases())
+		}
+		// Allowed is not enough: the base must also be pinned, or the build
+		// would pull a mutable tag (GAP-135). An allowed-but-unpinned base is
+		// a repo defect, and it fails here rather than at build time inside a
+		// docker error nobody can attribute.
+		if _, pinned := supplychain.PinnedImageRef(raw.Base); !pinned {
+			return nil, fmt.Errorf("base image %q is not digest-pinned in the supply-chain manifest; every allowed base must be pinned", raw.Base)
 		}
 		spec.Base = raw.Base
 	}
@@ -273,7 +310,10 @@ func validateToken(m PackageManager, tok string) error {
 func (s *Spec) CacheKey() string {
 	var b strings.Builder
 	b.WriteString("base=")
-	b.WriteString(s.Base)
+	// The PINNED reference, not the tag (GAP-135): a re-pin must produce a
+	// different key, or a re-pinned spec would be served the image built from
+	// the previous digest.
+	b.WriteString(s.BaseReference())
 	b.WriteString("\n")
 	norm := make([]PackageAdd, len(s.Packages))
 	copy(norm, s.Packages)
@@ -317,7 +357,11 @@ func Hash(data []byte) (string, error) {
 func (s *Spec) Dockerfile() string {
 	var b strings.Builder
 	b.WriteString("FROM ")
-	b.WriteString(s.Base)
+	// GAP-135: the FROM line carries the digest-pinned reference, never the
+	// bare tag (see pinnedBaseRef). Docker verifies the digest it is given, so
+	// a substitution at the registry surfaces as a failed pull rather than as
+	// a silently different image.
+	b.WriteString(s.BaseReference())
 	b.WriteString("\n")
 	renderStockToolchain(&b)
 	for _, d := range s.Packages {

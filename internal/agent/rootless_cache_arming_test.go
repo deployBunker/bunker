@@ -23,6 +23,10 @@ func TestSetRootlessInstallerCacheDir_ArmsCachePath(t *testing.T) {
 	prev := rootlessInstallerCacheDir
 	SetRootlessInstallerCacheDir(cacheDir)
 	t.Cleanup(func() { rootlessInstallerCacheDir = prev })
+	// These plumbing tests seed a synthetic payload, so the GAP-135 checksum
+	// gate is stubbed (it hashes the real pinned bytes; see
+	// rootless_pin_test.go for the gate's own tests).
+	stubRootlessInstallerVerifier(t)
 
 	// Assert the seam sets the var…
 	if rootlessInstallerCacheDir != cacheDir {
@@ -85,6 +89,7 @@ func TestSetRootlessInstallerCacheDir_MissPopulatesThenHits(t *testing.T) {
 	prev := rootlessInstallerCacheDir
 	SetRootlessInstallerCacheDir(cacheDir)
 	t.Cleanup(func() { rootlessInstallerCacheDir = prev })
+	stubRootlessInstallerVerifier(t)
 
 	downloads := 0
 	prevDownload := rootlessInstallerDownload

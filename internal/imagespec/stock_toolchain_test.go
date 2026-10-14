@@ -29,7 +29,7 @@ func TestDockerfile_PreservesStockToolchain(t *testing.T) {
 	if len(lines) < 3 {
 		t.Fatalf("render has %d lines, want FROM + toolchain layer + spec layer:\n%s", len(lines), got)
 	}
-	if lines[0] != "FROM "+DefaultBaseImage {
+	if lines[0] != strings.TrimSuffix(pinnedFrom(DefaultBaseImage), "\n") {
 		t.Errorf("first line = %q, want the FROM line", lines[0])
 	}
 	toolchainLine := lines[1]
@@ -117,7 +117,7 @@ func TestDockerfile_StockToolchainOnEveryAllowedBase(t *testing.T) {
 func TestDockerfile_StockToolchainLineIsExact(t *testing.T) {
 	spec := &Spec{Base: DefaultBaseImage}
 	got := spec.Dockerfile()
-	want := "FROM " + DefaultBaseImage + "\n" + stockToolchainGoldenLine
+	want := pinnedFrom(DefaultBaseImage) + stockToolchainGoldenLine
 	if got != want {
 		t.Errorf("base-only Dockerfile() =\n%q\nwant\n%q", got, want)
 	}

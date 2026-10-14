@@ -202,7 +202,7 @@ func TestRegistry_DockerfileSkipsUnregisteredManagers(t *testing.T) {
 		},
 	}
 	got := spec.Dockerfile()
-	want := "FROM " + DefaultBaseImage + "\n" +
+	want := pinnedFrom(DefaultBaseImage) +
 		stockToolchainGoldenLine +
 		"RUN apt-get update && apt-get install -y --no-install-recommends 'jq' && rm -rf /var/lib/apt/lists/*\n"
 	if got != want {
