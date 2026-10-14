@@ -659,6 +659,22 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// the tier table (matrix verdicts) merged with the daemon's admin
 	// overrides, and rides the slice drop-in (below) and the R2 landing check.
 	unitKnobs, sliceKnobs := KnobsForPreset(preset, cpuQuota, memMax, diskMax, maxProcs, maxFiles)
+	// GAP-119: the guarded/hostile opt-in unit-sandboxing set. OFF by default —
+	// hardenedUnitKnobs returns nil and nothing below changes; ON adds the
+	// measured-safe properties to the unit argv AND to the reported property set
+	// (a bound that is not reported is not a bound). The set is resolved once
+	// here and consumed by both surfaces, so the argv and `bunker info` can
+	// never disagree.
+	hardeningKnobs := hardenedUnitKnobs(m.cfg.Agent.HardenedUnitProperties)
+	if len(hardeningKnobs) > 0 {
+		m.logger.Info("hardened unit properties armed for spawn unit",
+			"agent_id", agentID,
+			"properties", hardenedUnitKnobNames(true),
+		)
+	}
+	// Reported unit property set, in argv order: the sandbox boundary block
+	// first (GAP-119), then the GAP-116 limit block.
+	reportedUnitKnobs := append(append([]SystemdKnob{}, hardeningKnobs...), unitKnobs...)
 	containment := resolveContainmentKnobs(preset, memMax, m.cfg.Agent)
 	// INT-CI-37: the containment render is the FIRST thing that can fail for
 	// knob reasons, and it must fail LOUD before systemd-run creates any
@@ -685,6 +701,9 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		MaxProcesses:   maxProcs,
 		MaxOpenFiles:   maxFiles,
 		UnitKnobs:      unitKnobs,
+		// GAP-119: the opt-in unit-sandboxing set for this spawn (nil/off by
+		// default → no argv element at all).
+		HardenedUnitProperties: m.cfg.Agent.HardenedUnitProperties,
 		// NET-BUNKER-010/002: the resolved network-isolation mode. "shared"
 		// (and the empty zero value) leaves the argv byte-identical;
 		// "systemd" adds --property=PrivateNetwork=yes (see
@@ -915,8 +934,11 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		// GAP-116: the effective safety preset and the knob set the agent was
 		// actually spawned under — the unit argv's properties, and the slice
 		// drop-in's when it was written. `bunker info` reports these as-is.
-		SafetyPreset:     preset,
-		UnitProperties:   systemdKnobsToProto(unitKnobs),
+		SafetyPreset: preset,
+		// GAP-119: the reported unit set carries the sandbox properties too
+		// when they were armed, so `bunker info` shows the boundary the agent
+		// was actually spawned under (empty/off = exactly the pre-GAP-119 set).
+		UnitProperties:   systemdKnobsToProto(reportedUnitKnobs),
 		SliceProperties:  systemdKnobsToProto(sliceKnobs),
 		SliceDropIn:      dropinContent,
 		SliceDropInState: sliceDropInState(createdUserSlice),

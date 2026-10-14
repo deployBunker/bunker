@@ -953,6 +953,16 @@ type dockerdUnitArgs struct {
 	// set from the limits above — the derivation is identical to pre-GAP-116,
 	// so both paths produce the same argv for the same limits.
 	UnitKnobs []SystemdKnob
+	// HardenedUnitProperties arms the GAP-119 unit-sandboxing set
+	// (agent.hardened_unit_properties / BUNKERD_AGENT_HARDENED_UNIT_PROPERTIES).
+	// false — the default and the shipped state — adds NO element (byte-identical
+	// argv). true renders hardenedUnitKnobs(true): the properties measured SAFE
+	// against the rootless start path, in table order, immediately after the
+	// PrivateTmp boundary. The properties measured to break that path
+	// (NoNewPrivileges, CapabilityBoundingSet=, RestrictNamespaces,
+	// SystemCallFilter, ProtectSystem=strict, ProtectHome) are unreachable from
+	// here by construction — see internal/agent/unit_hardening.go.
+	HardenedUnitProperties bool
 	// NetworkMode is the resolved network-isolation mode for this unit
 	// (NET-BUNKER-010/002; specs/network-isolation.md §1.2). Must be a
 	// netmode-valid name — callers resolve through config.ResolveNetworkMode
@@ -995,6 +1005,11 @@ type dockerdUnitArgs struct {
 // The mode is resolved and validated by the caller BEFORE this builder runs
 // (spawn Step 1b, before any side effect); an invalid NetworkMode here is a
 // programming error and fails loud rather than degrading to shared.
+//
+// GAP-119: HardenedUnitProperties arms the unit-sandboxing property set
+// (internal/agent/unit_hardening.go). Off (the default) contributes no element.
+// On contributes the five properties measured SAFE against the rootless start
+// path; the properties measured to BREAK it cannot reach this argv.
 //
 // DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns avoids needing a separate
 // bridge, and the per-agent socket path is passed through DOCKER_HOST so the
@@ -1060,6 +1075,15 @@ func buildRootlessDockerdArgs(a dockerdUnitArgs) (args []string, env []string) {
 	// `systemd` adds exactly --property=PrivateNetwork=yes, immediately after
 	// the PrivateTmp boundary and before the limit block.
 	args = append(args, modeProps...)
+	// GAP-119: the unit-sandboxing set, when the daemon armed it. It sits in
+	// the same boundary block as PrivateTmp (sandbox properties together) and
+	// contributes NOTHING when the flag is off, so the argv stays
+	// byte-identical for every existing deployment. Every property in the set
+	// was measured against the real rootless userns start path; the measured
+	// breakers are excluded by construction (unit_hardening.go).
+	for _, k := range hardenedUnitKnobs(a.HardenedUnitProperties) {
+		args = append(args, "--property="+k.Name+"="+k.Value)
+	}
 	// GAP-116: the limit property block is table-driven (same values, same
 	// order, same conditional as pre-GAP-116 — pinned byte-for-byte by the
 	// zero-delta test). The preset name itself carries no knob information in

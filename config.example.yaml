@@ -235,6 +235,36 @@ agent:
   # --network-mode <mode>`. Env override: BUNKERD_NETWORK_MODE.
   network_mode: shared
 
+  # Unit sandboxing for guarded/hostile deployments (GAP-119). OFF by default:
+  # with it off no property is added and the systemd-run argv is byte-identical
+  # to a daemon without the feature. When true, every agent spawn unit (the
+  # per-agent rootless-dockerd transient unit) additionally carries the
+  # systemd sandboxing properties MEASURED to leave the rootless start path
+  # working:
+  #   RestrictSUIDSGID=yes, ProtectKernelTunables=yes, ProtectKernelModules=yes,
+  #   ProtectClock=yes, ProtectHostname=yes
+  # (PrivateTmp=yes is already unconditional — the GAP-075 /tmp boundary.)
+  #
+  # The set is deliberately NOT a menu: the candidates measured to BREAK the
+  # rootless start path are unreachable by design, because a knob that cannot
+  # be applied safely does not weaken the sandbox — it fails the SPAWN
+  # (rootlesskit cannot map uids through setuid newuidmap and dockerd never
+  # starts, surfacing as a StageDockerdStart error):
+  #   NoNewPrivileges=yes            -> newuidmap: write to uid_map failed: EPERM
+  #   CapabilityBoundingSet=         -> newuidmap: open of uid_map failed: EACCES
+  #   RestrictNamespaces=yes         -> rootlesskit cannot start its child
+  #   SystemCallFilter=@system-service -> rootlesskit child dies with SIGSYS
+  #   ProtectSystem=strict           -> the unit cannot create its socket dir
+  #                                     under /run (EROFS), and it breaks
+  #                                     useradd's /etc locking on root units
+  #   ProtectHome=yes                -> the unit cannot exec $HOME/bin/
+  #                                     dockerd-rootless.sh
+  # Per-property classification, risk line and the re-runnable probe:
+  # internal/agent/unit_hardening.go and
+  # probes/knob-safety/probe-h-unit-hardening.sh.
+  # Env override: BUNKERD_AGENT_HARDENED_UNIT_PROPERTIES.
+  # hardened_unit_properties: false   # default
+
   # Startup reconciliation between the replayed registry and system users.
   #   destroy (default): a bunker-* user the registry does not know is removed.
   #   adopt:             it is re-registered and its EXACT persisted port
