@@ -126,9 +126,13 @@ func NewUmountCommand() *cobra.Command {
 Accepts either the agent id or an explicit mountpoint path. An agent id is
 resolved against the default mount roots AND against the live mount table, so a
 mount made at a custom path (bunker mount <agent> /mnt/bunker/<agent>) is still
-found and unmounted by agent id. Running it when nothing is mounted is SUCCESS:
-cleanup must be safe to run twice, and after a crash you cannot be expected to
-know how far the previous attempt got.
+found and unmounted by agent id. A mount at a path that carries no agent id at
+all is found by the identity the kernel records for it — the sshfs device
+(bunker-<id>@<host>:<path>) — and that detach is confirmed against the mount
+table before success is reported: a mount still live after the unmount exits
+non-zero instead of printing a clean report. Running it when nothing is mounted
+is SUCCESS: cleanup must be safe to run twice, and after a crash you cannot be
+expected to know how far the previous attempt got.
 
 A stranded mountpoint (crashed sshfs holding the FUSE session) is cleared
 automatically, falling back to a lazy unmount when the filesystem cannot be
@@ -155,16 +159,22 @@ Examples:
 //
 // Resolution order — each step is only reached when the previous one found
 // nothing, and none of them may report success while a live mount for the agent
-// still exists (DF-BUNKER-50):
+// still exists (DF-BUNKER-50, DF-BUNKER-91):
 //
 //  1. an existing path argument IS the mountpoint (the caller knows best);
 //  2. an agent id resolved under the default mount roots (+ namespaced layout);
 //  3. the LIVE MOUNT TABLE, matched on the mount TARGET only, for any mount
 //     whose path carries the agent id — this is the step that was missing, and
 //     the reason `bunker mount <agent> /mnt/bunker/<agent>` followed by
-//     `bunker umount <agent>` used to print "already clean" over a live mount.
+//     `bunker umount <agent>` used to print "already clean" over a live mount;
+//  4. the LIVE MOUNT TABLE again, by DEVICE FIELD, for a mount at a path that
+//     carries no id at all (`bunker mount <agent> /any/where`): the sshfs source
+//     names the agent's ssh user, `bunker-<id>@<host>:<path>`. That identity is
+//     an INFERENCE from a device string rather than a path the operator named,
+//     so the detach is CONFIRMED against the kernel before success is reported,
+//     and an unconfirmed or still-live mount exits non-zero (DF-BUNKER-91).
 //
-// Only when all three find nothing is "already clean" allowed, and it is
+// Only when every step finds nothing is "already clean" allowed, and it is
 // SUCCESS: cleanup must stay safe to run twice.
 func runUmount(out io.Writer, target string, force bool) error {
 	// 0. Platform gate FIRST — before any resolution and before any local side
@@ -189,7 +199,7 @@ func runUmount(out io.Writer, target string, force bool) error {
 		rootsPoint = resolved
 	}
 
-	// 3. Before trusting anything, ask the kernel where this agent is actually
+	// 3/4. Before trusting anything, ask the kernel where this agent is actually
 	// mounted. A live mount anywhere on the box wins over a resolved guess:
 	// unmounting the guess and reporting success is the false positive this row
 	// is about.
@@ -199,14 +209,27 @@ func runUmount(out io.Writer, target string, force bool) error {
 	}
 	if checked && len(live) > 1 {
 		return fmt.Errorf("agent %q is mounted at more than one path: %s (unmount the one you mean explicitly, by path)",
-			target, strings.Join(live, ", "))
+			target, strings.Join(agentMountPaths(live), ", "))
 	}
+	// deviceIdentified records that the mount about to be detached was found by
+	// its sshfs DEVICE field, not by a path the operator named: an inference, so
+	// its detach is confirmed below before success is reported (criterion 2).
+	deviceIdentified := false
 	if checked {
 		if len(live) == 1 {
-			if mountPoint != live[0] {
-				fmt.Fprintf(out, "Resolved %s from the live mount table (not the default root)\n", live[0])
+			if mountPoint != live[0].mountPoint {
+				// Attribute the resolution: a device-field match is INFERRED from
+				// the kernel's record of the mount, a path component is read off
+				// the mountpoint itself. The wording differs because the two
+				// evidences are not equally strong (DF-BUNKER-91).
+				how := "from the live mount table (not the default root)"
+				if live[0].deviceOnly {
+					how = "from the live mount table by sshfs device identity (not the default root)"
+				}
+				_, _ = fmt.Fprintf(out, "Resolved %s %s\n", live[0].mountPoint, how)
 			}
-			mountPoint = live[0]
+			deviceIdentified = live[0].deviceOnly
+			mountPoint = live[0].mountPoint
 		} else if mountPoint != "" && !liveMountTableShows(mountPoint) {
 			// The resolved path is not a mount according to the live table;
 			// fall back to asking the filesystem before believing it.
@@ -258,6 +281,28 @@ func runUmount(out io.Writer, target string, force bool) error {
 	if err := unmount(mountPoint, force); err != nil {
 		return err
 	}
+
+	// 5. Confirm a DEVICE-IDENTIFIED detach against the kernel before reporting
+	// it. The unmount command returning success is the report of an operation on
+	// a path we INFERRED; "success" over a mount that is still live in the
+	// kernel's table is the false positive this row is about, so it is a
+	// non-zero exit naming what to do next — and a table we cannot re-read is
+	// reported as unconfirmed rather than assumed clean.
+	//
+	// The check runs BEFORE the marker is removed: leaving the do-not-build
+	// marker in place is correct while the mount is still live.
+	if deviceIdentified {
+		still, known := liveMountStillShown(mountPoint)
+		switch {
+		case !known:
+			return fmt.Errorf("unmount %s reported success but the live mount table could not be re-read to confirm it (the mount was identified by its sshfs device field, not by a path you named) — confirm with `mount | grep %s`, then re-run `bunker umount %s`",
+				mountPoint, mountPoint, target)
+		case still:
+			return fmt.Errorf("%s is STILL MOUNTED after unmounting it (it was identified by its sshfs device field, not by a path you named) — detach it by hand (fusermount3 -uz %s), then re-run `bunker umount %s`",
+				mountPoint, mountPoint, target)
+		}
+	}
+
 	// Remove the do-not-build marker with the mount: a stale marker on a
 	// now-ordinary directory would refuse builds that are fine.
 	_ = os.Remove(filepath.Join(mountPoint, MountMarkerName))
@@ -453,6 +498,13 @@ var readMountTable = func() ([]string, error) {
 type mountTableEntry struct {
 	mountPoint string
 	fsType     string
+	// device is the <device> field of the line. For an sshfs mount that field is
+	// the sshfs SOURCE, `<sshUser>@<host>:<remotePath>`, i.e. it carries
+	// `<sshUser>` — `bunker-<agent id>` for a bunker mount
+	// (internal/agent/mount_driver.go). It is the only identity a mount keeps
+	// when the operator chose the mountpoint freely, so it is parsed rather than
+	// discarded (DF-BUNKER-91).
+	device string
 }
 
 // parseMountTable reads the live mount table into entries. Lines that do not
@@ -476,6 +528,7 @@ func parseMountTable() ([]mountTableEntry, error) {
 		entries = append(entries, mountTableEntry{
 			mountPoint: unescapeMountField(fields[1]),
 			fsType:     fields[2],
+			device:     unescapeMountField(fields[0]),
 		})
 	}
 	return entries, nil
@@ -515,6 +568,23 @@ func liveMountTableShows(path string) bool {
 		}
 	}
 	return false
+}
+
+// liveMountStillShown reports whether path is still a live mount, AND whether
+// the table could be read at all. The two answers are different on purpose:
+// "I could not look" must never read as "it is gone", which is the whole reason
+// a caller confirming a detach needs both (DF-BUNKER-91).
+func liveMountStillShown(path string) (shown, known bool) {
+	entries, err := parseMountTable()
+	if err != nil {
+		return false, false
+	}
+	for _, e := range entries {
+		if sameMountPath(e.mountPoint, path) {
+			return true, true
+		}
+	}
+	return false, true
 }
 
 // couldBeAgentMount limits which live mounts are candidates for an agent.
@@ -576,8 +646,10 @@ func mountRoots() []string {
 //     every ancestor directory (asking about /mnt/bunker/<agent> must not
 //     return the /mnt mount), so the explicit form asks about the exact path.
 //   - otherwise — the argument is an agent id, and any plausible bunker mount
-//     whose mountpoint carries that id as a path component counts.
-func liveMountpointsFor(target, explicitPath string) (points []string, checked bool, err error) {
+//     that can be TIED to that id counts: by an agent-id path component, or —
+//     when the operator chose the mountpoint freely, so no component carries
+//     the id — by the sshfs DEVICE field (DF-BUNKER-91).
+func liveMountpointsFor(target, explicitPath string) (mounts []agentMount, checked bool, err error) {
 	if explicitPath != "" {
 		entries, perr := parseMountTable()
 		if perr != nil {
@@ -585,16 +657,39 @@ func liveMountpointsFor(target, explicitPath string) (points []string, checked b
 		}
 		for _, e := range entries {
 			if sameMountPath(e.mountPoint, explicitPath) {
-				points = append(points, e.mountPoint)
+				mounts = append(mounts, agentMount{mountPoint: e.mountPoint})
 			}
 		}
-		return points, true, nil
+		return mounts, true, nil
 	}
-	return agentMountpoints(target)
+	return resolveAgentMounts(target)
 }
 
-// agentMountpoints returns every live mount that is a bunker mount for agentID,
-// in table order.
+// agentMount is one live mount that belongs to an agent, together with the
+// evidence that tied it to that agent — because the evidences are not equally
+// strong and the report has to say which one was used.
+type agentMount struct {
+	mountPoint string
+	// deviceOnly is true when the mountpoint carries no agent-id path component
+	// and the entry was identified by its DEVICE field alone (an sshfs source
+	// `bunker-<id>@<host>:<path>`). That is an inference from a device string
+	// rather than a path the operator named, so it is the one resolution the
+	// caller CONFIRMS against the kernel after detaching (DF-BUNKER-91).
+	deviceOnly bool
+}
+
+// agentMountPaths is the path-only view of a resolution, for messages.
+func agentMountPaths(mounts []agentMount) []string {
+	points := make([]string, 0, len(mounts))
+	for _, m := range mounts {
+		points = append(points, m.mountPoint)
+	}
+	return points
+}
+
+// agentMountpoints returns just the paths of the live mounts that belong to
+// agentID, in table order. It is the path-only view of resolveAgentMounts; the
+// identity evidence that resolveAgentMounts carries is not part of this answer.
 //
 // checked is false when the live table could not be read at all; the caller
 // must then fall back to what it can prove locally rather than concluding
@@ -602,6 +697,34 @@ func liveMountpointsFor(target, explicitPath string) (points []string, checked b
 // unavailable or the agent id cannot be used as a path component, because in
 // both cases the honest answer is "I cannot tell", not "nothing is mounted".
 func agentMountpoints(agentID string) (points []string, checked bool, err error) {
+	mounts, checked, err := resolveAgentMounts(agentID)
+	if err != nil || len(mounts) == 0 {
+		return nil, checked, err
+	}
+	return agentMountPaths(mounts), true, nil
+}
+
+// resolveAgentMounts returns every live mount that belongs to agentID, in table
+// order, each with the evidence that identified it.
+//
+// TWO pieces of evidence, because a mountpoint the operator chose freely carries
+// no agent id at all — which is exactly how `bunker umount <agent-id>` used to
+// print "already clean" (rc 0) over a live mount while it stayed in
+// /proc/self/mounts (DF-BUNKER-91):
+//
+//  1. the MOUNTPOINT carries agentID as a whole path component — the layout
+//     `bunker mount` produces by default (/mnt/bunker/<id>);
+//  2. the entry's DEVICE field carries `bunker-<id>@`: the sshfs source is
+//     `<sshUser>@<host>:<remotePath>` and the ssh user is `bunker-<id>`
+//     (internal/agent/mount_driver.go), so the kernel's own record of the mount
+//     still names the agent no matter where it was mounted. The trailing `@` is
+//     what makes this match exact: agent f0901fd3 matches
+//     `bunker-f0901fd3@host:/home/bunker-f0901fd3` and does NOT match
+//     `bunker-f0901fd3-backup@host:/x` or `bunker-f0901fd30@host:/x`.
+//
+// A mount found by BOTH rules is reported ONCE: counting it twice would look
+// like two live mounts and turn a healthy cleanup into the ambiguity refusal.
+func resolveAgentMounts(agentID string) (mounts []agentMount, checked bool, err error) {
 	agentID = strings.TrimSpace(agentID)
 	if agentID == "" {
 		return nil, false, nil
@@ -614,15 +737,51 @@ func agentMountpoints(agentID string) (points []string, checked bool, err error)
 	if perr != nil {
 		return nil, false, nil
 	}
+	seen := make(map[string]bool, len(entries))
 	for _, e := range entries {
 		if !couldBeAgentMount(e) {
 			continue
 		}
-		if mountTargetHasAgent(e.mountPoint, agentID) {
-			points = append(points, e.mountPoint)
+		if seen[e.mountPoint] {
+			continue
+		}
+		switch {
+		case mountTargetHasAgent(e.mountPoint, agentID):
+			seen[e.mountPoint] = true
+			mounts = append(mounts, agentMount{mountPoint: e.mountPoint})
+		case deviceIsAgentMount(e, agentID):
+			seen[e.mountPoint] = true
+			mounts = append(mounts, agentMount{mountPoint: e.mountPoint, deviceOnly: true})
 		}
 	}
-	return points, true, nil
+	return mounts, true, nil
+}
+
+// deviceIsAgentMount reports whether an entry's DEVICE field identifies it as
+// agentID's mount.
+//
+// It requires a FUSE/network TRANSPORT as well as the identity, and does not
+// accept the "sits inside a mount root" half of couldBeAgentMount: the device
+// field is evidence of IDENTITY, and identity on a plain disk filesystem is not
+// a bunker mount. That requirement is also what keeps the agent's own home
+// directory — /home/bunker-<id>, a local filesystem whose path carries the id as
+// a substring — out of the candidates.
+func deviceIsAgentMount(e mountTableEntry, agentID string) bool {
+	if !isFuseOrNetworkFS(e.fsType) {
+		return false
+	}
+	return deviceNamesAgent(e.device, agentID)
+}
+
+// deviceNamesAgent reports whether an sshfs-shaped device string names the ssh
+// user `bunker-<agentID>` used by an agent's sshfs mount. The `@` terminator is
+// part of the needle, so a shorter id never matches a longer one.
+func deviceNamesAgent(device, agentID string) bool {
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" || device == "" {
+		return false
+	}
+	return strings.Contains(device, "bunker-"+agentID+"@")
 }
 
 // mountTargetHasAgent reports whether mountPoint carries agentID as a whole path
