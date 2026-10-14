@@ -99,6 +99,21 @@ type userManagerHost struct {
 	lingerEnableErr           bool
 	lingerEnableTouchesMarker bool
 
+	// lingerEnableNonRetryable turns the failure into a REFUSAL (permission
+	// denied) instead of the sd-bus reply timeout, so the "a refusal stays
+	// immediately fatal, no poll and no retry" contract is testable
+	// (INT-CI-068 requirement 4).
+	lingerEnableNonRetryable bool
+
+	// lingerApplyAfterAttempts models the INT-CI-068 host: logind is loaded
+	// enough that its touch() of the marker lands only AFTER the reply for
+	// that attempt has already timed out. The fake fails every enable-linger
+	// call, and — once the Nth call has been made — applies the linger
+	// asynchronously (after lingerApplyDelay), so ONLY the poll loop can
+	// observe it. 0 disables the scenario (nothing is ever applied).
+	lingerApplyAfterAttempts int
+	lingerApplyDelay         time.Duration
+
 	// ownershipNotApplied models a host where nothing the bring-up does results
 	// in the uid owning the runtime directory (a create/chown that reports
 	// success without applying): the verification step must catch that.
@@ -108,6 +123,8 @@ type userManagerHost struct {
 	calls                    []string
 	managerStartSeen         bool
 	dirExistedAtManagerStart bool
+	lingerAttempts           int  // number of enable-linger invocations
+	lingerApplied            bool // the async marker write has been scheduled
 }
 
 func newUserManagerHost(t *testing.T) *userManagerHost {
@@ -147,6 +164,7 @@ func (h *userManagerHost) run(_ context.Context, name string, args ...string) ([
 		}
 		switch args[0] {
 		case "enable-linger":
+			h.lingerAttempts++
 			if h.lingerEnableErr {
 				// logind applies the linger FIRST — it touch()es the marker —
 				// and only then asks PID1 for user@<uid>.service under
@@ -157,6 +175,25 @@ func (h *userManagerHost) run(_ context.Context, name string, args ...string) ([
 					if err := os.WriteFile(filepath.Join(lingerDir, args[1]), nil, 0o644); err != nil {
 						return nil, err
 					}
+				}
+				// INT-CI-068: a loaded logind applies the linger only after
+				// the reply for this attempt already timed out, so the marker
+				// appears asynchronously — invisible to everything but the
+				// poll loop. lingerDir is captured NOW because the seam is
+				// restored on cleanup while this write may still be pending.
+				if h.lingerApplyAfterAttempts > 0 && h.lingerAttempts >= h.lingerApplyAfterAttempts && !h.lingerApplied && len(args) > 1 {
+					h.lingerApplied = true
+					marker := filepath.Join(lingerDir, args[1])
+					delay := h.lingerApplyDelay
+					go func() {
+						if delay > 0 {
+							time.Sleep(delay)
+						}
+						_ = os.WriteFile(marker, nil, 0o644)
+					}()
+				}
+				if h.lingerEnableNonRetryable {
+					return []byte("Could not enable linger: Permission denied\n"), errors.New("exit status 1")
 				}
 				return []byte("Could not enable linger: Connection timed out\n"), errors.New("exit status 1")
 			}
@@ -253,7 +290,11 @@ func (h *userManagerHost) callIndex(command string) int {
 func (h *userManagerHost) callLog() string { return "\n  " + strings.Join(h.calls, "\n  ") }
 
 // installUserManagerHost swaps every user-manager seam for the fake host and
-// restores them on cleanup.
+// restores them on cleanup. The linger retry/poll seams are tightened to
+// millisecond scale for the same reason the poll interval is: the INT-CI-068
+// sequence is bounded at lingerEnableAttempts × lingerEnablePollWindow in
+// production (≈30s), which no unit test may spend. Tests that need a different
+// shape set them after this call — the cleanup below restores the originals.
 func installUserManagerHost(t *testing.T, h *userManagerHost, lingerDirPath string) {
 	t.Helper()
 	prevRunner := userManagerRunner
@@ -261,17 +302,25 @@ func installUserManagerHost(t *testing.T, h *userManagerHost, lingerDirPath stri
 	prevLinger := lingerDir
 	prevPoll := userManagerPollInterval
 	prevTimeout := userManagerWaitTimeoutOverride
+	prevEnableAttempts := lingerEnableAttempts
+	prevEnableWindow := lingerEnablePollWindow
+	prevEnablePoll := lingerEnablePollInterval
 	userManagerRunner = h.run
 	runtimeDirProbe = h.ownership.probe
 	lingerDir = lingerDirPath
 	userManagerPollInterval = time.Millisecond
 	userManagerWaitTimeoutOverride = 5 * time.Second
+	lingerEnablePollWindow = 20 * time.Millisecond
+	lingerEnablePollInterval = time.Millisecond
 	t.Cleanup(func() {
 		userManagerRunner = prevRunner
 		runtimeDirProbe = prevProbe
 		lingerDir = prevLinger
 		userManagerPollInterval = prevPoll
 		userManagerWaitTimeoutOverride = prevTimeout
+		lingerEnableAttempts = prevEnableAttempts
+		lingerEnablePollWindow = prevEnableWindow
+		lingerEnablePollInterval = prevEnablePoll
 	})
 }
 
@@ -667,6 +716,176 @@ func TestBringUpUserManager_LingerErrorWithoutMarkerStillFails(t *testing.T) {
 	}
 	if h.managerStartSeen {
 		t.Errorf("the manager was started although the linger never applied:%s", h.callLog())
+	}
+}
+
+// TestBringUpUserManager_LingerTimeoutRetriedUntilMarkerAppears is acceptance
+// (1) of INT-CI-068. When enable-linger exhausts sd-bus's reply ceiling the
+// marker may not be on disk YET: under a 5-way concurrent spawn logind is
+// loaded enough that its touch() has not landed (run 38517595660). The reply is
+// therefore a lost timeout, and the marker is the durable effect the step has
+// to guarantee — so the bring-up must poll for it (bounded) and retry
+// enable-linger instead of throwing the agent away on the first timeout.
+//
+// The fake fails EVERY enable-linger call and applies the linger
+// asynchronously, so only the poll loop can observe the marker.
+func TestBringUpUserManager_LingerTimeoutRetriedUntilMarkerAppears(t *testing.T) {
+	cases := []struct {
+		name string
+		// applyAfterAttempt is the enable-linger attempt on which the fake
+		// finally applies the linger (asynchronously, after a short delay).
+		applyAfterAttempt int
+		// window is the per-attempt marker poll window the test installs.
+		// It must be long enough to observe the async write on the applying
+		// attempt, and — for the retry case — short enough that the FIRST
+		// attempt's window expires without the marker.
+		window       time.Duration
+		wantAttempts int
+	}{
+		{
+			name:              "marker lands during the first poll window",
+			applyAfterAttempt: 1,
+			window:            80 * time.Millisecond,
+			wantAttempts:      1,
+		},
+		{
+			name:              "marker lands only after a retry",
+			applyAfterAttempt: 2,
+			window:            20 * time.Millisecond,
+			wantAttempts:      2,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newUserManagerHost(t)
+			h.lingerEnableErr = true
+			h.lingerApplyAfterAttempts = tc.applyAfterAttempt
+			h.lingerApplyDelay = time.Millisecond
+			installUserManagerHost(t, h, t.TempDir())
+			lingerEnablePollWindow = tc.window
+			lingerEnablePollInterval = time.Millisecond
+
+			start := time.Now()
+			err := bringUpUserManager(context.Background(), h.username, h.uid, h.runtimeDir, ctlLogger())
+			elapsed := time.Since(start)
+			if err != nil {
+				t.Fatalf("bringUpUserManager() error = %v; a timed-out enable-linger whose marker lands inside the bounded window must not fail the bring-up", err)
+			}
+			if !lingerMarkerPresent(h.username) {
+				t.Errorf("test premise did not hold: no linger marker at %s", lingerMarkerPath(h.username))
+			}
+			if h.lingerAttempts != tc.wantAttempts {
+				t.Errorf("enable-linger was issued %d time(s), want %d:%s", h.lingerAttempts, tc.wantAttempts, h.callLog())
+			}
+			if !h.managerStartSeen {
+				t.Errorf("the manager start was never issued after the tolerated linger timeout:%s", h.callLog())
+			}
+			// The wait is bounded, not open-ended: the whole bring-up must
+			// finish well inside a window's worth of wall time. Without this
+			// the retry loop could silently grow into the CI step budget.
+			if elapsed > 5*time.Second {
+				t.Errorf("bring-up took %v; the linger poll must stay bounded to %v per attempt", elapsed, tc.window)
+			}
+		})
+	}
+}
+
+// TestBringUpUserManager_LingerTimeoutWithoutMarkerStillFails is acceptance (2)
+// of INT-CI-068 and the preserved INT-CI-067 negative control: a host that
+// never applies the linger must still fail the bring-up, the retries must be
+// BOUNDED (no unbounded loop), and the error must name enable-linger, the
+// marker that never appeared and the host's linger churn — never a bare
+// context error.
+func TestBringUpUserManager_LingerTimeoutWithoutMarkerStillFails(t *testing.T) {
+	h := newUserManagerHost(t)
+	h.lingerEnableErr = true // every attempt times out; nothing is ever applied
+	installUserManagerHost(t, h, lingerDirWithEntries(t, 2))
+	lingerEnablePollWindow = 10 * time.Millisecond
+	lingerEnablePollInterval = time.Millisecond
+
+	err := bringUpUserManager(context.Background(), h.username, h.uid, h.runtimeDir, ctlLogger())
+	if err == nil {
+		t.Fatalf("bringUpUserManager() succeeded although enable-linger always timed out and left no marker; calls:%s", h.callLog())
+	}
+	// Bounded: exactly the configured attempts, no more.
+	if h.lingerAttempts != lingerEnableAttempts {
+		t.Errorf("enable-linger was issued %d time(s), want the bounded %d:%s", h.lingerAttempts, lingerEnableAttempts, h.callLog())
+	}
+	for _, want := range []string{
+		"enable linger for " + h.username,
+		"Connection timed out",
+		lingerMarkerPath(h.username),
+		"linger entries: 2",
+		"linger enable attempts: " + strconv.Itoa(lingerEnableAttempts),
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("bring-up error %q must name %q", err.Error(), want)
+		}
+	}
+	// The failure is the HOST state, not the spawn's own deadline.
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		t.Errorf("bring-up error %q must attribute the linger failure, not a context error", err.Error())
+	}
+	if h.managerStartSeen {
+		t.Errorf("the manager was started although the linger never applied:%s", h.callLog())
+	}
+}
+
+// TestBringUpUserManager_LingerRefusalIsFatalImmediately is acceptance (4) of
+// INT-CI-068: only a TIMEOUT is retryable. A refusal (permission denied, an
+// unknown user, logind not running) cannot be waited out, so it must fail on
+// the first attempt — no marker poll, no retry.
+func TestBringUpUserManager_LingerRefusalIsFatalImmediately(t *testing.T) {
+	h := newUserManagerHost(t)
+	h.lingerEnableErr = true
+	h.lingerEnableNonRetryable = true
+	installUserManagerHost(t, h, lingerDirWithEntries(t, 1))
+
+	start := time.Now()
+	err := bringUpUserManager(context.Background(), h.username, h.uid, h.runtimeDir, ctlLogger())
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatalf("bringUpUserManager() succeeded although enable-linger was refused; calls:%s", h.callLog())
+	}
+	if h.lingerAttempts != 1 {
+		t.Errorf("a non-timeout enable-linger failure must not be retried, issued %d time(s):%s", h.lingerAttempts, h.callLog())
+	}
+	if !strings.Contains(err.Error(), "Permission denied") {
+		t.Errorf("bring-up error %q must carry loginctl's refusal", err.Error())
+	}
+	if h.managerStartSeen {
+		t.Errorf("the manager was started although the linger was refused:%s", h.callLog())
+	}
+	if elapsed > 5*time.Second {
+		t.Errorf("a refusal took %v; it must fail immediately, it is not retryable", elapsed)
+	}
+}
+
+// TestBringUpUserManager_LingerPollHonorsCancellation is acceptance (5) of
+// INT-CI-068: every wait in the retry/poll sequence is ctx-aware. A spawn whose
+// request deadline expires must return promptly with that error instead of
+// sitting in the poll loop for the full window.
+func TestBringUpUserManager_LingerPollHonorsCancellation(t *testing.T) {
+	h := newUserManagerHost(t)
+	h.lingerEnableErr = true // the marker never appears; only ctx can end the wait
+	installUserManagerHost(t, h, t.TempDir())
+	lingerEnablePollWindow = 30 * time.Second
+	lingerEnablePollInterval = time.Millisecond
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	err := bringUpUserManager(ctx, h.username, h.uid, h.runtimeDir, ctlLogger())
+	elapsed := time.Since(start)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("bringUpUserManager() error = %v, want context.DeadlineExceeded", err)
+	}
+	if elapsed > 5*time.Second {
+		t.Errorf("a deadlined spawn waited %v in the linger poll; it must return within the deadline, not the poll window", elapsed)
+	}
+	if h.managerStartSeen {
+		t.Errorf("the manager was started although the spawn's deadline expired:%s", h.callLog())
 	}
 }
 

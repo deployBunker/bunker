@@ -38,6 +38,22 @@ var userManagerWaitTimeoutOverride time.Duration
 // tests can tighten it without real sleeping.
 var userManagerPollInterval = 200 * time.Millisecond
 
+// lingerEnableAttempts bounds how many times `loginctl enable-linger` is issued
+// for ONE bring-up, and lingerEnablePollWindow is the window spent waiting for
+// the durable effect (the linger marker) after each timed-out attempt
+// (INT-CI-068). Together they bound the step at
+// lingerEnableAttempts × lingerEnablePollWindow ≈ 30s of polling, which is the
+// same order as sd-bus's own 25s method ceiling: the marker is written by
+// logind itself, so waiting several times that ceiling cannot help. Keep these
+// small — the interval only has to outlive one loaded logind's reply, and CI's
+// step budget is finite. Package-level vars on purpose: tests shorten them
+// without real sleeping (see installUserManagerHost).
+var (
+	lingerEnableAttempts     = 3
+	lingerEnablePollWindow   = 10 * time.Second
+	lingerEnablePollInterval = 2 * time.Second
+)
+
 // userManagerStartStage names the deterministic bring-up sub-stage in error
 // text. The spawn-level stage stays rootless-install (the failure happens
 // inside it); this label makes the journal/breadcrumb grep-able for the exact
@@ -1729,37 +1745,13 @@ func bringUpUserManager(ctx context.Context, username string, uid int, stdRuntim
 	// installer to run `systemctl --user start docker.service`. This must be
 	// done as root before dropping to the target user.
 	//
-	// INT-CI-067: loginctl's exit status is NOT the linger state. logind
-	// applies the linger FIRST — it touch()es <lingerDir>/<user> — and only
-	// then asks PID1 for user@<uid>.service (logind-dbus.c
-	// method_set_user_linger: touch(path), then user_start(u) ->
-	// manager_start_unit -> StartUnit). That inner StartUnit runs under
-	// sd-bus's 25s default method timeout, the SAME ceiling loginctl's own
-	// reply wait uses, and on a loaded host the user@ start can outlast it:
-	// systemd-user-runtime-dir blocks ~25s asking logind for
-	// RuntimeDirectorySize/RuntimeDirectoryInodesMax before it "ignores" the
-	// timeout and finishes. loginctl then exits 1 with
-	//
-	//	Could not enable linger: Connection timed out
-	//
-	// while the linger marker is ALREADY on disk — the timeout is a lost
-	// REPLY, not a failed linger (runs 38503127087 / 38497303729). Failing
-	// the spawn there throws away an agent over a host fact that is false.
-	// The marker is the authoritative state (systemd implements
-	// enable-linger as exactly that file) and it can be read without logind
-	// answering, so verify it before believing the error. Step 4 below owns
-	// the manager start on its own, so the marker is the only thing this step
-	// has to guarantee.
-	if out, err := userManagerRunner(ctx, "loginctl", "enable-linger", username); err != nil {
-		if !lingerMarkerPresent(username) {
-			return fmt.Errorf("enable linger for %s: %w (output: %s; linger marker %s absent; linger entries: %d)",
-				username, err, string(out), lingerMarkerPath(username), countLingerEntries())
-		}
-		if logger != nil {
-			logger.Warn("enable-linger reported an error but the linger marker is in place (lost reply, not a failed linger); continuing — the manager start is owned by the next step",
-				"user", username, "uid", uid, "marker", lingerMarkerPath(username),
-				"error", err, "output", strings.TrimSpace(string(out)))
-		}
+	// enableLinger owns the reply-timeout semantics: loginctl's exit status is
+	// NOT the linger state (INT-CI-067), and a timed-out enable-linger is
+	// retryable while the durable marker can still land (INT-CI-068). The
+	// marker is the only thing this step has to guarantee — step 4 below owns
+	// the manager start on its own.
+	if err := enableLinger(ctx, username, uid, logger); err != nil {
+		return err
 	}
 	// enable-linger is idempotent: when lingering is ALREADY recorded for the
 	// user (CI hosts re-spawn the same explicit agent ID repeatedly) it takes
@@ -1897,6 +1889,190 @@ func countLingerEntries() int {
 		return -1
 	}
 	return len(entries)
+}
+
+// ── enable-linger: the reply is best-effort, the marker is the state ────────
+//
+// INT-CI-067: loginctl's exit status is NOT the linger state. logind applies
+// the linger FIRST — it touch()es <lingerDir>/<user> — and only then asks PID1
+// for user@<uid>.service (logind-dbus.c method_set_user_linger: touch(path),
+// then user_start(u) -> manager_start_unit -> StartUnit). That inner StartUnit
+// runs under sd-bus's 25s default method timeout, the SAME ceiling loginctl's
+// own reply wait uses, and on a loaded host the user@ start can outlast it:
+// systemd-user-runtime-dir blocks ~25s asking logind for
+// RuntimeDirectorySize/RuntimeDirectoryInodesMax before it "ignores" the
+// timeout and finishes. loginctl then exits 1 with
+//
+//	Could not enable linger: Connection timed out
+//
+// while the linger marker is ALREADY on disk — the timeout is a lost REPLY, not
+// a failed linger (runs 38503127087 / 38497303729). Failing the spawn there
+// throws away an agent over a host fact that is false. The marker is the
+// authoritative state (systemd implements enable-linger as exactly that file)
+// and it can be read without logind answering, so verify it before believing
+// the error. Step 4 of bringUpUserManager owns the manager start on its own, so
+// the marker is the only thing this step has to guarantee.
+//
+// INT-CI-068: under a 5-way concurrent spawn the SAME timeout arrives with the
+// marker NOT yet on disk — logind is loaded enough that its touch() has not
+// landed when the reply ceiling fires (CI run 38517595660:
+// TestConcurrency_SpawnFiveAgents failed at stage rootless-install with
+// "...timer out; linger marker /var/lib/systemd/linger/<user> absent; linger
+// entries: 6"). That is still a lost REPLY, not a refusal: the durable effect
+// is still on its way, so the first timeout must NOT be fatal. enableLinger
+// therefore polls for the marker for a bounded window and retries
+// enable-linger a bounded number of times, and only aborts when the marker is
+// still absent after the whole bounded sequence.
+//
+// A refusal (permission denied, unknown user, logind not running) is NOT
+// retryable and stays immediately fatal: no amount of waiting makes it land.
+//
+// lingerErrorRetryable reports which of the two a failed enable-linger is.
+func lingerErrorRetryable(err error, out []byte) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	msg := strings.ToLower(string(out) + " " + err.Error())
+	for _, needle := range []string{"connection timed out", "timed out", "timeout"} {
+		if strings.Contains(msg, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+// pollLingerMarker waits, within a bounded window, for the durable effect of
+// enable-linger — the linger marker — to appear after a timed-out attempt. It
+// reads the marker (no logind reply involved), so it works on exactly the host
+// state that produced the timeout. Returns (true, nil) as soon as the marker is
+// there; (false, nil) when the window expires without it; (false, err) when ctx
+// is done first, so a cancelled spawn never hangs here.
+func pollLingerMarker(ctx context.Context, username string, window time.Duration, attempt int, logger *slog.Logger) (bool, error) {
+	deadline := time.Now().Add(window)
+	ticker := time.NewTicker(lingerEnablePollInterval)
+	defer ticker.Stop()
+	for polls := 0; ; polls++ {
+		// Check the marker before anything else: it is the durable truth, and
+		// a spawn that is cancelled on the very next line must still be
+		// marked successful when the effect landed.
+		if lingerMarkerPresent(username) {
+			if logger != nil {
+				logger.Debug("linger marker appeared while polling after a timed-out enable-linger",
+					"user", username, "attempt", attempt, "poll", polls, "marker", lingerMarkerPath(username))
+			}
+			return true, nil
+		}
+		if err := ctx.Err(); err != nil {
+			if logger != nil {
+				logger.Warn("caller gave up while polling for the lingering marker; the enable-linger timeout is retryable but this spawn will not wait for it",
+					"user", username, "attempt", attempt, "error", err)
+			}
+			return false, err
+		}
+		if !time.Now().Before(deadline) {
+			if logger != nil {
+				logger.Debug("linger marker still absent at the end of its poll window",
+					"user", username, "attempt", attempt, "window", window, "polls", polls,
+					"marker", lingerMarkerPath(username))
+			}
+			return false, nil
+		}
+		select {
+		case <-ctx.Done():
+		case <-ticker.C:
+		}
+	}
+}
+
+// lingerEnableError renders the fatal enable-linger failure: it names the user,
+// loginctl's own error and output, the marker that was looked for and never
+// appeared, the host's linger-entry count (INT-CI-007 churn attribution) and
+// how many bounded attempts were spent. Operators must be able to tell an
+// unresponsive logind from a failed linger without opening the CI log.
+func lingerEnableError(username string, attempts int, err error, out []byte) error {
+	return fmt.Errorf("enable linger for %s: %w (output: %s; linger marker %s absent; linger entries: %d; linger enable attempts: %d)",
+		username, err, string(out), lingerMarkerPath(username), countLingerEntries(), attempts)
+}
+
+// enableLinger makes systemd lingering durable for username and returns nil
+// only once the linger marker is on disk — the authoritative state (see the
+// block comment above). A timed-out loginctl reply is treated as RETRYABLE
+// while the marker can still land: each failed attempt is followed by a bounded
+// marker poll, then another bounded attempt, and the sequence aborts only when
+// the marker is still absent after all of them. Non-timeout failures stay
+// immediately fatal. ctx is honored at every wait, so a cancelled or deadlined
+// spawn returns promptly instead of hanging in the poll.
+func enableLinger(ctx context.Context, username string, uid int, logger *slog.Logger) error {
+	var lastOut []byte
+	var lastErr error
+	for attempt := 1; attempt <= lingerEnableAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		out, err := userManagerRunner(ctx, "loginctl", "enable-linger", username)
+		if err == nil {
+			return nil
+		}
+		lastOut, lastErr = out, err
+
+		// The marker is the truth: logind applies the linger by touch()ing it
+		// BEFORE it starts the user manager, so a lost reply over an applied
+		// linger must never fail the bring-up (INT-CI-067).
+		if lingerMarkerPresent(username) {
+			if logger != nil {
+				logger.Warn("enable-linger reported an error but the linger marker is in place (lost reply, not a failed linger); continuing — the manager start is owned by the next step",
+					"user", username, "uid", uid, "attempt", attempt,
+					"marker", lingerMarkerPath(username), "error", err, "output", strings.TrimSpace(string(out)))
+			}
+			return nil
+		}
+
+		if !lingerErrorRetryable(err, out) {
+			if logger != nil {
+				logger.Warn("enable-linger failed with a non-timeout error; a refusal cannot be waited out, failing the bring-up",
+					"user", username, "uid", uid, "attempt", attempt,
+					"error", err, "output", strings.TrimSpace(string(out)))
+			}
+			return lingerEnableError(username, attempt, err, out)
+		}
+
+		if logger != nil {
+			logger.Warn("enable-linger timed out (lost reply, not a failed linger); polling for the durable linger marker",
+				"user", username, "uid", uid, "attempt", attempt, "of", lingerEnableAttempts,
+				"window", lingerEnablePollWindow, "marker", lingerMarkerPath(username),
+				"error", err, "output", strings.TrimSpace(string(out)))
+		}
+		found, pollErr := pollLingerMarker(ctx, username, lingerEnablePollWindow, attempt, logger)
+		if found {
+			return nil
+		}
+		if pollErr != nil {
+			// The caller gave up. Success still wins when the durable effect
+			// landed while we waited: the marker is the truth, the deadline is
+			// not.
+			if lingerMarkerPresent(username) {
+				if logger != nil {
+					logger.Warn("caller gave up but the linger marker had appeared in the meantime; continuing",
+						"user", username, "attempt", attempt, "marker", lingerMarkerPath(username))
+				}
+				return nil
+			}
+			return pollErr
+		}
+		if attempt < lingerEnableAttempts && logger != nil {
+			logger.Warn("linger marker still absent after the poll window; retrying enable-linger",
+				"user", username, "uid", uid, "next_attempt", attempt+1, "of", lingerEnableAttempts)
+		}
+	}
+	if logger != nil {
+		logger.Warn("enable-linger never produced the linger marker within its bounded retries",
+			"user", username, "uid", uid, "attempts", lingerEnableAttempts,
+			"marker", lingerMarkerPath(username), "linger_entries", countLingerEntries())
+	}
+	return lingerEnableError(username, lingerEnableAttempts, lastErr, lastOut)
 }
 
 // userManagerJournalQueryTimeout bounds the best-effort journal query used to
