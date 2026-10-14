@@ -40,5 +40,6 @@
   "workers_completed": 3,
   "workers_failed": 0,
   "closed_at": "2026-10-14T15:35:00-05:00",
-  "close_reason": "3 tasks landed+merged+pushed (167e8a73, baba8c38, f16b47dc); board rows closed"
+  "close_reason": "3 tasks landed+merged+pushed (167e8a73, baba8c38, f16b47dc); board rows closed",
+  "finished_at": "2026-10-14T13:09:40-05:00"
 }
