@@ -755,34 +755,76 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 	installerCmd := rootlessInstallerSessionCmd(stdRuntimeDir, installerPath)
 	installerOut, installerErr := rootlessInstallerRunner(ctx, username, stdRuntimeDir, installerCmd)
 	if installerErr != nil {
-		if !isUserUnitNotFound(installerOut) {
+		if !isUserUnitNotFound(installerOut) && !isDockerUnitStartFailure(installerOut) {
 			return fmt.Errorf("run rootless installer as %s: %w (output: %s)", username, installerErr, string(installerOut))
 		}
-		if logger != nil {
-			logger.Warn("rootless installer hit the unit-not-found race; reloading the user manager and retrying once",
-				"user", username, "unit", userManagerUnitName(uid),
-				"output", condenseJournal(string(installerOut)))
-		}
-		// The SAME construction and the SAME seam call as the reachability
-		// probe above, so the reload before the retry speaks to the manager
-		// through the identical command string (single construction,
-		// INT-CI-009 + INT-SPAWN-004).
-		if _, err := probeUserManagerReachable(ctx, username, stdRuntimeDir); err != nil {
-			// The reload itself failed: retrying the installer through a dead
-			// bus would only reproduce the same not-found failure, so fail
-			// with the full attribution instead.
-			state := fetchUserManagerState(ctx, userManagerUnitName(uid))
-			return fmt.Errorf("rootless-install: user-session daemon-reload before the installer retry failed for %s: %w; %s; linger entries: %d; installer output: %s",
-				username, err, state.describe(userManagerUnitName(uid)), countLingerEntries(), condenseJournal(string(installerOut)))
-		}
-		installerOut, installerErr = rootlessInstallerRunner(ctx, username, stdRuntimeDir, installerCmd)
-		if installerErr != nil {
-			state := fetchUserManagerState(ctx, userManagerUnitName(uid))
-			return fmt.Errorf("run rootless installer as %s: %w (retry after user-session daemon-reload also failed; output: %s; %s; linger entries: %d)",
-				username, installerErr, condenseJournal(string(installerOut)), state.describe(userManagerUnitName(uid)), countLingerEntries())
-		}
-		if logger != nil {
-			logger.Info("rootless installer succeeded on the daemon-reload retry", "user", username)
+		if isDockerUnitStartFailure(installerOut) && !isUserUnitNotFound(installerOut) {
+			// INT-CI-069 (CI run 38542837944): the installer reached the
+			// unit START — its own `systemctl --user start docker.service`
+			// failed with "Job for docker.service failed because the
+			// control process exited with error code." That is a different
+			// class from the unit-not-found race above: the manager SAW
+			// the unit and the start job itself failed (the daemon never
+			// came up), so a daemon-reload cannot help. The unit is left
+			// in systemd's `failed` state and the setup is half-written —
+			// re-running the installer into that state fails the same way
+			// (systemd refuses to start a failed unit until it is reset).
+			// The setup tool's own error message prescribes the recovery:
+			// uninstall the current setup, then retry. So: un-stick and
+			// uninstall the partial setup (bounded, named fail_detail on
+			// failure), retry the installer ONCE, and on a second failure
+			// return the docker.service JOURNAL excerpt — the
+			// "control process exited with error code" job error names
+			// the symptom, never the cause; only the unit's journal does
+			// (e.g. the rootlesskit lock error DF-BUNKER-72 documented).
+			if logger != nil {
+				logger.Warn("rootless installer's docker.service start failed; un-installing the partial setup and retrying once",
+					"user", username,
+					"output", condenseJournal(string(installerOut)))
+			}
+			if err := resetPartialRootlessSetup(ctx, username, stdRuntimeDir, installerPath, logger); err != nil {
+				state := fetchUserManagerState(ctx, userManagerUnitName(uid))
+				journal := fetchDockerUnitJournal(ctx, username, uid, logger)
+				return fmt.Errorf("rootless-install: uninstall of the failed docker.service setup before the installer retry failed for %s: %w; %s; docker.service journal: %s; installer output: %s",
+					username, err, state.describe(userManagerUnitName(uid)), journal, condenseJournal(string(installerOut)))
+			}
+			installerOut, installerErr = rootlessInstallerRunner(ctx, username, stdRuntimeDir, installerCmd)
+			if installerErr != nil {
+				state := fetchUserManagerState(ctx, userManagerUnitName(uid))
+				journal := fetchDockerUnitJournal(ctx, username, uid, logger)
+				return fmt.Errorf("run rootless installer as %s: %w (retry after docker.service unit-start failure also failed; docker.service journal: %s; %s; linger entries: %d; output: %s)",
+					username, installerErr, journal, state.describe(userManagerUnitName(uid)), countLingerEntries(), condenseJournal(string(installerOut)))
+			}
+			if logger != nil {
+				logger.Info("rootless installer succeeded on the docker.service unit-start retry", "user", username)
+			}
+		} else {
+			if logger != nil {
+				logger.Warn("rootless installer hit the unit-not-found race; reloading the user manager and retrying once",
+					"user", username, "unit", userManagerUnitName(uid),
+					"output", condenseJournal(string(installerOut)))
+			}
+			// The SAME construction and the SAME seam call as the reachability
+			// probe above, so the reload before the retry speaks to the manager
+			// through the identical command string (single construction,
+			// INT-CI-009 + INT-SPAWN-004).
+			if _, err := probeUserManagerReachable(ctx, username, stdRuntimeDir); err != nil {
+				// The reload itself failed: retrying the installer through a dead
+				// bus would only reproduce the same not-found failure, so fail
+				// with the full attribution instead.
+				state := fetchUserManagerState(ctx, userManagerUnitName(uid))
+				return fmt.Errorf("rootless-install: user-session daemon-reload before the installer retry failed for %s: %w; %s; linger entries: %d; installer output: %s",
+					username, err, state.describe(userManagerUnitName(uid)), countLingerEntries(), condenseJournal(string(installerOut)))
+			}
+			installerOut, installerErr = rootlessInstallerRunner(ctx, username, stdRuntimeDir, installerCmd)
+			if installerErr != nil {
+				state := fetchUserManagerState(ctx, userManagerUnitName(uid))
+				return fmt.Errorf("run rootless installer as %s: %w (retry after user-session daemon-reload also failed; output: %s; %s; linger entries: %d)",
+					username, installerErr, condenseJournal(string(installerOut)), state.describe(userManagerUnitName(uid)), countLingerEntries())
+			}
+			if logger != nil {
+				logger.Info("rootless installer succeeded on the daemon-reload retry", "user", username)
+			}
 		}
 	}
 
