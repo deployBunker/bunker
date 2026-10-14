@@ -1074,3 +1074,4 @@
 {"id":"EVT-GAP-119-close-20261014","task_id":"GAP-119","type":"task_completed","detail":"wave-2026-10-14-142458: worker landed, gates green, merged to main, pushed 167e8a73"}
 {"id":"EVT-GAP-135-close-20261014","task_id":"GAP-135","type":"task_completed","detail":"wave-2026-10-14-142458: worker landed, gates green, merged to main, pushed baba8c38"}
 {"id":"EVT-MOUNT-008-close-20261014","task_id":"MOUNT-008","type":"task_completed","detail":"wave-2026-10-14-142458: worker landed, gates green, merged to main, pushed f16b47dc"}
+{"task_id":"INT-CI-070","type":"task_completed","detail":"worker landed 3e3a3088 (readiness budget scales with concurrent dockerd starts, RED-proofed tests); merged as aa3f152e; tier-1 PASS 5986dfa9; stale pre-merge tier-2 verdict 096fb229 superseded"}
