@@ -35,7 +35,7 @@ func TestDockerfile_DeliveredToolsRenderIsBuildable(t *testing.T) {
 	if spec.Base != DefaultBaseImage {
 		t.Errorf("base = %q, want the default base", spec.Base)
 	}
-	want := "FROM " + DefaultBaseImage + "\n" +
+	want := pinnedFrom(DefaultBaseImage) +
 		stockToolchainGoldenLine +
 		"RUN apt-get update && apt-get install -y --no-install-recommends 'ripgrep' && rm -rf /var/lib/apt/lists/*\n" +
 		goToolchainGoldenLine +

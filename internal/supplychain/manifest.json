@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "artifacts": [
+    {
+      "name": "rootless-installer",
+      "version": "ada7a567e59b3935bd601bb21e422da50e80e376",
+      "note": "Official Docker rootless install script (https://get.docker.com/rootless, built from docker/docker-install at the pinned commit). The digest is the tamper gate: the installer runs as the agent user and writes executables into its ~/bin, so the bytes that reach execution are pinned here rather than trusted from a moving URL. The pinned revision carries SCRIPT_COMMIT_SHA=ada7a567... and STABLE_LATEST=29.9.0, which is what fixes the extras tarball it then fetches (download.docker.com/linux/static/stable/<arch>/docker-rootless-extras-29.9.0.tgz) — the archive that supplies dockerd-rootless.sh, dockerd-rootless-setuptool.sh and rootlesskit. Bumping this pin is how those three are upgraded; see docs/supply-chain-pinning.md.",
+      "variants": [
+        {
+          "arch": "any",
+          "url": "https://get.docker.com/rootless",
+          "sha256": "dd55967580b4c00ec1001d7b70fab5173969f91737832bbea6e36f0837a5340e"
+        }
+      ]
+    },
+    {
+      "name": "slirp4netns",
+      "version": "v1.3.6",
+      "note": "Rootless-containers static binary, used only when the host has no slirp4netns package and the distribution has no package strategy. Pinned to a release asset (never releases/latest/download, which is a moving target) and verified before it is installed to /usr/local/bin.",
+      "variants": [
+        {
+          "arch": "x86_64",
+          "url": "https://github.com/rootless-containers/slirp4netns/releases/download/v1.3.6/slirp4netns-x86_64",
+          "sha256": "411167abceff1fc8a7c562f53ed9f26d3ec8a17df4e2fe6eaa3bd53f1c1e1d48"
+        },
+        {
+          "arch": "aarch64",
+          "url": "https://github.com/rootless-containers/slirp4netns/releases/download/v1.3.6/slirp4netns-aarch64",
+          "sha256": "045f85dd0bc51a61b99cdfe6bd22282cbc308b73caa64fc8859c11d3775c5817"
+        }
+      ]
+    },
+    {
+      "name": "fuse-overlayfs",
+      "version": "v1.18",
+      "note": "Containers static binary, used only when the host has no fuse-overlayfs package. Pinned to a release asset and verified before it is installed to /usr/local/bin.",
+      "variants": [
+        {
+          "arch": "x86_64",
+          "url": "https://github.com/containers/fuse-overlayfs/releases/download/v1.18/fuse-overlayfs-x86_64",
+          "sha256": "56b0ae0aeb8abb308b068af2f137ed8d1bd239f4f27e21672ff0def861eea1e8"
+        },
+        {
+          "arch": "aarch64",
+          "url": "https://github.com/containers/fuse-overlayfs/releases/download/v1.18/fuse-overlayfs-aarch64",
+          "sha256": "82fed736197b2a881a822e5357b488796f654e8371ce8573a1592331510a0133"
+        }
+      ]
+    }
+  ],
+  "images": [
+    {
+      "reference": "docker.io/library/ubuntu:24.04",
+      "digest": "sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55",
+      "note": "Default agent base image. Digest is the resolved multi-arch manifest list for the tag, so the same reference builds the same image on amd64 and arm64."
+    },
+    {
+      "reference": "docker.io/library/ubuntu:22.04",
+      "digest": "sha256:5ec03bb3441e8b0bf3b4f9cd4629a1ae763010dc3035bb8da3ae6cf026486401",
+      "note": "Allowed base image."
+    },
+    {
+      "reference": "docker.io/library/debian:12",
+      "digest": "sha256:2c037a04925515fdd6ea85ea14a682d0e79931f5e9f5d07b6dbfc6ba12f9e858",
+      "note": "Allowed base image."
+    },
+    {
+      "reference": "docker.io/library/debian:11",
+      "digest": "sha256:6f519a81440354a85eb592c5f32109ab80605f6b892455983a6f618bf87fabe9",
+      "note": "Allowed base image (end-of-life upstream; kept because specs name it)."
+    }
+  ]
+}

@@ -35,6 +35,12 @@ live in `internal/imagespec/spec.go`. The validated spec is built once through
 the agent's own rootless socket and cached per spec identity
 (`agent.image_spec.cache_dir`, one build per `Spec.CacheKey`).
 
+The `base` field names an ALLOWED base by tag — the operator's handle, not what
+docker resolves. Every allowed base must also be digest-pinned in the
+supply-chain manifest (GAP-135, `internal/supplychain`), `Parse` refuses a base
+that is not, and the rendered `FROM` line carries
+`name@sha256:<digest>` — see §5.
+
 ## 2. What every built image always contains (stock layer, DF-BUNKER-80)
 
 A spec is a package-ADD, never an image replacement. The render always emits a
@@ -85,3 +91,30 @@ toolchain-bootstrap ordering, cache-key derivability); `internal/cli`'s tests
 pin that the printed remediation is the same canonical constant and that its
 render is buildable. The set's closure criterion is a fresh provisioned agent
 reporting rg and gopls present with versions via `bunker agent-tools`.
+
+## 5. Base-image digest pinning (GAP-135)
+
+A tag is a mutable pointer: `docker.io/library/ubuntu:24.04` resolved to
+whatever the tag pointed at on the day of each build, so two builds of one spec
+were not the same image and a re-push upstream changed an agent's root
+filesystem with no record. The base is therefore pinned by digest in
+[../docs/supply-chain-pinning.md](../docs/supply-chain-pinning.md):
+
+- `allowedBases` (`internal/imagespec/parse.go`) stays the closed set of human
+  handles, and each entry MUST have a digest in
+  `internal/supplychain/manifest.json`; `Parse` refuses an allowed-but-unpinned
+  base rather than building from a tag.
+- `Spec.BaseReference()` resolves the named base to `name@sha256:<digest>`, and
+  that is what `Dockerfile()` renders in the `FROM` line. Docker verifies the
+  digest it is handed, so a substituted image fails the pull instead of
+  silently becoming the build's root.
+- Each digest is the tag's **multi-arch manifest list**, so the pin resolves
+  per platform (`amd64`, `arm64`) instead of pinning one architecture's image.
+- `Spec.CacheKey()` hashes the pinned reference, not the tag: a re-pin
+  invalidates the per-agent image cache instead of serving the image built from
+  the previous digest.
+
+The spec's wire format is unchanged — a spec still writes
+`"base": "docker.io/library/ubuntu:24.04"`. Re-pinning is a reviewed manifest
+edit plus the full suite; the procedure lives in
+[../docs/supply-chain-pinning.md](../docs/supply-chain-pinning.md) §4.

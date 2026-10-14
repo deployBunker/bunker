@@ -2,11 +2,14 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/deployBunker/bunker/internal/supplychain"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -75,6 +78,12 @@ func (f *fakeHost) options(apply bool, osRelease string) PrereqOptions {
 		Runner:        f.runner(),
 		LookPath:      f.lookPath(),
 		Arch:          "x86_64",
+		// The runner above is a FAKE: a "download" it records never writes a
+		// file, so the GAP-135 checksum gate has nothing to hash here. It is
+		// stubbed for the strategy-flow tests and covered for real, against
+		// the embedded manifest, in TestArtifactChecksumMismatchIsFatal and
+		// in internal/supplychain.
+		Verify: func(string, string, string) error { return nil },
 	}
 }
 
@@ -278,6 +287,14 @@ func TestArtifactFallbackWhenNoPackageStrategy(t *testing.T) {
 	if !strings.Contains(fo.Detail, "x86_64") {
 		t.Errorf("artifact detail should name the arch-specific URL: %q", fo.Detail)
 	}
+	// GAP-135: the URL is the PINNED release asset, not a latest/ redirect —
+	// the detail is how an operator sees which version was installed.
+	if !strings.Contains(fo.Detail, "v1.18") {
+		t.Errorf("artifact detail should name the pinned version: %q", fo.Detail)
+	}
+	if strings.Contains(fo.Detail, "/latest/") {
+		t.Errorf("artifact detail still names a moving latest URL: %q", fo.Detail)
+	}
 	if !f.ran("curl", "-fsSL", "-o", "/usr/local/bin/fuse-overlayfs.download") {
 		t.Errorf("expected a curl download, got: %v", f.calls)
 	}
@@ -397,5 +414,99 @@ func TestRequiredPrerequisitesAreTheOnesThatBreakEverything(t *testing.T) {
 		if required[name] {
 			t.Errorf("%s should be optional, not required", name)
 		}
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GAP-135: the artifact strategy is pinned and verified
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestEveryPrerequisiteArtifactIsPinned is the typo gate for the manifest
+// lookups: a prerequisite that names an artifact the supply-chain manifest does
+// not pin would silently lose its artifact strategy at runtime (an unpinned
+// artifact cannot be verified, so it cannot be downloaded). It also requires
+// the pinned entry to carry the architecture this host asks for.
+func TestEveryPrerequisiteArtifactIsPinned(t *testing.T) {
+	f := newFakeHost()
+	arch := f.options(true, "").arch()
+	for _, p := range rootlessPrerequisites() {
+		if p.Artifact == nil {
+			continue
+		}
+		url, err := supplychain.ArtifactURL(p.Artifact.PinName, arch)
+		if err != nil {
+			t.Errorf("prerequisite %s names artifact %q, which is not pinned: %v", p.Name, p.Artifact.PinName, err)
+			continue
+		}
+		if strings.Contains(url, "/latest/") {
+			t.Errorf("prerequisite %s resolves a moving URL: %s", p.Name, url)
+		}
+		if _, err := supplychain.ArtifactDigest(p.Artifact.PinName, arch); err != nil {
+			t.Errorf("prerequisite %s has no pinned sha256: %v", p.Name, err)
+		}
+	}
+}
+
+// TestArtifactChecksumMismatchIsFatal drives the REAL gate (the embedded
+// manifest through the default Verify) with bytes that are not the pinned
+// artifact: the strategy must fail, the binary must NOT be installed, and the
+// failure must be the named checksum error.
+func TestArtifactChecksumMismatchIsFatal(t *testing.T) {
+	f := newFakeHost()
+	f.present["curl"] = "/usr/bin/curl"
+	opts := f.options(true, osReleaseFixture(t, "plan9", ""))
+	// The fake runner never writes a file, so the gate reports a missing
+	// artifact rather than a mismatch — which is exactly the fail-closed
+	// behaviour under test here (nothing is installed). The mismatch branch
+	// itself is covered by the supplychain table and by the download-path test
+	// in rootless_pin_test.go.
+	opts.Verify = supplychain.VerifyFile
+
+	p := prerequisite{Name: "slirp4netns", Required: true, Artifact: &artifact{
+		PinName:    supplychain.ArtifactSlirp4netns,
+		BinaryName: "slirp4netns",
+	}}
+	out := satisfyOne(context.Background(), opts, familyUnknown, p)
+	if out.Satisfied {
+		t.Fatalf("an artifact that failed verification was reported satisfied: %+v", out)
+	}
+	if f.ran("mv", "/usr/local/bin/slirp4netns.download") {
+		t.Errorf("an unverified binary was installed: %v", f.calls)
+	}
+	if !strings.Contains(out.Detail, "artifact strategy failed") {
+		t.Errorf("the outcome should record the failed gate: %q", out.Detail)
+	}
+	if !strings.Contains(out.Detail, "verification failed") {
+		t.Errorf("the outcome should name the verification failure: %q", out.Detail)
+	}
+}
+
+// TestArtifactNotPinnedNeverDownloads pins the fail-closed half of the lookup:
+// an artifact the manifest does not pin has no digest to check, so the strategy
+// must refuse it WITHOUT downloading anything.
+func TestArtifactNotPinnedNeverDownloads(t *testing.T) {
+	f := newFakeHost()
+	f.present["curl"] = "/usr/bin/curl"
+	opts := f.options(true, osReleaseFixture(t, "plan9", ""))
+
+	p := prerequisite{Name: "mystery", Required: true, Artifact: &artifact{
+		PinName:    "not-a-pinned-artifact",
+		BinaryName: "mystery",
+	}}
+	out := satisfyOne(context.Background(), opts, familyUnknown, p)
+
+	if out.Satisfied {
+		t.Fatalf("an unpinned artifact was reported satisfied: %+v", out)
+	}
+	if f.ran("curl") {
+		t.Errorf("an unpinned artifact must not be downloaded at all, got: %v", f.calls)
+	}
+	if !strings.Contains(out.Detail, "artifact strategy unavailable") {
+		t.Errorf("the outcome should name the unavailable artifact strategy: %q", out.Detail)
+	}
+	// The detail is the operator-facing half; the lookup itself must be what
+	// produced it, with the named error an operator can grep for.
+	if _, err := supplychain.ArtifactURL(p.Artifact.PinName, opts.arch()); !errors.Is(err, supplychain.ErrNotPinned) {
+		t.Errorf("lookup error %v does not unwrap to ErrNotPinned", err)
 	}
 }

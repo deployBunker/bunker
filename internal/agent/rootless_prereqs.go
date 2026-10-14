@@ -48,6 +48,8 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+
+	"github.com/deployBunker/bunker/internal/supplychain"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -150,12 +152,19 @@ const (
 )
 
 // artifact describes a prebuilt static binary that can stand in for a package
-// when the package strategy is unavailable. URLTemplate takes one %s, the
-// release architecture token.
+// when the package strategy is unavailable.
 type artifact struct {
-	URLTemplate string
-	BinaryName  string // installed to /usr/local/bin/<BinaryName>
-	Note        string // shown in the plan, e.g. why this binary is a fair substitute
+	// PinName is the supply-chain manifest artifact name (GAP-135,
+	// internal/supplychain). It supplies BOTH the download URL and the
+	// sha256 the bytes must match, so the version that is pinned and the
+	// version that is installed cannot drift apart — and a moving
+	// `releases/latest/download` URL is not representable.
+	PinName string
+	// BinaryName is the name the binary is installed under in
+	// /usr/local/bin.
+	BinaryName string
+	// Note is shown in the plan, e.g. why this binary is a fair substitute.
+	Note string
 }
 
 // prerequisite is one dependency of the rootless runtime, with every known way
@@ -207,9 +216,9 @@ func rootlessPrerequisites() []prerequisite {
 				familySUSE:   "fuse-overlayfs",
 			},
 			Artifact: &artifact{
-				URLTemplate: "https://github.com/containers/fuse-overlayfs/releases/latest/download/fuse-overlayfs-x86_64",
-				BinaryName:  "fuse-overlayfs",
-				Note:        "upstream publishes a static x86_64 binary used by distros that lack the package",
+				PinName:    supplychain.ArtifactFuseOverlayfs,
+				BinaryName: "fuse-overlayfs",
+				Note:       "upstream publishes a pinned static binary used by distros that lack the package",
 			},
 		},
 		{
@@ -225,9 +234,9 @@ func rootlessPrerequisites() []prerequisite {
 				familySUSE:   "slirp4netns",
 			},
 			Artifact: &artifact{
-				URLTemplate: "https://github.com/rootless-containers/slirp4netns/releases/latest/download/slirp4netns-x86_64",
-				BinaryName:  "slirp4netns",
-				Note:        "upstream publishes a static x86_64 binary",
+				PinName:    supplychain.ArtifactSlirp4netns,
+				BinaryName: "slirp4netns",
+				Note:       "upstream publishes a pinned static binary",
 			},
 		},
 		{
@@ -295,6 +304,11 @@ type PrereqOptions struct {
 	Logger *slog.Logger
 	// Arch overrides runtime.GOARCH for artifact URLs (tests).
 	Arch string
+	// Verify checks a downloaded artifact against its supply-chain pin before
+	// it may be installed (GAP-135). It defaults to the embedded manifest
+	// (supplychain.VerifyFile); tests pin fixtures instead, so no case needs
+	// the network.
+	Verify func(name, arch, path string) error
 }
 
 func (o PrereqOptions) runner() systemRunner {
@@ -323,6 +337,15 @@ func (o PrereqOptions) arch() string {
 	default:
 		return runtime.GOARCH
 	}
+}
+
+// verify is the checksum gate installArtifact consults. The zero PrereqOptions
+// means production: the embedded supply-chain manifest.
+func (o PrereqOptions) verify() func(string, string, string) error {
+	if o.Verify != nil {
+		return o.Verify
+	}
+	return supplychain.VerifyFile
 }
 
 // runArgv adapts an argv slice to the systemRunner signature. Command builders
@@ -424,10 +447,16 @@ func satisfyOne(ctx context.Context, opts PrereqOptions, family pkgFamily, p pre
 		base.Detail = "no package strategy: unrecognised distribution"
 	}
 
-	// 3. artifact — a prebuilt static binary.
+	// 3. artifact — a prebuilt static binary, pinned and verified (GAP-135).
 	if p.Artifact != nil {
-		url := strings.ReplaceAll(p.Artifact.URLTemplate, "x86_64", opts.arch())
-		if opts.Apply {
+		url, urlErr := supplychain.ArtifactURL(p.Artifact.PinName, opts.arch())
+		switch {
+		case urlErr != nil:
+			// An artifact the manifest does not pin cannot be verified, so it
+			// cannot be used: the strategy reports the unpinned name instead
+			// of downloading bytes nothing can vouch for.
+			base.Detail = strings.TrimSpace(base.Detail + "; artifact strategy unavailable: " + urlErr.Error())
+		case opts.Apply:
 			if out, err := installArtifact(ctx, opts, p.Artifact, url); err == nil {
 				base.Satisfied = true
 				base.Strategy = strategyArtifact
@@ -436,7 +465,7 @@ func satisfyOne(ctx context.Context, opts PrereqOptions, family pkgFamily, p pre
 			} else {
 				base.Detail = strings.TrimSpace(base.Detail + "; artifact strategy failed: " + condenseInstall(string(out)))
 			}
-		} else {
+		default:
 			base.Detail = strings.TrimSpace(base.Detail + fmt.Sprintf("; plan: would download %s", url))
 		}
 	}
@@ -528,9 +557,16 @@ func packageInstallCommand(family pkgFamily, pkg string) []string {
 	return nil
 }
 
-// installArtifact downloads url into /usr/local/bin and marks it executable.
-// It uses curl or wget, whichever is present, and refuses to guess when
-// neither is.
+// installArtifact downloads url into /usr/local/bin, verifies the bytes against
+// the artifact's supply-chain pin, and only then marks them executable and
+// installs them. It uses curl or wget, whichever is present, and refuses to
+// guess when neither is.
+//
+// ORDER IS THE CONTROL (GAP-135): verification happens AFTER the download and
+// BEFORE the chmod+mv, and a failure REMOVES the partial download. A binary
+// that fails the gate is never installed on PATH, and no later step can
+// install it — the error aborts the strategy. There is no "install anyway"
+// branch, and no fallback to the unverified bytes.
 func installArtifact(ctx context.Context, opts PrereqOptions, a *artifact, url string) ([]byte, error) {
 	dest := "/usr/local/bin/" + a.BinaryName
 	tmp := dest + ".download"
@@ -545,6 +581,16 @@ func installArtifact(ctx context.Context, opts PrereqOptions, a *artifact, url s
 		}
 	} else {
 		return nil, fmt.Errorf("neither curl nor wget is available to download %s", url)
+	}
+
+	if err := opts.verify()(a.PinName, opts.arch(), tmp); err != nil {
+		_ = os.Remove(tmp)
+		// The failure text is also returned as "output" so the operator-facing
+		// outcome detail names the verification failure (that is the channel
+		// every other failure in this strategy reports through), while the
+		// error keeps the named sentinel for errors.Is callers.
+		return []byte(fmt.Sprintf("verification failed: %v", err)),
+			fmt.Errorf("verify %s artifact: %w", a.PinName, err)
 	}
 
 	if out, err := opts.runner()(ctx, "chmod", "0755", tmp); err != nil {

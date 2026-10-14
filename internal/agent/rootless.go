@@ -17,6 +17,8 @@ import (
 	"syscall"
 	"time"
 	"unicode/utf8"
+
+	"github.com/deployBunker/bunker/internal/supplychain"
 )
 
 // rootlessInstallURL is the official Docker rootless extras installer.
@@ -253,11 +255,40 @@ var rootlessInstallerRunner = runRootlessInstallerCmd
 // Package-level seam so unit tests never touch the network.
 var rootlessInstallerDownload = downloadRootlessInstaller
 
+// rootlessInstallerVerifier gates the rootless install script (GAP-135): the
+// bytes must match the sha256 pinned in the supply-chain manifest
+// (internal/supplychain) before anything downstream may execute them as the
+// agent user. It is consulted on BOTH paths that produce a to-be-executed
+// installer — the fresh download and the host-level cache read — because
+// "verified when it was downloaded" is a claim about a file that someone else
+// could have replaced in the meantime.
+//
+// Package-level var, like every other seam in this file, so the
+// cache-plumbing tests (which seed synthetic payloads instead of the 9 KB
+// upstream script) can swap it for a no-op. The production value is
+// supplychain.VerifyFile, and the gate's real behaviour is asserted end to end
+// in rootless_pin_test.go, which drives this default.
+var rootlessInstallerVerifier supplychain.VerifyFn = supplychain.VerifyFile
+
 // downloadRootlessInstaller is the production download: curl to the official
-// Docker rootless extras URL.
+// Docker rootless extras URL, then the supply-chain checksum gate.
+//
+// The gate runs before the caller can chmod/chown/execute the file, and it
+// REMOVES the download on failure: an unverified artifact must not be left on
+// disk where a later path (or a retry that skips the download) could pick it
+// up. A mismatch is a named error (supplychain.ErrChecksumMismatch), never a
+// warning, and there is no fallback to the unverified bytes.
 func downloadRootlessInstaller(ctx context.Context, installerPath string) ([]byte, error) {
 	curl := exec.CommandContext(ctx, "curl", "-fsSL", "-o", installerPath, rootlessInstallURL)
-	return curl.CombinedOutput()
+	out, err := curl.CombinedOutput()
+	if err != nil {
+		return out, err
+	}
+	if err := rootlessInstallerVerifier(supplychain.ArtifactRootlessInstaller, supplychain.ArchAny, installerPath); err != nil {
+		_ = os.Remove(installerPath)
+		return out, fmt.Errorf("rootless installer in %s failed supply-chain verification: %w", installerPath, err)
+	}
+	return out, nil
 }
 
 // rootlessInstallerCacheDir is the host-level directory where downloaded
@@ -292,8 +323,24 @@ func GetRootlessInstallerCacheDir() string {
 // rootless installer URL. The filename is derived from the host so a future
 // URL change automatically creates a new cache entry instead of reusing a
 // stale artifact.
+//
+// It also carries the supply-chain pin's digest prefix (GAP-135), so a re-pin
+// is a cache MISS by construction: the artifact the previous pin downloaded
+// can never be served for the new pin.
 func rootlessInstallerCacheKey() string {
-	return "rootless-installer-" + hostCacheSuffix(rootlessInstallURL) + ".sh"
+	return "rootless-installer-" + hostCacheSuffix(rootlessInstallURL) + "-" + rootlessInstallerPinTag() + ".sh"
+}
+
+// rootlessInstallerPinTag is the short, filesystem-safe tag of the pinned
+// installer digest. An artifact the manifest does not pin yields "unpinned" —
+// also a distinct name, so a host whose manifest is broken cannot reuse a
+// previously verified cache entry.
+func rootlessInstallerPinTag() string {
+	sum, err := supplychain.ArtifactDigest(supplychain.ArtifactRootlessInstaller, supplychain.ArchAny)
+	if err != nil || len(sum) < 12 {
+		return "unpinned"
+	}
+	return sum[:12]
 }
 
 // hostCacheSuffix returns a filesystem-safe suffix derived from url. It is
@@ -324,6 +371,15 @@ func downloadRootlessInstallerCached(ctx context.Context, installerPath string) 
 	// Cache hit: validate before trusting.
 	if cached, err := os.ReadFile(cachePath); err == nil {
 		if validationErr := validateCachedInstaller(cachePath, cached); validationErr == nil {
+			// GAP-135: the shape checks above are not tamper evidence — the
+			// cache is a file on disk, and this artifact is executed as the
+			// agent user. Re-verify it against the supply-chain pin here, at
+			// the point of use. A failure is LOUD and terminal (the operator
+			// removes the named file to refetch it): silently refetching
+			// would hide that the cache no longer holds what was downloaded.
+			if verifyErr := rootlessInstallerVerifier(supplychain.ArtifactRootlessInstaller, supplychain.ArchAny, cachePath); verifyErr != nil {
+				return nil, fmt.Errorf("cached rootless installer %s failed supply-chain verification: %w (remove that file to download a fresh, verified installer)", cachePath, verifyErr)
+			}
 			if out, copyErr := copyFile(cachePath, installerPath); copyErr != nil {
 				return nil, fmt.Errorf("copy cached installer to %s: %w (output: %s)", installerPath, copyErr, string(out))
 			}
@@ -380,6 +436,11 @@ func downloadRootlessInstallerCached(ctx context.Context, installerPath string) 
 // The checks are intentionally conservative: they are designed to catch
 // interrupted downloads, HTML error pages, and empty/truncated artifacts
 // without depending on network access or the installer's own semantics.
+//
+// They are SHAPE checks only and are not a security boundary: the
+// supply-chain checksum gate (rootlessInstallerVerifier, GAP-135) is what
+// proves the bytes are the pinned artifact, and it runs on the same paths this
+// function does.
 func validateCachedInstaller(path string, data []byte) error {
 	info, err := os.Stat(path)
 	if err != nil {

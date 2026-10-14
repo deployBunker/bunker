@@ -667,6 +667,9 @@ func TestCachedRootlessInstallerDownload_CacheHit(t *testing.T) {
 	cacheDir := t.TempDir()
 	rootlessInstallerCacheDir = cacheDir
 	defer func() { rootlessInstallerCacheDir = "" }()
+	// Synthetic payload below: the GAP-135 checksum gate is stubbed for this
+	// plumbing test and covered in rootless_pin_test.go.
+	stubRootlessInstallerVerifier(t)
 
 	installer := []byte("#!/bin/sh\n# cached rootless installer for tests\nset -euo pipefail\n# payload ensures the cached artifact is large enough for the production\n# minimum-size validation.\necho cached\nexit 0\n")
 	cachePath := filepath.Join(cacheDir, rootlessInstallerCacheKey())
@@ -690,6 +693,7 @@ func TestCachedRootlessInstallerDownload_CacheMissPopulate(t *testing.T) {
 	cacheDir := t.TempDir()
 	rootlessInstallerCacheDir = cacheDir
 	defer func() { rootlessInstallerCacheDir = "" }()
+	stubRootlessInstallerVerifier(t)
 
 	fakeDownload := false
 	origDownload := rootlessInstallerDownload

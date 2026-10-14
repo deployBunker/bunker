@@ -235,7 +235,7 @@ func TestHash_MatchesDirectSpec(t *testing.T) {
 func TestDockerfile_BaseOnly(t *testing.T) {
 	spec := Spec{Base: DefaultBaseImage}
 	got := spec.Dockerfile()
-	want := "FROM " + DefaultBaseImage + "\n" + stockToolchainGoldenLine
+	want := pinnedFrom(DefaultBaseImage) + stockToolchainGoldenLine
 	if got != want {
 		t.Errorf("Dockerfile() = %q, want %q", got, want)
 	}
@@ -251,7 +251,7 @@ func TestDockerfile_PackageAdds(t *testing.T) {
 		},
 	}
 	got := spec.Dockerfile()
-	want := "FROM " + DefaultBaseImage + "\n" +
+	want := pinnedFrom(DefaultBaseImage) +
 		stockToolchainGoldenLine +
 		"RUN apt-get update && apt-get install -y --no-install-recommends 'jq' 'curl' && rm -rf /var/lib/apt/lists/*\n" +
 		// DF-BUNKER-79: the go directive renders its toolchain bootstrap (the
