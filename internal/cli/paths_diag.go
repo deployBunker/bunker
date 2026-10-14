@@ -378,8 +378,19 @@ func PrintPaths(w io.Writer, res *ResolvedPaths, header string) {
 		res.Registry,
 	}
 	fmt.Fprintf(w, "%-10s %-46s %-80s %-22s %s\n", "COMPONENT", "NAME", "PATH", "MODE", "RULE")
+	pathWidth := 80
 	for _, e := range entries {
-		fmt.Fprintf(w, "%-10s %-46s %-80s %-22s %s\n", e.Component, trunc(e.Name, 46), trunc(e.Path, 80), e.Mode, e.Rule)
+		// The PATH cell must be wide enough to hold every path untruncated
+		// (min 80): a truncated cell loses the tail of the path, so tests and
+		// operators matching on a parent-dir prefix silently fail on hosts
+		// with HOME prefixes longer than 80 bytes (QA-BUNKER-73). Secret
+		// VALUES are never printed either way — only locations.
+		if len(e.Path) > pathWidth {
+			pathWidth = len(e.Path)
+		}
+	}
+	for _, e := range entries {
+		_, _ = fmt.Fprintf(w, "%-10s %-46s %-*s %-22s %s\n", e.Component, trunc(e.Name, 46), pathWidth, e.Path, e.Mode, e.Rule)
 	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Precedence: flag > env > per-user config dir (${XDG_CONFIG_HOME:-~/.config}/bunker) > legacy ~/.bunker (read alias) > system defaults (/etc/bunkerd, /var/log/bunkerd, /var/lib/bunkerd).")
