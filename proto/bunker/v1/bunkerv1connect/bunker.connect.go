@@ -62,6 +62,8 @@ const (
 	BunkerdAgentMetricsProcedure = "/bunker.v1.Bunkerd/AgentMetrics"
 	// BunkerdExecAgentProcedure is the fully-qualified name of the Bunkerd's ExecAgent RPC.
 	BunkerdExecAgentProcedure = "/bunker.v1.Bunkerd/ExecAgent"
+	// BunkerdAttachAgentProcedure is the fully-qualified name of the Bunkerd's AttachAgent RPC.
+	BunkerdAttachAgentProcedure = "/bunker.v1.Bunkerd/AttachAgent"
 	// BunkerdRunAgentProcedure is the fully-qualified name of the Bunkerd's RunAgent RPC.
 	BunkerdRunAgentProcedure = "/bunker.v1.Bunkerd/RunAgent"
 	// BunkerdHeartbeatAgentProcedure is the fully-qualified name of the Bunkerd's HeartbeatAgent RPC.
@@ -123,6 +125,14 @@ type BunkerdClient interface {
 	// Agent actions
 	AgentMetrics(context.Context, *connect.Request[v1.AgentMetricsRequest]) (*connect.Response[v1.AgentMetricsResponse], error)
 	ExecAgent(context.Context, *connect.Request[v1.ExecAgentRequest]) (*connect.ServerStreamForClient[v1.ExecAgentResponse], error)
+	// GAP-072: AttachAgent is ExecAgent's interactive counterpart. One
+	// bidirectional stream carries the whole session: the client sends exactly
+	// one AttachStart frame, then stdin bytes and terminal-resize messages as
+	// the operator types; the server streams stdout/stderr frames and one final
+	// AttachExit frame. The command runs in the SAME agent session as exec --
+	// same user, PAM namespace, cgroup and resource limits -- so an attach is an
+	// operator surface, never a bypass. `bunker attach <id>` drives it.
+	AttachAgent(context.Context) *connect.BidiStreamForClient[v1.AttachAgentRequest, v1.AttachAgentResponse]
 	RunAgent(context.Context, *connect.Request[v1.RunAgentRequest]) (*connect.Response[v1.RunAgentResponse], error)
 	HeartbeatAgent(context.Context, *connect.Request[v1.HeartbeatAgentRequest]) (*connect.Response[v1.HeartbeatAgentResponse], error)
 	// Audit trail
@@ -248,6 +258,12 @@ func NewBunkerdClient(httpClient connect.HTTPClient, baseURL string, opts ...con
 			connect.WithSchema(bunkerdMethods.ByName("ExecAgent")),
 			connect.WithClientOptions(opts...),
 		),
+		attachAgent: connect.NewClient[v1.AttachAgentRequest, v1.AttachAgentResponse](
+			httpClient,
+			baseURL+BunkerdAttachAgentProcedure,
+			connect.WithSchema(bunkerdMethods.ByName("AttachAgent")),
+			connect.WithClientOptions(opts...),
+		),
 		runAgent: connect.NewClient[v1.RunAgentRequest, v1.RunAgentResponse](
 			httpClient,
 			baseURL+BunkerdRunAgentProcedure,
@@ -320,6 +336,7 @@ type bunkerdClient struct {
 	getAgentKey        *connect.Client[v1.GetAgentKeyRequest, v1.GetAgentKeyResponse]
 	agentMetrics       *connect.Client[v1.AgentMetricsRequest, v1.AgentMetricsResponse]
 	execAgent          *connect.Client[v1.ExecAgentRequest, v1.ExecAgentResponse]
+	attachAgent        *connect.Client[v1.AttachAgentRequest, v1.AttachAgentResponse]
 	runAgent           *connect.Client[v1.RunAgentRequest, v1.RunAgentResponse]
 	heartbeatAgent     *connect.Client[v1.HeartbeatAgentRequest, v1.HeartbeatAgentResponse]
 	queryAudit         *connect.Client[v1.QueryAuditRequest, v1.QueryAuditResponse]
@@ -394,6 +411,11 @@ func (c *bunkerdClient) AgentMetrics(ctx context.Context, req *connect.Request[v
 // ExecAgent calls bunker.v1.Bunkerd.ExecAgent.
 func (c *bunkerdClient) ExecAgent(ctx context.Context, req *connect.Request[v1.ExecAgentRequest]) (*connect.ServerStreamForClient[v1.ExecAgentResponse], error) {
 	return c.execAgent.CallServerStream(ctx, req)
+}
+
+// AttachAgent calls bunker.v1.Bunkerd.AttachAgent.
+func (c *bunkerdClient) AttachAgent(ctx context.Context) *connect.BidiStreamForClient[v1.AttachAgentRequest, v1.AttachAgentResponse] {
+	return c.attachAgent.CallBidiStream(ctx)
 }
 
 // RunAgent calls bunker.v1.Bunkerd.RunAgent.
@@ -476,6 +498,14 @@ type BunkerdHandler interface {
 	// Agent actions
 	AgentMetrics(context.Context, *connect.Request[v1.AgentMetricsRequest]) (*connect.Response[v1.AgentMetricsResponse], error)
 	ExecAgent(context.Context, *connect.Request[v1.ExecAgentRequest], *connect.ServerStream[v1.ExecAgentResponse]) error
+	// GAP-072: AttachAgent is ExecAgent's interactive counterpart. One
+	// bidirectional stream carries the whole session: the client sends exactly
+	// one AttachStart frame, then stdin bytes and terminal-resize messages as
+	// the operator types; the server streams stdout/stderr frames and one final
+	// AttachExit frame. The command runs in the SAME agent session as exec --
+	// same user, PAM namespace, cgroup and resource limits -- so an attach is an
+	// operator surface, never a bypass. `bunker attach <id>` drives it.
+	AttachAgent(context.Context, *connect.BidiStream[v1.AttachAgentRequest, v1.AttachAgentResponse]) error
 	RunAgent(context.Context, *connect.Request[v1.RunAgentRequest]) (*connect.Response[v1.RunAgentResponse], error)
 	HeartbeatAgent(context.Context, *connect.Request[v1.HeartbeatAgentRequest]) (*connect.Response[v1.HeartbeatAgentResponse], error)
 	// Audit trail
@@ -597,6 +627,12 @@ func NewBunkerdHandler(svc BunkerdHandler, opts ...connect.HandlerOption) (strin
 		connect.WithSchema(bunkerdMethods.ByName("ExecAgent")),
 		connect.WithHandlerOptions(opts...),
 	)
+	bunkerdAttachAgentHandler := connect.NewBidiStreamHandler(
+		BunkerdAttachAgentProcedure,
+		svc.AttachAgent,
+		connect.WithSchema(bunkerdMethods.ByName("AttachAgent")),
+		connect.WithHandlerOptions(opts...),
+	)
 	bunkerdRunAgentHandler := connect.NewUnaryHandler(
 		BunkerdRunAgentProcedure,
 		svc.RunAgent,
@@ -679,6 +715,8 @@ func NewBunkerdHandler(svc BunkerdHandler, opts ...connect.HandlerOption) (strin
 			bunkerdAgentMetricsHandler.ServeHTTP(w, r)
 		case BunkerdExecAgentProcedure:
 			bunkerdExecAgentHandler.ServeHTTP(w, r)
+		case BunkerdAttachAgentProcedure:
+			bunkerdAttachAgentHandler.ServeHTTP(w, r)
 		case BunkerdRunAgentProcedure:
 			bunkerdRunAgentHandler.ServeHTTP(w, r)
 		case BunkerdHeartbeatAgentProcedure:
@@ -756,6 +794,10 @@ func (UnimplementedBunkerdHandler) AgentMetrics(context.Context, *connect.Reques
 
 func (UnimplementedBunkerdHandler) ExecAgent(context.Context, *connect.Request[v1.ExecAgentRequest], *connect.ServerStream[v1.ExecAgentResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.ExecAgent is not implemented"))
+}
+
+func (UnimplementedBunkerdHandler) AttachAgent(context.Context, *connect.BidiStream[v1.AttachAgentRequest, v1.AttachAgentResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.AttachAgent is not implemented"))
 }
 
 func (UnimplementedBunkerdHandler) RunAgent(context.Context, *connect.Request[v1.RunAgentRequest]) (*connect.Response[v1.RunAgentResponse], error) {

@@ -68,6 +68,83 @@ func clientOptions(entry ServerEntry) []connect.ClientOption {
 	return []connect.ClientOption{connect.WithInterceptors(unverifiedDeclarer{})}
 }
 
+// newBunkerdAttachClient builds the client an interactive attach needs, which
+// is NOT the same transport every other verb uses.
+//
+// AttachAgent is a bidirectional stream, and connect-go serves bidirectional
+// streams over HTTP/2 only: a bidi request that arrives over HTTP/1.x is
+// answered 505 HTTP Version Not Supported (connect's own handler). The shared
+// client is an HTTP/1.1 transport over cleartext and, when it carries a
+// custom TLS config, net/http conservatively switches HTTP/2 OFF for TLS too —
+// so attach cannot reuse it.
+//
+// Two shapes, matching how a daemon can be reached:
+//
+//   - TLS: a transport with ForceAttemptHTTP2, so ALPN negotiates h2.
+//   - cleartext: an h2c PRIOR-KNOWLEDGE transport (server.h2c_enabled). HTTP1
+//     is deliberately not part of the set — net/http uses h2c for http:// URLs
+//     only when UnencryptedHTTP2 is enabled and HTTP1 is not — so a daemon
+//     without h2c is refused with a transport error rather than silently
+//     downgraded into a 505.
+//
+// The client has NO overall timeout: an interactive session is long-lived by
+// nature, and http.Client.Timeout covers the whole streaming body.
+func newBunkerdAttachClient(entry ServerEntry) bunkerv1connect.BunkerdClient {
+	httpClient := &http.Client{}
+	tlsCfg, err := resolveClientTLS(entry)
+	if err != nil {
+		httpClient.Transport = refusingTransport{err: fmt.Errorf("refusing to dial %s: %w", entry.URL, err)}
+		return bunkerv1connect.NewBunkerdClient(httpClient, entry.URL)
+	}
+	if tlsCfg != nil {
+		httpClient.Transport = &http.Transport{TLSClientConfig: tlsCfg, ForceAttemptHTTP2: true}
+	} else {
+		httpClient.Transport = &http.Transport{Protocols: h2cProtocols()}
+	}
+	return bunkerv1connect.NewBunkerdClient(httpClient, entry.URL, clientOptions(entry)...)
+}
+
+// h2cProtocols is the protocol set for cleartext prior-knowledge HTTP/2. See
+// newBunkerdAttachClient for why HTTP1 must be absent: with HTTP1 enabled
+// net/http answers http:// requests over HTTP/1.1 and h2c is never attempted.
+func h2cProtocols() *http.Protocols {
+	p := new(http.Protocols)
+	p.SetUnencryptedHTTP2(true)
+	return p
+}
+
+// attachTransportHint turns a transport-level failure of the attach stream
+// into an actionable message on the one path where the HTTP/2 prerequisite is
+// the dominant cause: a CLEARTEXT daemon (the attach client then speaks
+// h2c-only, because net/http uses h2c for http:// URLs only when HTTP1 is
+// absent).
+//
+// A connect STATUS error (a refusal from the daemon: agent_stopped, not_found,
+// ...) is never decorated - it came from the daemon, so the transport is
+// obviously fine. On the TLS path the transport is plain HTTP/2-capable and a
+// protocol failure there is a real bug, not a missing knob.
+func attachTransportHint(entry ServerEntry, err error) error {
+	if err == nil {
+		return nil
+	}
+	tlsCfg, terr := resolveClientTLS(entry)
+	if terr != nil || tlsCfg != nil {
+		return err
+	}
+	// On a CLEARTEXT entry the attach client speaks h2c only, so a failure to
+	// establish the stream is either "the daemon does not serve HTTP/2" (the
+	// 505 / http2 / connection-reset family - connect reports these as
+	// Unavailable or Unknown, with no daemon status attached) or "the daemon is
+	// not reachable". A NAMED status (agent_stopped, not_found,
+	// unauthenticated, ...) proves the daemon answered, so it is never
+	// decorated.
+	code := connect.CodeOf(err)
+	if code != connect.CodeUnknown && code != connect.CodeUnavailable {
+		return err
+	}
+	return fmt.Errorf("%w\nattach speaks HTTP/2, which this daemon did not complete: run bunkerd with server.h2c_enabled: true (cleartext) or register the server over TLS (bunker connect --tls ...). If the daemon is simply unreachable, fix that first", err)
+}
+
 // unverifiedDeclarer is the CLIENT half of the GAP-141 audit marker. Every
 // request issued by a session whose transport runs with InsecureSkipVerify
 // carries audit.UnverifiedHeader, and the daemon's audit interceptor stamps the

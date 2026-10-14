@@ -74,6 +74,21 @@ session cannot remove the mark after the fact. Read it as "this session said it
 did not verify me", and treat an unmarked record from an untrusted network as
 unproven rather than as verified.
 
+Interactive attach sessions (`AttachAgent`, GAP-072) append two records of their
+own to the same chain, on the procedure's sub-kinds: one `attach open` when the
+session starts and one `attach close` when it ends, with the close reason
+(`exited` / `idle_timeout` / `client_gone`), the exit code and the session's
+duration. Both records carry the `session_id` the client declared on its start
+frame (`bunker attach --session <id>`), so one correlation id covers a whole
+session exactly as it does for exec. **Terminal input is never recorded** — the
+operator's keystrokes are not a field, and the command is the same redacted
+summary an exec records:
+
+```bash
+# Which sessions attached to this agent, and how did they end?
+bunker audit list --server prod --agent abc12345 --method AttachAgent
+```
+
 ## Rotation and the hash chain
 
 The live log rotates at 5 MiB, keeping 3 backups: `audit.log` (live),
