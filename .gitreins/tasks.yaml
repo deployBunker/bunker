@@ -4558,3 +4558,12 @@ tasks:
   status: complete
   created_at: '2026-10-14T01:30:54.629800+00:00'
   completed_at: '2026-10-14T01:32:46.825890+00:00'
+- id: INT-CI-067
+  title: 'Fix CI red: loginctl enable-linger lost reply tolerance'
+  criteria:
+  - CI passes on main after fix; TestBringUpUserManager_LingerReplyLostIsNotAFailure
+    and TestBringUpUserManager_LingerErrorWithoutMarkerStillFails both PASS; guard
+    green
+  status: complete
+  created_at: '2026-10-14T05:37:38.140074+00:00'
+  completed_at: '2026-10-14T05:43:31.138773+00:00'
