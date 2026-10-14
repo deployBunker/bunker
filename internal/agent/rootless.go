@@ -1728,8 +1728,38 @@ func bringUpUserManager(ctx context.Context, username string, uid int, stdRuntim
 	// Enable systemd lingering so the user manager is available for the
 	// installer to run `systemctl --user start docker.service`. This must be
 	// done as root before dropping to the target user.
+	//
+	// INT-CI-067: loginctl's exit status is NOT the linger state. logind
+	// applies the linger FIRST — it touch()es <lingerDir>/<user> — and only
+	// then asks PID1 for user@<uid>.service (logind-dbus.c
+	// method_set_user_linger: touch(path), then user_start(u) ->
+	// manager_start_unit -> StartUnit). That inner StartUnit runs under
+	// sd-bus's 25s default method timeout, the SAME ceiling loginctl's own
+	// reply wait uses, and on a loaded host the user@ start can outlast it:
+	// systemd-user-runtime-dir blocks ~25s asking logind for
+	// RuntimeDirectorySize/RuntimeDirectoryInodesMax before it "ignores" the
+	// timeout and finishes. loginctl then exits 1 with
+	//
+	//	Could not enable linger: Connection timed out
+	//
+	// while the linger marker is ALREADY on disk — the timeout is a lost
+	// REPLY, not a failed linger (runs 38503127087 / 38497303729). Failing
+	// the spawn there throws away an agent over a host fact that is false.
+	// The marker is the authoritative state (systemd implements
+	// enable-linger as exactly that file) and it can be read without logind
+	// answering, so verify it before believing the error. Step 4 below owns
+	// the manager start on its own, so the marker is the only thing this step
+	// has to guarantee.
 	if out, err := userManagerRunner(ctx, "loginctl", "enable-linger", username); err != nil {
-		return fmt.Errorf("enable linger for %s: %w (output: %s)", username, err, string(out))
+		if !lingerMarkerPresent(username) {
+			return fmt.Errorf("enable linger for %s: %w (output: %s; linger marker %s absent; linger entries: %d)",
+				username, err, string(out), lingerMarkerPath(username), countLingerEntries())
+		}
+		if logger != nil {
+			logger.Warn("enable-linger reported an error but the linger marker is in place (lost reply, not a failed linger); continuing — the manager start is owned by the next step",
+				"user", username, "uid", uid, "marker", lingerMarkerPath(username),
+				"error", err, "output", strings.TrimSpace(string(out)))
+		}
 	}
 	// enable-linger is idempotent: when lingering is ALREADY recorded for the
 	// user (CI hosts re-spawn the same explicit agent ID repeatedly) it takes
@@ -1833,6 +1863,28 @@ func fetchUserManagerState(ctx context.Context, unit string) userManagerState {
 // the error so the retry loop can attribute a failed attempt.
 func startUserManagerUnit(ctx context.Context, unit string) ([]byte, error) {
 	return userManagerRunner(ctx, "systemctl", "start", unit)
+}
+
+// lingerMarkerPath is the authoritative linger state for one user. systemd
+// implements `loginctl enable-linger <user>` as the existence of exactly this
+// file (logind-dbus.c method_set_user_linger touch()es it BEFORE it starts the
+// user manager), so it can be verified without logind answering — which is
+// what makes a lost REPLY distinguishable from a failed linger (INT-CI-067).
+// For the names bunker creates the file name is the user name verbatim;
+// logind would cescape() a name carrying control characters, so callers must
+// pass the plain user name and nothing else.
+func lingerMarkerPath(username string) string {
+	return filepath.Join(lingerDir, username)
+}
+
+// lingerMarkerPresent reports whether the user's linger marker exists. Any
+// stat error other than "does not exist" counts as ABSENT (fail closed): a
+// marker we cannot read is not a marker we may report as applied, and a false
+// "lingering is on" would let logind garbage-collect the agent's manager at
+// the first session logout.
+func lingerMarkerPresent(username string) bool {
+	_, err := os.Stat(lingerMarkerPath(username))
+	return err == nil
 }
 
 // countLingerEntries counts directory entries under the systemd linger

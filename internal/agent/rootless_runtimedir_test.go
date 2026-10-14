@@ -89,6 +89,16 @@ type userManagerHost struct {
 	journalErr     bool // journalctl unavailable → force the status fallback
 	statusLines    []string
 
+	// lingerEnableErr models `loginctl enable-linger` exiting non-zero after
+	// logind's own 25s sd-bus reply ceiling (INT-CI-067). When
+	// lingerEnableTouchesMarker is ALSO set the fake reproduces the ordering
+	// upstream logind uses — the marker is written before the inner StartUnit
+	// that consumes the timeout — so the marker is present even though the
+	// command failed. With it unset, the command failed before anything was
+	// applied (a genuinely unresponsive logind), which must still fail.
+	lingerEnableErr           bool
+	lingerEnableTouchesMarker bool
+
 	// ownershipNotApplied models a host where nothing the bring-up does results
 	// in the uid owning the runtime directory (a create/chown that reports
 	// success without applying): the verification step must catch that.
@@ -136,7 +146,22 @@ func (h *userManagerHost) run(_ context.Context, name string, args ...string) ([
 			return nil, errors.New("loginctl: missing verb")
 		}
 		switch args[0] {
-		case "enable-linger", "terminate-user":
+		case "enable-linger":
+			if h.lingerEnableErr {
+				// logind applies the linger FIRST — it touch()es the marker —
+				// and only then asks PID1 for user@<uid>.service under
+				// sd-bus's 25s default timeout, so a lost reply still leaves
+				// the marker behind. lingerEnableTouchesMarker picks which of
+				// the two host states this host models (INT-CI-067).
+				if h.lingerEnableTouchesMarker && len(args) > 1 {
+					if err := os.WriteFile(filepath.Join(lingerDir, args[1]), nil, 0o644); err != nil {
+						return nil, err
+					}
+				}
+				return []byte("Could not enable linger: Connection timed out\n"), errors.New("exit status 1")
+			}
+			return nil, nil
+		case "terminate-user":
 			return nil, nil
 		}
 		return nil, fmt.Errorf("loginctl: unexpected verb %q", args[0])
@@ -579,6 +604,70 @@ func umCount(h *userManagerHost, command string) int {
 		}
 	}
 	return n
+}
+
+// TestBringUpUserManager_LingerReplyLostIsNotAFailure covers INT-CI-067. On a
+// loaded host logind applies the linger and then loses the REPLY: it touch()es
+// <lingerDir>/<user> first and only afterwards starts user@<uid>.service under
+// sd-bus's 25s default method timeout, which the user@ start can outlast
+// (systemd-user-runtime-dir blocks ~25s asking logind for RuntimeDirectorySize
+// /RuntimeDirectoryInodesMax before it "ignores" the timeout and finishes).
+// loginctl therefore exits 1 with "Could not enable linger: Connection timed
+// out" while the linger marker is already in place. Reading that exit status as
+// "lingering is off" and giving up fails a spawn on a host fact that is false,
+// so the bring-up must verify the marker and continue — the manager start is
+// owned by the next step.
+func TestBringUpUserManager_LingerReplyLostIsNotAFailure(t *testing.T) {
+	h := newUserManagerHost(t)
+	h.lingerEnableErr = true
+	h.lingerEnableTouchesMarker = true
+	installUserManagerHost(t, h, t.TempDir())
+
+	if err := bringUpUserManager(context.Background(), h.username, h.uid, h.runtimeDir, ctlLogger()); err != nil {
+		t.Fatalf("bringUpUserManager() error = %v; a lost enable-linger reply over an applied linger must not fail the bring-up", err)
+	}
+
+	if !h.ran("loginctl enable-linger " + h.username) {
+		t.Errorf("enable-linger was not attempted:%s", h.callLog())
+	}
+	if !h.managerStartSeen {
+		t.Errorf("the manager start was never issued after the tolerated linger error:%s", h.callLog())
+	}
+	// The marker the error was about is on disk — that is what made the error
+	// a lost reply rather than a failure, so assert the premise directly.
+	if !lingerMarkerPresent(h.username) {
+		t.Errorf("test premise did not hold: no linger marker at %s", lingerMarkerPath(h.username))
+	}
+}
+
+// TestBringUpUserManager_LingerErrorWithoutMarkerStillFails is the negative
+// control for INT-CI-067: when enable-linger fails and the marker is NOT on
+// disk nothing was applied (logind never reached its touch()), so the bring-up
+// must still fail loudly — and name the marker it looked for, so an operator
+// can tell an unresponsive logind from a failed linger.
+func TestBringUpUserManager_LingerErrorWithoutMarkerStillFails(t *testing.T) {
+	h := newUserManagerHost(t)
+	h.lingerEnableErr = true
+	h.lingerEnableTouchesMarker = false
+	installUserManagerHost(t, h, lingerDirWithEntries(t, 3))
+
+	err := bringUpUserManager(context.Background(), h.username, h.uid, h.runtimeDir, ctlLogger())
+	if err == nil {
+		t.Fatalf("bringUpUserManager() succeeded although enable-linger failed and left no marker; calls:%s", h.callLog())
+	}
+	for _, want := range []string{
+		"enable linger for " + h.username,
+		"Connection timed out",
+		lingerMarkerPath(h.username),
+		"linger entries: 3",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("bring-up error %q must name %q", err.Error(), want)
+		}
+	}
+	if h.managerStartSeen {
+		t.Errorf("the manager was started although the linger never applied:%s", h.callLog())
+	}
 }
 
 // installMountInfoFixture points the mount-point attribution at a fixture
