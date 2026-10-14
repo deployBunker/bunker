@@ -352,7 +352,11 @@ jobs:
           # MISMATCH here is a real defect, not a deployment mode.
           BUNKER_STRICT_BIN: "1"
         run: bash e2e-full-battery.sh
-        timeout-minutes: 15
+        # INT-CI-065: battery runtime grew past 15m (measured 15m13s on run
+        # 38432328297 while every cell stayed green). Raised to 25m to match
+        # the actual runtime plus headroom; the job-level timeout (30m) still
+        # bounds the whole regression job.
+        timeout-minutes: 25
 
   # ── Root-gated suite (spawn/cgroup/concurrency) — needs root ──
   # Runs on the self-hosted bunker-mvp runner, which runs as root (the
