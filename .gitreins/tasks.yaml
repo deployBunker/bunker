@@ -4580,3 +4580,11 @@ tasks:
   status: complete
   created_at: '2026-10-14T11:31:00.380406+00:00'
   completed_at: '2026-10-14T11:58:19.791087+00:00'
+- id: GAP-119
+  title: Unit sandboxing knobs for guarded tiers
+  criteria:
+  - Flag-gated hardened systemd property set, default off, table-driven tests prove
+    zero delta when off and properties present when on; build/vet/test green
+  status: complete
+  created_at: '2026-10-14T15:33:57.110796+00:00'
+  completed_at: '2026-10-14T15:33:59.104584+00:00'
