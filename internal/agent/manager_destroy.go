@@ -1087,6 +1087,21 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool, 
 							agentID, uerr, strings.TrimSpace(string(out)), evidence)
 				}
 			}
+		} else if destroyMailSpoolWarningOutput(out) && destroyDeleteConfirmedOnHost(username) {
+			// MON-MONITORING-USERDELHOME-001 (A): Debian/Ubuntu `userdel -rf`
+			// exits NONZERO with "userdel: <user> mail spool not found" even
+			// when the user + home removal SUCCEEDED — a success-with-warning,
+			// not the absent-user class. The discriminator is the HOST, not the
+			// wording: the user record is gone (lookupUser fails) AND the home
+			// directory is gone (stat on agentHomeRoot/<username> fails), so
+			// the delete actually happened regardless of the exit code. The
+			// destroy continues on the normal success path instead of the
+			// "user already gone" fallback. A still-existing home can never
+			// land here — the probe requires it gone — and the branches below
+			// refuse any absent-class outcome while the home survives.
+			m.logger.Info("userdel exited nonzero with the mail-spool warning but the host probe confirms the delete succeeded; continuing on the success path",
+				"agent_id", agentID, "username", username,
+				"output", strings.TrimSpace(string(out)))
 		} else if !force {
 			// The historical "user already gone" path (idempotent destroy or
 			// not_found) — unchanged.
@@ -1102,6 +1117,26 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool, 
 				m.logger.Info("freed port range", "agent_id", agentID)
 			}
 			m.tracker.Unregister(agentID)
+
+			// MON-MONITORING-USERDELHOME-001 (B): this branch used to treat
+			// every absent-class userdel failure as "the user is already gone"
+			// and return success (idempotent destroy) or a tidy not_found
+			// WITHOUT re-probing whether the home directory still exists. When
+			// the kill-timer SIGKILLed userdel mid-run on a large home, the
+			// passwd entry was gone but /home/bunker-<id> (up to 15G, incl the
+			// rootless docker data) SURVIVED — and the destroy reported
+			// success: the exact "home outlives its user" leak
+			// internal/cli/homes.go documents. Before this branch may return
+			// ANY success-shaped answer, the home must be proven gone; a
+			// surviving home refuses the destroy (userdel_failed + a recorded
+			// refusal) so the reaper backs off and the operator reclaims it.
+			if rerr := m.refuseDestroySurvivingHome(agentID, username, uerr, out); rerr != nil {
+				if perr := m.persistDestroy(agentID); perr != nil {
+					m.logger.Warn("registry destroy append failed", "agent_id", agentID, "error", perr)
+				}
+				m.removeAgentSSHKeyBestEffort(agentID, m.logger)
+				return &v1.DestroyAgentResponse{AgentId: agentID, Status: StatusUserdelFailed}, rerr
+			}
 
 			// GAP-070 idempotent destroy: the system user is gone AND the
 			// durable lifecycle store already knew this agent, so this is a
@@ -1141,7 +1176,19 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool, 
 			return &v1.DestroyAgentResponse{AgentId: agentID, Status: "not_found"},
 				fmt.Errorf("agent %q not found", agentID)
 		} else {
-			// Force mode, user-absent class: historical behavior.
+			// Force mode, user-absent class: historical behavior. The force
+			// branch falls through to the normal success path, so a surviving
+			// home here is exactly the leak MON-MONITORING-USERDELHOME-001
+			// (B) closed on the non-force side — the destroy would log
+			// "agent destroyed" while /home/bunker-<id> survives. The same
+			// refusal guard applies: a surviving home can never complete.
+			if rerr := m.refuseDestroySurvivingHome(agentID, username, uerr, out); rerr != nil {
+				if perr := m.persistDestroy(agentID); perr != nil {
+					m.logger.Warn("registry destroy append failed", "agent_id", agentID, "error", perr)
+				}
+				m.removeAgentSSHKeyBestEffort(agentID, m.logger)
+				return &v1.DestroyAgentResponse{AgentId: agentID, Status: StatusUserdelFailed}, rerr
+			}
 			m.logger.Warn("userdel failed in force mode (user absent)", "username", username, "error", uerr, "output", string(out))
 		}
 	}
@@ -1505,6 +1552,67 @@ func (m *AgentManager) destroyFailureEvidence(username string) string {
 		parts = append(parts, "home directory "+home+" is gone")
 	}
 	return "surviving state: " + strings.Join(parts, "; ")
+}
+
+// destroyMailSpoolWarningOutput recognizes the Debian/Ubuntu success-with-
+// warning shape: `userdel -rf` removes the user and the home, then exits
+// NONZERO with "userdel: <user> mail spool not found" because the mail
+// spool file was already absent. Observed live on the production host of
+// MON-MONITORING-USERDELHOME-001 (host journal). Deliberately narrow: it
+// must NOT subsume the genuine absent-user wordings ("does not exist",
+// "no such user"), which stay the destroyUserAbsentOutput class, and it is
+// only ever consulted TOGETHER with the host probe below — the wording
+// alone is never proof of anything.
+func destroyMailSpoolWarningOutput(out []byte) bool {
+	o := strings.ToLower(string(out))
+	return strings.Contains(o, "mail spool") && strings.Contains(o, "not found")
+}
+
+// destroyDeleteConfirmedOnHost is the only thing allowed to turn a
+// nonzero-exit userdel into a success classification: the USER RECORD is
+// gone (lookupUser fails — the seam, so tests inject fakes) AND the HOME
+// DIRECTORY is gone (stat on agentHomeRoot/<username> fails). Both must
+// hold; a still-existing home can never confirm a delete. Exit codes and
+// output text are never consulted here — that is the defect's lesson
+// (MON-MONITORING-USERDELHOME-001 A).
+func destroyDeleteConfirmedOnHost(username string) bool {
+	if _, err := lookupUser(username); err == nil {
+		return false // user record still present
+	}
+	home := filepath.Join(agentHomeRoot, username)
+	if _, err := os.Stat(home); err == nil {
+		return false // home still exists: the delete did NOT complete
+	}
+	return true
+}
+
+// refuseDestroySurvivingHome is the destroy path's final guard against the
+// "home outlives its user" leak (MON-MONITORING-USERDELHOME-001 B): it is
+// called on every userdel-failure branch that historically returned a
+// success-shaped answer (idempotent destroyed, tidy not_found, and the
+// force-mode fall-through), and it refuses that answer when the home
+// directory still exists on the host. The refusal is recorded on the
+// durable registry record (StatusUserdelFailed, with the destroy's
+// surviving-state evidence) so the reaper backs off and the operator path
+// reclaims the home. A nil return means the home is gone and the caller's
+// success-shaped answer is honest.
+func (m *AgentManager) refuseDestroySurvivingHome(agentID, username string, uerr error, out []byte) error {
+	home := filepath.Join(agentHomeRoot, username)
+	if _, serr := os.Stat(home); serr != nil {
+		return nil // home gone: the success-shaped answer is honest
+	}
+	evidence := m.destroyFailureEvidence(username)
+	m.logger.Error("destroy refused: the user record is gone but the home directory SURVIVED on the host",
+		"agent_id", agentID, "username", username, "surviving_home", home,
+		"userdel_error", uerr, "output", strings.TrimSpace(string(out)),
+		"evidence", evidence)
+	if m.recordDestroyRefusalFn != nil {
+		m.recordDestroyRefusalFn(agentID, StatusUserdelFailed,
+			fmt.Errorf("destroy of %s refused: user record gone but home directory %s still exists (userdel error: %v, output: %s). %s",
+				agentID, home, uerr, strings.TrimSpace(string(out)), evidence))
+	}
+	return fmt.Errorf("destroy of %s failed: user record removed but home directory %s still exists (leaked home; manual reclamation required). %s",
+		agentID, home, evidence)
 }
 
 // retryUserdelOnceAfterReap is the bounded recovery QA-BUNKER-61 adds to the
