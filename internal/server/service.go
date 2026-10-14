@@ -82,6 +82,13 @@ type bunkerdService struct {
 	// ListAgents falls back to per-agent calls when only the single field is
 	// set (tests constructing plain bunkerdService values).
 	orphanUIDBatchSummarizer func(agentIDs []string) []string
+	// dockerStatusAdjuster is the DF-BUNKER-72 docker-health surface (nil in
+	// tests and unwired services: no probe, no fabricated degraded claim). The
+	// production wiring (server.go) sets it to the agent manager's
+	// DockerStatus. GetAgent — the `bunker info` surface — goes through it;
+	// ListAgents deliberately does NOT, so the polled list path pays no
+	// per-agent probe (the probe is bounded but it is a subprocess).
+	dockerStatusAdjuster func(agentID, status string) string
 	// auditLog is the daemon's audit trail writer (nil when audit logging
 	// is disabled). QueryAudit reads from it; the audit interceptor writes
 	// to it. It is only used for read access here — the interceptor owns
@@ -659,6 +666,15 @@ func (s *bunkerdService) GetAgent(ctx context.Context, req *connect.Request[v1.G
 	// `bunker info` on ONE agent shows the state too.
 	if s.orphanUIDSummarizer != nil {
 		summary.OrphanUidDetail = s.orphanUIDSummarizer(summary.GetAgentId())
+	}
+	// DF-BUNKER-72: qualify the status with the agent's rootless-docker health.
+	// A recycled-uid agent whose installer docker.service never came up is
+	// BROKEN while every status plane says "running" (live: agent dfops0925c,
+	// whose `docker ps` dial-failed for the whole life of the agent). The
+	// adjuster is bounded and best-effort, and on a healthy (or unprovable)
+	// docker it returns the status byte-identically, so this is additive only.
+	if s.dockerStatusAdjuster != nil {
+		summary.Status = s.dockerStatusAdjuster(summary.GetAgentId(), summary.GetStatus())
 	}
 	return connect.NewResponse(&v1.GetAgentResponse{
 		Agent: summary,

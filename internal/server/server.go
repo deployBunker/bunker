@@ -322,6 +322,12 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	// fleet; GetAgent keeps the single-id method.
 	bunkerdSvc.orphanUIDSummarizer = agentMgr.OrphanUIDSummary
 	bunkerdSvc.orphanUIDBatchSummarizer = agentMgr.OrphanUIDSummaries
+	// DF-BUNKER-72: the rootless-docker health surface. A recycled-uid agent
+	// whose installer docker.service failed reports `running` on every status
+	// plane while `docker` is unusable on it; the adjuster qualifies the
+	// `bunker info` status with the proven unit state ("running (docker
+	// degraded)") and returns the status byte-identically otherwise.
+	bunkerdSvc.dockerStatusAdjuster = agentMgr.DockerStatus
 
 	// Audit interceptor: composed INSIDE the auth interceptor (auth listed
 	// first, so it runs outermost) so only authenticated requests reach it —

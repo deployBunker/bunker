@@ -1737,6 +1737,19 @@ func bringUpUserManager(ctx context.Context, username string, uid int, stdRuntim
 		resetUserManagerState(ctx, uid, stdRuntimeDir, logger)
 	}
 
+	// DF-BUNKER-72: the branch above only fires when the runtime DIRECTORY
+	// itself is recognisably foreign (classifyRuntimeDir). A uid recycled from
+	// a destroyed agent keeps /run/user/<uid> owned by the SAME numeric uid, so
+	// the directory reads as fresh while a previous occupant's RootlessKit
+	// state dir survives inside it — and the installer's docker.service (which
+	// locks $XDG_RUNTIME_DIR/dockerd-rootless, i.e. exactly that path) then
+	// fails with "another RootlessKit is running with the same state
+	// directory?". This MUST run before the installer starts that unit, so it
+	// lives here rather than in the dockerd-start stage. Best-effort by
+	// contract: scrubStaleDockerdStateDir never returns an error, and it leaves
+	// the dir alone whenever a rootlesskit/dockerd for this uid is alive.
+	scrubStaleDockerdStateDir(ctx, uid, logger)
+
 	if err := ensureUserRuntimeDir(ctx, username, uid, stdRuntimeDir, logger); err != nil {
 		return err
 	}

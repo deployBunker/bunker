@@ -1167,6 +1167,28 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool, 
 		}
 	}
 
+	// Step 4b (DF-BUNKER-72): remove the uid's RootlessKit state dir
+	// (<userRuntimeBaseDir>/<uid>/dockerd-rootless — lock, netns, pid files).
+	//
+	// Step 4a removes only the socket, and `userdel` removes only the user
+	// RECORD: /run/user/<uid> is a tmpfs path that survives destroy, so the
+	// next agent spawned on that recycled uid inherits a live-looking lock and
+	// its docker.service dies with "[rootlesskit:parent] error: failed to lock
+	// .../dockerd-rootless/lock, another RootlessKit is running with the same
+	// state directory?". Closing it HERE means the gap is fixed at the source,
+	// for every future occupant of the uid, instead of only being cleaned up
+	// by the next spawn.
+	//
+	// Best-effort and never fatal (same contract as the spawn-path scrub): the
+	// uid is deliberately checked for live processes first — this branch is
+	// also reachable in force mode, and a rootlesskit still alive owns its
+	// state dir. A failure is a WARN; the destroy has already succeeded.
+	if uid != "" {
+		if uidNum, perr := strconv.Atoi(uid); perr == nil {
+			scrubStaleDockerdStateDir(ctx, uidNum, m.logger)
+		}
+	}
+
 	// Step 4.5: Clean up persisted SSH key (DF-BUNKER-24: the same helper is
 	// also used by the two early returns above and by the reconcile purge, so
 	// every path that concludes the agent is gone converges on the same state
