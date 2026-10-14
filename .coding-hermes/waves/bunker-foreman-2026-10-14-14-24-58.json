@@ -1,0 +1,44 @@
+{
+  "tick_id": "bunker-foreman-2026-10-14-14-24-58",
+  "wave_id": "wave-2026-10-14-142458",
+  "created_at": "2026-10-14T14:40:00-05:00",
+  "recovery_note": "recovered manifest bunker-foreman-2026-10-13-07-13-46 was already closed (phantom wave, 0 workers); nothing to recover",
+  "tasks": [
+    {
+      "id": "GAP-119",
+      "title": "Unit sandboxing knobs for guarded/hostile tiers",
+      "priority": "P2",
+      "worktree": "/home/kara/worktrees/bunker-GAP-119",
+      "branch": "wt/GAP-119",
+      "base_sha": "aba10adf",
+      "worker_model": "deepseek-v4-flash",
+      "worker_provider": "deepseek-foreman"
+    },
+    {
+      "id": "GAP-135",
+      "title": "Supply-chain pinning for rootless installer and image specs",
+      "priority": "P2",
+      "worktree": "/home/kara/worktrees/bunker-GAP-135",
+      "branch": "wt/GAP-135",
+      "base_sha": "aba10adf",
+      "worker_model": "deepseek-v4-flash",
+      "worker_provider": "deepseek-foreman"
+    },
+    {
+      "id": "MOUNT-008",
+      "title": "FUSE-over-io_uring opt-in driver: verify-then-enable",
+      "priority": "P1",
+      "worktree": "/home/kara/worktrees/bunker-MOUNT-008",
+      "branch": "wt/MOUNT-008",
+      "base_sha": "aba10adf",
+      "worker_model": "deepseek-v4-flash",
+      "worker_provider": "deepseek-foreman"
+    }
+  ],
+  "status": "closed",
+  "workers_dispatched": 3,
+  "workers_completed": 3,
+  "workers_failed": 0,
+  "closed_at": "2026-10-14T15:35:00-05:00",
+  "close_reason": "3 tasks landed+merged+pushed (167e8a73, baba8c38, f16b47dc); board rows closed"
+}
