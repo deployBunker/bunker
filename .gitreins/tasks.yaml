@@ -4580,3 +4580,13 @@ tasks:
   status: complete
   created_at: '2026-10-14T11:31:00.380406+00:00'
   completed_at: '2026-10-14T11:58:19.791087+00:00'
+- id: INT-CI-070
+  title: 'CI root-gated: TestConcurrency_SpawnFiveAgents dockerd-start deadline too
+    tight'
+  criteria:
+  - TestConcurrency_SpawnFiveAgents passes reliably in CI (root-gated suite) by making
+    waitForDockerd robust to 5 concurrent rootless dockerd starts, with tests still
+    green
+  status: complete
+  created_at: '2026-10-14T17:14:19.596167+00:00'
+  completed_at: '2026-10-14T17:59:00.509000+00:00'
