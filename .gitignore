@@ -53,3 +53,9 @@ tools/__pycache__/
 
 # Bunker E2E battery output (regenerated on each run)
 e2e-output/
+
+# DAGger MCP runtime state (per-session run/checkpoint DB; CLN-1: an add-sweep
+# once committed a live dagger.db into a docs commit — never ship these)
+/dagger.db
+/dagger.db-shm
+/dagger.db-wal
