@@ -85,15 +85,29 @@ agent's user manager by name, and the agent's own identity is the only one that 
 
 ## Step 4 — the client attaches
 
+The SUPPORTED path is the command (SURF-008):
+
+```
+bunker surface connect <agent-id>            # forward to /tmp/bunker-toolsd-<id>.sock
+bunker surface connect <agent-id> --check    # the live checks below, over an audited exec
+```
+
+It resolves the agent host from the agent RECORD (never the daemon host),
+uses the agent's own key `~/.bunker/keys/<agent-id>` and identity
+`bunker-<agent-id>@<host>`, discovers the uid by asking the agent (`id -u`),
+and runs exactly the raw shape underneath:
+
 ```
 ssh -i ~/.bunker/keys/<agent-id> \
     -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
-    -N -L /tmp/toolsd.sock:/run/user/<uid>/toolsd.sock \
+    -N -L /tmp/bunker-toolsd-<agent-id>.sock:/run/user/<uid>/toolsd.sock \
     bunker-<agent-id>@<agent-host>
 ```
 
 Use the **agent's own key and identity** — not root. Least privilege, and it is also what actually
-exists.
+exists. The command runs in the foreground until interrupted; Ctrl-C is the
+disconnect (the ssh child is reaped with the whole process group, the
+proven tunnel contract), so there is no separate `disconnect` verb.
 
 ## Step 5 — talk to it
 

@@ -175,13 +175,15 @@ func NewSurfaceCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "surface",
 		Short: "Manage the agent's toolsd socket surface (systemd user units)",
-		Long: `Install or remove the toolsd tool surface on an agent: a systemd --user
-socket unit plus a per-connection service template, written THROUGH the
-agent's own exec context so the agent's identity owns the socket (%t) and
-home (%h) specifiers.
+		Long: `Install, remove, or attach to the toolsd tool surface on an agent: a
+systemd --user socket unit plus a per-connection service template, written
+THROUGH the agent's own exec context so the agent's identity owns the socket
+(%t) and home (%h) specifiers.
 
   bunker surface install <agent-id>   make the agent socket-ready
   bunker surface remove <agent-id>    remove the units and prove absence
+  bunker surface connect <agent-id>   forward the socket to this machine
+                                      (--check verifies the surface first)
 
 Install is idempotent: unit files already identical to the wanted content are
 skipped untouched. Both verbs refuse — with a named cause — to act when the
@@ -196,6 +198,7 @@ when the binary is absent rather than claiming a working surface.`,
 	}
 	cmd.AddCommand(newSurfaceInstallCommand())
 	cmd.AddCommand(newSurfaceRemoveCommand())
+	cmd.AddCommand(newSurfaceConnectCommand())
 	return cmd
 }
 

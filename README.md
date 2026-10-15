@@ -1250,7 +1250,9 @@ bunker agent-tools  Probe the agent (not the client) for the executables the
                    directive the command prints (ripgrep via apt, gopls via
                    go — specs/image-spec.md)
 bunker surface     Manage the agent's toolsd socket surface (systemd user
-                   units; install/remove)
+                   units; install/remove) and attach to it from this machine
+                   (connect: forwards the agent's socket over SSH with the
+                   agent's own key; --check runs the live surface checks)
 bunker subid-migrate  Rewrite overlapping subordinate-id (subuid/subgid)
                    ranges for managed agents (dry run by default; --apply
                    rewrites)
