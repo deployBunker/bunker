@@ -344,8 +344,33 @@ func TestBFS037Cell08EverySkipAndAbandonReasonIsReachable(t *testing.T) {
 			stub.Set(p, hotBody(2000, byte('A'+i)))
 			fg = append(fg, p)
 		}
-		stub.HeadDelay(150 * time.Millisecond)
+		// THE CHOREOGRAPHY IS HELD, NOT RACED. This arm used to fire the
+		// foreground readers straight after the refresh appeared and then HOPE a
+		// 150 ms HeadDelay kept one pool slot contended across the refresh's one
+		// body checkpoint. On a loaded runner (CI run 38665628881, unit-tests
+		// job) the readers can be scheduled AFTER the refresh has read its whole
+		// 4000-byte body: WaitedMS is still 0 at the checkpoint, no yield is ever
+		// taken, the refresh publishes instead and every census counter stays at
+		// zero — a red test for a healthy feature. Three explicit holds replace
+		// the hope, so no part of the sequence depends on scheduling luck:
+		//
+		//   1. the stub parks the refresh MID-BODY, so it cannot reach a later
+		//      checkpoint — and cannot publish — until this arm says so;
+		//   2. the arm then creates the foreground pressure and waits for the
+		//      PRODUCTION predicate itself (Client.WaitedMS() >= YieldAfter) to
+		//      become observable, instead of waiting a duration it guessed;
+		//   3. only then is the body released, so the refresh's next checkpoint
+		//      provably sees the pressure the yield rule is built on.
+		//
+		// With the pressure established that way the put-back is certain, and the
+		// abandon that follows it is structural rather than lucky: the requeue
+		// stamps `yieldedAt`, the tick's window sweep runs BEFORE its scheduler,
+		// and the requeue's backoff (250 ms) is longer than the reacquire window
+		// (1 ms) — so the sweep always drops the put-back before the item can be
+		// served again.
+		stub.Hold()
 		stub.Set(target, hotBody(4000, 'z'))
+		base := stub.BytesServed(target)
 		before := hotCensus(s.Manager)
 		s.Manager.NoteInvalidation([]string{target})
 		if !hotWaitFor(t, "the refresh to be up", 5*time.Second, func() bool {
@@ -353,8 +378,35 @@ func TestBFS037Cell08EverySkipAndAbandonReasonIsReachable(t *testing.T) {
 		}) {
 			t.Fatalf("no refresh started: %+v", s.Manager.Stats())
 		}
+		if !hotWaitHeld(t, stub, target, 4000, base, 5*time.Second) {
+			t.Fatalf("the refresh's transfer never parked mid-body; this arm's synchronisation depends on that hold")
+		}
+		// The pressure, created while the refresh CANNOT finish: 8 readers against
+		// a pool of 2, and a header pause long enough that the waiters stay
+		// blocked for the rest of the arm (freeing the pool needs a whole header
+		// pause per waiter, so the reading below cannot go back to zero).
+		stub.HeadDelay(150 * time.Millisecond)
 		for _, p := range fg {
 			go func(p string) { _, _, _, _ = s.Manager.HotRead(context.Background(), p, "") }(p)
+		}
+		if !hotWaitFor(t, "a foreground request to be waiting for a pool slot", 5*time.Second, func() bool {
+			return s.Client.WaitedMS() >= s.Policy.YieldAfter.Milliseconds()
+		}) {
+			t.Fatalf("no foreground request ever waited %s for a pool slot: the yield rule has nothing to fire on", s.Policy.YieldAfter)
+		}
+		stub.Release()
+		// The put-back first: a yield is the decision this arm is about, and
+		// asserting it separates "the refresh never yielded" (a fixture or
+		// product problem) from "the sweep never saw the put-back".
+		if !hotWaitFor(t, "the yield (put-back)", 5*time.Second, func() bool {
+			return s.Manager.Stats().YieldsTotal >= 1
+		}) {
+			t.Fatalf("the refresh ran under observable foreground pressure without yielding: %+v", s.Manager.Stats())
+		}
+		if !hotWaitFor(t, "the yielded refresh to give its slot back", 5*time.Second, func() bool {
+			return s.Manager.Stats().RefreshInflight == 0
+		}) {
+			t.Fatalf("the yielded refresh still holds a slot (P-11: hang up rather than hold): %+v", s.Manager.Stats())
 		}
 		// A yield first, then the sweep: an item that cannot reacquire a slot
 		// inside hot_refresh_reacquire_window is ABANDONED, not held forever.
