@@ -320,10 +320,24 @@ Examples:
 			}
 			resolvedHost := resolveSSHHost(entry, serverHost, sshHost)
 
-			// Client-local key path (same one saved by the GetAgentKey fetch
-			// above); empty when the server returned no private key and the
-			// fetch produced none.
+			// Client-local key path. Normal case: the one saved by the
+			// GetAgentKey fetch above. Degraded case (INT-SPAWN-005): the
+			// fetch failed, but the key path is still DETERMINISTIC —
+			// fetchAndSaveAgentKey's success path writes keys/ next to the
+			// config file, so ~/.bunker/keys/<agent-id> is where a key WOULD
+			// live. Print that path instead of leaving -i empty: the QA
+			// harness (bunker-qa.sh spawn_agent) extracts the agent id from
+			// the printed keys/<id> line, so an empty keyPath once turned a
+			// healthy spawn into "no usable id → retry/destroy"; a
+			// rewritten tunnel line with a dangling "-i" plus a server-side
+			// path was DF-BUNKER-47's original complaint. Matches info.go,
+			// which already uses the defaultSSHKeyPath fallback unconditionally.
 			if keyPath == "" && r.SshPrivateKey != "" {
+				if p, err := defaultSSHKeyPath(r.AgentId); err == nil {
+					keyPath = p
+				}
+			}
+			if keyPath == "" && r.DockerHostTunnel != "" && r.AgentId != "" {
 				if p, err := defaultSSHKeyPath(r.AgentId); err == nil {
 					keyPath = p
 				}
@@ -349,6 +363,17 @@ Examples:
 				} else {
 					keyPath = savedKeyPath
 				}
+				fmt.Printf("                %s\n", keyPath)
+			} else if keyPath != "" {
+				// Degraded path (INT-SPAWN-005): the key fetch failed, so no
+				// key file was written — but the bundle must still carry the
+				// keys/<agent-id> line. Consumers (bunker-qa.sh spawn_agent)
+				// extract the agent id from exactly this line; without it a
+				// healthy spawn reads as "no usable id" and gets destroyed
+				// and retried. The line states the expected location, and
+				// `bunker renew`/fetchAndSaveAgentKey can materialize the key
+				// there later.
+				fmt.Println("  SSH Key:      (not fetched — expected at ~/.bunker/keys/)")
 				fmt.Printf("                %s\n", keyPath)
 			}
 			if r.PublicUrl != "" {

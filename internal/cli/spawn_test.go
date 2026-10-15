@@ -895,6 +895,77 @@ func TestSpawnCommand_KeyFetchFailureIsNonFatal(t *testing.T) {
 	}
 }
 
+// TestSpawnCommand_KeyFetchFailureBundleStillCarriesAgentID pins the
+// INT-SPAWN-005 regression: on the degraded path (key fetch failed) the
+// bundle must STILL carry the keys/<agent-id> line and the Docker Tunnel
+// line must never print an empty "-i" argument. The QA harness
+// (bunker-qa.sh spawn_agent) extracts the agent id from the keys/<id> line;
+// without it a healthy spawn read as "no usable id", was destroyed and
+// retried, and the rewritten tunnel command carried a dangling "-i" plus a
+// server-side key path (the DF-BUNKER-47 signature: "ssh ... -i  -L
+// 2376:..."). bunker info already falls back to the deterministic
+// defaultSSHKeyPath; spawn's bundle must too.
+func TestSpawnCommand_KeyFetchFailureBundleStillCarriesAgentID(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	mock := &mockSpawnServer{
+		mockBunkerdServer: mockBunkerdServer{
+			info: &v1.ServerInfoResponse{
+				Hostname: "bunker-las-02",
+				Version:  "v0.2.0",
+			},
+		},
+		spawnResp: &v1.SpawnAgentResponse{
+			AgentId:          "intspawn005",
+			DockerHostTunnel: "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o IdentitiesOnly=yes -i /etc/bunkerd/ssh/intspawn005 -L 2376:/run/bunker/intspawn005/docker.sock bunker-intspawn005@bunker-las-02 -N",
+		},
+		keyErr: connect.NewError(connect.CodeNotFound, fmt.Errorf("agent %q not found", "intspawn005")),
+	}
+	srv := newSpawnTestServer(t, mock)
+	defer srv.Close()
+	writeSpawnTestConfig(t, tmpDir, srv.URL)
+
+	cmd := NewSpawnCommand()
+	var err error
+	output := captureStdout(t, func() { err = cmd.Execute() })
+	if err != nil {
+		t.Fatalf("spawn must succeed even when the key fetch fails, got: %v", err)
+	}
+
+	// The keys/<agent-id> line must print so id-extracting consumers see the
+	// agent (this is the line bunker-qa.sh greps).
+	if !strings.Contains(output, "keys/intspawn005") {
+		t.Errorf("degraded bundle missing keys/<agent-id> line (id extraction depends on it), stdout:\n%s", output)
+	}
+	// The tunnel line must be rewritten with the client-local key path —
+	// never an empty -i argument (DF-BUNKER-47 / INT-SPAWN-005 signature).
+	tunnelLines := strings.Split(output, "\n")
+	foundTunnel := false
+	for _, line := range tunnelLines {
+		if !strings.Contains(line, "Docker Tunnel:") {
+			continue
+		}
+		foundTunnel = true
+		if strings.Contains(line, "-i ") && strings.Contains(line, "-i  ") {
+			t.Errorf("Docker Tunnel line carries an EMPTY -i argument, line:\n%s", line)
+		}
+		if !strings.Contains(line, "keys/intspawn005") {
+			t.Errorf("Docker Tunnel line not rewritten to the client-local key path, line:\n%s", line)
+		}
+		if strings.Contains(line, "/etc/bunkerd/ssh/") {
+			t.Errorf("Docker Tunnel line still carries the server-side key path, line:\n%s", line)
+		}
+	}
+	if !foundTunnel {
+		t.Errorf("bundle missing Docker Tunnel line entirely, stdout:\n%s", output)
+	}
+	// And no key file may materialize on the degraded path (the fetch failed).
+	if _, err := os.Stat(filepath.Join(tmpDir, ".config", "bunker", "keys", "intspawn005")); !os.IsNotExist(err) {
+		t.Errorf("no key file must be written when the fetch failed (stat err: %v)", err)
+	}
+}
+
 // TestSpawnCommand_OptInResponseStillWritesLocalKey keeps old opt-in callers
 // working: a server that DOES return the key (return_ssh_private_key=true) —
 // for any client that sets the flag — must still produce a local key file and
