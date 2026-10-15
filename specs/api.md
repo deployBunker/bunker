@@ -3,6 +3,9 @@
 Version: 1.1.0
 Based on: proto/bunker/v1/bunker.proto
 Last Updated: 2026-09-12
+Related: specs/metadata-api.md — operator-facing metadata surface: verified
+inventory of every field this contract populates today, plus the proposed
+additive expansion (design authority for GAP-169)
 
 ## Protocol
 

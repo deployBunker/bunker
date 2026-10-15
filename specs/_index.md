@@ -1,6 +1,6 @@
 # Bunker — Specifications Index
 
-Landing page for the `specs/` directory. Twelve specs cover the Bunker platform
+Landing page for the `specs/` directory. Thirteen specs cover the Bunker platform
 (a daemon, `bunkerd`, that hosts isolated agent environments; a CLI, `bunker`,
 that controls it). Start here, pick your audience below, and follow its reading
 order.
@@ -12,6 +12,7 @@ Last verified against repo HEAD `9ee17c6` (2026-09-16).
 | Spec | Role in the suite | Audience | Status |
 |------|-------------------|----------|--------|
 | [api.md](api.md) | The contract | integrator, operator | implemented |
+| [metadata-api.md](metadata-api.md) | The operator-facing metadata surface (what the fleet IS) | operator, contributor | not implemented (design draft, GAP-169 pending) |
 | [architecture.md](architecture.md) | The components | contributor, operator | implemented |
 | [agent-lifecycle.md](agent-lifecycle.md) | The state machine | contributor, operator | implemented |
 | [agent-tmp-isolation.md](agent-tmp-isolation.md) | The isolation boundary | operator, contributor | implemented (GAP-075) |
@@ -42,6 +43,23 @@ served by connect-go. Based on `proto/bunker/v1/bunker.proto`.
   operators who need to know what a token can reach.
 - **Status: implemented** — the documented RPCs are the live connect-go
   surface (see proto/bunker/v1/bunker.proto:15).
+
+### [metadata-api.md](metadata-api.md) — Metadata API Specification (v0.1.0, draft, GAP-167)
+
+The operator-facing metadata surface — "what does the fleet IS": a
+verified inventory of every field `ServerInfo` / `ServerMetrics` /
+`ListAgents` / `GetAgent` / `AgentMetrics` populate today (source + live
+evidence against bunker-mvp), the declared-but-never-populated fields, and
+the proposed additive expansion (build identity, capacity arithmetic,
+status census, heartbeat recency, residue detail, labels, image + slice
+projections) as new field numbers on the EXISTING messages — no new RPC.
+Rows that would be shaped by an open GAP-125 decision are marked
+`DECISION-PENDING(GAP-125)`, not assumed. Design authority for GAP-169.
+
+- **Who should read it:** operators who need to answer fleet-state
+  questions from the API alone, and the GAP-169 implementer.
+- **Status: not implemented — design draft (GAP-167)** — the §2 inventory
+  describes the live surface; §4's fields exist on no wire yet.
 
 ### [architecture.md](architecture.md) — Architecture Specification (v1.1.0, stable)
 
@@ -231,7 +249,8 @@ crossing namespaces).
 1. [architecture.md](architecture.md) — what the daemon is and what it puts
    on your host
 2. [api.md](api.md) — the RPC surface the CLI drives (skim for auth and
-   ports)
+   ports; [metadata-api.md](metadata-api.md) inventories what the metadata
+   RPCs actually populate today)
 3. [agent-lifecycle.md](agent-lifecycle.md) — what spawn does to your host,
    registry durability and maintenance
 4. [agent-tmp-isolation.md](agent-tmp-isolation.md) — the isolation you must
@@ -272,6 +291,9 @@ crossing namespaces).
 
 - [api.md](api.md) is **the contract** — the RPCs, auth, and ports every
   other spec defers to. Proto changes start there.
+- [metadata-api.md](metadata-api.md) is **the metadata surface over that
+  contract** — what the metadata RPCs populate TODAY (verified) and the
+  additive expansion GAP-169 will build on them.
 - [architecture.md](architecture.md) is **the components** — how CLI,
   `bunkerd`, and agent instances compose, and what lives where on disk.
 - [configuration.md](configuration.md) is **the config surface** — every key the
