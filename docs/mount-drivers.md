@@ -117,6 +117,12 @@ default; an unknown name is refused by the server).
 - **No config file required.** Use an inline backend spec so there is no
   `rclone.conf` and no credential file to manage:
   `rclone mount :sftp,host=<host>,user=<agent-user>,key_file=<key>,shell_type=unix:/ <mountpoint>`
+- **Mode parity with sshfs.** The stored command pins `--file-perms 0777 --umask 022`,
+  because rclone's FUSE layer reports FILES from `--file-perms` masked by `--umask`
+  (its defaults, 0666 and 002, surface every file as `rw-rw-r--`) and never from the
+  SFTP object's mode: without both options a `chmod 755` file loses its exec bit and
+  `./built-binary` off the mount fails with `Permission denied`. The effective
+  `0755 rwxr-xr-x` is what the sshfs driver reports for the same file.
 - **Extra options it brings** (the reason to offer it):
   `--vfs-cache-mode off|minimal|writes|full`, `--dir-cache-time`,
   `--vfs-cache-max-size`, `--vfs-cache-max-age`, `--vfs-write-back`,

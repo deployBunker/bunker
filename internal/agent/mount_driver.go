@@ -51,8 +51,26 @@ func buildMountCommand(d mountdriver.Driver, sshKeyPath, username, host, userHom
 		// rewriteRcloneMount). The mountpoint follows the sshfs convention
 		// (filepath.Join("/mnt","bunker",agentID)) so every driver stores
 		// the same shape and the client's mountpoint substitution is
-		// driver-agnostic.
-		return fmt.Sprintf("rclone mount :sftp:%s %s --sftp-user %s --sftp-key-file %s --sftp-host %s --vfs-cache-mode minimal --daemon",
+		// driver-agnostic. Every flag added here must stay BEFORE --daemon:
+		// rewriteRcloneMount refuses a stored command whose last field is
+		// not --daemon (it is the non-blocking guarantee).
+		//
+		// FUSE mode parity (DF-BUNKER-94, dogfood run 26 2026-10-12).
+		// rclone's FUSE layer never reports the SFTP object's mode: a file
+		// on the mount surfaces as --file-perms (rclone default 0666)
+		// masked by --umask (rclone default 002). That is why a chmod 755
+		// agent file read `-rw-rw-r--` (0666 & ~002) through the mount and
+		// running a binary straight off it died with `Permission denied`,
+		// while the sshfs arm (idmap=user passes the reported mode through)
+		// showed `-rwxr-xr-x` for the same file. --umask 022 ALONE does not
+		// restore the exec bit — 0666 &^ 022 = 0644 is still non-executable
+		// (live-measured, rclone v1.75.1) — so BOTH options are pinned:
+		// --file-perms 0777 supplies the exec bits and --umask 022 masks
+		// group/other WRITE only, giving the effective 0755 (`rwxr-xr-x`)
+		// that the sshfs arm reports (0777 &^ 022). The mask never widens
+		// the mount: world/group write stays off, read and exec survive for
+		// everyone, so `./built-binary` off the mount runs.
+		return fmt.Sprintf("rclone mount :sftp:%s %s --sftp-user %s --sftp-key-file %s --sftp-host %s --vfs-cache-mode minimal --file-perms 0777 --umask 022 --daemon",
 			userHome, filepath.Join("/mnt", "bunker", agentID), username, sshKeyPath, host), nil
 	default:
 		// Reachable only for a driver some future row registers without
