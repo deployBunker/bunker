@@ -4590,3 +4590,11 @@ tasks:
   status: complete
   created_at: '2026-10-14T17:14:19.596167+00:00'
   completed_at: '2026-10-14T17:59:00.509000+00:00'
+- id: INT-SPAWN-005
+  title: 'spawn: degraded-path bundle carries deterministic key path'
+  criteria:
+  - On key-fetch failure the spawn bundle still prints keys/<agent-id> and the Docker
+    Tunnel line never carries an empty -i; regression test pins the bundle shape.
+  status: complete
+  created_at: '2026-10-15T02:27:16.277355+00:00'
+  completed_at: '2026-10-15T02:44:38.888611+00:00'
