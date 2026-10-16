@@ -4598,3 +4598,53 @@ tasks:
   status: complete
   created_at: '2026-10-15T02:27:16.277355+00:00'
   completed_at: '2026-10-15T02:44:38.888611+00:00'
+- id: QA-BUNKER-24
+  title: 'pytest.ini-only repos: ci-pass false green (verify-and-close)'
+  criteria:
+  - 'Row''s fix verified in-tree: detection arm + UNVERIFIED grading present, regression
+    test 4/0, commit 4e867c0f ancestor of origin/main'
+  status: complete
+  created_at: '2026-10-15T10:07:39.575580+00:00'
+  completed_at: '2026-10-15T10:08:28.525748+00:00'
+- id: SURF-008
+  title: End-to-end remote file tools over toolsd socket (surface connect)
+  criteria:
+  - bunker surface connect exists with unit tests green; e2e-surface-connect-VERIFY.md
+    committed with live bunker-mvp evidence (idempotence, socket 0600, round-trip,
+    refusal)
+  status: complete
+  created_at: '2026-10-15T13:28:03.257057+00:00'
+  completed_at: '2026-10-15T14:31:59.232381+00:00'
+- id: QA-BUNKER-10
+  title: GAP-073 audit ship/seal live-server battery pass on bunker-mvp
+  criteria:
+  - 'Live bunker-mvp leg executed: audit.ship_to+seal_key enabled, natural rotation
+    fired, segment shipped (5243185 bytes POST with X-Bunker-Chain-Head), seal record
+    HMAC-verified against the configured key, e2e battery ran with knobs enabled (116
+    pass / 2 fail, both non-shipper: pre-existing agent + nested suite spawn race).'
+  status: complete
+  created_at: '2026-10-15T16:29:06.961078+00:00'
+  completed_at: '2026-10-15T16:35:04.089936+00:00'
+- id: GAP-167
+  title: 'SPEC: expand the bunker metadata API - the operator-facing surface for what
+    the fleet IS'
+  criteria:
+  - 'specs/ gains the metadata API spec: existing metadata surface inventoried and
+    verified against live bunker-mvp (list/summary fields proven live, not guessed),
+    proposed expansion documented per-field with source pointers (internal/server
+    + specs/api.md), spec reviewed against GAP-125 decision scope, build/vet/test
+    untouched-or-green'
+  status: complete
+  created_at: '2026-10-15T21:59:57.271785+00:00'
+  completed_at: '2026-10-15T22:46:37.841542+00:00'
+- id: GAP-167-REVAL
+  title: "GAP-167 metadata API spec \u2014 re-judge after merge (first verdict 2cac467b\
+    \ failed on pre-merge tree)"
+  criteria:
+  - specs/metadata-api.md exists at HEAD with verified inventory (file:line pointers),
+    dated 2026-10-15 live bunker-mvp evidence, per-field expansion table, 5 DECISION-PENDING(GAP-125)
+    markers, cross-linked from specs/api.md + specs/_index.md; go build/vet/test-short
+    green; merge commit edbcdf5d on main
+  status: complete
+  created_at: '2026-10-15T22:52:06.544027+00:00'
+  completed_at: '2026-10-16T00:52:41.329402+00:00'
