@@ -233,3 +233,58 @@ first mount attempt that carries `-o io_uring`, not a separate throwaway mount.
 
 Tracked as `MOUNT-008`.
 
+## 4. The write shape of a `bunker fs mount` (DF-BUNKER-100)
+
+A bunker-fs mount is **not** an sshfs mount, and the difference that costs an
+afternoon is its write shape. Until this section existed, the mount's pitch could
+not be exercised as documented: a repo was cloned onto the mount, `git init` was
+run there, and it failed with an error nothing in the docs explained.
+
+Stated once, in the words the CLI prints (`bunker fs mount` help), repeated by the
+mount itself at the moment of mount, and carried on every refusal:
+
+> **WRITE SHAPE CONTRACT — the mount publishes WHOLE FILES only.**
+>
+> - A file is **created or replaced by ONE whole-file `PUT` ("publish")**.
+>   `cp FILE <mount>/path`, `tee <mount>/path` and an editor's save all work, and
+>   the bytes read back are byte-identical to the bytes written (measured: dogfood
+>   run 27, `docs/dogfood/2026-10-16b-bunker-fs-surface.md` — 82 KB and 287 KB
+>   copies verified byte-for-byte).
+> - **Shell redirection and in-place edits are NOT supported.** `>` and `>>` onto
+>   a path that **already exists** are refused with `EOPNOTSUPP` — the shell
+>   prints `Operation not supported` — and the file that was there is left
+>   byte-identical. There is no in-place write; an append is at best a bounded
+>   whole-file re-publication (BFS-021, `--write-buffer-max-bytes`), never an
+>   ordinary append, so no workload should be built on one.
+> - **git does NOT work on the mount.** git writes through lockfiles it chmods
+>   and renames into place, and this surface carries neither mode changes nor
+>   those rename shapes: `git init` fails with `chmod on .git/config.lock failed:
+>   Operation not supported`. A working copy cannot live under the mount.
+> - **Remediation.** Run git IN the agent (`bunker exec <agent> -- git …`) or
+>   clone there, then publish results onto the mount as whole files; for a git
+>   *question* that needs no working copy, use the mount's delegated verbs
+>   (`bunker fs op` — `status`, `diff`, `rev-parse`, `ls-files`; the served-vs-
+>   build matrix is BFS-005 §6.1).
+>
+> The sshfs mount (`bunker mount`, §3.1) is unaffected by any of this: it is a
+> real POSIX filesystem and supports in-place writes.
+
+Where the contract is enforced and reported, so a reader can check it rather than
+trust this page:
+
+- `node.Write` (in-place write through a handle that is not a create) and
+  `node.truncate` (a resize with a live write-intent handle) both refuse with
+  `EOPNOTSUPP` and the named cause `write_shape_unsupported`, counted in the
+  `write_shape` block of the mount's `status.json`
+  (`refusals_total` + the last refused `<path>`), and logged with the contract
+  and the remediation.
+- `Setattr` refuses `chmod`/`chown`/`utimes` (mode, ownership and timestamps are
+  not carried by the surface) — this is the syscall git dies on. FUSE carries no
+  text back to the caller, so the explanation goes to the mount log and to the
+  contract above; the errno the kernel hands out is necessarily the bare
+  `EOPNOTSUPP`.
+- The refusal's `Detail`/`Error()` text in `internal/fsclient/errors.go` appends
+  the contract's compact form to **every** `write_shape_unsupported` refusal, so
+  `bunker fs status`, the conflict log and the mount log all name the shape that
+  works and the way out.
+

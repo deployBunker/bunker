@@ -210,14 +210,18 @@ type RefusalHoldState struct {
 	Last string `json:"last,omitempty"`
 }
 
-// WriteShapeState is the `write_shape` block of the status document (BFS-030).
+// WriteShapeState is the `write_shape` block of the status document (BFS-030,
+// DF-BUNKER-100).
 type WriteShapeState struct {
-	// RefusalsTotal counts resizes refused because a write handle was live on
-	// the path: publishing one would have been the destructive half of a write
-	// this surface cannot complete (BFS-030 — `>` emptied the file, then failed).
+	// RefusalsTotal counts write SHAPES this surface cannot complete that were
+	// refused before they published anything: a resize arriving while a write
+	// handle was live on the path (BFS-030 — `>` emptied the file, then
+	// failed), and an in-place write to a path that already exists (the shape
+	// `>>`/`>` onto an existing path and every git write arrives through).
 	RefusalsTotal int64 `json:"refusals_total"`
-	// Last names the most recent refusal, formatted `<path>: size=<n>`; empty
-	// when none has happened.
+	// Last names the most recent refusal, formatted `<path>: size=<n>` for a
+	// resize and `<path>: write off=<n>` for an in-place write; empty when none
+	// has happened.
 	Last string `json:"last,omitempty"`
 }
 

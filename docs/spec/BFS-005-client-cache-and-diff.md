@@ -837,6 +837,35 @@ staging design had, kept without its second protocol.
   capability back as a **declared numbered extension** in `BFS-004` §3. Until that measurement exists, there is
   one write protocol — the point of this row.
 
+### 5.5 The write SHAPE the mount serves, and the two it cannot (DF-BUNKER-100)
+
+The exchange above has a consequence for the USER of the mount, not just for the protocol: because publication
+is one whole-file `PUT` and `Open` hands back a read handle whatever the open flags say (§5.3), **the mount
+publishes WHOLE FILES only**. Until this section existed the consequence was implicit — the refusal
+was correct and the caller was told only `Operation not supported`, with no statement anywhere of what the
+surface *does* serve. A dogfood session lost an afternoon to exactly that: a repository was cloned onto the
+mount and `git init` failed (`chmod on .git/config.lock failed: Operation not supported`), while the docs'
+mount pitch said nothing about a write shape at all (`docs/dogfood/2026-10-16b-bunker-fs-surface.md`).
+
+The contract, as the CLI prints it (`bunker fs mount` help), as the mount prints it once at the moment of
+mount, and as `docs/mount-drivers.md` §4 records it:
+
+| shape | verdict | why |
+|---|---|---|
+| create / replace a file with one whole-file write (`cp`, `tee`, editor save) | **served** | one conditional `PUT`; the read-back is byte-identical (measured: 82 KB and 287 KB copies) |
+| `>` onto a path that **already exists** | **refused** `EOPNOTSUPP` | the kernel's `O_TRUNC` half is a resize with a write-intent handle live — §5.3's rule, and `BFS-030`: publishing it destroyed the file before the write that could never land. The original is left byte-identical |
+| `>>` onto an existing path | **not an ordinary append** | an append is a bounded whole-file re-publication (`BFS-021`, `--write-buffer-max-bytes`); no workload should depend on it, and the measured run refused it |
+| in-place write through an open handle | **refused** `EOPNOTSUPP` | a write handle exists only for a CREATE, so the in-place half of `open(path,'r+')`-and-write has no path to the wire |
+| `chmod` / `chown` / `utimes` | **refused** `EOPNOTSUPP` | the surface carries no mode, ownership or timestamp metadata. This is the syscall **git** dies on: a checkout chmods the lockfiles it creates |
+
+**Remediation, and it is not "try again":** run git IN the agent (`bunker exec`), clone there, and publish
+results onto the mount as whole files; for a git *question* that needs no working copy use the delegated verbs
+(§6.1). The client-side reporting is specified with the contract rather than left to the errno, because FUSE
+carries no text back to the caller: every `write_shape_unsupported` refusal is counted in the mount's
+`write_shape` status block with the path that was refused, and its message text carries the remediation
+(`internal/fsclient/writeshape.go`). The sshfs mount is unaffected — it is a POSIX filesystem and serves
+in-place writes.
+
 ---
 
 ## 6. DIFF / DELEGATION — capability (d)

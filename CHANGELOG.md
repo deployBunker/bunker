@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- **The bunker-fs mount's write shape is documented, printed and carried on its
+  refusals (DF-BUNKER-100).** A dogfood session cloned a repository onto a
+  bunker-fs mount and lost an afternoon: `git init` fails with `chmod on
+  .git/config.lock failed: Operation not supported`, and `>`/`>>` onto an
+  existing path are refused `EOPNOTSUPP` — while nothing in the CLI or the docs
+  said the mount publishes WHOLE FILES only. The contract now exists in one
+  place (`internal/fsclient/writeshape.go`) and is printed by `bunker fs mount`
+  in its help text and once more in the banner at the moment of mount, and
+  recorded in README, docs/mount-drivers.md §4, docs/spec/BFS-005 §5.5 and the
+  dogfood report. The refusals got the same treatment: an in-place write through
+  a handle that is not a create is now a NAMED refusal (`write_shape_unsupported`,
+  the same cause the BFS-030 resize refusal already used) counted in the mount's
+  `write_shape` status block with the path that was refused, `chmod`/`chown`/
+  `utimes` log the reason git cannot run on the mount (FUSE carries no text back
+  to the caller, so the errno there is necessarily the bare `EOPNOTSUPP`), and
+  every write-shape refusal's message text now ends with the contract's compact
+  form — the shape that works and the remediation — instead of only the
+  the `Operation not supported` the kernel hands the caller.
+
 - **Supply-chain pinning (GAP-135): the installer's downloads and the base
   images are pinned by version + sha256/digest.** The rootless install path
   used to fetch its inputs by MOVING URLs and execute them:

@@ -31,6 +31,27 @@ surface enabled and FULL state isolation, reached through `ssh -L 18181`.
    mount, 4 of 6 families error (whole-file write shape again); throughput
    and cpu_per_byte still return.
 
+## The write-shape contract — what a mount can and cannot do (DF-BUNKER-100)
+
+The one finding of this run that a READER of the docs could not have anticipated,
+and the one that stopped the advertised workflow: **a bunker-fs mount publishes
+whole files only, and git cannot run on it.** The mount's help text and its
+moment-of-mount banner now say so, and so do `docs/mount-drivers.md` §4, the
+BFS-005 spec §5.5 and the README's mount note. Contract as measured here:
+
+| shape | measured verdict |
+|---|---|
+| whole-file publish (`cp`, `tee`, editor save) | **works** — 82 KB and 287 KB copies byte-identical on read-back |
+| `>` / `>>` onto an existing path | **refused** `EOPNOTSUPP` (`Operation not supported`); status.json `write_shape` counts it, `last` names the path (`size=0`) |
+| in-place edit through an open handle | **refused** `EOPNOTSUPP` |
+| `chmod`/`chown`/`utimes` (what git does to its lockfiles) | **refused** `EOPNOTSUPP` — `git init` dies with `chmod on .git/config.lock failed: Operation not supported` |
+
+**Remediation** (now stated by the CLI, the docs and every refusal message): run
+git IN the agent, or clone there and publish results onto the mount as whole
+files; for a git question with no working copy use the delegated verbs
+(`bunker fs op`). Do not clone a repository onto the mount and expect to work in
+it — the repo half of git lives on the mount, and the mount cannot serve it.
+
 ## The delegated op catalogue (E-4): what a released build actually serves
 
 | op | live verdict |
