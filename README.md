@@ -826,6 +826,17 @@ bunker spawn --server bunker-host --image-spec spec.json --ttl 6h
 #   - registry via install:       rg (apt archive), gopls (Go module proxy)
 #                                 — same command, runtime delivery (DF-BUNKER-57)
 #   - package-add (this spec):    rg (ripgrep), gopls (Go language server)
+#   - build toolchains (SURF-009): OPT-IN per spawn — `bunker spawn --toolchains[=CLASS]`
+#                                 (minimal | go | full) or `bunker toolchain-check
+#                                 <agent> --deliver --class <class>`. Classes require
+#                                 python3 (minimal); + go, make (go); + gcc, node, cargo
+#                                 (full). go/gcc/make come from the userland the host
+#                                 already has; node and cargo are delivered into the
+#                                 agent's own $HOME from their publishers' checksummed
+#                                 artifacts (no root), ~750 MB per agent for the Rust
+#                                 half. Check any agent with `bunker toolchain-check
+#                                 <agent> --class <class>` (exit 1 names what is
+#                                 missing) — see docs/provisioning.md
 
 # List agents
 bunker list

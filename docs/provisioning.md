@@ -126,3 +126,31 @@ directive today — they are delivered in place by the pinned tarball/rustup
 stages. Closing it means a new image-spec directive for a runtime toolchain
 (vendor tarball + checksum), which is a spec change in its own right
 (`specs/image-spec.md`) and is deliberately not smuggled into this work.
+
+## What it costs (measured)
+
+Numbers from [`docs/dogfood/2026-10-16-surf-009-acceptance-and-costs.md`](dogfood/2026-10-16-surf-009-acceptance-and-costs.md)
+on `bunker-mvp`; the footprint figures are bytes on disk, the latency figures are
+wall-clock around a fresh `bunker spawn`.
+
+**The base image grows by 0 bytes.** Provisioning is client-side and opt-in: a spawn
+without `--toolchains` is byte-identically the old spawn, delivery lands in the agent's
+own `$HOME`, and the only image-facing artifact is the *directive above* an operator
+may paste in. There is no image or Dockerfile change here to bloat.
+
+Where the tools' bytes actually are:
+
+| where | size | shared how |
+|---|---|---|
+| `go` + the gcc family + `make` (whichever userland the host already has) | ~211 MiB | **once per host** — the agent sees the host's own file (`/usr/lib/go-1.22/bin/go` is the *same device:inode* in the agent and on the host), not a copy per agent and not an image layer |
+| `node` + `cargo` delivered by `--deliver` / `--toolchains=full` | ~750 MiB per agent (`rustup` alone 581 MiB; cross-checked against the daemon's own `Disk Used`: 248.0 MB → 981.2 MB) | **per agent, in `$HOME/.bunker/toolchains`** — `$HOME` is per-agent and nothing dedupes it |
+| the apt-served image route (`gcc`, `g++`, `make`) | 0 new packages where the host already has them | opt-in `--image-spec` only |
+
+**Spawn latency:** a class whose tools are already present costs **one probe ≈ 1.3 s**
+(measured: `toolchain-check --class go` 1.27 / 1.26 / 1.31 s) on top of a ~19 s spawn
+(18.11–19.82 s, n=3) — inside the noise band. A real delivery of the missing half costs
+**≈ +17 s** for ~750 MB on this host (36.28 s total, n=1). Both are bounded: one probe
+plus a per-stage budget (600 s/stage, a 30 min delivery context), the delivery runs
+*after* creation so the server spawn path is untouched, and a failed delivery is a
+**warning, not a spawn failure** — the agent is up and the delivery is resumable with
+`bunker toolchain-check <agent-id> --deliver`.
