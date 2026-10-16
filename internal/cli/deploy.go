@@ -36,6 +36,15 @@ spawn time) unless overridden with --ssh-key.
 Unlike 'bunker cp', this command uses SCP's recursive mode (-r) to copy the
 entire directory tree. After the copy, file ownership is set to the agent user.
 
+Like 'bunker cp', this command is push-only (local → agent): pulling a file or
+directory FROM an agent is NOT supported here. Use 'bunker pull --recursive
+<agent-id> <remote-path> [local-dir]' (requires a build from HEAD: it shipped
+after v0.2.0), or scp with the key saved at spawn
+(~/.config/bunker/keys/<agent-id>); the sshfs mount ('bunker mount <agent-id>')
+is the other read path. A pull-shaped invocation — '<agent-id>:<path>' as the
+FIRST argument and a local path as the second — is refused and names those
+remedies.
+
 Examples:
   bunker deploy ./myapp abc12345:/home/bunker-abc12345/myapp
   bunker deploy ./configs def67890:/etc/app --ssh-port 2222
@@ -49,6 +58,14 @@ Examples:
 			// Parse destination: <agent-id>:/path
 			colonIdx := strings.Index(dest, ":")
 			if colonIdx == -1 {
+				// DF-BUNKER-97: mirror of `bunker cp` — a pull-shaped
+				// invocation (agent source, local destination) gets the
+				// remediation that names `bunker pull --recursive`, scp
+				// with the agent's key, and the sshfs mount, instead of
+				// a bare format error.
+				if isPullShapedSource(localPath) {
+					return pullUnsupportedError("bunker deploy", localPath, dest, true)
+				}
 				return fmt.Errorf("destination must be <agent-id>:/path, got %q", dest)
 			}
 			agentID := dest[:colonIdx]

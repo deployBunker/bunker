@@ -119,6 +119,21 @@ func TestDeployCommand_Help(t *testing.T) {
 	if !strings.Contains(output, "--ssh-host") {
 		t.Errorf("help output missing --ssh-host flag, got:\n%s", output)
 	}
+
+	// DF-BUNKER-97: the recursive-copy help must state that pulling is not
+	// supported and name the read paths (the pull command, scp with the
+	// agent's key, the sshfs mount).
+	for _, want := range []string{
+		"push-only",
+		"NOT supported here",
+		"bunker pull --recursive",
+		"~/.config/bunker/keys/<agent-id>",
+		"bunker mount",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("deploy --help missing %q, got:\n%s", want, output)
+		}
+	}
 }
 
 func TestDeployCommand_MissingArgs(t *testing.T) {
@@ -447,6 +462,88 @@ func TestDeployCommand_ScpFailureOwnershipHint(t *testing.T) {
 			}
 			if strings.Contains(errOut, "Hint:") {
 				t.Errorf("stderr %q printed a hint it could not justify", errOut)
+			}
+		})
+	}
+}
+
+// TestDeployCommand_PullShapedInvocation is the recursive-copy mirror of
+// TestCpCommand_PullShapedInvocation (DF-BUNKER-97): `bunker deploy` copies
+// local → agent, so a pull-shaped invocation (agent source, local destination)
+// gets the remediation naming `bunker pull --recursive`, scp over the agent's
+// stored key and the sshfs mount — while every genuinely local or malformed
+// invocation keeps the existing destination-format error.
+func TestDeployCommand_PullShapedInvocation(t *testing.T) {
+	t.Setenv(SessionTargetEnvVar, "")
+
+	tests := []struct {
+		name    string
+		src     string
+		dest    string
+		setup   func(t *testing.T) string // overrides src when non-nil
+		want    []string
+		wantNot []string
+	}{
+		{
+			name: "an agent source with a local destination gets the pull remediation",
+			src:  "dfb-1016:/srv/app",
+			dest: "/tmp/out",
+			want: []string{
+				"pull from an agent is not supported by bunker deploy",
+				"scp -i ~/.config/bunker/keys/dfb-1016",
+				"bunker-dfb-1016@<host>:/srv/app",
+				"bunker pull --recursive dfb-1016 /srv/app /tmp/out",
+				"bunker mount dfb-1016",
+			},
+			wantNot: []string{"destination must be"},
+		},
+		{
+			name:    "both arguments local keeps the destination-format error",
+			src:     "/does/not/exist",
+			dest:    "nocolon",
+			want:    []string{"destination must be <agent-id>:/path"},
+			wantNot: []string{"not supported by"},
+		},
+		{
+			name: "a push-shaped invocation is untouched and reaches the binding refusal",
+			setup: func(t *testing.T) string {
+				t.Helper()
+				dir := filepath.Join(t.TempDir(), "payload")
+				if err := os.MkdirAll(dir, 0755); err != nil {
+					t.Fatalf("mkdir payload: %v", err)
+				}
+				return dir
+			},
+			dest:    "abc123:/tmp/app",
+			want:    []string{"no target bound"},
+			wantNot: []string{"not supported by"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			src := tt.src
+			if tt.setup != nil {
+				src = tt.setup(t)
+			}
+
+			out, _, err := runDeployCommand(t, src, tt.dest)
+			if err == nil {
+				t.Fatalf("deploy %q %q succeeded, want an error (stdout=%q)", src, tt.dest, out)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q missing %q", err, want)
+				}
+			}
+			for _, not := range tt.wantNot {
+				if strings.Contains(err.Error(), not) {
+					t.Errorf("error %q should not contain %q", err, not)
+				}
+			}
+			if strings.Contains(out, "Deployed ") {
+				t.Errorf("stdout reports a deploy that never happened: %q", out)
 			}
 		})
 	}

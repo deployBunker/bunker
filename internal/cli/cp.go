@@ -53,7 +53,18 @@ Examples:
   bunker cp ./config.yaml abc12345:/home/bunker-abc12345/config.yaml
   bunker cp secret.env def67890:/app/.env --ssh-port 2222
   bunker cp ./script.sh abc12345:/home/bunker-abc12345/bin/script.sh --ssh-key ~/.ssh/custom_key
-  bunker cp ./app.conf abc12345:/app.conf --ssh-host 203.0.113.10`,
+  bunker cp ./app.conf abc12345:/app.conf --ssh-host 203.0.113.10
+
+Pulling files: this command is push-only — a LOCAL file into the agent. Pulling
+a file FROM an agent is NOT supported here: use 'bunker pull <agent-id>
+<remote-path> [local-dir]' instead (requires a build from HEAD: it shipped after
+v0.2.0), or pull over scp with the key spawn saved for the agent:
+
+  scp -i ~/.config/bunker/keys/<agent-id> bunker-<agent-id>@<host>:<remote-path> <local-dir>
+
+The sshfs mount ('bunker mount <agent-id>') is the other read path. A
+pull-shaped invocation — '<agent-id>:<path>' as the FIRST argument and a local
+path as the second — is refused and names these same remedies.`,
 
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -63,6 +74,15 @@ Examples:
 			// Parse destination: <agent-id>:/path
 			colonIdx := strings.Index(dest, ":")
 			if colonIdx == -1 {
+				// DF-BUNKER-97: this branch is exactly where a
+				// pull-shaped invocation — the agent reference as the
+				// SOURCE, a local path as the destination — lands, and
+				// the bare "destination must be" error named neither
+				// the reason nor a way out. Name both when the source
+				// is an agent-side path.
+				if isPullShapedSource(localPath) {
+					return pullUnsupportedError("bunker cp", localPath, dest, false)
+				}
 				return fmt.Errorf("destination must be <agent-id>:/path, got %q", dest)
 			}
 			agentID := dest[:colonIdx]
@@ -366,4 +386,64 @@ func defaultSSHKeyPath(agentID string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(filepath.Dir(cfgDir), "keys", agentID), nil
+}
+
+// ── pull-shaped invocations of the push-only copy commands (DF-BUNKER-97) ────
+//
+// `bunker cp` and `bunker deploy` copy local → agent. The dogfood run of
+// 2026-10-16 typed the reverse direction (`bunker cp <agent-id>:<path>
+// <local-path>`) and got "destination must be <agent-id>:/path, got ..." —
+// true, but it named neither the reason (pull is not implemented here) nor any
+// way to get the file, so the workaround (raw scp with the agent's key) had to
+// be rediscovered. The helpers below recognize that invocation and answer it.
+
+// agentSourceRE matches the `<agent-id>:<path>` form of a bunker argument: a
+// non-empty id of ordinary id characters, one colon, and a non-empty path. A
+// bare `<id>:`, a `:<path>`, or a colon-less name is not an agent reference.
+var agentSourceRE = regexp.MustCompile(`^([A-Za-z0-9][A-Za-z0-9._-]*):(.+)$`)
+
+// parseAgentSource splits arg into its agent id and remote path when it has the
+// `<agent-id>:<path>` shape. ok is false for everything else.
+func parseAgentSource(arg string) (agentID, remotePath string, ok bool) {
+	m := agentSourceRE.FindStringSubmatch(arg)
+	if m == nil {
+		return "", "", false
+	}
+	return m[1], m[2], true
+}
+
+// isPullShapedSource reports whether src asks a push-only command to copy FROM
+// an agent: it has the `<agent-id>:<path>` shape and is not a local file.
+//
+// The local-file half is a classification, not a formality: a source that
+// exists on this machine is an ordinary local push whatever characters its name
+// contains — a file literally called `agent:path`, or a Windows `C:\...` path —
+// so it must keep falling through to the destination-format error instead of
+// being told that pulling is unsupported.
+func isPullShapedSource(src string) bool {
+	if _, _, ok := parseAgentSource(src); !ok {
+		return false
+	}
+	if _, err := os.Stat(src); err == nil {
+		return false
+	}
+	return true
+}
+
+// pullUnsupportedError is the remediation for a pull-shaped invocation of a
+// push-only command (DF-BUNKER-97). It names all three ways out, most specific
+// first: the reverse command with the arguments the user already typed, scp
+// over the key spawn saved at ~/.config/bunker/keys/<agent-id>, and the sshfs
+// mount. The `<host>` left in the scp line is deliberate — resolving it needs a
+// bound server, and a binding failure must not replace this explanation with
+// "no target bound".
+func pullUnsupportedError(command, src, dest string, recursive bool) error {
+	agentID, remotePath, _ := parseAgentSource(src)
+	pullArgs := agentID + " " + remotePath + " " + dest
+	if recursive {
+		pullArgs = "--recursive " + pullArgs
+	}
+	return fmt.Errorf(
+		"pull from an agent is not supported by %s (%s copies local → agent only): %q is an agent-side source and %q is a local destination — use 'bunker pull %s', or scp with the key saved at spawn (scp -i ~/.config/bunker/keys/%s bunker-%s@<host>:%s %s), or the sshfs mount ('bunker mount %s')",
+		command, command, src, dest, pullArgs, agentID, agentID, remotePath, dest, agentID)
 }
