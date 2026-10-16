@@ -514,6 +514,12 @@ func TestExecAcceptsEveryDeclaredFlag(t *testing.T) {
 			writeExecTestConfigAt(t, cfgPath, "custom-default", server.URL)
 
 			var flagArgs []string
+			// Most flags keep the standard trailing invocation
+			// (`agent1 -- docker ps`). SURF-012's two container-lifecycle flags
+			// take no command at all, so they walk with the agent-id alone —
+			// appending a command there would exercise the (correct) refusal
+			// instead of the acceptance this walk exists to prove.
+			trailing := []string{"agent1", "--", "docker", "ps"}
 			switch name {
 			case "server":
 				flagArgs = []string{"--server", "default"}
@@ -521,6 +527,11 @@ func TestExecAcceptsEveryDeclaredFlag(t *testing.T) {
 				flagArgs = []string{"--timeout", "30"}
 			case "raw", "base64":
 				flagArgs = []string{"--" + name}
+			case "persistent":
+				flagArgs = []string{"--persistent"}
+			case "list-persistent", "cleanup-persistent":
+				flagArgs = []string{"--" + name}
+				trailing = []string{"agent1"}
 			case "script":
 				scriptFile := filepath.Join(tmpDir, "walk.sh")
 				if err := os.WriteFile(scriptFile, []byte("#!/bin/sh\nexit 0"), 0o644); err != nil {
@@ -549,7 +560,7 @@ func TestExecAcceptsEveryDeclaredFlag(t *testing.T) {
 			}
 
 			cmd = NewExecCommand()
-			cmd.SetArgs(append(flagArgs, "agent1", "--", "docker", "ps"))
+			cmd.SetArgs(append(flagArgs, trailing...))
 			if err := cmd.Execute(); err != nil {
 				t.Fatalf("declared flag --%s rejected before the agent-id: %v", name, err)
 			}

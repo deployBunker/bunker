@@ -662,6 +662,31 @@ message ExecAgentRequest {
   uint64 response_cap_bytes = 9;
   // Opaque client session identifier for audit attribution; never a credential.
   string session_id = 10;
+  // SURF-012: how this request treats the agent's PERSISTENT container.
+  // NONE (zero) is the default and is byte-identical to pre-SURF-012 behavior:
+  // a one-shot container for image-backed agents, the host context otherwise.
+  // EXEC reuses (or creates, on first use) a long-lived container named
+  // bunker-exec-<agent_id> owned by the agent's own rootless dockerd, so the
+  // container writable layer — caches, toolchains, apt-installed packages —
+  // survives between invocations. LIST and CLEANUP inspect/remove those
+  // containers. EXEC requires an image-backed agent (an empty image ref has no
+  // container to make persistent) and the server fails the request loudly
+  // rather than silently degrading to the one-shot path.
+  PersistentMode persistent_mode = 11;
+}
+
+// SURF-012: the persistent-container verbs ExecAgent accepts.
+enum PersistentMode {
+  // One-shot: no persistent container is consulted (default).
+  PERSISTENT_MODE_NONE = 0;
+  // Run the command inside the agent's persistent container, creating it on
+  // first use and reusing it afterwards.
+  PERSISTENT_MODE_EXEC = 1;
+  // Report the agent's persistent containers (one row per container:
+  // NAME, IMAGE, STATUS, CREATED).
+  PERSISTENT_MODE_LIST = 2;
+  // Destroy every persistent container belonging to the agent.
+  PERSISTENT_MODE_CLEANUP = 3;
 }
 
 // How the response carries stdout/stderr. TEXT (zero) is the default and is

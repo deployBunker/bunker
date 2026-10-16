@@ -980,12 +980,55 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 	// three image-aware builders, selected below by exactly the same
 	// raw/script/plain conditions as before.
 	var cmd *exec.Cmd
-	if req.Msg.GetRaw() {
-		cmd = execSSHRawCommandBuilder(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args, disclosed, imageRef)
-	} else if req.Msg.GetScriptContent() != "" {
-		cmd = execSSHScriptCommandBuilder(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.GetScriptContent(), disclosed, imageRef)
-	} else {
-		cmd = execSSHCommandBuilder(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args, disclosed, imageRef)
+	// SURF-012: persistent-container verbs. NONE (the default) falls through to
+	// exactly the pre-SURF-012 selection below, so a client that never sets
+	// persistent_mode gets byte-identical commands.
+	switch req.Msg.GetPersistentMode() {
+	case v1.PersistentMode_PERSISTENT_MODE_LIST:
+		// Listing runs in the HOST context — the container image may carry no
+		// docker client (DF-BUNKER-80), and the containers being listed live on
+		// the agent host's own rootless daemon either way.
+		cmd = execSSHPersistentListBuilder(ctx, agentID, rec.SshPrivateKeyPath, userHome, disclosed)
+	case v1.PersistentMode_PERSISTENT_MODE_CLEANUP:
+		cmd = execSSHPersistentCleanupBuilder(ctx, agentID, rec.SshPrivateKeyPath, userHome, disclosed)
+	case v1.PersistentMode_PERSISTENT_MODE_EXEC:
+		// A persistent container is a container of the agent's image. An agent
+		// spawned without an image spec runs in the bare host context, where
+		// there is nothing to keep alive and the home already persists — so the
+		// request is refused LOUDLY rather than silently degrading to the
+		// one-shot path the caller explicitly asked to leave.
+		if imageRef == "" {
+			return connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+				"agent %q has no image spec: --persistent keeps a container alive, and only an agent spawned with --image-spec has one to keep (see specs/image-spec.md)",
+				agentID))
+		}
+		// Raw mode's whole contract is that no shell sits between the caller and
+		// execve, and reuse requires an ensure step (inspect + create/start).
+		if req.Msg.GetRaw() {
+			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf(
+				"--persistent cannot be combined with --raw: raw mode never runs a shell, and reusing a container needs the ensure step; re-run without --raw"))
+		}
+		if req.Msg.GetScriptContent() != "" {
+			c, err := execSSHPersistentScriptBuilder(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.GetScriptContent(), disclosed, imageRef)
+			if err != nil {
+				return connect.NewError(connect.CodeInternal, fmt.Errorf("persistent script exec: %w", err))
+			}
+			cmd = c
+		} else {
+			c, err := execSSHPersistentBuilder(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args, disclosed, imageRef)
+			if err != nil {
+				return connect.NewError(connect.CodeInternal, fmt.Errorf("persistent exec: %w", err))
+			}
+			cmd = c
+		}
+	default:
+		if req.Msg.GetRaw() {
+			cmd = execSSHRawCommandBuilder(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args, disclosed, imageRef)
+		} else if req.Msg.GetScriptContent() != "" {
+			cmd = execSSHScriptCommandBuilder(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.GetScriptContent(), disclosed, imageRef)
+		} else {
+			cmd = execSSHCommandBuilder(ctx, agentID, rec.SshPrivateKeyPath, userHome, req.Msg.Command, req.Msg.Args, disclosed, imageRef)
+		}
 	}
 
 	// GAP-094: optional stdin. The payload rides a TEMP FILE, not a pipe:
@@ -1885,6 +1928,13 @@ var (
 	execSSHCommandBuilder       = buildExecSSHCommandImage
 	execSSHRawCommandBuilder    = buildExecSSHRawCommandImage
 	execSSHScriptCommandBuilder = buildExecSSHScriptCommandImage
+	// SURF-012: the persistent-container seams. Like the three above, the
+	// defaults are the production builders and tests substitute them to drive
+	// the real handler without sshing anywhere.
+	execSSHPersistentBuilder        = buildExecSSHPersistentImage
+	execSSHPersistentScriptBuilder  = buildExecSSHPersistentScriptImage
+	execSSHPersistentListBuilder    = buildExecSSHPersistentList
+	execSSHPersistentCleanupBuilder = buildExecSSHPersistentCleanup
 )
 
 // The *Image variants below are the GAP-069 exec path: when the agent record

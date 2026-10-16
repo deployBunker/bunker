@@ -4648,3 +4648,10 @@ tasks:
   status: complete
   created_at: '2026-10-15T22:52:06.544027+00:00'
   completed_at: '2026-10-16T00:52:41.329402+00:00'
+- id: SURF-012
+  title: Persistent container mode for bunker exec
+  criteria:
+  - Add --persistent flag to bunker exec that reuses containers across invocations,
+    with list/cleanup commands and tests
+  status: in_progress
+  created_at: '2026-10-16T01:58:57.797141+00:00'

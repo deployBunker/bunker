@@ -62,6 +62,10 @@ func NewExecCommand() *cobra.Command {
 		stdinPath  string
 		base64Out  bool
 		execCap    uint64
+		// SURF-012: the three mutually-exclusive persistent-container flags.
+		persistent        bool
+		listPersistent    bool
+		cleanupPersistent bool
 	)
 
 	// execFlagSpecs is the single accepted-flag table for `bunker exec`:
@@ -93,8 +97,13 @@ func NewExecCommand() *cobra.Command {
 			}
 			return nil
 		}},
-		"--config":        {apply: func(v string) error { SetConfigPathOverride(v); return nil }},
-		"--daemon-config": {apply: func(v string) error { SetDaemonConfigPathOverride(v); return nil }},
+		// SURF-012 persistent-container flags. All three are booleans; exactly
+		// one may be set (persistentModeFromFlags enforces it).
+		"--persistent":         {apply: func(string) error { persistent = true; return nil }, boolean: true},
+		"--list-persistent":    {apply: func(string) error { listPersistent = true; return nil }, boolean: true},
+		"--cleanup-persistent": {apply: func(string) error { cleanupPersistent = true; return nil }, boolean: true},
+		"--config":             {apply: func(v string) error { SetConfigPathOverride(v); return nil }},
+		"--daemon-config":      {apply: func(v string) error { SetDaemonConfigPathOverride(v); return nil }},
 	}}
 
 	cmd := &cobra.Command{
@@ -116,6 +125,19 @@ Use --session <id> to attach an opaque client session identifier to audit record
 
 Use --script <file> to upload a local script and execute it inside the agent.
 
+Use --persistent to reuse ONE long-lived container per agent instead of a fresh
+one per exec. The container is named bunker-exec-<agent-id>, is labelled
+bunker.persistent=true, and lives on the agent's own rootless dockerd — so its
+writable layer (build caches, toolchains, apt-installed packages) survives
+between execs and across a bunkerd restart. It is created on first use and
+recreated if the agent's image ref changes; the agent home is bind-mounted at
+the same path in both modes, so files under $HOME persist either way.
+--persistent requires an agent spawned with --image-spec (an agent with no
+image runs in the bare host context and has no container to keep) and cannot be
+combined with --raw. Use --list-persistent to show the agent's persistent
+containers and --cleanup-persistent to destroy them; the three flags are
+mutually exclusive.
+
 The global persistent flags --config and --daemon-config are accepted in
 every position, including before the agent-id:
 
@@ -133,6 +155,9 @@ Examples:
   bunker exec abc12345 --timeout 60 -- docker build -t myapp .
   bunker exec abc12345 --raw -- docker ps --format '{{.Names}}'
   bunker exec abc12345 --script ./migrate.sh
+  bunker exec abc12345 --persistent -- go build ./...
+  bunker exec abc12345 --list-persistent
+  bunker exec abc12345 --cleanup-persistent
   bunker exec abc12345 --raw -- psql -c 'SELECT count(*) FROM pg_catalog.pg_tables'
   bunker exec --server prod --timeout 60 abc12345 -- docker ps
   bunker exec --raw abc12345 -- psql -c 'SELECT count(*) FROM pg_catalog.pg_tables'`,
@@ -181,25 +206,46 @@ Examples:
 			if len(rest) > 0 && rest[0] == "--" {
 				rest = rest[1:]
 			}
-			// A script-only exec sends no command token (the server runs the
-			// uploaded script), so only require a command when no script flag
-			// was peeled above.
-			if len(rest) == 0 && scriptPath == "" {
-				return fmt.Errorf("command required after agent-id")
-			}
 			// Parse our own flags from the head of rest. Anything after the
 			// command token is left untouched so Docker flags pass through.
 			// The shared grammar's LENIENT peel stops at the first token
 			// that is not an accepted flag (unknown or dangling), so
 			// `docker run --rm` is never eaten — only the pre-agent-id
 			// peel refuses.
+			//
+			// The "command required" check deliberately lives AFTER this peel
+			// and the persistent-mode resolution below, not here: a script
+			// supplies its own command token, and SURF-012's
+			// --list-persistent / --cleanup-persistent take none at all, so the
+			// requirement can only be evaluated once every flag has been applied.
 			rest = execGrammar.peelLeading(rest)
 			// The flag loop stops at the first non-flag token. If that token
 			// is the "--" separator, skip it so it is not sent as the command.
 			if len(rest) > 0 && rest[0] == "--" {
 				rest = rest[1:]
 			}
-			if len(rest) == 0 && scriptPath == "" {
+
+			// SURF-012: resolve the persistent-container flags HERE, after BOTH
+			// peels have run — a flag written after the agent-id is applied by
+			// peelLeading just above, so resolving any earlier would miss it and
+			// let a contradictory pair reach the server. Every refusal below is
+			// local (no config load, no RPC), matching the other exec flag errors.
+			pMode, pErr := persistentModeFromFlags(persistent, listPersistent, cleanupPersistent)
+			if pErr != nil {
+				return pErr
+			}
+			if pMode == v1.PersistentMode_PERSISTENT_MODE_EXEC && rawMode {
+				return fmt.Errorf("--persistent cannot be combined with --raw: raw mode never runs a shell, and reusing a container needs the ensure step; re-run without --raw")
+			}
+			// The two container-lifecycle verbs wrap no command of their own.
+			if pMode == v1.PersistentMode_PERSISTENT_MODE_LIST || pMode == v1.PersistentMode_PERSISTENT_MODE_CLEANUP {
+				if len(rest) > 0 {
+					return fmt.Errorf("%s takes no command (got %q)", persistentVerb(pMode), rest[0])
+				}
+			}
+			// A script satisfies the "command required" contract on its own; so
+			// do the two container-lifecycle verbs.
+			if len(rest) == 0 && scriptPath == "" && pMode == v1.PersistentMode_PERSISTENT_MODE_NONE {
 				return fmt.Errorf("command required after agent-id")
 			}
 			command := ""
@@ -263,6 +309,7 @@ Examples:
 				StdinPayload:     stdinPayload,
 				ResponseEncoding: encoding,
 				ResponseCapBytes: execCap,
+				PersistentMode:   pMode,
 			})
 
 			// Auth token
@@ -279,10 +326,16 @@ Examples:
 
 			// 5. Stream output
 			var exitCode int32
+			// SURF-012: --list-persistent on an agent with no persistent
+			// containers streams ZERO stdout bytes (docker prints nothing).
+			// Track that so the result is stated rather than left as a blank
+			// terminal that could equally mean "the listing failed quietly".
+			stdoutBytes := 0
 			for stream.Receive() {
 				msg := stream.Msg()
 				if msg.GetStdout() != nil {
 					fmt.Print(string(msg.GetStdout()))
+					stdoutBytes += len(msg.GetStdout())
 				}
 				if msg.GetStderr() != nil {
 					fmt.Fprint(cmd.ErrOrStderr(), string(msg.GetStderr()))
@@ -296,6 +349,10 @@ Examples:
 			}
 			if err := stream.Err(); err != nil {
 				return decorateExecDeadline(fmt.Errorf("stream error: %w", err), timeout)
+			}
+
+			if exitCode == 0 && pMode == v1.PersistentMode_PERSISTENT_MODE_LIST && stdoutBytes == 0 {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "no persistent containers for agent %s\n", agentID)
 			}
 
 			if exitCode != 0 {
@@ -316,6 +373,11 @@ Examples:
 	cmd.Flags().StringVar(&stdinPath, "stdin", "", "Send this local file to the command's stdin ('-' reads bunker's own stdin)")
 	cmd.Flags().BoolVar(&base64Out, "base64", false, "Base64-encode the response so binary bytes survive text-only transports")
 	cmd.Flags().Uint64Var(&execCap, "exec-cap", 0, "Max response bytes per direction (server default 512MiB; may only lower, never raise)")
+	// SURF-012. Declared here for help/tooling and applied through execGrammar
+	// in RunE (DisableFlagParsing means cobra never parses them).
+	cmd.Flags().BoolVar(&persistent, "persistent", false, "Reuse a long-lived container per agent so caches, toolchains and installed packages survive between execs (image-backed agents only)")
+	cmd.Flags().BoolVar(&listPersistent, "list-persistent", false, "List the agent's persistent containers and exit")
+	cmd.Flags().BoolVar(&cleanupPersistent, "cleanup-persistent", false, "Destroy the agent's persistent containers and exit")
 
 	return cmd
 }
@@ -335,4 +397,39 @@ func readStdinPayload(path string) ([]byte, error) {
 		}
 		return b, nil
 	}
+}
+
+// persistentModeFromFlags resolves the three SURF-012 boolean flags into the
+// request's PersistentMode. The flags are three spellings of ONE choice, so a
+// combination is a usage error rather than a precedence puzzle — the same
+// local-refusal contract every other exec flag error follows.
+func persistentModeFromFlags(persistent, list, cleanup bool) (v1.PersistentMode, error) {
+	set := 0
+	for _, on := range []bool{persistent, list, cleanup} {
+		if on {
+			set++
+		}
+	}
+	if set > 1 {
+		return v1.PersistentMode_PERSISTENT_MODE_NONE, fmt.Errorf(
+			"--persistent, --list-persistent and --cleanup-persistent are mutually exclusive: pick one")
+	}
+	switch {
+	case persistent:
+		return v1.PersistentMode_PERSISTENT_MODE_EXEC, nil
+	case list:
+		return v1.PersistentMode_PERSISTENT_MODE_LIST, nil
+	case cleanup:
+		return v1.PersistentMode_PERSISTENT_MODE_CLEANUP, nil
+	}
+	return v1.PersistentMode_PERSISTENT_MODE_NONE, nil
+}
+
+// persistentVerb names the flag a no-command PersistentMode came from, for
+// error text that quotes the token the user actually typed.
+func persistentVerb(mode v1.PersistentMode) string {
+	if mode == v1.PersistentMode_PERSISTENT_MODE_CLEANUP {
+		return "--cleanup-persistent"
+	}
+	return "--list-persistent"
 }
