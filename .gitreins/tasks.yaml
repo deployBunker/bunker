@@ -4655,14 +4655,3 @@ tasks:
     with list/cleanup commands and tests
   status: in_progress
   created_at: '2026-10-16T01:58:57.797141+00:00'
-- id: SURF-009
-  title: Provision build toolchain into agents
-  criteria:
-  - 'Fresh agents lack go/gcc/make/node/cargo (python3 only). Install build tools
-    at spawn or via a provision step so agents can actually build code. PASS: (1)
-    fresh agent has go/gcc/make available, (2) bunker exec agent-id ''go version''
-    succeeds, (3) bunker exec agent-id ''make --version'' succeeds, (4) toolchain
-    does not bloat base image beyond reason.'
-  status: complete
-  created_at: '2026-10-16T04:04:16.462329+00:00'
-  completed_at: '2026-10-16T04:24:05.326733+00:00'
