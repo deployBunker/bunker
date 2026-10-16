@@ -529,3 +529,8 @@ Corrections to the first delivery of this run:
   battery's monitor destroyed a live 6h-TTL agent spawned by this run.
   Future ephemeral legs on mvp should use fresh per-run path prefixes and
   expect mid-run agent reaping while a battery is active.
+
+## 2026-10-16 | 🟡 PROMISING-BUT-ROUGH | install_seconds=87 (make build in agent, cold) | bunker=bunker-mvp agent=dfb-1016 | smoke=ok (bunker --version stamps cloned commit d7609239)
+- Promise: isolated rootless-Docker agent env via one CLI call. Reality: lifecycle (spawn 19s / ssh / build / exec / mount / destroy 62s) works and is fast; fresh-agent docker is broken on the documented path (rootlesskit state-lock collision, DF-BUNKER-96) and tunnel resets (same cause); cp is push-only (DF-BUNKER-97); sshfs pull 4.5x slower than raw ssh (DF-BUNKER-98); host residue grew during run (DF-BUNKER-99).
+- Artifacts: docs/dogfood/2026-10-16-integration.md; board rows DF-BUNKER-96..99.
+- Cleanup: dfb-1016 destroyed + key removed; mount unmounted; no visibility/permission changes; no credentials minted.
