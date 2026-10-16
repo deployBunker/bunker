@@ -47,6 +47,9 @@ func NewSpawnCommand() *cobra.Command {
 		// "open", "allowlist", or "none". Empty defers to the daemon's
 		// resolution chain (config global, then the safe default open).
 		egressMode string
+		// toolchains requests SURF-009 build-toolchain provisioning right
+		// after the agent is created (see the delivery block below).
+		toolchains bool
 	)
 
 	cmd := &cobra.Command{
@@ -403,6 +406,26 @@ Examples:
 			fmt.Println()
 			fmt.Println("═ Use `bunker exec` to run commands in this agent ═")
 
+			// SURF-009: --toolchains delivers the DECLARED build-toolchain
+			// set (go, gcc, make, node, cargo) onto the fresh agent right
+			// after spawn — client-side, over the same audited exec RPC,
+			// so the critical server spawn path is untouched and agents
+			// spawned without the flag behave byte-identically. The
+			// delivery verdict is a re-probe (deliverToolchains); a failure
+			// is a WARNING, not a spawn failure: the agent is up and the
+			// delivery is resumable in place.
+			if toolchains {
+				fmt.Println("Provisioning build toolchains (go, gcc, make, node, cargo)...")
+				dctx, dcancel := context.WithTimeout(context.Background(), 30*time.Minute)
+				defer dcancel()
+				dentry := entry
+				dentry.Token = token
+				if err := deliverToolchains(cmd.ErrOrStderr(), dctx, client, dentry, r.AgentId); err != nil {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "bunker: WARNING toolchain delivery did not complete: %v\n", err)
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "bunker: the agent is UP — finish in place with: bunker toolchain-check %s --deliver\n", r.AgentId)
+				}
+			}
+
 			return nil
 		},
 	}
@@ -422,6 +445,7 @@ Examples:
 	cmd.Flags().StringVar(&mountDriver, "mount-driver", "", "Mount driver for this agent (default: sshfs; an unknown name is refused by the server)")
 	cmd.Flags().StringVar(&networkIsolationMode, "network-mode", "", "Network isolation mode for this agent: shared, systemd, procvis (default: BUNKERD_NETWORK_MODE, then the server's config, then shared). systemd = private network namespace (loopback only; NO outbound — image pulls fail in this mode). procvis = private /proc in the unit's mount namespace (hidepid=2 semantics; unit processes see only their own user's processes; does NOT cover SSH/exec sessions)")
 	cmd.Flags().StringVar(&egressMode, "egress-mode", "", "Egress policy for this agent (GAP-134): open (unrestricted outbound; the default), allowlist (default-deny chain; only loopback, established connections and the server's agent.egress.allowlist destinations are accepted), none (deny-all except the control channel). Default: the server's agent.egress.mode config, then open. A failed rule installation fails the spawn — the agent is never left unenforced")
+	cmd.Flags().BoolVar(&toolchains, "toolchains", false, "Provision the declared build-toolchain set (go, gcc, make, node, cargo — SURF-009) onto the agent right after creation: checksum-pinned downloads into the agent's HOME, no root; check anytime with 'bunker toolchain-check <agent-id>'")
 
 	return cmd
 }

@@ -1249,6 +1249,17 @@ bunker agent-tools  Probe the agent (not the client) for the executables the
                    baked into an image at spawn instead via the image-spec
                    directive the command prints (ripgrep via apt, gopls via
                    go — specs/image-spec.md)
+bunker toolchain-check  Report the DECLARED build-toolchain set (go, gcc,
+                   make, node, cargo — SURF-009) present/absent by name on
+                   an agent; --deliver installs the missing ones in place
+                   without root (checksum-pinned go/node tarballs and
+                   rustup, the apt archive for gcc/make; every stage cached
+                   under ~/.bunker/toolchains so re-runs are no-ops; the
+                   verdict is a re-probe, never the installer's word).
+                   `bunker spawn --toolchains` provisions the same set
+                   right after creation; agents with the image-spec surface
+                   can instead bake the C/Make half in at spawn with the
+                   directive the command prints
 bunker surface     Manage the agent's toolsd socket surface (systemd user
                    units; install/remove) and attach to it from this machine
                    (connect: forwards the agent's socket over SSH with the
