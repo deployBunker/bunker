@@ -3766,13 +3766,18 @@ tasks:
   created_at: '2026-09-30T07:18:52.994920+00:00'
   completed_at: '2026-09-30T07:18:54.530096+00:00'
 - id: PERF-008
-  title: Cache orphan-uid /proc scan in ListAgents
+  title: 'Close PERF-008: ListAgents pays one /proc sweep total (batch orphan classifier,
+    65930937)'
   criteria:
-  - ListAgents orphan-uid summary served from a short-TTL cache with tests proving
-    repeated calls within TTL trigger one scan; build/vet/test green
+  - 1. ListAgents orphan-uid classification runs ONE /proc sweep per request for the
+    whole fleet via the batch summarizer (agent.OrphanUIDSummaries wired as orphanUIDBatchSummarizer),
+    replacing per-agent sweeps 2. tests TestCheckOrphanUIDBatch_OneProcSweepForAllAgents
+    and TestListAgents_OneProcSweepForWholeFleet pass, proving a single sweep serves
+    all agents 3. fix commit 65930937 is an ancestor of main HEAD 4. go build/vet
+    clean and the scoped tests pass
   status: complete
-  created_at: '2026-09-30T09:21:59.646433+00:00'
-  completed_at: '2026-09-30T09:29:28.796604+00:00'
+  created_at: '2026-10-16T16:00:33.673180+00:00'
+  completed_at: '2026-10-16T16:09:27.976882+00:00'
 - id: PERF-007
   title: Cache residue-inventory linger-plane user lookups behind a short TTL
   criteria:
@@ -4672,3 +4677,22 @@ tasks:
   status: complete
   created_at: '2026-10-16T13:09:31.073530+00:00'
   completed_at: '2026-10-16T13:33:34.564731+00:00'
+- id: PERFA-1
+  title: 'Close PERF-008: ListAgents pays one /proc sweep total (batch orphan classifier)'
+  criteria:
+  - 1. orphan_uid_batch_test.go acceptance pins pass at HEAD (one-sweep tests) 2.
+    fix commit 65930937 merged and verified on the merged tree 3. board row PERF-008
+    closed as duplicate-of-done
+  status: complete
+  created_at: '2026-10-16T15:11:51.312733+00:00'
+  completed_at: '2026-10-16T15:13:18.096507+00:00'
+- id: DF-BUNKER-58
+  title: 'Registry subcommand read surface: list verb + non-zero exit on unknown subcommand'
+  criteria:
+  - 1. registry list prints one current-state record per live agent id 2. unknown
+    or bare registry subcommand exits nonzero like other command groups 3. table-driven
+    tests cover list output and the exit-code contract 4. go build/vet clean and scoped
+    tests pass
+  status: complete
+  created_at: '2026-10-16T15:11:58.195179+00:00'
+  completed_at: '2026-10-16T15:57:03.471648+00:00'

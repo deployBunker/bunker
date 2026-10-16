@@ -1,0 +1,29 @@
+{
+  "scheduler_tick": "bunker-foreman-2026-10-16-14-57-55",
+  "wave_budget": 2,
+  "workers": [
+    {
+      "task": "DF-BUNKER-58",
+      "priority": "P2",
+      "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-58",
+      "branch": "wt/DF-BUNKER-58",
+      "base_sha": "45f760b2",
+      "scope": "internal/cli/registry.go + internal/cli/registry_test.go (registry list verb, nonzero exit on unknown subcommand)",
+      "worker_model": "glm-5.3-flash",
+      "worker_provider": "zai-glm-default (resolved ocg/glm-5.3-flash @ 9router)"
+    },
+    {
+      "task": "PERF-008",
+      "priority": "P2",
+      "worktree": "none: recovery — fix commit 65930937 already merged on main",
+      "branch": "wt/PERF-008 (pre-existing, merged: git rev-list --count main..wt/PERF-008 = 0)",
+      "base_sha": "verify-only (65930937)",
+      "scope": "verification-only foreman close: acceptance at HEAD, board row line 610, gitreins PERFA-1",
+      "worker_model": "foreman-direct",
+      "worker_provider": "none"
+    }
+  ],
+  "independence": "disjoint: registry CLI files (worktree wt/DF-BUNKER-58) vs orphan-uid server package (already merged; touching only board/.gitreins closing state)",
+  "created_at": "2026-10-16T15:13:00Z",
+  "status": "dispatched"
+}
