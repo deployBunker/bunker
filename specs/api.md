@@ -111,6 +111,22 @@ Request:
   as `sshfs` or `rclone`. Empty uses the server default (`sshfs`). An unknown
   driver name is rejected with `CodeInvalidArgument`; the server never
   silently falls back to `sshfs`.
+- `safety_preset` (string, optional): GAP-116 per-spawn safety preset override.
+  One of `"open"`, `"standard"`, or `"hardened"`. Empty = defer to
+  `BUNKERD_SAFETY_PRESET` env > config global > built-in default.
+  An unknown name is a hard error — never a silent fallback.
+- `network_mode` (string, optional): NET-BUNKER-010 network-isolation mode.
+  One of `"shared"` or `"systemd"`. Empty = defer to the daemon's
+  `agent.network_mode` config (default `"shared"` —
+  specs/network-isolation.md §5.1). An unknown name REFUSES the spawn with
+  `CodeInvalidArgument` — never a silent fallback.
+- `egress_mode` (string, optional): GAP-134 egress policy mode.
+  One of `"open"`, `"allowlist"`, or `"none"`. Empty = defer to the daemon's
+  `agent.egress.mode` config (default `"open"` — SAFE default: no enforcement,
+  no firewall interaction). An unknown name REFUSES the spawn with
+  `CodeInvalidArgument` — never a silent fallback. The allowlist itself is
+  daemon config (`agent.egress.allowlist`); a spawn request does not carry
+  its own accept list.
 
 Response:
 - `agent_id` (string): Assigned agent ID
