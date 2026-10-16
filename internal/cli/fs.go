@@ -52,7 +52,12 @@ Two surfaces, deliberately:
     walked.
 
 It is NOT the default and does not become one until a battery on both DCs shows
-zero stalls.`,
+zero stalls.
+
+The mount's WRITE SHAPE is whole-file publish only: ` + "`>`" + `/` + "`>>`" + ` onto an existing
+path and git on the mount are refused EOPNOTSUPP, so a mounted repo cannot be
+worked in. ` + "`bunker fs mount --help`" + ` prints the full contract, and the mount
+prints a one-line reminder (with the remediation) at the moment of mount.`,
 	}
 	cmd.AddCommand(
 		newFSMountCommand(),
@@ -116,7 +121,9 @@ reason. The kernel keeps no file data (FOPEN_DIRECT_IO + ExplicitDataCacheContro
 so the cache figure ` + "`bunker fs status`" + ` reports is the only local copy.
 
 The mountpoint stays mounted when the transport dies: every operation fails loudly
-within the 30 s deadline with a named cause, and recovery is one command.`,
+within the 30 s deadline with a named cause, and recovery is one command.
+
+` + fsclient.WriteShapeContract + ``,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			o.Mountpoint = args[0]
@@ -170,6 +177,13 @@ within the 30 s deadline with a named cause, and recovery is one command.`,
 			// have to re-read the command line to know what the mount obeys, and
 			// `bunker fs status` prints the same block afterwards.
 			printEffectiveConfig(os.Stdout, st.Config)
+			// The write shape, printed ONCE at the moment of mount: this is
+			// the fact dogfood run 27 lost an afternoon to (a git repo under
+			// the mount cannot be worked in, and redirection onto an existing
+			// path is refused), and no later output would have told them.
+			for _, line := range writeShapeBanner() {
+				fmt.Println(line)
+			}
 			fmt.Printf("  unmount      : bunker fs umount %s\n", m.Mountpoint())
 
 			sig := make(chan os.Signal, 1)
@@ -243,6 +257,21 @@ within the 30 s deadline with a named cause, and recovery is one command.`,
 	cmd.Flags().DurationVar(&hot.TickInterval, "hot.tick-interval", fsclient.DefaultHotTickInterval, "the manager's tick: yield check, expiry sweep and re-arm check (Q-14)")
 	cmd.Flags().IntVar(&hot.PoolPressureTicks, "hot.pool-pressure-ticks", fsclient.DefaultHotPoolPressureTicks, "consecutive ticks of foreground slot starvation before the hot path stops itself (P-19)")
 	return cmd
+}
+
+// writeShapeBanner is the write-shape contract as the MOMENT-OF-MOUNT banner
+// prints it (DF-BUNKER-100): the short form of the contract, in the block of
+// facts an operator reads once the mount is up. It is a function rather than
+// three Printf calls inside RunE so the banner is a TESTED surface — the three
+// ways this rots (a banner that stops mentioning git, a banner that names no
+// remediation, a banner that drifts from the contract the refusals carry) all
+// fail in internal/cli/fs_write_shape_test.go.
+func writeShapeBanner() []string {
+	return []string{
+		"  write shape  : WHOLE FILES ONLY — `>`/`>>` onto an existing path and git on the",
+		"                 mount are refused EOPNOTSUPP; publish with cp/tee/editor save",
+		"                 (`bunker fs mount --help` prints the whole contract)",
+	}
 }
 
 // hotFlagsToPolicy folds the three BFS-044 flags whose SPELLING is not the
@@ -872,6 +901,10 @@ func printStatus(w io.Writer, st *fsclient.Status) {
 	fmt.Fprintf(w, "write shape  : refusals_total=%d\n", st.WriteShape.RefusalsTotal)
 	if st.WriteShape.Last != "" {
 		fmt.Fprintf(w, "  last       : %s\n", st.WriteShape.Last)
+		// A refusal count with no explanation is exactly what this row is
+		// about: the operator has just lost a write and needs the shape that
+		// works and the way out, here, not three pages away (DF-BUNKER-100).
+		_, _ = fmt.Fprintf(w, "  contract   : %s\n", fsclient.WriteShapeNotice)
 	}
 	// BFS-021. Printed beside the write shape because they are the two halves of
 	// the same question — which write shapes this surface serves — and because

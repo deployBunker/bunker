@@ -175,6 +175,15 @@ func (e *OpError) Error() string {
 	if e.Err != nil {
 		msg += ": " + e.Err.Error()
 	}
+	// A write-shape refusal is the one class whose errno IS the message the
+	// caller sees ("Operation not supported") unless someone explains it, so
+	// every one of them carries the contract's compact form (DF-BUNKER-100).
+	// It is appended here rather than at each site so a refusal built anywhere
+	// — the write path, the append path, Setattr — cannot be reported without
+	// it.
+	if e.Cause == CauseWriteShapeUnsupported {
+		msg += " [" + WriteShapeNotice + "]"
+	}
 	return msg
 }
 

@@ -112,12 +112,16 @@ type Mount struct {
 	boundLast atomic.Value // string
 
 	// writeShapeRefusals counts write shapes REFUSED before they published
-	// anything because this surface cannot complete them (BFS-030): a resize
-	// arriving while a write-intent handle is live on the path — the destructive
-	// half of an in-place rewrite whose write half cannot land. writeShapeLast
-	// names the most recent refusal, so the figure can be audited per file.
-	// Reported because a rule that fires silently is not a rule anyone can
-	// audit (the same reason boundRefusals is reported).
+	// anything because this surface cannot complete them (BFS-030, DF-BUNKER-100):
+	// a resize arriving while a write-intent handle is live on the path — the
+	// destructive half of an in-place rewrite whose write half cannot land — and
+	// an in-place WRITE through a handle that is not a create (the shape a
+	// shell's `>>`/`>` onto an existing path and every git write arrives
+	// through). writeShapeLast names the most recent refusal, so the figure can
+	// be audited per file. Reported because a rule that fires silently is not a
+	// rule anyone can audit (the same reason boundRefusals is reported), and
+	// because "Operation not supported" is the only thing the kernel can hand
+	// the caller.
 	writeShapeRefusals atomic.Int64
 	writeShapeLast     atomic.Value // string
 
@@ -1191,6 +1195,13 @@ func (n *node) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, s
 //     go-fuse's bridge answered before this method existed
 //     (`return 0, fuse.ENOTSUP`, fs/bridge.go), so BFS-012's refusal of in-place
 //     writes through an existing path is unchanged.
+//
+// The errno is unchanged but it is no longer BARE (DF-BUNKER-100): a caller
+// whose write was refused sees only "Operation not supported" from the kernel,
+// so the refusal is built as a named write-shape refusal, counted on the
+// owner-facing surface, and logged with the contract and the remediation. That
+// is the shape a shell's `>>`/`>` onto an existing path, and every git write,
+// arrives through.
 func (n *node) Write(ctx context.Context, fh fs.FileHandle, data []byte, off int64) (uint32, syscall.Errno) {
 	switch h := fh.(type) {
 	case *writeHandle:
@@ -1200,7 +1211,9 @@ func (n *node) Write(ctx context.Context, fh fs.FileHandle, data []byte, off int
 			return h.ap.write(ctx, data, off)
 		}
 	}
-	return 0, syscall.EOPNOTSUPP
+	err := fsclient.WriteShapeRefusal("WRITE", n.p, fmt.Sprintf(
+		"refusing an in-place write of %d byte(s) at offset %d to %s: this surface has no way to write a file that already exists in place — a create (whole-file publish) is the only write shape it serves, and Open hands back a read handle whatever the open flags said, so the write half of this one could never land. Nothing was written", len(data), off, n.p))
+	return 0, n.m.refuseWriteShape(err, fmt.Sprintf("%s: write off=%d", n.p, off))
 }
 
 // Create starts the write path: the handle buffers the arriving chunks and
@@ -1617,16 +1630,46 @@ func (m *Mount) retargetHandles(src, dst string) {
 // Setattr supports truncation (the one attribute a build tool actually moves)
 // and refuses the rest loudly rather than pretending: mode/uid/gid/times are
 // not carried by this surface.
+//
+// The metadata refusal is the one git trips over most often (DF-BUNKER-100): a
+// `git init` or a checkout chmods the lockfiles it creates, so it dies with
+// "chmod on .git/config.lock failed: Operation not supported". The kernel can
+// only be handed the errno — no text travels back through FUSE — so the
+// explanation goes where the mount's owner can read it: the mount log (below)
+// and the write-shape contract in `bunker fs mount --help` and the docs.
 func (n *node) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
 	if size, ok := in.GetSize(); ok {
 		if errno := n.truncate(ctx, size); errno != 0 {
 			return errno
 		}
 	} else if in.Valid&(fuse.FATTR_MODE|fuse.FATTR_UID|fuse.FATTR_GID|fuse.FATTR_ATIME|fuse.FATTR_MTIME) != 0 {
+		n.m.logf("bunker-fs: refused a mode/ownership/timestamp change on %s (valid=%#x): this surface carries none of them, which is why git cannot run on the mount — %s",
+			n.p, in.Valid, fsclient.WriteShapeNotice)
 		return syscall.EOPNOTSUPP
 	}
 	h := &node{m: n.m, p: n.p}
 	return h.Getattr(ctx, fh, out)
+}
+
+// refuseWriteShape records a write-shape refusal and returns the errno the
+// kernel will be given, so EVERY refusal site reports the same three things
+// without repeating them (DF-BUNKER-100): the count and the last-refused path
+// on the owner-facing status document, the mount's own log with the contract
+// and the remediation, and the named cause `bunker fs status` prints.
+//
+// last is the human-facing one-line audit trail for the refusal — `<path>:
+// size=<n>` for a resize, `<path>: write off=<n>` for an in-place write — and
+// it deliberately names the path, because the count alone cannot tell an
+// operator WHICH file a tool failed on.
+func (m *Mount) refuseWriteShape(err *fsclient.OpError, last string) syscall.Errno {
+	m.writeShapeRefusals.Add(1)
+	m.writeShapeLast.Store(last)
+	// err.Error() already ends with the contract's compact form (fsclient
+	// appends it to every write-shape refusal), so the explanation is printed
+	// once, not twice.
+	m.logf("bunker-fs: refused a write shape on this mount: %s", err.Error())
+	m.recordFailure(err)
+	return errnoFor(err)
 }
 
 // truncate rewrites the file at a new size. It is a read-modify-write published
@@ -1656,16 +1699,9 @@ func (n *node) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAttrIn
 // measurements rely on.
 func (n *node) truncate(ctx context.Context, size uint64) syscall.Errno {
 	if n.m.writeIntentOn(n.p) {
-		err := &fsclient.OpError{
-			Op: "SETATTR", Path: n.p, Errno: fsclient.ErrnoEOPNOTSUPP,
-			Cause:  fsclient.CauseWriteShapeUnsupported,
-			Detail: fmt.Sprintf("refusing to resize %s to %d bytes: a handle opened for writing is live on the path, and this surface cannot write an existing file in place — publishing the resize would destroy the original before the write that follows it fails. The file is left byte-identical; use a whole-file write (create the path anew) or `truncate -s` outside a write handle", n.p, int64(size)),
-		}
-		n.m.writeShapeRefusals.Add(1)
-		n.m.writeShapeLast.Store(fmt.Sprintf("%s: size=%d", n.p, int64(size)))
-		n.m.logf("bunker-fs: refused to resize %s to %d bytes: a write handle is live on the path and this surface cannot write an existing file in place, so the resize would be published before a write that cannot land. The file is unchanged", n.p, int64(size))
-		n.m.recordFailure(err)
-		return errnoFor(err)
+		err := fsclient.WriteShapeRefusal("SETATTR", n.p, fmt.Sprintf(
+			"refusing to resize %s to %d bytes: a handle opened for writing is live on the path, and this surface cannot write an existing file in place — publishing the resize would destroy the original before the write that follows it fails. The file is left byte-identical; use a whole-file write (create the path anew) or `truncate -s` outside a write handle", n.p, int64(size)))
+		return n.m.refuseWriteShape(err, fmt.Sprintf("%s: size=%d", n.p, int64(size)))
 	}
 	// read through the normal path so the cache and the base hash stay in
 	// agreement with what we are about to replace
