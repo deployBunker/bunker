@@ -1201,7 +1201,8 @@ bunker run         Run a command in an agent's environment (with --detach for ba
 bunker mount       Mount agent filesystem via SSHFS
 bunker tunnel      Forward agent Docker socket
 bunker ssh         Open an interactive SSH session into an agent
-bunker cp          Copy a file into an agent's environment
+bunker cp          Copy a file into an agent's environment (push-only; see
+                   "Pulling files" below)
 bunker deploy      Deploy a directory into an agent's environment
 bunker systemd     Manage the bunkerd systemd service (install/uninstall/status)
 bunker metrics     Show resource usage
@@ -1286,6 +1287,22 @@ bunker subid-migrate  Rewrite overlapping subordinate-id (subuid/subgid)
                    ranges for managed agents (dry run by default; --apply
                    rewrites)
 ```
+
+### Pulling files
+
+`bunker cp` and `bunker deploy` are push-only: they copy a LOCAL source into an
+agent, so `<agent-id>:/path` is the *destination* form and a pull-shaped
+invocation — `<agent-id>:<path>` as the first argument, a local path as the
+second — is refused. The refusal names the three remedies below rather than
+only the destination format.
+
+The reverse direction is `bunker pull <agent-id> <remote-path> [local-dir]`,
+which requires a build from HEAD (it shipped after v0.2.0; `--recursive` copies
+a directory tree). Without that build, pull over scp with the key spawn saved
+for the agent at `~/.config/bunker/keys/<agent-id>`:
+`scp -i ~/.config/bunker/keys/<agent-id> bunker-<agent-id>@<host>:<remote-path> <local-dir>`.
+The other read path is the sshfs mount (`bunker mount <agent-id>`), compared
+against the verb layer in [docs/both-ways.md](docs/both-ways.md).
 
 ### Exit codes
 

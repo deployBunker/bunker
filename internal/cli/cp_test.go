@@ -743,3 +743,251 @@ func TestCpCommand_OwnershipProbeRunsThroughRealSSHPath(t *testing.T) {
 		t.Errorf("hint must name the current owner and the agent user, got: %q", errOut)
 	}
 }
+
+// ── DF-BUNKER-97: the pull-shaped invocation of the push-only cp ─────────────
+
+// writeLocalCpFile is the default test source: a real local file, so the
+// invocation is unmistakeably a push.
+func writeLocalCpFile(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "payload.txt")
+	if err := os.WriteFile(path, []byte("payload"), 0644); err != nil {
+		t.Fatalf("write local file: %v", err)
+	}
+	return path
+}
+
+// TestCpCommand_PullShapedInvocation covers DF-BUNKER-97: `bunker cp` copies
+// local → agent, and the dogfood run that typed the reverse direction got a
+// bare "destination must be <agent-id>:/path" that named neither the reason nor
+// a way to get the file. A pull-shaped invocation must answer with the
+// remediation — the reverse command with the arguments the user typed, scp
+// over the key spawn saved, and the sshfs mount — while every genuinely local
+// or malformed invocation keeps the existing error. A name that merely CONTAINS
+// a colon is a local source, not an agent reference.
+func TestCpCommand_PullShapedInvocation(t *testing.T) {
+	t.Setenv(SessionTargetEnvVar, "")
+
+	tests := []struct {
+		name    string
+		src     string
+		dest    string
+		setup   func(t *testing.T) string // overrides src when non-nil
+		want    []string
+		wantNot []string
+	}{
+		{
+			name: "an agent source with a local destination gets the pull remediation",
+			src:  "dfb-1016:app.tgz",
+			dest: "/tmp/x",
+			want: []string{
+				"pull from an agent is not supported by bunker cp",
+				"scp -i ~/.config/bunker/keys/dfb-1016",
+				"bunker-dfb-1016@<host>:app.tgz",
+				"bunker pull dfb-1016 app.tgz /tmp/x",
+				"bunker mount dfb-1016",
+			},
+			wantNot: []string{"destination must be"},
+		},
+		{
+			name: "a local file whose name merely contains a colon is not a pull",
+			setup: func(t *testing.T) string {
+				t.Helper()
+				path := filepath.Join(t.TempDir(), "agent:path")
+				if err := os.WriteFile(path, []byte("local"), 0644); err != nil {
+					t.Fatalf("write colon-named file: %v", err)
+				}
+				return path
+			},
+			dest:    "/tmp/x",
+			want:    []string{"destination must be <agent-id>:/path"},
+			wantNot: []string{"not supported by"},
+		},
+		{
+			name:    "both arguments local keeps the destination-format error",
+			setup:   writeLocalCpFile,
+			dest:    "nocolon",
+			want:    []string{"destination must be <agent-id>:/path"},
+			wantNot: []string{"not supported by"},
+		},
+		{
+			name:    "an agent source with an empty path is still a format error",
+			src:     "dfb-1016:",
+			dest:    "/tmp/x",
+			want:    []string{"destination must be <agent-id>:/path"},
+			wantNot: []string{"not supported by"},
+		},
+		{
+			name:    "a push-shaped invocation is untouched and reaches the binding refusal",
+			setup:   writeLocalCpFile,
+			dest:    "abc123:/tmp/test.txt",
+			want:    []string{"no target bound"},
+			wantNot: []string{"not supported by"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			src := tt.src
+			if tt.setup != nil {
+				src = tt.setup(t)
+			}
+
+			out, _, err := runCpCommand(t, src, tt.dest)
+			if err == nil {
+				t.Fatalf("cp %q %q succeeded, want an error (stdout=%q)", src, tt.dest, out)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q missing %q", err, want)
+				}
+			}
+			for _, not := range tt.wantNot {
+				if strings.Contains(err.Error(), not) {
+					t.Errorf("error %q should not contain %q", err, not)
+				}
+			}
+			if strings.Contains(out, "Copied ") {
+				t.Errorf("stdout reports a copy that never happened: %q", out)
+			}
+		})
+	}
+}
+
+// TestCpCommand_PullShapedRefusalIsLocal proves the refusal is decided from the
+// invocation alone: the dogfood run may be typed on a machine with no bunkerd
+// bound at all, and it must still get the explanation. Any scp/ssh/sshfs child
+// is a regression (the refusal would otherwise hang on a network round trip
+// before explaining itself).
+func TestCpCommand_PullShapedRefusalIsLocal(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(SessionTargetEnvVar, "")
+
+	binDir := t.TempDir()
+	record := filepath.Join(t.TempDir(), "children.txt")
+	for _, name := range []string{"scp", "ssh", "sshfs"} {
+		script := "#!/bin/sh\nprintf '%s %s\\n' " + name + " \"$*\" >> \"$CP_CHILD_RECORD\"\nexit 0\n"
+		if err := os.WriteFile(filepath.Join(binDir, name), []byte(script), 0755); err != nil {
+			t.Fatalf("write %s stub: %v", name, err)
+		}
+	}
+	t.Setenv("PATH", binDir)
+	t.Setenv("CP_CHILD_RECORD", record)
+
+	_, _, err := runCpCommand(t, "dfb-1016:app.tgz", "/tmp/x")
+	if err == nil {
+		t.Fatal("pull-shaped cp succeeded")
+	}
+	if !strings.Contains(err.Error(), "not supported") {
+		t.Fatalf("error %q is not the pull remediation", err)
+	}
+	if b, readErr := os.ReadFile(record); readErr == nil {
+		t.Errorf("the refusal ran child processes: %s", b)
+	}
+}
+
+// TestParseAgentSource pins the shape the pull remediation hangs on: a
+// non-empty id of ordinary id characters, one colon, and a non-empty path.
+func TestParseAgentSource(t *testing.T) {
+	tests := []struct {
+		name     string
+		arg      string
+		wantID   string
+		wantPath string
+		wantOK   bool
+	}{
+		{name: "standard agent path", arg: "dfb-1016:/tmp/app.tgz", wantID: "dfb-1016", wantPath: "/tmp/app.tgz", wantOK: true},
+		{name: "dotted underscore id", arg: "my_agent.v2:/var/log/x", wantID: "my_agent.v2", wantPath: "/var/log/x", wantOK: true},
+		{name: "remote path keeps its own colons", arg: "dfb-1016:/tmp/a:b:c", wantID: "dfb-1016", wantPath: "/tmp/a:b:c", wantOK: true},
+		{name: "relative remote path", arg: "dfb-1016:app.tgz", wantID: "dfb-1016", wantPath: "app.tgz", wantOK: true},
+		{name: "no colon", arg: "local.txt"},
+		{name: "empty path", arg: "dfb-1016:"},
+		{name: "empty id", arg: ":/tmp/x"},
+		{name: "colon only", arg: ":"},
+		{name: "empty", arg: ""},
+		{name: "id with a path separator", arg: "/tmp/dfb:/x"},
+		{name: "id starting with a separator", arg: "-dfb:/tmp/x"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			id, path, ok := parseAgentSource(tt.arg)
+			if ok != tt.wantOK {
+				t.Fatalf("parseAgentSource(%q) ok = %v, want %v", tt.arg, ok, tt.wantOK)
+			}
+			if id != tt.wantID || path != tt.wantPath {
+				t.Errorf("parseAgentSource(%q) = (%q, %q), want (%q, %q)", tt.arg, id, path, tt.wantID, tt.wantPath)
+			}
+		})
+	}
+}
+
+// TestIsPullShapedSource pins the classification: the `<agent-id>:<path>` shape
+// is necessary but not sufficient — a source that exists locally (a file
+// literally called `agent:path`, or a Windows C:\ path) is an ordinary local
+// push and must keep the destination-format error.
+func TestIsPullShapedSource(t *testing.T) {
+	tmpDir := t.TempDir()
+	colonFile := filepath.Join(tmpDir, "agent:path")
+	if err := os.WriteFile(colonFile, []byte("local"), 0644); err != nil {
+		t.Fatalf("write colon-named file: %v", err)
+	}
+	colonDir := filepath.Join(tmpDir, "agent:dir")
+	if err := os.MkdirAll(colonDir, 0755); err != nil {
+		t.Fatalf("mkdir colon-named dir: %v", err)
+	}
+	plainFile := filepath.Join(tmpDir, "plain.txt")
+	if err := os.WriteFile(plainFile, []byte("local"), 0644); err != nil {
+		t.Fatalf("write plain file: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		src  string
+		want bool
+	}{
+		{name: "missing agent-side path", src: "dfb-1016:/tmp/app.tgz", want: true},
+		{name: "relative agent-side path", src: "dfb-1016:app.tgz", want: true},
+		{name: "existing file named like an agent path", src: colonFile, want: false},
+		{name: "existing directory named like an agent path", src: colonDir, want: false},
+		{name: "plain local file", src: plainFile, want: false},
+		{name: "colon-less missing name", src: filepath.Join(tmpDir, "missing.txt"), want: false},
+		{name: "empty path", src: "dfb-1016:", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isPullShapedSource(tt.src); got != tt.want {
+				t.Errorf("isPullShapedSource(%q) = %v, want %v", tt.src, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestCpCommand_HelpPullingFiles pins the documented pull story in cp's help
+// (DF-BUNKER-97): the command is push-only, says pulling is not supported, and
+// names the reverse command, the agent key scp falls back to, and the sshfs
+// mount.
+func TestCpCommand_HelpPullingFiles(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	cmd := NewCpCommand()
+	output := captureStdout(t, func() {
+		cmd.SetArgs([]string{"--help"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("cp --help: %v", err)
+		}
+	})
+
+	for _, want := range []string{
+		"Pulling files",
+		"push-only",
+		"NOT supported here",
+		"bunker pull",
+		"scp -i ~/.config/bunker/keys/<agent-id>",
+		"bunker mount",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("cp --help missing %q, got:\n%s", want, output)
+		}
+	}
+}
