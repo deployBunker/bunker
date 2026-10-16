@@ -4655,3 +4655,20 @@ tasks:
     with list/cleanup commands and tests
   status: in_progress
   created_at: '2026-10-16T01:58:57.797141+00:00'
+- id: DF-BUNKER-102
+  title: refuse boot when a daemon would borrow another daemon's registry (default
+    registry path + custom base_data_dir)
+  criteria:
+  - internal/config exposes a boot gate that refuses when agent.base_data_dir is custom
+    and the resolved registry path is inside the default /var/lib/bunkerd tree while
+    that tree's registry+instance files exist; both boot call sites (internal/server/server.go,
+    cmd/bunkerd/main.go) invoke it wrapped as 'refusing to start:'; the refusal names
+    the borrowed registry path and the fix (set agent.registry.path inside the daemon's
+    own base_data_dir); the gate fails OPEN on missing/unreadable evidence; table
+    tests cover the 6 shapes incl. empty agent.registry.path fallback and a criterion-named
+    boot-refusal test passes; README + docs/dogfood/diagnostics.md name the required
+    isolation set (agent.base_data_dir + agent.registry.path + audit.path) for a second
+    daemon on a shared host
+  status: complete
+  created_at: '2026-10-16T13:09:31.073530+00:00'
+  completed_at: '2026-10-16T13:33:34.564731+00:00'

@@ -1,0 +1,86 @@
+{
+  "wave_id": "bunker-foreman-2026-10-16-08-17-24",
+  "tick_id": "bunker-foreman-2026-10-16-08-17-24",
+  "created_at": "2026-10-16T08:17:24-05:00",
+  "project": "bunker",
+  "workdir": "/home/kara/deployBunker/bunker",
+  "tasks": [
+    {
+      "id": "SURF-B1",
+      "title": "[P1] MEASURE FIRST: is an in-agent toolsd service justified? Per-call cost and call frequency from the CHT-038 invocation ledger",
+      "priority": "P1",
+      "complexity": 2,
+      "worktree": "wt/SURF-B1",
+      "branch": "wt/SURF-B1",
+      "model": "deepseek-v4-flash",
+      "provider": null,
+      "status": "dispatching"
+    },
+    {
+      "id": "SURF-004",
+      "title": "[P1] AUDIT CONTINUITY -- solve BEFORE the first verb ships: socket-mediated mutations bypass the daemon and would vanish from the hash-chained audit trail",
+      "priority": "P1",
+      "complexity": 3,
+      "worktree": "wt/SURF-004",
+      "branch": "wt/SURF-004",
+      "model": "deepseek-v4-flash",
+      "provider": null,
+      "status": "dispatching"
+    },
+    {
+      "id": "TOOLS-003",
+      "title": "[P1] Make tool delivery a PROPERTY OF AN AGENT rather than a command someone remembers: deliver at spawn, and support uninstall/rollback",
+      "priority": "P1",
+      "complexity": 2,
+      "worktree": "wt/TOOLS-003",
+      "branch": "wt/TOOLS-003",
+      "model": "deepseek-v4-flash",
+      "provider": null,
+      "status": "dispatching"
+    },
+    {
+      "id": "GAP-065",
+      "title": "P2 — Container-mode lifecycle + storage/network behavior",
+      "priority": "P2",
+      "complexity": 4,
+      "worktree": "wt/GAP-065",
+      "branch": "wt/GAP-065",
+      "model": "deepseek-v4-flash",
+      "provider": null,
+      "status": "dispatching"
+    },
+    {
+      "id": "GAP-066",
+      "title": "P2 — Docker-as-installer execution mode",
+      "priority": "P2",
+      "complexity": 4,
+      "worktree": "wt/GAP-066",
+      "branch": "wt/GAP-066",
+      "model": "deepseek-v4-flash",
+      "provider": null,
+      "status": "dispatching"
+    },
+    {
+      "id": "GAP-072",
+      "title": "P2 — Interactive attach mode: ExecAgent streams output but has no stdin path",
+      "priority": "P2",
+      "complexity": 4,
+      "worktree": "wt/GAP-072",
+      "branch": "wt/GAP-072",
+      "model": "deepseek-v4-flash",
+      "provider": null,
+      "status": "dispatching"
+    }
+  ],
+  "wave_budget": 6,
+  "merge_order": [
+    "SURF-B1",
+    "SURF-004",
+    "TOOLS-003",
+    "GAP-065",
+    "GAP-066",
+    "GAP-072"
+  ],
+  "finished_at": "2026-10-16T08:41:21-05:00",
+  "recovery_status": "no-op: 0 workers dispatched, no worktrees exist"
+}
