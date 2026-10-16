@@ -388,13 +388,10 @@ func TestINTCI37_WriteFailureIsDegradableAndCheckIsNot(t *testing.T) {
 		// never be created.
 		prevDir := systemdUnitDirRoot
 		blocker := filepath.Join(t.TempDir(), "not-a-dir")
-		if err := os.MkdirAll(blocker, 0o755); err != nil {
+		if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		systemdUnitDirRoot = blocker
-		if err := os.WriteFile(filepath.Join(blocker, "occupied"), []byte("x"), 0o644); err != nil {
-			t.Fatal(err)
-		}
 		t.Cleanup(func() { systemdUnitDirRoot = prevDir })
 
 		_, err := m.applyUserSliceLimitsAndVerify(t.Context(), u, 2.0, 4<<30, 0, 0, 0, knobs, want)
