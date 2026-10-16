@@ -206,3 +206,161 @@ func TestRegistryCompactKeepsTrackerMetadata(t *testing.T) {
 		t.Fatalf("AllocatedRange = %d-%d (ok=%v)", start, end, ok)
 	}
 }
+
+// --- DF-BUNKER-58: registry list read surface + unknown-subcommand exit ---
+
+// TestRegistryListSurface pins the new read surface: a `list` subcommand
+// with --path, next to the existing compact.
+func TestRegistryListSurface(t *testing.T) {
+	cmd := NewRegistryCommand()
+	var listFound bool
+	for _, sub := range cmd.Commands() {
+		if sub.Name() == "list" {
+			listFound = true
+			if sub.Flags().Lookup("path") == nil {
+				t.Error("list must expose --path")
+			}
+		}
+	}
+	if !listFound {
+		t.Fatal("registry must have a list subcommand")
+	}
+}
+
+// TestRegistryListOutput is the operator-facing read contract, table-driven:
+// every row builds its fixture through the store's OWN append API (never
+// hand-written JSONL) and asserts the printed lines.
+func TestRegistryListOutput(t *testing.T) {
+	seedNoTimestamps := func(t *testing.T, path string) {
+		t.Helper()
+		s, err := registry.Open(registry.Options{Path: path})
+		if err != nil {
+			t.Fatalf("Open: %v", err)
+		}
+		defer func() { t.Log("seeding store closed:", s.Close()) }()
+		// Status left empty: replay folds it to the store's "running"
+		// default; zero CreatedAt/ExpiresAt render as "-".
+		if err := s.AppendSpawn(&registry.Record{AgentID: "no-times"}); err != nil {
+			t.Fatalf("AppendSpawn: %v", err)
+		}
+	}
+
+	tests := []struct {
+		name            string
+		spawns          int
+		seed            func(t *testing.T, path string)
+		wantContains    []string
+		wantNotContains []string
+	}{
+		{
+			name:   "one current-state record per live agent plus count",
+			spawns: 3,
+			wantContains: []string{
+				"agent-ba", "agent-ca", "2 live agent(s)",
+			},
+			wantNotContains: []string{
+				"agent-aa", // destroyed: not live, must not be listed
+			},
+		},
+		{
+			name:   "empty registry is a successful read",
+			spawns: 0,
+			wantContains: []string{
+				"0 live agent(s)",
+				"created empty by this read", // Open fabricated the missing file; say so
+			},
+		},
+		{
+			name: "zero timestamps render as dash, status folded to running",
+			seed: seedNoTimestamps,
+			wantContains: []string{
+				"no-times", "status=running", "created=-", "expires=-", "1 live agent(s)",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "agents.jsonl")
+			if tt.seed != nil {
+				tt.seed(t, path)
+			} else if tt.spawns > 0 {
+				seedRegistry(t, path, tt.spawns)
+			}
+
+			cmd := NewRegistryCommand()
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&out)
+			cmd.SetArgs([]string{"list", "--path", path})
+			err := cmd.Execute()
+			if err != nil {
+				t.Fatalf("list: %v (output %q)", err, out.String())
+			}
+			got := out.String()
+			for _, want := range tt.wantContains {
+				if !strings.Contains(got, want) {
+					t.Errorf("list output missing %q:\n%s", want, got)
+				}
+			}
+			for _, no := range tt.wantNotContains {
+				if strings.Contains(got, no) {
+					t.Errorf("list output must not contain %q:\n%s", no, got)
+				}
+			}
+		})
+	}
+}
+
+// TestRegistryListUnknownSubcommandErrors mirrors the env group's
+// unknown-subcommand contract: a typo'd subcommand returns an ERROR naming
+// the known ones (root sets SilenceErrors, so a returned error exits
+// non-zero on the real binary), while the bare group still prints help and
+// succeeds.
+func TestRegistryListUnknownSubcommandErrors(t *testing.T) {
+	tests := []struct {
+		name      string
+		args      []string
+		wantErr   bool
+		wantInErr string
+	}{
+		{
+			name:      "typo subcommand errors naming the known ones",
+			args:      []string{"bogus"},
+			wantErr:   true,
+			wantInErr: `unknown registry subcommand "bogus" (want: list, compact)`,
+		},
+		{
+			name:      "near-miss subcommand errors too",
+			args:      []string{"lst"},
+			wantErr:   true,
+			wantInErr: `unknown registry subcommand "lst"`,
+		},
+		{
+			name:    "bare group prints help and succeeds",
+			args:    []string{},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := NewRegistryCommand()
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&out)
+			cmd.SetArgs(tt.args)
+			err := cmd.Execute()
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("args %v: want error, got nil (output %q)", tt.args, out.String())
+				}
+				if !strings.Contains(err.Error(), tt.wantInErr) {
+					t.Errorf("error %q missing %q", err.Error(), tt.wantInErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("args %v: want success, got %v", tt.args, err)
+			}
+		})
+	}
+}
