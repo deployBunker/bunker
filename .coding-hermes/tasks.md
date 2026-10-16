@@ -411,3 +411,14 @@ docs/dogfood/2026-09-29-release-channel-install.md.
 | BUNKER-INST-002 | README's Go recipe uses literal /tmp/go.tar.gz — on a shared host that path was owned by another agent's leftover (curl RC 23 write error ×2); $HOME download succeeded first try. Live proof of the HOST-SHARED /tmp class. | P2 | 1 | — | +docs, +tmp-isolation | Collision-safe path (mktemp/$HOME) in README + scripts. PASS: verbatim README recipe succeeds on a shared host with a foreign /tmp/go.tar.gz. |
 | PERF-012 | Installer cold 12s; source build cold 48s; spawn warm 40s (documented envelope 60-90s). Nothing a user would notice — no profile, no fix row. | P2 | 1 | — | +perf, +install | Re-measure after any installer/spawn change; command + numbers in docs/dogfood/2026-09-29-release-channel-install.md. |
 
+# Dogfood Findings (2026-10-16 — run 27, bunker-fs / WebDAV surface)
+
+- [P1] DF-BUNKER-100: git unusable ON a bunker-fs mount (chmod EOPNOTSUPP on .git), shell redirection writes refused; whole-file publish works, read-back byte-identical. Docs never state the write-shape contract.
+- [P2] DF-BUNKER-101: iobattery on a bunker-fs mount: 4 of 6 families fail with raw EIO (whole-file write shape). Throughput that survives: 3.09 MB/s vs 4891 MB/s local NVMe.
+- [P1] DF-BUNKER-102: scratch bunkerd with a private --config still replayed the PRODUCTION registry (compiled defaults) and began destroying a live fleet agent within 60s. Killed mid-archive; agent intact; 3 duplicate home archives created. Fix: refuse to start when the registry path is held by another live daemon; docs must make base_data_dir+registry.path+audit.path the required isolation set.
+- [P2] DF-BUNKER-103: fs delegated op catalogue: only capabilities/events/snapshot served; status/diff/rev-parse/ls-files/watch answer 501 with named slice; no served-vs-build capability matrix in help/docs.
+- [P2] PERF-013: fs snapshot 398.5ms ±1.1 warm (91 nodes, 1 server call — the one-call claim verified), cached ls/cat 2.8ms. Nothing slow enough for a profile; numbers informational.
+
+Install leg: PASSED on bunker-mvp ephemeral agent df27-install (spawn 18.5s, clone+go build 7.2s, fs --help + iobattery smoke rc=0, destroyed + verified absent). Other bunker hosts (las-01/02/03/04) offline — mvp only; the leg is explicit, not silent.
+
+Method: fresh angle = surfaces 26 prior runs never drove: bunker fs mount/op/snapshot/probe (WebDAV), the E-4 delegated catalogue, iobattery vs a mount. Scratch daemon on mvp with full state isolation (base_data_dir + registry.path + audit.path) after the DF-BUNKER-102 incident; HEAD CLI d760923 local, daemon 14f0ca5 on mvp.

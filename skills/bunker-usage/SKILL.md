@@ -24,7 +24,7 @@ description: >-
   image-spec + agent-tools delivery + CI-race destroy hazards verified
   2026-09-26 against bunker-mvp/cube-las-00
   (docs/dogfood/2026-09-26-image-spec-surface.md, diagnostics.md §21).
-version: 1.13.0
+version: 1.14.0
 category: software-development
 ---
 
@@ -142,6 +142,24 @@ sudo kill -9 $(pgrep -x bunkerd | head -1)   # SIGKILL, no graceful flush
 #   own ports + registry/audit/ssh paths in /tmp, own BUNKER_HOME,
 #   reconciliation mode: adopt on the first restart if foreign bunker-*
 #   users exist on the host. See docs/dogfood/diagnostics.md §8.
+#   RUN 27 INCIDENT (2026-10-16): `--config` alone does NOT isolate state —
+#   the compiled defaults still pointed at /var/lib/bunkerd/agents.jsonl and
+#   the scratch daemon replayed the PRODUCTION registry (11497 events, 5
+#   live agents) and began destroying a live agent within 60s. MANDATORY
+#   isolation set: agent.base_data_dir + agent.registry.path + audit.path
+#   under the scratch root (see DF-BUNKER-102).
+#
+# bunker fs / WebDAV surface (verified 2026-10-16, scratch daemon @ 14f0ca5):
+#   daemon needs server.webdav_enabled: true + webdav_root: <abs path>.
+#   fs snapshot = ONE call (requests_total=1 verified, 91 nodes, 398ms warm);
+#   fs mount prints its banner then BLOCKS — background it.
+#   Writes are WHOLE-FILE-ONLY: cp/tee publish fine (byte-identical
+#   read-back at 82KB/287KB), shell redirection (>, >>) and git-on-mount
+#   chmod fail EOPNOTSUPP (DF-BUNKER-100). Generate locally, publish whole.
+#   Delegated ops actually served: capabilities/events/snapshot;
+#   status/diff/rev-parse/ls-files/watch answer 501 with a named slice
+#   (DF-BUNKER-103). iobattery on a mount: 4/6 families error with raw EIO
+#   (DF-BUNKER-101); throughput survives (~3 MB/s vs ~5 GB/s local NVMe).
 ```
 
 Agent-scoped sub-keys (minted on spawn when `auth.jwt_secret` is set):
