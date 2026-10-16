@@ -776,6 +776,23 @@ the daemon logs `audit logging disabled` once and keeps serving without a
 local audit trail. Set `audit.enabled: false` to silence it deliberately, or
 `audit.path` to route the trail into your own tree.
 
+**Leaving `agent.registry.path` unset borrows another daemon's registry — refused at boot (DF-BUNKER-102).**
+The independent default above cuts both ways: a daemon that sets its own
+`agent.base_data_dir` but skips the `agent.registry.path` line still reads
+`/var/lib/bunkerd/agents.jsonl` — the production daemon's registry. Such a
+daemon replays every foreign agent and then reconciles them as its own (the
+observed incident restored one agent and began destroying a live one within a
+minute of boot). HEAD now refuses that boot: when `agent.base_data_dir` is NOT
+the default, the registry still resolves inside `/var/lib/bunkerd`, and that
+default tree already holds a registry file AND its `instance` identity file,
+`bunkerd` exits before opening any state with
+`refusing to start: ... Fix: set agent.registry.path to a path inside your own
+agent.base_data_dir (e.g. <base>/agents.jsonl)`. The REQUIRED isolation set
+for a scratch/second daemon on a shared host is therefore all four of:
+`agent.base_data_dir` (its own state tree), `agent.registry.path` (inside that
+tree), `audit.path` (default `/var/log/bunkerd/audit.log` — two daemons on one
+audit chain corrupt it; or `audit.enabled: false`), and distinct listen ports.
+
 To run `bunkerd` as a managed systemd service instead (auto-start on boot, logrotate, status via systemd), use the built-in helper:
 
 ```bash

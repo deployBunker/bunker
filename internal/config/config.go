@@ -645,6 +645,137 @@ func pathWithinDir(dir, path string) bool {
 	return strings.HasPrefix(path, dir+string(filepath.Separator))
 }
 
+// BorrowedRegistryCollisionError reports the DF-BUNKER-102 boot refusal: this
+// daemon was given its OWN agent.base_data_dir, but its durable registry still
+// resolves into the DEFAULT tree — i.e. the daemon would open another daemon's
+// registry as its own while keeping a private identity.
+//
+// The failure it prevents (bunker-mvp incident, 2026-10-16): a scratch daemon
+// started with a private --config gave itself its own base_data_dir but left
+// agent.registry.path unset, so the compiled default
+// (/var/lib/bunkerd/agents.jsonl) applied. The daemon replayed the PRODUCTION
+// registry (11497 events, 5 live agents) and within 60s began reconciling
+// agents it did not own: it restored one foreign agent and started DESTROYING
+// a live one (killed mid-archive). The refusal is fail-closed at boot and
+// names every path plus the one-line fix.
+type BorrowedRegistryCollisionError struct {
+	// BorrowedRegistryPath is the registry file inside the default tree that
+	// this daemon would have opened as its own.
+	BorrowedRegistryPath string
+	// OwningBaseDataDir is the default agent.base_data_dir the borrowed
+	// registry belongs to.
+	OwningBaseDataDir string
+	// InstancePath is the owning daemon's instance identity file — the
+	// evidence that the default tree belongs to a configured daemon.
+	InstancePath string
+	// OwnBaseDataDir is THIS daemon's own base_data_dir, named so the fix
+	// can point the registry into it.
+	OwnBaseDataDir string
+}
+
+// Error names the borrowed registry, the tree that owns it and the fix. Kept
+// free of the "refusing to start: " prefix so both call sites (cmd/bunkerd and
+// server.Run) can add it once, exactly like the DF-BUNKER-95 gate's error.
+func (e *BorrowedRegistryCollisionError) Error() string {
+	return fmt.Sprintf(
+		"agent.registry.path resolves to %s inside the default tree at %s (instance=%s), but this daemon's agent.base_data_dir is %s: "+
+			"the daemon would replay ANOTHER daemon's registry and reconcile its live agents as its own — restoring or destroying agents it does not own. "+
+			"Fix: set agent.registry.path to a path inside your own agent.base_data_dir (e.g. %s)",
+		e.BorrowedRegistryPath, e.OwningBaseDataDir, e.InstancePath, e.OwnBaseDataDir,
+		filepath.Join(e.OwnBaseDataDir, filepath.Base(DefaultRegistryPath)))
+}
+
+// DetectBorrowedRegistryCollision reports, as a non-nil error, the boot-time
+// collision where this config has its OWN agent.base_data_dir but its durable
+// registry still resolves into the DEFAULT tree (DF-BUNKER-102); nil means
+// "safe to continue". Like DetectForeignInstanceCollision it is a READ-ONLY
+// probe — no directory is created and no file content is read — so it is safe
+// to call before EnsureJWTSecret (which can WRITE a generated secret into the
+// tree) and before the agent manager resolves the instance identity.
+func (c *Config) DetectBorrowedRegistryCollision() error {
+	return detectBorrowedRegistryCollision(DefaultAgentBaseDataDir, c)
+}
+
+// detectBorrowedRegistryCollision is the gate behind
+// DetectBorrowedRegistryCollision. defaultBaseDataDir is a parameter (rather
+// than the constant read inline) so the refusal is provable against a scratch
+// tree instead of the host's real /var/lib/bunkerd.
+//
+// It is the mirror image of detectForeignInstanceCollision (DF-BUNKER-95):
+// there the TREE is the default and the registry lives elsewhere; here the
+// tree is custom and the REGISTRY is the borrowed one. A collision requires
+// ALL of:
+//
+//  1. agent.base_data_dir is set and is NOT the default dir (normalised). The
+//     default-dir shapes are the first gate's jurisdiction, and a config
+//     without a base dir names no tree of its own to contrast against.
+//  2. this daemon's own resolved registry path (falling back to
+//     DefaultRegistryPath when config.Load has not applied the default yet —
+//     the exact shape of the 2026-10-16 incident) lives INSIDE that default
+//     dir, so the registry this daemon will open as its own belongs to the
+//     default tree.
+//  3. the default dir already holds the owning daemon's evidence: its registry
+//     file AND its instance identity file. Any subset is not proof of another
+//     daemon — a first boot creates the dir empty — so a partial tree fails
+//     OPEN.
+//
+// Residual (stated, not hidden): the registry cross-process lock
+// (internal/registry lockCrossProcess) is held only for the duration of a
+// write, so its presence or absence proves nothing about a live owner and is
+// deliberately not used as evidence; the instance identity file is the
+// ownership signal instead.
+func detectBorrowedRegistryCollision(defaultBaseDataDir string, c *Config) error {
+	base := strings.TrimSpace(c.Agent.BaseDataDir)
+	if base == "" {
+		return nil
+	}
+	defaultDir := filepath.Clean(defaultBaseDataDir)
+	if filepath.Clean(base) == defaultDir {
+		// The default tree IS this daemon's tree: every shape with
+		// base_data_dir at the default belongs to the DF-BUNKER-95 gate.
+		return nil
+	}
+
+	// The registry this daemon will actually use. config.Load may leave it
+	// empty until Validate() applies RegistryConfig.Defaults, so a hand-built
+	// Config gets the documented default here too.
+	registryPath := resolveOwnRegistryPath(c)
+	if !pathWithinDir(defaultDir, registryPath) {
+		// The registry lives in this daemon's own tree: nothing borrowed.
+		return nil
+	}
+
+	collision := BorrowedRegistryCollisionError{
+		BorrowedRegistryPath: filepath.Clean(registryPath),
+		OwningBaseDataDir:    defaultDir,
+		InstancePath:         filepath.Join(defaultDir, InstanceIdentityFileName),
+		OwnBaseDataDir:       filepath.Clean(base),
+	}
+	// Every check may only refuse on POSITIVE evidence: an unreadable path
+	// (EACCES for a non-root daemon) is "not proven", never a borrowed
+	// registry. Both files of the owning daemon's tree are required — a
+	// partial tree may be a first boot.
+	if !statePathExists(filepath.Join(defaultDir, filepath.Base(DefaultRegistryPath))) ||
+		!statePathExists(collision.InstancePath) {
+		return nil
+	}
+	return &collision
+}
+
+// resolveOwnRegistryPath returns the registry path this daemon will open as
+// its own: the configured agent.registry.path, or the documented default when
+// config.Load has not applied RegistryConfig.Defaults yet. The fallback is the
+// exact mechanism of the DF-BUNKER-102 incident: an unset
+// agent.registry.path with a CUSTOM base_data_dir resolves to the DEFAULT
+// tree's registry, and the constants make that containment structural —
+// DefaultRegistryPath is DefaultAgentBaseDataDir/agents.jsonl by definition.
+func resolveOwnRegistryPath(c *Config) string {
+	if p := strings.TrimSpace(c.Agent.Registry.Path); p != "" {
+		return p
+	}
+	return DefaultRegistryPath
+}
+
 // SecretsSourceKind says which resolution rule produced the secrets dir:
 // "env" (BUNKER_SECRETS_DIR), "config" (derived from the configured state
 // tree) or "home" (the ambient $HOME default — no config tree was named).

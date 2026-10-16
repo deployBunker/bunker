@@ -119,6 +119,14 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	if err := s.cfg.DetectForeignInstanceCollision(); err != nil {
 		return fmt.Errorf("refusing to start: %w", err)
 	}
+	// DF-BUNKER-102: the mirror shape — this daemon HAS its own
+	// base_data_dir, but its registry still resolves into the DEFAULT tree,
+	// so boot would replay ANOTHER daemon's registry and reconcile its live
+	// agents as this daemon's own. Same read-only, before-anything-opens
+	// position as the gate above.
+	if err := s.cfg.DetectBorrowedRegistryCollision(); err != nil {
+		return fmt.Errorf("refusing to start: %w", err)
+	}
 	// GAP-126 / REQ-T1 transport gate: refuse to serve a NON-loopback
 	// PLAINTEXT listener unless the operator made the explicit
 	// tls.insecure_dev opt-in. Mirrors the CheckAuth pattern — it runs here,

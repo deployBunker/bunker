@@ -192,6 +192,16 @@ Docker agent hosts. Send SIGINT/SIGTERM for graceful shutdown.
 		return fmt.Errorf("refusing to start: %w", err)
 	}
 
+	// DF-BUNKER-102: the mirror shape — the config gave this daemon its OWN
+	// agent.base_data_dir, but agent.registry.path (or its unset default)
+	// still resolves into the DEFAULT tree, so boot would replay ANOTHER
+	// daemon's registry and reconcile its live agents as this daemon's own
+	// (observed live as a restore + destroy of foreign agents within 60s).
+	// Same read-only, before-EnsureJWTSecret position as the gate above.
+	if err := cfg.DetectBorrowedRegistryCollision(); err != nil {
+		return fmt.Errorf("refusing to start: %w", err)
+	}
+
 	// Authentication gate: refuse to start when auth is enabled but no
 	// credential is configured; warn loudly when auth is explicitly disabled.
 	//

@@ -373,7 +373,12 @@ written from `docs/integration.md` and drove a full lifecycle against
      users exist on the host (defense against destroying another lane's
      agents by mistake). Verify cleanup by exact-name probes (`pgrep -x
      bunkerd`, `getent passwd`), never `pgrep -f` — the full-command match
-     hits your own checking shell and lies twice in one session.
+     hits your own checking shell and lies twice in one session. Since
+     DF-BUNKER-102, HEAD refuses at boot a daemon that takes its own
+     `agent.base_data_dir` but leaves `agent.registry.path` unset — that
+     borrows the default tree's registry — so the isolation set is
+     `agent.base_data_dir` + `agent.registry.path` + `audit.path` + distinct
+     ports.
    - *Non-root daemon behavior:* spawn proceeds (ports, dirs) until
      `useradd` needs root, then fails `exit 1` with the rollback path —
      correct, but easy to misread as a port/permission bug if you forgot the
