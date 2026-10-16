@@ -51,6 +51,26 @@ Two surfaces, deliberately:
     is the only place a whole-tree operation can be computed remotely instead of
     walked.
 
+Capability matrix (what this build serves via X-Bunker-Op):
+
+    Served:  capabilities  — list all ops and their status
+             snapshot      — populate the node tree in one call
+             events        — poll events (the watch refusal's fallback)
+
+    501 capability_unavailable (not in this build):
+             status          — cache, invalidation, conflicts, transport
+             diff            — tree diff against a revision
+             rev-parse       — resolve a ref to its tree hash
+             ls-files        — list tracked files in a tree
+             log             — commit history in envelope format
+
+    501 capability_unavailable (watch, mode=poll only):
+             watch           — real-time event stream; poll mode is served
+                              via the ` + "`" + `events` + "`" + ` op above instead
+
+    When an op is not served, the server returns a structured 501 with the
+    capability name, the scope, and a remediation pointer.
+
 It is NOT the default and does not become one until a battery on both DCs shows
 zero stalls.
 
