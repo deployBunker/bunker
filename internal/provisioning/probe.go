@@ -5,6 +5,12 @@
 // report a version is still PRESENT — the report says so rather than
 // pretending it is missing; a tool the catalog expects but the output omits
 // is UNKNOWN, never silently absent.
+//
+// The probe ALWAYS asks for the whole catalog (one exec, ~1s), and the
+// CLASS decides which entries the verdict covers. Asking per class would
+// make the report a different shape per class and hide an absent tool the
+// next class needs; reporting everything and requiring a subset keeps one
+// command shape and one wire form.
 package provisioning
 
 import (
@@ -35,36 +41,67 @@ func ProbeScript() string {
 	return strings.Replace(probeBody, "__TOOLS__", strings.Join(CatalogNames(), " "), 1)
 }
 
+// The two report statuses, uppercase on every surface (human table and JSON
+// alike): the SURF-009 acceptance asks for PRESENT/ABSENT by name, and one
+// spelling for both output forms is one less thing to get wrong.
+const (
+	StatusPresent = "PRESENT"
+	StatusAbsent  = "ABSENT"
+	// StatusUnknown is a catalog entry the probe did not report at all
+	// (truncated output). It counts as missing and is never silently absent.
+	StatusUnknown = "UNKNOWN"
+)
+
 // Finding is one probe result.
 type Finding struct {
 	Name     string `json:"name"`
-	Status   string `json:"status"` // present | absent | unknown
+	Status   string `json:"status"` // PRESENT | ABSENT | UNKNOWN
 	Version  string `json:"version"`
 	Kind     string `json:"kind"`
 	Builds   string `json:"builds"`
 	NeededBy string `json:"needed_by"`
-	Required bool   `json:"required"`
+	// Required is CLASS-derived: true when the checked class declares this
+	// entry. An absent tool the class does not require is not a failure.
+	Required bool `json:"required"`
 }
 
 // Report is the whole probe result and the --json wire shape of
 // `bunker toolchain-check`.
 type Report struct {
-	Agent   string    `json:"agent"`
-	Set     string    `json:"set"`
-	Tools   []Finding `json:"tools"`
-	Missing []string  `json:"missing"`
-	// AllPresent is the acceptance-shaped verdict: every Required entry of
-	// the declared set was probed present on this agent.
+	Agent string `json:"agent"`
+	// Class is the class this report was checked against.
+	Class string `json:"class"`
+	// ClassNote is what that class promises, report-facing.
+	ClassNote string `json:"class_note"`
+	Set       string `json:"set"`
+	// Required names the entries the class declares, in catalog order — the
+	// list the verdict is about, so a consumer never has to re-derive it.
+	Required []string  `json:"required"`
+	Tools    []Finding `json:"tools"`
+	Missing  []string  `json:"missing"`
+	// AllPresent is the acceptance-shaped verdict: every entry the CLASS
+	// requires was probed present on this agent.
 	AllPresent bool  `json:"all_present"`
 	ExitCode   int32 `json:"exit_code"`
 }
 
-// ParseProbeOutput turns the probe's tab-separated lines into a Report. An
-// omitted catalog entry is reported `unknown` so a truncated probe cannot
-// masquerade as a clean bill of health.
+// SetName is the declared set's report label (the SURF-009 row's five build
+// toolchains, plus the baseline interpreter the classes also promise).
+const SetName = "SURF-009 build toolchains"
+
+// ParseProbeOutput turns the probe's tab-separated lines into a Report for
+// the DEFAULT class (full). An omitted catalog entry is reported UNKNOWN so a
+// truncated probe cannot masquerade as a clean bill of health.
 func ParseProbeOutput(agentID, output string, exitCode int32) Report {
-	seen := map[string]string{}  // name -> version
-	present := map[string]bool{} // name -> reported present
+	return ParseProbeOutputFor(agentID, output, exitCode, defaultClass())
+}
+
+// ParseProbeOutputFor is the class-aware parse: the probe output is the whole
+// catalog, and class decides which entries are Required and therefore which
+// absence fails the verdict.
+func ParseProbeOutputFor(agentID, output string, exitCode int32, class Class) Report {
+	seen := map[string]string{}   // name -> version
+	reported := map[string]bool{} // name -> reported present
 	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimRight(line, "\r")
 		if strings.TrimSpace(line) == "" {
@@ -79,35 +116,50 @@ func ParseProbeOutput(agentID, output string, exitCode int32) Report {
 		if len(parts) == 3 {
 			version = strings.TrimSpace(parts[2])
 		}
-		present[name] = status == "present"
+		reported[name] = strings.EqualFold(status, "present")
 		seen[name] = version
 	}
 
 	report := Report{
-		Agent: agentID, Set: "SURF-009 build toolchains",
-		Tools: []Finding{}, Missing: []string{}, ExitCode: exitCode,
+		Agent: agentID, Class: class.Name, ClassNote: class.Note, Set: SetName,
+		Required: append([]string{}, class.Required...),
+		Tools:    []Finding{}, Missing: []string{}, ExitCode: exitCode,
 	}
 	for _, t := range catalog() {
-		status, version := "unknown", ""
-		if isPresent, reported := present[t.Name]; reported {
+		isPresent, wasReported := reported[t.Name]
+		status := StatusUnknown
+		version := ""
+		if wasReported {
 			version = seen[t.Name]
 			if isPresent {
-				status = "present"
+				status = StatusPresent
 			} else {
-				status = "absent"
+				status = StatusAbsent
 			}
 		}
+		required := class.Requires(t.Name)
 		report.Tools = append(report.Tools, Finding{
 			Name: t.Name, Status: status, Version: version,
-			Kind: string(t.Kind), Builds: t.Builds, NeededBy: t.NeededBy, Required: t.Required,
+			Kind: string(t.Kind), Builds: t.Builds, NeededBy: t.NeededBy, Required: required,
 		})
-		if t.Required && status != "present" {
+		if required && status != StatusPresent {
 			report.Missing = append(report.Missing, t.Name)
 		}
 	}
 	report.AllPresent = len(report.Missing) == 0
 	sort.Strings(report.Missing)
 	return report
+}
+
+// defaultClass returns the built-in default class. It panics only if the
+// package's own table stops containing DefaultClass — a compile-time-shaped
+// error that must never reach an operator as a silent fallback.
+func defaultClass() Class {
+	c, err := LookupClass(DefaultClass)
+	if err != nil {
+		panic(fmt.Sprintf("provisioning: %v", err))
+	}
+	return c
 }
 
 // StageOutcome is ONE delivery stage's parsed verdict.
@@ -147,15 +199,18 @@ func ParseStageOutput(name, output string) StageOutcome {
 }
 
 // StageScript returns the delivery program for one catalog name; a name with
-// no stage is an internal contract break, reported as an error.
+// no stage is an internal contract break, reported as an error. A base-image
+// entry has none by construction, and says so in its own words — an agent
+// missing python3 is a broken agent, not a delivery we can invent.
 func StageScript(name string) (string, error) {
 	for _, t := range catalog() {
-		if t.Name == name {
-			if t.Script == nil {
-				return "", fmt.Errorf("toolchain %q has no delivery stage", name)
-			}
-			return t.Script(), nil
+		if t.Name != name {
+			continue
 		}
+		if t.Script == nil {
+			return "", fmt.Errorf("toolchain %q is provided by the base image and has no delivery stage", name)
+		}
+		return t.Script(), nil
 	}
 	return "", fmt.Errorf("toolchain %q is not in the declared set", name)
 }

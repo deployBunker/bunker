@@ -18,15 +18,26 @@ import (
 // asserted by script IDENTITY, not by count: an exec that is not the
 // registered probe/delivery program fails the test.
 
-const toolchainAllPresentProbe = "go\tpresent\tgo version go1.25.4 linux/amd64\n" +
+const toolchainAllPresentProbe = "python3\tpresent\tPython 3.11.15\n" +
+	"go\tpresent\tgo version go1.25.4 linux/amd64\n" +
 	"gcc\tpresent\tgcc (Ubuntu 13.2.0-23ubuntu4) 13.2.0\n" +
 	"make\tpresent\tGNU Make 4.3\n" +
 	"node\tpresent\tv20.20.2\n" +
 	"cargo\tpresent\tcargo 1.89.0\n"
 
-const toolchainAllAbsentProbe = "go\tabsent\t\n" +
+const toolchainAllAbsentProbe = "python3\tabsent\t\n" +
+	"go\tabsent\t\n" +
 	"gcc\tabsent\t\n" +
 	"make\tabsent\t\n" +
+	"node\tabsent\t\n" +
+	"cargo\tabsent\t\n"
+
+// toolchainGoClassProbe is the shape the live proof measured: a box that can
+// build Go (and has the baseline interpreter) but has no C, JS or Rust chain.
+const toolchainGoClassProbe = "python3\tpresent\tPython 3.11.15\n" +
+	"go\tpresent\tgo version go1.25.4 linux/amd64\n" +
+	"gcc\tabsent\t\n" +
+	"make\tpresent\tGNU Make 4.3\n" +
 	"node\tabsent\t\n" +
 	"cargo\tabsent\t\n"
 
@@ -118,45 +129,111 @@ func TestToolchainCheckReportsAllPresentByName(t *testing.T) {
 	if !report.AllPresent {
 		t.Errorf("all_present = false, want true (%v)", report.Missing)
 	}
+	if report.Class != provisioning.ClassFull {
+		t.Errorf("class = %q, want the default %q", report.Class, provisioning.ClassFull)
+	}
 	var names []string
 	for _, f := range report.Tools {
 		names = append(names, f.Name)
-		if f.Status != "present" {
-			t.Errorf("%s status = %q, want present", f.Name, f.Status)
+		if f.Status != provisioning.StatusPresent {
+			t.Errorf("%s status = %q, want %q", f.Name, f.Status, provisioning.StatusPresent)
 		}
 	}
-	if got := strings.Join(names, ","); got != "go,gcc,make,node,cargo" {
+	if got := strings.Join(names, ","); got != "python3,go,gcc,make,node,cargo" {
 		t.Errorf("report names = %q, want the declared set", got)
 	}
 }
 
-// TestToolchainCheckMissingIsData pins the diagnostic contract: a missing
-// toolchain is DATA — exit 0 with the names and the remediation lines.
-func TestToolchainCheckMissingIsData(t *testing.T) {
+// TestToolchainCheckHumanOutputNamesEveryTool: the human form is one line
+// per tool with PRESENT or ABSENT, exactly as the row asks.
+func TestToolchainCheckHumanOutputNamesEveryTool(t *testing.T) {
 	fake := &toolchainFlowFake{responds: []func(string) (string, int32, error){
-		func(string) (string, int32, error) { return toolchainAllAbsentProbe, 0, nil },
+		func(string) (string, int32, error) { return toolchainGoClassProbe, 0, nil },
 	}}
-	out, _, err := runToolchainCommand(t, fake, "agt-check")
+	out, _, err := runToolchainCommand(t, fake, "agt-check", "--class", provisioning.ClassGo)
 	if err != nil {
-		t.Fatalf("a missing toolchain is data, not a failure: %v", err)
+		t.Fatalf("class go on a Go-capable box must exit 0: %v", err)
 	}
-	for _, want := range []string{"MISSING on the agent: cargo, gcc, go, make, node", "--deliver"} {
+	for _, want := range []string{
+		"python3  PRESENT  yes", "go       PRESENT  yes", "make     PRESENT  yes",
+		"gcc      ABSENT   no", "node     ABSENT   no", "cargo    ABSENT   no",
+		"class go: every required toolchain is PRESENT (python3, go, make)",
+	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("report missing %q:\n%s", want, out)
 		}
 	}
 }
 
+// TestToolchainCheckIncompleteIsTheGate pins the acceptance exit semantics:
+// the default is a GATE — an incomplete class exits 1 and names what is
+// missing.
+func TestToolchainCheckIncompleteIsTheGate(t *testing.T) {
+	fake := &toolchainFlowFake{responds: []func(string) (string, int32, error){
+		func(string) (string, int32, error) { return toolchainAllAbsentProbe, 0, nil },
+	}}
+	out, _, err := runToolchainCommand(t, fake, "agt-check")
+	if err == nil {
+		t.Fatal("an incomplete class must exit non-zero (the gate), got nil")
+	}
+	for _, want := range []string{"cargo", "gcc", "go", "make", "node", "python3"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the gate error must name %s: %v", want, err)
+		}
+	}
+	if !strings.Contains(out, "MISSING on the agent: cargo, gcc, go, make, node, python3") {
+		t.Errorf("the report must still list every missing name:\n%s", out)
+	}
+	if !strings.Contains(out, "--deliver --class full") {
+		t.Errorf("the report must carry the remediation line:\n%s", out)
+	}
+}
+
+// TestToolchainCheckReportOnlyIsData: --report-only keeps the reporting
+// contract for callers that want the answer as data.
+func TestToolchainCheckReportOnlyIsData(t *testing.T) {
+	fake := &toolchainFlowFake{responds: []func(string) (string, int32, error){
+		func(string) (string, int32, error) { return toolchainAllAbsentProbe, 0, nil },
+	}}
+	out, _, err := runToolchainCommand(t, fake, "agt-check", "--report-only")
+	if err != nil {
+		t.Fatalf("--report-only must never fail on a finding: %v", err)
+	}
+	if !strings.Contains(out, "MISSING on the agent:") {
+		t.Errorf("the data form must still name the missing set:\n%s", out)
+	}
+}
+
+// TestToolchainCheckUnknownClassFailsLocally: a class that is not declared is
+// a usage error before any RPC — never a silent fallback to a default.
+func TestToolchainCheckUnknownClassFailsLocally(t *testing.T) {
+	fake := &toolchainFlowFake{}
+	_, _, err := runToolchainCommand(t, fake, "agt-check", "--class", "everything")
+	if err == nil || !strings.Contains(err.Error(), "unknown toolchain class") {
+		t.Fatalf("unknown class must fail locally, got %v", err)
+	}
+	for _, want := range provisioning.ClassNames() {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the error must name the declared class %q: %v", want, err)
+		}
+	}
+	if len(fake.scripts) != 0 {
+		t.Errorf("no RPC may be sent for an unknown class, got %d execs", len(fake.scripts))
+	}
+}
+
 // TestToolchainCheckUnreachableAgentFails: only a probe that could not RUN
-// exits non-zero.
+// exits non-zero whatever the mode.
 func TestToolchainCheckUnreachableAgentFails(t *testing.T) {
 	fake := &toolchainFlowFake{execErr: connect.NewError(connect.CodeUnavailable, nil)}
-	_, _, err := runToolchainCommand(t, fake, "agt-check")
-	if err == nil {
-		t.Fatal("a probe that could not run must fail")
-	}
-	if !strings.Contains(err.Error(), "toolchain") {
-		t.Errorf("failure must name the surface: %v", err)
+	for _, mode := range [][]string{{}, {"--report-only"}} {
+		_, _, err := runToolchainCommand(t, fake, append([]string{"agt-check"}, mode...)...)
+		if err == nil {
+			t.Fatalf("a probe that could not run must fail (mode %v)", mode)
+		}
+		if !strings.Contains(err.Error(), "toolchain") {
+			t.Errorf("failure must name the surface: %v", err)
+		}
 	}
 }
 
@@ -172,8 +249,23 @@ func TestToolchainCheckRejectsBadAgentID(t *testing.T) {
 	}
 }
 
+// deliverableNames are the catalog entries with a delivery stage — the only
+// ones --deliver may exec.
+func deliverableNames(t *testing.T) []string {
+	t.Helper()
+	var names []string
+	for _, tc := range provisioning.Catalog() {
+		if tc.Script == nil {
+			continue
+		}
+		names = append(names, tc.Name)
+	}
+	return names
+}
+
 // deliverResponders builds the responder chain for --deliver: probe(absent),
-// one stage per missing tool (script asserted identical), probe(present).
+// one stage per deliverable missing name (script asserted identical),
+// probe(present).
 func deliverResponders(t *testing.T, probeBefore, probeAfter string) []func(string) (string, int32, error) {
 	t.Helper()
 	responders := []func(string) (string, int32, error){
@@ -184,7 +276,7 @@ func deliverResponders(t *testing.T, probeBefore, probeAfter string) []func(stri
 			return probeBefore, 0, nil
 		},
 	}
-	for _, name := range provisioning.CatalogNames() {
+	for _, name := range deliverableNames(t) {
 		stageScript, serr := provisioning.StageScript(name)
 		if serr != nil {
 			t.Fatalf("stage for %s: %v", name, serr)
@@ -218,12 +310,66 @@ func TestToolchainDeliverFlowVerifiesByReprobe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("delivery with a clean re-probe must succeed: %v\n%s", err, errOut)
 	}
-	// 1 probe + 5 stages + 1 verdict probe + 1 final check probe = 8 execs.
+	// 1 probe + 5 stages (python3 has none) + 1 verdict probe + 1 final
+	// report probe = 8 execs.
 	if len(fake.scripts) != 8 {
 		t.Errorf("exec count = %d, want 8 (probe, 5 stages, verdict probe, report probe)", len(fake.scripts))
 	}
 	if !strings.Contains(errOut, "delivered (already-present)") {
 		t.Errorf("progress lines must name each delivered tool:\n%s", errOut)
+	}
+}
+
+// TestToolchainDeliverCustomClassRunsOnlyThatClass: --deliver for the go
+// class must touch go and make only — no C, JS or Rust download.
+func TestToolchainDeliverCustomClassRunsOnlyThatClass(t *testing.T) {
+	// Before: go missing (python3 present, make present); after: all green.
+	// Only the go stage may run.
+	goStage, err := provisioning.StageScript("go")
+	if err != nil {
+		t.Fatalf("go stage: %v", err)
+	}
+	before := "python3\tpresent\tPython 3.11.15\n" +
+		"go\tabsent\t\n" +
+		"gcc\tabsent\t\n" +
+		"make\tpresent\tGNU Make 4.3\n" +
+		"node\tabsent\t\n" +
+		"cargo\tabsent\t\n"
+	fake := &toolchainFlowFake{responds: []func(string) (string, int32, error){
+		func(script string) (string, int32, error) {
+			if script != provisioning.ProbeScript() {
+				t.Fatalf("exec #1 must be the probe, got %.80q", script)
+			}
+			return before, 0, nil
+		},
+		func(script string) (string, int32, error) {
+			if script != goStage {
+				t.Fatalf("class go must run the go stage only, got %.80q", script)
+			}
+			return "go\tINSTALLED\tgo version go1.25.4 linux/amd64\n", 0, nil
+		},
+		func(script string) (string, int32, error) {
+			if script != provisioning.ProbeScript() {
+				t.Fatalf("verdict exec must be the probe, got %.80q", script)
+			}
+			return toolchainGoClassProbe, 0, nil
+		},
+		func(string) (string, int32, error) { return toolchainGoClassProbe, 0, nil },
+	}}
+	_, errOut, err := runToolchainCommand(t, fake, "agt-check", "--deliver", "--class", provisioning.ClassGo)
+	if err != nil {
+		t.Fatalf("go-class delivery must succeed: %v\n%s", err, errOut)
+	}
+	if len(fake.scripts) != 4 {
+		t.Errorf("exec count = %d, want 4 (probe, go stage, verdict probe, report probe)", len(fake.scripts))
+	}
+	for _, s := range fake.scripts {
+		for _, name := range []string{"gcc", "node", "cargo"} {
+			stage, _ := provisioning.StageScript(name)
+			if s == stage {
+				t.Errorf("class go must not run the %s stage", name)
+			}
+		}
 	}
 }
 
@@ -237,6 +383,9 @@ func TestToolchainDeliverIncompleteFails(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "still absent after delivery") {
 		t.Errorf("failure must name the still-absent set: %v", err)
+	}
+	if !strings.Contains(err.Error(), "class full") {
+		t.Errorf("failure must name the class it verified: %v", err)
 	}
 }
 
@@ -252,14 +401,14 @@ func TestToolchainDeliverStageFailureNamed(t *testing.T) {
 			return toolchainAllAbsentProbe, 0, nil
 		},
 	}
-	for _, name := range provisioning.CatalogNames() {
+	for _, name := range deliverableNames(t) {
 		stage, _ := provisioning.StageScript(name)
 		if name == "go" {
 			responders = append(responders, func(script string) (string, int32, error) {
 				if script != stage {
 					t.Fatalf("expected the go stage, got %.80q", script)
 				}
-				return "go	FAILED	toolchain checksum mismatch (expected 9fa5...)\n", 1, nil
+				return "go\tFAILED\ttoolchain checksum mismatch (expected 9fa5...)\n", 1, nil
 			})
 			continue
 		}
@@ -268,7 +417,7 @@ func TestToolchainDeliverStageFailureNamed(t *testing.T) {
 			if script != stage {
 				t.Fatalf("expected the %s stage, got %.80q", nm, script)
 			}
-			return nm + "	INSTALLED	already-present\n", 0, nil
+			return nm + "\tINSTALLED\talready-present\n", 0, nil
 		})
 	}
 	// The verdict re-probe: go is still absent (its stage failed).
@@ -298,7 +447,7 @@ func TestToolchainDeliverAlreadyPresentNoStages(t *testing.T) {
 		func(script string) (string, int32, error) { return toolchainAllPresentProbe, 0, nil },
 		func(string) (string, int32, error) { return toolchainAllPresentProbe, 0, nil },
 	}}
-	_, errOut, err := runToolchainCommand(t, fake, "agt-check", "--deliver")
+	_, errOut, err := runToolchainCommand(t, fake, "agt-check", "--deliver", "--class", provisioning.ClassFull)
 	if err != nil {
 		t.Fatalf("already-present delivery must succeed: %v", err)
 	}
@@ -315,26 +464,45 @@ func TestToolchainDeliverAlreadyPresentNoStages(t *testing.T) {
 // hasStageScript reports whether s is one of the registered stage scripts.
 func hasStageScript(s string) (string, bool) {
 	for _, name := range provisioning.CatalogNames() {
-		stage, _ := provisioning.StageScript(name)
-		if s == stage {
+		stage, err := provisioning.StageScript(name)
+		if err == nil && s == stage {
 			return name, true
 		}
 	}
 	return "", false
 }
 
-// TestSpawnHasToolchainsFlag pins the spawn-path wiring: the flag exists and
-// its help names the declared set.
+// TestSpawnHasToolchainsFlag pins the spawn-path wiring: the flag exists,
+// carries a CLASS, and defaults to no provisioning.
 func TestSpawnHasToolchainsFlag(t *testing.T) {
 	cmd := NewSpawnCommand()
 	f := cmd.Flags().Lookup("toolchains")
 	if f == nil {
 		t.Fatal("spawn must carry --toolchains")
 	}
-	if !strings.Contains(f.Usage, "go, gcc, make, node, cargo") {
-		t.Errorf("flag help must name the declared set: %s", f.Usage)
+	for _, want := range []string{"minimal", "go", "gcc", "make", "node", "cargo", "full"} {
+		if !strings.Contains(f.Usage, want) {
+			t.Errorf("flag help must name %q: %s", want, f.Usage)
+		}
 	}
-	if f.DefValue != "false" {
-		t.Errorf("--toolchains must default OFF (spawn compatibility), got %s", f.DefValue)
+	if f.DefValue != "" {
+		t.Errorf("--toolchains must default to OFF (no provisioning; spawn compatibility), got %q", f.DefValue)
+	}
+	if f.NoOptDefVal != provisioning.ClassFull {
+		t.Errorf("bare --toolchains must mean the full class, got NoOptDefVal %q", f.NoOptDefVal)
+	}
+}
+
+// TestSpawnRejectsUnknownToolchainClass: a bogus class must fail the command
+// before the spawn RPC (no agent created for a class nothing can build on).
+func TestSpawnRejectsUnknownToolchainClass(t *testing.T) {
+	cmd := NewSpawnCommand()
+	var out, errOut bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	cmd.SetArgs([]string{"--toolchains=bogus", "--server", "nowhere"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "unknown toolchain class") {
+		t.Fatalf("spawn --toolchains=bogus must fail on the class, got %v", err)
 	}
 }

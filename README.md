@@ -1249,17 +1249,24 @@ bunker agent-tools  Probe the agent (not the client) for the executables the
                    baked into an image at spawn instead via the image-spec
                    directive the command prints (ripgrep via apt, gopls via
                    go — specs/image-spec.md)
-bunker toolchain-check  Report the DECLARED build-toolchain set (go, gcc,
-                   make, node, cargo — SURF-009) present/absent by name on
-                   an agent; --deliver installs the missing ones in place
-                   without root (checksum-pinned go/node tarballs and
+bunker toolchain-check  Report a DECLARED build-toolchain CLASS present or
+                   absent BY NAME on an agent (SURF-009). --class selects
+                   the set: minimal (python3 only), go (go + make), full
+                   (go + gcc + make + node + cargo — the default). EXIT
+                   CODE IS THE GATE: 0 when every toolchain the class
+                   requires is present, 1 when any is missing (the names
+                   are printed and carried in the JSON `missing` array);
+                   --report-only makes it a pure report (always exit 0).
+                   --deliver installs the class's missing toolchains in
+                   place without root (checksum-pinned go/node tarballs and
                    rustup, the apt archive for gcc/make; every stage cached
                    under ~/.bunker/toolchains so re-runs are no-ops; the
                    verdict is a re-probe, never the installer's word).
-                   `bunker spawn --toolchains` provisions the same set
-                   right after creation; agents with the image-spec surface
-                   can instead bake the C/Make half in at spawn with the
-                   directive the command prints
+                   `bunker spawn --toolchains[=CLASS]` provisions a class
+                   right after creation (bare = full; absent = minimal, no
+                   provisioning); agents with the image-spec surface can
+                   instead bake the C/Make half in at spawn with the
+                   directive the command prints (docs/provisioning.md)
 bunker surface     Manage the agent's toolsd socket surface (systemd user
                    units; install/remove) and attach to it from this machine
                    (connect: forwards the agent's socket over SSH with the
