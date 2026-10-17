@@ -123,7 +123,18 @@ jobs:
           # newest RELEASE heading, not the first heading of any kind.
           changelog_top=$(grep -m1 -E '^## [0-9]' CHANGELOG.md | awk '{print $2}')
           echo "latest tag: ${latest_tag} | bunker version: ${cli_version} | CHANGELOG: ${changelog_top}"
-          test "${latest_tag}" = "v${cli_version}"
+          # INT-CI-072 (2026-10-17, wave tick): the 0.2.1 bump landed UNTAGGED (the
+          # maintainer cuts release tags manually), so a post-bump HEAD legitimately
+          # sits between tags and the tag==version equality can fail there.
+          # The hard gate still holds on CLI == CHANGELOG and at TAG time via the
+          # Tag build check below (which derives the expected version from the tag
+          # name and builds from the tag tree), so a tag can never be cut at a
+          # commit whose version disagrees with it.
+          if test "${latest_tag}" = "v${cli_version}"; then
+            echo "tag parity: OK (tag == version)"
+          else
+            echo "::warning::tag parity: latest tag ${latest_tag} != version v${cli_version} — between-tags release state; CLI==CHANGELOG still enforced, tag-side gate is the Tag build check"
+          fi
           test "${cli_version}" = "${changelog_top}"
 
       # Tag build check (GAP-041): `go install @latest` resolves to the latest
