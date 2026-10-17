@@ -457,6 +457,13 @@ func TestRewriteDockerHostSsh(t *testing.T) {
 			resolvedHost: "78.46.173.180",
 			want:         "",
 		},
+		{
+			name:         "preserves socket path query param",
+			s:            "DOCKER_HOST=ssh://***@bunker-mvp?path=/run/bunker/abc123/docker.sock",
+			serverHost:   "bunker-mvp",
+			resolvedHost: "78.46.173.180",
+			want:         "DOCKER_HOST=ssh://***@78.46.173.180?path=/run/bunker/abc123/docker.sock",
+		},
 	}
 
 	for _, tt := range tests {

@@ -1013,7 +1013,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 
 	resp := &v1.SpawnAgentResponse{
 		AgentId:          agentID,
-		DockerHostSsh:    fmt.Sprintf("DOCKER_HOST=ssh://%s@%s", username, host),
+		DockerHostSsh:    fmt.Sprintf("DOCKER_HOST=ssh://%s@%s?path=/run/bunker/%s/docker.sock", username, host, agentID),
 		DockerHostTunnel: dockerHostTunnel,
 		SshfsMount:       sshfsMount,
 		Limits:           effectiveLimits,

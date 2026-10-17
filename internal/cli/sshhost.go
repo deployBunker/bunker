@@ -39,7 +39,7 @@ var identityFileRE = regexp.MustCompile(`IdentityFile=\S+`)
 
 // dockerHostSshRE matches the host inside a DOCKER_HOST= ssh URL, e.g.
 // "DOCKER_HOST=ssh://bunker-abc123@bunker-mvp".
-var dockerHostSshRE = regexp.MustCompile(`(ssh://\S+@)[^\s/]+`)
+var dockerHostSshRE = regexp.MustCompile(`(ssh://\S+@)[^\s?/]+`)
 
 // resolveSSHHost returns the SSH host a client should use to reach an agent's
 // host machine, in precedence order:
