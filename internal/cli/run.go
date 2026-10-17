@@ -144,9 +144,10 @@ func NewRunCommand() *cobra.Command {
 Without --detach, the command runs synchronously and output is streamed to the
 local terminal, just like 'bunker exec'.
 
-With --detach, the command is started as a persistent systemd transient unit
-that survives the SSH session ending. A run ID and systemd unit name are
-printed on success.
+With --detach, the command is started as a persistent SYSTEM-level systemd
+transient unit (manageable via 'systemctl status <unit>' as root or with
+appropriate privileges, NOT 'systemctl --user'). The unit survives the SSH
+session ending. A run ID and systemd unit name are printed on success.
 
 Use -- to separate bunker flags from the command to execute, so that Docker
 flags such as --rm, --format, -d, and --name are not intercepted by the CLI.
@@ -231,7 +232,7 @@ Examples:
 					return decorateDeadline("run", fmt.Errorf("run agent: %w", err), parsed.timeout)
 				}
 				fmt.Printf("Run ID: %s\n", resp.Msg.GetRunId())
-				fmt.Printf("Unit: %s\n", resp.Msg.GetUnitName())
+				fmt.Printf("Unit: %s (system-level; manage with 'systemctl status %s' as root)\n", resp.Msg.GetUnitName(), resp.Msg.GetUnitName())
 				return nil
 			}
 
