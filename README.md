@@ -121,8 +121,8 @@ make build
 sudo mkdir -p /etc/bunkerd
 sudo tee /etc/bunkerd/config.yaml >/dev/null << 'EOF'
 server:
-  grpc_addr: ":9090"
-  rest_addr: ":8080"
+  grpc_addr: "127.0.0.1:9090"
+  rest_addr: "127.0.0.1:8080"
 auth:
   enabled: true
   token: "your-master-token-here"
@@ -159,6 +159,12 @@ curl -s http://127.0.0.1:8080/bunker.v1.Bunkerd/ServerInfo \
 # An unauthenticated POST to an RPC endpoint receives 401; the surface is
 # POST-only, so a plain GET returns 405 before auth even runs.
 ```
+
+The sample binds above are loopback (`127.0.0.1:9090` / `127.0.0.1:8080`),
+matching `config.example.yaml`; on a host with a public interface choose
+the control-plane bind deliberately — see
+[docs/threat-model.md](docs/threat-model.md) §9 (SEC-BUNKER-001) and the
+bind-discipline commentary in `config.example.yaml` before widening it.
 
 > **Server binding note:** mutating commands (`spawn`, `exec`, `destroy`,
 > `cp`, `mount`, `deploy`, `tunnel`, `ssh`, `renew`, `run`, `start`, `stop`,
@@ -343,8 +349,8 @@ Or write the file directly:
 ```bash
 cat > /etc/bunkerd/config.yaml << EOF
 server:
-  grpc_addr: ":9090"
-  rest_addr: ":8080"
+  grpc_addr: "127.0.0.1:9090"
+  rest_addr: "127.0.0.1:8080"
 
 agent:
   ssh_dir: /etc/bunkerd/ssh
@@ -369,6 +375,12 @@ auth:
   token: "your-master-token-here"
 EOF
 ```
+
+As in `config.example.yaml`, the binds above are loopback
+(`127.0.0.1:9090` / `127.0.0.1:8080`); on a host with a public interface
+choose the control-plane bind deliberately — see
+[docs/threat-model.md](docs/threat-model.md) §9 (SEC-BUNKER-001) and the
+bind-discipline commentary in `config.example.yaml` before widening it.
 
 #### Control-plane secrets (GAP-129 / SEC-14)
 
