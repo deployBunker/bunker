@@ -1,0 +1,37 @@
+{
+  "tick": "bunker-foreman-2026-10-17-02-53-05",
+  "created_at": "2026-10-17T03:06:54Z",
+  "budget": 3,
+  "base": "d04ac79e",
+  "tasks": [
+    {
+      "row": "INT-CI-072A (recurrence under INT-CI-037)",
+      "worktree": "/home/kara/worktrees/bunker-INT-CI-072A",
+      "branch": "wt/INT-CI-072A",
+      "files": ["internal/fsclient/bfs037_census_test.go"],
+      "summary": "BFS037 abandon_deadline census arm: one-shot RefreshInflight==0 read races the async slot-release defer (CI run 38871237590). Replace with hotWaitFor-polled assertion.",
+      "depends_on": [],
+      "worker_model": "glm-5.3-flash@zai-glm-default"
+    },
+    {
+      "row": "RELEASE-004 (release checkpoint; parent row RELEASE-003 family)",
+      "worktree": "/home/kara/worktrees/bunker-RELEASE-004",
+      "branch": "wt/RELEASE-004",
+      "files": ["internal/version/version.go", "CHANGELOG.md", "Makefile"],
+      "summary": "Release-cadence checkpoint: ~35 commits since tag v0.1.3. Bump version to 0.1.4, CHANGELOG entry, Makefile VERSION default alignment; NO git tag (manual tag cut by maintainer).",
+      "depends_on": [],
+      "worker_model": "glm-5.3-flash@zai-glm-default"
+    },
+    {
+      "row": "DOC-056 (docs triage)",
+      "worktree": "/home/kara/worktrees/bunker-DOC-056",
+      "branch": "wt/DOC-056",
+      "files": ["README.md", "docs/"],
+      "summary": "README quickstart gRPC :9090 all-interfaces vs internal default 127.0.0.1:9090 (external clients get connection refused). Align README + config example to live default.",
+      "depends_on": [],
+      "worker_model": "glm-5.3-flash@zai-glm-default"
+    }
+  ],
+  "independence": "verified: three disjoint file sets, no shared test files; per the coding-hermes-wave-dispatch wave gate rule (parallel test in the go.test.skip style) each branch's pending tests were tagged (wt-verify) and each will run /recorded pending off one tag",
+  "perf_notes": "worker model picked per fleet codex for this tick: sub-model (glm-5.3-flash) for small scoped fix + version bump + docs; all 3 fit the sub-model complexity cap."
+}
