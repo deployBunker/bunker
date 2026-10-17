@@ -316,8 +316,15 @@ func TestBFS037Cell08EverySkipAndAbandonReasonIsReachable(t *testing.T) {
 		}) {
 			t.Fatalf("no deadline abandon: %v", hotCensus(s.Manager))
 		}
-		if s.Manager.Stats().RefreshInflight != 0 {
-			t.Fatal("the abandoned refresh still holds its slot")
+		// The abandon census flag is observable live inside refreshFailed before
+		// the launch goroutine's deferred h.inflight.Add(-1) runs, so a one-shot
+		// read races the asynchronous release (CI run 38871237590, INT-CI-072);
+		// the poll bounds slot-release latency instead of racing one read.
+		if !hotWaitFor(t, "the abandoned refresh to release its slot",
+			10*time.Second, func() bool {
+				return s.Manager.Stats().RefreshInflight == 0
+			}) {
+			t.Fatalf("the abandoned refresh still holds its slot: %+v", s.Manager.Stats())
 		}
 		return censusArm{name: "deadline", abandon: HotAbandonDeadline, before: before, after: hotCensus(s.Manager),
 			note: "hot_refresh_deadline: hang up rather than hold a slot (P-11)"}
