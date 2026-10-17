@@ -2812,22 +2812,6 @@ tasks:
   status: complete
   created_at: '2026-09-21T05:34:27.301272+00:00'
   completed_at: '2026-09-21T05:46:31.387754+00:00'
-- id: RELEASE-004
-  title: 'Pre-cut sequencing for v0.2.0: release checklist + fail-fast pre-release
-    check script'
-  criteria:
-  - Repo contains docs/release-checklist.md documenting the version-authority parity
-    constraint (git describe latest_tag == bunker version == CHANGELOG newest numeric
-    heading) and the exact ordering that avoids a red tag-push (bump commit carrying
-    version.go+version_test+Makefile+CHANGELOG heading rename, tagged v0.2.0 and pushed
-    together); scripts/pre-release-check.sh exists, is POSIX-shell, exits 0 on the
-    current compliant tree (version 0.1.4 == tag == changelog heading), exits non-zero
-    with a named reason when version/changelog/Makefile disagree, and supports a --tag
-    mode verifying the tag points at HEAD; no premature version bump in this diff;
-    go build ./... passes; gitreins guard green
-  status: complete
-  created_at: '2026-09-21T06:30:35.353949+00:00'
-  completed_at: '2026-09-21T06:45:30.407485+00:00'
 - id: INT-CI-031
   title: 'INT-CI-031 unred CI: nested regression suite PATH pin + root-suite budget
     1050s'
@@ -4706,3 +4690,60 @@ tasks:
   status: complete
   created_at: '2026-10-17T00:55:24.105623+00:00'
   completed_at: '2026-10-17T00:59:49.576206+00:00'
+- id: INT-CI-072A
+  title: 'BFS037 abandon_deadline arm: observe-then-assert RefreshInflight race (recurrence
+    of INT-CI-072)'
+  criteria:
+  - 'The abandon_deadline census arm in internal/fsclient/bfs037_census_test.go asserts
+    RefreshInflight==0 by a single immediate read AFTER the abandon census flag was
+    already observed live; the slot release is a goroutine defer that runs after the
+    abandon bump, so on a loaded runner the read races the release (CI run 38871237590,
+    unit-tests job, 2026-10-16). Fix: poll the assertion with the fixture''s hotWaitFor
+    instead of a one-shot read, preserving the structural invariant (slot released
+    promptly, not never). Then: go test ./internal/fsclient -count=1 passes; go vet
+    ./... passes; gofmt clean; no other test files changed'
+  status: complete
+  created_at: '2026-10-17T03:06:05.201300+00:00'
+  completed_at: '2026-10-17T03:26:28.659068+00:00'
+- id: RELEASE-004
+  title: "Release checkpoint 0.2.1: promote the Unreleased CHANGELOG section into\
+    \ a dated release (verified live premise: latest git tag v0.2.0, internal/version\
+    \ Version=0.2.0, Makefile VERSION?=0.2.0 \u2014 the tag/version/changelog triad\
+    \ is CONSISTENT at 0.2.0; CI ci.yml:115-127 enforces tag==cli==newest ## [0-9]\
+    \ heading, reading past ## Unreleased per GAP-081)"
+  criteria:
+  - "Since v0.2.0 the repo has accumulated an Open \\'## Unreleased\\' CHANGELOG section\
+    \ (write-shape contract DF-BUNKER-100, supply-chain pinning GAP-135, and more).\
+    \ Promote it: (1) Rename \\'## Unreleased\\' to \\'## 0.2.1 (2026-10-17)\\' with\
+    \ all its bullets intact, leaving an empty Unreleased section above it for future\
+    \ use by CI variant \\'describe --tags\\'; (2) bump internal/version/version.go\
+    \ Version 0.2.0->0.2.1 (and the doc-comment example strings that say 0.2.0); (3)\
+    \ bump Makefile VERSION ?= 0.2.0 -> 0.2.1 (and the comment examples 0.2.0->0.2.1);\
+    \ (4) run make build && ./bunker version shows 0.2.1 with a real commit hash;\
+    \ go test ./internal/version ./cmd/bunker -count=1 passes. DO NOT push or create\
+    \ any git tag \u2014 the maintainer cuts v0.2.1 manually; the CI tag-authority\
+    \ gate will flag parity once the tag exists. DO NOT edit CHANGELOG entry contents.\
+    \ No other files."
+  status: complete
+  created_at: '2026-10-17T03:08:13.461712+00:00'
+  completed_at: '2026-10-17T03:26:08.225153+00:00'
+- id: DOC-056
+  title: README quick-start config blocks publish wildcard :9090/:8080 binds with
+    no bind-discipline caveat (DOC-056, SEC-BUNKER-001)
+  criteria:
+  - "Verified live premise: README.md:124 and README:346 (quick-start + Configure\
+    \ sample blocks that operators copy verbatim) set server.grpc_addr: :9090 and\
+    \ rest_addr: :8080 \u2014 the every-interface wildcard bind \u2014 with no mention\
+    \ of bind discipline, while config.example.yaml:26-35 ships loopback 127.0.0.1:9090/8080\
+    \ with the SEC-BUNKER-001 bind-discipline commentary (docs/threat-model.md section\
+    \ 9, commit 79f1f1e9 2026-10-10, landed AFTER the README sections were written).\
+    \ FIX: in both README sample config blocks change the two bind lines to loopback\
+    \ form (127.0.0.1:9090 / 127.0.0.1:8080) matching config.example.yaml, add ONE\
+    \ short sentence after each block pointing operators at docs/threat-model.md section\
+    \ 9 (SEC-BUNKER-001) and config.example.yaml bind-discipline commentary for choosing\
+    \ the safe bind on a host with a public interface. PASS: grep -n 127.0.0.1:9090\
+    \ README.md shows at least 1 hit AND grep -c threat-model README.md shows at least\
+    \ 1 hit. Do NOT touch config.example.yaml or any Go code; README.md only."
+  status: complete
+  created_at: '2026-10-17T03:09:40.336201+00:00'
+  completed_at: '2026-10-17T03:26:13.512987+00:00'
