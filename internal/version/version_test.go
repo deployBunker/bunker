@@ -7,12 +7,12 @@ import (
 
 // TestDefaults verifies the fallback values used when binaries are built
 // without -ldflags injection (e.g. `go build ./cmd/bunker` directly).
-// Version must track the latest tagged release (v0.2.0 prep, RELEASE-011). Commit and
+// Version must track the latest tagged release (v0.2.1 prep, RELEASE-004). Commit and
 // BuildDate must be non-empty: builds from a VCS checkout or a tagged module
 // install derive them from the embedded build info (GAP-042).
 func TestDefaults(t *testing.T) {
-	if Version != "0.2.0" {
-		t.Errorf("Version = %q, want 0.2.0", Version)
+	if Version != "0.2.1" {
+		t.Errorf("Version = %q, want 0.2.1", Version)
 	}
 	if Commit == "" {
 		t.Errorf("Commit = %q, want non-empty", Commit)

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.1 (2026-10-17)
+
 - **The bunker-fs mount's write shape is documented, printed and carried on its
   refusals (DF-BUNKER-100).** A dogfood session cloned a repository onto a
   bunker-fs mount and lost an afternoon: `git init` fails with `chmod on
