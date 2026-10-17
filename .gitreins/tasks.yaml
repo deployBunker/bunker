@@ -4758,3 +4758,15 @@ tasks:
   status: complete
   created_at: '2026-10-17T06:28:51.921387+00:00'
   completed_at: '2026-10-17T06:36:18.102693+00:00'
+- id: INT-CI-073
+  title: Repair corrupt host-global post-commit hook
+  criteria:
+  - 'Fix: /home/kara/.hermes/hooks/post-commit was truncated with 48 stacked #!/bin/sh
+    lines, so HILO graph warm never ran. Restore single-shebang hook. Verify: sh -n
+    passes, single shebang, hook executes. PASS: sh -n /home/kara/.hermes/hooks/post-commit
+    exits 0 AND grep -c ''#!/bin/sh'' = 1 AND git commit with core.hooksPath set confirms
+    hilo graph warm output. Files: docs/host-setup.md (documentation of the fix and
+    verification steps).'
+  status: complete
+  created_at: '2026-10-17T08:42:42.049199+00:00'
+  completed_at: '2026-10-17T08:42:52.904984+00:00'
