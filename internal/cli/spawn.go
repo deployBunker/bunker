@@ -319,10 +319,20 @@ Examples:
 			// agent exists and is usable, so we warn and continue. The
 			// fetch+save is shared with renew's re-spawn leg (DF-BUNKER-65);
 			// this leg only owns the printing.
+			//
+			// DF-BUNKER-47: the GetAgentKey RPC must authenticate. The spawn
+			// response may carry a fresh ApiKey (master credential) that the
+			// daemon expects for subsequent keyed RPCs; prefer it over the
+			// original session token, which may lack the master scope. Fall
+			// back to the session token when the response carries no ApiKey.
 			keyPath := ""
 			savedKeyPath := ""
+			fetchToken := token
+			if r.ApiKey != "" {
+				fetchToken = r.ApiKey
+			}
 			if r.SshPrivateKey == "" {
-				if p, ferr := fetchAndSaveAgentKey(ctx, client, r.AgentId, token); ferr != nil {
+				if p, ferr := fetchAndSaveAgentKey(ctx, client, r.AgentId, fetchToken); ferr != nil {
 					fmt.Printf("  (warn: could not fetch SSH key: %v)\n", ferr)
 				} else if p != "" {
 					r.SshPrivateKey = "fetched" // non-empty: the bundle prints the key line
@@ -354,12 +364,14 @@ Examples:
 			// rewritten tunnel line with a dangling "-i" plus a server-side
 			// path was DF-BUNKER-47's original complaint. Matches info.go,
 			// which already uses the defaultSSHKeyPath fallback unconditionally.
-			if keyPath == "" && r.SshPrivateKey != "" {
-				if p, err := defaultSSHKeyPath(r.AgentId); err == nil {
-					keyPath = p
-				}
-			}
-			if keyPath == "" && r.DockerHostTunnel != "" && r.AgentId != "" {
+			//
+			// DF-BUNKER-47: always resolve the default key path when keyPath
+			// is still empty, regardless of whether the fetch succeeded or
+			// the inline key arrived. The tunnel command and sshfs mount
+			// rewriters need a non-empty clientKey to replace the server-side
+			// path; an empty keyPath produces "-i " (empty) in the tunnel
+			// command, which is the original DF-BUNKER-47 complaint.
+			if keyPath == "" && r.AgentId != "" {
 				if p, err := defaultSSHKeyPath(r.AgentId); err == nil {
 					keyPath = p
 				}
