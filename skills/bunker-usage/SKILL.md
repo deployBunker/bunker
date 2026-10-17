@@ -289,7 +289,7 @@ real-use behavior:
 - `bunker exec <agent> --server <srv> --timeout <N> -- <cmd>` — SSH-based, 0.5s. Fast. `/tmp` persists on SSH-based agents (las-03). On image-spec agents (dedi-2), `/tmp` evaporates per exec (SURF-012).
 - `bunker exec --script <file>` — uploads and runs a local script. Works well for multi-step build+test+run.
 - `bunker run <agent> --server <srv> --timeout <N> -- <cmd>` — same speed as exec (0.6s).
-- `bunker run --detach` — starts a background process, but it's orphaned to PID 1, NOT a real systemd unit despite the printed unit name (DF-BUNKER-51).
+- `bunker run --detach` — RESOLVED (DF-BUNKER-51, measured on bunker-mvp 2026-10-16): the process runs in a REAL system-level systemd transient unit `bunker-run-<id>-<suffix>` created via `systemd-run --system --uid` on the DAEMON host. Manage it with `systemctl status/stop <unit>` ON THE DAEMON HOST as root — `systemctl --user` (even SSHed in as the agent) shows nothing, because it is not a user unit. Unit name printed since 6d8a1868 includes that hint.
 - `bunker env set/get/list/unset` — persistent env vars in `/run/bunker/<id>/env`. Works for GOPATH/GOCACHE/APP_MODE etc. BUT PATH is silently overridden by the SSH session (DF-BUNKER-48).
 - `bunker tunnel <agent>` — SSH tunnel to agent's Docker socket. Works perfectly: `DOCKER_HOST=tcp://localhost:2376 docker <cmd>` gives full Docker access.
 - `bunker mount <agent> [mountpoint] --server <srv>` — SSHFS mount. WORKS at HEAD (945cd5c) but BROKEN in released binary 00c3555 (DF-BUNKER-49). Always pass `--path /home/bunker-<id>` if using an older CLI.
