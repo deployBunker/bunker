@@ -4696,3 +4696,13 @@ tasks:
   status: complete
   created_at: '2026-10-16T15:11:58.195179+00:00'
   completed_at: '2026-10-16T15:57:03.471648+00:00'
+- id: INT-HOST-005
+  title: Fix awk token-masking loop pegging 100% CPU on bunker-mvp
+  criteria:
+  - 'Find the awk script/token-masking loop that has been running at 100% CPU (pid
+    1252867, 3600+ CPU-minutes since Sep 18) on bunker-mvp and fix it so it does not
+    spin. PASS: the offending awk process is no longer running at 100% CPU, or the
+    script is fixed to exit cleanly.'
+  status: complete
+  created_at: '2026-10-17T00:55:24.105623+00:00'
+  completed_at: '2026-10-17T00:59:49.576206+00:00'
