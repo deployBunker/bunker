@@ -4770,3 +4770,10 @@ tasks:
   status: complete
   created_at: '2026-10-17T08:42:42.049199+00:00'
   completed_at: '2026-10-17T08:58:37.365934+00:00'
+- id: SURF-B1
+  title: 'MEASURE FIRST: toolsd invocation ledger analysis'
+  criteria:
+  - Produce a recorded table of per-verb latency (local vs through-exec) and calls-per-session
+    distribution from REAL ledger data, plus explicit threshold statement
+  status: in_progress
+  created_at: '2026-10-18T01:35:05.944216+00:00'
