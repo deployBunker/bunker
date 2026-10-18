@@ -4778,3 +4778,12 @@ tasks:
   status: complete
   created_at: '2026-10-18T01:35:05.944216+00:00'
   completed_at: '2026-10-18T01:44:04.099175+00:00'
+- id: GAP-144
+  title: GAP-144 task row flipped to complete (orphan-closure repair)
+  criteria:
+  - GAP-144 canonical tasks.jsonl row reads status=complete with commit_hash 66a6eca1d15f38ccd566010193bfd641f8b4fb96,
+    matching the landed work; the close event exists once; board validate remains
+    OK; no source file changed (board-only diff, +2/-1).
+  status: complete
+  created_at: '2026-10-18T04:27:25.550866+00:00'
+  completed_at: '2026-10-18T04:27:46.771687+00:00'
