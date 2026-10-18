@@ -4775,5 +4775,6 @@ tasks:
   criteria:
   - Produce a recorded table of per-verb latency (local vs through-exec) and calls-per-session
     distribution from REAL ledger data, plus explicit threshold statement
-  status: in_progress
+  status: complete
   created_at: '2026-10-18T01:35:05.944216+00:00'
+  completed_at: '2026-10-18T01:44:04.099175+00:00'
