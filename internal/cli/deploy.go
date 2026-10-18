@@ -36,6 +36,11 @@ spawn time) unless overridden with --ssh-key.
 Unlike 'bunker cp', this command uses SCP's recursive mode (-r) to copy the
 entire directory tree. After the copy, file ownership is set to the agent user.
 
+If the recursive transfer fails part-way, the destination holds only a PREFIX
+of the tree. The CLI prints how many source files actually landed ("scp failed:
+X of Y files landed, destination may be incomplete") so a partial deploy is
+never mistaken for a complete one.
+
 Like 'bunker cp', this command is push-only (local → agent): pulling a file or
 directory FROM an agent is NOT supported here. Use 'bunker pull --recursive
 <agent-id> <remote-path> [local-dir]' (requires a build from HEAD: it shipped
@@ -159,10 +164,13 @@ Examples:
 			defer stopChildren()
 
 			// Execute recursive SCP. The agent user is resolved BEFORE scp so
-			// the failure path can name it in the ownership hint below.
+			// the failure path can name it in the ownership hint below. The
+			// copy's deadline scales with the tree: a flat 30s cap killed a
+			// 290-file transfer after 41 files on a real link (GAP-144).
 			sshUser := strings.SplitN(userAtHost, "@", 2)[0]
 			scpArgs := buildSCPArgs(keyPath, port, localPath, userAtHost, remotePath, true)
-			scpCtx, cancelSCP := context.WithTimeout(childCtx, copyChildBudget)
+			sourceFiles, _ := countLocalSourceFiles(localPath)
+			scpCtx, cancelSCP := context.WithTimeout(childCtx, deployCopyBudget(sourceFiles))
 			scpCmd := newLongLivedCommand(scpCtx, "scp", scpArgs...)
 			scpCmd.Stdout = cmd.OutOrStdout()
 			scpCmd.Stderr = cmd.ErrOrStderr()
@@ -173,9 +181,14 @@ Examples:
 				if childCtx.Err() != nil {
 					// Signalled: the group teardown already reaped the
 					// transfer; report the interruption, not "context
-					// canceled", and skip the ownership probe.
+					// canceled", and skip the probes.
 					return fmt.Errorf("scp -r: interrupted by a shutdown signal — the copy was stopped")
 				}
+				// GAP-144: a recursive copy that dies part-way leaves a
+				// PREFIX of the source tree at the destination (measured
+				// live: 49 of 290 files). Count what actually landed so the
+				// partial state is loud, not an rc-1 a caller can ignore.
+				reportSCPFailureState(cmd.ErrOrStderr(), keyPath, port, userAtHost, remotePath, localPath)
 				// scp's own stderr already went to the user (streamed
 				// above); it names no next step, so run ONE bounded probe
 				// over the same SSH path to explain an existing

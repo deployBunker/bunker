@@ -991,3 +991,377 @@ func TestCpCommand_HelpPullingFiles(t *testing.T) {
 		}
 	}
 }
+
+// ── GAP-144: scp identity pinning and partial-transfer reporting ────────────
+//
+// The ticket's root cause was "cp/deploy build scp without -o IdentitiesOnly=yes"
+// — which this tree already fixed (c238df46). What was genuinely missing is the
+// PARTIAL-TREE half: a failed scp left 49 of 290 files at the destination and
+// nothing but "exit status 1" to say so. These tests pin BOTH halves:
+//   - the identity pair is present in every scp argv shape (builder level) and
+//     in the argv the command actually executes (wiring level), and
+//   - a failed transfer reports landed/total, or says the count is unavailable.
+
+// scpIdentityArgs checks the load-bearing "-o IdentitiesOnly=yes" + "-i <key>"
+// pair appears exactly once each in args and returns the -i value.
+func scpIdentityArgs(t *testing.T, args []string) string {
+	t.Helper()
+
+	identitiesOnly := 0
+	for i := 0; i < len(args)-1; i++ {
+		if args[i] == "-o" && args[i+1] == "IdentitiesOnly=yes" {
+			identitiesOnly++
+		}
+	}
+	if identitiesOnly != 1 {
+		t.Fatalf("argv carries %d copies of \"-o IdentitiesOnly=yes\", want exactly 1: %v", identitiesOnly, args)
+	}
+
+	identityFile := ""
+	count := 0
+	for i := 0; i < len(args)-1; i++ {
+		if args[i] == "-i" {
+			count++
+			identityFile = args[i+1]
+		}
+	}
+	if count != 1 {
+		t.Fatalf("argv carries %d \"-i\" operands, want exactly 1: %v", count, args)
+	}
+	return identityFile
+}
+
+// TestBuildSCPArgsForcesIdentitiesOnly is AC1: table-driven construction test
+// over the shapes `bunker cp` produces. A loaded ssh-agent offers every key it
+// holds; without IdentitiesOnly a target sshd with the default MaxAuthTries=6
+// refuses the connection before the agent's own key is tried.
+func TestBuildSCPArgsForcesIdentitiesOnly(t *testing.T) {
+	// MOUNT-012: the mux options create ~/.bunker/mux — isolate HOME.
+	t.Setenv("HOME", t.TempDir())
+
+	tests := []struct {
+		name      string
+		keyPath   string
+		port      uint32
+		localPath string
+		remote    string
+		recursive bool
+	}{
+		{
+			name:      "single file, default port",
+			keyPath:   "/home/u/.bunker/keys/abc123",
+			port:      22,
+			localPath: "/tmp/app.conf",
+			remote:    "/srv/app.conf",
+		},
+		{
+			name:      "custom port",
+			keyPath:   "/home/u/.bunker/keys/abc123",
+			port:      2222,
+			localPath: "/tmp/app.conf",
+			remote:    "/srv/app.conf",
+		},
+		{
+			name:      "key path containing spaces stays one argv element",
+			keyPath:   "/home/u/.bunker/keys/my agent key",
+			port:      22,
+			localPath: "/tmp/app.conf",
+			remote:    "/srv/app.conf",
+		},
+		{
+			name:      "remote path containing spaces stays one argv element",
+			keyPath:   "/home/u/.bunker/keys/abc123",
+			port:      22,
+			localPath: "/tmp/app.conf",
+			remote:    "/srv/my app/app.conf",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			args := buildSCPArgs(tt.keyPath, tt.port, tt.localPath, "bunker-abc123@10.0.0.5", tt.remote, tt.recursive)
+
+			if got := scpIdentityArgs(t, args); got != tt.keyPath {
+				t.Errorf("-i value = %q, want the agent key %q", got, tt.keyPath)
+			}
+			if got := findOption(args, "IdentitiesOnly"); got != "yes" {
+				t.Errorf("IdentitiesOnly = %q, want yes", got)
+			}
+			// The identity must be offered BEFORE the operands, or ssh parses
+			// the trailing paths as further operands.
+			keyIdx, localIdx, destIdx := -1, -1, -1
+			for i, a := range args {
+				switch {
+				case a == "-i" && keyIdx < 0:
+					keyIdx = i
+				case a == tt.localPath && localIdx < 0:
+					localIdx = i
+				case a == "bunker-abc123@10.0.0.5:"+tt.remote:
+					destIdx = i
+				}
+			}
+			if keyIdx < 0 || localIdx < 0 || destIdx < 0 {
+				t.Fatalf("argv is missing an identity or operand: %v", args)
+			}
+			if keyIdx > localIdx || keyIdx > destIdx {
+				t.Errorf("-i at %d must precede the operands (local %d, dest %d): %v", keyIdx, localIdx, destIdx, args)
+			}
+			if strings.Contains(strings.Join(args, " "), " -r ") {
+				t.Errorf("bunker cp must not pass -r: %v", args)
+			}
+			if got := findOption(args, "ConnectTimeout"); got != "10" {
+				t.Errorf("ConnectTimeout = %q, want 10 (a hung handshake must not stall the copy)", got)
+			}
+		})
+	}
+}
+
+// TestSCPArgvCarriesIdentitiesOnlyEverywhere sweeps the family of connection
+// builders in this package: the -i + IdentitiesOnly pair is only load-bearing
+// if EVERY path that shells out to ssh/scp offers it, and a future builder
+// added without it would reopen GAP-144 for that command alone.
+func TestSCPArgvCarriesIdentitiesOnlyEverywhere(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	const (
+		keyPath    = "/home/u/.bunker/keys/abc123"
+		userAtHost = "bunker-abc123@10.0.0.5"
+	)
+	builders := map[string]func() []string{
+		"buildSCPArgs (cp)":        func() []string { return buildSCPArgs(keyPath, 22, "/tmp/f", userAtHost, "/srv/f", false) },
+		"buildSCPArgs (deploy -r)": func() []string { return buildSCPArgs(keyPath, 22, "/tmp/d", userAtHost, "/srv/d", true) },
+		"buildPullSCPArgs":         func() []string { return buildPullSCPArgs(keyPath, 22, userAtHost, "/srv/f", "/tmp", false) },
+		"buildSSHArgs":             func() []string { return buildSSHArgs(keyPath, 22, userAtHost, nil) },
+		"buildSSHProbeArgs":        func() []string { return buildSSHProbeArgs(keyPath, 22, userAtHost, "/srv/f") },
+		"buildSSHCountArgs":        func() []string { return buildSSHCountArgs(keyPath, 22, userAtHost, "/srv/f") },
+	}
+	for name, build := range builders {
+		args := build()
+		if got := scpIdentityArgs(t, args); got != keyPath {
+			t.Errorf("%s: -i value = %q, want %q", name, got, keyPath)
+		}
+		if got := findOption(args, "IdentitiesOnly"); got != "yes" {
+			t.Errorf("%s: IdentitiesOnly = %q, want yes", name, got)
+		}
+	}
+}
+
+// TestCountLocalSourceFiles pins the denominator of the partial-transfer
+// report: every regular file a copy would move, nested dirs included, and
+// symlinks excluded (scp does not follow them by default).
+func TestCountLocalSourceFiles(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "a", "b"), 0755); err != nil {
+		t.Fatalf("mkdir nested: %v", err)
+	}
+	for _, rel := range []string{"one.txt", "a/two.txt", "a/b/three.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, rel), []byte("x"), 0644); err != nil {
+			t.Fatalf("write %s: %v", rel, err)
+		}
+	}
+	// A symlink is an entry of its own: not followed, not counted.
+	if err := os.Symlink(filepath.Join(dir, "one.txt"), filepath.Join(dir, "link.txt")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	got, err := countLocalSourceFiles(dir)
+	if err != nil {
+		t.Fatalf("countLocalSourceFiles(dir): %v", err)
+	}
+	if got != 3 {
+		t.Errorf("directory file count = %d, want 3 (symlink excluded)", got)
+	}
+
+	got, err = countLocalSourceFiles(filepath.Join(dir, "one.txt"))
+	if err != nil {
+		t.Fatalf("countLocalSourceFiles(file): %v", err)
+	}
+	if got != 1 {
+		t.Errorf("single-file count = %d, want 1", got)
+	}
+
+	if _, err := countLocalSourceFiles(filepath.Join(dir, "missing")); err == nil {
+		t.Error("countLocalSourceFiles(missing) returned no error, want a stat failure")
+	}
+}
+
+// TestParseRemoteFileCount: only wc's single integer is a measurement. Anything
+// else must be an error — reading an unparseable probe as "0 landed" would
+// understate the damage of a partial copy.
+func TestParseRemoteFileCount(t *testing.T) {
+	ok := []struct {
+		in   string
+		want int
+	}{
+		{"49\n", 49},
+		{"  290  \n", 290},
+		{"0\n", 0},
+	}
+	for _, tt := range ok {
+		got, err := parseRemoteFileCount(tt.in)
+		if err != nil {
+			t.Errorf("parseRemoteFileCount(%q): unexpected error %v", tt.in, err)
+			continue
+		}
+		if got != tt.want {
+			t.Errorf("parseRemoteFileCount(%q) = %d, want %d", tt.in, got, tt.want)
+		}
+	}
+	bad := []string{"", "   \n", "root:root", "-3", "1 2", "wc: command not found"}
+	for _, in := range bad {
+		if _, err := parseRemoteFileCount(in); err == nil {
+			t.Errorf("parseRemoteFileCount(%q) returned no error, want a parse failure", in)
+		}
+	}
+}
+
+// TestCpCommand_ScpInvocationCarriesIdentitiesOnly is the WIRING half of AC1:
+// a builder-level assertion proves nothing about what the command executes, so
+// this drives `bunker cp` against a recording scp stub and inspects the real
+// argv (key, port, identity mode, operands).
+func TestCpCommand_ScpInvocationCarriesIdentitiesOnly(t *testing.T) {
+	t.Setenv(SessionTargetEnvVar, "custom-server")
+	localFile := setupCpFailureTest(t, cpTestSSHFSMount)
+
+	binDir := t.TempDir()
+	argvRecord := filepath.Join(t.TempDir(), "scp-argv.txt")
+	scpStub := filepath.Join(binDir, "scp")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$CP_SCP_RECORD\"\n" +
+		"echo 'Received disconnect from 10.0.0.5 port 22:2: Too many authentication failures' >&2\nexit 1\n"
+	if err := os.WriteFile(scpStub, []byte(script), 0755); err != nil {
+		t.Fatalf("write scp stub: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+	t.Setenv("CP_SCP_RECORD", argvRecord)
+
+	// Measure nothing over the (absent) ssh binary: this test is about argv.
+	oldCount := scpFileCountFn
+	scpFileCountFn = func(string, uint32, string, string) (int, error) { return 0, errors.New("not measured here") }
+	t.Cleanup(func() { scpFileCountFn = oldCount })
+	oldProbe := cpOwnershipProbeFn
+	cpOwnershipProbeFn = func(string, uint32, string, string) (string, error) { return "", nil }
+	t.Cleanup(func() { cpOwnershipProbeFn = oldProbe })
+
+	_, _, err := runCpCommand(t, localFile, "test-agent:/tmp/test.txt")
+	if err == nil {
+		t.Fatal("cp succeeded against a failing scp stub")
+	}
+
+	raw, readErr := os.ReadFile(argvRecord)
+	if readErr != nil {
+		t.Fatalf("scp was never invoked: %v", readErr)
+	}
+	argv := string(raw)
+	keyPath, _ := defaultSSHKeyPath("test-agent")
+	for _, want := range []string{
+		"-o\nIdentitiesOnly=yes",
+		"-i\n" + keyPath,
+		"-P\n22",
+		"bunker-test-agent@127.0.0.1:/tmp/test.txt",
+		"\n" + localFile + "\n",
+	} {
+		if !strings.Contains(argv, want) {
+			t.Errorf("executed scp argv missing %q; got:\n%s", want, argv)
+		}
+	}
+	if strings.Contains(argv, "\n-r\n") {
+		t.Errorf("bunker cp must not pass -r; got:\n%s", argv)
+	}
+}
+
+// TestCpCommand_PartialTransferReported is AC2 for the single-file path: a
+// failed scp must say what landed, and must stay loud when the destination
+// cannot be measured at all.
+func TestCpCommand_PartialTransferReported(t *testing.T) {
+	t.Setenv(SessionTargetEnvVar, "custom-server")
+
+	tests := []struct {
+		name     string
+		landed   int
+		countErr error
+		want     []string
+	}{
+		{
+			name:   "landed count measured",
+			landed: 0,
+			want:   []string{"scp failed: 0 of 1 files landed", "destination may be incomplete", "/tmp/test.txt"},
+		},
+		{
+			name:   "a partial file counts as landed",
+			landed: 1,
+			want:   []string{"scp failed: 1 of 1 files landed", "destination may be incomplete"},
+		},
+		{
+			name:     "count probe unreachable stays loud without counts",
+			countErr: errors.New("ssh: connect to host 127.0.0.1 port 22: Connection refused"),
+			want:     []string{"destination /tmp/test.txt may be incomplete", "could not be measured", "Connection refused"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			localFile := setupCpFailureTest(t, cpTestSSHFSMount)
+			scpFailureBinDir(t)
+
+			var probedKey, probedHost string
+			var probedPort uint32
+			var probedPath string
+			oldCount := scpFileCountFn
+			scpFileCountFn = func(keyPath string, port uint32, userAtHost, remotePath string) (int, error) {
+				probedKey, probedPort, probedHost, probedPath = keyPath, port, userAtHost, remotePath
+				return tt.landed, tt.countErr
+			}
+			t.Cleanup(func() { scpFileCountFn = oldCount })
+			oldProbe := cpOwnershipProbeFn
+			cpOwnershipProbeFn = func(string, uint32, string, string) (string, error) { return "", nil }
+			t.Cleanup(func() { cpOwnershipProbeFn = oldProbe })
+
+			out, errOut, err := runCpCommand(t, localFile, "test-agent:/tmp/test.txt")
+			if err == nil {
+				t.Fatalf("cp succeeded against a failing scp (out=%q)", out)
+			}
+			if !strings.Contains(err.Error(), "scp:") {
+				t.Errorf("error %q lost the original scp error", err)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(errOut, want) {
+					t.Errorf("stderr %q missing %q", errOut, want)
+				}
+			}
+			if !strings.Contains(errOut, "re-run the copy before using it") {
+				t.Errorf("stderr %q does not name the remedy", errOut)
+			}
+			if strings.Contains(out, "Copied ") {
+				t.Errorf("stdout reports a copy that did not complete: %q", out)
+			}
+			// The measurement must run over the SAME identity scp used.
+			keyPath, _ := defaultSSHKeyPath("test-agent")
+			if probedKey != keyPath || probedPort != 22 || probedHost != "bunker-test-agent@127.0.0.1" || probedPath != "/tmp/test.txt" {
+				t.Errorf("count probe used key=%q port=%d host=%q path=%q, want key=%q port=22 host=bunker-test-agent@127.0.0.1 path=/tmp/test.txt",
+					probedKey, probedPort, probedHost, probedPath, keyPath)
+			}
+		})
+	}
+}
+
+// TestReportSCPFailureStateUnreadableSource covers the other degraded branch:
+// the denominator itself cannot be counted, and the message must still say the
+// destination is untrustworthy rather than print a made-up ratio.
+func TestReportSCPFailureStateUnreadableSource(t *testing.T) {
+	var buf strings.Builder
+	oldCount := scpFileCountFn
+	scpFileCountFn = func(string, uint32, string, string) (int, error) { return 7, nil }
+	t.Cleanup(func() { scpFileCountFn = oldCount })
+
+	reportSCPFailureState(&buf, "/k", 22, "u@h", "/srv/app", filepath.Join(t.TempDir(), "gone"))
+
+	got := buf.String()
+	if !strings.Contains(got, "destination /srv/app may be incomplete") {
+		t.Errorf("message %q does not mark the destination incomplete", got)
+	}
+	if !strings.Contains(got, "source file count could not be read") {
+		t.Errorf("message %q does not explain the missing denominator", got)
+	}
+	if strings.Contains(got, " of ") {
+		t.Errorf("message %q invented a ratio it could not compute", got)
+	}
+}

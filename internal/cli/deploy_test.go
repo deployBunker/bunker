@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 
@@ -546,5 +548,185 @@ func TestDeployCommand_PullShapedInvocation(t *testing.T) {
 				t.Errorf("stdout reports a deploy that never happened: %q", out)
 			}
 		})
+	}
+}
+
+// ── GAP-144: recursive deploy — identity pinning + partial-tree reporting ───
+
+// TestDeploySCPArgsForcesIdentitiesOnly is AC1 for the recursive path: the
+// deployed argv must carry the same "-o IdentitiesOnly=yes" + "-i <key>" pair
+// as `bunker cp` (without it a loaded ssh-agent burns the target's MaxAuthTries
+// before the agent's own key is offered, aborting mid-tree), plus -r.
+func TestDeploySCPArgsForcesIdentitiesOnly(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // mux dir isolation (MOUNT-012)
+
+	const keyPath = "/home/u/.bunker/keys/abc123"
+	for _, port := range []uint32{22, 2222} {
+		args := buildSCPArgs(keyPath, port, "/tmp/tree", "bunker-abc123@10.0.0.5", "/home/bunker-abc123/tree", true)
+
+		if got := scpIdentityArgs(t, args); got != keyPath {
+			t.Errorf("port %d: -i value = %q, want the agent key %q", port, got, keyPath)
+		}
+		if got := findOption(args, "IdentitiesOnly"); got != "yes" {
+			t.Errorf("port %d: IdentitiesOnly = %q, want yes", port, got)
+		}
+		if args[len(args)-3] != "-r" {
+			t.Errorf("port %d: recursive deploy must pass -r before the operands: %v", port, args)
+		}
+		if want := fmt.Sprintf("%d", port); findOption(args, "ConnectTimeout") != "10" || args[len(args)-2] != "/tmp/tree" {
+			t.Errorf("port %d: malformed deploy argv: %v", port, args)
+		} else if got := args[len(args)-4]; got != want {
+			t.Errorf("port %d: -P = %q, want %q", port, got, want)
+		}
+	}
+}
+
+// TestDeployCommand_ScpInvocationCarriesIdentitiesOnly drives the REAL recursive
+// deploy against a recording scp stub: the wiring — not just the builder — must
+// hand scp the agent key and IdentitiesOnly.
+func TestDeployCommand_ScpInvocationCarriesIdentitiesOnly(t *testing.T) {
+	t.Setenv(SessionTargetEnvVar, "custom-server")
+	localDir := setupDeployFailureTest(t)
+
+	binDir := t.TempDir()
+	argvRecord := filepath.Join(t.TempDir(), "scp-argv.txt")
+	scpStub := filepath.Join(binDir, "scp")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$CP_SCP_RECORD\"\n" +
+		"echo 'Received disconnect from 10.0.0.5 port 22:2: Too many authentication failures' >&2\nexit 1\n"
+	if err := os.WriteFile(scpStub, []byte(script), 0755); err != nil {
+		t.Fatalf("write scp stub: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+	t.Setenv("CP_SCP_RECORD", argvRecord)
+
+	oldCount := scpFileCountFn
+	scpFileCountFn = func(string, uint32, string, string) (int, error) { return 0, errors.New("not measured here") }
+	t.Cleanup(func() { scpFileCountFn = oldCount })
+	oldProbe := cpOwnershipProbeFn
+	cpOwnershipProbeFn = func(string, uint32, string, string) (string, error) { return "", nil }
+	t.Cleanup(func() { cpOwnershipProbeFn = oldProbe })
+
+	_, _, err := runDeployCommand(t, localDir, "test-agent:/tmp/payload")
+	if err == nil {
+		t.Fatal("deploy succeeded against a failing scp stub")
+	}
+
+	raw, readErr := os.ReadFile(argvRecord)
+	if readErr != nil {
+		t.Fatalf("scp was never invoked: %v", readErr)
+	}
+	argv := string(raw)
+	keyPath, _ := defaultSSHKeyPath("test-agent")
+	for _, want := range []string{
+		"-o\nIdentitiesOnly=yes",
+		"-i\n" + keyPath,
+		"bunker-test-agent@127.0.0.1:/tmp/payload",
+		"\n-r\n",
+	} {
+		if !strings.Contains(argv, want) {
+			t.Errorf("executed scp argv missing %q; got:\n%s", want, argv)
+		}
+	}
+}
+
+// TestDeployCommand_PartialTransferReported is AC2 for the recursive path — the
+// exact shape of the GAP-144 finding: a tree of 3 files whose transfer died
+// after 2 must report that ratio instead of leaving "exit status 1" alone.
+func TestDeployCommand_PartialTransferReported(t *testing.T) {
+	t.Setenv(SessionTargetEnvVar, "custom-server")
+
+	tests := []struct {
+		name     string
+		landed   int
+		countErr error
+		want     []string
+	}{
+		{
+			name:   "partial tree measured",
+			landed: 2,
+			want:   []string{"scp failed: 2 of 3 files landed", "destination may be incomplete", "/tmp/payload"},
+		},
+		{
+			name:   "nothing landed",
+			landed: 0,
+			want:   []string{"scp failed: 0 of 3 files landed", "destination may be incomplete"},
+		},
+		{
+			name:     "unmeasurable destination still warns",
+			countErr: errors.New("ssh: connect to host 127.0.0.1 port 22: Connection refused"),
+			want:     []string{"destination /tmp/payload may be incomplete", "could not be measured"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			localDir := setupDeployFailureTest(t)
+			// Three source files, so the reported denominator is a real count.
+			for _, name := range []string{"b.conf", "c.conf"} {
+				if err := os.WriteFile(filepath.Join(localDir, name), []byte("payload"), 0644); err != nil {
+					t.Fatalf("write %s: %v", name, err)
+				}
+			}
+			scpFailureBinDir(t)
+
+			oldCount := scpFileCountFn
+			scpFileCountFn = func(string, uint32, string, string) (int, error) { return tt.landed, tt.countErr }
+			t.Cleanup(func() { scpFileCountFn = oldCount })
+			oldProbe := cpOwnershipProbeFn
+			cpOwnershipProbeFn = func(string, uint32, string, string) (string, error) { return "", nil }
+			t.Cleanup(func() { cpOwnershipProbeFn = oldProbe })
+
+			out, errOut, err := runDeployCommand(t, localDir, "test-agent:/tmp/payload")
+			if err == nil {
+				t.Fatalf("deploy succeeded against a failing scp (out=%q)", out)
+			}
+			if !strings.Contains(err.Error(), "scp -r:") {
+				t.Errorf("error %q lost the original scp error", err)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(errOut, want) {
+					t.Errorf("stderr %q missing %q", errOut, want)
+				}
+			}
+			if !strings.Contains(errOut, "re-run the copy before using it") {
+				t.Errorf("stderr %q does not name the remedy", errOut)
+			}
+			if strings.Contains(out, "Deployed ") {
+				t.Errorf("stdout reports a deploy that did not complete: %q", out)
+			}
+		})
+	}
+}
+
+// TestDeployCopyBudgetScalesWithTree pins the transfer deadline: a flat budget
+// killed the live GAP-144 reproduction after 41 of 290 files (~0.7s/file on the
+// wire), so the recursive budget must grow with the tree and still terminate.
+func TestDeployCopyBudgetScalesWithTree(t *testing.T) {
+	tests := []struct {
+		files int
+		want  time.Duration
+	}{
+		{0, copyChildBudget},
+		{1, copyChildBudget + deployCopyPerFileBudget},
+		{290, copyChildBudget + 290*deployCopyPerFileBudget},
+		{100000, maxDeployCopyBudget},
+	}
+	for _, tt := range tests {
+		if got := deployCopyBudget(tt.files); got != tt.want {
+			t.Errorf("deployCopyBudget(%d) = %s, want %s", tt.files, got, tt.want)
+		}
+	}
+
+	// Monotonic, and never below the single-file floor.
+	prev := time.Duration(0)
+	for _, files := range []int{0, 1, 10, 290, 1000, 100000} {
+		got := deployCopyBudget(files)
+		if got < prev {
+			t.Errorf("deployCopyBudget(%d) = %s shrank below the previous step %s", files, got, prev)
+		}
+		if got < copyChildBudget {
+			t.Errorf("deployCopyBudget(%d) = %s is below the copyChildBudget floor %s", files, got, copyChildBudget)
+		}
+		prev = got
 	}
 }

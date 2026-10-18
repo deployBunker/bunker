@@ -3,10 +3,12 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -48,6 +50,11 @@ When the copy fails because the destination already exists on the agent host
 and is owned by another user (e.g. a host-owned /tmp path), the CLI prints an
 ownership hint naming the current owner and the agent's user instead of only
 scp's raw error.
+
+A failed transfer can leave a partial file at the destination. In that case the
+CLI prints how many source files actually landed ("scp failed: X of Y files
+landed, destination may be incomplete") so a half-written copy is never mistaken
+for a complete one.
 
 Examples:
   bunker cp ./config.yaml abc12345:/home/bunker-abc12345/config.yaml
@@ -195,9 +202,13 @@ path as the second — is refused and names these same remedies.`,
 				if childCtx.Err() != nil {
 					// The CLI was signalled: the group teardown above already
 					// reaped the transfer, so report the interruption instead
-					// of a misleading "context canceled" and skip the probe.
+					// of a misleading "context canceled" and skip the probes.
 					return fmt.Errorf("scp: interrupted by a shutdown signal — the copy was stopped")
 				}
+				// GAP-144: a failed scp can leave a PREFIX of the source at
+				// the destination. Say how much landed before anything else,
+				// so a partial copy cannot be mistaken for a complete one.
+				reportSCPFailureState(cmd.ErrOrStderr(), keyPath, port, userAtHost, remotePath, localPath)
 				// scp's own stderr already went to the user (streamed
 				// above); it names no next step, so run ONE bounded probe
 				// over the same SSH path to explain an existing
@@ -264,6 +275,13 @@ func parseSSHUserHost(sshfsMount string) (string, error) {
 }
 
 // buildSCPArgs constructs the arguments for the scp command.
+//
+// The identity pair ("-o IdentitiesOnly=yes" + "-i keyPath") is LOAD-BEARING
+// and must never be dropped or reordered behind the destination (GAP-144):
+// without it scp offers every key the local ssh-agent holds, and a target
+// sshd with the default MaxAuthTries=6 kills the connection with "Too many
+// authentication failures" before the agent's own key is ever tried. That
+// arrives as a mid-tree transfer abort, not a clean refusal.
 func buildSCPArgs(keyPath string, port uint32, localPath, userAtHost, remotePath string, recursive bool) []string {
 	args := append([]string{
 		"-o", "StrictHostKeyChecking=no",
@@ -283,6 +301,139 @@ func buildSCPArgs(keyPath string, port uint32, localPath, userAtHost, remotePath
 	return args
 }
 
+// ── partial-transfer reporting (GAP-144) ────────────────────────────────────
+//
+// scp exits non-zero for a transfer that died part-way — an auth failure after
+// MaxAuthTries, one unreadable/persistently-failing entry inside a recursive
+// copy, a dropped connection. By then the destination holds a PREFIX of the
+// source tree (measured once: 49 of 290 files), and any consumer that ignores
+// the exit status — or only checks that the directory exists — runs against an
+// incomplete directory and reports a green-looking, evidence-free result.
+//
+// The CLI does not delete the destination: it may have pre-existed with the
+// agent's own data, and a failed copy is no license to remove it. Instead the
+// failure is made LOUD by measuring how many source files are actually present
+// at the destination and printing the counts (or, when the destination cannot
+// be reached to measure, saying plainly that the count is unavailable).
+
+// scpFileCountFunc is the injectable runner seam for the landed-file probe:
+// tests substitute it to exercise every measurement outcome without a host.
+type scpFileCountFunc func(keyPath string, port uint32, userAtHost, remotePath string) (int, error)
+
+// scpFileCountFn counts the regular files present at a destination on the
+// agent host. Package-level so it can be stubbed in tests.
+var scpFileCountFn scpFileCountFunc = probeRemoteFileCount
+
+// countLocalSourceFiles counts the regular files a copy would transfer: 1 for
+// a single file, the recursive count for a directory. Symlinks are not counted
+// (scp does not follow them by default), so the denominator is what the
+// transfer was actually asked to move.
+func countLocalSourceFiles(root string) (int, error) {
+	info, err := os.Stat(root)
+	if err != nil {
+		return 0, err
+	}
+	if !info.IsDir() {
+		return 1, nil
+	}
+	count := 0
+	walkErr := filepath.WalkDir(root, func(_ string, d os.DirEntry, err error) error {
+		if err != nil {
+			// An unreadable entry does not abort the count: the figure is
+			// used for a warning, and a partial denominator beats none.
+			return nil
+		}
+		if d.IsDir() || d.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+		if d.Type().IsRegular() {
+			count++
+		}
+		return nil
+	})
+	if walkErr != nil {
+		return 0, walkErr
+	}
+	return count, nil
+}
+
+// probeRemoteFileCount runs ONE bounded ssh command over the same SSH path scp
+// just used (same key, port, user@host) and counts the regular files under the
+// destination. A missing destination yields 0 with a nil error: find prints
+// nothing to stdout (stderr is discarded) and wc still answers.
+func probeRemoteFileCount(keyPath string, port uint32, userAtHost, remotePath string) (int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), cpProbeTimeout)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, "ssh", buildSSHCountArgs(keyPath, port, userAtHost, remotePath)...).Output()
+	if err != nil {
+		return 0, err
+	}
+	return parseRemoteFileCount(string(out))
+}
+
+// buildSSHCountArgs constructs the ssh argv for the landed-file probe: the same
+// connection options as buildSCPArgs (same key/port/userAtHost, same
+// IdentitiesOnly guard), with a file count instead of a transfer. The remote
+// path is single-quoted for the remote POSIX shell.
+func buildSSHCountArgs(keyPath string, port uint32, userAtHost, remotePath string) []string {
+	return append([]string{
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "LogLevel=ERROR",
+		"-o", "ConnectTimeout=10",
+		"-o", "IdentitiesOnly=yes",
+	}, append(sshMultiplexArgs(keyPath, port, userAtHost),
+		"-i", keyPath,
+		"-p", fmt.Sprintf("%d", port),
+		userAtHost,
+		fmt.Sprintf("find %s -type f 2>/dev/null | wc -l", quotePOSIX(remotePath)),
+	)...)
+}
+
+// parseRemoteFileCount reads the single integer `wc -l` prints. Anything else
+// (an ssh banner, a stat error relayed to stdout, no output at all) is an
+// error: an unmeasurable destination must not be read as "0 files landed".
+func parseRemoteFileCount(out string) (int, error) {
+	fields := strings.Fields(out)
+	if len(fields) != 1 {
+		return 0, fmt.Errorf("unexpected remote file count output %q", strings.TrimSpace(out))
+	}
+	n, err := strconv.Atoi(fields[0])
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("unparseable remote file count %q", strings.TrimSpace(out))
+	}
+	return n, nil
+}
+
+// reportSCPFailureState makes a half-finished transfer loud instead of leaving
+// a silently partial destination behind (GAP-144). It never fails the caller:
+// the scp error is what gets returned, and this only adds the missing context
+// that turns "exit status 1" into "49 of 290 files landed".
+//
+// The landed figure is bounded by the source count: a destination that already
+// held files can report more entries than the source has, and the probe cannot
+// tell which of them are new — the degraded, honest number is the source total,
+// with the warning still printed.
+func reportSCPFailureState(w io.Writer, keyPath string, port uint32, userAtHost, remotePath, localSource string) {
+	total, totalErr := countLocalSourceFiles(localSource)
+	landed, countErr := scpFileCountFn(keyPath, port, userAtHost, remotePath)
+
+	var detail string
+	switch {
+	case totalErr != nil:
+		detail = fmt.Sprintf("destination %s may be incomplete — the source file count could not be read (%v)", remotePath, totalErr)
+	case countErr != nil:
+		detail = fmt.Sprintf("destination %s may be incomplete — the landed file count could not be measured (%v)", remotePath, countErr)
+	default:
+		if landed > total {
+			landed = total
+		}
+		detail = fmt.Sprintf("%d of %d files landed, destination may be incomplete: %s", landed, total, remotePath)
+	}
+	_, _ = fmt.Fprintf(w, "scp failed: %s — remove it or re-run the copy before using it\n", detail)
+}
+
 // cpProbeTimeout bounds the post-failure ownership probe. It is deliberately
 // short: one bounded round trip, never a retry (this is a message-quality
 // fix, not a retry fix — DF-BUNKER-17).
@@ -296,6 +447,33 @@ const cpProbeTimeout = 10 * time.Second
 // instead of a side effect of the RPC's: an over-running step still fails, and
 // a signal still reaps the child while it runs.
 const copyChildBudget = 30 * time.Second
+
+const (
+	// deployCopyPerFileBudget is how much extra wall clock one source file is
+	// worth to a recursive deploy. Measured live on bunker-mvp while closing
+	// GAP-144: a 290-file tree copied at ~0.7s/file, so the flat copyChildBudget
+	// killed scp after 41 files and left the destination a partial tree.
+	deployCopyPerFileBudget = 2 * time.Second
+	// maxDeployCopyBudget caps the scaled budget, so a pathological tree (or a
+	// wedged transfer) still terminates instead of hanging the CLI forever.
+	maxDeployCopyBudget = 30 * time.Minute
+)
+
+// deployCopyBudget returns the deadline for the recursive scp step of
+// `bunker deploy`. The copy is proportional to the number of source files, so a
+// flat budget is wrong in both directions: too small and a real tree dies
+// part-way (the GAP-144 symptom), too large and a wedged transfer lingers. This
+// scales with the tree and stays bounded.
+func deployCopyBudget(files int) time.Duration {
+	budget := copyChildBudget
+	if files > 0 {
+		budget += time.Duration(files) * deployCopyPerFileBudget
+	}
+	if budget > maxDeployCopyBudget {
+		return maxDeployCopyBudget
+	}
+	return budget
+}
 
 // cpOwnershipProbeFunc is the injectable runner seam for the ownership probe:
 // tests substitute it to exercise every probe outcome without a live host.
