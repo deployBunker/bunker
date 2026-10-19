@@ -9,6 +9,15 @@ This exists because the DESIGN question ("does the daemon spawn toolsd as the us
 by execution, and the answer is reusable: **the agent's own systemd starts the service as the agent
 on first connect, and SSH hands the client the socket. The daemon is not in the data path.**
 
+> **SURF-B2 update:** the socket address moved from the shared `/run/user/<uid>/toolsd.sock`
+> to the per-agent runtime directory `/run/bunker/<agent-id>/toolsd.sock` (mode 0700,
+> agent-owned), the local forward end is pinned to exactly 0700
+> (`StreamLocalBindMask=0077` + a stat read-back before the READY line), and the auth
+> model is documented — the uid IS the auth, the SSH key remains the credential, no new
+> port, no firewall change. The authoritative page is
+> [docs/spec/SURF-B2-socket-transport.md](docs/spec/SURF-B2-socket-transport.md); the
+> steps below keep the original `%t` paths for provenance.
+
 ## The shape
 
 ```
