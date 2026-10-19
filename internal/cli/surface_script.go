@@ -297,13 +297,17 @@ func buildSurfaceRemoveScript(agentID string) string {
 }
 
 // surfaceTCPProbeScript is the SURF-B2 no-TCP listener proof, run ON THE
-// AGENT: it lists every listening TCP socket and prints the count. The
-// contract is `TCP\tcount=0` — ANY other count is a failure of the transport
-// claim, not a warning. `ss` is preferred (iproute2 is on every spawn base
-// image); when it is absent the script prints count=unknown and the CALLER
-// treats unknown as a failure to prove, not as a pass.
+// AGENT as the agent user: it counts LISTENING TCP SOCKETS OWNED BY THE
+// SURFACE (process name toolsd), not the whole host — the agent is a plain
+// user on the daemon host, so sshd/bunkerd/dockerd listeners belong to other
+// components and are not this transport's. The contract is `TCP\tcount=0`:
+// the surface is connection-activated (zero toolsd processes before the
+// first connect), so ANY toolsd-owned TCP listener is a failure of the
+// unix-only transport claim. `ss` is preferred (iproute2 is on every spawn
+// base image); when it is absent the script prints count=unknown and the
+// CALLER treats unknown as a failure to prove, not as a pass.
 const surfaceTCPProbeScript = `if command -v ss >/dev/null 2>&1; then
-  n=$(ss -H -tln 2>/dev/null | wc -l)
+  n=$(ss -H -tlnp 2>/dev/null | grep -c 'users:(("toolsd"')
 else
   n=unknown
 fi
@@ -311,7 +315,7 @@ printf 'TCP\tcount=%s\n' "$n"
 `
 
 // surfaceCheckScript answers the recipe's live checks in ONE exec, as
-// CHECK\tkey=value lines so the verdict is parsed, not eyeballed:
+// CHECK	key=value lines so the verdict is parsed, not eyeballed:
 //
 //	socket_active : systemctl --user is-active toolsd.socket
 //	socket_meta   : owner and mode of the agent's runtime-dir socket (the
@@ -321,37 +325,40 @@ printf 'TCP\tcount=%s\n' "$n"
 //	toolsd_procs  : pgrep -c toolsd BEFORE any connect (must be 0 — the
 //	                service is connection-activated; a pre-running toolsd
 //	                means something else spawned it)
-//	tcp_listeners : listening TCP sockets on the agent (must be 0 — the
-//	                transport is the unix socket only; unknown = unproven)
+//	tcp_listeners : listening TCP sockets owned by the surface (must be 0 —
+//	                the transport is the unix socket only; unknown =
+//	                unproven). Host listeners belonging to other components
+//	                (sshd, bunkerd, dockerd) are not this transport's and
+//	                are excluded by the process-name match.
 func surfaceCheckScript(agentID string) string {
 	socketPath := surfaceToolsdSocketPath(agentID)
 	return `exec 2>&1
 p=` + quoteShell(socketPath) + `
 d=/run/bunker/` + agentID + `
 state=$(systemctl --user is-active ` + surfaceSocketUnitName + ` 2>/dev/null || true)
-printf 'CHECK\tsocket_active=%s\n' "$state"
+printf 'CHECK	socket_active=%s\n' "$state"
 if [ -S "$p" ]; then
   own=$(stat -c '%U' "$p" 2>/dev/null || echo unknown)
   mode=$(stat -c '%a' "$p" 2>/dev/null || echo unknown)
-  printf 'CHECK\tsocket_meta=%s:%s\n' "$own" "$mode"
+  printf 'CHECK	socket_meta=%s:%s\n' "$own" "$mode"
 else
-  printf 'CHECK\tsocket_meta=absent\n'
+  printf 'CHECK	socket_meta=absent\n'
 fi
 if [ -d "$d" ]; then
   down=$(stat -c '%U' "$d" 2>/dev/null || echo unknown)
   dm=$(stat -c '%a' "$d" 2>/dev/null || echo unknown)
-  printf 'CHECK\tdir_meta=%s:%s\n' "$down" "$dm"
+  printf 'CHECK	dir_meta=%s:%s\n' "$down" "$dm"
 else
-  printf 'CHECK\tdir_meta=absent\n'
+  printf 'CHECK	dir_meta=absent\n'
 fi
 procs=$(pgrep -c -x toolsd 2>/dev/null || echo 0)
-printf 'CHECK\ttoolsd_procs=%s\n' "$procs"
+printf 'CHECK	toolsd_procs=%s\n' "$procs"
 if command -v ss >/dev/null 2>&1; then
-  tcp=$(ss -H -tln 2>/dev/null | wc -l)
+  tcp=$(ss -H -tlnp 2>/dev/null | grep -c 'users:(("toolsd"')
 else
   tcp=unknown
 fi
-printf 'CHECK\ttcp_listeners=%s\n' "$tcp"
+printf 'CHECK	tcp_listeners=%s\n' "$tcp"
 `
 }
 
