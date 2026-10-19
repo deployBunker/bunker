@@ -150,11 +150,13 @@ sudo ./bunkerd --config /etc/bunkerd/config.yaml
 ./bunker exec demo-agent --server bunker-host -- uname -a
 ./bunker destroy demo-agent --server bunker-host
 
-# 6. REST probe (optional): the daemon also speaks JSON over HTTP. /healthz is
-#    unauthenticated by design; everything else needs the bearer token:
-curl -sf http://127.0.0.1:8080/healthz
-curl -s http://127.0.0.1:8080/bunker.v1.Bunkerd/ServerInfo \
-    -H 'Content-Type: application/json' -H 'Authorization: Bearer your-master-token-here' \
+# 6. REST probe (optional): the daemon also speaks JSON over HTTPS. /healthz is
+#    unauthenticated by design; everything else needs the bearer token.
+#    The -k flag is needed because the daemon uses a self-signed certificate
+#    (tls.self_signed: true above); for production, use --cacert with your CA.
+curl -skf https://127.0.0.1:8080/healthz
+curl -sk https://127.0.0.1:8080/bunker.v1.Bunkerd/ServerInfo \
+    -H 'Content-Type: application/json' -H 'Authorization: Bearer your-m...here' \
     -d '{}'
 # An unauthenticated POST to an RPC endpoint receives 401; the surface is
 # POST-only, so a plain GET returns 405 before auth even runs.
