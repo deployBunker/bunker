@@ -1189,6 +1189,30 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool, 
 		}
 	}
 
+	// Step 4b.5 (INT-HOST-006): unload and remove the rootlesskit AppArmor
+	// profile spawn installed for this agent
+	// (/etc/apparmor.d/home.bunker-<id>.bin.rootlesskit, ensureRootlesskitAppArmor
+	// in rootless.go). Every spawn writes and loads one; no destroy path ever
+	// unloaded or removed it, so every spawn+destroy cycle leaked a profile
+	// file plus a loaded kernel profile (18,043 orphans measured on
+	// bunker-mvp vs ~120 baseline). Runs AFTER userdel (the profile names the
+	// agent's home binary, but the kernel profile and the /etc file outlive
+	// the user record) and beside the Step 4b rootlesskit scrub whose userns
+	// the profile exists to allow. Best-effort and never fatal — the destroy
+	// has already succeeded; the orphan-sweep class of follow-ups remains the
+	// backstop for hosts that accumulated the pre-fix backlog. Budgeted step
+	// (BNK-DF-001): the apparmor_parser exec is compensating and must never
+	// no-op on a dead request ctx.
+	if actx, acancel, _ := rb.step(); acancel != nil {
+		if err := removeAgentAppArmorProfileCtx(actx, agentID); err != nil {
+			m.logger.Warn("apparmor profile cleanup incomplete",
+				"agent_id", agentID, "error", err)
+		} else {
+			m.logger.Info("apparmor profile removed", "agent_id", agentID)
+		}
+		acancel()
+	}
+
 	// Step 4.5: Clean up persisted SSH key (DF-BUNKER-24: the same helper is
 	// also used by the two early returns above and by the reconcile purge, so
 	// every path that concludes the agent is gone converges on the same state
