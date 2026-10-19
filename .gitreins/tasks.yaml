@@ -4792,5 +4792,6 @@ tasks:
   criteria:
   - Update remote-bunker skill with SURF-018 measured performance numbers; document
     mount timeout bounds
-  status: in_progress
+  status: complete
   created_at: '2026-10-19T03:37:37.028711+00:00'
+  completed_at: '2026-10-19T03:37:41.350757+00:00'
