@@ -4795,3 +4795,13 @@ tasks:
   status: complete
   created_at: '2026-10-19T03:37:37.028711+00:00'
   completed_at: '2026-10-19T03:37:41.350757+00:00'
+- id: SURF-B2
+  title: 'Socket transport + lifecycle: agent-local 0700 unix socket under systemd
+    --user SOCKET ACTIVATION'
+  criteria:
+  - 'PASS: a remote socket reachable as a local socket over SSH with zero TCP listeners
+    and a 0700 local end; bunker exec/cp/deploy byte-identically unaffected with the
+    service present; and the per-session lifetime demonstrated.'
+  status: complete
+  created_at: '2026-10-19T07:55:18.689732+00:00'
+  completed_at: '2026-10-19T10:12:52.094782+00:00'
