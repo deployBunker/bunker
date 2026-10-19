@@ -60,7 +60,7 @@ func runSurfaceInstall(cmd *cobra.Command, ctx context.Context, client bunkerv1c
 
 	ictx, cancel := context.WithTimeout(ctx, surfaceOperationTimeout)
 	defer cancel()
-	installOut, exitCode, err := execOnAgentScript(ictx, client, entry, agentID, buildSurfaceInstallScript(), 0)
+	installOut, exitCode, err := execOnAgentScript(ictx, client, entry, agentID, buildSurfaceInstallScript(agentID), 0)
 	if err != nil {
 		return fmt.Errorf("install units on agent %q: %w", agentID, err)
 	}
@@ -72,7 +72,7 @@ func runSurfaceInstall(cmd *cobra.Command, ctx context.Context, client bunkerv1c
 
 	vctx, cancelV := context.WithTimeout(ctx, surfaceOperationTimeout)
 	defer cancelV()
-	verifyOut, vExit, err := execOnAgentScript(vctx, client, entry, agentID, surfaceVerifyScript, 0)
+	verifyOut, vExit, err := execOnAgentScript(vctx, client, entry, agentID, surfaceVerifyScript(agentID), 0)
 	if err != nil {
 		return fmt.Errorf("verify on agent %q: %w", agentID, err)
 	}
@@ -135,7 +135,7 @@ func runSurfaceRemove(cmd *cobra.Command, ctx context.Context, client bunkerv1co
 
 	rctx, cancel := context.WithTimeout(ctx, surfaceOperationTimeout)
 	defer cancel()
-	remOut, exitCode, err := execOnAgentScript(rctx, client, entry, agentID, buildSurfaceRemoveScript(), 0)
+	remOut, exitCode, err := execOnAgentScript(rctx, client, entry, agentID, buildSurfaceRemoveScript(agentID), 0)
 	if err != nil {
 		return fmt.Errorf("remove units on agent %q: %w", agentID, err)
 	}

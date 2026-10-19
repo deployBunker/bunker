@@ -97,12 +97,23 @@ func captureSurfaceConnectExec(t *testing.T) (name *string, args *[]string) {
 	return &capturedName, &capturedArgs
 }
 
-// stubSurfaceWait makes the post-start socket wait succeed immediately (the
-// in-process echo child publishes no socket), the deliverFileFunc pattern.
+// stubSurfaceWait makes the post-start socket wait succeed AND publishes a
+// real 0700 unix socket at the requested path — what a StreamLocalBindMask=
+// 0077 forward really does — so the RunE's stat-it-back assertion is exercised
+// by every flow test instead of being stubbed away (the deliverFileFunc
+// pattern). The socket is removed at test cleanup.
 func stubSurfaceWait(t *testing.T) {
 	t.Helper()
 	old := surfaceWaitForSocket
 	surfaceWaitForSocket = func(ctx context.Context, path string, within time.Duration, child *exec.Cmd) error {
+		ln, err := net.Listen("unix", path)
+		if err != nil {
+			return err
+		}
+		t.Cleanup(func() { _ = ln.Close() })
+		if err := os.Chmod(path, 0o700); err != nil {
+			return err
+		}
 		return nil
 	}
 	t.Cleanup(func() { surfaceWaitForSocket = old })
@@ -178,7 +189,7 @@ func TestBuildSurfaceConnectSSHArgs(t *testing.T) {
 	opts := surfaceConnectOptions{
 		AgentID:    "abc123",
 		LocalPath:  "/tmp/bunker-toolsd-abc123.sock",
-		RemotePath: "/run/user/4242/toolsd.sock",
+		RemotePath: "/run/bunker/abc123/toolsd.sock",
 		UserAtHost: "bunker-abc123@203.0.113.10",
 		KeyPath:    "/home/o/.bunker/keys/abc123",
 	}
@@ -190,9 +201,10 @@ func TestBuildSurfaceConnectSSHArgs(t *testing.T) {
 		"-o LogLevel=ERROR",
 		"-o IdentitiesOnly=yes",
 		"-o ExitOnForwardFailure=yes",
+		"-o StreamLocalBindMask=0077",
 		"-i /home/o/.bunker/keys/abc123",
 		"-N",
-		"-L /tmp/bunker-toolsd-abc123.sock:/run/user/4242/toolsd.sock",
+		"-L /tmp/bunker-toolsd-abc123.sock:/run/bunker/abc123/toolsd.sock",
 		"bunker-abc123@203.0.113.10",
 	} {
 		if !strings.Contains(joined, want) {
@@ -204,78 +216,159 @@ func TestBuildSurfaceConnectSSHArgs(t *testing.T) {
 	}
 }
 
-func TestParseSurfaceCheckOutput(t *testing.T) {
-	out := "exec 2>&1 noise\nWarning: something\n" +
-		"CHECK\tsocket_active=active\n" +
-		"CHECK\tsocket_meta=bunker-abc123:600\n" +
-		"CHECK\ttoolsd_procs=0\n"
-	active, meta, procs := parseSurfaceCheckOutput(out)
-	if active != "active" || meta != "bunker-abc123:600" || procs != "0" {
-		t.Errorf("parse = (%q, %q, %q), want (active, bunker-abc123:600, 0)", active, meta, procs)
+// TestSurfaceAssertLocalSocketMode: the READY gate is the stat-it-back — a
+// real socket at 0700 passes; any wider mode, or a non-socket path, fails.
+func TestSurfaceAssertLocalSocketMode(t *testing.T) {
+	dir := t.TempDir()
+	good := filepath.Join(dir, "good.sock")
+	ln, err := net.Listen("unix", good)
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	// The temp dir's own mode can leak through bind-time umask application on
+	// some hosts; the assertion under test is about the FILE mode, so set it
+	// explicitly (what StreamLocalBindMask guarantees in production).
+	if err := os.Chmod(good, 0o700); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	if err := surfaceAssertLocalSocketMode(good); err != nil {
+		t.Errorf("a 0700 socket must pass, got: %v", err)
 	}
 
-	active, meta, procs = parseSurfaceCheckOutput("no check lines at all\n")
-	if active != "" || meta != "" || procs != "" {
-		t.Errorf("missing lines must parse empty, got (%q, %q, %q)", active, meta, procs)
+	wide := filepath.Join(dir, "wide.sock")
+	ln2, err := net.Listen("unix", wide)
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { _ = ln2.Close() })
+	if err := os.Chmod(wide, 0o755); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	err = surfaceAssertLocalSocketMode(wide)
+	if err == nil || !strings.Contains(err.Error(), "0700") {
+		t.Errorf("a wider socket must be refused naming 0700, got: %v", err)
+	}
+
+	err = surfaceAssertLocalSocketMode(filepath.Join(dir, "absent.sock"))
+	if err == nil {
+		t.Error("an absent socket must be refused")
+	}
+	if err := surfaceAssertLocalSocketMode(dir); err == nil {
+		t.Error("a non-socket path must be refused")
+	}
+}
+
+func TestParseSurfaceCheckOutput(t *testing.T) {
+	out := "exec 2>&1 noise\nWarning: something\n" +
+		"CHECK	socket_active=active\n" +
+		"CHECK	socket_meta=bunker-abc123:600\n" +
+		"CHECK	dir_meta=bunker-abc123:700\n" +
+		"CHECK	toolsd_procs=0\n" +
+		"CHECK	tcp_listeners=0\n"
+	active, meta, dirMeta, procs, tcp := parseSurfaceCheckOutput(out)
+	if active != "active" || meta != "bunker-abc123:600" || dirMeta != "bunker-abc123:700" || procs != "0" || tcp != "0" {
+		t.Errorf("parse = (%q, %q, %q, %q, %q), want the five CHECK values", active, meta, dirMeta, procs, tcp)
+	}
+
+	active, meta, dirMeta, procs, tcp = parseSurfaceCheckOutput("no check lines at all\n")
+	if active != "" || meta != "" || dirMeta != "" || procs != "" || tcp != "" {
+		t.Errorf("missing lines must parse empty, got (%q, %q, %q, %q, %q)", active, meta, dirMeta, procs, tcp)
 	}
 }
 
 func TestEvaluateSurfaceCheck(t *testing.T) {
 	t.Run("healthy", func(t *testing.T) {
-		st := evaluateSurfaceCheck("abc123", "active", "bunker-abc123:600", "0", "bunker-abc123")
+		st := evaluateSurfaceCheck("abc123", "active", "bunker-abc123:600", "bunker-abc123:700", "0", "0", "bunker-abc123")
 		if !st.OK {
 			t.Errorf("healthy state must pass, failures: %v", st.Failures)
 		}
-		if st.Owner != "bunker-abc123" || st.Mode != "600" || st.ToolsdProcs != "0" {
+		if st.Owner != "bunker-abc123" || st.Mode != "600" || st.ToolsdProcs != "0" || st.DirMode != "700" || st.TCPListeners != "0" {
 			t.Errorf("state fields wrong: %+v", st)
 		}
 	})
 	t.Run("inactive socket named", func(t *testing.T) {
-		st := evaluateSurfaceCheck("abc123", "inactive", "bunker-abc123:600", "0", "bunker-abc123")
+		st := evaluateSurfaceCheck("abc123", "inactive", "bunker-abc123:600", "bunker-abc123:700", "0", "0", "bunker-abc123")
 		if st.OK || len(st.Failures) != 1 || !strings.Contains(st.Failures[0], "socket_active: inactive") {
 			t.Errorf("inactive socket must be one named failure, got: %+v", st)
 		}
 	})
 	t.Run("empty systemctl answer named", func(t *testing.T) {
-		st := evaluateSurfaceCheck("abc123", "", "bunker-abc123:600", "0", "bunker-abc123")
+		st := evaluateSurfaceCheck("abc123", "", "bunker-abc123:600", "bunker-abc123:700", "0", "0", "bunker-abc123")
 		if st.OK || !strings.Contains(strings.Join(st.Failures, "; "), "no answer from systemctl") {
 			t.Errorf("empty active must be a named failure, got: %+v", st)
 		}
 	})
 	t.Run("wrong owner named", func(t *testing.T) {
-		st := evaluateSurfaceCheck("abc123", "active", "root:600", "0", "bunker-abc123")
+		st := evaluateSurfaceCheck("abc123", "active", "root:600", "bunker-abc123:700", "0", "0", "bunker-abc123")
 		if st.OK || !strings.Contains(strings.Join(st.Failures, "; "), `owner is "root"`) {
 			t.Errorf("wrong owner must be named, got: %+v", st)
 		}
 	})
 	t.Run("loose mode named", func(t *testing.T) {
-		st := evaluateSurfaceCheck("abc123", "active", "bunker-abc123:644", "0", "bunker-abc123")
+		st := evaluateSurfaceCheck("abc123", "active", "bunker-abc123:644", "bunker-abc123:700", "0", "0", "bunker-abc123")
 		if st.OK || !strings.Contains(strings.Join(st.Failures, "; "), `mode is "644"`) {
 			t.Errorf("loose mode must be named, got: %+v", st)
 		}
 	})
 	t.Run("absent socket named", func(t *testing.T) {
-		st := evaluateSurfaceCheck("abc123", "active", "absent", "0", "bunker-abc123")
+		st := evaluateSurfaceCheck("abc123", "active", "absent", "bunker-abc123:700", "0", "0", "bunker-abc123")
 		if st.OK || !strings.Contains(strings.Join(st.Failures, "; "), "socket file is absent") {
 			t.Errorf("absent socket must be named, got: %+v", st)
 		}
 	})
+	t.Run("wide runtime dir named", func(t *testing.T) {
+		st := evaluateSurfaceCheck("abc123", "active", "bunker-abc123:600", "bunker-abc123:755", "0", "0", "bunker-abc123")
+		if st.OK || !strings.Contains(strings.Join(st.Failures, "; "), `dir_meta: mode is "755"`) {
+			t.Errorf("a wider runtime dir must be named, got: %+v", st)
+		}
+	})
+	t.Run("foreign runtime-dir owner named", func(t *testing.T) {
+		st := evaluateSurfaceCheck("abc123", "active", "bunker-abc123:600", "root:700", "0", "0", "bunker-abc123")
+		if st.OK || !strings.Contains(strings.Join(st.Failures, "; "), "dir_meta: owner") {
+			t.Errorf("a foreign runtime-dir owner must be named, got: %+v", st)
+		}
+	})
+	t.Run("absent runtime dir named", func(t *testing.T) {
+		st := evaluateSurfaceCheck("abc123", "active", "bunker-abc123:600", "absent", "0", "0", "bunker-abc123")
+		if st.OK || !strings.Contains(strings.Join(st.Failures, "; "), "dir_meta: the runtime directory") {
+			t.Errorf("an absent runtime dir must be named, got: %+v", st)
+		}
+	})
 	t.Run("nonzero pre-connect procs named", func(t *testing.T) {
-		st := evaluateSurfaceCheck("abc123", "active", "bunker-abc123:600", "2", "bunker-abc123")
+		st := evaluateSurfaceCheck("abc123", "active", "bunker-abc123:600", "bunker-abc123:700", "2", "0", "bunker-abc123")
 		if st.OK || !strings.Contains(strings.Join(st.Failures, "; "), "toolsd_procs: 2") {
 			t.Errorf("pre-running toolsd must be named, got: %+v", st)
 		}
 	})
 	t.Run("missing pgrep answer named", func(t *testing.T) {
-		st := evaluateSurfaceCheck("abc123", "active", "bunker-abc123:600", "", "bunker-abc123")
+		st := evaluateSurfaceCheck("abc123", "active", "bunker-abc123:600", "bunker-abc123:700", "", "0", "bunker-abc123")
 		if st.OK || !strings.Contains(strings.Join(st.Failures, "; "), "no answer from pgrep") || st.ToolsdProcs != "unknown" {
 			t.Errorf("missing proc count must be a named unknown, got: %+v", st)
 		}
 	})
+	t.Run("tcp nonzero named", func(t *testing.T) {
+		st := evaluateSurfaceCheck("abc123", "active", "bunker-abc123:600", "bunker-abc123:700", "0", "3", "bunker-abc123")
+		if st.OK || !strings.Contains(strings.Join(st.Failures, "; "), "tcp_listeners: 3") {
+			t.Errorf("a TCP listener must be named, got: %+v", st)
+		}
+	})
+	t.Run("tcp unknown is a failure not a pass", func(t *testing.T) {
+		st := evaluateSurfaceCheck("abc123", "active", "bunker-abc123:600", "bunker-abc123:700", "0", "unknown", "bunker-abc123")
+		if st.OK || !strings.Contains(strings.Join(st.Failures, "; "), "UNPROVEN") {
+			t.Errorf("tcp=unknown must fail naming the unproven property, got: %+v", st)
+		}
+	})
+	t.Run("missing tcp answer named", func(t *testing.T) {
+		st := evaluateSurfaceCheck("abc123", "active", "bunker-abc123:600", "bunker-abc123:700", "0", "", "bunker-abc123")
+		if st.OK || !strings.Contains(strings.Join(st.Failures, "; "), "no answer from the ss probe") {
+			t.Errorf("a missing tcp answer must be named, got: %+v", st)
+		}
+	})
 	t.Run("every failure accumulates", func(t *testing.T) {
-		st := evaluateSurfaceCheck("abc123", "failed", "root:777", "9", "bunker-abc123")
-		if st.OK || len(st.Failures) != 3 {
-			t.Errorf("all three failures must be reported, got: %+v", st)
+		st := evaluateSurfaceCheck("abc123", "failed", "root:777", "root:777", "9", "9", "bunker-abc123")
+		if st.OK || len(st.Failures) != 5 {
+			t.Errorf("all five failures must be reported, got: %+v", st)
 		}
 	})
 }
@@ -310,7 +403,8 @@ func TestSurfaceConnectCommand_ExecutesForward(t *testing.T) {
 	for _, want := range []string{
 		"-i", // the client-local key (exact path asserted below)
 		"-N",
-		"-L /tmp/bunker-toolsd-abc123.sock:/run/user/4242/toolsd.sock",
+		"-L /tmp/bunker-toolsd-abc123.sock:/run/bunker/abc123/toolsd.sock",
+		"StreamLocalBindMask=0077",
 		"bunker-abc123@127.0.0.1",
 		"ExitOnForwardFailure=yes",
 	} {
@@ -330,46 +424,49 @@ func TestSurfaceConnectCommand_ExecutesForward(t *testing.T) {
 	}
 }
 
-func TestSurfaceConnectCommand_UidOverrideSkipsDiscovery(t *testing.T) {
+func TestSurfaceConnectCommand_NoExecPathDerivation(t *testing.T) {
 	agent := &v1.AgentSummary{AgentId: "abc123", SshfsMount: surfaceConnectTestMount}
-	mock, _, _ := setupSurfaceConnectTest(t, agent, "") // no uid configured: any exec call fails the run
+	mock, _, _ := setupSurfaceConnectTest(t, agent, "") // any exec call fails the run
 	_, args := captureSurfaceConnectExec(t)
 	stubSurfaceWait(t)
 
 	cmd := NewSurfaceCommand()
 	cmd.SetOut(io.Discard)
 	cmd.SetErr(io.Discard)
-	cmd.SetArgs([]string{"connect", "abc123", "--uid", "4242"})
+	cmd.SetArgs([]string{"connect", "abc123"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	if len(mock.scripts) != 0 {
-		t.Errorf("--uid must skip the discovery exec, but the agent ran: %q", mock.scripts)
+		t.Errorf("SURF-B2: connect must derive the remote path from the agent id and run NO exec, but the agent ran: %q", mock.scripts)
 	}
-	if !strings.Contains(strings.Join(*args, " "), "/run/user/4242/toolsd.sock") {
-		t.Errorf("--uid must land in the remote path, got: %q", strings.Join(*args, " "))
+	if !strings.Contains(strings.Join(*args, " "), "/run/bunker/abc123/toolsd.sock") {
+		t.Errorf("the remote path must be the per-agent runtime-dir socket, got: %q", strings.Join(*args, " "))
 	}
 }
 
-func TestSurfaceConnectCommand_InvalidUidFlag(t *testing.T) {
-	agent := &v1.AgentSummary{AgentId: "abc123", SshfsMount: surfaceConnectTestMount}
-	setupSurfaceConnectTest(t, agent, "4242")
+func TestSurfaceConnectCommand_InvalidAgentIDRefused(t *testing.T) {
+	setupSurfaceConnectTest(t, &v1.AgentSummary{AgentId: "abc123", SshfsMount: surfaceConnectTestMount}, "")
 	captureSurfaceConnectExec(t)
 	stubSurfaceWait(t)
 
 	cmd := NewSurfaceCommand()
 	cmd.SetOut(io.Discard)
 	cmd.SetErr(io.Discard)
-	cmd.SetArgs([]string{"connect", "abc123", "--uid", "root"})
-	if err := cmd.Execute(); err == nil {
-		t.Fatal("expected an error for a non-numeric --uid")
+	cmd.SetArgs([]string{"connect", "../evil"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected a refusal for an agent id outside [a-z0-9-]")
+	}
+	if !strings.Contains(err.Error(), "only [a-z0-9-]") {
+		t.Errorf("refusal must name the id rule, got: %v", err)
 	}
 }
 
-func TestSurfaceConnectCommand_UidDiscoveryFailureNamed(t *testing.T) {
+func TestSurfaceConnectCommand_RPCFailureSurfaces(t *testing.T) {
 	agent := &v1.AgentSummary{AgentId: "abc123", SshfsMount: surfaceConnectTestMount}
 	mock, _, _ := setupSurfaceConnectTest(t, agent, "")
-	mock.uidErr = connect.NewError(connect.CodeUnavailable, errors.New("agent down"))
+	mock.getAgentErr = connect.NewError(connect.CodeUnavailable, errors.New("agent down"))
 	captureSurfaceConnectExec(t)
 	stubSurfaceWait(t)
 
@@ -379,10 +476,10 @@ func TestSurfaceConnectCommand_UidDiscoveryFailureNamed(t *testing.T) {
 	cmd.SetArgs([]string{"connect", "abc123"})
 	err := cmd.Execute()
 	if err == nil {
-		t.Fatal("expected the uid discovery failure to surface")
+		t.Fatal("expected the RPC failure to surface")
 	}
-	if !strings.Contains(err.Error(), "discover uid on agent") {
-		t.Errorf("error must name the discovery step, got: %v", err)
+	if !strings.Contains(err.Error(), "get agent") {
+		t.Errorf("error must name the failed step, got: %v", err)
 	}
 }
 
@@ -533,7 +630,7 @@ func TestSurfaceCheckCommand_HappyPath(t *testing.T) {
 		mockTunnelServer: mockTunnelServer{
 			getAgentResp: &v1.GetAgentResponse{Agent: agent},
 		},
-		checkOut:   "CHECK	socket_active=active\nCHECK	socket_meta=bunker-abc123:600\nCHECK	toolsd_procs=0\n",
+		checkOut:   "CHECK	socket_active=active\nCHECK	socket_meta=bunker-abc123:600\nCHECK	dir_meta=bunker-abc123:700\nCHECK	toolsd_procs=0\nCHECK	tcp_listeners=0\n",
 		scriptSink: func(script string) { checkScript = append(checkScript, script) },
 	})
 	t.Cleanup(server.Close)
@@ -549,7 +646,7 @@ func TestSurfaceCheckCommand_HappyPath(t *testing.T) {
 	}
 
 	// The ONE exec must be the check script, and it must ask the recipe's
-	// three questions.
+	// questions — addressed to the PER-AGENT runtime dir (SURF-B2).
 	if len(checkScript) != 1 {
 		t.Fatalf("expected exactly one exec, got %d: %q", len(checkScript), checkScript)
 	}
@@ -558,11 +655,16 @@ func TestSurfaceCheckCommand_HappyPath(t *testing.T) {
 		"systemctl --user is-active toolsd.socket",
 		"stat -c '%U'",
 		"pgrep -c -x toolsd",
-		"/run/user/$u/toolsd.sock",
+		"/run/bunker/abc123/toolsd.sock",
+		"d=/run/bunker/abc123",
+		"tcp_listeners",
 	} {
 		if !strings.Contains(script, want) {
 			t.Errorf("check script missing %q, got:\n%s", want, script)
 		}
+	}
+	if strings.Contains(script, "id -u") {
+		t.Errorf("check script must derive paths from the agent id, not the uid:\n%s", script)
 	}
 	checkOut := out.String()
 	for _, want := range []string{"socket unit : active", "owner bunker-abc123, mode 600", "result      : OK"} {
@@ -581,7 +683,7 @@ func TestSurfaceCheckCommand_FailureNamesChecks(t *testing.T) {
 		mockTunnelServer: mockTunnelServer{
 			getAgentResp: &v1.GetAgentResponse{Agent: agent},
 		},
-		checkOut:   "CHECK	socket_active=inactive\nCHECK	socket_meta=absent\nCHECK	toolsd_procs=0\n",
+		checkOut:   "CHECK	socket_active=inactive\nCHECK	socket_meta=absent\nCHECK	dir_meta=absent\nCHECK	toolsd_procs=0\nCHECK	tcp_listeners=0\n",
 		scriptSink: func(script string) { checkScript = append(checkScript, script) },
 	})
 	t.Cleanup(server.Close)
@@ -602,8 +704,42 @@ func TestSurfaceCheckCommand_FailureNamesChecks(t *testing.T) {
 			t.Errorf("check output missing %q, got:\n%s", want, checkOut)
 		}
 	}
-	if !strings.Contains(err.Error(), "failed 2 check(s)") {
+	if !strings.Contains(err.Error(), "failed 3 check(s)") {
 		t.Errorf("the refusal must count the failures, got: %v", err)
+	}
+}
+
+// TestSurfaceCheckCommand_TCPUnknownFails: a missing ss(8) means the no-TCP
+// property is UNPROVEN — unknown must fail the check, never pass it.
+func TestSurfaceCheckCommand_TCPUnknownFails(t *testing.T) {
+	checkScript = nil
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+	agent := &v1.AgentSummary{AgentId: "abc123", SshfsMount: surfaceConnectTestMount}
+	server := newTunnelTestServer(t, &surfaceCheckScriptMock{
+		mockTunnelServer: mockTunnelServer{
+			getAgentResp: &v1.GetAgentResponse{Agent: agent},
+		},
+		checkOut:   "CHECK	socket_active=active\nCHECK	socket_meta=bunker-abc123:600\nCHECK	dir_meta=bunker-abc123:700\nCHECK	toolsd_procs=0\nCHECK	tcp_listeners=unknown\n",
+		scriptSink: nil,
+	})
+	t.Cleanup(server.Close)
+	writeTunnelTestConfig(t, tmpDir, server.URL)
+
+	var out bytes.Buffer
+	cmd := NewSurfaceCommand()
+	cmd.SetOut(&out)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{"connect", "abc123", "--check"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("tcp=unknown must fail --check (unproven, not safe)")
+	}
+	if !strings.Contains(out.String(), "FAIL") || !strings.Contains(out.String(), "tcp_listeners") {
+		t.Errorf("the FAIL line must carry the unproven tcp_listeners verdict, got:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "UNPROVEN") {
+		t.Errorf("the failure must name the property as UNPROVEN, got:\n%s", out.String())
 	}
 }
 
@@ -639,7 +775,7 @@ func TestSurfaceCheckCommand_JSON(t *testing.T) {
 		mockTunnelServer: mockTunnelServer{
 			getAgentResp: &v1.GetAgentResponse{Agent: agent},
 		},
-		checkOut: "CHECK	socket_active=active\nCHECK	socket_meta=bunker-abc123:600\nCHECK	toolsd_procs=0\n",
+		checkOut: "CHECK	socket_active=active\nCHECK	socket_meta=bunker-abc123:600\nCHECK	dir_meta=bunker-abc123:700\nCHECK	toolsd_procs=0\nCHECK	tcp_listeners=0\n",
 	})
 	t.Cleanup(server.Close)
 	writeTunnelTestConfig(t, tmpDir, server.URL)

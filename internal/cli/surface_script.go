@@ -11,6 +11,17 @@ import (
 // trust about the mechanism — the exact unit text, the idempotent write, the
 // steps and their order — is pinned by tests against these builders, so the
 // live proof (docs/prd/evidence-surfaces-mechanism.md) only has to happen once.
+//
+// SURF-B2: the socket is addressed in the agent's PER-AGENT RUNTIME DIRECTORY
+// (/run/bunker/<agent-id>/toolsd.sock) instead of the shared /run/user/<uid>.
+// The directory is created — mode 0700, verified by stat — by the same
+// mechanism that creates the docker socket directory on every spawn
+// (internal/agent NET-BUNKER-007), so the install script asserts the state it
+// needs and repairs it if missing; it never widens an existing directory. The
+// unit text is parametrized per agent with systemd's %i specifier (the
+// templated unit's instance name): ONE constant template renders correctly for
+// every agent, the agent-id never passes through a shell expansion, and the
+// id regex makes the rendering injection-proof by construction.
 
 const (
 	// surfaceUnitSubdir is the per-user unit directory, relative to $HOME. The
@@ -24,12 +35,83 @@ const (
 	surfaceServiceUnitName = "toolsd@.service"
 )
 
-// surfaceSocketUnitContent is the socket unit, verbatim as proven live by
-// tools/surf-mechanism-proof.sh. %t resolves to /run/user/<uid> PER USER, which
-// is why one unit text is correct for every agent: the units are installed
-// through the agent's own exec context, so the identity that owns %t and %h is
-// the agent's, never the client's or the daemon's.
-const surfaceSocketUnitContent = `[Unit]
+// surfaceToolsdSocketPath is THE canonical remote socket path for an agent
+// (SURF-B2): inside the per-agent runtime directory the daemon's own spawn
+// machinery provisions with mode 0700 (internal/agent sockdir NET-BUNKER-007).
+// The path is pure string composition over a validated id — callers that take
+// an agent id from the wire must run validSurfaceAgentID first (the command
+// layer does; the daemon enforces the same regex at spawn).
+func surfaceToolsdSocketPath(agentID string) string {
+	return "/run/bunker/" + agentID + "/" + surfaceToolsdSocketName
+}
+
+// validSurfaceAgentID mirrors the daemon's spawn-time agent-id rule
+// (internal/agent: ^[a-z0-9-]{1,63}$). The surface builders interpolate the id
+// into unit text and absolute paths, so every entry point validates before
+// rendering — a rejected id is a named error, never a mangled unit.
+func validSurfaceAgentID(agentID string) error {
+	if agentID == "" {
+		return fmt.Errorf("agent id is empty")
+	}
+	if len(agentID) > 63 {
+		return fmt.Errorf("agent id %q is longer than 63 characters", agentID)
+	}
+	for _, r := range agentID {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= '0' && r <= '9':
+		case r == '-':
+		default:
+			return fmt.Errorf("agent id %q contains %q — only [a-z0-9-] is valid", agentID, string(r))
+		}
+	}
+	return nil
+}
+
+// surfaceSocketUnitTemplate is the socket unit, parametrized per agent.
+// ListenStream carries the SURF-B2 runtime-dir path built from %i (the
+// instance name — exactly the agent id this unit was rendered for), and
+// SocketMode tightens the socket file to owner-only. The template is a
+// constant; renderSurfaceSocketUnit substitutes the (validated) id.
+const surfaceSocketUnitTemplate = `[Unit]
+Description=toolsd socket for %i (per-connection activation)
+[Socket]
+ListenStream=/run/bunker/%i/` + surfaceToolsdSocketName + `
+SocketMode=0600
+Accept=yes
+[Install]
+WantedBy=sockets.target`
+
+// renderSurfaceSocketUnit renders the socket unit for one agent. The
+// specifier is the id verbatim — validSurfaceAgentID has already rejected
+// anything that could carry a specifier of its own.
+func renderSurfaceSocketUnit(agentID string) string {
+	return strings.ReplaceAll(surfaceSocketUnitTemplate, "%i", agentID)
+}
+
+// surfaceServiceUnitContent is the per-connection service template, verbatim as
+// proven live. StandardInput/Output=socket is what hands the accepted
+// connection to the spawned process; the binary itself is a SEPARATE concern
+// (`bunker agent-tools --install`), which is why a missing one is a loud
+// warning on the install path, not an install failure. The unit is templated
+// (%i = instance) so the same text serves every agent; %h still resolves to
+// the AGENT user's home because the units are installed through the agent's
+// own exec context.
+const surfaceServiceUnitContent = `[Unit]
+Description=toolsd MCP for %i (one process per connection, as the agent user)
+[Service]
+ExecStart=%h/bin/toolsd mcp
+StandardInput=socket
+StandardOutput=socket`
+
+// surfaceLegacySocketUnitContent / surfaceLegacyVerifyPath are the SURF-006
+// unit text and socket path this design REPLACED. The install and remove
+// scripts migrate them away: an old socket unit (ListenStream=%t/toolsd.sock)
+// on an upgraded agent is re-written by the idempotent write_unit on upgrade,
+// and the remove path proves BOTH the current and the legacy socket absent so
+// a pre-SURF-B2 agent cannot keep a hidden listening socket behind a
+// "successfully removed" verdict.
+const surfaceLegacySocketUnitContent = `[Unit]
 Description=toolsd socket (per-connection activation)
 [Socket]
 ListenStream=%t/toolsd.sock
@@ -38,17 +120,7 @@ Accept=yes
 [Install]
 WantedBy=sockets.target`
 
-// surfaceServiceUnitContent is the per-connection service template, verbatim as
-// proven live. StandardInput/Output=socket is what hands the accepted
-// connection to the spawned process; the binary itself is a SEPARATE concern
-// (`bunker agent-tools --install`), which is why a missing one is a loud
-// warning on the install path, not an install failure.
-const surfaceServiceUnitContent = `[Unit]
-Description=toolsd MCP (one process per connection, as the agent user)
-[Service]
-ExecStart=%h/bin/toolsd mcp
-StandardInput=socket
-StandardOutput=socket`
+const surfaceLegacySocketPath = "/run/user/$(id -u)/toolsd.sock"
 
 // quoteShell renders s as ONE literal shell word (single-quoted, embedded
 // quotes broken out), so the unit text cannot be reinterpreted by the agent's
@@ -59,19 +131,49 @@ func quoteShell(s string) string {
 }
 
 // buildSurfaceInstallScript writes both unit files under the agent's own
-// $HOME/.config/systemd/user, then daemon-reload, enable and start the socket.
+// per-user unit dir, then daemon-reload, enable and start the socket.
+//
+// SURF-B2 additions, in order:
+//
+//  1. The runtime directory is prepared FIRST: mkdir -p with an explicit
+//     chmod 0700 (a `chown` does not set the mode, and the umask only strips
+//     bits — neither is proof), then a STAT READ-BACK that aborts the install
+//     unless the directory is exactly 0700. The directory is owned by the
+//     agent's own uid by construction (it sits under the runtime root the
+//     daemon's spawn machinery created for THIS agent and chowned to it), so
+//     the script running AS the agent can create and verify it without any
+//     new privilege. A directory that is somehow wider is a fail-loud
+//     abort — the install never widens it.
+//  2. The legacy SURF-006 unit is re-written too: write_unit's
+//     compare-then-write turns an old ListenStream=%t unit into the new
+//     runtime-dir unit on the first install after an upgrade, and the final
+//     daemon-reload makes systemd forget the old address.
 //
 // Idempotency is structural: write_unit compares the wanted content with the
 // file on disk and SKIPS the write when they are already identical, so
 // re-running an install that is current changes nothing (no mtime churn, no
-// rewrite). A differing or missing file is written atomically (temp file in the
-// same directory + rename), so a half-written unit can never be what systemd
-// loads. `exec 2>&1` merges the agent's stderr into the captured stdout so a
-// failure surfaces with its actual systemctl message, not just an exit code.
-func buildSurfaceInstallScript() string {
+// rewrite). A differing or missing file is written atomically (temp file in
+// the same directory + rename), so a half-written unit can never be what
+// systemd loads. `exec 2>&1` merges the agent's stderr into the captured
+// stdout so a failure surfaces with its actual systemctl message, not just an
+// exit code.
+func buildSurfaceInstallScript(agentID string) string {
+	socketPath := surfaceToolsdSocketPath(agentID)
 	return `exec 2>&1
 set -eu
 dir="$HOME/` + surfaceUnitSubdir + `"
+rundir="/run/bunker/` + agentID + `"
+# SURF-B2: the socket lives in the per-agent runtime dir (0700, agent-owned).
+# mkdir -p then an EXPLICIT chmod: the umask strips bits, it never adds them,
+# and a chown does not set the mode — the stat read-back below is the proof.
+mkdir -p "$rundir"
+chmod 700 "$rundir"
+gotmode=$(stat -c '%a' "$rundir")
+if [ "$gotmode" != "700" ]; then
+  printf 'RUNDIR\t%s\tmode=%s\tstate=abort-wide\n' "$rundir" "$gotmode"
+  exit 7
+fi
+printf 'RUNDIR\t%s\tmode=%s\tstate=ready\n' "$rundir" "$gotmode"
 mkdir -p "$dir"
 write_unit() {
   want=$(printf '%s\n' "$1")
@@ -85,11 +187,19 @@ write_unit() {
   mv -f "$tmp" "$2"
   printf 'UNIT\t%s\twritten\n' "$2"
 }
-write_unit ` + quoteShell(surfaceSocketUnitContent) + ` "$dir/` + surfaceSocketUnitName + `"
+write_unit ` + quoteShell(renderSurfaceSocketUnit(agentID)) + ` "$dir/` + surfaceSocketUnitName + `"
 write_unit ` + quoteShell(surfaceServiceUnitContent) + ` "$dir/` + surfaceServiceUnitName + `"
 systemctl --user daemon-reload
 systemctl --user enable ` + surfaceSocketUnitName + ` >/dev/null
-systemctl --user start ` + surfaceSocketUnitName
+systemctl --user start ` + surfaceSocketUnitName + `
+# SURF-B2: the started socket must exist at the runtime-dir path with the
+# agent as its owner — prove it, never assume it.
+if [ -S ` + quoteShell(socketPath) + ` ]; then
+  printf 'SOCKET\t%s\towner=%s\tmode=%s\n' ` + quoteShell(socketPath) + ` "$(stat -c '%U' ` + quoteShell(socketPath) + `)" "$(stat -c '%a' ` + quoteShell(socketPath) + `)"
+else
+  printf 'SOCKET\t%s\tstate=absent\n' ` + quoteShell(socketPath) + `
+  exit 8
+fi`
 }
 
 // buildSurfacePreflightScript answers one question — is the agent's USER
@@ -97,24 +207,32 @@ systemctl --user start ` + surfaceSocketUnitName
 // never from an exit code that conflates "degraded" with "could not ask".
 // is-system-running deliberately returns non-zero for several states
 // (offline, degraded, maintenance, unknown); the caller classifies them.
+// It is agent-independent (no id, no path), so one constant serves every call.
+func buildSurfacePreflightScript() string {
+	return surfacePreflightScript
+}
+
 const surfacePreflightScript = `systemctl --user is-system-running 2>/dev/null || true
 `
 
-// buildSurfaceVerifyScript reports the post-install state as ONE RESULT line:
-// both unit files present on disk, the socket unit's is-active state, and the
-// socket path with its owner and mode. Exit 4 means a unit file is missing
-// after an install — an install that reports success while a unit is absent is
-// exactly the silent partial state SURF-006 forbids.
-const surfaceVerifyScript = `set -eu
+// surfaceVerifyScript reports the post-install state as ONE RESULT line:
+// both unit files present on disk, the socket unit's is-active state, the
+// runtime-dir socket path with its owner and mode, and the runtime dir's own
+// mode. Exit 4 means a unit file is missing after an install — an install
+// that reports success while a unit is absent is exactly the silent partial
+// state SURF-006 forbids.
+func surfaceVerifyScript(agentID string) string {
+	socketPath := surfaceToolsdSocketPath(agentID)
+	return `set -eu
 s="$HOME/` + surfaceUnitSubdir + `/` + surfaceSocketUnitName + `"
 v="$HOME/` + surfaceUnitSubdir + `/` + surfaceServiceUnitName + `"
+p=` + quoteShell(socketPath) + `
 if [ ! -f "$s" ] || [ ! -f "$v" ]; then
   printf 'RESULT\tstate=missing-unit\tsocket=none\towner=unknown\tmode=unknown\n'
   exit 4
 fi
 state=$(systemctl --user is-active ` + surfaceSocketUnitName + ` 2>/dev/null || true)
-u=$(id -u)
-p="/run/user/$u/toolsd.sock"
+dmode=$(stat -c '%a' /run/bunker/` + agentID + ` 2>/dev/null || echo unknown)
 if [ -S "$p" ]; then
   own=$(stat -c '%U' "$p" 2>/dev/null || echo unknown)
   mode=$(stat -c '%a' "$p" 2>/dev/null || echo unknown)
@@ -122,17 +240,23 @@ else
   own=absent
   mode=absent
 fi
-printf 'RESULT\tstate=%s\tsocket=%s\towner=%s\tmode=%s\n' "$state" "$p" "$own" "$mode"
+printf 'RESULT\tstate=%s\tsocket=%s\towner=%s\tmode=%s\tdirmode=%s\n' "$state" "$p" "$own" "$mode" "$dmode"
 `
+}
 
-// buildSurfaceRemoveScript stops and disables the socket, removes BOTH unit
-// files, and reloads the manager so nothing dangling stays loaded. It is
-// deliberately tolerant of a down user manager (`set -u`, not `set -e`; stop /
-// disable / reload failures become NOTE lines, because removal must still work
-// when the manager the units belonged to is gone) but STRICT about the result:
-// exit 5 = the socket path still exists, exit 6 = a unit file survived the rm —
-// either way the CLI reports a failed removal instead of a partial one.
-const surfaceRemoveScript = `exec 2>&1
+// surfaceRemoveScript stops and disables the socket, removes BOTH unit files,
+// and reloads the manager so nothing dangling stays loaded. It also proves the
+// LEGACY (%t) socket path absent, so a pre-SURF-B2 agent upgraded and later
+// removed cannot keep a hidden listening socket behind a success verdict.
+// The script is deliberately tolerant of a down user manager (`set -u`, not
+// `set -e`; stop / disable / reload failures become NOTE lines, because
+// removal must still work when the manager the units belonged to is gone) but
+// STRICT about the result: exit 5 = a socket path still exists, exit 6 = a
+// unit file survived the rm — either way the CLI reports a failed removal
+// instead of a partial one.
+func surfaceRemoveScript(agentID string) string {
+	socketPath := surfaceToolsdSocketPath(agentID)
+	return `exec 2>&1
 set -u
 dir="$HOME/` + surfaceUnitSubdir + `"
 s="$dir/` + surfaceSocketUnitName + `"
@@ -151,21 +275,93 @@ fi
 if ! out=$(systemctl --user daemon-reload 2>&1); then
   printf 'NOTE\tdaemon-reload: %s\n' "$out"
 fi
-p="/run/user/$(id -u)/toolsd.sock"
+p=` + quoteShell(socketPath) + `
 if [ -e "$p" ] || [ -S "$p" ]; then
   printf 'RESULT\tsocket=%s\tstate=still-present\tunits=deleted\n' "$p"
   exit 5
 fi
+legacy=` + quoteShell(surfaceLegacySocketPath) + `
+if [ -e "$legacy" ] || [ -S "$legacy" ]; then
+  printf 'RESULT\tsocket=%s\tstate=still-present\tunits=deleted\n' "$legacy"
+  exit 5
+fi
 printf 'RESULT\tsocket=%s\tstate=removed\tunits=deleted\n' "$p"
 `
-
-// buildSurfaceRemoveScript returns the remove program. A function like its
-// install sibling so callers and tests address both through one shape.
-func buildSurfaceRemoveScript() string {
-	return surfaceRemoveScript
 }
 
-// surfaceResultLinePrefix marks the one line of a verify script's output that
+// buildSurfaceRemoveScript returns the remove program for one agent. A
+// function like its install sibling so callers and tests address both through
+// one shape.
+func buildSurfaceRemoveScript(agentID string) string {
+	return surfaceRemoveScript(agentID)
+}
+
+// surfaceTCPProbeScript is the SURF-B2 no-TCP listener proof, run ON THE
+// AGENT: it lists every listening TCP socket and prints the count. The
+// contract is `TCP\tcount=0` — ANY other count is a failure of the transport
+// claim, not a warning. `ss` is preferred (iproute2 is on every spawn base
+// image); when it is absent the script prints count=unknown and the CALLER
+// treats unknown as a failure to prove, not as a pass.
+const surfaceTCPProbeScript = `if command -v ss >/dev/null 2>&1; then
+  n=$(ss -H -tln 2>/dev/null | wc -l)
+else
+  n=unknown
+fi
+printf 'TCP\tcount=%s\n' "$n"
+`
+
+// surfaceCheckScript answers the recipe's live checks in ONE exec, as
+// CHECK\tkey=value lines so the verdict is parsed, not eyeballed:
+//
+//	socket_active : systemctl --user is-active toolsd.socket
+//	socket_meta   : owner and mode of the agent's runtime-dir socket (the
+//	                AGENT must own it; the unit sets SocketMode=0600)
+//	dir_meta      : owner and mode of /run/bunker/<agent-id> (must be the
+//	                AGENT, mode 0700 — the per-agent boundary)
+//	toolsd_procs  : pgrep -c toolsd BEFORE any connect (must be 0 — the
+//	                service is connection-activated; a pre-running toolsd
+//	                means something else spawned it)
+//	tcp_listeners : listening TCP sockets on the agent (must be 0 — the
+//	                transport is the unix socket only; unknown = unproven)
+func surfaceCheckScript(agentID string) string {
+	socketPath := surfaceToolsdSocketPath(agentID)
+	return `exec 2>&1
+p=` + quoteShell(socketPath) + `
+d=/run/bunker/` + agentID + `
+state=$(systemctl --user is-active ` + surfaceSocketUnitName + ` 2>/dev/null || true)
+printf 'CHECK\tsocket_active=%s\n' "$state"
+if [ -S "$p" ]; then
+  own=$(stat -c '%U' "$p" 2>/dev/null || echo unknown)
+  mode=$(stat -c '%a' "$p" 2>/dev/null || echo unknown)
+  printf 'CHECK\tsocket_meta=%s:%s\n' "$own" "$mode"
+else
+  printf 'CHECK\tsocket_meta=absent\n'
+fi
+if [ -d "$d" ]; then
+  down=$(stat -c '%U' "$d" 2>/dev/null || echo unknown)
+  dm=$(stat -c '%a' "$d" 2>/dev/null || echo unknown)
+  printf 'CHECK\tdir_meta=%s:%s\n' "$down" "$dm"
+else
+  printf 'CHECK\tdir_meta=absent\n'
+fi
+procs=$(pgrep -c -x toolsd 2>/dev/null || echo 0)
+printf 'CHECK\ttoolsd_procs=%s\n' "$procs"
+if command -v ss >/dev/null 2>&1; then
+  tcp=$(ss -H -tln 2>/dev/null | wc -l)
+else
+  tcp=unknown
+fi
+printf 'CHECK\ttcp_listeners=%s\n' "$tcp"
+`
+}
+
+// surfaceToolsdProbeScript stats the binary the socket activates, through the
+// agent's own exec context. It is agent-independent and unchanged since
+// SURF-006: the binary lives at $HOME/bin/toolsd regardless of where the
+// socket is addressed.
+const surfaceToolsdProbeScript = `if [ -x "$HOME/bin/toolsd" ]; then echo present; else echo absent; fi
+`
+
 // carries the parsed state. Everything else on the wire is prose/notes.
 const surfaceResultLinePrefix = "RESULT\t"
 
@@ -327,11 +523,6 @@ func classifySurfaceManagerFailure(agentID, output string) error {
 	// named condition rather than inventing a verdict.
 	return fmt.Errorf("systemctl --user on agent %q reported %q — refusing to install the toolsd units (expected running/degraded)", agentID, line)
 }
-
-// surfaceToolsdProbeScript stats the binary the socket activates, through the
-// agent, and prints one word: present or absent.
-const surfaceToolsdProbeScript = `if [ -x "$HOME/bin/toolsd" ]; then echo present; else echo absent; fi
-`
 
 // parseSurfaceToolsdProbe reads present/absent from the probe output.
 func parseSurfaceToolsdProbe(out string) string {

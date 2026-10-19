@@ -85,30 +85,8 @@ func resolveSurfaceConnectTarget(entry ServerEntry, rec *v1.AgentSummary, sshHos
 	return out, nil
 }
 
-// surfaceCheckScript answers the recipe's three live checks in ONE exec, as
-// CHECK\tkey=value lines so the verdict is parsed, not eyeballed:
-//
-//	socket_active : systemctl --user is-active toolsd.socket
-//	socket_meta   : owner and mode of /run/user/<uid>/toolsd.sock (the AGENT
-//	                must own it; the unit sets SocketMode=0600)
-//	toolsd_procs  : pgrep -c toolsd BEFORE any connect (must be 0 — the
-//	                service is connection-activated; a pre-running toolsd
-//	                means something else spawned it)
-const surfaceCheckScript = `exec 2>&1
-u=$(id -u)
-p="/run/user/$u/` + surfaceToolsdSocketName + `"
-state=$(systemctl --user is-active ` + surfaceSocketUnitName + ` 2>/dev/null || true)
-printf 'CHECK\tsocket_active=%s\n' "$state"
-if [ -S "$p" ]; then
-  own=$(stat -c '%U' "$p" 2>/dev/null || echo unknown)
-  mode=$(stat -c '%a' "$p" 2>/dev/null || echo unknown)
-  printf 'CHECK\tsocket_meta=%s:%s\n' "$own" "$mode"
-else
-  printf 'CHECK\tsocket_meta=absent\n'
-fi
-procs=$(pgrep -c -x toolsd 2>/dev/null || echo 0)
-printf 'CHECK\ttoolsd_procs=%s\n' "$procs"
-`
+// surfaceCheckScript (SURF-B2) is built per agent in surface_script.go — it
+// carries the agent id in its runtime-dir paths.
 
 // surfaceCheckState is the parsed verdict of one --check run.
 type surfaceCheckState struct {
@@ -116,9 +94,17 @@ type surfaceCheckState struct {
 	SocketActive string `json:"socket_active"`
 	Owner        string `json:"socket_owner"`
 	Mode         string `json:"socket_mode"`
-	ToolsdProcs  string `json:"toolsd_procs"`
+	// DirOwner / DirMode are the owner and mode of the agent's runtime
+	// directory (/run/bunker/<agent-id>) — the per-agent boundary itself.
+	DirOwner    string `json:"dir_owner"`
+	DirMode     string `json:"dir_mode"`
+	ToolsdProcs string `json:"toolsd_procs"`
+	// TCPListeners is the agent-side listening-TCP count ("unknown" = the
+	// agent could not prove it, which is itself a failure).
+	TCPListeners string `json:"tcp_listeners"`
 	// OK is true when every check passed: socket active, owned by the agent
-	// user with mode 0600, and zero pre-connect toolsd processes.
+	// user with mode 0600, runtime dir owned 0700, zero pre-connect toolsd
+	// processes, and a proven-zero TCP listener count.
 	OK bool `json:"ok"`
 	// Failures names every failed check, so a bad state is never a bare
 	// non-zero exit.
@@ -134,13 +120,13 @@ func surfaceCheckAgentUser(agentID string) string {
 // parseSurfaceCheckOutput extracts the CHECK lines from a --check run's
 // stdout. Missing lines parse as empty and are reported as failures by
 // evaluateSurfaceCheck, never silently skipped.
-func parseSurfaceCheckOutput(out string) (active, meta, procs string) {
+func parseSurfaceCheckOutput(out string) (active, meta, dirMeta, procs, tcp string) {
 	for _, line := range strings.Split(out, "\n") {
 		line = strings.TrimRight(line, "\r")
-		if !strings.HasPrefix(line, "CHECK\t") {
+		if !strings.HasPrefix(line, "CHECK	") {
 			continue
 		}
-		for _, f := range strings.Split(strings.TrimPrefix(line, "CHECK\t"), "\t") {
+		for _, f := range strings.Split(strings.TrimPrefix(line, "CHECK	"), "	") {
 			key, val, found := strings.Cut(f, "=")
 			if !found {
 				continue
@@ -150,19 +136,24 @@ func parseSurfaceCheckOutput(out string) (active, meta, procs string) {
 				active = val
 			case "socket_meta":
 				meta = val
+			case "dir_meta":
+				dirMeta = val
 			case "toolsd_procs":
 				procs = val
+			case "tcp_listeners":
+				tcp = val
 			}
 		}
 	}
-	return active, meta, procs
+	return active, meta, dirMeta, procs, tcp
 }
 
 // evaluateSurfaceCheck turns the parsed raw values into a verdict with NAMED
 // failures. agentUser is the expected socket owner (the agent's own user —
-// the identity that owns %t), matching the recipe's
-// `stat -c '%U %a'` gate.
-func evaluateSurfaceCheck(agentID, active, meta, procs, agentUser string) surfaceCheckState {
+// the identity that owns the runtime directory and the socket in it),
+// matching the recipe's `stat -c '%U %a'` gate. agentID names the runtime
+// directory the dir_meta verdict belongs to.
+func evaluateSurfaceCheck(agentID, active, meta, dirMeta, procs, tcp, agentUser string) surfaceCheckState {
 	st := surfaceCheckState{Agent: agentID, SocketActive: active}
 	var failures []string
 
@@ -186,11 +177,31 @@ func evaluateSurfaceCheck(agentID, active, meta, procs, agentUser string) surfac
 	st.Owner, st.Mode = owner, mode
 	switch {
 	case meta == "" || meta == "absent":
-		failures = append(failures, fmt.Sprintf("socket_meta: the socket file is absent at /run/user/<uid>/%s — the socket unit is not started", surfaceToolsdSocketName))
+		failures = append(failures, fmt.Sprintf("socket_meta: the socket file is absent at /run/bunker/%s/%s — the socket unit is not started", agentID, surfaceToolsdSocketName))
 	case owner != agentUser:
 		failures = append(failures, fmt.Sprintf("socket_meta: owner is %q, want the agent user %q", owner, agentUser))
 	case mode != "600":
 		failures = append(failures, fmt.Sprintf("socket_meta: mode is %q, want 600 (SocketMode=0600)", mode))
+	}
+
+	// The per-agent runtime directory itself (SURF-B2): the boundary is the
+	// 0700 agent-owned directory, not only the socket inside it.
+	dirOwner, dirMode := "absent", "absent"
+	if dirMeta != "" && dirMeta != "absent" {
+		if o, m, ok := strings.Cut(dirMeta, ":"); ok {
+			dirOwner, dirMode = o, m
+		} else {
+			dirOwner, dirMode = dirMeta, "unknown"
+		}
+	}
+	st.DirOwner, st.DirMode = dirOwner, dirMode
+	switch {
+	case dirMeta == "" || dirMeta == "absent":
+		failures = append(failures, fmt.Sprintf("dir_meta: the runtime directory /run/bunker/%s is absent — the per-agent boundary is not provisioned", agentID))
+	case dirOwner != agentUser:
+		failures = append(failures, fmt.Sprintf("dir_meta: owner is %q, want the agent user %q", dirOwner, agentUser))
+	case dirMode != "700":
+		failures = append(failures, fmt.Sprintf("dir_meta: mode is %q, want exactly 700 (group/world bits must be zero)", dirMode))
 	}
 
 	if procs == "" {
@@ -200,6 +211,22 @@ func evaluateSurfaceCheck(agentID, active, meta, procs, agentUser string) surfac
 		st.ToolsdProcs = procs
 		if n, err := strconv.Atoi(procs); err != nil || n != 0 {
 			failures = append(failures, fmt.Sprintf("toolsd_procs: %s before any connect (want 0 — the service is connection-activated; something else spawned toolsd)", procs))
+		}
+	}
+
+	// The no-TCP proof (SURF-B2): only a PROVEN zero passes. unknown means
+	// the agent could not run the probe — unproven, not safe.
+	switch tcp {
+	case "":
+		failures = append(failures, "tcp_listeners: no answer from the ss probe (agent did not report a TCP listener count)")
+		st.TCPListeners = "unknown"
+	case "unknown":
+		st.TCPListeners = tcp
+		failures = append(failures, "tcp_listeners: unknown — ss(8) absent on the agent, the no-TCP property is UNPROVEN (install iproute2 to prove it)")
+	default:
+		st.TCPListeners = tcp
+		if n, err := strconv.Atoi(tcp); err != nil || n != 0 {
+			failures = append(failures, fmt.Sprintf("tcp_listeners: %s (want a proven 0 — the transport is a unix socket at both ends)", tcp))
 		}
 	}
 
@@ -215,21 +242,23 @@ func runSurfaceCheck(cmd *cobra.Command, ctx context.Context, client bunkerv1con
 
 	cctx, cancel := context.WithTimeout(ctx, surfaceOperationTimeout)
 	defer cancel()
-	checkOut, _, err := execOnAgentScript(cctx, client, entry, agentID, surfaceCheckScript, 0)
+	checkOut, _, err := execOnAgentScript(cctx, client, entry, agentID, surfaceCheckScript(agentID), 0)
 	if err != nil {
 		return fmt.Errorf("check on agent %q failed: %w", agentID, err)
 	}
-	active, meta, procs := parseSurfaceCheckOutput(checkOut)
-	st := evaluateSurfaceCheck(agentID, active, meta, procs, surfaceCheckAgentUser(agentID))
+	active, meta, dirMeta, procs, tcp := parseSurfaceCheckOutput(checkOut)
+	st := evaluateSurfaceCheck(agentID, active, meta, dirMeta, procs, tcp, surfaceCheckAgentUser(agentID))
 
 	out := cmd.OutOrStdout()
 	if asJSON {
 		return json.NewEncoder(out).Encode(st)
 	}
-	fmt.Fprintf(out, "surface check for agent %s:\n", agentID)                                                  //nolint:errcheck // best-effort stdout report
-	fmt.Fprintf(out, "  socket unit : %s\n", orUnknown(st.SocketActive))                                        //nolint:errcheck
-	fmt.Fprintf(out, "  socket file : owner %s, mode %s\n", st.Owner, st.Mode)                                  //nolint:errcheck
-	fmt.Fprintf(out, "  toolsd procs: %s (connection-activated: 0 before the first connect)\n", st.ToolsdProcs) //nolint:errcheck
+	fmt.Fprintf(out, "surface check for agent %s:\n", agentID)                                                                   //nolint:errcheck // best-effort stdout report
+	fmt.Fprintf(out, "  socket unit : %s\n", orUnknown(st.SocketActive))                                                         //nolint:errcheck
+	fmt.Fprintf(out, "  socket file : owner %s, mode %s\n", st.Owner, st.Mode)                                                   //nolint:errcheck
+	fmt.Fprintf(out, "  runtime dir: owner %s, mode %s (/run/bunker/%s)\n", st.DirOwner, st.DirMode, agentID)                    //nolint:errcheck
+	fmt.Fprintf(out, "  toolsd procs: %s (connection-activated: 0 before the first connect)\n", st.ToolsdProcs)                  //nolint:errcheck
+	fmt.Fprintf(out, "  tcp listeners: %s (the transport is a unix socket at both ends; unknown = unproven)\n", st.TCPListeners) //nolint:errcheck
 	if st.OK {
 		fmt.Fprintf(out, "  result      : OK — ready for `bunker surface connect %s`\n", agentID) //nolint:errcheck
 		return nil
@@ -266,6 +295,15 @@ type surfaceConnectOptions struct {
 // refused remote forward (socket absent, permission denied) leaves a silent
 // ssh that forwards nothing — the exact failure a "ready" line must never
 // paper over.
+//
+// SURF-B2: StreamLocalBindMask=0077 is the local-end permission half of the
+// contract. ssh(1) creates the LOCAL unix socket under its (typically 022)
+// umask and then applies StreamLocalBindMask — the default 0177 leaves
+// group/world bits OFF but is not a guarantee on a host with a wider umask;
+// 0077 forces owner-only regardless of umask, so the local end is 0700 by
+// construction. The RunE still STATS the file back after the READY line
+// (surfaceAssertLocalSocketMode): a mask that exited into the argv is not
+// proof — the mode on disk is.
 func buildSurfaceConnectSSHArgs(opts surfaceConnectOptions) []string {
 	args := []string{
 		"-o", "StrictHostKeyChecking=no",
@@ -273,6 +311,7 @@ func buildSurfaceConnectSSHArgs(opts surfaceConnectOptions) []string {
 		"-o", "LogLevel=ERROR",
 		"-o", "IdentitiesOnly=yes",
 		"-o", "ExitOnForwardFailure=yes",
+		"-o", "StreamLocalBindMask=0077",
 		"-i", opts.KeyPath,
 		"-N",
 		"-L", opts.LocalPath + ":" + opts.RemotePath,
@@ -281,30 +320,10 @@ func buildSurfaceConnectSSHArgs(opts surfaceConnectOptions) []string {
 	return append(args, opts.SSHOptions...)
 }
 
-// surfaceDiscoverUID asks the AGENT for its own uid over the audited exec RPC
-// (recipe gotcha #2: ask the agent who it is — host-side getent lies when the
-// agent user is subid-mapped or simply not in the daemon host's passwd). It
-// returns the decimal uid string.
-func surfaceDiscoverUID(ctx context.Context, client bunkerv1connect.BunkerdClient,
-	entry ServerEntry, agentID string) (string, error) {
-
-	uctx, cancel := context.WithTimeout(ctx, surfaceOperationTimeout)
-	defer cancel()
-	out, exitCode, err := execOnAgentScript(uctx, client, entry, agentID, `id -u`, 0)
-	if err != nil {
-		return "", fmt.Errorf("discover uid on agent %q: %w", agentID, err)
-	}
-	uid := strings.TrimSpace(strings.SplitN(out, "\n", 2)[0])
-	uid = strings.TrimRight(uid, "\r")
-	if exitCode != 0 || uid == "" {
-		return "", fmt.Errorf("discover uid on agent %q: `id -u` produced no usable answer (exit %d, output %q)",
-			agentID, exitCode, tailSurfaceOutput(out, 200))
-	}
-	if _, err := strconv.Atoi(uid); err != nil {
-		return "", fmt.Errorf("discover uid on agent %q: `id -u` returned %q, which is not a uid", agentID, uid)
-	}
-	return uid, nil
-}
+// surfaceDiscoverUID was REMOVED by SURF-B2: the remote socket path is
+// derived from the agent id (/run/bunker/<agent-id>/toolsd.sock), so the
+// connect flow no longer needs to ask the agent for its numeric uid. The
+// runtime dir exists independently of the uid assignment.
 
 // waitForSurfaceLocalSocket waits until the local end of the forward exists
 // as a socket — the ssh child publishes it as soon as the remote forward is
@@ -340,6 +359,27 @@ func waitForSurfaceLocalSocket(ctx context.Context, path string, within time.Dur
 // agenttools_install.go). Production always uses the real waiter.
 var surfaceWaitForSocket = waitForSurfaceLocalSocket
 
+// surfaceAssertLocalSocketMode is the SURF-B2 local-end permission assertion:
+// after the forward's READY line the local socket file is STAT-ed back and
+// the command FAILS unless the mode is exactly 0700 (owner rwx — a socket
+// needs no open bit, but 0700 is the directory-grade owner-only form the
+// task pins; 0600 would also be private, and the contract is the stricter,
+// uniform form). A socket carrying group or world bits is refused loudly —
+// a forward that LOOKS private but is not must never be reported as ready.
+func surfaceAssertLocalSocketMode(path string) error {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("local forward socket %s: %w", path, err)
+	}
+	if fi.Mode()&os.ModeSocket == 0 {
+		return fmt.Errorf("local forward path %s is not a socket", path)
+	}
+	if got := fi.Mode().Perm(); got != 0700 {
+		return fmt.Errorf("local forward socket %s is mode %#o, required exactly 0700 (group/world bits must be zero) — refusing to report READY; check StreamLocalBindMask support on the local ssh(1)", path, got)
+	}
+	return nil
+}
+
 // newSurfaceConnectCommand implements `bunker surface connect <agent-id>`.
 func newSurfaceConnectCommand() *cobra.Command {
 	var (
@@ -347,7 +387,6 @@ func newSurfaceConnectCommand() *cobra.Command {
 		sshHost    string
 		sshKey     string
 		socketPath string
-		uidFlag    string
 		check      bool
 		asJSON     bool
 		timeout    uint32
@@ -356,10 +395,18 @@ func newSurfaceConnectCommand() *cobra.Command {
 		Use:   "connect <agent-id>",
 		Short: "Forward an agent's toolsd socket to a local path (the supported attach)",
 		Long: `Attach to an agent's toolsd socket surface: forward
-/run/user/<uid>/toolsd.sock (the agent's own systemd --user socket) to a
-local Unix socket over SSH, using the agent's OWN key and identity — never
+/run/bunker/<agent-id>/toolsd.sock (the agent's own systemd --user socket,
+inside the per-agent runtime directory provisioned at mode 0700 by spawn) to
+a local Unix socket over SSH, using the agent's OWN key and identity — never
 root, never the daemon host (the agent host is resolved from the agent
 record's sshfs mount / docker tunnel line).
+
+The transport is a unix socket at BOTH ends: ssh -L binds the local end with
+StreamLocalBindMask=0077 (the command refuses to report READY unless the
+local socket stats back at exactly mode 0700) and no TCP listener is created
+on this machine or on the agent. The local forward lives exactly as long as
+this process does; the remote socket lives under the agent's user manager
+and dies with the agent.
 
 While the command runs, the agent's tool surface is available locally:
 
@@ -376,6 +423,10 @@ is no separate disconnect command and no residue.
 The socket is connection-activated: nothing runs on the agent until the
 first local connection arrives. Check the surface first with --check.
 
+Auth model: the uid IS the auth (the socket is owned by, and sits inside a
+0700 directory of, the agent's own uid on the agent host) and the SSH key
+remains the credential — no new credential, no port, no firewall change.
+
 Examples:
   bunker surface connect abc12345 --check
   bunker surface connect abc12345
@@ -384,6 +435,13 @@ Examples:
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			agentID := args[0]
+			// SURF-B2: the id is interpolated into unit text and absolute
+			// socket paths on the agent — validate it against the SAME
+			// character set the daemon enforces at spawn before anything
+			// renders it.
+			if err := validSurfaceAgentID(agentID); err != nil {
+				return err
+			}
 			ctx, client, entry, err := surfaceVerbContext(cmd, serverName, timeout)
 			if err != nil {
 				return err
@@ -409,19 +467,8 @@ Examples:
 				return err
 			}
 
-			// 2. The agent's uid, asked of the agent (gotcha #2).
-			uid := uidFlag
-			if uid == "" {
-				uid, err = surfaceDiscoverUID(ctx, client, entry, agentID)
-				if err != nil {
-					return err
-				}
-			} else if _, aerr := strconv.Atoi(uid); aerr != nil {
-				return fmt.Errorf("invalid --uid %q: not a numeric uid", uid)
-			}
-
-			// 3. The client-local key (server-side paths are not readable
-			// from a remote client — the tunnel rule).
+			// 2. The client-local key (server-side paths are not readable
+			//    from a remote client — the tunnel rule).
 			keyPath := sshKey
 			if keyPath == "" {
 				keyPath, err = defaultSSHKeyPath(agentID)
@@ -433,7 +480,7 @@ Examples:
 				return fmt.Errorf("SSH key not found at %q — spawn the agent first or use --ssh-key", keyPath)
 			}
 
-			// 4. Local socket path: refuse to clobber a live one, then make
+			// 3. Local socket path: refuse to clobber a live one, then make
 			//    sure the ssh(1) forward can bind it.
 			localPath := socketPath
 			if localPath == "" {
@@ -445,9 +492,14 @@ Examples:
 			_ = os.Remove(localPath)
 
 			opts := surfaceConnectOptions{
-				AgentID:    agentID,
-				LocalPath:  localPath,
-				RemotePath: "/run/user/" + uid + "/" + surfaceToolsdSocketName,
+				AgentID:   agentID,
+				LocalPath: localPath,
+				// SURF-B2: the remote end is the agent's per-agent runtime
+				// directory socket — the same path the unit's ListenStream
+				// addresses and the daemon's spawn machinery provisions at
+				// mode 0700. No uid discovery hop: the path is derived from
+				// the agent id, not from who the agent is numerically.
+				RemotePath: surfaceToolsdSocketPath(agentID),
 				UserAtHost: target.UserAtHost,
 				KeyPath:    keyPath,
 			}
@@ -457,7 +509,7 @@ Examples:
 			fmt.Fprintf(out, "  remote : %s (via %s)\n", opts.RemotePath, opts.UserAtHost)      //nolint:errcheck
 			fmt.Fprintln(out, "  the forward runs until interrupted; Ctrl-C is the disconnect") //nolint:errcheck
 
-			// 5. Start the ssh child under the SAME long-lived-child
+			// 4. Start the ssh child under the SAME long-lived-child
 			//    contract as `bunker tunnel` (GAP-079): own signal-aware
 			//    context with NO deadline, own process group, group kill on
 			//    teardown, Pdeathsig backstop from a pinned thread.
@@ -475,7 +527,7 @@ Examples:
 				return fmt.Errorf("start ssh forward: %w", err)
 			}
 
-			// 6. Wait for the local socket to appear — that is the READY
+			// 5. Wait for the local socket to appear — that is the READY
 			//    line's evidence, not optimism. ExitOnForwardFailure=yes
 			//    makes a refused remote forward kill the child, which Wait
 			//    surfaces below.
@@ -485,7 +537,18 @@ Examples:
 				stopConnect()
 				return err
 			}
-			fmt.Fprintf(out, "READY: %s is forwarding the agent toolsd surface (Ctrl-C to stop)\n", opts.LocalPath) //nolint:errcheck // best-effort stdout report
+			// SURF-B2: the READY line carries TWO proven properties — the
+			// socket exists AND its mode is exactly 0700. A wider local end
+			// tears the forward down instead of being reported ready.
+			if err := surfaceAssertLocalSocketMode(localPath); err != nil {
+				_ = terminateChildGroup(c)
+				_ = c.Wait()
+				stopConnect()
+				_ = os.Remove(localPath)
+				return err
+			}
+			fmt.Fprintf(out, "READY: %s is forwarding the agent toolsd surface (Ctrl-C to stop)\n", opts.LocalPath)   //nolint:errcheck // best-effort stdout report
+			fmt.Fprintln(out, "  transport: unix socket both ends — no TCP listener is created here or on the agent") //nolint:errcheck
 
 			runErr := c.Wait()
 			_ = os.Remove(opts.LocalPath)
@@ -501,8 +564,7 @@ Examples:
 	cmd.Flags().StringVar(&sshHost, "ssh-host", "", "SSH host override (default: resolved from the agent record, then the server URL hostname)")
 	cmd.Flags().StringVar(&sshKey, "ssh-key", "", "SSH private key path (default: ~/.bunker/keys/<agent-id>)")
 	cmd.Flags().StringVar(&socketPath, "socket-path", "", "Local socket path for the forward (default: /tmp/bunker-toolsd-<agent-id>.sock)")
-	cmd.Flags().StringVar(&uidFlag, "uid", "", "Agent uid override (default: discovered from the agent via 'bunker exec')")
-	cmd.Flags().BoolVar(&check, "check", false, "Run the recipe's live checks on the agent (socket active, owner+mode, zero pre-connect toolsd) and exit")
+	cmd.Flags().BoolVar(&check, "check", false, "Run the recipe's live checks on the agent (socket active, owner+mode, dir 0700, zero pre-connect toolsd, zero TCP listeners) and exit")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "With --check: emit the result as JSON")
 	cmd.Flags().Uint32Var(&timeout, "timeout", 60, "Overall timeout in seconds for the setup RPCs")
 	return cmd
