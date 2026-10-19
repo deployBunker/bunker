@@ -4787,3 +4787,10 @@ tasks:
   status: complete
   created_at: '2026-10-18T04:27:25.550866+00:00'
   completed_at: '2026-10-18T04:27:46.771687+00:00'
+- id: SURF-018
+  title: git-over-mount guidance update
+  criteria:
+  - Update remote-bunker skill with SURF-018 measured performance numbers; document
+    mount timeout bounds
+  status: in_progress
+  created_at: '2026-10-19T03:37:37.028711+00:00'
