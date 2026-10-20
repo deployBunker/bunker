@@ -586,6 +586,31 @@ func TestRealTreeDocsRejectsLegacyBadFlags(t *testing.T) {
 	}
 }
 
+// TestUniversalHelpFlagIsAccepted verifies that docs referencing the
+// universal --help flag (which belongs to no specific command) are not
+// flagged by the docs-drift checker. Regression for INT-CI-20261013-BUNKER.
+func TestUniversalHelpFlagIsAccepted(t *testing.T) {
+	treeFlags, err := TreeFlags(repoRoot(t))
+	if err != nil {
+		t.Fatalf("TreeFlags: %v", err)
+	}
+	in := Input{
+		ReadmePath: "README.md", ChangelogPath: "CHANGELOG.md",
+		Readme:       "# x\n", Changelog: "# x\n\n## Unreleased\n",
+		LatestTag:    "v0.2.0",
+		Surface:      factsOrSkip(t, repoRoot(t)).Surface,
+		TreeFlags:    treeFlags,
+		Docs: map[string]string{
+			"docs/test.md": "- Use `bunker spawn --help` for the flag list.\n",
+		},
+	}
+	for _, p := range Check(in) {
+		if p.Rule == RuleDocsFlagSurface {
+			t.Errorf("unexpected docs-flag-surface finding for universal --help: %s", p)
+		}
+	}
+}
+
 func keysOf(m map[string]map[string]bool) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {

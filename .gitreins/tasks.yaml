@@ -4844,3 +4844,27 @@ tasks:
   status: complete
   created_at: '2026-10-20T02:58:57.147366+00:00'
   completed_at: '2026-10-20T03:53:47.562842+00:00'
+- id: SEC-BUNKER-002
+  title: Tenant isolation truth and enforcement surface
+  criteria:
+  - 'The committed change must address SEC-BUNKER-002 with gradeable evidence: the
+    default shared mode does not claim localhost or the global port allocator are
+    tenant-private; an implemented isolation mode or existing implementation is named
+    and tested; Unix socket directory/file permissions are asserted; tests/docs identify
+    residual boundaries and the exact acceptance witness; include a repository-local
+    ch:trace marker bound to row, spec, test, evidence, and commit.'
+  status: complete
+  created_at: '2026-10-20T12:04:55.032033+00:00'
+  completed_at: '2026-10-20T13:09:58.692906+00:00'
+- id: INT-CI-20261013-BUNKER-R2
+  title: 'Fix docs-drift CI: accept universal --help flag'
+  criteria:
+  - '1. internal/docscheck/flags.go must accept --help as a universal CLI flag (it
+    belongs to no specific command)\n2. internal/docscheck/flags_test.go must have
+    a unit test verifying --help is not flagged\n3. go run ./cmd/docs-drift exits
+    0 at HEAD\n4. go test -count=1 -short ./... is green\n5. go vet ./... is green
+
+    6. Hosted CI build-and-test is green on the fixing commit WITH unit-tests/gitreins-guard/regression/root-suite
+    actually running (not skipped)'
+  status: pending
+  created_at: '2026-10-20T14:37:27.577832+00:00'

@@ -341,6 +341,12 @@ func flagProblem(path string, lineNo int, toks []string, cmdIdx int, flags map[s
 	}, true
 }
 
+// knownUniversalFlags are CLI flags that every bunker command supports
+// but are not attached to any specific command in the flag registry.
+var knownUniversalFlags = map[string]bool{
+	"help": true,
+}
+
 // unknownFlags returns the long flags in argRegion that cmd cannot accept,
 // in document order.
 func unknownFlags(own map[string]bool, argRegion []string, union map[string]bool, labelled bool) []string {
@@ -363,6 +369,9 @@ func unknownFlags(own map[string]bool, argRegion []string, union map[string]bool
 			continue
 		}
 		if labelled && union[name] {
+			continue
+		}
+		if knownUniversalFlags[name] {
 			continue
 		}
 		bad = append(bad, "--"+name)
