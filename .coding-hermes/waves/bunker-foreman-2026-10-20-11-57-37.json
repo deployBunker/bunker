@@ -1,0 +1,19 @@
+{
+  "tick": "bunker-foreman-2026-10-20-11-57-37",
+  "block": "SEC-BUNKER-002",
+  "wave_budget": 2,
+  "wave_size": 1,
+  "mode": "serial-fallback",
+  "reason": "block_drive selected SEC-BUNKER-002, which has one ready row; no second independent row exists in the chosen block",
+  "base": "fad471d54bfc6d248a3f39367c5073b82648631f",
+  "tasks": [
+    {
+      "id": "SEC-BUNKER-002",
+      "worktree": "/home/kara/worktrees/bunker-SEC-BUNKER-002",
+      "branch": "wt/SEC-BUNKER-002",
+      "brief": "/tmp/bunker-foreman-2026-10-20-11-57-37-SEC-BUNKER-002-brief.txt",
+      "step": 1
+    }
+  ],
+  "status": "dispatched"
+}
