@@ -189,6 +189,9 @@ Client-side path overrides (persistent flags):
 	root.AddCommand(cli.NewRegistryCommand())
 	root.AddCommand(cli.NewLingerCommand())
 	root.AddCommand(cli.NewHomesCommand())
+	// INT-HOST-007: one host-residue reaper across orphan AppArmor profiles,
+	// agent homes and linger entries — dry run by default, --apply opt-in.
+	root.AddCommand(cli.NewReapCommand())
 	root.AddCommand(cli.NewSurfaceCommand())
 	// GAP-181: the paths diagnostic — every resolved secret/state path with
 	// its mode and the rule that produced it (locations only, never values).
