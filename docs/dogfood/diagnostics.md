@@ -1015,3 +1015,79 @@ root-installed one collides with /var/lib/bunkerd/secrets and the error tells
 the user to chmod root's file (impossible) instead of naming the
 `agent.base_data_dir` override; docs/egress-policy.md promises enforcement but
 ships no user-verification recipe. Both filed (DF-BUNKER-88).
+
+## 24. Dogfood run 2026-10-20 — the public-networking / ingress surface (read this before touching tunnels, or before promising a public URL)
+
+Run 28 (first real use of `--network cloudflare --trycloudflare`). HEAD-built
+CLI + daemon (in-tree 0.2.1, `dccaf31`), two isolated scratch daemons on the
+control host, the live `bunker-mvp` daemon for the documented path, one
+ephemeral mvp agent for the install leg.
+
+### 24.1 How the tunnel path is actually built
+
+`spawn` reaches `internal/agent/manager_spawn.go:980-985`: **only** when the
+request carries `trycloudflare=true` does the daemon call
+`tunnelMgr.Start(ctx, agentID, portStart)`, and it starts the tunnel against
+the agent's **first port** (`port_range_start`, e.g. 30000) — i.e. the service
+you want public must listen on the agent's first port, on the shared host
+network namespace. Tailscale is a separate branch keyed on
+`MODE_TAILSCALE`; `MODE_DIRECT` and `MODE_CLOUDFLARE_TUNNEL` without
+`trycloudflare` have **no daemon-side consumer at all** (also stated by
+specs/network-isolation.md §0).
+
+The argv is built at `internal/tunnel/tunnel.go:88-95`:
+`cloudflared tunnel --url http://localhost:<port>` + `--metrics
+localhost:<TunnelPort>` (only when `TunnelPort > 0`) + `--no-autoupdate`.
+`TunnelPort` defaults to **8080**, and that is the whole defect: a
+**per-agent** tunnel is pinned to a **host-global** port.
+
+### 24.2 Why a dead URL reads as success (the mechanism)
+
+cloudflared registers the quick tunnel and prints
+`https://<name>.trycloudflare.com` **before** it opens its metrics listener.
+When the metrics bind fails it prints
+`ERR Error opening metrics server listener error="failed to bind to address
+(localhost:8080): listen tcp 127.0.0.1:8080: bind: address already in use"`
+and exits 1. The daemon's `tryCloudflareRe` has already matched the URL, so
+`Start` returns success: the daemon logs `TryCloudflare tunnel started`, the
+spawn response carries `PublicURL`, and `persistSpawn` writes it into the
+durable registry — so a restart replays a dead endpoint as the agent's current
+public URL. Nothing ever waits on the child (zombie with PPID = the daemon
+until destroy, DF-BUNKER-106).
+
+### 24.3 The right way to use it today
+
+```bash
+# 1. Make sure the daemon can serve the feature at all
+grep -A2 '^tunnel:' /etc/bunkerd/config.yaml      # needs enabled: true
+#    and give the metrics port to nobody: tunnel_port: 0 (=> cloudflared picks
+#    an ephemeral port) — one live tunnelled agent per daemon until DF-BUNKER-104 lands
+# 2. Spawn and KEEP the URL
+bunker spawn <id> --server <srv> --network cloudflare --trycloudflare --ttl 30m
+# 3. Serve on the agent's FIRST port (the one the tunnel fronts)
+bunker exec <id> --server <srv> -- sh -c 'cd $HOME && (setsid nohup python3 -m http.server <portStart> > $HOME/serve.log 2>&1 &)'
+# 4. Verify from OUTSIDE — the only trustworthy check
+curl -o /dev/null -w '%{http_code}\n' https://<name>.trycloudflare.com/     # 200/502 = live, 530 = dead
+# 5. Host-side confirmation that the child is real (not defunct)
+ps -eo pid,ppid,stat,args | grep '[c]loudflared tunnel --url http://localhost:<portStart>'
+```
+
+### 24.4 Errors seen and what they actually mean
+
+| Symptom | Meaning |
+|---|---|
+| `530` + `Cloudflare Tunnel error … unable to resolve it` (error 1033) | the tunnel process is gone; the URL is dead even though `bunker info` prints it |
+| `[cloudflared] <defunct>`, PPID = bunkerd | the child already exited; the URL is dead (DF-BUNKER-106) |
+| spawn rc=0, **no** `Public URL` row in the bundle | `tunnel.enabled: false` on that daemon, or the tunnel never started — indistinguishable to the caller (DF-BUNKER-105) |
+| `502` from the URL | tunnel is alive, nothing is listening on the agent's first port yet |
+| `--network <garbage>` created an agent | no local validation of the flag (DF-BUNKER-105) |
+
+### 24.5 What was proven on the way (keep these working)
+
+Installer: README Option 1 = 4s on a bare agent, SHA256SUMS verified before
+writing, smoke check OK, honest PATH warning; source path (clone 2s, go/make
+present) reachable. Destroy: stops a live tunnel and reaps a dead child.
+Orphan sweep: a scratch daemon with a fresh registry found 4 unknown
+`bunker-*` users and **refused** to destroy them, naming the reason and the
+remedy — the DF-BUNKER-102 hazard is defended. Full run record:
+docs/dogfood/2026-10-20-public-networking.md; rows DF-BUNKER-104/105/106.
