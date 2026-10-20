@@ -158,7 +158,7 @@ func TestBoundaryFor(t *testing.T) {
 		{
 			name:        "shared admits no network isolation",
 			mode:        ModeShared,
-			wantSubstr:  []string{"host network namespace", "no network isolation"},
+			wantSubstr:  []string{"host network namespace", "no network isolation", "NOT tenant isolation"},
 			forbidden:   []string{"private"},
 			wantNonZero: true,
 		},

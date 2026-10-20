@@ -160,7 +160,10 @@ func Resolve(requested string) (string, error) {
 func BoundaryFor(mode string) string {
 	switch mode {
 	case ModeShared:
-		return "host network namespace (no network isolation: shared loopback, global port space)"
+		// SEC-BUNKER-002: the honesty requirement is explicit — shared is
+		// not tenant isolation, and the string says so rather than leaving
+		// the reader to infer it. Pinned by TestBoundaryFor.
+		return "host network namespace (no network isolation: shared loopback, global port space) — NOT tenant isolation"
 	case ModeSystemd:
 		return "private network namespace (loopback only): private 127.0.0.1 and port space; NO outbound networking (image pulls unavailable); covers only processes in the agent's dockerd unit"
 	case ModeProcVis:

@@ -486,11 +486,21 @@ capped even before the cgroup slice applies:
    dockerd unit + Linux user; containers/images/volumes of dead container-mode
    agents after a daemon restart are uncovered. The §4 orphan-handling note
    requires new sweep logic (GAP-065 scope).
-4. **Rootless builtin port-driver reachability.** The builtin userland driver
-   binds published ports to localhost by default, so external clients of
-   `DIRECT`-mode published ports may need `ssh -L`/tunnel ingress; the exact
-   bind address for `-p` is an implementation decision with an availability
-   tradeoff.
+4. **Rootless builtin port-driver reachability — and what it is NOT.** The
+   builtin userland driver binds published ports to localhost by default, so
+   external clients of `DIRECT`-mode published ports may need `ssh -L`/tunnel
+   ingress; the exact bind address for `-p` is an implementation decision with
+   an availability tradeoff. Two SEC-BUNKER-002 caveats keep this honest:
+   (a) that `localhost` is the HOST's shared loopback — every agent on the
+   host can reach it and `bind()` any port in the block first (squat /
+   impersonate); the published port is not tenant-private, and (b) the
+   per-agent 10000–19999 block that §3 publishes into is ALLOCATOR
+   BOOKKEEPING, not enforcement — Linux does not uid-scope ports above 1024.
+   The default rootless network path is therefore not tenant isolation on any
+   network axis; the per-agent network boundary is the `systemd` isolation
+   mode (NET-BUNKER-002, `PrivateNetwork=yes` — private loopback/port space
+   at the cost of all outbound), per `specs/network-isolation.md` §1.2/§2 and
+   `docs/security/SEC-BUNKER-002.md`.
 5. **Image pull policy / supply chain.** GAP-064 added a *base-image
    allowlist* for `image_spec` (`docker.io/library/ubuntu:24.04` default, plus
    `ubuntu:22.04`, `debian:12`, `debian:11` — `internal/imagespec/parse.go`), but
