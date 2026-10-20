@@ -129,7 +129,9 @@ Agents have a `default_ttl` (6h default). The `HeartbeatAgent` RPC extends `Expi
 
 ### Per-Agent Port Isolation
 
-Each agent gets a dedicated port range (e.g., 10000–10099 for agent-a, 10100–10199 for agent-b). Ports are allocated from a pool and returned on destroy. Overlapping ranges are prevented.
+Each agent gets a dedicated port range (e.g., 10000–10099 for agent-a, 10100–10199 for agent-b). Ports are allocated from a pool and returned on destroy. Overlapping ranges are prevented — by the allocator's bookkeeping ONLY.
+
+**This is not tenant isolation.** Agents on one host share the host network namespace: every agent's `localhost`/`127.0.0.1` is the same loopback, and ports above 1024 are not uid-scoped — any agent can `bind()` a port inside another agent's allocated range and squat it or impersonate its service (SEC-BUNKER-002). The allocator prevents two agents being *told* the same range; the kernel prevents nothing. The concrete per-agent network boundary is the `systemd` isolation mode (NET-BUNKER-002): the agent's dockerd unit is created with `PrivateNetwork=yes`, giving it its own network namespace (private loopback and port space) at the cost of ALL outbound networking (no DNS, no image pulls). See `specs/network-isolation.md` (§1.1/§1.2, §2 T2/T3) and `docs/security/SEC-BUNKER-002.md`.
 
 ### SSH Transport
 

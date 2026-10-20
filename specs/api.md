@@ -75,7 +75,7 @@ Request:
   - `mode`: CLOUDFLARE_TUNNEL, TAILSCALE, or DIRECT
   - `domain`: Custom Cloudflare domain (named tunnel)
   - `trycloudflare`: Use anonymous TryCloudflare tunnel
-  - `port_range_start` / `port_range_end`: Per-agent port isolation
+  - `port_range_start` / `port_range_end`: Bookkeeping-only per-agent port range — the range prevents two agents being ALLOCATED the same ports, not them binding them: localhost and the port space are shared between agents on one host (SEC-BUNKER-002). The tenant-network boundary is the `systemd` isolation mode (`PrivateNetwork=yes`); see `specs/architecture.md` "Per-Agent Port Isolation" and `specs/network-isolation.md`.
 - `ttl` (string): Duration like "6h", "24h", "7d"
 - `return_ssh_private_key` (bool, optional): GAP-128 opt-in flag. When set,
   the spawn response carries the generated private key (old behavior);
