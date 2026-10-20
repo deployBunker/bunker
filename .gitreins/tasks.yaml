@@ -4866,5 +4866,5 @@ tasks:
 
     6. Hosted CI build-and-test is green on the fixing commit WITH unit-tests/gitreins-guard/regression/root-suite
     actually running (not skipped)'
-  status: pending
+  status: in_progress
   created_at: '2026-10-20T14:37:27.577832+00:00'
