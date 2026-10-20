@@ -12,9 +12,10 @@ none was invented, and none was needed for this row)
 TIER: T1
 EVIDENCE: commit (head of this branch, `wt/SEC-BUNKER-002`) + the tests below
 WITNESS: `go test ./internal/netmode/ ./internal/docscheck/ -run 'Tenant|SECBunker002|Socket' -count=1 -v`
-VERDICT: none:foreman-will-run
-COMMIT: none:worker-pending
-MEMORY: none:worker-does-not-write-memory
+ch:trace row=SEC-BUNKER-002 spec=specs/network-isolation.md#1.1-1.2-and-2-T2-T3 wave=.coding-hermes/waves/bunker-foreman-2026-10-20-11-57-37.json#1 test=internal/docscheck/tenant_port_isolation_docs_test.go::TestRealTreeTenantPortDocsStateTheSharedTruth doc=docs/security/SEC-BUNKER-002.md prompt=/tmp/bunker-foreman-2026-10-20-11-57-37-SEC-BUNKER-002-brief.txt evidence=commit:b1750ecb witness=commit:b1750ecb verdict=none:pending-judge commit=b1750ecb memory=none:foreman-does-not-write-memory
+VERDICT: none:pending-judge
+COMMIT: b1750ecb
+MEMORY: none:foreman-does-not-write-memory
 
 ## 1. The premise, verified against live HEAD
 
