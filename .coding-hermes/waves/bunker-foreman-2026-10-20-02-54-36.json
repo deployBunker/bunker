@@ -1,0 +1,29 @@
+{
+  "tick": "bunker-foreman-2026-10-20-02-54-36",
+  "project": "bunker",
+  "block": "INT-HOST-007",
+  "path": "serial",
+  "path_reason": "slots = max(1, min(6, nproc(16) - ceil(loadavg 22.06))) = 1; the chosen block (INT-HOST family, 6/7 done) also has exactly ONE ready row, so no wave was composable even at slots>=2. Box genuinely loaded by sibling fleet work (hermes-dagger tstest/typescript/dagger test processes, crier worktree, duckbrain) - load is never an idle reason, so one worker was dispatched.",
+  "wave_budget": 10,
+  "slots": 1,
+  "rows": [
+    {
+      "id": "INT-HOST-007",
+      "scope": "c only (unified host-residue reaper, dry-run default)",
+      "worktree": null,
+      "worktree_note": "serial path per the tick prompt: the worker shares this workdir and commits directly",
+      "branch": "main",
+      "worker_model": "glm-5.3-flash",
+      "worker_provider": "zai-glm-default",
+      "brief": "/tmp/foreman-worker-INT-HOST-007.txt",
+      "log": "/tmp/foreman-worker-INT-HOST-007.log",
+      "gitreins_task": "INT-HOST-007",
+      "depends_on": ["INT-HOST-006"],
+      "depends_on_state": "complete (4819d4e2, judge PASS 3d377ac7)"
+    }
+  ],
+  "not_dispatched": [
+    {"scope": "b", "reason": "one-time backlog sweep deletes live-host state - NAMED owner blocker (owner deletion decision required). The reaper's dry-run report is the artifact that decision needs."},
+    {"scope": "d", "reason": "battery hygiene (TestConcurrency_SpawnFiveAgents leaks bunker-conctest-0..4 users). Different seam (test battery), left as a named remainder on the row; not started this tick."}
+  ]
+}

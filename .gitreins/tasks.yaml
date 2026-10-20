@@ -4805,3 +4805,42 @@ tasks:
   status: complete
   created_at: '2026-10-19T07:55:18.689732+00:00'
   completed_at: '2026-10-19T10:12:52.094782+00:00'
+- id: INT-HOST-006
+  title: Remove rootlesskit AppArmor profile on agent destroy
+  criteria:
+  - "Destroy must unload and delete the agent's rootlesskit AppArmor profile that\
+    \ spawn installs at /etc/apparmor.d/home.<user>.bin.rootlesskit. Evidence required:\
+    \ (1) go build ./... exits 0; (2) the destroy path calls a cleanup that unloads\
+    \ with 'apparmor_parser -R <profilePath>' and then removes the file \u2014 see\
+    \ internal/agent/apparmor.go (RemoveAgentAppArmorProfile / removeAgentAppArmorProfileCtx)\
+    \ wired into internal/agent/manager_destroy.go; (3) dedicated tests drive the\
+    \ REAL Destroy() and assert both effects, and they PASS: 'go test ./internal/agent\
+    \ -run TestDestroy_UnloadsAppArmor -count=1 -v' runs (not skipped) and reports\
+    \ PASS, asserting the parser seam received '-R <exact spawn-side path>' and that\
+    \ the profile file no longer exists; (4) 'go test ./internal/agent -run TestRemoveAgentAppArmorProfile\
+    \ -count=1 -v' reports 3 PASS (absent-profile no-op, unload+remove, unload-failure-still-removes).\
+    \ The named tests must actually run and assert those effects (a no-tests-to-run\
+    \ vacuous pass does not satisfy this)."
+  status: complete
+  created_at: '2026-10-19T20:29:59.085448+00:00'
+  completed_at: '2026-10-19T20:30:05.899892+00:00'
+- id: INT-HOST-007
+  title: 'Host-residue reaper: one verb, dry-run default, per-class counts'
+  criteria:
+  - 'Ship a single host-residue reaper CLI verb ''bunker reap'' that reports per-class
+    removable residue counts and deletes NOTHING by default. Evidence required: (1)
+    go build ./... exits 0 and go vet ./... exits 0; (2) the new verb is a registered
+    top-level command (its own internal/cli/reap.go + reap_test.go) and ''go run ./cmd/bunker
+    reap --help'' documents the dry-run default and the explicit opt-in deletion flag;
+    (3) the reaper covers THREE classes in one report - orphan AppArmor profiles (/etc/apparmor.d/home.<user>.bin.rootlesskit
+    whose system user no longer exists), orphan agent homes and stale systemd linger
+    entries - each classified ONLY by the does-this-user-exist rule so an entry whose
+    user still exists is never removable; (4) tests PASS with -count=1 (no t.Skip)
+    driving the real scan through injectable root seams pointed at t.TempDir(), asserting
+    orphan=removable, live-user=kept, unmanaged=never classified, and that dry-run
+    removes nothing while the opt-in flag removes exactly the orphan class; (5) a
+    real dry-run on this host prints the per-class counts (AppArmor orphan class non-empty)
+    and the profile files still exist afterwards - paste the command and its output.'
+  status: complete
+  created_at: '2026-10-20T02:58:57.147366+00:00'
+  completed_at: '2026-10-20T03:53:47.562842+00:00'
