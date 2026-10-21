@@ -421,14 +421,17 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	}
 
 	// ── Step 3: Generate SSH keypair ───────────────────────────────
-	keyFile = filepath.Join(os.TempDir(), fmt.Sprintf("bunker-key-%s", agentID))
+	keyFile = keyFilePath(agentID)
+	// INT-CI-042: a previous spawn of this id that was killed before its
+	// rollback ran (CI step/job timeout SIGKILLs bunkerd) leaves the keyfile
+	// pair at this deterministic path; ssh-keygen would then prompt
+	// interactively on the daemon's closed stdin and the spawn dies at
+	// stage keygen. Clear the STALE pair first — this agent's two files only.
+	if err := preClearSpawnKeyFiles(agentID); err != nil {
+		return nil, fail(StageKeygen, err)
+	}
 	m.logger.Info("generating SSH keypair", "keyfile", keyFile)
-	cmd = exec.CommandContext(ctx, "ssh-keygen",
-		"-t", "ed25519",
-		"-f", keyFile,
-		"-N", "",
-		"-C", "bunker-"+agentID,
-	)
+	cmd = newKeygenCmd(ctx, agentID)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return nil, fail(StageKeygen, fmt.Errorf("ssh-keygen failed: %w (output: %s)", err, string(out)))
 	}
