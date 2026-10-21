@@ -4856,6 +4856,20 @@ tasks:
   status: complete
   created_at: '2026-10-20T12:04:55.032033+00:00'
   completed_at: '2026-10-20T13:09:58.692906+00:00'
+- id: INT-CI-076
+  title: Refresh stale rootless-installer supply-chain pin
+  criteria:
+  - pin matches live upstream bytes; regression test pins expected-hash path; go test
+    green; root-suite no longer reports checksum mismatch
+  status: complete
+  created_at: '2026-10-21T02:23:42.524370+00:00'
+  completed_at: '2026-10-21T03:06:42.794592+00:00'
+- id: INT-CI-047
+  title: Echo failing nested cell before tally in E2E battery
+  criteria:
+  - nested leg echoes failing cell name before tally; go build/vet/test green
+  status: in_progress
+  created_at: '2026-10-21T02:23:43.170867+00:00'
 - id: INT-CI-074
   title: Verify CI green after tag gate softening (b2b6119f)
   criteria:
