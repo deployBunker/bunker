@@ -12,7 +12,12 @@
       "base_sha": "c256557a",
       "worker_model": "glm-5.3-flash",
       "worker_provider": "zai-glm-default",
-      "files": ["internal/supplychain/manifest.json", "internal/agent/rootless.go", "internal/agent/rootless_pin_test.go", "docs/supply-chain-pinning.md"],
+      "files": [
+        "internal/supplychain/manifest.json",
+        "internal/agent/rootless.go",
+        "internal/agent/rootless_pin_test.go",
+        "docs/supply-chain-pinning.md"
+      ],
       "acceptance": "pin matches live upstream bytes; regression test pins expected-hash path; go test green; root-suite no longer reports checksum mismatch"
     },
     {
@@ -24,10 +29,16 @@
       "base_sha": "c256557a",
       "worker_model": "glm-5.3-flash",
       "worker_provider": "zai-glm-default",
-      "files": ["e2e-full-battery.sh", "regression-tests.sh"],
+      "files": [
+        "e2e-full-battery.sh",
+        "regression-tests.sh"
+      ],
       "acceptance": "nested leg echoes failing cell name before tally; go build/vet/test green"
     }
   ],
   "dispatched_at": "2026-10-21T02:22:10Z",
-  "status": "dispatching"
+  "status": "complete",
+  "recovered_at": 1792552400.901174,
+  "notes": "INT-CI-076 merged (93cc04d4). INT-CI-047 superseded by INT-CI-051 (0258560f) - fix already in main.",
+  "completed_at": "2026-10-21T03:47:13.884342Z"
 }
