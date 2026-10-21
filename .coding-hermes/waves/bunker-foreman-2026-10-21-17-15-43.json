@@ -21,5 +21,17 @@
     }
   ],
   "dispatched_at": "2026-10-21T17:15:43-05:00",
-  "status": "dispatched"
+  "status": "complete",
+  "finished_at": "2026-10-21T18:25:00Z",
+  "outcome": {
+    "row": "SUP-DEPS-20261004",
+    "commit": "3aa18a1d58a929d3845170060eb7efeccd4476d6",
+    "merge": "fast-forward main",
+    "push_verified": true,
+    "unpushed_count": 0,
+    "worktree_removed": true,
+    "branch_deleted": true,
+    "local_gate": "PASS: go build ./..., go vet ./..., go test ./... -count=1 -short -p 4; gitreins guard secrets clean with Go checks independently verified",
+    "remote_ci": "queued on exact HEAD; run 39650287450 was queued at tick close"
+  }
 }
