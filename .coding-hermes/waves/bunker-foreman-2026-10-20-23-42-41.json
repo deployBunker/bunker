@@ -1,0 +1,53 @@
+{
+  "tick": "bunker-foreman-2026-10-20-23-42-41",
+  "block": "INT-CI-20261013-BUNKER-R2",
+  "tasks": [
+    {
+      "id": "INT-CI-018",
+      "worktree": "/home/kara/worktrees/bunker-INT-CI-018",
+      "branch": "wt/INT-CI-018",
+      "base": "76271471940596663e03f0241aca7bc5d766fc49",
+      "brief": "/tmp/bunker-foreman-2026-10-20-23-42-41-INT-CI-018-brief.txt",
+      "model": "deepseek-v4-flash",
+      "provider": "opencode-go",
+      "status": "prepared"
+    },
+    {
+      "id": "INT-CI-075",
+      "worktree": "/home/kara/worktrees/bunker-INT-CI-075",
+      "branch": "wt/INT-CI-075",
+      "base": "76271471940596663e03f0241aca7bc5d766fc49",
+      "brief": "/tmp/bunker-foreman-2026-10-20-23-42-41-INT-CI-075-brief.txt",
+      "model": "deepseek-v4-flash",
+      "provider": "opencode-go",
+      "status": "prepared"
+    }
+  ],
+  "workers": null,
+  "recovery": {
+    "recovered_by_tick": "bunker-foreman-2026-10-21-00-56-09",
+    "note": "Both briefs had been dispatched by the prior tick; the workers died before first edit and the tick ended. The rework ran anyway in the same worktrees and the branches were committed AND pushed before the tick closed, so the recovery tick verified the diffs, ran the gates and merged instead of re-dispatching.",
+    "results": [
+      {
+        "id": "INT-CI-018",
+        "worker_commits": ["33a84345", "8bc8891b"],
+        "merge_commit": "cd7ee7b4",
+        "diff_stat": "docs/tier2-eval-budget.md +27, docs/evidence/INT-CI-018-compaction-evidence.md +23, 0 deletions",
+        "gitreins_verdict": "5d82fcac",
+        "verdict_result": "PASS",
+        "row_status": "complete"
+      },
+      {
+        "id": "INT-CI-075",
+        "worker_commits": ["f59f35d8"],
+        "merge_commit": "d4cb58a0",
+        "diff_stat": "internal/server/webdav/bfs046_program_test.go +2, 0 deletions",
+        "gitreins_verdict": "1a210b08",
+        "verdict_result": "PASS",
+        "row_status": "complete"
+      }
+    ],
+    "local_gate": "PASS: go build ./... && go vet ./... && go test ./... -count=1 -short",
+    "push": "origin/main per tick close; origin/main..HEAD = 0"
+  }
+}

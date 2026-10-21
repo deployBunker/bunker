@@ -1,0 +1,9 @@
+{
+  "tick": "bunker-foreman-2026-10-20-23-12-54",
+  "block": "INT-CI-20261013-BUNKER-R2",
+  "wave": "serial",
+  "reason": "block_drive top block is complete at live effective rows; its 5 pending rows are stale residuals but do not form the selected block's ready implementation set. The next top block with actionable rows is RELEASE-BUNKER-003, which has one ready row only, so no wave can be composed.",
+  "tasks": [],
+  "worktrees": [],
+  "briefs": []
+}
