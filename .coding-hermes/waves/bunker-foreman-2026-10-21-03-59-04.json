@@ -1,0 +1,34 @@
+{
+  "tick_id": "bunker-foreman-2026-10-21-03-59-04",
+  "block": "INT-CI-076",
+  "wave_size": 2,
+  "path": "serial (slots=1 at dispatch: load 17.05 on 16 cpus; the block then had 1 ready row)",
+  "rows": [
+    {
+      "id": "INT-CI-074",
+      "worktree": "/home/kara/worktrees/bunker-INT-CI-074",
+      "branch": "wt/INT-CI-074",
+      "base_sha": "e61de2f2",
+      "merged_commit": "1a0b6df3",
+      "outcome": "merged",
+      "note": "verification-only row (tag parity warning-only post-b2b6119f); Tier 2 verdict PASS (c72c0255)"
+    },
+    {
+      "id": "INT-CI-042",
+      "worktree": "/home/kara/worktrees/bunker-INT-CI-042",
+      "branch": "wt/INT-CI-042",
+      "base_sha": "85c802e6",
+      "merged_commit": "9ae65606",
+      "board_commit": "f9cb829b",
+      "outcome": "merged",
+      "note": "worker stalled pre-commit (55 min); foreman verified + landed the worker's artifacts; real defect"
+    }
+  ],
+  "dispatched_at": "2026-10-21T04:02:20Z",
+  "status": "complete",
+  "finished_at": "2026-10-21T05:42:53.956375+00:00",
+  "recovery": {
+    "unfinished_wave": "bunker-foreman-2026-10-21-02-22-10",
+    "status": "already complete before this tick (nothing to recover)"
+  }
+}
