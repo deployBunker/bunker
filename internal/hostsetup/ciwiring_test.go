@@ -481,3 +481,89 @@ func TestRootSuiteBudgetFitsCIWindow(t *testing.T) {
 		t.Errorf("root-suite window %dm (%ds) leaves only %ds of headroom under the %ds budget; >= 150s is required for the wrapper's EXIT-trap leak cleanup", minutes, minutes*60, headroom, budgetSeconds)
 	}
 }
+
+// TestPortPreflightGuardsDaemonStartup pins INT-CI-077: BOTH battery startup
+// paths (regression-tests.sh around `bunkerd -c`, e2e-full-battery.sh around
+// `"$BUNKERD_BIN" -c`) must pre-flight the EXACT requested ports BEFORE the
+// daemon is started and refuse with ONE actionable cell naming the owning
+// stale pid, instead of dying at startup on "address already in use" hidden
+// in the daemon log (CI run 39544219096, job 119038796197, head 85c802e6: a
+// previous job's bunkerd survived on the persistent runner and still held
+// :28081/:29091, so the run produced zero cells). The helper stays
+// detection-only — the production-daemon safety rules expressed by
+// host_state_sweep_allowed / BUNKERD_COEXIST are untouched, the refusal
+// carries the reclaim guidance (and the systemd-daemon warning), and the
+// kill itself is left to the operator. The behavioural half of this contract
+// (refusal shapes, pid-less snapshots, no invented pid) is proven hermetically
+// by scripts/test-port-preflight.sh against a stub `ss`; this test pins the
+// wiring statically so a dropped invocation or a weakened refusal fails in
+// `go test ./...` on every push. RED/GREEN evidence lives in
+// scripts/test-port-preflight.sh (RED against git show dae24fdb:<path>).
+func TestPortPreflightGuardsDaemonStartup(t *testing.T) {
+	for _, tc := range []struct {
+		scriptPath string
+		configVar  string
+		startLine  string
+		refusalRC  string
+	}{
+		{scriptPath: regressionSuiteScriptPath, configVar: "REGRESSION_CONFIG", startLine: `bunkerd -c "$REGRESSION_CONFIG"`, refusalRC: "exit 2"},
+		{scriptPath: e2eBatteryScriptPath, configVar: "BATTERY_CONFIG", startLine: `"$BUNKERD_BIN" -c "$BATTERY_CONFIG"`, refusalRC: "exit 42"},
+	} {
+		t.Run(tc.scriptPath, func(t *testing.T) {
+			script := readRepoFile(t, tc.scriptPath)
+
+			if got := strings.Count(script, "port_preflight() {"); got != 1 {
+				t.Fatalf("%s defines port_preflight() %d time(s), want exactly 1", tc.scriptPath, got)
+			}
+
+			// The invocation site must precede the daemon start in the MAIN
+			// path (`if ! port_preflight "$BUNKERD_GRPC_ADDR" ...` — the
+			// self-test drives the helper directly and must not match).
+			inv := strings.Index(script, `if ! port_preflight "$BUNKERD_GRPC_ADDR" "$BUNKERD_REST_ADDR"; then`)
+			if inv < 0 {
+				t.Fatalf("%s never invokes the port preflight before its daemon start — a stale listener from a previous job kills the run before any cell (run 39544219096)", tc.scriptPath)
+			}
+			start := strings.Index(script, tc.startLine)
+			if start < 0 {
+				t.Fatalf("%s lost its daemon start line %q", tc.scriptPath, tc.startLine)
+			}
+			if inv > start {
+				t.Fatalf("%s invokes the port preflight AFTER the daemon start (offset %d > %d) — too late to prevent the bind loss", tc.scriptPath, inv, start)
+			}
+
+			// The refusal must be the harness's own documented preflight exit
+			// (regression-tests.sh: 2; e2e-full-battery.sh: 42), not a silent
+			// continue past a squatted port.
+			if !strings.Contains(script[inv:start], tc.refusalRC) {
+				t.Fatalf("%s port-preflight refusal does not %s before the daemon start — the run would continue into a bind loss", tc.scriptPath, tc.refusalRC)
+			}
+
+			// One actionable cell: the exact port, the owning stale pid and
+			// the reclaim action, plus the production-daemon warning so the
+			// systemd-managed bunkerd (INT-CI-012) is never the kill target.
+			for _, want := range []string{
+				`is already LISTENing`,
+				`Owner pid $OWNER_PID`,
+				"kill $OWNER_PID",
+				`systemctl is-active bunkerd`,
+				`address already in use`,
+			} {
+				if !strings.Contains(script, want) {
+					t.Errorf("%s port_preflight lost %q — the refusal cell must name the port, the owning pid, the reclaim action, and warn off the systemd-managed production daemon", tc.scriptPath, want)
+				}
+			}
+
+			// Detection only: the helper's body must not kill anything and
+			// must not sleep the bind failure away (a generic retry papers
+			// over exactly the residue this row exists for).
+			bodyStart := strings.Index(script, "port_preflight() {")
+			bodyEnd := strings.Index(script[bodyStart:], "\n}\n")
+			body := script[bodyStart : bodyStart+bodyEnd]
+			for _, forbidden := range []string{"pkill ", "\nkill ", "	sleep ", " sleep "} {
+				if strings.Contains(body, forbidden) {
+					t.Errorf("%s port_preflight body contains %q — the helper stays detection-only; reclamation belongs to the operator (host_state_sweep_allowed / BUNKERD_COEXIST rules untouched)", tc.scriptPath, forbidden)
+				}
+			}
+		})
+	}
+}

@@ -122,6 +122,42 @@ kill_stray_bunkerd() {
     pkill bunkerd 2>/dev/null || true
 }
 
+# port_preflight <grpc_addr> <rest_addr> — INT-CI-077: refuse the run BEFORE
+# the scratch daemon loses a bind fight it can only report in its own log. On
+# the persistent runner a previous job's bunkerd can survive the job teardown
+# and still hold this suite's ports (run 39544219096, job 119038796197: the
+# battery died before ANY cell because :29091/:28081 were still bound and the
+# new daemon exited with "address already in use" hidden in
+# /var/log/bunkerd-regression.log). Detection ONLY: this never kills anything
+# — the production-daemon safety rules expressed by host_state_sweep_allowed
+# are untouched — the ONE refusal cell names the exact port, the owning stale
+# pid, and the reclaim action, and leaves the kill to the operator.
+port_preflight() {
+    local PORT SNAP LINE OWNER_PID
+    SNAP="$(ss -tlnp 2>/dev/null || true)"
+    for PORT in "${1#:}" "${2#:}"; do
+        # INT-CI-020 shape: match the LISTEN line by ":<port>" followed by
+        # whitespace/end — no grep -q, no head (SIGPIPE kills the writer and
+        # pipefail fails the pipeline even on a match).
+        LINE="$(printf '%s\n' "$SNAP" | grep -E "^LISTEN .*:${PORT}([[:space:]]|$)" || true)"
+        LINE="${LINE%%$'\n'*}"
+        [ -n "$LINE" ] || continue
+        OWNER_PID=""
+        case "$LINE" in
+            # First pid=<n> in the users:(...) field; absent when this user
+            # may not see socket owners (non-root ss -tlnp).
+            *pid=*) OWNER_PID="${LINE#*pid=}"; OWNER_PID="${OWNER_PID%%[^0-9]*}" ;;
+        esac
+        if [ -n "$OWNER_PID" ]; then
+            echo "  ✗ FATAL: requested port :$PORT is already LISTENing — a stale daemon from a previous job still holds it (the new bunkerd would die with 'address already in use'; CI run 39544219096). Owner pid $OWNER_PID — reclaim: kill $OWNER_PID (verify first with 'systemctl is-active bunkerd': NEVER kill the systemd-managed production daemon)." >&2
+        else
+            echo "  ✗ FATAL: requested port :$PORT is already LISTENing — a stale daemon from a previous job still holds it (the new bunkerd would die with 'address already in use'; CI run 39544219096). Owner pid not visible to this user — identify it with: ss -tlnp | grep :$PORT ; then kill <pid> (verify first with 'systemctl is-active bunkerd': NEVER kill the systemd-managed production daemon)." >&2
+        fi
+        return 1
+    done
+    return 0
+}
+
 # GAP-089: linger-cleanup helpers. Test-harness teardown deletes throwaway
 # bunker-* users with userdel, which never disables systemd linger — the
 # user@UID.service manager keeps running for a deleted user and the
@@ -705,6 +741,18 @@ echo "── 2. Server startup ──"
 # max_agents 10 / ports 20000-20999 exactly as before.
 if [ "$REGRESSION_RESIDUE_USERS" -gt 0 ]; then
     echo "  daemon sized for residue: ${REGRESSION_RESIDUE_USERS} agent user(s) already on this host → max_agents ${REGRESSION_MAX_AGENTS}, port pool ${REGRESSION_PORT_START}-${REGRESSION_PORT_END} (${REGRESSION_MAX_AGENTS} ranges of ${REGRESSION_PORT_PER_AGENT})"
+fi
+
+# INT-CI-077: the exact ports this run requested must be FREE before the
+# scratch daemon is started — a stale listener from a previous job is ONE
+# actionable refusal naming the owning pid (exit 2 = preflight refusal,
+# nothing mutated), not 22 unattributable cascade reds. Detection only: no
+# kill, no retry, no sleep; the operator reclaims. The systemd-managed
+# production daemon (INT-CI-012) is never this suite's to stop — if it is
+# the owner, the refusal says so and the RUN PORTS must move instead.
+if ! port_preflight "$BUNKERD_GRPC_ADDR" "$BUNKERD_REST_ADDR"; then
+    echo "FATAL: port preflight refused the run — free the ports above (or point BUNKERD_GRPC_ADDR/BUNKERD_REST_ADDR at free ones) and re-run." >&2
+    exit 2
 fi
 
 if [ -n "$BUNKERD_COEXIST" ]; then

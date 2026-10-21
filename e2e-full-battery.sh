@@ -547,6 +547,43 @@ run_capture() {
 # the section-12 verdict and the daemon gate can be proven without root, a
 # daemon, or a nested suite.
 
+# port_preflight <grpc_addr> <rest_addr> — INT-CI-077: refuse the run BEFORE
+# "$BUNKERD_BIN" loses a bind fight it can only report in its own log. On the
+# persistent runner a previous job's bunkerd can survive the job teardown and
+# still hold this battery's ports (:29091/:28081 — CI run 39544219096, job
+# 119038796197: the battery died before ANY cell with "address already in
+# use" hidden in the daemon log). Detection ONLY: this never kills anything —
+# the BUNKERD_COEXIST production-daemon safety rules are untouched — the ONE
+# refusal cell names the exact port, the owning stale pid, and the reclaim
+# action, and leaves the kill to the operator. Exercised by --self-test
+# (arm INT-CI-077) with a stub `ss`; scripts/test-port-preflight.sh pins the
+# shared contract for both harnesses.
+port_preflight() {
+    local PORT SNAP LINE OWNER_PID
+    SNAP="$(ss -tlnp 2>/dev/null || true)"
+    for PORT in "${1#:}" "${2#:}"; do
+        # INT-CI-020 shape: match the LISTEN line by ":<port>" followed by
+        # whitespace/end — no grep -q, no head (SIGPIPE kills the writer and
+        # pipefail fails the pipeline even on a match).
+        LINE="$(printf '%s\n' "$SNAP" | grep -E "^LISTEN .*:${PORT}([[:space:]]|$)" || true)"
+        LINE="${LINE%%$'\n'*}"
+        [ -n "$LINE" ] || continue
+        OWNER_PID=""
+        case "$LINE" in
+            # First pid=<n> in the users:(...) field; absent when this user
+            # may not see socket owners (non-root ss -tlnp).
+            *pid=*) OWNER_PID="${LINE#*pid=}"; OWNER_PID="${OWNER_PID%%[^0-9]*}" ;;
+        esac
+        if [ -n "$OWNER_PID" ]; then
+            echo "  ✗ FATAL: requested port :$PORT is already LISTENing — a stale daemon from a previous job still holds it (the new bunkerd would die with 'address already in use'; CI run 39544219096). Owner pid $OWNER_PID — reclaim: kill $OWNER_PID (verify first with 'systemctl is-active bunkerd': NEVER kill the systemd-managed production daemon)." >&2
+        else
+            echo "  ✗ FATAL: requested port :$PORT is already LISTENing — a stale daemon from a previous job still holds it (the new bunkerd would die with 'address already in use'; CI run 39544219096). Owner pid not visible to this user — identify it with: ss -tlnp | grep :$PORT ; then kill <pid> (verify first with 'systemctl is-active bunkerd': NEVER kill the systemd-managed production daemon)." >&2
+        fi
+        return 1
+    done
+    return 0
+}
+
 # connect_with_retry — section-2 connect with a bounded retry (INT-CI-040).
 # The original revision fired a single `bcli connect`: on CI run
 # 36097795108 (bab0721) the battery daemon came up while bunkerd's 30s
@@ -1354,6 +1391,46 @@ STFIXEOF
         ST_FAIL=$((ST_FAIL+1))
     fi
 
+    # (INT-CI-077) The port preflight: a stale listener on a requested port
+    # must produce ONE actionable refusal naming the port and the owning
+    # stale pid — never a startup death for lack of a server (run
+    # 39544219096). Behavioural, no recursion: port_preflight is driven in a
+    # subshell with a stub `ss` FIRST on PATH (the same pattern the guard arm
+    # above uses for resolve_inputs), so no daemon is started and no host
+    # port is probed.
+    ST_STUB_DIR="$(mktemp -d /tmp/bunker-battery-selftest-ss-XXXXXX)"
+    printf '#!/bin/sh\ncat "${SS_FIXTURE:?}"\n' > "$ST_STUB_DIR/ss"
+    chmod +x "$ST_STUB_DIR/ss"
+    # Realistic `ss -tlnp` LISTEN snapshots: one with a stale bunkerd holding
+    # :29091 (owner pid visible), one clean.
+    printf 'LISTEN 0 4096   127.0.0.53%%lo:53      0.0.0.0:*  users:(("systemd-resolve",pid=666,fd=17))\nLISTEN 0 4096   0.0.0.0:29091         0.0.0.0:*  users:(("bunkerd",pid=4242,fd=18))\nLISTEN 0 4096   0.0.0.0:22            0.0.0.0:*  users:(("sshd",pid=777,fd=3))\n' > "$ST_STUB_DIR/stale.listen"
+    printf 'LISTEN 0 4096   127.0.0.53%%lo:53      0.0.0.0:*  users:(("systemd-resolve",pid=666,fd=17))\nLISTEN 0 4096   0.0.0.0:22            0.0.0.0:*  users:(("sshd",pid=777,fd=3))\n' > "$ST_STUB_DIR/free.listen"
+    # Export INSIDE the substitution: an `SS_FIXTURE=x VAR="$( ... )"` prefix
+    # does NOT reach the child — expansions run before assignments apply, the
+    # stub then reads an empty snapshot, and a broken preflight would read as
+    # a passing one.
+    ST_PF_RC=0
+    ST_PF_OUT="$( export SS_FIXTURE="$ST_STUB_DIR/stale.listen"; PATH="$ST_STUB_DIR:$PATH" port_preflight :29091 :28081 2>&1 )" || ST_PF_RC=$?
+    if [ "$ST_PF_RC" -ne 0 ] \
+       && printf '%s' "$ST_PF_OUT" | grep -qF ":29091" \
+       && printf '%s' "$ST_PF_OUT" | grep -qF "pid 4242" \
+       && printf '%s' "$ST_PF_OUT" | grep -qF "kill 4242" \
+       && printf '%s' "$ST_PF_OUT" | grep -qF "systemctl is-active bunkerd"; then
+        assert "port preflight refuses a stale :29091 listener naming pid + reclaim (rc=$ST_PF_RC)"
+    else
+        fail "port preflight did not refuse the stale listener with an actionable cell (rc=$ST_PF_RC, output: $(printf '%s' "$ST_PF_OUT" | head -2 | tr '\n' ' '))"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+    ST_PF_OK_RC=0
+    ST_PF_OK_OUT="$( export SS_FIXTURE="$ST_STUB_DIR/free.listen"; PATH="$ST_STUB_DIR:$PATH" port_preflight :29091 :28081 2>&1 )" || ST_PF_OK_RC=$?
+    if [ "$ST_PF_OK_RC" -eq 0 ]; then
+        assert "port preflight passes when neither requested port is LISTENing"
+    else
+        fail "port preflight refused a clean runner (rc=$ST_PF_OK_RC, output: $(printf '%s' "$ST_PF_OK_OUT" | head -2 | tr '\n' ' '))"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+    rm -rf "$ST_STUB_DIR" 2>/dev/null || true
+
     # The self-test exits BEFORE the cleanup trap is armed, so it removes its
     # own scratch explicitly (a sentinel HOME, a stub CLI, and the battery CLI
     # state dir).
@@ -1684,6 +1761,17 @@ echo ""
 
 # Start the battery's own daemon in coexist mode (isolated ports, temp config)
 if [ -n "$BUNKERD_COEXIST" ]; then
+    # INT-CI-077: the exact ports this run requested must be FREE before the
+    # battery daemon is started — a stale listener from a previous job is ONE
+    # actionable refusal naming the owning pid (exit 42 = preflight refusal,
+    # nothing mutated, no section ran), not a startup death for lack of a
+    # server. Detection only: no kill, no retry, no sleep; the operator
+    # reclaims. The systemd-managed production daemon (INT-CI-012) is never
+    # this battery's to stop — if it is the owner, move the run ports instead.
+    if ! port_preflight "$BUNKERD_GRPC_ADDR" "$BUNKERD_REST_ADDR"; then
+        echo "FATAL: port preflight refused the run — free the ports above (or point BUNKERD_GRPC_ADDR/BUNKERD_REST_ADDR at free ones) and re-run." >&2
+        exit 42
+    fi
     BUNKERD_BATTERY_LOG="${BUNKERD_BATTERY_LOG:-/var/log/bunkerd-battery.log}"
     if ! [ -w "$BUNKERD_BATTERY_LOG" ] && ! [ -w "$(dirname "$BUNKERD_BATTERY_LOG")" ]; then
         echo "ERROR: cannot write the battery daemon log: $BUNKERD_BATTERY_LOG" >&2
