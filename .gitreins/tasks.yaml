@@ -3356,24 +3356,14 @@ tasks:
   created_at: '2026-09-25T18:10:37.873089+00:00'
   completed_at: '2026-09-25T19:53:27.487583+00:00'
 - id: INT-CI-042
-  title: registry replay walk force-destroys agents whose persisted port reservation
-    is disjoint from the current pool (CI regression red 36182283120)
+  title: Classify and resolve E2E battery spawn deadline_exceeded (allowed-spec cell)
   criteria:
-  - '1) A replayed live registry record whose persisted port range lies entirely OUTSIDE
-    the configured pool is NOT destroyed: tracker record restored with exact range,
-    rep.Destroyed==0, a new ReconcileReport counter records the drift tolerance, warning
-    names agent id + persisted range + pool bounds (table-driven tests cover below-pool
-    and above-pool). 2) Fail-closed treatment UNCHANGED for: no persisted range, in-pool
-    misaligned range, in-pool range colliding with a held reservation. 3) The ''persisted
-    range outside the pool'' row no longer appears in reconcile_failclosed_test.go
-    (grep proves it) and was moved to its own test file with FLIPPED expectations
-    plus a NOTE naming DF-BUNKER-13 orphan-walk symmetry. 4) go build ./... && go
-    vet ./... && go test ./internal/agent/ -count=1 pass; go test ./... -short -count=1
-    pass. 5) Diff touches only internal/agent/*.go; one commit; no push; board and
-    .gitreins untouched by the worker.'
+  - premise-checked against QA-BUNKER-58 and main; classification environmental|real-defect|already-fixed
+    proven by run logs + code path with file:line evidence; if real defect a Go test
+    fails-before/passes-after; no fabricated VERIFY-PASS
   status: complete
-  created_at: '2026-09-25T21:28:41.511490+00:00'
-  completed_at: '2026-09-25T21:55:29.346408+00:00'
+  created_at: '2026-10-21T04:30:54.761539+00:00'
+  completed_at: '2026-10-21T05:33:17.698140+00:00'
 - id: INT-CI-043
   title: CI Regression battery daemon fails its 30s readiness window when startup
     reconcile destroys an orphan with slow home archiving
