@@ -1,0 +1,38 @@
+{
+  "tick_id": "bunker-foreman-2026-10-21-07-49-18",
+  "block": "INT-CI-077",
+  "wave_size": 1,
+  "wave_budget": 12,
+  "path": "serial fallback: the selected block had exactly one ready row (no second mutually independent row); the box was NOT the limit (nproc 15, loadavg 12.4 -> slots 2)",
+  "slots": 2,
+  "base": "origin/main",
+  "base_sha": "dae24fdb68dd302f009a8946b28ce095f6d69fe5",
+  "rows": [
+    {
+      "id": "INT-CI-077",
+      "title": "[P2] regression job dies at battery startup: a leaked bunkerd from a previous killed job still holds :28081/:29091 on the persistent runner",
+      "worktree": "/home/kara/worktrees/bunker-INT-CI-077",
+      "branch": "wt/INT-CI-077",
+      "base": "origin/main",
+      "base_sha": "dae24fdb68dd302f009a8946b28ce095f6d69fe5",
+      "worker_model": "glm-5.3-flash",
+      "worker_provider": "zai-glm-default",
+      "files": ["regression-tests.sh", "e2e-full-battery.sh", "scripts/test-port-preflight.sh", "internal/hostsetup/ciwiring_test.go"],
+      "acceptance": "battery either preflights :28081/:29091 and reports one actionable stale-pid cell, or safely reclaims orphaned bunkerd processes between jobs; production daemon safety preserved; committed regression proof; relevant battery and Go gates pass",
+      "brief": "/tmp/bunker-foreman-2026-10-21-07-49-18-INT-CI-077-brief.txt",
+      "outcome": "landed",
+      "implementation_commit": "894f8aeb8ac84ba03f83c3eb204857ec9a44e459",
+      "trace_commit": "f5ee50a297764fa23d9bf56d9ebbd49542427664",
+      "verdict_fail": ".gitreins/history/2026-10-21/28d49b36",
+      "verdict_pass": ".gitreins/history/2026-10-21/16f06acf",
+      "note": "preflight (detection-only) landed in both harness startup paths; verification arms reproduced by the foreman; the CI conjunct (post-fix main run VERIFY-PASS, no cell skipped) stayed PENDING at tick close -- runs 39579771167 (894f8aeb) and 39580390737 (f5ee50a2) were queued on the serialized persistent runner"
+    }
+  ],
+  "status": "complete",
+  "recovery": {
+    "unfinished_wave": "bunker-foreman-2026-10-21-02-22-10",
+    "status": "already complete before this tick; INT-CI-076 merged (93cc04d4) and INT-CI-047 superseded by INT-CI-051 (0258560f)"
+  },
+  "dispatched_at": "2026-10-21T08:20:00Z",
+  "finished_at": "2026-10-21T10:05:00Z"
+}

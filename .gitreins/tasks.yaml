@@ -4867,3 +4867,16 @@ tasks:
   status: complete
   created_at: '2026-10-21T04:02:20.886923+00:00'
   completed_at: '2026-10-21T04:20:00+00:00'
+- id: INT-CI-077
+  title: Prevent persistent-runner bunkerd port residue from killing the regression
+    battery
+  criteria:
+  - 'Implement the INT-CI-077 acceptance criterion: the regression battery must either
+    preflight :28081/:29091 and report one actionable stale-pid cell, or reclaim only
+    orphaned bunkerd processes between jobs; prove the chosen behavior with a committed
+    regression test/harness; preserve production-daemon safety; run the relevant battery
+    checks and Go gates; include a committed ch:trace marker bound to row INT-CI-077,
+    its test/evidence, and commit.'
+  status: complete
+  created_at: '2026-10-21T08:15:08.981920+00:00'
+  completed_at: '2026-10-21T09:48:28.176389+00:00'
