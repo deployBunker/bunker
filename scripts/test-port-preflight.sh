@@ -42,7 +42,7 @@
 # every case below is RED-proven (same technique
 # scripts/test-regression-spawn-cell.sh uses).
 #
-# ch:trace row=INT-CI-077 spec=none:ci-runner-hygiene-contract wave=.coding-hermes/waves/bunker-foreman-2026-10-21-07-49-18.json#rows[0] test=scripts/test-port-preflight.sh doc=none:not-doc-task prompt=none:worker-brief-file evidence=scripts/test-port-preflight.sh witness=run:39544219096 verdict=none:pending-foreman-judge commit=f52c01e9c2743ba382e2cb7063d0c0fe377e4bef memory=none:not-written-by-worker
+# ch:trace row=INT-CI-077 spec=none:ci-runner-hygiene-contract wave=.coding-hermes/waves/bunker-foreman-2026-10-21-07-49-18.json#rows[0] test=scripts/test-port-preflight.sh doc=none:not-doc-task prompt=none:worker-brief-file evidence=scripts/test-port-preflight.sh witness=run:39544219096 verdict=28d49b36 commit=894f8aeb8ac84ba03f83c3eb204857ec9a44e459 memory=none:not-written-by-worker
 #
 # STATUS: complete — port_preflight (detection-only) added to BOTH battery
 #   startup paths before the daemon start; a stale listener on an exact
@@ -52,13 +52,20 @@
 #   scripts/test-port-preflight.sh (behaviour, hermetic) and
 #   internal/hostsetup/ciwiring_test.go TestPortPreflightGuardsDaemonStartup
 #   (wiring, static).
-# TIER: T1 — worker-invoked gates only: RED proofs against git show
-#   dae24fdb:<path> (shell test exit 1; Go pin FAIL), then GREEN: bash
-#   scripts/test-port-preflight.sh (30 checks PASS), bash
+#   Trace binding repaired: the marker originally named the pre-amend content
+#   commit f52c01e9 (a placeholder-substitution commit, now unreachable), which
+#   the Tier 2 judge correctly rejected as unbound (verdict dir 28d49b36). It
+#   now names the landed implementation commit 894f8aeb, the same commit the
+#   verdict binds to.
+# TIER: T1 (worker) + T3 (foreman, independently observed) — RED proofs against
+#   git show dae24fdb:<path> (shell test exit 1; Go pin FAIL), then GREEN:
+#   bash scripts/test-port-preflight.sh (30 checks PASS), bash
 #   e2e-full-battery.sh --self-test (SELF-TEST: PASS, +2 arms), go build ./...,
-#   go vet ./..., go test ./... -count=1 -short (36 ok), gitreins guard. The
-#   live runner run reaching VERIFY-PASS with no cell skipped is the
-#   foreman's close-out observation, not re-proven here.
+#   go vet ./..., go test ./... -count=1 (all packages ok on the merged tree),
+#   gitreins guard (DEGRADED PASS — nothing staged, secrets clean). Foreman
+#   reproduced the RED/GREEN arms and the self-test arm in the merged tree; the
+#   live runner run reaching VERIFY-PASS with no cell skipped is tracked on the
+#   board row as the post-merge CI observation.
 # EVIDENCE: this file (RED/GREEN transcripts in its own run output),
 #   witness CI run 39544219096 job 119038796197 head 85c802e6, sibling fix
 #   9ae65606 (INT-CI-042 keyfile residue, same runner-residue class).
