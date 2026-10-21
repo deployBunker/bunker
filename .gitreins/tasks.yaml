@@ -4880,3 +4880,12 @@ tasks:
   status: complete
   created_at: '2026-10-21T08:15:08.981920+00:00'
   completed_at: '2026-10-21T09:48:28.176389+00:00'
+- id: SUP-DEPS-20261004
+  title: Review outdated Go modules and apply safe upgrades
+  criteria:
+  - Audit go list -u -m -json all; classify direct/transitive and security-relevant
+    modules; apply only justified compatible upgrades with go get; go mod tidy; go
+    build ./...; go vet ./...; go test ./... -count=1 -short; commit a traceable artifact
+    and bind evidence to the task.
+  status: in_progress
+  created_at: '2026-10-21T17:25:45.184687+00:00'
