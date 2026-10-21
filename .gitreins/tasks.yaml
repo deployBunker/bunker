@@ -4856,3 +4856,10 @@ tasks:
   status: complete
   created_at: '2026-10-20T12:04:55.032033+00:00'
   completed_at: '2026-10-20T13:09:58.692906+00:00'
+- id: INT-CI-074
+  title: Verify CI green after tag gate softening (b2b6119f)
+  criteria:
+  - CI runs post-b2b6119f are green; tag parity no longer blocks between-tags releases
+  status: complete
+  created_at: '2026-10-21T04:02:20.886923+00:00'
+  completed_at: '2026-10-21T04:20:00+00:00'
