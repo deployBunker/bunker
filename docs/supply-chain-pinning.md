@@ -39,7 +39,7 @@ row per artifact and per image.
 
 | name | version | arch | sha256 |
 |---|---|---|---|
-| `rootless-installer` | `ada7a567e59b3935bd601bb21e422da50e80e376` (docker-install commit) | any | `dd5596…340e` |
+| `rootless-installer` | `ada7a567e59b3935bd601bb21e422da50e80e376` (docker-install commit) | any | `9f227a…8bebc` |
 | `slirp4netns` | `v1.3.6` | `x86_64` | `411167…1d48` |
 | `slirp4netns` | `v1.3.6` | `aarch64` | `045f85…5817` |
 | `fuse-overlayfs` | `v1.18` | `x86_64` | `56b0ae…a1e8` |

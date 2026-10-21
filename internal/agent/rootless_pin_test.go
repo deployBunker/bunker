@@ -255,6 +255,105 @@ func TestCachedRootlessInstallerDownload_CacheEntryMustMatchThePin(t *testing.T)
 	})
 }
 
+// TestDownloadRootlessInstaller_AcceptsBytesMatchingThePin is the EXPECTED-HASH
+// arm of the gate (the mirror of the reject test above): the PRODUCTION
+// verifier, against the PRODUCTION (embedded) manifest, must ACCEPT the exact
+// upstream bytes the current pin names. The payload is the audited upstream
+// script, captured byte-for-byte at re-pin time (testdata/
+// rootless-installer-live.sh, whose sha256 IS the manifest's pinned digest —
+// pinnedLiveFixtureSHA256 below). INT-CI-076: when upstream republished the
+// script (STABLE_LATEST 29.9.1 -> 29.9.2, same SCRIPT_COMMIT_SHA), every spawn
+// failed with "supply-chain checksum mismatch" because the pin named the old
+// bytes; this test proves the refreshed pin verifies the live artifact rather
+// than merely that wrong bytes are rejected (the reject arm alone is
+// satisfiable by a manifest that matches nothing).
+//
+// Like the reject arm, it drives the whole production path end to end: the
+// stub curl serves the fixture as the "network", and the gate must let the
+// download through untouched — no removal, no error.
+func TestDownloadRootlessInstaller_AcceptsBytesMatchingThePin(t *testing.T) {
+	payload := readPinnedInstallerFixture(t)
+	installStubCurl(t, payload)
+	path := filepath.Join(t.TempDir(), "rootless-install.sh")
+
+	out, err := downloadRootlessInstaller(context.Background(), path)
+	if err != nil {
+		t.Fatalf("the pinned upstream bytes were refused by the production gate: %v (output: %s)", err, out)
+	}
+	installed, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("a verified installer was not left at %s: %v", path, err)
+	}
+	if !bytes.Equal(installed, payload) {
+		t.Errorf("the verified installer at %s does not match the served bytes", path)
+	}
+}
+
+// TestRootlessInstallerPinMatchesThePinnedBytes pins the RELATIONSHIP the gate
+// depends on, without touching the network: the manifest's pinned digest equals
+// the sha256 of the captured upstream fixture, the artifact's version field is
+// the fixture's own SCRIPT_COMMIT_SHA, and VerifyBytesWith — the same logic the
+// production verifier streams the file through — accepts those bytes. A future
+// edit that moves either side of that equality (manifest or fixture) without
+// re-deriving the other fails here with the two digests spelled out, instead of
+// failing 51 times in CI as "supply-chain checksum mismatch".
+func TestRootlessInstallerPinMatchesThePinnedBytes(t *testing.T) {
+	payload := readPinnedInstallerFixture(t)
+
+	digest, err := supplychain.ArtifactDigest(supplychain.ArtifactRootlessInstaller, supplychain.ArchAny)
+	if err != nil {
+		t.Fatalf("the embedded manifest pins no installer digest: %v", err)
+	}
+	sum := sha256.Sum256(payload)
+	if got := hex.EncodeToString(sum[:]); got != digest {
+		t.Errorf("manifest pins sha256 %s but the captured upstream bytes hash to %s — re-pin (manifest) or re-capture (testdata) together", digest, got)
+	}
+
+	if digest != pinnedLiveFixtureSHA256 {
+		t.Errorf("manifest pin %s is not the captured fixture digest %s — update both from one upstream fetch", digest, pinnedLiveFixtureSHA256)
+	}
+
+	m, err := supplychain.Load()
+	if err != nil {
+		t.Fatalf("the embedded manifest does not parse: %v", err)
+	}
+	artifact, ok := m.Artifact(supplychain.ArtifactRootlessInstaller)
+	if !ok {
+		t.Fatal("the embedded manifest pins no rootless-installer artifact")
+	}
+	const commitSHA = `ada7a567e59b3935bd601bb21e422da50e80e376`
+	if artifact.Version != commitSHA {
+		t.Errorf("manifest version %q, want the fixture's SCRIPT_COMMIT_SHA %q", artifact.Version, commitSHA)
+	}
+	if !strings.Contains(string(payload), `SCRIPT_COMMIT_SHA="`+commitSHA+`"`) {
+		t.Errorf("captured upstream bytes no longer carry SCRIPT_COMMIT_SHA=%q — the version field and this assertion must move with the re-pin", commitSHA)
+	}
+
+	if err := supplychain.VerifyBytesWith(m, supplychain.ArtifactRootlessInstaller, supplychain.ArchAny, payload); err != nil {
+		t.Errorf("the production verify path refused the pinned bytes: %v", err)
+	}
+}
+
+// readPinnedInstallerFixture loads the byte-exact capture of the upstream
+// installer that the current pin names (testdata/rootless-installer-live.sh).
+// Re-capture it ONLY as part of a deliberate re-pin: download the live bytes,
+// update the manifest digest and this file in the same commit.
+func readPinnedInstallerFixture(t *testing.T) []byte {
+	t.Helper()
+	payload, err := os.ReadFile(filepath.Join("testdata", "rootless-installer-live.sh"))
+	if err != nil {
+		t.Fatalf("read pinned installer fixture: %v", err)
+	}
+	return payload
+}
+
+// pinnedLiveFixtureSHA256 is the sha256 of testdata/rootless-installer-live.sh,
+// the byte-exact capture of https://get.docker.com/rootless taken at re-pin
+// time. It MUST equal the digest pinned in internal/supplychain/manifest.json
+// (asserted in TestRootlessInstallerPinMatchesThePinnedBytes), so the pin and
+// the fixture can only move together.
+const pinnedLiveFixtureSHA256 = "9f227ab1eefb3e4df6b0f26345da8b2149fded68e4afc8a4e450f2f063c8bebc"
+
 // TestRootlessInstallerCacheKeyCarriesThePin pins the cache-key shape: the
 // filename still derives from the artifact's host (so a URL change is a new
 // entry) AND carries the pinned digest prefix, so a re-pin cannot be served the

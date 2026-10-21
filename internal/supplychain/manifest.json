@@ -4,12 +4,12 @@
     {
       "name": "rootless-installer",
       "version": "ada7a567e59b3935bd601bb21e422da50e80e376",
-      "note": "Official Docker rootless install script (https://get.docker.com/rootless, built from docker/docker-install at the pinned commit). The digest is the tamper gate: the installer runs as the agent user and writes executables into its ~/bin, so the bytes that reach execution are pinned here rather than trusted from a moving URL. The pinned revision carries SCRIPT_COMMIT_SHA=ada7a567... and STABLE_LATEST=29.9.1, which is what fixes the extras tarball it then fetches (download.docker.com/linux/static/stable/<arch>/docker-rootless-extras-29.9.1.tgz) — the archive that supplies dockerd-rootless.sh, dockerd-rootless-setuptool.sh and rootlesskit. Bumping this pin is how those three are upgraded; see docs/supply-chain-pinning.md.",
+      "note": "Official Docker rootless install script (https://get.docker.com/rootless, built from docker/docker-install at the pinned commit). The digest is the tamper gate: the installer runs as the agent user and writes executables into its ~/bin, so the bytes that reach execution are pinned here rather than trusted from a moving URL. The pinned revision carries SCRIPT_COMMIT_SHA=ada7a567... and STABLE_LATEST=29.9.2, which is what fixes the extras tarball it then fetches (download.docker.com/linux/static/stable/<arch>/docker-rootless-extras-29.9.2.tgz) — the archive that supplies dockerd-rootless.sh, dockerd-rootless-setuptool.sh and rootlesskit. Bumping this pin is how those three are upgraded; see docs/supply-chain-pinning.md.",
       "variants": [
         {
           "arch": "any",
           "url": "https://get.docker.com/rootless",
-          "sha256": "dfa409e66addb813cfbfc10e9cfb866529477c0965c330b181411772365b9f32"
+          "sha256": "9f227ab1eefb3e4df6b0f26345da8b2149fded68e4afc8a4e450f2f063c8bebc"
         }
       ]
     },
