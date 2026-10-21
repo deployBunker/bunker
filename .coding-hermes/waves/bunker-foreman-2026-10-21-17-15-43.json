@@ -1,0 +1,25 @@
+{
+  "tick_id": "bunker-foreman-2026-10-21-17-15-43",
+  "block": "SUP-DEPS-20261004",
+  "wave_budget": 7,
+  "wave_size": 1,
+  "path": "serial fallback: top RELEASE-BUNKER-003 is owner/CI-gated and not worker-eligible; SUP-DEPS-20261004 is the next worker-eligible block and has one ready row",
+  "base": "origin/main",
+  "base_sha": "d7c67f350e5c29d1c6382e5300090569ae84cfc5",
+  "rows": [
+    {
+      "id": "SUP-DEPS-20261004",
+      "title": "Review 21 outdated Go modules from supervisor audit",
+      "worktree": "/home/kara/worktrees/bunker-SUP-DEPS-20261004",
+      "branch": "wt/SUP-DEPS-20261004",
+      "base": "origin/main",
+      "base_sha": "d7c67f350e5c29d1c6382e5300090569ae84cfc5",
+      "worker_model": "glm-5.3-flash",
+      "worker_provider": "zai-glm-default",
+      "brief": "/tmp/bunker-foreman-2026-10-21-17-15-43-SUP-DEPS-20261004-brief.txt",
+      "acceptance": "Audit go list -u -m -json all; classify direct/transitive and security-relevant modules; apply only justified compatible upgrades with go get; go mod tidy; go build ./...; go vet ./...; go test ./... -count=1 -short; commit a traceable artifact and bind evidence to the task."
+    }
+  ],
+  "dispatched_at": "2026-10-21T17:15:43-05:00",
+  "status": "dispatched"
+}
