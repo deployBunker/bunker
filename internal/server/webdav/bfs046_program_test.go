@@ -1,5 +1,6 @@
 package webdav
 
+// ch:trace row=INT-CI-075 spec=internal/server/webdav/bfs046_program_test.go#BFS-046 wave=.coding-hermes/waves/bunker-foreman-2026-10-20-23-42-41.json#INT-CI-075 test=internal/server/webdav::TestBFS046Cell02OutOfBandEditOverRealFilesystem doc=none:code-test-fix prompt=/tmp/bunker-foreman-2026-10-20-23-42-41-INT-CI-075-brief.txt evidence=internal/server/webdav/bfs046_program_test.go witness=none:local-ambient-hook-probe verdict=none:pending-foreman-judge commit=<full-sha> memory=none:not-written
 // ============================================================================
 // BFS-046 — THE INVALIDATION TEST PROGRAM (server-side half).
 //
@@ -292,6 +293,7 @@ func bfs046Git(t *testing.T, dir string, args ...string) {
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
 		"GIT_CONFIG_NOSYSTEM=1",
+		"GIT_CONFIG_GLOBAL=/dev/null",
 		"GIT_AUTHOR_DATE=2026-09-27T00:00:00Z",
 		"GIT_COMMITTER_DATE=2026-09-27T00:00:00Z",
 	)
