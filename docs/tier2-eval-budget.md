@@ -22,6 +22,33 @@ rung per tick (`b0a7c84`, `ef429dc`, `25a43d2`), each rung buying roughly one ti
 
 ---
 
+## Compaction evidence depth
+
+The committed measurement corpus does not preserve per-criterion tool transcripts or
+verdict evidence arrays. It therefore cannot establish whether compaction removed
+file:line evidence, reduced distinct files read, or changed probe counts. The integer
+values below are explicit **unavailable measurements**, not claims that the runs read
+zero files or produced zero evidence. No depth value is inferred from the run-level
+PASS/INCOMPLETE results.
+
+The comparison uses the existing run identifiers: PRE v2 was uncompacted, while POST E
+crossed the 80,000-token valve once and rebuilt its context (see §4.4).
+
+| run | compaction state | criterion | file:line references (integer; unavailable=0) | distinct files read (integer; unavailable=0) |
+|---|---|---|---:|---:|
+| PRE v2 `616c1d33` | uncompacted | criterion 1 | 0 | 0 |
+| PRE v2 `616c1d33` | uncompacted | criterion 2 | 0 | 0 |
+| PRE v2 `616c1d33` | uncompacted | criterion 3 | 0 | 0 |
+| POST E `2aaef334` | compacted | criterion 1 | 0 | 0 |
+| POST E `2aaef334` | compacted | criterion 2 | 0 | 0 |
+| POST E `2aaef334` | compacted | criterion 3 | 0 | 0 |
+
+The limitation is concrete: the raw spy JSONL files and the evaluator's per-item
+transcript are `/tmp` artifacts and are not committed, while the committed document
+records only run-level totals and the final verdict class. A follow-up measurement
+must commit or otherwise preserve per-criterion file:line references and the distinct
+file set before replacing these unavailable=0 fields with measured integers.
+
 ## 1. Pre-change measured breakdown (run 616c1d33, task INT-CI-017)
 
 Verdict: `.gitreins/history/2026-09-17/616c1d33/verdict.json` — **PASS**, no `Cap exceeded`
