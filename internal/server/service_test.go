@@ -1133,6 +1133,92 @@ func TestDestroyAgent_NotFound(t *testing.T) {
 	}
 }
 
+// TestDestroyAgent_RefusalStatuses pins REVIEW-BUNKER-1: a manager Destroy
+// refusal carries a NAMED status (live_processes, home_retained,
+// userdel_failed) on the response and the actionable text in the error; the
+// RPC must surface the name as CodeFailedPrecondition instead of the blanket
+// CodeInternal, keep not_found -> CodeNotFound, and keep unnamed errors on
+// CodeInternal.
+func TestDestroyAgent_RefusalStatuses(t *testing.T) {
+	tests := []struct {
+		name       string
+		respStatus string
+		destroyErr error
+		wantCode   connect.Code
+		wantSubstr string // substring the surfaced error message must carry
+	}{
+		{
+			name:       "live_processes refusal is FailedPrecondition and named",
+			respStatus: agent.StatusLiveProcesses,
+			destroyErr: fmt.Errorf("destroy refused: user bunk-0582 (uid 18342) still owns live processes that userdel -rf would orphan. pid 4011 (node server.js). Stop those processes on the host, then retry the destroy"),
+			wantCode:   connect.CodeFailedPrecondition,
+			wantSubstr: "live_processes",
+		},
+		{
+			name:       "home_retained refusal is FailedPrecondition and named",
+			respStatus: agent.StatusHomeRetained,
+			destroyErr: fmt.Errorf("destroy aborted: agent home /home/bunk-0582 could not be archived to /var/backups (home retained, nothing deleted)"),
+			wantCode:   connect.CodeFailedPrecondition,
+			wantSubstr: "home_retained",
+		},
+		{
+			name:       "userdel_failed refusal is FailedPrecondition and named",
+			respStatus: agent.StatusUserdelFailed,
+			destroyErr: fmt.Errorf("destroy of agent-1 failed: userdel -rf exited 1 (processes still hold the home)"),
+			wantCode:   connect.CodeFailedPrecondition,
+			wantSubstr: "userdel_failed",
+		},
+		{
+			name:       "not_found still maps to NotFound",
+			respStatus: "not_found",
+			destroyErr: fmt.Errorf("agent not found"),
+			wantCode:   connect.CodeNotFound,
+			wantSubstr: "not found",
+		},
+		{
+			name:       "unnamed error still maps to Internal",
+			respStatus: "",
+			destroyErr: fmt.Errorf("unexpected host failure"),
+			wantCode:   connect.CodeInternal,
+			wantSubstr: "unexpected host failure",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+			tracker := resource.NewTracker(10, logger)
+
+			mgr := &fakeAgentManager{
+				destroyResp: &v1.DestroyAgentResponse{AgentId: "agent-1", Status: tt.respStatus},
+				destroyErr:  tt.destroyErr,
+			}
+
+			svc := &bunkerdService{
+				cfg:      config.DefaultConfig(),
+				logger:   logger,
+				tracker:  tracker,
+				agentMgr: mgr,
+			}
+
+			req := connect.NewRequest(&v1.DestroyAgentRequest{AgentId: "agent-1"})
+			_, err := svc.DestroyAgent(context.Background(), req)
+			if err == nil {
+				t.Fatal("DestroyAgent() expected error, got nil")
+			}
+			connectErr, ok := err.(*connect.Error)
+			if !ok {
+				t.Fatalf("DestroyAgent() error is not a connect error: %v", err)
+			}
+			if connectErr.Code() != tt.wantCode {
+				t.Errorf("DestroyAgent() error code = %v, want %v", connectErr.Code(), tt.wantCode)
+			}
+			if !strings.Contains(err.Error(), tt.wantSubstr) {
+				t.Errorf("DestroyAgent() error %q does not contain %q", err.Error(), tt.wantSubstr)
+			}
+		})
+	}
+}
+
 // TestListAgents verifies ListAgents returns agents registered in the tracker.
 func TestListAgents(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
