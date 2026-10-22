@@ -65,11 +65,36 @@ A daemon listening inside the agent runs as the agent's user; anything running a
 - The socket MUST live in the agent's own 0700 runtime directory and MUST NEVER be a TCP listener. (Verified above that the SSH bindmask gives 0700 for free.)
 - Docs and descriptors must not imply isolation from it. This is the same honest limitation the ADR already states: **fsops confinement is cooperative inside the tool; the hard boundary is uid + cgroup + namespace.**
 
-### 3.4 Audit continuity is a REGRESSION RISK, and it is not in the proposal
+### 3.4 The audit-chain regression: a private socket bypasses the daemon's trail
 
 Today every remote operation executes as a `bunker exec`, which lands in the daemon's hash-chained audit trail (GAP-047..050) and will carry session attribution (GAP-095). Traffic over a private socket **bypasses the daemon entirely** — so remote edits would become invisible to the audit chain, undoing the security work already shipped.
 
-Requirement, not a nice-to-have: either the socket daemon writes its own attributed audit records in the same chain (which means it needs the daemon's chain identity, or a second chain that is reconciled), or the daemon remains the audited path and the socket is additive-only for operations that never need attribution. **Decide this before building anything.**
+Requirement, not a nice-to-have: either the socket daemon writes its own attributed audit records in the same chain (which means it needs the daemon's chain identity, or a second chain that is reconciled), or the daemon remains the audited path and the socket is additive-only for operations that never need attribution. **Decide this before building anything.** Decided — see 3.4.1.
+
+### 3.4.1 Audit Continuity — the decision (SURF-B4)
+
+**Option (a) is chosen: the socket surface writes attributed records for every mutating verb into the daemon's hash-chained trail.** The socket stays additive for reads and for the transport itself; only the ATTRIBUTION obligation moves, not the data path. Options (b) and (c) were rejected for the same reason from opposite directions: (b) refusing attribution-requiring verbs until the daemon can observe them puts the daemon back inside the write path — the surface then buys nothing for exactly the operations it exists to serve; (c) restricting the socket to reads halves the benefit and still leaves the trail blind to the writes that matter, merely documented as a limitation instead of fixed.
+
+**The record contract — the SAME facts an exec record carries today.** A socket-mediated mutating verb produces one record in the daemon's chain with no new record shape and no new query surface (implemented in `internal/audit.RecordSocketVerb`, pinned by `internal/audit/socket_test.go`):
+
+| Fact | Field | Convention |
+|---|---|---|
+| who | `caller` + `agent_id` | the attribution identity passed over the socket, rendered by the same `CallerFromClaims` rules as exec (`agent:<id>`); never a raw token — the socket's uid auth is named honestly in `remote_addr` |
+| what verb | `method` | `<verb>@socket` (e.g. `toolsd_write@socket`) — suffixed, not replaced, so `bunker audit list --method toolsd_write` finds it either way |
+| what path | `summary` | `path=<target>` as the verb received it |
+| confinement root | `summary` | `root=<root>` — where inside the tree the write was allowed |
+| session, outcome, duration | `session_id`, `outcome`, `duration_ms` | same redaction and normalization as every record |
+
+The command/args summary is rendered by toolsd through the SAME credential scrubber exec uses (`RedactCommandSummary`) and RE-CHECKED by the recorder before writing (`commandSummaryAllowed`): a summary that still carries credential material is dropped, never written. A mutating verb with no attribution identity is refused at the recorder and by the surface (`RequireSocketRecord`) — refusal with a named error, never a silent gap.
+
+**The destination — how the record reaches the daemon's chain.** Two deployments, one contract:
+
+1. **Agent and daemon share a host** (the bunker-mvp shape): toolsd appends through the same `AuditLog` file the daemon writes. The chain survives the second writer because the log already re-seeds its chain head from the file tail on open (DF-BUNKER-29) and chains across rotation — both pinned by test (`TestRecordSocketVerbChainsAcrossRestart`, `TestRecordSocketVerbChainsAcrossRotation`). The daemon's anchoring (GAP-136) then covers socket records with no new machinery: after a socket write, `bunker audit verify` walks a chain whose head IS the socket record.
+2. **Agent on a different host from the daemon** (the fleet shape): toolsd ships the attributed record to the daemon over the existing audited RPC surface (fire-and-forget, the GAP-073 shipper posture: bounded retry, named failure, never blocking the verb). The shipped record enters the chain through the daemon itself. Until that ship RPC exists, a cross-host socket deployment MUST NOT enable mutating verbs — the surface refuses them (the option-(b) refusal arm, applied per-deployment rather than per-forever).
+
+**What does NOT count as coverage:** the CHT-038 invocation ledger is a LOCAL usage counter, not the daemon's hash-chained trail. "The ledger covers it" is not an acceptable close for this row. The acceptance test is mechanical: a verb performed over the agent-owned socket appears in the trail `bunker audit verify` accepts, with the attribution fields above; a socket write absent from the hash chain fails the audit-continuity criterion (SPEC §6.4, unchanged).
+
+**Honest limit, stated once:** attribution-by-default is a code path, not a physical law — a rogue toolsd that never calls the recorder is indistinguishable, on THIS host, from a verb that never happened. That is what the off-host anchor (`audit.ship_to`) and the E2E battery's socket-write-appears-in-chain check are for: the battery runs the check on every surf wave, so the gap is caught by CI, not discovered in forensics.
 
 ### 3.5 The multi-protocol goal is the part to CUT
 
