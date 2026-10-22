@@ -133,9 +133,13 @@ filters this view today. Of the mitigation seams that exist: the opt-in `netmode
 isolation (NET-BUNKER-011 / ISO-001) gives a spawned unit's processes a private `/proc`
 via per-unit `ProtectProc=invisible`, but it does not cover the agent's own SSH/exec
 sessions, which keep the global `/proc` view, and it does not stop another agent
-enumerating through `/proc/<unit-pid>/root/proc`. Container-mode agents (GAP-063 spec)
-are the structural fix direction: a per-agent PID namespace makes sibling argv invisible
-by construction. Until then, cross-tenant process visibility is the shipped default.
+enumerating through `/proc/<unit-pid>/root/proc`, and it does not cover the
+`/run/bunker` runtime-enumeration gap that ISO-002 closed (the per-agent dirs
+under `/run/bunker/<id>/<pid>/` were world-enumerable before that fix landed
+in 0f25f274; the parent dir is now 0700 root:root). Container-mode agents
+(GAP-063 spec) are the structural fix direction: a per-agent PID namespace
+makes sibling argv invisible by construction. Until then, cross-tenant
+process visibility is the shipped default.
 
 ### BT4 — Egress (adversary A1)
 
