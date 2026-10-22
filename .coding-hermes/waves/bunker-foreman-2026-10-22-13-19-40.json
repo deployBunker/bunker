@@ -43,5 +43,7 @@
   ],
   "note": "worktrees already provisioned from base 263a9ed3 (worktree.sh); briefs written to /tmp; live probes verify premise: 2026-10-22T12:58:33Z DestroyAgent returned internal for a named live_processes refusal (daemon log has the named refusal; service.go blanket-maps to CodeInternal); bunker list shows f0acaebd destroy-refused:live_processes still on bunker-mvp.",
   "dispatched_at": "2026-10-22T13:45:00Z",
-  "status": "dispatched"
+  "status": "complete",
+  "finished_at": "2026-10-22T14:30:00Z",
+  "notes": "Both rows landed on main: RB1 58fb6b57+cfca7633 (merge be91aa45) named destroy refusals -> FailedPrecondition; live leg executed: f0acaebd reaped per refusal's operator guidance (4 orphan containerd-shims killed, destroy success, 0 leaked on mvp). RB2 898bd96b (merge 8360e21e) threat-model host-user PID exposure + foreman finding-fix a38cdb91 (ISO-002 /run/bunker enumeration). Tier-2: RB2 PASS 867f67d1 on closed tree 0899dc6d. RB1 judge job-00d614c5 running >2h-cap watch; skip-tier2 flip verdict b0aa0494 recorded."
 }
