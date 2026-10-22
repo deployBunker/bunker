@@ -65,6 +65,63 @@ an **install-time option**, and keep this document as the record. Tracked as
 `MOUNT-009` on the board — the install-time option and the mount-time guard
 have landed (see above); deploying 3.7.6 to remaining hosts is operational work.
 
+#### Comparative leg recorded (MOUNT-010): the unpatched client actually crosses the boundary
+
+The MOUNT-002 close (2026-09-21) delivered the three-case escape battery on the
+patched 3.7.6 client only; the promised comparative leg through an **unpatched**
+client was still owed. Recorded 2026-10-22 (evidence logs `/tmp/m3t/`,
+scratch state since removed): the §1 probe was run against a live sshfs mount
+served by `/usr/bin/sshfs 3.7.3` (the distro build still on the control host),
+with a same-topology **3.7.6 control** run back-to-back (`/usr/local/bin/sshfs`).
+
+Topology deviation from MOUNT-002, on purpose and stated here: the served tree
+was a self-contained local endpoint on the control host itself — a dedicated
+scratch user `bunker-m3t` (uid 1001, locked password, key-only SSH) whose
+`/home/bunker-m3t` was mounted locally over sshd — instead of a live bunkerd
+agent on bunker-mvp. Same shape (untrusted user's home served over SFTP-FUSE,
+client mounts with `idmap=user`, `allow_other`, `dir_cache=no`, no
+trust-widening options), no live tenants involved or at risk.
+
+**Result: 3.7.3 crosses the boundary in every direction where the target's own
+Unix permissions allow it — the fix is not advisory, it is the only thing
+standing there.**
+
+- **(a) reads through escape symlinks — all SUCCEEDED under 3.7.3.**
+  `escape-hostname -> /etc/hostname`, `escape-passwd -> /etc/passwd`,
+  `escape-canary -> /srv/<outside-tree>` and `escape-client-key ->
+  /home/kara/.ssh/id_ed25519_bunker` all read through the mount with byte-exact
+  hashes matching the server files (e.g. canary sha256
+  `c70202e5…f8ff8` == server `/etc/hostname`). `/etc/shadow` read only while it
+  was briefly mis-permissioned 644 during setup; after restoring `640 root:shadow`
+  the read through the mount is denied exactly like direct server-side access —
+  the vulnerable client grants NO privilege escalation, it grants
+  **tree escape**: outside-the-tree files appear in the mount.
+- **(b) write-through — SUCCEEDED under 3.7.3.** A symlink to a
+  user-writable file outside the tree (`/tmp/b3n3n3-witness`) was written
+  through the mount (`rc=0`); the server-side witness picked up the exact
+  payload (client and server sha256 both `5558351b…`). A root-owned target
+  (`/etc/hostname`) correctly refused (`EPERM`) — ownership rules still apply.
+  Under 3.7.6 on the identical tree, the same write returned
+  `Operation not permitted` with the server witness byte-unchanged.
+- **(c) readlink/follow-stat — all SUCCEEDED under 3.7.3.**
+  `readlink` returned the full escape target (`'/etc/hostname'`,
+  `'/home/kara/.ssh/id_ed25519_bunker'`), `lstat` returned the link
+  (`0o120777`, target length as size), and follow-`stat` resolved the outside
+  target (`size=22 uid=0`, `size=432 uid=1000`).
+- **3.7.6 control, identical topology: every case refused with `EPERM`
+  ("Operation not permitted")** — reads, write-through, readlink — and the
+  server-side witness was byte-unchanged after the refused write; `lstat`
+  still shows the link but never resolves it. This matches the MOUNT-002
+  live-agent transcripts verbatim, now reproduced in the self-contained
+  topology for direct A/B.
+
+Consequence: the "treat `bunker mount` as write-capable-from-the-agent"
+advisory above understates an *unpatched*-client mount — reading and following
+escape links is equally exposed, and 3.7.3's early-return `transform_symlink()`
+(sshfs.c:2181) never intervenes. The refuse-fast guard (`--sshfs-require-patched`)
+is the load-bearing defense; `transform_symlinks` remains useless as a
+workaround, as recorded in §1.
+
 ## 2. The driver model
 
 Today the mount command is **built server-side at spawn** and handed to the client
