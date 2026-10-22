@@ -38,7 +38,7 @@ func (m *AgentManager) RunAgent(ctx context.Context, req *v1.RunAgentRequest) (*
 	// spawn path verifies at its own validate stage), and the property is
 	// inserted below — refuse loudly, never degrade.
 	if rec.NetworkMode == netmode.ModeProcVis {
-		if perr := procVisVerifyOnce(); perr != nil {
+		if perr := procVisVerified(m); perr != nil {
 			return nil, fmt.Errorf("procvis mode unavailable for detached run: %w", perr)
 		}
 	}

@@ -188,6 +188,93 @@ func VerifyProcVisHost() error {
 	return procvisProbeRunner()
 }
 
+// procMountsPath is the file VerifyProcVisRuntime reads. A package-level
+// var so the hermetic tests and the agent package's gate wiring can point
+// it at a fixture instead of the live /proc. NEVER set it to a relative
+// path in production code — the daemon reads the REAL /proc/mounts.
+var procMountsPath = "/proc/mounts"
+
+// SetProcMountsPathForGate repoints the verifier's mounts file and returns
+// the restore func. The agent package's gate tests use this to route the
+// verification at a fixture; production code (the daemon) MUST NOT call
+// it — the real gate reads /proc/mounts and nothing else. (Tests only;
+// not concurrency-safe with a live verifier call in flight in tests.)
+func SetProcMountsPathForGate(p string) func() {
+	orig := procMountsPath
+	procMountsPath = p
+	return func() { procMountsPath = orig }
+}
+
+// ProcVisMountOptionsError is the named refusal for the REAL-/proc half of
+// the ISO-001 gate (spec §5.2 refuse-loudly, never degrade to shared). It
+// states both the missing property and the operator-visible consequence:
+// the gate can no longer see what the agent's own units are doing, so the
+// enforced boundary cannot be read back — the exact no-silent-no-op
+// discipline the probe's ack implements for an ephemeral mount.
+type ProcVisMountOptionsError struct {
+	Detail string
+}
+
+func (e *ProcVisMountOptionsError) Error() string {
+	return "procvis mode unavailable on this host: " + e.Detail
+}
+
+// VerifyProcVisRuntime is the REAL-/proc half of the ISO-001 gate. The
+// kernel experiment (above) proves the CAPABILITY in a throwaway namespace;
+// this helper proves the DEPLOYED STATE: the running system /proc that hosts
+// every bunkerd unit carries the host-wide hiding (hidepid/invisible) and a
+// proc group. Without them the proc gate would be blind to every foreign
+// task, the units are in each other's view, and the mode would deliver less
+// than it was asked for.
+//
+// The option spellings are the SAME pair the ephemeral ack accepts: kernels
+// normalize the mount option to the canonical level name (Ubuntu 6.8 reports
+// `hidepid=invisible`), so both spellings are accepted — the report shape, not
+// the documentation spelling, is the contract.
+func VerifyProcVisRuntime() error {
+	data, err := os.ReadFile(procMountsPath)
+	if err != nil {
+		return &ProcVisMountOptionsError{Detail: fmt.Sprintf("read %s: %v", procMountsPath, err)}
+	}
+	line, ok := findProcMountLine(string(data))
+	if !ok {
+		return &ProcVisMountOptionsError{Detail: fmt.Sprintf("%s has no procfs line — cannot verify the real /proc the units' mounts are backed by", procMountsPath)}
+	}
+	// hidepid=0 means "no hiding": the default mount state. The kernel
+	// normalizes that level to a NON-option line in this context, so the
+	// hidepid token's ABSENCE is the un-hidden state, not a different spelling
+	// (pinned by the option-parsing tests). Without the option the sibling
+	// agents' processes are visible to each other through the real /proc —
+	// the exact ISO-001 leak — and the spawn REFUSES with this named error:
+	// per-unit ProtectProc=invisible is not the host-wide boundary, and
+	// never degrading to shared means refusing here.
+	if !strings.Contains(line, "hidepid=") {
+		return &ProcVisMountOptionsError{Detail: "real /proc carries no hidepid option — sibling agents' processes are visible to each other (the per-unit ProtectProc=invisible mount is below the proc gate; the proc gate itself cannot be held)"}
+	}
+	if !strings.Contains(line, "procgroupid=") && !strings.Contains(line, "gid=") {
+		return &ProcVisMountOptionsError{Detail: "real /proc carries no gid/procgroupid option — none of bunkerd's unprivileged unit readers can open the hidepid gate, so a procvis unit's verified view cannot be distinguished from a boundary-less read"}
+	}
+	return nil
+}
+
+// findProcMountLine returns the /etc-format line whose mountpoint (field 2)
+// is exactly "/proc". Fields are whitespace-separated with \040 (and the
+// octal family) as escaped whitespace per the fstab convention; splitting on
+// plain spaces is the standard /proc/mounts read and is what the probe's ack
+// grep does too. No line, no refusal — never a silent pass.
+func findProcMountLine(mounts string) (string, bool) {
+	for _, line := range strings.Split(mounts, "\n") {
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[1] == "/proc" {
+			return line, true
+		}
+	}
+	return "", false
+}
+
 // ProcVisProbeScript exposes the experiment text for reporting and for the
 // hermetic tests (which execute THIS exact script — never a test-local copy).
 func ProcVisProbeScript() string { return procvisProbeScript }

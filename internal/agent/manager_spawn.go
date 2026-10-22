@@ -120,7 +120,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// shared. The verdict is cached once per daemon process; the probe is a
 	// read-only throwaway-namespace experiment.
 	if networkMode == netmode.ModeProcVis {
-		if perr := procVisVerifyOnce(); perr != nil {
+		if perr := procVisVerified(m); perr != nil {
 			return nil, spawnStageErr(ctx, agentID, StageValidate, perr)
 		}
 	}

@@ -111,6 +111,74 @@ func (c *Config) ResolveNetworkMode(flagMode string) (string, error) {
 	return c.Agent.NetworkMode, nil
 }
 
+// ProcVisProcGroupEnv is the env override (the flag tier is per-spawn proc
+// group? No — the group is a daemon-wide gate input, so the precedence
+// here is env > config file; there is no per-spawn flag because the GROUP
+// names the daemon's own view, not a per-request boundary) for the
+// procvis gate's proc group (ISO-001): the real-host /proc mount must name
+// a proc-group option so the daemon's unit reads can open the hidepid gate.
+const ProcVisProcGroupEnv = "BUNKERD_PROCVIS_PROC_GROUP"
+
+// ProcVisConfig carries the ISO-001 real-host /proc gate inputs: a proc
+// group is REQUIRED (without one the /proc gate on a hidepid-armed mount
+// cannot be opened by the daemon's readers, and the boundary verification
+// would be a read the daemon cannot perform — the manufactured-evidence
+// class). The empty group must never silently reach the gate: an operator
+// who opted into procvis must have configured the group, or the daemon
+// fails the verification (never a silent, group-less mount).
+type ProcVisConfig struct {
+	ProcGroup string `mapstructure:"proc_group"`
+}
+
+// ProcGroupResolved returns the configured proc group name (trimmed) or an
+// error when the gate cannot be armed: the operator opted into procvis by
+// naming a group, and an unnamed group is a configuration failure, never a
+// silent group-less mount (the no-silent-degrade law this repo's §5.2
+// refuses every other boundary with).
+func (p ProcVisConfig) ProcGroupResolved() (string, error) {
+	// The ENV tier: BUNKERD_PROCVIS_PROC_GROUP overrides the config-file
+	// value (the GAP-116 precedence shape, minus the per-spawn tier this
+	// knob has no flag surface for).
+	if g := strings.TrimSpace(os.Getenv(ProcVisProcGroupEnv)); g != "" {
+		return g, nil
+	}
+	g := strings.TrimSpace(p.ProcGroup)
+	if g == "" {
+		return "", fmt.Errorf("agent.procvis_proc_group is required (env %s overrides): without a proc group the real /proc's hidepid gate cannot be opened and the procvis boundary cannot be verified", ProcVisProcGroupEnv)
+	}
+	return g, nil
+}
+
+// Validate gates the daemon boot: when no group is configured the daemon
+// still starts (shared/systemd hosts are legitimate), but a configured
+// group MUST resolve — a whitespace-only value is a misconfiguration, not
+// an opt-out (the empty string is the opt-out spelling).
+func (p ProcVisConfig) Validate() error {
+	v := strings.TrimSpace(p.ProcGroup)
+	if v == "" {
+		if g := strings.TrimSpace(os.Getenv(ProcVisProcGroupEnv)); g != "" {
+			return nil // env supplies it; the boot check is the env value's own validity
+		}
+		return nil
+	}
+	if strings.ContainsAny(v, " 	\n:") {
+		return fmt.Errorf("agent.procvis_proc_group must be a single group-name token, got %q", v)
+	}
+	return nil
+}
+
+// ProcVisEnabled reports whether a proc group is configured (env or
+// config). The procvis gate reads this to skip the real-/proc check on
+// hosts that never opted into the group-holding posture — the check is
+// opt-in (ISO-001's fix is a REFUSAL when the host cannot provide the
+// boundary, and a group-less host is one such host).
+func (p ProcVisConfig) ProcVisEnabled() bool {
+	if g := strings.TrimSpace(os.Getenv(ProcVisProcGroupEnv)); g != "" {
+		return true
+	}
+	return strings.TrimSpace(p.ProcGroup) != ""
+}
+
 // Safety preset vocabulary and defaults (GAP-116 plumbing; GAP-117 naming).
 //
 // The shipped tier is "standard" (GAP-117): it is the spec's default tier
@@ -851,10 +919,17 @@ type AgentConfig struct {
 	// Config.ResolveNetworkMode. An unknown value fails config Validate
 	// (refuse to start) and re-fails loudly in the resolver — a typo can
 	// never silently resolve to a different boundary.
-	NetworkMode        string  `mapstructure:"network_mode"`
-	MaxAgents          uint32  `mapstructure:"max_agents"`
-	DefaultCPUQuota    float64 `mapstructure:"default_cpu_quota"`
-	DefaultMemoryBytes uint64  `mapstructure:"default_memory_bytes"`
+	NetworkMode string `mapstructure:"network_mode"`
+	// ProcVis carries the ISO-001 real-host /proc gate inputs: the proc
+	// group the daemon holds on the /proc mount when the procvis mode is
+	// served. The gate is per-spawn (refuse when the host cannot provide
+	// the boundary), so the config only decides whether the daemon opted
+	// into the group-holding posture — no boot-time host change is made
+	// by this field (never a remount at boot; that is an operator action).
+	ProcVis            ProcVisConfig `mapstructure:",squash"`
+	MaxAgents          uint32        `mapstructure:"max_agents"`
+	DefaultCPUQuota    float64       `mapstructure:"default_cpu_quota"`
+	DefaultMemoryBytes uint64        `mapstructure:"default_memory_bytes"`
 	// DefaultDiskBytes is the per-agent PER-FILE size cap (systemd
 	// LimitFSIZE → RLIMIT_FSIZE) applied to a spawned agent's dockerd unit
 	// and user slice. It is NOT a total-disk quota: no mechanism in bunker
@@ -1402,6 +1477,7 @@ func DefaultConfig() *Config {
 			PortRangeEnd:               19999,
 			PortRangePerAgent:          100,
 			MaxAgents:                  100,
+			ProcVis:                    ProcVisConfig{ProcGroup: ""},
 			DefaultCPUQuota:            2.0,
 			DefaultMemoryBytes:         4 * 1024 * 1024 * 1024,  // 4 GiB
 			DefaultDiskBytes:           20 * 1024 * 1024 * 1024, // 20 GiB per-file cap (LimitFSIZE), NOT a quota
@@ -1755,6 +1831,14 @@ func (c *Config) Validate() error {
 	// passes.
 	if c.Agent.NetworkMode != "" && !ValidNetworkMode(c.Agent.NetworkMode) {
 		return fmt.Errorf("agent.network_mode must be one of %v, got %q", ValidNetworkModes(), c.Agent.NetworkMode)
+	}
+	// ISO-001: a CONFIGURED proc group must be a single, nameable token —
+	// a malformed group name never surfaces later as a spawn refusal. An
+	// EMPTY group is legitimate: the daemon did not opt into the
+	// group-holding posture and serves shared/systemd (which never read
+	// this value).
+	if err := c.Agent.ProcVis.Validate(); err != nil {
+		return err
 	}
 	// GAP-134: an unknown agent.egress.mode (or a malformed allowlist
 	// entry) must refuse to start — a typoed egress mode can never
