@@ -55,6 +55,13 @@ func NewSpawnCommand() *cobra.Command {
 		// not ask for provisioning at all (SpawnClass = minimal, i.e. the
 		// stock image as-is).
 		toolchains string
+		// toolsAtSpawn requests TOOLS-003's delivered tool set (toolsd, rg,
+		// gopls) on the fresh agent: the registry half via the image-spec
+		// carrier attached to the request, the vendored copy + runtime-stage
+		// belt after creation. A failed delivery fails the spawn LOUDLY —
+		// the agent is named as existing-but-not-provisioned, never silently
+		// half-provisioned.
+		toolsAtSpawn bool
 	)
 
 	cmd := &cobra.Command{
@@ -178,6 +185,38 @@ Examples:
 					return cerr
 				}
 				toolchainClass = c
+			}
+
+			// TOOLS-003 piece (a): --tools-at-spawn makes the delivered tool
+			// set a property of THIS agent. The registry half rides the
+			// image-spec carrier — the canonical AgentToolSpec is merged into
+			// the request's spec (or attached when the operator gave none), so
+			// the image itself carries rg+gopls; the toolsd copy and the
+			// runtime-stage belt run after the spawn. Refuse the flag before
+			// the RPC when the operator supplied their own spec whose
+			// packages are NOT exactly the delivered set: an unknown merge
+			// would let two package lists fight over the same image.
+			if toolsAtSpawn {
+				if imageSpecPB == nil {
+					imageSpecPB = imagespec.AgentToolSpecPB()
+				} else if got := imageSpecPB.GetPackages(); len(got) > 0 {
+					want := imagespec.AgentToolSpecPB().GetPackages()
+					if len(got) != len(want) {
+						return fmt.Errorf("--tools-at-spawn with --image-spec: the spec's packages must be exactly the delivered set " +
+							"(rg via apt ripgrep, gopls via go golang.org/x/tools/gopls@latest); pass the spec WITHOUT --tools-at-spawn, " +
+							"or run 'bunker agent-tools <agent> --install' after a custom-spec spawn")
+					}
+					for i := range want {
+						if got[i].GetManager() != want[i].GetManager() {
+							return fmt.Errorf("--tools-at-spawn with --image-spec: package directive %d manager %q, want %q",
+								i, got[i].GetManager(), want[i].GetManager())
+						}
+						if strings.Join(got[i].GetPackages(), ",") != strings.Join(want[i].GetPackages(), ",") {
+							return fmt.Errorf("--tools-at-spawn with --image-spec: package directive %d names %v, want %v",
+								i, got[i].GetPackages(), want[i].GetPackages())
+						}
+					}
+				}
 			}
 
 			// 1. Load CLI config
@@ -458,6 +497,23 @@ Examples:
 				}
 			}
 
+			// TOOLS-003 piece (a): the delivered tool set as a property of
+			// the agent. Unlike the toolchain provisioning above, a FAILED
+			// delivery here FAILS THE SPAWN: the row's rule is that a
+			// delivery step that fails at spawn must not produce an agent
+			// that merely looks provisioned, so the verdict is loud (the
+			// agent exists but is NOT provisioned; the in-place repair is
+			// named) and the exit is non-zero.
+			if toolsAtSpawn {
+				dctx, dcancel := context.WithTimeout(context.Background(), 30*time.Minute)
+				defer dcancel()
+				dentry := entry
+				dentry.Token = token
+				if err := applySpawnToolsDelivery(cmd, dctx, client, dentry, r.AgentId); err != nil {
+					return err
+				}
+			}
+
 			return nil
 		},
 	}
@@ -473,6 +529,9 @@ Examples:
 	cmd.Flags().StringVar(&domain, "domain", "", "Custom domain for Cloudflare tunnel")
 	cmd.Flags().StringVar(&sshHost, "ssh-host", "", "SSH host shown in the bundle (default: hostname from server config URL)")
 	cmd.Flags().StringVar(&imageSpecFile, "image-spec", "", "JSON file with an image customization spec (base + apt/go/npm package adds)")
+	// TOOLS-003 piece (a): the delivered tool set as a property of the agent.
+	cmd.Flags().BoolVar(&toolsAtSpawn, "tools-at-spawn", false,
+		"Deliver the verb tools (toolsd, rg, gopls) onto the agent as part of spawn: the registry tools ride the image-spec carrier (the canonical delivered set is attached to the request when no --image-spec is given; a custom spec must BE the delivered set), toolsd is copied from a local static artifact when one exists, and every still-missing tool is pulled through its registry stage. The result is verified by re-probing the agent; a failed delivery FAILS the spawn loudly — the agent is reported as existing but NOT provisioned. Repair in place with 'bunker agent-tools <agent-id> --install'")
 	cmd.Flags().StringVar(&preset, "preset", "", "Safety preset for this agent: open, standard, hardened (default: BUNKERD_SAFETY_PRESET, then the server's config, then the built-in default standard (GAP-117))")
 	cmd.Flags().StringVar(&mountDriver, "mount-driver", "", "Mount driver for this agent (default: sshfs; an unknown name is refused by the server)")
 	cmd.Flags().StringVar(&networkIsolationMode, "network-mode", "", "Network isolation mode for this agent: shared, systemd, procvis (default: BUNKERD_NETWORK_MODE, then the server's config, then shared). systemd = private network namespace (loopback only; NO outbound — image pulls fail in this mode). procvis = private /proc in the unit's mount namespace (hidepid=2 semantics; unit processes see only their own user's processes; does NOT cover SSH/exec sessions)")

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/deployBunker/bunker/internal/supplychain"
+	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 )
 
 // DefaultBaseImage is the base image every agent uses today; a spec may only
@@ -136,6 +137,16 @@ func AgentToolPackageNames() []string {
 		names = append(names, d.Packages...)
 	}
 	return names
+}
+
+// AgentToolSpecPB returns the delivered set as the spawn-wire ImageSpec proto,
+// the exact bytes `bunker agent-tools` prints and the canonical wire form of
+// AgentToolPackages (AgentToolSpec → Parse → ToProto). TOOLS-003: the spawn
+// path's --tools-at-spawn carries THIS value, so a spawn-time delivery can
+// never name a set that drifted from the one the probe, the remediation print
+// and the docs all pin.
+func AgentToolSpecPB() *v1.ImageSpec {
+	return AgentToolSpecSpec().ToProto()
 }
 
 // GoBinDir is the GOBIN the go renderer installs into (DF-BUNKER-79). It is the

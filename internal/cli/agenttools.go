@@ -232,6 +232,42 @@ Examples:
 		"Remove the delivered tools (toolsd, rg, gopls) from the agent's PATH, then re-probe")
 	cmd.Flags().StringVar(&binaryPath, "binary", "",
 		"Artifact to deliver with --install (default: the local toolsd on PATH)")
+
+	// TOOLS-003 ACs 2-3: `bunker agent-tools install` and `bunker agent-tools
+	// uninstall` are SUBCOMMAND spellings of --install/--uninstall, so the
+	// delivery and rollback paths are discoverable help surfaces (cobra help
+	// exits 0 for each) as well as flags. The flags stay authoritative and
+	// keep their behaviour byte-for-byte; the subcommands delegate to the same
+	// RunE with the matching flag pre-set, so there is exactly ONE delivery
+	// implementation and one removal implementation.
+	for _, sub := range []struct {
+		use  string
+		flag string
+	}{
+		{use: "install", flag: "install"},
+		{use: "uninstall", flag: "uninstall"},
+	} {
+		flagName := sub.flag
+		subCmd := &cobra.Command{
+			Use: sub.use + " AGENT_ID",
+			Short: map[string]string{
+				"install":   "Deliver the verb tools onto the agent, then re-probe (same as --install)",
+				"uninstall": "Remove the delivered tools from the agent, then re-probe (same as --uninstall)",
+			}[flagName],
+			Args: cobra.ExactArgs(1),
+			RunE: func(sc *cobra.Command, sargs []string) error {
+				// Delegate to the parent's RunE with the matching flag
+				// pre-set, so output and behaviour stay the flag path's
+				// exactly (the flag var is the single source of truth).
+				cmd.SetArgs(append(sargs, "--"+flagName))
+				return cmd.Execute()
+			},
+		}
+		subCmd.Flags().StringVar(&binaryPath, "binary", "",
+			"Artifact to deliver (install only; default: the local toolsd on PATH)")
+		cmd.AddCommand(subCmd)
+	}
+
 	return cmd
 }
 
