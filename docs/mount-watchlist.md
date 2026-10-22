@@ -9,7 +9,8 @@ against a written trigger, not a new research project.
 
 See also: [`mount-drivers.md`](mount-drivers.md) — the drivers we actually
 ship (sshfs default, rclone opt-in, FUSE-over-io_uring an opt-in verified
-transport).
+transport), and its §5, the measured MOUNT-017 remote-filesystem latency
+decision (git on the agent, `bunker cp` for bulk transfer).
 
 ---
 
@@ -102,3 +103,39 @@ agent-workspace positioning.
 sharing one workspace tree, relying on its rename/lock semantics. Until that
 requirement exists, single-writer sshfs/rclone per agent is correct and
 simpler.
+
+<a id="remote-fs-latency"></a>
+## 5. Remote-FS latency — DERP relay vs a direct tailnet path
+
+**What it is.** The transport *under* any of the drivers above: a tailnet path
+that is either a **direct** WireGuard endpoint pair or a **DERP relay**, plus the
+NAT properties that decide which one you get (`MappingVariesByDestIP`,
+`PortMapping:`). For a synchronous FUSE filesystem this — not the driver — sets
+the per-operation cost, because one uncached metadata op is one round trip.
+
+**Relevance to bunker.** Measured 2026-10-22 (MOUNT-017, recorded in
+[`mount-drivers.md`](mount-drivers.md) §5): a verified **direct** path still costs
+**194 ms per uncached metadata op** at 168 ms RTT (+26 ms FUSE/sshfs overhead),
+so `git`'s whole-tree ops stay bounded by `op count × RTT` whether or not the
+path is relayed. What directness buys is **jitter and bandwidth**: 0.30 ms mdev
+direct versus 14.7 ms on a still-relayed peer, and the relay's throughput cap the
+row measured at 1.9 MB/s. The `bunker-las-0x` peers cannot go direct at all
+today: this host's `PortMapping:` is EMPTY with `MappingVariesByDestIP: true`
+(hard NAT), so two hard NATs never punch through.
+
+**Source.** MOUNT-017 probe, 2026-10-22 — `tailscale status`/`netcheck`/`ping`,
+ICMP RTT series, cold-op timing on a live sshfs mount; reproducible via
+`probes/mount017-path-probe.sh`.
+
+**Trigger.** *"A peer must run git-heavy or many-small-file work across the wire
+AND its direct-path RTT is low enough that `op count × RTT` fits the command
+budget (single-digit ms), or a driver lands with request pipelining / a metadata
+cache that survives a whole-tree walk."* Every peer we own measures ≥ 140 ms RTT
+today, so the trigger is not met and git stays on the agent. Two narrower facts
+would also land here rather than in a driver row: a **port mapping** appearing on
+the local router (UPnP/NAT-PMP, or a static UDP 41641 forward), which is the one
+owner action that would make the `bunker-las-0x` family direct; and any change to
+Tailscale's relay selection, which today exposes **no per-peer preference**
+(`tailscale debug prefs`, 1.102.3) even though the nearest relay (mia,
+35.4–51.1 ms across two netchecks) is 43–74 ms closer than the lax relay
+(94.5–109.5 ms) a relayed peer uses.

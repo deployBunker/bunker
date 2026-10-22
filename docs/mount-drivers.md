@@ -5,7 +5,9 @@
 see §3.3, which also corrects the earlier measurement that wrongly reported the
 packaged libfuse as lacking the transport. This document also records the sshfs
 security issue that forces an upgrade, because the fix and the driver model
-touch the same code.
+touch the same code. **§5 records the MOUNT-017 remote-filesystem latency
+decision: git stays on the agent (SURF-018) and `bunker cp` carries bulk
+transfer — measured on a verified direct tailnet path, not a relay.**
 
 See also: [`both-ways.md`](both-ways.md) (when to use the mount vs the verb path),
 [`performance.md`](performance.md) (what caps throughput on a long path: the socket-buffer
@@ -344,4 +346,163 @@ trust this page:
   the contract's compact form to **every** `write_shape_unsupported` refusal, so
   `bunker fs status`, the conflict log and the mount log all name the shape that
   works and the way out.
+
+## 5. Remote-filesystem latency — the direct-path decision (MOUNT-017)
+
+**Decision (2026-10-22): git stays ON the agent (SURF-018).** The mount remains a
+fidelity surface — inspect, grep, read, diff, small whole-file edits — and the one
+thing that crosses the wire in bulk is file transfer, which is `bunker cp`
+(SURF-014). This section records why that is structural rather than a preference:
+even on a **verified direct** tailnet path, one *uncached* sshfs metadata
+operation costs one round trip (~190 ms to the agent measured here), so whole-tree
+git ops are bounded by `op count × RTT`, and RTT is geography — not the relay.
+
+### 5.1 What the row claimed, and what was re-measured
+
+MOUNT-017 (2026-09-23) attributed the sshfs/git slowness to the agent-host path
+being a **Tailscale DERP relay** with no port mapping — ~142 ms per metadata op
+with ~91 ms of jitter — and set a two-armed PASS: a direct path with a material
+drop in the per-op figure, **or** a written decision. Re-probed 2026-10-22 on
+this control host (kernel `7.0.0-38-generic`, Tailscale `1.102.3`) against a live
+mount of `bunker-mvp:/root/mount017-target` on `/tmp/mount017-mnt` — sshfs
+`3.7.6` (`/usr/local/bin/sshfs`, the MOUNT-009 patched build) over
+`fusermount3 3.18.2`, mounted with `-o IdentityFile=… -o ServerAliveInterval=15
+-o reconnect`, created 14:41 by an earlier tick. **Probing was read-only: no
+mount was created, dropped or reconfigured, and the peer was not touched.**
+
+The row's own peer `bunker-las-02` is **offline (last seen 9 days)** and
+`tailscale ping bunker-las-02` returns `no reply`, so it could not be
+re-measured. Its 2026-09-23 numbers are retained unchanged as the baseline:
+
+| quantity | 2026-09-23 baseline (bunker-las-02, relayed) | 2026-10-22 probe (bunker-mvp, direct) |
+|---|---|---|
+| path | DERP(`lax`) relay, `PortMapping:` EMPTY | **direct** `78.46.173.180:41641` |
+| RTT min/avg/max/mdev | 128.6 / 179.7 / 382.2 / **91.1 ms** | 167.7 / 168.1 / 169.1 / **0.30 ms** |
+| sshfs metadata, distinct files | 141.8 ms/op (cache=yes), 154.1 ms/op (cache=no) | **188.8–198.5 ms/op cold** (four runs); 3–7 ms/op warm (cached) |
+| sshfs bulk write | 2.04 MB/s (raw pipe 1.97 MB/s) | not re-measured — row finding stands |
+
+The path verdict is not an inference, it is what the tools printed:
+`tailscale status` → `active; direct 78.46.173.180:41641`, and
+`tailscale ping -c 20 bunker-mvp` → `pong from bunker-mvp (100.115.67.116) via
+78.46.173.180:41641 in 168ms` — an endpoint pair, not `via DERP(...)`. So **a
+direct path is attainable today** for a peer with a public address, and that half
+of the row's FIX needs no owner action.
+
+**The path is not sticky.** In a later run of the same probe the tunnel was
+momentarily back on the relay — `pong from bunker-mvp … via DERP(nue) in 174ms`,
+with the RTT series going 179.4 / 208.2 / 616.3 ms, mdev **97.8 ms** — and
+`tailscale status` returned to `active; direct 78.46.173.180:41641` seconds later.
+So the direct path is upgraded on demand and falls back to DERP when the link is
+idle; a single "is it direct?" check at the top of a run does not describe the
+whole run. `probes/mount017-path-probe.sh` records the path state **paired with
+each cold op** for that reason.
+
+What did **not** follow was a lower per-op metadata cost. Cold operations — the
+ones no cache can answer — five samples per run, four runs over ~10 minutes
+(188.8–198.5 ms across every sample):
+
+| cold op (guaranteed wire) | mean per run (ms) | notes |
+|---|---|---|
+| `stat -f` (statfs, one round trip) | **193.3 / 190.4 / 191.7 / 189.4** | sample spread 188.8–198.5; the last two runs were paired with `tailscale status`, **direct at every sample** |
+| `stat` on a never-seen name (negative lookup) | **195.6 / 190.6 / 189.9** | one 559.8 ms outlier landed on a relay transition |
+| `cat` a 4 KB file (open + read + close) | **381.8 / 379.4 / 375.9** | ≈ 2 RTT, as FUSE implies |
+
+That is **one uncached metadata op = 1 RTT + ≲25 ms of FUSE/sshfs userspace
+overhead** (measured pairs: 190.4 − 168.1 = 22 ms; 189.4 − 179.9 = 10 ms — the
+direct-path RTT itself drifted 168 → 180 ms across the hour, and the per-op cost
+moved with it). Directness removed the relay's jitter and its bandwidth cap; it
+cannot remove the round trip, because FUSE issues one request per operation and
+the agent is ~168–180 ms away on a direct path too.
+
+### 5.2 The measurement trap, in both directions
+
+The row warned that re-`stat`ing the **same** file looks ~16x faster because it
+is cached. This probe found the mirror-image trap: **distinct files are not
+enough — the directory cache has to be cold too.** A 30-distinct-file loop
+measured **2.95 ms/op**, which is impossible on a 168 ms link; those entries had
+been warmed by an earlier `ls -la` on the same mount. Re-checked after 100 s
+idle they were still **4.7–7.5 ms/op**, so on this build the userspace stat cache
+outlives the documented `-o dcache_stat_timeout` default (20 s) — a "distinct
+files" loop over an already-walked tree under-reports by ~30x.
+
+Every figure quoted in §5.1 therefore comes only from operations that cannot be
+cached (`statfs`, a never-before-seen path name, a first content read). Any
+future probe of this row must do the same and must say which class it reports;
+`probes/mount017-path-probe.sh` measures both and labels them.
+
+### 5.3 Why a direct path does not rescue git-over-mount
+
+A 60 s command budget divided by 190 ms/op is **~315 uncached metadata ops**.
+`git status` on the SURF-018 repo — 106 tracked files, i.e. a *small* repo — reads
+the index, walks the tree and stats every entry: thousands of ops, which is
+exactly why it stalled past 60 s there. The same arithmetic bounds it on the
+direct path, because the cost is `op count × RTT`. The relay was never the whole
+story: it added **jitter** and a throughput cap, but the floor was always the
+round trip.
+
+Relayed peers measured the same day, for the jitter contrast (20 ICMP samples
+each over the tailnet):
+
+| peer | path | RTT min/avg/max/mdev |
+|---|---|---|
+| `bunker-mvp` | **direct** `78.46.173.180:41641` | 167.7 / 168.1 / 169.1 / **0.30 ms** |
+| `bunker-mvp` | momentarily relay `nue` (idle fallback) | 179.4 / 208.2 / 616.3 / **97.8 ms** |
+| `cube-las-00` | relay `lax` | 142.0 / 150.4 / 193.5 / **13.3 ms** |
+| `master001` | relay `lax` | 144.3 / 170.1 / 467.5 / **69.0 ms** |
+
+Same peer, same day: the relay state carries **0.3 ms → 97.8 ms** of mdev and a
+616 ms tail. Note also that a relay's *average* can look fine when the peer sits
+near the relay (`cube-las-00`): the cost shows up in the tail — which is
+precisely what a synchronous FUSE filesystem waits on — and in bandwidth.
+
+### 5.4 Why the `bunker-las-0x` peers still cannot go direct
+
+`tailscale netcheck` on this host, 2026-10-22 (two runs, 17:32 and 17:38):
+`UDP: true`, `IPv4: yes, 181.129.43.218:11174`, `IPv6: no`,
+`MappingVariesByDestIP: true`, **`PortMapping:` EMPTY**, `Nearest DERP: Miami`
+(mia 35.4–51.1 ms, lax 94.5–109.5 ms, nue 169–190 ms). An empty port mapping plus
+a mapping that varies by destination IP means the local router
+(`192.168.123.1`) is a **hard NAT**: it offers Tailscale no endpoint-independent
+mapping, so hole punching to a peer that is itself behind a hard NAT fails and
+the pair falls back to DERP. That is the mechanism behind the row's `DERP(lax)`
+observation — a router fact, not an sshfs or SSH fact.
+
+- **Owner action that would change it:** enable UPnP/NAT-PMP on the local router,
+  or configure a **static UDP 41641 forward** to this host, so our side presents
+  an endpoint-independent mapping; peers behind a cone NAT then punch through and
+  the DERP hop disappears.
+- **Per-peer relay preference:** none is exposed in this Tailscale version —
+  `tailscale debug prefs` (1.102.3) carries no per-peer relay/region key, so the
+  relay is chosen by the shared nearest-DERP heuristic. What *is* actionable is
+  the observed gap: **mia 35.4–51.1 ms vs lax 94.5–109.5 ms**, i.e. 43–74 ms per
+  relayed op if the relay assignment can be influenced at all.
+- Neither measure changes §5.3: they remove jitter and recover bandwidth, they do
+  not remove the round trip.
+
+### 5.5 The decision, and what it does not change
+
+1. **git runs on the agent** — `bunker exec <agent> -- git …`, or clone there.
+   The SURF-018 stalls are structural (`latency × per-file ops`), and this probe
+   shows that structural cost survives a direct path.
+2. **The mount stays a fidelity surface** — inspect, grep, read, diff, small
+   whole-file edits; nothing git-shaped runs on it.
+3. **Bulk transfer crosses the wire with `bunker cp`** (SURF-014), never through
+   the mount and never as a git working copy over FUSE.
+4. **No product behaviour changed by this row** — no driver, flag, default or
+   mount option was modified; this is a documentation/evidence decision backed by
+   a read-only probe.
+5. **A direct path is still worth having** (jitter, throughput, interactive
+   latency) and is already available for public-address peers; the `bunker-las-0x`
+   family needs the router change in §5.4 — an owner action, not a code change.
+
+Reproduce: `probes/mount017-path-probe.sh <mountpoint> <peer> [samples]`
+(read-only — tailscale status/netcheck/ping, ICMP RTT, cold `statfs` /
+negative-lookup / cold-read timing, a warm-loop control, and a local baseline).
+
+---
+ch:trace row=MOUNT-017 spec=docs/mount-watchlist.md#remote-fs-latency test=docs/mount-drivers.md::MOUNT-017 doc=docs/mount-drivers.md prompt=/tmp/bunker-foreman-2026-10-22-22-13-04-MOUNT-017-brief.txt evidence=docs/mount-drivers.md witness=docs/mount-drivers.md verdict=none:pending-foreman-judge commit=none:pending-foreman-trace memory=none:not-applicable
+STATUS: complete
+TIER: T3 — invoked and observed live, read-only: `tailscale status --json` (per-peer Relay/CurAddr), `tailscale status`, `tailscale netcheck`, `tailscale ping -c 20 bunker-mvp` (DIRECT via 78.46.173.180:41641), `ping` RTT series on three peers, cold-op timing on the live mount `/tmp/mount017-mnt` (statfs ×5, negative lookup ×5, cold read ×5), warm distinct-file control after 100 s idle, and `go test ./internal/mountdriver/ -count=1`
+EVIDENCE: docs/mount-drivers.md
+
 
