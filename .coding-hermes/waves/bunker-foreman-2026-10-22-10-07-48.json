@@ -1,0 +1,45 @@
+{
+  "tick_id": "bunker-foreman-2026-10-22-10-07-48",
+  "block": "ISO-002",
+  "wave_budget": 9,
+  "slots": 2,
+  "wave_size": 2,
+  "rows": [
+    {
+      "id": "ISO-001",
+      "title": "Process visibility leaks agent identity across tenant boundary",
+      "worktree": "/home/kara/worktrees/bunker-ISO-001",
+      "branch": "wt/ISO-001",
+      "base": "origin/main",
+      "base_sha": "2537aecc",
+      "worker_model": "glm-5.3-flash",
+      "worker_provider": "zai-glm-default",
+      "files": [
+        "internal/netmode/procvis.go",
+        "internal/netmode/procvis_probe_test.go",
+        "internal/netmode/netmode.go"
+      ],
+      "acceptance": "procvis host-verify gate enforces hidepid=2 on the /proc mount itself (host must boot/mount with hidepid=2), not just inside ephemeral throwaway namespaces; refusal text names the exact missing property; table/verify unit tests green; go build/vet/test green"
+    },
+    {
+      "id": "ISO-002",
+      "title": "/run/bunker directory enumeration exposes tenant runtime paths",
+      "worktree": "/home/kara/worktrees/bunker-ISO-002",
+      "branch": "wt/ISO-002",
+      "base": "origin/main",
+      "base_sha": "2537aecc",
+      "worker_model": "glm-5.3-flash",
+      "worker_provider": "zai-glm-default",
+      "files": [
+        "internal/agent/manager_spawn.go",
+        "internal/agent/isolation.go"
+      ],
+      "acceptance": "the /run/bunker PARENT directory is mode 0700 root:root (or per-agent dirs made un-enumerable); existing per-agent 0700+chown assertion (AssertAgentSocketDir) preserved; socket contract /run/bunker/<id>/docker.sock still works for the owner unit; spawn unit tests green; go build/vet/test green"
+    }
+  ],
+  "note": "worktree fields filled after worktree.sh new succeeds; pre-dispatch record per wave rule",
+  "dispatched_at": "2026-10-22T15:25:00Z",
+  "status": "complete",
+  "finished_at": "2026-10-22T15:41:00Z",
+  "notes": "Both rows landed on main: 0f25f274 (ISO-002, worker commit 274b68d3) and 25a342fc (ISO-001, worker commit 251c7d0c rebased onto 0f25f274 per STALE-BASE rule). Merged-tree gates: go build ./... PASS, go vet ./... PASS, go test ./internal/agent ./internal/netmode ./internal/config -count=1 PASS. Worktrees removed, branches deleted after merge. Tier-2 judges: ISO-002 job-e058fb03081f476ab80f7c96ebb7fb0b and ISO-001 job-2b0aa1aa15b94c2bbd121c2ff5006eae dispatched async (foreground tier-2 exceeded the tool window); verdicts pending at close-out."
+}
