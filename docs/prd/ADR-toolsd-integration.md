@@ -1,7 +1,7 @@
 # ADR: toolsd integration point for bunker's remote file tools
 
 **Status:** accepted · **Date:** 2026-09-20 · **Owner:** Hermes
-**Consumer rows:** GAP-092 (zero-code proof), GAP-094 (exec bodies), GAP-095 (attribution), GAP-096 (toolsd on agents), GAP-097 (shim), GAP-101 (mount as editing surface), GAP-102 (Hermes-side gap)
+**Consumer rows:** GAP-092 (zero-code proof), GAP-094 (exec bodies), GAP-095 (attribution), GAP-096 (toolsd on agents), GAP-097 (shim), GAP-101 (mount as editing surface), GAP-102 (Hermes-side gap), SURF-B3 (daemon topology)
 **Related:** `SPEC-bunker-native-file-tools.md`, `PRD-bunker-remote-editing.md`, `docs/both-ways.md`
 
 ---
@@ -172,3 +172,43 @@ either a subscription-shaped need (missed-update incidents or polling volume —
 measured per-session volume × saved overhead above the stated carry cost for an HTTP-shaped
 surface (Trigger 2). Everything else is a taste argument, and this record rejects taste as a
 trigger.
+
+## Topology Decision — SURF-B3: one daemon per USER
+
+The revival triggers above decide **whether** an in-agent service exists. This section decides
+**what shape it takes when it does**, because the topology is not free to choose: the lease
+registry (`internal/lease` in `coding-hermes-tools`) exists to prevent the lost-update class,
+and a topology that shards state across daemons over one tree silently undoes that protection.
+
+**Decision: one daemon per USER.** A `systemd --user` socket unit — the mechanism
+`SPEC-toolsd-agent-surfaces.md` §3.1 already corrected the original login-hook proposal into —
+starts one `toolsd` daemon in the agent user's session on first connect; every later session,
+every SSH connection and forwarded socket, connects to the SAME daemon over the same socket.
+Shared state (the lease registry, the invocation ledger) then has exactly one owner in memory,
+and the lease registry finally gets what it has been faking with a shared file and pid
+heuristics: **liveness tied to a real connection** (CHT-030's "the CLI's default pid is the
+TRANSIENT parent" is the direct symptom of there being no such daemon).
+
+The rejected shape — **one daemon per SESSION** — is safe only if ALL shared state remains in
+FILES and the daemon holds no state authority (`SPEC-toolsd-agent-surfaces.md` §3.2b). That
+variant stays on the table as the fallback, but it is a strictly smaller win: it buys the
+per-call spawn saving and streaming and nothing else, while re-imposing on every verb the
+read-modify-write file discipline that `internal/lease` was built to centralise. It is chosen
+only if a per-user daemon measurably fails the carry-cost rule above — not as a default.
+
+Two properties the per-user daemon preserves, both already load-bearing in the SPEC:
+
+- **The uid context never breaks.** The daemon runs as the agent's user in the agent's own
+  session; the hard boundary stays uid + cgroup + namespace (honest limitation 1 above,
+  SPEC §3.3). One daemon per user means one place to keep that true, not N.
+- **Audit continuity is one wiring problem, not N.** SPEC §3.4 requires the socket daemon to
+  join the hash-chained audit chain before the first verb ships. With per-session daemons,
+  every connection would spawn a fresh process that must re-establish chain identity — the
+  regression risk multiplies with session count.
+
+Invariant unchanged either way (SPEC §3.2, carried as acceptance criterion 3): two concurrent
+sessions still produce exactly **one lease grant and one refusal naming the holder** —
+`CHT-007` locally, `CHT-052` remote. Under the per-user topology that invariant is enforced by
+the single lease registry inside the one daemon; under the per-session fallback it is enforced
+by the file-locked registry with no daemon-side state. A topology change that lets the outcome
+become 2-0 or 0-2 is a defect, not a trade-off.
