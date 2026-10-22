@@ -121,6 +121,22 @@ pairwise disjoint by construction, and the guarantee is checked, not assumed.
 (see `internal/agent/isolation.go`); rootless containers share the host kernel, so the
 boundary is defence-in-depth, not a hypervisor.
 
+**Also honest, host-user mode (as shipped today, measured 2026-09-29):** in the standard
+host-user mode agents are Linux users, not containers, so every agent on one host shares
+the host PID namespace. A tenant can enumerate a sibling tenant's processes via
+`pgrep -af` / `/proc` and read their full argv — command paths, flags, and sometimes
+secrets. Measured on a production host (2026-09-29, from agent `luisa-sossa`): a
+sibling agent's interpreter was visible with its complete command line (REVIEW-BUNKER-2).
+File isolation on that host was fine (`/tmp` private, mode 0700); the leak is specifically
+the shared PID namespace. `/proc` has no host-wide `hidepid=2` by default, so nothing
+filters this view today. Of the mitigation seams that exist: the opt-in `netmode procvis`
+isolation (NET-BUNKER-011 / ISO-001) gives a spawned unit's processes a private `/proc`
+via per-unit `ProtectProc=invisible`, but it does not cover the agent's own SSH/exec
+sessions, which keep the global `/proc` view, and it does not stop another agent
+enumerating through `/proc/<unit-pid>/root/proc`. Container-mode agents (GAP-063 spec)
+are the structural fix direction: a per-agent PID namespace makes sibling argv invisible
+by construction. Until then, cross-tenant process visibility is the shipped default.
+
 ### BT4 — Egress (adversary A1)
 
 *Default:* **none.** There is no default-deny, no allowlist, and no egress code path. A
@@ -144,6 +160,7 @@ services. The panel called egress control "the highest-value single addition."
 5. **Read a peer's artifacts.** Shared scratch is on by default under a shared group; absent
    an explicit decision, agent A can read what agent B exchanged. *BT3 / A3.*
 6. **Cross the agent boundary via subuid overlap.** *Formerly possible; now closed (GAP-140).* The overlapping subordinate ranges used to let a later agent's container root collide with an earlier agent's ID mapping. Ranges are now allocated disjoint under a host-wide lock and a startup gate refuses an overlapping host. *BT3.*
+7. **Read a peer's process argv.** Tenant A runs `pgrep -af` inside its agent on a shared host and reads tenant B's command line — full argv, including paths, flags and sometimes secrets embedded in flags. Agents are users, not containers, so `/proc` is shared. *BT3 / A3 (REVIEW-BUNKER-2).*
 
 ---
 
@@ -162,6 +179,9 @@ These remain true and are stated in `SECURITY.md` as well:
   be stated as conditional.
 - Egress control, once added, is policy, not proof: it reduces exfiltration paths, it does
   not eliminate covert channels.
+- **Host-user agents on a shared host expose process argv across tenants** until
+  container-mode isolation or a host-wide `hidepid=2` lands. The per-unit `procvis`
+  seam is opt-in per agent and does not cover exec/SSH sessions (REVIEW-BUNKER-2).
 
 ---
 
