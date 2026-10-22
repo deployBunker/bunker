@@ -71,8 +71,11 @@ offbyone_forward.py. These are operator processes bunker destroy does not
 kill (a previous destroy that orphaned them is exactly the failure this gate
 exists to prevent). The destroy path already stops the rootless-docker
 session's own services (dbus/pipewire and the systemd user manager)
-automatically — whatever remains was started by the agent's operator: stop
-those processes on the host, then retry the destroy
+automatically — whatever remains was started by the agent's operator. Nothing
+was deleted; kill the processes and retry: bunker ssh bunker-eduos-agent --
+pkill -U 1002  (agent user bunker-eduos-agent still exists, so this reaches
+the host) — or let the destroy kill them for you: bunker destroy <agent-id>
+--force (SIGTERM, then SIGKILL escalation; the home is still archived first)
 ```
 
 ### What destroy clears by itself (DF-BUNKER-66)
@@ -90,13 +93,19 @@ children — and a detached stop is respawned by the user manager), and they
 are not the operator payload the gate exists to protect.
 
 So the refusal means: a REAL operator process (scheduler daemon, node
-server, forward script) is still alive under the uid. Stop that process on
-the host, then retry. Nothing else is required.
+server, forward script) is still alive under the uid. Kill it with the
+command the refusal carries — `bunker ssh <agent> -- pkill -U <uid>`
+(reachable because the agent user still exists at refusal time) — or run
+`bunker destroy <agent-id> --force` and let the destroy kill it for you.
+Nothing else is required.
 
-Nothing is deleted when the refusal fires. `--force` does NOT bypass the
-gate: the historical alternative is the partial state userdel -rf leaves
-when it fails on a busy home — user record gone, ~35 uid processes alive
-for 20+ hours, one of them holding port 3000 and shadowing the next agent's
+Nothing is deleted when the refusal fires. `--force` does not silently
+bypass the gate (MISCHIEF-DF-24/DF-BUNKER-63): it runs a bounded SIGTERM →
+SIGKILL escalation over the named processes — with the home still archived
+first — and REFUSES LOUDLY if anything survives the escalation, because the
+historical alternative is the partial state userdel -rf leaves when it
+fails on a busy home — user record gone, ~35 uid processes alive for 20+
+hours, one of them holding port 3000 and shadowing the next agent's
 daemon — while the destroy reported not_found and the fleet looked healthy.
 
 If userdel itself fails on anything other than an already-gone user, the

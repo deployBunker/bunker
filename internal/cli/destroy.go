@@ -277,6 +277,17 @@ Examples:
 				if strings.Contains(err.Error(), "home retained") {
 					fmt.Printf("Agent %s NOT destroyed: the home could not be archived, so it was RETAINED (nothing was deleted).\n", agentID)
 				}
+				// MISCHIEF-DF-24: the live-process refusal is the OTHER
+				// fail-closed refusal, and the RPC error that carries it is a
+				// wall of wrapped connect noise. Print the same plain guidance
+				// line the home-retained case prints — the exact kill command
+				// and the --force exit hatch — so the remediation is actionable
+				// without parsing the error. Nothing was deleted either way.
+				if strings.Contains(err.Error(), "live processes") {
+					fmt.Printf("Agent %s NOT destroyed: the agent user still owns live processes (nothing was deleted).\n", agentID)
+					fmt.Printf("  Kill them and retry:   bunker ssh %s -- pkill -U <uid of bunker-%s>\n", agentID, agentID)
+					fmt.Printf("  Or let destroy do it:  bunker destroy %s --force\n", agentID)
+				}
 				return fmt.Errorf("destroy agent: %w", err)
 			}
 
@@ -298,7 +309,7 @@ Examples:
 	}
 
 	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)")
-	cmd.Flags().BoolVar(&force, "force", false, "Force destroy even if agent is running")
+	cmd.Flags().BoolVar(&force, "force", false, "Kill the agent user's live processes (SIGTERM, then SIGKILL escalation) and destroy anyway — the kill-first exit hatch for a live_processes refusal; the home is still archived first")
 	cmd.Flags().BoolVar(&keepKey, "keep-key", false, "Keep the local SSH key (~/.bunker/keys/<id>) after destroy (key rotation)")
 	cmd.Flags().BoolVar(&archive, "archive", true, "Archive the agent home to the daemon's destroy_archive_dir before deletion (default). --archive=false deletes the home with NO copy — the per-destroy equivalent of destroy_home_policy: purge (see also --purge)")
 	cmd.Flags().BoolVar(&purge, "purge", false, "Shorthand for --archive=false: delete the home with NO archive and NO copy kept")

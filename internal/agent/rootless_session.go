@@ -18,8 +18,9 @@ import (
 // the rootless-docker login session's OWN default.target services —
 // dbus-daemon, pipewire, wireplumber, mpris-proxy — plus their user manager.
 // Three properties make that class un-remediable from the agent side, which is
-// exactly what the gate's operator remedy ("stop those processes on the host,
-// then retry") demands:
+// exactly what the gate's operator remedy (the exact kill command the refusal
+// now carries: `bunker ssh <agent> -- pkill -U <uid>`, or the `destroy
+// --force` escalation) demands:
 //
 //  1. they are session-infrastructure, not agent payload: the agent image's
 //     rootless install enables linger, systemd starts the user manager and

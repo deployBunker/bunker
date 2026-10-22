@@ -3,7 +3,7 @@ package agent
 // DF-BUNKER-66 regression tests. The destroy live-process gate used to count
 // the rootless-docker login session's OWN default.target services (dbus-daemon,
 // pipewire, wireplumber, mpris-proxy) as orphanable operator processes, and its
-// remedy ("stop those processes on the host") had no agent-side path: bunker
+// remedy had no agent-side path: bunker
 // exec cannot stop them (session close reaps children) and a detached stop is
 // respawned by the user manager (dogfood run 20, docs/dogfood/2026-09-25c).
 //
@@ -539,7 +539,10 @@ func TestBuildDestroyLiveProcessRefusal_NamesTheAutomaticRemedy(t *testing.T) {
 		"pid 4242",
 		"already stops the rootless-docker session's own services",
 		"started by the agent's operator",
-		"retry the destroy",
+		// MISCHIEF-DF-24: the remedy tail changed from the unreachable
+		// "retry the destroy" to the exact kill command plus the retry.
+		"kill the processes and retry",
+		"bunker ssh bunker-x -- pkill -U 61012",
 	} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("refusal missing %q — got: %s", want, msg)

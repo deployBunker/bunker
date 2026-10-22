@@ -596,10 +596,10 @@ func TestUniversalHelpFlagIsAccepted(t *testing.T) {
 	}
 	in := Input{
 		ReadmePath: "README.md", ChangelogPath: "CHANGELOG.md",
-		Readme:       "# x\n", Changelog: "# x\n\n## Unreleased\n",
-		LatestTag:    "v0.2.0",
-		Surface:      factsOrSkip(t, repoRoot(t)).Surface,
-		TreeFlags:    treeFlags,
+		Readme: "# x\n", Changelog: "# x\n\n## Unreleased\n",
+		LatestTag: "v0.2.0",
+		Surface:   factsOrSkip(t, repoRoot(t)).Surface,
+		TreeFlags: treeFlags,
 		Docs: map[string]string{
 			"docs/test.md": "- Use `bunker spawn --help` for the flag list.\n",
 		},
