@@ -1,0 +1,29 @@
+{
+  "tick_id": "bunker-foreman-2026-10-22-03-15-06",
+  "block": "RELEASE-016",
+  "wave_budget": 11,
+  "wave_size": 0,
+  "path": "no wave: block-drive ranked TOOLS-003 first, but RESUME-FIRST (owner 2026-10-19) points at RELEASE-016 — the last closing event (tick 2026-10-22-02-38-32) closed RELEASE-BUNKER-003 naming RELEASE-016 its successor. RELEASE-016's ready rows: RELEASE-006 = verification-only board close (no code); RELEASE-003 = live-host redeploy ops explicitly marked 'not development' in the row (foreman-direct, not worker-dispatchable); RELEASE-008 is depends_on-blocked by RELEASE-003. Fewer than 2 mutually independent worker-eligible rows -> serial/no-dispatch per the sizing rule.",
+  "rows": [
+    {
+      "id": "RELEASE-006",
+      "path": "verification-only close",
+      "outcome": "closed complete (commit ea264ca0 cited; task row status=complete)"
+    },
+    {
+      "id": "RELEASE-003",
+      "path": "foreman-direct ops: mvp redeploy from official v0.2.0 assets",
+      "outcome": "mvp leg DONE (restarted 05:14Z, reconcile restored=6 destroyed=0, daemon = tag build 149411c); bunker/bunker3/bunker4 UNREACHABLE (tailscale offline 9-20d) - named blocker on the row, stays pending"
+    },
+    {
+      "id": "GAP-182",
+      "path": "finding filed (audit.log.3 chain-head recovery skipped)",
+      "outcome": "row appended (pending)"
+    }
+  ],
+  "dispatched_at": "2026-10-21T22:47:06-05:00",
+  "workers": [],
+  "recovery": "upstream manifests 2026-10-21-02-22-10 + 2026-10-21-17-15-43 already closed by later ticks; closure verified (commit ancestry, branch deletion, 0 unpushed)",
+  "status": "complete",
+  "finished_at": "2026-10-22T05:20:00Z"
+}
