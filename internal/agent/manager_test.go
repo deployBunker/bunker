@@ -52,15 +52,82 @@ func cleanupAgent(t *testing.T, m *AgentManager, agentID string) {
 	// Observed: TestConcurrency_SpawnFiveAgents left 5 users, and
 	// TestSpawn_RootlessEnvHasTMPDIR left tmpdir-env-* (2026-08-04, GAP-005).
 	username := "bunker-" + agentID
-	_ = exec.Command("pkill", "-u", username, "-9").Run()
-	for i := 0; i < 20; i++ {
+	// Aggressive process kill: SIGKILL all user processes, then wait for reap.
+	_ = exec.Command("pkill", "-9", "-u", username).Run()
+	// Second pass after a brief wait (zombie reaping).
+	time.Sleep(2 * time.Second)
+	_ = exec.Command("pkill", "-9", "-u", username).Run()
+
+	// Extended retry loop: up to 30s to wait for dockerd to fully exit.
+	for i := 0; i < 60; i++ {
 		if _, err := user.Lookup(username); err != nil {
 			return // user gone
 		}
 		time.Sleep(500 * time.Millisecond)
+		// Kill any remaining processes aggressively.
+		_ = exec.Command("pkill", "-9", "-u", username).Run()
+		// Then retry userdel.
 		_ = exec.Command("userdel", "-rf", username).Run()
 	}
-	t.Logf("cleanup: user %s still present after 10s of retries", username)
+	t.Logf("cleanup: user %s still present after 30s of retries", username)
+
+	// Forced removal if userdel still fails: remove from /etc/passwd directly
+	// and clean up residual state.
+	if _, err := user.Lookup(username); err == nil {
+		t.Logf("cleanup: forcing user removal for %s", username)
+		// Remove from /etc/passwd
+		_ = exec.Command("sed", "-i", "/^"+username+":/d", "/etc/passwd").Run()
+		// Remove home directory
+		_ = exec.Command("rm", "-rf", "/home/"+username).Run()
+		// Remove socket directory
+		_ = exec.Command("rm", "-rf", "/run/bunker/"+agentID).Run()
+	}
+
+	// Clean up systemd linger entry if present.
+	lingerPath := "/var/lib/systemd/linger/" + username
+	if _, err := os.Stat(lingerPath); err == nil {
+		t.Logf("cleanup: removing linger entry for %s", username)
+		_ = os.Remove(lingerPath)
+	}
+
+	// Clean up AppArmor profile if present.
+	// AppArmor profiles for bunker agents are named "bunker.<agent_id>" or
+	// "bunker.<username>".
+	aaProfiles := []string{
+		"bunker." + agentID,
+		"bunker." + username,
+	}
+	for _, profile := range aaProfiles {
+		// Try to disable/remove the profile.
+		out, _ := exec.Command("aa-status", "--enabled").CombinedOutput()
+		if strings.Contains(string(out), profile) {
+			t.Logf("cleanup: disabling AppArmor profile %s", profile)
+			_ = exec.Command("aa-disable", profile).Run()
+		}
+		// Also try direct removal from /etc/apparmor.d/ if it exists there.
+		profilePath := "/etc/apparmor.d/" + profile
+		if _, err := os.Stat(profilePath); err == nil {
+			t.Logf("cleanup: removing AppArmor profile file %s", profilePath)
+			_ = os.Remove(profilePath)
+			_ = exec.Command("apparmor_parser", "-R", profilePath).Run()
+		}
+	}
+
+	// Final verification: check for residual state.
+	checks := []struct {
+		label string
+		cmd   string
+	}{
+		{"user entry", "grep -c '^" + username + ":' /etc/passwd"},
+		{"home dir", "test -d /home/" + username + " && echo yes || echo no"},
+		{"linger", "test -f /var/lib/systemd/linger/" + username + " && echo yes || echo no"},
+	}
+	for _, check := range checks {
+		out, _ := exec.Command("sh", "-c", check.cmd).CombinedOutput()
+		if strings.TrimSpace(string(out)) != "0" && strings.TrimSpace(string(out)) != "no" {
+			t.Logf("cleanup: %s still present for %s: %s", check.label, username, strings.TrimSpace(string(out)))
+		}
+	}
 }
 
 // ── Unit tests on helper functions (no root needed) ──────────────
