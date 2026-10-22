@@ -4889,3 +4889,11 @@ tasks:
     and bind evidence to the task.
   status: in_progress
   created_at: '2026-10-21T17:25:45.184687+00:00'
+- id: TOOLS-003
+  title: spawn-time tool delivery + uninstall/rollback
+  criteria:
+  - agent-tools uninstall verb exits 0; spawn delivers AgentToolPackages loudly; go
+    build/vet/test green on merged main @1fb8cbd5
+  status: complete
+  created_at: '2026-10-22T07:26:53.456962+00:00'
+  completed_at: '2026-10-22T09:17:43.382034+00:00'
