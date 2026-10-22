@@ -235,6 +235,20 @@ agent:
   # --network-mode <mode>`. Env override: BUNKERD_NETWORK_MODE.
   network_mode: shared
 
+  # Process-visibility gate, real-/proc half (ISO-001). The proc group this
+  # daemon holds on the host's /proc mount when procvis is served: the
+  # host-wide hidepid boundary makes the /proc gate blind to foreign-uid
+  # tasks, so the daemon must NAME a group the mount's gid/procgroupid
+  # option grants read access to. The gate is OPT-IN (ISO-001's fix is a
+  # spawn REFUSAL when the host cannot provide the boundary): with no group
+  # configured, the real-/proc check is skipped and the units' own
+  # ProtectProc=invisible boundary stands alone. Configure this name ONLY
+  # after an operator armed the host /proc remount
+  # (`mount -o remount,rw,nosuid,nodev,noexec,relatime,hidepid=invisible,procgroupid=<gid> /proc`)
+  # — this field never remounts anything. Env override:
+  # BUNKERD_PROCVIS_PROC_GROUP.
+  # proc_group: bunker-proc
+
   # Unit sandboxing for guarded/hostile deployments (GAP-119). OFF by default:
   # with it off no property is added and the systemd-run argv is byte-identical
   # to a daemon without the feature. When true, every agent spawn unit (the
