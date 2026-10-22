@@ -1363,7 +1363,9 @@ func (m *AgentManager) gateDestroyOnLiveProcesses(_ context.Context, agentID, us
 			logger.Error("destroy --force: uid still owns live processes after the SIGTERM/SIGKILL escalation",
 				"username", username, "uid", uid, "processes", len(survivors), "evidence", summary)
 			refusal := fmt.Errorf("destroy refused: user %s (uid %d) still owns live processes that survived the destroy --force escalation (SIGTERM, then SIGKILL). %s. "+
-				"Stop those processes on the host, then retry the destroy", username, uid, summary)
+				"Nothing was deleted. These survived the escalation; stop them by hand and retry: "+
+				"bunker ssh %s -- pkill -9 -U %d  (agent user %s still exists, so this reaches the host)",
+				username, uid, summary, username, uid, username)
 			if m.recordDestroyRefusalFn != nil {
 				m.recordDestroyRefusalFn(agentID, StatusLiveProcesses, refusal)
 			}
@@ -1452,6 +1454,18 @@ var destroyProcessProbe = func(username string) (procs []userProcess, uid uint32
 // buildDestroyLiveProcessRefusal renders the operator-facing refusal for a
 // uid that still owns live processes. It is the single construction for the
 // gate error and the orphan report line, so the two surfaces cannot drift.
+//
+// MISCHIEF-DF-24: the remedy used to be the unreachable advice "stop those
+// processes on the host, then retry" — no command, no key, no host, and the
+// destroy path is the very thing about to remove the operator's access.
+// The refusal now carries the EXACT kill command: at refusal time the agent
+// user still exists, so `bunker ssh <agent> -- pkill -U <uid>` reaches the
+// host with the operator's own spawn key (userdel — the step that removes
+// that access — has NOT run). It also names `destroy --force`, the
+// DF-BUNKER-63 exit hatch that IS kill-first: a bounded SIGTERM → SIGKILL
+// escalation run server-side, with the home still archived first. Neither
+// remedy weakens the orphan-safety guarantee: nothing is deleted here, and
+// both leave the retry through the same gate.
 func buildDestroyLiveProcessRefusal(username string, uid uint32, procs []userProcess) string {
 	summary := (&orphanUIDCheck{UID: uid, UIDKnown: true, UserExists: true, Processes: procs}).Describe()
 	return fmt.Sprintf(
@@ -1460,8 +1474,11 @@ func buildDestroyLiveProcessRefusal(username string, uid uint32, procs []userPro
 			"orphaned them is exactly the failure this gate exists to prevent). The destroy path "+
 			"already stops the rootless-docker session's own services (dbus/pipewire and the "+
 			"systemd user manager) automatically — whatever remains was started by the agent's "+
-			"operator: stop those processes on the host, then retry the destroy",
-		username, uid, summary)
+			"operator. Nothing was deleted; kill the processes and retry: "+
+			"bunker ssh %s -- pkill -U %d  (agent user %s still exists, so this reaches the host) — "+
+			"or let the destroy kill them for you: bunker destroy <agent-id> --force "+
+			"(SIGTERM, then SIGKILL escalation; the home is still archived first)",
+		username, uid, summary, username, uid, username)
 }
 
 // StatusUserdelFailed is the destroy-path response status for a userdel -rf
