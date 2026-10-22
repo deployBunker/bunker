@@ -1,0 +1,33 @@
+{
+  "tick_id": "bunker-foreman-2026-10-22-23-19-07",
+  "block": "MOUNT-016",
+  "path": "SERIAL — slots=1 (nproc 16, loadavg 19.25 → ceil 20 → 16-20 <0 → clamp 1). WAVE_BUDGET 3 but only 1 worker-eligible measured-remedy row exists in the block, and MOUNT-016 (row) is owner-blocked on dedi-2 tailnet join.",
+  "block_resume": "RESUME FIRST honored: prior tick (bunker-foreman-2026-10-22-22-13-04) block=MOUNT-016; block still has ready rows (MOUNT-011/013/014/015 pending) so the same block stays the target.",
+  "rows": [
+    {
+      "id": "MOUNT-011",
+      "title": "close MOUNT-011 on committed evidence: direct-path remeasure refutes the PASS arm",
+      "worktree": null,
+      "branch": "main (foreman-shared checkout; evidence-only edit, no code path touched)",
+      "base_sha": "7bf3d14f",
+      "worker_model": "deepseek-v4-flash",
+      "worker_provider": "deepseek-foreman",
+      "brief": "/tmp/bunker-foreman-2026-10-22-23-19-07-MOUNT-011-brief.txt",
+      "work_kind": "evidence/board closure",
+      "planned_mechanism": "worker writes: mount-011 closure note + row closure with confirmed-with-correction verdict + event",
+      "dispatch_note": "single dispatch (WAVE_BUDget 3 unused surplus: 1 eligible row only)"
+    }
+  ],
+  "explicitly_not_in_wave": [
+    {"id": "MOUNT-016", "reason": "blocked on owner action: dedi-2 Hetzner joining the tailnet (Bane's step, 'we will prepare soon')"},
+    {"id": "MOUNT-013", "reason": "next ready row after MOUNT-011 (P2 rclone-mount evaluation); requires live mount benchmarks — queued for repopulation after MOUNT-011 merges, not shipped in an idle-claiming wave"},
+    {"id": "MOUNT-014", "reason": "P2 Mutagen evaluation — same class as MOUNT-013; queued for repopulation"},
+    {"id": "MOUNT-015", "reason": "P2 sshfs readdirplus patch experiment — needs upstream sshfs source clone + patch branch, not a same-tick add-on"}
+  ],
+  "gates_planned": {
+    "docs_check": "make docs-check (must PASS)",
+    "gitreins_guard": "gitreins guard (secrets + build-only; no Go path touched)",
+    "gitreins_lifecycle": "task create + start before dispatch; task complete after commit; delete after verdict",
+    "push_verify": "git fetch origin && git rev-list --count origin/main..HEAD == 0"
+  }
+}
