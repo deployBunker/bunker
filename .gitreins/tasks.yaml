@@ -4960,3 +4960,12 @@ tasks:
   status: complete
   created_at: '2026-10-22T13:32:35.404117+00:00'
   completed_at: '2026-10-22T13:50:09.152662+00:00'
+- id: MOUNT-010
+  title: Comparative 3.7.3 symlink-escape leg owed by MOUNT-002
+  criteria:
+  - docs/mount-drivers.md section 1 records the symlink-escape probe run through unpatched
+    /usr/bin/sshfs 3.7.3 with divergence vs the 3.7.6 refusal; grep -c 'unpatched'
+    docs/mount-drivers.md >= 1; go test ./internal/mountdriver/ exits 0
+  status: complete
+  created_at: '2026-10-22T17:18:59.799728+00:00'
+  completed_at: '2026-10-22T17:27:34.542672+00:00'
