@@ -521,6 +521,31 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	m.logger.Info("starting rootless dockerd", "unit", unitName, "sock", dockerSockPath)
 
 	m.logger.Info("spawn entering stage", "agent_id", agentID, "stage", StageRootlessInstall)
+
+	// ISO-002: enforce the /run/bunker PARENT before the first per-agent
+	// directory is created underneath it — the MkdirAll(spawnRunRoot, …)
+	// sites below (socket dir, legacy tmp, rootless runtime dir) would
+	// otherwise create it implicitly at 0755, which is exactly why
+	// `ls /run/bunker/` enumerated the tenant set for every agent (ISO-002,
+	// demonstrated live — spec specs/network-isolation.md §1.8 "Path
+	// visibility"). The Ensure repairs (re-mkdir + explicit chmod — the
+	// case of a tmpfs /run whose mode resets over reboot) and FAILS, never
+	// warns, if the repaired state cannot be asserted (the
+	// ErrRunRootForeignMount refusal covers the one repair that must not be
+	// attempted: a foreign filesystem mount owning the path). OWNER-UNIT
+	// CONTRACT: bunkerd provisions agents as root by construction —
+	// chown -R to arbitrary users, /etc/bunkerd, systemd --system units —
+	// and the daemon's socket/symlink work here runs as root too, so a
+	// 0700 root-owned parent (root bypasses DAC) is transparent to every
+	// owner-unit path; what agents lose is enumerate/traverse on PEERS,
+	// which is the design goal. Anchored to spec §1.8 — see
+	// sockdir_root_linux.go for the full ownership-reasoning comment.
+	if err := EnsureAgentRunRoot(spawnRunRoot); err != nil {
+		return nil, fail(StageRootlessInstall, fmt.Errorf("enforce runtime root %s: %w", spawnRunRoot, err))
+	}
+	if err := AssertAgentRunRoot(spawnRunRoot); err != nil {
+		return nil, fail(StageRootlessInstall, fmt.Errorf("runtime root %s failed the 0700/root-ownership assertion: %w", spawnRunRoot, err))
+	}
 	// Create the socket directory.
 	//
 	// NET-BUNKER-007 (specs/network-isolation.md §6.1): this is the agent's
