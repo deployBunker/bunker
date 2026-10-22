@@ -1,0 +1,47 @@
+{
+  "tick_id": "bunker-foreman-2026-10-22-13-19-40",
+  "block": "REVIEW-BUNKER",
+  "wave_budget": 12,
+  "slots": 6,
+  "wave_size": 2,
+  "rows": [
+    {
+      "id": "REVIEW-BUNKER-1",
+      "title": "destroy returned `internal` twice and the agent leaked (live_processes refusal rendered as internal)",
+      "worktree": "/home/kara/worktrees/deployBunker/bunker-REVIEW-BUNKER-1",
+      "branch": "wt/REVIEW-BUNKER-1",
+      "base": "origin/main",
+      "base_sha": "263a9ed3",
+      "worker_model": "glm-5.3-flash",
+      "worker_provider": "zai-glm-default",
+      "files": [
+        "internal/server/service.go",
+        "internal/server/service_test.go"
+      ],
+      "acceptance": "named manager refusals (live_processes, home_retained, userdel_failed) surface as named connect codes/messages from DestroyAgent instead of blanket CodeInternal; regression test pins the status live_processes mapping; trace marker committed; go build/vet/test green"
+    },
+    {
+      "id": "REVIEW-BUNKER-2",
+      "title": "Host-user agents share a PID namespace: sibling tenant argv readable",
+      "worktree": "/home/kara/worktrees/deployBunker/bunker-REVIEW-BUNKER-2",
+      "branch": "wt/REVIEW-BUNKER-2",
+      "base": "origin/main",
+      "base_sha": "263a9ed3",
+      "worker_model": "glm-5.3-flash",
+      "worker_provider": "zai-glm-default",
+      "files": [
+        "docs/threat-model.md"
+      ],
+      "acceptance": "BT3/section6/section7 document the host-user shared-PID-namespace exposure, its default state, mitigation seams and their limits; docs-trailer trace marker; go build/vet green"
+    }
+  ],
+  "held_back": [
+    {
+      "id": "REVIEW-BUNKER-3",
+      "reason": "dedi-2 tmpdir row rides the same spawn-isolation seam as REVIEW-BUNKER-2 (sibling /tmp/PID enumeration; same netmode/isolation documentation surface) - repopulation candidate after a wave row merges"
+    }
+  ],
+  "note": "worktrees already provisioned from base 263a9ed3 (worktree.sh); briefs written to /tmp; live probes verify premise: 2026-10-22T12:58:33Z DestroyAgent returned internal for a named live_processes refusal (daemon log has the named refusal; service.go blanket-maps to CodeInternal); bunker list shows f0acaebd destroy-refused:live_processes still on bunker-mvp.",
+  "dispatched_at": "2026-10-22T13:45:00Z",
+  "status": "dispatched"
+}
