@@ -1,0 +1,56 @@
+{
+  "tick_id": "bunker-foreman-2026-10-22-22-13-04",
+  "block": "MOUNT-016",
+  "wave_size": 1,
+  "path": "SERIAL FALLBACK — slots=1 (nproc 16, loadavg 23.55 → ceil=24, 16-24 = -8 → clamped to 1). WAVE_BUDGET 1 also caps the wave at one worker. The chosen block had a single worker-eligible ready row, so no wave was composed.",
+  "slots_computation": "nproc=16, loadavg1=23.55 → slots=max(1, min(6, 16-24))=1",
+  "recovery": {
+    "named_unfinished_wave": "bunker-foreman-2026-10-21-02-22-10",
+    "manifest": ".coding-hermes/waves/bunker-foreman-2026-10-21-02-22-10.json",
+    "state_found": "status=complete, completed_at=2026-10-21T03:47:13Z, but finished_at was NULL (never closed out)",
+    "verified": {
+      "INT-CI-076": "worker commit 93cc04d4 is an ancestor of main (merge-base --is-ancestor 93cc04d4 main rc=0); worktree /home/kara/worktrees/bunker-INT-CI-076 absent; wt/INT-CI-076 branch absent",
+      "INT-CI-047": "superseded by INT-CI-051 (0258560f, ancestor of main rc=0); row complete with worker_status=duplicate-superseded",
+      "orphan_branches": "no wt/INT-CI-076 or wt/INT-CI-047 branch or worktree exists; nothing to merge, nothing to fix up"
+    },
+    "action": "manifest closed (finished_at set) in this tick's board commit; no worker re-dispatch needed"
+  },
+  "rows": [
+    {
+      "id": "MOUNT-017",
+      "title": "direct-path or honest remote-fs decision",
+      "worktree": "/home/kara/worktrees/bunker-MOUNT-017",
+      "branch": "wt/MOUNT-017",
+      "base_sha": "2514a93b",
+      "worker_model": "glm-5.3-flash",
+      "worker_provider": "zai-glm-default",
+      "lane_actual": "glm-5.3-flash@zai-glm-default returned 429 weekly limit (reset 2026-10-25T04:07Z); gateway chain fell back xkiro → 9router ocg (401 api_key_expired) → cmc/deepseek/deepseek-v4-flash, which executed the work (50 API calls)",
+      "brief": "/tmp/bunker-foreman-2026-10-22-22-13-04-MOUNT-017-brief.txt",
+      "commit": "c31c2e824c3a5ca788053deb0fd4cc05ce98a8bf",
+      "verdict": "4cbda5a1 (Tier-2 PASS on c31c2e82)",
+      "files": [
+        "docs/mount-drivers.md",
+        "docs/mount-watchlist.md",
+        "probes/mount017-path-probe.sh"
+      ],
+      "status": "merged fast-forward into main (2514a93b..c31c2e82); branch wt/MOUNT-017 deleted local+remote; worktree removed"
+    }
+  ],
+  "gates": {
+    "go_build": "PASS",
+    "go_vet": "PASS",
+    "go_test_short_all_packages": "PASS (go test ./... -count=1 -short)",
+    "docs_check": "PASS (make docs-check: docs match v0.2.0)",
+    "gitreins_guard": "DEGRADED PASS — secrets clean; go lanes skipped on a docs+script-only diff (independent build/vet/test run by foreman)",
+    "boardctl_validate": "RESULT: OK (813 pre-existing warnings)"
+  },
+  "remote_ci": "deployBunker/bunker runs on main 2514a93b / bf57dd0f / 5f454884 are QUEUED at tick end (self-hosted runner backlog); no conclusion=failure in the window, so no new CI row filed",
+  "open": [
+    "MOUNT-016 block continues: MOUNT-011 and MOUNT-013 remain pending; MOUNT-016 itself stays blocked on the owner (dedi-2 on the tailnet)",
+    "INT-HOST-008 stays owner-blocked (reap --apply needs an explicit deletion decision)",
+    "RELEASE-017 (P1 release blocker: post-ISO /run/bunker 0700 breaks agent docker.sock traversal) remains pending — not touched this tick"
+  ],
+  "dispatched_at": "2026-10-22T22:29:00Z",
+  "status": "complete",
+  "finished_at": "2026-10-22T23:00:00Z"
+}

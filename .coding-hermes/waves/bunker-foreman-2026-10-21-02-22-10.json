@@ -40,5 +40,6 @@
   "status": "complete",
   "recovered_at": 1792552400.901174,
   "notes": "INT-CI-076 merged (93cc04d4). INT-CI-047 superseded by INT-CI-051 (0258560f) - fix already in main.",
-  "completed_at": "2026-10-21T03:47:13.884342Z"
+  "completed_at": "2026-10-21T03:47:13.884342Z",
+  "finished_at": "2026-10-22T21:30:00Z"
 }
