@@ -483,8 +483,26 @@ func (s *bunkerdService) DestroyAgent(ctx context.Context, req *connect.Request[
 	resp, err := s.agentMgr.Destroy(ctx, req.Msg.AgentId, req.Msg.Force, opts...)
 	if err != nil {
 		s.logger.Error("destroy agent failed", "agent_id", req.Msg.AgentId, "error", err)
+		// REVIEW-BUNKER-1: a destroy REFUSAL is a named, actionable state —
+		// the manager attaches the refusal status (live_processes,
+		// home_retained, userdel_failed) to the response and carries the
+		// full actionable text (user, uid, pid evidence, remedy) in the
+		// error string. Surface it as CodeFailedPrecondition so the status
+		// name survives the RPC boundary (and the operator's audit table)
+		// instead of collapsing into CodeInternal.
+		status := respStatus(resp)
+		for _, named := range []string{
+			agent.StatusLiveProcesses,
+			agent.StatusHomeRetained,
+			agent.StatusUserdelFailed,
+		} {
+			if status == named {
+				return nil, connect.NewError(connect.CodeFailedPrecondition,
+					fmt.Errorf("destroy refused (%s): %w", named, err))
+			}
+		}
 		// Map "not_found" to NotFound, other errors to Internal
-		if resp != nil && resp.Status == "not_found" {
+		if status == "not_found" {
 			return nil, connect.NewError(connect.CodeNotFound, err)
 		}
 		return nil, connect.NewError(connect.CodeInternal, err)
