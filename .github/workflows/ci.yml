@@ -36,10 +36,11 @@ jobs:
   # (`root-suite`) are the only two self-hosted jobs in this repo — they contend
   # for the single bunker-mvp runner — and AGENTS.md scopes that live battery to
   # tasks that change agent spawn, destroy, exec, docker, or SSH behavior. So this
-  # gate job classifies the push: board-only (.coding-hermes/) and documentation
-  # (.md / docs/) changes SKIP both self-hosted jobs, while any code change still
-  # runs them. The fast gates (build-and-test, unit-tests, gitreins-guard) stay
-  # unconditional on ubuntu-latest and still cover every push.
+  # gate job classifies the push: board-only (.coding-hermes/), gitreins ledger
+  # (.gitreins/) and documentation (.md / docs/) changes SKIP both self-hosted
+  # jobs, while any code change still runs them. The fast gates (build-and-test,
+  # unit-tests, gitreins-guard) stay unconditional on ubuntu-latest and still
+  # cover every push.
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -61,7 +62,7 @@ jobs:
           changed=$(git diff --name-only "$base" HEAD || true)
           echo "changed files:"
           printf '%s\n' "$changed"
-          if printf '%s\n' "$changed" | grep -vE '^(\.coding-hermes/|docs/|.*\.md$)' | grep -q .; then
+          if printf '%s\n' "$changed" | grep -vE '^(\.coding-hermes/|\.gitreins/|docs/|.*\.md$)' | grep -q .; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "code=false" >> "$GITHUB_OUTPUT"
