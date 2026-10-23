@@ -186,7 +186,7 @@ func (m *AgentManager) stopAgentRuntime(ctx context.Context, agentID string, log
 		}
 	}
 
-	for _, unit := range m.agentSessionUnits(ctx, agentID, unitName, logger) {
+	for _, unit := range m.agentSessionUnits(ctx, agentID, logger) {
 		if out, err := stopUserUnit(ctx, unit); err != nil {
 			logger.Debug("user unit stop failed (may not be loaded for this caller)",
 				"agent_id", agentID, "unit", unit, "error", err, "output", strings.TrimSpace(string(out)))
@@ -196,29 +196,28 @@ func (m *AgentManager) stopAgentRuntime(ctx context.Context, agentID string, log
 	terminateAgentProcesses(ctx, username, unitName, logger)
 }
 
-// agentSessionUnits returns the systemd user units belonging to one agent: the
-// deterministic dockerd unit plus any transient `bunker-run-<id>-*` units the
-// agent started through RunAgent. Unit discovery is best-effort — a caller
-// without a user session bus (the normal root daemon case) gets just the
-// dockerd unit, because that is the unit stop can always name.
-func (m *AgentManager) agentSessionUnits(ctx context.Context, agentID, dockerdUnit string, logger *slog.Logger) []string {
-	units := []string{dockerdUnit}
+// agentSessionUnits returns the transient `bunker-run-<id>-*` units the
+// agent started through RunAgent. The dockerd unit is NOT included here:
+// it is terminated via terminateAgentProcesses (SIGTERM → SIGKILL) so that
+// stop does not delete the systemd-run unit (which would make start fail).
+// See DF-BUNKER-107. Unit discovery is best-effort — a caller without a
+// user session bus (the normal root daemon case) gets an empty slice
+// because no RunAgent transient units were ever created.
+func (m *AgentManager) agentSessionUnits(ctx context.Context, agentID string, logger *slog.Logger) []string {
 	pattern := fmt.Sprintf("bunker-run-%s-*", agentID)
 	out, err := listUserUnits(ctx, pattern)
 	if err != nil {
-		logger.Debug("run-unit discovery unavailable; stopping only the dockerd unit",
+		logger.Debug("run-unit discovery unavailable",
 			"agent_id", agentID, "pattern", pattern, "error", err, "output", strings.TrimSpace(string(out)))
-		return units
+		return nil
 	}
+	var units []string
 	for _, line := range strings.Split(string(out), "\n") {
 		fields := strings.Fields(strings.TrimSpace(line))
 		if len(fields) == 0 {
 			continue
 		}
 		name := strings.TrimSuffix(fields[0], ".service")
-		// Only units this agent owns, and never a duplicate of the dockerd
-		// unit: the pattern is matched again here so a loosely-matching
-		// systemd version cannot make stop touch another agent's unit.
 		if !strings.HasPrefix(name, "bunker-run-"+agentID+"-") {
 			continue
 		}

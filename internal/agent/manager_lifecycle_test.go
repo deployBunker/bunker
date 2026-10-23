@@ -184,11 +184,12 @@ func TestStopAgent_StatusMatrix(t *testing.T) {
 		status     string
 		want       string
 		wantStops  int
+		wantTerm   int
 		wantStatus string // tracker status afterwards
 	}{
-		{"running_becomes_stopped", StatusRunning, StatusStoppedValue, 1, StatusStopped},
-		{"stopped_is_idempotent", StatusStopped, StatusAlreadyStopped, 0, StatusStopped},
-		{"failure_status_can_be_stopped", "failed", StatusStoppedValue, 1, StatusStopped},
+		{"running_becomes_stopped", StatusRunning, StatusStoppedValue, 0, 1, StatusStopped},
+		{"stopped_is_idempotent", StatusStopped, StatusAlreadyStopped, 0, 0, StatusStopped},
+		{"failure_status_can_be_stopped", "failed", StatusStoppedValue, 0, 1, StatusStopped},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -206,8 +207,8 @@ func TestStopAgent_StatusMatrix(t *testing.T) {
 			if len(seams.stopUnits) != tt.wantStops {
 				t.Errorf("stopUserUnit calls = %v, want %d", seams.stopUnits, tt.wantStops)
 			}
-			if len(seams.terminated) != tt.wantStops {
-				t.Errorf("terminateAgentProcesses calls = %v, want %d", seams.terminated, tt.wantStops)
+			if len(seams.terminated) != tt.wantTerm {
+				t.Errorf("terminateAgentProcesses calls = %v, want %d", seams.terminated, tt.wantTerm)
 			}
 			if got := m.tracker.Get("stopcase").Status; got != tt.wantStatus {
 				t.Errorf("tracker status = %q, want %q", got, tt.wantStatus)
@@ -216,8 +217,9 @@ func TestStopAgent_StatusMatrix(t *testing.T) {
 	}
 }
 
-// TestStopAgent_StopsTheAgentsOwnUnit pins the unit the stop targets: the
-// agent's own dockerd unit plus the agent's own detached run units only.
+// TestStopAgent_StopsTheAgentsOwnUnit pins the unit the stop targets:
+// only RunAgent transient units (the agent's dockerd unit is terminated via
+// process signal in terminateAgentProcesses, not via stopUserUnit — DF-BUNKER-107).
 func TestStopAgent_StopsTheAgentsOwnUnit(t *testing.T) {
 	seams := stubLifecycleSeams(t)
 	m, _, _ := newLifecycleManager(t)
@@ -238,7 +240,8 @@ func TestStopAgent_StopsTheAgentsOwnUnit(t *testing.T) {
 		t.Fatalf("status = %q, want %q", resp.GetStatus(), StatusStoppedValue)
 	}
 
-	want := []string{"bunker-docker-own-unit", "bunker-run-own-unit-abc12345"}
+	// Only the agent's own run unit should be stopped, not the dockerd unit.
+	want := []string{"bunker-run-own-unit-abc12345"}
 	if len(seams.stopUnits) != len(want) {
 		t.Fatalf("stopUserUnit calls = %v, want %v", seams.stopUnits, want)
 	}
@@ -435,8 +438,10 @@ func TestRestartAgent_ResetsHeartbeatExpiry(t *testing.T) {
 		t.Errorf("status = %q, want %q", resp.GetStatus(), StatusRestarted)
 	}
 	// Stop AND start both ran.
-	if len(seams.stopUnits) != 1 || len(seams.startUnits) != 1 {
-		t.Errorf("restart must stop and start: stops=%v starts=%v", seams.stopUnits, seams.startUnits)
+	// Stop no longer calls stopUserUnit (only terminate process — DF-BUNKER-107),
+	// but start must still re-arm the dockerd unit.
+	if len(seams.stopUnits) != 0 || len(seams.startUnits) != 1 {
+		t.Errorf("restart must start: stops=%v starts=%v", seams.stopUnits, seams.startUnits)
 	}
 
 	// Expiry moved forward and equals now + default TTL (within the call's
@@ -664,7 +669,8 @@ func TestStopAgent_SeamsAreUsedForEveryHostCommand(t *testing.T) {
 
 // TestStopAgent_ContextDeadlineIsHonoured guards the plumbing: the ctx handed
 // to the host-command seams is the caller's, so a cancelled caller cannot
-// leave a stop running.
+// leave a stop running. We verify that the context deadline propagates to
+// the process-termination path (which now handles dockerd — DF-BUNKER-107).
 func TestStopAgent_ContextDeadlineIsHonoured(t *testing.T) {
 	seams := stubLifecycleSeams(t)
 	m, _, _ := newLifecycleManager(t)
@@ -682,10 +688,105 @@ func TestStopAgent_ContextDeadlineIsHonoured(t *testing.T) {
 	cancel()
 	// A cancelled context is passed through; the stop still completes (the
 	// stop path is best-effort) but the seam observes the caller's context.
+	// No stopUserUnit is called (only process termination runs, DF-BUNKER-107),
+	// but the termination itself honours the context.
 	if _, err := m.StopAgent(ctx, "ctx-check"); err != nil {
 		t.Fatalf("StopAgent with cancelled ctx: %v", err)
 	}
+	if len(seams.stopUnits) != 0 {
+		t.Fatalf("stopUnits = %v, want zero (process termination handles dockerd)", seams.stopUnits)
+	}
+	// The termination path received the cancelled ctx.
+	if len(seams.terminated) != 1 {
+		t.Fatalf("terminated = %v, want one process kill", seams.terminated)
+	}
+}
+
+// TestStopAgent_DoesNotStopDockerdUnit is the DF-BUNKER-107 regression:
+// stop must NOT call stopUserUnit on the dockerd unit. The old code included
+// the dockerd unit in the stop loop (agentSessionUnits returned it), so
+// `systemctl --user stop` deleted the systemd-run transient unit, making
+// startAgentRuntime's startUserUnit fail with "unit not found".
+//
+// This test proves the fix: stop calls stopUserUnit zero times and
+// terminateAgentProcesses once, and the dockerd unit name is NOT in any
+// stop call.
+func TestStopAgent_DoesNotStopDockerdUnit(t *testing.T) {
+	seams := stubLifecycleSeams(t)
+	m, _, _ := newLifecycleManager(t)
+	registerLifecycleAgent(t, m, "dockerd-test", StatusRunning, time.Now().Add(time.Hour), "")
+
+	// systemd reports the agent's run unit AND the dockerd unit.
+	seams.listOutput = strings.Join([]string{
+		"bunker-run-dockerd-test-abc12345.service loaded active running bunker run",
+		"bunker-docker-dockerd-test.service loaded active running dockerd",
+		"",
+	}, "\n")
+
+	resp, err := m.StopAgent(context.Background(), "dockerd-test")
+	if err != nil {
+		t.Fatalf("StopAgent: %v", err)
+	}
+	if resp.GetStatus() != StatusStoppedValue {
+		t.Fatalf("status = %q, want %q", resp.GetStatus(), StatusStoppedValue)
+	}
+
+	// The dockerd unit must NOT be in the stop calls.
+	for _, unit := range seams.stopUnits {
+		if unit == "bunker-docker-dockerd-test" {
+			t.Fatalf("stopUserUnit was called with dockerd unit %q — this is the DF-BUNKER-107 bug. stop must NOT stop the dockerd unit; process termination handles it.", unit)
+		}
+	}
+
+	// Only the run unit should be stopped; dockerd is killed by process signal.
 	if len(seams.stopUnits) != 1 {
-		t.Fatalf("stopUnits = %v, want one call carrying the caller's ctx", seams.stopUnits)
+		t.Fatalf("stopUserUnit calls = %v, want 1 (only the run unit)", seams.stopUnits)
+	}
+	if seams.stopUnits[0] != "bunker-run-dockerd-test-abc12345" {
+		t.Errorf("stopUserUnit[0] = %q, want the run unit", seams.stopUnits[0])
+	}
+
+	// terminateAgentProcesses must have been called.
+	if len(seams.terminated) != 1 {
+		t.Fatalf("terminateAgentProcesses calls = %v, want 1", seams.terminated)
+	}
+	if seams.terminated[0] != "bunker-dockerd-test" {
+		t.Errorf("terminated = %v, want [bunker-dockerd-test]", seams.terminated)
+	}
+}
+
+// TestStartAgent_RestartsStoppedAgent proves the core DF-BUNKER-107 acceptance:
+// a freshly registered agent has a dockerd unit; after stop+start the unit
+// must be re-armed (startUserUnit called with the dockerd unit name), and the
+// tracker returns to running status.
+func TestStartAgent_RestartsStoppedAgent(t *testing.T) {
+	seams := stubLifecycleSeams(t)
+	m, _, _ := newLifecycleManager(t)
+	original := time.Now().Add(5 * time.Minute)
+	registerLifecycleAgent(t, m, "rearm-test", StatusStopped, original, "")
+
+	resp, err := m.StartAgent(context.Background(), "rearm-test")
+	if err != nil {
+		t.Fatalf("StartAgent: %v", err)
+	}
+	if resp.GetStatus() != StatusStartedValue {
+		t.Fatalf("status = %q, want %q", resp.GetStatus(), StatusStartedValue)
+	}
+
+	// Start must call startUserUnit with the dockerd unit.
+	if len(seams.startUnits) != 1 {
+		t.Fatalf("startUserUnit calls = %v, want 1", seams.startUnits)
+	}
+	if seams.startUnits[0] != "bunker-docker-rearm-test" {
+		t.Errorf("startUserUnit[0] = %q, want bunker-docker-rearm-test", seams.startUnits[0])
+	}
+
+	// Tracker must be running.
+	got := m.tracker.Get("rearm-test")
+	if got == nil {
+		t.Fatal("tracker record vanished on start")
+	}
+	if got.Status != StatusRunning {
+		t.Errorf("status = %q, want %q", got.Status, StatusRunning)
 	}
 }
