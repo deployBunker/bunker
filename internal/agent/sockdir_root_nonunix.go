@@ -19,14 +19,14 @@ var ErrRunRootMode = errors.New("spawn runtime root (/run/bunker) mode/ownership
 
 // ErrRunRootForeignMount mirrors the linux file's named foreign-mount
 // refusal (never reachable here — the check itself fails closed first).
-var ErrRunRootForeignMount = errors.New("spawn runtime root is owned by a foreign mount/filesystem (device identity changed around the 0700 repair); refusing to create agent state underneath")
+var ErrRunRootForeignMount = errors.New("spawn runtime root is owned by a foreign mount/filesystem (device identity changed around the mode repair); refusing to create agent state underneath")
 
 // ErrRunRootUnsupported is the sentinel for the not-implemented-a refusal,
 // wrapping ErrRunRootMode like the socket-dir non-Linux stubs do.
 var ErrRunRootUnsupported = errors.New("not implemented on this platform")
 
 // EnsureAgentRunRoot fails closed on non-Linux builds (no Stat_t owner, no
-// stat-device identity, no honest 0700/owner assertion).
+// stat-device identity, no honest 0711/owner assertion).
 func EnsureAgentRunRoot(root string) error {
 	return fmt.Errorf("%w: %w: not implemented on this platform (refusing to create %s without an assertable mode/owner)", ErrRunRootMode, ErrRunRootUnsupported, root)
 }

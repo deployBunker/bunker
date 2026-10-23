@@ -243,11 +243,18 @@ toggles:
     (Implementation row: NET-BUNKER-011.)
 - **Path visibility (ISO-002).** `/run/bunker/` enumerates the tenant set.
   Options:
-  - **restricted `/run/bunker`** — root:0700 on the parent and per-agent 0700
-    children: any agent loses enumerate AND traverse rights on peers'
-    directories (note: children are already agent-owned but the parent is
-    created 0755, `manager_spawn.go:406` — see §6); the daemon does its
-    socket/symlink work as root so it does not need to traverse as the agent.
+  - **restricted `/run/bunker`** — `root:0711` on the parent and per-agent 0700
+    children: any agent loses READ on the parent (so `ls /run/bunker/` cannot
+    enumerate the tenant set) and loses all reach on peers' 0700 children. The
+    parent keeps ONLY the others-execute bit, because traversal is not optional
+    for an agent: the docker control channel it is handed lives at
+    `/run/bunker/<id>/docker.sock`, inside this parent, so `0700` (the original
+    form of this option, enforced by ISO-002) left every agent unable to open
+    its own `DOCKER_HOST` — and root-side checks could not see it, since root
+    bypasses DAC (INT-CI-080: measured live, agent `docker ps` rc=1 at parent
+    0700 and rc=0 at 0711 against the same running dockerd, with
+    `ls /run/bunker` still refused). The daemon's own socket/symlink work runs
+    as root; the AGENT's does not.
   - a **per-agent mount namespace** over `/run/bunker` (each agent bind-mounts
     only its own directory at that path) — stronger (the peer set is not even
     nameable) but adds mount-namespace lifecycle to every session type
@@ -467,6 +474,41 @@ claimed — **MUST BE ASSERTED BY A TEST, not assumed**:
   is observable in the spawn/verify battery.
 
 Until those assertions exist, any doc claim of socket privacy is withdrawn.
+
+### 6.4 The parent directory must be traversable by the AGENT (INT-CI-080)
+
+§6.1 is right that a socket's privacy is "the union of the parent directory's
+traversal permissions and the socket file's own permissions" — but that union
+is read in the *permissive* direction only by accident. A parent with **no**
+traverse bit for the agent is not privacy, it is an outage: the agent's
+`DOCKER_HOST` is `unix:///run/bunker/<id>/docker.sock`, so every `connect()`
+walks `/run/ → /run/bunker/ → <id>/`. `root:0700` on `/run/bunker` therefore
+denies the agent its OWN socket:
+
+```
+permission denied while trying to connect to the docker API at unix:///run/bunker/<id>/docker.sock
+```
+
+Measured on bunker-mvp (INT-CI-080): with the parent at 0700 an agent's own
+`docker ps` fails (rc=1) while the same agent's `docker ps` succeeds (rc=0) the
+moment the parent is 0711 — same running dockerd, no restart. Enumeration is
+sealed in BOTH cases (`ls /run/bunker` → Permission denied at 0711), which is
+the property ISO-002 actually wanted.
+
+The required state is therefore **`/run/bunker` = root:0711** (`RunRootMode`,
+`internal/agent/sockdir_root_linux.go`), asserted at every spawn by
+`AssertAgentRunRoot` — which REDDENS on 0700 as well as on 0755/0750 — and
+repaired in situ by `EnsureAgentRunRoot`, so a host left at 0700 by an older
+daemon heals on the next spawn. Per-agent children stay 0700 agent-owned (§6.1).
+
+**Assertion blind spot this closed.** Every pre-existing check of this surface
+ran as root — `stat -S` on the logical socket path, the spawn's own symlink
+reconciliation, and the `ssh -L` docker tunnel (whose endpoint is opened by
+sshd's privileged monitor). Root bypasses DAC, so all three keep PASSING while
+no agent can connect. Any future check of agent reachability MUST observe it
+from the agent's own uid (as user or via an exec path that runs as the agent),
+never from a root-side stat. The E2E battery's section 4/6 now probes
+`docker info` through `bcli exec` for exactly this reason.
 
 ---
 
