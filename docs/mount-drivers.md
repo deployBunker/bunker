@@ -505,4 +505,154 @@ STATUS: complete
 TIER: T3 — invoked and observed live, read-only: `tailscale status --json` (per-peer Relay/CurAddr), `tailscale status`, `tailscale netcheck`, `tailscale ping -c 20 bunker-mvp` (DIRECT via 78.46.173.180:41641), `ping` RTT series on three peers, cold-op timing on the live mount `/tmp/mount017-mnt` (statfs ×5, negative lookup ×5, cold read ×5), warm distinct-file control after 100 s idle, and `go test ./internal/mountdriver/ -count=1`
 EVIDENCE: docs/mount-drivers.md
 
+## 6. 2026-10-22 — MOUNT-013 rclone mount (SFTP backend) evaluation
+
+**Headline verdict: rclone mount with SFTP request pipelining (`--sftp-concurrency 64`) did NOT clear the git stalls.** The same eight-op battery that stalls under sshfs on dedi-2 stalls here too — `status --short`, `diff --stat`, `checkout -b`, and `pull --rebase` all timed out at 60 s — and the stall set grew from three named sshfs stalls to five rclone stalls out of fourteen ops. Per the row's PASS criterion, the mounted-workflow line **stays closed**: pipelining accelerates *bulk serial reads* (one file's bytes are fetched 64-deep ahead of demand) but git's whole-tree operations are **serial chains of dependent metadata round trips** — the read of `.git/index` must finish before the tree walk names the files, and pipelining cannot hoist a dependency chain.
+
+### 6.1 The baseline vs the rclone run, same host, same instrument
+
+Baseline (from the board row, sshfs on this host, 110-file repo, 60 s budget,
+`probes/git-over-mount-probe.sh`): metadata ~225.4 ms/op with `status --short`,
+`diff --stat`, and `commit --allow-empty` STALLED; `rev-parse` 6.81 s,
+`add` 18.74 s, `checkout -b` 43.74 s. The rclone run re-measured the same
+instrument against the same host at a fresh 112-file fixture (one commit,
+`main`, under `/tmp/m013bench` created for this row; RTT 184.27 ± 0.10 ms):
+
+| op (same names, same order, same 60 s timeout) | sshfs baseline (board row) | rclone (measured here) | delta |
+|---|---|---|---|
+| metadata, distinct files | 225.4 ms/op | **4.16–4.96 ms/op** (3 sweeps of 105 files) | ~50x |
+| negative lookup (control, rclone only) | — | 7–18 ms (5 samples) | — |
+| statfs / df (control, rclone only) | — | 208 ms (≈ 1 RTT) | — |
+| cold read, never-read 3 KB file | — | 747 ms (content verified byte-identical over ssh) | — |
+| `rev-parse HEAD` | 6.81 s | 4.11 s ok | −2.70 s |
+| `log -1` | (not named) | 10.82 s ok | — |
+| `log --oneline -20` | (not named) | 7.03 s ok | — |
+| `ls-files (count)` | (not named) | 3.91 s ok | — |
+| `diff --stat HEAD` | STALLED | **60.07 s STALL(timeout)** | no improvement |
+| `status --short` | STALLED | **60.65 s STALL(timeout)** | no improvement |
+| `status --porcelain -uno` | ok | **60.44 s STALL(timeout)** | worse |
+| `fetch origin (read-only)` | (not named) | 9.32 s **error(git): no 'origin'** — instrument artifact, the fresh fixture has no `origin` remote by construction | n/a |
+| `checkout -b scratch` | 43.74 s ok | **60.39 s STALL(timeout)** | worse |
+| `add one file` | 18.74 s ok | 4.34 s **error(128): index.lock** | see §6.3 |
+| `commit` | STALLED | 8.94 s **error(128): index.lock** (cascade) | see §6.3 |
+| `commit --amend (no-op)` | (not named) | 12.84 s **error(128): index.lock** (cascade) | — |
+| `rebase onto HEAD~1` | (not named) | 8.52 s **error(git): invalid upstream 'HEAD~1'** — fixture has ONE commit by construction, so the op cannot run; not a transport number | n/a |
+| `pull --rebase` | (not named) | **61.03 s STALL(timeout)** | — |
+
+Stall set (rc=124): rclone 5 of 14 ops (sshfs baseline 3 of 8 named). The
+metadata figure is a **cached** read class — see §6.2 for what the cold controls
+cost — and is reported that way deliberately, not as a cold-op claim.
+
+### 6.2 What the metadata number means, given the trap MOUNT-017 named
+
+§5.2 above names both traps: re-`stat`ing one file looks ~16x too good, and
+distinct files alone are not enough on sshfs because a walked directory stays
+cached. The rclone run reproduces the *second* trap in a new shape: with
+`--vfs-cache-mode off`, rclone still serves distinct-file `stat` sub-round trip
+(4.2 / 4.2 / 5.0 ms across three full 105-file sweeps, and 7–18 ms for names it
+has **never** seen), because rclone caches `getattr` from its in-memory
+directory state — a directory-listed file is stat'd from memory, not over the
+wire. One operation that cannot be served from that state — `statfs` — still
+costs one round trip exactly as MOUNT-017 measured (208 ms ≈ 1 RTT at 184 ms).
+So the honest metadata claim is: **rclone collapses the *per-`getattr`* cost
+inside its own dir cache; it does not remove the round trip, and git's stall is
+not a per-`getattr` problem but a whole-tree dependency-chain problem.**
+`probes/git-over-mount-probe.sh` does not distinguish these classes; negative
+controls here (statfs 208 ms, negative lookup 7–18 ms, cold read 747 ms) name it.
+
+### 6.3 Cascading index.lock, and one error that is the fixture's, not the transport's
+
+Two ops in the battery report errors that are **not** transport verdicts:
+
+- `add one file`, `commit`, `commit --amend`: all three hit
+  `fatal: Unable to create … .git/index.lock: File exists`. A *timed-out* git
+  (`status --short` at 60.65 s) was killed by the per-op `timeout` still holding
+  the lock (this is exactly the stale-lock hazard the probe's own history
+  documents), and the two later ops cascade onto the same lock. The sshfs
+  baseline's `commit` STALL is therefore not directly comparable as "cleared":
+  under rclone, `commit` never reached the point of stalling, it was *blocked
+  by an earlier op's kill*. The row's stall-set arithmetic against sshfs is
+  conservative — the real stall shape is at least as bad.
+- `fetch origin`: the instrument is correct, the fixture is not —
+  `probes/git-over-mount-probe.sh` expects the base battery's `origin` remote
+  and a freshly built `/tmp/m013bench` fixture has no remote configured; the
+  9.32 s `error(git)` is recorded, not counted against either transport.
+- `rebase onto HEAD~1`: same class — the fixture used one commit (the runcard's
+  fixture brief) where `bunker-fs-battery-wan.sh` uses three specifically so
+  the rebase cell can run. Recorded as an instrument/fixture limitation, not a
+  transport number.
+
+### 6.4 The mount invocation actually used
+
+```
+/home/kara/.local/bin/rclone mount \
+  ':sftp,host=95.216.12.55,user=root,key_file=/home/kara/.ssh/robot.key:/tmp/m013bench' \
+  /tmp/m013-work/mnt-rclone \
+  --sftp-concurrency 64 --daemon \
+  --log-file /tmp/m013-work/rclone.log --log-level INFO \
+  --vfs-cache-mode off
+```
+
+`--sftp-concurrency` is a recognized flag on the installed rclone (v1.75.1,
+`rclone help backend sftp` → "The maximum number of outstanding requests for one
+file", default 64) — it is a **backend** flag, listed under the sftp backend
+help, not under `rclone mount --help`. The mount reported as
+`fuse.rclone` … `:sftp{cnTVZ}:/tmp/m013bench` and unmounted cleanly with
+`fusermount3 -u`.
+
+### 6.5 Bandwidth / latency snapshot
+
+RTT `ping -c 5 95.216.12.55`: min/avg/max/mdev = 184.146 / 184.266 / 184.400 /
+0.103 ms (5/5 received). Single-stream ssh bandwidth: 10 MB in 4.992 s (16.0
+Mbps) stdin-`cat` write, 10 MB in 4.976 s (16.1 Mbps) read-back — a 1.2-2.5 MB/s
+single-stream shape consistent with one SSH/TCP session at that RTT, and no
+better than the sshfs-era ~1.9-2.0 MB/s relay measurement. rclone's INFO log
+carries no per-op buffer-size or packet-size figures — only startup lines
+(host-key NOTICE, `poll-interval is not supported by this remote`, three
+"Can't save config" NOTICEs).
+
+### 6.6 Adoption / rejection decision, per the row's PASS criterion
+
+If rclone **CLEARs** the stalls (`status`, `diff`, `commit` complete with no
+timeout) it becomes the documented transport for a mounted workflow at distance;
+if it does **NOT**, the mounted-workflow line stays closed per the row.
+It did **not** clear them. Four of the eight git ops that the sshfs baseline
+runs also stalled under rclone, two more cascaded onto the locked index, one
+could not run (`rebase onto HEAD~1`) because the fixture is a one-commit tree,
+and one hit an instrument artifact (no `origin` remote). Nothing in the
+measured run removes the structural cost: one round trip per uncached metadata
+class (`statfs` 208 ms) plus a sub-RTT cached class, and a whole-tree git walk
+that is a serial dependency chain over 112 files at 184 ms RTT. **The
+mounted-workflow line stays closed.** `git` stays on the agent per §5.5;
+rclone remains correct as the bulk-read / fidelity driver (§3.2), where its
+dir-cache and pipelining genuinely are faster.
+
+### 6.7 Caveats
+
+- **Single-stream bandwidth** was measured on one SSH session (`cat`), the
+  same shape sshfs uses, not a multi-stream or TCP-window-scenario aggregate;
+  rclone's `--transfers` / multi-connection behavior is out of scope here.
+- **Bufferbloat** was not separately instrumented; a 60 s stall is a timeout
+  class, not a diagnosis of *which* FUSE write op actually blocked past it,
+  and the run's kernel FUSE state is whatever the previous runs left it.
+- **The 110-file fixture is still small** — it re-created the sshfs baseline's
+  shape, not a real repo; stall arithmetic at larger size is strictly worse.
+- rclone's host-key validation was NOT performed in this run (a NOTICE in the
+  log, `no host key validation`): acceptable for a measured benchmark, NOT for
+  a production mount flag — a production invocation must pin `--sftp-host-key` /
+  `known_hosts_file`.
+- The fixture (112 tracked files, one commit) was rebuilt fresh for this row
+  rather than reusing an earlier tree, so the "~110" size matches but the bytes
+  differ; that is within the row's tolerance.
+- The battery's last three ops (and one of the cascaded errors) ran with the
+  earlier `status` op's kill still holding the lock; that is a property of a
+  stalled whole-tree walk, not of a clean serial run, and shapes the
+  interpretation in §6.3.
+
+---
+ch:trace row=MOUNT-013 spec=docs/mount-watchlist.md#remote-fs-latency wave=/home/kara/deployBunker/bunker/.coding-hermes/waves/bunker-foreman-2026-10-22-23-59-47.json#MOUNT-013 test=probes/git-over-mount-probe.sh doc=docs/mount-drivers.md prompt=/tmp/bunker-foreman-2026-10-22-23-59-47-MOUNT-013-brief.txt evidence=docs/mount-drivers.md#mount-013 witness=live:dedi-2 verdict=none:pending-foreman-trace commit=commit memory=none:not-applicable
+STATUS: complete
+TIER: T3 — invoked and observed live: `ping -c 5 95.216.12.55` (184.146/184.266/184.400/0.103 ms), single-stream ssh write+read-back to dedi-2 (16.0/16.1 Mbps over 10 MB), fresh 112-file fixture built ON dedi-2 under /tmp/m013bench via ssh (one commit, main), rclone mount confirmed up as fuse.rclone with `--sftp-concurrency 64` and `--vfs-cache-mode off`, the full 14-op `probes/git-over-mount-probe.sh /tmp/m013-work/mnt-rclone --timeout 60 --csv /tmp/m013-work/results/rclone-git.csv`, 3 distinct-file metadata sweeps (4.16–4.96 ms/op), negative controls (statfs 208 ms, never-seen-lookup 7–18 ms x5, cold read 747 ms content-verified), rclone INFO log captured, clean `fusermount3 -u` and fixture left clean (1 commit, no index.lock) verified by ssh read-back
+EVIDENCE: docs/mount-drivers.md
+
 

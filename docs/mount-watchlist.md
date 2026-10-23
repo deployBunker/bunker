@@ -139,3 +139,14 @@ Tailscale's relay selection, which today exposes **no per-peer preference**
 (`tailscale debug prefs`, 1.102.3) even though the nearest relay (mia,
 35.4–51.1 ms across two netchecks) is 43–74 ms closer than the lax relay
 (94.5–109.5 ms) a relayed peer uses.
+
+**2026-10-22, MOUNT-013** — the row's pipelining trigger was tested with a real
+rclone mount (SFTP backend, `--sftp-concurrency 64`, `--vfs-cache-mode off`) over
+the same 112-file git battery on dedi-2 (~184 ms RTT, public direct): rclone did
+**not** clear the sshfs stall set — `status --short`, `diff --stat`,
+`checkout -b`, and `pull --rebase` all timed out at 60 s, the stall set grew from
+three named sshfs stalls to five of fourteen ops, and only the *cached*
+metadata class improved (4.2–5.0 ms/op distinct-file; the uncached classes still
+cost one round trip: `statfs` 208 ms, first content read 747 ms). The
+mounted-workflow line stays closed; full numbers and the invocation in
+[`mount-drivers.md`](mount-drivers.md) §6.
