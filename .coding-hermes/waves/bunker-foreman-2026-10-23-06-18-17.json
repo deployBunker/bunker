@@ -1,0 +1,27 @@
+{
+  "tick_id": "bunker-foreman-2026-10-23-06-18-17",
+  "created_at": "2026-10-23T01:26:00-05:00",
+  "block": "INT-CI (INT-CI-080/081/082/083 - the E2E-battery gate family)",
+  "block_resume_reason": "RESUME-FIRST: the last tick (bunker-foreman-2026-10-23-03-32-59) drove INT-CI-080. Its work is on main (7cfd4c52) but the row is still pending, and INT-CI-081/082/083 in the same block are ready.",
+  "path": "SERIAL (slots=1: nproc 16, loadavg 15.99 -> ceil 16; WAVE_BUDGET 12 not binding). Load is other lanes (trouble-TRBL-118 worker, auger QA-AUGER-13 worker, host backup tar, toolsd go test) - bunker itself had no active worker and no index.lock.",
+  "size_basis": "slots = max(1, min(6, 16 - ceil(15.99))) = 1 -> serial fallback per the tick contract; a loaded box means one worker, not idle.",
+  "rows": [
+    {
+      "id": "INT-CI-083",
+      "title": "CI gate hole: a board-only push cancels the code commit's only battery run and the superseding run skips it",
+      "filed_this_tick": true,
+      "worktree": "/home/kara/worktrees/bunker-INT-CI-083",
+      "branch": "wt/INT-CI-083",
+      "base_sha": "c0fc342a",
+      "brief": "/tmp/bunker-INT-CI-083-brief.txt",
+      "log": "/tmp/bunker-INT-CI-083.log",
+      "lane": "glm-5.3-flash@zai-glm-default"
+    }
+  ],
+  "held_back": [
+    {"id": "INT-CI-081", "reason": "P1 deploy of a post-fix bunkerd to bunker-mvp + residue disposition (35,730 stale apparmor profiles). Verified live this tick that 78.46.173.180 still runs bunkerd 0.2.0/149411c (pre-fix) and /run/bunker is 0711 only via the manual chmod. Next ready row after INT-CI-083; needs the owner's decision before any destructive reap, so it wants its own tick."},
+    {"id": "INT-CI-082", "reason": "P2 session-probe budget scaling - independent, but slots=1 and the block's P1 gate hole is a prerequisite for certifying anything else in the block."},
+    {"id": "INT-CI-080", "reason": "verification-only: acceptance 3 (battery green on the fix) is blocked by the very gate hole INT-CI-083 fixes; close it after the forced battery run."}
+  ],
+  "independence": "single row (serial path) - no independence test needed"
+}
