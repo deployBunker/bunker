@@ -1,0 +1,20 @@
+{
+  "tick": "bunker-foreman-2026-10-23-21-52-46",
+  "block": "INT-CI-083",
+  "wave_budget": 11,
+  "wave_size": 1,
+  "path": "serial fallback: selected block had one ready row (INT-CI-082); live acceptance/evidence work is coupled to that row",
+  "rows": [
+    {
+      "id": "INT-CI-082",
+      "status_at_dispatch": "pending",
+      "worktree": "/home/kara/deployBunker/bunker",
+      "branch": "main",
+      "worker_pid": 2552095,
+      "brief": "/tmp/bunker-foreman-2026-10-23-21-52-46-INT-CI-082.txt",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm"
+    }
+  ],
+  "note": "The prior row-specific worktree /home/kara/deployBunker/worktrees/bunker-INT-CI-082 was absent; dispatch used the canonical checkout to avoid losing the live-acceptance attempt. No unrelated worker was dispatched."
+}
