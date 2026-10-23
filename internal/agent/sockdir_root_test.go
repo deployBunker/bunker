@@ -30,13 +30,14 @@ func stubRunRootOwner(t *testing.T, uid uint32) {
 	t.Cleanup(func() { runRootOwnerForTests = prev })
 }
 
-// TestEnsureAgentRunRoot_Creates0700_Implicitly is AC (a): the root ends up
-// 0700 root-owned even when it is CREATED IMPLICITLY as a side effect of
-// creating an agent dir — i.e. WITHOUT an explicit MkdirAll(root) first, the
-// Ensure the spawn path runs before Step 4c must both create and enforce it.
-func TestEnsureAgentRunRoot_Creates0700_Implicitly(t *testing.T) {
+// TestEnsureAgentRunRoot_CreatesSealedMode_Implicitly is AC (a): the root ends
+// up at RunRootMode root-owned even when it is CREATED IMPLICITLY as a side
+// effect of creating an agent dir — i.e. WITHOUT an explicit MkdirAll(root)
+// first, the Ensure the spawn path runs before Step 4c must both create and
+// enforce it.
+func TestEnsureAgentRunRoot_CreatesSealedMode_Implicitly(t *testing.T) {
 	root := mkRunRoot(t)
-	stubRunRootOwner(t, RunRootOwnerUID) // modeled 0700 root:root pass-back
+	stubRunRootOwner(t, RunRootOwnerUID) // modeled root:root pass-back
 
 	// The root does NOT exist yet (no explicit MkdirAll): the spawn calls
 	// EnsureAgentRunRoot, then creates the agent dir underneath.
@@ -53,7 +54,7 @@ func TestEnsureAgentRunRoot_Creates0700_Implicitly(t *testing.T) {
 		t.Fatalf("MkdirAll agent dir: %v", err)
 	}
 
-	// The PARENT is still exactly 0700 (umask did not widen it back to
+	// The PARENT is still exactly RunRootMode (umask did not widen it back to
 	// 0755, MkdirAll recursion did not leak group/world bits).
 	fi, err := os.Stat(root)
 	if err != nil {
@@ -104,12 +105,23 @@ func TestAssertAgentRunRoot_Reddens_WorldReadable(t *testing.T) {
 		t.Fatal("AssertAgentRunRoot must FAIL for a 0750 root — got nil")
 	}
 
-	// And the corrected 0700 root passes the same assertion.
+	// INT-CI-080: a 0700 parent is ALSO a red — it seals enumeration but
+	// removes the others-execute bit, so no agent can traverse to its OWN
+	// /run/bunker/<id>/docker.sock (the DOCKER_HOST it is handed). The repair
+	// to RunRootMode is what a host left in that state needs.
 	if err := os.Chmod(root, 0700); err != nil {
 		t.Fatal(err)
 	}
+	if err := AssertAgentRunRoot(root); err == nil {
+		t.Fatal("AssertAgentRunRoot must FAIL for a 0700 root — agents cannot traverse to their own docker socket (INT-CI-080) — got nil")
+	}
+
+	// And the corrected RunRootMode root passes the same assertion.
+	if err := os.Chmod(root, RunRootMode); err != nil {
+		t.Fatal(err)
+	}
 	if err := AssertAgentRunRoot(root); err != nil {
-		t.Fatalf("AssertAgentRunRoot must PASS for 0700 root-owned, got: %v", err)
+		t.Fatalf("AssertAgentRunRoot must PASS for a %#o root-owned parent, got: %v", RunRootMode, err)
 	}
 
 	// Identity scope: under a NON-root process (this suite uid) the owner
@@ -129,7 +141,7 @@ func TestAssertAgentRunRoot_OwnerHalf_ReddensUnderRootIdentity(t *testing.T) {
 		t.Skip("identity-scoped owner half: the owner read-back only runs under the root identity (production bunkerd); the hermetic suite cannot model the root identity")
 	}
 	root := mkRunRoot(t)
-	if err := os.MkdirAll(root, 0700); err != nil {
+	if err := os.MkdirAll(root, RunRootMode); err != nil {
 		t.Fatal(err)
 	}
 
@@ -146,7 +158,7 @@ func TestAssertAgentRunRoot_OwnerHalf_ReddensUnderRootIdentity(t *testing.T) {
 	// Root owner seam → passes.
 	stubRunRootOwner(t, RunRootOwnerUID)
 	if err := AssertAgentRunRoot(root); err != nil {
-		t.Fatalf("AssertAgentRunRoot must PASS for 0700 root-owned, got: %v", err)
+		t.Fatalf("AssertAgentRunRoot must PASS for a %#o root-owned parent, got: %v", RunRootMode, err)
 	}
 }
 
@@ -173,7 +185,7 @@ func TestEnsureAgentRunRoot_RepairsResetMode(t *testing.T) {
 		t.Fatalf("repaired root mode is %#o, required %#o", got, RunRootMode)
 	}
 
-	// Idempotent second call: no error, mode still exactly 0700.
+	// Idempotent second call: no error, mode still exactly RunRootMode.
 	if err := EnsureAgentRunRoot(root); err != nil {
 		t.Fatalf("second Ensure must be a verified no-op: %v", err)
 	}
@@ -247,7 +259,7 @@ func TestEnsureAgentRunRoot_ForeignMountRefusal(t *testing.T) {
 	}
 	statRunRootMountForTests = stable
 	stubRunRootOwner(t, RunRootOwnerUID)
-	if err := os.Chmod(root, 0700); err != nil {
+	if err := os.Chmod(root, RunRootMode); err != nil {
 		t.Fatal(err)
 	}
 	if err := EnsureAgentRunRoot(root); err != nil {
@@ -280,5 +292,67 @@ func TestSpawnRunRootEnforcementWired(t *testing.T) {
 	sockensureIdx := strings.Index(src, "EnsureAgentSocketDir(ctx, username, sockDir)")
 	if ensureIdx < 0 || sockensureIdx < 0 || ensureIdx > sockensureIdx {
 		t.Fatalf("spawn ordering broken: EnsureAgentRunRoot must precede the per-agent socket-dir setup (ensure@%d, sock@%d)", ensureIdx, sockensureIdx)
+	}
+}
+
+// TestRunRootMode_SealsEnumerationWithoutBlockingOwnChild is the INT-CI-080
+// bit-level pin on the CONTRACT, stated as the two powers it must separate:
+//
+//   - no group/world READ anywhere (listing /run/bunker enumerates the tenant
+//     set — the §1.8 seam ISO-002 closed), and
+//   - others-execute SET (traversal to an agent's OWN child, which is where
+//     the DOCKER_HOST it is handed lives: /run/bunker/<id>/docker.sock).
+//
+// 0755 satisfies the second and breaks the first; 0700 satisfies the first
+// and breaks the second (measured live on bunker-mvp: agent `docker ps` rc=1
+// at 0700, rc=0 at 0711, same running dockerd).
+func TestRunRootMode_SealsEnumerationWithoutBlockingOwnChild(t *testing.T) {
+	got := RunRootMode.Perm()
+
+	// Enumeration (and tampering) needs READ or WRITE outside the owner.
+	if got&0022 != 0 {
+		t.Fatalf("RunRootMode %#o carries group/world WRITE", got)
+	}
+	if got&0044 != 0 {
+		t.Fatalf("RunRootMode %#o carries group/world READ — that is the enumeration seam (ISO-002)", got)
+	}
+	// Traversal of a KNOWN child name needs only others-execute, and the
+	// agent's own docker socket lives at /run/bunker/<id>/docker.sock.
+	if got&0001 == 0 {
+		t.Fatalf("RunRootMode %#o has no others-execute — an agent cannot traverse to its own /run/bunker/<id>/docker.sock (INT-CI-080)", got)
+	}
+	if got&0700 != 0700 {
+		t.Fatalf("RunRootMode %#o must keep the owner's full rwx", got)
+	}
+}
+
+// TestEnsureAgentRunRoot_RepairsLegacy0700 pins the upgrade path for a host
+// already left in the INT-CI-080 state (a parent the previous daemon forced to
+// 0700): the bare assertion REDDENS (so that state can never pass silently
+// again) and Ensure REPAIRS it in situ on the next spawn — no operator step,
+// exactly like the tmpfs-reset repair.
+func TestEnsureAgentRunRoot_RepairsLegacy0700(t *testing.T) {
+	root := mkRunRoot(t)
+	stubRunRootOwner(t, RunRootOwnerUID)
+
+	if err := os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := AssertAgentRunRoot(root); err == nil {
+		t.Fatal("AssertAgentRunRoot must REDDEN for a legacy 0700 parent — agents cannot reach their own docker socket (INT-CI-080)")
+	}
+	if err := EnsureAgentRunRoot(root); err != nil {
+		t.Fatalf("Ensure must REPAIR a legacy 0700 parent in situ: %v", err)
+	}
+	fi, err := os.Stat(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fi.Mode().Perm(); got != RunRootMode {
+		t.Fatalf("repaired legacy root mode is %#o, required %#o", got, RunRootMode)
 	}
 }

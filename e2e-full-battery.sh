@@ -542,6 +542,49 @@ run_capture() {
     return 0
 }
 
+# ── INT-CI-080: agent-side docker reachability probe ───────────────────
+# agent_docker_ready AGENT_ID [BUDGET_SECONDS] — return 0 once the AGENT can
+# talk to its own rootless dockerd, probing exactly the way the agent does.
+#
+# Why this exists: the cell it replaces was `[ -S /run/bunker/<id>/docker.sock ]`,
+# a ROOT-side stat of the logical path. Root bypasses DAC, so that cell passed
+# while every agent-side docker command failed with
+#
+#   permission denied while trying to connect to the docker API at
+#   unix:///run/bunker/<id>/docker.sock
+#
+# — the parent /run/bunker had lost its others-execute bit, so the agent could
+# not traverse to its OWN socket. No root-side check can see that (root ignores
+# the bit; the ssh -L tunnel is opened by sshd's privileged monitor), which is
+# why this defect reached CI as "socket exists ✓" followed by three agent-side
+# failures. `bcli exec` runs as the agent user, so `docker info` through it is
+# the honest probe: same uid, same path, same traversal chain as the agent's
+# own docker client. See specs/network-isolation.md §6.4.
+#
+# The bounded wait covers the spawn→dockerd-settled window; on failure the
+# diagnostics name the mode/owner of every path component so this class of
+# breakage reports its CAUSE instead of a bare "permission denied".
+agent_docker_ready() {
+    local agent_id="$1" budget="${2:-60}" waited=0 out=""
+    while :; do
+        if out=$(bcli exec --server "$BATTERY_TARGET_NAME" "$agent_id" -- docker info 2>&1); then
+            return 0
+        fi
+        if [ "$waited" -ge "$budget" ]; then
+            break
+        fi
+        sleep 2
+        waited=$((waited + 2))
+    done
+    echo "  --- agent-side docker diagnostics ($agent_id) ---"
+    echo "      last output : $(echo "$out" | tail -2 | tr '\n' ' ')"
+    echo "      /run/bunker : $(stat -c '%A %U:%G' /run/bunker 2>&1)   (needs others-execute so an agent can traverse to its own child)"
+    echo "      agent dir   : $(stat -c '%A %U:%G' "/run/bunker/$agent_id" 2>&1)"
+    echo "      socket      : $(ls -l "/run/bunker/$agent_id/docker.sock" 2>&1)"
+    echo "      agent uid   : $(id -u "bunker-$agent_id" 2>&1)"
+    return 1
+}
+
 # ── Section 12/13/14 helpers (INT-CI-012) ──────────────────────────────
 # All PURE or read-only: each one is exercised by --self-test with fixtures, so
 # the section-12 verdict and the daemon gate can be proven without root, a
@@ -1431,6 +1474,48 @@ STFIXEOF
     fi
     rm -rf "$ST_STUB_DIR" 2>/dev/null || true
 
+    # (INT-CI-080) Section 8 must never swallow a spawn's output, and must never
+    # `wait` on the whole pid set at once: that exact pair is what turned a real
+    # spawn failure into "command failed (exit 1) at line N: wait ..." with no
+    # cause recoverable. The behavioural half below drives agent_docker_ready
+    # with a stubbed bcli (a shell function shadows the real helper — no daemon,
+    # no agent, no PATH stub needed) to prove it FAILS LOUD on denial and passes
+    # silently when the agent can reach docker.
+    ST_ADR_RC=0
+    ST_ADR_OUT="$(
+        bcli() { return 1; }
+        agent_docker_ready e2e-selftest 0 2>&1
+    )" || ST_ADR_RC=$?
+    if [ "$ST_ADR_RC" -ne 0 ] \
+       && printf '%s' "$ST_ADR_OUT" | grep -qF "agent-side docker diagnostics" \
+       && printf '%s' "$ST_ADR_OUT" | grep -qF "/run/bunker"; then
+        assert "agent_docker_ready fails LOUD with path diagnostics when the agent is denied (rc=$ST_ADR_RC)"
+    else
+        fail "agent_docker_ready did not fail loudly with diagnostics (rc=$ST_ADR_RC, output: $(printf '%s' "$ST_ADR_OUT" | head -2 | tr '\n' ' '))"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+    ST_ADR_OK_RC=0
+    ST_ADR_OK_OUT="$(
+        bcli() { return 0; }
+        agent_docker_ready e2e-selftest 0 2>&1
+    )" || ST_ADR_OK_RC=$?
+    if [ "$ST_ADR_OK_RC" -eq 0 ] && [ -z "$ST_ADR_OK_OUT" ]; then
+        assert "agent_docker_ready passes silently when the agent CAN reach docker"
+    else
+        fail "agent_docker_ready did not pass on a reachable agent (rc=$ST_ADR_OK_RC, output: $(printf '%s' "$ST_ADR_OK_OUT" | head -2 | tr '\n' ' '))"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+    # Static half: the pre-fix shapes must not come back. Comment lines and this
+    # check's own grep are filtered out (the same idiom the INT-CI-049 arm uses).
+    ST_S8_BARE_WAIT="$(grep -nF 'wait "${SPAWN_PIDS[@]}"' "$ST_SELF" 2>/dev/null | grep -vE ':[[:space:]]*#' | grep -vF 'grep -nF' | cut -d: -f1 | tr '\n' ' ' || true)"
+    ST_S8_NULL_SPAWN="$(grep -nF 'bcli spawn --server "$BATTERY_TARGET_NAME" --agent-id "$SPAWN_AGENT" > ' "$ST_SELF" 2>/dev/null | grep -vE ':[[:space:]]*#' | grep -vF 'grep -nF' | grep -F '/dev/null' | cut -d: -f1 | tr '\n' ' ' || true)"
+    if [ -z "${ST_S8_BARE_WAIT// /}" ] && [ -z "${ST_S8_NULL_SPAWN// /}" ]; then
+        assert "section 8 keeps per-spawn output and waits each pid (no /dev/null'd spawn, no whole-set wait — INT-CI-080)"
+    else
+        fail "section 8 regressed to a zero-diagnostic spawn/wait (bare wait at line(s) ${ST_S8_BARE_WAIT% }, /dev/null spawn at line(s) ${ST_S8_NULL_SPAWN% })"
+        ST_FAIL=$((ST_FAIL+1))
+    fi
+
     # The self-test exits BEFORE the cleanup trap is armed, so it removes its
     # own scratch explicitly (a sentinel HOME, a stub CLI, and the battery CLI
     # state dir).
@@ -1999,6 +2084,16 @@ else
     fail "docker socket not created"
 fi
 
+# INT-CI-080: "the socket exists for ROOT" is not "the agent can use it" — root
+# bypasses DAC, so the stat above stays green even when the agent's traversal to
+# its own socket is denied. Probe as the agent before asserting anything about
+# reachability (agent_docker_ready prints path diagnostics on failure).
+if agent_docker_ready e2e-main 60; then
+    assert "agent reaches its docker socket (docker info as the agent user)"
+else
+    fail "agent cannot reach its own docker socket — docker info as bunker-e2e-main failed (see diagnostics above; a non-traversable /run/bunker is the usual cause, specs/network-isolation.md §6.4)"
+fi
+
 DOCKER_RUN=$(bcli exec --server "$BATTERY_TARGET_NAME" e2e-main -- docker run --rm alpine:latest echo DOCKER-OK 2>&1 || true)
 if echo "$DOCKER_RUN" | grep -q "DOCKER-OK"; then
     assert "docker run inside agent works"
@@ -2162,11 +2257,40 @@ echo "=== 8. Multi-agent Spawn ==="
 # here until the CI step timeout killed it, leaking all agents. Wait only for
 # the spawn CLIs.
 SPAWN_PIDS=()
+SPAWN_IDS=()
+SPAWN_LOGS=()
 for i in 2 3 4 5; do
-    bcli spawn --server "$BATTERY_TARGET_NAME" --agent-id "e2e-agent-$i" > /dev/null 2>&1 &
+    SPAWN_AGENT="e2e-agent-$i"
+    SPAWN_LOG="/tmp/bunker-spawn-$SPAWN_AGENT.log"
+    bcli spawn --server "$BATTERY_TARGET_NAME" --agent-id "$SPAWN_AGENT" > "$SPAWN_LOG" 2>&1 &
+    SPAWN_IDS+=("$SPAWN_AGENT")
+    SPAWN_LOGS+=("$SPAWN_LOG")
     SPAWN_PIDS+=($!)
 done
-wait "${SPAWN_PIDS[@]}"
+# INT-CI-080: wait PER SPAWN and keep each spawn's output.
+#
+# This used to be a bare `wait "${SPAWN_PIDS[@]}"`, which under `set -e` aborted
+# the entire battery with
+#   ✗ ERROR: command failed (exit 1) at line N: wait "${SPAWN_PIDS[@]}"
+# and NOTHING else — the spawns' stdout/stderr had been sent to /dev/null, so
+# the failing agent's cause was unrecoverable and the run skipped the RESULTS
+# SUMMARY it had already earned. Waiting each pid individually reports WHICH
+# agent failed, its exit status, and its last output, then lets the section's
+# own cells (user count, homes, ports) still run and fail loudly on their own
+# evidence. GAP-005 still holds: no bare `wait`, only these pid-scoped waits.
+SPAWN_FAILED=0
+for idx in "${!SPAWN_PIDS[@]}"; do
+    if wait "${SPAWN_PIDS[$idx]}"; then
+        assert "spawn ${SPAWN_IDS[$idx]}"
+    else
+        SPAWN_RC=$?
+        SPAWN_FAILED=$((SPAWN_FAILED + 1))
+        fail "spawn ${SPAWN_IDS[$idx]} failed (exit $SPAWN_RC) — output ($(basename "${SPAWN_LOGS[$idx]}")): $(tail -n 3 "${SPAWN_LOGS[$idx]}" 2>/dev/null | tr '\n' ' ')"
+    fi
+done
+if [ "$SPAWN_FAILED" -gt 0 ]; then
+    echo "  spawn logs kept under /tmp/bunker-spawn-e2e-agent-*.log"
+fi
 sleep 3
 
 AGENT_COUNT=0

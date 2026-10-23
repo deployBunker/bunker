@@ -544,7 +544,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		return nil, fail(StageRootlessInstall, fmt.Errorf("enforce runtime root %s: %w", spawnRunRoot, err))
 	}
 	if err := AssertAgentRunRoot(spawnRunRoot); err != nil {
-		return nil, fail(StageRootlessInstall, fmt.Errorf("runtime root %s failed the 0700/root-ownership assertion: %w", spawnRunRoot, err))
+		return nil, fail(StageRootlessInstall, fmt.Errorf("runtime root %s failed the mode/root-ownership assertion: %w", spawnRunRoot, err))
 	}
 	// Create the socket directory.
 	//

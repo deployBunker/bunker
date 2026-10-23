@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- **Agents can reach their own docker socket again (INT-CI-080).** The
+  ISO-002 path-visibility fix set `/run/bunker` to `root:0700`, which sealed
+  tenant enumeration but also removed the others-execute bit that every agent
+  needs to traverse to its OWN control channel
+  (`/run/bunker/<id>/docker.sock` — the `DOCKER_HOST` handed to it in
+  `authorized_keys` and `.profile`). Every agent-side docker command therefore
+  failed with `permission denied while trying to connect to the docker API at
+  unix:///run/bunker/<id>/docker.sock`, while every root-side check kept
+  passing (root bypasses DAC, and the `ssh -L` tunnel endpoint is opened by
+  sshd's privileged monitor) — which is how it reached CI as a green "docker
+  socket exists" cell followed by agent-side failures. The parent is now
+  `root:0711`: no group/world READ (no enumeration, unchanged threat model),
+  others execute-only. `AssertAgentRunRoot` reddens on `0700` as well as on
+  `0755`/`0750`, and `EnsureAgentRunRoot` repairs a host left in the old state
+  on the next spawn. The E2E battery now probes reachability AS THE AGENT
+  (`docker info` through `bcli exec`) instead of stat-ing the path as root, and
+  section 8 keeps each spawn's output and waits per pid, so a failing spawn
+  reports its cause instead of aborting the run with `command failed (exit 1)
+  at line N: wait ...`.
+
 ## 0.2.1 (2026-10-17)
 
 - **The bunker-fs mount's write shape is documented, printed and carried on its
