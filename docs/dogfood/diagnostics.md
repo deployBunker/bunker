@@ -1091,3 +1091,90 @@ Orphan sweep: a scratch daemon with a fresh registry found 4 unknown
 `bunker-*` users and **refused** to destroy them, naming the reason and the
 remedy — the DF-BUNKER-102 hazard is defended. Full run record:
 docs/dogfood/2026-10-20-public-networking.md; rows DF-BUNKER-104/105/106.
+
+## 25. Dogfood run 2026-10-23 — the day-2 lifecycle surface (read this before telling anyone to `stop` an agent, or before trusting "docker degraded")
+
+Run 29. Target HEAD `f062d19a` (detached worktree build) + live `bunker-mvp`
+daemon 0.2.1. Full record: `docs/dogfood/2026-10-23-day2-lifecycle.md`.
+
+### 25.1 The one thing to know first
+
+**`bunker stop` is not a pause for agent's Docker — it is a one-way loss of it.**
+`bunker stop` + `bunker start` (both rc=0, "started") leaves the agent with no
+`/run/bunker/<id>/docker.sock`; `docker ps` inside the agent then fails with
+`dial unix /run/bunker/<id>/docker.sock: connect: no such file or directory`,
+and `bunker restart` does not bring it back. `bunker exec` keeps working (it
+streams over the API, not over the agent's docker), so the loss is silent.
+Row: DF-BUNKER-107.
+
+### 25.2 Why (mechanism, verified on the host — do not re-derive this)
+
+* The agent's rootless dockerd is started by the manager as a **transient**
+  systemd-run unit `bunker-docker-<agentID>` (`internal/agent/manager_spawn.go:520`).
+* `StopAgent` stops that unit (`internal/agent/manager_lifecycle.go:139-182`);
+  stopping a transient unit **deletes** it.
+* `StartAgent` only re-runs `startUserUnit("bunker-docker-<id>")`
+  (`manager_lifecycle.go:271-277`). As the agent user that answers:
+  `Failed to start bunker-docker-<id>.service: Unit … not found.` The failure is
+  logged at DEBUG ("may not be loaded for this caller") and the API still returns
+  `started`.
+* The other candidate starter, the installer's per-user `docker.service`, cannot
+  take over: at spawn it loses the RootlessKit state-dir lock to the manager's
+  unit (`failed to lock /run/user/<uid>/dockerd-rootless/lock, another RootlessKit
+  is running with the same state directory?`) and goes `failed` after 3 restart
+  attempts ("Start request repeated too quickly") — the same collision recorded
+  in DF-BUNKER-96 — and nothing re-triggers it later.
+
+Consequence: an agent that has ever been stopped must be **destroyed and
+re-spawned** to get Docker back. Do not offer `stop` as a pause to anyone who
+needs containers in that agent until DF-BUNKER-107 is fixed.
+
+### 25.3 "docker degraded" in `bunker info` is not a health signal
+
+Three agents whose docker verifiably answered (`docker ps` rc=0, socket present)
+rendered `Status: running (docker degraded)`: `df1023-ctl` (before the pause),
+`22fbe449`, `crier-lab`. The probe classifies only `systemctl --user is-active
+docker.service` for the agent user (`internal/agent/docker_health.go:38-52,
+93-135`) — the installer's unit, which on this host is `failed` on every agent
+from the collision above — and never the manager's `bunker-docker-<id>` unit
+that actually serves the socket. The cause string (`docker.service failed`) is
+daemon-log only; no CLI verb exposes it. Practical reading rule: treat the
+qualifier as noise, and grade docker by driving it (`bunker exec <id> -- docker
+ps`). Row: DF-BUNKER-108.
+
+### 25.4 A HEAD-build spawn prints an SSH half that does not exist
+
+With a **HEAD build** of the CLI (this run: `f062d19a`), spawn prints:
+
+```
+  (warn: could not fetch SSH key: unauthenticated: agent-scoped tokens are not allowed for this endpoint)
+```
+
+and then still prints `SSHFS Mount:` and `Docker Tunnel:` commands whose
+`-i /home/kara/.config/bunker/keys/<id>` does not exist. `bunker ssh` and
+`bunker cp` then exit rc=1 with "SSH key not found … **spawn the agent first**"
+on an agent that exists and answers the API; `bunker exec` works. The release CLI
+0.2.0 does NOT have this defect — the discriminator is the client build, not the
+credential: HEAD's `internal/cli/spawn.go:369-374` fetches the key with the spawn
+response's agent-scoped `ApiKey` (commit `3078a3cc`, 2026-10-17), which the
+master-gated `GetAgentKey` refuses by design (`internal/auth/jwt.go:373-374`),
+while 0.2.0 fetches with the session token and succeeds against the same daemon.
+Row: DF-BUNKER-47-R2 (recurrence of the closed DF-BUNKER-47).
+
+### 25.5 What is genuinely good here (keep it)
+
+* `bunker env set/get/list` works and is real: the value is sourced into `exec`
+  sessions and survives `stop` → `start` (`printenv DF1023_TOKEN` → the value).
+* `heartbeat` never shortens a longer TTL: a 12h agent kept
+  `Expires: 2026-10-24T02:52:59Z` after a heartbeat, with the documented
+  semantics line. `restart` resets to the daemon default (documented).
+* Stopped-agent errors are excellent: `failed_precondition: agent_stopped: …
+  run 'bunker start <id>'`, same for heartbeat; a second `stop` is a clean no-op.
+* `metrics` / `resource-events` read the agent's own cgroup slice and are honest
+  about sources (`[cgroup memory.peak]`, `daemon-observed, a LOWER BOUND`).
+  One doc drift: README:1090-1096 lists "a stopped … agent" as an UNAVAILABLE
+  case, but a stopped agent serves real numbers (DF-BUNKER-110).
+* Speed: stop 1.67s, start 0.41s, restart 0.49s, heartbeat 0.40s, metrics 0.39s,
+  list 426.7ms, spawn 19.7-20.9s warm. `exec` a trivial command is 1.294s ±0.030
+  — **faster** than a raw `ssh` to the same agent (1.843s ±0.013), so the cost is
+  the SSH session path, not bunker.
