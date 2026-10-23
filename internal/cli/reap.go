@@ -19,6 +19,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -52,6 +53,41 @@ const reapProfileSuffixText = ".bin.rootlesskit"
 
 // reapProfilePrefix is the leading part of a managed profile filename.
 const reapProfilePrefix = "home."
+
+// reapDefaultRunDir is the per-agent runtime root the daemon's spawn creates
+// (/run/bunker/<agent-id>): the agent's docker socket symlink, the legacy
+// per-agent tmp scratch and the rootless runtime dir all live under it
+// (internal/agent/manager_spawn.go Step 5). Destroy removes the per-agent
+// directory as its Step 4, but a destroy that never ran — the same cancelled
+// spawn/rolled-back lifecycle that orphans a profile — leaves the directory
+// behind, and 332 of them were measured on the live-E2E host (INT-CI-081).
+// Mirrored here as a local constant for the same reason as
+// reapDefaultProfileDir: the reaper is a local-only CLI verb and must not
+// drag daemon internals into the cli package.
+const reapDefaultRunDir = "/run/bunker"
+
+// reapRunDirPath is the directory the run-dir class scans. Var (not const) so
+// tests can point it at t.TempDir(); production code never swaps it.
+var reapRunDirPath = reapDefaultRunDir
+
+// reapRunDirName is the managed-name pattern for a per-agent runtime
+// directory. It mirrors the daemon's spawn-side id validation
+// (internal/agent/manager.go validAgentID = ^[a-z0-9-]{1,63}$) byte for byte:
+// a directory the spawn could not have created for an agent id is NOT this
+// class's to classify — and, more importantly, not this class's to delete.
+// Dotfiles are excluded separately (they cannot be agent ids anyway).
+var reapRunDirName = regexp.MustCompile(`^[a-z0-9-]{1,63}$`)
+
+// reapRunDirManaged reports whether name is a managed per-agent runtime
+// directory name: an agent-id-shaped, non-dot name. Anything else (the parent
+// itself was scanned, so `.`, a stray `e2e_main`, an operator's own
+// subdirectory) is unmanaged and is never classified or removed.
+func reapRunDirManaged(name string) bool {
+	if strings.HasPrefix(name, ".") {
+		return false
+	}
+	return reapRunDirName.MatchString(name)
+}
 
 // reapUserExists reports whether the named system user exists. Package-level
 // seam: tests inject a fake so scanning never inspects the ambient
@@ -104,6 +140,7 @@ type reapScan struct {
 	Profiles reapClass
 	Homes    reapClass
 	Linger   reapClass
+	RunDirs  reapClass
 }
 
 // reapProfileUser extracts the user from a managed profile filename
@@ -212,8 +249,61 @@ func reapScanLinger(dir string) (reapClass, error) {
 	return class, nil
 }
 
-// reapScanHost runs all three class scans against their host directories.
-func reapScanHost(profileDir, homesRoot, lingerDir string) (*reapScan, error) {
+// reapScanRunDirs classifies the per-agent runtime directories in /run/bunker.
+// Unlike the other three classes the DIRECTORY NAME is an agent ID, not a
+// user name, so the user-existence predicate is asked about the agent's user
+// (bunker-<id>) — the same identity spawn created it for
+// (internal/agent/agentUserPrefix + agentID). Only real directories are
+// classified: a symlink or a file named like an id is someone else's state,
+// and a stale directory whose user is gone is precisely the residue a
+// cancelled spawn leaves behind.
+func reapScanRunDirs(dir string) (reapClass, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return reapClass{}, err
+	}
+	var class reapClass
+	for _, e := range entries {
+		if !reapRunDirManaged(e.Name()) {
+			class.Unmanaged++
+			continue
+		}
+		// DirEntry.IsDir is Lstat-based: a symlink to a directory is NOT
+		// this class's to remove.
+		if !e.IsDir() {
+			class.Unmanaged++
+			continue
+		}
+		exists, err := reapUserExists(reapRunDirAgentUser(e.Name()))
+		if err != nil {
+			return reapClass{}, fmt.Errorf("check user %q: %w", reapRunDirAgentUser(e.Name()), err)
+		}
+		if exists {
+			class.Kept = append(class.Kept, e.Name())
+			continue
+		}
+		class.WouldRemove = append(class.WouldRemove, e.Name())
+	}
+	sort.Strings(class.WouldRemove)
+	sort.Strings(class.Kept)
+	return class, nil
+}
+
+// reapRunDirUserPrefix mirrors internal/agent's agentUserPrefix: the Linux user
+// a run directory belongs to is bunker-<id>, never the bare id.
+const reapRunDirUserPrefix = "bunker-"
+
+// reapRunDirAgentUser maps a runtime directory name (an agent id) to the Linux
+// user the daemon created for it.
+func reapRunDirAgentUser(dirName string) string {
+	return reapRunDirUserPrefix + dirName
+}
+
+// reapScanHost runs all four class scans against their host directories. The
+// run-dir scan is TOLERANT of a missing /run/bunker: a host that has never
+// spawned an agent (or has rebooted since; /run is tmpfs) has nothing to reap
+// there, which is an empty class, not a scan failure.
+func reapScanHost(profileDir, homesRoot, lingerDir, runDir string) (*reapScan, error) {
 	profiles, err := reapScanProfiles(profileDir)
 	if err != nil {
 		return nil, fmt.Errorf("scan apparmor profiles in %s: %w", profileDir, err)
@@ -226,19 +316,30 @@ func reapScanHost(profileDir, homesRoot, lingerDir string) (*reapScan, error) {
 	if err != nil {
 		return nil, fmt.Errorf("scan linger entries in %s: %w", lingerDir, err)
 	}
-	return &reapScan{Profiles: profiles, Homes: homes, Linger: linger}, nil
+	runDirs := reapClass{}
+	if _, statErr := os.Lstat(runDir); statErr == nil {
+		if runDirs, err = reapScanRunDirs(runDir); err != nil {
+			return nil, fmt.Errorf("scan agent runtime dirs in %s: %w", runDir, err)
+		}
+	} else if !os.IsNotExist(statErr) {
+		return nil, fmt.Errorf("stat agent runtime root %s: %w", runDir, statErr)
+	}
+	return &reapScan{Profiles: profiles, Homes: homes, Linger: linger, RunDirs: runDirs}, nil
 }
 
-// reapClassIsDir reports whether a class's entries are directories (homes)
-// or files (profiles, linger) — the reapRemove seam's discriminator.
+// reapClassIsDir reports whether a class's entries are directories (homes,
+// run dirs) or files (profiles, linger) — the reapRemove seam's discriminator.
+// Both directory classes delete through removeHomeDir (os.RemoveAll), which is
+// the one recursive deletion seam the homes prune already uses: a run dir
+// holds sockets and a tmp scratch tree, so it must be removed recursively too.
 func reapClassIsDir(class string) bool {
-	return class == "homes"
+	return class == "agent homes" || class == "agent runtime dirs"
 }
 
 // reapApply removes every would-remove entry of every class. It runs only
 // behind the explicit --apply flag; paths are joined inside so the seam never
 // sees a caller-assembled path.
-func reapApply(scan *reapScan, profileDir, homesRoot, lingerDir string) (int, error) {
+func reapApply(scan *reapScan, profileDir, homesRoot, lingerDir, runDir string) (int, error) {
 	removed := 0
 	classes := []struct {
 		name  string
@@ -248,6 +349,7 @@ func reapApply(scan *reapScan, profileDir, homesRoot, lingerDir string) (int, er
 		{"apparmor profiles", profileDir, scan.Profiles},
 		{"agent homes", homesRoot, scan.Homes},
 		{"linger entries", lingerDir, scan.Linger},
+		{"agent runtime dirs", runDir, scan.RunDirs},
 	}
 	for _, c := range classes {
 		for _, name := range c.class.WouldRemove {
@@ -288,7 +390,7 @@ func printReapClass(out io.Writer, label, root string, class reapClass, dryRun b
 // printReapReport renders the full report. Dry run marks the whole report
 // no-changes and names the --apply opt-in; an applied run reports the removal
 // count instead of "would remove".
-func printReapReport(out io.Writer, scan *reapScan, profileDir, homesRoot, lingerDir string, dryRun bool) {
+func printReapReport(out io.Writer, scan *reapScan, profileDir, homesRoot, lingerDir, runDir string, dryRun bool) {
 	if dryRun {
 		_, _ = fmt.Fprintf(out, "reap: DRY RUN (no changes written; pass --apply to remove)\n")
 	} else {
@@ -297,6 +399,7 @@ func printReapReport(out io.Writer, scan *reapScan, profileDir, homesRoot, linge
 	printReapClass(out, "apparmor profiles", profileDir, scan.Profiles, dryRun)
 	printReapClass(out, "agent homes", homesRoot, scan.Homes, dryRun)
 	printReapClass(out, "linger entries", lingerDir, scan.Linger, dryRun)
+	printReapClass(out, "agent runtime dirs", runDir, scan.RunDirs, dryRun)
 }
 
 // NewReapCommand returns the `bunker reap` command (INT-HOST-007): one
@@ -314,32 +417,39 @@ func NewReapCommand() *cobra.Command {
 		profileDir string
 		homesDir   string
 		lingerDir  string
+		runDir     string
 		apply      bool
+		dryRunFlag bool
 	)
 	cmd := &cobra.Command{
 		Use:   "reap",
-		Short: "Report (and with --apply remove) orphaned AppArmor profiles, agent homes and linger entries",
+		Short: "Report (and with --apply remove) orphaned AppArmor profiles, agent homes, linger entries and runtime dirs",
 		Long: `Scan host residue left by agent lifecycles and reap it on request.
 
-Every agent spawn leaves three kinds of host state: an AppArmor profile
+Every agent spawn leaves four kinds of host state: an AppArmor profile
 (/etc/apparmor.d/home.<user>.bin.rootlesskit), a home directory
-(/home/bunker-<id>) and a systemd linger entry (/var/lib/systemd/linger/<user>).
-When an agent's user disappears without its cleanup running — cancelled spawn
-past the deadline, rolled-back destroy, userdel without -r — the state
-outlives the user and accumulates (18,043 orphan profiles and ~610/620 orphan
-homes measured on the live-E2E host).
+(/home/bunker-<id>), a systemd linger entry (/var/lib/systemd/linger/<user>)
+and a per-agent runtime directory (/run/bunker/<id>, holding the agent's
+docker socket symlink, legacy tmp scratch and rootless runtime dir). When an
+agent's user disappears without its cleanup running — cancelled spawn past the
+deadline, rolled-back destroy, userdel without -r — the state outlives the
+user and accumulates (18,043 orphan profiles and ~610/620 orphan homes
+measured on the live-E2E host; 35,790 managed profiles and 349 runtime
+directories measured on bunker-mvp at INT-CI-081).
 
-DRY RUN IS THE DEFAULT: with no flags ` + "`bunker reap`" + ` scans all three
+DRY RUN IS THE DEFAULT: with no flags ` + "`bunker reap`" + ` scans all four
 surfaces and prints, per class, how many entries it WOULD remove (user gone),
 how many it keeps (user still exists) and how many are unmanaged. Nothing is
 removed.
 
 --apply removes the would-remove entries. THIS DELETES HOST STATE and
 requires an owner decision before running. The classification rule is exactly
-one predicate for all three classes: does this user exist? An entry whose
-user still exists is NEVER removed; entries that do not match the managed
-naming pattern are never classified; an inconclusive user lookup aborts
-before anything is removed.
+one predicate for all four classes: does this user exist? The runtime-dir
+class asks it about the agent's user (bunker-<id>), since the directory name
+is the agent id. An entry whose user still exists is NEVER removed; entries
+that do not match the managed naming pattern (or a symlink under /run/bunker)
+are never classified; an inconclusive user lookup aborts before anything is
+removed.
 
 Local-only: like ` + "`bunker homes`" + ` and ` + "`bunker linger`" + `, this inspects THIS host's
 own directories. Run it on the host that owns them, as root, so the residue
@@ -347,7 +457,15 @@ is actually removable.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
-			pdir, hroot, ldir := reapProfileDirPath, homesRootPath, lingerDirPath
+			// --dry-run is the EXPLICIT spelling of the default. Accepting it
+			// matters: every operator reaches for it first (the homes/linger
+			// prunes have it), and a reaper that answers "unknown flag" to
+			// "--dry-run" invites a --apply that was never reviewed. The two
+			// are contradictory and refused together.
+			if apply && dryRunFlag {
+				return fmt.Errorf("--apply and --dry-run are mutually exclusive (a bare `bunker reap` already IS the dry run)")
+			}
+			pdir, hroot, ldir, rdir := reapProfileDirPath, homesRootPath, lingerDirPath, reapRunDirPath
 			if cmd.Flags().Changed("profile-dir") {
 				pdir = profileDir
 			}
@@ -357,7 +475,10 @@ is actually removable.`,
 			if cmd.Flags().Changed("linger-dir") {
 				ldir = lingerDir
 			}
-			scan, err := reapScanHost(pdir, hroot, ldir)
+			if cmd.Flags().Changed("run-dir") {
+				rdir = runDir
+			}
+			scan, err := reapScanHost(pdir, hroot, ldir, rdir)
 			if err != nil {
 				return err
 			}
@@ -365,11 +486,11 @@ is actually removable.`,
 			dryRun := !apply
 			if apply {
 				var err error
-				if removed, err = reapApply(scan, pdir, hroot, ldir); err != nil {
+				if removed, err = reapApply(scan, pdir, hroot, ldir, rdir); err != nil {
 					return err
 				}
 			}
-			printReapReport(out, scan, pdir, hroot, ldir, dryRun)
+			printReapReport(out, scan, pdir, hroot, ldir, rdir, dryRun)
 			if !dryRun {
 				_, _ = fmt.Fprintf(out, "  removed: %d\n", removed)
 			}
@@ -379,6 +500,8 @@ is actually removable.`,
 	cmd.Flags().StringVar(&profileDir, "profile-dir", reapProfileDirPath, "AppArmor profile directory to scan")
 	cmd.Flags().StringVar(&homesDir, "homes-dir", homesRootPath, "Agent home root to scan")
 	cmd.Flags().StringVar(&lingerDir, "linger-dir", lingerDirPath, "Systemd linger directory to scan")
+	cmd.Flags().StringVar(&runDir, "run-dir", reapRunDirPath, "Per-agent runtime directory root to scan (/run/bunker)")
 	cmd.Flags().BoolVar(&apply, "apply", false, "Remove the orphan entries (DELETES HOST STATE — requires an owner decision; default is a dry run)")
+	cmd.Flags().BoolVar(&dryRunFlag, "dry-run", false, "Explicitly report only (the default); refused together with --apply")
 	return cmd
 }

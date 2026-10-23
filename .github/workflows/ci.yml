@@ -315,6 +315,13 @@ jobs:
       # release layout, and a Go-less PATH probe for the --build refusal.
       - name: Installer tests (scripts/install_test.sh)
         run: bash scripts/install_test.sh
+
+      # INT-CI-081: the stranded-runner reaper runs as a REQUIRED first step of
+      # both self-hosted jobs, so its own cells run here, on a hosted runner,
+      # against a synthetic process table — a bug in "who do we kill" must fail
+      # a gate before it can ever run on the live runner.
+      - name: Stranded runner reaper tests (scripts/test-runner-stranded-reap.sh)
+        run: bash scripts/test-runner-stranded-reap.sh
         timeout-minutes: 5
 
   # ── Tier 1: GitReins guard — secrets, lint, tests ──
@@ -402,6 +409,17 @@ jobs:
       # git refuses "dubious ownership" otherwise (exit 128 on go build VCS).
       - name: Configure git safe.directory
         run: git config --global --add safe.directory '*'
+
+      # INT-CI-081 acceptance 3: on this single self-hosted runner a cancelled
+      # or superseded run has been measured still executing — a Runner.Worker
+      # started 03:31:50Z was running root-suite.sh while `gh run list` showed
+      # no active run, and its spawn loop kept re-applying /run/bunker mode
+      # 0700. GitHub's cancellation is best-effort about the HOST process tree
+      # (the unit is KillMode=process too), so every self-hosted job starts by
+      # reaping any Runner.Worker that is not this job's own ancestor
+      # (leaf-first TERM, then KILL). Idempotent; never fails the job.
+      - name: Reap stranded runner workers
+        run: bash scripts/runner-stranded-reap.sh
 
       - name: Build binaries
         run: go build -o bunkerd ./cmd/bunkerd && go build -o bunker ./cmd/bunker
@@ -515,6 +533,13 @@ jobs:
       # git refuses "dubious ownership" otherwise (exit 128 on go build VCS).
       - name: Configure git safe.directory
         run: git config --global --add safe.directory '*'
+
+      # INT-CI-081 acceptance 3: same pre-flight reap as `regression` — a
+      # cancelled/superseded run has been measured still executing on this
+      # single runner, and this suite (TestSpawn*) spawns agents, so a stranded
+      # worker here is exactly what re-applied /run/bunker mode 0700.
+      - name: Reap stranded runner workers
+        run: bash scripts/runner-stranded-reap.sh
 
       - name: Root-gated suite (TestSpawn|TestCgroup|TestConcurrency)
         # Wrapper guarantees 0 leaked users/keys even when a test leaks or
