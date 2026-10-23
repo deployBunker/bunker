@@ -1,0 +1,28 @@
+# CONTROL BUILD: pending-write suppression disabled (if (1) return 0; in
+# dir_entry_may_have_pending_write), patched build otherwise, max_conns=4.
+# Purpose: try to observe the staleness the guard prevents on a live mount.
+iter 00 written=262144   stat_open=262144   ls=262144   stat_closed=262144   PASS
+iter 01 written=524288   stat_open=524288   ls=524288   stat_closed=524288   PASS
+iter 02 written=786432   stat_open=786432   ls=786432   stat_closed=786432   PASS
+iter 03 written=1048576  stat_open=1048576  ls=1048576  stat_closed=1048576  PASS
+iter 04 written=1310720  stat_open=1310720  ls=1310720  stat_closed=1310720  PASS
+iter 05 written=1572864  stat_open=1572864  ls=1572864  stat_closed=1572864  PASS
+iter 06 written=1835008  stat_open=1835008  ls=1835008  stat_closed=1835008  PASS
+iter 07 written=2097152  stat_open=2097152  ls=2097152  stat_closed=2097152  PASS
+iter 08 written=2359296  stat_open=2359296  ls=2359296  stat_closed=2359296  PASS
+iter 09 written=2621440  stat_open=2621440  ls=2621440  stat_closed=2621440  PASS
+iter 10 written=2883584  stat_open=2883584  ls=2883584  stat_closed=2883584  PASS
+iter 11 written=3145728  stat_open=3145728  ls=3145728  stat_closed=3145728  PASS
+iter 12 written=3407872  stat_open=3407872  ls=3407872  stat_closed=3407872  PASS
+iter 13 written=3670016  stat_open=3670016  ls=3670016  stat_closed=3670016  PASS
+iter 14 written=3932160  stat_open=3932160  ls=3932160  stat_closed=3932160  PASS
+iter 15 written=4194304  stat_open=4194304  ls=4194304  stat_closed=4194304  PASS
+iter 16 written=4456448  stat_open=4456448  ls=4456448  stat_closed=4456448  PASS
+iter 17 written=4718592  stat_open=4718592  ls=4718592  stat_closed=4718592  PASS
+iter 18 written=4980736  stat_open=4980736  ls=4980736  stat_closed=4980736  PASS
+iter 19 written=5242880  stat_open=5242880  ls=5242880  stat_closed=5242880  PASS
+bytes written through the mount: 55050240
+RESULT: PASS (20/20 iterations consistent)
+readdir calls: plus=20 plain=0
+entries whose attrs were withheld (pending write): 0
+RESULT: PASS

@@ -1,0 +1,12 @@
+===== base : git status --porcelain x4
+mount,iteration,lstat_delta,seconds,rc
+mount,1,459,0.281,0
+mount,2,282,0.104,0
+mount,3,122,0.104,0
+mount,4,122,0.131,0
+===== plus : git status --porcelain x4
+mount,iteration,lstat_delta,seconds,rc
+mount,1,290,0.284,0
+mount,2,114,0.104,0
+mount,3,114,0.105,0
+mount,4,114,0.105,0

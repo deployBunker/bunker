@@ -1,0 +1,31 @@
+arm,op,seconds,status
+base,find metadata walk,0.301,ok
+base,ls -lR,0.105,ok
+base,git rev-parse,0.105,ok
+base,git log -1,0.105,ok
+base,git ls-files,0.105,ok
+base,git status --porcelain,0.105,ok
+base,git diff --stat HEAD,0.105,ok
+base,git status --short,0.104,ok
+base,git add -A,0.105,ok
+base,git checkout -b + commit,0.309,ok
+plus,find metadata walk,0.315,ok
+plus,ls -lR,0.106,ok
+plus,git rev-parse,0.105,ok
+plus,git log -1,0.105,ok
+plus,git ls-files,0.106,ok
+plus,git status --porcelain,0.205,ok
+plus,git diff --stat HEAD,0.106,ok
+plus,git status --short,0.306,ok
+plus,git add -A,0.105,ok
+plus,git checkout -b + commit,2.211,ok
+plus-off,find metadata walk,0.299,ok
+plus-off,ls -lR,0.105,ok
+plus-off,git rev-parse,0.105,ok
+plus-off,git log -1,0.106,ok
+plus-off,git ls-files,0.106,ok
+plus-off,git status --porcelain,0.106,ok
+plus-off,git diff --stat HEAD,0.105,ok
+plus-off,git status --short,0.105,ok
+plus-off,git add -A,0.105,ok
+plus-off,git checkout -b + commit,0.309,ok

@@ -1,0 +1,8 @@
+ M file00.txt
+ M sub1/file01.txt
+ M sub3/file07.txt
+ D sub5/file04.txt
+ D sub5/file05.txt
+?? freshness/
+?? sub9/newdir/
+?? untracked-new.txt

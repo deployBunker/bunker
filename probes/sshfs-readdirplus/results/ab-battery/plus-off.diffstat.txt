@@ -1,0 +1,5 @@
+ file00.txt      | 1 +
+ sub3/file07.txt | 1 +
+ sub5/file04.txt | 5 -----
+ sub5/file05.txt | 5 -----
+ 4 files changed, 2 insertions(+), 10 deletions(-)

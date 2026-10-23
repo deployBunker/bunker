@@ -104,6 +104,22 @@ multiconn × sync_readdir × cache_timeout × debug) passes 16/16 on the patched
 `TMPDIR=/var/tmp/hermes-scratch` the suite's mountpoints get `fusermount3: mount
 failed: Permission denied` — an environment limit, not a patch failure.
 
+## Raw artifacts
+
+`results/` holds the outputs the tables above came from, so the numbers can be
+re-read without re-running the battery:
+
+| file | contents |
+|---|---|
+| `results/per-op.csv` | one row per (arm, operation) with LSTAT/stat/readdir counts and wall time |
+| `results/ab-battery/*.status.txt`, `*.diffstat.txt`, `*.walk.txt`, `*.statusshort.txt` | the byte-compared captures (base / plus / plus-off) |
+| `results/ab-battery/timings.csv` | whole-arm battery wall times |
+| `results/repeat-op-find-walk.txt` | 180/14/14 (base) vs 3/3/3 (patched) across three iterations in one mount |
+| `results/repeat-op-git-status.txt` | 459/282/122/122 (base) vs 290/114/114/114 (patched) |
+| `results/freshness-plus.txt` | patched build, `max_conns=4`: 8/8 consistent, suppression fired 8x |
+| `results/freshness-control-no-suppression.txt` | control build without the guard: 20/20 still consistent (staleness not reproducible on loopback) |
+| `results/freshness-plus-raw/`, `results/freshness-nosup-raw/` | the `-o sshfs_debug` logs those two runs were parsed from — the `readdirplus:` / `no attrs for …` lines are the primary evidence for the suppression counter |
+
 ## Scripts
 
 | file | what it does |

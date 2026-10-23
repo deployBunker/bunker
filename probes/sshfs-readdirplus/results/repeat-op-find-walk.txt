@@ -1,0 +1,10 @@
+===== base : find metadata walk x3
+mount,iteration,lstat_delta,seconds,rc
+mount,1,180,0.282,0
+mount,2,14,0.105,0
+mount,3,14,0.105,0
+===== plus : find metadata walk x3
+mount,iteration,lstat_delta,seconds,rc
+mount,1,3,0.279,0
+mount,2,3,0.105,0
+mount,3,3,0.106,0

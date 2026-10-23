@@ -1,0 +1,22 @@
+iter 04 written=1310720  stat_open=1310720  ls=1310720  stat_closed=1310720  PASS
+iter 05 written=1572864  stat_open=1572864  ls=1572864  stat_closed=1572864  PASS
+iter 06 written=1835008  stat_open=1835008  ls=1835008  stat_closed=1835008  PASS
+iter 07 written=2097152  stat_open=2097152  ls=2097152  stat_closed=2097152  PASS
+bytes written through the mount: 9437184
+RESULT: PASS (8/8 iterations consistent)
+
+=== suppression evidence in the sshfs debug log
+readdir calls: plus=16 plain=0
+entries whose attrs were withheld (pending write): 8
+
+=== git-level check: append through the mount, then git status
+ M file00.txt
+ M sub1/file01.txt
+ M sub3/file07.txt
+ D sub5/file04.txt
+ D sub5/file05.txt
+?? freshness/
+?? sub9/newdir/
+?? untracked-new.txt
+
+RESULT: PASS

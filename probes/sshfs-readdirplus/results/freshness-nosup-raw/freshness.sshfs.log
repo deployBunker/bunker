@@ -1,0 +1,6183 @@
+SSHFS version 3.7.6
+executing <ssh> <-x> <-a> <-oClearAllForwardings=yes> <-oConnectTimeout=15> <-2> <-s> <--> <localhost> <sftp>
+Server version: 3
+Extension: posix-rename@openssh.com <1>
+Extension: statvfs@openssh.com <2>
+Extension: fstatvfs@openssh.com <2>
+Extension: hardlink@openssh.com <1>
+Extension: fsync@openssh.com <1>
+Extension: lsetstat@openssh.com <1>
+Extension: limits@openssh.com <1>
+Extension: expand-path@openssh.com <1>
+Extension: copy-data <1>
+Extension: home-directory <1>
+Extension: users-groups-by-id@openssh.com <1>
+[00001] LSTAT
+  [00001]          ATTRS       41bytes (0ms)
+[00002] LSTAT
+  [00002]         STATUS       33bytes (0ms)
+[00003] MKDIR
+  [00003]         STATUS       28bytes (0ms)
+[00004] LSTAT
+  [00004]          ATTRS       41bytes (0ms)
+[00005] LSTAT
+  [00005]         STATUS       33bytes (0ms)
+[00006] OPEN
+[00007] LSTAT
+  [00006]         HANDLE       17bytes (0ms)
+  [00007]          ATTRS       41bytes (0ms)
+[00008] FSTAT
+  [00008]          ATTRS       41bytes (0ms)
+[00009] WRITE
+[00010] WRITE
+[00011] WRITE
+[00012] WRITE
+[00013] WRITE
+[00014] WRITE
+[00015] WRITE
+[00016] WRITE
+  [00009]         STATUS       28bytes (0ms)
+  [00010]         STATUS       28bytes (0ms)
+  [00011]         STATUS       28bytes (0ms)
+  [00012]         STATUS       28bytes (0ms)
+  [00013]         STATUS       28bytes (0ms)
+  [00014]         STATUS       28bytes (0ms)
+  [00015]         STATUS       28bytes (0ms)
+  [00016]         STATUS       28bytes (0ms)
+[00017] LSTAT
+  [00017]          ATTRS       41bytes (0ms)
+executing <ssh> <-x> <-a> <-oClearAllForwardings=yes> <-oConnectTimeout=15> <-2> <-s> <--> <localhost> <sftp>
+Server version: 3
+Extension: posix-rename@openssh.com <1>
+Extension: statvfs@openssh.com <2>
+Extension: fstatvfs@openssh.com <2>
+Extension: hardlink@openssh.com <1>
+Extension: fsync@openssh.com <1>
+Extension: lsetstat@openssh.com <1>
+Extension: limits@openssh.com <1>
+Extension: expand-path@openssh.com <1>
+Extension: copy-data <1>
+Extension: home-directory <1>
+Extension: users-groups-by-id@openssh.com <1>
+[00018] LSTAT
+  [00018]          ATTRS       41bytes (0ms)
+[00019] OPENDIR
+  [00019]         HANDLE       17bytes (0ms)
+[00020] READDIR
+[00021] READDIR
+  [00020]           NAME      329bytes (0ms)
+  [00021]         STATUS       32bytes (0ms)
+[00022] READDIR
+[00023] READDIR
+readdirplus: /freshness (3 entries)
+  [00022]         STATUS       32bytes (0ms)
+  [00023]         STATUS       32bytes (0ms)
+[00024] CLOSE
+  [00024]         STATUS       28bytes (0ms)
+[00025] CLOSE
+  [00025]         STATUS       28bytes (0ms)
+[00026] LSTAT
+  [00026]         STATUS       33bytes (0ms)
+[00027] OPEN
+[00028] LSTAT
+  [00027]         HANDLE       17bytes (0ms)
+  [00028]          ATTRS       41bytes (0ms)
+[00029] FSTAT
+  [00029]          ATTRS       41bytes (0ms)
+[00030] WRITE
+[00031] WRITE
+[00032] WRITE
+[00033] WRITE
+[00034] WRITE
+[00035] WRITE
+[00036] WRITE
+[00037] WRITE
+[00038] WRITE
+[00039] WRITE
+[00040] WRITE
+[00041] WRITE
+  [00030]         STATUS       28bytes (0ms)
+[00042] WRITE
+[00043] WRITE
+  [00031]         STATUS       28bytes (0ms)
+[00044] WRITE
+  [00032]         STATUS       28bytes (0ms)
+[00045] WRITE
+  [00033]         STATUS       28bytes (0ms)
+  [00034]         STATUS       28bytes (0ms)
+  [00035]         STATUS       28bytes (0ms)
+  [00036]         STATUS       28bytes (0ms)
+  [00037]         STATUS       28bytes (0ms)
+  [00038]         STATUS       28bytes (0ms)
+  [00039]         STATUS       28bytes (0ms)
+  [00040]         STATUS       28bytes (0ms)
+  [00041]         STATUS       28bytes (0ms)
+  [00042]         STATUS       28bytes (0ms)
+  [00043]         STATUS       28bytes (0ms)
+  [00044]         STATUS       28bytes (0ms)
+  [00045]         STATUS       28bytes (0ms)
+[00046] LSTAT
+  [00046]          ATTRS       41bytes (0ms)
+[00047] LSTAT
+  [00047]          ATTRS       41bytes (0ms)
+[00048] OPENDIR
+  [00048]         HANDLE       17bytes (0ms)
+[00049] READDIR
+[00050] READDIR
+  [00049]           NAME      447bytes (0ms)
+  [00050]         STATUS       32bytes (0ms)
+[00051] READDIR
+[00052] READDIR
+readdirplus: /freshness (4 entries)
+  [00051]         STATUS       32bytes (0ms)
+  [00052]         STATUS       32bytes (0ms)
+[00053] CLOSE
+  [00053]         STATUS       28bytes (0ms)
+[00054] CLOSE
+  [00054]         STATUS       28bytes (0ms)
+[00055] LSTAT
+  [00055]         STATUS       33bytes (0ms)
+[00056] OPEN
+[00057] LSTAT
+  [00056]         HANDLE       17bytes (0ms)
+  [00057]          ATTRS       41bytes (0ms)
+[00058] FSTAT
+  [00058]          ATTRS       41bytes (0ms)
+[00059] WRITE
+[00060] WRITE
+[00061] WRITE
+[00062] WRITE
+[00063] WRITE
+[00064] WRITE
+[00065] WRITE
+[00066] WRITE
+[00067] WRITE
+[00068] WRITE
+[00069] WRITE
+[00070] WRITE
+  [00059]         STATUS       28bytes (0ms)
+  [00060]         STATUS       28bytes (0ms)
+[00071] WRITE
+[00072] WRITE
+  [00061]         STATUS       28bytes (0ms)
+[00073] WRITE
+[00074] WRITE
+  [00062]         STATUS       28bytes (0ms)
+[00075] WRITE
+[00076] WRITE
+  [00063]         STATUS       28bytes (0ms)
+  [00064]         STATUS       28bytes (0ms)
+[00077] WRITE
+  [00065]         STATUS       28bytes (0ms)
+[00078] WRITE
+  [00066]         STATUS       28bytes (0ms)
+[00079] WRITE
+[00080] WRITE
+  [00067]         STATUS       28bytes (0ms)
+  [00068]         STATUS       28bytes (0ms)
+[00081] WRITE
+[00082] WRITE
+  [00069]         STATUS       28bytes (0ms)
+  [00070]         STATUS       28bytes (0ms)
+  [00071]         STATUS       28bytes (0ms)
+  [00072]         STATUS       28bytes (0ms)
+  [00073]         STATUS       28bytes (0ms)
+  [00074]         STATUS       28bytes (0ms)
+  [00075]         STATUS       28bytes (0ms)
+  [00076]         STATUS       28bytes (0ms)
+  [00077]         STATUS       28bytes (0ms)
+  [00078]         STATUS       28bytes (0ms)
+  [00079]         STATUS       28bytes (0ms)
+  [00080]         STATUS       28bytes (0ms)
+  [00081]         STATUS       28bytes (0ms)
+  [00082]         STATUS       28bytes (0ms)
+[00083] LSTAT
+  [00083]          ATTRS       41bytes (0ms)
+[00084] LSTAT
+  [00084]          ATTRS       41bytes (0ms)
+[00085] OPENDIR
+  [00085]         HANDLE       17bytes (0ms)
+[00086] READDIR
+[00087] READDIR
+  [00086]           NAME      565bytes (0ms)
+  [00087]         STATUS       32bytes (0ms)
+[00088] READDIR
+[00089] READDIR
+readdirplus: /freshness (5 entries)
+  [00088]         STATUS       32bytes (0ms)
+  [00089]         STATUS       32bytes (0ms)
+[00090] CLOSE
+  [00090]         STATUS       28bytes (0ms)
+[00091] CLOSE
+  [00091]         STATUS       28bytes (0ms)
+[00092] LSTAT
+  [00092]         STATUS       33bytes (0ms)
+[00093] OPEN
+[00094] LSTAT
+  [00093]         HANDLE       17bytes (0ms)
+  [00094]          ATTRS       41bytes (0ms)
+[00095] FSTAT
+  [00095]          ATTRS       41bytes (0ms)
+[00096] WRITE
+[00097] WRITE
+[00098] WRITE
+[00099] WRITE
+[00100] WRITE
+[00101] WRITE
+[00102] WRITE
+[00103] WRITE
+[00104] WRITE
+[00105] WRITE
+[00106] WRITE
+[00107] WRITE
+[00108] WRITE
+  [00096]         STATUS       28bytes (0ms)
+[00109] WRITE
+  [00097]         STATUS       28bytes (0ms)
+[00110] WRITE
+  [00098]         STATUS       28bytes (0ms)
+[00111] WRITE
+  [00099]         STATUS       28bytes (0ms)
+  [00100]         STATUS       28bytes (0ms)
+[00112] WRITE
+[00113] WRITE
+[00114] WRITE
+[00115] WRITE
+  [00101]         STATUS       28bytes (0ms)
+  [00102]         STATUS       28bytes (0ms)
+[00116] WRITE
+[00117] WRITE
+  [00103]         STATUS       28bytes (0ms)
+  [00104]         STATUS       28bytes (0ms)
+  [00105]         STATUS       28bytes (0ms)
+[00118] WRITE
+[00119] WRITE
+  [00106]         STATUS       28bytes (0ms)
+[00120] WRITE
+[00121] WRITE
+  [00107]         STATUS       28bytes (0ms)
+[00122] WRITE
+  [00108]         STATUS       28bytes (0ms)
+[00123] WRITE
+  [00109]         STATUS       28bytes (0ms)
+  [00110]         STATUS       28bytes (0ms)
+[00124] WRITE
+  [00111]         STATUS       28bytes (0ms)
+[00125] WRITE
+  [00112]         STATUS       28bytes (0ms)
+[00126] WRITE
+[00127] WRITE
+  [00113]         STATUS       28bytes (0ms)
+  [00114]         STATUS       28bytes (0ms)
+  [00115]         STATUS       28bytes (0ms)
+  [00116]         STATUS       28bytes (0ms)
+  [00117]         STATUS       28bytes (0ms)
+  [00118]         STATUS       28bytes (0ms)
+  [00119]         STATUS       28bytes (0ms)
+  [00120]         STATUS       28bytes (0ms)
+  [00121]         STATUS       28bytes (0ms)
+  [00122]         STATUS       28bytes (0ms)
+  [00123]         STATUS       28bytes (0ms)
+  [00124]         STATUS       28bytes (0ms)
+  [00125]         STATUS       28bytes (0ms)
+  [00126]         STATUS       28bytes (0ms)
+  [00127]         STATUS       28bytes (0ms)
+[00128] LSTAT
+  [00128]          ATTRS       41bytes (0ms)
+[00129] LSTAT
+  [00129]          ATTRS       41bytes (0ms)
+[00130] OPENDIR
+  [00130]         HANDLE       17bytes (0ms)
+[00131] READDIR
+[00132] READDIR
+  [00131]           NAME      683bytes (0ms)
+  [00132]         STATUS       32bytes (0ms)
+[00133] READDIR
+[00134] READDIR
+readdirplus: /freshness (6 entries)
+  [00133]         STATUS       32bytes (0ms)
+  [00134]         STATUS       32bytes (0ms)
+[00135] CLOSE
+  [00135]         STATUS       28bytes (0ms)
+[00136] CLOSE
+  [00136]         STATUS       28bytes (0ms)
+[00137] LSTAT
+  [00137]         STATUS       33bytes (0ms)
+[00138] OPEN
+[00139] LSTAT
+  [00138]         HANDLE       17bytes (0ms)
+  [00139]          ATTRS       41bytes (0ms)
+[00140] FSTAT
+  [00140]          ATTRS       41bytes (0ms)
+[00141] WRITE
+[00142] WRITE
+[00143] WRITE
+[00144] WRITE
+[00145] WRITE
+[00146] WRITE
+[00147] WRITE
+[00148] WRITE
+[00149] WRITE
+[00150] WRITE
+  [00141]         STATUS       28bytes (0ms)
+[00151] WRITE
+[00152] WRITE
+  [00142]         STATUS       28bytes (0ms)
+[00153] WRITE
+[00154] WRITE
+  [00143]         STATUS       28bytes (0ms)
+[00155] WRITE
+[00156] WRITE
+  [00144]         STATUS       28bytes (0ms)
+[00157] WRITE
+  [00145]         STATUS       28bytes (0ms)
+[00158] WRITE
+  [00146]         STATUS       28bytes (0ms)
+[00159] WRITE
+[00160] WRITE
+  [00147]         STATUS       28bytes (0ms)
+  [00148]         STATUS       28bytes (0ms)
+[00161] WRITE
+  [00149]         STATUS       28bytes (0ms)
+[00162] WRITE
+  [00150]         STATUS       28bytes (0ms)
+[00163] WRITE
+  [00151]         STATUS       28bytes (0ms)
+  [00152]         STATUS       28bytes (0ms)
+[00164] WRITE
+  [00153]         STATUS       28bytes (0ms)
+[00165] WRITE
+  [00154]         STATUS       28bytes (0ms)
+[00166] WRITE
+  [00155]         STATUS       28bytes (0ms)
+[00167] WRITE
+  [00156]         STATUS       28bytes (0ms)
+[00168] WRITE
+[00169] WRITE
+  [00157]         STATUS       28bytes (0ms)
+[00170] WRITE
+  [00158]         STATUS       28bytes (0ms)
+  [00159]         STATUS       28bytes (0ms)
+[00171] WRITE
+[00172] WRITE
+  [00160]         STATUS       28bytes (0ms)
+[00173] WRITE
+  [00161]         STATUS       28bytes (0ms)
+[00174] WRITE
+  [00162]         STATUS       28bytes (0ms)
+  [00163]         STATUS       28bytes (0ms)
+[00175] WRITE
+[00176] WRITE
+  [00164]         STATUS       28bytes (0ms)
+  [00165]         STATUS       28bytes (0ms)
+  [00166]         STATUS       28bytes (0ms)
+[00177] WRITE
+[00178] WRITE
+  [00167]         STATUS       28bytes (0ms)
+[00179] WRITE
+  [00168]         STATUS       28bytes (0ms)
+[00180] WRITE
+  [00169]         STATUS       28bytes (0ms)
+  [00170]         STATUS       28bytes (0ms)
+  [00171]         STATUS       28bytes (0ms)
+  [00172]         STATUS       28bytes (0ms)
+  [00173]         STATUS       28bytes (0ms)
+  [00174]         STATUS       28bytes (0ms)
+  [00175]         STATUS       28bytes (0ms)
+  [00176]         STATUS       28bytes (0ms)
+  [00177]         STATUS       28bytes (0ms)
+  [00178]         STATUS       28bytes (0ms)
+  [00179]         STATUS       28bytes (0ms)
+  [00180]         STATUS       28bytes (0ms)
+[00181] LSTAT
+  [00181]          ATTRS       41bytes (0ms)
+[00182] LSTAT
+  [00182]          ATTRS       41bytes (0ms)
+[00183] OPENDIR
+  [00183]         HANDLE       17bytes (0ms)
+[00184] READDIR
+[00185] READDIR
+  [00184]           NAME      801bytes (0ms)
+  [00185]         STATUS       32bytes (0ms)
+[00186] READDIR
+[00187] READDIR
+readdirplus: /freshness (7 entries)
+  [00186]         STATUS       32bytes (0ms)
+  [00187]         STATUS       32bytes (0ms)
+[00188] CLOSE
+  [00188]         STATUS       28bytes (0ms)
+[00189] CLOSE
+  [00189]         STATUS       28bytes (0ms)
+[00190] LSTAT
+  [00190]         STATUS       33bytes (0ms)
+[00191] OPEN
+[00192] LSTAT
+  [00191]         HANDLE       17bytes (0ms)
+  [00192]          ATTRS       41bytes (0ms)
+[00193] FSTAT
+  [00193]          ATTRS       41bytes (0ms)
+[00194] WRITE
+[00195] WRITE
+[00196] WRITE
+[00197] WRITE
+[00198] WRITE
+[00199] WRITE
+[00200] WRITE
+[00201] WRITE
+[00202] WRITE
+[00203] WRITE
+[00204] WRITE
+[00205] WRITE
+  [00194]         STATUS       28bytes (0ms)
+[00206] WRITE
+  [00195]         STATUS       28bytes (0ms)
+[00207] WRITE
+  [00196]         STATUS       28bytes (0ms)
+[00208] WRITE
+[00209] WRITE
+  [00197]         STATUS       28bytes (0ms)
+[00210] WRITE
+[00211] WRITE
+  [00198]         STATUS       28bytes (0ms)
+  [00199]         STATUS       28bytes (0ms)
+[00212] WRITE
+  [00200]         STATUS       28bytes (0ms)
+[00213] WRITE
+  [00201]         STATUS       28bytes (0ms)
+[00214] WRITE
+  [00202]         STATUS       28bytes (0ms)
+[00215] WRITE
+  [00203]         STATUS       28bytes (0ms)
+[00216] WRITE
+  [00204]         STATUS       28bytes (0ms)
+  [00205]         STATUS       28bytes (0ms)
+[00217] WRITE
+  [00206]         STATUS       28bytes (0ms)
+[00218] WRITE
+[00219] WRITE
+  [00207]         STATUS       28bytes (0ms)
+  [00208]         STATUS       28bytes (0ms)
+[00220] WRITE
+[00221] WRITE
+  [00209]         STATUS       28bytes (0ms)
+[00222] WRITE
+[00223] WRITE
+  [00210]         STATUS       28bytes (0ms)
+  [00211]         STATUS       28bytes (0ms)
+  [00212]         STATUS       28bytes (0ms)
+[00224] WRITE
+[00225] WRITE
+  [00213]         STATUS       28bytes (0ms)
+[00226] WRITE
+[00227] WRITE
+  [00214]         STATUS       28bytes (0ms)
+[00228] WRITE
+[00229] WRITE
+  [00215]         STATUS       28bytes (0ms)
+[00230] WRITE
+  [00216]         STATUS       28bytes (0ms)
+[00231] WRITE
+  [00217]         STATUS       28bytes (0ms)
+  [00218]         STATUS       28bytes (0ms)
+[00232] WRITE
+  [00219]         STATUS       28bytes (0ms)
+[00233] WRITE
+  [00220]         STATUS       28bytes (0ms)
+[00234] WRITE
+  [00221]         STATUS       28bytes (0ms)
+[00235] WRITE
+  [00222]         STATUS       28bytes (0ms)
+  [00223]         STATUS       28bytes (0ms)
+[00236] WRITE
+  [00224]         STATUS       28bytes (0ms)
+[00237] WRITE
+  [00225]         STATUS       28bytes (0ms)
+[00238] WRITE
+  [00226]         STATUS       28bytes (0ms)
+[00239] WRITE
+  [00227]         STATUS       28bytes (0ms)
+  [00228]         STATUS       28bytes (0ms)
+[00240] WRITE
+[00241] WRITE
+  [00229]         STATUS       28bytes (0ms)
+  [00230]         STATUS       28bytes (0ms)
+  [00231]         STATUS       28bytes (0ms)
+  [00232]         STATUS       28bytes (0ms)
+  [00233]         STATUS       28bytes (0ms)
+  [00234]         STATUS       28bytes (0ms)
+  [00235]         STATUS       28bytes (0ms)
+  [00236]         STATUS       28bytes (0ms)
+  [00237]         STATUS       28bytes (0ms)
+  [00238]         STATUS       28bytes (0ms)
+  [00239]         STATUS       28bytes (0ms)
+  [00240]         STATUS       28bytes (0ms)
+  [00241]         STATUS       28bytes (0ms)
+[00242] LSTAT
+  [00242]          ATTRS       41bytes (0ms)
+[00243] LSTAT
+  [00243]          ATTRS       41bytes (0ms)
+[00244] OPENDIR
+  [00244]         HANDLE       17bytes (0ms)
+[00245] READDIR
+[00246] READDIR
+  [00245]           NAME      919bytes (0ms)
+  [00246]         STATUS       32bytes (0ms)
+[00247] READDIR
+[00248] READDIR
+readdirplus: /freshness (8 entries)
+  [00247]         STATUS       32bytes (0ms)
+  [00248]         STATUS       32bytes (0ms)
+[00249] CLOSE
+  [00249]         STATUS       28bytes (0ms)
+[00250] CLOSE
+  [00250]         STATUS       28bytes (0ms)
+[00251] LSTAT
+  [00251]         STATUS       33bytes (0ms)
+[00252] OPEN
+[00253] LSTAT
+  [00252]         HANDLE       17bytes (0ms)
+  [00253]          ATTRS       41bytes (0ms)
+[00254] FSTAT
+  [00254]          ATTRS       41bytes (0ms)
+[00255] WRITE
+[00256] WRITE
+[00257] WRITE
+[00258] WRITE
+[00259] WRITE
+[00260] WRITE
+[00261] WRITE
+[00262] WRITE
+[00263] WRITE
+[00264] WRITE
+[00265] WRITE
+[00266] WRITE
+[00267] WRITE
+[00268] WRITE
+  [00255]         STATUS       28bytes (0ms)
+  [00256]         STATUS       28bytes (0ms)
+  [00257]         STATUS       28bytes (0ms)
+[00269] WRITE
+[00270] WRITE
+  [00258]         STATUS       28bytes (0ms)
+[00271] WRITE
+  [00259]         STATUS       28bytes (0ms)
+[00272] WRITE
+  [00260]         STATUS       28bytes (0ms)
+[00273] WRITE
+  [00261]         STATUS       28bytes (0ms)
+[00274] WRITE
+  [00262]         STATUS       28bytes (0ms)
+[00275] WRITE
+  [00263]         STATUS       28bytes (0ms)
+[00276] WRITE
+  [00264]         STATUS       28bytes (0ms)
+[00277] WRITE
+[00278] WRITE
+  [00265]         STATUS       28bytes (0ms)
+  [00266]         STATUS       28bytes (0ms)
+[00279] WRITE
+[00280] WRITE
+  [00267]         STATUS       28bytes (0ms)
+  [00268]         STATUS       28bytes (0ms)
+[00281] WRITE
+  [00269]         STATUS       28bytes (0ms)
+[00282] WRITE
+  [00270]         STATUS       28bytes (0ms)
+[00283] WRITE
+  [00271]         STATUS       28bytes (0ms)
+[00284] WRITE
+  [00272]         STATUS       28bytes (0ms)
+  [00273]         STATUS       28bytes (0ms)
+[00285] WRITE
+[00286] WRITE
+  [00274]         STATUS       28bytes (0ms)
+[00287] WRITE
+  [00275]         STATUS       28bytes (0ms)
+[00288] WRITE
+  [00276]         STATUS       28bytes (0ms)
+  [00277]         STATUS       28bytes (0ms)
+[00289] WRITE
+  [00278]         STATUS       28bytes (0ms)
+[00290] WRITE
+  [00279]         STATUS       28bytes (0ms)
+[00291] WRITE
+[00292] WRITE
+  [00280]         STATUS       28bytes (0ms)
+[00293] WRITE
+  [00281]         STATUS       28bytes (0ms)
+[00294] WRITE
+  [00282]         STATUS       28bytes (0ms)
+  [00283]         STATUS       28bytes (0ms)
+[00295] WRITE
+  [00284]         STATUS       28bytes (0ms)
+[00296] WRITE
+  [00285]         STATUS       28bytes (0ms)
+[00297] WRITE
+  [00286]         STATUS       28bytes (0ms)
+[00298] WRITE
+  [00287]         STATUS       28bytes (0ms)
+[00299] WRITE
+[00300] WRITE
+  [00288]         STATUS       28bytes (0ms)
+  [00289]         STATUS       28bytes (0ms)
+[00301] WRITE
+  [00290]         STATUS       28bytes (0ms)
+[00302] WRITE
+  [00291]         STATUS       28bytes (0ms)
+[00303] WRITE
+[00304] WRITE
+  [00292]         STATUS       28bytes (0ms)
+  [00293]         STATUS       28bytes (0ms)
+[00305] WRITE
+  [00294]         STATUS       28bytes (0ms)
+[00306] WRITE
+  [00295]         STATUS       28bytes (0ms)
+  [00296]         STATUS       28bytes (0ms)
+[00307] WRITE
+[00308] WRITE
+  [00297]         STATUS       28bytes (0ms)
+[00309] WRITE
+[00310] WRITE
+  [00298]         STATUS       28bytes (0ms)
+  [00299]         STATUS       28bytes (0ms)
+  [00300]         STATUS       28bytes (0ms)
+  [00301]         STATUS       28bytes (0ms)
+  [00302]         STATUS       28bytes (0ms)
+  [00303]         STATUS       28bytes (0ms)
+  [00304]         STATUS       28bytes (0ms)
+  [00305]         STATUS       28bytes (0ms)
+  [00306]         STATUS       28bytes (0ms)
+  [00307]         STATUS       28bytes (0ms)
+  [00308]         STATUS       28bytes (0ms)
+  [00309]         STATUS       28bytes (0ms)
+  [00310]         STATUS       28bytes (0ms)
+[00311] LSTAT
+  [00311]          ATTRS       41bytes (0ms)
+[00312] LSTAT
+  [00312]          ATTRS       41bytes (0ms)
+[00313] OPENDIR
+  [00313]         HANDLE       17bytes (0ms)
+[00314] READDIR
+[00315] READDIR
+  [00314]           NAME     1037bytes (0ms)
+  [00315]         STATUS       32bytes (0ms)
+[00316] READDIR
+[00317] READDIR
+readdirplus: /freshness (9 entries)
+  [00316]         STATUS       32bytes (0ms)
+  [00317]         STATUS       32bytes (0ms)
+[00318] CLOSE
+  [00318]         STATUS       28bytes (0ms)
+[00319] CLOSE
+  [00319]         STATUS       28bytes (0ms)
+[00320] LSTAT
+  [00320]         STATUS       33bytes (0ms)
+[00321] OPEN
+[00322] LSTAT
+  [00321]         HANDLE       17bytes (0ms)
+  [00322]          ATTRS       41bytes (0ms)
+[00323] FSTAT
+  [00323]          ATTRS       41bytes (0ms)
+[00324] WRITE
+[00325] WRITE
+[00326] WRITE
+[00327] WRITE
+[00328] WRITE
+[00329] WRITE
+[00330] WRITE
+[00331] WRITE
+[00332] WRITE
+[00333] WRITE
+[00334] WRITE
+[00335] WRITE
+[00336] WRITE
+  [00324]         STATUS       28bytes (0ms)
+[00337] WRITE
+  [00325]         STATUS       28bytes (0ms)
+[00338] WRITE
+  [00326]         STATUS       28bytes (0ms)
+[00339] WRITE
+  [00327]         STATUS       28bytes (0ms)
+[00340] WRITE
+[00341] WRITE
+[00342] WRITE
+[00343] WRITE
+  [00328]         STATUS       28bytes (0ms)
+[00344] WRITE
+[00345] WRITE
+  [00329]         STATUS       28bytes (0ms)
+[00346] WRITE
+[00347] WRITE
+  [00330]         STATUS       28bytes (0ms)
+  [00331]         STATUS       28bytes (0ms)
+[00348] WRITE
+[00349] WRITE
+[00350] WRITE
+[00351] WRITE
+  [00332]         STATUS       28bytes (0ms)
+  [00333]         STATUS       28bytes (0ms)
+  [00334]         STATUS       28bytes (0ms)
+  [00335]         STATUS       28bytes (0ms)
+[00352] WRITE
+[00353] WRITE
+[00354] WRITE
+[00355] WRITE
+  [00336]         STATUS       28bytes (0ms)
+  [00337]         STATUS       28bytes (0ms)
+[00356] WRITE
+[00357] WRITE
+  [00338]         STATUS       28bytes (0ms)
+  [00339]         STATUS       28bytes (0ms)
+[00358] WRITE
+[00359] WRITE
+[00360] WRITE
+[00361] WRITE
+[00362] WRITE
+[00363] WRITE
+[00364] WRITE
+[00365] WRITE
+  [00340]         STATUS       28bytes (1ms)
+  [00341]         STATUS       28bytes (1ms)
+[00366] WRITE
+[00367] WRITE
+[00368] WRITE
+[00369] WRITE
+[00370] WRITE
+[00371] WRITE
+[00372] WRITE
+[00373] WRITE
+[00374] WRITE
+[00375] WRITE
+[00376] WRITE
+[00377] WRITE
+[00378] WRITE
+[00379] WRITE
+[00380] WRITE
+[00381] WRITE
+[00382] WRITE
+[00383] WRITE
+[00384] WRITE
+[00385] WRITE
+  [00342]         STATUS       28bytes (2ms)
+  [00343]         STATUS       28bytes (2ms)
+[00386] WRITE
+[00387] WRITE
+  [00344]         STATUS       28bytes (4ms)
+  [00345]         STATUS       28bytes (4ms)
+  [00346]         STATUS       28bytes (7ms)
+  [00347]         STATUS       28bytes (7ms)
+  [00348]         STATUS       28bytes (11ms)
+  [00349]         STATUS       28bytes (11ms)
+  [00350]         STATUS       28bytes (17ms)
+  [00351]         STATUS       28bytes (17ms)
+  [00352]         STATUS       28bytes (17ms)
+  [00353]         STATUS       28bytes (17ms)
+  [00354]         STATUS       28bytes (17ms)
+  [00355]         STATUS       28bytes (17ms)
+  [00356]         STATUS       28bytes (17ms)
+  [00357]         STATUS       28bytes (17ms)
+  [00358]         STATUS       28bytes (16ms)
+  [00359]         STATUS       28bytes (17ms)
+  [00360]         STATUS       28bytes (16ms)
+  [00361]         STATUS       28bytes (17ms)
+  [00362]         STATUS       28bytes (16ms)
+  [00363]         STATUS       28bytes (17ms)
+  [00364]         STATUS       28bytes (16ms)
+  [00365]         STATUS       28bytes (17ms)
+  [00366]         STATUS       28bytes (16ms)
+  [00367]         STATUS       28bytes (17ms)
+  [00368]         STATUS       28bytes (16ms)
+  [00369]         STATUS       28bytes (16ms)
+  [00370]         STATUS       28bytes (16ms)
+  [00371]         STATUS       28bytes (16ms)
+  [00372]         STATUS       28bytes (16ms)
+  [00373]         STATUS       28bytes (16ms)
+  [00374]         STATUS       28bytes (16ms)
+  [00375]         STATUS       28bytes (16ms)
+  [00376]         STATUS       28bytes (16ms)
+  [00377]         STATUS       28bytes (16ms)
+  [00378]         STATUS       28bytes (16ms)
+  [00379]         STATUS       28bytes (16ms)
+  [00380]         STATUS       28bytes (16ms)
+  [00381]         STATUS       28bytes (16ms)
+  [00382]         STATUS       28bytes (16ms)
+  [00383]         STATUS       28bytes (16ms)
+  [00384]         STATUS       28bytes (16ms)
+  [00385]         STATUS       28bytes (16ms)
+  [00386]         STATUS       28bytes (16ms)
+  [00387]         STATUS       28bytes (16ms)
+[00388] LSTAT
+  [00388]          ATTRS       41bytes (0ms)
+[00389] LSTAT
+  [00389]          ATTRS       41bytes (0ms)
+[00390] OPENDIR
+  [00390]         HANDLE       17bytes (0ms)
+[00391] READDIR
+[00392] READDIR
+  [00391]           NAME     1155bytes (0ms)
+  [00392]         STATUS       32bytes (0ms)
+[00393] READDIR
+[00394] READDIR
+readdirplus: /freshness (10 entries)
+  [00393]         STATUS       32bytes (0ms)
+  [00394]         STATUS       32bytes (0ms)
+[00395] CLOSE
+  [00395]         STATUS       28bytes (0ms)
+[00396] CLOSE
+  [00396]         STATUS       28bytes (0ms)
+[00397] LSTAT
+  [00397]         STATUS       33bytes (0ms)
+[00398] OPEN
+[00399] LSTAT
+  [00398]         HANDLE       17bytes (0ms)
+  [00399]          ATTRS       41bytes (0ms)
+[00400] FSTAT
+  [00400]          ATTRS       41bytes (0ms)
+[00401] WRITE
+[00402] WRITE
+[00403] WRITE
+[00404] WRITE
+[00405] WRITE
+[00406] WRITE
+[00407] WRITE
+[00408] WRITE
+[00409] WRITE
+[00410] WRITE
+[00411] WRITE
+[00412] WRITE
+[00413] WRITE
+[00414] WRITE
+  [00401]         STATUS       28bytes (0ms)
+  [00402]         STATUS       28bytes (0ms)
+  [00403]         STATUS       28bytes (0ms)
+[00415] WRITE
+[00416] WRITE
+  [00404]         STATUS       28bytes (0ms)
+[00417] WRITE
+[00418] WRITE
+  [00405]         STATUS       28bytes (0ms)
+  [00406]         STATUS       28bytes (0ms)
+[00419] WRITE
+[00420] WRITE
+  [00407]         STATUS       28bytes (0ms)
+[00421] WRITE
+[00422] WRITE
+  [00408]         STATUS       28bytes (0ms)
+  [00409]         STATUS       28bytes (0ms)
+[00423] WRITE
+[00424] WRITE
+  [00410]         STATUS       28bytes (0ms)
+  [00411]         STATUS       28bytes (0ms)
+[00425] WRITE
+[00426] WRITE
+  [00412]         STATUS       28bytes (0ms)
+  [00413]         STATUS       28bytes (0ms)
+[00427] WRITE
+[00428] WRITE
+  [00414]         STATUS       28bytes (0ms)
+  [00415]         STATUS       28bytes (0ms)
+[00429] WRITE
+[00430] WRITE
+  [00416]         STATUS       28bytes (0ms)
+  [00417]         STATUS       28bytes (0ms)
+[00431] WRITE
+[00432] WRITE
+  [00418]         STATUS       28bytes (0ms)
+[00433] WRITE
+  [00419]         STATUS       28bytes (0ms)
+[00434] WRITE
+  [00420]         STATUS       28bytes (0ms)
+  [00421]         STATUS       28bytes (0ms)
+  [00422]         STATUS       28bytes (0ms)
+[00435] WRITE
+[00436] WRITE
+  [00423]         STATUS       28bytes (0ms)
+[00437] WRITE
+  [00424]         STATUS       28bytes (0ms)
+[00438] WRITE
+  [00425]         STATUS       28bytes (0ms)
+  [00426]         STATUS       28bytes (0ms)
+  [00427]         STATUS       28bytes (0ms)
+[00439] WRITE
+[00440] WRITE
+  [00428]         STATUS       28bytes (0ms)
+  [00429]         STATUS       28bytes (0ms)
+[00441] WRITE
+[00442] WRITE
+  [00430]         STATUS       28bytes (0ms)
+  [00431]         STATUS       28bytes (0ms)
+[00443] WRITE
+[00444] WRITE
+  [00432]         STATUS       28bytes (0ms)
+  [00433]         STATUS       28bytes (0ms)
+[00445] WRITE
+[00446] WRITE
+  [00434]         STATUS       28bytes (0ms)
+[00447] WRITE
+[00448] WRITE
+  [00435]         STATUS       28bytes (0ms)
+  [00436]         STATUS       28bytes (0ms)
+[00449] WRITE
+  [00437]         STATUS       28bytes (0ms)
+[00450] WRITE
+  [00438]         STATUS       28bytes (0ms)
+[00451] WRITE
+  [00439]         STATUS       28bytes (0ms)
+[00452] WRITE
+  [00440]         STATUS       28bytes (0ms)
+[00453] WRITE
+  [00441]         STATUS       28bytes (0ms)
+[00454] WRITE
+  [00442]         STATUS       28bytes (0ms)
+  [00443]         STATUS       28bytes (0ms)
+[00455] WRITE
+[00456] WRITE
+  [00444]         STATUS       28bytes (0ms)
+  [00445]         STATUS       28bytes (0ms)
+[00457] WRITE
+[00458] WRITE
+  [00446]         STATUS       28bytes (0ms)
+[00459] WRITE
+[00460] WRITE
+  [00447]         STATUS       28bytes (0ms)
+  [00448]         STATUS       28bytes (0ms)
+[00461] WRITE
+[00462] WRITE
+  [00449]         STATUS       28bytes (0ms)
+  [00450]         STATUS       28bytes (0ms)
+[00463] WRITE
+  [00451]         STATUS       28bytes (0ms)
+[00464] WRITE
+  [00452]         STATUS       28bytes (0ms)
+[00465] WRITE
+  [00453]         STATUS       28bytes (0ms)
+[00466] WRITE
+  [00454]         STATUS       28bytes (0ms)
+[00467] WRITE
+[00468] WRITE
+  [00455]         STATUS       28bytes (0ms)
+  [00456]         STATUS       28bytes (0ms)
+[00469] WRITE
+  [00457]         STATUS       28bytes (0ms)
+[00470] WRITE
+  [00458]         STATUS       28bytes (0ms)
+[00471] WRITE
+[00472] WRITE
+  [00459]         STATUS       28bytes (0ms)
+  [00460]         STATUS       28bytes (0ms)
+  [00461]         STATUS       28bytes (0ms)
+  [00462]         STATUS       28bytes (0ms)
+  [00463]         STATUS       28bytes (0ms)
+  [00464]         STATUS       28bytes (0ms)
+  [00465]         STATUS       28bytes (0ms)
+  [00466]         STATUS       28bytes (0ms)
+  [00467]         STATUS       28bytes (0ms)
+  [00468]         STATUS       28bytes (0ms)
+  [00469]         STATUS       28bytes (0ms)
+  [00470]         STATUS       28bytes (0ms)
+  [00471]         STATUS       28bytes (0ms)
+  [00472]         STATUS       28bytes (0ms)
+[00473] LSTAT
+  [00473]          ATTRS       41bytes (0ms)
+[00474] LSTAT
+  [00474]          ATTRS       41bytes (0ms)
+[00475] OPENDIR
+  [00475]         HANDLE       17bytes (0ms)
+[00476] READDIR
+[00477] READDIR
+  [00476]           NAME     1273bytes (0ms)
+  [00477]         STATUS       32bytes (0ms)
+[00478] READDIR
+[00479] READDIR
+readdirplus: /freshness (11 entries)
+  [00478]         STATUS       32bytes (0ms)
+  [00479]         STATUS       32bytes (0ms)
+[00480] CLOSE
+  [00480]         STATUS       28bytes (0ms)
+[00481] CLOSE
+  [00481]         STATUS       28bytes (0ms)
+[00482] LSTAT
+  [00482]         STATUS       33bytes (0ms)
+[00483] OPEN
+[00484] LSTAT
+  [00483]         HANDLE       17bytes (0ms)
+  [00484]          ATTRS       41bytes (0ms)
+[00485] FSTAT
+  [00485]          ATTRS       41bytes (0ms)
+[00486] WRITE
+[00487] WRITE
+[00488] WRITE
+[00489] WRITE
+[00490] WRITE
+[00491] WRITE
+[00492] WRITE
+[00493] WRITE
+[00494] WRITE
+[00495] WRITE
+[00496] WRITE
+[00497] WRITE
+  [00486]         STATUS       28bytes (0ms)
+  [00487]         STATUS       28bytes (0ms)
+[00498] WRITE
+[00499] WRITE
+  [00488]         STATUS       28bytes (0ms)
+[00500] WRITE
+[00501] WRITE
+  [00489]         STATUS       28bytes (0ms)
+  [00490]         STATUS       28bytes (0ms)
+  [00491]         STATUS       28bytes (0ms)
+[00502] WRITE
+[00503] WRITE
+[00504] WRITE
+[00505] WRITE
+  [00492]         STATUS       28bytes (0ms)
+  [00493]         STATUS       28bytes (0ms)
+  [00494]         STATUS       28bytes (0ms)
+[00506] WRITE
+[00507] WRITE
+  [00495]         STATUS       28bytes (0ms)
+[00508] WRITE
+[00509] WRITE
+[00510] WRITE
+[00511] WRITE
+  [00496]         STATUS       28bytes (0ms)
+  [00497]         STATUS       28bytes (0ms)
+[00512] WRITE
+[00513] WRITE
+[00514] WRITE
+[00515] WRITE
+  [00498]         STATUS       28bytes (0ms)
+  [00499]         STATUS       28bytes (0ms)
+  [00500]         STATUS       28bytes (0ms)
+[00516] WRITE
+[00517] WRITE
+  [00501]         STATUS       28bytes (0ms)
+  [00502]         STATUS       28bytes (0ms)
+[00518] WRITE
+[00519] WRITE
+  [00503]         STATUS       28bytes (0ms)
+  [00504]         STATUS       28bytes (0ms)
+[00520] WRITE
+[00521] WRITE
+[00522] WRITE
+[00523] WRITE
+  [00505]         STATUS       28bytes (0ms)
+  [00506]         STATUS       28bytes (0ms)
+[00524] WRITE
+[00525] WRITE
+  [00507]         STATUS       28bytes (0ms)
+  [00508]         STATUS       28bytes (0ms)
+[00526] WRITE
+[00527] WRITE
+[00528] WRITE
+[00529] WRITE
+  [00509]         STATUS       28bytes (0ms)
+  [00510]         STATUS       28bytes (0ms)
+[00530] WRITE
+[00531] WRITE
+  [00511]         STATUS       28bytes (0ms)
+  [00512]         STATUS       28bytes (0ms)
+[00532] WRITE
+[00533] WRITE
+[00534] WRITE
+[00535] WRITE
+  [00513]         STATUS       28bytes (0ms)
+  [00514]         STATUS       28bytes (0ms)
+[00536] WRITE
+[00537] WRITE
+  [00515]         STATUS       28bytes (0ms)
+  [00516]         STATUS       28bytes (0ms)
+[00538] WRITE
+[00539] WRITE
+  [00517]         STATUS       28bytes (0ms)
+[00540] WRITE
+  [00518]         STATUS       28bytes (0ms)
+[00541] WRITE
+  [00519]         STATUS       28bytes (0ms)
+  [00520]         STATUS       28bytes (0ms)
+[00542] WRITE
+[00543] WRITE
+  [00521]         STATUS       28bytes (0ms)
+  [00522]         STATUS       28bytes (0ms)
+[00544] WRITE
+[00545] WRITE
+[00546] WRITE
+[00547] WRITE
+  [00523]         STATUS       28bytes (1ms)
+  [00524]         STATUS       28bytes (0ms)
+[00548] WRITE
+[00549] WRITE
+[00550] WRITE
+[00551] WRITE
+[00552] WRITE
+[00553] WRITE
+[00554] WRITE
+  [00525]         STATUS       28bytes (1ms)
+[00555] WRITE
+  [00526]         STATUS       28bytes (1ms)
+[00556] WRITE
+[00557] WRITE
+  [00527]         STATUS       28bytes (1ms)
+  [00528]         STATUS       28bytes (1ms)
+[00558] WRITE
+[00559] WRITE
+[00560] WRITE
+[00561] WRITE
+[00562] WRITE
+[00563] WRITE
+[00564] WRITE
+[00565] WRITE
+  [00529]         STATUS       28bytes (1ms)
+  [00530]         STATUS       28bytes (1ms)
+  [00531]         STATUS       28bytes (1ms)
+  [00532]         STATUS       28bytes (1ms)
+  [00533]         STATUS       28bytes (1ms)
+  [00534]         STATUS       28bytes (1ms)
+  [00535]         STATUS       28bytes (1ms)
+  [00536]         STATUS       28bytes (1ms)
+  [00537]         STATUS       28bytes (1ms)
+  [00538]         STATUS       28bytes (1ms)
+  [00539]         STATUS       28bytes (1ms)
+  [00540]         STATUS       28bytes (1ms)
+  [00541]         STATUS       28bytes (1ms)
+  [00542]         STATUS       28bytes (1ms)
+  [00543]         STATUS       28bytes (1ms)
+  [00544]         STATUS       28bytes (1ms)
+  [00545]         STATUS       28bytes (1ms)
+  [00546]         STATUS       28bytes (1ms)
+  [00547]         STATUS       28bytes (1ms)
+  [00548]         STATUS       28bytes (1ms)
+  [00549]         STATUS       28bytes (1ms)
+  [00550]         STATUS       28bytes (1ms)
+  [00551]         STATUS       28bytes (1ms)
+  [00552]         STATUS       28bytes (1ms)
+  [00553]         STATUS       28bytes (1ms)
+  [00554]         STATUS       28bytes (1ms)
+  [00555]         STATUS       28bytes (1ms)
+  [00556]         STATUS       28bytes (1ms)
+  [00557]         STATUS       28bytes (1ms)
+  [00558]         STATUS       28bytes (1ms)
+  [00559]         STATUS       28bytes (1ms)
+  [00560]         STATUS       28bytes (1ms)
+  [00561]         STATUS       28bytes (1ms)
+  [00562]         STATUS       28bytes (1ms)
+  [00563]         STATUS       28bytes (1ms)
+  [00564]         STATUS       28bytes (1ms)
+  [00565]         STATUS       28bytes (1ms)
+[00566] LSTAT
+  [00566]          ATTRS       41bytes (0ms)
+[00567] LSTAT
+  [00567]          ATTRS       41bytes (0ms)
+[00568] OPENDIR
+  [00568]         HANDLE       17bytes (0ms)
+[00569] READDIR
+[00570] READDIR
+  [00569]           NAME     1391bytes (0ms)
+  [00570]         STATUS       32bytes (0ms)
+[00571] READDIR
+[00572] READDIR
+readdirplus: /freshness (12 entries)
+  [00571]         STATUS       32bytes (0ms)
+  [00572]         STATUS       32bytes (0ms)
+[00573] CLOSE
+  [00573]         STATUS       28bytes (0ms)
+[00574] CLOSE
+  [00574]         STATUS       28bytes (0ms)
+[00575] LSTAT
+  [00575]         STATUS       33bytes (0ms)
+[00576] OPEN
+[00577] LSTAT
+  [00576]         HANDLE       17bytes (0ms)
+  [00577]          ATTRS       41bytes (0ms)
+[00578] FSTAT
+  [00578]          ATTRS       41bytes (0ms)
+[00579] WRITE
+[00580] WRITE
+[00581] WRITE
+[00582] WRITE
+[00583] WRITE
+[00584] WRITE
+[00585] WRITE
+[00586] WRITE
+[00587] WRITE
+[00588] WRITE
+[00589] WRITE
+[00590] WRITE
+  [00579]         STATUS       28bytes (0ms)
+[00591] WRITE
+[00592] WRITE
+  [00580]         STATUS       28bytes (0ms)
+  [00581]         STATUS       28bytes (0ms)
+[00593] WRITE
+[00594] WRITE
+  [00582]         STATUS       28bytes (0ms)
+  [00583]         STATUS       28bytes (0ms)
+[00595] WRITE
+[00596] WRITE
+  [00584]         STATUS       28bytes (0ms)
+[00597] WRITE
+  [00585]         STATUS       28bytes (0ms)
+[00598] WRITE
+  [00586]         STATUS       28bytes (0ms)
+[00599] WRITE
+  [00587]         STATUS       28bytes (0ms)
+[00600] WRITE
+  [00588]         STATUS       28bytes (0ms)
+[00601] WRITE
+  [00589]         STATUS       28bytes (0ms)
+[00602] WRITE
+  [00590]         STATUS       28bytes (0ms)
+[00603] WRITE
+[00604] WRITE
+  [00591]         STATUS       28bytes (0ms)
+  [00592]         STATUS       28bytes (0ms)
+  [00593]         STATUS       28bytes (0ms)
+[00605] WRITE
+[00606] WRITE
+  [00594]         STATUS       28bytes (0ms)
+  [00595]         STATUS       28bytes (0ms)
+  [00596]         STATUS       28bytes (0ms)
+[00607] WRITE
+[00608] WRITE
+  [00597]         STATUS       28bytes (0ms)
+  [00598]         STATUS       28bytes (0ms)
+[00609] WRITE
+[00610] WRITE
+  [00599]         STATUS       28bytes (0ms)
+  [00600]         STATUS       28bytes (0ms)
+[00611] WRITE
+[00612] WRITE
+  [00601]         STATUS       28bytes (0ms)
+[00613] WRITE
+[00614] WRITE
+  [00602]         STATUS       28bytes (0ms)
+  [00603]         STATUS       28bytes (0ms)
+[00615] WRITE
+[00616] WRITE
+  [00604]         STATUS       28bytes (0ms)
+[00617] WRITE
+[00618] WRITE
+  [00605]         STATUS       28bytes (0ms)
+  [00606]         STATUS       28bytes (0ms)
+  [00607]         STATUS       28bytes (0ms)
+[00619] WRITE
+[00620] WRITE
+  [00608]         STATUS       28bytes (0ms)
+  [00609]         STATUS       28bytes (0ms)
+[00621] WRITE
+  [00610]         STATUS       28bytes (0ms)
+[00622] WRITE
+[00623] WRITE
+[00624] WRITE
+  [00611]         STATUS       28bytes (0ms)
+  [00612]         STATUS       28bytes (0ms)
+[00625] WRITE
+  [00613]         STATUS       28bytes (0ms)
+[00626] WRITE
+  [00614]         STATUS       28bytes (0ms)
+[00627] WRITE
+  [00615]         STATUS       28bytes (0ms)
+[00628] WRITE
+  [00616]         STATUS       28bytes (0ms)
+[00629] WRITE
+[00630] WRITE
+  [00617]         STATUS       28bytes (0ms)
+  [00618]         STATUS       28bytes (0ms)
+[00631] WRITE
+  [00619]         STATUS       28bytes (0ms)
+[00632] WRITE
+  [00620]         STATUS       28bytes (0ms)
+  [00621]         STATUS       28bytes (0ms)
+[00633] WRITE
+[00634] WRITE
+  [00622]         STATUS       28bytes (0ms)
+[00635] WRITE
+  [00623]         STATUS       28bytes (0ms)
+[00636] WRITE
+  [00624]         STATUS       28bytes (0ms)
+  [00625]         STATUS       28bytes (0ms)
+[00637] WRITE
+[00638] WRITE
+  [00626]         STATUS       28bytes (0ms)
+  [00627]         STATUS       28bytes (0ms)
+[00639] WRITE
+  [00628]         STATUS       28bytes (0ms)
+[00640] WRITE
+  [00629]         STATUS       28bytes (0ms)
+[00641] WRITE
+[00642] WRITE
+  [00630]         STATUS       28bytes (0ms)
+[00643] WRITE
+[00644] WRITE
+  [00631]         STATUS       28bytes (0ms)
+  [00632]         STATUS       28bytes (0ms)
+[00645] WRITE
+[00646] WRITE
+  [00633]         STATUS       28bytes (0ms)
+  [00634]         STATUS       28bytes (0ms)
+[00647] WRITE
+[00648] WRITE
+  [00635]         STATUS       28bytes (0ms)
+  [00636]         STATUS       28bytes (0ms)
+[00649] WRITE
+[00650] WRITE
+  [00637]         STATUS       28bytes (0ms)
+  [00638]         STATUS       28bytes (0ms)
+[00651] WRITE
+[00652] WRITE
+  [00639]         STATUS       28bytes (0ms)
+  [00640]         STATUS       28bytes (0ms)
+[00653] WRITE
+[00654] WRITE
+  [00641]         STATUS       28bytes (0ms)
+  [00642]         STATUS       28bytes (0ms)
+[00655] WRITE
+  [00643]         STATUS       28bytes (0ms)
+[00656] WRITE
+  [00644]         STATUS       28bytes (0ms)
+[00657] WRITE
+[00658] WRITE
+  [00645]         STATUS       28bytes (0ms)
+  [00646]         STATUS       28bytes (0ms)
+[00659] WRITE
+  [00647]         STATUS       28bytes (0ms)
+[00660] WRITE
+  [00648]         STATUS       28bytes (0ms)
+[00661] WRITE
+[00662] WRITE
+  [00649]         STATUS       28bytes (0ms)
+  [00650]         STATUS       28bytes (0ms)
+  [00651]         STATUS       28bytes (0ms)
+[00663] WRITE
+[00664] WRITE
+  [00652]         STATUS       28bytes (0ms)
+  [00653]         STATUS       28bytes (0ms)
+[00665] WRITE
+[00666] WRITE
+  [00654]         STATUS       28bytes (0ms)
+  [00655]         STATUS       28bytes (0ms)
+  [00656]         STATUS       28bytes (0ms)
+  [00657]         STATUS       28bytes (0ms)
+  [00658]         STATUS       28bytes (0ms)
+  [00659]         STATUS       28bytes (0ms)
+  [00660]         STATUS       28bytes (0ms)
+  [00661]         STATUS       28bytes (0ms)
+  [00662]         STATUS       28bytes (0ms)
+  [00663]         STATUS       28bytes (0ms)
+  [00664]         STATUS       28bytes (0ms)
+  [00665]         STATUS       28bytes (0ms)
+  [00666]         STATUS       28bytes (0ms)
+[00667] LSTAT
+  [00667]          ATTRS       41bytes (0ms)
+[00668] LSTAT
+  [00668]          ATTRS       41bytes (0ms)
+[00669] OPENDIR
+  [00669]         HANDLE       17bytes (0ms)
+[00670] READDIR
+[00671] READDIR
+  [00670]           NAME     1509bytes (0ms)
+  [00671]         STATUS       32bytes (0ms)
+[00672] READDIR
+[00673] READDIR
+readdirplus: /freshness (13 entries)
+  [00672]         STATUS       32bytes (0ms)
+  [00673]         STATUS       32bytes (0ms)
+[00674] CLOSE
+  [00674]         STATUS       28bytes (0ms)
+[00675] CLOSE
+  [00675]         STATUS       28bytes (0ms)
+[00676] LSTAT
+  [00676]         STATUS       33bytes (0ms)
+[00677] OPEN
+[00678] LSTAT
+  [00677]         HANDLE       17bytes (0ms)
+  [00678]          ATTRS       41bytes (0ms)
+[00679] FSTAT
+  [00679]          ATTRS       41bytes (0ms)
+[00680] WRITE
+[00681] WRITE
+[00682] WRITE
+[00683] WRITE
+[00684] WRITE
+[00685] WRITE
+[00686] WRITE
+[00687] WRITE
+[00688] WRITE
+[00689] WRITE
+[00690] WRITE
+[00691] WRITE
+[00692] WRITE
+[00693] WRITE
+  [00680]         STATUS       28bytes (0ms)
+  [00681]         STATUS       28bytes (0ms)
+  [00682]         STATUS       28bytes (0ms)
+[00694] WRITE
+[00695] WRITE
+  [00683]         STATUS       28bytes (0ms)
+  [00684]         STATUS       28bytes (0ms)
+[00696] WRITE
+  [00685]         STATUS       28bytes (0ms)
+[00697] WRITE
+  [00686]         STATUS       28bytes (0ms)
+[00698] WRITE
+[00699] WRITE
+  [00687]         STATUS       28bytes (0ms)
+  [00688]         STATUS       28bytes (0ms)
+[00700] WRITE
+[00701] WRITE
+  [00689]         STATUS       28bytes (0ms)
+[00702] WRITE
+[00703] WRITE
+  [00690]         STATUS       28bytes (0ms)
+  [00691]         STATUS       28bytes (0ms)
+[00704] WRITE
+[00705] WRITE
+  [00692]         STATUS       28bytes (0ms)
+  [00693]         STATUS       28bytes (0ms)
+[00706] WRITE
+[00707] WRITE
+  [00694]         STATUS       28bytes (0ms)
+  [00695]         STATUS       28bytes (0ms)
+[00708] WRITE
+[00709] WRITE
+  [00696]         STATUS       28bytes (0ms)
+  [00697]         STATUS       28bytes (0ms)
+[00710] WRITE
+[00711] WRITE
+  [00698]         STATUS       28bytes (0ms)
+  [00699]         STATUS       28bytes (0ms)
+[00712] WRITE
+[00713] WRITE
+  [00700]         STATUS       28bytes (0ms)
+  [00701]         STATUS       28bytes (0ms)
+[00714] WRITE
+[00715] WRITE
+  [00702]         STATUS       28bytes (0ms)
+  [00703]         STATUS       28bytes (0ms)
+[00716] WRITE
+[00717] WRITE
+  [00704]         STATUS       28bytes (0ms)
+  [00705]         STATUS       28bytes (0ms)
+[00718] WRITE
+[00719] WRITE
+  [00706]         STATUS       28bytes (0ms)
+  [00707]         STATUS       28bytes (0ms)
+[00720] WRITE
+[00721] WRITE
+  [00708]         STATUS       28bytes (0ms)
+  [00709]         STATUS       28bytes (0ms)
+[00722] WRITE
+[00723] WRITE
+  [00710]         STATUS       28bytes (0ms)
+  [00711]         STATUS       28bytes (0ms)
+[00724] WRITE
+[00725] WRITE
+  [00712]         STATUS       28bytes (0ms)
+  [00713]         STATUS       28bytes (0ms)
+[00726] WRITE
+[00727] WRITE
+  [00714]         STATUS       28bytes (0ms)
+  [00715]         STATUS       28bytes (0ms)
+[00728] WRITE
+[00729] WRITE
+  [00716]         STATUS       28bytes (0ms)
+  [00717]         STATUS       28bytes (0ms)
+  [00718]         STATUS       28bytes (0ms)
+[00730] WRITE
+[00731] WRITE
+[00732] WRITE
+[00733] WRITE
+  [00719]         STATUS       28bytes (0ms)
+  [00720]         STATUS       28bytes (0ms)
+[00734] WRITE
+[00735] WRITE
+  [00721]         STATUS       28bytes (0ms)
+  [00722]         STATUS       28bytes (0ms)
+[00736] WRITE
+[00737] WRITE
+  [00723]         STATUS       28bytes (0ms)
+  [00724]         STATUS       28bytes (0ms)
+[00738] WRITE
+[00739] WRITE
+  [00725]         STATUS       28bytes (0ms)
+  [00726]         STATUS       28bytes (0ms)
+[00740] WRITE
+[00741] WRITE
+  [00727]         STATUS       28bytes (0ms)
+  [00728]         STATUS       28bytes (0ms)
+[00742] WRITE
+[00743] WRITE
+  [00729]         STATUS       28bytes (0ms)
+[00744] WRITE
+[00745] WRITE
+  [00730]         STATUS       28bytes (0ms)
+  [00731]         STATUS       28bytes (0ms)
+[00746] WRITE
+[00747] WRITE
+  [00732]         STATUS       28bytes (0ms)
+  [00733]         STATUS       28bytes (0ms)
+  [00734]         STATUS       28bytes (0ms)
+[00748] WRITE
+[00749] WRITE
+[00750] WRITE
+[00751] WRITE
+  [00735]         STATUS       28bytes (0ms)
+  [00736]         STATUS       28bytes (0ms)
+  [00737]         STATUS       28bytes (0ms)
+[00752] WRITE
+[00753] WRITE
+  [00738]         STATUS       28bytes (0ms)
+  [00739]         STATUS       28bytes (0ms)
+  [00740]         STATUS       28bytes (0ms)
+  [00741]         STATUS       28bytes (0ms)
+[00754] WRITE
+[00755] WRITE
+  [00742]         STATUS       28bytes (0ms)
+[00756] WRITE
+  [00743]         STATUS       28bytes (0ms)
+[00757] WRITE
+  [00744]         STATUS       28bytes (0ms)
+  [00745]         STATUS       28bytes (0ms)
+[00758] WRITE
+[00759] WRITE
+  [00746]         STATUS       28bytes (0ms)
+  [00747]         STATUS       28bytes (0ms)
+[00760] WRITE
+[00761] WRITE
+  [00748]         STATUS       28bytes (0ms)
+[00762] WRITE
+  [00749]         STATUS       28bytes (0ms)
+[00763] WRITE
+  [00750]         STATUS       28bytes (0ms)
+  [00751]         STATUS       28bytes (0ms)
+[00764] WRITE
+[00765] WRITE
+[00766] WRITE
+[00767] WRITE
+  [00752]         STATUS       28bytes (0ms)
+  [00753]         STATUS       28bytes (0ms)
+  [00754]         STATUS       28bytes (0ms)
+  [00755]         STATUS       28bytes (0ms)
+[00768] WRITE
+[00769] WRITE
+  [00756]         STATUS       28bytes (0ms)
+[00770] WRITE
+[00771] WRITE
+  [00757]         STATUS       28bytes (0ms)
+  [00758]         STATUS       28bytes (0ms)
+[00772] WRITE
+  [00759]         STATUS       28bytes (0ms)
+[00773] WRITE
+  [00760]         STATUS       28bytes (0ms)
+  [00761]         STATUS       28bytes (0ms)
+[00774] WRITE
+[00775] WRITE
+  [00762]         STATUS       28bytes (0ms)
+  [00763]         STATUS       28bytes (0ms)
+  [00764]         STATUS       28bytes (0ms)
+  [00765]         STATUS       28bytes (0ms)
+  [00766]         STATUS       28bytes (0ms)
+  [00767]         STATUS       28bytes (0ms)
+  [00768]         STATUS       28bytes (0ms)
+  [00769]         STATUS       28bytes (0ms)
+  [00770]         STATUS       28bytes (0ms)
+  [00771]         STATUS       28bytes (0ms)
+  [00772]         STATUS       28bytes (0ms)
+  [00773]         STATUS       28bytes (0ms)
+  [00774]         STATUS       28bytes (0ms)
+  [00775]         STATUS       28bytes (0ms)
+[00776] LSTAT
+  [00776]          ATTRS       41bytes (0ms)
+[00777] LSTAT
+  [00777]          ATTRS       41bytes (0ms)
+[00778] OPENDIR
+  [00778]         HANDLE       17bytes (0ms)
+[00779] READDIR
+[00780] READDIR
+  [00779]           NAME     1627bytes (0ms)
+  [00780]         STATUS       32bytes (0ms)
+[00781] READDIR
+[00782] READDIR
+readdirplus: /freshness (14 entries)
+  [00781]         STATUS       32bytes (0ms)
+  [00782]         STATUS       32bytes (0ms)
+[00783] CLOSE
+  [00783]         STATUS       28bytes (0ms)
+[00784] CLOSE
+  [00784]         STATUS       28bytes (0ms)
+[00785] LSTAT
+  [00785]         STATUS       33bytes (0ms)
+[00786] OPEN
+[00787] LSTAT
+  [00786]         HANDLE       17bytes (0ms)
+  [00787]          ATTRS       41bytes (0ms)
+[00788] FSTAT
+  [00788]          ATTRS       41bytes (0ms)
+[00789] WRITE
+[00790] WRITE
+[00791] WRITE
+[00792] WRITE
+[00793] WRITE
+[00794] WRITE
+[00795] WRITE
+[00796] WRITE
+[00797] WRITE
+[00798] WRITE
+  [00789]         STATUS       28bytes (0ms)
+[00799] WRITE
+[00800] WRITE
+[00801] WRITE
+[00802] WRITE
+[00803] WRITE
+[00804] WRITE
+  [00790]         STATUS       28bytes (0ms)
+  [00791]         STATUS       28bytes (0ms)
+  [00792]         STATUS       28bytes (0ms)
+  [00793]         STATUS       28bytes (0ms)
+[00805] WRITE
+[00806] WRITE
+  [00794]         STATUS       28bytes (0ms)
+[00807] WRITE
+[00808] WRITE
+  [00795]         STATUS       28bytes (0ms)
+[00809] WRITE
+[00810] WRITE
+  [00796]         STATUS       28bytes (0ms)
+  [00797]         STATUS       28bytes (1ms)
+[00811] WRITE
+  [00798]         STATUS       28bytes (1ms)
+[00812] WRITE
+  [00799]         STATUS       28bytes (0ms)
+[00813] WRITE
+[00814] WRITE
+  [00800]         STATUS       28bytes (0ms)
+  [00801]         STATUS       28bytes (0ms)
+  [00802]         STATUS       28bytes (0ms)
+[00815] WRITE
+[00816] WRITE
+  [00803]         STATUS       28bytes (0ms)
+  [00804]         STATUS       28bytes (0ms)
+[00817] WRITE
+  [00805]         STATUS       28bytes (0ms)
+[00818] WRITE
+  [00806]         STATUS       28bytes (0ms)
+  [00807]         STATUS       28bytes (0ms)
+[00819] WRITE
+[00820] WRITE
+  [00808]         STATUS       28bytes (0ms)
+  [00809]         STATUS       28bytes (0ms)
+[00821] WRITE
+[00822] WRITE
+  [00810]         STATUS       28bytes (0ms)
+  [00811]         STATUS       28bytes (0ms)
+[00823] WRITE
+[00824] WRITE
+  [00812]         STATUS       28bytes (0ms)
+  [00813]         STATUS       28bytes (0ms)
+[00825] WRITE
+[00826] WRITE
+  [00814]         STATUS       28bytes (0ms)
+[00827] WRITE
+[00828] WRITE
+  [00815]         STATUS       28bytes (0ms)
+  [00816]         STATUS       28bytes (0ms)
+[00829] WRITE
+[00830] WRITE
+  [00817]         STATUS       28bytes (0ms)
+[00831] WRITE
+[00832] WRITE
+  [00818]         STATUS       28bytes (0ms)
+[00833] WRITE
+[00834] WRITE
+  [00819]         STATUS       28bytes (0ms)
+  [00820]         STATUS       28bytes (0ms)
+  [00821]         STATUS       28bytes (0ms)
+[00835] WRITE
+[00836] WRITE
+  [00822]         STATUS       28bytes (0ms)
+  [00823]         STATUS       28bytes (0ms)
+  [00824]         STATUS       28bytes (0ms)
+[00837] WRITE
+[00838] WRITE
+  [00825]         STATUS       28bytes (0ms)
+[00839] WRITE
+[00840] WRITE
+  [00826]         STATUS       28bytes (0ms)
+  [00827]         STATUS       28bytes (0ms)
+[00841] WRITE
+  [00828]         STATUS       28bytes (0ms)
+[00842] WRITE
+  [00829]         STATUS       28bytes (0ms)
+[00843] WRITE
+  [00830]         STATUS       28bytes (0ms)
+[00844] WRITE
+  [00831]         STATUS       28bytes (0ms)
+[00845] WRITE
+[00846] WRITE
+  [00832]         STATUS       28bytes (0ms)
+  [00833]         STATUS       28bytes (0ms)
+[00847] WRITE
+[00848] WRITE
+  [00834]         STATUS       28bytes (0ms)
+  [00835]         STATUS       28bytes (0ms)
+[00849] WRITE
+[00850] WRITE
+  [00836]         STATUS       28bytes (0ms)
+[00851] WRITE
+[00852] WRITE
+  [00837]         STATUS       28bytes (0ms)
+  [00838]         STATUS       28bytes (0ms)
+[00853] WRITE
+  [00839]         STATUS       28bytes (0ms)
+[00854] WRITE
+[00855] WRITE
+  [00840]         STATUS       28bytes (0ms)
+[00856] WRITE
+  [00841]         STATUS       28bytes (0ms)
+  [00842]         STATUS       28bytes (0ms)
+  [00843]         STATUS       28bytes (0ms)
+[00857] WRITE
+[00858] WRITE
+[00859] WRITE
+[00860] WRITE
+  [00844]         STATUS       28bytes (0ms)
+  [00845]         STATUS       28bytes (0ms)
+[00861] WRITE
+[00862] WRITE
+  [00846]         STATUS       28bytes (0ms)
+[00863] WRITE
+[00864] WRITE
+  [00847]         STATUS       28bytes (0ms)
+  [00848]         STATUS       28bytes (0ms)
+[00865] WRITE
+[00866] WRITE
+  [00849]         STATUS       28bytes (0ms)
+  [00850]         STATUS       28bytes (0ms)
+[00867] WRITE
+[00868] WRITE
+  [00851]         STATUS       28bytes (0ms)
+  [00852]         STATUS       28bytes (0ms)
+  [00853]         STATUS       28bytes (0ms)
+  [00854]         STATUS       28bytes (0ms)
+[00869] WRITE
+  [00855]         STATUS       28bytes (0ms)
+[00870] WRITE
+  [00856]         STATUS       28bytes (0ms)
+  [00857]         STATUS       28bytes (0ms)
+[00871] WRITE
+[00872] WRITE
+  [00858]         STATUS       28bytes (0ms)
+  [00859]         STATUS       28bytes (0ms)
+[00873] WRITE
+  [00860]         STATUS       28bytes (0ms)
+[00874] WRITE
+  [00861]         STATUS       28bytes (0ms)
+  [00862]         STATUS       28bytes (0ms)
+[00875] WRITE
+[00876] WRITE
+  [00863]         STATUS       28bytes (0ms)
+  [00864]         STATUS       28bytes (0ms)
+[00877] WRITE
+[00878] WRITE
+  [00865]         STATUS       28bytes (0ms)
+  [00866]         STATUS       28bytes (0ms)
+[00879] WRITE
+[00880] WRITE
+  [00867]         STATUS       28bytes (0ms)
+[00881] WRITE
+[00882] WRITE
+  [00868]         STATUS       28bytes (0ms)
+  [00869]         STATUS       28bytes (0ms)
+[00883] WRITE
+[00884] WRITE
+  [00870]         STATUS       28bytes (0ms)
+  [00871]         STATUS       28bytes (0ms)
+  [00872]         STATUS       28bytes (0ms)
+[00885] WRITE
+[00886] WRITE
+  [00873]         STATUS       28bytes (0ms)
+  [00874]         STATUS       28bytes (0ms)
+[00887] WRITE
+  [00875]         STATUS       28bytes (0ms)
+[00888] WRITE
+  [00876]         STATUS       28bytes (0ms)
+  [00877]         STATUS       28bytes (0ms)
+[00889] WRITE
+[00890] WRITE
+  [00878]         STATUS       28bytes (0ms)
+  [00879]         STATUS       28bytes (0ms)
+[00891] WRITE
+[00892] WRITE
+  [00880]         STATUS       28bytes (0ms)
+  [00881]         STATUS       28bytes (0ms)
+  [00882]         STATUS       28bytes (0ms)
+  [00883]         STATUS       28bytes (0ms)
+  [00884]         STATUS       28bytes (0ms)
+  [00885]         STATUS       28bytes (0ms)
+  [00886]         STATUS       28bytes (0ms)
+  [00887]         STATUS       28bytes (0ms)
+  [00888]         STATUS       28bytes (0ms)
+  [00889]         STATUS       28bytes (0ms)
+  [00890]         STATUS       28bytes (0ms)
+  [00891]         STATUS       28bytes (0ms)
+  [00892]         STATUS       28bytes (0ms)
+[00893] LSTAT
+  [00893]          ATTRS       41bytes (0ms)
+[00894] LSTAT
+  [00894]          ATTRS       41bytes (0ms)
+[00895] OPENDIR
+  [00895]         HANDLE       17bytes (0ms)
+[00896] READDIR
+[00897] READDIR
+  [00896]           NAME     1745bytes (0ms)
+  [00897]         STATUS       32bytes (0ms)
+[00898] READDIR
+[00899] READDIR
+readdirplus: /freshness (15 entries)
+  [00898]         STATUS       32bytes (0ms)
+  [00899]         STATUS       32bytes (0ms)
+[00900] CLOSE
+  [00900]         STATUS       28bytes (0ms)
+[00901] CLOSE
+  [00901]         STATUS       28bytes (0ms)
+[00902] LSTAT
+  [00902]         STATUS       33bytes (0ms)
+[00903] OPEN
+[00904] LSTAT
+  [00903]         HANDLE       17bytes (0ms)
+  [00904]          ATTRS       41bytes (0ms)
+[00905] FSTAT
+  [00905]          ATTRS       41bytes (0ms)
+[00906] WRITE
+[00907] WRITE
+[00908] WRITE
+[00909] WRITE
+[00910] WRITE
+[00911] WRITE
+[00912] WRITE
+[00913] WRITE
+[00914] WRITE
+[00915] WRITE
+[00916] WRITE
+[00917] WRITE
+[00918] WRITE
+[00919] WRITE
+[00920] WRITE
+[00921] WRITE
+[00922] WRITE
+[00923] WRITE
+  [00906]         STATUS       28bytes (0ms)
+[00924] WRITE
+[00925] WRITE
+  [00907]         STATUS       28bytes (0ms)
+  [00908]         STATUS       28bytes (0ms)
+[00926] WRITE
+[00927] WRITE
+[00928] WRITE
+[00929] WRITE
+[00930] WRITE
+[00931] WRITE
+  [00909]         STATUS       28bytes (0ms)
+  [00910]         STATUS       28bytes (0ms)
+[00932] WRITE
+[00933] WRITE
+[00934] WRITE
+  [00911]         STATUS       28bytes (0ms)
+[00935] WRITE
+  [00912]         STATUS       28bytes (0ms)
+  [00913]         STATUS       28bytes (1ms)
+  [00914]         STATUS       28bytes (0ms)
+[00936] WRITE
+[00937] WRITE
+[00938] WRITE
+  [00915]         STATUS       28bytes (1ms)
+[00939] WRITE
+  [00916]         STATUS       28bytes (1ms)
+  [00917]         STATUS       28bytes (1ms)
+  [00918]         STATUS       28bytes (1ms)
+  [00919]         STATUS       28bytes (1ms)
+  [00920]         STATUS       28bytes (0ms)
+[00940] WRITE
+[00941] WRITE
+  [00921]         STATUS       28bytes (0ms)
+  [00922]         STATUS       28bytes (0ms)
+[00942] WRITE
+  [00923]         STATUS       28bytes (0ms)
+[00943] WRITE
+  [00924]         STATUS       28bytes (0ms)
+  [00925]         STATUS       28bytes (0ms)
+  [00926]         STATUS       28bytes (0ms)
+[00944] WRITE
+  [00927]         STATUS       28bytes (0ms)
+[00945] WRITE
+  [00928]         STATUS       28bytes (0ms)
+  [00929]         STATUS       28bytes (0ms)
+  [00930]         STATUS       28bytes (0ms)
+  [00931]         STATUS       28bytes (0ms)
+  [00932]         STATUS       28bytes (0ms)
+  [00933]         STATUS       28bytes (0ms)
+[00946] WRITE
+  [00934]         STATUS       28bytes (0ms)
+[00947] WRITE
+  [00935]         STATUS       28bytes (0ms)
+  [00936]         STATUS       28bytes (0ms)
+[00948] WRITE
+[00949] WRITE
+  [00937]         STATUS       28bytes (0ms)
+  [00938]         STATUS       28bytes (0ms)
+[00950] WRITE
+  [00939]         STATUS       28bytes (0ms)
+[00951] WRITE
+  [00940]         STATUS       28bytes (0ms)
+[00952] WRITE
+  [00941]         STATUS       28bytes (0ms)
+[00953] WRITE
+  [00942]         STATUS       28bytes (0ms)
+  [00943]         STATUS       28bytes (0ms)
+[00954] WRITE
+  [00944]         STATUS       28bytes (0ms)
+[00955] WRITE
+  [00945]         STATUS       28bytes (0ms)
+  [00946]         STATUS       28bytes (0ms)
+[00956] WRITE
+[00957] WRITE
+  [00947]         STATUS       28bytes (0ms)
+[00958] WRITE
+  [00948]         STATUS       28bytes (0ms)
+[00959] WRITE
+[00960] WRITE
+  [00949]         STATUS       28bytes (1ms)
+[00961] WRITE
+  [00950]         STATUS       28bytes (1ms)
+  [00951]         STATUS       28bytes (0ms)
+[00962] WRITE
+[00963] WRITE
+  [00952]         STATUS       28bytes (1ms)
+[00964] WRITE
+  [00953]         STATUS       28bytes (1ms)
+[00965] WRITE
+  [00954]         STATUS       28bytes (0ms)
+  [00955]         STATUS       28bytes (0ms)
+  [00956]         STATUS       28bytes (0ms)
+[00966] WRITE
+[00967] WRITE
+  [00957]         STATUS       28bytes (0ms)
+[00968] WRITE
+[00969] WRITE
+  [00958]         STATUS       28bytes (0ms)
+[00970] WRITE
+  [00959]         STATUS       28bytes (0ms)
+[00971] WRITE
+  [00960]         STATUS       28bytes (0ms)
+  [00961]         STATUS       28bytes (0ms)
+[00972] WRITE
+[00973] WRITE
+  [00962]         STATUS       28bytes (0ms)
+  [00963]         STATUS       28bytes (0ms)
+[00974] WRITE
+[00975] WRITE
+  [00964]         STATUS       28bytes (0ms)
+  [00965]         STATUS       28bytes (0ms)
+[00976] WRITE
+[00977] WRITE
+[00978] WRITE
+  [00966]         STATUS       28bytes (0ms)
+[00979] WRITE
+  [00967]         STATUS       28bytes (0ms)
+  [00968]         STATUS       28bytes (0ms)
+  [00969]         STATUS       28bytes (0ms)
+[00980] WRITE
+[00981] WRITE
+  [00970]         STATUS       28bytes (0ms)
+  [00971]         STATUS       28bytes (0ms)
+[00982] WRITE
+[00983] WRITE
+  [00972]         STATUS       28bytes (0ms)
+[00984] WRITE
+[00985] WRITE
+  [00973]         STATUS       28bytes (0ms)
+  [00974]         STATUS       28bytes (0ms)
+[00986] WRITE
+[00987] WRITE
+  [00975]         STATUS       28bytes (0ms)
+  [00976]         STATUS       28bytes (0ms)
+[00988] WRITE
+[00989] WRITE
+  [00977]         STATUS       28bytes (0ms)
+[00990] WRITE
+[00991] WRITE
+  [00978]         STATUS       28bytes (0ms)
+  [00979]         STATUS       28bytes (0ms)
+[00992] WRITE
+[00993] WRITE
+  [00980]         STATUS       28bytes (0ms)
+  [00981]         STATUS       28bytes (0ms)
+[00994] WRITE
+[00995] WRITE
+  [00982]         STATUS       28bytes (0ms)
+  [00983]         STATUS       28bytes (0ms)
+[00996] WRITE
+[00997] WRITE
+  [00984]         STATUS       28bytes (0ms)
+[00998] WRITE
+  [00985]         STATUS       28bytes (0ms)
+[00999] WRITE
+  [00986]         STATUS       28bytes (0ms)
+[01000] WRITE
+  [00987]         STATUS       28bytes (0ms)
+[01001] WRITE
+  [00988]         STATUS       28bytes (0ms)
+[01002] WRITE
+[01003] WRITE
+  [00989]         STATUS       28bytes (0ms)
+[01004] WRITE
+  [00990]         STATUS       28bytes (0ms)
+[01005] WRITE
+  [00991]         STATUS       28bytes (0ms)
+  [00992]         STATUS       28bytes (0ms)
+[01006] WRITE
+[01007] WRITE
+  [00993]         STATUS       28bytes (0ms)
+  [00994]         STATUS       28bytes (0ms)
+[01008] WRITE
+  [00995]         STATUS       28bytes (0ms)
+[01009] WRITE
+  [00996]         STATUS       28bytes (0ms)
+[01010] WRITE
+[01011] WRITE
+  [00997]         STATUS       28bytes (0ms)
+  [00998]         STATUS       28bytes (0ms)
+[01012] WRITE
+[01013] WRITE
+  [00999]         STATUS       28bytes (0ms)
+[01014] WRITE
+  [01000]         STATUS       28bytes (0ms)
+[01015] WRITE
+  [01001]         STATUS       28bytes (0ms)
+[01016] WRITE
+  [01002]         STATUS       28bytes (0ms)
+[01017] WRITE
+  [01003]         STATUS       28bytes (0ms)
+  [01004]         STATUS       28bytes (0ms)
+  [01005]         STATUS       28bytes (0ms)
+  [01006]         STATUS       28bytes (0ms)
+  [01007]         STATUS       28bytes (0ms)
+  [01008]         STATUS       28bytes (0ms)
+  [01009]         STATUS       28bytes (0ms)
+  [01010]         STATUS       28bytes (0ms)
+  [01011]         STATUS       28bytes (0ms)
+  [01012]         STATUS       28bytes (0ms)
+  [01013]         STATUS       28bytes (0ms)
+  [01014]         STATUS       28bytes (0ms)
+  [01015]         STATUS       28bytes (0ms)
+  [01016]         STATUS       28bytes (0ms)
+  [01017]         STATUS       28bytes (0ms)
+[01018] LSTAT
+  [01018]          ATTRS       41bytes (0ms)
+[01019] LSTAT
+  [01019]          ATTRS       41bytes (0ms)
+[01020] OPENDIR
+  [01020]         HANDLE       17bytes (0ms)
+[01021] READDIR
+[01022] READDIR
+  [01021]           NAME     1863bytes (0ms)
+  [01022]         STATUS       32bytes (0ms)
+[01023] READDIR
+[01024] READDIR
+readdirplus: /freshness (16 entries)
+  [01023]         STATUS       32bytes (0ms)
+  [01024]         STATUS       32bytes (0ms)
+[01025] CLOSE
+  [01025]         STATUS       28bytes (0ms)
+[01026] CLOSE
+  [01026]         STATUS       28bytes (0ms)
+[01027] LSTAT
+  [01027]         STATUS       33bytes (0ms)
+[01028] OPEN
+[01029] LSTAT
+  [01028]         HANDLE       17bytes (0ms)
+  [01029]          ATTRS       41bytes (0ms)
+[01030] FSTAT
+  [01030]          ATTRS       41bytes (0ms)
+[01031] WRITE
+[01032] WRITE
+[01033] WRITE
+[01034] WRITE
+[01035] WRITE
+[01036] WRITE
+[01037] WRITE
+[01038] WRITE
+[01039] WRITE
+[01040] WRITE
+[01041] WRITE
+[01042] WRITE
+[01043] WRITE
+[01044] WRITE
+[01045] WRITE
+[01046] WRITE
+[01047] WRITE
+[01048] WRITE
+[01049] WRITE
+[01050] WRITE
+  [01031]         STATUS       28bytes (0ms)
+[01051] WRITE
+[01052] WRITE
+[01053] WRITE
+[01054] WRITE
+[01055] WRITE
+[01056] WRITE
+[01057] WRITE
+[01058] WRITE
+[01059] WRITE
+[01060] WRITE
+  [01032]         STATUS       28bytes (0ms)
+  [01033]         STATUS       28bytes (0ms)
+[01061] WRITE
+[01062] WRITE
+  [01034]         STATUS       28bytes (1ms)
+  [01035]         STATUS       28bytes (1ms)
+[01063] WRITE
+[01064] WRITE
+[01065] WRITE
+[01066] WRITE
+[01067] WRITE
+[01068] WRITE
+[01069] WRITE
+[01070] WRITE
+  [01036]         STATUS       28bytes (1ms)
+  [01037]         STATUS       28bytes (1ms)
+[01071] WRITE
+[01072] WRITE
+[01073] WRITE
+[01074] WRITE
+  [01038]         STATUS       28bytes (1ms)
+  [01039]         STATUS       28bytes (1ms)
+[01075] WRITE
+[01076] WRITE
+  [01040]         STATUS       28bytes (1ms)
+  [01041]         STATUS       28bytes (1ms)
+[01077] WRITE
+[01078] WRITE
+[01079] WRITE
+[01080] WRITE
+  [01042]         STATUS       28bytes (1ms)
+  [01043]         STATUS       28bytes (1ms)
+[01081] WRITE
+[01082] WRITE
+  [01044]         STATUS       28bytes (1ms)
+  [01045]         STATUS       28bytes (1ms)
+[01083] WRITE
+  [01046]         STATUS       28bytes (1ms)
+  [01047]         STATUS       28bytes (1ms)
+[01084] WRITE
+  [01048]         STATUS       28bytes (1ms)
+  [01049]         STATUS       28bytes (1ms)
+[01085] WRITE
+[01086] WRITE
+  [01050]         STATUS       28bytes (1ms)
+[01087] WRITE
+[01088] WRITE
+  [01051]         STATUS       28bytes (1ms)
+[01089] WRITE
+[01090] WRITE
+  [01052]         STATUS       28bytes (1ms)
+  [01053]         STATUS       28bytes (1ms)
+[01091] WRITE
+[01092] WRITE
+  [01054]         STATUS       28bytes (1ms)
+  [01055]         STATUS       28bytes (1ms)
+  [01056]         STATUS       28bytes (1ms)
+[01093] WRITE
+[01094] WRITE
+  [01057]         STATUS       28bytes (1ms)
+  [01058]         STATUS       28bytes (1ms)
+  [01059]         STATUS       28bytes (1ms)
+[01095] WRITE
+[01096] WRITE
+[01097] WRITE
+  [01060]         STATUS       28bytes (1ms)
+[01098] WRITE
+  [01061]         STATUS       28bytes (1ms)
+  [01062]         STATUS       28bytes (1ms)
+  [01063]         STATUS       28bytes (1ms)
+[01099] WRITE
+[01100] WRITE
+  [01064]         STATUS       28bytes (1ms)
+  [01065]         STATUS       28bytes (1ms)
+[01101] WRITE
+[01102] WRITE
+  [01066]         STATUS       28bytes (1ms)
+  [01067]         STATUS       28bytes (1ms)
+[01103] WRITE
+[01104] WRITE
+  [01068]         STATUS       28bytes (1ms)
+  [01069]         STATUS       28bytes (1ms)
+[01105] WRITE
+[01106] WRITE
+  [01070]         STATUS       28bytes (1ms)
+  [01071]         STATUS       28bytes (1ms)
+[01107] WRITE
+[01108] WRITE
+  [01072]         STATUS       28bytes (1ms)
+[01109] WRITE
+[01110] WRITE
+[01111] WRITE
+[01112] WRITE
+  [01073]         STATUS       28bytes (1ms)
+  [01074]         STATUS       28bytes (1ms)
+  [01075]         STATUS       28bytes (1ms)
+  [01076]         STATUS       28bytes (1ms)
+  [01077]         STATUS       28bytes (1ms)
+[01113] WRITE
+[01114] WRITE
+[01115] WRITE
+[01116] WRITE
+  [01078]         STATUS       28bytes (1ms)
+  [01079]         STATUS       28bytes (1ms)
+[01117] WRITE
+[01118] WRITE
+  [01080]         STATUS       28bytes (1ms)
+  [01081]         STATUS       28bytes (1ms)
+[01119] WRITE
+[01120] WRITE
+[01121] WRITE
+  [01082]         STATUS       28bytes (1ms)
+[01122] WRITE
+  [01083]         STATUS       28bytes (1ms)
+  [01084]         STATUS       28bytes (1ms)
+  [01085]         STATUS       28bytes (1ms)
+[01123] WRITE
+[01124] WRITE
+  [01086]         STATUS       28bytes (1ms)
+  [01087]         STATUS       28bytes (1ms)
+[01125] WRITE
+[01126] WRITE
+  [01088]         STATUS       28bytes (1ms)
+  [01089]         STATUS       28bytes (1ms)
+[01127] WRITE
+[01128] WRITE
+[01129] WRITE
+[01130] WRITE
+  [01090]         STATUS       28bytes (1ms)
+  [01091]         STATUS       28bytes (1ms)
+  [01092]         STATUS       28bytes (1ms)
+  [01093]         STATUS       28bytes (1ms)
+[01131] WRITE
+[01132] WRITE
+[01133] WRITE
+[01134] WRITE
+  [01094]         STATUS       28bytes (1ms)
+  [01095]         STATUS       28bytes (1ms)
+[01135] WRITE
+[01136] WRITE
+  [01096]         STATUS       28bytes (1ms)
+  [01097]         STATUS       28bytes (1ms)
+[01137] WRITE
+[01138] WRITE
+[01139] WRITE
+[01140] WRITE
+  [01098]         STATUS       28bytes (1ms)
+  [01099]         STATUS       28bytes (1ms)
+[01141] WRITE
+[01142] WRITE
+  [01100]         STATUS       28bytes (1ms)
+  [01101]         STATUS       28bytes (1ms)
+[01143] WRITE
+[01144] WRITE
+[01145] WRITE
+[01146] WRITE
+  [01102]         STATUS       28bytes (1ms)
+  [01103]         STATUS       28bytes (1ms)
+[01147] WRITE
+[01148] WRITE
+  [01104]         STATUS       28bytes (1ms)
+  [01105]         STATUS       28bytes (1ms)
+[01149] WRITE
+[01150] WRITE
+  [01106]         STATUS       28bytes (1ms)
+  [01107]         STATUS       28bytes (1ms)
+  [01108]         STATUS       28bytes (1ms)
+  [01109]         STATUS       28bytes (1ms)
+  [01110]         STATUS       28bytes (2ms)
+  [01111]         STATUS       28bytes (2ms)
+  [01112]         STATUS       28bytes (6ms)
+  [01113]         STATUS       28bytes (6ms)
+  [01114]         STATUS       28bytes (8ms)
+  [01115]         STATUS       28bytes (8ms)
+  [01116]         STATUS       28bytes (8ms)
+  [01117]         STATUS       28bytes (8ms)
+  [01118]         STATUS       28bytes (8ms)
+  [01119]         STATUS       28bytes (8ms)
+  [01120]         STATUS       28bytes (8ms)
+  [01121]         STATUS       28bytes (8ms)
+  [01122]         STATUS       28bytes (8ms)
+  [01123]         STATUS       28bytes (8ms)
+  [01124]         STATUS       28bytes (8ms)
+  [01125]         STATUS       28bytes (7ms)
+  [01126]         STATUS       28bytes (8ms)
+  [01127]         STATUS       28bytes (7ms)
+  [01128]         STATUS       28bytes (7ms)
+  [01129]         STATUS       28bytes (7ms)
+  [01130]         STATUS       28bytes (7ms)
+  [01131]         STATUS       28bytes (7ms)
+  [01132]         STATUS       28bytes (7ms)
+  [01133]         STATUS       28bytes (7ms)
+  [01134]         STATUS       28bytes (7ms)
+  [01135]         STATUS       28bytes (7ms)
+  [01136]         STATUS       28bytes (7ms)
+  [01137]         STATUS       28bytes (7ms)
+  [01138]         STATUS       28bytes (7ms)
+  [01139]         STATUS       28bytes (7ms)
+  [01140]         STATUS       28bytes (7ms)
+  [01141]         STATUS       28bytes (7ms)
+  [01142]         STATUS       28bytes (7ms)
+  [01143]         STATUS       28bytes (7ms)
+  [01144]         STATUS       28bytes (7ms)
+  [01145]         STATUS       28bytes (7ms)
+  [01146]         STATUS       28bytes (7ms)
+  [01147]         STATUS       28bytes (7ms)
+  [01148]         STATUS       28bytes (7ms)
+  [01149]         STATUS       28bytes (7ms)
+  [01150]         STATUS       28bytes (7ms)
+[01151] LSTAT
+  [01151]          ATTRS       41bytes (0ms)
+[01152] LSTAT
+  [01152]          ATTRS       41bytes (0ms)
+[01153] OPENDIR
+  [01153]         HANDLE       17bytes (0ms)
+[01154] READDIR
+[01155] READDIR
+  [01154]           NAME     1981bytes (0ms)
+  [01155]         STATUS       32bytes (0ms)
+[01156] READDIR
+[01157] READDIR
+readdirplus: /freshness (17 entries)
+  [01156]         STATUS       32bytes (0ms)
+  [01157]         STATUS       32bytes (0ms)
+[01158] CLOSE
+  [01158]         STATUS       28bytes (0ms)
+[01159] CLOSE
+  [01159]         STATUS       28bytes (0ms)
+[01160] LSTAT
+  [01160]         STATUS       33bytes (0ms)
+[01161] OPEN
+[01162] LSTAT
+  [01161]         HANDLE       17bytes (0ms)
+  [01162]          ATTRS       41bytes (0ms)
+[01163] FSTAT
+  [01163]          ATTRS       41bytes (0ms)
+[01164] WRITE
+[01165] WRITE
+[01166] WRITE
+[01167] WRITE
+[01168] WRITE
+[01169] WRITE
+[01170] WRITE
+[01171] WRITE
+[01172] WRITE
+[01173] WRITE
+  [01164]         STATUS       28bytes (0ms)
+  [01165]         STATUS       28bytes (0ms)
+[01174] WRITE
+[01175] WRITE
+[01176] WRITE
+[01177] WRITE
+  [01166]         STATUS       28bytes (0ms)
+[01178] WRITE
+[01179] WRITE
+  [01167]         STATUS       28bytes (0ms)
+  [01168]         STATUS       28bytes (0ms)
+[01180] WRITE
+[01181] WRITE
+  [01169]         STATUS       28bytes (0ms)
+[01182] WRITE
+[01183] WRITE
+  [01170]         STATUS       28bytes (0ms)
+[01184] WRITE
+[01185] WRITE
+  [01171]         STATUS       28bytes (0ms)
+[01186] WRITE
+[01187] WRITE
+  [01172]         STATUS       28bytes (0ms)
+[01188] WRITE
+[01189] WRITE
+  [01173]         STATUS       28bytes (0ms)
+[01190] WRITE
+[01191] WRITE
+  [01174]         STATUS       28bytes (0ms)
+  [01175]         STATUS       28bytes (0ms)
+[01192] WRITE
+[01193] WRITE
+  [01176]         STATUS       28bytes (0ms)
+  [01177]         STATUS       28bytes (0ms)
+[01194] WRITE
+[01195] WRITE
+  [01178]         STATUS       28bytes (0ms)
+  [01179]         STATUS       28bytes (0ms)
+[01196] WRITE
+[01197] WRITE
+  [01180]         STATUS       28bytes (0ms)
+  [01181]         STATUS       28bytes (0ms)
+[01198] WRITE
+[01199] WRITE
+  [01182]         STATUS       28bytes (0ms)
+  [01183]         STATUS       28bytes (0ms)
+[01200] WRITE
+[01201] WRITE
+  [01184]         STATUS       28bytes (0ms)
+  [01185]         STATUS       28bytes (0ms)
+[01202] WRITE
+[01203] WRITE
+[01204] WRITE
+[01205] WRITE
+  [01186]         STATUS       28bytes (0ms)
+  [01187]         STATUS       28bytes (0ms)
+[01206] WRITE
+[01207] WRITE
+  [01188]         STATUS       28bytes (0ms)
+  [01189]         STATUS       28bytes (0ms)
+[01208] WRITE
+[01209] WRITE
+  [01190]         STATUS       28bytes (0ms)
+  [01191]         STATUS       28bytes (0ms)
+[01210] WRITE
+[01211] WRITE
+[01212] WRITE
+[01213] WRITE
+[01214] WRITE
+[01215] WRITE
+  [01192]         STATUS       28bytes (0ms)
+  [01193]         STATUS       28bytes (0ms)
+[01216] WRITE
+[01217] WRITE
+  [01194]         STATUS       28bytes (0ms)
+  [01195]         STATUS       28bytes (0ms)
+[01218] WRITE
+[01219] WRITE
+  [01196]         STATUS       28bytes (0ms)
+  [01197]         STATUS       28bytes (0ms)
+[01220] WRITE
+[01221] WRITE
+[01222] WRITE
+[01223] WRITE
+  [01198]         STATUS       28bytes (0ms)
+  [01199]         STATUS       28bytes (0ms)
+[01224] WRITE
+[01225] WRITE
+  [01200]         STATUS       28bytes (1ms)
+  [01201]         STATUS       28bytes (1ms)
+[01226] WRITE
+[01227] WRITE
+[01228] WRITE
+[01229] WRITE
+  [01202]         STATUS       28bytes (1ms)
+  [01203]         STATUS       28bytes (1ms)
+[01230] WRITE
+[01231] WRITE
+  [01204]         STATUS       28bytes (1ms)
+  [01205]         STATUS       28bytes (1ms)
+[01232] WRITE
+[01233] WRITE
+[01234] WRITE
+[01235] WRITE
+  [01206]         STATUS       28bytes (1ms)
+  [01207]         STATUS       28bytes (1ms)
+[01236] WRITE
+[01237] WRITE
+  [01208]         STATUS       28bytes (1ms)
+  [01209]         STATUS       28bytes (1ms)
+[01238] WRITE
+[01239] WRITE
+  [01210]         STATUS       28bytes (1ms)
+  [01211]         STATUS       28bytes (1ms)
+[01240] WRITE
+[01241] WRITE
+  [01212]         STATUS       28bytes (1ms)
+  [01213]         STATUS       28bytes (1ms)
+[01242] WRITE
+[01243] WRITE
+  [01214]         STATUS       28bytes (1ms)
+  [01215]         STATUS       28bytes (1ms)
+[01244] WRITE
+[01245] WRITE
+  [01216]         STATUS       28bytes (1ms)
+  [01217]         STATUS       28bytes (1ms)
+[01246] WRITE
+[01247] WRITE
+  [01218]         STATUS       28bytes (1ms)
+  [01219]         STATUS       28bytes (1ms)
+[01248] WRITE
+[01249] WRITE
+  [01220]         STATUS       28bytes (1ms)
+  [01221]         STATUS       28bytes (1ms)
+[01250] WRITE
+[01251] WRITE
+[01252] WRITE
+[01253] WRITE
+[01254] WRITE
+[01255] WRITE
+  [01222]         STATUS       28bytes (1ms)
+  [01223]         STATUS       28bytes (1ms)
+[01256] WRITE
+[01257] WRITE
+  [01224]         STATUS       28bytes (1ms)
+  [01225]         STATUS       28bytes (1ms)
+[01258] WRITE
+[01259] WRITE
+[01260] WRITE
+[01261] WRITE
+  [01226]         STATUS       28bytes (1ms)
+  [01227]         STATUS       28bytes (1ms)
+[01262] WRITE
+[01263] WRITE
+  [01228]         STATUS       28bytes (1ms)
+  [01229]         STATUS       28bytes (1ms)
+[01264] WRITE
+[01265] WRITE
+[01266] WRITE
+[01267] WRITE
+[01268] WRITE
+  [01230]         STATUS       28bytes (1ms)
+[01269] WRITE
+  [01231]         STATUS       28bytes (1ms)
+[01270] WRITE
+[01271] WRITE
+  [01232]         STATUS       28bytes (1ms)
+  [01233]         STATUS       28bytes (1ms)
+[01272] WRITE
+[01273] WRITE
+  [01234]         STATUS       28bytes (1ms)
+  [01235]         STATUS       28bytes (1ms)
+[01274] WRITE
+[01275] WRITE
+  [01236]         STATUS       28bytes (1ms)
+[01276] WRITE
+[01277] WRITE
+  [01237]         STATUS       28bytes (1ms)
+[01278] WRITE
+[01279] WRITE
+  [01238]         STATUS       28bytes (1ms)
+  [01239]         STATUS       28bytes (1ms)
+[01280] WRITE
+[01281] WRITE
+[01282] WRITE
+[01283] WRITE
+[01284] WRITE
+[01285] WRITE
+  [01240]         STATUS       28bytes (1ms)
+  [01241]         STATUS       28bytes (1ms)
+[01286] WRITE
+[01287] WRITE
+  [01242]         STATUS       28bytes (1ms)
+  [01243]         STATUS       28bytes (1ms)
+[01288] WRITE
+[01289] WRITE
+[01290] WRITE
+[01291] WRITE
+  [01244]         STATUS       28bytes (1ms)
+  [01245]         STATUS       28bytes (1ms)
+  [01246]         STATUS       28bytes (1ms)
+  [01247]         STATUS       28bytes (1ms)
+  [01248]         STATUS       28bytes (1ms)
+  [01249]         STATUS       28bytes (1ms)
+  [01250]         STATUS       28bytes (1ms)
+  [01251]         STATUS       28bytes (1ms)
+  [01252]         STATUS       28bytes (1ms)
+  [01253]         STATUS       28bytes (1ms)
+  [01254]         STATUS       28bytes (1ms)
+  [01255]         STATUS       28bytes (1ms)
+  [01256]         STATUS       28bytes (1ms)
+  [01257]         STATUS       28bytes (1ms)
+  [01258]         STATUS       28bytes (1ms)
+  [01259]         STATUS       28bytes (1ms)
+  [01260]         STATUS       28bytes (1ms)
+  [01261]         STATUS       28bytes (1ms)
+  [01262]         STATUS       28bytes (1ms)
+  [01263]         STATUS       28bytes (1ms)
+  [01264]         STATUS       28bytes (1ms)
+  [01265]         STATUS       28bytes (1ms)
+  [01266]         STATUS       28bytes (1ms)
+  [01267]         STATUS       28bytes (1ms)
+  [01268]         STATUS       28bytes (1ms)
+  [01269]         STATUS       28bytes (1ms)
+  [01270]         STATUS       28bytes (1ms)
+  [01271]         STATUS       28bytes (1ms)
+  [01272]         STATUS       28bytes (1ms)
+  [01273]         STATUS       28bytes (1ms)
+  [01274]         STATUS       28bytes (1ms)
+  [01275]         STATUS       28bytes (1ms)
+  [01276]         STATUS       28bytes (1ms)
+  [01277]         STATUS       28bytes (1ms)
+  [01278]         STATUS       28bytes (1ms)
+  [01279]         STATUS       28bytes (1ms)
+  [01280]         STATUS       28bytes (1ms)
+  [01281]         STATUS       28bytes (1ms)
+  [01282]         STATUS       28bytes (1ms)
+  [01283]         STATUS       28bytes (1ms)
+  [01284]         STATUS       28bytes (1ms)
+  [01285]         STATUS       28bytes (1ms)
+  [01286]         STATUS       28bytes (1ms)
+  [01287]         STATUS       28bytes (1ms)
+  [01288]         STATUS       28bytes (1ms)
+  [01289]         STATUS       28bytes (1ms)
+  [01290]         STATUS       28bytes (1ms)
+  [01291]         STATUS       28bytes (1ms)
+[01292] LSTAT
+  [01292]          ATTRS       41bytes (0ms)
+[01293] LSTAT
+  [01293]          ATTRS       41bytes (0ms)
+[01294] OPENDIR
+  [01294]         HANDLE       17bytes (0ms)
+[01295] READDIR
+[01296] READDIR
+  [01295]           NAME     2099bytes (0ms)
+  [01296]         STATUS       32bytes (0ms)
+[01297] READDIR
+[01298] READDIR
+readdirplus: /freshness (18 entries)
+  [01297]         STATUS       32bytes (0ms)
+  [01298]         STATUS       32bytes (0ms)
+[01299] CLOSE
+  [01299]         STATUS       28bytes (0ms)
+[01300] CLOSE
+  [01300]         STATUS       28bytes (0ms)
+[01301] LSTAT
+  [01301]         STATUS       33bytes (0ms)
+[01302] OPEN
+[01303] LSTAT
+  [01302]         HANDLE       17bytes (0ms)
+  [01303]          ATTRS       41bytes (0ms)
+[01304] FSTAT
+  [01304]          ATTRS       41bytes (0ms)
+[01305] WRITE
+[01306] WRITE
+[01307] WRITE
+[01308] WRITE
+[01309] WRITE
+[01310] WRITE
+[01311] WRITE
+[01312] WRITE
+[01313] WRITE
+[01314] WRITE
+[01315] WRITE
+[01316] WRITE
+[01317] WRITE
+[01318] WRITE
+[01319] WRITE
+[01320] WRITE
+[01321] WRITE
+[01322] WRITE
+  [01305]         STATUS       28bytes (0ms)
+  [01306]         STATUS       28bytes (0ms)
+[01323] WRITE
+[01324] WRITE
+[01325] WRITE
+  [01307]         STATUS       28bytes (0ms)
+[01326] WRITE
+  [01308]         STATUS       28bytes (0ms)
+  [01309]         STATUS       28bytes (0ms)
+  [01310]         STATUS       28bytes (0ms)
+  [01311]         STATUS       28bytes (0ms)
+  [01312]         STATUS       28bytes (0ms)
+  [01313]         STATUS       28bytes (0ms)
+  [01314]         STATUS       28bytes (0ms)
+  [01315]         STATUS       28bytes (0ms)
+  [01316]         STATUS       28bytes (0ms)
+[01327] WRITE
+  [01317]         STATUS       28bytes (0ms)
+[01328] WRITE
+  [01318]         STATUS       28bytes (0ms)
+[01329] WRITE
+[01330] WRITE
+  [01319]         STATUS       28bytes (0ms)
+[01331] WRITE
+  [01320]         STATUS       28bytes (0ms)
+[01332] WRITE
+  [01321]         STATUS       28bytes (0ms)
+  [01322]         STATUS       28bytes (1ms)
+  [01323]         STATUS       28bytes (0ms)
+[01333] WRITE
+[01334] WRITE
+  [01324]         STATUS       28bytes (0ms)
+[01335] WRITE
+[01336] WRITE
+  [01325]         STATUS       28bytes (0ms)
+[01337] WRITE
+[01338] WRITE
+  [01326]         STATUS       28bytes (0ms)
+  [01327]         STATUS       28bytes (0ms)
+[01339] WRITE
+[01340] WRITE
+  [01328]         STATUS       28bytes (0ms)
+  [01329]         STATUS       28bytes (0ms)
+[01341] WRITE
+[01342] WRITE
+  [01330]         STATUS       28bytes (0ms)
+  [01331]         STATUS       28bytes (0ms)
+[01343] WRITE
+[01344] WRITE
+  [01332]         STATUS       28bytes (0ms)
+  [01333]         STATUS       28bytes (0ms)
+[01345] WRITE
+[01346] WRITE
+  [01334]         STATUS       28bytes (0ms)
+  [01335]         STATUS       28bytes (0ms)
+[01347] WRITE
+[01348] WRITE
+[01349] WRITE
+  [01336]         STATUS       28bytes (0ms)
+[01350] WRITE
+  [01337]         STATUS       28bytes (0ms)
+  [01338]         STATUS       28bytes (0ms)
+  [01339]         STATUS       28bytes (0ms)
+[01351] WRITE
+[01352] WRITE
+  [01340]         STATUS       28bytes (0ms)
+[01353] WRITE
+[01354] WRITE
+[01355] WRITE
+[01356] WRITE
+  [01341]         STATUS       28bytes (0ms)
+  [01342]         STATUS       28bytes (0ms)
+[01357] WRITE
+  [01343]         STATUS       28bytes (0ms)
+[01358] WRITE
+  [01344]         STATUS       28bytes (0ms)
+[01359] WRITE
+[01360] WRITE
+  [01345]         STATUS       28bytes (0ms)
+[01361] WRITE
+[01362] WRITE
+  [01346]         STATUS       28bytes (0ms)
+  [01347]         STATUS       28bytes (0ms)
+[01363] WRITE
+[01364] WRITE
+  [01348]         STATUS       28bytes (0ms)
+  [01349]         STATUS       28bytes (0ms)
+[01365] WRITE
+[01366] WRITE
+[01367] WRITE
+[01368] WRITE
+  [01350]         STATUS       28bytes (0ms)
+  [01351]         STATUS       28bytes (0ms)
+[01369] WRITE
+[01370] WRITE
+  [01352]         STATUS       28bytes (0ms)
+  [01353]         STATUS       28bytes (0ms)
+[01371] WRITE
+[01372] WRITE
+  [01354]         STATUS       28bytes (0ms)
+  [01355]         STATUS       28bytes (0ms)
+[01373] WRITE
+[01374] WRITE
+  [01356]         STATUS       28bytes (0ms)
+  [01357]         STATUS       28bytes (0ms)
+[01375] WRITE
+[01376] WRITE
+  [01358]         STATUS       28bytes (0ms)
+  [01359]         STATUS       28bytes (0ms)
+[01377] WRITE
+[01378] WRITE
+[01379] WRITE
+[01380] WRITE
+  [01360]         STATUS       28bytes (0ms)
+  [01361]         STATUS       28bytes (0ms)
+[01381] WRITE
+[01382] WRITE
+  [01362]         STATUS       28bytes (0ms)
+  [01363]         STATUS       28bytes (0ms)
+[01383] WRITE
+[01384] WRITE
+  [01364]         STATUS       28bytes (0ms)
+[01385] WRITE
+  [01365]         STATUS       28bytes (0ms)
+[01386] WRITE
+  [01366]         STATUS       28bytes (0ms)
+  [01367]         STATUS       28bytes (0ms)
+[01387] WRITE
+[01388] WRITE
+  [01368]         STATUS       28bytes (0ms)
+  [01369]         STATUS       28bytes (0ms)
+[01389] WRITE
+[01390] WRITE
+  [01370]         STATUS       28bytes (0ms)
+  [01371]         STATUS       28bytes (0ms)
+[01391] WRITE
+  [01372]         STATUS       28bytes (0ms)
+[01392] WRITE
+  [01373]         STATUS       28bytes (0ms)
+  [01374]         STATUS       28bytes (0ms)
+[01393] WRITE
+  [01375]         STATUS       28bytes (0ms)
+[01394] WRITE
+  [01376]         STATUS       28bytes (0ms)
+  [01377]         STATUS       28bytes (0ms)
+[01395] WRITE
+[01396] WRITE
+  [01378]         STATUS       28bytes (0ms)
+  [01379]         STATUS       28bytes (0ms)
+[01397] WRITE
+[01398] WRITE
+  [01380]         STATUS       28bytes (0ms)
+  [01381]         STATUS       28bytes (0ms)
+[01399] WRITE
+  [01382]         STATUS       28bytes (0ms)
+[01400] WRITE
+  [01383]         STATUS       28bytes (0ms)
+[01401] WRITE
+[01402] WRITE
+  [01384]         STATUS       28bytes (0ms)
+  [01385]         STATUS       28bytes (0ms)
+[01403] WRITE
+[01404] WRITE
+  [01386]         STATUS       28bytes (0ms)
+  [01387]         STATUS       28bytes (0ms)
+[01405] WRITE
+[01406] WRITE
+  [01388]         STATUS       28bytes (0ms)
+  [01389]         STATUS       28bytes (0ms)
+[01407] WRITE
+[01408] WRITE
+  [01390]         STATUS       28bytes (0ms)
+  [01391]         STATUS       28bytes (0ms)
+[01409] WRITE
+[01410] WRITE
+  [01392]         STATUS       28bytes (0ms)
+  [01393]         STATUS       28bytes (0ms)
+[01411] WRITE
+[01412] WRITE
+  [01394]         STATUS       28bytes (0ms)
+  [01395]         STATUS       28bytes (0ms)
+[01413] WRITE
+[01414] WRITE
+  [01396]         STATUS       28bytes (0ms)
+  [01397]         STATUS       28bytes (0ms)
+[01415] WRITE
+[01416] WRITE
+[01417] WRITE
+  [01398]         STATUS       28bytes (0ms)
+  [01399]         STATUS       28bytes (0ms)
+[01418] WRITE
+[01419] WRITE
+[01420] WRITE
+  [01400]         STATUS       28bytes (0ms)
+  [01401]         STATUS       28bytes (0ms)
+[01421] WRITE
+[01422] WRITE
+  [01402]         STATUS       28bytes (0ms)
+  [01403]         STATUS       28bytes (0ms)
+[01423] WRITE
+[01424] WRITE
+  [01404]         STATUS       28bytes (0ms)
+  [01405]         STATUS       28bytes (0ms)
+[01425] WRITE
+[01426] WRITE
+  [01406]         STATUS       28bytes (0ms)
+  [01407]         STATUS       28bytes (0ms)
+[01427] WRITE
+[01428] WRITE
+  [01408]         STATUS       28bytes (0ms)
+  [01409]         STATUS       28bytes (0ms)
+[01429] WRITE
+[01430] WRITE
+  [01410]         STATUS       28bytes (0ms)
+  [01411]         STATUS       28bytes (0ms)
+[01431] WRITE
+[01432] WRITE
+  [01412]         STATUS       28bytes (0ms)
+  [01413]         STATUS       28bytes (0ms)
+[01433] WRITE
+[01434] WRITE
+  [01414]         STATUS       28bytes (0ms)
+  [01415]         STATUS       28bytes (0ms)
+[01435] WRITE
+[01436] WRITE
+  [01416]         STATUS       28bytes (0ms)
+  [01417]         STATUS       28bytes (0ms)
+[01437] WRITE
+[01438] WRITE
+  [01418]         STATUS       28bytes (0ms)
+  [01419]         STATUS       28bytes (0ms)
+[01439] WRITE
+[01440] WRITE
+  [01420]         STATUS       28bytes (0ms)
+  [01421]         STATUS       28bytes (0ms)
+  [01422]         STATUS       28bytes (0ms)
+  [01423]         STATUS       28bytes (0ms)
+  [01424]         STATUS       28bytes (0ms)
+  [01425]         STATUS       28bytes (0ms)
+  [01426]         STATUS       28bytes (0ms)
+  [01427]         STATUS       28bytes (0ms)
+  [01428]         STATUS       28bytes (0ms)
+  [01429]         STATUS       28bytes (0ms)
+  [01430]         STATUS       28bytes (0ms)
+  [01431]         STATUS       28bytes (0ms)
+  [01432]         STATUS       28bytes (0ms)
+  [01433]         STATUS       28bytes (0ms)
+  [01434]         STATUS       28bytes (0ms)
+  [01435]         STATUS       28bytes (0ms)
+  [01436]         STATUS       28bytes (0ms)
+  [01437]         STATUS       28bytes (0ms)
+  [01438]         STATUS       28bytes (0ms)
+  [01439]         STATUS       28bytes (0ms)
+  [01440]         STATUS       28bytes (0ms)
+[01441] LSTAT
+  [01441]          ATTRS       41bytes (0ms)
+[01442] LSTAT
+  [01442]          ATTRS       41bytes (0ms)
+[01443] OPENDIR
+  [01443]         HANDLE       17bytes (0ms)
+[01444] READDIR
+[01445] READDIR
+  [01444]           NAME     2217bytes (0ms)
+  [01445]         STATUS       32bytes (0ms)
+[01446] READDIR
+[01447] READDIR
+readdirplus: /freshness (19 entries)
+  [01446]         STATUS       32bytes (0ms)
+  [01447]         STATUS       32bytes (0ms)
+[01448] CLOSE
+  [01448]         STATUS       28bytes (0ms)
+[01449] CLOSE
+  [01449]         STATUS       28bytes (0ms)
+[01450] LSTAT
+  [01450]         STATUS       33bytes (0ms)
+[01451] OPEN
+[01452] LSTAT
+  [01451]         HANDLE       17bytes (0ms)
+  [01452]          ATTRS       41bytes (0ms)
+[01453] FSTAT
+  [01453]          ATTRS       41bytes (0ms)
+[01454] WRITE
+[01455] WRITE
+[01456] WRITE
+[01457] WRITE
+[01458] WRITE
+[01459] WRITE
+[01460] WRITE
+[01461] WRITE
+[01462] WRITE
+[01463] WRITE
+[01464] WRITE
+[01465] WRITE
+[01466] WRITE
+[01467] WRITE
+  [01454]         STATUS       28bytes (0ms)
+  [01455]         STATUS       28bytes (0ms)
+[01468] WRITE
+  [01456]         STATUS       28bytes (0ms)
+[01469] WRITE
+  [01457]         STATUS       28bytes (0ms)
+  [01458]         STATUS       28bytes (0ms)
+[01470] WRITE
+[01471] WRITE
+  [01459]         STATUS       28bytes (0ms)
+  [01460]         STATUS       28bytes (0ms)
+[01472] WRITE
+  [01461]         STATUS       28bytes (0ms)
+[01473] WRITE
+  [01462]         STATUS       28bytes (0ms)
+  [01463]         STATUS       28bytes (0ms)
+[01474] WRITE
+[01475] WRITE
+[01476] WRITE
+[01477] WRITE
+  [01464]         STATUS       28bytes (0ms)
+[01478] WRITE
+[01479] WRITE
+  [01465]         STATUS       28bytes (0ms)
+[01480] WRITE
+[01481] WRITE
+[01482] WRITE
+[01483] WRITE
+  [01466]         STATUS       28bytes (1ms)
+[01484] WRITE
+[01485] WRITE
+[01486] WRITE
+[01487] WRITE
+  [01467]         STATUS       28bytes (1ms)
+  [01468]         STATUS       28bytes (1ms)
+[01488] WRITE
+[01489] WRITE
+[01490] WRITE
+[01491] WRITE
+  [01469]         STATUS       28bytes (1ms)
+  [01470]         STATUS       28bytes (0ms)
+[01492] WRITE
+[01493] WRITE
+  [01471]         STATUS       28bytes (1ms)
+  [01472]         STATUS       28bytes (1ms)
+[01494] WRITE
+[01495] WRITE
+[01496] WRITE
+[01497] WRITE
+[01498] WRITE
+[01499] WRITE
+[01500] WRITE
+[01501] WRITE
+[01502] WRITE
+  [01473]         STATUS       28bytes (1ms)
+[01503] WRITE
+  [01474]         STATUS       28bytes (1ms)
+[01504] WRITE
+[01505] WRITE
+  [01475]         STATUS       28bytes (1ms)
+  [01476]         STATUS       28bytes (1ms)
+[01506] WRITE
+[01507] WRITE
+[01508] WRITE
+[01509] WRITE
+[01510] WRITE
+[01511] WRITE
+[01512] WRITE
+[01513] WRITE
+[01514] WRITE
+[01515] WRITE
+[01516] WRITE
+[01517] WRITE
+  [01477]         STATUS       28bytes (1ms)
+  [01478]         STATUS       28bytes (1ms)
+[01518] WRITE
+  [01479]         STATUS       28bytes (1ms)
+[01519] WRITE
+  [01480]         STATUS       28bytes (1ms)
+[01520] WRITE
+[01521] WRITE
+[01522] WRITE
+[01523] WRITE
+[01524] WRITE
+[01525] WRITE
+[01526] WRITE
+[01527] WRITE
+[01528] WRITE
+[01529] WRITE
+  [01481]         STATUS       28bytes (2ms)
+  [01482]         STATUS       28bytes (1ms)
+[01530] WRITE
+[01531] WRITE
+[01532] WRITE
+[01533] WRITE
+[01534] WRITE
+[01535] WRITE
+[01536] WRITE
+  [01483]         STATUS       28bytes (2ms)
+  [01484]         STATUS       28bytes (2ms)
+[01537] WRITE
+[01538] WRITE
+[01539] WRITE
+[01540] WRITE
+[01541] WRITE
+[01542] WRITE
+[01543] WRITE
+[01544] WRITE
+[01545] WRITE
+[01546] WRITE
+[01547] WRITE
+[01548] WRITE
+[01549] WRITE
+[01550] WRITE
+[01551] WRITE
+[01552] WRITE
+[01553] WRITE
+[01554] WRITE
+[01555] WRITE
+[01556] WRITE
+[01557] WRITE
+[01558] WRITE
+[01559] WRITE
+[01560] WRITE
+[01561] WRITE
+  [01485]         STATUS       28bytes (5ms)
+  [01486]         STATUS       28bytes (5ms)
+  [01487]         STATUS       28bytes (11ms)
+  [01488]         STATUS       28bytes (10ms)
+[01562] WRITE
+[01563] WRITE
+[01564] WRITE
+  [01489]         STATUS       28bytes (19ms)
+[01565] WRITE
+  [01490]         STATUS       28bytes (19ms)
+  [01491]         STATUS       28bytes (27ms)
+  [01492]         STATUS       28bytes (27ms)
+[01566] WRITE
+[01567] WRITE
+[01568] WRITE
+  [01493]         STATUS       28bytes (36ms)
+  [01494]         STATUS       28bytes (36ms)
+[01569] WRITE
+[01570] WRITE
+[01571] WRITE
+  [01495]         STATUS       28bytes (39ms)
+  [01496]         STATUS       28bytes (39ms)
+  [01497]         STATUS       28bytes (41ms)
+  [01498]         STATUS       28bytes (41ms)
+[01572] WRITE
+[01573] WRITE
+[01574] WRITE
+  [01499]         STATUS       28bytes (44ms)
+[01575] WRITE
+  [01500]         STATUS       28bytes (44ms)
+  [01501]         STATUS       28bytes (47ms)
+  [01502]         STATUS       28bytes (47ms)
+[01576] WRITE
+[01577] WRITE
+[01578] WRITE
+  [01503]         STATUS       28bytes (49ms)
+[01579] WRITE
+  [01504]         STATUS       28bytes (49ms)
+  [01505]         STATUS       28bytes (53ms)
+  [01506]         STATUS       28bytes (52ms)
+[01580] WRITE
+[01581] WRITE
+[01582] WRITE
+[01583] WRITE
+  [01507]         STATUS       28bytes (56ms)
+  [01508]         STATUS       28bytes (56ms)
+  [01509]         STATUS       28bytes (59ms)
+  [01510]         STATUS       28bytes (59ms)
+[01584] WRITE
+[01585] WRITE
+[01586] WRITE
+  [01511]         STATUS       28bytes (62ms)
+[01587] WRITE
+  [01512]         STATUS       28bytes (62ms)
+[01588] WRITE
+[01589] WRITE
+  [01513]         STATUS       28bytes (65ms)
+  [01514]         STATUS       28bytes (65ms)
+  [01515]         STATUS       28bytes (68ms)
+  [01516]         STATUS       28bytes (68ms)
+[01590] WRITE
+[01591] WRITE
+[01592] WRITE
+  [01517]         STATUS       28bytes (71ms)
+[01593] WRITE
+  [01518]         STATUS       28bytes (71ms)
+  [01519]         STATUS       28bytes (75ms)
+  [01520]         STATUS       28bytes (75ms)
+[01594] WRITE
+[01595] WRITE
+[01596] WRITE
+[01597] WRITE
+  [01521]         STATUS       28bytes (78ms)
+  [01522]         STATUS       28bytes (78ms)
+  [01523]         STATUS       28bytes (81ms)
+  [01524]         STATUS       28bytes (81ms)
+  [01525]         STATUS       28bytes (85ms)
+  [01526]         STATUS       28bytes (85ms)
+  [01527]         STATUS       28bytes (89ms)
+  [01528]         STATUS       28bytes (89ms)
+  [01529]         STATUS       28bytes (89ms)
+  [01530]         STATUS       28bytes (89ms)
+  [01531]         STATUS       28bytes (89ms)
+  [01532]         STATUS       28bytes (89ms)
+  [01533]         STATUS       28bytes (89ms)
+  [01534]         STATUS       28bytes (89ms)
+  [01535]         STATUS       28bytes (89ms)
+  [01536]         STATUS       28bytes (88ms)
+  [01537]         STATUS       28bytes (88ms)
+  [01538]         STATUS       28bytes (88ms)
+  [01539]         STATUS       28bytes (88ms)
+  [01540]         STATUS       28bytes (88ms)
+  [01541]         STATUS       28bytes (88ms)
+  [01542]         STATUS       28bytes (88ms)
+  [01543]         STATUS       28bytes (88ms)
+  [01544]         STATUS       28bytes (88ms)
+  [01545]         STATUS       28bytes (88ms)
+  [01546]         STATUS       28bytes (88ms)
+  [01547]         STATUS       28bytes (88ms)
+  [01548]         STATUS       28bytes (88ms)
+  [01549]         STATUS       28bytes (88ms)
+  [01550]         STATUS       28bytes (88ms)
+  [01551]         STATUS       28bytes (88ms)
+  [01552]         STATUS       28bytes (88ms)
+  [01553]         STATUS       28bytes (88ms)
+  [01554]         STATUS       28bytes (88ms)
+  [01555]         STATUS       28bytes (88ms)
+  [01556]         STATUS       28bytes (88ms)
+  [01557]         STATUS       28bytes (88ms)
+  [01558]         STATUS       28bytes (88ms)
+  [01559]         STATUS       28bytes (88ms)
+  [01560]         STATUS       28bytes (88ms)
+  [01561]         STATUS       28bytes (86ms)
+  [01562]         STATUS       28bytes (80ms)
+  [01563]         STATUS       28bytes (80ms)
+  [01564]         STATUS       28bytes (80ms)
+  [01565]         STATUS       28bytes (72ms)
+  [01566]         STATUS       28bytes (64ms)
+  [01567]         STATUS       28bytes (64ms)
+  [01568]         STATUS       28bytes (64ms)
+  [01569]         STATUS       28bytes (54ms)
+  [01570]         STATUS       28bytes (54ms)
+  [01571]         STATUS       28bytes (51ms)
+  [01572]         STATUS       28bytes (49ms)
+  [01573]         STATUS       28bytes (49ms)
+  [01574]         STATUS       28bytes (49ms)
+  [01575]         STATUS       28bytes (46ms)
+  [01576]         STATUS       28bytes (43ms)
+  [01577]         STATUS       28bytes (43ms)
+  [01578]         STATUS       28bytes (43ms)
+  [01579]         STATUS       28bytes (41ms)
+  [01580]         STATUS       28bytes (37ms)
+  [01581]         STATUS       28bytes (37ms)
+  [01582]         STATUS       28bytes (37ms)
+  [01583]         STATUS       28bytes (34ms)
+  [01584]         STATUS       28bytes (31ms)
+  [01585]         STATUS       28bytes (31ms)
+  [01586]         STATUS       28bytes (31ms)
+  [01587]         STATUS       28bytes (28ms)
+  [01588]         STATUS       28bytes (28ms)
+  [01589]         STATUS       28bytes (25ms)
+  [01590]         STATUS       28bytes (21ms)
+  [01591]         STATUS       28bytes (21ms)
+  [01592]         STATUS       28bytes (21ms)
+  [01593]         STATUS       28bytes (18ms)
+  [01594]         STATUS       28bytes (15ms)
+  [01595]         STATUS       28bytes (15ms)
+  [01596]         STATUS       28bytes (15ms)
+  [01597]         STATUS       28bytes (11ms)
+[01598] LSTAT
+  [01598]          ATTRS       41bytes (0ms)
+[01599] LSTAT
+  [01599]          ATTRS       41bytes (0ms)
+[01600] OPENDIR
+  [01600]         HANDLE       17bytes (0ms)
+[01601] READDIR
+[01602] READDIR
+  [01601]           NAME     2335bytes (0ms)
+  [01602]         STATUS       32bytes (0ms)
+[01603] READDIR
+[01604] READDIR
+readdirplus: /freshness (20 entries)
+  [01603]         STATUS       32bytes (0ms)
+  [01604]         STATUS       32bytes (0ms)
+[01605] CLOSE
+  [01605]         STATUS       28bytes (0ms)
+[01606] CLOSE
+  [01606]         STATUS       28bytes (0ms)
+[01607] LSTAT
+  [01607]         STATUS       33bytes (0ms)
+[01608] OPEN
+[01609] LSTAT
+  [01608]         HANDLE       17bytes (0ms)
+  [01609]          ATTRS       41bytes (0ms)
+[01610] FSTAT
+  [01610]          ATTRS       41bytes (0ms)
+[01611] WRITE
+[01612] WRITE
+[01613] WRITE
+[01614] WRITE
+[01615] WRITE
+[01616] WRITE
+[01617] WRITE
+[01618] WRITE
+[01619] WRITE
+[01620] WRITE
+  [01611]         STATUS       28bytes (0ms)
+[01621] WRITE
+[01622] WRITE
+  [01612]         STATUS       28bytes (0ms)
+[01623] WRITE
+[01624] WRITE
+[01625] WRITE
+[01626] WRITE
+  [01613]         STATUS       28bytes (0ms)
+[01627] WRITE
+[01628] WRITE
+  [01614]         STATUS       28bytes (0ms)
+[01629] WRITE
+[01630] WRITE
+  [01615]         STATUS       28bytes (0ms)
+  [01616]         STATUS       28bytes (0ms)
+[01631] WRITE
+[01632] WRITE
+[01633] WRITE
+[01634] WRITE
+  [01617]         STATUS       28bytes (0ms)
+  [01618]         STATUS       28bytes (0ms)
+[01635] WRITE
+[01636] WRITE
+  [01619]         STATUS       28bytes (0ms)
+  [01620]         STATUS       28bytes (0ms)
+[01637] WRITE
+[01638] WRITE
+[01639] WRITE
+[01640] WRITE
+  [01621]         STATUS       28bytes (0ms)
+  [01622]         STATUS       28bytes (0ms)
+[01641] WRITE
+[01642] WRITE
+  [01623]         STATUS       28bytes (0ms)
+  [01624]         STATUS       28bytes (0ms)
+[01643] WRITE
+[01644] WRITE
+  [01625]         STATUS       28bytes (0ms)
+  [01626]         STATUS       28bytes (0ms)
+[01645] WRITE
+[01646] WRITE
+  [01627]         STATUS       28bytes (0ms)
+  [01628]         STATUS       28bytes (0ms)
+[01647] WRITE
+[01648] WRITE
+  [01629]         STATUS       28bytes (0ms)
+  [01630]         STATUS       28bytes (0ms)
+[01649] WRITE
+[01650] WRITE
+[01651] WRITE
+[01652] WRITE
+  [01631]         STATUS       28bytes (0ms)
+  [01632]         STATUS       28bytes (0ms)
+[01653] WRITE
+[01654] WRITE
+[01655] WRITE
+[01656] WRITE
+  [01633]         STATUS       28bytes (0ms)
+  [01634]         STATUS       28bytes (0ms)
+[01657] WRITE
+[01658] WRITE
+  [01635]         STATUS       28bytes (0ms)
+  [01636]         STATUS       28bytes (0ms)
+[01659] WRITE
+[01660] WRITE
+[01661] WRITE
+[01662] WRITE
+  [01637]         STATUS       28bytes (0ms)
+  [01638]         STATUS       28bytes (0ms)
+[01663] WRITE
+[01664] WRITE
+  [01639]         STATUS       28bytes (0ms)
+  [01640]         STATUS       28bytes (0ms)
+[01665] WRITE
+[01666] WRITE
+[01667] WRITE
+[01668] WRITE
+  [01641]         STATUS       28bytes (0ms)
+  [01642]         STATUS       28bytes (0ms)
+[01669] WRITE
+[01670] WRITE
+  [01643]         STATUS       28bytes (1ms)
+  [01644]         STATUS       28bytes (1ms)
+[01671] WRITE
+[01672] WRITE
+[01673] WRITE
+[01674] WRITE
+[01675] WRITE
+  [01645]         STATUS       28bytes (1ms)
+  [01646]         STATUS       28bytes (1ms)
+[01676] WRITE
+[01677] WRITE
+[01678] WRITE
+  [01647]         STATUS       28bytes (1ms)
+  [01648]         STATUS       28bytes (1ms)
+[01679] WRITE
+[01680] WRITE
+[01681] WRITE
+[01682] WRITE
+  [01649]         STATUS       28bytes (1ms)
+  [01650]         STATUS       28bytes (1ms)
+[01683] WRITE
+[01684] WRITE
+[01685] WRITE
+[01686] WRITE
+  [01651]         STATUS       28bytes (1ms)
+  [01652]         STATUS       28bytes (1ms)
+[01687] WRITE
+[01688] WRITE
+[01689] WRITE
+[01690] WRITE
+  [01653]         STATUS       28bytes (1ms)
+  [01654]         STATUS       28bytes (1ms)
+[01691] WRITE
+[01692] WRITE
+  [01655]         STATUS       28bytes (1ms)
+  [01656]         STATUS       28bytes (1ms)
+[01693] WRITE
+[01694] WRITE
+[01695] WRITE
+[01696] WRITE
+[01697] WRITE
+[01698] WRITE
+  [01657]         STATUS       28bytes (1ms)
+  [01658]         STATUS       28bytes (1ms)
+[01699] WRITE
+[01700] WRITE
+  [01659]         STATUS       28bytes (1ms)
+  [01660]         STATUS       28bytes (1ms)
+[01701] WRITE
+[01702] WRITE
+[01703] WRITE
+[01704] WRITE
+  [01661]         STATUS       28bytes (1ms)
+  [01662]         STATUS       28bytes (1ms)
+[01705] WRITE
+[01706] WRITE
+[01707] WRITE
+[01708] WRITE
+  [01663]         STATUS       28bytes (1ms)
+  [01664]         STATUS       28bytes (1ms)
+[01709] WRITE
+[01710] WRITE
+[01711] WRITE
+[01712] WRITE
+[01713] WRITE
+[01714] WRITE
+  [01665]         STATUS       28bytes (1ms)
+[01715] WRITE
+[01716] WRITE
+  [01666]         STATUS       28bytes (1ms)
+  [01667]         STATUS       28bytes (2ms)
+  [01668]         STATUS       28bytes (2ms)
+[01717] WRITE
+[01718] WRITE
+[01719] WRITE
+[01720] WRITE
+[01721] WRITE
+[01722] WRITE
+  [01669]         STATUS       28bytes (2ms)
+  [01670]         STATUS       28bytes (2ms)
+[01723] WRITE
+[01724] WRITE
+[01725] WRITE
+[01726] WRITE
+  [01671]         STATUS       28bytes (2ms)
+  [01672]         STATUS       28bytes (2ms)
+[01727] WRITE
+[01728] WRITE
+[01729] WRITE
+[01730] WRITE
+[01731] WRITE
+[01732] WRITE
+  [01673]         STATUS       28bytes (2ms)
+  [01674]         STATUS       28bytes (2ms)
+[01733] WRITE
+[01734] WRITE
+  [01675]         STATUS       28bytes (2ms)
+  [01676]         STATUS       28bytes (2ms)
+[01735] WRITE
+[01736] WRITE
+[01737] WRITE
+[01738] WRITE
+[01739] WRITE
+[01740] WRITE
+  [01677]         STATUS       28bytes (2ms)
+  [01678]         STATUS       28bytes (2ms)
+[01741] WRITE
+[01742] WRITE
+  [01679]         STATUS       28bytes (2ms)
+  [01680]         STATUS       28bytes (2ms)
+[01743] WRITE
+[01744] WRITE
+[01745] WRITE
+[01746] WRITE
+  [01681]         STATUS       28bytes (2ms)
+  [01682]         STATUS       28bytes (2ms)
+[01747] WRITE
+[01748] WRITE
+  [01683]         STATUS       28bytes (2ms)
+  [01684]         STATUS       28bytes (2ms)
+[01749] WRITE
+[01750] WRITE
+[01751] WRITE
+[01752] WRITE
+[01753] WRITE
+[01754] WRITE
+  [01685]         STATUS       28bytes (2ms)
+  [01686]         STATUS       28bytes (2ms)
+[01755] WRITE
+[01756] WRITE
+[01757] WRITE
+[01758] WRITE
+  [01687]         STATUS       28bytes (2ms)
+  [01688]         STATUS       28bytes (2ms)
+[01759] WRITE
+[01760] WRITE
+[01761] WRITE
+[01762] WRITE
+  [01689]         STATUS       28bytes (2ms)
+  [01690]         STATUS       28bytes (2ms)
+  [01691]         STATUS       28bytes (2ms)
+  [01692]         STATUS       28bytes (2ms)
+  [01693]         STATUS       28bytes (2ms)
+  [01694]         STATUS       28bytes (2ms)
+  [01695]         STATUS       28bytes (2ms)
+  [01696]         STATUS       28bytes (2ms)
+  [01697]         STATUS       28bytes (3ms)
+  [01698]         STATUS       28bytes (3ms)
+  [01699]         STATUS       28bytes (2ms)
+  [01700]         STATUS       28bytes (2ms)
+  [01701]         STATUS       28bytes (2ms)
+  [01702]         STATUS       28bytes (2ms)
+  [01703]         STATUS       28bytes (2ms)
+  [01704]         STATUS       28bytes (2ms)
+  [01705]         STATUS       28bytes (2ms)
+  [01706]         STATUS       28bytes (2ms)
+  [01707]         STATUS       28bytes (2ms)
+  [01708]         STATUS       28bytes (2ms)
+  [01709]         STATUS       28bytes (2ms)
+  [01710]         STATUS       28bytes (2ms)
+  [01711]         STATUS       28bytes (2ms)
+  [01712]         STATUS       28bytes (2ms)
+  [01713]         STATUS       28bytes (2ms)
+  [01714]         STATUS       28bytes (2ms)
+  [01715]         STATUS       28bytes (2ms)
+  [01716]         STATUS       28bytes (2ms)
+  [01717]         STATUS       28bytes (2ms)
+  [01718]         STATUS       28bytes (2ms)
+  [01719]         STATUS       28bytes (2ms)
+  [01720]         STATUS       28bytes (2ms)
+  [01721]         STATUS       28bytes (2ms)
+  [01722]         STATUS       28bytes (2ms)
+  [01723]         STATUS       28bytes (2ms)
+  [01724]         STATUS       28bytes (2ms)
+  [01725]         STATUS       28bytes (2ms)
+  [01726]         STATUS       28bytes (2ms)
+  [01727]         STATUS       28bytes (2ms)
+  [01728]         STATUS       28bytes (2ms)
+  [01729]         STATUS       28bytes (2ms)
+  [01730]         STATUS       28bytes (2ms)
+  [01731]         STATUS       28bytes (2ms)
+  [01732]         STATUS       28bytes (2ms)
+  [01733]         STATUS       28bytes (2ms)
+  [01734]         STATUS       28bytes (2ms)
+  [01735]         STATUS       28bytes (2ms)
+  [01736]         STATUS       28bytes (2ms)
+  [01737]         STATUS       28bytes (2ms)
+  [01738]         STATUS       28bytes (2ms)
+  [01739]         STATUS       28bytes (2ms)
+  [01740]         STATUS       28bytes (2ms)
+  [01741]         STATUS       28bytes (2ms)
+  [01742]         STATUS       28bytes (2ms)
+  [01743]         STATUS       28bytes (1ms)
+  [01744]         STATUS       28bytes (1ms)
+  [01745]         STATUS       28bytes (1ms)
+  [01746]         STATUS       28bytes (1ms)
+  [01747]         STATUS       28bytes (1ms)
+  [01748]         STATUS       28bytes (1ms)
+  [01749]         STATUS       28bytes (1ms)
+  [01750]         STATUS       28bytes (1ms)
+  [01751]         STATUS       28bytes (1ms)
+  [01752]         STATUS       28bytes (1ms)
+  [01753]         STATUS       28bytes (1ms)
+  [01754]         STATUS       28bytes (1ms)
+  [01755]         STATUS       28bytes (1ms)
+  [01756]         STATUS       28bytes (1ms)
+  [01757]         STATUS       28bytes (1ms)
+  [01758]         STATUS       28bytes (1ms)
+  [01759]         STATUS       28bytes (1ms)
+  [01760]         STATUS       28bytes (1ms)
+  [01761]         STATUS       28bytes (1ms)
+  [01762]         STATUS       28bytes (1ms)
+[01763] LSTAT
+  [01763]          ATTRS       41bytes (0ms)
+[01764] LSTAT
+  [01764]          ATTRS       41bytes (0ms)
+[01765] OPENDIR
+  [01765]         HANDLE       17bytes (0ms)
+[01766] READDIR
+[01767] READDIR
+  [01766]           NAME     2453bytes (0ms)
+  [01767]         STATUS       32bytes (0ms)
+[01768] READDIR
+[01769] READDIR
+readdirplus: /freshness (21 entries)
+  [01768]         STATUS       32bytes (0ms)
+  [01769]         STATUS       32bytes (0ms)
+[01770] CLOSE
+  [01770]         STATUS       28bytes (0ms)
+[01771] CLOSE
+  [01771]         STATUS       28bytes (0ms)
+[01772] LSTAT
+  [01772]         STATUS       33bytes (0ms)
+[01773] OPEN
+[01774] LSTAT
+  [01773]         HANDLE       17bytes (0ms)
+  [01774]          ATTRS       41bytes (0ms)
+[01775] FSTAT
+  [01775]          ATTRS       41bytes (0ms)
+[01776] WRITE
+[01777] WRITE
+[01778] WRITE
+[01779] WRITE
+[01780] WRITE
+[01781] WRITE
+[01782] WRITE
+[01783] WRITE
+[01784] WRITE
+[01785] WRITE
+[01786] WRITE
+[01787] WRITE
+  [01776]         STATUS       28bytes (0ms)
+[01788] WRITE
+[01789] WRITE
+[01790] WRITE
+[01791] WRITE
+  [01777]         STATUS       28bytes (0ms)
+[01792] WRITE
+[01793] WRITE
+  [01778]         STATUS       28bytes (0ms)
+[01794] WRITE
+[01795] WRITE
+  [01779]         STATUS       28bytes (0ms)
+[01796] WRITE
+[01797] WRITE
+  [01780]         STATUS       28bytes (0ms)
+  [01781]         STATUS       28bytes (0ms)
+[01798] WRITE
+[01799] WRITE
+[01800] WRITE
+[01801] WRITE
+  [01782]         STATUS       28bytes (0ms)
+  [01783]         STATUS       28bytes (0ms)
+[01802] WRITE
+[01803] WRITE
+  [01784]         STATUS       28bytes (0ms)
+  [01785]         STATUS       28bytes (0ms)
+[01804] WRITE
+[01805] WRITE
+[01806] WRITE
+[01807] WRITE
+  [01786]         STATUS       28bytes (0ms)
+  [01787]         STATUS       28bytes (0ms)
+[01808] WRITE
+[01809] WRITE
+  [01788]         STATUS       28bytes (0ms)
+  [01789]         STATUS       28bytes (0ms)
+[01810] WRITE
+[01811] WRITE
+[01812] WRITE
+[01813] WRITE
+  [01790]         STATUS       28bytes (0ms)
+  [01791]         STATUS       28bytes (0ms)
+[01814] WRITE
+[01815] WRITE
+[01816] WRITE
+  [01792]         STATUS       28bytes (0ms)
+[01817] WRITE
+  [01793]         STATUS       28bytes (0ms)
+[01818] WRITE
+[01819] WRITE
+  [01794]         STATUS       28bytes (1ms)
+  [01795]         STATUS       28bytes (1ms)
+[01820] WRITE
+[01821] WRITE
+  [01796]         STATUS       28bytes (1ms)
+  [01797]         STATUS       28bytes (1ms)
+[01822] WRITE
+[01823] WRITE
+  [01798]         STATUS       28bytes (1ms)
+  [01799]         STATUS       28bytes (1ms)
+[01824] WRITE
+  [01800]         STATUS       28bytes (1ms)
+[01825] WRITE
+  [01801]         STATUS       28bytes (1ms)
+  [01802]         STATUS       28bytes (1ms)
+  [01803]         STATUS       28bytes (1ms)
+[01826] WRITE
+  [01804]         STATUS       28bytes (1ms)
+[01827] WRITE
+  [01805]         STATUS       28bytes (1ms)
+  [01806]         STATUS       28bytes (0ms)
+  [01807]         STATUS       28bytes (0ms)
+[01828] WRITE
+[01829] WRITE
+  [01808]         STATUS       28bytes (0ms)
+  [01809]         STATUS       28bytes (0ms)
+  [01810]         STATUS       28bytes (0ms)
+  [01811]         STATUS       28bytes (0ms)
+  [01812]         STATUS       28bytes (0ms)
+[01830] WRITE
+[01831] WRITE
+  [01813]         STATUS       28bytes (0ms)
+  [01814]         STATUS       28bytes (0ms)
+  [01815]         STATUS       28bytes (0ms)
+[01832] WRITE
+  [01816]         STATUS       28bytes (0ms)
+[01833] WRITE
+  [01817]         STATUS       28bytes (0ms)
+[01834] WRITE
+[01835] WRITE
+  [01818]         STATUS       28bytes (0ms)
+[01836] WRITE
+[01837] WRITE
+  [01819]         STATUS       28bytes (0ms)
+  [01820]         STATUS       28bytes (0ms)
+  [01821]         STATUS       28bytes (0ms)
+[01838] WRITE
+[01839] WRITE
+  [01822]         STATUS       28bytes (0ms)
+  [01823]         STATUS       28bytes (0ms)
+[01840] WRITE
+[01841] WRITE
+  [01824]         STATUS       28bytes (0ms)
+  [01825]         STATUS       28bytes (0ms)
+[01842] WRITE
+[01843] WRITE
+  [01826]         STATUS       28bytes (0ms)
+  [01827]         STATUS       28bytes (0ms)
+[01844] WRITE
+[01845] WRITE
+  [01828]         STATUS       28bytes (0ms)
+  [01829]         STATUS       28bytes (0ms)
+[01846] WRITE
+[01847] WRITE
+[01848] WRITE
+[01849] WRITE
+  [01830]         STATUS       28bytes (0ms)
+  [01831]         STATUS       28bytes (0ms)
+[01850] WRITE
+[01851] WRITE
+  [01832]         STATUS       28bytes (0ms)
+  [01833]         STATUS       28bytes (0ms)
+[01852] WRITE
+[01853] WRITE
+[01854] WRITE
+[01855] WRITE
+  [01834]         STATUS       28bytes (0ms)
+  [01835]         STATUS       28bytes (0ms)
+[01856] WRITE
+[01857] WRITE
+[01858] WRITE
+[01859] WRITE
+  [01836]         STATUS       28bytes (0ms)
+  [01837]         STATUS       28bytes (0ms)
+[01860] WRITE
+[01861] WRITE
+[01862] WRITE
+[01863] WRITE
+[01864] WRITE
+[01865] WRITE
+  [01838]         STATUS       28bytes (1ms)
+  [01839]         STATUS       28bytes (1ms)
+[01866] WRITE
+[01867] WRITE
+  [01840]         STATUS       28bytes (1ms)
+  [01841]         STATUS       28bytes (1ms)
+[01868] WRITE
+[01869] WRITE
+[01870] WRITE
+[01871] WRITE
+[01872] WRITE
+[01873] WRITE
+  [01842]         STATUS       28bytes (1ms)
+  [01843]         STATUS       28bytes (1ms)
+[01874] WRITE
+[01875] WRITE
+  [01844]         STATUS       28bytes (1ms)
+  [01845]         STATUS       28bytes (1ms)
+[01876] WRITE
+[01877] WRITE
+[01878] WRITE
+[01879] WRITE
+[01880] WRITE
+[01881] WRITE
+[01882] WRITE
+[01883] WRITE
+  [01846]         STATUS       28bytes (1ms)
+  [01847]         STATUS       28bytes (1ms)
+[01884] WRITE
+[01885] WRITE
+  [01848]         STATUS       28bytes (1ms)
+  [01849]         STATUS       28bytes (1ms)
+[01886] WRITE
+[01887] WRITE
+[01888] WRITE
+[01889] WRITE
+[01890] WRITE
+[01891] WRITE
+  [01850]         STATUS       28bytes (1ms)
+  [01851]         STATUS       28bytes (1ms)
+[01892] WRITE
+[01893] WRITE
+  [01852]         STATUS       28bytes (1ms)
+  [01853]         STATUS       28bytes (1ms)
+[01894] WRITE
+[01895] WRITE
+[01896] WRITE
+[01897] WRITE
+[01898] WRITE
+[01899] WRITE
+  [01854]         STATUS       28bytes (1ms)
+  [01855]         STATUS       28bytes (1ms)
+[01900] WRITE
+  [01856]         STATUS       28bytes (1ms)
+[01901] WRITE
+  [01857]         STATUS       28bytes (1ms)
+[01902] WRITE
+[01903] WRITE
+[01904] WRITE
+[01905] WRITE
+  [01858]         STATUS       28bytes (1ms)
+  [01859]         STATUS       28bytes (1ms)
+[01906] WRITE
+[01907] WRITE
+[01908] WRITE
+[01909] WRITE
+  [01860]         STATUS       28bytes (1ms)
+  [01861]         STATUS       28bytes (1ms)
+[01910] WRITE
+[01911] WRITE
+[01912] WRITE
+[01913] WRITE
+[01914] WRITE
+[01915] WRITE
+  [01862]         STATUS       28bytes (1ms)
+  [01863]         STATUS       28bytes (1ms)
+[01916] WRITE
+[01917] WRITE
+  [01864]         STATUS       28bytes (1ms)
+  [01865]         STATUS       28bytes (1ms)
+[01918] WRITE
+[01919] WRITE
+[01920] WRITE
+[01921] WRITE
+[01922] WRITE
+[01923] WRITE
+  [01866]         STATUS       28bytes (2ms)
+  [01867]         STATUS       28bytes (2ms)
+[01924] WRITE
+[01925] WRITE
+  [01868]         STATUS       28bytes (2ms)
+  [01869]         STATUS       28bytes (2ms)
+[01926] WRITE
+[01927] WRITE
+[01928] WRITE
+[01929] WRITE
+[01930] WRITE
+  [01870]         STATUS       28bytes (2ms)
+[01931] WRITE
+  [01871]         STATUS       28bytes (2ms)
+  [01872]         STATUS       28bytes (2ms)
+  [01873]         STATUS       28bytes (2ms)
+[01932] WRITE
+[01933] WRITE
+[01934] WRITE
+[01935] WRITE
+  [01874]         STATUS       28bytes (2ms)
+  [01875]         STATUS       28bytes (2ms)
+  [01876]         STATUS       28bytes (2ms)
+  [01877]         STATUS       28bytes (2ms)
+  [01878]         STATUS       28bytes (2ms)
+  [01879]         STATUS       28bytes (2ms)
+  [01880]         STATUS       28bytes (2ms)
+  [01881]         STATUS       28bytes (2ms)
+  [01882]         STATUS       28bytes (2ms)
+  [01883]         STATUS       28bytes (2ms)
+  [01884]         STATUS       28bytes (2ms)
+  [01885]         STATUS       28bytes (2ms)
+  [01886]         STATUS       28bytes (2ms)
+  [01887]         STATUS       28bytes (2ms)
+  [01888]         STATUS       28bytes (2ms)
+  [01889]         STATUS       28bytes (2ms)
+  [01890]         STATUS       28bytes (2ms)
+  [01891]         STATUS       28bytes (2ms)
+  [01892]         STATUS       28bytes (2ms)
+  [01893]         STATUS       28bytes (2ms)
+  [01894]         STATUS       28bytes (2ms)
+  [01895]         STATUS       28bytes (2ms)
+  [01896]         STATUS       28bytes (2ms)
+  [01897]         STATUS       28bytes (2ms)
+  [01898]         STATUS       28bytes (2ms)
+  [01899]         STATUS       28bytes (2ms)
+  [01900]         STATUS       28bytes (2ms)
+  [01901]         STATUS       28bytes (2ms)
+  [01902]         STATUS       28bytes (1ms)
+  [01903]         STATUS       28bytes (2ms)
+  [01904]         STATUS       28bytes (1ms)
+  [01905]         STATUS       28bytes (2ms)
+  [01906]         STATUS       28bytes (1ms)
+  [01907]         STATUS       28bytes (1ms)
+  [01908]         STATUS       28bytes (1ms)
+  [01909]         STATUS       28bytes (1ms)
+  [01910]         STATUS       28bytes (1ms)
+  [01911]         STATUS       28bytes (1ms)
+  [01912]         STATUS       28bytes (1ms)
+  [01913]         STATUS       28bytes (1ms)
+  [01914]         STATUS       28bytes (1ms)
+  [01915]         STATUS       28bytes (1ms)
+  [01916]         STATUS       28bytes (1ms)
+  [01917]         STATUS       28bytes (1ms)
+  [01918]         STATUS       28bytes (1ms)
+  [01919]         STATUS       28bytes (1ms)
+  [01920]         STATUS       28bytes (1ms)
+  [01921]         STATUS       28bytes (1ms)
+  [01922]         STATUS       28bytes (1ms)
+  [01923]         STATUS       28bytes (1ms)
+  [01924]         STATUS       28bytes (1ms)
+  [01925]         STATUS       28bytes (1ms)
+  [01926]         STATUS       28bytes (1ms)
+  [01927]         STATUS       28bytes (1ms)
+  [01928]         STATUS       28bytes (1ms)
+  [01929]         STATUS       28bytes (1ms)
+  [01930]         STATUS       28bytes (1ms)
+  [01931]         STATUS       28bytes (1ms)
+  [01932]         STATUS       28bytes (1ms)
+  [01933]         STATUS       28bytes (1ms)
+  [01934]         STATUS       28bytes (1ms)
+  [01935]         STATUS       28bytes (1ms)
+[01936] LSTAT
+  [01936]          ATTRS       41bytes (0ms)
+[01937] LSTAT
+  [01937]          ATTRS       41bytes (0ms)
+[01938] OPENDIR
+  [01938]         HANDLE       17bytes (0ms)
+[01939] READDIR
+[01940] READDIR
+  [01939]           NAME     2571bytes (0ms)
+  [01940]         STATUS       32bytes (0ms)
+[01941] READDIR
+[01942] READDIR
+readdirplus: /freshness (22 entries)
+  [01941]         STATUS       32bytes (0ms)
+  [01942]         STATUS       32bytes (0ms)
+[01943] CLOSE
+  [01943]         STATUS       28bytes (0ms)
+[01944] CLOSE
+  [01944]         STATUS       28bytes (0ms)
+[01945] LSTAT
+  [01945]          ATTRS       41bytes (0ms)
+[01946] LSTAT
+  [01946]          ATTRS       41bytes (0ms)
+[01947] OPEN
+[01948] LSTAT
+  [01947]         HANDLE       17bytes (0ms)
+  [01948]          ATTRS       41bytes (0ms)
+[01949] WRITE
+  [01949]         STATUS       28bytes (0ms)
+[01950] CLOSE
+  [01950]         STATUS       28bytes (0ms)
+[01951] LSTAT
+  [01951]          ATTRS       41bytes (0ms)
+[01952] LSTAT
+  [01952]          ATTRS       41bytes (0ms)
+[01953] LSTAT
+  [01953]          ATTRS       41bytes (0ms)
+[01954] LSTAT
+  [01954]          ATTRS       41bytes (0ms)
+[01955] OPEN
+[01956] LSTAT
+  [01955]         HANDLE       17bytes (0ms)
+  [01956]          ATTRS       41bytes (0ms)
+[01957] READ
+  [01957]           DATA       34bytes (0ms)
+[01958] CLOSE
+[01959] LSTAT
+  [01958]         STATUS       28bytes (0ms)
+  [01959]         STATUS       33bytes (0ms)
+[01960] LSTAT
+  [01960]          ATTRS       41bytes (0ms)
+[01961] LSTAT
+  [01961]          ATTRS       41bytes (0ms)
+[01962] LSTAT
+  [01962]          ATTRS       41bytes (0ms)
+[01963] LSTAT
+  [01963]          ATTRS       41bytes (0ms)
+[01964] LSTAT
+  [01964]         STATUS       33bytes (0ms)
+[01965] LSTAT
+  [01965]          ATTRS       41bytes (0ms)
+[01966] OPEN
+[01967] LSTAT
+  [01966]         HANDLE       17bytes (0ms)
+  [01967]          ATTRS       41bytes (0ms)
+[01968] READ
+  [01968]           DATA      157bytes (0ms)
+[01969] CLOSE
+[01970] LSTAT
+  [01969]         STATUS       28bytes (0ms)
+  [01970]         STATUS       33bytes (0ms)
+[01971] OPEN
+[01972] LSTAT
+  [01971]         HANDLE       17bytes (0ms)
+  [01972]          ATTRS       41bytes (0ms)
+[01973] LSTAT
+  [01973]          ATTRS       41bytes (0ms)
+[01974] READ
+  [01974]           DATA      157bytes (0ms)
+[01975] CLOSE
+[01976] LSTAT
+  [01975]         STATUS       28bytes (0ms)
+  [01976]          ATTRS       41bytes (0ms)
+[01977] OPEN
+[01978] LSTAT
+  [01977]         HANDLE       17bytes (0ms)
+  [01978]          ATTRS       41bytes (0ms)
+[01979] LSTAT
+  [01979]          ATTRS       41bytes (0ms)
+[01980] READ
+  [01980]           DATA      157bytes (0ms)
+[01981] CLOSE
+[01982] LSTAT
+  [01981]         STATUS       28bytes (0ms)
+  [01982]         STATUS       33bytes (0ms)
+[01983] LSTAT
+  [01983]          ATTRS       41bytes (0ms)
+[01984] OPEN
+[01985] LSTAT
+  [01984]         HANDLE       17bytes (0ms)
+  [01985]          ATTRS       41bytes (0ms)
+[01986] READ
+  [01986]           DATA       34bytes (0ms)
+[01987] CLOSE
+[01988] LSTAT
+  [01987]         STATUS       28bytes (0ms)
+  [01988]          ATTRS       41bytes (0ms)
+[01989] LSTAT
+  [01989]          ATTRS       41bytes (0ms)
+[01990] OPEN
+[01991] LSTAT
+  [01990]         HANDLE       17bytes (0ms)
+  [01991]          ATTRS       41bytes (0ms)
+[01992] READ
+  [01992]           DATA       54bytes (0ms)
+[01993] CLOSE
+[01994] LSTAT
+  [01993]         STATUS       28bytes (0ms)
+  [01994]         STATUS       33bytes (0ms)
+[01995] LSTAT
+  [01995]         STATUS       33bytes (0ms)
+[01996] LSTAT
+  [01996]         STATUS       33bytes (0ms)
+[01997] LSTAT
+  [01997]          ATTRS       41bytes (0ms)
+[01998] OPEN
+[01999] LSTAT
+  [01998]         HANDLE       17bytes (0ms)
+  [01999]          ATTRS       41bytes (0ms)
+[02000] READ
+  [02000]           DATA    13582bytes (0ms)
+[02001] CLOSE
+[02002] LSTAT
+  [02002]          ATTRS       41bytes (0ms)
+  [02001]         STATUS       28bytes (0ms)
+[02003] OPEN
+[02004] LSTAT
+  [02003]         HANDLE       17bytes (0ms)
+  [02004]          ATTRS       41bytes (0ms)
+[02005] LSTAT
+  [02005]         STATUS       33bytes (0ms)
+[02006] LSTAT
+  [02006]          ATTRS       41bytes (0ms)
+[02007] LSTAT
+  [02007]         STATUS       33bytes (0ms)
+[02008] READ
+  [02008]           DATA       77bytes (0ms)
+[02009] CLOSE
+[02010] LSTAT
+  [02010]          ATTRS       41bytes (0ms)
+  [02009]         STATUS       28bytes (0ms)
+[02011] OPEN
+[02012] LSTAT
+  [02011]         HANDLE       17bytes (0ms)
+  [02012]          ATTRS       41bytes (0ms)
+[02013] READ
+  [02013]           DATA       68bytes (0ms)
+[02014] CLOSE
+[02015] LSTAT
+  [02015]          ATTRS       41bytes (0ms)
+  [02014]         STATUS       28bytes (0ms)
+[02016] OPEN
+[02017] LSTAT
+  [02016]         HANDLE       17bytes (0ms)
+  [02017]          ATTRS       41bytes (0ms)
+[02018] READ
+  [02018]           DATA       68bytes (0ms)
+[02019] CLOSE
+[02020] LSTAT
+  [02019]         STATUS       28bytes (0ms)
+  [02020]          ATTRS       41bytes (0ms)
+[02021] OPEN
+[02022] LSTAT
+  [02021]         HANDLE       17bytes (0ms)
+  [02022]          ATTRS       41bytes (0ms)
+[02023] READ
+  [02023]           DATA       68bytes (0ms)
+[02024] CLOSE
+[02025] LSTAT
+  [02024]         STATUS       28bytes (0ms)
+  [02025]          ATTRS       41bytes (0ms)
+[02026] OPEN
+[02027] LSTAT
+  [02026]         HANDLE       17bytes (0ms)
+  [02027]          ATTRS       41bytes (0ms)
+[02028] READ
+  [02028]           DATA       68bytes (0ms)
+[02029] CLOSE
+[02030] LSTAT
+  [02029]         STATUS       28bytes (0ms)
+  [02030]          ATTRS       41bytes (0ms)
+[02031] OPEN
+[02032] LSTAT
+  [02031]         HANDLE       17bytes (0ms)
+  [02032]          ATTRS       41bytes (0ms)
+[02033] READ
+  [02033]           DATA       68bytes (0ms)
+[02034] CLOSE
+[02035] LSTAT
+  [02034]         STATUS       28bytes (0ms)
+  [02035]          ATTRS       41bytes (0ms)
+[02036] OPEN
+[02037] LSTAT
+  [02036]         HANDLE       17bytes (0ms)
+  [02037]          ATTRS       41bytes (0ms)
+[02038] READ
+  [02038]           DATA       68bytes (0ms)
+[02039] CLOSE
+[02040] LSTAT
+  [02039]         STATUS       28bytes (0ms)
+  [02040]          ATTRS       41bytes (0ms)
+[02041] OPEN
+[02042] LSTAT
+  [02041]         HANDLE       17bytes (0ms)
+  [02042]          ATTRS       41bytes (0ms)
+[02043] READ
+  [02043]           DATA       68bytes (0ms)
+[02044] CLOSE
+[02045] LSTAT
+  [02044]         STATUS       28bytes (0ms)
+  [02045]          ATTRS       41bytes (0ms)
+[02046] OPEN
+[02047] LSTAT
+  [02046]         HANDLE       17bytes (0ms)
+  [02047]          ATTRS       41bytes (0ms)
+[02048] READ
+  [02048]           DATA       68bytes (0ms)
+[02049] CLOSE
+[02050] LSTAT
+  [02049]         STATUS       28bytes (0ms)
+  [02050]          ATTRS       41bytes (0ms)
+[02051] OPEN
+[02052] LSTAT
+  [02051]         HANDLE       17bytes (0ms)
+  [02052]          ATTRS       41bytes (0ms)
+[02053] READ
+  [02053]           DATA       68bytes (0ms)
+[02054] CLOSE
+[02055] LSTAT
+  [02054]         STATUS       28bytes (0ms)
+  [02055]          ATTRS       41bytes (0ms)
+[02056] OPEN
+[02057] LSTAT
+  [02056]         HANDLE       17bytes (0ms)
+  [02057]          ATTRS       41bytes (0ms)
+[02058] READ
+  [02058]           DATA       73bytes (0ms)
+[02059] CLOSE
+[02060] LSTAT
+  [02059]         STATUS       28bytes (0ms)
+  [02060]          ATTRS       41bytes (0ms)
+[02061] OPEN
+[02062] LSTAT
+  [02061]         HANDLE       17bytes (0ms)
+  [02062]          ATTRS       41bytes (0ms)
+[02063] READ
+  [02063]           DATA       73bytes (0ms)
+[02064] CLOSE
+[02065] LSTAT
+  [02064]         STATUS       28bytes (0ms)
+  [02065]          ATTRS       41bytes (0ms)
+[02066] OPEN
+[02067] LSTAT
+  [02066]         HANDLE       17bytes (0ms)
+  [02067]          ATTRS       41bytes (0ms)
+[02068] READ
+  [02068]           DATA       73bytes (0ms)
+[02069] CLOSE
+[02070] LSTAT
+  [02069]         STATUS       28bytes (0ms)
+  [02070]          ATTRS       41bytes (0ms)
+[02071] OPEN
+[02072] LSTAT
+  [02071]         HANDLE       17bytes (0ms)
+  [02072]          ATTRS       41bytes (0ms)
+[02073] READ
+  [02073]           DATA       73bytes (0ms)
+[02074] CLOSE
+[02075] LSTAT
+  [02074]         STATUS       28bytes (0ms)
+  [02075]          ATTRS       41bytes (0ms)
+[02076] OPEN
+[02077] LSTAT
+  [02076]         HANDLE       17bytes (0ms)
+  [02077]          ATTRS       41bytes (0ms)
+[02078] READ
+  [02078]           DATA       73bytes (0ms)
+[02079] CLOSE
+[02080] LSTAT
+  [02079]         STATUS       28bytes (0ms)
+  [02080]          ATTRS       41bytes (0ms)
+[02081] OPEN
+[02082] LSTAT
+  [02081]         HANDLE       17bytes (0ms)
+  [02082]          ATTRS       41bytes (0ms)
+[02083] LSTAT
+  [02083]         STATUS       33bytes (0ms)
+[02084] READ
+  [02084]           DATA       88bytes (0ms)
+[02085] CLOSE
+[02086] LSTAT
+  [02085]         STATUS       28bytes (0ms)
+  [02086]          ATTRS       41bytes (0ms)
+[02087] LSTAT
+  [02087]          ATTRS       41bytes (0ms)
+[02088] OPEN
+[02089] LSTAT
+  [02088]         HANDLE       17bytes (0ms)
+  [02089]          ATTRS       41bytes (0ms)
+[02090] READ
+  [02090]           DATA       88bytes (0ms)
+[02091] CLOSE
+[02092] LSTAT
+  [02091]         STATUS       28bytes (0ms)
+  [02092]          ATTRS       41bytes (0ms)
+[02093] OPEN
+[02094] LSTAT
+  [02093]         HANDLE       17bytes (0ms)
+  [02094]          ATTRS       41bytes (0ms)
+[02095] READ
+  [02095]           DATA       88bytes (0ms)
+[02096] CLOSE
+[02097] LSTAT
+  [02096]         STATUS       28bytes (0ms)
+  [02097]          ATTRS       41bytes (0ms)
+[02098] OPEN
+[02099] LSTAT
+  [02098]         HANDLE       17bytes (0ms)
+  [02099]          ATTRS       41bytes (0ms)
+[02100] READ
+  [02100]           DATA       88bytes (0ms)
+[02101] CLOSE
+[02102] LSTAT
+  [02101]         STATUS       28bytes (0ms)
+  [02102]          ATTRS       41bytes (0ms)
+[02103] OPEN
+[02104] LSTAT
+  [02103]         HANDLE       17bytes (0ms)
+  [02104]          ATTRS       41bytes (0ms)
+[02105] READ
+  [02105]           DATA       88bytes (0ms)
+[02106] CLOSE
+[02107] LSTAT
+  [02106]         STATUS       28bytes (0ms)
+  [02107]          ATTRS       41bytes (0ms)
+[02108] OPEN
+[02109] LSTAT
+  [02108]         HANDLE       17bytes (0ms)
+  [02109]          ATTRS       41bytes (0ms)
+[02110] READ
+  [02110]           DATA       88bytes (0ms)
+[02111] CLOSE
+[02112] LSTAT
+  [02111]         STATUS       28bytes (0ms)
+  [02112]          ATTRS       41bytes (0ms)
+[02113] OPEN
+[02114] LSTAT
+  [02113]         HANDLE       17bytes (0ms)
+  [02114]          ATTRS       41bytes (0ms)
+[02115] READ
+  [02115]           DATA       88bytes (0ms)
+[02116] CLOSE
+[02117] LSTAT
+  [02116]         STATUS       28bytes (0ms)
+  [02117]          ATTRS       41bytes (0ms)
+[02118] OPEN
+[02119] LSTAT
+  [02118]         HANDLE       17bytes (0ms)
+  [02119]          ATTRS       41bytes (0ms)
+[02120] READ
+  [02120]           DATA       88bytes (0ms)
+[02121] CLOSE
+[02122] LSTAT
+  [02121]         STATUS       28bytes (0ms)
+  [02122]          ATTRS       41bytes (0ms)
+[02123] OPEN
+[02124] LSTAT
+  [02123]         HANDLE       17bytes (0ms)
+  [02124]          ATTRS       41bytes (0ms)
+[02125] READ
+  [02125]           DATA       88bytes (0ms)
+[02126] CLOSE
+[02127] LSTAT
+  [02126]         STATUS       28bytes (0ms)
+  [02127]          ATTRS       41bytes (0ms)
+[02128] OPEN
+[02129] LSTAT
+  [02128]         HANDLE       17bytes (0ms)
+  [02129]          ATTRS       41bytes (0ms)
+[02130] READ
+  [02130]           DATA       93bytes (0ms)
+[02131] CLOSE
+[02132] LSTAT
+  [02132]          ATTRS       41bytes (0ms)
+  [02131]         STATUS       28bytes (0ms)
+[02133] OPEN
+[02134] LSTAT
+  [02133]         HANDLE       17bytes (0ms)
+  [02134]          ATTRS       41bytes (0ms)
+[02135] READ
+  [02135]           DATA       93bytes (0ms)
+[02136] CLOSE
+[02137] LSTAT
+  [02136]         STATUS       28bytes (0ms)
+  [02137]          ATTRS       41bytes (0ms)
+[02138] OPEN
+[02139] LSTAT
+  [02138]         HANDLE       17bytes (0ms)
+  [02139]          ATTRS       41bytes (0ms)
+[02140] READ
+  [02140]           DATA       93bytes (0ms)
+[02141] CLOSE
+[02142] LSTAT
+  [02141]         STATUS       28bytes (0ms)
+  [02142]          ATTRS       41bytes (0ms)
+[02143] OPEN
+[02144] LSTAT
+  [02143]         HANDLE       17bytes (0ms)
+  [02144]          ATTRS       41bytes (0ms)
+[02145] READ
+  [02145]           DATA       93bytes (0ms)
+[02146] CLOSE
+[02147] LSTAT
+  [02146]         STATUS       28bytes (0ms)
+  [02147]          ATTRS       41bytes (0ms)
+[02148] OPEN
+[02149] LSTAT
+  [02148]         HANDLE       17bytes (0ms)
+  [02149]          ATTRS       41bytes (0ms)
+[02150] READ
+  [02150]           DATA       93bytes (0ms)
+[02151] CLOSE
+[02152] LSTAT
+  [02151]         STATUS       28bytes (0ms)
+  [02152]          ATTRS       41bytes (0ms)
+[02153] LSTAT
+  [02153]          ATTRS       41bytes (0ms)
+[02154] OPEN
+[02155] LSTAT
+  [02154]         HANDLE       17bytes (0ms)
+  [02155]          ATTRS       41bytes (0ms)
+[02156] LSTAT
+  [02156]         STATUS       33bytes (0ms)
+[02157] READ
+  [02157]           DATA       93bytes (0ms)
+[02158] CLOSE
+[02159] LSTAT
+  [02158]         STATUS       28bytes (0ms)
+  [02159]          ATTRS       41bytes (0ms)
+[02160] OPEN
+[02161] LSTAT
+  [02160]         HANDLE       17bytes (0ms)
+  [02161]          ATTRS       41bytes (0ms)
+[02162] READ
+  [02162]           DATA       93bytes (0ms)
+[02163] CLOSE
+[02164] LSTAT
+  [02163]         STATUS       28bytes (0ms)
+  [02164]          ATTRS       41bytes (0ms)
+[02165] OPEN
+[02166] LSTAT
+  [02165]         HANDLE       17bytes (0ms)
+  [02166]          ATTRS       41bytes (0ms)
+[02167] READ
+  [02167]           DATA       93bytes (0ms)
+[02168] CLOSE
+[02169] LSTAT
+  [02168]         STATUS       28bytes (0ms)
+  [02169]          ATTRS       41bytes (0ms)
+[02170] OPEN
+[02171] LSTAT
+  [02170]         HANDLE       17bytes (0ms)
+  [02171]          ATTRS       41bytes (0ms)
+[02172] READ
+  [02172]           DATA       93bytes (0ms)
+[02173] CLOSE
+[02174] LSTAT
+  [02173]         STATUS       28bytes (0ms)
+  [02174]          ATTRS       41bytes (0ms)
+[02175] OPEN
+[02176] LSTAT
+  [02175]         HANDLE       17bytes (0ms)
+  [02176]          ATTRS       41bytes (0ms)
+[02177] READ
+  [02177]           DATA       93bytes (0ms)
+[02178] CLOSE
+[02179] LSTAT
+  [02178]         STATUS       28bytes (0ms)
+  [02179]          ATTRS       41bytes (0ms)
+[02180] OPEN
+[02181] LSTAT
+  [02180]         HANDLE       17bytes (0ms)
+  [02181]          ATTRS       41bytes (0ms)
+[02182] READ
+  [02182]           DATA       93bytes (0ms)
+[02183] CLOSE
+[02184] LSTAT
+  [02183]         STATUS       28bytes (0ms)
+  [02184]          ATTRS       41bytes (0ms)
+[02185] OPEN
+[02186] LSTAT
+  [02185]         HANDLE       17bytes (0ms)
+  [02186]          ATTRS       41bytes (0ms)
+[02187] READ
+  [02187]           DATA       93bytes (0ms)
+[02188] CLOSE
+[02189] LSTAT
+  [02188]         STATUS       28bytes (0ms)
+  [02189]          ATTRS       41bytes (0ms)
+[02190] OPEN
+[02191] LSTAT
+  [02190]         HANDLE       17bytes (0ms)
+  [02191]          ATTRS       41bytes (0ms)
+[02192] READ
+  [02192]           DATA       93bytes (0ms)
+[02193] CLOSE
+[02194] LSTAT
+  [02193]         STATUS       28bytes (0ms)
+  [02194]          ATTRS       41bytes (0ms)
+[02195] OPEN
+[02196] LSTAT
+  [02195]         HANDLE       17bytes (0ms)
+  [02196]          ATTRS       41bytes (0ms)
+[02197] READ
+  [02197]           DATA       93bytes (0ms)
+[02198] CLOSE
+[02199] LSTAT
+  [02198]         STATUS       28bytes (0ms)
+  [02199]          ATTRS       41bytes (0ms)
+[02200] OPEN
+[02201] LSTAT
+  [02200]         HANDLE       17bytes (0ms)
+  [02201]          ATTRS       41bytes (0ms)
+[02202] READ
+  [02202]           DATA       93bytes (0ms)
+[02203] CLOSE
+[02204] LSTAT
+  [02203]         STATUS       28bytes (0ms)
+  [02204]          ATTRS       41bytes (0ms)
+[02205] OPEN
+[02206] LSTAT
+  [02205]         HANDLE       17bytes (0ms)
+  [02206]          ATTRS       41bytes (0ms)
+[02207] READ
+  [02207]           DATA       98bytes (0ms)
+[02208] CLOSE
+[02209] LSTAT
+  [02208]         STATUS       28bytes (0ms)
+  [02209]          ATTRS       41bytes (0ms)
+[02210] OPEN
+[02211] LSTAT
+  [02210]         HANDLE       17bytes (0ms)
+  [02211]          ATTRS       41bytes (0ms)
+[02212] READ
+  [02212]           DATA       98bytes (0ms)
+[02213] CLOSE
+[02214] LSTAT
+  [02213]         STATUS       28bytes (0ms)
+  [02214]          ATTRS       41bytes (0ms)
+[02215] OPEN
+[02216] LSTAT
+  [02215]         HANDLE       17bytes (0ms)
+  [02216]          ATTRS       41bytes (0ms)
+[02217] READ
+  [02217]           DATA       98bytes (0ms)
+[02218] CLOSE
+[02219] LSTAT
+  [02218]         STATUS       28bytes (0ms)
+  [02219]          ATTRS       41bytes (0ms)
+[02220] OPEN
+[02221] LSTAT
+  [02220]         HANDLE       17bytes (0ms)
+  [02221]          ATTRS       41bytes (0ms)
+[02222] READ
+  [02222]           DATA       98bytes (0ms)
+[02223] CLOSE
+[02224] LSTAT
+  [02223]         STATUS       28bytes (0ms)
+  [02224]          ATTRS       41bytes (0ms)
+[02225] OPEN
+[02226] LSTAT
+  [02225]         HANDLE       17bytes (0ms)
+  [02226]          ATTRS       41bytes (0ms)
+[02227] READ
+  [02227]           DATA       98bytes (0ms)
+[02228] CLOSE
+[02229] LSTAT
+  [02229]          ATTRS       41bytes (0ms)
+  [02228]         STATUS       28bytes (0ms)
+[02230] LSTAT
+  [02230]          ATTRS       41bytes (0ms)
+[02231] OPEN
+[02232] LSTAT
+  [02231]         HANDLE       17bytes (0ms)
+  [02232]          ATTRS       41bytes (0ms)
+[02233] LSTAT
+  [02233]         STATUS       33bytes (0ms)
+[02234] READ
+  [02234]           DATA       88bytes (0ms)
+[02235] CLOSE
+[02236] LSTAT
+  [02236]          ATTRS       41bytes (0ms)
+  [02235]         STATUS       28bytes (0ms)
+[02237] OPEN
+[02238] LSTAT
+  [02237]         HANDLE       17bytes (0ms)
+  [02238]          ATTRS       41bytes (0ms)
+[02239] READ
+  [02239]           DATA       88bytes (0ms)
+[02240] CLOSE
+[02241] LSTAT
+  [02240]         STATUS       28bytes (0ms)
+  [02241]          ATTRS       41bytes (0ms)
+[02242] OPEN
+[02243] LSTAT
+  [02242]         HANDLE       17bytes (0ms)
+  [02243]          ATTRS       41bytes (0ms)
+[02244] READ
+  [02244]           DATA       88bytes (0ms)
+[02245] CLOSE
+[02246] LSTAT
+  [02245]         STATUS       28bytes (0ms)
+  [02246]          ATTRS       41bytes (0ms)
+[02247] OPEN
+[02248] LSTAT
+  [02247]         HANDLE       17bytes (0ms)
+  [02248]          ATTRS       41bytes (0ms)
+[02249] READ
+  [02249]           DATA       88bytes (0ms)
+[02250] CLOSE
+[02251] LSTAT
+  [02250]         STATUS       28bytes (0ms)
+  [02251]          ATTRS       41bytes (0ms)
+[02252] OPEN
+[02253] LSTAT
+  [02252]         HANDLE       17bytes (0ms)
+  [02253]          ATTRS       41bytes (0ms)
+[02254] READ
+  [02254]           DATA       88bytes (0ms)
+[02255] CLOSE
+[02256] LSTAT
+  [02255]         STATUS       28bytes (0ms)
+  [02256]          ATTRS       41bytes (0ms)
+[02257] OPEN
+[02258] LSTAT
+  [02257]         HANDLE       17bytes (0ms)
+  [02258]          ATTRS       41bytes (0ms)
+[02259] READ
+  [02259]           DATA       88bytes (0ms)
+[02260] CLOSE
+[02261] LSTAT
+  [02260]         STATUS       28bytes (0ms)
+  [02261]          ATTRS       41bytes (0ms)
+[02262] OPEN
+[02263] LSTAT
+  [02262]         HANDLE       17bytes (0ms)
+  [02263]          ATTRS       41bytes (0ms)
+[02264] READ
+  [02264]           DATA       88bytes (0ms)
+[02265] CLOSE
+[02266] LSTAT
+  [02265]         STATUS       28bytes (0ms)
+  [02266]          ATTRS       41bytes (0ms)
+[02267] OPEN
+[02268] LSTAT
+  [02267]         HANDLE       17bytes (0ms)
+  [02268]          ATTRS       41bytes (0ms)
+[02269] READ
+  [02269]           DATA       88bytes (0ms)
+[02270] CLOSE
+[02271] LSTAT
+  [02270]         STATUS       28bytes (0ms)
+  [02271]          ATTRS       41bytes (0ms)
+[02272] OPEN
+[02273] LSTAT
+  [02272]         HANDLE       17bytes (0ms)
+  [02273]          ATTRS       41bytes (0ms)
+[02274] READ
+  [02274]           DATA       88bytes (0ms)
+[02275] CLOSE
+[02276] LSTAT
+  [02275]         STATUS       28bytes (0ms)
+  [02276]          ATTRS       41bytes (0ms)
+[02277] OPEN
+[02278] LSTAT
+  [02277]         HANDLE       17bytes (0ms)
+  [02278]          ATTRS       41bytes (0ms)
+[02279] READ
+  [02279]           DATA       88bytes (0ms)
+[02280] CLOSE
+[02281] LSTAT
+  [02280]         STATUS       28bytes (0ms)
+  [02281]          ATTRS       41bytes (0ms)
+[02282] OPEN
+[02283] LSTAT
+  [02282]         HANDLE       17bytes (0ms)
+  [02283]          ATTRS       41bytes (0ms)
+[02284] READ
+  [02284]           DATA       93bytes (0ms)
+[02285] CLOSE
+[02286] LSTAT
+  [02285]         STATUS       28bytes (0ms)
+  [02286]          ATTRS       41bytes (0ms)
+[02287] OPEN
+[02288] LSTAT
+  [02287]         HANDLE       17bytes (0ms)
+  [02288]          ATTRS       41bytes (0ms)
+[02289] READ
+  [02289]           DATA       93bytes (0ms)
+[02290] CLOSE
+[02291] LSTAT
+  [02290]         STATUS       28bytes (0ms)
+  [02291]          ATTRS       41bytes (0ms)
+[02292] OPEN
+[02293] LSTAT
+  [02292]         HANDLE       17bytes (0ms)
+  [02293]          ATTRS       41bytes (0ms)
+[02294] READ
+  [02294]           DATA       93bytes (0ms)
+[02295] CLOSE
+[02296] LSTAT
+  [02295]         STATUS       28bytes (0ms)
+  [02296]          ATTRS       41bytes (0ms)
+[02297] OPEN
+[02298] LSTAT
+  [02297]         HANDLE       17bytes (0ms)
+  [02298]          ATTRS       41bytes (0ms)
+[02299] READ
+  [02299]           DATA       93bytes (0ms)
+[02300] CLOSE
+[02301] LSTAT
+  [02300]         STATUS       28bytes (0ms)
+  [02301]          ATTRS       41bytes (0ms)
+[02302] OPEN
+[02303] LSTAT
+  [02302]         HANDLE       17bytes (0ms)
+  [02303]          ATTRS       41bytes (0ms)
+[02304] READ
+  [02304]           DATA       93bytes (0ms)
+[02305] CLOSE
+[02306] LSTAT
+  [02306]          ATTRS       41bytes (0ms)
+  [02305]         STATUS       28bytes (0ms)
+[02307] LSTAT
+  [02307]          ATTRS       41bytes (0ms)
+[02308] OPEN
+[02309] LSTAT
+  [02308]         HANDLE       17bytes (0ms)
+  [02309]          ATTRS       41bytes (0ms)
+[02310] LSTAT
+  [02310]         STATUS       33bytes (0ms)
+[02311] READ
+  [02311]           DATA       88bytes (0ms)
+[02312] CLOSE
+[02313] LSTAT
+  [02312]         STATUS       28bytes (0ms)
+  [02313]          ATTRS       41bytes (0ms)
+[02314] OPEN
+[02315] LSTAT
+  [02314]         HANDLE       17bytes (0ms)
+  [02315]          ATTRS       41bytes (0ms)
+[02316] READ
+  [02316]           DATA       88bytes (0ms)
+[02317] CLOSE
+[02318] LSTAT
+  [02317]         STATUS       28bytes (0ms)
+  [02318]          ATTRS       41bytes (0ms)
+[02319] OPEN
+[02320] LSTAT
+  [02319]         HANDLE       17bytes (0ms)
+  [02320]          ATTRS       41bytes (0ms)
+[02321] READ
+  [02321]           DATA       88bytes (0ms)
+[02322] CLOSE
+[02323] LSTAT
+  [02322]         STATUS       28bytes (0ms)
+  [02323]          ATTRS       41bytes (0ms)
+[02324] OPEN
+[02325] LSTAT
+  [02324]         HANDLE       17bytes (0ms)
+  [02325]          ATTRS       41bytes (0ms)
+[02326] READ
+  [02326]           DATA       88bytes (0ms)
+[02327] LSTAT
+[02328] CLOSE
+  [02328]         STATUS       28bytes (0ms)
+  [02327]          ATTRS       41bytes (0ms)
+[02329] OPEN
+[02330] LSTAT
+  [02329]         HANDLE       17bytes (0ms)
+  [02330]          ATTRS       41bytes (0ms)
+[02331] READ
+  [02331]           DATA       88bytes (0ms)
+[02332] CLOSE
+[02333] LSTAT
+  [02332]         STATUS       28bytes (0ms)
+  [02333]          ATTRS       41bytes (0ms)
+[02334] OPEN
+[02335] LSTAT
+  [02334]         HANDLE       17bytes (0ms)
+  [02335]          ATTRS       41bytes (0ms)
+[02336] READ
+  [02336]           DATA       88bytes (0ms)
+[02337] CLOSE
+[02338] LSTAT
+  [02337]         STATUS       28bytes (0ms)
+  [02338]          ATTRS       41bytes (0ms)
+[02339] OPEN
+[02340] LSTAT
+  [02339]         HANDLE       17bytes (0ms)
+  [02340]          ATTRS       41bytes (0ms)
+[02341] READ
+  [02341]           DATA       88bytes (0ms)
+[02342] LSTAT
+[02343] CLOSE
+  [02342]          ATTRS       41bytes (0ms)
+  [02343]         STATUS       28bytes (0ms)
+[02344] OPEN
+[02345] LSTAT
+  [02344]         HANDLE       17bytes (0ms)
+  [02345]          ATTRS       41bytes (0ms)
+[02346] READ
+  [02346]           DATA       97bytes (0ms)
+[02347] CLOSE
+[02348] LSTAT
+  [02347]         STATUS       28bytes (0ms)
+  [02348]          ATTRS       41bytes (0ms)
+[02349] OPEN
+[02350] LSTAT
+  [02349]         HANDLE       17bytes (0ms)
+  [02350]          ATTRS       41bytes (0ms)
+[02351] READ
+  [02351]           DATA       88bytes (0ms)
+[02352] CLOSE
+[02353] LSTAT
+  [02352]         STATUS       28bytes (0ms)
+  [02353]          ATTRS       41bytes (0ms)
+[02354] OPEN
+[02355] LSTAT
+  [02354]         HANDLE       17bytes (0ms)
+  [02355]          ATTRS       41bytes (0ms)
+[02356] READ
+  [02356]           DATA       88bytes (0ms)
+[02357] LSTAT
+[02358] CLOSE
+  [02358]         STATUS       28bytes (0ms)
+  [02357]          ATTRS       41bytes (0ms)
+[02359] OPEN
+[02360] LSTAT
+  [02359]         HANDLE       17bytes (0ms)
+  [02360]          ATTRS       41bytes (0ms)
+[02361] READ
+  [02361]           DATA       93bytes (0ms)
+[02362] CLOSE
+[02363] LSTAT
+  [02363]          ATTRS       41bytes (0ms)
+  [02362]         STATUS       28bytes (0ms)
+[02364] OPEN
+[02365] LSTAT
+  [02364]         HANDLE       17bytes (0ms)
+  [02365]          ATTRS       41bytes (0ms)
+[02366] READ
+  [02366]           DATA       93bytes (0ms)
+[02367] CLOSE
+[02368] LSTAT
+  [02367]         STATUS       28bytes (0ms)
+  [02368]          ATTRS       41bytes (0ms)
+[02369] OPEN
+[02370] LSTAT
+  [02369]         HANDLE       17bytes (0ms)
+  [02370]          ATTRS       41bytes (0ms)
+[02371] READ
+  [02371]           DATA       93bytes (0ms)
+[02372] CLOSE
+[02373] LSTAT
+  [02373]          ATTRS       41bytes (0ms)
+  [02372]         STATUS       28bytes (0ms)
+[02374] OPEN
+[02375] LSTAT
+  [02374]         HANDLE       17bytes (0ms)
+  [02375]          ATTRS       41bytes (0ms)
+[02376] READ
+  [02376]           DATA       93bytes (0ms)
+[02377] CLOSE
+[02378] LSTAT
+  [02377]         STATUS       28bytes (0ms)
+  [02378]          ATTRS       41bytes (0ms)
+[02379] OPEN
+[02380] LSTAT
+  [02379]         HANDLE       17bytes (0ms)
+  [02380]          ATTRS       41bytes (0ms)
+[02381] READ
+  [02381]           DATA       93bytes (0ms)
+[02382] CLOSE
+[02383] LSTAT
+  [02382]         STATUS       28bytes (0ms)
+  [02383]          ATTRS       41bytes (0ms)
+[02384] LSTAT
+  [02384]          ATTRS       41bytes (0ms)
+[02385] OPEN
+[02386] LSTAT
+  [02385]         HANDLE       17bytes (0ms)
+  [02386]          ATTRS       41bytes (0ms)
+[02387] LSTAT
+  [02387]         STATUS       33bytes (0ms)
+[02388] READ
+  [02388]           DATA       88bytes (0ms)
+[02389] CLOSE
+[02390] LSTAT
+  [02389]         STATUS       28bytes (0ms)
+  [02390]          ATTRS       41bytes (0ms)
+[02391] OPEN
+[02392] LSTAT
+  [02391]         HANDLE       17bytes (0ms)
+  [02392]          ATTRS       41bytes (0ms)
+[02393] READ
+  [02393]           DATA       88bytes (0ms)
+[02394] CLOSE
+[02395] LSTAT
+  [02394]         STATUS       28bytes (0ms)
+  [02395]          ATTRS       41bytes (0ms)
+[02396] OPEN
+[02397] LSTAT
+  [02396]         HANDLE       17bytes (0ms)
+  [02397]          ATTRS       41bytes (0ms)
+[02398] READ
+  [02398]           DATA       88bytes (0ms)
+[02399] CLOSE
+[02400] LSTAT
+  [02399]         STATUS       28bytes (0ms)
+  [02400]          ATTRS       41bytes (0ms)
+[02401] OPEN
+[02402] LSTAT
+  [02401]         HANDLE       17bytes (0ms)
+  [02402]          ATTRS       41bytes (0ms)
+[02403] READ
+  [02403]           DATA       88bytes (0ms)
+[02404] CLOSE
+[02405] LSTAT
+  [02404]         STATUS       28bytes (0ms)
+  [02405]          ATTRS       41bytes (0ms)
+[02406] OPEN
+[02407] LSTAT
+  [02406]         HANDLE       17bytes (0ms)
+  [02407]          ATTRS       41bytes (0ms)
+[02408] READ
+  [02408]           DATA       88bytes (0ms)
+[02409] CLOSE
+[02410] LSTAT
+  [02409]         STATUS       28bytes (0ms)
+  [02410]          ATTRS       41bytes (0ms)
+[02411] OPEN
+[02412] LSTAT
+  [02411]         HANDLE       17bytes (0ms)
+  [02412]          ATTRS       41bytes (0ms)
+[02413] READ
+  [02413]           DATA       88bytes (0ms)
+[02414] CLOSE
+[02415] LSTAT
+  [02414]         STATUS       28bytes (0ms)
+  [02415]          ATTRS       41bytes (0ms)
+[02416] OPEN
+[02417] LSTAT
+  [02416]         HANDLE       17bytes (0ms)
+  [02417]          ATTRS       41bytes (0ms)
+[02418] READ
+  [02418]           DATA       88bytes (0ms)
+[02419] CLOSE
+[02420] LSTAT
+  [02419]         STATUS       28bytes (0ms)
+  [02420]          ATTRS       41bytes (0ms)
+[02421] OPEN
+[02422] LSTAT
+  [02421]         HANDLE       17bytes (0ms)
+  [02422]          ATTRS       41bytes (0ms)
+[02423] READ
+  [02423]           DATA       88bytes (0ms)
+[02424] CLOSE
+[02425] LSTAT
+  [02424]         STATUS       28bytes (0ms)
+  [02425]          ATTRS       41bytes (0ms)
+[02426] OPEN
+[02427] LSTAT
+  [02426]         HANDLE       17bytes (0ms)
+  [02427]          ATTRS       41bytes (0ms)
+[02428] READ
+  [02428]           DATA       88bytes (0ms)
+[02429] CLOSE
+[02430] LSTAT
+  [02429]         STATUS       28bytes (0ms)
+  [02430]          ATTRS       41bytes (0ms)
+[02431] OPEN
+[02432] LSTAT
+  [02431]         HANDLE       17bytes (0ms)
+  [02432]          ATTRS       41bytes (0ms)
+[02433] READ
+  [02433]           DATA       88bytes (0ms)
+[02434] CLOSE
+[02435] LSTAT
+  [02434]         STATUS       28bytes (0ms)
+  [02435]          ATTRS       41bytes (0ms)
+[02436] OPEN
+[02437] LSTAT
+  [02436]         HANDLE       17bytes (0ms)
+  [02437]          ATTRS       41bytes (0ms)
+[02438] READ
+  [02438]           DATA       93bytes (0ms)
+[02439] CLOSE
+[02440] LSTAT
+  [02439]         STATUS       28bytes (0ms)
+  [02440]          ATTRS       41bytes (0ms)
+[02441] OPEN
+[02442] LSTAT
+  [02441]         HANDLE       17bytes (0ms)
+  [02442]          ATTRS       41bytes (0ms)
+[02443] READ
+  [02443]           DATA       93bytes (0ms)
+[02444] CLOSE
+[02445] LSTAT
+  [02444]         STATUS       28bytes (0ms)
+  [02445]          ATTRS       41bytes (0ms)
+[02446] OPEN
+[02447] LSTAT
+  [02446]         HANDLE       17bytes (0ms)
+  [02447]          ATTRS       41bytes (0ms)
+[02448] READ
+  [02448]           DATA       93bytes (0ms)
+[02449] CLOSE
+[02450] LSTAT
+  [02449]         STATUS       28bytes (0ms)
+  [02450]          ATTRS       41bytes (0ms)
+[02451] OPEN
+[02452] LSTAT
+  [02451]         HANDLE       17bytes (0ms)
+  [02452]          ATTRS       41bytes (0ms)
+[02453] READ
+  [02453]           DATA       93bytes (0ms)
+[02454] LSTAT
+[02455] CLOSE
+  [02455]         STATUS       28bytes (0ms)
+  [02454]          ATTRS       41bytes (0ms)
+[02456] OPEN
+[02457] LSTAT
+  [02456]         HANDLE       17bytes (0ms)
+  [02457]          ATTRS       41bytes (0ms)
+[02458] READ
+  [02458]           DATA       93bytes (0ms)
+[02459] CLOSE
+[02460] LSTAT
+  [02459]         STATUS       28bytes (0ms)
+  [02460]          ATTRS       41bytes (0ms)
+[02461] LSTAT
+  [02461]          ATTRS       41bytes (0ms)
+[02462] OPEN
+[02463] LSTAT
+  [02462]         HANDLE       17bytes (0ms)
+  [02463]          ATTRS       41bytes (0ms)
+[02464] LSTAT
+  [02464]         STATUS       33bytes (0ms)
+[02465] READ
+  [02465]           DATA       88bytes (0ms)
+[02466] CLOSE
+[02467] LSTAT
+  [02467]          ATTRS       41bytes (0ms)
+  [02466]         STATUS       28bytes (0ms)
+[02468] OPEN
+[02469] LSTAT
+  [02468]         HANDLE       17bytes (0ms)
+  [02469]          ATTRS       41bytes (0ms)
+[02470] READ
+  [02470]           DATA       88bytes (0ms)
+[02471] CLOSE
+[02472] LSTAT
+  [02471]         STATUS       28bytes (0ms)
+  [02472]          ATTRS       41bytes (0ms)
+[02473] OPEN
+[02474] LSTAT
+  [02473]         HANDLE       17bytes (0ms)
+  [02474]          ATTRS       41bytes (0ms)
+[02475] READ
+  [02475]           DATA       88bytes (0ms)
+[02476] CLOSE
+[02477] LSTAT
+  [02477]          ATTRS       41bytes (0ms)
+[02478] OPEN
+[02479] LSTAT
+  [02476]         STATUS       28bytes (0ms)
+  [02478]         HANDLE       17bytes (0ms)
+  [02479]          ATTRS       41bytes (0ms)
+[02480] READ
+  [02480]           DATA       88bytes (0ms)
+[02481] LSTAT
+[02482] CLOSE
+  [02482]         STATUS       28bytes (0ms)
+  [02481]         STATUS       33bytes (0ms)
+[02483] LSTAT
+  [02483]         STATUS       33bytes (0ms)
+[02484] LSTAT
+  [02484]          ATTRS       41bytes (0ms)
+[02485] OPEN
+[02486] LSTAT
+  [02485]         HANDLE       17bytes (0ms)
+  [02486]          ATTRS       41bytes (0ms)
+[02487] READ
+  [02487]           DATA       88bytes (0ms)
+[02488] CLOSE
+[02489] LSTAT
+  [02488]         STATUS       28bytes (0ms)
+  [02489]          ATTRS       41bytes (0ms)
+[02490] OPEN
+[02491] LSTAT
+  [02490]         HANDLE       17bytes (0ms)
+  [02491]          ATTRS       41bytes (0ms)
+[02492] READ
+  [02492]           DATA       88bytes (0ms)
+[02493] CLOSE
+[02494] LSTAT
+  [02493]         STATUS       28bytes (0ms)
+  [02494]          ATTRS       41bytes (0ms)
+[02495] OPEN
+[02496] LSTAT
+  [02495]         HANDLE       17bytes (0ms)
+  [02496]          ATTRS       41bytes (0ms)
+[02497] READ
+  [02497]           DATA       88bytes (0ms)
+[02498] CLOSE
+[02499] LSTAT
+  [02498]         STATUS       28bytes (0ms)
+  [02499]          ATTRS       41bytes (0ms)
+[02500] OPEN
+[02501] LSTAT
+  [02500]         HANDLE       17bytes (0ms)
+  [02501]          ATTRS       41bytes (0ms)
+[02502] READ
+  [02502]           DATA       88bytes (0ms)
+[02503] CLOSE
+[02504] LSTAT
+  [02503]         STATUS       28bytes (0ms)
+  [02504]          ATTRS       41bytes (0ms)
+[02505] OPEN
+[02506] LSTAT
+  [02505]         HANDLE       17bytes (0ms)
+  [02506]          ATTRS       41bytes (0ms)
+[02507] READ
+  [02507]           DATA       93bytes (0ms)
+[02508] CLOSE
+[02509] LSTAT
+  [02508]         STATUS       28bytes (0ms)
+  [02509]          ATTRS       41bytes (0ms)
+[02510] OPEN
+[02511] LSTAT
+  [02510]         HANDLE       17bytes (0ms)
+  [02511]          ATTRS       41bytes (0ms)
+[02512] READ
+  [02512]           DATA       93bytes (0ms)
+[02513] CLOSE
+[02514] LSTAT
+  [02513]         STATUS       28bytes (0ms)
+  [02514]          ATTRS       41bytes (0ms)
+[02515] OPEN
+[02516] LSTAT
+  [02515]         HANDLE       17bytes (0ms)
+  [02516]          ATTRS       41bytes (0ms)
+[02517] READ
+  [02517]           DATA       93bytes (0ms)
+[02518] CLOSE
+[02519] LSTAT
+  [02518]         STATUS       28bytes (0ms)
+  [02519]          ATTRS       41bytes (0ms)
+[02520] OPEN
+[02521] LSTAT
+  [02520]         HANDLE       17bytes (0ms)
+  [02521]          ATTRS       41bytes (0ms)
+[02522] READ
+  [02522]           DATA       93bytes (0ms)
+[02523] CLOSE
+[02524] LSTAT
+  [02523]         STATUS       28bytes (0ms)
+  [02524]          ATTRS       41bytes (0ms)
+[02525] OPEN
+[02526] LSTAT
+  [02525]         HANDLE       17bytes (0ms)
+  [02526]          ATTRS       41bytes (0ms)
+[02527] READ
+  [02527]           DATA       93bytes (0ms)
+[02528] CLOSE
+[02529] LSTAT
+  [02528]         STATUS       28bytes (0ms)
+  [02529]          ATTRS       41bytes (0ms)
+[02530] LSTAT
+  [02530]          ATTRS       41bytes (0ms)
+[02531] OPEN
+[02532] LSTAT
+  [02531]         HANDLE       17bytes (0ms)
+  [02532]          ATTRS       41bytes (0ms)
+[02533] LSTAT
+  [02533]         STATUS       33bytes (0ms)
+[02534] READ
+  [02534]           DATA       88bytes (0ms)
+[02535] CLOSE
+[02536] LSTAT
+  [02535]         STATUS       28bytes (0ms)
+  [02536]          ATTRS       41bytes (0ms)
+[02537] OPEN
+[02538] LSTAT
+  [02537]         HANDLE       17bytes (0ms)
+  [02538]          ATTRS       41bytes (0ms)
+[02539] READ
+  [02539]           DATA       88bytes (0ms)
+[02540] CLOSE
+[02541] LSTAT
+  [02540]         STATUS       28bytes (0ms)
+  [02541]          ATTRS       41bytes (0ms)
+[02542] OPEN
+[02543] LSTAT
+  [02542]         HANDLE       17bytes (0ms)
+  [02543]          ATTRS       41bytes (0ms)
+[02544] READ
+  [02544]           DATA       88bytes (0ms)
+[02545] CLOSE
+[02546] LSTAT
+  [02545]         STATUS       28bytes (0ms)
+  [02546]          ATTRS       41bytes (0ms)
+[02547] OPEN
+[02548] LSTAT
+  [02547]         HANDLE       17bytes (0ms)
+  [02548]          ATTRS       41bytes (0ms)
+[02549] READ
+  [02549]           DATA       88bytes (0ms)
+[02550] CLOSE
+[02551] LSTAT
+  [02550]         STATUS       28bytes (0ms)
+  [02551]          ATTRS       41bytes (0ms)
+[02552] OPEN
+[02553] LSTAT
+  [02552]         HANDLE       17bytes (0ms)
+  [02553]          ATTRS       41bytes (0ms)
+[02554] READ
+  [02554]           DATA       88bytes (0ms)
+[02555] CLOSE
+[02556] LSTAT
+  [02555]         STATUS       28bytes (0ms)
+  [02556]          ATTRS       41bytes (0ms)
+[02557] OPEN
+[02558] LSTAT
+  [02557]         HANDLE       17bytes (0ms)
+  [02558]          ATTRS       41bytes (0ms)
+[02559] READ
+  [02559]           DATA       88bytes (0ms)
+[02560] CLOSE
+[02561] LSTAT
+  [02560]         STATUS       28bytes (0ms)
+  [02561]          ATTRS       41bytes (0ms)
+[02562] OPEN
+[02563] LSTAT
+  [02562]         HANDLE       17bytes (0ms)
+  [02563]          ATTRS       41bytes (0ms)
+[02564] READ
+  [02564]           DATA       88bytes (0ms)
+[02565] CLOSE
+[02566] LSTAT
+  [02565]         STATUS       28bytes (0ms)
+  [02566]          ATTRS       41bytes (0ms)
+[02567] OPEN
+[02568] LSTAT
+  [02567]         HANDLE       17bytes (0ms)
+  [02568]          ATTRS       41bytes (0ms)
+[02569] READ
+  [02569]           DATA       88bytes (0ms)
+[02570] CLOSE
+[02571] LSTAT
+  [02570]         STATUS       28bytes (0ms)
+  [02571]          ATTRS       41bytes (0ms)
+[02572] OPEN
+[02573] LSTAT
+  [02572]         HANDLE       17bytes (0ms)
+  [02573]          ATTRS       41bytes (0ms)
+[02574] READ
+  [02574]           DATA       88bytes (0ms)
+[02575] CLOSE
+[02576] LSTAT
+  [02576]          ATTRS       41bytes (0ms)
+  [02575]         STATUS       28bytes (0ms)
+[02577] OPEN
+[02578] LSTAT
+  [02577]         HANDLE       17bytes (0ms)
+  [02578]          ATTRS       41bytes (0ms)
+[02579] READ
+  [02579]           DATA       88bytes (0ms)
+[02580] CLOSE
+[02581] LSTAT
+  [02580]         STATUS       28bytes (0ms)
+  [02581]          ATTRS       41bytes (0ms)
+[02582] OPEN
+[02583] LSTAT
+  [02582]         HANDLE       17bytes (0ms)
+  [02583]          ATTRS       41bytes (0ms)
+[02584] READ
+  [02584]           DATA       93bytes (0ms)
+[02585] CLOSE
+[02586] LSTAT
+  [02585]         STATUS       28bytes (0ms)
+  [02586]          ATTRS       41bytes (0ms)
+[02587] OPEN
+[02588] LSTAT
+  [02587]         HANDLE       17bytes (0ms)
+  [02588]          ATTRS       41bytes (0ms)
+[02589] READ
+  [02589]           DATA       93bytes (0ms)
+[02590] CLOSE
+[02591] LSTAT
+  [02590]         STATUS       28bytes (0ms)
+  [02591]          ATTRS       41bytes (0ms)
+[02592] OPEN
+[02593] LSTAT
+  [02592]         HANDLE       17bytes (0ms)
+  [02593]          ATTRS       41bytes (0ms)
+[02594] READ
+  [02594]           DATA       93bytes (0ms)
+[02595] CLOSE
+[02596] LSTAT
+  [02595]         STATUS       28bytes (0ms)
+  [02596]          ATTRS       41bytes (0ms)
+[02597] OPEN
+[02598] LSTAT
+  [02597]         HANDLE       17bytes (0ms)
+  [02598]          ATTRS       41bytes (0ms)
+[02599] READ
+  [02599]           DATA       93bytes (0ms)
+[02600] CLOSE
+[02601] LSTAT
+  [02600]         STATUS       28bytes (0ms)
+  [02601]          ATTRS       41bytes (0ms)
+[02602] OPEN
+[02603] LSTAT
+  [02602]         HANDLE       17bytes (0ms)
+  [02603]          ATTRS       41bytes (0ms)
+[02604] READ
+  [02604]           DATA       93bytes (0ms)
+[02605] CLOSE
+[02606] LSTAT
+  [02605]         STATUS       28bytes (0ms)
+  [02606]          ATTRS       41bytes (0ms)
+[02607] LSTAT
+  [02607]          ATTRS       41bytes (0ms)
+[02608] OPEN
+[02609] LSTAT
+  [02608]         HANDLE       17bytes (0ms)
+  [02609]          ATTRS       41bytes (0ms)
+[02610] LSTAT
+  [02610]         STATUS       33bytes (0ms)
+[02611] READ
+  [02611]           DATA       88bytes (0ms)
+[02612] CLOSE
+[02613] LSTAT
+  [02612]         STATUS       28bytes (0ms)
+  [02613]          ATTRS       41bytes (0ms)
+[02614] OPEN
+[02615] LSTAT
+  [02614]         HANDLE       17bytes (0ms)
+  [02615]          ATTRS       41bytes (0ms)
+[02616] READ
+  [02616]           DATA       88bytes (0ms)
+[02617] CLOSE
+[02618] LSTAT
+  [02618]          ATTRS       41bytes (0ms)
+  [02617]         STATUS       28bytes (0ms)
+[02619] OPEN
+[02620] LSTAT
+  [02619]         HANDLE       17bytes (0ms)
+  [02620]          ATTRS       41bytes (0ms)
+[02621] READ
+  [02621]           DATA       88bytes (0ms)
+[02622] CLOSE
+[02623] LSTAT
+  [02623]          ATTRS       41bytes (0ms)
+  [02622]         STATUS       28bytes (0ms)
+[02624] OPEN
+[02625] LSTAT
+  [02624]         HANDLE       17bytes (0ms)
+  [02625]          ATTRS       41bytes (0ms)
+[02626] READ
+  [02626]           DATA       88bytes (0ms)
+[02627] CLOSE
+[02628] LSTAT
+  [02628]          ATTRS       41bytes (0ms)
+  [02627]         STATUS       28bytes (0ms)
+[02629] OPEN
+[02630] LSTAT
+  [02629]         HANDLE       17bytes (0ms)
+  [02630]          ATTRS       41bytes (0ms)
+[02631] READ
+  [02631]           DATA       88bytes (0ms)
+[02632] CLOSE
+[02633] LSTAT
+  [02632]         STATUS       28bytes (0ms)
+  [02633]          ATTRS       41bytes (0ms)
+[02634] OPEN
+[02635] LSTAT
+  [02634]         HANDLE       17bytes (0ms)
+  [02635]          ATTRS       41bytes (0ms)
+[02636] READ
+  [02636]           DATA       88bytes (0ms)
+[02637] CLOSE
+[02638] LSTAT
+  [02637]         STATUS       28bytes (0ms)
+  [02638]          ATTRS       41bytes (0ms)
+[02639] OPEN
+[02640] LSTAT
+  [02639]         HANDLE       17bytes (0ms)
+  [02640]          ATTRS       41bytes (0ms)
+[02641] READ
+  [02641]           DATA       88bytes (0ms)
+[02642] CLOSE
+[02643] LSTAT
+  [02642]         STATUS       28bytes (0ms)
+  [02643]          ATTRS       41bytes (0ms)
+[02644] OPEN
+[02645] LSTAT
+  [02644]         HANDLE       17bytes (0ms)
+  [02645]          ATTRS       41bytes (0ms)
+[02646] READ
+  [02646]           DATA       88bytes (0ms)
+[02647] CLOSE
+[02648] LSTAT
+  [02647]         STATUS       28bytes (0ms)
+  [02648]          ATTRS       41bytes (0ms)
+[02649] OPEN
+[02650] LSTAT
+  [02649]         HANDLE       17bytes (0ms)
+  [02650]          ATTRS       41bytes (0ms)
+[02651] READ
+  [02651]           DATA       88bytes (0ms)
+[02652] CLOSE
+[02653] LSTAT
+  [02652]         STATUS       28bytes (0ms)
+  [02653]          ATTRS       41bytes (0ms)
+[02654] OPEN
+[02655] LSTAT
+  [02654]         HANDLE       17bytes (0ms)
+  [02655]          ATTRS       41bytes (0ms)
+[02656] READ
+  [02656]           DATA       88bytes (0ms)
+[02657] CLOSE
+[02658] LSTAT
+  [02657]         STATUS       28bytes (0ms)
+  [02658]          ATTRS       41bytes (0ms)
+[02659] OPEN
+[02660] LSTAT
+  [02659]         HANDLE       17bytes (0ms)
+  [02660]          ATTRS       41bytes (0ms)
+[02661] READ
+  [02661]           DATA       93bytes (0ms)
+[02662] CLOSE
+[02663] LSTAT
+  [02662]         STATUS       28bytes (0ms)
+  [02663]          ATTRS       41bytes (0ms)
+[02664] OPEN
+[02665] LSTAT
+  [02664]         HANDLE       17bytes (0ms)
+  [02665]          ATTRS       41bytes (0ms)
+[02666] READ
+  [02666]           DATA       93bytes (0ms)
+[02667] CLOSE
+[02668] LSTAT
+  [02667]         STATUS       28bytes (0ms)
+  [02668]          ATTRS       41bytes (0ms)
+[02669] OPEN
+[02670] LSTAT
+  [02669]         HANDLE       17bytes (0ms)
+  [02670]          ATTRS       41bytes (0ms)
+[02671] READ
+  [02671]           DATA       93bytes (0ms)
+[02672] CLOSE
+[02673] LSTAT
+  [02672]         STATUS       28bytes (0ms)
+  [02673]          ATTRS       41bytes (0ms)
+[02674] OPEN
+[02675] LSTAT
+  [02674]         HANDLE       17bytes (0ms)
+  [02675]          ATTRS       41bytes (0ms)
+[02676] READ
+  [02676]           DATA       93bytes (0ms)
+[02677] LSTAT
+[02678] CLOSE
+  [02677]          ATTRS       41bytes (0ms)
+  [02678]         STATUS       28bytes (0ms)
+[02679] OPEN
+[02680] LSTAT
+  [02679]         HANDLE       17bytes (0ms)
+  [02680]          ATTRS       41bytes (0ms)
+[02681] READ
+  [02681]           DATA       93bytes (0ms)
+[02682] CLOSE
+[02683] LSTAT
+  [02682]         STATUS       28bytes (0ms)
+  [02683]          ATTRS       41bytes (0ms)
+[02684] LSTAT
+  [02684]          ATTRS       41bytes (0ms)
+[02685] OPEN
+[02686] LSTAT
+  [02685]         HANDLE       17bytes (0ms)
+  [02686]          ATTRS       41bytes (0ms)
+[02687] LSTAT
+  [02687]         STATUS       33bytes (0ms)
+[02688] READ
+  [02688]           DATA       88bytes (0ms)
+[02689] CLOSE
+[02690] LSTAT
+  [02689]         STATUS       28bytes (0ms)
+  [02690]          ATTRS       41bytes (0ms)
+[02691] OPEN
+[02692] LSTAT
+  [02691]         HANDLE       17bytes (0ms)
+  [02692]          ATTRS       41bytes (0ms)
+[02693] READ
+  [02693]           DATA       88bytes (0ms)
+[02694] CLOSE
+[02695] LSTAT
+  [02694]         STATUS       28bytes (0ms)
+  [02695]          ATTRS       41bytes (0ms)
+[02696] OPEN
+[02697] LSTAT
+  [02696]         HANDLE       17bytes (0ms)
+  [02697]          ATTRS       41bytes (0ms)
+[02698] READ
+  [02698]           DATA       88bytes (0ms)
+[02699] CLOSE
+[02700] LSTAT
+  [02699]         STATUS       28bytes (0ms)
+  [02700]          ATTRS       41bytes (0ms)
+[02701] OPEN
+[02702] LSTAT
+  [02701]         HANDLE       17bytes (0ms)
+  [02702]          ATTRS       41bytes (0ms)
+[02703] READ
+  [02703]           DATA       88bytes (0ms)
+[02704] CLOSE
+[02705] LSTAT
+  [02704]         STATUS       28bytes (0ms)
+  [02705]          ATTRS       41bytes (0ms)
+[02706] OPEN
+[02707] LSTAT
+  [02706]         HANDLE       17bytes (0ms)
+  [02707]          ATTRS       41bytes (0ms)
+[02708] READ
+  [02708]           DATA       88bytes (0ms)
+[02709] CLOSE
+[02710] LSTAT
+  [02709]         STATUS       28bytes (0ms)
+  [02710]          ATTRS       41bytes (0ms)
+[02711] OPEN
+[02712] LSTAT
+  [02711]         HANDLE       17bytes (0ms)
+  [02712]          ATTRS       41bytes (0ms)
+[02713] READ
+  [02713]           DATA       88bytes (0ms)
+[02714] CLOSE
+[02715] LSTAT
+  [02714]         STATUS       28bytes (0ms)
+  [02715]          ATTRS       41bytes (0ms)
+[02716] OPEN
+[02717] LSTAT
+  [02716]         HANDLE       17bytes (0ms)
+  [02717]          ATTRS       41bytes (0ms)
+[02718] READ
+  [02718]           DATA       88bytes (0ms)
+[02719] CLOSE
+[02720] LSTAT
+  [02719]         STATUS       28bytes (0ms)
+  [02720]          ATTRS       41bytes (0ms)
+[02721] OPEN
+[02722] LSTAT
+  [02721]         HANDLE       17bytes (0ms)
+  [02722]          ATTRS       41bytes (0ms)
+[02723] READ
+  [02723]           DATA       88bytes (0ms)
+[02724] CLOSE
+[02725] LSTAT
+  [02724]         STATUS       28bytes (0ms)
+  [02725]          ATTRS       41bytes (0ms)
+[02726] OPEN
+[02727] LSTAT
+  [02726]         HANDLE       17bytes (0ms)
+  [02727]          ATTRS       41bytes (0ms)
+[02728] READ
+  [02728]           DATA       88bytes (0ms)
+[02729] CLOSE
+[02730] LSTAT
+  [02729]         STATUS       28bytes (0ms)
+  [02730]          ATTRS       41bytes (0ms)
+[02731] OPEN
+[02732] LSTAT
+  [02731]         HANDLE       17bytes (0ms)
+  [02732]          ATTRS       41bytes (0ms)
+[02733] READ
+  [02733]           DATA       88bytes (0ms)
+[02734] CLOSE
+[02735] LSTAT
+  [02734]         STATUS       28bytes (0ms)
+  [02735]          ATTRS       41bytes (0ms)
+[02736] OPEN
+[02737] LSTAT
+  [02736]         HANDLE       17bytes (0ms)
+  [02737]          ATTRS       41bytes (0ms)
+[02738] READ
+  [02738]           DATA       93bytes (0ms)
+[02739] CLOSE
+[02740] LSTAT
+  [02739]         STATUS       28bytes (0ms)
+  [02740]          ATTRS       41bytes (0ms)
+[02741] OPEN
+[02742] LSTAT
+  [02741]         HANDLE       17bytes (0ms)
+  [02742]          ATTRS       41bytes (0ms)
+[02743] READ
+  [02743]           DATA       93bytes (0ms)
+[02744] CLOSE
+[02745] LSTAT
+  [02744]         STATUS       28bytes (0ms)
+  [02745]          ATTRS       41bytes (0ms)
+[02746] OPEN
+[02747] LSTAT
+  [02746]         HANDLE       17bytes (0ms)
+  [02747]          ATTRS       41bytes (0ms)
+[02748] READ
+  [02748]           DATA       93bytes (0ms)
+[02749] CLOSE
+[02750] LSTAT
+  [02749]         STATUS       28bytes (0ms)
+  [02750]          ATTRS       41bytes (0ms)
+[02751] OPEN
+[02752] LSTAT
+  [02751]         HANDLE       17bytes (0ms)
+  [02752]          ATTRS       41bytes (0ms)
+[02753] READ
+  [02753]           DATA       93bytes (0ms)
+[02754] CLOSE
+[02755] LSTAT
+  [02754]         STATUS       28bytes (0ms)
+  [02755]          ATTRS       41bytes (0ms)
+[02756] OPEN
+[02757] LSTAT
+  [02756]         HANDLE       17bytes (0ms)
+  [02757]          ATTRS       41bytes (0ms)
+[02758] READ
+  [02758]           DATA       93bytes (0ms)
+[02759] CLOSE
+[02760] LSTAT
+  [02759]         STATUS       28bytes (0ms)
+  [02760]          ATTRS       41bytes (0ms)
+[02761] LSTAT
+  [02761]          ATTRS       41bytes (0ms)
+[02762] OPEN
+[02763] LSTAT
+  [02762]         HANDLE       17bytes (0ms)
+  [02763]          ATTRS       41bytes (0ms)
+[02764] LSTAT
+  [02764]         STATUS       33bytes (0ms)
+[02765] READ
+  [02765]           DATA       88bytes (0ms)
+[02766] CLOSE
+[02767] LSTAT
+  [02767]          ATTRS       41bytes (0ms)
+  [02766]         STATUS       28bytes (0ms)
+[02768] OPEN
+[02769] LSTAT
+  [02768]         HANDLE       17bytes (0ms)
+  [02769]          ATTRS       41bytes (0ms)
+[02770] READ
+  [02770]           DATA       88bytes (0ms)
+[02771] CLOSE
+[02772] LSTAT
+  [02771]         STATUS       28bytes (0ms)
+  [02772]          ATTRS       41bytes (0ms)
+[02773] OPEN
+[02774] LSTAT
+  [02773]         HANDLE       17bytes (0ms)
+  [02774]          ATTRS       41bytes (0ms)
+[02775] READ
+  [02775]           DATA       88bytes (0ms)
+[02776] CLOSE
+[02777] LSTAT
+  [02776]         STATUS       28bytes (0ms)
+  [02777]          ATTRS       41bytes (0ms)
+[02778] OPEN
+[02779] LSTAT
+  [02778]         HANDLE       17bytes (0ms)
+  [02779]          ATTRS       41bytes (0ms)
+[02780] READ
+  [02780]           DATA       88bytes (0ms)
+[02781] CLOSE
+[02782] LSTAT
+  [02781]         STATUS       28bytes (0ms)
+  [02782]          ATTRS       41bytes (0ms)
+[02783] OPEN
+[02784] LSTAT
+  [02783]         HANDLE       17bytes (0ms)
+  [02784]          ATTRS       41bytes (0ms)
+[02785] READ
+  [02785]           DATA       88bytes (0ms)
+[02786] CLOSE
+[02787] LSTAT
+  [02786]         STATUS       28bytes (0ms)
+  [02787]          ATTRS       41bytes (0ms)
+[02788] OPEN
+[02789] LSTAT
+  [02788]         HANDLE       17bytes (0ms)
+  [02789]          ATTRS       41bytes (0ms)
+[02790] READ
+  [02790]           DATA       88bytes (0ms)
+[02791] CLOSE
+[02792] LSTAT
+  [02791]         STATUS       28bytes (0ms)
+  [02792]          ATTRS       41bytes (0ms)
+[02793] OPEN
+[02794] LSTAT
+  [02793]         HANDLE       17bytes (0ms)
+  [02794]          ATTRS       41bytes (0ms)
+[02795] READ
+  [02795]           DATA       88bytes (0ms)
+[02796] CLOSE
+[02797] LSTAT
+  [02796]         STATUS       28bytes (0ms)
+  [02797]          ATTRS       41bytes (0ms)
+[02798] OPEN
+[02799] LSTAT
+  [02798]         HANDLE       17bytes (0ms)
+  [02799]          ATTRS       41bytes (0ms)
+[02800] READ
+  [02800]           DATA       88bytes (0ms)
+[02801] CLOSE
+[02802] LSTAT
+  [02802]          ATTRS       41bytes (0ms)
+  [02801]         STATUS       28bytes (0ms)
+[02803] OPEN
+[02804] LSTAT
+  [02803]         HANDLE       17bytes (0ms)
+  [02804]          ATTRS       41bytes (0ms)
+[02805] READ
+  [02805]           DATA       88bytes (0ms)
+[02806] CLOSE
+[02807] LSTAT
+  [02806]         STATUS       28bytes (0ms)
+  [02807]          ATTRS       41bytes (0ms)
+[02808] OPEN
+[02809] LSTAT
+  [02808]         HANDLE       17bytes (0ms)
+  [02809]          ATTRS       41bytes (0ms)
+[02810] READ
+  [02810]           DATA       88bytes (0ms)
+[02811] CLOSE
+[02812] LSTAT
+  [02811]         STATUS       28bytes (0ms)
+  [02812]          ATTRS       41bytes (0ms)
+[02813] OPEN
+[02814] LSTAT
+  [02813]         HANDLE       17bytes (0ms)
+  [02814]          ATTRS       41bytes (0ms)
+[02815] READ
+  [02815]           DATA       93bytes (0ms)
+[02816] CLOSE
+[02817] LSTAT
+  [02817]          ATTRS       41bytes (0ms)
+  [02816]         STATUS       28bytes (0ms)
+[02818] OPEN
+[02819] LSTAT
+  [02818]         HANDLE       17bytes (0ms)
+  [02819]          ATTRS       41bytes (0ms)
+[02820] READ
+  [02820]           DATA       93bytes (0ms)
+[02821] CLOSE
+[02822] LSTAT
+  [02821]         STATUS       28bytes (0ms)
+  [02822]          ATTRS       41bytes (0ms)
+[02823] OPEN
+[02824] LSTAT
+  [02823]         HANDLE       17bytes (0ms)
+  [02824]          ATTRS       41bytes (0ms)
+[02825] READ
+  [02825]           DATA       93bytes (0ms)
+[02826] CLOSE
+[02827] LSTAT
+  [02826]         STATUS       28bytes (0ms)
+  [02827]          ATTRS       41bytes (0ms)
+[02828] OPEN
+[02829] LSTAT
+  [02828]         HANDLE       17bytes (0ms)
+  [02829]          ATTRS       41bytes (0ms)
+[02830] READ
+  [02830]           DATA       93bytes (0ms)
+[02831] CLOSE
+[02832] LSTAT
+  [02831]         STATUS       28bytes (0ms)
+  [02832]          ATTRS       41bytes (0ms)
+[02833] OPEN
+[02834] LSTAT
+  [02833]         HANDLE       17bytes (0ms)
+  [02834]          ATTRS       41bytes (0ms)
+[02835] READ
+  [02835]           DATA       93bytes (0ms)
+[02836] CLOSE
+[02837] LSTAT
+  [02836]         STATUS       28bytes (0ms)
+  [02837]         STATUS       33bytes (0ms)
+[02838] OPEN
+[02839] LSTAT
+  [02838]         HANDLE       17bytes (0ms)
+  [02839]          ATTRS       41bytes (0ms)
+[02840] FSTAT
+  [02840]          ATTRS       41bytes (0ms)
+[02841] LSTAT
+  [02841]          ATTRS       41bytes (0ms)
+[02842] OPEN
+[02843] LSTAT
+  [02842]         HANDLE       17bytes (0ms)
+  [02843]          ATTRS       41bytes (0ms)
+[02844] READ
+  [02844]           DATA       34bytes (0ms)
+[02845] CLOSE
+executing <ssh> <-x> <-a> <-oClearAllForwardings=yes> <-oConnectTimeout=15> <-2> <-s> <--> <localhost> <sftp>
+Server version: 3
+Extension: posix-rename@openssh.com <1>
+Extension: statvfs@openssh.com <2>
+Extension: fstatvfs@openssh.com <2>
+Extension: hardlink@openssh.com <1>
+Extension: fsync@openssh.com <1>
+Extension: lsetstat@openssh.com <1>
+Extension: limits@openssh.com <1>
+Extension: expand-path@openssh.com <1>
+Extension: copy-data <1>
+Extension: home-directory <1>
+Extension: users-groups-by-id@openssh.com <1>
+[02846] LSTAT
+  [02845]         STATUS       28bytes (182ms)
+  [02846]          ATTRS       41bytes (0ms)
+[02847] OPEN
+[02848] LSTAT
+  [02847]         HANDLE       17bytes (0ms)
+  [02848]          ATTRS       41bytes (0ms)
+[02849] READ
+  [02849]           DATA       54bytes (0ms)
+[02850] CLOSE
+[02851] LSTAT
+  [02851]         STATUS       33bytes (0ms)
+  [02850]         STATUS       28bytes (0ms)
+[02852] LSTAT
+  [02852]         STATUS       33bytes (0ms)
+[02853] LSTAT
+  [02853]          ATTRS       41bytes (0ms)
+[02854] LSTAT
+  [02854]         STATUS       33bytes (0ms)
+[02855] LSTAT
+  [02855]         STATUS       33bytes (0ms)
+[02856] LSTAT
+  [02856]         STATUS       33bytes (0ms)
+[02857] LSTAT
+  [02857]         STATUS       33bytes (0ms)
+[02858] LSTAT
+  [02858]         STATUS       33bytes (0ms)
+[02859] LSTAT
+  [02859]         STATUS       33bytes (0ms)
+[02860] LSTAT
+  [02860]         STATUS       33bytes (0ms)
+[02861] LSTAT
+  [02861]         STATUS       33bytes (0ms)
+[02862] LSTAT
+  [02862]          ATTRS       41bytes (0ms)
+[02863] LSTAT
+  [02863]          ATTRS       41bytes (0ms)
+[02864] LSTAT
+  [02864]         STATUS       33bytes (0ms)
+[02865] LSTAT
+  [02865]         STATUS       33bytes (0ms)
+[02866] LSTAT
+  [02866]          ATTRS       41bytes (0ms)
+[02867] OPEN
+[02868] LSTAT
+  [02867]         HANDLE       17bytes (0ms)
+  [02868]          ATTRS       41bytes (0ms)
+[02869] READ
+  [02869]           DATA       34bytes (0ms)
+[02870] CLOSE
+[02871] LSTAT
+  [02870]         STATUS       28bytes (0ms)
+  [02871]          ATTRS       41bytes (0ms)
+[02872] OPEN
+[02873] LSTAT
+  [02872]         HANDLE       17bytes (0ms)
+  [02873]          ATTRS       41bytes (0ms)
+[02874] READ
+  [02874]           DATA       54bytes (0ms)
+[02875] CLOSE
+[02876] LSTAT
+  [02875]         STATUS       28bytes (0ms)
+  [02876]         STATUS       33bytes (0ms)
+[02877] LSTAT
+  [02877]         STATUS       33bytes (0ms)
+[02878] LSTAT
+  [02878]         STATUS       33bytes (0ms)
+[02879] LSTAT
+  [02879]         STATUS       33bytes (0ms)
+[02880] LSTAT
+  [02880]         STATUS       33bytes (0ms)
+[02881] LSTAT
+  [02881]         STATUS       33bytes (0ms)
+[02882] LSTAT
+  [02882]         STATUS       33bytes (0ms)
+[02883] LSTAT
+  [02883]         STATUS       33bytes (0ms)
+[02884] LSTAT
+  [02884]         STATUS       33bytes (0ms)
+[02885] LSTAT
+  [02885]         STATUS       33bytes (0ms)
+[02886] OPENDIR
+  [02886]         HANDLE       17bytes (0ms)
+[02887] READDIR
+[02888] READDIR
+  [02887]           NAME      421bytes (0ms)
+  [02888]         STATUS       32bytes (0ms)
+[02889] READDIR
+[02890] READDIR
+readdirplus: /.git/refs (4 entries)
+[02891] CLOSE
+  [02889]         STATUS       32bytes (0ms)
+[02892] LSTAT
+  [02890]         STATUS       32bytes (0ms)
+  [02891]         STATUS       28bytes (0ms)
+  [02892]         STATUS       33bytes (0ms)
+[02893] LSTAT
+  [02893]         STATUS       33bytes (0ms)
+[02894] LSTAT
+  [02894]         STATUS       33bytes (0ms)
+[02895] LSTAT
+  [02895]          ATTRS       41bytes (0ms)
+[02896] LSTAT
+  [02896]         STATUS       33bytes (0ms)
+[02897] LSTAT
+  [02897]         STATUS       33bytes (0ms)
+[02898] LSTAT
+  [02898]         STATUS       33bytes (0ms)
+[02899] LSTAT
+  [02899]          ATTRS       41bytes (0ms)
+[02900] LSTAT
+  [02900]         STATUS       33bytes (0ms)
+[02901] LSTAT
+  [02901]         STATUS       33bytes (0ms)
+[02902] OPENDIR
+  [02902]         HANDLE       17bytes (0ms)
+[02903] READDIR
+[02904] READDIR
+  [02903]           NAME      211bytes (0ms)
+[02905] READDIR
+  [02904]         STATUS       32bytes (0ms)
+[02906] READDIR
+readdirplus: /.git/objects/pack (2 entries)
+[02907] LSTAT
+[02908] CLOSE
+  [02905]         STATUS       32bytes (0ms)
+  [02906]         STATUS       32bytes (0ms)
+  [02908]         STATUS       28bytes (0ms)
+  [02907]          ATTRS       41bytes (0ms)
+[02909] LSTAT
+  [02909]          ATTRS       41bytes (0ms)
+[02910] OPEN
+[02911] LSTAT
+  [02910]         HANDLE       17bytes (0ms)
+  [02911]          ATTRS       41bytes (0ms)
+[02912] READ
+  [02912]           DATA      151bytes (0ms)
+[02913] CLOSE
+[02914] OPEN
+[02915] LSTAT
+  [02913]         STATUS       28bytes (0ms)
+  [02914]         HANDLE       17bytes (0ms)
+  [02915]          ATTRS       41bytes (0ms)
+[02916] LSTAT
+  [02916]          ATTRS       41bytes (0ms)
+[02917] READ
+  [02917]           DATA      151bytes (0ms)
+[02918] CLOSE
+[02919] OPEN
+[02920] LSTAT
+  [02918]         STATUS       28bytes (0ms)
+  [02919]         HANDLE       17bytes (0ms)
+  [02920]          ATTRS       41bytes (0ms)
+[02921] LSTAT
+  [02921]          ATTRS       41bytes (0ms)
+[02922] READ
+  [02922]           DATA      151bytes (0ms)
+[02923] CLOSE
+[02924] LSTAT
+  [02923]         STATUS       28bytes (0ms)
+  [02924]          ATTRS       41bytes (0ms)
+[02925] LSTAT
+  [02925]          ATTRS       41bytes (0ms)
+[02926] OPEN
+[02927] LSTAT
+  [02926]         HANDLE       17bytes (0ms)
+  [02927]          ATTRS       41bytes (0ms)
+[02928] READ
+  [02928]           DATA      690bytes (0ms)
+[02929] CLOSE
+[02930] LSTAT
+  [02929]         STATUS       28bytes (0ms)
+  [02930]          ATTRS       41bytes (0ms)
+[02931] OPEN
+[02932] LSTAT
+  [02931]         HANDLE       17bytes (0ms)
+  [02932]          ATTRS       41bytes (0ms)
+[02933] READ
+  [02933]           DATA      253bytes (0ms)
+[02934] CLOSE
+[02935] OPEN
+[02936] LSTAT
+  [02934]         STATUS       28bytes (0ms)
+  [02935]         HANDLE       17bytes (0ms)
+  [02936]          ATTRS       41bytes (0ms)
+[02937] LSTAT
+  [02937]          ATTRS       41bytes (0ms)
+[02938] READ
+  [02938]           DATA      253bytes (0ms)
+[02939] CLOSE
+[02940] OPENDIR
+  [02939]         STATUS       28bytes (0ms)
+  [02940]         HANDLE       17bytes (0ms)
+[02941] READDIR
+[02942] READDIR
+  [02941]           NAME     3341bytes (0ms)
+  [02942]         STATUS       32bytes (0ms)
+[02943] READDIR
+[02944] READDIR
+readdirplus: / (30 entries)
+[02945] LSTAT
+  [02943]         STATUS       32bytes (0ms)
+  [02944]         STATUS       32bytes (0ms)
+  [02945]         STATUS       33bytes (0ms)
+[02946] OPENDIR
+  [02946]         HANDLE       17bytes (0ms)
+[02947] READDIR
+[02948] READDIR
+  [02947]           NAME     1951bytes (0ms)
+  [02948]         STATUS       32bytes (0ms)
+[02949] READDIR
+[02950] READDIR
+readdirplus: /sub10 (17 entries)
+  [02949]         STATUS       32bytes (0ms)
+[02951] CLOSE
+executing <ssh> <-x> <-a> <-oClearAllForwardings=yes> <-oConnectTimeout=15> <-2> <-s> <--> <localhost> <sftp>
+Server version: 3
+Extension: posix-rename@openssh.com <1>
+Extension: statvfs@openssh.com <2>
+Extension: fstatvfs@openssh.com <2>
+Extension: hardlink@openssh.com <1>
+Extension: fsync@openssh.com <1>
+Extension: lsetstat@openssh.com <1>
+Extension: limits@openssh.com <1>
+Extension: expand-path@openssh.com <1>
+Extension: copy-data <1>
+Extension: home-directory <1>
+Extension: users-groups-by-id@openssh.com <1>
+[02952] OPENDIR
+  [02950]         STATUS       32bytes (184ms)
+  [02951]         STATUS       28bytes (184ms)
+  [02952]         HANDLE       17bytes (0ms)
+[02953] READDIR
+[02954] READDIR
+  [02953]           NAME     1951bytes (0ms)
+  [02954]         STATUS       32bytes (0ms)
+[02955] READDIR
+[02956] READDIR
+readdirplus: /sub6 (17 entries)
+  [02955]         STATUS       32bytes (0ms)
+[02957] CLOSE
+[02958] OPENDIR
+  [02956]         STATUS       32bytes (0ms)
+  [02957]         STATUS       28bytes (0ms)
+  [02958]         HANDLE       17bytes (0ms)
+[02959] READDIR
+[02960] READDIR
+  [02959]           NAME     1951bytes (0ms)
+  [02960]         STATUS       32bytes (0ms)
+[02961] READDIR
+[02962] READDIR
+readdirplus: /sub8 (17 entries)
+  [02961]         STATUS       32bytes (0ms)
+[02963] CLOSE
+  [02962]         STATUS       32bytes (0ms)
+[02964] OPENDIR
+  [02963]         STATUS       28bytes (0ms)
+  [02964]         HANDLE       17bytes (0ms)
+[02965] READDIR
+[02966] READDIR
+  [02965]           NAME     1951bytes (0ms)
+  [02966]         STATUS       32bytes (0ms)
+[02967] READDIR
+[02968] READDIR
+readdirplus: /sub3 (17 entries)
+[02969] CLOSE
+[02970] OPENDIR
+  [02967]         STATUS       32bytes (0ms)
+  [02968]         STATUS       32bytes (0ms)
+  [02969]         STATUS       28bytes (0ms)
+  [02970]         HANDLE       17bytes (0ms)
+[02971] READDIR
+[02972] READDIR
+  [02971]           NAME     1951bytes (0ms)
+  [02972]         STATUS       32bytes (0ms)
+[02973] READDIR
+[02974] READDIR
+readdirplus: /sub2 (17 entries)
+[02975] CLOSE
+  [02973]         STATUS       32bytes (0ms)
+  [02974]         STATUS       32bytes (0ms)
+[02976] OPENDIR
+  [02975]         STATUS       28bytes (0ms)
+  [02976]         HANDLE       17bytes (0ms)
+[02977] READDIR
+[02978] READDIR
+  [02977]           NAME     1719bytes (0ms)
+  [02978]         STATUS       32bytes (0ms)
+[02979] READDIR
+[02980] READDIR
+readdirplus: /sub5 (15 entries)
+[02981] CLOSE
+[02982] OPENDIR
+  [02979]         STATUS       32bytes (0ms)
+  [02980]         STATUS       32bytes (0ms)
+  [02981]         STATUS       28bytes (0ms)
+  [02982]         HANDLE       17bytes (0ms)
+[02983] READDIR
+[02984] READDIR
+  [02983]           NAME     1951bytes (0ms)
+  [02984]         STATUS       32bytes (0ms)
+[02985] READDIR
+[02986] READDIR
+readdirplus: /sub7 (17 entries)
+[02987] CLOSE
+[02988] LSTAT
+  [02985]         STATUS       32bytes (0ms)
+  [02986]         STATUS       32bytes (0ms)
+  [02987]         STATUS       28bytes (0ms)
+  [02988]         STATUS       33bytes (0ms)
+[02989] LSTAT
+  [02989]         STATUS       33bytes (0ms)
+[02990] OPENDIR
+  [02990]         HANDLE       17bytes (0ms)
+[02991] READDIR
+[02992] READDIR
+  [02991]           NAME     2571bytes (0ms)
+  [02992]         STATUS       32bytes (0ms)
+[02993] READDIR
+[02994] READDIR
+readdirplus: /freshness (22 entries)
+[02995] LSTAT
+  [02993]         STATUS       32bytes (0ms)
+  [02994]         STATUS       32bytes (0ms)
+  [02995]         STATUS       33bytes (0ms)
+[02996] CLOSE
+[02997] OPENDIR
+  [02996]         STATUS       28bytes (0ms)
+  [02997]         HANDLE       17bytes (0ms)
+[02998] READDIR
+[02999] READDIR
+  [02998]           NAME     2059bytes (0ms)
+  [02999]         STATUS       32bytes (0ms)
+[03000] READDIR
+[03001] READDIR
+readdirplus: /sub9 (18 entries)
+[03002] LSTAT
+  [03000]         STATUS       32bytes (0ms)
+  [03001]         STATUS       32bytes (0ms)
+  [03002]         STATUS       33bytes (0ms)
+[03003] LSTAT
+  [03003]         STATUS       33bytes (0ms)
+[03004] LSTAT
+  [03004]         STATUS       33bytes (0ms)
+[03005] OPENDIR
+  [03005]         HANDLE       17bytes (0ms)
+[03006] READDIR
+[03007] READDIR
+  [03006]           NAME      317bytes (0ms)
+  [03007]         STATUS       32bytes (0ms)
+[03008] READDIR
+[03009] READDIR
+readdirplus: /sub9/newdir (3 entries)
+[03010] LSTAT
+  [03008]         STATUS       32bytes (0ms)
+  [03009]         STATUS       32bytes (0ms)
+  [03010]         STATUS       33bytes (0ms)
+[03011] CLOSE
+[03012] CLOSE
+[03013] OPENDIR
+  [03011]         STATUS       28bytes (0ms)
+  [03013]         HANDLE       17bytes (0ms)
+  [03012]         STATUS       28bytes (0ms)
+[03014] READDIR
+[03015] READDIR
+  [03014]           NAME     1951bytes (0ms)
+  [03015]         STATUS       32bytes (0ms)
+[03016] READDIR
+[03017] READDIR
+readdirplus: /sub4 (17 entries)
+  [03016]         STATUS       32bytes (0ms)
+  [03017]         STATUS       32bytes (0ms)
+[03018] CLOSE
+[03019] OPENDIR
+  [03018]         STATUS       28bytes (0ms)
+  [03019]         HANDLE       17bytes (0ms)
+[03020] READDIR
+[03021] READDIR
+  [03020]           NAME     1951bytes (0ms)
+  [03021]         STATUS       32bytes (0ms)
+[03022] READDIR
+[03023] READDIR
+readdirplus: /sub1 (17 entries)
+[03024] CLOSE
+  [03022]         STATUS       32bytes (0ms)
+[03025] CLOSE
+  [03023]         STATUS       32bytes (0ms)
+[03026] LSTAT
+  [03024]         STATUS       28bytes (0ms)
+  [03026]         STATUS       33bytes (0ms)
+[03027] LSTAT
+  [03025]         STATUS       28bytes (0ms)
+  [03027]         STATUS       33bytes (0ms)
+[03028] LSTAT
+  [03028]         STATUS       33bytes (0ms)
+[03029] LSTAT
+  [03029]         STATUS       33bytes (0ms)
+[03030] LSTAT
+  [03030]         STATUS       33bytes (0ms)
+[03031] LSTAT
+  [03031]         STATUS       33bytes (0ms)
+[03032] LSTAT
+  [03032]         STATUS       33bytes (0ms)
+[03033] LSTAT
+  [03033]         STATUS       33bytes (0ms)
+[03034] LSTAT
+  [03034]         STATUS       33bytes (0ms)
+[03035] OPEN
+[03036] LSTAT
+  [03035]         HANDLE       17bytes (0ms)
+  [03036]          ATTRS       41bytes (0ms)
+[03037] LSTAT
+  [03037]          ATTRS       41bytes (0ms)
+[03038] READ
+  [03038]           DATA     1294bytes (0ms)
+[03039] CLOSE
+[03040] WRITE
+  [03039]         STATUS       28bytes (0ms)
+[03041] WRITE
+  [03040]         STATUS       28bytes (0ms)
+  [03041]         STATUS       28bytes (0ms)
+[03042] CLOSE
+[03043] LSTAT
+  [03042]         STATUS       28bytes (0ms)
+  [03043]          ATTRS       41bytes (0ms)
+[03044] LSTAT
+  [03044]          ATTRS       41bytes (0ms)
+[03045] EXTENDED
+  [03045]         STATUS       28bytes (0ms)
+
+sent:               3045 messages, 55163470 bytes
+received:           3045 messages, 170556 bytes
+rtt min/max/avg:    0ms/184ms/2ms
+num connect:        4
