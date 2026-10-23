@@ -32,6 +32,41 @@ env:
   GO_TEST_TIMEOUT: ${{ inputs.test-timeout || '300' }}s
 
 jobs:
+  # INT-CI-079 (part 2): the E2E battery (`regression`) and the root-gated suite
+  # (`root-suite`) are the only two self-hosted jobs in this repo — they contend
+  # for the single bunker-mvp runner — and AGENTS.md scopes that live battery to
+  # tasks that change agent spawn, destroy, exec, docker, or SSH behavior. So this
+  # gate job classifies the push: board-only (.coding-hermes/) and documentation
+  # (.md / docs/) changes SKIP both self-hosted jobs, while any code change still
+  # runs them. The fast gates (build-and-test, unit-tests, gitreins-guard) stay
+  # unconditional on ubuntu-latest and still cover every push.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: diff
+        name: Detect code changes
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$base" ]; then base="${{ github.event.before }}"; fi
+          if [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            if git rev-parse -q --verify HEAD~1 >/dev/null; then base="HEAD~1"; else echo "code=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          fi
+          changed=$(git diff --name-only "$base" HEAD || true)
+          echo "changed files:"
+          printf '%s\n' "$changed"
+          if printf '%s\n' "$changed" | grep -vE '^(\.coding-hermes/|docs/|.*\.md$)' | grep -q .; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # ── Tier 0: fast gate — build + vet + unit tests on every push ──
   build-and-test:
     runs-on: ubuntu-latest
@@ -296,8 +331,10 @@ jobs:
   regression:
     runs-on: [self-hosted, Linux, bunker]
     timeout-minutes: 30
-    needs: build-and-test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # INT-CI-079: one self-hosted runner — skip this job when the push touched
+    # only board (.coding-hermes/) or documentation files (see `changes`).
+    needs: [build-and-test, changes]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.code == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -402,8 +439,10 @@ jobs:
   root-suite:
     runs-on: [self-hosted, Linux, bunker]
     timeout-minutes: 30
-    needs: build-and-test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # INT-CI-079: one self-hosted runner — skip this job when the push touched
+    # only board (.coding-hermes/) or documentation files (see `changes`).
+    needs: [build-and-test, changes]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.code == 'true'
     steps:
       - uses: actions/checkout@v4
 
