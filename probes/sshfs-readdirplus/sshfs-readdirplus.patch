@@ -1,0 +1,229 @@
+diff --git a/sshfs.c b/sshfs.c
+index ddb4a52..dcf3e46 100644
+--- a/sshfs.c
++++ b/sshfs.c
+@@ -199,11 +199,24 @@
+ 
+    This problem is again hard in general, but solvable since we only have to worry about
+    the effects of pending write() calls. For rename() and link(), it does not matter if a
+-   pending write is executed before or after the operation. For readdir(), it is possible
+-   that a pending write() will change the length of the file. However, SSHFS currently
+-   does not return attribute information for readdir(), so this does not pose problems
+-   either. Should SSHFS implement a readdirplus() handler (which provides file names and
+-   attributes) this is a problem that will need to be solved.
++   pending write is executed before or after the operation. For readdir(), it *does*
++   matter: a pending write() can change the length of a file, so the attributes that a
++   readdir() reply carries can be stale.
++
++   SSHFS therefore implements readdirplus (the kernel asks for it with FUSE_READDIR_PLUS,
++   see sshfs_readdir()), but with a guard: for an entry whose path is in sshfs.conntab -
++   i.e. a path that has a write() pending on it - the attributes from the readdir() reply
++   are deliberately *not* advertised (the filler is called without FUSE_FILL_DIR_PLUS).
++   The kernel then falls back to a plain getattr() for that one entry, which get_conn()
++   routes to the connection that owns the pending write, so SFTP ordering guarantees
++   fresh attributes. Every other entry is advertised with the attributes from the
++   readdir() reply, which is what makes readdirplus pay off: whole-tree metadata walks
++   (git status, git diff --stat, rsync) stop costing one round trip per file.
++
++   Note that sshfs.conntab is only populated when more than one SFTP connection is in
++   use. With a single connection everything (including readdir) is serialized over the
++   same SFTP channel, so a readdir() issued after a write() is executed after it on the
++   server and its attributes cannot be stale - no suppression is needed there.
+ */
+ 
+ 
+@@ -357,6 +370,7 @@ struct sshfs {
+ 	int sync_write;
+ 	int sync_read;
+ 	int sync_readdir;
++	int no_readdirplus;
+ 	int direct_io;
+ 	int debug;
+ 	int foreground;
+@@ -511,6 +525,10 @@ static struct fuse_opt sshfs_opts[] = {
+ 	SSHFS_OPT("sshfs_sync",        sync_write, 1),
+ 	SSHFS_OPT("no_readahead",      sync_read, 1),
+ 	SSHFS_OPT("sync_readdir",      sync_readdir, 1),
++	SSHFS_OPT("readdirplus=no",    no_readdirplus, 1),
++	SSHFS_OPT("readdirplus=yes",   no_readdirplus, 0),
++	SSHFS_OPT("readdirplus=auto",  no_readdirplus, 0),
++	SSHFS_OPT("no_readdirplus",    no_readdirplus, 1),
+ 	SSHFS_OPT("sshfs_debug",       debug, 1),
+ 	SSHFS_OPT("reconnect",         reconnect, 1),
+ 	SSHFS_OPT("transform_symlinks", transform_symlinks, 1),
+@@ -1999,6 +2017,34 @@ static void *sshfs_init(struct fuse_conn_info *conn,
+ 	// Lookup of . and .. is supported
+ 	conn->capable |= FUSE_CAP_EXPORT_SUPPORT;
+ 
++	/*
++	 * Readdirplus.
++	 *
++	 * libfuse's high-level API always supplies a readdirplus handler
++	 * (fuse_lib_readdirplus in lib/fuse.c, which calls the filesystem's
++	 * readdir handler with FUSE_READDIR_PLUS) and fuse_lowlevel.c then
++	 * wants FUSE_CAP_READDIRPLUS by default, so the capability is
++	 * normally on already. Two things are still needed here:
++	 *
++	 * 1. An opt-out. libfuse documents "-o readdirplus=no", but that
++	 *    option is only applied by fuse_apply_conn_info_opts(), which
++	 *    the low-level API path calls and the high-level path
++	 *    (fuse_main/fuse_new, which sshfs uses) does not. sshfs
++	 *    therefore parses the option itself and clears the bits here,
++	 *    where the change still sticks: libfuse converts conn->want to
++	 *    the extended want flags right after init().
++	 *
++	 * 2. Stating the requirement explicitly, so the feature does not
++	 *    silently disappear if a future libfuse stops defaulting it on.
++	 *    The guard matters: libfuse rejects init with EPROTO if want
++	 *    contains a capability the kernel did not advertise.
++	 */
++	if (sshfs.no_readdirplus) {
++		conn->want &= ~(FUSE_CAP_READDIRPLUS | FUSE_CAP_READDIRPLUS_AUTO);
++	} else if (conn->capable & FUSE_CAP_READDIRPLUS) {
++		conn->want |= FUSE_CAP_READDIRPLUS;
++	}
++
+ 	if (!sshfs.delay_connect)
+ 		start_processing_thread(&sshfs.conns[0]);
+ 
+@@ -2494,13 +2540,73 @@ static int sshfs_reopen_dir(struct dir_handle *handle)
+ 	return err;
+ }
+ 
++/*
++ * Is a write() possibly still pending on this directory entry?
++ *
++ * readdirplus (FUSE_FILL_DIR_PLUS) hands attributes to the kernel, so they must not be
++ * stale. A pending write() can change a file's length after the directory listing was
++ * fetched from the server. sshfs.conntab contains exactly the paths that are open with a
++ * possible in-flight write(), and sshfs_getattr() routes those paths to the connection
++ * that owns the write. So the paths found here are the ones whose readdir() attributes
++ * cannot be trusted.
++ *
++ * Conntab only exists when max_conns > 1 (see the comment block at the top of this
++ * file). With a single connection every request goes over the same SFTP channel in
++ * order, so a readdir() issued after a write() sees the written length - nothing to do.
++ */
++static int dir_entry_may_have_pending_write(const char *dirpath,
++					    const char *name)
++{
++	struct conntab_entry *ce;
++	char *entry_path;
++	int pending;
++
++	if (sshfs.conntab == NULL)
++		return 0;
++
++	/* Never suppress attributes for . and .. (kernel fills those itself) */
++	if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
++		return 0;
++
++	/* Behaves as if the entry has a pending write (conservative) */
++	if (dirpath == NULL)
++		return 1;
++
++	if (strcmp(dirpath, "/") == 0)
++		entry_path = g_strdup_printf("/%s", name);
++	else
++		entry_path = g_strdup_printf("%s/%s", dirpath, name);
++	if (entry_path == NULL)
++		return 1;
++
++	pthread_mutex_lock(&sshfs.lock);
++	ce = g_hash_table_lookup(sshfs.conntab, entry_path);
++	pthread_mutex_unlock(&sshfs.lock);
++	pending = (ce != NULL);
++
++	g_free(entry_path);
++	return pending;
++}
++
+ static int sshfs_readdir(const char *path, void *dbuf, fuse_fill_dir_t filler,
+ 			 off_t offset, struct fuse_file_info *fi,
+ 			 enum fuse_readdir_flags flags)
+ {
+-	(void) path; (void) flags;
+ 	unsigned i;
+ 	struct dir_handle *handle;
++	enum fuse_fill_dir_flags entry_flags = FUSE_FILL_DIR_DEFAULTS;
++
++	/*
++	 * Readdirplus. libfuse calls this handler with FUSE_READDIR_PLUS when the kernel
++	 * wants the listing to also prefill its inode cache, and honours
++	 * FUSE_FILL_DIR_PLUS on the filler by turning the entry into a readdirplus dirent
++	 * with attributes (see fill_dir_plus() in libfuse's fuse.c). The attributes are
++	 * already on the wire - sftp_readdir*() parses them into struct dir_entry.stbuf -
++	 * so honouring the flag costs nothing and saves the kernel one getattr() round
++	 * trip per entry.
++	 */
++	if (flags & FUSE_READDIR_PLUS)
++		entry_flags = FUSE_FILL_DIR_PLUS;
+ 
+ 	handle = (struct dir_handle*) fi->fh;
+ 
+@@ -2540,10 +2646,30 @@ static int sshfs_readdir(const char *path, void *dbuf, fuse_fill_dir_t filler,
+ 	/*
+ 	 * Old-style readdir: hand FUSE the complete listing with offset 0 and
+ 	 * let it do the offset-based slicing itself.
++	 *
++	 * In readdirplus mode the attributes travel with the names, except for
++	 * entries that may have a pending write() and therefore possibly stale
++	 * attributes: those are filled without FUSE_FILL_DIR_PLUS, which makes
++	 * the kernel do a real getattr() for that entry (and only that entry).
+ 	 */
++	DEBUG("readdir%s: %s (%u entries)\n",
++	      entry_flags == FUSE_FILL_DIR_PLUS ? "plus" : "", path,
++	      handle->entries->len);
++
+ 	for (i = 0; i < handle->entries->len; i++) {
+ 		struct dir_entry *entry = g_ptr_array_index(handle->entries, i);
+-		filler(dbuf, entry->name, &entry->stbuf, 0, 0);
++
++		if (entry_flags == FUSE_FILL_DIR_PLUS &&
++		    dir_entry_may_have_pending_write(path, entry->name)) {
++			DEBUG("readdirplus: no attrs for %s/%s "
++			      "(pending write, attrs may be stale)\n",
++			      path, entry->name);
++			filler(dbuf, entry->name, &entry->stbuf, 0,
++			       FUSE_FILL_DIR_DEFAULTS);
++		} else {
++			filler(dbuf, entry->name, &entry->stbuf, 0,
++			       entry_flags);
++		}
+ 	}
+ 
+ 	return 0;
+@@ -3848,6 +3974,10 @@ static void usage(const char *progname)
+ "    -o sshfs_sync          synchronous writes\n"
+ "    -o no_readahead        synchronous reads (no speculative readahead)\n"
+ "    -o sync_readdir        synchronous readdir\n"
++"    -o readdirplus=BOOL    hand readdir() attributes to the kernel so whole-tree\n"
++"                           walks skip one getattr() per file {yes,no,auto}\n"
++"                           (default: yes; entries with a pending write always\n"
++"                           fall back to a real getattr)\n"
+ "    -d, --debug            print some debugging information (implies -f)\n"
+ "    -o dir_cache=BOOL      enable caching of directory contents (names,\n"
+ "                           attributes, symlink targets) {yes,no} (default: yes)\n"
+diff --git a/sshfs.rst b/sshfs.rst
+index efc429e..e002529 100644
+--- a/sshfs.rst
++++ b/sshfs.rst
+@@ -104,6 +104,18 @@ Options
+    synchronous readdir. This will slow things down, but may be useful
+    in some situations.
+ 
++-o readdirplus=BOOL
++   Hand the file attributes that come with the directory listing to the
++   kernel, so that a metadata walk over a tree (``git status``,
++   ``git diff --stat``, ``rsync``) costs one round trip per *directory*
++   instead of one per file. The attributes are part of the SFTP
++   readdir reply anyway, so this costs nothing extra.
++
++   Entries that have a pending write are always excluded and fall back
++   to a normal *getattr()*, because a pending write can change a file's
++   length and the attributes from the listing would be stale. Possible
++   values: ``yes`` (default), ``no``, ``auto``.
++
+ -o workaround=LIST
+    Enable the specified workaround. See the `Caveats` section below
+    for some additional information. Possible values are:

@@ -51,6 +51,13 @@ test-config.yaml
 !tools/*.py
 tools/__pycache__/
 
+# ...and so is the vendored upstream sshfs tree (MOUNT-015): its test suite is the
+# regression gate for the readdirplus patch, and the patch's probe harness is Python.
+# Without these carve-outs `git add vendor/ probes/` silently ships a partial tree
+# (the same failure mode as the tools/ one above).
+!vendor/sshfs/test/*.py
+!probes/sshfs-readdirplus/*.py
+
 # Bunker E2E battery output (regenerated on each run)
 e2e-output/
 
