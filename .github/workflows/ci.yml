@@ -13,20 +13,37 @@ on:
         default: '300'
         type: string
 
-# INT-CI-079: this repo has exactly ONE self-hosted runner (bunker-mvp), and
-# both self-hosted jobs (`regression` E2E battery, `root-suite` root-gated
-# TestSpawn|TestCgroup|TestConcurrency) must execute on it serially. Without
-# run supersession every push — including board-only pushes — enqueued a full
-# run whose self-hosted jobs queued behind the ones before it: pushes to main
-# on 2026-10-22 took 6h41m-9h04m from created_at to updated_at (4accda74
-# 16:33:53Z -> 01:37:27Z; b611ca47 16:36:34Z -> 02:33:25Z), while board-only
-# pushes that landed after the queue drained finished in 27-35s. One group per
-# ref means a superseded push CANCELS the older run instead of growing the
-# head-of-line blocking; cancel-in-progress is limited to push events so a
-# pull_request run is never cancelled mid-review.
-concurrency:
-  group: CI-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'push' }}
+# INT-CI-083 (2026-10-23): there is deliberately NO run-level `concurrency`
+# block any more. A push run that carries code must never be cancelled,
+# replaced, or superseded into a skipped battery — measured hole:
+#
+#   * run 39898490380 (head 80a1abb4, push 04:05:58Z) carried the INT-CI-080
+#     code fix (4c1e3223 -> rebased twin 7cfd4c52). Its `changes` job armed the
+#     gate (code=true) and BOTH self-hosted jobs were CREATED (regression job
+#     120234563521, root-suite job 120234563480).
+#   * a BOARD-ONLY push c0fc342a at 04:20:16Z then superseded it:
+#     `cancel-in-progress` was arming cancellation for push events (INT-CI-079),
+#     so run 39898490380 was CANCELLED — both self-hosted jobs report
+#     conclusion=cancelled.
+#   * the superseding run 39899780020 (head c0fc342a) classified its OWN delta
+#     (`git diff --name-only 80a1abb4 c0fc342a` = .coding-hermes/board/
+#     tasks.jsonl only) as code=false, SKIPPED regression + root-suite, and
+#     reported conclusion=success. The code fix was never exercised by the live
+#     battery and the gate looked green while skipping it.
+#
+# Why the whole group goes, not just `cancel-in-progress: false`: GitHub also
+# cancels any PENDING run in a concurrency group when a newer run in that group
+# is queued (`queue: single` default); `cancel-in-progress` only governs the
+# IN-PROGRESS run. A code run waiting behind an in-flight ~25min battery would
+# therefore still be replaceable by a later board-only push — the same hole
+# with a narrower window — unless the group were made unique per run, which is
+# a no-op with extra YAML. Without the block, pushes are fully independent: the
+# single self-hosted runner serializes the two battery jobs itself, while the
+# `changes` code gate (below) keeps board/bookkeeping pushes off that runner
+# entirely. That gate is the queue relief INT-CI-079 actually wanted (board
+# pushes cost ~30s of ubuntu-latest and never enter the bunker-mvp queue), so
+# nothing needs cancelling; dropping the group also lets a board-only push's
+# fast gates report immediately instead of waiting for an in-flight battery.
 
 env:
   GO_TEST_TIMEOUT: ${{ inputs.test-timeout || '300' }}s
@@ -41,6 +58,15 @@ jobs:
   # jobs, while any code change still runs them. The fast gates (build-and-test,
   # unit-tests, gitreins-guard) stay unconditional on ubuntu-latest and still
   # cover every push.
+  #
+  # INT-CI-083: a NON-PUSH event is an explicit request to run the full battery
+  # on the dispatched ref (`workflow_dispatch`), so the step writes code=true
+  # BEFORE any diff/classification. Classifying the dispatched ref's own delta
+  # is wrong there: a dispatch on a bookkeeping HEAD (e.g. c0fc342a, whose only
+  # delta is .coding-hermes/board/tasks.jsonl) must still exercise
+  # regression + root-suite — that is the only way to certify a code commit
+  # that already landed. Push classification is unchanged (INT-CI-079 holds:
+  # board-only pushes still report code=false and skip the single runner).
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -51,9 +77,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - id: diff
-        name: Detect code changes
+      - name: Detect code changes
+        id: diff
         run: |
+          if [ "${{ github.event_name }}" != "push" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           base="${{ github.event.pull_request.base.sha }}"
           if [ -z "$base" ]; then base="${{ github.event.before }}"; fi
           if [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
@@ -334,8 +364,16 @@ jobs:
     timeout-minutes: 30
     # INT-CI-079: one self-hosted runner — skip this job when the push touched
     # only board (.coding-hermes/) or documentation files (see `changes`).
+    # INT-CI-083: an explicit `workflow_dispatch` runs this battery on the
+    # dispatched ref no matter what its delta looks like (see `changes`, which
+    # reports code=true for every non-push event) — that is the forced-battery
+    # path used to certify a commit that already landed, e.g.
+    # `gh workflow run ci.yml --ref main`. pull_request runs still never take
+    # the single runner, and push still requires main + code=true.
     needs: [build-and-test, changes]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.code == 'true'
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.code == 'true')
     steps:
       - uses: actions/checkout@v4
 
@@ -442,8 +480,13 @@ jobs:
     timeout-minutes: 30
     # INT-CI-079: one self-hosted runner — skip this job when the push touched
     # only board (.coding-hermes/) or documentation files (see `changes`).
+    # INT-CI-083: same forced-battery contract as `regression` above — a
+    # `workflow_dispatch` runs this suite on the dispatched ref, because a
+    # dispatched run is intent to gate that ref, not to classify it.
     needs: [build-and-test, changes]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.code == 'true'
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.code == 'true')
     steps:
       - uses: actions/checkout@v4
 
