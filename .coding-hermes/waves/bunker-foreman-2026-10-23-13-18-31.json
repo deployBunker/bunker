@@ -1,0 +1,28 @@
+{
+  "tick": "bunker-foreman-2026-10-23-13-18-31",
+  "project": "bunker",
+  "block": "INT-CI-083",
+  "wave_budget": 12,
+  "slots": 6,
+  "load": {"nproc": 16, "loadavg": 5.46, "ceil_loadavg": 6, "formula_slots": 6},
+  "wave_size": 2,
+  "reason": "Two ready rows in the resumed INT-CI-083 family have no depends_on edges and distinct seams: INT-CI-081 is live deploy/host residue; INT-CI-082 is session-probe concurrency behavior. WAVE_BUDGET=12 is not binding.",
+  "rows": [
+    {
+      "id": "INT-CI-081",
+      "worktree": "/home/kara/worktrees/bunker-INT-CI-081",
+      "branch": "wt/INT-CI-081",
+      "base": "f062d19a",
+      "brief": "/tmp/bunker-foreman-2026-10-23-13-18-31-INT-CI-081-brief.txt",
+      "step": 0
+    },
+    {
+      "id": "INT-CI-082",
+      "worktree": "/home/kara/worktrees/bunker-INT-CI-082",
+      "branch": "wt/INT-CI-082",
+      "base": "f062d19a",
+      "brief": "/tmp/bunker-foreman-2026-10-23-13-18-31-INT-CI-082-brief.txt",
+      "step": 1
+    }
+  ]
+}
