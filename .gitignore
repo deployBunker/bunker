@@ -51,11 +51,16 @@ test-config.yaml
 !tools/*.py
 tools/__pycache__/
 
-# ...and so is the vendored upstream sshfs tree (MOUNT-015): its test suite is the
+# ...and so is the upstream sshfs tree (MOUNT-015): its test suite is the
 # regression gate for the readdirplus patch, and the patch's probe harness is Python.
-# Without these carve-outs `git add vendor/ probes/` silently ships a partial tree
+# Without these carve-outs `git add third_party/ probes/` silently ships a partial tree
 # (the same failure mode as the tools/ one above).
-!vendor/sshfs/test/*.py
+#
+# NOTE: this tree lives in third_party/, NOT vendor/: a top-level vendor/ directory
+# makes the Go toolchain switch to -mod=vendor and demand vendor/modules.txt, so
+# `go build ./...` fails with "inconsistent vendoring" on every host and in CI
+# (measured 2026-10-23, CI red from f3d55824 through f04d8a12).
+!third_party/sshfs/test/*.py
 !probes/sshfs-readdirplus/*.py
 
 # Bunker E2E battery output (regenerated on each run)

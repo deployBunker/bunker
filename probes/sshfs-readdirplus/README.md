@@ -4,7 +4,7 @@ Status: **verified on a live mount** (localhost SFTP over ssh, libfuse 3.18.2,
 kernel FUSE interface 7.45, patched against upstream `sshfs-3.7.6-12-ga5d0c9b` =
 `a5d0c9b3b66ae00c1b97c95dbc00789f77b89dd0`).
 
-- Source: `vendor/sshfs/` (upstream tree at the pin, patched in place, `.git` removed
+- Source: `third_party/sshfs/` (upstream tree at the pin, patched in place, `.git` removed
   so the patch is visible in this repo's diff).
 - Patch as a file: `sshfs-readdirplus.patch` (applies to the pin; `git apply` clean).
 - Diff size (**D4**): `sshfs.c` **+137 / −7** lines, `sshfs.rst` **+12 / −0**.
