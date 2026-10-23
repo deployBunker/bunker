@@ -4980,3 +4980,14 @@ tasks:
   status: complete
   created_at: '2026-10-23T02:58:58.219368+00:00'
   completed_at: '2026-10-23T03:17:09.960393+00:00'
+- id: INT-CI-083
+  title: 'CI gate hole: board-only push cannot cancel code battery run'
+  criteria:
+  - 1) Workflow source names cancellation and self-hosted if guards with measured
+    run ids. 2) Board-only pushes stay off self-hosted runner while code commits cannot
+    be left ungated. 3) workflow_dispatch reports code=true and runs regression/root-suite.
+    4) Go tests pin these invariants and fail on the pre-fix workflow. 5) go build,
+    go vet, go test, gitreins guard, and ci.yml YAML parse pass.
+  status: complete
+  created_at: '2026-10-23T07:30:53.165613+00:00'
+  completed_at: '2026-10-23T07:49:10.909188+00:00'
