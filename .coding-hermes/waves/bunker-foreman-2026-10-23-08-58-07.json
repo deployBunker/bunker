@@ -1,0 +1,23 @@
+{
+  "tick_id": "bunker-foreman-2026-10-23-08-58-07",
+  "created_at": "2026-10-23T08:58:07Z",
+  "block": "INT-HOST-010",
+  "wave_size": 1,
+  "path": "serial-fallback",
+  "reason": "block_drive --top 10 ranked INT-HOST-010 top (90% done, 1 ready row INT-HOST-008, owner-blocked per prior tick — re-dispatched per owner ruling 2026-10-19 host-load-and-remote-ci-neither-is-a-stop); INT-CI-081/082 rows live on the live host bunker-mvp (no worker-dispatchable in-repo diff, per-row acceptance criteria name live-host evidence) so the wave path can only take 1 row; slots=1 (nproc 16, loadavg 9.80 -> ceil 10 = 6? no: max(1, min(6, 16-10)) = min(6,6) = 6 but only 1 dispatchable row exists — wave size is bounded by the block's ready rows, not by slots)",
+  "rows": [
+    {
+      "id": "INT-HOST-001",
+      "row_origin": "block INT-HOST-010's only ready row INT-HOST-008 (one-time backlog sweep), re-dispatched this tick",
+      "worktree": "/home/kara/worktrees/bunker-INT-HOST-008",
+      "branch": "wt/INT-HOST-008",
+      "base": "origin/main",
+      "base_sha": "3294446f",
+      "brief": "/tmp/bunker-foreman-2026-10-23-08-58-07-INT-HOST-001-brief.txt",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm",
+      "gitreins_task_id": "INT-HOST-001",
+      "dispatch_session": null
+    }
+  ]
+}
