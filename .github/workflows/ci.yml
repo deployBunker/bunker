@@ -13,6 +13,21 @@ on:
         default: '300'
         type: string
 
+# INT-CI-079: this repo has exactly ONE self-hosted runner (bunker-mvp), and
+# both self-hosted jobs (`regression` E2E battery, `root-suite` root-gated
+# TestSpawn|TestCgroup|TestConcurrency) must execute on it serially. Without
+# run supersession every push — including board-only pushes — enqueued a full
+# run whose self-hosted jobs queued behind the ones before it: pushes to main
+# on 2026-10-22 took 6h41m-9h04m from created_at to updated_at (4accda74
+# 16:33:53Z -> 01:37:27Z; b611ca47 16:36:34Z -> 02:33:25Z), while board-only
+# pushes that landed after the queue drained finished in 27-35s. One group per
+# ref means a superseded push CANCELS the older run instead of growing the
+# head-of-line blocking; cancel-in-progress is limited to push events so a
+# pull_request run is never cancelled mid-review.
+concurrency:
+  group: CI-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
 env:
   GO_TEST_TIMEOUT: ${{ inputs.test-timeout || '300' }}s
 
