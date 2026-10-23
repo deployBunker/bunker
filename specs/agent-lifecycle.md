@@ -168,6 +168,51 @@ waitForDockerd(agentID, UID, readiness budget = min(max(30s, 10s × concurrent
               trigger cleanup
 ```
 
+### 9b. SSH Session Probe (INT-DEMO-002, budgets INT-CI-082)
+
+Step 5d of the spawn implementation. Before an agent is registered or reported
+ready, ONE exec-path-identical SSH command proves a session actually opens:
+
+```
+probeAgentSession(agentID, user, key)
+  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+      -o LogLevel=ERROR -o ConnectTimeout=10 -i <key> bunker-<id>@localhost whoami
+  per-attempt budget = min(max(10s, 10s × probes in flight), 40s hard cap)
+  total budget       = 90s (stops the retry loop even with attempts left)
+  attempts           = 3, 1s then 2s backoff between them
+  on success: return the report (attempts, per-attempt latencies, budget, peak concurrency)
+  on failure: fail CLOSED — no registration, no persist, no ready response;
+              the standard rollback runs
+  on denial:  the INT-DEMO-001 signature (exit 254, empty stderr, banner on
+              stdout) is TERMINAL — 1 attempt, no backoff, no diagnostics
+```
+
+**Why the per-attempt budget scales.** Both `ssh` session setup and
+`loginctl enable-linger` go through systemd-logind's D-Bus, so a logind that
+answers slowly makes every session open slow. Measured on `bunker-mvp` during
+the 2026-10-23 wedge (`busctl … Peer Ping` 25.03s, `loginctl list-users`
+25.03–25.04s, `pam_systemd(sshd:session): Failed to create session: Connection
+timed out`, the probe's own ssh argv hanging past a 12s outer bound 4/4, load
+1.04 on 8 CPUs): the flat 10s deadline expired on all four concurrent
+section-8 spawns (`e2e-agent-2..5`, E2E run 39822820089), each of which then
+paid a full useradd/userdel rollback. The budget therefore scales with the
+number of probes this process has in flight — the same shape step 9 uses for
+the dockerd readiness wait (INT-CI-070) — so a lone spawn keeps the shipped
+10s fast path and a four-way burst is granted 40s, past the measured 25s
+logind latency.
+
+**Attribution.** The spawn path logs `attempts`, `attempt_latencies_ms`,
+`per_attempt_budget_ms`, `concurrent_probes` and (on failure)
+`session_denied` on both outcomes, and a failed probe appends
+`session diagnostics:` — the user's logind record plus the
+`journalctl _UID=<uid>` excerpt around the attempts (host command-audit noise
+filtered) — to the error. A slow session therefore names its own mechanism
+instead of requiring a hand investigation of a battery log.
+
+**Probe vs. session isolation.** A successful `whoami` certifies only that the
+account can open a session; it does not certify docker, mounts or the
+isolation grants.
+
 ### 10. Runtime Directory Setup
 
 ```bash

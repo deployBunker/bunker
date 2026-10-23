@@ -37,12 +37,18 @@ func TestProbeAgentSession_ExecPathOptions(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	attempts, err := probeAgentSessionLive(ctx, "abc123", "bunker-abc123", keyPath)
+	report, err := probeAgentSessionLive(ctx, "abc123", "bunker-abc123", keyPath)
 	if err != nil {
 		t.Fatalf("probe failed: %v", err)
 	}
-	if attempts != 1 {
-		t.Errorf("attempts = %d, want 1", attempts)
+	if report.Attempts != 1 {
+		t.Errorf("attempts = %d, want 1", report.Attempts)
+	}
+	if len(report.Latencies) != 1 {
+		t.Errorf("recorded %d attempt latencies, want 1 (every attempt's wall time must be measurable)", len(report.Latencies))
+	}
+	if report.Budget != sessionProbeBudget(1) {
+		t.Errorf("budget = %s, want the lone-probe budget %s", report.Budget, sessionProbeBudget(1))
 	}
 
 	lines := readRecord(t, logPath)
@@ -92,8 +98,11 @@ func TestProbeAgentSession_AttemptBoundAndBackoff(t *testing.T) {
 	if err == nil {
 		t.Fatal("probe returned nil although every attempt failed")
 	}
-	if attempts != sessionProbeMaxAttempts {
-		t.Fatalf("attempts = %d, want exactly %d (the bound must be exact, not 'at most')", attempts, sessionProbeMaxAttempts)
+	if attempts.Attempts != sessionProbeMaxAttempts {
+		t.Fatalf("attempts = %d, want exactly %d (the bound must be exact, not 'at most')", attempts.Attempts, sessionProbeMaxAttempts)
+	}
+	if len(attempts.Latencies) != sessionProbeMaxAttempts {
+		t.Errorf("recorded %d attempt latencies, want one per attempt (%d)", len(attempts.Latencies), sessionProbeMaxAttempts)
 	}
 	if calls := len(readRecord(t, logPath)); calls != sessionProbeMaxAttempts {
 		t.Errorf("ssh stub ran %d times, want %d", calls, sessionProbeMaxAttempts)
@@ -132,15 +141,15 @@ func TestProbeAgentSession_ContextCancelEndsRetry(t *testing.T) {
 	// mid-backoff.
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
-	attempts, err := probeAgentSessionLive(ctx, "cancel1", "bunker-cancel1", keyPath)
+	report, err := probeAgentSessionLive(ctx, "cancel1", "bunker-cancel1", keyPath)
 	if err == nil {
 		t.Fatal("probe returned nil although the ctx expired")
 	}
 	if !strings.Contains(err.Error(), "cancelled") {
 		t.Errorf("error should attribute the cancellation, got: %v", err)
 	}
-	if attempts > 1 {
-		t.Errorf("attempts = %d, want <= 1: the probe kept retrying after the request ctx died", attempts)
+	if report.Attempts > 1 {
+		t.Errorf("attempts = %d, want <= 1: the probe kept retrying after the request ctx died", report.Attempts)
 	}
 	if calls := len(readRecord(t, logPath)); calls > 1 {
 		t.Errorf("ssh stub ran %d times, want <= 1", calls)
@@ -250,11 +259,11 @@ func TestSpawn_SessionProbeFailureNeverReportsReady(t *testing.T) {
 	stubbedDockerdWait(t)
 
 	origProbe := probeAgentSession
-	probeAgentSession = func(ctx context.Context, aid, un, sshKeyPath string) (int, error) {
+	probeAgentSession = func(ctx context.Context, aid, un, sshKeyPath string) (sessionProbeReport, error) {
 		if un != username {
 			t.Errorf("probe called with username %q, want %q", un, username)
 		}
-		return 3, errors.New("stubbed probe failure: session denied")
+		return sessionProbeReport{Attempts: 3, Budget: sessionProbeBudget(1)}, errors.New("stubbed probe failure: session denied")
 	}
 	t.Cleanup(func() { probeAgentSession = origProbe })
 
@@ -318,14 +327,14 @@ func TestSpawn_SessionProbeSuccessReturnsReady(t *testing.T) {
 	stubbedDockerdWait(t)
 
 	origProbe := probeAgentSession
-	probeAgentSession = func(ctx context.Context, aid, username, sshKeyPath string) (int, error) {
+	probeAgentSession = func(ctx context.Context, aid, username, sshKeyPath string) (sessionProbeReport, error) {
 		if sshKeyPath == "" {
 			t.Errorf("probe called with empty sshKeyPath")
 		}
 		if username != "bunker-"+aid {
 			t.Errorf("probe username = %q, want %q", username, "bunker-"+aid)
 		}
-		return 1, nil
+		return sessionProbeReport{Attempts: 1, Latencies: []time.Duration{time.Millisecond}, Budget: sessionProbeBudget(1)}, nil
 	}
 	t.Cleanup(func() { probeAgentSession = origProbe })
 

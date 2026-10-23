@@ -927,13 +927,23 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// ssh target/options (single-token `whoami`), is hard-bounded per
 	// attempt and capped at three tries, and fails CLOSED: no registration,
 	// no persist, no ready response — the standard rollback runs.
+	//
+	// INT-CI-082: the per-attempt budget scales with the number of probes in
+	// flight (a section-8 4-way burst gets 40s instead of the flat 10s that
+	// expired on bunker-mvp while systemd-logind was not answering its bus),
+	// and every attempt's wall time is logged on BOTH outcomes so a timeout
+	// is attributable without a hand investigation.
 	m.logger.Info("spawn entering stage", "agent_id", agentID, "stage", StageSessionProbe)
-	attempts, probeErr := probeAgentSession(ctx, agentID, username, sshKeyPath)
+	probeReport, probeErr := probeAgentSession(ctx, agentID, username, sshKeyPath)
 	if probeErr != nil {
 		m.logger.Error("session probe failed; agent will not be reported ready",
 			"agent_id", agentID,
 			"stage", StageSessionProbe,
-			"attempts", attempts,
+			"attempts", probeReport.Attempts,
+			"attempt_latencies_ms", probeReport.LatencyMillis(),
+			"per_attempt_budget_ms", probeReport.Budget.Milliseconds(),
+			"concurrent_probes", probeReport.Concurrent,
+			"session_denied", probeReport.Denied,
 			"error", probeErr,
 		)
 		return nil, fail(StageSessionProbe, probeErr)
@@ -941,7 +951,10 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	m.logger.Info("session probe succeeded",
 		"agent_id", agentID,
 		"stage", StageSessionProbe,
-		"attempts", attempts,
+		"attempts", probeReport.Attempts,
+		"attempt_latencies_ms", probeReport.LatencyMillis(),
+		"per_attempt_budget_ms", probeReport.Budget.Milliseconds(),
+		"concurrent_probes", probeReport.Concurrent,
 	)
 
 	rec := &resource.AgentRecord{
