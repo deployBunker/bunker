@@ -297,3 +297,133 @@ func TestDestroy_ForceModeStillDisablesLinger(t *testing.T) {
 		t.Errorf("calls = %v, want exactly one for bunker-force-linger-agent", *calls)
 	}
 }
+
+// TestDisableAgentLinger_RemovesResidualMarkerFile is the belt-and-braces arm
+// (INT-HOST-001 design 2): after the loginctl exec, a linger MARKER file that
+// is still in place is removed directly under the swappable lingerDir —
+// best-effort, with a WARN when the removal itself fails and nothing when the
+// marker is already absent.
+func TestDisableAgentLinger_RemovesResidualMarkerFile(t *testing.T) {
+	t.Run("marker_present_after_successful_disable_is_removed", func(t *testing.T) {
+		dir := t.TempDir()
+		swapStringSeam(t, &lingerDir, dir)
+		stubLookupUser(t, presentUserStub("bunker-marker-agent"))
+		calls := stubDisableLinger(t, func(context.Context, string) ([]byte, error) {
+			return nil, nil // loginctl "succeeded" but left the marker behind
+		})
+		marker := filepath.Join(dir, "bunker-marker-agent")
+		if err := os.WriteFile(marker, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		var buf bytes.Buffer
+		if !disableAgentLinger(context.Background(), "bunker-marker-agent", newLingerTestLogger(&buf)) {
+			t.Error("success must report attempted")
+		}
+		if len(*calls) != 1 || (*calls)[0].username != "bunker-marker-agent" {
+			t.Errorf("calls = %v, want exactly one for bunker-marker-agent", *calls)
+		}
+		if _, err := os.Stat(marker); !os.IsNotExist(err) {
+			t.Errorf("residual marker %s must be removed after disable (stat err: %v)", marker, err)
+		}
+		if !strings.Contains(buf.String(), "removed residual linger marker file") {
+			t.Errorf("marker removal must be on the record; log:\n%s", buf.String())
+		}
+	})
+
+	t.Run("marker_present_after_failing_disable_still_removed", func(t *testing.T) {
+		dir := t.TempDir()
+		swapStringSeam(t, &lingerDir, dir)
+		stubLookupUser(t, presentUserStub("bunker-fail-marker-agent"))
+		stubDisableLinger(t, func(context.Context, string) ([]byte, error) {
+			return []byte("Failed to disable linger: timed out"), fmt.Errorf("exit status 1")
+		})
+		marker := filepath.Join(dir, "bunker-fail-marker-agent")
+		if err := os.WriteFile(marker, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		var buf bytes.Buffer
+		logger := newLingerTestLogger(&buf)
+		if !disableAgentLinger(context.Background(), "bunker-fail-marker-agent", logger) {
+			t.Error("a failing loginctl call WAS attempted and must report attempted")
+		}
+		if _, err := os.Stat(marker); !os.IsNotExist(err) {
+			t.Errorf("marker must be removed even when the disable-linger exec failed (marker %s, stat err: %v)", marker, err)
+		}
+		logged := buf.String()
+		if !strings.Contains(logged, "loginctl disable-linger failed") {
+			t.Errorf("exec failure must stay on the record; log:\n%s", logged)
+		}
+		if !strings.Contains(logged, "removed residual linger marker file") {
+			t.Errorf("marker removal must be on the record; log:\n%s", logged)
+		}
+	})
+
+	t.Run("marker_absent_is_a_silent_noop", func(t *testing.T) {
+		dir := t.TempDir()
+		swapStringSeam(t, &lingerDir, dir)
+		stubLookupUser(t, presentUserStub("bunker-clean-agent"))
+		calls := stubDisableLinger(t, func(context.Context, string) ([]byte, error) {
+			return nil, nil
+		})
+
+		var buf bytes.Buffer
+		if !disableAgentLinger(context.Background(), "bunker-clean-agent", newLingerTestLogger(&buf)) {
+			t.Error("success must report attempted")
+		}
+		if len(*calls) != 1 {
+			t.Errorf("calls = %v, want exactly one", *calls)
+		}
+		if strings.Contains(buf.String(), "residual linger marker") {
+			t.Errorf("no marker, no removal record; log:\n%s", buf.String())
+		}
+	})
+}
+
+// TestDestroy_RemovesResidualLingerMarkerFile is the Destroy-level arm: a
+// spawned agent whose linger marker survived the loginctl exec leaves the
+// destroy with NO marker file. Both host commands are PATH stubs (the same
+// pattern TestDestroy_DisablesLingerBeforeUserdel uses), so the REAL
+// disableLinger and marker-removal code run end to end: the stubbed loginctl
+// exits 0 but leaves the marker behind, and the destroy must remove it.
+func TestDestroy_RemovesResidualLingerMarkerFile(t *testing.T) {
+	dir := t.TempDir()
+	swapStringSeam(t, &lingerDir, dir)
+	var buf bytes.Buffer
+	m := newDestroyLoggerManager(t, &buf)
+
+	stubDir := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "cmds.log")
+	for _, cmd := range []string{"loginctl", "userdel"} {
+		script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"" + logPath + "\"\n"
+		if err := os.WriteFile(filepath.Join(stubDir, cmd), []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", stubDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	stubLookupUser(t, presentUserStub("bunker-marker-destroy-agent"))
+	marker := filepath.Join(dir, "bunker-marker-destroy-agent")
+	if err := os.WriteFile(marker, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := m.Destroy(context.Background(), "marker-destroy-agent", false)
+	if err != nil {
+		t.Fatalf("destroy (with stub userdel) must succeed: %v", err)
+	}
+	if resp == nil || resp.Status != "destroyed" {
+		t.Fatalf("status = %v, want destroyed", resp)
+	}
+	data, rerr := os.ReadFile(logPath)
+	if rerr != nil {
+		t.Fatalf("command stub log missing (a stubbed command never ran): %v", rerr)
+	}
+	if !strings.Contains(string(data), "disable-linger bunker-marker-destroy-agent") {
+		t.Errorf("destroy never ran loginctl disable-linger; log: %q", string(data))
+	}
+	if _, serr := os.Stat(marker); !os.IsNotExist(serr) {
+		t.Errorf("linger marker %s must not survive a successful destroy (stat err: %v)", marker, serr)
+	}
+}

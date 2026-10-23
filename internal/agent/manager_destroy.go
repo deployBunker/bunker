@@ -480,9 +480,24 @@ func disableAgentLinger(execCtx context.Context, username string, logger *slog.L
 	if err != nil {
 		logger.Warn("loginctl disable-linger failed (continuing destroy)",
 			"username", username, "error", err, "output", string(out))
-		return true
+	} else {
+		logger.Debug("disabled linger for agent user", "username", username)
 	}
-	logger.Debug("disabled linger for agent user", "username", username)
+	// Belt and braces (INT-HOST-001): systemd implements enable-linger as
+	// exactly the marker file, so if it is still in place after the loginctl
+	// exec (loginctl missing, busy, or its reply lost while the file exists),
+	// remove it directly. Best-effort like the exec above: a removal failure
+	// is logged (WARN) and never fails the destroy.
+	marker := lingerMarkerPath(username)
+	if _, serr := os.Stat(marker); serr == nil {
+		if rerr := os.Remove(marker); rerr != nil {
+			logger.Warn("linger marker file still present after disable-linger and could not be removed (continuing destroy)",
+				"username", username, "marker", marker, "error", rerr)
+		} else {
+			logger.Debug("removed residual linger marker file",
+				"username", username, "marker", marker)
+		}
+	}
 	return true
 }
 
