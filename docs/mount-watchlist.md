@@ -150,3 +150,10 @@ metadata class improved (4.2–5.0 ms/op distinct-file; the uncached classes sti
 cost one round trip: `statfs` 208 ms, first content read 747 ms). The
 mounted-workflow line stays closed; full numbers and the invocation in
 [`mount-drivers.md`](mount-drivers.md) §6.
+
+(94.5–109.5 ms) a relayed peer uses. A **sync instead of mount** strategy
+(Mutagen, single static binary, no FUSE/root — MOUNT-014) sits inside this
+trigger for git-heavy work: it removes the per-op round trip entirely by running
+git on a local copy. Its evaluation is gated on a live `bunker-las-0x` peer
+(bunker-las-02 offline 10 days as of 2026-10-22); see
+[`mutagen-remote-dev.md`](mutagen-remote-dev.md).

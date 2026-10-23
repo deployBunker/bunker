@@ -498,6 +498,9 @@ observation — a router fact, not an sshfs or SSH fact.
 Reproduce: `probes/mount017-path-probe.sh <mountpoint> <peer> [samples]`
 (read-only — tailscale status/netcheck/ping, ICMP RTT, cold `statfs` /
 negative-lookup / cold-read timing, a warm-loop control, and a local baseline).
+See also [`mutagen-remote-dev.md`](mutagen-remote-dev.md) for the MOUNT-014
+Mutagen evaluation (sync instead of mount; native local-git baseline measured,
+battery gated on a live `bunker-las-0x` peer).
 
 ---
 ch:trace row=MOUNT-017 spec=docs/mount-watchlist.md#remote-fs-latency test=docs/mount-drivers.md::MOUNT-017 doc=docs/mount-drivers.md prompt=/tmp/bunker-foreman-2026-10-22-22-13-04-MOUNT-017-brief.txt evidence=docs/mount-drivers.md witness=docs/mount-drivers.md verdict=none:pending-foreman-judge commit=none:pending-foreman-trace memory=none:not-applicable
