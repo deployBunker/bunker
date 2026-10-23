@@ -1,0 +1,18 @@
+{
+  "tick": "bunker-foreman-2026-10-23-15-38-23",
+  "block": "INT-CI-083",
+  "path": "serial",
+  "wave_budget": 7,
+  "slots": 5,
+  "reason": "nproc=16, loadavg=10.24, ceil(loadavg)=11, slots=5; the selected block has one ready row (INT-CI-082), so no multi-row wave is possible.",
+  "steps": [
+    {
+      "row": "INT-CI-082",
+      "worktree": "/home/kara/worktrees/bunker-INT-CI-082",
+      "branch": "wt/INT-CI-082",
+      "brief": "/tmp/bunker-foreman-2026-10-23-15-38-23-INT-CI-082-brief.txt",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm"
+    }
+  ]
+}
