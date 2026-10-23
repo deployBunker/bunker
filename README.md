@@ -1186,9 +1186,18 @@ KEPT (its user still exists) with the stale set's on-disk size, and
 `bunker homes prune` removes exactly the stale ones — never a home whose user
 still exists, never an entry that does not match `bunker-*`, and nothing at all
 after an inconclusive user lookup (fail-closed); `bunker linger prune` does the
-same for the stale `systemd` linger entries. Take `--dry-run` first. A
-`Probe: partial` line means at least one plane could not be read (usually a
-daemon that is not root), so the counts are a lower bound rather than zero.
+same for the stale `systemd` linger entries. Take `--dry-run` first.
+`bunker reap` (requires a build from HEAD — it ships after v0.2.0) is the
+one-pass form of all of them: it scans the rootlesskit
+AppArmor profiles (`/etc/apparmor.d/home.bunker-*.bin.rootlesskit`), the agent
+homes, the linger entries AND the per-agent runtime directories
+(`/run/bunker/<id>`, which no destroy ever revisits when the destroy itself
+never ran), reports per class how many entries it would remove, and with
+`--apply` deletes exactly the entries whose user no longer exists — a live
+user's state and any entry outside the managed naming pattern are never
+touched. `Probe: partial` line means at least one plane could not be read
+(usually a daemon that is not root), so the counts are a lower bound rather
+than zero.
 
 Follow the [Quick Start provisioning sequence](#provision-host-isolation-before-spawning)
 on the daemon host. The installer is idempotent and does not touch `/etc/fstab`.
@@ -1273,6 +1282,9 @@ bunker renew       Renew an agent under its STABLE identity (destroy + re-spawn 
                    same id; refuses without --agent-id — see docs/renewal.md)
 bunker homes       Inspect orphaned agent home directories (prune removes the stale ones)
 bunker linger      Inspect the systemd linger directory (prune removes the stale entries)
+bunker reap        One-pass residue scan: orphan AppArmor profiles, agent homes,
+                   linger entries AND /run/bunker/<id> runtime dirs — dry run by
+                   default, --apply removes (owner decision; never a live user's state)
 bunker umount      Unmount a mountpoint (idempotent, clears stranded mounts)
 bunker pull        Copy a file FROM an agent's environment (cp is push-only);
                    Usage: pull <agent-id> <remote-path> [local-dir]

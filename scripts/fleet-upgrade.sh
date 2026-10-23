@@ -54,6 +54,14 @@ REMOTE_BIN=${BUNKER_REMOTE_BIN:-/opt/bunker/bunkerd}
 REMOTE_UNIT=${BUNKER_REMOTE_UNIT:-bunkerd}
 SSH_USER=${BUNKER_SSH_USER:-root}
 SSH_KEY=${BUNKER_SSH_KEY:-}
+# INT-CI-081: the fleet runs a PAIR per host — the systemd unit's bunkerd
+# (REMOTE_BIN), a second bunkerd copy at /usr/local/bin (the path the E2E
+# battery and older docs resolve), and the `bunker` CLI — and a half-upgrade is
+# invisible: bunker-mvp was measured serving `bunkerd 0.2.0/149411c` from BOTH
+# bunkerd paths while the repo had shipped /run/bunker 0711. Both extra paths
+# are deployed and verified here, and a non-empty failure list fails the host.
+REMOTE_CLI=${BUNKER_REMOTE_CLI:-/usr/local/bin/bunker}
+REMOTE_BIN_ALIASES=${BUNKER_REMOTE_BIN_ALIASES:-/usr/local/bin/bunkerd}
 
 say()  { printf '%s: %s\n' "$PROG" "$*"; }
 warn() { printf '%s: warning: %s\n' "$PROG" "$*" >&2; }
@@ -77,6 +85,9 @@ Environment:
   BUNKER_REMOTE_UNIT systemd unit to restart (default bunkerd)
   BUNKER_SSH_USER    SSH user (default root)
   BUNKER_SSH_KEY     SSH identity file (optional)
+  BUNKER_REMOTE_CLI  CLI path on the remote host (default /usr/local/bin/bunker)
+  BUNKER_REMOTE_BIN_ALIASES  extra daemon paths kept in step, space-separated
+                     (default "/usr/local/bin/bunkerd"; empty disables)
 EOF
 }
 
@@ -109,13 +120,25 @@ if [ "$DRY_RUN" -eq 0 ]; then
 	BUILD_DIR=$(mktemp -d)
 	trap 'rm -rf "$BUILD_DIR"' EXIT
 	COMMIT=$(git rev-parse --short HEAD)
-	VERSION=$(awk '/^Version = / { gsub(/"/, "", $NF); print $NF; exit }' internal/version/version.go)
+	# Version is declared INSIDE the `var (` block of internal/version/version.go
+	# (tab-indented), so the match must tolerate leading whitespace — anchoring
+	# on ^Version silently refused every upgrade ("could not read Version")
+	# until INT-CI-081 hit it on a real deploy.
+	VERSION=$(awk '/^[[:space:]]*Version[[:space:]]*=/ { gsub(/"/, "", $NF); print $NF; exit }' internal/version/version.go)
 	[ -n "$VERSION" ] || die "could not read Version from internal/version/version.go"
+	# Stamp the version explicitly (the Makefile's LDFLAGS): a plain `go build`
+	# relies on the toolchain embedding vcs.revision, which it does NOT do in
+	# every checkout shape (a linked worktree built fine here but both binaries
+	# reported `commit: unknown`, and the VERIFY step correctly refused the
+	# upgrade). The commit is the whole point of this script's verification, so
+	# it is injected rather than inferred.
+	BUILDDATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+	LDFLAGS="-X github.com/deployBunker/bunker/internal/version.Version=$VERSION -X github.com/deployBunker/bunker/internal/version.Commit=$COMMIT -X github.com/deployBunker/bunker/internal/version.BuildDate=$BUILDDATE"
 	say "building bunkerd+bunker v$VERSION ($COMMIT) from $REPO_DIR"
 	(
 		cd "$REPO_DIR"
-		go build -o "$BUILD_DIR/bunkerd" ./cmd/bunkerd &&
-		go build -o "$BUILD_DIR/bunker" ./cmd/bunker
+		go build -ldflags "$LDFLAGS" -o "$BUILD_DIR/bunkerd" ./cmd/bunkerd &&
+		go build -ldflags "$LDFLAGS" -o "$BUILD_DIR/bunker" ./cmd/bunker
 	) || refuse "go build failed — fix the tree before upgrading a fleet"
 	say "build ok: $(ls -la "$BUILD_DIR" | tail -2 | awk '{print $NF, $5}')"
 else
@@ -126,13 +149,35 @@ fi
 ssh_opts="-o ConnectTimeout=6 -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
 [ -n "$SSH_KEY" ] && ssh_opts="$ssh_opts -i $SSH_KEY"
 
-# Read the version of the REMOTE daemon binary. Prefers the binary's own
+# Read the version of a REMOTE binary path. Prefers the binary's own
 # --version output (carries commit too); falls back to a marker when the
 # binary predates the flag (v0.1.3 does).
-remote_version() {
+remote_bin_version() {
+	host=$1
+	path=$2
 	# shellcheck disable=SC2086
-	ssh $ssh_opts "$SSH_USER@$1" \
-		"$REMOTE_BIN --version 2>/dev/null || echo pre-version-flag" 2>/dev/null || echo UNREACHABLE
+	ssh $ssh_opts "$SSH_USER@$host" \
+		"$path --version 2>/dev/null || echo pre-version-flag" 2>/dev/null || echo UNREACHABLE
+}
+
+remote_version() {
+	remote_bin_version "$1" "$REMOTE_BIN"
+}
+
+# deploy_one ships one built binary to one remote path atomically: copy to
+# <path>.new, move the live file aside to <path>.old, move the new one in,
+# chmod 0755. The old file is kept until the caller's verification passes, so a
+# bad build is recoverable on the host without a rebuild.
+deploy_one() {
+	host=$1
+	local_src=$2
+	remote_path=$3
+	# shellcheck disable=SC2086
+	scp -q $ssh_opts "$local_src" "$SSH_USER@$host:$remote_path.new" || return 1
+	# shellcheck disable=SC2086
+	ssh $ssh_opts "$SSH_USER@$host" \
+		"mv -f $remote_path $remote_path.old 2>/dev/null || true; mv -f $remote_path.new $remote_path && chmod 0755 $remote_path" || return 1
+	return 0
 }
 
 upgrade_host() {
@@ -144,25 +189,46 @@ upgrade_host() {
 	fi
 	if [ "$DRY_RUN" -eq 1 ]; then
 		printf '%-10s would upgrade: %s -> HEAD build\n' "$h" "$(echo "$before" | head -1)"
+		printf '%-10s would deploy: %s, %s, aliases: %s\n' "$h" "$REMOTE_BIN" "$REMOTE_CLI" "${REMOTE_BIN_ALIASES:-<none>}"
 		return 0
 	fi
-	# ship + swap + restart
-	# shellcheck disable=SC2086
-	scp -q $ssh_opts "$BUILD_DIR/bunkerd" "$SSH_USER@$h:$REMOTE_BIN.new" || {
-		printf '%-10s SHIP-FAILED (scp) — skipped\n' "$h"; return 2; }
+	# ship every binary of the pair + swap + restart
+	deploy_one "$h" "$BUILD_DIR/bunkerd" "$REMOTE_BIN" || {
+		printf '%-10s SHIP-FAILED (scp %s) — skipped\n' "$h" "$REMOTE_BIN"; return 2; }
+	deploy_one "$h" "$BUILD_DIR/bunker" "$REMOTE_CLI" || {
+		printf '%-10s SHIP-FAILED (scp %s) — daemon shipped, CLI NOT upgraded (half upgrade)\n' "$h" "$REMOTE_CLI"; return 2; }
 	# shellcheck disable=SC2086
 	ssh $ssh_opts "$SSH_USER@$h" \
-		"mv $REMOTE_BIN $REMOTE_BIN.old && mv $REMOTE_BIN.new $REMOTE_BIN && chmod 0755 $REMOTE_BIN && (systemctl restart $REMOTE_UNIT || sudo -n systemctl restart $REMOTE_UNIT)" \
-		|| { printf '%-10s SWAP/RESTART-FAILED — old binary kept at %s.old\n' "$h" "$REMOTE_BIN"; return 2; }
-	sleep 2
-	after=$(remote_version "$h")
-	if echo "$after" | grep -q "$COMMIT"; then
-		printf '%-10s OK: %s -> %s\n' "$h" "$(echo "$before" | head -1)" "$(echo "$after" | head -1)"
+		"(systemctl restart $REMOTE_UNIT || sudo -n systemctl restart $REMOTE_UNIT)" \
+		|| { printf '%-10s RESTART-FAILED — new binaries in place, unit not restarted\n' "$h"; return 2; }
+	# Keep the extra daemon copies byte-identical to the live one: a host that
+	# serves the fix from /opt/bunker and the old build from /usr/local/bin is
+	# exactly the drift this row measured.
+	for alias_path in ${REMOTE_BIN_ALIASES:-}; do
 		# shellcheck disable=SC2086
-		ssh $ssh_opts "$SSH_USER@$h" "rm -f $REMOTE_BIN.old" || true
+		ssh $ssh_opts "$SSH_USER@$h" \
+			"cp -f $REMOTE_BIN $alias_path.new && chmod 0755 $alias_path.new && mv -f $alias_path $alias_path.old 2>/dev/null || true; mv -f $alias_path.new $alias_path" \
+			|| { printf '%-10s ALIAS-FAILED: could not install %s\n' "$h" "$alias_path"; return 2; }
+	done
+	sleep 2
+	problems=""
+	after=$(remote_version "$h")
+	echo "$after" | grep -q "$COMMIT" || problems="$problems $REMOTE_BIN"
+	# shellcheck disable=SC2086
+	cli_after=$(remote_bin_version "$h" "$REMOTE_CLI")
+	echo "$cli_after" | grep -q "$COMMIT" || problems="$problems $REMOTE_CLI"
+	for alias_path in ${REMOTE_BIN_ALIASES:-}; do
+		alias_after=$(remote_bin_version "$h" "$alias_path")
+		echo "$alias_after" | grep -q "$COMMIT" || problems="$problems $alias_path"
+	done
+	if [ -z "$problems" ]; then
+		printf '%-10s OK: bunkerd %s -> %s; CLI %s\n' "$h" "$(echo "$before" | head -1)" "$(echo "$after" | head -1)" "$(echo "$cli_after" | head -1)"
+		# shellcheck disable=SC2086
+		ssh $ssh_opts "$SSH_USER@$h" "rm -f $REMOTE_BIN.old $REMOTE_CLI.old $REMOTE_BIN_ALIASES.old" || true
 		return 0
 	fi
-	printf '%-10s VERIFY-FAILED: running version %q does not match built %s\n' "$h" "$after" "$COMMIT"
+	printf '%-10s VERIFY-FAILED: built %s not reported by:%s\n' "$h" "$COMMIT" "$problems"
+	printf '%-10s   bunkerd=%q cli=%q\n' "$h" "$(echo "$after" | head -1)" "$(echo "$cli_after" | head -1)"
 	return 2
 }
 

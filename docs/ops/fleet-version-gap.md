@@ -47,6 +47,27 @@ outage CLASS is environmental (host power/network/provider), outside what any re
 change can fix — but the version gap is a deploy-process gap, and that is
 fixable in the repo.
 
+### 3b. Re-measured 2026-10-23 (INT-CI-081 — the demo host is now at HEAD)
+
+`bunker-mvp`, the fleet's live-E2E demo host and only self-hosted CI runner, was
+still serving `bunkerd 0.2.0 / commit 149411c / built 2026-10-02` from **both**
+`/opt/bunker/bunkerd` and `/usr/local/bin/bunkerd` while `main` carried the
+ISO-002 `/run/bunker` 0711 fix — so every spawn from the deployed daemon
+re-applied the pre-fix mode and only a manual `chmod` held the repair.
+
+Deployed with `scripts/fleet-upgrade.sh --hosts bunker-mvp` from commit
+`ab183477`: `/opt/bunker/bunkerd`, `/usr/local/bin/bunkerd` and the
+`/usr/local/bin/bunker` CLI all report `0.2.1 / ab183477 / built
+2026-10-23T14:07:39Z`, the daemon was restarted, and a spawn performed by the
+new build was measured freeing `/run/bunker` back to `drwx--x--x` from a forced
+`0700` (and holding it across a second spawn 64 s later). Full evidence, residue
+counts and the two script defects this deploy exposed:
+[`../evidence/INT-CI-081-deploy-and-residue.md`](../evidence/INT-CI-081-deploy-and-residue.md).
+
+The remaining las hosts are still offline (environmental, above); the deploy
+process itself is no longer the gap — the script now ships and verifies the
+daemon **pair** plus the CLI, instead of silently upgrading one path.
+
 ## 4. Deployment process (the code half of this fix)
 
 New: **`scripts/fleet-upgrade.sh`** — a one-command, verifiable fleet upgrade.
