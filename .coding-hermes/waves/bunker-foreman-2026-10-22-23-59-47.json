@@ -1,0 +1,34 @@
+{
+  "tick_id": "bunker-foreman-2026-10-22-23-59-47",
+  "created_at": "2026-10-22T19:15:00-05:00",
+  "block": "MOUNT-016",
+  "block_resume_reason": "RESUME-FIRST: last tick (bunker-foreman-2026-10-22-23-19-07) drove block MOUNT-016; two worker-eligible ready rows remain",
+  "size_basis": "slots=6 (nproc 16, loadavg 8.2) but WAVE_BUDGET=2 is the hard ceiling -> wave of 2",
+  "rows": [
+    {
+      "id": "MOUNT-013",
+      "title": "EVALUATE rclone mount (SFTP backend, request pipelining) as the mounted-workflow transport at distance",
+      "worktree": "/home/kara/worktrees/bunker-MOUNT-013",
+      "branch": "wt/MOUNT-013",
+      "base_sha": "525eb2c6",
+      "remote_host": "root@95.216.12.55 (dedi-2, Hetzner public direct ~198ms) — matches the row's failing-case baseline",
+      "brief": "/tmp/bunker-foreman-2026-10-22-23-59-47-MOUNT-013-brief.txt",
+      "log": "/tmp/bunker-foreman-2026-10-22-23-59-47-MOUNT-013.log"
+    },
+    {
+      "id": "MOUNT-014",
+      "title": "EVALUATE Mutagen as the remote-dev file strategy (sync instead of mount)",
+      "worktree": "/home/kara/worktrees/bunker-MOUNT-014",
+      "branch": "wt/MOUNT-014",
+      "base_sha": "525eb2c6",
+      "remote_host": "root@bunker-las-02 (bunker2, ~100.69.2.x tailscale DERP-relayed) — the actual agent-workflow host, kept SEPARATE from MOUNT-013's host so the two benchmarks cannot interfere",
+      "brief": "/tmp/bunker-foreman-2026-10-22-23-59-47-MOUNT-014-brief.txt",
+      "log": "/tmp/bunker-foreman-2026-10-22-23-59-47-MOUNT-014.log"
+    }
+  ],
+  "excluded": [
+    {"id": "MOUNT-016", "reason": "owner-blocked: dedi-2 must join the tailnet (re-verified this tick: tailscale shows 'offline, last seen 26d ago' on 95.216.12.55)"},
+    {"id": "MOUNT-015", "reason": "sshfs readdirplus patch — next ready row, held for the next tick by WAVE_BUDGET=2; requires upstream-sshfs build env best not overlapped with two live benchmarks"}
+  ],
+  "independence": "two rows touch disjoint file sets (both add their own probes/doc section); different remote hosts so measurements cannot interfere; no depends_on edges in either row"
+}
