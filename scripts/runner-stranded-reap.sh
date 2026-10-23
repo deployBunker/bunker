@@ -50,6 +50,7 @@ KILL_WAIT=${RUNNER_REAP_KILL_WAIT:-5}
 
 DRY_RUN=0
 STRICT=0
+FORCE=0
 
 say()  { printf '%s: %s\n' "$PROG" "$*"; }
 warn() { printf '%s: warning: %s\n' "$PROG" "$*" >&2; }
@@ -59,7 +60,7 @@ usage() {
 runner-stranded-reap.sh — reap stranded GitHub Actions runner workers.
 
 Usage:
-  scripts/runner-stranded-reap.sh [--dry-run] [--strict] [--min-age SECONDS]
+  scripts/runner-stranded-reap.sh [--dry-run] [--strict] [--force] [--min-age SECONDS]
 
 Intended as the FIRST step of a self-hosted job: any Runner.Worker that is not
 an ancestor of this step is residue from a cancelled/superseded job and is
@@ -68,7 +69,15 @@ reaped (its whole process tree, leaf-first).
   --dry-run           report what would be reaped; kill nothing
   --strict            exit 1 on a fatal error (default: warn and exit 0, so the
                       mitigation can never fail a job)
+  --force             allow a reap from OUTSIDE a runner job (see the refusal
+                      below); never use it while a job is running
   --min-age SECONDS   skip workers younger than this (default 30)
+
+Safety: when this script is NOT running inside a runner job (no Runner.Worker
+in its own ancestry) it REFUSES to kill, because from an operator shell every
+worker — including the one executing a live job right now — looks stranded.
+Measured: a manual invocation outside a job reaped a live `regression` job's
+worker. Use --dry-run to inspect, or --force deliberately.
 
 Environment: RUNNER_REAP_MIN_AGE, RUNNER_REAP_TERM_WAIT, RUNNER_REAP_KILL_WAIT.
 EOF
@@ -78,6 +87,7 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 	--dry-run) DRY_RUN=1; shift ;;
 	--strict) STRICT=1; shift ;;
+	--force) FORCE=1; shift ;;
 	--min-age) MIN_AGE=${2:-}; shift 2 ;;
 	-h|--help) usage; exit 0 ;;
 	*) usage >&2; warn "unknown argument: $1"; [ "$STRICT" -eq 1 ] && exit 1; exit 0 ;;
@@ -170,6 +180,15 @@ for pid in "${!ARGS_OF[@]}"; do
 	fi
 	STRANDED+=("$pid")
 done
+
+# Outside a runner job EVERY worker looks stranded — including the one running a
+# live job — so a killing invocation is refused unless its own ancestry proves
+# it is inside a job (the wiring in ci.yml always is). --dry-run stays allowed:
+# inspection is the whole point of an operator running this by hand.
+if [ "$DRY_RUN" -eq 0 ] && [ "$FORCE" -eq 0 ] && [ "$KEPT_SELF" -eq 0 ]; then
+	say "refusing: this process is not inside a runner job (no Runner.Worker in its ancestry), so a live job's worker would look stranded; nothing killed. Use --dry-run to inspect or --force deliberately."
+	exit 0
+fi
 
 if [ "${#STRANDED[@]}" -eq 0 ]; then
 	say "no stranded Runner.Worker (inspected ${inspected}: self=${KEPT_SELF}, younger-than-${MIN_AGE}s=${KEPT_YOUNG})"

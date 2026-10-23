@@ -138,6 +138,48 @@ case "$out" in
 *) fail "clean table output unexpected: $out" ;;
 esac
 
+# ── cell 8: outside a job it refuses; --force reaps ─────────────────────────
+# An operator shell has NO Runner.Worker ancestor, so every worker — including a
+# live job's — looks stranded. The script must refuse to kill in that shape
+# (measured: a manual run reaped a live `regression` job), while --dry-run still
+# inspects and --force remains the deliberate escape hatch.
+outside="$WORK/ps-outside.txt"
+cat > "$outside" <<'EOF'
+1 0 999999 /sbin/init splash
+10 1 500 /opt/actions-runner/bin/Runner.Listener run --startuptype service
+100 1 300 /opt/actions-runner/bin/Runner.Worker spawnclient 157 160
+101 100 280 bash regression-tests.sh
+900 1 45 bash -lic runner-stranded-reap.sh
+EOF
+: > "$KILL_LOG"
+out=$(RUNNER_REAP_PS_SOURCE="$outside" RUNNER_REAP_KILL_CMD="$KILL_STUB" RUNNER_REAP_KILL_LOG="$KILL_LOG" \
+	RUNNER_REAP_SELF_PID=900 bash "$REAP" 2>&1); rc=$?
+[ "$rc" -eq 0 ] || fail "outside-job run exited $rc: $out"
+case "$out" in
+*refusing*) pass "outside a job the reap refuses to kill" ;;
+*) fail "outside a job the reap did not refuse: $out" ;;
+esac
+[ -s "$KILL_LOG" ] && fail "refused outside-job run still signalled: $(cat "$KILL_LOG")" || pass "refused outside-job run killed nothing"
+
+: > "$KILL_LOG"
+out=$(RUNNER_REAP_PS_SOURCE="$outside" RUNNER_REAP_KILL_CMD="$KILL_STUB" RUNNER_REAP_KILL_LOG="$KILL_LOG" \
+	RUNNER_REAP_SELF_PID=900 bash "$REAP" --dry-run 2>&1); rc=$?
+[ "$rc" -eq 0 ] || fail "outside-job dry run exited $rc: $out"
+case "$out" in
+*would\ be\ reaped*) pass "outside a job --dry-run still inspects" ;;
+*) fail "outside-job dry run did not inspect: $out" ;;
+esac
+
+: > "$KILL_LOG"
+out=$(RUNNER_REAP_PS_SOURCE="$outside" RUNNER_REAP_KILL_CMD="$KILL_STUB" RUNNER_REAP_KILL_LOG="$KILL_LOG" \
+	RUNNER_REAP_SELF_PID=900 bash "$REAP" --force 2>&1); rc=$?
+[ "$rc" -eq 0 ] || fail "forced reap exited $rc: $out"
+if grep -q -- "-TERM 100\$" "$KILL_LOG" && grep -q -- "-TERM 101\$" "$KILL_LOG"; then
+	pass "--force reaps the tree deliberately"
+else
+	fail "--force did not reap: $(cat "$KILL_LOG")"
+fi
+
 if [ "$FAILS" -eq 0 ]; then
 	echo "PASS: runner-stranded-reap.sh (all cells)"
 	exit 0

@@ -120,13 +120,25 @@ if [ "$DRY_RUN" -eq 0 ]; then
 	BUILD_DIR=$(mktemp -d)
 	trap 'rm -rf "$BUILD_DIR"' EXIT
 	COMMIT=$(git rev-parse --short HEAD)
-	VERSION=$(awk '/^Version = / { gsub(/"/, "", $NF); print $NF; exit }' internal/version/version.go)
+	# Version is declared INSIDE the `var (` block of internal/version/version.go
+	# (tab-indented), so the match must tolerate leading whitespace — anchoring
+	# on ^Version silently refused every upgrade ("could not read Version")
+	# until INT-CI-081 hit it on a real deploy.
+	VERSION=$(awk '/^[[:space:]]*Version[[:space:]]*=/ { gsub(/"/, "", $NF); print $NF; exit }' internal/version/version.go)
 	[ -n "$VERSION" ] || die "could not read Version from internal/version/version.go"
+	# Stamp the version explicitly (the Makefile's LDFLAGS): a plain `go build`
+	# relies on the toolchain embedding vcs.revision, which it does NOT do in
+	# every checkout shape (a linked worktree built fine here but both binaries
+	# reported `commit: unknown`, and the VERIFY step correctly refused the
+	# upgrade). The commit is the whole point of this script's verification, so
+	# it is injected rather than inferred.
+	BUILDDATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+	LDFLAGS="-X github.com/deployBunker/bunker/internal/version.Version=$VERSION -X github.com/deployBunker/bunker/internal/version.Commit=$COMMIT -X github.com/deployBunker/bunker/internal/version.BuildDate=$BUILDDATE"
 	say "building bunkerd+bunker v$VERSION ($COMMIT) from $REPO_DIR"
 	(
 		cd "$REPO_DIR"
-		go build -o "$BUILD_DIR/bunkerd" ./cmd/bunkerd &&
-		go build -o "$BUILD_DIR/bunker" ./cmd/bunker
+		go build -ldflags "$LDFLAGS" -o "$BUILD_DIR/bunkerd" ./cmd/bunkerd &&
+		go build -ldflags "$LDFLAGS" -o "$BUILD_DIR/bunker" ./cmd/bunker
 	) || refuse "go build failed — fix the tree before upgrading a fleet"
 	say "build ok: $(ls -la "$BUILD_DIR" | tail -2 | awk '{print $NF, $5}')"
 else
@@ -212,7 +224,7 @@ upgrade_host() {
 	if [ -z "$problems" ]; then
 		printf '%-10s OK: bunkerd %s -> %s; CLI %s\n' "$h" "$(echo "$before" | head -1)" "$(echo "$after" | head -1)" "$(echo "$cli_after" | head -1)"
 		# shellcheck disable=SC2086
-		ssh $ssh_opts "$SSH_USER@$h" "rm -f $REMOTE_BIN.old $REMOTE_CLI.old" || true
+		ssh $ssh_opts "$SSH_USER@$h" "rm -f $REMOTE_BIN.old $REMOTE_CLI.old $REMOTE_BIN_ALIASES.old" || true
 		return 0
 	fi
 	printf '%-10s VERIFY-FAILED: built %s not reported by:%s\n' "$h" "$COMMIT" "$problems"
