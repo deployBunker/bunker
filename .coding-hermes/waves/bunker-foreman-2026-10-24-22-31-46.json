@@ -1,0 +1,19 @@
+{
+  "tick": "bunker-foreman-2026-10-24-22-31-46",
+  "block": "INT-HOST-011",
+  "wave_budget": 9,
+  "host_slots": 6,
+  "path": "SERIAL FALLBACK / verification-only",
+  "reason": "RESUME-FIRST block has one ready row, INT-HOST-008, and it is owner-gated; destructive bunker-mvp reap --apply is not authorized.",
+  "rows": [
+    {
+      "task_id": "INT-HOST-008",
+      "status": "verified-open",
+      "worktree": null,
+      "branch": null,
+      "brief": null,
+      "dispatch": false,
+      "owner_blocker": "Explicit owner authorization is required before destructive bunker-mvp bunker reap --apply."
+    }
+  ]
+}
