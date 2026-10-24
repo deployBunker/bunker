@@ -1,0 +1,27 @@
+{
+  "tick_id": "bunker-foreman-2026-10-24-23-48-48",
+  "tick_number": 624,
+  "type": "audit",
+  "block": "INT-HOST-011",
+  "wave": ".coding-hermes/waves/bunker-foreman-2026-10-24-23-48-48.json",
+  "wave_budget": 2,
+  "host": {"nproc": 16, "loadavg_1m": 16.94, "computed_slots": 1},
+  "path": "SERIAL FALLBACK / verification-only",
+  "resume_first": true,
+  "tasks": ["INT-HOST-008"],
+  "rows_dispatched": [],
+  "rows_landed": [],
+  "rows_verified": ["INT-HOST-008"],
+  "owner_blocker": "Explicit owner deletion authorization is required before destructive bunker-mvp bunker reap --apply; authorization was absent, so --apply was not run.",
+  "verification": "ssh bunker-mvp 'hostname; /usr/local/bin/bunker --version; /usr/local/bin/bunker reap --dry-run' PASS: bunker-mvp bunker 0.2.1 commit eab25686; 17 AppArmor profiles and 1 runtime directory would be removed; 14 profiles and 14 runtime directories kept; 0 orphan homes and 0 stale linger entries; no changes written.",
+  "local_gate": "PASS: go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4",
+  "remote_ci": "in_progress: latest run is board commit eb5f3fd5; two prior completed runs 40135488917 and 40135407553 were success; no completed failure observed, so no CI task filed.",
+  "git": "clean before tick; wave manifest is uncommitted until closeout; no source commit or push required.",
+  "gitreins": "No implementation lifecycle: owner-gated verification-only row; no source task created or completed.",
+  "off_by_one": "No non-trivial debugging performed; no submission.",
+  "open": [
+    "INT-HOST-008 remains pending on explicit owner deletion authorization; do not run bunker-mvp bunker reap --apply without it.",
+    "No implementation worker or code commit was appropriate for the selected block."
+  ],
+  "trace": "ch:trace row=INT-HOST-008 spec=none:owner-gated-live-cleanup wave=.coding-hermes/waves/bunker-foreman-2026-10-24-23-48-48.json#verification test=none:live-dry-run doc=none:verification-only prompt=none:verification-only evidence=none:dry-run-only witness=live:bunker-mvp@eab25686 verdict=none:verification-only commit=none:verification-only memory=/project/bunker/status"
+}

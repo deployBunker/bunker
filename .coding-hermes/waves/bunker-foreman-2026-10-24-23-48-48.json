@@ -1,0 +1,22 @@
+{
+  "tick_id": "bunker-foreman-2026-10-24-23-48-48",
+  "block": "INT-HOST-011",
+  "wave_budget": 2,
+  "path": "SERIAL FALLBACK / verification-only",
+  "reason": "Resume-first block has one ready row, INT-HOST-008, but it is explicitly owner-gated destructive live-host cleanup. No worker dispatch or code work is appropriate without owner deletion authorization.",
+  "host": {
+    "nproc": 16,
+    "loadavg_1m": 16.94,
+    "computed_slots": 1
+  },
+  "rows": [
+    {
+      "id": "INT-HOST-008",
+      "worktree": null,
+      "branch": null,
+      "brief": null,
+      "dispatch": "not-dispatched-owner-gated"
+    }
+  ],
+  "verification_only": true
+}
