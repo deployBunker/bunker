@@ -1,0 +1,21 @@
+{
+  "tick": "bunker-foreman-2026-10-24-18-46-40",
+  "block": "INT-HOST-011",
+  "mode": "verification-only",
+  "budget": 12,
+  "slots": 1,
+  "rows": [
+    {
+      "id": "INT-HOST-008",
+      "status": "pending",
+      "worktree": null,
+      "branch": null,
+      "brief": null,
+      "owner_blocker": "Explicit owner authorization required before destructive bunker reap --apply on bunker-mvp.",
+      "evidence": "live:bunker-mvp@eab25686",
+      "dispatch": "none:verification-only"
+    }
+  ],
+  "finished_at": "2026-10-24T18:56:00-05:00",
+  "notes": "No worker dispatched: selected block had one owner-gated ready row; host slots formula yielded 1 under loadavg 13.37 (nproc=16), and --apply remains destructive owner-gated. Fresh dry run observed 17 removable AppArmor profiles, 0 orphan homes, 0 stale linger entries, 1 removable runtime directory; no changes written."
+}
