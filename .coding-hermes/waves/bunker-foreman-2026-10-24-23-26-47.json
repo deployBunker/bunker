@@ -1,0 +1,16 @@
+{
+  "tick_id": "bunker-foreman-2026-10-24-23-26-47",
+  "block": "INT-HOST-011",
+  "wave_budget": 10,
+  "host": {"nproc": 16, "loadavg_1m": 11.9, "slots": 4},
+  "path": "SERIAL FALLBACK / verification-only",
+  "reason": "RESUME-FIRST selected INT-HOST-011. Its sole ready row INT-HOST-008 is owner-gated destructive live-host cleanup; explicit owner authorization for bunker-mvp reap --apply is absent. No implementation worker is appropriate.",
+  "rows_considered": ["INT-HOST-008"],
+  "ready_rows": ["INT-HOST-008"],
+  "dispatched": [],
+  "verification": {
+    "command": "ssh bunker-mvp 'hostname; /usr/local/bin/bunker --version; /usr/local/bin/bunker reap --dry-run'",
+    "result": "PASS: bunker-mvp bunker 0.2.1 commit eab25686; 17 AppArmor profiles and 1 runtime directory would be removed; 14 profiles and 14 runtime directories kept; 0 orphan homes and 0 stale linger entries; no changes written."
+  },
+  "open": ["INT-HOST-008 remains pending on explicit owner deletion authorization; do not run --apply without it."]
+}
