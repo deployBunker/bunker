@@ -4999,3 +4999,11 @@ tasks:
   status: complete
   created_at: '2026-10-24T14:41:52.698352+00:00'
   completed_at: '2026-10-24T14:46:18.537714+00:00'
+- id: FLEET-INFRA-2
+  title: Shared stale-binary deployment remedy
+  criteria:
+  - Implement and verify the repository-side remedy for the consolidated stale-binary
+    deployment condition.
+  status: complete
+  created_at: '2026-10-24T17:20:35.626704+00:00'
+  completed_at: '2026-10-24T17:20:37.010812+00:00'
