@@ -1,0 +1,28 @@
+{
+  "tick": "bunker-foreman-2026-10-24-22-08-15",
+  "block": "INT-HOST-011",
+  "wave_budget": 12,
+  "host": {"nproc": 16, "loadavg_1m": 3.81396484375, "slots": 6},
+  "path": "SERIAL FALLBACK / verification-only",
+  "reason": "The selected block has one ready row, INT-HOST-008, and it is owner-gated destructive live-host cleanup. No implementation worker is appropriate without explicit owner authorization.",
+  "rows": [
+    {
+      "id": "INT-HOST-008",
+      "status_at_selection": "pending",
+      "worktree": null,
+      "branch": null,
+      "brief": null,
+      "dispatch": "not-dispatched",
+      "owner_blocker": "Explicit owner authorization is required before bunker-mvp bunker reap --apply.",
+      "verification": {
+        "live_host": "bunker-mvp",
+        "binary": "bunker 0.2.1 commit eab25686",
+        "command": "bunker reap --dry-run",
+        "result": "PASS rc=0; 17 AppArmor profiles and 1 runtime directory would be removed; 12 profiles and 12 runtime directories kept; 0 orphan homes; 0 stale linger entries; no changes written"
+      }
+    }
+  ],
+  "created_before_verification": true,
+  "closed": true,
+  "closed_reason": "Verification-only owner-gated row; destructive --apply remains blocked."
+}
