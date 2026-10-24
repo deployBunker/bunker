@@ -1,0 +1,15 @@
+{
+  "tick": "bunker-foreman-2026-10-24-06-21-30",
+  "block": "INT-CI-083",
+  "path": "SERIAL FALLBACK",
+  "wave_budget": 8,
+  "rows": [
+    {
+      "task_id": "INT-CI-082",
+      "worktree": "/home/kara/worktrees/bunker-INT-CI-082",
+      "branch": "wt/INT-CI-082",
+      "brief": "/tmp/bunker-foreman-2026-10-24-06-21-30-INT-CI-082.txt"
+    }
+  ],
+  "reason": "Top resumed block INT-CI-083 has one ready pending row; no independent wave can be composed."
+}
