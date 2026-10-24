@@ -5007,3 +5007,12 @@ tasks:
   status: complete
   created_at: '2026-10-24T17:20:35.626704+00:00'
   completed_at: '2026-10-24T17:20:37.010812+00:00'
+- id: INT-HOST-008
+  title: One-time live host residue sweep after owner authorization
+  criteria:
+  - Verify bunker-mvp dry-run residue inventory without applying destructive deletion;
+    keep the task open when explicit owner authorization for bunker reap --apply is
+    absent.
+  status: complete
+  created_at: '2026-10-24T18:01:27.566101+00:00'
+  completed_at: '2026-10-24T18:01:28.974782+00:00'

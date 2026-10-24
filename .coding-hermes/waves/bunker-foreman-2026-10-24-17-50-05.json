@@ -1,0 +1,21 @@
+{
+  "tick": "bunker-foreman-2026-10-24-17-50-05",
+  "block": "INT-HOST-011",
+  "mode": "verification-only",
+  "budget": 6,
+  "slots": 1,
+  "rows": [
+    {
+      "id": "INT-HOST-008",
+      "status": "pending",
+      "worktree": null,
+      "branch": null,
+      "brief": null,
+      "owner_blocker": "Explicit owner authorization required before destructive bunker reap --apply on bunker-mvp.",
+      "evidence": "live:bunker-mvp@eab25686",
+      "dispatch": "none:verification-only"
+    }
+  ],
+  "finished_at": "2026-10-24T12:57:00-05:00",
+  "notes": "No worker dispatched: selected block had one owner-gated ready row; host slots formula yielded 1 under loadavg 18.07, and the row is not implementation-ready without owner authorization."
+}
