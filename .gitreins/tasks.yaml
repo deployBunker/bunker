@@ -4990,3 +4990,12 @@ tasks:
     go vet, go test, gitreins guard, and ci.yml YAML parse pass.
   status: in_progress
   created_at: '2026-10-23T07:30:53.165613+00:00'
+- id: INT-CI-082
+  title: Intermittent concurrent spawn session probe acceptance
+  criteria:
+  - 'Run live bunker-mvp acceptance: capture recycled four-agent burst, per-attempt
+    evidence, fresh-id comparison, and deliberate PAM denial; preserve implementation
+    and evidence artifact.'
+  status: complete
+  created_at: '2026-10-24T14:41:52.698352+00:00'
+  completed_at: '2026-10-24T14:46:18.537714+00:00'
