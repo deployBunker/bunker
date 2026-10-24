@@ -324,6 +324,12 @@ jobs:
         run: bash scripts/test-runner-stranded-reap.sh
         timeout-minutes: 5
 
+      # FLEET-INFRA-2: deployment identity verification must reject a stale
+      # binary even when its output contains the expected SHA elsewhere.
+      - name: Fleet deployment identity tests (scripts/test-fleet-version-check.sh)
+        run: bash scripts/test-fleet-version-check.sh
+        timeout-minutes: 5
+
   # ── Tier 1: GitReins guard — secrets, lint, tests ──
   gitreins-guard:
     runs-on: ubuntu-latest

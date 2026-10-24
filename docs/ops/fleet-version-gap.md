@@ -76,9 +76,12 @@ Per host: preflight (ssh + current daemon version read) → build from THIS
 checkout at HEAD with the repo's ldflags version stamping (refuses on a dirty
 tree or build failure — a fleet upgrade must ship a committed, tested build) →
 scp + atomic swap (`.new` over the live binary, old kept as `.old` until
-verified) → service restart → verify the RUNNING version reports the built
-commit, else VERIFY-FAILED. Unreachable hosts are skipped with a loud per-host
-line and a non-zero exit so schedulers notice.
+verified) → service restart → verify the RUNNING version reports exactly one
+`commit:` field whose value equals the built commit (not a substring in arbitrary
+output), else VERIFY-FAILED. Unreachable hosts are skipped with a loud per-host
+line and a non-zero exit so schedulers notice. The exact field check is shared by
+the daemon, CLI, and alias verification paths and is covered by
+`scripts/test-fleet-version-check.sh`.
 
 ```sh
 # plan only
