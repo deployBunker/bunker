@@ -1,0 +1,17 @@
+{
+  "tick": "bunker-foreman-2026-10-24-21-07-25",
+  "block": "INT-HOST-011",
+  "wave_budget": 11,
+  "wave_size": 0,
+  "path": "verification-only",
+  "rows": [
+    {
+      "task_id": "INT-HOST-008",
+      "worktree": null,
+      "branch": null,
+      "brief": null,
+      "status": "owner-gated; no worker dispatched"
+    }
+  ],
+  "reason": "The sole ready row requires an explicit owner deletion decision before bunker-mvp bunker reap --apply. A dry-run verification is safe; destructive host cleanup is not authorized."
+}
