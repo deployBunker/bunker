@@ -1,0 +1,17 @@
+{
+  "tick": "bunker-foreman-2026-10-24-15-49-03",
+  "block": "INT-HOST-011",
+  "wave_size": 0,
+  "path": "SERIAL FALLBACK / verification-only",
+  "rows": [
+    {
+      "id": "INT-HOST-008",
+      "mode": "verification-only",
+      "status": "pending",
+      "owner_blocker": "Explicit owner authorization required before destructive bunker reap --apply on bunker-mvp.",
+      "worktree": "none:verification-only",
+      "branch": "none:verification-only",
+      "brief": "none:verification-only"
+    }
+  ]
+}
