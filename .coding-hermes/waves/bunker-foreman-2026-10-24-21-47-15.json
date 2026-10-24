@@ -1,0 +1,23 @@
+{
+  "tick": "bunker-foreman-2026-10-24-21-47-15",
+  "block": "INT-HOST-011",
+  "wave_budget": 12,
+  "wave_size": 0,
+  "path": "SERIAL FALLBACK / verification-only",
+  "selection": {
+    "resume_first": true,
+    "ready_rows": ["INT-HOST-008"],
+    "independent_rows": 1,
+    "reason": "The selected block has one pending ready row. It is owner-gated destructive live-host cleanup; no implementation worker is authorized without explicit owner deletion approval."
+  },
+  "rows": [
+    {
+      "task_id": "INT-HOST-008",
+      "worktree": null,
+      "branch": null,
+      "worker": null,
+      "mode": "verification-only",
+      "owner_blocker": "Explicit owner authorization is required before bunker-mvp bunker reap --apply."
+    }
+  ]
+}
