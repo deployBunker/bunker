@@ -213,13 +213,19 @@ upgrade_host() {
 	sleep 2
 	problems=""
 	after=$(remote_version "$h")
-	echo "$after" | grep -q "$COMMIT" || problems="$problems $REMOTE_BIN"
+	if ! printf '%s\n' "$after" | "$REPO_DIR/scripts/fleet-version-check.sh" "$COMMIT"; then
+		problems="$problems $REMOTE_BIN"
+	fi
 	# shellcheck disable=SC2086
 	cli_after=$(remote_bin_version "$h" "$REMOTE_CLI")
-	echo "$cli_after" | grep -q "$COMMIT" || problems="$problems $REMOTE_CLI"
+	if ! printf '%s\n' "$cli_after" | "$REPO_DIR/scripts/fleet-version-check.sh" "$COMMIT"; then
+		problems="$problems $REMOTE_CLI"
+	fi
 	for alias_path in ${REMOTE_BIN_ALIASES:-}; do
 		alias_after=$(remote_bin_version "$h" "$alias_path")
-		echo "$alias_after" | grep -q "$COMMIT" || problems="$problems $alias_path"
+		if ! printf '%s\n' "$alias_after" | "$REPO_DIR/scripts/fleet-version-check.sh" "$COMMIT"; then
+			problems="$problems $alias_path"
+		fi
 	done
 	if [ -z "$problems" ]; then
 		printf '%-10s OK: bunkerd %s -> %s; CLI %s\n' "$h" "$(echo "$before" | head -1)" "$(echo "$after" | head -1)" "$(echo "$cli_after" | head -1)"
