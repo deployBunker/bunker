@@ -1,0 +1,19 @@
+{
+  "tick": "bunker-foreman-2026-10-24-21-19-20",
+  "block": "INT-HOST-011",
+  "wave_budget": 8,
+  "slots": 6,
+  "wave_size": 0,
+  "path": "SERIAL FALLBACK / verification-only",
+  "rows": [
+    {
+      "task_id": "INT-HOST-008",
+      "worktree": null,
+      "branch": null,
+      "brief": null,
+      "status": "owner-gated; no worker dispatched",
+      "depends_on": ["INT-HOST-007"]
+    }
+  ],
+  "reason": "Resume-first block INT-HOST-011 has one ready row. The row requires explicit owner authorization before destructive bunker-mvp bunker reap --apply; safe dry-run verification was performed and no implementation worker was appropriate."
+}
