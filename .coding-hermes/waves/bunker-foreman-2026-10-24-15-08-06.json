@@ -1,0 +1,16 @@
+{
+  "tick": "bunker-foreman-2026-10-24-15-08-06",
+  "block": "INT-HOST-011",
+  "wave_size": 0,
+  "path": "SERIAL FALLBACK / verification-only: selected block has one owner-gated row; no implementation worker dispatched.",
+  "rows": [
+    {
+      "id": "INT-HOST-008",
+      "mode": "verification-only",
+      "status": "pending",
+      "owner_blocker": "Explicit owner authorization required before destructive bunker reap --apply on bunker-mvp.",
+      "evidence": "/tmp/bunker-foreman-2026-10-24-15-08-06-int-host-008-reap.txt",
+      "gitreins": "INT-HOST-008; Tier 2 async job job-721770b9317e43019362e091b1a56549 pending"
+    }
+  ]
+}
