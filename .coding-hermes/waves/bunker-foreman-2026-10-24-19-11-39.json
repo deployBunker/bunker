@@ -1,0 +1,20 @@
+{
+  "tick": "bunker-foreman-2026-10-24-19-11-39",
+  "block": "INT-HOST-011",
+  "wave_budget": 12,
+  "wave_size": 0,
+  "path": "SERIAL FALLBACK / verification-only",
+  "reason": "block_drive ranked INT-HOST-011 first, but its only ready row INT-HOST-008 is owner-gated: bunker-mvp bunker reap --apply would delete live-host residue and explicit owner authorization is absent",
+  "rows": [
+    {
+      "id": "INT-HOST-008",
+      "status": "pending",
+      "mode": "verification-only",
+      "worktree": null,
+      "branch": null,
+      "brief": null,
+      "dispatch": "none:owner-gated-live-cleanup",
+      "evidence": "/tmp/bunker-foreman-2026-10-24-19-11-39-int-host-008-reap.txt"
+    }
+  ]
+}
