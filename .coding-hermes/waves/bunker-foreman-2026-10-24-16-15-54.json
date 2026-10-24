@@ -1,0 +1,31 @@
+{
+  "tick": "bunker-foreman-2026-10-24-16-15-54",
+  "block": "FLEET-INFRA-2",
+  "wave_budget": 10,
+  "slots": 6,
+  "path": "WAVE",
+  "reason": "block_drive top DRIVE FLEET-INFRA-2 (P1, 2 ready rows); nproc=16, loadavg=7.23, ceil(loadavg)=8 => slots=max(1,min(6,8))=6; FLEET-INFRA-1 and FLEET-INFRA-2 have no depends_on edges and disjoint primary seams (resource allocator/reconciliation versus CLI deploy/version identity), so 2-worker wave composed.",
+  "rows": [
+    {
+      "id": "FLEET-INFRA-1",
+      "status_at_dispatch": "pending",
+      "worktree": "/home/kara/worktrees/bunker-FLEET-INFRA-1",
+      "branch": "wt/FLEET-INFRA-1",
+      "base": "80719863",
+      "brief": "/tmp/bunker-foreman-2026-10-24-16-15-54-FLEET-INFRA-1-brief.txt",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default"
+    },
+    {
+      "id": "FLEET-INFRA-2",
+      "status_at_dispatch": "pending",
+      "worktree": "/home/kara/worktrees/bunker-FLEET-INFRA-2",
+      "branch": "wt/FLEET-INFRA-2",
+      "base": "80719863",
+      "brief": "/tmp/bunker-foreman-2026-10-24-16-15-54-FLEET-INFRA-2-brief.txt",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default"
+    }
+  ],
+  "wave_size": 2
+}
