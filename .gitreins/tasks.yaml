@@ -5054,21 +5054,24 @@ tasks:
   - a client that does not know a subcommand present in HEAD prints a hint naming
     the version requirement instead of a bare 'unknown command'; unit test covers
     the hint; docs consistent; go build/vet/test pass
-  status: in_progress
+  status: complete
   created_at: '2026-10-25T22:53:09.142395+00:00'
+  completed_at: '2026-10-25T23:32:01.713343+00:00'
 - id: DF-BUNKER-74
   title: README install snippet points at the release-asset installer
   criteria:
   - README install snippet uses a URL that resolves (release-asset installer), not
     raw scripts/install.sh from main (404); PATH line correct; no contradicting install
     instructions; docs-only diff
-  status: in_progress
+  status: complete
   created_at: '2026-10-25T22:53:09.688865+00:00'
+  completed_at: '2026-10-25T23:20:31.525050+00:00'
 - id: DF-BUNKER-110
   title: 'README resource-events: stopped agents are readable'
   criteria:
   - README:1090-1096 lists only genuinely unreadable cases (destroyed agent, deleted
     agent user, pre-GAP-121 daemon) and states a stopped agent IS readable; copy-pasteable
     check in the row passes; docs-only diff
-  status: in_progress
+  status: complete
   created_at: '2026-10-25T22:53:10.232995+00:00'
+  completed_at: '2026-10-25T23:20:31.100507+00:00'
