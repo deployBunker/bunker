@@ -2,7 +2,6 @@ package audit
 
 import (
 	"bufio"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -29,6 +28,14 @@ type Filter struct {
 	// chain: records are scanned oldest-first, so with Limit=5 the five
 	// most recent matches are returned. 0 means no limit.
 	Limit int
+
+	// Observer, when set, is invoked by the forward scan once per line —
+	// before any limit is applied — with the raw line and a nil error for
+	// well-formed lines (the error is reserved for read failures). It is
+	// instrumentation-only: any non-nil Filter.Observer forces the forward
+	// path and suppresses the PERF-003 backward fast path, so an observer
+	// always sees the complete scan. Production callers leave it nil.
+	Observer func(line []byte, err error) error
 }
 
 // Query reads the audit log at path together with its rotated backups
@@ -48,6 +55,16 @@ type Filter struct {
 // A missing live file is an error (like Verify); missing backups are
 // skipped. The live file may be empty, in which case the result is nil.
 func Query(path string, f Filter) ([]Record, error) {
+	// PERF-003: a bounded, window-less query is served by the tail-shaped
+	// backward reader, which stops as soon as Limit matches are collected
+	// instead of paying O(file) to truncate afterwards. The tail of the
+	// chain it returns is provably identical to the forward scan plus
+	// truncation (table-driven parity tests pin this). The Observer field
+	// is part of the guard: an installed observer needs the whole scan, so
+	// its presence alone forces the forward path.
+	if backwardGuard(f) {
+		return queryChainBackward(path, f)
+	}
 	var records []Record
 	for i := MaxBackups; i >= 1; i-- {
 		p := fmt.Sprintf("%s.%d", path, i)
@@ -75,7 +92,11 @@ func Query(path string, f Filter) ([]Record, error) {
 }
 
 // queryFile applies f to every parseable record in one audit file, in line
-// order. The file must exist (callers stat first, mirroring Verify).
+// order. The file must exist (callers stat first, mirroring Verify). When an
+// observer is installed it is invoked once per line — including lines that
+// fail to unmarshal (observed=false) — BEFORE the limit is applied, so the
+// observer sees the whole scan; a negative return stops it early. queryFile
+// returns the observed-and-matching records only.
 func queryFile(path string, f Filter) ([]Record, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -87,11 +108,16 @@ func queryFile(path string, f Filter) ([]Record, error) {
 	sc := bufio.NewScanner(file)
 	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	for sc.Scan() {
-		var rec Record
-		if err := json.Unmarshal(sc.Bytes(), &rec); err != nil {
+		if f.Observer != nil {
+			if err := f.Observer(sc.Bytes(), nil); err != nil {
+				break
+			}
+		}
+		rec, ok, err := decodeAndMatch(sc.Bytes(), f)
+		if err != nil {
 			continue // unparseable line — not our job to flag (see Verify)
 		}
-		if match(rec, f) {
+		if ok {
 			recs = append(recs, rec)
 		}
 	}
