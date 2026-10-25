@@ -1669,6 +1669,20 @@ func applyImageAgentRuntime(runArgv []string, agentID string) []string {
 // exec (GAP-069): --rm so a one-shot exec never leaves a container behind, plus
 // the containment disclosure marker as a container env var when enabled, so the
 // in-container view matches the host-context one (GAP-067).
+//
+// PERF-004: this create/destroy per call is the price of GAP-069's isolation.
+// Measured 2026-09-26 on bunker-mvp (hyperfine --warmup 3 --runs 10, warm,
+// same host, same minute): an image-spec exec (`-- true`) takes 1.601s ± 0.045s
+// vs 1.037s ± 0.025s for the stock host-context path — +0.56s per call (+55%),
+// fully attributable to the container lifecycle (no profile needed: the delta
+// IS the docker create+start+remove). Single interactive calls are unaffected;
+// a 100-call scripted loop pays ~+56s. Scripted loops that want the cost
+// amortized should use SURF-012's opt-in persistent container
+// (--persistent / --list-persistent / --cleanup-persistent, exec_persistent.go):
+// one long-lived container per agent, commands ride `docker exec` instead of a
+// fresh `docker run --rm`. Measurement, arithmetic, and the remaining
+// trade-offs (incl. why a blanket host-context fallback is NOT offered):
+// docs/perf/image-exec-overhead.md.
 func containerRunPrefix(disclosed bool) []string {
 	argv := []string{"docker", "run", "--rm"}
 	if disclosed {
