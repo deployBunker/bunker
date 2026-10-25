@@ -102,6 +102,11 @@ Client-side path overrides (persistent flags):
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	// DF-BUNKER-69: replace cobra's default legacyArgs verdict for unknown
+	// first arguments. Same fail-loud behavior, but a word that IS a bunker
+	// subcommand in a newer release gets an actionable upgrade hint naming
+	// the release requirement and the documented install path (see args.go).
+	root.Args = newerCLIArgs
 
 	var showVersion bool
 	root.Flags().BoolVar(&showVersion, "version", false, "Print the bunker version (same as 'bunker version')")
