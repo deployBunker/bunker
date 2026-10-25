@@ -1,0 +1,23 @@
+{
+  "tick_id": "bunker-foreman-2026-10-25-19-53-01",
+  "project": "bunker",
+  "block": "INT-HOST-011",
+  "wave_budget": 11,
+  "path": "SERIAL FALLBACK / verification-only",
+  "reason": "The resumed block has one ready row, INT-HOST-008, and it is owner-gated destructive live-host cleanup. No implementation worker or code wave is valid without explicit owner authorization.",
+  "host": {
+    "nproc": 16,
+    "loadavg_1m": 8.84,
+    "computed_slots": 6,
+    "effective_slots": 6
+  },
+  "rows": [
+    {
+      "id": "INT-HOST-008",
+      "worktree": null,
+      "branch": null,
+      "dispatch": "none:verification-only-owner-gated",
+      "brief": null
+    }
+  ]
+}

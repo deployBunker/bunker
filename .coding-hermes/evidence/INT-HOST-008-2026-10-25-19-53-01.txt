@@ -1,0 +1,34 @@
+Tick: bunker-foreman-2026-10-25-19-53-01
+Block: INT-HOST-011
+Row: INT-HOST-008
+Type: verification-only owner-gated live cleanup
+
+Command:
+ssh -o BatchMode=yes -o ConnectTimeout=10 bunker-mvp 'hostname; /usr/local/bin/bunker --version; before=$(find /etc/apparmor.d -maxdepth 1 -type f -name "home.*.bin.rootlesskit" | wc -l); out=$(/usr/local/bin/bunker reap --dry-run); rc=$?; after=$(find /etc/apparmor.d -maxdepth 1 -type f -name "home.*.bin.rootlesskit" | wc -l); printf "before_profiles=%s after_profiles=%s rc=%s\\n%s\\n" "$before" "$after" "$rc" "$out"; test "$before" = "$after"; test "$rc" -eq 0'
+
+Observed output:
+bunker-mvp
+bunker 0.2.1
+  commit:     eab25686
+  built:      2026-10-23T22:19:45Z
+  go version: go1.26.10
+  platform:   linux/amd64
+before_profiles=85 after_profiles=85 rc=0
+reap: DRY RUN (no changes written; pass --apply to remove)
+apparmor profiles: /etc/apparmor.d
+  would remove (user gone): 58
+  kept (live user): 27
+  unmanaged (ignored): 102
+agent homes: /home
+  would remove (user gone): 0
+  kept (live user): 33
+  unmanaged (ignored): 11
+linger entries: /var/lib/systemd/linger
+  would remove (user gone): 0
+  kept (live user): 6
+agent runtime dirs: /run/bunker
+  would remove (user gone): 12
+  kept (live user): 27
+
+Result: PASS, rc=0, before and after profile counts equal, no changes written.
+Owner gate: explicit owner authorization for destructive `bunker reap --apply` is absent; it was not run.
