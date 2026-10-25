@@ -1,0 +1,17 @@
+{
+  "tick_id": "bunker-foreman-2026-10-25-19-42-51",
+  "block": "INT-HOST-011",
+  "wave_budget": 4,
+  "effective_slots": 1,
+  "path": "SERIAL FALLBACK / verification-only",
+  "rows": [
+    {
+      "task_id": "INT-HOST-008",
+      "worktree": null,
+      "branch": null,
+      "brief": null,
+      "dispatch": "not-dispatched: owner authorization required before destructive live-host reap --apply"
+    }
+  ],
+  "reason": "The resumed block has one ready row, and its only permitted action is owner-gated destructive cleanup; no implementation worker or code wave is valid."
+}
