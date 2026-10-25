@@ -259,7 +259,8 @@ curl -fsSL https://github.com/deployBunker/bunker/releases/latest/download/insta
 The installer downloads both binaries for this platform, verifies each one
 against the release's `SHA256SUMS` **before anything is written**, installs them
 into `/usr/local/bin` (falling back to `$HOME/.local/bin` when that directory is
-not writable — make sure the directory it reports is on `PATH`), and finishes by
+not writable — on such a host add the reported prefix to `PATH` before first
+use: `export PATH="$HOME/.local/bin:$PATH"`), and finishes by
 running `bunker --version`. It never runs `sudo` on its own: an unwritable
 prefix is a message telling you what to do, not a silent escalation.
 
