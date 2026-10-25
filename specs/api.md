@@ -771,16 +771,35 @@ read-style HTTP endpoints.
 | Metrics | POST | /bunker.v1.Agent/Metrics |
 | Heartbeat | POST | /bunker.v1.Agent/Heartbeat |
 
-> **POST-only:** connect-go serves all RPCs over POST (HTTP/1.1 and HTTP/2);
-> no route accepts any other method. Sending any non-POST request to one of
-> the paths above returns `405 Method Not Allowed`. The auth interceptor runs
-> on the POST path only, so an unauthenticated request receives `401
-> Unauthenticated` only when sent as POST — a non-POST request returns 405
-> instead of 401 because it never reaches the interceptor. curl users must
-> send `-X POST` with a JSON body (`Content-Type: application/json`) and the
-> `Authorization: Bearer <token>` header.
-
-Content-Type: `application/json` or `application/proto`.
+> **POST-only, and auth is the last gate.** connect-go serves all RPCs over POST
+> (HTTP/1.1 and HTTP/2); no route accepts any other method. Auth ordering on
+> every RPC path is fixed:
+>
+> 1. **`405 Method Not Allowed`** — any non-POST method. The router answers
+>    before the handler runs and carries `Allow: POST`.
+> 2. **`415 Unsupported Media Type`** — a POST whose `Content-Type` is neither
+>    `application/json` nor `application/proto`. Content negotiation runs
+>    before the request body is decoded, so this answer is independent of the
+>    `Authorization` header.
+> 3. **`401 Unauthenticated`** — a well-formed POST (correct method, accepted
+>    media type) with missing or invalid credentials. The auth interceptor
+>    runs on the POST path only, which is why `401` is the *last* leg: a
+>    non-POST request is `405` and a wrong-typed POST is `415`, not `401`. A
+>    source that keeps failing here is throttled and answers `503 unavailable`
+>    at the same leg (SEC-15).
+>
+> A POST that clears both earlier legs but whose body fails to decode answers
+> `400 invalid_argument` from the decode step, which also runs before the auth
+> interceptor (measured both with and without a credential).
+>
+> **The 405 and 415 legs are invisible to the audit trail.** Both stop before
+> the auth interceptor, so they produce no audit record and no deny-sink
+> entry; the same is true of the `400` decode leg. Only a request that reaches
+> the third leg is authenticated (or recorded as a denial). A scanner probing
+> methods, media types or body shapes therefore leaves nothing in
+> `QueryAudit`. curl users must send `-X POST` with a JSON body
+> (`Content-Type: application/json`) and the `Authorization: Bearer <token>`
+> header.
 
 ## Non-RPC routes
 

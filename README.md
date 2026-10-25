@@ -158,8 +158,12 @@ curl -skf https://127.0.0.1:8080/healthz
 curl -sk https://127.0.0.1:8080/bunker.v1.Bunkerd/ServerInfo \
     -H 'Content-Type: application/json' -H 'Authorization: Bearer your-m...here' \
     -d '{}'
-# An unauthenticated POST to an RPC endpoint receives 401; the surface is
-# POST-only, so a plain GET returns 405 before auth even runs.
+# Auth ordering on an RPC path is fixed, and it matters to a probe: a non-POST
+# method returns 405, a POST whose Content-Type is neither application/json nor
+# application/proto returns 415, and only then does auth run — an
+# unauthenticated POST receives 401. The 405 and 415 legs stop before the auth
+# interceptor, so they leave no audit record and no deny-sink entry: a probe
+# rejected on method or media type is invisible in the audit trail.
 ```
 
 The sample binds above are loopback (`127.0.0.1:9090` / `127.0.0.1:8080`),
@@ -219,7 +223,7 @@ bunker status
 bunker spawn --server bunker-mvp --ttl 1h demo-agent
 ```
 
-The demo is a shared, resource-limited sandbox (max 50 agents; per-agent CPU/memory caps and a per-file size cap, default 1h TTL) — **do not run production workloads on it**. Auth is enforced: every request needs a bearer token (`bunker connect --token`); an unauthenticated **POST** receives `401` (the REST surface is POST-only — a non-POST request returns `405` before auth runs). See [docs/integration.md](docs/integration.md) for the full client-server protocol.
+The demo is a shared, resource-limited sandbox (max 50 agents; per-agent CPU/memory caps and a per-file size cap, default 1h TTL) — **do not run production workloads on it**. Auth is enforced: every request needs a bearer token (`bunker connect --token`). Auth ordering on the REST surface is fixed — **405** for a non-POST method, then **415** for a POST whose `Content-Type` is neither `application/json` nor `application/proto`, and only then **401** for a POST carrying no valid credentials. The 405 and 415 legs never reach the auth interceptor, so they leave no audit record and no deny-sink entry: a malformed probe does not appear in the audit trail, only a well-formed unauthenticated POST does. See [docs/integration.md](docs/integration.md) for the full client-server protocol.
 
 ### Prerequisites
 
@@ -1023,12 +1027,31 @@ bunker restart abc12345 --server bunker-host
 | `Agent` | gRPC + REST (scoped) | `GetInfo`, `Metrics`, `Heartbeat` |
 
 The REST surface is **POST-only** (connect-go, mounted without `WithHTTPGet`):
-every method is `POST /bunker.v1.Bunkerd/<Rpc>` (or `/bunker.v1.Agent/<Rpc>`),
-and any other HTTP method returns `405`. The auth interceptor runs on the POST
-path only, so an unauthenticated request gets `401` **only when sent as POST** —
-a `GET` returns `405` before auth. Request fields use proto snake_case names
-(`agent_id`, not `id`). Full request/response shapes are in
-[specs/api.md](specs/api.md).
+every method is `POST /bunker.v1.Bunkerd/<Rpc>` (or `/bunker.v1.Agent/<Rpc>`).
+Auth ordering is fixed and every leg is observable from the status code alone:
+
+1. **405** — any HTTP method other than POST never reaches the handler
+   (the response carries `Allow: POST`).
+2. **415** — a POST whose `Content-Type` is neither `application/json` nor
+   `application/proto` is refused during content negotiation, before the
+   request is decoded.
+3. **401** — a well-formed POST with no valid credentials. The auth
+   interceptor runs on this path only, so `401` is the *last* gate, not the
+   first: a `GET` is `405`, and a `POST` with a `text/plain` body is `415`,
+   whatever the `Authorization` header says. (A source that keeps failing at
+   this leg is throttled and answers `503 unavailable` — same leg, SEC-15.)
+
+A POST that clears both earlier legs but whose body does not decode (bad JSON,
+invalid proto wire bytes, zero-length JSON) answers `400 invalid_argument` from
+the decode step — measured with and without a token, the decode error wins, so
+it too precedes the auth interceptor.
+
+Only the third leg reaches the auth interceptor. The 405, 415 and 400 decode
+legs stop before it, so they leave **no audit record and no deny-sink entry** —
+a probe rejected on method, media type or body shape is invisible in the audit
+trail, and only a well-formed unauthenticated POST appears there. Request
+fields use proto snake_case names (`agent_id`, not `id`). Full request/response
+shapes are in [specs/api.md](specs/api.md).
 
 ## Resource Limits
 
