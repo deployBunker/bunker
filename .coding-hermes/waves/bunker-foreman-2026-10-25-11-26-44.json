@@ -1,0 +1,30 @@
+{
+  "tick_id": "bunker-foreman-2026-10-25-11-26-44",
+  "tick_number": 643,
+  "type": "verification-only",
+  "block": "INT-HOST-011",
+  "wave_budget": 3,
+  "host": {
+    "nproc": 16,
+    "loadavg_1m": 8.21,
+    "computed_slots": 6,
+    "effective_slots": 3
+  },
+  "base": "4020c5163e506286bde38aea91deefd589b831d5",
+  "rows": [
+    {
+      "id": "INT-HOST-008",
+      "status": "pending",
+      "mode": "verification-only",
+      "worktree": null,
+      "branch": null,
+      "dispatch": "not-dispatched: destructive live-host action requires explicit owner authorization"
+    }
+  ],
+  "rationale": "Resume-first block. The only ready row is owner-gated destructive cleanup; verify bunker-mvp reap --dry-run and do not run --apply without explicit owner authorization. No implementation wave is valid.",
+  "verification": {
+    "command": "ssh -o BatchMode=yes -o ConnectTimeout=10 bunker-mvp 'hostname; /usr/local/bin/bunker --version; before=$(find /etc/apparmor.d -maxdepth 1 -type f -name \"home.*.bin.rootlesskit\" | wc -l); out=$(/usr/local/bin/bunker reap --dry-run); rc=$?; after=$(find /etc/apparmor.d -maxdepth 1 -type f -name \"home.*.bin.rootlesskit\" | wc -l); printf \"before_profiles=%s after_profiles=%s rc=%s\\n%s\\n\" \"$before\" \"$after\" \"$rc\" \"$out\"; test \"$before\" = \"$after\"; test \"$rc\" -eq 0'",
+    "result": "PASS: bunker-mvp bunker 0.2.1 commit eab25686; profiles preserved 70 -> 70; 47 AppArmor profiles would remove, 23 live-user profiles kept, 0 orphan homes, 0 stale linger entries, 1 runtime directory would remove; no changes written."
+  },
+  "status": "finished"
+}
