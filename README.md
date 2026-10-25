@@ -1130,10 +1130,12 @@ cannot tell you. `bunker metrics <id>` now prints a one-line
 Two honesty rules are built into the surface, because a zero here is easy to
 misread:
 
-* **Unavailable is not clean.** When the counters cannot be read (a stopped or
-  destroyed agent, a deleted agent user, a pre-GAP-121 daemon) the output says
+* **Unavailable is not clean.** When the counters cannot be read (a destroyed
+  agent, a deleted agent user, a pre-GAP-121 daemon) the output says
   `UNAVAILABLE`/`NOT REPORTED` and states that nothing was measured — it never
-  renders an unmeasured zero as "no ceiling was ever hit".
+  renders an unmeasured zero as "no ceiling was ever hit". A **stopped** agent
+  is not in that list: stop keeps the agent's user and its user slice, so its
+  counters stay readable while paused.
 * **The peak carries its source.** Peaks come from the kernel
   (`memory.peak`, kernel ≥ 5.19; `pids.peak`, kernel ≥ 6.1) when it exposes
   them. Otherwise the daemon samples usage itself and the value is labelled

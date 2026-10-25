@@ -81,9 +81,11 @@ high-water mark can never be mistaken for a live one.
 The failure modes here are all silent-zero traps, so the surface states them
 explicitly:
 
-* **No cgroup to read** — a stopped/destroyed agent, or a deleted agent user.
-  The command prints `RESOURCE EVENTS UNAVAILABLE` and repeats that the
-  counters were *not measured*; it never prints a clean verdict.
+* **No cgroup to read** — a destroyed agent, or a deleted agent user. A
+  *stopped* agent is not in this set: stop keeps the agent's user and its user
+  slice, so the cgroup stays readable. The command prints `RESOURCE EVENTS
+  UNAVAILABLE` and repeats that the counters were *not measured*; it never
+  prints a clean verdict.
 * **No `resource_events` on the wire at all** — a daemon built before GAP-121.
   The command prints `NOT REPORTED by this daemon` and says the ceiling events
   are not visible from here.
