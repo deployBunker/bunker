@@ -1,0 +1,55 @@
+bunker-mvp
+bunker 0.2.1
+  commit:     eab25686
+  built:      2026-10-23T22:19:45Z
+  go version: go1.26.10
+  platform:   linux/amd64
+before_profiles=85 after_profiles=85 rc=0
+reap: DRY RUN (no changes written; pass --apply to remove)
+apparmor profiles: /etc/apparmor.d
+  would remove (user gone): 58
+  kept (live user): 27
+  unmanaged (ignored): 102
+    home.bunker-17f3338e.bin.rootlesskit
+    home.bunker-18801c1e.bin.rootlesskit
+    home.bunker-1ff87651.bin.rootlesskit
+    home.bunker-27c10d71.bin.rootlesskit
+    home.bunker-304fb343.bin.rootlesskit
+    home.bunker-35d00053.bin.rootlesskit
+    home.bunker-3a0c71a4.bin.rootlesskit
+    home.bunker-3e171796.bin.rootlesskit
+    home.bunker-3f8d1c7a.bin.rootlesskit
+    home.bunker-4e1dda95.bin.rootlesskit
+    home.bunker-5ee81a10.bin.rootlesskit
+    home.bunker-73bc795b.bin.rootlesskit
+    home.bunker-7596f354.bin.rootlesskit
+    home.bunker-78a21f67.bin.rootlesskit
+    home.bunker-79dd0e17.bin.rootlesskit
+    home.bunker-7d935d96.bin.rootlesskit
+    home.bunker-9d54d4e0.bin.rootlesskit
+    home.bunker-a58b1544.bin.rootlesskit
+    home.bunker-ab01f5a4.bin.rootlesskit
+    home.bunker-af50cada.bin.rootlesskit
+  ... and 38 more
+agent homes: /home
+  would remove (user gone): 0
+  kept (live user): 33
+  unmanaged (ignored): 11
+linger entries: /var/lib/systemd/linger
+  would remove (user gone): 0
+  kept (live user): 6
+agent runtime dirs: /run/bunker
+  would remove (user gone): 12
+  kept (live user): 27
+    18801c1e
+    1ff87651
+    27c10d71
+    3e171796
+    3f8d1c7a
+    5ee81a10
+    78a21f67
+    79dd0e17
+    9d54d4e0
+    ab01f5a4
+    dff47f7a
+    intci082-deny

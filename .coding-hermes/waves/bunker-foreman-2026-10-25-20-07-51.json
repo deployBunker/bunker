@@ -1,0 +1,22 @@
+{
+  "tick_id": "bunker-foreman-2026-10-25-20-07-51",
+  "project": "bunker",
+  "block": "INT-HOST-011",
+  "wave_budget": 3,
+  "path": "SERIAL FALLBACK / verification-only",
+  "resume_first": true,
+  "host": {
+    "nproc": 16,
+    "loadavg_1m": 13.44580078125,
+    "computed_slots": 2,
+    "effective_slots": 2
+  },
+  "rows_considered": ["INT-HOST-008"],
+  "ready_rows": ["INT-HOST-008"],
+  "rows_dispatched": [],
+  "rows_landed": [],
+  "verification_only": true,
+  "owner_blocker": "Explicit owner authorization is required before destructive bunker-mvp bunker reap --apply; authorization is absent, so --apply must not run.",
+  "worktrees": [],
+  "briefs": []
+}
