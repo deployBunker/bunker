@@ -196,9 +196,9 @@ func RequireInsecureAck(entry ServerEntry) error {
 		return fmt.Errorf(
 			"refusing to skip TLS verification for %q: a certificate is pinned (cert_pin %s) — "+
 				"pinning and skipping verification are mutually exclusive and the pin wins.\n"+
-				"  Keep verifying against the pin:  remove tls_insecure from ~/.bunker/config.yaml\n"+
+				"  Keep verifying against the pin:  remove tls_insecure from %s\n"+
 				"  Or re-pin a different certificate deliberately:  bunker connect --tls self-signed --accept-cert %s",
-			name, FormatCertPin(entry.CertPin), entry.URL)
+			name, FormatCertPin(entry.CertPin), mustConfigFilePath(), entry.URL)
 	}
 	if !tlsInsecureAcknowledged() {
 		return fmt.Errorf(
@@ -299,11 +299,11 @@ func validateEntryTLS(entry ServerEntry) error {
 			"server %q has a contradictory TLS configuration: tls_insecure (skip verification) "+
 				"and cert_pin %s (verify against a pinned certificate) are both set — "+
 				"the pin wins and the request is refused.\n"+
-				"  Remove tls_insecure from ~/.bunker/config.yaml to keep verifying against the pin,\n"+
+				"  Remove tls_insecure from %s to keep verifying against the pin,\n"+
 				"  or deliberately replace the anchor: bunker connect --tls self-signed --accept-cert %s\n"+
 				"  (--tls-insecure cannot unlock this: skipping verification is refused for any server\n"+
 				"  that carries a pin, acknowledgement or not — GAP-141)",
-			name, FormatCertPin(entry.CertPin), entry.URL)
+			name, FormatCertPin(entry.CertPin), mustConfigFilePath(), entry.URL)
 	}
 	if entry.TLSInsecure && entry.TLSMode == string(TLSModeSelfSigned) {
 		return fmt.Errorf(
