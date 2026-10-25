@@ -1,0 +1,42 @@
+{
+  "tick_id": "bunker-foreman-2026-10-25-04-25-19",
+  "block": "PERF-013-R3",
+  "wave_budget": 1,
+  "host_slots": 1,
+  "wave_size": 1,
+  "path": "SERIAL FALLBACK / resumed prior wave",
+  "reason": "WAVE_BUDGET=1 and loadavg 14.44 on 16 CPUs; prior wave had already dispatched PERF-002, PERF-003, PERF-004. This tick verified and landed the existing work serially.",
+  "rows": [
+    {
+      "row_id": "PERF-002",
+      "worktree": "/home/kara/worktrees/bunker-PERF-002",
+      "branch": "wt/PERF-002",
+      "commit": "c39dd99d",
+      "cleanup_commit": "aaa4cd2a",
+      "status": "landed",
+      "tier2": "PASS"
+    },
+    {
+      "row_id": "PERF-003",
+      "worktree": "/home/kara/worktrees/bunker-PERF-003",
+      "branch": "wt/PERF-003",
+      "commit": "67423f20",
+      "status": "landed_with_followup",
+      "tier2": "FAIL: io.Seeker criterion unmet; RSS ~14MB vs 10MB"
+    },
+    {
+      "row_id": "PERF-004",
+      "worktree": "/home/kara/worktrees/bunker-PERF-004",
+      "branch": "wt/PERF-004",
+      "commit": "a1edf8f0",
+      "status": "already_on_main",
+      "tier2": "completion recorded"
+    }
+  ],
+  "landed_head": "6f9f8b8c",
+  "local_gate": "go build ./... PASS; go vet ./... PASS; go test ./... -count=1 -short FAIL in permission-dependent internal/agent tests under API host; other packages passed",
+  "guard": "Tier 1 DEGRADED PASS on board-only closeout, secrets clean; code gates ran separately",
+  "remote_ci": "in_progress at tick close",
+  "open": ["PERF-003 follow-up: satisfy io.Seeker criterion and reduce measured RSS to <=10MB", "full short suite requires privileged host context"],
+  "duckbrain": "write skipped: ~/.duckbrain/default.token not present"
+}
