@@ -1,0 +1,10 @@
+{
+  "tick_id": "bunker-foreman-2026-10-25-00-52-01",
+  "block": "REV-BUNKER-018",
+  "wave_budget": 10,
+  "host": {"nproc": 16, "loadavg_1m": 8.14, "computed_slots": 6},
+  "path": "WAVE (6 independent rows; slots=6, WAVE_BUDGET=10)",
+  "rows_dispatched": ["REV-BUNKER-004", "REV-BUNKER-008", "REV-BUNKER-009", "REV-BUNKER-013", "REV-BUNKER-015", "REV-BUNKER-016"],
+  "rows_landed": [],
+  "workers": []
+}
