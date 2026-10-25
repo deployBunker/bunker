@@ -1,0 +1,23 @@
+{
+  "tick_id": "bunker-foreman-2026-10-25-07-42-22",
+  "project": "bunker",
+  "block": "INT-HOST-011",
+  "wave_budget": 1,
+  "path": "SERIAL FALLBACK / verification-only",
+  "reason": "WAVE_BUDGET=1 and the selected block has one ready board row, INT-HOST-008, but it is owner-gated on explicit authorization for destructive live-host cleanup.",
+  "host": {
+    "nproc": 16,
+    "loadavg_1m": 15.97,
+    "computed_slots": 1
+  },
+  "rows_considered": ["INT-HOST-008"],
+  "rows_dispatched": [],
+  "worktrees": [],
+  "briefs": [],
+  "verification": {
+    "live_host": "bunker-mvp",
+    "action": "bunker reap --dry-run",
+    "apply": false,
+    "owner_authorization": "absent"
+  }
+}
