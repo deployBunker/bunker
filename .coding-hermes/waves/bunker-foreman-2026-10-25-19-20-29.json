@@ -1,0 +1,17 @@
+{
+  "tick_id": "bunker-foreman-2026-10-25-19-20-29",
+  "block": "INT-HOST-011",
+  "wave_budget": 11,
+  "path": "SERIAL FALLBACK / verification-only",
+  "reason": "The resumed block has one ready row, INT-HOST-008. It is an owner-gated destructive live-host cleanup; no implementation worker or code wave is appropriate. The row remains pending until explicit deletion authorization is supplied.",
+  "rows": [
+    {
+      "task_id": "INT-HOST-008",
+      "worktree": null,
+      "branch": null,
+      "brief": "verification-only: bunker-mvp reap --dry-run; do not run --apply without explicit owner authorization"
+    }
+  ],
+  "dispatched": [],
+  "created_before_dispatch": true
+}
