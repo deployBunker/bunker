@@ -1,0 +1,44 @@
+{
+  "tick_id": "bunker-foreman-2026-10-25-01-54-01",
+  "block": "REV-BUNKER-018",
+  "wave_budget": 6,
+  "rows": [
+    {
+      "id": "REV-BUNKER-004",
+      "worktree": "/home/kara/deployBunker/bunker-wt-REV-BUNKER-004",
+      "branch": "wt/REV-BUNKER-004",
+      "title": "GAP-091 rootless-installer cache docs overclaim"
+    },
+    {
+      "id": "REV-BUNKER-008",
+      "worktree": "/home/kara/deployBunker/bunker-wt-REV-BUNKER-008",
+      "branch": "wt/REV-BUNKER-008",
+      "title": "README auth probe omits 405/415-before-401 ordering"
+    },
+    {
+      "id": "REV-BUNKER-009",
+      "worktree": "/home/kara/deployBunker/bunker-wt-REV-BUNKER-009",
+      "branch": "wt/REV-BUNKER-009",
+      "title": "README labels spawn-time admission as enforced limit"
+    },
+    {
+      "id": "REV-BUNKER-010",
+      "worktree": "/home/kara/deployBunker/bunker-wt-REV-BUNKER-010",
+      "branch": "wt/REV-BUNKER-010",
+      "title": "TLS TOFU banner names default config path"
+    },
+    {
+      "id": "REV-BUNKER-013",
+      "worktree": "/home/kara/deployBunker/bunker-wt-REV-BUNKER-013",
+      "branch": "wt/REV-BUNKER-013",
+      "title": "76 rows carry non-canon keys"
+    },
+    {
+      "id": "REV-BUNKER-015",
+      "worktree": "/home/kara/deployBunker/bunker-wt-REV-BUNKER-015",
+      "branch": "wt/REV-BUNKER-015",
+      "title": "Four merged worktrees not reaped"
+    }
+  ],
+  "dispatched_at": "2026-10-25T01:54:01Z"
+}
