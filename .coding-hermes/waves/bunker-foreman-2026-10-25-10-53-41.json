@@ -1,0 +1,25 @@
+{
+  "tick_id": "bunker-foreman-2026-10-25-10-53-41",
+  "tick_number": 642,
+  "type": "verification-only",
+  "block": "INT-HOST-011",
+  "wave_budget": 2,
+  "host": {
+    "nproc": 16,
+    "loadavg_1m": 12.34,
+    "computed_slots": 4
+  },
+  "base": "87fd153bb1b6a77e1fd11f5e47b7dc56c300d439",
+  "rows": [
+    {
+      "id": "INT-HOST-008",
+      "status": "pending",
+      "mode": "verification-only",
+      "worktree": null,
+      "branch": null,
+      "dispatch": "not-dispatched: destructive live-host action requires explicit owner authorization"
+    }
+  ],
+  "rationale": "Resume-first block. The only ready row is owner-gated destructive cleanup; verify bunker-mvp reap --dry-run and do not run --apply without explicit authorization. No implementation wave is valid.",
+  "status": "finished"
+}
