@@ -1,0 +1,22 @@
+Tick: bunker-foreman-2026-10-25-20-42-55
+Block: INT-HOST-011
+Row: INT-HOST-008
+Type: verification-only; owner-gated destructive cleanup
+
+Command:
+ssh -o BatchMode=yes -o ConnectTimeout=10 bunker-mvp 'hostname; /usr/local/bin/bunker --version; before=$(find /etc/apparmor.d -maxdepth 1 -type f -name "home.*.bin.rootlesskit" | wc -l); out=$(/usr/local/bin/bunker reap --dry-run); rc=$?; after=$(find /etc/apparmor.d -maxdepth 1 -type f -name "home.*.bin.rootlesskit" | wc -l); printf "before_profiles=%s after_profiles=%s rc=%s\n%s\n" "$before" "$after" "$rc" "$out"; test "$before" = "$after"; test "$rc" -eq 0'
+
+Observed:
+bunker-mvp
+bunker 0.2.1
+commit: eab25686
+built: 2026-10-23T22:19:45Z
+go version: go1.26.10
+before_profiles=85 after_profiles=85 rc=0
+reap dry run: no changes written
+AppArmor: would remove 58, kept 27, unmanaged 102
+agent homes: would remove 0, kept 33, unmanaged 11
+linger: would remove 0, kept 6
+runtime dirs: would remove 12, kept 27
+
+Authorization: absent. bunker reap --apply was not run.
