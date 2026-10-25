@@ -1,0 +1,26 @@
+{
+  "tick_id": "bunker-foreman-2026-10-25-09-32-44",
+  "tick_number": 637,
+  "block": "INT-HOST-011",
+  "wave_budget": 12,
+  "host": {
+    "nproc": 16,
+    "loadavg_1m": 8.43,
+    "computed_slots": 7
+  },
+  "path": "SERIAL FALLBACK / verification-only",
+  "resume_first": true,
+  "reason": "Resume-first selected INT-HOST-011. Its sole ready row INT-HOST-008 is destructive live-host cleanup and remains owner-gated; explicit authorization for bunker-mvp bunker reap --apply is absent, so no implementation worker is appropriate.",
+  "rows": [
+    {
+      "task_id": "INT-HOST-008",
+      "status": "verification-only",
+      "worktree": null,
+      "branch": null,
+      "brief": "verification-only: run bunker-mvp bunker reap --dry-run and preserve live state; do not run --apply without explicit owner authorization",
+      "owner_blocker": "Explicit owner deletion authorization is required before bunker-mvp bunker reap --apply."
+    }
+  ],
+  "dispatched": [],
+  "created_before_dispatch": true
+}
