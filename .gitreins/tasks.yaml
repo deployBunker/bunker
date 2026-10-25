@@ -5007,3 +5007,11 @@ tasks:
   status: complete
   created_at: '2026-10-24T17:20:35.626704+00:00'
   completed_at: '2026-10-24T17:20:37.010812+00:00'
+- id: REV-BUNKER-004
+  title: Fix rootless-installer cache docs overclaim (GAP-091)
+  criteria:
+  - Cache docs correctly state setup-script-only caching; deny payload cache; 4 doc-rule
+    tests PASS
+  status: complete
+  created_at: '2026-10-25T02:39:53.531043+00:00'
+  completed_at: '2026-10-25T02:41:09.427359+00:00'
