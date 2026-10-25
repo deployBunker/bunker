@@ -1,0 +1,18 @@
+{
+  "tick_id": "bunker-foreman-2026-10-25-08-07-05",
+  "block": "INT-HOST-011",
+  "wave_budget": 1,
+  "path": "SERIAL FALLBACK / verification-only",
+  "reason": "WAVE_BUDGET=1 is the hard ceiling; the selected block has one ready board row, INT-HOST-008, but its destructive --apply action remains owner-gated.",
+  "rows": [
+    {
+      "task_id": "INT-HOST-008",
+      "status": "verification-only",
+      "worktree": null,
+      "branch": null,
+      "brief": null,
+      "owner_blocker": "Explicit owner authorization is required before bunker-mvp bunker reap --apply."
+    }
+  ],
+  "created_before_dispatch": true
+}
