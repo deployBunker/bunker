@@ -585,6 +585,148 @@ func TestRegisterServer_SelfSignedSecondConnectUsesPin(t *testing.T) {
 	}
 }
 
+// TestTOFUBannerNamesResolvedConfigPath pins the first-use banner to the CLI
+// config file `bunker connect` actually writes. REV-BUNKER-010: the banner
+// hardcoded ~/.bunker/config.yaml, so a $BUNKER_HOME or --config deployment
+// told the operator the pin lived in a file this CLI never reads.
+//
+// The end-to-end arm is the one that matters: it registers a real self-signed
+// server over TLS under $BUNKER_HOME, then asserts BOTH that the banner names
+// $BUNKER_HOME/config.yaml AND that the file at that exact path is the one that
+// exists afterwards — the banner and the write must agree, not merely both be
+// plausible.
+func TestTOFUBannerNamesResolvedConfigPath(t *testing.T) {
+	const legacyPath = "~/.bunker/config.yaml"
+
+	t.Run("BUNKER_HOME relocation is named", func(t *testing.T) {
+		useTempHome(t)
+		ResetConfigPathOverride()
+		t.Cleanup(ResetConfigPathOverride)
+		setenvForTest(t, envBunkerHome, "")
+		setenvForTest(t, EnvBunkerConfigHome, "")
+
+		home := t.TempDir()
+		setenvForTest(t, envBunkerHome, home)
+		want := filepath.Join(home, "config.yaml")
+
+		// Premise: the resolver — the same one SaveCLIConfig writes through —
+		// resolves into the relocated tree.
+		if got := mustConfigFilePath(); got != want {
+			t.Fatalf("resolver = %q, want the $BUNKER_HOME config %q", got, want)
+		}
+
+		stderr := captureStderr(t, func() {
+			printTrustOnFirstUse(nil, ConnectOptions{URL: "https://host:9090"}, gap141Pin)
+		})
+
+		if !strings.Contains(stderr, "TRUST ON FIRST USE") {
+			t.Fatalf("banner missing:\n%s", stderr)
+		}
+		if !strings.Contains(stderr, want) {
+			t.Errorf("banner does not name the resolved config path %q:\n%s", want, stderr)
+		}
+		if !strings.Contains(stderr, FormatCertPin(gap141Pin)) {
+			t.Errorf("banner must still name the fingerprint:\n%s", stderr)
+		}
+		if strings.Contains(stderr, legacyPath) {
+			t.Errorf("banner still hardcodes the legacy path %q:\n%s", legacyPath, stderr)
+		}
+	})
+
+	t.Run("default resolution names the resolved default, not the legacy literal", func(t *testing.T) {
+		useTempHome(t) // fresh HOME so no legacy ~/.bunker/config.yaml exists
+		ResetConfigPathOverride()
+		t.Cleanup(ResetConfigPathOverride)
+		setenvForTest(t, envBunkerHome, "")
+		setenvForTest(t, EnvBunkerConfigHome, "")
+
+		want := mustConfigFilePath()
+		if want == "" || filepath.Base(want) != "config.yaml" {
+			t.Fatalf("resolver = %q, want a config.yaml path", want)
+		}
+
+		stderr := captureStderr(t, func() {
+			printTrustOnFirstUse(nil, ConnectOptions{URL: "https://host:9090"}, gap141Pin)
+		})
+		if !strings.Contains(stderr, want) {
+			t.Errorf("banner does not name the resolved config path %q:\n%s", want, stderr)
+		}
+		if strings.Contains(stderr, legacyPath) {
+			t.Errorf("banner still hardcodes the legacy path %q:\n%s", legacyPath, stderr)
+		}
+	})
+
+	t.Run("--config override is named", func(t *testing.T) {
+		useTempHome(t)
+		flagCfg := filepath.Join(t.TempDir(), "custom", "config.yaml")
+		SetConfigPathOverride(flagCfg)
+		t.Cleanup(ResetConfigPathOverride)
+		setenvForTest(t, envBunkerHome, "")
+		setenvForTest(t, EnvBunkerConfigHome, "")
+
+		if got := mustConfigFilePath(); got != flagCfg {
+			t.Fatalf("resolver = %q, want the --config override %q", got, flagCfg)
+		}
+		stderr := captureStderr(t, func() {
+			printTrustOnFirstUse(nil, ConnectOptions{URL: "https://host:9090"}, gap141Pin)
+		})
+		if !strings.Contains(stderr, flagCfg) {
+			t.Errorf("banner does not name the --config path %q:\n%s", flagCfg, stderr)
+		}
+		if strings.Contains(stderr, legacyPath) {
+			t.Errorf("banner still hardcodes the legacy path %q:\n%s", legacyPath, stderr)
+		}
+	})
+
+	t.Run("end to end under BUNKER_HOME: banner path is the file connect writes", func(t *testing.T) {
+		useTempHome(t)
+		ResetConfigPathOverride()
+		t.Cleanup(ResetConfigPathOverride)
+		setenvForTest(t, EnvBunkerConfigHome, "")
+
+		home := t.TempDir()
+		setenvForTest(t, envBunkerHome, home)
+		want := filepath.Join(home, "config.yaml")
+
+		srv, wantPin := newTLSBunkerd(t, selfSignedTLSConfig(t), &mockBunkerdServer{info: testServerInfo("tls-host")})
+
+		captureStdout(t, func() {
+			var err error
+			stderr := captureStderr(t, func() {
+				err = RegisterServerWithOptions(ConnectOptions{
+					Name:    "tofu-home",
+					URL:     srv.URL,
+					TLSMode: TLSModeSelfSigned,
+				})
+			})
+			if err != nil {
+				t.Fatalf("first-use registration under $BUNKER_HOME failed: %v", err)
+			}
+			if !strings.Contains(stderr, want) {
+				t.Errorf("banner does not name $BUNKER_HOME config %q:\n%s", want, stderr)
+			}
+			if strings.Contains(stderr, legacyPath) {
+				t.Errorf("banner still hardcodes the legacy path %q:\n%s", legacyPath, stderr)
+			}
+			if !strings.Contains(stderr, FormatCertPin(wantPin)) {
+				t.Errorf("banner must name the served fingerprint:\n%s", stderr)
+			}
+		})
+
+		// The stronger half: the banner's path is where the pin landed.
+		data, err := os.ReadFile(want)
+		if err != nil {
+			t.Fatalf("the banner named %q but connect did not write it: %v", want, err)
+		}
+		if !strings.Contains(string(data), wantPin) {
+			t.Errorf("config at the banner path %q does not carry the pin %q:\n%s", want, wantPin, data)
+		}
+		if _, err := os.Stat(filepath.Join(home, DefaultLegacyBunkerConfigDir, "config.yaml")); err == nil {
+			t.Errorf("connect wrote a legacy ~/.bunker config under $BUNKER_HOME")
+		}
+	})
+}
+
 // TestRegisterServer_RotatedCertRefused is the loud-refusal case: same URL,
 // different certificate, no --accept-cert.
 func TestRegisterServer_RotatedCertRefused(t *testing.T) {

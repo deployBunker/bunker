@@ -308,6 +308,12 @@ func normalizeTLSMode(opts ConnectOptions, entry ServerEntry) TLSMode {
 // the operator is about to trust. It goes to stderr so it is visible in a
 // terminal and survives any stdout capture, and it is never suppressed on a
 // first use.
+//
+// The banner names the RESOLVED CLI config file (configFilePath), not a fixed
+// default: under GAP-181 a $BUNKER_HOME or --config deployment writes the pin
+// somewhere else, so a hardcoded ~/.bunker/config.yaml would send the operator
+// to a file this CLI never reads. An unresolvable path prints its reason
+// rather than a plausible-looking default.
 func printTrustOnFirstUse(known *ServerEntry, opts ConnectOptions, observed string) {
 	if known != nil && known.CertPin != "" {
 		return // a re-connect against an already-pinned entry is not a first use
@@ -317,7 +323,7 @@ func printTrustOnFirstUse(known *ServerEntry, opts ConnectOptions, observed stri
 You are about to trust the certificate presented by %s for the first time.
 
   fingerprint      %s
-  stored as        cert_pin in ~/.bunker/config.yaml
+  stored as        cert_pin in %s
 
 There is no certificate authority behind this certificate: the trust comes from
 accepting THIS fingerprint now, exactly once, like an SSH host key. Every later
@@ -328,7 +334,7 @@ Verify the fingerprint out of band if you can (on the daemon host:
 If you cannot, connect over a channel you already trust the first time.
 ====================================================================================
 
-`, opts.URL, FormatCertPin(observed))
+`, opts.URL, FormatCertPin(observed), mustConfigFilePath())
 }
 
 // printTrustSummary reports, on stdout, how the registered entry will verify the
