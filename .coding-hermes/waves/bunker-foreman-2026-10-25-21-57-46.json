@@ -5,8 +5,8 @@
   "host": {
     "nproc": 16,
     "loadavg_1m": 8.68,
-    "computed_slots": 1,
-    "effective_slots": 1
+    "computed_slots": 6,
+    "effective_slots": 6
   },
   "path": "SERIAL FALLBACK / verification-only",
   "reason": "The selected block has one ready row, INT-HOST-008, and it is an owner-gated destructive live-host cleanup. No implementation worker or code wave is valid without explicit deletion authorization.",
