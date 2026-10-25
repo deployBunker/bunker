@@ -1,0 +1,17 @@
+{
+  "tick_id": "bunker-foreman-2026-10-25-19-09-00",
+  "block": "INT-HOST-011",
+  "wave_budget": 4,
+  "path": "SERIAL FALLBACK / verification-only",
+  "rows": [
+    {
+      "id": "INT-HOST-008",
+      "worktree": null,
+      "branch": null,
+      "brief": "Verification-only owner-gated live cleanup; no worker dispatch. Run bunker-mvp reap --dry-run and preserve host state.",
+      "dispatch": "not applicable: explicit owner authorization required before --apply"
+    }
+  ],
+  "dispatch": [],
+  "reason": "Selected block has one ready row and its only action is destructive live-host cleanup gated on explicit owner authorization; wave dispatch would be invalid."
+}
