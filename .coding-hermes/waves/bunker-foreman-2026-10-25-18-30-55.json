@@ -1,0 +1,18 @@
+{
+  "tick_id": "bunker-foreman-2026-10-25-18-30-55",
+  "tick_number": 645,
+  "block": "INT-HOST-011",
+  "wave_budget": 2,
+  "base_sha": "9253569df812fe3eb2993c682d520ea5eabef4e8",
+  "path": "verification-only",
+  "rows": [
+    {
+      "task_id": "INT-HOST-008",
+      "worktree": null,
+      "branch": null,
+      "brief": null,
+      "status": "owner-blocked"
+    }
+  ],
+  "dispatch": "none: explicit owner authorization is required before bunker-mvp reap --apply"
+}
