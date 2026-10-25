@@ -1,0 +1,34 @@
+Tick: bunker-foreman-2026-10-25-21-40-48
+Block: INT-HOST-011
+Row: INT-HOST-008
+Type: verification-only; owner-gated destructive cleanup
+
+Command:
+ssh -o BatchMode=yes -o ConnectTimeout=10 bunker-mvp 'hostname; /usr/local/bin/bunker --version; before=$(find /etc/apparmor.d -maxdepth 1 -type f -name "home.*.bin.rootlesskit" | wc -l); out=$(/usr/local/bin/bunker reap --dry-run); rc=$?; after=$(find /etc/apparmor.d -maxdepth 1 -type f -name "home.*.bin.rootlesskit" | wc -l); printf "before_profiles=%s after_profiles=%s rc=%s\n%s\n" "$before" "$after" "$rc" "$out"; test "$before" = "$after"; test "$rc" -eq 0'
+
+Observed on fresh re-probe:
+bunker-mvp
+bunker 0.2.1
+commit: eab25686
+built: 2026-10-23T22:19:45Z
+go version: go1.26.10
+before_profiles=82 after_profiles=82 rc=0
+reap: DRY RUN (no changes written; pass --apply to remove)
+apparmor profiles: would remove 58, kept 24, unmanaged 102
+agent homes: would remove 0, kept 30, unmanaged 11
+linger entries: would remove 0, kept 2
+agent runtime dirs: would remove 12, kept 24
+
+Authorization: absent. reap --apply was not run.
+
+Local gate:
+go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4
+PASS (all packages; internal/agent 160.433s; total command exit 0)
+
+GitReins verification:
+Task INT-HOST-008-VERIFY-20261025-2056 completed; verdict history .gitreins/history/2026-10-25/10c4efc7/verdict.json read back with passed=true and commit 0f2a0786. The task was deleted afterward; no Tier-2 merits claim beyond the recorded passed=true artifact.
+
+Remote CI:
+gh run list --repo deployBunker/bunker --limit 3 returned completed/success runs 40231741093, 40229877665, 40228623405 at tick start. Exact final closeout SHA is not yet committed; exact-head closeout CI remains pending until the bookkeeping commit is pushed.
+
+ch:trace row=INT-HOST-008 spec=none:owner-gated-live-cleanup wave=.coding-hermes/waves/bunker-foreman-2026-10-25-21-40-48.json#verification test=none:live-dry-run doc=none:owner-operated-action prompt=~/.hermes/skills/coding-hermes-foreman-bunker/SKILL.md evidence=.coding-hermes/evidence/INT-HOST-008-2026-10-25-21-40-48.txt witness=live:bunker-mvp@eab25686-reap-dry-run verdict=10c4efc7 commit=none:owner-block memory=none:duckbrain-mcp-argument-validation-failed

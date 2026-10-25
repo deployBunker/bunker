@@ -1,0 +1,17 @@
+{
+  "tick": "bunker-foreman-2026-10-25-21-40-48",
+  "block": "INT-HOST-011",
+  "wave_budget": 12,
+  "host": {"nproc": 16, "loadavg_1m": 48.82, "computed_slots": 1, "effective_slots": 1},
+  "path": "SERIAL FALLBACK / verification-only",
+  "resume_first": true,
+  "rows_considered": ["INT-HOST-008"],
+  "ready_rows": ["INT-HOST-008"],
+  "rows_dispatched": [],
+  "rows_landed": [],
+  "rows_verified": ["INT-HOST-008"],
+  "owner_blocker": "Explicit owner authorization for destructive bunker-mvp bunker reap --apply is absent; --apply was not run.",
+  "verification_artifact": ".coding-hermes/evidence/INT-HOST-008-2026-10-25-21-40-48.txt",
+  "gitreins": {"task": "INT-HOST-008-VERIFY-20261025-2056", "verdict": "10c4efc7", "passed": true, "deleted_after_readback": true},
+  "closed": true
+}
