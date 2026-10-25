@@ -5038,3 +5038,37 @@ tasks:
   status: complete
   created_at: '2026-10-25T06:01:52.488749+00:00'
   completed_at: '2026-10-25T06:46:10.781843+00:00'
+- id: DF-BUNKER-64
+  title: 'TLS refusal UX: non-zero exit codes and named error classes'
+  criteria:
+  - 'bunker status exits 1 on pin-mismatch/expired/contradictory TLS refusals (matching
+    list); auth-failed TOFU does NOT print ''pin stored''; config refusal surfaces
+    a named class not ''stream error: unavailable''; http-vs-TLS names a TLS class
+    not ''internal: 400 Bad Request''; unit tests cover each class+exit code; go build
+    ./... && go vet ./... && go test ./... -count=1 pass'
+  status: in_progress
+  created_at: '2026-10-25T22:53:08.586357+00:00'
+- id: DF-BUNKER-69
+  title: Unknown-subcommand path gives a newer-CLI hint
+  criteria:
+  - a client that does not know a subcommand present in HEAD prints a hint naming
+    the version requirement instead of a bare 'unknown command'; unit test covers
+    the hint; docs consistent; go build/vet/test pass
+  status: in_progress
+  created_at: '2026-10-25T22:53:09.142395+00:00'
+- id: DF-BUNKER-74
+  title: README install snippet points at the release-asset installer
+  criteria:
+  - README install snippet uses a URL that resolves (release-asset installer), not
+    raw scripts/install.sh from main (404); PATH line correct; no contradicting install
+    instructions; docs-only diff
+  status: in_progress
+  created_at: '2026-10-25T22:53:09.688865+00:00'
+- id: DF-BUNKER-110
+  title: 'README resource-events: stopped agents are readable'
+  criteria:
+  - README:1090-1096 lists only genuinely unreadable cases (destroyed agent, deleted
+    agent user, pre-GAP-121 daemon) and states a stopped agent IS readable; copy-pasteable
+    check in the row passes; docs-only diff
+  status: in_progress
+  created_at: '2026-10-25T22:53:10.232995+00:00'

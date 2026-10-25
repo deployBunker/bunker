@@ -1,0 +1,26 @@
+{
+  "tick": "bunker-foreman-2026-10-25-22-28-17",
+  "project": "bunker",
+  "repo": "/home/kara/deployBunker/bunker",
+  "block": "DF-BUNKER (block id row DF-BUNKER-47-R2)",
+  "path": "WAVE",
+  "wave_budget": 10,
+  "injected_budget_line": 10,
+  "host": {"nproc": 16, "loadavg_1m": 7.57, "computed_slots": 6, "effective_slots": 4},
+  "why_not_resume_target": "resume-first target INT-HOST-011 (row INT-HOST-008) is owner-gated destructive live cleanup; ticks 652-657 were all verification-only on that one row and none could land - 6-tick livelock, escalated in the tick event instead of a 7th re-verify.",
+  "committed_rows": [
+    {"id": "DF-BUNKER-64",  "prio": "P2", "kind": "code-cli",  "worktree": "/home/kara/deployBunker/worktrees/bunker-DF-BUNKER-64",  "branch": "wt/DF-BUNKER-64",  "base_sha": "3b8c00a8"},
+    {"id": "DF-BUNKER-69",  "prio": "P2", "kind": "code-cli",  "worktree": "/home/kara/deployBunker/worktrees/bunker-DF-BUNKER-69",  "branch": "wt/DF-BUNKER-69",  "base_sha": "3b8c00a8"},
+    {"id": "DF-BUNKER-74",  "prio": "P2", "kind": "docs",      "worktree": "/home/kara/deployBunker/worktrees/bunker-DF-BUNKER-74",  "branch": "wt/DF-BUNKER-74",  "base_sha": "3b8c00a8"},
+    {"id": "DF-BUNKER-110", "prio": "P4", "kind": "docs",      "worktree": "/home/kara/deployBunker/worktrees/bunker-DF-BUNKER-110", "branch": "wt/DF-BUNKER-110", "base_sha": "3b8c00a8"}
+  ],
+  "independence": "no depends_on edges among the four rows (verified in tasks.jsonl: depends_on null on all four); CLI error-class code (internal/cli + internal/client) vs CLI command-dispatch hint vs README install snippet vs README resource-events paragraph - different files, different seams; none is in the AGENTS.md live-E2E-battery class (no spawn/destroy/exec/docker/ssh behaviour change).",
+  "excluded_from_wave": [
+    {"id": "DF-BUNKER-47-R2", "why": "P1 but the fix is in the spawn path (post-spawn SSH-key fetch) -> AGENTS.md requires the live E2E battery on bunker-mvp VERIFY-PASS; deferred, not a wave row"},
+    {"id": "DF-BUNKER-108",   "why": "runtime daemon reporting behaviour -> needs a live probe, heavier than a wave row"},
+    {"id": "DF-BUNKER-92",    "why": "fix direction is the next release cut, not a doc rewrite"}
+  ],
+  "worker_model": "glm-5.3-flash",
+  "worker_provider": "zai-glm-default",
+  "dispatch_form": "hermes chat --query-file /tmp/brief-<ID>.md -m glm-5.3-flash --provider zai-glm-default -s coding-hermes-worker --ignore-rules -Q"
+}
