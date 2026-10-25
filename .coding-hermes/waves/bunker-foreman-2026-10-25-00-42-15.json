@@ -1,0 +1,29 @@
+{
+  "tick_id": "bunker-foreman-2026-10-25-00-42-15",
+  "block": "INT-HOST-011",
+  "wave_budget": 4,
+  "host": {
+    "nproc": 16,
+    "loadavg_1m": 13.13,
+    "computed_slots": 2
+  },
+  "path": "SERIAL FALLBACK / verification-only",
+  "resume_first": true,
+  "rows_dispatched": [],
+  "rows_landed": [],
+  "rows_verified": ["INT-HOST-008"],
+  "owner_blocker": "Explicit owner authorization is required before destructive bunker-mvp bunker reap --apply; authorization was absent, so --apply was not run.",
+  "verification": {
+    "command": "ssh bunker-mvp 'hostname; /usr/local/bin/bunker --version; /usr/local/bin/bunker reap --dry-run'",
+    "result": "PASS: bunker-mvp bunker 0.2.1 commit eab25686; 17 AppArmor profiles and 1 runtime directory would be removed; 15 profiles and 15 runtime directories kept; 0 orphan homes and 0 stale linger entries; no changes written."
+  },
+  "local_gate": "PASS: go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4",
+  "remote_ci": "green: gh run list --repo deployBunker/bunker --limit 3 returned three completed success runs (board commits 624/623/622).",
+  "gitreins": "No implementation lifecycle: owner-gated verification-only row; no source change.",
+  "off_by_one": "No non-trivial debugging performed; no submission.",
+  "open": [
+    "INT-HOST-008 remains pending on explicit owner deletion authorization; do not run bunker-mvp bunker reap --apply without it.",
+    "No implementation worker or code commit was appropriate for the selected block."
+  ],
+  "trace": "ch:trace row=INT-HOST-008 spec=none:owner-gated-live-cleanup wave=.coding-hermes/waves/bunker-foreman-2026-10-25-00-42-15.json#verification test=none:live-dry-run doc=none:verification-only prompt=none:verification-only evidence=none:dry-run-only witness=live:bunker-mvp@eab25686 verdict=none:verification-only commit=none:verification-only memory=/project/bunker/status"
+}
