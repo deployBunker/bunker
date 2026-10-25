@@ -263,7 +263,25 @@ spawn_agent() {
   slice_args=$(qa_slice_args "$repo")
   for attempt in 1 2 3; do
     out=$(bunker spawn --server "$SERVER" --ttl "$TTL" $slice_args 2>&1)
-    id=$(echo "$out" | grep -oP 'keys/\K[a-f0-9]+' | head -1)
+    # PERF-002 (2026-10-25): id extraction must survive CLI output changes.
+    # Primary: the bundle's key-path line ("SSH Key: (saved to ~/.bunker/keys/<id> ...").
+    # Charset widened from hex-only [a-f0-9]+ to the CLI's documented agent-id
+    # charset ^[a-z0-9-]{1,64}$ — the old class SILENTLY TRUNCATED non-hex ids
+    # (e.g. keys/dec-1 → "dec"), which ssh-probes a nonexistent id while the
+    # REAL agent leaks to TTL: the exact orphan class QA-HERMES-CANOPY-16
+    # guards. Fallbacks cover the same id reworded (no keys/ prefix, different
+    # label) so a CLI phrasing change degrades to a retry/FAIL, never a
+    # wrong-id handoff.
+    id=$(echo "$out" | grep -oE 'keys/[a-z0-9-]+' | head -1 | cut -d/ -f2)
+    if [ -z "$id" ]; then
+      id=$(echo "$out" | grep -oE '\bAgent created: [a-z0-9-]+' | head -1 | awk '{print $3}')
+    fi
+    if [ -z "$id" ]; then
+      id=$(echo "$out" | grep -oE '\bagent [a-z0-9-]+ (created|spawned)\b' | head -1 | awk '{print $2}')
+    fi
+    # Non-negotiable shape gate (bunker CLI: ^[a-z0-9-]{1,64}$): a reworded
+    # output must never hand a garbage extraction to the ssh probe.
+    [[ "$id" =~ ^[a-z0-9-]{1,64}$ ]] || id=""
     if [ -z "$id" ]; then
       [ $attempt -lt 3 ] && { echo "  spawn attempt $attempt failed: $(echo "$out" | tail -1)" >&2; sleep "${BUNKER_QA_RETRY_SLEEP:-5}"; }
       continue
@@ -391,19 +409,27 @@ write_fail_if_empty() {
 #   "target host <name> not configured in ~/.bunker/config.yaml"
 #   "SSH probe failed: target host <name> unreachable (exit=N)"
 qa_target_preflight() { # [server] — 0 = reachable; nonzero = refusal (cause on stdout)
-  local srv="${1:-$SERVER}"
+  # PERF-002 (2026-10-25): the target binds to the canonical name ($SERVER,
+  # arg-or-default) so the config gate is the literal `grep -qE "^ +$SERVER:"`
+  # shape the PERF-002 criterion pins. The local shadows the global ONLY
+  # inside this function; callers pass the host as $1 (tests) or rely on the
+  # default, exactly as with the previous $srv binding.
+  local SERVER="${1:-$SERVER}"
   # A missing/blank server name is the same refusal as an unknown one: there is
   # no target to probe, so continuing would be the QA-BUNKER-B20 silent-drift
   # class with no name to print.
-  if [ -z "$srv" ]; then
+  if [ -z "$SERVER" ]; then
     echo "target host <empty> not configured in ~/.bunker/config.yaml (set BUNKER_QA_SERVER)"
     return 1
   fi
   # The host must exist in the bunker CLI's config (or be passed explicitly) —
   # grep is anchored like the original preflights() arm: an indented `name:`
   # key, so comment/substring matches cannot sneak a dead name past the gate.
-  if ! grep -qE "^ +$srv:" "$HOME/.bunker/config.yaml" 2>/dev/null; then
-    echo "target host $srv not configured in ~/.bunker/config.yaml"
+  # PERF-002 (2026-10-25): accept ANY leading indent on the YAML server key,
+  # not the rigid 4-space form — a 2-space-indented ~/.bunker/config.yaml is
+  # valid YAML and must not read as "not configured" (repro 2026-09-25).
+  if ! grep -qE "^ +$SERVER:" "$HOME/.bunker/config.yaml" 2>/dev/null; then
+    echo "target host $SERVER not configured in ~/.bunker/config.yaml"
     return 1
   fi
   # SSH probe: same invocation the harness has always used (IdentitiesOnly +
@@ -412,9 +438,9 @@ qa_target_preflight() { # [server] — 0 = reachable; nonzero = refusal (cause o
   # `|| prc=$?` — inside `if ! cmd; then`, `$?` would report the INVERTED
   # status (always 0) and the named cause would lie about the failure mode.
   local prc=0
-  timeout 30 ssh -i "$BUNKER_QA_HOST_KEY" -o IdentitiesOnly=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=no -o BatchMode=yes "$srv" 'true' 2>/dev/null || prc=$?
+  timeout 30 ssh -i "$BUNKER_QA_HOST_KEY" -o IdentitiesOnly=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=no -o BatchMode=yes "$SERVER" 'true' 2>/dev/null || prc=$?
   if [ "$prc" -ne 0 ]; then
-    echo "SSH probe failed: target host $srv unreachable (exit=$prc)"
+    echo "SSH probe failed: target host $SERVER unreachable (exit=$prc)"
     return 1
   fi
   return 0
