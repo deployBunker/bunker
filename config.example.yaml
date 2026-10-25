@@ -137,12 +137,16 @@ agent:
   port_range_per_agent: 100
   # default_ttl: 6h           # default agent TTL (\\d+[hmd] format, e.g. 6h/90m/7d)
 
-  # Host-level cache for downloaded rootless Docker installers (GAP-091).
-  # With a valid cached artifact (~93MB from get.docker.com) a fresh-agent
-  # spawn skips the network download entirely — retries no longer depend on
-  # get.docker.com throughput. The daemon (root) creates the directory as
-  # 0755 and stores one installer file in it. Empty string ("") disables
-  # the cache and restores the legacy uncached download path.
+  # Host-level cache for the rootless Docker setup script only (GAP-091).
+  # The cache holds ONE file: the ~9 KB `get.docker.com/rootless` setup
+  # script, named for its host and supply-chain pin
+  # (rootless-installer-<host>-<pin>.sh) and re-verified against that pin on
+  # every read. It does NOT hold the ~90 MB `docker-ce-rootless-extras`
+  # payload the script downloads: the installer fetches that payload inside
+  # EACH agent home, so a fresh-agent spawn still pays that download. What
+  # the cache saves is the script fetch (a second network round-trip), not
+  # the payload. The daemon (root) creates the directory as 0755. Empty
+  # string ("") disables the cache and restores the legacy uncached path.
   # Env override: BUNKER_ROOTLESS_INSTALLER_CACHE_DIR (empty = unset).
   # rootless_installer_cache_dir: /var/cache/bunker/rootless-installer  # default
 
