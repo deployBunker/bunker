@@ -362,7 +362,7 @@ agent:
   default_disk_bytes: 21474836480   # 20 GiB PER-FILE cap (LimitFSIZE) — not a total-disk quota
   default_max_processes: 4096
   default_max_open_files: 65536
-  default_max_docker_containers: 10
+  default_max_docker_containers: 10  # spawn-time admission control only (see Resource Limits)
   port_range_start: 10000
   port_range_end: 19999
   port_range_per_agent: 100
@@ -1032,7 +1032,8 @@ a `GET` returns `405` before auth. Request fields use proto snake_case names
 
 ## Resource Limits
 
-All limits are enforced at **two levels**:
+All limits except the container count are enforced at **two levels** (the
+container count is spawn-time admission control — see below):
 
 | Level | Mechanism | Scope |
 |-------|-----------|-------|
@@ -1046,7 +1047,7 @@ All limits are enforced at **two levels**:
 | Per-file size | `agent.default_disk_bytes` | `--disk` | 20 GiB |
 | Processes | `agent.default_max_processes` | — | 4096 |
 | Open files | `agent.default_max_open_files` | — | 65536 |
-| Docker containers | `agent.default_max_docker_containers` | — | 10 |
+| Docker containers (spawn-time admission only) | `agent.default_max_docker_containers` | — | 10 |
 
 `agent.default_disk_bytes` is a **per-file size cap, not a total-disk quota**
 (DF-BUNKER-54). It reaches the host as systemd `LimitFSIZE` (i.e. `RLIMIT_FSIZE`),
@@ -1060,6 +1061,18 @@ makes .NET apps that `ftruncate` a large sparse file at first boot crash-loop
 (`EFBIG` → `SIGXFSZ`), so `0` (off) is the documented-good configuration — see
 [specs/safety-presets.md](specs/safety-presets.md) and
 [internal/agent/SKILL.md](internal/agent/SKILL.md).
+
+`agent.default_max_docker_containers` is **spawn-time admission control, not a
+runtime cap** (REV-BUNKER-009). When an agent is spawned, bunkerd counts the
+*running* containers already hosted by the agent's rootless dockerd
+(`docker ps -q`) and refuses the spawn when that count is at or above the
+limit. Nothing else enforces a container count — systemd exposes no per-user
+container property and docker's daemon has no such setting — so this check is
+the only enforcement point (see the container-cap stage in
+`internal/agent/manager_spawn.go`). Two consequences: **post-spawn container
+creation is not enforced** — a running agent owns its rootless dockerd and can
+start unlimited additional containers — and **stopped containers are not
+counted** even at spawn time. Setting the value to `0` disables the check.
 
 `bunker metrics <id>` reads the agent's own cgroup slice; when that slice is
 unreadable (e.g. a dead agent user) it falls back to **host-level** values and
