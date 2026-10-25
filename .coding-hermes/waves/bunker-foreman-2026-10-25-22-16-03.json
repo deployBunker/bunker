@@ -1,0 +1,15 @@
+{
+  "tick_id": "bunker-foreman-2026-10-25-22-16-03",
+  "tick_number": 657,
+  "block": "INT-HOST-011",
+  "wave_budget": 6,
+  "effective_slots": 4,
+  "path": "SERIAL FALLBACK / verification-only",
+  "reason": "Selected block has one ready row, INT-HOST-008, and it is owner-gated destructive cleanup; no implementation worker wave is valid.",
+  "rows_considered": ["INT-HOST-008"],
+  "ready_rows": ["INT-HOST-008"],
+  "rows_dispatched": [],
+  "worktrees": [],
+  "briefs": [],
+  "owner_blocker": "Explicit owner authorization for destructive bunker-mvp bunker reap --apply is absent; --apply was not run."
+}
