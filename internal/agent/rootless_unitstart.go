@@ -55,6 +55,20 @@ import (
 // Bounds: 2 reset attempts with a bounded pause between, one uninstall, one
 // journal query — all far inside the spawn budget.
 
+// dockerServiceUnitName is the INSTALLER's per-user Docker unit
+// (~/.config/systemd/user/docker.service). It matters ONLY to the rootless
+// install/retry path in this file. The health surface deliberately does not
+// read it (DF-BUNKER-108): the manager's per-agent unit
+// bunker-docker-<agentID> is the one that serves the agent's socket, and on
+// DF-BUNKER-96 hosts the installer unit sits `failed` by construction while
+// that socket answers fine.
+const dockerServiceUnitName = "docker.service"
+
+// dockerServiceFailedDetail is the cause the unit-start recovery matches on —
+// the specific answer proving the unit sits in the terminal `failed` state a
+// reset-failed can clear.
+const dockerServiceFailedDetail = dockerServiceUnitName + " failed"
+
 // rootlessSetupResetAttempts bounds the reset-failed convergence loop. A
 // start job that just failed can take a moment to settle into the terminal
 // `failed` state the reset requires; two attempts cover it. Bounded on
@@ -79,6 +93,46 @@ const rootlessDataDirRel = ".local/share/docker"
 // failed state so systemd will start the unit again. Never run blind — the
 // caller probes first and only resets a provably `failed` unit.
 const dockerUnitResetCmdFmt = "systemctl --user reset-failed " + dockerServiceUnitName
+
+// dockerServiceUnitProbeCmd is the installer unit's is-active probe command —
+// what tests' session-seam-backed probe stubs issue (the production probe
+// dockerServiceUnitStateProbe composes the same command).
+const dockerServiceUnitProbeCmd = "systemctl --user is-active " + dockerServiceUnitName
+
+// dockerServiceUnitStateProbe asks the agent user's manager for the
+// INSTALLER unit's state (docker.service). Package-level seam, separate from
+// the health surface's serving-unit probe (dockerUnitStateProbe in
+// docker_health.go) since DF-BUNKER-108 split the two concerns: unit tests
+// drive the reset path without a real su, a real systemd or a real agent
+// user.
+var dockerServiceUnitStateProbe = probeDockerServiceUnitState
+
+// probeDockerServiceUnitState is the production probe for the installer unit.
+// `systemctl --user is-active` reports a NON-active state by PRINTING it and
+// exiting non-zero, so the returned error is frequently the state's own exit
+// status rather than a transport failure — the caller classifies on the
+// output and treats the error only as "we got no usable answer" when the
+// output is empty.
+func probeDockerServiceUnitState(ctx context.Context, username, runtimeDir string) (string, error) {
+	return dockerUnitStateProbe(ctx, username, runtimeDir, dockerServiceUnitName)
+}
+
+// classifyDockerServiceUnitState maps the installer unit's probe answer onto
+// the reset-recovery cause. It reads the STATE STRING FIRST and ignores the
+// error ON PURPOSE: for `failed` the error IS the state's own exit status.
+// Only the terminal `failed` state is matched — the recovery resets a failed
+// unit and nothing else; an empty or unrecognised body (dead bus, killed
+// probe, `inactive`, the unit-not-found text) yields no cause.
+func classifyDockerServiceUnitState(state string) string {
+	fields := strings.Fields(state)
+	if len(fields) == 0 {
+		return ""
+	}
+	if fields[0] == "failed" {
+		return dockerServiceFailedDetail
+	}
+	return ""
+}
 
 // isDockerUnitStartFailure reports whether the installer output carries the
 // unit-START failure signature INT-CI-069 observed: the installer reached its
@@ -112,8 +166,8 @@ func isDockerUnitStartFailure(out []byte) bool {
 // is best-effort: the setup tool re-creates the dir on install, so a failed
 // rm only logs.
 func resetPartialRootlessSetup(ctx context.Context, username, runtimeDir, installerPath string, logger *slog.Logger) error {
-	unitState, probeErr := dockerUnitStateProbe(ctx, username, runtimeDir)
-	if classifyDockerUnitState(unitState, probeErr) != dockerFailedDetail {
+	unitState, probeErr := dockerServiceUnitStateProbe(ctx, username, runtimeDir)
+	if classifyDockerServiceUnitState(unitState) != dockerServiceFailedDetail {
 		// Not provably failed (already inactive/gone, or the probe could
 		// not read it): there is no failed state to reset — proceed to
 		// the uninstall. The probe's answer is recorded in the log for
