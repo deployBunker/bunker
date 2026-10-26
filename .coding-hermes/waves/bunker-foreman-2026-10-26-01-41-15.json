@@ -1,0 +1,40 @@
+{
+  "tick_id": "bunker-foreman-2026-10-26-01-41-15",
+  "block": "DF-BUNKER",
+  "wave_size": 4,
+  "rows": [
+    {
+      "id": "DF-BUNKER-55",
+      "title": "orphan agent homes are never reclaimed — 40 GB of dead weight on cube",
+      "worktree": "/home/kara/deployBunker/bunker-wt-55",
+      "branch": "wt/DF-BUNKER-55",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek-foreman"
+    },
+    {
+      "id": "DF-BUNKER-61",
+      "title": "destroy can exceed the CLI deadline on a busy agent",
+      "worktree": "/home/kara/deployBunker/bunker-wt-61",
+      "branch": "wt/DF-BUNKER-61",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek-foreman"
+    },
+    {
+      "id": "DF-BUNKER-68",
+      "title": "failed renew leaves the agent DESTROYED with no recovery hint",
+      "worktree": "/home/kara/deployBunker/bunker-wt-68",
+      "branch": "wt/DF-BUNKER-68",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek-foreman"
+    },
+    {
+      "id": "DF-BUNKER-70",
+      "title": "drift pre-flight silently degrades to one warn line on daemons without the RPC",
+      "worktree": "/home/kara/deployBunker/bunker-wt-70",
+      "branch": "wt/DF-BUNKER-70",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek-foreman"
+    }
+  ],
+  "created_at": "2026-10-26T01:41:15-05:00"
+}
