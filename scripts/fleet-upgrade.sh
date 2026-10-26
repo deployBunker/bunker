@@ -103,15 +103,16 @@ while [ $# -gt 0 ]; do
 done
 HOSTS=${HOSTS:-${BUNKER_FLEET_HOSTS:-"bunker3 bunker4"}}
 
-# ── preflight: clean tree ────────────────────────────────────────────────────
+# ── preflight: clean tree (skip for dry-run) ─────────────────────────────────
 cd "$REPO_DIR"
+[ -f go.mod ] || die "no go.mod in $REPO_DIR — set BUNKER_REPO_DIR"
 # Tracked modifications only: untracked scratch/board files (sibling workers'
 # waves, evidence dumps) do not affect the built binaries and must not block a
 # fleet upgrade; a MODIFIED tracked file does.
-if [ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]; then
+# Dry-run does not build or deploy, so a dirty tree is acceptable (AC: dry-run exits 0).
+if [ "$DRY_RUN" -eq 0 ] && [ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]; then
 	refuse "working tree is dirty — a fleet upgrade must ship a committed, tested build (commit or stash first)"
 fi
-[ -f go.mod ] || die "no go.mod in $REPO_DIR — set BUNKER_REPO_DIR"
 
 # ── build (skipped under --dry-run) ─────────────────────────────────────────
 BUILD_DIR=""
