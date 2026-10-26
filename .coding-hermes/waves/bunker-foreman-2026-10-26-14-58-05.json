@@ -1,0 +1,14 @@
+{
+  "tick_id": "bunker-foreman-2026-10-26-14-58-05",
+  "project": "bunker",
+  "block": "INT-HOST-011",
+  "wave_budget": 12,
+  "host": {"nproc": 16, "loadavg_1m": 9.85, "computed_slots": 6, "effective_slots": 6},
+  "path": "SERIAL FALLBACK / verification-only",
+  "reason": "The resume-first block has exactly one ready row, INT-HOST-008. It is owner-gated destructive live-host cleanup, not implementation work; no worker wave is valid. The row remains pending until explicit owner authorization for bunker-mvp bunker reap --apply.",
+  "rows_considered": ["INT-HOST-008"],
+  "ready_rows": ["INT-HOST-008"],
+  "workers": [],
+  "dispatch": "none:owner-gated-verification-only",
+  "trace": "ch:trace block=INT-HOST-011 row=INT-HOST-008 wave=.coding-hermes/waves/bunker-foreman-2026-10-26-14-58-05.json#verification test=none:live-dry-run doc=none:owner-operated-action prompt=~/.hermes/skills/coding-hermes-foreman-bunker/SKILL.md"
+}
