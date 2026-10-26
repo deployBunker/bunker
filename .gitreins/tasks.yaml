@@ -5075,3 +5075,32 @@ tasks:
   status: complete
   created_at: '2026-10-25T22:53:10.232995+00:00'
   completed_at: '2026-10-25T23:20:31.100507+00:00'
+- id: DF-BUNKER-55
+  title: reap orphan agent homes after destroy
+  criteria:
+  - homes reporting and reclamation policy implemented
+  - focused CLI tests pass
+  status: in_progress
+  created_at: '2026-10-26T02:21:48.399123+00:00'
+- id: DF-BUNKER-61
+  title: increase destroy timeout and retry deadline
+  criteria:
+  - destroy timeout and retry behavior implemented
+  - focused CLI tests pass
+  status: complete
+  created_at: '2026-10-26T02:21:51.004466+00:00'
+  completed_at: '2026-10-26T02:22:47.261064+00:00'
+- id: DF-BUNKER-68
+  title: add renew recovery hint and no-destroy
+  criteria:
+  - renew recovery hint and no-destroy behavior implemented
+  - focused CLI tests pass
+  status: in_progress
+  created_at: '2026-10-26T02:21:53.420695+00:00'
+- id: DF-BUNKER-70
+  title: error on unsupported drift check
+  criteria:
+  - drift check flags and error behavior implemented
+  - focused CLI tests pass
+  status: in_progress
+  created_at: '2026-10-26T02:21:55.775960+00:00'
