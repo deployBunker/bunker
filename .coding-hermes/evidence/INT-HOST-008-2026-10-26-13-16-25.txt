@@ -1,0 +1,25 @@
+INT-HOST-008 verification-only evidence
+Tick: bunker-foreman-2026-10-26-13-16-25
+
+Owner gate: explicit owner authorization for destructive `bunker-mvp bunker reap --apply` was absent. The mutating command was not run.
+
+Command:
+ssh -o BatchMode=yes -o ConnectTimeout=10 bunker-mvp 'set -eu; hostname; /usr/local/bin/bunker --version; before=$(find /etc/apparmor.d -maxdepth 1 -type f -name "home.*.bin.rootlesskit" | wc -l); out=$(/usr/local/bin/bunker reap --dry-run); rc=$?; after=$(find /etc/apparmor.d -maxdepth 1 -type f -name "home.*.bin.rootlesskit" | wc -l); printf "before_profiles=%s after_profiles=%s rc=%s\n%s\n" "$before" "$after" "$rc" "$out"; test "$before" = "$after"; test "$rc" -eq 0'
+
+Observed:
+- Host: bunker-mvp
+- Binary: bunker 0.2.1, commit eab25686, built 2026-10-23T22:19:45Z, go1.26.10, linux/amd64
+- Dry-run itself returned rc=0 and reported no changes written.
+- AppArmor profiles: 257 would remove (user gone), 30 kept (live user), 102 unmanaged.
+- Agent homes: 0 would remove, 37 kept, 11 unmanaged.
+- Linger entries: 0 would remove, 4 kept.
+- Runtime directories: 56 would remove, 31 kept.
+- Outer no-change assertion failed closed: before_profiles=287, after_profiles=288. The host changed concurrently during observation, so this is not a stable before/after proof.
+
+Local gate: PASS — go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4
+Remote CI: green — gh run list --repo deployBunker/bunker --limit 3 returned three completed success runs.
+
+STATUS: PENDING
+TIER: T3
+EVIDENCE: dry-run attempted, mutation withheld; owner decision remains required.
+ch:trace row=INT-HOST-008 spec=none:owner-gated-live-cleanup wave=.coding-hermes/waves/bunker-foreman-2026-10-26-13-16-25.json#verification test=none:live-dry-run doc=none:owner-operated-action evidence=.coding-hermes/evidence/INT-HOST-008-2026-10-26-13-16-25.txt witness=live:bunker-mvp:eab25686-reap-dry-run verdict=none:verification-only commit=none:owner-block memory=none:duckbrain-token-unavailable
