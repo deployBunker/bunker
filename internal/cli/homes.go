@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -72,6 +73,71 @@ type homesScan struct {
 	// printing a silent zero, and it NEVER blocks a prune — an unreadable home
 	// is exactly the residue an operator wants gone.
 	SizeUnknown []string
+	// StaleDetail carries one row per stale home (same order as Stale) with
+	// the size and age the operator needs to DECIDE: DF-BUNKER-55 requires the
+	// report to name each orphan home with its size and age, because the
+	// reclamation decision is "which of these is worth 40 GB" — a bare name
+	// list cannot answer it. The detail is report-only; prune acts on Stale.
+	StaleDetail []homeEntry
+}
+
+// homeEntry is the per-entry detail the report prints for one stale home: its
+// name, its measured on-disk size (when measurable — an unreadable home is
+// exactly the residue an operator wants gone, so an unmeasurable size is
+// reported, never guessed) and its age.
+type homeEntry struct {
+	// Name is the directory name under the home root (bunker-<id>).
+	Name string
+	// Bytes is the measured on-disk size; meaningful only when SizeKnown.
+	Bytes uint64
+	// SizeKnown reports whether Bytes is a real measurement.
+	SizeKnown bool
+	// ModTime is the home directory's own mtime — the "last modified" figure
+	// `ls -ld` shows, and the one the 2026-09-23 orphan measurement on cube
+	// used (/home/bunker-eduos-agent, 40G, last modified 2026-09-19 14:22).
+	ModTime time.Time
+	// AgeKnown reports whether ModTime is a real measurement.
+	AgeKnown bool
+}
+
+// homesNow is the clock the age column renders against. Var (not a direct
+// time.Now call) so tests can pin an age instead of racing the wall clock.
+var homesNow = time.Now
+
+// homeAgeText renders an age in the coarsest unit that keeps the decision
+// useful: minutes for a home that just appeared, hours within a day, days
+// beyond that. A future mtime (clock skew between hosts) renders as `<1m`
+// rather than a negative age.
+func homeAgeText(now, then time.Time) string {
+	d := now.Sub(then)
+	if d < 0 {
+		d = 0
+	}
+	switch {
+	case d < time.Minute:
+		return "age <1m"
+	case d < time.Hour:
+		return fmt.Sprintf("age %dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("age %dh", int(d.Hours()))
+	default:
+		return fmt.Sprintf("age %dd", int(d.Hours()/24))
+	}
+}
+
+// homeEntryLine renders one stale home as the report's single line: name,
+// on-disk size, age and the mtime the age came from. Every field degrades to
+// an explicit "unavailable"/"unknown" instead of a silent zero.
+func homeEntryLine(e homeEntry, now time.Time) string {
+	size := "size unavailable"
+	if e.SizeKnown {
+		size = humanBytes(e.Bytes)
+	}
+	if !e.AgeKnown {
+		return fmt.Sprintf("%s  %s  age unknown", e.Name, size)
+	}
+	return fmt.Sprintf("%s  %s  %s (last modified %s)", e.Name, size,
+		homeAgeText(now, e.ModTime), e.ModTime.Format("2006-01-02"))
 }
 
 // managedHomeName reports whether name is a managed agent home directory name:
@@ -143,16 +209,28 @@ func scanHomesRoot(root string) (*homesScan, error) {
 			continue
 		}
 		scan.Stale = append(scan.Stale, name)
-		size, err := homeDirSize(filepath.Join(root, name))
+		homePath := filepath.Join(root, name)
+		entry := homeEntry{Name: name}
+		if info, statErr := os.Stat(homePath); statErr == nil {
+			entry.ModTime, entry.AgeKnown = info.ModTime(), true
+		}
+		size, err := homeDirSize(homePath)
 		if err != nil {
 			scan.SizeUnknown = append(scan.SizeUnknown, name)
-			continue
+		} else {
+			entry.Bytes, entry.SizeKnown = size, true
+			scan.StaleBytes += size
 		}
-		scan.StaleBytes += size
+		scan.StaleDetail = append(scan.StaleDetail, entry)
 	}
 	sort.Strings(scan.Stale)
 	sort.Strings(scan.Kept)
 	sort.Strings(scan.SizeUnknown)
+	// StaleDetail must stay aligned with Stale: the renderer walks the detail
+	// rows in order, and the tests pin "one row per name, same order".
+	// os.ReadDir already returns sorted names; sorting explicitly makes the
+	// alignment a property of this function instead of a property of ReadDir.
+	sort.Slice(scan.StaleDetail, func(i, j int) bool { return scan.StaleDetail[i].Name < scan.StaleDetail[j].Name })
 	return scan, nil
 }
 
@@ -176,15 +254,26 @@ func pruneHomesRoot(root string, dryRun bool) (*homesScan, int, error) {
 	return scan, removed, nil
 }
 
-// printHomesStaleList renders the sorted stale names, one per line, with the
+// printHomesStaleList renders the stale set as one line per home — name,
+// on-disk size and age (DF-BUNKER-55: an operator deciding whether to reclaim
+// 40 GB needs the numbers on the line, not a bare name) — plus the
 // lower-bound marker when part of the set could not be measured.
 func printHomesStaleList(out io.Writer, scan *homesScan) {
 	if len(scan.Stale) == 0 {
 		return
 	}
 	fmt.Fprintf(out, "  stale entries:\n")
-	for _, name := range scan.Stale {
-		fmt.Fprintf(out, "    %s\n", name)
+	now := homesNow()
+	if len(scan.StaleDetail) == 0 {
+		// Defensive: a scan built without detail (a caller that populated
+		// only Stale) still reports every name.
+		for _, name := range scan.Stale {
+			_, _ = fmt.Fprintf(out, "    %s  size unavailable  age unknown\n", name)
+		}
+	} else {
+		for _, entry := range scan.StaleDetail {
+			_, _ = fmt.Fprintf(out, "    %s\n", homeEntryLine(entry, now))
+		}
 	}
 	if len(scan.SizeUnknown) > 0 {
 		fmt.Fprintf(out, "  size unavailable for: %s (size is a lower bound)\n", strings.Join(scan.SizeUnknown, ", "))
@@ -251,10 +340,13 @@ directories while the daemon showed "Agents: 0/50").
 
 Run with no subcommand to report the host's agent homes (read-only): every
 bunker-* entry is classified as STALE (its user no longer exists) or KEPT (its
-user still exists), followed by the stale set's on-disk size and its names.
-prune removes exactly the stale entries; it never removes an entry whose user
-still exists, never an entry that does not match bunker-*, and nothing at all
-after an inconclusive user lookup.
+user still exists). One line follows per stale home with its on-disk size and
+its age (from the home directory's mtime — the "last modified" an ls -ld shows),
+because reclaiming is a size decision: a 40 GB home left behind by a deleted
+agent costs real disk, and a bare name list cannot show that. The report also
+totals the stale set. prune removes exactly the stale entries; it never removes
+an entry whose user still exists, never an entry that does not match bunker-*,
+and nothing at all after an inconclusive user lookup.
 
 Local-only: like ` + "`bunker linger`" + `, this inspects THIS host's own directory —
 it is not addressable over the agent wire protocol. Run it on the host that

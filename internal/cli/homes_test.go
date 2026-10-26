@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // These tests pin the GAP-080 CLI surface: `bunker homes` reports every managed
@@ -410,5 +411,162 @@ func TestPruneHomesRoot_StopsAtFirstRemoveFailure(t *testing.T) {
 	}
 	if got := homesNames(t, dir); len(got) != 1 || got[0] != "bunker-gone-b" {
 		t.Errorf("entries after failed prune = %v, want [bunker-gone-b]", got)
+	}
+}
+
+// ── DF-BUNKER-55: the report names each orphan home with SIZE and AGE ───────
+//
+// The reclamation decision the row asks for is "which of these orphans is
+// worth reclaiming" — an operator looking at 40 GB of dead weight needs the
+// number on the line, not a bare directory name. These tests pin the per-entry
+// line: measured size, age from the home directory's mtime, and the explicit
+// degradation when either measurement is unavailable.
+
+// pinHomesNow freezes the report clock so an age assertion cannot race the
+// wall clock. Restored via t.Cleanup.
+func pinHomesNow(t *testing.T, now time.Time) {
+	t.Helper()
+	orig := homesNow
+	homesNow = func() time.Time { return now }
+	t.Cleanup(func() { homesNow = orig })
+}
+
+// TestHomesStatusCommand_ReportsPerEntrySizeAndAge pins the DF-BUNKER-55
+// report shape: ONE line per stale home carrying its name, its on-disk size and
+// its age, and no such line for a home whose user still exists.
+func TestHomesStatusCommand_ReportsPerEntrySizeAndAge(t *testing.T) {
+	dir := seedHomesDir(t, "bunker-old", "bunker-new", "bunker-live")
+	for name, size := range map[string]int{"bunker-old": 1024, "bunker-new": 2048} {
+		if err := os.WriteFile(filepath.Join(dir, name, "payload"), make([]byte, size), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
+	// 33 days and 5 hours old. Chtimes runs AFTER the payload write: writing
+	// into the directory bumps its mtime.
+	old := now.Add(-33 * 24 * time.Hour)
+	fresh := now.Add(-5 * time.Hour)
+	if err := os.Chtimes(filepath.Join(dir, "bunker-old"), old, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(filepath.Join(dir, "bunker-new"), fresh, fresh); err != nil {
+		t.Fatal(err)
+	}
+	pinHomesNow(t, now)
+	stubHomeUserExists(t, map[string]bool{"bunker-live": true})
+
+	out, err := runHomesGroup(t, "--dir", dir)
+	if err != nil {
+		t.Fatalf("homes execute: %v (output: %s)", err, out)
+	}
+	for _, want := range []string{
+		"    bunker-old  1.0 KB  age 33d (last modified 2026-09-23)",
+		"    bunker-new  2.0 KB  age 5h (last modified 2026-10-26)",
+		"  stale size: 3.0 KB",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("status output missing %q; output:\n%s", want, out)
+		}
+	}
+	// A live agent's home is KEPT, never detailed: only the stale set is
+	// worth reclaiming, so it is the only set that gets a per-entry line.
+	if strings.Contains(out, "bunker-live  ") {
+		t.Errorf("a kept home must not appear in the stale detail list; output:\n%s", out)
+	}
+}
+
+// TestHomesStatusCommand_UnmeasurableHomeStillHasAge pins the degradation: a
+// home whose size cannot be read still reports its age, and says the size is
+// unavailable instead of printing a silent zero. Skipped as root, where mode
+// 000 does not deny the read.
+func TestHomesStatusCommand_UnmeasurableHomeStillHasAge(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can read a 0000 directory")
+	}
+	dir := seedHomesDir(t, "bunker-gone")
+	locked := filepath.Join(dir, "bunker-gone", "locked")
+	if err := os.MkdirAll(locked, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(locked, "payload"), make([]byte, 4096), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(locked, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+	now := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(filepath.Join(dir, "bunker-gone"), now.Add(-48*time.Hour), now.Add(-48*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	pinHomesNow(t, now)
+	stubHomeUserExists(t, nil)
+
+	out, err := runHomesGroup(t, "--dir", dir)
+	if err != nil {
+		t.Fatalf("homes execute: %v (output: %s)", err, out)
+	}
+	if want := "    bunker-gone  size unavailable  age 2d (last modified 2026-10-24)"; !strings.Contains(out, want) {
+		t.Errorf("status output missing %q; output:\n%s", want, out)
+	}
+	// The aggregate lower-bound marker still names the unmeasurable entry.
+	if want := "size unavailable for: bunker-gone"; !strings.Contains(out, want) {
+		t.Errorf("status output missing %q; output:\n%s", want, out)
+	}
+}
+
+// TestScanHomesRoot_StaleDetailMatchesStale pins the invariant the renderer
+// relies on: one detail row per stale name, in the same (sorted) order, each
+// carrying a real measurement.
+func TestScanHomesRoot_StaleDetailMatchesStale(t *testing.T) {
+	dir := seedHomesDir(t, "bunker-b", "bunker-a", "bunker-live")
+	if err := os.WriteFile(filepath.Join(dir, "bunker-a", "f"), make([]byte, 16), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stubHomeUserExists(t, map[string]bool{"bunker-live": true})
+
+	scan, err := scanHomesRoot(dir)
+	if err != nil {
+		t.Fatalf("scanHomesRoot: %v", err)
+	}
+	if len(scan.StaleDetail) != len(scan.Stale) {
+		t.Fatalf("StaleDetail rows = %d, Stale names = %d; want one row per name", len(scan.StaleDetail), len(scan.Stale))
+	}
+	for i, entry := range scan.StaleDetail {
+		if entry.Name != scan.Stale[i] {
+			t.Errorf("StaleDetail[%d].Name = %q, want %q (order must match Stale)", i, entry.Name, scan.Stale[i])
+		}
+		if !entry.SizeKnown {
+			t.Errorf("StaleDetail[%d] (%s) size not measured", i, entry.Name)
+		}
+		if !entry.AgeKnown || entry.ModTime.IsZero() {
+			t.Errorf("StaleDetail[%d] (%s) age not measured", i, entry.Name)
+		}
+	}
+	if scan.StaleBytes != 16 {
+		t.Errorf("StaleBytes = %d, want 16 (bunker-a payload only)", scan.StaleBytes)
+	}
+}
+
+// TestHomeAgeText pins the age units: minutes under an hour, hours under a day,
+// days beyond, and no negative age when a peer clock runs ahead.
+func TestHomeAgeText(t *testing.T) {
+	now := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name string
+		then time.Time
+		want string
+	}{
+		{"seconds", now.Add(-30 * time.Second), "age <1m"},
+		{"minutes", now.Add(-12 * time.Minute), "age 12m"},
+		{"hours", now.Add(-5 * time.Hour), "age 5h"},
+		{"day boundary", now.Add(-24 * time.Hour), "age 1d"},
+		{"days", now.Add(-33 * 24 * time.Hour), "age 33d"},
+		{"future mtime", now.Add(1 * time.Hour), "age <1m"},
+	}
+	for _, tc := range cases {
+		if got := homeAgeText(now, tc.then); got != tc.want {
+			t.Errorf("%s: homeAgeText = %q, want %q", tc.name, got, tc.want)
+		}
 	}
 }
