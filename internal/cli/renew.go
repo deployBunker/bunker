@@ -22,6 +22,67 @@ import (
 // systemctl hop, so it cannot reuse the surface commands' 30s budget.
 const renewOperationTimeout = 10 * time.Minute
 
+// renewArchiveReminder is the pre-renewal archive instruction the failure
+// paths carry (docs/renewal.md step 0). A renewal DESTROYS the home, so the
+// tar taken before the destroy is the only copy that survives a re-spawn
+// failure — the CLI reminds the operator at failure time because the recipe's
+// step 0 is otherwise the only protection (DF-BUNKER-68). Kept as one format
+// string so the re-spawn-failure error and the --no-destroy report cannot
+// drift apart.
+const renewArchiveReminder = "archive: docs/renewal.md step 0 (tar the agent home BEFORE a renewal) is the only copy that survives a failed re-spawn — restore it into /home/bunker-%s after the recovery spawn"
+
+// appendRenewCarriedFlags appends the invocation's renewal flags (omitting
+// the empty ones) so a printed recovery command reproduces the same request.
+func appendRenewCarriedFlags(parts []string, ttl, preset, serverName string) []string {
+	if ttl != "" {
+		parts = append(parts, "--ttl "+ttl)
+	}
+	if preset != "" {
+		parts = append(parts, "--preset "+preset)
+	}
+	if serverName != "" {
+		parts = append(parts, "--server "+serverName)
+	}
+	return parts
+}
+
+// renewRecoverySpawnCommand renders the exact re-spawn-only recovery command
+// for a failed renewal: it names the SAME agent id (plus the flags this
+// invocation carried), because the id is the home path, the system user and
+// every stored path — an anonymous recovery spawn would mint a fresh identity
+// and re-open the aa189273 -> eduos-agent -> 2cdce4d0 chain of DF-BUNKER-34.
+func renewRecoverySpawnCommand(agentID, ttl, preset, serverName string) string {
+	return strings.Join(appendRenewCarriedFlags([]string{"bunker spawn " + agentID}, ttl, preset, serverName), " ")
+}
+
+// renewRerunCommand renders the FULL renewal command to re-run once the drift
+// report is resolved — the pointer the --no-destroy arm ends with, so the
+// report-only mode always hands back the destructive step as copy-paste text.
+func renewRerunCommand(agentID, ttl, preset, serverName string) string {
+	return strings.Join(appendRenewCarriedFlags([]string{"bunker renew --agent-id " + agentID}, ttl, preset, serverName), " ")
+}
+
+// renewRespawnFailure is the error the re-spawn leg returns once the destroy
+// leg has ALREADY succeeded: the agent and its home are gone, so the renewal
+// cannot be rolled back and the operator needs the recovery path in the error
+// itself (DF-BUNKER-68). It carries three things: the one-line verdict with
+// the recovery command, the pre-renewal archive reminder, and the re-spawn
+// failure that caused it.
+func renewRespawnFailure(agentID, ttl, preset, serverName string, cause error) error {
+	return fmt.Errorf(
+		"renew failed: agent destroyed but re-spawn failed; run 'bunker spawn %s' to recover\n"+
+			"  the destroy leg already ran: agent %s and its home /home/bunker-%s are GONE — this renewal cannot be rolled back\n"+
+			"  recovery (same stable id, so the home path and every stored path stay valid): %s\n"+
+			"  %s\n"+
+			"  re-spawn failure: %v",
+		agentID,
+		agentID, agentID,
+		renewRecoverySpawnCommand(agentID, ttl, preset, serverName),
+		fmt.Sprintf(renewArchiveReminder, agentID),
+		cause,
+	)
+}
+
 // fetchAndSaveAgentKey fetches an agent's SSH private key through the
 // master-credential-gated GetAgentKey RPC and saves it to the client-local
 // keys dir, shared by spawn (GAP-128) and renew's re-spawn leg (DF-BUNKER-65:
@@ -97,6 +158,7 @@ func NewRenewCommand() *cobra.Command {
 		agentID    string
 		ttl        string
 		preset     string
+		noDestroy  bool
 	)
 	cmd := &cobra.Command{
 		Use:   "renew --agent-id <agent-id>",
@@ -120,6 +182,17 @@ What the command does:
   3. re-spawns the SAME agent id (the home path is therefore stable across
      the renewal).
 
+--no-destroy is the report-only arm: it runs step 1 ONLY and exits. Nothing
+is destroyed, nothing is re-spawned and no agent config is touched on the
+host, so it is safe to run against an agent that must stay running (a drift
+audit before a planned renewal, or a check of what a renewal would invalidate).
+
+If the destroy leg succeeds and the re-spawn leg then FAILS, the error names
+the state in full — the agent and its home are already gone — and carries
+two recovery facts: the exact 'bunker spawn <id>' command that re-spawns the
+same stable id, and the pre-renewal archive reminder (recipe step 0), which
+is the only copy of the home that survives such a failure.
+
 The daemon-side restore of what the old home held is the renewal operator's
 job — this command reports what will go stale and refuses to mint a new
 identity. See docs/renewal.md for the full recipe, including the
@@ -127,7 +200,8 @@ pre-renewal archive step.
 
 Examples:
   bunker renew --agent-id eduos-agent --ttl 7d
-  bunker renew --agent-id eduos-agent --ttl 7d --server staging`,
+  bunker renew --agent-id eduos-agent --ttl 7d --server staging
+  bunker renew --agent-id eduos-agent --no-destroy    (report-only drift audit)`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
@@ -180,12 +254,14 @@ Examples:
 			// 2. Read the CURRENT agent record: its home path (from the
 			// stored sshfs mount) is the OLD home the drift report scans for.
 			oldHome := ""
+			agentKnown := false
 			infoReq := connect.NewRequest(&v1.GetAgentRequest{AgentId: agentID})
 			if token != "" {
 				infoReq.Header().Set("Authorization", "Bearer "+token)
 			}
 			infoResp, gerr := client.GetAgent(ctx, infoReq)
 			if gerr == nil && infoResp.Msg.GetAgent() != nil {
+				agentKnown = true
 				oldHome = homeFromSSHFSMount(infoResp.Msg.GetAgent().GetSshfsMount())
 			} else {
 				// Unknown id: a first renewal of a named id. Allowed (the
@@ -213,7 +289,26 @@ Examples:
 				}
 			}
 
-			// 4. Destroy the agent. A live_processes / userdel_failed refusal
+			// 4. --no-destroy (DF-BUNKER-68): the report-only arm stops
+			// here. The drift pre-flight above IS the whole renewal — the
+			// agent is left running, nothing is destroyed, nothing is
+			// re-spawned, and no agent config is touched on the host. This
+			// is the arm an operator runs against a live agent (drift audit
+			// before a planned renewal) and the one that cannot destroy a
+			// home whose re-spawn might then fail.
+			if noDestroy {
+				_, _ = fmt.Fprintf(out, "--no-destroy (report-only): the drift pre-flight above is the whole renewal — nothing was destroyed, nothing was re-spawned and no agent config was changed on %s.\n", serverName)
+				if agentKnown {
+					_, _ = fmt.Fprintf(out, "  agent %s is left RUNNING. To complete the renewal when the drift above is resolved, re-run without --no-destroy: %s\n",
+						agentID, renewRerunCommand(agentID, ttl, preset, serverName))
+					_, _ = fmt.Fprintf(out, "  %s\n", fmt.Sprintf(renewArchiveReminder, agentID))
+				} else {
+					_, _ = fmt.Fprintf(out, "  agent %q is not registered on %s, so there was no stored home to scan and nothing to renew — the empty report above is \"no record\", not \"no drift\".\n", agentID, serverName)
+				}
+				return nil
+			}
+
+			// 5. Destroy the agent. A live_processes / userdel_failed refusal
 			// surfaces here with its full evidence — the operator must stop
 			// the surviving processes on the host before a renewal proceeds.
 			fmt.Fprintf(out, "Destroying agent %s...\n", agentID)
@@ -229,13 +324,20 @@ Examples:
 				return fmt.Errorf("renewal: destroy of %s refused (status %s); nothing was re-spawned — resolve the refusal and re-run", agentID, s)
 			}
 
-			// 5. Re-spawn the SAME id. The spawn request carries agent_id —
+			// 6. Re-spawn the SAME id. The spawn request carries agent_id —
 			// the wire field spawn has always had — so the home path, the
 			// system user and every stored path stay stable across the
 			// renewal. DF-BUNKER-67: it now also carries the safety preset,
 			// so renewing an agent that runs under a containment preset
 			// re-spawns under the SAME preset instead of silently inheriting
 			// the daemon's default (empty = daemon resolution, unchanged).
+			//
+			// DF-BUNKER-68: this leg runs AFTER the destroy has already
+			// deleted the agent and its home. A failure here is therefore not
+			// a failed renewal the operator can simply re-run — the agent is
+			// gone — so every failure return carries the recovery path
+			// (re-spawn the same stable id) and the pre-renewal archive
+			// reminder instead of only naming the spawn stage.
 			fmt.Fprintf(out, "Re-spawning agent %s (stable identity)...\n", agentID)
 			sReq := connect.NewRequest(&v1.SpawnAgentRequest{
 				AgentId:      agentID,
@@ -247,10 +349,11 @@ Examples:
 			}
 			sresp, serr := client.SpawnAgent(ctx, sReq)
 			if serr != nil {
-				return fmt.Errorf("renewal: re-spawn %s: %w", agentID, serr)
+				return renewRespawnFailure(agentID, ttl, preset, serverName, fmt.Errorf("re-spawn %s: %w", agentID, serr))
 			}
 			if got := sresp.Msg.GetAgentId(); got != agentID {
-				return fmt.Errorf("renewal: daemon returned agent id %q, want %q — refusing to report a stable renewal", got, agentID)
+				return renewRespawnFailure(agentID, ttl, preset, serverName,
+					fmt.Errorf("daemon returned agent id %q, want %q — refusing to report a stable renewal", got, agentID))
 			}
 
 			// DF-BUNKER-65: the re-spawned agent carries a FRESH host key pair,
@@ -275,6 +378,8 @@ Examples:
 	cmd.Flags().StringVar(&agentID, "agent-id", "", "REQUIRED: the stable agent id to renew (the home path /home/bunker-<id> and every stored path follow it)")
 	cmd.Flags().StringVar(&ttl, "ttl", "", "TTL for the re-spawn (6h, 24h, 7d); empty = the daemon default")
 	cmd.Flags().StringVar(&preset, "preset", "", "Safety preset for the re-spawn: open, standard, hardened (default: BUNKERD_SAFETY_PRESET, then the server's config, then the built-in default standard (GAP-117))")
+	cmd.Flags().BoolVar(&noDestroy, "no-destroy", false,
+		"Report-only arm: run the drift pre-flight and exit WITHOUT destroying or re-spawning (safe against a running agent; no agent config is changed)")
 	return cmd
 }
 

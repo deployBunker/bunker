@@ -6,6 +6,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -39,6 +40,12 @@ type renewMockServer struct {
 	gotKeyAgentID   string
 	keyResp         *v1.GetAgentKeyResponse
 	keyErr          error
+	// DF-BUNKER-68: the drift pre-flight is what the --no-destroy
+	// (report-only) arm exists for, so the mock can serve a real summary
+	// instead of the historical CodeUnimplemented warning.
+	driftCalled  bool
+	driftSummary string
+	driftErr     error
 }
 
 func (m *renewMockServer) GetAgent(ctx context.Context, req *connect.Request[v1.GetAgentRequest]) (*connect.Response[v1.GetAgentResponse], error) {
@@ -65,7 +72,15 @@ func (m *renewMockServer) SpawnAgent(ctx context.Context, req *connect.Request[v
 }
 
 func (m *renewMockServer) RenewalDriftReport(ctx context.Context, req *connect.Request[v1.RenewalDriftRequest]) (*connect.Response[v1.RenewalDriftResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+	m.driftCalled = true
+	if m.driftErr != nil {
+		return nil, m.driftErr
+	}
+	if m.driftSummary == "" {
+		// Default: a daemon that predates the RPC (the CLI warns and goes on).
+		return nil, connect.NewError(connect.CodeUnimplemented, nil)
+	}
+	return connect.NewResponse(&v1.RenewalDriftResponse{Summary: m.driftSummary}), nil
 }
 
 // GetAgentKey fakes the GAP-128 key-retrieval RPC for the renew re-spawn leg
@@ -246,10 +261,199 @@ func TestRenewCommand_Help(t *testing.T) {
 		cmd.SetArgs([]string{"--help"})
 		_ = cmd.Execute()
 	})
-	for _, want := range []string{"--agent-id", "re-spawning the SAME agent id", "docs/renewal.md"} {
+	for _, want := range []string{"--agent-id", "re-spawning the SAME agent id", "docs/renewal.md",
+		// DF-BUNKER-68: the report-only arm must be discoverable.
+		"--no-destroy", "report-only"} {
 		if !strings.Contains(output, want) {
 			t.Errorf("help output missing %q, got:\n%s", want, output)
 		}
+	}
+}
+
+// ── DF-BUNKER-68: failed re-spawn after a successful destroy ───────────────
+
+// captureStderrRenew captures os.Stderr while fn runs (cobra prints the
+// Execute error there, which is where an operator sees the recovery hint).
+func captureStderrRenew(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stderr = w
+	fn()
+	_ = w.Close()
+	os.Stderr = old
+	var buf strings.Builder
+	if _, err := io.Copy(&buf, r); err != nil {
+		t.Fatalf("read captured stderr: %v", err)
+	}
+	return buf.String()
+}
+
+// TestRenew_RespawnFailure_Hint is the row's core contract: when the destroy
+// leg succeeds and the re-spawn leg FAILS, the agent is already gone, so the
+// failure must ship its own recovery path — the 'bunker spawn <same-id>'
+// command and the pre-renewal archive reminder — instead of naming only the
+// spawn stage (the state that left an operator with a destroyed agent and no
+// hint on 2026-09-25).
+func TestRenew_RespawnFailure_Hint(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	mock := &renewMockServer{
+		agent: &v1.AgentSummary{
+			AgentId:    "eduos-agent",
+			SshfsMount: "sshfs -o IdentityFile=/keys/eduos-agent bunker-eduos-agent@host:/home/bunker-eduos-agent /mnt/bunker/eduos-agent",
+		},
+		destroyStatus: "destroyed",
+		spawnErr:      connect.NewError(connect.CodeInternal, fmt.Errorf("install failed: node missing")),
+	}
+	srv := newRenewTestServer(t, mock)
+	defer srv.Close()
+
+	var output, errOut string
+	var execErr error
+	errOut = captureStderrRenew(t, func() {
+		output, execErr = runRenew(t, srv, "--agent-id", "eduos-agent", "--ttl", "7d")
+	})
+
+	if execErr == nil {
+		t.Fatal("a failed re-spawn leg must fail the renewal")
+	}
+	// The destroy ran and the re-spawn was attempted: this is the destroyed-
+	// without-respawn state, not an aborted-before-destroy renewal.
+	if !mock.destroyCalled {
+		t.Error("the mock never saw the destroy leg run")
+	}
+	if mock.spawnRequested == nil {
+		t.Error("the renewal never attempted the re-spawn leg")
+	}
+	if !strings.Contains(output, "Re-spawning agent eduos-agent (stable identity)") {
+		t.Errorf("stdout missing the re-spawn step, got:\n%s", output)
+	}
+
+	// The verdict line the row specifies, naming the SAME stable id.
+	for _, want := range []string{
+		"renew failed: agent destroyed but re-spawn failed; run 'bunker spawn eduos-agent' to recover",
+		"agent eduos-agent and its home /home/bunker-eduos-agent are GONE",
+		"bunker spawn eduos-agent --ttl 7d", // the retry command, same id
+		"docs/renewal.md",                   // the archive reminder's recipe pointer
+		"restore it into /home/bunker-eduos-agent",
+		"re-spawn failure", "install failed: node missing", // the cause is preserved
+	} {
+		if !strings.Contains(execErr.Error(), want) {
+			t.Errorf("renewal error missing %q, got:\n%v", want, execErr)
+		}
+	}
+
+	// And the operator sees it on stderr (cobra prints the Execute error),
+	// not only in the returned value.
+	for _, want := range []string{
+		"agent destroyed but re-spawn failed",
+		"bunker spawn eduos-agent",
+		"docs/renewal.md",
+	} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("stderr missing %q, got:\n%s", want, errOut)
+		}
+	}
+}
+
+// TestRenew_NoDestroyFlag pins the report-only arm: --no-destroy runs ONLY
+// the drift pre-flight — no destroy, no re-spawn, no agent change on the host
+// — and hands back the full renewal command to run once the drift is
+// resolved. The negative arm (same mock, flag omitted) proves the flag is
+// what gates the destructive legs.
+func TestRenew_NoDestroyFlag(t *testing.T) {
+	const drift = "2 artifacts reference /home/bunker-eduos-agent: /home/bunker-eduos-agent/.config/systemd/user/duckbrain-local.service:5"
+
+	baseMock := func() *renewMockServer {
+		return &renewMockServer{
+			agent: &v1.AgentSummary{
+				AgentId:    "eduos-agent",
+				SshfsMount: "sshfs -o IdentityFile=/keys/eduos-agent bunker-eduos-agent@host:/home/bunker-eduos-agent /mnt/bunker/eduos-agent",
+			},
+			destroyStatus: "destroyed",
+			spawnAgentID:  "eduos-agent",
+			driftSummary:  drift,
+		}
+	}
+
+	// Arm 1: --no-destroy leaves the agent alone.
+	t.Setenv("HOME", t.TempDir())
+	mock := baseMock()
+	srv := newRenewTestServer(t, mock)
+	defer srv.Close()
+
+	output, execErr := runRenew(t, srv, "--agent-id", "eduos-agent", "--ttl", "7d", "--no-destroy")
+	if execErr != nil {
+		t.Fatalf("--no-destroy must succeed as a report-only run, got: %v", execErr)
+	}
+	if !mock.driftCalled {
+		t.Error("--no-destroy did not run the drift pre-flight (that IS the report-only arm)")
+	}
+	if mock.destroyCalled {
+		t.Error("--no-destroy destroyed the agent")
+	}
+	if mock.spawnRequested != nil {
+		t.Error("--no-destroy re-spawned the agent")
+	}
+	for _, want := range []string{
+		"report-only",
+		"nothing was destroyed",
+		drift,          // the drift report itself
+		"left RUNNING", // the agent-state statement
+		"bunker renew --agent-id eduos-agent --ttl 7d", // the pointer back to the destructive arm
+		"docs/renewal.md",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("--no-destroy output missing %q, got:\n%s", want, output)
+		}
+	}
+	if strings.Contains(output, "Destroying agent") {
+		t.Errorf("--no-destroy must not announce a destroy, got:\n%s", output)
+	}
+
+	// Arm 2 (the control): the same invocation WITHOUT the flag destroys and
+	// re-spawns — proving the flag, not the fixture, gates the destructive
+	// legs.
+	t.Setenv("HOME", t.TempDir())
+	ctrl := baseMock()
+	srv2 := newRenewTestServer(t, ctrl)
+	defer srv2.Close()
+
+	output2, execErr2 := runRenew(t, srv2, "--agent-id", "eduos-agent", "--ttl", "7d")
+	if execErr2 != nil {
+		t.Fatalf("control renewal failed: %v", execErr2)
+	}
+	if !ctrl.destroyCalled || ctrl.spawnRequested == nil {
+		t.Fatalf("control run must destroy + re-spawn (destroy=%v spawn=%v)", ctrl.destroyCalled, ctrl.spawnRequested != nil)
+	}
+	if !strings.Contains(output2, "Renewed: agent eduos-agent") {
+		t.Errorf("control run missing the success line, got:\n%s", output2)
+	}
+
+	// Arm 3: an unregistered id under --no-destroy reports "no record", never
+	// a clean "no drift" — absence must not read as health.
+	t.Setenv("HOME", t.TempDir())
+	unknown := &renewMockServer{driftSummary: drift}
+	srv3 := newRenewTestServer(t, unknown)
+	defer srv3.Close()
+
+	output3, execErr3 := runRenew(t, srv3, "--agent-id", "ghost-agent", "--no-destroy")
+	if execErr3 != nil {
+		t.Fatalf("--no-destroy on an unregistered id must not fail, got: %v", execErr3)
+	}
+	if unknown.destroyCalled || unknown.spawnRequested != nil {
+		t.Error("--no-destroy on an unregistered id must not destroy or spawn")
+	}
+	for _, want := range []string{"not registered", `"no record", not "no drift"`} {
+		if !strings.Contains(output3, want) {
+			t.Errorf("--no-destroy output missing %q for an unregistered id, got:\n%s", want, output3)
+		}
+	}
+	if strings.Contains(output3, "left RUNNING") {
+		t.Errorf("an unregistered id must not be reported as left running, got:\n%s", output3)
 	}
 }
 
