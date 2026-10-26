@@ -1,0 +1,31 @@
+{
+  "tick": "bunker-foreman-2026-10-26-14-41-58",
+  "project": "bunker",
+  "block": "INT-HOST-011",
+  "selection": "resume-first: latest board event keeps INT-HOST-011 as the selected block",
+  "wave_budget": 10,
+  "host": {
+    "nproc": 16,
+    "loadavg_1m": 16.57,
+    "computed_slots": 1,
+    "effective_slots": 1
+  },
+  "rows_considered": ["INT-HOST-008"],
+  "ready_rows": ["INT-HOST-008"],
+  "rows": [
+    {
+      "task_id": "INT-HOST-008",
+      "status": "pending",
+      "worktree": null,
+      "branch": null,
+      "mode": "verification-only",
+      "dispatched": false,
+      "owner_gate": "Explicit owner authorization for destructive bunker-mvp bunker reap --apply is absent"
+    }
+  ],
+  "type": "serial-fallback",
+  "path": "SERIAL FALLBACK / verification-only: selected row is owner-gated destructive live-host cleanup; no implementation worker is valid",
+  "rows_dispatched": [],
+  "rows_landed": [],
+  "status": "open-owner-block"
+}
