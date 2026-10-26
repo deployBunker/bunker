@@ -1,0 +1,20 @@
+tick_id=bunker-foreman-2026-10-26-14-01-24
+row=INT-HOST-008
+server=bunker-mvp
+command=ssh -o BatchMode=yes -o ConnectTimeout=10 bunker-mvp 'hostname; /usr/local/bin/bunker --version; before=$(find /etc/apparmor.d -maxdepth 1 -type f -name "home.*.bin.rootlesskit" | wc -l); out=$(/usr/local/bin/bunker reap --dry-run); rc=$?; after=$(find /etc/apparmor.d -maxdepth 1 -type f -name "home.*.bin.rootlesskit" | wc -l); printf "before_profiles=%s after_profiles=%s rc=%s\n%s\n" "$before" "$after" "$rc" "$out"; test "$before" = "$after"; test "$rc" -eq 0'
+ssh_rc=0
+hostname=bunker-mvp
+binary=bunker 0.2.1 commit=eab25686 built=2026-10-23T22:19:45Z go=go1.26.10 platform=linux/amd64
+before_profiles=289 after_profiles=289 rc=0
+reap=DRY RUN (no changes written; pass --apply to remove)
+apparmor_would_remove_user_gone=257
+apparmor_kept_live_user=32
+apparmor_unmanaged=102
+homes_would_remove_user_gone=0
+homes_kept_live_user=38
+linger_would_remove_user_gone=0
+linger_kept_live_user=6
+runtime_dirs_would_remove_user_gone=56
+runtime_dirs_kept_live_user=32
+mutation_run=false
+owner_authorization=absent; destructive --apply withheld
