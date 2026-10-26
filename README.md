@@ -975,6 +975,21 @@ bunker restart abc12345 --server bunker-host
 > every other destroy, and the TTL reaper, still run under the configured
 > `destroy_home_policy`.
 
+> **A client deadline is not the daemon's verdict (DF-BUNKER-61).** When the
+> CLI's own deadline expires, the daemon's teardown keeps running — so destroy
+> re-lists the daemon's agents before it says anything: if the agent is gone it
+> prints `Agent <id> destroyed — the daemon finished the teardown after the
+> client's <d> deadline` and exits 0; if the agent is still listed it prints
+> `Agent <id> NOT confirmed destroyed` with the re-check and `--timeout`
+> instructions and exits non-zero. It never resends the destroy while one may be
+> in flight (a second archive+`userdel` on the same home is the opposite of
+> idempotent). If the size derivation is wrong for a home — or a failed size
+> probe left the floor deadline — raise it explicitly:
+> `bunker destroy abc12345 --timeout 45m`. `--timeout` replaces the derived
+> deadline and skips the size probe; a deadline **shorter** than the daemon's
+> archive budget cancels the archive, and the daemon then refuses the destroy
+> with the home retained, so raise it rather than lower it.
+
 > **`bunker stop` pauses an agent, it does not destroy it.** Stop returns the
 > CPU (the agent's units and processes are stopped) while keeping everything
 > that makes the agent itself: the Linux user, the home directory, the agent

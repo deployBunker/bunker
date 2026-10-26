@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **A client deadline is not the daemon's verdict, and `destroy --timeout`
+  exists (DF-BUNKER-61).** `bunker destroy` reported
+  `destroy agent: deadline_exceeded: context deadline exceeded` for an agent the
+  daemon then destroyed fine — the CLI's own deadline expired while the
+  daemon's teardown was still working, and the CLI turned that into a hard
+  failure statement. On a deadline expiry destroy now **re-lists** the daemon's
+  agents before saying anything: gone → it reports the agent destroyed and
+  exits 0; still listed → it reports the destroy as NOT CONFIRMED (with the
+  `bunker info`/retry guidance) and exits non-zero; listing impossible → same
+  fail-closed report naming the reason. It never resends the destroy while one
+  may be in flight (two archives + `userdel` on one home is the opposite of
+  idempotent), so the confirmation is read-only. `--timeout <duration>` sets an
+  explicit client deadline in place of the size-derived one (DF-BUNKER-81) and
+  skips the size probe — for a home whose derivation is too short, or when a
+  failed probe left the floor. Raising the deadline is always safe; lowering it
+  below the daemon's archive budget aborts the archive and the daemon refuses
+  the destroy with the home retained.
+
 - **Agents can reach their own docker socket again (INT-CI-080).** The
   ISO-002 path-visibility fix set `/run/bunker` to `root:0700`, which sealed
   tenant enumeration but also removed the others-execute bit that every agent
