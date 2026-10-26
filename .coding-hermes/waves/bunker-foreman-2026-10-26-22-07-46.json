@@ -1,0 +1,30 @@
+{
+  "tick_id": "bunker-foreman-2026-10-26-22-07-46",
+  "project": "bunker",
+  "block": "INT-CI-084",
+  "wave_budget": 6,
+  "host": {
+    "nproc": 16,
+    "loadavg_1m": 14.01,
+    "computed_slots": 1,
+    "path": "serial verification-only"
+  },
+  "selection": {
+    "rows_considered": ["INT-CI-084"],
+    "ready_rows": ["INT-CI-084"],
+    "reason": "block_drive ranked INT-CI-084 first; the row's implementation commit 90babb28 is already contained in origin/main and the owner ruling says GitHub CI no longer blocks, so no worker dispatch was valid"
+  },
+  "rows": [
+    {
+      "id": "INT-CI-084",
+      "mode": "verification-only",
+      "worktree": null,
+      "branch": null,
+      "dispatch": "none:implementation already landed",
+      "commit_under_test": "90babb28dac987b5b84bc10a4a8deb2d3eb2ce2d",
+      "evidence": ".coding-hermes/evidence/INT-CI-084-2026-10-26.json"
+    }
+  ],
+  "status": "verification-complete-no-worker",
+  "finished_at": "2026-10-26T22:07:46-05:00"
+}

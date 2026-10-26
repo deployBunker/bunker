@@ -1,0 +1,25 @@
+{
+  "row": "INT-CI-084",
+  "commit_under_test": "90babb28dac987b5b84bc10a4a8deb2d3eb2ce2d",
+  "remote_containment": {
+    "command": "git merge-base --is-ancestor 90babb28 HEAD",
+    "result": "PASS",
+    "head": "78e6ddfdf19ca244a9f314f03118e4c0ff1bc664"
+  },
+  "source_gate": {
+    "commands": ["bash -n scripts/fleet-upgrade.sh", "go build ./...", "go vet ./...", "go test ./... -count=1 -short -parallel 4"],
+    "result": "PASS"
+  },
+  "behavioral_regression": {
+    "current_tree_dirty_tracked_dry_run": {"result": "PASS", "exit_code": 0, "observed": "dry run printed its plan and unreachable host was reported without refusal"},
+    "pre_fix_tree_dirty_tracked_dry_run": {"result": "PASS", "exit_code": 42, "observed": "dirty-tree refusal reproduced"},
+    "command": "BUNKER_REPO_DIR=<isolated-worktree> scripts/fleet-upgrade.sh --dry-run --hosts 127.0.0.1"
+  },
+  "remote_ci": {
+    "run_id": 40266638468,
+    "conclusion": "failure",
+    "classification": "runner infrastructure: root-suite/regression hit /tmp No space left on device during rootless Docker installation; not scripts/fleet-upgrade.sh",
+    "owner_ruling": "GitHub CI no longer blocks; verify locally"
+  },
+  "trace": "ch:trace row=INT-CI-084 spec=none:owner-ruling-and-existing-commit wave=.coding-hermes/waves/bunker-foreman-2026-10-26-22-07-46.json#INT-CI-084 test=scripts/fleet-upgrade.sh--dry-run doc=none:verification-only prompt=~/.hermes/skills/coding-hermes-foreman/SKILL.md evidence=.coding-hermes/evidence/INT-CI-084-2026-10-26.json witness=github:deployBunker/bunker/run/40266638468 verdict=none:verification-only commit=90babb28 memory=none:duckbrain-token-unavailable"
+}
