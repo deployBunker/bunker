@@ -1,0 +1,34 @@
+{
+  "tick_id": "bunker-foreman-2026-10-26-23-35-50",
+  "row": "INT-CI-084",
+  "block": "INT-CI-084",
+  "type": "verification-only",
+  "commit_under_test": "90babb28dac987b5b84bc10a4a8deb2d3eb2ce2d",
+  "remote_containment": {
+    "command": "git merge-base --is-ancestor 90babb28 HEAD",
+    "result": "PASS",
+    "head": "56084f94"
+  },
+  "local_gate": {
+    "command": "bash -n scripts/fleet-upgrade.sh && go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4",
+    "result": "PASS",
+    "exit_code": 0
+  },
+  "remote_ci": {
+    "repository": "deployBunker/bunker",
+    "query": "gh run list --repo deployBunker/bunker --limit 3 --json status,conclusion,displayTitle,headBranch,createdAt",
+    "result": "green",
+    "runs": [
+      {"displayTitle":"foreman: retain INT-CI-084 verification lifecycle","headBranch":"main","status":"completed","conclusion":"success","createdAt":"2026-10-26T23:24:29Z"},
+      {"displayTitle":"foreman: record bunker verification tick 22-52-23","headBranch":"main","status":"completed","conclusion":"success","createdAt":"2026-10-26T23:23:33Z"},
+      {"displayTitle":"foreman: record bunker verification tick 22-29-50","headBranch":"main","status":"completed","conclusion":"success","createdAt":"2026-10-26T22:49:20Z"}
+    ],
+    "prior_runner_failure": "40266638468 was classified in the row evidence as self-hosted runner /tmp ENOSPC, not a fleet-upgrade.sh failure; owner ruling removes hosted CI as this row's gate."
+  },
+  "worker": "none:verification-only",
+  "gitreins": "none:verification-only; no implementation lifecycle created",
+  "off_by_one": "none:verification-only; no debugging or fix design",
+  "duckbrain": "write unavailable: ~/.duckbrain/bunker.token absent",
+  "status": "verification-complete-pending",
+  "trace": "ch:trace block=INT-CI-084 wave=.coding-hermes/waves/bunker-foreman-2026-10-26-23-35-50.json row=INT-CI-084 spec=none:owner-ruling-and-existing-commit test=bash-n+build+vet+short-tests doc=none:verification-only evidence=.coding-hermes/evidence/INT-CI-084-2026-10-26-23-35-50.json witness=local:merged-tree+github:recent-success verdict=none:verification-only commit=90babb28 memory=none:duckbrain-token-absent"
+}

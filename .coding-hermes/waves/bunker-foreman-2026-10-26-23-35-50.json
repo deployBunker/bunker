@@ -1,0 +1,17 @@
+{
+  "tick_id": "bunker-foreman-2026-10-26-23-35-50",
+  "project": "bunker",
+  "block": "INT-CI-084",
+  "path": "verification-only",
+  "wave_budget": 2,
+  "wave_size": 0,
+  "rows": [
+    {
+      "id": "INT-CI-084",
+      "worktree": "none:verification-only",
+      "branch": "none:verification-only",
+      "brief": "Verify the already-landed 90babb28 fleet-upgrade dry-run fix locally; no implementation worker is valid because the commit is already contained in origin/main and the owner ruling removes hosted CI as a gate."
+    }
+  ],
+  "reason": "block_drive resume-first selected the 98%-complete row; verification-only handling prevents phantom worker dispatch"
+}
