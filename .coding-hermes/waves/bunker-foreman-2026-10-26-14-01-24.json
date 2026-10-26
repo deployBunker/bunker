@@ -38,13 +38,14 @@
   ],
   "trace": "ch:trace block=INT-HOST-011 wave=.coding-hermes/waves/bunker-foreman-2026-10-26-14-01-24.json row=INT-HOST-008 spec=none:owner-gated-live-cleanup test=none:live-dry-run doc=none:owner-operated-action evidence=.coding-hermes/evidence/INT-HOST-008-2026-10-26-14-01-24.txt witness=live:bunker-mvp:eab25686-reap-dry-run verdict=4c721e5b commit=none:owner-block memory=none:duckbrain-token-absent",
   "status": "pending-owner-block",
-  "published_commit": "c60ac57b90b0e5637f1af31f8916e5098f9617c4",
+  "published_commit": "8bbbbf6d7312589b22f8478e99e16a371b494795",
   "remote_parity": {
     "ahead": 0,
     "behind": 0
   },
   "exact_head_ci": {
-    "run_status": "in_progress",
-    "head_sha": "c60ac57b90b0e5637f1af31f8916e5098f9617c4"
-  }
+    "run_status": "queued",
+    "head_sha": "8bbbbf6d7312589b22f8478e99e16a371b494795"
+  },
+  "final_board_event_id": 1792856700000000209
 }
