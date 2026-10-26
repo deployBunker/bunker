@@ -136,3 +136,68 @@ bunker destroy ci-runner --force
 ```
 
 **Status update (2026-08-06, GAP-009):** this "Do NOT use" warning is **resolved** — DOGFOOD-001/002 landed in ticks #192-193 (commits 9896c99..e6879ab, fd282b1) and were live-verified at the time; a fresh remote-client re-verification ran 2026-08-06 (tick #231): `bunker env set/list/get/unset`, `bunker cp`, `bunker deploy`, `bunker tunnel` (docker through forwarded socket) all PASS from kara against bunker-mvp. A follow-up client fix (IdentitiesOnly=yes for ssh/scp/sshfs/tunnel) closed the last remote-client gap found during that re-verification. `bunker env *`, `bunker cp`, `bunker deploy`, `bunker tunnel` ARE safe to use from a remote client.
+
+**Status update (2026-10-26, DF-BUNKER-61): the destroy timeout no longer
+misreports a completed destroy.** The §2 teardown line above
+(`bunker destroy myagent --force`) was the only thing this run exercised, so it
+never met the failure mode a busy agent produces: on 2026-09-25
+`bunker destroy bc0e2890 --server bunker-mvp` failed three times with
+`destroy agent: deadline_exceeded: context deadline exceeded` while the same
+`DestroyAgent` over raw REST answered `200 {"status":"destroyed"}` in seconds
+(the agent had just run `make test-short` — a ~960MB home). The CLI was turning
+its **own** client deadline into a statement about the daemon, and the operator
+could not tell an aborted teardown from a finished one.
+
+What destroy does now:
+
+- **The deadline is size-derived** (DF-BUNKER-81): the daemon archives the
+  whole home before `userdel`, so both the daemon's archive budget and the CLI
+  deadline scale with the home's measured size, and the command prints
+  `home <size>; archiving before delete, deadline <d>` before sending the
+  request. A home whose size cannot be resolved falls back to the 12-minute
+  floor rather than a fixed literal.
+- **A deadline expiry is re-checked, not reported as failure**: destroy
+  re-lists the daemon's agents. Agent gone → `Agent <id> destroyed — the daemon
+  finished the teardown after the client's <d> deadline`, exit 0. Agent still
+  listed → `Agent <id> NOT confirmed destroyed` plus the `bunker info <id>`
+  re-check and the `--timeout` hint, exit non-zero. Listing impossible (old
+  daemon, permission refusal) → the same NOT-confirmed report naming the
+  reason. It never resends the destroy while one may be in flight: a second
+  archive + `userdel` on the same home is the opposite of idempotent.
+- **`--timeout <duration>`** overrides the derived deadline and skips the size
+  probe — for a home whose derivation is too short, or when the probe itself
+  failed. Raising the deadline is always safe; lowering it below the daemon's
+  archive budget aborts the archive and the daemon refuses the destroy with the
+  home retained.
+
+Live verification against `bunker-mvp` (2026-10-26, this tick, using the built
+CLI): spawned `df61-live` (1 CPU / 1GB, 15m TTL) and wrote 200MiB of
+incompressible payload into its home, then
+
+```
+$ bunker destroy df61-live --server bunker-mvp --timeout 3s      # exit 1
+Destroying agent df61-live (home size unknown; archiving before delete, deadline 3s)…
+Agent df61-live NOT confirmed destroyed: the client deadline (3s) expired and the daemon still lists the agent after 20s of re-checking.
+  The teardown may still be running — re-check with `bunker info df61-live` before retrying (destroy is idempotent).
+  For a home that needs longer than the derived deadline, raise it: bunker destroy df61-live --timeout 45m
+bunker: destroy agent: deadline_exceeded: context deadline exceeded
+
+$ bunker info df61-live --server bunker-mvp                       # truthful: still running
+  Status:           running
+
+$ bunker destroy df61-live --server bunker-mvp                    # exit 0, default deadline
+Destroying agent df61-live (home size unknown; archiving before delete, deadline 12m0s)…
+Agent df61-live destroyed.
+```
+
+So the 3s arm reported NOT CONFIRMED and the agent really was still there
+(no false "destroyed"), and the default-deadline destroy of the same 200MiB
+home completed with **no** `deadline_exceeded` — the defect's exact symptom is
+gone. Note the `home size unknown` prefix: on this deployment the size probe did
+not resolve a figure for the freshly written home, so the 12m floor applied.
+That is exactly the case `--timeout` exists for, and it means a genuinely huge
+home on such a server can still need an explicit raise. Unit coverage:
+`internal/cli/destroy_deadline_relist_test.go`
+(gone → success; still-listed → NOT confirmed; list error → fail-closed after
+one attempt; `--timeout` reaching the RPC context; no resent DestroyAgent).
+

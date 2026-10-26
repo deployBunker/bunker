@@ -222,7 +222,7 @@ non-POST request to these paths returns `405`.
 | `bunker spawn [--cpu X] [--memory Y] [--ttl Z] [--image-spec F]` | Create agent |
 | `bunker list [--server <name>]` | List agents |
 | `bunker info <agent-id>` | Agent details |
-| `bunker destroy <agent-id> [--keep-key]` | Remove agent (deletes the local key) |
+| `bunker destroy <agent-id> [--keep-key] [--timeout D]` | Remove agent (deletes the local key; `--timeout` overrides the size-derived deadline) |
 | `bunker exec <agent-id> -- <cmd>` | Execute command via SSH |
 | `bunker metrics [agent-id]` | Resource usage |
 | `bunker heartbeat <agent-id>` | Extend TTL |
