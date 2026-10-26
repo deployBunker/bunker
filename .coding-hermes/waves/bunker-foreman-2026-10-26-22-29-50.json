@@ -1,0 +1,23 @@
+{
+  "tick_id": "bunker-foreman-2026-10-26-22-29-50",
+  "project": "bunker",
+  "block": "INT-CI-084",
+  "wave_budget": 12,
+  "host": {"nproc": 16, "loadavg_1m": 6.30, "computed_slots": 6},
+  "path": "SERIAL FALLBACK / verification-only",
+  "reason": "block_drive ranked INT-CI-084 first. Its implementation commit 90babb28 is already contained in origin/main; owner ruling permits local verification and does not require a worker. No code wave was valid.",
+  "rows_considered": ["INT-CI-084"],
+  "ready_rows": ["INT-CI-084"],
+  "rows_dispatched": [],
+  "rows_landed": [],
+  "rows_verified": ["INT-CI-084"],
+  "worker_model": null,
+  "worker_provider": null,
+  "local_gate": "PASS: bash -n scripts/fleet-upgrade.sh && go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4",
+  "remote_ci": "green: latest exact-head run 40411562361 for 7f815925 completed success; prior failure 40347768317 was runner ENOSPC and is already classified in INT-CI-084 evidence.",
+  "gitreins": "Temporary task INT-CI-084 was created and started; completion reached tasks.yaml status=complete but produced no readable verdict artifact before the bounded observation window. The task was deleted only after readback of the completed state; no Tier-2 PASS is claimed.",
+  "evidence": ".coding-hermes/evidence/INT-CI-084-2026-10-26.json",
+  "open": ["INT-CI-084 remains pending because its original acceptance requires CI for the implementation commit and the owner ruling explicitly allows local verification without treating the infrastructure failure as a code verdict."],
+  "trace": "ch:trace row=INT-CI-084 spec=none:owner-ruling-and-existing-commit wave=.coding-hermes/waves/bunker-foreman-2026-10-26-22-29-50.json#INT-CI-084 test=scripts/fleet-upgrade.sh--dry-run doc=none:verification-only prompt=~/.hermes/skills/coding-hermes-foreman/SKILL.md evidence=.coding-hermes/evidence/INT-CI-084-2026-10-26.json witness=github:deployBunker/bunker/run/40411562361 verdict=none:verification-only commit=90babb28 memory=none:duckbrain-token-unavailable",
+  "status": "verification-complete-pending"
+}
