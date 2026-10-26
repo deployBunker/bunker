@@ -125,8 +125,9 @@ func formatResourceEvents(msg *v1.AgentMetricsResponse) string {
 	if !ev.GetAvailable() {
 		b.WriteString("\n  ⚠  RESOURCE EVENTS UNAVAILABLE — the counters below were NOT measured.\n")
 		b.WriteString("     An unavailable zero is an absence of measurement, never evidence that no\n")
-		b.WriteString("     ceiling was hit. Typical cause: a stopped or destroyed agent, or a\n")
-		b.WriteString("     deleted agent user (no cgroup left to read).\n")
+		b.WriteString("     ceiling was hit. Typical cause: a destroyed agent, or a deleted agent\n")
+		b.WriteString("     user (no cgroup left to read). A merely stopped agent is still readable\n")
+		b.WriteString("     — stop keeps the agent user and its cgroup slice.\n")
 		if d := ev.GetDetail(); d != "" {
 			fmt.Fprintf(&b, "     Detail: %s\n", d)
 		}

@@ -205,6 +205,84 @@ func TestFormatResourceEvents_NoPeakAvailable(t *testing.T) {
 	}
 }
 
+// TestFormatResourceEvents_UnavailableMessageDoesNotListStoppedAgent pins the
+// DF-BUNKER-111 correction: a stopped agent is READABLE — StopAgent keeps the
+// agent user, its home directory and its cgroup slice (see
+// internal/agent/manager_lifecycle.go), so its counters stay readable. The
+// UNAVAILABLE message must therefore never name a stopped agent as a typical
+// cause; only the old phrasing ("stopped or destroyed") did.
+func TestFormatResourceEvents_UnavailableMessageDoesNotListStoppedAgent(t *testing.T) {
+	out := formatResourceEvents(&v1.AgentMetricsResponse{
+		AgentId: "agent-1",
+		ResourceEvents: &v1.ResourceEvents{
+			Available:  false,
+			Detail:     "memory.events (no such file or directory)",
+			CgroupPath: "/sys/fs/cgroup/user.slice/user-1001.slice",
+		},
+	})
+	if strings.Contains(out, "stopped or destroyed") {
+		t.Errorf("UNAVAILABLE message still carries the old 'stopped or destroyed' phrasing:\n%s", out)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "Typical cause") && strings.Contains(line, "stopped") {
+			t.Errorf("UNAVAILABLE message lists a stopped agent among the typical causes:\n%s", out)
+		}
+	}
+}
+
+// TestFormatResourceEvents_UnavailableMessageListsRealCauses pins the cause
+// list to what actually sets Available=false daemon-side
+// (internal/resource/cgroup_events.go ReadAgentResourceEvents + the uid<0
+// path in internal/server/resource_events.go): the agent user cannot be
+// resolved or the user slice cannot be read — a destroyed agent or a deleted
+// agent user. The message must also state the stop side of the contract: a
+// merely stopped agent IS still readable.
+func TestFormatResourceEvents_UnavailableMessageListsRealCauses(t *testing.T) {
+	out := formatResourceEvents(&v1.AgentMetricsResponse{
+		AgentId: "agent-1",
+		ResourceEvents: &v1.ResourceEvents{
+			Available:  false,
+			Detail:     "memory.events (no such file or directory)",
+			CgroupPath: "/sys/fs/cgroup/user.slice/user-1001.slice",
+		},
+	})
+	for _, want := range []string{
+		"Typical cause: a destroyed agent",
+		"deleted agent",
+		"no cgroup left to read",
+		"stopped agent is still readable",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("UNAVAILABLE message missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestFormatResourceEvents_StoppedAgentStillRendersMeasured pins the readable
+// side of the same contract: a stopped agent keeps its cgroup slice, so when
+// the daemon answers with measured counters for a stopped agent the render is
+// a normal measured reading — never the UNAVAILABLE block.
+func TestFormatResourceEvents_StoppedAgentStillRendersMeasured(t *testing.T) {
+	out := formatResourceEvents(&v1.AgentMetricsResponse{
+		AgentId: "agent-1",
+		Status:  "stopped",
+		ResourceEvents: &v1.ResourceEvents{
+			Memory:    &v1.MemoryEvents{Available: true},
+			Pids:      &v1.PidsEvents{Available: true},
+			Available: true,
+		},
+	})
+	if !strings.Contains(out, "Status:   stopped") {
+		t.Errorf("stopped status was not rendered:\n%s", out)
+	}
+	if strings.Contains(out, "UNAVAILABLE") {
+		t.Errorf("a stopped agent's readable counters rendered as unavailable:\n%s", out)
+	}
+	if !strings.Contains(out, "No ceiling events recorded in this agent's cgroup.") {
+		t.Errorf("a stopped agent's measured reading did not render as measured:\n%s", out)
+	}
+}
+
 func TestResourceEventsBrief_MetricsLine(t *testing.T) {
 	tests := []struct {
 		name string
