@@ -20,6 +20,19 @@ import (
 
 func main() {
 	if err := run(); err != nil {
+		// DF-BUNKER-64: a TLS/trust refusal exits with the distinct
+		// TLSRefusalExitCode (2), not the generic 1, so a monitoring gate
+		// can tell "the daemon is unreachable" from "the client refused to
+		// trust the channel or its own configuration". The message is
+		// PRINTED (unlike the ssh-style silent remote-code path below):
+		// the refusal's own wording and remedy are the operator-facing
+		// contract, and only the exit code differs from an ordinary
+		// failure.
+		var refusal *cli.TLSRefusalExitError
+		if errors.As(err, &refusal) {
+			fmt.Fprintf(os.Stderr, "bunker: %v\n", err)
+			os.Exit(refusal.ExitCode())
+		}
 		// Propagate a remote command's exit code (bunker exec / bunker run)
 		// silently, ssh-style — no "bunker: ..." noise for the exit-code path.
 		if code, ok := exitCodeFor(err); ok {

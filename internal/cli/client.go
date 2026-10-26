@@ -29,12 +29,18 @@ import (
 // refuses every request with the configuration error. Callers therefore report
 // the real problem — and no code path can reach the network with verification
 // silently downgraded.
+//
+// DF-BUNKER-64: the refusal is carried with a NAMED error class
+// (tlsRefusedTransport) so every verb that hits it — status, list, exec, and
+// the rest — can classify it and exit non-zero instead of leaving a security
+// refusal shaped like an ordinary transport failure (`stream error:
+// unavailable: …` was the observed C3 rendering).
 func newBunkerdClient(entry ServerEntry) bunkerv1connect.BunkerdClient {
 	httpClient := &http.Client{Timeout: 300 * time.Second}
 
 	tlsCfg, err := resolveClientTLS(entry)
 	if err != nil {
-		httpClient.Transport = refusingTransport{err: fmt.Errorf("refusing to dial %s: %w", entry.URL, err)}
+		httpClient.Transport = tlsRefusedTransport{url: entry.URL, err: err}
 		return bunkerv1connect.NewBunkerdClient(httpClient, entry.URL)
 	}
 	if tlsCfg != nil {
@@ -130,12 +136,36 @@ func resolveClientTLS(entry ServerEntry) (*tls.Config, error) {
 	return nil, nil
 }
 
-// refusingTransport makes a client whose every request fails with the trust
-// configuration error. It exists so a command that would otherwise dial with a
-// half-configured trust policy reports the real cause.
-type refusingTransport struct{ err error }
+// tlsRefusedTransport is the transport installed for an entry whose trust
+// configuration cannot be honored: every request fails with the
+// trust-configuration error, wrapped in its named TLS refusal class. The
+// original refusal (the operator-facing message, GAP-127/GAP-141 wording and
+// remedies) is the WRAPPED error, so the printed text is byte-identical to
+// the pre-DF-BUNKER-64 refusal and errors.As reaches both halves. The URL is
+// prefixed at construction because the class carrier must not silently lose
+// "which server did we refuse to dial".
+//
+// The class riding the chain is what lets every verb — including
+// `bunker status`, which previously rendered the refusal as an OFFLINE
+// section and exited 0 — classify the failure and exit TLSRefusalExitCode
+// (2): a security refusal is never a success, and it is distinguishable from
+// the generic exit-1 failure.
+type tlsRefusedTransport struct {
+	url string
+	err error
+}
 
-func (t refusingTransport) RoundTrip(*http.Request) (*http.Response, error) { return nil, t.err }
+func (t tlsRefusedTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	class, ok := ClassifyTLSRefusal(t.err)
+	if !ok {
+		// Every error produced by the trust gates is classified; if one is
+		// not, fail loudly under the generic contradictory class rather
+		// than losing the refusal in transport noise.
+		class = TLSClassContradictoryConfig
+	}
+	return nil, fmt.Errorf("refusing to dial %s: %w", t.url,
+		&TLSRefusalError{Class: class, Err: t.err})
+}
 
 // resolveToken returns the auth token for a server entry, checking the entry,
 // viper config, and BUNKER_TOKEN environment variable.
