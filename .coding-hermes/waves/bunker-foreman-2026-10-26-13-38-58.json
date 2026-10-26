@@ -1,0 +1,30 @@
+{
+  "tick_id": "bunker-foreman-2026-10-26-13-38-58",
+  "block_id": "INT-HOST-011",
+  "wave_size": 0,
+  "slots": 6,
+  "computed_slots": "max(1, min(6, 16 - ceil(3.33))) = 6",
+  "path": "verification-only serial fallback",
+  "rows": [
+    {
+      "id": "INT-HOST-008",
+      "status": "pending",
+      "worktree": null,
+      "branch": null,
+      "reason": "owner-gated destructive bunker-mvp reap --apply; no implementation worker valid"
+    }
+  ],
+  "worker_model": null,
+  "worker_provider": null,
+  "dispatched_at": null,
+  "verification": {
+    "command": "ssh -o BatchMode=yes -o ConnectTimeout=10 bunker-mvp 'hostname; /usr/local/bin/bunker --version; before=$(find /etc/apparmor.d -maxdepth 1 -type f -name \"home.*.bin.rootlesskit\" | wc -l); out=$(/usr/local/bin/bunker reap --dry-run); rc=$?; after=$(find /etc/apparmor.d -maxdepth 1 -type f -name \"home.*.bin.rootlesskit\" | wc -l); printf \"before_profiles=%s after_profiles=%s rc=%s\\n%s\\n\" \"$before\" \"$after\" \"$rc\" \"$out\"; test \"$before\" = \"$after\"; test \"$rc\" -eq 0'",
+    "result": "dry-run rc=0; before_profiles=287 after_profiles=287; no --apply mutation run",
+    "owner_blocker": "Explicit owner authorization for destructive cleanup is absent"
+  },
+  "local_gate": "PASS: go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4",
+  "remote_ci": "green: latest three runs on deployBunker/bunker completed success",
+  "gitreins": "INT-HOST-008 task create/start/complete executed; Tier 2 verdict failed because prior evidence/criteria asserted an unstable 287->288 observation and prior board state was inconsistent; task deleted after completion",
+  "off_by_one": "none: verification-only; no debugging or fix design",
+  "trace": "ch:trace block=INT-HOST-011 wave=.coding-hermes/waves/bunker-foreman-2026-10-26-13-38-58.json row=INT-HOST-008 test=none:live-dry-run doc=none:owner-operated-action witness=live-ssh-dry-run verdict=BLOCKED:owner-authorization commit=none memory=none:token-absent"
+}
