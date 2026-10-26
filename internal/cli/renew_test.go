@@ -52,9 +52,7 @@ type renewMockServer struct {
 	// DF-BUNKER-68: the drift pre-flight is what the --no-destroy
 	// (report-only) arm exists for, so the mock can serve a real summary
 	// instead of the historical CodeUnimplemented warning.
-	driftCalled  bool
 	driftSummary string
-	driftErr     error
 }
 
 func (m *renewMockServer) GetAgent(ctx context.Context, req *connect.Request[v1.GetAgentRequest]) (*connect.Response[v1.GetAgentResponse], error) {
@@ -88,6 +86,13 @@ func (m *renewMockServer) RenewalDriftReport(ctx context.Context, req *connect.R
 	}
 	if m.driftResp != nil {
 		return connect.NewResponse(m.driftResp), nil
+	}
+	if m.driftSummary != "" {
+		return connect.NewResponse(&v1.RenewalDriftResponse{
+			AgentId: req.Msg.GetAgentId(),
+			OldHome: req.Msg.GetOldHome(),
+			Summary: m.driftSummary,
+		}), nil
 	}
 	return connect.NewResponse(&v1.RenewalDriftResponse{
 		AgentId: req.Msg.GetAgentId(),
