@@ -24,6 +24,9 @@ package agent
 //     (TestSessionProbeBudget_ScaledToConcurrency);
 //  2. the scaling is really WIRED: a concurrent probe's attempt survives past
 //     the lone-probe budget (TestSessionProbe_ScaledBudgetIsUsedUnderConcurrency);
+//     and the proof still fails when scaling is disabled, so the survival can
+//     only come from the scaled grant, never from a slow host
+//     (TestSessionProbe_ScaledBudgetIsUsedUnderConcurrency_ScalingDisabled);
 //  3. a genuine session DENIAL (exit 254, INT-DEMO-001) is NOT retried, does
 //     not gather diagnostics, and fails fast however large the budget
 //     (TestSessionProbe_DenialFailsFastAndIsNotMasked);
@@ -41,6 +44,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -153,27 +157,47 @@ func TestSessionProbeBudget_ScaledToConcurrency(t *testing.T) {
 // ── 2. the scaling is wired into the probe ────────────────────────────────
 
 // TestSessionProbe_ScaledBudgetIsUsedUnderConcurrency proves the concurrency
-// signal reaches the REAL probe. The ssh stub blocks until two probes are in
-// flight, then sleeps longer than the LONE-probe budget (200ms) but well inside
-// the two-probe budget (1800ms): an attempt that survives the sleep can only
-// have been granted the SCALED budget.
+// signal reaches the REAL probe — and, with DF-BUNKER-112, proves it without
+// leaning on absolute wall-clock windows that a starved host breaks (the
+// assertion used to red the full suite under loadavg >= nproc while passing in
+// isolation).
 //
-// The first probe keeps the fast path on purpose (it began alone): it is killed
-// at 300ms on every attempt and fails, which is the documented behaviour for a
-// lone probe — the assertion here is that the concurrent one was NOT.
+// Two probes run against a PATH-stubbed ssh. A BLOCKER probe starts first and
+// each ssh attempt it makes drops a marker file named after its own PID in a
+// per-attempt directory; the PROVER probe starts only once the prover's own
+// first marker would be unambiguous — i.e. it polls the blocker's marker and
+// enters immediately after, so the prover is guaranteed to observe at least 2
+// in-flight probes and be granted the SCALED budget. (The old version started
+// the peer on a fixed 100ms sleep; under CPU starvation the lone probe's
+// attempt could die first and the peer entered alone.)
+//
+// The stub holds every ssh session open for 450ms. With the seams shrunk to a
+// 300ms lone budget and a 1200ms scaled budget, a prover attempt that SURVIVES
+// the hold proves the grant exceeded 450ms — more than the 300ms lone budget —
+// no matter how slow the host was: a per-attempt context kill fires on the
+// wall clock, so surviving a 450ms hold cannot happen on a 300ms budget. Every
+// assertion then reads same-run report facts (Budget, Concurrent) or
+// load-monotone bounds (latency >= the hold), never absolute ceilings, so a
+// starved host cannot satisfy OR break them.
+//
+// The blocker keeps the fast path on purpose: it began alone, so its attempts
+// are killed at 300ms and (if a retry lands after the prover's exit) it may
+// even succeed inside the budget its counter LATCHED while the prover was in
+// flight — both are the documented production behaviour for a lone probe, so
+// only the prover's outcome is asserted.
 func TestSessionProbe_ScaledBudgetIsUsedUnderConcurrency(t *testing.T) {
-	intci082ShrinkProbeSeams(t, 300*time.Millisecond, 300*time.Millisecond, 5*time.Second, 10*time.Second, 3)
+	intci082ShrinkProbeSeams(t, 300*time.Millisecond, 600*time.Millisecond, 5*time.Second, 10*time.Second, 3)
 	intci082SilenceDiagnostics(t)
 
-	binDir := t.TempDir()
+	const sessionHold = 450 * time.Millisecond
 	markDir := t.TempDir()
-	// Block until BOTH probes have started an ssh attempt, then hold the
-	// session open past the lone-probe budget (300ms) but inside the
-	// two-probe budget (600ms).
+	binDir := t.TempDir()
+	// Each attempt records its own PID marker, then holds the session open
+	// for sessionHold and exits 0. PID-named markers (instead of the old
+	// shared $$-named ones) keep a killed attempt's marker from being
+	// mistaken for a live peer during a retry.
 	stub := "touch " + markDir + "/$$\n" +
-		"n=0\n" +
-		"while [ \"$(ls " + markDir + " | wc -l)\" -lt 2 ]; do sleep 0.02; n=$((n+1)); [ $n -gt 100 ] && break; done\n" +
-		"sleep 0.45\n" +
+		"sleep " + fmt.Sprintf("%.2f", sessionHold.Seconds()) + "\n" +
 		"exit 0\n"
 	writeStub(t, binDir, "ssh", stub)
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -183,42 +207,133 @@ func TestSessionProbe_ScaledBudgetIsUsedUnderConcurrency(t *testing.T) {
 		report sessionProbeReport
 		err    error
 	}
-	var lone, peer result
+	var blocker, prover result
 	var wg sync.WaitGroup
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		lone.report, lone.err = probeAgentSessionLive(context.Background(), "lone082", "bunker-lone082", keyPath)
+		blocker.report, blocker.err = probeAgentSessionLive(context.Background(), "blocker082", "bunker-blocker082", keyPath)
 	}()
-	// Let the first probe enter the in-flight counter alone, then join it.
-	time.Sleep(100 * time.Millisecond)
+	// Wait (bounded) for the blocker's first ssh attempt marker: the prover
+	// may only enter once a peer is provably in flight. A broken stub fails
+	// the test loudly instead of stalling the suite to its global timeout.
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		entries, err := os.ReadDir(markDir)
+		if err == nil && len(entries) > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("ssh stub never dropped an attempt marker; the blocker probe did not start")
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		peer.report, peer.err = probeAgentSessionLive(context.Background(), "peer082", "bunker-peer082", keyPath)
+		prover.report, prover.err = probeAgentSessionLive(context.Background(), "prover082", "bunker-prover082", keyPath)
 	}()
 	wg.Wait()
 
-	if peer.err != nil {
+	// AC2 (DF-BUNKER-112): the proof reads SAME-RUN facts. The prover was
+	// granted the scaled budget for two in-flight probes…
+	if want := sessionProbeBudget(2); prover.report.Budget != want {
+		t.Errorf("prover budget = %s, want the scaled %s", prover.report.Budget, want)
+	}
+	if prover.report.Concurrent < 2 {
+		t.Errorf("prover observed %d in-flight probe(s), want 2 (the scaling was not exercised)", prover.report.Concurrent)
+	}
+	// …and an attempt that SURVIVED a hold longer than the lone budget proves
+	// the scaled budget was USED, not merely computed: the attempt-kill fires
+	// on the wall clock, so survival cannot happen under a 300ms grant. The
+	// bound is load-monotone (latency >= hold), never an absolute ceiling a
+	// slow host could overshoot.
+	if prover.err != nil {
 		t.Fatalf("the concurrent probe failed although it was granted the scaled budget %s: %v (report: %+v)",
-			sessionProbeBudget(2), peer.err, peer.report)
+			sessionProbeBudget(2), prover.err, prover.report)
 	}
-	if want := sessionProbeBudget(2); peer.report.Budget != want {
-		t.Errorf("concurrent probe budget = %s, want the scaled %s", peer.report.Budget, want)
+	if len(prover.report.Latencies) != 1 || prover.report.Latencies[0] < sessionHold {
+		t.Errorf("prover attempt latencies = %v, want one surviving attempt of >= %s: an attempt that outlived the lone-probe budget (300ms) proves the scaled budget was USED",
+			prover.report.Latencies, sessionHold)
 	}
-	if peer.report.Concurrent < 2 {
-		t.Errorf("concurrent probe observed %d in-flight probe(s), want 2 (the scaling was not exercised)", peer.report.Concurrent)
+	intci082NoLeak(t)
+}
+
+// TestSessionProbe_ScaledBudgetIsUsedUnderConcurrency_ScalingDisabled is the
+// red-proof arm (DF-BUNKER-112 AC3): with the concurrency scaling disabled —
+// a zero per-probe share flattens budget(n) back to the lone budget — the
+// SAME setup must FAIL instead of succeeding: the stub holds the session
+// longer than the lone budget, so the prover's attempt must be killed by the
+// 300ms deadline and named as a timeout. If this arm ever goes green, the
+// main test's "survival proves the scaled grant" reasoning is void (a host
+// could be surviving holds for free).
+func TestSessionProbe_ScaledBudgetIsUsedUnderConcurrency_ScalingDisabled(t *testing.T) {
+	// sessionProbeBudgetPerSpawn = 0 makes budget(n) = base for EVERY n: the
+	// concurrency signal can no longer stretch the grant.
+	intci082ShrinkProbeSeams(t, 300*time.Millisecond, 0, 5*time.Second, 10*time.Second, 3)
+	intci082SilenceDiagnostics(t)
+
+	const sessionHold = 800 * time.Millisecond
+	markDir := t.TempDir()
+	binDir := t.TempDir()
+	stub := "touch " + markDir + "/$$\n" +
+		"sleep " + fmt.Sprintf("%.2f", sessionHold.Seconds()) + "\n" +
+		"exit 0\n"
+	writeStub(t, binDir, "ssh", stub)
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	keyPath := intci082Key(t)
+
+	type result struct {
+		report sessionProbeReport
+		err    error
 	}
-	if len(peer.report.Latencies) != 1 || peer.report.Latencies[0] < 400*time.Millisecond {
-		t.Errorf("concurrent attempt latencies = %v, want one attempt of >=400ms: an attempt that outlived the 300ms lone-probe budget proves the scaled budget was USED, not merely computed",
-			peer.report.Latencies)
+	var blocker, prover result
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		blocker.report, blocker.err = probeAgentSessionLive(context.Background(), "blocker082d", "bunker-blocker082d", keyPath)
+	}()
+	// Bounded wait for the blocker's first ssh attempt marker (same contract
+	// as the main test).
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		entries, err := os.ReadDir(markDir)
+		if err == nil && len(entries) > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("ssh stub never dropped an attempt marker; the blocker probe did not start")
+		}
+		time.Sleep(2 * time.Millisecond)
 	}
-	// The probe that began alone keeps the fast path: it is killed at the lone
-	// budget on every attempt, so it fails closed rather than silently
-	// inheriting a peer's headroom it never observed.
-	if lone.err == nil {
-		t.Errorf("the lone probe succeeded although every attempt exceeded the lone-probe budget of 300ms (report: %+v)", lone.report)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		prover.report, prover.err = probeAgentSessionLive(context.Background(), "prover082d", "bunker-prover082d", keyPath)
+	}()
+	wg.Wait()
+
+	// The scaling was genuinely exercised (two probes in flight)…
+	if prover.report.Concurrent < 2 {
+		t.Errorf("prover observed %d in-flight probe(s), want 2 (the scaling path was not exercised)", prover.report.Concurrent)
+	}
+	// …yet with scaling disabled the grant stays at the lone budget, the hold
+	// outlives it, and the probe must FAIL with the timeout that names the
+	// budget it was granted. Under CPU starvation the kill fires late (never
+	// early), so this arm stays red regardless of load.
+	if prover.err == nil {
+		t.Fatalf("the probe succeeded although scaling was disabled and the session hold (%s) exceeds the lone budget: report %+v",
+			sessionHold, prover.report)
+	}
+	if !strings.Contains(prover.err.Error(), "timed out after 300ms") {
+		t.Errorf("prover error = %v, want the per-attempt timeout naming the 300ms lone budget", prover.err)
+	}
+	if want := 300 * time.Millisecond; prover.report.Budget != want {
+		t.Errorf("prover budget = %s, want the flat lone budget %s despite %d concurrent probe(s)",
+			prover.report.Budget, want, prover.report.Concurrent)
 	}
 	intci082NoLeak(t)
 }
