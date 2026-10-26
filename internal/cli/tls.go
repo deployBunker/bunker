@@ -602,6 +602,17 @@ func StoreCertPin(rawURL, pin string) {
 	certPinCache.m[cachedPinKey(rawURL)] = strings.ToLower(strings.TrimSpace(pin))
 }
 
+// ForgetCertPin evicts the cached pin for rawURL. DF-BUNKER-64: a failed
+// registration must leave NOTHING behind that looks like a trust decision —
+// the config file was never written, and the in-process cache must agree, so
+// a same-process retry cannot silently verify against a pin the operator
+// never accepted.
+func ForgetCertPin(rawURL string) {
+	certPinCache.Lock()
+	defer certPinCache.Unlock()
+	delete(certPinCache.m, cachedPinKey(rawURL))
+}
+
 // ResetCertPinCache clears the in-process pin cache. Tests only — production
 // code never clears it.
 func ResetCertPinCache() {

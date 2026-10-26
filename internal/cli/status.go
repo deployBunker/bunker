@@ -104,6 +104,20 @@ Examples:
 
 			result := queryServer(entry)
 			fmt.Print(formatServerStatus(result))
+			// DF-BUNKER-64: the OFFLINE rendering above is still printed —
+			// the human-readable section is unchanged — but a trust refusal
+			// must also FAIL the command. Before this, `bunker status`
+			// exited 0 on pin-mismatch / expired / contradictory-TLS
+			// refusals while `bunker list` exited 1, so a scripted
+			// `bunker status || alert` gate never fired. The class maps to
+			// the distinct TLSRefusalExitCode (2); any other query error
+			// keeps the historical behaviour (nil result error, exit 0) —
+			// an offline-but-trusted host is a report, not a failure.
+			if result.err != nil {
+				if class, ok := ClassifyTLSRefusal(result.err); ok {
+					return &TLSRefusalExitError{Class: class, Err: result.err}
+				}
+			}
 			return nil
 		},
 	}
@@ -147,12 +161,14 @@ const statusDialTimeout = 5 * time.Second
 // silent-drop offline host fails fast instead of burning the full 30s
 // per-server context on the handshake. Other newBunkerdClient callers
 // (agenttools, audit, ...) are untouched and keep the default dial behaviour.
+// The trust-refusal seam is the named-class one (tlsRefusedTransport), so
+// `bunker status` sees the same TLS refusal classes every other verb does.
 func newStatusBunkerdClient(entry ServerEntry) bunkerv1connect.BunkerdClient {
 	httpClient := &http.Client{Timeout: 300 * time.Second}
 
 	tlsCfg, err := resolveClientTLS(entry)
 	if err != nil {
-		httpClient.Transport = refusingTransport{err: fmt.Errorf("refusing to dial %s: %w", entry.URL, err)}
+		httpClient.Transport = tlsRefusedTransport{url: entry.URL, err: err}
 		return bunkerv1connect.NewBunkerdClient(httpClient, entry.URL)
 	}
 	dialer := statusDialer
@@ -340,6 +356,25 @@ func printAllServerStatus(cfg *CLIConfig) error {
 		fmt.Println()
 		fmt.Print(formatFleetCoverageSummary(verdicts, failing))
 	}
+	// DF-BUNKER-64: a TLS/trust refusal in the overview is a failure too —
+	// a security refusal must never exit 0, and it must not be MASKED by
+	// another failure class either. The sweep runs BEFORE the coverage
+	// verdict returns: when a declared host is unreachable AND a registered
+	// host refused on trust, both are printed above, but the exit code names
+	// the stronger verdict (TLSRefusalExitCode for the refusal, not the
+	// generic 1 for coverage) — a monitoring gate that branches on the code
+	// gets "untrustworthy", never just "something failed".
+	for i, name := range names {
+		if !registered[i] {
+			continue
+		}
+		if st := results[i]; st.err != nil {
+			if class, ok := ClassifyTLSRefusal(st.err); ok {
+				return &TLSRefusalExitError{Class: class, Err: fmt.Errorf("server %q: %w", name, st.err)}
+			}
+		}
+	}
+
 	if len(failing) > 0 {
 		return fmt.Errorf("fleet inventory coverage: %d of %d declared hosts failing (%s) — see the Fleet lines above",
 			len(failing), len(verdicts), describeFailures(failing))

@@ -250,6 +250,14 @@ func RegisterServerWithOptions(opts ConnectOptions) error {
 
 	info, err := ConnectServerWithEntry(entry)
 	if err != nil {
+		// DF-BUNKER-64: the registration failed — the observed pin stays in
+		// the in-process cache only for THIS process's diagnostics, but it
+		// must not survive as if a trust decision had been made: a later
+		// command in a NEW process reads nothing (the config was never
+		// written), while a retry inside this process would silently verify
+		// against a pin the operator never accepted. Evict it so "nothing
+		// was stored" is true in every sense — file, registry, and cache.
+		ForgetCertPin(opts.URL)
 		return err
 	}
 
@@ -314,6 +322,15 @@ func normalizeTLSMode(opts ConnectOptions, entry ServerEntry) TLSMode {
 // somewhere else, so a hardcoded ~/.bunker/config.yaml would send the operator
 // to a file this CLI never reads. An unresolvable path prints its reason
 // rather than a plausible-looking default.
+//
+// DF-BUNKER-64: this banner deliberately says "ABOUT to be written", never
+// "stored" — at this moment NOTHING is on disk, and the registration (the
+// authenticated dial, then SaveCLIConfig) can still fail. Dogfood run
+// 2026-09-25b arm A2 caught the old wording claiming "stored as cert_pin in
+// …" while an auth failure left the config untouched. The confirmation that
+// the pin IS stored comes from printTrustSummary AFTER SaveCLIConfig has
+// succeeded, which is exactly the "TLS: pinned certificate …" line a
+// successful connect already prints.
 func printTrustOnFirstUse(known *ServerEntry, opts ConnectOptions, observed string) {
 	if known != nil && known.CertPin != "" {
 		return // a re-connect against an already-pinned entry is not a first use
@@ -323,7 +340,7 @@ func printTrustOnFirstUse(known *ServerEntry, opts ConnectOptions, observed stri
 You are about to trust the certificate presented by %s for the first time.
 
   fingerprint      %s
-  stored as        cert_pin in %s
+  to be stored as  cert_pin in %s — ONLY IF the registration below succeeds
 
 There is no certificate authority behind this certificate: the trust comes from
 accepting THIS fingerprint now, exactly once, like an SSH host key. Every later
