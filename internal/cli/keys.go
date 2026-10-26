@@ -12,9 +12,9 @@ import (
 )
 
 // NewKeysCommand returns the `bunker key` command group (GAP-132): rotate
-// (zero-downtime jwt_secret rotation), list, revoke.
+// (zero-downtime jwt_secret rotation), list, revoke, fetch.
 //
-// All three verbs are master-credential operations — they must run with the
+// All verbs are master-credential operations — they must run with the
 // server's master token in BUNKER_TOKEN / the server entry, exactly like
 // `bunker spawn` / `bunker destroy`. An agent sub-key is rejected by the
 // daemon's master-only interceptor (CodeUnauthenticated).
@@ -36,6 +36,12 @@ key rotate  Rotate the HS256 JWT SIGNING SECRET (NOT a bearer token) without
 key list    List active API sub-keys (metadata only, no secrets).
 key revoke  Revoke an API sub-key by key ID. Immediate and durable: the
             credential stops validating and stays revoked across restarts.
+key fetch   Re-fetch an agent's SSH private key from the server (GAP-128
+            GetAgentKey RPC) and save it to ~/.bunker/keys/<agent-id>.
+            Recovery path for a lost local key: without the key file every
+            SSH-family verb (ssh/cp/pull/deploy/mount/tunnel) fails with
+            "SSH key not found". The fetch is read-only server-side — it
+            never rotates or regenerates the key.
 
 All verbs require the master credential (BUNKER_TOKEN or the server entry's
 static auth.token); agent sub-keys are rejected. Never use the signing
@@ -45,6 +51,7 @@ secret as a bearer token — the daemon rejects it with
 	cmd.AddCommand(newKeyRotateCommand())
 	cmd.AddCommand(newKeyListCommand())
 	cmd.AddCommand(newKeyRevokeCommand())
+	cmd.AddCommand(newKeyFetchCommand())
 	return cmd
 }
 
@@ -189,6 +196,63 @@ func newKeyRevokeCommand() *cobra.Command {
 				return fmt.Errorf("revoke key: %w", err)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "%s: %s\n", resp.Msg.GetKeyId(), resp.Msg.GetStatus())
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)")
+	return cmd
+}
+
+// newKeyFetchCommand builds `bunker key fetch <agent-id>` (DF-BUNKER-73) —
+// the CLI recovery path for a keyless agent: re-fetch the agent's SSH
+// private key through the master-credential-gated GetAgentKey RPC (GAP-128)
+// and write it to the client-local keys dir exactly where spawn's fetch
+// (fetchAndSaveAgentKey) puts it. cp/deploy/ssh/mount/tunnel all hard-fail
+// with "SSH key not found" when that file is missing; until now the only
+// recovery was manually copying the key from the server host.
+//
+// Unlike spawn/renew's NON-FATAL fetch, this verb IS the fetch: an RPC
+// failure is the command's failure (exit 1). A daemon CodeNotFound answer
+// (unknown agent id, or the keyless-agent variants) is mapped to an explicit
+// "agent not found on server" recovery message that keeps the original
+// verdict in the chain; other failures pass through wrapped. The local key
+// file is a pure cache of server state; a re-fetch overwrites it, matching
+// renew's re-fetch semantics (last fetch wins — the server copy is
+// authoritative).
+func newKeyFetchCommand() *cobra.Command {
+	var serverName string
+	cmd := &cobra.Command{
+		Use:   "fetch <agent-id>",
+		Short: "Re-fetch an agent's SSH private key to ~/.bunker/keys/ (lost-key recovery)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			agentID := args[0]
+			entry, err := keyServerEntry(serverName)
+			if err != nil {
+				return err
+			}
+			client := newBunkerdClient(entry)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			keyPath, err := fetchAndSaveAgentKey(ctx, client, agentID, resolveToken(entry))
+			if err != nil {
+				if connect.CodeOf(err) == connect.CodeNotFound {
+					// DF-BUNKER-73: the daemon answers NotFound for an
+					// unknown agent AND for a keyless agent ("no persisted
+					// SSH private key" / "key missing at …"); its bare
+					// `agent "x" not found` verdict breaks the literal
+					// phrase. Make the operator-facing error say so in
+					// recoverable terms while keeping the original in the
+					// chain for diagnosis.
+					return fmt.Errorf("fetch key for agent %q: agent not found on server (unknown agent id, agent stopped, or its SSH key is not persisted): %w", agentID, err)
+				}
+				return fmt.Errorf("fetch key for agent %q: %w", agentID, err)
+			}
+			if keyPath == "" {
+				return fmt.Errorf("fetch key for agent %q: server returned an empty SSH private key — nothing saved", agentID)
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "saved SSH private key for agent %s to %s\n", agentID, keyPath)
 			return nil
 		},
 	}

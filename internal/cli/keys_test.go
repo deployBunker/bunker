@@ -1,11 +1,15 @@
-// keys_test.go — GAP-132 CLI coverage for `bunker key rotate|list|revoke`
+// keys_test.go — GAP-132 CLI coverage for `bunker key rotate|list|revoke|fetch`
 // against a live in-process connect server. Pins the review-note contract
-// that `key rotate` prints the new secret EXACTLY ONCE, and that list/revoke
-// carry metadata/status only.
+// that `key rotate` prints the new secret EXACTLY ONCE, that list/revoke
+// carry metadata/status only, and (DF-BUNKER-73) that `key fetch` recovers a
+// lost local SSH key via the GetAgentKey RPC.
 package cli
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -26,6 +30,10 @@ type keysMockServer struct {
 	revokeStatus    string
 	listKeys        []*v1.KeyInfo
 	listRequestedID string
+	getKeyCalled    int
+	getKeyAgentID   string
+	sshPrivateKey   string
+	keyErr          error
 }
 
 func (m *keysMockServer) RotateJWTSecret(ctx context.Context, req *connect.Request[v1.RotateJWTSecretRequest]) (*connect.Response[v1.RotateJWTSecretResponse], error) {
@@ -50,6 +58,21 @@ func (m *keysMockServer) KeyList(ctx context.Context, req *connect.Request[v1.Ke
 	m.listRequestedID = req.Msg.GetAgentId()
 	m.authHeaderSeen = req.Header().Get("Authorization")
 	return connect.NewResponse(&v1.KeyListResponse{Keys: m.listKeys}), nil
+}
+
+// GetAgentKey fakes the GAP-128 key-retrieval RPC for the fetch verb
+// (DF-BUNKER-73); the embedded mockBunkerdServer default is Unimplemented.
+func (m *keysMockServer) GetAgentKey(ctx context.Context, req *connect.Request[v1.GetAgentKeyRequest]) (*connect.Response[v1.GetAgentKeyResponse], error) {
+	m.getKeyCalled++
+	m.getKeyAgentID = req.Msg.GetAgentId()
+	m.authHeaderSeen = req.Header().Get("Authorization")
+	if m.keyErr != nil {
+		return nil, m.keyErr
+	}
+	return connect.NewResponse(&v1.GetAgentKeyResponse{
+		AgentId:       m.getKeyAgentID,
+		SshPrivateKey: m.sshPrivateKey,
+	}), nil
 }
 
 // Compile-time interface check: keysMockServer must satisfy BunkerdHandler.
@@ -182,5 +205,102 @@ func TestKeyRevoke_SendsKeyIDAndPrintsStatus(t *testing.T) {
 	}
 	if !strings.Contains(out, "bk_deadbeef: revoked") {
 		t.Fatalf("revoke output wrong:\n%s", out)
+	}
+}
+
+// ── DF-BUNKER-73: `key fetch` — CLI recovery path for a keyless agent ──────
+
+// TestKeyFetchCommand_WritesKeyFile pins the fetch verb's happy path end to
+// end: the agent id reaches the GetAgentKey RPC, the returned private key is
+// written to the client-local keys dir at the exact path the SSH-family
+// verbs read (keys/<agent-id>, dir created as needed), the file holds the
+// key at 0600, and the master credential authenticates the RPC.
+func TestKeyFetchCommand_WritesKeyFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+	mock := &keysMockServer{sshPrivateKey: "fetched-private-key-data"}
+	newKeysTestSetup(t, mock)
+
+	out, execErr := runKeys(t, "fetch", "eduos-agent")
+	if execErr != nil {
+		t.Fatalf("execute key fetch: %v", execErr)
+	}
+	if mock.getKeyCalled != 1 {
+		t.Fatalf("GetAgentKey called %d times, want 1", mock.getKeyCalled)
+	}
+	if mock.getKeyAgentID != "eduos-agent" {
+		t.Fatalf("GetAgentKey asked for agent %q, want eduos-agent", mock.getKeyAgentID)
+	}
+	if mock.authHeaderSeen != "Bearer master-test-token" {
+		t.Fatalf("fetch must authenticate with the master token, saw %q", mock.authHeaderSeen)
+	}
+
+	// The key file lands exactly where the SSH-family verbs look: the keys
+	// dir next to the CLI config, named by agent id. Resolve the config path
+	// the same way the command does instead of guessing ~/.bunker vs
+	// ~/.config/bunker.
+	cfgPath, err := configFilePath()
+	if err != nil {
+		t.Fatalf("resolve config path: %v", err)
+	}
+	keyPath := filepath.Join(filepath.Dir(cfgPath), "keys", "eduos-agent")
+	raw, err := os.ReadFile(keyPath)
+	if err != nil {
+		t.Fatalf("key file not written under %s: %v", keyPath, err)
+	}
+	if string(raw) != "fetched-private-key-data" {
+		t.Errorf("key file content %q, want the key returned by GetAgentKey", raw)
+	}
+	info, err := os.Stat(keyPath)
+	if err != nil {
+		t.Fatalf("stat key file: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0600 {
+		t.Errorf("key file mode %v, want 0600", got)
+	}
+	keyDirInfo, err := os.Stat(filepath.Dir(keyPath))
+	if err != nil {
+		t.Fatalf("stat keys dir: %v", err)
+	}
+	if got := keyDirInfo.Mode().Perm(); got != 0700 {
+		t.Errorf("keys dir mode %v, want 0700", got)
+	}
+	if !strings.Contains(out, "eduos-agent") {
+		t.Errorf("output should name the agent, got:\n%s", out)
+	}
+}
+
+// TestKeyFetchCommand_AgentNotFound pins the failure arm: a daemon
+// CodeNotFound answer (wrong agent id, stopped key, missing key file
+// server-side) surfaces as the command's error — exit 1 with a message
+// naming the agent — rather than a silent success or a written empty file.
+func TestKeyFetchCommand_AgentNotFound(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	mock := &keysMockServer{
+		keyErr: connect.NewError(connect.CodeNotFound, fmt.Errorf(`agent "ghost" not found`)),
+	}
+	newKeysTestSetup(t, mock)
+
+	out, execErr := runKeys(t, "fetch", "ghost")
+	if execErr == nil {
+		t.Fatalf("fetch of a missing agent must fail, got success output:\n%s", out)
+	}
+	if !strings.Contains(execErr.Error(), "agent not found") {
+		t.Fatalf("error must include the daemon's agent-not-found verdict, got: %v", execErr)
+	}
+	if !strings.Contains(execErr.Error(), "ghost") {
+		t.Fatalf("error must name the agent, got: %v", execErr)
+	}
+	if mock.getKeyCalled != 1 {
+		t.Fatalf("GetAgentKey called %d times, want 1", mock.getKeyCalled)
+	}
+	// Nothing must be written locally on failure.
+	cfgPath, err := configFilePath()
+	if err != nil {
+		t.Fatalf("resolve config path: %v", err)
+	}
+	keyPath := filepath.Join(filepath.Dir(cfgPath), "keys", "ghost")
+	if _, statErr := os.Stat(keyPath); !os.IsNotExist(statErr) {
+		t.Errorf("no key file may be written for a failed fetch, found %s", keyPath)
 	}
 }
