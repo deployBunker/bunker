@@ -581,3 +581,14 @@ Corrections to the first delivery of this run:
 - **Artifacts:** docs/dogfood/2026-10-23-day2-lifecycle.md (integration report + install cell table + A/B), docs/dogfood/diagnostics.md §25 (mechanisms, the "grading docker" rule, the HEAD-vs-release discriminator), skills/bunker-usage/SKILL.md 1.16.0 (day-2 section with the stop/start workaround), this entry; DuckBrain `/dogfood/2026-10-23-day2-lifecycle` (namespace `bunker`).
 - **Verdict:** 🟡 PROMISING-BUT-ROUGH — the day-2 read surface (env, heartbeat, metrics, resource-events, stopped-agent errors) is honest, fast and well-worded; the day-2 PROMISE that a paused agent can be resumed is false (Docker is lost for the agent's life while every verb reports success), and the one health label that could warn an operator is computed from the wrong unit.
 - **Cleanup:** df1023-day2, df1023-ctl and df1023-k1 destroyed (`info` → `not_found`); install-leg agent 58495686 was already gone (`destroy` → "Agent 58495686 not found", `info` → `not_found`); no mounts/tunnels opened; no credentials minted; no repo visibility/permission changes.
+
+
+## 2026-10-26 run 30 (bunker-dogfood-2026-10-26-16-20-05)
+
+- Promise: build from a clone and operate isolated remote agents with the CLI; build, spawn, exec, env, metrics and destroy were exercised against HEAD db612dab and bunker-mvp.
+- Verdict: PROMISING-BUT-ROUGH — core lifecycle works when capacity is available; the required fresh-agent QA leg hit host ENOSPC and cannot be called an install pass.
+- Real-use evidence: detached control build `make build` cold 1.28s / warm 1.43s; fresh clone agent df261026 clone 2.206s + build 90.862s rc=0; live lifecycle env/exec/metrics/list/destroy passed; info showed `running (docker degraded)` while `/run/bunker/df261026/docker.sock` was present.
+- Install leg: bunker-qa agent fbbdd1fd, 19 rows, evidence `/tmp/bunker-qa-tick-20261026-evidence.jsonl`; fresh-install ENOSPC, upgrade ENOSPC, ci-pass downstream build/act failures, chaos cells unverified; host status 94% disk.
+- Findings: DF-BUNKER-113/114/115, DF-BUNKER-108-R2, DOC-BUNKER-1, QA-BUNKER-085. Existing related rows: INT-HOST-010, README-007, DF-BUNKER-108.
+- Cleanup: df261026 info not_found and list count 0; fbbdd1fd collected/destroyed by harness; no visibility/permission changes and no credentials minted.
+- ch:trace tick=bunker-dogfood-2026-10-26-16-20-05 report=docs/dogfood/2026-10-26-install-and-lifecycle.md evidence=/tmp/bunker-qa-tick-20261026-evidence.jsonl verdict=PROMISING-BUT-ROUGH

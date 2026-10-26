@@ -24,7 +24,7 @@ description: >-
   image-spec + agent-tools delivery + CI-race destroy hazards verified
   2026-09-26 against bunker-mvp/cube-las-00
   (docs/dogfood/2026-09-26-image-spec-surface.md, diagnostics.md §21).
-version: 1.16.0
+version: 1.17.0
 category: software-development
 ---
 
@@ -32,11 +32,18 @@ category: software-development
 
 Bunker = multi-agent hosting platform. `bunkerd` (daemon, needs **root**, runs on a Linux host) + `bunker` (CLI, runs anywhere). Each agent is an isolated Linux user with its own rootless Docker daemon, cgroup limits, and port range. Control everything through the CLI or the connect-go gRPC/REST API.
 
+## Current HEAD dogfood snapshot (2026-10-26)
+
+- Current HEAD `db612dab` builds with `make build`; the CLI reports 0.2.1 / Go 1.26.10. A clean clone plus `make build` worked in a fresh agent when the host had capacity.
+- Current CLI SSH keys resolve under the XDG/BUNKER_HOME path shown by `bunker paths` (for example `~/.config/bunker/keys/<agent-id>` on this host), not necessarily the legacy `~/.bunker/keys` path used by older release binaries. Keep release-vs-HEAD distinctions explicit; see README-007.
+- Before calling a fresh install a product failure, check the bunker host's free space. On 2026-10-26 bunker-mvp was 94% full and the fresh-install battery failed with `no space left on device` during Go compilation; this is tracked as DF-BUNKER-113/114/115 and QA-BUNKER-085.
+- Grade Docker by driving it: `bunker exec <id> -- docker ps` and verify `/run/bunker/<id>/docker.sock`. A current dogfood run saw `bunker info` report `running (docker degraded)` while the serving socket was present; DF-BUNKER-108-R2 tracks provenance and re-verification.
+
 ## Entry points
 
 - **Live servers (fleet, 2026-08-29):** public MVP `78.46.173.180` (REST :18080, gRPC :19090, SSH :22; v0.1.3) + Tailscale boxes `bunker-las-01..04`, `cube-las-00`, local `bunker-7840hs` (127.0.0.1:10002). **Auth is ENFORCED everywhere** (since GAP-014): empty/missing token → 401; every call needs `Authorization: Bearer <token>` (stored in `~/.bunker/config.yaml` by `bunker connect`). Switch boxes with `bunker --server <name> status|list|audit`; spawn always targets the ACTIVE server (`active_server:` in config) — check `bunker status` first. Server-reported hostnames only resolve on the server itself.
 - **Binaries:** `make build` or `go build -o bunker ./cmd/bunker`, `go build -o bunkerd ./cmd/bunkerd`; `go install github.com/deployBunker/bunker/cmd/bunker@latest` serves the newest TAG (may lag HEAD — compare `bunker version` commit vs `git rev-parse HEAD`, README GAP-058 note).
-- **CLI config:** `~/.bunker/config.yaml` (server aliases + active server, incl. token), keys in `~/.bunker/keys/<agent-id>`.
+- **CLI config:** `~/.bunker/config.yaml` is the legacy/release location; current HEAD resolves config and keys through the XDG/BUNKER_HOME path shown by `bunker paths` (for example `~/.config/bunker/config.yaml` and `~/.config/bunker/keys/<agent-id>`). Keep release-vs-HEAD distinctions explicit; see README-007.
 - **Test config for local daemon:** `test-config.yaml` (auth off, /tmp/bunkerd-test, port 9095) — daemon runs as non-root but spawn will fail at `useradd` (root required, undocumented in README).
 
 ## The working workflow (verified 2026-08-18)
