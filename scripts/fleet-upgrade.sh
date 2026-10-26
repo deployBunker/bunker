@@ -243,6 +243,11 @@ for h in $HOSTS; do
 	upgrade_host "$h" || overall=1
 done
 
+if [ "$DRY_RUN" -eq 1 ]; then
+	# Dry run always exits 0 even if some hosts are unreachable (AC: dry-run exits 0)
+	say "dry run complete: plan printed above"
+	exit 0
+fi
 if [ "$overall" -eq 0 ]; then
 	say "fleet upgrade complete: all hosts verified at HEAD"
 else
