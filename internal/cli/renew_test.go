@@ -21,8 +21,9 @@ import (
 )
 
 // renewMockServer implements BunkerdHandler with canned GetAgent / Destroy /
-// Spawn responses for the renew flow. RenewalDriftReport is unimplemented
-// (the CLI warns and continues on a daemon that predates the RPC).
+// Spawn responses for the renew flow. DF-BUNKER-70: RenewalDriftReport answers
+// a benign empty report by default; driftErr makes it FAIL (an old daemon
+// answers CodeUnimplemented, which the command now treats as a hard error).
 type renewMockServer struct {
 	mockBunkerdServer
 	agent          *v1.AgentSummary
@@ -32,6 +33,14 @@ type renewMockServer struct {
 	spawnErr       error
 	destroyCalled  bool
 	spawnRequested *v1.SpawnAgentRequest
+	// DF-BUNKER-70: the drift pre-flight seam. driftErr (when set) is
+	// returned verbatim — CodeUnimplemented models a daemon that predates
+	// the RPC. driftCalled/gotDriftRequest record whether the CLI asked at
+	// all, so --skip-drift-check can be proven to make NO RPC.
+	driftErr        error
+	driftResp       *v1.RenewalDriftResponse
+	driftCalled     bool
+	gotDriftRequest *v1.RenewalDriftRequest
 	// DF-BUNKER-65: GetAgentKey plumbing, mirroring mockSpawnServer's fake.
 	// gotKeyRequested/gotKeyAgentID record whether (and for whom) the CLI
 	// fetched the key after the re-spawn; keyResp/keyErr control the fake
@@ -73,14 +82,18 @@ func (m *renewMockServer) SpawnAgent(ctx context.Context, req *connect.Request[v
 
 func (m *renewMockServer) RenewalDriftReport(ctx context.Context, req *connect.Request[v1.RenewalDriftRequest]) (*connect.Response[v1.RenewalDriftResponse], error) {
 	m.driftCalled = true
+	m.gotDriftRequest = req.Msg
 	if m.driftErr != nil {
 		return nil, m.driftErr
 	}
-	if m.driftSummary == "" {
-		// Default: a daemon that predates the RPC (the CLI warns and goes on).
-		return nil, connect.NewError(connect.CodeUnimplemented, nil)
+	if m.driftResp != nil {
+		return connect.NewResponse(m.driftResp), nil
 	}
-	return connect.NewResponse(&v1.RenewalDriftResponse{Summary: m.driftSummary}), nil
+	return connect.NewResponse(&v1.RenewalDriftResponse{
+		AgentId: req.Msg.GetAgentId(),
+		OldHome: req.Msg.GetOldHome(),
+		Summary: "drift pre-flight: 0 stale references",
+	}), nil
 }
 
 // GetAgentKey fakes the GAP-128 key-retrieval RPC for the renew re-spawn leg
@@ -584,6 +597,220 @@ func TestRenewCommand_EmptyKeyWritesNothing(t *testing.T) {
 	}
 	if !strings.Contains(output, "Renewed: agent eduos-agent") {
 		t.Errorf("output missing the success line, got:\n%s", output)
+	}
+}
+
+// ── DF-BUNKER-70: the drift pre-flight is a GATE, not a courtesy ────────────
+//
+// Before this row a failed pre-flight printed one warn line and the renewal
+// continued: on a daemon that predates RenewalDriftReport the agent was
+// destroyed and re-spawned with NO stale-reference report at all — the exact
+// outcome the pre-flight exists to prevent. The pre-flight now aborts the
+// renewal before the destroy; --skip-drift-check bypasses it deliberately and
+// --force overrides a failed check for emergency renewals.
+
+// driftAgent is an agent whose stored sshfs mount yields a parsable OLD home
+// (/home/bunker-eduos-agent), which is what makes the pre-flight run at all.
+func driftAgent() *v1.AgentSummary {
+	return &v1.AgentSummary{
+		AgentId:    "eduos-agent",
+		SshfsMount: "sshfs -o IdentityFile=/keys/eduos-agent bunker-eduos-agent@host:/home/bunker-eduos-agent /mnt/bunker/eduos-agent",
+	}
+}
+
+// TestRenew_DriftCheckUnsupported_Error proves the row's first criterion: a
+// daemon that does not support the drift-check RPC makes the renewal FAIL
+// with a clear error BEFORE anything is destroyed — no warn line and a
+// completed renewal.
+func TestRenew_DriftCheckUnsupported_Error(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	mock := &renewMockServer{
+		agent:         driftAgent(),
+		destroyStatus: "destroyed",
+		spawnAgentID:  "eduos-agent",
+		driftErr:      connect.NewError(connect.CodeUnimplemented, fmt.Errorf("renewal drift report is not available on this daemon")),
+	}
+	srv := newRenewTestServer(t, mock)
+	defer srv.Close()
+
+	output, execErr := runRenew(t, srv, "--agent-id", "eduos-agent")
+	if execErr == nil {
+		t.Fatalf("renew must FAIL when the daemon cannot serve the drift pre-flight; output:\n%s", output)
+	}
+	for _, want := range []string{
+		"ABORTED before destroying \"eduos-agent\"",
+		"does not support the renewal drift-check RPC",
+		"/home/bunker-eduos-agent",
+		"Nothing was destroyed",
+		"--skip-drift-check",
+		"--force",
+	} {
+		if !strings.Contains(execErr.Error(), want) {
+			t.Errorf("abort error missing %q — got: %v", want, execErr)
+		}
+	}
+
+	// The gate must come BEFORE the destroy: nothing destroyed, nothing spawned.
+	if mock.destroyCalled {
+		t.Error("the renewal destroyed the agent despite the unsupported drift pre-flight")
+	}
+	if mock.spawnRequested != nil {
+		t.Error("the renewal re-spawned the agent despite the unsupported drift pre-flight")
+	}
+	// The old degraded behavior (warn + continue) must be gone.
+	if strings.Contains(output, "drift pre-flight unavailable") {
+		t.Errorf("the degraded one-line warn is still emitted:\n%s", output)
+	}
+	if strings.Contains(output, "Renewed: agent eduos-agent") {
+		t.Errorf("renewal reported success despite the unsupported drift pre-flight:\n%s", output)
+	}
+}
+
+// TestRenew_SkipDriftCheckFlag proves --skip-drift-check bypasses the gate
+// DELIBERATELY: the command makes no RenewalDriftReport RPC at all, says so,
+// and completes the renewal on a daemon that cannot serve the check.
+func TestRenew_SkipDriftCheckFlag(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	mock := &renewMockServer{
+		agent:         driftAgent(),
+		destroyStatus: "destroyed",
+		spawnAgentID:  "eduos-agent",
+		driftErr:      connect.NewError(connect.CodeUnimplemented, fmt.Errorf("renewal drift report is not available on this daemon")),
+	}
+	srv := newRenewTestServer(t, mock)
+	defer srv.Close()
+
+	output, execErr := runRenew(t, srv, "--agent-id", "eduos-agent", "--skip-drift-check")
+	if execErr != nil {
+		t.Fatalf("--skip-drift-check must let the renewal proceed, got: %v", execErr)
+	}
+	if mock.driftCalled {
+		t.Error("--skip-drift-check must NOT issue the RenewalDriftReport RPC")
+	}
+	for _, want := range []string{
+		"SKIPPED (--skip-drift-check)",
+		"/home/bunker-eduos-agent",
+		"Renewed: agent eduos-agent",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("output missing %q, got:\n%s", want, output)
+		}
+	}
+	if !mock.destroyCalled {
+		t.Error("the renewal never destroyed the old instance")
+	}
+	if mock.spawnRequested == nil || mock.spawnRequested.GetAgentId() != "eduos-agent" {
+		t.Error("the renewal never re-spawned the stable agent id")
+	}
+}
+
+// TestRenew_ForceFlag proves --force is the emergency override: the pre-flight
+// still runs (and still fails on an old daemon), the failure is REPORTED with
+// the --force marker, and the renewal proceeds to destroy + re-spawn.
+func TestRenew_ForceFlag(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	mock := &renewMockServer{
+		agent:         driftAgent(),
+		destroyStatus: "destroyed",
+		spawnAgentID:  "eduos-agent",
+		driftErr:      connect.NewError(connect.CodeUnimplemented, fmt.Errorf("renewal drift report is not available on this daemon")),
+	}
+	srv := newRenewTestServer(t, mock)
+	defer srv.Close()
+
+	output, execErr := runRenew(t, srv, "--agent-id", "eduos-agent", "--force")
+	if execErr != nil {
+		t.Fatalf("--force must let the renewal proceed despite the failed pre-flight, got: %v", execErr)
+	}
+	if !mock.driftCalled {
+		t.Error("--force must still ATTEMPT the drift pre-flight (the failure has to be reported)")
+	}
+	for _, want := range []string{
+		"(warn: --force: continuing despite a failed drift pre-flight:",
+		"does not support the renewal drift-check RPC",
+		"Destroying agent eduos-agent",
+		"Renewed: agent eduos-agent",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("output missing %q, got:\n%s", want, output)
+		}
+	}
+	if !mock.destroyCalled {
+		t.Error("--force must carry the renewal through the destroy")
+	}
+	if mock.spawnRequested == nil || mock.spawnRequested.GetAgentId() != "eduos-agent" {
+		t.Error("--force must carry the renewal through the re-spawn of the stable id")
+	}
+}
+
+// TestRenew_DriftCheckFailed_Aborts proves the gate is not special-cased to
+// CodeUnimplemented: ANY failed pre-flight aborts by default (the report the
+// renewal is supposed to produce is unavailable either way).
+func TestRenew_DriftCheckFailed_Aborts(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	mock := &renewMockServer{
+		agent:         driftAgent(),
+		destroyStatus: "destroyed",
+		spawnAgentID:  "eduos-agent",
+		driftErr:      connect.NewError(connect.CodeInternal, fmt.Errorf("scan failed: no such directory")),
+	}
+	srv := newRenewTestServer(t, mock)
+	defer srv.Close()
+
+	_, execErr := runRenew(t, srv, "--agent-id", "eduos-agent")
+	if execErr == nil {
+		t.Fatal("a failed drift pre-flight must abort the renewal")
+	}
+	for _, want := range []string{"drift pre-flight FAILED", "no such directory", "Nothing was destroyed"} {
+		if !strings.Contains(execErr.Error(), want) {
+			t.Errorf("abort error missing %q — got: %v", want, execErr)
+		}
+	}
+	if mock.destroyCalled {
+		t.Error("the renewal destroyed the agent despite the failed pre-flight")
+	}
+}
+
+// TestRenew_DriftReportHitsStillRenew pins the OTHER half of the contract: the
+// report is REPORT-ONLY. A pre-flight that SUCCEEDS and finds stale references
+// must not read as a failure — the hits are printed and the renewal proceeds
+// (the operator rewrites them; the command has no authority to).
+func TestRenew_DriftReportHitsStillRenew(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	mock := &renewMockServer{
+		agent:         driftAgent(),
+		destroyStatus: "destroyed",
+		spawnAgentID:  "eduos-agent",
+		driftResp: &v1.RenewalDriftResponse{
+			AgentId:      "eduos-agent",
+			OldHome:      "/home/bunker-eduos-agent",
+			FilesScanned: 12,
+			Summary:      "drift: 1 stale reference in 12 files scanned",
+			Hits: []*v1.RenewalDriftHit{
+				{File: "/home/bunker-eduos-agent/.config/systemd/user/tick.service", Line: 4, Text: "ExecStart=/home/bunker-eduos-agent/bin/tick"},
+			},
+		},
+	}
+	srv := newRenewTestServer(t, mock)
+	defer srv.Close()
+
+	output, execErr := runRenew(t, srv, "--agent-id", "eduos-agent")
+	if execErr != nil {
+		t.Fatalf("a drift report WITH hits must not abort the renewal, got: %v", execErr)
+	}
+	if !strings.Contains(output, "1 stale reference in 12 files scanned") {
+		t.Errorf("output missing the drift summary, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Renewed: agent eduos-agent") {
+		t.Errorf("output missing the success line, got:\n%s", output)
+	}
+	if !mock.destroyCalled {
+		t.Error("the renewal must proceed after a successful report")
 	}
 }
 

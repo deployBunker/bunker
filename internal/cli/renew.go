@@ -154,11 +154,13 @@ func homeFromSSHFSMount(sshfsMount string) string {
 // instead of proceeding with a fresh identity.
 func NewRenewCommand() *cobra.Command {
 	var (
-		serverName string
-		agentID    string
-		ttl        string
-		preset     string
-		noDestroy  bool
+		serverName     string
+		agentID        string
+		ttl            string
+		preset         string
+		noDestroy      bool
+		skipDriftCheck bool
+		force          bool
 	)
 	cmd := &cobra.Command{
 		Use:   "renew --agent-id <agent-id>",
@@ -192,6 +194,14 @@ the state in full — the agent and its home are already gone — and carries
 two recovery facts: the exact 'bunker spawn <id>' command that re-spawns the
 same stable id, and the pre-renewal archive reminder (recipe step 0), which
 is the only copy of the home that survives such a failure.
+The pre-flight is a GATE, not a courtesy: a daemon that cannot serve it at
+all (an older bunkerd without the RenewalDriftReport RPC) answers
+CodeUnimplemented, and the renewal then ABORTS before the destroy with a
+named error — destroying the agent anyway would take the old home down with
+NO report of the stale references it holds. Two flags bypass it deliberately:
+--skip-drift-check (the check is not needed, e.g. a renewal of an agent that
+never wrote host-side state) and --force (emergency renewal: proceed even
+when the check fails).
 
 The daemon-side restore of what the old home held is the renewal operator's
 job — this command reports what will go stale and refuses to mint a new
@@ -273,19 +283,34 @@ Examples:
 			// references to the OLD home path. The scan runs through the
 			// daemon's RenewalDriftReport RPC (server-side, so it sees the
 			// host's real files) and is REPORTED, never auto-rewritten.
+			//
+			// DF-BUNKER-70: a failed pre-flight ABORTS the renewal. It used
+			// to be a one-line warning, so a daemon that predates the RPC
+			// renewed the agent anyway and took the old home down with no
+			// stale-reference report at all — the exact outcome the
+			// pre-flight exists to prevent. A daemon without the RPC is a
+			// HARD error unless the operator bypasses the gate deliberately
+			// (--skip-drift-check) or overrides a failed check (--force).
 			if oldHome != "" {
-				fmt.Fprintf(out, "Pre-flight drift report for %s (searching for %s):\n", agentID, oldHome)
-				dreq := connect.NewRequest(&v1.RenewalDriftRequest{AgentId: agentID, OldHome: oldHome})
-				if token != "" {
-					dreq.Header().Set("Authorization", "Bearer "+token)
-				}
-				dresp, derr := client.RenewalDriftReport(ctx, dreq)
-				if derr != nil {
-					// The pre-flight is best-effort reporting: a daemon that
-					// predates the RPC warns instead of blocking the renewal.
-					fmt.Fprintf(out, "  (warn: drift pre-flight unavailable: %v)\n", derr)
-				} else {
-					fmt.Fprintln(out, indentLines(dresp.Msg.GetSummary(), "  "))
+				switch {
+				case skipDriftCheck:
+					_, _ = fmt.Fprintf(out, "Pre-flight drift report for %s SKIPPED (--skip-drift-check): %s is not scanned for stale references\n", agentID, oldHome)
+				default:
+					_, _ = fmt.Fprintf(out, "Pre-flight drift report for %s (searching for %s):\n", agentID, oldHome)
+					dreq := connect.NewRequest(&v1.RenewalDriftRequest{AgentId: agentID, OldHome: oldHome})
+					if token != "" {
+						dreq.Header().Set("Authorization", "Bearer "+token)
+					}
+					dresp, derr := client.RenewalDriftReport(ctx, dreq)
+					if derr != nil {
+						failure := driftPreflightFailure(derr, agentID, oldHome)
+						if !force {
+							return failure
+						}
+						_, _ = fmt.Fprintf(out, "  (warn: --force: continuing despite a failed drift pre-flight: %v)\n", failure)
+					} else {
+						_, _ = fmt.Fprintln(out, indentLines(dresp.Msg.GetSummary(), "  "))
+					}
 				}
 			}
 
@@ -380,7 +405,36 @@ Examples:
 	cmd.Flags().StringVar(&preset, "preset", "", "Safety preset for the re-spawn: open, standard, hardened (default: BUNKERD_SAFETY_PRESET, then the server's config, then the built-in default standard (GAP-117))")
 	cmd.Flags().BoolVar(&noDestroy, "no-destroy", false,
 		"Report-only arm: run the drift pre-flight and exit WITHOUT destroying or re-spawning (safe against a running agent; no agent config is changed)")
+	cmd.Flags().BoolVar(&skipDriftCheck, "skip-drift-check", false, "Skip the pre-flight drift check entirely (no stale-reference report; use when the agent's old home holds no host-side state, or on a daemon that cannot serve the check)")
+	cmd.Flags().BoolVar(&force, "force", false, "Proceed even when the pre-flight drift check FAILS (emergency renewals: the stale-reference report is unavailable and the renewal deliberately continues)")
 	return cmd
+}
+
+// driftPreflightFailure builds the DF-BUNKER-70 abort error for a failed
+// RenewalDriftReport call. The two failure classes are named apart because
+// the operator's remedy differs:
+//
+//   - CodeUnimplemented: the daemon predates the RPC, so no report is
+//     possible at all — upgrade the daemon (or bypass with --skip-drift-check
+//     / --force);
+//   - anything else: the check exists but this run could not complete —
+//     retry, or override deliberately with --force.
+//
+// Both carry the agent id, the old home that would go stale and the fact
+// that NOTHING was destroyed (the caller returns the error before the
+// destroy step).
+func driftPreflightFailure(derr error, agentID, oldHome string) error {
+	if connect.CodeOf(derr) == connect.CodeUnimplemented {
+		return fmt.Errorf("renewal ABORTED before destroying %q: this daemon does not support the renewal drift-check RPC "+
+			"(RenewalDriftReport is unimplemented on it), so the renewal cannot report the stale references the old home %s "+
+			"holds (systemd --user units, cron entries, shell/env and config files). Nothing was destroyed. "+
+			"Upgrade bunkerd to a build that serves RenewalDriftReport, or bypass the pre-flight deliberately: "+
+			"--skip-drift-check (no check needed) or --force (emergency renewal): %w",
+			agentID, oldHome, derr)
+	}
+	return fmt.Errorf("renewal ABORTED before destroying %q: the drift pre-flight FAILED for old home %s, so the renewal "+
+		"cannot report what will go stale. Nothing was destroyed. Retry the pre-flight, or bypass it deliberately with "+
+		"--skip-drift-check / --force: %w", agentID, oldHome, derr)
 }
 
 // indentLines prefixes every non-empty line of s with prefix (the drift
