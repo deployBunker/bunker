@@ -1,0 +1,53 @@
+{
+  "tick_id": "bunker-foreman-2026-10-26-22-52-23",
+  "block_id": "INT-CI-084",
+  "block_selection": "resume-first/90%-done block ranked first by block_drive; implementation 90babb28 is already contained in origin/main",
+  "wave_budget": 6,
+  "host": {
+    "nproc": 16,
+    "loadavg_1m": 11.75,
+    "computed_slots": 5,
+    "effective_slots": 5
+  },
+  "path": "SERIAL FALLBACK / verification-only",
+  "rows": [
+    {
+      "id": "INT-CI-084",
+      "status_at_selection": "pending",
+      "worktree": "none:verification-only",
+      "branch": "none:verification-only",
+      "dispatch": "none:implementation already landed",
+      "commit_under_test": "90babb28dac987b5b84bc10a4a8deb2d3eb2ce2d",
+      "reason": "The row's acceptance is verification of an already-landed fix; no source worker is valid."
+    }
+  ],
+  "worker_count": 0,
+  "gitreins": {
+    "task_id": "INT-CI-084",
+    "status": "complete",
+    "tier1": "PASS",
+    "tier2": "pending-readback/no new verdict artifact observed before closeout",
+    "completion_log": "/tmp/bunker-foreman-2026-10-26-22-52-23-gitreins-complete.log"
+  },
+  "local_gate": {
+    "command": "bash -n scripts/fleet-upgrade.sh && go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4",
+    "result": "PASS"
+  },
+  "remote_ci": {
+    "repo": "deployBunker/bunker",
+    "result": "in_progress",
+    "latest_run": "40411562361",
+    "latest_head": "7f815925bac9d6ebf47bfcfbb4402d9fd8f3c37b",
+    "note": "Recent completed runs 40411562361's predecessor window was successful; the currently listed main run for dcc6263c was in_progress at observation. Prior 40266638468 runner ENOSPC remains classified in INT-CI-084 and was not re-filed."
+  },
+  "off_by_one": {
+    "discover": "POST /api/v1/problems/discover problem_class=port_pool -> not_found",
+    "submit": "none: no non-trivial debugging or implementation fix was performed"
+  },
+  "duckbrain": "write unavailable: ~/.duckbrain/bunker.token absent",
+  "open": [
+    "INT-CI-084 remains pending because its original CI acceptance is not satisfied by local verification alone; owner ruling permits local verification but does not rewrite the row's acceptance.",
+    "The three pre-existing untracked wave manifests from earlier ticks were not swept into this closeout."
+  ],
+  "trace": "ch:trace block=INT-CI-084 wave=.coding-hermes/waves/bunker-foreman-2026-10-26-22-52-23.json row=INT-CI-084 spec=none:owner-ruling-and-existing-commit test=scripts/fleet-upgrade.sh--dry-run doc=none:verification-only evidence=.coding-hermes/evidence/INT-CI-084-2026-10-26.json witness=local:build-vet-test+github:run-40411562361 verdict=none:verification-only commit=none:verification-only memory=none:duckbrain-token-absent"
+}
