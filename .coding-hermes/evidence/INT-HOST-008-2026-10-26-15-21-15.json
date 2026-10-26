@@ -1,0 +1,30 @@
+{
+  "tick_id": "bunker-foreman-2026-10-26-15-21-15",
+  "row": "INT-HOST-008",
+  "host": "bunker-mvp",
+  "binary": "bunker 0.2.1 commit eab25686 built 2026-10-23T22:19:45Z",
+  "command": "ssh -o BatchMode=yes -o ConnectTimeout=10 bunker-mvp 'hostname; bunker --version; bunker reap --dry-run with before/after AppArmor profile count and rc assertions'",
+  "result": {
+    "hostname": "bunker-mvp",
+    "version_rc": 0,
+    "dry_run_rc": 0,
+    "before_profiles": 289,
+    "after_profiles": 289,
+    "would_remove_apparmor_profiles": 257,
+    "kept_live_apparmor_profiles": 32,
+    "unmanaged_apparmor_profiles": 102,
+    "would_remove_homes": 0,
+    "kept_homes": 38,
+    "would_remove_linger_entries": 0,
+    "kept_linger_entries": 6,
+    "would_remove_runtime_dirs": 56,
+    "kept_runtime_dirs": 32,
+    "mutation_run": false
+  },
+  "owner_gate": "Explicit owner authorization for destructive bunker-mvp bunker reap --apply is absent; no mutation was run.",
+  "local_gate": "PASS: go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4",
+  "remote_ci": "failure on HEAD cc28252d0cd7af9be002e71d76b780f2cf99c2a0, run 40347768317; existing board row INT-CI-084 records the self-hosted runner /tmp No space left on device failure.",
+  "off_by_one": "none: verification-only; no debugging or fix design",
+  "status": "pending-owner-block",
+  "trace": "ch:trace block=INT-HOST-011 wave=.coding-hermes/waves/bunker-foreman-2026-10-26-15-21-15.json row=INT-HOST-008 evidence=.coding-hermes/evidence/INT-HOST-008-2026-10-26-15-21-15.json witness=live:bunker-mvp:eab25686-reap-dry-run verdict=none:owner-block commit=none:owner-block"
+}
