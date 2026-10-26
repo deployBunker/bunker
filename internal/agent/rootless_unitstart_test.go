@@ -55,7 +55,7 @@ func TestINTCI069_DockerUnitStartFailureRetry(t *testing.T) {
 		installerRuns []bool
 		// installerFailOutput is what a scripted failing call prints.
 		installerFailOutput string
-		// probeState, when non-empty, is what dockerUnitStateProbe answers.
+		// probeState, when non-empty, is what dockerServiceUnitStateProbe answers.
 		probeState string
 		// sessionScriptsToFail are script tails whose session call must
 		// fail (simulating e.g. a non-converging reset).
@@ -128,28 +128,28 @@ func TestINTCI069_DockerUnitStartFailureRetry(t *testing.T) {
 			home := h.userHome(t)
 			h.install(t, t.TempDir())
 
-			// dockerUnitStateProbe rides the session seam in production
-			// (userSessionRunner); point it at the fake session runner so
-			// the probe observes this host's session state.
-			prevProbe := dockerUnitStateProbe
+			// dockerServiceUnitStateProbe rides the session seam in
+			// production (userSessionRunner); point it at the fake session
+			// runner so the probe observes this host's session state.
+			prevProbe := dockerServiceUnitStateProbe
 			if tc.probeState != "" {
 				// The table demands a specific unit state: answer it
 				// directly (with the state's own exit status, as real
 				// `systemctl --user is-active` reports non-active states).
-				dockerUnitStateProbe = func(context.Context, string, string) (string, error) {
+				dockerServiceUnitStateProbe = func(context.Context, string, string) (string, error) {
 					return tc.probeState, errors.New("exit status 1")
 				}
 			} else {
 				// Otherwise the probe rides the session seam in production
 				// (userSessionRunner); point it at the fake session runner
 				// so the probe observes this host's session state.
-				dockerUnitStateProbe = func(ctx context.Context, username, runtimeDir string) (string, error) {
+				dockerServiceUnitStateProbe = func(ctx context.Context, username, runtimeDir string) (string, error) {
 					out, err := userSessionRunner(ctx, username, runtimeDir,
-						sessionCommand(runtimeDir, dockerUnitProbeCmd))
+						sessionCommand(runtimeDir, dockerServiceUnitProbeCmd))
 					return strings.TrimSpace(string(out)), err
 				}
 			}
-			t.Cleanup(func() { dockerUnitStateProbe = prevProbe })
+			t.Cleanup(func() { dockerServiceUnitStateProbe = prevProbe })
 
 			// Session scripts that must fail: wrap the host's session
 			// runner with a per-script fault injector.
@@ -254,11 +254,11 @@ func TestINTCI069_ResetSkipOnUnprovableState(t *testing.T) {
 
 	// Probe answers the unit-not-found text (the installer's own probe of a
 	// vanished unit) — not `failed`, so no reset.
-	prevProbe := dockerUnitStateProbe
-	dockerUnitStateProbe = func(context.Context, string, string) (string, error) {
+	prevProbe := dockerServiceUnitStateProbe
+	dockerServiceUnitStateProbe = func(context.Context, string, string) (string, error) {
 		return "unknown", errors.New("exit status 4")
 	}
-	t.Cleanup(func() { dockerUnitStateProbe = prevProbe })
+	t.Cleanup(func() { dockerServiceUnitStateProbe = prevProbe })
 
 	if err := installRootlessDocker(context.Background(), h.username, home, uuLogger()); err != nil {
 		t.Fatalf("installRootlessDocker() error = %v%s", err, h.callLog())
@@ -284,11 +284,11 @@ func TestINTCI069_ResetPathRunsWhenFailed(t *testing.T) {
 	home := h.userHome(t)
 	h.install(t, t.TempDir())
 
-	prevProbe := dockerUnitStateProbe
-	dockerUnitStateProbe = func(context.Context, string, string) (string, error) {
+	prevProbe := dockerServiceUnitStateProbe
+	dockerServiceUnitStateProbe = func(context.Context, string, string) (string, error) {
 		return dockerUnitFailed, errors.New("exit status 1") // the state's own exit status
 	}
-	t.Cleanup(func() { dockerUnitStateProbe = prevProbe })
+	t.Cleanup(func() { dockerServiceUnitStateProbe = prevProbe })
 
 	if err := installRootlessDocker(context.Background(), h.username, home, uuLogger()); err != nil {
 		t.Fatalf("installRootlessDocker() error = %v%s", err, h.callLog())

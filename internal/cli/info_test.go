@@ -323,3 +323,82 @@ func TestInfoCommand_MinimalAgent(t *testing.T) {
 		t.Error("output should not contain Public URL for minimal agent")
 	}
 }
+
+// writeInfoTestConfig is the shared fixture of the DF-BUNKER-108 tests: a
+// config pointing at srv under alias "test".
+func writeInfoTestConfig(t *testing.T, srvURL string) {
+	t.Helper()
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+	t.Setenv(SessionTargetEnvVar, "")
+	cfg := &CLIConfig{
+		ActiveServer: "test",
+		Servers: map[string]ServerEntry{
+			"test": {URL: srvURL, Token: "test-cli-token"},
+		},
+	}
+	if err := SaveCLIConfig(cfg); err != nil {
+		t.Fatalf("SaveCLIConfig: %v", err)
+	}
+}
+
+// TestInfoCommand_DockerDegradedQualifierOnlyOnRealDegradation (DF-BUNKER-108)
+// pins the render contract: the qualifier the daemon computed from the
+// agent's ACTUAL docker health (per-agent socket + bunker-docker-<id> unit)
+// is rendered verbatim. The CLI never qualifies, never strips.
+func TestInfoCommand_DockerDegradedQualifierOnlyOnRealDegradation(t *testing.T) {
+	mock := &infoMockServer{
+		agent: &v1.AgentSummary{
+			AgentId: "df108-live",
+			Status:  "running (docker degraded)",
+		},
+	}
+	srv := newTestServer(t, mock)
+	defer srv.Close()
+	writeInfoTestConfig(t, srv.URL)
+
+	cmd := NewInfoCommand()
+	cmd.SetArgs([]string{"--server", "test", "df108-live"})
+
+	output := captureStdout(t, func() {
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+	})
+
+	if !strings.Contains(output, "Status:           running (docker degraded)") {
+		t.Errorf("output missing the daemon-computed degraded status, got:\n%s", output)
+	}
+}
+
+// TestInfoCommand_HealthyAgentNoDegradedQualifier (DF-BUNKER-108) is the
+// incident arm: an agent whose docker serves (the daemon reports plain
+// "running") must render exactly "running" — no qualifier invented or
+// echoed by the CLI.
+func TestInfoCommand_HealthyAgentNoDegradedQualifier(t *testing.T) {
+	mock := &infoMockServer{
+		agent: &v1.AgentSummary{
+			AgentId: "df108-ok",
+			Status:  "running",
+		},
+	}
+	srv := newTestServer(t, mock)
+	defer srv.Close()
+	writeInfoTestConfig(t, srv.URL)
+
+	cmd := NewInfoCommand()
+	cmd.SetArgs([]string{"--server", "test", "df108-ok"})
+
+	output := captureStdout(t, func() {
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+	})
+
+	if !strings.Contains(output, "Status:           running\n") {
+		t.Errorf("output missing the plain running status, got:\n%s", output)
+	}
+	if strings.Contains(output, "docker degraded") {
+		t.Errorf("healthy agent must not render the degraded qualifier, got:\n%s", output)
+	}
+}

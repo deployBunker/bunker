@@ -94,6 +94,13 @@ Examples:
 			fmt.Println()
 			fmt.Printf("══════════ Agent: %s ══════════\n", a.AgentId)
 			fmt.Println()
+			// DF-BUNKER-72/DF-BUNKER-108: the daemon qualifies the status with
+			// the agent's ACTUAL docker health before this renders it — the
+			// qualifier is derived from the agent's per-agent socket
+			// (/run/bunker/<id>/docker.sock) and serving unit
+			// (bunker-docker-<id>), never from the installer's per-user
+			// docker.service (failed by construction on DF-BUNKER-96 hosts).
+			// The CLI renders the status verbatim; no client-side qualifier.
 			fmt.Printf("  Status:           %s\n", a.Status)
 			if a.CreatedAt != "" {
 				fmt.Printf("  Created At:       %s\n", a.CreatedAt)
