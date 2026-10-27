@@ -1,0 +1,62 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-12-09-01",
+  "tick_number": 670,
+  "type": "verification-only",
+  "block": "INT-HOST-011",
+  "task_id": "INT-HOST-008",
+  "host": "bunker-mvp",
+  "tested_commit": "324b6561791d4929d783d89421513e2e6b4da878",
+  "commands": [
+    "ssh -o BatchMode=yes -o ConnectTimeout=10 bunker-mvp 'hostname; bunker version; bunker reap --dry-run'",
+    "ssh -o BatchMode=yes -o ConnectTimeout=10 bunker-mvp 'systemctl show bunkerd --property=ActiveState,SubState,MainPID,ExecMainStartTimestamp,NRestarts --no-pager; df -h /; journalctl -u bunkerd -n 40 --no-pager'",
+    "ssh -o BatchMode=yes -o ConnectTimeout=10 bunker-mvp 'bunker status --server bunker-mvp; bunker list --server bunker-mvp'"
+  ],
+  "result": {
+    "remote_rc": 0,
+    "hostname": "bunker-mvp",
+    "binary": "bunker 0.2.1, commit eab25686, built 2026-10-23T22:19:45Z, go1.26.10, linux/amd64",
+    "dry_run": true,
+    "mutation_run": false,
+    "apparmor_profiles_would_remove_user_gone": 297,
+    "apparmor_profiles_kept_live_user": 3,
+    "apparmor_profiles_unmanaged": 102,
+    "agent_homes_would_remove_user_gone": 0,
+    "agent_homes_kept_live_user": 3,
+    "linger_would_remove_user_gone": 0,
+    "linger_kept_live_user": 3,
+    "runtime_dirs_would_remove_user_gone": 96,
+    "runtime_dirs_kept_live_user": 3,
+    "profiles_before_after": "not emitted by this CLI invocation; prior same-tick control output was not reused",
+    "status": "ONLINE",
+    "registered_agents": 2,
+    "status_residue": "0 orphan users, 0 orphan homes, 20 orphan keys, 0 stale linger entries",
+    "daemon": {
+      "active_state": "active",
+      "sub_state": "running",
+      "main_pid": 677296,
+      "n_restarts": 0
+    },
+    "disk": "24% used (34G used, 110G available)",
+    "ports": {"ssh": "open", "rest_18080": "closed_from_control_host", "grpc_19090": "closed_from_control_host"}
+  },
+  "owner_blocker": "Explicit owner authorization for destructive bunker-mvp bunker reap --apply remains absent; --apply was not run.",
+  "local_gate": {
+    "command": "go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4",
+    "result": "PASS",
+    "exit_code": 0
+  },
+  "remote_ci_precloseout": {
+    "repository": "deployBunker/bunker",
+    "result": "green",
+    "runs": [
+      {"id": 40499452986, "head_sha": "324b6561791d4929d783d89421513e2e6b4da878", "conclusion": "success"},
+      {"id": 40485630054, "head_sha": "c3bfd36ebf9e24f3566e03eff1f885f478e00ab4", "conclusion": "success"},
+      {"id": 40483530467, "head_sha": "4cafb4d923cd78daf1a3c00887afecf8f28de9a9", "conclusion": "success"}
+    ]
+  },
+  "gitreins": "none: verification-only owner-gated destructive action; no implementation lifecycle created",
+  "off_by_one": "none: verification-only; no debugging or fix design",
+  "duckbrain": "write unavailable: /home/kara/.duckbrain/bunker.token absent",
+  "status": "pending-owner-block",
+  "trace": "ch:trace block=INT-HOST-011 wave=.coding-hermes/waves/bunker-foreman-2026-10-27-12-09-01.json row=INT-HOST-008 spec=none:owner-gated-live-cleanup test=none:live-dry-run doc=none:owner-operated-action evidence=.coding-hermes/evidence/INT-HOST-008-2026-10-27-12-09-01.json witness=live:bunker-mvp:eab25686-reap-dry-run verdict=none:verification-only commit=none:owner-block memory=none:duckbrain-token-absent"
+}
