@@ -1,0 +1,38 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-22-18-32",
+  "project": "bunker",
+  "block_id": "INT-HOST-011",
+  "wave_budget": 12,
+  "path": "SERIAL FALLBACK / verification-only owner-gated action",
+  "wave_size": 0,
+  "host": {
+    "nproc": 16,
+    "loadavg_1m": 6.02,
+    "computed_slots": 6,
+    "effective_slots": 6
+  },
+  "rows": [
+    {
+      "id": "INT-HOST-008",
+      "status": "pending-owner-block",
+      "worktree": null,
+      "branch": null,
+      "brief": null,
+      "dispatch": "none: destructive bunker-mvp bunker reap --apply requires explicit owner authorization",
+      "owner_blocker": "Explicit owner authorization for bunker-mvp bunker reap --apply remains absent; --apply was not run.",
+      "verification_command": "ssh -o BatchMode=yes -o ConnectTimeout=10 bunker-mvp 'set -o pipefail; hostname; bunker version; before=$(find /etc/apparmor.d -maxdepth 1 -type f -name \\\"home.*.bin.rootlesskit\\\" | wc -l); out=$(bunker reap --dry-run); rc=$?; after=$(find /etc/apparmor.d -maxdepth 1 -type f -name \\\"home.*.bin.rootlesskit\\\" | wc -l); printf \\\"before_profiles=%s after_profiles=%s rc=%s\\\\n%s\\\\n\\\" \\\"$before\\\" \\\"$after\\\" \\\"$rc\\\" \\\"$out\\\"; test \\\"$before\\\" = \\\"$after\\\"; test \\\"$rc\\\" -eq 0'",
+      "witness": "live:bunker-mvp:bunker-0.2.1-eab25686:reap-dry-run:rc0",
+      "evidence": "/tmp/bunker-int-host-008-2026-10-27-22-18-32.txt"
+    }
+  ],
+  "rows_dispatched": [],
+  "rows_landed": [],
+  "rows_verified": ["INT-HOST-008"],
+  "next_owner_action": "Explicitly authorize or decline deletion of the reported orphan AppArmor/runtime state; do not run --apply without that decision.",
+  "local_gate": "PASS (exit 0): go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4 && bash -n e2e-full-battery.sh",
+  "remote_ci": "green: deployBunker/bunker latest three completed runs all conclusion=success; latest head c26b85f0 run created 2026-10-27T22:16:35Z",
+  "gitreins": "none: verification-only owner-gated destructive action; no implementation lifecycle created",
+  "off_by_one": "none: verification-only; no debugging or fix design",
+  "duckbrain": "pending write/read-back",
+  "trace": "ch:trace block=INT-HOST-011 row=INT-HOST-008 spec=none:owner-gated-live-cleanup wave=.coding-hermes/waves/bunker-foreman-2026-10-27-22-18-32.json#verification test=none:live-dry-run doc=none:owner-operated-action evidence=/tmp/bunker-int-host-008-2026-10-27-22-18-32.txt witness=live:bunker-mvp:bunker-0.2.1-eab25686:reap-dry-run:rc0 verdict=none:verification-only commit=none:owner-block memory=/project/bunker/foreman/ticks/bunker-foreman-2026-10-27-22-18-32"
+}
