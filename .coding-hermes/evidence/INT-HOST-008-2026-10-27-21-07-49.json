@@ -1,0 +1,26 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-21-07-49",
+  "block": "INT-HOST-011",
+  "row": "INT-HOST-008",
+  "tested_commit": "7f451cc1",
+  "type": "verification-only",
+  "status": "pending-owner-block",
+  "owner_blocker": "Explicit owner authorization for destructive bunker-mvp bunker reap --apply remains absent; --apply was not run.",
+  "commands": [
+    "ssh -o BatchMode=yes -o ConnectTimeout=10 bunker-mvp 'hostname; bunker version; bunker reap --dry-run'",
+    "go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4 && bash -n e2e-full-battery.sh",
+    "gh run list --repo deployBunker/bunker --limit 3 --json status,conclusion,displayTitle,headBranch,createdAt"
+  ],
+  "results": {
+    "live_probe": "PASS: rc=0; bunker-mvp; bunker 0.2.1 commit eab25686 built 2026-10-23T22:19:45Z; dry-run no changes written; 297 AppArmor profiles would remove, 7 kept live-user profiles, 102 unmanaged; 0 homes and 0 linger entries would remove; 96 runtime dirs would remove.",
+    "local_gate": "PASS (exit 0): go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4 && bash -n e2e-full-battery.sh",
+    "remote_ci": "green before closeout: latest three completed deployBunker/bunker runs all conclusion=success; run titles were foreman tick 677 header/counters/owner-gate."
+  },
+  "evidence_transcript": ".coding-hermes/evidence/INT-HOST-008-2026-10-27-21-07-49-probe.txt",
+  "gitreins": "none: verification-only owner-gated destructive action; no implementation lifecycle created",
+  "off_by_one": "none: verification-only; no debugging or fix design",
+  "duckbrain": "write unavailable: /home/kara/.duckbrain/bunker.token absent; no valid MCP write invoked",
+  "next_owner_action": "Owner must explicitly authorize the live-host deletion before bunker-mvp bunker reap --apply is run.",
+  "trace": "ch:trace block=INT-HOST-011 row=INT-HOST-008 spec=none:owner-gated-live-cleanup wave=.coding-hermes/waves/bunker-foreman-2026-10-27-21-07-49.json#verification test=none:live-dry-run doc=none:owner-operated-action evidence=.coding-hermes/evidence/INT-HOST-008-2026-10-27-21-07-49.json witness=live:bunker-mvp:eab25686-reap-dry-run:rc0 verdict=none:verification-only commit=none:owner-block memory=none:duckbrain-token-absent",
+  "tier": "T3"
+}
