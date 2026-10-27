@@ -1,0 +1,22 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-05-39-32",
+  "block": "INT-HOST-011",
+  "wave_budget": 12,
+  "host": {"nproc": 16, "loadavg_1m": 3.8, "computed_slots": 6, "effective_slots": 6},
+  "path": "SERIAL FALLBACK / verification-only",
+  "rows_considered": ["INT-HOST-008"],
+  "ready_rows": ["INT-HOST-008"],
+  "rows_dispatched": [],
+  "rows_landed": [],
+  "rows_verified": ["INT-HOST-008"],
+  "reason": "The resume-first block has one ready row and it is an owner-gated destructive live-host cleanup. Stable dry-run evidence from 2026-10-27 05:19:23 remains current; explicit authorization for bunker-mvp bunker reap --apply is absent, so no implementation worker, worktree, or GitReins implementation lifecycle is valid.",
+  "probe_reused": true,
+  "evidence": ".coding-hermes/evidence/INT-HOST-008-2026-10-27-05-39-32.json",
+  "local_gate": "PASS: go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4",
+  "remote_ci": "green: latest three deployBunker/bunker main runs completed success; newest observed run was prior closeout HEAD 7831f99a.",
+  "gitreins": "none:verification-only owner-gated destructive action; no implementation lifecycle created",
+  "off_by_one": "none:verification-only; no debugging or fix design",
+  "owner_blocker": "Explicit owner authorization for destructive bunker-mvp bunker reap --apply remains absent; --apply was not run.",
+  "status": "pending-owner-block",
+  "trace": "ch:trace block=INT-HOST-011 wave=.coding-hermes/waves/bunker-foreman-2026-10-27-05-39-32.json row=INT-HOST-008 spec=none:owner-gated-live-cleanup test=none:live-dry-run-reused doc=none:owner-operated-action evidence=.coding-hermes/evidence/INT-HOST-008-2026-10-27-05-39-32.json witness=live:bunker-mvp:eab25686-reap-dry-run verdict=none:verification-only commit=none:owner-block memory=none:duckbrain-token-absent"
+}

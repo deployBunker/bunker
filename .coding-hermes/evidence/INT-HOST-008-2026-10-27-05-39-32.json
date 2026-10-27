@@ -1,0 +1,27 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-05-39-32",
+  "row": "INT-HOST-008",
+  "block": "INT-HOST-011",
+  "host": "bunker-mvp",
+  "tested_commit": "7831f99a007b04dacdca5567b5cb53e9864d8e56",
+  "verification_mode": "verification-only",
+  "probe_reused": true,
+  "reused_evidence": ".coding-hermes/evidence/INT-HOST-008-2026-10-27-05-19-23.json",
+  "reused_witness": "live:bunker-mvp:eab25686-reap-dry-run",
+  "reused_result": "bunker 0.2.1 commit eab25686; dry-run rc=0; profiles preserved 303 -> 303; 297 AppArmor profiles would remove, 6 live-user profiles kept, 102 unmanaged; 0 homes and 0 linger entries would remove; 96 runtime dirs would remove; no mutation.",
+  "owner_blocker": "Explicit owner authorization for destructive bunker-mvp bunker reap --apply remains absent; --apply was not run.",
+  "local_gate": {
+    "command": "go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4",
+    "result": "PASS",
+    "exit_code": 0
+  },
+  "remote_ci": {
+    "repository": "deployBunker/bunker",
+    "result": "green",
+    "runs": "latest three main runs completed success; newest observed run was the exact prior closeout HEAD 7831f99a"
+  },
+  "gitreins": "none:verification-only owner-gated destructive action; no implementation lifecycle created",
+  "off_by_one": "none:verification-only; no debugging or fix design",
+  "status": "pending-owner-block",
+  "trace": "ch:trace block=INT-HOST-011 wave=.coding-hermes/waves/bunker-foreman-2026-10-27-05-39-32.json row=INT-HOST-008 spec=none:owner-gated-live-cleanup test=none:live-dry-run-reused doc=none:owner-operated-action evidence=.coding-hermes/evidence/INT-HOST-008-2026-10-27-05-39-32.json witness=live:bunker-mvp:eab25686-reap-dry-run verdict=none:verification-only commit=none:owner-block memory=none:duckbrain-token-absent"
+}
