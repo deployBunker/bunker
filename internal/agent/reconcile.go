@@ -85,6 +85,16 @@ type ReconcileReport struct {
 	// reported here, in the refusal log line, and in the completion log line
 	// because a bound nobody can read is not a bound.
 	Refused int `json:"refused,omitempty"`
+	// PortPoolReleased (FLEET-INFRA-1) counts allocator reservations the
+	// port-pool drift sweep dropped: an agent id holding a port sub-range
+	// with NO tracker record. The allocator is in-memory, so a teardown path
+	// that skips Free leaks the range until restart, and a restart replays
+	// from the registry instead of healing memory — without this sweep the
+	// pool could only ever shrink between boots (27 exhaustion observations
+	// across 15 projects with 1-2 agents live). The sweep runs after the
+	// replay walk settles, again after the orphan walk, and on every TTL
+	// reaper tick; each release logs the agent id and the exact range.
+	PortPoolReleased int `json:"port_pool_released,omitempty"`
 }
 
 // Reconcile replays the durable registry against system state and waits for
@@ -245,6 +255,14 @@ func (m *AgentManager) reconcile(ctx context.Context, asyncOrphans bool) (Reconc
 			"system_user", sa.Username)
 	}
 
+	// FLEET-INFRA-1: the replay walk has settled — every surviving record
+	// now holds both its reservation and its tracker record (restoreAgent
+	// releases the reservation when registration fails). Sweep the pool for
+	// drift before the orphan walk starts: a reservation with no tracker
+	// owner here is a leak from a pre-restart teardown path, and this is the
+	// startup reconciliation that hands it back.
+	rep.PortPoolReleased += len(m.sweepPortPoolDrift())
+
 	// (3): orphans — system users the registry does not know as live.
 	//
 	// INT-CI-043: this is the SLOW phase (adopt/destroy per orphan; destroy
@@ -345,6 +363,13 @@ func (m *AgentManager) reconcile(ctx context.Context, asyncOrphans bool) (Reconc
 			m.logger.Info("registry reconcile: destroyed orphan agent",
 				"action", "destroy", "agent_id", sa.AgentID, "system_user", sa.Username)
 		}
+		// FLEET-INFRA-1: second sweep, after the walk settled the tracker
+		// (adoptions registered, failed adopts dropped, destroys unregistered).
+		// Running it here covers adoptions that failed to persist (their
+		// rollback released the range, but this pass is the proof) and the
+		// residue of any partial walk. Counted into the SAME final report the
+		// walk returns, so one number reaches the startup log and tests.
+		final.PortPoolReleased += len(m.sweepPortPoolDrift())
 		return final
 	}
 	if asyncOrphans {
@@ -359,6 +384,7 @@ func (m *AgentManager) reconcile(ctx context.Context, asyncOrphans bool) (Reconc
 				"foreign", final.Foreign,
 				"unproven", final.Unproven,
 				"refused", final.Refused,
+				"port_pool_released", final.PortPoolReleased,
 			)
 			finalCh <- final
 			close(finalCh)
@@ -484,6 +510,48 @@ func (m *AgentManager) dropHalfManagedState(agentID string) {
 	if m.portAlloc != nil && m.portAlloc.Has(agentID) {
 		m.portAlloc.Free(agentID)
 	}
+}
+
+// sweepPortPoolDrift (FLEET-INFRA-1) releases every allocator reservation
+// whose agent id has NO tracker record — the drift sweep that keeps the
+// in-memory port pool honest. The allocator's state lives only in process
+// memory, so a teardown path that skips Free leaks its range until restart,
+// and a restart replays from the registry rather than healing memory: the
+// pool could only ever shrink between boots, which is how deployments ended
+// at "pool exhausted" with 1-2 agents live (27 observations across 15
+// projects). The sweep is authoritative about MEMORY, never about the host:
+// it releases reservations, it never touches users or homes — whether an
+// agent should exist is the registry/system reconciliation's decision, which
+// is why every caller runs this only AFTER that walk has settled the tracker.
+// During replay the tracker is mid-rebuild (restoreAgent reserves the port
+// range BEFORE registering the tracker record), so a sweep inside that
+// window would release reservations that are about to be owned — hence the
+// post-walk placement at every call site.
+//
+// Deadlock note: the allocator lock is taken and released inside
+// ReconcileFrom/HeldRanges; the only lock acquired while holding it is the
+// tracker's read lock (via the exists oracle), and no tracker method ever
+// calls back into the allocator — no inversion exists.
+func (m *AgentManager) sweepPortPoolDrift() (released []string) {
+	if m.portAlloc == nil {
+		return nil
+	}
+	before := map[string]resource.HeldRange{}
+	for _, h := range m.portAlloc.HeldRanges() {
+		before[h.AgentID] = h
+	}
+	released = m.portAlloc.ReconcileFrom(func(agentID string) bool {
+		return m.tracker.Get(agentID) != nil
+	})
+	for _, id := range released {
+		h := before[id]
+		m.logger.Warn("port-pool drift sweep: released reservation with no tracked agent",
+			"action", "port-pool-release",
+			"agent_id", id,
+			"released_range", fmt.Sprintf("%d-%d", h.Start, h.End),
+			"pool_available_after", m.portAlloc.Available())
+	}
+	return released
 }
 
 // logForeignOrphanSkip emits the loud skip warning for an orphan this daemon

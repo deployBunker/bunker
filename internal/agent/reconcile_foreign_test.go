@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/deployBunker/bunker/internal/config"
+	"github.com/deployBunker/bunker/internal/resource"
 )
 
 // foreignManager wires a manager to a temp durable registry with a real port
@@ -202,6 +203,14 @@ func TestReconcile_FailClosedOrphansAreStillDestroyed(t *testing.T) {
 				}
 				if err := m.portAlloc.Restore("holder", start, end); err != nil {
 					t.Fatalf("pre-reserve holder range: %v", err)
+				}
+				// FLEET-INFRA-1: a real held range belongs to a TRACKED
+				// agent (every production reservation path registers the
+				// agent in the same breath). The drift sweep would rightly
+				// release an untracked reservation as a leak, so the fixture
+				// registers the holder like production would.
+				if err := m.tracker.Register(&resource.AgentRecord{AgentID: "holder", Status: "running"}); err != nil {
+					t.Fatalf("register holder: %v", err)
 				}
 			}
 

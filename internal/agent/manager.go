@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os/user"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -333,7 +334,7 @@ func (m *AgentManager) startTTLReaper() {
 		for {
 			select {
 			case <-ticker.C:
-				m.reapExpiredAgents()
+				m.tickMaintenance()
 			case <-m.ttlStop:
 				return
 			}
@@ -341,8 +342,31 @@ func (m *AgentManager) startTTLReaper() {
 	}()
 }
 
+// tickMaintenance is one TTL-reaper tick: expire-and-destroy, then the
+// FLEET-INFRA-1 port-pool drift sweep. The reaper only ever calls Destroy —
+// which frees ranges on every path — but this tick is also the daemon's only
+// recurring heartbeat, so it doubles as the leak's convergence bound: any
+// teardown path that ever skips Free (a future destroy fast-path, a panic
+// between Unregister and Free) has its reservation handed back within a
+// minute of the tracker record disappearing, instead of leaking until
+// restart. Extracted from the reaper goroutine so the tick body is directly
+// testable without waiting on the real ticker.
+func (m *AgentManager) tickMaintenance() {
+	m.reapExpiredAgents()
+	if released := m.sweepPortPoolDrift(); len(released) > 0 {
+		m.logger.Warn("port-pool drift sweep released leaked reservations",
+			"released", len(released),
+			"agent_ids", strings.Join(released, ","),
+			"pool_available_after", func() uint32 {
+				if m.portAlloc != nil {
+					return m.portAlloc.Available()
+				}
+				return 0
+			}())
+	}
+}
+
 // reapExpiredAgents destroys all agents whose ExpiresAt is in the past.
-//
 // DF-BUNKER-63: an agent whose destroy was REFUSED (live-process gate or
 // home retention) is not retried every minute — the durable registry record
 // carries the refusal (attempts, last attempt time), the retry delay is

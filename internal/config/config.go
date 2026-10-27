@@ -1879,6 +1879,35 @@ func (c *Config) Validate() error {
 	if err := flat.Validate(); err != nil {
 		return err
 	}
+	// FLEET-INFRA-1: relate agent.max_agents to the port pool's capacity.
+	// The defaults (100 agents, 100 ranges over 10000-19999@100) are only
+	// coincidentally equal — nothing used to check the RELATION, so any
+	// operator override of either side silently re-created the exact
+	// "port range pool exhausted with 2/8 agents live" shape that FLEET-INFRA-1
+	// consolidates: past min(agents, ranges) spawns, every further spawn fails
+	// at StagePortAlloc no matter how idle the host is. An allocator can also
+	// be DISABLED by a malformed pool (NewPortAllocator error → nil portAlloc,
+	// spawn falls back to the full configured range) — that state is loud at
+	// boot (Warn) and intentionally allowed, so it is not validated here.
+	if c.Agent.PortRangePerAgent > 0 {
+		totalPorts := uint64(c.Agent.PortRangeEnd) - uint64(c.Agent.PortRangeStart) + 1
+		numRanges := totalPorts / uint64(c.Agent.PortRangePerAgent)
+		if numRanges == 0 {
+			return fmt.Errorf("agent.port_range: %d-%d is too small for %d ports per agent "+
+				"(0 complete sub-ranges): the port allocator would be disabled and every "+
+				"agent would share the full %d-%d range",
+				c.Agent.PortRangeStart, c.Agent.PortRangeEnd, c.Agent.PortRangePerAgent,
+				c.Agent.PortRangeStart, c.Agent.PortRangeEnd)
+		}
+		if c.Agent.MaxAgents > 0 && uint64(c.Agent.MaxAgents) > numRanges {
+			return fmt.Errorf("agent.max_agents (%d) exceeds the port pool capacity (%d ranges: "+
+				"%d-%d at %d ports per agent): past %d agents every spawn fails with 'port range "+
+				"pool exhausted' — lower max_agents or widen the pool / raise port_range_per_agent",
+				c.Agent.MaxAgents, numRanges,
+				c.Agent.PortRangeStart, c.Agent.PortRangeEnd, c.Agent.PortRangePerAgent,
+				numRanges)
+		}
+	}
 	return nil
 }
 
