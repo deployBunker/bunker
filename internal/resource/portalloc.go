@@ -4,6 +4,8 @@ package resource
 import (
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"sync"
 )
 
@@ -68,7 +70,23 @@ func (pa *PortAllocator) Allocate(agentID string) (uint32, uint32, error) {
 	}
 
 	if len(pa.free) == 0 {
-		return 0, 0, fmt.Errorf("no free port ranges available (pool exhausted: %d ranges)", pa.capacity())
+		// FLEET-INFRA-1: an exhaustion error that names nobody is
+		// undebuggable — the field saw "exhausted with 2/8 agents live"
+		// and had no way to ask who held the rest. Name every holder and
+		// point at the two remediation paths (the tracker drift sweep on
+		// reconcile, and the on-demand sweep) so the operator can act
+		// instead of restarting blind.
+		held := make([]string, 0, len(pa.allocated))
+		holders := pa.heldRangesLocked()
+		for _, h := range holders {
+			held = append(held, fmt.Sprintf("%s=%d-%d", h.AgentID, h.Start, h.End))
+		}
+		return 0, 0, fmt.Errorf(
+			"no free port ranges available (pool exhausted: capacity %d ranges, %d held: %s) — "+
+				"if any holder has no tracked agent this is a leak and self-heals within a "+
+				"minute (periodic drift sweep) or on the next reconcile; `bunkerd port-pool "+
+				"check` compares pool capacity with agent.max_agents",
+			pa.capacity(), len(holders), strings.Join(held, ", "))
 	}
 
 	// Pop from the free stack.
@@ -205,6 +223,80 @@ func (pa *PortAllocator) Has(agentID string) bool {
 	defer pa.mu.Unlock()
 	_, ok := pa.allocated[agentID]
 	return ok
+}
+
+// HeldRange describes one currently-allocated sub-range for diagnostics.
+type HeldRange struct {
+	AgentID    string
+	Start, End uint32
+}
+
+// HeldRanges snapshots every currently-allocated sub-range, sorted by start
+// port. It exists so an exhaustion error can name its holders: an error that
+// only says "pool exhausted" forced operators to restart the daemon blind
+// (the field symptom was "exhausted with 2/8 agents live" and no way to ask
+// who held the other ranges). Never large: at most one entry per sub-range.
+func (pa *PortAllocator) HeldRanges() []HeldRange {
+	pa.mu.Lock()
+	defer pa.mu.Unlock()
+	return pa.heldRangesLocked()
+}
+
+func (pa *PortAllocator) heldRangesLocked() []HeldRange {
+	out := make([]HeldRange, 0, len(pa.allocated))
+	for id, start := range pa.allocated {
+		end := start + pa.rangeSize - 1
+		if end > pa.end {
+			end = pa.end
+		}
+		out = append(out, HeldRange{AgentID: id, Start: start, End: end})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Start < out[j].Start })
+	return out
+}
+
+// ReconcileFrom drops every reservation whose agentID fails exists — the
+// drift sweep that keeps the in-memory pool honest. The allocator's state
+// lives only in process memory, so a code path that tears an agent down
+// without calling Free leaks its range until the daemon restarts, and the
+// restart's registry replay can resurrect the very record that caused the
+// leak: the pool never healed by itself (FLEET-INFRA-1: 27 exhaustion
+// observations across 15 projects with 1-2 agents live). The sweep is
+// authoritative about memory, never about the host: it releases
+// reservations, it does not touch users or homes — whether an agent should
+// exist is the registry/system reconciliation's decision (reconcile.go),
+// which is why callers run this AFTER that walk settled.
+//
+// exists must be cheap and non-blocking (it runs under the allocator lock);
+// the tracker lookup is the intended implementation. Released agent ids are
+// returned sorted so logs and tests are deterministic; the count is
+// len(released).
+func (pa *PortAllocator) ReconcileFrom(exists func(agentID string) bool) (released []string) {
+	if exists == nil {
+		return nil // refuse to sweep against an oracle that knows nothing
+	}
+	pa.mu.Lock()
+	defer pa.mu.Unlock()
+	releasedStarts := make([]uint32, 0, len(pa.allocated))
+	for id, start := range pa.allocated {
+		if exists(id) {
+			continue
+		}
+		// Capture the start BEFORE the delete: after it the lookup is gone.
+		releasedStarts = append(releasedStarts, start)
+		delete(pa.allocated, id)
+		released = append(released, id)
+	}
+	if len(released) == 0 {
+		return nil
+	}
+	pa.free = append(pa.free, releasedStarts...)
+	// Deterministic release order: sort ids, then keep the free list's
+	// membership correct regardless of map iteration order (the free list
+	// is a stack — order affects only which range the next Allocate pops,
+	// never correctness or capacity).
+	sort.Strings(released)
+	return released
 }
 
 // capacity returns the total number of sub-ranges available (caller must hold lock).

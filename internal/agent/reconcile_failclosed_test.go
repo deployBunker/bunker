@@ -283,6 +283,14 @@ func TestReconcile_AdoptFailsClosedOnInvalidOrCollidingRange(t *testing.T) {
 				if err := m.portAlloc.Restore("holder", start, end); err != nil {
 					t.Fatalf("pre-reserve holder range: %v", err)
 				}
+				// FLEET-INFRA-1: a real held range belongs to a TRACKED
+				// agent (every production reservation path registers the
+				// agent in the same breath). The drift sweep would rightly
+				// release an untracked reservation as a leak, so the fixture
+				// registers the holder like production would.
+				if err := m.tracker.Register(&resource.AgentRecord{AgentID: "holder", Status: "running"}); err != nil {
+					t.Fatalf("register holder: %v", err)
+				}
 			}
 
 			home := t.TempDir()
@@ -441,6 +449,14 @@ func TestReconcile_RestoreFailsClosedOnUnrestorableRange(t *testing.T) {
 				}
 				if err := m.portAlloc.Restore("holder", start, end); err != nil {
 					t.Fatalf("pre-reserve holder range: %v", err)
+				}
+				// FLEET-INFRA-1: a real held range belongs to a TRACKED
+				// agent (every production reservation path registers the
+				// agent in the same breath). The drift sweep would rightly
+				// release an untracked reservation as a leak, so the fixture
+				// registers the holder like production would.
+				if err := m.tracker.Register(&resource.AgentRecord{AgentID: "holder", Status: "running"}); err != nil {
+					t.Fatalf("register holder: %v", err)
 				}
 			}
 			m.listSystemAgents = func() ([]SystemAgent, error) {

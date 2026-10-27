@@ -82,6 +82,7 @@ func run() error {
 Usage:
   bunkerd [flags]
   bunkerd --show-paths Print resolved secret/state paths (locations/modes only) and exit
+  bunkerd port-pool check  Print the port-pool geometry vs agent.max_agents and exit
   bunkerd version      Print version (same as --version)
   bunkerd help         Show this help (same as --help)
 
@@ -111,7 +112,9 @@ Docker agent hosts. Send SIGINT/SIGTERM for graceful shutdown.
 	// DF-BUNKER-13 second-bunkerd incident. Resolve positionals here, before
 	// anything reads config, binds a port or installs a signal handler.
 	if args := fs.Args(); len(args) > 0 {
-		if len(args) > 1 {
+		// FLEET-INFRA-1: `port-pool check` is the only two-token verb; every
+		// other verb stays single-token (the original GAP-078 shape).
+		if len(args) > 1 && (args[0] != "port-pool" || len(args) > 2) {
 			return fmt.Errorf("unexpected argument %q", args[1])
 		}
 		switch args[0] {
@@ -121,6 +124,19 @@ Docker agent hosts. Send SIGINT/SIGTERM for graceful shutdown.
 		case "help":
 			fs.Usage()
 			return nil
+		case "port-pool":
+			// FLEET-INFRA-1: config-level port-pool diagnostic. Like
+			// --show-paths, it loads config and prints a verdict without
+			// binding a port or touching the running daemon — the check an
+			// operator can run against ANY deployment's config (live or
+			// staged) before/after changing pool geometry or max_agents.
+			if len(args) < 2 || args[1] != "check" {
+				return fmt.Errorf("usage: bunkerd port-pool check")
+			}
+			if len(args) > 2 {
+				return fmt.Errorf("unexpected argument %q (usage: bunkerd port-pool check)", args[2])
+			}
+			return runPortPoolCheck(cfgPath)
 		default:
 			return fmt.Errorf("unknown argument %q", args[0])
 		}
