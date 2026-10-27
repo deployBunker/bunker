@@ -1,0 +1,27 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-09-52-08",
+  "block": "INT-HOST-011",
+  "path": "SERIAL FALLBACK / verification-only",
+  "wave_size": 0,
+  "rows": [
+    {
+      "task_id": "INT-HOST-008",
+      "worktree": null,
+      "branch": null,
+      "brief": null,
+      "status": "pending-owner-block"
+    }
+  ],
+  "blocker": "Explicit owner authorization for destructive bunker-mvp bunker reap --apply remains absent; --apply was not run.",
+  "probe_reused": false,
+  "evidence": ".coding-hermes/evidence/INT-HOST-008-2026-10-27-05-39-32.json",
+  "witness": "live:bunker-mvp:eab25686-reap-dry-run",
+  "local_gate": "PASS: go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4",
+  "remote_ci": "green before closeout: deployBunker/bunker latest three completed runs conclusion=success",
+  "gitreins": "none: verification-only owner-gated destructive action",
+  "duckbrain": "write unavailable: /home/kara/.duckbrain/bunker.token absent",
+  "open": [
+    "INT-HOST-008 remains pending on explicit owner deletion authorization; do not run bunker-mvp bunker reap --apply without it.",
+    "Pre-existing untracked .coding-hermes/board/events.jsonl.append and prior wave manifests remain untouched."
+  ]
+}
