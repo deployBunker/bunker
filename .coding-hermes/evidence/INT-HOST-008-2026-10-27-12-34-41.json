@@ -1,0 +1,46 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-12-34-41",
+  "task_id": "INT-HOST-008",
+  "block": "INT-HOST-011",
+  "host": "bunker-mvp",
+  "command": "ssh -o BatchMode=yes -o ConnectTimeout=10 bunker-mvp 'hostname; bunker version; bunker reap --dry-run; systemctl show bunkerd --property=ActiveState,SubState,MainPID,NRestarts --no-pager; df -h /'",
+  "observed_at": "2026-10-27T12:34:41-05:00",
+  "remote_rc": 0,
+  "hostname": "bunker-mvp",
+  "binary": {
+    "version": "0.2.1",
+    "commit": "eab25686",
+    "built": "2026-10-23T22:19:45Z",
+    "go_version": "go1.26.10",
+    "platform": "linux/amd64"
+  },
+  "dry_run": true,
+  "mutation_run": false,
+  "reap_counts": {
+    "apparmor_profiles_would_remove_user_gone": 297,
+    "apparmor_profiles_kept_live_user": 4,
+    "apparmor_profiles_unmanaged": 102,
+    "agent_homes_would_remove_user_gone": 0,
+    "agent_homes_kept_live_user": 4,
+    "agent_homes_unmanaged": 11,
+    "linger_would_remove_user_gone": 0,
+    "linger_kept_live_user": 4,
+    "runtime_dirs_would_remove_user_gone": 96,
+    "runtime_dirs_kept_live_user": 4
+  },
+  "daemon": {
+    "active_state": "active",
+    "sub_state": "running",
+    "main_pid": 677296,
+    "restarts": 0
+  },
+  "disk": {
+    "filesystem": "/dev/sda1",
+    "size": "150G",
+    "used": "38G",
+    "available": "107G",
+    "use_percent": 27
+  },
+  "owner_blocker": "Explicit owner authorization for destructive bunker-mvp bunker reap --apply remains absent; --apply was not run.",
+  "status": "pending-owner-block"
+}
