@@ -170,9 +170,17 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 	// ── Step 1.6: Allocate port range ────────────────────────────
 	var portStart, portEnd uint32
 	if m.portAlloc != nil {
+		// FLEET-INFRA-1: mark the allocate-to-register window BEFORE
+		// allocating. Until the tracker record lands at step 3 the
+		// reservation has no tracker owner — the drift sweep's leak
+		// signature — so the sweep (minute tick) must see this id as owned.
+		// clearSpawnInFlight runs on every exit: the rollback closure and
+		// the success path both clear it.
+		m.markSpawnInFlight(agentID)
 		var allocErr error
 		portStart, portEnd, allocErr = m.portAlloc.Allocate(agentID)
 		if allocErr != nil {
+			m.clearSpawnInFlight(agentID)
 			return nil, spawnStageErr(ctx, agentID, StagePortAlloc, fmt.Errorf("port range allocation: %w", allocErr))
 		}
 	} else {
@@ -213,6 +221,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		// budget: this cannot be starved.
 		if portRangeAllocated {
 			m.portAlloc.Free(agentID)
+			m.clearSpawnInFlight(agentID)
 			rbRes.ok("port-range freed")
 		}
 		// Release the tracker slot defensively. The durable-persist gate below
@@ -1002,6 +1011,10 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		// This shouldn't happen (we checked capacity above), but handle gracefully
 		m.logger.Error("tracker register failed", "agent_id", agentID, "error", err)
 	}
+	// FLEET-INFRA-1: the reservation now has its tracker owner — the
+	// in-flight window is closed. Cleared on success here; every failure
+	// path clears through rollback()/the alloc-error return.
+	m.clearSpawnInFlight(agentID)
 
 	// ── Step 3.5: Persist the spawn durably (GAP-070) ──────────────
 	// The registry is what survives a daemon restart, so a spawn that

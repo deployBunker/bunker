@@ -156,3 +156,37 @@ func TestSweepPortPoolDrift_NilPortAllocIsSafe(t *testing.T) {
 	}
 	m.tickMaintenance() // must not panic
 }
+
+// TestSweepPortPoolDrift_SkipsSpawnInFlight is the live-caught collision
+// regression (bunker-mvp AC-2: fi1-cy-7's range was released by the minute
+// tick while the agent was still in its session-probe stage — a spawn holds
+// its reservation for tens of seconds BEFORE the tracker record exists).
+// A marked in-flight id must be treated as owned: never released, and a
+// concurrent spawn can never receive its ports.
+func TestSweepPortPoolDrift_SkipsSpawnInFlight(t *testing.T) {
+	m := newRegistryManager(t, filepath.Join(t.TempDir(), "agents.jsonl"))
+
+	// Simulate the mid-spawn window exactly: Allocate (step 1.6) with the
+	// in-flight marker set, NO tracker record yet.
+	m.markSpawnInFlight("spawning-agent")
+	if _, _, err := m.portAlloc.Allocate("spawning-agent"); err != nil {
+		t.Fatalf("seed in-flight reservation: %v", err)
+	}
+	if got := m.portAlloc.Available(); got != 99 {
+		t.Fatalf("available = %d, want 99 (100-range pool, one mid-spawn agent)", got)
+	}
+
+	m.tickMaintenance()
+
+	if !m.portAlloc.Has("spawning-agent") {
+		t.Fatal("mid-spawn reservation was released — the next spawn could receive its ports (live-caught collision)")
+	}
+
+	// The marker expires with the spawn: a FAILED spawn clears it through
+	// rollback, and then the reservation (if it somehow remained) is sweepable.
+	m.clearSpawnInFlight("spawning-agent")
+	released := m.sweepPortPoolDrift()
+	if len(released) != 1 || released[0] != "spawning-agent" {
+		t.Fatalf("released = %v, want [spawning-agent] once the window closed", released)
+	}
+}
