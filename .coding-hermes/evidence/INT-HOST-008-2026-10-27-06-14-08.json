@@ -1,0 +1,25 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-06-14-08",
+  "row": "INT-HOST-008",
+  "host": "bunker-mvp",
+  "command": "bunker reap --dry-run fresh probe",
+  "result": {
+    "rc": 0,
+    "bunker_version": "0.2.1 commit eab25686",
+    "would_remove_apparmor_profiles": 297,
+    "kept_live_apparmor_profiles": 4,
+    "unmanaged_apparmor_profiles": 102,
+    "would_remove_homes": 0,
+    "kept_homes": 4,
+    "would_remove_linger_entries": 0,
+    "kept_linger_entries": 4,
+    "would_remove_runtime_dirs": 96,
+    "kept_runtime_dirs": 4,
+    "mutation_run": false
+  },
+  "owner_blocker": "Explicit owner authorization for destructive bunker-mvp bunker reap --apply remains absent; --apply was not run.",
+  "status": "pending-owner-block",
+  "probe_reused": false,
+  "fresh": true,
+  "note": "Consistent with prior probes (03:17, 04:46, 05:19, 05:39). No new removable categories."
+}
