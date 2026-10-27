@@ -3752,15 +3752,6 @@ tasks:
   status: complete
   created_at: '2026-10-16T16:00:33.673180+00:00'
   completed_at: '2026-10-16T16:09:27.976882+00:00'
-- id: PERF-007
-  title: Cache residue-inventory linger-plane user lookups behind a short TTL
-  criteria:
-  - ResidueInventory linger classification served from a short-TTL cache with a counting-seam
-    test proving no re-lookup inside the TTL and a re-lookup after expiry; build/vet/test
-    green
-  status: complete
-  created_at: '2026-09-30T13:00:45.620973+00:00'
-  completed_at: '2026-09-30T13:01:10.444604+00:00'
 - id: GAP-094
   title: 'S3 exec live-half verification: CLI must surface truncation_notice'
   criteria:
