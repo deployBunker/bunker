@@ -43,7 +43,7 @@ Bunker = multi-agent hosting platform. `bunkerd` (daemon, needs **root**, runs o
 
 - **Live servers (fleet, 2026-08-29):** public MVP `78.46.173.180` (REST :18080, gRPC :19090, SSH :22; v0.1.3) + Tailscale boxes `bunker-las-01..04`, `cube-las-00`, local `bunker-7840hs` (127.0.0.1:10002). **Auth is ENFORCED everywhere** (since GAP-014): empty/missing token → 401; every call needs `Authorization: Bearer <token>` (stored in `~/.bunker/config.yaml` by `bunker connect`). Switch boxes with `bunker --server <name> status|list|audit`; spawn always targets the ACTIVE server (`active_server:` in config) — check `bunker status` first. Server-reported hostnames only resolve on the server itself.
 - **Binaries:** `make build` or `go build -o bunker ./cmd/bunker`, `go build -o bunkerd ./cmd/bunkerd`; `go install github.com/deployBunker/bunker/cmd/bunker@latest` serves the newest TAG (may lag HEAD — compare `bunker version` commit vs `git rev-parse HEAD`, README GAP-058 note).
-- **CLI config:** `~/.bunker/config.yaml` is the legacy/release location; current HEAD resolves config and keys through the XDG/BUNKER_HOME path shown by `bunker paths` (for example `~/.config/bunker/config.yaml` and `~/.config/bunker/keys/<agent-id>`). Keep release-vs-HEAD distinctions explicit; see README-007.
+- **CLI config:** `~/.bunker/config.yaml` is the legacy/release location; current HEAD resolves config and keys through the XDG/BUNKER_HOME path shown by `bunker paths` (for example `~/.config/bunker/config.yaml` and `~/.config/bunker/keys/<agent-id>`). Keep release-vs-HEAD distinctions explicit; see README-007. The precedence is: flag > env > per-user config dir (`${XDG_CONFIG_HOME:-~/.config}/bunker`) > legacy `~/.bunker` (read alias) > system defaults.
 - **Test config for local daemon:** `test-config.yaml` (auth off, /tmp/bunkerd-test, port 9095) — daemon runs as non-root but spawn will fail at `useradd` (root required, undocumented in README).
 
 ## The working workflow (verified 2026-08-18)
@@ -306,7 +306,7 @@ real-use behavior:
 
 1. **No Go in default image** — install manually: `curl -sSL https://go.dev/dl/go1.21.13.linux-amd64.tar.gz -o ~/go.tar.gz && tar xzf ~/go.tar.gz -C ~ && rm ~/go.tar.gz`. Then use `~/go/bin/go` (absolute path, because env PATH is overridden).
 2. **No sudo** — agents are non-root. Install everything in user space.
-3. **SSH key saved at spawn** — `~/.bunker/keys/<id>` is written correctly at spawn time (DF-BUNKER-47 was fixed). Use `-o IdentitiesOnly=yes -i ~/.bunker/keys/<id>` for manual SSH.
+3. **SSH key saved at spawn** — current HEAD writes the key under the XDG/BUNKER_HOME path shown by `bunker paths` (e.g. `~/.config/bunker/keys/<id>`); legacy release binaries wrote to `~/.bunker/keys/<id>` (DF-BUNKER-47 was fixed). Use `-o IdentitiesOnly=yes -i <path-from-bunker-paths>` for manual SSH.
 4. **sshfs + ssh-agent** — if your ssh-agent has many keys, raw `sshfs` without `-o IdentitiesOnly=yes` fails with "Too many authentication failures" (GAP-144). The CLI's mount command includes this flag, but the spawn output's copy-paste command does not.
 
 ## Agent tool delivery + lifecycle (2026-09-24, live on las-03, df-agenttools-0924)
