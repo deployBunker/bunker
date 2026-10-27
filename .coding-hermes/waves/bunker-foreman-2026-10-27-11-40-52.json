@@ -1,0 +1,27 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-11-40-52",
+  "tick_number": 669,
+  "block": "INT-HOST-011",
+  "wave_size": 0,
+  "path": "SERIAL FALLBACK / verification-only",
+  "rows": [
+    {
+      "task_id": "INT-HOST-008",
+      "worktree": null,
+      "branch": null,
+      "brief": null,
+      "status": "verified-pending-owner-block",
+      "blocker": "Explicit owner authorization for destructive bunker-mvp bunker reap --apply is absent",
+      "evidence": ".coding-hermes/evidence/INT-HOST-008-2026-10-27-11-40-52.json",
+      "witness": "live:bunker-mvp:149411c-reap-dry-run"
+    }
+  ],
+  "host": {
+    "nproc": 16,
+    "loadavg_1m": 7.99,
+    "computed_slots": 6,
+    "wave_budget": 11,
+    "effective_slots": 6
+  },
+  "dispatch": "none: owner-gated destructive live-host action; no worker/worktree/GitReins implementation lifecycle valid"
+}
