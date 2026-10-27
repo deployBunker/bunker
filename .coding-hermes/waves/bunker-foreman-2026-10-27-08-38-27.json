@@ -1,0 +1,14 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-08-38-27",
+  "block": "INT-HOST-011",
+  "type": "verification-only",
+  "wave_size": 0,
+  "reason": "INT-HOST-008 is owner-gated (destructive cleanup on bunker-mvp requires explicit `bunker reap --apply` authorization from Bane). No independent ready rows available for dispatch.",
+  "rows_considered": ["INT-HOST-008"],
+  "rows_dispatched": [],
+  "rows_landed": [],
+  "owner_blocker": "Owner authorization for `bunker reap --apply` on bunker-mvp remains absent",
+  "local_gate": "PASS: go build ./... && go vet ./...",
+  "remote_ci": "green: latest 5 runs all success",
+  "evidence_reused": ".coding-hermes/evidence/INT-HOST-008-2026-10-27-05-39-32.json"
+}
