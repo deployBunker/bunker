@@ -1,0 +1,48 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-13-59-29",
+  "tick_number": 675,
+  "block": "INT-HOST-011",
+  "task_id": "INT-HOST-008",
+  "type": "verification-only",
+  "host": "bunker-mvp",
+  "commands": [
+    "ssh -o BatchMode=yes -o ConnectTimeout=10 bunker-mvp 'hostname; bunker reap --dry-run'",
+    "go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4",
+    "bash -n e2e-full-battery.sh",
+    "gh run list --repo deployBunker/bunker --limit 3 --json status,conclusion,displayTitle,headBranch,createdAt"
+  ],
+  "result": {
+    "remote_rc": 0,
+    "hostname": "bunker-mvp",
+    "reap_dry_run": true,
+    "mutation_run": false,
+    "apparmor_profiles_would_remove_user_gone": 297,
+    "apparmor_profiles_kept_live_user": 2,
+    "agent_homes_would_remove_user_gone": 0,
+    "agent_homes_kept_live_user": 2,
+    "linger_would_remove_user_gone": 0,
+    "linger_kept_live_user": 2,
+    "runtime_dirs_would_remove_user_gone": 96,
+    "runtime_dirs_kept_live_user": 2
+  },
+  "owner_blocker": "Explicit owner authorization for destructive bunker-mvp bunker reap --apply remains absent; --apply was not run.",
+  "local_gate": {
+    "command": "go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4 && bash -n e2e-full-battery.sh",
+    "result": "PASS",
+    "exit_code": 0
+  },
+  "remote_ci": {
+    "repository": "deployBunker/bunker",
+    "result": "green",
+    "runs": [
+      {"displayTitle": "foreman: verify INT-HOST-008 owner gate tick 674", "headBranch": "main", "status": "completed", "conclusion": "success"},
+      {"displayTitle": "foreman: verify INT-HOST-008 owner block tick 673", "headBranch": "main", "status": "completed", "conclusion": "success"},
+      {"displayTitle": "foreman: verify INT-HOST-008 owner gate at tick 672", "headBranch": "main", "status": "completed", "conclusion": "success"}
+    ]
+  },
+  "gitreins": "none: verification-only owner-gated destructive action; no implementation lifecycle created",
+  "off_by_one": "none: verification-only; no debugging or fix design",
+  "duckbrain": "write unavailable: repeated MCP remember calls were schema-rejected before invocation; no token sidecar available for HTTP fallback",
+  "status": "pending-owner-block",
+  "trace": "ch:trace block=INT-HOST-011 wave=none:verification-only row=INT-HOST-008 spec=none:owner-gated-live-cleanup test=none:live-dry-run doc=none:owner-operated-action evidence=.coding-hermes/evidence/INT-HOST-008-2026-10-27-13-59-29.json witness=live:bunker-mvp:reap-dry-run:rc0 verdict=none:verification-only commit=none:owner-block memory=none:duckbrain-schema-rejected"
+}
