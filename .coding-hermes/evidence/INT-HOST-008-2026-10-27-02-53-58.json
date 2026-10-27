@@ -1,0 +1,29 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-02-53-58",
+  "row": "INT-HOST-008",
+  "block": "INT-HOST-011",
+  "tested_commit": "ad36af4873399b89bdaae46cdf95912607736aa4",
+  "owner_gate": "Explicit owner authorization for destructive bunker-mvp bunker reap --apply is absent; mutation withheld.",
+  "live_probe": {
+    "host": "bunker-mvp",
+    "command": "ssh -o BatchMode=yes -o ConnectTimeout=10 bunker-mvp 'before=$(find /etc/apparmor.d -maxdepth 1 -type f -name \"home.*.bin.rootlesskit\" | wc -l); out=$(/usr/local/bin/bunker reap --dry-run); rc=$?; after=$(find /etc/apparmor.d -maxdepth 1 -type f -name \"home.*.bin.rootlesskit\" | wc -l); printf \"before_profiles=%s after_profiles=%s rc=%s\\n%s\\n\" \"$before\" \"$after\" \"$rc\" \"$out\"; test \"$before\" = \"$after\"; test \"$rc\" -eq 0'",
+    "exit_code": 0,
+    "result": "DRY RUN; before_profiles=297; after_profiles=297; AppArmor would remove 267 profiles, keep 30 live-user profiles, and ignore 102 unmanaged profiles; homes would remove 0 and keep 36; linger would remove 0 and keep 3; runtime dirs would remove 66 and keep 30; no changes written.",
+    "binary": "bunkerd 0.2.1 commit eab25686 built 2026-10-23T22:19:45Z"
+  },
+  "local_gate": {
+    "command": "go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4",
+    "exit_code": 0,
+    "result": "PASS"
+  },
+  "remote_ci": {
+    "command": "gh run list --repo deployBunker/bunker --limit 3 --json status,conclusion,displayTitle,headBranch,createdAt,headSha",
+    "result": "Three completed success runs; latest ad36af4873399b89bdaae46cdf95912607736aa4 (board: record PERF-007 closeout event)."
+  },
+  "gitreins": "none:verification-only owner-gated destructive action; no implementation lifecycle created",
+  "off_by_one": "none:verification-only; no debugging or fix design",
+  "status": "PENDING",
+  "tier": "T3",
+  "evidence": ".coding-hermes/evidence/INT-HOST-008-2026-10-27-02-53-58.json",
+  "next_owner_action": "Provide explicit authorization before running bunker-mvp bunker reap --apply; do not execute it from this tick."
+}
