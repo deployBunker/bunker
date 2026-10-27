@@ -58,7 +58,7 @@ The decision must be explicit:
 
 Either way: **two concurrent sessions must still produce exactly one lease grant and one refusal naming the holder** — that test exists (`CHT-007`, and remote `CHT-052`) and must keep passing unchanged.
 
-### 3.3 It is NOT a security boundary, and must never be described as one
+### 3.3 It is not a security boundary, and must never be described as one
 
 A daemon listening inside the agent runs as the agent's user; anything running as that user — **including the untrusted repository code the agent is executing** — can connect to it and call every verb. It therefore grants the agent nothing it could not do with its own syscalls. It is a **transport and convenience layer**, not a privilege device and not an enforcement point. Two consequences:
 
