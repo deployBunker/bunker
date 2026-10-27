@@ -1,0 +1,33 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-14-18-00",
+  "block": "INT-HOST-011",
+  "path": "SERIAL FALLBACK / verification-only",
+  "wave_budget": 9,
+  "host": {"nproc": 16, "loadavg_1m": 15.73, "computed_slots": 1, "effective_slots": 1},
+  "rows": [
+    {
+      "id": "INT-HOST-008",
+      "worktree": null,
+      "branch": null,
+      "brief": null,
+      "dispatch": null,
+      "status": "not-dispatched",
+      "reason": "owner-gated destructive bunker-mvp bunker reap --apply; explicit deletion authorization absent"
+    }
+  ],
+  "rows_dispatched": [],
+  "rows_landed": [],
+  "rows_verified": ["INT-HOST-008"],
+  "owner_blocker": "Explicit owner authorization for destructive bunker-mvp bunker reap --apply remains absent; --apply was not run.",
+  "live_witness": "live:bunker-mvp:bunker-0.2.1-eab25686:reap-dry-run:rc0",
+  "evidence": "/tmp/int-host-008-2026-10-27-14-18-00.txt",
+  "probe_reused": false,
+  "local_gate": "PASS: go build ./... && go vet ./... && go test ./... -count=1 -short && bash -n e2e-full-battery.sh",
+  "remote_ci_precloseout": "green: deployBunker/bunker latest 3 completed runs all success (HEAD 8ff5c0b0 run at 14:12:07Z)",
+  "gitreins": "none: verification-only owner-gated destructive action; no implementation lifecycle created",
+  "off_by_one": "none: verification-only; no debugging or fix design",
+  "open": [
+    "INT-HOST-008 remains pending explicit owner deletion authorization.",
+    "Pre-existing untracked events.jsonl.append and earlier wave manifests remain untouched."
+  ]
+}
