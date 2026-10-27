@@ -1,0 +1,15 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-07-26-28",
+  "block": "INT-HOST-011",
+  "wave_budget": 5,
+  "path": "SERIAL FALLBACK / verification-only",
+  "wave_size": 0,
+  "rows_considered": ["INT-HOST-008"],
+  "rows_dispatched": [],
+  "worktrees": [],
+  "briefs": [],
+  "reason": "Resume-first block has one ready row, but INT-HOST-008 is a destructive live-host bunker-mvp reap --apply action gated on explicit owner authorization. Stable dry-run evidence was reused; no worker, worktree, or implementation GitReins lifecycle is valid.",
+  "evidence": ".coding-hermes/evidence/INT-HOST-008-2026-10-27-06-14-08.json",
+  "freshness": "reused: same host, binary, blocker, and inventory class; no authorization change",
+  "witness": "live:bunker-mvp:eab25686-reap-dry-run"
+}
