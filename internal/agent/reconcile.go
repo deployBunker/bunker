@@ -540,9 +540,7 @@ func (m *AgentManager) sweepPortPoolDrift() (released []string) {
 	for _, h := range m.portAlloc.HeldRanges() {
 		before[h.AgentID] = h
 	}
-	released = m.portAlloc.ReconcileFrom(func(agentID string) bool {
-		return m.tracker.Get(agentID) != nil
-	})
+	released = m.portAlloc.ReconcileFrom(m.reservationOwned)
 	for _, id := range released {
 		h := before[id]
 		m.logger.Warn("port-pool drift sweep: released reservation with no tracked agent",
@@ -552,6 +550,30 @@ func (m *AgentManager) sweepPortPoolDrift() (released []string) {
 			"pool_available_after", m.portAlloc.Available())
 	}
 	return released
+}
+
+// reservationOwned is the sweep's ownership oracle: an id owns its
+// reservation when it has a tracker record OR is a spawn still in flight
+// (allocated its range at step 1.6, registers at step 3 — see spawnInFlight).
+// A hand-built manager with a nil tracker (impossible in production: the
+// tracker is always wired) degrades to the in-flight check only.
+func (m *AgentManager) reservationOwned(agentID string) bool {
+	if _, inFlight := m.spawnInFlight.Load(agentID); inFlight {
+		return true
+	}
+	return m.tracker != nil && m.tracker.Get(agentID) != nil
+}
+
+// markSpawnInFlight / clearSpawnInFlight bracket the spawn's
+// allocate-to-register window. Both are idempotent and safe on any manager
+// (a nil map-less struct works because sync.Map is a value type on the
+// struct itself).
+func (m *AgentManager) markSpawnInFlight(agentID string) {
+	m.spawnInFlight.Store(agentID, struct{}{})
+}
+
+func (m *AgentManager) clearSpawnInFlight(agentID string) {
+	m.spawnInFlight.Delete(agentID)
 }
 
 // logForeignOrphanSkip emits the loud skip warning for an orphan this daemon

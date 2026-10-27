@@ -117,6 +117,17 @@ type AgentManager struct {
 	// egress lifecycle — which is exactly OPEN-mode behavior, the declared
 	// safe default: install/destroy/sweep all no-op through the nil guards.
 	egressMgr *egress.Manager
+
+	// spawnInFlight (FLEET-INFRA-1) holds agent ids between the spawn's
+	// port-range allocation (step 1.6) and its tracker registration (step
+	// 3): a window of tens of seconds (rootless dockerd boot, session
+	// probe) during which the reservation has NO tracker record — the drift
+	// sweep's leak signature. Without this guard the minute tick released a
+	// mid-spawn agent's range and the next spawn could receive the same
+	// ports (live-caught on bunker-mvp AC-2: fi1-cy-7 released at
+	// 06:03:52 while still in its session-probe stage). Guarded ids are
+	// skipped by every sweep call site through the exists oracle.
+	spawnInFlight sync.Map // agentID -> struct{}
 }
 
 // NewAgentManager creates a new AgentManager.
