@@ -1,0 +1,28 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-03-17-14",
+  "timestamp": "2026-10-27T03:17:14Z",
+  "row": "INT-HOST-008",
+  "block": "INT-HOST-011",
+  "host": "bunker-mvp",
+  "binary": "bunker 0.2.1 commit eab25686 built 2026-10-23T22:19:45Z",
+  "command": "ssh -o BatchMode=yes -o ConnectTimeout=10 bunker-mvp bunker reap --dry-run with before/after AppArmor profile count",
+  "result": {
+    "rc": 0,
+    "before_profiles": 297,
+    "after_profiles": 297,
+    "would_remove_apparmor_profiles": 267,
+    "kept_live_apparmor_profiles": 30,
+    "unmanaged_apparmor_profiles": 102,
+    "would_remove_homes": 0,
+    "kept_homes": 36,
+    "would_remove_linger_entries": 0,
+    "kept_linger_entries": 3,
+    "would_remove_runtime_dirs": 66,
+    "kept_runtime_dirs": 30,
+    "mutation_run": false
+  },
+  "owner_gate": "Explicit owner authorization for destructive bunker-mvp bunker reap --apply remains absent; no mutation was run.",
+  "local_gate": "PASS: go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4",
+  "remote_ci": "green: latest three deployBunker/bunker runs completed success",
+  "status": "pending-owner-block"
+}
