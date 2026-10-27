@@ -1,0 +1,21 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-05-19-23",
+  "block": "INT-HOST-011",
+  "wave_budget": 3,
+  "host": {
+    "nproc": 16,
+    "loadavg_1m": 13.41,
+    "computed_slots": 3
+  },
+  "path": "SERIAL FALLBACK / verification-only",
+  "rows_considered": ["INT-HOST-008"],
+  "ready_rows": ["INT-HOST-008"],
+  "rows_dispatched": [],
+  "rows_landed": [],
+  "rows_verified": ["INT-HOST-008"],
+  "reason": "The sole ready row is an owner-gated destructive live-host cleanup. Explicit authorization for bunker-mvp bunker reap --apply is absent, so no implementation worker or GitReins implementation lifecycle is valid.",
+  "evidence": ".coding-hermes/evidence/INT-HOST-008-2026-10-27-05-19-23.json",
+  "local_gate": "PASS: go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4",
+  "remote_ci": "green: latest three deployBunker/bunker main runs completed success; latest cb5daf80844a8363cf3ce823a64d96c3e10d2a06",
+  "status": "pending-owner-block"
+}
