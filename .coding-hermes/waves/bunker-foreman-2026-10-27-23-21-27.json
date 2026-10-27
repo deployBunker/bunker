@@ -1,0 +1,28 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-23-21-27",
+  "block": "INT-HOST-011",
+  "wave_budget": 1,
+  "host": {
+    "nproc": 16,
+    "loadavg_1m": 15.2,
+    "computed_slots": 1,
+    "effective_slots": 1
+  },
+  "wave_size": 0,
+  "mode": "verification-only",
+  "rows": [
+    {
+      "id": "INT-HOST-008",
+      "status": "not-dispatched",
+      "worktree": null,
+      "branch": null,
+      "brief": null,
+      "reason": "Owner-gated destructive bunker-mvp bunker reap --apply; explicit owner deletion authorization is absent."
+    }
+  ],
+  "rows_dispatched": [],
+  "rows_landed": [],
+  "rows_verified": ["INT-HOST-008"],
+  "owner_blocker": "Do not run bunker-mvp bunker reap --apply without explicit owner authorization.",
+  "verification_command": "ssh -o BatchMode=yes -o ConnectTimeout=10 bunker-mvp 'hostname; bunker version; bunker reap --dry-run'"
+}

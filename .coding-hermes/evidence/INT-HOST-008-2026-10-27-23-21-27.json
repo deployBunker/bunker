@@ -1,0 +1,39 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-23-21-27",
+  "block": "INT-HOST-011",
+  "row": "INT-HOST-008",
+  "tested_commit": "0e41515e827798784dfaa737c15525668bca6064",
+  "classification": "owner-gated-destructive-live-host-verification",
+  "host": "bunker-mvp",
+  "command": "ssh -o BatchMode=yes -o ConnectTimeout=10 bunker-mvp 'hostname; bunker version; bunker reap --dry-run'",
+  "remote_exit_code": 0,
+  "result": {
+    "hostname": "bunker-mvp",
+    "binary": "bunker 0.2.1, commit eab25686, built 2026-10-23T22:19:45Z, go1.26.10, linux/amd64",
+    "dry_run": true,
+    "mutation_run": false,
+    "apparmor_profiles_would_remove_user_gone": 297,
+    "apparmor_profiles_kept_live_user": 10,
+    "apparmor_profiles_unmanaged": 102,
+    "agent_homes_would_remove_user_gone": 0,
+    "agent_homes_kept_live_user": 10,
+    "linger_would_remove_user_gone": 0,
+    "linger_kept_live_user": 4,
+    "runtime_dirs_would_remove_user_gone": 96,
+    "runtime_dirs_kept_live_user": 10
+  },
+  "local_gate": {
+    "command": "go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4 && bash -n e2e-full-battery.sh",
+    "exit_code": 0
+  },
+  "remote_ci": {
+    "repository": "deployBunker/bunker",
+    "latest_three": [
+      {"head_sha": "0e41515e827798784dfaa737c15525668bca6064", "status": "completed", "conclusion": "success", "run_title": "foreman: verify owner gate INT-HOST-008 tick 683"},
+      {"head_sha": "705b98c3b1eaa0520b4a5fa09641390a8f1d6a61", "status": "completed", "conclusion": "success", "run_title": "foreman: verify owner gate INT-HOST-008 tick 682"},
+      {"head_sha": "832d3c9df4d599b356a6e0dd066bae3bc61608f4", "status": "completed", "conclusion": "success", "run_title": "foreman: verify owner gate INT-HOST-008 tick 681"}
+    ]
+  },
+  "owner_blocker": "Explicit owner authorization for bunker-mvp bunker reap --apply remains absent; --apply was not run.",
+  "next_action": "Owner must authorize the destructive live-host cleanup; then run the documented snapshot/apply/post-sweep acceptance."
+}
