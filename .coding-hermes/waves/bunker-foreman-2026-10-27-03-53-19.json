@@ -1,0 +1,27 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-03-53-19",
+  "project": "bunker",
+  "block_id": "INT-HOST-011",
+  "wave_budget": 12,
+  "path": "SERIAL FALLBACK / verification-only",
+  "host": {
+    "nproc": 16,
+    "loadavg_1m": 4.24,
+    "computed_slots": 11,
+    "effective_slots": 11
+  },
+  "resume_first": true,
+  "rows_considered": ["INT-HOST-008"],
+  "ready_rows": ["INT-HOST-008"],
+  "rows_dispatched": [],
+  "rows_landed": [],
+  "rows_verified": ["INT-HOST-008"],
+  "worktrees": [],
+  "reason": "The selected block has one ready row. INT-HOST-008 is an owner-gated destructive live-host cleanup; explicit authorization for bunker-mvp bunker reap --apply is absent, so no implementation worker or destructive action is valid.",
+  "owner_blocker": "Explicit owner authorization for destructive bunker-mvp bunker reap --apply remains absent; --apply was not run.",
+  "verification_artifact": ".coding-hermes/evidence/INT-HOST-008-2026-10-27-03-53-19.json",
+  "local_gate": "PASS: go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4",
+  "remote_ci": "green: gh run list --repo deployBunker/bunker --limit 3 returned three completed success runs.",
+  "duckbrain": "write unavailable: ~/.duckbrain/bunker.token absent",
+  "status": "open_owner_block"
+}
