@@ -1,0 +1,25 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-04-46-20",
+  "row": "INT-HOST-008",
+  "host": "bunker-mvp",
+  "binary": "bunker 0.2.1 commit eab25686 built 2026-10-23T22:19:45Z",
+  "command": "bunker reap --dry-run with before/after AppArmor profile count",
+  "result": {
+    "rc": 0,
+    "before_profiles": 302,
+    "after_profiles": 302,
+    "would_remove_apparmor_profiles": 297,
+    "kept_live_apparmor_profiles": 5,
+    "unmanaged_apparmor_profiles": 102,
+    "would_remove_homes": 0,
+    "kept_homes": 4,
+    "would_remove_linger_entries": 0,
+    "kept_linger_entries": 5,
+    "would_remove_runtime_dirs": 96,
+    "kept_runtime_dirs": 5,
+    "mutation_run": false
+  },
+  "owner_blocker": "Explicit owner authorization for destructive bunker-mvp bunker reap --apply remains absent; --apply was not run.",
+  "status": "pending-owner-block",
+  "trace": "ch:trace row=INT-HOST-008 spec=none:owner-gated-live-cleanup wave=.coding-hermes/waves/bunker-foreman-2026-10-27-04-46-20.json#INT-HOST-008 test=none:live-dry-run doc=none:owner-operated-action prompt=~/.hermes/skills/foreman-live-host-verification/SKILL.md evidence=.coding-hermes/evidence/INT-HOST-008-2026-10-27-04-46-20.json witness=live:bunker-mvp:eab25686-reap-dry-run verdict=none:verification-only commit=none:owner-block memory=none:duckbrain-write-failed"
+}

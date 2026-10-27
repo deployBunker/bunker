@@ -1,0 +1,23 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-04-46-20",
+  "type": "verification-only",
+  "block": "INT-HOST-011",
+  "wave": ".coding-hermes/waves/bunker-foreman-2026-10-27-04-46-20.json",
+  "wave_budget": 10,
+  "host": {"nproc": 16, "loadavg_1m": 20.27, "computed_slots": 1, "effective_slots": 1},
+  "path": "SERIAL FALLBACK / verification-only: resumed block INT-HOST-011 has one ready row, INT-HOST-008, but it is owner-gated destructive live-host cleanup; no implementation wave or worker was valid.",
+  "rows_considered": ["INT-HOST-008"],
+  "rows_dispatched": [],
+  "rows_verified": ["INT-HOST-008"],
+  "owner_blocker": "Explicit owner authorization for bunker-mvp bunker reap --apply remains absent; --apply was not run.",
+  "local_gate": "PASS: go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4",
+  "remote_ci": "green: gh run list --repo deployBunker/bunker --limit 3 returned three completed success runs.",
+  "live_witness": "bunker-mvp bunker 0.2.1 commit eab25686; dry-run rc=0; profiles preserved 302 -> 302; 297 AppArmor profiles would remove, 5 live-user profiles kept, 102 unmanaged; 0 homes and 0 linger entries would remove; 96 runtime dirs would remove, 5 kept; no mutation.",
+  "gitreins": "none:verification-only owner-gated destructive action; no implementation lifecycle created",
+  "off_by_one": "none:verification-only; no debugging or fix design",
+  "duckbrain": "write failed: MCP remember invocation surface rejected the required payload in this API turn; no memory claim made",
+  "open": ["INT-HOST-008 remains pending on explicit owner deletion authorization; do not run bunker-mvp bunker reap --apply without it."],
+  "trace": "ch:trace block=INT-HOST-011 wave=.coding-hermes/waves/bunker-foreman-2026-10-27-04-46-20.json row=INT-HOST-008 spec=none:owner-gated-live-cleanup test=none:live-dry-run doc=none:owner-operated-action evidence=.coding-hermes/evidence/INT-HOST-008-2026-10-27-04-46-20.json witness=live:bunker-mvp:eab25686-reap-dry-run verdict=none:verification-only commit=none:owner-block memory=none:duckbrain-write-failed",
+  "status": "pending-owner-block",
+  "tier": "T3"
+}

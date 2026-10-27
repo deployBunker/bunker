@@ -1,0 +1,19 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-04-46-20",
+  "block": "INT-HOST-011",
+  "wave_budget": 10,
+  "host": {"nproc": 16, "loadavg_1m": 20.27, "computed_slots": 1, "effective_slots": 1},
+  "path": "SERIAL FALLBACK / verification-only",
+  "rows": [{
+    "id": "INT-HOST-008",
+    "status": "pending",
+    "worktree": "none:verification-only",
+    "branch": "none:verification-only",
+    "brief": "none:verification-only",
+    "dispatch": "none:owner-gated-destructive-live-host-cleanup",
+    "owner_blocker": "Explicit owner authorization for bunker-mvp bunker reap --apply is absent",
+    "verification_command": "ssh -o BatchMode=yes -o ConnectTimeout=10 bunker-mvp 'hostname; /usr/local/bin/bunker --version; before=$(find /etc/apparmor.d -maxdepth 1 -type f -name \\\"home.*.bin.rootlesskit\\\" | wc -l); out=$(/usr/local/bin/bunker reap --dry-run); rc=$?; after=$(find /etc/apparmor.d -maxdepth 1 -type f -name \\\"home.*.bin.rootlesskit\\\" | wc -l); printf \\\"before_profiles=%s after_profiles=%s rc=%s\\\\n%s\\\\n\\\" \\\"$before\\\" \\\"$after\\\" \\\"$rc\\\" \\\"$out\\\"; test \\\"$before\\\" = \\\"$after\\\"; test \\\"$rc\\\" -eq 0'",
+    "witness": "live:bunker-mvp:eab25686-reap-dry-run",
+    "evidence": "none:verification-transcript-not-persisted"
+  }]
+}
