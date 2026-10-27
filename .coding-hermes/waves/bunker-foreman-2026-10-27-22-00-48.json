@@ -4,6 +4,7 @@
   "block_id": "INT-HOST-011",
   "wave_budget": 10,
   "path": "SERIAL FALLBACK / verification-only owner-gated action",
+  "wave_size": 0,
   "host": {
     "nproc": 16,
     "loadavg_1m": 9.32,
