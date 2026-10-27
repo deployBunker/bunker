@@ -1,0 +1,45 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-22-00-48",
+  "row": "INT-HOST-008",
+  "block": "INT-HOST-011",
+  "type": "verification-only",
+  "tested_commit": "b34b35a3040173d7bdf170372af60f6fdef9b095",
+  "host": "bunker-mvp",
+  "command": "ssh -o BatchMode=yes -o ConnectTimeout=10 bunker-mvp 'set -o pipefail; hostname; bunker version; before=$(find /etc/apparmor.d -maxdepth 1 -type f -name \"home.*.bin.rootlesskit\" | wc -l); out=$(bunker reap --dry-run); rc=$?; after=$(find /etc/apparmor.d -maxdepth 1 -type f -name \"home.*.bin.rootlesskit\" | wc -l); printf \"before_profiles=%s after_profiles=%s rc=%s\\n%s\\n\" \"$before\" \"$after\" \"$rc\" \"$out\"; test \"$before\" = \"$after\"; test \"$rc\" -eq 0'",
+  "remote_rc": 0,
+  "binary": "bunker 0.2.1; commit eab25686; built 2026-10-23T22:19:45Z; go1.26.10; linux/amd64",
+  "dry_run": true,
+  "mutation_run": false,
+  "reap": {
+    "profiles_before": 307,
+    "profiles_after": 307,
+    "apparmor_would_remove_user_gone": 297,
+    "apparmor_kept_live_user": 10,
+    "apparmor_unmanaged": 102,
+    "homes_would_remove_user_gone": 0,
+    "homes_kept_live_user": 10,
+    "homes_unmanaged": 11,
+    "linger_would_remove_user_gone": 0,
+    "linger_kept_live_user": 4,
+    "runtime_dirs_would_remove_user_gone": 96,
+    "runtime_dirs_kept_live_user": 10
+  },
+  "daemon": "not probed in this exact command; prior current evidence had active/running and NRestarts=0",
+  "local_gate": {
+    "command": "go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4 && bash -n e2e-full-battery.sh",
+    "exit_code": 0,
+    "result": "PASS"
+  },
+  "remote_ci_precloseout": {
+    "command": "gh run list --repo deployBunker/bunker --limit 3 --json status,conclusion,displayTitle,headBranch,createdAt,headSha",
+    "result": "three completed runs, all conclusion=success",
+    "runs": ["40585237212", "40526913126", "40526229377"],
+    "latest_head_sha": "b34b35a3040173d7bdf170372af60f6fdef9b095"
+  },
+  "owner_blocker": "Explicit owner authorization for destructive bunker-mvp bunker reap --apply remains absent; --apply was not run.",
+  "status": "pending-owner-block",
+  "off_by_one": "none: verification-only; no debugging or fix design",
+  "gitreins": "none: verification-only owner-gated destructive action; no implementation lifecycle created",
+  "duckbrain": "write unavailable: /home/kara/.duckbrain/bunker.token absent",
+  "trace": "ch:trace block=INT-HOST-011 row=INT-HOST-008 spec=none:owner-gated-live-cleanup wave=.coding-hermes/waves/bunker-foreman-2026-10-27-22-00-48.json#verification test=none:live-dry-run doc=none:owner-operated-action evidence=.coding-hermes/evidence/INT-HOST-008-2026-10-27-22-00-48.json witness=live:bunker-mvp:bunker-0.2.1-eab25686:reap-dry-run:rc0 verdict=none:verification-only commit=none:owner-block memory=none:duckbrain-token-absent"
+}
