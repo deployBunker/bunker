@@ -169,6 +169,23 @@ out=$(bash -c "source '$TMPD/fns.sh'; qa_run_summary '$TMPD/ev4.jsonl'"); rc=$?
 check "(e4) findings rc nonzero" "1" "$rc"
 contains "(e4) findings counted" "Failed: 2 | Audited: 3 | Findings: 2" "$out"
 
+# ── (f) QA-BUNKER-81: fresh-install artifact guard ──
+# The generated remote cell must compare the executable install destination
+# generically.  A make verify command that exits 0 but creates no artifact must
+# be a FAIL row with rc=1; toolsd remains an allowed artifact name, not the
+# only artifact name.  These source assertions are intentionally independent
+# of a bunker agent and protect the generated-script contract.
+qa="$(cat "$HARNESS")"
+contains "(f1) missing-artifact message is present" "no artifact found" "$qa"
+contains "(f2) missing-artifact cell rc is nonzero" "rc=1: install rc=0 but no artifact found" "$qa"
+contains "(f3) artifact check snapshots PATH/bin" "install_artifact_snapshot" "$qa"
+contains "(f4) toolsd remains an allowed install artifact" "toolsd is allowed when present" "$qa"
+if printf '%s' "$qa" | grep -qE 'command -v toolsd|/bin/toolsd'; then
+  echo "  FAIL (f5) artifact check still hard-codes toolsd"; fail=$((fail+1))
+else
+  echo "  ok   (f5) artifact check does not hard-code toolsd"; pass=$((pass+1))
+fi
+
 echo
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

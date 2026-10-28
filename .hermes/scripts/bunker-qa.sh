@@ -1710,7 +1710,10 @@ install_artifact_dirs() {
   IFS=: read -r -a install_path_dirs <<< "\$PATH"
   for p in "\${install_path_dirs[@]}" "\$HOME/bin" "\$HOME/.local/bin"; do
     [ -d "\$p" ] || continue
-    case "\$p" in */bin) printf '%s\\n' "\$p" ;; esac
+    # Every PATH directory is eligible: the before snapshot excludes the
+    # harness' pre-existing tools, while a newly placed executable anywhere in
+    # PATH is the install leg's artifact regardless of its name or prefix.
+    printf '%s\\n' "\$p"
   done | sort -u
 }
 install_artifact_snapshot() {
@@ -1718,6 +1721,22 @@ install_artifact_snapshot() {
   while IFS= read -r p; do
     find "\$p" -maxdepth 1 -type f -perm -u+x -print 2>/dev/null
   done < <(install_artifact_dirs)
+}
+artifact_check() { # <install-command> <before-snapshot> <after-snapshot> <log>
+  local install_cmd="\$1" before="\$2" after="\$3" log="\$4"
+  local install_artifacts artifact_required toolsd_artifact
+  install_artifact_snapshot | sort -u > "\$after"
+  install_artifacts="\$(comm -13 "\$before" "\$after" | tr '\\n' ' ' | sed 's/[[:space:]]*$//' )"
+  toolsd_artifact="\$(grep -m1 '/toolsd$' "\$after" || true)"
+  case "\$install_cmd" in
+    make\\ *|*toolsd*) artifact_required=1 ;;
+    *) artifact_required=0 ;;
+  esac
+  if [ "\$artifact_required" -eq 1 ] && [ -z "\$install_artifacts" ] && [ -z "\$toolsd_artifact" ]; then
+    cell fresh-install FAIL "rc=1: install rc=0 but no artifact found in PATH/bin (toolsd is allowed when present)"
+  else
+    cell fresh-install OK "\$(tail -1 "\$log")\${install_artifacts:+; artifact(s): \$install_artifacts}"
+  fi
 }
 INSTALL_ARTIFACT_BEFORE="\$LOGD/install-artifacts.before"
 INSTALL_ARTIFACT_AFTER="\$LOGD/install-artifacts.after"
@@ -1760,18 +1779,7 @@ elif [ \$inst_rc -eq 0 ]; then
   # artifact in the install destination.  Compare against the pre-install
   # snapshot so bootstrap tools (including a pre-existing toolsd) do not count;
   # any newly installed executable is valid, regardless of its name.
-  install_artifact_snapshot | sort -u > "\$INSTALL_ARTIFACT_AFTER"
-  install_artifacts="\$(comm -13 "\$INSTALL_ARTIFACT_BEFORE" "\$INSTALL_ARTIFACT_AFTER" | tr '\\n' ' ' | sed 's/[[:space:]]*$//' )"
-  case "\$install_cmd" in
-    make\ *|*toolsd*) artifact_required=1 ;;
-    *) artifact_required=0 ;;
-  esac
-  if [ "\$artifact_required" -eq 1 ] && [ -z "\$install_artifacts" ]; then
-    artifact_rc=1
-    cell fresh-install FAIL "rc=\$artifact_rc: install rc=0 but no artifact found in PATH/bin (toolsd is allowed when present)"
-  else
-    cell fresh-install OK "\$(tail -1 \$LOGD/inst.log)\${install_artifacts:+; artifact(s): \$install_artifacts}"
-  fi
+  artifact_check "\$install_cmd" "\$INSTALL_ARTIFACT_BEFORE" "\$INSTALL_ARTIFACT_AFTER" "\$LOGD/inst.log"
 elif [ \$inst_rc -eq 127 ] || grep -qi 'command not found' \$LOGD/inst.log; then cell fresh-install INFO "ENV-BLOCKED: the agent lacks a build tool the install step calls (\$(grep -m1 -oE '[a-zA-Z0-9_.-]+: command not found' \$LOGD/inst.log || echo rc=\$inst_rc)) and has no sudo to install it — harness env, not a repo defect: \$(tail -1 \$LOGD/inst.log)"
 elif build_env_failure \$LOGD/inst.log; then cell fresh-install INFO "ENV-BLOCKED: agent has no C toolchain (build-script link failure) — not a repo defect; README documents build-essential"
 elif [ -n "\$RUST_MISSING_SYS_DEPS" ] && build_sys_dep_failure \$LOGD/inst.log; then cell fresh-install INFO "ENV-BLOCKED: agent is missing system deps [\$RUST_MISSING_SYS_DEPS] and the build died in a *-sys build script — no sudo to apt install, not a repo defect; README documents the full dependency set: \$( { grep -m1 -E 'failed to run custom build command' \$LOGD/inst.log 2>/dev/null || grep -m1 'development packages' \$LOGD/inst.log 2>/dev/null; } | cut -c1-200 )"
