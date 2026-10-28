@@ -1,0 +1,48 @@
+{
+  "tick_id": "bunker-foreman-2026-10-28-01-19-46",
+  "tick_number": 685,
+  "block": "FLEET-INFRA-2",
+  "wave_budget": 12,
+  "slots": 6,
+  "path": "SERIAL — recovery of an already-committed worker branch (no fresh dispatch)",
+  "reason": "RESUME-FIRST pointed at INT-HOST-011, whose sole ready row INT-HOST-008 is a destructive live-host cleanup gated on explicit owner authorization that has now been absent across 15 consecutive ticks (666..684). Re-probed this tick (reap --dry-run rc=0, 297 profiles / 96 runtime dirs would remove, 10 live users kept) — the gate is still in force, so that block yields no dispatchable work. Next line marked DRIVE is FLEET-INFRA-2 (P1, 1 ready row). FLEET-INFRA-1's implementation was found COMPLETE and UNMERGED on wt/FLEET-INFRA-1: 2 commits / 884 insertions / 13 files, whose 2026-10-24 Tier-2 verdict read FAIL only because the judge ran at 17:01 while the worker's commits landed at 00:26 and 01:22 the NEXT day. Recovery = verify the branch, rebase onto current origin/main, run the full gate on the merged tree, then judge. No worker launched: a branch already carrying the fix is a merge-and-judge, not a re-dispatch (a second worker would double-write the same files).",
+  "block_drive": {
+    "rows_total": 838,
+    "pending": 176,
+    "blocks": 12,
+    "top_drive": "INT-HOST-011 (owner-gated, no dispatch)",
+    "selected": "FLEET-INFRA-2"
+  },
+  "host": {
+    "nproc": 16,
+    "loadavg_1m": 3.53,
+    "computed_slots": 6,
+    "effective_slots": 6,
+    "wave_budget": 12
+  },
+  "rows": [
+    {
+      "id": "FLEET-INFRA-1",
+      "status_at_dispatch": "pending",
+      "priority": "P1",
+      "path": "recovery-merge",
+      "worktree": "/home/kara/worktrees/bunker-FLEET-INFRA-1",
+      "branch": "wt/FLEET-INFRA-1",
+      "worktree_head_before": "ec04b151",
+      "rebased_head": "1597ec1e",
+      "base": "32f6fccf",
+      "commits": ["ac190180", "1597ec1e"],
+      "diffstat": "13 files changed, 884 insertions(+), 4 deletions(-)",
+      "base_verdict": ".gitreins/history/2026-10-24/81fef145/verdict.json (FAIL/INCOMPLETE — no implementation; judge ran 7h BEFORE the worker's first commit)",
+      "worker": "unknown:recovered-work (branch provenance is the commit + verdict evidence)"
+    }
+  ],
+  "rows_dispatched": [],
+  "rows_landed": ["FLEET-INFRA-1"],
+  "rows_verified": ["FLEET-INFRA-1", "INT-HOST-008"],
+  "wave_size": 0,
+  "owner_blocker": "INT-HOST-008: explicit owner authorization for destructive bunker-mvp `bunker reap --apply` remains absent; --apply was not run and must not be.",
+  "local_gate": "PASS: go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4 (full suite green on the rebased branch) + cmd/bunkerd port-pool check renders the config verdict on the merged tree",
+  "remote_ci": "in_progress at close: run 40619231504 for 1597ec1e",
+  "gitreins": "FLEET-INFRA-1 recreated (absent from tasks.yaml) + started + completed against the merged tree; verdict pending readback"
+}

@@ -1,0 +1,71 @@
+{
+  "tick_id": "bunker-foreman-2026-10-28-01-19-46",
+  "tick_number": 685,
+  "block": "FLEET-INFRA-2",
+  "row": "FLEET-INFRA-1",
+  "priority": "P1",
+  "classification": "recovered-worker-branch-merge",
+  "path": "SERIAL recovery — branch already carried the complete fix; no fresh dispatch",
+  "selected_because": "RESUME-FIRST evaluated INT-HOST-011 first: its sole ready row INT-HOST-008 is a destructive live-host cleanup gated on owner authorization absent for 15 consecutive ticks. Re-probed this tick (reap --dry-run rc=0) and the gate is still in force, so that block yields no dispatchable work. FLEET-INFRA-2 is the next line marked DRIVE (P1) and FLEET-INFRA-1 is a genuinely ready row.",
+  "root_cause": "PortAllocator is in-memory and every known free path was covered by 2c67b47, but nothing ever COMPARED the pool against tracked agents. Any teardown path that skipped Free leaked a range until restart, and a restart replays from the registry instead of healing memory — the shape behind 27 exhaustion observations across 15 projects with only 1-2 agents live.",
+  "branch": {
+    "name": "wt/FLEET-INFRA-1",
+    "worktree": "/home/kara/worktrees/bunker-FLEET-INFRA-1",
+    "head_before_rebase": "ec04b151",
+    "commits": ["ac190180", "1597ec1e"],
+    "diffstat": "13 files changed, 884 insertions(+), 4 deletions(-)",
+    "files": [
+      "cmd/bunkerd/main.go",
+      "cmd/bunkerd/portpool.go",
+      "cmd/bunkerd/portpool_test.go",
+      "internal/agent/manager.go",
+      "internal/agent/manager_spawn.go",
+      "internal/agent/reconcile.go",
+      "internal/agent/reconcile_failclosed_test.go",
+      "internal/agent/reconcile_foreign_test.go",
+      "internal/agent/reconcile_portpool_test.go",
+      "internal/config/config.go",
+      "internal/config/config_portpool_test.go",
+      "internal/resource/portalloc.go",
+      "internal/resource/portalloc_fleetinfra_test.go"
+    ],
+    "deletions_vs_origin_main": 0
+  },
+  "why_it_appeared_unfinished": {
+    "verdict": ".gitreins/history/2026-10-24/81fef145/verdict.json",
+    "verdict_status": "FAIL / Tier-2 INCOMPLETE",
+    "verdict_reason": "No implementation exists. The FLEET-INFRA-1 worktree is still at base 80719863: git status --short is empty and git diff --stat 80719863 is empty.",
+    "discrepancy": "The judge ran 2026-10-24T17:01Z. The worker's commits carry timestamps 2026-10-27T00:26 and 2026-10-27T01:22 — the worker produced its implementation roughly 7 hours AFTER the judge had already failed the row. The row was then left pending with a stale FAIL while the complete work sat unmerged on the worker branch."
+  },
+  "verification": {
+    "gate": "go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4",
+    "gate_result": "PASS",
+    "gate_scope": "full package suite on the rebased branch before merge",
+    "gofmt": "clean on all changed .go files",
+    "focused_tests": "go test ./internal/resource/... ./internal/config/... ./cmd/bunkerd/... ./internal/agent/... -count=1 -short => all ok (internal/agent 166s)",
+    "merge": "git merge --ff-only wt/FLEET-INFRA-1 into main (0 deletions), pushed 32f6fccf..1597ec1e",
+    "block_acceptance_probe": "/tmp/bunkerd-fi1 --config /dev/null port-pool check => 'pool: 10000-19999, per-agent: 100 ports, max_agents: 100, capacity: 100 ranges, verdict: OK (config.Validate passed: max_agents fits the pool capacity)' rc=0"
+  },
+  "gitreins": {
+    "task": "FLEET-INFRA-1",
+    "note": "Absent from canonical .gitreins/tasks.yaml (the 2026-10-24 lifecycle never persisted it). Recreated with the SAME id and the original criterion, started, then completed against the merged tree.",
+    "criterion": "Implement and verify a durable bunker-side remedy for the consolidated shared port-pool exhaustion condition; preserve fail-closed behavior, add regression coverage, and record live/deployment blockers explicitly if the fix is not reachable from this repository.",
+    "tier1": "PASSED",
+    "tier2": "pending readback — see verdict artifact recorded in the board row"
+  },
+  "owner_blocker": "INT-HOST-008 (block INT-HOST-011): explicit owner authorization for destructive bunker-mvp `bunker reap --apply` remains absent; --apply was not run.",
+  "other_owner_gate_verification": {
+    "row": "INT-HOST-008",
+    "host": "bunker-mvp",
+    "binary": "bunker 0.2.1 commit eab25686",
+    "command": "ssh -o BatchMode=yes -o ConnectTimeout=10 bunker-mvp 'hostname; bunker version; bunker reap --dry-run'",
+    "remote_exit_code": 0,
+    "dry_run": true,
+    "mutation_run": false,
+    "apparmor_profiles_would_remove": 297,
+    "apparmor_profiles_kept_live_user": 10,
+    "runtime_dirs_would_remove": 96,
+    "runtime_dirs_kept_live_user": 8,
+    "result": "gate still in force — no owner authorization found; no mutation performed"
+  }
+}
