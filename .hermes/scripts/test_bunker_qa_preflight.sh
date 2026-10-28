@@ -12,6 +12,8 @@
 #       "SSH probe failed: target host <name> unreachable (exit=255)"; stub log
 #       proves exactly ONE probe attempt.
 #   (c) reachable host        -> ssh stub exits 0 -> rc=0.
+#   (c2) target disk preflight -> 95% grades the launch cell FAIL before spawn;
+#        40% passes and the preflight proceeds.
 #   (d) harness-level refusal -> preflights() exits 2, writes exactly ONE FAIL
 #       evidence row carrying the cause, before any spawn/step.
 #   (e) honest summary        -> qa_run_summary() over fixture evidence files:
@@ -43,9 +45,10 @@ trap 'rm -rf "$TMPD"' EXIT
 
 # ── extract the REAL functions from the harness ──
 sed -n '/^qa_target_preflight() {/,/^}$/p' "$HARNESS" > "$TMPD/fns.sh"
+sed -n '/^qa_disk_preflight() {/,/^}$/p'    "$HARNESS" >> "$TMPD/fns.sh"
 sed -n '/^qa_run_summary() {/,/^}$/p'        "$HARNESS" >> "$TMPD/fns.sh"
 sed -n '/^preflights() {/,/^}$/p'            "$HARNESS" >> "$TMPD/fns.sh"
-for fn in qa_target_preflight qa_run_summary preflights; do
+for fn in qa_target_preflight qa_disk_preflight qa_run_summary preflights; do
   grep -q "^${fn}() {" "$TMPD/fns.sh" || { echo "FAIL: could not extract ${fn} from $HARNESS"; exit 1; }
 done
 grep -q '^}$' "$TMPD/fns.sh" || { echo "FAIL: extraction unbalanced"; exit 1; }
@@ -60,6 +63,9 @@ mkdir -p "$TMPD/bin"
 cat > "$TMPD/bin/ssh" <<'STUB'
 #!/bin/bash
 echo "$*" >> "${SSH_LOG:?SSH_LOG unset}"
+if [ "${*: -1}" = "df -P /" ]; then
+  printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/root 100 95 5 %s%% /\n' "${DF_USE:-40}"
+fi
 exit "${SSH_RC:-255}"
 STUB
 chmod +x "$TMPD/bin/ssh"
@@ -99,6 +105,30 @@ out=$(HOME="$TMPD/home" PATH="$TMPD/bin:$PATH" BUNKER_QA_HOST_KEY="$TMPD/nokey" 
   bash -c "source '$TMPD/fns.sh'; qa_target_preflight fixture-host"); rc=$?
 check "(c) reachable host rc" "0" "$rc"
 check "(c) no refusal text" "" "$out"
+
+# ── (c2) target disk preflight: the launch cell fails above 94% ──
+export SSH_RC=0
+export DF_USE=95
+: > "$SSH_LOG"
+EV="$TMPD/ev-c2-red.jsonl"; : > "$EV"
+out=$(HOME="$TMPD/home" PATH="$TMPD/bin:$PATH" BUNKER_QA_HOST_KEY="$TMPD/nokey" \
+  SERVER="fixture-host" EVIDENCE="$EV" \
+  bash -c "source '$TMPD/fns.sh'; preflights" 2>&1); rc=$?
+check "(c2) 95% disk preflight rc" "2" "$rc"
+contains "(c2) names disk threshold" "disk usage 95% exceeds 94% launch threshold" "$out"
+contains "(c2) launch cell grades FAIL" '"cell":"launch","status":"FAIL"' "$(cat "$EV")"
+check "(c2) disk check follows ssh reachability" "2" "$(wc -l < "$SSH_LOG" | tr -d ' ')"
+
+# Healthy control: 40% passes the disk preflight and reaches the capacity probe.
+export DF_USE=40
+: > "$SSH_LOG"
+EV="$TMPD/ev-c2-green.jsonl"; : > "$EV"
+out=$(HOME="$TMPD/home" PATH="$TMPD/bin:$PATH" BUNKER_QA_HOST_KEY="$TMPD/nokey" \
+  SERVER="fixture-host" EVIDENCE="$EV" \
+  bash -c "source '$TMPD/fns.sh'; qa_disk_preflight fixture-host" 2>&1); rc=$?
+check "(c2-control) 40% disk preflight rc" "0" "$rc"
+contains "(c2-control) healthy disk output" "disk usage 40% is within 94% launch threshold" "$out"
+check "(c2-control) disk probe issued" "1" "$(wc -l < "$SSH_LOG" | tr -d ' ')"
 
 # ── (d) harness-level refusal: preflights() exits 2 with ONE FAIL row ──
 export SSH_RC=255

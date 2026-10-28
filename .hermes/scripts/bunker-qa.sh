@@ -4,7 +4,7 @@
 # BRITTLENESS by running the project on a CLEAN machine (Bane doctrine 08-24:
 # "not just we have valid code but does that code give us things that are brittle").
 #
-# Cells: fresh-install · ci-pass (act --bind) · docker-deploy · ui-probe · upgrade
+# Cells: fresh install · ci-pass (act --bind) · docker-deploy · ui-probe · upgrade
 #        chaos-disconnect · chaos-shutdown · chaos-corruption · chaos-resource · chaos-errorpath
 #
 # Architecture: ALL remote commands run from a generated script (qa-run.sh) shipped
@@ -68,7 +68,7 @@ fi
 # ─── QA-BUNKER-60 (2026-10-07): slice sizing + repo-weight preflight ───
 # JIT QA agents spawned with the DEFAULT slice (2 of 16 host cores, 4G) took
 # ~5% CPU per rustc process on a heavy workspace (wasmtime + arrow + tree-sitter
-# C parsers): the fresh-install leg ran 2h+ and the battery was salvaged at ~3h
+# C parsers): the install leg ran 2h+ and the battery was salvaged at ~3h
 # with cells unwritten — the TTL window cannot fit heavy workspaces on a 2-CPU
 # slice. Three levers, all opt-in-by-shape (default slice preserved for light
 # repos; nothing else about the spawn contract changes):
@@ -118,7 +118,7 @@ qa_repo_weight_warn() { # <repo-dir> <evidence-file> — WARN when heavy AND 2-C
   [ "$cpus" = "4.0" ] && return 0
   echo "WARN: slice too small for this workspace ($deps deps) — set BUNKER_QA_CPUS>=4" >&2
   if [ -n "$evfile" ] && [ -f "$evfile" ]; then
-    printf '{"project":"%s","cell":"launch-note","status":"INFO","detail":"slice too small for this workspace (%s deps) — set BUNKER_QA_CPUS>=4 (cargo/go workspaces need more than the 2-CPU default slice; heavy rust builds measured 2h+ on fresh-install)","ts":"%s"}\n' \
+    printf '{"project":"%s","cell":"launch-note","status":"INFO","detail":"slice too small for this workspace (%s deps) — set BUNKER_QA_CPUS>=4 (cargo/go workspaces need more than the 2-CPU default slice; heavy rust builds measured 2h+ on install)","ts":"%s"}\n' \
       "$(basename "$repo")" "$deps" "$(date -u +%FT%TZ)" >> "$evfile"
   fi
   return 0
@@ -446,6 +446,39 @@ qa_target_preflight() { # [server] — 0 = reachable; nonzero = refusal (cause o
   return 0
 }
 
+# qa_disk_preflight [server] — reject a target host whose root filesystem is
+# above the launch safety threshold before spawn/sync/compile can cascade into
+# ENOSPC. The df command deliberately runs through the server SSH connection:
+# the local controller's disk is not the bunker host that will run act/images.
+# A missing or malformed reading is also a refusal; continuing would make the
+# preflight claim protection it did not actually establish.
+qa_disk_preflight() { # 0 = <=94%; nonzero = named refusal on stdout
+  local SERVER="${1:-$SERVER}" disk_out="" usage="" prc=0
+  disk_out=$(timeout "${BUNKER_QA_DISK_TIMEOUT:-30}" ssh -i "$BUNKER_QA_HOST_KEY" \
+    -o IdentitiesOnly=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=no \
+    -o BatchMode=yes "$SERVER" 'df -P /' 2>/dev/null)
+  prc=$?
+  if [ "$prc" -ne 0 ]; then
+    echo "target host $SERVER disk preflight failed (df -P exit=$prc)"
+    return 1
+  fi
+  usage=$(printf '%s\n' "$disk_out" | awk '
+    NR > 1 && $5 ~ /^[0-9]+%$/ { sub(/%$/, "", $5); print $5; exit }
+  ')
+  case "$usage" in
+    ''|*[!0-9]*)
+      echo "target host $SERVER disk preflight returned no usable df -P use%"
+      return 1
+      ;;
+  esac
+  if [ "$usage" -gt 94 ]; then
+    echo "target host $SERVER disk usage ${usage}% exceeds 94% launch threshold"
+    return 1
+  fi
+  echo "target host $SERVER disk usage ${usage}% is within 94% launch threshold"
+  return 0
+}
+
 preflights() {
   # QA-BUNKER-B20: prove the target host exists AND answers BEFORE any step
   # runs — a dropped/stale default must be a NAMED refusal, never a silent
@@ -457,6 +490,13 @@ preflights() {
     printf '{"cell":"run_battery","status":"FAIL","detail":"%s — no spawn attempted","ts":"%s"}\n' \
       "$tgt_err" "$(date -u +%FT%TZ)" >> "$EVIDENCE"
     echo "ERROR: $tgt_err — refusing to run (deterministic config/reachability error)" >&2
+    exit 2
+  fi
+  local disk_err
+  if ! disk_err=$(qa_disk_preflight); then
+    printf '{"cell":"launch","status":"FAIL","detail":"%s — no spawn attempted","ts":"%s"}\n' \
+      "$disk_err" "$(date -u +%FT%TZ)" >> "$EVIDENCE"
+    echo "PREFLIGHT FAIL: $disk_err" >&2
     exit 2
   fi
   # Capacity preflight: a FULL pool is a deterministic spawn failure, so the
