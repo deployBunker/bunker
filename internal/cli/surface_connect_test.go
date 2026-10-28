@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -62,7 +63,7 @@ func (m *surfaceConnectMock) ExecAgent(ctx context.Context, req *connect.Request
 // run and returns the mock, the server URL and the temp home.
 func setupSurfaceConnectTest(t *testing.T, agent *v1.AgentSummary, uid string) (*surfaceConnectMock, string, string) {
 	t.Helper()
-	tmpDir := t.TempDir()
+	tmpDir := shortTestDir(t) // HOME stub only; nothing binds a socket under it
 	t.Setenv("HOME", tmpDir)
 
 	mock := &surfaceConnectMock{
@@ -109,6 +110,37 @@ func stubSurfaceWait(t *testing.T) {
 }
 
 // ── pure units ──────────────────────────────────────────────────────────────
+
+// shortTestDir returns a short directory for the test process, as an
+// environment-independent stand-in for the testing package's per-test temp
+// directory (QA-BUNKER-076-R2). The AF_UNIX sun_path limit is 107 bytes; on
+// JIT battery agents (HOME=/home/bunker-<id>, battery TMPDIR=~/qa-tmp-<pid>)
+// a temp-dir socket path is ~109 bytes and bind() fails with EINVAL — an
+// environment-shaped red that has nothing to do with the code under test.
+// The name here is fixed-length — it grows with neither TMPDIR nor the test
+// name. One directory per test process (pid-suffixed, reused across tests in
+// the process, since -count>1 re-execs with a new pid) also keeps same-name
+// sockets from colliding
+// between concurrent suites; this package's surface tests do not use
+// t.Parallel(), and anything the test leaves in the directory is a
+// per-pid-prefixed file next to the operator's fixed /tmp entries, so the
+// reuse is inert.
+func shortTestDir(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(os.TempDir(), fmt.Sprintf("bunker-tst-%d", os.Getpid()))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("short test dir %s: %v", dir, err)
+	}
+	return dir
+}
+
+// shortTestFile is shortTestDir with a fixed short file name, so the full
+// path of anything a test creates under it is bounded regardless of the
+// enclosing TMPDIR or test name.
+func shortTestFile(t *testing.T, name string) string {
+	t.Helper()
+	return filepath.Join(shortTestDir(t), name)
+}
 
 func TestSurfaceConnectLocalSocketDefault(t *testing.T) {
 	got := surfaceConnectLocalSocketDefault("abc123")
@@ -413,7 +445,7 @@ func TestSurfaceConnectCommand_MissingKey(t *testing.T) {
 }
 
 func TestSurfaceConnectCommand_FailClosedBinding(t *testing.T) {
-	tmpDir := t.TempDir()
+	tmpDir := shortTestDir(t)
 	t.Setenv("HOME", tmpDir)
 	t.Setenv(SessionTargetEnvVar, "") // no session binding, no --server
 
@@ -434,13 +466,19 @@ func TestSurfaceConnectCommand_FailClosedBinding(t *testing.T) {
 func TestSurfaceConnectCommand_LocalSocketBusyRefused(t *testing.T) {
 	// unix-only file: unix sockets always exist here.
 	agent := &v1.AgentSummary{AgentId: "abc123", SshfsMount: surfaceConnectTestMount}
-	_, _, tmpDir := setupSurfaceConnectTest(t, agent, "4242")
+	setupSurfaceConnectTest(t, agent, "4242")
 	captureSurfaceConnectExec(t)
 	stubSurfaceWait(t)
 
 	// A live local socket at the requested path: the command must refuse
-	// instead of silently replacing another session's forward.
-	sockPath := filepath.Join(tmpDir, "busy.sock")
+	// instead of silently replacing another session's forward. The socket
+	// path is deliberately short (fixed name under a short per-process dir,
+	// see shortTestDir): sun_path caps at 107 bytes and a temp-dir path
+	// overruns it on JIT battery agents (QA-BUNKER-076-R2). A real AF_UNIX
+	// bind is still load-bearing — the command's refusal fires only on
+	// os.Stat().Mode()&ModeSocket, so a plain file at the path would be
+	// silently removed instead of refused.
+	sockPath := shortTestFile(t, "busy.sock")
 	ln, err := net.Listen("unix", sockPath)
 	if err != nil {
 		t.Fatalf("listen: %v", err)
@@ -526,7 +564,7 @@ func TestSurfaceConnectCommand_TunnelContextContract(t *testing.T) {
 
 func TestSurfaceCheckCommand_HappyPath(t *testing.T) {
 	checkScript = nil // reset the script sink across subtests
-	tmpDir := t.TempDir()
+	tmpDir := shortTestDir(t)
 	t.Setenv("HOME", tmpDir)
 	agent := &v1.AgentSummary{AgentId: "abc123", SshfsMount: surfaceConnectTestMount}
 	server := newTunnelTestServer(t, &surfaceCheckScriptMock{
@@ -574,7 +612,7 @@ func TestSurfaceCheckCommand_HappyPath(t *testing.T) {
 
 func TestSurfaceCheckCommand_FailureNamesChecks(t *testing.T) {
 	checkScript = nil
-	tmpDir := t.TempDir()
+	tmpDir := shortTestDir(t)
 	t.Setenv("HOME", tmpDir)
 	agent := &v1.AgentSummary{AgentId: "abc123", SshfsMount: surfaceConnectTestMount}
 	server := newTunnelTestServer(t, &surfaceCheckScriptMock{
@@ -632,7 +670,7 @@ func (m *surfaceCheckScriptMock) ExecAgent(ctx context.Context, req *connect.Req
 }
 
 func TestSurfaceCheckCommand_JSON(t *testing.T) {
-	tmpDir := t.TempDir()
+	tmpDir := shortTestDir(t)
 	t.Setenv("HOME", tmpDir)
 	agent := &v1.AgentSummary{AgentId: "abc123", SshfsMount: surfaceConnectTestMount}
 	server := newTunnelTestServer(t, &surfaceCheckScriptMock{
@@ -671,7 +709,7 @@ func TestSurfaceConnectCommand_SignalReapsSSHChild(t *testing.T) {
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("python3 needed by the fake forwarder")
 	}
-	tmp := t.TempDir()
+	tmp := shortTestDir(t)
 
 	agent := &v1.AgentSummary{AgentId: "e2e-main", SshfsMount: strings.ReplaceAll(surfaceConnectTestMount, "abc123", "e2e-main")}
 	server := newTunnelTestServer(t, &surfaceConnectMock{
