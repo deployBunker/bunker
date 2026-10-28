@@ -286,9 +286,16 @@ spawn_agent() {
       [ $attempt -lt 3 ] && { echo "  spawn attempt $attempt failed: $(echo "$out" | tail -1)" >&2; sleep "${BUNKER_QA_RETRY_SLEEP:-5}"; }
       continue
     fi
+    # Keep the spawn transcript as local spawn metadata. Newer daemon/CLI
+    # versions may include the agent's SSH port there; agent_ssh_port() prefers
+    # that per-agent value and keeps the environment/default fallback for older
+    # output shapes.
+    if [ -n "${EVIDENCE:-}" ]; then
+      printf '%s\n' "$out" > "${EVIDENCE}.agent-${id}.spawn"
+    fi
     # Reachability gate: the agent must answer ssh BEFORE it is handed off,
     # so an unreachable spawn never leaks to the caller as a "success".
-    if timeout "${BUNKER_QA_PROBE_TIMEOUT:-180}" ssh -p "${BUNKER_QA_SSH_PORT:-2223}" -i "$BUNKER_QA_HOST_KEY" -i "$HOME/.bunker/keys/$id" -o IdentitiesOnly=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=no -o BatchMode=yes "bunker-$id@$SERVER" true 2>/dev/null; then
+    if timeout "${BUNKER_QA_PROBE_TIMEOUT:-180}" ssh -p "$(agent_ssh_port "$id")" -i "$BUNKER_QA_HOST_KEY" -i "$HOME/.bunker/keys/$id" -o IdentitiesOnly=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=no -o BatchMode=yes "bunker-$id@$SERVER" true 2>/dev/null; then
       echo "$id"
       return 0
     fi
@@ -305,7 +312,37 @@ spawn_agent() {
   echo "$out" | tail -3 >&2
   return 1
 }
-agent_ssh() { timeout "${BUNKER_QA_SSH_TIMEOUT:-1800}" ssh -p "${BUNKER_QA_SSH_PORT:-2223}" -i "$BUNKER_QA_HOST_KEY" -i "$key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o BatchMode=yes "bunker-$agent@$SERVER" "$@"; }
+
+# agent_ssh_port <agent-id> — resolve the port for this agent's sshd.
+# The spawn transcript is per-agent metadata: when it carries an explicit SSH
+# port, use it. Current CLI bundles identify the agent's SSH connection but omit
+# the port because it is the normal SSH port (22); recognize that shape too.
+# BUNKER_QA_SSH_PORT is an explicit operator override and therefore wins over
+# discovered metadata; the historical 2223 fallback remains for no metadata.
+agent_ssh_port() {
+  local id="$1" spawn_file="${EVIDENCE:-}.agent-${1}.spawn" port=""
+  if [ -n "${BUNKER_QA_SSH_PORT:-}" ]; then
+    printf '%s\n' "$BUNKER_QA_SSH_PORT"
+    return 0
+  fi
+  if [ -n "${EVIDENCE:-}" ] && [ -f "$spawn_file" ]; then
+    port=$(grep -ioE '(ssh[-_ ]*port|--ssh-port)[=: ]+[0-9]{1,5}' "$spawn_file" 2>/dev/null \
+      | grep -oE '[0-9]{1,5}$' | head -1)
+    # A normal spawn bundle is itself the per-agent transport record. Its
+    # omitted port means the agent sshd is on the standard SSH port, 22 — not
+    # the daemon's unrelated 2223 service port.
+    if [ -z "$port" ] && grep -qE 'Agent created:|SSH Key:|SSHFS Mount:|Docker SSH:' "$spawn_file" 2>/dev/null; then
+      port=22
+    fi
+  fi
+  printf '%s\n' "${port:-2223}"
+}
+
+agent_ssh() {
+  local port
+  port=$(agent_ssh_port "$agent")
+  timeout "${BUNKER_QA_SSH_TIMEOUT:-1800}" ssh -p "$port" -i "$BUNKER_QA_HOST_KEY" -i "$key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o BatchMode=yes "bunker-$agent@$SERVER" "$@"
+}
 
 status() {
   echo "BUNKER QA — $(date -u +%Y-%m-%dT%H:%M:%SZ) — server $SERVER"

@@ -110,6 +110,43 @@ check "pnpm-only -> install pnpm" \
   "corepack enable 2>/dev/null; corepack prepare --activate 2>/dev/null; pnpm install --frozen-lockfile" "$inst"
 check "pnpm-only -> native pnpm test" "pnpm test" "$nat"
 
+
+# QA-BUNKER-50: the per-agent SSH port must be selected from spawn metadata
+# before the compatibility env/default fallback. Extract just the resolver so
+# this guard remains source-only and does not need a live bunker host.
+PORT_TMP="$TMPD/ssh-port"
+mkdir -p "$PORT_TMP"
+awk '
+  /^agent_ssh_port\(\) \{/ {f=1}
+  f {print}
+  f && /^\}$/ {exit}
+' "$HARNESS" > "$PORT_TMP/agent_port.sh"
+if ! grep -q '^agent_ssh_port() {' "$PORT_TMP/agent_port.sh"; then
+  echo "FAIL per_agent_ssh_port: agent_ssh_port() is missing"
+  fail=$((fail+1))
+else
+  cat > "$PORT_TMP/probe.sh" <<'EOF'
+#!/bin/bash
+set -u
+source "$1"
+EVIDENCE="$2"
+printf '%s\n' "$(agent_ssh_port "$3")"
+EOF
+  chmod +x "$PORT_TMP/probe.sh"
+  spawn_file="$PORT_TMP/evidence.agent-agent.spawn"
+  printf 'Agent created: agent\nSSH Key: /tmp/key\nSSH port: 22\nPort Range: 10300-10399\n' > "$spawn_file"
+  got=$($PORT_TMP/probe.sh "$PORT_TMP/agent_port.sh" "$PORT_TMP/evidence" agent)
+  check "per_agent_ssh_port spawn data wins" "22" "$got"
+  got=$(BUNKER_QA_SSH_PORT=2202 "$PORT_TMP/probe.sh" "$PORT_TMP/agent_port.sh" "$PORT_TMP/evidence" agent)
+  check "per_agent_ssh_port env override wins" "2202" "$got"
+  rm -f "$spawn_file"
+  got=$(BUNKER_QA_SSH_PORT=22 "$PORT_TMP/probe.sh" "$PORT_TMP/agent_port.sh" "$PORT_TMP/evidence" agent)
+  check "per_agent_ssh_port env fallback" "22" "$got"
+  got=$(env -u BUNKER_QA_SSH_PORT "$PORT_TMP/probe.sh" "$PORT_TMP/agent_port.sh" "$PORT_TMP/evidence" agent)
+  check "per_agent_ssh_port default fallback" "2223" "$got"
+fi
+
 echo
+ echo "QA-BUNKER-50: per-agent SSH port resolution"
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
