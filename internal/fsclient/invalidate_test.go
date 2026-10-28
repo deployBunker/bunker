@@ -50,6 +50,30 @@ func (c *collectDrops) resync(reason string) {
 	c.resyncs = append(c.resyncs, reason)
 }
 
+// resyncCount reports the resync count under the collector's lock, so a test
+// goroutine can read it while the invalidator's poll goroutine is still
+// appending (the race detector flagged the direct field reads;
+// QA-BUNKER-080 follow-through).
+func (c *collectDrops) resyncCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.resyncs)
+}
+
+// resyncSnapshot returns a copy of the resync reasons under the lock.
+func (c *collectDrops) resyncSnapshot() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.resyncs...)
+}
+
+// fullCount reports the whole-tree drop count under the collector's lock.
+func (c *collectDrops) fullCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.full
+}
+
 // dropped reports whether any drop carried path p.
 func (c *collectDrops) dropped(p string) bool {
 	c.mu.Lock()

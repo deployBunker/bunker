@@ -27,6 +27,9 @@ package agent
 //     and the proof still fails when scaling is disabled, so the survival can
 //     only come from the scaled grant, never from a slow host
 //     (TestSessionProbe_ScaledBudgetIsUsedUnderConcurrency_ScalingDisabled);
+//     the survival margin itself is pinned as pure arithmetic so the test
+//     seams cannot shrink back into the load-flaky window
+//     (TestSessionProbeMarginGuard_SeamsCannotShrinkIntoTheFlakyWindow);
 //  3. a genuine session DENIAL (exit 254, INT-DEMO-001) is NOT retried, does
 //     not gather diagnostics, and fails fast however large the budget
 //     (TestSessionProbe_DenialFailsFastAndIsNotMasked);
@@ -156,6 +159,49 @@ func TestSessionProbeBudget_ScaledToConcurrency(t *testing.T) {
 
 // ── 2. the scaling is wired into the probe ────────────────────────────────
 
+// The hermetic seam set for the concurrency proof (QA-BUNKER-080): the lone
+// budget stays small enough for the session hold to decisively outlive it,
+// while the scaled grant dwarfs the hold by a MULTI-SECOND margin. That margin
+// is the whole fix: a per-attempt kill fires on the wall clock LATE under
+// starvation, never early, so a multi-second margin cannot be eaten by
+// scheduler delay — whereas the old 1200ms scaled grant left only 150ms
+// between the hold and the grant, and the battery's JIT-starved host ate it
+// (two ci-pass native-leg reds). The concurrency proof and its margin guard
+// share these constants so they cannot drift apart.
+const (
+	intci082HermeticLoneBudget  = 300 * time.Millisecond
+	intci082HermeticPerSpawn    = 5 * time.Second
+	intci082HermeticCap         = 5 * time.Second
+	intci082HermeticTotal       = 60 * time.Second
+	intci082HermeticSessionHold = 450 * time.Millisecond
+	// intci082RedProofHold is the ScalingDisabled arm's session hold: it must
+	// outlive the lone budget by the per-child gap PLUS the kill-timer
+	// starvation allowance so its kill-vs-exit ordering cannot invert under
+	// load (see that test's comment; the guard pins the arithmetic).
+	intci082RedProofHold        = 1600 * time.Millisecond
+	intci082HermeticMinMargin   = 2 * time.Second
+	intci082HermeticMinHoldGap  = 100 * time.Millisecond
+	intci082HermeticMaxAttempts = 3
+)
+
+// sessionProbeBudgetWith is the budget formula as a pure function — the same
+// arithmetic sessionProbeBudget performs over the package seam vars — so the
+// margin guard can reason about the HERMETIC seam set without mutating any
+// package state.
+func sessionProbeBudgetWith(base, perSpawn, max time.Duration, inFlight int) time.Duration {
+	if inFlight < 1 {
+		inFlight = 1
+	}
+	budget := base
+	if scaled := time.Duration(inFlight) * perSpawn; scaled > budget {
+		budget = scaled
+	}
+	if budget > max {
+		budget = max
+	}
+	return budget
+}
+
 // TestSessionProbe_ScaledBudgetIsUsedUnderConcurrency proves the concurrency
 // signal reaches the REAL probe — and, with DF-BUNKER-112, proves it without
 // leaning on absolute wall-clock windows that a starved host breaks (the
@@ -172,11 +218,16 @@ func TestSessionProbeBudget_ScaledToConcurrency(t *testing.T) {
 // attempt could die first and the peer entered alone.)
 //
 // The stub holds every ssh session open for 450ms. With the seams shrunk to a
-// 300ms lone budget and a 1200ms scaled budget, a prover attempt that SURVIVES
-// the hold proves the grant exceeded 450ms — more than the 300ms lone budget —
-// no matter how slow the host was: a per-attempt context kill fires on the
-// wall clock, so surviving a 450ms hold cannot happen on a 300ms budget. Every
-// assertion then reads same-run report facts (Budget, Concurrent) or
+// 300ms lone budget and a 5s scaled budget (capped at 5s), a prover attempt
+// that SURVIVES the hold proves the grant exceeded 450ms — more than the 300ms
+// lone budget — no matter how slow the host was: a per-attempt context kill
+// fires on the wall clock, so surviving a 450ms hold cannot happen on a 300ms
+// budget. The scaled budget's slack over the hold is ~4.55s (vs the old
+// 1200ms grant's 150ms, which starved hosts ate — QA-BUNKER-080): a kill
+// cannot fire before the budget elapses, so the only way a starved prover
+// fails is a genuinely-late kill, never a premature one.
+//
+// Every assertion reads same-run report facts (Budget, Concurrent) or
 // load-monotone bounds (latency >= the hold), never absolute ceilings, so a
 // starved host cannot satisfy OR break them.
 //
@@ -186,10 +237,11 @@ func TestSessionProbeBudget_ScaledToConcurrency(t *testing.T) {
 // flight — both are the documented production behaviour for a lone probe, so
 // only the prover's outcome is asserted.
 func TestSessionProbe_ScaledBudgetIsUsedUnderConcurrency(t *testing.T) {
-	intci082ShrinkProbeSeams(t, 300*time.Millisecond, 600*time.Millisecond, 5*time.Second, 10*time.Second, 3)
+	intci082ShrinkProbeSeams(t, intci082HermeticLoneBudget, intci082HermeticPerSpawn,
+		intci082HermeticCap, intci082HermeticTotal, intci082HermeticMaxAttempts)
 	intci082SilenceDiagnostics(t)
 
-	const sessionHold = 450 * time.Millisecond
+	const sessionHold = intci082HermeticSessionHold
 	markDir := t.TempDir()
 	binDir := t.TempDir()
 	// Each attempt records its own PID marker, then holds the session open
@@ -268,13 +320,30 @@ func TestSessionProbe_ScaledBudgetIsUsedUnderConcurrency(t *testing.T) {
 // 300ms deadline and named as a timeout. If this arm ever goes green, the
 // main test's "survival proves the scaled grant" reasoning is void (a host
 // could be surviving holds for free).
+//
+// Kill-vs-exit ordering under starvation (QA-BUNKER-080): this arm relies on
+// the per-attempt kill winning the race against a fast-exiting ssh stub. In
+// os/exec (go1.26.10, cmd.Start/watchCtx), the context kill is armed by a
+// goroutine whose wake-up is scheduler-dependent; a stub that spawns and exits
+// `sleep` instantly can win that race and the attempt would SUCCEED. The old
+// 800ms hold against a 300ms budget made that inversion harmless — a starved
+// stub could not cover the 500ms excess even by winning the kill race. The
+// widened hold keeps that property with a named bound (pinned by the margin
+// guard below): the 1600ms script holds 1300ms of serialized work in excess
+// of the lone budget, of which >=100ms is the per-child gap
+// (intci082HermeticMinHoldGap) and >=1s the kill-timer allowance
+// (intci082HermeticMinMargin/2). A green run would need the kill delayed by
+// >1.2s AND both sleep children fast-forwarded past the 300ms budget in the
+// same attempt — two independent scheduler anomalies, not one — so under
+// bounded jitter the arm stays red regardless of load.
 func TestSessionProbe_ScaledBudgetIsUsedUnderConcurrency_ScalingDisabled(t *testing.T) {
 	// sessionProbeBudgetPerSpawn = 0 makes budget(n) = base for EVERY n: the
 	// concurrency signal can no longer stretch the grant.
-	intci082ShrinkProbeSeams(t, 300*time.Millisecond, 0, 5*time.Second, 10*time.Second, 3)
+	intci082ShrinkProbeSeams(t, intci082HermeticLoneBudget, 0, intci082HermeticCap,
+		intci082HermeticTotal, intci082HermeticMaxAttempts)
 	intci082SilenceDiagnostics(t)
 
-	const sessionHold = 800 * time.Millisecond
+	const sessionHold = intci082RedProofHold
 	markDir := t.TempDir()
 	binDir := t.TempDir()
 	stub := "touch " + markDir + "/$$\n" +
@@ -336,6 +405,97 @@ func TestSessionProbe_ScaledBudgetIsUsedUnderConcurrency_ScalingDisabled(t *test
 			prover.report.Budget, want, prover.report.Concurrent)
 	}
 	intci082NoLeak(t)
+}
+
+// TestSessionProbeMarginGuard_SeamsCannotShrinkIntoTheFlakyWindow is the
+// QA-BUNKER-080 AC4 regression arm: it pins the hermetic seam set as pure
+// arithmetic so no future edit can quietly shrink the concurrency proof back
+// into the load-flaky window. The old set (perSpawn=600ms) granted the prover
+// 1200ms against a 450ms hold — 150ms of slack that a starved host's
+// scheduler delay ate, reding the ci-pass native leg twice. The invariants:
+//
+//  1. the scaled grant exceeds the hold by a MULTI-SECOND margin (a
+//     per-attempt kill fires late under starvation, never early, so a
+//     multi-second slack cannot be closed by scheduler delay);
+//  2. the hold still decisively outlives the LONE budget, so "survival ⇒
+//     grant > lone budget" stays a proof rather than a coin flip;
+//  3. the total budget bounds every retry path, so a worst-case run of killed
+//     attempts cannot stall the suite past a sane ceiling;
+//  4. the cap never binds below the scaled grant at the proven concurrency,
+//     so the guard arithmetic tests the grant the prover actually receives;
+//  5. the red-proof arm keeps its own gap: its hold (intci082RedProofHold,
+//     1600ms) covers the lone budget for every child the stub spawns, plus
+//     the scheduler-delay allowance, so its kill-vs-exit ordering cannot
+//     invert under load.
+//
+// This test never runs a probe and does no I/O: it is wall-clock bounded by
+// construction and completes in microseconds.
+func TestSessionProbeMarginGuard_SeamsCannotShrinkIntoTheFlakyWindow(t *testing.T) {
+	scaled := sessionProbeBudgetWith(intci082HermeticLoneBudget, intci082HermeticPerSpawn,
+		intci082HermeticCap, 2)
+	hold := intci082HermeticSessionHold
+	lone := intci082HermeticLoneBudget
+
+	// 1. the survival margin is load-monotone by width, not by luck.
+	if slack := scaled - hold; slack < intci082HermeticMinMargin {
+		t.Errorf("scaled budget %s minus session hold %s leaves %s of slack, want >= %s: the concurrency proof has drifted back into the load-flaky window (QA-BUNKER-080)",
+			scaled, hold, slack, intci082HermeticMinMargin)
+	}
+	// ...and the proof's property is stated exactly: lone < hold < scaled,
+	// so a surviving hold certifies a grant above the lone budget.
+	if !(lone < hold && hold < scaled) {
+		t.Errorf("margin ordering broken: lone budget %s, hold %s, scaled budget %s, want lone < hold < scaled",
+			lone, hold, scaled)
+	}
+
+	// 2. the red-proof arm's hold covers the lone budget with the named
+	// bound for EVERY child the stub spawns (the sleep grandchild each)…
+	redProof := intci082RedProofHold
+	for _, gap := range []struct {
+		name string
+		got  time.Duration
+	}{
+		{"the stub body", redProof - lone},
+		{"the sleep grandchild", redProof - lone},
+	} {
+		if gap.got < intci082HermeticMinHoldGap {
+			t.Errorf("ScalingDisabled hold covers the lone budget by %s for %s, want >= %s: the red proof has drifted back toward the kill-vs-exit inversion window",
+				gap.got, gap.name, intci082HermeticMinHoldGap)
+		}
+	}
+	// …and carries the full starvation allowance in its body margin, so the
+	// kill-vs-exit ordering documented on that test cannot invert: winning
+	// the kill race still leaves the stub short of the budget by more than
+	// the allowance.
+	if inversions := redProof - lone - intci082HermeticMinHoldGap; inversions < intci082HermeticMinMargin/2 {
+		t.Errorf("ScalingDisabled kill-vs-exit inversion allowance = %s, want >= %s (hold - lone budget - hold gap): the red proof would depend on the kill winning a starved race",
+			inversions, intci082HermeticMinMargin/2)
+	}
+
+	// 3. the total budget bounds the whole proof: even the worst case (three
+	// killed attempts plus backoffs) stays inside it, so a pathological
+	// host cannot stall the suite to its global timeout.
+	worstCase := 3*scaled + 1*time.Second + 2*time.Second
+	if worstCase > intci082HermeticTotal {
+		t.Errorf("worst-case concurrency proof (%d attempts x %s + backoffs = %s) exceeds the total budget %s: a starved run could stall the suite",
+			intci082HermeticMaxAttempts, scaled, worstCase, intci082HermeticTotal)
+	}
+
+	// 4. the cap must not clamp the grant the prover is proven against…
+	if scaled != intci082HermeticPerSpawn {
+		t.Errorf("budget at two probes = %s, want the unclamped perSpawn share %s: the cap started binding, so the guard arithmetic and the proof disagree",
+			scaled, intci082HermeticPerSpawn)
+	}
+	// …and the cap stays a real ceiling for runaway concurrency.
+	if sessionProbeBudgetWith(intci082HermeticLoneBudget, intci082HermeticPerSpawn,
+		intci082HermeticCap, 100) != intci082HermeticCap {
+		t.Errorf("budget at 100 probes = %s, want the %s cap", sessionProbeBudgetWith(intci082HermeticLoneBudget, intci082HermeticPerSpawn, intci082HermeticCap, 100), intci082HermeticCap)
+	}
+	// 5. the guard's own premise: a lone probe keeps the shipped production
+	// fast path — the seams shrink for the test, the product does not.
+	if got := sessionProbeBudget(1); got != 10*time.Second {
+		t.Errorf("lone-probe production budget = %s, want the shipped 10s", got)
+	}
 }
 
 // ── 3. a denial fails fast and is not masked ───────────────────────────────
