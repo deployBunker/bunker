@@ -1,0 +1,58 @@
+{
+  "tick_id": "bunker-foreman-2026-10-28-04-55-38",
+  "tick_number": 686,
+  "block": "FLEET-INFRA-2",
+  "block_drive_label": "FLEET-INFRA-2 (family FLEET-INFRA: 2 rows, 1 pending = FLEET-INFRA-1)",
+  "wave_budget": 9,
+  "slots": 6,
+  "path": "SERIAL / verification-only closeout — recovery of already-merged work (no fresh dispatch)",
+  "reason": "RESUME-FIRST: the previous substantive tick (bunker-foreman-2026-10-28-01-19-46) selected this block and landed FLEET-INFRA-1's remedy, but left the board row pending. The block still has a ready row (FLEET-INFRA-1, pending, no owner gate), so the block — not a fresh one — is the target. That row's work is ALREADY MERGED on origin/main (ac190180, 1597ec1e, f7f9da01 all ancestors of HEAD 52e39355), so the truthful tick is verify-then-close, not re-dispatch: a second worker on the same files is a double-write. The higher-ranked block INT-HOST-011 was re-checked and still yields no dispatchable work — its sole ready row INT-HOST-008 is a destructive live-host cleanup (`bunker reap --apply` on bunker-mvp) gated on an owner deletion decision that has now been absent across 16 consecutive ticks.",
+  "slots_math": "nproc 16, loadavg_1m 8.87 -> ceil 9 -> 16-9 = 7 -> min(6,7) = 6 slots; WAVE_BUDGET 9 -> effective 6. Wave not composed: the selected block has ONE ready row and it is already landed (independent-row count 1 < 2).",
+  "block_drive": {
+    "rows_total": 838,
+    "pending": 176,
+    "blocks": 12,
+    "top_drive": "INT-HOST-011 (90% done) — owner-gated, no dispatchable row",
+    "selected": "FLEET-INFRA-2 (P1, 50% done) — 1 ready row, already landed"
+  },
+  "host": {
+    "nproc": 16,
+    "loadavg_1m": 8.87,
+    "loadavg_5m": 13.81,
+    "loadavg_15m": 20.93,
+    "computed_slots": 6,
+    "effective_slots": 6,
+    "wave_budget": 9
+  },
+  "rows": [
+    {
+      "id": "FLEET-INFRA-1",
+      "status_at_dispatch": "pending",
+      "status_at_close": "complete",
+      "priority": "P1",
+      "path": "verification-only closeout (work already merged by tick 685)",
+      "worktree": "/home/kara/worktrees/bunker-FLEET-INFRA-1",
+      "branch": "wt/FLEET-INFRA-1",
+      "head": "1597ec1e",
+      "commits": ["ac190180", "1597ec1e", "f7f9da01"],
+      "ancestry": "all three commits verified ancestors of origin/main HEAD 52e39355 (git merge-base --is-ancestor)",
+      "base_verdict": ".gitreins/history/2026-10-24/81fef145/verdict.json (FAIL/INCOMPLETE — judge ran 7h BEFORE the worker's first commit) -> superseded",
+      "verdict": ".gitreins/history/2026-10-28/61de466e/verdict.json (Tier 2 COMPLETE)",
+      "worker": "recovered-work (branch provenance = the commits + verdict evidence)"
+    }
+  ],
+  "rows_dispatched": [],
+  "rows_landed": ["FLEET-INFRA-1"],
+  "rows_verified": ["FLEET-INFRA-1", "INT-HOST-008"],
+  "wave_size": 0,
+  "owner_blocker": "INT-HOST-008: explicit owner authorization for destructive bunker-mvp `bunker reap --apply` remains absent; --apply was not run and must not be.",
+  "block_acceptance": "PASS on the merged tree: go build ./... rc=0; go vet ./... rc=0; go test ./... -count=1 -short -parallel 4 rc=0 (all packages ok); `bunkerd port-pool check` -> pool 10000-19999, per-agent 100 ports, max_agents 100, capacity 100 ranges, verdict OK (config.Validate passed).",
+  "local_gate": "PASS (exit 0): go build ./... && go vet ./... && go test ./... -count=1 -short -parallel 4",
+  "remote_ci": "green: gh run list --repo deployBunker/bunker --limit 3 -> 52e39355 success, f7f9da01 success, 1597ec1e success (all main, completed)",
+  "gitreins": "FLEET-INFRA-1 lifecycle already complete in .gitreins/tasks.yaml (created 2026-10-28T02:33:16Z, completed 02:33:27Z) with Tier-2 verdict COMPLETE at .gitreins/history/2026-10-28/61de466e/verdict.json — cited, not re-run (no code change since the graded tree)",
+  "open": [
+    "LIVE LEG (operator action, not this repo): daemons holding a pool still run pre-remedy binaries — bunker-mvp eab25686, dedi-2 071ab3b, bunker4 unreachable. Tracked by RELEASE-003/RELEASE-008 and PERF-005/PERF-006; no host mutation performed.",
+    "INT-HOST-008 remains pending explicit owner authorization for deletion.",
+    "Pre-existing untracked .coding-hermes/board/events.jsonl.append and older wave manifests remain untouched."
+  ]
+}

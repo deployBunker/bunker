@@ -1,0 +1,81 @@
+{
+  "tick_id": "bunker-foreman-2026-10-28-04-55-38",
+  "tick_number": 686,
+  "block": "FLEET-INFRA-2",
+  "row": "FLEET-INFRA-1",
+  "type": "block-close / verification-only (no fresh dispatch)",
+  "head_at_verification": "52e39355d7d401428c841e5767f2fe87d1637353",
+  "remote": "git@github.com:deployBunker/bunker.git",
+  "landed_commits": [
+    {
+      "sha": "ac190180d4848ca26403e9737111c61783cfb273",
+      "subject": "fix: port-pool exhaustion leak — startup reconciliation + orphan cleanup (FLEET-INFRA-1)",
+      "stat": "12 files changed, 804 insertions(+), 4 deletions(-)",
+      "ancestor_of_head": true
+    },
+    {
+      "sha": "1597ec1e8ff358fcc93c43c4603fe940218f2cac",
+      "subject": "fix(agent): sweep skips spawn-in-flight reservations — live-caught port-collision window (FLEET-INFRA-1)",
+      "stat": "4 files changed, 83 insertions(+), 3 deletions(-)",
+      "ancestor_of_head": true,
+      "note": "live bunker-mvp AC-2 soak caught the first revision releasing fi1-cy-7's range mid-spawn; 12/12 spawn+destroy cycles clean after the fix"
+    },
+    {
+      "sha": "f7f9da01401871fe38c90dc4e6be9bbd819b7fac",
+      "subject": "docs(ops): record FLEET-INFRA-1 port-pool drift sweep — fail-closed evidence + live deployment blocker",
+      "stat": "4 files changed, 216 insertions(+)",
+      "ancestor_of_head": true,
+      "note": "docs/ops/port-pool-drift-sweep.md, evidence json, wave manifest, .gitreins/tasks.yaml lifecycle"
+    }
+  ],
+  "block_acceptance_commands": [
+    {
+      "cmd": "go build ./...",
+      "rc": 0
+    },
+    {
+      "cmd": "go vet ./...",
+      "rc": 0
+    },
+    {
+      "cmd": "go test ./... -count=1 -short -parallel 4",
+      "rc": 0,
+      "note": "all packages ok (internal/agent 251.6s, internal/fsclient 65.1s, internal/cli 42.7s, ...)"
+    },
+    {
+      "cmd": "/tmp/bunkerd-fi1 --config /dev/null port-pool check",
+      "rc": 0,
+      "output": "port-pool check (FLEET-INFRA-1)\n  config:     /dev/null\n  pool:       10000-19999\n  per-agent:  100 ports\n  max_agents: 100\n  capacity:   100 ranges (10000 ports / 100 per agent)\n  verdict:    OK (config.Validate passed: max_agents fits the pool capacity)"
+    },
+    {
+      "cmd": "python3 ~/.hermes/scripts/acceptance_gate.py validate /home/kara/deployBunker/bunker /tmp/fi1_crit.json",
+      "rc": 0,
+      "output": "PASS"
+    }
+  ],
+  "tier2_verdict": {
+    "task": "FLEET-INFRA-1",
+    "handle": ".gitreins/history/2026-10-28/61de466e/verdict.json",
+    "result": "Tier 2 (Agentic Evaluator): COMPLETE",
+    "task_status": "complete in .gitreins/tasks.yaml (created 2026-10-28T02:33:16Z, completed 2026-10-28T02:33:27Z)",
+    "superseded": ".gitreins/history/2026-10-28/80b3fb82/verdict.json read INCOMPLETE before f7f9da01 landed the fail-closed/live-blocker evidence the criterion asked for",
+    "re_run": false,
+    "re_run_reason": "no code or evidence change since the graded tree; re-running a completed task risks a cap-starved verdict misrepresenting a graded-COMPLETE row"
+  },
+  "remote_ci": [
+    {"sha": "52e39355", "run": "success", "conclusion": "success", "title": "board: acceptance criteria for 17 rows (backfill tick 61432010)"},
+    {"sha": "f7f9da01", "conclusion": "success", "title": "docs(ops): record FLEET-INFRA-1 port-pool drift sweep"},
+    {"sha": "1597ec1e", "conclusion": "success", "title": "fix(agent): sweep skips spawn-in-flight reservations"}
+  ],
+  "board_write": {
+    "file": ".coding-hermes/board/tasks.jsonl",
+    "method": "line-wise rewrite of the single target row (json.dumps(row)), line count asserted 839/839",
+    "line_count": "839 elements (838 rows + trailing newline) before and after",
+    "fields_set": ["acceptance", "status", "commit_hash", "worker_status", "worker_summary", "foreman_note", "completed_at", "updated_at"]
+  },
+  "open": [
+    "LIVE LEG is unshipped and is an OPERATOR action: bunker-mvp eab25686, dedi-2 071ab3b, bunker4 unreachable — all predate the sweep. Owned by RELEASE-003/RELEASE-008 and PERF-005/PERF-006. No host mutation performed by this tick.",
+    "INT-HOST-008 (block INT-HOST-011) remains pending explicit owner authorization for destructive `bunker reap --apply`."
+  ],
+  "trace": "ch:trace block=FLEET-INFRA-2 row=FLEET-INFRA-1 spec=docs/ops/port-pool-drift-sweep.md wave=.coding-hermes/waves/bunker-foreman-2026-10-28-04-55-38.json#closeout test=go test ./... -count=1 -short -parallel 4 doc=docs/ops/port-pool-drift-sweep.md evidence=.coding-hermes/evidence/FLEET-INFRA-1-2026-10-28-04-55-38.json witness=git:origin/main:52e39355:ancestor:ac190180,1597ec1e,f7f9da01 verdict=.gitreins/history/2026-10-28/61de466e/verdict.json commit=f7f9da01401871fe38c90dc4e6be9bbd819b7fac memory=/project/bunker/tick/686"
+}
