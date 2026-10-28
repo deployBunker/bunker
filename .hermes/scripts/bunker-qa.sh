@@ -1729,7 +1729,7 @@ artifact_check() { # <install-command> <before-snapshot> <after-snapshot> <log>
   install_artifacts="\$(comm -13 "\$before" "\$after" | tr '\\n' ' ' | sed 's/[[:space:]]*$//' )"
   toolsd_artifact="\$(grep -m1 '/toolsd$' "\$after" || true)"
   case "\$install_cmd" in
-    make\\ *|*toolsd*) artifact_required=1 ;;
+    make\ *|*toolsd*) artifact_required=1 ;;
     *) artifact_required=0 ;;
   esac
   if [ "\$artifact_required" -eq 1 ] && [ -z "\$install_artifacts" ] && [ -z "\$toolsd_artifact" ]; then
