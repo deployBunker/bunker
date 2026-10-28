@@ -56,6 +56,9 @@ func TestPersistentContainerRunArgv_CarriesMarkerMountsAndIdentity(t *testing.T)
 		"--name", "bunker-exec-" + imgTestAgentID,
 		"--label", "bunker.persistent=true",
 		"--label", "bunker.agent=" + imgTestAgentID,
+		// QA-BUNKER-83: the container is created with the agent-scoped TMPDIR
+		// in its config env, so every `docker exec` shell inherits the pin.
+		"-e", "TMPDIR=" + imgTestHome + "/.bunker/tmp",
 		"-v", imgTestHome + ":" + imgTestHome,
 		"-w", imgTestHome,
 		"-v", "/run/bunker/" + imgTestAgentID + ":/run/bunker/" + imgTestAgentID,
@@ -160,7 +163,7 @@ func TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContainer(t *testin
 	if out, err := exec.Command("sh", "-c", remoteRun).CombinedOutput(); err != nil {
 		t.Fatalf("built remote command failed: %v\noutput: %s\ncommand: %s", err, out, remoteRun)
 	}
-	wantPayload := imageInnerSourcePrefix(imgTestAgentID) + buildAgentRemoteCmd("go", []string{"build", "./..."})
+	wantPayload := applyAgentDataTmpPin(home, imageInnerSourcePrefix(imgTestAgentID)+buildAgentRemoteCmd("go", []string{"build", "./..."}))
 	if got := readStubPayload(t, logPath); got != wantPayload {
 		t.Errorf("container payload:\n got: %q\nwant: %q", got, wantPayload)
 	}
@@ -183,7 +186,7 @@ func TestBuildAgentPersistentScriptCommand_UploadsThenExecsInContainer(t *testin
 }
 
 func TestPersistentListAndCleanupScripts_FilterOnMarkerLabels(t *testing.T) {
-	list := persistentListScript(imgTestAgentID)
+	list := persistentListScript(imgTestAgentID, imgTestHome)
 	for _, want := range []string{
 		"docker ps -a",
 		"--filter 'bunker.persistent=true'",
@@ -195,7 +198,7 @@ func TestPersistentListAndCleanupScripts_FilterOnMarkerLabels(t *testing.T) {
 		}
 	}
 
-	cleanup := persistentCleanupScript(imgTestAgentID)
+	cleanup := persistentCleanupScript(imgTestAgentID, imgTestHome)
 	for _, want := range []string{
 		"docker ps -aq",
 		"--filter 'bunker.persistent=true'",
@@ -386,7 +389,7 @@ func TestPersistentContainer_ReuseAcrossInvocations(t *testing.T) {
 	if strings.TrimSpace(string(state)) != imgTestRef {
 		t.Errorf("container created from %q, want the agent's image %q", strings.TrimSpace(string(state)), imgTestRef)
 	}
-	wantPayload := imageInnerSourcePrefix(imgTestAgentID) + buildAgentRemoteCmd("echo", []string{"hi"})
+	wantPayload := applyAgentDataTmpPin(home, imageInnerSourcePrefix(imgTestAgentID)+buildAgentRemoteCmd("echo", []string{"hi"}))
 	if got := readStubPayload(t, logPath); got != wantPayload {
 		t.Errorf("first-invocation container payload:\n got: %q\nwant: %q", got, wantPayload)
 	}
@@ -525,5 +528,164 @@ exit 0
 	}
 	if strings.Contains(readStubLog(t, logPath), "ARG rm\n") {
 		t.Errorf("empty cleanup must not invoke docker rm; docker log:\n%s", readStubLog(t, logPath))
+	}
+}
+
+// ── 3. QA-BUNKER-83: agent-scoped TMPDIR ────────────────────────────────────
+
+// TestPersistentExecsPinAgentScopedTmpDir is the QA-BUNKER-83 pin: NOTHING a
+// persistent command runs may write temporary files into the shared session
+// /tmp. Every family this file builds — the ensure/create snippet, the
+// container payload behind `docker exec`, the list and cleanup host scripts,
+// and the created container's own config env — must point TMPDIR at the
+// agent's own data dir (a path under the agent home, which carries the agent
+// id) and must never pin the shared /tmp itself. The outer env(1) wrapper's
+// session-TMPDIR advertisement (buildAgentExecCommand, the default exec
+// path's documented behavior) is superseded by this pin inside every
+// persistent payload.
+func TestPersistentExecsPinAgentScopedTmpDir(t *testing.T) {
+	wantDir := agentDataTmpDir(imgTestHome) // /home/bunker-abc123/.bunker/tmp — carries the agent id
+	// The pin renders in three forms depending on the quoting layer: bare as
+	// the container config env pair (-e TMPDIR=<dir>), single-quoted in the
+	// raw snippets this file authors (TMPDIR='<dir>'), and quote-escaped once
+	// those snippets are embedded in the outer sh -c wrapper. All three must
+	// be accepted; each family carries one.
+	pinBare := "TMPDIR=" + wantDir
+	pinQuoted := "TMPDIR=" + shellQuoteSingle(wantDir)
+	// Each single quote of the quoted form is re-escaped by the outer
+	// sh -c wrapper exactly as shellQuoteSingle escapes: ' -> '\''.
+	pinEscaped := strings.ReplaceAll(pinQuoted, "'", "'\\''")
+	hasPin := func(s string) bool {
+		return strings.Contains(s, pinBare) || strings.Contains(s, pinQuoted) || strings.Contains(s, pinEscaped)
+	}
+
+	execPayload, err := buildAgentPersistentExecCommand(imgTestAgentID, imgTestHome, "go", []string{"build", "./..."}, false, imgTestRef)
+	if err != nil {
+		t.Fatalf("buildAgentPersistentExecCommand: %v", err)
+	}
+	scriptPayload, err := buildAgentPersistentScriptCommand(imgTestAgentID, imgTestHome, "#!/bin/sh\necho hi\n", false, imgTestRef)
+	if err != nil {
+		t.Fatalf("buildAgentPersistentScriptCommand: %v", err)
+	}
+	fullCommands := map[string]string{
+		"exec command":     execPayload,
+		"script command":   scriptPayload,
+		"list command":     buildAgentPersistentListCommand(imgTestAgentID, imgTestHome, false),
+		"cleanup command":  buildAgentPersistentCleanupCommand(imgTestAgentID, imgTestHome, false),
+		"ensure snippet":   persistentEnsureSnippet(imgTestAgentID, imgTestHome, false, imgTestRef),
+		"list script":      persistentListScript(imgTestAgentID, imgTestHome),
+		"cleanup script":   persistentCleanupScript(imgTestAgentID, imgTestHome),
+		"container config": strings.Join(persistentContainerRunArgv(imgTestAgentID, imgTestHome, false, imgTestRef), " "),
+	}
+	for name, got := range fullCommands {
+		if !hasPin(got) {
+			t.Errorf("%s does not pin TMPDIR to the agent data dir %s:\n%s", name, wantDir, got)
+		}
+		// The legacy per-agent runtime dir (GAP-075 superseded it for
+		// sessions) must not come back as the persistent pin either.
+		if strings.Contains(got, "TMPDIR=/run/bunker/"+imgTestAgentID+"/tmp") {
+			t.Errorf("%s pins the legacy runtime-dir TMPDIR:\n%s", name, got)
+		}
+		if name == "exec command" || name == "script command" || name == "list command" || name == "cleanup command" {
+			// These pass through the outer env(1) wrapper, whose session
+			// TMPDIR advertisement (/tmp) is the default exec path's
+			// documented contract (GAP-075, service.go — outside this
+			// file's scope). The pin must come AFTER that advertisement:
+			// in shell execution order the LAST assignment wins, so this
+			// is the supersession assertion.
+			if strings.LastIndex(got, pinEscaped) < strings.LastIndex(got, "TMPDIR=/tmp") {
+				t.Errorf("%s does not supersede the session /tmp advertisement (pin must follow it):\n%s", name, got)
+			}
+		} else if strings.Contains(got, "TMPDIR=/tmp") {
+			// Surfaces this file authors in full must not pin the shared
+			// /tmp anywhere.
+			t.Errorf("%s still pins the shared /tmp:\n%s", name, got)
+		}
+	}
+
+	// Ordering: the pin must precede the first docker verb, so the ensure's
+	// `docker run` and the container's inner shell both inherit it.
+	pinIdx := strings.Index(execPayload, pinEscaped)
+	ensureIdx := strings.Index(execPayload, "docker inspect -f")
+	if pinIdx < 0 || ensureIdx < 0 || pinIdx > ensureIdx {
+		t.Errorf("TMPDIR pin must precede the first docker verb:\n%s", execPayload)
+	}
+
+	// The container must be CREATED with the pin as a config env pair
+	// (-e TMPDIR=...), so even a manual `docker exec` into
+	// bunker-exec-<id> inherits the agent-scoped directory.
+	argv := persistentContainerRunArgv(imgTestAgentID, imgTestHome, false, imgTestRef)
+	pinned := false
+	for i, a := range argv {
+		if i > 0 && a == "-e" && argv[i+1] == pinBare {
+			pinned = true
+		}
+	}
+	if !pinned {
+		t.Errorf("persistent run argv carries no -e %s element: %q", pinBare, argv)
+	}
+}
+
+// TestPersistentExecTmpPinTakesEffectInShell runs the built persistent exec
+// through a real shell with the stub docker (the same technique the reuse
+// tests use) and asserts the CONTAINER shell actually observes the pinned
+// TMPDIR — string presence is not the contract, the environment is.
+func TestPersistentExecTmpPinTakesEffectInShell(t *testing.T) {
+	home := t.TempDir()
+	_, _ = installPersistentStubDocker(t, home)
+	wantDir := agentDataTmpDir(home)
+
+	remote, err := buildAgentPersistentExecCommand(imgTestAgentID, home, "sh", []string{"-c", "echo tmpdir=${TMPDIR-UNSET}"}, false, imgTestRef)
+	if err != nil {
+		t.Fatalf("buildAgentPersistentExecCommand: %v", err)
+	}
+	out, err := exec.Command("sh", "-c", remote).CombinedOutput()
+	if err != nil {
+		t.Fatalf("persistent exec failed: %v\noutput: %s\ncommand: %s", err, out, remote)
+	}
+	if got := strings.TrimSpace(string(out)); got != "tmpdir="+wantDir {
+		t.Errorf("container shell saw TMPDIR as %q, want the agent data dir %q", got, wantDir)
+	}
+}
+
+// TestPersistentExecTmpPinFallsBackWhenDataDirUnwritable is the QA-BUNKER-83
+// fallback arm: when the agent's data dir cannot be created the exec must NOT
+// crash — the pin unsets TMPDIR (downstream consumers fall back to the
+// default temp directory of their context), warns on stderr, and the command
+// still runs.
+func TestPersistentExecTmpPinFallsBackWhenDataDirUnwritable(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("the unwritable-data-dir arm needs a non-root test user: root ignores mode 0555")
+	}
+	home := t.TempDir()
+	// The stub docker must be installed while the home is still writable;
+	// the fallback arm then makes the pin's mkdir fail WITHOUT the ensure
+	// failing for an unrelated reason (a real docker daemon is never
+	// contacted — the stub answers from <home>/bin, which is unaffected by
+	// the .bunker subtree being uncreatable).
+	_, _ = installPersistentStubDocker(t, home)
+	if err := os.Chmod(home, 0o555); err != nil {
+		t.Fatalf("chmod home read-only: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(home, 0o755) })
+
+	remote, err := buildAgentPersistentExecCommand(imgTestAgentID, home, "sh", []string{"-c", "echo tmpdir=${TMPDIR-UNSET}"}, false, imgTestRef)
+	if err != nil {
+		t.Fatalf("buildAgentPersistentExecCommand: %v", err)
+	}
+	out, err := exec.Command("sh", "-c", remote).CombinedOutput()
+	if err != nil {
+		t.Fatalf("the fallback arm must not crash the exec: %v\noutput: %s", err, out)
+	}
+	// CombinedOutput interleaves stderr: assert the observed value and the
+	// warning line by content, not by equality.
+	if !strings.Contains(string(out), "tmpdir=UNSET\n") {
+		t.Errorf("fallback left TMPDIR set; want the UNSET line in output:\n%s", out)
+	}
+	if strings.Contains(string(out), "tmpdir=/tmp") {
+		t.Errorf("fallback must never re-point at the shared /tmp, output:\n%s", out)
+	}
+	if !strings.Contains(string(out), "falling back to the default temp dir") {
+		t.Errorf("fallback must warn on stderr, got output:\n%s", out)
 	}
 }

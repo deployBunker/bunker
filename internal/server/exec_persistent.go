@@ -24,6 +24,17 @@ package server
 // — not in bunkerd state — so it survives a bunkerd restart by construction.
 // Nothing here changes the default path: PERSISTENT_MODE_NONE still produces
 // the byte-identical one-shot command it produced before this file existed.
+//
+// QA-BUNKER-83: nothing a persistent exec runs may write temporary files into
+// the shared session /tmp. Every command family in this file re-pins TMPDIR
+// to the agent's OWN data dir (agentDataTmpDir: <home>/.bunker/tmp, a path
+// that carries the agent id) — the ensure/list/cleanup snippets before the
+// docker CLI or a host-context script runs, the container payload before the
+// user command runs, and the created container itself via -e TMPDIR so even a
+// manual `docker exec` into bunker-exec-<id> inherits the pin. When the data
+// dir is not writable the pin unsets TMPDIR (consumers then fall back to the
+// default session temp directory), prints a warning to stderr, and never
+// aborts the exec.
 
 import (
 	"context"
@@ -69,6 +80,44 @@ func shellJoin(argv []string) string {
 	return strings.Join(parts, " ")
 }
 
+// agentDataTmpDir returns the agent-scoped temporary directory a persistent
+// exec pins TMPDIR to (QA-BUNKER-83): <userHome>/.bunker/tmp. The path is
+// derived from the agent's own home (which carries the agent id), lives under
+// the agent's data dir rather than any shared /tmp, and — because the home is
+// bind-mounted into the container at the same absolute path — is valid at the
+// identical path on both sides of every `docker exec` in this file.
+func agentDataTmpDir(userHome string) string {
+	return filepath.Join(userHome, ".bunker", "tmp")
+}
+
+// agentDataTmpPinSnippet returns the POSIX-sh fragment that re-points TMPDIR
+// at the agent's own data dir for everything that runs after it in the same
+// shell (QA-BUNKER-83). It is composed, not one hardcoded string, so both
+// halves are individually assertable: the mkdir must succeed (a `set -e`
+// payload dies here rather than silently writing into a shared directory),
+// and the assignment supersedes whatever TMPDIR the outer env(1) wrapper
+// already advertised (the session /tmp on the default exec path).
+//
+// Fallback (QA-BUNKER-83 acceptance 4): when the data dir cannot be created
+// the pin does NOT abort — it unsets TMPDIR, so downstream consumers fall
+// back to the default temp directory of the context they run in, prints a
+// one-line warning to stderr, and continues. Never crashing the exec is the
+// contract: an agent whose home is temporarily unwritable must still exec.
+func agentDataTmpPinSnippet(userHome string) string {
+	return "if mkdir -p " + shellQuoteSingle(agentDataTmpDir(userHome)) +
+		" 2>/dev/null; then TMPDIR=" + shellQuoteSingle(agentDataTmpDir(userHome)) +
+		"; export TMPDIR; else unset TMPDIR; echo 'bunker: agent data dir " +
+		agentDataTmpDir(userHome) + " not writable; falling back to the default temp dir' >&2; fi; "
+}
+
+// applyAgentDataTmpPin prefixes a shell payload with the agent-scoped TMPDIR
+// pin (QA-BUNKER-83): everything the payload runs after this point — the
+// docker CLI, the container's inner shell, the user command — inherits the
+// agent's own temporary directory instead of the shared session /tmp.
+func applyAgentDataTmpPin(userHome, payload string) string {
+	return agentDataTmpPinSnippet(userHome) + payload
+}
+
 // persistentContainerRunArgv is the `docker run -d` argv that CREATES the
 // persistent container. It mirrors buildAgentImageExecCommand's run argv —
 // same home bind at the same absolute path, same agent runtime-dir bind, same
@@ -89,6 +138,12 @@ func persistentContainerRunArgv(agentID, userHome string, disclosed bool, imageR
 	if disclosed {
 		argv = append(argv, "-e", containmentSandboxEnv)
 	}
+	// QA-BUNKER-83: the container is CREATED with the agent-scoped TMPDIR in
+	// its config env, so `docker exec` shells inherit it even when a payload's
+	// own shell pin cannot reach them (e.g. a manual `docker exec` into
+	// bunker-exec-<id>). The home bind makes the path valid in-container at
+	// the same absolute path it has on the host.
+	argv = append(argv, "-e", "TMPDIR="+agentDataTmpDir(userHome))
 	argv = append(argv, "-v", userHome+":"+userHome, "-w", userHome)
 	argv = append(argv, agentRuntimeDirBind(agentID)...)
 	argv = applyImageAgentRuntime(argv, agentID)
@@ -110,13 +165,17 @@ func persistentContainerRunArgv(agentID, userHome string, disclosed bool, imageR
 func persistentEnsureSnippet(agentID, userHome string, disclosed bool, imageRef string) string {
 	name := persistentContainerName(agentID)
 	runCmd := shellJoin(persistentContainerRunArgv(agentID, userHome, disclosed, imageRef))
-	return fmt.Sprintf(
+	// QA-BUNKER-83: the ensure snippet runs in the agent's outer session shell
+	// (whose env(1) advertisement may still be the shared session /tmp) and it
+	// creates the container, so it is pinned first — the `docker run` it emits
+	// then carries the agent-scoped TMPDIR into the container config too.
+	return applyAgentDataTmpPin(userHome, fmt.Sprintf(
 		"if [ \"$(docker inspect -f %s %s 2>/dev/null)\" != %s ]; then "+
 			"docker rm -f %s >/dev/null 2>&1 || true; "+
 			"%s >/dev/null || exit 1; fi; "+
 			"docker start %s >/dev/null 2>&1 || true",
 		shellQuoteSingle("{{.Config.Image}}"), shellQuoteSingle(name), shellQuoteSingle(imageRef),
-		shellQuoteSingle(name), runCmd, shellQuoteSingle(name))
+		shellQuoteSingle(name), runCmd, shellQuoteSingle(name)))
 }
 
 // persistentExecTail returns the snippet fragment that runs `payload` inside
@@ -136,7 +195,7 @@ func buildAgentPersistentExecCommand(agentID, userHome, command string, args []s
 	if _, ok := agentContainerIdentityFlag(agentID); !ok {
 		return "", errAgentUserUnresolved
 	}
-	payload := imageInnerSourcePrefix(agentID) + buildAgentRemoteCmd(command, args)
+	payload := applyAgentDataTmpPin(userHome, imageInnerSourcePrefix(agentID)+buildAgentRemoteCmd(command, args))
 	snippet := persistentEnsureSnippet(agentID, userHome, disclosed, imageRef) +
 		persistentExecTail(agentID, userHome, payload)
 	return buildAgentExecCommand(agentID, userHome, snippet, nil, disclosed), nil
@@ -156,7 +215,7 @@ func buildAgentPersistentScriptCommand(agentID, userHome, scriptContent string, 
 		scriptPath = filepath.Join(userHome, ".bunker", "exec-script.sh")
 	}
 	escaped := strings.ReplaceAll(scriptContent, "'", "'\\''")
-	payload := "set -e; " + imageInnerSourcePrefix(agentID) + ". " + shellQuoteSingle(scriptPath)
+	payload := "set -e; " + applyAgentDataTmpPin(userHome, imageInnerSourcePrefix(agentID)+". "+shellQuoteSingle(scriptPath))
 	snippet := persistentEnsureSnippet(agentID, userHome, disclosed, imageRef) +
 		persistentExecTail(agentID, userHome, payload)
 	return fmt.Sprintf(
@@ -170,12 +229,14 @@ func buildAgentPersistentScriptCommand(agentID, userHome, scriptContent string, 
 // containers. It runs in the HOST context (the docker CLI on the agent host,
 // pointed at the agent's own socket by the surrounding env wrapper), not
 // inside a container — the container image may have no docker client at all
-// (DF-BUNKER-80), and listing must work regardless.
-func persistentListScript(agentID string) string {
-	return "docker ps -a --filter " +
-		shellQuoteSingle(persistentLabelKey+"="+persistentLabelValue) +
-		" --filter " + shellQuoteSingle(persistentAgentLabelKey+"="+agentID) +
-		" --format " + shellQuoteSingle("{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.CreatedAt}}")
+// (DF-BUNKER-80), and listing must work regardless. QA-BUNKER-83: it is
+// prefixed with the agent-scoped TMPDIR pin so its own temporary files land in
+// the agent's data dir too.
+func persistentListScript(agentID, userHome string) string {
+	return applyAgentDataTmpPin(userHome, "docker ps -a --filter "+
+		shellQuoteSingle(persistentLabelKey+"="+persistentLabelValue)+
+		" --filter "+shellQuoteSingle(persistentAgentLabelKey+"="+agentID)+
+		" --format "+shellQuoteSingle("{{.Names}}	{{.Image}}	{{.Status}}	{{.CreatedAt}}"))
 }
 
 // persistentCleanupScript is the shell script that destroys the agent's
@@ -183,13 +244,17 @@ func persistentListScript(agentID string) string {
 // same label filter selects, so cleanup is driven by the durable marker on the
 // containers rather than by any list this process happens to hold. An agent
 // with none prints the same sentence the CLI would, so the command is never
-// silent about what it found.
-func persistentCleanupScript(agentID string) string {
-	return "ids=$(docker ps -aq --filter " +
-		shellQuoteSingle(persistentLabelKey+"="+persistentLabelValue) +
-		" --filter " + shellQuoteSingle(persistentAgentLabelKey+"="+agentID) + "); " +
-		"if [ -z \"$ids\" ]; then printf '%s\\n' " +
-		shellQuoteSingle(persistentNoneMessage(agentID)) + "; else docker rm -f $ids; fi"
+// silent about what it found. QA-BUNKER-83: cleanup is the verb most likely
+// to run AFTER an agent's destroy (its residue can outlive the user), so it
+// carries the agent-scoped TMPDIR pin as well — its temporary files land in
+// the agent's own data dir, never in the shared host /tmp, even for an agent
+// that no longer has a live session.
+func persistentCleanupScript(agentID, userHome string) string {
+	return applyAgentDataTmpPin(userHome, "ids=$(docker ps -aq --filter "+
+		shellQuoteSingle(persistentLabelKey+"="+persistentLabelValue)+
+		" --filter "+shellQuoteSingle(persistentAgentLabelKey+"="+agentID)+"); "+
+		"if [ -z \"$ids\" ]; then printf '%s\\n' "+
+		shellQuoteSingle(persistentNoneMessage(agentID))+"; else docker rm -f $ids; fi")
 }
 
 // persistentNoneMessage is the one sentence both the cleanup script and the
@@ -202,13 +267,13 @@ func persistentNoneMessage(agentID string) string {
 // exec builder (env file sourced, DOCKER_HOST/PATH/TMPDIR set) so the docker
 // CLI reaches the agent's own rootless socket.
 func buildAgentPersistentListCommand(agentID, userHome string, disclosed bool) string {
-	return buildAgentExecCommand(agentID, userHome, persistentListScript(agentID), nil, disclosed)
+	return buildAgentExecCommand(agentID, userHome, persistentListScript(agentID, userHome), nil, disclosed)
 }
 
 // buildAgentPersistentCleanupCommand is buildAgentPersistentListCommand's
 // cleanup twin.
 func buildAgentPersistentCleanupCommand(agentID, userHome string, disclosed bool) string {
-	return buildAgentExecCommand(agentID, userHome, persistentCleanupScript(agentID), nil, disclosed)
+	return buildAgentExecCommand(agentID, userHome, persistentCleanupScript(agentID, userHome), nil, disclosed)
 }
 
 // ── ssh command builders ────────────────────────────────────────────────────
