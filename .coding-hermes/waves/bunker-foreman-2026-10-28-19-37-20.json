@@ -1,0 +1,77 @@
+{
+  "tick_id": "bunker-foreman-2026-10-28-19-37-20",
+  "block": "QA-BUNKER",
+  "block_resume": "last tick wave_close named block QA-BUNKER with ready rows; highest-priority ready rows selected",
+  "path": "/home/kara/deployBunker/bunker",
+  "base_sha": "9806aa83",
+  "slots_formula": "slots = max(1, min(6, 16 - ceil(4.05))) = 6; wave budget 12 -> capped at 5 mutually independent ready rows (independent: no depends_on edges, disjoint seams; QA-BUNKER-25 toolchain-class separate from 4 in-repo harness rows)",
+  "rows": [
+    {
+      "task_id": "QA-BUNKER-25",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-25",
+      "branch": "wt/QA-BUNKER-25",
+      "base": "origin/main (9806aa83)",
+      "brief": "/tmp/brief-QA-BUNKER-25.txt",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "files": "QA-BUNKER-25: proto/bunker/v1/bunkerv1connect toolchain pinning; QA-BUNKER-56-R2/50/81/085: .hermes/scripts/bunker-qa.sh + test_bunker_qa_*.sh (disjoint seams)",
+      "dispatch": "excluded_stale_branch",
+      "status": "excluded",
+      "note": "worktree.sh could not create (wt/QA-BUNKER-25 pre-exists at 979f1125 from 10-22, ahead 3/behind 279, NOT ancestor of main); foreman verified main already carries the true root-cause fix 396f5f7a (vendor/ moved out) + ensure-proto.sh rewrite; reverting the stale branch conflicts (gitignore/probes DD) and discards nothing unique; row stays pending with foreman_note \u2014 needs fresh re-dispatch, not this wave",
+      "worktreeExisting": "/home/kara/worktrees/bunker-QA-BUNKER-25"
+    },
+    {
+      "task_id": "QA-BUNKER-56-R2",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-56-R2",
+      "branch": "wt/QA-BUNKER-56-R2",
+      "base": "origin/main (9806aa83)",
+      "brief": "/tmp/brief-QA-BUNKER-56-R2.txt",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "files": "QA-BUNKER-25: proto/bunker/v1/bunkerv1connect toolchain pinning; QA-BUNKER-56-R2/50/81/085: .hermes/scripts/bunker-qa.sh + test_bunker_qa_*.sh (disjoint seams)",
+      "dispatch": "pending",
+      "status": "pending",
+      "base_sha": "9806aa83"
+    },
+    {
+      "task_id": "QA-BUNKER-50",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-50",
+      "branch": "wt/QA-BUNKER-50",
+      "base": "origin/main (9806aa83)",
+      "brief": "/tmp/brief-QA-BUNKER-50.txt",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "files": "QA-BUNKER-25: proto/bunker/v1/bunkerv1connect toolchain pinning; QA-BUNKER-56-R2/50/81/085: .hermes/scripts/bunker-qa.sh + test_bunker_qa_*.sh (disjoint seams)",
+      "dispatch": "pending",
+      "status": "pending",
+      "base_sha": "9806aa83"
+    },
+    {
+      "task_id": "QA-BUNKER-81",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-81",
+      "branch": "wt/QA-BUNKER-81",
+      "base": "origin/main (9806aa83)",
+      "brief": "/tmp/brief-QA-BUNKER-81.txt",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "files": "QA-BUNKER-25: proto/bunker/v1/bunkerv1connect toolchain pinning; QA-BUNKER-56-R2/50/81/085: .hermes/scripts/bunker-qa.sh + test_bunker_qa_*.sh (disjoint seams)",
+      "dispatch": "pending",
+      "status": "pending",
+      "base_sha": "9806aa83"
+    },
+    {
+      "task_id": "QA-BUNKER-085",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-085",
+      "branch": "wt/QA-BUNKER-085",
+      "base": "origin/main (9806aa83)",
+      "brief": "/tmp/brief-QA-BUNKER-085.txt",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "files": "QA-BUNKER-25: proto/bunker/v1/bunkerv1connect toolchain pinning; QA-BUNKER-56-R2/50/81/085: .hermes/scripts/bunker-qa.sh + test_bunker_qa_*.sh (disjoint seams)",
+      "dispatch": "pending",
+      "status": "pending",
+      "base_sha": "9806aa83"
+    }
+  ],
+  "prelaunch_note": "first dispatch wave died pre-launch (cd to wrong worktree path); re-dispatched after path fix"
+}

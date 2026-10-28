@@ -5137,3 +5137,52 @@ tasks:
   status: complete
   created_at: '2026-10-28T07:31:16.270892+00:00'
   completed_at: '2026-10-28T09:11:59.174727+00:00'
+- id: QA-BUNKER-085
+  title: launch preflight missing disk-space classification
+  criteria:
+  - "After fix: grep -cE 'df -[Pp]t?' .hermes/scripts/bunker-qa.sh >= 1, the df-check\
+    \ line number precedes the first fresh-install line, >94% usage grades the launch\
+    \ cell FAIL with non-zero rc (verifiable: BUNKER_QA_DISK_TIMEOUT=30 bash with\
+    \ a stub ssh emitting a 96% df -P / line and a header, run the extracted qa_disk_preflight\
+    \ + a 40% control \u2014 the test suite test_bunker_qa_preflight.sh:122-131 already\
+    \ carries both c2/c2-control arms asserting exactly 96-FAIL and 40-proceed inside\
+    \ the repo, PASS=38/38), bash -n exits 0"
+  status: complete
+  created_at: '2026-10-28T21:01:09.042057+00:00'
+  completed_at: '2026-10-28T21:10:16.061492+00:00'
+- id: QA-BUNKER-50
+  title: ssh probe hardcodes port 2223 - derive per-agent port
+  criteria:
+  - per_agent_ssh_port regression guard exists in .hermes/scripts/test_bunker_qa_gofirst.sh
+    (grep -q per_agent_ssh_port exits 0) and the agent ssh probe derives per-agent
+    port from spawn data with BUNKER_QA_SSH_PORT override preserved (grep -c BUNKER_QA_SSH_PORT
+    .hermes/scripts/bunker-qa.sh >= 2) and bash -n on both scripts exits 0 and test_bunker_qa_gofirst.sh
+    passes (12/12 on the merged tree)
+  status: complete
+  created_at: '2026-10-28T20:45:33.387483+00:00'
+  completed_at: '2026-10-28T21:10:18.754613+00:00'
+- id: QA-BUNKER-81
+  title: fresh-install artifact check hardcodes toolsd
+  criteria:
+  - "After fix: grep -c 'no artifact found' .hermes/scripts/bunker-qa.sh >= 1, the\
+    \ missing-artifact message is emitted with non-zero cell rc (verifiable on the\
+    \ committed tree: grep -n 'no artifact found' .hermes/scripts/bunker-qa.sh prints\
+    \ the cell fresh-install FAIL line which begins rc=1, and grep -c rc=1 .hermes/scripts/bunker-qa.sh\
+    \ >= 1; the c4/c4-control arms in test_bunker_qa_preflight.sh assert the make-repo-without-artifact\
+    \ grades FAIL while a repo that DOES install toolsd still grades OK \u2014 suite\
+    \ PASS=38/38), bash -n exits 0, generic artifact derivation documented in harness\
+    \ comments (case $install_cmd in make\\ *|*toolsd*)"
+  status: complete
+  created_at: '2026-10-28T21:01:41.801664+00:00'
+  completed_at: '2026-10-28T21:10:17.244564+00:00'
+- id: QA-BUNKER-56-R2
+  title: chaos-disconnect leg never runs - native_cmd escaped instead of interpolated
+  criteria:
+  - 'Rendered disconnect leg carries a non-empty bash -c command: after the fix, grep
+    -cF ''${native_cmd:-'' .hermes/scripts/bunker-qa.sh prints >= 1, a rendered qa-run.sh
+    shows the disconnect leg''s bash -c with the generator-side native_cmd value interpolated
+    (not bash -c ""), bash -n exits 0, test_bunker_qa_disconnect_leg.sh 5/5 and the
+    six test_bunker_qa_* suites green on the merged tree'
+  status: complete
+  created_at: '2026-10-28T20:45:38.860766+00:00'
+  completed_at: '2026-10-28T21:10:19.703222+00:00'
