@@ -433,9 +433,16 @@ func TestPushCell03StalledReaderIsReleasedByTheWriteDeadline(t *testing.T) {
 
 // singleConnListener hands out one connection and then blocks, so a cell can serve
 // a handler over a connection it owns both ends of.
+//
+// Accept and Close race by design: Serve calls Accept (on the serve goroutine)
+// while the test's cleanup calls Close via http.Server.Close, so every field
+// both methods touch is guarded by mu. once only serializes the first Accept,
+// which is why it cannot protect the second call's lazy chan and the reader in
+// Close.
 type singleConnListener struct {
 	conn net.Conn
 	once sync.Once
+	mu   sync.Mutex
 	done chan struct{}
 }
 
@@ -445,21 +452,27 @@ func (l *singleConnListener) Accept() (net.Conn, error) {
 	if served {
 		return l.conn, nil
 	}
+	l.mu.Lock()
 	if l.done == nil {
 		l.done = make(chan struct{})
 	}
-	<-l.done
+	done := l.done
+	l.mu.Unlock()
+	<-done
 	return nil, net.ErrClosed
 }
 
 func (l *singleConnListener) Close() error {
-	if l.done != nil {
-		select {
-		case <-l.done:
-		default:
-			close(l.done)
-		}
+	l.mu.Lock()
+	if l.done == nil {
+		l.done = make(chan struct{})
 	}
+	select {
+	case <-l.done:
+	default:
+		close(l.done)
+	}
+	l.mu.Unlock()
 	return nil
 }
 
