@@ -80,17 +80,24 @@ from that sentence, not from any single bug.
 
 ### BT1 — Transport (adversary A4)
 
-*Default:* `tls.enabled: false`, `tls.mtls: false` (`internal/config/config.go`). The daemon
-will start on a non-loopback address with TLS off. **There is no transport gate** — the
-config has `CheckAuth()` (which refuses to start when auth is enabled but unconfigured) but
-no equivalent `CheckTLS()`, so a plaintext admin plane is the path of least resistance.
+*Default:* `tls.enabled: false`, `tls.mtls: false` (`internal/config/config.go`). A transport
+gate exists: `CheckTLS()` (GAP-126 / REQ-T1) refuses to start the daemon on a non-loopback
+plaintext listener — the same startup-refusal shape as `CheckAuth()` (which refuses to start
+when auth is enabled but unconfigured). With TLS off, a bind beyond loopback is an error
+unless the operator explicitly sets `tls.insecure_dev: true`; with that opt-in the daemon
+starts with a loud warning and every audit record is marked as insecure plaintext.
+Loopback-only binds stay allowed silently (not reachable off-host), and TLS enabled makes
+the gate a no-op.
 
-*Consequence:* every credential, every agent SSH key returned by `SpawnAgent`, and every
-agent-issued RPC crosses the wire in clear unless the operator independently decides to turn
-TLS on. An A4 adversary on-path can lift the master token and own the fleet.
+*Consequence:* the residual exposure is the explicit escape hatch: an operator who sets
+`tls.insecure_dev: true` on a reachable address accepts a plaintext admin plane, so every
+credential, every agent SSH key returned by `SpawnAgent`, and every agent-issued RPC crosses
+the wire in clear. An A4 adversary on-path in that configuration can lift the master token
+and own the fleet.
 
-*Control:* TLS-by-default with an explicit, warned, audited `insecure_dev` escape hatch; a
-self-signed + pinning path so the secure option is the easy one. *(REQ-T1, REQ-T2.)*
+*Control:* keep the refused-by-default gate as the shipped path; the `insecure_dev` escape
+hatch is explicit, warned and audit-marked. A self-signed + pinning path keeps the secure
+option the easy one. *(REQ-T1, REQ-T2.)*
 
 ### BT2 — Authorization (adversaries A2, A4)
 
