@@ -1,0 +1,10 @@
+{
+  "tick_id": "bunker-foreman-2026-10-27-06-48-46",
+  "block": "SURF",
+  "wave_budget": 1,
+  "path": "SERIAL",
+  "rows_dispatched": [
+    "SURF-007"
+  ],
+  "reason": "SURF-004 was a delayed closeout. Next ready row is SURF-007 (P1, no deps, simple doc+build fix). Host load 19.32 on 16 cores = 1 slot."
+}

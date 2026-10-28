@@ -1,0 +1,17 @@
+{
+  "tick_id": "bunker-foreman-2026-10-26-00-17-58",
+  "block_id": "DF-BUNKER-112",
+  "wave_size": 6,
+  "slots": 6,
+  "rows": [
+    {"id": "DF-BUNKER-76", "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-76", "branch": "wt/DF-BUNKER-76"},
+    {"id": "DF-BUNKER-75", "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-75", "branch": "wt/DF-BUNKER-75"},
+    {"id": "DF-BUNKER-73", "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-73", "branch": "wt/DF-BUNKER-73"},
+    {"id": "DF-BUNKER-108", "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-108", "branch": "wt/DF-BUNKER-108"},
+    {"id": "DF-BUNKER-111", "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-111", "branch": "wt/DF-BUNKER-111"},
+    {"id": "DF-BUNKER-112", "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-112", "branch": "wt/DF-BUNKER-112"}
+  ],
+  "model": "glm-5.3-flash",
+  "provider": "zai-glm-default",
+  "dispatched_at": "2026-10-26T00:18:00-05:00"
+}

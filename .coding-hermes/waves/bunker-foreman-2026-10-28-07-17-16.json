@@ -1,0 +1,25 @@
+{
+  "tick_id": "bunker-foreman-2026-10-28-07-17-16",
+  "block": "QA-BUNKER-086",
+  "path": "/home/kara/deployBunker/bunker",
+  "rows": [
+    {
+      "task_id": "QA-BUNKER-080",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-080",
+      "branch": "wt/QA-BUNKER-080",
+      "base": "29eaa0dc",
+      "brief": "/tmp/brief-QA-BUNKER-080.txt",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "dispatch": "merged",
+      "launched_at": "2026-10-28T07:30Z",
+      "commit": "fa47104c",
+      "result": "OK"
+    }
+  ],
+  "wave_budget": 5,
+  "wave_size": 1,
+  "owner_blocker": null,
+  "serial_reason": "slots = max(1, min(6, 16 - ceil(15.79))) = 1; box loaded -> serial path, one worker on the block's highest-value ready row (QA-BUNKER-080, recurs every QA battery since 10-25)",
+  "status": "merged_and_pushed"
+}

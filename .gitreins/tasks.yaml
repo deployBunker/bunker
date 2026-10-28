@@ -5118,3 +5118,22 @@ tasks:
   status: complete
   created_at: '2026-10-28T02:33:16.548280+00:00'
   completed_at: '2026-10-28T02:33:27.673830+00:00'
+- id: QA-BUNKER-REVIEW-2
+  title: Collect cell UNVERIFIED due to missing agent - fresh full battery re-run
+  criteria:
+  - Full fresh-system battery (bunker-qa.sh launch+collect) completed at HEAD d1a975c9
+    from the product git root with collected evidence; collect verdict is COLLECTED
+    (not UNVERIFIED); findings graded and filed/annotated per qa-foreman doctrine
+  status: complete
+  created_at: '2026-10-28T06:20:11.056604+00:00'
+  completed_at: '2026-10-28T07:09:07.080779+00:00'
+- id: QA-BUNKER-080
+  title: Make the two load-sensitive wall-clock tests hermetic (session-probe scaled
+    budget + fsclient rev poll)
+  criteria:
+  - Focused runs x20 of TestSessionProbe_ScaledBudgetIsUsedUnderConcurrency and TestRevPollFiresOnlyWhenTheServedRevisionMoves
+    pass on a loaded host; assertions no longer depend on wall-clock windows; injected-delay
+    regression test present; go build/vet/test ./... all-ok
+  status: complete
+  created_at: '2026-10-28T07:31:16.270892+00:00'
+  completed_at: '2026-10-28T09:11:59.174727+00:00'

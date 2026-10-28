@@ -1,0 +1,14 @@
+{
+  "tick_id": "bunker-foreman-2026-10-26-04-00-05",
+  "block_id": "DF-BUNKER-112",
+  "wave_size": 3,
+  "slots": 5,
+  "rows": [
+    {"id": "DF-BUNKER-85", "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-85", "branch": "wt/DF-BUNKER-85"},
+    {"id": "DF-BUNKER-104", "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-104", "branch": "wt/DF-BUNKER-104"},
+    {"id": "DF-BUNKER-100", "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-100", "branch": "wt/DF-BUNKER-100"}
+  ],
+  "model": "glm-5.3-flash",
+  "provider": "zai-glm-default",
+  "dispatched_at": "2026-10-26T04:00:05-05:00"
+}

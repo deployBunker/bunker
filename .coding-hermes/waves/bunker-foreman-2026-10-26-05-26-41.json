@@ -1,0 +1,32 @@
+{
+  "tick_id": "bunker-foreman-2026-10-26-05-26-41",
+  "block_id": "QA-BUNKER-FOREMAN",
+  "block_id_row": "QA-BUNKER-FOREMAN-1",
+  "wave_size": 2,
+  "slots": 5,
+  "computed_slots": "max(1, min(6, 16 - 11)) = 5",
+  "rows": [
+    {
+      "id": "QA-BUNKER-FOREMAN-1",
+      "title": "[P3] bunker-foreman battery unfinished/uncollected at collect deadline",
+      "priority": "P3",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-FOREMAN-1",
+      "branch": "wt/QA-BUNKER-FOREMAN-1",
+      "base_sha": "ad94ba80",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief_path": "/tmp/bunker-brief-FOREMAN-1.txt"
+    },
+    {
+      "id": "QA-BUNKER-FOREMAN-2",
+      "title": "[P1] collect cell UNVERIFIED due to missing agent",
+      "priority": "P1",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-FOREMAN-2",
+      "branch": "wt/QA-BUNKER-FOREMAN-2",
+      "base_sha": "ad94ba80",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief_path": "/tmp/bunker-brief-FOREMAN-2.txt"
+    }
+  ]
+}
