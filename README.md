@@ -314,6 +314,16 @@ make build          # or: ./scripts/install.sh --build
 ./bunker --version
 ```
 
+**Installing the built binaries:** `make install` places both binaries into
+`$(PREFIX)/bin`, with `PREFIX` defaulting to `/usr/local` — that location needs
+root, so run it under `sudo` yourself if that is where you want them, or pick a
+prefix you can write to: `make install PREFIX="$HOME/.local"`. `DESTDIR` is
+honored for staged packaging installs (`make install DESTDIR=/tmp/pkg`). On a
+host where you have no root at all, `./scripts/install.sh` is the non-root
+alternative: it installs prebuilt release binaries (or freshly built ones with
+`--build`) and falls back to `$HOME/.local/bin` automatically when
+`/usr/local/bin` is not writable.
+
 > **Cold host: the first build downloads every Go module.** Expect several
 > minutes on a fresh machine or an empty module cache; later builds take
 > seconds. `./scripts/install.sh --build` is a complete substitute for

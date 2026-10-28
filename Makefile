@@ -170,12 +170,18 @@ e2e:
 docs-check:
 	go run ./cmd/docs-drift
 
-# Install binaries to /usr/local/bin (requires root; a make-free, non-root
-# alternative is ./scripts/install.sh, which falls back to ~/.local/bin)
+# Install binaries into $(PREFIX)/bin. PREFIX defaults to /usr/local, which
+# needs root; override it for a non-root install: make install PREFIX="$HOME/.local".
+# DESTDIR (staged/packaging installs) is prepended if set: $(DESTDIR)$(PREFIX)/bin.
+# A make-free, non-root alternative is ./scripts/install.sh, which falls back to
+# ~/.local/bin automatically.
+PREFIX ?= /usr/local
+BINDIR := $(PREFIX)/bin
 .PHONY: install
 install: check-go build
-	install -m 0755 $(BUNKERD) /usr/local/bin/bunkerd
-	install -m 0755 $(BUNKER) /usr/local/bin/bunker
+	mkdir -p $(DESTDIR)$(BINDIR)
+	install -m 0755 $(BUNKERD) $(DESTDIR)$(BINDIR)/bunkerd
+	install -m 0755 $(BUNKER) $(DESTDIR)$(BINDIR)/bunker
 
 # Full CI-quality check
 .PHONY: ci
