@@ -1,0 +1,107 @@
+{
+  "tick_id": "bunker-foreman-2026-10-28-10-23-56",
+  "block": "QA-BUNKER",
+  "block_resume": "last tick's wave_close named block QA-BUNKER-086 (QA-BUNKER family) which still has ready rows",
+  "path": "/home/kara/deployBunker/bunker",
+  "base_sha": "af010b1f",
+  "slots_formula": "slots = max(1, min(6, 16 - ceil(5.26))) = 6; wave budget 12 -> 5 independent in-repo rows",
+  "rows": [
+    {
+      "task_id": "QA-BUNKER-086",
+      "title": "make install hardcodes /usr/local/bin and ignores PREFIX",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-086",
+      "branch": "wt/QA-BUNKER-086",
+      "base": "af010b1f",
+      "brief": "/tmp/brief-QA-BUNKER-086.txt",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "files": [
+        "Makefile",
+        "README.md"
+      ],
+      "dispatch": "merged",
+      "launched_at": "2026-10-28T10:50Z",
+      "commit": "782ebca1",
+      "result": "OK"
+    },
+    {
+      "task_id": "QA-BUNKER-087",
+      "title": "data race in internal/server/webdav TestPushCell03StalledReaderIsReleasedByTheWriteDeadline",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-087",
+      "branch": "wt/QA-BUNKER-087",
+      "base": "af010b1f",
+      "brief": "/tmp/brief-QA-BUNKER-087.txt",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "files": [
+        "internal/server/webdav"
+      ],
+      "dispatch": "merged",
+      "launched_at": "2026-10-28T10:50Z",
+      "commit": "e46e64b0",
+      "result": "OK"
+    },
+    {
+      "task_id": "QA-BUNKER-076-R2",
+      "title": "TestSurfaceConnectCommand_LocalSocketBusyRefused not hermetic w.r.t. AF_UNIX path length",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-076-R2",
+      "branch": "wt/QA-BUNKER-076-R2",
+      "base": "af010b1f",
+      "brief": "/tmp/brief-QA-BUNKER-076-R2.txt",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "files": [
+        "internal/cli/surface_connect_test.go"
+      ],
+      "dispatch": "merged",
+      "launched_at": "2026-10-28T10:50Z",
+      "commit": "621ef4d8",
+      "result": "OK"
+    },
+    {
+      "task_id": "QA-BUNKER-71",
+      "title": "threat-model section 5 BT1 stale CheckTLS claim",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-71",
+      "branch": "wt/QA-BUNKER-71",
+      "base": "af010b1f",
+      "brief": "/tmp/brief-QA-BUNKER-71.txt",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "files": [
+        "docs/threat-model.md"
+      ],
+      "dispatch": "merged",
+      "launched_at": "2026-10-28T10:50Z",
+      "commit": "e499889f",
+      "result": "OK"
+    },
+    {
+      "task_id": "QA-BUNKER-83",
+      "title": "exec env builder pins TMPDIR=/tmp; per-agent TMPDIR under agent data dir",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-83",
+      "branch": "wt/QA-BUNKER-83",
+      "base": "af010b1f",
+      "brief": "/tmp/brief-QA-BUNKER-83.txt",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "files": [
+        "internal/server/exec_persistent.go"
+      ],
+      "dispatch": "merged",
+      "launched_at": "2026-10-28T10:50Z",
+      "commit": "565605f1",
+      "result": "OK"
+    }
+  ],
+  "excluded_same_block_rows": {
+    "QA-BUNKER-077": "target file is the fleet harness ~/.hermes/scripts/bunker-qa.sh, outside the repo pipeline",
+    "QA-BUNKER-84": "target file is ~/.hermes/scripts/qa_discover.py, outside the repo pipeline",
+    "QA-BUNKER-076": "same seam as QA-BUNKER-076-R2 (superseded by the attributed recurrence)"
+  },
+  "wave_budget": 12,
+  "wave_size": 5,
+  "owner_blocker": null,
+  "serial_reason": null,
+  "status": "merged_and_pushed",
+  "merged_tip": "621ef4d8"
+}
