@@ -2470,14 +2470,23 @@ disc_window=\$(( \${suite_dur:-0} * 2 + 30 ))
 # build succeeds offline, so the disconnect cut is exercised against a real
 # build. GOTOOLCHAIN=local prevents a toolchain download attempt. These env
 # vars are harmless for non-Go native_cmd values (npm/pytest/cargo ignore them).
-( HTTP_PROXY=http://127.0.0.1:9 HTTPS_PROXY=http://127.0.0.1:9 ALL_PROXY=http://127.0.0.1:9 GOFLAGS=-mod=mod GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local timeout \$disc_window bash -c "\$native_cmd" ) >\$LOGD/disc.log 2>&1; disc_rc=\$?
-native_dur=$suite_dur
+( HTTP_PROXY=http://127.0.0.1:9 HTTPS_PROXY=http://127.0.0.1:9 ALL_PROXY=http://127.0.0.1:9 GOFLAGS=-mod=mod GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local timeout \$disc_window bash -c "\${native_cmd:-$native_cmd}" ) >\$LOGD/disc.log 2>&1; disc_rc=\$?
+# QA-BUNKER-56-R2: this whole ladder is AGENT-side — suite_dur/LOGD/disc_rc are
+# assigned by the rendered script (above), so their refs stay escaped for the
+# heredoc (36dbac06 un-escaped three of them and the generator's own set -u
+# killed every render at "suite_dur: unbound variable" — 0-byte qa-run.sh).
+# The bash -c payload stays GENERATOR-side (same style as the res leg): the
+# render bakes the detected suite into an agent-side default guard, so the
+# cut actually runs the suite. Pre-fix the leg shipped a bare agent-side
+# native_cmd ref that nothing assigned: bash -c got an empty payload, exited
+# 0 instantly, and disc.log stayed 0 bytes on every repo.
+native_dur=\$suite_dur
 # QA-BUNKER-78 / LORE-058: an empty disc.log means the wheel-install path
 # produced no suite to cut (wheel ships only runtime deps; pytest lives in the
 # source tree's dev extra). Empty log ≠ "passes with network cut" — grade N/A.
-if [ ! -s "$LOGD/disc.log" ]; then
+if [ ! -s "\$LOGD/disc.log" ]; then
   cell chaos-disconnect N/A "no suite installed with the wheel — the disconnect cut was never exercised"
-elif [ $disc_rc -eq 0 ]; then cell chaos-disconnect INFO "passes with network cut (no network dep)"
+elif [ \$disc_rc -eq 0 ]; then cell chaos-disconnect INFO "passes with network cut (no network dep)"
 elif [ \$disc_rc -eq 124 ]; then cell chaos-disconnect FAIL "HANGS when network is cut (timeout \${disc_window}s, sized from the \${native_dur}s suite: 2x+30s; override floor BUNKER_QA_DISCONNECT_TIMEOUT=\${BUNKER_QA_DISCONNECT_TIMEOUT:-240}s) — \$(head -3 \$LOGD/disc.log)"
 elif [ \$disc_rc -eq 127 ]; then cell chaos-disconnect UNVERIFIED "command not found (rc=127) — the suite NEVER RAN, so the network cut was never exercised; INFRA-FAIL, not a disconnect result: \$(tail -2 \$LOGD/disc.log)"
 elif build_incomplete \$LOGD/disc.log; then cell chaos-disconnect INFO "disconnect UNVERIFIED: the build never completed, so the network cut was NEVER exercised — no disconnect finding either way (rc=\$disc_rc; environment or code, never network): \$(build_incomplete_cause \$LOGD/disc.log)"
