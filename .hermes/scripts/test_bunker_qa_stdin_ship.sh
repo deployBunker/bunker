@@ -96,7 +96,7 @@ mkdir -p "$TD/home" "$TD/home/.bunker" "$TD/shim/home" "$TD/repo"
 # reachability probe passes because the shim ssh exits 0 for any invocation.
 mkdir -p "$TD/home/.bunker"
 printf '    qa64-shim.invalid:\n' > "$TD/home/.bunker/config.yaml"
-for fn in log write_fail_if_empty qa_target_preflight preflights detect_cmds npm_pkg_name npm_pkg_publishable detect_publish_pkg_name detect_upgrade_inputs ship_prev_tag_tree sync_repo build_remote_script spawn_agent qa_destroy_agent agent_ssh run launch; do
+for fn in log write_fail_if_empty qa_target_preflight qa_disk_preflight preflights detect_cmds npm_pkg_name npm_pkg_publishable detect_publish_pkg_name detect_upgrade_inputs ship_prev_tag_tree sync_repo build_remote_script spawn_agent qa_destroy_agent agent_ssh run launch; do
   extract_top_function "$fn" "$TD/fn_$fn.sh" || { echo "FATAL: extract $fn failed (def or bare-} terminator not found)" >&2; exit 1; }
   if ! bash -n "$TD/fn_$fn.sh" 2>"$TD/fn_$fn.err"; then
     echo "FATAL: extracted body $fn does not parse:" >&2
@@ -164,6 +164,15 @@ case "$CMD" in
     # evidence pull (run): the fake agent-side evidence written by the ship arm
     cat "$D/home/qa-evidence.jsonl" 2>/dev/null
     ;;
+  *"df -P /"*)
+    # QA-BUNKER-085 disk preflight: the real launch()/run() now df-probes the
+    # target through ssh BEFORE any spawn. A shim without a df arm returns
+    # nothing, the gate grades "no usable df -P use%" and exits rc=2 — every
+    # drive fails before it can exercise the transport. Real `df -P /` output:
+    # a HEADER line (the awk gate reads it via NR > 1) + one data line.
+    printf '%s\n' 'Filesystem 1024-blocks Used Available Capacity Mounted on'
+    printf '%s\n' '/dev/shim 16G 4G 12G 25% /'
+    ;;
   *)
     # preflight/hygiene/probe calls never read stdin — do NOT touch it here,
     # `cat` would block on the caller's held-open stdin until the real
@@ -203,7 +212,7 @@ drive() { # <body.sh> <argv-log> <stdin-file> <evidence>  (uses $TD, repo fixtur
     # source the prologue (env/global defaults) + real bodies in dep order
     local f
     source "$TD/prologue.sh"
-    for f in log write_fail_if_empty qa_target_preflight preflights detect_cmds npm_pkg_name npm_pkg_publishable detect_publish_pkg_name detect_upgrade_inputs ship_prev_tag_tree sync_repo build_remote_script spawn_agent qa_destroy_agent agent_ssh run launch; do
+    for f in log write_fail_if_empty qa_target_preflight qa_disk_preflight preflights detect_cmds npm_pkg_name npm_pkg_publishable detect_publish_pkg_name detect_upgrade_inputs ship_prev_tag_tree sync_repo build_remote_script spawn_agent qa_destroy_agent agent_ssh run launch; do
       source "$TD/fn_$f.sh"
     done
     case "$(basename "$body")" in
@@ -232,7 +241,7 @@ TD="$TD" PATH="$TD/shim:$PATH" BUNKER_QA_SERVER=qa64-shim.invalid \
 BUNKER_QA_HOST_KEY="$TD/home/dummy-hostkey" BUNKER_QA_EVIDENCE="$TD/gen.ev.jsonl" \
 bash -c '
   source "$TD/prologue.sh"
-  for f in log write_fail_if_empty qa_target_preflight preflights detect_cmds npm_pkg_name npm_pkg_publishable detect_publish_pkg_name detect_upgrade_inputs ship_prev_tag_tree sync_repo build_remote_script spawn_agent qa_destroy_agent agent_ssh run launch; do
+  for f in log write_fail_if_empty qa_target_preflight qa_disk_preflight preflights detect_cmds npm_pkg_name npm_pkg_publishable detect_publish_pkg_name detect_upgrade_inputs ship_prev_tag_tree sync_repo build_remote_script spawn_agent qa_destroy_agent agent_ssh run launch; do
     source "$TD/fn_$f.sh"
   done
   cd "$TD"
