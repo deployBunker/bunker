@@ -1,0 +1,33 @@
+{
+  "tick_id": "bunker-foreman-2026-10-28-06-05-13",
+  "block": "QA-BUNKER-REVIEW-2",
+  "block_drive_label": "QA-BUNKER-REVIEW-2 (2 ready rows: REVIEW-1 P3 + REVIEW-2 P1, both from the 10-26 qa-dagger collect failure)",
+  "wave_budget": 1,
+  "slots": 1,
+  "path": "SERIAL — WAVE_BUDGET=1 mandates no wave; host load independent (slots formula also yields 1: 16 - ceil(18.07) = -2 -> max(1, min(6, -2)) = 1)",
+  "reason": "Block selection by rank: INT-HOST-011 skipped (sole ready row INT-HOST-008 owner-gated: destructive reap --apply on live bunker-mvp, deletion decision absent 16+ ticks — re-verified pending in-row). RELEASE-018 skipped (RELEASE-003/008 blocked: bunker/bunker3/bunker4 offline on Tailscale since ~10-22, owner decision on retirement). QA-BUNKER-REVIEW-2 is the highest-ranked block with dispatchable work: P1 collect UNVERIFIED. Root cause of the 10-26 failure (evidence /tmp/bunker-qa-evidence-1792986117645-1.jsonl): the QA cycle launched from /home/kara/.hermes/stand-in/review/bunker — a SUBDIRECTORY of the /home/kara git repo — so bunker-qa.sh refused pre-spawn ('syncing the parent would grade the wrong product'), created NO agent, and collect looped on an empty-agent .meta. Zero-signal launch: per qa-foreman doctrine, a fresh battery is required, not coverage. Last full bunker battery was 2026-10-25 at d9e4c0a1; HEAD is now d1a975c9 with 131 files / +9512 lines delta — fresh full battery at HEAD it is.",
+  "host": {
+    "nproc": 16,
+    "loadavg_1m": 18.07,
+    "computed_slots": 1,
+    "wave_budget": 1
+  },
+  "rows": [
+    {
+      "id": "QA-BUNKER-REVIEW-2",
+      "status_at_dispatch": "pending",
+      "priority": "P1",
+      "path": "verification-only battery re-run (no worktree, no code change)",
+      "remedy": "bunker-qa.sh launch from PRODUCT GIT ROOT /home/kara/deployBunker/bunker at HEAD d1a975c9 -> poll collect to COLLECTED -> grade cells -> close row"
+    },
+    {
+      "id": "QA-BUNKER-REVIEW-1",
+      "status_at_dispatch": "pending",
+      "priority": "P3",
+      "path": "same battery satisfies the second-collect requirement (agent left intact is moot: the 10-26 launch never created an agent)"
+    }
+  ],
+  "rows_dispatched": [],
+  "gitreins_task": "QA-BUNKER-REVIEW-2",
+  "off_battery_plan": "dev-box contrast at d1a975c9 (go build/vet/test) per AGENTS.md gates; harness observation: subdirectory-refusal launches leave an empty-agent .meta that collect cannot act on (candidate bunker-qa.sh fix, foreman-direct in home repo, if budget allows)"
+}
