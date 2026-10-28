@@ -1698,6 +1698,31 @@ fi
 export RUST_MISSING_SYS_DEPS
 command -v go >/dev/null 2>&1 && command -v node >/dev/null 2>&1 && cell toolchain-bootstrap OK "go+node ready"
 
+# QA-BUNKER-81: record executable artifacts in the install destination before
+# the install leg.  The old check named only `toolsd`, which made a successful
+# make verify with no binary either silently pass or be graded against an
+# unrelated tool.  PATH is the install contract: inspect every existing PATH
+# component whose conventional role is a bin directory, plus the two user bin
+# directories used by the project installers.  Toolchain bootstrap is complete
+# before this snapshot, so its helpers cannot masquerade as project artifacts.
+install_artifact_dirs() {
+  local p
+  IFS=: read -r -a install_path_dirs <<< "\$PATH"
+  for p in "\${install_path_dirs[@]}" "\$HOME/bin" "\$HOME/.local/bin"; do
+    [ -d "\$p" ] || continue
+    case "\$p" in */bin) printf '%s\\n' "\$p" ;; esac
+  done | sort -u
+}
+install_artifact_snapshot() {
+  local p
+  while IFS= read -r p; do
+    find "\$p" -maxdepth 1 -type f -perm -u+x -print 2>/dev/null
+  done < <(install_artifact_dirs)
+}
+INSTALL_ARTIFACT_BEFORE="\$LOGD/install-artifacts.before"
+INSTALL_ARTIFACT_AFTER="\$LOGD/install-artifacts.after"
+install_artifact_snapshot | sort -u > "\$INSTALL_ARTIFACT_BEFORE"
+
 # 1 · fresh-install — REAL rc through a log file
 # QA-BUNKER-57 (2026-10-04): a pyproject repo's DETECT_INSTALL is pip; on an
 # agent where ensurepip failed there is no pip at all and the leg would die
@@ -1730,7 +1755,23 @@ INST_TIMEOUT_S="\${BUNKER_QA_INSTALL_TIMEOUT_S:-${BUNKER_QA_INSTALL_TIMEOUT_S:-3
 # rc=124 = timeout(1)'s own exit code — grade BEFORE the OK branch so a ceiling
 # hit can never fall through to OK/FAIL (QA-BUNKER-60).
 if [ \$inst_rc -eq 124 ]; then cell fresh-install SKIP "install exceeded \${INST_TIMEOUT_S}s timeout (slice/cpu too small for this workspace or genuine hang) — grade UNVERIFIED upstream"
-elif [ \$inst_rc -eq 0 ]; then cell fresh-install OK "\$(tail -1 \$LOGD/inst.log)"
+elif [ \$inst_rc -eq 0 ]; then
+  # QA-BUNKER-81: make/verify-style install legs must leave an executable
+  # artifact in the install destination.  Compare against the pre-install
+  # snapshot so bootstrap tools (including a pre-existing toolsd) do not count;
+  # any newly installed executable is valid, regardless of its name.
+  install_artifact_snapshot | sort -u > "\$INSTALL_ARTIFACT_AFTER"
+  install_artifacts="\$(comm -13 "\$INSTALL_ARTIFACT_BEFORE" "\$INSTALL_ARTIFACT_AFTER" | tr '\\n' ' ' | sed 's/[[:space:]]*$//' )"
+  case "\$install_cmd" in
+    make\ *|*toolsd*) artifact_required=1 ;;
+    *) artifact_required=0 ;;
+  esac
+  if [ "\$artifact_required" -eq 1 ] && [ -z "\$install_artifacts" ]; then
+    artifact_rc=1
+    cell fresh-install FAIL "rc=\$artifact_rc: install rc=0 but no artifact found in PATH/bin (toolsd is allowed when present)"
+  else
+    cell fresh-install OK "\$(tail -1 \$LOGD/inst.log)\${install_artifacts:+; artifact(s): \$install_artifacts}"
+  fi
 elif [ \$inst_rc -eq 127 ] || grep -qi 'command not found' \$LOGD/inst.log; then cell fresh-install INFO "ENV-BLOCKED: the agent lacks a build tool the install step calls (\$(grep -m1 -oE '[a-zA-Z0-9_.-]+: command not found' \$LOGD/inst.log || echo rc=\$inst_rc)) and has no sudo to install it — harness env, not a repo defect: \$(tail -1 \$LOGD/inst.log)"
 elif build_env_failure \$LOGD/inst.log; then cell fresh-install INFO "ENV-BLOCKED: agent has no C toolchain (build-script link failure) — not a repo defect; README documents build-essential"
 elif [ -n "\$RUST_MISSING_SYS_DEPS" ] && build_sys_dep_failure \$LOGD/inst.log; then cell fresh-install INFO "ENV-BLOCKED: agent is missing system deps [\$RUST_MISSING_SYS_DEPS] and the build died in a *-sys build script — no sudo to apt install, not a repo defect; README documents the full dependency set: \$( { grep -m1 -E 'failed to run custom build command' \$LOGD/inst.log 2>/dev/null || grep -m1 'development packages' \$LOGD/inst.log 2>/dev/null; } | cut -c1-200 )"
