@@ -24,6 +24,7 @@ import (
 	"connectrpc.com/connect"
 
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
+	bunkerv1connect "github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect"
 )
 
 // deadlineDestroyServer never answers DestroyAgent before the client's own
@@ -91,8 +92,10 @@ func runDeadlineDestroy(t *testing.T, agentID string, extraArgs ...string) (stri
 }
 
 // setupDeadlineDestroyTest wires HOME/config/session target for the real
-// command, returning the mock server so a test can inspect it.
-func setupDeadlineDestroyTest(t *testing.T, srv *deadlineDestroyServer) {
+// command, returning the mock server so a test can inspect it. The server
+// parameter is the handler interface (not the concrete mock) so a test can
+// serve its own DestroyAgent/ListAgents shape over the same wiring.
+func setupDeadlineDestroyTest(t *testing.T, srv bunkerv1connect.BunkerdHandler) {
 	t.Helper()
 	httpSrv := newDestroyTestServer(t, srv)
 	t.Cleanup(httpSrv.Close)
@@ -250,6 +253,160 @@ func TestDestroy_TimeoutFlagInHelp(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("help output missing %q, got:\n%s", want, out)
 		}
+	}
+}
+
+// ── QA-BUNKER-37 ────────────────────────────────────────────────────────────
+//
+// Guard: deadline_exceeded_agent_relist_reaped — prints PASS only when no
+// live agent survives a deadline_exceeded destroy: after the client's
+// deadline expires, the confirmation must keep re-listing past the flat
+// window until the daemon's registry no longer carries the agent.
+//
+// The defect this pins: the daemon's teardown is DETACHED from the client's
+// cancellation (BNK-DF-001 / DF-BUNKER-81 — the archive runs on
+// context.WithoutCancel with its own size-derived budget), so on a JIT
+// battery agent the archive is still running when the client deadline
+// expires. The confirmation used to poll for a FLAT destroyRelistWindow
+// (20s) regardless of the deadline the destroy ran under, so a deadline
+// sized in minutes still got a 20-second confirmation: the relist saw the
+// agent still listed, destroy exited rc=1 "NOT confirmed destroyed", the
+// operator (or the battery) retried into an in-flight teardown, and the
+// agent stayed listed running until the TTL reaper.
+//
+// relistReapServer models that daemon: DestroyAgent answers only when the
+// client's deadline expires (the request is cancelled, never completed),
+// and the daemon's registry carries the agent until teardownDoneAt +
+// registryClearDelay — the shape of an archive that finishes after the
+// client gave up.
+type relistReapServer struct {
+	mockBunkerdServer
+	destroyCalls       atomic.Int32
+	teardownDoneAt     atomic.Int64 // unix nanos; 0 = the detached teardown is still running
+	registryClearDelay time.Duration
+}
+
+func (m *relistReapServer) DestroyAgent(
+	ctx context.Context,
+	req *connect.Request[v1.DestroyAgentRequest],
+) (*connect.Response[v1.DestroyAgentResponse], error) {
+	m.destroyCalls.Add(1)
+	<-ctx.Done()
+	// The client cancelled; the daemon's detached teardown keeps going and
+	// only then removes the registry record.
+	m.teardownDoneAt.Store(time.Now().UnixNano())
+	return nil, connect.NewError(connect.CodeDeadlineExceeded, ctx.Err())
+}
+
+func (m *relistReapServer) ListAgents(
+	ctx context.Context,
+	req *connect.Request[v1.ListAgentsRequest],
+) (*connect.Response[v1.ListAgentsResponse], error) {
+	if done := m.teardownDoneAt.Load(); done != 0 &&
+		!time.Now().Before(time.Unix(0, done).Add(m.registryClearDelay)) {
+		return connect.NewResponse(&v1.ListAgentsResponse{}), nil
+	}
+	return connect.NewResponse(&v1.ListAgentsResponse{
+		Agents:     []*v1.AgentSummary{{AgentId: "jit-agent", Status: "running"}},
+		TotalCount: 1,
+	}), nil
+}
+
+// TestDestroy_DeadlineExceededAgentRelistReaped is the QA-BUNKER-37
+// acceptance. The inner subtest carries the GUARD NAME verbatim, so a green
+// run prints
+//
+//	PASS: TestDestroy_DeadlineExceededAgentRelistReaped/deadline_exceeded_agent_relist_reaped
+//
+// and that PASS is printed only when no live agent survives a
+// deadline_exceeded destroy. Every duration is shrunk via the existing
+// seams — the property under test is that the confirmation window TRACKS the
+// deadline, not the absolute values.
+func TestDestroy_DeadlineExceededAgentRelistReaped(t *testing.T) {
+	t.Run("deadline_exceeded_agent_relist_reaped", func(t *testing.T) {
+		// Scale model of the JIT battery: flat window 120ms, the daemon's
+		// registry clears ~200ms after the client deadline expires, and the
+		// operator's deadline is 250ms — the flat window misses the clearing,
+		// a deadline-derived window does not.
+		const (
+			flatWindow     = 120 * time.Millisecond
+			clientDeadline = 250 * time.Millisecond
+			registryClear  = 200 * time.Millisecond
+		)
+		origWindow := destroyRelistWindow
+		origBackoff := destroyRelistBackoff
+		t.Cleanup(func() {
+			destroyRelistWindow = origWindow
+			destroyRelistBackoff = origBackoff
+		})
+		destroyRelistWindow = flatWindow
+		destroyRelistBackoff = 5 * time.Millisecond
+
+		srv := &relistReapServer{registryClearDelay: registryClear}
+		setupDeadlineDestroyTest(t, srv)
+
+		start := time.Now()
+		out, err := runDeadlineDestroy(t, "jit-agent", "--timeout", clientDeadline.String())
+		elapsed := time.Since(start)
+
+		// The re-list must actually have polled past the flat window — otherwise
+		// this test could pass on a registry that cleared early and prove
+		// nothing about the window.
+		if elapsed <= flatWindow {
+			t.Fatalf("destroy returned after %s (<= the flat %s window): the registry was still carrying "+
+				"the agent when a flat-window confirmation gives up, so this run cannot prove the window extends",
+				elapsed, flatWindow)
+		}
+		if err != nil {
+			t.Fatalf("destroy returned %v after the daemon's registry cleared inside a deadline-derived window; "+
+				"want nil (the agent must not sit listed running until TTL after a deadline_exceeded destroy)\noutput:\n%s", err, out)
+		}
+		if !strings.Contains(out, "jit-agent destroyed") {
+			t.Errorf("output does not report the agent destroyed, got:\n%s", out)
+		}
+		if strings.Contains(out, "NOT confirmed destroyed") {
+			t.Errorf("output reports the destroy unconfirmed although the registry cleared:\n%s", out)
+		}
+		if got := srv.destroyCalls.Load(); got != 1 {
+			t.Errorf("DestroyAgent called %d times, want exactly 1 — the longer confirmation must never "+
+				"turn into a resent destroy racing the detached teardown", got)
+		}
+	})
+}
+
+// TestDestroy_DeadlineExceededRelistWindowNeverClaimsUnwitnessedSuccess is
+// the fail-closed half of the extended window: a registry that NEVER clears
+// still ends at NOT confirmed destroyed with a non-zero exit, no matter how
+// long the confirmation window grew.
+func TestDestroy_DeadlineExceededRelistWindowNeverClaimsUnwitnessedSuccess(t *testing.T) {
+	const (
+		flatWindow     = 100 * time.Millisecond
+		clientDeadline = 200 * time.Millisecond
+	)
+	origWindow := destroyRelistWindow
+	origBackoff := destroyRelistBackoff
+	t.Cleanup(func() {
+		destroyRelistWindow = origWindow
+		destroyRelistBackoff = origBackoff
+	})
+	destroyRelistWindow = flatWindow
+	destroyRelistBackoff = 5 * time.Millisecond
+
+	srv := &relistReapServer{registryClearDelay: time.Hour} // never clears
+	setupDeadlineDestroyTest(t, srv)
+
+	out, err := runDeadlineDestroy(t, "jit-agent", "--timeout", clientDeadline.String())
+	if err == nil {
+		t.Fatalf("destroy returned nil while the daemon still lists the agent after the extended window\noutput:\n%s", out)
+	}
+	if !strings.Contains(out, "NOT confirmed destroyed") {
+		t.Errorf("output does not say the destroy is unconfirmed, got:\n%s", out)
+	}
+	if strings.Contains(out, "jit-agent destroyed") {
+		t.Errorf("output claims a destroy it did not witness:\n%s", out)
+	}
+	if got := srv.destroyCalls.Load(); got != 1 {
+		t.Errorf("DestroyAgent called %d times, want exactly 1", got)
 	}
 }
 
