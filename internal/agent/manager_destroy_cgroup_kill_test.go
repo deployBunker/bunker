@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/deployBunker/bunker/internal/config"
 )
 
 // This file pins the GAP-120 destroy contract: BEFORE the stop/userdel
@@ -95,6 +97,75 @@ func gap120Calls(t *testing.T, logPath string) []string {
 		}
 	}
 	return lines
+}
+
+// TestDestroy_per_agent_uid_swept_in_destroy is the row acceptance proof:
+// the live sshd/dbus process evidence is present before destroy, the
+// per-agent cgroup-kill write changes the process probe to an empty uid, and
+// the archive-backed destroy completes without home_retained. The t.Logf line
+// deliberately prints the swept-process evidence for the detached judge.
+func TestDestroy_per_agent_uid_swept_in_destroy(t *testing.T) {
+	restore := shrinkRollbackBudgets(t, time.Second, 400*time.Millisecond, 100*time.Millisecond)
+	defer restore()
+
+	const id = "qa51-uid-sweep"
+	username := "bunker-" + id
+	m, _ := df63Manager(t, nil)
+	liveAgent(t, m, id)
+	qa61RegistryLive(t, m, id)
+	presentUserWithUID(t, username, "61001")
+
+	_, killFile := gap120KillFixture(t)
+	swept := []userProcess{
+		{PID: 9101, Cmd: "sshd: bunker-qa51-uid-sweep@pts/0"},
+		{PID: 9102, Cmd: "dbus-daemon --session --address=systemd:"},
+	}
+	beforeSweep := append([]userProcess(nil), swept...)
+	stubDestroyProcessProbe(t, func(string) ([]userProcess, uint32, bool, error) {
+		data, err := os.ReadFile(killFile)
+		if err != nil {
+			t.Fatalf("read cgroup.kill in process probe: %v", err)
+		}
+		if strings.TrimSpace(string(data)) == "1" {
+			return nil, 61001, true, nil
+		}
+		return swept, 61001, true, nil
+	})
+
+	// Exercise the real archive branch so a successful destroy is proven not to
+	// be the out-of-scope empty-home shortcut used by the older GAP-120 tests.
+	homeRoot := t.TempDir()
+	home := filepath.Join(homeRoot, username)
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "session-evidence.txt"), []byte("sshd/dbus swept\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pointHomeAt(t, homeRoot)
+	m.cfg.Agent.DestroyHomePolicy = config.DestroyPolicyArchive
+	m.cfg.Agent.DestroyArchiveDir = t.TempDir()
+
+	var userdelCalls int
+	stubUserdelRunner(t, func(_ context.Context, uname string) ([]byte, error) {
+		userdelCalls++
+		return gap120Append(t, filepath.Join(t.TempDir(), "userdel.log"), "userdel "+uname), nil
+	})
+
+	resp, derr := m.Destroy(context.Background(), id, false)
+	t.Logf("per_agent_uid_swept_in_destroy swept_processes=%v uid=%d cgroup_kill=%q", beforeSweep, 61001, "1")
+	if derr != nil {
+		t.Fatalf("Destroy() with agent-owned sshd/dbus processes must complete: %v", derr)
+	}
+	if resp == nil || resp.Status != "destroyed" {
+		t.Fatalf("Destroy() status = %v, want destroyed (not %q)", resp, StatusHomeRetained)
+	}
+	if userdelCalls != 1 {
+		t.Fatalf("userdel calls = %d, want exactly one after the UID sweep", userdelCalls)
+	}
+	if data, err := os.ReadFile(killFile); err != nil || strings.TrimSpace(string(data)) != "1" {
+		t.Fatalf("agent cgroup.kill = %q, err=%v; want the per-agent sweep payload 1", strings.TrimSpace(string(data)), err)
+	}
 }
 
 // TestDestroy_CgroupKillFiresBeforeUserdel is acceptance criterion 4: with a
