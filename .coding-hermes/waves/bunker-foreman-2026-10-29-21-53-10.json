@@ -1,0 +1,14 @@
+{
+  "tick_id": "bunker-foreman-2026-10-29-21-53-10",
+  "block": "QA-BUNKER-088",
+  "wave_budget": 9,
+  "host": {"nproc": 16, "loadavg_1m_at_selection": 9.08, "slots_formula": "max(1, min(6, 16 - ceil(9.08)))", "effective_slots": 6},
+  "selection": {"rows": ["QA-BUNKER-51", "QA-BUNKER-088"], "reason": "Resume-first block; two ready rows had no dependency edge and disjoint Hilo/source seams."},
+  "workers": {
+    "QA-BUNKER-51": {"worktree": "/home/kara/worktrees/bunker-QA-BUNKER-51-R3", "branch": "wt/QA-BUNKER-51-R3", "base_sha": "605211d0", "commit": "efcae34eb772fff5d47b88cf4364a66711ecc8f3", "verdict": "2f65831b", "merged_head": "efcae34eb772fff5d47b88cf4364a66711ecc8f3"},
+    "QA-BUNKER-088": {"worktree": "/home/kara/worktrees/bunker-QA-BUNKER-088-R3", "branch": "wt/QA-BUNKER-088-R3", "base_sha": "605211d0", "commit": "dafad375de091be73ad9d34a1c37da6a410e2232", "verdict": "e76e2a05", "merged_head": "2b29e5bf1e89e22496a8f8fa9a5d11a55ce0fd44"}
+  },
+  "dispatch": {"model": "glm-5.3-flash", "provider": "zai-glm-default", "protocol": "hermes chat --query-file <brief> -m glm-5.3-flash --provider zai-glm-default -s coding-hermes-worker --ignore-rules -Q"},
+  "result": {"status": "complete", "rows_landed": ["QA-BUNKER-51", "QA-BUNKER-088"], "final_closeout_commit": "9494b53004554214570b4cb60b73bebe7e2e6ab7", "remote_parity": 0, "local_gate": "PASS merged-tree focused tests, go build ./..., go vet ./...; worker reports two loaded concurrent full-suite runs and final full suite PASS", "remote_ci": "pending at close: exact final closeout head 9494b530 run in_progress"},
+  "open": ["QA-BUNKER-51 live bunker-mvp E2E was not run; owner-controlled live gate remains open", "exact-head CI for 9494b530 is in_progress at close"]
+}
