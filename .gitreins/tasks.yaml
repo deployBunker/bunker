@@ -5210,11 +5210,3 @@ tasks:
   status: complete
   created_at: '2026-10-29T17:55:37.825270+00:00'
   completed_at: '2026-10-29T18:14:14.890377+00:00'
-- id: QA-BUNKER-088
-  title: QA-BUNKER-088 webdav load-bound flake
-  criteria:
-  - The named webdav test is deterministic under isolated and loaded execution, with
-    reproducible attribution and full suite green.
-  status: complete
-  created_at: '2026-10-29T17:55:39.348092+00:00'
-  completed_at: '2026-10-29T18:15:41.164191+00:00'
