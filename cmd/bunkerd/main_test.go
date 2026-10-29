@@ -142,9 +142,14 @@ func TestConfigLoad(t *testing.T) {
 	t.Run("config.example", func(t *testing.T) {
 		// GAP-026: the README quickstart template users copy to
 		// /etc/bunkerd/config.yaml must stay CI-validated against the schema.
-		// SEC-BUNKER-001: the example binds LOOPBACK (not the bare wildcard) so
-		// the copy-paste path cannot publish the control plane; the bind rule
-		// and its anchor live in internal/config/example_bind_discipline_test.go.
+		// SEC-BUNKER-001: neither bind is the bare wildcard, so the
+		// copy-paste path cannot publish the control plane. QA-BUNKER-74:
+		// rest_addr is the host's reachable tailnet address (documentation
+		// placeholder inside 100.64.0.0/10), the dial target client registry
+		// entries derive from — a loopback-only REST bind is the silent-
+		// unreachable class this row swept. The bind-rule anchor and the
+		// client-dial pins live in internal/config/example_bind_discipline_test.go
+		// and internal/cli/restaddr_parity_test.go.
 		cfg, err := loadConfigFrom(t, "../../config.example.yaml")
 		if err != nil {
 			t.Fatalf("load config.example.yaml: %v", err)
@@ -152,8 +157,12 @@ func TestConfigLoad(t *testing.T) {
 		if cfg.Server.GRPCAddr != "127.0.0.1:9090" {
 			t.Errorf("grpc_addr = %q, want 127.0.0.1:9090", cfg.Server.GRPCAddr)
 		}
-		if cfg.Server.RESTAddr != "127.0.0.1:8080" {
-			t.Errorf("rest_addr = %q, want 127.0.0.1:8080", cfg.Server.RESTAddr)
+		if cfg.Server.RESTAddr != "100.64.0.1:8080" {
+			t.Errorf("rest_addr = %q, want the tailnet placeholder 100.64.0.1:8080 (QA-BUNKER-74)",
+				cfg.Server.RESTAddr)
+		}
+		if !cfg.TLS.Enabled {
+			t.Error("config.example should carry tls.enabled: true — a reachable rest_addr bind needs TLS (CheckTLS refuses plaintext non-loopback)")
 		}
 		if !cfg.Auth.Enabled {
 			t.Error("config.example should have auth enabled")

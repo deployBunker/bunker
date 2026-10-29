@@ -24,15 +24,24 @@ server:
   # control plane: the bind decides which interfaces listen and the firewall
   # decides who can reach them, so the safe posture needs both.
   #
-  # The shipped values below bind loopback so this example stays valid for a
-  # scratch local run and publishes nothing. The daemon's built-in defaults are
-  # still ":9090"/":8080" (internal/config/config.go) — set these keys
-  # explicitly in any real deployment.
+  # The shipped values below follow the row's own recipe: the REST listener is
+  # the host's TAILNET address — the reachable bind every client dial must
+  # derive from — shown as 100.64.0.1, the first host of the tailnet range
+  # 100.64.0.0/10 (RFC 6598 shared address space, what `tailscale ip -4`
+  # returns). An UNEDITED copy therefore fails loudly (connection refused)
+  # instead of silently succeeding on the wrong host. grpc_addr stays
+  # loopback: it is for same-host tooling; clients dial REST. TLS is REQUIRED
+  # for any reachable bind: with tls.enabled: true the daemon serves TLS and
+  # generates a self-signed cert on first start; set tls.hosts to include the
+  # tailnet address, and pass --tls self-signed on `bunker connect` to pin it.
+  # The daemon's built-in defaults are still ":9090"/":8080"
+  # (internal/config/config.go) — set these keys explicitly in any real
+  # deployment, and keep loopback ("127.0.0.1:PORT") for a single-host daemon.
   # See docs/threat-model.md §9 (SEC-BUNKER-001) for the exposure, the fix
   # direction, and the §9.3 runbook for an existing deployment, and
   # specs/network-isolation.md (Constraint A) where the posture is discussed.
-  grpc_addr: "127.0.0.1:9090"   # gRPC listen address (loopback for a scratch run)
-  rest_addr: "127.0.0.1:8080"   # REST (connect-go) listen address (loopback for a scratch run)
+  grpc_addr: "127.0.0.1:9090"   # gRPC listen address (loopback; same-host tooling)
+  rest_addr: "100.64.0.1:8080"  # REST listen address — the host's TAILNET address (tailscale ip -4); EDIT before first start; clients dial this
   request_timeout: 300s       # per-request timeout
   # ── WebDAV surface (BFS-004/BFS-006) — OFF by default ─────────────────────
   # webdav_enabled: false     # mount the WebDAV surface under /dav
@@ -86,26 +95,29 @@ server:
   # Cost when enabled: two modules (github.com/quic-go/quic-go + qpack) and
   # ~2.1 MiB on the daemon binary; no cgo, no toolchain change (BFS-002 §5).
 
-# TLS for the gRPC/REST listeners. Leave disabled for plaintext.
+# TLS for the gRPC/REST listeners. REQUIRED for a reachable (non-loopback)
+# rest_addr: CheckTLS refuses a plaintext non-loopback listener, so an
+# operator who narrows rest_addr to loopback and drops TLS to plaintext gets
+# exactly that scratch shape back.
 #
-# self_signed: true makes the daemon generate its own certificate on first
+# enabled + self_signed makes the daemon generate its own certificate on first
 # start (tlsutil.GenerateSelfSignedCert) for the hosts below, and the CLI pins
 # it on first connect — so clients verify the daemon WITHOUT disabling
 # verification:
-#   bunker connect --tls self-signed https://<host>:9090
+#   bunker connect --tls self-signed https://<host>:8080
 # See the README section "TLS: the secure path is the easy path" for the pin,
 # rotation and re-pin rules.
-# tls:
-#   enabled: false
-#   cert_file: ""
-#   key_file: ""
-#   auto_tls: false
-#   self_signed: false
-#   domain: ""
-#   mtls: false
-#   ca_file: ""
-#   verify_cn: ""
-#   hosts: ["localhost", "127.0.0.1"]  # names/IPs in the generated cert
+tls:
+  enabled: true
+  cert_file: ""
+  key_file: ""
+  auto_tls: false
+  self_signed: true
+  domain: ""
+  mtls: false
+  ca_file: ""
+  verify_cn: ""
+  hosts: ["localhost", "127.0.0.1", "100.64.0.1"]  # add the host's tailnet address (tailscale ip -4)
 
 auth:
   enabled: true               # require the master token on every request

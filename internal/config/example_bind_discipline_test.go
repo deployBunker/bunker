@@ -1,4 +1,5 @@
-// example_bind_discipline_test.go — SEC-BUNKER-001 docs pin.
+// example_bind_discipline_test.go — SEC-BUNKER-001 docs pin + QA-BUNKER-74
+// client/daemon rest_addr parity pin.
 //
 // The daemon's built-in listen defaults are the bare wildcard (":9090" /
 // ":8080", internal/config/config.go), which binds EVERY interface of the host.
@@ -10,36 +11,43 @@
 // direction, and the runbook for an existing deployment.
 //
 // The shipped example is the copy-paste surface operators start from, so it
-// must teach the safe choice. This test anchors it to two properties, both
-// named by the row's acceptance criteria:
+// must teach the safe choice. This test anchors it to three properties:
 //
-//  1. the example PARSES through the daemon's own loader and its listen
-//     addresses are NOT wildcard / "*" / ":PORT"-shaped binds — they are
-//     loopback, which keeps the example valid for the scratch local run it
-//     documents and unreachable from any public interface; and
-//  2. the example DOCUMENTS the rule on the lines that carry the addresses:
-//     the wildcard hazard, the SEC-BUNKER-001 id, and a pointer to the
-//     threat-model section — so the guidance cannot silently regress to
-//     bind-any advice.
+//  1. the example PARSES through the daemon's own loader and NEITHER listen
+//     address is a wildcard / "*" / ":PORT"-shaped bind (SEC-BUNKER-001);
+//  2. the example DOCUMENTS the rule on the lines that carry the addresses
+//     (the wildcard hazard, the SEC-BUNKER-001 id, the threat-model pointer),
+//     so the guidance cannot silently regress to bind-any advice; and
+//  3. the example's REST address is a REACHABLE, client-dialable bind —
+//     exactly one concrete host:port — not the loopback literal the example
+//     shipped before QA-BUNKER-74. A loopback-only rest_addr is the silent-
+//     unreachable class QA-BUNKER-74 swept (off-by-one corpus 2759): SEC-001
+//     moved daemons to Tailscale IPs, clients kept dialing 127.0.0.1, and the
+//     deterministic "connection refused" was indistinguishable from a daemon
+//     outage to fail-closed consumers. The tailnet-CIDR placeholder
+//     (100.64.0.1:8080) fails LOUDLY when an operator skips the substitution.
 //
 // The claims are deliberately line-scoped (the warning must sit in the address
 // block, not anywhere in the file) and token-scoped (the words that carry the
 // rule must be present), following the precedent of
 // internal/docscheck/disk_semantic_docs_test.go.
 //
-// RED proof: point BUNKER_EXAMPLE_CONFIG_PATH at the pre-fix revision of the
-// example —
+// RED proof for the parity pin: point BUNKER_EXAMPLE_CONFIG_PATH at the
+// pre-fix revision of the example —
 //
-//	git show <pre-fix-sha>:config.example.yaml > /tmp/config-example-prefix.yaml
-//	BUNKER_EXAMPLE_CONFIG_PATH=/tmp/config-example-prefix.yaml go test ./internal/config/ -run 'BindDiscipline' -count=1
+//	git show 240f85da:config.example.yaml > /tmp/config-example-prefix.yaml
+//	BUNKER_EXAMPLE_CONFIG_PATH=/tmp/config-example-prefix.yaml \
+//	    go test ./internal/config/ -run 'BindDiscipline|RESTAddrParity' -count=1
 //
-// — and both tests fail: the parser still succeeds, but the addresses are
-// ":9090"/":8080" and the warning is gone. The env override exists so that
-// proof never has to overwrite the working-tree file.
+// — and the reachable-bind test fails on the loopback literal while the
+// client-dial-parity subtests fail ("no dialable rest_addr in the example").
+// The env override exists so that proof never has to overwrite the
+// working-tree file.
 package config
 
 import (
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,6 +85,20 @@ var wildcardHosts = map[string]bool{
 // on the file as a whole.
 const bindDisciplineWindow = 30
 
+// restAddrParityPlaceholder is the example's tailnet-CIDR documentation
+// placeholder. It lives inside 100.64.0.0/10 — the tailnet range the runbook
+// binds (docs/threat-model.md §9.3) — and parses as a concrete single-host
+// address, so the example is shaped like a real deployment while remaining a
+// placeholder an operator must substitute (their own `tailscale ip -4`).
+const restAddrParityPlaceholder = "100.64.0.1:8080"
+
+// tailnetCIDR is the CGNAT range Tailscale allocates node addresses from. It
+// is spelled out because net/netip's IsPrivate does NOT cover 100.64.0.0/10:
+// a tailnet bind is reachable-by-design yet not "private" by that predicate,
+// and the example's bind must stay inside it (or private RFC1918 space) so
+// the example cannot drift toward teaching a public bind.
+var tailnetCIDR = netip.MustParsePrefix("100.64.0.0/10")
+
 func TestExampleConfigBindsAreNotWildcard(t *testing.T) {
 	path := exampleConfigPath()
 
@@ -104,16 +126,56 @@ func TestExampleConfigBindsAreNotWildcard(t *testing.T) {
 				path, tc.key, tc.addr, host)
 			continue
 		}
-		// Not a wildcard, but still routable advice would be wrong here: the
-		// example is the scratch-local example, so it binds loopback.
-		if ok, resolved := IsLoopbackAddr(tc.addr); !ok {
-			t.Errorf("%s: %s = %q is not a loopback bind (host %q) — the shipped example is the scratch "+
-				"local example, so it stays 127.0.0.1-shaped; the tailnet/private rule is guidance for "+
-				"real deployments (docs/threat-model.md §9, SEC-BUNKER-001)",
-				path, tc.key, tc.addr, resolved)
-		}
 	}
 }
+
+// TestExampleConfigRESTAddrIsClientDialable is the QA-BUNKER-74 parity pin on
+// the example's own rest_addr: the address the daemon listens on is the
+// address clients dial, so the example must show exactly one concrete,
+// dialable host:port — not the loopback literal the example shipped before
+// this row (the silent-unreachable class: a fleet of clients dialing
+// 127.0.0.1 against daemons bound to their tailnet address fail with a
+// deterministic "connection refused" that fail-closed consumers classify as
+// an outage). The tailnet-CIDR placeholder counts as concrete: parsing it
+// proves the value carries a real host:port shape an operator substitutes.
+func TestExampleConfigRESTAddrIsClientDialable(t *testing.T) {
+	path := exampleConfigPath()
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load %s: %v", path, err)
+	}
+
+	addr := cfg.Server.RESTAddr
+	host, port, splitErr := net.SplitHostPort(addr)
+	if splitErr != nil {
+		t.Fatalf("%s: rest_addr %q is not host:port — the example must show exactly one "+
+			"dialable REST bind (QA-BUNKER-74)", path, addr)
+	}
+	if port == "" {
+		t.Errorf("%s: rest_addr %q has no port — clients cannot dial it", path, addr)
+	}
+	if ip := net.ParseIP(strings.Trim(host, "[]")); ip == nil {
+		t.Errorf("%s: rest_addr host %q is not a concrete IP — the example must show a "+
+			"reachable bind (the tailnet placeholder %s), not a wildcard or name",
+			path, host, restAddrParityPlaceholder)
+	} else if ip.IsLoopback() {
+		t.Errorf("%s: rest_addr = %q binds loopback — a client config derived from this "+
+			"example cannot reach a daemon bound to its tailnet address (the QA-BUNKER-74 "+
+			"silent-unreachable class); show the tailnet bind (%s), not 127.0.0.1",
+			path, addr, restAddrParityPlaceholder)
+	} else if addr4, ok := netip.AddrFromSlice(ip); !ok || (!addr4.Unmap().IsPrivate() && !tailnetCIDR.Contains(addr4.Unmap())) {
+		t.Errorf("%s: rest_addr = %q is neither private nor in the tailnet range %s — the "+
+			"example must not teach a public bind (SEC-BUNKER-001)",
+			path, addr, tailnetCIDR)
+	}
+}
+
+// TestClientDialPathDerivesFromRESTAddr and the live-dial proof live in
+// internal/cli/restaddr_parity_test.go: the dial path (ServerEntry,
+// newBunkerdClientChecked) belongs to the cli package, and cli already
+// imports config — an in-package test here could not reference it without an
+// import cycle.
 
 func TestExampleConfigDocumentsBindDiscipline(t *testing.T) {
 	path := exampleConfigPath()
