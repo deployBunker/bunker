@@ -1,0 +1,12 @@
+{
+  "tick_id": "bunker-foreman-2026-10-29-01-21-17",
+  "block": "QA-BUNKER-088",
+  "wave_budget": 12,
+  "slots_formula": "max(1, min(6, nproc - ceil(loadavg_1m))) = max(1, min(6, 16-ceil(4.38))) = 6",
+  "wave_size": 2,
+  "rows": [
+    {"id":"QA-BUNKER-51","worktree":"/home/kara/worktrees/bunker-QA-BUNKER-51","branch":"wt/QA-BUNKER-51","base_sha":"94d418a6b852ae3bf3052401e4700b0c4d886317","brief":"/tmp/bunker-foreman-2026-10-29-01-21-17-QA-BUNKER-51.md","model":"glm-5.3-flash","provider":"zai-glm"},
+    {"id":"QA-BUNKER-088","worktree":"/home/kara/worktrees/bunker-QA-BUNKER-088","branch":"wt/QA-BUNKER-088","base_sha":"94d418a6b852ae3bf3052401e4700b0c4d886317","brief":"/tmp/bunker-foreman-2026-10-29-01-21-17-QA-BUNKER-088.md","model":"glm-5.3-flash","provider":"zai-glm"}
+  ],
+  "status":"dispatched"
+}
