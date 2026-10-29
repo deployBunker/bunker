@@ -136,10 +136,13 @@ func destroyDeadlineForHomeSize(homeBytes uint64) time.Duration {
 // These knobs are vars (not consts) purely as test seams — production never
 // writes them.
 var (
-	// destroyRelistWindow bounds how long the confirmation polls for the agent
-	// to disappear. The daemon's teardown continues after the client gives up,
-	// so an immediate single look would under-report; a bounded window keeps a
-	// genuinely wedged destroy from hanging the CLI for a second deadline.
+	// destroyRelistWindow bounds how long the confirmation polls for the
+	// agent to disappear BY DEFAULT — the floor for a deadline the operator
+	// never raised. The daemon's teardown continues after the client gives
+	// up, so an immediate single look would under-report; a bounded window
+	// keeps a genuinely wedged destroy from hanging the CLI for a second
+	// deadline. The window the confirmation actually runs under is
+	// destroyRelistWindowFor(deadline) — see QA-BUNKER-37 there.
 	destroyRelistWindow = 20 * time.Second
 
 	// destroyRelistBackoff is the sleep between confirmation polls.
@@ -192,14 +195,17 @@ var destroyAgentListed = func(ctx context.Context, client bunkerv1connect.Bunker
 	return false, fmt.Errorf("agent list did not terminate within %d pages", destroyListMaxPages)
 }
 
-// destroyConfirmAfterDeadline polls listed until the agent is gone or
-// destroyRelistWindow expires. It returns (true, nil) when the daemon's
+// destroyConfirmAfterDeadline polls listed until the agent is gone or window
+// expires. It returns (true, nil) when the daemon's
 // registry no longer carries the agent — the truthful "the teardown finished"
 // signal — and (false, nil) when the agent is still registered after the
 // window. A listing ERROR returns immediately (fail-closed after ONE attempt:
-// polling a refused RPC only delays the honest report).
-func destroyConfirmAfterDeadline(ctx context.Context, listed func(context.Context) (bool, error)) (bool, error) {
-	deadline := time.Now().Add(destroyRelistWindow)
+// polling a refused RPC only delays the honest report). The window is passed
+// explicitly (QA-BUNKER-37): the caller sizes it from the destroy's deadline
+// (destroyRelistWindowFor), and the loop must poll exactly that long — reading
+// the flat default here desynced the loop from the context budget.
+func destroyConfirmAfterDeadline(ctx context.Context, window time.Duration, listed func(context.Context) (bool, error)) (bool, error) {
+	deadline := time.Now().Add(window)
 	for {
 		stillListed, err := listed(ctx)
 		if err != nil {
@@ -231,6 +237,45 @@ func destroyIsDeadlineExceeded(err error) bool {
 		return true
 	}
 	return errors.Is(err, context.DeadlineExceeded)
+}
+
+// destroyRelistWindowFor sizes the post-deadline confirmation window from the
+// deadline the destroy actually ran under (QA-BUNKER-37: the JIT-battery
+// defect — destroy rc=1, deadline_exceeded, agent still listed running until
+// TTL).
+//
+// The daemon's teardown is DETACHED from the client's cancellation
+// (BNK-DF-001: the archive runs on context.WithoutCancel with its own
+// size-derived budget), so a destroy whose client deadline expired is, by
+// construction, one whose daemon-side archive had NOT finished when the
+// client gave up. A FLAT confirmation window (the old 20s) therefore
+// under-waits exactly when it matters: an operator who raised --timeout to
+// 45m for a huge home got the same 20 seconds of re-checking, saw "NOT
+// confirmed destroyed" (rc=1) while the archive was still running, and the
+// natural retry re-archived an in-flight teardown — the agent sat listed
+// running until the TTL reaper.
+//
+// The deadline is also the operator's own statement of how long the teardown
+// may legitimately take, so the confirmation window grows with it: max of
+// destroyRelistWindow (the operator-default floor) and the elapsed deadline,
+// capped at destroyRelistWindowMax. Fail-closed semantics are unchanged —
+// a longer window can only END in "gone → success" or "still listed → NOT
+// confirmed"; it never resends the destroy and never claims an unwitnessed
+// success (pinned by the relist-reap suite's never-clears arm).
+//
+// Testing note: destroyRelistWindowMax is a var seam so the suite can shrink
+// it alongside the other knobs.
+var destroyRelistWindowMax = 90 * time.Minute
+
+func destroyRelistWindowFor(deadline time.Duration) time.Duration {
+	window := destroyRelistWindow
+	if deadline > window {
+		window = deadline
+	}
+	if window > destroyRelistWindowMax {
+		window = destroyRelistWindowMax
+	}
+	return window
 }
 
 // destroyProgressLine renders what the operator is about to wait for: the
@@ -303,6 +348,12 @@ before reporting anything: if the agent is gone, the destroy is reported
 as done (exit 0); if the agent is still listed, the command says the
 destroy is NOT CONFIRMED and exits non-zero. It never resends the
 destroy while one may be in flight.
+
+The re-listing keeps polling for as long as the deadline the destroy
+ran under (QA-BUNKER-37, at least 20s, capped at 90m): a teardown
+detached from the client's cancellation cannot have finished before the
+deadline expired, so a deadline raised with --timeout also extends the
+confirmation instead of trading a long archive for a 20-second re-check.
 
 --archive=false (or --purge) SKIPS the archive for THIS destroy: the home
 is deleted with NO copy anywhere. Use it when the archive is the blocker —
@@ -421,8 +472,14 @@ Examples:
 				// acts on. (Never a resent DestroyAgent: that could race the
 				// in-flight archive+userdel.)
 				if destroyIsDeadlineExceeded(err) {
-					confirmCtx, confirmCancel := context.WithTimeout(context.Background(), destroyRelistWindow+destroyListPageTimeout)
-					gone, cerr := destroyConfirmAfterDeadline(confirmCtx, func(ctx context.Context) (bool, error) {
+					// QA-BUNKER-37: the window the confirmation runs under is
+					// sized from the deadline the destroy just ran under — the
+					// daemon's detached teardown cannot have finished before the
+					// client gave up, so the window grows with the deadline that
+					// proves the teardown is still legitimately working.
+					relistWindow := destroyRelistWindowFor(deadline)
+					confirmCtx, confirmCancel := context.WithTimeout(context.Background(), relistWindow+destroyListPageTimeout)
+					gone, cerr := destroyConfirmAfterDeadline(confirmCtx, relistWindow, func(ctx context.Context) (bool, error) {
 						return destroyAgentListed(ctx, client, token, agentID)
 					})
 					confirmCancel()
@@ -431,7 +488,7 @@ Examples:
 						fmt.Printf("Agent %s destroyed — the daemon finished the teardown after the client's %s deadline; it is gone from the daemon's agent list.\n", agentID, deadline)
 						return removeLocalSSHKey(agentID, keepKey)
 					case cerr == nil:
-						fmt.Printf("Agent %s NOT confirmed destroyed: the client deadline (%s) expired and the daemon still lists the agent after %s of re-checking.\n", agentID, deadline, destroyRelistWindow)
+						fmt.Printf("Agent %s NOT confirmed destroyed: the client deadline (%s) expired and the daemon still lists the agent after %s of re-checking.\n", agentID, deadline, relistWindow)
 						fmt.Printf("  The teardown may still be running — re-check with `bunker info %s` before retrying (destroy is idempotent).\n", agentID)
 						fmt.Printf("  For a home that needs longer than the derived deadline, raise it: bunker destroy %s --timeout 45m\n", agentID)
 					default:
