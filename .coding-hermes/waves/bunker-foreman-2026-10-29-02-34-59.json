@@ -1,0 +1,27 @@
+{
+  "tick_id": "bunker-foreman-2026-10-29-02-34-59",
+  "block": "QA-BUNKER-088",
+  "wave_budget": 12,
+  "host": {"nproc": 16, "loadavg_1m": 2.56, "slots_formula": "max(1, min(6, 16 - ceil(2.56)))", "effective_slots": 6},
+  "rows": [
+    {
+      "task_id": "QA-BUNKER-51",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-51",
+      "branch": "wt/QA-BUNKER-51",
+      "brief": "/tmp/brief-QA-BUNKER-51.txt",
+      "independence": "internal/agent destroy lifecycle; no file seam overlap with QA-BUNKER-088"
+    },
+    {
+      "task_id": "QA-BUNKER-088",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-088",
+      "branch": "wt/QA-BUNKER-088",
+      "brief": "/tmp/brief-QA-BUNKER-088.txt",
+      "independence": "internal/server/webdav test/identity path; no file seam overlap with QA-BUNKER-51"
+    }
+  ],
+  "dispatch": {
+    "model": "glm-5.3-flash",
+    "provider": "zai-glm",
+    "protocol": "hermes chat --query-file ... -s coding-hermes-worker --ignore-rules -Q"
+  }
+}
