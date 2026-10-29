@@ -2282,16 +2282,43 @@ if ls docker-compose*.yml compose*.yml >/dev/null 2>&1 || ls docker-compose*.yml
     # healthy deploy still graded 'no HTTP response'. Allocate the FULL window
     # PER PORT (reset inside the loop); the OK path finds a live port in
     # seconds, the worst case is bounded at 3x the window.
-    for p in \$( { grep -hoE '"[0-9]+:[0-9]+"' docker-compose*.yml compose*.yml 2>/dev/null; grep -hoE '[[:space:]][0-9]+:[0-9]+' docker-compose*.yml compose*.yml 2>/dev/null; } | grep -oE '[0-9]+:[0-9]+' | awk '!seen[$0]++' | head -3 | cut -d: -f1 ); do
+    # QA-BUNKER-27 (2026-10-29): the old two-pattern extraction (quote-adjacent
+    # bare digits:digits, whitespace-adjacent bare digits:digits) matched NEITHER
+    # arm of a bind-address-qualified mapping ("127.0.0.1:31299:80") — zero ports
+    # probed, healthy deploys graded 'no HTTP response' (duckbrain 2026-09-27).
+    # ONE alternation now consumes each whole mapping (optional quote, optional
+    # dotted-quad host, host:container); leftmost-longest stops the bare arm from
+    # re-biting inside a consumed mapping. The dotted host survives dedupe and is
+    # normalized to host/port per token below (bare tokens probe 127.0.0.1; the
+    # numeric guard skips non-numeric noise — e.g. an [ipv6]-bracket leftover —
+    # while still probing its host port). A zero-probed-port run grades
+    # UNVERIFIED, never a deploy success.
+    # Generator escaping (unquoted heredoc): \$0 in the awk is BACKSLASHED — a
+    # bare \$0 here is generation-expanded to THIS script's path in the emitted
+    # bytes (a seen[<host-script-path>] contamination of the generated script).
+    probed_n=0; probed_ports=" "
+    for m in \$( { grep -hoE '"?([0-9]{1,3}\.){3}[0-9]+:[0-9]+:[0-9]+"?|"?[0-9]+:[0-9]+"?' docker-compose*.yml compose*.yml 2>/dev/null; } | grep -oE '([0-9]{1,3}\.){3}[0-9]+:[0-9]+|[0-9]+:[0-9]+' | awk '!seen[\$0]++' | head -3 ); do
+      case "\$m" in
+        *.*:*) hp_host=\${m%%:*}; hp_port=\${m#*:} ;;
+        *) hp_host=127.0.0.1; hp_port=\$m ;;
+      esac
+      case "\$hp_port" in *[!0-9]*|"") continue ;; esac
+      case "\$probed_ports" in *" \$hp_port "*) continue ;; esac
+      probed_ports="\$probed_ports\$hp_port "
+      probed_n=\$((\$probed_n + 1))
       DEADLINE=\$((\$(date +%s) + \${BUNKER_QA_DEPLOY_PROBE_TIMEOUT:-60}))
       while [ \$(date +%s) -lt \$DEADLINE ]; do
-        HP=\$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:\$p/ 2>/dev/null)
+        HP=\$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://\$hp_host:\$hp_port/" 2>/dev/null)
         [ "\$HP" != "000" ] && break
         sleep 3
       done
       [ -n "\$HP" ] && [ "\$HP" != "000" ] && break
     done
-    case "\$HP" in 200|301|302) cell docker-deploy OK "compose up + probe \$HP" ;; [0-9]*) cell docker-deploy INFO "compose up OK, probe \$HP" ;; *) cell docker-deploy INFO "compose up OK, no HTTP response within \${BUNKER_QA_DEPLOY_PROBE_TIMEOUT:-60}s (probe deadline exhausted)" ;; esac
+    if [ "\$probed_n" -eq 0 ]; then
+      cell docker-deploy UNVERIFIED "compose up OK but no probed host port (no parseable host:container mapping in compose files) — serving state UNVERIFIED, not a deploy success"
+    else
+      case "\$HP" in 200|301|302) cell docker-deploy OK "compose up + probe \$HP on \$hp_host:\$hp_port" ;; [0-9]*) cell docker-deploy INFO "compose up OK, probe \$HP" ;; *) cell docker-deploy INFO "compose up OK, no HTTP response within \${BUNKER_QA_DEPLOY_PROBE_TIMEOUT:-60}s (probe deadline exhausted)" ;; esac
+    fi
     docker compose down >/dev/null 2>&1
   else cell docker-deploy FAIL "\$(fail_detail \$dc_rc \$LOGD/dc.log \$DC_CMD)"; fi
 else cell docker-deploy N/A "no compose file"; fi
