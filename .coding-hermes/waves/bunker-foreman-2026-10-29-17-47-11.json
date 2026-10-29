@@ -1,0 +1,62 @@
+{
+  "tick_id": "bunker-foreman-2026-10-29-17-47-11",
+  "block": "QA-BUNKER-088",
+  "wave_budget": 10,
+  "host": {
+    "nproc": 16,
+    "loadavg_1m": 8.68,
+    "slots_formula": "max(1, min(6, 16 - ceil(8.68)))",
+    "effective_slots": 6
+  },
+  "selection": {
+    "rows": ["QA-BUNKER-27", "QA-BUNKER-37", "QA-BUNKER-74", "QA-BUNKER-088"],
+    "proof": "All four rows are pending in the canonical JSONL board, have empty depends_on arrays or null, and target disjoint seams: .hermes/scripts/bunker-qa.sh; internal/cli destroy lifecycle; config/client parity; internal/server/webdav test seam.",
+    "resume_reason": "Prior tick event named QA-BUNKER-088 block; these rows remain ready after board reconciliation."
+  },
+  "legs": [
+    {
+      "task_id": "QA-BUNKER-27",
+      "disposition": "salvage-uncommitted-worker-artifact",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-27",
+      "branch": "wt/QA-BUNKER-27",
+      "base_sha": "240f85da5ab5d4b94197163e385ccda3e21b2eb5",
+      "brief": "/tmp/foreman-worker-QA-BUNKER-27.txt",
+      "seam": ".hermes/scripts/bunker-qa.sh + focused harness test"
+    },
+    {
+      "task_id": "QA-BUNKER-37",
+      "disposition": "salvage-landed-worker-commit",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-37",
+      "branch": "wt/QA-BUNKER-37",
+      "base_sha": "240f85da5ab5d4b94197163e385ccda3e21b2eb5",
+      "commit": "5a78318af800fe5461870d919e427fc2001554f1",
+      "brief": "/tmp/foreman-worker-QA-BUNKER-37.txt",
+      "seam": "internal/cli/destroy.go + destroy_deadline_relist_test.go"
+    },
+    {
+      "task_id": "QA-BUNKER-74",
+      "disposition": "salvage-landed-worker-commit",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-74",
+      "branch": "wt/QA-BUNKER-74",
+      "base_sha": "240f85da5ab5d4b94197163e385ccda3e21b2eb5",
+      "commit": "d86be3b9ac1d08a027c4bdca50bd0d29b908a1b8",
+      "brief": "/tmp/foreman-worker-QA-BUNKER-74.txt",
+      "seam": "config.example.yaml + README/client parity tests"
+    },
+    {
+      "task_id": "QA-BUNKER-088",
+      "disposition": "fresh-worker-dispatch",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-088",
+      "branch": "wt/QA-BUNKER-088",
+      "base_sha": "240f85da5ab5d4b94197163e385ccda3e21b2eb5",
+      "brief": "/tmp/foreman-worker-QA-BUNKER-088.txt",
+      "seam": "internal/server/webdav identity/content test seam"
+    }
+  ],
+  "dispatch": {
+    "worker_model": "glm-5.3-flash",
+    "worker_provider": "zai-glm-default",
+    "protocol": "hermes chat --query-file <brief> -m glm-5.3-flash --provider zai-glm-default -s coding-hermes-worker --ignore-rules -Q",
+    "note": "Three legs are reconciled artifacts from the prior failed wave; only QA-BUNKER-088 is a new worker process. No live owner was found for any worktree."
+  }
+}
