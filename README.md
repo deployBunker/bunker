@@ -122,7 +122,7 @@ sudo mkdir -p /etc/bunkerd
 sudo tee /etc/bunkerd/config.yaml >/dev/null << 'EOF'
 server:
   grpc_addr: "127.0.0.1:9090"
-  rest_addr: "127.0.0.1:8080"
+  rest_addr: "100.64.0.1:8080"   # the host's TAILNET address (tailscale ip -4) — what clients dial
 auth:
   enabled: true
   token: "your-master-token-here"
@@ -131,7 +131,7 @@ tls:
   self_signed: true
   cert_file: "/etc/bunkerd/tls/cert.pem"   # generated on first start if absent
   key_file: "/etc/bunkerd/tls/key.pem"
-  hosts: ["localhost", "127.0.0.1"]        # add the host/IP you connect to
+  hosts: ["localhost", "127.0.0.1", "100.64.0.1"]  # add the host/IP you connect to
 EOF
 
 # 3. Start the daemon as root (spawn needs root). Default ports: REST :8080,
@@ -141,7 +141,7 @@ sudo ./bunkerd --config /etc/bunkerd/config.yaml
 # 4. In another terminal, point the CLI at it and check it is up. The first
 #    connect PRINTS the certificate fingerprint and pins it; every later
 #    command verifies against that pin (see TLS (trust on first use) below).
-./bunker connect --tls self-signed https://127.0.0.1:8080 --token your-master-token-here --name bunker-host
+./bunker connect --tls self-signed https://100.64.0.1:8080 --token your-master-token-here --name bunker-host
 ./bunker status
 
 # 5. First agent: spawn, run a command inside it, tear it down
@@ -154,8 +154,8 @@ sudo ./bunkerd --config /etc/bunkerd/config.yaml
 #    unauthenticated by design; everything else needs the bearer token.
 #    The -k flag is needed because the daemon uses a self-signed certificate
 #    (tls.self_signed: true above); for production, use --cacert with your CA.
-curl -skf https://127.0.0.1:8080/healthz
-curl -sk https://127.0.0.1:8080/bunker.v1.Bunkerd/ServerInfo \
+curl -skf https://100.64.0.1:8080/healthz
+curl -sk https://100.64.0.1:8080/bunker.v1.Bunkerd/ServerInfo \
     -H 'Content-Type: application/json' -H 'Authorization: Bearer your-m...here' \
     -d '{}'
 # Auth ordering on an RPC path is fixed, and it matters to a probe: a non-POST
@@ -166,11 +166,16 @@ curl -sk https://127.0.0.1:8080/bunker.v1.Bunkerd/ServerInfo \
 # rejected on method or media type is invisible in the audit trail.
 ```
 
-The sample binds above are loopback (`127.0.0.1:9090` / `127.0.0.1:8080`),
-matching `config.example.yaml`; on a host with a public interface choose
-the control-plane bind deliberately — see
-[docs/threat-model.md](docs/threat-model.md) §9 (SEC-BUNKER-001) and the
-bind-discipline commentary in `config.example.yaml` before widening it.
+The sample binds above keep `grpc_addr` on loopback while `rest_addr` is
+the host's reachable tailnet address (the documentation placeholder
+`100.64.0.1`; substitute your own `tailscale ip -4`), matching
+`config.example.yaml`. `rest_addr` is what client registry entries
+(`bunker connect http://<rest_addr>`) dial — a loopback-only REST bind is
+the silent-unreachable class QA-BUNKER-74 swept. Neither bind is the bare
+wildcard; on a host with a public interface choose the control-plane bind
+deliberately — see [docs/threat-model.md](docs/threat-model.md) §9
+(SEC-BUNKER-001) and the bind-discipline commentary in
+`config.example.yaml` before widening it.
 
 > **Server binding note:** mutating commands (`spawn`, `exec`, `destroy`,
 > `cp`, `mount`, `deploy`, `tunnel`, `ssh`, `renew`, `run`, `start`, `stop`,
@@ -367,7 +372,7 @@ Or write the file directly:
 cat > /etc/bunkerd/config.yaml << EOF
 server:
   grpc_addr: "127.0.0.1:9090"
-  rest_addr: "127.0.0.1:8080"
+  rest_addr: "100.64.0.1:8080"   # the host's TAILNET address (tailscale ip -4) — what clients dial
 
 agent:
   ssh_dir: /etc/bunkerd/ssh
@@ -397,9 +402,12 @@ auth:
 EOF
 ```
 
-As in `config.example.yaml`, the binds above are loopback
-(`127.0.0.1:9090` / `127.0.0.1:8080`); on a host with a public interface
-choose the control-plane bind deliberately — see
+As in `config.example.yaml`, `rest_addr` above is the host's reachable
+tailnet address — shown as the documentation placeholder `100.64.0.1`
+(substitute your own `tailscale ip -4`; that address is what client
+registry entries dial, so a loopback REST bind is the silent-unreachable
+class QA-BUNKER-74 swept). Neither bind is the bare wildcard; on a host
+with a public interface choose the control-plane bind deliberately — see
 [docs/threat-model.md](docs/threat-model.md) §9 (SEC-BUNKER-001) and the
 bind-discipline commentary in `config.example.yaml` before widening it.
 
