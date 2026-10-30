@@ -2998,9 +2998,16 @@ launch() {
 # ~/qa-evidence.jsonl into the local evidence file (idempotent on the row "ts"
 # field), append ONE collect cell, destroy the temp agent, print COLLECTED.
 # Failures (no launch record / unreachable agent / pull failed) record a collect
-# FAIL cell and exit 0 — collect is a poll, not the battery's verdict.
+# FAIL plus an INFO harness-failure row, then abort immediately after that
+# bounded attempt; a failed collect must not ride the battery wall-clock TTL.
 collect() {
   local evidence=""
+  # QA-BUNKER-45: one collect invocation is one bounded harness attempt. Keep
+  # the timing on the evidence row itself so a dead host is distinguishable
+  # from a slow harness without reconstructing SSH history.
+  local attempt_started_at attempt_started_ms
+  attempt_started_at=$(date -u +%FT%T.%3NZ)
+  attempt_started_ms=$(date +%s%3N)
   while [ $# -gt 0 ]; do
     case "$1" in
       --evidence|-e) evidence="${2:-}"; shift 2 ;;
@@ -3014,14 +3021,33 @@ collect() {
   local meta="$evidence.meta"
 
   append_collect_row() { # <status> <detail>
-    printf '{"cell":"collect","status":"%s","detail":"%s","ts":"%s"}\n' \
-      "$1" "$(printf '%s' "$2" | tr '\n' ' ' | cut -c1-300)" "$(date -u +%FT%TZ)" >> "$evidence"
+    local row_status="$1" row_detail="$2" duration_ms finished_at
+    duration_ms=$(( $(date +%s%3N) - attempt_started_ms ))
+    finished_at=$(date -u +%FT%T.%3NZ)
+    printf '{"cell":"collect","status":"%s","detail":"%s","host":"%s","collect_attempt":1,"attempt_started":"%s","attempt_finished":"%s","duration_ms":%s,"ts":"%s"}\n' \
+      "$row_status" "$(printf '%s' "$row_detail" | tr '\\n' ' ' | cut -c1-300)" "$SERVER" \
+      "$attempt_started_at" "$finished_at" "$duration_ms" "$(date -u +%FT%TZ)" >> "$evidence"
+  }
+
+  # QA-BUNKER-45: abort is the primary policy, not an unbounded retry or a
+  # retarget claim. One failed collect records both the failed attempt timing
+  # and an explicit INFO harness-failure attributed to the configured host.
+  # The caller exits nonzero immediately; there is no second collect attempt.
+  abort_collect() { # <reason> — one failed collect terminates the harness
+    local reason="$1" duration_ms finished_at
+    duration_ms=$(( $(date +%s%3N) - attempt_started_ms ))
+    finished_at=$(date -u +%FT%T.%3NZ)
+    append_collect_row FAIL "$reason"
+    printf '{"cell":"harness-failure","status":"INFO","detail":"harness abort after one failed collect: %s","attributed_host":"%s","host":"%s","collect_attempt":1,"attempt_started":"%s","attempt_finished":"%s","duration_ms":%s,"ts":"%s"}\n' \
+      "$(printf '%s' "$reason" | tr '\\n' ' ' | cut -c1-300)" "$SERVER" "$SERVER" \
+      "$attempt_started_at" "$finished_at" "$duration_ms" "$(date -u +%FT%TZ)" >> "$evidence"
+    echo "COLLECT-ABORT host=$SERVER reason=$(printf '%s' "$reason" | tr '\\n' ' ' | cut -c1-240)" >&2
+    return 2
   }
 
   if [ ! -f "$meta" ]; then
-    append_collect_row FAIL "no launch record at $meta — nothing to collect (launch phase never ran, or a different evidence path)"
-    echo "COLLECT-FAIL no-launch-record"
-    exit 0
+    abort_collect "no launch record at $meta — nothing to collect (launch phase never ran, or a different evidence path)"
+    exit $?
   fi
   # Idempotency: a successful collect already recorded its cell — re-calling is a
   # no-op instead of a spurious "unreachable agent" FAIL (the agent is destroyed
@@ -3039,17 +3065,15 @@ collect() {
   [ -n "$server" ] && SERVER="$server"
   [ -n "$ev" ] && [ "$ev" != "$evidence" ] && echo "WARN: launch record names evidence=$ev but collect was asked for $evidence (using $evidence)" >&2
   if [ -z "$agent" ]; then
-    append_collect_row FAIL "launch record $meta has no agent= line — cannot poll the battery (the launch was killed before the agent id was recorded; check \`bunker list --server $server\` for an orphan and destroy it)"
-    echo "COLLECT-FAIL no-agent"
-    exit 0
+    abort_collect "launch record $meta has no agent= line — cannot poll the battery (the launch was killed before the agent id was recorded; check \`bunker list --server $server\` for an orphan and destroy it)"
+    exit $?
   fi
   # TR-085: the meta names an agent that is not OURS. A stale meta from an earlier
   # run (or a different evidence path) makes collect probe/destroy the wrong
   # machine while the real agent runs unrecorded. Refuse loudly instead.
   if [ -n "$ev" ] && [ "$ev" != "$evidence" ]; then
-    append_collect_row FAIL "launch record $meta belongs to a different run: it names evidence=$ev but collect was asked for $evidence (agent=$agent NOT probed or destroyed — verify with \`bunker list --server $server\`)"
-    echo "COLLECT-FAIL evidence-mismatch"
-    exit 0
+    abort_collect "launch record $meta belongs to a different run: it names evidence=$ev but collect was asked for $evidence (agent=$agent NOT probed or destroyed — verify with \`bunker list --server $server\`)"
+    exit $?
   fi
   # An agent id only exists for runs that reached the spawn step. If the record
   # predates this collect by more than the TTL the id cannot be live any more.
@@ -3066,9 +3090,8 @@ except Exception:
 PY
 )
     if [ -n "$rec_age" ] && [ "$rec_age" -gt 86400 ]; then
-      append_collect_row FAIL "launch record $meta is ${rec_age}s old (>24h, TTL=$TTL) — agent=$agent cannot still be live; refusing to probe a stale id. Check \`bunker list --server $server\` and re-launch if the battery never ran"
-      echo "COLLECT-FAIL stale-record"
-      exit 0
+      abort_collect "launch record $meta is ${rec_age}s old (>24h, TTL=$TTL) — agent=$agent cannot still be live; refusing to probe a stale id. Check \`bunker list --server $server\` and re-launch if the battery never ran"
+      exit $?
     fi
   fi
   key="$HOME/.bunker/keys/$agent"
@@ -3092,9 +3115,8 @@ PY
     FINISHED|GONE)
       : ;;  # marker present, or the process is gone → pull what it produced
     *)
-      append_collect_row FAIL "cannot reach agent=$agent on $SERVER (ssh probe returned no state) — agent left intact"
-      echo "COLLECT-FAIL unreachable-agent"
-      exit 0
+      abort_collect "cannot reach agent=$agent on $SERVER (ssh probe returned no state) — agent left intact"
+      exit $?
       ;;
   esac
 
@@ -3103,10 +3125,10 @@ PY
   BUNKER_QA_SSH_TIMEOUT="$ssh_to" agent_ssh "cat ~/qa-evidence.jsonl 2>/dev/null" > "$tmp" 2>"$errf"
   pull_rc=$?
   if [ "$pull_rc" -ne 0 ] && [ ! -s "$tmp" ]; then
-    append_collect_row FAIL "could not pull ~/qa-evidence.jsonl from agent=$agent ($SERVER) rc=$pull_rc: $(head -1 "$errf")"
+    local pull_reason="could not pull ~/qa-evidence.jsonl from agent=$agent ($SERVER) rc=$pull_rc: $(head -1 "$errf")"
     rm -f "$tmp" "$errf"
-    echo "COLLECT-FAIL pull-failed"
-    exit 0
+    abort_collect "$pull_reason"
+    exit $?
   fi
   rm -f "$errf"
 
