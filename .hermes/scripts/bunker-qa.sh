@@ -268,7 +268,7 @@ qa_agent_lock_path() {
 }
 
 qa_write_agent_lock() { # <agent-id> <tick-pid> <server> <evidence> -> path
-  local id="$1" tick_pid="${2:-${BUNKER_QA_TICK_PID:-$PPID}}" server="$3" evidence="$4" path tmp
+  local id="$1" tick_pid="${2:-${BUNKER_QA_TICK_PID:-$$}}" server="$3" evidence="$4" path tmp
   [[ "$id" =~ ^[a-z0-9-]{1,64}$ ]] || return 1
   [[ "$tick_pid" =~ ^[0-9]+$ ]] || return 1
   path=$(qa_agent_lock_path "$id") || return 1
@@ -290,6 +290,16 @@ qa_remove_agent_lock() {
 qa_tick_pid_alive() {
   local pid="$1"
   [[ "$pid" =~ ^[1-9][0-9]*$ ]] && kill -0 "$pid" 2>/dev/null
+}
+
+qa_tick_watchdog_state() { # <agent-id>: 0 = alive/legacy, 1 = dead tick, 2 = malformed lock
+  local id="$1" path tick_pid
+  path=$(qa_agent_lock_path "$id") || return 2
+  [ -f "$path" ] || return 0 # pre-watchdog launch records remain collectible
+  tick_pid=$(sed -n 's/^tick_pid=//p' "$path" 2>/dev/null | head -1)
+  [[ "$tick_pid" =~ ^[1-9][0-9]*$ ]] || return 2
+  qa_tick_pid_alive "$tick_pid" && return 0
+  return 1
 }
 
 qa_lock_value() { # <lock> <key>
@@ -376,19 +386,22 @@ spawn_agent() {
     fi
     # Reachability gate: the agent must answer ssh BEFORE it is handed off,
     # so an unreachable spawn never leaks to the caller as a "success".
+    # QA-BUNKER-75: persist ownership immediately after spawn id extraction,
+    # before the reachability probe. A controller death during that probe must
+    # still leave enough metadata for the next battery to reap this agent.
+    if ! qa_write_agent_lock "$id" "${BUNKER_QA_TICK_PID:-$PPID}" "$SERVER" "${EVIDENCE:-}" >/dev/null; then
+      echo "spawn attempt $attempt could not write tick watchdog lock for agent $id — destroying before retry" >&2
+      bunker destroy "$id" --server "$SERVER" >/dev/null 2>&1 || true
+      [ "$attempt" -lt 3 ] && sleep "${BUNKER_QA_RETRY_SLEEP:-5}"
+      continue
+    fi
+    # Reachability gate: the agent must answer ssh BEFORE it is handed off,
+    # so an unreachable spawn never leaks to the caller as a "success".
     if timeout "${BUNKER_QA_PROBE_TIMEOUT:-180}" ssh -p "$(agent_ssh_port "$id")" -i "$BUNKER_QA_HOST_KEY" -i "$HOME/.bunker/keys/$id" -o IdentitiesOnly=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=no -o BatchMode=yes "bunker-$id@$SERVER" true 2>/dev/null; then
-      # QA-BUNKER-75: bind the spawned agent to the controller tick before
-      # handing the id to run()/launch().  If the controller dies between
-      # spawn and collect, the lock is the durable evidence needed to reap it.
-      if ! qa_write_agent_lock "$id" "${BUNKER_QA_TICK_PID:-$PPID}" "$SERVER" "${EVIDENCE:-}" >/dev/null; then
-        echo "spawn attempt $attempt could not write tick watchdog lock for agent $id — destroying before retry" >&2
-        bunker destroy "$id" --server "$SERVER" >/dev/null 2>&1 || true
-        [ "$attempt" -lt 3 ] && sleep "${BUNKER_QA_RETRY_SLEEP:-5}"
-        continue
-      fi
       echo "$id"
       return 0
     fi
+    qa_remove_agent_lock "$id" >/dev/null 2>&1 || true
     echo "spawn attempt $attempt produced agent $id but was unusable — destroyed before retry" >&2
     # QA-BUNKER-19 b+c: surfaced, not swallowed — stderr only (no evidence file
     # is open inside spawn_agent, and the retry loop needs no extra list
@@ -2978,8 +2991,10 @@ run() {
   # run log). qa_destroy_agent() emits "destroy FAILED"/"STILL PRESENT AFTER
   # DESTROY" on stderr + a FAIL evidence row; the evidence path is the $EVIDENCE
   # global so the EXIT trap needs nothing captured at definition time.
-  cleanup() { log "destroying temp agent $BUNKER_QA_AGENT"; qa_destroy_agent "$BUNKER_QA_AGENT" "$EVIDENCE"; }
+  cleanup() { log "destroying temp agent $BUNKER_QA_AGENT"; qa_destroy_agent "$BUNKER_QA_AGENT" "$EVIDENCE"; qa_remove_agent_lock "$BUNKER_QA_AGENT" >/dev/null 2>&1 || true; }
   [ "$keep" = 1 ] || trap cleanup EXIT
+  # The synchronous path owns the whole tick, so its normal EXIT cleanup above
+  # also removes the watchdog lock. Detached launch leaves the lock to collect.
   log "agent=$agent @ $SERVER (tailscale)"
 
   # Pre-flight hygiene (2026-08-31): temp-agent homes PERSIST across runs
@@ -3284,6 +3299,29 @@ PY
       exit $?
     fi
   fi
+  # QA-BUNKER-75: never communicate with an agent owned by a dead tick.
+  # The lock is checked after all metadata validation but before SSH/poll/pull.
+  # A dead tick is a harness failure, not a product battery result; destroy it
+  # immediately and leave a FAIL row naming the stable reason.
+  watchdog_state=0
+  qa_tick_watchdog_state "$agent" || watchdog_state=$?
+  case "$watchdog_state" in
+    1)
+      orphan_lock=$(qa_agent_lock_path "$agent" 2>/dev/null || true)
+      orphan_server=$(qa_lock_value "$orphan_lock" server 2>/dev/null || true)
+      [ -n "$orphan_server" ] || orphan_server="$server"
+      orphan_tick_pid=$(qa_lock_value "$orphan_lock" tick_pid 2>/dev/null || true)
+      orphan_destroy=0
+      bunker destroy "$agent" --server "$orphan_server" >/dev/null 2>&1 || orphan_destroy=$?
+      qa_remove_agent_lock "$agent" >/dev/null 2>&1 || true
+      abort_collect "tick-death-orphan: agent=$agent server=$orphan_server tick_pid=$orphan_tick_pid — orphan handling requested destroy (rc=$orphan_destroy); no agent communication attempted"
+      exit $?
+      ;;
+    2)
+      abort_collect "invalid tick watchdog lock for agent=$agent — refusing agent communication"
+      exit $?
+      ;;
+  esac
   key="$HOME/.bunker/keys/$agent"
   # collect must stay SHORT: bound the agent ssh at BUNKER_QA_COLLECT_SSH_TIMEOUT
   # (120s) instead of agent_ssh's 1800s battery default, so a wedged host cannot
@@ -3383,6 +3421,7 @@ PY
     esac
   fi
   append_collect_row OK "$detail"
+  qa_remove_agent_lock "$agent" >/dev/null 2>&1 || true
   log "QA collect complete — evidence: $evidence"
   echo "COLLECTED agent=$agent rows=${pulled:-0} evidence=$evidence"
 }
