@@ -5257,3 +5257,12 @@ tasks:
   status: complete
   created_at: '2026-10-30T00:37:22.158351+00:00'
   completed_at: '2026-10-30T01:50:29.589328+00:00'
+- id: QA-BUNKER-38
+  title: QA-BUNKER-38 compose/docker stage detectors only glob REPO ROOT
+  criteria:
+  - bunker-qa.sh compose/docker stage detectors find nested docker-compose.yml files
+    (stack/docker-compose.yml), not just repo root; docker-deploy/chaos-shutdown cells
+    fire on repos with nested compose files
+  status: complete
+  created_at: '2026-10-30T04:47:41.403768+00:00'
+  completed_at: '2026-10-30T05:09:52.923583+00:00'
