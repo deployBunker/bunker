@@ -62,16 +62,24 @@ def load_ledger():
     return last
 
 
+def _without_foreman_suffix(name):
+    """Return the repository name represented by a foreman scheduler row."""
+    suffix = '-foreman'
+    return name[:-len(suffix)] if name.endswith(suffix) else name
+
+
 def project_name_matches(query, ledger_project):
-    """Match a project name or its hyphen-delimited suffix.
+    """Match names at hyphen-delimited boundaries, including foreman rows.
 
     A base-name query such as ``h3`` matches ``coding-hermes-h3`` but not
-    ``coding-hermes-h3-sdk``.  The reverse direction is also accepted so a
-    scheduler's full name (for example ``h3-foreman``) can find its base-name
-    ledger row (``h3``).
+    ``coding-hermes-h3-sdk``.  Scheduler rows may append ``-foreman`` to the
+    repository name, so ``h3`` also matches ``h3-foreman`` while retaining
+    the boundary check that rejects unrelated names such as ``h3-sdk``.
     """
     if not query or not ledger_project:
         return False
+    query = _without_foreman_suffix(query)
+    ledger_project = _without_foreman_suffix(ledger_project)
     return (
         query == ledger_project
         or ledger_project.endswith('-' + query)
@@ -79,14 +87,30 @@ def project_name_matches(query, ledger_project):
     )
 
 
-def ledger_timestamp(project, ledger):
-    """Return the exact ledger timestamp, or the newest matching suffix row."""
-    if project in ledger:
-        return ledger[project]
+def ledger_timestamp(project, ledger, workdir=None):
+    """Return the newest timestamp matching a project or workdir basename.
+
+    Scheduler project names can be role-qualified or otherwise differ from
+    the repository name.  The resolved workdir basename is the stable key for
+    the ledger; project-name matching remains as a compatibility fallback.
+    """
+    queries = []
+    if workdir:
+        basename = os.path.basename(os.path.normpath(workdir))
+        if basename:
+            queries.append(basename)
+    if project and project not in queries:
+        queries.append(project)
+
+    for query in queries:
+        if query in ledger:
+            return ledger[query]
+
     matches = [
         timestamp
+        for query in queries
         for ledger_project, timestamp in ledger.items()
-        if project_name_matches(project, ledger_project)
+        if project_name_matches(query, ledger_project)
     ]
     return max(matches) if matches else None
 
@@ -147,7 +171,8 @@ def pick_projects(n):
     for p in enabled:
         if p in EXCLUDE:
             continue
-        ts = ledger_timestamp(p, last)
+        repo = wd.get(p) or '/home/kara/' + p
+        ts = ledger_timestamp(p, last, repo)
         if ts:
             try:
                 age_days = (now - datetime.datetime.fromisoformat(ts.replace('Z', '+00:00'))).total_seconds() / 86400
@@ -157,7 +182,6 @@ def pick_projects(n):
                 continue
         else:
             age_days = 9999  # never QA'd
-        repo = wd.get(p) or '/home/kara/' + p
         cands.append((p, age_days, repo))
 
     # A scheduler row can survive with a stub or missing workdir even when its

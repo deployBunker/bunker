@@ -75,6 +75,52 @@ def test_full_scheduler_name_matches_base_ledger_name():
     assert qa_discover.project_name_matches("coding-hermes-h3", "h3")
 
 
+def test_foreman_project_names_match_repository_names():
+    assert qa_discover.project_name_matches("h3", "h3-foreman")
+    assert qa_discover.project_name_matches("crier", "crier-foreman")
+    assert qa_discover.project_name_matches("h3-foreman", "h3")
+
+
+def test_workdir_basename_matches_ledger_row():
+    ledger = {"h3": "2026-10-30T00:00:00+00:00"}
+    assert qa_discover.ledger_timestamp(
+        "h3-foreman", ledger, "/home/kara/h3") == ledger["h3"]
+    assert qa_discover.ledger_timestamp(
+        "crier-foreman", {"crier": ledger["h3"]}, "/home/kara/crier") == ledger["h3"]
+
+
+def test_workdir_basename_preserves_hyphen_boundary():
+    ledger = {"h3-sdk": "2026-10-30T00:00:00+00:00"}
+    assert qa_discover.ledger_timestamp(
+        "h3-foreman", ledger, "/home/kara/h3") is None
+    assert qa_discover.ledger_timestamp(
+        "h3-sdk-foreman", ledger, "/home/kara/h3-sdk") == ledger["h3-sdk"]
+
+
+def test_workdir_basename_prevents_false_never_qa_pick(monkeypatch):
+    class FakeConnection:
+        def execute(self, query):
+            if "SELECT name FROM projects" in query:
+                return [("h3-foreman",)]
+            return [("h3-foreman", "/home/kara/h3")]
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(qa_discover.sqlite3, "connect", lambda _: FakeConnection())
+    monkeypatch.setattr(
+        qa_discover,
+        "load_ledger",
+        lambda: {"h3": "2026-10-30T00:00:00+00:00"},
+    )
+    monkeypatch.setattr(qa_discover, "is_git_worktree", lambda _: True)
+
+    result = qa_discover.pick_projects(1)
+
+    assert result["picks"] == []
+    assert result["excluded"] == 0
+
+
 def test_longer_suffix_does_not_match_shorter_query():
     assert not qa_discover.project_name_matches("h3", "coding-hermes-h3-sdk")
 
