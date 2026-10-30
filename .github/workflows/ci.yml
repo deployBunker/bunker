@@ -338,6 +338,14 @@ jobs:
         timeout-minutes: 5
 
   # ── Tier 1: GitReins guard — secrets, lint, tests ──
+  # QA-BUNKER-41 (2026-10-30): this job is the graded leg that gates every
+  # bunker push — the Go suite (guards.go tests → `go test -count=1 -short
+  # ./...`). Keep the job key exactly `gitreins-guard:`; the battery-side
+  # equivalent is pinned by .hermes/scripts/test_bunker_qa_act_grade.sh (guard:
+  # act_rc1_fails_grade), which asserts BOTH that this job still exists here and
+  # that the JIT battery's ci-pass grade carries the act leg's own rc instead of
+  # grading on the native suite alone. Removing this job silently removes the
+  # only automated gate over that wiring.
   gitreins-guard:
     runs-on: ubuntu-latest
     timeout-minutes: 5

@@ -2318,8 +2318,15 @@ else
       # ABOVE — the old inner re-test for it was unreachable dead code and is
       # gone. Reaching here means act_result=fail|timeout, and the native leg
       # (which DID run) is detail only, never a status flipper.
-      cell ci-pass FAIL "act rc=\$ci_rc: \$(act_failure_context \$LOGD/ci.log)\$ACTCTXOK — act CI simulation FAILED (act_result=\$act_result; native suite PASS is detail only)"
-      cell ci-act UNVERIFIED "act failed rc=\$ci_rc act_result=\$act_result: \$(act_failure_context \$LOGD/ci.log)\$ACTCTXOK — a failed act leg is never graded OK; hosted CI is authoritative for the workflow verdict"
+      # A timeout (timeout(1) rc=124) is a HARNESS budget, not a repo defect —
+      # name it, so the FAIL is never read as a workflow regression and never
+      # quietly upgraded to green either (a leg that never finished has no
+      # verdict). ACTBUDGET rides into both rows so the cause travels with the
+      # evidence after the per-cell logs are gone.
+      ACTBUDGET=""
+      [ "\$act_result" = "timeout" ] && ACTBUDGET=" (act leg hit the BUNKER_QA_ACT_TIMEOUT wall budget — a harness budget, not a workflow defect: raise the budget or free the box)"
+      cell ci-pass FAIL "act rc=\$ci_rc: \$(act_failure_context \$LOGD/ci.log)\$ACTCTXOK\$ACTBUDGET — act CI simulation FAILED (act_result=\$act_result; native suite PASS is detail only)"
+      cell ci-act UNVERIFIED "act failed rc=\$ci_rc act_result=\$act_result: \$(act_failure_context \$LOGD/ci.log)\$ACTCTXOK\$ACTBUDGET — a failed act leg is never graded OK; hosted CI is authoritative for the workflow verdict"
     fi
   else
     NCTX=""; build_env_failure \$LOGD/native.log && NCTX=" (environment: no C toolchain)"
@@ -2482,7 +2489,7 @@ else cell upgrade FAIL "upgrade path UNVERIFIED: the repo has \$QA_TAG_COUNT rel
 # — docker prints the REAL error FIRST and the footer LAST, so the cell read FAIL
 # with no diagnosis and the deployment stayed unverified. FAIL now names the
 # command, its rc, and the log's leading lines via fail_detail().
-QA-BUNKER-38 (2026-10-30): root-only ls missed nested compose files
+# QA-BUNKER-38 (2026-10-30): root-only ls missed nested compose files
 # (stack/docker-compose.yml) — compose_config already used find, align here.
 COMPOSE_FILES=\$(find . -maxdepth 4 -type f \( -name 'docker-compose*.yml' -o -name 'docker-compose*.yaml' -o -name 'compose*.yml' -o -name 'compose*.yaml' \) 2>/dev/null | head -5)
 if [ -n "\$COMPOSE_FILES" ]; then
