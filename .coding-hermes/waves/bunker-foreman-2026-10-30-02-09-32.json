@@ -1,0 +1,20 @@
+{
+  "tick_id": "bunker-foreman-2026-10-30-02-09-32",
+  "block": "QA-BUNKER-088",
+  "wave_budget": 10,
+  "slots_formula": "max(1, min(6, 16 - ceil(8.95))) = 6; capped at 2 by independent ready rows (8 bunker-qa.sh seam rows + 1 webdav seam row)",
+  "wave_size": 2,
+  "rows_dispatched": ["QA-BUNKER-089", "QA-BUNKER-31"],
+  "rows_independent": true,
+  "seam_analysis": {
+    "QA-BUNKER-089": "webdav test flake (internal/server/webdav/) — independent seam",
+    "QA-BUNKER-31": "bunker-qa.sh mandatory battery stages (.hermes/scripts/bunker-qa.sh) — one of 8 same-seam rows, picked first per resume list"
+  },
+  "worktrees": {
+    "QA-BUNKER-089": "/home/kara/worktrees/bunker-QA-BUNKER-089",
+    "QA-BUNKER-31": "/home/kara/worktrees/bunker-QA-BUNKER-31"
+  },
+  "worker_model": "glm-5.3-flash",
+  "worker_provider": "zai-glm-default",
+  "dispatch_time": "2026-10-30T02:09:32-05:00"
+}
