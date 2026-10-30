@@ -142,7 +142,50 @@ If keys are managed elsewhere (a secret store or a wrapper), rotate there and up
 
 ---
 
-## 7. Notification
+## 7. Second-key-family SSH recovery (single-key-family fragility)
+
+The 2026-10-02 incident: SSH transport to every bunker server failed in one
+window — three TCP timeouts and two `publickey` refusals where BOTH
+`~/.ssh/id_ed25519_bunker` and `~/.ssh/id_ed25519_bunker_mvp` were refused while
+the REST API answered fine. The refused keys share ONE key family (ed25519), so
+a single clobber event (a key previously overwritten by a 21MB ELF binary) can
+lock out every QA lane at once. The wire contract now carries an explicit
+`KeyFamily` (`proto/bunker/v1/bunker.proto`) so the family is a deployable fact,
+not a guess from the key material.
+
+Recovery is **provision and log in with a key from a SECOND family**, then prove
+that login. A second family is strictly ADDITIVE — never delete, overwrite, or
+replace any existing key or auth config on the host.
+
+1. Generate a key in a DIFFERENT family than the one that failed. If the
+   refused keys are ed25519, generate RSA or ECDSA:
+   ```bash
+   ssh-keygen -t rsa -b 3072 -f ~/.ssh/id_rsa_bunker    -C "bunker second family"
+   # or an ECDSA key:
+   ssh-keygen -t ecdsa -b 384 -f ~/.ssh/id_ecdsa_bunker -C "bunker second family"
+   ```
+2. ADD ONLY the new public key to the target user's `authorized_keys` (append —
+   never remove or replace an existing line):
+   ```bash
+   ssh-copy-id -i ~/.ssh/id_rsa_bunker.pub <user>@<host>
+   # or append manually, preserving every existing line:
+   cat ~/.ssh/id_rsa_bunker.pub | ssh <user>@<host> 'cat >> ~/.ssh/authorized_keys'
+   ```
+3. Prove the second-family login, naming the key explicitly so SSH cannot fall
+   back to the still-refused primary family:
+   ```bash
+   ssh -i ~/.ssh/id_rsa_bunker -o IdentitiesOnly=yes <user>@<host> 'echo ok'
+   ```
+4. Record the exact command and its output in the incident row — the
+   single-key-family fragility is only retired by a PROVEN second-family login.
+
+If the `publickey` refusal persists with the new key, the host rejected the key
+material, not the family: check `sshd`'s `AuthorizedKeysFile` and the target
+user's home/`.ssh` permissions before touching any key.
+
+---
+
+## 8. Notification
 
 - **Report a Bunker vulnerability privately** — see `SECURITY.md`. Do not open a public issue.
 - **Customer/user notification** is a policy decision: until `docs/prd/security-readiness.md`
@@ -152,7 +195,7 @@ If keys are managed elsewhere (a secret store or a wrapper), rotate there and up
 
 ---
 
-## 8. Post-incident review
+## 9. Post-incident review
 
 Within one week, produce a written review answering:
 
@@ -165,7 +208,7 @@ Within one week, produce a written review answering:
 
 ---
 
-## 9. Known gaps that limit this runbook (state them, do not paper over)
+## 10. Known gaps that limit this runbook (state them, do not paper over)
 
 - **No per-operator revocation** — rotation is fleet-wide and needs a restart (REQ-I4).
 - **No failed-auth audit, no rate limiting** — brute force is invisible (REQ-A1, SEC-15).
