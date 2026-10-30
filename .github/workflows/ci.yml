@@ -147,6 +147,13 @@ jobs:
           PROTO_CACHE_HIT: ${{ steps.proto-cache.outputs.cache-hit }}
         run: bash .github/scripts/ensure-proto.sh
 
+      # QA-BUNKER-25: the go command treats ANY top-level vendor/ as a module
+      # vendor tree, even without modules.txt, so a vendored non-Go project there
+      # breaks every build in a fresh checkout ("inconsistent vendoring") while a
+      # warm dev box stays green. Fail here, naming the fix, before `go build`.
+      - name: Repo shape — no stray vendor/ directory
+        run: sh scripts/check-go-vendor-dir.sh .
+
       - name: Build
         run: go build ./...
 

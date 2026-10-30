@@ -12,6 +12,9 @@
 #   scripts/pre-release-check.sh --tag v0.2.0 <rev>   # ...must point at <rev>
 #
 # Tree mode verifies:
+#   0. No stray top-level `vendor/` directory (reserved by the go command:
+#      even a vendor/ with no modules.txt forces -mod=vendor and breaks every
+#      build in a fresh checkout — QA-BUNKER-25). See scripts/check-go-vendor-dir.sh.
 #   1. internal/version/version.go `Version` == newest `## N.N.N` heading in
 #      CHANGELOG.md == `VERSION ?=` in Makefile (or the env override of
 #      VERSION, when one is set — that is what `make VERSION=...` would use).
@@ -60,6 +63,13 @@ cd "$REPO_ROOT" || exit 1
 	fail "internal/version/version.go not found under $REPO_ROOT"
 [ -f CHANGELOG.md ] || fail "CHANGELOG.md not found under $REPO_ROOT"
 [ -f Makefile ] || fail "Makefile not found under $REPO_ROOT"
+
+# 0. The `vendor` name is reserved by the go command (QA-BUNKER-25): a vendor/
+#    without modules.txt still selects -mod=vendor, so `go build`/`go test` in a
+#    FRESH checkout fail with "inconsistent vendoring" while a warm dev box looks
+#    fine. Runs in tag mode too — it is a repo-shape check, not a version check.
+sh scripts/check-go-vendor-dir.sh "$REPO_ROOT" ||
+	fail "top-level vendor/ is not a Go module vendor tree (see scripts/check-go-vendor-dir.sh)"
 
 # --- tag mode -------------------------------------------------------------
 

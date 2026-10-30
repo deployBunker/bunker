@@ -25,12 +25,12 @@
 
 ## Test Patterns
 
-- No tests in this package (generated code). Tests for connect-go handlers live in `internal/server/`.
-- Connection-level testing is done via `net/http/httptest` in server tests.
+- `bunker.connect_smoke_test.go` (QA-BUNKER-25): a two-test smoke of the generated surface — a real `httptest` round trip through the generated client + handler (stub implements `ServerInfo` and embeds the handler interface for the rest) and the procedure-constant table. It exists so a clean-machine battery gets a POSITIVE `ok github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect` line instead of `[no test files]`, and so a build break is visible as `[build failed]` rather than silence.
+- Behaviour tests for the connect-go handlers live in `internal/server/`; connection-level testing is done there via `net/http/httptest`.
 
 ## Pitfalls
 
 1. **Regenerated on every `buf generate`.** Any manual changes will be overwritten. Edit the `.proto` file instead, then regenerate.
 2. **Client constructors use `WithBaseURL`.** The base URL must include the scheme and host (e.g., `http://localhost:9090`). Omitting the scheme causes connection errors.
-3. **Version compatibility check at init.** The `const _ = connect.IsAtLeastVersion1_17_0` assertion will fail at compile time if the connect-go version is too old.
+3. **Version compatibility check at init.** The `const _ = connect.IsAtLeastVersion1_13_0` assertion in `bunker.connect.go` fails to compile if the `connectrpc.com/connect` version resolved for the build is older than the version the file was generated with. connect v1.21.0 defines the constants only up to `IsAtLeastVersion1_13_0` (there is no `1_17_0`), so the assertion in the committed file is the whole check — a "[build failed]" here is a *dependency resolution* problem, not a protoc-gen-connect-go version problem. Resolve it by checking the module the build actually used (`go list -m connectrpc.com/connect`) and, on a fresh host, that Go did not select `-mod=vendor` because a stray top-level `vendor/` directory exists (QA-BUNKER-25: that makes *every* package fail with "inconsistent vendoring", and the per-package line reads `[build failed]`).
 4. **Handler wrappers are thin.** `NewBunkerServiceHandler` just delegates to the implementation's methods. All auth, logging, and middleware must be applied at the HTTP router level (chi middleware).
