@@ -268,6 +268,59 @@ func TestQA36ASameMetadataRewriteIsReportedFromTheBytes(t *testing.T) {
 	}
 }
 
+// TestQA089WholeSnapshotBaselineCarriesDigest keeps the baseline contract
+// explicit. A whole-tree snapshot may finish its walk and then be scheduled
+// after the coarse-clock window; the baseline still has to read regular-file
+// bytes rather than silently storing an unverifiable empty digest.
+func TestQA089WholeSnapshotBaselineCarriesDigest(t *testing.T) {
+	oldWindow := eventsCoarseClockWindow
+	eventsCoarseClockWindow = time.Nanosecond
+	t.Cleanup(func() { eventsCoarseClockWindow = oldWindow })
+
+	h := newTestHandler(t)
+	_ = seedWithSnapshot(t, h)
+
+	l := h.tree.eventLedger()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	seeded, ok := l.observed["src/util.go"]
+	if !ok {
+		t.Fatalf("whole-tree snapshot recorded no baseline for src/util.go: records=%v", keysOf(l.observed))
+	}
+	if seeded.digest == "" {
+		t.Fatalf("baseline record for src/util.go carries no digest")
+	}
+}
+
+// TestQA089SnapshotDoesNotInstallPartialBaseline covers the read-failure arm.
+// A snapshot walk can observe a regular file and then lose it before the
+// baseline digest is read. That observation is not a usable baseline: installing
+// it would leave an empty digest in the ledger and make the next poll claim a
+// client-bound baseline it cannot verify.
+func TestQA089SnapshotDoesNotInstallPartialBaseline(t *testing.T) {
+	h := newTestHandler(t)
+	target := filepath.Join(h.Root(), "src", "util.go")
+	info, err := os.Stat(target)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if err := os.Remove(target); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+
+	h.tree.seedEvents(map[string]identity{"src/util.go": identityOf(info)}, true)
+
+	l := h.tree.eventLedger()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.started {
+		t.Fatal("snapshot installed a baseline after its regular-file digest read failed")
+	}
+	if len(l.observed) != 0 {
+		t.Fatalf("partial baseline records were installed: %v", keysOf(l.observed))
+	}
+}
+
 // TestQA36ThePollReportsAFrozenEditTheKernelCouldNotStamp drives the SAME
 // hostile condition through the served surface, with the ledger's baseline taken
 // by a real whole-tree snapshot (the observation a binding client takes) and the

@@ -630,17 +630,43 @@ func (t *tree) seedEvents(state map[string]identity, whole bool) {
 		return
 	}
 	l := t.eventLedger()
-	l.mu.Lock()
-	started := l.started
-	l.mu.Unlock()
-	if started {
-		return
-	}
-	_, entries := t.ledgerDiff(nil, state, time.Now())
+	// Serialize baseline construction with the first poll. The old code checked
+	// started, released the lock while reading digests, and then reacquired it;
+	// a concurrent poll could initialize the ledger in that gap with
+	// ledgerRecord's metadata-only (empty-digest) entries. The snapshot then
+	// returned successfully while its baseline belonged to the poll, producing
+	// QA-BUNKER-089 under load. The digest reads are bounded streamed reads, and
+	// holding this per-tree lock makes the snapshot's observation and baseline
+	// one atomic operation.
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.started {
 		return
+	}
+	now := time.Now()
+	_, entries := t.ledgerDiff(nil, state, now)
+	// A snapshot is only a usable baseline when every regular file in the
+	// observation was read successfully. ledgerDiff deliberately skips the
+	// content read for metadata that is already settled; that is correct for a
+	// poll, but not for a client snapshot: the snapshot is the client's exact
+	// baseline and must carry a digest even when the walk finishes after the
+	// coarse-clock window. Verify every regular file here, reusing any digest
+	// ledgerDiff already obtained.
+	for path, id := range state {
+		if id.Regular && entries[path].digest == "" {
+			entries[path] = t.verifyRecord(path, id, now)
+		}
+	}
+	// ledgerDiff deliberately preserves an empty digest for a failed read,
+	// because a failed comparison must not be treated as evidence of a change.
+	// Installing that partial map here would make the next poll carry a
+	// baseline record with no digest — the exact load-sensitive failure in
+	// QA-BUNKER-089. Leave the ledger unstarted so a later poll answers overflow
+	// and asks the client for a fresh observation.
+	for path, id := range state {
+		if id.Regular && entries[path].digest == "" {
+			return
+		}
 	}
 	l.started = true
 	l.observed = entries
