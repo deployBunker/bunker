@@ -1,0 +1,39 @@
+{
+  "tick_id": "bunker-foreman-2026-10-30-00-02-15",
+  "block": "QA-BUNKER-088",
+  "wave_budget": 12,
+  "host": {"nproc": 16, "loadavg_1m_at_selection": 5.25, "slots_formula": "max(1, min(6, 16 - ceil(5.25))) = 6", "effective_slots": 6},
+  "selection": {
+    "rows": ["QA-BUNKER-45", "QA-BUNKER-25", "QA-BUNKER-076", "QA-BUNKER-46"],
+    "reason": "Resume-first block QA-BUNKER-088 (last three ticks' wave_close events name it). Four ready rows with zero depends_on edges and disjoint file seams: QA-BUNKER-45 harness .hermes/scripts/bunker-qa.sh; QA-BUNKER-25 go toolchain/build config; QA-BUNKER-076 internal/cli/surface_connect_test.go only; QA-BUNKER-46 proto wire contract + incident runbook. The bunker-qa.sh seam admits only ONE row per wave (QA-BUNKER-16/28/31/33/38/41/47/56/66/75/077/078/79/82 ride that file and were deferred)."
+  },
+  "reconciliation": {
+    "rows_landed_but_stale": ["QA-BUNKER-27", "QA-BUNKER-37", "QA-BUNKER-74", "QA-BUNKER-17"],
+    "note": "The 2026-10-29 17:47 wave landed 87a634b8/06667fb3/1ee29324 on main with PASS verdicts but left board status=pending; this tick re-verified each AC in the merged tree and closed them (commit 04cfa373). QA-BUNKER-17 closed bookkeeping-only with the 674de93 tie added to QA-BUNKER-16."
+  },
+  "workers": {
+    "QA-BUNKER-45": {"worktree": "/home/kara/worktrees/bunker-QA-BUNKER-45", "branch": "wt/QA-BUNKER-45", "base_sha": "42bb5b2f", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/bunker-tick-000215-brief-QA-BUNKER-45.txt", "commit": "b9b6295e", "merged": "ca908e7f", "verdict": "none:tier2-in-flight"},
+    "QA-BUNKER-25": {"worktree": "/home/kara/worktrees/bunker-QA-BUNKER-25-R2", "branch": "wt/QA-BUNKER-25-R3", "base": "origin/main 04cfa373", "model": "none:salvage-of-pre-existing-branch", "note": "row next_action (deepseek-v4-flash@deepseek-foreman) honored by SALVAGE instead: wt/QA-BUNKER-25 already carried 3 commits (base f04d8a12) from an earlier dispatch; root fix superseded by main 396f5f7a (kept theirs), durable extras re-based as f695864d+2eac5a67+4e03ca4b (merged 6a687eac) + foreman seam fix 191dae8a (stamp content-hash + negative gate proof)", "verdict": "none:tier2-in-flight"},
+    "QA-BUNKER-076": {"worktree": "/home/kara/worktrees/bunker-QA-BUNKER-076", "branch": "wt/QA-BUNKER-076", "base_sha": "42bb5b2f", "model": "glm-5.3-flash", "provider": "zai-glm-default", "brief": "/tmp/bunker-tick-000215-brief-QA-BUNKER-076.txt", "commit": "1f041998", "merged": "14d22e02", "verdict": "none:tier2-in-flight"},
+    "QA-BUNKER-46": {"worktree": "/home/kara/worktrees/bunker-QA-BUNKER-46", "branch": "wt/QA-BUNKER-46", "base_sha": "42bb5b2f", "model": "deepseek-v4-pro", "provider": "deepseek-foreman", "brief": "/tmp/bunker-tick-000215-brief-QA-BUNKER-46.txt", "commit": "936f4ec5", "merged": "cc9ecc42", "verdict": "none:tier2-in-flight", "live": "second-family (ECDSA-384) SSH login to root@bunker-mvp proven by worker and independently re-probed by foreman"}
+  },
+  "dispatch": {
+    "protocol": "hermes chat --query-file /tmp/bunker-tick-000215-brief-<row>.txt -m <model> --provider <provider> -s coding-hermes-worker --ignore-rules -Q (background, workdir=worker worktree)",
+    "commit_msg_files": "/tmp/bunker-tick-000215-msg-<row>.txt"
+  },
+  "result": {
+    "status": "complete",
+    "rows_landed": ["QA-BUNKER-45", "QA-BUNKER-25", "QA-BUNKER-076", "QA-BUNKER-46"],
+    "rows_reconciled": ["QA-BUNKER-27", "QA-BUNKER-37", "QA-BUNKER-74", "QA-BUNKER-17"],
+    "rows_filed": ["QA-BUNKER-089"],
+    "local_gate": "PASS per merge (go build ./... + go vet ./... + go test ./... -count=1 -short -parallel 4 = 37 ok; harness suites 12/12 + 20/20; ensure-proto negative gate proof; live SSH read-back)",
+    "remote_ci": "historical success; exact-head cc9ecc42/191dae8a queued/in_progress at close",
+    "remote_parity": 0,
+    "seam_fix": "191dae8a — salvaged stamp hashed only the path list (content-blind false-green); now content-hashed (falsified first attempt: git ls-files -s reads the index, not the worktree)",
+    "open": [
+      "Tier-2 judges in flight: gitreins task complete chain (45, 076, 46, 25) over the merged tree; next tick attaches verdict ids from .gitreins/history/<date>/<id>/verdict.json",
+      "QA-BUNKER-25 AC part 3: fresh-system bunker-qa JIT-pass evidence under qa-ev- awaits the next QA cycle",
+      "QA-BUNKER-089 filed: webdav QA36 flake recurrence under load (new assertion shape)"
+    ]
+  }
+}
