@@ -191,6 +191,119 @@ else
   echo "  ok   (f5) artifact check does not hard-code toolsd"; pass=$((pass+1))
 fi
 
+# ── (g) QA-BUNKER-47: preflight_fail_writes_no_launch_meta ──
+# A launch refused BEFORE spawn (config / ssh / reachability -> rc=2) must leave
+# NO $EVIDENCE.meta launch record. The pre-fix prologue wrote one unconditionally
+# with launched=/server=/project= and an EMPTY agent=, so a follow-up collect
+# graded a healthy refusal "the launch was killed before the agent id was
+# recorded" — a crash story for a run that never spawned anything, and exactly
+# the stale-record shape TR-085 warns about.
+lt() { # <desc> <a> <b> — assert 0 < a < b (both must be line numbers)
+  if [ -n "$2" ] && [ -n "$3" ] && [ "$2" -gt 0 ] && [ "$3" -gt 0 ] && [ "$2" -lt "$3" ]; then
+    echo "  ok   $1 ($2 < $3)"; pass=$((pass+1))
+  else
+    echo "  FAIL $1: expected [$2] < [$3]"; fail=$((fail+1))
+  fi
+}
+no_launch_meta() { # <desc> <meta-path>
+  if [ -f "$2" ]; then
+    echo "  FAIL $1: launch record exists -> $(tr '\n' ' ' < "$2")"; fail=$((fail+1))
+  else
+    echo "  ok   $1"; pass=$((pass+1))
+  fi
+}
+
+echo
+echo "  (g) QA-BUNKER-47: preflight_fail_writes_no_launch_meta"
+
+# g1: the staging helpers are real functions in the harness, and the writer keeps
+# emitting the documented record fields — deleting the writer is NOT a valid way
+# to pass this guard (the row requires the meta writer to stay present).
+for fn in qa_launch_meta_reset qa_launch_meta_write; do
+  check "(g1) $fn is a harness function" "1" "$(grep -c "^${fn}() {" "$TMPD/fns.sh" | tr -d ' ')"
+done
+writer_src=$(sed -n '/^qa_launch_meta_write() {/,/^}$/p' "$HARNESS")
+contains "(g1b) meta writer still prints launched=" "launched=%s" "$writer_src"
+contains "(g1b) meta writer still prints agent=" "agent=%s" "$writer_src"
+contains "(g1b) meta writer stamps phase=" "phase=%s" "$writer_src"
+
+# g2: ORDER inside launch() — the record is invalidated before the preflights,
+# and the first write happens AFTER they pass (a pre-spawn refusal therefore
+# leaves nothing behind).
+sed -n '/^launch() {/,/^}$/p' "$HARNESS" > "$TMPD/launch.body"
+g_pre=$(grep -n '^  preflights$' "$TMPD/launch.body" | head -1 | cut -d: -f1)
+g_reset=$(grep -n 'qa_launch_meta_reset' "$TMPD/launch.body" | head -1 | cut -d: -f1)
+g_write=$(grep -n 'qa_launch_meta_write' "$TMPD/launch.body" | head -1 | cut -d: -f1)
+lt "(g2) launch invalidates a stale record before preflights" "$g_reset" "$g_pre"
+lt "(g2) launch writes the record only after preflights pass" "$g_pre" "$g_write"
+
+# g3: end-to-end refusal. A real `launch` against an unreachable (but configured)
+# fixture host exits 2 at the ssh preflight, records the FAIL row, and must leave
+# no launch record on disk.
+mkdir -p "$TMPD/g47/home/.bunker" "$TMPD/g47/repo" "$TMPD/g47/run"
+printf 'servers:\n    fixture-host:\n        name: fixture-host\n' > "$TMPD/g47/home/.bunker/config.yaml"
+git -C "$TMPD/g47/repo" init -q 2>/dev/null || mkdir -p "$TMPD/g47/repo/.git"
+export SSH_RC=255
+export SSH_LOG="$TMPD/g47/ssh.log"; : > "$SSH_LOG"
+EV47="$TMPD/g47/evidence.jsonl"
+run_refused_launch() { # <evidence> — one refused launch, stdout+stderr on stdout
+  HOME="$TMPD/g47/home" PATH="$TMPD/bin:$PATH" BUNKER_QA_HOST_KEY="$TMPD/nokey" \
+  BUNKER_QA_SERVER=fixture-host BUNKER_QA_EVIDENCE="$1" SSH_LOG="$TMPD/g47/ssh.log" \
+  SSH_RC=255 bash "$HARNESS" launch "$TMPD/g47/repo" 2>&1
+}
+out=$(run_refused_launch "$EV47"); rc=$?
+check "(g3) refused launch rc (preflight exit 2)" "2" "$rc"
+contains "(g3) preflight FAIL row is the verdict" '"status":"FAIL"' "$(cat "$EV47" 2>/dev/null)"
+contains "(g3) the row says no spawn was attempted" "no spawn attempted" "$(cat "$EV47" 2>/dev/null)"
+no_launch_meta "(g3) preflight_fail_writes_no_launch_meta" "$EV47.meta"
+
+# g4: TR-085 hazard — a STALE record at the same evidence path must not survive a
+# refused launch (collect would otherwise probe the stranger's agent id).
+printf 'agent=stale-agent\nserver=fixture-host\nevidence=%s\nlaunched=2020-01-01T00:00:00Z\nkeep=0\nproject=stale\nphase=launched\n' "$EV47" > "$EV47.meta"
+out=$(run_refused_launch "$EV47"); rc=$?
+check "(g4) refused launch over a stale record rc" "2" "$rc"
+no_launch_meta "(g4) refused launch drops the stale record" "$EV47.meta"
+
+# g5: POSITIVE control — the writer still produces a collect-usable record once a
+# run does reach spawn/launch (so the guard cannot pass by never writing).
+out=$(bash -c "source '$TMPD/fns.sh'; qa_launch_meta_write '$TMPD/g47/ctl.meta' '$TMPD/g47/ctl.jsonl' launched qa-fixture-0001 fixture-host 1 demo"); rc=$?
+check "(g5) writer rc" "0" "$rc"
+ctl=$(cat "$TMPD/g47/ctl.meta" 2>/dev/null)
+contains "(g5) record names the agent" "agent=qa-fixture-0001" "$ctl"
+contains "(g5) record names the server" "server=fixture-host" "$ctl"
+contains "(g5) record names the evidence path" "evidence=$TMPD/g47/ctl.jsonl" "$ctl"
+contains "(g5) record carries launched=" "launched=" "$ctl"
+contains "(g5) record carries phase=launched" "phase=launched" "$ctl"
+contains "(g5) record names the project" "project=demo" "$ctl"
+
+# g6: the empty-agent= story is honest — only a phase=spawning record (the run
+# died INSIDE spawn) may be graded a killed launch. Assertions use tokens that
+# survive the harness's own detail sanitiser (`tr '\\n' ' '`, which also maps a
+# literal "n" to a space), so they pin the DISTINCTION, not the punctuation.
+EV6="$TMPD/g47/collect.jsonl"; : > "$EV6"
+printf 'agent=\nserver=fixture-host\nevidence=%s\nlaunched=%s\nkeep=0\nproject=demo\nphase=spawning\n' \
+  "$EV6" "$(date -u +%FT%TZ)" > "$EV6.meta"
+out=$(HOME="$TMPD/g47/home" PATH="$TMPD/bin:$PATH" BUNKER_QA_HOST_KEY="$TMPD/nokey" \
+  BUNKER_QA_SERVER=fixture-host bash "$HARNESS" collect --evidence "$EV6" 2>&1); rc=$?
+check "(g6) collect rc on a spawn-time record" "2" "$rc"
+contains "(g6) message says the run died inside spawn" "INSIDE" "$out"
+if printf '%s' "$out" | grep -q 'killed'; then
+  echo "  FAIL (g6) spawn-time record still graded a killed launch"; fail=$((fail+1))
+else
+  echo "  ok   (g6) spawn-time record is not graded a killed launch"; pass=$((pass+1))
+fi
+
+# g7: backward compatibility — a LEGACY record with no phase= header (written by
+# an older harness) keeps the historical wording, so this is a distinction and
+# not a blanket rewording that hides real spawn-time kills.
+EV7="$TMPD/g47/legacy.jsonl"; : > "$EV7"
+printf 'agent=\nserver=fixture-host\nevidence=%s\nlaunched=%s\nkeep=0\nproject=demo\n' \
+  "$EV7" "$(date -u +%FT%TZ)" > "$EV7.meta"
+out=$(HOME="$TMPD/g47/home" PATH="$TMPD/bin:$PATH" BUNKER_QA_HOST_KEY="$TMPD/nokey" \
+  BUNKER_QA_SERVER=fixture-host bash "$HARNESS" collect --evidence "$EV7" 2>&1); rc=$?
+check "(g7) collect rc on a legacy record" "2" "$rc"
+contains "(g7) legacy record keeps the historical wording" "killed" "$out"
+
 echo
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
