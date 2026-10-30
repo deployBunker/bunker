@@ -274,8 +274,7 @@ qa_write_agent_lock() { # <agent-id> <tick-pid> <server> <evidence> -> path
   path=$(qa_agent_lock_path "$id") || return 1
   tmp=$(mktemp "${path}.tmp.XXXXXX") || return 1
   umask 077
-  printf 'format=1\nagent=%s\ntick_pid=%s\nserver=%s\nevidence=%s\ncreated=%s\n' \\
-    "$id" "$tick_pid" "$server" "$evidence" "$(date -u +%FT%TZ)" > "$tmp" || { rm -f "$tmp"; return 1; }
+  printf 'format=1\nagent=%s\ntick_pid=%s\nserver=%s\nevidence=%s\ncreated=%s\n' "$id" "$tick_pid" "$server" "$evidence" "$(date -u +%FT%TZ)" > "$tmp" || { rm -f "$tmp"; return 1; }
   chmod 600 "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
   mv -f "$tmp" "$path" || return 1
   printf '%s\n' "$path"
