@@ -1506,7 +1506,7 @@ fi
 if [ -f pyproject.toml ] && [ ! -x ~/tools/venv/bin/python ]; then
   # QA-BUNKER-57 (2026-10-04): a fresh JIT agent's ensurepip can fail (broken
   # venv, no sudo to fix it), leaving NO pip in the venv — the old chain then
-  # died at the first `pip install` and four battery cells cascaded rc=127
+  # died at the first \`pip install\` and four battery cells cascaded rc=127
   # 'pip: command not found' as FAIL/ENV-BLOCKED with zero signal. Verify pip
   # after venv creation and recover (ensurepip retry, then get-pip.py), logging
   # which path was used to venv.log. If pip is still absent the venv itself is
@@ -1699,7 +1699,7 @@ export RUST_MISSING_SYS_DEPS
 command -v go >/dev/null 2>&1 && command -v node >/dev/null 2>&1 && cell toolchain-bootstrap OK "go+node ready"
 
 # QA-BUNKER-81: record executable artifacts in the install destination before
-# the install leg.  The old check named only `toolsd`, which made a successful
+# the install leg.  The old check named only \`toolsd\`, which made a successful
 # make verify with no binary either silently pass or be graded against an
 # unrelated tool.  PATH is the install contract: inspect every existing PATH
 # component whose conventional role is a bin directory, plus the two user bin
@@ -1850,7 +1850,94 @@ elif [ -f pyproject.toml ]; then
 fi
 if [ -n "\$BIN" ] && ! command -v \${BIN%% *} >/dev/null 2>&1; then BIN=""; fi
 
-# 2 · ci-pass — act first (simulated GH runner); NATIVE suite is the authoritative
+# Mandatory stage cells (QA-BUNKER-31): keep the direct battery's evidence
+# contract aligned with the retired QA path. These cells are deliberately
+# emitted in a fixed order before ci-pass: lint, tests, docker_build,
+# compose_config. A missing artifact is N/A; an unavailable runner is INFO so
+# the evidence distinguishes an environment gap from a repository result.
+# The trigger scans are bounded to the synced tree and avoid dependency dirs.
+#
+# 1 · lint — use the repository's declared linter when present, otherwise the
+#     standard tool for the detected language.
+LINT_CMD=""
+if [ -f .golangci.yml ] || [ -f .golangci.yaml ]; then LINT_CMD="golangci-lint run"
+elif [ -f Makefile ] && grep -qE '^lint:' Makefile 2>/dev/null; then LINT_CMD="make lint"
+elif [ -f package.json ] && command -v node >/dev/null 2>&1 && node -e 'const p=require("./package.json"); process.exit(p.scripts && p.scripts.lint ? 0 : 1)' 2>/dev/null; then LINT_CMD="npm run lint"
+elif [ -f pyproject.toml ] && command -v ruff >/dev/null 2>&1; then LINT_CMD="ruff check ."
+elif find . -maxdepth 4 -type f -name '*.go' -not -path './.git/*' -not -path './node_modules/*' -print -quit 2>/dev/null | grep -q .; then LINT_CMD="go vet ./..."
+fi
+if [ -n "\$LINT_CMD" ]; then
+  if ! command -v "\${LINT_CMD%% *}" >/dev/null 2>&1; then
+    cell lint INFO "lint runner unavailable on agent: \${LINT_CMD%% *} — lint was not run"
+  else
+    ( \$LINT_CMD ) >\$LOGD/lint.log 2>&1; lint_rc=\$?
+    if [ \$lint_rc -eq 0 ]; then cell lint OK "\$LINT_CMD (rc=0)"
+    else cell lint FAIL "\$(fail_detail \$lint_rc \$LOGD/lint.log \$LINT_CMD)"; fi
+  fi
+else
+  cell lint N/A "no supported lint trigger (declared linter, Makefile lint target, package lint script, ruff, or Go files)"
+fi
+
+# 2 · tests — run the same detected native suite used by ci-pass. This is a
+#     dedicated evidence cell; ci-pass retains its existing act/native fallback
+#     behavior below so the two cells remain independently attributable.
+TEST_RC=skip
+if [ "\$native_cmd" = "echo no-test-path" ]; then
+  cell tests N/A "no native test command detected"
+elif printf '%s' "\$native_cmd" | grep -q pytest && ! qa_have_pip; then
+  cell tests UNVERIFIED "pip absent on agent — the detected pytest suite was not run"
+else
+  ( $native_cmd ) >\$LOGD/tests.log 2>&1; TEST_RC=\$?
+  if [ \$TEST_RC -eq 0 ] && ! vacuous_native_suite \$LOGD/tests.log; then
+    cell tests OK "\$native_cmd (rc=0)"
+  elif [ \$TEST_RC -eq 0 ]; then
+    cell tests UNVERIFIED "detected native command produced no test result (vacuous suite)"
+  elif native_runner_missing \$LOGD/tests.log; then
+    cell tests UNVERIFIED "native test runner unavailable — suite never ran: \$(native_runner_missing_cause \$LOGD/tests.log)"
+  else
+    cell tests FAIL "\$(fail_detail \$TEST_RC \$LOGD/tests.log \$native_cmd)"
+  fi
+fi
+
+# 3 · docker_build — build the first repository Dockerfile when one exists.
+DOCKERFILE_PATH=\$(find . -maxdepth 4 -type f -name 'Dockerfile*' \
+  -not -path './.git/*' -not -path './node_modules/*' -not -path './.venv/*' \
+  -not -path './vendor/*' 2>/dev/null | sort | head -1)
+if [ -n "\$DOCKERFILE_PATH" ]; then
+  if ! command -v docker >/dev/null 2>&1; then
+    cell docker_build INFO "docker unavailable on agent — Dockerfile \$DOCKERFILE_PATH was not built"
+  else
+    DOCKER_CONTEXT=\$(dirname "\$DOCKERFILE_PATH")
+    ( docker build -f "\$DOCKERFILE_PATH" "\$DOCKER_CONTEXT" ) >\$LOGD/docker-build.log 2>&1; docker_build_rc=\$?
+    if [ \$docker_build_rc -eq 0 ]; then cell docker_build OK "docker build -f \$DOCKERFILE_PATH \$DOCKER_CONTEXT (rc=0)"
+    else cell docker_build FAIL "\$(fail_detail \$docker_build_rc \$LOGD/docker-build.log docker build -f \$DOCKERFILE_PATH \$DOCKER_CONTEXT)"; fi
+  fi
+else
+  cell docker_build N/A "no Dockerfile trigger"
+fi
+
+# 4 · compose_config — validate the first compose file without starting it.
+COMPOSE_FILE_PATH=\$(find . -maxdepth 4 -type f \( -name 'docker-compose*.yml' -o -name 'docker-compose*.yaml' -o -name 'compose*.yml' -o -name 'compose*.yaml' \) \
+  -not -path './.git/*' -not -path './node_modules/*' -not -path './.venv/*' \
+  -not -path './vendor/*' 2>/dev/null | sort | head -1)
+if [ -n "\$COMPOSE_FILE_PATH" ]; then
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    ( docker compose -f "\$COMPOSE_FILE_PATH" config ) >\$LOGD/compose-config.log 2>&1; compose_config_rc=\$?
+    compose_config_cmd="docker compose -f \$COMPOSE_FILE_PATH config"
+  elif command -v docker-compose >/dev/null 2>&1; then
+    ( docker-compose -f "\$COMPOSE_FILE_PATH" config ) >\$LOGD/compose-config.log 2>&1; compose_config_rc=\$?
+    compose_config_cmd="docker-compose -f \$COMPOSE_FILE_PATH config"
+  else
+    cell compose_config INFO "compose runner unavailable on agent — compose file \$COMPOSE_FILE_PATH was not validated"
+    compose_config_rc=skip; compose_config_cmd=""
+  fi
+  if [ "\$compose_config_rc" = "0" ]; then cell compose_config OK "\$compose_config_cmd (rc=0)"
+  elif [ "\$compose_config_rc" != "skip" ]; then cell compose_config FAIL "\$(fail_detail \$compose_config_rc \$LOGD/compose-config.log \$compose_config_cmd)"; fi
+else
+  cell compose_config N/A "no compose file trigger"
+fi
+
+# 5 · ci-pass — act first (simulated GH runner); NATIVE suite is the authoritative
 #    fallback (act + rootless dockerd = fatal EOF observed 2026-08-27 on las-03)
 #
 # QA-9ROUTER-19 (2026-09-23) — TWO false-verdict classes in this cell, both
