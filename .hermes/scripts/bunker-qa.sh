@@ -2353,7 +2353,10 @@ else cell upgrade FAIL "upgrade path UNVERIFIED: the repo has \$QA_TAG_COUNT rel
 # — docker prints the REAL error FIRST and the footer LAST, so the cell read FAIL
 # with no diagnosis and the deployment stayed unverified. FAIL now names the
 # command, its rc, and the log's leading lines via fail_detail().
-if ls docker-compose*.yml compose*.yml >/dev/null 2>&1 || ls docker-compose*.yml 2>/dev/null | grep -q . || ls compose*.yml 2>/dev/null | grep -q .; then
+QA-BUNKER-38 (2026-10-30): root-only ls missed nested compose files
+# (stack/docker-compose.yml) — compose_config already used find, align here.
+COMPOSE_FILES=\$(find . -maxdepth 4 -type f \( -name 'docker-compose*.yml' -o -name 'docker-compose*.yaml' -o -name 'compose*.yml' -o -name 'compose*.yaml' \) 2>/dev/null | head -5)
+if [ -n "\$COMPOSE_FILES" ]; then
   DC_CMD="docker compose up -d --build"
   ( \$DC_CMD ) >\$LOGD/dc.log 2>&1; dc_rc=\$?
   if [ \$dc_rc -eq 0 ]; then
@@ -2383,8 +2386,9 @@ if ls docker-compose*.yml compose*.yml >/dev/null 2>&1 || ls docker-compose*.yml
     # Generator escaping (unquoted heredoc): \$0 in the awk is BACKSLASHED — a
     # bare \$0 here is generation-expanded to THIS script's path in the emitted
     # bytes (a seen[<host-script-path>] contamination of the generated script).
+    # QA-BUNKER-38: iterate over found compose files, not root-only glob.
     probed_n=0; probed_ports=" "
-    for m in \$( { grep -hoE '"?([0-9]{1,3}\.){3}[0-9]+:[0-9]+:[0-9]+"?|"?[0-9]+:[0-9]+"?' docker-compose*.yml compose*.yml 2>/dev/null; } | grep -oE '([0-9]{1,3}\.){3}[0-9]+:[0-9]+|[0-9]+:[0-9]+' | awk '!seen[\$0]++' | head -3 ); do
+    for m in \$( { for f in \$COMPOSE_FILES; do grep -hoE '"?([0-9]{1,3}\.){3}[0-9]+:[0-9]+:[0-9]+"?|"?[0-9]+:[0-9]+"?' "\$f" 2>/dev/null; done; } | grep -oE '([0-9]{1,3}\.){3}[0-9]+:[0-9]+|[0-9]+:[0-9]+' | awk '!seen[\$0]++' | head -3 ); do
       case "\$m" in
         *.*:*) hp_host=\${m%%:*}; hp_port=\${m#*:} ;;
         *) hp_host=127.0.0.1; hp_port=\$m ;;
@@ -2610,7 +2614,10 @@ elif native_runner_missing \$LOGD/disc.log; then cell chaos-disconnect UNVERIFIE
 else cell chaos-disconnect OK "fails fast on disconnect (rc=\$disc_rc): \$(head -2 \$LOGD/disc.log)"; fi
 
 # 7 · chaos-shutdown — SIGTERM stop/restart + SIGKILL recovery (docker path)
-if ls docker-compose*.yml compose*.yml >/dev/null 2>&1 || ls docker-compose*.yml 2>/dev/null | grep -q . || ls compose*.yml 2>/dev/null | grep -q .; then
+# QA-BUNKER-38 (2026-10-30): root-only ls missed nested compose files — align
+# with compose_config and docker-deploy using find.
+COMPOSE_FILES=\$(find . -maxdepth 4 -type f \( -name 'docker-compose*.yml' -o -name 'docker-compose*.yaml' -o -name 'compose*.yml' -o -name 'compose*.yaml' \) 2>/dev/null | head -5)
+if [ -n "\$COMPOSE_FILES" ]; then
   # QA-HEADING-010 (2026-09-25): the && chain short-circuited BEFORE its echo
   # markers, so a first-verb failure left sd.log EMPTY and the cell graded
   # FAIL "rc=1" with no attribution. Run EVERY verb unconditionally, echo each
