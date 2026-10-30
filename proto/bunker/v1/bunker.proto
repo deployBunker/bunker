@@ -259,6 +259,27 @@ message SystemdProperty {
   string value = 2;  // e.g. "200%", "4294967296"
 }
 
+// ── SSH key family (QA-BUNKER-46) ─────────────────────────────
+//
+// Every SSH key belongs to ONE algorithm family. The 2026-10-02 incident was
+// single-key-family fragility: every QA lane authenticated with an ed25519
+// key, so a single clobber event (a key overwritten by a 21MB ELF binary,
+// then a refused publickey) locked out every lane at once. key_family makes
+// the family an EXPLICIT, deployable fact on the wire so an operator can
+// provision and select a key from a SECOND family (e.g. RSA or ECDSA) without
+// guessing from the key material.
+enum KeyFamily {
+  // No family declared. The legacy default: the family is unknown and must be
+  // inferred from the key material — never read this as ed25519.
+  KEY_FAMILY_UNSPECIFIED = 0;
+  // OpenSSH ed25519 keys (ssh-ed25519).
+  KEY_FAMILY_ED25519 = 1;
+  // OpenSSH ECDSA keys (ecdsa-sha2-nistp256/384/521).
+  KEY_FAMILY_ECDSA = 2;
+  // OpenSSH RSA keys (ssh-rsa / rsa-sha2-256 / rsa-sha2-512).
+  KEY_FAMILY_RSA = 3;
+}
+
 message SpawnAgentRequest {
   string agent_id = 1;           // Optional: auto-generated if empty
   ResourceLimits limits = 2;     // Optional: uses server defaults if empty
@@ -295,6 +316,12 @@ message SpawnAgentRequest {
   // FAILS the spawn loudly — an agent never runs unenforced while its
   // config claims it is restricted. ADDITIVE: older clients ignore it.
   string egress_mode = 12;
+  // QA-BUNKER-46: the algorithm family of ssh_public_key, or of the key the
+  // daemon generates when none is pushed. ADDITIVE: KEY_FAMILY_UNSPECIFIED is
+  // the legacy default (family unknown — infer from the key material, never
+  // assume ed25519). Lets an operator deploy a key from a SECOND family so a
+  // single clobber event cannot lock out every lane at once.
+  KeyFamily key_family = 13;
 }
 
 // ── Image specification (GAP-064) ─────────────────────────────
@@ -386,6 +413,10 @@ message GetAgentKeyRequest {
 message GetAgentKeyResponse {
   string agent_id = 1;
   string ssh_private_key = 2;      // PEM private key (server-side persisted copy)
+  // QA-BUNKER-46: the algorithm family of ssh_private_key. ADDITIVE; same
+  // semantics as SpawnAgentRequest.key_family (UNSPECIFIED = unknown, infer
+  // from the key material, never assume ed25519).
+  KeyFamily key_family = 3;
 }
 
 message DestroyAgentRequest {
