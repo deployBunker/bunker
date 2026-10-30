@@ -57,6 +57,18 @@ BACKOFF_BASE="${PROTO_SKIP_BACKOFF_BASE:-3}"
 # proto + buf config (2 files) and ENFORCE_STAMP below stops that drift.
 # Cache workflows restore proto/bunker/v1 generated files keyed on the same
 # input hash (hashFiles in ci.yml); this stamp is the offline twin of that.
+# Content-aware: hash the CONTENT of the input files (paths + per-file sha256),
+# not just their path list. A path-list hash can NOT see a proto CONTENT edit —
+# bunker.proto changing field-for-field kept the hash identical and the
+# freshness check reported "current" with stale generated code committed
+# (observed 2026-10-30 when QA-BUNKER-46's KeyFamily proto change landed right
+# after this stamp was introduced: only the worker's own `make proto` run kept
+# the tree honest, the gate stayed green). Also NOT `git ls-files -s`: that
+# reads the INDEX blob OID, so an unstaged worktree edit is invisible to it
+# (gate-proof attempt 1 showed identical hashes before/after a content edit).
+# This makes a content edit re-arm buf generate exactly like a path
+# add/remove, and keeps the stamp a true offline twin of ci.yml's hashFiles
+# (which hashes file contents).
 RAW_INPUTS="$(git -c safe.directory='*' ls-files -- '*.proto' 'buf.yaml' 'buf.gen.yaml' '**/buf.yaml' '**/buf.gen.yaml' || true)"
 
 if [ -z "${RAW_INPUTS}" ]; then
@@ -64,7 +76,7 @@ if [ -z "${RAW_INPUTS}" ]; then
   exit 1
 fi
 
-INPUTS_HASH="$(printf '%s\n' "${RAW_INPUTS}" | sha256sum | awk '{print $1}')"
+INPUTS_HASH="$(printf '%s\n' "${RAW_INPUTS}" | xargs -d '\n' sha256sum | sha256sum | awk '{print $1}')"
 CACHE_KEY="proto-gen-v1-${INPUTS_HASH}"
 
 if [ "${PROTO_CACHE_HIT:-}" = "true" ]; then
