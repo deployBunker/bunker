@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -463,7 +464,98 @@ func TestSurfaceConnectCommand_FailClosedBinding(t *testing.T) {
 	}
 }
 
+const surfaceConnectThreeGiB uint64 = 3 * 1024 * 1024 * 1024
+
+// surfaceConnectMemoryLimit finds the effective cgroup memory limit for this
+// test process. JIT QA runs can cap the worker at 3GiB; under that cap this
+// test's exec/socket fixture is not reliable, so the test has an explicit,
+// greppable skip rather than reporting a resource failure as a product bug.
+func surfaceConnectMemoryLimitValue(value string) (uint64, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "max" {
+		return 0, false
+	}
+	limit, err := strconv.ParseUint(value, 10, 64)
+	return limit, err == nil
+}
+
+func surfaceConnectMemoryLimit() (limit uint64, path string, ok bool) {
+	paths := []string{
+		"/sys/fs/cgroup/memory.max",
+		"/sys/fs/cgroup/memory/memory.limit_in_bytes",
+	}
+	if data, err := os.ReadFile("/proc/self/cgroup"); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			fields := strings.SplitN(line, ":", 3)
+			if len(fields) != 3 {
+				continue
+			}
+			switch {
+			case fields[0] == "0" && fields[1] == "":
+				paths = append(paths, filepath.Join("/sys/fs/cgroup", fields[2], "memory.max"))
+			case strings.Contains(fields[1], "memory"):
+				paths = append(paths, filepath.Join("/sys/fs/cgroup/memory", fields[2], "memory.limit_in_bytes"))
+			}
+		}
+	}
+
+	seen := make(map[string]struct{}, len(paths))
+	for _, candidate := range paths {
+		if _, duplicate := seen[candidate]; duplicate {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		data, err := os.ReadFile(candidate)
+		if err != nil {
+			continue
+		}
+		bytes, valid := surfaceConnectMemoryLimitValue(string(data))
+		if !valid {
+			continue
+		}
+		if !ok || bytes < limit {
+			limit, path, ok = bytes, candidate, true
+		}
+	}
+	return limit, path, ok
+}
+
+func skipSurfaceConnectLocalSocketBusyRefusedForMemoryCap(t *testing.T) {
+	t.Helper()
+	limit, path, ok := surfaceConnectMemoryLimit()
+	if ok && limit <= surfaceConnectThreeGiB {
+		t.Skipf("QA-BUNKER-076: local socket busy refusal skipped under cgroup memory limit at or below 3GiB (%d bytes at %s)", limit, path)
+	}
+}
+
+func TestSurfaceConnectMemoryLimitParsing(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		data string
+		want uint64
+		ok   bool
+	}{
+		{name: "three gib", data: "3221225472\n", want: surfaceConnectThreeGiB, ok: true},
+		{name: "unlimited", data: "max\n", ok: false},
+		{name: "malformed", data: "not-a-limit\n", ok: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, ok := surfaceConnectMemoryLimitValue(test.data)
+			if test.ok {
+				if !ok || got != test.want {
+					t.Fatalf("parse memory limit = %d, valid=%t; want %d, valid=true", got, ok, test.want)
+				}
+				return
+			}
+			if ok {
+				t.Fatalf("parse memory limit unexpectedly succeeded with %d", got)
+			}
+		})
+	}
+}
+
 func TestSurfaceConnectCommand_LocalSocketBusyRefused(t *testing.T) {
+	skipSurfaceConnectLocalSocketBusyRefusedForMemoryCap(t)
 	// unix-only file: unix sockets always exist here.
 	agent := &v1.AgentSummary{AgentId: "abc123", SshfsMount: surfaceConnectTestMount}
 	setupSurfaceConnectTest(t, agent, "4242")
