@@ -5210,3 +5210,50 @@ tasks:
   status: complete
   created_at: '2026-10-29T17:55:37.825270+00:00'
   completed_at: '2026-10-29T18:14:14.890377+00:00'
+- id: QA-BUNKER-45
+  title: QA-BUNKER-45 collect retarget/abort path
+  criteria:
+  - 'bunker-qa.sh exposes a real retarget-or-abort path that fires after one failed
+    collect (grep -cE ''retarget|abort'' .hermes/scripts/bunker-qa.sh >= 6 and grep
+    -q BUNKER_QA_SKIP_PREFLIGHT exit 0); a committed regression test exists; trace
+    resolves: ch:trace row=QA-BUNKER-45 test=.hermes/scripts/test_bunker_qa_retarget_abort.sh
+    evidence=<artifact> commit=<sha>'
+  status: complete
+  created_at: '2026-10-30T00:37:19.029992+00:00'
+  completed_at: '2026-10-30T01:39:09.710821+00:00'
+- id: QA-BUNKER-076
+  title: QA-BUNKER-076 3GiB resource preflight for surface connect test
+  criteria:
+  - 'TestSurfaceConnectCommand_LocalSocketBusyRefused has a resource preflight so
+    it passes or skips with a named reason containing 3GiB under a 3GiB memory cap
+    (grep -c ''3GiB'' internal/cli/surface_connect_test.go >= 1); focused and full
+    internal/cli tests pass; trace resolves: ch:trace row=QA-BUNKER-076 test=internal/cli/surface_connect_test.go
+    evidence=<artifact> commit=<sha>'
+  status: complete
+  created_at: '2026-10-30T00:37:19.955551+00:00'
+  completed_at: '2026-10-30T01:42:12.912977+00:00'
+- id: QA-BUNKER-46
+  title: QA-BUNKER-46 key-family wire contract + runbook + second-family login proof
+  criteria:
+  - 'key_family concept is real in proto/bunker/v1/bunker.proto (grep -ciE ''key_family|keyfamily''
+    >= 2 via a real field, regenerated code consistent), docs/incident-runbook.md
+    carries a publickey second-key-family recovery step (grep -ci publickey >= 1),
+    go build ./... and go vet ./... exit 0; live second-family SSH login proven with
+    exact command+output recorded, or named OPEN with attempts recorded; trace resolves:
+    ch:trace row=QA-BUNKER-46 spec=proto/bunker/v1/bunker.proto evidence=<artifact>
+    commit=<sha>'
+  status: complete
+  created_at: '2026-10-30T00:37:20.876879+00:00'
+  completed_at: '2026-10-30T01:48:42.423025+00:00'
+- id: QA-BUNKER-25
+  title: QA-BUNKER-25 clean-machine bunkerv1connect build fix (salvage)
+  criteria:
+  - 'Salvage of pre-existing wt/QA-BUNKER-25 work (commits ff3e1dc2/bf29eb05/979f1125,
+    predate this task): fresh-checkout build root cause fixed in-repo (stray vendor/
+    -mod=vendor trap + proto codegen freshness), local control go build+test proto/bunker/v1/bunkerv1connect
+    exits 0, go build ./... && go vet ./... green on the merged tree, evidence in
+    qa-ev-QA-BUNKER-25/; trace resolves: ch:trace row=QA-BUNKER-25 test=proto/bunker/v1/bunkerv1connect
+    evidence=qa-ev-QA-BUNKER-25/evidence.md commit=<sha>'
+  status: complete
+  created_at: '2026-10-30T00:37:22.158351+00:00'
+  completed_at: '2026-10-30T01:50:29.589328+00:00'
