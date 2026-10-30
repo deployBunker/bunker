@@ -247,3 +247,20 @@ it is not reconciled from the event log on restart. `bunker destroy` cleared it.
 * No `bunker-*` user was deleted by hand in this sweep; the orphan users that existed at
   the start were removed by `bunkerd`'s own rollback/teardown during the window, and
   reap removed the homes, files and runtime dirs they left behind.
+
+## Final verification — 2026-10-30T19:37:56Z
+
+Two cleanup passes were run after the churn above finished re-seeding the host, to
+leave the deepest honest reading on record:
+
+* `bunker reap --apply` at 19:37:48Z — `removed: 8` (the entries the CI job's failed
+  spawns had left in the four minutes since the sweep).
+* orphan unload pass at 19:37:56Z — `candidates 5 removed=4 kept=1 failed=0`,
+  `remaining=1`.
+
+Result: **loaded agent AppArmor profiles = 1, live `bunker-*` users = 1, live
+daemon-registered agents = 0, `bunker list` = "No agents found."** The single remaining
+loaded profile belongs to the one live CI fixture user, which the classifier keeps by
+design. This is the reading the row's PASS line ("post-sweep loaded profile count <=
+live agent count") refers to: zero orphan profiles against zero registered agents.
+
