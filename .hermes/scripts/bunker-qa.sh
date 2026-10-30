@@ -2255,11 +2255,38 @@ else
 ci_rc=skip   # no triggerable workflow: act never ran, so it has no verdict
 fi
 #QA-CELL:ci-pass:start
-# NOTE: the first test is a STRING compare on purpose — ci_rc is the literal
-# "skip" when there was no triggerable workflow, and \`[ skip -eq 0 ]\` makes bash
-# print "integer expression expected" and take the wrong branch.
-if [ "\$ci_rc" = "0" ]; then
-  cell ci-pass OK "act: \$(grep -cE 'Job succeeded|✅ Success' \$LOGD/ci.log || true) jobs green — rc=0 (\$ACT_WF_COUNT triggerable workflow(s))"
+# QA-BUNKER-41 (2026-10-30): the act leg's OWN result is a GRADED participant,
+# not decoration. ci_rc is raw and sometimes NON-NUMERIC (the literal "skip"
+# when no workflow can fire), so normalize it ONCE into act_result —
+# pass | skip | timeout | fail — and let the cell grade on that token.
+# Pre-fix the act leg reached the grade only as free-text detail on a cell
+# whose OK/FAIL the NATIVE suite decided: battery 2026-09-30, JIT agent
+# 67928b30 @ bunker-las-03 HEAD 47377c3, ci-pass graded with "act failed (rc=1:
+# [CI/gitreins-guard] Run Complete job|Cleaning up container for job
+# gitreins-)" + "native suite PASS" — so the workflow that gates every bunker
+# push was never verified end-to-end from the clean box, and the graded leg was
+# the native go suite only. The rail now:
+#   pass    -> ci-pass OK on the act leg itself (the native suite never needed);
+#   skip    -> no triggerable workflow: act has no verdict, native decides;
+#   timeout -> ci-pass FAIL naming the BUNKER_QA_ACT_TIMEOUT budget (a harness
+#              budget, not a repo defect — but never a green either);
+#   fail    -> ci-pass FAIL; a passing native suite is DETAIL ONLY.
+# Every detail below names act_result AND its rc so the deciding leg is never
+# ambiguous. The regression guard for this wiring is
+# .hermes/scripts/test_bunker_qa_act_grade.sh (guard: act_rc1_fails_grade) — it
+# renders the real generated script, drives THIS block with act rc=1 and
+# requires the battery's graded summary (qa_run_summary) to come back non-zero.
+case "\$ci_rc" in
+  0)    act_result=pass ;;
+  skip) act_result=skip ;;
+  124)  act_result=timeout ;;   # timeout(1)'s own rc — the act leg hit its wall budget
+  *)    act_result=fail ;;
+esac
+# NOTE: the test is a STRING compare on purpose — act_result is the literal
+# "pass" only when act exited 0, and \`[ skip -eq 0 ]\` would make bash print
+# "integer expression expected" and take the wrong branch.
+if [ "\$act_result" = "pass" ]; then
+  cell ci-pass OK "act: \$(grep -cE 'Job succeeded|✅ Success' \$LOGD/ci.log || true) jobs green — act_result=pass rc=0 (\$ACT_WF_COUNT triggerable workflow(s))"
 else
   suite_start=\$(date +%s)
   ( $native_cmd ) >\$LOGD/native.log 2>&1; nat_rc=\$?
@@ -2272,9 +2299,9 @@ else
     # Grade UNVERIFIED before the OK, never a false green on a suite that
     # never ran. Non-vacuous rc=0 path is unchanged.
     if vacuous_native_suite \$LOGD/native.log; then
-      cell ci-pass UNVERIFIED "native suite NEVER RAN (vacuous no-test-path placeholder) — no repo signal"
-    elif [ "\$ci_rc" = "skip" ]; then
-      cell ci-pass OK "act: no triggerable workflow\$QA_ACT_NOTE — native suite PASS"
+      cell ci-pass UNVERIFIED "native suite NEVER RAN (vacuous no-test-path placeholder) — no repo signal; act_result=\$act_result rc=\$ci_rc"
+    elif [ "\$act_result" = "skip" ]; then
+      cell ci-pass OK "act: no triggerable workflow\$QA_ACT_NOTE (act_result=skip, act never ran so it carries no verdict) — native suite PASS"
     else
       # QA-CHIMERA-V2-39 (2026-10-04) + QA-BUNKER-B1 (2026-10-06): an act leg
       # that FAILED must NOT be folded into a single OK cell. The 10-04 change
@@ -2287,12 +2314,12 @@ else
       # (no triggerable workflow) is not a failed act and keeps the
       # native-suite OK. The ci-act row below keeps the act leg's own
       # UNVERIFIED detail; it is never graded OK either.
-      if [ "\$ci_rc" = "skip" ]; then
-        cell ci-pass OK "act: no triggerable workflow\$QA_ACT_NOTE — native suite PASS"
-      else
-        cell ci-pass FAIL "act rc=\$ci_rc: \$(act_failure_context \$LOGD/ci.log)\$ACTCTXOK — act CI simulation FAILED (native suite PASS is detail only)"
-        cell ci-act UNVERIFIED "act failed rc=\$ci_rc: \$(act_failure_context \$LOGD/ci.log)\$ACTCTXOK — a failed act leg is never graded OK; hosted CI is authoritative for the workflow verdict"
-      fi
+      # QA-BUNKER-41: act_result is the rail now, so the skip arm is decided
+      # ABOVE — the old inner re-test for it was unreachable dead code and is
+      # gone. Reaching here means act_result=fail|timeout, and the native leg
+      # (which DID run) is detail only, never a status flipper.
+      cell ci-pass FAIL "act rc=\$ci_rc: \$(act_failure_context \$LOGD/ci.log)\$ACTCTXOK — act CI simulation FAILED (act_result=\$act_result; native suite PASS is detail only)"
+      cell ci-act UNVERIFIED "act failed rc=\$ci_rc act_result=\$act_result: \$(act_failure_context \$LOGD/ci.log)\$ACTCTXOK — a failed act leg is never graded OK; hosted CI is authoritative for the workflow verdict"
     fi
   else
     NCTX=""; build_env_failure \$LOGD/native.log && NCTX=" (environment: no C toolchain)"
@@ -2312,16 +2339,16 @@ else
       # picked the runner by repo shape but could not provision it (PEP-735
       # dependency-group repos); grade the environment gap, not a repo defect.
       cell ci-pass UNVERIFIED "native runner missing (rc=\$nat_rc) - the suite NEVER RAN, no repo signal; INFRA-FAIL, not a result: \$(native_runner_missing_cause \$LOGD/native.log)"
-    elif [ "\$ci_rc" = "skip" ]; then
-      cell ci-pass FAIL "no triggerable workflow\$QA_ACT_NOTE — native rc=\$nat_rc: \$NFAIL\$NCTX\$GOCTX"
+    elif [ "\$act_result" = "skip" ]; then
+      cell ci-pass FAIL "no triggerable workflow\$QA_ACT_NOTE (act_result=skip, act never ran so it carries no verdict) — native rc=\$nat_rc: \$NFAIL\$NCTX\$GOCTX"
     elif ci_only_failure \$LOGD/ci.log; then
       # QA-9ROUTER-19 class 2: the act leg's ONLY failures are the workflow's own
       # registry/package coordinates (a private image login/pull outside a real
       # runner) — never a branch-push regression. Grade it INFO with the reason
       # named, so the row is informational instead of a false product FAIL.
-      cell ci-pass INFO "act's failures are the workflow's own registry/package coordinates, not a branch-push regression (\$(act_failure_context \$LOGD/ci.log)) — native rc=\$nat_rc: \$NFAIL\$NCTX\$GOCTX\$ACTCTX"
+      cell ci-pass INFO "act's failures are the workflow's own registry/package coordinates, not a branch-push regression (act_result=\$act_result rc=\$ci_rc: \$(act_failure_context \$LOGD/ci.log)) — native rc=\$nat_rc: \$NFAIL\$NCTX\$GOCTX\$ACTCTX"
     else
-      cell ci-pass FAIL "native rc=\$nat_rc: \$NFAIL\$NCTX\$GOCTX\$ACTCTX (act leg rc=\$ci_rc: \$(act_failure_context \$LOGD/ci.log))"
+      cell ci-pass FAIL "native rc=\$nat_rc: \$NFAIL\$NCTX\$GOCTX\$ACTCTX (act leg act_result=\$act_result rc=\$ci_rc: \$(act_failure_context \$LOGD/ci.log))"
     fi
   fi
 fi
