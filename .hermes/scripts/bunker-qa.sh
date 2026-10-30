@@ -246,6 +246,87 @@ qa_destroy_agent() {
   return 0
 }
 
+# ─── tick-death watchdog (QA-BUNKER-75) ─────────────────────────────────────
+# launch() and run() persist a small controller-side lock as soon as the bunker
+# returns an agent id.  The lock binds that agent to the process that owns the
+# QA tick (BUNKER_QA_TICK_PID, or the invoking shell's PPID for compatibility).
+# A detached qa-run.sh cannot tell whether its controller died, so collect()
+# checks this lock before its first SSH probe.  Dead locks are also swept before
+# every new battery starts.  The lock directory is deliberately outside the
+# repository and mode 0700: it contains only lifecycle metadata, never secrets.
+qa_orphan_lock_dir() {
+  local dir="${BUNKER_QA_ORPHAN_LOCK_DIR:-/tmp/bunker-qa-orphans}"
+  mkdir -p "$dir" 2>/dev/null || return 1
+  chmod 700 "$dir" 2>/dev/null || return 1
+  printf '%s\n' "$dir"
+}
+
+qa_agent_lock_path() {
+  local id="$1" dir
+  dir=$(qa_orphan_lock_dir) || return 1
+  printf '%s/%s.lock\n' "$dir" "$id"
+}
+
+qa_write_agent_lock() { # <agent-id> <tick-pid> <server> <evidence> -> path
+  local id="$1" tick_pid="${2:-${BUNKER_QA_TICK_PID:-$PPID}}" server="$3" evidence="$4" path tmp
+  [[ "$id" =~ ^[a-z0-9-]{1,64}$ ]] || return 1
+  [[ "$tick_pid" =~ ^[0-9]+$ ]] || return 1
+  path=$(qa_agent_lock_path "$id") || return 1
+  tmp=$(mktemp "${path}.tmp.XXXXXX") || return 1
+  umask 077
+  printf 'format=1\nagent=%s\ntick_pid=%s\nserver=%s\nevidence=%s\ncreated=%s\n' \\
+    "$id" "$tick_pid" "$server" "$evidence" "$(date -u +%FT%TZ)" > "$tmp" || { rm -f "$tmp"; return 1; }
+  chmod 600 "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
+  mv -f "$tmp" "$path" || return 1
+  printf '%s\n' "$path"
+}
+
+qa_remove_agent_lock() {
+  local id="$1" path
+  path=$(qa_agent_lock_path "$id") || return 1
+  rm -f "$path"
+}
+
+qa_tick_pid_alive() {
+  local pid="$1"
+  [[ "$pid" =~ ^[1-9][0-9]*$ ]] && kill -0 "$pid" 2>/dev/null
+}
+
+qa_lock_value() { # <lock> <key>
+  sed -n "s/^$2=//p" "$1" 2>/dev/null | head -1
+}
+
+# Destroy dead-tick agents without using agent_ssh.  The bunker CLI talks to
+# the daemon directly, so this remains safe even when the agent's SSH endpoint
+# is already gone.  A lock is retained when the daemon cannot prove absence;
+# the next battery gets another chance instead of silently losing the handle.
+qa_cleanup_orphan_agents() {
+  local dir lock agent tick_pid server listed destroy_rc list_rc
+  dir=$(qa_orphan_lock_dir) || return 0
+  for lock in "$dir"/*.lock; do
+    [ -f "$lock" ] || continue
+    agent=$(qa_lock_value "$lock" agent)
+    tick_pid=$(qa_lock_value "$lock" tick_pid)
+    server=$(qa_lock_value "$lock" server)
+    [[ "$agent" =~ ^[a-z0-9-]{1,64}$ ]] || continue
+    [[ "$server" != *$'\n'* ]] || continue
+    qa_tick_pid_alive "$tick_pid" && continue
+    echo "WATCHDOG: reaping tick-death-orphan agent=$agent server=$server tick_pid=$tick_pid" >&2
+    destroy_rc=0
+    bunker destroy "$agent" --server "$server" >/dev/null 2>&1 || destroy_rc=$?
+    listed=""
+    list_rc=0
+    listed=$(bunker list --server "$server" 2>/dev/null) || list_rc=$?
+    if [ "$list_rc" -eq 0 ] && ! printf '%s\n' "$listed" | grep -qF -- "$agent"; then
+      rm -f "$lock"
+      echo "WATCHDOG: orphan reaped agent=$agent destroy_rc=$destroy_rc" >&2
+    else
+      echo "WATCHDOG: orphan remains agent=$agent destroy_rc=$destroy_rc list_rc=$list_rc — retaining lock" >&2
+    fi
+  done
+  return 0
+}
+
 spawn_agent() {
   # QA-HERMES-CANOPY-16 (2026-09-21): an agent that spawns server-side but is
   # unreachable for the launch is an ORPHAN (holds a slot until TTL, no
@@ -296,6 +377,15 @@ spawn_agent() {
     # Reachability gate: the agent must answer ssh BEFORE it is handed off,
     # so an unreachable spawn never leaks to the caller as a "success".
     if timeout "${BUNKER_QA_PROBE_TIMEOUT:-180}" ssh -p "$(agent_ssh_port "$id")" -i "$BUNKER_QA_HOST_KEY" -i "$HOME/.bunker/keys/$id" -o IdentitiesOnly=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=no -o BatchMode=yes "bunker-$id@$SERVER" true 2>/dev/null; then
+      # QA-BUNKER-75: bind the spawned agent to the controller tick before
+      # handing the id to run()/launch().  If the controller dies between
+      # spawn and collect, the lock is the durable evidence needed to reap it.
+      if ! qa_write_agent_lock "$id" "${BUNKER_QA_TICK_PID:-$PPID}" "$SERVER" "${EVIDENCE:-}" >/dev/null; then
+        echo "spawn attempt $attempt could not write tick watchdog lock for agent $id — destroying before retry" >&2
+        bunker destroy "$id" --server "$SERVER" >/dev/null 2>&1 || true
+        [ "$attempt" -lt 3 ] && sleep "${BUNKER_QA_RETRY_SLEEP:-5}"
+        continue
+      fi
       echo "$id"
       return 0
     fi
@@ -2854,6 +2944,9 @@ run() {
   # Deterministic-failure preflights (config / ssh / capacity) — SHARED with
   # launch(); see preflights() for the record-one-FAIL-row + rc=2 contract.
   preflights
+  # QA-BUNKER-75: reclaim agents whose detached controller died before collect.
+  # This runs before spawn so an abandoned slot cannot block the new battery.
+  qa_cleanup_orphan_agents
   # QA-BUNKER-60 (2026-10-07): repo-weight preflight — WARN (stderr only; no
   # evidence file is open here yet) when the workspace is heavy AND the
   # resolved slice is still the 2-CPU default, BEFORE a spawn burns a TTL on it.
@@ -2989,6 +3082,9 @@ launch() {
 
   log "QA LAUNCH project: $PROJ — detached battery on $SERVER (ttl $TTL)"
   preflights
+  # QA-BUNKER-75: reclaim agents whose detached controller died before collect.
+  # This runs before spawn so an abandoned slot cannot block the new battery.
+  qa_cleanup_orphan_agents
   # QA-BUNKER-60 (2026-10-07): repo-weight preflight — WARN (stderr only; no
   # evidence file is open here yet) when the workspace is heavy AND the
   # resolved slice is still the 2-CPU default, BEFORE a spawn burns a TTL on it.
