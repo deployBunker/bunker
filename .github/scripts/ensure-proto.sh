@@ -26,6 +26,9 @@
 # Env seams (TEST-ONLY overrides; CI uses the defaults):
 #   PROTO_SKIP_MAX_ATTEMPTS   retry ceiling       (default 5)
 #   PROTO_SKIP_BACKOFF_BASE   backoff base secs   (default 3)
+#   PROTO_STAMP_ENFORCE       0 = do not fail the job when a generation it had to
+#                             run leaves proto/ (code or stamp) different from the
+#                             committed tree (default 1 — see step 2b)
 
 set -euo pipefail
 
@@ -37,10 +40,24 @@ MAX_ATTEMPTS="${PROTO_SKIP_MAX_ATTEMPTS:-5}"
 BACKOFF_BASE="${PROTO_SKIP_BACKOFF_BASE:-3}"
 
 # ── 1. Freshness check: is `buf generate` needed at all? ──
-# Root-anchored input set: tracked *.proto plus the buf config at any level.
+# Root-anchored input set: tracked *.proto plus the buf configuration files.
+#
+# QA-BUNKER-25: this set MUST NOT be a bare '*.yaml' glob. That swept every
+# tracked YAML path into the hash — .gitreins/config.yaml, .gitreins/tasks.yaml,
+# .vfs/manifest.yaml, config.example.yaml, examples/*.yaml,
+# internal/fleet/inventory.yaml, even a vendored project's
+# .pre-commit-config.yaml — so ADDING OR REMOVING any YAML anywhere invalidated
+# the stamp and re-armed `buf generate` for a proto tree that had not changed.
+# On a JIT agent that is a BSR network dependency for a step that is a no-op:
+# `buf generate` against the committed generated code produces ZERO diffs
+# (verified 2026-10-22 with buf 1.72.0 + the remote plugins pinned in
+# buf.gen.yaml). The stamp itself had drifted (last written 608f175b, before
+# internal/fleet/inventory.yaml landed and bunker.proto changed), so every CI
+# run and every fresh-system pass was regenerating; the stamp now covers only
+# proto + buf config (2 files) and ENFORCE_STAMP below stops that drift.
 # Cache workflows restore proto/bunker/v1 generated files keyed on the same
 # input hash (hashFiles in ci.yml); this stamp is the offline twin of that.
-RAW_INPUTS="$(git -c safe.directory='*' ls-files -- '*.proto' '*.yaml' || true)"
+RAW_INPUTS="$(git -c safe.directory='*' ls-files -- '*.proto' 'buf.yaml' 'buf.gen.yaml' '**/buf.yaml' '**/buf.gen.yaml' || true)"
 
 if [ -z "${RAW_INPUTS}" ]; then
   echo "::error::no tracked proto/buf inputs found — proto step cannot verify freshness"
@@ -76,6 +93,23 @@ while [ "${attempt}" -le "${MAX_ATTEMPTS}" ]; do
   if out="$(buf generate 2>&1)"; then
     printf '%s\n' "${CACHE_KEY}" > "${STAMP_FILE}"
     echo "proto: buf generate OK — stamped ${STAMP_FILE} = ${CACHE_KEY}"
+    # ── 2b. Stamp enforcement (QA-BUNKER-25) ──
+    # Reaching here means the checked-out tree was STALE: either the generated
+    # code or the stamp was not refreshed with the proto change. Committed
+    # generated code is what the build compiles, so the drift must be fixed in
+    # the commit, not papered over here — a stale stamp re-arms `buf generate`
+    # (a BSR network dependency) on EVERY later run, which is exactly how a
+    # fresh JIT agent came to depend on the network for a no-op step. Fail
+    # loudly and name the one command that fixes it. Escape hatch:
+    # PROTO_STAMP_ENFORCE=0 for a deliberate cold-cache experiment.
+    if [ "${PROTO_STAMP_ENFORCE:-1}" = "1" ]; then
+      drift="$(git -c safe.directory='*' status --porcelain -- proto/ 2>/dev/null || true)"
+      if [ -n "${drift}" ]; then
+        echo "::error::proto generation drifted from the committed tree — run 'bash .github/scripts/ensure-proto.sh' locally and commit the refreshed ${STAMP_FILE} with your proto change (PROTO_STAMP_ENFORCE=0 skips this check)"
+        printf '%s\n' "${drift}"
+        exit 1
+      fi
+    fi
     echo "proto: NEEDED-and-DONE"
     exit 0
   fi
