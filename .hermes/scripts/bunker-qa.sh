@@ -305,22 +305,85 @@ qa_lock_value() { # <lock> <key>
   sed -n "s/^$2=//p" "$1" 2>/dev/null | head -1
 }
 
+qa_watchdog_ttl_seconds() { # <ttl> -> seconds; invalid values are fail-closed
+  local ttl="${1:-${BUNKER_QA_ORPHAN_TTL:-2h}}" n unit
+  n="${ttl%[smhd]}"; unit="${ttl#$n}"
+  [[ "$n" =~ ^[1-9][0-9]*$ ]] || return 1
+  case "$unit" in
+    s) printf '%s\n' "$n" ;;
+    m) printf '%s\n' "$((n * 60))" ;;
+    h) printf '%s\n' "$((n * 3600))" ;;
+    d) printf '%s\n' "$((n * 86400))" ;;
+    *) return 1 ;;
+  esac
+}
+
+qa_lock_age_seconds() { # <lock> <now-epoch> -> age; invalid timestamps fail closed
+  local lock="$1" now="$2" created created_epoch
+  created=$(qa_lock_value "$lock" created)
+  [ -n "$created" ] || return 1
+  created_epoch=$(date -u -d "$created" +%s 2>/dev/null) || return 1
+  [ "$created_epoch" -le "$now" ] || return 1
+  printf '%s\n' "$((now - created_epoch))"
+}
+
+# Preserve the evidence before destroying an orphan. The command seam keeps the
+# watchdog testable without a live bunker; production copies the agent's logs
+# into the quarantine directory over SSH. A local evidence file is copied first
+# because it survives even when the agent's SSH endpoint died with the tick.
+qa_quarantine_orphan_evidence() { # <agent-id> <server> <evidence> -> destination
+  local id="$1" server="$2" evidence="${3:-}" root stamp destination
+  root="${BUNKER_QA_QUARANTINE_DIR:-/var/lib/bunker-qa/quarantine}"
+  stamp=$(date -u +%Y%m%dT%H%M%SZ)
+  destination="$root/${id}-${stamp}"
+  mkdir -p "$destination" 2>/dev/null || return 1
+  if [ -n "$evidence" ] && [ -f "$evidence" ]; then
+    cp -p "$evidence" "$destination/evidence.jsonl" 2>/dev/null || return 1
+  fi
+  if [ -n "${BUNKER_QA_QUARANTINE_CMD:-}" ]; then
+    "$BUNKER_QA_QUARANTINE_CMD" "$id" "$server" "$destination" "$evidence" || return 1
+  else
+    local port="${BUNKER_QA_SSH_PORT:-2223}"
+    timeout "${BUNKER_QA_QUARANTINE_TIMEOUT:-30}" ssh -p "$port" \
+      -i "$BUNKER_QA_HOST_KEY" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no \
+      -o BatchMode=yes "bunker-$id@$server" \
+      "set -eu; d=$(printf '%q' "$destination"); s=$(printf '%q' "/var/log/bunker-qa/$id"); mkdir -p \"\$d\"; found=0; for f in \"\$s\"/*.log; do [ -f \"\$f\" ] || continue; cp -p \"\$f\" \"\$d/\"; found=1; done; [ \"\$found\" -eq 1 ]" \
+      >/dev/null 2>&1 || return 1
+  fi
+  printf '%s\n' "$destination"
+}
+
+qa_orphan_lock_eligible() { # <lock> <now-epoch>: dead tick and older than watchdog TTL
+  local lock="$1" now="$2" tick_pid age ttl
+  tick_pid=$(qa_lock_value "$lock" tick_pid)
+  qa_tick_pid_alive "$tick_pid" && return 1
+  ttl=$(qa_watchdog_ttl_seconds) || return 1
+  age=$(qa_lock_age_seconds "$lock" "$now") || return 1
+  [ "$age" -ge "$ttl" ]
+}
+
 # Destroy dead-tick agents without using agent_ssh.  The bunker CLI talks to
 # the daemon directly, so this remains safe even when the agent's SSH endpoint
 # is already gone.  A lock is retained when the daemon cannot prove absence;
 # the next battery gets another chance instead of silently losing the handle.
 qa_cleanup_orphan_agents() {
-  local dir lock agent tick_pid server listed destroy_rc list_rc
+  local dir lock agent tick_pid server evidence listed destroy_rc list_rc now quarantine
   dir=$(qa_orphan_lock_dir) || return 0
+  now=$(date -u +%s)
   for lock in "$dir"/*.lock; do
     [ -f "$lock" ] || continue
     agent=$(qa_lock_value "$lock" agent)
     tick_pid=$(qa_lock_value "$lock" tick_pid)
     server=$(qa_lock_value "$lock" server)
+    evidence=$(qa_lock_value "$lock" evidence)
     [[ "$agent" =~ ^[a-z0-9-]{1,64}$ ]] || continue
     [[ "$server" != *$'\n'* ]] || continue
-    qa_tick_pid_alive "$tick_pid" && continue
+    qa_orphan_lock_eligible "$lock" "$now" || continue
     echo "WATCHDOG: reaping tick-death-orphan agent=$agent server=$server tick_pid=$tick_pid" >&2
+    quarantine=$(qa_quarantine_orphan_evidence "$agent" "$server" "$evidence") || {
+      echo "WATCHDOG: evidence preservation failed for agent=$agent — retaining lock and refusing destroy" >&2
+      continue
+    }
     destroy_rc=0
     bunker destroy "$agent" --server "$server" >/dev/null 2>&1 || destroy_rc=$?
     listed=""
@@ -328,9 +391,9 @@ qa_cleanup_orphan_agents() {
     listed=$(bunker list --server "$server" 2>/dev/null) || list_rc=$?
     if [ "$list_rc" -eq 0 ] && ! printf '%s\n' "$listed" | grep -qF -- "$agent"; then
       rm -f "$lock"
-      echo "WATCHDOG: orphan reaped agent=$agent destroy_rc=$destroy_rc" >&2
+      echo "WATCHDOG: orphan reaped agent=$agent destroy_rc=$destroy_rc evidence=$quarantine" >&2
     else
-      echo "WATCHDOG: orphan remains agent=$agent destroy_rc=$destroy_rc list_rc=$list_rc — retaining lock" >&2
+      echo "WATCHDOG: orphan remains agent=$agent destroy_rc=$destroy_rc list_rc=$list_rc evidence=$quarantine — retaining lock" >&2
     fi
   done
   return 0
@@ -3391,10 +3454,16 @@ PY
       orphan_server=$(qa_lock_value "$orphan_lock" server 2>/dev/null || true)
       [ -n "$orphan_server" ] || orphan_server="$server"
       orphan_tick_pid=$(qa_lock_value "$orphan_lock" tick_pid 2>/dev/null || true)
+      orphan_evidence=$(qa_lock_value "$orphan_lock" evidence 2>/dev/null || true)
+      orphan_quarantine=$(qa_quarantine_orphan_evidence "$agent" "$orphan_server" "$orphan_evidence" 2>/dev/null || true)
+      if [ -z "$orphan_quarantine" ]; then
+        abort_collect "tick-death-orphan: agent=$agent server=$orphan_server tick_pid=$orphan_tick_pid — evidence preservation failed; destroy refused and lock retained"
+        exit $?
+      fi
       orphan_destroy=0
       bunker destroy "$agent" --server "$orphan_server" >/dev/null 2>&1 || orphan_destroy=$?
       qa_remove_agent_lock "$agent" >/dev/null 2>&1 || true
-      abort_collect "tick-death-orphan: agent=$agent server=$orphan_server tick_pid=$orphan_tick_pid — orphan handling requested destroy (rc=$orphan_destroy); no agent communication attempted"
+      abort_collect "tick-death-orphan: agent=$agent server=$orphan_server tick_pid=$orphan_tick_pid — evidence=$orphan_quarantine; orphan handling requested destroy (rc=$orphan_destroy); no agent communication attempted"
       exit $?
       ;;
     2)

@@ -39,6 +39,10 @@ sed -n '/^qa_remove_agent_lock() {/,/^}$/p' "$HARNESS" >> "$TMPD/watchdog.sh"
 sed -n '/^qa_tick_pid_alive() {/,/^}$/p' "$HARNESS" >> "$TMPD/watchdog.sh"
 sed -n '/^qa_tick_watchdog_state() {/,/^}$/p' "$HARNESS" >> "$TMPD/watchdog.sh"
 sed -n '/^qa_lock_value() {/,/^}$/p' "$HARNESS" >> "$TMPD/watchdog.sh"
+sed -n '/^qa_watchdog_ttl_seconds() {/,/^}$/p' "$HARNESS" >> "$TMPD/watchdog.sh"
+sed -n '/^qa_lock_age_seconds() {/,/^}$/p' "$HARNESS" >> "$TMPD/watchdog.sh"
+sed -n '/^qa_quarantine_orphan_evidence() {/,/^}$/p' "$HARNESS" >> "$TMPD/watchdog.sh"
+sed -n '/^qa_orphan_lock_eligible() {/,/^}$/p' "$HARNESS" >> "$TMPD/watchdog.sh"
 sed -n '/^qa_cleanup_orphan_agents() {/,/^}$/p' "$HARNESS" >> "$TMPD/watchdog.sh"
 bash -n "$TMPD/watchdog.sh" || { echo "FAIL: watchdog helper extraction does not parse"; exit 1; }
 
@@ -52,9 +56,20 @@ case "$1" in
 esac
 STUB
 chmod +x "$TMPD/bin/bunker"
+cat > "$TMPD/bin/quarantine" <<'STUB'
+#!/usr/bin/env bash
+id="$1"; destination="$3"; evidence="$4"
+printf 'quarantine %s\n' "$id" >> "${BUNKER_LOG:?}"
+printf 'agent log for %s\n' "$id" > "$destination/agent.log"
+[ -z "$evidence" ] || cp -p "$evidence" "$destination/evidence-copy.jsonl"
+STUB
+chmod +x "$TMPD/bin/quarantine"
 : > "$TMPD/bunker.log"
 
 export BUNKER_QA_ORPHAN_LOCK_DIR="$TMPD/locks"
+export BUNKER_QA_QUARANTINE_DIR="$TMPD/quarantine"
+export BUNKER_QA_QUARANTINE_CMD="$TMPD/bin/quarantine"
+export BUNKER_QA_ORPHAN_TTL=2h
 export PATH="$TMPD/bin:$PATH"
 export BUNKER_LOG="$TMPD/bunker.log"
 
@@ -77,13 +92,28 @@ BUNKER_QA_ORPHAN_LOCK_DIR="$TMPD/locks" bash -c "source '$TMPD/watchdog.sh'; qa_
 check "dead tick is classified orphaned" 1 "$?"
 check "dead tick state is not accepted" 1 "$(BUNKER_QA_ORPHAN_LOCK_DIR="$TMPD/locks" bash -c "source '$TMPD/watchdog.sh'; qa_tick_watchdog_state dead-agent >/dev/null 2>&1; printf '%s' \$?")"
 
-# Cleanup path: dead lock is destroyed, then removed only after list proves absence.
+# Cleanup path: an old dead lock is quarantined, destroyed, then removed only
+# after list proves absence. The fresh lock proves TTL detection does not reap
+# an interrupted-but-recent launch.
 : > "$TMPD/bunker.log"
-BUNKER_QA_ORPHAN_LOCK_DIR="$TMPD/locks" bash -c "source '$TMPD/watchdog.sh'; qa_write_agent_lock cleanup-agent 999999 fixture-host '$TMPD/cleanup.jsonl' >/dev/null; qa_cleanup_orphan_agents" 2>"$TMPD/cleanup.err"
-check "cleanup destroys dead-tick agent" 1 "$(grep -c '^destroy cleanup-agent' "$TMPD/bunker.log")"
+printf '{"cell":"battery","status":"PASS"}\n' > "$TMPD/cleanup.jsonl"
+old_lock=$(BUNKER_QA_ORPHAN_LOCK_DIR="$TMPD/locks" bash -c "source '$TMPD/watchdog.sh'; qa_write_agent_lock cleanup-agent 999999 fixture-host '$TMPD/cleanup.jsonl'")
+old_time=$(date -u -d '3 hours ago' +%FT%TZ)
+sed -i "s/^created=.*/created=$old_time/" "$old_lock"
+BUNKER_QA_ORPHAN_LOCK_DIR="$TMPD/locks" bash -c "source '$TMPD/watchdog.sh'; qa_cleanup_orphan_agents" 2>"$TMPD/cleanup.err"
+check "cleanup destroys old dead-tick agent" 1 "$(grep -c '^destroy cleanup-agent' "$TMPD/bunker.log")"
+check "cleanup quarantines before destroy" 1 "$(grep -c '^quarantine cleanup-agent' "$TMPD/bunker.log")"
+quarantine_line=$(grep -n '^quarantine cleanup-agent' "$TMPD/bunker.log" | cut -d: -f1)
+destroy_line=$(grep -n '^destroy cleanup-agent' "$TMPD/bunker.log" | cut -d: -f1)
+check "evidence is preserved before destroy" yes "$([ "$quarantine_line" -lt "$destroy_line" ] && echo yes || echo no)"
+check "quarantined evidence file exists" yes "$(find "$TMPD/quarantine" -name agent.log -type f | grep -q . && echo yes || echo no)"
 check "cleanup lists after destroy" 1 "$(grep -c '^list ' "$TMPD/bunker.log")"
 check "cleanup removes reaped lock" no "$([ -f "$TMPD/locks/cleanup-agent.lock" ] && echo yes || echo no)"
 contains "cleanup reason is named" "tick-death-orphan" "$(cat "$TMPD/cleanup.err")"
+recent_lock=$(BUNKER_QA_ORPHAN_LOCK_DIR="$TMPD/locks" bash -c "source '$TMPD/watchdog.sh'; qa_write_agent_lock recent-agent 999999 fixture-host '$TMPD/recent.jsonl'")
+: > "$TMPD/bunker.log"
+BUNKER_QA_ORPHAN_LOCK_DIR="$TMPD/locks" bash -c "source '$TMPD/watchdog.sh'; qa_cleanup_orphan_agents"
+check "recent dead tick is protected by TTL" 0 "$(grep -c '^destroy recent-agent' "$TMPD/bunker.log" || true)"
 
 # Source-level wiring guards the call sites that the helper-only tests cannot prove.
 source_text=$(cat "$HARNESS")
