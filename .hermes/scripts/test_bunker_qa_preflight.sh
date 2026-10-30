@@ -52,6 +52,11 @@ for fn in qa_target_preflight qa_disk_preflight qa_run_summary preflights; do
   grep -q "^${fn}() {" "$TMPD/fns.sh" || { echo "FAIL: could not extract ${fn} from $HARNESS"; exit 1; }
 done
 grep -q '^}$' "$TMPD/fns.sh" || { echo "FAIL: extraction unbalanced"; exit 1; }
+# QA-BUNKER-47 launch-record staging helpers (extracted separately: their absence
+# is a GUARD failure reported by section (g) under its own name, not a suite-wide
+# extraction abort).
+sed -n '/^qa_launch_meta_reset() {/,/^}$/p' "$HARNESS" >> "$TMPD/fns.sh"
+sed -n '/^qa_launch_meta_write() {/,/^}$/p' "$HARNESS" >> "$TMPD/fns.sh"
 
 # ── fixtures ──
 # config with ONE configured host (4-space indent, the shape ~/.bunker/config.yaml

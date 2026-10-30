@@ -3074,14 +3074,42 @@ run() {
   echo "EVIDENCE=$EVIDENCE"
 }
 
+# ─── QA-BUNKER-47 (2026-10-30): launch-record (.meta) staging ───
+# $EVIDENCE.meta is collect()'s ONLY pointer to the spawned agent, and two
+# conflicting requirements decide WHEN it may exist:
+#   * TR-085: a launch killed mid-flight (tool cap, SIGTERM, crash) must leave a
+#     record behind, or collect falls back to whatever STALE record the path
+#     already held and probes a stranger's agent id.
+#   * QA-BUNKER-47: a run refused BEFORE spawn (config/ssh/reachability rc=2)
+#     must leave NO launch record. The old prologue wrote one unconditionally,
+#     so a follow-up collect graded a healthy refusal as "launch was killed
+#     before the agent id was recorded" — a crash story for a run that never
+#     spawned anything, and exactly the shape TR-085 warns about.
+# Resolution: reset the path first (kills the stale record), then write the
+# record only AFTER preflights pass, stamped with a phase= header so collect can
+# tell a spawn-time kill (phase=spawning, agent= still empty) from a completed
+# spawn. Phase values: spawning | running | launched.
+qa_launch_meta_reset() { # <meta> — drop a PREVIOUS run's record at this path
+  rm -f "${1:?qa_launch_meta_reset: meta path required}"
+}
+
+qa_launch_meta_write() { # <meta> <evidence> <phase> <agent> <server> <keep> <project> [launched]
+  local meta="${1:?qa_launch_meta_write: meta path required}" evidence="${2:-}" phase="${3:-}"
+  local agent="${4:-}" server="${5:-}" keep="${6:-0}" project="${7:-}"
+  local launched="${8:-$(date -u +%FT%TZ)}"
+  printf 'agent=%s\nserver=%s\nevidence=%s\nlaunched=%s\nkeep=%s\nproject=%s\nphase=%s\n' \
+    "$agent" "$server" "$evidence" "$launched" "$keep" "$project" "$phase" > "$meta"
+}
+
 # ─── launch — PHASE A: preflights + spawn + sync + START the battery DETACHED ───
 # Returns as soon as `qa-run.sh` is running on the agent — it NEVER waits on a
 # cell. This is what keeps every Hermes tool call far under the ~420s terminal
 # cap that killed the synchronous battery (QA-HERMES-CANOPY-8).
 # Side effects: spawns the temp agent (it OUTLIVES this call by design — collect
 # or its TTL tears it down), syncs the repo, writes $EVIDENCE.meta (agent=,
-# server=, evidence=, launched=, keep=) and the ONE launch cell that makes a
-# 0-byte evidence file impossible.
+# server=, evidence=, launched=, keep=, project=, phase=) and the ONE launch
+# cell that makes a 0-byte evidence file impossible. The record is written only
+# once preflights pass — a pre-spawn refusal leaves none (QA-BUNKER-47).
 launch() {
   local repo="${1:?usage: bunker-qa.sh launch <repo-dir> [--keep]}"
   shift
@@ -3095,14 +3123,14 @@ launch() {
   # leave NO record at all — the meta file was written only on the success path,
   # so `collect` fell back to the shared default evidence path and probed whatever
   # agent id that STALE meta named (dogfood 2026-09-20: collect probed a 2-day-old
-  # agent while the real one ran on unrecorded). Write an EARLY record now, and
-  # keep it up to date as the id becomes known. collect() refuses a mismatch.
+  # agent while the real one ran on unrecorded).
+  # QA-BUNKER-47: the record is now staged — RESET here (a previous run's record
+  # at this path must never survive into this one) and WRITTEN only after
+  # preflights pass, so a pre-spawn refusal (config/ssh/reachability rc=2) leaves
+  # no launch record at all instead of an empty-agent= one that collect graded
+  # "launch was killed before the agent id was recorded".
   local meta="$EVIDENCE.meta"
-  write_meta() { # agent server keep project
-    printf 'agent=%s\nserver=%s\nevidence=%s\nlaunched=%s\nkeep=%s\nproject=%s\n' \
-      "${1:-}" "${2:-}" "$EVIDENCE" "${3:-$(date -u +%FT%TZ)}" "${4:-0}" "${5:-$PROJ}" > "$meta"
-  }
-  write_meta "" "$SERVER" "$(date -u +%FT%TZ)" 0 "$PROJ"
+  qa_launch_meta_reset "$meta"
 
   # Traps + evidence truncate MUST precede the repo sanity check: a
   # stand-in-workdir dispatch (no .git — QA-GITREINS-POC-QA-1, 2026-09-17)
@@ -3131,6 +3159,13 @@ launch() {
   # resolved slice is still the 2-CPU default, BEFORE a spawn burns a TTL on it.
   qa_preflight_repo_weight "$repo"
 
+  # QA-BUNKER-47: preflights PASSED — this is the first point where a spawn can
+  # happen, so record the attempt now (phase=spawning, agent= still empty) and
+  # keep it current as the id becomes known. A kill inside spawn_agent therefore
+  # still leaves collect a record it can trust (TR-085), while a preflight
+  # refusal above left none.
+  qa_launch_meta_write "$meta" "$EVIDENCE" spawning "" "$SERVER" "$keep" "$PROJ"
+
   local spawn_err
   spawn_err=$(mktemp)
   agent=$(spawn_agent 2>"$spawn_err") || {
@@ -3150,7 +3185,7 @@ launch() {
   BUNKER_QA_AGENT="$agent"
   # TR-085: record the real agent id the moment it is known, so a kill anywhere
   # after this point leaves collect() a CORRECT id to poll (or destroy).
-  write_meta "$agent" "$SERVER" "$(date -u +%FT%TZ)" "$keep" "$PROJ"
+  qa_launch_meta_write "$meta" "$EVIDENCE" running "$agent" "$SERVER" "$keep" "$PROJ"
   # NO destroy trap here ON PURPOSE: the agent must outlive this call — that is
   # the entire point of the split. collect() destroys it once the battery has
   # finished; otherwise its TTL does.
@@ -3203,7 +3238,7 @@ launch() {
   local launched meta script_bytes
   launched=$(date -u +%FT%TZ)
   script_bytes=$(printf '%s' "$launch_out" | sed -n 's/^SCRIPT_BYTES=//p' | tail -1)
-  write_meta "$agent" "$SERVER" "$launched" "$keep" "$PROJ"
+  qa_launch_meta_write "$meta" "$EVIDENCE" launched "$agent" "$SERVER" "$keep" "$PROJ" "$launched"
   # QA-BUNKER-60 (2026-10-07): the evidence names its slice — a 3h battery is
   # unreadable after the fact without knowing whether it ran on the 2-CPU
   # default or a bumped quota. agent= stays first (evidence contract).
@@ -3288,15 +3323,34 @@ collect() {
     exit 0
   fi
 
-  local agent="" server="" ev="" keep=0
+  local agent="" server="" ev="" keep=0 phase=""
   agent=$(sed -n 's/^agent=//p' "$meta" | head -1)
   server=$(sed -n 's/^server=//p' "$meta" | head -1)
   ev=$(sed -n 's/^evidence=//p' "$meta" | head -1)
+  phase=$(sed -n 's/^phase=//p' "$meta" | head -1)
   [ "$(sed -n 's/^keep=//p' "$meta" | head -1)" = "1" ] && keep=1
   [ -n "$server" ] && SERVER="$server"
   [ -n "$ev" ] && [ "$ev" != "$evidence" ] && echo "WARN: launch record names evidence=$ev but collect was asked for $evidence (using $evidence)" >&2
   if [ -z "$agent" ]; then
-    abort_collect "launch record $meta has no agent= line — cannot poll the battery (the launch was killed before the agent id was recorded; check \`bunker list --server $server\` for an orphan and destroy it)"
+    # QA-BUNKER-47: an empty agent= is NOT one story. launch() writes the record
+    # only after preflights pass and stamps the phase, so:
+    #   phase=spawning  -> the run reached spawn and died there (TR-085 shape:
+    #                      the tool cap killed spawn before the id was recorded);
+    #   phase=preflight*-> defensive: a record stamped by a pre-spawn refusal —
+    #                      no agent ever existed, so there is nothing to collect
+    #                      and NOTHING was killed;
+    #   no phase=       -> a legacy/foreign record; keep the historical wording.
+    case "$phase" in
+      spawning)
+        abort_collect "launch record $meta is phase=spawning with no agent= line — the launch died INSIDE spawn, before the agent id was recorded; check \`bunker list --server $server\` for an orphan and destroy it"
+        ;;
+      preflight*)
+        abort_collect "launch record $meta is phase=$phase — the run was REFUSED before spawn (no agent was ever created, nothing to collect); the verdict is the pre-spawn FAIL row in $evidence"
+        ;;
+      *)
+        abort_collect "launch record $meta has no agent= line — cannot poll the battery (the launch was killed before the agent id was recorded; check \`bunker list --server $server\` for an orphan and destroy it)"
+        ;;
+    esac
     exit $?
   fi
   # TR-085: the meta names an agent that is not OURS. A stale meta from an earlier
