@@ -291,13 +291,20 @@ qa_tick_pid_alive() {
   [[ "$pid" =~ ^[1-9][0-9]*$ ]] && kill -0 "$pid" 2>/dev/null
 }
 
-qa_tick_watchdog_state() { # <agent-id>: 0 = alive/legacy, 1 = dead tick, 2 = malformed lock
-  local id="$1" path tick_pid
+qa_tick_watchdog_state() { # <agent-id>: 0=alive/legacy, 1=expired dead, 2=invalid, 3=recent dead
+  local id="$1" path tick_pid now age ttl
   path=$(qa_agent_lock_path "$id") || return 2
-  [ -f "$path" ] || return 0 # pre-watchdog launch records remain collectible
+  # No controller-side lock is the explicitly supported legacy shape. Older
+  # launch records remain collectible because there is no tick ownership to
+  # evaluate; only a present lock can impose the watchdog policy.
+  [ -f "$path" ] || return 0
   tick_pid=$(sed -n 's/^tick_pid=//p' "$path" 2>/dev/null | head -1)
   [[ "$tick_pid" =~ ^[1-9][0-9]*$ ]] || return 2
   qa_tick_pid_alive "$tick_pid" && return 0
+  now=$(date -u +%s)
+  ttl=$(qa_watchdog_ttl_seconds) || return 2
+  age=$(qa_lock_age_seconds "$path" "$now") || return 2
+  [ "$age" -lt "$ttl" ] && return 3
   return 1
 }
 
@@ -3354,7 +3361,7 @@ collect() {
     duration_ms=$(( $(date +%s%3N) - attempt_started_ms ))
     finished_at=$(date -u +%FT%T.%3NZ)
     printf '{"cell":"collect","status":"%s","detail":"%s","host":"%s","collect_attempt":1,"attempt_started":"%s","attempt_finished":"%s","duration_ms":%s,"ts":"%s"}\n' \
-      "$row_status" "$(printf '%s' "$row_detail" | tr '\\n' ' ' | cut -c1-300)" "$SERVER" \
+      "$row_status" "$(printf '%s' "$row_detail" | tr '\n' ' ' | cut -c1-300)" "$SERVER" \
       "$attempt_started_at" "$finished_at" "$duration_ms" "$(date -u +%FT%TZ)" >> "$evidence"
   }
 
@@ -3368,9 +3375,9 @@ collect() {
     finished_at=$(date -u +%FT%T.%3NZ)
     append_collect_row FAIL "$reason"
     printf '{"cell":"harness-failure","status":"INFO","detail":"harness abort after one failed collect: %s","attributed_host":"%s","host":"%s","collect_attempt":1,"attempt_started":"%s","attempt_finished":"%s","duration_ms":%s,"ts":"%s"}\n' \
-      "$(printf '%s' "$reason" | tr '\\n' ' ' | cut -c1-300)" "$SERVER" "$SERVER" \
+      "$(printf '%s' "$reason" | tr '\n' ' ' | cut -c1-300)" "$SERVER" "$SERVER" \
       "$attempt_started_at" "$finished_at" "$duration_ms" "$(date -u +%FT%TZ)" >> "$evidence"
-    echo "COLLECT-ABORT host=$SERVER reason=$(printf '%s' "$reason" | tr '\\n' ' ' | cut -c1-240)" >&2
+    echo "COLLECT-ABORT host=$SERVER reason=$(printf '%s' "$reason" | tr '\n' ' ' | cut -c1-240)" >&2
     return 2
   }
 
@@ -3462,12 +3469,21 @@ PY
       fi
       orphan_destroy=0
       bunker destroy "$agent" --server "$orphan_server" >/dev/null 2>&1 || orphan_destroy=$?
-      qa_remove_agent_lock "$agent" >/dev/null 2>&1 || true
-      abort_collect "tick-death-orphan: agent=$agent server=$orphan_server tick_pid=$orphan_tick_pid — evidence=$orphan_quarantine; orphan handling requested destroy (rc=$orphan_destroy); no agent communication attempted"
+      if [ "$orphan_destroy" -eq 0 ]; then
+        qa_remove_agent_lock "$agent" >/dev/null 2>&1 || true
+        orphan_lock_detail="lock removed after destroy"
+      else
+        orphan_lock_detail="lock retained after destroy failure"
+      fi
+      abort_collect "tick-death-orphan: agent=$agent server=$orphan_server tick_pid=$orphan_tick_pid — evidence=$orphan_quarantine; orphan handling requested destroy (rc=$orphan_destroy, $orphan_lock_detail); no agent communication attempted"
       exit $?
       ;;
     2)
       abort_collect "invalid tick watchdog lock for agent=$agent — refusing agent communication"
+      exit $?
+      ;;
+    3)
+      abort_collect "recent tick-death-orphan: agent=$agent server=$server — lock is younger than BUNKER_QA_ORPHAN_TTL=$BUNKER_QA_ORPHAN_TTL; retry collect later, preserving lock and refusing agent communication"
       exit $?
       ;;
   esac
