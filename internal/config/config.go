@@ -56,21 +56,43 @@ const (
 	// namespace with loopback only. All outbound is lost BY DESIGN (docker
 	// image pulls fail in this mode); unix-socket control is unchanged.
 	NetworkModeSystemd = netmode.ModeSystemd
+	// NetworkModeProcVis is the canonical `procvis` mode (NET-BUNKER-011):
+	// the agent's systemd units get ProtectProc=invisible, providing hidepid=2
+	// process visibility isolation inside the unit's mount namespace.
+	NetworkModeProcVis = netmode.ModeProcVis
+	// NetworkModeHidepid is the configuration spelling for the procvis
+	// process-visibility isolation mode. It is normalized to procvis before
+	// reaching the agent spawn path, so the existing hidepid implementation is
+	// used without creating a second systemd property vocabulary.
+	NetworkModeHidepid = "hidepid"
 	// NetworkModeEnv is the env override between the per-spawn flag and the
 	// config global (the GAP-116 precedence shape: flag > env > config >
 	// default).
 	NetworkModeEnv = "BUNKERD_NETWORK_MODE"
 )
 
-// ValidNetworkModes lists the accepted network-isolation mode names — the
-// netmode vocabulary, verbatim. Display/error order follows netmode's slice.
+// ValidNetworkModes lists the accepted network-isolation mode names. The
+// canonical vocabulary comes from netmode; hidepid is retained here as the
+// configuration alias for the procvis implementation.
 func ValidNetworkModes() []string {
-	return netmode.ValidModes()
+	modes := netmode.ValidModes()
+	return append(modes, NetworkModeHidepid)
 }
 
-// ValidNetworkMode reports whether name is an implemented mode.
+// ValidNetworkMode reports whether name is an implemented mode or the hidepid
+// configuration alias for procvis.
 func ValidNetworkMode(name string) bool {
-	return netmode.ValidMode(name)
+	return netmode.ValidMode(name) || strings.TrimSpace(name) == NetworkModeHidepid
+}
+
+// canonicalNetworkMode maps the config-facing hidepid spelling to the
+// procvis implementation name used by the agent spawn path.
+func canonicalNetworkMode(name string) string {
+	name = strings.TrimSpace(name)
+	if name == NetworkModeHidepid {
+		return NetworkModeProcVis
+	}
+	return name
 }
 
 // errUnknownNetworkMode builds the shared unknown-mode error (same shape as
@@ -94,13 +116,13 @@ func (c *Config) ResolveNetworkMode(flagMode string) (string, error) {
 		if !ValidNetworkMode(m) {
 			return "", fmt.Errorf("--network-mode: %w", errUnknownNetworkMode(m))
 		}
-		return m, nil
+		return canonicalNetworkMode(m), nil
 	}
 	if m := strings.TrimSpace(os.Getenv(NetworkModeEnv)); m != "" {
 		if !ValidNetworkMode(m) {
 			return "", fmt.Errorf("%s: %w", NetworkModeEnv, errUnknownNetworkMode(m))
 		}
-		return m, nil
+		return canonicalNetworkMode(m), nil
 	}
 	if c.Agent.NetworkMode == "" {
 		return netmode.DefaultMode, nil
@@ -108,7 +130,7 @@ func (c *Config) ResolveNetworkMode(flagMode string) (string, error) {
 	if !ValidNetworkMode(c.Agent.NetworkMode) {
 		return "", fmt.Errorf("agent.network_mode: %w", errUnknownNetworkMode(c.Agent.NetworkMode))
 	}
-	return c.Agent.NetworkMode, nil
+	return canonicalNetworkMode(c.Agent.NetworkMode), nil
 }
 
 // ProcVisProcGroupEnv is the env override (the flag tier is per-spawn proc
@@ -910,10 +932,11 @@ type AgentConfig struct {
 	PortRangePerAgent uint32 `mapstructure:"port_range_per_agent"`
 	// NetworkMode is the daemon-wide DEFAULT network-isolation mode
 	// (NET-BUNKER-010) new spawns resolve to when the spawn request does not
-	// name one: "shared" (the declared default, spec §5.1) or "systemd"
-	// (NET-BUNKER-002, PrivateNetwork=yes on the dockerd unit). Empty =
-	// unset = the built-in default (netmode.DefaultMode), which keeps every
-	// spawn byte-identical to pre-surface behavior. Per-agent selection
+	// name one: "shared" (the declared default, spec §5.1), "systemd"
+	// (NET-BUNKER-002, PrivateNetwork=yes on the dockerd unit), or "hidepid"
+	// (NET-BUNKER-011, the config alias for procvis/ProtectProc=invisible).
+	// Empty = unset = the built-in default (netmode.DefaultMode), which keeps
+	// every spawn byte-identical to pre-surface behavior. Per-agent selection
 	// rides SpawnAgentRequest.network_mode; precedence flag > env
 	// (BUNKERD_NETWORK_MODE) > this config > default via
 	// Config.ResolveNetworkMode. An unknown value fails config Validate
