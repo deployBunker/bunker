@@ -9,18 +9,30 @@ import (
 	"sync"
 )
 
+const sharedNamespace = "shared"
+
+// namespacePool holds the allocator state for one network namespace. Port
+// numbers are scoped by the kernel to a netns, so every namespace gets its own
+// copy of the configured pool; the shared namespace retains the legacy global
+// behavior.
+type namespacePool struct {
+	allocated map[string]uint32
+	free      []uint32
+}
+
 // PortAllocator manages per-agent port range assignment from a configured pool.
 // The full range [start, end] is divided into sub-ranges of size rangeSize.
-// Each agent gets exactly one sub-range.
+// Each agent gets exactly one sub-range in its network namespace. Two agents
+// in different namespaces may therefore hold the same port range safely.
 type PortAllocator struct {
 	mu        sync.Mutex
 	start     uint32
 	end       uint32
 	rangeSize uint32
-	// allocated tracks agentID → assigned sub-range start port
-	allocated map[string]uint32
-	// free is a stack of free sub-range start ports
-	free []uint32
+	numRanges uint32
+	// namespaces tracks one independent pool per netns. Legacy methods use
+	// sharedNamespace, preserving their original global-pool behavior.
+	namespaces map[string]*namespacePool
 }
 
 // NewPortAllocator creates a new PortAllocator.
@@ -42,78 +54,117 @@ func NewPortAllocator(start, end, rangeSize uint32) (*PortAllocator, error) {
 	}
 
 	pa := &PortAllocator{
-		start:     start,
-		end:       end,
-		rangeSize: rangeSize,
-		allocated: make(map[string]uint32),
-		free:      make([]uint32, 0, numRanges),
+		start:      start,
+		end:        end,
+		rangeSize:  rangeSize,
+		numRanges:  numRanges,
+		namespaces: make(map[string]*namespacePool),
 	}
-
-	// Pre-populate free list in reverse order so the first allocated
-	// range starts at 'start'.
-	for i := numRanges; i > 0; i-- {
-		rangeStart := start + (i-1)*rangeSize
-		pa.free = append(pa.free, rangeStart)
-	}
-
+	// Create the legacy shared namespace eagerly. Additional netns pools are
+	// created lazily when an isolated agent first requests a range.
+	pa.namespaces[sharedNamespace] = newNamespacePool(start, rangeSize, numRanges)
 	return pa, nil
 }
 
-// Allocate assigns a free port sub-range to the given agentID.
-// Returns (rangeStart, rangeEnd, error).
+func newNamespacePool(start, rangeSize, numRanges uint32) *namespacePool {
+	pool := &namespacePool{
+		allocated: make(map[string]uint32),
+		free:      make([]uint32, 0, numRanges),
+	}
+	// Pre-populate free list in reverse order so the first allocation in every
+	// network namespace starts at the configured pool start.
+	for i := numRanges; i > 0; i-- {
+		pool.free = append(pool.free, start+(i-1)*rangeSize)
+	}
+	return pool
+}
+
+func normalizeNamespace(namespace string) string {
+	if namespace == "" {
+		return sharedNamespace
+	}
+	return namespace
+}
+
+func (pa *PortAllocator) namespacePoolLocked(namespace string) *namespacePool {
+	namespace = normalizeNamespace(namespace)
+	pool := pa.namespaces[namespace]
+	if pool == nil {
+		pool = newNamespacePool(pa.start, pa.rangeSize, pa.numRanges)
+		pa.namespaces[namespace] = pool
+	}
+	return pool
+}
+
+// Allocate assigns a free port sub-range in the shared network namespace.
+// It preserves the original allocator API for shared-mode callers.
 func (pa *PortAllocator) Allocate(agentID string) (uint32, uint32, error) {
+	return pa.AllocateInNamespace(sharedNamespace, agentID)
+}
+
+// AllocateInNamespace assigns a free sub-range within namespace. Network
+// namespaces have independent port spaces, so the same range can be allocated
+// concurrently in different netns values.
+func (pa *PortAllocator) AllocateInNamespace(namespace, agentID string) (uint32, uint32, error) {
 	pa.mu.Lock()
 	defer pa.mu.Unlock()
+	pool := pa.namespacePoolLocked(namespace)
 
-	if _, exists := pa.allocated[agentID]; exists {
-		return 0, 0, fmt.Errorf("agent %q already has a port range allocated", agentID)
+	if _, exists := pool.allocated[agentID]; exists {
+		return 0, 0, fmt.Errorf("agent %q already has a port range allocated in namespace %q", agentID, normalizeNamespace(namespace))
 	}
-
-	if len(pa.free) == 0 {
-		// FLEET-INFRA-1: an exhaustion error that names nobody is
-		// undebuggable — the field saw "exhausted with 2/8 agents live"
-		// and had no way to ask who held the rest. Name every holder and
-		// point at the two remediation paths (the tracker drift sweep on
-		// reconcile, and the on-demand sweep) so the operator can act
-		// instead of restarting blind.
-		held := make([]string, 0, len(pa.allocated))
-		holders := pa.heldRangesLocked()
+	if len(pool.free) == 0 {
+		held := make([]string, 0, len(pool.allocated))
+		holders := pa.heldRangesLocked(pool)
 		for _, h := range holders {
 			held = append(held, fmt.Sprintf("%s=%d-%d", h.AgentID, h.Start, h.End))
 		}
 		return 0, 0, fmt.Errorf(
-			"no free port ranges available (pool exhausted: capacity %d ranges, %d held: %s) — "+
-				"if any holder has no tracked agent this is a leak and self-heals within a "+
-				"minute (periodic drift sweep) or on the next reconcile; `bunkerd port-pool "+
-				"check` compares pool capacity with agent.max_agents",
-			pa.capacity(), len(holders), strings.Join(held, ", "))
+			"no free port ranges available in namespace %q (pool exhausted: capacity %d ranges, %d held: %s) — "+
+				"if any holder has no tracked agent this is a leak and self-heals within a minute (periodic drift sweep) or on the next reconcile; `bunkerd port-pool check` compares pool capacity with agent.max_agents",
+			normalizeNamespace(namespace), pa.capacity(pool), len(holders), strings.Join(held, ", "))
 	}
 
-	// Pop from the free stack.
-	rangeStart := pa.free[len(pa.free)-1]
-	pa.free = pa.free[:len(pa.free)-1]
-	pa.allocated[agentID] = rangeStart
-
-	rangeEnd := rangeStart + pa.rangeSize - 1
-	if rangeEnd > pa.end {
-		rangeEnd = pa.end
-	}
-
-	return rangeStart, rangeEnd, nil
+	rangeStart := pool.free[len(pool.free)-1]
+	pool.free = pool.free[:len(pool.free)-1]
+	pool.allocated[agentID] = rangeStart
+	return rangeStart, pa.rangeEnd(rangeStart), nil
 }
 
-// Free releases the port sub-range assigned to agentID back into the pool.
+// Free releases the shared-namespace port sub-range assigned to agentID.
 func (pa *PortAllocator) Free(agentID string) {
+	pa.FreeInNamespace(sharedNamespace, agentID)
+}
+
+// FreeInNamespace releases the port sub-range assigned to agentID in namespace.
+func (pa *PortAllocator) FreeInNamespace(namespace, agentID string) {
 	pa.mu.Lock()
 	defer pa.mu.Unlock()
 
-	rangeStart, exists := pa.allocated[agentID]
+	pool := pa.namespacePoolLocked(namespace)
+	rangeStart, exists := pool.allocated[agentID]
 	if !exists {
 		return // nothing to free
 	}
 
-	delete(pa.allocated, agentID)
-	pa.free = append(pa.free, rangeStart)
+	delete(pool.allocated, agentID)
+	pool.free = append(pool.free, rangeStart)
+}
+
+func (pa *PortAllocator) rangeEnd(rangeStart uint32) uint32 {
+	rangeEnd := rangeStart + pa.rangeSize - 1
+	if rangeEnd > pa.end {
+		return pa.end
+	}
+	return rangeEnd
+}
+
+func (pa *PortAllocator) allocatedRangeLocked(pool *namespacePool, agentID string) (start, end uint32, ok bool) {
+	start, ok = pool.allocated[agentID]
+	if !ok {
+		return 0, 0, false
+	}
+	return start, pa.rangeEnd(start), true
 }
 
 // ErrRangeUnavailable is returned by Reserve/Restore when the requested
@@ -169,7 +220,8 @@ func (pa *PortAllocator) Reserve(agentID string, start, end uint32) error {
 	pa.mu.Lock()
 	defer pa.mu.Unlock()
 
-	if existing, ok := pa.allocated[agentID]; ok {
+	pool := pa.namespacePoolLocked(sharedNamespace)
+	if existing, ok := pool.allocated[agentID]; ok {
 		if existing == start {
 			return nil // already reserved to this agent: idempotent
 		}
@@ -179,7 +231,7 @@ func (pa *PortAllocator) Reserve(agentID string, start, end uint32) error {
 		return err
 	}
 	idx := -1
-	for i, v := range pa.free {
+	for i, v := range pool.free {
 		if v == start {
 			idx = i
 			break
@@ -188,8 +240,8 @@ func (pa *PortAllocator) Reserve(agentID string, start, end uint32) error {
 	if idx < 0 {
 		return fmt.Errorf("port range %d-%d: %w (held by another agent or already allocated)", start, end, ErrRangeUnavailable)
 	}
-	pa.free = append(pa.free[:idx], pa.free[idx+1:]...)
-	pa.allocated[agentID] = start
+	pool.free = append(pool.free[:idx], pool.free[idx+1:]...)
+	pool.allocated[agentID] = start
 	return nil
 }
 
@@ -202,26 +254,28 @@ func (pa *PortAllocator) Restore(agentID string, start, end uint32) error {
 	return pa.Reserve(agentID, start, end)
 }
 
-// AllocatedRange returns the sub-range currently held by agentID.
+// AllocatedRange returns the shared-namespace sub-range currently held by agentID.
 func (pa *PortAllocator) AllocatedRange(agentID string) (start, end uint32, ok bool) {
-	pa.mu.Lock()
-	defer pa.mu.Unlock()
-	s, exists := pa.allocated[agentID]
-	if !exists {
-		return 0, 0, false
-	}
-	e := s + pa.rangeSize - 1
-	if e > pa.end {
-		e = pa.end
-	}
-	return s, e, true
+	return pa.AllocatedRangeInNamespace(sharedNamespace, agentID)
 }
 
-// Has reports whether agentID currently holds a sub-range.
-func (pa *PortAllocator) Has(agentID string) bool {
+// AllocatedRangeInNamespace returns the range currently held by agentID in namespace.
+func (pa *PortAllocator) AllocatedRangeInNamespace(namespace, agentID string) (start, end uint32, ok bool) {
 	pa.mu.Lock()
 	defer pa.mu.Unlock()
-	_, ok := pa.allocated[agentID]
+	return pa.allocatedRangeLocked(pa.namespacePoolLocked(namespace), agentID)
+}
+
+// Has reports whether agentID currently holds a sub-range in the shared namespace.
+func (pa *PortAllocator) Has(agentID string) bool {
+	return pa.HasInNamespace(sharedNamespace, agentID)
+}
+
+// HasInNamespace reports whether agentID holds a sub-range in namespace.
+func (pa *PortAllocator) HasInNamespace(namespace, agentID string) bool {
+	pa.mu.Lock()
+	defer pa.mu.Unlock()
+	_, ok := pa.namespacePoolLocked(namespace).allocated[agentID]
 	return ok
 }
 
@@ -237,19 +291,20 @@ type HeldRange struct {
 // (the field symptom was "exhausted with 2/8 agents live" and no way to ask
 // who held the other ranges). Never large: at most one entry per sub-range.
 func (pa *PortAllocator) HeldRanges() []HeldRange {
-	pa.mu.Lock()
-	defer pa.mu.Unlock()
-	return pa.heldRangesLocked()
+	return pa.HeldRangesInNamespace(sharedNamespace)
 }
 
-func (pa *PortAllocator) heldRangesLocked() []HeldRange {
-	out := make([]HeldRange, 0, len(pa.allocated))
-	for id, start := range pa.allocated {
-		end := start + pa.rangeSize - 1
-		if end > pa.end {
-			end = pa.end
-		}
-		out = append(out, HeldRange{AgentID: id, Start: start, End: end})
+// HeldRangesInNamespace snapshots allocations for one network namespace.
+func (pa *PortAllocator) HeldRangesInNamespace(namespace string) []HeldRange {
+	pa.mu.Lock()
+	defer pa.mu.Unlock()
+	return pa.heldRangesLocked(pa.namespacePoolLocked(namespace))
+}
+
+func (pa *PortAllocator) heldRangesLocked(pool *namespacePool) []HeldRange {
+	out := make([]HeldRange, 0, len(pool.allocated))
+	for id, start := range pool.allocated {
+		out = append(out, HeldRange{AgentID: id, Start: start, End: pa.rangeEnd(start)})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Start < out[j].Start })
 	return out
@@ -272,55 +327,72 @@ func (pa *PortAllocator) heldRangesLocked() []HeldRange {
 // returned sorted so logs and tests are deterministic; the count is
 // len(released).
 func (pa *PortAllocator) ReconcileFrom(exists func(agentID string) bool) (released []string) {
+	return pa.ReconcileFromNamespace(sharedNamespace, exists)
+}
+
+// ReconcileFromNamespace releases reservations whose agent is absent from the
+// supplied tracker for one network namespace.
+func (pa *PortAllocator) ReconcileFromNamespace(namespace string, exists func(agentID string) bool) (released []string) {
 	if exists == nil {
 		return nil // refuse to sweep against an oracle that knows nothing
 	}
 	pa.mu.Lock()
 	defer pa.mu.Unlock()
-	releasedStarts := make([]uint32, 0, len(pa.allocated))
-	for id, start := range pa.allocated {
+	pool := pa.namespacePoolLocked(namespace)
+	releasedStarts := make([]uint32, 0, len(pool.allocated))
+	for id, start := range pool.allocated {
 		if exists(id) {
 			continue
 		}
-		// Capture the start BEFORE the delete: after it the lookup is gone.
 		releasedStarts = append(releasedStarts, start)
-		delete(pa.allocated, id)
+		delete(pool.allocated, id)
 		released = append(released, id)
 	}
 	if len(released) == 0 {
 		return nil
 	}
-	pa.free = append(pa.free, releasedStarts...)
-	// Deterministic release order: sort ids, then keep the free list's
-	// membership correct regardless of map iteration order (the free list
-	// is a stack — order affects only which range the next Allocate pops,
-	// never correctness or capacity).
+	pool.free = append(pool.free, releasedStarts...)
 	sort.Strings(released)
 	return released
 }
 
 // capacity returns the total number of sub-ranges available (caller must hold lock).
-func (pa *PortAllocator) capacity() uint32 {
-	return uint32(len(pa.allocated) + len(pa.free))
+func (pa *PortAllocator) capacity(pool *namespacePool) uint32 {
+	return uint32(len(pool.allocated) + len(pool.free))
 }
 
 // Available returns the number of free sub-ranges.
 func (pa *PortAllocator) Available() uint32 {
-	pa.mu.Lock()
-	defer pa.mu.Unlock()
-	return uint32(len(pa.free))
+	return pa.AvailableInNamespace(sharedNamespace)
 }
 
-// Allocated returns the number of currently assigned sub-ranges.
-func (pa *PortAllocator) Allocated() uint32 {
+// AvailableInNamespace returns the number of free sub-ranges in namespace.
+func (pa *PortAllocator) AvailableInNamespace(namespace string) uint32 {
 	pa.mu.Lock()
 	defer pa.mu.Unlock()
-	return uint32(len(pa.allocated))
+	return uint32(len(pa.namespacePoolLocked(namespace).free))
+}
+
+// Allocated returns the number of currently assigned shared-namespace ranges.
+func (pa *PortAllocator) Allocated() uint32 {
+	return pa.AllocatedInNamespace(sharedNamespace)
+}
+
+// AllocatedInNamespace returns the number of assigned ranges in namespace.
+func (pa *PortAllocator) AllocatedInNamespace(namespace string) uint32 {
+	pa.mu.Lock()
+	defer pa.mu.Unlock()
+	return uint32(len(pa.namespacePoolLocked(namespace).allocated))
 }
 
 // MaxRanges returns the total number of sub-ranges the pool supports.
 func (pa *PortAllocator) MaxRanges() uint32 {
+	return pa.MaxRangesInNamespace(sharedNamespace)
+}
+
+// MaxRangesInNamespace returns the capacity of one network namespace pool.
+func (pa *PortAllocator) MaxRangesInNamespace(namespace string) uint32 {
 	pa.mu.Lock()
 	defer pa.mu.Unlock()
-	return pa.capacity()
+	return pa.capacity(pa.namespacePoolLocked(namespace))
 }
