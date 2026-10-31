@@ -38,7 +38,11 @@ defaults:
   # GAP-077 fix: bunker's repo size blew the 2M eval budget on every Tier 2 run
   # ("Cap exceeded: Input token budget (2.0M) exceeded (2.0M used)"), so no
   # APPROVED verdict.json was ever produced.
-  max_input_tokens: "16M"
+  # tick bunker-foreman-2026-10-31-17-10-06: RELEASE-003 starved at 16M (16.0M used,
+  # 3 compactions fired, verdict 8be7b7ed, empty findings — a cap, not merits); one
+  # licensed rung 16M -> 32M. If this rung starves again, fix file_scope/compaction,
+  # not tokens.
+  max_input_tokens: "32M"
   max_output_tokens: "384k"
   tool_call_weight: 0.1
   # NOTE: code_context_budget / compaction_threshold / file_scope do NOT belong here.
@@ -157,9 +161,9 @@ evaluator:
   model: deepseek-v4-flash
   max_iterations: 320 # tick 566: 250 starved on QA-BUNKER-53 (250.5 used, verdict ee5cb740, tier1 PASS — a cap, not merits); single starved run licenses ONE raise.
   max_time: "120m"  # tick 565: 90m starved on QA-BUNKER-44 (time cap 1h30m exceeded); tick 500: 45m starved twice on DF-BUNKER-31 (defaults block); tick 544: 60m starved on INT-CI-042 under sibling-session contention
-  max_input_tokens: "16M"
+  max_input_tokens: "32M" # tick bunker-foreman-2026-10-31-17-10-06: 16M starved on RELEASE-003 (16.0M used, 3 compactions, verdict 8be7b7ed — a cap, not merits); single starved run licenses ONE raise.
   max_output_tokens: "384k"
-  cap: "250/120m/16M/384k"
+  cap: "250/120m/32M/384k"
   # ── Context-growth knobs (INT-CI-014, measured 2026-09-17) ────
   # MEASURED (docs/tier2-eval-budget.md, instrumented runs e6d24301 + 616c1d33 on
   # INT-CI-017 at HEAD 848625c): 23 LLM calls, per-call prompt 6,211 -> 29,323
