@@ -1,0 +1,29 @@
+{
+  "tick_id": "bunker-foreman-2026-10-31-16-43-45",
+  "block_id": "RELEASE-018",
+  "wave_budget": 12,
+  "slots": 6,
+  "wave_size": 0,
+  "mode": "operator_blocked",
+  "rows": [
+    {
+      "id": "RELEASE-003",
+      "status": "pending",
+      "dispatch": "none: operator/infrastructure acceptance requires live host deployment/version proof",
+      "worktree": null,
+      "branch": null,
+      "blocker": "Owner/operator must restore or retire named hosts and deploy/prove v0.2.0 on bunker-mvp, bunker4, bunker, and bunker3; RELEASE-008 depends_on RELEASE-003"
+    }
+  ],
+  "local_gate": "PASS: go build ./...; go vet ./...; go test ./... -count=1 -short -parallel 4; scripts/pre-release-check.sh --tag v0.2.0; git merge-base --is-ancestor 8316fea v0.2.0",
+  "remote_ci": "green: deployBunker/bunker latest 3 completed runs success (exact-head current board commit not yet created)",
+  "remote_parity": "PASS before board closeout: origin/main..HEAD=0 and HEAD..origin/main=0",
+  "live_host_probes": {
+    "bunker-mvp": "reachable; bunker 0.2.1 commit eab25686, not v0.2.0",
+    "bunker": "SSH reachable; bunker command unavailable",
+    "bunker3": "SSH reachable; bunker command unavailable",
+    "bunker4": "SSH connection timed out"
+  },
+  "next_action": "Owner/operator restores named host access and deploys or explicitly retires the release target; next tick resumes RELEASE-018",
+  "trace": "ch:trace block=RELEASE-018 row=RELEASE-003 spec=none:operator-deployment-acceptance wave=none:operator-blocked test=go-build-vet-test-short+pre-release-check+ancestry doc=none:live-host-operation evidence=none:operator-blocked witness=live:bunker-mvp:0.2.1-eab25686+ssh:bunker/bunker3+timeout:bunker4 verdict=none:not-dispatched commit=none:no-code-change memory=none:pending-foreman-write"
+}
