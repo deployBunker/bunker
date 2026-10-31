@@ -231,3 +231,39 @@ func TestRangeBoundaries(t *testing.T) {
 		t.Errorf("a2: expected [10002,10003], got [%d,%d]", start, end)
 	}
 }
+
+func TestAllocateInNamespaceAllowsSameRangePerNetns(t *testing.T) {
+	pa, err := NewPortAllocator(10000, 10009, 10)
+	if err != nil {
+		t.Fatalf("NewPortAllocator: %v", err)
+	}
+
+	startA, endA, err := pa.AllocateInNamespace("netns-a", "agent-a")
+	if err != nil {
+		t.Fatalf("AllocateInNamespace(netns-a): %v", err)
+	}
+	startB, endB, err := pa.AllocateInNamespace("netns-b", "agent-b")
+	if err != nil {
+		t.Fatalf("AllocateInNamespace(netns-b): %v", err)
+	}
+	if startA != 10000 || endA != 10009 || startB != startA || endB != endA {
+		t.Fatalf("namespace ranges = %d-%d and %d-%d, want both 10000-10009", startA, endA, startB, endB)
+	}
+	if got := pa.AvailableInNamespace("netns-a"); got != 0 {
+		t.Errorf("netns-a available = %d, want 0", got)
+	}
+	if got := pa.AvailableInNamespace("netns-b"); got != 0 {
+		t.Errorf("netns-b available = %d, want 0", got)
+	}
+	if got := pa.Available(); got != 1 {
+		t.Errorf("shared namespace available = %d, want 1", got)
+	}
+
+	pa.FreeInNamespace("netns-a", "agent-a")
+	if pa.HasInNamespace("netns-a", "agent-a") {
+		t.Error("agent-a still held a range after namespace-scoped Free")
+	}
+	if !pa.HasInNamespace("netns-b", "agent-b") {
+		t.Error("agent-b was affected by another namespace's Free")
+	}
+}
