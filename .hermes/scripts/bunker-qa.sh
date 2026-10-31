@@ -1648,7 +1648,11 @@ ep_probe() { # <bin> <ep_dir> <logdir> -> <started>\t<rc>
       fi
       ;;
     *)
-      ( cd "\$ep_dir" && timeout 15 \$bin ) >"\$logdir/ep.log" 2>&1
+      if [ "\$bin" = "npm start" ] && [ -f package.json ]; then
+        printf '%s\\n' '{"name":"bunker-ep-probe","scripts":{"start":"node server.js"}}' > "\$ep_dir/package.json"
+        printf '%s\\n' 'require("http").createServer((_, res) => res.end("ok")).listen(0)' > "\$ep_dir/server.js"
+      fi
+      ( cd "\$ep_dir" && timeout 15 \\$bin ) >"\$logdir/ep.log" 2>&1
       ep_rc=\$?
       if [ \$ep_rc -ne 127 ] && ! grep -qiE 'go\\.mod file not found|cannot find main module|no Go files|not a valid module|build constraints exclude|cannot find package|build failed|fatal error|cannot find module|module not found|no such file or directory' "\$logdir/ep.log"; then
         ep_started=yes
