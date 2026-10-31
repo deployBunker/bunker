@@ -95,14 +95,27 @@ func TestResolveNetworkMode(t *testing.T) {
 
 	t.Run("unknown config global refused naming the config key", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.Agent.NetworkMode = "hidepid"
+		cfg.Agent.NetworkMode = "netns"
 		t.Setenv(NetworkModeEnv, "")
 		_, err := cfg.ResolveNetworkMode("")
 		if err == nil {
 			t.Fatal("unknown config global resolved without error")
 		}
-		if !strings.Contains(err.Error(), "agent.network_mode") || !strings.Contains(err.Error(), "hidepid") {
+		if !strings.Contains(err.Error(), "agent.network_mode") || !strings.Contains(err.Error(), "netns") {
 			t.Errorf("refusal %q must name the config key and the offending value", err)
+		}
+	})
+
+	t.Run("hidepid config alias resolves to procvis", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Agent.NetworkMode = NetworkModeHidepid
+		t.Setenv(NetworkModeEnv, "")
+		got, err := cfg.ResolveNetworkMode("")
+		if err != nil {
+			t.Fatalf("hidepid was rejected: %v", err)
+		}
+		if got != NetworkModeProcVis {
+			t.Fatalf("hidepid resolved to %q, want %q", got, NetworkModeProcVis)
 		}
 	})
 }
@@ -122,8 +135,9 @@ func TestValidate_NetworkModeUnknownRefusesToStart(t *testing.T) {
 			t.Errorf("validation error %q missing %q", err, want)
 		}
 	}
-	// Both valid names validate clean.
-	for _, m := range []string{NetworkModeShared, NetworkModeSystemd} {
+	// All supported config spellings validate clean, including the hidepid
+	// alias for the procvis implementation.
+	for _, m := range []string{NetworkModeShared, NetworkModeSystemd, NetworkModeHidepid} {
 		cfg := DefaultConfig()
 		cfg.Agent.NetworkMode = m
 		if err := cfg.Validate(); err != nil {
