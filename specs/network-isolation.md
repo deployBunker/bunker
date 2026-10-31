@@ -264,6 +264,171 @@ toggles:
 
 ---
 
+## 1.9 Mode implementation contracts (NET-BUNKER-004/005/006)
+
+The taxonomy names the options; this section makes the four requested surfaces
+operationally testable without pretending that any of them is implemented yet.
+Each mode has a provisioning contract, a teardown contract, a refusal condition,
+and an observable result. The same agent id, socket path, and exec contract are
+used in every mode.
+
+### 1.9.1 `pasta` mode — userspace networking without slirp4netns
+
+`pasta` is an alternative rootless network driver, not an alias for
+`rootlesskit` and not a weaker spelling of `shared`. In `pasta` mode the daemon
+creates the agent's network namespace, starts `pasta` to connect that namespace
+to the selected host interface, and starts the workload with the namespace
+handle. The workload therefore receives a private loopback and private port
+space while retaining explicitly documented outbound networking.
+
+The `pasta` contract is:
+
+1. Resolve and validate the `pasta` binary before creating the agent. The
+   daemon reports the discovered path and version in the spawn evidence; a
+   missing or incompatible `pasta` dependency is a hard refusal, never a
+   silent return to `rootlesskit` or `shared`.
+2. Keep `rootlesskit`'s existing user namespace and AppArmor constraints where
+   the rootless runtime still owns process setup. `pasta` replaces the
+   userspace network transport only; it does not remove `rootlesskit`'s
+   containment obligations or make `rootlesskit` optional for unrelated
+   runtime setup.
+3. Allocate the namespace before launching `pasta`, pass only the intended
+   interface/address policy, and verify that the process is attached to the
+   expected namespace. A successful child process is not sufficient evidence
+   that `pasta` connected the right namespace.
+4. Preserve DNS and outbound connectivity only when the selected `pasta`
+   policy permits them. Inbound connectivity requires an explicit publish
+   operation; an agent must never become host-reachable merely because
+   `pasta` started successfully.
+5. Record the `pasta` command, namespace identity, interface policy, and
+   published-port set in the agent's status evidence. The status must say
+   `pasta` even when its observed behavior resembles `rootlesskit`.
+6. On destroy, stop `pasta` first, remove the namespace and its mounts, and
+   verify that the namespace, process, routes, and published listeners are
+   gone. A failed cleanup is a failed destroy, not an ignorable warning.
+
+`pasta` does not protect against a bad host firewall rule, a deliberately
+published port, `/proc` visibility, or `/run/bunker` enumeration. `pasta` also
+does not make a host-side daemon listener private. Those boundaries remain the
+responsibility of the firewall and visibility dimensions described elsewhere.
+The `pasta` path must be independently measurable because its copy and route
+behavior can differ from `rootlesskit`; substituting one result for the other
+would hide a regression in the alternative mode.
+
+### 1.9.2 `netns-veth` mode — `ip netns` with veth and bridge
+
+`netns-veth` is the privileged kernel-routing mode. The root daemon creates an
+`ip netns` entry named from the agent identity, creates a veth pair, moves one
+end into that `ip netns`, and attaches the host end to the tenant bridge. The
+bridge, addresses, routes, and firewall rules are all per-agent state. A
+second `ip netns` command is required during verification to enter or inspect
+the namespace, and a fourth `ip netns` operation is required during teardown;
+creation, inspection, and deletion must all be visible in evidence.
+
+The `ip netns` and veth/bridge contract is:
+
+- The daemon must have CAP_NET_ADMIN (or an equivalent privileged service
+  boundary) before it attempts `ip netns`, veth, or bridge operations. An
+  unprivileged daemon must refuse the mode before partial state is created.
+- Names are deterministic and collision-resistant: `bunker-<agent-id>` for
+  the `ip netns` entry, and a bounded interface name derived from the agent
+  id. The daemon must reject an existing name unless it can prove that the
+  name belongs to this agent's recorded generation.
+- The host-side veth is attached to the bridge only after the namespace-side
+  link is present. The daemon then assigns addresses, brings both links up,
+  installs the default route, and reads each property back. A bridge port
+  that exists without a live peer is a provisioning failure.
+- Host-to-tenant forwarding, tenant-to-host forwarding, and tenant-to-tenant
+  forwarding are separate policy decisions. The default denies cross-tenant
+  traffic; an explicit published port creates the narrowest host-side rule
+  possible and is recorded with its owner.
+- Teardown is symmetric and idempotent. It removes published rules, routes,
+  bridge membership, both veth ends, and the `ip netns` entry, then verifies
+  that no link, route, namespace, or listener remains. Destroy must not skip
+  networking cleanup because an unrelated agent process failed.
+
+The `netns-veth` mode is the only mode in this surface that requires a privileged
+network control plane. Its stronger L3 boundary has a corresponding blast
+radius: a malformed bridge or firewall operation can affect other tenants.
+Therefore every mutation is logged with agent id, operation, argv-equivalent
+parameters, and read-back result. A green command exit status without a
+read-back is not evidence of isolation.
+
+### 1.9.3 UID-owner firewall layer — orthogonal reachability control
+
+The UID-owner layer is not a network namespace and is not a replacement for
+`pasta`, `rootlesskit`, `systemd`, or `netns-veth`. It can be composed with all
+of them. On the host, the daemon installs rules equivalent to
+`iptables -m owner --uid-owner <agent-uid>` (or the nftables owner expression)
+for the explicitly allowed destinations and protocols. The exact owner match
+must be checked in the live ruleset; a rule that merely mentions an agent id
+is not proof that the kernel matches the agent uid.
+
+Each uid-owner rule set must include the following observable facts:
+
+- the numeric uid, chain/table, direction, protocol, destination, and action;
+- the rule's stable ownership tag, so destroy can remove only this agent's
+  rules and can detect a stale generation; and
+- a negative test in which agent B attempts to reach agent A and the
+  uid-owner rule drops the packet, plus a positive test for an allowed route.
+
+The daemon must install uid-owner rules before advertising the mode as active,
+then read them back using the same uid-owner predicate. On teardown it removes
+rules before deleting the uid, verifies that no uid-owner rule remains, and
+reports any residue. Rule ordering is part of the contract: an earlier broad
+ACCEPT can bypass a later uid-owner DROP, so the evidence must include the
+ordered chain rather than only a matching line.
+
+The layer closes cross-tenant reachability, but it does not close every
+cross-tenant boundary. In particular, it cannot stop a same-host bind-squat:
+agent B may still bind a port that agent A expected, because the firewall acts
+on packets after socket creation. It also cannot hide processes or paths, and
+it does not make host listeners private. The status report must therefore say
+"uid-owner reachability only" instead of claiming namespace isolation.
+
+### 1.9.4 Measurement battery — comparable evidence for all modes
+
+NET-BUNKER-008 owns the measurement battery, not a default-selection guess.
+The checked-in entry point is `scripts/preset-battery.sh`; its invocation,
+output vocabulary, and exit behavior are part of this spec even when a run is
+performed on a host with no privileged networking. A local structural run may
+validate the document and command shape, but only a live run can claim network
+performance.
+
+The battery runs the same workload matrix against `shared`, `rootlesskit`,
+`pasta`, `netns-veth`, and the UID-owner layer where composition is applicable.
+It records a baseline before each isolated run, not one baseline reused across
+hosts or after the host has warmed up. Every record includes mode, kernel and
+userspace versions, CPU, memory, interface, MTU, image/workload identity,
+namespace identity, and timestamp.
+
+Required measurements:
+
+1. setup and teardown overhead: wall time from spawn request to usable
+   networking, destroy time, leaked namespace/link/process count, and the
+   number of retries;
+2. steady-state throughput and packet loss for outbound traffic, with a
+   separate published-port path where the mode supports ingress;
+3. connection latency and tail latency for loopback, host, and permitted
+   external destinations; blocked cross-tenant connections are measured as
+   well and must be reported as a denial, not a timeout-shaped success;
+4. CPU and memory overhead while idle and under sustained traffic, including
+   the userspace helper cost for `rootlesskit` and `pasta`;
+5. usability checks for DNS, outbound HTTPS, agent exec through the unix
+   socket, docker tunnel behavior, and the declared ingress mode; and
+6. isolation checks for bind-squat, cross-tenant reachability, namespace
+   identity, stale `ip netns`/veth/bridge residue, and uid-owner rule residue.
+
+The battery must emit machine-readable rows plus a human summary. It must exit
+non-zero on a failed required check, distinguish unsupported from failed, and
+never turn a skipped measurement into a pass. A mode is not recommended merely
+because its throughput is highest: the decision records overhead, boundary
+width, ingress compatibility, cleanup correctness, and reproducibility. The
+comparison is repeated at least three times per mode, reports median and tail
+values, and preserves raw output so later reviewers can remeasure it.
+
+---
+
 ## 2. Threat Model and the Per-Mode Contract
 
 Threats, concretely (all demonstrated or demonstrated-adjacent — §0):
