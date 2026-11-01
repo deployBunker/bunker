@@ -1,0 +1,28 @@
+{
+  "tick_id": "bunker-foreman-2026-11-01-19-10-26",
+  "wave_id": "none",
+  "block_id": "QA-BUNKER-REVIEW-3",
+  "mode": "operator_blocked",
+  "wave_budget": 10,
+  "wave_size": 0,
+  "base_sha": "13fc71cd02e79549432f4ddd8322f9088a43e6c6",
+  "selected_rows": [
+    {
+      "id": "QA-BUNKER-REVIEW-3",
+      "status": "pending",
+      "worker": null,
+      "worktree": null,
+      "branch": null,
+      "dispatch": "none: operator/harness acceptance; no coding worker or GitReins lifecycle",
+      "blocker": "QA dispatcher/owner must launch bunker-qa against /home/kara/deployBunker/bunker or set the correct BUNKER_QA_SUBDIR relative to the intended parent repository. The supplied /home/kara/.hermes/stand-in/review/bunker resolves to parent root /home/kara with remote s3://kara-reports/current/git/kara-hermes, not deployBunker/bunker.",
+      "witness": "standin_root=/home/kara; standin_remote=s3://kara-reports/current/git/kara-hermes; product_root=/home/kara/deployBunker/bunker; product_remote=git@github.com:deployBunker/bunker.git; bunker-qa.sh refuses nested parent paths"
+    }
+  ],
+  "independence_proof": "none: selected block has one pending row and it is operator/harness work, not coding work",
+  "local_gate": "PASS: go build ./...; go vet ./...; go test ./...; timeout 240 gitreins guard --full",
+  "remote_ci": "green before closeout: deployBunker/bunker latest three completed runs succeeded",
+  "remote_parity_before_closeout": "origin/main..HEAD=0 and HEAD..origin/main=0",
+  "off_by_one": "liveness HTTP 200; discovery qa-dispatch-nested-parent-repository-path returned not_found; no non-trivial debugging performed",
+  "next_action": "Owner/QA dispatcher reruns the battery against the canonical bunker product root or supplies the correct BUNKER_QA_SUBDIR, then the foreman verifies the evidence before closing QA-BUNKER-REVIEW-3",
+  "workers": []
+}
