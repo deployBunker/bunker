@@ -568,6 +568,26 @@ func TestQA36TheHashCacheReVerifiesInsideTheCoarseClockWindow(t *testing.T) {
 	// the bytes': that is the state a rewritten-but-metadata-identical path
 	// leaves in the cache.
 	plantHashCacheBFS049(t, h, target, probeSentinelBFS049)
+	// The planted memo's clock is CONSTRUCTED inside the window (half a window
+	// past the path's own ctime), never inherited from the wall clock the
+	// first hashFile stamped the entry with. A sampled verified is born VOUCHED
+	// whenever the scheduler lets more than eventsCoarseClockWindow pass
+	// between the fixture's creation and that read — exactly what a loaded
+	// host does (QA-BUNKER-53; the QA-BUNKER-091 battery failed here with
+	// "the cache answered a metadata-keyed memo" after 104 s of package load) —
+	// and a vouched memo is legitimately taken, which would measure the
+	// scheduler instead of the fallback. ctime cannot be restored from
+	// userspace, so the plant is the one place the pair (verified, ctime) is
+	// ours to fix: constructed, the memo IS the coarse-clock condition —
+	// a record the tick could not have distinguished from an edit — on every
+	// host, at any delay. The re-derivation below re-stamps verified from the
+	// wall clock, which is what carries the second arm's "past the window"
+	// premise without a sleep.
+	h.tree.mu.Lock()
+	e := h.tree.cache[target]
+	e.verified = time.Unix(0, e.id.Ctime+int64(eventsCoarseClockWindow/2))
+	h.tree.cache[target] = e
+	h.tree.mu.Unlock()
 
 	got, err := h.tree.hashFile(target)
 	if err != nil {
