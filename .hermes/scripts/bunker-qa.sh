@@ -876,7 +876,22 @@ detect_cmds() {
     # QA-H3-14: native leg mirrors the install-leg target probe — a Makefile
     # with no `test:` target (h3: verify-* only) gets `make verify` instead of
     # a guaranteed-fail `make test` on agents where make was bootstrapped.
+    # QA-BUNKER-82 (2026-11-01): the bare `make verify` fallback is CHECKS-ONLY.
+    # h3's verify runs docs+repo-consistency guards that legitimately run ZERO
+    # tests, and the QA-AUGER-1 vacuity grader then graded that checks-only
+    # pass as FAIL "native runner exited 0 but ZERO tests ran" while the
+    # repo's real code-level suite (`make verify-roundtrip`, 6/6 PASSED on the
+    # same agent) was never discovered — the default SUITE CHOICE was the
+    # defect, not the vacuity grader. Probe the repo's real suite target,
+    # most-conventional first: `test:`, then `check:` (the automake
+    # convention), then an explicit named suite target like
+    # `verify-roundtrip:` (h3's cross-language round-trip suite), and keep
+    # checks-only `make verify` as the last resort for verify-only Makefiles
+    # (backward compatible: h3's install leg and the QA-H3-14 no-test-target
+    # guarantee are unchanged).
     if grep -qE '^test:' "$repo/Makefile"; then native_cmd="make test"
+    elif grep -qE '^check:' "$repo/Makefile"; then native_cmd="make check"
+    elif grep -qE '^verify-roundtrip:' "$repo/Makefile"; then native_cmd="make verify-roundtrip"
     else native_cmd="make verify"; fi
   else native_cmd="echo no-test-path"
   fi
