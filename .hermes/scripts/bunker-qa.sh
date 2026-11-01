@@ -422,7 +422,11 @@ spawn_agent() {
   # still prints ONLY the agent id (spawn output is captured, never relayed).
   slice_args=$(qa_slice_args "$repo")
   for attempt in 1 2 3; do
-    out=$(bunker spawn --server "$SERVER" --ttl "$TTL" $slice_args 2>&1)
+    out=$(timeout "${BUNKER_QA_SPAWN_TIMEOUT:-45}" bunker spawn --server "$SERVER" --ttl "$TTL" $slice_args 2>&1)
+    spawn_rc=$?
+    if [ "$spawn_rc" -eq 124 ]; then
+      echo "spawn attempt $attempt timed out after ${BUNKER_QA_SPAWN_TIMEOUT:-45}s on $SERVER" >&2
+    fi
     # PERF-002 (2026-10-25): id extraction must survive CLI output changes.
     # Primary: the bundle's key-path line ("SSH Key: (saved to ~/.bunker/keys/<id> ...").
     # Charset widened from hex-only [a-f0-9]+ to the CLI's documented agent-id
@@ -466,12 +470,19 @@ spawn_agent() {
     fi
     # Reachability gate: the agent must answer ssh BEFORE it is handed off,
     # so an unreachable spawn never leaks to the caller as a "success".
-    if timeout "${BUNKER_QA_PROBE_TIMEOUT:-180}" ssh -p "$(agent_ssh_port "$id")" -i "$BUNKER_QA_HOST_KEY" -i "$HOME/.bunker/keys/$id" -o IdentitiesOnly=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=no -o BatchMode=yes "bunker-$id@$SERVER" true 2>/dev/null; then
+    # A single probe must leave room for the launch failure path to record the
+    # cause before the caller's 180s ceiling. The old 180s default could consume
+    # that entire ceiling inside one attempt, before LAUNCHED or ERROR was
+    # emitted. Operators can raise it explicitly when diagnosing slow hosts.
+    probe_rc=0
+    if timeout "${BUNKER_QA_PROBE_TIMEOUT:-30}" ssh -p "$(agent_ssh_port "$id")" -i "$BUNKER_QA_HOST_KEY" -i "$HOME/.bunker/keys/$id" -o IdentitiesOnly=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=no -o BatchMode=yes "bunker-$id@$SERVER" true 2>/dev/null; then
       echo "$id"
       return 0
+    else
+      probe_rc=$?
+      echo "spawn attempt $attempt produced agent $id but ssh reachability probe failed (rc=$probe_rc; timeout=${BUNKER_QA_PROBE_TIMEOUT:-30}s) — destroying before retry" >&2
     fi
     qa_remove_agent_lock "$id" >/dev/null 2>&1 || true
-    echo "spawn attempt $attempt produced agent $id but was unusable — destroyed before retry" >&2
     # QA-BUNKER-19 b+c: surfaced, not swallowed — stderr only (no evidence file
     # is open inside spawn_agent, and the retry loop needs no extra list
     # round-trip); rc captured so `set -o pipefail` alone can never see it as
