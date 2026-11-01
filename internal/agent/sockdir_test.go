@@ -602,23 +602,33 @@ func stubPeerCredential(t *testing.T, uid uint32, err error) func() {
 // Linux: 108-byte struct minus the NUL terminator a pathname bind needs.
 const maxSockaddrUnPathLen = 107
 
-// shortSocketPath returns a real socket bind path under a SHORT
-// fixed-prefix scratch directory (not t.TempDir(), whose path derives from
-// the machine's TMPDIR and the test name and can overflow sun_path —
-// QA-BUNKER-62: a 111-byte path made the live peer-cred connect table fail
-// with "bind: invalid argument" on long-TMPDIR hosts, silently dropping the
-// NET-BUNKER-007 live coverage). The scratch dir is created and removed via
-// t.Cleanup. Fails LOUDLY if the constructed path cannot fit sockaddr_un,
-// so a hostile machine's prefix surfaces as an explicit failure instead of
-// a listen error or (worse) a silently skipped live bind.
-func shortSocketPath(t *testing.T) string {
+// shortSocketScratchDir returns a freshly created SHORT fixed-prefix
+// scratch directory for live unix-socket binds — never t.TempDir(), whose
+// path derives from the machine's TMPDIR/GOTMPDIR and the test name and can
+// overflow sun_path (QA-BUNKER-62: a 111-byte path made the live peer-cred
+// connect table fail with "bind: invalid argument" on long-TMPDIR hosts,
+// silently dropping the NET-BUNKER-007 live coverage; QA-BUNKER-090: the
+// same overflow reached the DF-BUNKER-108 health test's bind under the QA
+// battery's /home/bunker-<id>/qa-tmp-<pid> temp root). The directory is
+// created eagerly and removed via t.Cleanup.
+func shortSocketScratchDir(t *testing.T) string {
 	t.Helper()
 	dir, err := os.MkdirTemp("/tmp", "bkr")
 	if err != nil {
 		t.Fatalf("MkdirTemp(/tmp, bkr): %v", err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	sockPath := filepath.Join(dir, "docker.sock")
+	return dir
+}
+
+// shortSocketPath returns a real socket bind path under a
+// shortSocketScratchDir. Fails LOUDLY if the constructed path cannot fit
+// sockaddr_un, so a hostile machine's prefix surfaces as an explicit
+// failure instead of a listen error or (worse) a silently skipped live
+// bind.
+func shortSocketPath(t *testing.T) string {
+	t.Helper()
+	sockPath := filepath.Join(shortSocketScratchDir(t), "docker.sock")
 	if n := len(sockPath); n > maxSockaddrUnPathLen {
 		t.Fatalf("constructed socket path is %d bytes, exceeds sockaddr_un.sun_path limit of %d (%s) — live peer-cred coverage would be silently dropped on this machine", n, maxSockaddrUnPathLen, sockPath)
 	}

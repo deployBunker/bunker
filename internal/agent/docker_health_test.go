@@ -71,9 +71,15 @@ func dfb108SwapUser(t *testing.T, agentID string, uid int) {
 }
 
 // dfb108ListenSocket binds a REAL unix socket at path and keeps it open for
-// the test's duration — the live shape of a serving dockerd socket.
+// the test's duration — the live shape of a serving dockerd socket. The
+// path-length guard fails LOUDLY at the sockaddr_un.sun_path limit so a
+// too-long path surfaces as an explicit overflow, not a bare "bind:
+// invalid argument" (QA-BUNKER-090).
 func dfb108ListenSocket(t *testing.T, path string) {
 	t.Helper()
+	if n := len(path); n > maxSockaddrUnPathLen {
+		t.Fatalf("socket path is %d bytes, exceeds sockaddr_un.sun_path limit of %d (%s)", n, maxSockaddrUnPathLen, path)
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", filepath.Dir(path), err)
 	}
@@ -84,10 +90,17 @@ func dfb108ListenSocket(t *testing.T, path string) {
 	t.Cleanup(func() { _ = ln.Close() })
 }
 
-// dfb108SocketsRoot swaps spawnRunRoot to a temp root and returns it.
+// dfb108SocketsRoot swaps spawnRunRoot to a SHORT fixed-prefix scratch root
+// and returns it. The DF-BUNKER-108 arms bind a real unix socket at
+// <root>/<agentID>/docker.sock, so the root must keep the constructed path
+// inside sockaddr_un.sun_path on every host — t.TempDir() derives from the
+// machine's TMPDIR/GOTMPDIR plus the test name and overflowed exactly there
+// under the QA battery's /home/bunker-<id>/qa-tmp-<pid> temp root
+// (QA-BUNKER-090, bind: invalid argument at the live bind). Same doctrine
+// as shortSocketScratchDir (QA-BUNKER-62).
 func dfb108SocketsRoot(t *testing.T) string {
 	t.Helper()
-	root := t.TempDir()
+	root := shortSocketScratchDir(t)
 	swapStringSeam(t, &spawnRunRoot, root)
 	return root
 }
