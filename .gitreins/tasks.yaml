@@ -5292,3 +5292,17 @@ tasks:
   status: complete
   created_at: '2026-10-30T18:41:07.797656+00:00'
   completed_at: '2026-10-30T18:58:35.060927+00:00'
+- id: RELEASE-019
+  title: v0.3.0 version-prep
+  criteria:
+  - Create a v0.3.0 version-prep commit on the canonical main branch that passes scripts/pre-release-check.sh,
+    updates every version surface required by docs/release-checklist.md, and has green
+    hosted CI on the exact prep SHA. Resolve or explicitly reclassify the open P1
+    HEAD dogfood regression DF-BUNKER-47-R2 and re-sweep pending deployed-freshness
+    rows RELEASE-003/RELEASE-008. Produce a fresh GitReins verdict bound to the candidate
+    SHA, and provide non-vacuous dogfood evidence for the release path. Only after
+    all gates are green may the release-engineer cut the annotated v0.3.0 tag and
+    verify the tag-triggered release workflow and six published assets. Do not force-move
+    an existing tag.
+  status: in_progress
+  created_at: '2026-11-01T07:31:58.760570+00:00'
