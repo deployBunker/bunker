@@ -735,23 +735,28 @@ func TestBringUpUserManager_LingerTimeoutRetriedUntilMarkerAppears(t *testing.T)
 		// applyAfterAttempt is the enable-linger attempt on which the fake
 		// finally applies the linger (asynchronously, after a short delay).
 		applyAfterAttempt int
-		// window is the per-attempt marker poll window the test installs.
-		// It must be long enough to observe the async write on the applying
-		// attempt, and — for the retry case — short enough that the FIRST
-		// attempt's window expires without the marker.
+		// window is the per-attempt marker poll window the test installs. It
+		// must absorb scheduler jitter around the fake's ASYNC marker write
+		// (INT-CI-709-LINGER: with a window only ~20x the write delay, a
+		// loaded host delayed the goroutine past every bounded window, so the
+		// bring-up failed exactly as it must when NO marker ever lands).
+		// Neither the pass/fail outcome nor the first attempt's expiry in the
+		// retry case depends on a short window: success polls exit as soon as
+		// the marker appears, and the fake schedules no write before attempt
+		// N, so a wide window costs only bounded test time.
 		window       time.Duration
 		wantAttempts int
 	}{
 		{
 			name:              "marker lands during the first poll window",
 			applyAfterAttempt: 1,
-			window:            80 * time.Millisecond,
+			window:            time.Second,
 			wantAttempts:      1,
 		},
 		{
 			name:              "marker lands only after a retry",
 			applyAfterAttempt: 2,
-			window:            20 * time.Millisecond,
+			window:            time.Second,
 			wantAttempts:      2,
 		},
 	}
