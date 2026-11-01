@@ -1,0 +1,31 @@
+{
+  "tick_id": "bunker-foreman-2026-11-01-19-22-37",
+  "wave_id": "none",
+  "block_id": "QA-BUNKER-REVIEW-3",
+  "base_sha": "1421d94dccdf6c491fb5d0a8b724a4865607ba7f",
+  "wave_budget": 8,
+  "nproc": 16,
+  "loadavg_1m": 6.68,
+  "slots": 6,
+  "wave_size": 0,
+  "mode": "operator_blocked",
+  "status": "verification-only",
+  "selected_rows": [
+    {
+      "id": "QA-BUNKER-REVIEW-3",
+      "status": "pending",
+      "worker": null,
+      "worktree": null,
+      "branch": null,
+      "dispatch": "none: operator/harness acceptance; no coding worker or GitReins lifecycle dispatched",
+      "blocker": "QA dispatcher/owner must launch bunker-qa against /home/kara/deployBunker/bunker or set the correct BUNKER_QA_SUBDIR relative to the intended parent repository. The supplied /home/kara/.hermes/stand-in/review/bunker resolves to parent root /home/kara with remote s3://kara-reports/current/git/kara-hermes, not deployBunker/bunker.",
+      "witness": "standin_root=/home/kara; standin_remote=s3://kara-reports/current/git/kara-hermes; product_root=/home/kara/deployBunker/bunker; product_remote=git@github.com:deployBunker/bunker.git; bunker-qa.sh refuses nested parent paths"
+    }
+  ],
+  "blocker": "QA dispatcher/owner must rerun the battery against the canonical bunker product root or supply the correct BUNKER_QA_SUBDIR; no coding implementation worker is appropriate for this launch-routing defect.",
+  "workers": [],
+  "local_gate": "PASS: go build ./...; go vet ./...; go test ./... -short -count=1 -parallel 4; gitreins guard --full",
+  "remote_ci": "blocked/in_progress: deployBunker/bunker run foreman: record bunker tick 706 operator block; latest prior runs completed success",
+  "remote_parity": "PASS: origin/main..HEAD=0 and HEAD..origin/main=0 before closeout",
+  "trace": "ch:trace tick=bunker-foreman-2026-11-01-19-22-37; block=QA-BUNKER-REVIEW-3; row=QA-BUNKER-REVIEW-3; spec=none:operator-harness-acceptance; wave=none:operator-blocked; test=go-build+go-vet+go-test-short+gitreins-guard; doc=none:qa-dispatch-path; evidence=none:operator-blocked; witness=standin-root-/home/kara+standin-remote-s3://kara-reports/current/git/kara-hermes+product-root-/home/kara/deployBunker/bunker; verdict=none:not-dispatched; commit=none:no-code-change; memory=none:write-after-final-sha"
+}
