@@ -2828,7 +2828,16 @@ elif [ -f frontend/package.json ] && grep -qE '"dev"|"start"' frontend/package.j
       *) cell ui-probe FAIL "frontend/ UI not serving (http=\$UP\${LAND:+, landed: \$LAND}): \$(tail -2 \$LOGD/ui.log)" ;;
     esac
   fi
-elif [ -f go.mod ] && grep -qE 'http\.ListenAndServe|http\.Server|chi\.NewRouter|mux\.NewRouter|gin\.Default|echo\.New|gorilla/mux' *.go 2>/dev/null; then
+  # FIX · ui-probe Go-native gate (QA-BUNKER-33, 2026-11-01): the server-pattern
+  # grep globbed ONLY root-level *.go, so a standard-layout repo (entrypoint
+  # cmd/main.go, pkg/…, internal/…) matched nothing and fell through to N/A
+  # "no web UI detected" — even though the arm below already resolves
+  # go run ./cmd/<pkg> (BIN detection, cmd/ fallback queue). Now scans the tree
+  # recursively, so HTTP idioms under cmd/ pkg/ internal/ enter the arm; root
+  # level mains still match (backward compatible); .git/vendor/node_modules are
+  # skipped so vendored server libraries cannot fake the trigger (mirrors the
+  # bounded trigger scan of the lint cell above).
+elif [ -f go.mod ] && grep -qrE 'http\.ListenAndServe|http\.Server|chi\.NewRouter|mux\.NewRouter|gin\.Default|echo\.New|gorilla/mux' --include='*.go' --exclude-dir=.git --exclude-dir=vendor --exclude-dir=node_modules . 2>/dev/null; then
   UI_PORTS=${BUNKER_QA_UI_PORTS:-3000 5173 8000 8080 8081 8766 8767 9000}
   UI_BINS="${BIN:-go run .}"
   case "${BIN:-}" in
