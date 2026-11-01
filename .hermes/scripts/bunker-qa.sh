@@ -20,9 +20,16 @@
 #                                               START the battery DETACHED on the
 #                                               agent (~60-120s). Writes $EVIDENCE.meta
 #                                               and one launch cell. Waits on NO cells.
-#   bunker-qa.sh collect --evidence <path>    — PHASE B: poll → pull → destroy.
-#                                               Idempotent; prints RUNNING (rc=0, no
-#                                               destroy) while the battery is alive.
+#   bunker-qa.sh collect --evidence <path>    — PHASE B: poll → sync → pull →
+#                                               destroy. Idempotent; prints RUNNING
+#                                               (rc=0, no destroy) while the battery
+#                                               is alive, syncing its evidence rows
+#                                               incrementally (QA-BUNKER-77). On a
+#                                               FINISHED agent it pulls the per-cell
+#                                               logs BEFORE destroy; an agent reaped
+#                                               before the logs could be pulled is
+#                                               graded agent-gone (rc=0) when its rows
+#                                               were already synced.
 #   bunker-qa.sh status
 #
 # WHY THE SPLIT (QA-HERMES-CANOPY-8, 2026-09-15): a full fresh-system battery
@@ -3429,15 +3436,24 @@ launch() {
   echo "LAUNCHED agent=$agent evidence=$EVIDENCE"
 }
 
-# ─── collect — PHASE B: poll → pull → destroy (idempotent) ───
+# ─── collect — PHASE B: poll → sync → pull → destroy (idempotent) ───
 # While the battery is still alive on the agent this prints RUNNING, exits 0 and
 # DESTROYS NOTHING, so a short-poll loop can call it repeatedly until the
-# 7-15 min battery finishes. Once it is done: merge-dedupe the agent's
-# ~/qa-evidence.jsonl into the local evidence file (idempotent on the row "ts"
-# field), append ONE collect cell, destroy the temp agent, print COLLECTED.
-# Failures (no launch record / unreachable agent / pull failed) record a collect
-# FAIL plus an INFO harness-failure row, then abort immediately after that
-# bounded attempt; a failed collect must not ride the battery wall-clock TTL.
+# 7-15 min battery finishes. QA-BUNKER-77: each RUNNING poll ALSO syncs the
+# agent's ~/qa-evidence.jsonl rows into the local evidence file (merge-deduped,
+# best-effort) — the agent user can be reaped server-side long before the 4h TTL
+# (~35min post-launch observed on bunker-mvp), and synced rows are what lets a
+# later collect grade the loss agent-gone instead of aborting. Once the battery
+# is done: merge-dedupe ~/qa-evidence.jsonl, pull the per-cell log dir
+# (~/qa-logs-*) to <evidence>.logs/ BEFORE the destroy — the only place they
+# survive the user reap — then append ONE collect cell, destroy the temp agent,
+# print COLLECTED. Failures (no launch record / unreachable agent with NOTHING
+# synced / pull failed with nothing synced) record a collect FAIL plus an INFO
+# harness-failure row, then abort immediately after that bounded attempt; a
+# failed collect must not ride the battery wall-clock TTL. An unreachable agent
+# whose rows WERE already synced is graded agent-gone (collect row
+# status=agent-gone, stdout AGENT-GONE, rc=0): the run is not lost, only the
+# per-cell logs are.
 collect() {
   local evidence=""
   # QA-BUNKER-45: one collect invocation is one bounded harness attempt. Keep
@@ -3483,6 +3499,92 @@ collect() {
     return 2
   }
 
+  # QA-BUNKER-77 (2026-11-01): shared merge — used by the RUNNING incremental
+  # sync and the FINISHED pull. Idempotent on the row "ts" field, atomic (temp
+  # file + os.replace) so a crash mid-merge cannot truncate the evidence file.
+  merge_agent_rows() { # <src> — merge-dedupe <src>'s rows into $evidence
+    local src="$1"
+    if [ -s "$src" ] && command -v python3 >/dev/null 2>&1; then
+      python3 - "$evidence" "$src" <<'PY' || cat "$src" >> "$evidence"
+import json, os, sys
+
+dest, src = sys.argv[1], sys.argv[2]
+seen, out = set(), []
+for path in (dest, src):
+    try:
+        fh = open(path)
+    except OSError:
+        continue
+    with fh:
+        for line in fh:
+            line = line.strip()
+            if not line.startswith("{"):
+                continue
+            try:
+                row = json.loads(line)
+            except Exception:
+                continue
+            key = row.get("ts")
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(json.dumps(row))
+tmp_dest = dest + ".merge.tmp"
+with open(tmp_dest, "w") as fh:
+    fh.write("\n".join(out) + ("\n" if out else ""))
+os.replace(tmp_dest, dest)
+PY
+    elif [ -s "$src" ]; then
+      cat "$src" >> "$evidence"   # no python3: a duplicate row beats an unpulled battery
+    fi
+  }
+
+  # QA-BUNKER-77: persist the already-synced marker once rows from this agent
+  # are on local disk. It is what makes a later unreachable collect grade
+  # agent-gone (run preserved) instead of aborting (run lost).
+  mark_rows_synced() { # <count>
+    [ "${1:-0}" -gt 0 ] && printf 'synced_rows=%s ts=%s\n' "$1" "$(date -u +%FT%TZ)" > "$evidence.synced-$agent"
+  }
+
+  # QA-BUNKER-77: pull the agent's per-cell log dirs (~/qa-logs-*) to
+  # <evidence>.logs/ BEFORE the destroy — after the agent user is reaped or
+  # destroyed they are unrecoverable, and the evidence rows carry only 40-line
+  # log tails. Sets $log_note (caller local) on every outcome.
+  pull_agent_logs() { # -> 0 when logs were saved
+    local log_kb tarf
+    log_kb=$(BUNKER_QA_SSH_TIMEOUT="$ssh_to" agent_ssh "du -sk ~/qa-logs-* 2>/dev/null | awk '{s+=\$1} END{print s+0}'" 2>/dev/null | tail -1)
+    case "$log_kb" in ''|*[!0-9]*) log_note="no per-cell logs found on agent"; return 1 ;; esac
+    if [ "$log_kb" -eq 0 ]; then log_note="no per-cell logs found on agent"; return 1; fi
+    if [ "$log_kb" -gt "${BUNKER_QA_LOG_PULL_MAX_KB:-524288}" ]; then
+      log_note="per-cell logs NOT pulled: ${log_kb}KB exceeds BUNKER_QA_LOG_PULL_MAX_KB=${BUNKER_QA_LOG_PULL_MAX_KB:-524288} cap"
+      return 1
+    fi
+    tarf=$(mktemp)
+    if BUNKER_QA_SSH_TIMEOUT="$ssh_to" agent_ssh "cd ~ && tar -czf - qa-logs-* 2>/dev/null" > "$tarf" 2>/dev/null && [ -s "$tarf" ]; then
+      if mkdir -p "$logs_dir" && tar -xzf "$tarf" -C "$logs_dir" 2>/dev/null; then
+        rm -f "$tarf"
+        return 0
+      fi
+    fi
+    rm -f "$tarf"
+    log_note="per-cell logs could not be pulled from agent=$agent (tar pull failed)"
+    return 1
+  }
+
+  # QA-BUNKER-77: the named, non-fatal outcome for an agent that is
+  # FINISHED/destroyed (or reaped ~35min post-launch in the field) before its
+  # per-cell logs could be pulled, PROVIDED the battery's rows were already
+  # synced into the local evidence file. The run is not lost: rows stay, the
+  # collect row records status=agent-gone, stdout names AGENT-GONE, rc=0.
+  emit_agent_gone() { # <reason>
+    local reason="$1" synced_rows
+    synced_rows=$(sed -n 's/^synced_rows=//p' "$evidence.synced-$agent" 2>/dev/null | tail -1)
+    append_collect_row agent-gone "$reason"
+    qa_remove_agent_lock "$agent" >/dev/null 2>&1 || true
+    echo "AGENT-GONE agent=$agent rows=${synced_rows:-0} evidence=$evidence"
+    return 0
+  }
+
   if [ ! -f "$meta" ]; then
     abort_collect "no launch record at $meta — nothing to collect (launch phase never ran, or a different evidence path)"
     exit $?
@@ -3492,6 +3594,12 @@ collect() {
   # by then, so the probe below would be empty).
   if grep -q '"cell":"collect","status":"OK"' "$evidence" 2>/dev/null; then
     echo "COLLECTED already-collected"
+    exit 0
+  fi
+  # QA-BUNKER-77: an agent-gone collect is likewise terminal — the agent user
+  # is gone; re-probing can only append duplicate noise.
+  if grep -q '"cell":"collect","status":"agent-gone"' "$evidence" 2>/dev/null; then
+    echo "AGENT-GONE already-recorded"
     exit 0
   fi
 
@@ -3603,6 +3711,23 @@ PY
 
   case "$probe" in
     RUNNING)
+      # QA-BUNKER-77: incremental evidence sync while the battery runs. The
+      # agent user can be reaped server-side long before the 4h TTL (~35min
+      # post-launch observed), so waiting for FINISHED to pull is exactly the
+      # window that lost the field logs. Best-effort: a failed sync never
+      # fails the poll.
+      local sync_tmp synced
+      sync_tmp=$(mktemp)
+      BUNKER_QA_SSH_TIMEOUT="$ssh_to" agent_ssh "cat ~/qa-evidence.jsonl 2>/dev/null" > "$sync_tmp" 2>/dev/null
+      if [ -s "$sync_tmp" ]; then
+        merge_agent_rows "$sync_tmp"
+        synced=$(grep -c '^{' "$sync_tmp" 2>/dev/null || true)
+        if [ "${synced:-0}" -gt 0 ]; then
+          mark_rows_synced "$synced"
+          log "synced ${synced} evidence row(s) from agent=$agent (battery still running)"
+        fi
+      fi
+      rm -f "$sync_tmp"
       log "battery still running on agent=$agent ($SERVER) — agent left intact"
       echo "RUNNING agent=$agent evidence=$evidence"
       exit 0
@@ -3610,6 +3735,13 @@ PY
     FINISHED|GONE)
       : ;;  # marker present, or the process is gone → pull what it produced
     *)
+      # QA-BUNKER-77: an unreachable probe is a harness abort only when the run
+      # would be lost. Rows already synced by the RUNNING polls ⇒ the run
+      # survives: record the named agent-gone outcome with rc=0.
+      if [ -s "$evidence.synced-$agent" ]; then
+        emit_agent_gone "cannot reach agent=$agent on $SERVER (ssh probe returned no state) — battery rows were already synced by incremental collect ($evidence.synced-$agent); per-cell logs lost with the agent user"
+        exit 0
+      fi
       abort_collect "cannot reach agent=$agent on $SERVER (ssh probe returned no state) — agent left intact"
       exit $?
       ;;
@@ -3620,6 +3752,14 @@ PY
   BUNKER_QA_SSH_TIMEOUT="$ssh_to" agent_ssh "cat ~/qa-evidence.jsonl 2>/dev/null" > "$tmp" 2>"$errf"
   pull_rc=$?
   if [ "$pull_rc" -ne 0 ] && [ ! -s "$tmp" ]; then
+    # QA-BUNKER-77: the agent vanished between the probe and the pull. Rows
+    # already synced ⇒ the run survives as agent-gone (rc=0); nothing synced
+    # ⇒ genuine loss — keep the QA-BUNKER-45 abort.
+    if [ -s "$evidence.synced-$agent" ]; then
+      rm -f "$tmp" "$errf"
+      emit_agent_gone "agent=$agent ($SERVER) unreachable at the evidence pull — battery rows were already synced by incremental collect ($evidence.synced-$agent); per-cell logs lost with the agent user"
+      exit 0
+    fi
     local pull_reason="could not pull ~/qa-evidence.jsonl from agent=$agent ($SERVER) rc=$pull_rc: $(head -1 "$errf")"
     rm -f "$tmp" "$errf"
     abort_collect "$pull_reason"
@@ -3628,46 +3768,25 @@ PY
   rm -f "$errf"
 
   # Merge-dedupe on the row "ts" field: re-calling collect after a successful
-  # pull adds nothing. The merge is atomic (temp file + os.replace) so a crash
-  # mid-merge cannot truncate the local evidence file.
-  if [ -s "$tmp" ] && command -v python3 >/dev/null 2>&1; then
-    python3 - "$evidence" "$tmp" <<'PY' || cat "$tmp" >> "$evidence"
-import json, os, sys
-
-dest, src = sys.argv[1], sys.argv[2]
-seen, out = set(), []
-for path in (dest, src):
-    try:
-        fh = open(path)
-    except OSError:
-        continue
-    with fh:
-        for line in fh:
-            line = line.strip()
-            if not line.startswith("{"):
-                continue
-            try:
-                row = json.loads(line)
-            except Exception:
-                continue
-            key = row.get("ts")
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append(json.dumps(row))
-tmp_dest = dest + ".merge.tmp"
-with open(tmp_dest, "w") as fh:
-    fh.write("\n".join(out) + ("\n" if out else ""))
-os.replace(tmp_dest, dest)
-PY
-  elif [ -s "$tmp" ]; then
-    cat "$tmp" >> "$evidence"   # no python3: a duplicate row beats an unpulled battery
-  fi
+  # pull adds nothing (QA-BUNKER-77: helper shared with the RUNNING sync).
+  merge_agent_rows "$tmp"
   local pulled
   pulled=$(grep -c '^{' "$tmp" 2>/dev/null || true)
   rm -f "$tmp"
+  # QA-BUNKER-77: the agent's rows are on local disk — persist the already-
+  # synced marker so a later unreachable collect grades agent-gone, not abort.
+  mark_rows_synced "${pulled:-0}"
+
+  # QA-BUNKER-77: pull the per-cell logs BEFORE the destroy/keep decision —
+  # after the agent user is gone they are unrecoverable (the field loss this
+  # row fixes: ci.log/native.log/res.log/disc.log died with the user).
+  local logs_dir="$evidence.logs" log_note=""
+  if pull_agent_logs; then
+    log_note="per-cell logs saved to $logs_dir"
+  fi
 
   local detail="agent=$agent ($SERVER) — pulled ${pulled:-0} evidence row(s), merge-deduped by ts"
+  [ -n "$log_note" ] && detail="$detail; $log_note"
   if [ "$keep" = 1 ]; then
     detail="$detail; agent KEPT (launched with --keep) — destroy it manually"
   else
