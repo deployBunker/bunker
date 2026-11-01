@@ -1,0 +1,28 @@
+{
+  "tick_id": "bunker-foreman-2026-11-01-18-39-44",
+  "block_id": "QA-BUNKER-REVIEW-3",
+  "wave_id": "none",
+  "mode": "operator_blocked",
+  "wave_budget": 9,
+  "nproc": 16,
+  "loadavg_1m": 8.18,
+  "slots": 6,
+  "base_sha": "9c16d0fb2f6ade8a973eea770244e3ddc0e0fde2",
+  "rows": [
+    {
+      "id": "QA-BUNKER-REVIEW-3",
+      "status": "pending",
+      "worktree": null,
+      "branch": null,
+      "dispatch": "none: operator/harness acceptance requires canonical product-root launch",
+      "blocker": "QA dispatcher/owner must launch bunker-qa against /home/kara/deployBunker/bunker or set the correct BUNKER_QA_SUBDIR relative to the intended parent repository; the supplied stand-in path is a /home/kara subdirectory with a mismatched remote and would grade the wrong product"
+    }
+  ],
+  "workers": [],
+  "witness": "live:stand-in-root=/home/kara remote=s3://kara-reports/current/git/kara-hermes; product-root=/home/kara/deployBunker/bunker remote=git@github.com:deployBunker/bunker.git",
+  "local_gate": "PASS: go build ./...; go vet ./...; go test ./... -short -count=1 -parallel 4; gitreins guard --full",
+  "remote_ci": "green before closeout: deployBunker/bunker latest three runs completed successfully",
+  "remote_parity": "PASS before closeout: origin/main..HEAD=0 and HEAD..origin/main=0",
+  "next_action": "Re-dispatch the QA battery against the canonical bunker product root, then verify the run evidence before closing QA-BUNKER-REVIEW-3.",
+  "trace": "ch:trace row=QA-BUNKER-REVIEW-3 spec=none:operator-harness-acceptance wave=none:operator-blocked test=go-build+go-vet+go-test-short+gitreins-guard doc=none:qa-dispatch-path evidence=none:operator-blocked witness=live:stand-in-root-/home/kara+product-root-/home/kara/deployBunker/bunker verdict=none:not-dispatched commit=none:no-code-change memory=none:write-after-final-sha"
+}
