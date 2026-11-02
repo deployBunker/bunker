@@ -29,5 +29,8 @@
   "witness": "direct gates on merged tree 2d73ea31 (go build/vet PASS; go test ./... -short -count=1 -parallel 4 PASS 38 pkgs; named test x10 PASS; gitreins guard --full PASS guard-20261102T003851.566164Z.log); verdict .gitreins/history/2026-11-01/64abbbca/verdict.json PASS[DEGRADED] bound to 2d73ea31; exact-head CI 41358981300 success; remote parity 0/0",
   "recovery": "predecessor tick 22-24-54 died before closeout; its async tier-2 judge job-e660176ef8244e7ba85f0bfe95355d39 orphaned and wedged alive (sleep-poll over 0-byte /tmp/fulltest.log, no go test process) 1h35m; tick 711 captured evidence, SIGTERMed the wedged judge, gitreins reaped the orphan record (error/orphan), re-dispatched tier-2 job-2741d6c796ee43858e10463d07cf1535",
   "evidence_receipt": "/home/kara/.hermes/cache/scratch/bunker-foreman-2026-11-02-00-03-20-evidence/judge-wedge-capture.txt",
-  "finished_at": null
+  "status": "closed",
+  "closeout_sha": "922584e384d38f208fef687768480eeca22d7c7b",
+  "closeout_note": "board closeout SHA 922584e3 (bound post-push, bounded repair); worker code SHA 2d73ea31; tier-2 re-run job-2741d6c796ee43858e10463d07cf1535 pending, to be read by the next tick",
+  "finished_at": "2026-11-02T01:02:00Z"
 }
