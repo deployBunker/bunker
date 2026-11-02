@@ -1,0 +1,33 @@
+{
+  "tick_id": "bunker-foreman-2026-11-02-00-03-20",
+  "type": "wave_manifest",
+  "block": "INT-CI-709-LINGER",
+  "block_id": "INT-CI-709-LINGER",
+  "wave_id": "none",
+  "mode": "recovery-closeout",
+  "wave_size": 0,
+  "wave_budget": 12,
+  "nproc": 16,
+  "loadavg_1m": 11.58,
+  "slots": "max(1,min(6,16-ceil(11.58)))=4; zero coding workers because the block's last row was already implemented and merged by predecessor tick bunker-foreman-2026-11-01-22-24-54 — this tick verifies and closes it",
+  "workers": [],
+  "base_sha": "2d73ea310f8b000b91d2543e8472d04b70fdaac5",
+  "landed": "2d73ea310f8b000b91d2543e8472d04b70fdaac5",
+  "rows": [
+    {
+      "id": "INT-CI-709-LINGER",
+      "status_before": "pending",
+      "status_after": "complete",
+      "action": "recovery-closeout: verify predecessor merge + close row with gates, verdict, exact-head CI",
+      "worker_commit": "2d73ea310f8b000b91d2543e8472d04b70fdaac5",
+      "worker_branch": "wt/INT-CI-709-LINGER",
+      "worker_worktree": "/home/kara/worktrees/bunker-INT-CI-709-LINGER",
+      "worker_model": "glm-5.3-flash@zai-glm-default"
+    }
+  ],
+  "blocker": null,
+  "witness": "direct gates on merged tree 2d73ea31 (go build/vet PASS; go test ./... -short -count=1 -parallel 4 PASS 38 pkgs; named test x10 PASS; gitreins guard --full PASS guard-20261102T003851.566164Z.log); verdict .gitreins/history/2026-11-01/64abbbca/verdict.json PASS[DEGRADED] bound to 2d73ea31; exact-head CI 41358981300 success; remote parity 0/0",
+  "recovery": "predecessor tick 22-24-54 died before closeout; its async tier-2 judge job-e660176ef8244e7ba85f0bfe95355d39 orphaned and wedged alive (sleep-poll over 0-byte /tmp/fulltest.log, no go test process) 1h35m; tick 711 captured evidence, SIGTERMed the wedged judge, gitreins reaped the orphan record (error/orphan), re-dispatched tier-2 job-2741d6c796ee43858e10463d07cf1535",
+  "evidence_receipt": "/home/kara/.hermes/cache/scratch/bunker-foreman-2026-11-02-00-03-20-evidence/judge-wedge-capture.txt",
+  "finished_at": null
+}
