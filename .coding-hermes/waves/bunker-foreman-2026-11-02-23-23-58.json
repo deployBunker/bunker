@@ -16,8 +16,7 @@
   "base_ref": "origin/main",
   "implementation_sha": "ab23c36bd8c2f3143d63b1c24b68fb5bdc3f2c00",
   "published_sha": "ab23c36bd8c2f3143d63b1c24b68fb5bdc3f2c00",
-  "closeout_sha": null,
-  "closeout_sha_note": "board bookkeeping commit of this closeout; bound by the bounded-repair commit after push (self-reference rule: a commit's own SHA never rides in its own tree)",
+  "closeout_sha": "b2cc7bf973591f802843356ccc9d5808c505127b",
   "finished_at": "2026-11-02T23:57:00-05:00",
   "rows": [
     {
