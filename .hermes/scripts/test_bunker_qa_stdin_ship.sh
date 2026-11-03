@@ -96,7 +96,7 @@ mkdir -p "$TD/home" "$TD/home/.bunker" "$TD/shim/home" "$TD/repo"
 # reachability probe passes because the shim ssh exits 0 for any invocation.
 mkdir -p "$TD/home/.bunker"
 printf '    qa64-shim.invalid:\n' > "$TD/home/.bunker/config.yaml"
-for fn in log write_fail_if_empty qa_target_preflight qa_disk_preflight preflights detect_cmds npm_pkg_name npm_pkg_publishable detect_publish_pkg_name detect_upgrade_inputs ship_prev_tag_tree sync_repo build_remote_script spawn_agent qa_destroy_agent agent_ssh run launch; do
+for fn in run launch; do
   extract_top_function "$fn" "$TD/fn_$fn.sh" || { echo "FATAL: extract $fn failed (def or bare-} terminator not found)" >&2; exit 1; }
   if ! bash -n "$TD/fn_$fn.sh" 2>"$TD/fn_$fn.err"; then
     echo "FATAL: extracted body $fn does not parse:" >&2
@@ -108,12 +108,17 @@ check "run body extracted (>=100 lines)" yes "$( [ "$(wc -l < "$TD/fn_run.sh")" 
 check "launch body extracted (>=100 lines)" yes "$( [ "$(wc -l < "$TD/fn_launch.sh")" -ge 100 ] && echo yes || echo no)"
 check "ship line present in real run body" yes "$( grep -aqF 'cat > ~/qa-run.sh' "$TD/fn_run.sh" && echo yes || echo no)"
 check "ship line present in real launch body" yes "$( grep -aqF 'cat > ~/qa-run.sh' "$TD/fn_launch.sh" && echo yes || echo no)"
-# prologue (env defaults: SERVER/EVIDENCE/TTL/BUNKER_QA_HOST_KEY...) — the
-# extracted bodies EXECUTE against these globals. Slice = everything above the
-# log() definition, self-located so prologue edits don't break the line number.
-PROLOGUE_END=$(grep -n '^log()[[:space:]]\+{' "$HARNESS" | head -1 | cut -d: -f1)
-sed -n "1,$((PROLOGUE_END - 1))p" "$HARNESS" > "$TD/prologue.sh"
-bash -n "$TD/prologue.sh" || { echo "FATAL: prologue slice does not parse" >&2; exit 1; }
+# QA-BUNKER-093: the driver no longer sources a hardcoded per-function list.
+# The old loop extracted ~19 named bodies (prologue slice + dep-ordered fn
+# files) and sourced those — every time the harness extracted a NEW helper out
+# of run()/launch()/build_remote_script() (qa_repo_sanity, artifact_expectation,
+# qa_launch_meta_*, qa_cleanup_orphan_agents, ...) the list drifted and the
+# whole suite went red with "command not found". run()/launch() are now driven
+# the way the real script executes them: `source bunker-qa.sh` defines the
+# prologue globals AND every function (the no-arg dispatch falls through the
+# `*)` usage arm without exiting), so any future helper extraction is picked up
+# automatically. The per-body extraction above survives only as the loud drift
+# alarm for the two bodies under test.
 
 # ── minimal repo fixture (a git repo with a HEAD for `git archive`) ──
 git -C "$TD/repo" init -q
@@ -209,12 +214,9 @@ drive() { # <body.sh> <argv-log> <stdin-file> <evidence>  (uses $TD, repo fixtur
     export BUNKER_QA_RETRY_SLEEP=1
     export BUNKER_QA_DESTROY_BACKOFF=1
     cd "$TD/repo"
-    # source the prologue (env/global defaults) + real bodies in dep order
-    local f
-    source "$TD/prologue.sh"
-    for f in log write_fail_if_empty qa_target_preflight qa_disk_preflight preflights detect_cmds npm_pkg_name npm_pkg_publishable detect_publish_pkg_name detect_upgrade_inputs ship_prev_tag_tree sync_repo build_remote_script spawn_agent qa_destroy_agent agent_ssh run launch; do
-      source "$TD/fn_$f.sh"
-    done
+    # source the REAL harness whole: prologue globals + every function, exactly
+    # as `bunker-qa.sh launch <repo>` would define them (QA-BUNKER-093)
+    source "$HARNESS" >/dev/null
     case "$(basename "$body")" in
       fn_launch.sh) launch "$TD/repo" ;;
       fn_run.sh)    run "$TD/repo" ;;
@@ -235,15 +237,14 @@ G_SCRIPT="$TD/gen.sh"
 # REAL detection the drive runs, and from a render whose $PATH and $0 match the
 # drive exactly: build_remote_script's heredoc is UNQUOTED — it deliberately
 # expands $PATH (toolchain-failure comment) and $0 (an awk self-exclusion guard)
-# at render time — so the fixture is rendered through the SAME extracted bodies
-# with `bash -c ... "$0"` carrying the test's own $0 into the child.
-TD="$TD" PATH="$TD/shim:$PATH" BUNKER_QA_SERVER=qa64-shim.invalid \
+# at render time — so the fixture is rendered in-process the same way the drive
+# renders it, with `bash -c ... "$0"` carrying the test's own $0 into the child.
+TD="$TD" HARNESS="$HARNESS" PATH="$TD/shim:$PATH" BUNKER_QA_SERVER=qa64-shim.invalid \
 BUNKER_QA_HOST_KEY="$TD/home/dummy-hostkey" BUNKER_QA_EVIDENCE="$TD/gen.ev.jsonl" \
 bash -c '
-  source "$TD/prologue.sh"
-  for f in log write_fail_if_empty qa_target_preflight qa_disk_preflight preflights detect_cmds npm_pkg_name npm_pkg_publishable detect_publish_pkg_name detect_upgrade_inputs ship_prev_tag_tree sync_repo build_remote_script spawn_agent qa_destroy_agent agent_ssh run launch; do
-    source "$TD/fn_$f.sh"
-  done
+  # whole-harness source (>/dev/null eats the no-arg usage echo) — defines the
+  # prologue globals and every function, drift-proof against helper extraction
+  source "$HARNESS" >/dev/null
   cd "$TD"
   agent=aaa11111
   detect_cmds repo aaa11111
