@@ -5316,3 +5316,31 @@ tasks:
   status: complete
   created_at: '2026-11-01T21:43:32.622395+00:00'
   completed_at: '2026-11-01T22:48:08.540337+00:00'
+- id: SURF-002
+  title: Socket transport + lifecycle
+  criteria:
+  - Implement idempotent systemd user socket/service install and remove through the
+    agent context; add CLI/API surface and tests for changed=false no-op, clean removal,
+    dead manager error, and exact unit contents; preserve exec/cp/deploy and no ForceCommand/TCP.
+    Include ch:trace row=SURF-002.
+  status: complete
+  created_at: '2026-11-02T03:34:11.743051+00:00'
+  completed_at: '2026-11-02T03:36:29.336227+00:00'
+- id: QA-BUNKER-REVIEW-3
+  title: 'Battery launch: resolve product root from stand-in board symlink'
+  criteria:
+  - 'In .hermes/scripts/bunker-qa.sh: (1) the nested-parent refusal and BUNKER_QA_SUBDIR
+    override are present (grep -c BUNKER_QA_SUBDIR >= 3); (2) when the launch dir
+    is a git subdirectory of a foreign parent git repo and its .coding-hermes/board
+    (or board/tasks.jsonl) symlinks into a different git repository, the battery resolves
+    and uses that repository root as the sync/grade target, printing a loud note naming
+    the launch dir and the resolved product root; (3) the nested-parent refusal still
+    fires when no such product symlink exists; (4) an explicitly set BUNKER_QA_SUBDIR
+    still wins over auto-resolution; (5) tests placed beside .hermes/scripts/test_bunker_qa_preflight.sh
+    cover resolution, refusal and override cases with fixture stand-ins (no live agents)
+    and pass; (6) a read-only probe shows /home/kara/.hermes/stand-in/review/bunker
+    resolving to /home/kara/deployBunker/bunker. Include ch:trace row=QA-BUNKER-REVIEW-3
+    in the commit message.'
+  status: complete
+  created_at: '2026-11-02T23:39:13.386269+00:00'
+  completed_at: '2026-11-03T00:06:31.548043+00:00'
