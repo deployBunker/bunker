@@ -20,7 +20,7 @@
 # (stdin-ship), not a byte threshold. No network, no real ssh, no root.
 set -uo pipefail
 
-HARNESS="${BUNKER_QA_SH:-$HOME/.hermes/scripts/bunker-qa.sh}"
+HARNESS="${BUNKER_QA_SH:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/bunker-qa.sh}"
 pass=0; fail=0
 check() { # <desc> <expected> <actual>
   if [ "$2" = "$3" ]; then echo "  ok   $1 -> $3"; pass=$((pass+1))
