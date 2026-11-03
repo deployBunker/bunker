@@ -5353,3 +5353,28 @@ tasks:
   status: complete
   created_at: '2026-11-03T04:35:50.358580+00:00'
   completed_at: '2026-11-03T04:39:17.339264+00:00'
+- id: BOARD-RESTORE-714
+  title: Restore bunker JSONL board after 848-row clobber at 63140484
+  criteria:
+  - tasks.jsonl carries 849 canonical rows from 2b1e5498 plus exactly two intended
+    updates (QA-BUNKER-093 complete from HEAD, QA-BUNKER-092 complete evidence-bound
+    to tick 713 event); every line parses as JSON, unique ids = 849, untouched lines
+    byte-identical to base, 130 previously-pending ids present again, events.jsonl
+    untouched.
+  status: complete
+  created_at: '2026-11-03T18:48:36.535823+00:00'
+  completed_at: '2026-11-03T18:50:17.470840+00:00'
+- id: BOARD-RESTORE-714-R2
+  title: Verify restored bunker board state at ba3f7a02 (850 rows = 849 base + 1 filed
+    gap row)
+  criteria:
+  - 'Prove at commit ba3f7a02: tasks.jsonl has 850 lines and 850 unique ids, every
+    line parses as JSON; compared to canonical base 2b1e5498 exactly two rows were
+    modified (QA-BUNKER-092 and QA-BUNKER-093, both status complete) and exactly one
+    row was added (BOARD-GUARD-001, status pending, priority P0); all 848 ids missing
+    from the clobbered HEAD (63140484) are present again; events.jsonl has 1503 lines
+    whose first 1502 lines are byte-identical to 6e627e60 and whose last line is the
+    tick-714 audit event; origin/main equals HEAD ba3f7a02.'
+  status: complete
+  created_at: '2026-11-03T18:50:57.658236+00:00'
+  completed_at: '2026-11-03T18:51:07.462875+00:00'
