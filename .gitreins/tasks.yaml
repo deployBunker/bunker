@@ -5344,3 +5344,12 @@ tasks:
   status: complete
   created_at: '2026-11-02T23:39:13.386269+00:00'
   completed_at: '2026-11-03T00:06:31.548043+00:00'
+- id: QA-BUNKER-093
+  title: Fix standing-red test_bunker_qa_stdin_ship.sh (12/23 fail)
+  criteria:
+  - test_bunker_qa_stdin_ship.sh exits 0 with 23/23 checks green against the repo
+    copy, or the 12 failures are replaced by a named root cause with each check fixed
+    or explicitly retired
+  status: complete
+  created_at: '2026-11-03T01:07:55.614443+00:00'
+  completed_at: '2026-11-03T04:13:08.354034+00:00'
