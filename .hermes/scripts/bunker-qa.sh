@@ -28,8 +28,15 @@
 #                                               FINISHED agent it pulls the per-cell
 #                                               logs BEFORE destroy; an agent reaped
 #                                               before the logs could be pulled is
-#                                               graded agent-gone (rc=0) when its rows
-#                                               were already synced.
+#                                               graded agent-gone (rc=0) when its
+#                                               rows were already synced.
+#   bunker-qa.sh resolve <repo-dir>           — SAFE PROBE (QA-BUNKER-REVIEW-3):
+#                                               print the product root run/launch
+#                                               would sync/grade for <repo-dir> —
+#                                               stand-in board-symlink resolution,
+#                                               explicit BUNKER_QA_SUBDIR override,
+#                                               or the named refusal. NO agent, NO
+#                                               battery, NO network.
 #   bunker-qa.sh status
 #
 # WHY THE SPLIT (QA-HERMES-CANOPY-8, 2026-09-15): a full fresh-system battery
@@ -3136,6 +3143,70 @@ touch ~/qa-run.finished
 EOF
 }
 
+# ─── QA-BUNKER-REVIEW-3 (2026-11-02): repo sanity + product-root resolution ───
+# The QA cell hit: /home/kara/.hermes/stand-in/review/bunker is a SUBDIRECTORY
+# of the /home/kara home meta-repo — pre-guard behavior synced the WHOLE parent
+# and graded the wrong product. The fleet copy has carried the refuse-unless-
+# BUNKER_QA_SUBDIR guard since QA-HARNESS-SCOPE-20261004; this port adds the
+# missing half: a stand-in dir documents the product it stands in for — its
+# .coding-hermes/board SYMLINKS into the real product repo (scheduler
+# review-namespace contract) — so when that symlink resolves into a DIFFERENT
+# git repo, resolve and use that repo's root instead of refusing.
+# Contract (run() and launch() call this AFTER truncate+traps, so a refusal
+# still records its row — QA-GITREINS-POC-QA-1):
+#   $1 repo-dir   $2 phase ("run" | "launch" | "probe"; evidence detail prefix)
+#   stdout: the EFFECTIVE repo dir to sync/grade (one line)
+#   refusal: named ERROR on stderr + ONE FAIL row in $EVIDENCE, rc=1
+#   Precedence: explicit BUNKER_QA_SUBDIR > board-symlink resolution > refusal.
+qa_repo_sanity() {
+  local repo="$1" phase="$2"
+  if [ -d "$repo/.git" ]; then
+    printf '%s\n' "$repo"; return 0
+  fi
+  local git_top
+  git_top=$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null || true)
+  # QA-HARNESS-SCOPE-20261004 (fleet parity): an explicit subdirectory scope
+  # ALWAYS wins — over stand-in resolution and over both refusals below.
+  if [ -n "${BUNKER_QA_SUBDIR:-}" ]; then
+    repo="$repo/${BUNKER_QA_SUBDIR%/}"
+    printf '%s\n' "$repo"; return 0
+  fi
+  # Stand-in product-root resolution: <repo>/.coding-hermes/board is a symlink
+  # into a DIFFERENT git repo -> that repo is the product. Same-parent or
+  # non-repo targets fall through to the refusal (no bogus resolution).
+  local board_link resolved_target product_top product_check
+  board_link="$repo/.coding-hermes/board"
+  if [ -L "$board_link" ]; then
+    resolved_target=$(readlink -f "$board_link" 2>/dev/null || true)
+    if [ -n "$resolved_target" ]; then
+      # git -C needs a DIRECTORY and the board link resolves to the board file
+      # itself — probe the repo from the target's directory (or the target when
+      # it is a dir symlink).
+      local target_dir
+      if [ -d "$resolved_target" ]; then target_dir="$resolved_target"; else target_dir=$(dirname "$resolved_target"); fi
+      product_top=$(git -C "$target_dir" rev-parse --show-toplevel 2>/dev/null || true)
+      # Verify the resolved root is a REAL git toplevel before trusting it.
+      if [ -n "$product_top" ]; then
+        product_check=$(git -C "$product_top" rev-parse --show-toplevel 2>/dev/null || true)
+        if [ "$product_check" = "$product_top" ] && [ "$product_top" != "$git_top" ]; then
+          echo "NOTE: $repo is a stand-in; resolving product root $product_top (board symlink -> $resolved_target)" >&2
+          printf '%s\n' "$product_top"; return 0
+        fi
+      fi
+    fi
+  fi
+  if [ -n "$git_top" ] && [ "$git_top" != "$(cd "$repo" && pwd)" ]; then
+    echo "ERROR: $repo is a SUBDIRECTORY of git repo $git_top — bunker-qa.sh would sync the whole parent repo and grade the wrong product. Set BUNKER_QA_SUBDIR=<subdir-relative-to-repo> (e.g. BUNKER_QA_SUBDIR=monitoring/fleet-monitoring) or dispatch against the real product git root." >&2
+    printf '{"cell":"run_battery","status":"FAIL","detail":"%s refused: %s is a subdirectory of git repo %s — syncing the parent would grade the wrong product (project=%s). Set BUNKER_QA_SUBDIR=<relative subdir> or use the product git root","ts":"%s"}\n' \
+      "$phase" "$repo" "$git_top" "$(basename "$repo")" "$(date -u +%FT%TZ)" >> "$EVIDENCE"
+    return 1
+  fi
+  echo "ERROR: $repo is not a git repo (git resolves toplevel: ${git_top:-none}) — dispatch against the primary repo workdir" >&2
+  printf '{"cell":"run_battery","status":"FAIL","detail":"%s refused: %s is not a git repo (git resolves toplevel: %s) — a role-lane workdir was dispatched instead of the primary repo; re-dispatch against the real workdir","ts":"%s"}\n' \
+    "$phase" "$repo" "${git_top:-none}" "$(date -u +%FT%TZ)" >> "$EVIDENCE"
+  return 1
+}
+
 run() {
   local repo="${1:?usage: bunker-qa.sh run <repo-dir> [--keep]}"
   shift
@@ -3157,14 +3228,13 @@ run() {
   trap 'write_fail_if_empty "battery interrupted by SIGINT before any cell recorded"; exit 130' INT
   trap 'write_fail_if_empty "battery exited rc=$? before any cell recorded"' EXIT
 
-  if [ ! -d "$repo/.git" ]; then
-    local git_top
-    git_top=$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null || true)
-    echo "ERROR: $repo is not a git repo (git resolves toplevel: ${git_top:-none}) — dispatch against the primary repo workdir" >&2
-    printf '{"cell":"run_battery","status":"FAIL","detail":"run refused: %s is not a git repo (git resolves toplevel: %s) — a role-lane workdir was dispatched instead of the primary repo; re-dispatch against the real workdir","ts":"%s"}\n' \
-      "$repo" "${git_top:-none}" "$(date -u +%FT%TZ)" >> "$EVIDENCE"
-    exit 1
-  fi
+  # QA-BUNKER-REVIEW-3: repo sanity + stand-in product-root resolution — shared
+  # with launch() via qa_repo_sanity (fleet parity with QA-HARNESS-SCOPE-20261004:
+  # refuse subdirectory-of-parent targets unless BUNKER_QA_SUBDIR opts in, and
+  # resolve a stand-in dir whose .coding-hermes/board symlinks into a different
+  # product repo). Traps precede this: a refusal still records its row.
+  repo=$(qa_repo_sanity "$repo" run) || exit 1
+  PROJ=$(basename "$repo")
 
   log "QA project: $PROJ — fresh-system pass on $SERVER (ttl $TTL)"
 
@@ -3328,14 +3398,13 @@ launch() {
   trap 'write_fail_if_empty "launch interrupted by SIGINT before the launch cell was recorded"; exit 130' INT
   trap 'write_fail_if_empty "launch exited rc=$? before the launch cell was recorded"' EXIT
 
-  if [ ! -d "$repo/.git" ]; then
-    local git_top
-    git_top=$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null || true)
-    echo "ERROR: $repo is not a git repo (git resolves toplevel: ${git_top:-none}) — dispatch against the primary repo workdir" >&2
-    printf '{"cell":"run_battery","status":"FAIL","detail":"launch refused: %s is not a git repo (git resolves toplevel: %s) — a role-lane workdir was dispatched instead of the primary repo; re-dispatch against the real workdir","ts":"%s"}\n' \
-      "$repo" "${git_top:-none}" "$(date -u +%FT%TZ)" >> "$EVIDENCE"
-    exit 1
-  fi
+  # QA-BUNKER-REVIEW-3: repo sanity + stand-in product-root resolution — shared
+  # with run() via qa_repo_sanity (fleet parity with QA-HARNESS-SCOPE-20261004:
+  # refuse subdirectory-of-parent targets unless BUNKER_QA_SUBDIR opts in, and
+  # resolve a stand-in dir whose .coding-hermes/board symlinks into a different
+  # product repo). Traps precede this: a refusal still records its row.
+  repo=$(qa_repo_sanity "$repo" launch) || exit 1
+  PROJ=$(basename "$repo")
 
   log "QA LAUNCH project: $PROJ — detached battery on $SERVER (ttl $TTL)"
   preflights
@@ -3826,6 +3895,13 @@ case "${1:-}" in
   run) run "$2" "${@:3}" ;;
   launch) launch "$2" "${@:3}" ;;
   collect) collect "${@:2}" ;;
+  # QA-BUNKER-REVIEW-3 safe probe: print the product root qa_repo_sanity would
+  # sync/grade for <repo-dir> (stand-in board-symlink resolution, explicit
+  # BUNKER_QA_SUBDIR override, or the named refusal) and exit — NO server
+  # contact, NO agent spawn, NO battery. rc=0 = would proceed with the printed
+  # root; rc=1 = refused (named ERROR on stderr). The refusal's evidence row
+  # goes to a throwaway file so a probe never touches the default evidence path.
+  resolve) EVIDENCE="$(mktemp "${TMPDIR:-/tmp}/bunker-qa-resolve-probe.XXXXXX")"; qa_repo_sanity "${2:?usage: bunker-qa.sh resolve <repo-dir>}" probe ;;
   # test hook: print the generated script. `agent` is a placeholder here — the
   # real caller (run/launch) sets it before build_remote_script, and without a
   # default `set -u` aborts the heredoc expansion entirely (no output at all).
@@ -3849,5 +3925,5 @@ case "${1:-}" in
   # QA-9ROUTER-19/20: render with the REAL detection for $2, so a test can
   # assert what a battery run would actually ship (see the hook's comment).
   __gen-remote-detected) agent="${agent:-test-agent-0000}"; detect_cmds "$2" "${3:-test-agent-0000}"; build_remote_script "$2" "$DETECT_INSTALL" "$DETECT_CI" "$DETECT_NATIVE" ;;
-  *) echo "usage: bunker-qa.sh status | run <repo-dir> [--keep] | launch <repo-dir> [--keep] | collect --evidence <path>" ;;
+  *) echo "usage: bunker-qa.sh status | run <repo-dir> [--keep] | launch <repo-dir> [--keep] | collect --evidence <path> | resolve <repo-dir>" ;;
 esac
