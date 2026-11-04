@@ -248,8 +248,9 @@ exporters at a **30s** interval (`stack/alloy/config.alloy:54`) and
 Two supported wirings, in order of preference:
 
 **(A) Textfile shim — zero monitoring-stack change, fastest to ship.**
-A per-host collector (systemd timer, or a `bunker metrics --prometheus-textfile` subcommand the
-CLI grows) calls `curl -s http://127.0.0.1:8080/metrics` and writes the body to
+A per-host collector (systemd timer, or a proposed opt-in textfile mode on the metrics command,
+whose option name would be prometheus-textfile and which does not exist yet) calls
+`curl -s http://127.0.0.1:8080/metrics` and writes the body to
 `/var/lib/node_exporter/textfile/bunkerd.prom`. The `prometheus.exporter.unix "host"` textfile
 collector (`config.alloy:30-32`) picks it up on the next 30s scrape and remote-writes it. Labels
 arriving for free: `instance` (relabelled to the SSH alias — `config.alloy:44-51`), `job`,
