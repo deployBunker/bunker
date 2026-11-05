@@ -1,0 +1,48 @@
+{
+  "tick": "bunker-foreman-2026-11-05-11-41-26",
+  "tick_id": "bunker-foreman-2026-11-05-11-41-26",
+  "tick_number": 722,
+  "created_at": "2026-11-05T11:41:26-05:00",
+  "mode": "wave",
+  "block": "INT-CI-085",
+  "block_kind": "ci-integrity block (INT-CI-060 root-suite red + INT-CI-085 judge lane unfunded)",
+  "block_state_before": "done=94/96, pending=2, ready_by_block_drive=2, substantively dispatchable=1",
+  "resume_of": "bunker-foreman-2026-11-05-11-08-33",
+  "resume_note": "tick 721 named block DF-BUNKER-108-R2; that block still shows 5 rows block_drive calls ready, but tick 721 recorded a NAMED blocker on each of them (operator/infra/credential/release/live-host), so re-sampling it would be a reporting loop, not work. Selection moved to the next DRIVE block per block_drive ranking (INT-CI-085, 97% done).",
+  "slots": 3,
+  "slots_derivation": "nproc=16, loadavg_1m=12.38 -> 16 - ceil(12.38) = 3; min(6,3) = 3; wave_budget 7 -> 3",
+  "wave_budget": 7,
+  "wave_size": 1,
+  "wave_size_reason": "the block holds only 2 ready rows; INT-CI-085 is owner-blocked on funding (probe this tick: https://api.deepseek.com/user/balance HTTP 200, is_available=false, total_balance=-0.87 USD), so exactly ONE row is dispatchable: INT-CI-060. Serial fallback per doctrine (<2 mutually independent dispatchable rows).",
+  "workers": [
+    {
+      "row": "INT-CI-060",
+      "attempt": 1,
+      "inherited_failure_mode": "none (fresh worktree wt/INT-CI-060, no prior worker on this row)",
+      "title": "CI root-suite is red: spawn uid-collision precheck refuses uids occupied by runner residue",
+      "worktree": "/home/kara/worktrees/bunker-INT-CI-060",
+      "branch": "wt/INT-CI-060",
+      "base": "origin/main",
+      "base_sha": "f3e28e17",
+      "model": "gpt-6-luna",
+      "provider": "openai-codex",
+      "lane_rationale": "prepaid OAuth sub (flat, $0 marginal), same lane that landed the 4-row tick-720 wave in this repo; Go bug-fix work",
+      "brief": "/home/kara/.hermes/cache/scratch/bunker-tick-20261105-1141/brief-INT-CI-060.txt",
+      "gitreins_task": "INT-CI-060",
+      "status": "dispatched"
+    }
+  ],
+  "excluded_rows": {
+    "INT-CI-085": "owner/infrastructure blocker: GitReins Tier-2 default lane (api.deepseek.com) is UNFUNDED — probed this tick, is_available=false, total_balance=-0.87 USD. Needs an owner top-up or a durable default-lane change; its arm (3) residue (24 stranded in_progress records) stays pending until the lane is funded so a re-judge can actually produce a verdict."
+  },
+  "evidence": {
+    "ci_health": "gh run list deployBunker/bunker: HEAD f3e28e17 success (2026-11-05T11:34:19Z); run 42014055865 on 31b13868 FAILED at job root-suite (18 spawn/concurrency tests)",
+    "ci_log_local_copy": "/home/kara/.hermes/cache/scratch/ci-42014055865.log",
+    "deepseek_balance_probe": "http_status=200 is_available=False total_balance=-0.87",
+    "pre_solve_lab": "POST /api/v1/problems/discover problem_class=go-test-uid-collision-proc-scan -> not_found; flat corpus grep found no matching answer",
+    "residue": "14 untracked historical wave manifests + root tasks.jsonl (188B, mtime 2026-11-01, single RELEASE-003 row) attributed to prior ticks, preserved in place, not cleaned"
+  },
+  "local_gate": "pending",
+  "remote_ci": "pending",
+  "status": "dispatched"
+}
