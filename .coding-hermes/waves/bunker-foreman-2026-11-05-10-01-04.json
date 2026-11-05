@@ -1,0 +1,62 @@
+{
+  "tick_id": "bunker-foreman-2026-11-05-10-01-04",
+  "tick": 719,
+  "mode": "wave",
+  "block": "DF-BUNKER-108-R2",
+  "block_kind": "id-family union (all DF-BUNKER-* rows)",
+  "block_state": "done=103/120 (85%), pending=17, ready=17",
+  "base_sha": "c7468fc39441773a11ad5fef07315dc20523d763",
+  "base_ref": "origin/main",
+  "wave_budget": 12,
+  "nproc": 16,
+  "loadavg_1m": 6.07,
+  "slots": 6,
+  "wave_size": 3,
+  "wave_size_reason": "3 mutually independent rows of the DF-BUNKER block with real unimplemented code (premise verified in-tree); rows in other blocks were rejected because RELEASE-019 is operator/release-authority work (tag+Release cut, host-blocked deploys), and same-file siblings (DF-BUNKER-105 cli/spawn.go, DF-BUNKER-106 tunnel/tunnel.go) were excluded to avoid seam collisions.",
+  "workers": [
+    {
+      "row": "DF-BUNKER-47-R2",
+      "priority": "P1",
+      "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-47-R2",
+      "branch": "wt/DF-BUNKER-47-R2",
+      "files": ["internal/cli/spawn.go", "internal/cli/connect_test.go", "internal/cli/spawn_test.go"],
+      "gitreins_task": "DF-BUNKER-47-R2",
+      "model": "gpt-6-luna",
+      "provider": "openai-codex",
+      "brief": "/home/kara/.hermes/cache/scratch/brief-DF-BUNKER-47-R2.txt"
+    },
+    {
+      "row": "DF-BUNKER-104",
+      "priority": "P1",
+      "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-104",
+      "branch": "wt/DF-BUNKER-104",
+      "files": ["internal/tunnel/tunnel.go", "internal/tunnel/tunnel_test.go"],
+      "gitreins_task": "DF-BUNKER-104",
+      "model": "gpt-6-luna",
+      "provider": "openai-codex",
+      "brief": "/home/kara/.hermes/cache/scratch/brief-DF-BUNKER-104.txt"
+    },
+    {
+      "row": "DF-BUNKER-101",
+      "priority": "P2",
+      "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-101",
+      "branch": "wt/DF-BUNKER-101",
+      "files": ["internal/iobattery/battery.go", "internal/iobattery/battery_test.go", "docs/iobattery.md"],
+      "gitreins_task": "DF-BUNKER-101",
+      "model": "gpt-6-luna",
+      "provider": "openai-codex",
+      "brief": "/home/kara/.hermes/cache/scratch/brief-DF-BUNKER-101.txt"
+    }
+  ],
+  "excluded_rows": {
+    "DF-BUNKER-105": "same file seam as DF-BUNKER-47-R2 (internal/cli/spawn.go)",
+    "DF-BUNKER-106": "same file seam as DF-BUNKER-104 (internal/tunnel/tunnel.go)",
+    "DF-BUNKER-90": "acceptance already satisfied in tree (grep ### Prerequisites=1, must run as root=3) - verification-only close",
+    "DF-BUNKER-92": "acceptance requires a release tag containing 10760912 - release-authority, blocked on RELEASE-019",
+    "DF-BUNKER-100": "acceptance arms already satisfied (BFS-005 doc tracked, WRITE SHAPE in fs.go help) - verification-only close",
+    "DF-BUNKER-85": "acceptance arms already satisfied (dynamically=3, toolkit repo=3, image-spec tracked) - verification-only close",
+    "RELEASE-003/008/019": "operator/release-authority block: host redeploys (unreachable hosts) and v0.3.0 tag cut"
+  },
+  "status": "dispatched",
+  "created_at": "2026-11-05T10:01:04-05:00"
+}
