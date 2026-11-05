@@ -40,7 +40,15 @@ var agentHomeRoot = "/home"
 // directory behind on a machine that runs the tests as root).
 var spawnRunRoot = filepath.Join("/run", "bunker")
 
-func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v1.SpawnAgentResponse, error) {
+func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (response *v1.SpawnAgentResponse, spawnErr error) {
+	defer func() {
+		if spawnErr != nil {
+			m.spawnError.Add(1)
+		} else {
+			m.spawnOK.Add(1)
+		}
+	}()
+
 	// ── Step 1: Validate or generate agent_id ──────────────────────
 	agentID := req.GetAgentId()
 	if agentID != "" {

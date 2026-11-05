@@ -544,6 +544,12 @@ func (s *Store) Known(agentID string) bool {
 	return s.known[agentID]
 }
 
+func (s *Store) EventCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.last.Events
+}
+
 // LiveCount returns the number of live agents.
 func (s *Store) LiveCount() int {
 	s.mu.Lock()
@@ -769,6 +775,7 @@ func (s *Store) append(ev Event, apply func()) error {
 	if apply != nil {
 		apply()
 	}
+	s.last.Events++
 	return nil
 }
 

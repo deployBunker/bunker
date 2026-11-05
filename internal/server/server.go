@@ -280,10 +280,10 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	}
 
 	tracker := resource.NewTracker(s.cfg.Agent.MaxAgents, s.logger)
-	registerMetricsRoute(r, s.cfg.Server.MetricsEnabled, tracker, version.Version, s.cfg.Server.RESTAddr)
 	tunnelMgr := tunnel.NewTunnelManager(&s.cfg.Tunnel, s.logger)
 	tailscaleMgr := tailscale.NewTailscaleManager(&s.cfg.Tailscale, s.logger)
 	agentMgr := agent.NewAgentManager(s.cfg, s.logger, tracker, tunnelMgr, tailscaleMgr)
+	registerMetricsRoute(r, s.cfg.Server.MetricsEnabled, tracker, version.Version, s.cfg.Server.RESTAddr, agentMgr.LifecycleMetrics)
 	// GAP-070: a daemon that cannot persist agent lifecycle state must not
 	// serve — every spawn it accepted would be forgotten by the next
 	// restart. Fail before opening any listener.

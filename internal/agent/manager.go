@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
@@ -128,6 +129,21 @@ type AgentManager struct {
 	// 06:03:52 while still in its session-probe stage). Guarded ids are
 	// skipped by every sweep call site through the exists oracle.
 	spawnInFlight sync.Map // agentID -> struct{}
+
+	spawnOK                atomic.Uint64
+	spawnError             atomic.Uint64
+	destroyOK              atomic.Uint64
+	destroyRefused         atomic.Uint64
+	destroyError           atomic.Uint64
+	destroyArchived        atomic.Uint64
+	destroySkippedArchive  atomic.Uint64
+	refusedLiveProcesses   atomic.Uint64
+	refusedHomeRetained    atomic.Uint64
+	refusedUserdelFailed   atomic.Uint64
+	archiveFailuresArchive atomic.Uint64
+	archiveFailuresPrune   atomic.Uint64
+	archiveFailuresVerify  atomic.Uint64
+	portpoolDriftReleased  atomic.Uint64
 }
 
 // NewAgentManager creates a new AgentManager.

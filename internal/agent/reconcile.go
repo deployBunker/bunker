@@ -541,6 +541,9 @@ func (m *AgentManager) sweepPortPoolDrift() (released []string) {
 		before[h.AgentID] = h
 	}
 	released = m.portAlloc.ReconcileFrom(m.reservationOwned)
+	if len(released) > 0 {
+		m.portpoolDriftReleased.Add(uint64(len(released)))
+	}
 	for _, id := range released {
 		h := before[id]
 		m.logger.Warn("port-pool drift sweep: released reservation with no tracked agent",

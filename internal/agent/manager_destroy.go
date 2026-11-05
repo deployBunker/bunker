@@ -561,7 +561,34 @@ func (m *AgentManager) killAgentCgroupSubtree(execCtx context.Context, username,
 		"agent_id", agentID, "username", username, "uid", uidNum, "slice", slice)
 }
 
-func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool, opts ...DestroyOption) (*v1.DestroyAgentResponse, error) {
+func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool, opts ...DestroyOption) (response *v1.DestroyAgentResponse, destroyErr error) {
+	archived := false
+	skippedArchive := false
+	defer func() {
+		if response != nil {
+			switch response.Status {
+			case StatusLiveProcesses:
+				m.destroyRefused.Add(1)
+			case StatusHomeRetained:
+				m.destroyRefused.Add(1)
+			case StatusUserdelFailed:
+				m.destroyRefused.Add(1)
+			case "destroyed":
+				switch {
+				case archived:
+					m.destroyArchived.Add(1)
+				case skippedArchive:
+					m.destroySkippedArchive.Add(1)
+				default:
+					m.destroyOK.Add(1)
+				}
+			default:
+				m.destroyError.Add(1)
+			}
+		} else {
+			m.destroyError.Add(1)
+		}
+	}()
 	// DF-BUNKER-81: the resolved options of THIS destroy (today: the
 	// operator's archive opt-out). Zero value = today's behaviour.
 	var dOpts destroyOptions
@@ -892,6 +919,11 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool, 
 		archivePath, aerr := m.archiveAgentHome(actx, homeDir, archiveDir)
 		acancel()
 		if aerr != nil {
+			if strings.Contains(aerr.Error(), "verify archive") || strings.Contains(aerr.Error(), "archive lists no entries") || strings.Contains(aerr.Error(), "archive is empty") {
+				m.archiveFailuresVerify.Add(1)
+			} else {
+				m.archiveFailuresArchive.Add(1)
+			}
 			m.logger.Error("agent home archive failed; home RETAINED, userdel NOT run",
 				"agent_id", agentID,
 				"policy", config.DestroyPolicyArchive,
@@ -912,6 +944,7 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool, 
 			"agent_id", agentID,
 			"policy", config.DestroyPolicyArchive,
 			"archive_path", archivePath)
+		archived = true
 		// INFRA-BACKUP-01: with the archive VERIFIED and this destroy on
 		// the success path, prune old archives so the archive dir has real
 		// retention. Best-effort: a prune failure is logged, never allowed
@@ -921,6 +954,7 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool, 
 		if removed, perr := m.pruneArchiveDir(archiveDir,
 			m.cfg.Agent.DestroyArchiveKeepOrZero(),
 			m.cfg.Agent.DestroyArchiveMaxBytes); perr != nil {
+			m.archiveFailuresPrune.Add(1)
 			m.logger.Warn("archive prune failed (archive dir may grow unbounded)",
 				"archive_dir", archiveDir, "error", perr)
 		} else if len(removed) > 0 {
@@ -928,6 +962,7 @@ func (m *AgentManager) Destroy(ctx context.Context, agentID string, force bool, 
 				"archive_dir", archiveDir, "removed", len(removed))
 		}
 	case homeExists && dOpts.skipArchive:
+		skippedArchive = true
 		// DF-BUNKER-81 criterion 4: the operator chose to skip the archive.
 		// This is IRREVERSIBLE and it is logged at Warn for that reason — the
 		// next thing that happens to the home is `userdel -rf`.

@@ -9,9 +9,49 @@ import (
 	"testing"
 	"time"
 
+	"github.com/deployBunker/bunker/internal/agent"
 	"github.com/deployBunker/bunker/internal/resource"
 	"github.com/go-chi/chi/v5"
 )
+
+func TestLifecycleMetricsFamiliesAndBoundedLabels(t *testing.T) {
+	tracker := resource.NewTracker(7, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err := tracker.Register(&resource.AgentRecord{AgentID: "agent-secret"}); err != nil {
+		t.Fatal(err)
+	}
+	metrics := agent.LifecycleMetrics{
+		SpawnOK: 2, SpawnError: 1, DestroyOK: 3, DestroyRefused: 1, DestroyError: 1,
+		DestroyArchived: 2, DestroySkippedArchive: 1, RefusedLiveProcesses: 1,
+		RefusedHomeRetained: 2, RefusedUserdelFailed: 3,
+		ArchiveFailuresArchive: 4, ArchiveFailuresPrune: 5, ArchiveFailuresVerify: 6,
+		ArchiveBytes: 1234, RegistryEvents: 17, PortAvailable: 9, PortpoolDriftReleased: 8,
+		RegistryDestroyRefused: map[string]uint64{"live_processes": 1, "home_retained": 2, "userdel_failed": 3},
+	}
+	handler := newMetricsHandler(tracker, "test-version", "127.0.0.1:8080", func() agent.LifecycleMetrics { return metrics })
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body := res.Body.String()
+	for _, sample := range []string{
+		`bunker_destroy_refused_total{reason="live_processes"} 1`,
+		`bunker_registry_destroy_refused{reason="live_processes"} 1`,
+		`bunker_registry_destroy_refused{reason="home_retained"} 2`,
+		`bunker_archive_failures_total{reason="verify"} 6`,
+		`bunker_archive_bytes 1234`,
+		`bunker_registry_events 17`,
+		`bunker_portpool_available 9`,
+		`bunker_portpool_drift_released_total 8`,
+		`bunker_agents_current 1`,
+	} {
+		if !strings.Contains(body, sample) {
+			t.Errorf("metrics output missing %q:\n%s", sample, body)
+		}
+	}
+	for _, forbidden := range []string{"agent_id=", "user=", "session_id=", "remote_addr=", "error="} {
+		if strings.Contains(body, forbidden) {
+			t.Errorf("metrics output contains forbidden high-cardinality label %q:\n%s", forbidden, body)
+		}
+	}
+}
 
 func TestMetricsRouteEnabledAndDisabled(t *testing.T) {
 	tracker := resource.NewTracker(7, slog.New(slog.NewTextHandler(io.Discard, nil)))

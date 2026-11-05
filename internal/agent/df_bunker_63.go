@@ -468,6 +468,14 @@ func (m *AgentManager) recordDestroyRefusal(agentID, status string, cause error)
 		m.logger.Error("refusing to record a non-refusal destroy status", "agent_id", agentID, "status", status)
 		return
 	}
+	switch status {
+	case StatusLiveProcesses:
+		m.refusedLiveProcesses.Add(1)
+	case StatusHomeRetained:
+		m.refusedHomeRetained.Add(1)
+	case StatusUserdelFailed:
+		m.refusedUserdelFailed.Add(1)
+	}
 	if m.registry == nil {
 		// Registry disabled or unavailable: the durable half of the backoff
 		// cannot exist, but the tracker status below still surfaces the
