@@ -5681,3 +5681,42 @@ tasks:
     wiring and test coverage only.'
   status: in_progress
   created_at: '2026-11-05T19:31:33.042232+00:00'
+- id: OBS-BUNKER-002-V1
+  title: 'OBS-BUNKER-002 verification: RPC metrics at 8a7b6c5d'
+  criteria:
+  - 'Verify OBS-BUNKER-002 implementation at commit 8a7b6c5d:
+
+    1. grep -q ''bunker_rpc_requests_total'' internal/server/metrics.go (counter registered)
+
+    2. grep -q ''bunker_rpc_duration_seconds'' internal/server/metrics.go (histogram
+    registered)
+
+    3. grep -q ''rpcRequestsTotal.Increment'' internal/audit/interceptor.go (counter
+    incremented in interceptor)
+
+    4. go test ./internal/server/... -run TestRPCMetrics -count=1 rc=0 (tests pass)
+
+    5. CI run on 8a7b6c5d conclusion=success (GitHub Actions green)
+
+    Do NOT run a live daemon; verify the code wiring and test coverage only.'
+  status: in_progress
+  created_at: '2026-11-05T19:52:11.394893+00:00'
+- id: OBS-BUNKER-004-V1
+  title: 'OBS-BUNKER-004 verification: WebDAV metrics at 9d8e7f6a'
+  criteria:
+  - 'Verify OBS-BUNKER-004 implementation at commit 9d8e7f6a:
+
+    1. grep -q ''bunker_webdav_watch_'' internal/server/metrics.go (watch metrics
+    registered)
+
+    2. grep -q ''bunker_webdav_push_'' internal/server/metrics.go (push metrics registered)
+
+    3. grep -q ''webdavWatchOverflows'' internal/server/webdav/watch.go (atomic exported)
+
+    4. go test ./internal/server/... -run TestWebDAVMetrics -count=1 rc=0 (tests pass)
+
+    5. CI run on 9d8e7f6a conclusion=success (GitHub Actions green)
+
+    Do NOT run a live daemon; verify the code wiring and test coverage only.'
+  status: in_progress
+  created_at: '2026-11-05T19:52:12.298648+00:00'
