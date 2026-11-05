@@ -12,6 +12,7 @@ package iobattery
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,16 +26,26 @@ import (
 // Report is the machine-readable battery result. One JSON document per run,
 // one entry per measurement family plus the negative control.
 type Report struct {
-	Schema  string `json:"schema"`
-	Target  string `json:"target"`
-	Host    string `json:"host"`
-	OS      string `json:"os"`
-	Started string `json:"started"`
-	Command string `json:"command"`
+	Schema     string     `json:"schema"`
+	WriteShape WriteShape `json:"write_shape"`
+	Target     string     `json:"target"`
+	Host       string     `json:"host"`
+	OS         string     `json:"os"`
+	Started    string     `json:"started"`
+	Command    string     `json:"command"`
 	// Measurements holds one entry per family that ran. Families that were
 	// skipped or errored still appear, with an explicit reason — an
 	// unexplained null is junk (BFS doctrine).
 	Measurements []Measurement `json:"measurements"`
+}
+
+// WriteShape records the target's write-shape preflight. Unsupported flags are
+// set only when the filesystem explicitly rejects an operation as unsupported.
+type WriteShape struct {
+	AppendSupported      bool   `json:"append_supported"`
+	RandomWriteSupported bool   `json:"random_write_supported"`
+	MetadataSupported    bool   `json:"metadata_supported"`
+	Reason               string `json:"reason,omitempty"`
 }
 
 // Measurement is one family's result.
@@ -116,6 +127,7 @@ func Run(opts Options) (*Report, error) {
 	}
 	defer os.RemoveAll(scratch) //nolint:errcheck // best-effort cleanup of our own scratch dir
 
+	rep.WriteShape = preflightWriteShape(scratch)
 	families := []struct {
 		name string
 		fn   func(dir string, o Options) Measurement
@@ -127,6 +139,14 @@ func Run(opts Options) (*Report, error) {
 		{"cpu_per_byte", measureCPUPerByte},
 	}
 	for _, f := range families {
+		if reason := unsupportedFamily(f.name, rep.WriteShape); reason != "" {
+			rep.Measurements = append(rep.Measurements, Measurement{
+				Name: f.name, Error: "unsupported: " + reason,
+				Detail:  map[string]any{"status": "unsupported", "write_shape": "whole-file publish only", "reason": reason},
+				Command: fmt.Sprintf("bunker iobattery --target %s --mode %s", opts.Target, f.name),
+			})
+			continue
+		}
 		m := f.fn(scratch, opts)
 		m.Name = f.name
 		rep.Measurements = append(rep.Measurements, m)
@@ -142,6 +162,71 @@ func Run(opts Options) (*Report, error) {
 // Marshal renders the report as indented JSON.
 func (r *Report) Marshal() ([]byte, error) {
 	return json.MarshalIndent(r, "", "  ")
+}
+
+// preflightWriteShape probes representative append, in-place random-write, and
+// metadata operations in the battery scratch directory. Only explicit
+// EOPNOTSUPP/ENOTSUP responses change classification; EIO and other failures
+// remain visible as real family failures.
+func preflightWriteShape(dir string) WriteShape {
+	shape := WriteShape{AppendSupported: true, RandomWriteSupported: true, MetadataSupported: true}
+	probe := filepath.Join(dir, "write-shape-probe")
+	if err := os.WriteFile(probe, []byte("base"), 0o600); err == nil {
+		f, err := os.OpenFile(probe, os.O_WRONLY|os.O_APPEND, 0)
+		if err != nil {
+			if isUnsupportedWrite(err) {
+				shape.AppendSupported = false
+			}
+		} else {
+			_, err = f.Write([]byte("append"))
+			_ = f.Close()
+			if isUnsupportedWrite(err) {
+				shape.AppendSupported = false
+			}
+		}
+		f, err = os.OpenFile(probe, os.O_RDWR, 0)
+		if err != nil {
+			if isUnsupportedWrite(err) {
+				shape.RandomWriteSupported = false
+			}
+		} else {
+			_, err = f.WriteAt([]byte("edit"), 0)
+			_ = f.Close()
+			if isUnsupportedWrite(err) {
+				shape.RandomWriteSupported = false
+			}
+		}
+		if err := os.Chmod(probe, 0o400); isUnsupportedWrite(err) {
+			shape.MetadataSupported = false
+		}
+	}
+	_ = os.Remove(probe)
+	if !shape.AppendSupported || !shape.RandomWriteSupported || !shape.MetadataSupported {
+		shape.Reason = "target supports whole-file publish only"
+	}
+	return shape
+}
+
+func isUnsupportedWrite(err error) bool {
+	return errors.Is(err, syscall.EOPNOTSUPP) || errors.Is(err, syscall.ENOTSUP)
+}
+
+func unsupportedFamily(name string, shape WriteShape) string {
+	switch name {
+	case "throughput", "cpu_per_byte":
+		if !shape.AppendSupported {
+			return "write shape: whole-file publish only; append-style writes are unsupported"
+		}
+	case "metadata_ops":
+		if !shape.MetadataSupported {
+			return "write shape: whole-file publish only; metadata operations are unsupported"
+		}
+	case "iops":
+		if !shape.RandomWriteSupported {
+			return "write shape: whole-file publish only; in-place random writes are unsupported"
+		}
+	}
+	return ""
 }
 
 // ---- helpers -------------------------------------------------------------

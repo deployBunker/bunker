@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -124,7 +125,25 @@ func TestNegativeControlRecordsUnavailableArm(t *testing.T) {
 	}
 }
 
-// Validation: missing/invalid target must fail loudly.
+// Preflight degradation is limited to explicit unsupported-operation signals;
+// unrelated I/O errors must remain ordinary family failures.
+func TestWriteShapeClassifiesUnsupportedFamilies(t *testing.T) {
+	shape := WriteShape{AppendSupported: false, RandomWriteSupported: false, MetadataSupported: false}
+	for _, name := range []string{"throughput", "cpu_per_byte", "metadata_ops", "iops"} {
+		reason := unsupportedFamily(name, shape)
+		if !strings.Contains(reason, "whole-file publish only") {
+			t.Errorf("%s reason = %q, want explained unsupported result", name, reason)
+		}
+	}
+	if reason := unsupportedFamily("latency_under_load", shape); reason != "" {
+		t.Errorf("latency family unexpectedly unsupported: %q", reason)
+	}
+	if isUnsupportedWrite(syscall.EIO) {
+		t.Error("EIO was classified as unsupported")
+	}
+}
+
+// Target validation: missing/invalid target must fail loudly.
 func TestRunTargetValidation(t *testing.T) {
 	if _, err := Run(Options{}); err == nil {
 		t.Error("empty target: want error")

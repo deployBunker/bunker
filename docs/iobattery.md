@@ -51,6 +51,30 @@ bunker iobattery --target /tmp/io-scratch --out /tmp/bfs057-fallback.json
 Flags: `--target` (required), `--out` (report file; default stdout),
 `--size-mb`, `--ops`, `--load-workers`, `--no-control`.
 
+## Whole-file-publish mounts (bunker-fs)
+
+A bunker-fs / WebDAV-backed mount may accept whole-file publication while
+rejecting append, in-place random writes, or chmod/metadata changes. Before
+measuring, the battery creates a disposable probe file and tests append
+(`O_APPEND`), in-place `WriteAt`, and `chmod`. Only explicit
+`EOPNOTSUPP`/`ENOTSUP` responses mark a capability unsupported; `EIO`, permission
+errors, and other failures are not excused by this preflight and remain visible
+as ordinary measurement errors.
+
+On a whole-file-publish-only target, the affected families are `throughput`
+and `cpu_per_byte` (append-style write shape), `iops` (in-place random writes),
+and `metadata_ops` (metadata operation). They remain in `measurements` with
+`error` beginning `unsupported:` and `detail.status: unsupported`, plus a
+reason naming the write shape. The target-level `write_shape` object records the
+probe outcomes. `latency_under_load` retains its normal whole-file create/remove
+path. A POSIX/ext4 target reports the same family measurements and pass/fail
+semantics as before. `negative_control` is independently reported, including
+its existing O_DIRECT availability reason.
+
+Treat an explained unsupported result as a capability limitation, not a green
+measurement: do not compare its metric with a supported run. A family with an
+ordinary I/O error is still a failure that needs investigation.
+
 ## Report contract
 
 One JSON document (`schema: bunker.iobattery.v1`). Every measurement carries:
