@@ -5648,3 +5648,36 @@ tasks:
   status: complete
   created_at: '2026-11-05T16:34:49.843317+00:00'
   completed_at: '2026-11-05T16:57:08.026422+00:00'
+- id: OBS-BUNKER-003
+  title: 'OBS-BUNKER-003: export destroy refusal and registry metrics'
+  criteria:
+  - 'Implement docs/observability-spec.md section 4.3: export bounded destroy refusal/archive/registry/port-pool
+    metrics from real lifecycle state, preserve bunker_agents_total and bunker_agents_current,
+    add focused tests, and pass go build ./..., go vet ./..., go test ./... -short
+    -count=1 -parallel 4.'
+  status: complete
+  created_at: '2026-11-05T17:55:08.991450+00:00'
+  completed_at: '2026-11-05T18:23:13.174616+00:00'
+- id: OBS-BUNKER-003-V1
+  title: 'OBS-BUNKER-003 verification: code wiring and test coverage at cbe01bed'
+  criteria:
+  - 'Verify OBS-BUNKER-003 implementation at commit cbe01bed:
+
+    1. grep -q ''bunker_destroy_refused_total'' internal/agent/observability.go (metric
+    registered)
+
+    2. grep -q ''bunker_registry_destroy_refused'' internal/agent/observability.go
+    (gauge registered)
+
+    3. grep -q ''bunker_portpool_available'' internal/agent/observability.go (gauge
+    registered)
+
+    4. go test ./internal/agent/... -run TestLifecycleMetrics -count=1 rc=0 (tests
+    pass)
+
+    5. CI run 42083478030 on cbe01bed conclusion=success (GitHub Actions green)
+
+    Do NOT run a live daemon or exercise the destroy-refusal path; verify the code
+    wiring and test coverage only.'
+  status: in_progress
+  created_at: '2026-11-05T19:31:33.042232+00:00'
