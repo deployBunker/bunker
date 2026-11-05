@@ -370,6 +370,9 @@ type ServerConfig struct {
 	// existing listeners. OFF by default: it exposes a served tree, so it is
 	// an explicit operator decision.
 	WebDAVEnabled bool `mapstructure:"webdav_enabled"`
+	// MetricsEnabled exposes the unauthenticated Prometheus endpoint. It is
+	// restricted to a loopback REST listener by Validate.
+	MetricsEnabled bool `mapstructure:"metrics_enabled"`
 	// WebDAVRoot is the directory served under /dav. Required (and required
 	// to be absolute) when WebDAVEnabled is set.
 	WebDAVRoot string `mapstructure:"webdav_root"`
@@ -1620,6 +1623,7 @@ func Load(path string) (*Config, error) {
 	v.BindEnv("server.request_timeout")
 	v.BindEnv("server.h2c_enabled")
 	v.BindEnv("server.webdav_enabled")
+	v.BindEnv("server.metrics_enabled")
 	v.BindEnv("server.webdav_root")
 	v.BindEnv("server.h3_enabled")
 	v.BindEnv("server.h3_addr")
@@ -1764,6 +1768,13 @@ func Load(path string) (*Config, error) {
 func (c *Config) Validate() error {
 	if c.Server.GRPCAddr == "" {
 		return fmt.Errorf("server.grpc_addr is required")
+	}
+	if c.Server.MetricsEnabled {
+		host, _, err := net.SplitHostPort(c.Server.RESTAddr)
+		ip := net.ParseIP(host)
+		if err != nil || ip == nil || !ip.IsLoopback() {
+			return fmt.Errorf("server.metrics_enabled requires server.rest_addr to be an IP loopback address (127.0.0.0/8 or ::1), got %q", c.Server.RESTAddr)
+		}
 	}
 	// BFS-006: the WebDAV surface is opt-in and, once opted in, must have a
 	// served tree. Fail before any listener opens rather than mounting a

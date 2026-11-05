@@ -280,6 +280,7 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	}
 
 	tracker := resource.NewTracker(s.cfg.Agent.MaxAgents, s.logger)
+	registerMetricsRoute(r, s.cfg.Server.MetricsEnabled, tracker, version.Version, s.cfg.Server.RESTAddr)
 	tunnelMgr := tunnel.NewTunnelManager(&s.cfg.Tunnel, s.logger)
 	tailscaleMgr := tailscale.NewTailscaleManager(&s.cfg.Tailscale, s.logger)
 	agentMgr := agent.NewAgentManager(s.cfg, s.logger, tracker, tunnelMgr, tailscaleMgr)

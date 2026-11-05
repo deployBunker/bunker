@@ -1,6 +1,6 @@
 # bunker — Observability Spec
 
-Status: proposed (audit 2026-11-03). No service code changed yet.
+Status: tier 1 implemented (2026-11-05); tiers 2–4 remain proposed.
 Audience: the `monitoring` lane worker who implements this, and the operator who pages at 3am.
 
 ---

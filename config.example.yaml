@@ -43,6 +43,8 @@ server:
   grpc_addr: "127.0.0.1:9090"   # gRPC listen address (loopback; same-host tooling)
   rest_addr: "100.64.0.1:8080"  # REST listen address — the host's TAILNET address (tailscale ip -4); EDIT before first start; clients dial this
   request_timeout: 300s       # per-request timeout
+  # Prometheus metrics are unauthenticated and restricted to loopback REST binds.
+  # metrics_enabled: false
   # ── WebDAV surface (BFS-004/BFS-006) — OFF by default ─────────────────────
   # webdav_enabled: false     # mount the WebDAV surface under /dav
   # webdav_root: ""           # absolute path of the served tree (required when enabled)
