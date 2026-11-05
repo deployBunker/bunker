@@ -1,0 +1,43 @@
+{
+  "tick": "bunker-foreman-2026-11-05-02-08-55",
+  "tick_number": 718,
+  "block": "BOARD-GUARD-001",
+  "block_id": "BOARD-GUARD-001",
+  "wave_id": "bunker-foreman-2026-11-05-02-08-55",
+  "mode": "serial",
+  "mode_reason": "Block BOARD-GUARD-001 is a singleton block (1 ready row, 0 depends_on), so no wave is composable. Host yields slots=max(1,min(6,16-ceil(8.50)))=6 and WAVE_BUDGET=11 is the hard ceiling, but the block has only one independent row. Serial path per the foreman block-drive contract.",
+  "resume_of": "bunker-foreman-2026-11-05-00-47-50",
+  "resume_note": "Ticks 715, 716 and 717 selected BOARD-GUARD-001 and produced ZERO commits. Attempt 3 (tick 717) died at the launcher: exit 1, 'Gateway disconnected; turn outcome is unknown', session local-a4e59db6eccd927c5ce3b39df7e211b9ad14892405fe4c609d3f80424e8418b6 (worktree verified pristine at base). This tick reuses the existing in_progress GitReins task record and the same proven brief, and changes ONE variable: the worker lane (glm-5.3-flash -> glm-5.3 on the same zai-glm-default provider) to rule out a lane-specific stall.",
+  "nproc": 16,
+  "loadavg_1m": 8.5,
+  "slots": 6,
+  "wave_budget": 11,
+  "wave_size": 1,
+  "base": "origin/main",
+  "base_sha": "8b15a26ae6ca644be44bd515175d0af205e07eb3",
+  "inherited_residue_preserved": [
+    ".coding-hermes/board/tasks.jsonl (1-line edit to row BOARD-GUARD-001 written by tick 717: worktree/branch dispatch note, uncommitted)",
+    ".gitreins/tasks.yaml (BOARD-GUARD-001 in_progress record created 2026-11-04T04:53:31Z by tick 715)",
+    "14 untracked .coding-hermes/waves/*.json manifests from ticks 2026-10-30 .. 2026-11-05 (attributable historical evidence; no live writer)",
+    "tasks.jsonl (untracked root-level, 1 spaced-JSON RELEASE-003 row, mtime 2026-11-01 05:21:13; documented defective-writer artifact, preserved in place)"
+  ],
+  "rows": [
+    {
+      "id": "BOARD-GUARD-001",
+      "priority": "P0",
+      "status_at_dispatch": "pending",
+      "worktree": "/home/kara/worktrees/bunker-BOARD-GUARD-001",
+      "branch": "wt/BOARD-GUARD-001",
+      "model": "glm-5.3",
+      "provider": "zai-glm-default",
+      "attempt": 4,
+      "brief": "/home/kara/.hermes/cache/scratch/bunker-tick-20261105-020855.kWdSa5/brief-BOARD-GUARD-001.txt",
+      "acceptance": [
+        "1) identify the exact writer that produced 63140484's tasks.jsonl (tick-713 closeout) and name it",
+        "2) make that writer append or surgically replace one line, never re-emit a filtered subset",
+        "3) add a regression check that fails when a tasks.jsonl write drops unintended rows; RED proof on simulated 849->1 rewrite, GREEN proof on corrected writer",
+        "4) cite commands and output"
+      ]
+    }
+  ]
+}
