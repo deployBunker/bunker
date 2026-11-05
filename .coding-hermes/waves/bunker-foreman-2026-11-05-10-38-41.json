@@ -50,6 +50,8 @@
     {
       "row": "DF-BUNKER-99",
       "priority": "P2",
+      "commit": "31b13868",
+      "commit_note": "worker sha 954ca929 was pre-rebase; the serial-merge rebase produced 31b13868, which is the commit that landed the file",
       "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-99",
       "branch": "wt/DF-BUNKER-99",
       "files": ["internal/server/orphan_uid_batch_test.go", "internal/server/<new>_test.go"],
