@@ -45,6 +45,26 @@ HOST_ARCH := amd64
 endif
 GO_TARBALL := https://go.dev/dl/go$(GO_MIN).linux-$(HOST_ARCH).tar.gz
 
+# ── Host disk prerequisite (DF-BUNKER-115) ───────────────────────────────────
+# Go builds need sufficient free space on the host filesystem. Keep this at
+# 6% free (equivalent to bunker-qa.sh's 94% used launch limit); the reported
+# GiB threshold is calculated from the filesystem capacity at check time.
+# bunker-qa.sh owns the matching 94% used threshold — update both together.
+.PHONY: check-disk
+check-disk:
+	@set -eu; \
+	  usage=$$(df -Pk . | awk 'NR == 2 { gsub(/%/, "", $$5); print $$5 }'); \
+	  available=$$(df -Pk . | awk 'NR == 2 { print $$4 }'); \
+	  total=$$(df -Pk . | awk 'NR == 2 { print $$2 }'); \
+	  case "$$usage:$$available:$$total" in *[!0-9:]*) echo 'make: unable to read host disk space with df -Pk.' >&2; exit 1;; esac; \
+	  required=$$(( (total * 6 + 99) / 100 )); \
+	  threshold_gib=$$(( (required + 1048575) / 1048576 )); \
+	  if [ "$$available" -lt "$$required" ]; then \
+	    echo "make: insufficient host disk space; need at least $${threshold_gib} GiB free (6%, matching bunker-qa.sh's 94% used limit). Free space and retry." >&2; \
+	    exit 1; \
+	  fi; \
+	  echo "make: host disk space OK ($${threshold_gib} GiB minimum free; 6% threshold)."
+
 .PHONY: check-go
 check-go:
 	@command -v go >/dev/null 2>&1 || { \
@@ -70,18 +90,18 @@ check-go:
 
 # Build both CLI binaries
 .PHONY: build
-build: check-go
+build: check-go check-disk
 	go build -ldflags "$(LDFLAGS)" -o $(BUNKERD) ./cmd/bunkerd
 	go build -ldflags "$(LDFLAGS)" -o $(BUNKER) ./cmd/bunker
 
 # Build only the daemon
 .PHONY: build-daemon
-build-daemon: check-go
+build-daemon: check-go check-disk
 	go build -ldflags "$(LDFLAGS)" -o $(BUNKERD) ./cmd/bunkerd
 
 # Build only the CLI
 .PHONY: build-cli
-build-cli: check-go
+build-cli: check-go check-disk
 	go build -ldflags "$(LDFLAGS)" -o $(BUNKER) ./cmd/bunker
 
 # ── Release binaries (DF-BUNKER-25) ──────────────────────────────────────────
@@ -92,7 +112,7 @@ build-cli: check-go
 # nothing else, so a local `make release-binaries` and a published release can
 # not drift.
 .PHONY: release-binaries
-release-binaries: check-go
+release-binaries: check-go check-disk
 	@set -eu; \
 	rm -rf $(DIST_DIR); mkdir -p $(DIST_DIR); \
 	for platform in $(RELEASE_PLATFORMS); do \
@@ -178,7 +198,7 @@ docs-check:
 PREFIX ?= /usr/local
 BINDIR := $(PREFIX)/bin
 .PHONY: install
-install: check-go build
+install: check-go check-disk build
 	mkdir -p $(DESTDIR)$(BINDIR)
 	install -m 0755 $(BUNKERD) $(DESTDIR)$(BINDIR)/bunkerd
 	install -m 0755 $(BUNKER) $(DESTDIR)$(BINDIR)/bunker
