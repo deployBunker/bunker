@@ -5568,3 +5568,26 @@ tasks:
     run certifies the coverage exists at HEAD.'
   status: in_progress
   created_at: '2026-11-05T11:28:41.783616+00:00'
+- id: INT-CI-086
+  title: 'rootless-installer pin: immutable commit-pinned fetch + pinned substitution'
+  criteria:
+  - 'The rootless installer fetch is immutable and satisfiable: (1) internal/agent
+    downloads the installer template from raw.githubusercontent.com/docker/docker-install/ada7a567e59b3935bd601bb21e422da50e80e376/rootless-install.sh
+    (an immutable commit-pinned URL), NOT the mutable https://get.docker.com/rootless;
+    re-fetching that URL twice yields identical sha256 (cfee984e1a9e5e337a692af12c543889f126e9b88b4d2f90445e10bc4255583b)
+    quoted in the row. (2) The supplychain manifest pins the template digest AND the
+    LOAD_SCRIPT_* substitution values (script_commit_sha=ada7a567e59b3935bd601bb21e422da50e80e376,
+    stable_latest=29.9.2, test_latest=29.9.2); the substituted bytes equal the EXISTING
+    final pin 9f227ab1eefb3e4df6b0f26345da8b2149fded68e4afc8a4e450f2f063c8bebc (proven:
+    sed of the three placeholders over the pinned-commit template is byte-identical
+    to internal/agent/testdata/rootless-installer-live.sh), so the final-artifact
+    digest does NOT change. (3) Both gates run: the downloaded template is verified
+    against the pinned template digest BEFORE substitution, and the substituted artifact
+    is verified against the final digest before execution/caching; a wrong-revision
+    or tampered template is REJECTED (negative control test) and the correctly substituted
+    bytes are ACCEPTED. (4) go build ./... && go vet ./... && go test ./internal/agent/...
+    ./internal/supplychain/... ./internal/docscheck/... all pass on the merged tree;
+    no existing test is deleted or skipped to make this pass.'
+  status: complete
+  created_at: '2026-11-05T13:43:17.774592+00:00'
+  completed_at: '2026-11-05T14:16:50.405294+00:00'

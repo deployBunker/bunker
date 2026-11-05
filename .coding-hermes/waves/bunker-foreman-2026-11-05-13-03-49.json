@@ -1,0 +1,37 @@
+{
+  "wave_id": "bunker-foreman-2026-11-05-13-03-49",
+  "tick": "bunker-foreman-2026-11-05-13-03-49",
+  "tick_number": 723,
+  "project": "bunker",
+  "block": "INT-CI-086",
+  "block_resume": "tick bunker-foreman-2026-11-05-11-41-26 (722) closed INT-CI-060 part (1) and filed this block",
+  "mode": "wave",
+  "wave_size": 1,
+  "slots_available": 6,
+  "slot_note": "slots=min(6,16-ceil(4.65))=6 but the block has only ONE independent coding row: INT-CI-060's CI-green arm is gated on INT-CI-086 landing, and INT-CI-085 is an external funding probe (foreman-direct, no worker). Wave of 1 per independence rule.",
+  "rows": ["INT-CI-086"],
+  "workers": [
+    {
+      "row": "INT-CI-086",
+      "worktree": "/home/kara/worktrees/bunker-INT-CI-086",
+      "branch": "wt/INT-CI-086",
+      "base": "origin/main",
+      "base_sha": "34ceb2eb",
+      "model": "gpt-6-luna",
+      "provider": "openai-codex",
+      "gitreins_task": "INT-CI-086",
+      "brief": "/home/kara/.hermes/cache/scratch/bunker-tick-20261105-130349.66JLAb/brief-INT-CI-086.txt",
+      "status": "dispatched"
+    }
+  ],
+  "excluded_rows": [
+    {
+      "row": "INT-CI-060",
+      "reason": "CI-green acceptance arm gated on INT-CI-086 landing; also root-suite job currently skipped (steps:0) in hosted CI - billing/spending block per owner ruling, noted on row"
+    },
+    {
+      "row": "INT-CI-085",
+      "reason": "external judge-lane funding probe: foreman-direct curl of api.deepseek.com balance + residue count; not a coding dispatch"
+    }
+  ]
+}
