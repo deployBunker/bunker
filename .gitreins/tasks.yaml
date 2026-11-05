@@ -5633,3 +5633,18 @@ tasks:
     NOT run go test ./... or the root suite - CI already executed it green.'
   status: in_progress
   created_at: '2026-11-05T15:50:00.894317+00:00'
+- id: OBS-BUNKER-001
+  title: 'bunkerd /metrics: add 5 Tier-1 gauges gated by server.metrics_enabled (loopback-only)'
+  criteria:
+  - 'With server.metrics_enabled=true, `curl -fsS http://127.0.0.1:8080/metrics |
+    grep -c ''^bunker_''` returns at least 5 series, and `curl -fsS http://127.0.0.1:8080/metrics
+    | grep -E ''^bunker_agents_(current|max) ''` prints bunker_agents_current equal
+    to the AgentCount from `bunker server info`; the five series are exactly the section
+    4.1 set: bunker_info{version,rest_addr}, bunker_uptime_seconds, bunker_agents_current,
+    bunker_agents_max, bunker_ttl_expiring_soon. Negative: with the key unset, `curl
+    -s -o /dev/null -w ''%{http_code}'' http://127.0.0.1:8080/metrics` returns 404.
+    Also: `go build ./...`, `go vet ./...`, and `go test ./internal/server/ ./internal/config/
+    ./cmd/bunker/ -count=1` all exit 0.'
+  status: complete
+  created_at: '2026-11-05T16:34:49.843317+00:00'
+  completed_at: '2026-11-05T16:57:08.026422+00:00'
