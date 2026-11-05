@@ -5591,3 +5591,45 @@ tasks:
   status: complete
   created_at: '2026-11-05T13:43:17.774592+00:00'
   completed_at: '2026-11-05T14:16:50.405294+00:00'
+- id: INT-CI-086-V1
+  title: 'Verification close for INT-CI-086: immutable rootless-installer pin evidence'
+  criteria:
+  - 'Verify the landed evidence on main commit d492f85d89e9175ac4c98eec58a888c33fb96a49
+    WITHOUT running long suites: (1) grep internal/agent/rootless.go for the immutable
+    fetch URL https://raw.githubusercontent.com/docker/docker-install/ada7a567e59b3935bd601bb21e422da50e80e376/rootless-install.sh
+    and confirm https://get.docker.com/rootless appears ZERO times in internal/agent/rootless.go
+    and internal/supplychain/manifest.json; (2) jq internal/supplychain/manifest.json:
+    artifact rootless-installer-template variant sha256 == cfee984e1a9e5e337a692af12c543889f126e9b88b4d2f90445e10bc4255583b,
+    artifact rootless-installer variant sha256 == 9f227ab1eefb3e4df6b0f26345da8b2149fded68e4afc8a4e450f2f063c8bebc;
+    (3) sha256sum internal/agent/testdata/rootless-installer-template.sh == cfee984e1a9e5e337a692af12c543889f126e9b88b4d2f90445e10bc4255583b
+    and sha256sum internal/agent/testdata/rootless-installer-live.sh == 9f227ab1eefb3e4df6b0f26345da8b2149fded68e4afc8a4e450f2f063c8bebc;
+    (4) the negative-control tests exist and pass: go test ./internal/supplychain/
+    -run TestManifest -count=1 plus go test ./internal/agent/ -run ''TestDownloadRootlessInstaller_RejectsBytesThatDoNotMatchThePin|TestRootlessInstallerTemplateSubstitutionIsCompleteAndPinned|TestRootlessInstallerPinMatchesThePinnedBytes''
+    -count=1 (all PASS, none skipped); (5) hosted CI run 42043295799 at headSha d492f85d89e9175ac4c98eec58a888c33fb96a49
+    has job ''root-suite'' conclusion=success with steps=13 (executed, not skipped).
+    DO NOT run go build ./... or the full internal/agent suite - those are already
+    measured green; only the commands listed here.'
+  status: in_progress
+  created_at: '2026-11-05T15:37:28.721375+00:00'
+- id: INT-CI-060-V1
+  title: 'Verification close for INT-CI-060: root-gated spawn suite green in hosted
+    CI'
+  criteria:
+  - 'Verify WITHOUT running long suites: (1) hosted CI run 42043295799 at headSha
+    d492f85d89e9175ac4c98eec58a888c33fb96a49 on repo deployBunker/bunker has job name
+    ''root-suite'' with conclusion=success and steps=13 (actually executed, not skipped)
+    - verify with: gh run view 42043295799 --repo deployBunker/bunker --json jobs
+    --jq ''.jobs[] | select(.name=="root-suite") | .conclusion''; (2) the same run''s
+    root-suite log contains NO ''--- FAIL'' lines and NO ''--- SKIP'' lines for internal/agent
+    (verify with: gh run view 42043295799 --repo deployBunker/bunker --log | grep
+    -cE ''root-suite.*--- (FAIL|SKIP)'' returning 0) and internal/agent tests report
+    ''ok'' (grep ''internal/agent.*ok'' in the root-suite log); (3) the uid-collision
+    precheck degradation fix exists in tree at HEAD: grep -n ''uid'' internal/agent/spawn*.go
+    for the bounded-residue step-over logic landed in 3a07b29b (commit ancestor of
+    origin/main - verify with git merge-base --is-ancestor 3a07b29b HEAD) and a test
+    covering the /proc permission-denied path exists (grep -rn ''permission denied
+    reading /proc'' internal/agent/ has at least one test-file hit); (4) commit d492f85d
+    is an ancestor of origin/main (git merge-base --is-ancestor d492f85d HEAD). DO
+    NOT run go test ./... or the root suite - CI already executed it green.'
+  status: in_progress
+  created_at: '2026-11-05T15:50:00.894317+00:00'
