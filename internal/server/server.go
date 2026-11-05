@@ -280,10 +280,27 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	}
 
 	tracker := resource.NewTracker(s.cfg.Agent.MaxAgents, s.logger)
+	var davMetricsHandler *webdav.Handler
+	webdavSnapshot := func() webdavMetricsSnapshot {
+		if davMetricsHandler == nil {
+			return webdavMetricsSnapshot{}
+		}
+		watch := davMetricsHandler.WatchMetrics()
+		push := davMetricsHandler.PushCounters()
+		return webdavMetricsSnapshot{
+			OverflowsTotal: watch.OverflowsTotal, UnvouchedTotal: watch.UnvouchedTotal,
+			RescansTotal: watch.RescansTotal, InstallFailuresTotal: watch.InstallFailuresTotal,
+			BackendErrorsTotal: watch.BackendErrorsTotal, WatchedChangesTotal: watch.WatchedChangesTotal,
+			HeartbeatsTotal: watch.HeartbeatsTotal, LoopTicksTotal: watch.LoopTicksTotal,
+			HeartbeatAgeSeconds: watch.HeartbeatAgeSeconds,
+			PushActive: push.SubscribersActive, PushActiveMax: push.SubscribersActiveMax,
+			PushDropsTotal: push.DropsTotal, PushGapsTotal: push.GapsTotal,
+		}
+	}
 	tunnelMgr := tunnel.NewTunnelManager(&s.cfg.Tunnel, s.logger)
 	tailscaleMgr := tailscale.NewTailscaleManager(&s.cfg.Tailscale, s.logger)
 	agentMgr := agent.NewAgentManager(s.cfg, s.logger, tracker, tunnelMgr, tailscaleMgr)
-	registerMetricsRoute(r, s.cfg.Server.MetricsEnabled, tracker, version.Version, s.cfg.Server.RESTAddr, agentMgr.LifecycleMetrics)
+	registerMetricsRoute(r, s.cfg.Server.MetricsEnabled, tracker, version.Version, s.cfg.Server.RESTAddr, agentMgr.LifecycleMetrics, webdavSnapshot)
 	// GAP-070: a daemon that cannot persist agent lifecycle state must not
 	// serve — every spawn it accepted would be forgotten by the next
 	// restart. Fail before opening any listener.
@@ -428,6 +445,7 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 			return fmt.Errorf("webdav surface: %w", err)
 		}
 		davHandler = h
+		davMetricsHandler = h
 		s.logger.Info("bunkerd WebDAV surface mounted",
 			"prefix", webdav.Prefix,
 			"root", h.Root(),

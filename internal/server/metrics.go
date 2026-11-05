@@ -13,20 +13,32 @@ import (
 
 const ttlExpiringSoonWindow = 10 * time.Minute
 
+type webdavMetricsSnapshot struct {
+	OverflowsTotal, UnvouchedTotal, RescansTotal uint64
+	InstallFailuresTotal, BackendErrorsTotal    uint64
+	WatchedChangesTotal, HeartbeatsTotal        uint64
+	LoopTicksTotal                              uint64
+	HeartbeatAgeSeconds                        float64
+	PushActive, PushActiveMax, PushDropsTotal   int64
+	PushGapsTotal                               int64
+}
+
 func registerMetricsRoute(r interface {
 	Get(string, http.HandlerFunc)
-}, enabled bool, tracker *resource.Tracker, buildVersion, restAddr string, lifecycle ...func() agent.LifecycleMetrics) {
+}, enabled bool, tracker *resource.Tracker, buildVersion, restAddr string, lifecycle func() agent.LifecycleMetrics, webdavSnapshot ...func() webdavMetricsSnapshot) {
 	if enabled {
-		var snapshot func() agent.LifecycleMetrics
-		if len(lifecycle) > 0 {
-			snapshot = lifecycle[0]
-		}
-		r.Get("/metrics", newMetricsHandler(tracker, buildVersion, restAddr, snapshot).ServeHTTP)
+		r.Get("/metrics", newMetricsHandler(tracker, buildVersion, restAddr, lifecycle, webdavSnapshot...).ServeHTTP)
 	}
 }
 
-func newMetricsHandler(tracker *resource.Tracker, buildVersion, restAddr string, lifecycle func() agent.LifecycleMetrics) http.Handler {
+func newMetricsHandler(tracker *resource.Tracker, buildVersion, restAddr string, lifecycle func() agent.LifecycleMetrics, webdavSnapshot ...func() webdavMetricsSnapshot) http.Handler {
 	reg := prometheus.NewRegistry()
+	readWebDAV := func() webdavMetricsSnapshot {
+		if len(webdavSnapshot) == 0 || webdavSnapshot[0] == nil {
+			return webdavMetricsSnapshot{}
+		}
+		return webdavSnapshot[0]()
+	}
 	reg.MustRegister(
 		prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 			Name:        "bunker_info",
@@ -137,6 +149,34 @@ func newMetricsHandler(tracker *resource.Tracker, buildVersion, restAddr string,
 		prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: "bunker_registry_events", Help: "Current event count in the agent lifecycle registry."}, func() float64 { return float64(read().RegistryEvents) }),
 		prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: "bunker_portpool_available", Help: "Free agent port ranges in the allocator."}, func() float64 { return float64(read().PortAvailable) }),
 		prometheus.NewCounterFunc(prometheus.CounterOpts{Name: "bunker_portpool_drift_released_total", Help: "Port reservations released by the drift sweep."}, func() float64 { return float64(read().PortpoolDriftReleased) }),
+	)
+	webdavCounter := func(name, help string, get func(webdavMetricsSnapshot) uint64) prometheus.Collector {
+		return prometheus.NewCounterFunc(prometheus.CounterOpts{Name: name, Help: help}, func() float64 { return float64(get(readWebDAV())) })
+	}
+	webdavGauge := func(name, help string, get func(webdavMetricsSnapshot) float64) prometheus.Collector {
+		return prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: name, Help: help}, func() float64 { return get(readWebDAV()) })
+	}
+	for _, metric := range []struct {
+		name, help string
+		get        func(webdavMetricsSnapshot) uint64
+	}{
+		{"bunker_webdav_watch_overflows_total", "WebDAV watcher overflows.", func(m webdavMetricsSnapshot) uint64 { return m.OverflowsTotal }},
+		{"bunker_webdav_watch_unvouched_total", "WebDAV watcher unvouched intervals.", func(m webdavMetricsSnapshot) uint64 { return m.UnvouchedTotal }},
+		{"bunker_webdav_watch_rescans_total", "WebDAV watcher rescans.", func(m webdavMetricsSnapshot) uint64 { return m.RescansTotal }},
+		{"bunker_webdav_watch_install_failures_total", "WebDAV watcher install failures.", func(m webdavMetricsSnapshot) uint64 { return m.InstallFailuresTotal }},
+		{"bunker_webdav_watch_backend_errors_total", "WebDAV watcher backend errors.", func(m webdavMetricsSnapshot) uint64 { return m.BackendErrorsTotal }},
+		{"bunker_webdav_watch_watched_changes_total", "WebDAV changes observed by the watcher.", func(m webdavMetricsSnapshot) uint64 { return m.WatchedChangesTotal }},
+		{"bunker_webdav_watch_heartbeats_total", "WebDAV watcher heartbeats.", func(m webdavMetricsSnapshot) uint64 { return m.HeartbeatsTotal }},
+		{"bunker_webdav_watch_loop_ticks_total", "WebDAV watcher event loop ticks.", func(m webdavMetricsSnapshot) uint64 { return m.LoopTicksTotal }},
+	} {
+		reg.MustRegister(webdavCounter(metric.name, metric.help, metric.get))
+	}
+	reg.MustRegister(
+		webdavGauge("bunker_webdav_watch_heartbeat_age_seconds", "Seconds since the WebDAV watcher heartbeat.", func(m webdavMetricsSnapshot) float64 { return m.HeartbeatAgeSeconds }),
+		webdavGauge("bunker_webdav_push_active", "Active WebDAV push subscribers.", func(m webdavMetricsSnapshot) float64 { return float64(m.PushActive) }),
+		webdavGauge("bunker_webdav_push_active_max", "Maximum concurrent WebDAV push subscribers.", func(m webdavMetricsSnapshot) float64 { return float64(m.PushActiveMax) }),
+		prometheus.NewCounterFunc(prometheus.CounterOpts{Name: "bunker_webdav_push_drops_total", Help: "WebDAV push subscriber event drops."}, func() float64 { return float64(readWebDAV().PushDropsTotal) }),
+		prometheus.NewCounterFunc(prometheus.CounterOpts{Name: "bunker_webdav_push_gaps_total", Help: "WebDAV push subscriber gaps."}, func() float64 { return float64(readWebDAV().PushGapsTotal) }),
 	)
 	return promhttp.HandlerFor(reg, promhttp.HandlerOpts{})
 }

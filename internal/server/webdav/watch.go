@@ -1489,8 +1489,46 @@ func errnoName(err error) string {
 // The Handler's side: probe caching, the wire block, the refusal.
 // ---------------------------------------------------------------------------
 
-// watchStatusSnapshot reports the running watcher, or — when this deployment has
-// none — the probed absence with its own reason.
+// WatchMetricsSnapshot exposes the bounded watcher counters for Prometheus.
+type WatchMetricsSnapshot struct {
+	OverflowsTotal       uint64
+	UnvouchedTotal       uint64
+	RescansTotal         uint64
+	InstallFailuresTotal uint64
+	BackendErrorsTotal   uint64
+	WatchedChangesTotal  uint64
+	HeartbeatsTotal      uint64
+	LoopTicksTotal       uint64
+	HeartbeatAgeSeconds  float64
+}
+
+// WatchMetrics reads the same watcher atomics used by the status document.
+func (h *Handler) WatchMetrics() WatchMetricsSnapshot {
+	if h == nil || h.watch == nil {
+		return WatchMetricsSnapshot{}
+	}
+	w := h.watch
+	lastHeartbeat := w.lastHeartbeatAt.Load()
+	age := 0.0
+	if w.loopTicks.Load() > 0 && lastHeartbeat > 0 {
+		age = time.Since(time.Unix(0, lastHeartbeat)).Seconds()
+		if age < 0 {
+			age = 0
+		}
+	}
+	return WatchMetricsSnapshot{
+		OverflowsTotal:       w.overflows.Load(),
+		UnvouchedTotal:       w.unvouched.Load(),
+		RescansTotal:         w.rescans.Load(),
+		InstallFailuresTotal: w.installFailures.Load(),
+		BackendErrorsTotal:   w.backendErrors.Load(),
+		WatchedChangesTotal:  w.watchedChanges.Load(),
+		HeartbeatsTotal:      w.heartbeats.Load(),
+		LoopTicksTotal:       w.loopTicks.Load(),
+		HeartbeatAgeSeconds:  age,
+	}
+}
+
 func (h *Handler) watchStatusSnapshot() watchStatus {
 	if h.watch != nil {
 		return h.watch.statusSnapshot()

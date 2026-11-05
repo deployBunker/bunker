@@ -84,6 +84,52 @@ func TestLifecycleMetricsFamiliesAndBoundedLabels(t *testing.T) {
 	}
 }
 
+func TestWebDAVMetricsFamiliesAndDisabledMode(t *testing.T) {
+	tracker := resource.NewTracker(1, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	snapshot := webdavMetricsSnapshot{
+		OverflowsTotal: 2, UnvouchedTotal: 3, RescansTotal: 4,
+		InstallFailuresTotal: 5, BackendErrorsTotal: 6, WatchedChangesTotal: 7,
+		HeartbeatsTotal: 8, LoopTicksTotal: 9, HeartbeatAgeSeconds: 1.5,
+		PushActive: 2, PushActiveMax: 3, PushDropsTotal: 4, PushGapsTotal: 5,
+	}
+
+	enabled := newMetricsHandler(tracker, "test-version", "127.0.0.1:8080", nil,
+		func() webdavMetricsSnapshot { return snapshot })
+	res := httptest.NewRecorder()
+	enabled.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body := res.Body.String()
+	for _, sample := range []string{
+		`bunker_webdav_watch_overflows_total 2`,
+		`bunker_webdav_watch_install_failures_total 5`,
+		`bunker_webdav_watch_heartbeat_age_seconds 1.5`,
+		`bunker_webdav_push_active 2`,
+		`bunker_webdav_push_drops_total 4`,
+	} {
+		if !strings.Contains(body, sample) {
+			t.Errorf("WebDAV metrics output missing %q:\n%s", sample, body)
+		}
+	}
+	if n := strings.Count(body, "\nbunker_webdav_watch_"); n < 6 {
+		t.Errorf("expected at least 6 bunker_webdav_watch_ series, got %d", n)
+	}
+
+	// No snapshot (WebDAV disabled): the families must still be present, at 0.
+	disabled := newMetricsHandler(tracker, "test-version", "127.0.0.1:8080", nil)
+	res = httptest.NewRecorder()
+	disabled.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body = res.Body.String()
+	for _, sample := range []string{
+		`bunker_webdav_watch_overflows_total 0`,
+		`bunker_webdav_watch_heartbeat_age_seconds 0`,
+		`bunker_webdav_push_active 0`,
+		`bunker_webdav_push_gaps_total 0`,
+	} {
+		if !strings.Contains(body, sample) {
+			t.Errorf("disabled-mode WebDAV metrics missing %q:\n%s", sample, body)
+		}
+	}
+}
+
 func TestMetricsRouteEnabledAndDisabled(t *testing.T) {
 	tracker := resource.NewTracker(7, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	for _, rec := range []*resource.AgentRecord{
@@ -96,7 +142,7 @@ func TestMetricsRouteEnabledAndDisabled(t *testing.T) {
 		}
 	}
 	r := chi.NewRouter()
-	registerMetricsRoute(r, true, tracker, "test-version", "127.0.0.1:8080")
+	registerMetricsRoute(r, true, tracker, "test-version", "127.0.0.1:8080", nil)
 	res := httptest.NewRecorder()
 	r.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	if res.Code != http.StatusOK {
@@ -125,7 +171,7 @@ func TestMetricsRouteEnabledAndDisabled(t *testing.T) {
 	}
 
 	disabled := chi.NewRouter()
-	registerMetricsRoute(disabled, false, tracker, "test-version", "127.0.0.1:8080")
+	registerMetricsRoute(disabled, false, tracker, "test-version", "127.0.0.1:8080", nil)
 	res = httptest.NewRecorder()
 	disabled.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	if res.Code != http.StatusNotFound {
