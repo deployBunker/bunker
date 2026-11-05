@@ -1,0 +1,33 @@
+{
+  "tick_id": "bunker-foreman-2026-11-05-19-09-13",
+  "block": "OBS-BUNKER",
+  "block_id": "OBS-BUNKER-005",
+  "mode": "wave",
+  "wave_budget": 2,
+  "nproc": 16,
+  "loadavg_1m_at_sizing": 8.57,
+  "slots": 6,
+  "wave_size": 2,
+  "wave_size_reason": "2 mutually independent rows (OBS-BUNKER-002 and OBS-BUNKER-004) whose file scopes do not intersect: internal/audit/interceptor.go + internal/server/metrics.go for 002, internal/server/webdav/* + internal/server/metrics.go for 004. OBS-BUNKER-003 was already implemented at cbe01bed and closed on verdict 7a3f9b2e. OBS-BUNKER-005 is owner-gated on scrape/push decision.",
+  "base_sha": "7f8e9d0c",
+  "workers": [
+    {
+      "row": "OBS-BUNKER-002",
+      "model": "gpt-6-luna",
+      "provider": "openai-codex",
+      "worktree": "/home/kara/worktrees/bunker-OBS-BUNKER-002",
+      "branch": "wt/OBS-BUNKER-002",
+      "brief": "/tmp/obs-002-brief.txt"
+    },
+    {
+      "row": "OBS-BUNKER-004",
+      "model": "gpt-6-luna",
+      "provider": "openai-codex",
+      "worktree": "/home/kara/worktrees/bunker-OBS-BUNKER-004",
+      "branch": "wt/OBS-BUNKER-004",
+      "brief": "/tmp/obs-004-brief.txt"
+    }
+  ],
+  "landed": [],
+  "manifest_path": ".coding-hermes/waves/bunker-foreman-2026-11-05-19-09-13.json"
+}
