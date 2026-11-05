@@ -87,9 +87,6 @@ func (m *TunnelManager) Start(ctx context.Context, agentID string, localPort uin
 	target := fmt.Sprintf("http://localhost:%d", localPort)
 	args := []string{"tunnel", "--url", target}
 
-	if m.cfg.TunnelPort > 0 {
-		args = append(args, "--metrics", fmt.Sprintf("localhost:%d", m.cfg.TunnelPort))
-	}
 	if m.cfg.NoAutoupdate {
 		args = append(args, "--no-autoupdate")
 	}

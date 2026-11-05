@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -198,6 +199,42 @@ func TestStartTimeout(t *testing.T) {
 
 func pathToDirBinary(dir, name string) string {
 	return filepath.Join(dir, name)
+}
+
+// TestTunnelMetricsAreNotConfiguredForPerAgentTunnels ensures the host-global
+// TunnelPort setting is not passed to per-agent cloudflared processes.
+func TestTunnelMetricsAreNotConfiguredForPerAgentTunnels(t *testing.T) {
+	dir := t.TempDir()
+
+	for _, tunnelPort := range []uint32{8080, 8081} {
+		t.Run(fmt.Sprintf("configured-port-%d", tunnelPort), func(t *testing.T) {
+			argsFile := filepath.Join(dir, fmt.Sprintf("args-%d", tunnelPort))
+			binaryPath := filepath.Join(dir, fmt.Sprintf("cloudflared-%d", tunnelPort))
+			content := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' \"$@\" > %q\nprintf 'https://agent-%d.trycloudflare.com\\n'\nsleep 30\n", argsFile, tunnelPort)
+			if err := os.WriteFile(binaryPath, []byte(content), 0755); err != nil {
+				t.Fatalf("write mock cloudflared: %v", err)
+			}
+
+			mgr := newTestManager(t, binaryPath, true)
+			mgr.cfg.TunnelPort = tunnelPort
+			agentID := fmt.Sprintf("agent-%d", tunnelPort)
+			if _, err := mgr.Start(t.Context(), agentID, tunnelPort); err != nil {
+				t.Fatalf("Start failed: %v", err)
+			}
+			t.Cleanup(func() { _ = mgr.Stop(agentID) })
+
+			args, err := os.ReadFile(argsFile)
+			if err != nil {
+				t.Fatalf("read cloudflared arguments: %v", err)
+			}
+			if string(args) == "" {
+				t.Fatal("mock cloudflared received no arguments")
+			}
+			if strings.Contains(string(args), "--metrics") {
+				t.Errorf("cloudflared arguments contain an unexpected metrics endpoint: %q", args)
+			}
+		})
+	}
 }
 
 // TestStopNonexistent tests that stopping a nonexistent tunnel is a no-op.
