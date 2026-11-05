@@ -5378,3 +5378,28 @@ tasks:
   status: complete
   created_at: '2026-11-03T18:50:57.658236+00:00'
   completed_at: '2026-11-03T18:51:07.462875+00:00'
+- id: BOARD-GUARD-001
+  title: 'Prevent board writer truncation: name the 63140484 writer, make it surgical,
+    add a shrink regression guard with RED+GREEN proofs'
+  criteria:
+  - '1) Identify the exact writer that produced 63140484''s tasks.jsonl (commit message
+    "foreman: close QA-BUNKER-093 on e1aca15e (tick 713)") by tracing the tick-713
+    closeout path, and name it in the row.
+
+    2) Make that writer append or surgically replace one line, never re-emit a filtered
+    subset.
+
+    3) Add a regression check (test or guard) that fails when a tasks.jsonl write
+    drops more than the rows the writer intends to change, and prove it fails against
+    a simulated 849->1 rewrite and passes against the corrected writer.
+
+    4) Cite the commands and their output.
+
+    Acceptance is met only when the repo tree contains the guard/regression check
+    AND a RED proof (the check exits non-zero against a simulated 849-row -> 1-row
+    rewrite) AND a GREEN proof (the same check exits 0 on the corrected writer path),
+    with the exact commands and their exit codes recorded in the committed evidence
+    artifact.'
+  status: complete
+  created_at: '2026-11-04T04:53:31.873532+00:00'
+  completed_at: '2026-11-05T03:25:33.922924+00:00'
