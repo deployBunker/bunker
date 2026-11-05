@@ -5437,3 +5437,49 @@ tasks:
   status: in_progress
   created_at: '2026-11-05T10:04:20.228220+00:00'
   completed_at: '2026-11-05T10:13:27.982579+00:00'
+- id: DF-BUNKER-105
+  title: DF-BUNKER-105
+  criteria:
+  - 'Ingress flags validated locally and unservable combos refused: (1) grep -c ''unsupported
+    network'' internal/cli/spawn.go prints >= 1 (0 before); (2) a bad mode exits non-zero
+    naming that phrase and no agent is created; (3) --network cloudflare without --trycloudflare,
+    --network tailscale without --trycloudflare, and --domain with a non-cloudflare
+    network each exit non-zero naming the missing requirement instead of rc=0 with
+    no URL; (4) go build ./... and go vet ./... exit 0; (5) go test ./internal/cli/
+    -count=1 passes.'
+  status: complete
+  created_at: '2026-11-05T10:41:29.194329+00:00'
+  completed_at: '2026-11-05T10:53:56.598210+00:00'
+- id: DF-BUNKER-115
+  title: DF-BUNKER-115
+  criteria:
+  - 'Host free space is an enforced build prerequisite: grep -c ''disk'' Makefile
+    prints >= 1 documenting free space as a prerequisite; the compiling targets depend
+    on the new guard; grep -cE ''df -[Pp]t?'' .hermes/scripts/bunker-qa.sh prints
+    >= 1 and bash -n on it exits 0; make build succeeds on a healthy host; the guard
+    aborts with the threshold named in GiB.'
+  status: complete
+  created_at: '2026-11-05T10:41:30.308368+00:00'
+  completed_at: '2026-11-05T10:53:57.602888+00:00'
+- id: DF-BUNKER-98
+  title: DF-BUNKER-98
+  criteria:
+  - 'Artifact fast path documented with the measured numbers: grep -ciE ''scp|rsync''
+    docs/performance.md prints >= 1 (0 before); the page states 2MB through the mount
+    9s vs 2s over plain ssh (4.5x) and 23MB tar pull 37s; go run ./cmd/docs-drift
+    prints docs OK.'
+  status: complete
+  created_at: '2026-11-05T10:41:31.425494+00:00'
+  completed_at: '2026-11-05T10:53:58.612540+00:00'
+- id: DF-BUNKER-99
+  title: DF-BUNKER-99
+  criteria:
+  - 'Orphan user/home residue coverage pinned by test names in package server: grep
+    -rhE ''func Test.*(Reap|Residue).*(User|Home)'' internal/server --include=''*_test.go''
+    prints >= 1 (0 before); git ls-files internal/server | grep -c orphan_uid_batch_test.go
+    prints 1; the new tests drive the real ResidueInventory/orphan-counting seam and
+    were shown RED before passing; go build ./... and go vet ./... exit 0; go test
+    ./internal/server/ -count=1 -run ''Reap|Residue|Orphan'' passes.'
+  status: complete
+  created_at: '2026-11-05T10:41:32.541235+00:00'
+  completed_at: '2026-11-05T10:53:59.602245+00:00'

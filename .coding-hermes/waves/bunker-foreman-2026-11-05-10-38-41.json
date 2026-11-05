@@ -1,0 +1,77 @@
+{
+  "tick_id": "bunker-foreman-2026-11-05-10-38-41",
+  "tick": 720,
+  "mode": "wave",
+  "block": "DF-BUNKER-108-R2",
+  "block_kind": "id-family union (all DF-BUNKER-* rows)",
+  "block_state": "done=105/120 (87.5%), pending=15, ready=15",
+  "base_sha": "e96f19c77e7bdcea82ba0fcfa86959906df4abf0",
+  "base_ref": "origin/main",
+  "wave_budget": 12,
+  "nproc": 16,
+  "loadavg_1m": 3.47,
+  "slots": 6,
+  "wave_size": 4,
+  "wave_size_reason": "4 mutually independent rows of the DF-BUNKER block whose acceptance arms are provably UNMET at base e96f19c7 and whose file scopes do not intersect (spawn.go / Makefile / docs/performance.md / internal/server tests). Resume of the block named by tick 719; no in-flight wave (719's 3 workers all committed and merged).",
+  "workers": [
+    {
+      "row": "DF-BUNKER-105",
+      "priority": "P2",
+      "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-105",
+      "branch": "wt/DF-BUNKER-105",
+      "files": ["internal/cli/spawn.go", "internal/cli/spawn_test.go"],
+      "gitreins_task": "DF-BUNKER-105",
+      "model": "gpt-6-luna",
+      "provider": "openai-codex",
+      "brief": "/home/kara/.hermes/cache/scratch/brief-DF-BUNKER-105.txt"
+    },
+    {
+      "row": "DF-BUNKER-115",
+      "priority": "P1",
+      "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-115",
+      "branch": "wt/DF-BUNKER-115",
+      "files": ["Makefile", ".hermes/scripts/bunker-qa.sh"],
+      "gitreins_task": "DF-BUNKER-115",
+      "model": "gpt-6-luna",
+      "provider": "openai-codex",
+      "brief": "/home/kara/.hermes/cache/scratch/brief-DF-BUNKER-115.txt"
+    },
+    {
+      "row": "DF-BUNKER-98",
+      "priority": "P2",
+      "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-98",
+      "branch": "wt/DF-BUNKER-98",
+      "files": ["docs/performance.md"],
+      "gitreins_task": "DF-BUNKER-98",
+      "model": "gpt-6-luna",
+      "provider": "openai-codex",
+      "brief": "/home/kara/.hermes/cache/scratch/brief-DF-BUNKER-98.txt"
+    },
+    {
+      "row": "DF-BUNKER-99",
+      "priority": "P2",
+      "worktree": "/home/kara/worktrees/bunker-DF-BUNKER-99",
+      "branch": "wt/DF-BUNKER-99",
+      "files": ["internal/server/orphan_uid_batch_test.go", "internal/server/<new>_test.go"],
+      "gitreins_task": "DF-BUNKER-99",
+      "model": "gpt-6-luna",
+      "provider": "openai-codex",
+      "brief": "/home/kara/.hermes/cache/scratch/brief-DF-BUNKER-99.txt"
+    }
+  ],
+  "excluded_rows": {
+    "DF-BUNKER-47-R2": "P1 live arm: acceptance requires the e2e-full-battery on bunker-mvp (78.46.173.180); worker already committed ce59ff12 (merged), remaining evidence is live-host, not code",
+    "DF-BUNKER-37": "live agent-host deploy-key proof on the agent, not a repo change",
+    "DF-BUNKER-92": "requires a release tag containing 10760912 - release authority, blocked on RELEASE-019",
+    "DF-BUNKER-10": "daemon fleet version drift on remote hosts - infrastructure",
+    "DF-BUNKER-113": "acceptance arms already satisfied at base (df guard=3, enospc=1, bash -n rc=0) - verification-only close",
+    "DF-BUNKER-106": "premise satisfied by DF-BUNKER-104 landing: both named regression tests exist (pdeathsig_test.go) and childpin.go/process_unix.go present; row criterion names the wrong test file - verification-only",
+    "DF-BUNKER-108-R2": "fix landed in internal/agent/docker_health.go (DockerDegradedQualifier, socket-probe-gated) with tests; row criterion demands the literal in internal/server non-test code - criterion defect, verification-only",
+    "DF-BUNKER-85": "acceptance arms already satisfied (dynamically=3, toolkit repo=3, image-spec tracked)",
+    "DF-BUNKER-89": "acceptance arms already satisfied (README provision=2, hostprov.go + private-tmp-root=1)",
+    "DF-BUNKER-90": "acceptance arms already satisfied (### Prerequisites=1, must run as root=3)",
+    "DF-BUNKER-100": "acceptance arms already satisfied (BFS-005 spec tracked, WRITE SHAPE in fs.go)"
+  },
+  "status": "dispatched",
+  "created_at": "2026-11-05T10:44:00-05:00"
+}
