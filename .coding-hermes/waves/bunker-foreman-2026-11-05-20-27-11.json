@@ -1,0 +1,36 @@
+{
+  "wave_id": "bunker-foreman-2026-11-05-20-27-11",
+  "tick_id": "bunker-foreman-2026-11-05-20-27-11",
+  "mode": "serial",
+  "wave_budget": 1,
+  "wave_size": 1,
+  "block": "OBS-BUNKER",
+  "block_kind": "id-family union (all OBS-BUNKER-* rows)",
+  "resume_of": "bunker-foreman-2026-11-05-19-09-13",
+  "base_sha": "5b4ac532",
+  "nproc": 16,
+  "loadavg_1m_at_sizing": 11.35,
+  "slots_derivation": "max(1, min(6, 16 - ceil(11.35))) = 4, capped by injected WAVE_BUDGET=1 -> serial path",
+  "why_serial": "WAVE_BUDGET=1 caps concurrent workers at one, and the OBS-BUNKER block has exactly one pending row (OBS-BUNKER-005). No independent pair exists inside the block.",
+  "rows": ["OBS-BUNKER-005"],
+  "workers": [
+    {
+      "row": "OBS-BUNKER-005",
+      "scope": "textfile shim half only (owner-gated production scrape/push decision excluded)",
+      "model": "gpt-6-luna",
+      "provider": "openai-codex",
+      "worktree": "/home/kara/worktrees/bunker-OBS-BUNKER-005",
+      "branch": "wt/OBS-BUNKER-005",
+      "brief": "/home/kara/.hermes/cache/scratch/brief-OBS-BUNKER-005-a1.txt",
+      "attempt": 1
+    }
+  ],
+  "excluded_rows": {
+    "OBS-BUNKER-005-decision-half": "owner decision: production scrape job vs push pipeline (docs/observability-spec.md section 6 path B); not dispatched"
+  },
+  "known_blockers": {
+    "live_prometheus_arm": "deployed bunkerd on bunker-mvp is 0.2.1 (commit eab25686, 2026-10-23) and predates the /metrics route shipped in this repo (OBS-BUNKER-001..004); RELEASE-003/RELEASE-008 own the stale-deployment blocker",
+    "metrics_enable_gate": "server.metrics_enabled validation requires a loopback server.rest_addr, while bunker-mvp binds rest_addr 100.115.67.116:18080 (tailnet); enabling metrics there needs a topology/auth decision",
+    "criterion_url": "row criterion names http://127.0.0.1:8080/metrics, but :8080 on bunker-mvp is docker-proxy -> cadvisor; bunkerd REST listens on 100.115.67.116:18080"
+  }
+}

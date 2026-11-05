@@ -5816,3 +5816,31 @@ tasks:
     file contents and the one focused test only.'
   status: in_progress
   created_at: '2026-11-05T20:17:51.472111+00:00'
+- id: OBS-BUNKER-005
+  title: 'Textfile shim: bunker metrics --prometheus-textfile with freshness stamp'
+  criteria:
+  - "Implement the textfile shim half of OBS-BUNKER-005: an opt-in `bunker metrics\
+    \ --prometheus-textfile <path>` mode that scrapes the daemon's Prometheus endpoint\
+    \ over HTTP, appends a freshness stamp series `bunker_metrics_last_success_timestamp_seconds\
+    \ <unix-seconds>`, and writes the combined body atomically to <path> (the node_exporter\
+    \ textfile directory pattern already used by bunker_agents.prom). On any scrape\
+    \ failure the command must exit non-zero and leave the destination file byte-identical\
+    \ (UNTOUCHED), so the freshness stamp ages and the alert `time() - bunker_metrics_last_success_timestamp_seconds\
+    \ < 180` can fire.\n\nAcceptance (run from the repo root):\n1. `go build ./...`\
+    \ exits 0.\n2. `go vet ./internal/cli/` exits 0.\n3. `go test ./internal/cli/\
+    \ -run 'Textfile' -count=1 -v` exits 0 and shows at least 3 passing tests covering:\
+    \ (a) success write \u2014 scraped body preserved and a freshness sample present\
+    \ with a plausible current unix timestamp; (b) scrape failure \u2014 non-zero\
+    \ exit/error AND the destination file byte-identical to before AND no temp files\
+    \ left behind; (c) atomic write \u2014 no partial file observable and no leftover\
+    \ temp files.\n4. `grep -n 'prometheus-textfile' internal/cli/metrics.go` shows\
+    \ the flag registered on the `metrics` command, and the root command's persistent\
+    \ flags remain exactly {config, daemon-config} (cmd/bunker/exec_flaggrammar_test.go\
+    \ pins this).\n5. `go run ./cmd/docs-drift` prints a line beginning `docs OK`.\n\
+    6. `docs/observability-spec.md` section 6 documents the shipped mode with a usage\
+    \ example and no longer describes it as non-existent.\n\nDo NOT modify internal/server/metrics.go,\
+    \ do NOT add root persistent flags, do NOT deploy or restart any daemon, do NOT\
+    \ touch .coding-hermes/board or .gitreins state."
+  status: complete
+  created_at: '2026-11-05T21:03:50.940263+00:00'
+  completed_at: '2026-11-05T21:28:52.317625+00:00'
