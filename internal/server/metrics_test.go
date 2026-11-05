@@ -10,9 +10,40 @@ import (
 	"time"
 
 	"github.com/deployBunker/bunker/internal/agent"
+	"github.com/deployBunker/bunker/internal/audit"
 	"github.com/deployBunker/bunker/internal/resource"
 	"github.com/go-chi/chi/v5"
 )
+
+func TestRPCMetricsFamiliesAndLabelLaw(t *testing.T) {
+	audit.RPCRequestsTotal.Reset()
+	audit.RPCDurationSeconds.Reset()
+	audit.RPCRequestsTotal.WithLabelValues("SpawnAgent", "ok").Inc()
+	audit.RPCRequestsTotal.WithLabelValues("DestroyAgent", "not_found").Inc()
+	audit.RPCDurationSeconds.WithLabelValues("SpawnAgent").Observe(0.2)
+
+	tracker := resource.NewTracker(1, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	handler := newMetricsHandler(tracker, "test", "127.0.0.1:8080", nil)
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body := res.Body.String()
+	for _, want := range []string{
+		`bunker_rpc_requests_total{code="ok",op="SpawnAgent"} 1`,
+		`bunker_rpc_requests_total{code="not_found",op="DestroyAgent"} 1`,
+		`bunker_rpc_duration_seconds_bucket{op="SpawnAgent",le="0.25"} 1`,
+		`# HELP bunker_rpc_requests_total `,
+		`# HELP bunker_rpc_duration_seconds `,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("RPC metrics output missing %q:\n%s", want, body)
+		}
+	}
+	for _, forbidden := range []string{"agent_id=", "user=", "session_id=", "remote_addr=", "error="} {
+		if strings.Contains(body, forbidden) {
+			t.Errorf("RPC metrics output contains forbidden label %q:\n%s", forbidden, body)
+		}
+	}
+}
 
 func TestLifecycleMetricsFamiliesAndBoundedLabels(t *testing.T) {
 	tracker := resource.NewTracker(7, slog.New(slog.NewTextHandler(io.Discard, nil)))

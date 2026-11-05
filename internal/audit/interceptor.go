@@ -8,10 +8,28 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/prometheus/client_golang/prometheus"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 
 	"github.com/deployBunker/bunker/internal/auth"
 )
+
+var (
+	RPCRequestsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "bunker_rpc_requests_total",
+		Help: "RPC requests by operation and bounded Connect error code.",
+	}, []string{"op", "code"})
+	RPCDurationSeconds = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "bunker_rpc_duration_seconds",
+		Help:    "RPC handler duration in seconds by operation.",
+		Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 300, 600},
+	}, []string{"op"})
+)
+
+// RPCMetricCollectors returns the collectors updated by the audit interceptor.
+func RPCMetricCollectors() (prometheus.Collector, prometheus.Collector) {
+	return RPCRequestsTotal, RPCDurationSeconds
+}
 
 // Interceptor records one audit entry per request that reaches it. Compose it
 // INSIDE the auth interceptor (auth listed first in connect.WithInterceptors,
@@ -111,6 +129,12 @@ func (i *Interceptor) record(ctx context.Context, procedure string, err error, s
 	if err != nil {
 		outcome = connect.CodeOf(err).String()
 	}
+	op := procedure
+	if idx := strings.LastIndexByte(op, '/'); idx >= 0 {
+		op = op[idx+1:]
+	}
+	RPCRequestsTotal.WithLabelValues(op, outcome).Inc()
+	RPCDurationSeconds.WithLabelValues(op).Observe(time.Since(start).Seconds())
 
 	// Streaming conns expose the peer address directly; unary calls rely on
 	// CallInfoForHandlerContext. The sink's remoteAddr is authoritative when

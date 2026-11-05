@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/deployBunker/bunker/internal/agent"
+	"github.com/deployBunker/bunker/internal/audit"
 	"github.com/deployBunker/bunker/internal/resource"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -44,6 +45,10 @@ func newMetricsHandler(tracker *resource.Tracker, buildVersion, restAddr string,
 			Name: "bunker_agents_max",
 			Help: "Maximum number of agents configured for this bunkerd instance.",
 		}, func() float64 { return float64(tracker.MaxAgents()) }),
+	)
+	requests, duration := audit.RPCMetricCollectors()
+	reg.MustRegister(requests, duration)
+	reg.MustRegister(
 		prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 			Name: "bunker_ttl_expiring_soon",
 			Help: "Number of tracked agents expiring within the next ten minutes.",
