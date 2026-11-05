@@ -66,6 +66,9 @@ const (
 	// then supplies dockerd-rootless.sh, dockerd-rootless-setuptool.sh and
 	// rootlesskit.
 	ArtifactRootlessInstaller = "rootless-installer"
+	// ArtifactRootlessInstallerTemplate is the immutable docker-install shell
+	// template that is substituted and then checked as ArtifactRootlessInstaller.
+	ArtifactRootlessInstallerTemplate = "rootless-installer-template"
 	// ArtifactSlirp4netns is the static slirp4netns binary used when the
 	// host's distribution has no package for it.
 	ArtifactSlirp4netns = "slirp4netns"
@@ -102,6 +105,16 @@ type Artifact struct {
 	// Variants holds one entry per architecture, or a single ArchAny entry
 	// for an architecture-independent artifact.
 	Variants []Variant `json:"variants"`
+	// Substitutions contains immutable values used to render a template artifact.
+	Substitutions *RootlessInstallerSubstitutions `json:"substitutions,omitempty"`
+}
+
+// RootlessInstallerSubstitutions are the manifest-pinned values rendered into
+// the immutable rootless installer template.
+type RootlessInstallerSubstitutions struct {
+	ScriptCommitSHA string `json:"script_commit_sha"`
+	StableLatest    string `json:"stable_latest"`
+	TestLatest      string `json:"test_latest"`
 }
 
 // Variant is one architecture's download of an artifact.
@@ -374,6 +387,20 @@ func ArtifactDigest(name, arch string) (string, error) {
 		return "", &NotPinnedError{Name: name, Arch: arch, Known: m.ArtifactNames()}
 	}
 	return v.SHA256, nil
+}
+
+// RootlessInstallerPinnedSubstitutions returns the manifest-pinned values used
+// to render the verified rootless installer template.
+func RootlessInstallerPinnedSubstitutions() (RootlessInstallerSubstitutions, error) {
+	m, err := Load()
+	if err != nil {
+		return RootlessInstallerSubstitutions{}, err
+	}
+	a, ok := m.Artifact(ArtifactRootlessInstallerTemplate)
+	if !ok || a.Substitutions == nil {
+		return RootlessInstallerSubstitutions{}, &NotPinnedError{Name: ArtifactRootlessInstallerTemplate, Arch: ArchAny, Known: m.ArtifactNames()}
+	}
+	return *a.Substitutions, nil
 }
 
 // PinnedImageRef resolves a base-image reference (name:tag) to the immutable

@@ -379,7 +379,7 @@ func TestEmbeddedManifest_IsValidAndCoversProductionLookups(t *testing.T) {
 		t.Fatalf("the embedded manifest does not parse: %v", err)
 	}
 
-	for _, name := range []string{ArtifactRootlessInstaller, ArtifactSlirp4netns, ArtifactFuseOverlayfs} {
+	for _, name := range []string{ArtifactRootlessInstaller, ArtifactRootlessInstallerTemplate, ArtifactSlirp4netns, ArtifactFuseOverlayfs} {
 		if _, ok := m.Artifact(name); !ok {
 			t.Errorf("embedded manifest pins no artifact %q (known: %v)", name, m.ArtifactNames())
 		}
@@ -428,6 +428,31 @@ func TestEmbeddedManifest_IsValidAndCoversProductionLookups(t *testing.T) {
 	}
 	if len(m.Images) == 0 {
 		t.Fatal("embedded manifest pins no images")
+	}
+}
+
+func TestRootlessInstallerManifestPinsTemplateAndSubstitutionValues(t *testing.T) {
+	m, err := Load()
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+	wantURL := "https://raw.githubusercontent.com/docker/docker-install/ada7a567e59b3935bd601bb21e422da50e80e376/rootless-install.sh"
+	for _, name := range []string{ArtifactRootlessInstaller, ArtifactRootlessInstallerTemplate} {
+		v, ok := m.Variant(name, ArchAny)
+		if !ok || v.URL != wantURL {
+			t.Errorf("%s URL = %q (found %v), want immutable URL %q", name, v.URL, ok, wantURL)
+		}
+		if strings.Contains(v.URL, "get.docker.com/rootless") {
+			t.Errorf("%s still fetches the mutable endpoint: %s", name, v.URL)
+		}
+	}
+	values, err := RootlessInstallerPinnedSubstitutions()
+	if err != nil {
+		t.Fatalf("load substitutions: %v", err)
+	}
+	want := RootlessInstallerSubstitutions{ScriptCommitSHA: "ada7a567e59b3935bd601bb21e422da50e80e376", StableLatest: "29.9.2", TestLatest: "29.9.2"}
+	if values != want {
+		t.Errorf("substitutions = %+v, want %+v", values, want)
 	}
 }
 

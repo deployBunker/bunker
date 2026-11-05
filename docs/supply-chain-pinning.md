@@ -40,18 +40,21 @@ row per artifact and per image.
 | name | version | arch | sha256 |
 |---|---|---|---|
 | `rootless-installer` | `ada7a567e59b3935bd601bb21e422da50e80e376` (docker-install commit) | any | `9f227a…8bebc` |
+| `rootless-installer-template` | `ada7a567e59b3935bd601bb21e422da50e80e376` (docker-install commit) | any | `cfee98…5583b` |
 | `slirp4netns` | `v1.3.6` | `x86_64` | `411167…1d48` |
 | `slirp4netns` | `v1.3.6` | `aarch64` | `045f85…5817` |
 | `fuse-overlayfs` | `v1.18` | `x86_64` | `56b0ae…a1e8` |
 | `fuse-overlayfs` | `v1.18` | `aarch64` | `82fed7…0133` |
 
-Transitive coverage, stated honestly: the pinned **script bytes** fix both
-`SCRIPT_COMMIT_SHA` (which revision of `docker/docker-install` produced them) and
-`STABLE_LATEST` (the `docker-ce-rootless-extras` version the script then
-fetches). That archive is what supplies `dockerd-rootless.sh`,
-`dockerd-rootless-setuptool.sh` and `rootlesskit`, so verifying the script's
-digest is how those three are held to a version. The script itself has no
-version flag to pass, so the digest IS the pin.
+The rootless installer uses a two-stage immutable pipeline. The template URL is
+pinned to a docker-install commit and its template bytes are verified first.
+The manifest pins the exact `LOAD_SCRIPT_*` substitution values (commit SHA,
+stable version and test version); code replaces each placeholder exactly once,
+then verifies the rendered script against the unchanged final `rootless-installer`
+digest. Thus the executed bytes are a pure function of the immutable template
+and manifest values, rather than a digest attached to Docker's mutable endpoint.
+The stable version selects the `docker-ce-rootless-extras` archive that supplies
+`dockerd-rootless.sh`, `dockerd-rootless-setuptool.sh` and `rootlesskit`.
 
 ### Images (digest)
 
@@ -69,8 +72,8 @@ so the same reference builds the same image on `amd64` and `arm64`.
 
 | surface | code | behaviour on mismatch |
 |---|---|---|
-| installer download | `internal/agent/rootless.go`, `downloadRootlessInstaller` | removes the download, fails the spawn with `supplychain.ErrChecksumMismatch` |
-| installer cache read | `internal/agent/rootless.go`, `downloadRootlessInstallerCached` | refuses the entry and names the cache file to remove — it does **not** silently refetch |
+| installer download | `internal/agent/rootless.go`, `downloadRootlessInstaller` | verifies the commit-pinned template, substitutes manifest-pinned values, verifies final bytes, and removes refused output |
+| installer cache read | `internal/agent/rootless.go`, `downloadRootlessInstallerCached` | re-verifies the cached final bytes and refuses the entry by naming the cache file — it does **not** silently refetch |
 | prebuilt prereq binary | `internal/agent/rootless_prereqs.go`, `installArtifact` | removes the partial download, never installs it to `/usr/local/bin`, records `verification failed: …` in the prerequisite outcome |
 | base image | `internal/imagespec/parse.go`, `pinnedBaseRef` | `Parse` refuses an allowed-but-unpinned base; the `FROM` line carries `name@sha256:<digest>`, and docker itself fails the pull if the digest does not match |
 
@@ -94,9 +97,14 @@ or installed after either one.
 Re-pinning is a deliberate, reviewed edit: the manifest is the contract, and
 nothing in the product re-resolves a moving URL at runtime.
 
-1. **Resolve the new value.**
-
-   For a GitHub release asset (choose the release, never `latest`):
+1. **Resolve both immutable inputs.** For the rootless installer, use the raw
+   `rootless-install.sh` at a specific docker-install commit, record its template
+   sha256, and pin all three `LOAD_SCRIPT_*` values in the template artifact's
+   substitutions object. Render with those values and confirm the output digest
+   remains the final `rootless-installer` pin; the `rootless-installer` variant
+   also records the commit-pinned URL. Never derive the final values from the
+   mutable `get.docker.com/rootless` response. For a GitHub release asset
+   (choose the release, never `latest`):
 
    ```sh
    curl -fsSL -o /tmp/asset \
@@ -145,12 +153,12 @@ nothing in the product re-resolves a moving URL at runtime.
 
 - **`releases/latest` semantics anywhere.** The manifest validator refuses a URL
   containing `/latest/`, so the class cannot come back by accident.
-- **A moving script URL's *content*.** `get.docker.com/rootless` is still the
-  download source, because Docker does not version the endpoint; the digest is
-  what makes the bytes immutable. Consequence to be honest about: when Docker
-  republishes the script, a host that has not re-pinned fails the install with
-  `ErrChecksumMismatch` until an operator re-pins. That is the intended
-  trade — a refused install is visible; a silently different installer is not.
+- **A mutable rootless installer URL.** The `get.docker.com/rootless` endpoint may
+  republish bytes without changing its embedded commit label. Runtime fetches
+  instead use the raw commit-pinned template, verify its template digest, apply
+  the manifest-pinned substitutions, and verify the unchanged final digest.
+  Upstream changes therefore require an explicit reviewed re-pin of the template
+  and/or substitutions; a republish cannot silently alter executed bytes.
 - **The BuildKit/dockerd binaries themselves.** They arrive inside the pinned
   `docker-ce-rootless-extras` archive (see §2) rather than from a URL this repo
   fetches.

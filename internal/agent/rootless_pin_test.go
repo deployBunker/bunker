@@ -125,8 +125,8 @@ func TestDownloadRootlessInstaller_RejectsBytesThatDoNotMatchThePin(t *testing.T
 	if !errors.As(err, &mm) {
 		t.Fatalf("error %v is not a *supplychain.MismatchError", err)
 	}
-	if mm.Name != supplychain.ArtifactRootlessInstaller {
-		t.Errorf("mismatch names artifact %q, want %q", mm.Name, supplychain.ArtifactRootlessInstaller)
+	if mm.Name != supplychain.ArtifactRootlessInstallerTemplate {
+		t.Errorf("mismatch names artifact %q, want %q", mm.Name, supplychain.ArtifactRootlessInstallerTemplate)
 	}
 	// The gate hashed the bytes the download actually delivered — not, say, an
 	// empty file left by a broken stub, which would carry a different actual
@@ -145,7 +145,7 @@ func TestDownloadRootlessInstaller_RejectsBytesThatDoNotMatchThePin(t *testing.T
 // aborts the download, is called with the pinned artifact identity and the
 // downloaded path, and the bytes are removed.
 func TestDownloadRootlessInstaller_VerifierFailureStopsTheDownload(t *testing.T) {
-	installStubCurl(t, []byte("#!/bin/sh\n# whatever the network returned\nexit 0\n"))
+	installStubCurl(t, readPinnedInstallerTemplateFixture(t))
 	path := filepath.Join(t.TempDir(), "rootless-install.sh")
 
 	sentinel := errors.New("fixture gate says no")
@@ -255,25 +255,13 @@ func TestCachedRootlessInstallerDownload_CacheEntryMustMatchThePin(t *testing.T)
 	})
 }
 
-// TestDownloadRootlessInstaller_AcceptsBytesMatchingThePin is the EXPECTED-HASH
-// arm of the gate (the mirror of the reject test above): the PRODUCTION
-// verifier, against the PRODUCTION (embedded) manifest, must ACCEPT the exact
-// upstream bytes the current pin names. The payload is the audited upstream
-// script, captured byte-for-byte at re-pin time (testdata/
-// rootless-installer-live.sh, whose sha256 IS the manifest's pinned digest —
-// pinnedLiveFixtureSHA256 below). INT-CI-076: when upstream republished the
-// script (STABLE_LATEST 29.9.1 -> 29.9.2, same SCRIPT_COMMIT_SHA), every spawn
-// failed with "supply-chain checksum mismatch" because the pin named the old
-// bytes; this test proves the refreshed pin verifies the live artifact rather
-// than merely that wrong bytes are rejected (the reject arm alone is
-// satisfiable by a manifest that matches nothing).
-//
-// Like the reject arm, it drives the whole production path end to end: the
-// stub curl serves the fixture as the "network", and the gate must let the
-// download through untouched — no removal, no error.
+// TestDownloadRootlessInstaller_AcceptsBytesMatchingThePin is the positive arm
+// of the two-stage gate: the production verifier checks the pinned template,
+// the manifest substitutions render the preserved final fixture, and the final
+// production verifier accepts those exact bytes.
 func TestDownloadRootlessInstaller_AcceptsBytesMatchingThePin(t *testing.T) {
 	payload := readPinnedInstallerFixture(t)
-	installStubCurl(t, payload)
+	installStubCurl(t, readPinnedInstallerTemplateFixture(t))
 	path := filepath.Join(t.TempDir(), "rootless-install.sh")
 
 	out, err := downloadRootlessInstaller(context.Background(), path)
@@ -334,6 +322,57 @@ func TestRootlessInstallerPinMatchesThePinnedBytes(t *testing.T) {
 	}
 }
 
+func readPinnedInstallerTemplateFixture(t *testing.T) []byte {
+	t.Helper()
+	payload, err := os.ReadFile(filepath.Join("testdata", "rootless-installer-template.sh"))
+	if err != nil {
+		t.Fatalf("read pinned installer template fixture: %v", err)
+	}
+	return payload
+}
+
+func TestRootlessInstallerTemplateSubstitutionIsCompleteAndPinned(t *testing.T) {
+	template := readPinnedInstallerTemplateFixture(t)
+	m, err := supplychain.Load()
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+	if err := supplychain.VerifyBytesWith(m, supplychain.ArtifactRootlessInstallerTemplate, supplychain.ArchAny, template); err != nil {
+		t.Fatalf("pinned template fixture failed its template gate: %v", err)
+	}
+	values, err := supplychain.RootlessInstallerPinnedSubstitutions()
+	if err != nil {
+		t.Fatalf("load pinned substitutions: %v", err)
+	}
+	rendered, err := substituteRootlessInstallerTemplate(template, values)
+	if err != nil {
+		t.Fatalf("substitute pinned template: %v", err)
+	}
+	if err := supplychain.VerifyBytesWith(m, supplychain.ArtifactRootlessInstaller, supplychain.ArchAny, rendered); err != nil {
+		t.Fatalf("rendered fixture failed its final gate: %v", err)
+	}
+	tampered := append([]byte(nil), rendered...)
+	tampered[len(tampered)-2] ^= 1
+	if err := supplychain.VerifyBytesWith(m, supplychain.ArtifactRootlessInstaller, supplychain.ArchAny, tampered); !errors.Is(err, supplychain.ErrChecksumMismatch) {
+		t.Errorf("tampered substituted installer error = %v, want ErrChecksumMismatch", err)
+	}
+	if !bytes.Equal(rendered, readPinnedInstallerFixture(t)) {
+		t.Fatal("substituted template does not match the preserved final installer fixture")
+	}
+
+	for _, assignment := range []string{`SCRIPT_COMMIT_SHA="$LOAD_SCRIPT_COMMIT_SHA"`, `STABLE_LATEST="$LOAD_SCRIPT_STABLE_LATEST"`, `TEST_LATEST="$LOAD_SCRIPT_TEST_LATEST"`} {
+		placeholder := strings.SplitN(strings.SplitN(assignment, "$", 2)[1], `"`, 2)[0]
+		broken := bytes.Replace(template, []byte(placeholder), []byte("REMOVED"), 1)
+		if _, err := substituteRootlessInstallerTemplate(broken, values); err == nil {
+			t.Errorf("template missing %s placeholder was accepted", placeholder)
+		}
+		leftover := append(append([]byte(nil), template...), []byte("\\n"+assignment)...)
+		if _, err := substituteRootlessInstallerTemplate(leftover, values); err == nil {
+			t.Errorf("template with a second/leftover %s placeholder was accepted", placeholder)
+		}
+	}
+}
+
 // readPinnedInstallerFixture loads the byte-exact capture of the upstream
 // installer that the current pin names (testdata/rootless-installer-live.sh).
 // Re-capture it ONLY as part of a deliberate re-pin: download the live bytes,
@@ -369,6 +408,10 @@ func TestRootlessInstallerCacheKeyCarriesThePin(t *testing.T) {
 	}
 	if !strings.Contains(key, hostCacheSuffix(rootlessInstallURL)) {
 		t.Errorf("cache key %q no longer derives from the artifact host", key)
+	}
+	oldKey := "rootless-installer-" + hostCacheSuffix("https://get.docker.com/rootless") + "-" + tag + ".sh"
+	if key == oldKey {
+		t.Errorf("immutable template URL reused the old mutable-URL cache key %q", key)
 	}
 	if !strings.HasSuffix(key, ".sh") {
 		t.Errorf("cache key %q is not a .sh file name", key)

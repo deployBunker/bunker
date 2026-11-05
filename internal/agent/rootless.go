@@ -21,8 +21,8 @@ import (
 	"github.com/deployBunker/bunker/internal/supplychain"
 )
 
-// rootlessInstallURL is the official Docker rootless extras installer.
-const rootlessInstallURL = "https://get.docker.com/rootless"
+// rootlessInstallURL is the immutable Docker rootless installer template.
+const rootlessInstallURL = "https://raw.githubusercontent.com/docker/docker-install/ada7a567e59b3935bd601bb21e422da50e80e376/rootless-install.sh"
 
 // userManagerWaitTimeout bounds the deterministic bring-up of the systemd user
 // manager (start attempts + bus-socket wait). The wait must never grow with the
@@ -255,40 +255,73 @@ var rootlessInstallerRunner = runRootlessInstallerCmd
 // Package-level seam so unit tests never touch the network.
 var rootlessInstallerDownload = downloadRootlessInstaller
 
-// rootlessInstallerVerifier gates the rootless install script (GAP-135): the
-// bytes must match the sha256 pinned in the supply-chain manifest
-// (internal/supplychain) before anything downstream may execute them as the
-// agent user. It is consulted on BOTH paths that produce a to-be-executed
-// installer — the fresh download and the host-level cache read — because
-// "verified when it was downloaded" is a claim about a file that someone else
-// could have replaced in the meantime.
-//
-// Package-level var, like every other seam in this file, so the
-// cache-plumbing tests (which seed synthetic payloads instead of the 9 KB
-// upstream script) can swap it for a no-op. The production value is
-// supplychain.VerifyFile, and the gate's real behaviour is asserted end to end
-// in rootless_pin_test.go, which drives this default.
+// rootlessInstallerVerifier checks the final, substituted installer bytes.
 var rootlessInstallerVerifier supplychain.VerifyFn = supplychain.VerifyFile
 
-// downloadRootlessInstaller is the production download: curl to the official
-// Docker rootless extras URL, then the supply-chain checksum gate.
-//
-// The gate runs before the caller can chmod/chown/execute the file, and it
-// REMOVES the download on failure: an unverified artifact must not be left on
-// disk where a later path (or a retry that skips the download) could pick it
-// up. A mismatch is a named error (supplychain.ErrChecksumMismatch), never a
-// warning, and there is no fallback to the unverified bytes.
+// rootlessInstallerTemplateVerifier checks the immutable upstream template.
+var rootlessInstallerTemplateVerifier supplychain.VerifyFn = supplychain.VerifyFile
+
+// downloadRootlessInstaller downloads, verifies, and deterministically renders
+// the immutable Docker rootless installer template. Both template and final
+// bytes are verified before the caller can execute the final artifact.
 func downloadRootlessInstaller(ctx context.Context, installerPath string) ([]byte, error) {
-	curl := exec.CommandContext(ctx, "curl", "-fsSL", "-o", installerPath, rootlessInstallURL)
+	tmp, err := os.CreateTemp(filepath.Dir(installerPath), ".rootless-installer-template-*.sh")
+	if err != nil {
+		return nil, fmt.Errorf("create rootless installer template file: %w", err)
+	}
+	templatePath := tmp.Name()
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(templatePath)
+		return nil, fmt.Errorf("close rootless installer template file: %w", err)
+	}
+	defer func() { _ = os.Remove(templatePath) }()
+	_ = os.Remove(installerPath)
+
+	curl := exec.CommandContext(ctx, "curl", "-fsSL", "-o", templatePath, rootlessInstallURL)
 	out, err := curl.CombinedOutput()
 	if err != nil {
-		return out, err
+		return out, fmt.Errorf("download rootless installer template: %w", err)
+	}
+	if err := rootlessInstallerTemplateVerifier(supplychain.ArtifactRootlessInstallerTemplate, supplychain.ArchAny, templatePath); err != nil {
+		return out, fmt.Errorf("rootless installer template failed supply-chain verification: %w", err)
+	}
+	template, err := os.ReadFile(templatePath)
+	if err != nil {
+		return out, fmt.Errorf("read rootless installer template: %w", err)
+	}
+	values, err := supplychain.RootlessInstallerPinnedSubstitutions()
+	if err != nil {
+		return out, fmt.Errorf("load rootless installer substitutions: %w", err)
+	}
+	rendered, err := substituteRootlessInstallerTemplate(template, values)
+	if err != nil {
+		return out, fmt.Errorf("render rootless installer template: %w", err)
+	}
+	if err := os.WriteFile(installerPath, rendered, 0o600); err != nil {
+		_ = os.Remove(installerPath)
+		return out, fmt.Errorf("write rendered rootless installer: %w", err)
 	}
 	if err := rootlessInstallerVerifier(supplychain.ArtifactRootlessInstaller, supplychain.ArchAny, installerPath); err != nil {
 		_ = os.Remove(installerPath)
-		return out, fmt.Errorf("rootless installer in %s failed supply-chain verification: %w", installerPath, err)
+		return out, fmt.Errorf("rendered rootless installer failed supply-chain verification: %w", err)
 	}
 	return out, nil
+}
+
+func substituteRootlessInstallerTemplate(template []byte, values supplychain.RootlessInstallerSubstitutions) ([]byte, error) {
+	replacements := []struct{ placeholder, value string }{
+		{`SCRIPT_COMMIT_SHA="$LOAD_SCRIPT_COMMIT_SHA"`, `SCRIPT_COMMIT_SHA="` + values.ScriptCommitSHA + `"`},
+		{`STABLE_LATEST="$LOAD_SCRIPT_STABLE_LATEST"`, `STABLE_LATEST="` + values.StableLatest + `"`},
+		{`TEST_LATEST="$LOAD_SCRIPT_TEST_LATEST"`, `TEST_LATEST="` + values.TestLatest + `"`},
+	}
+	result := string(template)
+	for _, replacement := range replacements {
+		if replacement.value == "" || strings.Count(result, replacement.placeholder) != 1 {
+			return nil, fmt.Errorf("expected exactly one %q placeholder", replacement.placeholder)
+		}
+		result = strings.ReplaceAll(result, replacement.placeholder, replacement.value)
+	}
+	return []byte(result), nil
 }
 
 // rootlessInstallerCacheDir is the host-level directory where downloaded
