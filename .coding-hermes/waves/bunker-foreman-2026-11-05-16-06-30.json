@@ -1,0 +1,51 @@
+{
+  "tick_id": "bunker-foreman-2026-11-05-16-06-30",
+  "tick": 724,
+  "block": "OBS-BUNKER",
+  "block_drive_label": "OBS-BUNKER-005",
+  "block_kind": "id-family union (all OBS-BUNKER-* rows)",
+  "resume_of": null,
+  "resume_note": "tick 723 closed block INT-CI-086 (both INT-CI-086 and INT-CI-060 now status=complete in the board); its remaining sibling INT-CI-087 is a gitreins-repo evaluator defect with no acceptance and INT-CI-085 is owner-blocked on judge-lane funding, so the block has no coding-dispatchable row. RELEASE-019 and PERF-013-R3 were also rejected: RELEASE rows are release-authority/operator work; PERF-005/006 need live-host redeploys and PERF-013-R3's acceptance already passes (4 dogfood files dated 2026-10-16, 3 'buffer ceiling' hits) so it is a verification-only close, not a worker task.",
+  "selection": "OBS-BUNKER-001 — [P0] add /metrics to bunkerd with 5 Tier-1 gauges; it is the pump row for OBS-BUNKER-002..005 (all depends_on it).",
+  "mode": "serial",
+  "mode_reason": "block OBS-BUNKER has exactly 1 ready row (001) and 4 rows gated on it; fewer than 2 mutually independent tasks exist in the block, so wave composition is impossible. slots=6 was available (nproc 16, loadavg 8.86).",
+  "wave_budget": 8,
+  "nproc": 16,
+  "loadavg_1m_at_sizing": 8.86,
+  "slots": 6,
+  "wave_size": 1,
+  "base_sha": "12277d9966dd1d52f5258fcc405a69e16747f374",
+  "rows": [
+    {
+      "id": "OBS-BUNKER-001",
+      "priority": "P0",
+      "status_at_dispatch": "pending",
+      "worktree": "/home/kara/worktrees/bunker-OBS-BUNKER-001",
+      "branch": "wt/OBS-BUNKER-001",
+      "worker_model": "gpt-6-luna",
+      "worker_provider": "openai-codex",
+      "brief": "/home/kara/.hermes/cache/scratch/bunker-tick-20261105-160630.Lios3f/brief-OBS-BUNKER-001.txt",
+      "spec": "docs/observability-spec.md section 4.1",
+      "acceptance_note": "row acceptance_criteria + brief carry the five series, enabled/disabled curl probes and go build/vet/test gates"
+    }
+  ],
+  "deferred_rows": {
+    "OBS-BUNKER-002": "depends_on OBS-BUNKER-001",
+    "OBS-BUNKER-003": "depends_on OBS-BUNKER-001 (P0)",
+    "OBS-BUNKER-004": "depends_on OBS-BUNKER-001",
+    "OBS-BUNKER-005": "depends_on OBS-BUNKER-001"
+  },
+  "started_at": "2026-11-05T11:40:00-05:00",
+  "outcome": {
+    "status": "landed",
+    "worker_commit": "dfef37722174eb3d347953128777f7f950709d9c",
+    "merge_tip": "dfef37722174eb3d347953128777f7f950709d9c",
+    "merged": "ff-merge onto main, pushed, parity 0 ahead / 0 behind",
+    "verdict": "d4171927",
+    "verdict_run": "937d3c0d",
+    "verdict_state": "Tier 1 PASSED (degraded: no staged files post-commit) + Tier 2 COMPLETE PASS, bound to dfef3772",
+    "local_gate": "PASS: go build ./... rc0; go vet ./... rc0; go test ./internal/server/ ./internal/config/ ./cmd/bunker/ -count=1 rc0; go test ./... -short -count=1 -parallel 4 rc0",
+    "live_probe": "scratch bunkerd 127.0.0.1:18080 metrics_enabled=true -> grep -c '^bunker_'=5, agents_current 0 / max 10, CLI 'bunker status' Agents 0/10; metrics_enabled unset on 127.0.0.1:18081 -> GET /metrics = 404; all daemons reaped",
+    "completed_at": "2026-11-05T12:00:00-05:00"
+  }
+}
