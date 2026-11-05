@@ -5414,6 +5414,7 @@ tasks:
   - go build ./... exits 0 and go vet ./... exits 0
   status: in_progress
   created_at: '2026-11-05T10:04:18.922748+00:00'
+  completed_at: '2026-11-05T10:13:53.312163+00:00'
 - id: DF-BUNKER-104
   title: Remove the fixed host-global cloudflared metrics port so a second concurrent
     per-agent tunnel cannot collide (internal/tunnel/tunnel.go:90-91)
@@ -5425,6 +5426,7 @@ tasks:
     vet ./... exit 0
   status: in_progress
   created_at: '2026-11-05T10:04:19.567267+00:00'
+  completed_at: '2026-11-05T10:13:42.075101+00:00'
 - id: DF-BUNKER-101
   title: iobattery against a bunker-fs mount must degrade with an explained unsupported-family
     result instead of raw EIO
@@ -5434,3 +5436,4 @@ tasks:
   - go build ./... exits 0 and go vet ./... exits 0
   status: in_progress
   created_at: '2026-11-05T10:04:20.228220+00:00'
+  completed_at: '2026-11-05T10:13:27.982579+00:00'
