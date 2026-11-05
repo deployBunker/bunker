@@ -248,17 +248,42 @@ exporters at a **30s** interval (`stack/alloy/config.alloy:54`) and
 Two supported wirings, in order of preference:
 
 **(A) Textfile shim — zero monitoring-stack change, fastest to ship.**
-A per-host collector (systemd timer, or a proposed opt-in textfile mode on the metrics command,
-whose option name would be prometheus-textfile and which does not exist yet) calls
-`curl -s http://127.0.0.1:8080/metrics` and writes the body to
-`/var/lib/node_exporter/textfile/bunkerd.prom`. The `prometheus.exporter.unix "host"` textfile
-collector (`config.alloy:30-32`) picks it up on the next 30s scrape and remote-writes it. Labels
-arriving for free: `instance` (relabelled to the SSH alias — `config.alloy:44-51`), `job`,
+The `bunker metrics` CLI ships an opt-in textfile mode. A per-host systemd timer can run it
+against the local daemon and atomically publish the scrape to
+`/var/lib/node_exporter/textfile/bunkerd.prom`:
+
+```sh
+bunker metrics --prometheus-textfile /var/lib/node_exporter/textfile/bunkerd.prom \
+  --metrics-url http://127.0.0.1:8080/metrics
+```
+
+The shim uses a 10s HTTP timeout, rejects non-200 responses, and leaves the previous file
+untouched on any scrape or publish failure. It appends
+`bunker_metrics_last_success_timestamp_seconds` only after a successful scrape, so a stopped
+daemon leaves an aging timestamp rather than indefinitely refreshing plausible values. A
+minimal host-local timer/service sketch is:
+
+```ini
+# bunkerd-metrics.service
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bunker metrics --prometheus-textfile /var/lib/node_exporter/textfile/bunkerd.prom --metrics-url http://127.0.0.1:8080/metrics
+
+# bunkerd-metrics.timer
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=30s
+Unit=bunkerd-metrics.service
+```
+
+This mode ships with the CLI; installing a timer or choosing the production scrape/push
+pipeline remains a separate owner-gated host operation. The `prometheus.exporter.unix "host"`
+textfile collector (`config.alloy:30-32`) picks the file up on the next 30s scrape and remote-writes
+it. Labels arriving for free: `instance` (relabelled to the SSH alias — `config.alloy:44-51`), `job`,
 `host`. This reuses the same directory the existing `bunker_agents.prom` lives in.
 
-*Staleness is the cost:* a dead bunkerd leaves the last textfile on disk and the series keep
-reporting a plausible number forever. The writer MUST stamp `bunker_metrics_last_success_timestamp_seconds`
-and the alert MUST be `time() - bunker_metrics_last_success_timestamp_seconds > 180` — a
+*Staleness is the cost:* a dead bunkerd leaves the last textfile on disk, but the timestamp ages.
+The alert MUST be `time() - bunker_metrics_last_success_timestamp_seconds > 180` — a
 freshness alert, not a presence alert. This is exactly why (A) is a bridge, not the destination.
 
 **(B) New scrape job on the monitoring host — the real answer, requires an owner-approved change

@@ -3,6 +3,10 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -16,8 +20,10 @@ import (
 // NewMetricsCommand returns the `bunker metrics` cobra command.
 func NewMetricsCommand() *cobra.Command {
 	var (
-		serverName string
-		agentID    string
+		serverName         string
+		agentID            string
+		prometheusTextfile string
+		metricsURL         string
 	)
 
 	cmd := &cobra.Command{
@@ -33,6 +39,15 @@ Examples:
   bunker metrics abc12345           # per-agent metrics
   bunker metrics abc12345 --server staging`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if prometheusTextfile != "" {
+				if err := writePrometheusTextfile(prometheusTextfile, metricsURL); err != nil {
+					cmd.SilenceUsage = true
+					fmt.Fprintf(cmd.ErrOrStderr(), "bunker metrics textfile: %v\n", err)
+					return fmt.Errorf("write Prometheus textfile %q: %w", prometheusTextfile, err)
+				}
+				return nil
+			}
+
 			// 1. Load CLI config
 			cfg, err := LoadCLIConfig()
 			if err != nil {
@@ -74,8 +89,69 @@ Examples:
 	}
 
 	cmd.Flags().StringVar(&serverName, "server", "", "Server alias (default: active server)")
+	cmd.Flags().StringVar(&prometheusTextfile, "prometheus-textfile", "", "Write a Prometheus scrape to a textfile atomically")
+	cmd.Flags().StringVar(&metricsURL, "metrics-url", "http://127.0.0.1:8080/metrics", "Prometheus metrics scrape URL")
 
 	return cmd
+}
+
+func writePrometheusTextfile(path, metricsURL string) error {
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	resp, err := client.Get(metricsURL)
+	if err != nil {
+		return fmt.Errorf("scrape %q: %w", metricsURL, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("scrape %q: unexpected HTTP status %s", metricsURL, resp.Status)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read scrape response from %q: %w", metricsURL, err)
+	}
+	if err := resp.Body.Close(); err != nil {
+		return fmt.Errorf("close scrape response from %q: %w", metricsURL, err)
+	}
+	bodyText := strings.TrimRight(string(body), "\n") + "\n"
+	bodyText += "# HELP bunker_metrics_last_success_timestamp_seconds Unix time of the last successful bunkerd /metrics scrape by the Bunker textfile shim.\n"
+	bodyText += "# TYPE bunker_metrics_last_success_timestamp_seconds gauge\n"
+	bodyText += fmt.Sprintf("bunker_metrics_last_success_timestamp_seconds %d\n", time.Now().Unix())
+
+	dir := filepath.Dir(path)
+	temp, err := os.CreateTemp(dir, ".bunkerd-metrics-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temporary textfile beside %q: %w", path, err)
+	}
+	tempName := temp.Name()
+	published := false
+	defer func() {
+		if !published {
+			_ = os.Remove(tempName)
+		}
+	}()
+
+	if _, err := io.WriteString(temp, bodyText); err != nil {
+		_ = temp.Close()
+		return fmt.Errorf("write temporary textfile for %q: %w", path, err)
+	}
+	if err := temp.Chmod(0644); err != nil {
+		_ = temp.Close()
+		return fmt.Errorf("chmod temporary textfile for %q: %w", path, err)
+	}
+	if err := temp.Close(); err != nil {
+		return fmt.Errorf("close temporary textfile for %q: %w", path, err)
+	}
+	if err := os.Rename(tempName, path); err != nil {
+		return fmt.Errorf("publish textfile %q: %w", path, err)
+	}
+	published = true
+	return nil
 }
 
 func printServerMetrics(ctx context.Context, client bunkerv1connect.BunkerdClient, token string) error {
