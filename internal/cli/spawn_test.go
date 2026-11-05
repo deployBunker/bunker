@@ -1311,3 +1311,38 @@ func TestSpawnCommand_AutoIDOutputContract(t *testing.T) {
 		})
 	}
 }
+
+func TestSpawnCommand_InvalidIngressFlagsFailLocally(t *testing.T) {
+	tests := []struct {
+		name     string
+		flags    []string
+		wantText string
+	}{
+		{name: "unknown network", flags: []string{"--network", "garbage"}, wantText: "unsupported network"},
+		{name: "cloudflare missing ingress", flags: []string{"--network", "cloudflare"}, wantText: "needs --trycloudflare or --domain"},
+		{name: "tailscale missing ingress", flags: []string{"--network", "tailscale"}, wantText: "tailscale mode needs --trycloudflare"},
+		{name: "domain requires cloudflare", flags: []string{"--network", "direct", "--domain", "example.com"}, wantText: "--domain requires --network cloudflare"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			cmd := NewSpawnCommand()
+			cmd.SetArgs(append([]string{"should-not-print"}, tt.flags...))
+			var execErr error
+			output := captureStdout(t, func() { execErr = cmd.Execute() })
+			if execErr == nil {
+				t.Fatal("Execute succeeded, want local ingress validation error")
+			}
+			if !strings.Contains(execErr.Error(), tt.wantText) {
+				t.Errorf("error %q does not contain %q", execErr, tt.wantText)
+			}
+			if strings.Contains(output, "should-not-print") {
+				t.Errorf("agent id printed despite local validation failure: %q", output)
+			}
+			if strings.Contains(output, "Creating agent...") {
+				t.Errorf("progress line printed despite local validation failure: %q", output)
+			}
+		})
+	}
+}

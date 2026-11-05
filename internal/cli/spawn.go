@@ -163,6 +163,20 @@ Examples:
 				return fmt.Errorf("invalid --network-mode %q (valid: %v)", networkIsolationMode, config.ValidNetworkModes())
 			}
 
+			// Validate ingress flags locally before configuration loading or RPC.
+			if networkMode != "" && networkMode != "cloudflare" && networkMode != "tailscale" && networkMode != "direct" {
+				return fmt.Errorf("unsupported network %q (valid: cloudflare, tailscale, direct)", networkMode)
+			}
+			if domain != "" && networkMode != "cloudflare" {
+				return fmt.Errorf("--domain requires --network cloudflare; got --network %q", networkMode)
+			}
+			if networkMode == "cloudflare" && !trycloudflare && domain == "" {
+				return fmt.Errorf("cloudflare tunnel needs --trycloudflare or --domain")
+			}
+			if networkMode == "tailscale" && !trycloudflare {
+				return fmt.Errorf("tailscale mode needs --trycloudflare")
+			}
+
 			// 0.8 Validate --egress-mode LOCALLY, before the RPC (GAP-134,
 			// same fail-fast shape as --network-mode): an unknown mode name
 			// fails fast with the accepted vocabulary. Empty defers to the
@@ -309,6 +323,8 @@ Examples:
 					req.Msg.Network.Mode = v1.NetworkConfig_MODE_TAILSCALE
 				case "direct":
 					req.Msg.Network.Mode = v1.NetworkConfig_MODE_DIRECT
+				default:
+					return fmt.Errorf("unsupported network %q (valid: cloudflare, tailscale, direct)", networkMode)
 				}
 				req.Msg.Network.Trycloudflare = trycloudflare
 				req.Msg.Network.Domain = domain
