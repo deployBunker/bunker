@@ -20,7 +20,8 @@ the arithmetic is a *ceiling*, and this page would be false if it presented it a
 
 **If you take one thing away:** on a long path, *concurrency is the lever for requests and the socket buffer
 is the ceiling for bytes.* They are different problems with different fixes, and a mount can be excellent at
-the first while being stuck on the second.
+the first while being stuck on the second. For artifact transfers, see §8 for the measured mount cost and the
+SSH fast path.
 
 ---
 
@@ -209,3 +210,22 @@ loud*.
   page says nothing about a lossy path, where the picture is different.
 - **A distribution.** The RTTs are `ping -c 20` figures and three connect samples, not repeated trials with
   variance reported.
+
+---
+
+## 8. The mount is for editing, not for artifacts
+
+A dogfood measurement read a 2MB file through the bunker sshfs mount in **9s wall**; the same 2MB over a plain
+`ssh cat` roundtrip took **2s wall** (**4.5×**). Pulling a 23MB tar through the mount took **37s**. These are
+measurements, not a throughput prediction for every host or workload.
+
+That overhead is expected: FUSE round-trips per read, with an RPC for each file operation. It is not a bug in
+the mount, which is useful for editing and metadata-heavy work. For bulk data, use `scp` or `rsync` over the
+agent's SSH endpoint instead of copying through the mount. For example:
+
+```
+rsync -a --info=progress2 ./dist/ <agent>:/home/<agent>/dist/
+```
+
+The simpler alternative is `scp -r ./dist/ <agent>:/home/<agent>/dist/`. Rule of thumb: **many small edits →
+mount; few large files → `scp`/`rsync`.**
