@@ -1,0 +1,50 @@
+{
+  "tick_id": "bunker-foreman-2026-11-05-11-08-33",
+  "tick": 721,
+  "project": "bunker",
+  "repo": "/home/kara/deployBunker/bunker",
+  "base_sha": "562536e5585d040f09f06b2e1729cac026c32c4b",
+  "base_ref": "origin/main",
+  "mode": "verification-closeout",
+  "mode_reason": "Resumed the block named by tick 720 (DF-BUNKER-108-R2). All 11 pending rows were classified before any dispatch: 6 were premise-satisfied at base (their acceptance arms already pass and the substance of each fix was verified in the tree) and 5 are named operator/infrastructure/credential/release/live-host blockers. ZERO rows needed implementation, so composing a code wave would have dispatched phantom work; the block's real remaining work was evidence-bound closure under TR-251.",
+  "block": "DF-BUNKER-108-R2",
+  "block_kind": "id-family union (all DF-BUNKER-* rows)",
+  "block_state_before": "done=109/120 (91%), pending=11, ready=11 (as reported by block_drive and the tick-720 event)",
+  "block_state_after": "119 done (111 complete + 8 legacy done), 5 pending — every remaining row carries a named blocker; 6 rows closed this tick on GitReins PASS verdicts",
+  "wave_budget": 7,
+  "wave_size": 0,
+  "nproc": 16,
+  "loadavg_1m": 12.24,
+  "slots": 3,
+  "workers": [],
+  "verification_runs": [
+    {"row": "DF-BUNKER-100", "task": "DF-BUNKER-100-V1", "run_id": "a4490c6a", "passed": true, "lane": "fireworks/kimi-k3", "note": "first dispatch died as a worker orphan after 12s (host load); re-dispatched once, PASS"},
+    {"row": "DF-BUNKER-106", "task": "DF-BUNKER-106-V1", "run_id": "911187cd", "passed": true, "lane": "fireworks/kimi-k3"},
+    {"row": "DF-BUNKER-113", "task": "DF-BUNKER-113-V1", "run_id": "4de2bf77", "passed": true, "lane": "fireworks/kimi-k3", "note": "first run on the default deepseek lane wrote verdict 34e7861b INCOMPLETE on a 402"},
+    {"row": "DF-BUNKER-85", "task": "DF-BUNKER-85-V1", "run_id": "eea7dc7e", "passed": true, "lane": "fireworks/kimi-k3"},
+    {"row": "DF-BUNKER-89", "task": "DF-BUNKER-89-V1", "run_id": "e61da313", "passed": true, "lane": "fireworks/kimi-k3"},
+    {"row": "DF-BUNKER-90", "task": "DF-BUNKER-90-V1", "run_id": "8a47cec5", "passed": true, "lane": "fireworks/kimi-k3"}
+  ],
+  "criterion_repairs": {
+    "DF-BUNKER-106": "acceptance named internal/tunnel/tunnel_test.go for TestConfigureTunnelCommand_ArmsProcessGroupAndPdeathsig; the function lives at internal/tunnel/pdeathsig_test.go:38. Re-measured against the real location.",
+    "DF-BUNKER-108-R2": "acceptance grepped internal/server for 'docker degraded'; the qualifier is declared and composed in internal/agent/docker_health.go and internal/server is empty of it by design. Re-measured against the real location after verifying the socket-gated emission logic."
+  },
+  "excluded_rows": {
+    "DF-BUNKER-10": "operator/infrastructure: acceptance is a real fleet upgrade ('all hosts verified at HEAD'), i.e. deploying to bunker-las-04 and restoring or de-registering bunker-las-03",
+    "DF-BUNKER-37": "repo-admin credential: registering the agent host's deploy key needs deploy-keys scope the available token lacks (API 404)",
+    "DF-BUNKER-47-R2": "live host: code fix merged at ce59ff12; remaining arm is `bash e2e-full-battery.sh` on bunker-mvp (78.46.173.180) with VERIFY-PASS",
+    "DF-BUNKER-92": "release authority: rclone driver IS registered in the tree (2 files) but no tag contains 10760912; needs the v0.3.0 cut, blocked on RELEASE-019",
+    "DF-BUNKER-108-R2": "live host: criterion repaired and repo arm green (socket-gated emission), but its stated live proof (`bunker list --status running` with no suffix on an answering socket) needs a live agent host"
+  },
+  "gitreins_outage": {
+    "lanes": ["default deepseek-v4-flash"],
+    "signature": "LLM call failed: 402 Client Error: Payment Required",
+    "failed_verdicts_kept": ["34e7861b"],
+    "workaround": "per-invocation failover to GITREINS_LLM_BASE_URL=https://api.fireworks.ai/inference/v1 model accounts/fireworks/models/kimi-k3 (curl pre-filter: ollama-cloud 200, fireworks 200)",
+    "filed_row": "INT-CI-085"
+  },
+  "local_gate": "PASS: go build ./... rc=0; go vet ./... rc=0; go test ./... -short -count=1 -parallel 4 rc=0 (HEAD 562536e5)",
+  "remote_ci": "green: two most recent runs on 562536e5 succeeded (2026-11-05T10:59:15Z and 10:55:09Z); no failure from another writer",
+  "remote_parity_before_closeout": "0 ahead / 0 behind origin/main at 562536e5",
+  "residue_preserved": "14 untracked historical wave manifests + root-level tasks.jsonl (producer foreman-tick-20261101, single row RELEASE-003, 188 bytes, mtime 2026-11-01T05:21) — attributed and left in place, not cleaned"
+}

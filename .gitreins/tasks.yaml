@@ -5483,3 +5483,83 @@ tasks:
   status: complete
   created_at: '2026-11-05T10:41:32.541235+00:00'
   completed_at: '2026-11-05T10:53:59.602245+00:00'
+- id: DF-BUNKER-113-V1
+  title: 'Verification-only close-out for DF-BUNKER-113: re-run the row''s acceptance
+    arms at the current HEAD'
+  criteria:
+  - 'Verification-only close-out for DF-BUNKER-113 at HEAD 562536e5: the ENOSPC capacity
+    precondition exists in the QA harness and refuses before the battery can cascade.
+    Arms to confirm, each run from the repository root: (1) `grep -cE ''df -[Pp]t?''
+    .hermes/scripts/bunker-qa.sh` exits 0 printing >= 1; (2) `grep -ciE ''no space
+    left|enospc'' .hermes/scripts/bunker-qa.sh` exits 0 printing >= 1; (3) `bash -n
+    .hermes/scripts/bunker-qa.sh` exits 0; (4) the guard is a refusal, not a warning:
+    qa_disk_preflight in .hermes/scripts/bunker-qa.sh returns nonzero on a failed
+    or unparseable df reading and on root usage above 94%, and preflights() turns
+    that into a FAIL cell plus exit 2 before spawn/sync/compile.'
+  status: in_progress
+  created_at: '2026-11-05T11:23:25.027076+00:00'
+  completed_at: '2026-11-05T11:23:26.503327+00:00'
+- id: DF-BUNKER-100-V1
+  title: 'Verification-only close-out for DF-BUNKER-100: re-run the row''s acceptance
+    arms at the current HEAD'
+  criteria:
+  - 'Verification-only close-out for DF-BUNKER-100 at HEAD 562536e5: the bunker-fs
+    write-shape contract is stated everywhere a user hits it. Arms to confirm from
+    the repository root: (1) `git ls-files | grep -c ''BFS-005-client-cache-and-diff.md''`
+    exits 0 printing 1; (2) `grep -c ''WRITE SHAPE'' internal/cli/fs.go` exits 0 printing
+    >= 1, and that block states whole-file PUT publish only with `>`/`>>` onto an
+    existing path refused; (3) the tracked doc docs/spec/BFS-005-client-cache-and-diff.md
+    exists and is non-trivial.'
+  status: in_progress
+  created_at: '2026-11-05T11:26:15.428708+00:00'
+- id: DF-BUNKER-85-V1
+  title: 'Verification-only close-out for DF-BUNKER-85: re-run the row''s acceptance
+    arms at the current HEAD'
+  criteria:
+  - 'Verification-only close-out for DF-BUNKER-85 at HEAD 562536e5: agent-tools --install
+    refuses a dynamically linked binary fail-loud and offers a sanctioned static path.
+    Arms to confirm from the repository root: (1) `grep -c ''dynamically'' internal/cli/agenttools_install.go`
+    exits 0 printing >= 1; (2) `grep -c ''toolkit repo'' internal/cli/agenttools_install.go`
+    exits 0 printing >= 3; (3) `git ls-files | grep -c ''specs/image-spec.md''` exits
+    0 printing >= 1; (4) the refusal names the remedy (make dist in the toolkit repo,
+    or --binary <path>) rather than only reporting the failure.'
+  status: in_progress
+  created_at: '2026-11-05T11:26:42.395046+00:00'
+- id: DF-BUNKER-89-V1
+  title: 'Verification-only close-out for DF-BUNKER-89: re-run the row''s acceptance
+    arms at the current HEAD'
+  criteria:
+  - 'Verification-only close-out for DF-BUNKER-89 at HEAD 562536e5: README documents
+    the host-provision isolation flow end to end and the provisioning implementation
+    with its apply surface exists. Arms to confirm from the repository root: (1) `grep
+    -c ''Provision host isolation before spawning'' README.md` exits 0 printing >=
+    1; (2) `ls internal/cli/hostprov.go` exits 0; (3) `grep -c ''private-tmp-root''
+    internal/cli/hostprov.go` exits 0 printing >= 1.'
+  status: in_progress
+  created_at: '2026-11-05T11:27:25.420182+00:00'
+- id: DF-BUNKER-90-V1
+  title: 'Verification-only close-out for DF-BUNKER-90: re-run the row''s acceptance
+    arms at the current HEAD'
+  criteria:
+  - 'Verification-only close-out for DF-BUNKER-90 at HEAD 562536e5: the README Quickstart
+    states the sudo/root prerequisites for the host-isolation chain. Arms to confirm
+    from the repository root: (1) `grep -c ''### Prerequisites'' README.md` exits
+    0 printing >= 1; (2) `grep -c ''must run as root'' README.md` exits 0 printing
+    >= 3.'
+  status: in_progress
+  created_at: '2026-11-05T11:28:08.791163+00:00'
+- id: DF-BUNKER-106-V1
+  title: 'Verification-only close-out for DF-BUNKER-106: re-run the row''s acceptance
+    arms at the current HEAD'
+  criteria:
+  - 'Verification-only close-out for DF-BUNKER-106 at HEAD 562536e5, after the criterion
+    was repaired this tick (the original named internal/tunnel/tunnel_test.go, where
+    the function has never existed; it lives at internal/tunnel/pdeathsig_test.go:38).
+    Arms to confirm from the repository root: (1) `grep -c ''func TestPdeathsig_SIGKILLedManagerLeavesNoCloudflared''
+    internal/tunnel/pdeathsig_test.go` exits 0 printing exactly 1; (2) `grep -c ''func
+    TestConfigureTunnelCommand_ArmsProcessGroupAndPdeathsig'' internal/tunnel/pdeathsig_test.go`
+    exits 0 printing exactly 1; (3) `ls internal/tunnel/childpin.go internal/tunnel/process_unix.go`
+    exits 0. The dead-child fix itself landed with DF-BUNKER-104 (7dbcb6af); this
+    run certifies the coverage exists at HEAD.'
+  status: in_progress
+  created_at: '2026-11-05T11:28:41.783616+00:00'
