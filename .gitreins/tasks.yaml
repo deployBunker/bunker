@@ -5720,3 +5720,99 @@ tasks:
     Do NOT run a live daemon; verify the code wiring and test coverage only.'
   status: in_progress
   created_at: '2026-11-05T19:52:12.298648+00:00'
+- id: OBS-BUNKER-003-V2
+  title: 'OBS-BUNKER-003 verification (corrected paths): lifecycle metrics registration'
+  criteria:
+  - 'Verify OBS-BUNKER-003 implementation (commit cbe01bed, present on current HEAD):
+
+    1. grep -q ''bunker_destroy_refused_total'' internal/server/metrics.go -> rc=0
+    (counter registered)
+
+    2. grep -q ''bunker_registry_destroy_refused'' internal/server/metrics.go -> rc=0
+    (gauge registered)
+
+    3. grep -q ''bunker_portpool_available'' internal/server/metrics.go -> rc=0 (gauge
+    registered)
+
+    4. grep -q ''RegistryDestroyRefused'' internal/agent/observability.go -> rc=0
+    (state source exists)
+
+    5. go test ./internal/server/ -run ''TestLifecycleMetricsFamiliesAndBoundedLabels''
+    -count=1 -> rc=0
+
+    Do NOT run a live daemon, do NOT run go build ./... or the full suite. Verify
+    file contents and the one focused test only.'
+  status: in_progress
+  created_at: '2026-11-05T20:15:06.251993+00:00'
+- id: OBS-BUNKER-002-V2
+  title: 'OBS-BUNKER-002 verification (corrected paths): RPC metrics'
+  criteria:
+  - 'Verify OBS-BUNKER-002 implementation (commit 8bf6bca6, present on current HEAD):
+
+    1. grep -q ''bunker_rpc_requests_total'' internal/server/metrics.go -> rc=0 (counter
+    registered via audit.RPCMetricCollectors)
+
+    2. grep -q ''bunker_rpc_duration_seconds'' internal/audit/interceptor.go -> rc=0
+    (histogram defined)
+
+    3. grep -q ''RPCRequestsTotal.WithLabelValues'' internal/audit/interceptor.go
+    -> rc=0 (incremented in interceptor)
+
+    4. grep -q ''agent_id'' internal/server/metrics_test.go -> rc=0 only inside the
+    forbidden-label assertion (label law test present)
+
+    5. go test ./internal/server/ -run ''TestRPCMetricsFamiliesAndLabelLaw'' -count=1
+    -> rc=0
+
+    Do NOT run a live daemon, do NOT run go build ./... or the full suite. Verify
+    file contents and the one focused test only.'
+  status: in_progress
+  created_at: '2026-11-05T20:15:07.137456+00:00'
+- id: OBS-BUNKER-004-V2
+  title: 'OBS-BUNKER-004 verification (corrected paths): WebDAV metrics'
+  criteria:
+  - 'Verify OBS-BUNKER-004 implementation (commit 9c9fce24, current HEAD):
+
+    1. grep -q ''bunker_webdav_watch_'' internal/server/metrics.go -> rc=0 (watch
+    families registered)
+
+    2. grep -q ''bunker_webdav_push_'' internal/server/metrics.go -> rc=0 (push families
+    registered)
+
+    3. grep -q ''func (h \*Handler) WatchMetrics'' internal/server/webdav/watch.go
+    -> rc=0 (atomics exported)
+
+    4. grep -q ''TestWebDAVMetricsFamiliesAndDisabledMode'' internal/server/metrics_test.go
+    -> rc=0 (test present)
+
+    5. go test ./internal/server/ -run ''TestWebDAVMetricsFamiliesAndDisabledMode''
+    -count=1 -> rc=0
+
+    Do NOT run a live daemon, do NOT run go build ./... or the full suite. Verify
+    file contents and the one focused test only.'
+  status: in_progress
+  created_at: '2026-11-05T20:15:08.083866+00:00'
+- id: OBS-BUNKER-002-V3
+  title: 'OBS-BUNKER-002 verification: RPC metrics (names in interceptor.go)'
+  criteria:
+  - 'Verify OBS-BUNKER-002 implementation on current HEAD (impl commit 8bf6bca6):
+
+    1. grep -q ''bunker_rpc_requests_total'' internal/audit/interceptor.go -> rc=0
+    (counter name defined)
+
+    2. grep -q ''bunker_rpc_duration_seconds'' internal/audit/interceptor.go -> rc=0
+    (histogram name defined)
+
+    3. grep -q ''RPCMetricCollectors'' internal/server/metrics.go -> rc=0 (collectors
+    registered into the /metrics registry)
+
+    4. grep -q ''RPCRequestsTotal.WithLabelValues'' internal/audit/interceptor.go
+    -> rc=0 (incremented in the audit interceptor)
+
+    5. go test ./internal/server/ -run ''TestRPCMetricsFamiliesAndLabelLaw'' -count=1
+    -> rc=0
+
+    Do NOT run a live daemon, do NOT run go build ./... or the full suite. Verify
+    file contents and the one focused test only.'
+  status: in_progress
+  created_at: '2026-11-05T20:17:51.472111+00:00'
