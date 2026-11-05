@@ -66,10 +66,21 @@ cat >"$target" <<'HOOK'
 # budget was exhausted, or a gate never ran) — the commit is still refused,
 # because an unverified tree is not green, but the message says so instead of
 # blaming the code. Nothing is retried here.
+#
+# Board integrity (BOARD-GUARD-001): before the Tier-1 gate runs, a staged
+# .coding-hermes/board/tasks.jsonl that drops more rows than BOARD_SHRINK_ALLOW
+# permits — or any staged file NAMED tasks.jsonl outside .coding-hermes/board/ —
+# refuses the commit. A closeout replaces one line in place; it never re-emits
+# a filtered subset of the board (commit 63140484 did, 849 rows -> 1).
 set -e
 cd "$(git rev-parse --show-toplevel)"
 STAGED=$(git diff --cached --name-only --diff-filter=ACM)
 [ -z "$STAGED" ] && exit 0
+if [ -f .hermes/scripts/board_shrink_guard.sh ]; then
+	bash .hermes/scripts/board_shrink_guard.sh --staged || exit 1
+else
+	echo "pre-commit: .hermes/scripts/board_shrink_guard.sh missing (old revision?) — board shrink check skipped" >&2
+fi
 exec bash scripts/gitreins-guard.sh
 HOOK
 chmod 0755 "$target"
@@ -80,6 +91,7 @@ chmod 0755 "$target"
 ok=1
 bash -n "$target" 2>/dev/null || ok=0
 grep -q 'gitreins-guard.sh' "$target" || ok=0
+grep -q 'board_shrink_guard.sh' "$target" || ok=0
 [ -x "$target" ] || ok=0
 if [ "$ok" != "1" ]; then
 	echo "install-git-hooks: VERIFICATION FAILED — $target is not a working gate" >&2
@@ -88,5 +100,6 @@ fi
 
 echo "install-git-hooks: installed $target"
 echo "  it runs: bash $gate  (PASS 0 / TEST-FAILURE 1 / NOT-FINISHED 3 / GUARD-ERROR 4)"
+echo "  and first: bash .hermes/scripts/board_shrink_guard.sh --staged  (BOARD-GUARD-001)"
 echo "  check:   bash -n '$target' && grep -n gitreins-guard.sh '$target'"
 echo "  undo:    rm '$target'"
