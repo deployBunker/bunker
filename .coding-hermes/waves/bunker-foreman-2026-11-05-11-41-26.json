@@ -29,7 +29,9 @@
       "lane_rationale": "prepaid OAuth sub (flat, $0 marginal), same lane that landed the 4-row tick-720 wave in this repo; Go bug-fix work",
       "brief": "/home/kara/.hermes/cache/scratch/bunker-tick-20261105-1141/brief-INT-CI-060.txt",
       "gitreins_task": "INT-CI-060",
-      "status": "dispatched"
+      "status": "landed",
+      "commit": "3a07b29b",
+      "outcome": "commit landed, ff-merged, pushed; local gates green; acceptance part (1) unmet in CI"
     }
   ],
   "excluded_rows": {
@@ -42,7 +44,17 @@
     "pre_solve_lab": "POST /api/v1/problems/discover problem_class=go-test-uid-collision-proc-scan -> not_found; flat corpus grep found no matching answer",
     "residue": "14 untracked historical wave manifests + root tasks.jsonl (188B, mtime 2026-11-01, single RELEASE-003 row) attributed to prior ticks, preserved in place, not cleaned"
   },
-  "local_gate": "pending",
-  "remote_ci": "pending",
-  "status": "dispatched"
+  "local_gate": "PASS: go build ./... rc=0; go vet ./... rc=0; go test ./... -short -count=1 -parallel 4 rc=0; go test ./internal/agent/ -run UID|Collision|Spawn|Intci044|Intci060 rc=0",
+  "remote_ci": "run 42024378654 on 3a07b29b: root-suite FAILURE (19 tests, stage rootless-install, checksum mismatch); other jobs green. Board-only commit c3be3495: root-suite SKIPPED (path filter) = unverified, not green.",
+  "status": "closed_partial",
+  "gitreins": {
+    "task": "INT-CI-060",
+    "run_id": "6e0c0a8a",
+    "verdict": "FAIL/INCOMPLETE bound to 3a07b29b",
+    "lane": "fireworks/kimi-k3 per-invocation failover (default deepseek lane 402 unfunded)"
+  },
+  "rows_filed": [
+    "INT-CI-086"
+  ],
+  "closed_at": "2026-11-05T12:47:00-05:00"
 }
