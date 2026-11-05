@@ -197,42 +197,44 @@ func listUserProcesses(uid uint32) ([]userProcess, error) {
 	return out, nil
 }
 
-// statusFileOwnedByUID reports whether a /proc/<pid>/status body's Uid line
-// lists uid in any of its fields (real, effective, saved-set or fs). Any of
-// the four means the kernel attributes the process to that user.
+// statusFileOwnedByUID reports whether uid is the process's real or saved-set
+// uid. These are the target credentials used by kill(2)'s same-uid permission
+// check; effective and filesystem uids do not confer signal privilege to a
+// newly spawned process running as uid.
 func statusFileOwnedByUID(status []byte, uid uint32) bool {
 	for _, line := range strings.Split(string(status), "\n") {
 		if !strings.HasPrefix(line, "Uid:") {
 			continue
 		}
 		fields := strings.Fields(strings.TrimPrefix(line, "Uid:"))
-		for _, f := range fields {
-			v, err := strconv.ParseUint(f, 10, 32)
+		if len(fields) < 3 {
+			return false
+		}
+		for _, i := range []int{0, 2} { // real and saved-set uid
+			v, err := strconv.ParseUint(fields[i], 10, 32)
 			if err == nil && uint32(v) == uid {
 				return true
 			}
 		}
-		return false // the Uid line was there; its fields simply did not match
+		return false
 	}
 	return false
 }
 
-// statusOwnerUIDs returns the DISTINCT uids a /proc/<pid>/status body's Uid
-// line attributes the process to (real, effective, saved-set, fs). This is
-// the grouping twin of statusFileOwnedByUID's membership rule: a process
-// lands in every listed uid's bucket, so each bucket holds exactly the
-// processes the per-uid single probe (listUserProcesses) would have returned
-// for that uid — including the exotic setuid shape where only one of the
-// four fields matches. A body with no parseable Uid line contributes
-// nothing, exactly as the membership probe rejects it.
+// statusOwnerUIDs returns the distinct real and saved-set uids relevant to
+// same-uid signal permission, matching statusFileOwnedByUID's collision rule.
 func statusOwnerUIDs(status []byte) []uint32 {
 	for _, line := range strings.Split(string(status), "\n") {
 		if !strings.HasPrefix(line, "Uid:") {
 			continue
 		}
+		fields := strings.Fields(strings.TrimPrefix(line, "Uid:"))
 		var uids []uint32
-		for _, f := range strings.Fields(strings.TrimPrefix(line, "Uid:")) {
-			v, err := strconv.ParseUint(f, 10, 32)
+		for _, i := range []int{0, 2} {
+			if i >= len(fields) {
+				continue
+			}
+			v, err := strconv.ParseUint(fields[i], 10, 32)
 			if err != nil {
 				continue
 			}

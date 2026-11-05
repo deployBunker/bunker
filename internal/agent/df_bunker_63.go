@@ -139,12 +139,22 @@ func buildSpawnUIDCollisionError(username string, uid uint32, procs []userProces
 // Retrying is safe because every new candidate goes through the same scan
 // before the spawn proceeds: the walk only ever advances PAST a refused uid.
 
-// uidCollisionCandidateRetries bounds how many ADDITIONAL uid candidates the
-// spawn tries after the first one is refused (so at most
-// 1+uidCollisionCandidateRetries useradd attempts per spawn). A var, not a
-// const, purely as a test seam (the containerCapAttempts convention);
-// production never writes it.
-var uidCollisionCandidateRetries = 5
+// uidCollisionCandidateRetriesDefault bounds the additional candidates after
+// the first refusal. BUNKER_UID_COLLISION_MAX_RETRIES overrides this limit with
+// a non-negative integer; malformed values use the safe default.
+const uidCollisionCandidateRetriesDefault = 32
+
+func uidCollisionCandidateRetryLimit() int {
+	value := os.Getenv("BUNKER_UID_COLLISION_MAX_RETRIES")
+	if value == "" {
+		return uidCollisionCandidateRetriesDefault
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil || n < 0 {
+		return uidCollisionCandidateRetriesDefault
+	}
+	return n
+}
 
 // spawnFreshUserReleaseTimeout bounds the single `userdel -rf` that releases a
 // just-created candidate user so the walk can bind another uid. A var, not a

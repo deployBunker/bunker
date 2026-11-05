@@ -231,6 +231,7 @@ func TestSpawnUIDCandidateRetry_FirstCandidateRefusedRetriesNextUID(t *testing.T
 // uid-collision error — the refusal text stays intact (pids, rationale) — at
 // the same named stage, and it must name the candidates it tried.
 func TestSpawnUIDCandidateRetry_ExhaustedWalkFailsLoud(t *testing.T) {
+	t.Setenv("BUNKER_UID_COLLISION_MAX_RETRIES", "2")
 	h := newUIDWalkHarness(t, "1029", func(uint32) ([]userProcess, error) {
 		return []userProcess{collisionProcess}, nil
 	})
@@ -258,17 +259,17 @@ func TestSpawnUIDCandidateRetry_ExhaustedWalkFailsLoud(t *testing.T) {
 	if !strings.Contains(err.Error(), "uid-candidate walk exhausted") {
 		t.Errorf("the error must name the exhausted candidate walk: %v", err)
 	}
-	uids := make([]string, 0, 1+uidCollisionCandidateRetries)
-	for i := 0; i <= uidCollisionCandidateRetries; i++ {
+	uids := make([]string, 0, 1+uidCollisionCandidateRetryLimit())
+	for i := 0; i <= uidCollisionCandidateRetryLimit(); i++ {
 		uids = append(uids, strconv.Itoa(1029+i))
 	}
 	if !strings.Contains(err.Error(), "["+strings.Join(uids, " ")+"]") {
 		t.Errorf("the error must name the refused candidates [%s]: %v", strings.Join(uids, " "), err)
 	}
 
-	// Bounded: 1 system-picked attempt + uidCollisionCandidateRetries retries.
+	// Bounded: 1 system-picked attempt + uidCollisionCandidateRetryLimit() retries.
 	useradds := h.useraddCalls(t)
-	if want := 1 + uidCollisionCandidateRetries; len(useradds) != want {
+	if want := 1 + uidCollisionCandidateRetryLimit(); len(useradds) != want {
 		t.Errorf("useradd attempts = %d, want %d (1 + the retry budget): %v", len(useradds), want, useradds)
 	}
 	for i, line := range useradds[1:] {
@@ -287,8 +288,8 @@ func TestSpawnUIDCandidateRetry_ExhaustedWalkFailsLoud(t *testing.T) {
 			releases++
 		}
 	}
-	if releases != uidCollisionCandidateRetries {
-		t.Errorf("released candidates = %d, want %d (all but the final one): %v", releases, uidCollisionCandidateRetries, h.userdelCalls(t))
+	if releases != uidCollisionCandidateRetryLimit() {
+		t.Errorf("released candidates = %d, want %d (all but the final one): %v", releases, uidCollisionCandidateRetryLimit(), h.userdelCalls(t))
 	}
 	if got := len(h.userdelCalls(t)); got <= releases {
 		t.Errorf("the rollback never removed the final refused candidate's user (userdel calls: %v)", h.userdelCalls(t))

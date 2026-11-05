@@ -345,7 +345,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 				pinUID, username, useraddErr, strings.TrimSpace(string(out)))
 			walkedCandidates = append(walkedCandidates, pinUID)
 			next, ok := nextUIDCandidate(pinUID)
-			if !ok || attempt >= uidCollisionCandidateRetries {
+			if !ok || attempt >= uidCollisionCandidateRetryLimit() {
 				return nil, fail(StageUserCreate, uidCandidatesExhaustedError(uidTaken, walkedCandidates))
 			}
 			pinUID = next
@@ -409,7 +409,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (*v
 		// so a failed release still refuses loudly, unchanged.
 		walkedCandidates = append(walkedCandidates, uint32(uid))
 		next, ok := nextUIDCandidate(uint32(uid))
-		if !ok || attempt >= uidCollisionCandidateRetries {
+		if !ok || attempt >= uidCollisionCandidateRetryLimit() {
 			return nil, fail(StageUIDCollision, uidCandidatesExhaustedError(collisionErr, walkedCandidates))
 		}
 		if releaseErr := removeFreshAgentUser(ctx, username); releaseErr != nil {
