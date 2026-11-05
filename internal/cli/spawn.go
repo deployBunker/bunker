@@ -358,20 +358,13 @@ Examples:
 			// agent exists and is usable, so we warn and continue. The
 			// fetch+save is shared with renew's re-spawn leg (DF-BUNKER-65);
 			// this leg only owns the printing.
-			//
-			// DF-BUNKER-47: the GetAgentKey RPC must authenticate. The spawn
-			// response may carry a fresh ApiKey (master credential) that the
-			// daemon expects for subsequent keyed RPCs; prefer it over the
-			// original session token, which may lack the master scope. Fall
-			// back to the session token when the response carries no ApiKey.
+			// GetAgentKey is master-credential-gated, so use the operator
+			// token that created the agent, not the agent-scoped ApiKey returned
+			// by SpawnAgent.
 			keyPath := ""
 			savedKeyPath := ""
-			fetchToken := token
-			if r.ApiKey != "" {
-				fetchToken = r.ApiKey
-			}
 			if r.SshPrivateKey == "" {
-				if p, ferr := fetchAndSaveAgentKey(ctx, client, r.AgentId, fetchToken); ferr != nil {
+				if p, ferr := fetchAndSaveAgentKey(ctx, client, r.AgentId, token); ferr != nil {
 					fmt.Printf("  (warn: could not fetch SSH key: %v)\n", ferr)
 				} else if p != "" {
 					r.SshPrivateKey = "fetched" // non-empty: the bundle prints the key line

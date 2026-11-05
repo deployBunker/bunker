@@ -802,6 +802,7 @@ func TestSpawnCommand_FetchesKeyViaGetAgentKey(t *testing.T) {
 		// Default server behavior: no key in the spawn response.
 		spawnResp: &v1.SpawnAgentResponse{
 			AgentId:       "gap128agent",
+			ApiKey:        "agent-scoped-response-key",
 			DockerHostSsh: "DOCKER_HOST=ssh://bunker-gap128agent@bunker-mvp",
 		},
 		keyResp: &v1.GetAgentKeyResponse{
@@ -830,6 +831,12 @@ func TestSpawnCommand_FetchesKeyViaGetAgentKey(t *testing.T) {
 	}
 	if mock.gotKeyAgentID != "gap128agent" {
 		t.Errorf("GetAgentKey asked for agent %q, want gap128agent", mock.gotKeyAgentID)
+	}
+	if want := "Bearer test-cli-token"; mock.gotKeyAuth != want {
+		t.Errorf("GetAgentKey Authorization = %q, want operator token %q", mock.gotKeyAuth, want)
+	}
+	if strings.Contains(mock.gotKeyAuth, "agent-scoped-response-key") {
+		t.Errorf("GetAgentKey used the agent-scoped spawn ApiKey: %q", mock.gotKeyAuth)
 	}
 
 	// Criterion 3: the operator still ends up with a working local key file.
