@@ -859,6 +859,13 @@ func (h *HotManager) governor() int {
 // manager is shutting down, so the tick stops scheduling.
 func (h *HotManager) launch(it *hotItem) bool {
 	f, busy := h.beginFetch(it.path, false)
+	if f == nil {
+		// beginFetch's (nil, false) is the shutdown sentinel: the manager
+		// closed between schedule and launch, so false means "not busy",
+		// not "you own a fresh fetch". Nothing was begun, so there is no
+		// fetch record to end or complete — only the tick-stop signal.
+		return false
+	}
 	if busy {
 		// A fetch for this path is already in flight and will publish it: the
 		// queued item's work has been taken over, which is a SKIP (`replaced`),
