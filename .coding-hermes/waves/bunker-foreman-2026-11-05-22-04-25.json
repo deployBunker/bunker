@@ -1,0 +1,50 @@
+{
+  "tick": "bunker-foreman-2026-11-05-22-04-25",
+  "tick_number": 727,
+  "block": "INT-CI-088",
+  "wave_id": "bunker-foreman-2026-11-05-22-04-25",
+  "mode": "serial",
+  "mode_reason": "WAVE_BUDGET=4 but loadavg 15.23/18.40/21.69 on 16 cores yields slots = max(1, min(6, 16 - ceil(21.69))) = 1, so the box permits exactly one worker. Independently, the block's other two ready rows are not worker work: INT-CI-085 requires an owner top-up of the api.deepseek.com judge lane (probe recorded HTTP 200 / is_available=false / balance -0.87 USD) and INT-CI-087 requires reproducing a funded-lane evaluator wedge, which is blocked by INT-CI-085 and lives in the pipx gitreins evaluator, not this repo. Only INT-CI-088 is dispatchable.",
+  "wave_budget": 4,
+  "nproc": 16,
+  "loadavg_1m": 15.23,
+  "loadavg_15m": 21.69,
+  "slots": 1,
+  "base": "origin/main",
+  "base_sha": "564c5b93",
+  "resume_of": null,
+  "rows": [
+    {
+      "id": "INT-CI-088",
+      "priority": "P1",
+      "worktree": "/home/kara/worktrees/bunker-INT-CI-088",
+      "branch": "wt/INT-CI-088",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/home/kara/.hermes/cache/scratch/bunker-tick-20261105-220425/brief-INT-CI-088.txt",
+      "attempt": 1,
+      "gitreins_task": "INT-CI-088 (created + started this tick)"
+    }
+  ],
+  "excluded_rows": [
+    {
+      "id": "INT-CI-085",
+      "reason": "owner-blocked: default GitReins judge lane api.deepseek.com is unfunded (balance -0.87 USD, is_available=false). Needs an owner top-up, not a worker."
+    },
+    {
+      "id": "INT-CI-087",
+      "reason": "dependency-blocked on INT-CI-085 (needs a FUNDED lane to reproduce the evaluator wedge) and its fix lives in the pipx gitreins evaluator, not this repository."
+    }
+  ],
+  "inherited_residue_preserved": {
+    "board_tasks_jsonl": "byte-identical to origin/main; no local edits",
+    "gitreins_tasks_yaml": "carries this tick's own INT-CI-088 create+start; committed with the closeout only",
+    "untracked": [
+      "tasks.jsonl (root-level, 188 bytes, single RELEASE-003 blocked row, mtime 2026-11-01) - known defect evidence, not authoritative board input",
+      "14 wave manifests (historical ticks 2026-10-30 .. 2026-11-05)",
+      ".gitreins/rescued-20261105/ (5 rescued judge artifacts, Oct 25-30)",
+      "gh-err-2002Z.txt (0 bytes)"
+    ],
+    "note": "Sibling lane observation: HEAD advanced 564c5b93 -> c2abe213 (sibling QA lane commit 'qa: record bunker clean-machine battery') and is already pushed to origin/main (0 ahead / 0 behind) mid-tick. My worker runs in an isolated worktree, so the sibling writer cannot collide; the closeout commit will be built with a temp index and re-fetched before push."
+  }
+}

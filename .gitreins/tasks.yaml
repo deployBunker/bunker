@@ -5844,3 +5844,32 @@ tasks:
   status: complete
   created_at: '2026-11-05T21:03:50.940263+00:00'
   completed_at: '2026-11-05T21:28:52.317625+00:00'
+- id: INT-CI-088
+  title: Fix fsclient HotManager nil-pointer panic on shutdown (beginFetch closed
+    path)
+  criteria:
+  - "1) internal/fsclient/hotrefresh.go launch() handles beginFetch returning (nil,false)\
+    \ \u2014 return false immediately with no endFetch/f.complete on nil. 2) New regression\
+    \ test in internal/fsclient that closes a HotManager while a launch/tick is in\
+    \ flight, exercising the nil path. 3) go build ./... && go vet ./... pass. 4)\
+    \ go test ./internal/fsclient/ -race -count=3 exits 0. 5) Regression test FAILS\
+    \ on base commit 564c5b93 with the guard reverted and PASSES with it."
+  status: complete
+  created_at: '2026-11-05T22:57:00.415177+00:00'
+  completed_at: '2026-11-05T23:59:37.528672+00:00'
+- id: INT-CI-088-V1
+  title: Verify merged fsclient nil-guard fix by evidence greps (no suite run)
+  criteria:
+  - 'Evidence-shaped verification of the ALREADY-MERGED fix at commit 6fe82633 on
+    main. Do NOT run the full package test suite, do NOT run go build, do NOT run
+    any go test command. Verify these exact facts with read-only commands: (1) git
+    merge-base --is-ancestor 6fe82633 origin/main exits 0. (2) grep -c ''if f == nil''
+    internal/fsclient/hotrefresh.go reports >= 1, and that guard sits inside HotManager.launch
+    BEFORE the h.mu lock and before any endFetch/f.complete call. (3) grep -c ''TestLaunchAfterCloseNilFetchHandle''
+    internal/fsclient/hotrefresh_shutdown_test.go reports 1 and the test drives the
+    real launch entry point after Close and asserts launch returns false with SingleflightEntries()==0.
+    (4) git ls-tree HEAD --name-only internal/fsclient/ lists hotrefresh_shutdown_test.go.
+    Report PASS only if every fact holds on the checked-out tree.'
+  status: complete
+  created_at: '2026-11-06T00:25:59.504293+00:00'
+  completed_at: '2026-11-06T00:26:06.675936+00:00'
