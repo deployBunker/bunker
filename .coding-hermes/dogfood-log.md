@@ -641,3 +641,5 @@ Corrections to the first delivery of this run:
 - Perf: not re-measured by design. Run 31's published numbers remain the carried evidence: `/metrics` 2.0 ms mean, textfile shim 17 ms mean, spawn 24.96 s cold / 18.72 s warm, destroy+archive 21.65 s; no PERF row because the observability path is millisecond-scale and not user-noticeable.
 - This fourth dispatch is scheduler duplicate-dispatch evidence, not a bunker product finding. No repo visibility/permission changes and no credentials minted.
 - ch:trace tick=bunker-dogfood-2026-11-06-12-41-09 report=docs/dogfood/2026-11-06-observability.md evidence=/home/kara/.hermes/cache/scratch/df1106c verdict=RECORDS-ONLY-DUPLICATE-FIRE
+
+- Closeout correction: the earlier live re-census in this fire saw `bunker-las-03` ONLINE with `/health` 404 and the prior agent absent. A later final transport recheck returned `health=000` and connection refused, so current bunker-las-03 reachability is transient/unresolved; no install was launched or re-run by this duplicate fire. The recorded run-31 install result remains the evidence of installability, with isolation-unverified fields as stated above.
