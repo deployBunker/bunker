@@ -1,9 +1,14 @@
 # Dogfood run 31 — the observability surface (2026-11-06)
 
 Lane: `bunker-dogfood-2026-11-06-12-41-09` · Target: `/home/kara/deployBunker/bunker`
-Measured HEAD: **a9c1db80** (pinned; the tip advanced to fb6058a7 mid-run with **0 non-board
-paths changed**, so every number below stands for both) · daemon and CLI built from that SHA
-with `make build` in a detached worktree (`bunker 0.2.1 / commit a9c1db80 / go1.26.10`).
+Measured HEAD: **a9c1db80** (pinned; daemon and CLI built from that SHA with `make build` in a
+detached worktree — `bunker 0.2.1 / commit a9c1db80 / go1.26.10`). Sibling lanes advanced the
+tip during the run (finally to `7eb7bc18`); the only product-code change in that window is
+`internal/cli/list.go` + its test (board and dogfood docs aside), and
+`git diff a9c1db80..HEAD -- internal/cli/metrics.go internal/cli/metrics_textfile_test.go
+internal/server/metrics.go internal/server/metrics_test.go internal/config/config.go
+internal/config/metrics_test.go` is **empty**, so every observability number and finding below
+still describes the published tree.
 
 ## The promise being tested
 
