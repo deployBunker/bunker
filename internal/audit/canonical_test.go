@@ -76,11 +76,7 @@ func TestCanonicalBytesEquivalentToWriterOutput(t *testing.T) {
 	lines := fixtureLines(t, path)
 	mismatches, declines := 0, 0
 	for _, line := range lines {
-		var minimal recordLink
-		if err := json.Unmarshal(line, &minimal); err != nil {
-			t.Fatal(err)
-		}
-		got, ok := canonicalBytesFromLine(line, minimal.Hash)
+		_, _, got, ok, _ := canonicalBytesFromLine(line, nil)
 		if !ok {
 			declines++
 			continue

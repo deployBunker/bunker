@@ -296,20 +296,15 @@ func verifyFile(path, head string, enforceHead bool) (records, firstBad int, tai
 	var firstErr error
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	var fastScratch []byte
 	for sc.Scan() {
 		records++
 		line := sc.Bytes()
-		var link recordLink
-		linkErr := json.Unmarshal(line, &link)
 		fastVerified := false
-		if canonicalFastPath && linkErr == nil {
-			if canonical, ok := canonicalBytesFromValidLine(line, link.Hash); ok {
-				sum := sha256.Sum256(canonical)
-				fastVerified = hex.EncodeToString(sum[:]) == link.Hash
-			}
+		var declared, prev string
+		if canonicalFastPath {
+			declared, prev, _, fastVerified, fastScratch = canonicalBytesFromLine(line, fastScratch)
 		}
-		declared := link.Hash
-		prev := link.PrevHash
 		if !fastVerified {
 			var rec Record
 			if err := json.Unmarshal(line, &rec); err != nil {
