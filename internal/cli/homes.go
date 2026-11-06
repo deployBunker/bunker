@@ -1,14 +1,16 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -150,30 +152,99 @@ func managedHomeName(name string) bool {
 	return len(name) > len(agentHomePrefix) && strings.HasPrefix(name, agentHomePrefix)
 }
 
-// homeDirSize returns the on-disk size of path in bytes. filepath.WalkDir does
-// not follow symlinks, so a link out of the home root can neither escape the
-// walk nor inflate the measurement.
+// homeDirSize returns the on-disk size of path in bytes. Symlinks are counted
+// as link entries and never followed.
 func homeDirSize(path string) (uint64, error) {
-	var total uint64
-	err := filepath.WalkDir(path, func(_ string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			if os.IsNotExist(err) {
-				return nil // vanished mid-walk: not a measurement failure
-			}
-			return err
-		}
-		total += uint64(info.Size())
-		return nil
-	})
+	return parallelDirSize(path, runtime.GOMAXPROCS(0))
+}
+
+// parallelDirSize walks one directory level at a time. Each worker owns its
+// byte total and next-level directory slice, avoiding per-entry synchronization.
+func parallelDirSize(path string, workers int) (uint64, error) {
+	rootInfo, err := os.Lstat(path)
 	if err != nil {
 		return 0, err
+	}
+	if !rootInfo.IsDir() {
+		return uint64(rootInfo.Size()), nil
+	}
+	if workers < 1 {
+		workers = 1
+	}
+	level := []string{path}
+	var total uint64
+	for len(level) > 0 {
+		workerCount := workers
+		if workerCount > len(level) {
+			workerCount = len(level)
+		}
+		type workerResult struct {
+			total uint64
+			dirs  []string
+		}
+		results := make([]workerResult, workerCount)
+		jobs := make(chan string, len(level))
+		for _, dir := range level {
+			jobs <- dir
+		}
+		close(jobs)
+		ctx, cancel := context.WithCancel(context.Background())
+		var firstErr error
+		var errOnce sync.Once
+		fail := func(err error) {
+			errOnce.Do(func() {
+				firstErr = err
+				cancel()
+			})
+		}
+
+		var wg sync.WaitGroup
+		wg.Add(workerCount)
+		for i := range results {
+			go func(result *workerResult) {
+				defer wg.Done()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case dir, ok := <-jobs:
+						if !ok {
+							return
+						}
+						entries, err := os.ReadDir(dir)
+						if err != nil {
+							fail(err)
+							return
+						}
+						for _, entry := range entries {
+							if entry.IsDir() {
+								result.dirs = append(result.dirs, filepath.Join(dir, entry.Name()))
+								continue
+							}
+							info, err := entry.Info()
+							if err != nil {
+								if os.IsNotExist(err) {
+									continue // vanished mid-walk: not a measurement failure
+								}
+								fail(err)
+								return
+							}
+							result.total += uint64(info.Size())
+						}
+					}
+				}
+			}(&results[i])
+		}
+		wg.Wait()
+		cancel()
+		if firstErr != nil {
+			return 0, firstErr
+		}
+		level = level[:0]
+		for i := range results {
+			total += results[i].total
+			level = append(level, results[i].dirs...)
+		}
 	}
 	return total, nil
 }
