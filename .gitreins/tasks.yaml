@@ -6001,3 +6001,21 @@ tasks:
     verdict text, first-bad indexing and tamper verdicts in both arms.
   status: in_progress
   created_at: '2026-11-06T14:32:36.785363+00:00'
+  completed_at: '2026-11-06T14:50:02.498568+00:00'
+- id: PERF-017-R2
+  title: 'PERF-017 verification: reproduce the paired binary protocol and confirm
+    the >=3x literal on HEAD'
+  criteria:
+  - 'Verification-only task on HEAD commit 92e5b992 (canonical fast path already merged).
+    Reproduce the recorded protocol in /home/kara/.hermes/cache/scratch/PERF-017-R1-paired-protocol.txt:
+    build proto from HEAD, build the control from a copy of the same tree with the
+    single edit internal/audit/verify.go ''var canonicalFastPath = true'' -> false,
+    and run the interleaved ctl,proto,proto,ctl harness against the 19.5 MiB fixture
+    /home/kara/.hermes/cache/scratch/bunker-perf-audit-20261106/fx/audit.log for at
+    least 3 blocks (6 samples per arm). PASS requires: proto median wall at least
+    3.0x lower than the control median, byte-identical stdout sha256 and rc=0 on every
+    run of both arms, go build ./... , go vet ./... and go test ./internal/audit -count=1
+    green on a clean working tree (no untracked directories under internal/), and
+    TestFastPathVerdictParity green.'
+  status: in_progress
+  created_at: '2026-11-06T15:01:30.243461+00:00'
