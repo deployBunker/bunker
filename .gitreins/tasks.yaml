@@ -5909,12 +5909,12 @@ tasks:
   created_at: '2026-11-06T03:53:13.798263+00:00'
   completed_at: '2026-11-06T03:57:04.080792+00:00'
 - id: INT-HOST-012
-  title: bunker list --server <offline registered server> blocks
+  title: Fix bunker list hang on offline server
   criteria:
-  - bunker list command handles offline servers without crashing; output format verified
-  status: complete
-  created_at: '2026-11-06T07:13:55.756818+00:00'
-  completed_at: '2026-11-06T07:15:08.142820+00:00'
+  - bunker list --server <offline> must fail fast with clear error, not hang. Verify
+    with live offline target.
+  status: in_progress
+  created_at: '2026-11-06T13:13:22.421075+00:00'
 - id: PERF-014
   title: re-scope PERF-005 timing criterion
   criteria:
