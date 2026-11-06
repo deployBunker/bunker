@@ -5873,3 +5873,19 @@ tasks:
   status: complete
   created_at: '2026-11-06T00:25:59.504293+00:00'
   completed_at: '2026-11-06T00:26:06.675936+00:00'
+- id: PERF-013-R3-V1
+  title: 'PERF-013-R3 verification-only close: bunker-fs measured numbers archived
+    in tree (grep evidence)'
+  criteria:
+  - "Verification-only close of PERF-013-R3 (measured numbers already archived in\
+    \ the tree; tree-grep evidence only \u2014 do NOT run go build, go vet, go test,\
+    \ any Go suite, or any battery). Arm 1: from the repo root, `git ls-files docs/dogfood\
+    \ | grep -c '2026-10-16'` prints a number >= 4 (measured at filing: 4 \u2014 docs/dogfood/2026-10-16-integration.md,\
+    \ 2026-10-16-surf-009-acceptance-and-costs.md, 2026-10-16-surf-009-toolchain-proof.md,\
+    \ 2026-10-16b-bunker-fs-surface.md). Arm 2: `grep -c 'buffer ceiling' docs/performance.md`\
+    \ prints a number >= 1 (measured at filing: 3). The archived measurements (bunker-fs\
+    \ snapshot 398ms/1 call warm over WAN tunnel; mount ls/stat 2.8ms cached) live\
+    \ in those docs/dogfood 2026-10-16 files, and the buffer-ceiling analysis lives\
+    \ in docs/performance.md. PASS = both greps meet their bounds."
+  status: in_progress
+  created_at: '2026-11-06T02:46:44.449382+00:00'
