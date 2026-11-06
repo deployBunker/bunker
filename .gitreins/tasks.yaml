@@ -5889,3 +5889,23 @@ tasks:
     \ in docs/performance.md. PASS = both greps meet their bounds."
   status: in_progress
   created_at: '2026-11-06T02:46:44.449382+00:00'
+- id: PERF-005
+  title: 'PERF-005: redeploy bunkerd to bunker-mvp at HEAD so the PERF-001 disk-walk
+    TTL cache is served'
+  criteria:
+  - bunker-mvp's deployed bunkerd --version prints exactly one commit field whose
+    sha is an ancestor-or-self of HEAD and descends from 651c4d8 (the PERF-001 disk-walk
+    TTL cache commit), and two consecutive measured bunker list --server bunker-mvp
+    calls each complete in under 100 ms wall time (baseline before redeploy ~340 ms).
+  status: in_progress
+  created_at: '2026-11-06T03:20:07.055841+00:00'
+- id: PERF-006
+  title: 'PERF-006: redeploy bunkerd to dedi-2 at HEAD so the PERF-001 disk-walk TTL
+    cache is served'
+  criteria:
+  - dedi-2's deployed bunkerd --version prints exactly one commit field whose sha
+    descends from 651c4d8 (the PERF-001 disk-walk TTL cache commit), and the median
+    wall time of ten consecutive measured bunker list --server dedi-2 calls is under
+    300 ms (baseline before redeploy ~390 ms).
+  status: in_progress
+  created_at: '2026-11-06T03:20:08.110526+00:00'
