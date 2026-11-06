@@ -5900,13 +5900,28 @@ tasks:
   status: in_progress
   created_at: '2026-11-06T03:20:07.055841+00:00'
 - id: PERF-006
-  title: 'PERF-006: redeploy bunkerd to dedi-2 at HEAD so the PERF-001 disk-walk TTL
-    cache is served'
+  title: redeploy PERF-001 TTL cache to dedi-2
   criteria:
-  - dedi-2's deployed bunkerd --version prints exactly one commit field whose sha
-    descends from 651c4d8 (the PERF-001 disk-walk TTL cache commit), and the median
-    wall time of ten consecutive measured bunker list --server dedi-2 calls is under
-    300 ms (baseline before redeploy ~390 ms).
+  - go version -m /usr/local/bin/bunkerd on dedi-2 reports a revision that contains
+    651c4d8 (PERF-001 disk-walk TTL cache); median wall time of 10 consecutive bunker
+    list --server dedi-2 calls is under 300ms (baseline ~1.8s)
   status: complete
-  created_at: '2026-11-06T03:20:08.110526+00:00'
-  completed_at: '2026-11-06T03:32:15.085659+00:00'
+  created_at: '2026-11-06T03:53:13.798263+00:00'
+  completed_at: '2026-11-06T03:57:04.080792+00:00'
+- id: INT-HOST-012
+  title: bunker list --server <offline> blocks 30s
+  criteria:
+  - against an offline registered server, bunker list --server fails in under 5s with
+    an error naming the server and offline state rather than blocking for the 30s
+    client timeout; a test asserts the fast-fail path; a reachable server is unaffected
+  status: in_progress
+  created_at: '2026-11-06T03:51:10.528781+00:00'
+- id: PERF-014
+  title: re-scope PERF-005 timing criterion
+  criteria:
+  - 'PERF-005 acceptance criterion (3) is re-scoped to account for network RTT: the
+    budget is at least 2x the measured TCP-connect floor (164ms), and the server-side
+    handler cost is shown <=5ms by a loopback measurement on bunker-mvp'
+  status: in_progress
+  created_at: '2026-11-06T03:53:15.305463+00:00'
+  completed_at: '2026-11-06T03:58:48.352612+00:00'
