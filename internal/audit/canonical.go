@@ -11,7 +11,7 @@ var prevHashToken = []byte(`"prev_hash":"`)
 // canonicalBytesFromLine searches for hash-shaped tokens without parsing JSON.
 // It intentionally accepts a reformat+rehash of the raw line; the normalized
 // fallback rejects that class by design.
-func canonicalBytesFromLine(line, scratch []byte) (string, string, []byte, bool, []byte) {
+func canonicalBytesFromLine(line, scratch []byte) ([]byte, []byte, []byte, bool, []byte) {
 	for offset := 0; ; {
 		i := bytes.Index(line[offset:], hashToken)
 		if i < 0 {
@@ -29,21 +29,20 @@ func canonicalBytesFromLine(line, scratch []byte) (string, string, []byte, bool,
 			copy(scratch[start:], line[end:])
 			sum := sha256.Sum256(scratch[:len(line)-64])
 			if equalHex(sum[:], line[start:end]) {
-				declared := string(line[start:end])
-				prev, ok := prevHashFromLine(line)
+				prev, ok := prevHashBytesFromLine(line)
 				if !ok {
-					return "", "", nil, false, scratch
+					return nil, nil, nil, false, scratch
 				}
-				return declared, prev, scratch[:len(line)-64], true, scratch
+				return line[start:end], prev, scratch[:len(line)-64], true, scratch
 			}
 		}
 		offset = start
 	}
-	return "", "", nil, false, scratch
+	return nil, nil, nil, false, scratch
 }
 
-func prevHashFromLine(line []byte) (string, bool) {
-	var candidate string
+func prevHashBytesFromLine(line []byte) ([]byte, bool) {
+	var candidate []byte
 	found := false
 	for offset := 0; ; {
 		i := bytes.Index(line[offset:], prevHashToken)
@@ -51,16 +50,16 @@ func prevHashFromLine(line []byte) (string, bool) {
 			break
 		}
 		start := offset + i + len(prevHashToken)
-		var value string
+		var value []byte
 		valid := false
 		if start < len(line) && line[start] == '"' {
 			valid = true
 		} else if start+64 < len(line) && line[start+64] == '"' && lowerHex(line[start:start+64]) {
-			value, valid = string(line[start:start+64]), true
+			value, valid = line[start:start+64], true
 		}
 		if valid {
-			if found && candidate != value {
-				return "", false
+			if found && !bytes.Equal(candidate, value) {
+				return nil, false
 			}
 			candidate, found = value, true
 		}

@@ -219,36 +219,34 @@ func bytesReplaceFirst(src, old, replacement []byte) []byte {
 	return []byte(strings.Replace(string(src), string(old), string(replacement), 1))
 }
 
-func BenchmarkVerifyFastPath1MiB(b *testing.B) {
+func benchmarkVerifyFile(b *testing.B, fast bool) {
 	path := filepath.Join(b.TempDir(), "bench.log")
 	l, err := New(path)
 	if err != nil {
 		b.Fatal(err)
 	}
-	summary := strings.Repeat("x", 1024)
-	for i := 0; i < 1024; i++ {
-		if err := l.Log(Record{TS: "2026-01-01T00:00:00Z", Caller: "bench", Method: "/m", Outcome: "ok", Summary: summary}); err != nil {
+	for i := 0; i < 47_000; i++ {
+		if err := l.Log(Record{TS: "2026-01-01T00:00:00Z", Caller: "bench", Method: "/bunker.v1.Bunkerd/SpawnAgent", RemoteAddr: "192.0.2.10:54321", AgentID: "agent-00000001", SessionID: "session-00000001", DurationMS: int64(i), Outcome: "ok", Summary: "retention ceiling verification benchmark fixture"}); err != nil {
 			b.Fatal(err)
 		}
 	}
 	if err := l.Close(); err != nil {
 		b.Fatal(err)
 	}
-	b.SetBytes(1024 * 1024)
-	for _, fast := range []bool{true, false} {
-		name := "fast"
-		if !fast {
-			name = "fallback"
+	canonicalFastPath = fast
+	defer func() { canonicalFastPath = true }()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, _, err := Verify(path); err != nil {
+			b.Fatal(err)
 		}
-		b.Run(name, func(b *testing.B) {
-			canonicalFastPath = fast
-			defer func() { canonicalFastPath = true }()
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				if _, _, err := Verify(path); err != nil {
-					b.Fatal(err)
-				}
-			}
-		})
 	}
+}
+
+func BenchmarkVerifyFileFastPath(b *testing.B) {
+	benchmarkVerifyFile(b, true)
+}
+
+func BenchmarkVerifyFileParseMarshal(b *testing.B) {
+	benchmarkVerifyFile(b, false)
 }

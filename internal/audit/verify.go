@@ -2,6 +2,7 @@ package audit
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -302,8 +303,9 @@ func verifyFile(path, head string, enforceHead bool) (records, firstBad int, tai
 		line := sc.Bytes()
 		fastVerified := false
 		var declared, prev string
+		var fastDeclared, fastPrev []byte
 		if canonicalFastPath {
-			declared, prev, _, fastVerified, fastScratch = canonicalBytesFromLine(line, fastScratch)
+			fastDeclared, fastPrev, _, fastVerified, fastScratch = canonicalBytesFromLine(line, fastScratch)
 		}
 		if !fastVerified {
 			var rec Record
@@ -317,6 +319,8 @@ func verifyFile(path, head string, enforceHead bool) (records, firstBad int, tai
 			// Fallback preserves the original parse-and-re-marshal verdict.
 			declared = rec.Hash
 			prev = rec.PrevHash
+			fastDeclared = []byte(declared)
+			fastPrev = []byte(prev)
 			rec.Hash = ""
 			canonical, err := json.Marshal(rec)
 			if err != nil {
@@ -335,10 +339,13 @@ func verifyFile(path, head string, enforceHead bool) (records, firstBad int, tai
 				continue
 			}
 		}
+		if fastVerified {
+			declared = string(fastDeclared)
+		}
 		// Chain link: the first record must chain to the predecessor file's
 		// tail (when one exists); every later record to the previous one.
-		if (records == 1 && enforceHead && prev != head) ||
-			(records > 1 && prev != prevHash) {
+		if (records == 1 && enforceHead && !bytes.Equal(fastPrev, []byte(head))) ||
+			(records > 1 && !bytes.Equal(fastPrev, []byte(prevHash))) {
 			if firstBad == 0 {
 				firstBad = records
 				firstErr = fmt.Errorf("%s: record %d: prev_hash does not chain (tampered)", path, records)
