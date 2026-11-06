@@ -48,7 +48,7 @@ ready for users" below).
 | the collection path is live on the fleet | `bunker_agents_total{host="bunker-mvp",job="integrations/unix"}` has `count_over_time[1h] = 120` samples (30 s scrape) — a published `.prom` would be collected with no stack change |
 | auth posture is consistent with the spec | on an `auth.enabled: true` daemon, `/metrics` answers 200 **without** a token (loopback-only, by design) while the same daemon still warns loudly about the unauthenticated hilo graph routes |
 
-## What broke — three findings, all filed
+## What broke — four findings, all filed
 
 **OBS-BUNKER-007 (P3) — the freshness guarantee has no consumer.**
 The deployed Prometheus (`fleet-monitor:9090/api/v1/rules?type=alert`) carries exactly two
@@ -76,6 +76,18 @@ perfectly fresh watcher on a host that has none. Not a regression (OBS-BUNKER-00
 zero-mode deliberately), but there is no `bunker_webdav_enabled` gauge to tell the two states
 apart, and the spec's tier-4 table names `bunker_webdav_push_subscribers` while the code emits
 `bunker_webdav_push_active` / `push_active_max` plus five counters the catalogue omits.
+
+**QA-BUNKER-099 (P3) — the clean-machine gate is red by default (found by the install leg).**
+The ephemeral agent's `go test ./...` produced **19** failing test lines for four host reasons:
+the borrowed-registry guard fails 8 `cmd/bunkerd` server tests once the installer has created
+`/var/lib/bunkerd` (`agent.registry.path resolves to /var/lib/bunkerd/agents.jsonl inside the
+default tree … but this daemon's agent.base_data_dir is /tmp/…`); egress tests hard-fail with
+`neither nft nor iptables is available on this host`; AppArmor destroy tests hard-fail with
+`apparmor_parser: executable file not found in $PATH`; and
+`TestBuildAgentPersistentExecCommand` fails `sh: 1: go: not found`. The guard is correct — the
+tests leave `agent.registry.path` at its default while pointing `base_data_dir` at a temp dir,
+so they cannot pass on an installed host; the same test passes at the same HEAD on a host
+without that directory (`ok 0.116s`).
 
 ## Surfaces not ready for a user (observation, not a row — already tracked)
 
@@ -111,9 +123,21 @@ a 17 ms path would be ceremony.
 
 `bunker-qa.sh` against `bunker-las-03` (designated ephemeral host, daemon `ONLINE`, 1/8 agents in
 use): `launch` **OK** at 2026-11-06T13:09:19Z → agent `b661d74a`, ttl 4h, battery started
-detached; evidence `df1106-qa-evidence.jsonl`. Collect result is recorded in the tick report and
-the dogfood log; a collect that cannot reach a finished agent is graded as such (see
-QA-BUNKER-077-R2), never as a pass.
+detached. Agent-side cells pulled before the tick's deadline: **9× toolchain-bootstrap OK**,
+**`fresh-install` OK** (the documented installer ran inside the agent), `lint` INFO
+(golangci-lint absent on a bare agent), `docker_build` / `compose_config` N/A, **`tests` FAIL**
+(19 test lines, four host-environment causes — QA-BUNKER-099), **`ci-pass` FAIL** (`native
+rc=1`, same suite; the battery was still inside the act cell at the deadline, so the chaos cells
+never ran and are not claimed).
+
+`bunker-qa.sh collect` **aborted twice** with `COLLECT-ABORT … cannot reach agent b661d74a
+(ssh probe returned no state)` while a direct `ssh -i ~/.bunker/keys/b661d74a` into the same
+agent succeeded in the same window — a recurrence of the pending QA-BUNKER-077-R2. A second,
+smaller wrapper wart: `BUNKER_QA_EVIDENCE` is honoured by `launch` but `collect` requires
+`--evidence` and exits 0 with a usage line. Evidence was therefore harvested directly from the
+agent (its `qa-evidence.jsonl` plus the 765-line `tests.log`), and the agent was destroyed and
+verified `not_found` — installability is graded from that evidence, and no cell is reported as
+passing that did not pass.
 
 ## Teardown
 
