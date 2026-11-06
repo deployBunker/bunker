@@ -5986,3 +5986,18 @@ tasks:
   - bunker --version | grep 8316fea
   status: in_progress
   created_at: '2026-11-06T13:57:22.590114+00:00'
+- id: PERF-017-R1
+  title: 'PERF-017 rework: audit verify canonical fast path must reach the 3x median-wall
+    literal'
+  criteria:
+  - internal/audit/verifyFile's canonical fast path beats the parse+re-marshal control
+    (canonicalFastPath=false, same tree) by at least 3.0x median wall on a ~19.5 MiB
+    chained audit-log fixture written by the package's own writer (at least 3 samples
+    per arm, alternating order, loadavg stated), with byte-identical stdout sha256
+    and rc=0 on both arms; go build ./... , go vet ./... and go test ./internal/audit
+    -count=1 all pass; and the seven verdict-parity fixtures (clean chain, value flip,
+    re-hashed wrong prev_hash, truncated anchored tail, garbage line, reformatted
+    non-canonical line, summary containing a literal hash token) still yield identical
+    verdict text, first-bad indexing and tamper verdicts in both arms.
+  status: in_progress
+  created_at: '2026-11-06T14:32:36.785363+00:00'

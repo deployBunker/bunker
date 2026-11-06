@@ -1,0 +1,63 @@
+{
+  "tick": "bunker-foreman-2026-11-06-14-29-36",
+  "block": "PERF",
+  "wave_id": "none:serial-single-implementation-row",
+  "mode": "serial_block_drive",
+  "mode_reason": "Resume-first: the last block-naming audit event (bunker-foreman-2026-11-06-11-44-59) named block PERF, and PERF still carries three open rows. Slots = max(1, min(6, nproc(16) - ceil(loadavg_1m 3.28))) = 6 and WAVE_BUDGET = 12, so a wave was COMPOSED-FOR and rejected on independence: of the three ready rows, PERF-016 and PERF-018 are verification/measurement closeouts of already-landed work (foreman-direct, a worker would produce a zero diff and cannot own the measurement instrument), and PERF-017 is the only implementation row. One implementation row is not a wave.",
+  "slots": 6,
+  "nproc": 16,
+  "loadavg_1m": 3.28,
+  "wave_budget": 12,
+  "base": "origin/main",
+  "base_sha": "ae0220ed",
+  "resume_of": {
+    "tick": "bunker-foreman-2026-11-06-11-44-59",
+    "block_id": "PERF",
+    "verified": "block_drive.py ranks PERF DRIVE pending=3 ready=3 done=16/19; rows PERF-016/017/018 all in_progress with their work already landed on origin/main"
+  },
+  "pre_gate_probe": {
+    "go_build": "PASS (go build ./... rc=0)",
+    "go_vet": "PASS (go vet ./... rc=0)",
+    "go_test_focused": "PASS (go test ./internal/audit ok 3.217s; ./internal/cli ok 40.859s)",
+    "gitreins_guard": "DEGRADED PASS at HEAD ae0220ed (no staged Go files; secrets clean) — direct gates are authoritative",
+    "remote_ci": "green: 3/3 recent runs success on deployBunker/bunker (latest 14:10:51Z)"
+  },
+  "rows": [
+    {
+      "id": "PERF-016",
+      "class": "verification_only_closeout",
+      "disposition": "CLOSED this tick on Tier-2 verdict 35c90758 (PASS) + direct gates; code commit 507f047d is an ancestor of origin/main",
+      "worktree": null
+    },
+    {
+      "id": "PERF-018",
+      "class": "measurement_closeout",
+      "disposition": "CLOSED this tick: cold-NSS measurement 5.59x / decision KEEP recorded in slow-results.json; verdict=none:tier2-instrument-timeout disclosed",
+      "worktree": null
+    },
+    {
+      "id": "PERF-017",
+      "class": "implementation_rework",
+      "priority": "P3",
+      "model": "gpt-6-luna",
+      "provider": "openai-codex",
+      "worktree": "/home/kara/worktrees/bunker-PERF-017-R1",
+      "branch": "wt/PERF-017-R1",
+      "base_sha": "ae0220ed",
+      "brief": "/home/kara/.hermes/cache/scratch/bunker-tick-20261106-142936/brief-PERF-017-R1.txt",
+      "gitreins_task": "PERF-017-R1 (created + started this tick)",
+      "files": ["internal/audit/canonical.go", "internal/audit/verify.go", "internal/audit/canonical_test.go"],
+      "gap": "verdict d3466d48 FAIL: >=3x median-wall literal unmet (judge 2.55-2.68x; best foreman 2.95x; shipped fast path 95-125ms vs ~255ms control)",
+      "attempt": 2
+    }
+  ],
+  "excluded_rows": [
+    {"id": "RELEASE-003", "why": "different block; belongs to the releng lane (gitreins task in_progress from tick 13-55-32, no worker commit)"},
+    {"id": "RELEASE-008", "why": "different block; same releng lane"}
+  ],
+  "measurement_harness": {
+    "fixture": "/home/kara/.hermes/cache/scratch/bunker-perf-audit-20261106/fx (39,030 records / 19,490,866 bytes across audit.log+.1-.3)",
+    "ab_script": "/home/kara/.hermes/cache/scratch/bunker-perf-audit-20261106/ab.sh (interleaved ctl proto proto ctl)",
+    "builder": "/home/kara/.hermes/cache/scratch/bunker-tick-20261106-142936/measure.sh (proto vs same-tree canonicalFastPath=false control)"
+  }
+}
