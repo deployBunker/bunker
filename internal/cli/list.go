@@ -57,7 +57,9 @@ Examples:
 
 			// 3. Build request
 			client := newBunkerdClient(entry)
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			// INT-HOST-012: Fast-fail for offline servers.
+			// Use a shorter timeout to avoid hanging on unreachable hosts.
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 
 			statusFilter := status
@@ -79,6 +81,10 @@ Examples:
 			// 4. Call RPC
 			resp, err := client.ListAgents(ctx, req)
 			if err != nil {
+				// INT-HOST-012: Classify offline/unreachable errors clearly.
+				if ctx.Err() == context.DeadlineExceeded {
+					return fmt.Errorf("server %q appears offline (connection timed out after 5s)", serverName)
+				}
 				return fmt.Errorf("list agents: %w", err)
 			}
 

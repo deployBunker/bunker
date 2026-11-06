@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/go-chi/chi/v5"
@@ -240,6 +241,50 @@ func TestListCommand_ServerError(t *testing.T) {
 	err := cmd.Execute()
 	if err == nil {
 		t.Error("expected error from server")
+	}
+}
+
+// TestListCommand_OfflineServer verifies INT-HOST-012:
+// The command fails fast with a clear message when the server is unreachable.
+func TestListCommand_OfflineServer(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	// Point config to a port nothing is listening on.
+	cfg := &CLIConfig{
+		Servers: map[string]ServerEntry{
+			"offline": {
+				Name:        "offline",
+				URL:         "http://127.0.0.1:59999", // Likely closed port
+				Token:       "test-cli-token",
+				ConnectedAt: "2026-06-28T00:00:00Z",
+			},
+		},
+		ActiveServer: "offline",
+	}
+	if err := SaveCLIConfig(cfg); err != nil {
+		t.Fatalf("SaveCLIConfig: %v", err)
+	}
+
+	cmd := NewListCommand()
+	// Execute in a goroutine to enforce timeout if it hangs, though the internal 5s timeout should trigger first.
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Execute()
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected error for offline server, got nil")
+		}
+		// Verify the error message indicates connectivity failure (refused or timed out).
+		errStr := err.Error()
+		if !strings.Contains(errStr, "connection refused") && !strings.Contains(errStr, "timed out") && !strings.Contains(errStr, "offline") {
+			t.Errorf("error message should indicate connectivity failure, got: %v", errStr)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("command hung longer than 10s; expected fast-fail for offline server")
 	}
 }
 
