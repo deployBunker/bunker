@@ -1,0 +1,67 @@
+{
+  "tick": "bunker-foreman-2026-11-06-08-44-39",
+  "tick_number": null,
+  "block": "PERF",
+  "wave_id": "bunker-foreman-2026-11-06-08-44-39",
+  "mode": "wave",
+  "mode_reason": "Resume-first: the last tick's audit event (bunker-foreman-2026-11-06-04-08-40, block PERF-deploy) named the PERF block, and the PERF family still carries exactly two ready rows. slots = max(1, min(6, nproc(16) - ceil(loadavg_1m 13.33))) = 2, and the two rows are mutually independent: PERF-016 touches internal/cli/reap.go(+reap_test.go) and PERF-017 touches internal/audit/verify.go(+tests), no depends_on edge on either row, no shared file, no shared seam.",
+  "wave_budget": 12,
+  "nproc": 16,
+  "loadavg_1m": 13.33,
+  "loadavg_15m": 5.65,
+  "slots": 2,
+  "base": "origin/main",
+  "base_sha": "71fb2946",
+  "resume_of": {
+    "tick": "bunker-foreman-2026-11-06-04-08-40",
+    "block_id": "PERF-deploy",
+    "verified": "block PERF still has 2 ready rows (PERF-016, PERF-017); block_drive.py ranks it DRIVE pending=2 ready=2"
+  },
+  "pre_gate_probe": {
+    "go_build": "PASS (go build ./... rc=0, 6.1s)",
+    "go_vet": "PASS (go vet ./... rc=0)",
+    "focused_tests": "PASS (go test ./internal/cli -run Reap -count=1 ok 3.6s; go test ./internal/audit -count=1 ok 3.1s)",
+    "pre_solve_lab": "no cached class for go-perf-worker-pool / go-canonical-bytes-fastpath (404 not_found on both); rows carry their own prototype measurements"
+  },
+  "rows": [
+    {
+      "id": "PERF-016",
+      "priority": "P2",
+      "worktree": "/home/kara/worktrees/bunker-PERF-016",
+      "branch": "wt/PERF-016",
+      "model": "gpt-6-luna",
+      "provider": "openai-codex",
+      "brief": "/home/kara/.hermes/cache/scratch/bunker-tick-20261106-084439/brief-PERF-016.txt",
+      "attempt": 1,
+      "files": ["internal/cli/reap.go", "internal/cli/reap_test.go"],
+      "gitreins_task": "PERF-016 (created + started this tick)"
+    },
+    {
+      "id": "PERF-017",
+      "priority": "P3",
+      "worktree": "/home/kara/worktrees/bunker-PERF-017",
+      "branch": "wt/PERF-017",
+      "model": "gpt-6-luna",
+      "provider": "openai-codex",
+      "brief": "/home/kara/.hermes/cache/scratch/bunker-tick-20261106-084439/brief-PERF-017.txt",
+      "attempt": 1,
+      "files": ["internal/audit/verify.go", "internal/audit/verify_test.go"],
+      "gitreins_task": "PERF-017 (created + started this tick)"
+    }
+  ],
+  "excluded_rows": [
+    {
+      "id": "PERF-005",
+      "reason": "blocked: deploy arm on a live host (redeploy bunkerd to bunker-mvp) - owner/infrastructure work, not worker work."
+    },
+    {
+      "id": "PERF-006",
+      "reason": "blocked: dedi-2 redeploy, same live-host class as PERF-005."
+    }
+  ],
+  "inherited_residue_preserved": {
+    "board_tasks_jsonl": "byte-identical to origin/main at tick start; no local edits before selection",
+    "gitreins_tasks_yaml": "carries this tick's own PERF-016/PERF-017 create+start; committed with the closeout only",
+    "note": "HEAD 71fb2946 carries two prior 'fix(bunker): handle offline servers gracefully' commits (84a074a1, 71fb2946) that close INT-HOST-012 in their message while the board row is still pending - landed-but-unclosed, owned by the INT-HOST block, not this block. Recorded here so the next tick does not re-dispatch it."
+  }
+}

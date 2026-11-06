@@ -5935,3 +5935,31 @@ tasks:
   status: in_progress
   created_at: '2026-11-06T04:45:04.556279+00:00'
   completed_at: '2026-11-06T04:46:02.816702+00:00'
+- id: PERF-016
+  title: PERF-016 worker pool for reap NSS classification (2.1-2.4x)
+  criteria:
+  - internal/cli/reap.go classifies residue entries through a bounded worker pool
+    sized by GOMAXPROCS, not one serial NSS lookup per entry. The committed test proves
+    (a) byte-identical classification output against the serial path on a multi-entry
+    fixture (same stdout digest, same unmanaged counts, same kept/would-remove split,
+    same sort order), (b) a lookup error still aborts the whole scan before anything
+    is removed, reporting the first error in ITEM order, and (c) a measured median
+    wall-clock speedup of at least 2x versus the serial control in the same window.
+    The focused Reap tests pass.
+  status: in_progress
+  created_at: '2026-11-06T09:14:31.470874+00:00'
+- id: PERF-017
+  title: PERF-017 audit verify canonical bytes from stored line (3.55x)
+  criteria:
+  - internal/audit/verifyFile derives each record's canonical digest bytes from the
+    stored line (the stored line minus its 64-hex hash value) instead of parsing and
+    re-serializing every record in JSON, and keeps the parse-plus-marshal path as
+    the fallback for any line whose shape is not exactly the writer's or whose derived
+    digest disagrees. The committed test proves byte-equivalence on a real chained
+    fixture (derived canonical bytes equal the unmarshal, blank-the-hash, marshal
+    bytes with zero mismatches and zero declines on a clean log), verdict text and
+    first-bad indexing and anchor handling are unchanged, and a paired measurement
+    beats the control by at least 3x median wall at the roughly 19.5 MiB retention-ceiling
+    size. The audit package tests pass.
+  status: in_progress
+  created_at: '2026-11-06T09:14:32.052649+00:00'
