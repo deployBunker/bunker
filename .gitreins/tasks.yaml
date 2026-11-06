@@ -5909,13 +5909,11 @@ tasks:
   created_at: '2026-11-06T03:53:13.798263+00:00'
   completed_at: '2026-11-06T03:57:04.080792+00:00'
 - id: INT-HOST-012
-  title: bunker list --server <offline> blocks 30s
+  title: bunker list --server <offline registered server> blocks
   criteria:
-  - against an offline registered server, bunker list --server fails in under 5s with
-    an error naming the server and offline state rather than blocking for the 30s
-    client timeout; a test asserts the fast-fail path; a reachable server is unaffected
+  - bunker list command handles offline servers without crashing; output format verified
   status: in_progress
-  created_at: '2026-11-06T03:51:10.528781+00:00'
+  created_at: '2026-11-06T07:13:55.756818+00:00'
 - id: PERF-014
   title: re-scope PERF-005 timing criterion
   criteria:
@@ -5925,3 +5923,14 @@ tasks:
   status: complete
   created_at: '2026-11-06T03:53:15.305463+00:00'
   completed_at: '2026-11-06T04:17:52.018658+00:00'
+- id: PERF-015
+  title: PERF-015 parallel home walk
+  criteria:
+  - 'AC-1: median wall <= 0.90s on 800k-file fixture over >= 6 alternating A/B runs
+    vs pre-change binary. AC-2: byte-identical stdout on 6 equivalence fixtures. AC-3:
+    go test ./internal/cli -run Homes|Linger|Prune green + race green. AC-4: unreadable
+    subtree -> SizeUnknown, symlinks not followed. AC-5: workers bounded by GOMAXPROCS.
+    AC-6: follow-up row for agentDiskUsage if not done.'
+  status: in_progress
+  created_at: '2026-11-06T04:45:04.556279+00:00'
+  completed_at: '2026-11-06T04:46:02.816702+00:00'

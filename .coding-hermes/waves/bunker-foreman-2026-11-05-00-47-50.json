@@ -1,0 +1,36 @@
+{
+  "tick": "bunker-foreman-2026-11-05-00-47-50",
+  "tick_number": 717,
+  "block": "BOARD-GUARD-001",
+  "wave_id": "bunker-foreman-2026-11-05-00-47-50",
+  "mode": "serial",
+  "mode_reason": "WAVE_BUDGET=1 (hard ceiling) and loadavg 40.85 on 16 cores yields 1 slot; the selected block BOARD-GUARD-001 is a singleton (1 ready row, 0 depends_on), so no wave is composable.",
+  "wave_budget": 1,
+  "nproc": 16,
+  "loadavg_1m": 40.85,
+  "slots": 1,
+  "base": "origin/main",
+  "base_sha": "8b15a26ae6ca644be44bd515175d0af205e07eb3",
+  "resume_of": "bunker-foreman-2026-11-04-05-45-41",
+  "resume_note": "Ticks 715 and 716 both selected BOARD-GUARD-001, wrote the brief, and produced ZERO commits and zero dirty paths: the worktree they named (/home/kara/worktrees/bunker-BOARD-GUARD-001) no longer existed and branch wt/BOARD-GUARD-001 was 0 ahead / 8 behind main. Tick 717 recreates the worktree from the surviving zero-commit branch, fast-forwards it to the current origin/main, and re-dispatches attempt 3 with the worker launched via --query-file (the shape the bunker project skill mandates).",
+  "rows": [
+    {
+      "id": "BOARD-GUARD-001",
+      "priority": "P0",
+      "worktree": "/home/kara/worktrees/bunker-BOARD-GUARD-001",
+      "branch": "wt/BOARD-GUARD-001",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/home/kara/.hermes/cache/scratch/bunker-tick-20261105-004750.7Aq7vw/brief-BOARD-GUARD-001.txt"
+    }
+  ],
+  "inherited_residue_preserved": {
+    "gitreins_tasks_yaml": "in_progress record BOARD-GUARD-001 created 2026-11-04T04:53:31Z by tick 715; criteria match the board row verbatim; copied into the worktree for reuse, not recreated",
+    "board_tasks_jsonl_uncommitted_rows": [],
+    "untracked": [
+      "tasks.jsonl (root-level, 188 bytes, mtime 2026-11-01T05:21:13-05:00, single RELEASE-003 row)",
+      "13 wave manifests"
+    ],
+    "note": "Zero live writers at census time (CENSUS_COUNT=0). Board files byte-identical to origin/main (sha256 e2641ddd/0dee4753). Residue preserved and NOT adopted; the closeout commit is built with a temp index so none of it is swept in."
+  }
+}

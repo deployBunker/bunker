@@ -1,0 +1,16 @@
+{
+  "tick_id": "bunker-foreman-2026-10-31-20-14-26",
+  "block_id": "RELEASE-018",
+  "wave_size": 1,
+  "rows": [
+    {
+      "id": "RELEASE-003",
+      "title": "Deploy freshness - NOTHING deployed runs HEAD",
+      "worktree": "/home/kara/worktrees/bunker-RELEASE-003",
+      "branch": "wt/RELEASE-003",
+      "brief_path": "/tmp/brief-RELEASE-003"
+    }
+  ],
+  "model": "deepseek-v4-flash",
+  "provider": "deepseek-foreman"
+}

@@ -1,0 +1,33 @@
+{
+  "tick_id": "bunker-foreman-2026-10-30-06-38-20",
+  "block": "QA-BUNKER-089",
+  "wave_size": 3,
+  "reason": "box loaded 12.97/16 cores, slots=3",
+  "rows": [
+    {
+      "id": "QA-BUNKER-078",
+      "title": "P2 harness - bunker-qa.sh fresh-install asserts a HARDCODED toolsd artifact",
+      "worktree": "/home/kara/bunker-wt-qa078",
+      "branch": "wt/qa-bunker-078",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek"
+    },
+    {
+      "id": "QA-BUNKER-41",
+      "title": "[P2] ci-pass graded OK while the act leg rc=1s inside the gitreins-guard job",
+      "worktree": "/home/kara/bunker-wt-qa41",
+      "branch": "wt/qa-bunker-41",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek"
+    },
+    {
+      "id": "QA-BUNKER-47",
+      "title": "P2 — bunker-qa.sh launch evidence misattribution: preflight FAIL leaves launch-record metadata",
+      "worktree": "/home/kara/bunker-wt-qa47",
+      "branch": "wt/qa-bunker-47",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek"
+    }
+  ],
+  "created_at": "2026-10-30T06:38:20Z"
+}

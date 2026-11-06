@@ -1,0 +1,69 @@
+{
+  "tick_id": "bunker-foreman-2026-10-30-07-08-00",
+  "block": "QA-BUNKER-089",
+  "wave_size": 6,
+  "rows": [
+    {
+      "id": "QA-BUNKER-078",
+      "priority": "P2",
+      "title": "P2 harness - bunker-qa.sh fresh-install asserts a HARDCODED toolsd artifact: any repo that does not build a binary named toolsd grades fresh-install FAIL on an install rc=0",
+      "worktree": null,
+      "branch": null,
+      "brief_file": null,
+      "worker_pid": null,
+      "status": "pending"
+    },
+    {
+      "id": "QA-BUNKER-082",
+      "priority": "P2",
+      "title": "[P2] bunker-qa.sh makefile-repo native suite defaults to checks-only \"make verify\" — ci-pass/chaos-resource hit zero-tests/vacuous FAIL (QA-AUGER-1 grader misfire) on repos whose real suite is another target",
+      "worktree": null,
+      "branch": null,
+      "brief_file": null,
+      "worker_pid": null,
+      "status": "pending"
+    },
+    {
+      "id": "QA-BUNKER-077",
+      "priority": "P3",
+      "title": "[P3] bunker-qa.sh collect cannot reach a FINISHED agent after battery ends — per-cell logs lost with the agent user (~35min after launch)",
+      "worktree": null,
+      "branch": null,
+      "brief_file": null,
+      "worker_pid": null,
+      "status": "pending"
+    },
+    {
+      "id": "QA-BUNKER-079",
+      "priority": "P3",
+      "title": "P3 harness - chaos-disconnect INFO detail names TestLiveJevRoutesKnownCases, a test that appears NOWHERE in this run's logs; the leg's real rc=1 is internal/cli (open QA-BUNKER-076-R2) + internal/server env-induced by the cut's own GOSUMDB=off",
+      "worktree": null,
+      "branch": null,
+      "brief_file": null,
+      "worker_pid": null,
+      "status": "pending"
+    },
+    {
+      "id": "QA-BUNKER-16",
+      "priority": "P3",
+      "title": "[P3] QA-BUNKER ids are reused across cycles with different titles/descriptions — same ID appears in multiple tick reports with different work, breaking traceability",
+      "worktree": null,
+      "branch": null,
+      "brief_file": null,
+      "worker_pid": null,
+      "status": "pending"
+    },
+    {
+      "id": "QA-BUNKER-28",
+      "priority": "P3",
+      "title": "[P3] chaos-errorpath ep_probe generic arm runs the npm start command but never actually probes the error path — the arm passes on a healthy repo because the probe target is wrong",
+      "worktree": null,
+      "branch": null,
+      "brief_file": null,
+      "worker_pid": null,
+      "status": "pending"
+    }
+  ],
+  "dispatched_at": null,
+  "completed_at": null
+}

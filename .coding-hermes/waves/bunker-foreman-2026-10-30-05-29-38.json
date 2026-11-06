@@ -1,0 +1,14 @@
+{
+  "tick_id": "bunker-foreman-2026-10-30-05-29-38",
+  "block": "QA-BUNKER-089",
+  "wave_size": 2,
+  "wave_budget": 7,
+  "slots_formula": "max(1, min(6, 16 - ceil(11.79))) = 4; capped at 2 by independent ready rows selected",
+  "rows_dispatched": ["QA-BUNKER-16", "QA-BUNKER-28"],
+  "worker_model": "glm-5.3-flash",
+  "worker_provider": "zai-glm-default",
+  "worktrees": {
+    "QA-BUNKER-16": "/home/kara/worktrees/bunker-QA-BUNKER-16",
+    "QA-BUNKER-28": "/home/kara/worktrees/bunker-QA-BUNKER-28"
+  }
+}

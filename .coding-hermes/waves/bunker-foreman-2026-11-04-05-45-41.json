@@ -1,0 +1,33 @@
+{
+  "tick": "bunker-foreman-2026-11-04-05-45-41",
+  "tick_number": 716,
+  "block": "BOARD-GUARD-001",
+  "wave_id": "bunker-foreman-2026-11-04-05-45-41",
+  "mode": "serial",
+  "mode_reason": "Host load 19.83 on 16 cores yields 1 slot (nproc - ceil(loadavg) < 2 -> floor 1); block BOARD-GUARD-001 is a singleton (1 ready row), so no wave is composable. WAVE_BUDGET=11 honored (ceiling, not obligation).",
+  "wave_budget": 11,
+  "nproc": 16,
+  "loadavg_1m": 19.83,
+  "slots": 1,
+  "base": "origin/main",
+  "base_sha": "ba44829bc7c5c9fd35d52aea748f7ccb232d4e53",
+  "resume_of": "bunker-foreman-2026-11-04-04-17-06",
+  "resume_note": "Prior tick 715 selected BOARD-GUARD-001, created the GitReins task (in_progress) and the brief, but the worktree /home/kara/worktrees/bunker-BOARD-GUARD-001 is at base with ZERO commits and zero dirty paths: no worker output. This tick re-dispatches the same row into the same clean worktree (attempt 2) and reuses the existing GitReins task record.",
+  "rows": [
+    {
+      "id": "BOARD-GUARD-001",
+      "priority": "P0",
+      "worktree": "/home/kara/worktrees/bunker-BOARD-GUARD-001",
+      "branch": "wt/BOARD-GUARD-001",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/home/kara/.hermes/cache/scratch/bunker-foreman-2026-11-04-05-45-41/brief-BOARD-GUARD-001.txt"
+    }
+  ],
+  "inherited_residue_preserved": {
+    "board_tasks_jsonl_uncommitted_rows": ["OBS-BUNKER-001", "OBS-BUNKER-002", "OBS-BUNKER-003", "OBS-BUNKER-004", "OBS-BUNKER-005"],
+    "gitreins_tasks_yaml": "in_progress record BOARD-GUARD-001 created 2026-11-04T04:53:31Z by tick 715, criteria match the board row verbatim; reused, not recreated",
+    "untracked": ["docs/observability-spec.md", "tasks.jsonl (root-level, mtime 2026-11-01T05:21:13-05:00)", "12 wave manifests"],
+    "note": "Attributed to the observability-audit-2026-11-03 run; zero live writers at census time (CENSUS_EMPTY=1). Preserved and NOT adopted: the board closeout will be built with a temp index so these rows are not swept into this tick's commit."
+  }
+}

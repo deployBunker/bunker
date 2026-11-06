@@ -1,0 +1,30 @@
+{
+  "tick": "bunker-foreman-2026-11-04-04-17-06",
+  "tick_number": 715,
+  "block": "BOARD-GUARD-001",
+  "wave_id": "bunker-foreman-2026-11-04-04-17-06",
+  "mode": "serial",
+  "mode_reason": "Host load 30.87 on 16 cores yields 1 slot (nproc - ceil(loadavg) < 1 -> floor 1); the selected block BOARD-GUARD-001 is a singleton (1 ready row), so no wave is composable. WAVE_BUDGET=8 honored.",
+  "wave_budget": 8,
+  "nproc": 16,
+  "loadavg_1m": 30.87,
+  "base": "origin/main",
+  "base_sha": "ba44829bc7c5c9fd35d52aea748f7ccb232d4e53",
+  "rows": [
+    {
+      "id": "BOARD-GUARD-001",
+      "priority": "P0",
+      "worktree": "/home/kara/worktrees/bunker-BOARD-GUARD-001",
+      "branch": "wt/BOARD-GUARD-001",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "brief": "/home/kara/.hermes/cache/scratch/bunker-foreman-2026-11-04-04-17-06/brief-BOARD-GUARD-001.txt"
+    }
+  ],
+  "inherited_residue_preserved": {
+    "board_tasks_jsonl_uncommitted_rows": ["OBS-BUNKER-001", "OBS-BUNKER-002", "OBS-BUNKER-003", "OBS-BUNKER-004", "OBS-BUNKER-005"],
+    "untracked": ["docs/observability-spec.md", "tasks.jsonl (root-level, mtime 2026-11-01T05:21:13-05:00)"],
+    "wave_manifests_untracked": 11,
+    "note": "Attributed to the observability-audit-2026-11-03 run (spec mtime 16:33:05, board mtime 16:33:41); zero live writers at census time. Preserved, not adopted by the worker."
+  }
+}

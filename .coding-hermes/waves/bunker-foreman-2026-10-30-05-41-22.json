@@ -1,0 +1,16 @@
+{
+  "tick_id": "bunker-foreman-2026-10-30-05-41-22",
+  "block": "QA-BUNKER-089",
+  "wave_budget": 9,
+  "slots_formula": "max(1, min(6, 16 - ceil(9.41))) = 6; capped at 4 by independent ready rows",
+  "rows_dispatched": ["QA-BUNKER-16", "QA-BUNKER-84", "QA-BUNKER-75", "QA-BUNKER-79"],
+  "worktrees": {
+    "QA-BUNKER-16": {"path": "/home/kara/worktrees/bunker-QA-BUNKER-16", "branch": "wt/QA-BUNKER-16"},
+    "QA-BUNKER-84": {"path": "/home/kara/worktrees/bunker-QA-BUNKER-84", "branch": "wt/QA-BUNKER-84"},
+    "QA-BUNKER-75": {"path": "/home/kara/worktrees/bunker-QA-BUNKER-75", "branch": "wt/QA-BUNKER-75"},
+    "QA-BUNKER-79": {"path": "/home/kara/worktrees/bunker-QA-BUNKER-79", "branch": "wt/QA-BUNKER-79"}
+  },
+  "worker_model": "glm-5.3-flash",
+  "worker_provider": "zai-glm-default",
+  "base_sha": "e660988e"
+}

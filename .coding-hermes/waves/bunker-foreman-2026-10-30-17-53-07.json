@@ -1,0 +1,29 @@
+{
+  "tick_id": "bunker-foreman-2026-10-30-17-53-07",
+  "block": "QA-BUNKER-089",
+  "wave_size": 2,
+  "rows": [
+    {
+      "id": "QA-BUNKER-84",
+      "priority": "P3",
+      "title": "[P3] qa_discover.py matches the QA ledger by exact project NAME — base-name rows (h3, crier) never match *-foreman scheduler project names",
+      "worktree": "/home/kara/deployBunker/bunker-qa-bunker-84",
+      "branch": "wt/qa-bunker-84",
+      "brief_file": "/tmp/brief-QA-BUNKER-84.md",
+      "worker_pid": null,
+      "status": "dispatching"
+    },
+    {
+      "id": "QA-BUNKER-16",
+      "priority": "P3",
+      "title": "[P3] QA-BUNKER ids are reused across cycles with different titles/descriptions — same ID appears in multiple tick reports with different work, breaking traceability",
+      "worktree": "/home/kara/deployBunker/bunker-qa-bunker-16",
+      "branch": "wt/qa-bunker-16",
+      "brief_file": "/tmp/brief-QA-BUNKER-16.md",
+      "worker_pid": null,
+      "status": "dispatching"
+    }
+  ],
+  "dispatched_at": "2026-10-30T17:53:07Z",
+  "completed_at": null
+}

@@ -1,0 +1,130 @@
+{
+  "tick_id": "bunker-foreman-2026-11-01-12-55-40",
+  "block": "QA-BUNKER-091",
+  "block_progress": "84/90 (93%)",
+  "wave_size": 6,
+  "wave_budget": 12,
+  "slots": 6,
+  "host_load": "7.63/16 cores",
+  "rows": [
+    {
+      "id": "QA-BUNKER-090",
+      "title": "TestDFBUNKER108_SocketPresentNeverDegrades sun_path limit",
+      "priority": "P2",
+      "worktree": "/home/kara/deployBunker/worktrees/bunker-QA-BUNKER-090",
+      "branch": "wt/QA-BUNKER-090",
+      "base_sha": "ca22b5fb",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "files": [
+        "internal/agent/*_test.go"
+      ],
+      "acceptance": "TestDFBUNKER108_SocketPresentNeverDegrades passes; socket path stays under kernel sun_path limit (108 bytes); go test ./internal/agent/... green"
+    },
+    {
+      "id": "QA-BUNKER-091",
+      "title": "TestQA36TheHashCacheReVerifiesInsideTheCoarseClockWindow",
+      "priority": "P2",
+      "worktree": "/home/kara/deployBunker/worktrees/bunker-QA-BUNKER-091",
+      "branch": "wt/QA-BUNKER-091",
+      "base_sha": "ca22b5fb",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "files": [
+        "internal/server/webdav/*_test.go"
+      ],
+      "acceptance": "TestQA36TheHashCacheReVerifiesInsideTheCoarseClockWindow passes; coarse-clock cache path handles timing correctly; go test ./internal/server/webdav/... green"
+    },
+    {
+      "id": "QA-BUNKER-078",
+      "title": "fresh-install asserts hardcoded toolsd artifact",
+      "priority": "P2",
+      "worktree": "/home/kara/deployBunker/worktrees/bunker-QA-BUNKER-078",
+      "branch": "wt/QA-BUNKER-078",
+      "base_sha": "ca22b5fb",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "files": [
+        ".hermes/scripts/bunker-qa.sh"
+      ],
+      "acceptance": "fresh-install cell no longer asserts hardcoded toolsd binary; detects repo's actual build artifacts or skips gracefully; bunker-qa.sh fresh-install PASS on a repo without toolsd"
+    },
+    {
+      "id": "QA-BUNKER-82",
+      "title": "makefile-repo native suite defaults to checks-only make verify",
+      "priority": "P2",
+      "worktree": "/home/kara/deployBunker/worktrees/bunker-QA-BUNKER-82",
+      "branch": "wt/QA-BUNKER-82",
+      "base_sha": "ca22b5fb",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "files": [
+        ".hermes/scripts/bunker-qa.sh"
+      ],
+      "acceptance": "makefile-repo native suite cell detects the repo's real test target (not just 'make verify'); grades correctly when real suite is 'make test' or similar"
+    },
+    {
+      "id": "QA-BUNKER-077",
+      "title": "collect cannot reach FINISHED agent after battery ends",
+      "priority": "P3",
+      "worktree": "/home/kara/deployBunker/worktrees/bunker-QA-BUNKER-077",
+      "branch": "wt/QA-BUNKER-077",
+      "base_sha": "ca22b5fb",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "files": [
+        ".hermes/scripts/bunker-qa.sh"
+      ],
+      "acceptance": "collect cell reaches FINISHED agents and retrieves per-cell logs before agent user is cleaned up; logs persist past ~35min post-launch"
+    },
+    {
+      "id": "QA-BUNKER-33",
+      "title": "ui-probe Go-native arm greps only root-level *.go",
+      "priority": "P3",
+      "worktree": "/home/kara/deployBunker/worktrees/bunker-QA-BUNKER-33",
+      "branch": "wt/QA-BUNKER-33",
+      "base_sha": "ca22b5fb",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm-default",
+      "files": [
+        ".hermes/scripts/bunker-qa.sh"
+      ],
+      "acceptance": "ui-probe Go-native arm searches cmd/ and subdirectories for HTTP entrypoints, not just root-level *.go; correctly detects web UIs in standard Go layouts"
+    }
+  ],
+  "status": "merged",
+  "dispatched_at": "2026-11-01T12:55:40-05:00",
+  "merged_at": "2026-11-01T13:50:00-05:00",
+  "merged_rows": [
+    {
+      "id": "QA-BUNKER-090",
+      "commit": "762fee46",
+      "gate": "go build PASS, target test PASS"
+    },
+    {
+      "id": "QA-BUNKER-091",
+      "commit": "a5712550",
+      "gate": "go build PASS, target test PASS"
+    },
+    {
+      "id": "QA-BUNKER-078",
+      "commit": "9c788fad",
+      "gate": "go build PASS, 38-arm suite PASS"
+    },
+    {
+      "id": "QA-BUNKER-82",
+      "commit": "a3da7223",
+      "gate": "go build PASS, makefile-arm detection verified"
+    },
+    {
+      "id": "QA-BUNKER-077",
+      "commit": "1ab45f13",
+      "gate": "go build PASS, collect-before-cleanup verified"
+    },
+    {
+      "id": "QA-BUNKER-33",
+      "commit": "23ae6601",
+      "gate": "go build PASS, recursive cmd/ search verified"
+    }
+  ]
+}

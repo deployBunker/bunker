@@ -1,0 +1,25 @@
+{
+  "tick_id": "bunker-foreman-2026-10-31-17-10-06",
+  "block": "RELEASE-018",
+  "mode": "SERIAL (WAVE_BUDGET=1, one worker max; block has one dispatchable row)",
+  "slots": "max(1,min(6,16-ceil(15.03)))=1",
+  "rows": [
+    {
+      "id": "RELEASE-003",
+      "title": "Deploy freshness - official v0.2.0 assets on reachable hosts (bunker, bunker3)",
+      "worktree": "/home/kara/worktrees/bunker-RELEASE-003",
+      "branch": "wt/RELEASE-003",
+      "brief": "/home/kara/.hermes/cache/scratch/brief-RELEASE-003-20261031.txt",
+      "worker_model": "gpt-6-luna",
+      "worker_provider": "openai-codex",
+      "dispatch": "hermes chat --query-file <brief> -m gpt-6-luna --provider openai-codex -s coding-hermes-worker --ignore-rules -Q"
+    }
+  ],
+  "deferred_rows": [
+    {"id": "RELEASE-008", "reason": "depends_on RELEASE-003; not independent"}
+  ],
+  "named_blockers": {
+    "bunker4": "SSH connect timeout (verified 2026-10-31 17:15); owner decision restore-or-retire",
+    "bunker-mvp": "runs 0.2.1 post-tag fix build (eab25686); downgrade to tag is owner-gated, left untouched"
+  }
+}

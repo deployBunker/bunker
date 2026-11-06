@@ -1,0 +1,25 @@
+{
+  "tick_id": "bunker-foreman-2026-11-03-01-02-30",
+  "block_id": "QA-BUNKER-093",
+  "wave_id": "bunker-foreman-2026-11-03-01-02-30",
+  "mode": "serial-recovery",
+  "mode_reason": "Host load 28.55 on 16 cores yields one slot; QA-BUNKER-092 is owner-gated and QA-BUNKER-093 has recoverable committed worker output.",
+  "wave_budget": 12,
+  "nproc": 16,
+  "loadavg_1m": 28.55,
+  "slots": 1,
+  "base_sha": "dfa8c0f5c342bc684d2b82a0dc59f465ec3627f4",
+  "rows": [
+    {
+      "id": "QA-BUNKER-093",
+      "status_at_start": "pending",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-093",
+      "branch": "wt/QA-BUNKER-093",
+      "worker_commit": "aa02c03b370fa75d3651bd2e70debdb4ca0fdb0a",
+      "dispatch": "recovered-existing-worker-output"
+    }
+  ],
+  "workers": [],
+  "finished_at": null,
+  "closeout_sha": null
+}

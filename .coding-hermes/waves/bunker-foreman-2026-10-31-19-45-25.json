@@ -1,0 +1,15 @@
+{
+  "tick_id": "bunker-foreman-2026-10-31-19-45-25",
+  "block_id": "GAP-182",
+  "wave_budget": 12,
+  "slots_used": 6,
+  "rows": [
+    {"id": "GAP-065", "title": "Container-mode lifecycle + storage/network behavior", "worktree": "/home/kara/worktrees/bunker-GAP-065", "branch": "wt/GAP-065"},
+    {"id": "GAP-066", "title": "Docker-as-installer execution mode", "worktree": "/home/kara/worktrees/bunker-GAP-066", "branch": "wt/GAP-066"},
+    {"id": "GAP-072", "title": "Interactive attach mode", "worktree": "/home/kara/worktrees/bunker-GAP-072", "branch": "wt/GAP-072"},
+    {"id": "GAP-074", "title": "hardened.mode flag bundle", "worktree": "/home/kara/worktrees/bunker-GAP-074", "branch": "wt/GAP-074"},
+    {"id": "GAP-076", "title": "Per-agent network egress policy", "worktree": "/home/kara/worktrees/bunker-GAP-076", "branch": "wt/GAP-076"},
+    {"id": "QA-BUNKER-16", "title": "QA-BUNKER ids reuse fix", "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-16", "branch": "wt/QA-BUNKER-16"}
+  ],
+  "dispatched_at": "2026-10-31T19:45:25Z"
+}
