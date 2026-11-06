@@ -5922,6 +5922,6 @@ tasks:
   - 'PERF-005 acceptance criterion (3) is re-scoped to account for network RTT: the
     budget is at least 2x the measured TCP-connect floor (164ms), and the server-side
     handler cost is shown <=5ms by a loopback measurement on bunker-mvp'
-  status: in_progress
+  status: complete
   created_at: '2026-11-06T03:53:15.305463+00:00'
-  completed_at: '2026-11-06T03:58:48.352612+00:00'
+  completed_at: '2026-11-06T04:17:52.018658+00:00'
