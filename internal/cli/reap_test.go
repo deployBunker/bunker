@@ -3,10 +3,14 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // These tests pin the INT-HOST-007 reaper: `bunker reap` scans the three
@@ -115,6 +119,92 @@ func (fx *residueFixture) profilePath(name string) string { return filepath.Join
 func (fx *residueFixture) homePath(name string) string    { return filepath.Join(fx.homesRoot, name) }
 func (fx *residueFixture) lingerPath(name string) string  { return filepath.Join(fx.lingerDir, name) }
 func (fx *residueFixture) runDirPath(name string) string  { return filepath.Join(fx.runDir, name) }
+
+func TestReapPooledClassificationParityAndSpeed(t *testing.T) {
+	items := make([]reapClassifyItem, 40)
+	for i := range items {
+		items[i] = reapClassifyItem{name: fmt.Sprintf("entry-%02d", 39-i), user: fmt.Sprintf("user-%02d", i)}
+	}
+	orig := reapUserExists
+	reapUserExists = func(name string) (bool, error) {
+		time.Sleep(20 * time.Millisecond)
+		return strings.HasSuffix(name, "0") || strings.HasSuffix(name, "2") || strings.HasSuffix(name, "4") || strings.HasSuffix(name, "6") || strings.HasSuffix(name, "8"), nil
+	}
+	t.Cleanup(func() { reapUserExists = orig })
+
+	var serialTime, pooledTime time.Duration
+	var serialClass, pooledClass reapClass
+	var serialErr, pooledErr error
+	serialStart := time.Now()
+	serialClass, serialErr = reapClassifyItems(items, 3, 1)
+	serialTime = time.Since(serialStart)
+	pooledStart := time.Now()
+	pooledClass, pooledErr = reapClassify(items, 3)
+	pooledTime = time.Since(pooledStart)
+	if serialErr != nil || pooledErr != nil {
+		t.Fatalf("classification errors: serial=%v pooled=%v", serialErr, pooledErr)
+	}
+	if !reflect.DeepEqual(serialClass, pooledClass) {
+		t.Fatalf("classification differs: serial=%+v pooled=%+v", serialClass, pooledClass)
+	}
+	serialScan := &reapScan{Profiles: serialClass, Homes: serialClass, Linger: serialClass, RunDirs: serialClass}
+	pooledScan := &reapScan{Profiles: pooledClass, Homes: pooledClass, Linger: pooledClass, RunDirs: pooledClass}
+	var serialReport, pooledReport bytes.Buffer
+	printReapReport(&serialReport, serialScan, "profiles", "homes", "linger", "run", true)
+	printReapReport(&pooledReport, pooledScan, "profiles", "homes", "linger", "run", true)
+	if serialReport.String() != pooledReport.String() {
+		t.Fatalf("rendered report differs\nserial:\n%s\npooled:\n%s", serialReport.String(), pooledReport.String())
+	}
+	if runtime.GOMAXPROCS(0) >= 2 && pooledTime*2 >= serialTime {
+		t.Fatalf("pooled path was not 2x faster: serial=%s pooled=%s", serialTime, pooledTime)
+	}
+	t.Logf("serial=%s pooled=%s speedup=%.2fx", serialTime, pooledTime, float64(serialTime)/float64(pooledTime))
+}
+
+func TestReapPooledClassificationAbortsInItemOrder(t *testing.T) {
+	items := []reapClassifyItem{
+		{name: "first", user: "first-fails"},
+		{name: "middle", user: "middle"},
+		{name: "last", user: "last-fails"},
+	}
+	orig := reapUserExists
+	reapUserExists = func(name string) (bool, error) {
+		if name == "first-fails" {
+			time.Sleep(20 * time.Millisecond)
+			return false, errors.New("first failure")
+		}
+		if name == "last-fails" {
+			return false, errors.New("last failure")
+		}
+		return false, nil
+	}
+	t.Cleanup(func() { reapUserExists = orig })
+	_, err := reapClassify(items, 0)
+	if err == nil || !strings.Contains(err.Error(), `check user "first-fails": first failure`) {
+		t.Fatalf("error = %v, want first item failure", err)
+	}
+}
+
+func TestReapPooledScanErrorDoesNotRemoveEntries(t *testing.T) {
+	fx := seedReapFixture(t, nil, []string{}, []string{"bunker-first", "bunker-last"}, []string{}, []string{})
+	origLookup := reapUserExists
+	reapUserExists = func(name string) (bool, error) {
+		if name == "bunker-first" {
+			time.Sleep(20 * time.Millisecond)
+			return false, errors.New("first failure")
+		}
+		return false, errors.New("later failure")
+	}
+	t.Cleanup(func() { reapUserExists = origLookup })
+	if _, err := reapScanHomes(fx.homesRoot); err == nil || !strings.Contains(err.Error(), "bunker-first") {
+		t.Fatalf("scan error = %v, want first failing item", err)
+	}
+	for _, name := range []string{"bunker-first", "bunker-last"} {
+		if !reapEntryExists(t, fx.homePath(name)) {
+			t.Errorf("scan error removed %s", name)
+		}
+	}
+}
 
 func TestReapProfileUserParsing(t *testing.T) {
 	// The user parsed out of a profile filename is the FULL agent user

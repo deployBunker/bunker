@@ -20,8 +20,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/spf13/cobra"
 )
@@ -160,37 +162,87 @@ func reapProfileUser(filename string) (string, bool) {
 	return user, true
 }
 
+type reapClassifyItem struct {
+	name string
+	user string
+}
+
+// reapClassifyItems resolves users concurrently while retaining item-order
+// error selection and deterministic class output.
+func reapClassifyItems(items []reapClassifyItem, unmanaged, workers int) (reapClass, error) {
+	class := reapClass{Unmanaged: unmanaged}
+	if len(items) == 0 {
+		return class, nil
+	}
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > len(items) {
+		workers = len(items)
+	}
+	type result struct {
+		exists bool
+		err    error
+	}
+	results := make([]result, len(items))
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for idx := range jobs {
+				results[idx].exists, results[idx].err = reapUserExists(items[idx].user)
+			}
+		}()
+	}
+	for i := range items {
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
+
+	for i, item := range items {
+		if results[i].err != nil {
+			return reapClass{}, fmt.Errorf("check user %q: %w", item.user, results[i].err)
+		}
+		if results[i].exists {
+			class.Kept = append(class.Kept, item.name)
+		} else {
+			class.WouldRemove = append(class.WouldRemove, item.name)
+		}
+	}
+	sort.Strings(class.WouldRemove)
+	sort.Strings(class.Kept)
+	return class, nil
+}
+
+func reapClassify(items []reapClassifyItem, unmanaged int) (reapClass, error) {
+	return reapClassifyItems(items, unmanaged, runtime.GOMAXPROCS(0))
+}
+
 // reapScanProfiles classifies the rootlesskit profile files in dir. Files
 // matching home.<user>.bin.rootlesskit are managed; everything else —
 // including subdirectories and unrelated policy files — is unmanaged.
 func reapScanProfiles(dir string) (reapClass, error) {
-	var class reapClass
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return class, err
+		return reapClass{}, err
 	}
+	var items []reapClassifyItem
+	unmanaged := 0
 	for _, e := range entries {
 		if e.IsDir() {
 			continue // AppArmor fragments are files; a subdirectory is unmanaged space
 		}
 		user, ok := reapProfileUser(e.Name())
 		if !ok {
-			class.Unmanaged++
+			unmanaged++
 			continue
 		}
-		exists, err := reapUserExists(user)
-		if err != nil {
-			return reapClass{}, fmt.Errorf("check user %q: %w", user, err)
-		}
-		if exists {
-			class.Kept = append(class.Kept, e.Name())
-			continue
-		}
-		class.WouldRemove = append(class.WouldRemove, e.Name())
+		items = append(items, reapClassifyItem{name: e.Name(), user: user})
 	}
-	sort.Strings(class.WouldRemove)
-	sort.Strings(class.Kept)
-	return class, nil
+	return reapClassify(items, unmanaged)
 }
 
 // reapScanHomes classifies the agent home directories in root through the
@@ -201,25 +253,16 @@ func reapScanHomes(root string) (reapClass, error) {
 	if err != nil {
 		return reapClass{}, err
 	}
-	var class reapClass
+	var items []reapClassifyItem
+	unmanaged := 0
 	for _, e := range entries {
 		if !managedHomeName(e.Name()) {
-			class.Unmanaged++
+			unmanaged++
 			continue
 		}
-		exists, err := reapUserExists(e.Name())
-		if err != nil {
-			return reapClass{}, fmt.Errorf("check user %q: %w", e.Name(), err)
-		}
-		if exists {
-			class.Kept = append(class.Kept, e.Name())
-			continue
-		}
-		class.WouldRemove = append(class.WouldRemove, e.Name())
+		items = append(items, reapClassifyItem{name: e.Name(), user: e.Name()})
 	}
-	sort.Strings(class.WouldRemove)
-	sort.Strings(class.Kept)
-	return class, nil
+	return reapClassify(items, unmanaged)
 }
 
 // reapScanLinger classifies the systemd linger entries in dir. Every entry in
@@ -232,21 +275,11 @@ func reapScanLinger(dir string) (reapClass, error) {
 	if err != nil {
 		return reapClass{}, err
 	}
-	var class reapClass
+	items := make([]reapClassifyItem, 0, len(entries))
 	for _, e := range entries {
-		exists, err := reapUserExists(e.Name())
-		if err != nil {
-			return reapClass{}, fmt.Errorf("check user %q: %w", e.Name(), err)
-		}
-		if exists {
-			class.Kept = append(class.Kept, e.Name())
-			continue
-		}
-		class.WouldRemove = append(class.WouldRemove, e.Name())
+		items = append(items, reapClassifyItem{name: e.Name(), user: e.Name()})
 	}
-	sort.Strings(class.WouldRemove)
-	sort.Strings(class.Kept)
-	return class, nil
+	return reapClassify(items, 0)
 }
 
 // reapScanRunDirs classifies the per-agent runtime directories in /run/bunker.
@@ -262,31 +295,16 @@ func reapScanRunDirs(dir string) (reapClass, error) {
 	if err != nil {
 		return reapClass{}, err
 	}
-	var class reapClass
+	var items []reapClassifyItem
+	unmanaged := 0
 	for _, e := range entries {
-		if !reapRunDirManaged(e.Name()) {
-			class.Unmanaged++
+		if !reapRunDirManaged(e.Name()) || !e.IsDir() {
+			unmanaged++
 			continue
 		}
-		// DirEntry.IsDir is Lstat-based: a symlink to a directory is NOT
-		// this class's to remove.
-		if !e.IsDir() {
-			class.Unmanaged++
-			continue
-		}
-		exists, err := reapUserExists(reapRunDirAgentUser(e.Name()))
-		if err != nil {
-			return reapClass{}, fmt.Errorf("check user %q: %w", reapRunDirAgentUser(e.Name()), err)
-		}
-		if exists {
-			class.Kept = append(class.Kept, e.Name())
-			continue
-		}
-		class.WouldRemove = append(class.WouldRemove, e.Name())
+		items = append(items, reapClassifyItem{name: e.Name(), user: reapRunDirAgentUser(e.Name())})
 	}
-	sort.Strings(class.WouldRemove)
-	sort.Strings(class.Kept)
-	return class, nil
+	return reapClassify(items, unmanaged)
 }
 
 // reapRunDirUserPrefix mirrors internal/agent's agentUserPrefix: the Linux user
