@@ -283,6 +283,8 @@ func fileContainsHash(path, want string) (bool, error) {
 // equal the previous record's hash. Returns the full record count, the
 // 1-based index of the first bad record within this file (0 = clean), and the
 // hash of the last record ("" when the file has no records).
+var canonicalFastPath = true
+
 func verifyFile(path, head string, enforceHead bool) (records, firstBad int, tail string, err error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -297,40 +299,51 @@ func verifyFile(path, head string, enforceHead bool) (records, firstBad int, tai
 	for sc.Scan() {
 		records++
 		line := sc.Bytes()
-		var rec Record
-		if err := json.Unmarshal(line, &rec); err != nil {
-			if firstBad == 0 {
-				firstBad = records
-				firstErr = fmt.Errorf("%s: record %d is not valid JSON: %w", path, records, err)
+		var link recordLink
+		linkErr := json.Unmarshal(line, &link)
+		fastVerified := false
+		if canonicalFastPath && linkErr == nil {
+			if canonical, ok := canonicalBytesFromValidLine(line, link.Hash); ok {
+				sum := sha256.Sum256(canonical)
+				fastVerified = hex.EncodeToString(sum[:]) == link.Hash
 			}
-			continue
 		}
-		// Own hash: re-digest the canonical line (hash field emptied) and
-		// compare against the recorded value. Re-marshalling the parsed
-		// Record reproduces the writer's canonical bytes exactly: same
-		// struct, same field order, same values (all fields round-trip).
-		declared := rec.Hash
-		rec.Hash = ""
-		canonical, err := json.Marshal(rec)
-		if err != nil {
-			if firstBad == 0 {
-				firstBad = records
-				firstErr = fmt.Errorf("%s: record %d: re-marshal: %w", path, records, err)
+		declared := link.Hash
+		prev := link.PrevHash
+		if !fastVerified {
+			var rec Record
+			if err := json.Unmarshal(line, &rec); err != nil {
+				if firstBad == 0 {
+					firstBad = records
+					firstErr = fmt.Errorf("%s: record %d is not valid JSON: %w", path, records, err)
+				}
+				continue
 			}
-			continue
-		}
-		sum := sha256.Sum256(canonical)
-		if hex.EncodeToString(sum[:]) != declared {
-			if firstBad == 0 {
-				firstBad = records
-				firstErr = fmt.Errorf("%s: record %d: hash mismatch (tampered)", path, records)
+			// Fallback preserves the original parse-and-re-marshal verdict.
+			declared = rec.Hash
+			prev = rec.PrevHash
+			rec.Hash = ""
+			canonical, err := json.Marshal(rec)
+			if err != nil {
+				if firstBad == 0 {
+					firstBad = records
+					firstErr = fmt.Errorf("%s: record %d: re-marshal: %w", path, records, err)
+				}
+				continue
 			}
-			continue
+			sum := sha256.Sum256(canonical)
+			if hex.EncodeToString(sum[:]) != declared {
+				if firstBad == 0 {
+					firstBad = records
+					firstErr = fmt.Errorf("%s: record %d: hash mismatch (tampered)", path, records)
+				}
+				continue
+			}
 		}
 		// Chain link: the first record must chain to the predecessor file's
 		// tail (when one exists); every later record to the previous one.
-		if (records == 1 && enforceHead && rec.PrevHash != head) ||
-			(records > 1 && rec.PrevHash != prevHash) {
+		if (records == 1 && enforceHead && prev != head) ||
+			(records > 1 && prev != prevHash) {
 			if firstBad == 0 {
 				firstBad = records
 				firstErr = fmt.Errorf("%s: record %d: prev_hash does not chain (tampered)", path, records)
