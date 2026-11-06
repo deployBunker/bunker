@@ -24,7 +24,7 @@ description: >-
   image-spec + agent-tools delivery + CI-race destroy hazards verified
   2026-09-26 against bunker-mvp/cube-las-00
   (docs/dogfood/2026-09-26-image-spec-surface.md, diagnostics.md §21).
-version: 1.17.0
+version: 1.18.0
 category: software-development
 ---
 
@@ -395,3 +395,27 @@ real-use behavior:
 - **Stopped-agent errors are good, copy them in your own tooling**: `failed_precondition: agent_stopped: agent "<id>" is stopped; run 'bunker start <id>'` for both `exec` and `heartbeat`; a second `stop` is a clean rc=0 no-op. But note `start` will report success even though the agent's docker is gone (above).
 - **`resource-events` on a stopped agent still serves real counters** (current/peak from the cgroup, `pids` included) — README:1090-1096 is wrong to list "a stopped agent" among the UNAVAILABLE cases (DF-BUNKER-110). UNAVAILABLE appears for a destroyed agent / deleted user, not a paused one.
 - **Timings for planning (nothing worth profiling):** spawn 19.7-20.9s warm (cached tooling), stop 1.67s, start 0.41s, restart 0.49s, heartbeat 0.40s, metrics 0.39s, list 426.7ms, `exec` a trivial command 1.294s ±0.030 — which is FASTER than a raw `ssh <agent> true` (1.843s ±0.013), so the per-command cost is the SSH session path, not bunker.
+
+## Observability / Prometheus surface (verified live 2026-11-06 at HEAD a9c1db80; docs/dogfood/2026-11-06-observability.md, diagnostics.md §26)
+
+- `bunkerd` serves `/metrics` **only** when `server.metrics_enabled: true` AND `server.rest_addr`
+  is a loopback IP — a non-loopback address makes the daemon **refuse to start**, not warn. Off
+  by default (404). The REST listener is the same one the CLI dials, so enabling metrics pins
+  the API to the host (see OBS-BUNKER-006's owner decision).
+- Series: 5 tier-1 gauges (`bunker_info`, `bunker_uptime_seconds`, `bunker_agents_current`,
+  `bunker_agents_max`, `bunker_ttl_expiring_soon`), tier-2 `bunker_rpc_requests_total{op,code}`
+  + `bunker_rpc_duration_seconds{op}` (instantiated per op after first traffic), tier-3
+  spawn/destroy/destroy_refused/archive/registry/portpool, tier-4 `bunker_webdav_*` (always
+  emitted, 0 when WebDAV is off — there is no `bunker_webdav_enabled` gauge yet, so
+  `heartbeat_age_seconds 0` does **not** prove a watcher is running).
+- Operator collection path: `bunker metrics --prometheus-textfile /var/lib/node_exporter/textfile/bunkerd.prom --metrics-url http://127.0.0.1:<rest_port>/metrics`.
+  It needs no CLI config and no token (shim mode runs before config load), writes atomically,
+  appends `bunker_metrics_last_success_timestamp_seconds` on success, and leaves the previous
+  file byte-identical on a connection failure or non-200. **It does not validate the body**: a
+  200 with an empty or HTML body still publishes (and stamps itself fresh), replacing your last
+  good scrape — OBS-BUNKER-008. Scrape latency is ~2 ms; the whole shim invocation ~17 ms.
+- Nothing in the deployed fleet alerts on the stamp yet (only `BunkerLogindWedge` and
+  `BunkerSpawnFailures` exist) — OBS-BUNKER-007. A scratch daemon for metrics work needs own
+  ports + `agent.base_data_dir`/`ssh_dir`/`registry.path`/`audit.path`/`destroy_archive_dir`
+  and `reconciliation.unproven_orphan_limit: 0`; with `auth.enabled: false` the CLI needs
+  `BUNKER_ALLOW_NO_TOKEN=1`.

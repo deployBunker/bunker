@@ -1178,3 +1178,88 @@ Row: DF-BUNKER-47-R2 (recurrence of the closed DF-BUNKER-47).
   list 426.7ms, spawn 19.7-20.9s warm. `exec` a trivial command is 1.294s ±0.030
   — **faster** than a raw `ssh` to the same agent (1.843s ±0.013), so the cost is
   the SSH session path, not bunker.
+
+## 26. Dogfood run 2026-11-06 — the observability surface (read this before wiring bunkerd into Prometheus, or before trusting a freshness stamp)
+
+Measured at HEAD `a9c1db80` (tip advanced to `fb6058a7` mid-run with **0 non-board paths
+changed**), `make build` in a detached worktree, worked by a coexist scratch daemon on
+`bunker-mvp` (loopback REST/gRPC 19201/19202, own base_data_dir/ssh_dir/registry/audit/archive
+dirs, `reconciliation.unproven_orphan_limit: 0` so the orphan walk can destroy nothing). Report:
+`docs/dogfood/2026-11-06-observability.md`.
+
+### The surface works, and the numbers are honest
+
+* `metrics_enabled: true` + loopback `rest_addr` → `GET /metrics` **200** in 1.5 ms with 38
+  `bunker_` series at zero agents; the key is **off by default** (a second daemon without it
+  answers **404**), and the loopback requirement is enforced at startup — `rest_addr: 0.0.0.0`
+  with the key on makes the daemon **refuse to boot** (`server.metrics_enabled requires
+  server.rest_addr to be an IP loopback address`). The gate is real, not a comment.
+* Tier 1 tracks reality: `agents_current` 0→1→2, and `ttl_expiring_soon` counts only agents
+  inside the 10-minute window (a 5m + a 20m agent ⇒ `2` agents, `1` expiring).
+* Tier 2 is free from the audit middleware and measures the same wall time the CLI waits:
+  `rpc_duration_seconds_sum{op="SpawnAgent"}` 24.94 s matched the CLI's own 24.96 s spawn.
+* Tier 3 closes the lifecycle loop: `spawn_total{ok} 2`, `destroy_total{archived} 2` (one TTL
+  reap + one explicit destroy), `archive_bytes` 0 → 9.84e7 → 1.97e8, `portpool_available`
+  5 → 4 → 5, `registry_events` 1 → 4. Nothing double-counted, nothing stuck.
+* Label law holds: only `op`, `code`, `reason`, `le`, `version`, `rest_addr` appear as labels.
+* Cost: `/metrics` 2.0 ms mean (n=10), `bunker metrics --prometheus-textfile` 17 ms mean (n=10,
+  rc=0 ×10), RPC `bunker metrics` 18 ms mean (n=5). Millisecond-scale; do not profile it.
+
+### Rule 1 — grade the textfile SHIM by what it refuses, not by what it writes
+
+The shim publishes a scrape to a node_exporter textfile atomically (temp file beside the target,
+0644, rename) and appends `bunker_metrics_last_success_timestamp_seconds` after a successful
+GET. Two arms are solid: a valid scrape (39 series incl. the stamp == `date +%s`, zero `.tmp`
+leftovers, 0 malformed lines, 0 duplicate series) and a refusal (dead port → rc=1, destination
+md5 **unchanged**).
+
+The third arm is where it breaks: **any HTTP 200 is accepted as a scrape**. A stub answering 200
+with a **0-byte** body made the shim exit **0** and replace a valid 10,234-byte / 119-series
+file with a **256-byte stamp-only** file stamped "now". So a misrouted `--metrics-url` (wrong
+port, a proxy error page, a middleware that answers 200) destroys the last good scrape and
+certifies freshness in the same write; a 200 HTML page makes the collector drop the whole file
+silently. Whenever you touch this path, test four arms — valid, 200-empty, 200-HTML, connection
+refused — and require rc≠0 plus a byte-identical destination for the last three. OBS-BUNKER-008.
+
+### Rule 2 — a freshness stamp is not an alert; check the far end
+
+`bunker_metrics_last_success_timestamp_seconds` only means something if a rule consumes it.
+Measured on the deployed stack: `fleet-monitor:9090/api/v1/rules?type=alert` holds exactly two
+bunker rules (`BunkerLogindWedge`, `BunkerSpawnFailures`), neither references the stamp, and a
+query for the series returns an empty vector. The *collection* side is ready — the textfile
+directory on each host is mounted into the Alloy container and `bunker_agents_total
+{job="integrations/unix"}` shows 120 samples/hour (30 s scrape) on bunker-mvp — so a published
+`.prom` lands in Prometheus with no stack change. The missing half is a rule + receiver, which
+lives in fleet-monitoring, not in this repo (OBS-BUNKER-007). Never report "the freshness arm is
+proven" from a working shim alone; quote the rule, its state, and the alert payload.
+
+### Rule 3 — "off" and "healthy" must be distinguishable before you alert on a gauge
+
+With WebDAV off (the default) the scrape still carries 13 `bunker_webdav_*` series at 0 —
+`bunker_webdav_watch_heartbeat_age_seconds 0` reads as a perfectly fresh watcher on a host that
+has none. That zero-mode is pinned deliberately by OBS-BUNKER-004 (`…the same grep returns the 6
+series each at 0 rather than a 404`), so it is a contract, not a bug; what is missing is a
+`bunker_webdav_enabled` gauge to discriminate. The spec's tier-4 table also drifts from the
+shipped set (`push_subscribers` vs `push_active`/`push_active_max`, plus five uncatalogued
+counters), so a dashboard written from the spec selects series that do not exist
+(OBS-BUNKER-009).
+
+### Rule 4 — the scratch-daemon recipe for the metrics surface
+
+`metrics_enabled` requires a **loopback** `rest_addr`, which is also the address the CLI dials —
+so a scratch daemon scoped to `127.0.0.1` is fine for grading the endpoint and the shim, but it
+is not reachable from another host (that operator trade-off is exactly OBS-BUNKER-006's owner
+decision, not a new finding). Keep the isolation shape used here: own ports, own
+`agent.base_data_dir` / `ssh_dir` / `registry.path` / `audit.path` / `destroy_archive_dir`, and
+`reconciliation.unproven_orphan_limit: 0` (the startup log then prints the guard arming and
+skips unproven orphans instead of destroying other tenants' users). A scratch daemon with
+`auth.enabled: false` needs `BUNKER_ALLOW_NO_TOKEN=1` for CLI verbs, and the CLI names that
+remedy itself.
+
+### Rule 5 — the fleet census and bunkerd now disagree, and bunkerd is right
+
+`bunker_agents_total{host="bunker-mvp"} = 12` while the same host's daemon reports `3/50` agents
+(`bunker list` → `Total: 3`). The census is an out-of-repo textfile script (spec §1); the new
+`bunker_agents_current` is authoritative because it reads the tracker the spawn path mutates.
+Prefer the process-emitted series when the two disagree, and retire the census rather than
+reconciling it by hand.
