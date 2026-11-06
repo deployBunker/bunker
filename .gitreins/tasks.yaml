@@ -5946,8 +5946,9 @@ tasks:
     is removed, reporting the first error in ITEM order, and (c) a measured median
     wall-clock speedup of at least 2x versus the serial control in the same window.
     The focused Reap tests pass.
-  status: in_progress
+  status: complete
   created_at: '2026-11-06T09:14:31.470874+00:00'
+  completed_at: '2026-11-06T09:51:03.814962+00:00'
 - id: PERF-017
   title: PERF-017 audit verify canonical bytes from stored line (3.55x)
   criteria:
@@ -5961,5 +5962,6 @@ tasks:
     first-bad indexing and anchor handling are unchanged, and a paired measurement
     beats the control by at least 3x median wall at the roughly 19.5 MiB retention-ceiling
     size. The audit package tests pass.
-  status: in_progress
+  status: complete
   created_at: '2026-11-06T09:14:32.052649+00:00'
+  completed_at: '2026-11-06T09:54:36.730559+00:00'
