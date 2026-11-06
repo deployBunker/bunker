@@ -5965,3 +5965,12 @@ tasks:
   status: complete
   created_at: '2026-11-06T09:14:32.052649+00:00'
   completed_at: '2026-11-06T09:54:36.730559+00:00'
+- id: PERF-018
+  title: Verify PERF-016 cold NSS remeasurement
+  criteria:
+  - Verify the committed PERF-016 implementation remains buildable and the foreman
+    has a reproducible cold-NSS measurement with paired control and pooled arms, identical
+    output, zero exit codes, and a keep or remove decision.
+  status: complete
+  created_at: '2026-11-06T12:06:43.305522+00:00'
+  completed_at: '2026-11-06T12:19:23.474977+00:00'
