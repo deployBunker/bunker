@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -84,6 +85,56 @@ func runHomesGroup(t *testing.T, args ...string) (string, error) {
 	cmd.SetArgs(args)
 	err := cmd.Execute()
 	return buf.String(), err
+}
+
+func TestParallelDirSizeMatchesWorkerCounts(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "root-file"), []byte("root payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "empty"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	unreadable := filepath.Join(root, "unreadable")
+	if err := os.Mkdir(unreadable, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(unreadable, "hidden"), []byte("hidden payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(unreadable, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(unreadable, 0o755) })
+	outsideFile := filepath.Join(outside, "outside")
+	if err := os.WriteFile(outsideFile, []byte("must not be followed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "outside-link")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+
+	serial, serialErr := parallelDirSize(root, 1)
+	parallel, parallelErr := parallelDirSize(root, runtime.GOMAXPROCS(0))
+	if (serialErr == nil) != (parallelErr == nil) {
+		t.Fatalf("error mismatch: workers=1: %v, workers=GOMAXPROCS: %v", serialErr, parallelErr)
+	}
+	if serialErr != nil && serialErr.Error() != parallelErr.Error() {
+		t.Fatalf("error mismatch: workers=1: %v, workers=GOMAXPROCS: %v", serialErr, parallelErr)
+	}
+	if serial != parallel {
+		t.Fatalf("size mismatch: workers=1: %d, workers=GOMAXPROCS: %d", serial, parallel)
+	}
+	linkInfo, err := os.Lstat(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := uint64(len("root payload")+len("hidden payload")) + uint64(linkInfo.Size())
+	if serialErr == nil && serial != want {
+		t.Errorf("size = %d, want %d (link counted, target not followed)", serial, want)
+	}
 }
 
 // TestHomesCommandSurface pins the CLI shape (linger/registry compact
