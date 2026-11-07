@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **The local release gate no longer forbids the release order it documents
+  (RELEASE-021).** `scripts/pre-release-check.sh` tree mode failed whenever
+  `git describe --tags --abbrev=0` was not exactly `v<version>`, so the bump
+  commit — which by `docs/release-checklist.md` must pass the gate BEFORE its
+  tag exists — could never be green locally: with the v0.2.1 stamp already on
+  the tree the gate said `FAIL: newest tag v0.2.0 != v0.2.1`, and the same
+  commit sequence for v0.3.0 said `!= v0.3.0`. That made RELEASE-020's
+  "gate must exit 0, create no tag" criteria mutually unsatisfiable. The gate
+  now mirrors CI's INT-CI-072 policy: a newest tag OLDER than `Version` is the
+  between-tags bump state and prints a `WARN` naming the `git tag` step, while
+  a `Version` that has gone BEHIND the newest tag is still a hard `FAIL`
+  (released versions are not reverted); source disagreement and the
+  `## Unreleased` heading rule are unchanged, as is `--tag` mode.
+
 - **A client deadline is not the daemon's verdict, and `destroy --timeout`
   exists (DF-BUNKER-61).** `bunker destroy` reported
   `destroy agent: deadline_exceeded: context deadline exceeded` for an agent the
@@ -315,7 +329,10 @@ from HEAD*.
   the documented cut procedure plus its fail-fast local gate — the script
   verifies before any push that `internal/version/version.go`, the newest
   `## N.N.N` CHANGELOG heading and the Makefile `VERSION ?=` agree, that the
-  newest tag is `v<version>` (skipped with a warning in tag-less checkouts,
+  newest tag is consistent with the version (equal is clean; a newest tag OLDER
+  than the version is the documented between-tags bump state and warns instead
+  of failing, mirroring CI's INT-CI-072 parity warning, while a version BEHIND
+  the newest tag still fails; skipped with a warning in tag-less checkouts,
   like CI), that the first CHANGELOG heading is `## Unreleased`, and via
   `--tag <tag>` that a freshly cut tag's own tree declares the tag version
   (the exact grep CI's tag build check runs), so a bare tag push can no longer

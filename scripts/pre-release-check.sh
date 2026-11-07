@@ -18,9 +18,14 @@
 #   1. internal/version/version.go `Version` == newest `## N.N.N` heading in
 #      CHANGELOG.md == `VERSION ?=` in Makefile (or the env override of
 #      VERSION, when one is set — that is what `make VERSION=...` would use).
-#   2. `git describe --tags --abbrev=0` == `v<version>` — WARNING only (not a
-#      failure) when the checkout has no tags (act/shallow/fork/tarball),
-#      same guard as ci.yml.
+#   2. `git describe --tags --abbrev=0` vs `v<version>`: equal is OK; a newest
+#      tag OLDER than the version is WARNING only — that is the documented
+#      between-tags bump state, where the bump commit must pass this gate
+#      BEFORE its tag exists (INT-CI-072 / docs/release-checklist.md). A
+#      version BEHIND the newest tag is a FAILURE: a released version is not
+#      reverted by a later bump. WARNING only (not a failure) when the
+#      checkout has no tags at all (act/shallow/fork/tarball), same guard as
+#      ci.yml.
 #   3. The FIRST `##` heading in CHANGELOG.md is `## Unreleased` (an empty
 #      Unreleased section is fine — the rename happens in the bump commit).
 #
@@ -53,6 +58,22 @@ warn() {
 
 info() {
 	printf 'INFO: %s\n' "$1"
+}
+
+# version_lt A B — exit 0 when dotted version A is numerically older than B.
+# Component-wise so 0.10.0 > 0.9.0 (string comparison would get that wrong).
+version_lt() {
+	awk -v a="$1" -v b="$2" 'BEGIN {
+		na = split(a, x, "."); nb = split(b, y, ".")
+		n = (na > nb ? na : nb)
+		for (i = 1; i <= n; i++) {
+			av = (i <= na ? x[i] + 0 : 0)
+			bv = (i <= nb ? y[i] + 0 : 0)
+			if (av < bv) { exit 0 }
+			if (av > bv) { exit 1 }
+		}
+		exit 1
+	}'
 }
 
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) ||
@@ -144,14 +165,24 @@ if [ "$go_version" != "$changelog_version" ] ||
 	fail "version sources disagree: internal/version/version.go=$go_version CHANGELOG.md=$changelog_version Makefile=$makefile_version (bump all three in ONE commit — docs/release-checklist.md)"
 fi
 
-# 2. Newest tag == v<version> (warning-only when the checkout has no tags).
+# 2. Newest tag vs version. WARNING only (never a failure) when the checkout
+#    has no tags at all; WARNING when the newest tag is OLDER than the version
+#    (the documented between-tags bump state — this gate runs on the bump
+#    commit, which necessarily precedes its own tag); FAILURE when the version
+#    has gone BACKWARDS below the newest tag.
 if ! latest_tag=$(git describe --tags --abbrev=0 2>/dev/null); then
 	warn "no tags in checkout (act/shallow/fork/tarball) — tag parity skipped, same guard as ci.yml"
 	tag_status="no tags in checkout"
 else
-	[ "$latest_tag" = "v$go_version" ] ||
-		fail "newest tag $latest_tag != v$go_version (cut order: bump commit FIRST, then tag it, push together — docs/release-checklist.md)"
-	tag_status="latest tag $latest_tag"
+	tag_version=${latest_tag#v}
+	if [ "$tag_version" = "$go_version" ]; then
+		tag_status="latest tag $latest_tag"
+	elif version_lt "$tag_version" "$go_version"; then
+		warn "between-tags bump state: newest tag $latest_tag is older than version $go_version — this is the bump commit, so cut the tag next: git tag v$go_version HEAD && git push --tags (docs/release-checklist.md); the tag-side gate is CI's Tag build check"
+		tag_status="newest tag $latest_tag (untagged bump to $go_version — tag it next)"
+	else
+		fail "version $go_version is BEHIND newest tag $latest_tag — a released version is not reverted by a later bump (docs/release-checklist.md)"
+	fi
 fi
 
 # 3. First '##' heading in CHANGELOG.md must be '## Unreleased'.

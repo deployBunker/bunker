@@ -109,6 +109,9 @@ good and the release is live.
 
 `scripts/pre-release-check.sh` is the fail-fast local counterpart of the CI
 checks above: no arguments verifies the tree (the three version sources agree,
-newest tag matches, `## Unreleased` is intact); `--tag <tag>` verifies a
-freshly cut tag's content before the push. Run it as the last local step
-before `git push` in the procedure above.
+`## Unreleased` is intact, and the newest tag is consistent with the version —
+equal is clean, a newest tag that is OLDER than the version is the between-tags
+bump state and warns with the tag command to run next, while a version that has
+gone BEHIND the newest tag fails); `--tag <tag>` verifies a freshly cut tag's
+content before the push. Run it as the last local step before `git push` in the
+procedure above.
