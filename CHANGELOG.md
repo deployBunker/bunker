@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- **`--network-mode` is enforced or refused, never silently dropped
+  (INT-CI-020).** `bunker spawn --network-mode systemd` validated the mode NAME
+  and then sent it as a proto field, so a daemon that predates the
+  network-isolation surface ignored the field, answered OK and created the agent
+  in the HOST network namespace — full egress, while the caller's exit code,
+  output and connection bundle looked identical to real containment. Three
+  fail-closed layers now close that false cut: (1) `ServerInfoResponse` carries
+  `network_modes_supported`, and the CLI refuses an enforced mode against a
+  daemon that does not report it (empty means "predates enforcement", never
+  "all supported") — before any agent exists; (2) after the spawn the CLI reads
+  the daemon's own record back and DESTROYS the agent when the reported mode,
+  boundary or read-back verdict does not match what was requested; (3) the
+  daemon reads the enforced unit property back from the RUNNING unit
+  (`PrivateNetwork=yes` / `ProtectProc=invisible`) and fails the spawn at
+  `network-isolation-readback` when it did not take effect, so only a verified
+  boundary is ever recorded or reported. `bunker info` now says
+  `[verified: …]` or `[NOT verified: …]` on the same line instead of leaving
+  the reader to assume. `shared` and an unset flag are unchanged, so
+  pre-existing invocations behave byte-identically, including against 0.1.x
+  daemons.
+
 - **The local release gate no longer forbids the release order it documents
   (RELEASE-021).** `scripts/pre-release-check.sh` tree mode failed whenever
   `git describe --tags --abbrev=0` was not exactly `v<version>`, so the bump
