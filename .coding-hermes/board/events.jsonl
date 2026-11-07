@@ -1612,3 +1612,4 @@
 {"id": 1794015699005865987, "timestamp": "2026-11-07T01:55:38", "event_type": "task_created", "task_id": "BOARD-GUARD-003", "actor": "foreman", "detail": "{\"id\":\"BOARD-GUARD-003\",\"status\":\"pending\"}"}
 {"id": 1794015699005865988, "timestamp": "2026-11-07T03:30:02", "event_type": "task_completed", "task_id": "BOARD-GUARD-003", "actor": "foreman", "detail": "{\"status\":\"complete\"}"}
 {"id": 1794015699005865989, "timestamp": "2026-11-07T03:57:02", "event_type": "task_created", "task_id": "BOARD-GUARD-004", "actor": "foreman", "detail": "{\"id\":\"BOARD-GUARD-004\",\"status\":\"pending\"}"}
+{"id":1794015699005865990,"timestamp":"2026-11-07T07:11:32","event_type":"task_created","task_id":"QA-BUNKER-FOREMAN-3","actor":"qa-foreman","detail":"{\"id\": \"QA-BUNKER-FOREMAN-3\", \"status\": \"pending\"}"}
