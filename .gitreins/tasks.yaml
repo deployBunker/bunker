@@ -6050,3 +6050,20 @@ tasks:
   status: complete
   created_at: '2026-11-07T01:18:28.014530+00:00'
   completed_at: '2026-11-07T01:18:37.897838+00:00'
+- id: RELEASE-021
+  title: pre-release-check.sh tree mode must warn (not fail) on the documented between-tags
+    bump state
+  criteria:
+  - 'Prove the local release gate now mirrors CI between-tags policy without losing
+    strictness. In a throwaway clone of origin/main where internal/version/version.go
+    Version and Makefile VERSION both read 0.3.0, the version_test expectation reads
+    0.3.0, CHANGELOG.md reads "## Unreleased" then "## 0.3.0 (2026-11-06)", and no
+    v0.3* tag exists: `bash scripts/pre-release-check.sh` exits 0 and its output names
+    the between-tags state. In that same clone with a new tag v0.9.9 (newest tag NEWER
+    than Version) it exits 1 with a FAIL naming the version regression, and with Makefile
+    VERSION set to 0.4.0 it exits 1 with "version sources disagree". On the checkout
+    itself `bash scripts/pre-release-check.sh --tag v0.2.0` still exits 0. Quote the
+    exit codes and the decisive output line for each arm.'
+  status: complete
+  created_at: '2026-11-07T01:35:46.817010+00:00'
+  completed_at: '2026-11-07T01:39:45.458357+00:00'
