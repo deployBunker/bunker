@@ -178,6 +178,15 @@ func (s *bunkerdService) ServerInfo(ctx context.Context, req *connect.Request[v1
 	// silently drop req.EgressMode and run the agent unfiltered. Population
 	// never fails the RPC (it is a constant read of the build's vocabulary).
 	resp.EgressModesSupported = config.ValidEgressModes()
+	// INT-CI-020 / NET-BUNKER-010 §5.2: advertise the network-isolation modes
+	// this daemon build actually ENFORCES, verbatim from internal/netmode (the
+	// same re-export rule as egress above — never a restated list). The
+	// empty-means-predates convention lives on the proto field: a daemon
+	// without the network surface (any 0.1.x bunkerd) leaves the field empty,
+	// and the spawn CLI treats that as a refusal condition when the operator
+	// asks for an enforced mode, instead of letting the old daemon silently
+	// drop req.NetworkMode and create the agent in the host network namespace.
+	resp.NetworkModesSupported = netmode.ValidModes()
 	return connect.NewResponse(resp), nil
 }
 

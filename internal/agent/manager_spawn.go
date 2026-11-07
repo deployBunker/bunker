@@ -777,6 +777,27 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (re
 		return nil, fail(StageDockerdStart, err)
 	}
 
+	// ── Step 5b.1: Read the network-isolation property BACK (INT-CI-020) ──
+	// The argv above REQUESTS the mode's boundary (--property=PrivateNetwork=yes
+	// for `systemd`); a green systemd-run exit status only proves systemd
+	// accepted the argv. The boundary is therefore read back from the RUNNING
+	// unit here, and a mode that was requested but is not in force fails the
+	// spawn at StageNetworkReadback — the rollback then tears the agent down
+	// instead of recording an uncontained agent that reports a boundary it does
+	// not have (spec §5.2: "requested" and "provided" are different fields).
+	// networkVerified stays false for modes that enforce nothing (shared/empty):
+	// that is the honest report, not a default success.
+	networkVerified, verifyErr := verifyUnitNetworkMode(ctx, unitName, networkMode)
+	if verifyErr != nil {
+		m.logger.Error("network-isolation read-back failed; rolling back the agent",
+			"agent_id", agentID, "mode", networkMode, "error", verifyErr)
+		return nil, fail(StageNetworkReadback, verifyErr)
+	}
+	if networkVerified {
+		m.logger.Info("network-isolation boundary verified on the running unit",
+			"agent_id", agentID, "mode", networkMode, "unit", unitName)
+	}
+
 	// Enforce maxDockerContainers by asking the *just-started* rootless dockerd
 	// how many containers it already hosts. If it exceeds the configured limit,
 	// fail the spawn before the tracker is populated and run cleanup.
@@ -1008,7 +1029,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (re
 		// spawn failed — this record exists only on success, so requested ==
 		// provided here by construction.
 		NetworkMode:      networkMode,
-		NetworkIsolation: networkIsolationForSummary(networkMode),
+		NetworkIsolation: networkIsolationForSummary(networkMode, networkVerified),
 		// GAP-134: the egress policy the agent was ACTUALLY spawned under.
 		// Enforced modes reached here only after Install succeeded, so the
 		// stamp is truthful; open is stamped as open (an affirmative

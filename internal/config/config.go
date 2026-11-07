@@ -85,6 +85,16 @@ func ValidNetworkMode(name string) bool {
 	return netmode.ValidMode(name) || strings.TrimSpace(name) == NetworkModeHidepid
 }
 
+// CanonicalNetworkMode maps the config-facing hidepid spelling to the canonical
+// procvis implementation name. Exported so the CLI's spawn-time read-back uses
+// the SAME canonicalizer as the daemon resolver: the name a spawn REQUESTED and
+// the name a daemon REPORTS can never disagree because of a spelling alias
+// (INT-CI-020 — a naive equality check called the hidepid→procvis alias a
+// mode mismatch).
+func CanonicalNetworkMode(name string) string {
+	return canonicalNetworkMode(name)
+}
+
 // canonicalNetworkMode maps the config-facing hidepid spelling to the
 // procvis implementation name used by the agent spawn path.
 func canonicalNetworkMode(name string) string {

@@ -244,7 +244,7 @@ func TestNetworkIsolationReportingPerMode(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ni := networkIsolationForSummary(tt.mode)
+			ni := networkIsolationForSummary(tt.mode, false)
 			if tt.wantNil {
 				if ni != nil {
 					t.Fatalf("absent mode produced %v, want nil (absence must never render as safe or as shared)", ni)
@@ -271,7 +271,7 @@ func TestNetworkIsolationReportingPerMode(t *testing.T) {
 // a mode exposes it on AgentSummary.network_isolation; a pre-surface record
 // leaves the field nil.
 func TestAgentSummaryCarriesNetworkIsolation(t *testing.T) {
-	rec := &resource.AgentRecord{AgentID: "abc123", NetworkMode: netmode.ModeSystemd, NetworkIsolation: networkIsolationForSummary(netmode.ModeSystemd)}
+	rec := &resource.AgentRecord{AgentID: "abc123", NetworkMode: netmode.ModeSystemd, NetworkIsolation: networkIsolationForSummary(netmode.ModeSystemd, true)}
 	sum := rec.ToAgentSummary()
 	if sum.GetNetworkIsolation() == nil {
 		t.Fatal("summary lost the network isolation payload")

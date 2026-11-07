@@ -131,6 +131,11 @@ type Event struct {
 	// by keeping the field omitempty, never defaulting it.
 	NetworkMode     string `json:"network_mode,omitempty"`
 	NetworkBoundary string `json:"network_boundary,omitempty"`
+	// NetworkVerified (INT-CI-020) records that the daemon READ the enforced
+	// unit property back from the running unit at spawn. omitempty keeps the
+	// pre-INT-CI-020 vocabulary intact: a record without the field reports
+	// "not verified" rather than being defaulted to a claim it never made.
+	NetworkVerified bool `json:"network_verified,omitempty"`
 
 	// GAP-134 (REQ-E1): the egress policy mode ("open" | "allowlist" |
 	// "none") the agent was spawned under. Same omitempty vocabulary
@@ -196,6 +201,11 @@ type Record struct {
 	// record, never rendered as shared).
 	NetworkMode     string
 	NetworkBoundary string
+	// NetworkVerified (INT-CI-020) is the spawn-event copy of
+	// Record.NetworkVerified: whether the daemon read the enforced unit
+	// property back from the running unit. False = pre-INT-CI-020 event, never
+	// a verification claim.
+	NetworkVerified bool
 
 	// GAP-134 (REQ-E1): the egress policy mode the agent was spawned
 	// under. Persisted so a replayed or adopted agent keeps reporting (and
@@ -597,6 +607,9 @@ func (s *Store) AppendSpawn(rec *Record) error {
 		// replayed agent keeps reporting the boundary actually provided.
 		NetworkMode:     rec.NetworkMode,
 		NetworkBoundary: rec.NetworkBoundary,
+		// INT-CI-020: the read-back verdict rides the spawn event so a replayed
+		// agent keeps reporting whether its boundary was actually verified.
+		NetworkVerified: rec.NetworkVerified,
 		// GAP-134: the egress policy rides the spawn event so a replayed
 		// agent keeps reporting (and the sweep keeps tracking) it.
 		EgressMode: rec.EgressMode,
@@ -983,6 +996,7 @@ func eventToRecord(ev *Event) *Record {
 		// replayed or adopted agent keeps reporting its enforced boundary.
 		NetworkMode:     ev.NetworkMode,
 		NetworkBoundary: ev.NetworkBoundary,
+		NetworkVerified: ev.NetworkVerified,
 		// GAP-134: restore the egress policy reporting. A pre-GAP-134
 		// record (empty mode) stays empty — absence is preserved, never
 		// upgraded to an "open" claim.

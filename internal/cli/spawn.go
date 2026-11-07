@@ -280,6 +280,21 @@ Examples:
 				return err
 			}
 
+			// 2.6 Network-isolation capability probe (INT-CI-020): the SAME
+			// fail-closed shape for --network-mode, which until now was
+			// validated as a NAME only. A daemon that predates the
+			// network-isolation surface ignores the proto field, exits 0 and
+			// creates the agent in the host network namespace — the flag is
+			// accepted and never applied. ServerInfo now carries
+			// network_modes_supported; empty means the daemon predates the
+			// surface (absence is never an affirmative statement), so an
+			// enforced mode is refused client-side, BEFORE any agent exists,
+			// rather than being silently dropped. The post-spawn read-back
+			// below is the second half (spec §5.2: requested ≠ provided).
+			if err := ensureDaemonSupportsNetworkMode(networkIsolationMode, probeEntry); err != nil {
+				return err
+			}
+
 			req := connect.NewRequest(&v1.SpawnAgentRequest{
 				AgentId:      agentID,
 				Ttl:          ttl,
@@ -365,6 +380,35 @@ Examples:
 
 			// 5. Print connection bundle
 			r := resp.Msg
+
+			// 4.5 Post-spawn network-isolation READ-BACK (INT-CI-020; spec §5.2
+			// "requested and provided are different fields"). The capability
+			// probe above proved the daemon KNOWS the mode; this proves THIS
+			// agent actually got it. The spawn response carries no agent
+			// summary, so the daemon's own record (GetAgent) is the source:
+			// the reported mode must equal the canonical requested mode, carry
+			// a boundary line, and carry the daemon's read-back verdict. Any
+			// other answer means the agent is running with a boundary nobody
+			// verified — so it is DESTROYED before the command fails, and a
+			// refused spawn never leaves an uncontained agent behind.
+			var reportedIsolation *v1.NetworkIsolation
+			if enforceNetworkModeRequested(networkIsolationMode) {
+				ni, rbErr := spawnNetworkModeReadback(ctx, client, r.AgentId, token)
+				if rbErr == nil {
+					rbErr = verifySpawnedNetworkMode(networkIsolationMode, ni)
+				}
+				if rbErr != nil {
+					if derr := destroyUnverifiedAgent(ctx, client, r.AgentId, token); derr != nil {
+						return fmt.Errorf(
+							"spawn created agent %q but its network boundary did NOT verify (%v), and the agent could not be destroyed (%v) — it is running UNCONTAINED on this server: destroy it with 'bunker destroy %s --force'",
+							r.AgentId, rbErr, derr, r.AgentId)
+					}
+					return fmt.Errorf(
+						"spawn created agent %q but its network boundary did NOT verify (%v); the agent was destroyed, so no uncontained agent was left behind",
+						r.AgentId, rbErr)
+				}
+				reportedIsolation = ni
+			}
 
 			// GAP-128: the spawn response carries NO private key by default
 			// (key material must be explicitly requested on the wire). The CLI
@@ -481,6 +525,16 @@ Examples:
 			}
 			if r.DockerHostTunnel != "" {
 				fmt.Printf("  Docker Tunnel: %s\n", rewriteTunnelCommand(r.DockerHostTunnel, serverHost, resolvedHost, keyPath))
+			}
+			// INT-CI-020: the spawn-time boundary marker. It is printed ONLY
+			// after the read-back above returned the same canonical mode with a
+			// boundary AND the daemon's read-back verdict — so a caller (and the
+			// QA harness) can assert containment from the output instead of
+			// trusting the flag it passed. The mode's LIMIT still matters: this
+			// bounds the agent's dockerd unit (containers it starts); exec/SSH
+			// sessions keep the host network.
+			if reportedIsolation != nil {
+				fmt.Printf("  Network Mode: %s — boundary VERIFIED on the running unit (read back from the daemon's record)\n", reportedIsolation.GetMode())
 			}
 			fmt.Println()
 			fmt.Println("═ Use `bunker exec` to run commands in this agent ═")

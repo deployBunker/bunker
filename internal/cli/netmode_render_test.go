@@ -86,6 +86,48 @@ func TestFormatNetworkIsolation_ThreeStates(t *testing.T) {
 	}
 }
 
+// TestFormatNetworkIsolation_VerifiedArms (INT-CI-020) pins the verification
+// clause `bunker info` adds for modes that ENFORCE a boundary: the same mode +
+// boundary renders differently depending on whether the daemon read the
+// enforced unit property back from the running unit. A mode alone is what the
+// FALSE CUT looked like — accepted as a flag, never applied — so the unverified
+// arm must say so in words and must never read like a pass.
+//
+// The mode/boundary PREFIX is unchanged (consumers such as
+// scripts/bunker-isolation-gate.sh parse "<mode> — <boundary>"), and "shared"
+// makes no verification claim at all.
+func TestFormatNetworkIsolation_VerifiedArms(t *testing.T) {
+	verified := formatNetworkIsolation(&v1.NetworkIsolation{
+		Mode: "systemd", Boundary: "private network namespace (loopback only)", Verified: true,
+	})
+	if !strings.Contains(verified, "[verified:") {
+		t.Errorf("verified systemd render = %q, want the verified clause", verified)
+	}
+	if strings.Contains(verified, "NOT verified") {
+		t.Errorf("verified systemd render = %q, must not carry the unverified clause", verified)
+	}
+
+	unverified := formatNetworkIsolation(&v1.NetworkIsolation{
+		Mode: "systemd", Boundary: "private network namespace (loopback only)",
+	})
+	if !strings.Contains(unverified, "[NOT verified:") {
+		t.Errorf("unverified systemd render = %q, want the NOT-verified clause (a mode without a read-back is the false cut this row closes)", unverified)
+	}
+
+	// The prefix stays parseable: "<mode> — <boundary>[...]".
+	for _, got := range []string{verified, unverified} {
+		if !strings.HasPrefix(got, "systemd — private network namespace (loopback only)") {
+			t.Errorf("render %q lost the '<mode> — <boundary>' prefix the gate parses", got)
+		}
+	}
+
+	// shared enforces nothing: it makes no verification claim either way.
+	shared := formatNetworkIsolation(&v1.NetworkIsolation{Mode: "shared", Boundary: "host network namespace"})
+	if strings.Contains(shared, "verified") || strings.Contains(shared, "Verified") {
+		t.Errorf("shared render = %q, must make no verification claim", shared)
+	}
+}
+
 // TestFormatDefaultNetworkMode_ThreeStates pins the `bunker status` daemon
 // default line with the same honesty contract.
 func TestFormatDefaultNetworkMode_ThreeStates(t *testing.T) {

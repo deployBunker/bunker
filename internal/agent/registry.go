@@ -76,6 +76,9 @@ func recordToRegistry(rec *resource.AgentRecord) *registry.Record {
 		// durable record so a replayed/adopted agent keeps reporting them.
 		NetworkMode:     rec.NetworkMode,
 		NetworkBoundary: networkBoundaryOf(rec.NetworkIsolation),
+		// INT-CI-020: persist the read-back verdict so a replayed agent keeps
+		// reporting whether its boundary was VERIFIED, not just what was asked.
+		NetworkVerified: networkVerifiedOf(rec.NetworkIsolation),
 		// GAP-134: the egress policy rides the durable record so a
 		// replayed/adopted agent keeps reporting it.
 		EgressMode: rec.EgressMode,
@@ -132,7 +135,7 @@ func registryToRecord(rec *registry.Record) *resource.AgentRecord {
 		// pre-surface record (empty mode) stays empty — absence is preserved,
 		// never upgraded to a "shared" claim.
 		NetworkMode:      rec.NetworkMode,
-		NetworkIsolation: networkIsolationForRecord(rec.NetworkMode, rec.NetworkBoundary),
+		NetworkIsolation: networkIsolationForRecord(rec.NetworkMode, rec.NetworkBoundary, rec.NetworkVerified),
 		// GAP-134: restore the egress policy. A pre-GAP-134 record (empty
 		// mode) stays empty — absence is preserved, never upgraded to an
 		// "open" claim.

@@ -40,6 +40,14 @@ const (
 	// allowlist/none mode fails the spawn (never an agent running
 	// unenforced while its config claims it is restricted).
 	StageEgress = "egress"
+	// StageNetworkReadback is the INT-CI-020 stage: after the agent's dockerd
+	// unit is up, the daemon reads the network-isolation property BACK from
+	// the running unit. A mode that was requested but is not in force on the
+	// unit fails here, so the rollback tears the agent down instead of
+	// recording an uncontained agent that reports a boundary it does not
+	// have (spec §5.2: "requested" and "provided" are different fields, and
+	// the read-back discipline forbids claiming an unverified boundary).
+	StageNetworkReadback = "network-isolation-readback"
 )
 
 // ── the rollback budget (DF-BUNKER-21) ──────────────────────────────────────

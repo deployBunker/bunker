@@ -164,6 +164,19 @@ message ServerInfoResponse {
   // modes supported". A current daemon reports e.g. "open", "allowlist",
   // "none" (the full internal/egress vocabulary, in declaration order).
   repeated string egress_modes_supported = 13;
+  // INT-CI-020 / NET-BUNKER-010 §5.2: the network-isolation modes THIS daemon
+  // build actually ENFORCES, verbatim from internal/netmode.ValidModes() (the
+  // netmode ownership rule — this is a re-export, never a restated list).
+  // ADDITIVE CAPABILITY REPORT with the same empty-means-predates convention
+  // as tmp_isolation (8), default_network_mode (11) and
+  // egress_modes_supported (13): an EMPTY value means the daemon predates
+  // network-isolation enforcement (any 0.1.x bunkerd), so a client MUST NOT
+  // read absence as "every mode is supported" — a spawn flag sent to such a
+  // daemon is silently dropped and the agent runs in the host network
+  // namespace while the caller believes it is contained. A current daemon
+  // reports "shared", "systemd", "procvis" (the vocabulary's declaration
+  // order).
+  repeated string network_modes_supported = 14;
 }
 
 // ResidueInventory reports host residue counts probed from the host itself
@@ -546,6 +559,14 @@ message NetworkIsolation {
   // systemd: "private network namespace (loopback only); NO outbound
   // networking: image pulls unavailable". Empty when mode is empty.
   string boundary = 2;
+  // INT-CI-020: whether the daemon READ BACK the enforced unit property after
+  // starting the unit (systemd: PrivateNetwork=yes on the agent's dockerd
+  // unit). A spawn whose read-back fails is rolled back and never reaches a
+  // record, so true here means "the mode systemd actually accepted was read
+  // back from the running unit" — never merely "the flag was accepted".
+  // false on a pre-INT-CI-020 record and for modes that enforce nothing
+  // (shared): absence is not a verification claim.
+  bool verified = 3;
 }
 
 message GetAgentRequest {

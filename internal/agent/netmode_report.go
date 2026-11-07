@@ -20,17 +20,29 @@ import (
 )
 
 // networkIsolationForSummary builds the §5.2 wire payload for an ENFORCED
-// mode: the mode name plus the boundary string for exactly that mode. An
-// empty mode (a pre-surface caller) yields nil — absence stays absence, it
-// is never upgraded to a "shared" claim.
-func networkIsolationForSummary(mode string) *v1.NetworkIsolation {
+// mode: the mode name, the boundary string for exactly that mode, and whether
+// the daemon read the boundary back from the RUNNING unit (INT-CI-020). An
+// empty mode (a pre-surface caller) yields nil — absence stays absence, it is
+// never upgraded to a "shared" claim.
+func networkIsolationForSummary(mode string, verified bool) *v1.NetworkIsolation {
 	if mode == "" {
 		return nil
 	}
 	return &v1.NetworkIsolation{
 		Mode:     mode,
 		Boundary: netmode.BoundaryFor(mode),
+		Verified: verified,
 	}
+}
+
+// networkVerifiedOf reports whether the wire payload claims a read-back-verified
+// boundary (nil-safe). A nil payload is NOT verified: absence is never an
+// affirmative statement.
+func networkVerifiedOf(ni *v1.NetworkIsolation) bool {
+	if ni == nil {
+		return false
+	}
+	return ni.GetVerified()
 }
 
 // networkBoundaryOf extracts the boundary string from a wire payload
@@ -48,14 +60,14 @@ func networkBoundaryOf(ni *v1.NetworkIsolation) string {
 // older durable record somehow carries a mode without a boundary, the
 // boundary is derived from the mode rather than left blank — a mode with no
 // boundary line would fail the §5.2 law this plumbing exists for.
-func networkIsolationForRecord(mode, boundary string) *v1.NetworkIsolation {
+func networkIsolationForRecord(mode, boundary string, verified bool) *v1.NetworkIsolation {
 	if mode == "" {
 		return nil
 	}
 	if boundary == "" {
 		boundary = netmode.BoundaryFor(mode)
 	}
-	return &v1.NetworkIsolation{Mode: mode, Boundary: boundary}
+	return &v1.NetworkIsolation{Mode: mode, Boundary: boundary, Verified: verified}
 }
 
 // InBandNetworkIsolationMarker is the in-band system-info marker line

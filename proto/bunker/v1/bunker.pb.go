@@ -476,8 +476,21 @@ type ServerInfoResponse struct {
 	// modes supported". A current daemon reports e.g. "open", "allowlist",
 	// "none" (the full internal/egress vocabulary, in declaration order).
 	EgressModesSupported []string `protobuf:"bytes,13,rep,name=egress_modes_supported,json=egressModesSupported,proto3" json:"egress_modes_supported,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// INT-CI-020 / NET-BUNKER-010 §5.2: the network-isolation modes THIS daemon
+	// build actually ENFORCES, verbatim from internal/netmode.ValidModes() (the
+	// netmode ownership rule — this is a re-export, never a restated list).
+	// ADDITIVE CAPABILITY REPORT with the same empty-means-predates convention
+	// as tmp_isolation (8), default_network_mode (11) and
+	// egress_modes_supported (13): an EMPTY value means the daemon predates
+	// network-isolation enforcement (any 0.1.x bunkerd), so a client MUST NOT
+	// read absence as "every mode is supported" — a spawn flag sent to such a
+	// daemon is silently dropped and the agent runs in the host network
+	// namespace while the caller believes it is contained. A current daemon
+	// reports "shared", "systemd", "procvis" (the vocabulary's declaration
+	// order).
+	NetworkModesSupported []string `protobuf:"bytes,14,rep,name=network_modes_supported,json=networkModesSupported,proto3" json:"network_modes_supported,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *ServerInfoResponse) Reset() {
@@ -597,6 +610,13 @@ func (x *ServerInfoResponse) GetDefaultNetworkBoundary() string {
 func (x *ServerInfoResponse) GetEgressModesSupported() []string {
 	if x != nil {
 		return x.EgressModesSupported
+	}
+	return nil
+}
+
+func (x *ServerInfoResponse) GetNetworkModesSupported() []string {
+	if x != nil {
+		return x.NetworkModesSupported
 	}
 	return nil
 }
@@ -2513,7 +2533,15 @@ type NetworkIsolation struct {
 	// What the mode ACTUALLY provides, in one greppable line — e.g. for
 	// systemd: "private network namespace (loopback only); NO outbound
 	// networking: image pulls unavailable". Empty when mode is empty.
-	Boundary      string `protobuf:"bytes,2,opt,name=boundary,proto3" json:"boundary,omitempty"`
+	Boundary string `protobuf:"bytes,2,opt,name=boundary,proto3" json:"boundary,omitempty"`
+	// INT-CI-020: whether the daemon READ BACK the enforced unit property after
+	// starting the unit (systemd: PrivateNetwork=yes on the agent's dockerd
+	// unit). A spawn whose read-back fails is rolled back and never reaches a
+	// record, so true here means "the mode systemd actually accepted was read
+	// back from the running unit" — never merely "the flag was accepted".
+	// false on a pre-INT-CI-020 record and for modes that enforce nothing
+	// (shared): absence is not a verification claim.
+	Verified      bool `protobuf:"varint,3,opt,name=verified,proto3" json:"verified,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2560,6 +2588,13 @@ func (x *NetworkIsolation) GetBoundary() string {
 		return x.Boundary
 	}
 	return ""
+}
+
+func (x *NetworkIsolation) GetVerified() bool {
+	if x != nil {
+		return x.Verified
+	}
+	return false
 }
 
 type GetAgentRequest struct {
@@ -4850,7 +4885,7 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\x16MODE_CLOUDFLARE_TUNNEL\x10\x01\x12\x12\n" +
 	"\x0eMODE_TAILSCALE\x10\x02\x12\x0f\n" +
 	"\vMODE_DIRECT\x10\x03\"\x13\n" +
-	"\x11ServerInfoRequest\"\xf1\x04\n" +
+	"\x11ServerInfoRequest\"\xa9\x05\n" +
 	"\x12ServerInfoResponse\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12%\n" +
@@ -4867,7 +4902,8 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	" \x01(\v2\x1b.bunker.v1.ResidueInventoryR\aresidue\x120\n" +
 	"\x14default_network_mode\x18\v \x01(\tR\x12defaultNetworkMode\x128\n" +
 	"\x18default_network_boundary\x18\f \x01(\tR\x16defaultNetworkBoundary\x124\n" +
-	"\x16egress_modes_supported\x18\r \x03(\tR\x14egressModesSupported\"\x88\x02\n" +
+	"\x16egress_modes_supported\x18\r \x03(\tR\x14egressModesSupported\x126\n" +
+	"\x17network_modes_supported\x18\x0e \x03(\tR\x15networkModesSupported\"\x88\x02\n" +
 	"\x10ResidueInventory\x12!\n" +
 	"\forphan_users\x18\x01 \x01(\rR\vorphanUsers\x12!\n" +
 	"\forphan_homes\x18\x02 \x01(\rR\vorphanHomes\x12\x1f\n" +
@@ -5026,10 +5062,11 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\x06agents\x18\x01 \x03(\v2\x17.bunker.v1.AgentSummaryR\x06agents\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12\x1f\n" +
 	"\vtotal_count\x18\x03 \x01(\rR\n" +
-	"totalCount\"B\n" +
+	"totalCount\"^\n" +
 	"\x10NetworkIsolation\x12\x12\n" +
 	"\x04mode\x18\x01 \x01(\tR\x04mode\x12\x1a\n" +
-	"\bboundary\x18\x02 \x01(\tR\bboundary\",\n" +
+	"\bboundary\x18\x02 \x01(\tR\bboundary\x12\x1a\n" +
+	"\bverified\x18\x03 \x01(\bR\bverified\",\n" +
 	"\x0fGetAgentRequest\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\"A\n" +
 	"\x10GetAgentResponse\x12-\n" +

@@ -15,6 +15,7 @@ package cli
 import (
 	"fmt"
 
+	"github.com/deployBunker/bunker/internal/netmode"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 )
 
@@ -37,7 +38,33 @@ func formatNetworkIsolation(ni *v1.NetworkIsolation) string {
 		// the mode but flag the gap instead of inventing comfort.
 		return fmt.Sprintf("%s — boundary not reported", ni.GetMode())
 	}
-	return fmt.Sprintf("%s — %s", ni.GetMode(), boundary)
+	line := fmt.Sprintf("%s — %s", ni.GetMode(), boundary)
+	// INT-CI-020: a mode that ENFORCES something is only "verified" when the
+	// daemon read the enforced unit property back from the RUNNING unit at
+	// spawn (proto NetworkIsolation.verified). Reporting the mode alone is the
+	// false cut this row exists for: accepted-as-a-flag is not applied. The
+	// unverified arm is stated as unproven, never softened into a pass.
+	if netmodeEnforcesBoundary(ni.GetMode()) {
+		if ni.GetVerified() {
+			line += " [verified: the daemon read the enforced unit property back from the running unit at spawn]"
+		} else {
+			line += " [NOT verified: the daemon never read the boundary back from the running unit — treat this boundary as unproven]"
+		}
+	}
+	return line
+}
+
+// netmodeEnforcesBoundary reports whether a mode claims an enforced bound that
+// must be verified (systemd's private network namespace, procvis's private
+// /proc view). "shared" enforces nothing, so it has no verification claim to
+// make or withhold.
+func netmodeEnforcesBoundary(mode string) bool {
+	switch mode {
+	case netmode.ModeSystemd, netmode.ModeProcVis:
+		return true
+	default:
+		return false
+	}
 }
 
 // formatDefaultNetworkMode renders the daemon-wide default mode line for
