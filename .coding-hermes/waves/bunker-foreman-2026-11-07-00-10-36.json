@@ -1,0 +1,21 @@
+{
+  "tick_id": "bunker-foreman-2026-11-07-00-10-36",
+  "block": "OBS-BUNKER-009",
+  "mode": "serial",
+  "wave_budget": 3,
+  "slots": 1,
+  "slots_reason": "nproc=16, loadavg_1m=23.47 -> max(1,min(6,16-24))=1; host loaded, serial fallback",
+  "rows": [
+    {
+      "task_id": "OBS-BUNKER-008",
+      "title": "Textfile shim certifies ANY HTTP 200",
+      "worktree": "/home/kara/worktrees/bunker-OBS-BUNKER-008",
+      "branch": "wt/OBS-BUNKER-008",
+      "base": "origin/main",
+      "base_sha": "330d682a",
+      "brief": "/home/kara/.hermes/cache/scratch/brief-OBS-BUNKER-008-20261107.txt",
+      "gitreins_task": "OBS-BUNKER-008",
+      "depends_on_verified": "OBS-BUNKER-005"
+    }
+  ]
+}
