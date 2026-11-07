@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -118,6 +119,15 @@ func writePrometheusTextfile(path, metricsURL string) error {
 	if err := resp.Body.Close(); err != nil {
 		return fmt.Errorf("close scrape response from %q: %w", metricsURL, err)
 	}
+	// A misrouted --metrics-url can answer HTTP 200 with an empty body or
+	// an HTML error page. Publishing such a response would atomically
+	// replace the last good scrape with a stamp-only or unparseable file
+	// while the freshness stamp claims success — leaving node_exporter
+	// blind with no signal anything broke. Refuse before any file is
+	// touched: the destination must stay byte-identical on refusal.
+	if !hasBunkerSampleLine(body) {
+		return fmt.Errorf("scrape %q: response has no bunker_ exposition lines (%d bytes, HTTP %s); refusing to publish a non-bunkerd scrape", metricsURL, len(body), resp.Status)
+	}
 	bodyText := strings.TrimRight(string(body), "\n") + "\n"
 	bodyText += "# HELP bunker_metrics_last_success_timestamp_seconds Unix time of the last successful bunkerd /metrics scrape by the Bunker textfile shim.\n"
 	bodyText += "# TYPE bunker_metrics_last_success_timestamp_seconds gauge\n"
@@ -152,6 +162,25 @@ func writePrometheusTextfile(path, metricsURL string) error {
 	}
 	published = true
 	return nil
+}
+
+// hasBunkerSampleLine reports whether the scraped exposition contains at
+// least one bunker_ sample line (a line whose first byte starts
+// "bunker_"). HELP/TYPE comment lines and the shim's own freshness stamp
+// do not count: a real bunkerd scrape always carries samples.
+func hasBunkerSampleLine(body []byte) bool {
+	for len(body) > 0 {
+		line := body
+		if i := bytes.IndexByte(body, '\n'); i >= 0 {
+			line, body = body[:i], body[i+1:]
+		} else {
+			body = nil
+		}
+		if strings.HasPrefix(string(line), "bunker_") {
+			return true
+		}
+	}
+	return false
 }
 
 func printServerMetrics(ctx context.Context, client bunkerv1connect.BunkerdClient, token string) error {
