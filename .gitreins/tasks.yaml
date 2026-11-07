@@ -6039,3 +6039,14 @@ tasks:
   status: complete
   created_at: '2026-11-07T00:28:56.607295+00:00'
   completed_at: '2026-11-07T00:29:07.255540+00:00'
+- id: BUNKER-OPS-20261107-R1
+  title: verify bunker-ops tick 2026-11-07 board audit event is published
+  criteria:
+  - Read origin/main:.coding-hermes/board/events.jsonl, parse the last line's detail
+    with fromjson, and confirm detail.tick=='bunker-ops-2026-11-07-01-00-21' and detail.check=='container'
+    arrive in commit 49ef1c4a which is an ancestor of origin/main with git rev-list
+    --count origin/main..HEAD equal to 0; also confirm the event's task_id is GAP-033
+    and event_type is audit.
+  status: complete
+  created_at: '2026-11-07T01:18:28.014530+00:00'
+  completed_at: '2026-11-07T01:18:37.897838+00:00'
