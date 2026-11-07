@@ -6019,3 +6019,23 @@ tasks:
     TestFastPathVerdictParity green.'
   status: in_progress
   created_at: '2026-11-06T15:01:30.243461+00:00'
+- id: OBS-BUNKER-008-recovered
+  title: Textfile shim validation fix (recovered)
+  criteria:
+  - 'Verify the merged commit fixes OBS-BUNKER-008: internal/cli/metrics.go has hasBunkerSampleLine
+    guard, internal/cli/metrics_textfile_test.go has TestMetricsTextfileEmptyBodyRejected
+    and TestMetricsTextfileHTMLBodyRejected, go test ./internal/cli/ -run Textfile
+    passes, four arms proven.'
+  status: complete
+  created_at: '2026-11-07T00:26:56.048508+00:00'
+  completed_at: '2026-11-07T00:26:59.670839+00:00'
+- id: OBS-BUNKER-008-final
+  title: Textfile shim validation fix (final, merged)
+  criteria:
+  - 'Verify the merged tree (main) contains the OBS-BUNKER-008 fix: internal/cli/metrics.go
+    has hasBunkerSampleLine guard, internal/cli/metrics_textfile_test.go has TestMetricsTextfileEmptyBodyRejected
+    and TestMetricsTextfileHTMLBodyRejected, go test ./internal/cli/ -run Textfile
+    passes with 5 tests, four arms proven.'
+  status: complete
+  created_at: '2026-11-07T00:28:56.607295+00:00'
+  completed_at: '2026-11-07T00:29:07.255540+00:00'
