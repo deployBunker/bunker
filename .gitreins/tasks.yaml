@@ -6067,3 +6067,36 @@ tasks:
   status: complete
   created_at: '2026-11-07T01:35:46.817010+00:00'
   completed_at: '2026-11-07T01:39:45.458357+00:00'
+- id: BOARD-GUARD-004
+  title: 'BOARD-GUARD-004 board census: classify every commit_hash binding, repair
+    non-resolvable ones'
+  criteria:
+  - scripts/board-census-commit-hash.py exists and is executable; running it on .coding-hermes/board/tasks.jsonl
+    exits 0 with 0 unparseable lines and prints a classification table where every
+    short/non-hex commit_hash is classified as full, resolvable-abbreviated (git rev-parse
+    resolves it), multi-commit (every sha resolves), self-describing disposition,
+    or repaired-this-commit; scripts/board-jsonl-guard.sh PASS on the same file
+  status: complete
+  created_at: '2026-11-08T04:29:01.860170+00:00'
+  completed_at: '2026-11-08T04:50:04.163796+00:00'
+- id: BOARD-GUARD-004-R1
+  title: 'BOARD-GUARD-004 verification: census tool executable + green on the committed
+    tip'
+  criteria:
+  - 'On the committed tip the board commit_hash census ships as an executable shell
+    script and reports a clean classification of the current board.
+
+
+    FAILIF: `git ls-files -s scripts/board-census-commit-hash.sh` does not show mode
+    100755, or `scripts/board-census-commit-hash.sh --quiet` exits non-zero on .coding-hermes/board/tasks.jsonl,
+    or `bash scripts/board-jsonl-guard.sh .coding-hermes/board/tasks.jsonl` does not
+    print PASS, or the census summary does not report lines_unparseable=0 with stale=0
+    and a class breakdown covering all 575 rows that carry a commit_hash.
+
+
+    PROOF: quote the git ls-files mode line, the census summary block (classes line,
+    verdict line, rc), and the board-jsonl-guard PASS line, produced on commit 3db86573
+    in a clean checkout; a NULL on any of the four is a FAIL.'
+  status: complete
+  created_at: '2026-11-08T04:52:01.683078+00:00'
+  completed_at: '2026-11-08T04:52:07.104970+00:00'
