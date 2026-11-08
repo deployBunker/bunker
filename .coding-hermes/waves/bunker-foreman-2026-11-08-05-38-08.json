@@ -1,0 +1,16 @@
+{
+  "tick_id": "bunker-foreman-2026-11-08-05-38-08",
+  "block": "OBS-BUNKER-009",
+  "wave_size": 1,
+  "reason": "Only OBS-BUNKER-007 and OBS-BUNKER-009 are ready, but they touch the same observability code/spec seam; serialize to avoid conflicting edits.",
+  "rows": [
+    {
+      "id": "OBS-BUNKER-007",
+      "worktree": "/home/kara/worktrees/bunker-OBS-BUNKER-007",
+      "branch": "wt/OBS-BUNKER-007",
+      "base_sha": "c8a3f4cd",
+      "brief": "/home/kara/.hermes/cache/scratch/bunker-foreman-2026-11-08-05-38-08/brief-OBS-BUNKER-007.txt",
+      "status": "dispatch-pending"
+    }
+  ]
+}

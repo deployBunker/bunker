@@ -6117,3 +6117,21 @@ tasks:
   status: complete
   created_at: '2026-11-08T05:11:17.935683+00:00'
   completed_at: '2026-11-08T05:15:22.614060+00:00'
+- id: OBS-BUNKER-007
+  title: Add freshness alert or correct observability scope
+  criteria:
+  - 'Choose and record one explicit resolution: implement a fleet rule consuming bunker_metrics_last_success_timestamp_seconds
+    with Pending then Firing behavior and host payload while the shim emits no alert,
+    or document collector-only scope, remove OBS-BUNKER-005 claim that an alert fires,
+    and quote measured rule inventory and stamp-series result.'
+  status: in_progress
+  created_at: '2026-11-08T05:46:09.364011+00:00'
+- id: OBS-BUNKER-009
+  title: Disambiguate disabled WebDAV metrics and reconcile docs
+  criteria:
+  - '`go test ./internal/server/ -count=1` passes; WebDAV-off metrics print bunker_webdav_enabled
+    0 with counters at 0; WebDAV-on metrics print bunker_webdav_enabled 1; metrics_test.go
+    contains the two-mode regression test; observability spec lists shipped WebDAV
+    metric names.'
+  status: in_progress
+  created_at: '2026-11-08T05:46:10.637427+00:00'
