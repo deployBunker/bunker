@@ -1221,17 +1221,17 @@ certifies freshness in the same write; a 200 HTML page makes the collector drop 
 silently. Whenever you touch this path, test four arms — valid, 200-empty, 200-HTML, connection
 refused — and require rc≠0 plus a byte-identical destination for the last three. OBS-BUNKER-008.
 
-### Rule 2 — a freshness stamp is not an alert; check the far end
+### Rule 2 — the freshness stamp is collector-only unless an external rule consumes it
 
-`bunker_metrics_last_success_timestamp_seconds` only means something if a rule consumes it.
-Measured on the deployed stack: `fleet-monitor:9090/api/v1/rules?type=alert` holds exactly two
-bunker rules (`BunkerLogindWedge`, `BunkerSpawnFailures`), neither references the stamp, and a
-query for the series returns an empty vector. The *collection* side is ready — the textfile
-directory on each host is mounted into the Alloy container and `bunker_agents_total
-{job="integrations/unix"}` shows 120 samples/hour (30 s scrape) on bunker-mvp — so a published
-`.prom` lands in Prometheus with no stack change. The missing half is a rule + receiver, which
-lives in fleet-monitoring, not in this repo (OBS-BUNKER-007). Never report "the freshness arm is
-proven" from a working shim alone; quote the rule, its state, and the alert payload.
+`bunker_metrics_last_success_timestamp_seconds` is collector metadata, not an alert. The
+measured deployed stack at `fleet-monitor:9090/api/v1/rules?type=alert` held exactly two bunker
+rules (`BunkerLogindWedge`, `BunkerSpawnFailures`), neither references the stamp, and a query
+for the stamp returned an empty vector. The *collection path* is ready — the textfile directory
+on each host is mounted into Alloy and `bunker_agents_total{host="bunker-mvp",
+job="integrations/unix"}` showed 120 samples/hour (30 s scrape) — but this does not prove stamp
+ingestion or paging. A rule plus receiver lives in fleet-monitoring, outside this repository
+(OBS-BUNKER-007). Never report freshness alerting as proven from a working shim; verify the
+external rule, Pending/Firing state, host payload, and that the shim itself emits no alert.
 
 ### Rule 3 — "off" and "healthy" must be distinguishable before you alert on a gauge
 

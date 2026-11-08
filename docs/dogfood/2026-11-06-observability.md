@@ -18,9 +18,10 @@ answer to the 3am questions: `/metrics` on the REST listener behind
 from the audit middleware, tier-3 lifecycle outcomes (spawn/destroy/refusals/archive), tier-4
 WebDAV depth — plus a **textfile shim** (`bunker metrics --prometheus-textfile <path>
 --metrics-url <url>`) that ports a scrape into the node_exporter textfile directory, appending
-`bunker_metrics_last_success_timestamp_seconds` "only on success … so the freshness alert can
-fire". README and the shipped release binary do not mention any of this (see "surfaces not
-ready for users" below).
+`bunker_metrics_last_success_timestamp_seconds` only on success. The stamp ages when the daemon
+stops, but it is collector metadata, not an alert: no production rule or receiver is owned or
+provisioned by this repository. README and the shipped release binary do not mention any of this
+(see "surfaces not ready for users" below).
 
 ## How it was driven (a real operator's task, not a test script)
 
@@ -55,14 +56,27 @@ ready for users" below).
 
 ## What broke — four findings, all filed
 
-**OBS-BUNKER-007 (P3) — the freshness guarantee has no consumer.**
+**OBS-BUNKER-007 (P3) — resolved by documenting collector-only scope; no alert is claimed.**
 The deployed Prometheus (`fleet-monitor:9090/api/v1/rules?type=alert`) carries exactly two
 `bunker` rules — `BunkerLogindWedge`, `BunkerSpawnFailures` — and neither reads
 `bunker_metrics_last_success_timestamp_seconds`; a query for that series returns an empty
-vector. The shim, endpoint, atomic write and stamp all work, and the collector would accept the
-file tomorrow — but nothing pages. The OBS-005 commit message and row text claim "the freshness
-alert can fire"; on this stack it cannot, because no rule exists.
-OBS-BUNKER-006 is blocked on *deployment*; deploying does not create the alert either.
+vector. The shim, endpoint, atomic write and stamp work, and the collection path is ready, but
+nothing pages. The earlier OBS-BUNKER-005 wording implied that adding the stamp made a
+freshness alert possible; that implication is false on the measured stack and is superseded here
+by the collector-only scope. This repository does not own the production fleet-monitoring rule
+or receiver, so the supported resolution here is to document the boundary, not fabricate or
+modify external monitoring configuration.
+OBS-BUNKER-006 is blocked on deployment; deploying does not create the alert either.
+
+Measured inventory for this resolution: exactly `BunkerLogindWedge` and `BunkerSpawnFailures`
+are present under `/api/v1/rules?type=alert`; neither references the stamp, and the Prometheus
+query for `bunker_metrics_last_success_timestamp_seconds` returns an empty vector. Separately,
+`bunker_agents_total{host="bunker-mvp",job="integrations/unix"}` produced 120 samples/hour at
+the 30s scrape interval, confirming collector readiness, not stamp ingestion or alert behavior.
+The alert arm (Pending → Firing with host payload, no alert emitted by the running shim) is not
+claimed or satisfied by this documentation-only branch.
+
+ch:trace row=OBS-BUNKER-007 spec=docs/observability-spec.md#freshness wave=.coding-hermes/waves/bunker-foreman-2026-11-08-05-38-08.json test=none:see-acceptance-branch doc=docs/observability-spec.md evidence=docs/dogfood/2026-11-06-observability.md witness=commit-or-test-output verdict=none:foreman-will-judge commit=none:worker-commit memory=none:foreman-closeout
 
 **OBS-BUNKER-008 (P3) — the shim certifies any HTTP 200.**
 `writePrometheusTextfile` checks only `resp.StatusCode == 200` and appends the stamp

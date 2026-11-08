@@ -260,9 +260,10 @@ bunker metrics --prometheus-textfile /var/lib/node_exporter/textfile/bunkerd.pro
 
 The shim uses a 10s HTTP timeout, rejects non-200 responses, and leaves the previous file
 untouched on any scrape or publish failure. It appends
-`bunker_metrics_last_success_timestamp_seconds` only after a successful scrape, so a stopped
-daemon leaves an aging timestamp rather than indefinitely refreshing plausible values. A
-minimal host-local timer/service sketch is:
+`bunker_metrics_last_success_timestamp_seconds` only after a successful scrape. This stamp is
+collector metadata only: it ages when the daemon stops, but this repository does not provision
+or own a production alert rule or receiver, so the stamp alone does not make staleness alertable.
+A minimal host-local timer/service sketch is:
 
 ```ini
 # bunkerd-metrics.service
@@ -284,8 +285,11 @@ it. Labels arriving for free: `instance` (relabelled to the SSH alias — `confi
 `host`. This reuses the same directory the existing `bunker_agents.prom` lives in.
 
 *Staleness is the cost:* a dead bunkerd leaves the last textfile on disk, but the timestamp ages.
-The alert MUST be `time() - bunker_metrics_last_success_timestamp_seconds > 180` — a
-freshness alert, not a presence alert. This is exactly why (A) is a bridge, not the destination.
+The timestamp is collector-only until the fleet-monitoring owner provisions a rule and receiver.
+A suitable rule expression is `time() - bunker_metrics_last_success_timestamp_seconds > 180`,
+but it is not installed or verified by this repository; do not claim an alert can fire from the
+presence of the stamp or from collection alone. This is exactly why (A) is a bridge, not the
+destination.
 
 **(B) New scrape job on the monitoring host — the real answer, requires an owner-approved change
 to `/root/fleet-monitoring/prometheus/prometheus.yml`.** The monitoring host has no inbound
@@ -339,10 +343,13 @@ bunker_portpool_available < 200
 ```
 Each query must return at least one series with a plausible value.
 
-**V4 — freshness (required for path 6A).**
+**V4 — freshness stamp collection (path 6A; collector-only, not an alert check).**
 ```promql
-time() - bunker_metrics_last_success_timestamp_seconds{host="bunker-mvp"} < 180
+bunker_metrics_last_success_timestamp_seconds{host="bunker-mvp"}
 ```
+A returned series confirms only that Prometheus received the textfile stamp. Production alerting
+requires a separately owned fleet-monitoring rule and receiver; this repository does not claim
+that rule exists or that Pending/Firing behavior has been verified.
 
 **V5 — negative test.** Stop `bunkerd` (`systemctl stop bunkerd`). Within 5 minutes
 `bunker_uptime_seconds` must go stale under path (B), or `bunker_metrics_last_success_timestamp_seconds`
