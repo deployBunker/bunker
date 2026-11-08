@@ -1419,6 +1419,11 @@ bunker surface     Manage the agent's toolsd socket surface (systemd user
 bunker subid-migrate  Rewrite overlapping subordinate-id (subuid/subgid)
                    ranges for managed agents (dry run by default; --apply
                    rewrites)
+bunker paths       Print every resolved secret/state path (locations and
+                   modes only — never contents) for the CLI and daemon,
+                   including which flag/env var overrides each one
+bunker iobattery   Run the I/O measurement battery (BFS-057) and emit a JSON
+                   report (see docs/iobattery.md)
 ```
 
 ### Pulling files

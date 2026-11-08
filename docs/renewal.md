@@ -27,7 +27,19 @@ against a deleted workdir for 20+ hours.
 
 ```bash
 bunker renew --agent-id <agent-id> [--ttl 7d] [--server staging]
+             [--preset standard] [--no-destroy]
+             [--skip-drift-check | --force]
 ```
+
+| flag | meaning |
+| --- | --- |
+| `--agent-id` | REQUIRED. The stable id to renew — the home path `/home/bunker-<id>` and every stored path follow it. |
+| `--ttl 6h\|24h\|7d` | TTL for the re-spawn; empty = the daemon default. |
+| `--preset open\|standard\|hardened` | Safety preset for the re-spawn. Resolution: `BUNKERD_SAFETY_PRESET`, then the server's config, then the built-in default `standard` (GAP-117). |
+| `--no-destroy` | **Report-only arm**: runs the drift pre-flight and exits. Nothing is destroyed or re-spawned and no agent config is touched, so it is safe against an agent that must stay running (a drift audit before a planned renewal). |
+| `--skip-drift-check` | Skip the pre-flight drift check entirely — use when the agent's old home holds no host-side state, or on a daemon that cannot serve the check. |
+| `--force` | Proceed even when the pre-flight drift check FAILS (emergency renewal: the stale-reference report is unavailable and the renewal deliberately continues). |
+| `--server` | Server alias; required unless `BUNKER_SESSION_TARGET` is set. Mutating commands never fall back to the shared active default. |
 
 What it does, in order:
 
@@ -45,6 +57,22 @@ What it does, in order:
    home path, system user and SSH identity are unchanged across the renewal.
    The command verifies the daemon answered with the same id and fails
    loudly if a daemon ever mints a different one.
+
+### The drift pre-flight is a gate, not a courtesy
+
+A daemon that cannot serve the check at all (an older `bunkerd` without the
+`RenewalDriftReport` RPC) answers `CodeUnimplemented`, and the renewal then
+**aborts before the destroy** with a named error — destroying the agent
+anyway would take the old home down with no report of the stale references
+it holds (DF-BUNKER-70). The two bypasses above (`--skip-drift-check`,
+`--force`) exist for exactly that case and are deliberate.
+
+### If the destroy succeeds and the re-spawn then fails
+
+The error names the state in full — the agent and its home are already gone —
+and carries two recovery facts: the exact `bunker spawn <id>` command that
+re-spawns the same stable id, and the pre-renewal archive reminder (recipe
+step 0), which is the only copy of the home that survives such a failure.
 
 Without `--agent-id`, renew fails before any RPC with:
 

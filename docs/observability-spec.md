@@ -187,6 +187,7 @@ measurement, just a different sink.
 | `bunker_webdav_watch_heartbeat_age_seconds` | gauge | seconds | — | Is the watch loop alive? (`watch.go:419`, `loopTicks` at `:418`) |
 | `bunker_webdav_push_subscribers` | gauge | subscribers | — | Are push streams attached? (`push.go:163`) |
 | `bunker_webdav_push_drops_total` | counter | events | — | Are subscribers losing events? (`push.go:165`) |
+| `bunker_webdav_push_gaps_total` | counter | gaps | — | Gaps a push subscriber could not fill (sequence jumps the stream never recovered). Exported with the watcher/push metrics in OBS-BUNKER-004 (`push.go:715`, wired at `server.go:297`, exposed at `metrics.go:179`). |
 
 ### 4.5 Deliberately NOT instrumented (and why)
 
